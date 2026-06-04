@@ -1,0 +1,34 @@
+spring:
+  application:
+    name: CareerTuner
+
+  datasource:
+    url: jdbc:mysql://${DB_HOST:localhost}:${DB_PORT:3306}/${DB_NAME:careertuner}?serverTimezone=Asia/Seoul&characterEncoding=UTF-8&useSSL=false&allowPublicKeyRetrieval=true
+    username: ${DB_USERNAME:root}
+    password: ${DB_PASSWORD:}
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    hikari:
+      # 스켈레톤 단계: MySQL이 떠 있지 않아도 앱이 부팅되도록 시작 시 커넥션 시도를 생략한다.
+      # 실제 DB 기능(쿼리 실행)은 MySQL이 기동되어 있어야 동작한다.
+      initialization-fail-timeout: -1
+
+server:
+  port: 8080
+
+# MyBatis — 본 프로젝트의 표준 영속성 계층. 매퍼 인터페이스는 @Mapper 로 등록하고,
+# 동적/복잡 쿼리는 classpath:mapper/**/*.xml 로 작성한다.
+mybatis:
+  type-aliases-package: com.careertuner
+  mapper-locations: classpath*:mapper/**/*.xml
+  configuration:
+    map-underscore-to-camel-case: true
+    default-fetch-size: 100
+    default-statement-timeout: 30
+
+springdoc:
+  swagger-ui:
+    path: /swagger-ui.html
+
+logging:
+  level:
+    com.careertuner: DEBUG

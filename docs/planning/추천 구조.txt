@@ -1,0 +1,178 @@
+그러면 **VS Code를 따로 쓸 필요 없다. IntelliJ Ultimate 하나로 가면 된다.**
+
+IntelliJ IDEA는 React 편집·실행·디버깅을 지원하고, Vite도 통합 지원한다. npm 스크립트 실행 구성도 IntelliJ 안에서 만들 수 있다. Spring Boot도 IntelliJ에서 실행 구성이 자동 생성된다. 즉, 네 경우에는 **한 IDE 안에서 백엔드와 프론트엔드를 같이 관리하는 구성이 정석에 가깝다.** ([JetBrains][1]) ([JetBrains][2]) ([JetBrains][3]) ([JetBrains][4])
+
+# 추천 구조
+
+```text
+gonggo-fitter/
+ ├─ backend/     ← Spring Boot
+ ├─ frontend/    ← React + Vite + TypeScript
+ └─ docs/
+```
+
+이 전체 폴더인 `gonggo-fitter`를 IntelliJ에서 열면 된다.
+
+```text
+File → Open → gonggo-fitter 폴더 선택
+```
+
+그러면 IntelliJ 안에서 이런 식으로 한 번에 관리한다.
+
+```text
+backend  실행: Spring Boot Run
+frontend 실행: npm run dev
+DB       연결: IntelliJ Database 탭 또는 MySQL Workbench
+```
+
+# React를 따로 “또 생성”해야 하냐?
+
+아니다.
+이미 디자인 초안 React 코드가 있으면 그걸 `frontend/`에 넣으면 된다.
+
+새로 만들 필요가 있는 경우에만 IntelliJ 터미널에서 이렇게 생성한다.
+
+```bash
+cd gonggo-fitter
+npm create vite@latest frontend
+```
+
+선택은:
+
+```text
+Framework: React
+Variant: TypeScript
+```
+
+그다음:
+
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+React 공식 문서도 새 React 앱을 만들 때 Vite 같은 빌드 도구를 쓰는 방식을 안내한다. ([React][5])
+
+# IntelliJ 안에서 실행 구성 만들기
+
+## 1. 백엔드 실행
+
+`backend/src/main/java/.../GonggoFitterApiApplication.java` 열고 실행 버튼을 누르면 된다.
+
+또는:
+
+```text
+Run → Edit Configurations
+ → Spring Boot
+ → Main class: com.gonggofitter.api.GonggoFitterApiApplication
+```
+
+실행 주소:
+
+```text
+http://localhost:8080
+```
+
+## 2. 프론트엔드 실행
+
+`frontend/package.json`에서 `scripts`에 보통 이런 게 있을 것이다.
+
+```json
+{
+  "scripts": {
+    "dev": "vite"
+  }
+}
+```
+
+IntelliJ에서 `dev` 옆 실행 버튼을 눌러도 되고, 직접 구성하려면:
+
+```text
+Run → Edit Configurations
+ → +
+ → npm
+```
+
+설정:
+
+```text
+Name: frontend dev
+package.json: gonggo-fitter/frontend/package.json
+Command: run
+Scripts: dev
+```
+
+실행 주소:
+
+```text
+http://localhost:5173
+```
+
+# API 연결은 이렇게 잡는다
+
+프론트는 `5173`, 백엔드는 `8080`으로 따로 돈다.
+
+```text
+React:       http://localhost:5173
+Spring Boot: http://localhost:8080
+```
+
+그래서 `frontend/vite.config.ts`에 proxy를 넣는다.
+
+```ts
+import { defineConfig } from "vite";
+import react from "@vitejs/plugin-react";
+
+export default defineConfig({
+  plugins: [react()],
+  server: {
+    port: 5173,
+    proxy: {
+      "/api": {
+        target: "http://localhost:8080",
+        changeOrigin: true,
+      },
+    },
+  },
+});
+```
+
+그러면 React에서는 이렇게 호출하면 된다.
+
+```ts
+fetch("/api/health")
+```
+
+브라우저는 `localhost:5173/api/health`로 요청하지만, Vite가 백엔드의 `localhost:8080/api/health`로 넘겨준다.
+
+# 그래서 네가 지금 해야 할 시작 방식
+
+가장 깔끔한 순서는 이거다.
+
+```text
+1. gonggo-fitter 폴더 생성
+2. 그 안에 backend 폴더로 Spring Boot 프로젝트 생성
+3. 그 안에 frontend 폴더로 기존 React 디자인 초안 이동
+4. IntelliJ에서 gonggo-fitter 루트 폴더 열기
+5. backend 실행 구성 만들기
+6. frontend npm 실행 구성 만들기
+7. /api/health 연결 확인
+```
+
+즉, 앞으로는 이렇게 생각하면 된다.
+
+```text
+IntelliJ 프로젝트 = gonggo-fitter 전체
+backend = Spring Boot 모듈/폴더
+frontend = React 앱 폴더
+```
+
+VS Code는 안 써도 된다.
+IntelliJ Ultimate면 이 프로젝트는 **한 IDE, 한 루트 폴더, 두 실행 구성**으로 진행하는 게 제일 좋다.
+
+[1]: https://www.jetbrains.com/help/idea/react.html?utm_source=chatgpt.com "React | IntelliJ IDEA Documentation"
+[2]: https://www.jetbrains.com/help/idea/vite.html?utm_source=chatgpt.com "Vite | IntelliJ IDEA Documentation"
+[3]: https://www.jetbrains.com/help/idea/run-debug-configuration-npm.html?utm_source=chatgpt.com "Run/Debug Configuration: NPM | IntelliJ IDEA"
+[4]: https://www.jetbrains.com/help/idea/run-debug-configuration-spring-boot.html?utm_source=chatgpt.com "Spring Boot run configuration | IntelliJ IDEA Documentation"
+[5]: https://react.dev/learn/build-a-react-app-from-scratch?utm_source=chatgpt.com "Build a React app from Scratch"

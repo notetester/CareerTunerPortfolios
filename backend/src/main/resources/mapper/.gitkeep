@@ -1,0 +1,2 @@
+# MyBatis XML 매퍼 위치 (mybatis.mapper-locations: classpath*:mapper/**/*.xml).
+# 도메인별 하위 폴더로 정리한다. 예) mapper/applicationcase/ApplicationCaseMapper.xml

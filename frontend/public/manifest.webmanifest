@@ -1,0 +1,13 @@
+{
+  "name": "CareerTuner",
+  "short_name": "CareerTuner",
+  "description": "채용공고에 맞춰 내 스펙과 면접 답변을 조정하는 AI 취업 전략 플랫폼",
+  "lang": "ko",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#ffffff",
+  "theme_color": "#030213",
+  "icons": []
+}
