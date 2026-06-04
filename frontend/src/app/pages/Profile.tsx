@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useSearchParams } from "react-router";
 import { Button } from "../components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
 import { Badge } from "../components/ui/badge";
@@ -46,7 +47,14 @@ const profileCompleteness = [
   { label: "자격증 입력", done: true },
 ];
 
+const profileTabs = ["basic", "resume", "cover", "career", "skills", "certificates"] as const;
+type ProfileTab = (typeof profileTabs)[number];
+
 export function ProfilePage() {
+  const [searchParams, setSearchParams] = useSearchParams();
+  const requestedTab = searchParams.get("tab") ?? "basic";
+  const activeTab: ProfileTab = profileTabs.includes(requestedTab as ProfileTab) ? (requestedTab as ProfileTab) : "basic";
+
   return (
     <div className="bg-slate-50 min-h-screen">
       <div className="max-w-[1400px] mx-auto px-6 py-8 space-y-6">
@@ -122,13 +130,14 @@ export function ProfilePage() {
 
           {/* Right: Tabs */}
           <div className="lg:col-span-3">
-            <Tabs defaultValue="basic">
-              <TabsList className="bg-white border border-slate-200 h-10 w-full justify-start">
+            <Tabs value={activeTab} onValueChange={(value) => setSearchParams(value === "basic" ? {} : { tab: value })}>
+              <TabsList className="bg-white border border-slate-200 h-auto w-full justify-start overflow-x-auto p-1">
                 <TabsTrigger value="basic">기본 정보</TabsTrigger>
+                <TabsTrigger value="resume">이력서 관리</TabsTrigger>
+                <TabsTrigger value="cover">자기소개서 관리</TabsTrigger>
+                <TabsTrigger value="career">경력/프로젝트</TabsTrigger>
                 <TabsTrigger value="skills">기술스택</TabsTrigger>
-                <TabsTrigger value="projects">경력/프로젝트</TabsTrigger>
                 <TabsTrigger value="certificates">자격증/학력</TabsTrigger>
-                <TabsTrigger value="resume">이력서/자소서</TabsTrigger>
               </TabsList>
 
               <TabsContent value="basic" className="mt-5">
@@ -191,7 +200,7 @@ export function ProfilePage() {
                 </Card>
               </TabsContent>
 
-              <TabsContent value="projects" className="mt-5 space-y-4">
+              <TabsContent value="career" className="mt-5 space-y-4">
                 {projects.map((p, i) => (
                   <Card key={i} className="border border-slate-200 bg-white">
                     <CardContent className="p-5">
@@ -281,7 +290,9 @@ export function ProfilePage() {
                     </div>
                   </CardContent>
                 </Card>
+              </TabsContent>
 
+              <TabsContent value="cover" className="mt-5 space-y-4">
                 <Card className="border border-slate-200 bg-white">
                   <CardHeader className="pb-4">
                     <CardTitle className="text-base flex items-center gap-2">
@@ -292,6 +303,20 @@ export function ProfilePage() {
                     <Button variant="outline" className="w-full gap-2 border-dashed">
                       <Plus className="size-4" /> 자기소개서 작성하기
                     </Button>
+                    <div className="grid gap-2">
+                      {[
+                        { title: "카카오페이 지원동기", status: "초안", updated: "2026-06-02" },
+                        { title: "프론트엔드 직무역량", status: "AI 첨삭 필요", updated: "2026-05-28" },
+                      ].map((cover) => (
+                        <div key={cover.title} className="flex items-center justify-between rounded-xl bg-slate-50 p-3">
+                          <div>
+                            <div className="text-sm font-semibold text-slate-800">{cover.title}</div>
+                            <div className="text-xs text-slate-400">{cover.updated}</div>
+                          </div>
+                          <Badge className="bg-blue-100 text-blue-700">{cover.status}</Badge>
+                        </div>
+                      ))}
+                    </div>
                     <div className="text-xs text-slate-400 p-3 bg-slate-50 rounded-xl">
                       ℹ️ 자기소개서를 등록하면 AI가 지원 건에 맞게 맞춤형 첨삭을 제공합니다.
                     </div>

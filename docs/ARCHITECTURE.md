@@ -18,9 +18,14 @@
 CareerTuner/                IntelliJ로 이 루트를 연다
  ├─ backend/                Spring Boot 4 + MyBatis + MySQL  (REST API, :8080)
  ├─ frontend/               React 18 + Vite + TS + Tailwind  (반응형 웹/PWA-ready, :5173)
+ ├─ admin-frontend/         관리자 React 앱 스켈레톤
+ ├─ features/               기능별 업무분담 루트(front/back/admin-front/admin-back)
  ├─ docs/                   기획·아키텍처 문서
  └─ (추후) frontend/android, frontend/ios   Capacitor 패키징
 ```
+
+기능별 업무분담 구조는 [`FEATURE_OWNERSHIP.md`](FEATURE_OWNERSHIP.md)를 기준으로 한다. 각 기능 담당자는
+해당 기능의 사용자 프런트, 사용자 백엔드, 어드민 프런트, 어드민 백엔드 구조를 함께 관리한다.
 
 ## 2. 기술 스택
 
@@ -49,7 +54,8 @@ React (Vite)   http://localhost:5173   ──/api/*──▶  Spring Boot  http:
 
 ```text
 auth · user · profile · applicationcase · jobposting · jobanalysis ·
-companyanalysis · fitanalysis · interview · community · payment · ai · admin
+companyanalysis · fitanalysis · interview · community · payment · serviceinfo ·
+support · company · legal · ai · admin
 ```
 
 각 도메인은 `controller → service → mapper(MyBatis) → domain(dto/model)` 4계층으로 채운다.

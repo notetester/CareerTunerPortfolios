@@ -5,50 +5,51 @@ const footerLinks = [
   {
     title: "서비스",
     links: [
-      { label: "기능 소개", href: "/#features" },
+      { label: "기능 소개", href: "/features" },
       { label: "AI 가상 면접", href: "/interview" },
       { label: "공고 분석", href: "/applications" },
       { label: "취업 분석", href: "/analysis" },
+      { label: "AI 첨삭", href: "/correction" },
       { label: "커뮤니티", href: "/community" },
     ],
   },
   {
-    title: "요금제",
+    title: "결제/구독",
     links: [
-      { label: "무료 플랜", href: "/pricing" },
-      { label: "베이직 플랜", href: "/pricing" },
-      { label: "프로 플랜", href: "/pricing" },
-      { label: "프리미엄 플랜", href: "/pricing" },
-      { label: "크레딧 충전", href: "/pricing?tab=credits" },
+      { label: "요금제", href: "/billing?tab=plans" },
+      { label: "AI 사용량", href: "/billing?tab=usage" },
+      { label: "크레딧 충전", href: "/billing?tab=credits" },
+      { label: "결제 내역", href: "/billing?tab=history" },
+      { label: "기존 요금제 화면", href: "/pricing" },
     ],
   },
   {
     title: "회사",
     links: [
-      { label: "서비스 소개", href: "#" },
-      { label: "팀 소개", href: "#" },
-      { label: "채용", href: "#" },
-      { label: "블로그", href: "#" },
-      { label: "보도자료", href: "#" },
+      { label: "서비스 소개", href: "/service/about" },
+      { label: "팀 소개", href: "/company/team" },
+      { label: "채용", href: "/company/careers" },
+      { label: "블로그", href: "/company/blog" },
+      { label: "보도자료", href: "/company/press" },
     ],
   },
   {
     title: "고객 지원",
     links: [
-      { label: "고객센터", href: "#" },
-      { label: "사용 가이드", href: "#" },
-      { label: "자주 묻는 질문", href: "#" },
-      { label: "공지사항", href: "#" },
-      { label: "문의하기", href: "#" },
+      { label: "고객센터", href: "/support" },
+      { label: "사용 가이드", href: "/support/guide" },
+      { label: "자주 묻는 질문", href: "/support/faq" },
+      { label: "공지사항", href: "/support/notices" },
+      { label: "문의하기", href: "/support/contact" },
     ],
   },
   {
     title: "법적 고지",
     links: [
-      { label: "이용약관", href: "#" },
-      { label: "개인정보처리방침", href: "#" },
-      { label: "AI 데이터 이용 동의", href: "#" },
-      { label: "저작권 정책", href: "#" },
+      { label: "이용약관", href: "/legal/terms" },
+      { label: "개인정보처리방침", href: "/legal/privacy" },
+      { label: "AI 데이터 이용 동의", href: "/legal/ai-data-consent" },
+      { label: "저작권 정책", href: "/legal/copyright" },
     ],
   },
 ];
@@ -79,19 +80,19 @@ export function Footer() {
             {/* Social */}
             <div className="flex items-center gap-3 pt-2">
               {[
-                { icon: Youtube, label: "YouTube" },
-                { icon: Instagram, label: "Instagram" },
-                { icon: Twitter, label: "Twitter" },
-                { icon: MessageCircle, label: "KakaoTalk" },
+                { icon: Youtube, label: "YouTube", href: "/company/social?channel=youtube" },
+                { icon: Instagram, label: "Instagram", href: "/company/social?channel=instagram" },
+                { icon: Twitter, label: "Twitter", href: "/company/social?channel=twitter" },
+                { icon: MessageCircle, label: "KakaoTalk", href: "/company/social?channel=kakao" },
               ].map((s) => (
-                <a
+                <Link
                   key={s.label}
-                  href="#"
+                  to={s.href}
                   aria-label={s.label}
                   className="size-8 rounded-lg bg-slate-800 flex items-center justify-center hover:bg-slate-700 transition-colors"
                 >
                   <s.icon className="size-4" />
-                </a>
+                </Link>
               ))}
             </div>
           </div>
@@ -120,11 +121,11 @@ export function Footer() {
         <div className="border-t border-slate-800 pt-8 flex flex-col md:flex-row items-center justify-between gap-4 text-xs">
           <p>© 2026 CareerTuner. All rights reserved.</p>
           <div className="flex items-center gap-4">
-            <a href="#" className="hover:text-white transition-colors">이용약관</a>
+            <Link to="/legal/terms" className="hover:text-white transition-colors">이용약관</Link>
             <span className="text-slate-700">|</span>
-            <a href="#" className="hover:text-white transition-colors font-medium text-slate-300">개인정보처리방침</a>
+            <Link to="/legal/privacy" className="hover:text-white transition-colors font-medium text-slate-300">개인정보처리방침</Link>
             <span className="text-slate-700">|</span>
-            <a href="#" className="hover:text-white transition-colors">AI 데이터 이용 동의</a>
+            <Link to="/legal/ai-data-consent" className="hover:text-white transition-colors">AI 데이터 이용 동의</Link>
           </div>
         </div>
       </div>

@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useSearchParams } from "react-router";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import { Card, CardContent } from "../components/ui/card";
@@ -8,7 +9,16 @@ import {
   Plus, ChevronRight, Pin,
 } from "lucide-react";
 
-const categories = ["전체", "취업 후기", "면접 후기", "직무별 질문 공유", "자격증 후기", "포트폴리오 피드백", "합격 전략", "자유게시판"];
+const categories = [
+  { id: "all", label: "전체", matches: ["전체"] },
+  { id: "hired", label: "취업 후기", matches: ["취업 후기"] },
+  { id: "interview", label: "면접 후기", matches: ["면접 후기"] },
+  { id: "questions", label: "직무별 질문 공유", matches: ["직무별 질문", "직무별 질문 공유"] },
+  { id: "strategy", label: "합격 전략 게시판", matches: ["합격 전략", "합격 전략 게시판"] },
+  { id: "certificates", label: "자격증 후기", matches: ["자격증 후기"] },
+  { id: "portfolio", label: "포트폴리오 피드백", matches: ["포트폴리오 피드백"] },
+  { id: "free", label: "자유게시판", matches: ["자유게시판"] },
+];
 
 const posts = [
   { id: 1, cat: "면접 후기", company: "카카오페이", job: "프론트엔드", title: "카카오페이 프론트엔드 1차 합격 후기 (기술 면접 질문 총정리)", author: "익명", date: "2026-06-03", views: 3847, likes: 134, comments: 28, hot: true, pinned: true },
@@ -32,11 +42,12 @@ const topPosts = [
 ];
 
 export function CommunityPage() {
-  const [activeCategory, setActiveCategory] = useState("전체");
+  const [searchParams, setSearchParams] = useSearchParams();
   const [search, setSearch] = useState("");
+  const activeCategory = categories.find((cat) => cat.id === (searchParams.get("cat") ?? "all")) ?? categories[0];
 
   const filtered = posts.filter((p) => {
-    const matchCat = activeCategory === "전체" || p.cat === activeCategory;
+    const matchCat = activeCategory.id === "all" || activeCategory.matches.includes(p.cat);
     const matchSearch = search === "" || p.title.includes(search) || p.company.includes(search);
     return matchCat && matchSearch;
   });
@@ -76,15 +87,15 @@ export function CommunityPage() {
               <div className="flex gap-2 flex-wrap">
                 {categories.map((cat) => (
                   <button
-                    key={cat}
-                    onClick={() => setActiveCategory(cat)}
+                    key={cat.id}
+                    onClick={() => setSearchParams(cat.id === "all" ? {} : { cat: cat.id })}
                     className={`px-3 py-1.5 rounded-full text-xs font-semibold transition-colors ${
-                      activeCategory === cat
+                      activeCategory.id === cat.id
                         ? "bg-blue-600 text-white"
                         : "bg-slate-100 text-slate-600 hover:bg-slate-200"
                     }`}
                   >
-                    {cat}
+                    {cat.label}
                   </button>
                 ))}
               </div>

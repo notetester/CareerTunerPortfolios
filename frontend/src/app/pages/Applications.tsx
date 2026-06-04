@@ -1,14 +1,15 @@
 import { useState } from "react";
-import { Link, useNavigate } from "react-router";
+import { Link, useLocation, useNavigate, useSearchParams } from "react-router";
+import type { LucideIcon } from "lucide-react";
 import { Button } from "../components/ui/button";
-import { Card, CardContent } from "../components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
 import { Badge } from "../components/ui/badge";
 import { Progress } from "../components/ui/progress";
 import { Input } from "../components/ui/input";
 import {
   Plus, Search, Filter, Calendar, ChevronRight, FileText,
   Briefcase, Clock, Star, Archive, MoreHorizontal, Building2,
-  SortAsc,
+  SortAsc, Upload, BarChart3, Target, Map, GraduationCap, ClipboardList,
 } from "lucide-react";
 
 const applications = [
@@ -22,10 +23,112 @@ const applications = [
 
 const statusOptions = ["전체", "공고입력", "분석완료", "준비중", "면접연습중", "보관함"];
 
+const applicationTabs = ["overview", "new", "upload", "analysis", "fit", "strategy", "learning", "records"] as const;
+type ApplicationTab = (typeof applicationTabs)[number];
+
+const applicationNav: { key: ApplicationTab; label: string; icon: LucideIcon }[] = [
+  { key: "overview", label: "전체 지원 건 목록", icon: Briefcase },
+  { key: "new", label: "새 지원 건 만들기", icon: Plus },
+  { key: "upload", label: "공고문 업로드", icon: Upload },
+  { key: "analysis", label: "공고문 분석 결과", icon: BarChart3 },
+  { key: "fit", label: "내 스펙과 비교", icon: Target },
+  { key: "strategy", label: "지원 전략", icon: Map },
+  { key: "learning", label: "학습/자격증 추천", icon: GraduationCap },
+  { key: "records", label: "지원 건별 기록", icon: ClipboardList },
+];
+
+const sectionCopy: Record<Exclude<ApplicationTab, "overview">, { title: string; desc: string; bullets: string[]; cta: string }> = {
+  new: {
+    title: "새 지원 건 만들기",
+    desc: "기업명, 직무명, 마감일, 채용공고 원문을 등록해 하나의 지원 건으로 관리합니다.",
+    bullets: ["기업/직무 기본 정보 입력", "지원 단계와 마감일 설정", "이력서·자기소개서 연결", "AI 분석 대기열 등록"],
+    cta: "지원 건 생성",
+  },
+  upload: {
+    title: "공고문 업로드",
+    desc: "채용공고 URL, 텍스트, PDF를 입력하고 AI 분석을 시작하는 영역입니다.",
+    bullets: ["공고 URL 붙여넣기", "공고문 텍스트 직접 입력", "PDF/DOCX 업로드", "공고 원문 버전 관리"],
+    cta: "공고문 업로드",
+  },
+  analysis: {
+    title: "공고문 분석 결과",
+    desc: "공고에서 직무, 경력, 기술스택, 우대사항, 난이도를 구조화해 보여줍니다.",
+    bullets: ["필수/우대 역량 분리", "주요 업무와 평가 포인트 요약", "채용 난이도 추정", "면접 예상 방향 도출"],
+    cta: "분석 결과 보기",
+  },
+  fit: {
+    title: "내 스펙과 비교",
+    desc: "내 프로필과 공고 요구사항을 비교해 강점과 부족 역량을 표시합니다.",
+    bullets: ["보유 기술 매칭", "부족 기술 표시", "프로젝트/경력 연결", "직무 적합도 점수화"],
+    cta: "스펙 비교 실행",
+  },
+  strategy: {
+    title: "지원 전략",
+    desc: "지원서, 포트폴리오, 면접에서 무엇을 강조할지 단계별 전략을 제공합니다.",
+    bullets: ["단기 보완 과제", "자기소개서 강조 포인트", "면접 답변 방향", "기업 맞춤 지원 메시지"],
+    cta: "전략 생성",
+  },
+  learning: {
+    title: "학습/자격증 추천",
+    desc: "부족 역량에 맞는 학습 로드맵과 자격증, 프로젝트 과제를 추천합니다.",
+    bullets: ["기술별 학습 순서", "추천 강의/자료", "자격증 우선순위", "포트폴리오 보완 과제"],
+    cta: "추천 로드맵 보기",
+  },
+  records: {
+    title: "지원 건별 기록",
+    desc: "지원 건마다 분석, 첨삭, 면접, 제출 기록을 타임라인으로 남깁니다.",
+    bullets: ["공고 변경 이력", "AI 분석 기록", "면접 연습 기록", "지원서 제출/결과 메모"],
+    cta: "기록 추가",
+  },
+};
+
+function ApplicationStructurePanel({ section }: { section: Exclude<ApplicationTab, "overview"> }) {
+  const copy = sectionCopy[section];
+  return (
+    <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_360px]">
+      <Card className="border border-slate-200 bg-white">
+        <CardHeader>
+          <CardTitle className="text-lg">{copy.title}</CardTitle>
+          <p className="text-sm text-slate-500">{copy.desc}</p>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="grid gap-3 sm:grid-cols-2">
+            {copy.bullets.map((bullet) => (
+              <div key={bullet} className="flex items-start gap-2 rounded-xl bg-slate-50 p-4 text-sm text-slate-700">
+                <ChevronRight className="mt-0.5 size-4 text-blue-600" />
+                {bullet}
+              </div>
+            ))}
+          </div>
+          <Button className="bg-gradient-to-r from-blue-600 to-indigo-600">{copy.cta}</Button>
+        </CardContent>
+      </Card>
+      <Card className="border border-slate-200 bg-white">
+        <CardHeader>
+          <CardTitle className="text-base">연결되는 다음 단계</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-2">
+          {applications.slice(0, 3).map((app) => (
+            <Link key={app.id} to={`/applications/${app.id}`} className="block rounded-xl border border-slate-200 bg-slate-50 p-3 hover:border-blue-300">
+              <div className="text-sm font-semibold text-slate-800">{app.company} · {app.job}</div>
+              <div className="mt-1 text-xs text-slate-500">{app.phase}</div>
+            </Link>
+          ))}
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
 export function ApplicationsPage() {
   const [search, setSearch] = useState("");
   const [activeStatus, setActiveStatus] = useState("전체");
+  const [searchParams] = useSearchParams();
+  const location = useLocation();
   const navigate = useNavigate();
+  const requestedTab = location.pathname.endsWith("/new") ? "new" : searchParams.get("tab") ?? "overview";
+  const activeTab: ApplicationTab = applicationTabs.includes(requestedTab as ApplicationTab) ? (requestedTab as ApplicationTab) : "overview";
+  const activeSection = activeTab === "overview" ? null : activeTab;
 
   const filtered = applications.filter((a) => {
     const matchSearch = a.company.includes(search) || a.job.includes(search);
@@ -47,13 +150,32 @@ export function ApplicationsPage() {
           </div>
           <Button
             className="bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 gap-2"
-            onClick={() => navigate("/applications/new")}
+            onClick={() => navigate("/applications?tab=new")}
           >
             <Plus className="size-4" />
             새 지원 건 만들기
           </Button>
         </div>
 
+        <div className="flex overflow-x-auto rounded-xl border border-slate-200 bg-white p-1">
+          {applicationNav.map((item) => (
+            <button
+              key={item.key}
+              onClick={() => navigate(item.key === "overview" ? "/applications" : `/applications?tab=${item.key}`)}
+              className={`flex shrink-0 items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-semibold transition-colors ${
+                activeTab === item.key ? "bg-blue-600 text-white" : "text-slate-600 hover:bg-slate-50 hover:text-blue-600"
+              }`}
+            >
+              <item.icon className="size-3.5" />
+              {item.label}
+            </button>
+          ))}
+        </div>
+
+        {activeSection && <ApplicationStructurePanel section={activeSection} />}
+
+        {activeTab === "overview" && (
+          <>
         {/* Filters */}
         <Card className="border border-slate-200 bg-white">
           <CardContent className="p-4 flex flex-col md:flex-row gap-4 items-start md:items-center">
@@ -186,6 +308,8 @@ export function ApplicationsPage() {
             </Link>
           ))}
         </div>
+          </>
+        )}
       </div>
     </div>
   );

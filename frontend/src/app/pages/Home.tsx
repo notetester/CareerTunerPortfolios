@@ -125,35 +125,46 @@ export function HomePage() {
   return (
     <div className="bg-white">
       {/* ─── Hero ─── */}
-      <section className="relative overflow-hidden bg-gradient-to-br from-slate-900 via-blue-950 to-indigo-950 text-white">
-        <div className="absolute inset-0 opacity-20"
-          style={{ backgroundImage: "radial-gradient(circle at 20% 50%, #3b82f6 0%, transparent 50%), radial-gradient(circle at 80% 20%, #6366f1 0%, transparent 40%)" }}
-        />
-        <div className="relative max-w-[1400px] mx-auto px-6 py-16 lg:py-24">
+      <section className="relative overflow-hidden bg-[linear-gradient(135deg,#0f172a_0%,#12343b_48%,#4338ca_100%)] text-white">
+        <div className="relative w-full max-w-[1400px] mx-auto px-4 sm:px-6 py-14 lg:py-24">
           <div className="grid lg:grid-cols-2 gap-12 items-center">
             {/* Left text */}
-            <div className="space-y-7">
+            <div className="space-y-7 min-w-0">
               <div className="flex items-center gap-3">
-                <Badge className="bg-blue-500/20 text-blue-300 border-blue-500/30 px-3 py-1">
+                <Badge className="bg-blue-500/20 text-blue-300 border-blue-500/30 px-3 py-1 max-w-full whitespace-normal text-left">
                   <Sparkles className="size-3 mr-1.5" />
                   AI 취업 전략 플랫폼 · 2026 NEW
                 </Badge>
               </div>
-              <h1 className="text-4xl lg:text-5xl xl:text-6xl font-black leading-tight tracking-tight">
-                채용공고와 내 스펙을<br />
-                <span className="bg-gradient-to-r from-blue-400 to-cyan-300 bg-clip-text text-transparent">
-                  AI가 정밀 분석
+              <h1 className="text-4xl sm:text-5xl xl:text-6xl font-black leading-tight tracking-tight">
+                <span className="sm:hidden">
+                  채용공고와<br />내 스펙을<br />
+                  <span className="bg-gradient-to-r from-blue-400 to-cyan-300 bg-clip-text text-transparent">
+                    AI가 정밀 분석
+                  </span>
+                  <br />합격 전략 완성
                 </span>
-                <br />합격 전략 완성
+                <span className="hidden sm:inline">
+                  채용공고와 내 스펙을<br />
+                  <span className="bg-gradient-to-r from-blue-400 to-cyan-300 bg-clip-text text-transparent">
+                    AI가 정밀 분석
+                  </span>
+                  <br />합격 전략 완성
+                </span>
               </h1>
-              <p className="text-lg text-slate-300 leading-relaxed max-w-lg">
-                공고 업로드 → 스펙 비교 → 예상 질문 생성 → AI 가상 면접 → 답변 첨삭까지.
-                취업 준비의 모든 과정을 <strong className="text-white">하나의 지원 건 공간</strong>에서 관리하세요.
+              <p className="text-base sm:text-lg text-slate-300 leading-relaxed max-w-lg">
+                <span className="sm:hidden">
+                  공고 분석부터 AI 면접까지 <strong className="text-white">하나의 지원 건 공간</strong>에서 관리하세요.
+                </span>
+                <span className="hidden sm:inline">
+                  공고 업로드, 스펙 비교, 예상 질문, AI 면접, 답변 첨삭까지
+                  <strong className="text-white"> 하나의 지원 건 공간</strong>에서 관리하세요.
+                </span>
               </p>
               <div className="flex flex-col sm:flex-row gap-3">
                 <Button
                   size="lg"
-                  className="bg-gradient-to-r from-blue-500 to-indigo-500 hover:from-blue-400 hover:to-indigo-400 text-white shadow-lg shadow-blue-500/30 text-base px-8"
+                  className="w-full sm:w-auto justify-center bg-gradient-to-r from-blue-500 to-indigo-500 hover:from-blue-400 hover:to-indigo-400 text-white shadow-lg shadow-blue-500/30 text-base px-8"
                   onClick={() => navigate("/login")}
                 >
                   무료로 시작하기
@@ -162,14 +173,14 @@ export function HomePage() {
                 <Button
                   size="lg"
                   variant="outline"
-                  className="border-white/20 text-white bg-white/10 hover:bg-white/20 text-base px-8"
+                  className="w-full sm:w-auto justify-center border-white/20 text-white bg-white/10 hover:bg-white/20 text-base px-8"
                   onClick={() => navigate("/applications/demo")}
                 >
                   <Play className="mr-2 size-4" />
                   데모 체험하기
                 </Button>
               </div>
-              <div className="flex flex-wrap items-center gap-5 pt-2">
+              <div className="flex flex-col sm:flex-row sm:flex-wrap items-start sm:items-center gap-x-5 gap-y-3 pt-2">
                 {[
                   "무료 플랜 제공",
                   "카드 등록 불필요",
@@ -248,20 +259,20 @@ export function HomePage() {
 
       {/* ─── Stats bar ─── */}
       <section className="bg-white border-b border-slate-100">
-        <div className="max-w-[1400px] mx-auto px-6 py-8">
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-6 lg:gap-12">
+        <div className="w-full max-w-[1400px] mx-auto px-4 sm:px-6 py-8">
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-5 lg:gap-12">
             {[
               { icon: Users, value: "10,000+", label: "활성 사용자", sub: "매월 신규 2,000명" },
               { icon: MessageSquare, value: "50,000+", label: "AI 가상 면접", sub: "평균 만족도 4.8/5" },
               { icon: FileText, value: "30,000+", label: "공고 분석 건수", sub: "평균 분석 시간 30초" },
               { icon: TrendingUp, value: "92%", label: "면접 준비도 향상", sub: "3주 사용 후 기준" },
             ].map((s) => (
-              <div key={s.label} className="flex items-center gap-4">
+              <div key={s.label} className="flex items-center gap-4 min-w-0">
                 <div className="size-12 rounded-xl bg-gradient-to-br from-blue-100 to-indigo-100 flex items-center justify-center flex-shrink-0">
                   <s.icon className="size-6 text-blue-600" />
                 </div>
-                <div>
-                  <div className="text-2xl font-black bg-gradient-to-r from-blue-600 to-indigo-600 bg-clip-text text-transparent">
+                <div className="min-w-0">
+                  <div className="text-xl sm:text-2xl font-black bg-gradient-to-r from-blue-600 to-indigo-600 bg-clip-text text-transparent">
                     {s.value}
                   </div>
                   <div className="font-semibold text-slate-800 text-sm">{s.label}</div>
@@ -275,7 +286,7 @@ export function HomePage() {
 
       {/* ─── Core Features ─── */}
       <section id="features" className="py-20 bg-slate-50">
-        <div className="max-w-[1400px] mx-auto px-6">
+        <div className="w-full max-w-[1400px] mx-auto px-6">
           <div className="text-center mb-14 space-y-3">
             <Badge className="bg-blue-100 text-blue-700 px-4 py-1">핵심 기능</Badge>
             <h2 className="text-4xl font-black text-slate-900">AI가 제공하는 8가지 취업 솔루션</h2>
@@ -307,7 +318,7 @@ export function HomePage() {
 
       {/* ─── How It Works (Full 12-step flow) ─── */}
       <section id="how-it-works" className="py-20 bg-white">
-        <div className="max-w-[1400px] mx-auto px-6">
+        <div className="w-full max-w-[1400px] mx-auto px-6">
           <div className="text-center mb-14 space-y-3">
             <Badge className="bg-indigo-100 text-indigo-700 px-4 py-1">사용 방법</Badge>
             <h2 className="text-4xl font-black text-slate-900">12단계 AI 취업 준비 프로세스</h2>
@@ -351,7 +362,7 @@ export function HomePage() {
 
       {/* ─── Application Detail Demo (3-column layout preview) ─── */}
       <section className="py-20 bg-gradient-to-br from-slate-50 to-blue-50">
-        <div className="max-w-[1400px] mx-auto px-6">
+        <div className="w-full max-w-[1400px] mx-auto px-6">
           <div className="text-center mb-14 space-y-3">
             <Badge className="bg-teal-100 text-teal-700 px-4 py-1">지원 건 관리</Badge>
             <h2 className="text-4xl font-black text-slate-900">지원 건마다 독립된 AI 공간</h2>
@@ -480,7 +491,7 @@ export function HomePage() {
 
       {/* ─── Interview Modes ─── */}
       <section className="py-20 bg-white">
-        <div className="max-w-[1400px] mx-auto px-6">
+        <div className="w-full max-w-[1400px] mx-auto px-6">
           <div className="text-center mb-14 space-y-3">
             <Badge className="bg-purple-100 text-purple-700 px-4 py-1">AI 가상 면접</Badge>
             <h2 className="text-4xl font-black text-slate-900">8가지 면접 모드로 실전 완벽 대비</h2>
@@ -542,7 +553,7 @@ export function HomePage() {
 
       {/* ─── Comparison ─── */}
       <section className="py-20 bg-gradient-to-br from-slate-50 to-indigo-50">
-        <div className="max-w-[1400px] mx-auto px-6">
+        <div className="w-full max-w-[1400px] mx-auto px-6">
           <div className="text-center mb-14 space-y-3">
             <Badge className="bg-slate-200 text-slate-700 px-4 py-1">왜 다른가요?</Badge>
             <h2 className="text-4xl font-black text-slate-900">일반 채용 사이트와 비교</h2>
@@ -605,7 +616,7 @@ export function HomePage() {
 
       {/* ─── Pricing ─── */}
       <section id="pricing" className="py-20 bg-white">
-        <div className="max-w-[1400px] mx-auto px-6">
+        <div className="w-full max-w-[1400px] mx-auto px-6">
           <div className="text-center mb-14 space-y-3">
             <Badge className="bg-green-100 text-green-700 px-4 py-1">요금제</Badge>
             <h2 className="text-4xl font-black text-slate-900">나에게 맞는 플랜 선택</h2>
@@ -750,7 +761,7 @@ export function HomePage() {
 
       {/* ─── Community Preview ─── */}
       <section className="py-20 bg-slate-50">
-        <div className="max-w-[1400px] mx-auto px-6">
+        <div className="w-full max-w-[1400px] mx-auto px-6">
           <div className="flex items-end justify-between mb-10">
             <div className="space-y-2">
               <Badge className="bg-orange-100 text-orange-700 px-4 py-1">커뮤니티</Badge>
@@ -792,7 +803,7 @@ export function HomePage() {
 
       {/* ─── Testimonials ─── */}
       <section className="py-20 bg-white">
-        <div className="max-w-[1400px] mx-auto px-6">
+        <div className="w-full max-w-[1400px] mx-auto px-6">
           <div className="text-center mb-14 space-y-3">
             <Badge className="bg-yellow-100 text-yellow-700 px-4 py-1">사용자 후기</Badge>
             <h2 className="text-4xl font-black text-slate-900">실제 합격자들의 이야기</h2>
@@ -826,7 +837,7 @@ export function HomePage() {
 
       {/* ─── CTA ─── */}
       <section className="py-20 bg-gradient-to-br from-blue-700 via-indigo-700 to-purple-700 text-white">
-        <div className="max-w-[1400px] mx-auto px-6 text-center space-y-8">
+        <div className="w-full max-w-[1400px] mx-auto px-6 text-center space-y-8">
           <div className="space-y-4">
             <h2 className="text-4xl lg:text-5xl font-black">
               오늘부터 AI와 함께<br />면접 준비를 시작하세요

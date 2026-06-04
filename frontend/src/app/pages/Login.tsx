@@ -1,20 +1,71 @@
-import { useState } from "react";
+import { FormEvent, useState } from "react";
 import { Link, useNavigate } from "react-router";
+import { useAuth } from "../auth/AuthContext";
 import { Button } from "../components/ui/button";
 import { Card, CardContent } from "../components/ui/card";
 import { Badge } from "../components/ui/badge";
 import { Input } from "../components/ui/input";
-import { Sparkles, Mail, Lock, Eye, EyeOff, CheckCircle2, ArrowRight } from "lucide-react";
+import { ApiError } from "../lib/api";
+import { Sparkles, Mail, Lock, Eye, EyeOff, CheckCircle2, ArrowRight, Loader2 } from "lucide-react";
 
 export function LoginPage() {
   const [mode, setMode] = useState<"login" | "signup">("login");
   const [showPassword, setShowPassword] = useState(false);
   const [userType, setUserType] = useState<string>("취준생");
+  const [name, setName] = useState("");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [passwordConfirm, setPasswordConfirm] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const navigate = useNavigate();
+  const { login, register, socialLogin } = useAuth();
 
-  const handleSubmit = () => {
-    navigate("/dashboard");
+  const switchMode = (nextMode: "login" | "signup") => {
+    setMode(nextMode);
+    setError(null);
   };
+
+  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setError(null);
+
+    const normalizedEmail = email.trim();
+    if (!normalizedEmail || !password) {
+      setError("이메일과 비밀번호를 입력해 주세요.");
+      return;
+    }
+    if (mode === "signup") {
+      if (!name.trim()) {
+        setError("이름을 입력해 주세요.");
+        return;
+      }
+      if (password !== passwordConfirm) {
+        setError("비밀번호 확인이 일치하지 않습니다.");
+        return;
+      }
+    }
+
+    try {
+      setSubmitting(true);
+      if (mode === "login") {
+        await login(normalizedEmail, password);
+      } else {
+        await register(normalizedEmail, password, name.trim());
+      }
+      navigate("/dashboard", { replace: true });
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "인증 요청에 실패했습니다. 잠시 후 다시 시도해 주세요.");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const socialButtons = [
+    { label: "Google로 계속하기", provider: "google" as const, mark: "G", className: "bg-blue-600" },
+    { label: "카카오로 계속하기", provider: "kakao" as const, mark: "K", className: "bg-yellow-400 text-slate-900" },
+    { label: "네이버로 계속하기", provider: "naver" as const, mark: "N", className: "bg-green-600" },
+  ];
 
   return (
     <div className="min-h-[calc(100vh-120px)] bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50 flex items-center justify-center py-12 px-4">
@@ -59,13 +110,13 @@ export function LoginPage() {
             {/* Toggle */}
             <div className="flex bg-slate-100 rounded-xl p-1">
               <button
-                onClick={() => setMode("login")}
+                onClick={() => switchMode("login")}
                 className={`flex-1 py-2 rounded-lg text-sm font-semibold transition-colors ${mode === "login" ? "bg-white shadow-sm text-slate-900" : "text-slate-500"}`}
               >
                 로그인
               </button>
               <button
-                onClick={() => setMode("signup")}
+                onClick={() => switchMode("signup")}
                 className={`flex-1 py-2 rounded-lg text-sm font-semibold transition-colors ${mode === "signup" ? "bg-white shadow-sm text-slate-900" : "text-slate-500"}`}
               >
                 회원가입
@@ -74,18 +125,17 @@ export function LoginPage() {
 
             {/* Social login */}
             <div className="space-y-2.5">
-              {[
-                { label: "Google로 계속하기", emoji: "🔵" },
-                { label: "카카오로 계속하기", emoji: "🟡" },
-                { label: "네이버로 계속하기", emoji: "🟢" },
-              ].map((s) => (
+              {socialButtons.map((s) => (
                 <Button
                   key={s.label}
                   variant="outline"
+                  type="button"
                   className="w-full h-11 text-sm font-medium"
-                  onClick={handleSubmit}
+                  onClick={() => socialLogin(s.provider)}
                 >
-                  <span className="mr-2">{s.emoji}</span>
+                  <span className={`mr-2 inline-flex size-5 items-center justify-center rounded-full text-[11px] font-black text-white ${s.className}`}>
+                    {s.mark}
+                  </span>
                   {s.label}
                 </Button>
               ))}
@@ -98,13 +148,26 @@ export function LoginPage() {
             </div>
 
             {/* Email form */}
-            <div className="space-y-3">
+            <form className="space-y-3" onSubmit={handleSubmit}>
               {mode === "signup" && (
-                <Input placeholder="이름" className="h-11" />
+                <Input
+                  placeholder="이름"
+                  className="h-11"
+                  value={name}
+                  onChange={(event) => setName(event.target.value)}
+                  autoComplete="name"
+                />
               )}
               <div className="relative">
                 <Mail className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-slate-400" />
-                <Input placeholder="이메일" className="pl-9 h-11" type="email" />
+                <Input
+                  placeholder="이메일"
+                  className="pl-9 h-11"
+                  type="email"
+                  value={email}
+                  onChange={(event) => setEmail(event.target.value)}
+                  autoComplete="email"
+                />
               </div>
               <div className="relative">
                 <Lock className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-slate-400" />
@@ -112,6 +175,9 @@ export function LoginPage() {
                   placeholder="비밀번호"
                   className="pl-9 pr-10 h-11"
                   type={showPassword ? "text" : "password"}
+                  value={password}
+                  onChange={(event) => setPassword(event.target.value)}
+                  autoComplete={mode === "login" ? "current-password" : "new-password"}
                 />
                 <button
                   type="button"
@@ -123,13 +189,21 @@ export function LoginPage() {
               </div>
               {mode === "signup" && (
                 <>
-                  <Input placeholder="비밀번호 확인" className="h-11" type="password" />
+                  <Input
+                    placeholder="비밀번호 확인"
+                    className="h-11"
+                    type="password"
+                    value={passwordConfirm}
+                    onChange={(event) => setPasswordConfirm(event.target.value)}
+                    autoComplete="new-password"
+                  />
                   <div>
                     <div className="text-xs text-slate-500 mb-2">사용자 유형 선택</div>
                     <div className="flex gap-2 flex-wrap">
                       {["취준생", "이직자", "경력자"].map((type) => (
                         <button
                           key={type}
+                          type="button"
                           onClick={() => setUserType(type)}
                           className={`px-3 py-1.5 rounded-full text-xs font-semibold border transition-colors ${userType === type ? "bg-blue-600 text-white border-blue-600" : "border-slate-300 text-slate-600 hover:border-blue-400"}`}
                         >
@@ -142,23 +216,31 @@ export function LoginPage() {
               )}
               {mode === "login" && (
                 <div className="flex justify-end">
-                  <button className="text-xs text-blue-600 hover:text-blue-700">비밀번호를 잊으셨나요?</button>
+                  <button type="button" className="text-xs text-blue-600 hover:text-blue-700">비밀번호를 잊으셨나요?</button>
                 </div>
               )}
-            </div>
 
-            <Button
-              className="w-full h-11 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-base font-semibold gap-2"
-              onClick={handleSubmit}
-            >
-              {mode === "login" ? "로그인" : "무료 회원가입"}
-              <ArrowRight className="size-4" />
-            </Button>
+              {error && (
+                <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+                  {error}
+                </div>
+              )}
+
+              <Button
+                type="submit"
+                disabled={submitting}
+                className="w-full h-11 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-base font-semibold gap-2 disabled:cursor-not-allowed disabled:opacity-70"
+              >
+                {submitting && <Loader2 className="size-4 animate-spin" />}
+                {mode === "login" ? "로그인" : "무료 회원가입"}
+                {!submitting && <ArrowRight className="size-4" />}
+              </Button>
+            </form>
 
             {mode === "signup" && (
               <p className="text-xs text-slate-400 text-center">
-                가입하면 <a href="#" className="text-blue-600 hover:underline">이용약관</a>과{" "}
-                <a href="#" className="text-blue-600 hover:underline">개인정보처리방침</a>에 동의하게 됩니다.
+                가입하면 <Link to="/legal/terms" className="text-blue-600 hover:underline">이용약관</Link>과{" "}
+                <Link to="/legal/privacy" className="text-blue-600 hover:underline">개인정보처리방침</Link>에 동의하게 됩니다.
               </p>
             )}
           </CardContent>

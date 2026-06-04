@@ -85,9 +85,9 @@ export function ApplicationDetailPage() {
   const [activeTab, setActiveTab] = useState("fit");
 
   return (
-    <div className="flex h-[calc(100vh-80px)] bg-slate-100 overflow-hidden">
+    <div className="flex min-h-[calc(100vh-64px)] lg:h-[calc(100vh-80px)] bg-slate-100 overflow-hidden">
       {/* Left Sidebar */}
-      <aside className="w-60 bg-slate-900 text-white flex flex-col flex-shrink-0 overflow-hidden">
+      <aside className="hidden lg:flex w-60 bg-slate-900 text-white flex-col flex-shrink-0 overflow-hidden">
         <div className="p-3 border-b border-slate-700 flex items-center justify-between">
           <button
             onClick={() => navigate("/applications")}
@@ -148,18 +148,18 @@ export function ApplicationDetailPage() {
       </aside>
 
       {/* Center Main */}
-      <main className="flex-1 flex flex-col min-w-0 overflow-hidden">
+      <main className="flex-1 w-full flex flex-col min-w-0 overflow-hidden">
         {/* Company header */}
-        <div className="bg-white border-b border-slate-200 px-5 py-3 flex items-center justify-between flex-shrink-0">
-          <div>
-            <div className="flex items-center gap-2">
+        <div className="bg-white border-b border-slate-200 px-4 sm:px-5 py-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3 flex-shrink-0">
+          <div className="min-w-0">
+            <div className="flex items-center gap-2 flex-wrap">
               <div className="size-7 rounded-lg bg-gradient-to-br from-blue-600 to-indigo-600 flex items-center justify-center text-white text-xs font-bold">카</div>
               <span className="font-bold text-slate-900 text-sm">카카오페이 · 프론트엔드 개발자</span>
               <Badge className="bg-blue-100 text-blue-700 text-xs">준비중</Badge>
             </div>
-            <div className="text-xs text-slate-500 mt-0.5 ml-9">2026-08-01 공고 · 경력 1-3년 · React, TypeScript, AWS</div>
+            <div className="text-xs text-slate-500 mt-0.5 sm:ml-9">2026-08-01 공고 · 경력 1-3년 · React, TypeScript, AWS</div>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 self-end sm:self-auto">
             <button className="p-1.5 rounded-lg hover:bg-slate-100 transition-colors">
               <Star className="size-4 text-amber-400 fill-amber-400" />
             </button>
@@ -188,7 +188,7 @@ export function ApplicationDetailPage() {
         </div>
 
         {/* Tab content */}
-        <div className="flex-1 overflow-y-auto p-5">
+        <div className="flex-1 overflow-y-auto p-4 sm:p-5">
           {activeTab === "job" && (
             <div className="space-y-5 max-w-2xl">
               <div className="flex items-center justify-between">
@@ -277,16 +277,21 @@ export function ApplicationDetailPage() {
               </div>
               <div className="space-y-2">
                 {specData.map((s) => (
-                  <div key={s.skill} className="flex items-center gap-3 p-3 bg-white border border-slate-200 rounded-xl text-sm">
-                    <div className="w-24 font-medium text-slate-700">{s.skill}</div>
-                    <div className="flex-1 text-slate-500 text-xs">{s.status}</div>
-                    <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${
-                      s.grade === "강점" ? "bg-green-100 text-green-700" :
-                      s.grade === "보완 필요" ? "bg-amber-100 text-amber-700" :
-                      s.grade === "학습 필요" ? "bg-red-100 text-red-700" :
-                      "bg-slate-100 text-slate-600"
-                    }`}>{s.grade}</span>
-                    {s.match ? <CheckCircle2 className="size-4 text-green-500 flex-shrink-0" /> : <AlertCircle className="size-4 text-amber-500 flex-shrink-0" />}
+                  <div key={s.skill} className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-3 p-3 bg-white border border-slate-200 rounded-xl text-sm">
+                    <div className="min-w-0 flex-1 sm:flex-none sm:w-24">
+                      <div className="font-medium text-slate-700 truncate">{s.skill}</div>
+                      <div className="text-slate-500 text-xs sm:hidden">{s.status}</div>
+                    </div>
+                    <div className="hidden sm:block flex-1 text-slate-500 text-xs">{s.status}</div>
+                    <div className="flex items-center gap-2 flex-shrink-0">
+                      <span className={`px-2 py-0.5 rounded-full text-xs font-semibold whitespace-nowrap ${
+                        s.grade === "강점" ? "bg-green-100 text-green-700" :
+                        s.grade === "보완 필요" ? "bg-amber-100 text-amber-700" :
+                        s.grade === "학습 필요" ? "bg-red-100 text-red-700" :
+                        "bg-slate-100 text-slate-600"
+                      }`}>{s.grade}</span>
+                      {s.match ? <CheckCircle2 className="size-4 text-green-500 flex-shrink-0" /> : <AlertCircle className="size-4 text-amber-500 flex-shrink-0" />}
+                    </div>
                   </div>
                 ))}
               </div>
@@ -302,7 +307,8 @@ export function ApplicationDetailPage() {
                     "포트폴리오에 문제 해결 사례와 수치 결과를 추가하세요",
                   ].map((t, i) => (
                     <li key={i} className="flex items-start gap-2">
-                      <span className="font-black flex-shrink-0">{i + 1}.</span> {t}
+                      <span className="font-black flex-shrink-0">{i + 1}.</span>
+                      <span className="min-w-0 [word-break:keep-all]">{t}</span>
                     </li>
                   ))}
                 </ol>
@@ -382,7 +388,7 @@ export function ApplicationDetailPage() {
           {activeTab === "interview" && (
             <div className="space-y-5 max-w-2xl">
               <h2 className="font-bold text-slate-800">AI 가상 면접</h2>
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3">
                 {[
                   { mode: "직무 면접", desc: "공고 기반 기술 질문", icon: "⚙️", recommended: true },
                   { mode: "인성 면접", desc: "협업, 갈등, 책임감", icon: "🤝", recommended: false },
@@ -417,7 +423,7 @@ export function ApplicationDetailPage() {
                 <div className="bg-white/10 rounded-xl p-4 text-sm mb-4">
                   <span className="text-blue-300">[면접관]</span> 안녕하세요. 카카오페이 프론트엔드 개발자 직무 면접을 시작하겠습니다. 먼저 간단한 자기소개를 해주세요.
                 </div>
-                <div className="flex gap-3">
+                <div className="flex flex-col sm:flex-row gap-3">
                   <Button className="flex-1 bg-blue-600 hover:bg-blue-500 gap-2">
                     <Mic className="size-4" /> 음성으로 답변
                   </Button>
@@ -493,7 +499,7 @@ export function ApplicationDetailPage() {
       </main>
 
       {/* Right Panel */}
-      <aside className="w-56 bg-white border-l border-slate-200 flex flex-col flex-shrink-0 overflow-y-auto">
+      <aside className="hidden xl:flex w-56 bg-white border-l border-slate-200 flex-col flex-shrink-0 overflow-y-auto">
         <div className="p-4 space-y-5">
           {/* Prep score */}
           <div>

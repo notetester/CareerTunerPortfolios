@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useNavigate } from "react-router";
+import { useNavigate, useSearchParams } from "react-router";
 import { Button } from "../components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
 import { Badge } from "../components/ui/badge";
@@ -48,8 +48,14 @@ const correctionExample = {
   points: ["구체적 사용 상황 명시", "실제 수치 결과 포함", "판단 기준 설명"],
 };
 
+const interviewTabs = ["modes", "questions", "practice", "voice", "avatar", "evaluation", "correction", "report"] as const;
+type InterviewTab = (typeof interviewTabs)[number];
+
 export function AIInterviewPage() {
   const [selectedMode, setSelectedMode] = useState<string | null>(null);
+  const [searchParams, setSearchParams] = useSearchParams();
+  const requestedTab = searchParams.get("tab") ?? "modes";
+  const activeTab: InterviewTab = interviewTabs.includes(requestedTab as InterviewTab) ? (requestedTab as InterviewTab) : "modes";
   const navigate = useNavigate();
 
   return (
@@ -64,10 +70,13 @@ export function AIInterviewPage() {
           <p className="text-slate-500 text-sm mt-1">8가지 면접 모드로 실전처럼 연습하고, AI가 즉시 평가 및 개선 답변을 제공합니다</p>
         </div>
 
-        <Tabs defaultValue="modes">
-          <TabsList className="bg-white border border-slate-200 h-10">
+        <Tabs value={activeTab} onValueChange={(value) => setSearchParams(value === "modes" ? {} : { tab: value })}>
+          <TabsList className="bg-white border border-slate-200 h-auto w-full justify-start overflow-x-auto p-1">
             <TabsTrigger value="modes">면접 모드 선택</TabsTrigger>
             <TabsTrigger value="questions">예상 질문 목록</TabsTrigger>
+            <TabsTrigger value="practice">실전 모의면접</TabsTrigger>
+            <TabsTrigger value="voice">음성 면접</TabsTrigger>
+            <TabsTrigger value="avatar">아바타 면접관</TabsTrigger>
             <TabsTrigger value="evaluation">답변 평가 기준</TabsTrigger>
             <TabsTrigger value="correction">AI 첨삭</TabsTrigger>
             <TabsTrigger value="report">면접 리포트</TabsTrigger>
@@ -172,6 +181,87 @@ export function AIInterviewPage() {
                 ))}
               </div>
             </div>
+          </TabsContent>
+
+          <TabsContent value="practice" className="mt-6 space-y-5">
+            <Card className="border border-slate-200 bg-white">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2 text-base">
+                  <Clock className="size-4 text-blue-600" />
+                  실전 모의면접
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="grid gap-4 md:grid-cols-3">
+                {[
+                  { label: "면접 시간", value: "30분", desc: "실제 면접 흐름과 유사한 제한 시간" },
+                  { label: "질문 구성", value: "8문항", desc: "자기소개, 직무, 인성, 꼬리질문 혼합" },
+                  { label: "진행 방식", value: "랜덤", desc: "공고와 프로필 기반으로 즉시 출제" },
+                ].map((item) => (
+                  <div key={item.label} className="rounded-xl bg-slate-50 p-4">
+                    <div className="text-xs text-slate-500">{item.label}</div>
+                    <div className="mt-1 text-2xl font-black text-slate-900">{item.value}</div>
+                    <div className="mt-2 text-xs text-slate-500">{item.desc}</div>
+                  </div>
+                ))}
+              </CardContent>
+            </Card>
+            <Button className="bg-gradient-to-r from-blue-600 to-indigo-600">
+              <Play className="mr-2 size-4" />
+              실전 모의면접 시작
+            </Button>
+          </TabsContent>
+
+          <TabsContent value="voice" className="mt-6 space-y-5">
+            <Card className="border border-slate-200 bg-white">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2 text-base">
+                  <Mic className="size-4 text-purple-600" />
+                  음성 면접
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="grid gap-3 md:grid-cols-2">
+                  {["말 속도", "침묵 구간", "반복 표현", "답변 길이"].map((metric) => (
+                    <div key={metric} className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+                      <div className="text-sm font-semibold text-slate-800">{metric}</div>
+                      <div className="mt-1 text-xs text-slate-500">녹음 기반 분석 지표가 이 영역에 표시됩니다</div>
+                    </div>
+                  ))}
+                </div>
+                <Button className="bg-gradient-to-r from-purple-600 to-indigo-600">
+                  <Mic className="mr-2 size-4" />
+                  음성 면접 시작
+                </Button>
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          <TabsContent value="avatar" className="mt-6 space-y-5">
+            <Card className="overflow-hidden border border-slate-200 bg-white">
+              <div className="grid lg:grid-cols-[minmax(0,1fr)_360px]">
+                <CardContent className="space-y-4 p-6">
+                  <Badge className="bg-purple-100 text-purple-700">프리미엄</Badge>
+                  <h2 className="text-xl font-black text-slate-900">아바타 면접관</h2>
+                  <p className="text-sm leading-relaxed text-slate-600">
+                    실제 면접관과 마주 앉은 흐름을 연습할 수 있도록 표정, 시선, 꼬리질문을 포함한 면접 시뮬레이션 구조를 제공합니다.
+                  </p>
+                  <div className="grid gap-3 sm:grid-cols-3">
+                    {["시선 처리", "표정 피드백", "꼬리 질문"].map((item) => (
+                      <div key={item} className="rounded-xl bg-purple-50 p-3 text-sm font-semibold text-purple-800">{item}</div>
+                    ))}
+                  </div>
+                  <Button variant="outline" className="border-purple-300 text-purple-700 hover:bg-purple-50">
+                    아바타 면접 설정
+                  </Button>
+                </CardContent>
+                <div className="flex min-h-64 items-center justify-center bg-gradient-to-br from-slate-900 via-indigo-950 to-blue-950 p-6">
+                  <div className="rounded-full border-4 border-blue-300 bg-white/10 p-8 text-center text-white shadow-2xl">
+                    <Video className="mx-auto size-12" />
+                    <div className="mt-3 text-sm font-semibold">AI 면접관 대기 중</div>
+                  </div>
+                </div>
+              </div>
+            </Card>
           </TabsContent>
 
           {/* ─── 예상 질문 ─── */}

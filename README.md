@@ -10,6 +10,8 @@
 CareerTuner/
  ├─ backend/    Spring Boot 4 + MyBatis + MySQL  (REST API · :8080)
  ├─ frontend/   React 18 + Vite + TypeScript      (반응형 웹/PWA · :5173)
+ ├─ admin-frontend/ 관리자 프론트 앱 스켈레톤
+ ├─ features/   기능별 업무분담 루트
  └─ docs/       기획 및 아키텍처 문서
 ```
 
@@ -47,9 +49,16 @@ Spring Boot 4.0.6 · Java 21 · MyBatis · MySQL 8 · Spring Security · springd
 ## 문서
 
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — 전체 아키텍처/데이터 모델/로드맵
+- [docs/FEATURE_OWNERSHIP.md](docs/FEATURE_OWNERSHIP.md) — 기능별 프론트/백엔드/어드민 분담 구조
 - [docs/planning/기획.txt](docs/planning/기획.txt) — **기획 원본(최우선)**
 - [backend/README.md](backend/README.md) · [frontend/README.md](frontend/README.md)
 
 ## 브랜치 전략
 
 작업 브랜치: **`LEE-JEONG-GUCK`**
+
+## 기능별 업무분담
+
+기능 담당자는 `features/<기능>/frontend`, `backend`, `admin-frontend`, `admin-backend` 네 영역을 함께 본다.
+고객센터/공지사항/FAQ/사용 가이드/문의하기는 `support`, 이용약관/개인정보처리방침/AI 데이터 이용 동의/저작권 정책은 `legal`,
+기능 소개/서비스 소개는 `service`, 팀/채용/블로그/보도자료/공식 채널은 `company` 기능군으로 분리했다.

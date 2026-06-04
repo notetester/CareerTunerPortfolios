@@ -1,4 +1,5 @@
 import { useNavigate } from "react-router";
+import { useSearchParams } from "react-router";
 import { Badge } from "../components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
 import { Button } from "../components/ui/button";
@@ -39,8 +40,21 @@ const applicationStats = [
   { company: "토스", job: "iOS", score: 35, interviews: 0, trend: "neutral" },
 ];
 
+const analysisTabs = [
+  { key: "trend", label: "내 지원 경향", icon: Briefcase },
+  { key: "weakness", label: "자주 부족한 역량", icon: AlertCircle },
+  { key: "readiness", label: "직무별 준비도", icon: Target },
+  { key: "score", label: "면접 점수 변화", icon: BarChart3 },
+  { key: "recommendation", label: "추천 지원 방향", icon: BookOpen },
+] as const;
+type AnalysisTab = (typeof analysisTabs)[number]["key"];
+
 export function AnalysisPage() {
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const requestedTab = searchParams.get("tab") ?? "trend";
+  const activeTab: AnalysisTab = analysisTabs.some((tab) => tab.key === requestedTab) ? (requestedTab as AnalysisTab) : "trend";
+
   return (
     <div className="bg-slate-50 min-h-screen">
       <div className="max-w-[1400px] mx-auto px-6 py-8 space-y-8">
@@ -53,8 +67,23 @@ export function AnalysisPage() {
           <p className="text-slate-500 text-sm mt-1">여러 지원 건을 종합한 AI 장기 취업 경향 분석 및 맞춤 전략</p>
         </div>
 
+        <div className="flex overflow-x-auto rounded-xl border border-slate-200 bg-white p-1">
+          {analysisTabs.map((tab) => (
+            <button
+              key={tab.key}
+              onClick={() => setSearchParams(tab.key === "trend" ? {} : { tab: tab.key })}
+              className={`flex shrink-0 items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-semibold transition-colors ${
+                activeTab === tab.key ? "bg-green-600 text-white" : "text-slate-600 hover:bg-slate-50 hover:text-green-600"
+              }`}
+            >
+              <tab.icon className="size-3.5" />
+              {tab.label}
+            </button>
+          ))}
+        </div>
+
         {/* AI Strategy banner */}
-        <Card className="border-2 border-blue-200 bg-gradient-to-r from-blue-50 to-indigo-50">
+        <Card className={`border-2 border-blue-200 bg-gradient-to-r from-blue-50 to-indigo-50 ${activeTab !== "recommendation" ? "hidden" : ""}`}>
           <CardContent className="p-6">
             <div className="flex items-start gap-4">
               <div className="size-12 rounded-xl bg-gradient-to-br from-blue-600 to-indigo-600 flex items-center justify-center flex-shrink-0">
@@ -82,7 +111,7 @@ export function AnalysisPage() {
 
         <div className="grid lg:grid-cols-2 gap-6">
           {/* Skill gaps */}
-          <Card className="border border-slate-200 bg-white">
+          <Card className={`border border-slate-200 bg-white ${activeTab !== "weakness" ? "hidden" : ""}`}>
             <CardHeader>
               <CardTitle className="text-base flex items-center gap-2">
                 <AlertCircle className="size-4 text-red-500" />
@@ -103,7 +132,7 @@ export function AnalysisPage() {
           </Card>
 
           {/* Job readiness */}
-          <Card className="border border-slate-200 bg-white">
+          <Card className={`border border-slate-200 bg-white ${activeTab !== "readiness" ? "hidden" : ""}`}>
             <CardHeader>
               <CardTitle className="text-base flex items-center gap-2">
                 <Target className="size-4 text-blue-600" />
@@ -136,7 +165,7 @@ export function AnalysisPage() {
           </Card>
 
           {/* Score history bar chart (visual) */}
-          <Card className="border border-slate-200 bg-white">
+          <Card className={`border border-slate-200 bg-white ${activeTab !== "score" ? "hidden" : ""}`}>
             <CardHeader>
               <CardTitle className="text-base flex items-center gap-2">
                 <BarChart3 className="size-4 text-purple-600" />
@@ -164,7 +193,7 @@ export function AnalysisPage() {
           </Card>
 
           {/* Application trends */}
-          <Card className="border border-slate-200 bg-white">
+          <Card className={`border border-slate-200 bg-white ${activeTab !== "trend" ? "hidden" : ""}`}>
             <CardHeader>
               <CardTitle className="text-base flex items-center gap-2">
                 <Briefcase className="size-4 text-orange-600" />
@@ -194,7 +223,7 @@ export function AnalysisPage() {
         </div>
 
         {/* Recommended direction */}
-        <Card className="border border-slate-200 bg-white">
+        <Card className={`border border-slate-200 bg-white ${activeTab !== "recommendation" ? "hidden" : ""}`}>
           <CardHeader>
             <CardTitle className="text-base flex items-center gap-2">
               <BookOpen className="size-4 text-teal-600" />
