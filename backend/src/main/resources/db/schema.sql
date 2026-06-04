@@ -1,34 +1,81 @@
 -- =====================================================================
---  CareerTuner — MySQL 스키마 초안 (기획.txt §13 기반)
---  실행: mysql -u root -p < schema.sql   (또는 IntelliJ Database 콘솔)
---  ※ 스켈레톤 단계의 1차안이며, 도메인 구현하며 컬럼이 조정될 수 있다.
+--  CareerTuner — MySQL 스키마 (기획.txt §13 + 회원/인증 확장)
+--  대상 DB는 외부에서 제공된다(개발: team1_db). 따라서 CREATE DATABASE/USE 없이
+--  연결된 스키마에 테이블만 생성한다. 적용: db/apply 참고 또는 IntelliJ Database 콘솔.
+--  utf8mb4 전제. 재실행 가능(IF NOT EXISTS).
 -- =====================================================================
-
-CREATE DATABASE IF NOT EXISTS careertuner
-    DEFAULT CHARACTER SET utf8mb4
-    DEFAULT COLLATE utf8mb4_0900_ai_ci;
-
-USE careertuner;
 
 SET FOREIGN_KEY_CHECKS = 0;
 
--- ---------------------------------------------------------------------
--- 사용자 / 프로필
--- ---------------------------------------------------------------------
+-- =====================================================================
+--  회원 / 인증
+-- =====================================================================
 CREATE TABLE IF NOT EXISTS users (
-    id            BIGINT       NOT NULL AUTO_INCREMENT,
-    email         VARCHAR(255) NOT NULL,
-    password      VARCHAR(255) NULL,                       -- 소셜 로그인은 NULL 가능
-    name          VARCHAR(100) NOT NULL,
-    user_type     VARCHAR(20)  NOT NULL DEFAULT 'JOB_SEEKER', -- JOB_SEEKER/CAREER_CHANGER/EXPERIENCED/ADMIN
-    plan          VARCHAR(20)  NOT NULL DEFAULT 'FREE',     -- FREE/BASIC/PRO/PREMIUM
-    credit        INT          NOT NULL DEFAULT 0,
-    created_at    DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    updated_at    DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    id               BIGINT       NOT NULL AUTO_INCREMENT,
+    email            VARCHAR(255) NOT NULL,
+    password         VARCHAR(255) NULL,                          -- BCrypt 해시. 소셜 전용 계정은 NULL
+    password_enabled TINYINT(1)   NOT NULL DEFAULT 1,            -- 비밀번호 로그인 가능 여부(소셜 전용=0)
+    name             VARCHAR(100) NOT NULL,
+    email_verified   TINYINT(1)   NOT NULL DEFAULT 0,            -- 이메일 인증 완료 여부
+    user_type        VARCHAR(20)  NOT NULL DEFAULT 'JOB_SEEKER', -- JOB_SEEKER/CAREER_CHANGER/EXPERIENCED
+    role             VARCHAR(20)  NOT NULL DEFAULT 'USER',       -- USER/ADMIN
+    status           VARCHAR(20)  NOT NULL DEFAULT 'ACTIVE',     -- ACTIVE/DORMANT/BLOCKED/DELETED
+    plan             VARCHAR(20)  NOT NULL DEFAULT 'FREE',       -- FREE/BASIC/PRO/PREMIUM
+    credit           INT          NOT NULL DEFAULT 0,
+    last_login_at    DATETIME     NULL,
+    created_at       DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at       DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     PRIMARY KEY (id),
     UNIQUE KEY uk_users_email (email)
-) ENGINE = InnoDB;
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci;
 
+-- 한 유저가 여러 소셜 계정 연동 가능 (provider별 1개)
+CREATE TABLE IF NOT EXISTS user_social (
+    id               BIGINT       NOT NULL AUTO_INCREMENT,
+    user_id          BIGINT       NOT NULL,
+    provider         VARCHAR(20)  NOT NULL,                      -- KAKAO/NAVER/GOOGLE
+    provider_user_id VARCHAR(255) NOT NULL,                      -- 제공자가 발급한 고유 사용자 ID
+    linked_at        DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (id),
+    UNIQUE KEY uk_user_social_provider (provider, provider_user_id),
+    KEY idx_user_social_user (user_id),
+    CONSTRAINT fk_user_social_user FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci;
+
+-- 이메일 인증 / 비밀번호 재설정 토큰
+CREATE TABLE IF NOT EXISTS email_verification (
+    id          BIGINT       NOT NULL AUTO_INCREMENT,
+    user_id     BIGINT       NULL,
+    email       VARCHAR(255) NOT NULL,
+    token       VARCHAR(255) NOT NULL,                           -- UUID
+    purpose     VARCHAR(20)  NOT NULL DEFAULT 'VERIFY',          -- VERIFY/RESET_PW
+    expired_at  DATETIME     NOT NULL,
+    used        TINYINT(1)   NOT NULL DEFAULT 0,
+    used_at     DATETIME     NULL,
+    created_at  DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (id),
+    UNIQUE KEY uk_email_verification_token (token),
+    KEY idx_email_verification_email (email),
+    CONSTRAINT fk_email_verification_user FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci;
+
+-- JWT refresh token (회전/폐기 관리용)
+CREATE TABLE IF NOT EXISTS refresh_token (
+    id          BIGINT       NOT NULL AUTO_INCREMENT,
+    user_id     BIGINT       NOT NULL,
+    token       VARCHAR(512) NOT NULL,
+    expired_at  DATETIME     NOT NULL,
+    revoked     TINYINT(1)   NOT NULL DEFAULT 0,
+    created_at  DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (id),
+    UNIQUE KEY uk_refresh_token_token (token),
+    KEY idx_refresh_token_user (user_id),
+    CONSTRAINT fk_refresh_token_user FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci;
+
+-- =====================================================================
+--  프로필
+-- =====================================================================
 CREATE TABLE IF NOT EXISTS user_profile (
     id               BIGINT NOT NULL AUTO_INCREMENT,
     user_id          BIGINT NOT NULL,
@@ -49,11 +96,11 @@ CREATE TABLE IF NOT EXISTS user_profile (
     PRIMARY KEY (id),
     UNIQUE KEY uk_user_profile_user (user_id),
     CONSTRAINT fk_user_profile_user FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
-) ENGINE = InnoDB;
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci;
 
--- ---------------------------------------------------------------------
--- 지원 건 (핵심 단위) 및 분석 결과들
--- ---------------------------------------------------------------------
+-- =====================================================================
+--  지원 건 (핵심 단위) 및 분석 결과들
+-- =====================================================================
 CREATE TABLE IF NOT EXISTS application_case (
     id            BIGINT NOT NULL AUTO_INCREMENT,
     user_id       BIGINT NOT NULL,
@@ -68,7 +115,7 @@ CREATE TABLE IF NOT EXISTS application_case (
     PRIMARY KEY (id),
     KEY idx_application_case_user (user_id),
     CONSTRAINT fk_application_case_user FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
-) ENGINE = InnoDB;
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci;
 
 CREATE TABLE IF NOT EXISTS job_posting (
     id                  BIGINT NOT NULL AUTO_INCREMENT,
@@ -81,7 +128,7 @@ CREATE TABLE IF NOT EXISTS job_posting (
     PRIMARY KEY (id),
     KEY idx_job_posting_case (application_case_id),
     CONSTRAINT fk_job_posting_case FOREIGN KEY (application_case_id) REFERENCES application_case (id) ON DELETE CASCADE
-) ENGINE = InnoDB;
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci;
 
 CREATE TABLE IF NOT EXISTS job_analysis (
     id                  BIGINT NOT NULL AUTO_INCREMENT,
@@ -98,7 +145,7 @@ CREATE TABLE IF NOT EXISTS job_analysis (
     PRIMARY KEY (id),
     KEY idx_job_analysis_case (application_case_id),
     CONSTRAINT fk_job_analysis_case FOREIGN KEY (application_case_id) REFERENCES application_case (id) ON DELETE CASCADE
-) ENGINE = InnoDB;
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci;
 
 CREATE TABLE IF NOT EXISTS company_analysis (
     id                  BIGINT NOT NULL AUTO_INCREMENT,
@@ -113,7 +160,7 @@ CREATE TABLE IF NOT EXISTS company_analysis (
     PRIMARY KEY (id),
     KEY idx_company_analysis_case (application_case_id),
     CONSTRAINT fk_company_analysis_case FOREIGN KEY (application_case_id) REFERENCES application_case (id) ON DELETE CASCADE
-) ENGINE = InnoDB;
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci;
 
 CREATE TABLE IF NOT EXISTS fit_analysis (
     id                       BIGINT NOT NULL AUTO_INCREMENT,
@@ -128,11 +175,11 @@ CREATE TABLE IF NOT EXISTS fit_analysis (
     PRIMARY KEY (id),
     KEY idx_fit_analysis_case (application_case_id),
     CONSTRAINT fk_fit_analysis_case FOREIGN KEY (application_case_id) REFERENCES application_case (id) ON DELETE CASCADE
-) ENGINE = InnoDB;
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci;
 
--- ---------------------------------------------------------------------
--- 면접
--- ---------------------------------------------------------------------
+-- =====================================================================
+--  면접
+-- =====================================================================
 CREATE TABLE IF NOT EXISTS interview_session (
     id                  BIGINT NOT NULL AUTO_INCREMENT,
     application_case_id BIGINT NOT NULL,
@@ -145,7 +192,7 @@ CREATE TABLE IF NOT EXISTS interview_session (
     PRIMARY KEY (id),
     KEY idx_interview_session_case (application_case_id),
     CONSTRAINT fk_interview_session_case FOREIGN KEY (application_case_id) REFERENCES application_case (id) ON DELETE CASCADE
-) ENGINE = InnoDB;
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci;
 
 CREATE TABLE IF NOT EXISTS interview_question (
     id                   BIGINT NOT NULL AUTO_INCREMENT,
@@ -156,7 +203,7 @@ CREATE TABLE IF NOT EXISTS interview_question (
     PRIMARY KEY (id),
     KEY idx_interview_question_session (interview_session_id),
     CONSTRAINT fk_interview_question_session FOREIGN KEY (interview_session_id) REFERENCES interview_session (id) ON DELETE CASCADE
-) ENGINE = InnoDB;
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci;
 
 CREATE TABLE IF NOT EXISTS interview_answer (
     id              BIGINT NOT NULL AUTO_INCREMENT,
@@ -171,11 +218,11 @@ CREATE TABLE IF NOT EXISTS interview_answer (
     PRIMARY KEY (id),
     KEY idx_interview_answer_question (question_id),
     CONSTRAINT fk_interview_answer_question FOREIGN KEY (question_id) REFERENCES interview_question (id) ON DELETE CASCADE
-) ENGINE = InnoDB;
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci;
 
--- ---------------------------------------------------------------------
--- 커뮤니티 / 결제 / AI 사용량
--- ---------------------------------------------------------------------
+-- =====================================================================
+--  커뮤니티 / 결제 / AI 사용량
+-- =====================================================================
 CREATE TABLE IF NOT EXISTS community_post (
     id             BIGINT NOT NULL AUTO_INCREMENT,
     user_id        BIGINT NOT NULL,
@@ -194,7 +241,7 @@ CREATE TABLE IF NOT EXISTS community_post (
     KEY idx_community_post_user (user_id),
     KEY idx_community_post_category (category),
     CONSTRAINT fk_community_post_user FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
-) ENGINE = InnoDB;
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci;
 
 CREATE TABLE IF NOT EXISTS payment (
     id            BIGINT NOT NULL AUTO_INCREMENT,
@@ -208,7 +255,7 @@ CREATE TABLE IF NOT EXISTS payment (
     PRIMARY KEY (id),
     KEY idx_payment_user (user_id),
     CONSTRAINT fk_payment_user FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
-) ENGINE = InnoDB;
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci;
 
 CREATE TABLE IF NOT EXISTS ai_usage_log (
     id                  BIGINT NOT NULL AUTO_INCREMENT,
@@ -223,6 +270,6 @@ CREATE TABLE IF NOT EXISTS ai_usage_log (
     KEY idx_ai_usage_case (application_case_id),
     CONSTRAINT fk_ai_usage_user FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE,
     CONSTRAINT fk_ai_usage_case FOREIGN KEY (application_case_id) REFERENCES application_case (id) ON DELETE SET NULL
-) ENGINE = InnoDB;
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci;
 
 SET FOREIGN_KEY_CHECKS = 1;

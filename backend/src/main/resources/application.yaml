@@ -2,21 +2,40 @@ spring:
   application:
     name: CareerTuner
 
+  # ───────────────────────────────────────────────────────────────────────
+  #  시크릿/환경 설정 정책
+  #  - 모든 민감값은 ${ENV_VAR:기본값} 형태로 둔다.
+  #  - 지금: 커밋된 기본값(개발용)으로 즉시 동작 → 비공개 repo 라 팀원이 클론 후 바로 실행.
+  #  - 배포(AWS 등): 동일 이름의 환경변수만 설정하면 코드/파일 변경 없이 교체된다.
+  #      예)  DB_PASSWORD=... OAUTH_KAKAO_CLIENT_SECRET=... JWT_SECRET=... java -jar app.jar
+  # ───────────────────────────────────────────────────────────────────────
+
   datasource:
-    url: jdbc:mysql://${DB_HOST:localhost}:${DB_PORT:3306}/${DB_NAME:careertuner}?serverTimezone=Asia/Seoul&characterEncoding=UTF-8&useSSL=false&allowPublicKeyRetrieval=true
-    username: ${DB_USERNAME:root}
-    password: ${DB_PASSWORD:}
+    url: jdbc:mysql://${DB_HOST:localhost}:${DB_PORT:3306}/${DB_NAME:team1_db}?serverTimezone=Asia/Seoul&characterEncoding=UTF-8&useSSL=false&allowPublicKeyRetrieval=true
+    username: ${DB_USERNAME:dbuser}
+    password: ${DB_PASSWORD:YOUR_DB_PASSWORD}
     driver-class-name: com.mysql.cj.jdbc.Driver
     hikari:
-      # 스켈레톤 단계: MySQL이 떠 있지 않아도 앱이 부팅되도록 시작 시 커넥션 시도를 생략한다.
-      # 실제 DB 기능(쿼리 실행)은 MySQL이 기동되어 있어야 동작한다.
+      # MySQL 미기동 상태에서도 부팅되도록 시작 시 커넥션 시도를 생략(개발 편의).
       initialization-fail-timeout: -1
+
+  mail:
+    host: ${MAIL_HOST:smtp.naver.com}
+    port: ${MAIL_PORT:465}
+    username: ${MAIL_USERNAME:}
+    password: ${MAIL_PASSWORD:}
+    properties:
+      mail.smtp.auth: true
+      mail.smtp.ssl.enable: true
+      mail.smtp.ssl.trust: ${MAIL_HOST:smtp.naver.com}
+      mail.smtp.starttls.enable: true
+      mail.smtp.connectiontimeout: 5000
+      mail.smtp.timeout: 5000
 
 server:
   port: 8080
 
-# MyBatis — 본 프로젝트의 표준 영속성 계층. 매퍼 인터페이스는 @Mapper 로 등록하고,
-# 동적/복잡 쿼리는 classpath:mapper/**/*.xml 로 작성한다.
+# MyBatis — 본 프로젝트의 표준 영속성 계층(JPA 미사용).
 mybatis:
   type-aliases-package: com.careertuner
   mapper-locations: classpath*:mapper/**/*.xml
@@ -28,6 +47,38 @@ mybatis:
 springdoc:
   swagger-ui:
     path: /swagger-ui.html
+
+# ─── CareerTuner 애플리케이션 설정 (모두 env 로 override 가능) ───
+careertuner:
+  app:
+    # 소셜 로그인 완료/이메일 링크가 향하는 프런트엔드 주소
+    frontend-url: ${APP_FRONTEND_URL:http://localhost:5173}
+    # OAuth redirect-uri·이메일 링크 조립에 쓰는 백엔드 주소
+    api-base-url: ${APP_API_BASE_URL:http://localhost:8080}
+  jwt:
+    # 운영에서는 반드시 JWT_SECRET 환경변수로 교체할 것(32바이트 이상 권장).
+    secret: ${JWT_SECRET:dev-only-careertuner-secret-please-change-in-production-0123456789abcdef}
+    access-token-validity-seconds: ${JWT_ACCESS_TTL:1800}        # 30분
+    refresh-token-validity-seconds: ${JWT_REFRESH_TTL:1209600}   # 14일
+  mail:
+    from: ${MAIL_FROM:no-reply@careertuner.local}
+    sender-name: ${MAIL_SENDER_NAME:CareerTuner}
+    # SMTP(username) 미설정 시 실제 발송 대신 인증 링크를 로그로 출력하는 개발 모드.
+    dev-mode: ${MAIL_DEV_MODE:true}
+  oauth:
+    # ⚠️ 아직 키 미발급 → 기본값은 placeholder. 키 수령 후 env 또는 이 값만 교체.
+    kakao:
+      client-id: ${OAUTH_KAKAO_CLIENT_ID:CHANGEME}
+      client-secret: ${OAUTH_KAKAO_CLIENT_SECRET:}
+      redirect-uri: ${OAUTH_KAKAO_REDIRECT_URI:http://localhost:8080/api/auth/oauth/kakao/callback}
+    naver:
+      client-id: ${OAUTH_NAVER_CLIENT_ID:CHANGEME}
+      client-secret: ${OAUTH_NAVER_CLIENT_SECRET:CHANGEME}
+      redirect-uri: ${OAUTH_NAVER_REDIRECT_URI:http://localhost:8080/api/auth/oauth/naver/callback}
+    google:
+      client-id: ${OAUTH_GOOGLE_CLIENT_ID:CHANGEME}
+      client-secret: ${OAUTH_GOOGLE_CLIENT_SECRET:CHANGEME}
+      redirect-uri: ${OAUTH_GOOGLE_REDIRECT_URI:http://localhost:8080/api/auth/oauth/google/callback}
 
 logging:
   level:
