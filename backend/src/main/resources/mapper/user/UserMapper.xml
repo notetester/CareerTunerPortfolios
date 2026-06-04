@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.careertuner.user.mapper.UserMapper">
+
+    <select id="findById" resultType="com.careertuner.user.domain.User">
+        SELECT * FROM users WHERE id = #{id}
+    </select>
+
+    <select id="findByEmail" resultType="com.careertuner.user.domain.User">
+        SELECT * FROM users WHERE email = #{email}
+    </select>
+
+    <select id="countByEmail" resultType="int">
+        SELECT COUNT(*) FROM users WHERE email = #{email}
+    </select>
+
+    <insert id="insert" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO users (email, password, password_enabled, name, email_verified,
+                           user_type, role, status, plan, credit)
+        VALUES (#{email}, #{password}, #{passwordEnabled}, #{name}, #{emailVerified},
+                #{userType}, #{role}, #{status}, #{plan}, #{credit})
+    </insert>
+
+    <update id="touchLastLogin">
+        UPDATE users SET last_login_at = NOW() WHERE id = #{id}
+    </update>
+
+    <update id="markEmailVerified">
+        UPDATE users SET email_verified = 1 WHERE id = #{id}
+    </update>
+
+    <update id="updatePassword">
+        UPDATE users SET password = #{password}, password_enabled = 1 WHERE id = #{id}
+    </update>
+</mapper>

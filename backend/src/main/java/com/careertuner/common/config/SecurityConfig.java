@@ -4,39 +4,64 @@ import java.util.List;
 
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import org.springframework.security.config.Customizer;
+import org.springframework.http.HttpMethod;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.http.SessionCreationPolicy;
+import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 
+import com.careertuner.common.security.JwtAuthenticationFilter;
+
 /**
- * 스켈레톤 단계의 보안 설정.
+ * 보안 설정 — JWT 기반 stateless 인증.
  *
- * <p>현재는 개발 편의를 위해 모든 요청을 허용한다(stateless, CSRF off, CORS on).
- * 인증/인가(JWT·소셜 로그인·관리자 권한)는 auth 도메인 구현 시 이 설정을 강화한다.
+ * <p>공개 엔드포인트(헬스/스웨거/인증 진입점)를 제외한 모든 요청은 액세스 토큰을 요구한다.
+ * 비밀번호는 BCrypt 로 저장한다.</p>
  */
 @Configuration
 public class SecurityConfig {
 
     @Bean
-    public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
+    public SecurityFilterChain securityFilterChain(HttpSecurity http,
+                                                   JwtAuthenticationFilter jwtAuthenticationFilter) throws Exception {
         http
                 .csrf(csrf -> csrf.disable())
-                .cors(Customizer.withDefaults())
+                .cors(cors -> {})
                 .sessionManagement(sm -> sm.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
-                .authorizeHttpRequests(auth -> auth.anyRequest().permitAll())
-                .httpBasic(httpBasic -> httpBasic.disable())
-                .formLogin(form -> form.disable());
+                .httpBasic(basic -> basic.disable())
+                .formLogin(form -> form.disable())
+                .authorizeHttpRequests(auth -> auth
+                        .requestMatchers("/api/health", "/api/health/**").permitAll()
+                        .requestMatchers("/swagger-ui.html", "/swagger-ui/**",
+                                "/v3/api-docs/**", "/api-docs/**").permitAll()
+                        // 인증 공개 엔드포인트
+                        .requestMatchers(HttpMethod.POST,
+                                "/api/auth/register", "/api/auth/login",
+                                "/api/auth/refresh", "/api/auth/email/resend").permitAll()
+                        .requestMatchers(HttpMethod.GET,
+                                "/api/auth/verify-email", "/api/auth/check/**", "/api/auth/oauth/**").permitAll()
+                        // 그 외(/api/auth/me, /api/auth/logout 및 도메인 API)는 인증 필요
+                        .anyRequest().authenticated())
+                .exceptionHandling(e -> e.authenticationEntryPoint(
+                        (req, res, ex) -> res.sendError(jakarta.servlet.http.HttpServletResponse.SC_UNAUTHORIZED)))
+                .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
         return http.build();
+    }
+
+    @Bean
+    public PasswordEncoder passwordEncoder() {
+        return new BCryptPasswordEncoder();
     }
 
     @Bean
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration config = new CorsConfiguration();
-        // Vite 개발 서버. 배포 도메인은 추후 추가한다.
+        // Vite 개발 서버. 배포 도메인은 환경에 맞춰 추가한다.
         config.setAllowedOrigins(List.of("http://localhost:5173"));
         config.setAllowedMethods(List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
         config.setAllowedHeaders(List.of("*"));
