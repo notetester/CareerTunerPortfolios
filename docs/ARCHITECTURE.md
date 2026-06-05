@@ -7,8 +7,8 @@
 이 서비스의 핵심 단위는 **공고가 아니라 "지원 건(Application Case)"** 이다. 기업/공고/직무별로
 독립된 AI 작업 공간(ChatGPT 세션과 유사)을 두고, 그 안에 공고 분석·기업 분석·스펙 비교·면접·리포트가 모인다.
 
-자세한 기획은 [`planning/기획.txt`](planning/기획.txt)가 원본이다(가장 중요). 그 외 [`디자인 분석`](planning/디자인%20분석.txt),
-[`추천 구조`](planning/추천%20구조.txt), [`모바일 고려`](planning/모바일%20고려.txt) 참고.
+자세한 기획은 [`planning/기획.md`](planning/기획.md)가 원본이다(가장 중요). 그 외 [`디자인 분석`](planning/디자인%20분석.md),
+[`추천 구조`](planning/추천%20구조.md), [`모바일 고려`](planning/모바일%20고려.md) 참고.
 실제 개발 공통 인식은 [`PRODUCT_STRUCTURE.md`](PRODUCT_STRUCTURE.md)와
 [`FEATURE_MODULE_STRUCTURE.md`](FEATURE_MODULE_STRUCTURE.md)를 함께 본다.
 6명 담당자별 사용자 기능, AI 기능, 관리자 기능, 주요 DB 분담은
