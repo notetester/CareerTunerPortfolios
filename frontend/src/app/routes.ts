@@ -19,7 +19,7 @@ import { LegalPage } from "./pages/Legal";
 import { LoginPage } from "./pages/Login";
 import { AuthCallbackPage } from "./pages/AuthCallback";
 import { VerifyEmailResultPage } from "./pages/VerifyEmailResult";
-import { AdminDashboardPage } from "../admin/pages/AdminDashboard";
+import { adminRoutes } from "../admin/routes";
 
 export const router = createBrowserRouter([
   {
@@ -59,15 +59,7 @@ export const router = createBrowserRouter([
       { path: "login", Component: LoginPage },
       { path: "auth/callback", Component: AuthCallbackPage },
       { path: "auth/verify-email/result", Component: VerifyEmailResultPage },
-      { path: "admin", Component: AdminDashboardPage },
-      { path: "admin/users", Component: AdminDashboardPage },
-      { path: "admin/payments", Component: AdminDashboardPage },
-      { path: "admin/ai-usage", Component: AdminDashboardPage },
-      { path: "admin/community", Component: AdminDashboardPage },
-      { path: "admin/notices", Component: AdminDashboardPage },
-      { path: "admin/plans", Component: AdminDashboardPage },
-      { path: "admin/prompts", Component: AdminDashboardPage },
-      { path: "admin/logs", Component: AdminDashboardPage },
+      ...adminRoutes,
     ],
   },
 ]);

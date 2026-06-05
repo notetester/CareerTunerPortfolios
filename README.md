@@ -50,6 +50,8 @@ Spring Boot 4.0.6 · Java 21 · MyBatis · MySQL 8 · Spring Security · springd
 ## 문서
 
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — 전체 아키텍처/데이터 모델/로드맵
+- [docs/PRODUCT_STRUCTURE.md](docs/PRODUCT_STRUCTURE.md) — 사용자 관점의 전체 메뉴/제품 구조
+- [docs/FEATURE_MODULE_STRUCTURE.md](docs/FEATURE_MODULE_STRUCTURE.md) — 기능별 폴더 구조/담당 범위/공통 충돌 파일
 - [docs/FEATURE_OWNERSHIP.md](docs/FEATURE_OWNERSHIP.md) — 기능별 프론트/백엔드/어드민 분담 구조
 - [docs/planning/기획.txt](docs/planning/기획.txt) — **기획 원본(최우선)**
 - [backend/README.md](backend/README.md) · [frontend/README.md](frontend/README.md)

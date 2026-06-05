@@ -5,6 +5,11 @@ CareerTuner assigns work by feature. Each assignee owns the user frontend, user 
 Runtime source paths are the source of truth. Do not create a separate top-level admin frontend app unless the team explicitly decides that
 admin needs a separate deployment/security/release boundary.
 
+Related documents:
+
+- `PRODUCT_STRUCTURE.md` — user-visible product/menu structure.
+- `FEATURE_MODULE_STRUCTURE.md` — detailed runtime folder structure, ownership, AI split, and shared-file rules.
+
 ## 1. Runtime Source Mapping
 
 | Work area | Runtime path |
@@ -33,11 +38,14 @@ Admin route-level wiring should stay in `frontend/src/admin`, then be mounted un
 | `analysis` | application trends, weakness, job readiness, interview score trends, recommendation direction | `analysis` |
 | `community` | hired reviews, interview reviews, job questions, strategy board | `community` |
 | `billing` | plans, AI usage, credit charging, payment history | `payment`, `billing` |
-| `settings` | account, privacy, AI data consent, notifications | `settings` |
+| `settings` | account, privacy, AI data consent, notifications | `settings`, `consent`, `notification` |
 | `service` | feature intro, service intro, public service navigation | `serviceinfo` |
 | `support` | customer center, user guide, FAQ, notices, contact | `support` |
 | `company` | service/company profile, team, careers, blog, press, social channels | `company` |
-| `legal` | terms, privacy policy, AI data consent document, copyright policy | `legal` |
+| `legal` | terms, privacy policy, AI data consent document, copyright policy | `legal`, `consent` |
+| `notification` | alerts and notification preferences | `notification` |
+| `file` | upload/storage internals | `file` |
+| `ai` | prompt and AI provider internals | `ai` |
 
 ## 3. Backend Package Rule
 
@@ -108,6 +116,14 @@ frontend/src/admin/
 
 Keep shared primitives such as buttons, dialogs, tables, and API client helpers in the existing common frontend paths
 (`frontend/src/app/components/ui`, `frontend/src/app/lib`) unless they are admin-only.
+
+Every feature folder should keep this shape once work begins:
+
+```text
+pages/ components/ api/ hooks/ types/
+```
+
+The repository keeps these folders as explicit placeholders so feature owners can start work without inventing a new local shape.
 
 ## 5. Separate Admin App Decision Rule
 

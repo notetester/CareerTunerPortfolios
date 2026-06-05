@@ -42,7 +42,7 @@ src/
  └─ styles/               Tailwind v4 + 디자인 토큰(theme.css)
 ```
 
-> 이 코드는 Figma Make 디자인 초안을 기반으로 하며, 백엔드 API 연동·상태관리(`store`)·기능별 모듈(`features`)은 이후 단계에서 `docs/planning/기획.txt`의 구조에 맞춰 붙인다.
+> 이 코드는 Figma Make 디자인 초안을 기반으로 하며, 백엔드 API 연동·상태관리(`store`)·기능별 모듈(`features`)은 이후 단계에서 `docs/planning/기획.txt`, `docs/PRODUCT_STRUCTURE.md`, `docs/FEATURE_MODULE_STRUCTURE.md`의 구조에 맞춰 붙인다.
 
 ## 경로 별칭
 

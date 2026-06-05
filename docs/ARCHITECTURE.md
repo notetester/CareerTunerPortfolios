@@ -9,6 +9,8 @@
 
 자세한 기획은 [`planning/기획.txt`](planning/기획.txt)가 원본이다(가장 중요). 그 외 [`디자인 분석`](planning/디자인%20분석.txt),
 [`추천 구조`](planning/추천%20구조.txt), [`모바일 고려`](planning/모바일%20고려.txt) 참고.
+실제 개발 공통 인식은 [`PRODUCT_STRUCTURE.md`](PRODUCT_STRUCTURE.md)와
+[`FEATURE_MODULE_STRUCTURE.md`](FEATURE_MODULE_STRUCTURE.md)를 함께 본다.
 
 ---
 
@@ -59,7 +61,7 @@ React (Vite)   http://localhost:5173   ──/api/*──▶  Spring Boot  http:
 ```text
 auth · user · profile · applicationcase · jobposting · jobanalysis ·
 companyanalysis · fitanalysis · interview · community · payment · serviceinfo ·
-support · company · legal · ai · admin
+support · company · legal · notification · file · credit · consent · ai · admin
 ```
 
 각 도메인은 `controller → service → mapper(MyBatis) → domain(dto/model)` 4계층으로 채운다.
@@ -69,7 +71,8 @@ support · company · legal · ai · admin
 - `common/exception` — `ErrorCode`, `BusinessException`, `GlobalExceptionHandler`
 - `common/config` — `SecurityConfig`(현재 permitAll·CORS), `OpenApiConfig`
 
-**AI 모듈**은 역할별로 분리하고(공고분석/기업분석/적합도/질문생성/면접평가/첨삭/장기경향),
+**AI 모듈**은 공통 인프라(`ai/common`)와 프롬프트 템플릿(`ai/prompt`)만 공통에 두고,
+도메인별 AI 서비스는 각 도메인 안에 둔다. 이렇게 해야 여러 담당자가 같은 `ai` 파일을 동시에 수정하는 충돌을 줄일 수 있다.
 프롬프트 템플릿 기반으로 호출하며 토큰·크레딧 사용량을 기록한다(기획 §16).
 
 ## 5. 데이터 모델 (요약)
@@ -112,6 +115,13 @@ GET  /api/interview-sessions/{id}/report
 현재는 Figma Make 디자인 초안(10개 페이지) 기반의 반응형 SPA. 이후 기획 §14 구조로 확장:
 `features/`(사용자 기능별 모듈), `admin/`(관리자 라우트와 관리자 기능), `services/`(API 클라이언트),
 `store/`(상태관리), `hooks/`, `types/`.
+
+사용자 기능과 관리자 기능은 각각 다음 하위 구조를 표준으로 한다.
+
+```text
+frontend/src/features/<feature>/{pages,components,api,hooks,types}
+frontend/src/admin/features/<feature>/{pages,components,api,hooks,types}
+```
 
 3열 레이아웃(지원 건 목록 / 상세 / 준비도 패널)은 모바일에서 1열 + Drawer + 접이식 카드로 접는다(모바일 고려 §6·§9).
 
