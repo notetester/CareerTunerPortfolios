@@ -9,13 +9,14 @@
 ```text
 CareerTuner/
  ├─ backend/    Spring Boot 4 + MyBatis + MySQL  (REST API · :8080)
- ├─ frontend/   React 18 + Vite + TypeScript      (반응형 웹/PWA · :5173)
- ├─ admin-frontend/ 관리자 프론트 앱 스켈레톤
- ├─ features/   기능별 업무분담 루트
+ ├─ frontend/   React 18 + Vite + TypeScript      (사용자/관리자 반응형 웹/PWA · :5173)
  └─ docs/       기획 및 아키텍처 문서
 ```
 
 IntelliJ Ultimate에서 이 루트 폴더를 열면 backend(Spring Boot)와 frontend(npm)를 한 IDE에서 관리할 수 있다.
+
+관리자 프런트엔드는 별도 앱으로 분리하지 않고 `frontend/src/admin/` 아래에서 관리한다.
+별도 배포 도메인, 완전히 다른 인증/네트워크 경계, 독립 릴리즈 주기 같은 요구가 생길 때만 팀 결정으로 분리한다.
 
 ## 빠른 시작
 
@@ -59,6 +60,7 @@ Spring Boot 4.0.6 · Java 21 · MyBatis · MySQL 8 · Spring Security · springd
 
 ## 기능별 업무분담
 
-기능 담당자는 `features/<기능>/frontend`, `backend`, `admin-frontend`, `admin-backend` 네 영역을 함께 본다.
+기능 담당자는 `frontend/src/features/<기능>`, `frontend/src/admin/features/<기능>`,
+`backend/src/main/java/com/careertuner/<도메인>`, `backend/src/main/java/com/careertuner/admin/<도메인>` 영역을 함께 본다.
 고객센터/공지사항/FAQ/사용 가이드/문의하기는 `support`, 이용약관/개인정보처리방침/AI 데이터 이용 동의/저작권 정책은 `legal`,
 기능 소개/서비스 소개는 `service`, 팀/채용/블로그/보도자료/공식 채널은 `company` 기능군으로 분리했다.

@@ -2,61 +2,24 @@
 
 CareerTuner assigns work by feature. Each assignee owns the user frontend, user backend, admin frontend, and admin backend for that feature.
 
-Nothing in this document removes a feature from the original plan. Removing or merging a feature requires a team decision.
+Runtime source paths are the source of truth. Do not create a separate top-level admin frontend app unless the team explicitly decides that
+admin needs a separate deployment/security/release boundary.
 
-## 1. Assignment Root
-
-The assignment root is `features/`.
-
-```text
-features/
- ├─ auth/
- │   ├─ frontend/
- │   ├─ backend/
- │   ├─ admin-frontend/
- │   └─ admin-backend/
- ├─ home/
- ├─ dashboard/
- ├─ profile/
- ├─ applications/
- ├─ interview/
- ├─ correction/
- ├─ analysis/
- ├─ community/
- ├─ billing/
- ├─ settings/
- ├─ service/
- ├─ support/
- ├─ company/
- └─ legal/
-```
-
-Every feature keeps the same four child folders:
-
-```text
-<feature>/
- ├─ frontend/        User-facing React work
- ├─ backend/         User-facing Spring Boot/MyBatis work
- ├─ admin-frontend/  Admin React work
- └─ admin-backend/   Admin Spring Boot/MyBatis work
-```
-
-## 2. Runtime Source Mapping
-
-The `features/` tree is the ownership and planning map. Runtime code should live in the app projects below.
+## 1. Runtime Source Mapping
 
 | Work area | Runtime path |
 | --- | --- |
 | User frontend | `frontend/src/features/<feature>/` |
+| Admin frontend | `frontend/src/admin/features/<feature>/` |
 | User backend | `backend/src/main/java/com/careertuner/<backend-domain>/` |
 | User MyBatis XML | `backend/src/main/resources/mapper/<backend-domain>/` |
-| Admin frontend | `admin-frontend/src/features/<feature>/` or, until the app is bootstrapped, `features/<feature>/admin-frontend/` |
 | Admin backend | `backend/src/main/java/com/careertuner/admin/<backend-domain>/` |
 | Admin MyBatis XML | `backend/src/main/resources/mapper/admin/<backend-domain>/` |
 
 The current visible app still keeps early prototype pages in `frontend/src/app/pages`. As features mature, move page internals into `frontend/src/features/<feature>` and leave only route-level wiring in `frontend/src/app`.
+Admin route-level wiring should stay in `frontend/src/admin`, then be mounted under `/admin/**` from the main router.
 
-## 3. Feature Map
+## 2. Feature Map
 
 | Feature folder | User menu scope | Backend domain package |
 | --- | --- | --- |
@@ -76,7 +39,7 @@ The current visible app still keeps early prototype pages in `frontend/src/app/p
 | `company` | service/company profile, team, careers, blog, press, social channels | `company` |
 | `legal` | terms, privacy policy, AI data consent document, copyright policy | `legal` |
 
-## 4. Backend Package Rule
+## 3. Backend Package Rule
 
 User APIs:
 
@@ -107,7 +70,7 @@ backend/src/main/resources/mapper/<domain>/
 backend/src/main/resources/mapper/admin/<domain>/
 ```
 
-## 5. Frontend Feature Rule
+## 4. Frontend Feature Rule
 
 User frontend:
 
@@ -123,7 +86,7 @@ frontend/src/features/<feature>/
 Admin frontend:
 
 ```text
-admin-frontend/src/features/<feature>/
+frontend/src/admin/features/<feature>/
  ├─ pages/
  ├─ components/
  ├─ api/
@@ -131,7 +94,31 @@ admin-frontend/src/features/<feature>/
  └─ types/
 ```
 
-The admin frontend app can be bootstrapped as a separate Vite app when admin screens move beyond skeleton status.
+Admin-specific layout, route guards, navigation, and shared admin UI live under:
+
+```text
+frontend/src/admin/
+ ├─ components/
+ ├─ features/
+ ├─ hooks/
+ ├─ lib/
+ ├─ pages/
+ └─ routes.ts
+```
+
+Keep shared primitives such as buttons, dialogs, tables, and API client helpers in the existing common frontend paths
+(`frontend/src/app/components/ui`, `frontend/src/app/lib`) unless they are admin-only.
+
+## 5. Separate Admin App Decision Rule
+
+A separate admin frontend may be reconsidered only when at least one of these becomes a real requirement:
+
+- Admin must be deployed to a separate domain/network boundary.
+- Admin authentication/session policy cannot safely share the user SPA shell.
+- Admin release cadence must be independent from the user frontend.
+- Admin bundle size or dependency set becomes large enough to harm the user-facing app.
+
+Until then, a single Vite React app keeps routing, auth, API clients, design tokens, and build tooling simpler.
 
 ## 6. Minimum Handoff Checklist
 

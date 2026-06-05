@@ -24,6 +24,7 @@ import {
   BarChart2,
   Award,
   LogOut,
+  ShieldCheck,
 } from "lucide-react";
 
 const navItems = [
@@ -129,6 +130,22 @@ const navItems = [
       { label: "개인정보 관리", href: "/settings?tab=privacy" },
       { label: "AI 데이터 사용 동의", href: "/settings?tab=ai-consent" },
       { label: "알림 설정", href: "/settings?tab=notifications" },
+    ],
+  },
+  {
+    label: "관리자",
+    href: "/admin",
+    icon: ShieldCheck,
+    children: [
+      { label: "관리자 대시보드", href: "/admin" },
+      { label: "회원 관리", href: "/admin/users" },
+      { label: "결제 관리", href: "/admin/payments" },
+      { label: "AI 사용량 관리", href: "/admin/ai-usage" },
+      { label: "게시판/신고 관리", href: "/admin/community" },
+      { label: "공지사항 관리", href: "/admin/notices" },
+      { label: "요금제 관리", href: "/admin/plans" },
+      { label: "프롬프트 템플릿", href: "/admin/prompts" },
+      { label: "시스템 로그", href: "/admin/logs" },
     ],
   },
 ];

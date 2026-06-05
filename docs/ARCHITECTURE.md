@@ -17,15 +17,19 @@
 ```text
 CareerTuner/                IntelliJ로 이 루트를 연다
  ├─ backend/                Spring Boot 4 + MyBatis + MySQL  (REST API, :8080)
- ├─ frontend/               React 18 + Vite + TS + Tailwind  (반응형 웹/PWA-ready, :5173)
- ├─ admin-frontend/         관리자 React 앱 스켈레톤
- ├─ features/               기능별 업무분담 루트(front/back/admin-front/admin-back)
+ ├─ frontend/               React 18 + Vite + TS + Tailwind  (사용자/관리자 반응형 웹/PWA-ready, :5173)
  ├─ docs/                   기획·아키텍처 문서
  └─ (추후) frontend/android, frontend/ios   Capacitor 패키징
 ```
 
 기능별 업무분담 구조는 [`FEATURE_OWNERSHIP.md`](FEATURE_OWNERSHIP.md)를 기준으로 한다. 각 기능 담당자는
 해당 기능의 사용자 프런트, 사용자 백엔드, 어드민 프런트, 어드민 백엔드 구조를 함께 관리한다.
+
+관리자 프런트는 현 단계에서 별도 앱으로 분리하지 않는다. 검토 결과 기존 `admin-frontend`는
+독립 `package.json`, Vite 설정, 라우트, 배포 설정 없이 빈 스켈레톤만 있었고, 현재 제품은 같은 인증/권한,
+같은 API, 같은 디자인 시스템을 공유한다. 따라서 관리자 화면은 `frontend/src/admin/` 아래에 두고
+`/admin/**` 라우트로 연결한다. 별도 배포 도메인, 강한 보안 경계, 독립 릴리즈 주기 같은 요구가 생길 때만
+팀 결정으로 별도 앱 분리를 재검토한다.
 
 ## 2. 기술 스택
 
@@ -106,7 +110,8 @@ GET  /api/interview-sessions/{id}/report
 ## 7. 프런트엔드 아키텍처
 
 현재는 Figma Make 디자인 초안(10개 페이지) 기반의 반응형 SPA. 이후 기획 §14 구조로 확장:
-`features/`(기능별 모듈), `services/`(API 클라이언트), `store/`(상태관리), `hooks/`, `types/`.
+`features/`(사용자 기능별 모듈), `admin/`(관리자 라우트와 관리자 기능), `services/`(API 클라이언트),
+`store/`(상태관리), `hooks/`, `types/`.
 
 3열 레이아웃(지원 건 목록 / 상세 / 준비도 패널)은 모바일에서 1열 + Drawer + 접이식 카드로 접는다(모바일 고려 §6·§9).
 
