@@ -42,6 +42,17 @@ npm run typecheck                      # tsc --noEmit
 - 커밋 메시지 형식: `feat:` / `fix:` / `docs:` / `chore:` / `refactor:` prefix
 - 브랜치 전략: 개인 브랜치에서 작업 → `dev`로 PR. **dev 직접 push 금지**
 
+## git push 절차 (모든 AI 도구 공통)
+
+push 요청을 받으면 반드시 아래 순서를 따른다:
+
+1. 현재 브랜치 확인 — `dev`/`main`/`master`/`live`(보호 브랜치)면 push하지 않고 사용자에게 알린다
+2. `git fetch origin`
+3. `origin/dev`에 새 커밋이 있으면 내가 수정한 파일과 겹치는 파일을 분석해 사용자에게 보고하고,
+   "그대로 push / merge 후 push" 중 선택을 받는다
+4. push 전 커밋 메시지에 AI 도구 표기가 없는지 확인한다
+5. `git push origin <현재브랜치>`
+
 ## 작업 범위 규칙
 
 - 기능별 수직 분담제. 자기 담당 폴더 밖(특히 타인 담당 도메인) 수정 시 합의 먼저
