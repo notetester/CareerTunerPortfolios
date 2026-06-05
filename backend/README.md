@@ -61,6 +61,33 @@ DB_PASSWORD=... JWT_SECRET=... OAUTH_KAKAO_CLIENT_SECRET=... java -jar app.jar
   백엔드 콜백에서 사용자 조회/생성 후 JWT 발급 → 프런트 `/auth/callback#accessToken=…&refreshToken=…` 로 리다이렉트.
   (서명된 state 토큰으로 CSRF 방지, 세션/쿠키 불필요)
 
+## 지원 건 (Application Case) API
+
+1차 MVP의 핵심 단위인 지원 건 API는 인증된 사용자 자신의 데이터만 다룬다.
+
+| Method | Path | 설명 | 인증 |
+| --- | --- | --- | --- |
+| POST | `/api/application-cases` | 지원 건 생성 | Bearer |
+| GET | `/api/application-cases` | 내 지원 건 목록 | Bearer |
+| GET | `/api/application-cases/{id}` | 지원 건 상세 | Bearer |
+| PATCH | `/api/application-cases/{id}` | 지원 건 수정 | Bearer |
+| DELETE | `/api/application-cases/{id}` | 지원 건 삭제 | Bearer |
+| POST | `/api/application-cases/{id}/job-posting` | 현재 공고문 저장(초기 버전은 1건 교체) | Bearer |
+| GET | `/api/application-cases/{id}/job-posting` | 현재 공고문 조회 | Bearer |
+| POST | `/api/application-cases/{id}/analysis/mock` | 개발용 mock 공고/적합도 분석 생성 | Bearer |
+| GET | `/api/application-cases/{id}/analysis` | 공고/적합도 분석 조회 | Bearer |
+
+현재 AI API 키와 프롬프트 운영 화면이 준비 전이므로 `/analysis/mock`은 화면과 데이터 흐름 검증용이다.
+실제 AI 연동은 `ai` 모듈과 프롬프트 템플릿 관리가 붙은 뒤 같은 응답 형태를 유지하며 교체한다.
+
+## JSON 컬럼 매핑 방침
+
+MySQL `JSON` 컬럼은 초기에는 Java `String`으로 매핑한다. 예를 들어 `required_skills`, `matched_skills`,
+`recommended_study`는 `["React","AWS"]` 형태의 JSON 문자열로 API에 내려간다.
+
+이 방식은 MyBatis `TypeHandler` 없이 MVP를 빠르게 붙이기 위한 결정이다. 프런트/백엔드에서 구조화된 조작이
+많아지는 시점에 Jackson 기반 `JsonTypeHandler`를 추가하고 `List<String>` 또는 전용 DTO로 전환한다.
+
 ### 시드 계정 (공통 비밀번호 `Career1234!`)
 
 | 이메일 | 비고 |

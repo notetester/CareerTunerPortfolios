@@ -1,0 +1,110 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.careertuner.applicationcase.mapper.ApplicationCaseMapper">
+
+    <resultMap id="ApplicationCaseResultMap" type="com.careertuner.applicationcase.domain.ApplicationCase">
+        <id property="id" column="id"/>
+        <result property="favorite" column="is_favorite"/>
+    </resultMap>
+
+    <insert id="insertApplicationCase" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO application_case
+            (user_id, company_name, job_title, posting_date, source_type, status, is_favorite)
+        VALUES
+            (#{userId}, #{companyName}, #{jobTitle}, #{postingDate}, #{sourceType}, #{status}, #{favorite})
+    </insert>
+
+    <select id="findApplicationCasesByUserId" resultMap="ApplicationCaseResultMap">
+        SELECT *
+        FROM application_case
+        WHERE user_id = #{userId}
+        ORDER BY is_favorite DESC, updated_at DESC, id DESC
+    </select>
+
+    <select id="findApplicationCaseByIdAndUserId" resultMap="ApplicationCaseResultMap">
+        SELECT *
+        FROM application_case
+        WHERE id = #{id} AND user_id = #{userId}
+    </select>
+
+    <update id="updateApplicationCase">
+        UPDATE application_case
+        SET company_name = #{companyName},
+            job_title = #{jobTitle},
+            posting_date = #{postingDate},
+            source_type = #{sourceType},
+            status = #{status},
+            is_favorite = #{favorite}
+        WHERE id = #{id} AND user_id = #{userId}
+    </update>
+
+    <delete id="deleteApplicationCase">
+        DELETE FROM application_case
+        WHERE id = #{id} AND user_id = #{userId}
+    </delete>
+
+    <delete id="deleteJobPostingsByCaseId">
+        DELETE FROM job_posting
+        WHERE application_case_id = #{applicationCaseId}
+    </delete>
+
+    <insert id="insertJobPosting" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO job_posting
+            (application_case_id, original_text, uploaded_file_url, extracted_text, source_type)
+        VALUES
+            (#{applicationCaseId}, #{originalText}, #{uploadedFileUrl}, #{extractedText}, #{sourceType})
+    </insert>
+
+    <select id="findLatestJobPostingByCaseId" resultType="com.careertuner.applicationcase.domain.JobPosting">
+        SELECT *
+        FROM job_posting
+        WHERE application_case_id = #{applicationCaseId}
+        ORDER BY id DESC
+        LIMIT 1
+    </select>
+
+    <delete id="deleteJobAnalysesByCaseId">
+        DELETE FROM job_analysis
+        WHERE application_case_id = #{applicationCaseId}
+    </delete>
+
+    <insert id="insertJobAnalysis" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO job_analysis
+            (application_case_id, employment_type, experience_level, required_skills,
+             preferred_skills, duties, qualifications, difficulty, summary)
+        VALUES
+            (#{applicationCaseId}, #{employmentType}, #{experienceLevel}, #{requiredSkills},
+             #{preferredSkills}, #{duties}, #{qualifications}, #{difficulty}, #{summary})
+    </insert>
+
+    <select id="findLatestJobAnalysisByCaseId" resultType="com.careertuner.applicationcase.domain.JobAnalysis">
+        SELECT *
+        FROM job_analysis
+        WHERE application_case_id = #{applicationCaseId}
+        ORDER BY id DESC
+        LIMIT 1
+    </select>
+
+    <delete id="deleteFitAnalysesByCaseId">
+        DELETE FROM fit_analysis
+        WHERE application_case_id = #{applicationCaseId}
+    </delete>
+
+    <insert id="insertFitAnalysis" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO fit_analysis
+            (application_case_id, fit_score, matched_skills, missing_skills,
+             recommended_study, recommended_certificates, strategy)
+        VALUES
+            (#{applicationCaseId}, #{fitScore}, #{matchedSkills}, #{missingSkills},
+             #{recommendedStudy}, #{recommendedCertificates}, #{strategy})
+    </insert>
+
+    <select id="findLatestFitAnalysisByCaseId" resultType="com.careertuner.applicationcase.domain.FitAnalysis">
+        SELECT *
+        FROM fit_analysis
+        WHERE application_case_id = #{applicationCaseId}
+        ORDER BY id DESC
+        LIMIT 1
+    </select>
+</mapper>

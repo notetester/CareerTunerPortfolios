@@ -67,6 +67,18 @@ INSERT INTO application_case (user_id, company_name, job_title, posting_date, so
        WHERE ac.user_id = u.id AND ac.company_name = '스타트업 A' AND ac.job_title = '서비스 운영 매니저'
    );
 
+-- 공고문 샘플 ---------------------------------------------------------
+INSERT INTO job_posting (application_case_id, original_text, extracted_text, source_type)
+ SELECT ac.id,
+        'React 기반 웹 서비스 개발, REST API 연동, 사용자 경험 개선을 담당합니다. TypeScript와 AWS 경험을 우대합니다.',
+        'React 기반 웹 서비스 개발, REST API 연동, 사용자 경험 개선을 담당합니다. TypeScript와 AWS 경험을 우대합니다.',
+        'TEXT'
+ FROM application_case ac JOIN users u ON ac.user_id = u.id
+ WHERE u.email = 'jiwon.kim@careertuner.dev'
+   AND ac.company_name = '카카오페이'
+   AND NOT EXISTS (SELECT 1 FROM job_posting jp WHERE jp.application_case_id = ac.id)
+ LIMIT 1;
+
 -- 분석 예시 (카카오페이 / 프론트엔드) --------------------------------
 INSERT INTO job_analysis (application_case_id, employment_type, experience_level, required_skills, preferred_skills, duties, difficulty, summary)
  SELECT ac.id, '정규직', '신입~경력 3년', '["React","JavaScript","REST API"]', '["TypeScript","Next.js","AWS"]', '웹 서비스 개발 및 유지보수', 'NORMAL', '프론트엔드 핵심 역량(React, API 연동) 중심 공고'
