@@ -11,6 +11,8 @@
 [`추천 구조`](planning/추천%20구조.txt), [`모바일 고려`](planning/모바일%20고려.txt) 참고.
 실제 개발 공통 인식은 [`PRODUCT_STRUCTURE.md`](PRODUCT_STRUCTURE.md)와
 [`FEATURE_MODULE_STRUCTURE.md`](FEATURE_MODULE_STRUCTURE.md)를 함께 본다.
+6명 담당자별 사용자 기능, AI 기능, 관리자 기능, 주요 DB 분담은
+[`TEAM_WORK_DISTRIBUTION.md`](TEAM_WORK_DISTRIBUTION.md)를 기준으로 한다.
 
 ---
 
@@ -24,7 +26,8 @@ CareerTuner/                IntelliJ로 이 루트를 연다
  └─ (추후) frontend/android, frontend/ios   Capacitor 패키징
 ```
 
-기능별 업무분담 구조는 [`FEATURE_OWNERSHIP.md`](FEATURE_OWNERSHIP.md)를 기준으로 한다. 각 기능 담당자는
+기능별 업무분담 구조는 [`FEATURE_OWNERSHIP.md`](FEATURE_OWNERSHIP.md)와
+[`TEAM_WORK_DISTRIBUTION.md`](TEAM_WORK_DISTRIBUTION.md)를 기준으로 한다. 각 기능 담당자는
 해당 기능의 사용자 프런트, 사용자 백엔드, 어드민 프런트, 어드민 백엔드 구조를 함께 관리한다.
 
 관리자 프런트는 현 단계에서 별도 앱으로 분리하지 않는다. 검토 결과 기존 `admin-frontend`는

@@ -9,6 +9,7 @@ Related documents:
 
 - `PRODUCT_STRUCTURE.md` — user-visible product/menu structure.
 - `FEATURE_MODULE_STRUCTURE.md` — detailed runtime folder structure, ownership, AI split, and shared-file rules.
+- `TEAM_WORK_DISTRIBUTION.md` — six-person vertical ownership, AI responsibility, and major DB ownership.
 
 ## 1. Runtime Source Mapping
 
@@ -124,6 +125,8 @@ pages/ components/ api/ hooks/ types/
 ```
 
 The repository keeps these folders as explicit placeholders so feature owners can start work without inventing a new local shape.
+For service introduction, use `frontend/src/features/service` on the frontend and `serviceinfo` as the backend domain package.
+Do not add a new `frontend/src/features/serviceinfo` folder.
 
 ## 5. Separate Admin App Decision Rule
 
@@ -148,3 +151,4 @@ Before a feature owner marks a feature ready for integration, that feature shoul
 - MyBatis XML and sample data if persistence is needed
 - Basic happy-path and failure-state UI
 - Role/permission behavior for admin endpoints
+- AI prompt/usage logging behavior when the feature calls AI

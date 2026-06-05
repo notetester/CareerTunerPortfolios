@@ -2,6 +2,7 @@
 
 이 문서는 개발자가 실제 폴더와 담당 범위를 어떻게 나눌지 정리한다.
 `PRODUCT_STRUCTURE.md`가 사용자 관점의 지도라면, 이 문서는 코드 소유권과 충돌 방지를 위한 지도다.
+6명 담당자별 기능, AI, DB 분담의 상세 내용은 `TEAM_WORK_DISTRIBUTION.md`를 함께 본다.
 
 ## 1. 구조 원칙
 
@@ -119,6 +120,9 @@ backend/src/main/resources/mapper/admin/<domain>/
 | D | 가상 면접, 면접 리포트, 면접 파일 | 질문 생성, 꼬리 질문, 답변 평가, 리포트 생성 | 면접 세션 관리, 면접 리포트 관리 |
 | E | 첨삭, 결제, 크레딧 | 답변 첨삭, 자소서 첨삭, 이력서 표현 개선 | 결제 관리, 크레딧 관리, 첨삭 로그 관리 |
 | F | 커뮤니티, 고객센터, 알림, 공지, 회사/법적 문서 | 후기 요약, 질문 추출, 게시글 추천, 문의 답변 초안 | 게시판/신고, 공지/FAQ/문의, 알림 관리 |
+
+담당자별 상세 사용자 기능, 예시 AI 출력, 주요 DB, 포트폴리오 설명 포인트는
+`TEAM_WORK_DISTRIBUTION.md`에 둔다. 이 문서에서는 충돌을 줄이기 위한 실제 경로만 유지한다.
 
 ## 6. 실제 폴더 소유권
 
@@ -281,6 +285,10 @@ frontend/src/admin/routes.ts
 frontend/src/app/components/layout/Header.tsx
 frontend/src/app/components/layout/Footer.tsx
 frontend/src/app/lib/api.ts
+frontend/src/app/components/media
+frontend/src/app/components/upload
+frontend/src/admin/features/prompts
+frontend/src/admin/features/logs
 
 backend/src/main/resources/db/schema.sql
 backend/src/main/resources/db/data.sql
@@ -288,6 +296,7 @@ backend/build.gradle
 backend/src/main/resources/application.yaml
 backend/src/main/java/com/careertuner/common/config/SecurityConfig.java
 backend/src/main/java/com/careertuner/ai/common
+backend/src/main/java/com/careertuner/ai/prompt
 ```
 
 권장 소유권:
@@ -299,6 +308,10 @@ build.gradle/application.yaml: 백엔드 리더
 SecurityConfig/Auth: A 담당자
 AiClient/Prompt 공통: AI 공통 담당자
 ```
+
+`frontend/src/features/service`는 사용자 프런트의 서비스 소개 기능이고,
+`backend/src/main/java/com/careertuner/serviceinfo`는 같은 기능의 백엔드 도메인이다.
+프런트 폴더명을 `serviceinfo`로 새로 만들지 않는다.
 
 ## 9. 지금 폴더만 먼저 둔 기능
 
@@ -327,4 +340,8 @@ admin/faq
 admin/notification
 ```
 
-골격만 있는 패키지는 `package-info.java` 또는 `.gitkeep`만 있어도 정상이다. 실제 구현은 담당 기능 작업이 시작될 때 채운다.
+관리자 프런트의 `frontend/src/admin/features/prompts`와 `frontend/src/admin/features/logs`도
+프롬프트/운영 공통 기능 골격으로 유지한다.
+
+골격만 있는 패키지나 폴더는 `package-info.java` 또는 `.gitkeep`만 있어도 정상이다.
+실제 구현은 담당 기능 작업이 시작될 때 채운다.
