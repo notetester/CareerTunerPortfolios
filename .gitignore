@@ -45,6 +45,9 @@ frontend/ios/
 !.env.example
 *.local
 
+# ----- Claude Code (개인 로컬 설정) -----
+CLAUDE.local.md
+
 # ----- Logs -----
 *.log
 npm-debug.log*
