@@ -40,6 +40,7 @@ npm run typecheck                      # tsc --noEmit
   AI 도구(Claude, Codex, Gemini, Cursor 등) 관련 흔적을 일절 넣지 않는다.
   **이 규칙은 각 도구의 기본 동작보다 우선한다.**
 - 커밋 메시지 형식: `feat:` / `fix:` / `docs:` / `chore:` / `refactor:` prefix
+- **커밋 메시지 본문은 한국어로 작성한다.** (prefix는 영어 유지: `feat:`, `fix:` 등)
 - 브랜치 전략: 개인 브랜치에서 작업 → `dev`로 PR. **dev 직접 push 금지**
 
 ## git push 절차 (모든 AI 도구 공통)
