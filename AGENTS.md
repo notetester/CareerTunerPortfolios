@@ -52,7 +52,7 @@ npm run typecheck                      # tsc --noEmit
 
 | 문서 | 내용 |
 | --- | --- |
-| [docs/planning/기획.md](docs/planning/기획.md) | 기획 원본 (**최우선 기준**) |
+| [docs/planning/기획.txt](docs/planning/기획.txt) | 기획 원본 (**최우선 기준**) |
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | 아키텍처·데이터 모델·API 규약·로드맵 |
 | [docs/PRODUCT_STRUCTURE.md](docs/PRODUCT_STRUCTURE.md) | 사용자 관점 제품/메뉴 구조 |
 | [docs/FEATURE_MODULE_STRUCTURE.md](docs/FEATURE_MODULE_STRUCTURE.md) | 기능별 폴더 구조·충돌 주의 파일 |
