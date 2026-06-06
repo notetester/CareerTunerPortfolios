@@ -1,7 +1,7 @@
 # CareerTuner Product Structure
 
 이 문서는 CareerTuner를 사용자 관점에서 어떻게 이해할지 정리한 공통 컨텍스트다.
-기획 원본은 `docs/planning/기획.txt`이고, 이 문서는 실제 메뉴와 기능 구조를 개발자가 빠르게 공유하기 위한 지도다.
+기획 원본은 `docs/planning/기획.md`이고, 이 문서는 실제 메뉴와 기능 구조를 개발자가 빠르게 공유하기 위한 지도다.
 
 핵심 판단은 두 가지다.
 
