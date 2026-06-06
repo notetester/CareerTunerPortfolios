@@ -75,5 +75,5 @@ push 요청을 받으면 반드시 아래 순서를 따른다:
 
 ## 개인 설정
 
-개인용 AI 설정은 커밋하지 않는다 — `CLAUDE.local.md`(gitignore 처리됨) 또는 각 도구의 로컬 설정 사용.
+개인용 AI 설정은 커밋하지 않는다 — `AGENTS.local.md`, `CLAUDE.local.md`(gitignore 처리됨) 또는 각 도구의 로컬 설정 사용.
 `CLAUDE.md`는 이 파일을 불러오는 1줄짜리 shim이므로 내용을 추가하지 않는다.
