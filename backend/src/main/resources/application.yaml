@@ -2,6 +2,11 @@ spring:
   application:
     name: CareerTuner
 
+  servlet:
+    multipart:
+      max-file-size: ${SPRING_SERVLET_MULTIPART_MAX_FILE_SIZE:10MB}
+      max-request-size: ${SPRING_SERVLET_MULTIPART_MAX_REQUEST_SIZE:12MB}
+
   # ───────────────────────────────────────────────────────────────────────
   #  시크릿/환경 설정 정책
   #  - 모든 민감값은 ${ENV_VAR:기본값} 형태로 둔다.
@@ -65,6 +70,14 @@ careertuner:
     sender-name: ${MAIL_SENDER_NAME:CareerTuner}
     # SMTP(username) 미설정 시 실제 발송 대신 인증 링크를 로그로 출력하는 개발 모드.
     dev-mode: ${MAIL_DEV_MODE:true}
+  openai:
+    api-key: ${OPENAI_API_KEY:}
+    model: ${OPENAI_MODEL:gpt-5}
+    base-url: ${OPENAI_BASE_URL:https://api.openai.com/v1}
+    timeout: ${OPENAI_TIMEOUT:90s}
+  uploads:
+    job-posting-dir: ${JOB_POSTING_UPLOAD_DIR:.uploads/application-postings}
+    max-file-size-bytes: ${JOB_POSTING_MAX_FILE_SIZE_BYTES:10485760}
   oauth:
     # ⚠️ 아직 키 미발급 → 기본값은 placeholder. 키 수령 후 env 또는 이 값만 교체.
     kakao:

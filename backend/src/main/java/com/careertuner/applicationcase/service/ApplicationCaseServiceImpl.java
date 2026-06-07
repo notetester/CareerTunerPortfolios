@@ -6,6 +6,7 @@ import java.util.Set;
 
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.multipart.MultipartFile;
 
 import com.careertuner.applicationcase.domain.ApplicationCase;
 import com.careertuner.applicationcase.domain.CompanyAnalysis;
@@ -22,6 +23,10 @@ import com.careertuner.applicationcase.dto.JobPostingRequest;
 import com.careertuner.applicationcase.dto.JobPostingResponse;
 import com.careertuner.applicationcase.dto.UpdateApplicationCaseRequest;
 import com.careertuner.applicationcase.mapper.ApplicationCaseMapper;
+import com.careertuner.applicationcase.service.JobPostingFileStorage.StoredJobPostingFile;
+import com.careertuner.applicationcase.service.JobPostingTextExtractor.ExtractedPosting;
+import com.careertuner.applicationcase.service.OpenAiResponsesClient.CompanyAnalysisPayload;
+import com.careertuner.applicationcase.service.OpenAiResponsesClient.JobAnalysisPayload;
 import com.careertuner.common.exception.BusinessException;
 import com.careertuner.common.exception.ErrorCode;
 
@@ -33,10 +38,18 @@ public class ApplicationCaseServiceImpl implements ApplicationCaseService {
 
     private static final String DEFAULT_SOURCE_TYPE = "TEXT";
     private static final String DEFAULT_STATUS = "DRAFT";
+    private static final String FEATURE_JOB_ANALYSIS = "JOB_ANALYSIS";
+    private static final String FEATURE_COMPANY_RESEARCH = "COMPANY_RESEARCH";
+    private static final String FEATURE_JOB_POSTING_OCR = "JOB_POSTING_OCR";
+    private static final int COMPANY_INDUSTRY_MAX_LENGTH = 100;
     private static final Set<String> SOURCE_TYPES = Set.of("TEXT", "PDF", "IMAGE", "URL", "MANUAL");
     private static final Set<String> STATUSES = Set.of("DRAFT", "ANALYZING", "READY", "APPLIED", "CLOSED");
 
     private final ApplicationCaseMapper applicationCaseMapper;
+    private final OpenAiResponsesClient openAiClient;
+    private final AiUsageLogService aiUsageLogService;
+    private final JobPostingFileStorage fileStorage;
+    private final JobPostingTextExtractor textExtractor;
 
     @Override
     @Transactional
@@ -99,18 +112,38 @@ public class ApplicationCaseServiceImpl implements ApplicationCaseService {
     @Transactional
     public JobPostingResponse saveJobPosting(Long userId, Long applicationCaseId, JobPostingRequest request) {
         requireOwned(userId, applicationCaseId);
-        validateJobPosting(request);
+        String sourceType = normalizeOption(request.sourceType(), DEFAULT_SOURCE_TYPE, SOURCE_TYPES, "sourceType");
+        if ("URL".equals(sourceType)) {
+            ExtractedPosting extracted = textExtractor.extractUrl(request.uploadedFileUrl());
+            return saveExtractedPosting(applicationCaseId, extracted);
+        }
 
-        applicationCaseMapper.deleteJobPostingsByCaseId(applicationCaseId);
+        validateJobPosting(request);
         JobPosting jobPosting = JobPosting.builder()
                 .applicationCaseId(applicationCaseId)
                 .originalText(blankToNull(request.originalText()))
                 .uploadedFileUrl(blankToNull(request.uploadedFileUrl()))
                 .extractedText(blankToNull(request.extractedText()))
-                .sourceType(normalizeOption(request.sourceType(), DEFAULT_SOURCE_TYPE, SOURCE_TYPES, "sourceType"))
+                .sourceType(sourceType)
                 .build();
-        applicationCaseMapper.insertJobPosting(jobPosting);
-        return JobPostingResponse.from(applicationCaseMapper.findLatestJobPostingByCaseId(applicationCaseId));
+        return replaceJobPosting(applicationCaseId, jobPosting);
+    }
+
+    @Override
+    @Transactional
+    public JobPostingResponse uploadJobPostingFile(Long userId, Long applicationCaseId, MultipartFile file, String sourceType) {
+        requireOwned(userId, applicationCaseId);
+        try {
+            StoredJobPostingFile storedFile = fileStorage.store(applicationCaseId, file, sourceType);
+            ExtractedPosting extracted = textExtractor.extractFile(storedFile);
+            if (extracted.usage() != null) {
+                aiUsageLogService.recordSuccess(userId, applicationCaseId, FEATURE_JOB_POSTING_OCR, extracted.usage());
+            }
+            return saveExtractedPosting(applicationCaseId, extracted);
+        } catch (RuntimeException ex) {
+            aiUsageLogService.recordFailure(userId, applicationCaseId, FEATURE_JOB_POSTING_OCR, ex.getMessage());
+            throw ex;
+        }
     }
 
     @Override
@@ -126,9 +159,36 @@ public class ApplicationCaseServiceImpl implements ApplicationCaseService {
 
     @Override
     @Transactional
+    public JobAnalysisResponse createJobAnalysis(Long userId, Long applicationCaseId) {
+        ApplicationCase applicationCase = requireOwned(userId, applicationCaseId);
+        try {
+            JobAnalysisPayload payload = openAiClient.analyzeJobPosting(applicationCase, sourceTextRequired(applicationCaseId));
+            applicationCaseMapper.deleteJobAnalysesByCaseId(applicationCaseId);
+            JobAnalysis jobAnalysis = JobAnalysis.builder()
+                    .applicationCaseId(applicationCaseId)
+                    .employmentType(blankToNull(payload.employmentType()))
+                    .experienceLevel(blankToNull(payload.experienceLevel()))
+                    .requiredSkills(payload.requiredSkills())
+                    .preferredSkills(payload.preferredSkills())
+                    .duties(blankToNull(payload.duties()))
+                    .qualifications(blankToNull(payload.qualifications()))
+                    .difficulty(payload.difficulty())
+                    .summary(blankToNull(payload.summary()))
+                    .build();
+            applicationCaseMapper.insertJobAnalysis(jobAnalysis);
+            aiUsageLogService.recordSuccess(userId, applicationCaseId, FEATURE_JOB_ANALYSIS, payload.usage());
+            return JobAnalysisResponse.from(applicationCaseMapper.findLatestJobAnalysisByCaseId(applicationCaseId));
+        } catch (RuntimeException ex) {
+            aiUsageLogService.recordFailure(userId, applicationCaseId, FEATURE_JOB_ANALYSIS, ex.getMessage());
+            throw ex;
+        }
+    }
+
+    @Override
+    @Transactional
     public JobAnalysisResponse createMockJobAnalysis(Long userId, Long applicationCaseId) {
         ApplicationCase applicationCase = requireOwned(userId, applicationCaseId);
-        JobAnalysis jobAnalysis = createJobAnalysis(applicationCase, sourceText(applicationCaseId));
+        JobAnalysis jobAnalysis = createMockJobAnalysis(applicationCase, sourceText(applicationCaseId));
         return JobAnalysisResponse.from(jobAnalysis);
     }
 
@@ -137,6 +197,31 @@ public class ApplicationCaseServiceImpl implements ApplicationCaseService {
     public JobAnalysisResponse getJobAnalysis(Long userId, Long applicationCaseId) {
         requireOwned(userId, applicationCaseId);
         return JobAnalysisResponse.from(applicationCaseMapper.findLatestJobAnalysisByCaseId(applicationCaseId));
+    }
+
+    @Override
+    @Transactional
+    public CompanyAnalysisResponse createCompanyAnalysis(Long userId, Long applicationCaseId) {
+        ApplicationCase applicationCase = requireOwned(userId, applicationCaseId);
+        try {
+            CompanyAnalysisPayload payload = openAiClient.analyzeCompany(applicationCase, sourceTextRequired(applicationCaseId));
+            applicationCaseMapper.deleteCompanyAnalysesByCaseId(applicationCaseId);
+            CompanyAnalysis companyAnalysis = CompanyAnalysis.builder()
+                    .applicationCaseId(applicationCaseId)
+                    .companySummary(blankToNull(payload.companySummary()))
+                    .recentIssues(blankToNull(payload.recentIssues()))
+                    .industry(compactColumnText(payload.industry(), COMPANY_INDUSTRY_MAX_LENGTH))
+                    .competitors(payload.competitors())
+                    .interviewPoints(blankToNull(payload.interviewPoints()))
+                    .sources(payload.sources())
+                    .build();
+            applicationCaseMapper.insertCompanyAnalysis(companyAnalysis);
+            aiUsageLogService.recordSuccess(userId, applicationCaseId, FEATURE_COMPANY_RESEARCH, payload.usage());
+            return CompanyAnalysisResponse.from(applicationCaseMapper.findLatestCompanyAnalysisByCaseId(applicationCaseId));
+        } catch (RuntimeException ex) {
+            aiUsageLogService.recordFailure(userId, applicationCaseId, FEATURE_COMPANY_RESEARCH, ex.getMessage());
+            throw ex;
+        }
     }
 
     @Override
@@ -224,6 +309,23 @@ public class ApplicationCaseServiceImpl implements ApplicationCaseService {
         return applicationCase;
     }
 
+    private JobPostingResponse saveExtractedPosting(Long applicationCaseId, ExtractedPosting extracted) {
+        JobPosting jobPosting = JobPosting.builder()
+                .applicationCaseId(applicationCaseId)
+                .originalText(blankToNull(extracted.originalText()))
+                .uploadedFileUrl(blankToNull(extracted.uploadedFileUrl()))
+                .extractedText(blankToNull(extracted.extractedText()))
+                .sourceType(extracted.sourceType())
+                .build();
+        return replaceJobPosting(applicationCaseId, jobPosting);
+    }
+
+    private JobPostingResponse replaceJobPosting(Long applicationCaseId, JobPosting jobPosting) {
+        applicationCaseMapper.deleteJobPostingsByCaseId(applicationCaseId);
+        applicationCaseMapper.insertJobPosting(jobPosting);
+        return JobPostingResponse.from(applicationCaseMapper.findLatestJobPostingByCaseId(applicationCaseId));
+    }
+
     private static AnalysisResponse response(ApplicationCase applicationCase, JobAnalysis jobAnalysis, FitAnalysis fitAnalysis) {
         return new AnalysisResponse(
                 ApplicationCaseResponse.from(applicationCase),
@@ -231,7 +333,7 @@ public class ApplicationCaseServiceImpl implements ApplicationCaseService {
                 FitAnalysisResponse.from(fitAnalysis));
     }
 
-    private JobAnalysis createJobAnalysis(ApplicationCase applicationCase, String sourceText) {
+    private JobAnalysis createMockJobAnalysis(ApplicationCase applicationCase, String sourceText) {
         Long applicationCaseId = applicationCase.getId();
         MockAnalysisSeed seed = MockAnalysisSeed.from(applicationCase, sourceText);
 
@@ -251,11 +353,20 @@ public class ApplicationCaseServiceImpl implements ApplicationCaseService {
         return applicationCaseMapper.findLatestJobAnalysisByCaseId(applicationCaseId);
     }
 
+    private String sourceTextRequired(Long applicationCaseId) {
+        String text = sourceText(applicationCaseId);
+        if (isBlank(text)) {
+            throw new BusinessException(ErrorCode.INVALID_INPUT, "공고문을 먼저 등록해 주세요.");
+        }
+        return text;
+    }
+
     private String sourceText(Long applicationCaseId) {
         JobPosting jobPosting = applicationCaseMapper.findLatestJobPostingByCaseId(applicationCaseId);
-        return jobPosting != null
-                ? defaultString(jobPosting.getExtractedText(), jobPosting.getOriginalText())
-                : "";
+        if (jobPosting == null) {
+            return "";
+        }
+        return defaultString(jobPosting.getExtractedText(), jobPosting.getOriginalText());
     }
 
     private static BusinessException notFound() {
@@ -264,7 +375,7 @@ public class ApplicationCaseServiceImpl implements ApplicationCaseService {
 
     private static void validateJobPosting(JobPostingRequest request) {
         if (isBlank(request.originalText()) && isBlank(request.extractedText()) && isBlank(request.uploadedFileUrl())) {
-            throw new BusinessException(ErrorCode.INVALID_INPUT, "공고 원문, 추출 텍스트, 파일 URL 중 하나는 필요합니다.");
+            throw new BusinessException(ErrorCode.INVALID_INPUT, "공고 원문, 추출 텍스트, 파일 참조 중 하나는 필요합니다.");
         }
     }
 
@@ -274,6 +385,17 @@ public class ApplicationCaseServiceImpl implements ApplicationCaseService {
 
     private static String blankToNull(String value) {
         return isBlank(value) ? null : value.trim();
+    }
+
+    private static String compactColumnText(String value, int maxLength) {
+        if (isBlank(value)) {
+            return null;
+        }
+        String normalized = value.trim().replaceAll("\\s+", " ");
+        if (normalized.length() <= maxLength) {
+            return normalized;
+        }
+        return normalized.substring(0, maxLength);
     }
 
     private static String normalizeOption(String value, String defaultValue, Set<String> allowedValues, String fieldName) {
@@ -305,17 +427,17 @@ public class ApplicationCaseServiceImpl implements ApplicationCaseService {
             String strategy
     ) {
         static MockAnalysisSeed from(ApplicationCase applicationCase, String sourceText) {
-            String lowerText = sourceText == null ? "" : sourceText.toLowerCase();
+            String lowerText = sourceText == null ? "" : sourceText.toLowerCase(Locale.ROOT);
             boolean frontend = containsAny(lowerText, "react", "typescript", "javascript", "프론트");
             boolean backend = containsAny(lowerText, "java", "spring", "api", "서버", "백엔드");
             boolean cloud = containsAny(lowerText, "aws", "cloud", "배포", "kubernetes");
 
             String requiredSkills = frontend
                     ? "[\"React\",\"JavaScript\",\"REST API\"]"
-                    : backend ? "[\"Java\",\"Spring\",\"SQL\"]" : "[\"문제 해결력\",\"협업\",\"문서화\"]";
+                    : backend ? "[\"Java\",\"Spring\",\"SQL\"]" : "[\"문제 해결\",\"협업\",\"문서화\"]";
             String preferredSkills = cloud
                     ? "[\"AWS\",\"TypeScript\",\"CI/CD\"]"
-                    : frontend ? "[\"TypeScript\",\"Next.js\",\"웹 성능 최적화\"]" : "[\"데이터 분석\",\"프로젝트 경험\"]";
+                    : frontend ? "[\"TypeScript\",\"Next.js\",\"성능 최적화\"]" : "[\"데이터 분석\",\"프로젝트 경험\"]";
             String matchedSkills = frontend ? "[\"React\",\"REST API\",\"Git\"]" : backend ? "[\"Java\",\"SQL\"]" : "[\"협업\",\"문서화\"]";
             String missingSkills = cloud ? "[\"AWS\",\"배포 자동화\"]" : frontend ? "[\"TypeScript\",\"성능 최적화\"]" : "[\"정량 성과 정리\"]";
             int fitScore = frontend ? 72 : backend ? 64 : 58;
@@ -325,22 +447,22 @@ public class ApplicationCaseServiceImpl implements ApplicationCaseService {
                     "신입~경력 3년",
                     requiredSkills,
                     preferredSkills,
-                    "%s %s 직무의 주요 업무와 공고 요구사항을 기반으로 초기 분석했습니다."
+                    "%s %s 직무의 주요 업무를 공고 요구사항 기준으로 정리한 mock 분석입니다."
                             .formatted(applicationCase.getCompanyName(), applicationCase.getJobTitle()),
-                    "공고 원문 기반 자격 요건을 정리한 mock 분석입니다. 실제 AI 분석 연동 전까지 화면/흐름 검증에 사용합니다.",
+                    "공고 원문 기반 자격 요건을 정리한 mock 분석입니다.",
                     fitScore >= 70 ? "NORMAL" : "HARD",
                     "지원 건과 공고문을 바탕으로 생성한 개발용 mock 공고 분석입니다.",
                     fitScore,
                     matchedSkills,
                     missingSkills,
-                    "[\"공고 핵심 키워드로 프로젝트 경험 재정리\",\"부족 역량을 작은 실습으로 보완\",\"면접 답변에 수치와 역할 추가\"]",
+                    "[\"공고 키워드로 프로젝트 경험 재정리\",\"부족 역량을 작은 실습으로 보완\",\"면접 답변에 수치와 역할 추가\"]",
                     "[]",
                     "강점은 직무 요구사항과 연결하고, 부족 역량은 학습 계획과 포트폴리오 보완으로 설명하는 전략이 적절합니다.");
         }
 
         private static boolean containsAny(String text, String... keywords) {
             for (String keyword : keywords) {
-                if (text.contains(keyword.toLowerCase())) {
+                if (text.contains(keyword.toLowerCase(Locale.ROOT))) {
                     return true;
                 }
             }
@@ -377,7 +499,7 @@ public class ApplicationCaseServiceImpl implements ApplicationCaseService {
                     : "공고와 직무 정보를 기준으로 서비스 성장성, 사용자 경험, 데이터 기반 개선 역량을 확인해야 합니다.";
 
             return new CompanyAnalysisSeed(
-                    "%s는 %s 직무 관점에서 제품 이해도와 실행 경험을 함께 확인할 가능성이 높은 기업입니다."
+                    "%s는 %s 직무 지원에서 제품 이해와 실행 경험을 함께 확인할 가능성이 높은 기업입니다."
                             .formatted(companyName, jobTitle),
                     recentIssues,
                     industry,

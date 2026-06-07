@@ -129,4 +129,13 @@
         ORDER BY id DESC
         LIMIT 1
     </select>
+
+    <insert id="insertAiUsageLog" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO ai_usage_log
+            (user_id, application_case_id, feature_type, status, model,
+             input_tokens, output_tokens, token_usage, credit_used, error_message)
+        VALUES
+            (#{userId}, #{applicationCaseId}, #{featureType}, #{status}, #{model},
+             #{inputTokens}, #{outputTokens}, #{tokenUsage}, #{creditUsed}, #{errorMessage})
+    </insert>
 </mapper>

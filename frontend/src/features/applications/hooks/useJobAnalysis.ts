@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { createMockJobAnalysis, getJobAnalysis } from "../api/analysisApi";
+import { createJobAnalysis, getJobAnalysis } from "../api/analysisApi";
 import type { JobAnalysis } from "../types/analysis";
 
 export function useJobAnalysis(applicationCaseId: number | null, enabled = true) {
@@ -26,13 +26,13 @@ export function useJobAnalysis(applicationCaseId: number | null, enabled = true)
     }
   }, [applicationCaseId, enabled]);
 
-  const createMock = useCallback(async () => {
+  const generate = useCallback(async () => {
     if (!applicationCaseId) return null;
 
     setGenerating(true);
     setError(null);
     try {
-      const analysis = await createMockJobAnalysis(applicationCaseId);
+      const analysis = await createJobAnalysis(applicationCaseId);
       setJobAnalysis(analysis);
       return analysis;
     } catch (err) {
@@ -53,6 +53,6 @@ export function useJobAnalysis(applicationCaseId: number | null, enabled = true)
     generating,
     error,
     refresh,
-    createMock,
+    generate,
   };
 }

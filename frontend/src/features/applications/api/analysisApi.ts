@@ -13,6 +13,12 @@ export function createMockJobAnalysis(applicationCaseId: number): Promise<JobAna
   });
 }
 
+export function createJobAnalysis(applicationCaseId: number): Promise<JobAnalysis> {
+  return api<JobAnalysis>(`/application-cases/${applicationCaseId}/job-analysis`, {
+    method: "POST",
+  });
+}
+
 export async function getCompanyAnalysis(applicationCaseId: number): Promise<CompanyAnalysis | null> {
   return (await api<CompanyAnalysis | null>(`/application-cases/${applicationCaseId}/company-analysis`, {
     method: "GET",
@@ -21,6 +27,12 @@ export async function getCompanyAnalysis(applicationCaseId: number): Promise<Com
 
 export function createMockCompanyAnalysis(applicationCaseId: number): Promise<CompanyAnalysis> {
   return api<CompanyAnalysis>(`/application-cases/${applicationCaseId}/company-analysis/mock`, {
+    method: "POST",
+  });
+}
+
+export function createCompanyAnalysis(applicationCaseId: number): Promise<CompanyAnalysis> {
+  return api<CompanyAnalysis>(`/application-cases/${applicationCaseId}/company-analysis`, {
     method: "POST",
   });
 }

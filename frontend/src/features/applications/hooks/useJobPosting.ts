@@ -1,11 +1,13 @@
 import { useCallback, useEffect, useState } from "react";
-import { getJobPosting, saveJobPosting } from "../api/jobPostingsApi";
+import { getJobPosting, saveJobPosting, uploadJobPostingFile } from "../api/jobPostingsApi";
+import type { ApplicationSourceType } from "../types/applicationCase";
 import type { JobPosting, JobPostingRequest } from "../types/jobPosting";
 
 export function useJobPosting(applicationCaseId: number | null, enabled = true) {
   const [jobPosting, setJobPosting] = useState<JobPosting | null>(null);
   const [loading, setLoading] = useState(Boolean(applicationCaseId && enabled));
   const [saving, setSaving] = useState(false);
+  const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
@@ -46,6 +48,26 @@ export function useJobPosting(applicationCaseId: number | null, enabled = true) 
     [applicationCaseId],
   );
 
+  const upload = useCallback(
+    async (sourceType: Extract<ApplicationSourceType, "PDF" | "IMAGE">, file: File) => {
+      if (!applicationCaseId) return null;
+
+      setUploading(true);
+      setError(null);
+      try {
+        const posting = await uploadJobPostingFile(applicationCaseId, sourceType, file);
+        setJobPosting(posting);
+        return posting;
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "공고문 파일을 업로드하지 못했습니다.");
+        return null;
+      } finally {
+        setUploading(false);
+      }
+    },
+    [applicationCaseId],
+  );
+
   useEffect(() => {
     void refresh();
   }, [refresh]);
@@ -54,8 +76,10 @@ export function useJobPosting(applicationCaseId: number | null, enabled = true) 
     jobPosting,
     loading,
     saving,
+    uploading,
     error,
     refresh,
     save,
+    upload,
   };
 }

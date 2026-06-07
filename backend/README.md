@@ -37,6 +37,7 @@ DB_PASSWORD=... JWT_SECRET=... OAUTH_KAKAO_CLIENT_SECRET=... java -jar app.jar
 | OAuth | `OAUTH_{KAKAO,NAVER,GOOGLE}_CLIENT_ID` `..._CLIENT_SECRET` `..._REDIRECT_URI` | `CHANGEME`(미발급) |
 | 메일 | `MAIL_HOST` `MAIL_USERNAME` `MAIL_PASSWORD` `MAIL_FROM` `MAIL_DEV_MODE` | `smtp.naver.com` / 빈값 / 빈값 / no-reply / `true` |
 | 앱 | `APP_FRONTEND_URL` `APP_API_BASE_URL` | `http://localhost:5173` / `http://localhost:8080` |
+| 업로드 | `SPRING_SERVLET_MULTIPART_MAX_FILE_SIZE` `SPRING_SERVLET_MULTIPART_MAX_REQUEST_SIZE` `JOB_POSTING_MAX_FILE_SIZE_BYTES` | `10MB` / `12MB` / `10485760` |
 
 > 메일은 `MAIL_DEV_MODE=true`(또는 SMTP username 미설정)면 **실제 발송 대신 인증 링크를 로그로 출력**한다.
 > OAuth 키는 아직 미발급이라 placeholder다 — 키 수령 후 위 env(또는 yaml 기본값)만 교체하면 동작한다.
@@ -63,7 +64,7 @@ DB_PASSWORD=... JWT_SECRET=... OAUTH_KAKAO_CLIENT_SECRET=... java -jar app.jar
 
 ## 지원 건 (Application Case) API
 
-1차 MVP의 핵심 단위인 지원 건 API는 인증된 사용자 자신의 데이터만 다룬다.
+핵심 단위인 지원 건 API는 인증된 사용자 자신의 데이터만 다룬다.
 
 | Method | Path | 설명 | 인증 |
 | --- | --- | --- | --- |
@@ -72,13 +73,25 @@ DB_PASSWORD=... JWT_SECRET=... OAUTH_KAKAO_CLIENT_SECRET=... java -jar app.jar
 | GET | `/api/application-cases/{id}` | 지원 건 상세 | Bearer |
 | PATCH | `/api/application-cases/{id}` | 지원 건 수정 | Bearer |
 | DELETE | `/api/application-cases/{id}` | 지원 건 삭제 | Bearer |
-| POST | `/api/application-cases/{id}/job-posting` | 현재 공고문 저장(초기 버전은 1건 교체) | Bearer |
+| POST | `/api/application-cases/{id}/job-posting` | 텍스트/URL 공고문 저장 및 URL 본문 추출 | Bearer |
+| POST | `/api/application-cases/{id}/job-posting/upload` | PDF/이미지 업로드 및 텍스트 추출 | Bearer |
 | GET | `/api/application-cases/{id}/job-posting` | 현재 공고문 조회 | Bearer |
-| POST | `/api/application-cases/{id}/analysis/mock` | 개발용 mock 공고/적합도 분석 생성 | Bearer |
-| GET | `/api/application-cases/{id}/analysis` | 공고/적합도 분석 조회 | Bearer |
+| POST | `/api/application-cases/{id}/job-analysis` | 실제 OpenAI 공고 분석 생성 | Bearer |
+| GET | `/api/application-cases/{id}/job-analysis` | 공고 분석 조회 | Bearer |
+| POST | `/api/application-cases/{id}/job-analysis/mock` | 개발용 mock 공고 분석 생성 | Bearer |
+| POST | `/api/application-cases/{id}/company-analysis` | 실제 OpenAI 기업 분석 생성 | Bearer |
+| GET | `/api/application-cases/{id}/company-analysis` | 기업 분석 조회 | Bearer |
+| POST | `/api/application-cases/{id}/company-analysis/mock` | 개발용 mock 기업 분석 생성 | Bearer |
+| POST | `/api/application-cases/{id}/analysis/mock` | 호환용 mock 공고/적합도 분석 생성 | Bearer |
+| GET | `/api/application-cases/{id}/analysis` | 호환용 공고/적합도 분석 조회 | Bearer |
+| GET | `/api/admin/job-analysis` | 관리자 공고 분석 조회 | Bearer(ADMIN) |
+| GET | `/api/admin/company-analysis` | 관리자 기업 분석 조회 | Bearer(ADMIN) |
+| GET | `/api/admin/ai-usage/b` | 관리자 B AI 사용량 로그 조회 | Bearer(ADMIN) |
 
-현재 AI API 키와 프롬프트 운영 화면이 준비 전이므로 `/analysis/mock`은 화면과 데이터 흐름 검증용이다.
-실제 AI 연동은 `ai` 모듈과 프롬프트 템플릿 관리가 붙은 뒤 같은 응답 형태를 유지하며 교체한다.
+실제 AI 분석과 이미지/스캔 PDF OCR은 `OPENAI_API_KEY`가 필요하다. 모델은 `OPENAI_MODEL`로 변경할 수 있으며 기본값은 `gpt-5`다.
+텍스트 PDF는 PDFBox로 먼저 추출하고, 텍스트가 없는 PDF와 이미지는 OpenAI OCR을 사용한다.
+공고문 파일 업로드는 기본 10MB까지 허용하며, 초과 시 `INVALID_INPUT` 응답으로 안내한다.
+`/analysis/mock`은 `fit_analysis`를 포함하는 호환 API이므로 B 프론트에서는 직접 사용하지 않는다.
 
 ## JSON 컬럼 매핑 방침
 

@@ -1,0 +1,73 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.careertuner.admin.analysis.mapper.AdminBAnalysisMapper">
+
+    <select id="findJobAnalyses" resultType="com.careertuner.admin.analysis.dto.AdminJobAnalysisRow">
+        SELECT
+            ja.id,
+            ja.application_case_id,
+            ac.user_id,
+            u.email AS user_email,
+            ac.company_name,
+            ac.job_title,
+            ja.employment_type,
+            ja.experience_level,
+            ja.required_skills,
+            ja.preferred_skills,
+            ja.difficulty,
+            ja.summary,
+            ja.created_at
+        FROM job_analysis ja
+        JOIN application_case ac ON ja.application_case_id = ac.id
+        JOIN users u ON ac.user_id = u.id
+        ORDER BY ja.created_at DESC, ja.id DESC
+        LIMIT #{limit}
+    </select>
+
+    <select id="findCompanyAnalyses" resultType="com.careertuner.admin.analysis.dto.AdminCompanyAnalysisRow">
+        SELECT
+            ca.id,
+            ca.application_case_id,
+            ac.user_id,
+            u.email AS user_email,
+            ac.company_name,
+            ac.job_title,
+            ca.company_summary,
+            ca.recent_issues,
+            ca.industry,
+            ca.competitors,
+            ca.sources,
+            ca.created_at
+        FROM company_analysis ca
+        JOIN application_case ac ON ca.application_case_id = ac.id
+        JOIN users u ON ac.user_id = u.id
+        ORDER BY ca.created_at DESC, ca.id DESC
+        LIMIT #{limit}
+    </select>
+
+    <select id="findBUsageLogs" resultType="com.careertuner.admin.analysis.dto.AdminAiUsageLogRow">
+        SELECT
+            aul.id,
+            aul.user_id,
+            u.email AS user_email,
+            aul.application_case_id,
+            ac.company_name,
+            ac.job_title,
+            aul.feature_type,
+            aul.status,
+            aul.model,
+            aul.input_tokens,
+            aul.output_tokens,
+            aul.token_usage,
+            aul.credit_used,
+            aul.error_message,
+            aul.created_at
+        FROM ai_usage_log aul
+        JOIN users u ON aul.user_id = u.id
+        LEFT JOIN application_case ac ON aul.application_case_id = ac.id
+        WHERE aul.feature_type IN ('JOB_ANALYSIS', 'COMPANY_RESEARCH', 'JOB_POSTING_OCR')
+        ORDER BY aul.created_at DESC, aul.id DESC
+        LIMIT #{limit}
+    </select>
+</mapper>

@@ -59,22 +59,24 @@ export function ApplicationDetailPage() {
     jobPosting,
     loading: postingLoading,
     saving: postingSaving,
+    uploading: postingUploading,
     error: postingError,
     save: savePosting,
+    upload: uploadPosting,
   } = useJobPosting(id, isAuthenticated && Boolean(applicationCase));
   const {
     jobAnalysis,
     loading: jobAnalysisLoading,
     generating: jobAnalysisGenerating,
     error: jobAnalysisError,
-    createMock: createMockJobAnalysis,
+    generate: generateJobAnalysis,
   } = useJobAnalysis(id, isAuthenticated && Boolean(applicationCase));
   const {
     companyAnalysis,
     loading: companyAnalysisLoading,
     generating: companyAnalysisGenerating,
     error: companyAnalysisError,
-    createMock: createMockCompanyAnalysis,
+    generate: generateCompanyAnalysis,
   } = useCompanyAnalysis(id, isAuthenticated && Boolean(applicationCase));
   const [activeTab, setActiveTab] = useState<DetailTab>("overview");
 
@@ -124,7 +126,7 @@ export function ApplicationDetailPage() {
 
   return (
     <div className="min-h-[calc(100vh-72px)] bg-slate-50">
-      <div className="mx-auto grid max-w-7xl gap-6 px-4 py-8 lg:grid-cols-[260px_minmax(0,1fr)] sm:px-6">
+      <div className="mx-auto grid max-w-7xl gap-6 px-4 py-8 sm:px-6 lg:grid-cols-[260px_minmax(0,1fr)]">
         <aside className="hidden lg:block">
           <div className="sticky top-20 space-y-4">
             <div className="flex items-center justify-between">
@@ -230,8 +232,8 @@ export function ApplicationDetailPage() {
                   <Card className="border-slate-200 bg-white">
                     <CardContent className="grid gap-3 p-4 md:grid-cols-3">
                       {[
-                        "스펙 비교 준비 중 - C 담당",
-                        "예상 질문 / 가상 면접 준비 중 - D 담당",
+                        "적합도 분석 준비 중 - C 담당",
+                        "예상 질문 / 모의 면접 준비 중 - D 담당",
                         "첨삭 기록 준비 중 - E 담당",
                       ].map((item) => (
                         <div key={item} className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm text-slate-600">
@@ -248,8 +250,10 @@ export function ApplicationDetailPage() {
                   jobPosting={jobPosting}
                   loading={postingLoading}
                   saving={postingSaving}
+                  uploading={postingUploading}
                   error={postingError}
                   onSave={savePosting}
+                  onUpload={uploadPosting}
                 />
               )}
 
@@ -259,7 +263,7 @@ export function ApplicationDetailPage() {
                   loading={jobAnalysisLoading}
                   generating={jobAnalysisGenerating}
                   error={jobAnalysisError}
-                  onCreateMock={createMockJobAnalysis}
+                  onGenerate={generateJobAnalysis}
                 />
               )}
 
@@ -269,7 +273,7 @@ export function ApplicationDetailPage() {
                   loading={companyAnalysisLoading}
                   generating={companyAnalysisGenerating}
                   error={companyAnalysisError}
-                  onCreateMock={createMockCompanyAnalysis}
+                  onGenerate={generateCompanyAnalysis}
                 />
               )}
             </>

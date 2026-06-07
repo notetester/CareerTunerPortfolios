@@ -18,3 +18,18 @@ export function saveJobPosting(applicationCaseId: number, request: JobPostingReq
     body: JSON.stringify(request),
   });
 }
+
+export function uploadJobPostingFile(
+  applicationCaseId: number,
+  sourceType: "PDF" | "IMAGE",
+  file: File,
+): Promise<JobPosting> {
+  const formData = new FormData();
+  formData.append("sourceType", sourceType);
+  formData.append("file", file);
+
+  return api<JobPosting>(`/application-cases/${applicationCaseId}/job-posting/upload`, {
+    method: "POST",
+    body: formData,
+  });
+}

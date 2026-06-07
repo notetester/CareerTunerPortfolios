@@ -9,7 +9,7 @@ interface JobAnalysisPanelProps {
   loading: boolean;
   generating: boolean;
   error: string | null;
-  onCreateMock(): Promise<JobAnalysis | null>;
+  onGenerate(): Promise<JobAnalysis | null>;
 }
 
 function formatDateTime(value: string): string {
@@ -42,7 +42,7 @@ export function JobAnalysisPanel({
   loading,
   generating,
   error,
-  onCreateMock,
+  onGenerate,
 }: JobAnalysisPanelProps) {
   return (
     <Card className="border-slate-200 bg-white">
@@ -54,7 +54,7 @@ export function JobAnalysisPanel({
               공고 분석
             </CardTitle>
             {analysis ? (
-              <p className="mt-1 text-xs text-slate-500">검증용 결과 생성됨: {formatDateTime(analysis.createdAt)}</p>
+              <p className="mt-1 text-xs text-slate-500">최근 분석: {formatDateTime(analysis.createdAt)}</p>
             ) : (
               <p className="mt-1 text-xs text-slate-500">분석 결과 없음</p>
             )}
@@ -64,10 +64,10 @@ export function JobAnalysisPanel({
             size="sm"
             className="bg-blue-600 text-white hover:bg-blue-700"
             disabled={loading || generating}
-            onClick={() => void onCreateMock()}
+            onClick={() => void onGenerate()}
           >
             {generating ? <Loader2 className="size-4 animate-spin" /> : <PlayCircle className="size-4" />}
-            {analysis ? "검증용 다시 생성" : "검증용 분석 생성"}
+            {analysis ? "AI 재분석" : "AI 분석 실행"}
           </Button>
         </div>
       </CardHeader>
@@ -99,24 +99,24 @@ export function JobAnalysisPanel({
             <div className="grid gap-3 md:grid-cols-2">
               <div className="rounded-lg border border-slate-200 p-4">
                 <div className="text-sm font-semibold text-slate-900">주요 업무</div>
-                <p className="mt-2 text-sm leading-6 text-slate-600">{analysis.duties ?? "내용 없음"}</p>
+                <p className="mt-2 whitespace-pre-line text-sm leading-6 text-slate-600">{analysis.duties ?? "내용 없음"}</p>
               </div>
               <div className="rounded-lg border border-slate-200 p-4">
                 <div className="text-sm font-semibold text-slate-900">자격 요건</div>
-                <p className="mt-2 text-sm leading-6 text-slate-600">{analysis.qualifications ?? "내용 없음"}</p>
+                <p className="mt-2 whitespace-pre-line text-sm leading-6 text-slate-600">{analysis.qualifications ?? "내용 없음"}</p>
               </div>
             </div>
 
             <div className="rounded-lg border border-blue-100 bg-blue-50 p-4">
               <div className="text-sm font-semibold text-blue-950">요약</div>
-              <p className="mt-2 text-sm leading-6 text-blue-900">{analysis.summary ?? "내용 없음"}</p>
+              <p className="mt-2 whitespace-pre-line text-sm leading-6 text-blue-900">{analysis.summary ?? "내용 없음"}</p>
             </div>
           </>
         ) : (
           <div className="rounded-lg border border-dashed border-slate-300 bg-slate-50 p-6">
             <div className="text-sm font-semibold text-slate-800">분석 결과 없음</div>
             <p className="mt-2 text-sm leading-6 text-slate-500">
-              공고문과 지원 건 정보를 기준으로 검증용 공고 분석 결과를 생성할 수 있습니다.
+              공고문을 먼저 저장한 뒤 AI 분석을 실행하면 고용 형태, 경력 수준, 요구 역량, 주요 업무가 저장됩니다.
             </p>
           </div>
         )}

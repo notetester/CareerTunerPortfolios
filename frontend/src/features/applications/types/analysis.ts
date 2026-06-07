@@ -42,7 +42,7 @@ export function parseJsonStringArray(value: string | null | undefined): string[]
 export function getDifficultyLabel(value: string | null | undefined): string {
   switch (value) {
     case "EASY":
-      return "낮음";
+      return "쉬움";
     case "NORMAL":
       return "보통";
     case "HARD":

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { createMockCompanyAnalysis, getCompanyAnalysis } from "../api/analysisApi";
+import { createCompanyAnalysis, getCompanyAnalysis } from "../api/analysisApi";
 import type { CompanyAnalysis } from "../types/analysis";
 
 export function useCompanyAnalysis(applicationCaseId: number | null, enabled = true) {
@@ -26,13 +26,13 @@ export function useCompanyAnalysis(applicationCaseId: number | null, enabled = t
     }
   }, [applicationCaseId, enabled]);
 
-  const createMock = useCallback(async () => {
+  const generate = useCallback(async () => {
     if (!applicationCaseId) return null;
 
     setGenerating(true);
     setError(null);
     try {
-      const analysis = await createMockCompanyAnalysis(applicationCaseId);
+      const analysis = await createCompanyAnalysis(applicationCaseId);
       setCompanyAnalysis(analysis);
       return analysis;
     } catch (err) {
@@ -53,6 +53,6 @@ export function useCompanyAnalysis(applicationCaseId: number | null, enabled = t
     generating,
     error,
     refresh,
-    createMock,
+    generate,
   };
 }

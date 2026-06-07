@@ -5,6 +5,7 @@ import java.util.List;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 
+import com.careertuner.applicationcase.domain.AiUsageLog;
 import com.careertuner.applicationcase.domain.ApplicationCase;
 import com.careertuner.applicationcase.domain.CompanyAnalysis;
 import com.careertuner.applicationcase.domain.FitAnalysis;
@@ -47,4 +48,6 @@ public interface ApplicationCaseMapper {
     void insertFitAnalysis(FitAnalysis fitAnalysis);
 
     FitAnalysis findLatestFitAnalysisByCaseId(Long applicationCaseId);
+
+    void insertAiUsageLog(AiUsageLog aiUsageLog);
 }
