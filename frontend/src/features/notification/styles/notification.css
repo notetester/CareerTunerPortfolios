@@ -1,0 +1,44 @@
+/* CareerTuner Notifications — ported from design system prototype */
+
+.ct-noti__head { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 18px; flex-wrap: wrap; }
+.ct-noti__title { display: flex; align-items: center; gap: 10px; }
+.ct-noti__title h1 { font-size: 28px; font-weight: 700; letter-spacing: -0.02em; white-space: nowrap; }
+.ct-noti__count { display: inline-flex; align-items: center; justify-content: center; min-width: 24px; height: 24px; padding: 0 8px;
+  border-radius: 9999px; background: var(--destructive); color: #fff; font-size: 13px; font-weight: 700; }
+.ct-noti__tabs { margin-bottom: 16px; overflow-x: auto; }
+
+.ct-notilist { background: var(--card); border: 1px solid var(--border); border-radius: 12px; box-shadow: 0 1px 3px rgba(15,23,42,0.08), 0 1px 2px rgba(15,23,42,0.04); overflow: hidden; }
+.ct-noti { display: flex; gap: 14px; padding: 16px 18px 16px 26px; position: relative; transition: background 180ms; cursor: pointer; }
+.ct-noti + .ct-noti { border-top: 1px solid var(--border); }
+.ct-noti:hover { background: var(--muted); }
+.ct-noti.unread { background: color-mix(in srgb, var(--info-50) 55%, var(--card)); }
+.ct-noti.unread:hover { background: var(--info-50); }
+.ct-noti__dot { position: absolute; left: 11px; top: 25px; width: 7px; height: 7px; border-radius: 50%; background: var(--brand-blue); }
+.ct-noti__ic { width: 40px; height: 40px; border-radius: 8px; flex: none; display: flex; align-items: center; justify-content: center; }
+.ct-noti__ic svg { width: 19px; height: 19px; stroke-width: 1.85; }
+.ic-analysis { background: var(--cat-job-bg); color: var(--cat-job-fg); }
+.ic-report { background: var(--cat-interview-bg); color: var(--cat-interview-fg); }
+.ic-billing { background: var(--cat-role-bg); color: var(--cat-role-fg); }
+.ic-notice { background: var(--cat-portfolio-bg); color: var(--cat-portfolio-fg); }
+.ic-reply { background: var(--cat-cert-bg); color: var(--cat-cert-fg); }
+.ct-noti__body { flex: 1; min-width: 0; }
+.ct-noti__t { font-size: 14px; font-weight: 600; color: var(--foreground); margin-bottom: 3px; }
+.ct-noti__m { font-size: 13px; color: var(--muted-foreground); line-height: 1.55; }
+.ct-noti__link { display: inline-flex; align-items: center; gap: 4px; margin-top: 7px; font-size: 12px; font-weight: 600; color: var(--brand-blue); white-space: nowrap; }
+.ct-noti__link svg { width: 12px; height: 12px; stroke-width: 2.2; }
+.ct-noti__time { font-size: 12px; color: var(--muted-foreground); flex: none; white-space: nowrap; }
+
+.ct-noti__more { display: flex; justify-content: center; margin-top: 18px; }
+
+/* empty */
+.ct-noti__empty { display: flex; flex-direction: column; align-items: center; text-align: center; padding: 64px 24px;
+  background: var(--card); border: 1px solid var(--border); border-radius: 12px; box-shadow: 0 1px 3px rgba(15,23,42,0.08), 0 1px 2px rgba(15,23,42,0.04); }
+.ct-noti__emptyic { width: 72px; height: 72px; border-radius: 50%; background: var(--muted); border: 1px solid var(--border);
+  display: flex; align-items: center; justify-content: center; margin-bottom: 18px; }
+.ct-noti__emptyic svg { width: 30px; height: 30px; stroke-width: 1.6; color: var(--muted-foreground); }
+.ct-noti__empty h3 { font-size: 17px; font-weight: 600; color: var(--foreground); }
+.ct-noti__empty p { font-size: 14px; color: var(--muted-foreground); margin-top: 6px; }
+
+@media (max-width: 768px) {
+  .ct-noti__head h1 { font-size: 24px; }
+}

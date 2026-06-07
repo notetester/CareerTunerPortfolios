@@ -1,0 +1,50 @@
+/* CareerTuner shared design tokens — used across all feature modules */
+
+/* ===== Page container (compensates for missing SubNav sidebar) ===== */
+.ct-page {
+  max-width: 1400px;
+  margin: 0 auto;
+  padding: 28px 24px 64px calc(232px + 28px + 24px);
+}
+@media (max-width: 1200px) {
+  .ct-page { padding-left: 48px; }
+}
+@media (max-width: 768px) {
+  .ct-page { padding: 20px 16px 48px; }
+}
+
+/* ===== Page head ===== */
+.ct-pagehead { margin-bottom: 20px; }
+.ct-pagehead__row { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+.ct-pagehead h1 { font-size: 28px; font-weight: 700; letter-spacing: -0.02em; }
+.ct-pagehead p { color: var(--muted-foreground); font-size: 14px; margin-top: 6px; }
+
+/* ===== Brand button ===== */
+.ct-btn-brand { display: inline-flex; align-items: center; gap: 7px; padding: 9px 18px; border-radius: 8px; border: none; cursor: pointer; font-size: 14px; font-weight: 600; color: #fff; background: var(--gradient-brand); transition: opacity 180ms; white-space: nowrap; }
+.ct-btn-brand:hover { opacity: 0.9; }
+.ct-btn-brand:disabled { opacity: 0.5; cursor: default; }
+.ct-btn-brand svg { width: 16px; height: 16px; stroke-width: 2; }
+
+/* ===== Action button ===== */
+.ct-act { display: inline-flex; align-items: center; gap: 7px; height: 40px; padding: 0 16px; border-radius: 8px; white-space: nowrap; border: 1px solid var(--border); background: var(--card); color: var(--foreground); font-size: 14px; font-weight: 500; cursor: pointer; transition: background 180ms, border-color 180ms, color 180ms; }
+.ct-act svg { width: 17px; height: 17px; stroke-width: 1.8; }
+.ct-act:hover { background: var(--muted); }
+
+/* ===== Badge ===== */
+.ct-badge { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; font-weight: 600; line-height: 1; letter-spacing: -0.01em; white-space: nowrap; padding: 5px 10px; border-radius: 9999px; border: 1px solid transparent; }
+.ct-badge svg { width: 12px; height: 12px; stroke-width: 2; }
+.ct-badge--neutral { background: var(--secondary); color: var(--secondary-foreground); }
+.ct-badge--success { background: var(--success-50); color: #15803d; }
+.dark .ct-badge--success { background: rgba(34,197,94,0.16); color: #86efac; }
+.ct-badge--success.ct-badge--dot::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+.ct-badge--info { background: var(--info-50); color: #1d4ed8; }
+.dark .ct-badge--info { background: rgba(59,130,246,0.16); color: #93c5fd; }
+.ct-badge--solid { background: var(--brand-blue); color: #fff; }
+/* Community category variants */
+.ct-badge--cat-job { background: var(--cat-job-bg); color: var(--cat-job-fg); }
+.ct-badge--cat-interview { background: var(--cat-interview-bg); color: var(--cat-interview-fg); }
+.ct-badge--cat-role { background: var(--cat-role-bg); color: var(--cat-role-fg); }
+.ct-badge--cat-pass { background: var(--cat-pass-bg); color: var(--cat-pass-fg); }
+.ct-badge--cat-portfolio { background: var(--cat-portfolio-bg); color: var(--cat-portfolio-fg); }
+.ct-badge--cat-cert { background: var(--cat-cert-bg); color: var(--cat-cert-fg); }
+.ct-badge--cat-free { background: var(--cat-free-bg); color: var(--cat-free-fg); }

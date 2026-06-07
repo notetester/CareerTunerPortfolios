@@ -1,7 +1,7 @@
 import { useLocation, useSearchParams } from "react-router";
-import { Badge } from "../components/ui/badge";
-import { Button } from "../components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
+import { Badge } from "@/app/components/ui/badge";
+import { Button } from "@/app/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/app/components/ui/card";
 import { Building2, Newspaper, Radio, Rocket, Users } from "lucide-react";
 
 const companySections = {
