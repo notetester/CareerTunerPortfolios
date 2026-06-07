@@ -423,7 +423,7 @@ backend/src/main/java/com/careertuner/admin/<domain>/log
 | `prompts/support`, `admin/prompt/support` | F |
 
 분석 통계 백엔드 표준 경로는 `backend/src/main/java/com/careertuner/admin/analytics`다.
-현재 저장소의 `backend/src/main/java/com/careertuner/admin/analysis`는 신규 구현 시 `admin/analytics`로 정리한다.
+관리자 분석 통계 패키지는 위 표준 경로만 사용한다.
 
 골격만 있는 패키지나 폴더는 `package-info.java` 또는 `.gitkeep`만 있어도 정상이다.
 실제 구현은 담당 기능 작업이 시작될 때 해당 담당자가 채운다.

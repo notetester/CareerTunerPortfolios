@@ -635,8 +635,7 @@ AI 공통 구조
 ## 12. 기존 관리자 골격 담당 지정
 
 현재 저장소에 있는 관리자 골격은 아래처럼 담당자를 지정한다. 분석 통계 명칭은 `analytics`로 통일한다.
-따라서 현재 `backend/src/main/java/com/careertuner/admin/analysis`는 신규 구현 시
-`backend/src/main/java/com/careertuner/admin/analytics`로 정리한다.
+관리자 분석 통계 패키지는 `analytics` 경로만 사용한다.
 
 | 관리자 골격 | 담당 | 사용 목적 |
 | --- | --- | --- |
@@ -648,4 +647,4 @@ AI 공통 구조
 | `backend/src/main/java/com/careertuner/admin/legal` | F | 약관·정책 콘텐츠 관리 |
 | `backend/src/main/java/com/careertuner/admin/company` | F | 서비스 회사/브랜드 소개 관리 |
 | `backend/src/main/java/com/careertuner/admin/serviceinfo` | F | 서비스 소개 콘텐츠 관리 |
-| `backend/src/main/java/com/careertuner/admin/analysis` → `backend/src/main/java/com/careertuner/admin/analytics` | C | 분석 통계와 대시보드 AI 분석 결과 관리 |
+| `backend/src/main/java/com/careertuner/admin/analytics` | C | 분석 통계와 대시보드 AI 분석 결과 관리 |
