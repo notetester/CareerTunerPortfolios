@@ -14,7 +14,7 @@
 - MyBatis XML은 `backend/src/main/resources/mapper/<domain>`에 둔다.
 - 공통 인프라는 `common`, AI 공통은 `ai/common`, 프롬프트는 `ai/prompt`에 둔다.
 - 사용자 기능이 릴리스 완료로 표시되려면 관련 관리자 화면과 관리자 API도 같은 릴리스 기준으로 완료해야 한다.
-- 공통 영역의 Owner는 팀장이며, 라우팅·공통 컴포넌트·공통 API·DB·인증/권한·AI 프롬프트·로그 구조 변경은 팀장 승인 또는 팀 합의 후 진행한다.
+- 공통 영역의 Owner는 팀장이며, 라우팅·공통 컴포넌트·공통 API·DB·인증/권한·AI 프롬프트 공통 엔진·공통 로그 구조 변경은 팀장 승인 또는 팀 합의 후 진행한다.
 
 ## 2. 기능 ID 표
 
@@ -120,7 +120,7 @@ backend/src/main/resources/mapper/admin/<domain>/
 | --- | --- | --- | --- |
 | A | 인증, 회원, 프로필, 설정, 동의 | 이력서 요약, 기술스택 추출, 프로필 완성도 진단 | 회원 관리, 동의 이력 관리 |
 | B | 지원 건, 공고문, 공고 분석, 기업 분석 | 공고 분석, 필수/우대조건 추출, 기업 요약 | 지원 건 관리, 공고/기업 분석 로그 관리 |
-| C | 스펙 비교, 취업 분석, 대시보드 | 적합도 분석, 부족 역량 추천, 학습/자격증 추천, 커리어 전략 추천, 대시보드 AI 분석 출력 | 분석 통계, 적합도 분석 관리 |
+| C | 홈, 스펙 비교, 취업 분석, 대시보드 | 적합도 분석, 부족 역량 추천, 학습/자격증 추천, 커리어 전략 추천, 대시보드 AI 분석 출력 | 관리자 홈, 분석 통계, 적합도 분석 관리 |
 | D | 가상 면접, 면접 리포트, 면접 파일 | 질문 생성, 꼬리 질문, 답변 평가, 리포트 생성 | 면접 세션 관리, 면접 리포트 관리 |
 | E | 첨삭, 결제, 크레딧 | 답변 첨삭, 자소서 첨삭, 이력서 표현 개선 | 결제 관리, 크레딧 관리, 첨삭 로그 관리 |
 | F | 커뮤니티, 고객센터, 알림, 공지, 회사/법적 문서 | 후기 요약, 질문 추출, 게시글 추천, 문의 답변 초안 | 게시판/신고, 공지/FAQ/문의, 알림 관리 |
@@ -184,22 +184,28 @@ C 소유 컴포넌트는 아래 C 담당 경로를 우선한다.
 ### C 담당
 
 ```text
+frontend/src/features/home
 frontend/src/features/analysis
 frontend/src/features/dashboard
 frontend/src/features/applications/components/FitAnalysisPanel.tsx
 frontend/src/features/applications/components/StrategyPanel.tsx
 frontend/src/features/applications/components/LearningRecommendationPanel.tsx
+frontend/src/admin/features/home
 frontend/src/admin/features/analytics
 frontend/src/admin/features/dashboard
 frontend/src/admin/features/fit-analysis
 
+backend/src/main/java/com/careertuner/home
 backend/src/main/java/com/careertuner/fitanalysis
 backend/src/main/java/com/careertuner/analysis
 backend/src/main/java/com/careertuner/dashboard
+backend/src/main/java/com/careertuner/admin/home
 backend/src/main/java/com/careertuner/admin/analytics
 backend/src/main/java/com/careertuner/admin/dashboard
 backend/src/main/java/com/careertuner/admin/fitanalysis
 ```
+
+홈은 공개 진입점이지만 기본 대시보드와 준비 현황 요약을 포함하므로 C가 담당한다.
 
 ### D 담당
 
@@ -299,42 +305,56 @@ community/service/CommunityAiService
 support/service/SupportAiService
 ```
 
+도메인별 프롬프트와 프롬프트 관리 화면도 같은 원칙을 따른다. 공통 프롬프트 엔진과 타입은
+`ai/prompt`에서 관리하지만, 기능별 프롬프트 내용은 각 담당자의 하위 폴더에 둔다.
+
+```text
+backend/src/main/java/com/careertuner/<domain>/ai/prompt/
+backend/src/main/java/com/careertuner/admin/prompt/<feature>/
+frontend/src/admin/features/prompts/<feature>/
+```
+
+예를 들어 B는 `jobanalysis`, `companyanalysis` 프롬프트 하위 폴더를, C는 `fitanalysis`, `analytics`
+프롬프트 하위 폴더를 담당한다. 공통 프롬프트 엔진 자체를 바꾸는 경우에만 8번 공통 파일 규칙을 따른다.
+
 ## 8. 공통 파일 소유권
 
-아래 파일과 경로는 팀장 Owner의 공통 영역이다. 기능 담당자가 수정해야 할 때는 수정 필요 사유,
-영향 범위, 변경 파일, 관련 기능을 공유한 뒤 팀장 승인 또는 팀 합의 후 반영한다.
+아래 파일과 경로는 팀장 Owner의 공통 관리 영역이다. 이는 구현 담당을 팀장에게 배정한다는 뜻이 아니라,
+여러 담당자가 함께 쓰는 기반을 바꿀 때 충돌을 막기 위한 승인·합의 규칙이다.
+기능 담당자가 수정해야 할 때는 수정 필요 사유, 영향 범위, 변경 파일, 관련 기능을 공유한 뒤
+팀장 승인 또는 팀 합의 후 반영한다.
 
 ```text
 frontend/src/app/routes.ts
 frontend/src/admin/routes.ts
-frontend/src/features/home
 frontend/src/app/components/layout/Header.tsx
 frontend/src/app/components/layout/Footer.tsx
 frontend/src/app/lib/api.ts
 frontend/src/app/components/media
 frontend/src/app/components/upload
-frontend/src/admin/features/prompts
+frontend/src/admin/features/prompts        루트 셸만 공통, 하위 <feature>는 담당자 소유
 
 backend/src/main/java/com/careertuner/common
-backend/src/main/java/com/careertuner/home
 backend/src/main/resources/db/schema.sql
 backend/src/main/resources/db/data.sql
 backend/build.gradle
 backend/src/main/resources/application.yaml
 backend/src/main/java/com/careertuner/common/config/SecurityConfig.java
 backend/src/main/java/com/careertuner/ai/common
-backend/src/main/java/com/careertuner/ai/prompt
-backend/src/main/java/com/careertuner/admin/prompt
+backend/src/main/java/com/careertuner/ai/prompt       공통 엔진만 해당
+backend/src/main/java/com/careertuner/admin/prompt    루트 셸만 공통, 하위 <feature>는 담당자 소유
 ```
 
-향후 생성할 `frontend/src/admin/features/logs`도 생성 시점부터 공통 영역으로 취급한다.
+전역 `frontend/src/admin/features/logs`를 기본 생성하지 않는다. 기능별 운영 로그가 필요하면
+`frontend/src/admin/features/<feature>/logs`, `backend/src/main/java/com/careertuner/admin/<domain>/log`처럼
+각 담당자 하위 폴더에 둔다. 공통 로그 스키마, 공통 수집기, 전역 로그 뷰어가 필요할 때만 8번 공통 규칙을 따른다.
 
 확정 소유권과 운영 규칙:
 
 ```text
 Owner: 팀장
 수정 전 공유: 수정 사유, 영향 범위, 변경 파일, 관련 기능
-합의 필수: 라우팅, 공통 컴포넌트, 공통 API, DB 구조, 인증/권한, AI 프롬프트, 로그 구조
+합의 필수: 라우팅, 공통 컴포넌트, 공통 API, DB 구조, 인증/권한, AI 프롬프트 공통 엔진, 공통 로그 구조
 예외: 단순 오타, 주석, 명백한 문서 오류
 ```
 
@@ -342,57 +362,68 @@ Owner: 팀장
 `backend/src/main/java/com/careertuner/serviceinfo`는 같은 기능의 백엔드 도메인이다.
 프런트 폴더명을 `serviceinfo`로 새로 만들지 않는다.
 
-## 9. 지금 폴더만 먼저 둔 기능
+## 9. 먼저 둔 골격의 담당 분배
 
-아래 기능은 아직 API나 DB가 완성되지 않았지만 곧 필요해질 가능성이 높아서 골격을 먼저 둔다.
+아래 기능은 아직 API나 DB가 완성되지 않았더라도 곧 필요해질 가능성이 높아서 골격을 먼저 둔다.
+골격의 구현은 각 기능 담당자가 한다.
+팀장은 8번 공통 파일 소유권에 해당하는 공통 기반 변경을 관리한다.
+
+| 골격 | 담당 | 비고 |
+| --- | --- | --- |
+| `notification` | F | 알림 도메인과 알림 설정 API |
+| `file` | D | 파일 도메인. 공통 업로드/미디어 컴포넌트 수정은 8번 규칙 적용 |
+| `credit` | E | 크레딧 장부와 사용 내역 |
+| `consent` | A | 사용자 동의 이력 |
+| `ai/common` | 8번 공통 규칙 | 공통 AI 클라이언트와 타입만 해당. 도메인 AI 서비스는 각 담당자 소유 |
+| `ai/prompt` | 8번 공통 규칙 | 공통 프롬프트 엔진만 해당. 기능별 프롬프트는 각 담당자 하위 폴더 |
+| `admin/user` | A | 회원 관리 |
+| `admin/auth` | A | 관리자 인증·권한 보조 |
+| `admin/profile` | A | 사용자 프로필 운영 확인 |
+| `admin/settings` | A | 계정·설정 운영 확인 |
+| `admin/consent` | A | 동의 이력 관리 |
+| `admin/home` | C | 관리자 홈, 기본 대시보드, 준비 현황 요약 |
+| `admin/jobanalysis` | B | 공고 분석 관리 |
+| `admin/companyanalysis` | B | 기업 분석 관리 |
+| `admin/fitanalysis` | C | 적합도 분석 관리 |
+| `admin/analytics` | C | 분석 통계와 대시보드 AI 분석 결과 관리 |
+| `admin/payment` | E | 결제 관리 |
+| `admin/billing` | E | 구독·청구 관리 |
+| `admin/credit` | E | 크레딧 지급·차감·환불 예외 관리 |
+| `admin/plan` | E | 요금제 관리 |
+| `admin/aiusage` | E | AI 사용량·비용 조회 화면 |
+| `admin/legal` | F | 약관·정책 콘텐츠 관리 |
+| `admin/company` | F | 서비스 회사/브랜드 소개 관리 |
+| `admin/serviceinfo` | F | 서비스 소개 콘텐츠 관리 |
+| `admin/report` | F | 커뮤니티 신고·운영 리포트 |
+| `admin/notice` | F | 공지사항 관리 |
+| `admin/faq` | F | FAQ 관리 |
+| `admin/notification` | F | 알림 운영 관리 |
+
+프롬프트와 로그는 전역 기능 하나로 몰아두지 않는다. 기능별 프롬프트나 운영 로그가 필요하면 아래처럼
+각 담당자의 하위 폴더에 만든다.
 
 ```text
-notification
-file
-credit
-consent
-ai/common
-ai/prompt
-admin/user
-admin/auth
-admin/profile
-admin/settings
-admin/home
-admin/consent
-admin/jobanalysis
-admin/companyanalysis
-admin/fitanalysis
-admin/analytics
-admin/payment
-admin/billing
-admin/credit
-admin/plan
-admin/aiusage
-admin/legal
-admin/company
-admin/serviceinfo
-admin/prompt
-admin/report
-admin/notice
-admin/faq
-admin/notification
+frontend/src/admin/features/prompts/<feature>
+backend/src/main/java/com/careertuner/admin/prompt/<feature>
+frontend/src/admin/features/<feature>/logs
+backend/src/main/java/com/careertuner/admin/<domain>/log
 ```
 
-관리자 프런트의 `frontend/src/admin/features/prompts`는 프롬프트 공통 기능 골격으로 유지한다.
-`frontend/src/admin/features/logs`는 시스템 로그 작업을 시작할 때 생성할 예정 경로다.
+예:
 
-기존 관리자 골격 담당:
-
-| 관리자 골격 | 담당 |
+| 하위 폴더 | 담당 |
 | --- | --- |
-| `admin/auth`, `admin/profile`, `admin/settings` | A |
-| `admin/home` | 팀장 |
-| `admin/analytics` | C |
-| `admin/billing` | E |
-| `admin/legal`, `admin/company`, `admin/serviceinfo` | F |
+| `prompts/profile`, `admin/prompt/profile` | A |
+| `prompts/job-analysis`, `admin/prompt/jobanalysis` | B |
+| `prompts/company-analysis`, `admin/prompt/companyanalysis` | B |
+| `prompts/fit-analysis`, `admin/prompt/fitanalysis` | C |
+| `prompts/interview`, `admin/prompt/interview` | D |
+| `prompts/correction`, `admin/prompt/correction` | E |
+| `prompts/community`, `admin/prompt/community` | F |
+| `prompts/support`, `admin/prompt/support` | F |
 
 분석 통계 백엔드 표준 경로는 `backend/src/main/java/com/careertuner/admin/analytics`다.
 현재 저장소의 `backend/src/main/java/com/careertuner/admin/analysis`는 신규 구현 시 `admin/analytics`로 정리한다.
 
 골격만 있는 패키지나 폴더는 `package-info.java` 또는 `.gitkeep`만 있어도 정상이다.
-실제 구현은 담당 기능 작업이 시작될 때 채운다.
+실제 구현은 담당 기능 작업이 시작될 때 해당 담당자가 채운다.

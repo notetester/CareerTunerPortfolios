@@ -32,7 +32,7 @@ CareerTuner는 기능 단위로 작업을 배분한다. 각 담당자는 해당 
 | 기능 폴더 | 사용자 메뉴 범위 | 연관 백엔드 도메인 패키지 |
 | --- | --- | --- |
 | `auth` | 로그인, 회원가입, 소셜 로그인, 토큰 세션 | `auth`, `user` |
-| `home` | 공개 홈, 온보딩 진입 | `home` |
+| `home` | 공개 홈, 온보딩 진입, 기본 준비 현황 요약 | `home` |
 | `dashboard` | 대시보드 요약, 알림 | `dashboard` |
 | `profile` | 기본 정보, 이력서, 자기소개서, 경력/프로젝트, 기술스택, 자격증/학력 | `profile` |
 | `applications` | 지원 건, 공고 업로드, 분석 결과, 적합도 비교, 전략, 학습/자격증 추천, 기록 | `applicationcase`, `jobposting`, `jobanalysis`, `companyanalysis`, `fitanalysis` |
@@ -64,8 +64,9 @@ CareerTuner는 기능 단위로 작업을 배분한다. 각 담당자는 해당 
 | 면접 평가와 답변 첨삭 | D가 면접 평가·리포트를, E가 별도 첨삭 이력을 담당한다. |
 | `ai_usage_log` | 각 도메인이 공통 규약으로 기록하고, E가 사용량·결제 화면을 담당한다. 공통 로깅과 스키마는 공통 영역이다. |
 
-공통 라우팅, 공통 컴포넌트, 공통 API, DB 구조, 인증/권한, AI 프롬프트, 시스템 로그의 Owner는 팀장이다.
+공통 라우팅, 공통 컴포넌트, 공통 API, DB 구조, 인증/권한, AI 프롬프트 공통 엔진, 공통 로그 구조의 Owner는 팀장이다.
 기능 담당자가 공통 영역을 수정해야 할 때는 수정 사유와 영향 범위를 공유하고 팀장 승인 또는 팀 합의 후 반영한다.
+기능별 프롬프트와 기능별 운영 로그는 각 담당자의 하위 폴더에 둔다.
 
 ## 3. 백엔드 패키지 규칙
 
@@ -181,7 +182,7 @@ pages/ components/ api/ hooks/ types/
 | `backend/src/main/java/com/careertuner/admin/auth` | A |
 | `backend/src/main/java/com/careertuner/admin/profile` | A |
 | `backend/src/main/java/com/careertuner/admin/settings` | A |
-| `backend/src/main/java/com/careertuner/admin/home` | 팀장 |
+| `backend/src/main/java/com/careertuner/admin/home` | C |
 | `backend/src/main/java/com/careertuner/admin/billing` | E |
 | `backend/src/main/java/com/careertuner/admin/legal` | F |
 | `backend/src/main/java/com/careertuner/admin/company` | F |

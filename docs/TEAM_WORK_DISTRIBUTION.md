@@ -22,14 +22,15 @@
 - 백엔드의 서비스 소개 도메인은 기존 패키지명인 `serviceinfo`를 유지한다.
 - `frontend/src/features/applications`는 B와 C가 함께 만지는 핵심 화면이므로 컴포넌트 단위 소유권을 명확히 둔다.
 - `frontend/src/app/components/media`, `frontend/src/app/components/upload`, `backend/src/main/java/com/careertuner/file`은 D가 주로 쓰지만 공통 영역으로 취급한다.
-- `ai/common`, `ai/prompt`, 관리자 프롬프트, 시스템 로그는 팀장 Owner의 공통 영역으로 관리한다.
+- `ai/common`, `ai/prompt`의 공통 엔진과 공통 로그 구조는 팀장 Owner의 공통 영역으로 관리한다.
+- 기능별 프롬프트와 운영 로그는 각 담당자의 AI 또는 관리자 기능 하위 폴더에 두어 서로 침범하지 않게 한다.
 
 ## 2. 6명 수직 분담
 
 ```text
 A. 회원/프로필/설정 + AI 이력서·스펙 추출
 B. 지원 건/공고문/공고·기업 분석 + AI 공고 분석
-C. 스펙 비교/취업 분석/대시보드 + AI 커리어 전략 추천
+C. 홈/스펙 비교/취업 분석/대시보드 + AI 커리어 전략 추천
 D. 가상 면접/면접 리포트 + AI 면접관
 E. 첨삭/결제/크레딧 + AI 답변·자소서 첨삭
 F. 커뮤니티/고객센터/공지/알림 + AI 후기 요약·추천·문의 답변
@@ -241,11 +242,12 @@ ai_usage_log
 AI를 활용해 공고의 필수 조건, 우대 조건, 직무 역량, 기업 분석 포인트를 자동 추출하는 기능을 개발했다.
 ```
 
-## 6. C 담당: 스펙 비교/취업 분석/대시보드
+## 6. C 담당: 홈/스펙 비교/취업 분석/대시보드
 
 ### 사용자 기능
 
 ```text
+홈
 내 스펙과 공고 비교
 직무 적합도 점수
 부족 역량 분석
@@ -279,16 +281,20 @@ AI 다음 지원 방향 추천
 ### 담당 폴더
 
 ```text
+frontend/src/features/home
 frontend/src/features/analysis
 frontend/src/features/dashboard
 frontend/src/admin/features/analytics
+frontend/src/admin/features/home
 frontend/src/admin/features/dashboard
 frontend/src/admin/features/fit-analysis
 
+backend/src/main/java/com/careertuner/home
 backend/src/main/java/com/careertuner/fitanalysis
 backend/src/main/java/com/careertuner/analysis
 backend/src/main/java/com/careertuner/dashboard
 backend/src/main/java/com/careertuner/admin/analytics
+backend/src/main/java/com/careertuner/admin/home
 backend/src/main/java/com/careertuner/admin/dashboard
 backend/src/main/java/com/careertuner/admin/fitanalysis
 ```
@@ -300,6 +306,8 @@ frontend/src/features/applications/components/FitAnalysisPanel.tsx
 frontend/src/features/applications/components/StrategyPanel.tsx
 frontend/src/features/applications/components/LearningRecommendationPanel.tsx
 ```
+
+홈은 공개 진입점이지만 기본 대시보드, 준비 현황 요약, 최근 분석 결과 진입을 포함하므로 C가 담당한다.
 
 ### 주요 DB
 
@@ -576,7 +584,7 @@ AI를 활용해 면접 후기 요약, 실제 질문 추출, 게시글 태그 추
 | --- | --- | --- | --- |
 | A | 인증, 회원, 프로필, 설정 | 이력서 요약, 기술스택 추출, 프로필 완성도 진단 | 회원 관리, 동의 이력 관리 |
 | B | 지원 건, 공고문, 공고 분석, 기업 분석 | 공고 분석, 필수/우대조건 추출, 기업 요약 | 지원 건 관리, 공고/기업 분석 로그 관리 |
-| C | 스펙 비교, 취업 분석, 대시보드 | 적합도 분석, 부족 역량 추천, 학습/자격증 추천 | 분석 통계, 적합도 분석 관리 |
+| C | 홈, 스펙 비교, 취업 분석, 대시보드 | 적합도 분석, 부족 역량 추천, 학습/자격증 추천 | 관리자 홈, 분석 통계, 적합도 분석 관리 |
 | D | 가상 면접, 면접 리포트 | 질문 생성, 꼬리 질문, 답변 평가, 리포트 생성 | 면접 세션 관리, 면접 리포트 관리 |
 | E | 첨삭, 결제, 크레딧 | 답변 첨삭, 자소서 첨삭, 이력서 표현 개선 | 결제 관리, 크레딧 관리, 첨삭 로그 관리 |
 | F | 커뮤니티, 고객센터, 알림, 공지 | 후기 요약, 질문 추출, 게시글 추천, 문의 답변 초안 | 게시판/신고, 공지/FAQ/문의 관리 |
@@ -589,30 +597,30 @@ AI를 활용해 면접 후기 요약, 실제 질문 추출, 게시글 태그 추
 ```text
 frontend/src/app/routes.ts
 frontend/src/admin/routes.ts
-frontend/src/features/home
 frontend/src/app/components/layout
 frontend/src/app/components/ui
 frontend/src/app/components/media
 frontend/src/app/components/upload
 frontend/src/app/lib
-frontend/src/admin/features/prompts
+frontend/src/admin/features/prompts 루트 셸
 
 backend/src/main/java/com/careertuner/common
-backend/src/main/java/com/careertuner/home
 backend/src/main/java/com/careertuner/ai/common
-backend/src/main/java/com/careertuner/ai/prompt
-backend/src/main/java/com/careertuner/admin/prompt
+backend/src/main/java/com/careertuner/ai/prompt 공통 엔진
+backend/src/main/java/com/careertuner/admin/prompt 루트 셸
 backend/src/main/resources/db/schema.sql
 backend/src/main/resources/db/data.sql
 backend/src/main/resources/application.yaml
 backend/build.gradle
-시스템 로그
+공통 로그 스키마와 수집기
 프런트 공통 구조
 백엔드/DB 공통 구조
 AI 공통 구조
 ```
 
-`frontend/src/admin/features/logs`는 시스템 로그 작업을 시작할 때 생성할 예정인 공통 경로다.
+전역 `frontend/src/admin/features/logs`를 기본 생성하지 않는다. 기능별 운영 로그가 필요하면
+`frontend/src/admin/features/<feature>/logs`, `backend/src/main/java/com/careertuner/admin/<domain>/log`처럼
+각 담당자 하위 폴더에 둔다. 공통 로그 스키마, 공통 수집기, 전역 로그 뷰어가 필요할 때만 공통 영역으로 다룬다.
 
 공통 영역은 기능 구현 속도를 위해 필요하지만, 동시에 충돌이 가장 자주 나는 곳이다.
 가능하면 각 기능 담당자는 자기 기능 폴더 안에서 먼저 해결하고, 공통화가 필요할 때만 팀장과 합의해 이동한다.
@@ -620,7 +628,8 @@ AI 공통 구조
 예외:
 
 - 단순 오타, 주석, 명백한 문서 오류 수정은 바로 반영할 수 있다.
-- 라우팅, 공통 컴포넌트, 공통 API, DB 구조, 인증/권한, AI 프롬프트, 로그 구조에 영향을 주는 변경은 반드시 합의 후 진행한다.
+- 라우팅, 공통 컴포넌트, 공통 API, DB 구조, 인증/권한, AI 프롬프트 공통 엔진, 공통 로그 구조에 영향을 주는 변경은 반드시 합의 후 진행한다.
+- 기능별 프롬프트와 기능별 로그 하위 폴더는 각 담당자가 소유한다. 공통 엔진이나 루트 셸 변경만 팀장 승인 또는 팀 합의를 거친다.
 
 ## 12. 기존 관리자 골격 담당 지정
 
@@ -633,7 +642,7 @@ AI 공통 구조
 | `backend/src/main/java/com/careertuner/admin/auth` | A | 관리자 로그인·세션·권한 보조 |
 | `backend/src/main/java/com/careertuner/admin/profile` | A | 사용자 프로필 조회와 운영 확인 |
 | `backend/src/main/java/com/careertuner/admin/settings` | A | 계정·알림 설정 운영 확인 |
-| `backend/src/main/java/com/careertuner/admin/home` | 팀장 | 관리자 홈 또는 운영 홈 공통 영역 |
+| `backend/src/main/java/com/careertuner/admin/home` | C | 관리자 홈, 기본 대시보드, 준비 현황 요약 |
 | `backend/src/main/java/com/careertuner/admin/billing` | E | 결제/구독 운영 화면 보조 |
 | `backend/src/main/java/com/careertuner/admin/legal` | F | 약관·정책 콘텐츠 관리 |
 | `backend/src/main/java/com/careertuner/admin/company` | F | 서비스 회사/브랜드 소개 관리 |
