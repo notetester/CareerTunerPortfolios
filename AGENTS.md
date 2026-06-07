@@ -78,8 +78,8 @@ push 요청을 받으면 반드시 아래 순서를 따른다:
 
 - 기능별 수직 분담제. 자기 담당 폴더 밖(특히 타인 담당 도메인) 수정 시 합의 먼저
 - 사용자 기능을 완료할 때 관련 관리자 화면과 관리자 API도 같은 릴리스의 완료 기준에 포함한다
-- 공통 영역(`common/`, `ai/common`, `ai/prompt`, `routes.ts`, `schema.sql`, `build.gradle` 등)의 Owner는 팀장이다
-- 라우팅, 공통 컴포넌트, 공통 API, DB 구조, 인증/권한, AI 프롬프트, 로그 구조 변경은 수정 전 팀장 승인 또는 팀 합의 필수
+- 공통 영역(`common/`, `ai/common`, `ai/prompt` 공통 엔진, `routes.ts`, `schema.sql`, `build.gradle` 등)의 Owner는 팀장이다
+- 라우팅, 공통 컴포넌트, 공통 API, DB 구조, 인증/권한, AI 프롬프트 공통 엔진, 공통 로그 구조 변경은 수정 전 팀장 승인 또는 팀 합의 필수
 - 단순 오타, 주석, 명백한 문서 오류는 예외적으로 바로 수정할 수 있다
 - 담당 분배: [docs/TEAM_WORK_DISTRIBUTION.md](docs/TEAM_WORK_DISTRIBUTION.md)
 
