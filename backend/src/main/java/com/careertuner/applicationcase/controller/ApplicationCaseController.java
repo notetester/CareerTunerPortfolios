@@ -14,7 +14,9 @@ import org.springframework.web.bind.annotation.RestController;
 
 import com.careertuner.applicationcase.dto.AnalysisResponse;
 import com.careertuner.applicationcase.dto.ApplicationCaseResponse;
+import com.careertuner.applicationcase.dto.CompanyAnalysisResponse;
 import com.careertuner.applicationcase.dto.CreateApplicationCaseRequest;
+import com.careertuner.applicationcase.dto.JobAnalysisResponse;
 import com.careertuner.applicationcase.dto.JobPostingRequest;
 import com.careertuner.applicationcase.dto.JobPostingResponse;
 import com.careertuner.applicationcase.dto.UpdateApplicationCaseRequest;
@@ -74,6 +76,30 @@ public class ApplicationCaseController {
     public ApiResponse<JobPostingResponse> getJobPosting(@AuthenticationPrincipal AuthUser authUser,
                                                          @PathVariable Long id) {
         return ApiResponse.ok(applicationCaseService.getJobPosting(authUser.id(), id));
+    }
+
+    @PostMapping("/{id}/job-analysis/mock")
+    public ApiResponse<JobAnalysisResponse> createMockJobAnalysis(@AuthenticationPrincipal AuthUser authUser,
+                                                                  @PathVariable Long id) {
+        return ApiResponse.ok(applicationCaseService.createMockJobAnalysis(authUser.id(), id));
+    }
+
+    @GetMapping("/{id}/job-analysis")
+    public ApiResponse<JobAnalysisResponse> getJobAnalysis(@AuthenticationPrincipal AuthUser authUser,
+                                                           @PathVariable Long id) {
+        return ApiResponse.ok(applicationCaseService.getJobAnalysis(authUser.id(), id));
+    }
+
+    @PostMapping("/{id}/company-analysis/mock")
+    public ApiResponse<CompanyAnalysisResponse> createMockCompanyAnalysis(@AuthenticationPrincipal AuthUser authUser,
+                                                                          @PathVariable Long id) {
+        return ApiResponse.ok(applicationCaseService.createMockCompanyAnalysis(authUser.id(), id));
+    }
+
+    @GetMapping("/{id}/company-analysis")
+    public ApiResponse<CompanyAnalysisResponse> getCompanyAnalysis(@AuthenticationPrincipal AuthUser authUser,
+                                                                   @PathVariable Long id) {
+        return ApiResponse.ok(applicationCaseService.getCompanyAnalysis(authUser.id(), id));
     }
 
     @PostMapping("/{id}/analysis/mock")

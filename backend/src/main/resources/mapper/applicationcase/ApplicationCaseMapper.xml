@@ -86,6 +86,28 @@
         LIMIT 1
     </select>
 
+    <delete id="deleteCompanyAnalysesByCaseId">
+        DELETE FROM company_analysis
+        WHERE application_case_id = #{applicationCaseId}
+    </delete>
+
+    <insert id="insertCompanyAnalysis" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO company_analysis
+            (application_case_id, company_summary, recent_issues, industry,
+             competitors, interview_points, sources)
+        VALUES
+            (#{applicationCaseId}, #{companySummary}, #{recentIssues}, #{industry},
+             #{competitors}, #{interviewPoints}, #{sources})
+    </insert>
+
+    <select id="findLatestCompanyAnalysisByCaseId" resultType="com.careertuner.applicationcase.domain.CompanyAnalysis">
+        SELECT *
+        FROM company_analysis
+        WHERE application_case_id = #{applicationCaseId}
+        ORDER BY id DESC
+        LIMIT 1
+    </select>
+
     <delete id="deleteFitAnalysesByCaseId">
         DELETE FROM fit_analysis
         WHERE application_case_id = #{applicationCaseId}

@@ -8,11 +8,13 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import com.careertuner.applicationcase.domain.ApplicationCase;
+import com.careertuner.applicationcase.domain.CompanyAnalysis;
 import com.careertuner.applicationcase.domain.FitAnalysis;
 import com.careertuner.applicationcase.domain.JobAnalysis;
 import com.careertuner.applicationcase.domain.JobPosting;
 import com.careertuner.applicationcase.dto.AnalysisResponse;
 import com.careertuner.applicationcase.dto.ApplicationCaseResponse;
+import com.careertuner.applicationcase.dto.CompanyAnalysisResponse;
 import com.careertuner.applicationcase.dto.CreateApplicationCaseRequest;
 import com.careertuner.applicationcase.dto.FitAnalysisResponse;
 import com.careertuner.applicationcase.dto.JobAnalysisResponse;
@@ -124,13 +126,51 @@ public class ApplicationCaseServiceImpl implements ApplicationCaseService {
 
     @Override
     @Transactional
+    public JobAnalysisResponse createMockJobAnalysis(Long userId, Long applicationCaseId) {
+        ApplicationCase applicationCase = requireOwned(userId, applicationCaseId);
+        JobAnalysis jobAnalysis = createJobAnalysis(applicationCase, sourceText(applicationCaseId));
+        return JobAnalysisResponse.from(jobAnalysis);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public JobAnalysisResponse getJobAnalysis(Long userId, Long applicationCaseId) {
+        requireOwned(userId, applicationCaseId);
+        return JobAnalysisResponse.from(applicationCaseMapper.findLatestJobAnalysisByCaseId(applicationCaseId));
+    }
+
+    @Override
+    @Transactional
+    public CompanyAnalysisResponse createMockCompanyAnalysis(Long userId, Long applicationCaseId) {
+        ApplicationCase applicationCase = requireOwned(userId, applicationCaseId);
+        CompanyAnalysisSeed seed = CompanyAnalysisSeed.from(applicationCase, sourceText(applicationCaseId));
+
+        applicationCaseMapper.deleteCompanyAnalysesByCaseId(applicationCaseId);
+        CompanyAnalysis companyAnalysis = CompanyAnalysis.builder()
+                .applicationCaseId(applicationCaseId)
+                .companySummary(seed.companySummary())
+                .recentIssues(seed.recentIssues())
+                .industry(seed.industry())
+                .competitors(seed.competitors())
+                .interviewPoints(seed.interviewPoints())
+                .sources(seed.sources())
+                .build();
+        applicationCaseMapper.insertCompanyAnalysis(companyAnalysis);
+        return CompanyAnalysisResponse.from(applicationCaseMapper.findLatestCompanyAnalysisByCaseId(applicationCaseId));
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public CompanyAnalysisResponse getCompanyAnalysis(Long userId, Long applicationCaseId) {
+        requireOwned(userId, applicationCaseId);
+        return CompanyAnalysisResponse.from(applicationCaseMapper.findLatestCompanyAnalysisByCaseId(applicationCaseId));
+    }
+
+    @Override
+    @Transactional
     public AnalysisResponse createMockAnalysis(Long userId, Long applicationCaseId) {
         ApplicationCase applicationCase = requireOwned(userId, applicationCaseId);
-        JobPosting jobPosting = applicationCaseMapper.findLatestJobPostingByCaseId(applicationCaseId);
-
-        String sourceText = jobPosting != null
-                ? defaultString(jobPosting.getExtractedText(), jobPosting.getOriginalText())
-                : "";
+        String sourceText = sourceText(applicationCaseId);
         MockAnalysisSeed seed = MockAnalysisSeed.from(applicationCase, sourceText);
 
         applicationCaseMapper.deleteJobAnalysesByCaseId(applicationCaseId);
@@ -189,6 +229,33 @@ public class ApplicationCaseServiceImpl implements ApplicationCaseService {
                 ApplicationCaseResponse.from(applicationCase),
                 JobAnalysisResponse.from(jobAnalysis),
                 FitAnalysisResponse.from(fitAnalysis));
+    }
+
+    private JobAnalysis createJobAnalysis(ApplicationCase applicationCase, String sourceText) {
+        Long applicationCaseId = applicationCase.getId();
+        MockAnalysisSeed seed = MockAnalysisSeed.from(applicationCase, sourceText);
+
+        applicationCaseMapper.deleteJobAnalysesByCaseId(applicationCaseId);
+        JobAnalysis jobAnalysis = JobAnalysis.builder()
+                .applicationCaseId(applicationCaseId)
+                .employmentType(seed.employmentType())
+                .experienceLevel(seed.experienceLevel())
+                .requiredSkills(seed.requiredSkills())
+                .preferredSkills(seed.preferredSkills())
+                .duties(seed.duties())
+                .qualifications(seed.qualifications())
+                .difficulty(seed.difficulty())
+                .summary(seed.summary())
+                .build();
+        applicationCaseMapper.insertJobAnalysis(jobAnalysis);
+        return applicationCaseMapper.findLatestJobAnalysisByCaseId(applicationCaseId);
+    }
+
+    private String sourceText(Long applicationCaseId) {
+        JobPosting jobPosting = applicationCaseMapper.findLatestJobPostingByCaseId(applicationCaseId);
+        return jobPosting != null
+                ? defaultString(jobPosting.getExtractedText(), jobPosting.getOriginalText())
+                : "";
     }
 
     private static BusinessException notFound() {
@@ -274,6 +341,54 @@ public class ApplicationCaseServiceImpl implements ApplicationCaseService {
         private static boolean containsAny(String text, String... keywords) {
             for (String keyword : keywords) {
                 if (text.contains(keyword.toLowerCase())) {
+                    return true;
+                }
+            }
+            return false;
+        }
+    }
+
+    private record CompanyAnalysisSeed(
+            String companySummary,
+            String recentIssues,
+            String industry,
+            String competitors,
+            String interviewPoints,
+            String sources
+    ) {
+        static CompanyAnalysisSeed from(ApplicationCase applicationCase, String sourceText) {
+            String companyName = applicationCase.getCompanyName();
+            String jobTitle = applicationCase.getJobTitle();
+            String lowerText = (companyName + " " + jobTitle + " " + defaultString(sourceText, ""))
+                    .toLowerCase(Locale.ROOT);
+
+            boolean fintech = containsAny(lowerText, "pay", "페이", "금융", "핀테크", "bank", "은행");
+            boolean platform = containsAny(lowerText, "platform", "플랫폼", "commerce", "커머스", "서비스");
+            boolean cloud = containsAny(lowerText, "cloud", "aws", "인프라", "배포");
+
+            String industry = fintech
+                    ? "핀테크/금융 플랫폼"
+                    : platform ? "디지털 플랫폼 서비스" : "IT 서비스";
+            String competitors = fintech
+                    ? "[\"토스\",\"네이버파이낸셜\",\"카카오페이\"]"
+                    : platform ? "[\"네이버\",\"카카오\",\"쿠팡\"]" : "[\"동종 IT 서비스 기업\",\"SI/솔루션 기업\"]";
+            String recentIssues = cloud
+                    ? "공고 키워드상 클라우드 운영, 안정성, 자동화 경험을 중요하게 볼 가능성이 있습니다."
+                    : "공고와 직무 정보를 기준으로 서비스 성장성, 사용자 경험, 데이터 기반 개선 역량을 확인해야 합니다.";
+
+            return new CompanyAnalysisSeed(
+                    "%s는 %s 직무 관점에서 제품 이해도와 실행 경험을 함께 확인할 가능성이 높은 기업입니다."
+                            .formatted(companyName, jobTitle),
+                    recentIssues,
+                    industry,
+                    competitors,
+                    "면접에서는 회사 서비스 이해, 직무 관련 프로젝트 경험, 협업 상황에서의 문제 해결 방식을 구체적으로 준비하는 것이 좋습니다.",
+                    "[\"지원 건 기본 정보\",\"공고문 텍스트\",\"개발용 mock seed\"]");
+        }
+
+        private static boolean containsAny(String text, String... keywords) {
+            for (String keyword : keywords) {
+                if (text.contains(keyword.toLowerCase(Locale.ROOT))) {
                     return true;
                 }
             }
