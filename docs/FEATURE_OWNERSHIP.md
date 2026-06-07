@@ -187,4 +187,4 @@ pages/ components/ api/ hooks/ types/
 | `backend/src/main/java/com/careertuner/admin/legal` | F |
 | `backend/src/main/java/com/careertuner/admin/company` | F |
 | `backend/src/main/java/com/careertuner/admin/serviceinfo` | F |
-| `backend/src/main/java/com/careertuner/admin/analysis` → `backend/src/main/java/com/careertuner/admin/analytics` | C |
+| `backend/src/main/java/com/careertuner/admin/analytics` | C |
