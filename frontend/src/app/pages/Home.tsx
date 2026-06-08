@@ -274,6 +274,11 @@ function MemberHome({ summary, loading, error, fallbackName, onRetry }: MemberHo
                 <p className="mt-3 text-sm sm:text-base text-slate-600 leading-7 max-w-3xl">
                   {summary?.focus.description ?? "지원 건을 등록하면 적합도, 면접 준비, 반복 약점이 한 화면에 정리됩니다."}
                 </p>
+                {summary?.aiSummary && (
+                  <p className="mt-3 max-w-3xl rounded-xl bg-blue-50 px-4 py-3 text-sm leading-6 text-blue-800">
+                    <strong className="font-semibold">AI 요약</strong> · {summary.aiSummary}
+                  </p>
+                )}
               </div>
               <div className="flex flex-col sm:flex-row lg:flex-col gap-2 shrink-0">
                 <Button className="bg-blue-600 hover:bg-blue-700 gap-2" onClick={() => navigate("/applications")}>
