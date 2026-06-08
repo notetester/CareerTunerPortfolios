@@ -45,6 +45,7 @@ public class SecurityConfig {
                                 "/api/auth/refresh", "/api/auth/email/resend").permitAll()
                         .requestMatchers(HttpMethod.GET,
                                 "/api/auth/verify-email", "/api/auth/check/**", "/api/auth/oauth/**").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/api/credit-products").permitAll()
                         // 그 외(/api/auth/me, /api/auth/logout 및 도메인 API)는 인증 필요
                         .anyRequest().authenticated())
                 .exceptionHandling(e -> e.authenticationEntryPoint(

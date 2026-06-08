@@ -1,5 +1,4 @@
 ---
-disable-model-invocation: true
 name: push
 description: 현재 작업 브랜치를 origin에 push. fetch → dev 변경 확인 → 충돌 분석 → 사용자 결정 → push 순으로 진행.
 ---
