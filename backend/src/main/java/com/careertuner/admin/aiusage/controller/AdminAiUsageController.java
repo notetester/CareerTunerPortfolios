@@ -24,7 +24,9 @@ public class AdminAiUsageController {
 
     @GetMapping("/b")
     public ApiResponse<List<AdminAiUsageLogRow>> usageLogs(@AuthenticationPrincipal AuthUser authUser,
+                                                           @RequestParam(required = false) String featureType,
+                                                           @RequestParam(required = false) String status,
                                                            @RequestParam(defaultValue = "50") int limit) {
-        return ApiResponse.ok(service.bUsageLogs(authUser, limit));
+        return ApiResponse.ok(service.bUsageLogs(authUser, featureType, status, limit));
     }
 }

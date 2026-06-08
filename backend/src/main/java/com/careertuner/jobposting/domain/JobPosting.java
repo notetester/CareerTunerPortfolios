@@ -15,6 +15,7 @@ public class JobPosting {
 
     private Long id;
     private Long applicationCaseId;
+    private Integer revision;
     private String originalText;
     private String uploadedFileUrl;
     private String extractedText;

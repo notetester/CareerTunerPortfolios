@@ -8,18 +8,31 @@
         WHERE application_case_id = #{applicationCaseId}
     </delete>
 
+    <select id="nextRevisionForCase" resultType="int">
+        SELECT COALESCE(MAX(revision), 0) + 1
+        FROM job_posting
+        WHERE application_case_id = #{applicationCaseId}
+    </select>
+
     <insert id="insertJobPosting" useGeneratedKeys="true" keyProperty="id">
         INSERT INTO job_posting
-            (application_case_id, original_text, uploaded_file_url, extracted_text, source_type)
+            (application_case_id, revision, original_text, uploaded_file_url, extracted_text, source_type)
         VALUES
-            (#{applicationCaseId}, #{originalText}, #{uploadedFileUrl}, #{extractedText}, #{sourceType})
+            (#{applicationCaseId}, #{revision}, #{originalText}, #{uploadedFileUrl}, #{extractedText}, #{sourceType})
     </insert>
 
     <select id="findLatestJobPostingByCaseId" resultType="com.careertuner.jobposting.domain.JobPosting">
         SELECT *
         FROM job_posting
         WHERE application_case_id = #{applicationCaseId}
-        ORDER BY id DESC
+        ORDER BY revision DESC, id DESC
         LIMIT 1
+    </select>
+
+    <select id="findJobPostingRevisionsByCaseId" resultType="com.careertuner.jobposting.domain.JobPosting">
+        SELECT *
+        FROM job_posting
+        WHERE application_case_id = #{applicationCaseId}
+        ORDER BY revision DESC, id DESC
     </select>
 </mapper>

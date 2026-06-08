@@ -22,6 +22,8 @@ public class ApplicationCase {
     private String sourceType;
     private String status;
     private boolean favorite;
+    private LocalDateTime archivedAt;
+    private LocalDateTime deletedAt;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
 }

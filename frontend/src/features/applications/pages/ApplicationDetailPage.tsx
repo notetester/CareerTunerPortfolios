@@ -61,6 +61,7 @@ export function ApplicationDetailPage() {
     saving: postingSaving,
     uploading: postingUploading,
     error: postingError,
+    revisions: postingRevisions,
     save: savePosting,
     upload: uploadPosting,
   } = useJobPosting(id, isAuthenticated && Boolean(applicationCase));
@@ -69,14 +70,18 @@ export function ApplicationDetailPage() {
     loading: jobAnalysisLoading,
     generating: jobAnalysisGenerating,
     error: jobAnalysisError,
+    history: jobAnalysisHistory,
     generate: generateJobAnalysis,
+    review: reviewJobAnalysis,
   } = useJobAnalysis(id, isAuthenticated && Boolean(applicationCase));
   const {
     companyAnalysis,
     loading: companyAnalysisLoading,
     generating: companyAnalysisGenerating,
     error: companyAnalysisError,
+    history: companyAnalysisHistory,
     generate: generateCompanyAnalysis,
+    review: reviewCompanyAnalysis,
   } = useCompanyAnalysis(id, isAuthenticated && Boolean(applicationCase));
   const [activeTab, setActiveTab] = useState<DetailTab>("overview");
 
@@ -248,6 +253,7 @@ export function ApplicationDetailPage() {
               {activeTab === "posting" && (
                 <JobPostingPanel
                   jobPosting={jobPosting}
+                  revisions={postingRevisions}
                   loading={postingLoading}
                   saving={postingSaving}
                   uploading={postingUploading}
@@ -260,20 +266,24 @@ export function ApplicationDetailPage() {
               {activeTab === "jobAnalysis" && (
                 <JobAnalysisPanel
                   analysis={jobAnalysis}
+                  history={jobAnalysisHistory}
                   loading={jobAnalysisLoading}
                   generating={jobAnalysisGenerating}
                   error={jobAnalysisError}
                   onGenerate={generateJobAnalysis}
+                  onReview={reviewJobAnalysis}
                 />
               )}
 
               {activeTab === "companyAnalysis" && (
                 <CompanyAnalysisPanel
                   analysis={companyAnalysis}
+                  history={companyAnalysisHistory}
                   loading={companyAnalysisLoading}
                   generating={companyAnalysisGenerating}
                   error={companyAnalysisError}
                   onGenerate={generateCompanyAnalysis}
+                  onReview={reviewCompanyAnalysis}
                 />
               )}
             </>

@@ -5,8 +5,8 @@ import type {
   UpdateApplicationCaseRequest,
 } from "../types/applicationCase";
 
-export function listApplicationCases(): Promise<ApplicationCase[]> {
-  return api<ApplicationCase[]>("/application-cases", { method: "GET" });
+export function listApplicationCases(includeArchived = false): Promise<ApplicationCase[]> {
+  return api<ApplicationCase[]>(`/application-cases?includeArchived=${includeArchived}`, { method: "GET" });
 }
 
 export function getApplicationCase(id: number): Promise<ApplicationCase> {

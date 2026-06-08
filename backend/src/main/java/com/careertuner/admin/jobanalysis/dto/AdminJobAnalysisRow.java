@@ -9,6 +9,8 @@ public class AdminJobAnalysisRow {
 
     private Long id;
     private Long applicationCaseId;
+    private Long jobPostingId;
+    private Integer jobPostingRevision;
     private Long userId;
     private String userEmail;
     private String companyName;
@@ -17,7 +19,11 @@ public class AdminJobAnalysisRow {
     private String experienceLevel;
     private String requiredSkills;
     private String preferredSkills;
+    private String duties;
+    private String qualifications;
     private String difficulty;
     private String summary;
+    private LocalDateTime confirmedAt;
+    private String adminMemo;
     private LocalDateTime createdAt;
 }

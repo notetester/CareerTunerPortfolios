@@ -9,6 +9,8 @@ public class AdminCompanyAnalysisRow {
 
     private Long id;
     private Long applicationCaseId;
+    private Long jobPostingId;
+    private Integer jobPostingRevision;
     private Long userId;
     private String userEmail;
     private String companyName;
@@ -17,6 +19,9 @@ public class AdminCompanyAnalysisRow {
     private String recentIssues;
     private String industry;
     private String competitors;
+    private String interviewPoints;
     private String sources;
+    private LocalDateTime confirmedAt;
+    private String adminMemo;
     private LocalDateTime createdAt;
 }

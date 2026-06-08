@@ -10,6 +10,7 @@ public record UpdateApplicationCaseRequest(
         LocalDate postingDate,
         @Size(max = 20) String sourceType,
         @Size(max = 20) String status,
-        Boolean favorite
+        Boolean favorite,
+        Boolean archived
 ) {
 }

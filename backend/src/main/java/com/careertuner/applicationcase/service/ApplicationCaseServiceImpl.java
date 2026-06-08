@@ -1,5 +1,6 @@
 package com.careertuner.applicationcase.service;
 
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Locale;
 import java.util.Set;
@@ -19,8 +20,10 @@ import com.careertuner.applicationcase.mapper.ApplicationCaseMapper;
 import com.careertuner.common.exception.BusinessException;
 import com.careertuner.common.exception.ErrorCode;
 import com.careertuner.companyanalysis.dto.CompanyAnalysisResponse;
+import com.careertuner.companyanalysis.dto.CompanyAnalysisReviewRequest;
 import com.careertuner.companyanalysis.service.CompanyAnalysisService;
 import com.careertuner.jobanalysis.domain.JobAnalysis;
+import com.careertuner.jobanalysis.dto.JobAnalysisReviewRequest;
 import com.careertuner.jobanalysis.dto.JobAnalysisResponse;
 import com.careertuner.jobanalysis.mapper.JobAnalysisMapper;
 import com.careertuner.jobanalysis.service.JobAnalysisService;
@@ -65,8 +68,8 @@ public class ApplicationCaseServiceImpl implements ApplicationCaseService {
 
     @Override
     @Transactional(readOnly = true)
-    public List<ApplicationCaseResponse> list(Long userId) {
-        return applicationCaseMapper.findApplicationCasesByUserId(userId).stream()
+    public List<ApplicationCaseResponse> list(Long userId, boolean includeArchived) {
+        return applicationCaseMapper.findApplicationCasesByUserId(userId, includeArchived).stream()
                 .map(ApplicationCaseResponse::from)
                 .toList();
     }
@@ -81,6 +84,13 @@ public class ApplicationCaseServiceImpl implements ApplicationCaseService {
     @Transactional
     public ApplicationCaseResponse update(Long userId, Long id, UpdateApplicationCaseRequest request) {
         ApplicationCase existing = accessService.requireOwned(userId, id);
+        String nextStatus = normalizeOption(request.status(), existing.getStatus(), STATUSES, "status");
+        LocalDateTime archivedAt = existing.getArchivedAt();
+        if (Boolean.TRUE.equals(request.archived()) && archivedAt == null) {
+            archivedAt = LocalDateTime.now();
+        } else if (Boolean.FALSE.equals(request.archived())) {
+            archivedAt = null;
+        }
         ApplicationCase updated = ApplicationCase.builder()
                 .id(existing.getId())
                 .userId(userId)
@@ -88,17 +98,21 @@ public class ApplicationCaseServiceImpl implements ApplicationCaseService {
                 .jobTitle(defaultString(request.jobTitle(), existing.getJobTitle()))
                 .postingDate(request.postingDate() != null ? request.postingDate() : existing.getPostingDate())
                 .sourceType(normalizeOption(request.sourceType(), existing.getSourceType(), SOURCE_TYPES, "sourceType"))
-                .status(normalizeOption(request.status(), existing.getStatus(), STATUSES, "status"))
+                .status(nextStatus)
                 .favorite(request.favorite() != null ? request.favorite() : existing.isFavorite())
+                .archivedAt(archivedAt)
                 .build();
         applicationCaseMapper.updateApplicationCase(updated);
+        if (!existing.getStatus().equals(nextStatus)) {
+            applicationCaseMapper.insertStatusHistory(id, userId, existing.getStatus(), nextStatus, "USER_STATUS_UPDATE");
+        }
         return ApplicationCaseResponse.from(accessService.requireOwned(userId, id));
     }
 
     @Override
     @Transactional
     public void delete(Long userId, Long id) {
-        int deleted = applicationCaseMapper.deleteApplicationCase(id, userId);
+        int deleted = applicationCaseMapper.softDeleteApplicationCase(id, userId);
         if (deleted == 0) {
             throw new BusinessException(ErrorCode.NOT_FOUND, "지원 건을 찾을 수 없습니다.");
         }
@@ -120,6 +134,11 @@ public class ApplicationCaseServiceImpl implements ApplicationCaseService {
     }
 
     @Override
+    public List<JobPostingResponse> getJobPostingRevisions(Long userId, Long applicationCaseId) {
+        return jobPostingService.getJobPostingRevisions(userId, applicationCaseId);
+    }
+
+    @Override
     public JobAnalysisResponse createMockJobAnalysis(Long userId, Long applicationCaseId) {
         return jobAnalysisService.createMockJobAnalysis(userId, applicationCaseId);
     }
@@ -135,6 +154,16 @@ public class ApplicationCaseServiceImpl implements ApplicationCaseService {
     }
 
     @Override
+    public List<JobAnalysisResponse> getJobAnalysisHistory(Long userId, Long applicationCaseId) {
+        return jobAnalysisService.getJobAnalysisHistory(userId, applicationCaseId);
+    }
+
+    @Override
+    public JobAnalysisResponse reviewJobAnalysis(Long userId, Long applicationCaseId, Long analysisId, JobAnalysisReviewRequest request) {
+        return jobAnalysisService.reviewJobAnalysis(userId, applicationCaseId, analysisId, request);
+    }
+
+    @Override
     public CompanyAnalysisResponse createMockCompanyAnalysis(Long userId, Long applicationCaseId) {
         return companyAnalysisService.createMockCompanyAnalysis(userId, applicationCaseId);
     }
@@ -147,6 +176,16 @@ public class ApplicationCaseServiceImpl implements ApplicationCaseService {
     @Override
     public CompanyAnalysisResponse getCompanyAnalysis(Long userId, Long applicationCaseId) {
         return companyAnalysisService.getCompanyAnalysis(userId, applicationCaseId);
+    }
+
+    @Override
+    public List<CompanyAnalysisResponse> getCompanyAnalysisHistory(Long userId, Long applicationCaseId) {
+        return companyAnalysisService.getCompanyAnalysisHistory(userId, applicationCaseId);
+    }
+
+    @Override
+    public CompanyAnalysisResponse reviewCompanyAnalysis(Long userId, Long applicationCaseId, Long analysisId, CompanyAnalysisReviewRequest request) {
+        return companyAnalysisService.reviewCompanyAnalysis(userId, applicationCaseId, analysisId, request);
     }
 
     @Override

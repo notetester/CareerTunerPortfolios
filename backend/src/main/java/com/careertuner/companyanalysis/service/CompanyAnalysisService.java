@@ -1,5 +1,7 @@
 package com.careertuner.companyanalysis.service;
 
+import java.time.LocalDateTime;
+import java.util.List;
 import java.util.Locale;
 
 import org.springframework.stereotype.Service;
@@ -10,9 +12,13 @@ import com.careertuner.applicationcase.service.AiUsageLogService;
 import com.careertuner.applicationcase.service.ApplicationCaseAccessService;
 import com.careertuner.applicationcase.service.OpenAiResponsesClient;
 import com.careertuner.applicationcase.service.OpenAiResponsesClient.CompanyAnalysisPayload;
+import com.careertuner.common.exception.BusinessException;
+import com.careertuner.common.exception.ErrorCode;
 import com.careertuner.companyanalysis.domain.CompanyAnalysis;
+import com.careertuner.companyanalysis.dto.CompanyAnalysisReviewRequest;
 import com.careertuner.companyanalysis.dto.CompanyAnalysisResponse;
 import com.careertuner.companyanalysis.mapper.CompanyAnalysisMapper;
+import com.careertuner.jobposting.domain.JobPosting;
 
 import lombok.RequiredArgsConstructor;
 
@@ -31,13 +37,16 @@ public class CompanyAnalysisService {
     @Transactional
     public CompanyAnalysisResponse createCompanyAnalysis(Long userId, Long applicationCaseId) {
         ApplicationCase applicationCase = accessService.requireOwned(userId, applicationCaseId);
+        JobPosting jobPosting = accessService.latestPostingRequired(applicationCaseId);
+        String sourceText = accessService.sourceText(jobPosting);
         try {
             CompanyAnalysisPayload payload = openAiClient.analyzeCompany(
                     applicationCase,
-                    accessService.sourceTextRequired(applicationCaseId));
-            companyAnalysisMapper.deleteCompanyAnalysesByCaseId(applicationCaseId);
+                    sourceText);
             CompanyAnalysis companyAnalysis = CompanyAnalysis.builder()
                     .applicationCaseId(applicationCaseId)
+                    .jobPostingId(jobPosting.getId())
+                    .jobPostingRevision(jobPosting.getRevision())
                     .companySummary(blankToNull(payload.companySummary()))
                     .recentIssues(blankToNull(payload.recentIssues()))
                     .industry(compactColumnText(payload.industry(), COMPANY_INDUSTRY_MAX_LENGTH))
@@ -59,7 +68,6 @@ public class CompanyAnalysisService {
         ApplicationCase applicationCase = accessService.requireOwned(userId, applicationCaseId);
         CompanyAnalysisSeed seed = CompanyAnalysisSeed.from(applicationCase, accessService.sourceText(applicationCaseId));
 
-        companyAnalysisMapper.deleteCompanyAnalysesByCaseId(applicationCaseId);
         CompanyAnalysis companyAnalysis = CompanyAnalysis.builder()
                 .applicationCaseId(applicationCaseId)
                 .companySummary(seed.companySummary())
@@ -79,8 +87,46 @@ public class CompanyAnalysisService {
         return CompanyAnalysisResponse.from(companyAnalysisMapper.findLatestCompanyAnalysisByCaseId(applicationCaseId));
     }
 
+    @Transactional(readOnly = true)
+    public List<CompanyAnalysisResponse> getCompanyAnalysisHistory(Long userId, Long applicationCaseId) {
+        accessService.requireOwned(userId, applicationCaseId);
+        return companyAnalysisMapper.findCompanyAnalysisHistoryByCaseId(applicationCaseId).stream()
+                .map(CompanyAnalysisResponse::from)
+                .toList();
+    }
+
+    @Transactional
+    public CompanyAnalysisResponse reviewCompanyAnalysis(Long userId, Long applicationCaseId, Long analysisId, CompanyAnalysisReviewRequest request) {
+        accessService.requireOwned(userId, applicationCaseId);
+        CompanyAnalysis existing = companyAnalysisMapper.findCompanyAnalysisByIdAndCaseId(analysisId, applicationCaseId);
+        if (existing == null) {
+            throw new BusinessException(ErrorCode.NOT_FOUND, "기업 분석을 찾을 수 없습니다.");
+        }
+
+        CompanyAnalysis updated = CompanyAnalysis.builder()
+                .id(existing.getId())
+                .applicationCaseId(existing.getApplicationCaseId())
+                .jobPostingId(existing.getJobPostingId())
+                .jobPostingRevision(existing.getJobPostingRevision())
+                .companySummary(defaultString(request.companySummary(), existing.getCompanySummary()))
+                .recentIssues(defaultString(request.recentIssues(), existing.getRecentIssues()))
+                .industry(compactColumnText(defaultString(request.industry(), existing.getIndustry()), COMPANY_INDUSTRY_MAX_LENGTH))
+                .competitors(defaultString(request.competitors(), existing.getCompetitors()))
+                .interviewPoints(defaultString(request.interviewPoints(), existing.getInterviewPoints()))
+                .sources(defaultString(request.sources(), existing.getSources()))
+                .confirmedAt(Boolean.TRUE.equals(request.confirmed()) ? LocalDateTime.now() : existing.getConfirmedAt())
+                .adminMemo(existing.getAdminMemo())
+                .build();
+        companyAnalysisMapper.updateCompanyAnalysisReview(updated);
+        return CompanyAnalysisResponse.from(companyAnalysisMapper.findCompanyAnalysisByIdAndCaseId(analysisId, applicationCaseId));
+    }
+
     private static String blankToNull(String value) {
         return isBlank(value) ? null : value.trim();
+    }
+
+    private static String defaultString(String value, String defaultValue) {
+        return isBlank(value) ? defaultValue : value.trim();
     }
 
     private static String compactColumnText(String value, int maxLength) {

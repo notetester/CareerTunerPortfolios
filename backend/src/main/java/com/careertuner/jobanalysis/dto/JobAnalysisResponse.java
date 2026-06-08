@@ -7,6 +7,8 @@ import com.careertuner.jobanalysis.domain.JobAnalysis;
 public record JobAnalysisResponse(
         Long id,
         Long applicationCaseId,
+        Long jobPostingId,
+        Integer jobPostingRevision,
         String employmentType,
         String experienceLevel,
         String requiredSkills,
@@ -15,6 +17,8 @@ public record JobAnalysisResponse(
         String qualifications,
         String difficulty,
         String summary,
+        LocalDateTime confirmedAt,
+        String adminMemo,
         LocalDateTime createdAt
 ) {
     public static JobAnalysisResponse from(JobAnalysis analysis) {
@@ -24,6 +28,8 @@ public record JobAnalysisResponse(
         return new JobAnalysisResponse(
                 analysis.getId(),
                 analysis.getApplicationCaseId(),
+                analysis.getJobPostingId(),
+                analysis.getJobPostingRevision(),
                 analysis.getEmploymentType(),
                 analysis.getExperienceLevel(),
                 analysis.getRequiredSkills(),
@@ -32,6 +38,8 @@ public record JobAnalysisResponse(
                 analysis.getQualifications(),
                 analysis.getDifficulty(),
                 analysis.getSummary(),
+                analysis.getConfirmedAt(),
+                analysis.getAdminMemo(),
                 analysis.getCreatedAt());
     }
 }

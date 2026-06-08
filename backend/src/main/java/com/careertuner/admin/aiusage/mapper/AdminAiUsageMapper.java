@@ -10,5 +10,10 @@ import com.careertuner.admin.aiusage.dto.AdminAiUsageLogRow;
 @Mapper
 public interface AdminAiUsageMapper {
 
-    List<AdminAiUsageLogRow> findBUsageLogs(@Param("limit") int limit);
+    List<AdminAiUsageLogRow> findBUsageLogs(@Param("featureType") String featureType,
+                                            @Param("status") String status,
+                                            @Param("limit") int limit);
+
+    List<AdminAiUsageLogRow> findBUsageLogsByCaseId(@Param("applicationCaseId") Long applicationCaseId,
+                                                    @Param("limit") int limit);
 }

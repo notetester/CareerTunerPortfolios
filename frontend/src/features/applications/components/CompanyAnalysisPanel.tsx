@@ -1,15 +1,20 @@
+import { useEffect, useState } from "react";
 import { Building2, Loader2, PlayCircle } from "lucide-react";
 import { Button } from "@/app/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/app/components/ui/card";
-import type { CompanyAnalysis } from "../types/analysis";
+import { Input } from "@/app/components/ui/input";
+import { Textarea } from "@/app/components/ui/textarea";
+import type { CompanyAnalysis, CompanyAnalysisReviewRequest } from "../types/analysis";
 import { parseJsonStringArray } from "../types/analysis";
 
 interface CompanyAnalysisPanelProps {
   analysis: CompanyAnalysis | null;
+  history: CompanyAnalysis[];
   loading: boolean;
   generating: boolean;
   error: string | null;
   onGenerate(): Promise<CompanyAnalysis | null>;
+  onReview(analysisId: number, request: CompanyAnalysisReviewRequest): Promise<CompanyAnalysis | null>;
 }
 
 function formatDateTime(value: string): string {
@@ -39,11 +44,42 @@ function JsonList({ title, value }: { title: string; value: string | null }) {
 
 export function CompanyAnalysisPanel({
   analysis,
+  history,
   loading,
   generating,
   error,
   onGenerate,
+  onReview,
 }: CompanyAnalysisPanelProps) {
+  const [form, setForm] = useState({
+    companySummary: "",
+    recentIssues: "",
+    industry: "",
+    competitors: "",
+    interviewPoints: "",
+    sources: "",
+  });
+
+  useEffect(() => {
+    setForm({
+      companySummary: analysis?.companySummary ?? "",
+      recentIssues: analysis?.recentIssues ?? "",
+      industry: analysis?.industry ?? "",
+      competitors: analysis?.competitors ?? "",
+      interviewPoints: analysis?.interviewPoints ?? "",
+      sources: analysis?.sources ?? "",
+    });
+  }, [analysis]);
+
+  const setField = (key: keyof typeof form, value: string) => {
+    setForm((current) => ({ ...current, [key]: value }));
+  };
+
+  const handleReview = async () => {
+    if (!analysis) return;
+    await onReview(analysis.id, { ...form, confirmed: true });
+  };
+
   return (
     <Card className="border-slate-200 bg-white">
       <CardHeader className="gap-3">
@@ -54,7 +90,11 @@ export function CompanyAnalysisPanel({
               기업 분석
             </CardTitle>
             {analysis ? (
-              <p className="mt-1 text-xs text-slate-500">최근 분석: {formatDateTime(analysis.createdAt)}</p>
+              <p className="mt-1 text-xs text-slate-500">
+                최근 분석: {formatDateTime(analysis.createdAt)}
+                {analysis.jobPostingRevision ? ` · 공고 rev ${analysis.jobPostingRevision}` : ""}
+                {analysis.confirmedAt ? ` · 확정 ${formatDateTime(analysis.confirmedAt)}` : ""}
+              </p>
             ) : (
               <p className="mt-1 text-xs text-slate-500">분석 결과 없음</p>
             )}
@@ -101,6 +141,22 @@ export function CompanyAnalysisPanel({
               <div className="text-sm font-semibold text-slate-900">면접 준비 포인트</div>
               <p className="mt-2 whitespace-pre-line text-sm leading-6 text-slate-600">{analysis.interviewPoints ?? "내용 없음"}</p>
             </div>
+
+            <div className="space-y-3 rounded-lg border border-slate-200 bg-slate-50 p-4">
+              <div className="text-sm font-semibold text-slate-900">사용자 확인/수정</div>
+              <Input value={form.industry} onChange={(event) => setField("industry", event.target.value)} placeholder="산업" className="bg-white" />
+              <Textarea value={form.companySummary} onChange={(event) => setField("companySummary", event.target.value)} className="min-h-24 bg-white" placeholder="기업 요약" />
+              <Textarea value={form.recentIssues} onChange={(event) => setField("recentIssues", event.target.value)} className="min-h-24 bg-white" placeholder="최근 이슈" />
+              <div className="grid gap-3 md:grid-cols-2">
+                <Textarea value={form.competitors} onChange={(event) => setField("competitors", event.target.value)} className="min-h-24 bg-white" placeholder='["경쟁사"]' />
+                <Textarea value={form.sources} onChange={(event) => setField("sources", event.target.value)} className="min-h-24 bg-white" placeholder='["공고 원문"]' />
+              </div>
+              <Textarea value={form.interviewPoints} onChange={(event) => setField("interviewPoints", event.target.value)} className="min-h-24 bg-white" placeholder="면접 준비 포인트" />
+              <Button type="button" className="bg-slate-900 text-white hover:bg-slate-800" disabled={generating} onClick={() => void handleReview()}>
+                {generating && <Loader2 className="size-4 animate-spin" />}
+                수정 내용 저장 및 확정
+              </Button>
+            </div>
           </>
         ) : (
           <div className="rounded-lg border border-dashed border-slate-300 bg-slate-50 p-6">
@@ -114,6 +170,23 @@ export function CompanyAnalysisPanel({
         {error && (
           <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
             {error}
+          </div>
+        )}
+
+        {history.length > 0 && (
+          <div className="rounded-lg border border-slate-200 bg-white">
+            <div className="border-b border-slate-100 px-3 py-2 text-xs font-semibold text-slate-500">분석 이력</div>
+            <div className="divide-y divide-slate-100">
+              {history.map((item) => (
+                <div key={item.id} className="flex flex-wrap items-center gap-3 px-3 py-2 text-xs text-slate-600">
+                  <span className="font-semibold text-slate-900">#{item.id}</span>
+                  <span>공고 rev {item.jobPostingRevision ?? "-"}</span>
+                  <span>{formatDateTime(item.createdAt)}</span>
+                  <span>{item.confirmedAt ? "확정" : "미확정"}</span>
+                  <span className="max-w-md truncate text-slate-400">{item.companySummary ?? "요약 없음"}</span>
+                </div>
+              ))}
+            </div>
           </div>
         )}
       </CardContent>

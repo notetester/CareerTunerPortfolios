@@ -7,6 +7,8 @@
         SELECT
             ca.id,
             ca.application_case_id,
+            ca.job_posting_id,
+            ca.job_posting_revision,
             ac.user_id,
             u.email AS user_email,
             ac.company_name,
@@ -15,7 +17,10 @@
             ca.recent_issues,
             ca.industry,
             ca.competitors,
+            ca.interview_points,
             ca.sources,
+            ca.confirmed_at,
+            ca.admin_memo,
             ca.created_at
         FROM company_analysis ca
         JOIN application_case ac ON ca.application_case_id = ac.id

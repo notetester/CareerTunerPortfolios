@@ -15,8 +15,10 @@ import java.util.Map;
 import org.springframework.stereotype.Service;
 
 import com.careertuner.applicationcase.domain.ApplicationCase;
+import com.careertuner.companyanalysis.ai.prompt.CompanyAnalysisPromptCatalog;
 import com.careertuner.common.exception.BusinessException;
 import com.careertuner.common.exception.ErrorCode;
+import com.careertuner.jobanalysis.ai.prompt.JobAnalysisPromptCatalog;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -42,11 +44,7 @@ public class OpenAiResponsesClient {
         JsonNode root = post(structuredRequest(
                 "job_analysis",
                 jobAnalysisSchema(),
-                """
-                너는 채용공고를 분석하는 취업 전략 도우미다.
-                B 담당 범위인 공고 분석만 수행한다. 지원자 적합도, 면접 질문, 첨삭 영역은 분석하지 않는다.
-                모든 결과는 한국어로 작성하고, 배열 필드는 짧은 키워드 목록으로 작성한다.
-                """,
+                JobAnalysisPromptCatalog.SYSTEM_PROMPT,
                 """
                 회사명: %s
                 직무명: %s
@@ -72,12 +70,7 @@ public class OpenAiResponsesClient {
         JsonNode root = post(structuredRequest(
                 "company_analysis",
                 companyAnalysisSchema(),
-                """
-                너는 채용 준비용 기업 분석 도우미다.
-                B 담당 범위인 기업 분석만 수행한다. 지원자 적합도, 면접 질문, 첨삭 영역은 분석하지 않는다.
-                외부 웹 검색을 하지 말고, 입력된 회사명/직무명/공고문 안에서 추론 가능한 내용과 준비 관점을 분리해 작성한다.
-                모든 결과는 한국어로 작성한다.
-                """,
+                CompanyAnalysisPromptCatalog.SYSTEM_PROMPT,
                 """
                 회사명: %s
                 직무명: %s

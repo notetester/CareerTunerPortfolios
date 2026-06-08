@@ -34,12 +34,27 @@ public class ApplicationCaseAccessService {
         return text;
     }
 
+    public JobPosting latestPostingRequired(Long applicationCaseId) {
+        JobPosting jobPosting = jobPostingMapper.findLatestJobPostingByCaseId(applicationCaseId);
+        if (jobPosting == null || isBlank(defaultString(jobPosting.getExtractedText(), jobPosting.getOriginalText()))) {
+            throw new BusinessException(ErrorCode.INVALID_INPUT, "공고문을 먼저 등록해 주세요.");
+        }
+        return jobPosting;
+    }
+
+    public String sourceText(JobPosting jobPosting) {
+        if (jobPosting == null) {
+            return "";
+        }
+        return defaultString(jobPosting.getExtractedText(), jobPosting.getOriginalText());
+    }
+
     public String sourceText(Long applicationCaseId) {
         JobPosting jobPosting = jobPostingMapper.findLatestJobPostingByCaseId(applicationCaseId);
         if (jobPosting == null) {
             return "";
         }
-        return defaultString(jobPosting.getExtractedText(), jobPosting.getOriginalText());
+        return sourceText(jobPosting);
     }
 
     private static String defaultString(String value, String defaultValue) {

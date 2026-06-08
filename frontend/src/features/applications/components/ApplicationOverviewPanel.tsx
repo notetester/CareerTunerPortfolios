@@ -145,6 +145,11 @@ export function ApplicationOverviewPanel({
                     즐겨찾기
                   </Badge>
                 )}
+                {applicationCase.archived && (
+                  <Badge variant="outline" className="border-slate-200 bg-slate-100 text-slate-600">
+                    보관됨
+                  </Badge>
+                )}
               </div>
             </div>
             <div className="flex shrink-0 gap-2">
@@ -319,6 +324,15 @@ export function ApplicationOverviewPanel({
               onCheckedChange={(checked) => void update({ favorite: Boolean(checked) })}
             />
             즐겨찾기
+          </label>
+
+          <label className="flex items-center gap-3 rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm text-slate-700">
+            <Checkbox
+              checked={applicationCase.archived}
+              disabled={updating}
+              onCheckedChange={(checked) => void update({ archived: Boolean(checked) })}
+            />
+            보관
           </label>
 
           <div className="rounded-lg bg-slate-50 p-3 text-xs leading-5 text-slate-500">

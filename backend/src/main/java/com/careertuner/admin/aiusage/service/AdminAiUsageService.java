@@ -20,9 +20,9 @@ public class AdminAiUsageService {
     private final AdminAiUsageMapper mapper;
 
     @Transactional(readOnly = true)
-    public List<AdminAiUsageLogRow> bUsageLogs(AuthUser authUser, int limit) {
+    public List<AdminAiUsageLogRow> bUsageLogs(AuthUser authUser, String featureType, String status, int limit) {
         requireAdmin(authUser);
-        return mapper.findBUsageLogs(normalizeLimit(limit));
+        return mapper.findBUsageLogs(blankToNull(featureType), blankToNull(status), normalizeLimit(limit));
     }
 
     private void requireAdmin(AuthUser authUser) {
@@ -36,5 +36,9 @@ public class AdminAiUsageService {
             return 50;
         }
         return Math.min(limit, 200);
+    }
+
+    private String blankToNull(String value) {
+        return value == null || value.isBlank() ? null : value.trim();
     }
 }
