@@ -167,9 +167,9 @@ export function AnalysisPage() {
               <div>
                 <div className="font-bold text-blue-900 mb-2">AI 장기 취업 전략 리포트</div>
                 <p className="text-sm text-blue-700 mb-3">
-                  현재 {stats?.analyzedApplications ?? 0}개 분석 결과 기준 평균 적합도는 {stats?.averageFitScore ?? 0}점입니다.
-                  {stats?.highFitApplications ? ` 70점 이상 공고가 ${stats.highFitApplications}건 있어 우선 지원 후보가 보입니다.` : " 분석 결과가 쌓이면 우선 지원 후보가 더 선명해집니다."}
-                  {" "}가장 먼저 볼 신호는 {strongestJob} 준비도와 {topSkillGap} 보완입니다.
+                  {summary?.trendSummary
+                    ? summary.trendSummary
+                    : `현재 ${stats?.analyzedApplications ?? 0}개 분석 결과 기준 평균 적합도는 ${stats?.averageFitScore ?? 0}점입니다. 가장 먼저 볼 신호는 ${strongestJob} 준비도와 ${topSkillGap} 보완입니다.`}
                 </p>
                 <div className="space-y-1.5">
                   {(recommendedDirections.length > 0 ? recommendedDirections : [
