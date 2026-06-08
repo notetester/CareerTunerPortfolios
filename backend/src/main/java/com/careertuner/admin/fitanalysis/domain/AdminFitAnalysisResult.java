@@ -29,4 +29,6 @@ public class AdminFitAnalysisResult {
     private String recommendedCertificates;
     private String strategy;
     private LocalDateTime createdAt;
+    private int memoCount;
+    private LocalDateTime latestMemoAt;
 }

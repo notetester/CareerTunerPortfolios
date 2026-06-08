@@ -21,14 +21,16 @@ public record AdminFitAnalysisDetailResponse(
         List<String> recommendedStudy,
         List<String> recommendedCertificates,
         String strategy,
-        LocalDateTime createdAt
+        LocalDateTime createdAt,
+        List<AdminFitAnalysisMemoResponse> memos
 ) {
 
     public static AdminFitAnalysisDetailResponse of(AdminFitAnalysisResult result,
                                                     List<String> matchedSkills,
                                                     List<String> missingSkills,
                                                     List<String> recommendedStudy,
-                                                    List<String> recommendedCertificates) {
+                                                    List<String> recommendedCertificates,
+                                                    List<AdminFitAnalysisMemoResponse> memos) {
         return new AdminFitAnalysisDetailResponse(
                 result.getId(),
                 result.getApplicationCaseId(),
@@ -45,6 +47,7 @@ public record AdminFitAnalysisDetailResponse(
                 recommendedStudy,
                 recommendedCertificates,
                 result.getStrategy(),
-                result.getCreatedAt());
+                result.getCreatedAt(),
+                memos);
     }
 }

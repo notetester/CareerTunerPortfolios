@@ -177,6 +177,21 @@ CREATE TABLE IF NOT EXISTS fit_analysis (
     CONSTRAINT fk_fit_analysis_case FOREIGN KEY (application_case_id) REFERENCES application_case (id) ON DELETE CASCADE
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci;
 
+CREATE TABLE IF NOT EXISTS admin_fit_analysis_memo (
+    id              BIGINT NOT NULL AUTO_INCREMENT,
+    fit_analysis_id BIGINT NOT NULL,
+    admin_user_id   BIGINT NOT NULL,
+    memo_type       VARCHAR(30) NOT NULL DEFAULT 'GENERAL', -- GENERAL/QUALITY/USER_INQUIRY/REANALYSIS
+    content         MEDIUMTEXT NOT NULL,
+    created_at      DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at      DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    PRIMARY KEY (id),
+    KEY idx_admin_fit_memo_fit_analysis (fit_analysis_id),
+    KEY idx_admin_fit_memo_admin_user (admin_user_id),
+    CONSTRAINT fk_admin_fit_memo_fit_analysis FOREIGN KEY (fit_analysis_id) REFERENCES fit_analysis (id) ON DELETE CASCADE,
+    CONSTRAINT fk_admin_fit_memo_admin_user FOREIGN KEY (admin_user_id) REFERENCES users (id) ON DELETE CASCADE
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci;
+
 -- =====================================================================
 --  면접
 -- =====================================================================

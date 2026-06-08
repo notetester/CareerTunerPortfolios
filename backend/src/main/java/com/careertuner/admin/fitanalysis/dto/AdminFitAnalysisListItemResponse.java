@@ -17,7 +17,9 @@ public record AdminFitAnalysisListItemResponse(
         Integer fitScore,
         List<String> matchedSkills,
         List<String> missingSkills,
-        LocalDateTime createdAt
+        LocalDateTime createdAt,
+        int memoCount,
+        LocalDateTime latestMemoAt
 ) {
 
     public static AdminFitAnalysisListItemResponse of(AdminFitAnalysisResult result,
@@ -35,6 +37,8 @@ public record AdminFitAnalysisListItemResponse(
                 result.getFitScore(),
                 matchedSkills,
                 missingSkills,
-                result.getCreatedAt());
+                result.getCreatedAt(),
+                result.getMemoCount(),
+                result.getLatestMemoAt());
     }
 }

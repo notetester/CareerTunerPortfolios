@@ -8,7 +8,10 @@ import org.springframework.transaction.annotation.Transactional;
 import com.careertuner.admin.fitanalysis.domain.AdminFitAnalysisResult;
 import com.careertuner.admin.fitanalysis.dto.AdminFitAnalysisDetailResponse;
 import com.careertuner.admin.fitanalysis.dto.AdminFitAnalysisListItemResponse;
+import com.careertuner.admin.fitanalysis.dto.AdminFitAnalysisMemoRequest;
+import com.careertuner.admin.fitanalysis.dto.AdminFitAnalysisMemoResponse;
 import com.careertuner.admin.fitanalysis.mapper.AdminFitAnalysisMapper;
+import com.careertuner.admin.fitanalysis.domain.AdminFitAnalysisMemo;
 import com.careertuner.common.exception.BusinessException;
 import com.careertuner.common.exception.ErrorCode;
 import com.fasterxml.jackson.core.type.TypeReference;
@@ -49,7 +52,56 @@ public class AdminFitAnalysisServiceImpl implements AdminFitAnalysisService {
                 parseList(result.getMatchedSkills()),
                 parseList(result.getMissingSkills()),
                 parseList(result.getRecommendedStudy()),
-                parseList(result.getRecommendedCertificates()));
+                parseList(result.getRecommendedCertificates()),
+                listMemos(id));
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<AdminFitAnalysisMemoResponse> listMemos(Long fitAnalysisId) {
+        ensureFitAnalysisExists(fitAnalysisId);
+        return adminFitAnalysisMapper.findMemosByFitAnalysisId(fitAnalysisId).stream()
+                .map(AdminFitAnalysisMemoResponse::from)
+                .toList();
+    }
+
+    @Override
+    @Transactional
+    public AdminFitAnalysisMemoResponse createMemo(Long fitAnalysisId, Long adminUserId, AdminFitAnalysisMemoRequest request) {
+        ensureFitAnalysisExists(fitAnalysisId);
+        AdminFitAnalysisMemo memo = AdminFitAnalysisMemo.builder()
+                .fitAnalysisId(fitAnalysisId)
+                .adminUserId(adminUserId)
+                .memoType(normalizeMemoType(request.memoType()))
+                .content(request.content().trim())
+                .build();
+        adminFitAnalysisMapper.insertMemo(memo);
+        return AdminFitAnalysisMemoResponse.from(adminFitAnalysisMapper.findMemoByIdAndFitAnalysisId(memo.getId(), fitAnalysisId));
+    }
+
+    @Override
+    @Transactional
+    public AdminFitAnalysisMemoResponse updateMemo(Long fitAnalysisId, Long memoId, AdminFitAnalysisMemoRequest request) {
+        AdminFitAnalysisMemo memo = adminFitAnalysisMapper.findMemoByIdAndFitAnalysisId(memoId, fitAnalysisId);
+        if (memo == null) {
+            throw new BusinessException(ErrorCode.NOT_FOUND, "운영 메모를 찾을 수 없습니다.");
+        }
+        memo.setMemoType(normalizeMemoType(request.memoType()));
+        memo.setContent(request.content().trim());
+        int updated = adminFitAnalysisMapper.updateMemo(memo);
+        if (updated == 0) {
+            throw new BusinessException(ErrorCode.NOT_FOUND, "운영 메모를 찾을 수 없습니다.");
+        }
+        return AdminFitAnalysisMemoResponse.from(adminFitAnalysisMapper.findMemoByIdAndFitAnalysisId(memoId, fitAnalysisId));
+    }
+
+    @Override
+    @Transactional
+    public void deleteMemo(Long fitAnalysisId, Long memoId) {
+        int deleted = adminFitAnalysisMapper.deleteMemo(memoId, fitAnalysisId);
+        if (deleted == 0) {
+            throw new BusinessException(ErrorCode.NOT_FOUND, "운영 메모를 찾을 수 없습니다.");
+        }
     }
 
     private List<String> parseList(String value) {
@@ -69,5 +121,15 @@ public class AdminFitAnalysisServiceImpl implements AdminFitAnalysisService {
                     .distinct()
                     .toList();
         }
+    }
+
+    private void ensureFitAnalysisExists(Long fitAnalysisId) {
+        if (adminFitAnalysisMapper.findById(fitAnalysisId) == null) {
+            throw new BusinessException(ErrorCode.NOT_FOUND, "적합도 분석 결과를 찾을 수 없습니다.");
+        }
+    }
+
+    private static String normalizeMemoType(String value) {
+        return value == null || value.isBlank() ? "GENERAL" : value.trim().toUpperCase();
     }
 }
