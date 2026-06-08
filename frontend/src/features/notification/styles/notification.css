@@ -1,3 +1,4 @@
+@import '../../../styles/ct-shared.css';
 /* CareerTuner Notifications — ported from design system prototype */
 
 .ct-noti__head { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 18px; flex-wrap: wrap; }
