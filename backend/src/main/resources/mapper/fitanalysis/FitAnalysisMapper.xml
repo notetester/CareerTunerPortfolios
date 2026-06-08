@@ -63,4 +63,52 @@
         ORDER BY fa.id DESC
         LIMIT 1
     </select>
+
+    <resultMap id="FitAnalysisGenerationSourceMap" type="com.careertuner.fitanalysis.domain.FitAnalysisGenerationSource">
+        <result property="companyName" column="company_name"/>
+        <result property="jobTitle" column="job_title"/>
+        <result property="requiredSkills" column="required_skills"/>
+        <result property="preferredSkills" column="preferred_skills"/>
+        <result property="duties" column="duties"/>
+        <result property="profileSkills" column="profile_skills"/>
+        <result property="profileCertificates" column="profile_certificates"/>
+        <result property="desiredJob" column="desired_job"/>
+    </resultMap>
+
+    <!-- 적합도 생성 입력: application_case(B) + 최신 job_analysis(B) + user_profile(A) 읽기 전용 조인. user_id로 소유권 검증. -->
+    <select id="findGenerationSource" resultMap="FitAnalysisGenerationSourceMap">
+        SELECT
+            ac.company_name,
+            ac.job_title,
+            ja.required_skills,
+            ja.preferred_skills,
+            ja.duties,
+            up.skills       AS profile_skills,
+            up.certificates AS profile_certificates,
+            up.desired_job
+        FROM application_case ac
+        LEFT JOIN job_analysis ja
+            ON ja.id = (SELECT MAX(j.id) FROM job_analysis j WHERE j.application_case_id = ac.id)
+        LEFT JOIN user_profile up ON up.user_id = ac.user_id
+        WHERE ac.id = #{applicationCaseId}
+          AND ac.user_id = #{userId}
+          AND ac.deleted_at IS NULL
+    </select>
+
+    <insert id="insertFitAnalysis" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO fit_analysis
+            (application_case_id, fit_score, matched_skills, missing_skills,
+             recommended_study, recommended_certificates, strategy)
+        VALUES
+            (#{applicationCaseId}, #{fitScore}, #{matchedSkills}, #{missingSkills},
+             #{recommendedStudy}, #{recommendedCertificates}, #{strategy})
+    </insert>
+
+    <!-- 공통 ai_usage_log 기록(공통 규약). 스키마 변경은 공통 영역이므로 기존 컬럼만 사용한다. -->
+    <insert id="insertAiUsageLog">
+        INSERT INTO ai_usage_log
+            (user_id, application_case_id, feature_type, status, model, token_usage, credit_used)
+        VALUES
+            (#{userId}, #{applicationCaseId}, #{featureType}, #{status}, #{model}, #{tokenUsage}, #{creditUsed})
+    </insert>
 </mapper>
