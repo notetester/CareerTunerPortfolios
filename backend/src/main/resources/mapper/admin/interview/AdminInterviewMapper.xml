@@ -1,0 +1,62 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.careertuner.admin.interview.mapper.AdminInterviewMapper">
+
+    <sql id="SessionSelect">
+        SELECT
+            s.id,
+            s.application_case_id,
+            ac.user_id,
+            u.email AS user_email,
+            ac.company_name,
+            ac.job_title,
+            s.mode,
+            s.total_score,
+            s.started_at,
+            s.ended_at,
+            s.created_at,
+            (
+                SELECT COUNT(*)
+                FROM interview_question q
+                WHERE q.interview_session_id = s.id
+            ) AS question_count,
+            (
+                SELECT COUNT(*)
+                FROM interview_answer a
+                JOIN interview_question q2 ON q2.id = a.question_id
+                WHERE q2.interview_session_id = s.id
+            ) AS answered_count
+        FROM interview_session s
+        JOIN application_case ac ON ac.id = s.application_case_id
+        JOIN users u ON u.id = ac.user_id
+    </sql>
+
+    <select id="findSessions" resultType="com.careertuner.admin.interview.dto.AdminInterviewSessionRow">
+        <include refid="SessionSelect"/>
+        WHERE 1 = 1
+        <if test="keyword != null">
+            AND (
+                ac.company_name LIKE CONCAT('%', #{keyword}, '%')
+                OR ac.job_title LIKE CONCAT('%', #{keyword}, '%')
+                OR u.email LIKE CONCAT('%', #{keyword}, '%')
+            )
+        </if>
+        <if test="mode != null">
+            AND s.mode = #{mode}
+        </if>
+        ORDER BY s.created_at DESC, s.id DESC
+        LIMIT #{limit}
+    </select>
+
+    <select id="findSession" resultType="com.careertuner.admin.interview.dto.AdminInterviewSessionRow">
+        <include refid="SessionSelect"/>
+        WHERE s.id = #{id}
+    </select>
+
+    <select id="findReport" resultType="java.lang.String">
+        SELECT report
+        FROM interview_session
+        WHERE id = #{id}
+    </select>
+</mapper>

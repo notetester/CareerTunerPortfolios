@@ -1,0 +1,107 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.careertuner.interview.mapper.InterviewMapper">
+
+    <!-- map-underscore-to-camel-case 활성화 상태라 컬럼은 자동 매핑된다. -->
+
+    <!-- ── 세션 ── -->
+    <insert id="insertSession" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO interview_session
+            (application_case_id, mode, started_at, total_score, report)
+        VALUES
+            (#{applicationCaseId}, #{mode}, #{startedAt}, #{totalScore}, #{report})
+    </insert>
+
+    <select id="findSessionsByUserId" resultType="com.careertuner.interview.domain.InterviewSession">
+        SELECT s.*
+        FROM interview_session s
+        JOIN application_case ac ON ac.id = s.application_case_id
+        WHERE ac.user_id = #{userId}
+          AND ac.deleted_at IS NULL
+        ORDER BY s.created_at DESC, s.id DESC
+    </select>
+
+    <select id="findSessionByIdAndUserId" resultType="com.careertuner.interview.domain.InterviewSession">
+        SELECT s.*
+        FROM interview_session s
+        JOIN application_case ac ON ac.id = s.application_case_id
+        WHERE s.id = #{id}
+          AND ac.user_id = #{userId}
+          AND ac.deleted_at IS NULL
+    </select>
+
+    <update id="updateSessionResult">
+        UPDATE interview_session
+        SET total_score = #{totalScore},
+            report = #{report},
+            ended_at = #{endedAt}
+        WHERE id = #{id}
+    </update>
+
+    <select id="findLatestScoredSessionScore" resultType="java.lang.Integer">
+        SELECT total_score
+        FROM interview_session
+        WHERE application_case_id = #{applicationCaseId}
+          AND total_score IS NOT NULL
+          AND id &lt;&gt; #{excludeSessionId}
+        ORDER BY id DESC
+        LIMIT 1
+    </select>
+
+    <!-- ── 질문 ── -->
+    <insert id="insertQuestion" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO interview_question
+            (interview_session_id, question, question_type, sort_order)
+        VALUES
+            (#{interviewSessionId}, #{question}, #{questionType}, #{sortOrder})
+    </insert>
+
+    <delete id="deleteQuestionsBySessionId">
+        DELETE FROM interview_question
+        WHERE interview_session_id = #{sessionId}
+    </delete>
+
+    <select id="findQuestionsBySessionId" resultType="com.careertuner.interview.domain.InterviewQuestion">
+        SELECT *
+        FROM interview_question
+        WHERE interview_session_id = #{sessionId}
+        ORDER BY sort_order, id
+    </select>
+
+    <select id="findQuestionByIdAndUserId" resultType="com.careertuner.interview.domain.InterviewQuestion">
+        SELECT q.*
+        FROM interview_question q
+        JOIN interview_session s ON s.id = q.interview_session_id
+        JOIN application_case ac ON ac.id = s.application_case_id
+        WHERE q.id = #{id}
+          AND ac.user_id = #{userId}
+          AND ac.deleted_at IS NULL
+    </select>
+
+    <!-- ── 답변 ── -->
+    <insert id="insertAnswer" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO interview_answer
+            (question_id, answer_text, audio_url, video_url, score, feedback, improved_answer)
+        VALUES
+            (#{questionId}, #{answerText}, #{audioUrl}, #{videoUrl}, #{score}, #{feedback}, #{improvedAnswer})
+    </insert>
+
+    <select id="findAnswersBySessionId" resultType="com.careertuner.interview.domain.InterviewAnswer">
+        SELECT a.*
+        FROM interview_answer a
+        JOIN interview_question q ON q.id = a.question_id
+        WHERE q.interview_session_id = #{sessionId}
+        ORDER BY q.sort_order, a.id
+    </select>
+
+    <!-- ── AI 사용량 ── -->
+    <insert id="insertAiUsageLog" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO ai_usage_log
+            (user_id, application_case_id, feature_type, status, model,
+             input_tokens, output_tokens, token_usage, credit_used, error_message)
+        VALUES
+            (#{userId}, #{applicationCaseId}, #{featureType}, #{status}, #{model},
+             #{inputTokens}, #{outputTokens}, #{tokenUsage}, #{creditUsed}, #{errorMessage})
+    </insert>
+</mapper>
