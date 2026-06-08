@@ -43,4 +43,6 @@ export interface AnalysisSummary {
   scoreHistory: ScorePoint[];
   applications: AnalysisApplicationSummary[];
   recommendedDirections: string[];
+  /** 장기 취업 경향 AI 요약(C 담당 AI 16). 현재 백엔드 mock, API 키 주입 시 실 분석으로 전환. */
+  trendSummary: string;
 }

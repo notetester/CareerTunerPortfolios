@@ -8,6 +8,7 @@ public record AnalysisSummaryResponse(
         List<JobReadinessResponse> jobReadiness,
         List<AnalysisScorePointResponse> scoreHistory,
         List<AnalysisApplicationSummaryResponse> applications,
-        List<String> recommendedDirections
+        List<String> recommendedDirections,
+        String trendSummary
 ) {
 }

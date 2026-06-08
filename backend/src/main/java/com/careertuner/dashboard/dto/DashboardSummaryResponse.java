@@ -9,6 +9,7 @@ public record DashboardSummaryResponse(
         List<DashboardApplicationResponse> recentApplications,
         List<DashboardTodoResponse> todos,
         List<DashboardActivityResponse> activities,
-        List<DashboardSkillGapResponse> skillGaps
+        List<DashboardSkillGapResponse> skillGaps,
+        String aiSummary
 ) {
 }

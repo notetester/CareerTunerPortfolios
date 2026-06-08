@@ -11,6 +11,9 @@ import java.util.Map;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import com.careertuner.dashboard.ai.DashboardInsightAiCommand;
+import com.careertuner.dashboard.ai.DashboardInsightAiResult;
+import com.careertuner.dashboard.ai.DashboardInsightAiService;
 import com.careertuner.dashboard.domain.DashboardApplicationSource;
 import com.careertuner.dashboard.domain.DashboardUserSource;
 import com.careertuner.dashboard.dto.DashboardActivityResponse;
@@ -35,6 +38,7 @@ public class DashboardServiceImpl implements DashboardService {
     };
 
     private final DashboardMapper dashboardMapper;
+    private final DashboardInsightAiService dashboardInsightAiService;
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     @Override
@@ -47,11 +51,16 @@ public class DashboardServiceImpl implements DashboardService {
                 .toList();
         List<DashboardSkillGapResponse> skillGaps = skillGaps(analyzedApplications);
         DashboardStatsResponse stats = stats(user, applications, analyzedApplications, userId);
+        DashboardFocusResponse focus = focus(applications);
+
+        // 대시보드 AI 요약(18)은 AI seam(현재 mock)으로 위임한다. 키 주입 시 실 AI로 교체.
+        DashboardInsightAiResult insight = dashboardInsightAiService.summarize(
+                new DashboardInsightAiCommand(stats, focus, skillGaps));
 
         return new DashboardSummaryResponse(
                 DashboardUserResponse.from(user),
                 stats,
-                focus(applications),
+                focus,
                 applications.stream()
                         .limit(5)
                         .map(application -> DashboardApplicationResponse.of(application, tags(application)))
@@ -60,7 +69,8 @@ public class DashboardServiceImpl implements DashboardService {
                 dashboardMapper.findRecentActivitiesByUserId(userId).stream()
                         .map(DashboardActivityResponse::from)
                         .toList(),
-                skillGaps);
+                skillGaps,
+                insight.summary());
     }
 
     private DashboardStatsResponse stats(DashboardUserSource user,

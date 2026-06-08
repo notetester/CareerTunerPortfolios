@@ -92,7 +92,9 @@ export function ApplicationDetailPage() {
   const {
     analyses: fitAnalyses,
     loading: fitAnalysisLoading,
+    generating: fitGenerating,
     error: fitAnalysisError,
+    generate: generateFit,
   } = useApplicationFitAnalysis(id, isAuthenticated && Boolean(applicationCase));
   const [activeTab, setActiveTab] = useState<DetailTab>("overview");
 
@@ -300,6 +302,17 @@ export function ApplicationDetailPage() {
 
               {activeTab === "fit" && (
                 <div className="space-y-6">
+                  {/* C 담당: 적합도/전략/학습 추천. 생성 트리거는 fit-analyses 엔드포인트(현재 mock). */}
+                  <div className="flex flex-col gap-3 rounded-lg border border-slate-200 bg-white p-4 sm:flex-row sm:items-center sm:justify-between">
+                    <p className="text-sm text-slate-600">공고 분석 결과와 내 프로필을 비교해 적합도·부족 역량·학습/자격증·전략을 분석합니다.</p>
+                    <Button
+                      className="bg-blue-600 text-white hover:bg-blue-700"
+                      disabled={fitGenerating}
+                      onClick={() => void generateFit()}
+                    >
+                      {fitGenerating ? "분석 중..." : fitAnalyses.length > 0 ? "적합도 재분석" : "적합도 분석 생성"}
+                    </Button>
+                  </div>
                   <FitAnalysisPanel analyses={fitAnalyses} loading={fitAnalysisLoading} error={fitAnalysisError} />
                   <StrategyPanel analyses={fitAnalyses} loading={fitAnalysisLoading} error={fitAnalysisError} />
                   <LearningRecommendationPanel analyses={fitAnalyses} loading={fitAnalysisLoading} error={fitAnalysisError} />
