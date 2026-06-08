@@ -4,10 +4,13 @@ import java.util.List;
 
 import com.careertuner.applicationcase.dto.AnalysisResponse;
 import com.careertuner.applicationcase.dto.ApplicationCaseResponse;
+import com.careertuner.companyanalysis.dto.CompanyAnalysisResponse;
 import com.careertuner.applicationcase.dto.CreateApplicationCaseRequest;
-import com.careertuner.applicationcase.dto.JobPostingRequest;
-import com.careertuner.applicationcase.dto.JobPostingResponse;
+import com.careertuner.jobanalysis.dto.JobAnalysisResponse;
+import com.careertuner.jobposting.dto.JobPostingRequest;
+import com.careertuner.jobposting.dto.JobPostingResponse;
 import com.careertuner.applicationcase.dto.UpdateApplicationCaseRequest;
+import org.springframework.web.multipart.MultipartFile;
 
 public interface ApplicationCaseService {
 
@@ -23,7 +26,21 @@ public interface ApplicationCaseService {
 
     JobPostingResponse saveJobPosting(Long userId, Long applicationCaseId, JobPostingRequest request);
 
+    JobPostingResponse uploadJobPostingFile(Long userId, Long applicationCaseId, MultipartFile file, String sourceType);
+
     JobPostingResponse getJobPosting(Long userId, Long applicationCaseId);
+
+    JobAnalysisResponse createMockJobAnalysis(Long userId, Long applicationCaseId);
+
+    JobAnalysisResponse createJobAnalysis(Long userId, Long applicationCaseId);
+
+    JobAnalysisResponse getJobAnalysis(Long userId, Long applicationCaseId);
+
+    CompanyAnalysisResponse createMockCompanyAnalysis(Long userId, Long applicationCaseId);
+
+    CompanyAnalysisResponse createCompanyAnalysis(Long userId, Long applicationCaseId);
+
+    CompanyAnalysisResponse getCompanyAnalysis(Long userId, Long applicationCaseId);
 
     AnalysisResponse createMockAnalysis(Long userId, Long applicationCaseId);
 

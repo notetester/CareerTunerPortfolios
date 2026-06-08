@@ -277,12 +277,18 @@ CREATE TABLE IF NOT EXISTS ai_usage_log (
     user_id             BIGINT NOT NULL,
     application_case_id BIGINT NULL,
     feature_type        VARCHAR(40) NOT NULL,               -- JOB_ANALYSIS/COMPANY_RESEARCH/QUESTION_GEN/INTERVIEW/...
+    status              VARCHAR(20) NOT NULL DEFAULT 'SUCCESS',
+    model               VARCHAR(80) NULL,
+    input_tokens        INT NULL,
+    output_tokens       INT NULL,
     token_usage         INT NULL,
     credit_used         INT NOT NULL DEFAULT 0,
+    error_message       VARCHAR(1000) NULL,
     created_at          DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (id),
     KEY idx_ai_usage_user (user_id),
     KEY idx_ai_usage_case (application_case_id),
+    KEY idx_ai_usage_feature (feature_type),
     CONSTRAINT fk_ai_usage_user FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE,
     CONSTRAINT fk_ai_usage_case FOREIGN KEY (application_case_id) REFERENCES application_case (id) ON DELETE SET NULL
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci;

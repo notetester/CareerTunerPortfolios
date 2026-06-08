@@ -23,7 +23,9 @@ const BASE = "/api"; // Vite 프록시 → http://localhost:8080
 
 function buildHeaders(options: RequestInit, withAuth: boolean): Headers {
   const headers = new Headers(options.headers ?? {});
-  if (options.body && !headers.has("Content-Type")) {
+  const body = options.body;
+  const isFormData = typeof FormData !== "undefined" && body instanceof FormData;
+  if (body && !isFormData && !headers.has("Content-Type")) {
     headers.set("Content-Type", "application/json");
   }
   if (withAuth) {

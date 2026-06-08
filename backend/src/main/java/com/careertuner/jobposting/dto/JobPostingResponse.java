@@ -1,8 +1,8 @@
-package com.careertuner.applicationcase.dto;
+package com.careertuner.jobposting.dto;
 
 import java.time.LocalDateTime;
 
-import com.careertuner.applicationcase.domain.JobPosting;
+import com.careertuner.jobposting.domain.JobPosting;
 
 public record JobPostingResponse(
         Long id,

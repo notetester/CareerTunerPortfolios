@@ -1,4 +1,4 @@
-package com.careertuner.applicationcase.domain;
+package com.careertuner.jobposting.domain;
 
 import java.time.LocalDateTime;
 

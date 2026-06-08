@@ -229,7 +229,7 @@ export default function AdminInquiries() {
             <span className="inq-pill">{selected.plan}</span>
             <span className="inq-pill">가입 {selected.joined}</span>
             <span className="inq-pill">{selected.lastPay}</span>
-            <a href="/admin/members" className="inq-context__link">회원 상세 <ExternalLink /></a>
+            <a href="/admin/users" className="inq-context__link">회원 상세 <ExternalLink /></a>
           </div>
 
           {/* 4) Chat */}

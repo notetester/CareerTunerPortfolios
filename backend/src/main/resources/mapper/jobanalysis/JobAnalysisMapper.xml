@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.careertuner.jobanalysis.mapper.JobAnalysisMapper">
+
+    <delete id="deleteJobAnalysesByCaseId">
+        DELETE FROM job_analysis
+        WHERE application_case_id = #{applicationCaseId}
+    </delete>
+
+    <insert id="insertJobAnalysis" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO job_analysis
+            (application_case_id, employment_type, experience_level, required_skills,
+             preferred_skills, duties, qualifications, difficulty, summary)
+        VALUES
+            (#{applicationCaseId}, #{employmentType}, #{experienceLevel}, #{requiredSkills},
+             #{preferredSkills}, #{duties}, #{qualifications}, #{difficulty}, #{summary})
+    </insert>
+
+    <select id="findLatestJobAnalysisByCaseId" resultType="com.careertuner.jobanalysis.domain.JobAnalysis">
+        SELECT *
+        FROM job_analysis
+        WHERE application_case_id = #{applicationCaseId}
+        ORDER BY id DESC
+        LIMIT 1
+    </select>
+</mapper>

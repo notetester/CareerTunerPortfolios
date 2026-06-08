@@ -141,6 +141,8 @@ const navItems = [
       { label: "회원 관리", href: "/admin/users" },
       { label: "결제 관리", href: "/admin/payments" },
       { label: "AI 사용량 관리", href: "/admin/ai-usage" },
+      { label: "공고 분석 조회", href: "/admin/job-analysis" },
+      { label: "기업 분석 조회", href: "/admin/company-analysis" },
       { label: "게시판/신고 관리", href: "/admin/community" },
       { label: "공지사항 관리", href: "/admin/notices" },
       { label: "요금제 관리", href: "/admin/plans" },

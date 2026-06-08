@@ -1,22 +1,35 @@
 import { api } from "@/app/lib/api";
-import type { ApplicationAnalysis, ApplicationCase, JobPosting } from "../types/applicationCase";
+import type {
+  ApplicationCase,
+  CreateApplicationCaseRequest,
+  UpdateApplicationCaseRequest,
+} from "../types/applicationCase";
 
-export function getApplicationCases() {
-  return api<ApplicationCase[]>("/application-cases");
+export function listApplicationCases(): Promise<ApplicationCase[]> {
+  return api<ApplicationCase[]>("/application-cases", { method: "GET" });
 }
 
-export function getApplicationCase(id: number) {
-  return api<ApplicationCase>(`/application-cases/${id}`);
+export function getApplicationCase(id: number): Promise<ApplicationCase> {
+  return api<ApplicationCase>(`/application-cases/${id}`, { method: "GET" });
 }
 
-export function getJobPosting(applicationCaseId: number) {
-  return api<JobPosting>(`/application-cases/${applicationCaseId}/job-posting`);
+export function createApplicationCase(request: CreateApplicationCaseRequest): Promise<ApplicationCase> {
+  return api<ApplicationCase>("/application-cases", {
+    method: "POST",
+    body: JSON.stringify(request),
+  });
 }
 
-export function getApplicationAnalysis(applicationCaseId: number) {
-  return api<ApplicationAnalysis>(`/application-cases/${applicationCaseId}/analysis`);
+export function updateApplicationCase(
+  id: number,
+  request: UpdateApplicationCaseRequest,
+): Promise<ApplicationCase> {
+  return api<ApplicationCase>(`/application-cases/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify(request),
+  });
 }
 
-export function createMockAnalysis(applicationCaseId: number) {
-  return api<ApplicationAnalysis>(`/application-cases/${applicationCaseId}/analysis/mock`, { method: "POST" });
+export function deleteApplicationCase(id: number): Promise<void> {
+  return api<void>(`/application-cases/${id}`, { method: "DELETE" });
 }

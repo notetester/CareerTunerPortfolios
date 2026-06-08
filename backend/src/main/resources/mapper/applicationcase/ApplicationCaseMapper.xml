@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="UTF-8"?>
+﻿<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
         "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
 <mapper namespace="com.careertuner.applicationcase.mapper.ApplicationCaseMapper">
@@ -53,48 +53,6 @@
         WHERE id = #{id} AND user_id = #{userId}
     </delete>
 
-    <delete id="deleteJobPostingsByCaseId">
-        DELETE FROM job_posting
-        WHERE application_case_id = #{applicationCaseId}
-    </delete>
-
-    <insert id="insertJobPosting" useGeneratedKeys="true" keyProperty="id">
-        INSERT INTO job_posting
-            (application_case_id, original_text, uploaded_file_url, extracted_text, source_type)
-        VALUES
-            (#{applicationCaseId}, #{originalText}, #{uploadedFileUrl}, #{extractedText}, #{sourceType})
-    </insert>
-
-    <select id="findLatestJobPostingByCaseId" resultType="com.careertuner.applicationcase.domain.JobPosting">
-        SELECT *
-        FROM job_posting
-        WHERE application_case_id = #{applicationCaseId}
-        ORDER BY id DESC
-        LIMIT 1
-    </select>
-
-    <delete id="deleteJobAnalysesByCaseId">
-        DELETE FROM job_analysis
-        WHERE application_case_id = #{applicationCaseId}
-    </delete>
-
-    <insert id="insertJobAnalysis" useGeneratedKeys="true" keyProperty="id">
-        INSERT INTO job_analysis
-            (application_case_id, employment_type, experience_level, required_skills,
-             preferred_skills, duties, qualifications, difficulty, summary)
-        VALUES
-            (#{applicationCaseId}, #{employmentType}, #{experienceLevel}, #{requiredSkills},
-             #{preferredSkills}, #{duties}, #{qualifications}, #{difficulty}, #{summary})
-    </insert>
-
-    <select id="findLatestJobAnalysisByCaseId" resultType="com.careertuner.applicationcase.domain.JobAnalysis">
-        SELECT *
-        FROM job_analysis
-        WHERE application_case_id = #{applicationCaseId}
-        ORDER BY id DESC
-        LIMIT 1
-    </select>
-
     <delete id="deleteFitAnalysesByCaseId">
         DELETE FROM fit_analysis
         WHERE application_case_id = #{applicationCaseId}
@@ -117,10 +75,12 @@
         LIMIT 1
     </select>
 
-    <insert id="insertAiUsageLog">
+    <insert id="insertAiUsageLog" useGeneratedKeys="true" keyProperty="id">
         INSERT INTO ai_usage_log
-            (user_id, application_case_id, feature_type, token_usage, credit_used)
+            (user_id, application_case_id, feature_type, status, model,
+             input_tokens, output_tokens, token_usage, credit_used, error_message)
         VALUES
-            (#{userId}, #{applicationCaseId}, #{featureType}, #{tokenUsage}, #{creditUsed})
+            (#{userId}, #{applicationCaseId}, #{featureType}, #{status}, #{model},
+             #{inputTokens}, #{outputTokens}, #{tokenUsage}, #{creditUsed}, #{errorMessage})
     </insert>
 </mapper>

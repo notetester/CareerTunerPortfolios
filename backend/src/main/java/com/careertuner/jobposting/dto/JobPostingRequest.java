@@ -1,4 +1,4 @@
-package com.careertuner.applicationcase.dto;
+package com.careertuner.jobposting.dto;
 
 import jakarta.validation.constraints.Size;
 

@@ -45,6 +45,10 @@ frontend/ios/
 !.env.example
 *.local
 
+# ----- Local uploads -----
+.uploads/
+backend/.uploads/
+
 # ----- AI tools (개인 로컬 설정) -----
 AGENTS.local.md
 CLAUDE.local.md
