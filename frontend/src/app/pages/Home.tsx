@@ -1,4 +1,6 @@
+import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router";
+import { useAuth } from "../auth/AuthContext";
 import { Button } from "../components/ui/button";
 import { Badge } from "../components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
@@ -9,7 +11,10 @@ import {
   TrendingUp, Users, BarChart3, Zap, Shield, Clock, Star,
   ChevronRight, Play, Building2, Briefcase, BookOpen, PenTool,
   Award, Bot, Mic, Video, Brain, AlertCircle, ThumbsUp, Search,
+  Plus, Calendar, Loader2, Flame,
 } from "lucide-react";
+import { getDashboardSummary } from "@/features/dashboard/api/dashboardApi";
+import type { DashboardActivity, DashboardSummary } from "@/features/dashboard/types/dashboardSummary";
 
 const coreFeaturesData = [
   {
@@ -119,8 +124,491 @@ const testimonials = [
   { name: "김*영", job: "삼성SDS 최종 합격", avatar: "김", plan: "프로", text: "답변 첨삭 기능이 최고예요. 막연하게 답했던 것들이 어떻게 개선되어야 하는지 구체적으로 알려줘서 좋았습니다." },
 ];
 
+const dashboardStatusLabel: Record<string, string> = {
+  DRAFT: "공고 입력",
+  ANALYZING: "분석 중",
+  READY: "준비중",
+  APPLIED: "지원 완료",
+  CLOSED: "마감",
+};
+
+const dashboardStatusColor: Record<string, string> = {
+  DRAFT: "bg-slate-100 text-slate-700",
+  ANALYZING: "bg-amber-100 text-amber-700",
+  READY: "bg-blue-100 text-blue-700",
+  APPLIED: "bg-green-100 text-green-700",
+  CLOSED: "bg-zinc-100 text-zinc-500",
+};
+
+function formatDashboardDate(value: string | null) {
+  if (!value) return "날짜 없음";
+  return new Intl.DateTimeFormat("ko-KR", {
+    month: "2-digit",
+    day: "2-digit",
+  }).format(new Date(value));
+}
+
+function formatDashboardTime(value: string) {
+  const diffMs = Date.now() - new Date(value).getTime();
+  const minutes = Math.floor(diffMs / 60000);
+  if (minutes < 1) return "방금 전";
+  if (minutes < 60) return `${minutes}분 전`;
+
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}시간 전`;
+
+  const days = Math.floor(hours / 24);
+  if (days < 7) return `${days}일 전`;
+
+  return formatDashboardDate(value);
+}
+
+function dashboardActivityMeta(type: DashboardActivity["type"]) {
+  if (type === "INTERVIEW") return { icon: MessageSquare, color: "text-purple-600", bg: "bg-purple-50" };
+  if (type === "APPLICATION") return { icon: Target, color: "text-orange-600", bg: "bg-orange-50" };
+  return { icon: FileText, color: "text-blue-600", bg: "bg-blue-50" };
+}
+
+interface MemberHomeProps {
+  summary: DashboardSummary | null;
+  loading: boolean;
+  error: string | null;
+  fallbackName: string;
+  onRetry: () => void;
+}
+
+function MemberHome({ summary, loading, error, fallbackName, onRetry }: MemberHomeProps) {
+  const navigate = useNavigate();
+  const stats = summary?.stats;
+  const pendingTodos = summary?.todos.filter((todo) => !todo.done).length ?? 0;
+  const creditPercent = stats ? Math.min(100, Math.round((stats.credit / Math.max(1, stats.creditLimit)) * 100)) : 0;
+  const highFitCount = summary?.recentApplications.filter((application) => (application.fitScore ?? 0) >= 70).length ?? 0;
+  const urgentApplications = summary?.recentApplications
+    .filter((application) => application.status !== "CLOSED")
+    .slice(0, 3) ?? [];
+
+  const statCards = useMemo(() => {
+    if (!stats) return [];
+
+    return [
+      {
+        icon: Briefcase,
+        label: "활성 지원 건",
+        value: `${stats.activeApplications}`,
+        sub: `이번 달 ${stats.newApplicationsThisMonth}건 추가`,
+        color: "from-blue-500 to-cyan-500",
+      },
+      {
+        icon: TrendingUp,
+        label: "평균 적합도",
+        value: `${stats.averageFitScore}점`,
+        sub: `${highFitCount}건은 우선 지원 후보`,
+        color: "from-green-500 to-emerald-500",
+      },
+      {
+        icon: MessageSquare,
+        label: "면접 연습",
+        value: `${stats.totalInterviews}회`,
+        sub: `이번 주 ${stats.interviewsThisWeek}회 진행`,
+        color: "from-purple-500 to-violet-500",
+      },
+      {
+        icon: Award,
+        label: "보유 크레딧",
+        value: `${stats.credit}`,
+        sub: `이번 달 ${stats.creditsUsedThisMonth}크레딧 사용`,
+        color: "from-amber-500 to-orange-500",
+      },
+    ];
+  }, [highFitCount, stats]);
+
+  if (loading && !summary) {
+    return (
+      <div className="min-h-screen bg-slate-50">
+        <div className="max-w-[1400px] mx-auto px-4 sm:px-6 py-8">
+          <Card className="border border-slate-200 bg-white">
+            <CardContent className="flex items-center gap-3 p-6 text-sm text-slate-600">
+              <Loader2 className="size-5 animate-spin text-blue-600" />
+              회원 홈 데이터를 불러오는 중입니다.
+            </CardContent>
+          </Card>
+        </div>
+      </div>
+    );
+  }
+
+  if (error && !summary) {
+    return (
+      <div className="min-h-screen bg-slate-50">
+        <div className="max-w-[1400px] mx-auto px-4 sm:px-6 py-8">
+          <Card className="border border-red-200 bg-red-50">
+            <CardContent className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 p-6">
+              <div className="flex items-start gap-3 text-sm text-red-700">
+                <AlertCircle className="size-5 mt-0.5 flex-shrink-0" />
+                <span>{error}</span>
+              </div>
+              <Button variant="outline" className="border-red-300 text-red-700 hover:bg-red-100" onClick={onRetry}>
+                다시 불러오기
+              </Button>
+            </CardContent>
+          </Card>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="min-h-screen bg-slate-50">
+      <div className="max-w-[1400px] mx-auto px-4 sm:px-6 py-6 lg:py-8 space-y-6">
+        <section className="grid lg:grid-cols-[1.5fr_0.9fr] gap-5">
+          <div className="rounded-2xl border border-slate-200 bg-white p-5 sm:p-7 shadow-sm">
+            <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-5">
+              <div className="min-w-0">
+                <div className="flex flex-wrap items-center gap-2 text-sm text-slate-500">
+                  <Badge className="bg-blue-100 text-blue-700 hover:bg-blue-100">회원 대시보드</Badge>
+                  <span>{pendingTodos > 0 ? `오늘 확인할 항목 ${pendingTodos}건` : "오늘 일정 정리 완료"}</span>
+                </div>
+                <h1 className="mt-3 text-2xl sm:text-3xl font-black text-slate-950 tracking-normal">
+                  {summary?.user.name ?? fallbackName} 님, 오늘은 지원 흐름을 이렇게 가져가면 좋습니다.
+                </h1>
+                <p className="mt-3 text-sm sm:text-base text-slate-600 leading-7 max-w-3xl">
+                  {summary?.focus.description ?? "지원 건을 등록하면 적합도, 면접 준비, 반복 약점이 한 화면에 정리됩니다."}
+                </p>
+              </div>
+              <div className="flex flex-col sm:flex-row lg:flex-col gap-2 shrink-0">
+                <Button className="bg-blue-600 hover:bg-blue-700 gap-2" onClick={() => navigate("/applications")}>
+                  <Plus className="size-4" />
+                  새 지원 건
+                </Button>
+                <Button variant="outline" className="gap-2" onClick={() => navigate("/analysis")}>
+                  <BarChart3 className="size-4" />
+                  취업 분석
+                </Button>
+              </div>
+            </div>
+
+            <div className="mt-6 grid sm:grid-cols-[220px_1fr] gap-5">
+              <div className="rounded-xl bg-slate-950 text-white p-5">
+                <div className="text-sm text-slate-300">준비도</div>
+                <div className="mt-2 flex items-end gap-2">
+                  <span className="text-5xl font-black">{summary?.focus.readiness ?? 0}</span>
+                  <span className="pb-2 text-slate-300">%</span>
+                </div>
+                <Progress value={summary?.focus.readiness ?? 0} className="mt-4 h-2 bg-slate-800" />
+                <div className="mt-4 text-xs text-slate-300 leading-5">
+                  {summary?.focus.headline ?? "분석 가능한 지원 건이 필요합니다."}
+                </div>
+              </div>
+
+              <div className="grid sm:grid-cols-3 gap-3">
+                {urgentApplications.length > 0 ? urgentApplications.map((application) => (
+                  <Link to={`/applications/${application.id}`} key={application.id} className="min-w-0">
+                    <div className="h-full rounded-xl border border-slate-200 bg-slate-50 p-4 hover:border-blue-300 hover:bg-blue-50 transition-colors">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <div className="text-sm font-bold text-slate-900 truncate">{application.companyName}</div>
+                          <div className="mt-1 text-xs text-slate-500 line-clamp-2">{application.jobTitle}</div>
+                        </div>
+                        <ChevronRight className="size-4 text-slate-400 shrink-0" />
+                      </div>
+                      <div className="mt-4 flex items-center justify-between gap-2">
+                        <Badge className={`text-xs ${dashboardStatusColor[application.status] ?? "bg-slate-100 text-slate-700"}`}>
+                          {dashboardStatusLabel[application.status] ?? application.status}
+                        </Badge>
+                        <span className="text-sm font-black text-blue-600">{application.fitScore != null ? `${application.fitScore}점` : "미분석"}</span>
+                      </div>
+                    </div>
+                  </Link>
+                )) : (
+                  <div className="sm:col-span-3 rounded-xl border border-dashed border-slate-300 bg-slate-50 p-5 text-sm text-slate-500">
+                    아직 진행 중인 지원 건이 없습니다.
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+
+          <Card className="border border-slate-200 bg-white shadow-sm">
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base flex items-center gap-2">
+                <Flame className="size-4 text-orange-500" />
+                오늘의 우선순위
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              {(summary?.todos ?? []).map((todo, index) => (
+                <div key={`${todo.task}-${index}`} className="flex items-start gap-3 rounded-lg bg-slate-50 p-3">
+                  <div className={`size-5 rounded-md flex items-center justify-center shrink-0 mt-0.5 ${todo.done ? "bg-green-500" : "border-2 border-slate-300 bg-white"}`}>
+                    {todo.done && <CheckCircle2 className="size-3.5 text-white" />}
+                  </div>
+                  <div className="min-w-0">
+                    <div className={`text-sm leading-5 ${todo.done ? "line-through text-slate-400" : "text-slate-800"}`}>{todo.task}</div>
+                    <div className="mt-1 text-xs text-slate-400">{todo.time}</div>
+                  </div>
+                </div>
+              ))}
+              {summary?.todos.length === 0 && (
+                <div className="rounded-lg bg-slate-50 p-4 text-sm text-slate-500">오늘 등록된 할 일이 없습니다.</div>
+              )}
+            </CardContent>
+          </Card>
+        </section>
+
+        <section className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+          {statCards.map((card) => (
+            <Card key={card.label} className="border border-slate-200 bg-white shadow-sm">
+              <CardContent className="p-4 sm:p-5">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="text-xs sm:text-sm text-slate-500">{card.label}</div>
+                    <div className="mt-1 text-2xl sm:text-3xl font-black text-slate-950 break-words">{card.value}</div>
+                    <div className="mt-1 text-xs text-slate-400 leading-5">{card.sub}</div>
+                  </div>
+                  <div className={`size-10 rounded-xl bg-gradient-to-br ${card.color} flex items-center justify-center shrink-0`}>
+                    <card.icon className="size-5 text-white" />
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+        </section>
+
+        <section className="grid lg:grid-cols-[1.45fr_0.85fr] gap-5">
+          <div className="space-y-5">
+            <Card className="border border-slate-200 bg-white shadow-sm">
+              <CardHeader className="pb-3">
+                <div className="flex items-center justify-between gap-3">
+                  <CardTitle className="text-lg">최근 지원 건</CardTitle>
+                  <Link to="/applications" className="text-sm text-blue-600 hover:text-blue-700 flex items-center gap-1 shrink-0">
+                    전체 보기 <ArrowRight className="size-3.5" />
+                  </Link>
+                </div>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                {(summary?.recentApplications ?? []).map((application) => (
+                  <Link to={`/applications/${application.id}`} key={application.id} className="block">
+                    <div className="rounded-xl border border-slate-200 p-4 hover:border-blue-300 hover:shadow-sm transition-all">
+                      <div className="flex flex-col md:flex-row md:items-center gap-4">
+                        <div className="flex items-center gap-3 min-w-0 flex-1">
+                          <div className="size-11 rounded-xl bg-gradient-to-br from-blue-600 to-indigo-600 flex items-center justify-center text-white font-bold shrink-0">
+                            {application.companyName[0]}
+                          </div>
+                          <div className="min-w-0">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <span className="font-bold text-slate-900">{application.companyName}</span>
+                              <span className="text-sm text-slate-500">{application.jobTitle}</span>
+                              {application.favorite && <Badge className="bg-amber-100 text-amber-700 hover:bg-amber-100">관심</Badge>}
+                            </div>
+                            <div className="mt-2 flex flex-wrap items-center gap-2">
+                              <Badge className={`text-xs ${dashboardStatusColor[application.status] ?? "bg-slate-100 text-slate-700"}`}>
+                                {dashboardStatusLabel[application.status] ?? application.status}
+                              </Badge>
+                              {application.tags.map((tag) => (
+                                <span key={tag} className="rounded bg-slate-100 px-2 py-0.5 text-xs text-slate-600">{tag}</span>
+                              ))}
+                              <span className="flex items-center gap-1 text-xs text-slate-400">
+                                <Calendar className="size-3" />
+                                {formatDashboardDate(application.postingDate ?? application.updatedAt)}
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+                        <div className="md:w-48">
+                          <div className="flex items-center justify-between text-xs text-slate-500">
+                            <span>적합도</span>
+                            <span className="font-bold text-blue-600">{application.fitScore != null ? `${application.fitScore}점` : "미분석"}</span>
+                          </div>
+                          <Progress value={application.fitScore ?? 0} className="mt-2 h-2" />
+                        </div>
+                      </div>
+                    </div>
+                  </Link>
+                ))}
+                {summary?.recentApplications.length === 0 && (
+                  <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 p-5 text-sm text-slate-500">
+                    공고를 등록하면 지원 건별 적합도와 면접 준비 현황이 이곳에 쌓입니다.
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+
+            <Card className="border border-slate-200 bg-white shadow-sm">
+              <CardHeader className="pb-3">
+                <CardTitle className="text-lg">최근 활동</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                {(summary?.activities ?? []).map((activity, index) => {
+                  const meta = dashboardActivityMeta(activity.type);
+                  return (
+                    <div key={`${activity.type}-${activity.occurredAt}-${index}`} className="flex items-start gap-3">
+                      <div className={`size-9 rounded-lg ${meta.bg} flex items-center justify-center shrink-0 mt-0.5`}>
+                        <meta.icon className={`size-4 ${meta.color}`} />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <div className="text-sm text-slate-700 leading-6">{activity.content}</div>
+                        <div className="mt-0.5 text-xs text-slate-400">{formatDashboardTime(activity.occurredAt)}</div>
+                      </div>
+                      {activity.score != null && <Badge className="bg-slate-100 text-slate-700 hover:bg-slate-100">{activity.score}점</Badge>}
+                    </div>
+                  );
+                })}
+                {summary?.activities.length === 0 && (
+                  <div className="text-sm text-slate-500">아직 기록된 활동이 없습니다.</div>
+                )}
+              </CardContent>
+            </Card>
+          </div>
+
+          <div className="space-y-5">
+            <Card className="border border-amber-200 bg-amber-50 shadow-sm">
+              <CardHeader className="pb-3">
+                <CardTitle className="text-base flex items-center gap-2 text-amber-800">
+                  <Award className="size-4 text-amber-600" />
+                  크레딧 현황
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="rounded-xl bg-white/70 p-4 text-center">
+                  <div className="text-4xl font-black text-amber-700">{summary?.stats.credit ?? 0}</div>
+                  <div className="mt-1 text-sm text-amber-700">/ {summary?.stats.creditLimit ?? 0} 크레딧 잔여</div>
+                  <Progress value={creditPercent} className="mt-3 h-2" />
+                </div>
+                <div className="space-y-2 text-xs text-amber-800">
+                  <div className="flex justify-between gap-3">
+                    <span>현재 플랜</span>
+                    <span className="font-bold">{summary?.user.plan ?? "Free"}</span>
+                  </div>
+                  <div className="flex justify-between gap-3">
+                    <span>이번 달 사용</span>
+                    <span className="font-bold">{summary?.stats.creditsUsedThisMonth ?? 0} 크레딧</span>
+                  </div>
+                </div>
+                <Button size="sm" variant="outline" className="w-full border-amber-400 text-amber-700 hover:bg-amber-100" onClick={() => navigate("/pricing")}>
+                  크레딧 충전하기
+                </Button>
+              </CardContent>
+            </Card>
+
+            <Card className="border border-slate-200 bg-white shadow-sm">
+              <CardHeader className="pb-3">
+                <CardTitle className="text-base">자주 부족한 역량</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                {(summary?.skillGaps ?? []).map((skill) => (
+                  <div key={skill.skill} className="space-y-1.5">
+                    <div className="flex justify-between gap-3 text-xs">
+                      <span className="font-semibold text-slate-700">{skill.skill}</span>
+                      <span className="text-slate-400">{skill.count}/{skill.total}건</span>
+                    </div>
+                    <Progress value={skill.percentage} className="h-2" />
+                  </div>
+                ))}
+                {summary?.skillGaps.length === 0 && (
+                  <div className="text-sm text-slate-500">분석 결과가 쌓이면 반복 약점이 표시됩니다.</div>
+                )}
+              </CardContent>
+            </Card>
+
+            <Card className="border border-slate-200 bg-white shadow-sm">
+              <CardHeader className="pb-3">
+                <CardTitle className="text-base">빠른 이동</CardTitle>
+              </CardHeader>
+              <CardContent className="grid grid-cols-2 gap-2">
+                {[
+                  { label: "지원 건", icon: Briefcase, href: "/applications", color: "text-blue-600" },
+                  { label: "면접", icon: MessageSquare, href: "/interview", color: "text-purple-600" },
+                  { label: "분석", icon: BarChart3, href: "/analysis", color: "text-green-600" },
+                  { label: "커뮤니티", icon: BookOpen, href: "/community", color: "text-orange-600" },
+                ].map((menu) => (
+                  <Link key={menu.label} to={menu.href}>
+                    <div className="flex min-h-20 flex-col items-center justify-center gap-2 rounded-xl bg-slate-50 p-3 hover:bg-blue-50 transition-colors">
+                      <menu.icon className={`size-5 ${menu.color}`} />
+                      <span className="text-xs font-semibold text-slate-700">{menu.label}</span>
+                    </div>
+                  </Link>
+                ))}
+              </CardContent>
+            </Card>
+          </div>
+        </section>
+
+        {loading && summary && (
+          <div className="fixed bottom-5 right-5 rounded-full border border-slate-200 bg-white px-4 py-2 text-sm text-slate-600 shadow-lg">
+            <Loader2 className="mr-2 inline size-4 animate-spin text-blue-600" />
+            최신 데이터 동기화 중
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export function HomePage() {
   const navigate = useNavigate();
+  const { user, loading: authLoading, isAuthenticated } = useAuth();
+  const [summary, setSummary] = useState<DashboardSummary | null>(null);
+  const [dashboardLoading, setDashboardLoading] = useState(false);
+  const [dashboardError, setDashboardError] = useState<string | null>(null);
+  const [reloadToken, setReloadToken] = useState(0);
+
+  useEffect(() => {
+    if (!isAuthenticated) {
+      setSummary(null);
+      setDashboardLoading(false);
+      setDashboardError(null);
+      return;
+    }
+
+    let ignore = false;
+    setDashboardLoading(true);
+    setDashboardError(null);
+
+    getDashboardSummary()
+      .then((data) => {
+        if (!ignore) setSummary(data);
+      })
+      .catch((requestError) => {
+        if (!ignore) {
+          setDashboardError(requestError instanceof Error ? requestError.message : "회원 홈 데이터를 불러오지 못했습니다.");
+        }
+      })
+      .finally(() => {
+        if (!ignore) setDashboardLoading(false);
+      });
+
+    return () => {
+      ignore = true;
+    };
+  }, [isAuthenticated, reloadToken]);
+
+  if (authLoading) {
+    return (
+      <div className="min-h-screen bg-slate-50">
+        <div className="max-w-[1400px] mx-auto px-4 sm:px-6 py-8">
+          <Card className="border border-slate-200 bg-white">
+            <CardContent className="flex items-center gap-3 p-6 text-sm text-slate-600">
+              <Loader2 className="size-5 animate-spin text-blue-600" />
+              세션을 확인하는 중입니다.
+            </CardContent>
+          </Card>
+        </div>
+      </div>
+    );
+  }
+
+  if (isAuthenticated) {
+    const memberHomeLoading = dashboardLoading || (!summary && !dashboardError);
+
+    return (
+      <MemberHome
+        summary={summary}
+        loading={memberHomeLoading}
+        error={dashboardError}
+        fallbackName={user?.name ?? "지원자"}
+        onRetry={() => setReloadToken((value) => value + 1)}
+      />
+    );
+  }
 
   return (
     <div className="bg-white">
