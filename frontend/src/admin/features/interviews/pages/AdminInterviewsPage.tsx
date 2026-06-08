@@ -22,7 +22,13 @@ function formatDateTime(value: string | null): string {
 function parseReport(raw: string | null): InterviewReport | null {
   if (!raw) return null;
   try {
-    return JSON.parse(raw) as InterviewReport;
+    const parsed = JSON.parse(raw) as Partial<InterviewReport>;
+    // 이 화면이 기대하는 구조(categories/summaryFeedback 배열)가 아니면 무시한다.
+    // (구버전/시드 리포트는 {summary, strengths, weaknesses} 등 다른 형식일 수 있음)
+    if (!Array.isArray(parsed?.categories) || !Array.isArray(parsed?.summaryFeedback)) {
+      return null;
+    }
+    return parsed as InterviewReport;
   } catch {
     return null;
   }
@@ -197,7 +203,7 @@ export function AdminInterviewsPage() {
                   <CardContent className="space-y-3">
                     <div className="text-sm">
                       총점 <span className={getScoreColor(report.totalScore)}>{report.totalScore}점</span>
-                      {report.previousScore !== null && (
+                      {report.previousScore != null && (
                         <span className="ml-1 text-xs text-slate-400">(이전 {report.previousScore}점)</span>
                       )}
                     </div>
