@@ -20,6 +20,8 @@ public interface ApplicationCaseMapper {
 
     int updateApplicationCase(ApplicationCase applicationCase);
 
+    int markAnalysisCompleted(@Param("id") Long id, @Param("userId") Long userId);
+
     int deleteApplicationCase(@Param("id") Long id, @Param("userId") Long userId);
 
     void deleteFitAnalysesByCaseId(Long applicationCaseId);

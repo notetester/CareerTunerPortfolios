@@ -1,0 +1,104 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.careertuner.admin.analytics.mapper.AdminAnalyticsMapper">
+
+    <resultMap id="AdminCountResultMap" type="com.careertuner.admin.analytics.domain.AdminCountSource">
+        <result property="label" column="label"/>
+        <result property="count" column="count"/>
+    </resultMap>
+
+    <resultMap id="AdminAnalysisResultMap" type="com.careertuner.admin.analytics.domain.AdminAnalysisSource">
+        <id property="fitAnalysisId" column="fit_analysis_id"/>
+        <result property="applicationCaseId" column="application_case_id"/>
+        <result property="userName" column="user_name"/>
+        <result property="userEmail" column="user_email"/>
+        <result property="companyName" column="company_name"/>
+        <result property="jobTitle" column="job_title"/>
+        <result property="missingSkills" column="missing_skills"/>
+        <result property="fitScore" column="fit_score"/>
+        <result property="analyzedAt" column="analyzed_at"/>
+    </resultMap>
+
+    <resultMap id="AdminDailyUsageResultMap" type="com.careertuner.admin.analytics.domain.AdminDailyUsageSource">
+        <result property="date" column="usage_date"/>
+        <result property="tokenUsage" column="token_usage"/>
+        <result property="creditUsed" column="credit_used"/>
+    </resultMap>
+
+    <select id="countUsers" resultType="int">
+        SELECT COUNT(*)
+        FROM users
+        WHERE status != 'DELETED'
+    </select>
+
+    <select id="countActiveUsers" resultType="int">
+        SELECT COUNT(*)
+        FROM users
+        WHERE status = 'ACTIVE'
+    </select>
+
+    <select id="countApplications" resultType="int">
+        SELECT COUNT(*)
+        FROM application_case
+    </select>
+
+    <select id="countInterviews" resultType="int">
+        SELECT COUNT(*)
+        FROM interview_session
+    </select>
+
+    <select id="sumCreditsUsedThisMonth" resultType="int">
+        SELECT COALESCE(SUM(credit_used), 0)
+        FROM ai_usage_log
+        WHERE created_at &gt;= DATE_FORMAT(CURRENT_DATE, '%Y-%m-01')
+    </select>
+
+    <select id="countUsersByPlan" resultMap="AdminCountResultMap">
+        SELECT plan AS label, COUNT(*) AS count
+        FROM users
+        WHERE status != 'DELETED'
+        GROUP BY plan
+        ORDER BY count DESC, plan
+    </select>
+
+    <select id="countApplicationsByStatus" resultMap="AdminCountResultMap">
+        SELECT status AS label, COUNT(*) AS count
+        FROM application_case
+        GROUP BY status
+        ORDER BY count DESC, status
+    </select>
+
+    <select id="findLatestAnalyses" resultMap="AdminAnalysisResultMap">
+        SELECT
+            ac.id AS application_case_id,
+            fa.id AS fit_analysis_id,
+            users.name AS user_name,
+            users.email AS user_email,
+            ac.company_name,
+            ac.job_title,
+            fa.missing_skills,
+            fa.fit_score,
+            fa.created_at AS analyzed_at
+        FROM fit_analysis fa
+        INNER JOIN application_case ac ON ac.id = fa.application_case_id
+        INNER JOIN users ON users.id = ac.user_id
+        WHERE fa.id = (
+            SELECT MAX(latest_fa.id)
+            FROM fit_analysis latest_fa
+            WHERE latest_fa.application_case_id = fa.application_case_id
+        )
+        ORDER BY fa.created_at DESC, fa.id DESC
+    </select>
+
+    <select id="findDailyUsage" resultMap="AdminDailyUsageResultMap">
+        SELECT
+            DATE(created_at) AS usage_date,
+            COALESCE(SUM(token_usage), 0) AS token_usage,
+            COALESCE(SUM(credit_used), 0) AS credit_used
+        FROM ai_usage_log
+        WHERE created_at &gt;= DATE_SUB(CURRENT_DATE, INTERVAL 6 DAY)
+        GROUP BY DATE(created_at)
+        ORDER BY usage_date
+    </select>
+</mapper>

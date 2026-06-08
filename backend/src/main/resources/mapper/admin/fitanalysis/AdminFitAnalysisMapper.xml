@@ -1,0 +1,145 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.careertuner.admin.fitanalysis.mapper.AdminFitAnalysisMapper">
+
+    <resultMap id="AdminFitAnalysisResultMap" type="com.careertuner.admin.fitanalysis.domain.AdminFitAnalysisResult">
+        <id property="id" column="id"/>
+        <result property="applicationCaseId" column="application_case_id"/>
+        <result property="userId" column="user_id"/>
+        <result property="userName" column="user_name"/>
+        <result property="userEmail" column="user_email"/>
+        <result property="companyName" column="company_name"/>
+        <result property="jobTitle" column="job_title"/>
+        <result property="applicationStatus" column="application_status"/>
+        <result property="favorite" column="is_favorite"/>
+        <result property="fitScore" column="fit_score"/>
+        <result property="matchedSkills" column="matched_skills"/>
+        <result property="missingSkills" column="missing_skills"/>
+        <result property="recommendedStudy" column="recommended_study"/>
+        <result property="recommendedCertificates" column="recommended_certificates"/>
+        <result property="strategy" column="strategy"/>
+        <result property="createdAt" column="created_at"/>
+        <result property="memoCount" column="memo_count"/>
+        <result property="latestMemoAt" column="latest_memo_at"/>
+    </resultMap>
+
+    <resultMap id="AdminFitAnalysisMemoResultMap" type="com.careertuner.admin.fitanalysis.domain.AdminFitAnalysisMemo">
+        <id property="id" column="id"/>
+        <result property="fitAnalysisId" column="fit_analysis_id"/>
+        <result property="adminUserId" column="admin_user_id"/>
+        <result property="adminName" column="admin_name"/>
+        <result property="adminEmail" column="admin_email"/>
+        <result property="memoType" column="memo_type"/>
+        <result property="content" column="content"/>
+        <result property="createdAt" column="created_at"/>
+        <result property="updatedAt" column="updated_at"/>
+    </resultMap>
+
+    <sql id="AdminFitAnalysisColumns">
+        fa.id,
+        fa.application_case_id,
+        users.id AS user_id,
+        users.name AS user_name,
+        users.email AS user_email,
+        ac.company_name,
+        ac.job_title,
+        ac.status AS application_status,
+        ac.is_favorite,
+        fa.fit_score,
+        fa.matched_skills,
+        fa.missing_skills,
+        fa.recommended_study,
+        fa.recommended_certificates,
+        fa.strategy,
+        fa.created_at,
+        (
+            SELECT COUNT(*)
+            FROM admin_fit_analysis_memo memo_count_source
+            WHERE memo_count_source.fit_analysis_id = fa.id
+        ) AS memo_count,
+        (
+            SELECT MAX(latest_memo.updated_at)
+            FROM admin_fit_analysis_memo latest_memo
+            WHERE latest_memo.fit_analysis_id = fa.id
+        ) AS latest_memo_at
+    </sql>
+
+    <select id="findLatestAll" resultMap="AdminFitAnalysisResultMap">
+        SELECT
+        <include refid="AdminFitAnalysisColumns"/>
+        FROM fit_analysis fa
+        INNER JOIN application_case ac ON ac.id = fa.application_case_id
+        INNER JOIN users ON users.id = ac.user_id
+        WHERE fa.id = (
+            SELECT MAX(latest_fa.id)
+            FROM fit_analysis latest_fa
+            WHERE latest_fa.application_case_id = fa.application_case_id
+        )
+        ORDER BY fa.created_at DESC, fa.id DESC
+    </select>
+
+    <select id="findById" resultMap="AdminFitAnalysisResultMap">
+        SELECT
+        <include refid="AdminFitAnalysisColumns"/>
+        FROM fit_analysis fa
+        INNER JOIN application_case ac ON ac.id = fa.application_case_id
+        INNER JOIN users ON users.id = ac.user_id
+        WHERE fa.id = #{id}
+    </select>
+
+    <select id="findMemosByFitAnalysisId" resultMap="AdminFitAnalysisMemoResultMap">
+        SELECT
+            memo.id,
+            memo.fit_analysis_id,
+            memo.admin_user_id,
+            users.name AS admin_name,
+            users.email AS admin_email,
+            memo.memo_type,
+            memo.content,
+            memo.created_at,
+            memo.updated_at
+        FROM admin_fit_analysis_memo memo
+        INNER JOIN users ON users.id = memo.admin_user_id
+        WHERE memo.fit_analysis_id = #{fitAnalysisId}
+        ORDER BY memo.updated_at DESC, memo.id DESC
+    </select>
+
+    <select id="findMemoByIdAndFitAnalysisId" resultMap="AdminFitAnalysisMemoResultMap">
+        SELECT
+            memo.id,
+            memo.fit_analysis_id,
+            memo.admin_user_id,
+            users.name AS admin_name,
+            users.email AS admin_email,
+            memo.memo_type,
+            memo.content,
+            memo.created_at,
+            memo.updated_at
+        FROM admin_fit_analysis_memo memo
+        INNER JOIN users ON users.id = memo.admin_user_id
+        WHERE memo.id = #{id}
+          AND memo.fit_analysis_id = #{fitAnalysisId}
+    </select>
+
+    <insert id="insertMemo" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO admin_fit_analysis_memo
+            (fit_analysis_id, admin_user_id, memo_type, content)
+        VALUES
+            (#{fitAnalysisId}, #{adminUserId}, #{memoType}, #{content})
+    </insert>
+
+    <update id="updateMemo">
+        UPDATE admin_fit_analysis_memo
+        SET memo_type = #{memoType},
+            content = #{content}
+        WHERE id = #{id}
+          AND fit_analysis_id = #{fitAnalysisId}
+    </update>
+
+    <delete id="deleteMemo">
+        DELETE FROM admin_fit_analysis_memo
+        WHERE id = #{id}
+          AND fit_analysis_id = #{fitAnalysisId}
+    </delete>
+</mapper>

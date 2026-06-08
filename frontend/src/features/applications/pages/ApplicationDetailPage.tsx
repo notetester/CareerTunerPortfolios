@@ -9,6 +9,7 @@ import {
   Info,
   Plus,
   RefreshCw,
+  Target,
 } from "lucide-react";
 import { useAuth } from "@/app/auth/AuthContext";
 import { Button } from "@/app/components/ui/button";
@@ -17,23 +18,28 @@ import { deleteApplicationCase, updateApplicationCase } from "../api/application
 import { ApplicationOverviewPanel } from "../components/ApplicationOverviewPanel";
 import { ApplicationStatusBadge } from "../components/ApplicationStatusBadge";
 import { CompanyAnalysisPanel } from "../components/CompanyAnalysisPanel";
+import { FitAnalysisPanel } from "../components/FitAnalysisPanel";
 import { JobAnalysisPanel } from "../components/JobAnalysisPanel";
 import { JobPostingPanel } from "../components/JobPostingPanel";
+import { LearningRecommendationPanel } from "../components/LearningRecommendationPanel";
 import { LoginRequiredState } from "../components/LoginRequiredState";
+import { StrategyPanel } from "../components/StrategyPanel";
 import { useApplicationCase } from "../hooks/useApplicationCase";
 import { useApplicationCases } from "../hooks/useApplicationCases";
 import { useCompanyAnalysis } from "../hooks/useCompanyAnalysis";
 import { useJobAnalysis } from "../hooks/useJobAnalysis";
 import { useJobPosting } from "../hooks/useJobPosting";
 import type { UpdateApplicationCaseRequest } from "../types/applicationCase";
+import { useApplicationFitAnalysis } from "@/features/analysis/hooks/useApplicationFitAnalysis";
 
-type DetailTab = "overview" | "posting" | "jobAnalysis" | "companyAnalysis";
+type DetailTab = "overview" | "posting" | "jobAnalysis" | "companyAnalysis" | "fit";
 
 const detailTabs: { key: DetailTab; label: string; icon: typeof Info }[] = [
   { key: "overview", label: "개요", icon: Info },
   { key: "posting", label: "공고문", icon: FileText },
   { key: "jobAnalysis", label: "공고 분석", icon: BarChart3 },
   { key: "companyAnalysis", label: "기업 분석", icon: Building2 },
+  { key: "fit", label: "적합도", icon: Target },
 ];
 
 export function ApplicationDetailPage() {
@@ -78,6 +84,11 @@ export function ApplicationDetailPage() {
     error: companyAnalysisError,
     generate: generateCompanyAnalysis,
   } = useCompanyAnalysis(id, isAuthenticated && Boolean(applicationCase));
+  const {
+    analyses: fitAnalyses,
+    loading: fitAnalysisLoading,
+    error: fitAnalysisError,
+  } = useApplicationFitAnalysis(id, isAuthenticated && Boolean(applicationCase));
   const [activeTab, setActiveTab] = useState<DetailTab>("overview");
 
   const handleUpdate = async (request: UpdateApplicationCaseRequest) => {
@@ -232,7 +243,7 @@ export function ApplicationDetailPage() {
                   <Card className="border-slate-200 bg-white">
                     <CardContent className="grid gap-3 p-4 md:grid-cols-3">
                       {[
-                        "적합도 분석 준비 중 - C 담당",
+                        "적합도 분석 완료 - 위 '적합도' 탭에서 확인",
                         "예상 질문 / 모의 면접 준비 중 - D 담당",
                         "첨삭 기록 준비 중 - E 담당",
                       ].map((item) => (
@@ -275,6 +286,14 @@ export function ApplicationDetailPage() {
                   error={companyAnalysisError}
                   onGenerate={generateCompanyAnalysis}
                 />
+              )}
+
+              {activeTab === "fit" && (
+                <div className="space-y-6">
+                  <FitAnalysisPanel analyses={fitAnalyses} loading={fitAnalysisLoading} error={fitAnalysisError} />
+                  <StrategyPanel analyses={fitAnalyses} loading={fitAnalysisLoading} error={fitAnalysisError} />
+                  <LearningRecommendationPanel analyses={fitAnalyses} loading={fitAnalysisLoading} error={fitAnalysisError} />
+                </div>
               )}
             </>
           )}

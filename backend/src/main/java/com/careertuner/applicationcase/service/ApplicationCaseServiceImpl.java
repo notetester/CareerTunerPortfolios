@@ -8,6 +8,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
+import com.careertuner.applicationcase.domain.AiUsageLog;
 import com.careertuner.applicationcase.domain.ApplicationCase;
 import com.careertuner.applicationcase.domain.FitAnalysis;
 import com.careertuner.applicationcase.dto.AnalysisResponse;
@@ -39,6 +40,9 @@ public class ApplicationCaseServiceImpl implements ApplicationCaseService {
     private static final String DEFAULT_STATUS = "DRAFT";
     private static final Set<String> SOURCE_TYPES = Set.of("TEXT", "PDF", "IMAGE", "URL", "MANUAL");
     private static final Set<String> STATUSES = Set.of("DRAFT", "ANALYZING", "READY", "APPLIED", "CLOSED");
+    private static final int MOCK_JOB_ANALYSIS_CREDIT = 1;
+    private static final int MOCK_FIT_ANALYSIS_CREDIT = 2;
+    private static final int MOCK_DASHBOARD_SUMMARY_CREDIT = 1;
 
     private final ApplicationCaseMapper applicationCaseMapper;
     private final ApplicationCaseAccessService accessService;
@@ -169,6 +173,9 @@ public class ApplicationCaseServiceImpl implements ApplicationCaseService {
                 .build();
         applicationCaseMapper.insertFitAnalysis(fitAnalysis);
 
+        applicationCaseMapper.markAnalysisCompleted(applicationCaseId, userId);
+        logMockAiUsage(userId, applicationCaseId, sourceText);
+
         return response(
                 applicationCase,
                 jobAnalysis,
@@ -194,6 +201,30 @@ public class ApplicationCaseServiceImpl implements ApplicationCaseService {
 
     private static String defaultString(String value, String defaultValue) {
         return isBlank(value) ? defaultValue : value.trim();
+    }
+
+    private void logMockAiUsage(Long userId, Long applicationCaseId, String sourceText) {
+        int baseTokens = estimateTokenUsage(sourceText);
+        insertMockAiUsage(userId, applicationCaseId, "JOB_ANALYSIS", baseTokens, MOCK_JOB_ANALYSIS_CREDIT);
+        insertMockAiUsage(userId, applicationCaseId, "FIT_ANALYSIS", baseTokens + 620, MOCK_FIT_ANALYSIS_CREDIT);
+        insertMockAiUsage(userId, applicationCaseId, "DASHBOARD_SUMMARY", 980, MOCK_DASHBOARD_SUMMARY_CREDIT);
+    }
+
+    private void insertMockAiUsage(Long userId, Long applicationCaseId, String featureType, int tokenUsage, int creditUsed) {
+        applicationCaseMapper.insertAiUsageLog(AiUsageLog.builder()
+                .userId(userId)
+                .applicationCaseId(applicationCaseId)
+                .featureType(featureType)
+                .status("SUCCESS")
+                .model("mock")
+                .tokenUsage(tokenUsage)
+                .creditUsed(creditUsed)
+                .build());
+    }
+
+    private static int estimateTokenUsage(String sourceText) {
+        int length = sourceText == null ? 0 : sourceText.length();
+        return Math.max(1200, Math.min(4200, 900 + length * 2));
     }
 
     private static String normalizeOption(String value, String defaultValue, Set<String> allowedValues, String fieldName) {

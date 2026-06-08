@@ -1,0 +1,66 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.careertuner.fitanalysis.mapper.FitAnalysisMapper">
+
+    <resultMap id="FitAnalysisResultMap" type="com.careertuner.fitanalysis.domain.FitAnalysisResult">
+        <id property="id" column="id"/>
+        <result property="applicationCaseId" column="application_case_id"/>
+        <result property="fitScore" column="fit_score"/>
+        <result property="matchedSkills" column="matched_skills"/>
+        <result property="missingSkills" column="missing_skills"/>
+        <result property="recommendedStudy" column="recommended_study"/>
+        <result property="recommendedCertificates" column="recommended_certificates"/>
+        <result property="strategy" column="strategy"/>
+        <result property="createdAt" column="created_at"/>
+        <result property="companyName" column="company_name"/>
+        <result property="jobTitle" column="job_title"/>
+        <result property="postingDate" column="posting_date"/>
+        <result property="applicationStatus" column="application_status"/>
+        <result property="favorite" column="is_favorite"/>
+        <result property="applicationUpdatedAt" column="application_updated_at"/>
+    </resultMap>
+
+    <sql id="FitAnalysisWithApplicationColumns">
+        fa.id,
+        fa.application_case_id,
+        fa.fit_score,
+        fa.matched_skills,
+        fa.missing_skills,
+        fa.recommended_study,
+        fa.recommended_certificates,
+        fa.strategy,
+        fa.created_at,
+        ac.company_name,
+        ac.job_title,
+        ac.posting_date,
+        ac.status AS application_status,
+        ac.is_favorite,
+        ac.updated_at AS application_updated_at
+    </sql>
+
+    <select id="findLatestByUserId" resultMap="FitAnalysisResultMap">
+        SELECT
+        <include refid="FitAnalysisWithApplicationColumns"/>
+        FROM fit_analysis fa
+        INNER JOIN application_case ac ON ac.id = fa.application_case_id
+        WHERE ac.user_id = #{userId}
+          AND fa.id = (
+              SELECT MAX(latest_fa.id)
+              FROM fit_analysis latest_fa
+              WHERE latest_fa.application_case_id = fa.application_case_id
+          )
+        ORDER BY ac.is_favorite DESC, fa.created_at DESC, fa.id DESC
+    </select>
+
+    <select id="findLatestByUserIdAndApplicationCaseId" resultMap="FitAnalysisResultMap">
+        SELECT
+        <include refid="FitAnalysisWithApplicationColumns"/>
+        FROM fit_analysis fa
+        INNER JOIN application_case ac ON ac.id = fa.application_case_id
+        WHERE ac.user_id = #{userId}
+          AND ac.id = #{applicationCaseId}
+        ORDER BY fa.id DESC
+        LIMIT 1
+    </select>
+</mapper>
