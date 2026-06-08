@@ -1,0 +1,158 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.careertuner.dashboard.mapper.DashboardMapper">
+
+    <resultMap id="DashboardUserResultMap" type="com.careertuner.dashboard.domain.DashboardUserSource">
+        <id property="id" column="id"/>
+        <result property="name" column="name"/>
+        <result property="plan" column="plan"/>
+        <result property="credit" column="credit"/>
+    </resultMap>
+
+    <resultMap id="DashboardApplicationResultMap" type="com.careertuner.dashboard.domain.DashboardApplicationSource">
+        <id property="applicationCaseId" column="application_case_id"/>
+        <result property="companyName" column="company_name"/>
+        <result property="jobTitle" column="job_title"/>
+        <result property="postingDate" column="posting_date"/>
+        <result property="status" column="status"/>
+        <result property="favorite" column="is_favorite"/>
+        <result property="createdAt" column="created_at"/>
+        <result property="updatedAt" column="updated_at"/>
+        <result property="fitScore" column="fit_score"/>
+        <result property="requiredSkills" column="required_skills"/>
+        <result property="missingSkills" column="missing_skills"/>
+        <result property="analyzedAt" column="analyzed_at"/>
+        <result property="interviewCount" column="interview_count"/>
+        <result property="latestInterviewScore" column="latest_interview_score"/>
+    </resultMap>
+
+    <resultMap id="DashboardActivityResultMap" type="com.careertuner.dashboard.domain.DashboardActivitySource">
+        <result property="type" column="type"/>
+        <result property="applicationCaseId" column="application_case_id"/>
+        <result property="companyName" column="company_name"/>
+        <result property="jobTitle" column="job_title"/>
+        <result property="content" column="content"/>
+        <result property="occurredAt" column="occurred_at"/>
+        <result property="score" column="score"/>
+    </resultMap>
+
+    <select id="findUserById" resultMap="DashboardUserResultMap">
+        SELECT id, name, plan, credit
+        FROM users
+        WHERE id = #{userId}
+    </select>
+
+    <select id="findApplicationsByUserId" resultMap="DashboardApplicationResultMap">
+        SELECT
+            ac.id AS application_case_id,
+            ac.company_name,
+            ac.job_title,
+            ac.posting_date,
+            ac.status,
+            ac.is_favorite,
+            ac.created_at,
+            ac.updated_at,
+            fa.fit_score,
+            fa.missing_skills,
+            fa.created_at AS analyzed_at,
+            ja.required_skills,
+            (
+                SELECT COUNT(*)
+                FROM interview_session interview_count_source
+                WHERE interview_count_source.application_case_id = ac.id
+            ) AS interview_count,
+            (
+                SELECT latest_interview.total_score
+                FROM interview_session latest_interview
+                WHERE latest_interview.application_case_id = ac.id
+                  AND latest_interview.total_score IS NOT NULL
+                ORDER BY latest_interview.created_at DESC, latest_interview.id DESC
+                LIMIT 1
+            ) AS latest_interview_score
+        FROM application_case ac
+        LEFT JOIN fit_analysis fa
+               ON fa.application_case_id = ac.id
+              AND fa.id = (
+                  SELECT MAX(latest_fa.id)
+                  FROM fit_analysis latest_fa
+                  WHERE latest_fa.application_case_id = ac.id
+              )
+        LEFT JOIN job_analysis ja
+               ON ja.application_case_id = ac.id
+              AND ja.id = (
+                  SELECT MAX(latest_ja.id)
+                  FROM job_analysis latest_ja
+                  WHERE latest_ja.application_case_id = ac.id
+              )
+        WHERE ac.user_id = #{userId}
+        ORDER BY ac.is_favorite DESC, COALESCE(fa.created_at, ac.updated_at) DESC, ac.id DESC
+    </select>
+
+    <select id="findRecentActivitiesByUserId" resultMap="DashboardActivityResultMap">
+        SELECT *
+        FROM (
+            SELECT
+                'FIT_ANALYSIS' AS type,
+                ac.id AS application_case_id,
+                ac.company_name,
+                ac.job_title,
+                CONCAT(ac.company_name, ' ', ac.job_title, ' 적합도 분석 완료 · ', fa.fit_score, '점') AS content,
+                fa.created_at AS occurred_at,
+                fa.fit_score AS score
+            FROM fit_analysis fa
+            INNER JOIN application_case ac ON ac.id = fa.application_case_id
+            WHERE ac.user_id = #{userId}
+
+            UNION ALL
+
+            SELECT
+                'INTERVIEW' AS type,
+                ac.id AS application_case_id,
+                ac.company_name,
+                ac.job_title,
+                CONCAT(
+                    ac.company_name,
+                    ' ',
+                    ac.job_title,
+                    ' 모의면접 ',
+                    IF(interview.total_score IS NULL, '진행', CONCAT('완료 · ', interview.total_score, '점'))
+                ) AS content,
+                COALESCE(interview.ended_at, interview.started_at, interview.created_at) AS occurred_at,
+                interview.total_score AS score
+            FROM interview_session interview
+            INNER JOIN application_case ac ON ac.id = interview.application_case_id
+            WHERE ac.user_id = #{userId}
+
+            UNION ALL
+
+            SELECT
+                'APPLICATION' AS type,
+                ac.id AS application_case_id,
+                ac.company_name,
+                ac.job_title,
+                CONCAT(ac.company_name, ' ', ac.job_title, ' 지원 건 업데이트') AS content,
+                ac.updated_at AS occurred_at,
+                NULL AS score
+            FROM application_case ac
+            WHERE ac.user_id = #{userId}
+        ) activities
+        ORDER BY occurred_at DESC
+        LIMIT 6
+    </select>
+
+    <select id="countInterviewsThisWeek" resultType="int">
+        SELECT COUNT(*)
+        FROM interview_session interview
+        INNER JOIN application_case ac ON ac.id = interview.application_case_id
+        WHERE ac.user_id = #{userId}
+          AND interview.created_at &gt;= DATE_SUB(CURRENT_DATE, INTERVAL WEEKDAY(CURRENT_DATE) DAY)
+    </select>
+
+    <select id="sumCreditsUsedThisMonth" resultType="int">
+        SELECT COALESCE(SUM(credit_used), 0)
+        FROM ai_usage_log
+        WHERE user_id = #{userId}
+          AND created_at &gt;= DATE_FORMAT(CURRENT_DATE, '%Y-%m-01')
+    </select>
+</mapper>
