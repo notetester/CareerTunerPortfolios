@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.careertuner.admin.jobanalysis.mapper.AdminJobAnalysisMapper">
+
+    <select id="findJobAnalyses" resultType="com.careertuner.admin.jobanalysis.dto.AdminJobAnalysisRow">
+        SELECT
+            ja.id,
+            ja.application_case_id,
+            ac.user_id,
+            u.email AS user_email,
+            ac.company_name,
+            ac.job_title,
+            ja.employment_type,
+            ja.experience_level,
+            ja.required_skills,
+            ja.preferred_skills,
+            ja.difficulty,
+            ja.summary,
+            ja.created_at
+        FROM job_analysis ja
+        JOIN application_case ac ON ja.application_case_id = ac.id
+        JOIN users u ON ac.user_id = u.id
+        ORDER BY ja.created_at DESC, ja.id DESC
+        LIMIT #{limit}
+    </select>
+</mapper>
