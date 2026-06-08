@@ -599,6 +599,10 @@ backend/src/main/java/com/careertuner/admin/prompt/analytics
 `frontend/src/admin/features/prompts`와 `backend/src/main/java/com/careertuner/admin/prompt`의 루트 셸은 공통 영역이다.
 C는 그 하위의 `fit-analysis`, `analytics` 프롬프트만 담당한다. 적합도 분석은 `fitanalysis`,
 장기 경향과 대시보드 요약은 `analysis` 또는 `dashboard` 하위에서 관리한다.
+분석 계열 명명은 `FEATURE_MODULE_STRUCTURE.md`의 "분석 계열 명명 규칙"을 따른다. 요약하면 사용자 취업 분석은
+`analysis`, 관리자 통계와 집계 운영은 `analytics`, 적합도 분석 프런트 경로는 `fit-analysis`, REST 컬렉션은
+`fit-analyses`, Java 패키지는 `fitanalysis`, DB 테이블은 `fit_analysis`를 사용한다. `fit-analyse`와
+`admin/analysis`는 사용하지 않는다.
 
 C는 `applications` 안에서 아래 컴포넌트도 담당한다.
 

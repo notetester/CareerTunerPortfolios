@@ -42,6 +42,31 @@
 연관 백엔드 도메인은 대표 호출 범위이며 전체 의존성이나 소유권 목록이 아니다. 실제 소유권은 아래 표준 폴더 소유권을 따른다.
 출시 범위는 기능군의 세부 기능별 목표 시점을 요약한 것이며, 폴더 소유권이나 모든 하위 기능의 동시 완료를 의미하지 않는다.
 
+## 2.1 분석 계열 명명 규칙
+
+분석 계열은 의미가 비슷해 보여도 제품 영역과 운영 영역을 구분한다. 새 파일, 라우트, API, DB, 문서를 추가할 때 아래 이름을 우선한다.
+
+| 개념 | 사용 위치 | 표준 이름 | 예 |
+| --- | --- | --- | --- |
+| 사용자 취업 분석 | 사용자 메뉴, 사용자 라우트, 장기 경향 분석 도메인 | `analysis` | `frontend/src/features/analysis`, `backend/src/main/java/com/careertuner/analysis`, `/api/analysis/summary` |
+| 관리자 분석 통계 | 관리자 운영 통계, 집계 지표, 대시보드 AI 분석 결과 관리 | `analytics` | `frontend/src/admin/features/analytics`, `backend/src/main/java/com/careertuner/admin/analytics`, `/api/admin/analytics/summary` |
+| 적합도 분석 프런트 경로 | 사용자/관리자 프런트 폴더와 라우트 세그먼트 | `fit-analysis` | `frontend/src/admin/features/fit-analysis`, `/admin/fit-analysis` |
+| 적합도 분석 REST 컬렉션 | API에서 여러 적합도 분석 결과를 다루는 컬렉션 리소스 | `fit-analyses` | `/api/fit-analyses`, `/api/admin/fit-analyses` |
+| 적합도 분석 백엔드 패키지 | Java 패키지와 MyBatis mapper 경로 | `fitanalysis` | `backend/src/main/java/com/careertuner/fitanalysis`, `backend/src/main/resources/mapper/fitanalysis` |
+| 적합도 분석 DB | 테이블, 컬럼, SQL alias | `fit_analysis` | `fit_analysis`, `fit_analysis_id` |
+| 적합도 분석 코드 식별자 | Java/TypeScript 타입, 클래스, 메서드 | `FitAnalysis`, `fitAnalysis`, `fitAnalyses` | `FitAnalysisController`, `fitAnalyses` |
+
+금지 또는 회피 이름:
+
+- `analyse`, `fit-analyse`, `fit-analyse(s)`: 영국식 동사 표기는 사용하지 않는다.
+- `admin/analysis`: 관리자 분석 통계는 `analytics`만 사용한다. 사용자 취업 분석과 섞지 않는다.
+- `analysis-statistics`, `analysisStats`: 관리자 통계 의미를 새로 표현하지 말고 `analytics`로 통일한다.
+- `fitAnalysis`를 URL 또는 폴더 세그먼트로 쓰지 않는다. URL/프런트 폴더는 kebab-case인 `fit-analysis`를 쓴다.
+
+프롬프트 운영 경로도 같은 규칙을 따른다. 적합도 분석 프롬프트는 `frontend/src/admin/features/prompts/fit-analysis`와
+`backend/src/main/java/com/careertuner/admin/prompt/fitanalysis`를 사용한다. 관리자 분석 통계 프롬프트는
+`frontend/src/admin/features/prompts/analytics`와 `backend/src/main/java/com/careertuner/admin/prompt/analytics`를 사용한다.
+
 ## 3. 프런트엔드 표준 구조
 
 사용자 기능:
