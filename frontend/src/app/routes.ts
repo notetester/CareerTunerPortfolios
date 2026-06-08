@@ -7,20 +7,15 @@ import { ApplicationDetailPage } from "./pages/ApplicationDetail";
 import { AIInterviewPage } from "./pages/AIInterview";
 import { CorrectionPage } from "./pages/Correction";
 import { AnalysisPage } from "./pages/Analysis";
-import { CommunityHomePage } from "../features/community/pages/CommunityHomePage";
+import { CommunityPage } from "./pages/Community";
 import { BillingPage } from "./pages/Billing";
 import { PricingPage } from "./pages/Pricing";
 import { ProfilePage } from "./pages/Profile";
 import { SettingsPage } from "./pages/Settings";
-import { ServiceInfoPage } from "../features/service/pages/ServiceInfoPage";
-import SupportHomePage from "../features/support/pages/SupportHomePage";
-import GuidePage from "../features/support/pages/GuidePage";
-import FaqPage from "../features/support/pages/FaqPage";
-import NoticeListPage from "../features/support/pages/NoticeListPage";
-import { ContactPage } from "../features/support/pages/ContactPage";
-import { CompanyPage } from "../features/company/pages/CompanyPage";
-import LegalDocPage from "../features/legal/pages/LegalDocPage";
-import NotificationPage from "../features/notification/pages/NotificationPage";
+import { ServiceInfoPage } from "./pages/ServiceInfo";
+import { SupportPage } from "./pages/Support";
+import { CompanyPage } from "./pages/Company";
+import { LegalPage } from "./pages/Legal";
 import { LoginPage } from "./pages/Login";
 import { AuthCallbackPage } from "./pages/AuthCallback";
 import { VerifyEmailResultPage } from "./pages/VerifyEmailResult";
@@ -39,29 +34,28 @@ export const router = createBrowserRouter([
       { path: "interview", Component: AIInterviewPage },
       { path: "correction", Component: CorrectionPage },
       { path: "analysis", Component: AnalysisPage },
-      { path: "community", Component: CommunityHomePage },
+      { path: "community", Component: CommunityPage },
       { path: "billing", Component: BillingPage },
       { path: "pricing", Component: PricingPage },
       { path: "profile", Component: ProfilePage },
       { path: "settings", Component: SettingsPage },
       { path: "features", Component: ServiceInfoPage },
       { path: "service/about", Component: ServiceInfoPage },
-      { path: "support", Component: SupportHomePage },
-      { path: "support/guide", Component: GuidePage },
-      { path: "support/faq", Component: FaqPage },
-      { path: "support/notices", Component: NoticeListPage },
-      { path: "support/contact", Component: ContactPage },
-      { path: "notifications", Component: NotificationPage },
+      { path: "support", Component: SupportPage },
+      { path: "support/guide", Component: SupportPage },
+      { path: "support/faq", Component: SupportPage },
+      { path: "support/notices", Component: SupportPage },
+      { path: "support/contact", Component: SupportPage },
       { path: "company/about", Component: CompanyPage },
       { path: "company/team", Component: CompanyPage },
       { path: "company/careers", Component: CompanyPage },
       { path: "company/blog", Component: CompanyPage },
       { path: "company/press", Component: CompanyPage },
       { path: "company/social", Component: CompanyPage },
-      { path: "legal/terms", Component: LegalDocPage },
-      { path: "legal/privacy", Component: LegalDocPage },
-      { path: "legal/ai-data-consent", Component: LegalDocPage },
-      { path: "legal/copyright", Component: LegalDocPage },
+      { path: "legal/terms", Component: LegalPage },
+      { path: "legal/privacy", Component: LegalPage },
+      { path: "legal/ai-data-consent", Component: LegalPage },
+      { path: "legal/copyright", Component: LegalPage },
       { path: "login", Component: LoginPage },
       { path: "auth/callback", Component: AuthCallbackPage },
       { path: "auth/verify-email/result", Component: VerifyEmailResultPage },
