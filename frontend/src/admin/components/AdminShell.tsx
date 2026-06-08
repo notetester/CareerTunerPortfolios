@@ -1,8 +1,9 @@
 import type { ReactNode } from "react";
 import { Link, useLocation } from "react-router";
 import {
-  LayoutDashboard, Users, CreditCard, MessageSquareWarning,
-  Megaphone, CircleHelp, Mail, Search, Bell, ChevronRight,
+  LayoutDashboard, Briefcase, BarChart3, Building2, Gauge, FileText,
+  Users, CreditCard, MessageSquareWarning, Megaphone, CircleHelp,
+  Mail, Search, Bell, ChevronRight,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import "./admin-shell.css";
@@ -17,6 +18,11 @@ interface NavItem {
 
 const NAV: NavItem[] = [
   { key: "dashboard", label: "대시보드", icon: LayoutDashboard, href: "/admin" },
+  { key: "application-cases", label: "지원 건 관리", icon: Briefcase, href: "/admin/application-cases" },
+  { key: "job-analysis", label: "공고 분석 조회", icon: BarChart3, href: "/admin/job-analysis" },
+  { key: "company-analysis", label: "기업 분석 조회", icon: Building2, href: "/admin/company-analysis" },
+  { key: "ai-usage", label: "B AI 사용량", icon: Gauge, href: "/admin/ai-usage" },
+  { key: "prompts", label: "프롬프트 템플릿", icon: FileText, href: "/admin/prompts" },
   { key: "members", label: "회원 관리", icon: Users, ct: "1,248", href: "/admin/users" },
   { key: "payments", label: "결제 관리", icon: CreditCard, ct: "34", href: "/admin/payments" },
   { key: "reports", label: "게시판/신고", icon: MessageSquareWarning, ct: "12", href: "/admin/community" },
@@ -51,7 +57,7 @@ export default function AdminShell({
 
         <nav className="adm__nav">
           {NAV.map((item) => {
-            const isActive = item.key === active;
+            const isActive = item.key === active || location.pathname === item.href;
             return (
               <Link
                 key={item.key}
