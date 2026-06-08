@@ -4,11 +4,11 @@ import java.util.List;
 
 import com.careertuner.applicationcase.dto.AnalysisResponse;
 import com.careertuner.applicationcase.dto.ApplicationCaseResponse;
-import com.careertuner.applicationcase.dto.CompanyAnalysisResponse;
+import com.careertuner.companyanalysis.dto.CompanyAnalysisResponse;
 import com.careertuner.applicationcase.dto.CreateApplicationCaseRequest;
-import com.careertuner.applicationcase.dto.JobAnalysisResponse;
-import com.careertuner.applicationcase.dto.JobPostingRequest;
-import com.careertuner.applicationcase.dto.JobPostingResponse;
+import com.careertuner.jobanalysis.dto.JobAnalysisResponse;
+import com.careertuner.jobposting.dto.JobPostingRequest;
+import com.careertuner.jobposting.dto.JobPostingResponse;
 import com.careertuner.applicationcase.dto.UpdateApplicationCaseRequest;
 import org.springframework.web.multipart.MultipartFile;
 

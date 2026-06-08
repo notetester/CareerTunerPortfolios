@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.careertuner.admin.companyanalysis.mapper.AdminCompanyAnalysisMapper">
+
+    <select id="findCompanyAnalyses" resultType="com.careertuner.admin.companyanalysis.dto.AdminCompanyAnalysisRow">
+        SELECT
+            ca.id,
+            ca.application_case_id,
+            ac.user_id,
+            u.email AS user_email,
+            ac.company_name,
+            ac.job_title,
+            ca.company_summary,
+            ca.recent_issues,
+            ca.industry,
+            ca.competitors,
+            ca.sources,
+            ca.created_at
+        FROM company_analysis ca
+        JOIN application_case ac ON ca.application_case_id = ac.id
+        JOIN users u ON ac.user_id = u.id
+        ORDER BY ca.created_at DESC, ca.id DESC
+        LIMIT #{limit}
+    </select>
+</mapper>
