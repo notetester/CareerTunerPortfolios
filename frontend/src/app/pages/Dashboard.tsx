@@ -142,6 +142,11 @@ export function DashboardPage() {
                 summary?.focus.description ?? "지원 건을 등록하면 오늘의 준비 현황이 자동으로 정리됩니다."
               )}
             </p>
+            {summary?.aiSummary && (
+              <p className="mt-3 rounded-lg bg-blue-50 px-3 py-2 text-sm text-blue-800">
+                <strong className="font-semibold">AI 요약</strong> · {summary.aiSummary}
+              </p>
+            )}
           </div>
           <Button
             className="bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 gap-2"
