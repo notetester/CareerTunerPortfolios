@@ -5,6 +5,7 @@ import org.springframework.validation.FieldError;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.multipart.MaxUploadSizeExceededException;
 
 import com.careertuner.common.web.ApiResponse;
 
@@ -31,6 +32,13 @@ public class GlobalExceptionHandler {
         String message = fieldError != null
                 ? "%s: %s".formatted(fieldError.getField(), fieldError.getDefaultMessage())
                 : ErrorCode.INVALID_INPUT.getDefaultMessage();
+        return ResponseEntity.status(ErrorCode.INVALID_INPUT.getStatus())
+                .body(ApiResponse.error(ErrorCode.INVALID_INPUT.name(), message));
+    }
+
+    @ExceptionHandler(MaxUploadSizeExceededException.class)
+    public ResponseEntity<ApiResponse<Void>> handleMaxUploadSize(MaxUploadSizeExceededException ex) {
+        String message = "업로드 파일 크기가 허용 범위를 초과했습니다. 10MB 이하 파일을 사용해 주세요.";
         return ResponseEntity.status(ErrorCode.INVALID_INPUT.getStatus())
                 .body(ApiResponse.error(ErrorCode.INVALID_INPUT.name(), message));
     }

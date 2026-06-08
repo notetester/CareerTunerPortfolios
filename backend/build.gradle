@@ -29,6 +29,8 @@ dependencies {
     implementation 'org.springframework.boot:spring-boot-starter-validation'
     implementation 'org.springframework.boot:spring-boot-starter-security'
     implementation 'org.springdoc:springdoc-openapi-starter-webmvc-ui:3.0.2'
+    implementation 'org.apache.pdfbox:pdfbox:3.0.5'
+    implementation 'org.jsoup:jsoup:1.18.3'
 
     // Email (verification / password reset via SMTP)
     implementation 'org.springframework.boot:spring-boot-starter-mail'

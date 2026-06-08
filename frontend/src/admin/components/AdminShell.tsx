@@ -17,7 +17,7 @@ interface NavItem {
 
 const NAV: NavItem[] = [
   { key: "dashboard", label: "대시보드", icon: LayoutDashboard, href: "/admin" },
-  { key: "members", label: "회원 관리", icon: Users, ct: "1,248", href: "/admin/members" },
+  { key: "members", label: "회원 관리", icon: Users, ct: "1,248", href: "/admin/users" },
   { key: "payments", label: "결제 관리", icon: CreditCard, ct: "34", href: "/admin/payments" },
   { key: "reports", label: "게시판/신고", icon: MessageSquareWarning, ct: "12", href: "/admin/community" },
   { key: "notices", label: "공지사항", icon: Megaphone, ct: "7", href: "/admin/notices" },
