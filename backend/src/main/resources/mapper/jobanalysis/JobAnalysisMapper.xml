@@ -10,10 +10,10 @@
 
     <insert id="insertJobAnalysis" useGeneratedKeys="true" keyProperty="id">
         INSERT INTO job_analysis
-            (application_case_id, employment_type, experience_level, required_skills,
+            (application_case_id, job_posting_id, job_posting_revision, employment_type, experience_level, required_skills,
              preferred_skills, duties, qualifications, difficulty, summary)
         VALUES
-            (#{applicationCaseId}, #{employmentType}, #{experienceLevel}, #{requiredSkills},
+            (#{applicationCaseId}, #{jobPostingId}, #{jobPostingRevision}, #{employmentType}, #{experienceLevel}, #{requiredSkills},
              #{preferredSkills}, #{duties}, #{qualifications}, #{difficulty}, #{summary})
     </insert>
 
@@ -21,7 +21,40 @@
         SELECT *
         FROM job_analysis
         WHERE application_case_id = #{applicationCaseId}
-        ORDER BY id DESC
+        ORDER BY created_at DESC, id DESC
         LIMIT 1
     </select>
+
+    <select id="findJobAnalysisByIdAndCaseId" resultType="com.careertuner.jobanalysis.domain.JobAnalysis">
+        SELECT *
+        FROM job_analysis
+        WHERE id = #{id} AND application_case_id = #{applicationCaseId}
+    </select>
+
+    <select id="findJobAnalysisHistoryByCaseId" resultType="com.careertuner.jobanalysis.domain.JobAnalysis">
+        SELECT *
+        FROM job_analysis
+        WHERE application_case_id = #{applicationCaseId}
+        ORDER BY created_at DESC, id DESC
+    </select>
+
+    <update id="updateJobAnalysisReview">
+        UPDATE job_analysis
+        SET employment_type = #{employmentType},
+            experience_level = #{experienceLevel},
+            required_skills = #{requiredSkills},
+            preferred_skills = #{preferredSkills},
+            duties = #{duties},
+            qualifications = #{qualifications},
+            difficulty = #{difficulty},
+            summary = #{summary},
+            confirmed_at = #{confirmedAt}
+        WHERE id = #{id} AND application_case_id = #{applicationCaseId}
+    </update>
+
+    <update id="updateAdminMemo">
+        UPDATE job_analysis
+        SET admin_memo = #{adminMemo}
+        WHERE id = #{id}
+    </update>
 </mapper>

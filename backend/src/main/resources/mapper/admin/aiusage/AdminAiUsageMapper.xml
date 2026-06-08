@@ -3,7 +3,7 @@
         "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
 <mapper namespace="com.careertuner.admin.aiusage.mapper.AdminAiUsageMapper">
 
-    <select id="findBUsageLogs" resultType="com.careertuner.admin.aiusage.dto.AdminAiUsageLogRow">
+    <sql id="BUsageLogSelect">
         SELECT
             aul.id,
             aul.user_id,
@@ -23,7 +23,25 @@
         FROM ai_usage_log aul
         JOIN users u ON aul.user_id = u.id
         LEFT JOIN application_case ac ON aul.application_case_id = ac.id
+    </sql>
+
+    <select id="findBUsageLogs" resultType="com.careertuner.admin.aiusage.dto.AdminAiUsageLogRow">
+        <include refid="BUsageLogSelect"/>
         WHERE aul.feature_type IN ('JOB_ANALYSIS', 'COMPANY_RESEARCH', 'JOB_POSTING_OCR')
+        <if test="featureType != null">
+            AND aul.feature_type = #{featureType}
+        </if>
+        <if test="status != null">
+            AND aul.status = #{status}
+        </if>
+        ORDER BY aul.created_at DESC, aul.id DESC
+        LIMIT #{limit}
+    </select>
+
+    <select id="findBUsageLogsByCaseId" resultType="com.careertuner.admin.aiusage.dto.AdminAiUsageLogRow">
+        <include refid="BUsageLogSelect"/>
+        WHERE aul.feature_type IN ('JOB_ANALYSIS', 'COMPANY_RESEARCH', 'JOB_POSTING_OCR')
+          AND aul.application_case_id = #{applicationCaseId}
         ORDER BY aul.created_at DESC, aul.id DESC
         LIMIT #{limit}
     </select>

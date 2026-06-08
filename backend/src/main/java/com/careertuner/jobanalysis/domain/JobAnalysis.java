@@ -15,6 +15,8 @@ public class JobAnalysis {
 
     private Long id;
     private Long applicationCaseId;
+    private Long jobPostingId;
+    private Integer jobPostingRevision;
     private String employmentType;
     private String experienceLevel;
     private String requiredSkills;
@@ -23,5 +25,7 @@ public class JobAnalysis {
     private String qualifications;
     private String difficulty;
     private String summary;
+    private LocalDateTime confirmedAt;
+    private String adminMemo;
     private LocalDateTime createdAt;
 }

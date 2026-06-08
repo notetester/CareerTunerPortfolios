@@ -10,6 +10,9 @@ export interface ApplicationCase {
   sourceType: ApplicationSourceType;
   status: ApplicationStatus;
   favorite: boolean;
+  archived: boolean;
+  archivedAt: string | null;
+  deletedAt: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -21,6 +24,7 @@ export interface CreateApplicationCaseRequest {
   sourceType?: ApplicationSourceType;
   status?: ApplicationStatus;
   favorite?: boolean;
+  archived?: boolean;
 }
 
 export interface UpdateApplicationCaseRequest {
@@ -30,6 +34,7 @@ export interface UpdateApplicationCaseRequest {
   sourceType?: ApplicationSourceType;
   status?: ApplicationStatus;
   favorite?: boolean;
+  archived?: boolean;
 }
 
 export const APPLICATION_STATUS_OPTIONS: { value: ApplicationStatus; label: string }[] = [

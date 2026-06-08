@@ -110,6 +110,8 @@ CREATE TABLE IF NOT EXISTS application_case (
     source_type   VARCHAR(20) NOT NULL DEFAULT 'TEXT',     -- TEXT/PDF/IMAGE/URL/MANUAL
     status        VARCHAR(20) NOT NULL DEFAULT 'DRAFT',    -- DRAFT/ANALYZING/READY/APPLIED/CLOSED
     is_favorite   TINYINT(1) NOT NULL DEFAULT 0,
+    archived_at   DATETIME NULL,
+    deleted_at    DATETIME NULL,
     created_at    DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at    DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     PRIMARY KEY (id),
@@ -120,6 +122,7 @@ CREATE TABLE IF NOT EXISTS application_case (
 CREATE TABLE IF NOT EXISTS job_posting (
     id                  BIGINT NOT NULL AUTO_INCREMENT,
     application_case_id BIGINT NOT NULL,
+    revision            INT NOT NULL DEFAULT 1,
     original_text       MEDIUMTEXT NULL,
     uploaded_file_url   VARCHAR(512) NULL,
     extracted_text      MEDIUMTEXT NULL,
@@ -133,6 +136,8 @@ CREATE TABLE IF NOT EXISTS job_posting (
 CREATE TABLE IF NOT EXISTS job_analysis (
     id                  BIGINT NOT NULL AUTO_INCREMENT,
     application_case_id BIGINT NOT NULL,
+    job_posting_id      BIGINT NULL,
+    job_posting_revision INT NULL,
     employment_type     VARCHAR(50) NULL,
     experience_level    VARCHAR(50) NULL,
     required_skills     JSON NULL,
@@ -141,25 +146,49 @@ CREATE TABLE IF NOT EXISTS job_analysis (
     qualifications      MEDIUMTEXT NULL,
     difficulty          VARCHAR(20) NULL,                    -- EASY/NORMAL/HARD
     summary             MEDIUMTEXT NULL,
+    confirmed_at        DATETIME NULL,
+    admin_memo          VARCHAR(2000) NULL,
     created_at          DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (id),
     KEY idx_job_analysis_case (application_case_id),
-    CONSTRAINT fk_job_analysis_case FOREIGN KEY (application_case_id) REFERENCES application_case (id) ON DELETE CASCADE
+    KEY idx_job_analysis_posting (job_posting_id),
+    CONSTRAINT fk_job_analysis_case FOREIGN KEY (application_case_id) REFERENCES application_case (id) ON DELETE CASCADE,
+    CONSTRAINT fk_job_analysis_posting FOREIGN KEY (job_posting_id) REFERENCES job_posting (id) ON DELETE SET NULL
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci;
 
 CREATE TABLE IF NOT EXISTS company_analysis (
     id                  BIGINT NOT NULL AUTO_INCREMENT,
     application_case_id BIGINT NOT NULL,
+    job_posting_id      BIGINT NULL,
+    job_posting_revision INT NULL,
     company_summary     MEDIUMTEXT NULL,
     recent_issues       MEDIUMTEXT NULL,
     industry            VARCHAR(100) NULL,
     competitors         JSON NULL,
     interview_points    MEDIUMTEXT NULL,
     sources             JSON NULL,
+    confirmed_at        DATETIME NULL,
+    admin_memo          VARCHAR(2000) NULL,
     created_at          DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (id),
     KEY idx_company_analysis_case (application_case_id),
-    CONSTRAINT fk_company_analysis_case FOREIGN KEY (application_case_id) REFERENCES application_case (id) ON DELETE CASCADE
+    KEY idx_company_analysis_posting (job_posting_id),
+    CONSTRAINT fk_company_analysis_case FOREIGN KEY (application_case_id) REFERENCES application_case (id) ON DELETE CASCADE,
+    CONSTRAINT fk_company_analysis_posting FOREIGN KEY (job_posting_id) REFERENCES job_posting (id) ON DELETE SET NULL
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci;
+
+CREATE TABLE IF NOT EXISTS application_case_status_history (
+    id                  BIGINT NOT NULL AUTO_INCREMENT,
+    application_case_id BIGINT NOT NULL,
+    changed_by_user_id  BIGINT NULL,
+    previous_status     VARCHAR(20) NULL,
+    new_status          VARCHAR(20) NOT NULL,
+    memo                VARCHAR(1000) NULL,
+    created_at          DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (id),
+    KEY idx_application_case_status_history_case (application_case_id),
+    CONSTRAINT fk_application_case_status_history_case FOREIGN KEY (application_case_id) REFERENCES application_case (id) ON DELETE CASCADE,
+    CONSTRAINT fk_application_case_status_history_user FOREIGN KEY (changed_by_user_id) REFERENCES users (id) ON DELETE SET NULL
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci;
 
 CREATE TABLE IF NOT EXISTS fit_analysis (

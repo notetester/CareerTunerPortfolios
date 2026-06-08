@@ -6,6 +6,8 @@
     <resultMap id="ApplicationCaseResultMap" type="com.careertuner.applicationcase.domain.ApplicationCase">
         <id property="id" column="id"/>
         <result property="favorite" column="is_favorite"/>
+        <result property="archivedAt" column="archived_at"/>
+        <result property="deletedAt" column="deleted_at"/>
     </resultMap>
 
     <insert id="insertApplicationCase" useGeneratedKeys="true" keyProperty="id">
@@ -19,13 +21,17 @@
         SELECT *
         FROM application_case
         WHERE user_id = #{userId}
+          AND deleted_at IS NULL
+        <if test="!includeArchived">
+          AND archived_at IS NULL
+        </if>
         ORDER BY is_favorite DESC, updated_at DESC, id DESC
     </select>
 
     <select id="findApplicationCaseByIdAndUserId" resultMap="ApplicationCaseResultMap">
         SELECT *
         FROM application_case
-        WHERE id = #{id} AND user_id = #{userId}
+        WHERE id = #{id} AND user_id = #{userId} AND deleted_at IS NULL
     </select>
 
     <update id="updateApplicationCase">
@@ -35,8 +41,9 @@
             posting_date = #{postingDate},
             source_type = #{sourceType},
             status = #{status},
-            is_favorite = #{favorite}
-        WHERE id = #{id} AND user_id = #{userId}
+            is_favorite = #{favorite},
+            archived_at = #{archivedAt}
+        WHERE id = #{id} AND user_id = #{userId} AND deleted_at IS NULL
     </update>
 
     <update id="markAnalysisCompleted">
@@ -52,6 +59,19 @@
         DELETE FROM application_case
         WHERE id = #{id} AND user_id = #{userId}
     </delete>
+
+    <update id="softDeleteApplicationCase">
+        UPDATE application_case
+        SET deleted_at = CURRENT_TIMESTAMP
+        WHERE id = #{id} AND user_id = #{userId} AND deleted_at IS NULL
+    </update>
+
+    <insert id="insertStatusHistory">
+        INSERT INTO application_case_status_history
+            (application_case_id, changed_by_user_id, previous_status, new_status, memo)
+        VALUES
+            (#{applicationCaseId}, #{changedByUserId}, #{previousStatus}, #{newStatus}, #{memo})
+    </insert>
 
     <delete id="deleteFitAnalysesByCaseId">
         DELETE FROM fit_analysis

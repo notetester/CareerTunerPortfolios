@@ -7,6 +7,7 @@ import com.careertuner.jobposting.domain.JobPosting;
 public record JobPostingResponse(
         Long id,
         Long applicationCaseId,
+        Integer revision,
         String originalText,
         String uploadedFileUrl,
         String extractedText,
@@ -17,6 +18,7 @@ public record JobPostingResponse(
         return new JobPostingResponse(
                 jobPosting.getId(),
                 jobPosting.getApplicationCaseId(),
+                jobPosting.getRevision(),
                 jobPosting.getOriginalText(),
                 jobPosting.getUploadedFileUrl(),
                 jobPosting.getExtractedText(),

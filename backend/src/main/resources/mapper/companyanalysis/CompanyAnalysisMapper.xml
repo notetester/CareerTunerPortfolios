@@ -10,10 +10,10 @@
 
     <insert id="insertCompanyAnalysis" useGeneratedKeys="true" keyProperty="id">
         INSERT INTO company_analysis
-            (application_case_id, company_summary, recent_issues, industry,
+            (application_case_id, job_posting_id, job_posting_revision, company_summary, recent_issues, industry,
              competitors, interview_points, sources)
         VALUES
-            (#{applicationCaseId}, #{companySummary}, #{recentIssues}, #{industry},
+            (#{applicationCaseId}, #{jobPostingId}, #{jobPostingRevision}, #{companySummary}, #{recentIssues}, #{industry},
              #{competitors}, #{interviewPoints}, #{sources})
     </insert>
 
@@ -21,7 +21,38 @@
         SELECT *
         FROM company_analysis
         WHERE application_case_id = #{applicationCaseId}
-        ORDER BY id DESC
+        ORDER BY created_at DESC, id DESC
         LIMIT 1
     </select>
+
+    <select id="findCompanyAnalysisByIdAndCaseId" resultType="com.careertuner.companyanalysis.domain.CompanyAnalysis">
+        SELECT *
+        FROM company_analysis
+        WHERE id = #{id} AND application_case_id = #{applicationCaseId}
+    </select>
+
+    <select id="findCompanyAnalysisHistoryByCaseId" resultType="com.careertuner.companyanalysis.domain.CompanyAnalysis">
+        SELECT *
+        FROM company_analysis
+        WHERE application_case_id = #{applicationCaseId}
+        ORDER BY created_at DESC, id DESC
+    </select>
+
+    <update id="updateCompanyAnalysisReview">
+        UPDATE company_analysis
+        SET company_summary = #{companySummary},
+            recent_issues = #{recentIssues},
+            industry = #{industry},
+            competitors = #{competitors},
+            interview_points = #{interviewPoints},
+            sources = #{sources},
+            confirmed_at = #{confirmedAt}
+        WHERE id = #{id} AND application_case_id = #{applicationCaseId}
+    </update>
+
+    <update id="updateAdminMemo">
+        UPDATE company_analysis
+        SET admin_memo = #{adminMemo}
+        WHERE id = #{id}
+    </update>
 </mapper>

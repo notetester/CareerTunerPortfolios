@@ -3,24 +3,30 @@ import { Building2, RefreshCw } from "lucide-react";
 import { Badge } from "@/app/components/ui/badge";
 import { Button } from "@/app/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/app/components/ui/card";
+import { Textarea } from "@/app/components/ui/textarea";
 import { parseJsonStringArray } from "@/features/applications/types/analysis";
-import { getAdminCompanyAnalyses } from "../api";
+import { getAdminCompanyAnalyses, updateAdminCompanyAnalysisMemo } from "../api";
 import type { AdminCompanyAnalysisRow } from "../types";
 
-function formatDateTime(value: string): string {
+function formatDateTime(value: string | null | undefined): string {
+  if (!value) return "-";
   return new Intl.DateTimeFormat("ko-KR", { dateStyle: "medium", timeStyle: "short" }).format(new Date(value));
 }
 
 export function AdminCompanyAnalysisPage() {
   const [rows, setRows] = useState<AdminCompanyAnalysisRow[]>([]);
+  const [memos, setMemos] = useState<Record<number, string>>({});
   const [loading, setLoading] = useState(true);
+  const [savingId, setSavingId] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const load = async () => {
     setLoading(true);
     setError(null);
     try {
-      setRows(await getAdminCompanyAnalyses());
+      const nextRows = await getAdminCompanyAnalyses();
+      setRows(nextRows);
+      setMemos(Object.fromEntries(nextRows.map((row) => [row.id, row.adminMemo ?? ""])));
     } catch (err) {
       setError(err instanceof Error ? err.message : "기업 분석 목록을 불러오지 못했습니다.");
     } finally {
@@ -32,6 +38,19 @@ export function AdminCompanyAnalysisPage() {
     void load();
   }, []);
 
+  const saveMemo = async (analysisId: number) => {
+    setSavingId(analysisId);
+    setError(null);
+    try {
+      await updateAdminCompanyAnalysisMemo(analysisId, memos[analysisId] ?? "");
+      await load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "운영 메모를 저장하지 못했습니다.");
+    } finally {
+      setSavingId(null);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-slate-50">
       <div className="mx-auto w-full max-w-7xl space-y-5 px-4 py-8 sm:px-6">
@@ -42,7 +61,7 @@ export function AdminCompanyAnalysisPage() {
               <Building2 className="size-6 text-blue-600" />
               기업 분석 조회
             </h1>
-            <p className="mt-1 text-sm text-slate-500">지원 건별 기업 분석 결과와 참고 소스를 확인합니다.</p>
+            <p className="mt-1 text-sm text-slate-500">지원 건별 기업 분석 결과와 출처, 운영 메모를 확인합니다.</p>
           </div>
           <Button variant="outline" onClick={() => void load()} disabled={loading}>
             <RefreshCw className={`size-4 ${loading ? "animate-spin" : ""}`} />
@@ -70,16 +89,17 @@ export function AdminCompanyAnalysisPage() {
                       </CardTitle>
                       <p className="mt-1 text-xs text-slate-500">
                         #{row.applicationCaseId} · {row.userEmail} · {formatDateTime(row.createdAt)}
+                        {row.jobPostingRevision ? ` · 공고 rev ${row.jobPostingRevision}` : ""}
+                        {row.confirmedAt ? ` · 확정 ${formatDateTime(row.confirmedAt)}` : " · 미확정"}
                       </p>
                     </div>
                     <Badge className="bg-blue-100 text-blue-700">{row.industry ?? "산업 미정"}</Badge>
                   </div>
                 </CardHeader>
                 <CardContent className="space-y-3">
-                  <p className="whitespace-pre-line text-sm leading-6 text-slate-600">{row.companySummary ?? "기업 요약 없음"}</p>
-                  <p className="whitespace-pre-line rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm leading-6 text-slate-600">
-                    {row.recentIssues ?? "최근 이슈 없음"}
-                  </p>
+                  <TextBlock title="기업 요약" value={row.companySummary} />
+                  <TextBlock title="최근 이슈" value={row.recentIssues} />
+                  <TextBlock title="면접 포인트" value={row.interviewPoints} />
                   <div className="flex flex-wrap gap-1.5">
                     {parseJsonStringArray(row.sources).map((source) => (
                       <span key={source} className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-600">
@@ -87,12 +107,33 @@ export function AdminCompanyAnalysisPage() {
                       </span>
                     ))}
                   </div>
+                  <div className="space-y-2 rounded-lg border border-slate-200 bg-slate-50 p-3">
+                    <div className="text-xs font-semibold text-slate-500">운영 메모</div>
+                    <Textarea
+                      value={memos[row.id] ?? ""}
+                      onChange={(event) => setMemos((current) => ({ ...current, [row.id]: event.target.value }))}
+                      className="min-h-20 bg-white"
+                      placeholder="분석 오류, 출처 검증, 사용자 문의 대응을 기록"
+                    />
+                    <Button size="sm" variant="outline" onClick={() => void saveMemo(row.id)} disabled={savingId === row.id}>
+                      메모 저장
+                    </Button>
+                  </div>
                 </CardContent>
               </Card>
             ))
           )}
         </div>
       </div>
+    </div>
+  );
+}
+
+function TextBlock({ title, value }: { title: string; value: string | null }) {
+  return (
+    <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+      <div className="text-xs font-semibold text-slate-500">{title}</div>
+      <p className="mt-2 whitespace-pre-line text-sm leading-6 text-slate-600">{value ?? "내용 없음"}</p>
     </div>
   );
 }

@@ -13,6 +13,9 @@ public record ApplicationCaseResponse(
         String sourceType,
         String status,
         boolean favorite,
+        boolean archived,
+        LocalDateTime archivedAt,
+        LocalDateTime deletedAt,
         LocalDateTime createdAt,
         LocalDateTime updatedAt
 ) {
@@ -25,6 +28,9 @@ public record ApplicationCaseResponse(
                 applicationCase.getSourceType(),
                 applicationCase.getStatus(),
                 applicationCase.isFavorite(),
+                applicationCase.getArchivedAt() != null,
+                applicationCase.getArchivedAt(),
+                applicationCase.getDeletedAt(),
                 applicationCase.getCreatedAt(),
                 applicationCase.getUpdatedAt());
     }

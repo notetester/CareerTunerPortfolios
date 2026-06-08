@@ -15,11 +15,15 @@ public class CompanyAnalysis {
 
     private Long id;
     private Long applicationCaseId;
+    private Long jobPostingId;
+    private Integer jobPostingRevision;
     private String companySummary;
     private String recentIssues;
     private String industry;
     private String competitors;
     private String interviewPoints;
     private String sources;
+    private LocalDateTime confirmedAt;
+    private String adminMemo;
     private LocalDateTime createdAt;
 }

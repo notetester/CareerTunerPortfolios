@@ -1,5 +1,7 @@
 package com.careertuner.jobanalysis.service;
 
+import java.time.LocalDateTime;
+import java.util.List;
 import java.util.Locale;
 
 import org.springframework.stereotype.Service;
@@ -10,9 +12,13 @@ import com.careertuner.applicationcase.service.AiUsageLogService;
 import com.careertuner.applicationcase.service.ApplicationCaseAccessService;
 import com.careertuner.applicationcase.service.OpenAiResponsesClient;
 import com.careertuner.applicationcase.service.OpenAiResponsesClient.JobAnalysisPayload;
+import com.careertuner.common.exception.BusinessException;
+import com.careertuner.common.exception.ErrorCode;
 import com.careertuner.jobanalysis.domain.JobAnalysis;
+import com.careertuner.jobanalysis.dto.JobAnalysisReviewRequest;
 import com.careertuner.jobanalysis.dto.JobAnalysisResponse;
 import com.careertuner.jobanalysis.mapper.JobAnalysisMapper;
+import com.careertuner.jobposting.domain.JobPosting;
 
 import lombok.RequiredArgsConstructor;
 
@@ -30,13 +36,16 @@ public class JobAnalysisService {
     @Transactional
     public JobAnalysisResponse createJobAnalysis(Long userId, Long applicationCaseId) {
         ApplicationCase applicationCase = accessService.requireOwned(userId, applicationCaseId);
+        JobPosting jobPosting = accessService.latestPostingRequired(applicationCaseId);
+        String sourceText = accessService.sourceText(jobPosting);
         try {
             JobAnalysisPayload payload = openAiClient.analyzeJobPosting(
                     applicationCase,
-                    accessService.sourceTextRequired(applicationCaseId));
-            jobAnalysisMapper.deleteJobAnalysesByCaseId(applicationCaseId);
+                    sourceText);
             JobAnalysis jobAnalysis = JobAnalysis.builder()
                     .applicationCaseId(applicationCaseId)
+                    .jobPostingId(jobPosting.getId())
+                    .jobPostingRevision(jobPosting.getRevision())
                     .employmentType(blankToNull(payload.employmentType()))
                     .experienceLevel(blankToNull(payload.experienceLevel()))
                     .requiredSkills(payload.requiredSkills())
@@ -67,11 +76,46 @@ public class JobAnalysisService {
         return JobAnalysisResponse.from(jobAnalysisMapper.findLatestJobAnalysisByCaseId(applicationCaseId));
     }
 
+    @Transactional(readOnly = true)
+    public List<JobAnalysisResponse> getJobAnalysisHistory(Long userId, Long applicationCaseId) {
+        accessService.requireOwned(userId, applicationCaseId);
+        return jobAnalysisMapper.findJobAnalysisHistoryByCaseId(applicationCaseId).stream()
+                .map(JobAnalysisResponse::from)
+                .toList();
+    }
+
+    @Transactional
+    public JobAnalysisResponse reviewJobAnalysis(Long userId, Long applicationCaseId, Long analysisId, JobAnalysisReviewRequest request) {
+        accessService.requireOwned(userId, applicationCaseId);
+        JobAnalysis existing = jobAnalysisMapper.findJobAnalysisByIdAndCaseId(analysisId, applicationCaseId);
+        if (existing == null) {
+            throw new BusinessException(ErrorCode.NOT_FOUND, "공고 분석을 찾을 수 없습니다.");
+        }
+
+        JobAnalysis updated = JobAnalysis.builder()
+                .id(existing.getId())
+                .applicationCaseId(existing.getApplicationCaseId())
+                .jobPostingId(existing.getJobPostingId())
+                .jobPostingRevision(existing.getJobPostingRevision())
+                .employmentType(defaultString(request.employmentType(), existing.getEmploymentType()))
+                .experienceLevel(defaultString(request.experienceLevel(), existing.getExperienceLevel()))
+                .requiredSkills(defaultString(request.requiredSkills(), existing.getRequiredSkills()))
+                .preferredSkills(defaultString(request.preferredSkills(), existing.getPreferredSkills()))
+                .duties(defaultString(request.duties(), existing.getDuties()))
+                .qualifications(defaultString(request.qualifications(), existing.getQualifications()))
+                .difficulty(defaultString(request.difficulty(), existing.getDifficulty()))
+                .summary(defaultString(request.summary(), existing.getSummary()))
+                .confirmedAt(Boolean.TRUE.equals(request.confirmed()) ? LocalDateTime.now() : existing.getConfirmedAt())
+                .adminMemo(existing.getAdminMemo())
+                .build();
+        jobAnalysisMapper.updateJobAnalysisReview(updated);
+        return JobAnalysisResponse.from(jobAnalysisMapper.findJobAnalysisByIdAndCaseId(analysisId, applicationCaseId));
+    }
+
     public JobAnalysis createMockJobAnalysisEntity(ApplicationCase applicationCase, String sourceText) {
         Long applicationCaseId = applicationCase.getId();
         MockAnalysisSeed seed = MockAnalysisSeed.from(applicationCase, sourceText);
 
-        jobAnalysisMapper.deleteJobAnalysesByCaseId(applicationCaseId);
         JobAnalysis jobAnalysis = JobAnalysis.builder()
                 .applicationCaseId(applicationCaseId)
                 .employmentType(seed.employmentType())
@@ -89,6 +133,10 @@ public class JobAnalysisService {
 
     private static String blankToNull(String value) {
         return isBlank(value) ? null : value.trim();
+    }
+
+    private static String defaultString(String value, String defaultValue) {
+        return isBlank(value) ? defaultValue : value.trim();
     }
 
     private static boolean isBlank(String value) {

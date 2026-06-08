@@ -14,7 +14,8 @@ public interface ApplicationCaseMapper {
 
     void insertApplicationCase(ApplicationCase applicationCase);
 
-    List<ApplicationCase> findApplicationCasesByUserId(Long userId);
+    List<ApplicationCase> findApplicationCasesByUserId(@Param("userId") Long userId,
+                                                       @Param("includeArchived") boolean includeArchived);
 
     ApplicationCase findApplicationCaseByIdAndUserId(@Param("id") Long id, @Param("userId") Long userId);
 
@@ -23,6 +24,14 @@ public interface ApplicationCaseMapper {
     int markAnalysisCompleted(@Param("id") Long id, @Param("userId") Long userId);
 
     int deleteApplicationCase(@Param("id") Long id, @Param("userId") Long userId);
+
+    int softDeleteApplicationCase(@Param("id") Long id, @Param("userId") Long userId);
+
+    void insertStatusHistory(@Param("applicationCaseId") Long applicationCaseId,
+                             @Param("changedByUserId") Long changedByUserId,
+                             @Param("previousStatus") String previousStatus,
+                             @Param("newStatus") String newStatus,
+                             @Param("memo") String memo);
 
     void deleteFitAnalysesByCaseId(Long applicationCaseId);
 

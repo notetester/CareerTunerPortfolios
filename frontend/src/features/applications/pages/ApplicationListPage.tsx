@@ -15,6 +15,7 @@ import { Badge } from "@/app/components/ui/badge";
 import { Button } from "@/app/components/ui/button";
 import { Card, CardContent } from "@/app/components/ui/card";
 import { Input } from "@/app/components/ui/input";
+import { Checkbox } from "@/app/components/ui/checkbox";
 import { updateApplicationCase } from "../api/applicationCasesApi";
 import { ApplicationStatusBadge } from "../components/ApplicationStatusBadge";
 import { LoginRequiredState } from "../components/LoginRequiredState";
@@ -72,6 +73,11 @@ function ApplicationCard({
           <Badge variant="outline" className="border-slate-200 bg-slate-50 text-slate-600">
             {getApplicationSourceLabel(applicationCase.sourceType)}
           </Badge>
+          {applicationCase.archived && (
+            <Badge variant="outline" className="border-slate-200 bg-slate-100 text-slate-500">
+              보관됨
+            </Badge>
+          )}
         </div>
 
         <div className="mt-auto flex items-center justify-between border-t border-slate-100 pt-3 text-xs text-slate-500">
@@ -91,7 +97,8 @@ function ApplicationCard({
 export function ApplicationListPage() {
   const navigate = useNavigate();
   const { loading: authLoading, isAuthenticated } = useAuth();
-  const { applicationCases, setApplicationCases, loading, error, refresh } = useApplicationCases(isAuthenticated);
+  const [includeArchived, setIncludeArchived] = useState(false);
+  const { applicationCases, setApplicationCases, loading, error, refresh } = useApplicationCases(isAuthenticated, includeArchived);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("ALL");
   const [favoriteBusyId, setFavoriteBusyId] = useState<number | null>(null);
@@ -115,6 +122,7 @@ export function ApplicationListPage() {
       ready: applicationCases.filter((item) => item.status === "READY").length,
       analyzing: applicationCases.filter((item) => item.status === "ANALYZING").length,
       favorite: applicationCases.filter((item) => item.favorite).length,
+      archived: applicationCases.filter((item) => item.archived).length,
     }),
     [applicationCases],
   );
@@ -170,12 +178,13 @@ export function ApplicationListPage() {
           </Button>
         </div>
 
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
           {[
             { label: "전체", value: summary.total, icon: Briefcase },
             { label: "준비중", value: summary.ready, icon: FileText },
             { label: "분석중", value: summary.analyzing, icon: RefreshCw },
             { label: "즐겨찾기", value: summary.favorite, icon: Star },
+            { label: "보관", value: summary.archived, icon: FileText },
           ].map((item) => (
             <div key={item.label} className="rounded-lg border border-slate-200 bg-white p-4">
               <div className="flex items-center justify-between">
@@ -199,6 +208,13 @@ export function ApplicationListPage() {
               />
             </div>
             <div className="flex flex-wrap gap-2">
+              <label className="flex items-center gap-2 rounded-md bg-slate-100 px-3 py-2 text-xs font-semibold text-slate-600">
+                <Checkbox
+                  checked={includeArchived}
+                  onCheckedChange={(checked) => setIncludeArchived(Boolean(checked))}
+                />
+                보관 포함
+              </label>
               <button
                 type="button"
                 className={`rounded-md px-3 py-2 text-xs font-semibold ${

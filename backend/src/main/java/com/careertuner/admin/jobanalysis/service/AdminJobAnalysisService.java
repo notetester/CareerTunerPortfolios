@@ -10,6 +10,7 @@ import com.careertuner.admin.jobanalysis.mapper.AdminJobAnalysisMapper;
 import com.careertuner.common.exception.BusinessException;
 import com.careertuner.common.exception.ErrorCode;
 import com.careertuner.common.security.AuthUser;
+import com.careertuner.jobanalysis.mapper.JobAnalysisMapper;
 
 import lombok.RequiredArgsConstructor;
 
@@ -18,11 +19,21 @@ import lombok.RequiredArgsConstructor;
 public class AdminJobAnalysisService {
 
     private final AdminJobAnalysisMapper mapper;
+    private final JobAnalysisMapper jobAnalysisMapper;
 
     @Transactional(readOnly = true)
     public List<AdminJobAnalysisRow> jobAnalyses(AuthUser authUser, int limit) {
         requireAdmin(authUser);
         return mapper.findJobAnalyses(normalizeLimit(limit));
+    }
+
+    @Transactional
+    public void updateMemo(AuthUser authUser, Long analysisId, String adminMemo) {
+        requireAdmin(authUser);
+        int updated = jobAnalysisMapper.updateAdminMemo(analysisId, blankToNull(adminMemo));
+        if (updated == 0) {
+            throw new BusinessException(ErrorCode.NOT_FOUND, "공고 분석을 찾을 수 없습니다.");
+        }
     }
 
     private void requireAdmin(AuthUser authUser) {
@@ -36,5 +47,9 @@ public class AdminJobAnalysisService {
             return 50;
         }
         return Math.min(limit, 200);
+    }
+
+    private String blankToNull(String value) {
+        return value == null || value.isBlank() ? null : value.trim();
     }
 }

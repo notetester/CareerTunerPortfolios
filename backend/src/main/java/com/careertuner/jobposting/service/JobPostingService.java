@@ -1,6 +1,7 @@
 package com.careertuner.jobposting.service;
 
 import java.util.Locale;
+import java.util.List;
 import java.util.Set;
 
 import org.springframework.stereotype.Service;
@@ -46,6 +47,7 @@ public class JobPostingService {
         validateJobPosting(request);
         JobPosting jobPosting = JobPosting.builder()
                 .applicationCaseId(applicationCaseId)
+                .revision(jobPostingMapper.nextRevisionForCase(applicationCaseId))
                 .originalText(blankToNull(request.originalText()))
                 .uploadedFileUrl(blankToNull(request.uploadedFileUrl()))
                 .extractedText(blankToNull(request.extractedText()))
@@ -80,9 +82,18 @@ public class JobPostingService {
         return JobPostingResponse.from(jobPosting);
     }
 
+    @Transactional(readOnly = true)
+    public List<JobPostingResponse> getJobPostingRevisions(Long userId, Long applicationCaseId) {
+        accessService.requireOwned(userId, applicationCaseId);
+        return jobPostingMapper.findJobPostingRevisionsByCaseId(applicationCaseId).stream()
+                .map(JobPostingResponse::from)
+                .toList();
+    }
+
     private JobPostingResponse saveExtractedPosting(Long applicationCaseId, ExtractedPosting extracted) {
         JobPosting jobPosting = JobPosting.builder()
                 .applicationCaseId(applicationCaseId)
+                .revision(jobPostingMapper.nextRevisionForCase(applicationCaseId))
                 .originalText(blankToNull(extracted.originalText()))
                 .uploadedFileUrl(blankToNull(extracted.uploadedFileUrl()))
                 .extractedText(blankToNull(extracted.extractedText()))
@@ -92,7 +103,6 @@ public class JobPostingService {
     }
 
     private JobPostingResponse replaceJobPosting(Long applicationCaseId, JobPosting jobPosting) {
-        jobPostingMapper.deleteJobPostingsByCaseId(applicationCaseId);
         jobPostingMapper.insertJobPosting(jobPosting);
         return JobPostingResponse.from(jobPostingMapper.findLatestJobPostingByCaseId(applicationCaseId));
     }
