@@ -5,6 +5,11 @@ React 18 + Vite + TypeScript + Tailwind CSS v4 (shadcn/ui). PC 웹과 모바일 
 관리자 화면도 같은 Vite React 앱 안에서 관리한다. 관리자 전용 라우트와 기능은 `src/admin/` 아래에 두고,
 일반 사용자 기능은 `src/features/` 아래에 둔다.
 
+이 문서는 프런트엔드의 **현재 구현·실행 상태**를 설명한다. 목표 UX는
+[`../docs/planning/디자인 분석.md`](../docs/planning/디자인%20분석.md), 표준 기능 구조와 소유권은
+[`../docs/FEATURE_MODULE_STRUCTURE.md`](../docs/FEATURE_MODULE_STRUCTURE.md)와
+[`../docs/TEAM_WORK_DISTRIBUTION.md`](../docs/TEAM_WORK_DISTRIBUTION.md)를 따른다.
+
 ## 실행
 
 ```bash
@@ -31,8 +36,7 @@ src/
  ├─ app/
  │   ├─ App.tsx           RouterProvider
  │   ├─ routes.ts         라우트 정의
- │   ├─ pages/            화면 (Home, Dashboard, Applications, ApplicationDetail,
- │   │                     AIInterview, Analysis, Community, Pricing, Profile, Login)
+ │   ├─ pages/            현재 프로토타입·통합 화면
  │   └─ components/
  │       ├─ ui/           shadcn/ui 프리미티브
  │       ├─ layout/       Header, Footer, Root
@@ -42,7 +46,14 @@ src/
  └─ styles/               Tailwind v4 + 디자인 토큰(theme.css)
 ```
 
-> 이 코드는 Figma Make 디자인 초안을 기반으로 하며, 백엔드 API 연동·상태관리(`store`)·기능별 모듈(`features`)은 이후 단계에서 `docs/planning/기획.md`, `docs/PRODUCT_STRUCTURE.md`, `docs/FEATURE_MODULE_STRUCTURE.md`의 구조에 맞춰 붙인다.
+> 현재 Figma Make 디자인 초안 기반 화면에 인증과 공통 API 클라이언트가 연결되어 있으며,
+> 지원 건 등 나머지 기능 연동과 `features/` 구조 이전은 진행 중이다.
+> 현재 라우트는 `src/app/routes.ts`, 목표 제품 구조는 `../docs/PRODUCT_STRUCTURE.md`와
+> `../docs/FEATURE_MODULE_STRUCTURE.md`를 기준으로 확인한다.
+> 목표 내비게이션은 핵심 메뉴 + 큰 기능 드롭다운의 하이브리드 구조이며, 목표 URL 규칙은 주요 작업을 path로,
+> 목록 필터·정렬을 query로 표현하는 방식이다. 현재 구현과 목표 규칙의 차이는
+> `../docs/planning/디자인 분석.md`, `../docs/PRODUCT_STRUCTURE.md`,
+> `../docs/FEATURE_MODULE_STRUCTURE.md`를 따른다.
 
 ## 경로 별칭
 

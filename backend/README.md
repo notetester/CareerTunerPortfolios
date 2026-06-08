@@ -3,6 +3,11 @@
 Spring Boot **4.0.6** / Java **21** / **MyBatis** / **MySQL 8** REST API 서버.
 인증은 **JWT(Access/Refresh) + Spring Security(stateless)**, 비밀번호는 **BCrypt**.
 
+이 문서는 백엔드의 **현재 구현·실행 상태**를 설명한다. 목표 기능 범위와 출시 우선순위는
+[`../docs/planning/기획.md`](../docs/planning/기획.md), 표준 도메인 구조와 소유권은
+[`../docs/ARCHITECTURE.md`](../docs/ARCHITECTURE.md)와
+[`../docs/FEATURE_MODULE_STRUCTURE.md`](../docs/FEATURE_MODULE_STRUCTURE.md)를 따른다.
+
 > 영속성 계층은 **MyBatis만** 사용한다(JPA 미사용). 매퍼는 `@Mapper` 인터페이스 +
 > `src/main/resources/mapper/**/*.xml` 조합으로 작성하고, `map-underscore-to-camel-case`가 켜져 있다.
 
@@ -10,7 +15,7 @@ Spring Boot **4.0.6** / Java **21** / **MyBatis** / **MySQL 8** REST API 서버.
 
 - JDK 21
 - MySQL 8 — 개발은 할당받은 **`team1_db`** 사용. 스키마/시드 적용(최초 1회):
-  `src/main/resources/db/schema.sql` → `db/data.sql` 순서로 실행(IntelliJ Database 콘솔 권장).
+  `src/main/resources/db/schema.sql` → `src/main/resources/db/data.sql` 순서로 실행(IntelliJ Database 콘솔 권장).
 
 ## 실행
 
@@ -72,8 +77,8 @@ DB_PASSWORD=... JWT_SECRET=... OAUTH_KAKAO_CLIENT_SECRET=... java -jar app.jar
 | GET | `/api/application-cases` | 내 지원 건 목록 | Bearer |
 | GET | `/api/application-cases/{id}` | 지원 건 상세 | Bearer |
 | PATCH | `/api/application-cases/{id}` | 지원 건 수정 | Bearer |
-| DELETE | `/api/application-cases/{id}` | 지원 건 삭제 | Bearer |
-| POST | `/api/application-cases/{id}/job-posting` | 텍스트/URL 공고문 저장 및 URL 본문 추출 | Bearer |
+| DELETE | `/api/application-cases/{id}` | 지원 건 삭제(현재 구현은 물리 삭제, 목표는 소프트 삭제) | Bearer |
+| POST | `/api/application-cases/{id}/job-posting` | 텍스트/URL 공고문 저장 및 URL 본문 추출(현재 구현은 1건 교체, 목표는 revision 추가) | Bearer |
 | POST | `/api/application-cases/{id}/job-posting/upload` | PDF/이미지 업로드 및 텍스트 추출 | Bearer |
 | GET | `/api/application-cases/{id}/job-posting` | 현재 공고문 조회 | Bearer |
 | POST | `/api/application-cases/{id}/job-analysis` | 실제 OpenAI 공고 분석 생성 | Bearer |
@@ -91,7 +96,10 @@ DB_PASSWORD=... JWT_SECRET=... OAUTH_KAKAO_CLIENT_SECRET=... java -jar app.jar
 실제 AI 분석과 이미지/스캔 PDF OCR은 `OPENAI_API_KEY`가 필요하다. 모델은 `OPENAI_MODEL`로 변경할 수 있으며 기본값은 `gpt-5`다.
 텍스트 PDF는 PDFBox로 먼저 추출하고, 텍스트가 없는 PDF와 이미지는 OpenAI OCR을 사용한다.
 공고문 파일 업로드는 기본 10MB까지 허용하며, 초과 시 `INVALID_INPUT` 응답으로 안내한다.
-`/analysis/mock`은 `fit_analysis`를 포함하는 호환 API이므로 B 프론트에서는 직접 사용하지 않는다.
+`/analysis/mock`은 화면과 데이터 흐름 검증 및 `fit_analysis`를 포함하는 호환 API용이며, B 프론트에서는 직접 사용하지 않는다.
+목표 데이터 모델은 지원 건 보관/삭제를 `archived_at`, `deleted_at`으로 분리하고, 공고문 수정은 같은 공고의
+revision으로 저장한다. 제품 정책은 `../docs/planning/기획.md`, 데이터/API 목표 구조는
+`../docs/ARCHITECTURE.md`와 `../docs/FEATURE_MODULE_STRUCTURE.md`를 따른다.
 
 ## JSON 컬럼 매핑 방침
 
@@ -122,9 +130,11 @@ com.careertuner
  │   └─ exception  ErrorCode, BusinessException, GlobalExceptionHandler
  ├─ user           domain(User), mapper(UserMapper)
  ├─ auth           controller, service(Auth/Email/SocialOAuth), domain, dto, mapper
- └─ <그 외 도메인>  profile, applicationcase, jobposting, jobanalysis, companyanalysis,
-                   fitanalysis, interview, community, payment, ai, admin (package-info 스텁)
+ └─ <그 외 도메인>  기능 구현 또는 package-info 스텁
 ```
+
+전체 표준 도메인 목록과 담당 경로는
+[`../docs/FEATURE_MODULE_STRUCTURE.md`](../docs/FEATURE_MODULE_STRUCTURE.md)를 기준으로 한다.
 
 ## 응답 규약
 
