@@ -54,8 +54,9 @@ public class InterviewServiceImpl implements InterviewService {
     private final InterviewMapper interviewMapper;
     private final ApplicationCaseAccessService accessService;
     private final InterviewOpenAiClient aiClient;
-    private final AiUsageLogService aiUsageLogService;
-    private final ObjectMapper objectMapper;
+    private final InterviewAiUsageLogService aiUsageLogService;
+    // 이 앱은 ObjectMapper 빈을 노출하지 않으므로 직접 생성한다(다른 도메인과 동일 패턴).
+    private final ObjectMapper objectMapper = new ObjectMapper();
 
     @Override
     @Transactional

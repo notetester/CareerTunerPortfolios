@@ -7,12 +7,12 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
-/** ai_usage_log 공유 테이블 매핑 (면접 도메인용 자체 복사본). */
+/** ai_usage_log 공유 테이블 매핑 (면접 도메인용). 별칭 충돌 방지를 위해 Interview 접두사를 둔다. */
 @Data
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-public class AiUsageLog {
+public class InterviewAiUsageLog {
 
     private Long id;
     private Long userId;

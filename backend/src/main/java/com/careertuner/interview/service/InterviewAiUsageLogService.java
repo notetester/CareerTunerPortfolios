@@ -4,16 +4,16 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
-import com.careertuner.interview.domain.AiUsageLog;
+import com.careertuner.interview.domain.InterviewAiUsageLog;
 import com.careertuner.interview.mapper.InterviewMapper;
 
 /** 면접 AI 호출 사용량을 ai_usage_log 에 기록한다. (applicationcase 패턴 동일) */
 @Service
-public class AiUsageLogService {
+public class InterviewAiUsageLogService {
 
     private final InterviewMapper interviewMapper;
 
-    public AiUsageLogService(InterviewMapper interviewMapper) {
+    public InterviewAiUsageLogService(InterviewMapper interviewMapper) {
         this.interviewMapper = interviewMapper;
     }
 
@@ -23,7 +23,7 @@ public class AiUsageLogService {
         if (usage == null) {
             return;
         }
-        interviewMapper.insertAiUsageLog(AiUsageLog.builder()
+        interviewMapper.insertAiUsageLog(InterviewAiUsageLog.builder()
                 .userId(userId)
                 .applicationCaseId(applicationCaseId)
                 .featureType(featureType)
@@ -38,7 +38,7 @@ public class AiUsageLogService {
 
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void recordFailure(Long userId, Long applicationCaseId, String featureType, String message) {
-        interviewMapper.insertAiUsageLog(AiUsageLog.builder()
+        interviewMapper.insertAiUsageLog(InterviewAiUsageLog.builder()
                 .userId(userId)
                 .applicationCaseId(applicationCaseId)
                 .featureType(featureType)

@@ -6,7 +6,7 @@ import java.util.List;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 
-import com.careertuner.interview.domain.AiUsageLog;
+import com.careertuner.interview.domain.InterviewAiUsageLog;
 import com.careertuner.interview.domain.InterviewAnswer;
 import com.careertuner.interview.domain.InterviewQuestion;
 import com.careertuner.interview.domain.InterviewSession;
@@ -44,5 +44,5 @@ public interface InterviewMapper {
     List<InterviewAnswer> findAnswersBySessionId(@Param("sessionId") Long sessionId);
 
     // ── AI 사용량 ──
-    void insertAiUsageLog(AiUsageLog aiUsageLog);
+    void insertAiUsageLog(InterviewAiUsageLog aiUsageLog);
 }
