@@ -1,578 +1,592 @@
-import { useState } from "react";
-import { useParams, Link, useNavigate } from "react-router";
-import { Button } from "../components/ui/button";
-import { Card, CardContent } from "../components/ui/card";
+import { useEffect, useMemo, useState } from "react";
+import { Link, useNavigate, useParams } from "react-router";
+import {
+  AlertCircle,
+  ArrowLeft,
+  BarChart3,
+  BookOpen,
+  Briefcase,
+  CheckCircle2,
+  FileText,
+  GraduationCap,
+  Loader2,
+  Map,
+  Play,
+  RefreshCw,
+  Sparkles,
+  Star,
+  Target,
+} from "lucide-react";
 import { Badge } from "../components/ui/badge";
+import { Button } from "../components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
 import { Progress } from "../components/ui/progress";
 import {
-  ChevronLeft, Plus, Star, Archive, FileText, Building2, Target,
-  Map, HelpCircle, MessageSquare, BarChart3, PenTool, AlertCircle,
-  CheckCircle2, ChevronRight, Mic, Award, BookOpen, Clock, ArrowRight,
-  ThumbsUp, ThumbsDown, Play, MoreHorizontal, Sparkles, Brain,
-} from "lucide-react";
-
-const sidebarApplications = [
-  { id: "1", company: "카카오페이", job: "프론트엔드", score: 72, active: true },
-  { id: "2", company: "네이버", job: "백엔드 개발", score: 58, active: false },
-  { id: "3", company: "삼성SDS", job: "IT 솔루션", score: 65, active: false },
-  { id: "4", company: "라인플러스", job: "풀스택 개발", score: 44, active: false },
-  { id: "5", company: "토스", job: "iOS 개발자", score: 35, active: false },
-];
+  createMockAnalysis,
+  getApplicationAnalysis,
+  getApplicationCase,
+  getApplicationCases,
+  getJobPosting,
+} from "@/features/applications/api/applicationCasesApi";
+import type {
+  ApplicationAnalysis,
+  ApplicationCase,
+  ApplicationFitAnalysis,
+  JobAnalysis,
+  JobPosting,
+} from "@/features/applications/types/applicationCase";
+import { parseJsonList, scoreTone } from "@/features/analysis/types/fitAnalysis";
 
 const tabs = [
   { key: "job", label: "공고 분석", icon: FileText },
-  { key: "company", label: "기업 분석", icon: Building2 },
-  { key: "fit", label: "내 스펙 비교", icon: Target },
+  { key: "fit", label: "스펙 비교", icon: Target },
   { key: "strategy", label: "지원 전략", icon: Map },
-  { key: "questions", label: "예상 질문", icon: HelpCircle },
-  { key: "interview", label: "가상 면접", icon: MessageSquare },
-  { key: "report", label: "면접 리포트", icon: BarChart3 },
-  { key: "corrections", label: "첨삭 기록", icon: PenTool },
-];
+  { key: "learning", label: "학습 추천", icon: GraduationCap },
+  { key: "posting", label: "공고 원문", icon: Briefcase },
+] as const;
+type DetailTab = (typeof tabs)[number]["key"];
 
-const specData = [
-  { skill: "React", status: "보유", grade: "강점", match: true },
-  { skill: "TypeScript", status: "일부 경험", grade: "보완 필요", match: false },
-  { skill: "AWS", status: "없음", grade: "학습 필요", match: false },
-  { skill: "Git 협업", status: "보유", grade: "강점", match: true },
-  { skill: "REST API 연동", status: "보유", grade: "강점", match: true },
-  { skill: "포트폴리오", status: "부족", grade: "보완 필요", match: false },
-  { skill: "CI/CD", status: "일부 경험", grade: "보완 필요", match: false },
-  { skill: "코드 리뷰", status: "경험 있음", grade: "무난", match: true },
-];
+const statusLabel: Record<string, string> = {
+  DRAFT: "공고 입력",
+  ANALYZING: "분석 중",
+  READY: "준비중",
+  APPLIED: "지원 완료",
+  CLOSED: "마감",
+};
 
-const expectedQuestions = [
-  { type: "기술", q: "React에서 상태 관리를 어떻게 설계하나요? Recoil과 Zustand를 비교해서 설명해주세요.", difficulty: "상" },
-  { type: "기술", q: "TypeScript의 타입 시스템이 JavaScript와 다른 점은 무엇인가요?", difficulty: "중" },
-  { type: "직무", q: "성능 최적화 경험이 있으신가요? 구체적인 사례를 들어주세요.", difficulty: "상" },
-  { type: "인성", q: "팀원과 의견 충돌이 있었을 때 어떻게 해결했나요?", difficulty: "중" },
-  { type: "지원동기", q: "카카오페이를 지원하게 된 이유는 무엇인가요?", difficulty: "중" },
-  { type: "기술", q: "CSR과 SSR의 차이점과 각각의 장단점을 설명해주세요.", difficulty: "중" },
-  { type: "상황", q: "짧은 기간 안에 처음 접하는 기술을 빠르게 익혀야 했던 경험이 있나요?", difficulty: "하" },
-];
+const statusColor: Record<string, string> = {
+  DRAFT: "bg-slate-100 text-slate-700",
+  ANALYZING: "bg-amber-100 text-amber-700",
+  READY: "bg-blue-100 text-blue-700",
+  APPLIED: "bg-green-100 text-green-700",
+  CLOSED: "bg-zinc-100 text-zinc-500",
+};
 
-const correctionHistory = [
-  {
-    question: "React 프로젝트 경험을 설명해주세요.",
-    original: "학교 프로젝트에서 React를 사용해서 게시판을 만들었습니다.",
-    improved: "팀 프로젝트에서 React로 게시판을 구현했습니다. 저는 목록/작성/수정/삭제 화면을 맡았고, REST API 연동과 useState/useEffect 기반 상태 관리를 구현했습니다.",
-    score: 45,
-    newScore: 82,
-    date: "2026-06-03",
-  },
-  {
-    question: "TypeScript를 사용해본 경험이 있나요?",
-    original: "TypeScript는 아직 많이 사용해보지 않았습니다.",
-    improved: "현재 TypeScript를 학습 중이며, 개인 프로젝트에서 기본 타입과 인터페이스를 적용해봤습니다. 팀 프로젝트에도 도입하고 싶은 기술입니다.",
-    score: 32,
-    newScore: 68,
-    date: "2026-06-02",
-  },
-];
+function formatDate(value: string | null | undefined) {
+  if (!value) return "날짜 없음";
+  return new Intl.DateTimeFormat("ko-KR", { dateStyle: "medium" }).format(new Date(value));
+}
 
-const interviewReportData = [
-  { label: "답변 내용", score: 75, feedback: "질문에 대한 답변 방향은 맞으나 구체성 보완 필요" },
-  { label: "직무 적합성", score: 70, feedback: "공고 핵심 역량과 연결되는 경험 언급 보완 필요" },
-  { label: "구체성", score: 60, feedback: "수치, 결과, 문제 해결 사례 부족" },
-  { label: "논리성", score: 80, feedback: "답변 구조는 자연스러움" },
-  { label: "표현력", score: 72, feedback: "말이 명확하나 전문 용어 활용 더 필요" },
-  { label: "자신감", score: 65, feedback: "답변이 다소 위축된 경향" },
-];
+function difficultyLabel(value: string | null | undefined) {
+  if (value === "EASY") return "낮음";
+  if (value === "NORMAL") return "보통";
+  if (value === "HARD") return "높음";
+  return "미정";
+}
 
 export function ApplicationDetailPage() {
   const { id } = useParams();
   const navigate = useNavigate();
-  const [activeTab, setActiveTab] = useState("fit");
+  const applicationCaseId = Number(id);
+  const [activeTab, setActiveTab] = useState<DetailTab>("fit");
+  const [applications, setApplications] = useState<ApplicationCase[]>([]);
+  const [application, setApplication] = useState<ApplicationCase | null>(null);
+  const [jobPosting, setJobPosting] = useState<JobPosting | null>(null);
+  const [analysis, setAnalysis] = useState<ApplicationAnalysis | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [analyzing, setAnalyzing] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+
+  const fitAnalysis = analysis?.fitAnalysis ?? null;
+  const jobAnalysis = analysis?.jobAnalysis ?? null;
+  const tone = scoreTone(fitAnalysis?.fitScore);
+  const matchedSkills = useMemo(() => parseJsonList(fitAnalysis?.matchedSkills), [fitAnalysis?.matchedSkills]);
+  const missingSkills = useMemo(() => parseJsonList(fitAnalysis?.missingSkills), [fitAnalysis?.missingSkills]);
+  const requiredSkills = useMemo(() => parseJsonList(jobAnalysis?.requiredSkills), [jobAnalysis?.requiredSkills]);
+  const preferredSkills = useMemo(() => parseJsonList(jobAnalysis?.preferredSkills), [jobAnalysis?.preferredSkills]);
+  const studyItems = useMemo(() => parseJsonList(fitAnalysis?.recommendedStudy), [fitAnalysis?.recommendedStudy]);
+  const certificates = useMemo(() => parseJsonList(fitAnalysis?.recommendedCertificates), [fitAnalysis?.recommendedCertificates]);
+
+  useEffect(() => {
+    if (!Number.isFinite(applicationCaseId) || applicationCaseId <= 0) {
+      setError("지원 건 번호가 올바르지 않습니다.");
+      setLoading(false);
+      return;
+    }
+
+    let ignore = false;
+    setLoading(true);
+    setError(null);
+    setNotice(null);
+
+    Promise.all([
+      getApplicationCases(),
+      getApplicationCase(applicationCaseId),
+      getApplicationAnalysis(applicationCaseId),
+      getJobPosting(applicationCaseId).catch(() => null),
+    ])
+      .then(([caseList, currentCase, currentAnalysis, currentPosting]) => {
+        if (ignore) return;
+        setApplications(caseList);
+        setApplication(currentCase);
+        setAnalysis(currentAnalysis);
+        setJobPosting(currentPosting);
+      })
+      .catch((requestError) => {
+        if (!ignore) setError(requestError instanceof Error ? requestError.message : "지원 건 상세를 불러오지 못했습니다.");
+      })
+      .finally(() => {
+        if (!ignore) setLoading(false);
+      });
+
+    return () => {
+      ignore = true;
+    };
+  }, [applicationCaseId]);
+
+  async function handleCreateMockAnalysis() {
+    if (!application) return;
+    setAnalyzing(true);
+    setError(null);
+    setNotice(null);
+
+    try {
+      const nextAnalysis = await createMockAnalysis(application.id);
+      const [nextApplication, nextApplications] = await Promise.all([
+        getApplicationCase(application.id),
+        getApplicationCases(),
+      ]);
+      setApplication(nextApplication);
+      setApplications(nextApplications);
+      setAnalysis(nextAnalysis);
+      setNotice("개발용 샘플 분석이 생성됐습니다. 실제 API 키가 발급되면 같은 위치에 실제 분석 결과가 표시됩니다.");
+      setActiveTab("fit");
+    } catch (requestError) {
+      setError(requestError instanceof Error ? requestError.message : "분석 샘플을 생성하지 못했습니다.");
+    } finally {
+      setAnalyzing(false);
+    }
+  }
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-slate-50 p-6">
+        <Card className="mx-auto max-w-3xl border border-slate-200 bg-white">
+          <CardContent className="flex items-center gap-3 p-6 text-sm text-slate-600">
+            <Loader2 className="size-4 animate-spin text-blue-600" />
+            지원 건 상세를 불러오는 중입니다.
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
+  if (error && !application) {
+    return (
+      <div className="min-h-screen bg-slate-50 p-6">
+        <Card className="mx-auto max-w-3xl border border-red-200 bg-red-50">
+          <CardContent className="space-y-4 p-6">
+            <div className="flex items-center gap-2 text-sm font-semibold text-red-700">
+              <AlertCircle className="size-4" />
+              {error}
+            </div>
+            <Button variant="outline" onClick={() => navigate("/applications")}>
+              지원 건 목록으로 이동
+            </Button>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
+  if (!application) return null;
 
   return (
-    <div className="flex min-h-[calc(100vh-64px)] lg:h-[calc(100vh-80px)] bg-slate-100 overflow-hidden">
-      {/* Left Sidebar */}
-      <aside className="hidden lg:flex w-60 bg-slate-900 text-white flex-col flex-shrink-0 overflow-hidden">
-        <div className="p-3 border-b border-slate-700 flex items-center justify-between">
+    <div className="flex min-h-[calc(100vh-64px)] bg-slate-50">
+      <aside className="hidden w-64 shrink-0 border-r border-slate-200 bg-slate-950 text-white lg:block">
+        <div className="border-b border-slate-800 p-4">
           <button
+            type="button"
             onClick={() => navigate("/applications")}
-            className="flex items-center gap-1 text-xs text-slate-400 hover:text-white transition-colors"
+            className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-400 hover:text-white"
           >
-            <ChevronLeft className="size-3.5" /> 전체 목록
-          </button>
-          <button
-            onClick={() => navigate("/applications/new")}
-            className="size-6 rounded bg-blue-600 hover:bg-blue-500 flex items-center justify-center transition-colors"
-          >
-            <Plus className="size-3.5" />
+            <ArrowLeft className="size-3.5" />
+            전체 지원 건
           </button>
         </div>
-
-        <div className="flex-1 overflow-y-auto">
-          <div className="p-3">
-            <div className="text-[10px] text-slate-500 font-semibold uppercase tracking-wider mb-2">지원 건 목록</div>
-            {sidebarApplications.map((a) => (
-              <Link key={a.id} to={`/applications/${a.id}`}>
-                <div className={`mb-1 p-2.5 rounded-lg cursor-pointer transition-colors ${a.id === id || (id === undefined && a.active) ? "bg-blue-600" : "hover:bg-slate-800"}`}>
-                  <div className="text-xs font-semibold">{a.company}</div>
-                  <div className="text-[10px] text-slate-400">{a.job}</div>
-                  <div className="flex items-center gap-1.5 mt-1">
-                    <div className="flex-1 h-1 bg-slate-700 rounded-full overflow-hidden">
-                      <div
-                        className="h-full bg-blue-400 rounded-full"
-                        style={{ width: `${a.score}%` }}
-                      />
-                    </div>
-                    <span className="text-[10px] text-blue-300">{a.score}점</span>
-                  </div>
+        <div className="space-y-1 p-3">
+          {applications.map((item) => {
+            const active = item.id === application.id;
+            return (
+              <Link
+                key={item.id}
+                to={`/applications/${item.id}`}
+                className={`block rounded-lg p-3 transition-colors ${active ? "bg-blue-600" : "hover:bg-slate-900"}`}
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <div className="truncate text-sm font-bold">{item.companyName}</div>
+                  {item.favorite && <Star className="size-3.5 shrink-0 fill-amber-300 text-amber-300" />}
+                </div>
+                <div className="mt-0.5 truncate text-xs text-slate-300">{item.jobTitle}</div>
+                <div className="mt-2">
+                  <Badge className={`text-[10px] ${statusColor[item.status] ?? "bg-slate-100 text-slate-700"}`}>
+                    {statusLabel[item.status] ?? item.status}
+                  </Badge>
                 </div>
               </Link>
-            ))}
-          </div>
-
-          <div className="p-3 border-t border-slate-700 mt-2">
-            <div className="text-[10px] text-slate-500 font-semibold uppercase tracking-wider mb-2">즐겨찾기</div>
-            <div className="flex items-center gap-1.5 text-xs text-slate-400">
-              <Star className="size-3 text-amber-400 fill-amber-400" />
-              카카오페이 · 프론트엔드
-            </div>
-            <div className="flex items-center gap-1.5 text-xs text-slate-400 mt-1">
-              <Star className="size-3 text-amber-400 fill-amber-400" />
-              네이버 · 백엔드
-            </div>
-          </div>
-
-          <div className="p-3 border-t border-slate-700">
-            <div className="text-[10px] text-slate-500 font-semibold uppercase tracking-wider mb-2">보관함</div>
-            <div className="flex items-center gap-1.5 text-xs text-slate-500">
-              <Archive className="size-3" />
-              보관된 항목 없음
-            </div>
-          </div>
+            );
+          })}
         </div>
       </aside>
 
-      {/* Center Main */}
-      <main className="flex-1 w-full flex flex-col min-w-0 overflow-hidden">
-        {/* Company header */}
-        <div className="bg-white border-b border-slate-200 px-4 sm:px-5 py-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3 flex-shrink-0">
-          <div className="min-w-0">
-            <div className="flex items-center gap-2 flex-wrap">
-              <div className="size-7 rounded-lg bg-gradient-to-br from-blue-600 to-indigo-600 flex items-center justify-center text-white text-xs font-bold">카</div>
-              <span className="font-bold text-slate-900 text-sm">카카오페이 · 프론트엔드 개발자</span>
-              <Badge className="bg-blue-100 text-blue-700 text-xs">준비중</Badge>
-            </div>
-            <div className="text-xs text-slate-500 mt-0.5 sm:ml-9">2026-08-01 공고 · 경력 1-3년 · React, TypeScript, AWS</div>
-          </div>
-          <div className="flex items-center gap-2 self-end sm:self-auto">
-            <button className="p-1.5 rounded-lg hover:bg-slate-100 transition-colors">
-              <Star className="size-4 text-amber-400 fill-amber-400" />
-            </button>
-            <button className="p-1.5 rounded-lg hover:bg-slate-100 transition-colors">
-              <MoreHorizontal className="size-4 text-slate-400" />
-            </button>
-          </div>
-        </div>
-
-        {/* Tabs */}
-        <div className="bg-white border-b border-slate-200 flex overflow-x-auto flex-shrink-0">
-          {tabs.map((tab) => (
-            <button
-              key={tab.key}
-              onClick={() => setActiveTab(tab.key)}
-              className={`flex items-center gap-1.5 px-4 py-2.5 text-xs font-medium whitespace-nowrap border-b-2 transition-colors ${
-                activeTab === tab.key
-                  ? "border-blue-600 text-blue-600 bg-blue-50"
-                  : "border-transparent text-slate-600 hover:text-blue-600 hover:bg-slate-50"
-              }`}
-            >
-              <tab.icon className="size-3.5" />
-              {tab.label}
-            </button>
-          ))}
-        </div>
-
-        {/* Tab content */}
-        <div className="flex-1 overflow-y-auto p-4 sm:p-5">
-          {activeTab === "job" && (
-            <div className="space-y-5 max-w-2xl">
-              <div className="flex items-center justify-between">
-                <h2 className="font-bold text-slate-800">공고 분석 결과</h2>
-                <Badge className="bg-green-100 text-green-700">분석 완료</Badge>
+      <main className="min-w-0 flex-1">
+        <div className="border-b border-slate-200 bg-white px-5 py-4">
+          <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
+            <div>
+              <div className="flex flex-wrap items-center gap-2">
+                <div className="flex size-9 items-center justify-center rounded-lg bg-gradient-to-br from-blue-600 to-indigo-600 text-sm font-black text-white">
+                  {application.companyName[0]}
+                </div>
+                <h1 className="text-xl font-black text-slate-900">
+                  {application.companyName} · {application.jobTitle}
+                </h1>
+                {application.favorite && <Badge className="bg-amber-100 text-amber-700">관심</Badge>}
+                <Badge className={statusColor[application.status] ?? "bg-slate-100 text-slate-700"}>
+                  {statusLabel[application.status] ?? application.status}
+                </Badge>
+                {fitAnalysis && <Badge className="bg-indigo-100 text-indigo-700">샘플 AI 결과</Badge>}
               </div>
-              <div className="grid md:grid-cols-2 gap-4">
-                {[
-                  { label: "기업명", value: "카카오페이" },
-                  { label: "직무명", value: "프론트엔드 개발자" },
-                  { label: "고용 형태", value: "정규직" },
-                  { label: "경력 조건", value: "경력 1-3년" },
-                  { label: "예상 난이도", value: "보통 ~ 어려움" },
-                  { label: "채용 일자", value: "2026-08-01" },
-                ].map((item) => (
-                  <div key={item.label} className="flex items-center gap-3 p-3 bg-slate-50 rounded-xl text-sm">
-                    <span className="text-slate-500 w-20 flex-shrink-0">{item.label}</span>
-                    <span className="font-semibold text-slate-800">{item.value}</span>
-                  </div>
-                ))}
-              </div>
-              <div className="space-y-3">
-                <div>
-                  <div className="text-sm font-bold text-slate-700 mb-2">필수 기술</div>
-                  <div className="flex flex-wrap gap-1.5">
-                    {["React", "JavaScript", "TypeScript", "REST API", "Git"].map(s => (
-                      <Badge key={s} className="bg-red-100 text-red-700 text-xs">{s}</Badge>
-                    ))}
-                  </div>
-                </div>
-                <div>
-                  <div className="text-sm font-bold text-slate-700 mb-2">우대 기술</div>
-                  <div className="flex flex-wrap gap-1.5">
-                    {["AWS", "Next.js", "CI/CD", "성능 최적화", "디자인 시스템"].map(s => (
-                      <Badge key={s} className="bg-blue-100 text-blue-700 text-xs">{s}</Badge>
-                    ))}
-                  </div>
-                </div>
-                <div>
-                  <div className="text-sm font-bold text-slate-700 mb-2">담당 업무</div>
-                  <ul className="space-y-1.5 text-sm text-slate-600">
-                    {["결제 서비스 프론트엔드 개발 및 유지보수", "사용자 경험 개선을 위한 UI 최적화", "신규 기능 기획 및 구현", "성능 모니터링 및 개선"].map(t => (
-                      <li key={t} className="flex items-start gap-2"><ChevronRight className="size-3.5 mt-0.5 text-blue-500 flex-shrink-0" />{t}</li>
-                    ))}
-                  </ul>
-                </div>
+              <div className="mt-2 text-sm text-slate-500">
+                마감/공고일 {formatDate(application.postingDate)} · 입력 방식 {application.sourceType} · 최근 수정 {formatDate(application.updatedAt)}
               </div>
             </div>
-          )}
-
-          {activeTab === "company" && (
-            <div className="space-y-5 max-w-2xl">
-              <div className="flex items-center justify-between">
-                <h2 className="font-bold text-slate-800">기업 현황 분석</h2>
-                <Badge className="bg-purple-100 text-purple-700">AI 조사 완료</Badge>
-              </div>
-              <Card className="border border-blue-200 bg-blue-50">
-                <CardContent className="p-4">
-                  <div className="flex items-start gap-2">
-                    <Sparkles className="size-4 text-blue-600 mt-0.5 flex-shrink-0" />
-                    <p className="text-sm text-blue-800">
-                      카카오페이는 최근 <strong>결제 UX 고도화</strong>와 <strong>글로벌 서비스 확장</strong>에 집중하고 있습니다. 면접에서는 단순한 React 경험보다 <strong>성능 최적화, 반응형 UI, 재사용 가능한 컴포넌트 설계 경험</strong>을 강조하는 것이 좋습니다.
-                    </p>
-                  </div>
-                </CardContent>
-              </Card>
-              {[
-                { title: "주요 사업", content: "간편결제, 송금, 대출, 보험 등 핀테크 종합 금융 서비스" },
-                { title: "최근 이슈", content: "2025 해외 결제 서비스 확장 · 오프라인 결제 강화 · AI 금융 서비스 도입" },
-                { title: "경쟁사", content: "네이버페이, 토스, 삼성페이, 애플페이" },
-                { title: "면접 강조 포인트", content: "결제 UX 개선 경험, 성능 최적화, 대용량 데이터 처리, 팀 협업 프로세스" },
-              ].map((item) => (
-                <div key={item.title} className="p-4 bg-slate-50 rounded-xl border border-slate-200">
-                  <div className="text-xs font-bold text-slate-500 uppercase tracking-wide mb-1.5">{item.title}</div>
-                  <p className="text-sm text-slate-700">{item.content}</p>
-                </div>
-              ))}
-            </div>
-          )}
-
-          {activeTab === "fit" && (
-            <div className="space-y-5 max-w-2xl">
-              <div className="flex items-center justify-between">
-                <h2 className="font-bold text-slate-800">내 스펙 비교 분석</h2>
-                <Badge className="bg-blue-100 text-blue-700 font-black">직무 적합도 72점</Badge>
-              </div>
-              <div className="space-y-2">
-                {specData.map((s) => (
-                  <div key={s.skill} className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-3 p-3 bg-white border border-slate-200 rounded-xl text-sm">
-                    <div className="min-w-0 flex-1 sm:flex-none sm:w-24">
-                      <div className="font-medium text-slate-700 truncate">{s.skill}</div>
-                      <div className="text-slate-500 text-xs sm:hidden">{s.status}</div>
-                    </div>
-                    <div className="hidden sm:block flex-1 text-slate-500 text-xs">{s.status}</div>
-                    <div className="flex items-center gap-2 flex-shrink-0">
-                      <span className={`px-2 py-0.5 rounded-full text-xs font-semibold whitespace-nowrap ${
-                        s.grade === "강점" ? "bg-green-100 text-green-700" :
-                        s.grade === "보완 필요" ? "bg-amber-100 text-amber-700" :
-                        s.grade === "학습 필요" ? "bg-red-100 text-red-700" :
-                        "bg-slate-100 text-slate-600"
-                      }`}>{s.grade}</span>
-                      {s.match ? <CheckCircle2 className="size-4 text-green-500 flex-shrink-0" /> : <AlertCircle className="size-4 text-amber-500 flex-shrink-0" />}
-                    </div>
-                  </div>
-                ))}
-              </div>
-              <div className="bg-amber-50 border border-amber-200 rounded-xl p-4">
-                <div className="font-bold text-amber-800 text-sm mb-2 flex items-center gap-2">
-                  <Brain className="size-4" /> AI 종합 전략
-                </div>
-                <ol className="space-y-1.5 text-sm text-amber-700">
-                  {[
-                    "React 프로젝트에서 본인이 맡은 역할을 구체적으로 정리하세요",
-                    "TypeScript 기본 문법과 React 프로젝트 적용 사례를 학습하세요",
-                    "AWS S3/CloudFront 배포 경험을 토이 프로젝트로 보완하세요",
-                    "포트폴리오에 문제 해결 사례와 수치 결과를 추가하세요",
-                  ].map((t, i) => (
-                    <li key={i} className="flex items-start gap-2">
-                      <span className="font-black flex-shrink-0">{i + 1}.</span>
-                      <span className="min-w-0 [word-break:keep-all]">{t}</span>
-                    </li>
-                  ))}
-                </ol>
-              </div>
-            </div>
-          )}
-
-          {activeTab === "strategy" && (
-            <div className="space-y-5 max-w-2xl">
-              <h2 className="font-bold text-slate-800">지원 전략</h2>
-              <div className="grid gap-4">
-                {[
-                  { phase: "단기 (1-2주)", color: "border-red-200 bg-red-50", items: ["TypeScript 기본 타입 학습 완료", "포트폴리오 문제 해결 사례 1개 추가", "카카오페이 서비스 직접 사용해보기"] },
-                  { phase: "중기 (3-4주)", color: "border-amber-200 bg-amber-50", items: ["AWS 배포 토이 프로젝트 완성", "React 최적화 사례 정리", "모의 면접 5회 이상 진행"] },
-                  { phase: "장기 (지원 전)", color: "border-green-200 bg-green-50", items: ["자기소개서 카카오페이 맞춤 작성", "지원서 제출 및 포트폴리오 링크 정리", "면접 답변 최종 점검"] },
-                ].map((p) => (
-                  <div key={p.phase} className={`border ${p.color} rounded-xl p-4`}>
-                    <div className="font-bold text-slate-800 text-sm mb-2">{p.phase}</div>
-                    <ul className="space-y-1.5">
-                      {p.items.map((item) => (
-                        <li key={item} className="flex items-start gap-2 text-sm text-slate-700">
-                          <div className="size-4 rounded border-2 border-slate-300 flex-shrink-0 mt-0.5" />
-                          {item}
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {activeTab === "questions" && (
-            <div className="space-y-4 max-w-2xl">
-              <div className="flex items-center justify-between">
-                <h2 className="font-bold text-slate-800">예상 면접 질문</h2>
-                <Button size="sm" variant="outline" className="gap-1.5 text-xs">
-                  <Sparkles className="size-3.5" /> 질문 재생성
-                </Button>
-              </div>
-              <div className="space-y-3">
-                {expectedQuestions.map((q, i) => (
-                  <div key={i} className="p-4 bg-white border border-slate-200 rounded-xl hover:border-blue-300 transition-colors">
-                    <div className="flex items-start gap-3">
-                      <div className="size-6 rounded-full bg-blue-600 text-white text-xs font-bold flex items-center justify-center flex-shrink-0 mt-0.5">
-                        {i + 1}
-                      </div>
-                      <div className="flex-1">
-                        <div className="flex items-center gap-2 mb-1.5 flex-wrap">
-                          <Badge className={`text-[10px] px-1.5 py-0.5 ${
-                            q.type === "기술" ? "bg-blue-100 text-blue-700" :
-                            q.type === "인성" ? "bg-green-100 text-green-700" :
-                            q.type === "직무" ? "bg-purple-100 text-purple-700" :
-                            "bg-orange-100 text-orange-700"
-                          }`}>{q.type}</Badge>
-                          <Badge className={`text-[10px] px-1.5 py-0.5 ${
-                            q.difficulty === "상" ? "bg-red-100 text-red-700" :
-                            q.difficulty === "중" ? "bg-amber-100 text-amber-700" :
-                            "bg-green-100 text-green-700"
-                          }`}>난이도 {q.difficulty}</Badge>
-                        </div>
-                        <p className="text-sm text-slate-700">{q.q}</p>
-                      </div>
-                      <Button size="sm" variant="ghost" className="flex-shrink-0 text-xs gap-1 h-7 px-2">
-                        <Play className="size-3" /> 연습
-                      </Button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-              <Button className="w-full bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 gap-2" onClick={() => setActiveTab("interview")}>
-                <MessageSquare className="size-4" /> AI 가상 면접 시작하기
+            <div className="flex flex-wrap items-center gap-2">
+              <Button variant="outline" onClick={() => navigate("/analysis")} className="gap-1.5">
+                <BarChart3 className="size-4" />
+                종합 분석
+              </Button>
+              <Button onClick={handleCreateMockAnalysis} disabled={analyzing} className="gap-1.5 bg-blue-600 hover:bg-blue-700">
+                {analyzing ? <Loader2 className="size-4 animate-spin" /> : <Play className="size-4" />}
+                {fitAnalysis ? "샘플 재분석" : "샘플 분석 생성"}
               </Button>
             </div>
-          )}
+          </div>
 
-          {activeTab === "interview" && (
-            <div className="space-y-5 max-w-2xl">
-              <h2 className="font-bold text-slate-800">AI 가상 면접</h2>
-              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3">
-                {[
-                  { mode: "직무 면접", desc: "공고 기반 기술 질문", icon: "⚙️", recommended: true },
-                  { mode: "인성 면접", desc: "협업, 갈등, 책임감", icon: "🤝", recommended: false },
-                  { mode: "압박 면접", desc: "꼬리 질문, 반박", icon: "⚡", recommended: false },
-                  { mode: "기업 맞춤", desc: "카카오페이 특화", icon: "🏢", recommended: true },
-                ].map((m) => (
-                  <button
-                    key={m.mode}
-                    className={`relative p-4 rounded-xl border-2 text-left transition-all hover:shadow-md ${m.recommended ? "border-blue-400 bg-blue-50" : "border-slate-200 bg-white hover:border-blue-300"}`}
-                  >
-                    {m.recommended && (
-                      <div className="absolute -top-2 -right-2">
-                        <Badge className="text-[9px] bg-blue-600 text-white px-1.5 py-0.5">추천</Badge>
+          {notice && (
+            <div className="mt-4 rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-800">
+              {notice}
+            </div>
+          )}
+          {error && (
+            <div className="mt-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+              {error}
+            </div>
+          )}
+        </div>
+
+        <div className="border-b border-slate-200 bg-white px-5">
+          <div className="flex overflow-x-auto">
+            {tabs.map((tab) => (
+              <button
+                key={tab.key}
+                type="button"
+                onClick={() => setActiveTab(tab.key)}
+                className={`flex shrink-0 items-center gap-1.5 border-b-2 px-4 py-3 text-xs font-bold transition-colors ${
+                  activeTab === tab.key
+                    ? "border-blue-600 text-blue-600"
+                    : "border-transparent text-slate-500 hover:text-blue-600"
+                }`}
+              >
+                <tab.icon className="size-3.5" />
+                {tab.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div className="grid gap-5 p-5 xl:grid-cols-[minmax(0,1fr)_300px]">
+          <section className="min-w-0">
+            {!fitAnalysis && !jobAnalysis && (
+              <Card className="mb-5 border border-amber-200 bg-amber-50">
+                <CardContent className="flex flex-col gap-3 p-5 sm:flex-row sm:items-center sm:justify-between">
+                  <div className="flex items-start gap-3">
+                    <Sparkles className="mt-0.5 size-5 text-amber-600" />
+                    <div>
+                      <div className="text-sm font-bold text-amber-900">아직 분석 결과가 없습니다.</div>
+                      <div className="mt-1 text-sm text-amber-700">
+                        API 키 발급 전에는 개발용 샘플 분석을 생성해서 실제 화면 흐름을 검증합니다.
                       </div>
-                    )}
-                    <div className="text-2xl mb-2">{m.icon}</div>
-                    <div className="font-semibold text-slate-800 text-xs mb-0.5">{m.mode}</div>
-                    <div className="text-[10px] text-slate-500">{m.desc}</div>
-                  </button>
-                ))}
-              </div>
-              <div className="bg-slate-900 rounded-2xl p-6 text-white">
-                <div className="flex items-center gap-3 mb-4">
-                  <div className="size-12 rounded-xl bg-gradient-to-br from-blue-500 to-indigo-500 flex items-center justify-center">
-                    <Brain className="size-6" />
+                    </div>
                   </div>
-                  <div>
-                    <div className="font-bold">AI 면접관</div>
-                    <div className="text-xs text-slate-400">카카오페이 직무 면접 모드</div>
-                  </div>
-                </div>
-                <div className="bg-white/10 rounded-xl p-4 text-sm mb-4">
-                  <span className="text-blue-300">[면접관]</span> 안녕하세요. 카카오페이 프론트엔드 개발자 직무 면접을 시작하겠습니다. 먼저 간단한 자기소개를 해주세요.
-                </div>
-                <div className="flex flex-col sm:flex-row gap-3">
-                  <Button className="flex-1 bg-blue-600 hover:bg-blue-500 gap-2">
-                    <Mic className="size-4" /> 음성으로 답변
+                  <Button onClick={handleCreateMockAnalysis} disabled={analyzing} className="gap-1.5 bg-amber-600 hover:bg-amber-700">
+                    {analyzing ? <Loader2 className="size-4 animate-spin" /> : <RefreshCw className="size-4" />}
+                    샘플 분석 생성
                   </Button>
-                  <Button variant="outline" className="flex-1 border-white/30 text-white hover:bg-white/10 gap-2">
-                    <FileText className="size-4" /> 텍스트로 답변
-                  </Button>
+                </CardContent>
+              </Card>
+            )}
+
+            {activeTab === "job" && <JobAnalysisSection jobAnalysis={jobAnalysis} requiredSkills={requiredSkills} preferredSkills={preferredSkills} />}
+            {activeTab === "fit" && <FitAnalysisSection fitAnalysis={fitAnalysis} matchedSkills={matchedSkills} missingSkills={missingSkills} />}
+            {activeTab === "strategy" && <StrategySection fitAnalysis={fitAnalysis} />}
+            {activeTab === "learning" && <LearningSection studyItems={studyItems} certificates={certificates} />}
+            {activeTab === "posting" && <PostingSection jobPosting={jobPosting} />}
+          </section>
+
+          <aside className="space-y-4">
+            <Card className="border border-slate-200 bg-white">
+              <CardHeader className="pb-3">
+                <CardTitle className="flex items-center gap-2 text-base">
+                  <Target className="size-4 text-blue-600" />
+                  적합도 요약
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="text-center">
+                  <div className={`text-5xl font-black ${tone.text}`}>{fitAnalysis?.fitScore ?? 0}</div>
+                  <div className="mt-1 text-xs text-slate-500">/ 100점</div>
                 </div>
-              </div>
-            </div>
-          )}
+                <Progress value={fitAnalysis?.fitScore ?? 0} className="h-2" />
+                <Badge className={`w-full justify-center ${tone.bg} ${tone.text}`}>{fitAnalysis ? tone.label : "미분석"}</Badge>
+              </CardContent>
+            </Card>
 
-          {activeTab === "report" && (
-            <div className="space-y-5 max-w-2xl">
-              <div className="flex items-center justify-between">
-                <h2 className="font-bold text-slate-800">면접 리포트</h2>
-                <Badge className="bg-purple-100 text-purple-700">최근 1회차 (2026-06-01)</Badge>
-              </div>
-              <div className="text-center py-4">
-                <div className="text-5xl font-black text-blue-600">68</div>
-                <div className="text-sm text-slate-500 mt-1">/ 100점 · 이전 대비 +6점</div>
-              </div>
-              <div className="space-y-3">
-                {interviewReportData.map((r) => (
-                  <div key={r.label} className="p-3 bg-white border border-slate-200 rounded-xl space-y-2">
-                    <div className="flex items-center justify-between text-sm">
-                      <span className="font-semibold text-slate-700">{r.label}</span>
-                      <span className={`font-black ${r.score >= 75 ? "text-green-600" : r.score >= 60 ? "text-amber-600" : "text-red-500"}`}>{r.score}점</span>
-                    </div>
-                    <Progress value={r.score} className="h-1.5" />
-                    <p className="text-xs text-slate-500">{r.feedback}</p>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {activeTab === "corrections" && (
-            <div className="space-y-5 max-w-2xl">
-              <h2 className="font-bold text-slate-800">첨삭 기록</h2>
-              <div className="space-y-5">
-                {correctionHistory.map((c, i) => (
-                  <div key={i} className="space-y-3">
-                    <div className="flex items-center gap-2">
-                      <div className="size-5 rounded-full bg-blue-600 text-white text-xs font-bold flex items-center justify-center flex-shrink-0">{i + 1}</div>
-                      <div className="font-semibold text-slate-800 text-sm">Q. {c.question}</div>
-                      <div className="ml-auto text-xs text-slate-400">{c.date}</div>
-                    </div>
-                    <div className="grid md:grid-cols-2 gap-3">
-                      <div className="p-3 bg-red-50 border border-red-200 rounded-xl">
-                        <div className="text-xs font-bold text-red-700 mb-1.5 flex items-center gap-1">
-                          <ThumbsDown className="size-3" /> 원답변 ({c.score}점)
-                        </div>
-                        <p className="text-xs text-slate-600">{c.original}</p>
-                      </div>
-                      <div className="p-3 bg-green-50 border border-green-200 rounded-xl">
-                        <div className="text-xs font-bold text-green-700 mb-1.5 flex items-center gap-1">
-                          <ThumbsUp className="size-3" /> 개선 답변 ({c.newScore}점)
-                        </div>
-                        <p className="text-xs text-slate-600">{c.improved}</p>
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-2 text-xs text-slate-500">
-                      <ArrowRight className="size-3" />
-                      <span>점수 향상: </span>
-                      <span className="font-black text-green-600">+{c.newScore - c.score}점</span>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
+            <QuickList title="매칭 역량" icon="match" items={matchedSkills} />
+            <QuickList title="부족 역량" icon="gap" items={missingSkills} />
+            <QuickList title="추천 학습" icon="study" items={studyItems.slice(0, 4)} />
+          </aside>
         </div>
       </main>
-
-      {/* Right Panel */}
-      <aside className="hidden xl:flex w-56 bg-white border-l border-slate-200 flex-col flex-shrink-0 overflow-y-auto">
-        <div className="p-4 space-y-5">
-          {/* Prep score */}
-          <div>
-            <div className="text-[10px] text-slate-400 font-semibold uppercase tracking-wider mb-2">준비도 점수</div>
-            <div className="text-center py-2">
-              <div className="text-4xl font-black text-blue-600">72</div>
-              <div className="text-xs text-slate-500">/ 100점</div>
-              <Progress value={72} className="mt-2 h-2" />
-              <div className="text-[10px] text-green-600 mt-1">지난주 대비 +8점</div>
-            </div>
-          </div>
-
-          {/* Missing skills */}
-          <div>
-            <div className="text-[10px] text-slate-400 font-semibold uppercase tracking-wider mb-2">부족 역량</div>
-            <div className="space-y-1.5">
-              {["TypeScript", "AWS 배포", "포트폴리오 구체화", "CI/CD"].map((s) => (
-                <div key={s} className="flex items-center gap-1.5 text-[11px] bg-red-50 text-red-700 px-2 py-1.5 rounded-lg">
-                  <AlertCircle className="size-3 flex-shrink-0" /> {s}
-                </div>
-              ))}
-            </div>
-          </div>
-
-          {/* Recommended learning */}
-          <div>
-            <div className="text-[10px] text-slate-400 font-semibold uppercase tracking-wider mb-2">추천 학습</div>
-            <div className="space-y-1.5">
-              {[
-                { title: "TypeScript 기초", type: "강의" },
-                { title: "AWS 입문 가이드", type: "문서" },
-                { title: "포트폴리오 작성법", type: "아티클" },
-              ].map((l) => (
-                <div key={l.title} className="flex items-start gap-1.5 text-[11px] text-slate-600 bg-slate-50 px-2 py-1.5 rounded-lg">
-                  <BookOpen className="size-3 text-blue-500 flex-shrink-0 mt-0.5" />
-                  <div>
-                    <div>{l.title}</div>
-                    <div className="text-[9px] text-slate-400">{l.type}</div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          {/* Next tasks */}
-          <div>
-            <div className="text-[10px] text-slate-400 font-semibold uppercase tracking-wider mb-2">다음 할 일</div>
-            <div className="space-y-1.5">
-              {[
-                "TypeScript 학습 시작",
-                "AWS 토이 프로젝트",
-                "포트폴리오 수정",
-                "모의 면접 3회 진행",
-              ].map((t, i) => (
-                <div key={t} className="flex items-start gap-1.5 text-[11px] text-slate-600">
-                  <div className="size-3.5 rounded-sm border-2 border-slate-300 flex-shrink-0 mt-0.5" />
-                  {t}
-                </div>
-              ))}
-            </div>
-          </div>
-
-          {/* Credits */}
-          <div className="bg-amber-50 rounded-xl p-3 border border-amber-200">
-            <div className="text-[10px] text-amber-600 font-semibold uppercase tracking-wider mb-1.5">크레딧 사용</div>
-            <div className="flex items-baseline gap-1">
-              <span className="text-lg font-black text-amber-700">8</span>
-              <span className="text-xs text-amber-600">/ 50 사용</span>
-            </div>
-            <Progress value={16} className="mt-1.5 h-1.5" />
-          </div>
-        </div>
-      </aside>
     </div>
+  );
+}
+
+function JobAnalysisSection({
+  jobAnalysis,
+  requiredSkills,
+  preferredSkills,
+}: {
+  jobAnalysis: JobAnalysis | null;
+  requiredSkills: string[];
+  preferredSkills: string[];
+}) {
+  if (!jobAnalysis) return <EmptyState title="공고 분석 결과가 없습니다." description="샘플 분석을 생성하면 공고 요구사항이 구조화되어 표시됩니다." />;
+
+  return (
+    <div className="space-y-4">
+      <div className="grid gap-3 md:grid-cols-4">
+        <InfoCard label="고용 형태" value={jobAnalysis.employmentType ?? "미정"} />
+        <InfoCard label="경력 조건" value={jobAnalysis.experienceLevel ?? "미정"} />
+        <InfoCard label="난이도" value={difficultyLabel(jobAnalysis.difficulty)} />
+        <InfoCard label="분석 시점" value={formatDate(jobAnalysis.createdAt)} />
+      </div>
+      <Card className="border border-slate-200 bg-white">
+        <CardHeader>
+          <CardTitle className="text-base">공고 요약</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <p className="text-sm leading-6 text-slate-700">{jobAnalysis.summary ?? "요약 없음"}</p>
+          <TagBlock title="필수 역량" items={requiredSkills} tone="red" />
+          <TagBlock title="우대 역량" items={preferredSkills} tone="blue" />
+          <TextBlock title="담당 업무" value={jobAnalysis.duties} />
+          <TextBlock title="자격 요건" value={jobAnalysis.qualifications} />
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
+function FitAnalysisSection({
+  fitAnalysis,
+  matchedSkills,
+  missingSkills,
+}: {
+  fitAnalysis: ApplicationFitAnalysis | null;
+  matchedSkills: string[];
+  missingSkills: string[];
+}) {
+  if (!fitAnalysis) return <EmptyState title="스펙 비교 결과가 없습니다." description="샘플 분석을 생성하면 프로필과 공고 요구사항의 매칭 결과가 표시됩니다." />;
+
+  const tone = scoreTone(fitAnalysis.fitScore);
+
+  return (
+    <div className="space-y-4">
+      <Card className="border border-slate-200 bg-white">
+        <CardContent className="space-y-4 p-5">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <div className="text-sm font-semibold text-slate-500">직무 적합도</div>
+              <div className={`mt-1 text-4xl font-black ${tone.text}`}>{fitAnalysis.fitScore ?? 0}점</div>
+            </div>
+            <Badge className={`${tone.bg} ${tone.text}`}>{tone.label}</Badge>
+          </div>
+          <Progress value={fitAnalysis.fitScore ?? 0} className="h-2" />
+          <div className="grid gap-4 md:grid-cols-2">
+            <TagBlock title="매칭된 역량" items={matchedSkills} tone="green" />
+            <TagBlock title="부족한 역량" items={missingSkills} tone="red" />
+          </div>
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
+function StrategySection({ fitAnalysis }: { fitAnalysis: ApplicationFitAnalysis | null }) {
+  if (!fitAnalysis) return <EmptyState title="지원 전략이 없습니다." description="적합도 분석을 생성하면 지원서와 면접에서 강조할 전략이 표시됩니다." />;
+
+  return (
+    <Card className="border border-slate-200 bg-white">
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2 text-base">
+          <Map className="size-4 text-blue-600" />
+          지원 전략
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="rounded-xl bg-blue-50 p-4 text-sm leading-6 text-blue-900">
+          {fitAnalysis.strategy ?? "지원 전략이 아직 생성되지 않았습니다."}
+        </div>
+        <div className="grid gap-3 md:grid-cols-3">
+          <InfoCard label="지원서" value="공고 필수 역량과 맞는 경험을 첫 문단에 배치" />
+          <InfoCard label="포트폴리오" value="부족 역량 보완 프로젝트와 정량 성과 추가" />
+          <InfoCard label="면접" value="강점과 보완 계획을 STAR 구조로 준비" />
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function LearningSection({ studyItems, certificates }: { studyItems: string[]; certificates: string[] }) {
+  if (studyItems.length === 0 && certificates.length === 0) {
+    return <EmptyState title="학습 추천이 없습니다." description="적합도 분석을 생성하면 부족 역량 기반 학습 과제가 표시됩니다." />;
+  }
+
+  return (
+    <div className="grid gap-4 lg:grid-cols-2">
+      <RecommendationCard title="추천 학습" icon={BookOpen} items={studyItems} emptyText="추천 학습 없음" />
+      <RecommendationCard title="추천 자격증" icon={GraduationCap} items={certificates} emptyText="우선 추천 자격증 없음" />
+    </div>
+  );
+}
+
+function PostingSection({ jobPosting }: { jobPosting: JobPosting | null }) {
+  if (!jobPosting) return <EmptyState title="등록된 공고문이 없습니다." description="공고문이 없어도 샘플 분석은 가능하지만, 실제 분석 품질은 공고 원문이 있을 때 좋아집니다." />;
+  const text = jobPosting.extractedText || jobPosting.originalText || "공고문 텍스트가 비어 있습니다.";
+
+  return (
+    <Card className="border border-slate-200 bg-white">
+      <CardHeader>
+        <CardTitle className="text-base">공고 원문</CardTitle>
+        <p className="text-sm text-slate-500">입력 방식 {jobPosting.sourceType} · 등록 {formatDate(jobPosting.createdAt)}</p>
+      </CardHeader>
+      <CardContent>
+        <div className="whitespace-pre-wrap rounded-xl bg-slate-50 p-4 text-sm leading-6 text-slate-700">{text}</div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function InfoCard({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-xl border border-slate-200 bg-white p-4">
+      <div className="text-xs font-semibold text-slate-500">{label}</div>
+      <div className="mt-1 text-sm font-bold leading-5 text-slate-900">{value}</div>
+    </div>
+  );
+}
+
+function TagBlock({ title, items, tone }: { title: string; items: string[]; tone: "green" | "red" | "blue" }) {
+  const style = {
+    green: "bg-green-50 text-green-700",
+    red: "bg-red-50 text-red-700",
+    blue: "bg-blue-50 text-blue-700",
+  }[tone];
+
+  return (
+    <div>
+      <div className="mb-2 text-sm font-bold text-slate-800">{title}</div>
+      <div className="flex flex-wrap gap-1.5">
+        {items.length > 0 ? (
+          items.map((item) => (
+            <span key={item} className={`rounded-full px-2 py-1 text-xs font-semibold ${style}`}>
+              {item}
+            </span>
+          ))
+        ) : (
+          <span className="text-sm text-slate-400">분석된 항목 없음</span>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function TextBlock({ title, value }: { title: string; value: string | null }) {
+  return (
+    <div>
+      <div className="mb-1 text-sm font-bold text-slate-800">{title}</div>
+      <div className="rounded-xl bg-slate-50 p-4 text-sm leading-6 text-slate-700">{value || "분석된 내용 없음"}</div>
+    </div>
+  );
+}
+
+function RecommendationCard({
+  title,
+  icon: Icon,
+  items,
+  emptyText,
+}: {
+  title: string;
+  icon: typeof BookOpen;
+  items: string[];
+  emptyText: string;
+}) {
+  return (
+    <Card className="border border-slate-200 bg-white">
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2 text-base">
+          <Icon className="size-4 text-blue-600" />
+          {title}
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-2">
+        {(items.length > 0 ? items : [emptyText]).map((item, index) => (
+          <div key={`${item}-${index}`} className="rounded-lg bg-slate-50 p-3 text-sm leading-5 text-slate-700">
+            {item}
+          </div>
+        ))}
+      </CardContent>
+    </Card>
+  );
+}
+
+function QuickList({ title, icon, items }: { title: string; icon: "match" | "gap" | "study"; items: string[] }) {
+  const Icon = icon === "match" ? CheckCircle2 : icon === "gap" ? AlertCircle : BookOpen;
+  const color = icon === "match" ? "text-green-600" : icon === "gap" ? "text-red-500" : "text-blue-600";
+
+  return (
+    <Card className="border border-slate-200 bg-white">
+      <CardHeader className="pb-3">
+        <CardTitle className="flex items-center gap-2 text-base">
+          <Icon className={`size-4 ${color}`} />
+          {title}
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-2">
+        {items.length > 0 ? (
+          items.map((item) => (
+            <div key={item} className="rounded-lg bg-slate-50 px-3 py-2 text-sm text-slate-700">
+              {item}
+            </div>
+          ))
+        ) : (
+          <div className="text-sm text-slate-400">표시할 항목 없음</div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+function EmptyState({ title, description }: { title: string; description: string }) {
+  return (
+    <Card className="border border-slate-200 bg-white">
+      <CardContent className="flex items-start gap-3 p-5">
+        <Sparkles className="mt-0.5 size-5 text-blue-600" />
+        <div>
+          <div className="text-sm font-bold text-slate-900">{title}</div>
+          <div className="mt-1 text-sm text-slate-500">{description}</div>
+        </div>
+      </CardContent>
+    </Card>
   );
 }

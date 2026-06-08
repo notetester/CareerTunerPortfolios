@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link, useLocation, useNavigate, useSearchParams } from "react-router";
 import type { LucideIcon } from "lucide-react";
 import { Button } from "../components/ui/button";
@@ -9,15 +9,18 @@ import { Input } from "../components/ui/input";
 import {
   Plus, Search, Filter, Calendar, ChevronRight, FileText,
   Briefcase, Clock, Star, Archive, MoreHorizontal, Building2,
-  SortAsc, Upload, BarChart3, Target, Map, GraduationCap, ClipboardList,
+  SortAsc, Upload, BarChart3, Target, Map as MapIcon, GraduationCap, ClipboardList, Loader2, AlertCircle,
 } from "lucide-react";
+import { getApplicationCases } from "@/features/applications/api/applicationCasesApi";
+import type { ApplicationCase } from "@/features/applications/types/applicationCase";
 import { getFitAnalyses } from "@/features/analysis/api/fitAnalysisApi";
 import type { FitAnalysisDetail } from "@/features/analysis/types/fitAnalysis";
+import { parseJsonList } from "@/features/analysis/types/fitAnalysis";
 import { FitAnalysisPanel } from "@/features/applications/components/FitAnalysisPanel";
 import { LearningRecommendationPanel } from "@/features/applications/components/LearningRecommendationPanel";
 import { StrategyPanel } from "@/features/applications/components/StrategyPanel";
 
-const applications = [
+const sampleApplications = [
   { id: "1", company: "카카오페이", job: "프론트엔드 개발자", date: "2026-08-01", score: 72, status: "준비중", phase: "스펙비교완료", tags: ["React", "TypeScript", "AWS"], starred: true, desc: "결제 플랫폼 개발 · 경력 1-3년" },
   { id: "2", company: "네이버", job: "백엔드 개발자", date: "2026-07-20", score: 58, status: "면접연습중", phase: "가상면접진행", tags: ["Java", "Spring", "MySQL"], starred: true, desc: "검색 인프라 개발 · 신입/경력" },
   { id: "3", company: "삼성SDS", job: "IT 솔루션 개발", date: "2026-07-15", score: 65, status: "분석완료", phase: "전략수립완료", tags: ["Java", "Oracle", "Linux"], starred: false, desc: "ERP/SCM 시스템 개발 · 신입" },
@@ -26,7 +29,15 @@ const applications = [
   { id: "6", company: "당근", job: "안드로이드 개발자", date: "2026-06-30", score: 28, status: "공고수집", phase: "공고입력대기", tags: ["Kotlin", "Android", "Jetpack"], starred: false, desc: "로컬 커머스 서비스 · 경력 2년+" },
 ];
 
-const statusOptions = ["전체", "공고입력", "분석완료", "준비중", "면접연습중", "보관함"];
+const statusLabel: Record<string, string> = {
+  DRAFT: "공고 입력",
+  ANALYZING: "분석 중",
+  READY: "준비중",
+  APPLIED: "지원 완료",
+  CLOSED: "마감",
+};
+
+const statusOptions = ["전체", "공고 입력", "분석 중", "준비중", "지원 완료", "마감"];
 
 const applicationTabs = ["overview", "new", "upload", "analysis", "fit", "strategy", "learning", "records"] as const;
 type ApplicationTab = (typeof applicationTabs)[number];
@@ -37,7 +48,7 @@ const applicationNav: { key: ApplicationTab; label: string; icon: LucideIcon }[]
   { key: "upload", label: "공고문 업로드", icon: Upload },
   { key: "analysis", label: "공고문 분석 결과", icon: BarChart3 },
   { key: "fit", label: "내 스펙과 비교", icon: Target },
-  { key: "strategy", label: "지원 전략", icon: Map },
+  { key: "strategy", label: "지원 전략", icon: MapIcon },
   { key: "learning", label: "학습/자격증 추천", icon: GraduationCap },
   { key: "records", label: "지원 건별 기록", icon: ClipboardList },
 ];
@@ -87,8 +98,17 @@ const sectionCopy: Record<Exclude<ApplicationTab, "overview">, { title: string; 
   },
 };
 
-function ApplicationStructurePanel({ section }: { section: Exclude<ApplicationTab, "overview"> }) {
+function ApplicationStructurePanel({ section, cases }: { section: Exclude<ApplicationTab, "overview">; cases: ApplicationCase[] }) {
   const copy = sectionCopy[section];
+  const nextCases = cases.length > 0
+    ? cases.slice(0, 3).map((applicationCase) => ({
+        id: String(applicationCase.id),
+        company: applicationCase.companyName,
+        job: applicationCase.jobTitle,
+        phase: statusLabel[applicationCase.status] ?? applicationCase.status,
+      }))
+    : sampleApplications.slice(0, 3);
+
   return (
     <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_360px]">
       <Card className="border border-slate-200 bg-white">
@@ -113,7 +133,7 @@ function ApplicationStructurePanel({ section }: { section: Exclude<ApplicationTa
           <CardTitle className="text-base">연결되는 다음 단계</CardTitle>
         </CardHeader>
         <CardContent className="space-y-2">
-          {applications.slice(0, 3).map((app) => (
+          {nextCases.map((app) => (
             <Link key={app.id} to={`/applications/${app.id}`} className="block rounded-xl border border-slate-200 bg-slate-50 p-3 hover:border-blue-300">
               <div className="text-sm font-semibold text-slate-800">{app.company} · {app.job}</div>
               <div className="mt-1 text-xs text-slate-500">{app.phase}</div>
@@ -128,6 +148,9 @@ function ApplicationStructurePanel({ section }: { section: Exclude<ApplicationTa
 export function ApplicationsPage() {
   const [search, setSearch] = useState("");
   const [activeStatus, setActiveStatus] = useState("전체");
+  const [applicationCases, setApplicationCases] = useState<ApplicationCase[]>([]);
+  const [applicationsLoading, setApplicationsLoading] = useState(false);
+  const [applicationsError, setApplicationsError] = useState<string | null>(null);
   const [fitAnalyses, setFitAnalyses] = useState<FitAnalysisDetail[]>([]);
   const [fitAnalysesLoading, setFitAnalysesLoading] = useState(false);
   const [fitAnalysesError, setFitAnalysesError] = useState<string | null>(null);
@@ -138,6 +161,29 @@ export function ApplicationsPage() {
   const activeTab: ApplicationTab = applicationTabs.includes(requestedTab as ApplicationTab) ? (requestedTab as ApplicationTab) : "overview";
   const activeSection = activeTab === "overview" ? null : activeTab;
   const needsFitAnalysis = activeTab === "fit" || activeTab === "strategy" || activeTab === "learning";
+
+  useEffect(() => {
+    let ignore = false;
+    setApplicationsLoading(true);
+    setApplicationsError(null);
+
+    Promise.all([getApplicationCases(), getFitAnalyses().catch(() => [])])
+      .then(([cases, analyses]) => {
+        if (ignore) return;
+        setApplicationCases(cases);
+        setFitAnalyses(analyses);
+      })
+      .catch((error) => {
+        if (!ignore) setApplicationsError(error instanceof Error ? error.message : "지원 건 목록을 불러오지 못했습니다.");
+      })
+      .finally(() => {
+        if (!ignore) setApplicationsLoading(false);
+      });
+
+    return () => {
+      ignore = true;
+    };
+  }, []);
 
   useEffect(() => {
     if (!needsFitAnalysis) return;
@@ -162,9 +208,37 @@ export function ApplicationsPage() {
     };
   }, [needsFitAnalysis]);
 
-  const filtered = applications.filter((a) => {
+  const fitByCaseId = useMemo(() => {
+    return new Map(fitAnalyses.map((analysis) => [analysis.applicationCaseId, analysis]));
+  }, [fitAnalyses]);
+
+  const applicationCards = useMemo(() => {
+    return applicationCases.map((applicationCase) => {
+      const fitAnalysis = fitByCaseId.get(applicationCase.id);
+      const tags = [
+        ...parseJsonList(fitAnalysis?.matchedSkills).slice(0, 2),
+        ...parseJsonList(fitAnalysis?.missingSkills).slice(0, 1),
+      ];
+
+      return {
+        id: String(applicationCase.id),
+        company: applicationCase.companyName,
+        job: applicationCase.jobTitle,
+        date: applicationCase.postingDate ?? applicationCase.updatedAt ?? "",
+        score: fitAnalysis?.fitScore ?? 0,
+        status: statusLabel[applicationCase.status] ?? applicationCase.status,
+        phase: fitAnalysis ? "분석완료" : applicationCase.status === "ANALYZING" ? "분석중" : "분석필요",
+        tags: tags.length > 0 ? tags : ["공고 등록"],
+        starred: applicationCase.favorite,
+        desc: `${applicationCase.sourceType} 입력 · ${fitAnalysis ? "AI 분석 결과 있음" : "분석 대기"}`,
+        analyzed: Boolean(fitAnalysis),
+      };
+    });
+  }, [applicationCases, fitByCaseId]);
+
+  const filtered = applicationCards.filter((a) => {
     const matchSearch = a.company.includes(search) || a.job.includes(search);
-    const matchStatus = activeStatus === "전체" || a.status === activeStatus.replace("전체", "");
+    const matchStatus = activeStatus === "전체" || a.status === activeStatus;
     return matchSearch && (activeStatus === "전체" || matchStatus);
   });
 
@@ -212,12 +286,30 @@ export function ApplicationsPage() {
           ) : activeSection === "learning" ? (
             <LearningRecommendationPanel analyses={fitAnalyses} loading={fitAnalysesLoading} error={fitAnalysesError} />
           ) : (
-            <ApplicationStructurePanel section={activeSection} />
+            <ApplicationStructurePanel section={activeSection} cases={applicationCases} />
           )
         )}
 
         {activeTab === "overview" && (
           <>
+        {applicationsLoading && (
+          <Card className="border border-slate-200 bg-white">
+            <CardContent className="flex items-center gap-3 p-5 text-sm text-slate-600">
+              <Loader2 className="size-4 animate-spin text-blue-600" />
+              지원 건 목록을 불러오는 중입니다.
+            </CardContent>
+          </Card>
+        )}
+
+        {!applicationsLoading && applicationsError && (
+          <Card className="border border-red-200 bg-red-50">
+            <CardContent className="flex items-center gap-3 p-5 text-sm text-red-700">
+              <AlertCircle className="size-4" />
+              {applicationsError}
+            </CardContent>
+          </Card>
+        )}
+
         {/* Filters */}
         <Card className="border border-slate-200 bg-white">
           <CardContent className="p-4 flex flex-col md:flex-row gap-4 items-start md:items-center">
@@ -259,10 +351,10 @@ export function ApplicationsPage() {
         {/* Summary bar */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           {[
-            { label: "전체 지원 건", value: applications.length, icon: Briefcase, color: "text-blue-600" },
-            { label: "준비중", value: applications.filter(a => a.status === "준비중").length, icon: Clock, color: "text-orange-600" },
-            { label: "면접연습중", value: applications.filter(a => a.status === "면접연습중").length, icon: FileText, color: "text-purple-600" },
-            { label: "즐겨찾기", value: applications.filter(a => a.starred).length, icon: Star, color: "text-amber-600" },
+            { label: "전체 지원 건", value: applicationCards.length, icon: Briefcase, color: "text-blue-600" },
+            { label: "분석 완료", value: applicationCards.filter(a => a.analyzed).length, icon: Clock, color: "text-orange-600" },
+            { label: "준비중", value: applicationCards.filter(a => a.status === "준비중").length, icon: FileText, color: "text-purple-600" },
+            { label: "즐겨찾기", value: applicationCards.filter(a => a.starred).length, icon: Star, color: "text-amber-600" },
           ].map((s) => (
             <div key={s.label} className="bg-white rounded-xl border border-slate-200 p-4 flex items-center gap-3">
               <s.icon className={`size-5 ${s.color}`} />

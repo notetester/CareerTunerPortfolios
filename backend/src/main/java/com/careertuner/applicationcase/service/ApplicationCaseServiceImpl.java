@@ -33,6 +33,9 @@ public class ApplicationCaseServiceImpl implements ApplicationCaseService {
     private static final String DEFAULT_STATUS = "DRAFT";
     private static final Set<String> SOURCE_TYPES = Set.of("TEXT", "PDF", "IMAGE", "URL", "MANUAL");
     private static final Set<String> STATUSES = Set.of("DRAFT", "ANALYZING", "READY", "APPLIED", "CLOSED");
+    private static final int MOCK_JOB_ANALYSIS_CREDIT = 1;
+    private static final int MOCK_FIT_ANALYSIS_CREDIT = 2;
+    private static final int MOCK_DASHBOARD_SUMMARY_CREDIT = 1;
 
     private final ApplicationCaseMapper applicationCaseMapper;
 
@@ -160,8 +163,11 @@ public class ApplicationCaseServiceImpl implements ApplicationCaseService {
                 .build();
         applicationCaseMapper.insertFitAnalysis(fitAnalysis);
 
+        applicationCaseMapper.markAnalysisCompleted(applicationCaseId, userId);
+        logMockAiUsage(userId, applicationCaseId, sourceText);
+
         return response(
-                applicationCase,
+                requireOwned(userId, applicationCaseId),
                 applicationCaseMapper.findLatestJobAnalysisByCaseId(applicationCaseId),
                 applicationCaseMapper.findLatestFitAnalysisByCaseId(applicationCaseId));
     }
@@ -207,6 +213,18 @@ public class ApplicationCaseServiceImpl implements ApplicationCaseService {
 
     private static String blankToNull(String value) {
         return isBlank(value) ? null : value.trim();
+    }
+
+    private void logMockAiUsage(Long userId, Long applicationCaseId, String sourceText) {
+        int baseTokens = estimateTokenUsage(sourceText);
+        applicationCaseMapper.insertAiUsageLog(userId, applicationCaseId, "JOB_ANALYSIS", baseTokens, MOCK_JOB_ANALYSIS_CREDIT);
+        applicationCaseMapper.insertAiUsageLog(userId, applicationCaseId, "FIT_ANALYSIS", baseTokens + 620, MOCK_FIT_ANALYSIS_CREDIT);
+        applicationCaseMapper.insertAiUsageLog(userId, applicationCaseId, "DASHBOARD_SUMMARY", 980, MOCK_DASHBOARD_SUMMARY_CREDIT);
+    }
+
+    private static int estimateTokenUsage(String sourceText) {
+        int length = sourceText == null ? 0 : sourceText.length();
+        return Math.max(1200, Math.min(4200, 900 + length * 2));
     }
 
     private static String normalizeOption(String value, String defaultValue, Set<String> allowedValues, String fieldName) {

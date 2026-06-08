@@ -21,6 +21,8 @@ public interface ApplicationCaseMapper {
 
     int updateApplicationCase(ApplicationCase applicationCase);
 
+    int markAnalysisCompleted(@Param("id") Long id, @Param("userId") Long userId);
+
     int deleteApplicationCase(@Param("id") Long id, @Param("userId") Long userId);
 
     void deleteJobPostingsByCaseId(Long applicationCaseId);
@@ -40,4 +42,10 @@ public interface ApplicationCaseMapper {
     void insertFitAnalysis(FitAnalysis fitAnalysis);
 
     FitAnalysis findLatestFitAnalysisByCaseId(Long applicationCaseId);
+
+    void insertAiUsageLog(@Param("userId") Long userId,
+                          @Param("applicationCaseId") Long applicationCaseId,
+                          @Param("featureType") String featureType,
+                          @Param("tokenUsage") int tokenUsage,
+                          @Param("creditUsed") int creditUsed);
 }

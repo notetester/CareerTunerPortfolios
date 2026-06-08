@@ -39,6 +39,15 @@
         WHERE id = #{id} AND user_id = #{userId}
     </update>
 
+    <update id="markAnalysisCompleted">
+        UPDATE application_case
+        SET status = CASE
+                WHEN status IN ('DRAFT', 'ANALYZING') THEN 'READY'
+                ELSE status
+            END
+        WHERE id = #{id} AND user_id = #{userId}
+    </update>
+
     <delete id="deleteApplicationCase">
         DELETE FROM application_case
         WHERE id = #{id} AND user_id = #{userId}
@@ -107,4 +116,11 @@
         ORDER BY id DESC
         LIMIT 1
     </select>
+
+    <insert id="insertAiUsageLog">
+        INSERT INTO ai_usage_log
+            (user_id, application_case_id, feature_type, token_usage, credit_used)
+        VALUES
+            (#{userId}, #{applicationCaseId}, #{featureType}, #{tokenUsage}, #{creditUsed})
+    </insert>
 </mapper>
