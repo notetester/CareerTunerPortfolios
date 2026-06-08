@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Link, useLocation, useNavigate, useSearchParams } from "react-router";
 import type { LucideIcon } from "lucide-react";
 import { Button } from "../components/ui/button";
@@ -11,6 +11,11 @@ import {
   Briefcase, Clock, Star, Archive, MoreHorizontal, Building2,
   SortAsc, Upload, BarChart3, Target, Map, GraduationCap, ClipboardList,
 } from "lucide-react";
+import { getFitAnalyses } from "@/features/analysis/api/fitAnalysisApi";
+import type { FitAnalysisDetail } from "@/features/analysis/types/fitAnalysis";
+import { FitAnalysisPanel } from "@/features/applications/components/FitAnalysisPanel";
+import { LearningRecommendationPanel } from "@/features/applications/components/LearningRecommendationPanel";
+import { StrategyPanel } from "@/features/applications/components/StrategyPanel";
 
 const applications = [
   { id: "1", company: "카카오페이", job: "프론트엔드 개발자", date: "2026-08-01", score: 72, status: "준비중", phase: "스펙비교완료", tags: ["React", "TypeScript", "AWS"], starred: true, desc: "결제 플랫폼 개발 · 경력 1-3년" },
@@ -123,12 +128,39 @@ function ApplicationStructurePanel({ section }: { section: Exclude<ApplicationTa
 export function ApplicationsPage() {
   const [search, setSearch] = useState("");
   const [activeStatus, setActiveStatus] = useState("전체");
+  const [fitAnalyses, setFitAnalyses] = useState<FitAnalysisDetail[]>([]);
+  const [fitAnalysesLoading, setFitAnalysesLoading] = useState(false);
+  const [fitAnalysesError, setFitAnalysesError] = useState<string | null>(null);
   const [searchParams] = useSearchParams();
   const location = useLocation();
   const navigate = useNavigate();
   const requestedTab = location.pathname.endsWith("/new") ? "new" : searchParams.get("tab") ?? "overview";
   const activeTab: ApplicationTab = applicationTabs.includes(requestedTab as ApplicationTab) ? (requestedTab as ApplicationTab) : "overview";
   const activeSection = activeTab === "overview" ? null : activeTab;
+  const needsFitAnalysis = activeTab === "fit" || activeTab === "strategy" || activeTab === "learning";
+
+  useEffect(() => {
+    if (!needsFitAnalysis) return;
+
+    let ignore = false;
+    setFitAnalysesLoading(true);
+    setFitAnalysesError(null);
+
+    getFitAnalyses()
+      .then((data) => {
+        if (!ignore) setFitAnalyses(data);
+      })
+      .catch((error) => {
+        if (!ignore) setFitAnalysesError(error instanceof Error ? error.message : "적합도 분석을 불러오지 못했습니다.");
+      })
+      .finally(() => {
+        if (!ignore) setFitAnalysesLoading(false);
+      });
+
+    return () => {
+      ignore = true;
+    };
+  }, [needsFitAnalysis]);
 
   const filtered = applications.filter((a) => {
     const matchSearch = a.company.includes(search) || a.job.includes(search);
@@ -172,7 +204,17 @@ export function ApplicationsPage() {
           ))}
         </div>
 
-        {activeSection && <ApplicationStructurePanel section={activeSection} />}
+        {activeSection && (
+          activeSection === "fit" ? (
+            <FitAnalysisPanel analyses={fitAnalyses} loading={fitAnalysesLoading} error={fitAnalysesError} />
+          ) : activeSection === "strategy" ? (
+            <StrategyPanel analyses={fitAnalyses} loading={fitAnalysesLoading} error={fitAnalysesError} />
+          ) : activeSection === "learning" ? (
+            <LearningRecommendationPanel analyses={fitAnalyses} loading={fitAnalysesLoading} error={fitAnalysesError} />
+          ) : (
+            <ApplicationStructurePanel section={activeSection} />
+          )
+        )}
 
         {activeTab === "overview" && (
           <>
