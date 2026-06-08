@@ -19,6 +19,7 @@ import {
   updateAdminApplicationCaseStatus,
 } from "../api";
 import type { AdminApplicationCaseDetail, AdminApplicationCaseRow } from "../types";
+import AdminShell from "../../../components/AdminShell";
 
 function formatDateTime(value: string | null): string {
   if (!value) return "-";
@@ -83,22 +84,21 @@ export function AdminApplicationCasesPage() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-50">
-      <div className="mx-auto grid max-w-7xl gap-5 px-4 py-8 sm:px-6 lg:grid-cols-[360px_minmax(0,1fr)]">
+    <AdminShell
+      active="application-cases"
+      breadcrumb="지원 건 관리"
+      title="지원 건 관리"
+      icon={Briefcase}
+      desc="지원 건별 상태, 공고 revision, 분석 이력과 B AI 사용 로그를 확인합니다."
+      actions={(
+        <Button variant="outline" onClick={() => void loadRows()} disabled={loading}>
+          <RefreshCw className={`size-4 ${loading ? "animate-spin" : ""}`} />
+          새로고침
+        </Button>
+      )}
+    >
+      <div className="grid gap-5 lg:grid-cols-[360px_minmax(0,1fr)]">
         <section className="space-y-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <Badge className="mb-2 bg-slate-900 text-white">B 관리자</Badge>
-              <h1 className="flex items-center gap-2 text-2xl font-bold text-slate-950">
-                <Briefcase className="size-6 text-blue-600" />
-                지원 건 관리
-              </h1>
-            </div>
-            <Button variant="outline" onClick={() => void loadRows()} disabled={loading}>
-              <RefreshCw className={`size-4 ${loading ? "animate-spin" : ""}`} />
-            </Button>
-          </div>
-
           <Card className="border-slate-200 bg-white">
             <CardContent className="space-y-3 p-4">
               <div className="relative">
@@ -244,7 +244,7 @@ export function AdminApplicationCasesPage() {
           )}
         </section>
       </div>
-    </div>
+    </AdminShell>
   );
 }
 
