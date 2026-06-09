@@ -64,3 +64,6 @@ docs/
 
 # ----- Claude Code -----
 .claude/
+
+# ----- Local agent files -----
+.agents/
