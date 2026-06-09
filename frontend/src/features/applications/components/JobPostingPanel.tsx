@@ -148,7 +148,7 @@ export function JobPostingPanel({
               onClick={() => void handleSave()}
             >
               {saving ? <Loader2 className="size-4 animate-spin" /> : <Save className="size-4" />}
-              {sourceType === "URL" ? "URL 추출 저장" : "저장"}
+              {sourceType === "URL" ? "URL 저장" : "저장"}
             </Button>
           </div>
         </div>
@@ -192,6 +192,11 @@ export function JobPostingPanel({
                   placeholder="https://example.com/jobs/123"
                   className="bg-white"
                 />
+                <div className="rounded-lg border border-blue-100 bg-blue-50 px-3 py-2 text-xs leading-5 text-blue-800">
+                  <p>URL만 입력하면 공개 페이지 본문을 추출합니다.</p>
+                  <p>로그인 페이지, 동적 렌더링 페이지, 접근 차단 페이지는 추출되지 않을 수 있습니다.</p>
+                  <p>추출 결과가 부족하면 아래 텍스트를 직접 보정해 저장하세요.</p>
+                </div>
               </div>
             )}
 
