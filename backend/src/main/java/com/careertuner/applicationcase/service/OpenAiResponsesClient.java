@@ -5,6 +5,7 @@ import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.net.http.HttpTimeoutException;
 import java.nio.charset.StandardCharsets;
 import java.util.Base64;
 import java.util.LinkedHashMap;
@@ -19,11 +20,13 @@ import com.careertuner.companyanalysis.ai.prompt.CompanyAnalysisPromptCatalog;
 import com.careertuner.common.exception.BusinessException;
 import com.careertuner.common.exception.ErrorCode;
 import com.careertuner.jobanalysis.ai.prompt.JobAnalysisPromptCatalog;
+import lombok.extern.slf4j.Slf4j;
 import tools.jackson.core.JacksonException;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 
 @Service
+@Slf4j
 public class OpenAiResponsesClient {
 
     private static final int MAX_ATTEMPTS = 3;
@@ -126,7 +129,7 @@ public class OpenAiResponsesClient {
                             .build();
                     HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
                     if (response.statusCode() >= 200 && response.statusCode() < 300) {
-                        return objectMapper.readTree(response.body());
+                        return parseResponseBody(response.body());
                     }
 
                     String message = errorMessage(response.body());
@@ -137,11 +140,15 @@ public class OpenAiResponsesClient {
                     throw new BusinessException(ErrorCode.INTERNAL_ERROR,
                             "OpenAI 요청에 실패했습니다. " + truncate(message, 300));
                 } catch (IOException ex) {
+                    log.warn("OpenAI request I/O failure on attempt {}/{}", attempt, MAX_ATTEMPTS, ex);
+                    if (ex instanceof HttpTimeoutException || containsIgnoreCase(ex.getMessage(), "timeout")) {
+                        throw openAiTransportException(ex);
+                    }
                     if (attempt < MAX_ATTEMPTS) {
                         sleepBeforeRetry(attempt);
                         continue;
                     }
-                    throw new BusinessException(ErrorCode.INTERNAL_ERROR, "OpenAI 응답을 처리하지 못했습니다.");
+                    throw openAiTransportException(ex);
                 }
             }
             throw new BusinessException(ErrorCode.INTERNAL_ERROR, "OpenAI 요청에 실패했습니다.");
@@ -274,6 +281,28 @@ public class OpenAiResponsesClient {
         } catch (JacksonException ex) {
             return defaultValue;
         }
+    }
+
+    private JsonNode parseResponseBody(String body) {
+        try {
+            return objectMapper.readTree(body);
+        } catch (JacksonException ex) {
+            throw new BusinessException(ErrorCode.INTERNAL_ERROR, "OpenAI 응답 JSON을 해석하지 못했습니다.");
+        }
+    }
+
+    private BusinessException openAiTransportException(IOException ex) {
+        if (ex instanceof HttpTimeoutException || containsIgnoreCase(ex.getMessage(), "timeout")) {
+            return new BusinessException(ErrorCode.INTERNAL_ERROR,
+                    "OpenAI 요청이 %d초 안에 완료되지 않아 중단되었습니다. 추출 결과는 저장되지 않았습니다. PDF 파일이 크거나 스캔 페이지가 많으면 더 작은 파일로 나눠 다시 시도해 주세요."
+                            .formatted(properties.getTimeout().toSeconds()));
+        }
+        return new BusinessException(ErrorCode.INTERNAL_ERROR,
+                "OpenAI API와 통신하지 못했습니다. 네트워크 상태와 API 설정을 확인해 주세요.");
+    }
+
+    private boolean containsIgnoreCase(String value, String fragment) {
+        return value != null && value.toLowerCase(Locale.ROOT).contains(fragment.toLowerCase(Locale.ROOT));
     }
 
     private String normalizeDifficulty(String value) {

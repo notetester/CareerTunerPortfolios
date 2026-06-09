@@ -5,7 +5,12 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/app/components/ui/ca
 import { Input } from "@/app/components/ui/input";
 import { Textarea } from "@/app/components/ui/textarea";
 import type { BAnalysisFailureLog, JobAnalysis, JobAnalysisReviewRequest } from "../types/analysis";
-import { getDifficultyLabel, parseJsonStringArray } from "../types/analysis";
+import {
+  formatJsonArrayForTextarea,
+  getDifficultyLabel,
+  parseJsonStringArray,
+  serializeTextareaList,
+} from "../types/analysis";
 import { AnalysisFailureNotice } from "./AnalysisFailureNotice";
 import { AnalysisStructuredText } from "./AnalysisStructuredText";
 
@@ -70,8 +75,8 @@ export function JobAnalysisPanel({
     setForm({
       employmentType: analysis?.employmentType ?? "",
       experienceLevel: analysis?.experienceLevel ?? "",
-      requiredSkills: analysis?.requiredSkills ?? "",
-      preferredSkills: analysis?.preferredSkills ?? "",
+      requiredSkills: formatJsonArrayForTextarea(analysis?.requiredSkills),
+      preferredSkills: formatJsonArrayForTextarea(analysis?.preferredSkills),
       duties: analysis?.duties ?? "",
       qualifications: analysis?.qualifications ?? "",
       difficulty: analysis?.difficulty ?? "",
@@ -85,7 +90,12 @@ export function JobAnalysisPanel({
 
   const handleReview = async () => {
     if (!analysis) return;
-    await onReview(analysis.id, { ...form, confirmed: true });
+    await onReview(analysis.id, {
+      ...form,
+      requiredSkills: serializeTextareaList(form.requiredSkills),
+      preferredSkills: serializeTextareaList(form.preferredSkills),
+      confirmed: true,
+    });
   };
 
   return (
@@ -180,8 +190,8 @@ export function JobAnalysisPanel({
                 <Input value={form.difficulty} onChange={(event) => setField("difficulty", event.target.value)} placeholder="EASY/NORMAL/HARD" />
               </div>
               <div className="grid gap-3 md:grid-cols-2">
-                <Textarea value={form.requiredSkills} onChange={(event) => setField("requiredSkills", event.target.value)} className="min-h-24 bg-white" placeholder='["React","REST API"]' />
-                <Textarea value={form.preferredSkills} onChange={(event) => setField("preferredSkills", event.target.value)} className="min-h-24 bg-white" placeholder='["TypeScript"]' />
+                <Textarea value={form.requiredSkills} onChange={(event) => setField("requiredSkills", event.target.value)} className="min-h-24 bg-white" placeholder={"필수 역량을 한 줄에 하나씩 입력"} />
+                <Textarea value={form.preferredSkills} onChange={(event) => setField("preferredSkills", event.target.value)} className="min-h-24 bg-white" placeholder={"우대 역량을 한 줄에 하나씩 입력"} />
               </div>
               <div className="grid gap-3 md:grid-cols-2">
                 <Textarea value={form.duties} onChange={(event) => setField("duties", event.target.value)} className="min-h-28 bg-white" placeholder="주요 업무" />

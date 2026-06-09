@@ -12,7 +12,7 @@ import {
   type ApplicationStatus,
   getApplicationStatusLabel,
 } from "@/features/applications/types/applicationCase";
-import { parseJsonStringArray } from "@/features/applications/types/analysis";
+import { parseJsonArrayOrText, parseJsonStringArray } from "@/features/applications/types/analysis";
 import {
   getAdminApplicationCaseDetail,
   getAdminApplicationCases,
@@ -280,10 +280,25 @@ function Info({ label, value }: { label: string; value: string }) {
 }
 
 function AnalysisText({ label, value }: { label: string; value: string | null }) {
+  const parsed = parseJsonArrayOrText(value);
+
   return (
     <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
       <div className="text-xs font-semibold text-slate-500">{label}</div>
-      <p className="mt-1 whitespace-pre-line text-sm leading-6 text-slate-600">{value ?? "-"}</p>
+      {parsed.kind === "list" ? (
+        <ul className="mt-1 space-y-1.5 text-sm leading-6 text-slate-600">
+          {parsed.items.map((item, index) => (
+            <li key={`${item}-${index}`} className="flex gap-2">
+              <span className="mt-2 size-1.5 shrink-0 rounded-full bg-current" />
+              <span className="min-w-0 break-words">{item}</span>
+            </li>
+          ))}
+        </ul>
+      ) : parsed.kind === "text" ? (
+        <p className="mt-1 whitespace-pre-line text-sm leading-6 text-slate-600">{parsed.text}</p>
+      ) : (
+        <p className="mt-1 text-sm text-slate-400">-</p>
+      )}
     </div>
   );
 }

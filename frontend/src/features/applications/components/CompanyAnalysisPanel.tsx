@@ -5,7 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/app/components/ui/ca
 import { Input } from "@/app/components/ui/input";
 import { Textarea } from "@/app/components/ui/textarea";
 import type { BAnalysisFailureLog, CompanyAnalysis, CompanyAnalysisReviewRequest } from "../types/analysis";
-import { parseJsonStringArray } from "../types/analysis";
+import { formatJsonArrayForTextarea, parseJsonStringArray, serializeTextareaList } from "../types/analysis";
 import { AnalysisFailureNotice } from "./AnalysisFailureNotice";
 import { AnalysisStructuredText } from "./AnalysisStructuredText";
 
@@ -69,9 +69,9 @@ export function CompanyAnalysisPanel({
       companySummary: analysis?.companySummary ?? "",
       recentIssues: analysis?.recentIssues ?? "",
       industry: analysis?.industry ?? "",
-      competitors: analysis?.competitors ?? "",
+      competitors: formatJsonArrayForTextarea(analysis?.competitors),
       interviewPoints: analysis?.interviewPoints ?? "",
-      sources: analysis?.sources ?? "",
+      sources: formatJsonArrayForTextarea(analysis?.sources),
     });
   }, [analysis]);
 
@@ -92,7 +92,12 @@ export function CompanyAnalysisPanel({
 
   const handleReview = async () => {
     if (!analysis) return;
-    await onReview(analysis.id, { ...form, confirmed: true });
+    await onReview(analysis.id, {
+      ...form,
+      competitors: serializeTextareaList(form.competitors),
+      sources: serializeTextareaList(form.sources),
+      confirmed: true,
+    });
   };
 
   return (
@@ -186,8 +191,8 @@ export function CompanyAnalysisPanel({
               <Textarea value={form.companySummary} onChange={(event) => setField("companySummary", event.target.value)} className="min-h-24 bg-white" placeholder="기업 요약" />
               <Textarea value={form.recentIssues} onChange={(event) => setField("recentIssues", event.target.value)} className="min-h-24 bg-white" placeholder="최근 이슈" />
               <div className="grid gap-3 md:grid-cols-2">
-                <Textarea value={form.competitors} onChange={(event) => setField("competitors", event.target.value)} className="min-h-24 bg-white" placeholder='["경쟁사"]' />
-                <Textarea value={form.sources} onChange={(event) => setField("sources", event.target.value)} className="min-h-24 bg-white" placeholder='["공고 원문"]' />
+                <Textarea value={form.competitors} onChange={(event) => setField("competitors", event.target.value)} className="min-h-24 bg-white" placeholder="경쟁/비교 기업을 한 줄에 하나씩 입력" />
+                <Textarea value={form.sources} onChange={(event) => setField("sources", event.target.value)} className="min-h-24 bg-white" placeholder="참고 소스를 한 줄에 하나씩 입력" />
               </div>
               <Textarea value={form.interviewPoints} onChange={(event) => setField("interviewPoints", event.target.value)} className="min-h-24 bg-white" placeholder="면접 준비 포인트" />
               <Button type="button" className="bg-slate-900 text-white hover:bg-slate-800" disabled={generating} onClick={() => void handleReview()}>

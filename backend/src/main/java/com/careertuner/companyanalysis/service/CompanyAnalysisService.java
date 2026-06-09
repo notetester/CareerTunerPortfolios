@@ -6,6 +6,7 @@ import java.util.Locale;
 
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionTemplate;
 
 import com.careertuner.applicationcase.domain.ApplicationCase;
 import com.careertuner.applicationcase.service.AiUsageLogService;
@@ -35,8 +36,8 @@ public class CompanyAnalysisService {
     private final OpenAiResponsesClient openAiClient;
     private final AiUsageLogService aiUsageLogService;
     private final ApplicationCaseAnalysisStatusService statusService;
+    private final TransactionTemplate transactionTemplate;
 
-    @Transactional
     public CompanyAnalysisResponse createCompanyAnalysis(Long userId, Long applicationCaseId) {
         ApplicationCase applicationCase = accessService.requireOwned(userId, applicationCaseId);
         ensureAnalysisRunnable(applicationCase.getStatus());
@@ -49,30 +50,32 @@ public class CompanyAnalysisService {
                     applicationCase,
                     sourceText);
             LocalDateTime checkedAt = LocalDateTime.now();
-            CompanyAnalysis companyAnalysis = CompanyAnalysis.builder()
-                    .applicationCaseId(applicationCaseId)
-                    .jobPostingId(jobPosting.getId())
-                    .jobPostingRevision(jobPosting.getRevision())
-                    .companySummary(blankToNull(payload.companySummary()))
-                    .recentIssues(blankToNull(payload.recentIssues()))
-                    .industry(compactColumnText(payload.industry(), COMPANY_INDUSTRY_MAX_LENGTH))
-                    .competitors(payload.competitors())
-                    .interviewPoints(blankToNull(payload.interviewPoints()))
-                    .sources(payload.sources())
-                    .verifiedFacts(payload.verifiedFacts())
-                    .aiInferences(payload.aiInferences())
-                    .sourceType("JOB_POSTING")
-                    .checkedAt(checkedAt)
-                    .refreshRecommendedAt(checkedAt.plusDays(30))
-                    .build();
-            companyAnalysisMapper.insertCompanyAnalysis(companyAnalysis);
-            CompanyAnalysisResponse response = CompanyAnalysisResponse.from(companyAnalysisMapper.findLatestCompanyAnalysisByCaseId(applicationCaseId));
-            statusService.markReadyAfterAnalysis(userId, applicationCaseId, previousStatus);
-            aiUsageLogService.recordSuccess(userId, applicationCaseId, FEATURE_COMPANY_RESEARCH, payload.usage());
-            return response;
+            return transactionTemplate.execute(status -> {
+                CompanyAnalysis companyAnalysis = CompanyAnalysis.builder()
+                        .applicationCaseId(applicationCaseId)
+                        .jobPostingId(jobPosting.getId())
+                        .jobPostingRevision(jobPosting.getRevision())
+                        .companySummary(blankToNull(payload.companySummary()))
+                        .recentIssues(blankToNull(payload.recentIssues()))
+                        .industry(compactColumnText(payload.industry(), COMPANY_INDUSTRY_MAX_LENGTH))
+                        .competitors(payload.competitors())
+                        .interviewPoints(blankToNull(payload.interviewPoints()))
+                        .sources(payload.sources())
+                        .verifiedFacts(payload.verifiedFacts())
+                        .aiInferences(payload.aiInferences())
+                        .sourceType("JOB_POSTING")
+                        .checkedAt(checkedAt)
+                        .refreshRecommendedAt(checkedAt.plusDays(30))
+                        .build();
+                companyAnalysisMapper.insertCompanyAnalysis(companyAnalysis);
+                CompanyAnalysisResponse response = CompanyAnalysisResponse.from(companyAnalysisMapper.findLatestCompanyAnalysisByCaseId(applicationCaseId));
+                statusService.markReadyAfterAnalysis(userId, applicationCaseId, previousStatus);
+                aiUsageLogService.recordSuccess(userId, applicationCaseId, FEATURE_COMPANY_RESEARCH, payload.usage());
+                return response;
+            });
         } catch (RuntimeException ex) {
             restorePreviousStatus(userId, applicationCaseId, previousStatus, ex);
-            aiUsageLogService.recordFailure(userId, applicationCaseId, FEATURE_COMPANY_RESEARCH, ex.getMessage());
+            aiUsageLogService.recordFailure(userId, applicationCaseId, FEATURE_COMPANY_RESEARCH, userFacingFailureMessage(ex, "기업 분석 결과 저장 중 오류가 발생했습니다. 잠시 후 다시 시도해 주세요."));
             throw ex;
         }
     }
@@ -173,6 +176,23 @@ public class CompanyAnalysisService {
 
     private static boolean isBlank(String value) {
         return value == null || value.trim().isEmpty();
+    }
+
+    private static String userFacingFailureMessage(RuntimeException ex, String fallback) {
+        String message = ex.getMessage();
+        if (isBlank(message)) {
+            return fallback;
+        }
+        String lower = message.toLowerCase(Locale.ROOT);
+        if (lower.contains("### error")
+                || lower.contains("sql:")
+                || lower.contains("com.mysql")
+                || lower.contains("org.springframework")
+                || lower.contains("statement cancelled")
+                || lower.contains("timeoutexception")) {
+            return fallback;
+        }
+        return message.length() > 300 ? fallback : message;
     }
 
     private void restorePreviousStatus(Long userId, Long applicationCaseId, String previousStatus, RuntimeException ex) {

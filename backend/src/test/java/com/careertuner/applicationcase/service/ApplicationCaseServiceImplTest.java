@@ -19,6 +19,9 @@ import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.mockito.InOrder;
+import org.springframework.transaction.TransactionStatus;
+import org.springframework.transaction.support.TransactionCallback;
+import org.springframework.transaction.support.TransactionTemplate;
 
 import com.careertuner.applicationcase.domain.ApplicationCase;
 import com.careertuner.applicationcase.domain.FitAnalysis;
@@ -198,7 +201,7 @@ class ApplicationCaseServiceImplTest {
         AiUsageLogService usageLogService = mock(AiUsageLogService.class);
         ApplicationCaseAnalysisStatusService statusService = mock(ApplicationCaseAnalysisStatusService.class);
         ApplicationCaseAccessService accessService = new ApplicationCaseAccessService(applicationCaseMapper, jobPostingMapper);
-        JobAnalysisService service = new JobAnalysisService(accessService, jobAnalysisMapper, openAiClient, usageLogService, statusService);
+        JobAnalysisService service = new JobAnalysisService(accessService, jobAnalysisMapper, openAiClient, usageLogService, statusService, transactionTemplate());
 
         ApplicationCase applicationCase = applicationCase("DRAFT");
         JobPosting posting = jobPosting(30L, 2, "Java Spring REST API");
@@ -233,7 +236,7 @@ class ApplicationCaseServiceImplTest {
         AiUsageLogService usageLogService = mock(AiUsageLogService.class);
         ApplicationCaseAnalysisStatusService statusService = mock(ApplicationCaseAnalysisStatusService.class);
         ApplicationCaseAccessService accessService = new ApplicationCaseAccessService(applicationCaseMapper, jobPostingMapper);
-        JobAnalysisService service = new JobAnalysisService(accessService, jobAnalysisMapper, openAiClient, usageLogService, statusService);
+        JobAnalysisService service = new JobAnalysisService(accessService, jobAnalysisMapper, openAiClient, usageLogService, statusService, transactionTemplate());
 
         when(applicationCaseMapper.findApplicationCaseByIdAndUserId(10L, 1L)).thenReturn(applicationCase("APPLIED"));
 
@@ -257,7 +260,7 @@ class ApplicationCaseServiceImplTest {
         AiUsageLogService usageLogService = mock(AiUsageLogService.class);
         ApplicationCaseAnalysisStatusService statusService = mock(ApplicationCaseAnalysisStatusService.class);
         ApplicationCaseAccessService accessService = new ApplicationCaseAccessService(applicationCaseMapper, jobPostingMapper);
-        JobAnalysisService service = new JobAnalysisService(accessService, jobAnalysisMapper, openAiClient, usageLogService, statusService);
+        JobAnalysisService service = new JobAnalysisService(accessService, jobAnalysisMapper, openAiClient, usageLogService, statusService, transactionTemplate());
 
         ApplicationCase applicationCase = applicationCase("DRAFT");
         JobPosting posting = jobPosting(30L, 2, "Java Spring REST API");
@@ -288,7 +291,7 @@ class ApplicationCaseServiceImplTest {
         AiUsageLogService usageLogService = mock(AiUsageLogService.class);
         ApplicationCaseAnalysisStatusService statusService = mock(ApplicationCaseAnalysisStatusService.class);
         ApplicationCaseAccessService accessService = new ApplicationCaseAccessService(applicationCaseMapper, jobPostingMapper);
-        JobAnalysisService service = new JobAnalysisService(accessService, jobAnalysisMapper, openAiClient, usageLogService, statusService);
+        JobAnalysisService service = new JobAnalysisService(accessService, jobAnalysisMapper, openAiClient, usageLogService, statusService, transactionTemplate());
         ApplicationCase applicationCase = applicationCase("READY");
         JobPosting posting = jobPosting(30L, 2, "Java Spring REST API");
         RuntimeException failure = new RuntimeException("OpenAI down");
@@ -315,7 +318,7 @@ class ApplicationCaseServiceImplTest {
         AiUsageLogService usageLogService = mock(AiUsageLogService.class);
         ApplicationCaseAnalysisStatusService statusService = mock(ApplicationCaseAnalysisStatusService.class);
         ApplicationCaseAccessService accessService = new ApplicationCaseAccessService(applicationCaseMapper, jobPostingMapper);
-        JobAnalysisService service = new JobAnalysisService(accessService, jobAnalysisMapper, openAiClient, usageLogService, statusService);
+        JobAnalysisService service = new JobAnalysisService(accessService, jobAnalysisMapper, openAiClient, usageLogService, statusService, transactionTemplate());
         ApplicationCase applicationCase = applicationCase("DRAFT");
         JobPosting posting = jobPosting(30L, 2, "Java Spring REST API");
         Usage usage = new Usage("gpt-test", 100, 50, 150);
@@ -345,7 +348,7 @@ class ApplicationCaseServiceImplTest {
         AiUsageLogService usageLogService = mock(AiUsageLogService.class);
         ApplicationCaseAnalysisStatusService statusService = mock(ApplicationCaseAnalysisStatusService.class);
         ApplicationCaseAccessService accessService = new ApplicationCaseAccessService(applicationCaseMapper, jobPostingMapper);
-        CompanyAnalysisService service = new CompanyAnalysisService(accessService, companyAnalysisMapper, openAiClient, usageLogService, statusService);
+        CompanyAnalysisService service = new CompanyAnalysisService(accessService, companyAnalysisMapper, openAiClient, usageLogService, statusService, transactionTemplate());
 
         ApplicationCase applicationCase = applicationCase("DRAFT");
         JobPosting posting = jobPosting(null, null, "Backend platform job posting");
@@ -392,7 +395,7 @@ class ApplicationCaseServiceImplTest {
         AiUsageLogService usageLogService = mock(AiUsageLogService.class);
         ApplicationCaseAnalysisStatusService statusService = mock(ApplicationCaseAnalysisStatusService.class);
         ApplicationCaseAccessService accessService = new ApplicationCaseAccessService(applicationCaseMapper, jobPostingMapper);
-        CompanyAnalysisService service = new CompanyAnalysisService(accessService, companyAnalysisMapper, openAiClient, usageLogService, statusService);
+        CompanyAnalysisService service = new CompanyAnalysisService(accessService, companyAnalysisMapper, openAiClient, usageLogService, statusService, transactionTemplate());
 
         ApplicationCase applicationCase = applicationCase("DRAFT");
         JobPosting posting = jobPosting(30L, 3, "Backend platform job posting");
@@ -433,7 +436,7 @@ class ApplicationCaseServiceImplTest {
         AiUsageLogService usageLogService = mock(AiUsageLogService.class);
         ApplicationCaseAnalysisStatusService statusService = mock(ApplicationCaseAnalysisStatusService.class);
         ApplicationCaseAccessService accessService = new ApplicationCaseAccessService(applicationCaseMapper, jobPostingMapper);
-        CompanyAnalysisService service = new CompanyAnalysisService(accessService, companyAnalysisMapper, openAiClient, usageLogService, statusService);
+        CompanyAnalysisService service = new CompanyAnalysisService(accessService, companyAnalysisMapper, openAiClient, usageLogService, statusService, transactionTemplate());
 
         when(applicationCaseMapper.findApplicationCaseByIdAndUserId(10L, 1L)).thenReturn(applicationCase("CLOSED"));
 
@@ -503,6 +506,15 @@ class ApplicationCaseServiceImplTest {
                 mock(JobAnalysisService.class),
                 mock(CompanyAnalysisService.class),
                 mock(JobAnalysisMapper.class));
+    }
+
+    private static TransactionTemplate transactionTemplate() {
+        return new TransactionTemplate() {
+            @Override
+            public <T> T execute(TransactionCallback<T> action) {
+                return action.doInTransaction(mock(TransactionStatus.class));
+            }
+        };
     }
 
     private static ApplicationCase applicationCase(String status) {

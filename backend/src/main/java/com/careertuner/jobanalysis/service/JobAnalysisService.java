@@ -6,6 +6,7 @@ import java.util.Locale;
 
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionTemplate;
 
 import com.careertuner.applicationcase.domain.ApplicationCase;
 import com.careertuner.applicationcase.service.ApplicationCaseAnalysisStatusService;
@@ -34,8 +35,8 @@ public class JobAnalysisService {
     private final OpenAiResponsesClient openAiClient;
     private final AiUsageLogService aiUsageLogService;
     private final ApplicationCaseAnalysisStatusService statusService;
+    private final TransactionTemplate transactionTemplate;
 
-    @Transactional
     public JobAnalysisResponse createJobAnalysis(Long userId, Long applicationCaseId) {
         ApplicationCase applicationCase = accessService.requireOwned(userId, applicationCaseId);
         ensureAnalysisRunnable(applicationCase.getStatus());
@@ -47,29 +48,31 @@ public class JobAnalysisService {
             JobAnalysisPayload payload = openAiClient.analyzeJobPosting(
                     applicationCase,
                     sourceText);
-            JobAnalysis jobAnalysis = JobAnalysis.builder()
-                    .applicationCaseId(applicationCaseId)
-                    .jobPostingId(jobPosting.getId())
-                    .jobPostingRevision(jobPosting.getRevision())
-                    .employmentType(blankToNull(payload.employmentType()))
-                    .experienceLevel(blankToNull(payload.experienceLevel()))
-                    .requiredSkills(payload.requiredSkills())
-                    .preferredSkills(payload.preferredSkills())
-                    .duties(blankToNull(payload.duties()))
-                    .qualifications(blankToNull(payload.qualifications()))
-                    .difficulty(payload.difficulty())
-                    .summary(blankToNull(payload.summary()))
-                    .evidence(payload.evidence())
-                    .ambiguousConditions(payload.ambiguousConditions())
-                    .build();
-            jobAnalysisMapper.insertJobAnalysis(jobAnalysis);
-            JobAnalysisResponse response = JobAnalysisResponse.from(jobAnalysisMapper.findLatestJobAnalysisByCaseId(applicationCaseId));
-            statusService.markReadyAfterAnalysis(userId, applicationCaseId, previousStatus);
-            aiUsageLogService.recordSuccess(userId, applicationCaseId, FEATURE_JOB_ANALYSIS, payload.usage());
-            return response;
+            return transactionTemplate.execute(status -> {
+                JobAnalysis jobAnalysis = JobAnalysis.builder()
+                        .applicationCaseId(applicationCaseId)
+                        .jobPostingId(jobPosting.getId())
+                        .jobPostingRevision(jobPosting.getRevision())
+                        .employmentType(blankToNull(payload.employmentType()))
+                        .experienceLevel(blankToNull(payload.experienceLevel()))
+                        .requiredSkills(payload.requiredSkills())
+                        .preferredSkills(payload.preferredSkills())
+                        .duties(blankToNull(payload.duties()))
+                        .qualifications(blankToNull(payload.qualifications()))
+                        .difficulty(payload.difficulty())
+                        .summary(blankToNull(payload.summary()))
+                        .evidence(payload.evidence())
+                        .ambiguousConditions(payload.ambiguousConditions())
+                        .build();
+                jobAnalysisMapper.insertJobAnalysis(jobAnalysis);
+                JobAnalysisResponse response = JobAnalysisResponse.from(jobAnalysisMapper.findLatestJobAnalysisByCaseId(applicationCaseId));
+                statusService.markReadyAfterAnalysis(userId, applicationCaseId, previousStatus);
+                aiUsageLogService.recordSuccess(userId, applicationCaseId, FEATURE_JOB_ANALYSIS, payload.usage());
+                return response;
+            });
         } catch (RuntimeException ex) {
             restorePreviousStatus(userId, applicationCaseId, previousStatus, ex);
-            aiUsageLogService.recordFailure(userId, applicationCaseId, FEATURE_JOB_ANALYSIS, ex.getMessage());
+            aiUsageLogService.recordFailure(userId, applicationCaseId, FEATURE_JOB_ANALYSIS, userFacingFailureMessage(ex, "공고 분석 처리 중 오류가 발생했습니다. 잠시 후 다시 시도해 주세요."));
             throw ex;
         }
     }
@@ -169,6 +172,23 @@ public class JobAnalysisService {
 
     private static boolean isBlank(String value) {
         return value == null || value.trim().isEmpty();
+    }
+
+    private static String userFacingFailureMessage(RuntimeException ex, String fallback) {
+        String message = ex.getMessage();
+        if (isBlank(message)) {
+            return fallback;
+        }
+        String lower = message.toLowerCase(Locale.ROOT);
+        if (lower.contains("### error")
+                || lower.contains("sql:")
+                || lower.contains("com.mysql")
+                || lower.contains("org.springframework")
+                || lower.contains("statement cancelled")
+                || lower.contains("timeoutexception")) {
+            return fallback;
+        }
+        return message.length() > 300 ? fallback : message;
     }
 
     public record MockAnalysisSeed(
