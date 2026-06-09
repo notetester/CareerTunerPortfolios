@@ -12,6 +12,7 @@ import {
   Loader2,
   MessageSquareText,
   PenLine,
+  Search,
   Trash2,
 } from "lucide-react";
 import {
@@ -69,6 +70,7 @@ export default function AdminFitAnalysisPage() {
   const [memoContent, setMemoContent] = useState("");
   const [editingMemo, setEditingMemo] = useState<AdminFitAnalysisMemo | null>(null);
   const [savingMemo, setSavingMemo] = useState(false);
+  const [query, setQuery] = useState("");
 
   useEffect(() => {
     let ignore = false;
@@ -128,6 +130,11 @@ export default function AdminFitAnalysisPage() {
   const memoSummary = useMemo(() => {
     return items.reduce((sum, item) => sum + item.memoCount, 0);
   }, [items]);
+  const visibleItems = useMemo(() => {
+    const value = query.trim().toLowerCase();
+    if (!value) return items;
+    return items.filter((item) => `${item.companyName} ${item.jobTitle} ${item.userName} ${item.userEmail}`.toLowerCase().includes(value));
+  }, [items, query]);
 
   function resetMemoForm() {
     setMemoType("GENERAL");
@@ -231,13 +238,17 @@ export default function AdminFitAnalysisPage() {
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-2">
+              <label className="mb-3 flex items-center gap-2 rounded-md border border-slate-200 px-3">
+                <Search className="size-4 text-slate-400" />
+                <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="사용자·기업·직무 검색" className="h-10 w-full bg-transparent text-sm outline-none" />
+              </label>
               {loadingList ? (
                 <div className="flex items-center gap-2 rounded-lg bg-slate-50 p-4 text-sm text-slate-500">
                   <Loader2 className="size-4 animate-spin" />
                   목록을 불러오는 중입니다.
                 </div>
-              ) : items.length > 0 ? (
-                items.map((item) => (
+              ) : visibleItems.length > 0 ? (
+                visibleItems.map((item) => (
                   <button
                     key={item.id}
                     type="button"
@@ -256,6 +267,7 @@ export default function AdminFitAnalysisPage() {
                     <div className="mt-2 flex flex-wrap items-center gap-1.5">
                       {item.favorite && <Badge className="bg-amber-100 text-amber-700">관심</Badge>}
                       <Badge className="bg-slate-100 text-slate-600">{statusLabel[item.applicationStatus] ?? item.applicationStatus}</Badge>
+                      <Badge className={item.status === "SUCCESS" ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"}>{item.status}</Badge>
                       {item.memoCount > 0 && <Badge className="bg-indigo-100 text-indigo-700">메모 {item.memoCount}</Badge>}
                     </div>
                     <Progress value={item.fitScore ?? 0} className="mt-2 h-1.5" />
@@ -290,6 +302,7 @@ export default function AdminFitAnalysisPage() {
                         { label: "사용자", value: `${detail.userName} (${detail.userEmail})` },
                         { label: "지원 상태", value: statusLabel[detail.applicationStatus] ?? detail.applicationStatus },
                         { label: "분석 시각", value: formatDateTime(detail.createdAt) },
+                        { label: "모델/상태", value: `${detail.model || "mock"} · ${detail.status}` },
                       ].map((row) => (
                         <div key={row.label} className="rounded-lg bg-slate-50 p-3">
                           <div className="text-[11px] font-semibold text-slate-400">{row.label}</div>
@@ -304,6 +317,28 @@ export default function AdminFitAnalysisPage() {
                       <SkillBox title="추천 학습" icon="study" items={detail.recommendedStudy} />
                       <SkillBox title="추천 자격증" icon="cert" items={detail.recommendedCertificates} />
                     </div>
+
+                    <SkillBox title="점수 산정 근거" icon="study" items={detail.scoreBasis} />
+                    <SkillBox title="실행 전략" icon="study" items={detail.strategyActions} />
+
+                    <div className="grid gap-4 lg:grid-cols-2">
+                      <StructuredJsonBox title="입력 스냅샷" value={detail.sourceSnapshot} />
+                      <StructuredJsonBox title="부족 역량 구조화 결과" value={detail.gapRecommendations} />
+                      <StructuredJsonBox title="자격증 구조화 결과" value={detail.certificateRecommendations} />
+                      <div className="rounded-lg border border-slate-100 p-4">
+                        <div className="mb-3 text-sm font-bold text-slate-800">학습 체크리스트</div>
+                        <div className="space-y-2">
+                          {detail.learningTasks.length > 0 ? detail.learningTasks.map((task) => (
+                            <div key={task.id} className="rounded bg-slate-50 p-2 text-xs text-slate-600">
+                              <strong className={task.completed ? "text-green-600" : "text-slate-800"}>{task.completed ? "완료" : "진행 전"} · {task.title}</strong>
+                              <div className="mt-1">{task.skill} · {task.expectedDuration} · {task.priority}</div>
+                            </div>
+                          )) : <div className="text-sm text-slate-400">학습 과제가 없습니다.</div>}
+                        </div>
+                      </div>
+                    </div>
+
+                    {detail.errorMessage && <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">{detail.errorMessage}</div>}
 
                     <div className="rounded-lg border border-blue-100 bg-blue-50 p-4">
                       <div className="mb-2 flex items-center gap-2 text-sm font-bold text-blue-900">
@@ -394,6 +429,17 @@ export default function AdminFitAnalysisPage() {
           </div>
         </section>
       </div>
+    </div>
+  );
+}
+
+function StructuredJsonBox({ title, value }: { title: string; value: string | null }) {
+  return (
+    <div className="rounded-lg border border-slate-100 p-4">
+      <div className="mb-3 text-sm font-bold text-slate-800">{title}</div>
+      <pre className="max-h-52 overflow-auto whitespace-pre-wrap break-all rounded bg-slate-950 p-3 text-xs leading-5 text-slate-200">
+        {value || "저장된 결과 없음"}
+      </pre>
     </div>
   );
 }

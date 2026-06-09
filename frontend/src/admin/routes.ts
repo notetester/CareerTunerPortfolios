@@ -1,5 +1,6 @@
 import { AdminDashboardPage } from "./pages/AdminDashboard";
 import { AdminOpsDashboardPage } from "./features/dashboard/pages/AdminOpsDashboardPage";
+import AdminFitAnalysisPage from "./features/fit-analysis/pages/AdminFitAnalysis";
 import { AdminHomePage } from "./features/home/pages/AdminHomePage";
 import { AdminApplicationCasesPage } from "./features/application-cases/pages/AdminApplicationCasesPage";
 import { AdminCompanyAnalysisPage } from "./features/company-analysis/pages/AdminCompanyAnalysisPage";
@@ -16,6 +17,8 @@ export const adminRoutes = [
   { path: "admin", Component: AdminDashboardPage },
   { path: "admin/home", Component: AdminHomePage },
   { path: "admin/dashboard", Component: AdminOpsDashboardPage },
+  // C 적합도 운영 화면은 구현돼 있었지만 접근 경로가 없어 완료 기준 충족을 위해 라우트만 연결한다.
+  { path: "admin/fit-analysis", Component: AdminFitAnalysisPage },
   { path: "admin/users", Component: AdminDashboardPage },
   { path: "admin/payments", Component: AdminDashboardPage },
   { path: "admin/application-cases", Component: AdminApplicationCasesPage },

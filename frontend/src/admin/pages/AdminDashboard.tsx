@@ -12,11 +12,12 @@ import {
   Gauge,
   Loader2,
   MessageSquare,
+  Search,
   ShieldCheck,
   Users,
 } from "lucide-react";
-import { getAdminAnalyticsSummary } from "@/admin/features/analytics/api/adminAnalyticsApi";
-import type { AdminAnalyticsSummary } from "@/admin/features/analytics/types/adminAnalytics";
+import { getAdminAnalyticsSummary, getAdminCareerAnalysisRuns } from "@/admin/features/analytics/api/adminAnalyticsApi";
+import type { AdminAnalyticsSummary, AdminCareerAnalysisRun } from "@/admin/features/analytics/types/adminAnalytics";
 
 const routeLabels: Record<string, string> = {
   "/admin": "관리자 분석 대시보드",
@@ -57,6 +58,9 @@ function formatDateTime(value: string) {
 export function AdminDashboardPage() {
   const location = useLocation();
   const [summary, setSummary] = useState<AdminAnalyticsSummary | null>(null);
+  const [runs, setRuns] = useState<AdminCareerAnalysisRun[]>([]);
+  const [runQuery, setRunQuery] = useState("");
+  const [runStatus, setRunStatus] = useState("ALL");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const currentLabel = routeLabels[location.pathname] ?? "관리자 분석 대시보드";
@@ -66,9 +70,12 @@ export function AdminDashboardPage() {
     setLoading(true);
     setError(null);
 
-    getAdminAnalyticsSummary()
-      .then((data) => {
-        if (!ignore) setSummary(data);
+    Promise.all([getAdminAnalyticsSummary(), getAdminCareerAnalysisRuns()])
+      .then(([summaryData, runData]) => {
+        if (!ignore) {
+          setSummary(summaryData);
+          setRuns(runData);
+        }
       })
       .catch((requestError) => {
         if (!ignore) setError(requestError instanceof Error ? requestError.message : "관리자 분석 통계를 불러오지 못했습니다.");
@@ -122,6 +129,12 @@ export function AdminDashboardPage() {
   }, [summary]);
 
   const maxDailyTokens = Math.max(1, ...(summary?.dailyUsage.map((usage) => usage.tokenUsage) ?? [1]));
+  const visibleRuns = runs.filter((run) => {
+    const query = runQuery.trim().toLowerCase();
+    const matchesQuery = !query || `${run.userName} ${run.userEmail} ${run.analysisType}`.toLowerCase().includes(query);
+    const matchesStatus = runStatus === "ALL" || run.status === runStatus;
+    return matchesQuery && matchesStatus;
+  });
 
   return (
     <div className="min-h-screen bg-slate-50">
@@ -139,7 +152,7 @@ export function AdminDashboardPage() {
           </div>
           <div className="flex flex-wrap gap-2">
             <Button asChild variant="outline">
-              <Link to="/admin/ai-usage">AI 사용량 보기</Link>
+              <Link to="/admin/fit-analysis">적합도 분석 관리</Link>
             </Button>
             <Button asChild className="bg-gradient-to-r from-blue-600 to-indigo-600">
               <Link to="/admin">통계 새로 보기</Link>
@@ -332,6 +345,54 @@ export function AdminDashboardPage() {
                   </CardContent>
                 </Card>
               </aside>
+            </section>
+
+            <section>
+              <Card className="border border-slate-200 bg-white">
+                <CardHeader className="pb-3">
+                  <CardTitle className="flex flex-col gap-3 text-base sm:flex-row sm:items-center sm:justify-between">
+                    <span className="flex items-center gap-2">
+                      <MessageSquare className="size-4 text-blue-600" />
+                      장기 경향·대시보드 AI 실행 이력
+                    </span>
+                    <span className="flex flex-col gap-2 sm:flex-row">
+                      <label className="flex items-center gap-2 rounded-md border border-slate-200 bg-white px-3">
+                        <Search className="size-4 text-slate-400" />
+                        <input
+                          value={runQuery}
+                          onChange={(event) => setRunQuery(event.target.value)}
+                          placeholder="사용자/이메일/유형 검색"
+                          className="h-9 w-52 bg-transparent text-sm outline-none"
+                        />
+                      </label>
+                      <select value={runStatus} onChange={(event) => setRunStatus(event.target.value)} className="h-9 rounded-md border border-slate-200 px-3 text-sm">
+                        <option value="ALL">전체 상태</option>
+                        <option value="SUCCESS">성공</option>
+                        <option value="FALLBACK">Fallback</option>
+                        <option value="FAILED">실패</option>
+                      </select>
+                    </span>
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-2">
+                  {visibleRuns.length > 0 ? visibleRuns.slice(0, 30).map((run) => (
+                    <div key={run.id} className="rounded-lg border border-slate-100 p-3">
+                      <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                        <div>
+                          <div className="text-sm font-semibold text-slate-800">{run.userName} ({run.userEmail})</div>
+                          <div className="mt-1 text-xs text-slate-500">
+                            {run.analysisType} · {run.model || "모델 없음"} · {run.tokenUsage.toLocaleString()} 토큰 · {formatDateTime(run.createdAt)}
+                          </div>
+                          {run.errorMessage && <div className="mt-2 text-xs text-red-600">{run.errorMessage}</div>}
+                        </div>
+                        <Badge className={run.status === "SUCCESS" ? "bg-green-100 text-green-700" : "bg-amber-100 text-amber-700"}>
+                          {run.status}{run.retryable ? " · 재시도 가능" : ""}
+                        </Badge>
+                      </div>
+                    </div>
+                  )) : <div className="text-sm text-slate-500">조건에 맞는 실행 이력이 없습니다.</div>}
+                </CardContent>
+              </Card>
             </section>
           </>
         )}

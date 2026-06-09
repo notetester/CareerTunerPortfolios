@@ -14,6 +14,8 @@ import com.careertuner.admin.fitanalysis.mapper.AdminFitAnalysisMapper;
 import com.careertuner.admin.fitanalysis.domain.AdminFitAnalysisMemo;
 import com.careertuner.common.exception.BusinessException;
 import com.careertuner.common.exception.ErrorCode;
+import com.careertuner.fitanalysis.dto.FitAnalysisLearningTaskResponse;
+import com.careertuner.fitanalysis.mapper.FitAnalysisMapper;
 import lombok.RequiredArgsConstructor;
 import tools.jackson.core.type.TypeReference;
 import tools.jackson.databind.ObjectMapper;
@@ -26,12 +28,13 @@ public class AdminFitAnalysisServiceImpl implements AdminFitAnalysisService {
     };
 
     private final AdminFitAnalysisMapper adminFitAnalysisMapper;
+    private final FitAnalysisMapper fitAnalysisMapper;
     private final ObjectMapper objectMapper;
 
     @Override
     @Transactional(readOnly = true)
     public List<AdminFitAnalysisListItemResponse> list() {
-        return adminFitAnalysisMapper.findLatestAll().stream()
+        return adminFitAnalysisMapper.findAll().stream()
                 .map(result -> AdminFitAnalysisListItemResponse.of(
                         result,
                         parseList(result.getMatchedSkills()),
@@ -52,6 +55,11 @@ public class AdminFitAnalysisServiceImpl implements AdminFitAnalysisService {
                 parseList(result.getMissingSkills()),
                 parseList(result.getRecommendedStudy()),
                 parseList(result.getRecommendedCertificates()),
+                parseList(result.getScoreBasis()),
+                parseList(result.getStrategyActions()),
+                fitAnalysisMapper.findLearningTasksByFitAnalysisId(id).stream()
+                        .map(FitAnalysisLearningTaskResponse::from)
+                        .toList(),
                 listMemos(id));
     }
 
