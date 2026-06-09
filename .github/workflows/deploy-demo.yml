@@ -1,0 +1,95 @@
+name: Deploy sanitized frontend demo
+
+on:
+  push:
+    branches: [dev]
+    paths:
+      - 'frontend/**'
+      - '.github/workflows/deploy-demo.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-demo
+  cancel-in-progress: true
+
+jobs:
+  build-and-push-demo:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout private source repository
+        uses: actions/checkout@v6
+
+      - name: Set up Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Type check
+        working-directory: frontend
+        run: npm run typecheck
+
+      - name: Build sanitized demo
+        working-directory: frontend
+        run: npm run build
+        env:
+          VITE_DEMO_MODE: 'true'
+          VITE_USE_MOCK: 'true'
+          VITE_PUBLIC_BASE: '/CareerTunerDemo/'
+
+      - name: Add SPA fallback
+        run: cp frontend/dist/index.html frontend/dist/404.html
+
+      - name: Check dist for obvious secrets
+        run: |
+          set -e
+          echo "Scanning frontend/dist before publishing..."
+
+          if grep -RInE "YOUR_DB_PASSWORD|dbuser|jdbc:mysql|DB_PASSWORD|JWT_SECRET|OPENAI_API_KEY|client_secret|client-secret|54\.[0-9]+\.[0-9]+\.[0-9]+" frontend/dist; then
+            echo "Potential secret found in dist. Stop deployment."
+            exit 1
+          fi
+
+          echo "No obvious secret patterns found."
+
+      - name: Checkout public demo repository
+        uses: actions/checkout@v6
+        with:
+          repository: notetester/CareerTunerDemo
+          token: ${{ secrets.DEMO_REPO_TOKEN }}
+          path: demo-repo
+
+      - name: Replace public demo contents
+        run: |
+          cd demo-repo
+          find . -mindepth 1 \
+            ! -path './.git' \
+            ! -path './.git/*' \
+            ! -name 'README.md' \
+            -exec rm -rf {} +
+          cp -R ../frontend/dist/. .
+          touch .nojekyll
+
+      - name: Commit and push demo
+        working-directory: demo-repo
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          git add .
+          if git diff --cached --quiet; then
+            echo "No changes to deploy."
+            exit 0
+          fi
+
+          git commit -m "Deploy CareerTuner frontend demo"
+          git push
