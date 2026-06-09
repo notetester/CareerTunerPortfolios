@@ -6,8 +6,10 @@ import java.util.Locale;
 
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionTemplate;
 
 import com.careertuner.applicationcase.domain.ApplicationCase;
+import com.careertuner.applicationcase.service.ApplicationCaseAnalysisStatusService;
 import com.careertuner.applicationcase.service.AiUsageLogService;
 import com.careertuner.applicationcase.service.ApplicationCaseAccessService;
 import com.careertuner.applicationcase.service.OpenAiResponsesClient;
@@ -32,34 +34,45 @@ public class JobAnalysisService {
     private final JobAnalysisMapper jobAnalysisMapper;
     private final OpenAiResponsesClient openAiClient;
     private final AiUsageLogService aiUsageLogService;
+    private final ApplicationCaseAnalysisStatusService statusService;
+    private final TransactionTemplate transactionTemplate;
 
-    @Transactional
     public JobAnalysisResponse createJobAnalysis(Long userId, Long applicationCaseId) {
         ApplicationCase applicationCase = accessService.requireOwned(userId, applicationCaseId);
+        ensureAnalysisRunnable(applicationCase.getStatus());
         JobPosting jobPosting = accessService.latestPostingRequired(applicationCaseId);
         String sourceText = accessService.sourceText(jobPosting);
+        String previousStatus = applicationCase.getStatus();
+        statusService.markAnalyzing(userId, applicationCaseId, previousStatus);
         try {
             JobAnalysisPayload payload = openAiClient.analyzeJobPosting(
                     applicationCase,
                     sourceText);
-            JobAnalysis jobAnalysis = JobAnalysis.builder()
-                    .applicationCaseId(applicationCaseId)
-                    .jobPostingId(jobPosting.getId())
-                    .jobPostingRevision(jobPosting.getRevision())
-                    .employmentType(blankToNull(payload.employmentType()))
-                    .experienceLevel(blankToNull(payload.experienceLevel()))
-                    .requiredSkills(payload.requiredSkills())
-                    .preferredSkills(payload.preferredSkills())
-                    .duties(blankToNull(payload.duties()))
-                    .qualifications(blankToNull(payload.qualifications()))
-                    .difficulty(payload.difficulty())
-                    .summary(blankToNull(payload.summary()))
-                    .build();
-            jobAnalysisMapper.insertJobAnalysis(jobAnalysis);
-            aiUsageLogService.recordSuccess(userId, applicationCaseId, FEATURE_JOB_ANALYSIS, payload.usage());
-            return JobAnalysisResponse.from(jobAnalysisMapper.findLatestJobAnalysisByCaseId(applicationCaseId));
+            return transactionTemplate.execute(status -> {
+                JobAnalysis jobAnalysis = JobAnalysis.builder()
+                        .applicationCaseId(applicationCaseId)
+                        .jobPostingId(jobPosting.getId())
+                        .jobPostingRevision(jobPosting.getRevision())
+                        .employmentType(blankToNull(payload.employmentType()))
+                        .experienceLevel(blankToNull(payload.experienceLevel()))
+                        .requiredSkills(payload.requiredSkills())
+                        .preferredSkills(payload.preferredSkills())
+                        .duties(blankToNull(payload.duties()))
+                        .qualifications(blankToNull(payload.qualifications()))
+                        .difficulty(payload.difficulty())
+                        .summary(blankToNull(payload.summary()))
+                        .evidence(payload.evidence())
+                        .ambiguousConditions(payload.ambiguousConditions())
+                        .build();
+                jobAnalysisMapper.insertJobAnalysis(jobAnalysis);
+                JobAnalysisResponse response = JobAnalysisResponse.from(jobAnalysisMapper.findLatestJobAnalysisByCaseId(applicationCaseId));
+                statusService.markReadyAfterAnalysis(userId, applicationCaseId, previousStatus);
+                aiUsageLogService.recordSuccess(userId, applicationCaseId, FEATURE_JOB_ANALYSIS, payload.usage());
+                return response;
+            });
         } catch (RuntimeException ex) {
-            aiUsageLogService.recordFailure(userId, applicationCaseId, FEATURE_JOB_ANALYSIS, ex.getMessage());
+            restorePreviousStatus(userId, applicationCaseId, previousStatus, ex);
+            aiUsageLogService.recordFailure(userId, applicationCaseId, FEATURE_JOB_ANALYSIS, userFacingFailureMessage(ex, "공고 분석 처리 중 오류가 발생했습니다. 잠시 후 다시 시도해 주세요."));
             throw ex;
         }
     }
@@ -105,6 +118,8 @@ public class JobAnalysisService {
                 .qualifications(defaultString(request.qualifications(), existing.getQualifications()))
                 .difficulty(defaultString(request.difficulty(), existing.getDifficulty()))
                 .summary(defaultString(request.summary(), existing.getSummary()))
+                .evidence(defaultString(request.evidence(), existing.getEvidence()))
+                .ambiguousConditions(defaultString(request.ambiguousConditions(), existing.getAmbiguousConditions()))
                 .confirmedAt(Boolean.TRUE.equals(request.confirmed()) ? LocalDateTime.now() : existing.getConfirmedAt())
                 .adminMemo(existing.getAdminMemo())
                 .build();
@@ -126,9 +141,19 @@ public class JobAnalysisService {
                 .qualifications(seed.qualifications())
                 .difficulty(seed.difficulty())
                 .summary(seed.summary())
+                .evidence("[]")
+                .ambiguousConditions("[]")
                 .build();
         jobAnalysisMapper.insertJobAnalysis(jobAnalysis);
         return jobAnalysisMapper.findLatestJobAnalysisByCaseId(applicationCaseId);
+    }
+
+    private void restorePreviousStatus(Long userId, Long applicationCaseId, String previousStatus, RuntimeException ex) {
+        try {
+            statusService.restorePreviousStatus(userId, applicationCaseId, previousStatus);
+        } catch (RuntimeException statusException) {
+            ex.addSuppressed(statusException);
+        }
     }
 
     private static String blankToNull(String value) {
@@ -139,8 +164,31 @@ public class JobAnalysisService {
         return isBlank(value) ? defaultValue : value.trim();
     }
 
+    private static void ensureAnalysisRunnable(String status) {
+        if (!"DRAFT".equals(status) && !"ANALYZING".equals(status) && !"READY".equals(status)) {
+            throw new BusinessException(ErrorCode.CONFLICT, "현재 상태에서는 분석을 다시 실행할 수 없습니다.");
+        }
+    }
+
     private static boolean isBlank(String value) {
         return value == null || value.trim().isEmpty();
+    }
+
+    private static String userFacingFailureMessage(RuntimeException ex, String fallback) {
+        String message = ex.getMessage();
+        if (isBlank(message)) {
+            return fallback;
+        }
+        String lower = message.toLowerCase(Locale.ROOT);
+        if (lower.contains("### error")
+                || lower.contains("sql:")
+                || lower.contains("com.mysql")
+                || lower.contains("org.springframework")
+                || lower.contains("statement cancelled")
+                || lower.contains("timeoutexception")) {
+            return fallback;
+        }
+        return message.length() > 300 ? fallback : message;
     }
 
     public record MockAnalysisSeed(

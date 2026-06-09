@@ -4,9 +4,10 @@ import { Badge } from "@/app/components/ui/badge";
 import { Button } from "@/app/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/app/components/ui/card";
 import { Textarea } from "@/app/components/ui/textarea";
-import { parseJsonStringArray } from "@/features/applications/types/analysis";
+import { parseJsonArrayOrText, parseJsonStringArray } from "@/features/applications/types/analysis";
 import { getAdminCompanyAnalyses, updateAdminCompanyAnalysisMemo } from "../api";
 import type { AdminCompanyAnalysisRow } from "../types";
+import AdminShell from "../../../components/AdminShell";
 
 function formatDateTime(value: string | null | undefined): string {
   if (!value) return "-";
@@ -52,23 +53,20 @@ export function AdminCompanyAnalysisPage() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-50">
-      <div className="mx-auto w-full max-w-7xl space-y-5 px-4 py-8 sm:px-6">
-        <section className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <Badge className="mb-2 bg-slate-900 text-white">B 관리자</Badge>
-            <h1 className="flex items-center gap-2 text-2xl font-bold text-slate-950">
-              <Building2 className="size-6 text-blue-600" />
-              기업 분석 조회
-            </h1>
-            <p className="mt-1 text-sm text-slate-500">지원 건별 기업 분석 결과와 출처, 운영 메모를 확인합니다.</p>
-          </div>
-          <Button variant="outline" onClick={() => void load()} disabled={loading}>
-            <RefreshCw className={`size-4 ${loading ? "animate-spin" : ""}`} />
-            새로고침
-          </Button>
-        </section>
-
+    <AdminShell
+      active="company-analysis"
+      breadcrumb="기업 분석 조회"
+      title="기업 분석 조회"
+      icon={Building2}
+      desc="지원 건별 기업 분석 결과와 출처, 운영 메모를 확인합니다."
+      actions={(
+        <Button variant="outline" onClick={() => void load()} disabled={loading}>
+          <RefreshCw className={`size-4 ${loading ? "animate-spin" : ""}`} />
+          새로고침
+        </Button>
+      )}
+    >
+      <div className="space-y-5">
         {error && <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>}
 
         <div className="grid gap-3">
@@ -97,8 +95,15 @@ export function AdminCompanyAnalysisPage() {
                   </div>
                 </CardHeader>
                 <CardContent className="space-y-3">
+                  <div className="grid gap-2 md:grid-cols-3">
+                    <MetaBlock label="출처 유형" value={row.sourceType ?? "-"} />
+                    <MetaBlock label="확인 시각" value={formatDateTime(row.checkedAt)} />
+                    <MetaBlock label="갱신 권장" value={formatDateTime(row.refreshRecommendedAt)} />
+                  </div>
                   <TextBlock title="기업 요약" value={row.companySummary} />
                   <TextBlock title="최근 이슈" value={row.recentIssues} />
+                  <TextBlock title="검증된 사실" value={row.verifiedFacts} />
+                  <TextBlock title="AI 추론" value={row.aiInferences} />
                   <TextBlock title="면접 포인트" value={row.interviewPoints} />
                   <div className="flex flex-wrap gap-1.5">
                     {parseJsonStringArray(row.sources).map((source) => (
@@ -125,15 +130,39 @@ export function AdminCompanyAnalysisPage() {
           )}
         </div>
       </div>
-    </div>
+    </AdminShell>
   );
 }
 
 function TextBlock({ title, value }: { title: string; value: string | null }) {
+  const parsed = parseJsonArrayOrText(value);
+
   return (
     <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
       <div className="text-xs font-semibold text-slate-500">{title}</div>
-      <p className="mt-2 whitespace-pre-line text-sm leading-6 text-slate-600">{value ?? "내용 없음"}</p>
+      {parsed.kind === "list" ? (
+        <ul className="mt-2 space-y-1.5 text-sm leading-6 text-slate-600">
+          {parsed.items.map((item, index) => (
+            <li key={`${item}-${index}`} className="flex gap-2">
+              <span className="mt-2 size-1.5 shrink-0 rounded-full bg-current" />
+              <span className="min-w-0 break-words">{item}</span>
+            </li>
+          ))}
+        </ul>
+      ) : parsed.kind === "text" ? (
+        <p className="mt-2 whitespace-pre-line text-sm leading-6 text-slate-600">{parsed.text}</p>
+      ) : (
+        <p className="mt-2 text-sm text-slate-400">내용 없음</p>
+      )}
+    </div>
+  );
+}
+
+function MetaBlock({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+      <div className="text-xs font-semibold text-slate-500">{label}</div>
+      <div className="mt-1 truncate text-sm font-bold text-slate-900">{value}</div>
     </div>
   );
 }

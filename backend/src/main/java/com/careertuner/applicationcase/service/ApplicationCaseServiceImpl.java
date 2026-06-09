@@ -13,6 +13,7 @@ import com.careertuner.applicationcase.domain.AiUsageLog;
 import com.careertuner.applicationcase.domain.ApplicationCase;
 import com.careertuner.applicationcase.domain.FitAnalysis;
 import com.careertuner.applicationcase.dto.AnalysisResponse;
+import com.careertuner.applicationcase.dto.AiUsageFailureResponse;
 import com.careertuner.applicationcase.dto.ApplicationCaseResponse;
 import com.careertuner.applicationcase.dto.CreateApplicationCaseRequest;
 import com.careertuner.applicationcase.dto.FitAnalysisResponse;
@@ -62,6 +63,7 @@ public class ApplicationCaseServiceImpl implements ApplicationCaseService {
                 .companyName(request.companyName().trim())
                 .jobTitle(request.jobTitle().trim())
                 .postingDate(request.postingDate())
+                .deadlineDate(request.deadlineDate())
                 .sourceType(normalizeOption(request.sourceType(), DEFAULT_SOURCE_TYPE, SOURCE_TYPES, "sourceType"))
                 .status(normalizeOption(request.status(), DEFAULT_STATUS, STATUSES, "status"))
                 .favorite(Boolean.TRUE.equals(request.favorite()))
@@ -101,6 +103,7 @@ public class ApplicationCaseServiceImpl implements ApplicationCaseService {
                 .companyName(defaultString(request.companyName(), existing.getCompanyName()))
                 .jobTitle(defaultString(request.jobTitle(), existing.getJobTitle()))
                 .postingDate(request.postingDate() != null ? request.postingDate() : existing.getPostingDate())
+                .deadlineDate(nextDeadlineDate(request, existing))
                 .sourceType(normalizeOption(request.sourceType(), existing.getSourceType(), SOURCE_TYPES, "sourceType"))
                 .status(nextStatus)
                 .favorite(request.favorite() != null ? request.favorite() : existing.isFavorite())
@@ -231,6 +234,13 @@ public class ApplicationCaseServiceImpl implements ApplicationCaseService {
                 applicationCaseMapper.findLatestFitAnalysisByCaseId(applicationCaseId));
     }
 
+    @Override
+    @Transactional(readOnly = true)
+    public List<AiUsageFailureResponse> getAiUsageFailures(Long userId, Long applicationCaseId, int limit) {
+        accessService.requireOwned(userId, applicationCaseId);
+        return applicationCaseMapper.findBFailureLogsByCaseId(applicationCaseId, normalizeFailureLimit(limit));
+    }
+
     private static AnalysisResponse response(ApplicationCase applicationCase, JobAnalysis jobAnalysis, FitAnalysis fitAnalysis) {
         return new AnalysisResponse(
                 ApplicationCaseResponse.from(applicationCase),
@@ -240,6 +250,13 @@ public class ApplicationCaseServiceImpl implements ApplicationCaseService {
 
     private static String defaultString(String value, String defaultValue) {
         return isBlank(value) ? defaultValue : value.trim();
+    }
+
+    private static java.time.LocalDate nextDeadlineDate(UpdateApplicationCaseRequest request, ApplicationCase existing) {
+        if (Boolean.TRUE.equals(request.clearDeadlineDate())) {
+            return null;
+        }
+        return request.deadlineDate() != null ? request.deadlineDate() : existing.getDeadlineDate();
     }
 
     private void logMockAiUsage(Long userId, Long applicationCaseId, String sourceText) {
@@ -264,6 +281,13 @@ public class ApplicationCaseServiceImpl implements ApplicationCaseService {
     private static int estimateTokenUsage(String sourceText) {
         int length = sourceText == null ? 0 : sourceText.length();
         return Math.max(1200, Math.min(4200, 900 + length * 2));
+    }
+
+    private static int normalizeFailureLimit(int limit) {
+        if (limit <= 0) {
+            return 5;
+        }
+        return Math.min(limit, 50);
     }
 
     private static String normalizeOption(String value, String defaultValue, Set<String> allowedValues, String fieldName) {

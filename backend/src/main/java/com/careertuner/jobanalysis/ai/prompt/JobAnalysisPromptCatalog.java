@@ -12,7 +12,7 @@ public final class JobAnalysisPromptCatalog {
             모든 결과는 한국어로 작성하고, 배열 필드는 짧은 키워드 목록으로 작성한다.
             """;
     public static final String SCHEMA_SUMMARY =
-            "employmentType, experienceLevel, requiredSkills[], preferredSkills[], duties, qualifications, difficulty, summary";
+            "employmentType, experienceLevel, requiredSkills[], preferredSkills[], duties, qualifications, difficulty, summary, evidence[], ambiguousConditions[]";
 
     private JobAnalysisPromptCatalog() {
     }

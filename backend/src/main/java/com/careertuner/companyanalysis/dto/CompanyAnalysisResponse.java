@@ -15,6 +15,11 @@ public record CompanyAnalysisResponse(
         String competitors,
         String interviewPoints,
         String sources,
+        String verifiedFacts,
+        String aiInferences,
+        String sourceType,
+        LocalDateTime checkedAt,
+        LocalDateTime refreshRecommendedAt,
         LocalDateTime confirmedAt,
         String adminMemo,
         LocalDateTime createdAt
@@ -34,6 +39,11 @@ public record CompanyAnalysisResponse(
                 analysis.getCompetitors(),
                 analysis.getInterviewPoints(),
                 analysis.getSources(),
+                analysis.getVerifiedFacts(),
+                analysis.getAiInferences(),
+                analysis.getSourceType(),
+                analysis.getCheckedAt(),
+                analysis.getRefreshRecommendedAt(),
                 analysis.getConfirmedAt(),
                 analysis.getAdminMemo(),
                 analysis.getCreatedAt());

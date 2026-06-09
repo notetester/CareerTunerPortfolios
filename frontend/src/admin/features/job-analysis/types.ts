@@ -15,6 +15,8 @@ export interface AdminJobAnalysisRow {
   qualifications: string | null;
   difficulty: string | null;
   summary: string | null;
+  evidence: string | null;
+  ambiguousConditions: string | null;
   confirmedAt: string | null;
   adminMemo: string | null;
   createdAt: string;

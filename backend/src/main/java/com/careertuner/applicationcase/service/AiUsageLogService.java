@@ -16,7 +16,7 @@ public class AiUsageLogService {
         this.applicationCaseMapper = applicationCaseMapper;
     }
 
-    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    @Transactional
     public void recordSuccess(Long userId, Long applicationCaseId, String featureType, OpenAiResponsesClient.Usage usage) {
         if (usage == null) {
             return;

@@ -11,6 +11,8 @@ public record JobAnalysisReviewRequest(
         String qualifications,
         @Size(max = 20) String difficulty,
         String summary,
+        String evidence,
+        String ambiguousConditions,
         Boolean confirmed
 ) {
 }

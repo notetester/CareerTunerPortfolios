@@ -3,6 +3,7 @@ package com.careertuner.applicationcase.service;
 import java.util.List;
 
 import com.careertuner.applicationcase.dto.AnalysisResponse;
+import com.careertuner.applicationcase.dto.AiUsageFailureResponse;
 import com.careertuner.applicationcase.dto.ApplicationCaseResponse;
 import com.careertuner.companyanalysis.dto.CompanyAnalysisResponse;
 import com.careertuner.companyanalysis.dto.CompanyAnalysisReviewRequest;
@@ -57,4 +58,6 @@ public interface ApplicationCaseService {
     AnalysisResponse createMockAnalysis(Long userId, Long applicationCaseId);
 
     AnalysisResponse getAnalysis(Long userId, Long applicationCaseId);
+
+    List<AiUsageFailureResponse> getAiUsageFailures(Long userId, Long applicationCaseId, int limit);
 }
