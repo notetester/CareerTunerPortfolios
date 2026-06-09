@@ -160,6 +160,28 @@ export function AdminDashboardPage() {
           </div>
         </section>
 
+        {/* C 운영 화면 바로가기. 분석 통계 랜딩에서만 노출(다른 라우트는 이 페이지를 임시 플레이스홀더로 재사용). */}
+        {location.pathname === "/admin" && (
+          <section className="flex flex-wrap gap-2">
+            {[
+              { to: "/admin/home", label: "관리자 홈(작업 대기 큐)" },
+              { to: "/admin/dashboard", label: "운영 종합 대시보드" },
+              { to: "/admin/analytics", label: "분석 통계 상세" },
+              { to: "/admin/fit-analysis", label: "적합도 분석 관리" },
+              { to: "/admin/prompts/fit-analysis", label: "적합도 프롬프트" },
+              { to: "/admin/prompts/analytics", label: "장기 분석 프롬프트" },
+            ].map((item) => (
+              <Link
+                key={item.to}
+                to={item.to}
+                className="rounded-full border border-slate-200 bg-white px-3.5 py-1.5 text-xs font-semibold text-slate-600 transition-colors hover:border-blue-300 hover:bg-blue-50 hover:text-blue-700"
+              >
+                {item.label}
+              </Link>
+            ))}
+          </section>
+        )}
+
         {loading && (
           <Card className="border border-slate-200 bg-white">
             <CardContent className="flex items-center gap-3 p-5 text-sm text-slate-600">
