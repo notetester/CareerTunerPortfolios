@@ -371,7 +371,7 @@ export function ApplicationOverviewPanel({
                 <div className="min-w-0">
                   <div className="text-sm font-semibold text-red-700">위험 작업</div>
                   <p className="mt-1 text-xs leading-5 text-red-600">
-                    삭제하면 연결된 공고문과 분석 결과가 함께 삭제됩니다.
+                    삭제하면 이 지원 건은 활성 목록에서 숨겨집니다. 연결된 공고문과 분석 결과는 즉시 물리 삭제되지 않습니다.
                   </p>
                 </div>
               </div>
@@ -392,7 +392,7 @@ export function ApplicationOverviewPanel({
                   <AlertDialogHeader>
                     <AlertDialogTitle>지원 건을 삭제할까요?</AlertDialogTitle>
                     <AlertDialogDescription>
-                      이 작업은 되돌릴 수 없습니다. 연결된 공고문, 공고 분석, 기업 분석 결과도 함께 삭제됩니다.
+                      이 지원 건은 활성 목록에서 숨겨지며, 현재 화면에서는 복구할 수 없습니다. 연결된 공고문, 공고 분석, 기업 분석 결과는 즉시 물리 삭제되지 않습니다.
                     </AlertDialogDescription>
                   </AlertDialogHeader>
                   <AlertDialogFooter>

@@ -62,6 +62,12 @@ export function CompanyAnalysisPanel({
     competitors: "",
     interviewPoints: "",
     sources: "",
+    verifiedFacts: "",
+    aiInferences: "",
+  });
+  const [structuredFieldEdited, setStructuredFieldEdited] = useState({
+    verifiedFacts: false,
+    aiInferences: false,
   });
 
   useEffect(() => {
@@ -72,11 +78,20 @@ export function CompanyAnalysisPanel({
       competitors: formatJsonArrayForTextarea(analysis?.competitors),
       interviewPoints: analysis?.interviewPoints ?? "",
       sources: formatJsonArrayForTextarea(analysis?.sources),
+      verifiedFacts: formatJsonArrayForTextarea(analysis?.verifiedFacts),
+      aiInferences: formatJsonArrayForTextarea(analysis?.aiInferences),
+    });
+    setStructuredFieldEdited({
+      verifiedFacts: false,
+      aiInferences: false,
     });
   }, [analysis]);
 
   const setField = (key: keyof typeof form, value: string) => {
     setForm((current) => ({ ...current, [key]: value }));
+    if (key === "verifiedFacts" || key === "aiInferences") {
+      setStructuredFieldEdited((current) => ({ ...current, [key]: true }));
+    }
   };
 
   const sourceMetadata = analysis
@@ -96,6 +111,8 @@ export function CompanyAnalysisPanel({
       ...form,
       competitors: serializeTextareaList(form.competitors),
       sources: serializeTextareaList(form.sources),
+      verifiedFacts: structuredFieldEdited.verifiedFacts ? serializeTextareaList(form.verifiedFacts) : analysis.verifiedFacts,
+      aiInferences: structuredFieldEdited.aiInferences ? serializeTextareaList(form.aiInferences) : analysis.aiInferences,
       confirmed: true,
     });
   };
@@ -190,6 +207,10 @@ export function CompanyAnalysisPanel({
               <Input value={form.industry} onChange={(event) => setField("industry", event.target.value)} placeholder="산업" className="bg-white" />
               <Textarea value={form.companySummary} onChange={(event) => setField("companySummary", event.target.value)} className="min-h-24 bg-white" placeholder="기업 요약" />
               <Textarea value={form.recentIssues} onChange={(event) => setField("recentIssues", event.target.value)} className="min-h-24 bg-white" placeholder="최근 이슈" />
+              <div className="grid gap-3 md:grid-cols-2">
+                <Textarea value={form.verifiedFacts} onChange={(event) => setField("verifiedFacts", event.target.value)} className="min-h-28 bg-white" placeholder="검증된 사실" />
+                <Textarea value={form.aiInferences} onChange={(event) => setField("aiInferences", event.target.value)} className="min-h-28 bg-white" placeholder="AI 추론" />
+              </div>
               <div className="grid gap-3 md:grid-cols-2">
                 <Textarea value={form.competitors} onChange={(event) => setField("competitors", event.target.value)} className="min-h-24 bg-white" placeholder="경쟁/비교 기업을 한 줄에 하나씩 입력" />
                 <Textarea value={form.sources} onChange={(event) => setField("sources", event.target.value)} className="min-h-24 bg-white" placeholder="참고 소스를 한 줄에 하나씩 입력" />
