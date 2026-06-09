@@ -18,6 +18,7 @@ public class CareerAnalysisRun {
     private String analysisType;
     private String status;
     private String inputSnapshot;
+    private String inputFingerprint;
     private String result;
     private String model;
     private int inputTokens;

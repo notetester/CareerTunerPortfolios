@@ -255,6 +255,7 @@ CREATE TABLE IF NOT EXISTS career_analysis_run (
     analysis_type   VARCHAR(40) NOT NULL,                  -- CAREER_TREND/DASHBOARD_SUMMARY
     status          VARCHAR(20) NOT NULL,                  -- SUCCESS/FALLBACK/FAILED
     input_snapshot  JSON NULL,
+    input_fingerprint VARCHAR(64) NULL,                    -- C 캐시 키: 입력이 동일하면 저장 결과 재사용(매 조회 AI 재실행 방지)
     result          JSON NULL,
     model           VARCHAR(80) NULL,
     input_tokens    INT NOT NULL DEFAULT 0,

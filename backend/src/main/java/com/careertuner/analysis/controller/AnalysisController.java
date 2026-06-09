@@ -4,6 +4,7 @@ import java.util.List;
 
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -25,6 +26,12 @@ public class AnalysisController {
     @GetMapping("/summary")
     public ApiResponse<AnalysisSummaryResponse> summary(@AuthenticationPrincipal AuthUser authUser) {
         return ApiResponse.ok(analysisService.getSummary(authUser.id()));
+    }
+
+    // 사용자가 명시적으로 요청한 장기 경향 재분석. AI를 강제로 실행하고 크레딧을 차감한다.
+    @PostMapping("/summary/refresh")
+    public ApiResponse<AnalysisSummaryResponse> refresh(@AuthenticationPrincipal AuthUser authUser) {
+        return ApiResponse.ok(analysisService.refreshSummary(authUser.id()));
     }
 
     @GetMapping("/history")

@@ -7,9 +7,9 @@ import { Progress } from "@/app/components/ui/progress";
 import {
   Plus, Briefcase, MessageSquare, TrendingUp, Award, ArrowRight,
   FileText, BarChart3, CheckCircle2, AlertCircle, ChevronRight,
-  Target, BookOpen, Bell, Calendar, Flame, Loader2,
+  Target, BookOpen, Bell, Calendar, Flame, Loader2, RefreshCw,
 } from "lucide-react";
-import { getDashboardSummary } from "@/features/dashboard/api/dashboardApi";
+import { getDashboardSummary, refreshDashboardSummary } from "@/features/dashboard/api/dashboardApi";
 import type { DashboardActivity, DashboardSummary } from "@/features/dashboard/types/dashboardSummary";
 
 const statusLabel: Record<string, string> = {
@@ -62,6 +62,8 @@ export function DashboardPage() {
   const [summary, setSummary] = useState<DashboardSummary | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
+  const [refreshError, setRefreshError] = useState<string | null>(null);
 
   useEffect(() => {
     let ignore = false;
@@ -83,6 +85,18 @@ export function DashboardPage() {
       ignore = true;
     };
   }, []);
+
+  const handleRefreshSummary = async () => {
+    setRefreshing(true);
+    setRefreshError(null);
+    try {
+      setSummary(await refreshDashboardSummary());
+    } catch (requestError) {
+      setRefreshError(requestError instanceof Error ? requestError.message : "요약 재생성에 실패했습니다.");
+    } finally {
+      setRefreshing(false);
+    }
+  };
 
   const stats = summary?.stats;
   const pendingTodos = summary?.todos.filter((todo) => !todo.done).length ?? 0;
@@ -144,10 +158,23 @@ export function DashboardPage() {
             </p>
             {summary?.aiSummary && (
               <div className="mt-3 rounded-lg bg-blue-50 px-3 py-2 text-sm text-blue-800">
-                <p><strong className="font-semibold">AI 요약</strong> · {summary.aiSummary}</p>
+                <div className="flex items-start justify-between gap-3">
+                  <p><strong className="font-semibold">AI 요약</strong> · {summary.aiSummary}</p>
+                  <button
+                    type="button"
+                    onClick={handleRefreshSummary}
+                    disabled={refreshing}
+                    title="AI를 다시 실행해 최신 데이터로 요약을 재생성합니다. 크레딧 1이 차감됩니다."
+                    className="flex shrink-0 items-center gap-1 rounded-md border border-blue-200 bg-white/70 px-2 py-1 text-xs font-semibold text-blue-700 transition-colors hover:bg-white disabled:opacity-60"
+                  >
+                    <RefreshCw className={`size-3 ${refreshing ? "animate-spin" : ""}`} />
+                    {refreshing ? "재생성 중" : "재생성 (크레딧 1)"}
+                  </button>
+                </div>
                 <p className="mt-1 text-xs text-blue-600">
                   {summary.analysisRun.model || "mock"} · {summary.analysisRun.status} · {new Date(summary.analysisRun.createdAt).toLocaleString("ko-KR")}
                 </p>
+                {refreshError && <p className="mt-1 text-xs text-red-600">{refreshError}</p>}
               </div>
             )}
           </div>

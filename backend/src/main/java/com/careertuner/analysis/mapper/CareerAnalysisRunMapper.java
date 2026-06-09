@@ -19,7 +19,11 @@ public interface CareerAnalysisRunMapper {
                           @Param("inputTokens") int inputTokens,
                           @Param("outputTokens") int outputTokens,
                           @Param("tokenUsage") int tokenUsage,
+                          @Param("creditUsed") int creditUsed,
                           @Param("errorMessage") String errorMessage);
+
+    /** 캐시 조회: 같은 사용자·분석 유형의 가장 최근 실행 1건. fingerprint 비교로 재사용 여부를 판단한다. */
+    CareerAnalysisRun findLatest(@Param("userId") Long userId, @Param("analysisType") String analysisType);
 
     List<CareerAnalysisRun> findByUserId(Long userId);
 

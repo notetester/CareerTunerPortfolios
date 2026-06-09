@@ -9,6 +9,7 @@
         <result property="analysisType" column="analysis_type"/>
         <result property="status" column="status"/>
         <result property="inputSnapshot" column="input_snapshot"/>
+        <result property="inputFingerprint" column="input_fingerprint"/>
         <result property="result" column="result"/>
         <result property="model" column="model"/>
         <result property="inputTokens" column="input_tokens"/>
@@ -21,10 +22,10 @@
 
     <insert id="insert" useGeneratedKeys="true" keyProperty="id">
         INSERT INTO career_analysis_run
-            (user_id, analysis_type, status, input_snapshot, result, model,
+            (user_id, analysis_type, status, input_snapshot, input_fingerprint, result, model,
              input_tokens, output_tokens, token_usage, error_message, retryable)
         VALUES
-            (#{userId}, #{analysisType}, #{status}, #{inputSnapshot}, #{result}, #{model},
+            (#{userId}, #{analysisType}, #{status}, #{inputSnapshot}, #{inputFingerprint}, #{result}, #{model},
              #{inputTokens}, #{outputTokens}, #{tokenUsage}, #{errorMessage}, #{retryable})
     </insert>
 
@@ -32,8 +33,17 @@
         INSERT INTO ai_usage_log
             (user_id, feature_type, status, model, input_tokens, output_tokens, token_usage, credit_used, error_message)
         VALUES
-            (#{userId}, #{featureType}, #{status}, #{model}, #{inputTokens}, #{outputTokens}, #{tokenUsage}, 0, #{errorMessage})
+            (#{userId}, #{featureType}, #{status}, #{model}, #{inputTokens}, #{outputTokens}, #{tokenUsage}, #{creditUsed}, #{errorMessage})
     </insert>
+
+    <select id="findLatest" resultMap="CareerAnalysisRunMap">
+        SELECT *
+        FROM career_analysis_run
+        WHERE user_id = #{userId}
+          AND analysis_type = #{analysisType}
+        ORDER BY created_at DESC, id DESC
+        LIMIT 1
+    </select>
 
     <select id="findByUserId" resultMap="CareerAnalysisRunMap">
         SELECT *

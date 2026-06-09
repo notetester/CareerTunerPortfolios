@@ -2,11 +2,12 @@ import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router";
 import { Card, CardContent, CardHeader, CardTitle } from "@/app/components/ui/card";
 import { Progress } from "@/app/components/ui/progress";
+import { Button } from "@/app/components/ui/button";
 import {
   TrendingUp, Target, BarChart3, ArrowUp, ArrowDown, AlertCircle,
-  Brain, BookOpen, Briefcase, Loader2,
+  Brain, BookOpen, Briefcase, Loader2, RefreshCw,
 } from "lucide-react";
-import { getAnalysisSummary } from "@/features/analysis/api/analysisSummaryApi";
+import { getAnalysisSummary, refreshAnalysisSummary } from "@/features/analysis/api/analysisSummaryApi";
 import type { AnalysisSummary } from "@/features/analysis/types/analysisSummary";
 
 const analysisTabs = [
@@ -39,6 +40,8 @@ export function AnalysisPage() {
   const [summary, setSummary] = useState<AnalysisSummary | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
+  const [refreshError, setRefreshError] = useState<string | null>(null);
   const requestedTab = searchParams.get("tab") ?? "trend";
   const activeTab: AnalysisTab = analysisTabs.some((tab) => tab.key === requestedTab) ? (requestedTab as AnalysisTab) : "trend";
   const stats = summary?.stats;
@@ -92,6 +95,19 @@ export function AnalysisPage() {
       ignore = true;
     };
   }, []);
+
+  const handleRefresh = async () => {
+    setRefreshing(true);
+    setRefreshError(null);
+    try {
+      const data = await refreshAnalysisSummary();
+      setSummary(data);
+    } catch (requestError) {
+      setRefreshError(requestError instanceof Error ? requestError.message : "재분석에 실패했습니다.");
+    } finally {
+      setRefreshing(false);
+    }
+  };
 
   return (
     <div className="bg-slate-50 min-h-screen">
@@ -169,13 +185,27 @@ export function AnalysisPage() {
               <div className="size-12 rounded-xl bg-gradient-to-br from-blue-600 to-indigo-600 flex items-center justify-center flex-shrink-0">
                 <Brain className="size-6 text-white" />
               </div>
-              <div>
-                <div className="font-bold text-blue-900 mb-2">AI 장기 취업 전략 리포트</div>
+              <div className="flex-1">
+                <div className="flex flex-wrap items-start justify-between gap-2">
+                  <div className="font-bold text-blue-900 mb-2">AI 장기 취업 전략 리포트</div>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={handleRefresh}
+                    disabled={refreshing}
+                    className="border-blue-300 bg-white/70 text-blue-700 hover:bg-white"
+                    title="AI를 다시 실행해 최신 데이터로 요약을 재생성합니다. 크레딧 1이 차감됩니다."
+                  >
+                    <RefreshCw className={`size-3.5 ${refreshing ? "animate-spin" : ""}`} />
+                    {refreshing ? "재분석 중..." : "재분석 (크레딧 1)"}
+                  </Button>
+                </div>
                 {summary?.analysisRun && (
                   <div className="mb-2 text-xs text-blue-600">
                     {summary.analysisRun.model || "mock"} · {summary.analysisRun.status} · {new Date(summary.analysisRun.createdAt).toLocaleString("ko-KR")}
                   </div>
                 )}
+                {refreshError && <div className="mb-2 text-xs text-red-600">{refreshError}</div>}
                 <p className="text-sm text-blue-700 mb-3">
                   {summary?.trendSummary
                     ? summary.trendSummary
