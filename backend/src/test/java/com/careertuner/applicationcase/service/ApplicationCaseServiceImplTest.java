@@ -44,6 +44,7 @@ import com.careertuner.jobanalysis.mapper.JobAnalysisMapper;
 import com.careertuner.jobanalysis.service.JobAnalysisService;
 import com.careertuner.jobposting.domain.JobPosting;
 import com.careertuner.jobposting.dto.JobPostingRequest;
+import com.careertuner.jobposting.dto.JobPostingResponse;
 import com.careertuner.jobposting.mapper.JobPostingMapper;
 import com.careertuner.jobposting.service.JobPostingFileStorage;
 import com.careertuner.jobposting.service.JobPostingService;
@@ -103,6 +104,149 @@ class ApplicationCaseServiceImplTest {
         verify(jobPostingMapper, never()).deleteJobPostingsByCaseId(10L);
         verify(jobPostingMapper).insertJobPosting(postingCaptor.capture());
         assertThat(postingCaptor.getValue().getRevision()).isEqualTo(2);
+    }
+
+    @Test
+    void saveUrlJobPostingWithCorrectedTextDoesNotExtractUrlAgain() {
+        ApplicationCaseMapper applicationCaseMapper = mock(ApplicationCaseMapper.class);
+        JobPostingMapper jobPostingMapper = mock(JobPostingMapper.class);
+        AiUsageLogService usageLogService = mock(AiUsageLogService.class);
+        JobPostingTextExtractor textExtractor = mock(JobPostingTextExtractor.class);
+        ApplicationCaseAccessService accessService = new ApplicationCaseAccessService(applicationCaseMapper, jobPostingMapper);
+        JobPostingService service = new JobPostingService(
+                accessService,
+                jobPostingMapper,
+                usageLogService,
+                mock(JobPostingFileStorage.class),
+                textExtractor);
+        String jobUrl = "https://example.com/jobs/backend";
+        String correctedText = "Corrected backend job posting text";
+        ApplicationCase applicationCase = ApplicationCase.builder()
+                .id(10L)
+                .userId(1L)
+                .companyName("Test Company")
+                .jobTitle("Backend Developer")
+                .build();
+        JobPosting latest = JobPosting.builder()
+                .id(32L)
+                .applicationCaseId(10L)
+                .revision(3)
+                .uploadedFileUrl(jobUrl)
+                .extractedText(correctedText)
+                .sourceType("URL")
+                .build();
+
+        when(applicationCaseMapper.findApplicationCaseByIdAndUserId(10L, 1L)).thenReturn(applicationCase);
+        when(jobPostingMapper.nextRevisionForCase(10L)).thenReturn(3);
+        when(jobPostingMapper.findLatestJobPostingByCaseId(10L)).thenReturn(latest);
+
+        JobPostingResponse response = service.saveJobPosting(1L, 10L,
+                new JobPostingRequest(null, jobUrl, correctedText, "URL"));
+
+        ArgumentCaptor<JobPosting> postingCaptor = ArgumentCaptor.forClass(JobPosting.class);
+        verify(textExtractor, never()).extractUrl(any());
+        verify(jobPostingMapper).insertJobPosting(postingCaptor.capture());
+        JobPosting savedPosting = postingCaptor.getValue();
+        assertThat(savedPosting.getApplicationCaseId()).isEqualTo(10L);
+        assertThat(savedPosting.getRevision()).isEqualTo(3);
+        assertThat(savedPosting.getSourceType()).isEqualTo("URL");
+        assertThat(savedPosting.getUploadedFileUrl()).isEqualTo(jobUrl);
+        assertThat(savedPosting.getOriginalText()).isNull();
+        assertThat(savedPosting.getExtractedText()).isEqualTo(correctedText);
+        assertThat(response.revision()).isEqualTo(3);
+        assertThat(response.sourceType()).isEqualTo("URL");
+        assertThat(response.uploadedFileUrl()).isEqualTo(jobUrl);
+        assertThat(response.extractedText()).isEqualTo(correctedText);
+    }
+
+    @Test
+    void saveUrlJobPostingWithCorrectedTextRequiresUrl() {
+        ApplicationCaseMapper applicationCaseMapper = mock(ApplicationCaseMapper.class);
+        JobPostingMapper jobPostingMapper = mock(JobPostingMapper.class);
+        AiUsageLogService usageLogService = mock(AiUsageLogService.class);
+        JobPostingTextExtractor textExtractor = mock(JobPostingTextExtractor.class);
+        ApplicationCaseAccessService accessService = new ApplicationCaseAccessService(applicationCaseMapper, jobPostingMapper);
+        JobPostingService service = new JobPostingService(
+                accessService,
+                jobPostingMapper,
+                usageLogService,
+                mock(JobPostingFileStorage.class),
+                textExtractor);
+        ApplicationCase applicationCase = ApplicationCase.builder()
+                .id(10L)
+                .userId(1L)
+                .companyName("Test Company")
+                .jobTitle("Backend Developer")
+                .build();
+
+        when(applicationCaseMapper.findApplicationCaseByIdAndUserId(10L, 1L)).thenReturn(applicationCase);
+
+        assertThatThrownBy(() -> service.saveJobPosting(1L, 10L,
+                new JobPostingRequest(null, null, "Corrected backend job posting text", "URL")))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("공고 URL이 필요합니다.");
+
+        verify(textExtractor, never()).extractUrl(any());
+        verify(jobPostingMapper, never()).insertJobPosting(any(JobPosting.class));
+    }
+
+    @Test
+    void saveUrlJobPostingWithoutCorrectedTextExtractsUrl() {
+        ApplicationCaseMapper applicationCaseMapper = mock(ApplicationCaseMapper.class);
+        JobPostingMapper jobPostingMapper = mock(JobPostingMapper.class);
+        AiUsageLogService usageLogService = mock(AiUsageLogService.class);
+        JobPostingTextExtractor textExtractor = mock(JobPostingTextExtractor.class);
+        ApplicationCaseAccessService accessService = new ApplicationCaseAccessService(applicationCaseMapper, jobPostingMapper);
+        JobPostingService service = new JobPostingService(
+                accessService,
+                jobPostingMapper,
+                usageLogService,
+                mock(JobPostingFileStorage.class),
+                textExtractor);
+        String jobUrl = "https://example.com/jobs/backend";
+        String extractedText = "Extracted backend job posting text";
+        ApplicationCase applicationCase = ApplicationCase.builder()
+                .id(10L)
+                .userId(1L)
+                .companyName("Test Company")
+                .jobTitle("Backend Developer")
+                .build();
+        JobPostingTextExtractor.ExtractedPosting extracted = new JobPostingTextExtractor.ExtractedPosting(
+                "URL",
+                jobUrl,
+                jobUrl,
+                extractedText,
+                null);
+        JobPosting latest = JobPosting.builder()
+                .id(33L)
+                .applicationCaseId(10L)
+                .revision(4)
+                .originalText(jobUrl)
+                .uploadedFileUrl(jobUrl)
+                .extractedText(extractedText)
+                .sourceType("URL")
+                .build();
+
+        when(applicationCaseMapper.findApplicationCaseByIdAndUserId(10L, 1L)).thenReturn(applicationCase);
+        when(textExtractor.extractUrl(jobUrl)).thenReturn(extracted);
+        when(jobPostingMapper.nextRevisionForCase(10L)).thenReturn(4);
+        when(jobPostingMapper.findLatestJobPostingByCaseId(10L)).thenReturn(latest);
+
+        JobPostingResponse response = service.saveJobPosting(1L, 10L,
+                new JobPostingRequest(null, jobUrl, null, "URL"));
+
+        ArgumentCaptor<JobPosting> postingCaptor = ArgumentCaptor.forClass(JobPosting.class);
+        verify(textExtractor).extractUrl(jobUrl);
+        verify(jobPostingMapper).insertJobPosting(postingCaptor.capture());
+        JobPosting savedPosting = postingCaptor.getValue();
+        assertThat(savedPosting.getRevision()).isEqualTo(4);
+        assertThat(savedPosting.getSourceType()).isEqualTo("URL");
+        assertThat(savedPosting.getUploadedFileUrl()).isEqualTo(jobUrl);
+        assertThat(savedPosting.getOriginalText()).isEqualTo(jobUrl);
+        assertThat(savedPosting.getExtractedText()).isEqualTo(extractedText);
+        assertThat(response.sourceType()).isEqualTo("URL");
+        assertThat(response.uploadedFileUrl()).isEqualTo(jobUrl);
+        assertThat(response.extractedText()).isEqualTo(extractedText);
     }
 
     @Test

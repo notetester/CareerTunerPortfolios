@@ -69,6 +69,12 @@ export function JobAnalysisPanel({
     qualifications: "",
     difficulty: "",
     summary: "",
+    evidence: "",
+    ambiguousConditions: "",
+  });
+  const [structuredFieldEdited, setStructuredFieldEdited] = useState({
+    evidence: false,
+    ambiguousConditions: false,
   });
 
   useEffect(() => {
@@ -81,11 +87,20 @@ export function JobAnalysisPanel({
       qualifications: analysis?.qualifications ?? "",
       difficulty: analysis?.difficulty ?? "",
       summary: analysis?.summary ?? "",
+      evidence: formatJsonArrayForTextarea(analysis?.evidence),
+      ambiguousConditions: formatJsonArrayForTextarea(analysis?.ambiguousConditions),
+    });
+    setStructuredFieldEdited({
+      evidence: false,
+      ambiguousConditions: false,
     });
   }, [analysis]);
 
   const setField = (key: keyof typeof form, value: string) => {
     setForm((current) => ({ ...current, [key]: value }));
+    if (key === "evidence" || key === "ambiguousConditions") {
+      setStructuredFieldEdited((current) => ({ ...current, [key]: true }));
+    }
   };
 
   const handleReview = async () => {
@@ -94,6 +109,10 @@ export function JobAnalysisPanel({
       ...form,
       requiredSkills: serializeTextareaList(form.requiredSkills),
       preferredSkills: serializeTextareaList(form.preferredSkills),
+      evidence: structuredFieldEdited.evidence ? serializeTextareaList(form.evidence) : analysis.evidence,
+      ambiguousConditions: structuredFieldEdited.ambiguousConditions
+        ? serializeTextareaList(form.ambiguousConditions)
+        : analysis.ambiguousConditions,
       confirmed: true,
     });
   };
@@ -198,6 +217,10 @@ export function JobAnalysisPanel({
                 <Textarea value={form.qualifications} onChange={(event) => setField("qualifications", event.target.value)} className="min-h-28 bg-white" placeholder="자격 요건" />
               </div>
               <Textarea value={form.summary} onChange={(event) => setField("summary", event.target.value)} className="min-h-24 bg-white" placeholder="요약" />
+              <div className="grid gap-3 md:grid-cols-2">
+                <Textarea value={form.evidence} onChange={(event) => setField("evidence", event.target.value)} className="min-h-28 bg-white" placeholder="근거" />
+                <Textarea value={form.ambiguousConditions} onChange={(event) => setField("ambiguousConditions", event.target.value)} className="min-h-28 bg-white" placeholder="모호한 조건" />
+              </div>
               <Button type="button" className="bg-slate-900 text-white hover:bg-slate-800" disabled={generating} onClick={() => void handleReview()}>
                 {generating && <Loader2 className="size-4 animate-spin" />}
                 수정 내용 저장 및 확정

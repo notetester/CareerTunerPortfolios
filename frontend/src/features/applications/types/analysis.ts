@@ -59,6 +59,8 @@ export interface JobAnalysisReviewRequest {
   qualifications?: string | null;
   difficulty?: string | null;
   summary?: string | null;
+  evidence?: string | null;
+  ambiguousConditions?: string | null;
   confirmed?: boolean;
 }
 
@@ -69,6 +71,8 @@ export interface CompanyAnalysisReviewRequest {
   competitors?: string | null;
   interviewPoints?: string | null;
   sources?: string | null;
+  verifiedFacts?: string | null;
+  aiInferences?: string | null;
   confirmed?: boolean;
 }
 
