@@ -14,10 +14,9 @@ import com.careertuner.admin.fitanalysis.mapper.AdminFitAnalysisMapper;
 import com.careertuner.admin.fitanalysis.domain.AdminFitAnalysisMemo;
 import com.careertuner.common.exception.BusinessException;
 import com.careertuner.common.exception.ErrorCode;
-import com.fasterxml.jackson.core.type.TypeReference;
-import com.fasterxml.jackson.databind.ObjectMapper;
-
 import lombok.RequiredArgsConstructor;
+import tools.jackson.core.type.TypeReference;
+import tools.jackson.databind.ObjectMapper;
 
 @Service
 @RequiredArgsConstructor
@@ -27,7 +26,7 @@ public class AdminFitAnalysisServiceImpl implements AdminFitAnalysisService {
     };
 
     private final AdminFitAnalysisMapper adminFitAnalysisMapper;
-    private final ObjectMapper objectMapper = new ObjectMapper();
+    private final ObjectMapper objectMapper;
 
     @Override
     @Transactional(readOnly = true)

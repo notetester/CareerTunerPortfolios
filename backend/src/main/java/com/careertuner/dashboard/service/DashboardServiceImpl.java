@@ -25,10 +25,9 @@ import com.careertuner.dashboard.dto.DashboardSummaryResponse;
 import com.careertuner.dashboard.dto.DashboardTodoResponse;
 import com.careertuner.dashboard.dto.DashboardUserResponse;
 import com.careertuner.dashboard.mapper.DashboardMapper;
-import com.fasterxml.jackson.core.type.TypeReference;
-import com.fasterxml.jackson.databind.ObjectMapper;
-
 import lombok.RequiredArgsConstructor;
+import tools.jackson.core.type.TypeReference;
+import tools.jackson.databind.ObjectMapper;
 
 @Service
 @RequiredArgsConstructor
@@ -39,7 +38,7 @@ public class DashboardServiceImpl implements DashboardService {
 
     private final DashboardMapper dashboardMapper;
     private final DashboardInsightAiService dashboardInsightAiService;
-    private final ObjectMapper objectMapper = new ObjectMapper();
+    private final ObjectMapper objectMapper;
 
     @Override
     @Transactional(readOnly = true)

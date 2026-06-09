@@ -17,10 +17,9 @@ import com.careertuner.admin.analytics.dto.AdminFitScoreBandResponse;
 import com.careertuner.admin.analytics.dto.AdminRecentAnalysisResponse;
 import com.careertuner.admin.analytics.dto.AdminSkillGapResponse;
 import com.careertuner.admin.analytics.mapper.AdminAnalyticsMapper;
-import com.fasterxml.jackson.core.type.TypeReference;
-import com.fasterxml.jackson.databind.ObjectMapper;
-
 import lombok.RequiredArgsConstructor;
+import tools.jackson.core.type.TypeReference;
+import tools.jackson.databind.ObjectMapper;
 
 @Service
 @RequiredArgsConstructor
@@ -30,7 +29,7 @@ public class AdminAnalyticsServiceImpl implements AdminAnalyticsService {
     };
 
     private final AdminAnalyticsMapper adminAnalyticsMapper;
-    private final ObjectMapper objectMapper = new ObjectMapper();
+    private final ObjectMapper objectMapper;
 
     @Override
     @Transactional(readOnly = true)
