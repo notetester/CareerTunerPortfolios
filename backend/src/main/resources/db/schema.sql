@@ -23,10 +23,21 @@ CREATE TABLE IF NOT EXISTS users (
     plan             VARCHAR(20)  NOT NULL DEFAULT 'FREE',       -- FREE/BASIC/PRO/PREMIUM
     credit           INT          NOT NULL DEFAULT 0,
     last_login_at    DATETIME     NULL,
+    dormant_at       DATETIME     NULL,                          -- 휴면 전환 시각
+    blocked_reason   VARCHAR(255) NULL,                          -- 관리자 차단 사유
+    blocked_until    DATETIME     NULL,                          -- 기간 차단 만료 시각(NULL이면 무기한/미차단)
+    deleted_at       DATETIME     NULL,                          -- 탈퇴/삭제 처리 시각
+    status_changed_at DATETIME    NULL,                          -- 회원 상태 마지막 변경 시각
+    status_changed_by BIGINT      NULL,                          -- 상태를 변경한 관리자 id, 시스템 변경이면 NULL
+    failed_login_count INT        NOT NULL DEFAULT 0,             -- 연속 로그인 실패 횟수
+    last_failed_login_at DATETIME NULL,                           -- 마지막 로그인 실패 시각
     created_at       DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at       DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     PRIMARY KEY (id),
-    UNIQUE KEY uk_users_email (email)
+    UNIQUE KEY uk_users_email (email),
+    KEY idx_users_status (status),
+    KEY idx_users_status_changed_by (status_changed_by),
+    CONSTRAINT fk_users_status_changed_by FOREIGN KEY (status_changed_by) REFERENCES users (id) ON DELETE SET NULL
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci;
 
 -- 한 유저가 여러 소셜 계정 연동 가능 (provider별 1개)
@@ -66,11 +77,56 @@ CREATE TABLE IF NOT EXISTS refresh_token (
     token       VARCHAR(512) NOT NULL,
     expired_at  DATETIME     NOT NULL,
     revoked     TINYINT(1)   NOT NULL DEFAULT 0,
+    revoked_at  DATETIME     NULL,
+    ip_address  VARCHAR(45)  NULL,
+    user_agent  VARCHAR(500) NULL,
     created_at  DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (id),
     UNIQUE KEY uk_refresh_token_token (token),
     KEY idx_refresh_token_user (user_id),
     CONSTRAINT fk_refresh_token_user FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci;
+
+-- 로그인/로그아웃/토큰 갱신 감사 로그.
+-- user_id는 실패 로그인처럼 사용자를 특정하지 못하는 이벤트를 위해 NULL 허용.
+CREATE TABLE IF NOT EXISTS user_login_history (
+    id               BIGINT       NOT NULL AUTO_INCREMENT,
+    user_id          BIGINT       NULL,
+    event_type       VARCHAR(20)  NOT NULL,                      -- LOGIN/LOGOUT/REFRESH
+    auth_provider    VARCHAR(20)  NOT NULL DEFAULT 'LOCAL',      -- LOCAL/KAKAO/NAVER/GOOGLE
+    login_method     VARCHAR(20)  NULL,                          -- EMAIL/OAUTH/REFRESH_TOKEN
+    login_identifier VARCHAR(255) NULL,                          -- 사용자가 입력한 이메일 등
+    success          TINYINT(1)   NOT NULL,
+    fail_reason      VARCHAR(50)  NULL,                          -- USER_NOT_FOUND/WRONG_PASSWORD/BLOCKED 등
+    ip_address       VARCHAR(45)  NULL,
+    user_agent       VARCHAR(500) NULL,
+    request_uri      VARCHAR(255) NULL,
+    created_at       DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (id),
+    KEY idx_user_login_history_user (user_id),
+    KEY idx_user_login_history_created (created_at),
+    KEY idx_user_login_history_success (success),
+    CONSTRAINT fk_user_login_history_user FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE SET NULL
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci;
+
+-- 관리자/시스템이 회원 상태를 바꾼 이력.
+-- users.status의 현재값만으로는 과거 차단/휴면/해제 사유를 알 수 없으므로 별도 로그로 남긴다.
+CREATE TABLE IF NOT EXISTS user_status_history (
+    id              BIGINT       NOT NULL AUTO_INCREMENT,
+    user_id         BIGINT       NOT NULL,
+    actor_user_id   BIGINT       NULL,
+    previous_status VARCHAR(20)  NULL,
+    new_status      VARCHAR(20)  NOT NULL,
+    reason          VARCHAR(255) NULL,
+    memo            TEXT         NULL,
+    blocked_until   DATETIME     NULL,
+    created_at      DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (id),
+    KEY idx_user_status_history_user (user_id),
+    KEY idx_user_status_history_actor (actor_user_id),
+    KEY idx_user_status_history_created (created_at),
+    CONSTRAINT fk_user_status_history_user FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE,
+    CONSTRAINT fk_user_status_history_actor FOREIGN KEY (actor_user_id) REFERENCES users (id) ON DELETE SET NULL
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci;
 
 -- =====================================================================
