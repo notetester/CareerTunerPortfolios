@@ -55,8 +55,5 @@ yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
 
-# ----- Docs (internal work notes) -----
-docs/
-
 # ----- Claude Code -----
 .claude/
