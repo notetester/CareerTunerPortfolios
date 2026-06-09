@@ -1,5 +1,6 @@
 package com.careertuner.analysis.service;
 
+import java.time.LocalDateTime;
 import java.util.List;
 
 import org.springframework.stereotype.Service;
@@ -41,6 +42,7 @@ public class CareerAnalysisRunService {
                 .tokenUsage(usage.totalTokens())
                 .errorMessage(errorMessage)
                 .retryable(retryable)
+                .createdAt(LocalDateTime.now())
                 .build();
         mapper.insert(run);
         mapper.insertAiUsageLog(
