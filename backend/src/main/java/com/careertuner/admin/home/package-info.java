@@ -1,11 +1,14 @@
 /**
- * 관리자 홈 영역(C 담당) — 통합 결정 메모.
+ * 관리자 홈(C 담당) — 운영자가 "지금 처리할 것"을 보는 작업 진입점.
  *
- * <p>관리자 홈/대시보드 운영 지표는 분석 계열 명명 통일 규칙(FEATURE_OWNERSHIP "분석 계열 명명 규칙": 관리자
- * 통계·집계는 {@code analytics})에 따라 {@code com.careertuner.admin.analytics}의 통합 대시보드
- * (GET /api/admin/analytics/summary, 화면 /admin)로 제공한다.
- *
- * <p>동일 데이터를 노출하는 admin/home 전용 엔드포인트는 중복과 병합 충돌 표면을 줄이기 위해 두지 않는다.
- * 관리자 홈을 analytics와 분리해야 할 요구가 생기면 회의에서 결정한 뒤 이 패키지에 controller/service를 추가한다.
+ * <p>이름 근거(왜 home인가): 사용자 영역의 {@code home}(로그인 후 할 일/진입점)과 짝을 이루는 관리자 화면이다.
+ * 같은 분석 계열이라도 역할이 다르므로 admin/analytics·admin/dashboard 와 구분한다.
+ * <ul>
+ *   <li>{@code admin/home}: 처리 대기 큐(적합도 분석 실패, 미분석 지원 건, 최근 신규 분석) + 운영 바로가기. "할 일" 중심.</li>
+ *   <li>{@code admin/dashboard}: 도메인 횡단 현황 카운트. "숫자/현황" 중심.</li>
+ *   <li>{@code admin/analytics}: 분석·AI 깊은 통계(점수 분포, 부족 역량, 사용량 추이). "분석 통계" 중심.</li>
+ * </ul>
+ * GET /api/admin/home/summary 제공. 명명 규칙은 docs/FEATURE_MODULE_STRUCTURE.md "2.1 분석 계열 명명 규칙" 참조.
+ * (규칙은 절대 강제가 아니며, 필요 시 이유를 남기고 조정한다.)
  */
 package com.careertuner.admin.home;

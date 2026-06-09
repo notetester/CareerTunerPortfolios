@@ -1,10 +1,15 @@
 /**
- * 관리자 대시보드 영역(C 담당) — 통합 결정 메모.
+ * 관리자 대시보드(C 담당) — 운영 종합 현황(도메인 횡단 KPI).
  *
- * <p>관리자 대시보드(운영 통계/요약)는 {@code com.careertuner.admin.analytics}의
- * GET /api/admin/analytics/summary 와 화면 /admin(AdminDashboardPage)으로 통일해 제공한다.
- * (FEATURE_OWNERSHIP "분석 계열 명명 규칙": 관리자 통계·집계는 analytics로 통일)
- *
- * <p>중복 엔드포인트를 피하기 위해 admin/dashboard 전용 API는 두지 않는다. 분리가 필요하면 회의 후 추가한다.
+ * <p>이름 근거(왜 dashboard인가): 사용자 영역의 {@code dashboard}(전체 준비 현황)와 짝을 이루는 관리자 화면이다.
+ * 분석에 한정된 {@code admin/analytics}와 달리, 회원·지원 건·적합도 분석·면접·AI 사용 등 여러 도메인의 카운트를
+ * 한 화면에 모은 운영자 랜딩이다.
+ * <ul>
+ *   <li>{@code admin/dashboard}: 도메인 횡단 현황 카운트. "숫자/현황" 중심.</li>
+ *   <li>{@code admin/analytics}: 분석·AI 깊은 통계. "분석 통계" 중심.</li>
+ *   <li>{@code admin/home}: 처리 대기 큐 + 바로가기. "할 일" 중심.</li>
+ * </ul>
+ * GET /api/admin/dashboard/overview 제공. 모든 카운트는 읽기 전용 집계로 타 도메인 데이터를 수정하지 않는다.
+ * 명명 규칙은 docs/FEATURE_MODULE_STRUCTURE.md "2.1 분석 계열 명명 규칙" 참조.
  */
 package com.careertuner.admin.dashboard;

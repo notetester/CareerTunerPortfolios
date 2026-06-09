@@ -67,6 +67,18 @@
 `backend/src/main/java/com/careertuner/admin/prompt/fitanalysis`를 사용한다. 관리자 분석 통계 프롬프트는
 `frontend/src/admin/features/prompts/analytics`와 `backend/src/main/java/com/careertuner/admin/prompt/analytics`를 사용한다.
 
+### 관리자 분석 인접 영역 구분 (analytics / dashboard / home)
+
+`analytics`로 "통일"한다는 규칙은 **관리자 통계 개념의 이름**을 통일하라는 뜻이지(예: `admin/analysis`, `analysisStats` 금지), 관리자 화면을 하나로 합치라는 뜻이 아니다. C의 관리자 영역은 역할이 달라 아래 셋을 구분해 둔다. 사용자 영역의 `home`/`dashboard`/`analysis`와 운영 측면에서 짝을 이룬다.
+
+| 폴더 | 역할(왜 이 이름인가) | 대표 경로 |
+| --- | --- | --- |
+| `admin/analytics` | 분석·AI **깊은 통계**(점수 분포, 부족 역량, 사용량 추이). 사용자 `analysis`의 운영 통계 짝. | `/api/admin/analytics/summary` |
+| `admin/dashboard` | 도메인 횡단 **운영 현황 카운트**(회원/지원 건/분석/면접/AI). 사용자 `dashboard`의 운영 짝, 운영자 랜딩. | `/api/admin/dashboard/overview` |
+| `admin/home` | 운영자 **작업 진입점/대기 큐**(분석 실패·미분석·최근 분석) + 바로가기. 사용자 `home`의 운영 짝. | `/api/admin/home/summary` |
+
+이 표는 절대 규칙이 아니라 "왜 이런 이름이 있는지" 혼선을 줄이기 위한 기록이다. 개발하며 더 나은 경계가 보이면 사유를 남기고 이름/범위를 조정한다.
+
 ## 3. 프런트엔드 표준 구조
 
 사용자 기능:
