@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.careertuner.admin.dashboard.mapper.AdminDashboardMapper">
+
+    <!-- 운영 종합 대시보드: 도메인 횡단 읽기 전용 COUNT. 다른 도메인 테이블은 집계 목적의 읽기만 한다. -->
+
+    <select id="countUsers" resultType="int">
+        SELECT COUNT(*) FROM users
+    </select>
+
+    <select id="countActiveUsers" resultType="int">
+        SELECT COUNT(*) FROM users WHERE status = 'ACTIVE'
+    </select>
+
+    <select id="countApplications" resultType="int">
+        SELECT COUNT(*) FROM application_case WHERE deleted_at IS NULL
+    </select>
+
+    <select id="countFitAnalyses" resultType="int">
+        SELECT COUNT(*) FROM fit_analysis
+    </select>
+
+    <select id="countInterviewSessions" resultType="int">
+        SELECT COUNT(*) FROM interview_session
+    </select>
+
+    <select id="countAiCallsThisMonth" resultType="int">
+        SELECT COUNT(*) FROM ai_usage_log
+        WHERE created_at &gt;= DATE_FORMAT(CURRENT_DATE, '%Y-%m-01')
+    </select>
+</mapper>

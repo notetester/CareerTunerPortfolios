@@ -1,4 +1,6 @@
 import { AdminDashboardPage } from "./pages/AdminDashboard";
+import { AdminOpsDashboardPage } from "./features/dashboard/pages/AdminOpsDashboardPage";
+import { AdminHomePage } from "./features/home/pages/AdminHomePage";
 import { AdminApplicationCasesPage } from "./features/application-cases/pages/AdminApplicationCasesPage";
 import { AdminCompanyAnalysisPage } from "./features/company-analysis/pages/AdminCompanyAnalysisPage";
 import { AdminAiUsagePage } from "./features/job-analysis/pages/AdminAiUsagePage";
@@ -12,6 +14,8 @@ import AdminInquiries from "./features/support-tickets/pages/AdminInquiries";
 
 export const adminRoutes = [
   { path: "admin", Component: AdminDashboardPage },
+  { path: "admin/home", Component: AdminHomePage },
+  { path: "admin/dashboard", Component: AdminOpsDashboardPage },
   { path: "admin/users", Component: AdminDashboardPage },
   { path: "admin/payments", Component: AdminDashboardPage },
   { path: "admin/application-cases", Component: AdminApplicationCasesPage },
