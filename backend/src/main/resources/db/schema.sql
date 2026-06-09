@@ -379,4 +379,275 @@ CREATE TABLE IF NOT EXISTS ai_usage_log (
     CONSTRAINT fk_ai_usage_case FOREIGN KEY (application_case_id) REFERENCES application_case (id) ON DELETE SET NULL
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci;
 
+-- 커뮤니티 테이블 변경 (06-09)
+CREATE TABLE IF NOT EXISTS community_post (
+    id             BIGINT       NOT NULL AUTO_INCREMENT,
+    user_id        BIGINT       NOT NULL,
+    category       VARCHAR(30)  NOT NULL,
+    title          VARCHAR(255) NOT NULL,
+    content        MEDIUMTEXT   NOT NULL,
+    company_name   VARCHAR(255) NULL,
+    job_title      VARCHAR(255) NULL,
+    interview_type VARCHAR(30)  NULL,
+    difficulty     VARCHAR(20)  NULL,
+    status         VARCHAR(20)  NOT NULL DEFAULT 'PUBLISHED',
+    tags_json      JSON         NULL,
+    is_anonymous   TINYINT(1)   NOT NULL DEFAULT 1,
+    view_count     INT          NOT NULL DEFAULT 0,
+    comment_count  INT          NOT NULL DEFAULT 0,
+    like_count     INT          NOT NULL DEFAULT 0,
+    bookmark_count INT          NOT NULL DEFAULT 0,
+    created_at     DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at     DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    PRIMARY KEY (id),
+    KEY idx_community_post_user (user_id),
+    KEY idx_community_post_cat_status_created (category, status, created_at DESC),
+    KEY idx_community_post_cat_like (category, status, like_count DESC),
+    CONSTRAINT fk_community_post_user FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
+    ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci;
+
+
+-- AI요약 , 면접 질문 추출 , 실제 인터뷰 인증 마크 위해 면접후기 테이블 따로 생성
+CREATE TABLE IF NOT EXISTS community_interview_review (
+    post_id                   BIGINT        NOT NULL,
+    application_case_id       BIGINT        NULL,
+    company_name              VARCHAR(255)  NOT NULL,
+    job_role                  VARCHAR(255)  NOT NULL,
+    interview_type            VARCHAR(30)   NULL,
+    difficulty                TINYINT       NULL,
+    interview_date            DATE          NULL,
+    result_status             VARCHAR(20)   NULL,
+    questions_json            JSON          NULL,
+    ai_summary_json           JSON          NULL,
+    ai_extracted_questions    JSON          NULL,
+    verification_status       VARCHAR(20)   NOT NULL DEFAULT 'NONE',
+    verification_evidence_url VARCHAR(512)  NULL,
+    verification_confidence   DECIMAL(5,4)  NULL,
+    verified_at               DATETIME      NULL,
+    created_at                DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (post_id),
+    KEY idx_interview_review_company (company_name),
+    KEY idx_interview_review_role (job_role),
+    CONSTRAINT fk_interview_review_post
+    FOREIGN KEY (post_id) REFERENCES community_post (id) ON DELETE CASCADE
+    ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci;
+
+
+-- 게시글 댓글
+CREATE TABLE IF NOT EXISTS community_comment (
+
+    id           BIGINT       NOT NULL AUTO_INCREMENT,
+    post_id      BIGINT       NOT NULL,
+    user_id      BIGINT       NOT NULL,
+    parent_id    BIGINT       NULL,
+    content      MEDIUMTEXT   NOT NULL,
+    is_anonymous TINYINT(1)   NOT NULL DEFAULT 1,
+    status       VARCHAR(20)  NOT NULL DEFAULT 'PUBLISHED',
+    like_count   INT          NOT NULL DEFAULT 0,
+    created_at   DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at   DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    PRIMARY KEY (id),
+    KEY idx_comment_post (post_id),
+    KEY idx_comment_parent (parent_id),
+    CONSTRAINT fk_comment_post   FOREIGN KEY (post_id)   REFERENCES community_post (id)      ON DELETE CASCADE,
+    CONSTRAINT fk_comment_user   FOREIGN KEY (user_id)   REFERENCES users (id)                ON DELETE CASCADE,
+    CONSTRAINT fk_comment_parent FOREIGN KEY (parent_id) REFERENCES community_comment (id)    ON DELETE CASCADE
+    ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci;
+
+-- 게시글 좋아요 반응
+CREATE TABLE IF NOT EXISTS post_reaction (
+    id             BIGINT       NOT NULL AUTO_INCREMENT,
+    user_id        BIGINT       NOT NULL,
+    post_id        BIGINT       NOT NULL,
+    reaction_type  VARCHAR(20)  NOT NULL,
+    created_at     DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (id),
+    UNIQUE KEY uk_post_reaction (user_id, post_id, reaction_type),
+    KEY idx_pr_post (post_id),
+    CONSTRAINT fk_pr_user FOREIGN KEY (user_id) REFERENCES users (id)          ON DELETE CASCADE,
+    CONSTRAINT fk_pr_post FOREIGN KEY (post_id) REFERENCES community_post (id) ON DELETE CASCADE
+    ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci;
+-- 댓글 좋아요 반응
+CREATE TABLE IF NOT EXISTS comment_reaction (
+    id             BIGINT       NOT NULL AUTO_INCREMENT,
+    user_id        BIGINT       NOT NULL,
+    comment_id     BIGINT       NOT NULL,
+    reaction_type  VARCHAR(20)  NOT NULL,
+    created_at     DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (id),
+    UNIQUE KEY uk_comment_reaction (user_id, comment_id, reaction_type),
+    KEY idx_cr_comment (comment_id),
+    CONSTRAINT fk_cr_user    FOREIGN KEY (user_id)    REFERENCES users (id)              ON DELETE CASCADE,
+    CONSTRAINT fk_cr_comment FOREIGN KEY (comment_id) REFERENCES community_comment (id)  ON DELETE CASCADE
+    ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci;
+
+
+-- 게시글 신고
+CREATE TABLE IF NOT EXISTS post_report (
+    id             BIGINT        NOT NULL AUTO_INCREMENT,
+    reporter_id    BIGINT        NULL,
+    post_id        BIGINT        NOT NULL,
+    reason         VARCHAR(50)   NOT NULL,
+    detail         VARCHAR(500)  NULL,
+    status         VARCHAR(20)   NOT NULL DEFAULT 'PENDING',
+    action_taken   VARCHAR(20)   NULL,
+    ai_label       VARCHAR(50)   NULL,
+    ai_confidence  DECIMAL(5,4)  NULL,
+    admin_id       BIGINT        NULL,
+    resolved_at    DATETIME      NULL,
+    created_at     DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (id),
+    UNIQUE KEY uk_post_report (reporter_id, post_id),
+    KEY idx_pr_post_status (post_id, status),
+    KEY idx_pr_status (status),
+    CONSTRAINT fk_pr_reporter FOREIGN KEY (reporter_id) REFERENCES users (id)          ON DELETE SET NULL,
+    CONSTRAINT fk_pr_rpost    FOREIGN KEY (post_id)     REFERENCES community_post (id) ON DELETE CASCADE
+    ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci;
+
+-- 댓글 신고
+CREATE TABLE IF NOT EXISTS comment_report (
+    id             BIGINT        NOT NULL AUTO_INCREMENT,
+    reporter_id    BIGINT        NULL,
+    comment_id     BIGINT        NOT NULL,
+    reason         VARCHAR(50)   NOT NULL,
+    detail         VARCHAR(500)  NULL,
+    status         VARCHAR(20)   NOT NULL DEFAULT 'PENDING',
+    action_taken   VARCHAR(20)   NULL,
+    ai_label       VARCHAR(50)   NULL,
+    ai_confidence  DECIMAL(5,4)  NULL,
+    admin_id       BIGINT        NULL,
+    resolved_at    DATETIME      NULL,
+    created_at     DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (id),
+    UNIQUE KEY uk_comment_report (reporter_id, comment_id),
+    KEY idx_cr_comment_status (comment_id, status),
+    KEY idx_cr_status (status),
+    CONSTRAINT fk_cr_reporter FOREIGN KEY (reporter_id) REFERENCES users (id)             ON DELETE SET NULL,
+    CONSTRAINT fk_cr_rcomment FOREIGN KEY (comment_id)  REFERENCES community_comment (id) ON DELETE CASCADE
+    ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci;
+
+CREATE TABLE IF NOT EXISTS community_tag (
+    id          BIGINT       NOT NULL AUTO_INCREMENT,
+    name        VARCHAR(50)  NOT NULL,
+    usage_count INT          NOT NULL DEFAULT 0,
+    created_at  DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (id),
+    UNIQUE KEY uk_tag_name (name)
+    ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci;
+-- 커뮤니티 태그
+CREATE TABLE IF NOT EXISTS community_post_tag (
+    post_id    BIGINT       NOT NULL,
+    tag_id     BIGINT       NOT NULL,
+    is_ai      TINYINT(1)   NOT NULL DEFAULT 0,
+    created_at DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (post_id, tag_id),
+    KEY idx_post_tag_tag (tag_id),
+    CONSTRAINT fk_post_tag_post FOREIGN KEY (post_id) REFERENCES community_post (id) ON DELETE CASCADE,
+    CONSTRAINT fk_post_tag_tag  FOREIGN KEY (tag_id)  REFERENCES community_tag (id)  ON DELETE CASCADE
+    ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci;
+
+--- 문의테이블
+CREATE TABLE IF NOT EXISTS notice (
+    id            BIGINT       NOT NULL AUTO_INCREMENT,
+    title         VARCHAR(255) NOT NULL,
+    content       MEDIUMTEXT   NOT NULL,
+    category      VARCHAR(30)  NULL,
+    status        VARCHAR(20)  NOT NULL DEFAULT 'DRAFT',
+    is_pinned     TINYINT(1)   NOT NULL DEFAULT 0,
+    thumbnail_url VARCHAR(512) NULL,
+    admin_id      BIGINT       NULL,
+    view_count    INT          NOT NULL DEFAULT 0,
+    published_at  DATETIME     NULL,
+    created_at    DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at    DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    PRIMARY KEY (id),
+    KEY idx_notice_list (status, is_pinned DESC, published_at DESC),
+    CONSTRAINT fk_notice_admin FOREIGN KEY (admin_id) REFERENCES users (id) ON DELETE SET NULL
+    ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci;
+
+--  faq / faq_media
+CREATE TABLE IF NOT EXISTS faq (
+    id           BIGINT       NOT NULL AUTO_INCREMENT,
+    question     VARCHAR(500) NOT NULL,
+    answer       MEDIUMTEXT   NOT NULL,
+    category     VARCHAR(30)  NOT NULL,
+    sort_order   INT          NOT NULL DEFAULT 0,
+    is_published TINYINT(1)   NOT NULL DEFAULT 1,
+    admin_id     BIGINT       NULL,
+    view_count   INT          NOT NULL DEFAULT 0,
+    created_at   DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at   DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    PRIMARY KEY (id),
+    KEY idx_faq_list (category, is_published, sort_order),
+    CONSTRAINT fk_faq_admin FOREIGN KEY (admin_id) REFERENCES users (id) ON DELETE SET NULL
+    ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci;
+-- 순서가 있는 여러장의 사진 , youtube 링크
+CREATE TABLE IF NOT EXISTS faq_media (
+    id          BIGINT        NOT NULL AUTO_INCREMENT,
+    faq_id      BIGINT        NOT NULL,
+    media_type  VARCHAR(20)   NOT NULL,
+    media_url   VARCHAR(512)  NOT NULL,
+    sort_order  INT           NOT NULL DEFAULT 0,
+    created_at  DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (id),
+    KEY idx_faq_media_faq (faq_id, sort_order),
+    CONSTRAINT fk_faq_media_faq FOREIGN KEY (faq_id) REFERENCES faq (id) ON DELETE CASCADE
+    ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci;
+
+-- 9. support_ticket
+CREATE TABLE IF NOT EXISTS support_ticket (
+    id         BIGINT       NOT NULL AUTO_INCREMENT,
+    user_id    BIGINT       NOT NULL,
+    subject    VARCHAR(255) NOT NULL,
+    category   VARCHAR(30)  NOT NULL,
+    status     VARCHAR(20)  NOT NULL DEFAULT 'RECEIVED',
+    priority   VARCHAR(10)  NOT NULL DEFAULT 'NORMAL',
+    created_at DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    PRIMARY KEY (id),
+    KEY idx_ticket_user (user_id, created_at DESC),
+    KEY idx_ticket_status (status, priority, created_at),
+    CONSTRAINT fk_ticket_user FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
+    ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci;
+
+-- 10. support_ticket_message
+CREATE TABLE IF NOT EXISTS support_ticket_message (
+    id          BIGINT      NOT NULL AUTO_INCREMENT,
+    ticket_id   BIGINT      NOT NULL,
+    sender_type VARCHAR(20) NOT NULL,
+    sender_id   BIGINT      NULL,
+    content     MEDIUMTEXT  NOT NULL,
+    is_internal TINYINT(1)  NOT NULL DEFAULT 0,
+    created_at  DATETIME    NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (id),
+    KEY idx_ticket_msg_thread (ticket_id, created_at),
+    CONSTRAINT fk_ticket_msg_ticket FOREIGN KEY (ticket_id) REFERENCES support_ticket (id) ON DELETE CASCADE,
+    CONSTRAINT fk_ticket_msg_sender FOREIGN KEY (sender_id) REFERENCES users (id)          ON DELETE SET NULL
+    ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci;
+
+-- 11. notification link는 백엔드에서 주입
+CREATE TABLE IF NOT EXISTS notification (
+    id          BIGINT       NOT NULL AUTO_INCREMENT,
+    user_id     BIGINT       NOT NULL,
+    actor_id    BIGINT       NULL,
+    type        VARCHAR(40)  NOT NULL,
+    target_type VARCHAR(20)  NULL,
+    target_id   BIGINT       NULL,
+    title       VARCHAR(255) NOT NULL,
+    message     TEXT         NULL,
+    link        VARCHAR(512) NULL,
+    is_read     TINYINT(1)   NOT NULL DEFAULT 0,
+    read_at     DATETIME     NULL,
+    created_at  DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (id),
+    KEY idx_notification_user_unread (user_id, is_read, created_at DESC),
+    KEY idx_notification_user_type (user_id, type, created_at DESC),
+    KEY idx_notification_target (target_type, target_id),
+    CONSTRAINT fk_notification_user  FOREIGN KEY (user_id)  REFERENCES users (id) ON DELETE CASCADE,
+    CONSTRAINT fk_notification_actor FOREIGN KEY (actor_id) REFERENCES users (id) ON DELETE SET NULL
+    ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci;
+
+
 SET FOREIGN_KEY_CHECKS = 1;
+
+
