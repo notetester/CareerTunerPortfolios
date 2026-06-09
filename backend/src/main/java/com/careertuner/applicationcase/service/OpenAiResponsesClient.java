@@ -271,7 +271,7 @@ public class OpenAiResponsesClient {
         }
         try {
             return objectMapper.writeValueAsString(value);
-        } catch (JsonProcessingException ex) {
+        } catch (JacksonException ex) {
             return defaultValue;
         }
     }
