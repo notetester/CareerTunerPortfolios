@@ -14,11 +14,10 @@ import com.careertuner.fitanalysis.domain.FitAnalysisGenerationSource;
 import com.careertuner.fitanalysis.domain.FitAnalysisResult;
 import com.careertuner.fitanalysis.dto.FitAnalysisDetailResponse;
 import com.careertuner.fitanalysis.mapper.FitAnalysisMapper;
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.core.type.TypeReference;
-import com.fasterxml.jackson.databind.ObjectMapper;
-
 import lombok.RequiredArgsConstructor;
+import tools.jackson.core.JacksonException;
+import tools.jackson.core.type.TypeReference;
+import tools.jackson.databind.ObjectMapper;
 
 @Service
 @RequiredArgsConstructor
@@ -95,7 +94,7 @@ public class FitAnalysisServiceImpl implements FitAnalysisService {
             List<String> values = objectMapper.readValue(json, new TypeReference<List<String>>() {
             });
             return values == null ? List.of() : values;
-        } catch (JsonProcessingException ex) {
+        } catch (JacksonException ex) {
             return List.of();
         }
     }
@@ -103,7 +102,7 @@ public class FitAnalysisServiceImpl implements FitAnalysisService {
     private String toJson(List<String> values) {
         try {
             return objectMapper.writeValueAsString(values == null ? List.of() : values);
-        } catch (JsonProcessingException ex) {
+        } catch (JacksonException ex) {
             return "[]";
         }
     }

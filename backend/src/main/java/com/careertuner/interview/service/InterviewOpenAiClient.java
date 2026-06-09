@@ -19,9 +19,9 @@ import com.careertuner.applicationcase.service.OpenAiProperties;
 import com.careertuner.common.exception.BusinessException;
 import com.careertuner.common.exception.ErrorCode;
 import com.careertuner.interview.ai.prompt.InterviewPromptCatalog;
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
+import tools.jackson.core.JacksonException;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.ObjectMapper;
 
 /**
  * 면접 도메인 전용 OpenAI Responses API 클라이언트.
@@ -36,9 +36,9 @@ public class InterviewOpenAiClient {
     private final ObjectMapper objectMapper;
     private final HttpClient httpClient;
 
-    public InterviewOpenAiClient(OpenAiProperties properties) {
+    public InterviewOpenAiClient(OpenAiProperties properties, ObjectMapper objectMapper) {
         this.properties = properties;
-        this.objectMapper = new ObjectMapper();
+        this.objectMapper = objectMapper;
         this.httpClient = HttpClient.newBuilder()
                 .connectTimeout(properties.getTimeout())
                 .build();
@@ -169,7 +169,7 @@ public class InterviewOpenAiClient {
             throw new BusinessException(ErrorCode.INTERNAL_ERROR, "OpenAI 요청에 실패했습니다.");
         } catch (BusinessException ex) {
             throw ex;
-        } catch (JsonProcessingException ex) {
+        } catch (JacksonException ex) {
             throw new BusinessException(ErrorCode.INTERNAL_ERROR, "OpenAI 요청을 구성하지 못했습니다.");
         } catch (InterruptedException ex) {
             Thread.currentThread().interrupt();
@@ -207,7 +207,7 @@ public class InterviewOpenAiClient {
         }
         try {
             return objectMapper.readTree(text);
-        } catch (JsonProcessingException ex) {
+        } catch (JacksonException ex) {
             throw new BusinessException(ErrorCode.INTERNAL_ERROR, "AI 응답이 JSON 형식이 아닙니다.");
         }
     }
@@ -309,7 +309,7 @@ public class InterviewOpenAiClient {
             JsonNode root = objectMapper.readTree(body);
             String message = root.path("error").path("message").asText("");
             return message.isBlank() ? body : message;
-        } catch (JsonProcessingException ex) {
+        } catch (JacksonException ex) {
             return body;
         }
     }
