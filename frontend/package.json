@@ -8,8 +8,10 @@
     "build": "vite build",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
+    "dev:mock": "vite --mode mock",
+    "build:mock": "vite build --mode mock",
     "gen:icons": "node scripts/generate-icons.mjs",
-    "mobile:sync": "vite build && cap sync android",
+    "mobile:sync": "vite build --mode mock && cap sync android",
     "mobile:apk": "cd android && gradlew assembleDebug"
   },
   "dependencies": {
