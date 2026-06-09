@@ -18,6 +18,8 @@ import com.careertuner.analysis.dto.AnalysisApplicationSummaryResponse;
 import com.careertuner.analysis.dto.AnalysisScorePointResponse;
 import com.careertuner.analysis.dto.AnalysisStatResponse;
 import com.careertuner.analysis.dto.AnalysisSummaryResponse;
+import com.careertuner.analysis.dto.CareerAnalysisRunResponse;
+import com.careertuner.analysis.dto.InterviewTrendResponse;
 import com.careertuner.analysis.dto.JobReadinessResponse;
 import com.careertuner.analysis.dto.SkillGapResponse;
 import com.careertuner.analysis.mapper.AnalysisMapper;
@@ -35,10 +37,11 @@ public class AnalysisServiceImpl implements AnalysisService {
 
     private final AnalysisMapper analysisMapper;
     private final CareerTrendAiService careerTrendAiService;
+    private final CareerAnalysisRunService careerAnalysisRunService;
     private final ObjectMapper objectMapper;
 
     @Override
-    @Transactional(readOnly = true)
+    @Transactional
     public AnalysisSummaryResponse getSummary(Long userId) {
         List<AnalysisSource> sources = analysisMapper.findSourcesByUserId(userId);
         List<AnalysisSource> analyzed = sources.stream()
@@ -51,8 +54,24 @@ public class AnalysisServiceImpl implements AnalysisService {
         List<AnalysisScorePointResponse> scoreHistory = scoreHistory(analyzed);
 
         // 장기 경향 요약(16)과 다음 지원 방향(17)은 AI seam(현재 mock)으로 위임한다. 키 주입 시 실 AI로 교체.
-        CareerTrendAiResult ai = careerTrendAiService.generate(
-                new CareerTrendAiCommand(stats, skillGaps, jobReadiness, scoreHistory, bestStrategy(analyzed)));
+        InterviewTrendResponse interviewTrend = interviewTrend(sources);
+        CareerTrendAiCommand command = new CareerTrendAiCommand(
+                stats,
+                skillGaps,
+                jobReadiness,
+                scoreHistory,
+                interviewTrend,
+                bestStrategy(analyzed));
+        CareerTrendAiResult ai = careerTrendAiService.generate(command);
+        CareerAnalysisRunResponse run = careerAnalysisRunService.record(
+                userId,
+                "CAREER_TREND",
+                command,
+                Map.of("trendSummary", ai.trendSummary(), "recommendedDirections", ai.recommendedDirections()),
+                ai.usage(),
+                ai.status(),
+                ai.errorMessage(),
+                ai.retryable());
 
         return new AnalysisSummaryResponse(
                 stats,
@@ -61,7 +80,43 @@ public class AnalysisServiceImpl implements AnalysisService {
                 scoreHistory,
                 sources.stream().map(AnalysisApplicationSummaryResponse::from).toList(),
                 ai.recommendedDirections(),
-                ai.trendSummary());
+                ai.trendSummary(),
+                interviewTrend,
+                run);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<CareerAnalysisRunResponse> getHistory(Long userId) {
+        return careerAnalysisRunService.listByUserId(userId);
+    }
+
+    private static InterviewTrendResponse interviewTrend(List<AnalysisSource> sources) {
+        int totalSessions = sources.stream().mapToInt(AnalysisSource::getInterviewCount).sum();
+        int totalAnswers = sources.stream().mapToInt(AnalysisSource::getInterviewAnswerCount).sum();
+        int averageSessions = weightedAverage(
+                sources,
+                AnalysisSource::getInterviewCount,
+                AnalysisSource::getAverageInterviewScore);
+        int averageAnswers = weightedAverage(
+                sources,
+                AnalysisSource::getInterviewAnswerCount,
+                AnalysisSource::getAverageInterviewAnswerScore);
+        return new InterviewTrendResponse(totalSessions, averageSessions, totalAnswers, averageAnswers);
+    }
+
+    private static int weightedAverage(List<AnalysisSource> sources,
+                                       java.util.function.ToIntFunction<AnalysisSource> count,
+                                       java.util.function.Function<AnalysisSource, Integer> average) {
+        int total = sources.stream().mapToInt(count).sum();
+        if (total == 0) {
+            return 0;
+        }
+        int sum = sources.stream()
+                .filter(source -> average.apply(source) != null)
+                .mapToInt(source -> count.applyAsInt(source) * average.apply(source))
+                .sum();
+        return (int) Math.round(sum / (double) total);
     }
 
     private static AnalysisStatResponse stats(List<AnalysisSource> sources, List<AnalysisSource> analyzed) {

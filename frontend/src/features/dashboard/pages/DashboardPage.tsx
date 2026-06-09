@@ -143,9 +143,12 @@ export function DashboardPage() {
               )}
             </p>
             {summary?.aiSummary && (
-              <p className="mt-3 rounded-lg bg-blue-50 px-3 py-2 text-sm text-blue-800">
-                <strong className="font-semibold">AI 요약</strong> · {summary.aiSummary}
-              </p>
+              <div className="mt-3 rounded-lg bg-blue-50 px-3 py-2 text-sm text-blue-800">
+                <p><strong className="font-semibold">AI 요약</strong> · {summary.aiSummary}</p>
+                <p className="mt-1 text-xs text-blue-600">
+                  {summary.analysisRun.model || "mock"} · {summary.analysisRun.status} · {new Date(summary.analysisRun.createdAt).toLocaleString("ko-KR")}
+                </p>
+              </div>
             )}
           </div>
           <Button

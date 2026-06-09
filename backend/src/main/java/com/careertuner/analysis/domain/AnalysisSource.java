@@ -30,4 +30,9 @@ public class AnalysisSource {
     private String recommendedCertificates;
     private String strategy;
     private LocalDateTime analyzedAt;
+
+    private int interviewCount;
+    private Integer averageInterviewScore;
+    private int interviewAnswerCount;
+    private Integer averageInterviewAnswerScore;
 }

@@ -11,6 +11,8 @@ import java.util.Map;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import com.careertuner.analysis.dto.CareerAnalysisRunResponse;
+import com.careertuner.analysis.service.CareerAnalysisRunService;
 import com.careertuner.dashboard.ai.DashboardInsightAiCommand;
 import com.careertuner.dashboard.ai.DashboardInsightAiResult;
 import com.careertuner.dashboard.ai.DashboardInsightAiService;
@@ -38,10 +40,11 @@ public class DashboardServiceImpl implements DashboardService {
 
     private final DashboardMapper dashboardMapper;
     private final DashboardInsightAiService dashboardInsightAiService;
+    private final CareerAnalysisRunService careerAnalysisRunService;
     private final ObjectMapper objectMapper;
 
     @Override
-    @Transactional(readOnly = true)
+    @Transactional
     public DashboardSummaryResponse getSummary(Long userId) {
         DashboardUserSource user = dashboardMapper.findUserById(userId);
         List<DashboardApplicationSource> applications = dashboardMapper.findApplicationsByUserId(userId);
@@ -53,8 +56,17 @@ public class DashboardServiceImpl implements DashboardService {
         DashboardFocusResponse focus = focus(applications);
 
         // 대시보드 AI 요약(18)은 AI seam(현재 mock)으로 위임한다. 키 주입 시 실 AI로 교체.
-        DashboardInsightAiResult insight = dashboardInsightAiService.summarize(
-                new DashboardInsightAiCommand(stats, focus, skillGaps));
+        DashboardInsightAiCommand command = new DashboardInsightAiCommand(stats, focus, skillGaps);
+        DashboardInsightAiResult insight = dashboardInsightAiService.summarize(command);
+        CareerAnalysisRunResponse run = careerAnalysisRunService.record(
+                userId,
+                "DASHBOARD_SUMMARY",
+                command,
+                Map.of("summary", insight.summary()),
+                insight.usage(),
+                insight.status(),
+                insight.errorMessage(),
+                insight.retryable());
 
         return new DashboardSummaryResponse(
                 DashboardUserResponse.from(user),
@@ -69,7 +81,8 @@ public class DashboardServiceImpl implements DashboardService {
                         .map(DashboardActivityResponse::from)
                         .toList(),
                 skillGaps,
-                insight.summary());
+                insight.summary(),
+                run);
     }
 
     private DashboardStatsResponse stats(DashboardUserSource user,

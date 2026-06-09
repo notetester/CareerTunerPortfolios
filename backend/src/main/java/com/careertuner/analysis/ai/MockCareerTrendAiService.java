@@ -5,9 +5,11 @@ import java.util.List;
 
 import org.springframework.stereotype.Service;
 
+import com.careertuner.analysis.ai.provider.CareerAnalysisAiUsage;
 import com.careertuner.analysis.dto.AnalysisScorePointResponse;
 import com.careertuner.analysis.dto.AnalysisStatResponse;
 import com.careertuner.analysis.dto.JobReadinessResponse;
+import com.careertuner.analysis.dto.InterviewTrendResponse;
 import com.careertuner.analysis.dto.SkillGapResponse;
 
 /**
@@ -20,7 +22,13 @@ public class MockCareerTrendAiService implements CareerTrendAiService {
 
     @Override
     public CareerTrendAiResult generate(CareerTrendAiCommand command) {
-        return new CareerTrendAiResult(trendSummary(command), recommendedDirections(command));
+        return new CareerTrendAiResult(
+                trendSummary(command),
+                recommendedDirections(command),
+                CareerAnalysisAiUsage.mockUsage(),
+                "SUCCESS",
+                null,
+                false);
     }
 
     private String trendSummary(CareerTrendAiCommand command) {
@@ -53,6 +61,11 @@ public class MockCareerTrendAiService implements CareerTrendAiService {
             sb.append("적합도 점수는 %d회 분석 기준 %s%d점 변화했습니다(%d→%d)."
                     .formatted(history.size(), delta >= 0 ? "+" : "", delta, first, last));
         }
+        InterviewTrendResponse interview = command.interviewTrend();
+        if (interview != null && interview.totalSessions() > 0) {
+            sb.append(" 누적 모의면접은 %d회이며 평균 점수는 %d점입니다."
+                    .formatted(interview.totalSessions(), interview.averageSessionScore()));
+        }
         return sb.toString().trim();
     }
 
@@ -70,6 +83,9 @@ public class MockCareerTrendAiService implements CareerTrendAiService {
 
         if (command.bestStrategy() != null && !command.bestStrategy().isBlank()) {
             directions.add("가장 적합도가 높은 지원 건 전략: " + command.bestStrategy().trim());
+        }
+        if (command.interviewTrend() == null || command.interviewTrend().totalSessions() == 0) {
+            directions.add("관심 직무 지원 건으로 모의면접을 진행해 장기 경향 분석에 면접 데이터를 추가하세요.");
         }
 
         if (directions.isEmpty()) {

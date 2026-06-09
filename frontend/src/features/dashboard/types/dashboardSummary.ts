@@ -57,6 +57,17 @@ export interface DashboardSkillGap {
   percentage: number;
 }
 
+export interface DashboardAnalysisRun {
+  id: number;
+  analysisType: string;
+  status: "SUCCESS" | "FALLBACK" | "FAILED" | string;
+  model: string | null;
+  tokenUsage: number;
+  errorMessage: string | null;
+  retryable: boolean;
+  createdAt: string;
+}
+
 export interface DashboardSummary {
   user: DashboardUser;
   stats: DashboardStats;
@@ -67,4 +78,5 @@ export interface DashboardSummary {
   skillGaps: DashboardSkillGap[];
   /** 대시보드 AI 분석 결과 요약(C 담당 AI 18). 현재 백엔드 mock, API 키 주입 시 실 분석으로 전환. */
   aiSummary: string;
+  analysisRun: DashboardAnalysisRun;
 }

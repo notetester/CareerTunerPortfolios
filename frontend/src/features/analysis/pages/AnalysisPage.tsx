@@ -13,7 +13,7 @@ const analysisTabs = [
   { key: "trend", label: "내 지원 경향", icon: Briefcase },
   { key: "weakness", label: "자주 부족한 역량", icon: AlertCircle },
   { key: "readiness", label: "직무별 준비도", icon: Target },
-  { key: "score", label: "면접 점수 변화", icon: BarChart3 },
+  { key: "score", label: "적합도 점수 변화", icon: BarChart3 },
   { key: "recommendation", label: "추천 지원 방향", icon: BookOpen },
 ] as const;
 type AnalysisTab = (typeof analysisTabs)[number]["key"];
@@ -139,12 +139,17 @@ export function AnalysisPage() {
         )}
 
         {!loading && !error && stats && (
-          <div className="grid gap-3 md:grid-cols-4">
+          <div className="grid gap-3 md:grid-cols-5">
             {[
               { label: "전체 지원 건", value: `${stats.totalApplications}건`, helper: "등록된 지원 건" },
               { label: "분석 완료", value: `${stats.analyzedApplications}건`, helper: "AI 적합도 분석 기준" },
               { label: "평균 적합도", value: `${stats.averageFitScore}점`, helper: `${stats.highFitApplications}건은 70점 이상` },
               { label: "준비 완료", value: `${stats.readyApplications}건`, helper: "READY 또는 APPLIED 상태" },
+              {
+                label: "모의면접",
+                value: `${summary?.interviewTrend.totalSessions ?? 0}회`,
+                helper: `세션 평균 ${summary?.interviewTrend.averageSessionScore ?? 0}점 · 답변 평균 ${summary?.interviewTrend.averageAnswerScore ?? 0}점`,
+              },
             ].map((item) => (
               <Card key={item.label} className="border border-slate-200 bg-white">
                 <CardContent className="p-4">
@@ -166,6 +171,11 @@ export function AnalysisPage() {
               </div>
               <div>
                 <div className="font-bold text-blue-900 mb-2">AI 장기 취업 전략 리포트</div>
+                {summary?.analysisRun && (
+                  <div className="mb-2 text-xs text-blue-600">
+                    {summary.analysisRun.model || "mock"} · {summary.analysisRun.status} · {new Date(summary.analysisRun.createdAt).toLocaleString("ko-KR")}
+                  </div>
+                )}
                 <p className="text-sm text-blue-700 mb-3">
                   {summary?.trendSummary
                     ? summary.trendSummary
@@ -260,7 +270,7 @@ export function AnalysisPage() {
             <CardHeader>
               <CardTitle className="text-base flex items-center gap-2">
                 <BarChart3 className="size-4 text-purple-600" />
-                면접 점수 변화
+                적합도 점수 변화
               </CardTitle>
             </CardHeader>
             <CardContent>
