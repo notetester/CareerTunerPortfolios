@@ -107,6 +107,7 @@ CREATE TABLE IF NOT EXISTS application_case (
     company_name  VARCHAR(255) NOT NULL,
     job_title     VARCHAR(255) NOT NULL,
     posting_date  DATE NULL,
+    deadline_date DATE NULL,
     source_type   VARCHAR(20) NOT NULL DEFAULT 'TEXT',     -- TEXT/PDF/IMAGE/URL/MANUAL
     status        VARCHAR(20) NOT NULL DEFAULT 'DRAFT',    -- DRAFT/ANALYZING/READY/APPLIED/CLOSED
     is_favorite   TINYINT(1) NOT NULL DEFAULT 0,
@@ -146,6 +147,8 @@ CREATE TABLE IF NOT EXISTS job_analysis (
     qualifications      MEDIUMTEXT NULL,
     difficulty          VARCHAR(20) NULL,                    -- EASY/NORMAL/HARD
     summary             MEDIUMTEXT NULL,
+    evidence            JSON NULL,
+    ambiguous_conditions JSON NULL,
     confirmed_at        DATETIME NULL,
     admin_memo          VARCHAR(2000) NULL,
     created_at          DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -167,6 +170,11 @@ CREATE TABLE IF NOT EXISTS company_analysis (
     competitors         JSON NULL,
     interview_points    MEDIUMTEXT NULL,
     sources             JSON NULL,
+    verified_facts      JSON NULL,
+    ai_inferences       JSON NULL,
+    source_type         VARCHAR(30) NOT NULL DEFAULT 'JOB_POSTING',
+    checked_at          DATETIME NULL,
+    refresh_recommended_at DATETIME NULL,
     confirmed_at        DATETIME NULL,
     admin_memo          VARCHAR(2000) NULL,
     created_at          DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,

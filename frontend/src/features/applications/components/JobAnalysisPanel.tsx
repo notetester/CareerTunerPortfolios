@@ -4,8 +4,10 @@ import { Button } from "@/app/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/app/components/ui/card";
 import { Input } from "@/app/components/ui/input";
 import { Textarea } from "@/app/components/ui/textarea";
-import type { JobAnalysis, JobAnalysisReviewRequest } from "../types/analysis";
+import type { BAnalysisFailureLog, JobAnalysis, JobAnalysisReviewRequest } from "../types/analysis";
 import { getDifficultyLabel, parseJsonStringArray } from "../types/analysis";
+import { AnalysisFailureNotice } from "./AnalysisFailureNotice";
+import { AnalysisStructuredText } from "./AnalysisStructuredText";
 
 interface JobAnalysisPanelProps {
   analysis: JobAnalysis | null;
@@ -13,6 +15,7 @@ interface JobAnalysisPanelProps {
   loading: boolean;
   generating: boolean;
   error: string | null;
+  failures: BAnalysisFailureLog[];
   onGenerate(): Promise<JobAnalysis | null>;
   onReview(analysisId: number, request: JobAnalysisReviewRequest): Promise<JobAnalysis | null>;
 }
@@ -48,6 +51,7 @@ export function JobAnalysisPanel({
   loading,
   generating,
   error,
+  failures,
   onGenerate,
   onReview,
 }: JobAnalysisPanelProps) {
@@ -116,6 +120,13 @@ export function JobAnalysisPanel({
         </div>
       </CardHeader>
       <CardContent className="space-y-4">
+        {!loading && (
+          <AnalysisFailureNotice
+            failures={failures}
+            featureType="JOB_ANALYSIS"
+          />
+        )}
+
         {loading ? (
           <div className="h-64 animate-pulse rounded-lg bg-slate-100" />
         ) : analysis ? (
@@ -154,6 +165,11 @@ export function JobAnalysisPanel({
             <div className="rounded-lg border border-blue-100 bg-blue-50 p-4">
               <div className="text-sm font-semibold text-blue-950">요약</div>
               <p className="mt-2 whitespace-pre-line text-sm leading-6 text-blue-900">{analysis.summary ?? "내용 없음"}</p>
+            </div>
+
+            <div className="grid gap-3 md:grid-cols-2">
+              <AnalysisStructuredText title="근거" value={analysis.evidence} />
+              <AnalysisStructuredText title="모호한 조건" value={analysis.ambiguousConditions} />
             </div>
 
             <div className="space-y-3 rounded-lg border border-slate-200 bg-slate-50 p-4">

@@ -103,6 +103,8 @@ export function AdminJobAnalysisPage() {
                   <div className="grid gap-3 md:grid-cols-2">
                     <TextBlock title="주요 업무" value={row.duties} />
                     <TextBlock title="자격 요건" value={row.qualifications} />
+                    <TextBlock title="근거" value={row.evidence} />
+                    <TextBlock title="모호한 조건" value={row.ambiguousConditions} />
                   </div>
                   <div className="space-y-2 rounded-lg border border-slate-200 bg-slate-50 p-3">
                     <div className="text-xs font-semibold text-slate-500">운영 메모</div>

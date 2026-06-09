@@ -63,6 +63,8 @@ public class OpenAiResponsesClient {
                 text(payload, "qualifications"),
                 normalizeDifficulty(text(payload, "difficulty")),
                 text(payload, "summary"),
+                json(payload, "evidence", "[]"),
+                json(payload, "ambiguousConditions", "[]"),
                 usage);
     }
 
@@ -87,6 +89,8 @@ public class OpenAiResponsesClient {
                 arrayJson(payload, "competitors"),
                 text(payload, "interviewPoints"),
                 arrayJson(payload, "sources"),
+                json(payload, "verifiedFacts", "[]"),
+                json(payload, "aiInferences", "[]"),
                 usage);
     }
 
@@ -260,6 +264,18 @@ public class OpenAiResponsesClient {
         }
     }
 
+    private String json(JsonNode node, String field, String defaultValue) {
+        JsonNode value = node.path(field);
+        if (value.isMissingNode() || value.isNull()) {
+            return defaultValue;
+        }
+        try {
+            return objectMapper.writeValueAsString(value);
+        } catch (JsonProcessingException ex) {
+            return defaultValue;
+        }
+    }
+
     private String normalizeDifficulty(String value) {
         return switch (value) {
             case "EASY", "NORMAL", "HARD" -> value;
@@ -277,9 +293,11 @@ public class OpenAiResponsesClient {
         properties.put("qualifications", stringSchema());
         properties.put("difficulty", Map.of("type", "string", "enum", List.of("EASY", "NORMAL", "HARD")));
         properties.put("summary", stringSchema());
+        properties.put("evidence", evidenceArraySchema());
+        properties.put("ambiguousConditions", ambiguousConditionsArraySchema());
         return objectSchema(properties, List.of(
                 "employmentType", "experienceLevel", "requiredSkills", "preferredSkills",
-                "duties", "qualifications", "difficulty", "summary"));
+                "duties", "qualifications", "difficulty", "summary", "evidence", "ambiguousConditions"));
     }
 
     private Map<String, Object> companyAnalysisSchema() {
@@ -290,8 +308,11 @@ public class OpenAiResponsesClient {
         properties.put("competitors", stringArraySchema());
         properties.put("interviewPoints", stringSchema());
         properties.put("sources", stringArraySchema());
+        properties.put("verifiedFacts", verifiedFactsArraySchema());
+        properties.put("aiInferences", aiInferencesArraySchema());
         return objectSchema(properties, List.of(
-                "companySummary", "recentIssues", "industry", "competitors", "interviewPoints", "sources"));
+                "companySummary", "recentIssues", "industry", "competitors", "interviewPoints", "sources",
+                "verifiedFacts", "aiInferences"));
     }
 
     private Map<String, Object> objectSchema(Map<String, Object> properties, List<String> required) {
@@ -309,6 +330,34 @@ public class OpenAiResponsesClient {
 
     private Map<String, Object> stringArraySchema() {
         return Map.of("type", "array", "items", Map.of("type", "string"));
+    }
+
+    private Map<String, Object> evidenceArraySchema() {
+        Map<String, Object> itemProperties = new LinkedHashMap<>();
+        itemProperties.put("field", stringSchema());
+        itemProperties.put("quote", stringSchema());
+        return Map.of("type", "array", "items", objectSchema(itemProperties, List.of("field", "quote")));
+    }
+
+    private Map<String, Object> ambiguousConditionsArraySchema() {
+        Map<String, Object> itemProperties = new LinkedHashMap<>();
+        itemProperties.put("condition", stringSchema());
+        itemProperties.put("assumption", stringSchema());
+        return Map.of("type", "array", "items", objectSchema(itemProperties, List.of("condition", "assumption")));
+    }
+
+    private Map<String, Object> verifiedFactsArraySchema() {
+        Map<String, Object> itemProperties = new LinkedHashMap<>();
+        itemProperties.put("fact", stringSchema());
+        itemProperties.put("source", stringSchema());
+        return Map.of("type", "array", "items", objectSchema(itemProperties, List.of("fact", "source")));
+    }
+
+    private Map<String, Object> aiInferencesArraySchema() {
+        Map<String, Object> itemProperties = new LinkedHashMap<>();
+        itemProperties.put("inference", stringSchema());
+        itemProperties.put("basis", stringSchema());
+        return Map.of("type", "array", "items", objectSchema(itemProperties, List.of("inference", "basis")));
     }
 
     private String errorMessage(String body) {
@@ -357,6 +406,8 @@ public class OpenAiResponsesClient {
             String qualifications,
             String difficulty,
             String summary,
+            String evidence,
+            String ambiguousConditions,
             Usage usage
     ) {
     }
@@ -368,6 +419,8 @@ public class OpenAiResponsesClient {
             String competitors,
             String interviewPoints,
             String sources,
+            String verifiedFacts,
+            String aiInferences,
             Usage usage
     ) {
     }

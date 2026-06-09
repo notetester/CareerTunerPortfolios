@@ -13,7 +13,7 @@ public final class CompanyAnalysisPromptCatalog {
             모든 결과는 한국어로 작성한다.
             """;
     public static final String SCHEMA_SUMMARY =
-            "companySummary, recentIssues, industry, competitors[], interviewPoints, sources[]";
+            "companySummary, recentIssues, industry, competitors[], interviewPoints, sources[], verifiedFacts[], aiInferences[]";
 
     private CompanyAnalysisPromptCatalog() {
     }

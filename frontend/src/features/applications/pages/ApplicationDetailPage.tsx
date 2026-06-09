@@ -26,6 +26,7 @@ import { LoginRequiredState } from "../components/LoginRequiredState";
 import { StrategyPanel } from "../components/StrategyPanel";
 import { useApplicationCase } from "../hooks/useApplicationCase";
 import { useApplicationCases } from "../hooks/useApplicationCases";
+import { useBAnalysisFailureLogs } from "../hooks/useBAnalysisFailureLogs";
 import { useCompanyAnalysis } from "../hooks/useCompanyAnalysis";
 import { useJobAnalysis } from "../hooks/useJobAnalysis";
 import { useJobPosting } from "../hooks/useJobPosting";
@@ -90,6 +91,10 @@ export function ApplicationDetailPage() {
     review: reviewCompanyAnalysis,
   } = useCompanyAnalysis(id, isAuthenticated && Boolean(applicationCase));
   const {
+    failureLogs: bFailureLogs,
+    refresh: refreshBFailureLogs,
+  } = useBAnalysisFailureLogs(id, isAuthenticated && Boolean(applicationCase));
+  const {
     analyses: fitAnalyses,
     loading: fitAnalysisLoading,
     generating: fitGenerating,
@@ -108,6 +113,18 @@ export function ApplicationDetailPage() {
     if (!id) return;
     await deleteApplicationCase(id);
     navigate("/applications");
+  };
+
+  const handleGenerateJobAnalysis = async () => {
+    const analysis = await generateJobAnalysis();
+    await refreshBFailureLogs();
+    return analysis;
+  };
+
+  const handleGenerateCompanyAnalysis = async () => {
+    const analysis = await generateCompanyAnalysis();
+    await refreshBFailureLogs();
+    return analysis;
   };
 
   if (authLoading) {
@@ -283,7 +300,8 @@ export function ApplicationDetailPage() {
                   loading={jobAnalysisLoading}
                   generating={jobAnalysisGenerating}
                   error={jobAnalysisError}
-                  onGenerate={generateJobAnalysis}
+                  failures={bFailureLogs}
+                  onGenerate={handleGenerateJobAnalysis}
                   onReview={reviewJobAnalysis}
                 />
               )}
@@ -295,7 +313,8 @@ export function ApplicationDetailPage() {
                   loading={companyAnalysisLoading}
                   generating={companyAnalysisGenerating}
                   error={companyAnalysisError}
-                  onGenerate={generateCompanyAnalysis}
+                  failures={bFailureLogs}
+                  onGenerate={handleGenerateCompanyAnalysis}
                   onReview={reviewCompanyAnalysis}
                 />
               )}

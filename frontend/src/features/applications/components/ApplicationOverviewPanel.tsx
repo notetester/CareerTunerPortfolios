@@ -51,6 +51,7 @@ interface BasicFormState {
   companyName: string;
   jobTitle: string;
   postingDate: string;
+  deadlineDate: string;
   sourceType: ApplicationSourceType;
 }
 
@@ -66,6 +67,7 @@ export function ApplicationOverviewPanel({
     companyName: applicationCase.companyName,
     jobTitle: applicationCase.jobTitle,
     postingDate: applicationCase.postingDate ?? "",
+    deadlineDate: applicationCase.deadlineDate ?? "",
     sourceType: applicationCase.sourceType,
   });
   const [error, setError] = useState<string | null>(null);
@@ -75,6 +77,7 @@ export function ApplicationOverviewPanel({
       companyName: applicationCase.companyName,
       jobTitle: applicationCase.jobTitle,
       postingDate: applicationCase.postingDate ?? "",
+      deadlineDate: applicationCase.deadlineDate ?? "",
       sourceType: applicationCase.sourceType,
     });
     setError(null);
@@ -109,6 +112,8 @@ export function ApplicationOverviewPanel({
       companyName,
       jobTitle,
       postingDate: form.postingDate || null,
+      deadlineDate: form.deadlineDate || null,
+      clearDeadlineDate: !form.deadlineDate,
       sourceType: form.sourceType,
     });
     setEditing(false);
@@ -205,7 +210,7 @@ export function ApplicationOverviewPanel({
                 </div>
               </div>
 
-              <div className="grid gap-4 sm:grid-cols-2">
+              <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
                 <div className="space-y-2">
                   <label className="text-sm font-semibold text-slate-700" htmlFor="detail-posting-date">
                     공고일
@@ -215,6 +220,19 @@ export function ApplicationOverviewPanel({
                     type="date"
                     value={form.postingDate}
                     onChange={(event) => setField("postingDate", event.target.value)}
+                    disabled={updating}
+                    className="bg-white"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-sm font-semibold text-slate-700" htmlFor="detail-deadline-date">
+                    마감일
+                  </label>
+                  <Input
+                    id="detail-deadline-date"
+                    type="date"
+                    value={form.deadlineDate}
+                    onChange={(event) => setField("deadlineDate", event.target.value)}
                     disabled={updating}
                     className="bg-white"
                   />
@@ -264,13 +282,20 @@ export function ApplicationOverviewPanel({
               </div>
             </div>
           ) : (
-            <div className="grid gap-3 sm:grid-cols-2">
+            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
               <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
                 <div className="mb-2 flex items-center gap-2 text-xs font-semibold text-slate-500">
                   <CalendarDays className="size-4" />
                   공고일
                 </div>
                 <div className="text-sm font-semibold text-slate-900">{formatDate(applicationCase.postingDate)}</div>
+              </div>
+              <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
+                <div className="mb-2 flex items-center gap-2 text-xs font-semibold text-slate-500">
+                  <CalendarDays className="size-4" />
+                  마감일
+                </div>
+                <div className="text-sm font-semibold text-slate-900">{formatDate(applicationCase.deadlineDate)}</div>
               </div>
               <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
                 <div className="mb-2 flex items-center gap-2 text-xs font-semibold text-slate-500">

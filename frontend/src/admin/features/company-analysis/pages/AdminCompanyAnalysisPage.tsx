@@ -95,8 +95,15 @@ export function AdminCompanyAnalysisPage() {
                   </div>
                 </CardHeader>
                 <CardContent className="space-y-3">
+                  <div className="grid gap-2 md:grid-cols-3">
+                    <MetaBlock label="출처 유형" value={row.sourceType ?? "-"} />
+                    <MetaBlock label="확인 시각" value={formatDateTime(row.checkedAt)} />
+                    <MetaBlock label="갱신 권장" value={formatDateTime(row.refreshRecommendedAt)} />
+                  </div>
                   <TextBlock title="기업 요약" value={row.companySummary} />
                   <TextBlock title="최근 이슈" value={row.recentIssues} />
+                  <TextBlock title="검증된 사실" value={row.verifiedFacts} />
+                  <TextBlock title="AI 추론" value={row.aiInferences} />
                   <TextBlock title="면접 포인트" value={row.interviewPoints} />
                   <div className="flex flex-wrap gap-1.5">
                     {parseJsonStringArray(row.sources).map((source) => (
@@ -132,6 +139,15 @@ function TextBlock({ title, value }: { title: string; value: string | null }) {
     <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
       <div className="text-xs font-semibold text-slate-500">{title}</div>
       <p className="mt-2 whitespace-pre-line text-sm leading-6 text-slate-600">{value ?? "내용 없음"}</p>
+    </div>
+  );
+}
+
+function MetaBlock({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+      <div className="text-xs font-semibold text-slate-500">{label}</div>
+      <div className="mt-1 truncate text-sm font-bold text-slate-900">{value}</div>
     </div>
   );
 }

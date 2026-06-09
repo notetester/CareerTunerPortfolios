@@ -10,6 +10,7 @@ export interface AdminApplicationCaseRow {
   companyName: string;
   jobTitle: string;
   postingDate: string | null;
+  deadlineDate: string | null;
   sourceType: ApplicationSourceType;
   status: ApplicationStatus;
   favorite: boolean;
@@ -22,10 +23,23 @@ export interface AdminApplicationCaseRow {
   latestCompanyAnalysisAt: string | null;
 }
 
+export interface AdminApplicationJobAnalysis extends JobAnalysis {
+  evidence: string | null;
+  ambiguousConditions: string | null;
+}
+
+export interface AdminApplicationCompanyAnalysis extends CompanyAnalysis {
+  verifiedFacts: string | null;
+  aiInferences: string | null;
+  sourceType: string | null;
+  checkedAt: string | null;
+  refreshRecommendedAt: string | null;
+}
+
 export interface AdminApplicationCaseDetail {
   applicationCase: AdminApplicationCaseRow;
   jobPostings: JobPosting[];
-  jobAnalyses: JobAnalysis[];
-  companyAnalyses: CompanyAnalysis[];
+  jobAnalyses: AdminApplicationJobAnalysis[];
+  companyAnalyses: AdminApplicationCompanyAnalysis[];
   usageLogs: AdminAiUsageLogRow[];
 }

@@ -28,8 +28,8 @@ import {
 
 type StatusFilter = "ALL" | ApplicationStatus;
 
-function formatDate(value: string | null): string {
-  if (!value) return "공고일 미입력";
+function formatDate(value: string | null, emptyLabel = "미입력"): string {
+  if (!value) return emptyLabel;
   return new Intl.DateTimeFormat("ko-KR", { dateStyle: "medium" }).format(new Date(value));
 }
 
@@ -80,11 +80,17 @@ function ApplicationCard({
           )}
         </div>
 
-        <div className="mt-auto flex items-center justify-between border-t border-slate-100 pt-3 text-xs text-slate-500">
-          <span className="flex items-center gap-1.5">
-            <CalendarDays className="size-3.5" />
-            {formatDate(applicationCase.postingDate)}
-          </span>
+        <div className="mt-auto flex items-end justify-between gap-3 border-t border-slate-100 pt-3 text-xs text-slate-500">
+          <div className="min-w-0 space-y-1">
+            <span className="flex items-center gap-1.5">
+              <CalendarDays className="size-3.5" />
+              공고 {formatDate(applicationCase.postingDate)}
+            </span>
+            <span className="flex items-center gap-1.5">
+              <CalendarDays className="size-3.5" />
+              마감 {formatDate(applicationCase.deadlineDate)}
+            </span>
+          </div>
           <Link className="font-semibold text-blue-600 hover:text-blue-700" to={`/applications/${applicationCase.id}`}>
             상세 보기
           </Link>

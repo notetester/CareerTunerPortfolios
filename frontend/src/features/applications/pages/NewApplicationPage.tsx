@@ -22,6 +22,7 @@ interface FormState {
   companyName: string;
   jobTitle: string;
   postingDate: string;
+  deadlineDate: string;
   sourceType: ApplicationSourceType;
   favorite: boolean;
 }
@@ -33,6 +34,7 @@ export function NewApplicationPage() {
     companyName: "",
     jobTitle: "",
     postingDate: "",
+    deadlineDate: "",
     sourceType: "TEXT",
     favorite: false,
   });
@@ -60,6 +62,7 @@ export function NewApplicationPage() {
         companyName,
         jobTitle,
         postingDate: form.postingDate || null,
+        deadlineDate: form.deadlineDate || null,
         sourceType: form.sourceType,
         status: "DRAFT",
         favorite: form.favorite,
@@ -141,7 +144,7 @@ export function NewApplicationPage() {
                 </div>
               </div>
 
-              <div className="grid gap-4 sm:grid-cols-2">
+              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
                 <div className="space-y-2">
                   <label className="text-sm font-semibold text-slate-700" htmlFor="postingDate">
                     공고일
@@ -151,6 +154,17 @@ export function NewApplicationPage() {
                     type="date"
                     value={form.postingDate}
                     onChange={(event) => setField("postingDate", event.target.value)}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-sm font-semibold text-slate-700" htmlFor="deadlineDate">
+                    마감일
+                  </label>
+                  <Input
+                    id="deadlineDate"
+                    type="date"
+                    value={form.deadlineDate}
+                    onChange={(event) => setField("deadlineDate", event.target.value)}
                   />
                 </div>
                 <div className="space-y-2">

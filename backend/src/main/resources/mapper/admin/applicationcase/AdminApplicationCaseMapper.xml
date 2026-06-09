@@ -11,6 +11,7 @@
             ac.company_name,
             ac.job_title,
             ac.posting_date,
+            ac.deadline_date,
             ac.source_type,
             ac.status,
             ac.is_favorite AS favorite,

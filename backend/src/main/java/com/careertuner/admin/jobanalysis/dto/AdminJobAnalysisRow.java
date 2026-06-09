@@ -23,6 +23,8 @@ public class AdminJobAnalysisRow {
     private String qualifications;
     private String difficulty;
     private String summary;
+    private String evidence;
+    private String ambiguousConditions;
     private LocalDateTime confirmedAt;
     private String adminMemo;
     private LocalDateTime createdAt;

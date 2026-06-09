@@ -19,6 +19,7 @@ public class ApplicationCase {
     private String companyName;
     private String jobTitle;
     private LocalDate postingDate;
+    private LocalDate deadlineDate;
     private String sourceType;
     private String status;
     private boolean favorite;

@@ -2,9 +2,17 @@ import { api } from "@/app/lib/api";
 import type {
   CompanyAnalysis,
   CompanyAnalysisReviewRequest,
+  BAnalysisFailureLog,
   JobAnalysis,
   JobAnalysisReviewRequest,
 } from "../types/analysis";
+
+export function getBAnalysisFailureLogs(applicationCaseId: number, limit = 5): Promise<BAnalysisFailureLog[]> {
+  return api<BAnalysisFailureLog[]>(
+    `/application-cases/${applicationCaseId}/ai-usage/b/failures?limit=${limit}`,
+    { method: "GET" },
+  );
+}
 
 export async function getJobAnalysis(applicationCaseId: number): Promise<JobAnalysis | null> {
   return (await api<JobAnalysis | null>(`/application-cases/${applicationCaseId}/job-analysis`, {

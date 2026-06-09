@@ -21,6 +21,8 @@
             ja.qualifications,
             ja.difficulty,
             ja.summary,
+            ja.evidence,
+            ja.ambiguous_conditions,
             ja.confirmed_at,
             ja.admin_memo,
             ja.created_at

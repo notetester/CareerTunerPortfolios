@@ -12,9 +12,9 @@
 
     <insert id="insertApplicationCase" useGeneratedKeys="true" keyProperty="id">
         INSERT INTO application_case
-            (user_id, company_name, job_title, posting_date, source_type, status, is_favorite)
+            (user_id, company_name, job_title, posting_date, deadline_date, source_type, status, is_favorite)
         VALUES
-            (#{userId}, #{companyName}, #{jobTitle}, #{postingDate}, #{sourceType}, #{status}, #{favorite})
+            (#{userId}, #{companyName}, #{jobTitle}, #{postingDate}, #{deadlineDate}, #{sourceType}, #{status}, #{favorite})
     </insert>
 
     <select id="findApplicationCasesByUserId" resultMap="ApplicationCaseResultMap">
@@ -39,6 +39,7 @@
         SET company_name = #{companyName},
             job_title = #{jobTitle},
             posting_date = #{postingDate},
+            deadline_date = #{deadlineDate},
             source_type = #{sourceType},
             status = #{status},
             is_favorite = #{favorite},
@@ -53,6 +54,34 @@
                 ELSE status
             END
         WHERE id = #{id} AND user_id = #{userId}
+    </update>
+
+    <update id="markAnalysisStarted">
+        UPDATE application_case
+        SET status = 'ANALYZING'
+        WHERE id = #{id}
+          AND user_id = #{userId}
+          AND deleted_at IS NULL
+          AND status IN ('DRAFT', 'ANALYZING', 'READY')
+    </update>
+
+    <update id="markReadyAfterAnalysis">
+        UPDATE application_case
+        SET status = 'READY'
+        WHERE id = #{id}
+          AND user_id = #{userId}
+          AND deleted_at IS NULL
+          AND status = 'ANALYZING'
+          AND #{previousStatus} IN ('DRAFT', 'ANALYZING', 'READY')
+    </update>
+
+    <update id="restoreAnalysisStatus">
+        UPDATE application_case
+        SET status = #{previousStatus}
+        WHERE id = #{id}
+          AND user_id = #{userId}
+          AND deleted_at IS NULL
+          AND status = 'ANALYZING'
     </update>
 
     <delete id="deleteApplicationCase">
@@ -103,4 +132,28 @@
             (#{userId}, #{applicationCaseId}, #{featureType}, #{status}, #{model},
              #{inputTokens}, #{outputTokens}, #{tokenUsage}, #{creditUsed}, #{errorMessage})
     </insert>
+
+    <select id="findBFailureLogsByCaseId" resultType="com.careertuner.applicationcase.dto.AiUsageFailureResponse">
+        SELECT
+            failed.feature_type,
+            failed.error_message,
+            failed.created_at
+        FROM ai_usage_log failed
+        WHERE failed.application_case_id = #{applicationCaseId}
+          AND failed.status = 'FAILED'
+          AND failed.feature_type IN ('JOB_ANALYSIS', 'COMPANY_RESEARCH', 'JOB_POSTING_OCR')
+          AND NOT EXISTS (
+              SELECT 1
+              FROM ai_usage_log success
+              WHERE success.application_case_id = failed.application_case_id
+                AND success.feature_type = failed.feature_type
+                AND success.status = 'SUCCESS'
+                AND (
+                    success.created_at > failed.created_at
+                    OR (success.created_at = failed.created_at AND success.id > failed.id)
+                )
+          )
+        ORDER BY failed.created_at DESC, failed.id DESC
+        LIMIT #{limit}
+    </select>
 </mapper>
