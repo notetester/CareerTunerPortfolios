@@ -46,6 +46,9 @@ public interface FitAnalysisMapper {
                           @Param("featureType") String featureType,
                           @Param("status") String status,
                           @Param("model") String model,
+                          @Param("inputTokens") int inputTokens,
+                          @Param("outputTokens") int outputTokens,
                           @Param("tokenUsage") int tokenUsage,
-                          @Param("creditUsed") int creditUsed);
+                          @Param("creditUsed") int creditUsed,
+                          @Param("errorMessage") String errorMessage);
 }

@@ -73,7 +73,10 @@ public class MockFitAnalysisAiService implements FitAnalysisAiService {
                 learningRoadmap,
                 certificateRecommendations,
                 strategyActions,
-                CareerAnalysisAiUsage.mockUsage());
+                CareerAnalysisAiUsage.mockUsage(),
+                "SUCCESS",
+                null,
+                false);
     }
 
     private List<String> scoreBasis(List<String> required, List<String> matched, List<String> missing, int fitScore) {

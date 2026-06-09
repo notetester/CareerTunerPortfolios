@@ -86,7 +86,8 @@ public class FitAnalysisServiceImpl implements FitAnalysisService {
                 .certificateRecommendations(toJson(ai.certificateRecommendations()))
                 .strategyActions(toJson(ai.strategyActions()))
                 .model(ai.usage().model())
-                .status("SUCCESS")
+                .status(ai.status())
+                .errorMessage(ai.errorMessage())
                 .build();
         fitAnalysisMapper.insertFitAnalysis(row);
         for (var item : ai.learningRoadmap()) {
@@ -101,15 +102,19 @@ public class FitAnalysisServiceImpl implements FitAnalysisService {
                     .build());
         }
 
-        int tokenUsage = ai.usage().mock() ? estimateTokens(command) : ai.usage().totalTokens();
+        int tokenUsage = ai.usage().mock() && "SUCCESS".equals(ai.status()) ? estimateTokens(command) : ai.usage().totalTokens();
+        int creditUsed = "SUCCESS".equals(ai.status()) ? MOCK_CREDIT : 0;
         fitAnalysisMapper.insertAiUsageLog(
                 userId,
                 applicationCaseId,
                 FEATURE_TYPE,
-                "SUCCESS",
+                ai.status(),
                 ai.usage().model(),
+                ai.usage().inputTokens(),
+                ai.usage().outputTokens(),
                 tokenUsage,
-                MOCK_CREDIT);
+                creditUsed,
+                ai.errorMessage());
 
         return getByApplicationCase(userId, applicationCaseId);
     }

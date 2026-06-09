@@ -24,7 +24,7 @@ public class HomeServiceImpl implements HomeService {
     private final DashboardService dashboardService;
 
     @Override
-    @Transactional(readOnly = true)
+    @Transactional
     public HomeSummaryResponse getSummary(Long userId) {
         DashboardSummaryResponse dashboard = dashboardService.getSummary(userId);
         return new HomeSummaryResponse(

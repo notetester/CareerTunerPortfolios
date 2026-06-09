@@ -35,34 +35,57 @@ public class OpenAiFitAnalysisAiService implements FitAnalysisAiService {
             return mockService.generate(command);
         }
 
-        StructuredResponse response = openAiClient.request(
-                "fit_analysis",
-                schema(),
-                FitAnalysisPromptCatalog.SYSTEM_PROMPT,
-                FitAnalysisPromptCatalog.userPrompt(
-                        command.companyName(),
-                        command.jobTitle(),
-                        String.join(", ", command.requiredSkills()),
-                        String.join(", ", command.preferredSkills()),
-                        command.duties(),
-                        String.join(", ", command.profileSkills()),
-                        String.join(", ", command.profileCertificates()),
-                        command.desiredJob()));
+        try {
+            StructuredResponse response = openAiClient.request(
+                    "fit_analysis",
+                    schema(),
+                    FitAnalysisPromptCatalog.SYSTEM_PROMPT,
+                    FitAnalysisPromptCatalog.userPrompt(
+                            command.companyName(),
+                            command.jobTitle(),
+                            String.join(", ", command.requiredSkills()),
+                            String.join(", ", command.preferredSkills()),
+                            command.duties(),
+                            String.join(", ", command.profileSkills()),
+                            String.join(", ", command.profileCertificates()),
+                            command.desiredJob()));
 
-        JsonNode payload = response.payload();
-        return new FitAnalysisAiResult(
-                Math.max(0, Math.min(100, payload.path("fitScore").asInt(0))),
-                strings(payload.path("matchedSkills")),
-                strings(payload.path("missingSkills")),
-                strings(payload.path("recommendedStudy")),
-                strings(payload.path("recommendedCertificates")),
-                text(payload.path("strategy")),
-                strings(payload.path("scoreBasis")),
-                gaps(payload.path("gapRecommendations")),
-                roadmap(payload.path("learningRoadmap")),
-                certificates(payload.path("certificateRecommendations")),
-                strings(payload.path("strategyActions")),
-                response.usage());
+            JsonNode payload = response.payload();
+            return new FitAnalysisAiResult(
+                    Math.max(0, Math.min(100, payload.path("fitScore").asInt(0))),
+                    strings(payload.path("matchedSkills")),
+                    strings(payload.path("missingSkills")),
+                    strings(payload.path("recommendedStudy")),
+                    strings(payload.path("recommendedCertificates")),
+                    text(payload.path("strategy")),
+                    strings(payload.path("scoreBasis")),
+                    gaps(payload.path("gapRecommendations")),
+                    roadmap(payload.path("learningRoadmap")),
+                    certificates(payload.path("certificateRecommendations")),
+                    strings(payload.path("strategyActions")),
+                    response.usage(),
+                    "SUCCESS",
+                    null,
+                    false);
+        } catch (RuntimeException exception) {
+            FitAnalysisAiResult fallback = mockService.generate(command);
+            return new FitAnalysisAiResult(
+                    fallback.fitScore(),
+                    fallback.matchedSkills(),
+                    fallback.missingSkills(),
+                    fallback.recommendedStudy(),
+                    fallback.recommendedCertificates(),
+                    fallback.strategy(),
+                    fallback.scoreBasis(),
+                    fallback.gapRecommendations(),
+                    fallback.learningRoadmap(),
+                    fallback.certificateRecommendations(),
+                    fallback.strategyActions(),
+                    new com.careertuner.analysis.ai.provider.CareerAnalysisAiUsage("mock-fallback", 0, 0, 0, true),
+                    "FALLBACK",
+                    exception.getMessage(),
+                    true);
+        }
     }
 
     private List<String> strings(JsonNode node) {

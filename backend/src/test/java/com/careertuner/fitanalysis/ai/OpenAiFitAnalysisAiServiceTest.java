@@ -76,4 +76,20 @@ class OpenAiFitAnalysisAiServiceTest {
         assertThat(result.usage().mock()).isFalse();
         assertThat(result.usage().totalTokens()).isEqualTo(150);
     }
+
+    @Test
+    void fallsBackToMockAndExposesFailureWhenOpenAiRequestFails() {
+        CareerAnalysisOpenAiClient client = mock(CareerAnalysisOpenAiClient.class);
+        when(client.configured()).thenReturn(true);
+        when(client.request(anyString(), any(), anyString(), anyString()))
+                .thenThrow(new IllegalStateException("invalid key"));
+
+        OpenAiFitAnalysisAiService service = new OpenAiFitAnalysisAiService(client, new MockFitAnalysisAiService());
+        FitAnalysisAiResult result = service.generate(command);
+
+        assertThat(result.status()).isEqualTo("FALLBACK");
+        assertThat(result.usage().model()).isEqualTo("mock-fallback");
+        assertThat(result.errorMessage()).contains("invalid key");
+        assertThat(result.retryable()).isTrue();
+    }
 }

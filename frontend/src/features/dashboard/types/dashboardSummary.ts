@@ -76,7 +76,7 @@ export interface DashboardSummary {
   todos: DashboardTodo[];
   activities: DashboardActivity[];
   skillGaps: DashboardSkillGap[];
-  /** 대시보드 AI 분석 결과 요약(C 담당 AI 18). 현재 백엔드 mock, API 키 주입 시 실 분석으로 전환. */
+  /** 대시보드 AI 분석 결과 요약(C 담당 AI 18). API 키가 없으면 결정적 mock, 있으면 실제 구조화 분석. */
   aiSummary: string;
   analysisRun: DashboardAnalysisRun;
 }

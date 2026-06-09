@@ -63,7 +63,7 @@ export interface AnalysisSummary {
   scoreHistory: ScorePoint[];
   applications: AnalysisApplicationSummary[];
   recommendedDirections: string[];
-  /** 장기 취업 경향 AI 요약(C 담당 AI 16). 현재 백엔드 mock, API 키 주입 시 실 분석으로 전환. */
+  /** 장기 취업 경향 AI 요약(C 담당 AI 16). API 키가 없으면 결정적 mock, 있으면 실제 구조화 분석. */
   trendSummary: string;
   interviewTrend: InterviewTrend;
   analysisRun: CareerAnalysisRun;

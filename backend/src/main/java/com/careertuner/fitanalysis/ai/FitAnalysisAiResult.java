@@ -22,6 +22,9 @@ public record FitAnalysisAiResult(
         List<FitLearningRoadmapItem> learningRoadmap,
         List<FitCertificateRecommendation> certificateRecommendations,
         List<String> strategyActions,
-        CareerAnalysisAiUsage usage
+        CareerAnalysisAiUsage usage,
+        String status,
+        String errorMessage,
+        boolean retryable
 ) {
 }
