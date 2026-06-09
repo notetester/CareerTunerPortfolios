@@ -8,6 +8,8 @@ import java.util.Set;
 
 import org.springframework.stereotype.Service;
 
+import com.careertuner.analysis.ai.provider.CareerAnalysisAiUsage;
+
 /**
  * 적합도 분석 AI의 mock 구현 (API 키 미발급 단계 기본 동작).
  *
@@ -54,7 +56,14 @@ public class MockFitAnalysisAiService implements FitAnalysisAiService {
         List<String> certificates = recommendCertificates(command.desiredJob());
         String strategy = strategy(command, matched, missing, fitScore);
 
-        return new FitAnalysisAiResult(fitScore, matched, missing, study, certificates, strategy);
+        return new FitAnalysisAiResult(
+                fitScore,
+                matched,
+                missing,
+                study,
+                certificates,
+                strategy,
+                CareerAnalysisAiUsage.mockUsage());
     }
 
     private int score(List<String> required, Set<String> profileLower, boolean profileEmpty, int matchedSize) {

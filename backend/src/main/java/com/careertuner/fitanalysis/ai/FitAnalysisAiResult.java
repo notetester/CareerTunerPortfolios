@@ -2,6 +2,8 @@ package com.careertuner.fitanalysis.ai;
 
 import java.util.List;
 
+import com.careertuner.analysis.ai.provider.CareerAnalysisAiUsage;
+
 /**
  * 적합도 분석 AI 출력 묶음.
  *
@@ -14,6 +16,7 @@ public record FitAnalysisAiResult(
         List<String> missingSkills,
         List<String> recommendedStudy,
         List<String> recommendedCertificates,
-        String strategy
+        String strategy,
+        CareerAnalysisAiUsage usage
 ) {
 }

@@ -79,9 +79,15 @@ public class FitAnalysisServiceImpl implements FitAnalysisService {
                 .build();
         fitAnalysisMapper.insertFitAnalysis(row);
 
-        // 공통 사용량 로깅(공통 규약). mock 단계에서는 model="mock"으로 기록한다.
-        fitAnalysisMapper.insertAiUsageLog(userId, applicationCaseId, FEATURE_TYPE, "SUCCESS", "mock",
-                estimateTokens(command), MOCK_CREDIT);
+        int tokenUsage = ai.usage().mock() ? estimateTokens(command) : ai.usage().totalTokens();
+        fitAnalysisMapper.insertAiUsageLog(
+                userId,
+                applicationCaseId,
+                FEATURE_TYPE,
+                "SUCCESS",
+                ai.usage().model(),
+                tokenUsage,
+                MOCK_CREDIT);
 
         return getByApplicationCase(userId, applicationCaseId);
     }
