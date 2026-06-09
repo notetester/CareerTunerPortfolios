@@ -29,7 +29,7 @@ public class FitAnalysisServiceImpl implements FitAnalysisService {
 
     private final FitAnalysisMapper fitAnalysisMapper;
     private final FitAnalysisAiService fitAnalysisAiService;
-    private final ObjectMapper objectMapper;
+    private final ObjectMapper objectMapper = new ObjectMapper();
 
     @Override
     @Transactional(readOnly = true)
