@@ -4,6 +4,7 @@ import java.time.LocalDateTime;
 import java.util.List;
 
 import com.careertuner.admin.fitanalysis.domain.AdminFitAnalysisResult;
+import com.careertuner.fitanalysis.dto.FitAnalysisLearningTaskResponse;
 
 public record AdminFitAnalysisDetailResponse(
         Long id,
@@ -21,7 +22,16 @@ public record AdminFitAnalysisDetailResponse(
         List<String> recommendedStudy,
         List<String> recommendedCertificates,
         String strategy,
+        String sourceSnapshot,
+        List<String> scoreBasis,
+        String gapRecommendations,
+        String certificateRecommendations,
+        List<String> strategyActions,
+        String model,
+        String status,
+        String errorMessage,
         LocalDateTime createdAt,
+        List<FitAnalysisLearningTaskResponse> learningTasks,
         List<AdminFitAnalysisMemoResponse> memos
 ) {
 
@@ -30,6 +40,9 @@ public record AdminFitAnalysisDetailResponse(
                                                     List<String> missingSkills,
                                                     List<String> recommendedStudy,
                                                     List<String> recommendedCertificates,
+                                                    List<String> scoreBasis,
+                                                    List<String> strategyActions,
+                                                    List<FitAnalysisLearningTaskResponse> learningTasks,
                                                     List<AdminFitAnalysisMemoResponse> memos) {
         return new AdminFitAnalysisDetailResponse(
                 result.getId(),
@@ -47,7 +60,16 @@ public record AdminFitAnalysisDetailResponse(
                 recommendedStudy,
                 recommendedCertificates,
                 result.getStrategy(),
+                result.getSourceSnapshot(),
+                scoreBasis,
+                result.getGapRecommendations(),
+                result.getCertificateRecommendations(),
+                strategyActions,
+                result.getModel(),
+                result.getStatus(),
+                result.getErrorMessage(),
                 result.getCreatedAt(),
+                learningTasks,
                 memos);
     }
 }

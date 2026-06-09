@@ -208,10 +208,37 @@ CREATE TABLE IF NOT EXISTS fit_analysis (
     recommended_study        JSON NULL,
     recommended_certificates JSON NULL,
     strategy                 MEDIUMTEXT NULL,
+    source_snapshot          JSON NULL,                     -- C 분석에 사용한 A/B 입력 식별·시점·요약
+    score_basis              JSON NULL,                     -- 설명 가능한 점수 산정 근거
+    gap_recommendations      JSON NULL,                     -- 필수 미충족/우대 보완/장기 성장 분류
+    certificate_recommendations JSON NULL,                  -- 자격증 우선순위와 추천 이유
+    strategy_actions         JSON NULL,                     -- 지원/보완/다음 준비 과제
+    model                    VARCHAR(80) NULL,
+    status                   VARCHAR(20) NOT NULL DEFAULT 'SUCCESS',
+    error_message            VARCHAR(1000) NULL,
     created_at               DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (id),
     KEY idx_fit_analysis_case (application_case_id),
     CONSTRAINT fk_fit_analysis_case FOREIGN KEY (application_case_id) REFERENCES application_case (id) ON DELETE CASCADE
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci;
+
+-- C 소유 학습 로드맵 체크리스트. fit_analysis 결과에서 생성하며 타 담당 원본 데이터는 수정하지 않는다.
+CREATE TABLE IF NOT EXISTS fit_analysis_learning_task (
+    id                  BIGINT NOT NULL AUTO_INCREMENT,
+    fit_analysis_id     BIGINT NOT NULL,
+    skill               VARCHAR(255) NOT NULL,
+    title               VARCHAR(500) NOT NULL,
+    practice_task       VARCHAR(1000) NULL,
+    expected_duration   VARCHAR(100) NULL,
+    priority            VARCHAR(20) NOT NULL DEFAULT 'MEDIUM',
+    sort_order          INT NOT NULL DEFAULT 0,
+    completed           TINYINT(1) NOT NULL DEFAULT 0,
+    completed_at        DATETIME NULL,
+    created_at          DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at          DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    PRIMARY KEY (id),
+    KEY idx_fit_learning_task_analysis (fit_analysis_id),
+    CONSTRAINT fk_fit_learning_task_analysis FOREIGN KEY (fit_analysis_id) REFERENCES fit_analysis (id) ON DELETE CASCADE
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci;
 
 CREATE TABLE IF NOT EXISTS admin_fit_analysis_memo (
@@ -227,6 +254,28 @@ CREATE TABLE IF NOT EXISTS admin_fit_analysis_memo (
     KEY idx_admin_fit_memo_admin_user (admin_user_id),
     CONSTRAINT fk_admin_fit_memo_fit_analysis FOREIGN KEY (fit_analysis_id) REFERENCES fit_analysis (id) ON DELETE CASCADE,
     CONSTRAINT fk_admin_fit_memo_admin_user FOREIGN KEY (admin_user_id) REFERENCES users (id) ON DELETE CASCADE
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci;
+
+-- C 소유 장기 경향/대시보드 요약 실행 이력. 타 담당 원본은 입력 스냅샷으로만 참조한다.
+CREATE TABLE IF NOT EXISTS career_analysis_run (
+    id              BIGINT NOT NULL AUTO_INCREMENT,
+    user_id         BIGINT NOT NULL,
+    analysis_type   VARCHAR(40) NOT NULL,                  -- CAREER_TREND/DASHBOARD_SUMMARY
+    status          VARCHAR(20) NOT NULL,                  -- SUCCESS/FALLBACK/FAILED
+    input_snapshot  JSON NULL,
+    input_fingerprint VARCHAR(64) NULL,                    -- C 캐시 키: 입력이 동일하면 저장 결과 재사용(매 조회 AI 재실행 방지)
+    result          JSON NULL,
+    model           VARCHAR(80) NULL,
+    input_tokens    INT NOT NULL DEFAULT 0,
+    output_tokens   INT NOT NULL DEFAULT 0,
+    token_usage     INT NOT NULL DEFAULT 0,
+    error_message   VARCHAR(1000) NULL,
+    retryable       TINYINT(1) NOT NULL DEFAULT 0,
+    created_at      DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (id),
+    KEY idx_career_analysis_run_user_type (user_id, analysis_type, created_at),
+    KEY idx_career_analysis_run_status (status, created_at),
+    CONSTRAINT fk_career_analysis_run_user FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci;
 
 -- =====================================================================

@@ -2,6 +2,7 @@ package com.careertuner.dashboard.controller;
 
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -22,5 +23,11 @@ public class DashboardController {
     @GetMapping("/summary")
     public ApiResponse<DashboardSummaryResponse> summary(@AuthenticationPrincipal AuthUser authUser) {
         return ApiResponse.ok(dashboardService.getSummary(authUser.id()));
+    }
+
+    // 사용자가 명시적으로 요청한 대시보드 요약 재생성. AI를 강제로 실행하고 크레딧을 차감한다.
+    @PostMapping("/summary/refresh")
+    public ApiResponse<DashboardSummaryResponse> refresh(@AuthenticationPrincipal AuthUser authUser) {
+        return ApiResponse.ok(dashboardService.refreshSummary(authUser.id()));
     }
 }

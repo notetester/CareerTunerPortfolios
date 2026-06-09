@@ -26,6 +26,22 @@
         <result property="creditUsed" column="credit_used"/>
     </resultMap>
 
+    <resultMap id="AdminCareerAnalysisRunMap" type="com.careertuner.admin.analytics.domain.AdminCareerAnalysisRun">
+        <id property="id" column="id"/>
+        <result property="userId" column="user_id"/>
+        <result property="userName" column="user_name"/>
+        <result property="userEmail" column="user_email"/>
+        <result property="analysisType" column="analysis_type"/>
+        <result property="status" column="status"/>
+        <result property="inputSnapshot" column="input_snapshot"/>
+        <result property="result" column="result"/>
+        <result property="model" column="model"/>
+        <result property="tokenUsage" column="token_usage"/>
+        <result property="errorMessage" column="error_message"/>
+        <result property="retryable" column="retryable"/>
+        <result property="createdAt" column="created_at"/>
+    </resultMap>
+
     <select id="countUsers" resultType="int">
         SELECT COUNT(*)
         FROM users
@@ -100,5 +116,19 @@
         WHERE created_at &gt;= DATE_SUB(CURRENT_DATE, INTERVAL 6 DAY)
         GROUP BY DATE(created_at)
         ORDER BY usage_date
+    </select>
+
+    <select id="findCareerAnalysisRuns" resultMap="AdminCareerAnalysisRunMap">
+        SELECT
+            run.*,
+            users.name AS user_name,
+            users.email AS user_email
+        FROM career_analysis_run run
+        INNER JOIN users ON users.id = run.user_id
+        <if test="userId != null">
+            WHERE run.user_id = #{userId}
+        </if>
+        ORDER BY run.created_at DESC, run.id DESC
+        LIMIT 300
     </select>
 </mapper>

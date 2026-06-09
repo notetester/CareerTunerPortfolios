@@ -19,6 +19,10 @@ public final class FitAnalysisPromptCatalog {
             - matchedSkills 는 공고 요구 역량 중 지원자가 보유한 항목, missingSkills 는 보완이 필요한 항목이다.
             - recommendedStudy 는 부족 역량을 메우는 학습 과제, recommendedCertificates 는 직무 실효성이 높은 자격증을 우선순위로 제안한다.
             - strategy 는 지원서/면접에서 강조할 점과 단기 보완 과제를 2~4문장으로 설명한다.
+            - scoreBasis 는 점수 산정 근거를 설명하고, gapRecommendations 는 필수 미충족/우대 보완/장기 성장으로 구분한다.
+            - learningRoadmap 은 학습 순서, 실습 과제, 예상 기간, 우선순위를 포함한다.
+            - certificateRecommendations 는 자격증 우선순위와 추천 이유를 포함하고 과도한 자격증 준비는 낮은 우선순위로 안내한다.
+            - strategyActions 는 지금 지원, 보완 후 재분석, 면접 준비 등 바로 실행할 다음 행동을 제안한다.
             - 과장하지 말고, 근거가 약하면 보수적으로 평가한다.
             """;
 

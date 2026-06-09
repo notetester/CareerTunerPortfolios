@@ -7,10 +7,15 @@ import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
+import java.util.stream.Collectors;
 
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import com.careertuner.analysis.domain.CareerAnalysisRun;
+import com.careertuner.analysis.dto.CareerAnalysisRunResponse;
+import com.careertuner.analysis.service.CareerAnalysisRunService;
 import com.careertuner.dashboard.ai.DashboardInsightAiCommand;
 import com.careertuner.dashboard.ai.DashboardInsightAiResult;
 import com.careertuner.dashboard.ai.DashboardInsightAiService;
@@ -35,14 +40,33 @@ public class DashboardServiceImpl implements DashboardService {
 
     private static final TypeReference<List<String>> STRING_LIST = new TypeReference<>() {
     };
+    private static final String ANALYSIS_TYPE = "DASHBOARD_SUMMARY";
+    // 명시적 재생성 시 적합도 분석과 동일하게 ai_usage_log에 차감을 남긴다.
+    private static final int EXPLICIT_REFRESH_CREDIT = 1;
 
     private final DashboardMapper dashboardMapper;
     private final DashboardInsightAiService dashboardInsightAiService;
+    private final CareerAnalysisRunService careerAnalysisRunService;
     private final ObjectMapper objectMapper;
 
     @Override
-    @Transactional(readOnly = true)
+    @Transactional
     public DashboardSummaryResponse getSummary(Long userId) {
+        return buildSummary(userId, false);
+    }
+
+    @Override
+    @Transactional
+    public DashboardSummaryResponse refreshSummary(Long userId) {
+        return buildSummary(userId, true);
+    }
+
+    /**
+     * 결정적 집계는 항상 새로 계산하고(토큰 비용 없음), 비용이 드는 대시보드 AI 요약(18)만 캐시한다.
+     * forceRefresh=false 이면 같은 입력의 저장 요약을 재사용(AI 미실행)하고,
+     * 입력이 바뀐 경우에만 1회 자동 재생성한다. forceRefresh=true 이면 항상 재실행 + 크레딧 차감.
+     */
+    private DashboardSummaryResponse buildSummary(Long userId, boolean forceRefresh) {
         DashboardUserSource user = dashboardMapper.findUserById(userId);
         List<DashboardApplicationSource> applications = dashboardMapper.findApplicationsByUserId(userId);
         List<DashboardApplicationSource> analyzedApplications = applications.stream()
@@ -52,9 +76,34 @@ public class DashboardServiceImpl implements DashboardService {
         DashboardStatsResponse stats = stats(user, applications, analyzedApplications, userId);
         DashboardFocusResponse focus = focus(applications);
 
-        // 대시보드 AI 요약(18)은 AI seam(현재 mock)으로 위임한다. 키 주입 시 실 AI로 교체.
-        DashboardInsightAiResult insight = dashboardInsightAiService.summarize(
-                new DashboardInsightAiCommand(stats, focus, skillGaps));
+        // 대시보드 AI 요약(18) 입력. 키 주입 시 실 AI로 교체된다.
+        DashboardInsightAiCommand command = new DashboardInsightAiCommand(stats, focus, skillGaps);
+        String fingerprint = CareerAnalysisRunService.fingerprint(canonical(stats, focus, skillGaps));
+
+        String summary;
+        CareerAnalysisRunResponse run;
+        Optional<CareerAnalysisRun> cached = forceRefresh
+                ? Optional.empty()
+                : careerAnalysisRunService.findFreshRun(userId, ANALYSIS_TYPE, fingerprint);
+        if (cached.isPresent()) {
+            summary = parseSummary(cached.get().getResult());
+            run = CareerAnalysisRunResponse.from(cached.get());
+        } else {
+            DashboardInsightAiResult insight = dashboardInsightAiService.summarize(command);
+            int creditUsed = forceRefresh && "SUCCESS".equals(insight.status()) ? EXPLICIT_REFRESH_CREDIT : 0;
+            summary = insight.summary();
+            run = careerAnalysisRunService.record(
+                    userId,
+                    ANALYSIS_TYPE,
+                    fingerprint,
+                    command,
+                    Map.of("summary", insight.summary()),
+                    insight.usage(),
+                    insight.status(),
+                    insight.errorMessage(),
+                    insight.retryable(),
+                    creditUsed);
+        }
 
         return new DashboardSummaryResponse(
                 DashboardUserResponse.from(user),
@@ -69,7 +118,37 @@ public class DashboardServiceImpl implements DashboardService {
                         .map(DashboardActivityResponse::from)
                         .toList(),
                 skillGaps,
-                insight.summary());
+                summary,
+                run);
+    }
+
+    /**
+     * 대시보드 요약 캐시 키: 요약 문구를 실제로 좌우하는 안정 필드만 사용한다.
+     * 크레딧 잔액·이번 달 사용량처럼 요약 내용과 무관한 값은 제외해 불필요한 재생성을 막는다.
+     */
+    private String canonical(DashboardStatsResponse stats,
+                             DashboardFocusResponse focus,
+                             List<DashboardSkillGapResponse> skillGaps) {
+        String gaps = skillGaps.stream()
+                .map(gap -> gap.skill() + ":" + gap.count())
+                .collect(Collectors.joining(","));
+        return String.join("|",
+                String.valueOf(stats.activeApplications()),
+                String.valueOf(stats.averageFitScore()),
+                String.valueOf(stats.interviewsThisWeek()),
+                focus.headline() == null ? "" : focus.headline(),
+                gaps);
+    }
+
+    private String parseSummary(String resultJson) {
+        if (resultJson == null || resultJson.isBlank()) {
+            return "";
+        }
+        try {
+            return objectMapper.readTree(resultJson).path("summary").asText("");
+        } catch (Exception ex) {
+            return "";
+        }
     }
 
     private DashboardStatsResponse stats(DashboardUserSource user,

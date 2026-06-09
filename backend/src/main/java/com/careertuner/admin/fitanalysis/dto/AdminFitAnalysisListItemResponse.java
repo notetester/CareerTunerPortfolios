@@ -17,6 +17,9 @@ public record AdminFitAnalysisListItemResponse(
         Integer fitScore,
         List<String> matchedSkills,
         List<String> missingSkills,
+        String model,
+        String status,
+        String errorMessage,
         LocalDateTime createdAt,
         int memoCount,
         LocalDateTime latestMemoAt
@@ -37,6 +40,9 @@ public record AdminFitAnalysisListItemResponse(
                 result.getFitScore(),
                 matchedSkills,
                 missingSkills,
+                result.getModel(),
+                result.getStatus(),
+                result.getErrorMessage(),
                 result.getCreatedAt(),
                 result.getMemoCount(),
                 result.getLatestMemoAt());

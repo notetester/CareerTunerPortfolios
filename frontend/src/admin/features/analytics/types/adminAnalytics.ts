@@ -52,3 +52,19 @@ export interface AdminAnalyticsSummary {
   recentAnalyses: AdminRecentAnalysis[];
   dailyUsage: AdminDailyUsage[];
 }
+
+export interface AdminCareerAnalysisRun {
+  id: number;
+  userId: number;
+  userName: string;
+  userEmail: string;
+  analysisType: "CAREER_TREND" | "DASHBOARD_SUMMARY" | string;
+  status: "SUCCESS" | "FALLBACK" | "FAILED" | string;
+  inputSnapshot: string | null;
+  result: string | null;
+  model: string | null;
+  tokenUsage: number;
+  errorMessage: string | null;
+  retryable: boolean;
+  createdAt: string;
+}

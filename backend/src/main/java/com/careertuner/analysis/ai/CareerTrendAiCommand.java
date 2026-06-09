@@ -5,6 +5,7 @@ import java.util.List;
 import com.careertuner.analysis.dto.AnalysisScorePointResponse;
 import com.careertuner.analysis.dto.AnalysisStatResponse;
 import com.careertuner.analysis.dto.JobReadinessResponse;
+import com.careertuner.analysis.dto.InterviewTrendResponse;
 import com.careertuner.analysis.dto.SkillGapResponse;
 
 /**
@@ -18,6 +19,7 @@ public record CareerTrendAiCommand(
         List<SkillGapResponse> skillGaps,
         List<JobReadinessResponse> jobReadiness,
         List<AnalysisScorePointResponse> scoreHistory,
+        InterviewTrendResponse interviewTrend,
         String bestStrategy
 ) {
 }

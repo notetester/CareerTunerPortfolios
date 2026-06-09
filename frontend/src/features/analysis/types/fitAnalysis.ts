@@ -8,6 +8,32 @@ export interface FitAnalysisApplication {
   updatedAt: string | null;
 }
 
+export interface FitGapRecommendation {
+  skill: string;
+  category: "REQUIRED_MISSING" | "PREFERRED_GAP" | "LONG_TERM_GROWTH" | string;
+  priority: "HIGH" | "MEDIUM" | "LOW" | string;
+  reason: string;
+}
+
+export interface FitCertificateRecommendation {
+  name: string;
+  priority: "HIGH" | "MEDIUM" | "LOW" | string;
+  reason: string;
+}
+
+export interface FitAnalysisLearningTask {
+  id: number;
+  fitAnalysisId: number;
+  skill: string;
+  title: string;
+  practiceTask: string;
+  expectedDuration: string;
+  priority: "HIGH" | "MEDIUM" | "LOW" | string;
+  sortOrder: number;
+  completed: boolean;
+  completedAt: string | null;
+}
+
 export interface FitAnalysisDetail {
   id: number;
   applicationCaseId: number;
@@ -17,8 +43,26 @@ export interface FitAnalysisDetail {
   recommendedStudy: string | null;
   recommendedCertificates: string | null;
   strategy: string | null;
+  sourceSnapshot: string | null;
+  scoreBasis: string | null;
+  gapRecommendations: string | null;
+  certificateRecommendations: string | null;
+  strategyActions: string | null;
+  model: string | null;
+  status: string | null;
+  errorMessage: string | null;
   createdAt: string | null;
   application: FitAnalysisApplication;
+  learningTasks: FitAnalysisLearningTask[];
+}
+
+export function parseJsonValue<T>(value: string | null | undefined, fallback: T): T {
+  if (!value) return fallback;
+  try {
+    return JSON.parse(value) as T;
+  } catch {
+    return fallback;
+  }
 }
 
 export function parseJsonList(value: string | null | undefined): string[] {
