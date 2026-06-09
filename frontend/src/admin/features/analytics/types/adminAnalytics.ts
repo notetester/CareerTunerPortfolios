@@ -67,4 +67,25 @@ export interface AdminCareerAnalysisRun {
   errorMessage: string | null;
   retryable: boolean;
   createdAt: string;
+  memoCount: number;
+  latestMemoAt: string | null;
+}
+
+export type AdminCareerRunMemoType = "GENERAL" | "QUALITY" | "USER_INQUIRY" | "REANALYSIS" | string;
+
+export interface AdminCareerRunMemo {
+  id: number;
+  careerAnalysisRunId: number;
+  adminUserId: number;
+  adminName: string;
+  adminEmail: string;
+  memoType: AdminCareerRunMemoType;
+  content: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface AdminCareerRunMemoRequest {
+  memoType: AdminCareerRunMemoType;
+  content: string;
 }

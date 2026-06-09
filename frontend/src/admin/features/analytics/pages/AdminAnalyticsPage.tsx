@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   AlertTriangle,
   BarChart3,
@@ -7,16 +7,32 @@ import {
   ChevronRight,
   Gauge,
   Loader2,
+  MessageSquarePlus,
+  Pencil,
   RefreshCw,
   Search,
+  StickyNote,
+  Trash2,
   Users,
+  X,
 } from "lucide-react";
 import { Badge } from "@/app/components/ui/badge";
 import { Button } from "@/app/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/app/components/ui/card";
 import { Progress } from "@/app/components/ui/progress";
-import { getAdminAnalyticsSummary, getAdminCareerAnalysisRuns } from "../api/adminAnalyticsApi";
-import type { AdminAnalyticsSummary, AdminCareerAnalysisRun } from "../types/adminAnalytics";
+import {
+  createAdminCareerRunMemo,
+  deleteAdminCareerRunMemo,
+  getAdminAnalyticsSummary,
+  getAdminCareerAnalysisRuns,
+  getAdminCareerRunMemos,
+  updateAdminCareerRunMemo,
+} from "../api/adminAnalyticsApi";
+import type {
+  AdminAnalyticsSummary,
+  AdminCareerAnalysisRun,
+  AdminCareerRunMemo,
+} from "../types/adminAnalytics";
 
 /**
  * 분석 통계 전용 화면(C 담당). `/admin` 랜딩이 요약 카드를 보여준다면, 이 화면은
@@ -53,6 +69,239 @@ function prettyJson(raw: string | null): string {
   }
 }
 
+const memoTypeOptions = [
+  { value: "GENERAL", label: "일반" },
+  { value: "QUALITY", label: "분석 품질" },
+  { value: "USER_INQUIRY", label: "사용자 문의" },
+  { value: "REANALYSIS", label: "재분석 필요" },
+] as const;
+
+const memoTypeLabel: Record<string, string> = Object.fromEntries(
+  memoTypeOptions.map((option) => [option.value, option.label]),
+);
+
+const memoTypeTone: Record<string, string> = {
+  GENERAL: "bg-slate-100 text-slate-600",
+  QUALITY: "bg-purple-100 text-purple-700",
+  USER_INQUIRY: "bg-blue-100 text-blue-700",
+  REANALYSIS: "bg-amber-100 text-amber-700",
+};
+
+/**
+ * 실행 이력 단위 운영 메모(분석 결과 운영 메모). 적합도 운영 메모와 동일 운영 흐름으로,
+ * 과도한 추천·잘못된 분석·사용자 문의 대응 내용을 장기 경향/대시보드 요약 실행 이력에 남긴다.
+ * 메모 개수가 바뀌면 상위 목록의 배지를 갱신하도록 onCountChange로 알린다.
+ */
+function RunMemoPanel({
+  runId,
+  onCountChange,
+}: {
+  runId: number;
+  onCountChange: (runId: number, count: number) => void;
+}) {
+  const [memos, setMemos] = useState<AdminCareerRunMemo[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [memoType, setMemoType] = useState<string>("GENERAL");
+  const [content, setContent] = useState("");
+  const [editingId, setEditingId] = useState<number | null>(null);
+  const [editType, setEditType] = useState<string>("GENERAL");
+  const [editContent, setEditContent] = useState("");
+
+  useEffect(() => {
+    let active = true;
+    setLoading(true);
+    setError(null);
+    getAdminCareerRunMemos(runId)
+      .then((data) => {
+        if (!active) return;
+        setMemos(data);
+        onCountChange(runId, data.length);
+      })
+      .catch((err) => {
+        if (active) setError(err instanceof Error ? err.message : "메모를 불러오지 못했습니다.");
+      })
+      .finally(() => {
+        if (active) setLoading(false);
+      });
+    return () => {
+      active = false;
+    };
+    // onCountChange는 부모에서 useCallback으로 안정화됨.
+  }, [runId, onCountChange]);
+
+  const submit = async () => {
+    if (!content.trim() || saving) return;
+    setSaving(true);
+    setError(null);
+    try {
+      const created = await createAdminCareerRunMemo(runId, { memoType, content: content.trim() });
+      const next = [created, ...memos];
+      setMemos(next);
+      onCountChange(runId, next.length);
+      setContent("");
+      setMemoType("GENERAL");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "메모를 저장하지 못했습니다.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const startEdit = (memo: AdminCareerRunMemo) => {
+    setEditingId(memo.id);
+    setEditType(memo.memoType);
+    setEditContent(memo.content);
+  };
+
+  const saveEdit = async (memoId: number) => {
+    if (!editContent.trim() || saving) return;
+    setSaving(true);
+    setError(null);
+    try {
+      const updated = await updateAdminCareerRunMemo(runId, memoId, {
+        memoType: editType,
+        content: editContent.trim(),
+      });
+      setMemos((current) => current.map((memo) => (memo.id === memoId ? updated : memo)));
+      setEditingId(null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "메모를 수정하지 못했습니다.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const remove = async (memoId: number) => {
+    if (saving) return;
+    setSaving(true);
+    setError(null);
+    try {
+      await deleteAdminCareerRunMemo(runId, memoId);
+      const next = memos.filter((memo) => memo.id !== memoId);
+      setMemos(next);
+      onCountChange(runId, next.length);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "메모를 삭제하지 못했습니다.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="border-t border-slate-100 p-3">
+      <div className="mb-2 flex items-center gap-1.5 text-xs font-bold text-slate-500">
+        <StickyNote className="size-3.5 text-emerald-600" />
+        운영 메모 {memos.length > 0 && <span className="text-emerald-700">({memos.length})</span>}
+      </div>
+
+      {error && <div className="mb-2 text-xs text-red-600">{error}</div>}
+
+      {/* 메모 작성 */}
+      <div className="mb-3 flex flex-col gap-2 rounded-lg border border-slate-200 bg-slate-50 p-2 sm:flex-row sm:items-start">
+        <select
+          value={memoType}
+          onChange={(event) => setMemoType(event.target.value)}
+          className="h-9 rounded-md border border-slate-200 px-2 text-sm"
+        >
+          {memoTypeOptions.map((option) => (
+            <option key={option.value} value={option.value}>{option.label}</option>
+          ))}
+        </select>
+        <textarea
+          value={content}
+          onChange={(event) => setContent(event.target.value)}
+          placeholder="과도한 추천/잘못된 분석/사용자 문의 대응 등 운영 메모를 남깁니다."
+          rows={2}
+          className="min-h-9 flex-1 resize-y rounded-md border border-slate-200 px-3 py-2 text-sm outline-none focus:border-indigo-400"
+        />
+        <Button onClick={() => void submit()} disabled={saving || !content.trim()} className="shrink-0">
+          {saving ? <Loader2 className="size-4 animate-spin" /> : <MessageSquarePlus className="size-4" />}
+          추가
+        </Button>
+      </div>
+
+      {/* 메모 목록 */}
+      {loading ? (
+        <div className="flex items-center gap-2 text-xs text-slate-500">
+          <Loader2 className="size-3.5 animate-spin" /> 메모를 불러오는 중...
+        </div>
+      ) : memos.length === 0 ? (
+        <div className="text-xs text-slate-400">아직 등록된 운영 메모가 없습니다.</div>
+      ) : (
+        <ul className="space-y-2">
+          {memos.map((memo) => (
+            <li key={memo.id} className="rounded-lg border border-slate-100 bg-white p-2.5">
+              {editingId === memo.id ? (
+                <div className="flex flex-col gap-2">
+                  <div className="flex items-center gap-2">
+                    <select
+                      value={editType}
+                      onChange={(event) => setEditType(event.target.value)}
+                      className="h-8 rounded-md border border-slate-200 px-2 text-xs"
+                    >
+                      {memoTypeOptions.map((option) => (
+                        <option key={option.value} value={option.value}>{option.label}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <textarea
+                    value={editContent}
+                    onChange={(event) => setEditContent(event.target.value)}
+                    rows={2}
+                    className="resize-y rounded-md border border-slate-200 px-3 py-2 text-sm outline-none focus:border-indigo-400"
+                  />
+                  <div className="flex gap-2">
+                    <Button onClick={() => void saveEdit(memo.id)} disabled={saving || !editContent.trim()} className="h-8">
+                      저장
+                    </Button>
+                    <Button variant="outline" onClick={() => setEditingId(null)} disabled={saving} className="h-8">
+                      <X className="size-3.5" /> 취소
+                    </Button>
+                  </div>
+                </div>
+              ) : (
+                <>
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Badge className={memoTypeTone[memo.memoType] ?? "bg-slate-100 text-slate-600"}>
+                        {memoTypeLabel[memo.memoType] ?? memo.memoType}
+                      </Badge>
+                      <span className="text-xs text-slate-400">
+                        {memo.adminName} · {formatDateTime(memo.updatedAt)}
+                      </span>
+                    </div>
+                    <div className="flex shrink-0 gap-1">
+                      <button
+                        type="button"
+                        onClick={() => startEdit(memo)}
+                        className="rounded p-1 text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700"
+                        title="수정"
+                      >
+                        <Pencil className="size-3.5" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => void remove(memo.id)}
+                        className="rounded p-1 text-slate-400 transition-colors hover:bg-red-50 hover:text-red-600"
+                        title="삭제"
+                      >
+                        <Trash2 className="size-3.5" />
+                      </button>
+                    </div>
+                  </div>
+                  <p className="mt-1.5 whitespace-pre-wrap text-sm text-slate-700">{memo.content}</p>
+                </>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
 export function AdminAnalyticsPage() {
   const [summary, setSummary] = useState<AdminAnalyticsSummary | null>(null);
   const [runs, setRuns] = useState<AdminCareerAnalysisRun[]>([]);
@@ -82,6 +331,11 @@ export function AdminAnalyticsPage() {
 
   useEffect(() => {
     void load();
+  }, []);
+
+  // 메모 패널이 개수를 알리면 목록 배지를 즉시 반영(전체 재조회 없이).
+  const handleMemoCountChange = useCallback((runId: number, count: number) => {
+    setRuns((current) => current.map((run) => (run.id === runId ? { ...run, memoCount: count } : run)));
   }, []);
 
   const statCards = useMemo(() => {
@@ -281,6 +535,11 @@ export function AdminAnalyticsPage() {
                                 {run.userName}
                                 <span className="text-xs font-normal text-slate-400">({run.userEmail})</span>
                                 <Badge className="bg-indigo-100 text-indigo-700">{analysisTypeLabel[run.analysisType] ?? run.analysisType}</Badge>
+                                {run.memoCount > 0 && (
+                                  <Badge className="bg-emerald-100 text-emerald-700">
+                                    <StickyNote className="mr-1 size-3" />메모 {run.memoCount}
+                                  </Badge>
+                                )}
                               </div>
                               <div className="mt-1 pl-6 text-xs text-slate-500">
                                 {run.model || "모델 없음"} · {run.tokenUsage.toLocaleString()} 토큰 · {formatDateTime(run.createdAt)}
@@ -313,6 +572,7 @@ export function AdminAnalyticsPage() {
                               </div>
                             </div>
                           )}
+                          {expanded && <RunMemoPanel runId={run.id} onCountChange={handleMemoCountChange} />}
                         </div>
                       );
                     })

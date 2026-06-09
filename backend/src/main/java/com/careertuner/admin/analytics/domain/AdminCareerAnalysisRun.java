@@ -26,4 +26,6 @@ public class AdminCareerAnalysisRun {
     private String errorMessage;
     private boolean retryable;
     private LocalDateTime createdAt;
+    private int memoCount;
+    private LocalDateTime latestMemoAt;
 }
