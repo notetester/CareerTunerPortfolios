@@ -1,5 +1,7 @@
 package com.careertuner.fitanalysis.domain;
 
+import java.time.LocalDateTime;
+
 import lombok.Data;
 
 /**
@@ -11,6 +13,12 @@ import lombok.Data;
 @Data
 public class FitAnalysisGenerationSource {
 
+    private Long jobAnalysisId;
+    private Long jobPostingId;
+    private Integer jobPostingRevision;
+    private LocalDateTime jobAnalysisCreatedAt;
+    private Long userProfileId;
+    private LocalDateTime profileUpdatedAt;
     private String companyName;
     private String jobTitle;
     private String requiredSkills;        // job_analysis.required_skills (JSON)

@@ -56,12 +56,17 @@ public class OpenAiFitAnalysisAiService implements FitAnalysisAiService {
                 strings(payload.path("missingSkills")),
                 strings(payload.path("recommendedStudy")),
                 strings(payload.path("recommendedCertificates")),
-                payload.path("strategy").asText(""),
+                text(payload.path("strategy")),
+                strings(payload.path("scoreBasis")),
+                gaps(payload.path("gapRecommendations")),
+                roadmap(payload.path("learningRoadmap")),
+                certificates(payload.path("certificateRecommendations")),
+                strings(payload.path("strategyActions")),
                 response.usage());
     }
 
     private List<String> strings(JsonNode node) {
-        if (!node.isArray()) {
+        if (node == null || !node.isArray()) {
             return List.of();
         }
         List<String> values = new ArrayList<>();
@@ -74,6 +79,10 @@ public class OpenAiFitAnalysisAiService implements FitAnalysisAiService {
         return values;
     }
 
+    private String text(JsonNode node) {
+        return node == null ? "" : node.asText("");
+    }
+
     private Map<String, Object> schema() {
         Map<String, Object> properties = new LinkedHashMap<>();
         properties.put("fitScore", Map.of("type", "integer"));
@@ -82,6 +91,30 @@ public class OpenAiFitAnalysisAiService implements FitAnalysisAiService {
         properties.put("recommendedStudy", stringArray());
         properties.put("recommendedCertificates", stringArray());
         properties.put("strategy", Map.of("type", "string"));
+        properties.put("scoreBasis", stringArray());
+        properties.put("gapRecommendations", Map.of(
+                "type", "array",
+                "items", objectSchema(Map.of(
+                        "skill", string(),
+                        "category", enumString("REQUIRED_MISSING", "PREFERRED_GAP", "LONG_TERM_GROWTH"),
+                        "priority", enumString("HIGH", "MEDIUM", "LOW"),
+                        "reason", string()))));
+        properties.put("learningRoadmap", Map.of(
+                "type", "array",
+                "items", objectSchema(Map.of(
+                        "skill", string(),
+                        "title", string(),
+                        "practiceTask", string(),
+                        "expectedDuration", string(),
+                        "priority", enumString("HIGH", "MEDIUM", "LOW"),
+                        "sortOrder", Map.of("type", "integer")))));
+        properties.put("certificateRecommendations", Map.of(
+                "type", "array",
+                "items", objectSchema(Map.of(
+                        "name", string(),
+                        "priority", enumString("HIGH", "MEDIUM", "LOW"),
+                        "reason", string()))));
+        properties.put("strategyActions", stringArray());
         return Map.of(
                 "type", "object",
                 "additionalProperties", false,
@@ -90,6 +123,65 @@ public class OpenAiFitAnalysisAiService implements FitAnalysisAiService {
     }
 
     private Map<String, Object> stringArray() {
-        return Map.of("type", "array", "items", Map.of("type", "string"));
+        return Map.of("type", "array", "items", string());
+    }
+
+    private Map<String, Object> string() {
+        return Map.of("type", "string");
+    }
+
+    private Map<String, Object> enumString(String... values) {
+        return Map.of("type", "string", "enum", List.of(values));
+    }
+
+    private Map<String, Object> objectSchema(Map<String, Object> properties) {
+        return Map.of(
+                "type", "object",
+                "additionalProperties", false,
+                "properties", properties,
+                "required", List.copyOf(properties.keySet()));
+    }
+
+    private List<FitGapRecommendation> gaps(JsonNode node) {
+        List<FitGapRecommendation> values = new ArrayList<>();
+        if (node != null && node.isArray()) {
+            for (JsonNode item : node) {
+                values.add(new FitGapRecommendation(
+                        item.path("skill").asText(""),
+                        item.path("category").asText("LONG_TERM_GROWTH"),
+                        item.path("priority").asText("LOW"),
+                        item.path("reason").asText("")));
+            }
+        }
+        return values;
+    }
+
+    private List<FitLearningRoadmapItem> roadmap(JsonNode node) {
+        List<FitLearningRoadmapItem> values = new ArrayList<>();
+        if (node != null && node.isArray()) {
+            for (JsonNode item : node) {
+                values.add(new FitLearningRoadmapItem(
+                        item.path("skill").asText(""),
+                        item.path("title").asText(""),
+                        item.path("practiceTask").asText(""),
+                        item.path("expectedDuration").asText(""),
+                        item.path("priority").asText("MEDIUM"),
+                        item.path("sortOrder").asInt(values.size() + 1)));
+            }
+        }
+        return values;
+    }
+
+    private List<FitCertificateRecommendation> certificates(JsonNode node) {
+        List<FitCertificateRecommendation> values = new ArrayList<>();
+        if (node != null && node.isArray()) {
+            for (JsonNode item : node) {
+                values.add(new FitCertificateRecommendation(
+                        item.path("name").asText(""),
+                        item.path("priority").asText("LOW"),
+                        item.path("reason").asText("")));
+            }
+        }
+        return values;
     }
 }

@@ -17,6 +17,11 @@ public record FitAnalysisAiResult(
         List<String> recommendedStudy,
         List<String> recommendedCertificates,
         String strategy,
+        List<String> scoreBasis,
+        List<FitGapRecommendation> gapRecommendations,
+        List<FitLearningRoadmapItem> learningRoadmap,
+        List<FitCertificateRecommendation> certificateRecommendations,
+        List<String> strategyActions,
         CareerAnalysisAiUsage usage
 ) {
 }
