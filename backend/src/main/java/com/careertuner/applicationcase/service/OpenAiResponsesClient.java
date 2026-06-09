@@ -5,6 +5,7 @@ import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.net.http.HttpTimeoutException;
 import java.nio.charset.StandardCharsets;
 import java.util.Base64;
 import java.util.LinkedHashMap;
@@ -19,11 +20,13 @@ import com.careertuner.companyanalysis.ai.prompt.CompanyAnalysisPromptCatalog;
 import com.careertuner.common.exception.BusinessException;
 import com.careertuner.common.exception.ErrorCode;
 import com.careertuner.jobanalysis.ai.prompt.JobAnalysisPromptCatalog;
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
+import lombok.extern.slf4j.Slf4j;
+import tools.jackson.core.JacksonException;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.ObjectMapper;
 
 @Service
+@Slf4j
 public class OpenAiResponsesClient {
 
     private static final int MAX_ATTEMPTS = 3;
@@ -32,9 +35,9 @@ public class OpenAiResponsesClient {
     private final ObjectMapper objectMapper;
     private final HttpClient httpClient;
 
-    public OpenAiResponsesClient(OpenAiProperties properties) {
+    public OpenAiResponsesClient(OpenAiProperties properties, ObjectMapper objectMapper) {
         this.properties = properties;
-        this.objectMapper = new ObjectMapper();
+        this.objectMapper = objectMapper;
         this.httpClient = HttpClient.newBuilder()
                 .connectTimeout(properties.getTimeout())
                 .build();
@@ -63,6 +66,8 @@ public class OpenAiResponsesClient {
                 text(payload, "qualifications"),
                 normalizeDifficulty(text(payload, "difficulty")),
                 text(payload, "summary"),
+                json(payload, "evidence", "[]"),
+                json(payload, "ambiguousConditions", "[]"),
                 usage);
     }
 
@@ -87,6 +92,8 @@ public class OpenAiResponsesClient {
                 arrayJson(payload, "competitors"),
                 text(payload, "interviewPoints"),
                 arrayJson(payload, "sources"),
+                json(payload, "verifiedFacts", "[]"),
+                json(payload, "aiInferences", "[]"),
                 usage);
     }
 
@@ -122,7 +129,7 @@ public class OpenAiResponsesClient {
                             .build();
                     HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
                     if (response.statusCode() >= 200 && response.statusCode() < 300) {
-                        return objectMapper.readTree(response.body());
+                        return parseResponseBody(response.body());
                     }
 
                     String message = errorMessage(response.body());
@@ -133,17 +140,21 @@ public class OpenAiResponsesClient {
                     throw new BusinessException(ErrorCode.INTERNAL_ERROR,
                             "OpenAI 요청에 실패했습니다. " + truncate(message, 300));
                 } catch (IOException ex) {
+                    log.warn("OpenAI request I/O failure on attempt {}/{}", attempt, MAX_ATTEMPTS, ex);
+                    if (ex instanceof HttpTimeoutException || containsIgnoreCase(ex.getMessage(), "timeout")) {
+                        throw openAiTransportException(ex);
+                    }
                     if (attempt < MAX_ATTEMPTS) {
                         sleepBeforeRetry(attempt);
                         continue;
                     }
-                    throw new BusinessException(ErrorCode.INTERNAL_ERROR, "OpenAI 응답을 처리하지 못했습니다.");
+                    throw openAiTransportException(ex);
                 }
             }
             throw new BusinessException(ErrorCode.INTERNAL_ERROR, "OpenAI 요청에 실패했습니다.");
         } catch (BusinessException ex) {
             throw ex;
-        } catch (JsonProcessingException ex) {
+        } catch (JacksonException ex) {
             throw new BusinessException(ErrorCode.INTERNAL_ERROR, "OpenAI 요청을 구성하지 못했습니다.");
         } catch (InterruptedException ex) {
             Thread.currentThread().interrupt();
@@ -197,7 +208,7 @@ public class OpenAiResponsesClient {
         String text = cleanOutputText(root);
         try {
             return objectMapper.readTree(text);
-        } catch (JsonProcessingException ex) {
+        } catch (JacksonException ex) {
             throw new BusinessException(ErrorCode.INTERNAL_ERROR, "AI 분석 결과가 JSON 형식이 아닙니다.");
         }
     }
@@ -255,9 +266,43 @@ public class OpenAiResponsesClient {
         }
         try {
             return objectMapper.writeValueAsString(value);
-        } catch (JsonProcessingException ex) {
+        } catch (JacksonException ex) {
             return "[]";
         }
+    }
+
+    private String json(JsonNode node, String field, String defaultValue) {
+        JsonNode value = node.path(field);
+        if (value.isMissingNode() || value.isNull()) {
+            return defaultValue;
+        }
+        try {
+            return objectMapper.writeValueAsString(value);
+        } catch (JacksonException ex) {
+            return defaultValue;
+        }
+    }
+
+    private JsonNode parseResponseBody(String body) {
+        try {
+            return objectMapper.readTree(body);
+        } catch (JacksonException ex) {
+            throw new BusinessException(ErrorCode.INTERNAL_ERROR, "OpenAI 응답 JSON을 해석하지 못했습니다.");
+        }
+    }
+
+    private BusinessException openAiTransportException(IOException ex) {
+        if (ex instanceof HttpTimeoutException || containsIgnoreCase(ex.getMessage(), "timeout")) {
+            return new BusinessException(ErrorCode.INTERNAL_ERROR,
+                    "OpenAI 요청이 %d초 안에 완료되지 않아 중단되었습니다. 추출 결과는 저장되지 않았습니다. PDF 파일이 크거나 스캔 페이지가 많으면 더 작은 파일로 나눠 다시 시도해 주세요."
+                            .formatted(properties.getTimeout().toSeconds()));
+        }
+        return new BusinessException(ErrorCode.INTERNAL_ERROR,
+                "OpenAI API와 통신하지 못했습니다. 네트워크 상태와 API 설정을 확인해 주세요.");
+    }
+
+    private boolean containsIgnoreCase(String value, String fragment) {
+        return value != null && value.toLowerCase(Locale.ROOT).contains(fragment.toLowerCase(Locale.ROOT));
     }
 
     private String normalizeDifficulty(String value) {
@@ -277,9 +322,11 @@ public class OpenAiResponsesClient {
         properties.put("qualifications", stringSchema());
         properties.put("difficulty", Map.of("type", "string", "enum", List.of("EASY", "NORMAL", "HARD")));
         properties.put("summary", stringSchema());
+        properties.put("evidence", evidenceArraySchema());
+        properties.put("ambiguousConditions", ambiguousConditionsArraySchema());
         return objectSchema(properties, List.of(
                 "employmentType", "experienceLevel", "requiredSkills", "preferredSkills",
-                "duties", "qualifications", "difficulty", "summary"));
+                "duties", "qualifications", "difficulty", "summary", "evidence", "ambiguousConditions"));
     }
 
     private Map<String, Object> companyAnalysisSchema() {
@@ -290,8 +337,11 @@ public class OpenAiResponsesClient {
         properties.put("competitors", stringArraySchema());
         properties.put("interviewPoints", stringSchema());
         properties.put("sources", stringArraySchema());
+        properties.put("verifiedFacts", verifiedFactsArraySchema());
+        properties.put("aiInferences", aiInferencesArraySchema());
         return objectSchema(properties, List.of(
-                "companySummary", "recentIssues", "industry", "competitors", "interviewPoints", "sources"));
+                "companySummary", "recentIssues", "industry", "competitors", "interviewPoints", "sources",
+                "verifiedFacts", "aiInferences"));
     }
 
     private Map<String, Object> objectSchema(Map<String, Object> properties, List<String> required) {
@@ -311,12 +361,40 @@ public class OpenAiResponsesClient {
         return Map.of("type", "array", "items", Map.of("type", "string"));
     }
 
+    private Map<String, Object> evidenceArraySchema() {
+        Map<String, Object> itemProperties = new LinkedHashMap<>();
+        itemProperties.put("field", stringSchema());
+        itemProperties.put("quote", stringSchema());
+        return Map.of("type", "array", "items", objectSchema(itemProperties, List.of("field", "quote")));
+    }
+
+    private Map<String, Object> ambiguousConditionsArraySchema() {
+        Map<String, Object> itemProperties = new LinkedHashMap<>();
+        itemProperties.put("condition", stringSchema());
+        itemProperties.put("assumption", stringSchema());
+        return Map.of("type", "array", "items", objectSchema(itemProperties, List.of("condition", "assumption")));
+    }
+
+    private Map<String, Object> verifiedFactsArraySchema() {
+        Map<String, Object> itemProperties = new LinkedHashMap<>();
+        itemProperties.put("fact", stringSchema());
+        itemProperties.put("source", stringSchema());
+        return Map.of("type", "array", "items", objectSchema(itemProperties, List.of("fact", "source")));
+    }
+
+    private Map<String, Object> aiInferencesArraySchema() {
+        Map<String, Object> itemProperties = new LinkedHashMap<>();
+        itemProperties.put("inference", stringSchema());
+        itemProperties.put("basis", stringSchema());
+        return Map.of("type", "array", "items", objectSchema(itemProperties, List.of("inference", "basis")));
+    }
+
     private String errorMessage(String body) {
         try {
             JsonNode root = objectMapper.readTree(body);
             String message = root.path("error").path("message").asText("");
             return message.isBlank() ? body : message;
-        } catch (JsonProcessingException ex) {
+        } catch (JacksonException ex) {
             return body;
         }
     }
@@ -357,6 +435,8 @@ public class OpenAiResponsesClient {
             String qualifications,
             String difficulty,
             String summary,
+            String evidence,
+            String ambiguousConditions,
             Usage usage
     ) {
     }
@@ -368,6 +448,8 @@ public class OpenAiResponsesClient {
             String competitors,
             String interviewPoints,
             String sources,
+            String verifiedFacts,
+            String aiInferences,
             Usage usage
     ) {
     }

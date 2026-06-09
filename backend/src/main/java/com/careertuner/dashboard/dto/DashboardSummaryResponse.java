@@ -2,6 +2,8 @@ package com.careertuner.dashboard.dto;
 
 import java.util.List;
 
+import com.careertuner.analysis.dto.CareerAnalysisRunResponse;
+
 public record DashboardSummaryResponse(
         DashboardUserResponse user,
         DashboardStatsResponse stats,
@@ -9,6 +11,8 @@ public record DashboardSummaryResponse(
         List<DashboardApplicationResponse> recentApplications,
         List<DashboardTodoResponse> todos,
         List<DashboardActivityResponse> activities,
-        List<DashboardSkillGapResponse> skillGaps
+        List<DashboardSkillGapResponse> skillGaps,
+        String aiSummary,
+        CareerAnalysisRunResponse analysisRun
 ) {
 }

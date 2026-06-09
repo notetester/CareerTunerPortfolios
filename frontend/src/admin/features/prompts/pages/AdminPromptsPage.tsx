@@ -62,9 +62,9 @@ export function AdminPromptsPage() {
               <CardContent className="space-y-4">
                 <div>
                   <div className="text-xs font-semibold text-slate-500">출력 스키마</div>
-                  <div className="mt-2 rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm text-slate-700">
-                    {prompt.schemaSummary}
-                  </div>
+                  <pre className="mt-2 max-h-72 overflow-auto whitespace-pre-wrap break-words rounded-lg border border-slate-200 bg-slate-50 p-3 text-xs leading-5 text-slate-700">
+                    {prompt.schemaSummary || "-"}
+                  </pre>
                 </div>
                 <div>
                   <div className="text-xs font-semibold text-slate-500">System Prompt</div>

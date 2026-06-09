@@ -13,6 +13,11 @@ export interface AdminCompanyAnalysisRow {
   competitors: string | null;
   interviewPoints: string | null;
   sources: string | null;
+  verifiedFacts: string | null;
+  aiInferences: string | null;
+  sourceType: string | null;
+  checkedAt: string | null;
+  refreshRecommendedAt: string | null;
   confirmedAt: string | null;
   adminMemo: string | null;
   createdAt: string;

@@ -1,16 +1,17 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 
-import { getFitAnalysisByApplicationCase } from "../api/fitAnalysisApi";
+import { generateFitAnalysis, getFitAnalysisByApplicationCase } from "../api/fitAnalysisApi";
 import type { FitAnalysisDetail } from "../types/fitAnalysis";
 
 /**
- * 지원 건 상세에서 해당 건의 최신 적합도 분석을 불러온다.
+ * 지원 건 상세에서 해당 건의 최신 적합도 분석을 불러오고, 생성/재생성한다.
  * 적합도/전략/학습 추천 패널이 배열을 받으므로 단건 결과를 배열로 감싸 전달한다.
  * 아직 분석이 없으면(미실행) 빈 목록으로 처리해 패널이 안내 상태를 노출하도록 한다.
  */
 export function useApplicationFitAnalysis(applicationCaseId: number | null, enabled: boolean) {
   const [analyses, setAnalyses] = useState<FitAnalysisDetail[]>([]);
   const [loading, setLoading] = useState(false);
+  const [generating, setGenerating] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -40,5 +41,19 @@ export function useApplicationFitAnalysis(applicationCaseId: number | null, enab
     };
   }, [applicationCaseId, enabled]);
 
-  return { analyses, loading, error };
+  const generate = useCallback(async () => {
+    if (!applicationCaseId) return;
+    setGenerating(true);
+    setError(null);
+    try {
+      const detail = await generateFitAnalysis(applicationCaseId);
+      setAnalyses(detail ? [detail] : []);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "적합도 분석 생성에 실패했습니다.");
+    } finally {
+      setGenerating(false);
+    }
+  }, [applicationCaseId]);
+
+  return { analyses, loading, generating, error, generate };
 }

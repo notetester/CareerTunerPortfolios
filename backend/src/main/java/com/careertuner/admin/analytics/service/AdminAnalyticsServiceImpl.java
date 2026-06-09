@@ -11,16 +11,16 @@ import org.springframework.transaction.annotation.Transactional;
 import com.careertuner.admin.analytics.domain.AdminAnalysisSource;
 import com.careertuner.admin.analytics.dto.AdminAnalyticsStatsResponse;
 import com.careertuner.admin.analytics.dto.AdminAnalyticsSummaryResponse;
+import com.careertuner.admin.analytics.dto.AdminCareerAnalysisRunResponse;
 import com.careertuner.admin.analytics.dto.AdminCountResponse;
 import com.careertuner.admin.analytics.dto.AdminDailyUsageResponse;
 import com.careertuner.admin.analytics.dto.AdminFitScoreBandResponse;
 import com.careertuner.admin.analytics.dto.AdminRecentAnalysisResponse;
 import com.careertuner.admin.analytics.dto.AdminSkillGapResponse;
 import com.careertuner.admin.analytics.mapper.AdminAnalyticsMapper;
-import com.fasterxml.jackson.core.type.TypeReference;
-import com.fasterxml.jackson.databind.ObjectMapper;
-
 import lombok.RequiredArgsConstructor;
+import tools.jackson.core.type.TypeReference;
+import tools.jackson.databind.ObjectMapper;
 
 @Service
 @RequiredArgsConstructor
@@ -30,7 +30,7 @@ public class AdminAnalyticsServiceImpl implements AdminAnalyticsService {
     };
 
     private final AdminAnalyticsMapper adminAnalyticsMapper;
-    private final ObjectMapper objectMapper = new ObjectMapper();
+    private final ObjectMapper objectMapper;
 
     @Override
     @Transactional(readOnly = true)
@@ -50,6 +50,14 @@ public class AdminAnalyticsServiceImpl implements AdminAnalyticsService {
                 adminAnalyticsMapper.findDailyUsage().stream()
                         .map(AdminDailyUsageResponse::from)
                         .toList());
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<AdminCareerAnalysisRunResponse> listRuns(Long userId) {
+        return adminAnalyticsMapper.findCareerAnalysisRuns(userId).stream()
+                .map(AdminCareerAnalysisRunResponse::from)
+                .toList();
     }
 
     private AdminAnalyticsStatsResponse stats(List<AdminAnalysisSource> analyses) {

@@ -17,6 +17,8 @@ public record JobAnalysisResponse(
         String qualifications,
         String difficulty,
         String summary,
+        String evidence,
+        String ambiguousConditions,
         LocalDateTime confirmedAt,
         String adminMemo,
         LocalDateTime createdAt
@@ -38,6 +40,8 @@ public record JobAnalysisResponse(
                 analysis.getQualifications(),
                 analysis.getDifficulty(),
                 analysis.getSummary(),
+                analysis.getEvidence(),
+                analysis.getAmbiguousConditions(),
                 analysis.getConfirmedAt(),
                 analysis.getAdminMemo(),
                 analysis.getCreatedAt());

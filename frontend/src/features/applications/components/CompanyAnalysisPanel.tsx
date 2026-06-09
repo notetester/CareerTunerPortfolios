@@ -4,8 +4,10 @@ import { Button } from "@/app/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/app/components/ui/card";
 import { Input } from "@/app/components/ui/input";
 import { Textarea } from "@/app/components/ui/textarea";
-import type { CompanyAnalysis, CompanyAnalysisReviewRequest } from "../types/analysis";
-import { parseJsonStringArray } from "../types/analysis";
+import type { BAnalysisFailureLog, CompanyAnalysis, CompanyAnalysisReviewRequest } from "../types/analysis";
+import { formatJsonArrayForTextarea, parseJsonStringArray, serializeTextareaList } from "../types/analysis";
+import { AnalysisFailureNotice } from "./AnalysisFailureNotice";
+import { AnalysisStructuredText } from "./AnalysisStructuredText";
 
 interface CompanyAnalysisPanelProps {
   analysis: CompanyAnalysis | null;
@@ -13,6 +15,7 @@ interface CompanyAnalysisPanelProps {
   loading: boolean;
   generating: boolean;
   error: string | null;
+  failures: BAnalysisFailureLog[];
   onGenerate(): Promise<CompanyAnalysis | null>;
   onReview(analysisId: number, request: CompanyAnalysisReviewRequest): Promise<CompanyAnalysis | null>;
 }
@@ -48,6 +51,7 @@ export function CompanyAnalysisPanel({
   loading,
   generating,
   error,
+  failures,
   onGenerate,
   onReview,
 }: CompanyAnalysisPanelProps) {
@@ -65,9 +69,9 @@ export function CompanyAnalysisPanel({
       companySummary: analysis?.companySummary ?? "",
       recentIssues: analysis?.recentIssues ?? "",
       industry: analysis?.industry ?? "",
-      competitors: analysis?.competitors ?? "",
+      competitors: formatJsonArrayForTextarea(analysis?.competitors),
       interviewPoints: analysis?.interviewPoints ?? "",
-      sources: analysis?.sources ?? "",
+      sources: formatJsonArrayForTextarea(analysis?.sources),
     });
   }, [analysis]);
 
@@ -75,9 +79,25 @@ export function CompanyAnalysisPanel({
     setForm((current) => ({ ...current, [key]: value }));
   };
 
+  const sourceMetadata = analysis
+    ? [
+        { label: "출처 유형", value: analysis.sourceType },
+        { label: "확인 시각", value: analysis.checkedAt ? formatDateTime(analysis.checkedAt) : null },
+        {
+          label: "갱신 권장",
+          value: analysis.refreshRecommendedAt ? formatDateTime(analysis.refreshRecommendedAt) : null,
+        },
+      ].filter((item): item is { label: string; value: string } => Boolean(item.value))
+    : [];
+
   const handleReview = async () => {
     if (!analysis) return;
-    await onReview(analysis.id, { ...form, confirmed: true });
+    await onReview(analysis.id, {
+      ...form,
+      competitors: serializeTextareaList(form.competitors),
+      sources: serializeTextareaList(form.sources),
+      confirmed: true,
+    });
   };
 
   return (
@@ -112,6 +132,13 @@ export function CompanyAnalysisPanel({
         </div>
       </CardHeader>
       <CardContent className="space-y-4">
+        {!loading && (
+          <AnalysisFailureNotice
+            failures={failures}
+            featureType="COMPANY_RESEARCH"
+          />
+        )}
+
         {loading ? (
           <div className="h-64 animate-pulse rounded-lg bg-slate-100" />
         ) : analysis ? (
@@ -125,6 +152,22 @@ export function CompanyAnalysisPanel({
                 <div className="text-xs font-semibold text-slate-500">산업</div>
                 <div className="mt-2 text-sm font-bold text-slate-900">{analysis.industry ?? "미정"}</div>
               </div>
+            </div>
+
+            {sourceMetadata.length > 0 && (
+              <div className="grid gap-3 md:grid-cols-3">
+                {sourceMetadata.map((item) => (
+                  <div key={item.label} className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+                    <div className="text-xs font-semibold text-slate-500">{item.label}</div>
+                    <div className="mt-1 text-sm font-bold text-slate-900">{item.value}</div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            <div className="grid gap-3 md:grid-cols-2">
+              <AnalysisStructuredText title="검증된 사실" value={analysis.verifiedFacts} />
+              <AnalysisStructuredText title="AI 추론" value={analysis.aiInferences} />
             </div>
 
             <div className="rounded-lg border border-slate-200 p-4">
@@ -148,8 +191,8 @@ export function CompanyAnalysisPanel({
               <Textarea value={form.companySummary} onChange={(event) => setField("companySummary", event.target.value)} className="min-h-24 bg-white" placeholder="기업 요약" />
               <Textarea value={form.recentIssues} onChange={(event) => setField("recentIssues", event.target.value)} className="min-h-24 bg-white" placeholder="최근 이슈" />
               <div className="grid gap-3 md:grid-cols-2">
-                <Textarea value={form.competitors} onChange={(event) => setField("competitors", event.target.value)} className="min-h-24 bg-white" placeholder='["경쟁사"]' />
-                <Textarea value={form.sources} onChange={(event) => setField("sources", event.target.value)} className="min-h-24 bg-white" placeholder='["공고 원문"]' />
+                <Textarea value={form.competitors} onChange={(event) => setField("competitors", event.target.value)} className="min-h-24 bg-white" placeholder="경쟁/비교 기업을 한 줄에 하나씩 입력" />
+                <Textarea value={form.sources} onChange={(event) => setField("sources", event.target.value)} className="min-h-24 bg-white" placeholder="참고 소스를 한 줄에 하나씩 입력" />
               </div>
               <Textarea value={form.interviewPoints} onChange={(event) => setField("interviewPoints", event.target.value)} className="min-h-24 bg-white" placeholder="면접 준비 포인트" />
               <Button type="button" className="bg-slate-900 text-white hover:bg-slate-800" disabled={generating} onClick={() => void handleReview()}>

@@ -94,11 +94,14 @@ export function AdminAiUsagePage() {
                 </thead>
                 <tbody>
                   {rows.map((row) => (
-                    <tr key={row.id} className="border-b border-slate-100 last:border-b-0">
+                    <tr
+                      key={row.id}
+                      className={`border-b border-slate-100 last:border-b-0 ${row.status === "FAILED" ? "bg-red-50/60" : ""}`}
+                    >
                       <td className="px-4 py-3 text-xs text-slate-500">{formatDateTime(row.createdAt)}</td>
                       <td className="px-4 py-3 font-semibold text-slate-800">{row.featureType}</td>
                       <td className="px-4 py-3">
-                        <Badge className={row.status === "SUCCESS" ? "bg-emerald-100 text-emerald-700" : "bg-red-100 text-red-700"}>
+                        <Badge className={row.status === "SUCCESS" ? "bg-emerald-100 text-emerald-700" : "border border-red-200 bg-red-100 text-red-700"}>
                           {row.status}
                         </Badge>
                       </td>
@@ -108,7 +111,15 @@ export function AdminAiUsagePage() {
                       <td className="px-4 py-3 text-slate-600">{row.userEmail}</td>
                       <td className="px-4 py-3 text-slate-600">{row.tokenUsage ?? 0}</td>
                       <td className="px-4 py-3 text-slate-600">{row.creditUsed}</td>
-                      <td className="max-w-[240px] truncate px-4 py-3 text-xs text-red-600">{row.errorMessage ?? ""}</td>
+                      <td className="px-4 py-3">
+                        {row.errorMessage ? (
+                          <div className="max-w-[360px] whitespace-pre-wrap rounded-md border border-red-200 bg-white px-2 py-1 text-xs font-medium leading-5 text-red-700">
+                            {row.errorMessage}
+                          </div>
+                        ) : (
+                          <span className="text-xs text-slate-400">-</span>
+                        )}
+                      </td>
                     </tr>
                   ))}
                 </tbody>

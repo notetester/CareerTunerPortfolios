@@ -19,6 +19,11 @@
             ca.competitors,
             ca.interview_points,
             ca.sources,
+            ca.verified_facts,
+            ca.ai_inferences,
+            ca.source_type,
+            ca.checked_at,
+            ca.refresh_recommended_at,
             ca.confirmed_at,
             ca.admin_memo,
             ca.created_at

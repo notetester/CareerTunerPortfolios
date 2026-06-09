@@ -19,6 +19,14 @@
         <result property="recommendedStudy" column="recommended_study"/>
         <result property="recommendedCertificates" column="recommended_certificates"/>
         <result property="strategy" column="strategy"/>
+        <result property="sourceSnapshot" column="source_snapshot"/>
+        <result property="scoreBasis" column="score_basis"/>
+        <result property="gapRecommendations" column="gap_recommendations"/>
+        <result property="certificateRecommendations" column="certificate_recommendations"/>
+        <result property="strategyActions" column="strategy_actions"/>
+        <result property="model" column="model"/>
+        <result property="status" column="status"/>
+        <result property="errorMessage" column="error_message"/>
         <result property="createdAt" column="created_at"/>
         <result property="memoCount" column="memo_count"/>
         <result property="latestMemoAt" column="latest_memo_at"/>
@@ -52,6 +60,14 @@
         fa.recommended_study,
         fa.recommended_certificates,
         fa.strategy,
+        fa.source_snapshot,
+        fa.score_basis,
+        fa.gap_recommendations,
+        fa.certificate_recommendations,
+        fa.strategy_actions,
+        fa.model,
+        fa.status,
+        fa.error_message,
         fa.created_at,
         (
             SELECT COUNT(*)
@@ -65,17 +81,12 @@
         ) AS latest_memo_at
     </sql>
 
-    <select id="findLatestAll" resultMap="AdminFitAnalysisResultMap">
+    <select id="findAll" resultMap="AdminFitAnalysisResultMap">
         SELECT
         <include refid="AdminFitAnalysisColumns"/>
         FROM fit_analysis fa
         INNER JOIN application_case ac ON ac.id = fa.application_case_id
         INNER JOIN users ON users.id = ac.user_id
-        WHERE fa.id = (
-            SELECT MAX(latest_fa.id)
-            FROM fit_analysis latest_fa
-            WHERE latest_fa.application_case_id = fa.application_case_id
-        )
         ORDER BY fa.created_at DESC, fa.id DESC
     </select>
 

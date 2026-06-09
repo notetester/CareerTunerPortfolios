@@ -16,6 +16,7 @@ import org.springframework.web.multipart.MultipartFile;
 import org.springframework.http.MediaType;
 
 import com.careertuner.applicationcase.dto.AnalysisResponse;
+import com.careertuner.applicationcase.dto.AiUsageFailureResponse;
 import com.careertuner.applicationcase.dto.ApplicationCaseResponse;
 import com.careertuner.companyanalysis.dto.CompanyAnalysisResponse;
 import com.careertuner.companyanalysis.dto.CompanyAnalysisReviewRequest;
@@ -172,5 +173,12 @@ public class ApplicationCaseController {
     public ApiResponse<AnalysisResponse> getAnalysis(@AuthenticationPrincipal AuthUser authUser,
                                                      @PathVariable Long id) {
         return ApiResponse.ok(applicationCaseService.getAnalysis(authUser.id(), id));
+    }
+
+    @GetMapping("/{id}/ai-usage/b/failures")
+    public ApiResponse<List<AiUsageFailureResponse>> getAiUsageFailures(@AuthenticationPrincipal AuthUser authUser,
+                                                                        @PathVariable Long id,
+                                                                        @RequestParam(defaultValue = "5") int limit) {
+        return ApiResponse.ok(applicationCaseService.getAiUsageFailures(authUser.id(), id, limit));
     }
 }

@@ -146,3 +146,13 @@ com.careertuner
 ```
 
 REST 경로는 프런트 프록시 규약에 맞춰 모두 `/api/**` 하위.
+
+## Jackson 사용 규칙
+
+Spring Boot 4의 기본 JSON 매퍼는 Jackson 3이다. 애플리케이션 코드에서는 `tools.jackson.*` 타입을 사용하고,
+Spring이 구성한 `tools.jackson.databind.ObjectMapper` Bean을 생성자 주입받는다. 서비스에서
+`new ObjectMapper()`를 직접 호출하거나 Jackson 2의 `com.fasterxml.jackson.core.*`,
+`com.fasterxml.jackson.databind.*` 타입을 사용하지 않는다.
+
+Jackson 3도 어노테이션 호환성을 위해 `com.fasterxml.jackson.annotation.*` 패키지를 사용하므로,
+`JsonInclude` 같은 어노테이션 import는 예외적으로 그대로 둔다.

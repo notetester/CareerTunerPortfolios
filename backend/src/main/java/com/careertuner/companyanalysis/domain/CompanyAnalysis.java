@@ -23,6 +23,11 @@ public class CompanyAnalysis {
     private String competitors;
     private String interviewPoints;
     private String sources;
+    private String verifiedFacts;
+    private String aiInferences;
+    private String sourceType;
+    private LocalDateTime checkedAt;
+    private LocalDateTime refreshRecommendedAt;
     private LocalDateTime confirmedAt;
     private String adminMemo;
     private LocalDateTime createdAt;

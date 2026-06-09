@@ -4,7 +4,7 @@ import { Badge } from "@/app/components/ui/badge";
 import { Button } from "@/app/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/app/components/ui/card";
 import { Textarea } from "@/app/components/ui/textarea";
-import { getDifficultyLabel, parseJsonStringArray } from "@/features/applications/types/analysis";
+import { getDifficultyLabel, parseJsonArrayOrText, parseJsonStringArray } from "@/features/applications/types/analysis";
 import { getAdminJobAnalyses, updateAdminJobAnalysisMemo } from "../api";
 import type { AdminJobAnalysisRow } from "../types";
 import AdminShell from "../../../components/AdminShell";
@@ -103,6 +103,8 @@ export function AdminJobAnalysisPage() {
                   <div className="grid gap-3 md:grid-cols-2">
                     <TextBlock title="주요 업무" value={row.duties} />
                     <TextBlock title="자격 요건" value={row.qualifications} />
+                    <TextBlock title="근거" value={row.evidence} />
+                    <TextBlock title="모호한 조건" value={row.ambiguousConditions} />
                   </div>
                   <div className="space-y-2 rounded-lg border border-slate-200 bg-slate-50 p-3">
                     <div className="text-xs font-semibold text-slate-500">운영 메모</div>
@@ -127,10 +129,25 @@ export function AdminJobAnalysisPage() {
 }
 
 function TextBlock({ title, value }: { title: string; value: string | null }) {
+  const parsed = parseJsonArrayOrText(value);
+
   return (
     <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
       <div className="text-xs font-semibold text-slate-500">{title}</div>
-      <p className="mt-2 whitespace-pre-line text-sm leading-6 text-slate-600">{value ?? "내용 없음"}</p>
+      {parsed.kind === "list" ? (
+        <ul className="mt-2 space-y-1.5 text-sm leading-6 text-slate-600">
+          {parsed.items.map((item, index) => (
+            <li key={`${item}-${index}`} className="flex gap-2">
+              <span className="mt-2 size-1.5 shrink-0 rounded-full bg-current" />
+              <span className="min-w-0 break-words">{item}</span>
+            </li>
+          ))}
+        </ul>
+      ) : parsed.kind === "text" ? (
+        <p className="mt-2 whitespace-pre-line text-sm leading-6 text-slate-600">{parsed.text}</p>
+      ) : (
+        <p className="mt-2 text-sm text-slate-400">내용 없음</p>
+      )}
     </div>
   );
 }
