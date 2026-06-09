@@ -17,7 +17,9 @@ public record AdminCareerAnalysisRunResponse(
         int tokenUsage,
         String errorMessage,
         boolean retryable,
-        LocalDateTime createdAt
+        LocalDateTime createdAt,
+        int memoCount,
+        LocalDateTime latestMemoAt
 ) {
     public static AdminCareerAnalysisRunResponse from(AdminCareerAnalysisRun run) {
         return new AdminCareerAnalysisRunResponse(
@@ -33,6 +35,8 @@ public record AdminCareerAnalysisRunResponse(
                 run.getTokenUsage(),
                 run.getErrorMessage(),
                 run.isRetryable(),
-                run.getCreatedAt());
+                run.getCreatedAt(),
+                run.getMemoCount(),
+                run.getLatestMemoAt());
     }
 }

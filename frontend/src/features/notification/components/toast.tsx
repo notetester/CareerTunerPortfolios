@@ -92,7 +92,10 @@ function emit() {
 
 function subscribe(fn: Listener) {
   listeners.add(fn);
-  return () => listeners.delete(fn);
+  // useEffect 클린업은 void 반환이어야 한다. Set.delete 의 boolean 반환을 흘려보내지 않도록 블록으로 감싼다.
+  return () => {
+    listeners.delete(fn);
+  };
 }
 
 function dismiss(id: number) {
