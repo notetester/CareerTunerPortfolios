@@ -11,6 +11,7 @@ import org.springframework.transaction.annotation.Transactional;
 import com.careertuner.admin.analytics.domain.AdminAnalysisSource;
 import com.careertuner.admin.analytics.dto.AdminAnalyticsStatsResponse;
 import com.careertuner.admin.analytics.dto.AdminAnalyticsSummaryResponse;
+import com.careertuner.admin.analytics.dto.AdminCareerAnalysisRunResponse;
 import com.careertuner.admin.analytics.dto.AdminCountResponse;
 import com.careertuner.admin.analytics.dto.AdminDailyUsageResponse;
 import com.careertuner.admin.analytics.dto.AdminFitScoreBandResponse;
@@ -49,6 +50,14 @@ public class AdminAnalyticsServiceImpl implements AdminAnalyticsService {
                 adminAnalyticsMapper.findDailyUsage().stream()
                         .map(AdminDailyUsageResponse::from)
                         .toList());
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<AdminCareerAnalysisRunResponse> listRuns(Long userId) {
+        return adminAnalyticsMapper.findCareerAnalysisRuns(userId).stream()
+                .map(AdminCareerAnalysisRunResponse::from)
+                .toList();
     }
 
     private AdminAnalyticsStatsResponse stats(List<AdminAnalysisSource> analyses) {

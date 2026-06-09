@@ -11,9 +11,9 @@ import {
   TrendingUp, Users, BarChart3, Zap, Shield, Clock, Star,
   ChevronRight, Play, Building2, Briefcase, BookOpen, PenTool,
   Award, Bot, Mic, Video, Brain, AlertCircle, ThumbsUp, Search,
-  Plus, Calendar, Loader2, Flame,
+  Plus, Calendar, Loader2, Flame, RefreshCw,
 } from "lucide-react";
-import { getDashboardSummary } from "@/features/dashboard/api/dashboardApi";
+import { getDashboardSummary, refreshDashboardSummary } from "@/features/dashboard/api/dashboardApi";
 import type { DashboardActivity, DashboardSummary } from "@/features/dashboard/types/dashboardSummary";
 
 const coreFeaturesData = [
@@ -175,10 +175,26 @@ interface MemberHomeProps {
   error: string | null;
   fallbackName: string;
   onRetry: () => void;
+  onSummaryRefreshed: (data: DashboardSummary) => void;
 }
 
-function MemberHome({ summary, loading, error, fallbackName, onRetry }: MemberHomeProps) {
+function MemberHome({ summary, loading, error, fallbackName, onRetry, onSummaryRefreshed }: MemberHomeProps) {
   const navigate = useNavigate();
+  const [refreshing, setRefreshing] = useState(false);
+  const [refreshError, setRefreshError] = useState<string | null>(null);
+
+  const handleRefreshSummary = async () => {
+    setRefreshing(true);
+    setRefreshError(null);
+    try {
+      onSummaryRefreshed(await refreshDashboardSummary());
+    } catch (requestError) {
+      setRefreshError(requestError instanceof Error ? requestError.message : "요약 재생성에 실패했습니다.");
+    } finally {
+      setRefreshing(false);
+    }
+  };
+
   const stats = summary?.stats;
   const pendingTodos = summary?.todos.filter((todo) => !todo.done).length ?? 0;
   const creditPercent = stats ? Math.min(100, Math.round((stats.credit / Math.max(1, stats.creditLimit)) * 100)) : 0;
@@ -275,9 +291,24 @@ function MemberHome({ summary, loading, error, fallbackName, onRetry }: MemberHo
                   {summary?.focus.description ?? "지원 건을 등록하면 적합도, 면접 준비, 반복 약점이 한 화면에 정리됩니다."}
                 </p>
                 {summary?.aiSummary && (
-                  <p className="mt-3 max-w-3xl rounded-xl bg-blue-50 px-4 py-3 text-sm leading-6 text-blue-800">
-                    <strong className="font-semibold">AI 요약</strong> · {summary.aiSummary}
-                  </p>
+                  <div className="mt-3 max-w-3xl rounded-xl bg-blue-50 px-4 py-3">
+                    <div className="flex items-start justify-between gap-3">
+                      <p className="text-sm leading-6 text-blue-800">
+                        <strong className="font-semibold">AI 요약</strong> · {summary.aiSummary}
+                      </p>
+                      <button
+                        type="button"
+                        onClick={handleRefreshSummary}
+                        disabled={refreshing}
+                        title="AI를 다시 실행해 최신 데이터로 요약을 재생성합니다. 크레딧 1이 차감됩니다."
+                        className="flex shrink-0 items-center gap-1 rounded-md border border-blue-200 bg-white/70 px-2 py-1 text-xs font-semibold text-blue-700 transition-colors hover:bg-white disabled:opacity-60"
+                      >
+                        <RefreshCw className={`size-3 ${refreshing ? "animate-spin" : ""}`} />
+                        {refreshing ? "재생성 중" : "재생성 (크레딧 1)"}
+                      </button>
+                    </div>
+                    {refreshError && <div className="mt-1.5 text-xs text-red-600">{refreshError}</div>}
+                  </div>
                 )}
               </div>
               <div className="flex flex-col sm:flex-row lg:flex-col gap-2 shrink-0">
@@ -611,6 +642,7 @@ export function HomePage() {
         error={dashboardError}
         fallbackName={user?.name ?? "지원자"}
         onRetry={() => setReloadToken((value) => value + 1)}
+        onSummaryRefreshed={(data) => setSummary(data)}
       />
     );
   }

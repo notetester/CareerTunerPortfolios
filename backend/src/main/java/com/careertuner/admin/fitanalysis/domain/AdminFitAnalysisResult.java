@@ -28,6 +28,14 @@ public class AdminFitAnalysisResult {
     private String recommendedStudy;
     private String recommendedCertificates;
     private String strategy;
+    private String sourceSnapshot;
+    private String scoreBasis;
+    private String gapRecommendations;
+    private String certificateRecommendations;
+    private String strategyActions;
+    private String model;
+    private String status;
+    private String errorMessage;
     private LocalDateTime createdAt;
     private int memoCount;
     private LocalDateTime latestMemoAt;

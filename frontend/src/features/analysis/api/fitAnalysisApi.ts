@@ -1,5 +1,5 @@
 import { api } from "@/app/lib/api";
-import type { FitAnalysisDetail } from "../types/fitAnalysis";
+import type { FitAnalysisDetail, FitAnalysisLearningTask } from "../types/fitAnalysis";
 
 export function getFitAnalyses() {
   return api<FitAnalysisDetail[]>("/fit-analyses");
@@ -14,4 +14,11 @@ export function getFitAnalysisByApplicationCase(applicationCaseId: number) {
  */
 export function generateFitAnalysis(applicationCaseId: number) {
   return api<FitAnalysisDetail>(`/fit-analyses/application-cases/${applicationCaseId}`, { method: "POST" });
+}
+
+export function updateFitAnalysisLearningTask(fitAnalysisId: number, taskId: number, completed: boolean) {
+  return api<FitAnalysisLearningTask>(`/fit-analyses/${fitAnalysisId}/learning-tasks/${taskId}`, {
+    method: "PATCH",
+    body: JSON.stringify({ completed }),
+  });
 }
