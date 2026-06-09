@@ -19,9 +19,9 @@ import com.careertuner.companyanalysis.ai.prompt.CompanyAnalysisPromptCatalog;
 import com.careertuner.common.exception.BusinessException;
 import com.careertuner.common.exception.ErrorCode;
 import com.careertuner.jobanalysis.ai.prompt.JobAnalysisPromptCatalog;
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
+import tools.jackson.core.JacksonException;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.ObjectMapper;
 
 @Service
 public class OpenAiResponsesClient {
@@ -32,9 +32,9 @@ public class OpenAiResponsesClient {
     private final ObjectMapper objectMapper;
     private final HttpClient httpClient;
 
-    public OpenAiResponsesClient(OpenAiProperties properties) {
+    public OpenAiResponsesClient(OpenAiProperties properties, ObjectMapper objectMapper) {
         this.properties = properties;
-        this.objectMapper = new ObjectMapper();
+        this.objectMapper = objectMapper;
         this.httpClient = HttpClient.newBuilder()
                 .connectTimeout(properties.getTimeout())
                 .build();
@@ -143,7 +143,7 @@ public class OpenAiResponsesClient {
             throw new BusinessException(ErrorCode.INTERNAL_ERROR, "OpenAI 요청에 실패했습니다.");
         } catch (BusinessException ex) {
             throw ex;
-        } catch (JsonProcessingException ex) {
+        } catch (JacksonException ex) {
             throw new BusinessException(ErrorCode.INTERNAL_ERROR, "OpenAI 요청을 구성하지 못했습니다.");
         } catch (InterruptedException ex) {
             Thread.currentThread().interrupt();
@@ -197,7 +197,7 @@ public class OpenAiResponsesClient {
         String text = cleanOutputText(root);
         try {
             return objectMapper.readTree(text);
-        } catch (JsonProcessingException ex) {
+        } catch (JacksonException ex) {
             throw new BusinessException(ErrorCode.INTERNAL_ERROR, "AI 분석 결과가 JSON 형식이 아닙니다.");
         }
     }
@@ -255,7 +255,7 @@ public class OpenAiResponsesClient {
         }
         try {
             return objectMapper.writeValueAsString(value);
-        } catch (JsonProcessingException ex) {
+        } catch (JacksonException ex) {
             return "[]";
         }
     }
@@ -316,7 +316,7 @@ public class OpenAiResponsesClient {
             JsonNode root = objectMapper.readTree(body);
             String message = root.path("error").path("message").asText("");
             return message.isBlank() ? body : message;
-        } catch (JsonProcessingException ex) {
+        } catch (JacksonException ex) {
             return body;
         }
     }

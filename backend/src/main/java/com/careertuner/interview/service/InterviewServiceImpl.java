@@ -25,10 +25,9 @@ import com.careertuner.interview.dto.InterviewReportResponse;
 import com.careertuner.interview.dto.InterviewSessionResponse;
 import com.careertuner.interview.dto.SubmitAnswerRequest;
 import com.careertuner.interview.mapper.InterviewMapper;
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.ObjectMapper;
-
 import lombok.RequiredArgsConstructor;
+import tools.jackson.core.JacksonException;
+import tools.jackson.databind.ObjectMapper;
 
 @Service
 @RequiredArgsConstructor
@@ -55,8 +54,7 @@ public class InterviewServiceImpl implements InterviewService {
     private final ApplicationCaseAccessService accessService;
     private final InterviewOpenAiClient aiClient;
     private final InterviewAiUsageLogService aiUsageLogService;
-    // 이 앱은 ObjectMapper 빈을 노출하지 않으므로 직접 생성한다(다른 도메인과 동일 패턴).
-    private final ObjectMapper objectMapper = new ObjectMapper();
+    private final ObjectMapper objectMapper;
 
     @Override
     @Transactional
@@ -256,7 +254,7 @@ public class InterviewServiceImpl implements InterviewService {
     private String writeReport(InterviewReportResponse response) {
         try {
             return objectMapper.writeValueAsString(response);
-        } catch (JsonProcessingException ex) {
+        } catch (JacksonException ex) {
             return null;
         }
     }
@@ -264,7 +262,7 @@ public class InterviewServiceImpl implements InterviewService {
     private InterviewReportResponse readReport(String json) {
         try {
             return objectMapper.readValue(json, InterviewReportResponse.class);
-        } catch (JsonProcessingException ex) {
+        } catch (JacksonException ex) {
             return null;
         }
     }

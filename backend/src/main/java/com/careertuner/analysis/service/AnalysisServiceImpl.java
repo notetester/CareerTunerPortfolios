@@ -21,10 +21,9 @@ import com.careertuner.analysis.dto.AnalysisSummaryResponse;
 import com.careertuner.analysis.dto.JobReadinessResponse;
 import com.careertuner.analysis.dto.SkillGapResponse;
 import com.careertuner.analysis.mapper.AnalysisMapper;
-import com.fasterxml.jackson.core.type.TypeReference;
-import com.fasterxml.jackson.databind.ObjectMapper;
-
 import lombok.RequiredArgsConstructor;
+import tools.jackson.core.type.TypeReference;
+import tools.jackson.databind.ObjectMapper;
 
 @Service
 @RequiredArgsConstructor
@@ -36,7 +35,7 @@ public class AnalysisServiceImpl implements AnalysisService {
 
     private final AnalysisMapper analysisMapper;
     private final CareerTrendAiService careerTrendAiService;
-    private final ObjectMapper objectMapper = new ObjectMapper();
+    private final ObjectMapper objectMapper;
 
     @Override
     @Transactional(readOnly = true)
