@@ -12,11 +12,13 @@
     "build:mock": "vite build --mode mock",
     "gen:icons": "node scripts/generate-icons.mjs",
     "mobile:sync": "vite build --mode mock && cap sync android",
-    "mobile:apk": "cd android && gradlew assembleDebug"
+    "mobile:apk": "cd android && gradlew assembleDebug",
+    "ios:sync": "vite build --mode mock && cap sync ios"
   },
   "dependencies": {
     "@capacitor/android": "^8.4.0",
     "@capacitor/core": "^8.4.0",
+    "@capacitor/ios": "^8.4.0",
     "@emotion/react": "11.14.0",
     "@emotion/styled": "11.14.1",
     "@mui/icons-material": "7.3.5",

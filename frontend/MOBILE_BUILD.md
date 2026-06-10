@@ -1,0 +1,80 @@
+# 모바일 앱 빌드 가이드 (PWA · Android · iOS)
+
+CareerTuner 프런트엔드를 PWA / Android(APK) / iOS 앱으로 빌드·테스트하는 방법.
+전략 배경은 [docs/planning/모바일 고려.md](../docs/planning/모바일%20고려.md) 참고.
+한 React 코드베이스(`src/`)와 같은 빌드 산출물(`dist/`)을 Android·iOS·PWA가 공유한다.
+
+## 0. 모드 / 데이터
+
+- **mock 데모 모드**(`VITE_USE_MOCK=true`, `.env.mock`): 백엔드 없이 mock 데이터로 동작. 자체완결 APK·웹 데모용. `npm run dev:mock` 으로 로컬 실행.
+- **백엔드 연동**: `VITE_API_BASE_URL=http://<도달가능주소>:8080/api` 로 빌드(백엔드 CORS 허용 필요). 미지정 시 상대경로 `/api`.
+
+## 1. PWA (모든 플랫폼, 빌드 불필요)
+
+`npm run build` → 정적 호스팅. 브라우저에서 "홈 화면에 추가"로 설치형 실행.
+- iOS Safari: 공유 → **홈 화면에 추가** (별도 빌드/서명/계정 전혀 불필요).
+- Android Chrome: 설치 배너 또는 메뉴 → 앱 설치.
+
+## 2. Android (APK) — Windows/macOS/Linux 모두 가능
+
+사전: JDK 21, Android SDK(platform 36, build-tools 36, platform-tools). `ANDROID_HOME`/`JAVA_HOME` 설정.
+
+```bash
+# 최초 1회 (네이티브 프로젝트 생성; android/ 는 gitignore라 재생성)
+npx cap add android
+
+# 빌드(웹 mock 빌드 + 동기화 + 디버그 APK)
+npm run mobile:sync     # = vite build --mode mock && cap sync android
+npm run mobile:apk      # = cd android && gradlew assembleDebug
+# 산출물: android/app/build/outputs/apk/debug/app-debug.apk
+```
+
+테스트: BlueStacks 창에 APK 드래그&드롭 → 실행. (디버그 서명 자동, 사이드로드 OK)
+
+## 3. iOS — **macOS + Xcode 필수** (Windows 빌드 불가)
+
+iOS 빌드/실행은 Apple 정책상 macOS에서만 가능하다. 이 저장소에는 의존성(`@capacitor/ios`)과
+CI 워크플로가 준비되어 있어, **Mac 또는 macOS CI만 확보하면 한 번에 빌드**된다.
+
+### 3.1 서명/계정 필요 여부
+
+| 목적 | 서명 | Apple 계정 |
+| --- | --- | --- |
+| **iOS 시뮬레이터** 테스트 | 불필요 | 불필요 (무료) |
+| **내 아이폰 실기기** 설치 | 필요(개발 서명) | **무료 Apple ID** 가능 (프로필 7일마다 만료 → 재설치) |
+| TestFlight / 앱스토어 배포, 푸시 등 | 필요 | **Apple Developer $99/년** |
+
+→ 개발/테스트는 **무서명(시뮬레이터)** 또는 **무료 Apple ID(실기기)** 로 충분. $99는 배포부터.
+
+### 3.2 Mac에서 로컬 빌드 (시뮬레이터, 무서명)
+
+```bash
+cd frontend
+npm ci
+npm run ios:sync          # = vite build --mode mock && cap sync ios
+npx cap add ios           # 최초 1회 (ios/ 는 gitignore라 재생성), pod install 포함
+npx cap open ios          # Xcode 열기 → 시뮬레이터 선택 → ▶ 실행 (서명 0)
+# 또는 CLI:
+# xcodebuild -workspace ios/App/App.xcworkspace -scheme App \
+#   -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' \
+#   CODE_SIGNING_ALLOWED=NO build
+```
+
+### 3.3 무Mac: GitHub Actions macOS 러너로 빌드 검증
+
+`.github/workflows/ios-build.yml` (수동 실행: Actions 탭 → "Build iOS demo (unsigned simulator)" → Run workflow).
+- macOS 러너에서 `cap add ios` → `cap sync ios` → **무서명 시뮬레이터 빌드** 후 `.app` 아티팩트 업로드.
+- Apple 계정 불필요. iOS 빌드가 깨지지 않는지 지속 검증용.
+- ⚠ 비공개 저장소에서 macOS 러너는 분당 과금 10배 → 수동 실행으로만 둠.
+- ⚠ 업로드된 `.app` 은 **Mac 시뮬레이터에서만 실행** 가능(실기기는 서명 필요, Windows 실행 불가).
+
+### 3.4 실기기/배포가 필요해지면
+
+- 실기기 테스트: Xcode에 무료 Apple ID 로그인 → 자동 서명(Personal Team) → 케이블 연결 후 실행(7일 유효).
+- 배포: Apple Developer($99) 가입 → CI에 서명 인증서/프로비저닝 추가(예: fastlane match, Codemagic, Ionic Appflow).
+
+## 4. 공통 메모
+
+- 네이티브 프로젝트 `android/`·`ios/` 는 `.gitignore` 대상(팀 컨벤션). 설정·웹소스만 커밋하고 `cap add` 로 재생성한다.
+- 앱 아이콘: `npm run gen:icons` (`scripts/generate-icons.mjs`, `public/icons/*` 생성).
+- 데이터: 현재 mock 데모는 **인증 + C 흐름**만 채워져 있다. 다른 도메인 화면을 데모에 넣으려면 `src/app/lib/mock/index.ts` 의 routes 에 핸들러를 추가한다.
