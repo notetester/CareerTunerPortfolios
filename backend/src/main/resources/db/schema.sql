@@ -358,6 +358,23 @@ CREATE TABLE IF NOT EXISTS interview_agent_step (
     CONSTRAINT fk_agent_step_session FOREIGN KEY (interview_session_id) REFERENCES interview_session (id) ON DELETE CASCADE
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci;
 
+-- 면접 평가 학습 데이터 (파인튜닝/평가 하니스용). 평가가 일어날 때마다 append.
+-- 세션이 지워져도 학습 데이터는 남도록 FK 를 두지 않는다.
+CREATE TABLE IF NOT EXISTS interview_training_sample (
+    id                   BIGINT NOT NULL AUTO_INCREMENT,
+    interview_session_id BIGINT NULL,
+    question_id          BIGINT NULL,
+    question             MEDIUMTEXT NOT NULL,
+    answer_text          MEDIUMTEXT NOT NULL,
+    score                INT NOT NULL,
+    feedback             MEDIUMTEXT NULL,
+    rag_used             TINYINT(1) NOT NULL DEFAULT 0,
+    model                VARCHAR(80) NULL,
+    created_at           DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (id),
+    KEY idx_training_session (interview_session_id)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci;
+
 -- 면접 RAG 지식베이스 원본 (루브릭/기출/기업자료). 벡터는 Qdrant 에, 원본은 여기 보관.
 CREATE TABLE IF NOT EXISTS interview_knowledge (
     id         BIGINT NOT NULL AUTO_INCREMENT,

@@ -38,6 +38,11 @@ public final class InterviewPromptCatalog {
             reason: 유지/조정 판단의 근거를 한국어 1~2문장으로 적는다.
             """;
 
+    public static final String JUDGE_SYSTEM_PROMPT = """
+            너는 면접 답변을 독립적으로 채점하는 심사위원이다.
+            질문과 답변만 보고 0~100점으로 점수를 매긴다. 설명 없이 점수만 낸다.
+            """;
+
     public static final String REPORT_SYSTEM_PROMPT = """
             너는 모의면접 결과를 종합 분석하는 면접관이다.
             질문과 답변 전체를 보고 면접 전반을 평가한다.

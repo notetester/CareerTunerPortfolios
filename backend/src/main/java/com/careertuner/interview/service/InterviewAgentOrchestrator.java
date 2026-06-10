@@ -10,8 +10,10 @@ import com.careertuner.common.exception.BusinessException;
 import com.careertuner.interview.domain.InterviewAgentStep;
 import com.careertuner.interview.domain.InterviewQuestion;
 import com.careertuner.interview.domain.InterviewSession;
+import com.careertuner.interview.domain.InterviewTrainingSample;
 import com.careertuner.interview.mapper.InterviewMapper;
 import com.careertuner.interview.rag.InterviewKnowledgeService;
+import com.careertuner.interview.training.InterviewTrainingMapper;
 
 import tools.jackson.core.JacksonException;
 import tools.jackson.databind.ObjectMapper;
@@ -31,17 +33,20 @@ public class InterviewAgentOrchestrator {
     private final InterviewAiUsageLogService usageLog;
     private final InterviewMapper interviewMapper;
     private final InterviewKnowledgeService knowledgeService;
+    private final InterviewTrainingMapper trainingMapper;
     private final ObjectMapper objectMapper;
 
     public InterviewAgentOrchestrator(InterviewOpenAiClient aiClient,
                                       InterviewAiUsageLogService usageLog,
                                       InterviewMapper interviewMapper,
                                       InterviewKnowledgeService knowledgeService,
+                                      InterviewTrainingMapper trainingMapper,
                                       ObjectMapper objectMapper) {
         this.aiClient = aiClient;
         this.usageLog = usageLog;
         this.interviewMapper = interviewMapper;
         this.knowledgeService = knowledgeService;
+        this.trainingMapper = trainingMapper;
         this.objectMapper = objectMapper;
     }
 
@@ -90,6 +95,22 @@ public class InterviewAgentOrchestrator {
         } catch (BusinessException ex) {
             usageLog.recordFailure(userId, caseId, FEATURE_CRITIC, ex.getMessage());
             logStep(sid, qid, criticStep, "CRITIC", "verify", "검증 실패 — 원 점수 유지", null);
+        }
+
+        // ── 학습 데이터 적재 (파인튜닝/평가 하니스 원천, best-effort) ──
+        try {
+            trainingMapper.insert(InterviewTrainingSample.builder()
+                    .interviewSessionId(sid)
+                    .questionId(qid)
+                    .question(question.getQuestion())
+                    .answerText(answerText)
+                    .score(finalScore)
+                    .feedback(eval.feedback())
+                    .ragUsed(!ragContext.isBlank())
+                    .model(eval.usage() == null ? null : eval.usage().model())
+                    .build());
+        } catch (RuntimeException ignored) {
+            // 학습 데이터 적재 실패가 면접 평가를 막지 않는다.
         }
 
         return new OrchestratedEvaluation(finalScore, eval.feedback(), eval.improvedAnswer(), verdict, reason);

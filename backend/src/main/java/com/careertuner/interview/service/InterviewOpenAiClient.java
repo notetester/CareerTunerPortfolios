@@ -169,6 +169,21 @@ public class InterviewOpenAiClient {
                 usage(root));
     }
 
+    /** 평가 하니스용: 독립 심사위원이 같은 답변을 재채점한다(LLM-as-judge). */
+    public ScoreOnly judgeAnswerScore(String question, String answerText) {
+        String userPrompt = """
+                질문:
+                %s
+
+                지원자 답변:
+                %s
+                """.formatted(question, answerText);
+        JsonNode root = post(structuredRequest("interview_judge", scoreOnlySchema(),
+                InterviewPromptCatalog.JUDGE_SYSTEM_PROMPT, userPrompt));
+        JsonNode payload = parseOutputJson(root);
+        return new ScoreOnly(clampScore(payload.path("score").asInt(0)), usage(root));
+    }
+
     /** 면접 전체 Q&A 기반 종합 리포트 생성. */
     public ReportPayload generateReport(String transcript) {
         JsonNode root = post(structuredRequest("interview_report", reportSchema(),
@@ -343,6 +358,12 @@ public class InterviewOpenAiClient {
         return objectSchema(properties, List.of("score", "feedback", "improvedAnswer"));
     }
 
+    private Map<String, Object> scoreOnlySchema() {
+        Map<String, Object> properties = new LinkedHashMap<>();
+        properties.put("score", integerSchema());
+        return objectSchema(properties, List.of("score"));
+    }
+
     private Map<String, Object> critiqueSchema() {
         Map<String, Object> properties = new LinkedHashMap<>();
         properties.put("adjustedScore", integerSchema());
@@ -423,6 +444,9 @@ public class InterviewOpenAiClient {
     }
 
     public record CritiqueResult(int adjustedScore, String verdict, String reason, Usage usage) {
+    }
+
+    public record ScoreOnly(int score, Usage usage) {
     }
 
     public record ReportCategory(String label, int score) {
