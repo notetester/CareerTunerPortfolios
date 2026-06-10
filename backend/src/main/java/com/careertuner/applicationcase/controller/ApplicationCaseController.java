@@ -16,12 +16,15 @@ import org.springframework.web.multipart.MultipartFile;
 import org.springframework.http.MediaType;
 
 import com.careertuner.applicationcase.dto.AnalysisResponse;
+import com.careertuner.applicationcase.dto.AiUsageFailureResponse;
 import com.careertuner.applicationcase.dto.ApplicationCaseResponse;
-import com.careertuner.applicationcase.dto.CompanyAnalysisResponse;
+import com.careertuner.companyanalysis.dto.CompanyAnalysisResponse;
+import com.careertuner.companyanalysis.dto.CompanyAnalysisReviewRequest;
 import com.careertuner.applicationcase.dto.CreateApplicationCaseRequest;
-import com.careertuner.applicationcase.dto.JobAnalysisResponse;
-import com.careertuner.applicationcase.dto.JobPostingRequest;
-import com.careertuner.applicationcase.dto.JobPostingResponse;
+import com.careertuner.jobanalysis.dto.JobAnalysisResponse;
+import com.careertuner.jobanalysis.dto.JobAnalysisReviewRequest;
+import com.careertuner.jobposting.dto.JobPostingRequest;
+import com.careertuner.jobposting.dto.JobPostingResponse;
 import com.careertuner.applicationcase.dto.UpdateApplicationCaseRequest;
 import com.careertuner.applicationcase.service.ApplicationCaseService;
 import com.careertuner.common.security.AuthUser;
@@ -44,8 +47,9 @@ public class ApplicationCaseController {
     }
 
     @GetMapping
-    public ApiResponse<List<ApplicationCaseResponse>> list(@AuthenticationPrincipal AuthUser authUser) {
-        return ApiResponse.ok(applicationCaseService.list(authUser.id()));
+    public ApiResponse<List<ApplicationCaseResponse>> list(@AuthenticationPrincipal AuthUser authUser,
+                                                           @RequestParam(defaultValue = "false") boolean includeArchived) {
+        return ApiResponse.ok(applicationCaseService.list(authUser.id(), includeArchived));
     }
 
     @GetMapping("/{id}")
@@ -89,6 +93,12 @@ public class ApplicationCaseController {
         return ApiResponse.ok(applicationCaseService.getJobPosting(authUser.id(), id));
     }
 
+    @GetMapping("/{id}/job-posting/revisions")
+    public ApiResponse<List<JobPostingResponse>> getJobPostingRevisions(@AuthenticationPrincipal AuthUser authUser,
+                                                                        @PathVariable Long id) {
+        return ApiResponse.ok(applicationCaseService.getJobPostingRevisions(authUser.id(), id));
+    }
+
     @PostMapping("/{id}/job-analysis/mock")
     public ApiResponse<JobAnalysisResponse> createMockJobAnalysis(@AuthenticationPrincipal AuthUser authUser,
                                                                   @PathVariable Long id) {
@@ -105,6 +115,20 @@ public class ApplicationCaseController {
     public ApiResponse<JobAnalysisResponse> getJobAnalysis(@AuthenticationPrincipal AuthUser authUser,
                                                            @PathVariable Long id) {
         return ApiResponse.ok(applicationCaseService.getJobAnalysis(authUser.id(), id));
+    }
+
+    @GetMapping("/{id}/job-analysis/history")
+    public ApiResponse<List<JobAnalysisResponse>> getJobAnalysisHistory(@AuthenticationPrincipal AuthUser authUser,
+                                                                        @PathVariable Long id) {
+        return ApiResponse.ok(applicationCaseService.getJobAnalysisHistory(authUser.id(), id));
+    }
+
+    @PatchMapping("/{id}/job-analysis/{analysisId}/review")
+    public ApiResponse<JobAnalysisResponse> reviewJobAnalysis(@AuthenticationPrincipal AuthUser authUser,
+                                                              @PathVariable Long id,
+                                                              @PathVariable Long analysisId,
+                                                              @Valid @RequestBody JobAnalysisReviewRequest request) {
+        return ApiResponse.ok(applicationCaseService.reviewJobAnalysis(authUser.id(), id, analysisId, request));
     }
 
     @PostMapping("/{id}/company-analysis/mock")
@@ -125,6 +149,20 @@ public class ApplicationCaseController {
         return ApiResponse.ok(applicationCaseService.getCompanyAnalysis(authUser.id(), id));
     }
 
+    @GetMapping("/{id}/company-analysis/history")
+    public ApiResponse<List<CompanyAnalysisResponse>> getCompanyAnalysisHistory(@AuthenticationPrincipal AuthUser authUser,
+                                                                                @PathVariable Long id) {
+        return ApiResponse.ok(applicationCaseService.getCompanyAnalysisHistory(authUser.id(), id));
+    }
+
+    @PatchMapping("/{id}/company-analysis/{analysisId}/review")
+    public ApiResponse<CompanyAnalysisResponse> reviewCompanyAnalysis(@AuthenticationPrincipal AuthUser authUser,
+                                                                      @PathVariable Long id,
+                                                                      @PathVariable Long analysisId,
+                                                                      @Valid @RequestBody CompanyAnalysisReviewRequest request) {
+        return ApiResponse.ok(applicationCaseService.reviewCompanyAnalysis(authUser.id(), id, analysisId, request));
+    }
+
     @PostMapping("/{id}/analysis/mock")
     public ApiResponse<AnalysisResponse> createMockAnalysis(@AuthenticationPrincipal AuthUser authUser,
                                                             @PathVariable Long id) {
@@ -135,5 +173,12 @@ public class ApplicationCaseController {
     public ApiResponse<AnalysisResponse> getAnalysis(@AuthenticationPrincipal AuthUser authUser,
                                                      @PathVariable Long id) {
         return ApiResponse.ok(applicationCaseService.getAnalysis(authUser.id(), id));
+    }
+
+    @GetMapping("/{id}/ai-usage/b/failures")
+    public ApiResponse<List<AiUsageFailureResponse>> getAiUsageFailures(@AuthenticationPrincipal AuthUser authUser,
+                                                                        @PathVariable Long id,
+                                                                        @RequestParam(defaultValue = "5") int limit) {
+        return ApiResponse.ok(applicationCaseService.getAiUsageFailures(authUser.id(), id, limit));
     }
 }

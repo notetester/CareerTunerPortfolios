@@ -1,6 +1,8 @@
 export interface AdminJobAnalysisRow {
   id: number;
   applicationCaseId: number;
+  jobPostingId: number | null;
+  jobPostingRevision: number | null;
   userId: number;
   userEmail: string;
   companyName: string;
@@ -9,8 +11,14 @@ export interface AdminJobAnalysisRow {
   experienceLevel: string | null;
   requiredSkills: string | null;
   preferredSkills: string | null;
+  duties: string | null;
+  qualifications: string | null;
   difficulty: string | null;
   summary: string | null;
+  evidence: string | null;
+  ambiguousConditions: string | null;
+  confirmedAt: string | null;
+  adminMemo: string | null;
   createdAt: string;
 }
 

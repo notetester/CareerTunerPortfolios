@@ -3,6 +3,7 @@ import path from 'path'
 import tailwindcss from '@tailwindcss/vite'
 import react from '@vitejs/plugin-react'
 
+const publicBase = process.env.VITE_PUBLIC_BASE ?? '/'
 
 function figmaAssetResolver() {
   return {
@@ -17,6 +18,7 @@ function figmaAssetResolver() {
 }
 
 export default defineConfig({
+  base: publicBase,
   plugins: [
     figmaAssetResolver(),
     // The React and Tailwind plugins are both required for Make, even if
@@ -41,6 +43,10 @@ export default defineConfig({
         changeOrigin: true,
       },
     },
+  },
+
+  build: {
+    sourcemap: false,
   },
 
   // File types to support raw imports. Never add .css, .tsx, or .ts files to this.

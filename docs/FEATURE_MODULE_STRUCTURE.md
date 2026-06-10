@@ -42,6 +42,43 @@
 연관 백엔드 도메인은 대표 호출 범위이며 전체 의존성이나 소유권 목록이 아니다. 실제 소유권은 아래 표준 폴더 소유권을 따른다.
 출시 범위는 기능군의 세부 기능별 목표 시점을 요약한 것이며, 폴더 소유권이나 모든 하위 기능의 동시 완료를 의미하지 않는다.
 
+## 2.1 분석 계열 명명 규칙
+
+분석 계열은 의미가 비슷해 보여도 제품 영역과 운영 영역을 구분한다. 새 파일, 라우트, API, DB, 문서를 추가할 때 아래 이름을 우선한다.
+
+| 개념 | 사용 위치 | 표준 이름 | 예 |
+| --- | --- | --- | --- |
+| 사용자 취업 분석 | 사용자 메뉴, 사용자 라우트, 장기 경향 분석 도메인 | `analysis` | `frontend/src/features/analysis`, `backend/src/main/java/com/careertuner/analysis`, `/api/analysis/summary` |
+| 관리자 분석 통계 | 관리자 운영 통계, 집계 지표, 대시보드 AI 분석 결과 관리 | `analytics` | `frontend/src/admin/features/analytics`, `backend/src/main/java/com/careertuner/admin/analytics`, `/api/admin/analytics/summary` |
+| 적합도 분석 프런트 경로 | 사용자/관리자 프런트 폴더와 라우트 세그먼트 | `fit-analysis` | `frontend/src/admin/features/fit-analysis`, `/admin/fit-analysis` |
+| 적합도 분석 REST 컬렉션 | API에서 여러 적합도 분석 결과를 다루는 컬렉션 리소스 | `fit-analyses` | `/api/fit-analyses`, `/api/admin/fit-analyses` |
+| 적합도 분석 백엔드 패키지 | Java 패키지와 MyBatis mapper 경로 | `fitanalysis` | `backend/src/main/java/com/careertuner/fitanalysis`, `backend/src/main/resources/mapper/fitanalysis` |
+| 적합도 분석 DB | 테이블, 컬럼, SQL alias | `fit_analysis` | `fit_analysis`, `fit_analysis_id` |
+| 적합도 분석 코드 식별자 | Java/TypeScript 타입, 클래스, 메서드 | `FitAnalysis`, `fitAnalysis`, `fitAnalyses` | `FitAnalysisController`, `fitAnalyses` |
+
+금지 또는 회피 이름:
+
+- `analyse`, `fit-analyse`, `fit-analyse(s)`: 영국식 동사 표기는 사용하지 않는다.
+- `admin/analysis`: 관리자 분석 통계는 `analytics`만 사용한다. 사용자 취업 분석과 섞지 않는다.
+- `analysis-statistics`, `analysisStats`: 관리자 통계 의미를 새로 표현하지 말고 `analytics`로 통일한다.
+- `fitAnalysis`를 URL 또는 폴더 세그먼트로 쓰지 않는다. URL/프런트 폴더는 kebab-case인 `fit-analysis`를 쓴다.
+
+프롬프트 운영 경로도 같은 규칙을 따른다. 적합도 분석 프롬프트는 `frontend/src/admin/features/prompts/fit-analysis`와
+`backend/src/main/java/com/careertuner/admin/prompt/fitanalysis`를 사용한다. 관리자 분석 통계 프롬프트는
+`frontend/src/admin/features/prompts/analytics`와 `backend/src/main/java/com/careertuner/admin/prompt/analytics`를 사용한다.
+
+### 관리자 분석 인접 영역 구분 (analytics / dashboard / home)
+
+`analytics`로 "통일"한다는 규칙은 **관리자 통계 개념의 이름**을 통일하라는 뜻이지(예: `admin/analysis`, `analysisStats` 금지), 관리자 화면을 하나로 합치라는 뜻이 아니다. C의 관리자 영역은 역할이 달라 아래 셋을 구분해 둔다. 사용자 영역의 `home`/`dashboard`/`analysis`와 운영 측면에서 짝을 이룬다.
+
+| 폴더 | 역할(왜 이 이름인가) | 대표 경로 |
+| --- | --- | --- |
+| `admin/analytics` | 분석·AI **깊은 통계**(점수 분포, 부족 역량, 사용량 추이). 사용자 `analysis`의 운영 통계 짝. | `/api/admin/analytics/summary` |
+| `admin/dashboard` | 도메인 횡단 **운영 현황 카운트**(회원/지원 건/분석/면접/AI). 사용자 `dashboard`의 운영 짝, 운영자 랜딩. | `/api/admin/dashboard/overview` |
+| `admin/home` | 운영자 **작업 진입점/대기 큐**(분석 실패·미분석·최근 분석) + 바로가기. 사용자 `home`의 운영 짝. | `/api/admin/home/summary` |
+
+이 표는 절대 규칙이 아니라 "왜 이런 이름이 있는지" 혼선을 줄이기 위한 기록이다. 개발하며 더 나은 경계가 보이면 사유를 남기고 이름/범위를 조정한다.
+
 ## 3. 프런트엔드 표준 구조
 
 사용자 기능:

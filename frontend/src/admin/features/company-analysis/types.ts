@@ -1,6 +1,8 @@
 export interface AdminCompanyAnalysisRow {
   id: number;
   applicationCaseId: number;
+  jobPostingId: number | null;
+  jobPostingRevision: number | null;
   userId: number;
   userEmail: string;
   companyName: string;
@@ -9,6 +11,14 @@ export interface AdminCompanyAnalysisRow {
   recentIssues: string | null;
   industry: string | null;
   competitors: string | null;
+  interviewPoints: string | null;
   sources: string | null;
+  verifiedFacts: string | null;
+  aiInferences: string | null;
+  sourceType: string | null;
+  checkedAt: string | null;
+  refreshRecommendedAt: string | null;
+  confirmedAt: string | null;
+  adminMemo: string | null;
   createdAt: string;
 }

@@ -176,6 +176,7 @@ pages/ components/ api/ hooks/ types/
 ## 7. 관리자 골격 담당
 
 현재 저장소의 추가 관리자 골격은 아래처럼 담당한다. 분석 통계 명칭은 `analytics`로 통일한다.
+분석 계열의 레이어별 이름은 `FEATURE_MODULE_STRUCTURE.md`의 "분석 계열 명명 규칙"을 따른다.
 
 | 관리자 골격 | 담당 |
 | --- | --- |

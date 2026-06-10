@@ -7,9 +7,13 @@ export interface ApplicationCase {
   companyName: string;
   jobTitle: string;
   postingDate: string | null;
+  deadlineDate: string | null;
   sourceType: ApplicationSourceType;
   status: ApplicationStatus;
   favorite: boolean;
+  archived: boolean;
+  archivedAt: string | null;
+  deletedAt: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -18,18 +22,23 @@ export interface CreateApplicationCaseRequest {
   companyName: string;
   jobTitle: string;
   postingDate?: string | null;
+  deadlineDate?: string | null;
   sourceType?: ApplicationSourceType;
   status?: ApplicationStatus;
   favorite?: boolean;
+  archived?: boolean;
 }
 
 export interface UpdateApplicationCaseRequest {
   companyName?: string;
   jobTitle?: string;
   postingDate?: string | null;
+  deadlineDate?: string | null;
+  clearDeadlineDate?: boolean;
   sourceType?: ApplicationSourceType;
   status?: ApplicationStatus;
   favorite?: boolean;
+  archived?: boolean;
 }
 
 export const APPLICATION_STATUS_OPTIONS: { value: ApplicationStatus; label: string }[] = [

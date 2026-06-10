@@ -9,6 +9,7 @@ public record CreateApplicationCaseRequest(
         @NotBlank @Size(max = 255) String companyName,
         @NotBlank @Size(max = 255) String jobTitle,
         LocalDate postingDate,
+        LocalDate deadlineDate,
         @Size(max = 20) String sourceType,
         @Size(max = 20) String status,
         Boolean favorite

@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { listApplicationCases } from "../api/applicationCasesApi";
 import type { ApplicationCase } from "../types/applicationCase";
 
-export function useApplicationCases(enabled = true) {
+export function useApplicationCases(enabled = true, includeArchived = false) {
   const [applicationCases, setApplicationCases] = useState<ApplicationCase[]>([]);
   const [loading, setLoading] = useState(enabled);
   const [error, setError] = useState<string | null>(null);
@@ -16,14 +16,14 @@ export function useApplicationCases(enabled = true) {
     setLoading(true);
     setError(null);
     try {
-      const items = await listApplicationCases();
+      const items = await listApplicationCases(includeArchived);
       setApplicationCases(items);
     } catch (err) {
       setError(err instanceof Error ? err.message : "지원 건 목록을 불러오지 못했습니다.");
     } finally {
       setLoading(false);
     }
-  }, [enabled]);
+  }, [enabled, includeArchived]);
 
   useEffect(() => {
     void refresh();

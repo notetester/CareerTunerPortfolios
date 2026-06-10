@@ -12,6 +12,10 @@ export async function getJobPosting(applicationCaseId: number): Promise<JobPosti
   }
 }
 
+export function getJobPostingRevisions(applicationCaseId: number): Promise<JobPosting[]> {
+  return api<JobPosting[]>(`/application-cases/${applicationCaseId}/job-posting/revisions`, { method: "GET" });
+}
+
 export function saveJobPosting(applicationCaseId: number, request: JobPostingRequest): Promise<JobPosting> {
   return api<JobPosting>(`/application-cases/${applicationCaseId}/job-posting`, {
     method: "POST",

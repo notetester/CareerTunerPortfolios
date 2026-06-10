@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.careertuner.admin.home.mapper.AdminHomeMapper">
+
+    <!-- 관리자 홈(운영 작업 큐): 적합도 분석 운영 대기 항목을 읽기 전용으로 집계한다. -->
+
+    <select id="countFitAnalysisFailures" resultType="int">
+        SELECT COUNT(*) FROM ai_usage_log
+        WHERE feature_type = 'FIT_ANALYSIS' AND status = 'FAILED'
+    </select>
+
+    <select id="countUnanalyzedApplications" resultType="int">
+        SELECT COUNT(*) FROM application_case ac
+        WHERE ac.deleted_at IS NULL
+          AND NOT EXISTS (SELECT 1 FROM fit_analysis f WHERE f.application_case_id = ac.id)
+    </select>
+
+    <select id="countNewAnalysesLast7Days" resultType="int">
+        SELECT COUNT(*) FROM fit_analysis
+        WHERE created_at &gt;= (CURRENT_DATE - INTERVAL 7 DAY)
+    </select>
+</mapper>

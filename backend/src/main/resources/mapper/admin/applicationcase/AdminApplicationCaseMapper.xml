@@ -1,0 +1,74 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.careertuner.admin.applicationcase.mapper.AdminApplicationCaseMapper">
+
+    <sql id="ApplicationCaseSelect">
+        SELECT
+            ac.id,
+            ac.user_id,
+            u.email AS user_email,
+            ac.company_name,
+            ac.job_title,
+            ac.posting_date,
+            ac.deadline_date,
+            ac.source_type,
+            ac.status,
+            ac.is_favorite AS favorite,
+            ac.archived_at,
+            ac.deleted_at,
+            ac.created_at,
+            ac.updated_at,
+            (
+                SELECT MAX(jp.revision)
+                FROM job_posting jp
+                WHERE jp.application_case_id = ac.id
+            ) AS latest_posting_revision,
+            (
+                SELECT MAX(ja.created_at)
+                FROM job_analysis ja
+                WHERE ja.application_case_id = ac.id
+            ) AS latest_job_analysis_at,
+            (
+                SELECT MAX(ca.created_at)
+                FROM company_analysis ca
+                WHERE ca.application_case_id = ac.id
+            ) AS latest_company_analysis_at
+        FROM application_case ac
+        JOIN users u ON ac.user_id = u.id
+    </sql>
+
+    <select id="findApplicationCases" resultType="com.careertuner.admin.applicationcase.dto.AdminApplicationCaseRow">
+        <include refid="ApplicationCaseSelect"/>
+        WHERE 1 = 1
+        <if test="keyword != null">
+            AND (
+                ac.company_name LIKE CONCAT('%', #{keyword}, '%')
+                OR ac.job_title LIKE CONCAT('%', #{keyword}, '%')
+                OR u.email LIKE CONCAT('%', #{keyword}, '%')
+            )
+        </if>
+        <if test="status != null">
+            AND ac.status = #{status}
+        </if>
+        <if test="!includeArchived">
+            AND ac.archived_at IS NULL
+        </if>
+        <if test="!includeDeleted">
+            AND ac.deleted_at IS NULL
+        </if>
+        ORDER BY ac.updated_at DESC, ac.id DESC
+        LIMIT #{limit}
+    </select>
+
+    <select id="findApplicationCase" resultType="com.careertuner.admin.applicationcase.dto.AdminApplicationCaseRow">
+        <include refid="ApplicationCaseSelect"/>
+        WHERE ac.id = #{id}
+    </select>
+
+    <update id="updateStatus">
+        UPDATE application_case
+        SET status = #{status}
+        WHERE id = #{id} AND deleted_at IS NULL
+    </update>
+</mapper>

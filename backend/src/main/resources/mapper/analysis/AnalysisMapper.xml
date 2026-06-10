@@ -1,0 +1,80 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.careertuner.analysis.mapper.AnalysisMapper">
+
+    <resultMap id="AnalysisSourceResultMap" type="com.careertuner.analysis.domain.AnalysisSource">
+        <id property="applicationCaseId" column="application_case_id"/>
+        <result property="companyName" column="company_name"/>
+        <result property="jobTitle" column="job_title"/>
+        <result property="postingDate" column="posting_date"/>
+        <result property="status" column="status"/>
+        <result property="favorite" column="is_favorite"/>
+        <result property="applicationUpdatedAt" column="application_updated_at"/>
+        <result property="fitAnalysisId" column="fit_analysis_id"/>
+        <result property="fitScore" column="fit_score"/>
+        <result property="matchedSkills" column="matched_skills"/>
+        <result property="missingSkills" column="missing_skills"/>
+        <result property="recommendedStudy" column="recommended_study"/>
+        <result property="recommendedCertificates" column="recommended_certificates"/>
+        <result property="strategy" column="strategy"/>
+        <result property="analyzedAt" column="analyzed_at"/>
+        <result property="interviewCount" column="interview_count"/>
+        <result property="averageInterviewScore" column="average_interview_score"/>
+        <result property="interviewAnswerCount" column="interview_answer_count"/>
+        <result property="averageInterviewAnswerScore" column="average_interview_answer_score"/>
+    </resultMap>
+
+    <select id="findSourcesByUserId" resultMap="AnalysisSourceResultMap">
+        SELECT
+            ac.id AS application_case_id,
+            ac.company_name,
+            ac.job_title,
+            ac.posting_date,
+            ac.status,
+            ac.is_favorite,
+            ac.updated_at AS application_updated_at,
+            fa.id AS fit_analysis_id,
+            fa.fit_score,
+            fa.matched_skills,
+            fa.missing_skills,
+            fa.recommended_study,
+            fa.recommended_certificates,
+            fa.strategy,
+            fa.created_at AS analyzed_at,
+            (
+                SELECT COUNT(*)
+                FROM interview_session interview_count_source
+                WHERE interview_count_source.application_case_id = ac.id
+            ) AS interview_count,
+            (
+                SELECT ROUND(AVG(interview_score_source.total_score))
+                FROM interview_session interview_score_source
+                WHERE interview_score_source.application_case_id = ac.id
+            ) AS average_interview_score,
+            (
+                SELECT COUNT(*)
+                FROM interview_answer answer_count_source
+                INNER JOIN interview_question answer_question ON answer_question.id = answer_count_source.question_id
+                INNER JOIN interview_session answer_session ON answer_session.id = answer_question.interview_session_id
+                WHERE answer_session.application_case_id = ac.id
+            ) AS interview_answer_count,
+            (
+                SELECT ROUND(AVG(answer_score_source.score))
+                FROM interview_answer answer_score_source
+                INNER JOIN interview_question score_question ON score_question.id = answer_score_source.question_id
+                INNER JOIN interview_session score_session ON score_session.id = score_question.interview_session_id
+                WHERE score_session.application_case_id = ac.id
+            ) AS average_interview_answer_score
+        FROM application_case ac
+        LEFT JOIN fit_analysis fa
+               ON fa.application_case_id = ac.id
+              AND fa.id = (
+                  SELECT MAX(latest_fa.id)
+                  FROM fit_analysis latest_fa
+                  WHERE latest_fa.application_case_id = ac.id
+              )
+        WHERE ac.user_id = #{userId}
+        ORDER BY ac.is_favorite DESC, COALESCE(fa.created_at, ac.updated_at) DESC, ac.id DESC
+    </select>
+</mapper>

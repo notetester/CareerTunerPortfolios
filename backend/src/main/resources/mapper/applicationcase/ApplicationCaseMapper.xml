@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="UTF-8"?>
+﻿<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
         "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
 <mapper namespace="com.careertuner.applicationcase.mapper.ApplicationCaseMapper">
@@ -6,26 +6,32 @@
     <resultMap id="ApplicationCaseResultMap" type="com.careertuner.applicationcase.domain.ApplicationCase">
         <id property="id" column="id"/>
         <result property="favorite" column="is_favorite"/>
+        <result property="archivedAt" column="archived_at"/>
+        <result property="deletedAt" column="deleted_at"/>
     </resultMap>
 
     <insert id="insertApplicationCase" useGeneratedKeys="true" keyProperty="id">
         INSERT INTO application_case
-            (user_id, company_name, job_title, posting_date, source_type, status, is_favorite)
+            (user_id, company_name, job_title, posting_date, deadline_date, source_type, status, is_favorite)
         VALUES
-            (#{userId}, #{companyName}, #{jobTitle}, #{postingDate}, #{sourceType}, #{status}, #{favorite})
+            (#{userId}, #{companyName}, #{jobTitle}, #{postingDate}, #{deadlineDate}, #{sourceType}, #{status}, #{favorite})
     </insert>
 
     <select id="findApplicationCasesByUserId" resultMap="ApplicationCaseResultMap">
         SELECT *
         FROM application_case
         WHERE user_id = #{userId}
+          AND deleted_at IS NULL
+        <if test="!includeArchived">
+          AND archived_at IS NULL
+        </if>
         ORDER BY is_favorite DESC, updated_at DESC, id DESC
     </select>
 
     <select id="findApplicationCaseByIdAndUserId" resultMap="ApplicationCaseResultMap">
         SELECT *
         FROM application_case
-        WHERE id = #{id} AND user_id = #{userId}
+        WHERE id = #{id} AND user_id = #{userId} AND deleted_at IS NULL
     </select>
 
     <update id="updateApplicationCase">
@@ -33,10 +39,49 @@
         SET company_name = #{companyName},
             job_title = #{jobTitle},
             posting_date = #{postingDate},
+            deadline_date = #{deadlineDate},
             source_type = #{sourceType},
             status = #{status},
-            is_favorite = #{favorite}
+            is_favorite = #{favorite},
+            archived_at = #{archivedAt}
+        WHERE id = #{id} AND user_id = #{userId} AND deleted_at IS NULL
+    </update>
+
+    <update id="markAnalysisCompleted">
+        UPDATE application_case
+        SET status = CASE
+                WHEN status IN ('DRAFT', 'ANALYZING') THEN 'READY'
+                ELSE status
+            END
         WHERE id = #{id} AND user_id = #{userId}
+    </update>
+
+    <update id="markAnalysisStarted">
+        UPDATE application_case
+        SET status = 'ANALYZING'
+        WHERE id = #{id}
+          AND user_id = #{userId}
+          AND deleted_at IS NULL
+          AND status IN ('DRAFT', 'ANALYZING', 'READY')
+    </update>
+
+    <update id="markReadyAfterAnalysis">
+        UPDATE application_case
+        SET status = 'READY'
+        WHERE id = #{id}
+          AND user_id = #{userId}
+          AND deleted_at IS NULL
+          AND status = 'ANALYZING'
+          AND #{previousStatus} IN ('DRAFT', 'ANALYZING', 'READY')
+    </update>
+
+    <update id="restoreAnalysisStatus">
+        UPDATE application_case
+        SET status = #{previousStatus}
+        WHERE id = #{id}
+          AND user_id = #{userId}
+          AND deleted_at IS NULL
+          AND status = 'ANALYZING'
     </update>
 
     <delete id="deleteApplicationCase">
@@ -44,69 +89,18 @@
         WHERE id = #{id} AND user_id = #{userId}
     </delete>
 
-    <delete id="deleteJobPostingsByCaseId">
-        DELETE FROM job_posting
-        WHERE application_case_id = #{applicationCaseId}
-    </delete>
+    <update id="softDeleteApplicationCase">
+        UPDATE application_case
+        SET deleted_at = CURRENT_TIMESTAMP
+        WHERE id = #{id} AND user_id = #{userId} AND deleted_at IS NULL
+    </update>
 
-    <insert id="insertJobPosting" useGeneratedKeys="true" keyProperty="id">
-        INSERT INTO job_posting
-            (application_case_id, original_text, uploaded_file_url, extracted_text, source_type)
+    <insert id="insertStatusHistory">
+        INSERT INTO application_case_status_history
+            (application_case_id, changed_by_user_id, previous_status, new_status, memo)
         VALUES
-            (#{applicationCaseId}, #{originalText}, #{uploadedFileUrl}, #{extractedText}, #{sourceType})
+            (#{applicationCaseId}, #{changedByUserId}, #{previousStatus}, #{newStatus}, #{memo})
     </insert>
-
-    <select id="findLatestJobPostingByCaseId" resultType="com.careertuner.applicationcase.domain.JobPosting">
-        SELECT *
-        FROM job_posting
-        WHERE application_case_id = #{applicationCaseId}
-        ORDER BY id DESC
-        LIMIT 1
-    </select>
-
-    <delete id="deleteJobAnalysesByCaseId">
-        DELETE FROM job_analysis
-        WHERE application_case_id = #{applicationCaseId}
-    </delete>
-
-    <insert id="insertJobAnalysis" useGeneratedKeys="true" keyProperty="id">
-        INSERT INTO job_analysis
-            (application_case_id, employment_type, experience_level, required_skills,
-             preferred_skills, duties, qualifications, difficulty, summary)
-        VALUES
-            (#{applicationCaseId}, #{employmentType}, #{experienceLevel}, #{requiredSkills},
-             #{preferredSkills}, #{duties}, #{qualifications}, #{difficulty}, #{summary})
-    </insert>
-
-    <select id="findLatestJobAnalysisByCaseId" resultType="com.careertuner.applicationcase.domain.JobAnalysis">
-        SELECT *
-        FROM job_analysis
-        WHERE application_case_id = #{applicationCaseId}
-        ORDER BY id DESC
-        LIMIT 1
-    </select>
-
-    <delete id="deleteCompanyAnalysesByCaseId">
-        DELETE FROM company_analysis
-        WHERE application_case_id = #{applicationCaseId}
-    </delete>
-
-    <insert id="insertCompanyAnalysis" useGeneratedKeys="true" keyProperty="id">
-        INSERT INTO company_analysis
-            (application_case_id, company_summary, recent_issues, industry,
-             competitors, interview_points, sources)
-        VALUES
-            (#{applicationCaseId}, #{companySummary}, #{recentIssues}, #{industry},
-             #{competitors}, #{interviewPoints}, #{sources})
-    </insert>
-
-    <select id="findLatestCompanyAnalysisByCaseId" resultType="com.careertuner.applicationcase.domain.CompanyAnalysis">
-        SELECT *
-        FROM company_analysis
-        WHERE application_case_id = #{applicationCaseId}
-        ORDER BY id DESC
-        LIMIT 1
-    </select>
 
     <delete id="deleteFitAnalysesByCaseId">
         DELETE FROM fit_analysis
@@ -138,4 +132,28 @@
             (#{userId}, #{applicationCaseId}, #{featureType}, #{status}, #{model},
              #{inputTokens}, #{outputTokens}, #{tokenUsage}, #{creditUsed}, #{errorMessage})
     </insert>
+
+    <select id="findBFailureLogsByCaseId" resultType="com.careertuner.applicationcase.dto.AiUsageFailureResponse">
+        SELECT
+            failed.feature_type,
+            failed.error_message,
+            failed.created_at
+        FROM ai_usage_log failed
+        WHERE failed.application_case_id = #{applicationCaseId}
+          AND failed.status = 'FAILED'
+          AND failed.feature_type IN ('JOB_ANALYSIS', 'COMPANY_RESEARCH', 'JOB_POSTING_OCR')
+          AND NOT EXISTS (
+              SELECT 1
+              FROM ai_usage_log success
+              WHERE success.application_case_id = failed.application_case_id
+                AND success.feature_type = failed.feature_type
+                AND success.status = 'SUCCESS'
+                AND (
+                    success.created_at > failed.created_at
+                    OR (success.created_at = failed.created_at AND success.id > failed.id)
+                )
+          )
+        ORDER BY failed.created_at DESC, failed.id DESC
+        LIMIT #{limit}
+    </select>
 </mapper>

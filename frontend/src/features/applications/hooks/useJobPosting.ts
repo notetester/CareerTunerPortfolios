@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useState } from "react";
-import { getJobPosting, saveJobPosting, uploadJobPostingFile } from "../api/jobPostingsApi";
+import { getJobPosting, getJobPostingRevisions, saveJobPosting, uploadJobPostingFile } from "../api/jobPostingsApi";
 import type { ApplicationSourceType } from "../types/applicationCase";
 import type { JobPosting, JobPostingRequest } from "../types/jobPosting";
 
 export function useJobPosting(applicationCaseId: number | null, enabled = true) {
   const [jobPosting, setJobPosting] = useState<JobPosting | null>(null);
+  const [revisions, setRevisions] = useState<JobPosting[]>([]);
   const [loading, setLoading] = useState(Boolean(applicationCaseId && enabled));
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
@@ -21,6 +22,7 @@ export function useJobPosting(applicationCaseId: number | null, enabled = true) 
     try {
       const posting = await getJobPosting(applicationCaseId);
       setJobPosting(posting);
+      setRevisions(await getJobPostingRevisions(applicationCaseId));
     } catch (err) {
       setError(err instanceof Error ? err.message : "공고문을 불러오지 못했습니다.");
     } finally {
@@ -37,6 +39,7 @@ export function useJobPosting(applicationCaseId: number | null, enabled = true) 
       try {
         const posting = await saveJobPosting(applicationCaseId, request);
         setJobPosting(posting);
+        setRevisions(await getJobPostingRevisions(applicationCaseId));
         return posting;
       } catch (err) {
         setError(err instanceof Error ? err.message : "공고문을 저장하지 못했습니다.");
@@ -57,6 +60,7 @@ export function useJobPosting(applicationCaseId: number | null, enabled = true) 
       try {
         const posting = await uploadJobPostingFile(applicationCaseId, sourceType, file);
         setJobPosting(posting);
+        setRevisions(await getJobPostingRevisions(applicationCaseId));
         return posting;
       } catch (err) {
         setError(err instanceof Error ? err.message : "공고문 파일을 업로드하지 못했습니다.");
@@ -74,6 +78,7 @@ export function useJobPosting(applicationCaseId: number | null, enabled = true) 
 
   return {
     jobPosting,
+    revisions,
     loading,
     saving,
     uploading,

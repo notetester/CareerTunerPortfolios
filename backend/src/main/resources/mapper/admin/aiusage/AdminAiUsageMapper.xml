@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.careertuner.admin.aiusage.mapper.AdminAiUsageMapper">
+
+    <sql id="BUsageLogSelect">
+        SELECT
+            aul.id,
+            aul.user_id,
+            u.email AS user_email,
+            aul.application_case_id,
+            ac.company_name,
+            ac.job_title,
+            aul.feature_type,
+            aul.status,
+            aul.model,
+            aul.input_tokens,
+            aul.output_tokens,
+            aul.token_usage,
+            aul.credit_used,
+            aul.error_message,
+            aul.created_at
+        FROM ai_usage_log aul
+        JOIN users u ON aul.user_id = u.id
+        LEFT JOIN application_case ac ON aul.application_case_id = ac.id
+    </sql>
+
+    <select id="findBUsageLogs" resultType="com.careertuner.admin.aiusage.dto.AdminAiUsageLogRow">
+        <include refid="BUsageLogSelect"/>
+        WHERE aul.feature_type IN ('JOB_ANALYSIS', 'COMPANY_RESEARCH', 'JOB_POSTING_OCR')
+        <if test="featureType != null">
+            AND aul.feature_type = #{featureType}
+        </if>
+        <if test="status != null">
+            AND aul.status = #{status}
+        </if>
+        ORDER BY aul.created_at DESC, aul.id DESC
+        LIMIT #{limit}
+    </select>
+
+    <select id="findBUsageLogsByCaseId" resultType="com.careertuner.admin.aiusage.dto.AdminAiUsageLogRow">
+        <include refid="BUsageLogSelect"/>
+        WHERE aul.feature_type IN ('JOB_ANALYSIS', 'COMPANY_RESEARCH', 'JOB_POSTING_OCR')
+          AND aul.application_case_id = #{applicationCaseId}
+        ORDER BY aul.created_at DESC, aul.id DESC
+        LIMIT #{limit}
+    </select>
+</mapper>

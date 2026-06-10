@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.careertuner.jobposting.mapper.JobPostingMapper">
+
+    <delete id="deleteJobPostingsByCaseId">
+        DELETE FROM job_posting
+        WHERE application_case_id = #{applicationCaseId}
+    </delete>
+
+    <select id="nextRevisionForCase" resultType="int">
+        SELECT COALESCE(MAX(revision), 0) + 1
+        FROM job_posting
+        WHERE application_case_id = #{applicationCaseId}
+    </select>
+
+    <insert id="insertJobPosting" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO job_posting
+            (application_case_id, revision, original_text, uploaded_file_url, extracted_text, source_type)
+        VALUES
+            (#{applicationCaseId}, #{revision}, #{originalText}, #{uploadedFileUrl}, #{extractedText}, #{sourceType})
+    </insert>
+
+    <select id="findLatestJobPostingByCaseId" resultType="com.careertuner.jobposting.domain.JobPosting">
+        SELECT *
+        FROM job_posting
+        WHERE application_case_id = #{applicationCaseId}
+        ORDER BY revision DESC, id DESC
+        LIMIT 1
+    </select>
+
+    <select id="findJobPostingRevisionsByCaseId" resultType="com.careertuner.jobposting.domain.JobPosting">
+        SELECT *
+        FROM job_posting
+        WHERE application_case_id = #{applicationCaseId}
+        ORDER BY revision DESC, id DESC
+    </select>
+</mapper>

@@ -1,0 +1,239 @@
+/* ──────────────────────────────────────────────────
+   CareerTuner Toast — features/notification 전용
+   ────────────────────────────────────────────────── */
+
+.ct-toast {
+  --toast-accent: #2563eb;
+  --toast-badge-bg: var(--toast-accent);
+  --toast-badge-fg: #ffffff;
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 340px;
+  max-width: min(92vw, 420px);
+  padding: 12px 12px 12px 14px;
+  border-radius: var(--radius);
+  font-family: var(--font-sans);
+  font-size: var(--text-sm);
+  line-height: var(--lh-sm);
+  font-weight: var(--font-weight-medium);
+  box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1),
+    0 4px 6px -4px rgba(0, 0, 0, 0.1);
+  overflow: hidden;
+  isolation: isolate;
+}
+
+/* ── variant accent ── */
+.ct-toast--success { --toast-accent: #16a34a; }
+.ct-toast--danger  { --toast-accent: #dc2626; }
+.ct-toast--warning { --toast-accent: #f59e0b; }
+.ct-toast--info    { --toast-accent: #2563eb; }
+
+/* ── surfaces ── */
+.ct-toast--light {
+  background: #ffffff;
+  color: var(--foreground);
+  border: 1px solid var(--border);
+}
+.ct-toast--dark {
+  background: #18181b;
+  color: #fafafa;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+.ct-toast--filled {
+  background: var(--toast-accent);
+  color: #ffffff;
+  border: 1px solid transparent;
+  --toast-badge-bg: #ffffff;
+  --toast-badge-fg: var(--toast-accent);
+}
+
+/* ── parts ── */
+.ct-toast__icon { flex: none; display: flex; }
+.ct-toast__icon svg { width: 20px; height: 20px; display: block; }
+.ct-toast__label { flex: 1 1 auto; min-width: 0; overflow-wrap: anywhere; }
+
+.ct-toast__close {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  margin: -2px -2px -2px 0;
+  border: 0;
+  padding: 0;
+  border-radius: 6px;
+  cursor: pointer;
+  color: currentColor;
+  background: transparent;
+  opacity: 0.5;
+  transition: opacity 0.15s ease, background 0.15s ease;
+}
+.ct-toast__close:hover {
+  opacity: 1;
+  background: rgba(0, 0, 0, 0.06);
+}
+.ct-toast--dark .ct-toast__close:hover,
+.ct-toast--filled .ct-toast__close:hover {
+  background: rgba(255, 255, 255, 0.18);
+}
+.ct-toast__close svg { width: 16px; height: 16px; display: block; }
+
+/* ── progress bar ── */
+.ct-toast__progress {
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  height: 3px;
+  width: 100%;
+  transform-origin: left center;
+  background: var(--toast-accent);
+}
+.ct-toast--filled .ct-toast__progress { background: rgba(255, 255, 255, 0.92); }
+.ct-toast__progress--brand { background: var(--brand-blue); }
+.ct-toast__progress--anim {
+  animation: ct-toast-deplete linear forwards;
+}
+@keyframes ct-toast-deplete {
+  from { transform: scaleX(1); }
+  to   { transform: scaleX(0); }
+}
+
+/* ── loading variant ── */
+.ct-toast--loading {
+  --toast-accent: var(--brand-blue);
+}
+.ct-toast__spinner {
+  flex: none;
+  width: 18px;
+  height: 18px;
+  border: 2.5px solid var(--border);
+  border-top-color: var(--brand-blue);
+  border-radius: 50%;
+  animation: ct-toast-spin 0.7s linear infinite;
+}
+@keyframes ct-toast-spin {
+  to { transform: rotate(360deg); }
+}
+.ct-toast__progress--indeterminate {
+  background: var(--brand-blue);
+  animation: ct-toast-indeterminate 1.8s ease-in-out infinite;
+  transform-origin: left center;
+}
+@keyframes ct-toast-indeterminate {
+  0%   { transform: scaleX(0) translateX(0); }
+  40%  { transform: scaleX(0.4) translateX(25%); }
+  60%  { transform: scaleX(0.4) translateX(120%); }
+  100% { transform: scaleX(0) translateX(340px); }
+}
+
+/* ── notify variant (알림 시스템 전용) ── */
+.ct-toast--notify {
+  width: 360px;
+  max-width: min(92vw, 440px);
+  padding: 14px 14px 14px 16px;
+  gap: 12px;
+  align-items: flex-start;
+}
+.ct-toast__noti-icon {
+  flex: none;
+  width: 36px;
+  height: 36px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.ct-toast__noti-body {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.ct-toast__noti-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--foreground);
+  line-height: 1.4;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.ct-toast__noti-actor { color: var(--brand-blue); margin-right: 4px; }
+.ct-toast__noti-msg {
+  font-size: 12px;
+  color: var(--muted-foreground);
+  line-height: 1.5;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+/* ── viewport / stacking ── */
+.ct-toast-vp {
+  position: fixed;
+  z-index: 9999;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 16px;
+  pointer-events: none;
+  max-height: 100dvh;
+}
+.ct-toast-vp > * { pointer-events: auto; }
+.ct-toast-vp--bottom-right {
+  bottom: 0;
+  right: 0;
+  align-items: flex-end;
+  flex-direction: column-reverse;
+}
+.ct-toast-vp--bottom-left {
+  bottom: 0;
+  left: 0;
+  align-items: flex-start;
+  flex-direction: column-reverse;
+}
+.ct-toast-vp--top-right { top: 0; right: 0; align-items: flex-end; }
+.ct-toast-vp--top-left { top: 0; left: 0; align-items: flex-start; }
+.ct-toast-vp--top-center {
+  top: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  align-items: center;
+}
+.ct-toast-vp--bottom-center {
+  bottom: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  align-items: center;
+  flex-direction: column-reverse;
+}
+
+/* ── enter animation ── */
+.ct-toast-vp .ct-toast {
+  animation: ct-toast-in 0.26s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+@keyframes ct-toast-in {
+  from { opacity: 0; transform: translateX(16px) scale(0.98); }
+  to   { opacity: 1; transform: none; }
+}
+
+/* ── exit animation ── */
+.ct-toast--exiting {
+  animation: ct-toast-out 0.2s ease-in forwards;
+}
+@keyframes ct-toast-out {
+  to { opacity: 0; transform: translateX(16px) scale(0.98); }
+}
+
+/* ── reduced motion ── */
+@media (prefers-reduced-motion: reduce) {
+  .ct-toast-vp .ct-toast { animation: none; }
+  .ct-toast__progress--anim { animation: none; transform: scaleX(1); }
+  .ct-toast--exiting { animation: none; opacity: 0; }
+}

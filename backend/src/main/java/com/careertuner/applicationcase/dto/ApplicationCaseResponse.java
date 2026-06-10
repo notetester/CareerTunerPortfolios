@@ -10,9 +10,13 @@ public record ApplicationCaseResponse(
         String companyName,
         String jobTitle,
         LocalDate postingDate,
+        LocalDate deadlineDate,
         String sourceType,
         String status,
         boolean favorite,
+        boolean archived,
+        LocalDateTime archivedAt,
+        LocalDateTime deletedAt,
         LocalDateTime createdAt,
         LocalDateTime updatedAt
 ) {
@@ -22,9 +26,13 @@ public record ApplicationCaseResponse(
                 applicationCase.getCompanyName(),
                 applicationCase.getJobTitle(),
                 applicationCase.getPostingDate(),
+                applicationCase.getDeadlineDate(),
                 applicationCase.getSourceType(),
                 applicationCase.getStatus(),
                 applicationCase.isFavorite(),
+                applicationCase.getArchivedAt() != null,
+                applicationCase.getArchivedAt(),
+                applicationCase.getDeletedAt(),
                 applicationCase.getCreatedAt(),
                 applicationCase.getUpdatedAt());
     }

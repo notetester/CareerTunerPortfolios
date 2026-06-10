@@ -138,6 +138,7 @@ const navItems = [
     icon: ShieldCheck,
     children: [
       { label: "관리자 대시보드", href: "/admin" },
+      { label: "지원 건 관리", href: "/admin/application-cases" },
       { label: "회원 관리", href: "/admin/users" },
       { label: "결제 관리", href: "/admin/payments" },
       { label: "AI 사용량 관리", href: "/admin/ai-usage" },

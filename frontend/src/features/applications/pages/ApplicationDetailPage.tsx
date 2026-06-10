@@ -9,6 +9,7 @@ import {
   Info,
   Plus,
   RefreshCw,
+  Target,
 } from "lucide-react";
 import { useAuth } from "@/app/auth/AuthContext";
 import { Button } from "@/app/components/ui/button";
@@ -17,23 +18,29 @@ import { deleteApplicationCase, updateApplicationCase } from "../api/application
 import { ApplicationOverviewPanel } from "../components/ApplicationOverviewPanel";
 import { ApplicationStatusBadge } from "../components/ApplicationStatusBadge";
 import { CompanyAnalysisPanel } from "../components/CompanyAnalysisPanel";
+import { FitAnalysisPanel } from "../components/FitAnalysisPanel";
 import { JobAnalysisPanel } from "../components/JobAnalysisPanel";
 import { JobPostingPanel } from "../components/JobPostingPanel";
+import { LearningRecommendationPanel } from "../components/LearningRecommendationPanel";
 import { LoginRequiredState } from "../components/LoginRequiredState";
+import { StrategyPanel } from "../components/StrategyPanel";
 import { useApplicationCase } from "../hooks/useApplicationCase";
 import { useApplicationCases } from "../hooks/useApplicationCases";
+import { useBAnalysisFailureLogs } from "../hooks/useBAnalysisFailureLogs";
 import { useCompanyAnalysis } from "../hooks/useCompanyAnalysis";
 import { useJobAnalysis } from "../hooks/useJobAnalysis";
 import { useJobPosting } from "../hooks/useJobPosting";
 import type { UpdateApplicationCaseRequest } from "../types/applicationCase";
+import { useApplicationFitAnalysis } from "@/features/analysis/hooks/useApplicationFitAnalysis";
 
-type DetailTab = "overview" | "posting" | "jobAnalysis" | "companyAnalysis";
+type DetailTab = "overview" | "posting" | "jobAnalysis" | "companyAnalysis" | "fit";
 
 const detailTabs: { key: DetailTab; label: string; icon: typeof Info }[] = [
   { key: "overview", label: "개요", icon: Info },
   { key: "posting", label: "공고문", icon: FileText },
   { key: "jobAnalysis", label: "공고 분석", icon: BarChart3 },
   { key: "companyAnalysis", label: "기업 분석", icon: Building2 },
+  { key: "fit", label: "적합도", icon: Target },
 ];
 
 export function ApplicationDetailPage() {
@@ -61,6 +68,7 @@ export function ApplicationDetailPage() {
     saving: postingSaving,
     uploading: postingUploading,
     error: postingError,
+    revisions: postingRevisions,
     save: savePosting,
     upload: uploadPosting,
   } = useJobPosting(id, isAuthenticated && Boolean(applicationCase));
@@ -69,15 +77,30 @@ export function ApplicationDetailPage() {
     loading: jobAnalysisLoading,
     generating: jobAnalysisGenerating,
     error: jobAnalysisError,
+    history: jobAnalysisHistory,
     generate: generateJobAnalysis,
+    review: reviewJobAnalysis,
   } = useJobAnalysis(id, isAuthenticated && Boolean(applicationCase));
   const {
     companyAnalysis,
     loading: companyAnalysisLoading,
     generating: companyAnalysisGenerating,
     error: companyAnalysisError,
+    history: companyAnalysisHistory,
     generate: generateCompanyAnalysis,
+    review: reviewCompanyAnalysis,
   } = useCompanyAnalysis(id, isAuthenticated && Boolean(applicationCase));
+  const {
+    failureLogs: bFailureLogs,
+    refresh: refreshBFailureLogs,
+  } = useBAnalysisFailureLogs(id, isAuthenticated && Boolean(applicationCase));
+  const {
+    analyses: fitAnalyses,
+    loading: fitAnalysisLoading,
+    generating: fitGenerating,
+    error: fitAnalysisError,
+    generate: generateFit,
+  } = useApplicationFitAnalysis(id, isAuthenticated && Boolean(applicationCase));
   const [activeTab, setActiveTab] = useState<DetailTab>("overview");
 
   const handleUpdate = async (request: UpdateApplicationCaseRequest) => {
@@ -90,6 +113,18 @@ export function ApplicationDetailPage() {
     if (!id) return;
     await deleteApplicationCase(id);
     navigate("/applications");
+  };
+
+  const handleGenerateJobAnalysis = async () => {
+    const analysis = await generateJobAnalysis();
+    await refreshBFailureLogs();
+    return analysis;
+  };
+
+  const handleGenerateCompanyAnalysis = async () => {
+    const analysis = await generateCompanyAnalysis();
+    await refreshBFailureLogs();
+    return analysis;
   };
 
   if (authLoading) {
@@ -232,7 +267,7 @@ export function ApplicationDetailPage() {
                   <Card className="border-slate-200 bg-white">
                     <CardContent className="grid gap-3 p-4 md:grid-cols-3">
                       {[
-                        "적합도 분석 준비 중 - C 담당",
+                        "적합도 분석 완료 - 위 '적합도' 탭에서 확인",
                         "예상 질문 / 모의 면접 준비 중 - D 담당",
                         "첨삭 기록 준비 중 - E 담당",
                       ].map((item) => (
@@ -248,6 +283,7 @@ export function ApplicationDetailPage() {
               {activeTab === "posting" && (
                 <JobPostingPanel
                   jobPosting={jobPosting}
+                  revisions={postingRevisions}
                   loading={postingLoading}
                   saving={postingSaving}
                   uploading={postingUploading}
@@ -260,21 +296,46 @@ export function ApplicationDetailPage() {
               {activeTab === "jobAnalysis" && (
                 <JobAnalysisPanel
                   analysis={jobAnalysis}
+                  history={jobAnalysisHistory}
                   loading={jobAnalysisLoading}
                   generating={jobAnalysisGenerating}
                   error={jobAnalysisError}
-                  onGenerate={generateJobAnalysis}
+                  failures={bFailureLogs}
+                  onGenerate={handleGenerateJobAnalysis}
+                  onReview={reviewJobAnalysis}
                 />
               )}
 
               {activeTab === "companyAnalysis" && (
                 <CompanyAnalysisPanel
                   analysis={companyAnalysis}
+                  history={companyAnalysisHistory}
                   loading={companyAnalysisLoading}
                   generating={companyAnalysisGenerating}
                   error={companyAnalysisError}
-                  onGenerate={generateCompanyAnalysis}
+                  failures={bFailureLogs}
+                  onGenerate={handleGenerateCompanyAnalysis}
+                  onReview={reviewCompanyAnalysis}
                 />
+              )}
+
+              {activeTab === "fit" && (
+                <div className="space-y-6">
+                  {/* C 담당: 적합도/전략/학습 추천. 생성 트리거는 fit-analyses 엔드포인트(현재 mock). */}
+                  <div className="flex flex-col gap-3 rounded-lg border border-slate-200 bg-white p-4 sm:flex-row sm:items-center sm:justify-between">
+                    <p className="text-sm text-slate-600">공고 분석 결과와 내 프로필을 비교해 적합도·부족 역량·학습/자격증·전략을 분석합니다.</p>
+                    <Button
+                      className="bg-blue-600 text-white hover:bg-blue-700"
+                      disabled={fitGenerating}
+                      onClick={() => void generateFit()}
+                    >
+                      {fitGenerating ? "분석 중..." : fitAnalyses.length > 0 ? "적합도 재분석" : "적합도 분석 생성"}
+                    </Button>
+                  </div>
+                  <FitAnalysisPanel analyses={fitAnalyses} loading={fitAnalysisLoading} error={fitAnalysisError} />
+                  <StrategyPanel analyses={fitAnalyses} loading={fitAnalysisLoading} error={fitAnalysisError} />
+                  <LearningRecommendationPanel analyses={fitAnalyses} loading={fitAnalysisLoading} error={fitAnalysisError} />
+                </div>
               )}
             </>
           )}

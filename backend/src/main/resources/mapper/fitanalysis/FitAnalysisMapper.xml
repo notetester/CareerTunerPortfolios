@@ -1,0 +1,196 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.careertuner.fitanalysis.mapper.FitAnalysisMapper">
+
+    <resultMap id="FitAnalysisResultMap" type="com.careertuner.fitanalysis.domain.FitAnalysisResult">
+        <id property="id" column="id"/>
+        <result property="applicationCaseId" column="application_case_id"/>
+        <result property="fitScore" column="fit_score"/>
+        <result property="matchedSkills" column="matched_skills"/>
+        <result property="missingSkills" column="missing_skills"/>
+        <result property="recommendedStudy" column="recommended_study"/>
+        <result property="recommendedCertificates" column="recommended_certificates"/>
+        <result property="strategy" column="strategy"/>
+        <result property="sourceSnapshot" column="source_snapshot"/>
+        <result property="scoreBasis" column="score_basis"/>
+        <result property="gapRecommendations" column="gap_recommendations"/>
+        <result property="certificateRecommendations" column="certificate_recommendations"/>
+        <result property="strategyActions" column="strategy_actions"/>
+        <result property="model" column="model"/>
+        <result property="status" column="status"/>
+        <result property="errorMessage" column="error_message"/>
+        <result property="createdAt" column="created_at"/>
+        <result property="companyName" column="company_name"/>
+        <result property="jobTitle" column="job_title"/>
+        <result property="postingDate" column="posting_date"/>
+        <result property="applicationStatus" column="application_status"/>
+        <result property="favorite" column="is_favorite"/>
+        <result property="applicationUpdatedAt" column="application_updated_at"/>
+    </resultMap>
+
+    <sql id="FitAnalysisWithApplicationColumns">
+        fa.id,
+        fa.application_case_id,
+        fa.fit_score,
+        fa.matched_skills,
+        fa.missing_skills,
+        fa.recommended_study,
+        fa.recommended_certificates,
+        fa.strategy,
+        fa.source_snapshot,
+        fa.score_basis,
+        fa.gap_recommendations,
+        fa.certificate_recommendations,
+        fa.strategy_actions,
+        fa.model,
+        fa.status,
+        fa.error_message,
+        fa.created_at,
+        ac.company_name,
+        ac.job_title,
+        ac.posting_date,
+        ac.status AS application_status,
+        ac.is_favorite,
+        ac.updated_at AS application_updated_at
+    </sql>
+
+    <select id="findLatestByUserId" resultMap="FitAnalysisResultMap">
+        SELECT
+        <include refid="FitAnalysisWithApplicationColumns"/>
+        FROM fit_analysis fa
+        INNER JOIN application_case ac ON ac.id = fa.application_case_id
+        WHERE ac.user_id = #{userId}
+          AND fa.id = (
+              SELECT MAX(latest_fa.id)
+              FROM fit_analysis latest_fa
+              WHERE latest_fa.application_case_id = fa.application_case_id
+          )
+        ORDER BY ac.is_favorite DESC, fa.created_at DESC, fa.id DESC
+    </select>
+
+    <select id="findLatestByUserIdAndApplicationCaseId" resultMap="FitAnalysisResultMap">
+        SELECT
+        <include refid="FitAnalysisWithApplicationColumns"/>
+        FROM fit_analysis fa
+        INNER JOIN application_case ac ON ac.id = fa.application_case_id
+        WHERE ac.user_id = #{userId}
+          AND ac.id = #{applicationCaseId}
+        ORDER BY fa.id DESC
+        LIMIT 1
+    </select>
+
+    <resultMap id="FitAnalysisGenerationSourceMap" type="com.careertuner.fitanalysis.domain.FitAnalysisGenerationSource">
+        <result property="jobAnalysisId" column="job_analysis_id"/>
+        <result property="jobPostingId" column="job_posting_id"/>
+        <result property="jobPostingRevision" column="job_posting_revision"/>
+        <result property="jobAnalysisCreatedAt" column="job_analysis_created_at"/>
+        <result property="userProfileId" column="user_profile_id"/>
+        <result property="profileUpdatedAt" column="profile_updated_at"/>
+        <result property="companyName" column="company_name"/>
+        <result property="jobTitle" column="job_title"/>
+        <result property="requiredSkills" column="required_skills"/>
+        <result property="preferredSkills" column="preferred_skills"/>
+        <result property="duties" column="duties"/>
+        <result property="profileSkills" column="profile_skills"/>
+        <result property="profileCertificates" column="profile_certificates"/>
+        <result property="desiredJob" column="desired_job"/>
+    </resultMap>
+
+    <!-- 적합도 생성 입력: application_case(B) + 최신 job_analysis(B) + user_profile(A) 읽기 전용 조인. user_id로 소유권 검증. -->
+    <select id="findGenerationSource" resultMap="FitAnalysisGenerationSourceMap">
+        SELECT
+            ja.id AS job_analysis_id,
+            ja.job_posting_id,
+            ja.job_posting_revision,
+            ja.created_at AS job_analysis_created_at,
+            up.id AS user_profile_id,
+            up.updated_at AS profile_updated_at,
+            ac.company_name,
+            ac.job_title,
+            ja.required_skills,
+            ja.preferred_skills,
+            ja.duties,
+            up.skills       AS profile_skills,
+            up.certificates AS profile_certificates,
+            up.desired_job
+        FROM application_case ac
+        LEFT JOIN job_analysis ja
+            ON ja.id = (SELECT MAX(j.id) FROM job_analysis j WHERE j.application_case_id = ac.id)
+        LEFT JOIN user_profile up ON up.user_id = ac.user_id
+        WHERE ac.id = #{applicationCaseId}
+          AND ac.user_id = #{userId}
+          AND ac.deleted_at IS NULL
+    </select>
+
+    <insert id="insertFitAnalysis" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO fit_analysis
+            (application_case_id, fit_score, matched_skills, missing_skills,
+             recommended_study, recommended_certificates, strategy,
+             source_snapshot, score_basis, gap_recommendations, certificate_recommendations,
+             strategy_actions, model, status, error_message)
+        VALUES
+            (#{applicationCaseId}, #{fitScore}, #{matchedSkills}, #{missingSkills},
+             #{recommendedStudy}, #{recommendedCertificates}, #{strategy},
+             #{sourceSnapshot}, #{scoreBasis}, #{gapRecommendations}, #{certificateRecommendations},
+             #{strategyActions}, #{model}, #{status}, #{errorMessage})
+    </insert>
+
+    <resultMap id="FitAnalysisLearningTaskMap" type="com.careertuner.fitanalysis.domain.FitAnalysisLearningTask">
+        <id property="id" column="id"/>
+        <result property="fitAnalysisId" column="fit_analysis_id"/>
+        <result property="skill" column="skill"/>
+        <result property="title" column="title"/>
+        <result property="practiceTask" column="practice_task"/>
+        <result property="expectedDuration" column="expected_duration"/>
+        <result property="priority" column="priority"/>
+        <result property="sortOrder" column="sort_order"/>
+        <result property="completed" column="completed"/>
+        <result property="completedAt" column="completed_at"/>
+        <result property="createdAt" column="created_at"/>
+        <result property="updatedAt" column="updated_at"/>
+    </resultMap>
+
+    <insert id="insertLearningTask" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO fit_analysis_learning_task
+            (fit_analysis_id, skill, title, practice_task, expected_duration, priority, sort_order)
+        VALUES
+            (#{fitAnalysisId}, #{skill}, #{title}, #{practiceTask}, #{expectedDuration}, #{priority}, #{sortOrder})
+    </insert>
+
+    <select id="findLearningTasksByFitAnalysisId" resultMap="FitAnalysisLearningTaskMap">
+        SELECT *
+        FROM fit_analysis_learning_task
+        WHERE fit_analysis_id = #{fitAnalysisId}
+        ORDER BY completed ASC, sort_order ASC, id ASC
+    </select>
+
+    <update id="updateLearningTaskCompleted">
+        UPDATE fit_analysis_learning_task task
+        INNER JOIN fit_analysis fa ON fa.id = task.fit_analysis_id
+        INNER JOIN application_case ac ON ac.id = fa.application_case_id
+        SET task.completed = #{completed},
+            task.completed_at = IF(#{completed}, CURRENT_TIMESTAMP, NULL)
+        WHERE task.id = #{taskId}
+          AND task.fit_analysis_id = #{fitAnalysisId}
+          AND ac.user_id = #{userId}
+          AND ac.deleted_at IS NULL
+    </update>
+
+    <select id="findLearningTaskById" resultMap="FitAnalysisLearningTaskMap">
+        SELECT *
+        FROM fit_analysis_learning_task
+        WHERE id = #{taskId}
+          AND fit_analysis_id = #{fitAnalysisId}
+    </select>
+
+    <!-- 공통 ai_usage_log 기록(공통 규약). 스키마 변경은 공통 영역이므로 기존 컬럼만 사용한다. -->
+    <insert id="insertAiUsageLog">
+        INSERT INTO ai_usage_log
+            (user_id, application_case_id, feature_type, status, model,
+             input_tokens, output_tokens, token_usage, credit_used, error_message)
+        VALUES
+            (#{userId}, #{applicationCaseId}, #{featureType}, #{status}, #{model},
+             #{inputTokens}, #{outputTokens}, #{tokenUsage}, #{creditUsed}, #{errorMessage})
+    </insert>
+</mapper>

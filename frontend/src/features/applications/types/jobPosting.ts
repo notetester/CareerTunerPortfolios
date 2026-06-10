@@ -3,6 +3,7 @@ import type { ApplicationSourceType } from "./applicationCase";
 export interface JobPosting {
   id: number;
   applicationCaseId: number;
+  revision: number;
   originalText: string | null;
   uploadedFileUrl: string | null;
   extractedText: string | null;

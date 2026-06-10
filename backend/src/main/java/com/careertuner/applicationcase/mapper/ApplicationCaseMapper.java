@@ -7,41 +7,44 @@ import org.apache.ibatis.annotations.Param;
 
 import com.careertuner.applicationcase.domain.AiUsageLog;
 import com.careertuner.applicationcase.domain.ApplicationCase;
-import com.careertuner.applicationcase.domain.CompanyAnalysis;
 import com.careertuner.applicationcase.domain.FitAnalysis;
-import com.careertuner.applicationcase.domain.JobAnalysis;
-import com.careertuner.applicationcase.domain.JobPosting;
+import com.careertuner.applicationcase.dto.AiUsageFailureResponse;
 
 @Mapper
 public interface ApplicationCaseMapper {
 
     void insertApplicationCase(ApplicationCase applicationCase);
 
-    List<ApplicationCase> findApplicationCasesByUserId(Long userId);
+    List<ApplicationCase> findApplicationCasesByUserId(@Param("userId") Long userId,
+                                                       @Param("includeArchived") boolean includeArchived);
 
     ApplicationCase findApplicationCaseByIdAndUserId(@Param("id") Long id, @Param("userId") Long userId);
 
     int updateApplicationCase(ApplicationCase applicationCase);
 
+    int markAnalysisCompleted(@Param("id") Long id, @Param("userId") Long userId);
+
+    int markAnalysisStarted(@Param("id") Long id,
+                            @Param("userId") Long userId,
+                            @Param("previousStatus") String previousStatus);
+
+    int markReadyAfterAnalysis(@Param("id") Long id,
+                               @Param("userId") Long userId,
+                               @Param("previousStatus") String previousStatus);
+
+    int restoreAnalysisStatus(@Param("id") Long id,
+                              @Param("userId") Long userId,
+                              @Param("previousStatus") String previousStatus);
+
     int deleteApplicationCase(@Param("id") Long id, @Param("userId") Long userId);
 
-    void deleteJobPostingsByCaseId(Long applicationCaseId);
+    int softDeleteApplicationCase(@Param("id") Long id, @Param("userId") Long userId);
 
-    void insertJobPosting(JobPosting jobPosting);
-
-    JobPosting findLatestJobPostingByCaseId(Long applicationCaseId);
-
-    void deleteJobAnalysesByCaseId(Long applicationCaseId);
-
-    void insertJobAnalysis(JobAnalysis jobAnalysis);
-
-    JobAnalysis findLatestJobAnalysisByCaseId(Long applicationCaseId);
-
-    void deleteCompanyAnalysesByCaseId(Long applicationCaseId);
-
-    void insertCompanyAnalysis(CompanyAnalysis companyAnalysis);
-
-    CompanyAnalysis findLatestCompanyAnalysisByCaseId(Long applicationCaseId);
+    void insertStatusHistory(@Param("applicationCaseId") Long applicationCaseId,
+                             @Param("changedByUserId") Long changedByUserId,
+                             @Param("previousStatus") String previousStatus,
+                             @Param("newStatus") String newStatus,
+                             @Param("memo") String memo);
 
     void deleteFitAnalysesByCaseId(Long applicationCaseId);
 
@@ -50,4 +53,7 @@ public interface ApplicationCaseMapper {
     FitAnalysis findLatestFitAnalysisByCaseId(Long applicationCaseId);
 
     void insertAiUsageLog(AiUsageLog aiUsageLog);
+
+    List<AiUsageFailureResponse> findBFailureLogsByCaseId(@Param("applicationCaseId") Long applicationCaseId,
+                                                          @Param("limit") int limit);
 }

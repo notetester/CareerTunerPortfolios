@@ -1,5 +1,6 @@
 package com.careertuner.applicationcase.service;
 
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Locale;
 import java.util.Set;
@@ -8,27 +9,30 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
+import com.careertuner.applicationcase.domain.AiUsageLog;
 import com.careertuner.applicationcase.domain.ApplicationCase;
-import com.careertuner.applicationcase.domain.CompanyAnalysis;
 import com.careertuner.applicationcase.domain.FitAnalysis;
-import com.careertuner.applicationcase.domain.JobAnalysis;
-import com.careertuner.applicationcase.domain.JobPosting;
 import com.careertuner.applicationcase.dto.AnalysisResponse;
+import com.careertuner.applicationcase.dto.AiUsageFailureResponse;
 import com.careertuner.applicationcase.dto.ApplicationCaseResponse;
-import com.careertuner.applicationcase.dto.CompanyAnalysisResponse;
 import com.careertuner.applicationcase.dto.CreateApplicationCaseRequest;
 import com.careertuner.applicationcase.dto.FitAnalysisResponse;
-import com.careertuner.applicationcase.dto.JobAnalysisResponse;
-import com.careertuner.applicationcase.dto.JobPostingRequest;
-import com.careertuner.applicationcase.dto.JobPostingResponse;
 import com.careertuner.applicationcase.dto.UpdateApplicationCaseRequest;
 import com.careertuner.applicationcase.mapper.ApplicationCaseMapper;
-import com.careertuner.applicationcase.service.JobPostingFileStorage.StoredJobPostingFile;
-import com.careertuner.applicationcase.service.JobPostingTextExtractor.ExtractedPosting;
-import com.careertuner.applicationcase.service.OpenAiResponsesClient.CompanyAnalysisPayload;
-import com.careertuner.applicationcase.service.OpenAiResponsesClient.JobAnalysisPayload;
 import com.careertuner.common.exception.BusinessException;
 import com.careertuner.common.exception.ErrorCode;
+import com.careertuner.companyanalysis.dto.CompanyAnalysisResponse;
+import com.careertuner.companyanalysis.dto.CompanyAnalysisReviewRequest;
+import com.careertuner.companyanalysis.service.CompanyAnalysisService;
+import com.careertuner.jobanalysis.domain.JobAnalysis;
+import com.careertuner.jobanalysis.dto.JobAnalysisReviewRequest;
+import com.careertuner.jobanalysis.dto.JobAnalysisResponse;
+import com.careertuner.jobanalysis.mapper.JobAnalysisMapper;
+import com.careertuner.jobanalysis.service.JobAnalysisService;
+import com.careertuner.jobanalysis.service.JobAnalysisService.MockAnalysisSeed;
+import com.careertuner.jobposting.dto.JobPostingRequest;
+import com.careertuner.jobposting.dto.JobPostingResponse;
+import com.careertuner.jobposting.service.JobPostingService;
 
 import lombok.RequiredArgsConstructor;
 
@@ -38,18 +42,18 @@ public class ApplicationCaseServiceImpl implements ApplicationCaseService {
 
     private static final String DEFAULT_SOURCE_TYPE = "TEXT";
     private static final String DEFAULT_STATUS = "DRAFT";
-    private static final String FEATURE_JOB_ANALYSIS = "JOB_ANALYSIS";
-    private static final String FEATURE_COMPANY_RESEARCH = "COMPANY_RESEARCH";
-    private static final String FEATURE_JOB_POSTING_OCR = "JOB_POSTING_OCR";
-    private static final int COMPANY_INDUSTRY_MAX_LENGTH = 100;
     private static final Set<String> SOURCE_TYPES = Set.of("TEXT", "PDF", "IMAGE", "URL", "MANUAL");
     private static final Set<String> STATUSES = Set.of("DRAFT", "ANALYZING", "READY", "APPLIED", "CLOSED");
+    private static final int MOCK_JOB_ANALYSIS_CREDIT = 1;
+    private static final int MOCK_FIT_ANALYSIS_CREDIT = 2;
+    private static final int MOCK_DASHBOARD_SUMMARY_CREDIT = 1;
 
     private final ApplicationCaseMapper applicationCaseMapper;
-    private final OpenAiResponsesClient openAiClient;
-    private final AiUsageLogService aiUsageLogService;
-    private final JobPostingFileStorage fileStorage;
-    private final JobPostingTextExtractor textExtractor;
+    private final ApplicationCaseAccessService accessService;
+    private final JobPostingService jobPostingService;
+    private final JobAnalysisService jobAnalysisService;
+    private final CompanyAnalysisService companyAnalysisService;
+    private final JobAnalysisMapper jobAnalysisMapper;
 
     @Override
     @Transactional
@@ -59,18 +63,19 @@ public class ApplicationCaseServiceImpl implements ApplicationCaseService {
                 .companyName(request.companyName().trim())
                 .jobTitle(request.jobTitle().trim())
                 .postingDate(request.postingDate())
+                .deadlineDate(request.deadlineDate())
                 .sourceType(normalizeOption(request.sourceType(), DEFAULT_SOURCE_TYPE, SOURCE_TYPES, "sourceType"))
                 .status(normalizeOption(request.status(), DEFAULT_STATUS, STATUSES, "status"))
                 .favorite(Boolean.TRUE.equals(request.favorite()))
                 .build();
         applicationCaseMapper.insertApplicationCase(applicationCase);
-        return ApplicationCaseResponse.from(requireOwned(userId, applicationCase.getId()));
+        return ApplicationCaseResponse.from(accessService.requireOwned(userId, applicationCase.getId()));
     }
 
     @Override
     @Transactional(readOnly = true)
-    public List<ApplicationCaseResponse> list(Long userId) {
-        return applicationCaseMapper.findApplicationCasesByUserId(userId).stream()
+    public List<ApplicationCaseResponse> list(Long userId, boolean includeArchived) {
+        return applicationCaseMapper.findApplicationCasesByUserId(userId, includeArchived).stream()
                 .map(ApplicationCaseResponse::from)
                 .toList();
     }
@@ -78,202 +83,127 @@ public class ApplicationCaseServiceImpl implements ApplicationCaseService {
     @Override
     @Transactional(readOnly = true)
     public ApplicationCaseResponse get(Long userId, Long id) {
-        return ApplicationCaseResponse.from(requireOwned(userId, id));
+        return ApplicationCaseResponse.from(accessService.requireOwned(userId, id));
     }
 
     @Override
     @Transactional
     public ApplicationCaseResponse update(Long userId, Long id, UpdateApplicationCaseRequest request) {
-        ApplicationCase existing = requireOwned(userId, id);
+        ApplicationCase existing = accessService.requireOwned(userId, id);
+        String nextStatus = normalizeOption(request.status(), existing.getStatus(), STATUSES, "status");
+        LocalDateTime archivedAt = existing.getArchivedAt();
+        if (Boolean.TRUE.equals(request.archived()) && archivedAt == null) {
+            archivedAt = LocalDateTime.now();
+        } else if (Boolean.FALSE.equals(request.archived())) {
+            archivedAt = null;
+        }
         ApplicationCase updated = ApplicationCase.builder()
                 .id(existing.getId())
                 .userId(userId)
                 .companyName(defaultString(request.companyName(), existing.getCompanyName()))
                 .jobTitle(defaultString(request.jobTitle(), existing.getJobTitle()))
                 .postingDate(request.postingDate() != null ? request.postingDate() : existing.getPostingDate())
+                .deadlineDate(nextDeadlineDate(request, existing))
                 .sourceType(normalizeOption(request.sourceType(), existing.getSourceType(), SOURCE_TYPES, "sourceType"))
-                .status(normalizeOption(request.status(), existing.getStatus(), STATUSES, "status"))
+                .status(nextStatus)
                 .favorite(request.favorite() != null ? request.favorite() : existing.isFavorite())
+                .archivedAt(archivedAt)
                 .build();
         applicationCaseMapper.updateApplicationCase(updated);
-        return ApplicationCaseResponse.from(requireOwned(userId, id));
+        if (!existing.getStatus().equals(nextStatus)) {
+            applicationCaseMapper.insertStatusHistory(id, userId, existing.getStatus(), nextStatus, "USER_STATUS_UPDATE");
+        }
+        return ApplicationCaseResponse.from(accessService.requireOwned(userId, id));
     }
 
     @Override
     @Transactional
     public void delete(Long userId, Long id) {
-        int deleted = applicationCaseMapper.deleteApplicationCase(id, userId);
+        int deleted = applicationCaseMapper.softDeleteApplicationCase(id, userId);
         if (deleted == 0) {
-            throw notFound();
+            throw new BusinessException(ErrorCode.NOT_FOUND, "지원 건을 찾을 수 없습니다.");
         }
     }
 
     @Override
-    @Transactional
     public JobPostingResponse saveJobPosting(Long userId, Long applicationCaseId, JobPostingRequest request) {
-        requireOwned(userId, applicationCaseId);
-        String sourceType = normalizeOption(request.sourceType(), DEFAULT_SOURCE_TYPE, SOURCE_TYPES, "sourceType");
-        if ("URL".equals(sourceType)) {
-            ExtractedPosting extracted = textExtractor.extractUrl(request.uploadedFileUrl());
-            return saveExtractedPosting(applicationCaseId, extracted);
-        }
-
-        validateJobPosting(request);
-        JobPosting jobPosting = JobPosting.builder()
-                .applicationCaseId(applicationCaseId)
-                .originalText(blankToNull(request.originalText()))
-                .uploadedFileUrl(blankToNull(request.uploadedFileUrl()))
-                .extractedText(blankToNull(request.extractedText()))
-                .sourceType(sourceType)
-                .build();
-        return replaceJobPosting(applicationCaseId, jobPosting);
+        return jobPostingService.saveJobPosting(userId, applicationCaseId, request);
     }
 
     @Override
-    @Transactional
     public JobPostingResponse uploadJobPostingFile(Long userId, Long applicationCaseId, MultipartFile file, String sourceType) {
-        requireOwned(userId, applicationCaseId);
-        try {
-            StoredJobPostingFile storedFile = fileStorage.store(applicationCaseId, file, sourceType);
-            ExtractedPosting extracted = textExtractor.extractFile(storedFile);
-            if (extracted.usage() != null) {
-                aiUsageLogService.recordSuccess(userId, applicationCaseId, FEATURE_JOB_POSTING_OCR, extracted.usage());
-            }
-            return saveExtractedPosting(applicationCaseId, extracted);
-        } catch (RuntimeException ex) {
-            aiUsageLogService.recordFailure(userId, applicationCaseId, FEATURE_JOB_POSTING_OCR, ex.getMessage());
-            throw ex;
-        }
+        return jobPostingService.uploadJobPostingFile(userId, applicationCaseId, file, sourceType);
     }
 
     @Override
-    @Transactional(readOnly = true)
     public JobPostingResponse getJobPosting(Long userId, Long applicationCaseId) {
-        requireOwned(userId, applicationCaseId);
-        JobPosting jobPosting = applicationCaseMapper.findLatestJobPostingByCaseId(applicationCaseId);
-        if (jobPosting == null) {
-            throw new BusinessException(ErrorCode.NOT_FOUND, "공고문을 찾을 수 없습니다.");
-        }
-        return JobPostingResponse.from(jobPosting);
+        return jobPostingService.getJobPosting(userId, applicationCaseId);
     }
 
     @Override
-    @Transactional
-    public JobAnalysisResponse createJobAnalysis(Long userId, Long applicationCaseId) {
-        ApplicationCase applicationCase = requireOwned(userId, applicationCaseId);
-        try {
-            JobAnalysisPayload payload = openAiClient.analyzeJobPosting(applicationCase, sourceTextRequired(applicationCaseId));
-            applicationCaseMapper.deleteJobAnalysesByCaseId(applicationCaseId);
-            JobAnalysis jobAnalysis = JobAnalysis.builder()
-                    .applicationCaseId(applicationCaseId)
-                    .employmentType(blankToNull(payload.employmentType()))
-                    .experienceLevel(blankToNull(payload.experienceLevel()))
-                    .requiredSkills(payload.requiredSkills())
-                    .preferredSkills(payload.preferredSkills())
-                    .duties(blankToNull(payload.duties()))
-                    .qualifications(blankToNull(payload.qualifications()))
-                    .difficulty(payload.difficulty())
-                    .summary(blankToNull(payload.summary()))
-                    .build();
-            applicationCaseMapper.insertJobAnalysis(jobAnalysis);
-            aiUsageLogService.recordSuccess(userId, applicationCaseId, FEATURE_JOB_ANALYSIS, payload.usage());
-            return JobAnalysisResponse.from(applicationCaseMapper.findLatestJobAnalysisByCaseId(applicationCaseId));
-        } catch (RuntimeException ex) {
-            aiUsageLogService.recordFailure(userId, applicationCaseId, FEATURE_JOB_ANALYSIS, ex.getMessage());
-            throw ex;
-        }
+    public List<JobPostingResponse> getJobPostingRevisions(Long userId, Long applicationCaseId) {
+        return jobPostingService.getJobPostingRevisions(userId, applicationCaseId);
     }
 
     @Override
-    @Transactional
     public JobAnalysisResponse createMockJobAnalysis(Long userId, Long applicationCaseId) {
-        ApplicationCase applicationCase = requireOwned(userId, applicationCaseId);
-        JobAnalysis jobAnalysis = createMockJobAnalysis(applicationCase, sourceText(applicationCaseId));
-        return JobAnalysisResponse.from(jobAnalysis);
+        return jobAnalysisService.createMockJobAnalysis(userId, applicationCaseId);
     }
 
     @Override
-    @Transactional(readOnly = true)
+    public JobAnalysisResponse createJobAnalysis(Long userId, Long applicationCaseId) {
+        return jobAnalysisService.createJobAnalysis(userId, applicationCaseId);
+    }
+
+    @Override
     public JobAnalysisResponse getJobAnalysis(Long userId, Long applicationCaseId) {
-        requireOwned(userId, applicationCaseId);
-        return JobAnalysisResponse.from(applicationCaseMapper.findLatestJobAnalysisByCaseId(applicationCaseId));
+        return jobAnalysisService.getJobAnalysis(userId, applicationCaseId);
     }
 
     @Override
-    @Transactional
-    public CompanyAnalysisResponse createCompanyAnalysis(Long userId, Long applicationCaseId) {
-        ApplicationCase applicationCase = requireOwned(userId, applicationCaseId);
-        try {
-            CompanyAnalysisPayload payload = openAiClient.analyzeCompany(applicationCase, sourceTextRequired(applicationCaseId));
-            applicationCaseMapper.deleteCompanyAnalysesByCaseId(applicationCaseId);
-            CompanyAnalysis companyAnalysis = CompanyAnalysis.builder()
-                    .applicationCaseId(applicationCaseId)
-                    .companySummary(blankToNull(payload.companySummary()))
-                    .recentIssues(blankToNull(payload.recentIssues()))
-                    .industry(compactColumnText(payload.industry(), COMPANY_INDUSTRY_MAX_LENGTH))
-                    .competitors(payload.competitors())
-                    .interviewPoints(blankToNull(payload.interviewPoints()))
-                    .sources(payload.sources())
-                    .build();
-            applicationCaseMapper.insertCompanyAnalysis(companyAnalysis);
-            aiUsageLogService.recordSuccess(userId, applicationCaseId, FEATURE_COMPANY_RESEARCH, payload.usage());
-            return CompanyAnalysisResponse.from(applicationCaseMapper.findLatestCompanyAnalysisByCaseId(applicationCaseId));
-        } catch (RuntimeException ex) {
-            aiUsageLogService.recordFailure(userId, applicationCaseId, FEATURE_COMPANY_RESEARCH, ex.getMessage());
-            throw ex;
-        }
+    public List<JobAnalysisResponse> getJobAnalysisHistory(Long userId, Long applicationCaseId) {
+        return jobAnalysisService.getJobAnalysisHistory(userId, applicationCaseId);
     }
 
     @Override
-    @Transactional
+    public JobAnalysisResponse reviewJobAnalysis(Long userId, Long applicationCaseId, Long analysisId, JobAnalysisReviewRequest request) {
+        return jobAnalysisService.reviewJobAnalysis(userId, applicationCaseId, analysisId, request);
+    }
+
+    @Override
     public CompanyAnalysisResponse createMockCompanyAnalysis(Long userId, Long applicationCaseId) {
-        ApplicationCase applicationCase = requireOwned(userId, applicationCaseId);
-        CompanyAnalysisSeed seed = CompanyAnalysisSeed.from(applicationCase, sourceText(applicationCaseId));
-
-        applicationCaseMapper.deleteCompanyAnalysesByCaseId(applicationCaseId);
-        CompanyAnalysis companyAnalysis = CompanyAnalysis.builder()
-                .applicationCaseId(applicationCaseId)
-                .companySummary(seed.companySummary())
-                .recentIssues(seed.recentIssues())
-                .industry(seed.industry())
-                .competitors(seed.competitors())
-                .interviewPoints(seed.interviewPoints())
-                .sources(seed.sources())
-                .build();
-        applicationCaseMapper.insertCompanyAnalysis(companyAnalysis);
-        return CompanyAnalysisResponse.from(applicationCaseMapper.findLatestCompanyAnalysisByCaseId(applicationCaseId));
+        return companyAnalysisService.createMockCompanyAnalysis(userId, applicationCaseId);
     }
 
     @Override
-    @Transactional(readOnly = true)
+    public CompanyAnalysisResponse createCompanyAnalysis(Long userId, Long applicationCaseId) {
+        return companyAnalysisService.createCompanyAnalysis(userId, applicationCaseId);
+    }
+
+    @Override
     public CompanyAnalysisResponse getCompanyAnalysis(Long userId, Long applicationCaseId) {
-        requireOwned(userId, applicationCaseId);
-        return CompanyAnalysisResponse.from(applicationCaseMapper.findLatestCompanyAnalysisByCaseId(applicationCaseId));
+        return companyAnalysisService.getCompanyAnalysis(userId, applicationCaseId);
+    }
+
+    @Override
+    public List<CompanyAnalysisResponse> getCompanyAnalysisHistory(Long userId, Long applicationCaseId) {
+        return companyAnalysisService.getCompanyAnalysisHistory(userId, applicationCaseId);
+    }
+
+    @Override
+    public CompanyAnalysisResponse reviewCompanyAnalysis(Long userId, Long applicationCaseId, Long analysisId, CompanyAnalysisReviewRequest request) {
+        return companyAnalysisService.reviewCompanyAnalysis(userId, applicationCaseId, analysisId, request);
     }
 
     @Override
     @Transactional
     public AnalysisResponse createMockAnalysis(Long userId, Long applicationCaseId) {
-        ApplicationCase applicationCase = requireOwned(userId, applicationCaseId);
-        String sourceText = sourceText(applicationCaseId);
+        ApplicationCase applicationCase = accessService.requireOwned(userId, applicationCaseId);
+        String sourceText = accessService.sourceText(applicationCaseId);
         MockAnalysisSeed seed = MockAnalysisSeed.from(applicationCase, sourceText);
 
-        applicationCaseMapper.deleteJobAnalysesByCaseId(applicationCaseId);
+        JobAnalysis jobAnalysis = jobAnalysisService.createMockJobAnalysisEntity(applicationCase, sourceText);
         applicationCaseMapper.deleteFitAnalysesByCaseId(applicationCaseId);
-
-        JobAnalysis jobAnalysis = JobAnalysis.builder()
-                .applicationCaseId(applicationCaseId)
-                .employmentType(seed.employmentType())
-                .experienceLevel(seed.experienceLevel())
-                .requiredSkills(seed.requiredSkills())
-                .preferredSkills(seed.preferredSkills())
-                .duties(seed.duties())
-                .qualifications(seed.qualifications())
-                .difficulty(seed.difficulty())
-                .summary(seed.summary())
-                .build();
-        applicationCaseMapper.insertJobAnalysis(jobAnalysis);
-
         FitAnalysis fitAnalysis = FitAnalysis.builder()
                 .applicationCaseId(applicationCaseId)
                 .fitScore(seed.fitScore())
@@ -285,45 +215,30 @@ public class ApplicationCaseServiceImpl implements ApplicationCaseService {
                 .build();
         applicationCaseMapper.insertFitAnalysis(fitAnalysis);
 
+        applicationCaseMapper.markAnalysisCompleted(applicationCaseId, userId);
+        logMockAiUsage(userId, applicationCaseId, sourceText);
+
         return response(
                 applicationCase,
-                applicationCaseMapper.findLatestJobAnalysisByCaseId(applicationCaseId),
+                jobAnalysis,
                 applicationCaseMapper.findLatestFitAnalysisByCaseId(applicationCaseId));
     }
 
     @Override
     @Transactional(readOnly = true)
     public AnalysisResponse getAnalysis(Long userId, Long applicationCaseId) {
-        ApplicationCase applicationCase = requireOwned(userId, applicationCaseId);
+        ApplicationCase applicationCase = accessService.requireOwned(userId, applicationCaseId);
         return response(
                 applicationCase,
-                applicationCaseMapper.findLatestJobAnalysisByCaseId(applicationCaseId),
+                jobAnalysisMapper.findLatestJobAnalysisByCaseId(applicationCaseId),
                 applicationCaseMapper.findLatestFitAnalysisByCaseId(applicationCaseId));
     }
 
-    private ApplicationCase requireOwned(Long userId, Long applicationCaseId) {
-        ApplicationCase applicationCase = applicationCaseMapper.findApplicationCaseByIdAndUserId(applicationCaseId, userId);
-        if (applicationCase == null) {
-            throw notFound();
-        }
-        return applicationCase;
-    }
-
-    private JobPostingResponse saveExtractedPosting(Long applicationCaseId, ExtractedPosting extracted) {
-        JobPosting jobPosting = JobPosting.builder()
-                .applicationCaseId(applicationCaseId)
-                .originalText(blankToNull(extracted.originalText()))
-                .uploadedFileUrl(blankToNull(extracted.uploadedFileUrl()))
-                .extractedText(blankToNull(extracted.extractedText()))
-                .sourceType(extracted.sourceType())
-                .build();
-        return replaceJobPosting(applicationCaseId, jobPosting);
-    }
-
-    private JobPostingResponse replaceJobPosting(Long applicationCaseId, JobPosting jobPosting) {
-        applicationCaseMapper.deleteJobPostingsByCaseId(applicationCaseId);
-        applicationCaseMapper.insertJobPosting(jobPosting);
-        return JobPostingResponse.from(applicationCaseMapper.findLatestJobPostingByCaseId(applicationCaseId));
+    @Override
+    @Transactional(readOnly = true)
+    public List<AiUsageFailureResponse> getAiUsageFailures(Long userId, Long applicationCaseId, int limit) {
+        accessService.requireOwned(userId, applicationCaseId);
+        return applicationCaseMapper.findBFailureLogsByCaseId(applicationCaseId, normalizeFailureLimit(limit));
     }
 
     private static AnalysisResponse response(ApplicationCase applicationCase, JobAnalysis jobAnalysis, FitAnalysis fitAnalysis) {
@@ -333,69 +248,46 @@ public class ApplicationCaseServiceImpl implements ApplicationCaseService {
                 FitAnalysisResponse.from(fitAnalysis));
     }
 
-    private JobAnalysis createMockJobAnalysis(ApplicationCase applicationCase, String sourceText) {
-        Long applicationCaseId = applicationCase.getId();
-        MockAnalysisSeed seed = MockAnalysisSeed.from(applicationCase, sourceText);
-
-        applicationCaseMapper.deleteJobAnalysesByCaseId(applicationCaseId);
-        JobAnalysis jobAnalysis = JobAnalysis.builder()
-                .applicationCaseId(applicationCaseId)
-                .employmentType(seed.employmentType())
-                .experienceLevel(seed.experienceLevel())
-                .requiredSkills(seed.requiredSkills())
-                .preferredSkills(seed.preferredSkills())
-                .duties(seed.duties())
-                .qualifications(seed.qualifications())
-                .difficulty(seed.difficulty())
-                .summary(seed.summary())
-                .build();
-        applicationCaseMapper.insertJobAnalysis(jobAnalysis);
-        return applicationCaseMapper.findLatestJobAnalysisByCaseId(applicationCaseId);
-    }
-
-    private String sourceTextRequired(Long applicationCaseId) {
-        String text = sourceText(applicationCaseId);
-        if (isBlank(text)) {
-            throw new BusinessException(ErrorCode.INVALID_INPUT, "공고문을 먼저 등록해 주세요.");
-        }
-        return text;
-    }
-
-    private String sourceText(Long applicationCaseId) {
-        JobPosting jobPosting = applicationCaseMapper.findLatestJobPostingByCaseId(applicationCaseId);
-        if (jobPosting == null) {
-            return "";
-        }
-        return defaultString(jobPosting.getExtractedText(), jobPosting.getOriginalText());
-    }
-
-    private static BusinessException notFound() {
-        return new BusinessException(ErrorCode.NOT_FOUND, "지원 건을 찾을 수 없습니다.");
-    }
-
-    private static void validateJobPosting(JobPostingRequest request) {
-        if (isBlank(request.originalText()) && isBlank(request.extractedText()) && isBlank(request.uploadedFileUrl())) {
-            throw new BusinessException(ErrorCode.INVALID_INPUT, "공고 원문, 추출 텍스트, 파일 참조 중 하나는 필요합니다.");
-        }
-    }
-
     private static String defaultString(String value, String defaultValue) {
         return isBlank(value) ? defaultValue : value.trim();
     }
 
-    private static String blankToNull(String value) {
-        return isBlank(value) ? null : value.trim();
-    }
-
-    private static String compactColumnText(String value, int maxLength) {
-        if (isBlank(value)) {
+    private static java.time.LocalDate nextDeadlineDate(UpdateApplicationCaseRequest request, ApplicationCase existing) {
+        if (Boolean.TRUE.equals(request.clearDeadlineDate())) {
             return null;
         }
-        String normalized = value.trim().replaceAll("\\s+", " ");
-        if (normalized.length() <= maxLength) {
-            return normalized;
+        return request.deadlineDate() != null ? request.deadlineDate() : existing.getDeadlineDate();
+    }
+
+    private void logMockAiUsage(Long userId, Long applicationCaseId, String sourceText) {
+        int baseTokens = estimateTokenUsage(sourceText);
+        insertMockAiUsage(userId, applicationCaseId, "JOB_ANALYSIS", baseTokens, MOCK_JOB_ANALYSIS_CREDIT);
+        insertMockAiUsage(userId, applicationCaseId, "FIT_ANALYSIS", baseTokens + 620, MOCK_FIT_ANALYSIS_CREDIT);
+        insertMockAiUsage(userId, applicationCaseId, "DASHBOARD_SUMMARY", 980, MOCK_DASHBOARD_SUMMARY_CREDIT);
+    }
+
+    private void insertMockAiUsage(Long userId, Long applicationCaseId, String featureType, int tokenUsage, int creditUsed) {
+        applicationCaseMapper.insertAiUsageLog(AiUsageLog.builder()
+                .userId(userId)
+                .applicationCaseId(applicationCaseId)
+                .featureType(featureType)
+                .status("SUCCESS")
+                .model("mock")
+                .tokenUsage(tokenUsage)
+                .creditUsed(creditUsed)
+                .build());
+    }
+
+    private static int estimateTokenUsage(String sourceText) {
+        int length = sourceText == null ? 0 : sourceText.length();
+        return Math.max(1200, Math.min(4200, 900 + length * 2));
+    }
+
+    private static int normalizeFailureLimit(int limit) {
+        if (limit <= 0) {
+            return 5;
         }
-        return normalized.substring(0, maxLength);
+        return Math.min(limit, 50);
     }
 
     private static String normalizeOption(String value, String defaultValue, Set<String> allowedValues, String fieldName) {
@@ -408,113 +300,5 @@ public class ApplicationCaseServiceImpl implements ApplicationCaseService {
 
     private static boolean isBlank(String value) {
         return value == null || value.trim().isEmpty();
-    }
-
-    private record MockAnalysisSeed(
-            String employmentType,
-            String experienceLevel,
-            String requiredSkills,
-            String preferredSkills,
-            String duties,
-            String qualifications,
-            String difficulty,
-            String summary,
-            int fitScore,
-            String matchedSkills,
-            String missingSkills,
-            String recommendedStudy,
-            String recommendedCertificates,
-            String strategy
-    ) {
-        static MockAnalysisSeed from(ApplicationCase applicationCase, String sourceText) {
-            String lowerText = sourceText == null ? "" : sourceText.toLowerCase(Locale.ROOT);
-            boolean frontend = containsAny(lowerText, "react", "typescript", "javascript", "프론트");
-            boolean backend = containsAny(lowerText, "java", "spring", "api", "서버", "백엔드");
-            boolean cloud = containsAny(lowerText, "aws", "cloud", "배포", "kubernetes");
-
-            String requiredSkills = frontend
-                    ? "[\"React\",\"JavaScript\",\"REST API\"]"
-                    : backend ? "[\"Java\",\"Spring\",\"SQL\"]" : "[\"문제 해결\",\"협업\",\"문서화\"]";
-            String preferredSkills = cloud
-                    ? "[\"AWS\",\"TypeScript\",\"CI/CD\"]"
-                    : frontend ? "[\"TypeScript\",\"Next.js\",\"성능 최적화\"]" : "[\"데이터 분석\",\"프로젝트 경험\"]";
-            String matchedSkills = frontend ? "[\"React\",\"REST API\",\"Git\"]" : backend ? "[\"Java\",\"SQL\"]" : "[\"협업\",\"문서화\"]";
-            String missingSkills = cloud ? "[\"AWS\",\"배포 자동화\"]" : frontend ? "[\"TypeScript\",\"성능 최적화\"]" : "[\"정량 성과 정리\"]";
-            int fitScore = frontend ? 72 : backend ? 64 : 58;
-
-            return new MockAnalysisSeed(
-                    "정규직",
-                    "신입~경력 3년",
-                    requiredSkills,
-                    preferredSkills,
-                    "%s %s 직무의 주요 업무를 공고 요구사항 기준으로 정리한 mock 분석입니다."
-                            .formatted(applicationCase.getCompanyName(), applicationCase.getJobTitle()),
-                    "공고 원문 기반 자격 요건을 정리한 mock 분석입니다.",
-                    fitScore >= 70 ? "NORMAL" : "HARD",
-                    "지원 건과 공고문을 바탕으로 생성한 개발용 mock 공고 분석입니다.",
-                    fitScore,
-                    matchedSkills,
-                    missingSkills,
-                    "[\"공고 키워드로 프로젝트 경험 재정리\",\"부족 역량을 작은 실습으로 보완\",\"면접 답변에 수치와 역할 추가\"]",
-                    "[]",
-                    "강점은 직무 요구사항과 연결하고, 부족 역량은 학습 계획과 포트폴리오 보완으로 설명하는 전략이 적절합니다.");
-        }
-
-        private static boolean containsAny(String text, String... keywords) {
-            for (String keyword : keywords) {
-                if (text.contains(keyword.toLowerCase(Locale.ROOT))) {
-                    return true;
-                }
-            }
-            return false;
-        }
-    }
-
-    private record CompanyAnalysisSeed(
-            String companySummary,
-            String recentIssues,
-            String industry,
-            String competitors,
-            String interviewPoints,
-            String sources
-    ) {
-        static CompanyAnalysisSeed from(ApplicationCase applicationCase, String sourceText) {
-            String companyName = applicationCase.getCompanyName();
-            String jobTitle = applicationCase.getJobTitle();
-            String lowerText = (companyName + " " + jobTitle + " " + defaultString(sourceText, ""))
-                    .toLowerCase(Locale.ROOT);
-
-            boolean fintech = containsAny(lowerText, "pay", "페이", "금융", "핀테크", "bank", "은행");
-            boolean platform = containsAny(lowerText, "platform", "플랫폼", "commerce", "커머스", "서비스");
-            boolean cloud = containsAny(lowerText, "cloud", "aws", "인프라", "배포");
-
-            String industry = fintech
-                    ? "핀테크/금융 플랫폼"
-                    : platform ? "디지털 플랫폼 서비스" : "IT 서비스";
-            String competitors = fintech
-                    ? "[\"토스\",\"네이버파이낸셜\",\"카카오페이\"]"
-                    : platform ? "[\"네이버\",\"카카오\",\"쿠팡\"]" : "[\"동종 IT 서비스 기업\",\"SI/솔루션 기업\"]";
-            String recentIssues = cloud
-                    ? "공고 키워드상 클라우드 운영, 안정성, 자동화 경험을 중요하게 볼 가능성이 있습니다."
-                    : "공고와 직무 정보를 기준으로 서비스 성장성, 사용자 경험, 데이터 기반 개선 역량을 확인해야 합니다.";
-
-            return new CompanyAnalysisSeed(
-                    "%s는 %s 직무 지원에서 제품 이해와 실행 경험을 함께 확인할 가능성이 높은 기업입니다."
-                            .formatted(companyName, jobTitle),
-                    recentIssues,
-                    industry,
-                    competitors,
-                    "면접에서는 회사 서비스 이해, 직무 관련 프로젝트 경험, 협업 상황에서의 문제 해결 방식을 구체적으로 준비하는 것이 좋습니다.",
-                    "[\"지원 건 기본 정보\",\"공고문 텍스트\",\"개발용 mock seed\"]");
-        }
-
-        private static boolean containsAny(String text, String... keywords) {
-            for (String keyword : keywords) {
-                if (text.contains(keyword.toLowerCase(Locale.ROOT))) {
-                    return true;
-                }
-            }
-            return false;
-        }
     }
 }

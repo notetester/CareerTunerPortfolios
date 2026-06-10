@@ -9,6 +9,7 @@ import type { JobPosting, JobPostingRequest } from "../types/jobPosting";
 
 interface JobPostingPanelProps {
   jobPosting: JobPosting | null;
+  revisions: JobPosting[];
   loading: boolean;
   saving: boolean;
   uploading: boolean;
@@ -44,6 +45,7 @@ function isFileSource(sourceType: ApplicationSourceType): sourceType is Extract<
 
 export function JobPostingPanel({
   jobPosting,
+  revisions,
   loading,
   saving,
   uploading,
@@ -118,7 +120,9 @@ export function JobPostingPanel({
               공고문
             </CardTitle>
             {jobPosting ? (
-              <p className="mt-1 text-xs text-slate-500">저장됨: {formatDateTime(jobPosting.createdAt)}</p>
+              <p className="mt-1 text-xs text-slate-500">
+                최신 revision {jobPosting.revision} · 저장됨: {formatDateTime(jobPosting.createdAt)}
+              </p>
             ) : (
               <p className="mt-1 text-xs text-slate-500">공고문 미등록</p>
             )}
@@ -144,7 +148,7 @@ export function JobPostingPanel({
               onClick={() => void handleSave()}
             >
               {saving ? <Loader2 className="size-4 animate-spin" /> : <Save className="size-4" />}
-              {sourceType === "URL" ? "URL 추출 저장" : "저장"}
+              {sourceType === "URL" ? "URL 저장" : "저장"}
             </Button>
           </div>
         </div>
@@ -188,6 +192,11 @@ export function JobPostingPanel({
                   placeholder="https://example.com/jobs/123"
                   className="bg-white"
                 />
+                <div className="rounded-lg border border-blue-100 bg-blue-50 px-3 py-2 text-xs leading-5 text-blue-800">
+                  <p>URL만 입력하면 공개 페이지 본문을 추출합니다.</p>
+                  <p>로그인 페이지, 동적 렌더링 페이지, 접근 차단 페이지는 추출되지 않을 수 있습니다.</p>
+                  <p>추출 결과가 부족하면 아래 텍스트를 직접 보정해 저장하세요.</p>
+                </div>
               </div>
             )}
 
@@ -237,6 +246,26 @@ export function JobPostingPanel({
           <span>파일 참조: {jobPosting?.uploadedFileUrl ?? "없음"}</span>
           <span>저장 필드: {isTextSource(sourceType) ? "originalText" : "extractedText"}</span>
         </div>
+
+        {revisions.length > 0 && (
+          <div className="rounded-lg border border-slate-200 bg-white">
+            <div className="border-b border-slate-100 px-3 py-2 text-xs font-semibold text-slate-500">
+              공고문 revision 이력
+            </div>
+            <div className="divide-y divide-slate-100">
+              {revisions.map((revision) => (
+                <div key={revision.id} className="flex flex-wrap items-center justify-between gap-2 px-3 py-2 text-xs text-slate-600">
+                  <span className="font-semibold text-slate-900">rev {revision.revision}</span>
+                  <span>{revision.sourceType}</span>
+                  <span>{formatDateTime(revision.createdAt)}</span>
+                  <span className="max-w-sm truncate text-slate-400">
+                    {revision.extractedText ?? revision.originalText ?? revision.uploadedFileUrl ?? "내용 없음"}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
       </CardContent>
     </Card>
   );

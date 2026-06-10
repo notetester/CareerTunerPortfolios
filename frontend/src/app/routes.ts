@@ -21,6 +21,10 @@ import { AuthCallbackPage } from "./pages/AuthCallback";
 import { VerifyEmailResultPage } from "./pages/VerifyEmailResult";
 import { adminRoutes } from "../admin/routes";
 
+const basename = import.meta.env.BASE_URL === "/"
+  ? "/"
+  : import.meta.env.BASE_URL.replace(/\/$/, "");
+
 export const router = createBrowserRouter([
   {
     path: "/",
@@ -62,4 +66,4 @@ export const router = createBrowserRouter([
       ...adminRoutes,
     ],
   },
-]);
+], { basename });

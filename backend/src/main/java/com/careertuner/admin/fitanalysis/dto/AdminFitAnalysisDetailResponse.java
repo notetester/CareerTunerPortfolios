@@ -1,0 +1,75 @@
+package com.careertuner.admin.fitanalysis.dto;
+
+import java.time.LocalDateTime;
+import java.util.List;
+
+import com.careertuner.admin.fitanalysis.domain.AdminFitAnalysisResult;
+import com.careertuner.fitanalysis.dto.FitAnalysisLearningTaskResponse;
+
+public record AdminFitAnalysisDetailResponse(
+        Long id,
+        Long applicationCaseId,
+        Long userId,
+        String userName,
+        String userEmail,
+        String companyName,
+        String jobTitle,
+        String applicationStatus,
+        boolean favorite,
+        Integer fitScore,
+        List<String> matchedSkills,
+        List<String> missingSkills,
+        List<String> recommendedStudy,
+        List<String> recommendedCertificates,
+        String strategy,
+        String sourceSnapshot,
+        List<String> scoreBasis,
+        String gapRecommendations,
+        String certificateRecommendations,
+        List<String> strategyActions,
+        String model,
+        String status,
+        String errorMessage,
+        LocalDateTime createdAt,
+        List<FitAnalysisLearningTaskResponse> learningTasks,
+        List<AdminFitAnalysisMemoResponse> memos
+) {
+
+    public static AdminFitAnalysisDetailResponse of(AdminFitAnalysisResult result,
+                                                    List<String> matchedSkills,
+                                                    List<String> missingSkills,
+                                                    List<String> recommendedStudy,
+                                                    List<String> recommendedCertificates,
+                                                    List<String> scoreBasis,
+                                                    List<String> strategyActions,
+                                                    List<FitAnalysisLearningTaskResponse> learningTasks,
+                                                    List<AdminFitAnalysisMemoResponse> memos) {
+        return new AdminFitAnalysisDetailResponse(
+                result.getId(),
+                result.getApplicationCaseId(),
+                result.getUserId(),
+                result.getUserName(),
+                result.getUserEmail(),
+                result.getCompanyName(),
+                result.getJobTitle(),
+                result.getApplicationStatus(),
+                result.isFavorite(),
+                result.getFitScore(),
+                matchedSkills,
+                missingSkills,
+                recommendedStudy,
+                recommendedCertificates,
+                result.getStrategy(),
+                result.getSourceSnapshot(),
+                scoreBasis,
+                result.getGapRecommendations(),
+                result.getCertificateRecommendations(),
+                strategyActions,
+                result.getModel(),
+                result.getStatus(),
+                result.getErrorMessage(),
+                result.getCreatedAt(),
+                learningTasks,
+                memos);
+    }
+}
