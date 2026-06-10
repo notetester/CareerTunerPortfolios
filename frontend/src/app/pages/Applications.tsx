@@ -9,5 +9,9 @@ export function ApplicationsPage() {
     return <NewApplicationPage />;
   }
 
-  return <ApplicationListPage />;
+  if (location.pathname.endsWith("/trash")) {
+    return <ApplicationListPage mode="trash" />;
+  }
+
+  return <ApplicationListPage mode="active" />;
 }
