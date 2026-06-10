@@ -294,7 +294,7 @@ export function AnalysisPage() {
 
         <div className="grid lg:grid-cols-2 gap-6">
           {/* Skill gaps */}
-          <Card className={`border border-slate-200 bg-white ${activeTab !== "weakness" ? "hidden" : ""}`}>
+          <Card className={`min-w-0 border border-slate-200 bg-white ${activeTab !== "weakness" ? "hidden" : ""}`}>
             <CardHeader>
               <CardTitle className="text-base flex items-center gap-2">
                 <AlertCircle className="size-4 text-red-500" />
@@ -321,7 +321,7 @@ export function AnalysisPage() {
           </Card>
 
           {/* 반복 강점(자주 활용되는 강점 경험) — 기획 §8.9, 디자인 분석 §6.10 */}
-          <Card className={`border border-slate-200 bg-white ${activeTab !== "weakness" ? "hidden" : ""}`}>
+          <Card className={`min-w-0 border border-slate-200 bg-white ${activeTab !== "weakness" ? "hidden" : ""}`}>
             <CardHeader>
               <CardTitle className="text-base flex items-center gap-2">
                 <CheckCircle2 className="size-4 text-green-600" />
@@ -349,7 +349,7 @@ export function AnalysisPage() {
           </Card>
 
           {/* 자주 지원하는 직무 분포 — 기획 §8.9, 디자인 분석 §6.10 */}
-          <Card className={`border border-slate-200 bg-white ${activeTab !== "trend" ? "hidden" : ""}`}>
+          <Card className={`min-w-0 border border-slate-200 bg-white ${activeTab !== "trend" ? "hidden" : ""}`}>
             <CardHeader>
               <CardTitle className="text-base flex items-center gap-2">
                 <PieChart className="size-4 text-indigo-600" />
@@ -379,7 +379,7 @@ export function AnalysisPage() {
           </Card>
 
           {/* 자주 개선이 필요한 답변 요소 — 기획 §8.9(답변의 공통 약점) */}
-          <Card className={`border border-slate-200 bg-white ${activeTab !== "score" ? "hidden" : ""}`}>
+          <Card className={`min-w-0 border border-slate-200 bg-white ${activeTab !== "score" ? "hidden" : ""}`}>
             <CardHeader>
               <CardTitle className="text-base flex items-center gap-2">
                 <MessageSquare className="size-4 text-purple-600" />
@@ -414,7 +414,7 @@ export function AnalysisPage() {
           </Card>
 
           {/* Job readiness */}
-          <Card className={`border border-slate-200 bg-white ${activeTab !== "readiness" ? "hidden" : ""}`}>
+          <Card className={`min-w-0 border border-slate-200 bg-white ${activeTab !== "readiness" ? "hidden" : ""}`}>
             <CardHeader>
               <CardTitle className="text-base flex items-center gap-2">
                 <Target className="size-4 text-blue-600" />
@@ -455,7 +455,7 @@ export function AnalysisPage() {
           </Card>
 
           {/* Score history bar chart (visual) */}
-          <Card className={`border border-slate-200 bg-white ${activeTab !== "score" ? "hidden" : ""}`}>
+          <Card className={`min-w-0 border border-slate-200 bg-white ${activeTab !== "score" ? "hidden" : ""}`}>
             <CardHeader>
               <CardTitle className="text-base flex items-center gap-2">
                 <BarChart3 className="size-4 text-purple-600" />
@@ -495,7 +495,7 @@ export function AnalysisPage() {
           </Card>
 
           {/* Application trends */}
-          <Card className={`border border-slate-200 bg-white ${activeTab !== "trend" ? "hidden" : ""}`}>
+          <Card className={`min-w-0 border border-slate-200 bg-white ${activeTab !== "trend" ? "hidden" : ""}`}>
             <CardHeader>
               <CardTitle className="text-base flex items-center gap-2">
                 <Briefcase className="size-4 text-orange-600" />

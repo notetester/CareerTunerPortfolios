@@ -125,11 +125,23 @@ public class DashboardServiceImpl implements DashboardService {
                         .toList(),
                 skillGaps,
                 recentInterview(userId),
-                dashboardMapper.findRecentNotifications(userId).stream()
-                        .map(DashboardNotificationResponse::from)
-                        .toList(),
+                recentNotifications(userId),
                 summary,
                 run);
+    }
+
+    /**
+     * 최근 알림(F 소유 notification 읽기 전용). 알림 도메인이 아직 배포되지 않은 환경에서도
+     * C 대시보드 전체가 실패하지 않도록 조회 실패 시 빈 목록으로 강등한다.
+     */
+    private List<DashboardNotificationResponse> recentNotifications(Long userId) {
+        try {
+            return dashboardMapper.findRecentNotifications(userId).stream()
+                    .map(DashboardNotificationResponse::from)
+                    .toList();
+        } catch (Exception ex) {
+            return List.of();
+        }
     }
 
     @Override
