@@ -5,6 +5,7 @@ import type {
   DashboardSummary,
   DashboardApplication,
   DashboardActivity,
+  DashboardTodo,
 } from "@/features/dashboard/types/dashboardSummary";
 import type { HomeSummary } from "@/features/home/types/homeSummary";
 import type { AnalysisSummary, CareerAnalysisRun } from "@/features/analysis/types/analysisSummary";
@@ -76,12 +77,29 @@ export const demoDashboardSummary: DashboardSummary = {
   },
   recentApplications: dashboardApplications,
   todos: [
-    { done: false, task: "네이버 면접 예상 질문 3개 답변 연습", time: "오늘" },
-    { done: false, task: "TypeScript 리팩토링 프로젝트 포트폴리오 추가", time: "이번 주" },
-    { done: true, task: "카카오 자기소개서 첨삭 반영", time: "어제" },
+    { id: null, derivedKey: "interview-practice:102", source: "DERIVED", done: false, task: "네이버 면접 예상 질문 3개 답변 연습", time: "오늘" },
+    { id: null, derivedKey: "gap-learning:TypeScript", source: "DERIVED", done: false, task: "TypeScript 리팩토링 프로젝트 포트폴리오 추가", time: "이번 주" },
+    { id: 7001, derivedKey: null, source: "USER", done: true, task: "카카오 자기소개서 첨삭 반영", time: "어제" },
   ],
   activities,
   skillGaps,
+  recentInterview: {
+    sessionId: 8002,
+    applicationCaseId: 102,
+    companyName: "네이버",
+    jobTitle: "프론트엔드 개발자",
+    mode: "JOB",
+    totalScore: 80,
+    previousScore: 74,
+    scoreDelta: 6,
+    keyImprovement: "답변에 정량 성과가 부족합니다. 성능 개선 경험을 수치(로딩 35% 단축 등)로 설명하세요.",
+    occurredAt: iso(1),
+  },
+  recentNotifications: [
+    { id: 9101, type: "ANALYSIS_DONE", title: "네이버 적합도 분석이 완료되었습니다 (84점)", message: null, link: "/applications/102", read: false, createdAt: iso(2) },
+    { id: 9102, type: "INTERVIEW_REPORT", title: "모의면접 리포트가 준비되었습니다", message: null, link: "/interview?tab=report", read: false, createdAt: iso(1) },
+    { id: 9103, type: "NOTICE", title: "CareerTuner 데모에 오신 것을 환영합니다", message: null, link: null, read: true, createdAt: iso(5) },
+  ],
   aiSummary: dashboardAiSummary,
   analysisRun: {
     id: 5001,
@@ -151,6 +169,22 @@ export const demoAnalysisSummary: AnalysisSummary = {
   ],
   trendSummary: careerTrendSummary,
   interviewTrend: { totalSessions: 3, averageSessionScore: 78, totalAnswers: 14, averageAnswerScore: 76 },
+  strengthTrends: [
+    { skill: "React", count: 3, total: 3, percentage: 100 },
+    { skill: "REST API", count: 2, total: 3, percentage: 67 },
+    { skill: "협업", count: 2, total: 3, percentage: 67 },
+    { skill: "성능 최적화", count: 1, total: 3, percentage: 33 },
+  ],
+  jobDistribution: [
+    { jobTitle: "프론트엔드 개발자", count: 3, percentage: 75, averageFitScore: 78 },
+    { jobTitle: "웹 프론트엔드 엔지니어", count: 1, percentage: 25, averageFitScore: null },
+  ],
+  answerThemes: [
+    { questionType: "TECH", answerCount: 6, averageScore: 68, sampleFeedback: "기술 선택 이유가 추상적입니다. 비교 대안과 선택 근거를 함께 설명하세요." },
+    { questionType: "SITUATION", answerCount: 4, averageScore: 74, sampleFeedback: "상황-행동-결과 구조는 좋으나 결과 수치가 빠져 있습니다." },
+    { questionType: "PERSONALITY", answerCount: 4, averageScore: 81, sampleFeedback: null },
+  ],
+  period: { from: iso(20), to: iso(2), applicationCount: 4, analyzedCount: 3, interviewSessionCount: 3 },
   analysisRun,
 };
 

@@ -46,6 +46,53 @@ const routes: MockRoute[] = [
   { method: "GET", pattern: /^\/home\/summary$/, handler: ok(demoHomeSummary) },
   { method: "GET", pattern: /^\/dashboard\/summary$/, handler: ok(demoDashboardSummary) },
   { method: "POST", pattern: /^\/dashboard\/summary\/refresh$/, handler: ok(demoDashboardSummary) },
+
+  // ── C: 오늘의 할 일 완료 처리/추가/삭제 (세션 내 in-memory 상태 유지) ──
+  { method: "GET", pattern: /^\/dashboard\/todos$/, handler: () => [...demoDashboardSummary.todos] },
+  {
+    method: "POST",
+    pattern: /^\/dashboard\/todos$/,
+    handler: ({ body }) => {
+      const request = body as { task?: string; time?: string };
+      demoDashboardSummary.todos.push({
+        id: 7000 + demoDashboardSummary.todos.length + 1,
+        derivedKey: null,
+        source: "USER",
+        done: false,
+        task: request?.task ?? "",
+        time: request?.time ?? "오늘",
+      });
+      return [...demoDashboardSummary.todos];
+    },
+  },
+  {
+    method: "PATCH",
+    pattern: /^\/dashboard\/todos\/derived$/,
+    handler: ({ body }) => {
+      const request = body as { derivedKey?: string; done?: boolean };
+      const target = demoDashboardSummary.todos.find((todo) => todo.derivedKey === request?.derivedKey);
+      if (target) target.done = !!request?.done;
+      return [...demoDashboardSummary.todos];
+    },
+  },
+  {
+    method: "PATCH",
+    pattern: /^\/dashboard\/todos\/(\d+)$/,
+    handler: ({ params, body }) => {
+      const target = demoDashboardSummary.todos.find((todo) => todo.id === Number(params[0]));
+      if (target) target.done = !!(body as { done?: boolean })?.done;
+      return [...demoDashboardSummary.todos];
+    },
+  },
+  {
+    method: "DELETE",
+    pattern: /^\/dashboard\/todos\/(\d+)$/,
+    handler: ({ params }) => {
+      const index = demoDashboardSummary.todos.findIndex((todo) => todo.id === Number(params[0]));
+      if (index >= 0) demoDashboardSummary.todos.splice(index, 1);
+      return [...demoDashboardSummary.todos];
+    },
+  },
   { method: "GET", pattern: /^\/analysis\/summary$/, handler: ok(demoAnalysisSummary) },
   { method: "POST", pattern: /^\/analysis\/summary\/refresh$/, handler: ok(demoAnalysisSummary) },
   { method: "GET", pattern: /^\/analysis\/history$/, handler: ok(demoAnalysisHistory) },

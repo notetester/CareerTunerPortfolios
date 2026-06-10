@@ -12,6 +12,10 @@ public record DashboardSummaryResponse(
         List<DashboardTodoResponse> todos,
         List<DashboardActivityResponse> activities,
         List<DashboardSkillGapResponse> skillGaps,
+        // 디자인 분석 §6.4 권장 카드: 최근 면접(점수 변화·핵심 개선점). 면접 기록이 없으면 null.
+        DashboardRecentInterviewResponse recentInterview,
+        // PRODUCT_STRUCTURE 대시보드 항목: 최근 알림(notification 읽기 전용 참조).
+        List<DashboardNotificationResponse> recentNotifications,
         String aiSummary,
         CareerAnalysisRunResponse analysisRun
 ) {
