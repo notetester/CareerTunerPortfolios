@@ -5,6 +5,7 @@ import java.util.List;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import com.careertuner.admin.companyanalysis.dto.AdminCompanyAnalysisMetadataRequest;
 import com.careertuner.admin.companyanalysis.dto.AdminCompanyAnalysisRow;
 import com.careertuner.admin.companyanalysis.mapper.AdminCompanyAnalysisMapper;
 import com.careertuner.common.exception.BusinessException;
@@ -31,6 +32,19 @@ public class AdminCompanyAnalysisService {
     public void updateMemo(AuthUser authUser, Long analysisId, String adminMemo) {
         requireAdmin(authUser);
         int updated = companyAnalysisMapper.updateAdminMemo(analysisId, blankToNull(adminMemo));
+        if (updated == 0) {
+            throw new BusinessException(ErrorCode.NOT_FOUND, "기업 분석을 찾을 수 없습니다.");
+        }
+    }
+
+    @Transactional
+    public void updateMetadata(AuthUser authUser, Long analysisId, AdminCompanyAnalysisMetadataRequest request) {
+        requireAdmin(authUser);
+        int updated = mapper.updateMetadata(
+                analysisId,
+                blankToNull(request.sourceType()),
+                request.checkedAt(),
+                request.refreshRecommendedAt());
         if (updated == 0) {
             throw new BusinessException(ErrorCode.NOT_FOUND, "기업 분석을 찾을 수 없습니다.");
         }

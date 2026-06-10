@@ -12,6 +12,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.careertuner.admin.common.dto.AdminMemoRequest;
+import com.careertuner.admin.companyanalysis.dto.AdminCompanyAnalysisMetadataRequest;
 import com.careertuner.admin.companyanalysis.dto.AdminCompanyAnalysisRow;
 import com.careertuner.admin.companyanalysis.service.AdminCompanyAnalysisService;
 import com.careertuner.common.security.AuthUser;
@@ -38,6 +39,14 @@ public class AdminCompanyAnalysisController {
                                         @PathVariable Long analysisId,
                                         @Valid @RequestBody AdminMemoRequest request) {
         service.updateMemo(authUser, analysisId, request.adminMemo());
+        return ApiResponse.ok();
+    }
+
+    @PatchMapping("/{analysisId}/metadata")
+    public ApiResponse<Void> updateMetadata(@AuthenticationPrincipal AuthUser authUser,
+                                            @PathVariable Long analysisId,
+                                            @Valid @RequestBody AdminCompanyAnalysisMetadataRequest request) {
+        service.updateMetadata(authUser, analysisId, request);
         return ApiResponse.ok();
     }
 }

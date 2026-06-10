@@ -21,6 +21,13 @@
             (#{applicationCaseId}, #{revision}, #{originalText}, #{uploadedFileUrl}, #{extractedText}, #{sourceType})
     </insert>
 
+    <select id="findJobPostingByIdAndCaseId" resultType="com.careertuner.jobposting.domain.JobPosting">
+        SELECT *
+        FROM job_posting
+        WHERE id = #{id}
+          AND application_case_id = #{applicationCaseId}
+    </select>
+
     <select id="findLatestJobPostingByCaseId" resultType="com.careertuner.jobposting.domain.JobPosting">
         SELECT *
         FROM job_posting

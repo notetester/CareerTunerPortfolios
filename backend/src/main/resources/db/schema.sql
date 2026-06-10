@@ -130,6 +130,7 @@ CREATE TABLE IF NOT EXISTS job_posting (
     source_type         VARCHAR(20) NOT NULL DEFAULT 'TEXT',
     created_at          DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (id),
+    UNIQUE KEY uk_job_posting_case_revision (application_case_id, revision),
     KEY idx_job_posting_case (application_case_id),
     CONSTRAINT fk_job_posting_case FOREIGN KEY (application_case_id) REFERENCES application_case (id) ON DELETE CASCADE
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci;
