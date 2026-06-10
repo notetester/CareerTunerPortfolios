@@ -102,6 +102,44 @@ public class InterviewOpenAiClient {
                 usage(root));
     }
 
+    /** 원 질문 + 지원자 답변 기반 꼬리 질문 생성. */
+    public GeneratedQuestions generateFollowUps(String question, String answerText,
+                                                ApplicationCase applicationCase, int count) {
+        String userPrompt = """
+                회사명: %s
+                직무명: %s
+                생성할 꼬리 질문 수: %d
+
+                원 질문:
+                %s
+
+                지원자 답변:
+                %s
+                """.formatted(applicationCase.getCompanyName(), applicationCase.getJobTitle(),
+                count, question, answerText == null || answerText.isBlank() ? "(답변 없음)" : answerText);
+
+        JsonNode root = post(structuredRequest("interview_follow_up_questions", questionsSchema(),
+                InterviewPromptCatalog.FOLLOWUP_SYSTEM_PROMPT, userPrompt));
+        JsonNode payload = parseOutputJson(root);
+
+        List<GeneratedQuestion> questions = new ArrayList<>();
+        JsonNode array = payload.path("questions");
+        if (array.isArray()) {
+            for (JsonNode item : array) {
+                String q = item.path("question").asText("").trim();
+                if (q.isBlank()) {
+                    continue;
+                }
+                // 꼬리 질문은 항상 FOLLOW_UP 으로 강제한다.
+                questions.add(new GeneratedQuestion(q, "FOLLOW_UP"));
+            }
+        }
+        if (questions.isEmpty()) {
+            throw new BusinessException(ErrorCode.INTERNAL_ERROR, "AI가 꼬리 질문을 생성하지 못했습니다.");
+        }
+        return new GeneratedQuestions(questions, usage(root));
+    }
+
     /** 면접 전체 Q&A 기반 종합 리포트 생성. */
     public ReportPayload generateReport(String transcript) {
         JsonNode root = post(structuredRequest("interview_report", reportSchema(),

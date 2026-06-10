@@ -38,10 +38,16 @@ public interface InterviewMapper {
 
     InterviewQuestion findQuestionByIdAndUserId(@Param("id") Long id, @Param("userId") Long userId);
 
+    /** 세션 내 가장 큰 sort_order. 꼬리 질문을 뒤에 이어 붙일 때 사용. (질문 없으면 null) */
+    Integer findMaxSortOrder(@Param("sessionId") Long sessionId);
+
     // ── 답변 ──
     void insertAnswer(InterviewAnswer answer);
 
     List<InterviewAnswer> findAnswersBySessionId(@Param("sessionId") Long sessionId);
+
+    /** 특정 질문에 저장된 가장 최근 답변. 꼬리 질문 생성 입력으로 사용. (없으면 null) */
+    InterviewAnswer findLatestAnswerByQuestionId(@Param("questionId") Long questionId);
 
     // ── AI 사용량 ──
     void insertAiUsageLog(InterviewAiUsageLog aiUsageLog);

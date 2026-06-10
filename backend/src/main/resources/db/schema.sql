@@ -315,12 +315,15 @@ CREATE TABLE IF NOT EXISTS interview_session (
 CREATE TABLE IF NOT EXISTS interview_question (
     id                   BIGINT NOT NULL AUTO_INCREMENT,
     interview_session_id BIGINT NOT NULL,
+    parent_question_id   BIGINT NULL,                       -- 꼬리 질문이면 원 질문 id, 일반 질문이면 NULL
     question             MEDIUMTEXT NOT NULL,
     question_type        VARCHAR(30) NULL,                  -- EXPECTED/TECH/PERSONALITY/SITUATION/FOLLOW_UP
     sort_order           INT NOT NULL DEFAULT 0,
     PRIMARY KEY (id),
     KEY idx_interview_question_session (interview_session_id),
-    CONSTRAINT fk_interview_question_session FOREIGN KEY (interview_session_id) REFERENCES interview_session (id) ON DELETE CASCADE
+    KEY idx_interview_question_parent (parent_question_id),
+    CONSTRAINT fk_interview_question_session FOREIGN KEY (interview_session_id) REFERENCES interview_session (id) ON DELETE CASCADE,
+    CONSTRAINT fk_interview_question_parent FOREIGN KEY (parent_question_id) REFERENCES interview_question (id) ON DELETE CASCADE
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci;
 
 CREATE TABLE IF NOT EXISTS interview_answer (
@@ -336,6 +339,25 @@ CREATE TABLE IF NOT EXISTS interview_answer (
     PRIMARY KEY (id),
     KEY idx_interview_answer_question (question_id),
     CONSTRAINT fk_interview_answer_question FOREIGN KEY (question_id) REFERENCES interview_question (id) ON DELETE CASCADE
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci;
+
+-- 파일/스토리지 메타데이터 (음성/영상/문서 등 업로드 파일의 위치·종류를 기록).
+-- 실제 바이트는 로컬 디스크(careertuner.uploads.media-dir)에 저장하고, 본 테이블은 메타만 보관한다.
+CREATE TABLE IF NOT EXISTS file_asset (
+    id            BIGINT NOT NULL AUTO_INCREMENT,
+    owner_user_id BIGINT NOT NULL,
+    kind          VARCHAR(20) NOT NULL,                       -- AUDIO/VIDEO/RESUME/PORTFOLIO/POSTING/ATTACHMENT
+    ref_type      VARCHAR(30) NULL,                           -- 연결 대상 종류 (예: INTERVIEW_ANSWER)
+    ref_id        BIGINT NULL,                                -- 연결 대상 id
+    original_name VARCHAR(255) NULL,
+    content_type  VARCHAR(120) NULL,
+    size_bytes    BIGINT NOT NULL DEFAULT 0,
+    storage_key   VARCHAR(512) NOT NULL,                      -- 디스크 저장 경로/키 (예: media/12/uuid.webm)
+    created_at    DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (id),
+    KEY idx_file_asset_owner (owner_user_id),
+    KEY idx_file_asset_ref (ref_type, ref_id),
+    CONSTRAINT fk_file_asset_owner FOREIGN KEY (owner_user_id) REFERENCES users (id) ON DELETE CASCADE
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci;
 
 -- =====================================================================

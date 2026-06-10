@@ -59,4 +59,24 @@
         FROM interview_session
         WHERE id = #{id}
     </select>
+
+    <select id="findAiFailures" resultType="com.careertuner.admin.interview.dto.AdminInterviewAiFailureRow">
+        SELECT
+            l.id,
+            l.user_id,
+            u.email AS user_email,
+            l.application_case_id,
+            ac.company_name,
+            ac.job_title,
+            l.feature_type,
+            l.error_message,
+            l.created_at
+        FROM ai_usage_log l
+        JOIN users u ON u.id = l.user_id
+        LEFT JOIN application_case ac ON ac.id = l.application_case_id
+        WHERE l.status = 'FAILED'
+          AND l.feature_type LIKE 'INTERVIEW%'
+        ORDER BY l.created_at DESC, l.id DESC
+        LIMIT #{limit}
+    </select>
 </mapper>

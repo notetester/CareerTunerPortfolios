@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.careertuner.file.mapper.FileAssetMapper">
+
+    <!-- map-underscore-to-camel-case 활성화 상태라 컬럼은 자동 매핑된다. -->
+
+    <insert id="insert" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO file_asset
+            (owner_user_id, kind, ref_type, ref_id, original_name, content_type, size_bytes, storage_key)
+        VALUES
+            (#{ownerUserId}, #{kind}, #{refType}, #{refId}, #{originalName}, #{contentType}, #{sizeBytes}, #{storageKey})
+    </insert>
+
+    <select id="findById" resultType="com.careertuner.file.domain.FileAsset">
+        SELECT *
+        FROM file_asset
+        WHERE id = #{id}
+    </select>
+
+    <select id="findByRef" resultType="com.careertuner.file.domain.FileAsset">
+        SELECT *
+        FROM file_asset
+        WHERE ref_type = #{refType}
+          AND ref_id = #{refId}
+        ORDER BY id
+    </select>
+</mapper>

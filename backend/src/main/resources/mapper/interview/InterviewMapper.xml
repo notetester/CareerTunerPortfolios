@@ -52,10 +52,16 @@
     <!-- ── 질문 ── -->
     <insert id="insertQuestion" useGeneratedKeys="true" keyProperty="id">
         INSERT INTO interview_question
-            (interview_session_id, question, question_type, sort_order)
+            (interview_session_id, parent_question_id, question, question_type, sort_order)
         VALUES
-            (#{interviewSessionId}, #{question}, #{questionType}, #{sortOrder})
+            (#{interviewSessionId}, #{parentQuestionId}, #{question}, #{questionType}, #{sortOrder})
     </insert>
+
+    <select id="findMaxSortOrder" resultType="java.lang.Integer">
+        SELECT MAX(sort_order)
+        FROM interview_question
+        WHERE interview_session_id = #{sessionId}
+    </select>
 
     <delete id="deleteQuestionsBySessionId">
         DELETE FROM interview_question
@@ -93,6 +99,14 @@
         JOIN interview_question q ON q.id = a.question_id
         WHERE q.interview_session_id = #{sessionId}
         ORDER BY q.sort_order, a.id
+    </select>
+
+    <select id="findLatestAnswerByQuestionId" resultType="com.careertuner.interview.domain.InterviewAnswer">
+        SELECT *
+        FROM interview_answer
+        WHERE question_id = #{questionId}
+        ORDER BY id DESC
+        LIMIT 1
     </select>
 
     <!-- ── AI 사용량 ── -->

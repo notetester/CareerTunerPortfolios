@@ -13,12 +13,16 @@ import org.springframework.web.bind.annotation.RestController;
 import com.careertuner.common.security.AuthUser;
 import com.careertuner.common.web.ApiResponse;
 import com.careertuner.interview.dto.CreateInterviewSessionRequest;
+import com.careertuner.interview.dto.GenerateFollowUpsRequest;
 import com.careertuner.interview.dto.GenerateQuestionsRequest;
 import com.careertuner.interview.dto.InterviewAnswerResponse;
+import com.careertuner.interview.dto.InterviewProgressResponse;
 import com.careertuner.interview.dto.InterviewQuestionResponse;
 import com.careertuner.interview.dto.InterviewReportResponse;
 import com.careertuner.interview.dto.InterviewSessionResponse;
+import com.careertuner.interview.dto.RealtimeSessionResponse;
 import com.careertuner.interview.dto.SubmitAnswerRequest;
+import com.careertuner.interview.realtime.InterviewRealtimeService;
 import com.careertuner.interview.service.InterviewService;
 
 import jakarta.validation.Valid;
@@ -30,6 +34,7 @@ import lombok.RequiredArgsConstructor;
 public class InterviewController {
 
     private final InterviewService interviewService;
+    private final InterviewRealtimeService realtimeService;
 
     @GetMapping("/sessions")
     public ApiResponse<List<InterviewSessionResponse>> listSessions(@AuthenticationPrincipal AuthUser authUser) {
@@ -61,6 +66,25 @@ public class InterviewController {
                                                              @PathVariable Long questionId,
                                                              @Valid @RequestBody SubmitAnswerRequest request) {
         return ApiResponse.ok(interviewService.submitAnswer(authUser.id(), questionId, request));
+    }
+
+    @PostMapping("/questions/{questionId}/follow-ups")
+    public ApiResponse<List<InterviewQuestionResponse>> generateFollowUps(@AuthenticationPrincipal AuthUser authUser,
+                                                                          @PathVariable Long questionId,
+                                                                          @RequestBody(required = false) GenerateFollowUpsRequest request) {
+        return ApiResponse.ok(interviewService.generateFollowUps(authUser.id(), questionId, request));
+    }
+
+    @GetMapping("/sessions/{sessionId}/progress")
+    public ApiResponse<InterviewProgressResponse> getProgress(@AuthenticationPrincipal AuthUser authUser,
+                                                              @PathVariable Long sessionId) {
+        return ApiResponse.ok(interviewService.getProgress(authUser.id(), sessionId));
+    }
+
+    @PostMapping("/sessions/{sessionId}/realtime")
+    public ApiResponse<RealtimeSessionResponse> createRealtimeSession(@AuthenticationPrincipal AuthUser authUser,
+                                                                      @PathVariable Long sessionId) {
+        return ApiResponse.ok(realtimeService.createSession(authUser.id(), sessionId));
     }
 
     @GetMapping("/sessions/{sessionId}/report")

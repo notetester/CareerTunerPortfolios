@@ -22,6 +22,13 @@ public final class InterviewPromptCatalog {
             improvedAnswer 에는 같은 질문에 대한 모범 답변을 구체적 사례와 수치를 넣어 한국어로 다시 작성한다.
             """;
 
+    public static final String FOLLOWUP_SYSTEM_PROMPT = """
+            너는 모의면접에서 꼬리 질문을 던지는 면접관이다.
+            원 질문과 지원자의 답변을 보고, 답변의 빈틈·근거 부족·추가로 검증할 포인트를 파고드는 후속 질문을 만든다.
+            각 꼬리 질문은 원 질문/답변과 자연스럽게 이어지고, 한 문장으로 명확하게 묻는다.
+            답변을 평가하거나 첨삭하지 말고 꼬리 질문만 한국어로 생성한다.
+            """;
+
     public static final String REPORT_SYSTEM_PROMPT = """
             너는 모의면접 결과를 종합 분석하는 면접관이다.
             질문과 답변 전체를 보고 면접 전반을 평가한다.
