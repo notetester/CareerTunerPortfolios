@@ -11,6 +11,11 @@ public record AnalysisSummaryResponse(
         List<String> recommendedDirections,
         String trendSummary,
         InterviewTrendResponse interviewTrend,
+        // 아래 4개는 결정적 집계(기획 §8.9, 디자인 분석 §6.10). AI 캐시 fingerprint에는 포함하지 않는다.
+        List<AnalysisStrengthTrendResponse> strengthTrends,
+        List<AnalysisJobDistributionResponse> jobDistribution,
+        List<AnalysisAnswerThemeResponse> answerThemes,
+        AnalysisPeriodResponse period,
         CareerAnalysisRunResponse analysisRun
 ) {
 }
