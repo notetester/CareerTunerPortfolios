@@ -41,7 +41,8 @@ jobs:
       - name: Set up Node
         uses: actions/setup-node@v6
         with:
-          node-version: 20
+          # Capacitor CLI 8 은 Node >= 22 필요
+          node-version: 22
           cache: npm
           cache-dependency-path: frontend/package-lock.json
 
