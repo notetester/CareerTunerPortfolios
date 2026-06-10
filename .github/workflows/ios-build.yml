@@ -1,0 +1,72 @@
+name: Build iOS demo (unsigned simulator)
+
+# iOS 앱(Capacitor)을 macOS 러너에서 "무서명 시뮬레이터 빌드"로 컴파일 검증한다.
+#  - Apple Developer 계정/서명 불필요(CODE_SIGNING_ALLOWED=NO).
+#  - 산출물(.app)은 iOS '시뮬레이터'에서만 실행된다(실기기는 서명 필요).
+#  - ⚠ macOS 러너는 비공개 저장소에서 분당 과금 10배 → 수동 실행(workflow_dispatch)으로만 둔다.
+#  - ios/ 네이티브 프로젝트는 .gitignore 대상이라 러너에서 `npx cap add ios` 로 매번 재생성한다.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-ios-simulator:
+    runs-on: macos-15
+
+    defaults:
+      run:
+        working-directory: frontend
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Set up Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Show Xcode version
+        run: xcodebuild -version
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build web (mock/demo mode)
+        run: npm run build:mock
+
+      - name: Add iOS platform (regenerated each run; ios/ is gitignored)
+        run: npx cap add ios
+
+      - name: Sync web assets + plugins into iOS project
+        run: npx cap sync ios
+
+      - name: Build for iOS Simulator (unsigned)
+        run: |
+          set -e
+          xcodebuild \
+            -workspace ios/App/App.xcworkspace \
+            -scheme App \
+            -configuration Debug \
+            -sdk iphonesimulator \
+            -destination 'generic/platform=iOS Simulator' \
+            -derivedDataPath build-ios \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO \
+            build
+
+      - name: Locate built .app
+        run: |
+          APP_PATH=$(find build-ios/Build/Products -name 'App.app' -type d | head -1)
+          echo "Built app: $APP_PATH"
+          echo "APP_PATH=$APP_PATH" >> "$GITHUB_ENV"
+
+      - name: Upload simulator app artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: CareerTuner-ios-simulator-app
+          path: frontend/${{ env.APP_PATH }}
+          if-no-files-found: error
