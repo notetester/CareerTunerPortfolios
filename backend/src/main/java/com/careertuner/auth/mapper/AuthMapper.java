@@ -5,6 +5,7 @@ import org.apache.ibatis.annotations.Param;
 
 import com.careertuner.auth.domain.EmailVerification;
 import com.careertuner.auth.domain.RefreshToken;
+import com.careertuner.auth.domain.UserLoginHistory;
 import com.careertuner.auth.domain.UserSocial;
 
 @Mapper
@@ -30,4 +31,6 @@ public interface AuthMapper {
     void revokeRefreshToken(String token);
 
     void revokeAllForUser(Long userId);
+
+    void insertLoginHistory(UserLoginHistory history);
 }

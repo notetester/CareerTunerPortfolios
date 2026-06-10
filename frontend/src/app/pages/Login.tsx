@@ -55,10 +55,26 @@ export function LoginPage() {
       }
       navigate("/dashboard", { replace: true });
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "인증 요청에 실패했습니다. 잠시 후 다시 시도해 주세요.");
+      setError(toAuthErrorMessage(err));
     } finally {
       setSubmitting(false);
     }
+  };
+
+  const toAuthErrorMessage = (err: unknown) => {
+    if (!(err instanceof ApiError)) {
+      return "인증 요청에 실패했습니다. 잠시 후 다시 시도해 주세요.";
+    }
+    if (err.status === 401) {
+      return err.message || "이메일 또는 비밀번호가 올바르지 않습니다.";
+    }
+    if (err.status === 403) {
+      return err.message || "현재 사용할 수 없는 계정입니다.";
+    }
+    if (err.status === 409) {
+      return err.message || "이미 사용 중인 이메일입니다.";
+    }
+    return err.message || "인증 요청에 실패했습니다. 잠시 후 다시 시도해 주세요.";
   };
 
   const socialButtons = [

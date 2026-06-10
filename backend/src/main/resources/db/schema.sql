@@ -12,25 +12,25 @@ SET FOREIGN_KEY_CHECKS = 0;
 -- =====================================================================
 CREATE TABLE IF NOT EXISTS users (
     id               BIGINT       NOT NULL AUTO_INCREMENT,
-    email            VARCHAR(255) NOT NULL,
-    password         VARCHAR(255) NULL,                          -- BCrypt 해시. 소셜 전용 계정은 NULL
-    password_enabled TINYINT(1)   NOT NULL DEFAULT 1,            -- 비밀번호 로그인 가능 여부(소셜 전용=0)
+    email            VARCHAR(255) NOT NULL COMMENT '로그인 식별자로 사용하는 회원 이메일',
+    password         VARCHAR(255) NULL COMMENT 'BCrypt로 암호화한 비밀번호 해시. 소셜 전용 계정은 NULL 가능',
+    password_enabled TINYINT(1)   NOT NULL DEFAULT 1 COMMENT '비밀번호 로그인 사용 여부. 소셜 전용 계정은 0',
     name             VARCHAR(100) NOT NULL,
-    email_verified   TINYINT(1)   NOT NULL DEFAULT 0,            -- 이메일 인증 완료 여부
+    email_verified   TINYINT(1)   NOT NULL DEFAULT 0 COMMENT '이메일 인증 완료 여부',
     user_type        VARCHAR(20)  NOT NULL DEFAULT 'JOB_SEEKER', -- JOB_SEEKER/CAREER_CHANGER/EXPERIENCED
-    role             VARCHAR(20)  NOT NULL DEFAULT 'USER',       -- USER/ADMIN
-    status           VARCHAR(20)  NOT NULL DEFAULT 'ACTIVE',     -- ACTIVE/DORMANT/BLOCKED/DELETED
+    role             VARCHAR(20)  NOT NULL DEFAULT 'USER' COMMENT '회원 권한. USER 또는 ADMIN',
+    status           VARCHAR(20)  NOT NULL DEFAULT 'ACTIVE' COMMENT '회원 상태. ACTIVE/DORMANT/BLOCKED/DELETED',
     plan             VARCHAR(20)  NOT NULL DEFAULT 'FREE',       -- FREE/BASIC/PRO/PREMIUM
     credit           INT          NOT NULL DEFAULT 0,
-    last_login_at    DATETIME     NULL,
-    dormant_at       DATETIME     NULL,                          -- 휴면 전환 시각
-    blocked_reason   VARCHAR(255) NULL,                          -- 관리자 차단 사유
-    blocked_until    DATETIME     NULL,                          -- 기간 차단 만료 시각(NULL이면 무기한/미차단)
-    deleted_at       DATETIME     NULL,                          -- 탈퇴/삭제 처리 시각
-    status_changed_at DATETIME    NULL,                          -- 회원 상태 마지막 변경 시각
-    status_changed_by BIGINT      NULL,                          -- 상태를 변경한 관리자 id, 시스템 변경이면 NULL
-    failed_login_count INT        NOT NULL DEFAULT 0,             -- 연속 로그인 실패 횟수
-    last_failed_login_at DATETIME NULL,                           -- 마지막 로그인 실패 시각
+    last_login_at    DATETIME     NULL COMMENT '마지막 로그인 성공 시각',
+    dormant_at       DATETIME     NULL COMMENT '휴면 계정으로 전환된 시각',
+    blocked_reason   VARCHAR(255) NULL COMMENT '관리자가 회원을 차단한 사유',
+    blocked_until    DATETIME     NULL COMMENT '기간 차단 만료 시각. NULL이면 무기한 또는 미차단',
+    deleted_at       DATETIME     NULL COMMENT '회원 탈퇴 또는 삭제 처리 시각',
+    status_changed_at DATETIME    NULL COMMENT '회원 상태가 마지막으로 변경된 시각',
+    status_changed_by BIGINT      NULL COMMENT '회원 상태를 변경한 관리자 ID. 시스템 변경이면 NULL',
+    failed_login_count INT        NOT NULL DEFAULT 0 COMMENT '연속 로그인 실패 횟수',
+    last_failed_login_at DATETIME NULL COMMENT '마지막 로그인 실패 시각',
     created_at       DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at       DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     PRIMARY KEY (id),
@@ -38,7 +38,7 @@ CREATE TABLE IF NOT EXISTS users (
     KEY idx_users_status (status),
     KEY idx_users_status_changed_by (status_changed_by),
     CONSTRAINT fk_users_status_changed_by FOREIGN KEY (status_changed_by) REFERENCES users (id) ON DELETE SET NULL
-) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci;
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci COMMENT = '회원 기본 정보와 로그인/권한/상태 관리 정보';
 
 -- 한 유저가 여러 소셜 계정 연동 가능 (provider별 1개)
 CREATE TABLE IF NOT EXISTS user_social (
@@ -73,53 +73,53 @@ CREATE TABLE IF NOT EXISTS email_verification (
 -- JWT refresh token (회전/폐기 관리용)
 CREATE TABLE IF NOT EXISTS refresh_token (
     id          BIGINT       NOT NULL AUTO_INCREMENT,
-    user_id     BIGINT       NOT NULL,
-    token       VARCHAR(512) NOT NULL,
-    expired_at  DATETIME     NOT NULL,
-    revoked     TINYINT(1)   NOT NULL DEFAULT 0,
-    revoked_at  DATETIME     NULL,
-    ip_address  VARCHAR(45)  NULL,
-    user_agent  VARCHAR(500) NULL,
+    user_id     BIGINT       NOT NULL COMMENT '토큰을 발급받은 회원 ID',
+    token       VARCHAR(512) NOT NULL COMMENT '저장된 JWT refresh token 값',
+    expired_at  DATETIME     NOT NULL COMMENT 'refresh token 만료 시각',
+    revoked     TINYINT(1)   NOT NULL DEFAULT 0 COMMENT '토큰 폐기 여부',
+    revoked_at  DATETIME     NULL COMMENT '토큰이 폐기된 시각',
+    ip_address  VARCHAR(45)  NULL COMMENT '토큰 발급 요청 IP 주소',
+    user_agent  VARCHAR(500) NULL COMMENT '토큰 발급 요청 User-Agent',
     created_at  DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (id),
     UNIQUE KEY uk_refresh_token_token (token),
     KEY idx_refresh_token_user (user_id),
     CONSTRAINT fk_refresh_token_user FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
-) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci;
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci COMMENT = 'JWT refresh token 저장 및 세션 감사 정보';
 
 -- 로그인/로그아웃/토큰 갱신 감사 로그.
 -- user_id는 실패 로그인처럼 사용자를 특정하지 못하는 이벤트를 위해 NULL 허용.
 CREATE TABLE IF NOT EXISTS user_login_history (
     id               BIGINT       NOT NULL AUTO_INCREMENT,
-    user_id          BIGINT       NULL,
-    event_type       VARCHAR(20)  NOT NULL,                      -- LOGIN/LOGOUT/REFRESH
-    auth_provider    VARCHAR(20)  NOT NULL DEFAULT 'LOCAL',      -- LOCAL/KAKAO/NAVER/GOOGLE
-    login_method     VARCHAR(20)  NULL,                          -- EMAIL/OAUTH/REFRESH_TOKEN
-    login_identifier VARCHAR(255) NULL,                          -- 사용자가 입력한 이메일 등
-    success          TINYINT(1)   NOT NULL,
-    fail_reason      VARCHAR(50)  NULL,                          -- USER_NOT_FOUND/WRONG_PASSWORD/BLOCKED 등
-    ip_address       VARCHAR(45)  NULL,
-    user_agent       VARCHAR(500) NULL,
-    request_uri      VARCHAR(255) NULL,
+    user_id          BIGINT       NULL COMMENT '로그인 이벤트 대상 회원 ID. 실패로 회원 식별이 안 되면 NULL',
+    event_type       VARCHAR(20)  NOT NULL COMMENT '인증 이벤트 유형. LOGIN/LOGOUT/REFRESH',
+    auth_provider    VARCHAR(20)  NOT NULL DEFAULT 'LOCAL' COMMENT '인증 제공자. LOCAL/KAKAO/NAVER/GOOGLE',
+    login_method     VARCHAR(20)  NULL COMMENT '로그인 방식. EMAIL/OAUTH/REFRESH_TOKEN',
+    login_identifier VARCHAR(255) NULL COMMENT '사용자가 입력한 로그인 식별자. 보통 이메일',
+    success          TINYINT(1)   NOT NULL COMMENT '인증 성공 여부',
+    fail_reason      VARCHAR(50)  NULL COMMENT '실패 사유. USER_NOT_FOUND/WRONG_PASSWORD/BLOCKED 등',
+    ip_address       VARCHAR(45)  NULL COMMENT '요청 IP 주소',
+    user_agent       VARCHAR(500) NULL COMMENT '요청 User-Agent',
+    request_uri      VARCHAR(255) NULL COMMENT '인증 요청 URI',
     created_at       DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (id),
     KEY idx_user_login_history_user (user_id),
     KEY idx_user_login_history_created (created_at),
     KEY idx_user_login_history_success (success),
     CONSTRAINT fk_user_login_history_user FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE SET NULL
-) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci;
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci COMMENT = '로그인, 로그아웃, 토큰 갱신 감사 로그';
 
 -- 관리자/시스템이 회원 상태를 바꾼 이력.
 -- users.status의 현재값만으로는 과거 차단/휴면/해제 사유를 알 수 없으므로 별도 로그로 남긴다.
 CREATE TABLE IF NOT EXISTS user_status_history (
     id              BIGINT       NOT NULL AUTO_INCREMENT,
-    user_id         BIGINT       NOT NULL,
-    actor_user_id   BIGINT       NULL,
-    previous_status VARCHAR(20)  NULL,
-    new_status      VARCHAR(20)  NOT NULL,
-    reason          VARCHAR(255) NULL,
-    memo            TEXT         NULL,
-    blocked_until   DATETIME     NULL,
+    user_id         BIGINT       NOT NULL COMMENT '상태가 변경된 회원 ID',
+    actor_user_id   BIGINT       NULL COMMENT '상태를 변경한 관리자 ID. 시스템 자동 변경이면 NULL',
+    previous_status VARCHAR(20)  NULL COMMENT '변경 전 회원 상태',
+    new_status      VARCHAR(20)  NOT NULL COMMENT '변경 후 회원 상태',
+    reason          VARCHAR(255) NULL COMMENT '상태 변경 사유',
+    memo            TEXT         NULL COMMENT '관리자 내부 메모',
+    blocked_until   DATETIME     NULL COMMENT '차단 만료 시각. 차단 상태가 아니거나 무기한이면 NULL',
     created_at      DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (id),
     KEY idx_user_status_history_user (user_id),
@@ -127,7 +127,7 @@ CREATE TABLE IF NOT EXISTS user_status_history (
     KEY idx_user_status_history_created (created_at),
     CONSTRAINT fk_user_status_history_user FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE,
     CONSTRAINT fk_user_status_history_actor FOREIGN KEY (actor_user_id) REFERENCES users (id) ON DELETE SET NULL
-) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci;
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci COMMENT = '회원 상태 변경 이력';
 
 -- =====================================================================
 --  프로필

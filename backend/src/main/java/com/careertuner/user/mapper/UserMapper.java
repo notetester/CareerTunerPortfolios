@@ -19,6 +19,12 @@ public interface UserMapper {
 
     void touchLastLogin(Long id);
 
+    void touchLastLoginAndResetFailures(Long id);
+
+    void increaseFailedLogin(Long id);
+
+    void activateExpiredBlock(Long id);
+
     void markEmailVerified(Long id);
 
     void updatePassword(@Param("id") Long id, @Param("password") String password);

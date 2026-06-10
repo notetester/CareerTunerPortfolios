@@ -1,6 +1,7 @@
 package com.careertuner.auth.service;
 
 import java.time.LocalDateTime;
+import java.util.Locale;
 import java.util.UUID;
 
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -9,8 +10,10 @@ import org.springframework.transaction.annotation.Transactional;
 
 import com.careertuner.auth.domain.EmailVerification;
 import com.careertuner.auth.domain.RefreshToken;
+import com.careertuner.auth.domain.UserLoginHistory;
 import com.careertuner.auth.domain.UserSocial;
 import com.careertuner.auth.dto.LoginRequest;
+import com.careertuner.auth.dto.LoginRequestContext;
 import com.careertuner.auth.dto.MeResponse;
 import com.careertuner.auth.dto.RegisterRequest;
 import com.careertuner.auth.dto.TokenResponse;
@@ -30,6 +33,11 @@ import lombok.extern.slf4j.Slf4j;
 @RequiredArgsConstructor
 public class AuthServiceImpl implements AuthService {
 
+    private static final String STATUS_ACTIVE = "ACTIVE";
+    private static final String STATUS_DORMANT = "DORMANT";
+    private static final String STATUS_BLOCKED = "BLOCKED";
+    private static final String STATUS_DELETED = "DELETED";
+
     private final UserMapper userMapper;
     private final AuthMapper authMapper;
     private final PasswordEncoder passwordEncoder;
@@ -38,72 +46,107 @@ public class AuthServiceImpl implements AuthService {
     private final SocialOAuthService socialOAuthService;
     private final CareerTunerProperties props;
 
-    // ════════════════════════════════════════════ 이메일 회원가입/로그인
-
     @Override
     @Transactional
-    public TokenResponse register(RegisterRequest request) {
-        if (userMapper.countByEmail(request.email()) > 0) {
+    public TokenResponse register(RegisterRequest request, LoginRequestContext context) {
+        String email = normalizeEmail(request.email());
+        if (userMapper.countByEmail(email) > 0) {
             throw new BusinessException(ErrorCode.CONFLICT, "이미 사용 중인 이메일입니다.");
         }
+
         User user = User.builder()
-                .email(request.email())
+                .email(email)
                 .password(passwordEncoder.encode(request.password()))
                 .passwordEnabled(true)
-                .name(request.name())
+                .name(request.name().trim())
                 .emailVerified(false)
                 .userType("JOB_SEEKER")
                 .role("USER")
-                .status("ACTIVE")
+                .status(STATUS_ACTIVE)
                 .plan("FREE")
                 .credit(0)
                 .build();
         userMapper.insert(user);
+
         issueEmailVerification(user);
-        return issueTokens(user);
+        // 회원가입 직후 자동 로그인 정책이므로 로그인 성공과 동일하게 접속 정보를 남긴다.
+        userMapper.touchLastLoginAndResetFailures(user.getId());
+        recordLoginHistory(user.getId(), "LOGIN", "LOCAL", "EMAIL", email, true, null, context);
+        return issueTokens(user, context);
     }
 
     @Override
     @Transactional
-    public TokenResponse login(LoginRequest request) {
-        User user = userMapper.findByEmail(request.email());
-        if (user == null || !user.isPasswordEnabled() || user.getPassword() == null
-                || !passwordEncoder.matches(request.password(), user.getPassword())) {
-            throw new BusinessException(ErrorCode.UNAUTHORIZED, "이메일 또는 비밀번호가 올바르지 않습니다.");
+    public TokenResponse login(LoginRequest request, LoginRequestContext context) {
+        String email = normalizeEmail(request.email());
+        User user = userMapper.findByEmail(email);
+        if (user == null) {
+            recordLoginHistory(null, "LOGIN", "LOCAL", "EMAIL", email, false, "USER_NOT_FOUND", context);
+            throw invalidLogin();
         }
-        if ("BLOCKED".equals(user.getStatus())) {
-            throw new BusinessException(ErrorCode.FORBIDDEN, "차단된 계정입니다.");
-        }
-        userMapper.touchLastLogin(user.getId());
-        return issueTokens(user);
-    }
 
-    // ════════════════════════════════════════════ 토큰
+        user = releaseExpiredBlockIfNeeded(user);
+        // 차단/휴면/삭제 계정에는 토큰을 발급하지 않기 위해 비밀번호 검증 전에 상태를 먼저 본다.
+        validateLoginAllowed(user, email, context);
+
+        if (!user.isPasswordEnabled() || user.getPassword() == null) {
+            recordLoginHistory(user.getId(), "LOGIN", "LOCAL", "EMAIL", email, false,
+                    "PASSWORD_LOGIN_DISABLED", context);
+            throw invalidLogin();
+        }
+
+        if (!passwordEncoder.matches(request.password(), user.getPassword())) {
+            userMapper.increaseFailedLogin(user.getId());
+            recordLoginHistory(user.getId(), "LOGIN", "LOCAL", "EMAIL", email, false, "WRONG_PASSWORD", context);
+            throw invalidLogin();
+        }
+
+        userMapper.touchLastLoginAndResetFailures(user.getId());
+        recordLoginHistory(user.getId(), "LOGIN", "LOCAL", "EMAIL", email, true, null, context);
+        return issueTokens(user, context);
+    }
 
     @Override
     @Transactional
-    public TokenResponse refresh(String refreshToken) {
+    public TokenResponse refresh(String refreshToken, LoginRequestContext context) {
         RefreshToken stored = authMapper.findRefreshToken(refreshToken);
         if (stored == null || stored.isRevoked() || stored.getExpiredAt().isBefore(LocalDateTime.now())) {
+            recordLoginHistory(stored != null ? stored.getUserId() : null, "REFRESH", "LOCAL",
+                    "REFRESH_TOKEN", null, false, "INVALID_REFRESH_TOKEN", context);
             throw new BusinessException(ErrorCode.UNAUTHORIZED, "유효하지 않은 리프레시 토큰입니다.");
         }
+
         User user = userMapper.findById(stored.getUserId());
         if (user == null) {
+            recordLoginHistory(stored.getUserId(), "REFRESH", "LOCAL", "REFRESH_TOKEN", null, false,
+                    "USER_NOT_FOUND", context);
             throw new BusinessException(ErrorCode.UNAUTHORIZED, "사용자를 찾을 수 없습니다.");
         }
-        authMapper.revokeRefreshToken(refreshToken); // rotation
-        return issueTokens(user);
+
+        user = releaseExpiredBlockIfNeeded(user);
+        // refresh token이 유효해도 현재 계정 상태가 비활성화되었다면 세션을 연장하지 않는다.
+        validateTokenAllowed(user, context);
+
+        authMapper.revokeRefreshToken(refreshToken);
+        recordLoginHistory(user.getId(), "REFRESH", "LOCAL", "REFRESH_TOKEN", user.getEmail(), true, null, context);
+        return issueTokens(user, context);
     }
 
     @Override
     @Transactional
-    public void logout(String refreshToken) {
-        if (refreshToken != null && !refreshToken.isBlank()) {
-            authMapper.revokeRefreshToken(refreshToken);
+    public void logout(String refreshToken, LoginRequestContext context) {
+        if (refreshToken == null || refreshToken.isBlank()) {
+            return;
+        }
+
+        RefreshToken stored = authMapper.findRefreshToken(refreshToken);
+        authMapper.revokeRefreshToken(refreshToken);
+        if (stored != null) {
+            User user = userMapper.findById(stored.getUserId());
+            recordLoginHistory(stored.getUserId(), "LOGOUT", "LOCAL", "REFRESH_TOKEN",
+                    user != null ? user.getEmail() : null, true, null, context);
         }
     }
-
-    // ════════════════════════════════════════════ 이메일 인증
 
     @Override
     @Transactional
@@ -123,16 +166,16 @@ public class AuthServiceImpl implements AuthService {
     @Override
     @Transactional
     public void resendVerification(String email) {
-        User user = userMapper.findByEmail(email);
+        User user = userMapper.findByEmail(normalizeEmail(email));
         if (user == null || user.isEmailVerified()) {
-            return; // 계정 존재 여부를 노출하지 않음 / 이미 인증됨
+            return;
         }
         issueEmailVerification(user);
     }
 
     @Override
     public boolean isEmailTaken(String email) {
-        return userMapper.countByEmail(email) > 0;
+        return userMapper.countByEmail(normalizeEmail(email)) > 0;
     }
 
     @Override
@@ -144,8 +187,6 @@ public class AuthServiceImpl implements AuthService {
         return MeResponse.from(user);
     }
 
-    // ════════════════════════════════════════════ 소셜 로그인
-
     @Override
     public String buildAuthorizationUrl(String provider) {
         String normalized = normalizeProvider(provider);
@@ -155,49 +196,60 @@ public class AuthServiceImpl implements AuthService {
 
     @Override
     @Transactional
-    public TokenResponse handleOAuthCallback(String provider, String code, String state) {
+    public TokenResponse handleOAuthCallback(String provider, String code, String state, LoginRequestContext context) {
         String normalized = normalizeProvider(provider);
         if (!jwtTokenProvider.validateOauthState(state, normalized)) {
-            throw new BusinessException(ErrorCode.UNAUTHORIZED, "잘못된 접근입니다(OAuth state).");
+            throw new BusinessException(ErrorCode.UNAUTHORIZED, "잘못된 OAuth state입니다.");
         }
+
         SocialUserInfo info = socialOAuthService.fetchUserInfo(normalized, code, state);
         User user = findOrCreateSocialUser(info);
-        return issueTokens(user);
-    }
+        user = releaseExpiredBlockIfNeeded(user);
+        validateSocialLoginAllowed(user, info, context);
 
-    // ════════════════════════════════════════════ 내부
+        userMapper.touchLastLoginAndResetFailures(user.getId());
+        String identifier = info.email() != null ? info.email() : info.providerUserId();
+        recordLoginHistory(user.getId(), "LOGIN", info.provider(), "OAUTH", identifier, true, null, context);
+        return issueTokens(user, context);
+    }
 
     private User findOrCreateSocialUser(SocialUserInfo info) {
         UserSocial social = authMapper.findSocial(info.provider(), info.providerUserId());
         if (social != null) {
-            return userMapper.findById(social.getUserId());
+            User user = userMapper.findById(social.getUserId());
+            if (user == null) {
+                throw new BusinessException(ErrorCode.UNAUTHORIZED, "연결된 소셜 계정을 찾을 수 없습니다.");
+            }
+            return user;
         }
+
         User user = null;
         if (info.email() != null && !info.email().isBlank()) {
-            user = userMapper.findByEmail(info.email());
+            user = userMapper.findByEmail(normalizeEmail(info.email()));
         }
         if (user == null) {
-            String email = (info.email() != null && !info.email().isBlank())
-                    ? info.email()
-                    : info.provider().toLowerCase() + "_" + info.providerUserId() + "@social.careertuner";
+            String email = info.email() != null && !info.email().isBlank()
+                    ? normalizeEmail(info.email())
+                    : info.provider().toLowerCase(Locale.ROOT) + "_" + info.providerUserId() + "@social.careertuner";
             if (userMapper.countByEmail(email) > 0) {
-                email = info.provider().toLowerCase() + "_" + info.providerUserId()
+                email = info.provider().toLowerCase(Locale.ROOT) + "_" + info.providerUserId()
                         + "_" + System.currentTimeMillis() + "@social.careertuner";
             }
             user = User.builder()
                     .email(email)
                     .password(null)
                     .passwordEnabled(false)
-                    .name(info.name())
-                    .emailVerified(true) // 제공자가 검증한 계정으로 간주
+                    .name(info.name() != null && !info.name().isBlank() ? info.name() : info.provider() + " 사용자")
+                    .emailVerified(true)
                     .userType("JOB_SEEKER")
                     .role("USER")
-                    .status("ACTIVE")
+                    .status(STATUS_ACTIVE)
                     .plan("FREE")
                     .credit(0)
                     .build();
             userMapper.insert(user);
         }
+
         authMapper.insertSocial(UserSocial.builder()
                 .userId(user.getId())
                 .provider(info.provider())
@@ -218,25 +270,132 @@ public class AuthServiceImpl implements AuthService {
         emailService.sendVerificationEmail(user.getEmail(), token);
     }
 
-    private TokenResponse issueTokens(User user) {
+    private TokenResponse issueTokens(User user, LoginRequestContext context) {
         String accessToken = jwtTokenProvider.createAccessToken(user.getId(), user.getEmail(), user.getRole());
         String refreshToken = UUID.randomUUID().toString();
+        // access token은 stateless JWT이고, refresh token은 DB에서 기기/접속 정보와 함께 관리한다.
         authMapper.insertRefreshToken(RefreshToken.builder()
                 .userId(user.getId())
                 .token(refreshToken)
                 .expiredAt(LocalDateTime.now().plusSeconds(props.getJwt().getRefreshTokenValiditySeconds()))
+                .ipAddress(context != null ? truncate(context.ipAddress(), 45) : null)
+                .userAgent(context != null ? truncate(context.userAgent(), 500) : null)
                 .build());
         return TokenResponse.of(accessToken, refreshToken, jwtTokenProvider.getAccessValiditySeconds(), user);
+    }
+
+    private User releaseExpiredBlockIfNeeded(User user) {
+        if (user != null && STATUS_BLOCKED.equals(user.getStatus())
+                && user.getBlockedUntil() != null && !user.getBlockedUntil().isAfter(LocalDateTime.now())) {
+            userMapper.activateExpiredBlock(user.getId());
+            return userMapper.findById(user.getId());
+        }
+        return user;
+    }
+
+    private void validateLoginAllowed(User user, String identifier, LoginRequestContext context) {
+        if (STATUS_DELETED.equals(user.getStatus())) {
+            recordLoginHistory(user.getId(), "LOGIN", "LOCAL", "EMAIL", identifier, false, "ACCOUNT_DELETED", context);
+            throw new BusinessException(ErrorCode.FORBIDDEN, "탈퇴 또는 삭제된 계정입니다.");
+        }
+        if (STATUS_BLOCKED.equals(user.getStatus())) {
+            recordLoginHistory(user.getId(), "LOGIN", "LOCAL", "EMAIL", identifier, false, "ACCOUNT_BLOCKED", context);
+            throw new BusinessException(ErrorCode.FORBIDDEN, blockMessage(user));
+        }
+        if (STATUS_DORMANT.equals(user.getStatus())) {
+            recordLoginHistory(user.getId(), "LOGIN", "LOCAL", "EMAIL", identifier, false, "ACCOUNT_DORMANT", context);
+            throw new BusinessException(ErrorCode.FORBIDDEN, "휴면 계정입니다. 휴면 해제 후 로그인할 수 있습니다.");
+        }
+    }
+
+    private void validateSocialLoginAllowed(User user, SocialUserInfo info, LoginRequestContext context) {
+        String identifier = info.email() != null ? info.email() : info.providerUserId();
+        if (STATUS_DELETED.equals(user.getStatus())) {
+            recordLoginHistory(user.getId(), "LOGIN", info.provider(), "OAUTH", identifier, false,
+                    "ACCOUNT_DELETED", context);
+            throw new BusinessException(ErrorCode.FORBIDDEN, "탈퇴 또는 삭제된 계정입니다.");
+        }
+        if (STATUS_BLOCKED.equals(user.getStatus())) {
+            recordLoginHistory(user.getId(), "LOGIN", info.provider(), "OAUTH", identifier, false,
+                    "ACCOUNT_BLOCKED", context);
+            throw new BusinessException(ErrorCode.FORBIDDEN, blockMessage(user));
+        }
+        if (STATUS_DORMANT.equals(user.getStatus())) {
+            recordLoginHistory(user.getId(), "LOGIN", info.provider(), "OAUTH", identifier, false,
+                    "ACCOUNT_DORMANT", context);
+            throw new BusinessException(ErrorCode.FORBIDDEN, "휴면 계정입니다. 휴면 해제 후 로그인할 수 있습니다.");
+        }
+    }
+
+    private void validateTokenAllowed(User user, LoginRequestContext context) {
+        if (STATUS_DELETED.equals(user.getStatus())) {
+            recordLoginHistory(user.getId(), "REFRESH", "LOCAL", "REFRESH_TOKEN", user.getEmail(), false,
+                    "ACCOUNT_DELETED", context);
+            throw new BusinessException(ErrorCode.UNAUTHORIZED, "사용할 수 없는 계정입니다.");
+        }
+        if (STATUS_BLOCKED.equals(user.getStatus())) {
+            recordLoginHistory(user.getId(), "REFRESH", "LOCAL", "REFRESH_TOKEN", user.getEmail(), false,
+                    "ACCOUNT_BLOCKED", context);
+            throw new BusinessException(ErrorCode.UNAUTHORIZED, "차단된 계정입니다.");
+        }
+        if (STATUS_DORMANT.equals(user.getStatus())) {
+            recordLoginHistory(user.getId(), "REFRESH", "LOCAL", "REFRESH_TOKEN", user.getEmail(), false,
+                    "ACCOUNT_DORMANT", context);
+            throw new BusinessException(ErrorCode.UNAUTHORIZED, "휴면 계정입니다.");
+        }
+    }
+
+    private void recordLoginHistory(Long userId, String eventType, String authProvider, String loginMethod,
+                                    String loginIdentifier, boolean success, String failReason,
+                                    LoginRequestContext context) {
+        // 실패한 로그인도 원인 분석과 관리자 감사 화면을 위해 user_login_history에 남긴다.
+        authMapper.insertLoginHistory(UserLoginHistory.builder()
+                .userId(userId)
+                .eventType(eventType)
+                .authProvider(authProvider)
+                .loginMethod(loginMethod)
+                .loginIdentifier(truncate(loginIdentifier, 255))
+                .success(success)
+                .failReason(failReason)
+                .ipAddress(context != null ? truncate(context.ipAddress(), 45) : null)
+                .userAgent(context != null ? truncate(context.userAgent(), 500) : null)
+                .requestUri(context != null ? truncate(context.requestUri(), 255) : null)
+                .build());
+    }
+
+    private BusinessException invalidLogin() {
+        return new BusinessException(ErrorCode.UNAUTHORIZED, "이메일 또는 비밀번호가 올바르지 않습니다.");
+    }
+
+    private String blockMessage(User user) {
+        if (user.getBlockedUntil() != null) {
+            return "차단된 계정입니다. 해제 예정 시각: " + user.getBlockedUntil();
+        }
+        if (user.getBlockedReason() != null && !user.getBlockedReason().isBlank()) {
+            return "차단된 계정입니다. 사유: " + user.getBlockedReason();
+        }
+        return "차단된 계정입니다.";
     }
 
     private String normalizeProvider(String provider) {
         if (provider == null) {
             throw new BusinessException(ErrorCode.INVALID_INPUT, "소셜 제공자가 지정되지 않았습니다.");
         }
-        String normalized = provider.trim().toUpperCase();
+        String normalized = provider.trim().toUpperCase(Locale.ROOT);
         if (!socialOAuthService.isSupported(normalized)) {
-            throw new BusinessException(ErrorCode.INVALID_INPUT, "지원하지 않는 소셜 제공자: " + provider);
+            throw new BusinessException(ErrorCode.INVALID_INPUT, "지원하지 않는 소셜 제공자입니다: " + provider);
         }
         return normalized;
+    }
+
+    private String normalizeEmail(String email) {
+        return email == null ? null : email.trim().toLowerCase(Locale.ROOT);
+    }
+
+    private String truncate(String value, int maxLength) {
+        if (value == null || value.length() <= maxLength) {
+            return value;
+        }
+        return value.substring(0, maxLength);
     }
 }
