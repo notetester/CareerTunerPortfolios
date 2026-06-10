@@ -24,9 +24,18 @@ npm run dev      # http://localhost:5173
 | 명령 | 설명 |
 | --- | --- |
 | `npm run dev` | 개발 서버 (HMR) |
+| `npm run dev:mock` | **백엔드 없이** mock 데모 모드로 개발 서버 실행 |
 | `npm run build` | 프로덕션 빌드 (`dist/`) |
+| `npm run build:mock` | mock 데모 모드 프로덕션 빌드 (웹 데모/APK 용) |
 | `npm run preview` | 빌드 결과 미리보기 |
 | `npm run typecheck` | 타입 검사 (`tsc --noEmit`) |
+| `npm run gen:icons` | PWA/앱 아이콘 생성 (`public/icons/*`) |
+| `npm run mobile:sync` | mock 빌드 + Android 프로젝트 동기화 (`cap sync`) |
+| `npm run mobile:apk` | 디버그 APK 빌드 (`android/.../app-debug.apk`) |
+| `npm run ios:sync` | mock 빌드 + iOS 프로젝트 동기화 (Mac 전용) |
+
+모바일 앱(PWA/Android/iOS) 빌드 상세는 [MOBILE_BUILD.md](MOBILE_BUILD.md),
+데모·릴리즈 절차는 [../docs/RELEASE.md](../docs/RELEASE.md) 참고.
 
 ## 구조
 
