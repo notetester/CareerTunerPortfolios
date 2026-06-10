@@ -11,7 +11,7 @@ import com.careertuner.admin.fitanalysis.domain.AdminFitAnalysisResult;
 @Mapper
 public interface AdminFitAnalysisMapper {
 
-    List<AdminFitAnalysisResult> findLatestAll();
+    List<AdminFitAnalysisResult> findAll();
 
     AdminFitAnalysisResult findById(Long id);
 

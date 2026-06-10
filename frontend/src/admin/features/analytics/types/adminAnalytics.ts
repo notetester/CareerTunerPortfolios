@@ -52,3 +52,40 @@ export interface AdminAnalyticsSummary {
   recentAnalyses: AdminRecentAnalysis[];
   dailyUsage: AdminDailyUsage[];
 }
+
+export interface AdminCareerAnalysisRun {
+  id: number;
+  userId: number;
+  userName: string;
+  userEmail: string;
+  analysisType: "CAREER_TREND" | "DASHBOARD_SUMMARY" | string;
+  status: "SUCCESS" | "FALLBACK" | "FAILED" | string;
+  inputSnapshot: string | null;
+  result: string | null;
+  model: string | null;
+  tokenUsage: number;
+  errorMessage: string | null;
+  retryable: boolean;
+  createdAt: string;
+  memoCount: number;
+  latestMemoAt: string | null;
+}
+
+export type AdminCareerRunMemoType = "GENERAL" | "QUALITY" | "USER_INQUIRY" | "REANALYSIS" | string;
+
+export interface AdminCareerRunMemo {
+  id: number;
+  careerAnalysisRunId: number;
+  adminUserId: number;
+  adminName: string;
+  adminEmail: string;
+  memoType: AdminCareerRunMemoType;
+  content: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface AdminCareerRunMemoRequest {
+  memoType: AdminCareerRunMemoType;
+  content: string;
+}

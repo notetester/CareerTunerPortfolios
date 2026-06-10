@@ -2,18 +2,19 @@ import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router";
 import { Card, CardContent, CardHeader, CardTitle } from "@/app/components/ui/card";
 import { Progress } from "@/app/components/ui/progress";
+import { Button } from "@/app/components/ui/button";
 import {
   TrendingUp, Target, BarChart3, ArrowUp, ArrowDown, AlertCircle,
-  Brain, BookOpen, Briefcase, Loader2,
+  Brain, BookOpen, Briefcase, Loader2, RefreshCw,
 } from "lucide-react";
-import { getAnalysisSummary } from "@/features/analysis/api/analysisSummaryApi";
+import { getAnalysisSummary, refreshAnalysisSummary } from "@/features/analysis/api/analysisSummaryApi";
 import type { AnalysisSummary } from "@/features/analysis/types/analysisSummary";
 
 const analysisTabs = [
   { key: "trend", label: "내 지원 경향", icon: Briefcase },
   { key: "weakness", label: "자주 부족한 역량", icon: AlertCircle },
   { key: "readiness", label: "직무별 준비도", icon: Target },
-  { key: "score", label: "면접 점수 변화", icon: BarChart3 },
+  { key: "score", label: "적합도 점수 변화", icon: BarChart3 },
   { key: "recommendation", label: "추천 지원 방향", icon: BookOpen },
 ] as const;
 type AnalysisTab = (typeof analysisTabs)[number]["key"];
@@ -39,6 +40,8 @@ export function AnalysisPage() {
   const [summary, setSummary] = useState<AnalysisSummary | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
+  const [refreshError, setRefreshError] = useState<string | null>(null);
   const requestedTab = searchParams.get("tab") ?? "trend";
   const activeTab: AnalysisTab = analysisTabs.some((tab) => tab.key === requestedTab) ? (requestedTab as AnalysisTab) : "trend";
   const stats = summary?.stats;
@@ -93,6 +96,19 @@ export function AnalysisPage() {
     };
   }, []);
 
+  const handleRefresh = async () => {
+    setRefreshing(true);
+    setRefreshError(null);
+    try {
+      const data = await refreshAnalysisSummary();
+      setSummary(data);
+    } catch (requestError) {
+      setRefreshError(requestError instanceof Error ? requestError.message : "재분석에 실패했습니다.");
+    } finally {
+      setRefreshing(false);
+    }
+  };
+
   return (
     <div className="bg-slate-50 min-h-screen">
       <div className="max-w-[1400px] mx-auto px-6 py-8 space-y-8">
@@ -139,12 +155,17 @@ export function AnalysisPage() {
         )}
 
         {!loading && !error && stats && (
-          <div className="grid gap-3 md:grid-cols-4">
+          <div className="grid gap-3 md:grid-cols-5">
             {[
               { label: "전체 지원 건", value: `${stats.totalApplications}건`, helper: "등록된 지원 건" },
               { label: "분석 완료", value: `${stats.analyzedApplications}건`, helper: "AI 적합도 분석 기준" },
               { label: "평균 적합도", value: `${stats.averageFitScore}점`, helper: `${stats.highFitApplications}건은 70점 이상` },
               { label: "준비 완료", value: `${stats.readyApplications}건`, helper: "READY 또는 APPLIED 상태" },
+              {
+                label: "모의면접",
+                value: `${summary?.interviewTrend.totalSessions ?? 0}회`,
+                helper: `세션 평균 ${summary?.interviewTrend.averageSessionScore ?? 0}점 · 답변 평균 ${summary?.interviewTrend.averageAnswerScore ?? 0}점`,
+              },
             ].map((item) => (
               <Card key={item.label} className="border border-slate-200 bg-white">
                 <CardContent className="p-4">
@@ -164,8 +185,27 @@ export function AnalysisPage() {
               <div className="size-12 rounded-xl bg-gradient-to-br from-blue-600 to-indigo-600 flex items-center justify-center flex-shrink-0">
                 <Brain className="size-6 text-white" />
               </div>
-              <div>
-                <div className="font-bold text-blue-900 mb-2">AI 장기 취업 전략 리포트</div>
+              <div className="flex-1">
+                <div className="flex flex-wrap items-start justify-between gap-2">
+                  <div className="font-bold text-blue-900 mb-2">AI 장기 취업 전략 리포트</div>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={handleRefresh}
+                    disabled={refreshing}
+                    className="border-blue-300 bg-white/70 text-blue-700 hover:bg-white"
+                    title="AI를 다시 실행해 최신 데이터로 요약을 재생성합니다. 크레딧 1이 차감됩니다."
+                  >
+                    <RefreshCw className={`size-3.5 ${refreshing ? "animate-spin" : ""}`} />
+                    {refreshing ? "재분석 중..." : "재분석 (크레딧 1)"}
+                  </Button>
+                </div>
+                {summary?.analysisRun && (
+                  <div className="mb-2 text-xs text-blue-600">
+                    {summary.analysisRun.model || "mock"} · {summary.analysisRun.status} · {new Date(summary.analysisRun.createdAt).toLocaleString("ko-KR")}
+                  </div>
+                )}
+                {refreshError && <div className="mb-2 text-xs text-red-600">{refreshError}</div>}
                 <p className="text-sm text-blue-700 mb-3">
                   {summary?.trendSummary
                     ? summary.trendSummary
@@ -260,7 +300,7 @@ export function AnalysisPage() {
             <CardHeader>
               <CardTitle className="text-base flex items-center gap-2">
                 <BarChart3 className="size-4 text-purple-600" />
-                면접 점수 변화
+                적합도 점수 변화
               </CardTitle>
             </CardHeader>
             <CardContent>

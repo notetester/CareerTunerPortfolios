@@ -6,6 +6,7 @@ import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 
 import com.careertuner.fitanalysis.domain.FitAnalysisGenerationSource;
+import com.careertuner.fitanalysis.domain.FitAnalysisLearningTask;
 import com.careertuner.fitanalysis.domain.FitAnalysisResult;
 
 @Mapper
@@ -25,6 +26,18 @@ public interface FitAnalysisMapper {
 
     void insertFitAnalysis(FitAnalysisResult fitAnalysis);
 
+    void insertLearningTask(FitAnalysisLearningTask task);
+
+    List<FitAnalysisLearningTask> findLearningTasksByFitAnalysisId(Long fitAnalysisId);
+
+    int updateLearningTaskCompleted(@Param("userId") Long userId,
+                                    @Param("fitAnalysisId") Long fitAnalysisId,
+                                    @Param("taskId") Long taskId,
+                                    @Param("completed") boolean completed);
+
+    FitAnalysisLearningTask findLearningTaskById(@Param("fitAnalysisId") Long fitAnalysisId,
+                                                 @Param("taskId") Long taskId);
+
     /**
      * 공통 ai_usage_log 기록(공통 규약). C 도메인 사용량을 동일 스키마로 남긴다.
      */
@@ -33,6 +46,9 @@ public interface FitAnalysisMapper {
                           @Param("featureType") String featureType,
                           @Param("status") String status,
                           @Param("model") String model,
+                          @Param("inputTokens") int inputTokens,
+                          @Param("outputTokens") int outputTokens,
                           @Param("tokenUsage") int tokenUsage,
-                          @Param("creditUsed") int creditUsed);
+                          @Param("creditUsed") int creditUsed,
+                          @Param("errorMessage") String errorMessage);
 }

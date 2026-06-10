@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type React from "react";
 import { Briefcase, RefreshCw, Search } from "lucide-react";
 import { Badge } from "@/app/components/ui/badge";
@@ -12,17 +12,23 @@ import {
   type ApplicationStatus,
   getApplicationStatusLabel,
 } from "@/features/applications/types/applicationCase";
-import { parseJsonStringArray } from "@/features/applications/types/analysis";
+import { parseJsonArrayOrText, parseJsonStringArray } from "@/features/applications/types/analysis";
 import {
   getAdminApplicationCaseDetail,
   getAdminApplicationCases,
   updateAdminApplicationCaseStatus,
 } from "../api";
 import type { AdminApplicationCaseDetail, AdminApplicationCaseRow } from "../types";
+import AdminShell from "../../../components/AdminShell";
 
 function formatDateTime(value: string | null): string {
   if (!value) return "-";
   return new Intl.DateTimeFormat("ko-KR", { dateStyle: "medium", timeStyle: "short" }).format(new Date(value));
+}
+
+function formatDate(value: string | null): string {
+  if (!value) return "-";
+  return new Intl.DateTimeFormat("ko-KR", { dateStyle: "medium" }).format(new Date(value));
 }
 
 export function AdminApplicationCasesPage() {
@@ -36,16 +42,31 @@ export function AdminApplicationCasesPage() {
   const [memo, setMemo] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const selectedIdRef = useRef<number | null>(null);
+  selectedIdRef.current = selectedId;
 
-  const selected = useMemo(() => rows.find((row) => row.id === selectedId) ?? rows[0] ?? null, [rows, selectedId]);
+  const selected = useMemo(() => {
+    if (selectedId === null) return null;
+    return rows.find((row) => row.id === selectedId) ?? null;
+  }, [rows, selectedId]);
 
   const loadRows = async () => {
     setLoading(true);
     setError(null);
     try {
       const nextRows = await getAdminApplicationCases({ keyword, status, includeArchived, includeDeleted });
+      const currentSelectedId = selectedIdRef.current;
+      const nextSelectedId =
+        currentSelectedId !== null && nextRows.some((row) => row.id === currentSelectedId)
+          ? currentSelectedId
+          : nextRows[0]?.id ?? null;
+
+      selectedIdRef.current = nextSelectedId;
       setRows(nextRows);
-      if (!selectedId && nextRows[0]) setSelectedId(nextRows[0].id);
+      setSelectedId(nextSelectedId);
+      if (nextSelectedId === null || nextSelectedId !== currentSelectedId) {
+        setDetail(null);
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : "지원 건 목록을 불러오지 못했습니다.");
     } finally {
@@ -56,9 +77,14 @@ export function AdminApplicationCasesPage() {
   const loadDetail = async (id: number) => {
     setError(null);
     try {
-      setDetail(await getAdminApplicationCaseDetail(id));
+      const nextDetail = await getAdminApplicationCaseDetail(id);
+      if (selectedIdRef.current === id) {
+        setDetail(nextDetail);
+      }
     } catch (err) {
-      setError(err instanceof Error ? err.message : "지원 건 상세를 불러오지 못했습니다.");
+      if (selectedIdRef.current === id) {
+        setError(err instanceof Error ? err.message : "지원 건 상세를 불러오지 못했습니다.");
+      }
     }
   };
 
@@ -67,7 +93,13 @@ export function AdminApplicationCasesPage() {
   }, []);
 
   useEffect(() => {
-    if (selected?.id) void loadDetail(selected.id);
+    if (selected?.id) {
+      setDetail(null);
+      void loadDetail(selected.id);
+      return;
+    }
+
+    setDetail(null);
   }, [selected?.id]);
 
   const handleStatus = async (nextStatus: ApplicationStatus) => {
@@ -83,22 +115,21 @@ export function AdminApplicationCasesPage() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-50">
-      <div className="mx-auto grid max-w-7xl gap-5 px-4 py-8 sm:px-6 lg:grid-cols-[360px_minmax(0,1fr)]">
+    <AdminShell
+      active="application-cases"
+      breadcrumb="지원 건 관리"
+      title="지원 건 관리"
+      icon={Briefcase}
+      desc="지원 건별 상태, 공고 revision, 분석 이력과 B AI 사용 로그를 확인합니다."
+      actions={(
+        <Button variant="outline" onClick={() => void loadRows()} disabled={loading}>
+          <RefreshCw className={`size-4 ${loading ? "animate-spin" : ""}`} />
+          새로고침
+        </Button>
+      )}
+    >
+      <div className="grid gap-5 lg:grid-cols-[360px_minmax(0,1fr)]">
         <section className="space-y-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <Badge className="mb-2 bg-slate-900 text-white">B 관리자</Badge>
-              <h1 className="flex items-center gap-2 text-2xl font-bold text-slate-950">
-                <Briefcase className="size-6 text-blue-600" />
-                지원 건 관리
-              </h1>
-            </div>
-            <Button variant="outline" onClick={() => void loadRows()} disabled={loading}>
-              <RefreshCw className={`size-4 ${loading ? "animate-spin" : ""}`} />
-            </Button>
-          </div>
-
           <Card className="border-slate-200 bg-white">
             <CardContent className="space-y-3 p-4">
               <div className="relative">
@@ -137,7 +168,13 @@ export function AdminApplicationCasesPage() {
                 className={`w-full rounded-lg border bg-white p-3 text-left transition-colors ${
                   selected?.id === row.id ? "border-blue-300 ring-2 ring-blue-100" : "border-slate-200 hover:border-blue-200"
                 }`}
-                onClick={() => setSelectedId(row.id)}
+                onClick={() => {
+                  selectedIdRef.current = row.id;
+                  setSelectedId(row.id);
+                  if (row.id !== selectedId) {
+                    setDetail(null);
+                  }
+                }}
               >
                 <div className="flex items-start justify-between gap-2">
                   <div className="min-w-0">
@@ -148,6 +185,7 @@ export function AdminApplicationCasesPage() {
                 </div>
                 <div className="mt-2 flex flex-wrap gap-1.5 text-[11px] text-slate-500">
                   <span>공고 rev {row.latestPostingRevision ?? "-"}</span>
+                  <span>마감 {formatDate(row.deadlineDate)}</span>
                   {row.archivedAt && <span>보관</span>}
                   {row.deletedAt && <span>삭제</span>}
                 </div>
@@ -170,9 +208,10 @@ export function AdminApplicationCasesPage() {
                   </CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-4">
-                  <div className="grid gap-3 md:grid-cols-4">
+                  <div className="grid gap-3 md:grid-cols-5">
                     <Info label="사용자" value={detail.applicationCase.userEmail} />
                     <Info label="상태" value={getApplicationStatusLabel(detail.applicationCase.status)} />
+                    <Info label="마감일" value={formatDate(detail.applicationCase.deadlineDate)} />
                     <Info label="생성" value={formatDateTime(detail.applicationCase.createdAt)} />
                     <Info label="수정" value={formatDateTime(detail.applicationCase.updatedAt)} />
                   </div>
@@ -212,6 +251,8 @@ export function AdminApplicationCasesPage() {
                       <div className="flex flex-wrap gap-1">
                         {parseJsonStringArray(analysis.requiredSkills).map((skill) => <Badge key={skill} variant="outline">{skill}</Badge>)}
                       </div>
+                      <AnalysisText label="근거" value={analysis.evidence} />
+                      <AnalysisText label="모호한 조건" value={analysis.ambiguousConditions} />
                     </CardContent>
                   </Card>
                 ))}
@@ -224,6 +265,13 @@ export function AdminApplicationCasesPage() {
                       <div className="font-semibold text-slate-900">#{analysis.id} · 공고 rev {analysis.jobPostingRevision ?? "-"}</div>
                       <div className="text-xs text-slate-500">{formatDateTime(analysis.createdAt)} · {analysis.confirmedAt ? "확정" : "미확정"}</div>
                       <p className="line-clamp-3 text-slate-600">{analysis.companySummary ?? "요약 없음"}</p>
+                      <div className="grid gap-2 sm:grid-cols-3">
+                        <Info label="출처 유형" value={analysis.sourceType ?? "-"} />
+                        <Info label="확인 시각" value={formatDateTime(analysis.checkedAt)} />
+                        <Info label="갱신 권장" value={formatDateTime(analysis.refreshRecommendedAt)} />
+                      </div>
+                      <AnalysisText label="검증된 사실" value={analysis.verifiedFacts} />
+                      <AnalysisText label="AI 추론" value={analysis.aiInferences} />
                     </CardContent>
                   </Card>
                 ))}
@@ -231,11 +279,17 @@ export function AdminApplicationCasesPage() {
 
               <GridSection title="B AI 사용량/실패 로그">
                 {detail.usageLogs.map((log) => (
-                  <Card key={log.id} className="border-slate-200 bg-white">
+                  <Card key={log.id} className={log.status === "FAILED" ? "border-red-200 bg-red-50" : "border-slate-200 bg-white"}>
                     <CardContent className="space-y-1 p-4 text-sm">
-                      <div className="font-semibold text-slate-900">{log.featureType} · {log.status}</div>
+                      <div className={log.status === "FAILED" ? "font-semibold text-red-800" : "font-semibold text-slate-900"}>
+                        {log.featureType} · {log.status}
+                      </div>
                       <div className="text-xs text-slate-500">{formatDateTime(log.createdAt)} · token {log.tokenUsage ?? 0}</div>
-                      {log.errorMessage && <div className="truncate text-xs text-red-600">{log.errorMessage}</div>}
+                      {log.errorMessage && (
+                        <div className="whitespace-pre-wrap rounded-md border border-red-200 bg-white px-2 py-1 text-xs font-medium text-red-700">
+                          {log.errorMessage}
+                        </div>
+                      )}
                     </CardContent>
                   </Card>
                 ))}
@@ -244,7 +298,7 @@ export function AdminApplicationCasesPage() {
           )}
         </section>
       </div>
-    </div>
+    </AdminShell>
   );
 }
 
@@ -253,6 +307,30 @@ function Info({ label, value }: { label: string; value: string }) {
     <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
       <div className="text-xs font-semibold text-slate-500">{label}</div>
       <div className="mt-1 truncate text-sm font-bold text-slate-900">{value}</div>
+    </div>
+  );
+}
+
+function AnalysisText({ label, value }: { label: string; value: string | null }) {
+  const parsed = parseJsonArrayOrText(value);
+
+  return (
+    <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+      <div className="text-xs font-semibold text-slate-500">{label}</div>
+      {parsed.kind === "list" ? (
+        <ul className="mt-1 space-y-1.5 text-sm leading-6 text-slate-600">
+          {parsed.items.map((item, index) => (
+            <li key={`${item}-${index}`} className="flex gap-2">
+              <span className="mt-2 size-1.5 shrink-0 rounded-full bg-current" />
+              <span className="min-w-0 break-words">{item}</span>
+            </li>
+          ))}
+        </ul>
+      ) : parsed.kind === "text" ? (
+        <p className="mt-1 whitespace-pre-line text-sm leading-6 text-slate-600">{parsed.text}</p>
+      ) : (
+        <p className="mt-1 text-sm text-slate-400">-</p>
+      )}
     </div>
   );
 }

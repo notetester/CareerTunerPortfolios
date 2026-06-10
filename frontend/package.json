@@ -7,9 +7,18 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "dev:mock": "vite --mode mock",
+    "build:mock": "vite build --mode mock",
+    "gen:icons": "node scripts/generate-icons.mjs",
+    "mobile:sync": "vite build --mode mock && cap sync android",
+    "mobile:apk": "cd android && gradlew assembleDebug",
+    "ios:sync": "vite build --mode mock && cap sync ios"
   },
   "dependencies": {
+    "@capacitor/android": "^8.4.0",
+    "@capacitor/core": "^8.4.0",
+    "@capacitor/ios": "^8.4.0",
     "@emotion/react": "11.14.0",
     "@emotion/styled": "11.14.1",
     "@mui/icons-material": "7.3.5",
@@ -70,13 +79,16 @@
     "zustand": "^5.0.14"
   },
   "devDependencies": {
+    "@capacitor/cli": "^8.4.0",
     "@tailwindcss/vite": "4.1.12",
     "@types/node": "22.10.2",
     "@types/react": "18.3.18",
     "@types/react-dom": "18.3.5",
     "@vitejs/plugin-react": "4.7.0",
+    "sharp": "^0.34.5",
     "tailwindcss": "4.1.12",
     "typescript": "5.6.3",
-    "vite": "6.4.3"
+    "vite": "6.4.3",
+    "vite-plugin-pwa": "^1.3.0"
   }
 }

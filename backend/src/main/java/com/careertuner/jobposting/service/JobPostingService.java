@@ -40,15 +40,20 @@ public class JobPostingService {
         accessService.requireOwned(userId, applicationCaseId);
         String sourceType = normalizeOption(request.sourceType(), DEFAULT_SOURCE_TYPE, SOURCE_TYPES, "sourceType");
         if ("URL".equals(sourceType)) {
-            ExtractedPosting extracted = textExtractor.extractUrl(request.uploadedFileUrl());
-            return saveExtractedPosting(applicationCaseId, extracted);
+            if (isBlank(request.uploadedFileUrl())) {
+                throw new BusinessException(ErrorCode.INVALID_INPUT, "공고 URL이 필요합니다.");
+            }
+            if (isBlank(request.extractedText())) {
+                ExtractedPosting extracted = textExtractor.extractUrl(request.uploadedFileUrl());
+                return saveExtractedPosting(applicationCaseId, extracted);
+            }
         }
 
         validateJobPosting(request);
         JobPosting jobPosting = JobPosting.builder()
                 .applicationCaseId(applicationCaseId)
                 .revision(jobPostingMapper.nextRevisionForCase(applicationCaseId))
-                .originalText(blankToNull(request.originalText()))
+                .originalText("URL".equals(sourceType) ? null : blankToNull(request.originalText()))
                 .uploadedFileUrl(blankToNull(request.uploadedFileUrl()))
                 .extractedText(blankToNull(request.extractedText()))
                 .sourceType(sourceType)

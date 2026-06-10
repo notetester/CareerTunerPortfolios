@@ -7,6 +7,7 @@ export interface ApplicationCase {
   companyName: string;
   jobTitle: string;
   postingDate: string | null;
+  deadlineDate: string | null;
   sourceType: ApplicationSourceType;
   status: ApplicationStatus;
   favorite: boolean;
@@ -21,6 +22,7 @@ export interface CreateApplicationCaseRequest {
   companyName: string;
   jobTitle: string;
   postingDate?: string | null;
+  deadlineDate?: string | null;
   sourceType?: ApplicationSourceType;
   status?: ApplicationStatus;
   favorite?: boolean;
@@ -31,6 +33,8 @@ export interface UpdateApplicationCaseRequest {
   companyName?: string;
   jobTitle?: string;
   postingDate?: string | null;
+  deadlineDate?: string | null;
+  clearDeadlineDate?: boolean;
   sourceType?: ApplicationSourceType;
   status?: ApplicationStatus;
   favorite?: boolean;

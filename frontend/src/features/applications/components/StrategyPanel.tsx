@@ -2,7 +2,7 @@ import { Link } from "react-router";
 import { Map, Target } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/app/components/ui/card";
 import type { FitAnalysisDetail } from "@/features/analysis/types/fitAnalysis";
-import { scoreTone } from "@/features/analysis/types/fitAnalysis";
+import { parseJsonList, scoreTone } from "@/features/analysis/types/fitAnalysis";
 
 interface StrategyPanelProps {
   analyses: FitAnalysisDetail[];
@@ -27,6 +27,7 @@ export function StrategyPanel({ analyses, loading, error }: StrategyPanelProps) 
       <div className="grid gap-4 lg:grid-cols-2">
         {analyses.map((analysis) => {
           const tone = scoreTone(analysis.fitScore);
+          const actions = parseJsonList(analysis.strategyActions);
 
           return (
             <Card key={analysis.id} className="border border-slate-200 bg-white">
@@ -44,9 +45,11 @@ export function StrategyPanel({ analyses, loading, error }: StrategyPanelProps) 
                   {analysis.strategy || "지원 전략이 아직 생성되지 않았습니다."}
                 </div>
                 <div className="grid gap-2 text-sm">
-                  <StrategyPoint label="강조할 부분" value={analysis.fitScore && analysis.fitScore >= 70 ? "매칭된 경험을 지원서 전면에 배치" : "부족 역량 보완 계획을 명확히 설명"} />
-                  <StrategyPoint label="면접 준비" value="공고 필수 역량과 프로젝트 경험을 질문별 답변으로 연결" />
-                  <StrategyPoint label="다음 액션" value="포트폴리오와 자기소개서에 분석 결과 반영" />
+                  {actions.length > 0 ? actions.map((action, index) => (
+                    <StrategyPoint key={`${action}-${index}`} label={`실행 ${index + 1}`} value={action} />
+                  )) : (
+                    <StrategyPoint label="다음 액션" value="포트폴리오와 자기소개서에 분석 결과 반영" />
+                  )}
                 </div>
                 <Link to={`/applications/${analysis.applicationCaseId}`} className="inline-flex text-sm font-semibold text-blue-600 hover:text-blue-700">
                   지원 건 상세 보기

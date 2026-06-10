@@ -4,8 +4,15 @@ import { Button } from "@/app/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/app/components/ui/card";
 import { Input } from "@/app/components/ui/input";
 import { Textarea } from "@/app/components/ui/textarea";
-import type { JobAnalysis, JobAnalysisReviewRequest } from "../types/analysis";
-import { getDifficultyLabel, parseJsonStringArray } from "../types/analysis";
+import type { BAnalysisFailureLog, JobAnalysis, JobAnalysisReviewRequest } from "../types/analysis";
+import {
+  formatJsonArrayForTextarea,
+  getDifficultyLabel,
+  parseJsonStringArray,
+  serializeTextareaList,
+} from "../types/analysis";
+import { AnalysisFailureNotice } from "./AnalysisFailureNotice";
+import { AnalysisStructuredText } from "./AnalysisStructuredText";
 
 interface JobAnalysisPanelProps {
   analysis: JobAnalysis | null;
@@ -13,6 +20,7 @@ interface JobAnalysisPanelProps {
   loading: boolean;
   generating: boolean;
   error: string | null;
+  failures: BAnalysisFailureLog[];
   onGenerate(): Promise<JobAnalysis | null>;
   onReview(analysisId: number, request: JobAnalysisReviewRequest): Promise<JobAnalysis | null>;
 }
@@ -48,6 +56,7 @@ export function JobAnalysisPanel({
   loading,
   generating,
   error,
+  failures,
   onGenerate,
   onReview,
 }: JobAnalysisPanelProps) {
@@ -60,28 +69,52 @@ export function JobAnalysisPanel({
     qualifications: "",
     difficulty: "",
     summary: "",
+    evidence: "",
+    ambiguousConditions: "",
+  });
+  const [structuredFieldEdited, setStructuredFieldEdited] = useState({
+    evidence: false,
+    ambiguousConditions: false,
   });
 
   useEffect(() => {
     setForm({
       employmentType: analysis?.employmentType ?? "",
       experienceLevel: analysis?.experienceLevel ?? "",
-      requiredSkills: analysis?.requiredSkills ?? "",
-      preferredSkills: analysis?.preferredSkills ?? "",
+      requiredSkills: formatJsonArrayForTextarea(analysis?.requiredSkills),
+      preferredSkills: formatJsonArrayForTextarea(analysis?.preferredSkills),
       duties: analysis?.duties ?? "",
       qualifications: analysis?.qualifications ?? "",
       difficulty: analysis?.difficulty ?? "",
       summary: analysis?.summary ?? "",
+      evidence: formatJsonArrayForTextarea(analysis?.evidence),
+      ambiguousConditions: formatJsonArrayForTextarea(analysis?.ambiguousConditions),
+    });
+    setStructuredFieldEdited({
+      evidence: false,
+      ambiguousConditions: false,
     });
   }, [analysis]);
 
   const setField = (key: keyof typeof form, value: string) => {
     setForm((current) => ({ ...current, [key]: value }));
+    if (key === "evidence" || key === "ambiguousConditions") {
+      setStructuredFieldEdited((current) => ({ ...current, [key]: true }));
+    }
   };
 
   const handleReview = async () => {
     if (!analysis) return;
-    await onReview(analysis.id, { ...form, confirmed: true });
+    await onReview(analysis.id, {
+      ...form,
+      requiredSkills: serializeTextareaList(form.requiredSkills),
+      preferredSkills: serializeTextareaList(form.preferredSkills),
+      evidence: structuredFieldEdited.evidence ? serializeTextareaList(form.evidence) : analysis.evidence,
+      ambiguousConditions: structuredFieldEdited.ambiguousConditions
+        ? serializeTextareaList(form.ambiguousConditions)
+        : analysis.ambiguousConditions,
+      confirmed: true,
+    });
   };
 
   return (
@@ -116,6 +149,13 @@ export function JobAnalysisPanel({
         </div>
       </CardHeader>
       <CardContent className="space-y-4">
+        {!loading && (
+          <AnalysisFailureNotice
+            failures={failures}
+            featureType="JOB_ANALYSIS"
+          />
+        )}
+
         {loading ? (
           <div className="h-64 animate-pulse rounded-lg bg-slate-100" />
         ) : analysis ? (
@@ -156,6 +196,11 @@ export function JobAnalysisPanel({
               <p className="mt-2 whitespace-pre-line text-sm leading-6 text-blue-900">{analysis.summary ?? "내용 없음"}</p>
             </div>
 
+            <div className="grid gap-3 md:grid-cols-2">
+              <AnalysisStructuredText title="근거" value={analysis.evidence} />
+              <AnalysisStructuredText title="모호한 조건" value={analysis.ambiguousConditions} />
+            </div>
+
             <div className="space-y-3 rounded-lg border border-slate-200 bg-slate-50 p-4">
               <div className="text-sm font-semibold text-slate-900">사용자 확인/수정</div>
               <div className="grid gap-3 md:grid-cols-3">
@@ -164,14 +209,18 @@ export function JobAnalysisPanel({
                 <Input value={form.difficulty} onChange={(event) => setField("difficulty", event.target.value)} placeholder="EASY/NORMAL/HARD" />
               </div>
               <div className="grid gap-3 md:grid-cols-2">
-                <Textarea value={form.requiredSkills} onChange={(event) => setField("requiredSkills", event.target.value)} className="min-h-24 bg-white" placeholder='["React","REST API"]' />
-                <Textarea value={form.preferredSkills} onChange={(event) => setField("preferredSkills", event.target.value)} className="min-h-24 bg-white" placeholder='["TypeScript"]' />
+                <Textarea value={form.requiredSkills} onChange={(event) => setField("requiredSkills", event.target.value)} className="min-h-24 bg-white" placeholder={"필수 역량을 한 줄에 하나씩 입력"} />
+                <Textarea value={form.preferredSkills} onChange={(event) => setField("preferredSkills", event.target.value)} className="min-h-24 bg-white" placeholder={"우대 역량을 한 줄에 하나씩 입력"} />
               </div>
               <div className="grid gap-3 md:grid-cols-2">
                 <Textarea value={form.duties} onChange={(event) => setField("duties", event.target.value)} className="min-h-28 bg-white" placeholder="주요 업무" />
                 <Textarea value={form.qualifications} onChange={(event) => setField("qualifications", event.target.value)} className="min-h-28 bg-white" placeholder="자격 요건" />
               </div>
               <Textarea value={form.summary} onChange={(event) => setField("summary", event.target.value)} className="min-h-24 bg-white" placeholder="요약" />
+              <div className="grid gap-3 md:grid-cols-2">
+                <Textarea value={form.evidence} onChange={(event) => setField("evidence", event.target.value)} className="min-h-28 bg-white" placeholder="근거" />
+                <Textarea value={form.ambiguousConditions} onChange={(event) => setField("ambiguousConditions", event.target.value)} className="min-h-28 bg-white" placeholder="모호한 조건" />
+              </div>
               <Button type="button" className="bg-slate-900 text-white hover:bg-slate-800" disabled={generating} onClick={() => void handleReview()}>
                 {generating && <Loader2 className="size-4 animate-spin" />}
                 수정 내용 저장 및 확정

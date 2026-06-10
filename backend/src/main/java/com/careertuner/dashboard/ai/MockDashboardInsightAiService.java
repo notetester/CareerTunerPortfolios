@@ -4,6 +4,7 @@ import java.util.List;
 
 import org.springframework.stereotype.Service;
 
+import com.careertuner.analysis.ai.provider.CareerAnalysisAiUsage;
 import com.careertuner.dashboard.dto.DashboardSkillGapResponse;
 import com.careertuner.dashboard.dto.DashboardStatsResponse;
 
@@ -20,7 +21,11 @@ public class MockDashboardInsightAiService implements DashboardInsightAiService 
         DashboardStatsResponse stats = command.stats();
         if (stats == null || stats.activeApplications() == 0) {
             return new DashboardInsightAiResult(
-                    "아직 진행 중인 지원 건이 없습니다. 첫 지원 건을 등록하고 공고 분석과 적합도 분석을 실행하면 준비 현황이 여기 요약됩니다.");
+                    "아직 진행 중인 지원 건이 없습니다. 첫 지원 건을 등록하고 공고 분석과 적합도 분석을 실행하면 준비 현황이 여기 요약됩니다.",
+                    CareerAnalysisAiUsage.mockUsage(),
+                    "SUCCESS",
+                    null,
+                    false);
         }
 
         StringBuilder sb = new StringBuilder();
@@ -41,6 +46,11 @@ public class MockDashboardInsightAiService implements DashboardInsightAiService 
         } else {
             sb.append("이번 주 모의면접 %d회를 진행했습니다.".formatted(stats.interviewsThisWeek()));
         }
-        return new DashboardInsightAiResult(sb.toString().trim());
+        return new DashboardInsightAiResult(
+                sb.toString().trim(),
+                CareerAnalysisAiUsage.mockUsage(),
+                "SUCCESS",
+                null,
+                false);
     }
 }

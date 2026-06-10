@@ -36,6 +36,26 @@ export interface AnalysisApplicationSummary {
   analyzedAt: string | null;
 }
 
+export interface CareerAnalysisRun {
+  id: number;
+  analysisType: string;
+  status: "SUCCESS" | "FALLBACK" | "FAILED" | string;
+  inputSnapshot: string | null;
+  result: string | null;
+  model: string | null;
+  tokenUsage: number;
+  errorMessage: string | null;
+  retryable: boolean;
+  createdAt: string;
+}
+
+export interface InterviewTrend {
+  totalSessions: number;
+  averageSessionScore: number;
+  totalAnswers: number;
+  averageAnswerScore: number;
+}
+
 export interface AnalysisSummary {
   stats: AnalysisStats;
   skillGaps: SkillGap[];
@@ -43,6 +63,8 @@ export interface AnalysisSummary {
   scoreHistory: ScorePoint[];
   applications: AnalysisApplicationSummary[];
   recommendedDirections: string[];
-  /** 장기 취업 경향 AI 요약(C 담당 AI 16). 현재 백엔드 mock, API 키 주입 시 실 분석으로 전환. */
+  /** 장기 취업 경향 AI 요약(C 담당 AI 16). API 키가 없으면 결정적 mock, 있으면 실제 구조화 분석. */
   trendSummary: string;
+  interviewTrend: InterviewTrend;
+  analysisRun: CareerAnalysisRun;
 }

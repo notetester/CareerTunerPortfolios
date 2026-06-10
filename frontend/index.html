@@ -10,7 +10,13 @@
       content="채용공고에 맞춰 내 스펙과 면접 답변을 조정하는 AI 취업 전략 플랫폼. 공고 분석, 스펙 비교, 예상 질문, AI 모의면접, 답변 첨삭까지 하나의 지원 건에서 관리하세요."
     />
     <meta name="robots" content="noindex, nofollow" />
-    <link rel="manifest" href="/manifest.webmanifest" />
+    <!-- 모바일/PWA: manifest 링크는 vite-plugin-pwa 가 base 경로에 맞춰 자동 주입한다 -->
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="CareerTuner" />
+    <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
+    <link rel="icon" type="image/png" sizes="32x32" href="/icons/favicon-32.png" />
     <style>html, body { height: 100%; margin: 0; } #root { height: 100%; }</style>
   </head>
 

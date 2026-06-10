@@ -26,6 +26,36 @@
         <result property="creditUsed" column="credit_used"/>
     </resultMap>
 
+    <resultMap id="AdminCareerAnalysisRunMap" type="com.careertuner.admin.analytics.domain.AdminCareerAnalysisRun">
+        <id property="id" column="id"/>
+        <result property="userId" column="user_id"/>
+        <result property="userName" column="user_name"/>
+        <result property="userEmail" column="user_email"/>
+        <result property="analysisType" column="analysis_type"/>
+        <result property="status" column="status"/>
+        <result property="inputSnapshot" column="input_snapshot"/>
+        <result property="result" column="result"/>
+        <result property="model" column="model"/>
+        <result property="tokenUsage" column="token_usage"/>
+        <result property="errorMessage" column="error_message"/>
+        <result property="retryable" column="retryable"/>
+        <result property="createdAt" column="created_at"/>
+        <result property="memoCount" column="memo_count"/>
+        <result property="latestMemoAt" column="latest_memo_at"/>
+    </resultMap>
+
+    <resultMap id="AdminCareerRunMemoResultMap" type="com.careertuner.admin.analytics.domain.AdminCareerRunMemo">
+        <id property="id" column="id"/>
+        <result property="careerAnalysisRunId" column="career_analysis_run_id"/>
+        <result property="adminUserId" column="admin_user_id"/>
+        <result property="adminName" column="admin_name"/>
+        <result property="adminEmail" column="admin_email"/>
+        <result property="memoType" column="memo_type"/>
+        <result property="content" column="content"/>
+        <result property="createdAt" column="created_at"/>
+        <result property="updatedAt" column="updated_at"/>
+    </resultMap>
+
     <select id="countUsers" resultType="int">
         SELECT COUNT(*)
         FROM users
@@ -101,4 +131,94 @@
         GROUP BY DATE(created_at)
         ORDER BY usage_date
     </select>
+
+    <select id="findCareerAnalysisRuns" resultMap="AdminCareerAnalysisRunMap">
+        SELECT
+            run.*,
+            users.name AS user_name,
+            users.email AS user_email,
+            (
+                SELECT COUNT(*)
+                FROM admin_career_run_memo memo_count_source
+                WHERE memo_count_source.career_analysis_run_id = run.id
+            ) AS memo_count,
+            (
+                SELECT MAX(latest_memo.updated_at)
+                FROM admin_career_run_memo latest_memo
+                WHERE latest_memo.career_analysis_run_id = run.id
+            ) AS latest_memo_at
+        FROM career_analysis_run run
+        INNER JOIN users ON users.id = run.user_id
+        <if test="userId != null">
+            WHERE run.user_id = #{userId}
+        </if>
+        ORDER BY run.created_at DESC, run.id DESC
+        LIMIT 300
+    </select>
+
+    <select id="findCareerAnalysisRunById" resultMap="AdminCareerAnalysisRunMap">
+        SELECT
+            run.*,
+            users.name AS user_name,
+            users.email AS user_email
+        FROM career_analysis_run run
+        INNER JOIN users ON users.id = run.user_id
+        WHERE run.id = #{runId}
+    </select>
+
+    <!-- 실행 이력 운영 메모 (career_analysis_run 단위, admin_fit_analysis_memo 패턴) -->
+    <select id="findMemosByRunId" resultMap="AdminCareerRunMemoResultMap">
+        SELECT
+            memo.id,
+            memo.career_analysis_run_id,
+            memo.admin_user_id,
+            users.name AS admin_name,
+            users.email AS admin_email,
+            memo.memo_type,
+            memo.content,
+            memo.created_at,
+            memo.updated_at
+        FROM admin_career_run_memo memo
+        INNER JOIN users ON users.id = memo.admin_user_id
+        WHERE memo.career_analysis_run_id = #{runId}
+        ORDER BY memo.updated_at DESC, memo.id DESC
+    </select>
+
+    <select id="findMemoByIdAndRunId" resultMap="AdminCareerRunMemoResultMap">
+        SELECT
+            memo.id,
+            memo.career_analysis_run_id,
+            memo.admin_user_id,
+            users.name AS admin_name,
+            users.email AS admin_email,
+            memo.memo_type,
+            memo.content,
+            memo.created_at,
+            memo.updated_at
+        FROM admin_career_run_memo memo
+        INNER JOIN users ON users.id = memo.admin_user_id
+        WHERE memo.id = #{id}
+          AND memo.career_analysis_run_id = #{runId}
+    </select>
+
+    <insert id="insertMemo" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO admin_career_run_memo
+            (career_analysis_run_id, admin_user_id, memo_type, content)
+        VALUES
+            (#{careerAnalysisRunId}, #{adminUserId}, #{memoType}, #{content})
+    </insert>
+
+    <update id="updateMemo">
+        UPDATE admin_career_run_memo
+        SET memo_type = #{memoType},
+            content = #{content}
+        WHERE id = #{id}
+          AND career_analysis_run_id = #{careerAnalysisRunId}
+    </update>
+
+    <delete id="deleteMemo">
+        DELETE FROM admin_career_run_memo
+        WHERE id = #{id}
+          AND career_analysis_run_id = #{runId}
+    </delete>
 </mapper>

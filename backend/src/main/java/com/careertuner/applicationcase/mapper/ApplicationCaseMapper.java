@@ -8,6 +8,7 @@ import org.apache.ibatis.annotations.Param;
 import com.careertuner.applicationcase.domain.AiUsageLog;
 import com.careertuner.applicationcase.domain.ApplicationCase;
 import com.careertuner.applicationcase.domain.FitAnalysis;
+import com.careertuner.applicationcase.dto.AiUsageFailureResponse;
 
 @Mapper
 public interface ApplicationCaseMapper {
@@ -22,6 +23,18 @@ public interface ApplicationCaseMapper {
     int updateApplicationCase(ApplicationCase applicationCase);
 
     int markAnalysisCompleted(@Param("id") Long id, @Param("userId") Long userId);
+
+    int markAnalysisStarted(@Param("id") Long id,
+                            @Param("userId") Long userId,
+                            @Param("previousStatus") String previousStatus);
+
+    int markReadyAfterAnalysis(@Param("id") Long id,
+                               @Param("userId") Long userId,
+                               @Param("previousStatus") String previousStatus);
+
+    int restoreAnalysisStatus(@Param("id") Long id,
+                              @Param("userId") Long userId,
+                              @Param("previousStatus") String previousStatus);
 
     int deleteApplicationCase(@Param("id") Long id, @Param("userId") Long userId);
 
@@ -40,4 +53,7 @@ public interface ApplicationCaseMapper {
     FitAnalysis findLatestFitAnalysisByCaseId(Long applicationCaseId);
 
     void insertAiUsageLog(AiUsageLog aiUsageLog);
+
+    List<AiUsageFailureResponse> findBFailureLogsByCaseId(@Param("applicationCaseId") Long applicationCaseId,
+                                                          @Param("limit") int limit);
 }
