@@ -5,10 +5,20 @@ import { Progress } from "@/app/components/ui/progress";
 import { Button } from "@/app/components/ui/button";
 import {
   TrendingUp, Target, BarChart3, ArrowUp, ArrowDown, AlertCircle,
-  Brain, BookOpen, Briefcase, Loader2, RefreshCw,
+  Brain, BookOpen, Briefcase, Loader2, RefreshCw, CheckCircle2,
+  MessageSquare, PieChart,
 } from "lucide-react";
 import { getAnalysisSummary, refreshAnalysisSummary } from "@/features/analysis/api/analysisSummaryApi";
 import type { AnalysisSummary } from "@/features/analysis/types/analysisSummary";
+import { AiResultBadge } from "@/features/analysis/components/AiResultBadge";
+
+const questionTypeLabel: Record<string, string> = {
+  EXPECTED: "예상 질문",
+  TECH: "기술 질문",
+  PERSONALITY: "인성 질문",
+  SITUATION: "상황 질문",
+  FOLLOW_UP: "꼬리 질문",
+};
 
 const analysisTabs = [
   { key: "trend", label: "내 지원 경향", icon: Briefcase },
@@ -74,6 +84,12 @@ export function AnalysisPage() {
   const scoreDelta = lastScore - firstScore;
   const topSkillGap = skillGapData[0]?.skill ?? "반복 부족 역량";
   const strongestJob = jobReadiness[0]?.jobTitle ?? "준비도가 높은 직무";
+  const strengthTrends = summary?.strengthTrends ?? [];
+  const jobDistribution = summary?.jobDistribution ?? [];
+  const answerThemes = summary?.answerThemes ?? [];
+  const period = summary?.period ?? null;
+  const topStrength = strengthTrends[0]?.skill ?? null;
+  const prioritizedGaps = skillGapData.slice(0, 3);
 
   useEffect(() => {
     let ignore = false;
@@ -111,7 +127,7 @@ export function AnalysisPage() {
 
   return (
     <div className="bg-slate-50 min-h-screen">
-      <div className="max-w-[1400px] mx-auto px-6 py-8 space-y-8">
+      <div className="max-w-[1400px] mx-auto px-4 sm:px-6 py-8 space-y-6 lg:space-y-8">
         {/* Header */}
         <div>
           <h1 className="text-2xl font-black text-slate-900 flex items-center gap-2">
@@ -119,7 +135,55 @@ export function AnalysisPage() {
             취업 분석
           </h1>
           <p className="text-slate-500 text-sm mt-1">여러 지원 건을 종합한 AI 장기 취업 경향 분석 및 맞춤 전략</p>
+          {/* 분석 대상 기간과 데이터 수(디자인 분석 §6.10) */}
+          {period && period.analyzedCount > 0 && (
+            <p className="mt-1.5 text-xs text-slate-400">
+              분석 대상 {formatAnalyzedAt(period.from)} ~ {formatAnalyzedAt(period.to)} · 지원 {period.applicationCount}건 ·
+              적합도 분석 {period.analyzedCount}건 · 모의면접 {period.interviewSessionCount}회
+            </p>
+          )}
         </div>
+
+        {/* 모바일 우선 요약 카드(모바일 고려 §6.7): 준비도/가장 강한 역량/우선 보완 역량 중심 */}
+        {!loading && !error && stats && (
+          <Card className="border border-slate-200 bg-white lg:hidden">
+            <CardContent className="space-y-3 p-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <div className="text-xs font-semibold text-slate-500">현재 준비도(평균 적합도)</div>
+                  <div className="text-3xl font-black text-slate-900">{stats.averageFitScore}점</div>
+                </div>
+                <div className="text-right text-xs text-slate-500">
+                  <div>분석 {stats.analyzedApplications}건 기준</div>
+                  {scoreHistory.length >= 2 && (
+                    <div className={`mt-1 inline-flex items-center gap-0.5 font-semibold ${scoreDelta >= 0 ? "text-green-600" : "text-red-500"}`}>
+                      {scoreDelta >= 0 ? <ArrowUp className="size-3" /> : <ArrowDown className="size-3" />}
+                      {scoreDelta >= 0 ? "+" : ""}{scoreDelta}점 변화
+                    </div>
+                  )}
+                </div>
+              </div>
+              {topStrength && (
+                <div className="flex items-center gap-2 rounded-lg bg-green-50 px-3 py-2 text-sm text-green-800">
+                  <CheckCircle2 className="size-4 shrink-0 text-green-600" />
+                  가장 강한 역량: <strong>{topStrength}</strong>
+                </div>
+              )}
+              {prioritizedGaps.length > 0 && (
+                <div className="rounded-lg bg-red-50 px-3 py-2">
+                  <div className="text-xs font-semibold text-red-700">우선 보완 역량</div>
+                  <div className="mt-1 flex flex-wrap gap-1.5">
+                    {prioritizedGaps.map((gap) => (
+                      <span key={gap.skill} className="rounded-full bg-white px-2 py-0.5 text-xs font-medium text-red-600">
+                        {gap.skill} ({gap.count}건)
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        )}
 
         <div className="flex overflow-x-auto rounded-xl border border-slate-200 bg-white p-1">
           {analysisTabs.map((tab) => (
@@ -187,7 +251,9 @@ export function AnalysisPage() {
               </div>
               <div className="flex-1">
                 <div className="flex flex-wrap items-start justify-between gap-2">
-                  <div className="font-bold text-blue-900 mb-2">AI 장기 취업 전략 리포트</div>
+                  <div className="font-bold text-blue-900 mb-2">
+                    AI 장기 취업 전략 리포트 <AiResultBadge status={summary?.analysisRun.status} />
+                  </div>
                   <Button
                     size="sm"
                     variant="outline"
@@ -249,6 +315,99 @@ export function AnalysisPage() {
               ) : (
                 <div className="rounded-lg bg-slate-50 p-4 text-sm text-slate-500">
                   아직 반복적으로 부족한 역량이 없습니다. 적합도 분석을 더 실행하면 공고별 요구 역량 차이가 이곳에 누적됩니다.
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* 반복 강점(자주 활용되는 강점 경험) — 기획 §8.9, 디자인 분석 §6.10 */}
+          <Card className={`border border-slate-200 bg-white ${activeTab !== "weakness" ? "hidden" : ""}`}>
+            <CardHeader>
+              <CardTitle className="text-base flex items-center gap-2">
+                <CheckCircle2 className="size-4 text-green-600" />
+                반복 강점 ({stats?.analyzedApplications ?? 0}개 분석 기준)
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              {strengthTrends.length > 0 ? (
+                strengthTrends.map((strength) => (
+                  <div key={strength.skill} className="space-y-1.5">
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="font-medium text-slate-700">{strength.skill}</span>
+                      <span className="text-slate-500 text-xs">{strength.count}/{strength.total}건 매칭</span>
+                    </div>
+                    <Progress value={strength.percentage} className="h-2" />
+                  </div>
+                ))
+              ) : (
+                <div className="rounded-lg bg-slate-50 p-4 text-sm text-slate-500">
+                  아직 반복 강점을 집계할 분석 결과가 없습니다. 적합도 분석이 쌓이면 자주 매칭되는 역량이
+                  이곳에 표시되어 면접에서 강조할 경험을 고르는 기준이 됩니다.
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* 자주 지원하는 직무 분포 — 기획 §8.9, 디자인 분석 §6.10 */}
+          <Card className={`border border-slate-200 bg-white ${activeTab !== "trend" ? "hidden" : ""}`}>
+            <CardHeader>
+              <CardTitle className="text-base flex items-center gap-2">
+                <PieChart className="size-4 text-indigo-600" />
+                자주 지원하는 직무
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              {jobDistribution.length > 0 ? (
+                jobDistribution.map((job) => (
+                  <div key={job.jobTitle} className="space-y-1.5">
+                    <div className="flex items-center justify-between gap-2 text-sm">
+                      <span className="min-w-0 truncate font-medium text-slate-700">{job.jobTitle}</span>
+                      <span className="shrink-0 text-xs text-slate-500">
+                        {job.count}건 ({job.percentage}%)
+                        {job.averageFitScore != null && ` · 평균 ${job.averageFitScore}점`}
+                      </span>
+                    </div>
+                    <Progress value={job.percentage} className="h-2" />
+                  </div>
+                ))
+              ) : (
+                <div className="rounded-lg bg-slate-50 p-4 text-sm text-slate-500">
+                  지원 건을 등록하면 직무별 지원 비중과 평균 적합도가 이곳에 정리됩니다.
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* 자주 개선이 필요한 답변 요소 — 기획 §8.9(답변의 공통 약점) */}
+          <Card className={`border border-slate-200 bg-white ${activeTab !== "score" ? "hidden" : ""}`}>
+            <CardHeader>
+              <CardTitle className="text-base flex items-center gap-2">
+                <MessageSquare className="size-4 text-purple-600" />
+                자주 개선이 필요한 답변 요소
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-2.5">
+              {answerThemes.length > 0 ? (
+                answerThemes.map((theme) => (
+                  <div key={theme.questionType} className="rounded-lg border border-slate-100 p-3">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-sm font-semibold text-slate-800">
+                        {questionTypeLabel[theme.questionType] ?? theme.questionType}
+                      </span>
+                      <span className={`text-sm font-black ${theme.averageScore >= 70 ? "text-green-600" : theme.averageScore >= 50 ? "text-amber-600" : "text-red-500"}`}>
+                        평균 {theme.averageScore}점
+                      </span>
+                    </div>
+                    <div className="mt-0.5 text-xs text-slate-400">답변 {theme.answerCount}개 기준</div>
+                    {theme.sampleFeedback && (
+                      <p className="mt-1.5 line-clamp-2 text-xs leading-5 text-slate-600">{theme.sampleFeedback}</p>
+                    )}
+                  </div>
+                ))
+              ) : (
+                <div className="rounded-lg bg-slate-50 p-4 text-sm text-slate-500">
+                  아직 면접 기록이 없어 답변의 공통 약점은 분석할 수 없습니다. 모의면접을 완료하면
+                  질문 유형별 평균 점수와 개선 포인트가 이곳에 표시됩니다.
                 </div>
               )}
             </CardContent>
