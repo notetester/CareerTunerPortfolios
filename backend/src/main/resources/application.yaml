@@ -75,6 +75,13 @@ careertuner:
     model: ${OPENAI_MODEL:gpt-5}
     base-url: ${OPENAI_BASE_URL:https://api.openai.com/v1}
     timeout: ${OPENAI_TIMEOUT:90s}
+  toss:
+    payments:
+      secret-key: ${TOSS_SECRET_KEY:}
+      confirm-url: ${TOSS_CONFIRM_URL:https://api.tosspayments.com/v1/payments/confirm}
+      success-url: ${TOSS_SUCCESS_URL:http://localhost:5173/billing/success}
+      fail-url: ${TOSS_FAIL_URL:http://localhost:5173/billing/fail}
+      timeout: ${TOSS_TIMEOUT:10s}
   uploads:
     job-posting-dir: ${JOB_POSTING_UPLOAD_DIR:.uploads/application-postings}
     max-file-size-bytes: ${JOB_POSTING_MAX_FILE_SIZE_BYTES:10485760}
