@@ -76,6 +76,26 @@ export interface CompanyAnalysisReviewRequest {
   confirmed?: boolean;
 }
 
+export interface EvidenceRow extends Record<string, string> {
+  field: string;
+  quote: string;
+}
+
+export interface AmbiguousConditionRow extends Record<string, string> {
+  condition: string;
+  assumption: string;
+}
+
+export interface VerifiedFactRow extends Record<string, string> {
+  fact: string;
+  source: string;
+}
+
+export interface AiInferenceRow extends Record<string, string> {
+  inference: string;
+  basis: string;
+}
+
 const OBJECT_KEY_LABELS: Record<string, string> = {
   field: "항목",
   quote: "근거",
@@ -136,6 +156,135 @@ function stringifyJsonArrayItem(item: unknown): string {
   if (isPlainObject(item)) return stringifyJsonObjectItem(item);
   if (Array.isArray(item)) return item.map(stringifyJsonArrayItem).filter(Boolean).join(", ");
   return String(item);
+}
+
+function hasStructuredRowValue<T extends Record<string, string>>(
+  row: T,
+  keys: readonly (keyof T & string)[],
+): boolean {
+  return keys.some((key) => row[key].trim().length > 0);
+}
+
+function objectToStructuredRow<T extends Record<string, string>>(
+  item: Record<string, unknown>,
+  keys: readonly (keyof T & string)[],
+): T {
+  const row: Record<string, string> = {};
+  keys.forEach((key) => {
+    row[key] = formatObjectValue(item[key]);
+  });
+  return row as T;
+}
+
+function parseStructuredRows<T extends Record<string, string>>(
+  value: string | null | undefined,
+  keys: readonly (keyof T & string)[],
+  mapLegacyText: (text: string) => T,
+): T[] {
+  const trimmed = value?.trim();
+  if (!trimmed) return [];
+
+  const rowFromText = (text: string): T | null => {
+    const normalized = text.trim();
+    return normalized ? mapLegacyText(normalized) : null;
+  };
+
+  const rowFromObject = (item: Record<string, unknown>): T | null => {
+    const row = objectToStructuredRow<T>(item, keys);
+    if (hasStructuredRowValue(row, keys)) return row;
+
+    const fallback = rowFromText(stringifyJsonObjectItem(item));
+    return fallback && hasStructuredRowValue(fallback, keys) ? fallback : null;
+  };
+
+  try {
+    const parsed = JSON.parse(trimmed) as unknown;
+    if (Array.isArray(parsed)) {
+      return parsed.flatMap((item): T[] => {
+        const row = isPlainObject(item)
+          ? rowFromObject(item)
+          : rowFromText(stringifyJsonArrayItem(item));
+        return row && hasStructuredRowValue(row, keys) ? [row] : [];
+      });
+    }
+
+    if (isPlainObject(parsed)) {
+      const row = rowFromObject(parsed);
+      return row && hasStructuredRowValue(row, keys) ? [row] : [];
+    }
+
+    const row = rowFromText(stringifyJsonArrayItem(parsed));
+    return row && hasStructuredRowValue(row, keys) ? [row] : [];
+  } catch {
+    const row = rowFromText(trimmed);
+    return row && hasStructuredRowValue(row, keys) ? [row] : [];
+  }
+}
+
+function serializeStructuredRows<T extends Record<string, string>>(
+  rows: T[],
+  keys: readonly (keyof T & string)[],
+): string {
+  const items = rows
+    .map((row) => {
+      const item: Record<string, string> = {};
+      keys.forEach((key) => {
+        item[key] = row[key].trim();
+      });
+      return item as T;
+    })
+    .filter((row) => hasStructuredRowValue(row, keys));
+
+  return JSON.stringify(items);
+}
+
+const EVIDENCE_ROW_KEYS = ["field", "quote"] as const;
+const AMBIGUOUS_CONDITION_ROW_KEYS = ["condition", "assumption"] as const;
+const VERIFIED_FACT_ROW_KEYS = ["fact", "source"] as const;
+const AI_INFERENCE_ROW_KEYS = ["inference", "basis"] as const;
+
+export function parseEvidenceRows(value: string | null | undefined): EvidenceRow[] {
+  return parseStructuredRows<EvidenceRow>(value, EVIDENCE_ROW_KEYS, (text) => ({
+    field: "기타",
+    quote: text,
+  }));
+}
+
+export function parseAmbiguousConditionRows(value: string | null | undefined): AmbiguousConditionRow[] {
+  return parseStructuredRows<AmbiguousConditionRow>(value, AMBIGUOUS_CONDITION_ROW_KEYS, (text) => ({
+    condition: text,
+    assumption: "",
+  }));
+}
+
+export function parseVerifiedFactRows(value: string | null | undefined): VerifiedFactRow[] {
+  return parseStructuredRows<VerifiedFactRow>(value, VERIFIED_FACT_ROW_KEYS, (text) => ({
+    fact: text,
+    source: "사용자 확인",
+  }));
+}
+
+export function parseAiInferenceRows(value: string | null | undefined): AiInferenceRow[] {
+  return parseStructuredRows<AiInferenceRow>(value, AI_INFERENCE_ROW_KEYS, (text) => ({
+    inference: text,
+    basis: "",
+  }));
+}
+
+export function serializeEvidenceRows(rows: EvidenceRow[]): string {
+  return serializeStructuredRows(rows, EVIDENCE_ROW_KEYS);
+}
+
+export function serializeAmbiguousConditionRows(rows: AmbiguousConditionRow[]): string {
+  return serializeStructuredRows(rows, AMBIGUOUS_CONDITION_ROW_KEYS);
+}
+
+export function serializeVerifiedFactRows(rows: VerifiedFactRow[]): string {
+  return serializeStructuredRows(rows, VERIFIED_FACT_ROW_KEYS);
+}
+
+export function serializeAiInferenceRows(rows: AiInferenceRow[]): string {
+  return serializeStructuredRows(rows, AI_INFERENCE_ROW_KEYS);
 }
 
 export function parseJsonArrayOrText(value: string | null | undefined): JsonArrayOrText {

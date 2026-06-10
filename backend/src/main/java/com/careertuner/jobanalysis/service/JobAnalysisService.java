@@ -3,6 +3,7 @@ package com.careertuner.jobanalysis.service;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Locale;
+import java.util.function.Function;
 
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -12,6 +13,7 @@ import com.careertuner.applicationcase.domain.ApplicationCase;
 import com.careertuner.applicationcase.service.ApplicationCaseAnalysisStatusService;
 import com.careertuner.applicationcase.service.AiUsageLogService;
 import com.careertuner.applicationcase.service.ApplicationCaseAccessService;
+import com.careertuner.applicationcase.service.BAnalysisJsonValidator;
 import com.careertuner.applicationcase.service.OpenAiResponsesClient;
 import com.careertuner.applicationcase.service.OpenAiResponsesClient.JobAnalysisPayload;
 import com.careertuner.common.exception.BusinessException;
@@ -36,6 +38,7 @@ public class JobAnalysisService {
     private final AiUsageLogService aiUsageLogService;
     private final ApplicationCaseAnalysisStatusService statusService;
     private final TransactionTemplate transactionTemplate;
+    private final BAnalysisJsonValidator analysisJsonValidator;
 
     public JobAnalysisResponse createJobAnalysis(Long userId, Long applicationCaseId) {
         ApplicationCase applicationCase = accessService.requireOwned(userId, applicationCaseId);
@@ -118,8 +121,11 @@ public class JobAnalysisService {
                 .qualifications(defaultString(request.qualifications(), existing.getQualifications()))
                 .difficulty(defaultString(request.difficulty(), existing.getDifficulty()))
                 .summary(defaultString(request.summary(), existing.getSummary()))
-                .evidence(defaultString(request.evidence(), existing.getEvidence()))
-                .ambiguousConditions(defaultString(request.ambiguousConditions(), existing.getAmbiguousConditions()))
+                .evidence(defaultValidatedJson(request.evidence(), existing.getEvidence(), analysisJsonValidator::validateEvidence))
+                .ambiguousConditions(defaultValidatedJson(
+                        request.ambiguousConditions(),
+                        existing.getAmbiguousConditions(),
+                        analysisJsonValidator::validateAmbiguousConditions))
                 .confirmedAt(Boolean.TRUE.equals(request.confirmed()) ? LocalDateTime.now() : existing.getConfirmedAt())
                 .adminMemo(existing.getAdminMemo())
                 .build();
@@ -162,6 +168,13 @@ public class JobAnalysisService {
 
     private static String defaultString(String value, String defaultValue) {
         return isBlank(value) ? defaultValue : value.trim();
+    }
+
+    private static String defaultValidatedJson(String value, String defaultValue, Function<String, String> validator) {
+        if (isBlank(value)) {
+            return defaultValue;
+        }
+        return validator.apply(value.trim());
     }
 
     private static void ensureAnalysisRunnable(String status) {

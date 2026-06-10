@@ -4,10 +4,25 @@ import { Button } from "@/app/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/app/components/ui/card";
 import { Input } from "@/app/components/ui/input";
 import { Textarea } from "@/app/components/ui/textarea";
-import type { BAnalysisFailureLog, CompanyAnalysis, CompanyAnalysisReviewRequest } from "../types/analysis";
-import { formatJsonArrayForTextarea, parseJsonStringArray, serializeTextareaList } from "../types/analysis";
+import type {
+  AiInferenceRow,
+  BAnalysisFailureLog,
+  CompanyAnalysis,
+  CompanyAnalysisReviewRequest,
+  VerifiedFactRow,
+} from "../types/analysis";
+import {
+  formatJsonArrayForTextarea,
+  parseAiInferenceRows,
+  parseJsonStringArray,
+  parseVerifiedFactRows,
+  serializeAiInferenceRows,
+  serializeTextareaList,
+  serializeVerifiedFactRows,
+} from "../types/analysis";
 import { AnalysisFailureNotice } from "./AnalysisFailureNotice";
 import { AnalysisStructuredText } from "./AnalysisStructuredText";
+import { StructuredRowsEditor, type StructuredRowsEditorField } from "./StructuredRowsEditor";
 
 interface CompanyAnalysisPanelProps {
   analysis: CompanyAnalysis | null;
@@ -45,6 +60,24 @@ function JsonList({ title, value }: { title: string; value: string | null }) {
   );
 }
 
+type CompanyStructuredRows = {
+  verifiedFacts: VerifiedFactRow[];
+  aiInferences: AiInferenceRow[];
+};
+
+const EMPTY_VERIFIED_FACT_ROW: VerifiedFactRow = { fact: "", source: "" };
+const EMPTY_AI_INFERENCE_ROW: AiInferenceRow = { inference: "", basis: "" };
+
+const VERIFIED_FACT_EDITOR_FIELDS: readonly StructuredRowsEditorField<VerifiedFactRow>[] = [
+  { key: "fact", label: "사실", placeholder: "검증된 사실" },
+  { key: "source", label: "출처", placeholder: "확인 출처" },
+];
+
+const AI_INFERENCE_EDITOR_FIELDS: readonly StructuredRowsEditorField<AiInferenceRow>[] = [
+  { key: "inference", label: "추론", placeholder: "AI 추론" },
+  { key: "basis", label: "근거", placeholder: "추론 근거" },
+];
+
 export function CompanyAnalysisPanel({
   analysis,
   history,
@@ -62,8 +95,10 @@ export function CompanyAnalysisPanel({
     competitors: "",
     interviewPoints: "",
     sources: "",
-    verifiedFacts: "",
-    aiInferences: "",
+  });
+  const [structuredRows, setStructuredRows] = useState<CompanyStructuredRows>({
+    verifiedFacts: [],
+    aiInferences: [],
   });
   const [structuredFieldEdited, setStructuredFieldEdited] = useState({
     verifiedFacts: false,
@@ -78,8 +113,10 @@ export function CompanyAnalysisPanel({
       competitors: formatJsonArrayForTextarea(analysis?.competitors),
       interviewPoints: analysis?.interviewPoints ?? "",
       sources: formatJsonArrayForTextarea(analysis?.sources),
-      verifiedFacts: formatJsonArrayForTextarea(analysis?.verifiedFacts),
-      aiInferences: formatJsonArrayForTextarea(analysis?.aiInferences),
+    });
+    setStructuredRows({
+      verifiedFacts: parseVerifiedFactRows(analysis?.verifiedFacts),
+      aiInferences: parseAiInferenceRows(analysis?.aiInferences),
     });
     setStructuredFieldEdited({
       verifiedFacts: false,
@@ -89,9 +126,11 @@ export function CompanyAnalysisPanel({
 
   const setField = (key: keyof typeof form, value: string) => {
     setForm((current) => ({ ...current, [key]: value }));
-    if (key === "verifiedFacts" || key === "aiInferences") {
-      setStructuredFieldEdited((current) => ({ ...current, [key]: true }));
-    }
+  };
+
+  const setStructuredField = <Key extends keyof CompanyStructuredRows>(key: Key, rows: CompanyStructuredRows[Key]) => {
+    setStructuredRows((current) => ({ ...current, [key]: rows }));
+    setStructuredFieldEdited((current) => ({ ...current, [key]: true }));
   };
 
   const sourceMetadata = analysis
@@ -111,8 +150,12 @@ export function CompanyAnalysisPanel({
       ...form,
       competitors: serializeTextareaList(form.competitors),
       sources: serializeTextareaList(form.sources),
-      verifiedFacts: structuredFieldEdited.verifiedFacts ? serializeTextareaList(form.verifiedFacts) : analysis.verifiedFacts,
-      aiInferences: structuredFieldEdited.aiInferences ? serializeTextareaList(form.aiInferences) : analysis.aiInferences,
+      verifiedFacts: structuredFieldEdited.verifiedFacts
+        ? serializeVerifiedFactRows(structuredRows.verifiedFacts)
+        : undefined,
+      aiInferences: structuredFieldEdited.aiInferences
+        ? serializeAiInferenceRows(structuredRows.aiInferences)
+        : undefined,
       confirmed: true,
     });
   };
@@ -208,8 +251,20 @@ export function CompanyAnalysisPanel({
               <Textarea value={form.companySummary} onChange={(event) => setField("companySummary", event.target.value)} className="min-h-24 bg-white" placeholder="기업 요약" />
               <Textarea value={form.recentIssues} onChange={(event) => setField("recentIssues", event.target.value)} className="min-h-24 bg-white" placeholder="최근 이슈" />
               <div className="grid gap-3 md:grid-cols-2">
-                <Textarea value={form.verifiedFacts} onChange={(event) => setField("verifiedFacts", event.target.value)} className="min-h-28 bg-white" placeholder="검증된 사실" />
-                <Textarea value={form.aiInferences} onChange={(event) => setField("aiInferences", event.target.value)} className="min-h-28 bg-white" placeholder="AI 추론" />
+                <StructuredRowsEditor
+                  title="검증된 사실"
+                  rows={structuredRows.verifiedFacts}
+                  fields={VERIFIED_FACT_EDITOR_FIELDS}
+                  emptyRow={EMPTY_VERIFIED_FACT_ROW}
+                  onChange={(rows) => setStructuredField("verifiedFacts", rows)}
+                />
+                <StructuredRowsEditor
+                  title="AI 추론"
+                  rows={structuredRows.aiInferences}
+                  fields={AI_INFERENCE_EDITOR_FIELDS}
+                  emptyRow={EMPTY_AI_INFERENCE_ROW}
+                  onChange={(rows) => setStructuredField("aiInferences", rows)}
+                />
               </div>
               <div className="grid gap-3 md:grid-cols-2">
                 <Textarea value={form.competitors} onChange={(event) => setField("competitors", event.target.value)} className="min-h-24 bg-white" placeholder="경쟁/비교 기업을 한 줄에 하나씩 입력" />
