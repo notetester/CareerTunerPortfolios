@@ -296,6 +296,24 @@ CREATE TABLE IF NOT EXISTS admin_career_run_memo (
     CONSTRAINT fk_admin_career_memo_admin_user FOREIGN KEY (admin_user_id) REFERENCES users (id) ON DELETE CASCADE
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci;
 
+-- C 소유 대시보드 "오늘의 할 일". 파생(자동 계산) 할 일의 완료 오버라이드와 사용자가 직접 추가한
+-- 할 일을 함께 저장한다(디자인 분석 §6.4 "오늘의 할 일 — 완료 처리"). derived_key가 NULL이면 사용자 추가 항목.
+CREATE TABLE IF NOT EXISTS dashboard_todo (
+    id           BIGINT       NOT NULL AUTO_INCREMENT,
+    user_id      BIGINT       NOT NULL,
+    derived_key  VARCHAR(120) NULL,
+    task         VARCHAR(500) NOT NULL,
+    time_label   VARCHAR(50)  NOT NULL DEFAULT '오늘',
+    done         TINYINT(1)   NOT NULL DEFAULT 0,
+    completed_at DATETIME     NULL,
+    created_at   DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at   DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    PRIMARY KEY (id),
+    UNIQUE KEY uk_dashboard_todo_derived (user_id, derived_key),
+    KEY idx_dashboard_todo_user (user_id, created_at),
+    CONSTRAINT fk_dashboard_todo_user FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci;
+
 -- =====================================================================
 --  면접
 -- =====================================================================
