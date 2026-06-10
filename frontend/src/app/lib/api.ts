@@ -1,4 +1,5 @@
 import { clearTokens, getAccessToken, getRefreshToken, setTokens } from "./tokenStore";
+import { MOCK_UNHANDLED, resolveMock } from "./mock";
 
 /** 백엔드 공통 응답 envelope. */
 export interface ApiEnvelope<T> {
@@ -19,7 +20,14 @@ export class ApiError extends Error {
   }
 }
 
-const BASE = "/api"; // Vite 프록시 → http://localhost:8080
+// API 베이스 경로.
+//  - 기본: 상대경로 "/api" (웹: Vite 프록시 → :8080, 배포: 동일 출처 백엔드)
+//  - VITE_API_BASE_URL 지정 시 그 절대 URL 사용 (예: 모바일 앱이 PC LAN 백엔드를 가리킬 때
+//    VITE_API_BASE_URL=http://192.168.0.10:8080/api — 백엔드 CORS 허용 필요)
+const BASE = ((import.meta.env.VITE_API_BASE_URL as string | undefined)?.replace(/\/+$/, "")) || "/api";
+
+// 데모/목 모드: 백엔드 없이 동작(자체완결 APK·GitHub Pages 데모). 등록된 mock 핸들러로 응답한다.
+const USE_MOCK = import.meta.env.VITE_USE_MOCK === "true";
 
 function buildHeaders(options: RequestInit, withAuth: boolean): Headers {
   const headers = new Headers(options.headers ?? {});
@@ -75,6 +83,14 @@ export async function api<T = unknown>(
   config: { auth?: boolean } = {},
 ): Promise<T> {
   const withAuth = config.auth ?? true;
+
+  // 데모/목 모드: 네트워크 대신 mock 레지스트리로 응답. 미등록 엔드포인트는 "데모 미제공" 에러.
+  if (USE_MOCK) {
+    const mocked = await resolveMock(path, options);
+    if (mocked !== MOCK_UNHANDLED) return mocked as T;
+    throw new ApiError("데모 모드에서는 제공되지 않는 데이터입니다.", "DEMO_UNAVAILABLE", 501);
+  }
+
   let res = await fetch(`${BASE}${path}`, { ...options, headers: buildHeaders(options, withAuth) });
 
   if (res.status === 401 && withAuth && getRefreshToken()) {
