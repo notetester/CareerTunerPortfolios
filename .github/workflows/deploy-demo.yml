@@ -71,10 +71,13 @@ jobs:
       - name: Replace public demo contents
         run: |
           cd demo-repo
+          # README.md 와 docs/(스크린샷 등 데모 리포 자체 문서)는 배포 시 보존한다
           find . -mindepth 1 \
             ! -path './.git' \
             ! -path './.git/*' \
             ! -name 'README.md' \
+            ! -path './docs' \
+            ! -path './docs/*' \
             -exec rm -rf {} +
           cp -R ../frontend/dist/. .
           touch .nojekyll
