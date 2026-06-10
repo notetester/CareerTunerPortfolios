@@ -29,6 +29,15 @@ public final class InterviewPromptCatalog {
             답변을 평가하거나 첨삭하지 말고 꼬리 질문만 한국어로 생성한다.
             """;
 
+    public static final String CRITIC_SYSTEM_PROMPT = """
+            너는 면접 채점 결과를 적대적으로 검증하는 검수관이다.
+            원 채점(점수와 피드백)이 답변 내용에 비해 공정하고 일관적인지 비판적으로 본다.
+            점수가 근거 없이 후하거나 박하면 0~100 범위에서 조정한다.
+            adjustedScore: 검증 후 최종 점수(0~100)
+            verdict: 점수를 그대로 두면 "유지", 바꿨으면 "조정"
+            reason: 유지/조정 판단의 근거를 한국어 1~2문장으로 적는다.
+            """;
+
     public static final String REPORT_SYSTEM_PROMPT = """
             너는 모의면접 결과를 종합 분석하는 면접관이다.
             질문과 답변 전체를 보고 면접 전반을 평가한다.

@@ -17,11 +17,13 @@ import { Progress } from "@/app/components/ui/progress";
 import {
   generateExpectedQuestions,
   generateFollowUps,
+  getAgentSteps,
   getInterviewProgress,
   submitAnswer,
 } from "../api/interviewApi";
 import {
   getScoreColor,
+  type InterviewAgentStep,
   type InterviewAnswer,
   type InterviewProgress,
   type InterviewSession,
@@ -47,6 +49,7 @@ export function PracticeTab({
   const [result, setResult] = useState<InterviewAnswer | null>(null);
   const [generating, setGenerating] = useState(false);
   const [followingUp, setFollowingUp] = useState(false);
+  const [steps, setSteps] = useState<InterviewAgentStep[]>([]);
 
   const loadProgress = useCallback(async () => {
     if (!session) return;
@@ -95,6 +98,13 @@ export function PracticeTab({
     try {
       const evaluated = await submitAnswer(progress.currentQuestion.id, { answerText: answer });
       setResult(evaluated);
+      // 멀티에이전트 진행(Evaluator→Critic) 트레이스 표시.
+      try {
+        const all = await getAgentSteps(session.id);
+        setSteps(all.filter((s) => s.questionId === progress.currentQuestion?.id));
+      } catch {
+        setSteps([]);
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : "답변 평가에 실패했습니다.");
     } finally {
@@ -112,6 +122,7 @@ export function PracticeTab({
       await loadProgress();
       setResult(null);
       setAnswer("");
+      setSteps([]);
     } catch (err) {
       setError(err instanceof Error ? err.message : "꼬리 질문 생성에 실패했습니다.");
     } finally {
@@ -122,6 +133,7 @@ export function PracticeTab({
   const handleNext = async () => {
     setResult(null);
     setAnswer("");
+    setSteps([]);
     await loadProgress();
   };
 
@@ -233,6 +245,31 @@ export function PracticeTab({
                     <p className="text-sm leading-relaxed text-slate-700">{result.improvedAnswer}</p>
                   </div>
                 )}
+
+                {steps.length > 0 && (
+                  <div className="rounded-lg border border-slate-200 bg-white p-3">
+                    <div className="mb-2 flex items-center gap-1.5 text-xs font-bold text-slate-500">
+                      <Sparkles className="size-3.5 text-indigo-500" /> AI 면접관 진행 (멀티에이전트)
+                    </div>
+                    <ol className="space-y-1.5">
+                      {steps.map((s) => (
+                        <li key={s.id} className="flex items-start gap-2 text-xs">
+                          <Badge
+                            className={
+                              s.agent === "CRITIC"
+                                ? "bg-amber-100 text-amber-700"
+                                : "bg-blue-100 text-blue-700"
+                            }
+                          >
+                            {agentLabel(s.agent)}
+                          </Badge>
+                          <span className="flex-1 text-slate-600">{s.summary}</span>
+                        </li>
+                      ))}
+                    </ol>
+                  </div>
+                )}
+
                 <div className="flex flex-wrap justify-end gap-2">
                   <Button
                     size="sm"
@@ -264,6 +301,23 @@ function SessionHeader({ session }: { session: InterviewSession }) {
       <span>실전 모의면접 진행 중</span>
     </div>
   );
+}
+
+function agentLabel(agent: string): string {
+  switch (agent) {
+    case "EVALUATOR":
+      return "채점";
+    case "CRITIC":
+      return "검증";
+    case "PLANNER":
+      return "설계";
+    case "PROBER":
+      return "꼬리질문";
+    case "REPORTER":
+      return "리포트";
+    default:
+      return agent;
+  }
 }
 
 function ErrorLine({ message }: { message: string }) {

@@ -15,6 +15,7 @@ import com.careertuner.common.web.ApiResponse;
 import com.careertuner.interview.dto.CreateInterviewSessionRequest;
 import com.careertuner.interview.dto.GenerateFollowUpsRequest;
 import com.careertuner.interview.dto.GenerateQuestionsRequest;
+import com.careertuner.interview.dto.InterviewAgentStepResponse;
 import com.careertuner.interview.dto.InterviewAnswerResponse;
 import com.careertuner.interview.dto.InterviewProgressResponse;
 import com.careertuner.interview.dto.InterviewQuestionResponse;
@@ -79,6 +80,12 @@ public class InterviewController {
     public ApiResponse<InterviewProgressResponse> getProgress(@AuthenticationPrincipal AuthUser authUser,
                                                               @PathVariable Long sessionId) {
         return ApiResponse.ok(interviewService.getProgress(authUser.id(), sessionId));
+    }
+
+    @GetMapping("/sessions/{sessionId}/agent-steps")
+    public ApiResponse<List<InterviewAgentStepResponse>> getAgentSteps(@AuthenticationPrincipal AuthUser authUser,
+                                                                       @PathVariable Long sessionId) {
+        return ApiResponse.ok(interviewService.getAgentSteps(authUser.id(), sessionId));
     }
 
     @PostMapping("/sessions/{sessionId}/realtime")

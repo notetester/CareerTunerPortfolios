@@ -5,6 +5,7 @@ import type {
   FileAsset,
   GenerateFollowUpsRequest,
   GenerateQuestionsRequest,
+  InterviewAgentStep,
   InterviewAnswer,
   InterviewProgress,
   InterviewQuestion,
@@ -73,6 +74,11 @@ export function generateFollowUps(
 /** 세션 진행 상태(다음 질문/종료 여부) 조회. */
 export function getInterviewProgress(sessionId: number): Promise<InterviewProgress> {
   return api<InterviewProgress>(`/interview/sessions/${sessionId}/progress`, { method: "GET" });
+}
+
+/** 멀티에이전트 진행 단계 트레이스 조회 (Evaluator/Critic 등). */
+export function getAgentSteps(sessionId: number): Promise<InterviewAgentStep[]> {
+  return api<InterviewAgentStep[]>(`/interview/sessions/${sessionId}/agent-steps`, { method: "GET" });
 }
 
 /** 실시간 음성 면접관 세션 발급 (ephemeral key). 프런트는 이 키로 OpenAI Realtime 에 직접 WebRTC 연결. */

@@ -20,6 +20,7 @@ import com.careertuner.interview.domain.InterviewSession;
 import com.careertuner.interview.dto.CreateInterviewSessionRequest;
 import com.careertuner.interview.dto.GenerateFollowUpsRequest;
 import com.careertuner.interview.dto.GenerateQuestionsRequest;
+import com.careertuner.interview.dto.InterviewAgentStepResponse;
 import com.careertuner.interview.dto.InterviewAnswerResponse;
 import com.careertuner.interview.dto.InterviewProgressResponse;
 import com.careertuner.interview.dto.InterviewQuestionResponse;
@@ -42,7 +43,6 @@ public class InterviewServiceImpl implements InterviewService {
 
     private static final String FEATURE_QUESTION = "INTERVIEW_QUESTION_GEN";
     private static final String FEATURE_FOLLOWUP = "INTERVIEW_FOLLOWUP_GEN";
-    private static final String FEATURE_EVAL = "INTERVIEW_ANSWER_EVAL";
     private static final String FEATURE_REPORT = "INTERVIEW_REPORT";
 
     private static final Map<String, String> MODE_LABELS = Map.of(
@@ -59,6 +59,7 @@ public class InterviewServiceImpl implements InterviewService {
     private final ApplicationCaseAccessService accessService;
     private final InterviewOpenAiClient aiClient;
     private final InterviewAiUsageLogService aiUsageLogService;
+    private final InterviewAgentOrchestrator orchestrator;
     private final ObjectMapper objectMapper;
 
     @Override
@@ -174,14 +175,9 @@ public class InterviewServiceImpl implements InterviewService {
         InterviewSession session = requireSession(userId, question.getInterviewSessionId());
         ApplicationCase applicationCase = accessService.requireOwned(userId, session.getApplicationCaseId());
 
-        InterviewOpenAiClient.AnswerEvaluation evaluation;
-        try {
-            evaluation = aiClient.evaluateAnswer(question.getQuestion(), request.answerText(), applicationCase);
-        } catch (BusinessException ex) {
-            aiUsageLogService.recordFailure(userId, session.getApplicationCaseId(), FEATURE_EVAL, ex.getMessage());
-            throw ex;
-        }
-        aiUsageLogService.recordSuccess(userId, session.getApplicationCaseId(), FEATURE_EVAL, evaluation.usage());
+        // 멀티에이전트: Evaluator → Critic(적대적 검증) 으로 최종 점수를 산출하고 단계를 trace 에 남긴다.
+        InterviewAgentOrchestrator.OrchestratedEvaluation evaluation =
+                orchestrator.evaluateAnswer(userId, session, applicationCase, question, request.answerText());
 
         InterviewAnswer answer = InterviewAnswer.builder()
                 .questionId(questionId)
@@ -220,6 +216,14 @@ public class InterviewServiceImpl implements InterviewService {
                 answered,
                 finished,
                 next == null ? null : InterviewQuestionResponse.from(next));
+    }
+
+    @Override
+    public List<InterviewAgentStepResponse> getAgentSteps(Long userId, Long sessionId) {
+        requireSession(userId, sessionId);
+        return interviewMapper.findAgentStepsBySessionId(sessionId).stream()
+                .map(InterviewAgentStepResponse::from)
+                .toList();
     }
 
     @Override

@@ -341,6 +341,23 @@ CREATE TABLE IF NOT EXISTS interview_answer (
     CONSTRAINT fk_interview_answer_question FOREIGN KEY (question_id) REFERENCES interview_question (id) ON DELETE CASCADE
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci;
 
+-- 멀티에이전트 면접 진행의 단계 트레이스 (각 에이전트의 행동·입출력 기록).
+-- "AI 면접관이 무슨 판단을 했는지" 투명하게 보여주고, 향후 학습 데이터로도 쓴다.
+CREATE TABLE IF NOT EXISTS interview_agent_step (
+    id                   BIGINT NOT NULL AUTO_INCREMENT,
+    interview_session_id BIGINT NOT NULL,
+    question_id          BIGINT NULL,
+    step_no              INT NOT NULL DEFAULT 0,
+    agent                VARCHAR(30) NOT NULL,               -- PLANNER/EVALUATOR/CRITIC/PROBER/REPORTER/ORCHESTRATOR
+    action               VARCHAR(60) NULL,
+    summary              MEDIUMTEXT NULL,                    -- 사람이 읽는 한 줄 요약
+    detail               JSON NULL,                          -- 구조화 입출력
+    created_at           DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (id),
+    KEY idx_agent_step_session (interview_session_id),
+    CONSTRAINT fk_agent_step_session FOREIGN KEY (interview_session_id) REFERENCES interview_session (id) ON DELETE CASCADE
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci;
+
 -- 파일/스토리지 메타데이터 (음성/영상/문서 등 업로드 파일의 위치·종류를 기록).
 -- 실제 바이트는 로컬 디스크(careertuner.uploads.media-dir)에 저장하고, 본 테이블은 메타만 보관한다.
 CREATE TABLE IF NOT EXISTS file_asset (

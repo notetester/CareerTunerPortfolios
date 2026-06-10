@@ -140,6 +140,30 @@ public class InterviewOpenAiClient {
         return new GeneratedQuestions(questions, usage(root));
     }
 
+    /** Critic 에이전트: 원 채점 결과를 적대적으로 검증하고 필요 시 점수를 조정한다. */
+    public CritiqueResult critiqueEvaluation(String question, String answerText, int originalScore, String feedback) {
+        String userPrompt = """
+                질문:
+                %s
+
+                지원자 답변:
+                %s
+
+                원 채점 점수: %d
+                원 채점 피드백:
+                %s
+                """.formatted(question, answerText, originalScore, feedback == null ? "" : feedback);
+
+        JsonNode root = post(structuredRequest("interview_critique", critiqueSchema(),
+                InterviewPromptCatalog.CRITIC_SYSTEM_PROMPT, userPrompt));
+        JsonNode payload = parseOutputJson(root);
+        return new CritiqueResult(
+                clampScore(payload.path("adjustedScore").asInt(originalScore)),
+                payload.path("verdict").asText("유지"),
+                payload.path("reason").asText(""),
+                usage(root));
+    }
+
     /** 면접 전체 Q&A 기반 종합 리포트 생성. */
     public ReportPayload generateReport(String transcript) {
         JsonNode root = post(structuredRequest("interview_report", reportSchema(),
@@ -314,6 +338,14 @@ public class InterviewOpenAiClient {
         return objectSchema(properties, List.of("score", "feedback", "improvedAnswer"));
     }
 
+    private Map<String, Object> critiqueSchema() {
+        Map<String, Object> properties = new LinkedHashMap<>();
+        properties.put("adjustedScore", integerSchema());
+        properties.put("verdict", Map.of("type", "string", "enum", List.of("유지", "조정")));
+        properties.put("reason", stringSchema());
+        return objectSchema(properties, List.of("adjustedScore", "verdict", "reason"));
+    }
+
     private Map<String, Object> reportSchema() {
         Map<String, Object> categoryItem = objectSchema(
                 Map.of("label", stringSchema(), "score", integerSchema()),
@@ -383,6 +415,9 @@ public class InterviewOpenAiClient {
     }
 
     public record AnswerEvaluation(int score, String feedback, String improvedAnswer, Usage usage) {
+    }
+
+    public record CritiqueResult(int adjustedScore, String verdict, String reason, Usage usage) {
     }
 
     public record ReportCategory(String label, int score) {

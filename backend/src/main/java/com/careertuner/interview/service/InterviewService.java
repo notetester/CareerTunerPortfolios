@@ -4,6 +4,7 @@ import java.util.List;
 
 import com.careertuner.interview.dto.CreateInterviewSessionRequest;
 import com.careertuner.interview.dto.GenerateFollowUpsRequest;
+import com.careertuner.interview.dto.InterviewAgentStepResponse;
 import com.careertuner.interview.dto.GenerateQuestionsRequest;
 import com.careertuner.interview.dto.InterviewAnswerResponse;
 import com.careertuner.interview.dto.InterviewProgressResponse;
@@ -29,6 +30,9 @@ public interface InterviewService {
 
     /** 답변 유무 기반 진행 상태와 다음에 답할 질문을 반환한다. (AI 면접관 대화 진행) */
     InterviewProgressResponse getProgress(Long userId, Long sessionId);
+
+    /** 세션의 멀티에이전트 진행 단계 트레이스. */
+    List<InterviewAgentStepResponse> getAgentSteps(Long userId, Long sessionId);
 
     InterviewReportResponse getReport(Long userId, Long sessionId);
 }

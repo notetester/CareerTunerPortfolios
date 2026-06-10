@@ -81,6 +81,18 @@ export interface SubmitAnswerRequest {
   videoUrl?: string | null;
 }
 
+/** 멀티에이전트 진행 단계 (AI 사고과정 트레이스) */
+export interface InterviewAgentStep {
+  id: number;
+  questionId: number | null;
+  stepNo: number;
+  agent: string; // EVALUATOR / CRITIC / ...
+  action: string | null;
+  summary: string | null;
+  detail: string | null;
+  createdAt: string;
+}
+
 /** 면접 진행 상태 (AI 면접관 대화 진행) */
 export interface InterviewProgress {
   sessionId: number;

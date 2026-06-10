@@ -6,6 +6,7 @@ import java.util.List;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 
+import com.careertuner.interview.domain.InterviewAgentStep;
 import com.careertuner.interview.domain.InterviewAiUsageLog;
 import com.careertuner.interview.domain.InterviewAnswer;
 import com.careertuner.interview.domain.InterviewQuestion;
@@ -51,4 +52,9 @@ public interface InterviewMapper {
 
     // ── AI 사용량 ──
     void insertAiUsageLog(InterviewAiUsageLog aiUsageLog);
+
+    // ── 에이전트 트레이스 ──
+    void insertAgentStep(InterviewAgentStep step);
+
+    List<InterviewAgentStep> findAgentStepsBySessionId(@Param("sessionId") Long sessionId);
 }
