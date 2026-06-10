@@ -79,18 +79,23 @@ public class InterviewOpenAiClient {
         return new GeneratedQuestions(questions, usage(root));
     }
 
-    /** 단일 답변 평가(점수/피드백/개선답변). */
-    public AnswerEvaluation evaluateAnswer(String question, String answerText, ApplicationCase applicationCase) {
+    /** 단일 답변 평가(점수/피드백/개선답변). ragContext 가 있으면 평가 근거로 함께 제공한다. */
+    public AnswerEvaluation evaluateAnswer(String question, String answerText, ApplicationCase applicationCase,
+                                           String ragContext) {
+        String reference = ragContext == null || ragContext.isBlank()
+                ? ""
+                : "\n참고 자료(평가 기준·지식베이스):\n" + ragContext + "\n";
         String userPrompt = """
                 회사명: %s
                 직무명: %s
-
+                %s
                 질문:
                 %s
 
                 지원자 답변:
                 %s
-                """.formatted(applicationCase.getCompanyName(), applicationCase.getJobTitle(), question, answerText);
+                """.formatted(applicationCase.getCompanyName(), applicationCase.getJobTitle(),
+                reference, question, answerText);
 
         JsonNode root = post(structuredRequest("interview_answer_evaluation", evaluationSchema(),
                 InterviewPromptCatalog.EVALUATION_SYSTEM_PROMPT, userPrompt));

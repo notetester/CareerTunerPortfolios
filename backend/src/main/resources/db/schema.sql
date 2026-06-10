@@ -358,6 +358,19 @@ CREATE TABLE IF NOT EXISTS interview_agent_step (
     CONSTRAINT fk_agent_step_session FOREIGN KEY (interview_session_id) REFERENCES interview_session (id) ON DELETE CASCADE
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci;
 
+-- 면접 RAG 지식베이스 원본 (루브릭/기출/기업자료). 벡터는 Qdrant 에, 원본은 여기 보관.
+CREATE TABLE IF NOT EXISTS interview_knowledge (
+    id         BIGINT NOT NULL AUTO_INCREMENT,
+    kind       VARCHAR(30) NOT NULL,                       -- RUBRIC/QUESTION_BANK/COMPANY/GENERAL
+    title      VARCHAR(255) NULL,
+    content    MEDIUMTEXT NOT NULL,
+    source     VARCHAR(255) NULL,
+    indexed    TINYINT(1) NOT NULL DEFAULT 0,              -- Qdrant 색인 여부
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (id),
+    KEY idx_interview_knowledge_kind (kind)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci;
+
 -- 파일/스토리지 메타데이터 (음성/영상/문서 등 업로드 파일의 위치·종류를 기록).
 -- 실제 바이트는 로컬 디스크(careertuner.uploads.media-dir)에 저장하고, 본 테이블은 메타만 보관한다.
 CREATE TABLE IF NOT EXISTS file_asset (
