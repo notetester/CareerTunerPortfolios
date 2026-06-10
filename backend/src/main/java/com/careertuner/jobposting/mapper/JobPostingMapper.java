@@ -16,6 +16,8 @@ public interface JobPostingMapper {
 
     void insertJobPosting(JobPosting jobPosting);
 
+    JobPosting findJobPostingByIdAndCaseId(@Param("id") Long id, @Param("applicationCaseId") Long applicationCaseId);
+
     JobPosting findLatestJobPostingByCaseId(@Param("applicationCaseId") Long applicationCaseId);
 
     List<JobPosting> findJobPostingRevisionsByCaseId(@Param("applicationCaseId") Long applicationCaseId);

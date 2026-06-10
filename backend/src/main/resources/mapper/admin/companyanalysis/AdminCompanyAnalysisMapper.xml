@@ -33,4 +33,12 @@
         ORDER BY ca.created_at DESC, ca.id DESC
         LIMIT #{limit}
     </select>
+
+    <update id="updateMetadata">
+        UPDATE company_analysis
+        SET source_type = COALESCE(#{sourceType}, source_type),
+            checked_at = COALESCE(#{checkedAt}, checked_at),
+            refresh_recommended_at = COALESCE(#{refreshRecommendedAt}, refresh_recommended_at)
+        WHERE id = #{id}
+    </update>
 </mapper>
