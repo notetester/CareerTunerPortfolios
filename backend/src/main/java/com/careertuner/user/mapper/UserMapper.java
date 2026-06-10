@@ -25,6 +25,12 @@ public interface UserMapper {
 
     void activateExpiredBlock(Long id);
 
+    void lockForFailedLogin(@Param("id") Long id,
+                            @Param("blockedUntil") java.time.LocalDateTime blockedUntil,
+                            @Param("reason") String reason);
+
+    void releaseDormant(Long id);
+
     void markEmailVerified(Long id);
 
     void updatePassword(@Param("id") Long id, @Param("password") String password);

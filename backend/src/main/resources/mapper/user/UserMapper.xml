@@ -54,6 +54,26 @@
           AND blocked_until &lt;= NOW()
     </update>
 
+    <update id="lockForFailedLogin">
+        UPDATE users
+        SET status = 'BLOCKED',
+            blocked_reason = #{reason},
+            blocked_until = #{blockedUntil},
+            status_changed_at = NOW(),
+            status_changed_by = NULL
+        WHERE id = #{id}
+    </update>
+
+    <update id="releaseDormant">
+        UPDATE users
+        SET status = 'ACTIVE',
+            dormant_at = NULL,
+            status_changed_at = NOW(),
+            status_changed_by = NULL
+        WHERE id = #{id}
+          AND status = 'DORMANT'
+    </update>
+
     <update id="markEmailVerified">
         UPDATE users SET email_verified = 1 WHERE id = #{id}
     </update>

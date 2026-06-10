@@ -19,8 +19,11 @@ import org.springframework.web.bind.annotation.RestController;
 import com.careertuner.auth.dto.LoginRequest;
 import com.careertuner.auth.dto.LoginRequestContext;
 import com.careertuner.auth.dto.MeResponse;
+import com.careertuner.auth.dto.PasswordResetConfirmRequest;
+import com.careertuner.auth.dto.PasswordResetRequest;
 import com.careertuner.auth.dto.RefreshRequest;
 import com.careertuner.auth.dto.RegisterRequest;
+import com.careertuner.auth.dto.TokenRequest;
 import com.careertuner.auth.dto.TokenResponse;
 import com.careertuner.auth.service.AuthService;
 import com.careertuner.common.config.CareerTunerProperties;
@@ -101,6 +104,33 @@ public class AuthController {
     public ApiResponse<Void> resendVerification(@RequestParam String email) {
         authService.resendVerification(email);
         return ApiResponse.ok();
+    }
+
+    @PostMapping("/password/reset-request")
+    public ApiResponse<Void> requestPasswordReset(@Valid @RequestBody PasswordResetRequest request,
+                                                  HttpServletRequest servletRequest) {
+        authService.requestPasswordReset(request, LoginRequestContext.from(servletRequest));
+        return ApiResponse.ok();
+    }
+
+    @PostMapping("/password/reset")
+    public ApiResponse<Void> resetPassword(@Valid @RequestBody PasswordResetConfirmRequest request,
+                                           HttpServletRequest servletRequest) {
+        authService.resetPassword(request, LoginRequestContext.from(servletRequest));
+        return ApiResponse.ok();
+    }
+
+    @PostMapping("/dormant/release-request")
+    public ApiResponse<Void> requestDormantRelease(@Valid @RequestBody PasswordResetRequest request,
+                                                   HttpServletRequest servletRequest) {
+        authService.requestDormantRelease(request, LoginRequestContext.from(servletRequest));
+        return ApiResponse.ok();
+    }
+
+    @PostMapping("/dormant/release")
+    public ApiResponse<TokenResponse> releaseDormant(@Valid @RequestBody TokenRequest request,
+                                                     HttpServletRequest servletRequest) {
+        return ApiResponse.ok(authService.releaseDormant(request, LoginRequestContext.from(servletRequest)));
     }
 
     // ── 소셜 로그인 ──

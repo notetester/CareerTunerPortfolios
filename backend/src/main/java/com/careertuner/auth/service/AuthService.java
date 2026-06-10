@@ -3,7 +3,10 @@ package com.careertuner.auth.service;
 import com.careertuner.auth.dto.LoginRequest;
 import com.careertuner.auth.dto.LoginRequestContext;
 import com.careertuner.auth.dto.MeResponse;
+import com.careertuner.auth.dto.PasswordResetConfirmRequest;
+import com.careertuner.auth.dto.PasswordResetRequest;
 import com.careertuner.auth.dto.RegisterRequest;
+import com.careertuner.auth.dto.TokenRequest;
 import com.careertuner.auth.dto.TokenResponse;
 
 public interface AuthService {
@@ -19,6 +22,14 @@ public interface AuthService {
     boolean verifyEmail(String token);
 
     void resendVerification(String email);
+
+    void requestPasswordReset(PasswordResetRequest request, LoginRequestContext context);
+
+    void resetPassword(PasswordResetConfirmRequest request, LoginRequestContext context);
+
+    void requestDormantRelease(PasswordResetRequest request, LoginRequestContext context);
+
+    TokenResponse releaseDormant(TokenRequest request, LoginRequestContext context);
 
     boolean isEmailTaken(String email);
 

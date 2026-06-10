@@ -129,6 +129,23 @@ CREATE TABLE IF NOT EXISTS user_status_history (
     CONSTRAINT fk_user_status_history_actor FOREIGN KEY (actor_user_id) REFERENCES users (id) ON DELETE SET NULL
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci COMMENT = '회원 상태 변경 이력';
 
+-- 회원가입 및 설정 화면에서 수집하는 약관/개인정보/AI 데이터 활용 동의 이력.
+-- 철회가 가능해야 하므로 현재값만 덮어쓰지 않고 변경 이벤트를 누적한다.
+CREATE TABLE IF NOT EXISTS user_consent (
+    id           BIGINT      NOT NULL AUTO_INCREMENT,
+    user_id      BIGINT      NOT NULL COMMENT '동의 주체 회원 ID',
+    consent_type VARCHAR(40) NOT NULL COMMENT '동의 유형. TERMS/PRIVACY/AI_DATA/MARKETING',
+    agreed       TINYINT(1)  NOT NULL COMMENT '동의 여부',
+    agreed_at    DATETIME    NULL COMMENT '동의한 시각',
+    revoked_at   DATETIME    NULL COMMENT '철회한 시각',
+    source       VARCHAR(40) NULL COMMENT '동의가 발생한 위치. REGISTER/SETTINGS 등',
+    created_at   DATETIME    NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (id),
+    KEY idx_user_consent_user (user_id),
+    KEY idx_user_consent_type (consent_type),
+    CONSTRAINT fk_user_consent_user FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci COMMENT = '회원 동의 및 철회 이력';
+
 -- =====================================================================
 --  프로필
 -- =====================================================================
