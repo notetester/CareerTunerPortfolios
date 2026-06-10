@@ -6,14 +6,18 @@ import { Progress } from "@/app/components/ui/progress";
 import type { FitAnalysisDetail } from "@/features/analysis/types/fitAnalysis";
 import type { FitGapRecommendation } from "@/features/analysis/types/fitAnalysis";
 import { parseJsonList, parseJsonValue, scoreTone } from "@/features/analysis/types/fitAnalysis";
+import { AiResultBadge } from "@/features/analysis/components/AiResultBadge";
+import { FitAnalysisProgress } from "@/features/analysis/components/FitAnalysisProgress";
 
 interface FitAnalysisPanelProps {
   analyses: FitAnalysisDetail[];
   loading: boolean;
+  /** 적합도 분석 생성/재생성 요청이 진행 중일 때 단계별 진행 상태를 보여준다(디자인 분석 §9). */
+  generating?: boolean;
   error: string | null;
 }
 
-export function FitAnalysisPanel({ analyses, loading, error }: FitAnalysisPanelProps) {
+export function FitAnalysisPanel({ analyses, loading, generating = false, error }: FitAnalysisPanelProps) {
   return (
     <div className="space-y-5">
       <div>
@@ -21,9 +25,10 @@ export function FitAnalysisPanel({ analyses, loading, error }: FitAnalysisPanelP
         <p className="mt-1 text-sm text-slate-500">지원 건별 최신 적합도 분석을 기준으로 강점과 부족 역량을 확인합니다.</p>
       </div>
 
-      {loading && <StateCard title="적합도 분석을 불러오는 중입니다." />}
+      {generating && <FitAnalysisProgress />}
+      {!generating && loading && <StateCard title="적합도 분석을 불러오는 중입니다." />}
       {error && <StateCard title={error} tone="error" />}
-      {!loading && !error && analyses.length === 0 && (
+      {!generating && !loading && !error && analyses.length === 0 && (
         <StateCard title="아직 적합도 분석 결과가 없습니다." description="공고문 분석을 먼저 실행하면 지원 건별 비교 결과가 표시됩니다." />
       )}
 
@@ -42,7 +47,11 @@ export function FitAnalysisPanel({ analyses, loading, error }: FitAnalysisPanelP
                   <div>
                     <CardTitle className="text-base">{analysis.application.companyName}</CardTitle>
                     <p className="mt-1 text-sm text-slate-500">{analysis.application.jobTitle}</p>
+                    <div className="mt-1.5">
+                      <AiResultBadge status={analysis.status} />
+                    </div>
                   </div>
+                  {/* 점수+구간 하이브리드 표기(기획 §8.6) */}
                   <Badge className={`${tone.bg} ${tone.text}`}>{tone.label}</Badge>
                 </div>
               </CardHeader>
