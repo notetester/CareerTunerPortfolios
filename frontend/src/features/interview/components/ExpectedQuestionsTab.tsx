@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useState } from "react";
-import { AlertCircle, Sparkles, ThumbsUp } from "lucide-react";
+import { AlertCircle, CornerDownRight, Sparkles, ThumbsUp } from "lucide-react";
 import { Badge } from "@/app/components/ui/badge";
 import { Button } from "@/app/components/ui/button";
 import { Card, CardContent } from "@/app/components/ui/card";
 import {
   generateExpectedQuestions,
+  generateFollowUps,
   listSessionQuestions,
   submitAnswer,
 } from "../api/interviewApi";
@@ -15,12 +16,23 @@ import {
   type InterviewSession,
 } from "../types/interview";
 
-/** 한 질문 + 답변 입력 + AI 평가 결과. */
-function QuestionItem({ question, index }: { question: InterviewQuestion; index: number }) {
+/** 한 질문 + 답변 입력 + AI 평가 결과. 평가 후 꼬리 질문을 생성할 수 있다. */
+function QuestionItem({
+  question,
+  index,
+  onFollowUpsGenerated,
+}: {
+  question: InterviewQuestion;
+  index: number;
+  onFollowUpsGenerated: () => void;
+}) {
   const [answer, setAnswer] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [result, setResult] = useState<InterviewAnswer | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [followingUp, setFollowingUp] = useState(false);
+
+  const isFollowUp = question.questionType === "FOLLOW_UP";
 
   const handleSubmit = async () => {
     if (!answer.trim()) return;
@@ -36,11 +48,30 @@ function QuestionItem({ question, index }: { question: InterviewQuestion; index:
     }
   };
 
+  const handleFollowUp = async () => {
+    setFollowingUp(true);
+    setError(null);
+    try {
+      await generateFollowUps(question.id);
+      onFollowUpsGenerated();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "꼬리 질문 생성에 실패했습니다.");
+    } finally {
+      setFollowingUp(false);
+    }
+  };
+
   return (
-    <Card className="border border-slate-200 bg-white">
+    <Card className={isFollowUp ? "border border-indigo-200 bg-indigo-50/40" : "border border-slate-200 bg-white"}>
       <CardContent className="space-y-3 p-4">
         <div className="flex items-start gap-2">
-          <Badge className="bg-blue-100 text-blue-700">Q{index + 1}</Badge>
+          {isFollowUp ? (
+            <Badge className="gap-1 bg-indigo-100 text-indigo-700">
+              <CornerDownRight className="size-3" /> 꼬리질문
+            </Badge>
+          ) : (
+            <Badge className="bg-blue-100 text-blue-700">Q{index + 1}</Badge>
+          )}
           <p className="flex-1 text-sm font-medium text-slate-800">{question.question}</p>
         </div>
         <textarea
@@ -78,6 +109,18 @@ function QuestionItem({ question, index }: { question: InterviewQuestion; index:
                 <p className="text-sm leading-relaxed text-slate-700">{result.improvedAnswer}</p>
               </div>
             )}
+            <div className="flex justify-end">
+              <Button
+                size="sm"
+                variant="outline"
+                className="gap-1.5"
+                disabled={followingUp}
+                onClick={handleFollowUp}
+              >
+                <CornerDownRight className="size-3.5" />
+                {followingUp ? "꼬리 질문 생성 중…" : "꼬리 질문 받기"}
+              </Button>
+            </div>
           </div>
         )}
       </CardContent>
@@ -152,7 +195,7 @@ export function ExpectedQuestionsTab({ session }: { session: InterviewSession | 
       ) : (
         <div className="space-y-3">
           {questions.map((q, i) => (
-            <QuestionItem key={q.id} question={q} index={i} />
+            <QuestionItem key={q.id} question={q} index={i} onFollowUpsGenerated={loadExisting} />
           ))}
         </div>
       )}

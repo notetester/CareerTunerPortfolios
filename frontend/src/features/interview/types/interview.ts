@@ -30,6 +30,7 @@ export interface InterviewSession {
 export interface InterviewQuestion {
   id: number;
   interviewSessionId: number;
+  parentQuestionId: number | null;
   question: string;
   questionType: QuestionType | null;
   sortOrder: number;
@@ -70,8 +71,57 @@ export interface GenerateQuestionsRequest {
   count?: number;
 }
 
+export interface GenerateFollowUpsRequest {
+  count?: number;
+}
+
 export interface SubmitAnswerRequest {
   answerText: string;
+  audioUrl?: string | null;
+  videoUrl?: string | null;
+}
+
+/** 멀티에이전트 진행 단계 (AI 사고과정 트레이스) */
+export interface InterviewAgentStep {
+  id: number;
+  questionId: number | null;
+  stepNo: number;
+  agent: string; // EVALUATOR / CRITIC / ...
+  action: string | null;
+  summary: string | null;
+  detail: string | null;
+  createdAt: string;
+}
+
+/** 면접 진행 상태 (AI 면접관 대화 진행) */
+export interface InterviewProgress {
+  sessionId: number;
+  totalQuestions: number;
+  answeredQuestions: number;
+  finished: boolean;
+  currentQuestion: InterviewQuestion | null;
+}
+
+/** 실시간 음성 면접관(WebRTC) 세션 — 프런트가 OpenAI Realtime 에 직접 연결하는 단기 정보 */
+export interface RealtimeSession {
+  clientSecret: string;
+  expiresAt: number | null;
+  model: string;
+  voice: string;
+  realtimeUrl: string;
+}
+
+/** 파일 업로드 결과 (file_asset) */
+export interface FileAsset {
+  id: number;
+  kind: "AUDIO" | "VIDEO" | "RESUME" | "PORTFOLIO" | "POSTING" | "ATTACHMENT";
+  refType: string | null;
+  refId: number | null;
+  originalName: string | null;
+  contentType: string | null;
+  sizeBytes: number | null;
+  contentUrl: string;
+  createdAt: string;
 }
 
 // ───── UI 상수 (백엔드 데이터 아님, 화면 구성용) ─────

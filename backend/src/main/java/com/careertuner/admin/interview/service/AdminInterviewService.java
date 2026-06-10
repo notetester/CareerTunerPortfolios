@@ -7,6 +7,7 @@ import java.util.Set;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import com.careertuner.admin.interview.dto.AdminInterviewAiFailureRow;
 import com.careertuner.admin.interview.dto.AdminInterviewSessionDetail;
 import com.careertuner.admin.interview.dto.AdminInterviewSessionRow;
 import com.careertuner.admin.interview.mapper.AdminInterviewMapper;
@@ -49,6 +50,12 @@ public class AdminInterviewService {
                 .map(InterviewAnswerResponse::from)
                 .toList();
         return new AdminInterviewSessionDetail(session, questions, answers, adminInterviewMapper.findReport(id));
+    }
+
+    @Transactional(readOnly = true)
+    public List<AdminInterviewAiFailureRow> aiFailures(AuthUser authUser, int limit) {
+        requireAdmin(authUser);
+        return adminInterviewMapper.findAiFailures(normalizeLimit(limit));
     }
 
     private static void requireAdmin(AuthUser authUser) {
