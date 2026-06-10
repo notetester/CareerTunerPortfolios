@@ -1,17 +1,24 @@
-import { useSearchParams } from "react-router";
+import { useEffect, useMemo, useState } from "react";
+import { useNavigate, useSearchParams } from "react-router";
+import { Award, BarChart3, CheckCircle2, CreditCard, ReceiptText, Zap } from "lucide-react";
+import { useAuth } from "../auth/AuthContext";
+import { ApiError } from "../lib/api";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
 import { Progress } from "../components/ui/progress";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../components/ui/tabs";
-import { Award, BarChart3, CheckCircle2, CreditCard, ReceiptText, Zap } from "lucide-react";
+import { listCreditProducts } from "@/features/billing/api/creditProductsApi";
+import { readyTossPayment } from "@/features/billing/api/paymentApi";
+import { requestTossCardPayment } from "@/features/billing/api/tossPaymentSdk";
+import type { CreditProduct } from "@/features/billing/types/billing";
 
 const tabs = ["plans", "usage", "credits", "history"] as const;
 type BillingTab = (typeof tabs)[number];
 
 const plans = [
   { name: "무료", price: "0원", desc: "기본 체험", features: ["공고 분석 월 3회", "텍스트 면접 월 1회", "지원 건 3건 저장"] },
-  { name: "베이직", price: "9,900원", desc: "가벼운 취업 준비", features: ["공고 분석 월 20회", "텍스트 면접 무제한", "답변 첨삭 월 5회"] },
+  { name: "베이직", price: "9,900원", desc: "가벼운 취업 준비", features: ["공고 분석 월 20회", "텍스트 면접 무제한", "첨삭 월 5회"] },
   { name: "프로", price: "29,000원", desc: "집중 취업 준비", features: ["공고 분석 무제한", "음성 면접", "장기 취업 분석"], popular: true },
   { name: "프리미엄", price: "49,000원", desc: "고급 면접 패키지", features: ["아바타 면접관", "영상/자세 분석", "1:1 전략 컨설팅"] },
 ];
@@ -24,23 +31,77 @@ const usageRows = [
   { feature: "자기소개서 첨삭", used: 3, limit: 10, credit: 2 },
 ];
 
-const creditPacks = [
-  { amount: 10, price: "4,900원" },
-  { amount: 30, price: "11,900원", badge: "인기" },
-  { amount: 50, price: "18,000원" },
-  { amount: 100, price: "29,000원", badge: "최저가" },
-];
-
 const payments = [
   { date: "2026-06-01", item: "프로 플랜 월간 구독", amount: "29,000원", status: "결제 완료" },
   { date: "2026-05-20", item: "크레딧 30개", amount: "11,900원", status: "결제 완료" },
   { date: "2026-05-01", item: "베이직 플랜 월간 구독", amount: "9,900원", status: "결제 완료" },
 ];
 
+const formatCurrency = (value: number) => `${value.toLocaleString("ko-KR")}원`;
+
+function errorMessage(error: unknown, fallback: string) {
+  if (error instanceof ApiError || error instanceof Error) {
+    return error.message;
+  }
+  return fallback;
+}
+
 export function BillingPage() {
   const [searchParams, setSearchParams] = useSearchParams();
+  const navigate = useNavigate();
+  const { isAuthenticated, user } = useAuth();
   const requestedTab = searchParams.get("tab") ?? "plans";
   const activeTab: BillingTab = tabs.includes(requestedTab as BillingTab) ? (requestedTab as BillingTab) : "plans";
+  const [creditProducts, setCreditProducts] = useState<CreditProduct[]>([]);
+  const [productsLoading, setProductsLoading] = useState(false);
+  const [productsError, setProductsError] = useState<string | null>(null);
+  const [paymentError, setPaymentError] = useState<string | null>(null);
+  const [payingCode, setPayingCode] = useState<string | null>(null);
+
+  useEffect(() => {
+    let mounted = true;
+    setProductsLoading(true);
+    setProductsError(null);
+    listCreditProducts()
+      .then((products) => {
+        if (mounted) {
+          setCreditProducts(products);
+        }
+      })
+      .catch((error) => {
+        if (mounted) {
+          setProductsError(errorMessage(error, "크레딧 상품을 불러오지 못했습니다."));
+        }
+      })
+      .finally(() => {
+        if (mounted) {
+          setProductsLoading(false);
+        }
+      });
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  const balanceText = useMemo(() => (user?.credit ?? 0).toLocaleString("ko-KR"), [user?.credit]);
+
+  async function handleCreditPurchase(product: CreditProduct) {
+    if (!isAuthenticated) {
+      navigate("/login");
+      return;
+    }
+
+    setPaymentError(null);
+    setPayingCode(product.code);
+    try {
+      const ready = await readyTossPayment(product.code);
+      await requestTossCardPayment(ready);
+    } catch (error) {
+      setPaymentError(errorMessage(error, "결제창을 열지 못했습니다."));
+    } finally {
+      setPayingCode(null);
+    }
+  }
 
   return (
     <div className="min-h-screen bg-slate-50">
@@ -50,7 +111,7 @@ export function BillingPage() {
             <CreditCard className="size-6 text-blue-600" />
             결제/구독
           </h1>
-          <p className="mt-1 text-sm text-slate-500">요금제, AI 사용량, 크레딧 충전, 결제 내역을 한 곳에서 관리합니다</p>
+          <p className="mt-1 text-sm text-slate-500">요금제, AI 사용량, 크레딧 충전, 결제 내역을 한 곳에서 관리합니다.</p>
         </div>
 
         <Tabs value={activeTab} onValueChange={(value) => setSearchParams({ tab: value })}>
@@ -122,7 +183,7 @@ export function BillingPage() {
                 </CardHeader>
                 <CardContent className="space-y-4">
                   <div className="rounded-xl bg-amber-50 p-5 text-center">
-                    <div className="text-4xl font-black text-amber-600">10</div>
+                    <div className="text-4xl font-black text-amber-600">{balanceText}</div>
                     <div className="text-sm text-amber-700">사용 가능 크레딧</div>
                   </div>
                   <Button className="w-full bg-gradient-to-r from-amber-500 to-orange-500" onClick={() => setSearchParams({ tab: "credits" })}>
@@ -134,22 +195,44 @@ export function BillingPage() {
           </TabsContent>
 
           <TabsContent value="credits" className="mt-5">
-            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-              {creditPacks.map((pack) => (
-                <Card key={pack.amount} className={`relative border-2 bg-white ${pack.badge ? "border-amber-400 shadow-lg" : "border-slate-200"}`}>
-                  {pack.badge && <Badge className="absolute -top-3 left-1/2 -translate-x-1/2 bg-amber-500 text-white">{pack.badge}</Badge>}
-                  <CardContent className="space-y-4 p-5 text-center">
-                    <Zap className="mx-auto size-8 text-amber-500" />
-                    <div>
-                      <div className="text-4xl font-black text-slate-900">{pack.amount}</div>
-                      <div className="text-sm text-slate-500">크레딧</div>
-                    </div>
-                    <div className="text-xl font-black text-blue-600">{pack.price}</div>
-                    <Button className="w-full">구매하기</Button>
-                  </CardContent>
-                </Card>
-              ))}
+            <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+              현재 충전 가능한 상품은 DB에 등록된 크레딧 4종입니다. 결제 금액과 지급 크레딧은 서버에서 다시 확정됩니다.
             </div>
+            {paymentError && (
+              <div className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700">
+                {paymentError}
+              </div>
+            )}
+            {productsError && (
+              <div className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700">
+                {productsError}
+              </div>
+            )}
+            {productsLoading ? (
+              <Card className="border border-slate-200 bg-white">
+                <CardContent className="p-8 text-center text-sm text-slate-500">크레딧 상품을 불러오는 중입니다.</CardContent>
+              </Card>
+            ) : (
+              <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+                {creditProducts.map((product) => (
+                  <Card key={product.code} className={`relative border-2 bg-white ${product.badge ? "border-amber-400 shadow-lg" : "border-slate-200"}`}>
+                    {product.badge && <Badge className="absolute -top-3 left-1/2 -translate-x-1/2 bg-amber-500 text-white">{product.badge}</Badge>}
+                    <CardContent className="space-y-4 p-5 text-center">
+                      <Zap className="mx-auto size-8 text-amber-500" />
+                      <div>
+                        <div className="text-4xl font-black text-slate-900">{product.creditAmount}</div>
+                        <div className="text-sm text-slate-500">크레딧</div>
+                      </div>
+                      <div className="text-xl font-black text-blue-600">{formatCurrency(product.price)}</div>
+                      {product.description && <div className="min-h-5 text-xs text-slate-500">{product.description}</div>}
+                      <Button className="w-full" disabled={payingCode !== null} onClick={() => handleCreditPurchase(product)}>
+                        {payingCode === product.code ? "결제 준비 중" : "구매하기"}
+                      </Button>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            )}
           </TabsContent>
 
           <TabsContent value="history" className="mt-5">
