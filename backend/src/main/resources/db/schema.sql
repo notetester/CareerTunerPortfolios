@@ -563,7 +563,7 @@ CREATE TABLE IF NOT EXISTS community_post_tag (
     CONSTRAINT fk_post_tag_tag  FOREIGN KEY (tag_id)  REFERENCES community_tag (id)  ON DELETE CASCADE
     ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci;
 
---- 문의테이블
+-- 문의테이블
 CREATE TABLE IF NOT EXISTS notice (
     id            BIGINT       NOT NULL AUTO_INCREMENT,
     title         VARCHAR(255) NOT NULL,
