@@ -1,23 +1,16 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
   Inbox, CheckCheck, EyeOff, Trash2, Flag,
-  ExternalLink, Eye, X, Check,
+  ExternalLink, X, Check,
   MessageSquareWarning,
 } from "lucide-react";
 import { Button } from "@/app/components/ui/button";
 import AdminShell from "../../../components/AdminShell";
-import { REPORTS, type Report } from "../data/reportsData";
+import { type Report } from "../data/reportsData";
+import * as adminReportApi from "../api/adminReportApi";
 import "./admin-reports.css";
 
 type FilterKey = "pending" | "resolved" | "all";
-type ActionLabel = "숨김 처리됨" | "반려됨" | "삭제됨";
-
-const STAT_CARDS = [
-  { label: "신고 대기", value: 4, icon: Inbox, cls: "stat--amber" },
-  { label: "오늘 처리", value: 8, icon: CheckCheck, cls: "stat--green" },
-  { label: "숨김 처리", value: 5, icon: EyeOff, cls: "stat--slate" },
-  { label: "삭제", value: 3, icon: Trash2, cls: "stat--red" },
-];
 
 const FILTERS: { key: FilterKey; label: string }[] = [
   { key: "pending", label: "대기" },
@@ -27,24 +20,59 @@ const FILTERS: { key: FilterKey; label: string }[] = [
 
 export default function AdminReports() {
   const [filter, setFilter] = useState<FilterKey>("pending");
-  const [selected, setSelected] = useState<number>(REPORTS[0].id);
-  const [items, setItems] = useState<Report[]>(REPORTS);
+  const [selected, setSelected] = useState<number | null>(null);
+  const [items, setItems] = useState<Report[]>([]);
+  const [toast, setToast] = useState<string | null>(null);
+
+  /* 초기 목록 로드 */
+  useEffect(() => {
+    adminReportApi.getReports().then((list) => {
+      setItems(list);
+      if (list.length > 0) setSelected(list[0].id);
+    }).catch(() => setToast("신고 목록을 불러오지 못했습니다."));
+  }, []);
+
+  useEffect(() => {
+    if (!toast) return;
+    const t = setTimeout(() => setToast(null), 2200);
+    return () => clearTimeout(t);
+  }, [toast]);
+
+  /* 선택된 항목 상세 자동 로드 */
+  useEffect(() => {
+    if (selected == null) return;
+    adminReportApi.getReportDetail(selected).then((detail) => {
+      setItems((prev) => prev.map((r) => r.id === selected ? detail : r));
+    }).catch(() => {/* 무시 */});
+  }, [selected]);
 
   const filtered = filter === "all" ? items : items.filter((r) => r.status === filter);
   const selectedItem = items.find((r) => r.id === selected) ?? null;
 
   const pendingCount = items.filter((r) => r.status === "pending").length;
   const resolvedCount = items.filter((r) => r.status === "resolved").length;
+  const hiddenCount = items.filter((r) => r.action === "HIDDEN").length;
+  const deletedCount = items.filter((r) => r.action === "DELETED").length;
   const countMap: Record<FilterKey, number> = { pending: pendingCount, resolved: resolvedCount, all: items.length };
 
-  const handleAction = (id: number, action: ActionLabel) => {
-    setItems((prev) =>
-      prev.map((r) => r.id === id ? { ...r, status: "resolved" as const, action } : r),
-    );
+  const STAT_CARDS = [
+    { label: "신고 대기", value: pendingCount, icon: Inbox, cls: "stat--amber" },
+    { label: "처리 완료", value: resolvedCount, icon: CheckCheck, cls: "stat--green" },
+    { label: "숨김 처리", value: hiddenCount, icon: EyeOff, cls: "stat--slate" },
+    { label: "삭제", value: deletedCount, icon: Trash2, cls: "stat--red" },
+  ];
+
+  const handleAction = async (id: number, action: "HIDDEN" | "DELETED" | "DISMISSED") => {
+    try {
+      const updated = await adminReportApi.takeAction(id, action);
+      setItems((prev) => prev.map((r) => r.id === id ? updated : r));
+    } catch {
+      setToast("조치에 실패했습니다.");
+    }
   };
 
   const maxReason = selectedItem
-    ? Math.max(...selectedItem.reasons.map((r) => r.n))
+    ? Math.max(...selectedItem.reasons.map((r) => r.n), 1)
     : 1;
 
   return (
@@ -106,8 +134,8 @@ export default function AdminReports() {
                     {r.cat}
                   </span>
                   <span className="rpt-card__author">· {r.author}</span>
-                  {r.status === "resolved" && r.action && (
-                    <span className="rpt-card__done"><Check /> {r.action}</span>
+                  {r.status === "resolved" && (
+                    <span className="rpt-card__done"><Check /> {r.action ?? "반려됨"}</span>
                   )}
                 </div>
               </div>
@@ -124,7 +152,7 @@ export default function AdminReports() {
             selectedItem.status === "resolved" ? (
               <div className="rpt-detail__resolved">
                 <Check />
-                <span>처리 완료 · {selectedItem.action}</span>
+                <span>처리 완료 · {selectedItem.action ?? "반려됨"}</span>
               </div>
             ) : (
               <>
@@ -139,23 +167,25 @@ export default function AdminReports() {
                 </div>
 
                 {/* Reason distribution */}
-                <div className="rpt-reasons">
-                  <h4 className="rpt-reasons__h">
-                    신고 사유 <b>{selectedItem.reasons.reduce((a, r) => a + r.n, 0)}건</b>
-                  </h4>
-                  {selectedItem.reasons.map((r) => (
-                    <div key={r.l} className="rpt-bar-row">
-                      <span className="rpt-bar-row__l">{r.l}</span>
-                      <div className="rpt-bar-row__track">
-                        <div
-                          className="rpt-bar-row__fill"
-                          style={{ width: `${(r.n / maxReason) * 100}%` }}
-                        />
+                {selectedItem.reasons.length > 0 && (
+                  <div className="rpt-reasons">
+                    <h4 className="rpt-reasons__h">
+                      신고 사유 <b>{selectedItem.reasons.reduce((a, r) => a + r.n, 0)}건</b>
+                    </h4>
+                    {selectedItem.reasons.map((r) => (
+                      <div key={r.l} className="rpt-bar-row">
+                        <span className="rpt-bar-row__l">{r.l}</span>
+                        <div className="rpt-bar-row__track">
+                          <div
+                            className="rpt-bar-row__fill"
+                            style={{ width: `${(r.n / maxReason) * 100}%` }}
+                          />
+                        </div>
+                        <span className="rpt-bar-row__n">{r.n}</span>
                       </div>
-                      <span className="rpt-bar-row__n">{r.n}</span>
-                    </div>
-                  ))}
-                </div>
+                    ))}
+                  </div>
+                )}
 
                 {/* Actions */}
                 <div className="rpt-actions">
@@ -164,19 +194,19 @@ export default function AdminReports() {
                   </Button>
                   <Button
                     variant="outline" size="sm"
-                    onClick={() => handleAction(selectedItem.id, "숨김 처리됨")}
+                    onClick={() => handleAction(selectedItem.id, "HIDDEN")}
                   >
                     <EyeOff /> 숨김
                   </Button>
                   <Button
                     variant="ghost" size="sm"
-                    onClick={() => handleAction(selectedItem.id, "반려됨")}
+                    onClick={() => handleAction(selectedItem.id, "DISMISSED")}
                   >
                     <X /> 반려
                   </Button>
                   <Button
                     variant="destructive" size="sm"
-                    onClick={() => handleAction(selectedItem.id, "삭제됨")}
+                    onClick={() => handleAction(selectedItem.id, "DELETED")}
                   >
                     <Trash2 /> 삭제
                   </Button>
@@ -188,6 +218,10 @@ export default function AdminReports() {
           )}
         </div>
       </div>
+
+      {toast && (
+        <div className="rpt-toast">{toast}</div>
+      )}
     </AdminShell>
   );
 }

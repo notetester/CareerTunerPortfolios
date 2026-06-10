@@ -1,14 +1,17 @@
+import { useEffect } from "react";
 import { Avatar, AvatarFallback } from "@/app/components/ui/avatar";
 import {
   ArrowLeft, Eye, Clock, Star,
-  Users, Layers, Calendar, Gauge,
+  Users, Calendar, Gauge,
 } from "lucide-react";
 import { CategoryBadge } from "./CategoryBadge";
 import { ReactionButtons } from "./ReactionButtons";
 import { CommentSection } from "./CommentSection";
-import { mockPostDetail } from "../data/mockCommunity";
+import { useCommunityStore } from "../hooks/useCommunityStore";
+import { relTime } from "@/features/notification/types/notification";
 
 interface PostDetailViewProps {
+  postId: number;
   onBack: () => void;
 }
 
@@ -96,9 +99,47 @@ function renderMarkdown(md: string) {
   return blocks;
 }
 
-export function PostDetailView({ onBack }: PostDetailViewProps) {
-  const d = mockPostDetail;
-  const isInterview = d.category === "면접후기";
+const RESULT_LABELS: Record<string, string> = {
+  PASSED: "최종합격", FAILED: "불합격", PENDING: "대기중", UNKNOWN: "비공개",
+};
+
+export function PostDetailView({ postId, onBack }: PostDetailViewProps) {
+  const { currentPost: d, comments, detailLoading, error, fetchPostDetail, fetchComments } = useCommunityStore();
+
+  useEffect(() => {
+    fetchPostDetail(postId);
+    fetchComments(postId);
+  }, [postId, fetchPostDetail, fetchComments]);
+
+  if (detailLoading) {
+    return (
+      <div className="ct-page ct-detail">
+        <button className="ct-detail__back" onClick={onBack}>
+          <ArrowLeft /> 커뮤니티 목록
+        </button>
+        <p style={{ textAlign: "center", color: "var(--muted-foreground)", padding: "48px 0" }}>
+          불러오는 중...
+        </p>
+      </div>
+    );
+  }
+
+  if (!d) {
+    return (
+      <div className="ct-page ct-detail">
+        <button className="ct-detail__back" onClick={onBack}>
+          <ArrowLeft /> 커뮤니티 목록
+        </button>
+        <p style={{ textAlign: "center", color: "var(--muted-foreground)", padding: "48px 0" }}>
+          {error ?? "게시글을 불러올 수 없습니다."}
+        </p>
+      </div>
+    );
+  }
+
+  const iv = d.interviewReview;
+  const isInterview = !!iv;
+  const resultLabel = iv?.resultStatus ? RESULT_LABELS[iv.resultStatus] : d.result;
 
   return (
     <div className="ct-page ct-detail">
@@ -110,25 +151,24 @@ export function PostDetailView({ onBack }: PostDetailViewProps) {
       {/* Head */}
       <div className="ct-detail__head">
         <div className="ct-detail__tags">
-          <CategoryBadge label={d.category} />
-          {d.result && (
-            <span className="ct-badge ct-badge--success">{d.result}</span>
+          <CategoryBadge label={d.categoryLabel} />
+          {resultLabel && (
+            <span className="ct-badge ct-badge--success">{resultLabel}</span>
           )}
         </div>
         <h1 className="ct-detail__title">{d.title}</h1>
 
         <div className="ct-detail__byline">
           <Avatar className="w-10 h-10">
-            <AvatarFallback className="bg-muted text-sm">{d.author[0]}</AvatarFallback>
+            <AvatarFallback className="bg-muted text-sm">{d.author.name[0]}</AvatarFallback>
           </Avatar>
           <div className="ct-detail__who">
             <div className="ct-detail__name">
-              {d.author}
-              {d.authorRole && <span className="ct-detail__role">{d.authorRole}</span>}
+              {d.author.name}
             </div>
             <div className="ct-detail__sub">
-              <span><Clock />{d.time}</span>
-              <span><Eye />조회 {d.views.toLocaleString()}</span>
+              <span><Clock />{relTime(d.createdAt)}</span>
+              <span><Eye />조회 {d.stats.viewCount.toLocaleString()}</span>
             </div>
           </div>
         </div>
@@ -137,30 +177,29 @@ export function PostDetailView({ onBack }: PostDetailViewProps) {
       <hr style={{ border: "none", borderTop: "1px solid var(--border)", margin: "20px 0" }} />
 
       {/* Interview meta card */}
-      {isInterview && d.meta && (
+      {isInterview && iv && (
         <div className="ct-imeta">
           <div className="ct-imeta__top">
             <Avatar className="w-10 h-10">
-              <AvatarFallback className="text-sm font-bold">{d.meta.company[0]}</AvatarFallback>
+              <AvatarFallback className="text-sm font-bold">{iv.companyName[0]}</AvatarFallback>
             </Avatar>
             <div>
-              <div className="ct-imeta__co">{d.meta.company}</div>
-              <div className="ct-imeta__pos">{d.meta.position}</div>
+              <div className="ct-imeta__co">{iv.companyName}</div>
+              <div className="ct-imeta__pos">{iv.jobRole}</div>
             </div>
           </div>
           <div className="ct-imeta__grid">
             {[
-              { icon: Users, label: "면접 유형", value: d.meta.type },
-              { icon: Layers, label: "진행 전형", value: d.meta.stage },
-              { icon: Calendar, label: "면접일", value: d.meta.date },
-              { icon: Gauge, label: "체감 난이도", value: null, stars: d.meta.difficulty },
+              { icon: Users, label: "면접 유형", value: iv.interviewType },
+              { icon: Calendar, label: "면접일", value: iv.interviewDate },
+              { icon: Gauge, label: "체감 난이도", value: null, stars: iv.difficulty },
             ].map((cell, idx) => (
               <div key={idx} className="ct-imeta__cell">
                 <div className="ct-imeta__k">
                   <cell.icon />{cell.label}
                 </div>
                 <div className="ct-imeta__v">
-                  {cell.stars ? <DifficultyStars level={cell.stars} /> : cell.value}
+                  {cell.stars ? <DifficultyStars level={cell.stars} /> : cell.value ?? "-"}
                 </div>
               </div>
             ))}
@@ -169,13 +208,20 @@ export function PostDetailView({ onBack }: PostDetailViewProps) {
       )}
 
       {/* Body */}
-      <div className="ct-prose">{renderMarkdown(d.body)}</div>
+      <div className="ct-prose">{renderMarkdown(d.content)}</div>
 
       {/* Action bar */}
-      <ReactionButtons likes={d.likes} />
+      <ReactionButtons
+        key={`${d.id}-${d.liked}-${d.bookmarked}`}
+        postId={d.id}
+        likeCount={d.stats.likeCount}
+        bookmarkCount={d.stats.bookmarkCount}
+        initialLiked={d.liked ?? false}
+        initialBookmarked={d.bookmarked ?? false}
+      />
 
       {/* Comments */}
-      <CommentSection comments={d.comments} />
+      <CommentSection postId={d.id} comments={comments} />
     </div>
   );
 }

@@ -1,6 +1,7 @@
+import { useEffect } from "react";
 import { ArrowLeft, Pin, Eye, Calendar, ChevronUp, ChevronDown, List } from "lucide-react";
 import type { Notice } from "../types/support";
-import { mockNotices } from "../data/mockSupport";
+import { useSupportStore } from "../hooks/useSupportStore";
 
 function tagStyle(tag: string) {
   switch (tag) {
@@ -64,9 +65,17 @@ interface NoticeDetailPageProps {
 }
 
 export default function NoticeDetailPage({ noticeId, onBack, onNavigate }: NoticeDetailPageProps) {
-  const sorted = [...mockNotices].sort((a, b) => b.id - a.id);
+  const { notices, currentNotice, fetchNoticeDetail } = useSupportStore();
+
+  useEffect(() => {
+    fetchNoticeDetail(noticeId);
+  }, [noticeId, fetchNoticeDetail]);
+
+  const sorted = [...notices].sort((a, b) => b.id - a.id);
   const idx = sorted.findIndex((n) => n.id === noticeId);
-  const notice = sorted[idx];
+
+  // currentNotice has full content from detail API; fall back to list item
+  const notice = currentNotice?.id === noticeId ? currentNotice : sorted[idx];
   if (!notice) return null;
 
   const prev = sorted[idx - 1] as Notice | undefined;

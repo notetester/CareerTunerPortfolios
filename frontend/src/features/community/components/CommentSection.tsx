@@ -1,27 +1,27 @@
-import { useState } from "react";
+import { useNavigate } from "react-router";
 import { CommentItem } from "./CommentItem";
 import { CommentForm } from "./CommentForm";
-
-interface Comment {
-  name: string;
-  time: string;
-  likes: number;
-  isAuthor: boolean;
-  text: string;
-}
+import { useCommunityStore } from "../hooks/useCommunityStore";
+import { useAuth } from "@/app/auth/AuthContext";
+import type { CommunityComment } from "../types/community";
 
 interface CommentSectionProps {
-  comments: Comment[];
+  postId: number;
+  comments: CommunityComment[];
 }
 
-export function CommentSection({ comments: initial }: CommentSectionProps) {
-  const [comments, setComments] = useState(initial);
+export function CommentSection({ postId, comments }: CommentSectionProps) {
+  const { addComment } = useCommunityStore();
+  const { isAuthenticated } = useAuth();
+  const navigate = useNavigate();
 
   const handleSubmit = (text: string) => {
-    setComments((c) => [
-      ...c,
-      { name: "나", time: "방금 전", likes: 0, isAuthor: false, text },
-    ]);
+    if (!isAuthenticated) {
+      alert("로그인이 필요합니다.");
+      navigate("/login");
+      return;
+    }
+    addComment(postId, text);
   };
 
   return (
@@ -31,8 +31,8 @@ export function CommentSection({ comments: initial }: CommentSectionProps) {
       </h3>
 
       <div className="ct-clist">
-        {comments.map((c, idx) => (
-          <CommentItem key={idx} {...c} />
+        {comments.map((c) => (
+          <CommentItem key={c.id} comment={c} />
         ))}
       </div>
 

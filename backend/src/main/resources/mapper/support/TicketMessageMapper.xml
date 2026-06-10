@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.careertuner.support.mapper.TicketMessageMapper">
+
+    <insert id="insert" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO support_ticket_message (ticket_id, sender_type, sender_id, content, is_internal)
+        VALUES (#{ticketId}, #{senderType}, #{senderId}, #{content}, #{internal})
+    </insert>
+
+    <select id="findByTicketId" resultType="com.careertuner.support.domain.TicketMessage">
+        SELECT *
+          FROM support_ticket_message
+         WHERE ticket_id = #{ticketId}
+           AND is_internal = 0
+         ORDER BY created_at
+    </select>
+
+</mapper>

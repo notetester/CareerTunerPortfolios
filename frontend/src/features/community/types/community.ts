@@ -7,7 +7,7 @@ export type CommunityCategory =
   | "certificate-review"
   | "free";
 
-export type PostStatus = "PUBLISHED" | "HIDDEN" | "DELETED" | "PENDING_REVIEW";
+export type PostStatus = "PUBLISHED" | "HIDDEN" | "DELETED" | "PENDING";
 
 export interface PublicAuthor {
   id: number;
@@ -40,13 +40,15 @@ export interface CommunityPost {
   isHot?: boolean;
   daysAgo?: number;
   interviewReview?: InterviewReviewMetadata;
+  liked?: boolean;
+  bookmarked?: boolean;
 }
 
 export interface InterviewReviewMetadata {
   companyName: string;
   jobRole: string;
   interviewType: string;
-  difficulty: 1 | 2 | 3 | 4 | 5;
+  difficulty: number | null;
   interviewDate?: string;
   resultStatus?: "PASSED" | "FAILED" | "PENDING" | "UNKNOWN";
   stage?: string;
@@ -61,6 +63,7 @@ export interface CommunityComment {
   likeCount: number;
   isAuthor: boolean;
   createdAt: string;
+  liked?: boolean;
 }
 
 export type ReactionType = "LIKE" | "BOOKMARK";

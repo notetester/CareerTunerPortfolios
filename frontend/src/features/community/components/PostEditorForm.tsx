@@ -9,12 +9,17 @@ import {
   Code, Link, Image, Plus, Trash2, Star, Send, Check, X,
   ClipboardList,
 } from "lucide-react";
-import { CATEGORIES } from "../types/community";
+import { CATEGORIES, type CommunityCategory } from "../types/community";
+import { useCommunityStore } from "../hooks/useCommunityStore";
 
 interface PostEditorFormProps {
   onCancel: () => void;
   onSubmit?: () => void;
 }
+
+const RESULT_MAP: Record<string, string> = {
+  "합격": "PASSED", "불합격": "FAILED", "대기중": "PENDING", "비공개": "UNKNOWN",
+};
 
 const INTERVIEW_TYPES = ["전화 면접", "화상 면접", "대면 면접", "코딩테스트", "과제 전형"];
 const RESULTS = ["합격", "불합격", "대기중", "비공개"];
@@ -75,8 +80,10 @@ function TagInput({ tags, onChange }: { tags: string[]; onChange: (t: string[]) 
 }
 
 export function PostEditorForm({ onCancel, onSubmit }: PostEditorFormProps) {
+  const { createPost } = useCommunityStore();
   const cats = CATEGORIES.filter((c) => c.value !== "all");
   const [cat, setCat] = useState("interview");
+  const [submitting, setSubmitting] = useState(false);
   const [title, setTitle] = useState("");
   const [bodyText, setBodyText] = useState("");
   const [tags, setTags] = useState<string[]>(["신입공채", "코딩테스트"]);
@@ -90,7 +97,34 @@ export function PostEditorForm({ onCancel, onSubmit }: PostEditorFormProps) {
   const [questions, setQuestions] = useState([""]);
 
   const isInterview = cat === "interview";
-  const canPost = title.trim() && bodyText.trim();
+  const canPost = title.trim() && bodyText.trim() && !submitting;
+
+  const handlePost = async () => {
+    if (!canPost) return;
+    setSubmitting(true);
+    const catInfo = cats.find((c) => c.value === cat);
+    try {
+      await createPost({
+        category: (catInfo?.slug ?? "free") as CommunityCategory,
+        title,
+        content: bodyText,
+        tags,
+        anonymous: anon,
+        interviewReview: isInterview ? {
+          companyName: company,
+          jobRole: role,
+          interviewType: itype || undefined,
+          difficulty: difficulty || null,
+          interviewDate: date || undefined,
+          resultStatus: RESULT_MAP[result] || undefined,
+          questions: questions.filter((q) => q.trim()),
+        } : undefined,
+      });
+      onSubmit?.();
+    } catch {
+      setSubmitting(false);
+    }
+  };
 
   const setQ = (i: number, v: string) => setQuestions((q) => q.map((x, j) => (j === i ? v : x)));
   const addQ = () => setQuestions((q) => [...q, ""]);
@@ -294,7 +328,7 @@ export function PostEditorForm({ onCancel, onSubmit }: PostEditorFormProps) {
           <button
             className="ct-btn-brand"
             disabled={!canPost}
-            onClick={onSubmit}
+            onClick={handlePost}
           >
             게시하기 <Send />
           </button>

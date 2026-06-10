@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo } from "react";
 import { PenSquare } from "lucide-react";
+import { useNavigate } from "react-router";
 import { PostList } from "../components/PostList";
 import { PostFilters, type SortKey, type PeriodKey } from "../components/PostFilters";
 import { HotPostsSidebar } from "../components/HotPostsSidebar";
@@ -7,6 +8,7 @@ import { PostDetailView } from "../components/PostDetailView";
 import { PostEditorForm } from "../components/PostEditorForm";
 import { CATEGORIES } from "../types/community";
 import { useCommunityStore } from "../hooks/useCommunityStore";
+import { useAuth } from "@/app/auth/AuthContext";
 import type { CommunityPost } from "../types/community";
 import "../styles/community.css";
 
@@ -23,6 +25,8 @@ export function CommunityHomePage() {
   const [tag, setTag] = useState("");
 
   const { posts, loading, fetchPosts } = useCommunityStore();
+  const { isAuthenticated } = useAuth();
+  const navigate = useNavigate();
 
   const filteredPosts = useMemo(() => {
     const maxDays = PERIOD_MAX[period];
@@ -44,20 +48,29 @@ export function CommunityHomePage() {
     fetchPosts(selectedCategory === "all" ? undefined : cat?.slug);
   }, [selectedCategory, fetchPosts]);
 
+  // 브라우저 뒤로가기 지원
+  useEffect(() => {
+    const onPopState = () => {
+      setViewMode("list");
+      setSelectedPost(null);
+    };
+    window.addEventListener("popstate", onPopState);
+    return () => window.removeEventListener("popstate", onPopState);
+  }, []);
+
   const handlePostClick = (post: CommunityPost) => {
     setSelectedPost(post);
     setViewMode("detail");
+    window.history.pushState({ view: "detail" }, "");
     window.scrollTo(0, 0);
   };
 
   const handleBack = () => {
-    setViewMode("list");
-    setSelectedPost(null);
-    window.scrollTo(0, 0);
+    window.history.back();
   };
 
-  if (viewMode === "detail") {
-    return <PostDetailView onBack={handleBack} />;
+  if (viewMode === "detail" && selectedPost) {
+    return <PostDetailView postId={selectedPost.id} onBack={handleBack} />;
   }
 
   if (viewMode === "write") {
@@ -72,7 +85,15 @@ export function CommunityHomePage() {
             <h1>커뮤니티</h1>
             <p>익명으로 취업·이직·면접 이야기를 나눠보세요.</p>
           </div>
-          <button className="ct-btn-brand" onClick={() => setViewMode("write")}>
+          <button className="ct-btn-brand" onClick={() => {
+            if (!isAuthenticated) {
+              alert("로그인이 필요합니다.");
+              navigate("/login");
+              return;
+            }
+            setViewMode("write");
+            window.history.pushState({ view: "write" }, "");
+          }}>
             <PenSquare /> 글쓰기
           </button>
         </div>

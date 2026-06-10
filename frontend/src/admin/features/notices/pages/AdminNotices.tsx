@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback, type DragEvent, type ChangeEvent } from "react";
+import { useState, useRef, useCallback, useEffect, type DragEvent, type ChangeEvent } from "react";
 import {
   Megaphone, Plus, Pin, Eye, PenLine, Send, Save,
   Bold, Italic, List, Quote, Link2, ImagePlus, X,
@@ -7,7 +7,8 @@ import { Input } from "@/app/components/ui/input";
 import { Switch } from "@/app/components/ui/switch";
 import { Button } from "@/app/components/ui/button";
 import AdminShell from "../../../components/AdminShell";
-import { NOTICES as INITIAL, type Notice, type NoticeStatus } from "../data/noticesData";
+import { type Notice, type NoticeStatus } from "../data/noticesData";
+import * as adminNoticeApi from "../api/adminNoticeApi";
 import "./admin-notices.css";
 
 type FilterKey = "all" | "published" | "pending";
@@ -62,23 +63,32 @@ function Toast({ msg, tone }: { msg: string; tone: string }) {
 
 /* ── Component ── */
 export default function AdminNotices() {
-  const [items, setItems] = useState<Notice[]>(INITIAL);
+  const [items, setItems] = useState<Notice[]>([]);
   const [filter, setFilter] = useState<FilterKey>("all");
-  const [selectedId, setSelectedId] = useState<number | null>(INITIAL[0].id);
+  const [selectedId, setSelectedId] = useState<number | null>(null);
   const [isNew, setIsNew] = useState(false);
 
   /* editor state */
-  const [eTitle, setETitle] = useState(INITIAL[0].title);
-  const [eBody, setEBody] = useState(INITIAL[0].body);
-  const [ePinned, setEPinned] = useState(INITIAL[0].pinned);
-  const [ePublish, setEPublish] = useState(INITIAL[0].status === "published");
-  const [eCover, setECover] = useState<string | null>(INITIAL[0].cover);
-  const [eImages, setEImages] = useState<string[]>(INITIAL[0].images);
+  const [eTitle, setETitle] = useState("");
+  const [eBody, setEBody] = useState("");
+  const [ePinned, setEPinned] = useState(false);
+  const [ePublish, setEPublish] = useState(true);
+  const [eCover, setECover] = useState<string | null>(null);
+  const [eImages, setEImages] = useState<string[]>([]);
 
   const [toast, setToast] = useState<{ msg: string; tone: string } | null>(null);
   const bodyRef = useRef<HTMLTextAreaElement>(null);
   const coverInputRef = useRef<HTMLInputElement>(null);
   const imgInputRef = useRef<HTMLInputElement>(null);
+
+  /* 초기 목록 로드 */
+  useEffect(() => {
+    adminNoticeApi.getNotices().then((list) => {
+      setItems(list);
+      if (list.length > 0) loadEditor(list[0]);
+    }).catch(() => flash("공지 목록을 불러오지 못했습니다.", "red"));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   /* counts */
   const pubCount = items.filter((n) => n.status === "published").length;
@@ -126,68 +136,64 @@ export default function AdminNotices() {
   };
 
   /* save */
-  const save = (asDraft: boolean) => {
-    const status: NoticeStatus = asDraft ? "draft" : "published";
-    const now = new Date();
-    const dateStr = asDraft
-      ? "임시저장"
-      : `${now.getFullYear()}.${String(now.getMonth() + 1).padStart(2, "0")}.${String(now.getDate()).padStart(2, "0")}`;
-
-    if (isNew) {
-      const newNotice: Notice = {
-        id: Date.now(),
-        title: eTitle,
-        body: eBody,
-        status,
-        pinned: ePinned,
-        date: dateStr,
-        views: 0,
-        cover: eCover,
-        images: eImages,
-      };
-      setItems((prev) => [newNotice, ...prev]);
-      setSelectedId(newNotice.id);
-      setIsNew(false);
-    } else if (selectedId) {
-      setItems((prev) =>
-        prev.map((n) =>
-          n.id === selectedId
-            ? { ...n, title: eTitle, body: eBody, status, pinned: ePinned, date: dateStr, cover: eCover, images: eImages }
-            : n,
-        ),
-      );
+  const save = async (asDraft: boolean) => {
+    const status = asDraft ? "DRAFT" : "PUBLISHED";
+    try {
+      if (isNew) {
+        const created = await adminNoticeApi.createNotice({
+          title: eTitle,
+          content: eBody,
+          status,
+          isPinned: ePinned,
+          thumbnailUrl: eCover,
+        });
+        const newList = await adminNoticeApi.getNotices();
+        setItems(newList);
+        setSelectedId(created.id);
+        setIsNew(false);
+      } else if (selectedId) {
+        await adminNoticeApi.updateNotice(selectedId, {
+          title: eTitle,
+          content: eBody,
+          status,
+          isPinned: ePinned,
+          thumbnailUrl: eCover,
+        });
+        const newList = await adminNoticeApi.getNotices();
+        setItems(newList);
+      }
+      flash(asDraft ? "임시저장했어요" : "공지를 게시했어요", asDraft ? "slate" : "green");
+    } catch {
+      flash("저장에 실패했습니다.", "red");
     }
-    flash(asDraft ? "임시저장했어요" : "공지를 게시했어요", asDraft ? "slate" : "green");
   };
 
   /* row toggles */
-  const togglePublish = (id: number) => {
-    setItems((prev) =>
-      prev.map((n) => {
-        if (n.id !== id) return n;
-        const next: NoticeStatus = n.status === "published" ? "draft" : "published";
-        const updated = {
-          ...n,
-          status: next,
-          date: next === "draft" ? "임시저장" : n.date === "임시저장" ? new Date().toISOString().slice(0, 10).replace(/-/g, ".") : n.date,
-        };
-        if (id === selectedId) {
-          setEPublish(next === "published");
-        }
-        return updated;
-      }),
-    );
+  const togglePublish = async (id: number) => {
+    const item = items.find((n) => n.id === id);
+    if (!item) return;
+    const newStatus = item.status === "published" ? "DRAFT" : "PUBLISHED";
+    try {
+      await adminNoticeApi.updateNotice(id, { status: newStatus });
+      const newList = await adminNoticeApi.getNotices();
+      setItems(newList);
+      if (id === selectedId) setEPublish(newStatus === "PUBLISHED");
+    } catch {
+      flash("상태 변경에 실패했습니다.", "red");
+    }
   };
 
-  const togglePin = (id: number) => {
-    setItems((prev) =>
-      prev.map((n) => {
-        if (n.id !== id) return n;
-        const updated = { ...n, pinned: !n.pinned };
-        if (id === selectedId) setEPinned(updated.pinned);
-        return updated;
-      }),
-    );
+  const togglePin = async (id: number) => {
+    const item = items.find((n) => n.id === id);
+    if (!item) return;
+    try {
+      await adminNoticeApi.updateNotice(id, { isPinned: !item.pinned });
+      const newList = await adminNoticeApi.getNotices();
+      setItems(newList);
+      if (id === selectedId) setEPinned(!item.pinned);
+    } catch {
+      flash("고정 변경에 실패했습니다.", "red");
+    }
   };
 
   /* cover image */

@@ -45,6 +45,12 @@ public class SecurityConfig {
                                 "/api/auth/refresh", "/api/auth/email/resend").permitAll()
                         .requestMatchers(HttpMethod.GET,
                                 "/api/auth/verify-email", "/api/auth/check/**", "/api/auth/oauth/**").permitAll()
+                        // 커뮤니티 게시글 조회 공개
+                        .requestMatchers(HttpMethod.GET,
+                                "/api/community/posts", "/api/community/posts/**").permitAll()
+                        // 고객센터 FAQ/공지사항 조회 공개
+                        .requestMatchers(HttpMethod.GET,
+                                "/api/support/faq", "/api/support/notices", "/api/support/notices/**").permitAll()
                         // 그 외(/api/auth/me, /api/auth/logout 및 도메인 API)는 인증 필요
                         .anyRequest().authenticated())
                 .exceptionHandling(e -> e.authenticationEntryPoint(

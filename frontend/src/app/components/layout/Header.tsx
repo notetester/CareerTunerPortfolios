@@ -3,12 +3,13 @@ import { Link, useLocation, useNavigate } from "react-router";
 import { useAuth } from "../../auth/AuthContext";
 import { Button } from "../ui/button";
 import { Badge } from "../ui/badge";
+import { NotificationBell } from "@/features/notification/components/NotificationBell";
+import "@/features/notification/styles/notification.css";
 import {
   Sparkles,
   ChevronDown,
   Menu,
   X,
-  Bell,
   User,
   LayoutDashboard,
   FileText,
@@ -260,10 +261,7 @@ export function Header() {
                 </div>
 
                 {/* Notifications */}
-                <button className="relative p-2 rounded-lg hover:bg-slate-100 transition-colors">
-                  <Bell className="size-5 text-slate-600" />
-                  <span className="absolute top-1.5 right-1.5 size-2 bg-red-500 rounded-full"></span>
-                </button>
+                <NotificationBell />
 
                 {/* User menu */}
                 <div className="relative hidden sm:block" onMouseEnter={() => setUserMenuOpen(true)} onMouseLeave={() => setUserMenuOpen(false)}>

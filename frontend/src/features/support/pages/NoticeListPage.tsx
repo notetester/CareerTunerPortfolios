@@ -30,18 +30,33 @@ export default function NoticeListPage() {
   const totalPages = Math.max(1, Math.ceil(normal.length / PAGE_SIZE));
   const slice = normal.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
 
+  // 브라우저 뒤로가기 지원
+  useEffect(() => {
+    const onPopState = () => {
+      setOpenId(null);
+    };
+    window.addEventListener("popstate", onPopState);
+    return () => window.removeEventListener("popstate", onPopState);
+  }, []);
+
   const handleOpen = useCallback((id: number) => {
     setOpenId(id);
+    window.history.pushState({ noticeId: id }, "");
     window.scrollTo(0, 0);
   }, []);
 
   const handleBack = useCallback(() => {
-    setOpenId(null);
+    window.history.back();
+  }, []);
+
+  const handleNavigate = useCallback((id: number) => {
+    setOpenId(id);
+    window.history.replaceState({ noticeId: id }, "");
     window.scrollTo(0, 0);
   }, []);
 
   if (openId !== null) {
-    return <NoticeDetailPage noticeId={openId} onBack={handleBack} onNavigate={handleOpen} />;
+    return <NoticeDetailPage noticeId={openId} onBack={handleBack} onNavigate={handleNavigate} />;
   }
 
   return (

@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.careertuner.support.mapper.NoticeMapper">
+
+    <select id="findAllPublished" resultType="com.careertuner.support.domain.Notice">
+        SELECT *
+          FROM notice
+         WHERE status = 'PUBLISHED'
+         ORDER BY is_pinned DESC, published_at DESC, created_at DESC
+    </select>
+
+    <select id="findById" resultType="com.careertuner.support.domain.Notice">
+        SELECT *
+          FROM notice
+         WHERE id = #{id}
+           AND status = 'PUBLISHED'
+    </select>
+
+    <update id="incrementViewCount">
+        UPDATE notice
+           SET view_count = view_count + 1
+         WHERE id = #{id}
+    </update>
+
+</mapper>

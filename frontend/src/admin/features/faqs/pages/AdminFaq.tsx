@@ -1,4 +1,4 @@
-import { useState, useRef, type ChangeEvent } from "react";
+import { useState, useRef, useEffect, type ChangeEvent } from "react";
 import {
   CircleHelp, Plus, PenLine, Save, Trash2, X,
   ImagePlus, Youtube, Image as ImageIcon,
@@ -11,9 +11,10 @@ import {
 } from "@/app/components/ui/select";
 import AdminShell from "../../../components/AdminShell";
 import {
-  FAQS as INITIAL, FAQ_CATEGORIES, CAT_COLOR,
+  FAQ_CATEGORIES, CAT_COLOR,
   type Faq, type FaqCategory,
 } from "../data/faqData";
+import * as adminFaqApi from "../api/adminFaqApi";
 import "./admin-faq.css";
 
 const YT_RE = /(?:youtu\.be\/|v=|embed\/|shorts\/)([\w-]{11})/;
@@ -36,22 +37,31 @@ function Toast({ msg, tone }: { msg: string; tone: string }) {
 }
 
 export default function AdminFaq() {
-  const [items, setItems] = useState<Faq[]>(INITIAL);
+  const [items, setItems] = useState<Faq[]>([]);
   const [catFilter, setCatFilter] = useState<string>("전체");
-  const [selectedId, setSelectedId] = useState<number | null>(INITIAL[0].id);
+  const [selectedId, setSelectedId] = useState<number | null>(null);
   const [isNew, setIsNew] = useState(false);
 
   /* editor */
-  const [eCat, setECat] = useState<FaqCategory>(INITIAL[0].cat);
-  const [eQ, setEQ] = useState(INITIAL[0].q);
-  const [eA, setEA] = useState(INITIAL[0].a);
-  const [eOn, setEOn] = useState(INITIAL[0].on);
-  const [eImages, setEImages] = useState<string[]>(INITIAL[0].images);
-  const [eYt, setEYt] = useState(INITIAL[0].yt);
+  const [eCat, setECat] = useState<FaqCategory>("일반");
+  const [eQ, setEQ] = useState("");
+  const [eA, setEA] = useState("");
+  const [eOn, setEOn] = useState(true);
+  const [eImages, setEImages] = useState<string[]>([]);
+  const [eYt, setEYt] = useState("");
   const [ytInput, setYtInput] = useState("");
 
   const [toast, setToast] = useState<{ msg: string; tone: string } | null>(null);
   const imgInputRef = useRef<HTMLInputElement>(null);
+
+  /* 초기 목록 로드 */
+  useEffect(() => {
+    adminFaqApi.getFaqs().then((list) => {
+      setItems(list);
+      if (list.length > 0) loadEditor(list[0]);
+    }).catch(() => flash("FAQ 목록을 불러오지 못했습니다.", "red"));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   /* derived */
   const filtered = catFilter === "전체" ? items : items.filter((f) => f.cat === catFilter);
@@ -93,38 +103,40 @@ export default function AdminFaq() {
   };
 
   /* save */
-  const handleSave = () => {
+  const handleSave = async () => {
     if (!eQ.trim()) { flash("질문을 입력해주세요", "red"); return; }
 
-    if (isNew) {
-      const newFaq: Faq = {
-        id: Date.now(), cat: eCat, q: eQ, a: eA, on: eOn,
-        images: eImages, yt: eYt,
-      };
-      setItems((prev) => [newFaq, ...prev]);
-      setSelectedId(newFaq.id);
-      setIsNew(false);
-    } else if (selectedId) {
-      setItems((prev) =>
-        prev.map((f) =>
-          f.id === selectedId
-            ? { ...f, cat: eCat, q: eQ, a: eA, on: eOn, images: eImages, yt: eYt }
-            : f,
-        ),
-      );
+    try {
+      if (isNew) {
+        const created = await adminFaqApi.createFaq({ cat: eCat, q: eQ, a: eA, on: eOn });
+        const newList = await adminFaqApi.getFaqs();
+        setItems(newList);
+        setSelectedId(created.id);
+        setIsNew(false);
+      } else if (selectedId) {
+        await adminFaqApi.updateFaq(selectedId, { cat: eCat, q: eQ, a: eA, on: eOn });
+        const newList = await adminFaqApi.getFaqs();
+        setItems(newList);
+      }
+      flash("저장했어요", "green");
+    } catch {
+      flash("저장에 실패했습니다.", "red");
     }
-    flash("저장했어요", "green");
   };
 
   /* delete */
-  const handleDelete = () => {
+  const handleDelete = async () => {
     if (isNew || !selectedId) return;
-    setItems((prev) => {
-      const next = prev.filter((f) => f.id !== selectedId);
-      if (next.length) loadEditor(next[0]);
+    try {
+      await adminFaqApi.deleteFaq(selectedId);
+      const newList = await adminFaqApi.getFaqs();
+      setItems(newList);
+      if (newList.length > 0) loadEditor(newList[0]);
       else handleNew();
-      return next;
-    });
+      flash("삭제했어요", "red");
+    } catch {
+      flash("삭제에 실패했습니다.", "red");
+    }
   };
 
   /* images */

@@ -1,6 +1,7 @@
 import { Avatar, AvatarFallback } from "@/app/components/ui/avatar";
 import { Heart, MessageCircle, Eye, Flame } from "lucide-react";
 import { CategoryBadge } from "./CategoryBadge";
+import { relTime } from "@/features/notification/types/notification";
 import type { CommunityPost } from "../types/community";
 
 interface PostCardProps {
@@ -34,7 +35,7 @@ export function PostCard({ post, onClick }: PostCardProps) {
           <Avatar className="w-6 h-6">
             <AvatarFallback className="text-[10px] bg-muted">{post.author.name[0]}</AvatarFallback>
           </Avatar>
-          {post.author.name} · {post.createdAt}
+          {post.author.name} · {relTime(post.createdAt)}
         </div>
         <div className="ct-post__meta">
           <span><Heart /> {post.stats.likeCount}</span>

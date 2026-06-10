@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.careertuner.support.mapper.TicketMapper">
+
+    <insert id="insert" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO support_ticket (user_id, subject, category, status, priority)
+        VALUES (#{userId}, #{subject}, #{category}, #{status}, #{priority})
+    </insert>
+
+    <select id="findByIdAndUserId" resultType="com.careertuner.support.domain.SupportTicket">
+        SELECT *
+          FROM support_ticket
+         WHERE id = #{id}
+           AND user_id = #{userId}
+    </select>
+
+</mapper>

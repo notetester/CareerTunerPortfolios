@@ -1,0 +1,170 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.careertuner.community.mapper.CommunityPostMapper">
+
+    <!-- 게시글 목록 조회 (정렬 옵션 지원) -->
+    <select id="findAll" resultType="com.careertuner.community.domain.CommunityPost">
+        SELECT cp.*,
+               u.name AS user_name
+          FROM community_post cp
+          JOIN users u ON cp.user_id = u.id
+         WHERE cp.status = #{status}
+        <if test="category != null">
+           AND cp.category = #{category}
+        </if>
+        <choose>
+            <when test="sort == 'popular'">
+                ORDER BY cp.like_count DESC, cp.created_at DESC
+            </when>
+            <when test="sort == 'comments'">
+                ORDER BY cp.comment_count DESC, cp.created_at DESC
+            </when>
+            <when test="sort == 'views'">
+                ORDER BY cp.view_count DESC, cp.created_at DESC
+            </when>
+            <otherwise>
+                ORDER BY cp.created_at DESC
+            </otherwise>
+        </choose>
+         LIMIT #{limit} OFFSET #{offset}
+    </select>
+
+    <!-- 게시글 총 개수 -->
+    <select id="countAll" resultType="int">
+        SELECT COUNT(*)
+          FROM community_post cp
+         WHERE cp.status = #{status}
+        <if test="category != null">
+           AND cp.category = #{category}
+        </if>
+    </select>
+
+    <!-- 게시글 상세 조회 -->
+    <select id="findById" resultType="com.careertuner.community.domain.CommunityPost">
+        SELECT cp.*,
+               u.name AS user_name
+          FROM community_post cp
+          JOIN users u ON cp.user_id = u.id
+         WHERE cp.id = #{id}
+    </select>
+
+    <!-- 게시글 작성 -->
+    <insert id="insert" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO community_post (user_id, category, title, content, company_name, job_title,
+                                    interview_type, difficulty, status, tags_json, is_anonymous)
+        VALUES (#{userId}, #{category}, #{title}, #{content}, #{companyName}, #{jobTitle},
+                #{interviewType}, #{difficulty}, #{status}, #{tagsJson}, #{anonymous})
+    </insert>
+
+    <!-- 게시글 수정 -->
+    <update id="update">
+        UPDATE community_post
+           SET title          = #{title},
+               content        = #{content},
+               company_name   = #{companyName},
+               job_title      = #{jobTitle},
+               interview_type = #{interviewType},
+               difficulty     = #{difficulty},
+               tags_json      = #{tagsJson},
+               is_anonymous   = #{anonymous}
+         WHERE id = #{id}
+    </update>
+
+    <!-- 게시글 상태 변경 (삭제/숨김) -->
+    <update id="updateStatus">
+        UPDATE community_post
+           SET status = #{status}
+         WHERE id = #{id}
+    </update>
+
+    <!-- 조회수 증가 -->
+    <update id="incrementViewCount">
+        UPDATE community_post
+           SET view_count = view_count + 1
+         WHERE id = #{id}
+    </update>
+
+    <!-- 인기글 조회 (가중치 점수: 좋아요*3 + 조회수 + 댓글*2, 최근 7일) -->
+    <select id="findHotPosts" resultType="com.careertuner.community.domain.CommunityPost">
+        SELECT cp.*,
+               u.name AS user_name
+          FROM community_post cp
+          JOIN users u ON cp.user_id = u.id
+         WHERE cp.status = #{status}
+           AND cp.created_at >= #{since}
+         ORDER BY (cp.like_count * 3 + cp.view_count + cp.comment_count * 2) DESC
+         LIMIT #{limit}
+    </select>
+
+    <!-- 댓글 수 증가 -->
+    <update id="incrementCommentCount">
+        UPDATE community_post
+           SET comment_count = comment_count + 1
+         WHERE id = #{id}
+    </update>
+
+    <!-- 댓글 수 감소 (음수 방지) -->
+    <update id="decrementCommentCount">
+        UPDATE community_post
+           SET comment_count = GREATEST(comment_count - 1, 0)
+         WHERE id = #{id}
+    </update>
+
+    <!-- 좋아요 수 증가 -->
+    <update id="incrementLikeCount">
+        UPDATE community_post
+           SET like_count = like_count + 1
+         WHERE id = #{id}
+    </update>
+
+    <!-- 좋아요 수 감소 (음수 방지) -->
+    <update id="decrementLikeCount">
+        UPDATE community_post
+           SET like_count = GREATEST(like_count - 1, 0)
+         WHERE id = #{id}
+    </update>
+
+    <!-- 북마크 수 증가 -->
+    <update id="incrementBookmarkCount">
+        UPDATE community_post
+           SET bookmark_count = bookmark_count + 1
+         WHERE id = #{id}
+    </update>
+
+    <!-- 북마크 수 감소 (음수 방지) -->
+    <update id="decrementBookmarkCount">
+        UPDATE community_post
+           SET bookmark_count = GREATEST(bookmark_count - 1, 0)
+         WHERE id = #{id}
+    </update>
+
+    <!-- 면접후기 확장 데이터 조회 -->
+    <select id="findInterviewReviewByPostId" resultType="com.careertuner.community.domain.CommunityInterviewReview">
+        SELECT * FROM community_interview_review
+         WHERE post_id = #{postId}
+    </select>
+
+    <!-- 면접후기 확장 데이터 upsert (1쿼리) -->
+    <insert id="upsertInterviewReview">
+        INSERT INTO community_interview_review (post_id, company_name, job_role, interview_type,
+                                                difficulty, interview_date, result_status, questions_json)
+        VALUES (#{postId}, #{companyName}, #{jobRole}, #{interviewType},
+                #{difficulty}, #{interviewDate}, #{resultStatus}, #{questionsJson})
+        ON DUPLICATE KEY UPDATE
+            company_name    = VALUES(company_name),
+            job_role        = VALUES(job_role),
+            interview_type  = VALUES(interview_type),
+            difficulty      = VALUES(difficulty),
+            interview_date  = VALUES(interview_date),
+            result_status   = VALUES(result_status),
+            questions_json  = VALUES(questions_json)
+    </insert>
+
+    <!-- 면접후기 확장 데이터 삭제 -->
+    <delete id="deleteInterviewReview">
+        DELETE FROM community_interview_review
+         WHERE post_id = #{postId}
+    </delete>
+
+</mapper>

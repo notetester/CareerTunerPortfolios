@@ -9,9 +9,10 @@ import {
 } from "@/app/components/ui/select";
 import AdminShell from "../../../components/AdminShell";
 import {
-  INQUIRIES as INITIAL, TEMPLATES, ASSIGNEES,
+  TEMPLATES, ASSIGNEES,
   type Inquiry, type InquiryStatus,
 } from "../data/inquiriesData";
+import * as adminTicketApi from "../api/adminTicketApi";
 import "./admin-inquiries.css";
 
 type TabKey = "pending" | "progress" | "answered" | "all";
@@ -31,13 +32,6 @@ const STATUS_CLS: Record<InquiryStatus, string> = {
   hold: "inq-st--hold", answered: "inq-st--answered",
 };
 
-const STAT_CARDS = [
-  { label: "미답변", icon: Inbox, cls: "inq-stat--amber" },
-  { label: "오늘 답변", value: 14, icon: Send, cls: "inq-stat--blue" },
-  { label: "평균 응답", value: "5.2시간", icon: Timer, cls: "inq-stat--slate" },
-  { label: "만족도", value: "96%", icon: Smile, cls: "inq-stat--green" },
-];
-
 const CAT_COLOR: Record<string, string> = {
   "결제": "role", "AI기능": "interview", "계정": "job",
   "기술문제": "pass", "기타": "free",
@@ -48,12 +42,28 @@ function Toast({ msg, tone }: { msg: string; tone: string }) {
 }
 
 export default function AdminInquiries() {
-  const [items, setItems] = useState<Inquiry[]>(INITIAL);
+  const [items, setItems] = useState<Inquiry[]>([]);
   const [tab, setTab] = useState<TabKey>("pending");
-  const [selectedId, setSelectedId] = useState<number>(INITIAL[0].id);
+  const [selectedId, setSelectedId] = useState<number | null>(null);
   const [reply, setReply] = useState("");
   const [toast, setToast] = useState<{ msg: string; tone: string } | null>(null);
   const chatRef = useRef<HTMLDivElement>(null);
+
+  /* 초기 목록 로드 */
+  useEffect(() => {
+    adminTicketApi.getTickets().then((list) => {
+      setItems(list);
+      if (list.length > 0) setSelectedId(list[0].id);
+    }).catch(() => flash("문의 목록을 불러오지 못했습니다.", "red"));
+  }, []);
+
+  /* 선택 변경 시 상세 로드 */
+  useEffect(() => {
+    if (selectedId == null) return;
+    adminTicketApi.getTicketDetail(selectedId).then((detail) => {
+      setItems((prev) => prev.map((i) => i.id === selectedId ? detail : i));
+    }).catch(() => {/* 무시 */});
+  }, [selectedId]);
 
   const selected = items.find((i) => i.id === selectedId) ?? items[0];
 
@@ -76,38 +86,60 @@ export default function AdminInquiries() {
   /* scroll chat to bottom */
   useEffect(() => {
     if (chatRef.current) chatRef.current.scrollTop = chatRef.current.scrollHeight;
-  }, [selected.msgs.length, selectedId]);
+  }, [selected?.msgs.length, selectedId]);
 
   const flash = (msg: string, tone: string) => {
     setToast({ msg, tone });
     setTimeout(() => setToast(null), 2200);
   };
 
-  /* update field */
-  const updateField = (id: number, patch: Partial<Inquiry>) => {
-    setItems((prev) => prev.map((i) => i.id === id ? { ...i, ...patch } : i));
+  /* update status/priority */
+  const updateField = async (id: number, patch: { status?: string; priority?: boolean }) => {
+    try {
+      const apiPatch: { status?: string; priority?: string } = {};
+      if (patch.status !== undefined) apiPatch.status = patch.status.toUpperCase();
+      if (patch.priority !== undefined) apiPatch.priority = patch.priority ? "HIGH" : "NORMAL";
+      const updated = await adminTicketApi.updateTicket(id, apiPatch);
+      setItems((prev) => prev.map((i) => i.id === id ? updated : i));
+    } catch {
+      flash("상태 변경에 실패했습니다.", "red");
+    }
   };
 
   /* send reply */
-  const handleSend = () => {
-    if (!reply.trim()) return;
-    const newMsg = { who: "admin" as const, name: "관리자", time: "방금", text: reply };
-    setItems((prev) =>
-      prev.map((i) =>
-        i.id === selectedId
-          ? { ...i, status: "answered" as const, msgs: [...i.msgs, newMsg] }
-          : i,
-      ),
-    );
-    setReply("");
-    flash("답변을 전송했어요", "green");
+  const handleSend = async () => {
+    if (!reply.trim() || selectedId == null) return;
+    try {
+      const updated = await adminTicketApi.reply(selectedId, reply, false);
+      setItems((prev) => prev.map((i) => i.id === selectedId ? updated : i));
+      setReply("");
+      flash("답변을 전송했어요", "green");
+    } catch {
+      flash("답변 전송에 실패했습니다.", "red");
+    }
   };
 
   /* save memo */
-  const handleSaveMemo = (memo: string) => {
-    updateField(selectedId, { memo });
-    flash("메모를 저장했어요", "slate");
+  const handleSaveMemo = async (memo: string) => {
+    if (selectedId == null) return;
+    try {
+      await adminTicketApi.reply(selectedId, memo, true);
+      setItems((prev) =>
+        prev.map((i) => i.id === selectedId ? { ...i, memo } : i),
+      );
+      flash("메모를 저장했어요", "slate");
+    } catch {
+      flash("메모 저장에 실패했습니다.", "red");
+    }
   };
+
+  if (!selected) {
+    return (
+      <AdminShell active="inquiries" breadcrumb="문의 관리" title="문의 관리" icon={Mail} desc="회원 문의를 확인하고 답변합니다.">
+        <p className="inq-empty">불러오는 중...</p>
+      </AdminShell>
+    );
+  }
 
   const ck = CAT_COLOR[selected.cat] ?? "free";
 
@@ -121,11 +153,16 @@ export default function AdminInquiries() {
     >
       {/* Stats */}
       <div className="inq-stats">
-        {STAT_CARDS.map((s, idx) => (
+        {[
+          { label: "미답변", value: pendingCount, icon: Inbox, cls: "inq-stat--amber" },
+          { label: "오늘 답변", value: answeredCount, icon: Send, cls: "inq-stat--blue" },
+          { label: "평균 응답", value: "–", icon: Timer, cls: "inq-stat--slate" },
+          { label: "만족도", value: "–", icon: Smile, cls: "inq-stat--green" },
+        ].map((s) => (
           <div key={s.label} className={`inq-stat ${s.cls}`}>
             <div className="inq-stat__ic"><s.icon /></div>
             <div>
-              <div className="inq-stat__v">{idx === 0 ? pendingCount : s.value}</div>
+              <div className="inq-stat__v">{s.value}</div>
               <div className="inq-stat__l">{s.label}</div>
             </div>
           </div>
@@ -193,7 +230,7 @@ export default function AdminInquiries() {
               <span className="inq-controls__label">상태</span>
               <Select
                 value={selected.status}
-                onValueChange={(v) => updateField(selectedId, { status: v as InquiryStatus })}
+                onValueChange={(v) => updateField(selectedId!, { status: v })}
               >
                 <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
                 <SelectContent>
@@ -207,7 +244,7 @@ export default function AdminInquiries() {
               <span className="inq-controls__label">담당자</span>
               <Select
                 value={selected.assignee}
-                onValueChange={(v) => updateField(selectedId, { assignee: v })}
+                onValueChange={(v) => setItems((prev) => prev.map((i) => i.id === selectedId ? { ...i, assignee: v } : i))}
               >
                 <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
                 <SelectContent>
@@ -217,7 +254,7 @@ export default function AdminInquiries() {
             </div>
             <button
               className={`inq-controls__urgent ${selected.priority ? "is-on" : ""}`}
-              onClick={() => updateField(selectedId, { priority: !selected.priority })}
+              onClick={() => updateField(selectedId!, { priority: !selected.priority })}
               title="긴급 토글"
             >
               <Flame />
@@ -228,7 +265,7 @@ export default function AdminInquiries() {
           <div className="inq-context">
             <span className="inq-pill">{selected.plan}</span>
             <span className="inq-pill">가입 {selected.joined}</span>
-            <span className="inq-pill">{selected.lastPay}</span>
+            <span className="inq-pill">{selected.lastPay || "결제 내역 없음"}</span>
             <a href="/admin/users" className="inq-context__link">회원 상세 <ExternalLink /></a>
           </div>
 

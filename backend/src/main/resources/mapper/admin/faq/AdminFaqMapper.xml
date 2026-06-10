@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.careertuner.admin.faq.mapper.AdminFaqMapper">
+
+    <resultMap id="faqResult" type="com.careertuner.admin.faq.dto.AdminFaqResponse">
+        <id     property="id"         column="id"/>
+        <result property="category"   column="category"/>
+        <result property="question"   column="question"/>
+        <result property="answer"     column="answer"/>
+        <result property="published"  column="is_published"/>
+        <result property="sortOrder"  column="sort_order"/>
+        <result property="createdAt"  column="created_at"/>
+        <result property="updatedAt"  column="updated_at"/>
+    </resultMap>
+
+    <select id="findAll" resultMap="faqResult">
+        SELECT id, category, question, answer, is_published, sort_order, created_at, updated_at
+          FROM faq
+         ORDER BY sort_order, id
+    </select>
+
+    <select id="findById" resultMap="faqResult">
+        SELECT id, category, question, answer, is_published, sort_order, created_at, updated_at
+          FROM faq
+         WHERE id = #{id}
+    </select>
+
+    <insert id="insert" useGeneratedKeys="true" keyColumn="id">
+        INSERT INTO faq (category, question, answer, is_published, sort_order, admin_id)
+        VALUES (#{category}, #{question}, #{answer}, #{published}, #{sortOrder}, #{adminId})
+    </insert>
+
+    <select id="lastInsertId" resultType="long">
+        SELECT LAST_INSERT_ID()
+    </select>
+
+    <update id="update">
+        UPDATE faq
+           SET category     = #{category},
+               question     = #{question},
+               answer       = #{answer},
+               is_published = #{published},
+               sort_order   = #{sortOrder},
+               updated_at   = CURRENT_TIMESTAMP
+         WHERE id = #{id}
+    </update>
+
+    <delete id="delete">
+        DELETE FROM faq
+         WHERE id = #{id}
+    </delete>
+
+</mapper>
