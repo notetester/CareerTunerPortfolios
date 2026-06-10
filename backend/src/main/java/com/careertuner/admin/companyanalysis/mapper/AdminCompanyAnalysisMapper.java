@@ -16,5 +16,7 @@ public interface AdminCompanyAnalysisMapper {
     int updateMetadata(@Param("id") Long id,
                        @Param("sourceType") String sourceType,
                        @Param("checkedAt") LocalDateTime checkedAt,
-                       @Param("refreshRecommendedAt") LocalDateTime refreshRecommendedAt);
+                       @Param("refreshRecommendedAt") LocalDateTime refreshRecommendedAt,
+                       @Param("clearCheckedAt") boolean clearCheckedAt,
+                       @Param("clearRefreshRecommendedAt") boolean clearRefreshRecommendedAt);
 }

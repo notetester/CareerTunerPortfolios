@@ -3,6 +3,7 @@ package com.careertuner.applicationcase.service;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doThrow;
@@ -66,6 +67,86 @@ class ApplicationCaseServiceImplTest {
 
         verify(applicationCaseMapper).softDeleteApplicationCase(10L, 1L);
         verify(applicationCaseMapper, never()).deleteApplicationCase(10L, 1L);
+    }
+
+    @Test
+    void listApplicationCasesUsesExplicitDeletedView() {
+        ApplicationCaseMapper applicationCaseMapper = mock(ApplicationCaseMapper.class);
+        JobPostingMapper jobPostingMapper = mock(JobPostingMapper.class);
+        ApplicationCaseAccessService accessService = new ApplicationCaseAccessService(applicationCaseMapper, jobPostingMapper);
+        ApplicationCaseServiceImpl service = applicationCaseService(applicationCaseMapper, accessService);
+        ApplicationCase deleted = ApplicationCase.builder()
+                .id(10L)
+                .userId(1L)
+                .companyName("Test Company")
+                .jobTitle("Backend Developer")
+                .sourceType("TEXT")
+                .status("DRAFT")
+                .deletedAt(LocalDateTime.now())
+                .build();
+
+        when(applicationCaseMapper.findApplicationCasesByUserId(1L, "DELETED", false)).thenReturn(List.of(deleted));
+
+        List<ApplicationCaseResponse> response = service.list(1L, "deleted", true);
+
+        assertThat(response).hasSize(1);
+        assertThat(response.get(0).id()).isEqualTo(10L);
+        verify(applicationCaseMapper).findApplicationCasesByUserId(1L, "DELETED", false);
+    }
+
+    @Test
+    void listApplicationCasesKeepsIncludeArchivedCompatibilityWhenViewIsOmitted() {
+        ApplicationCaseMapper applicationCaseMapper = mock(ApplicationCaseMapper.class);
+        JobPostingMapper jobPostingMapper = mock(JobPostingMapper.class);
+        ApplicationCaseAccessService accessService = new ApplicationCaseAccessService(applicationCaseMapper, jobPostingMapper);
+        ApplicationCaseServiceImpl service = applicationCaseService(applicationCaseMapper, accessService);
+
+        when(applicationCaseMapper.findApplicationCasesByUserId(1L, null, true)).thenReturn(List.of());
+
+        List<ApplicationCaseResponse> response = service.list(1L, null, true);
+
+        assertThat(response).isEmpty();
+        verify(applicationCaseMapper).findApplicationCasesByUserId(1L, null, true);
+    }
+
+    @Test
+    void listApplicationCasesRejectsUnknownView() {
+        ApplicationCaseMapper applicationCaseMapper = mock(ApplicationCaseMapper.class);
+        JobPostingMapper jobPostingMapper = mock(JobPostingMapper.class);
+        ApplicationCaseAccessService accessService = new ApplicationCaseAccessService(applicationCaseMapper, jobPostingMapper);
+        ApplicationCaseServiceImpl service = applicationCaseService(applicationCaseMapper, accessService);
+
+        assertThatThrownBy(() -> service.list(1L, "ALL", false))
+                .isInstanceOf(BusinessException.class);
+
+        verify(applicationCaseMapper, never()).findApplicationCasesByUserId(any(), any(), anyBoolean());
+    }
+
+    @Test
+    void restoreApplicationCaseClearsDeletedAndArchivedState() {
+        ApplicationCaseMapper applicationCaseMapper = mock(ApplicationCaseMapper.class);
+        JobPostingMapper jobPostingMapper = mock(JobPostingMapper.class);
+        ApplicationCaseAccessService accessService = new ApplicationCaseAccessService(applicationCaseMapper, jobPostingMapper);
+        ApplicationCaseServiceImpl service = applicationCaseService(applicationCaseMapper, accessService);
+
+        when(applicationCaseMapper.restoreDeletedApplicationCase(10L, 1L)).thenReturn(1);
+
+        service.restore(1L, 10L);
+
+        verify(applicationCaseMapper).restoreDeletedApplicationCase(10L, 1L);
+    }
+
+    @Test
+    void restoreApplicationCaseThrowsNotFoundWhenNoDeletedRowIsUpdated() {
+        ApplicationCaseMapper applicationCaseMapper = mock(ApplicationCaseMapper.class);
+        JobPostingMapper jobPostingMapper = mock(JobPostingMapper.class);
+        ApplicationCaseAccessService accessService = new ApplicationCaseAccessService(applicationCaseMapper, jobPostingMapper);
+        ApplicationCaseServiceImpl service = applicationCaseService(applicationCaseMapper, accessService);
+
+        when(applicationCaseMapper.restoreDeletedApplicationCase(10L, 1L)).thenReturn(0);
+
+        assertThatThrownBy(() -> service.restore(1L, 10L))
+                .isInstanceOf(BusinessException.class);
     }
 
     @Test

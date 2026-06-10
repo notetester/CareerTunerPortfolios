@@ -36,9 +36,17 @@
 
     <update id="updateMetadata">
         UPDATE company_analysis
-        SET source_type = COALESCE(#{sourceType}, source_type),
-            checked_at = COALESCE(#{checkedAt}, checked_at),
-            refresh_recommended_at = COALESCE(#{refreshRecommendedAt}, refresh_recommended_at)
+        SET source_type = #{sourceType},
+            checked_at = CASE
+                WHEN #{clearCheckedAt} THEN NULL
+                WHEN #{checkedAt} IS NOT NULL THEN #{checkedAt}
+                ELSE checked_at
+            END,
+            refresh_recommended_at = CASE
+                WHEN #{clearRefreshRecommendedAt} THEN NULL
+                WHEN #{refreshRecommendedAt} IS NOT NULL THEN #{refreshRecommendedAt}
+                ELSE refresh_recommended_at
+            END
         WHERE id = #{id}
     </update>
 </mapper>

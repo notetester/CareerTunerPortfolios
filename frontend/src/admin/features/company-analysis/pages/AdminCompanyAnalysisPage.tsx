@@ -84,13 +84,30 @@ export function AdminCompanyAnalysisPage() {
 
   const saveMetadata = async (analysisId: number) => {
     const metadata = metadataForms[analysisId] ?? { sourceType: "", checkedAt: "", refreshRecommendedAt: "" };
+    const original = rows.find((row) => row.id === analysisId);
+    const sourceType = blankToNull(metadata.sourceType);
+    if (!sourceType) {
+      setError("출처 유형은 비워둘 수 없습니다.");
+      return;
+    }
+    const clearCheckedAt = !metadata.checkedAt.trim() && Boolean(original?.checkedAt);
+    const clearRefreshRecommendedAt = !metadata.refreshRecommendedAt.trim() && Boolean(original?.refreshRecommendedAt);
+    if (
+      (clearCheckedAt || clearRefreshRecommendedAt) &&
+      !window.confirm("비어 있는 날짜 필드는 저장하면 기존 값이 삭제됩니다. 계속할까요?")
+    ) {
+      return;
+    }
+
     setSavingId(analysisId);
     setError(null);
     try {
       await updateAdminCompanyAnalysisMetadata(analysisId, {
-        sourceType: blankToNull(metadata.sourceType),
+        sourceType,
         checkedAt: blankToNull(metadata.checkedAt),
         refreshRecommendedAt: blankToNull(metadata.refreshRecommendedAt),
+        clearCheckedAt,
+        clearRefreshRecommendedAt,
       });
       await load();
     } catch (err) {

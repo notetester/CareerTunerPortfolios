@@ -19,13 +19,15 @@ public interface ApplicationCaseService {
 
     ApplicationCaseResponse create(Long userId, CreateApplicationCaseRequest request);
 
-    List<ApplicationCaseResponse> list(Long userId, boolean includeArchived);
+    List<ApplicationCaseResponse> list(Long userId, String view, boolean includeArchived);
 
     ApplicationCaseResponse get(Long userId, Long id);
 
     ApplicationCaseResponse update(Long userId, Long id, UpdateApplicationCaseRequest request);
 
     void delete(Long userId, Long id);
+
+    void restore(Long userId, Long id);
 
     JobPostingResponse saveJobPosting(Long userId, Long applicationCaseId, JobPostingRequest request);
 
