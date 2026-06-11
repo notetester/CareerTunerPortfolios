@@ -4,6 +4,7 @@ import { useAuth } from "../auth/AuthContext";
 import { Button } from "../components/ui/button";
 import { Card, CardContent } from "../components/ui/card";
 import { Badge } from "../components/ui/badge";
+import { Checkbox } from "../components/ui/checkbox";
 import { Input } from "../components/ui/input";
 import { ApiError } from "../lib/api";
 import { Sparkles, Mail, Lock, Eye, EyeOff, CheckCircle2, ArrowRight, Loader2 } from "lucide-react";
@@ -16,8 +17,13 @@ export function LoginPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [passwordConfirm, setPasswordConfirm] = useState("");
+  const [termsAgreed, setTermsAgreed] = useState(false);
+  const [privacyAgreed, setPrivacyAgreed] = useState(false);
+  const [aiDataAgreed, setAiDataAgreed] = useState(false);
+  const [marketingAgreed, setMarketingAgreed] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [dormantEmail, setDormantEmail] = useState<string | null>(null);
   const navigate = useNavigate();
   const { login, register, socialLogin } = useAuth();
 
@@ -29,6 +35,7 @@ export function LoginPage() {
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setError(null);
+    setDormantEmail(null);
 
     const normalizedEmail = email.trim();
     if (!normalizedEmail || !password) {
@@ -44,6 +51,10 @@ export function LoginPage() {
         setError("비밀번호 확인이 일치하지 않습니다.");
         return;
       }
+      if (!termsAgreed || !privacyAgreed) {
+        setError("필수 약관과 개인정보 처리방침에 동의해 주세요.");
+        return;
+      }
     }
 
     try {
@@ -51,11 +62,20 @@ export function LoginPage() {
       if (mode === "login") {
         await login(normalizedEmail, password);
       } else {
-        await register(normalizedEmail, password, name.trim());
+        await register(normalizedEmail, password, name.trim(), {
+          termsAgreed,
+          privacyAgreed,
+          aiDataAgreed,
+          marketingAgreed,
+        });
       }
       navigate("/dashboard", { replace: true });
     } catch (err) {
-      setError(toAuthErrorMessage(err));
+      const message = toAuthErrorMessage(err);
+      setError(message);
+      if (mode === "login" && err instanceof ApiError && err.status === 403 && message.includes("휴면")) {
+        setDormantEmail(normalizedEmail);
+      }
     } finally {
       setSubmitting(false);
     }
@@ -228,17 +248,51 @@ export function LoginPage() {
                       ))}
                     </div>
                   </div>
+                  <div className="space-y-2 rounded-lg border border-slate-200 bg-slate-50 p-3">
+                    <ConsentCheckbox
+                      checked={termsAgreed}
+                      onCheckedChange={setTermsAgreed}
+                      label="이용약관 동의"
+                      required
+                    />
+                    <ConsentCheckbox
+                      checked={privacyAgreed}
+                      onCheckedChange={setPrivacyAgreed}
+                      label="개인정보 처리방침 동의"
+                      required
+                    />
+                    <ConsentCheckbox
+                      checked={aiDataAgreed}
+                      onCheckedChange={setAiDataAgreed}
+                      label="AI 분석 데이터 활용 동의"
+                    />
+                    <ConsentCheckbox
+                      checked={marketingAgreed}
+                      onCheckedChange={setMarketingAgreed}
+                      label="마케팅 정보 수신 동의"
+                    />
+                  </div>
                 </>
               )}
               {mode === "login" && (
                 <div className="flex justify-end">
-                  <button type="button" className="text-xs text-blue-600 hover:text-blue-700">비밀번호를 잊으셨나요?</button>
+                  <Link to="/auth/forgot-password" className="text-xs text-blue-600 hover:text-blue-700">
+                    비밀번호를 잊으셨나요?
+                  </Link>
                 </div>
               )}
 
               {error && (
-                <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
-                  {error}
+                <div className="space-y-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+                  <div>{error}</div>
+                  {dormantEmail && (
+                    <Link
+                      to={`/auth/release-dormant?email=${encodeURIComponent(dormantEmail)}`}
+                      className="inline-flex text-xs font-semibold text-red-700 underline underline-offset-2"
+                    >
+                      휴면 해제 메일 요청하기
+                    </Link>
+                  )}
                 </div>
               )}
 
@@ -263,5 +317,30 @@ export function LoginPage() {
         </Card>
       </div>
     </div>
+  );
+}
+
+function ConsentCheckbox({
+  checked,
+  onCheckedChange,
+  label,
+  required = false,
+}: {
+  checked: boolean;
+  onCheckedChange: (checked: boolean) => void;
+  label: string;
+  required?: boolean;
+}) {
+  return (
+    <label className="flex items-center gap-2 text-xs font-medium text-slate-700">
+      <Checkbox
+        checked={checked}
+        onCheckedChange={(nextChecked) => onCheckedChange(nextChecked === true)}
+      />
+      <span>
+        {required && <span className="text-red-500">[필수] </span>}
+        {label}
+      </span>
+    </label>
   );
 }

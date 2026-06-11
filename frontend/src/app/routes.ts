@@ -19,6 +19,9 @@ import { LegalPage } from "./pages/Legal";
 import { LoginPage } from "./pages/Login";
 import { AuthCallbackPage } from "./pages/AuthCallback";
 import { VerifyEmailResultPage } from "./pages/VerifyEmailResult";
+import { ForgotPasswordPage } from "./pages/ForgotPassword";
+import { ResetPasswordPage } from "./pages/ResetPassword";
+import { ReleaseDormantPage } from "./pages/ReleaseDormant";
 import { adminRoutes } from "../admin/routes";
 
 const basename = import.meta.env.BASE_URL === "/"
@@ -63,6 +66,9 @@ export const router = createBrowserRouter([
       { path: "login", Component: LoginPage },
       { path: "auth/callback", Component: AuthCallbackPage },
       { path: "auth/verify-email/result", Component: VerifyEmailResultPage },
+      { path: "auth/forgot-password", Component: ForgotPasswordPage },
+      { path: "auth/reset-password", Component: ResetPasswordPage },
+      { path: "auth/release-dormant", Component: ReleaseDormantPage },
       ...adminRoutes,
     ],
   },
