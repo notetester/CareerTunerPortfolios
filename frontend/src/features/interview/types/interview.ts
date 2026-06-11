@@ -79,6 +79,8 @@ export interface SubmitAnswerRequest {
   answerText: string;
   audioUrl?: string | null;
   videoUrl?: string | null;
+  /** 사용자에게 보여준 모범답안(답안지). 있으면 채점의 만점 기준으로 함께 보낸다. */
+  modelAnswer?: string | null;
 }
 
 /** 자율 에이전트 진행 단계 (AI 사고과정 트레이스) */

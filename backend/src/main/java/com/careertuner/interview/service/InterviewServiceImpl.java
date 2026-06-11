@@ -178,8 +178,10 @@ public class InterviewServiceImpl implements InterviewService {
         ApplicationCase applicationCase = accessService.requireOwned(userId, session.getApplicationCaseId());
 
         // 멀티에이전트: Evaluator → Critic(적대적 검증) 으로 최종 점수를 산출하고 단계를 trace 에 남긴다.
+        // 사용자가 모범답안을 본 뒤 답했다면 그 모범답안을 만점 기준 답안지로 함께 넘긴다.
         InterviewAgentOrchestrator.OrchestratedEvaluation evaluation =
-                orchestrator.evaluateAnswer(userId, session, applicationCase, question, request.answerText());
+                orchestrator.evaluateAnswer(userId, session, applicationCase, question, request.answerText(),
+                        blankToNull(request.modelAnswer()));
 
         InterviewAnswer answer = InterviewAnswer.builder()
                 .questionId(questionId)

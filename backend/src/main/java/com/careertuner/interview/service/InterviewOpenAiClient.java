@@ -82,23 +82,29 @@ public class InterviewOpenAiClient implements InterviewAnswerEvaluator {
         return new GeneratedQuestions(questions, usage(root));
     }
 
-    /** 단일 답변 평가(점수/피드백/개선답변). ragContext 가 있으면 평가 근거로 함께 제공한다. */
+    /**
+     * 단일 답변 평가(점수/피드백/개선답변). ragContext 가 있으면 평가 근거로 함께 제공한다.
+     * referenceModelAnswer(사용자에게 보여준 모범답안)가 있으면 만점 기준 답안지로 함께 넘긴다.
+     */
     public AnswerEvaluation evaluateAnswer(String question, String answerText, ApplicationCase applicationCase,
-                                           String ragContext) {
+                                           String ragContext, String referenceModelAnswer) {
         String reference = ragContext == null || ragContext.isBlank()
                 ? ""
                 : "\n참고 자료(평가 기준·지식베이스):\n" + ragContext + "\n";
+        String modelKey = referenceModelAnswer == null || referenceModelAnswer.isBlank()
+                ? ""
+                : "\n기준 모범답안(이 답안을 만점 기준으로 삼는다):\n" + referenceModelAnswer + "\n";
         String userPrompt = """
                 회사명: %s
                 직무명: %s
-                %s
+                %s%s
                 질문:
                 %s
 
                 지원자 답변:
                 %s
                 """.formatted(applicationCase.getCompanyName(), applicationCase.getJobTitle(),
-                reference, question, answerText);
+                reference, modelKey, question, answerText);
 
         JsonNode root = post(structuredRequest("interview_answer_evaluation", evaluationSchema(),
                 InterviewPromptCatalog.EVALUATION_SYSTEM_PROMPT, userPrompt, modelProperties.getJudge()));
@@ -170,18 +176,22 @@ public class InterviewOpenAiClient implements InterviewAnswerEvaluator {
     }
 
     /** Critic 에이전트: 원 채점 결과를 적대적으로 검증하고 필요 시 점수를 조정한다. */
-    public CritiqueResult critiqueEvaluation(String question, String answerText, int originalScore, String feedback) {
+    public CritiqueResult critiqueEvaluation(String question, String answerText, int originalScore, String feedback,
+                                             String referenceModelAnswer) {
+        String modelKey = referenceModelAnswer == null || referenceModelAnswer.isBlank()
+                ? ""
+                : "\n기준 모범답안(이 답안을 만점 기준으로 삼는다):\n" + referenceModelAnswer + "\n";
         String userPrompt = """
                 질문:
                 %s
 
                 지원자 답변:
                 %s
-
+                %s
                 원 채점 점수: %d
                 원 채점 피드백:
                 %s
-                """.formatted(question, answerText, originalScore, feedback == null ? "" : feedback);
+                """.formatted(question, answerText, modelKey, originalScore, feedback == null ? "" : feedback);
 
         JsonNode root = post(structuredRequest("interview_critique", critiqueSchema(),
                 InterviewPromptCatalog.CRITIC_SYSTEM_PROMPT, userPrompt, modelProperties.getJudge()));

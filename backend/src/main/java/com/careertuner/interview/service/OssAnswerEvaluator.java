@@ -47,14 +47,18 @@ public class OssAnswerEvaluator implements InterviewAnswerEvaluator {
 
     @Override
     public InterviewOpenAiClient.AnswerEvaluation evaluateAnswer(String question, String answerText,
-                                                                 ApplicationCase applicationCase, String ragContext) {
+                                                                 ApplicationCase applicationCase, String ragContext,
+                                                                 String referenceModelAnswer) {
         String reference = ragContext == null || ragContext.isBlank()
                 ? ""
                 : "\n참고 자료(평가 기준·지식베이스):\n" + ragContext + "\n";
+        String modelKey = referenceModelAnswer == null || referenceModelAnswer.isBlank()
+                ? ""
+                : "\n기준 모범답안(이 답안을 만점 기준으로 삼는다):\n" + referenceModelAnswer + "\n";
         String userPrompt = """
                 회사명: %s
                 직무명: %s
-                %s
+                %s%s
                 질문:
                 %s
 
@@ -63,7 +67,7 @@ public class OssAnswerEvaluator implements InterviewAnswerEvaluator {
 
                 반드시 {"score": 0~100 정수, "feedback": "...", "improvedAnswer": "..."} JSON 으로만 답하라.
                 """.formatted(applicationCase.getCompanyName(), applicationCase.getJobTitle(),
-                reference, question, answerText);
+                reference, modelKey, question, answerText);
 
         JsonNode payload = chat(InterviewPromptCatalog.EVALUATION_SYSTEM_PROMPT, userPrompt);
         return new InterviewOpenAiClient.AnswerEvaluation(
@@ -75,20 +79,24 @@ public class OssAnswerEvaluator implements InterviewAnswerEvaluator {
 
     @Override
     public InterviewOpenAiClient.CritiqueResult critiqueEvaluation(String question, String answerText,
-                                                                   int originalScore, String feedback) {
+                                                                   int originalScore, String feedback,
+                                                                   String referenceModelAnswer) {
+        String modelKey = referenceModelAnswer == null || referenceModelAnswer.isBlank()
+                ? ""
+                : "\n기준 모범답안(이 답안을 만점 기준으로 삼는다):\n" + referenceModelAnswer + "\n";
         String userPrompt = """
                 질문:
                 %s
 
                 지원자 답변:
                 %s
-
+                %s
                 원 채점 점수: %d
                 원 채점 피드백:
                 %s
 
                 반드시 {"adjustedScore": 0~100 정수, "verdict": "유지" 또는 "조정", "reason": "..."} JSON 으로만 답하라.
-                """.formatted(question, answerText, originalScore, feedback == null ? "" : feedback);
+                """.formatted(question, answerText, modelKey, originalScore, feedback == null ? "" : feedback);
 
         JsonNode payload = chat(InterviewPromptCatalog.CRITIC_SYSTEM_PROMPT, userPrompt);
         return new InterviewOpenAiClient.CritiqueResult(

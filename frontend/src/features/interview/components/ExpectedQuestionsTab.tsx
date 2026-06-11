@@ -51,7 +51,8 @@ function QuestionItem({
     setSubmitting(true);
     setError(null);
     try {
-      const evaluated = await submitAnswer(question.id, { answerText: answer });
+      // 모범답안을 봤다면 그 답안을 만점 기준(답안지)으로 함께 보낸다.
+      const evaluated = await submitAnswer(question.id, { answerText: answer, modelAnswer });
       setResult(evaluated);
     } catch (err) {
       setError(err instanceof Error ? err.message : "답변 평가에 실패했습니다.");
