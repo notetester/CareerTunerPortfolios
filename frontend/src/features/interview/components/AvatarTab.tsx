@@ -124,7 +124,7 @@ export function AvatarTab() {
       <CardHeader>
         <CardTitle className="flex items-center gap-2 text-base">
           <Video className="size-4 text-purple-600" />
-          영상 면접
+          아바타 화상 면접
           <Badge className="bg-purple-100 text-purple-700">녹화 가능</Badge>
         </CardTitle>
       </CardHeader>

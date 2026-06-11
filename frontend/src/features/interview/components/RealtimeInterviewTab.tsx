@@ -140,7 +140,7 @@ export function RealtimeInterviewTab({ session }: { session: InterviewSession | 
   if (!session) {
     return (
       <div className="rounded-xl border border-dashed border-slate-200 bg-white p-10 text-center text-sm text-slate-400">
-        "면접 모드 선택" 탭에서 지원 건과 모드를 고르고 면접을 시작하면 실시간 음성 면접관과 대화할 수 있습니다.
+        "면접 모드 선택" 탭에서 지원 건과 모드를 고르고 면접을 시작하면 음성 모의면접을 진행할 수 있습니다.
       </div>
     );
   }
@@ -151,7 +151,7 @@ export function RealtimeInterviewTab({ session }: { session: InterviewSession | 
         <CardHeader>
           <CardTitle className="flex items-center gap-2 text-base">
             <Radio className="size-4 text-rose-600" />
-            실시간 음성 면접관
+            음성 모의면접
             {status === "live" ? (
               <Badge className="gap-1 bg-rose-100 text-rose-700">
                 <span className="size-2 animate-pulse rounded-full bg-rose-500" /> LIVE
