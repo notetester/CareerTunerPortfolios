@@ -107,6 +107,27 @@ public class InterviewOpenAiClient implements InterviewAnswerEvaluator {
                 usage(root));
     }
 
+    /** 질문에 대한 모범 답변 생성(학습용). 답변 제출 없이도 호출 가능. */
+    public ModelAnswer generateModelAnswer(String question, ApplicationCase applicationCase, String modeLabel) {
+        String userPrompt = """
+                회사명: %s
+                직무명: %s
+                면접 모드: %s
+
+                질문:
+                %s
+                """.formatted(applicationCase.getCompanyName(), applicationCase.getJobTitle(), modeLabel, question);
+
+        JsonNode root = post(structuredRequest("interview_model_answer", modelAnswerSchema(),
+                InterviewPromptCatalog.MODEL_ANSWER_SYSTEM_PROMPT, userPrompt));
+        JsonNode payload = parseOutputJson(root);
+        String modelAnswer = payload.path("modelAnswer").asText("").trim();
+        if (modelAnswer.isBlank()) {
+            throw new BusinessException(ErrorCode.INTERNAL_ERROR, "AI가 모범답안을 생성하지 못했습니다.");
+        }
+        return new ModelAnswer(modelAnswer, usage(root));
+    }
+
     /** 원 질문 + 지원자 답변 기반 꼬리 질문 생성. */
     public GeneratedQuestions generateFollowUps(String question, String answerText,
                                                 ApplicationCase applicationCase, int count) {
@@ -375,6 +396,12 @@ public class InterviewOpenAiClient implements InterviewAnswerEvaluator {
         return objectSchema(properties, List.of("score", "feedback", "improvedAnswer"));
     }
 
+    private Map<String, Object> modelAnswerSchema() {
+        Map<String, Object> properties = new LinkedHashMap<>();
+        properties.put("modelAnswer", stringSchema());
+        return objectSchema(properties, List.of("modelAnswer"));
+    }
+
     private Map<String, Object> scoreOnlySchema() {
         Map<String, Object> properties = new LinkedHashMap<>();
         properties.put("score", integerSchema());
@@ -469,6 +496,9 @@ public class InterviewOpenAiClient implements InterviewAnswerEvaluator {
     }
 
     public record AnswerEvaluation(int score, String feedback, String improvedAnswer, Usage usage) {
+    }
+
+    public record ModelAnswer(String modelAnswer, Usage usage) {
     }
 
     public record CritiqueResult(int adjustedScore, String verdict, String reason, Usage usage) {

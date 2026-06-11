@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useState } from "react";
-import { AlertCircle, CornerDownRight, Loader2, Sparkles, ThumbsUp } from "lucide-react";
+import { AlertCircle, CornerDownRight, Lightbulb, Loader2, Sparkles, ThumbsUp } from "lucide-react";
 import { Badge } from "@/app/components/ui/badge";
 import { Button } from "@/app/components/ui/button";
 import { Card, CardContent } from "@/app/components/ui/card";
 import {
   generateExpectedQuestions,
   generateFollowUps,
+  getModelAnswer,
   listSessionQuestions,
   submitAnswer,
 } from "../api/interviewApi";
@@ -31,6 +32,8 @@ function QuestionItem({
   const [result, setResult] = useState<InterviewAnswer | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [followingUp, setFollowingUp] = useState(false);
+  const [modelAnswer, setModelAnswer] = useState<string | null>(null);
+  const [loadingModel, setLoadingModel] = useState(false);
 
   const isFollowUp = question.questionType === "FOLLOW_UP";
 
@@ -61,6 +64,19 @@ function QuestionItem({
     }
   };
 
+  const handleModelAnswer = async () => {
+    setLoadingModel(true);
+    setError(null);
+    try {
+      const res = await getModelAnswer(question.id);
+      setModelAnswer(res.modelAnswer);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "모범답안 생성에 실패했습니다.");
+    } finally {
+      setLoadingModel(false);
+    }
+  };
+
   return (
     <Card className={isFollowUp ? "border border-indigo-200 bg-indigo-50/40" : "border border-slate-200 bg-white"}>
       <CardContent className="space-y-3 p-4">
@@ -81,11 +97,30 @@ function QuestionItem({
           rows={3}
           className="w-full resize-y rounded-lg border border-slate-200 p-3 text-sm outline-none focus:border-blue-400"
         />
-        <div className="flex justify-end">
+        <div className="flex flex-wrap justify-end gap-2">
+          <Button
+            size="sm"
+            variant="outline"
+            className="gap-1.5"
+            disabled={loadingModel}
+            onClick={handleModelAnswer}
+          >
+            {loadingModel ? <Loader2 className="size-3.5 animate-spin" /> : <Lightbulb className="size-3.5" />}
+            {loadingModel ? "생성 중…" : modelAnswer ? "모범답안 다시 보기" : "모범답안 보기"}
+          </Button>
           <Button size="sm" disabled={!answer.trim() || submitting} onClick={handleSubmit}>
             {submitting ? "평가 중…" : "답변 평가"}
           </Button>
         </div>
+
+        {modelAnswer && (
+          <div className="rounded-lg border border-amber-100 bg-amber-50 p-3">
+            <div className="mb-1 flex items-center gap-1.5 text-xs font-bold text-amber-700">
+              <Lightbulb className="size-3.5" /> 모범답안
+            </div>
+            <p className="whitespace-pre-line text-sm leading-relaxed text-slate-700">{modelAnswer}</p>
+          </div>
+        )}
 
         {error && (
           <p className="flex items-center gap-1.5 text-xs text-red-500">

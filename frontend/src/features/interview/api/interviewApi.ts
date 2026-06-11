@@ -60,6 +60,13 @@ export function submitAnswer(
   });
 }
 
+/** 질문에 대한 모범답안 생성(학습용). 답변 제출 전에도 호출 가능. */
+export function getModelAnswer(questionId: number): Promise<{ modelAnswer: string }> {
+  return api<{ modelAnswer: string }>(`/interview/questions/${questionId}/model-answer`, {
+    method: "POST",
+  });
+}
+
 /** 질문 + 직전 답변 기반 꼬리 질문 생성 → 갱신된 질문 목록 반환. */
 export function generateFollowUps(
   questionId: number,

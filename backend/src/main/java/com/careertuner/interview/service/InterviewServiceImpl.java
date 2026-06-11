@@ -26,6 +26,7 @@ import com.careertuner.interview.dto.InterviewProgressResponse;
 import com.careertuner.interview.dto.InterviewQuestionResponse;
 import com.careertuner.interview.dto.InterviewReportResponse;
 import com.careertuner.interview.dto.InterviewSessionResponse;
+import com.careertuner.interview.dto.ModelAnswerResponse;
 import com.careertuner.interview.dto.SubmitAnswerRequest;
 import com.careertuner.interview.mapper.InterviewMapper;
 import lombok.RequiredArgsConstructor;
@@ -44,6 +45,7 @@ public class InterviewServiceImpl implements InterviewService {
     private static final String FEATURE_QUESTION = "INTERVIEW_QUESTION_GEN";
     private static final String FEATURE_FOLLOWUP = "INTERVIEW_FOLLOWUP_GEN";
     private static final String FEATURE_REPORT = "INTERVIEW_REPORT";
+    private static final String FEATURE_MODEL_ANSWER = "INTERVIEW_MODEL_ANSWER";
 
     private static final Map<String, String> MODE_LABELS = Map.of(
             "BASIC", "기본 면접",
@@ -271,6 +273,27 @@ public class InterviewServiceImpl implements InterviewService {
 
         interviewMapper.updateSessionResult(sessionId, payload.totalScore(), writeReport(response), LocalDateTime.now());
         return response;
+    }
+
+    @Override
+    public ModelAnswerResponse getModelAnswer(Long userId, Long questionId) {
+        InterviewQuestion question = interviewMapper.findQuestionByIdAndUserId(questionId, userId);
+        if (question == null) {
+            throw new BusinessException(ErrorCode.NOT_FOUND, "면접 질문을 찾을 수 없습니다.");
+        }
+        InterviewSession session = requireSession(userId, question.getInterviewSessionId());
+        ApplicationCase applicationCase = accessService.requireOwned(userId, session.getApplicationCaseId());
+        String modeLabel = MODE_LABELS.getOrDefault(session.getMode(), session.getMode());
+
+        InterviewOpenAiClient.ModelAnswer generated;
+        try {
+            generated = aiClient.generateModelAnswer(question.getQuestion(), applicationCase, modeLabel);
+        } catch (BusinessException ex) {
+            aiUsageLogService.recordFailure(userId, session.getApplicationCaseId(), FEATURE_MODEL_ANSWER, ex.getMessage());
+            throw ex;
+        }
+        aiUsageLogService.recordSuccess(userId, session.getApplicationCaseId(), FEATURE_MODEL_ANSWER, generated.usage());
+        return new ModelAnswerResponse(generated.modelAnswer());
     }
 
     // ───── 내부 헬퍼 ─────
