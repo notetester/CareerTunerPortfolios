@@ -4,15 +4,26 @@ import { Button } from "@/app/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/app/components/ui/card";
 import { Input } from "@/app/components/ui/input";
 import { Textarea } from "@/app/components/ui/textarea";
-import type { BAnalysisFailureLog, JobAnalysis, JobAnalysisReviewRequest } from "../types/analysis";
+import type {
+  AmbiguousConditionRow,
+  BAnalysisFailureLog,
+  EvidenceRow,
+  JobAnalysis,
+  JobAnalysisReviewRequest,
+} from "../types/analysis";
 import {
   formatJsonArrayForTextarea,
   getDifficultyLabel,
+  parseAmbiguousConditionRows,
+  parseEvidenceRows,
   parseJsonStringArray,
+  serializeAmbiguousConditionRows,
+  serializeEvidenceRows,
   serializeTextareaList,
 } from "../types/analysis";
 import { AnalysisFailureNotice } from "./AnalysisFailureNotice";
 import { AnalysisStructuredText } from "./AnalysisStructuredText";
+import { StructuredRowsEditor, type StructuredRowsEditorField } from "./StructuredRowsEditor";
 
 interface JobAnalysisPanelProps {
   analysis: JobAnalysis | null;
@@ -50,6 +61,24 @@ function SkillList({ title, value }: { title: string; value: string | null }) {
   );
 }
 
+type JobStructuredRows = {
+  evidence: EvidenceRow[];
+  ambiguousConditions: AmbiguousConditionRow[];
+};
+
+const EMPTY_EVIDENCE_ROW: EvidenceRow = { field: "", quote: "" };
+const EMPTY_AMBIGUOUS_CONDITION_ROW: AmbiguousConditionRow = { condition: "", assumption: "" };
+
+const EVIDENCE_EDITOR_FIELDS: readonly StructuredRowsEditorField<EvidenceRow>[] = [
+  { key: "field", label: "항목", placeholder: "예: 자격 요건" },
+  { key: "quote", label: "인용문", placeholder: "공고 문구를 입력" },
+];
+
+const AMBIGUOUS_CONDITION_EDITOR_FIELDS: readonly StructuredRowsEditorField<AmbiguousConditionRow>[] = [
+  { key: "condition", label: "조건", placeholder: "해석이 필요한 조건" },
+  { key: "assumption", label: "가정", placeholder: "사용자 가정" },
+];
+
 export function JobAnalysisPanel({
   analysis,
   history,
@@ -70,6 +99,14 @@ export function JobAnalysisPanel({
     difficulty: "",
     summary: "",
   });
+  const [structuredRows, setStructuredRows] = useState<JobStructuredRows>({
+    evidence: [],
+    ambiguousConditions: [],
+  });
+  const [structuredFieldEdited, setStructuredFieldEdited] = useState({
+    evidence: false,
+    ambiguousConditions: false,
+  });
 
   useEffect(() => {
     setForm({
@@ -82,10 +119,23 @@ export function JobAnalysisPanel({
       difficulty: analysis?.difficulty ?? "",
       summary: analysis?.summary ?? "",
     });
+    setStructuredRows({
+      evidence: parseEvidenceRows(analysis?.evidence),
+      ambiguousConditions: parseAmbiguousConditionRows(analysis?.ambiguousConditions),
+    });
+    setStructuredFieldEdited({
+      evidence: false,
+      ambiguousConditions: false,
+    });
   }, [analysis]);
 
   const setField = (key: keyof typeof form, value: string) => {
     setForm((current) => ({ ...current, [key]: value }));
+  };
+
+  const setStructuredField = <Key extends keyof JobStructuredRows>(key: Key, rows: JobStructuredRows[Key]) => {
+    setStructuredRows((current) => ({ ...current, [key]: rows }));
+    setStructuredFieldEdited((current) => ({ ...current, [key]: true }));
   };
 
   const handleReview = async () => {
@@ -94,6 +144,10 @@ export function JobAnalysisPanel({
       ...form,
       requiredSkills: serializeTextareaList(form.requiredSkills),
       preferredSkills: serializeTextareaList(form.preferredSkills),
+      evidence: structuredFieldEdited.evidence ? serializeEvidenceRows(structuredRows.evidence) : undefined,
+      ambiguousConditions: structuredFieldEdited.ambiguousConditions
+        ? serializeAmbiguousConditionRows(structuredRows.ambiguousConditions)
+        : undefined,
       confirmed: true,
     });
   };
@@ -134,6 +188,9 @@ export function JobAnalysisPanel({
           <AnalysisFailureNotice
             failures={failures}
             featureType="JOB_ANALYSIS"
+            onRetry={() => void onGenerate()}
+            retrying={generating}
+            retryLabel="공고 분석 다시 시도"
           />
         )}
 
@@ -198,6 +255,22 @@ export function JobAnalysisPanel({
                 <Textarea value={form.qualifications} onChange={(event) => setField("qualifications", event.target.value)} className="min-h-28 bg-white" placeholder="자격 요건" />
               </div>
               <Textarea value={form.summary} onChange={(event) => setField("summary", event.target.value)} className="min-h-24 bg-white" placeholder="요약" />
+              <div className="grid gap-3 md:grid-cols-2">
+                <StructuredRowsEditor
+                  title="근거"
+                  rows={structuredRows.evidence}
+                  fields={EVIDENCE_EDITOR_FIELDS}
+                  emptyRow={EMPTY_EVIDENCE_ROW}
+                  onChange={(rows) => setStructuredField("evidence", rows)}
+                />
+                <StructuredRowsEditor
+                  title="모호한 조건"
+                  rows={structuredRows.ambiguousConditions}
+                  fields={AMBIGUOUS_CONDITION_EDITOR_FIELDS}
+                  emptyRow={EMPTY_AMBIGUOUS_CONDITION_ROW}
+                  onChange={(rows) => setStructuredField("ambiguousConditions", rows)}
+                />
+              </div>
               <Button type="button" className="bg-slate-900 text-white hover:bg-slate-800" disabled={generating} onClick={() => void handleReview()}>
                 {generating && <Loader2 className="size-4 animate-spin" />}
                 수정 내용 저장 및 확정

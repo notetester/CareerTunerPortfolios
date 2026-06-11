@@ -18,8 +18,11 @@ import com.careertuner.interview.domain.InterviewAnswer;
 import com.careertuner.interview.domain.InterviewQuestion;
 import com.careertuner.interview.domain.InterviewSession;
 import com.careertuner.interview.dto.CreateInterviewSessionRequest;
+import com.careertuner.interview.dto.GenerateFollowUpsRequest;
 import com.careertuner.interview.dto.GenerateQuestionsRequest;
+import com.careertuner.interview.dto.InterviewAgentStepResponse;
 import com.careertuner.interview.dto.InterviewAnswerResponse;
+import com.careertuner.interview.dto.InterviewProgressResponse;
 import com.careertuner.interview.dto.InterviewQuestionResponse;
 import com.careertuner.interview.dto.InterviewReportResponse;
 import com.careertuner.interview.dto.InterviewSessionResponse;
@@ -35,9 +38,11 @@ public class InterviewServiceImpl implements InterviewService {
 
     private static final int DEFAULT_QUESTION_COUNT = 6;
     private static final int MAX_QUESTION_COUNT = 15;
+    private static final int DEFAULT_FOLLOWUP_COUNT = 2;
+    private static final int MAX_FOLLOWUP_COUNT = 5;
 
     private static final String FEATURE_QUESTION = "INTERVIEW_QUESTION_GEN";
-    private static final String FEATURE_EVAL = "INTERVIEW_ANSWER_EVAL";
+    private static final String FEATURE_FOLLOWUP = "INTERVIEW_FOLLOWUP_GEN";
     private static final String FEATURE_REPORT = "INTERVIEW_REPORT";
 
     private static final Map<String, String> MODE_LABELS = Map.of(
@@ -54,6 +59,7 @@ public class InterviewServiceImpl implements InterviewService {
     private final ApplicationCaseAccessService accessService;
     private final InterviewOpenAiClient aiClient;
     private final InterviewAiUsageLogService aiUsageLogService;
+    private final InterviewAgentOrchestrator orchestrator;
     private final ObjectMapper objectMapper;
 
     @Override
@@ -120,6 +126,47 @@ public class InterviewServiceImpl implements InterviewService {
 
     @Override
     @Transactional
+    public List<InterviewQuestionResponse> generateFollowUps(Long userId, Long questionId,
+                                                             GenerateFollowUpsRequest request) {
+        InterviewQuestion question = interviewMapper.findQuestionByIdAndUserId(questionId, userId);
+        if (question == null) {
+            throw new BusinessException(ErrorCode.NOT_FOUND, "면접 질문을 찾을 수 없습니다.");
+        }
+        InterviewSession session = requireSession(userId, question.getInterviewSessionId());
+        ApplicationCase applicationCase = accessService.requireOwned(userId, session.getApplicationCaseId());
+
+        InterviewAnswer answer = interviewMapper.findLatestAnswerByQuestionId(questionId);
+        if (answer == null || answer.getAnswerText() == null || answer.getAnswerText().isBlank()) {
+            throw new BusinessException(ErrorCode.INVALID_INPUT, "꼬리 질문은 답변을 먼저 제출한 뒤 생성할 수 있습니다.");
+        }
+        int count = resolveFollowUpCount(request == null ? null : request.count());
+
+        InterviewOpenAiClient.GeneratedQuestions generated;
+        try {
+            generated = aiClient.generateFollowUps(question.getQuestion(), answer.getAnswerText(),
+                    applicationCase, count);
+        } catch (BusinessException ex) {
+            aiUsageLogService.recordFailure(userId, session.getApplicationCaseId(), FEATURE_FOLLOWUP, ex.getMessage());
+            throw ex;
+        }
+        aiUsageLogService.recordSuccess(userId, session.getApplicationCaseId(), FEATURE_FOLLOWUP, generated.usage());
+
+        Integer maxOrder = interviewMapper.findMaxSortOrder(question.getInterviewSessionId());
+        int order = maxOrder == null ? 0 : maxOrder;
+        for (InterviewOpenAiClient.GeneratedQuestion q : generated.questions()) {
+            interviewMapper.insertQuestion(InterviewQuestion.builder()
+                    .interviewSessionId(question.getInterviewSessionId())
+                    .parentQuestionId(question.getId())
+                    .question(q.question())
+                    .questionType("FOLLOW_UP")
+                    .sortOrder(++order)
+                    .build());
+        }
+        return listQuestions(userId, question.getInterviewSessionId());
+    }
+
+    @Override
+    @Transactional
     public InterviewAnswerResponse submitAnswer(Long userId, Long questionId, SubmitAnswerRequest request) {
         InterviewQuestion question = interviewMapper.findQuestionByIdAndUserId(questionId, userId);
         if (question == null) {
@@ -128,24 +175,55 @@ public class InterviewServiceImpl implements InterviewService {
         InterviewSession session = requireSession(userId, question.getInterviewSessionId());
         ApplicationCase applicationCase = accessService.requireOwned(userId, session.getApplicationCaseId());
 
-        InterviewOpenAiClient.AnswerEvaluation evaluation;
-        try {
-            evaluation = aiClient.evaluateAnswer(question.getQuestion(), request.answerText(), applicationCase);
-        } catch (BusinessException ex) {
-            aiUsageLogService.recordFailure(userId, session.getApplicationCaseId(), FEATURE_EVAL, ex.getMessage());
-            throw ex;
-        }
-        aiUsageLogService.recordSuccess(userId, session.getApplicationCaseId(), FEATURE_EVAL, evaluation.usage());
+        // 멀티에이전트: Evaluator → Critic(적대적 검증) 으로 최종 점수를 산출하고 단계를 trace 에 남긴다.
+        InterviewAgentOrchestrator.OrchestratedEvaluation evaluation =
+                orchestrator.evaluateAnswer(userId, session, applicationCase, question, request.answerText());
 
         InterviewAnswer answer = InterviewAnswer.builder()
                 .questionId(questionId)
                 .answerText(request.answerText())
+                .audioUrl(blankToNull(request.audioUrl()))
+                .videoUrl(blankToNull(request.videoUrl()))
                 .score(evaluation.score())
                 .feedback(evaluation.feedback())
                 .improvedAnswer(evaluation.improvedAnswer())
                 .build();
         interviewMapper.insertAnswer(answer);
         return InterviewAnswerResponse.from(answer);
+    }
+
+    @Override
+    public InterviewProgressResponse getProgress(Long userId, Long sessionId) {
+        requireSession(userId, sessionId);
+        List<InterviewQuestion> questions = interviewMapper.findQuestionsBySessionId(sessionId);
+        Set<Long> answeredQuestionIds = interviewMapper.findAnswersBySessionId(sessionId).stream()
+                .map(InterviewAnswer::getQuestionId)
+                .collect(java.util.stream.Collectors.toSet());
+
+        InterviewQuestion next = null;
+        int answered = 0;
+        for (InterviewQuestion q : questions) {
+            if (answeredQuestionIds.contains(q.getId())) {
+                answered++;
+            } else if (next == null) {
+                next = q;
+            }
+        }
+        boolean finished = !questions.isEmpty() && next == null;
+        return new InterviewProgressResponse(
+                sessionId,
+                questions.size(),
+                answered,
+                finished,
+                next == null ? null : InterviewQuestionResponse.from(next));
+    }
+
+    @Override
+    public List<InterviewAgentStepResponse> getAgentSteps(Long userId, Long sessionId) {
+        requireSession(userId, sessionId);
+        return interviewMapper.findAgentStepsBySessionId(sessionId).stream()
+                .map(InterviewAgentStepResponse::from)
+                .toList();
     }
 
     @Override
@@ -218,6 +296,17 @@ public class InterviewServiceImpl implements InterviewService {
             return DEFAULT_QUESTION_COUNT;
         }
         return Math.min(count, MAX_QUESTION_COUNT);
+    }
+
+    private int resolveFollowUpCount(Integer count) {
+        if (count == null || count <= 0) {
+            return DEFAULT_FOLLOWUP_COUNT;
+        }
+        return Math.min(count, MAX_FOLLOWUP_COUNT);
+    }
+
+    private String blankToNull(String value) {
+        return value == null || value.isBlank() ? null : value.trim();
     }
 
     private String buildTranscript(List<InterviewQuestion> questions, List<InterviewAnswer> answers) {

@@ -48,8 +48,9 @@ public class ApplicationCaseController {
 
     @GetMapping
     public ApiResponse<List<ApplicationCaseResponse>> list(@AuthenticationPrincipal AuthUser authUser,
+                                                           @RequestParam(required = false) String view,
                                                            @RequestParam(defaultValue = "false") boolean includeArchived) {
-        return ApiResponse.ok(applicationCaseService.list(authUser.id(), includeArchived));
+        return ApiResponse.ok(applicationCaseService.list(authUser.id(), view, includeArchived));
     }
 
     @GetMapping("/{id}")
@@ -69,6 +70,13 @@ public class ApplicationCaseController {
     public ApiResponse<Void> delete(@AuthenticationPrincipal AuthUser authUser,
                                     @PathVariable Long id) {
         applicationCaseService.delete(authUser.id(), id);
+        return ApiResponse.ok();
+    }
+
+    @PatchMapping("/{id}/restore")
+    public ApiResponse<Void> restore(@AuthenticationPrincipal AuthUser authUser,
+                                     @PathVariable Long id) {
+        applicationCaseService.restore(authUser.id(), id);
         return ApiResponse.ok();
     }
 

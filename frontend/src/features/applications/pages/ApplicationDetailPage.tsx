@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router";
 import {
   ArrowLeft,
@@ -30,7 +30,8 @@ import { useBAnalysisFailureLogs } from "../hooks/useBAnalysisFailureLogs";
 import { useCompanyAnalysis } from "../hooks/useCompanyAnalysis";
 import { useJobAnalysis } from "../hooks/useJobAnalysis";
 import { useJobPosting } from "../hooks/useJobPosting";
-import type { UpdateApplicationCaseRequest } from "../types/applicationCase";
+import type { ApplicationSourceType, UpdateApplicationCaseRequest } from "../types/applicationCase";
+import type { JobPosting, JobPostingRequest } from "../types/jobPosting";
 import { useApplicationFitAnalysis } from "@/features/analysis/hooks/useApplicationFitAnalysis";
 
 type DetailTab = "overview" | "posting" | "jobAnalysis" | "companyAnalysis" | "fit";
@@ -43,6 +44,18 @@ const detailTabs: { key: DetailTab; label: string; icon: typeof Info }[] = [
   { key: "fit", label: "적합도", icon: Target },
 ];
 
+const tabSlugs: Record<DetailTab, string> = {
+  overview: "overview",
+  posting: "posting",
+  jobAnalysis: "job-analysis",
+  companyAnalysis: "company-analysis",
+  fit: "fit",
+};
+
+const tabKeysBySlug = Object.fromEntries(
+  Object.entries(tabSlugs).map(([key, slug]) => [slug, key]),
+) as Record<string, DetailTab>;
+
 export function ApplicationDetailPage() {
   const navigate = useNavigate();
   const params = useParams();
@@ -50,6 +63,7 @@ export function ApplicationDetailPage() {
     const value = Number(params.id);
     return Number.isFinite(value) && value > 0 ? value : null;
   }, [params.id]);
+  const activeTab = params.section ? tabKeysBySlug[params.section] ?? "overview" : "overview";
   const { loading: authLoading, isAuthenticated } = useAuth();
   const {
     applicationCase,
@@ -94,6 +108,7 @@ export function ApplicationDetailPage() {
     failureLogs: bFailureLogs,
     refresh: refreshBFailureLogs,
   } = useBAnalysisFailureLogs(id, isAuthenticated && Boolean(applicationCase));
+  const [sourceTypeSyncError, setSourceTypeSyncError] = useState<string | null>(null);
   const {
     analyses: fitAnalyses,
     loading: fitAnalysisLoading,
@@ -101,12 +116,47 @@ export function ApplicationDetailPage() {
     error: fitAnalysisError,
     generate: generateFit,
   } = useApplicationFitAnalysis(id, isAuthenticated && Boolean(applicationCase));
-  const [activeTab, setActiveTab] = useState<DetailTab>("overview");
+  useEffect(() => {
+    if (id && params.section && !tabKeysBySlug[params.section]) {
+      navigate(`/applications/${id}/overview`, { replace: true });
+    }
+  }, [id, navigate, params.section]);
 
   const handleUpdate = async (request: UpdateApplicationCaseRequest) => {
     if (!id) return;
     const updated = await updateApplicationCase(id, request);
     setApplicationCase(updated);
+  };
+
+  const syncCaseSourceType = async (posting: JobPosting | null): Promise<JobPosting | null> => {
+    if (posting) {
+      setSourceTypeSyncError(null);
+    }
+
+    if (!id || !applicationCase || !posting || applicationCase.sourceType === posting.sourceType) {
+      return posting;
+    }
+
+    try {
+      const updated = await updateApplicationCase(id, { sourceType: posting.sourceType });
+      setApplicationCase(updated);
+    } catch {
+      setSourceTypeSyncError("공고는 저장됐지만 지원 건 유형 동기화에 실패했습니다. 새로고침 후 다시 확인해 주세요.");
+    }
+    return posting;
+  };
+
+  const handleSavePosting = async (request: JobPostingRequest): Promise<JobPosting | null> => {
+    const posting = await savePosting(request);
+    return syncCaseSourceType(posting);
+  };
+
+  const handleUploadPosting = async (
+    sourceType: Extract<ApplicationSourceType, "PDF" | "IMAGE">,
+    file: File,
+  ): Promise<JobPosting | null> => {
+    const posting = await uploadPosting(sourceType, file);
+    return syncCaseSourceType(posting);
   };
 
   const handleDelete = async () => {
@@ -185,7 +235,7 @@ export function ApplicationDetailPage() {
                   applicationCases.map((item) => (
                     <Link
                       key={item.id}
-                      to={`/applications/${item.id}`}
+                      to={`/applications/${item.id}/${tabSlugs[activeTab]}`}
                       className={`block rounded-md border px-3 py-2 text-sm transition-colors ${
                         item.id === id
                           ? "border-blue-200 bg-blue-50 text-blue-800"
@@ -239,7 +289,7 @@ export function ApplicationDetailPage() {
                     ? "bg-slate-900 text-white"
                     : "text-slate-600 hover:bg-slate-100 hover:text-slate-900"
                 }`}
-                onClick={() => setActiveTab(tab.key)}
+                onClick={() => navigate(`/applications/${id}/${tabSlugs[tab.key]}`)}
               >
                 <tab.icon className="size-4" />
                 {tab.label}
@@ -250,6 +300,12 @@ export function ApplicationDetailPage() {
           {error && (
             <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
               {error}
+            </div>
+          )}
+
+          {sourceTypeSyncError && (
+            <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700">
+              {sourceTypeSyncError}
             </div>
           )}
 
@@ -288,8 +344,8 @@ export function ApplicationDetailPage() {
                   saving={postingSaving}
                   uploading={postingUploading}
                   error={postingError}
-                  onSave={savePosting}
-                  onUpload={uploadPosting}
+                  onSave={handleSavePosting}
+                  onUpload={handleUploadPosting}
                 />
               )}
 
@@ -332,7 +388,7 @@ export function ApplicationDetailPage() {
                       {fitGenerating ? "분석 중..." : fitAnalyses.length > 0 ? "적합도 재분석" : "적합도 분석 생성"}
                     </Button>
                   </div>
-                  <FitAnalysisPanel analyses={fitAnalyses} loading={fitAnalysisLoading} error={fitAnalysisError} />
+                  <FitAnalysisPanel analyses={fitAnalyses} loading={fitAnalysisLoading} generating={fitGenerating} error={fitAnalysisError} />
                   <StrategyPanel analyses={fitAnalyses} loading={fitAnalysisLoading} error={fitAnalysisError} />
                   <LearningRecommendationPanel analyses={fitAnalyses} loading={fitAnalysisLoading} error={fitAnalysisError} />
                 </div>

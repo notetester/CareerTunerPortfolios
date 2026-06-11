@@ -3,6 +3,7 @@ package com.careertuner.companyanalysis.service;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Locale;
+import java.util.function.Function;
 
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -12,6 +13,7 @@ import com.careertuner.applicationcase.domain.ApplicationCase;
 import com.careertuner.applicationcase.service.AiUsageLogService;
 import com.careertuner.applicationcase.service.ApplicationCaseAnalysisStatusService;
 import com.careertuner.applicationcase.service.ApplicationCaseAccessService;
+import com.careertuner.applicationcase.service.BAnalysisJsonValidator;
 import com.careertuner.applicationcase.service.OpenAiResponsesClient;
 import com.careertuner.applicationcase.service.OpenAiResponsesClient.CompanyAnalysisPayload;
 import com.careertuner.common.exception.BusinessException;
@@ -37,6 +39,7 @@ public class CompanyAnalysisService {
     private final AiUsageLogService aiUsageLogService;
     private final ApplicationCaseAnalysisStatusService statusService;
     private final TransactionTemplate transactionTemplate;
+    private final BAnalysisJsonValidator analysisJsonValidator;
 
     public CompanyAnalysisResponse createCompanyAnalysis(Long userId, Long applicationCaseId) {
         ApplicationCase applicationCase = accessService.requireOwned(userId, applicationCaseId);
@@ -137,11 +140,11 @@ public class CompanyAnalysisService {
                 .competitors(defaultString(request.competitors(), existing.getCompetitors()))
                 .interviewPoints(defaultString(request.interviewPoints(), existing.getInterviewPoints()))
                 .sources(defaultString(request.sources(), existing.getSources()))
-                .verifiedFacts(defaultString(request.verifiedFacts(), existing.getVerifiedFacts()))
-                .aiInferences(defaultString(request.aiInferences(), existing.getAiInferences()))
-                .sourceType(defaultString(request.sourceType(), existing.getSourceType()))
-                .checkedAt(request.checkedAt() != null ? request.checkedAt() : existing.getCheckedAt())
-                .refreshRecommendedAt(request.refreshRecommendedAt() != null ? request.refreshRecommendedAt() : existing.getRefreshRecommendedAt())
+                .verifiedFacts(defaultValidatedJson(request.verifiedFacts(), existing.getVerifiedFacts(), analysisJsonValidator::validateVerifiedFacts))
+                .aiInferences(defaultValidatedJson(request.aiInferences(), existing.getAiInferences(), analysisJsonValidator::validateAiInferences))
+                .sourceType(existing.getSourceType())
+                .checkedAt(existing.getCheckedAt())
+                .refreshRecommendedAt(existing.getRefreshRecommendedAt())
                 .confirmedAt(Boolean.TRUE.equals(request.confirmed()) ? LocalDateTime.now() : existing.getConfirmedAt())
                 .adminMemo(existing.getAdminMemo())
                 .build();
@@ -157,8 +160,18 @@ public class CompanyAnalysisService {
         return isBlank(value) ? defaultValue : value.trim();
     }
 
+    private static String defaultValidatedJson(String value, String defaultValue, Function<String, String> validator) {
+        if (isBlank(value)) {
+            return defaultValue;
+        }
+        return validator.apply(value.trim());
+    }
+
     private static void ensureAnalysisRunnable(String status) {
-        if (!"DRAFT".equals(status) && !"ANALYZING".equals(status) && !"READY".equals(status)) {
+        if ("ANALYZING".equals(status)) {
+            throw new BusinessException(ErrorCode.CONFLICT, "이미 분석이 진행 중입니다. 잠시 후 결과를 확인해 주세요.");
+        }
+        if (!"DRAFT".equals(status) && !"READY".equals(status)) {
             throw new BusinessException(ErrorCode.CONFLICT, "현재 상태에서는 분석을 다시 실행할 수 없습니다.");
         }
     }

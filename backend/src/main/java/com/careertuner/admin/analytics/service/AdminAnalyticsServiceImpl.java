@@ -9,15 +9,20 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import com.careertuner.admin.analytics.domain.AdminAnalysisSource;
+import com.careertuner.admin.analytics.domain.AdminCareerRunMemo;
 import com.careertuner.admin.analytics.dto.AdminAnalyticsStatsResponse;
 import com.careertuner.admin.analytics.dto.AdminAnalyticsSummaryResponse;
 import com.careertuner.admin.analytics.dto.AdminCareerAnalysisRunResponse;
+import com.careertuner.admin.analytics.dto.AdminCareerRunMemoRequest;
+import com.careertuner.admin.analytics.dto.AdminCareerRunMemoResponse;
 import com.careertuner.admin.analytics.dto.AdminCountResponse;
 import com.careertuner.admin.analytics.dto.AdminDailyUsageResponse;
 import com.careertuner.admin.analytics.dto.AdminFitScoreBandResponse;
 import com.careertuner.admin.analytics.dto.AdminRecentAnalysisResponse;
 import com.careertuner.admin.analytics.dto.AdminSkillGapResponse;
 import com.careertuner.admin.analytics.mapper.AdminAnalyticsMapper;
+import com.careertuner.common.exception.BusinessException;
+import com.careertuner.common.exception.ErrorCode;
 import lombok.RequiredArgsConstructor;
 import tools.jackson.core.type.TypeReference;
 import tools.jackson.databind.ObjectMapper;
@@ -58,6 +63,64 @@ public class AdminAnalyticsServiceImpl implements AdminAnalyticsService {
         return adminAnalyticsMapper.findCareerAnalysisRuns(userId).stream()
                 .map(AdminCareerAnalysisRunResponse::from)
                 .toList();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<AdminCareerRunMemoResponse> listMemos(Long runId) {
+        ensureRunExists(runId);
+        return adminAnalyticsMapper.findMemosByRunId(runId).stream()
+                .map(AdminCareerRunMemoResponse::from)
+                .toList();
+    }
+
+    @Override
+    @Transactional
+    public AdminCareerRunMemoResponse createMemo(Long runId, Long adminUserId, AdminCareerRunMemoRequest request) {
+        ensureRunExists(runId);
+        AdminCareerRunMemo memo = AdminCareerRunMemo.builder()
+                .careerAnalysisRunId(runId)
+                .adminUserId(adminUserId)
+                .memoType(normalizeMemoType(request.memoType()))
+                .content(request.content().trim())
+                .build();
+        adminAnalyticsMapper.insertMemo(memo);
+        return AdminCareerRunMemoResponse.from(adminAnalyticsMapper.findMemoByIdAndRunId(memo.getId(), runId));
+    }
+
+    @Override
+    @Transactional
+    public AdminCareerRunMemoResponse updateMemo(Long runId, Long memoId, AdminCareerRunMemoRequest request) {
+        AdminCareerRunMemo memo = adminAnalyticsMapper.findMemoByIdAndRunId(memoId, runId);
+        if (memo == null) {
+            throw new BusinessException(ErrorCode.NOT_FOUND, "운영 메모를 찾을 수 없습니다.");
+        }
+        memo.setMemoType(normalizeMemoType(request.memoType()));
+        memo.setContent(request.content().trim());
+        int updated = adminAnalyticsMapper.updateMemo(memo);
+        if (updated == 0) {
+            throw new BusinessException(ErrorCode.NOT_FOUND, "운영 메모를 찾을 수 없습니다.");
+        }
+        return AdminCareerRunMemoResponse.from(adminAnalyticsMapper.findMemoByIdAndRunId(memoId, runId));
+    }
+
+    @Override
+    @Transactional
+    public void deleteMemo(Long runId, Long memoId) {
+        int deleted = adminAnalyticsMapper.deleteMemo(memoId, runId);
+        if (deleted == 0) {
+            throw new BusinessException(ErrorCode.NOT_FOUND, "운영 메모를 찾을 수 없습니다.");
+        }
+    }
+
+    private void ensureRunExists(Long runId) {
+        if (adminAnalyticsMapper.findCareerAnalysisRunById(runId) == null) {
+            throw new BusinessException(ErrorCode.NOT_FOUND, "분석 실행 이력을 찾을 수 없습니다.");
+        }
+    }
+
+    private static String normalizeMemoType(String value) {
+        return value == null || value.isBlank() ? "GENERAL" : value.trim().toUpperCase();
     }
 
     private AdminAnalyticsStatsResponse stats(List<AdminAnalysisSource> analyses) {

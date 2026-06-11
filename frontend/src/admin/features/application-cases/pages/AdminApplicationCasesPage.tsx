@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type React from "react";
 import { Briefcase, RefreshCw, Search } from "lucide-react";
 import { Badge } from "@/app/components/ui/badge";
@@ -42,16 +42,31 @@ export function AdminApplicationCasesPage() {
   const [memo, setMemo] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const selectedIdRef = useRef<number | null>(null);
+  selectedIdRef.current = selectedId;
 
-  const selected = useMemo(() => rows.find((row) => row.id === selectedId) ?? rows[0] ?? null, [rows, selectedId]);
+  const selected = useMemo(() => {
+    if (selectedId === null) return null;
+    return rows.find((row) => row.id === selectedId) ?? null;
+  }, [rows, selectedId]);
 
   const loadRows = async () => {
     setLoading(true);
     setError(null);
     try {
       const nextRows = await getAdminApplicationCases({ keyword, status, includeArchived, includeDeleted });
+      const currentSelectedId = selectedIdRef.current;
+      const nextSelectedId =
+        currentSelectedId !== null && nextRows.some((row) => row.id === currentSelectedId)
+          ? currentSelectedId
+          : nextRows[0]?.id ?? null;
+
+      selectedIdRef.current = nextSelectedId;
       setRows(nextRows);
-      if (!selectedId && nextRows[0]) setSelectedId(nextRows[0].id);
+      setSelectedId(nextSelectedId);
+      if (nextSelectedId === null || nextSelectedId !== currentSelectedId) {
+        setDetail(null);
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : "지원 건 목록을 불러오지 못했습니다.");
     } finally {
@@ -62,9 +77,14 @@ export function AdminApplicationCasesPage() {
   const loadDetail = async (id: number) => {
     setError(null);
     try {
-      setDetail(await getAdminApplicationCaseDetail(id));
+      const nextDetail = await getAdminApplicationCaseDetail(id);
+      if (selectedIdRef.current === id) {
+        setDetail(nextDetail);
+      }
     } catch (err) {
-      setError(err instanceof Error ? err.message : "지원 건 상세를 불러오지 못했습니다.");
+      if (selectedIdRef.current === id) {
+        setError(err instanceof Error ? err.message : "지원 건 상세를 불러오지 못했습니다.");
+      }
     }
   };
 
@@ -73,7 +93,13 @@ export function AdminApplicationCasesPage() {
   }, []);
 
   useEffect(() => {
-    if (selected?.id) void loadDetail(selected.id);
+    if (selected?.id) {
+      setDetail(null);
+      void loadDetail(selected.id);
+      return;
+    }
+
+    setDetail(null);
   }, [selected?.id]);
 
   const handleStatus = async (nextStatus: ApplicationStatus) => {
@@ -142,7 +168,13 @@ export function AdminApplicationCasesPage() {
                 className={`w-full rounded-lg border bg-white p-3 text-left transition-colors ${
                   selected?.id === row.id ? "border-blue-300 ring-2 ring-blue-100" : "border-slate-200 hover:border-blue-200"
                 }`}
-                onClick={() => setSelectedId(row.id)}
+                onClick={() => {
+                  selectedIdRef.current = row.id;
+                  setSelectedId(row.id);
+                  if (row.id !== selectedId) {
+                    setDetail(null);
+                  }
+                }}
               >
                 <div className="flex items-start justify-between gap-2">
                   <div className="min-w-0">

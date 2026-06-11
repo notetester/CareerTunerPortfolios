@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.careertuner.interview.rag.InterviewKnowledgeMapper">
+
+    <insert id="insert" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO interview_knowledge (kind, title, content, source, indexed)
+        VALUES (#{kind}, #{title}, #{content}, #{source}, #{indexed})
+    </insert>
+
+    <select id="findById" resultType="com.careertuner.interview.domain.InterviewKnowledge">
+        SELECT * FROM interview_knowledge WHERE id = #{id}
+    </select>
+
+    <select id="findAll" resultType="com.careertuner.interview.domain.InterviewKnowledge">
+        SELECT * FROM interview_knowledge ORDER BY id DESC LIMIT #{limit}
+    </select>
+
+    <update id="markIndexed">
+        UPDATE interview_knowledge SET indexed = 1 WHERE id = #{id}
+    </update>
+</mapper>

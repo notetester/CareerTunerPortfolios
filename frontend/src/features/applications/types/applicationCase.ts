@@ -2,6 +2,8 @@ export type ApplicationSourceType = "TEXT" | "PDF" | "IMAGE" | "URL" | "MANUAL";
 
 export type ApplicationStatus = "DRAFT" | "ANALYZING" | "READY" | "APPLIED" | "CLOSED";
 
+export type ApplicationCaseListView = "ACTIVE" | "ARCHIVED" | "DELETED";
+
 export interface ApplicationCase {
   id: number;
   companyName: string;

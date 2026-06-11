@@ -12,22 +12,33 @@ SET FOREIGN_KEY_CHECKS = 0;
 -- =====================================================================
 CREATE TABLE IF NOT EXISTS users (
     id               BIGINT       NOT NULL AUTO_INCREMENT,
-    email            VARCHAR(255) NOT NULL,
-    password         VARCHAR(255) NULL,                          -- BCrypt 해시. 소셜 전용 계정은 NULL
-    password_enabled TINYINT(1)   NOT NULL DEFAULT 1,            -- 비밀번호 로그인 가능 여부(소셜 전용=0)
+    email            VARCHAR(255) NOT NULL COMMENT '로그인 식별자로 사용하는 회원 이메일',
+    password         VARCHAR(255) NULL COMMENT 'BCrypt로 암호화한 비밀번호 해시. 소셜 전용 계정은 NULL 가능',
+    password_enabled TINYINT(1)   NOT NULL DEFAULT 1 COMMENT '비밀번호 로그인 사용 여부. 소셜 전용 계정은 0',
     name             VARCHAR(100) NOT NULL,
-    email_verified   TINYINT(1)   NOT NULL DEFAULT 0,            -- 이메일 인증 완료 여부
+    email_verified   TINYINT(1)   NOT NULL DEFAULT 0 COMMENT '이메일 인증 완료 여부',
     user_type        VARCHAR(20)  NOT NULL DEFAULT 'JOB_SEEKER', -- JOB_SEEKER/CAREER_CHANGER/EXPERIENCED
-    role             VARCHAR(20)  NOT NULL DEFAULT 'USER',       -- USER/ADMIN
-    status           VARCHAR(20)  NOT NULL DEFAULT 'ACTIVE',     -- ACTIVE/DORMANT/BLOCKED/DELETED
+    role             VARCHAR(20)  NOT NULL DEFAULT 'USER' COMMENT '회원 권한. USER 또는 ADMIN',
+    status           VARCHAR(20)  NOT NULL DEFAULT 'ACTIVE' COMMENT '회원 상태. ACTIVE/DORMANT/BLOCKED/DELETED',
     plan             VARCHAR(20)  NOT NULL DEFAULT 'FREE',       -- FREE/BASIC/PRO/PREMIUM
     credit           INT          NOT NULL DEFAULT 0,
-    last_login_at    DATETIME     NULL,
+    last_login_at    DATETIME     NULL COMMENT '마지막 로그인 성공 시각',
+    dormant_at       DATETIME     NULL COMMENT '휴면 계정으로 전환된 시각',
+    blocked_reason   VARCHAR(255) NULL COMMENT '관리자가 회원을 차단한 사유',
+    blocked_until    DATETIME     NULL COMMENT '기간 차단 만료 시각. NULL이면 무기한 또는 미차단',
+    deleted_at       DATETIME     NULL COMMENT '회원 탈퇴 또는 삭제 처리 시각',
+    status_changed_at DATETIME    NULL COMMENT '회원 상태가 마지막으로 변경된 시각',
+    status_changed_by BIGINT      NULL COMMENT '회원 상태를 변경한 관리자 ID. 시스템 변경이면 NULL',
+    failed_login_count INT        NOT NULL DEFAULT 0 COMMENT '연속 로그인 실패 횟수',
+    last_failed_login_at DATETIME NULL COMMENT '마지막 로그인 실패 시각',
     created_at       DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at       DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     PRIMARY KEY (id),
-    UNIQUE KEY uk_users_email (email)
-) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci;
+    UNIQUE KEY uk_users_email (email),
+    KEY idx_users_status (status),
+    KEY idx_users_status_changed_by (status_changed_by),
+    CONSTRAINT fk_users_status_changed_by FOREIGN KEY (status_changed_by) REFERENCES users (id) ON DELETE SET NULL
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci COMMENT = '회원 기본 정보와 로그인/권한/상태 관리 정보';
 
 -- 한 유저가 여러 소셜 계정 연동 가능 (provider별 1개)
 CREATE TABLE IF NOT EXISTS user_social (
@@ -62,16 +73,78 @@ CREATE TABLE IF NOT EXISTS email_verification (
 -- JWT refresh token (회전/폐기 관리용)
 CREATE TABLE IF NOT EXISTS refresh_token (
     id          BIGINT       NOT NULL AUTO_INCREMENT,
-    user_id     BIGINT       NOT NULL,
-    token       VARCHAR(512) NOT NULL,
-    expired_at  DATETIME     NOT NULL,
-    revoked     TINYINT(1)   NOT NULL DEFAULT 0,
+    user_id     BIGINT       NOT NULL COMMENT '토큰을 발급받은 회원 ID',
+    token       VARCHAR(512) NOT NULL COMMENT '저장된 JWT refresh token 값',
+    expired_at  DATETIME     NOT NULL COMMENT 'refresh token 만료 시각',
+    revoked     TINYINT(1)   NOT NULL DEFAULT 0 COMMENT '토큰 폐기 여부',
+    revoked_at  DATETIME     NULL COMMENT '토큰이 폐기된 시각',
+    ip_address  VARCHAR(45)  NULL COMMENT '토큰 발급 요청 IP 주소',
+    user_agent  VARCHAR(500) NULL COMMENT '토큰 발급 요청 User-Agent',
     created_at  DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (id),
     UNIQUE KEY uk_refresh_token_token (token),
     KEY idx_refresh_token_user (user_id),
     CONSTRAINT fk_refresh_token_user FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
-) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci;
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci COMMENT = 'JWT refresh token 저장 및 세션 감사 정보';
+
+-- 로그인/로그아웃/토큰 갱신 감사 로그.
+-- user_id는 실패 로그인처럼 사용자를 특정하지 못하는 이벤트를 위해 NULL 허용.
+CREATE TABLE IF NOT EXISTS user_login_history (
+    id               BIGINT       NOT NULL AUTO_INCREMENT,
+    user_id          BIGINT       NULL COMMENT '로그인 이벤트 대상 회원 ID. 실패로 회원 식별이 안 되면 NULL',
+    event_type       VARCHAR(20)  NOT NULL COMMENT '인증 이벤트 유형. LOGIN/LOGOUT/REFRESH',
+    auth_provider    VARCHAR(20)  NOT NULL DEFAULT 'LOCAL' COMMENT '인증 제공자. LOCAL/KAKAO/NAVER/GOOGLE',
+    login_method     VARCHAR(20)  NULL COMMENT '로그인 방식. EMAIL/OAUTH/REFRESH_TOKEN',
+    login_identifier VARCHAR(255) NULL COMMENT '사용자가 입력한 로그인 식별자. 보통 이메일',
+    success          TINYINT(1)   NOT NULL COMMENT '인증 성공 여부',
+    fail_reason      VARCHAR(50)  NULL COMMENT '실패 사유. USER_NOT_FOUND/WRONG_PASSWORD/BLOCKED 등',
+    ip_address       VARCHAR(45)  NULL COMMENT '요청 IP 주소',
+    user_agent       VARCHAR(500) NULL COMMENT '요청 User-Agent',
+    request_uri      VARCHAR(255) NULL COMMENT '인증 요청 URI',
+    created_at       DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (id),
+    KEY idx_user_login_history_user (user_id),
+    KEY idx_user_login_history_created (created_at),
+    KEY idx_user_login_history_success (success),
+    CONSTRAINT fk_user_login_history_user FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE SET NULL
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci COMMENT = '로그인, 로그아웃, 토큰 갱신 감사 로그';
+
+-- 관리자/시스템이 회원 상태를 바꾼 이력.
+-- users.status의 현재값만으로는 과거 차단/휴면/해제 사유를 알 수 없으므로 별도 로그로 남긴다.
+CREATE TABLE IF NOT EXISTS user_status_history (
+    id              BIGINT       NOT NULL AUTO_INCREMENT,
+    user_id         BIGINT       NOT NULL COMMENT '상태가 변경된 회원 ID',
+    actor_user_id   BIGINT       NULL COMMENT '상태를 변경한 관리자 ID. 시스템 자동 변경이면 NULL',
+    previous_status VARCHAR(20)  NULL COMMENT '변경 전 회원 상태',
+    new_status      VARCHAR(20)  NOT NULL COMMENT '변경 후 회원 상태',
+    reason          VARCHAR(255) NULL COMMENT '상태 변경 사유',
+    memo            TEXT         NULL COMMENT '관리자 내부 메모',
+    blocked_until   DATETIME     NULL COMMENT '차단 만료 시각. 차단 상태가 아니거나 무기한이면 NULL',
+    created_at      DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (id),
+    KEY idx_user_status_history_user (user_id),
+    KEY idx_user_status_history_actor (actor_user_id),
+    KEY idx_user_status_history_created (created_at),
+    CONSTRAINT fk_user_status_history_user FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE,
+    CONSTRAINT fk_user_status_history_actor FOREIGN KEY (actor_user_id) REFERENCES users (id) ON DELETE SET NULL
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci COMMENT = '회원 상태 변경 이력';
+
+-- 회원가입 및 설정 화면에서 수집하는 약관/개인정보/AI 데이터 활용 동의 이력.
+-- 철회가 가능해야 하므로 현재값만 덮어쓰지 않고 변경 이벤트를 누적한다.
+CREATE TABLE IF NOT EXISTS user_consent (
+    id           BIGINT      NOT NULL AUTO_INCREMENT,
+    user_id      BIGINT      NOT NULL COMMENT '동의 주체 회원 ID',
+    consent_type VARCHAR(40) NOT NULL COMMENT '동의 유형. TERMS/PRIVACY/AI_DATA/MARKETING',
+    agreed       TINYINT(1)  NOT NULL COMMENT '동의 여부',
+    agreed_at    DATETIME    NULL COMMENT '동의한 시각',
+    revoked_at   DATETIME    NULL COMMENT '철회한 시각',
+    source       VARCHAR(40) NULL COMMENT '동의가 발생한 위치. REGISTER/SETTINGS 등',
+    created_at   DATETIME    NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (id),
+    KEY idx_user_consent_user (user_id),
+    KEY idx_user_consent_type (consent_type),
+    CONSTRAINT fk_user_consent_user FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci COMMENT = '회원 동의 및 철회 이력';
 
 -- =====================================================================
 --  프로필
@@ -130,6 +203,7 @@ CREATE TABLE IF NOT EXISTS job_posting (
     source_type         VARCHAR(20) NOT NULL DEFAULT 'TEXT',
     created_at          DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (id),
+    UNIQUE KEY uk_job_posting_case_revision (application_case_id, revision),
     KEY idx_job_posting_case (application_case_id),
     CONSTRAINT fk_job_posting_case FOREIGN KEY (application_case_id) REFERENCES application_case (id) ON DELETE CASCADE
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci;
@@ -278,6 +352,41 @@ CREATE TABLE IF NOT EXISTS career_analysis_run (
     CONSTRAINT fk_career_analysis_run_user FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci;
 
+-- C 소유 장기 경향/대시보드 요약 실행 이력의 운영 메모. 적합도(admin_fit_analysis_memo)와 동일 패턴으로,
+-- 관리자 완료 기준의 "분석 결과 운영 메모"(과도한 추천/잘못된 분석/사용자 문의 대응)를 실행 이력 단위로 남긴다.
+CREATE TABLE IF NOT EXISTS admin_career_run_memo (
+    id                    BIGINT NOT NULL AUTO_INCREMENT,
+    career_analysis_run_id BIGINT NOT NULL,
+    admin_user_id         BIGINT NOT NULL,
+    memo_type             VARCHAR(30) NOT NULL DEFAULT 'GENERAL', -- GENERAL/QUALITY/USER_INQUIRY/REANALYSIS
+    content               MEDIUMTEXT NOT NULL,
+    created_at            DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at            DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    PRIMARY KEY (id),
+    KEY idx_admin_career_memo_run (career_analysis_run_id),
+    KEY idx_admin_career_memo_admin_user (admin_user_id),
+    CONSTRAINT fk_admin_career_memo_run FOREIGN KEY (career_analysis_run_id) REFERENCES career_analysis_run (id) ON DELETE CASCADE,
+    CONSTRAINT fk_admin_career_memo_admin_user FOREIGN KEY (admin_user_id) REFERENCES users (id) ON DELETE CASCADE
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci;
+
+-- C 소유 대시보드 "오늘의 할 일". 파생(자동 계산) 할 일의 완료 오버라이드와 사용자가 직접 추가한
+-- 할 일을 함께 저장한다(디자인 분석 §6.4 "오늘의 할 일 — 완료 처리"). derived_key가 NULL이면 사용자 추가 항목.
+CREATE TABLE IF NOT EXISTS dashboard_todo (
+    id           BIGINT       NOT NULL AUTO_INCREMENT,
+    user_id      BIGINT       NOT NULL,
+    derived_key  VARCHAR(120) NULL,
+    task         VARCHAR(500) NOT NULL,
+    time_label   VARCHAR(50)  NOT NULL DEFAULT '오늘',
+    done         TINYINT(1)   NOT NULL DEFAULT 0,
+    completed_at DATETIME     NULL,
+    created_at   DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at   DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    PRIMARY KEY (id),
+    UNIQUE KEY uk_dashboard_todo_derived (user_id, derived_key),
+    KEY idx_dashboard_todo_user (user_id, created_at),
+    CONSTRAINT fk_dashboard_todo_user FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci;
+
 -- =====================================================================
 --  면접
 -- =====================================================================
@@ -298,12 +407,15 @@ CREATE TABLE IF NOT EXISTS interview_session (
 CREATE TABLE IF NOT EXISTS interview_question (
     id                   BIGINT NOT NULL AUTO_INCREMENT,
     interview_session_id BIGINT NOT NULL,
+    parent_question_id   BIGINT NULL,                       -- 꼬리 질문이면 원 질문 id, 일반 질문이면 NULL
     question             MEDIUMTEXT NOT NULL,
     question_type        VARCHAR(30) NULL,                  -- EXPECTED/TECH/PERSONALITY/SITUATION/FOLLOW_UP
     sort_order           INT NOT NULL DEFAULT 0,
     PRIMARY KEY (id),
     KEY idx_interview_question_session (interview_session_id),
-    CONSTRAINT fk_interview_question_session FOREIGN KEY (interview_session_id) REFERENCES interview_session (id) ON DELETE CASCADE
+    KEY idx_interview_question_parent (parent_question_id),
+    CONSTRAINT fk_interview_question_session FOREIGN KEY (interview_session_id) REFERENCES interview_session (id) ON DELETE CASCADE,
+    CONSTRAINT fk_interview_question_parent FOREIGN KEY (parent_question_id) REFERENCES interview_question (id) ON DELETE CASCADE
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci;
 
 CREATE TABLE IF NOT EXISTS interview_answer (
@@ -319,6 +431,72 @@ CREATE TABLE IF NOT EXISTS interview_answer (
     PRIMARY KEY (id),
     KEY idx_interview_answer_question (question_id),
     CONSTRAINT fk_interview_answer_question FOREIGN KEY (question_id) REFERENCES interview_question (id) ON DELETE CASCADE
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci;
+
+-- 멀티에이전트 면접 진행의 단계 트레이스 (각 에이전트의 행동·입출력 기록).
+-- "AI 면접관이 무슨 판단을 했는지" 투명하게 보여주고, 향후 학습 데이터로도 쓴다.
+CREATE TABLE IF NOT EXISTS interview_agent_step (
+    id                   BIGINT NOT NULL AUTO_INCREMENT,
+    interview_session_id BIGINT NOT NULL,
+    question_id          BIGINT NULL,
+    step_no              INT NOT NULL DEFAULT 0,
+    agent                VARCHAR(30) NOT NULL,               -- PLANNER/EVALUATOR/CRITIC/PROBER/REPORTER/ORCHESTRATOR
+    action               VARCHAR(60) NULL,
+    summary              MEDIUMTEXT NULL,                    -- 사람이 읽는 한 줄 요약
+    detail               JSON NULL,                          -- 구조화 입출력
+    created_at           DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (id),
+    KEY idx_agent_step_session (interview_session_id),
+    CONSTRAINT fk_agent_step_session FOREIGN KEY (interview_session_id) REFERENCES interview_session (id) ON DELETE CASCADE
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci;
+
+-- 면접 평가 학습 데이터 (파인튜닝/평가 하니스용). 평가가 일어날 때마다 append.
+-- 세션이 지워져도 학습 데이터는 남도록 FK 를 두지 않는다.
+CREATE TABLE IF NOT EXISTS interview_training_sample (
+    id                   BIGINT NOT NULL AUTO_INCREMENT,
+    interview_session_id BIGINT NULL,
+    question_id          BIGINT NULL,
+    question             MEDIUMTEXT NOT NULL,
+    answer_text          MEDIUMTEXT NOT NULL,
+    score                INT NOT NULL,
+    feedback             MEDIUMTEXT NULL,
+    rag_used             TINYINT(1) NOT NULL DEFAULT 0,
+    model                VARCHAR(80) NULL,
+    created_at           DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (id),
+    KEY idx_training_session (interview_session_id)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci;
+
+-- 면접 RAG 지식베이스 원본 (루브릭/기출/기업자료). 벡터는 Qdrant 에, 원본은 여기 보관.
+CREATE TABLE IF NOT EXISTS interview_knowledge (
+    id         BIGINT NOT NULL AUTO_INCREMENT,
+    kind       VARCHAR(30) NOT NULL,                       -- RUBRIC/QUESTION_BANK/COMPANY/GENERAL
+    title      VARCHAR(255) NULL,
+    content    MEDIUMTEXT NOT NULL,
+    source     VARCHAR(255) NULL,
+    indexed    TINYINT(1) NOT NULL DEFAULT 0,              -- Qdrant 색인 여부
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (id),
+    KEY idx_interview_knowledge_kind (kind)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci;
+
+-- 파일/스토리지 메타데이터 (음성/영상/문서 등 업로드 파일의 위치·종류를 기록).
+-- 실제 바이트는 로컬 디스크(careertuner.uploads.media-dir)에 저장하고, 본 테이블은 메타만 보관한다.
+CREATE TABLE IF NOT EXISTS file_asset (
+    id            BIGINT NOT NULL AUTO_INCREMENT,
+    owner_user_id BIGINT NOT NULL,
+    kind          VARCHAR(20) NOT NULL,                       -- AUDIO/VIDEO/RESUME/PORTFOLIO/POSTING/ATTACHMENT
+    ref_type      VARCHAR(30) NULL,                           -- 연결 대상 종류 (예: INTERVIEW_ANSWER)
+    ref_id        BIGINT NULL,                                -- 연결 대상 id
+    original_name VARCHAR(255) NULL,
+    content_type  VARCHAR(120) NULL,
+    size_bytes    BIGINT NOT NULL DEFAULT 0,
+    storage_key   VARCHAR(512) NOT NULL,                      -- 디스크 저장 경로/키 (예: media/12/uuid.webm)
+    created_at    DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (id),
+    KEY idx_file_asset_owner (owner_user_id),
+    KEY idx_file_asset_ref (ref_type, ref_id),
+    CONSTRAINT fk_file_asset_owner FOREIGN KEY (owner_user_id) REFERENCES users (id) ON DELETE CASCADE
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci;
 
 -- =====================================================================

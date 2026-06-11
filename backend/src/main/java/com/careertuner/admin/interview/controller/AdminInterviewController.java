@@ -9,6 +9,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import com.careertuner.admin.interview.dto.AdminInterviewAiFailureRow;
 import com.careertuner.admin.interview.dto.AdminInterviewSessionDetail;
 import com.careertuner.admin.interview.dto.AdminInterviewSessionRow;
 import com.careertuner.admin.interview.service.AdminInterviewService;
@@ -37,5 +38,12 @@ public class AdminInterviewController {
     public ApiResponse<AdminInterviewSessionDetail> detail(@AuthenticationPrincipal AuthUser authUser,
                                                            @PathVariable Long id) {
         return ApiResponse.ok(service.detail(authUser, id));
+    }
+
+    @GetMapping("/ai-failures")
+    public ApiResponse<List<AdminInterviewAiFailureRow>> aiFailures(
+            @AuthenticationPrincipal AuthUser authUser,
+            @RequestParam(defaultValue = "50") int limit) {
+        return ApiResponse.ok(service.aiFailures(authUser, limit));
     }
 }

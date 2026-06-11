@@ -42,7 +42,9 @@ public class SecurityConfig {
                         // 인증 공개 엔드포인트
                         .requestMatchers(HttpMethod.POST,
                                 "/api/auth/register", "/api/auth/login",
-                                "/api/auth/refresh", "/api/auth/email/resend").permitAll()
+                                "/api/auth/refresh", "/api/auth/email/resend",
+                                "/api/auth/password/reset-request", "/api/auth/password/reset",
+                                "/api/auth/dormant/release-request", "/api/auth/dormant/release").permitAll()
                         .requestMatchers(HttpMethod.GET,
                                 "/api/auth/verify-email", "/api/auth/check/**", "/api/auth/oauth/**").permitAll()
                         // 커뮤니티 게시글 조회 공개
