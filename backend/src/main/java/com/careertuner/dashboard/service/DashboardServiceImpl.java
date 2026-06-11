@@ -22,13 +22,18 @@ import com.careertuner.dashboard.ai.DashboardInsightAiCommand;
 import com.careertuner.dashboard.ai.DashboardInsightAiResult;
 import com.careertuner.dashboard.ai.DashboardInsightAiService;
 import com.careertuner.dashboard.domain.DashboardApplicationSource;
+import com.careertuner.dashboard.domain.DashboardFitPointSource;
 import com.careertuner.dashboard.domain.DashboardInterviewSource;
+import com.careertuner.dashboard.domain.DashboardLearningProgressSource;
 import com.careertuner.dashboard.domain.DashboardTodo;
 import com.careertuner.dashboard.domain.DashboardUserSource;
 import com.careertuner.dashboard.dto.DashboardActivityResponse;
 import com.careertuner.dashboard.dto.DashboardApplicationResponse;
+import com.careertuner.dashboard.dto.DashboardChangeResponse;
 import com.careertuner.dashboard.dto.DashboardFocusResponse;
 import com.careertuner.dashboard.dto.DashboardNotificationResponse;
+import com.careertuner.dashboard.dto.DashboardReadinessComponentResponse;
+import com.careertuner.dashboard.dto.DashboardReadinessResponse;
 import com.careertuner.dashboard.dto.DashboardRecentInterviewResponse;
 import com.careertuner.dashboard.dto.DashboardSkillGapResponse;
 import com.careertuner.dashboard.dto.DashboardStatsResponse;
@@ -126,8 +131,72 @@ public class DashboardServiceImpl implements DashboardService {
                 skillGaps,
                 recentInterview(userId),
                 recentNotifications(userId),
+                readiness(userId, applications, analyzedApplications, stats),
+                recentChange(dashboardMapper.findFitScoreHistoryByUserId(userId)),
                 summary,
                 run);
+    }
+
+    /**
+     * 전체 취업 준비도 게이지. 분석 실행률·평균 적합도·학습 완료율·면접 연습률을 가중 평균한다.
+     * 모두 결정적 집계라 AI 비용 없이 매 조회 시 새로 계산한다.
+     */
+    private DashboardReadinessResponse readiness(Long userId,
+                                                 List<DashboardApplicationSource> applications,
+                                                 List<DashboardApplicationSource> analyzedApplications,
+                                                 DashboardStatsResponse stats) {
+        int total = applications.size();
+        int analysisRate = total == 0 ? 0 : percentage(analyzedApplications.size(), total);
+        int averageFit = stats.averageFitScore();
+
+        DashboardLearningProgressSource learning = dashboardMapper.findLearningProgressByUserId(userId);
+        int learningRate = learning == null || learning.getTotalTasks() == 0
+                ? 0
+                : percentage(learning.getCompletedTasks(), learning.getTotalTasks());
+
+        int practiced = (int) applications.stream()
+                .filter(application -> application.getInterviewCount() > 0)
+                .count();
+        int interviewRate = total == 0 ? 0 : percentage(practiced, total);
+
+        int overall = total == 0
+                ? 0
+                : (int) Math.round(analysisRate * 0.2 + averageFit * 0.4 + learningRate * 0.2 + interviewRate * 0.2);
+
+        return new DashboardReadinessResponse(overall, List.of(
+                new DashboardReadinessComponentResponse(
+                        "analysis", "적합도 분석 실행률", analysisRate,
+                        "%d개 지원 건 중 %d건 분석 완료".formatted(total, analyzedApplications.size())),
+                new DashboardReadinessComponentResponse(
+                        "fit", "평균 적합도", averageFit,
+                        "최신 분석 기준 평균 점수"),
+                new DashboardReadinessComponentResponse(
+                        "learning", "학습 로드맵 완료율", learningRate,
+                        learning == null || learning.getTotalTasks() == 0
+                                ? "학습 체크리스트 없음"
+                                : "%d개 과제 중 %d개 완료".formatted(learning.getTotalTasks(), learning.getCompletedTasks())),
+                new DashboardReadinessComponentResponse(
+                        "interview", "모의면접 연습률", interviewRate,
+                        "%d개 지원 건 중 %d건 연습 진행".formatted(total, practiced))));
+    }
+
+    /** 최근 변화 요약: 지원 건별 최신-직전 적합도 점수 차이를 집계한다. 재분석 이력이 없으면 delta null. */
+    private static DashboardChangeResponse recentChange(List<DashboardFitPointSource> history) {
+        Map<Long, List<Integer>> byCase = new LinkedHashMap<>();
+        for (DashboardFitPointSource point : history) {
+            byCase.computeIfAbsent(point.getApplicationCaseId(), key -> new ArrayList<>()).add(point.getFitScore());
+        }
+        List<Integer> deltas = byCase.values().stream()
+                .filter(scores -> scores.size() >= 2)
+                .map(scores -> scores.get(scores.size() - 1) - scores.get(scores.size() - 2))
+                .toList();
+        if (deltas.isEmpty()) {
+            return new DashboardChangeResponse(0, 0, 0, null);
+        }
+        int improved = (int) deltas.stream().filter(delta -> delta > 0).count();
+        int declined = (int) deltas.stream().filter(delta -> delta < 0).count();
+        int average = (int) Math.round(deltas.stream().mapToInt(Integer::intValue).average().orElse(0));
+        return new DashboardChangeResponse(deltas.size(), improved, declined, average);
     }
 
     /**

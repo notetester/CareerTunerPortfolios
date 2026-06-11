@@ -215,6 +215,46 @@
         LIMIT 3
     </select>
 
+    <resultMap id="DashboardFitPointResultMap" type="com.careertuner.dashboard.domain.DashboardFitPointSource">
+        <result property="applicationCaseId" column="application_case_id"/>
+        <result property="fitScore" column="fit_score"/>
+        <result property="createdAt" column="created_at"/>
+    </resultMap>
+
+    <!-- 최근 변화 요약: 지원 건별 적합도 분석 전체 이력. 최신-직전 점수 비교는 서비스에서 수행한다. -->
+    <select id="findFitScoreHistoryByUserId" resultMap="DashboardFitPointResultMap">
+        SELECT
+            fa.application_case_id,
+            fa.fit_score,
+            fa.created_at
+        FROM fit_analysis fa
+        INNER JOIN application_case ac ON ac.id = fa.application_case_id
+        WHERE ac.user_id = #{userId}
+          AND fa.fit_score IS NOT NULL
+        ORDER BY fa.application_case_id, fa.id
+    </select>
+
+    <resultMap id="DashboardLearningProgressResultMap" type="com.careertuner.dashboard.domain.DashboardLearningProgressSource">
+        <result property="totalTasks" column="total_tasks"/>
+        <result property="completedTasks" column="completed_tasks"/>
+    </resultMap>
+
+    <!-- 준비도 게이지: 지원 건별 최신 적합도 분석에 달린 학습 체크리스트의 완료 현황. -->
+    <select id="findLearningProgressByUserId" resultMap="DashboardLearningProgressResultMap">
+        SELECT
+            COUNT(*) AS total_tasks,
+            COALESCE(SUM(task.completed), 0) AS completed_tasks
+        FROM fit_analysis_learning_task task
+        INNER JOIN fit_analysis fa ON fa.id = task.fit_analysis_id
+        INNER JOIN application_case ac ON ac.id = fa.application_case_id
+        WHERE ac.user_id = #{userId}
+          AND fa.id = (
+              SELECT MAX(latest_fa.id)
+              FROM fit_analysis latest_fa
+              WHERE latest_fa.application_case_id = fa.application_case_id
+          )
+    </select>
+
     <resultMap id="DashboardTodoResultMap" type="com.careertuner.dashboard.domain.DashboardTodo">
         <id property="id" column="id"/>
         <result property="userId" column="user_id"/>

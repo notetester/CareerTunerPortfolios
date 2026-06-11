@@ -14,6 +14,7 @@ import type { DashboardActivity, DashboardSummary, DashboardTodo } from "@/featu
 import { TodoChecklist } from "@/features/dashboard/components/TodoChecklist";
 import { RecentInterviewCard } from "@/features/dashboard/components/RecentInterviewCard";
 import { NotificationsCard } from "@/features/dashboard/components/NotificationsCard";
+import { ReadinessGaugeCard } from "@/features/dashboard/components/ReadinessGaugeCard";
 import { AiResultBadge } from "@/features/analysis/components/AiResultBadge";
 
 const statusLabel: Record<string, string> = {
@@ -325,6 +326,11 @@ export function DashboardPage() {
               </div>
 
               <div className="space-y-5">
+                {/* C 담당: 전체 취업 준비도 게이지 + 최근 변화 요약(결정적 집계). */}
+                {summary.readiness && summary.recentChange && (
+                  <ReadinessGaugeCard readiness={summary.readiness} recentChange={summary.recentChange} />
+                )}
+
                 <Card className="border border-slate-200 bg-white">
                   <CardHeader className="pb-3">
                     <CardTitle className="text-base flex items-center gap-2">

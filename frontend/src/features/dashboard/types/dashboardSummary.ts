@@ -87,6 +87,28 @@ export interface DashboardSkillGap {
   percentage: number;
 }
 
+/** 준비도 게이지 구성 요소(0~100). */
+export interface DashboardReadinessComponent {
+  key: string;
+  label: string;
+  score: number;
+  description: string;
+}
+
+/** 전체 취업 준비도 게이지(분석 실행률·평균 적합도·학습 완료율·면접 연습률 가중 평균). */
+export interface DashboardReadiness {
+  overall: number;
+  components: DashboardReadinessComponent[];
+}
+
+/** 최근 변화 요약. 재분석 이력이 없으면 averageScoreDelta 가 null. */
+export interface DashboardChange {
+  reanalyzedApplications: number;
+  improvedApplications: number;
+  declinedApplications: number;
+  averageScoreDelta: number | null;
+}
+
 export interface DashboardAnalysisRun {
   id: number;
   analysisType: string;
@@ -108,6 +130,8 @@ export interface DashboardSummary {
   skillGaps: DashboardSkillGap[];
   recentInterview: DashboardRecentInterview | null;
   recentNotifications: DashboardNotification[];
+  readiness: DashboardReadiness;
+  recentChange: DashboardChange;
   /** 대시보드 AI 분석 결과 요약(C 담당 AI 18). API 키가 없으면 결정적 mock, 있으면 실제 구조화 분석. */
   aiSummary: string;
   analysisRun: DashboardAnalysisRun;

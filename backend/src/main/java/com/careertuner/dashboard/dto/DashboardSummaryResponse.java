@@ -16,6 +16,9 @@ public record DashboardSummaryResponse(
         DashboardRecentInterviewResponse recentInterview,
         // PRODUCT_STRUCTURE 대시보드 항목: 최근 알림(notification 읽기 전용 참조).
         List<DashboardNotificationResponse> recentNotifications,
+        // 전체 취업 준비도 게이지와 최근 변화 요약(결정적 집계, AI 미사용).
+        DashboardReadinessResponse readiness,
+        DashboardChangeResponse recentChange,
         String aiSummary,
         CareerAnalysisRunResponse analysisRun
 ) {
