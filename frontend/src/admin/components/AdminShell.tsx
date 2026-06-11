@@ -3,7 +3,7 @@ import { Link, useLocation } from "react-router";
 import {
   LayoutDashboard, Briefcase, BarChart3, Building2, Gauge, FileText,
   Users, CreditCard, MessageSquareWarning, Megaphone, CircleHelp,
-  Mail, Search, Bell, ChevronRight, FileUser, ClipboardCheck,
+  Mail, Search, Bell, ChevronRight, Scale, FileUser, ClipboardCheck,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import "./admin-shell.css";
@@ -31,6 +31,8 @@ const NAV: NavItem[] = [
   { key: "notices", label: "공지사항", icon: Megaphone, ct: "7", href: "/admin/notices" },
   { key: "faq", label: "FAQ 관리", icon: CircleHelp, href: "/admin/faq" },
   { key: "inquiries", label: "문의 관리", icon: Mail, ct: "9", href: "/admin/inquiries" },
+  { key: "terms", label: "약관 관리", icon: Scale, href: "/admin/terms" },
+  { key: "notifications", label: "알림 모니터링", icon: Bell, href: "/admin/notifications" },
 ];
 
 interface AdminShellProps {

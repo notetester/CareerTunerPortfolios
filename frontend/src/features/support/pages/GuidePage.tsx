@@ -82,7 +82,7 @@ export default function GuidePage() {
           <p>가이드에서 답을 못 찾으셨다면 운영팀이 1:1로 도와드릴게요.</p>
         </div>
         <Link to="/support/contact">
-          <button className="ct-btn-brand" style={{ height: 48, paddingLeft: 24, paddingRight: 24 }}>
+          <button className="av-btn av-btn--ink" style={{ height: 48, paddingLeft: 24, paddingRight: 24 }}>
             문의하기 <ArrowRight />
           </button>
         </Link>

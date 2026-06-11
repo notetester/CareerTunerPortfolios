@@ -1,0 +1,76 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.careertuner.notification.mapper.NotificationMapper">
+
+    <resultMap id="notificationResultMap" type="com.careertuner.notification.domain.Notification">
+        <id     property="id"           column="id"/>
+        <result property="userId"       column="user_id"/>
+        <result property="actorId"      column="actor_id"/>
+        <result property="type"         column="type"/>
+        <result property="targetType"   column="target_type"/>
+        <result property="targetId"     column="target_id"/>
+        <result property="title"        column="title"/>
+        <result property="message"      column="message"/>
+        <result property="link"         column="link"/>
+        <result property="read"         column="is_read"/>
+        <result property="readAt"       column="read_at"/>
+        <result property="createdAt"    column="created_at"/>
+        <result property="actorName"    column="actor_name"/>
+        <result property="actorAvatarUrl" column="actor_avatar_url"/>
+    </resultMap>
+
+    <!-- 알림 목록 조회 (최신순, actor JOIN) -->
+    <select id="findByUserId" resultMap="notificationResultMap">
+        SELECT n.*,
+               a.name AS actor_name
+          FROM notification n
+          LEFT JOIN users a ON n.actor_id = a.id
+         WHERE n.user_id = #{userId}
+         ORDER BY n.created_at DESC
+         LIMIT #{limit} OFFSET #{offset}
+    </select>
+
+    <!-- 총 알림 수 -->
+    <select id="countByUserId" resultType="int">
+        SELECT COUNT(*)
+          FROM notification
+         WHERE user_id = #{userId}
+    </select>
+
+    <!-- 안읽음 알림 수 -->
+    <select id="countUnreadByUserId" resultType="int">
+        SELECT COUNT(*)
+          FROM notification
+         WHERE user_id = #{userId}
+           AND is_read = 0
+    </select>
+
+    <!-- 단건 조회 -->
+    <select id="findById" resultMap="notificationResultMap">
+        SELECT n.*,
+               a.name AS actor_name
+          FROM notification n
+          LEFT JOIN users a ON n.actor_id = a.id
+         WHERE n.id = #{id}
+    </select>
+
+    <!-- 단건 읽음 처리 -->
+    <update id="markAsRead">
+        UPDATE notification
+           SET is_read = 1,
+               read_at = NOW()
+         WHERE id = #{id}
+           AND is_read = 0
+    </update>
+
+    <!-- 전체 읽음 처리 -->
+    <update id="markAllAsRead">
+        UPDATE notification
+           SET is_read = 1,
+               read_at = NOW()
+         WHERE user_id = #{userId}
+           AND is_read = 0
+    </update>
+
+</mapper>

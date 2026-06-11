@@ -586,7 +586,8 @@ function ToastViewport() {
   const [, forceRender] = useState(0);
 
   useEffect(() => {
-    return subscribe(() => forceRender((n) => n + 1));
+    const unsub = subscribe(() => forceRender((n) => n + 1));
+    return () => { unsub(); };
   }, []);
 
   return (

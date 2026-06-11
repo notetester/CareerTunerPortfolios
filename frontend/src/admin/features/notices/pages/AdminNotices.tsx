@@ -1,466 +1,313 @@
-import { useState, useRef, useCallback, type DragEvent, type ChangeEvent } from "react";
+import { useState, useEffect } from "react";
 import {
-  Megaphone, Plus, Pin, Eye, PenLine, Send, Save,
-  Bold, Italic, List, Quote, Link2, ImagePlus, X,
+  Megaphone, Plus, Pin, PinOff, Search, ChevronLeft, ChevronRight,
+  Trash2, ArrowDownCircle, ArrowUpCircle, ArrowLeft, Eye, Check, CalendarClock,
+  Bold, Italic, Strikethrough, List, ListOrdered, Quote, Link2, ImageIcon, Table,
 } from "lucide-react";
-import { Input } from "@/app/components/ui/input";
-import { Switch } from "@/app/components/ui/switch";
-import { Button } from "@/app/components/ui/button";
 import AdminShell from "../../../components/AdminShell";
-import { NOTICES as INITIAL, type Notice, type NoticeStatus } from "../data/noticesData";
+import { type Notice, type NoticeStatus } from "../data/noticesData";
+import * as adminNoticeApi from "../api/adminNoticeApi";
+import { ConfirmDialog } from "@/app/components/ui/confirm-dialog";
 import "./admin-notices.css";
+import "./notice-compose.css";
 
-type FilterKey = "all" | "published" | "pending";
+/* ═══ 목록 필터 ═══ */
+type FilterKey = "전체" | "게시중" | "예약" | "내림";
 
-const FILTERS: { key: FilterKey; label: string }[] = [
-  { key: "all", label: "전체" },
-  { key: "published", label: "게시중" },
-  { key: "pending", label: "대기·임시" },
-];
-
-const STATUS_CLS: Record<NoticeStatus, string> = {
-  published: "ntc-badge--pub",
-  draft: "ntc-badge--draft",
-  scheduled: "ntc-badge--sched",
-};
 const STATUS_LABEL: Record<NoticeStatus, string> = {
-  published: "게시중",
-  draft: "임시저장",
-  scheduled: "예약",
+  published: "게시중", draft: "내림", scheduled: "예약",
+};
+const STATUS_CLS: Record<NoticeStatus, string> = {
+  published: "ok", draft: "off", scheduled: "blue",
 };
 
-/* ── helpers ── */
-function readFileAsDataURL(file: File): Promise<string> {
-  return new Promise((resolve) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(reader.result as string);
-    reader.readAsDataURL(file);
-  });
-}
+type DialogState =
+  | { type: "delete"; notice: Notice }
+  | { type: "status"; notice: Notice; target: NoticeStatus }
+  | { type: "pin"; notice: Notice };
 
-function insertMarkdown(
-  textarea: HTMLTextAreaElement,
-  before: string,
-  after: string,
-  setText: (v: string) => void,
-) {
-  const { selectionStart: s, selectionEnd: e, value } = textarea;
-  const selected = value.slice(s, e);
-  const next = value.slice(0, s) + before + selected + after + value.slice(e);
-  setText(next);
-  requestAnimationFrame(() => {
-    textarea.focus();
-    textarea.selectionStart = s + before.length;
-    textarea.selectionEnd = s + before.length + selected.length;
-  });
-}
+/* ═══ 작성 폼 도구 ═══ */
+const CATS = ["일반", "점검", "기능 업데이트", "프로모션", "정책·약관"];
+const TOOLBAR: (string | null)[] = [
+  "bold", "italic", "strikethrough", null, "list", "list-ordered", "quote", null, "link", "image", "table",
+];
+const ICON_MAP: Record<string, React.ElementType> = {
+  bold: Bold, italic: Italic, strikethrough: Strikethrough,
+  list: List, "list-ordered": ListOrdered, quote: Quote,
+  link: Link2, image: ImageIcon, table: Table,
+};
 
-/* ── Toast ── */
-function Toast({ msg, tone }: { msg: string; tone: string }) {
-  return <div className={`ntc-toast ntc-toast--${tone}`}>{msg}</div>;
-}
-
-/* ── Component ── */
-export default function AdminNotices() {
-  const [items, setItems] = useState<Notice[]>(INITIAL);
-  const [filter, setFilter] = useState<FilterKey>("all");
-  const [selectedId, setSelectedId] = useState<number | null>(INITIAL[0].id);
-  const [isNew, setIsNew] = useState(false);
-
-  /* editor state */
-  const [eTitle, setETitle] = useState(INITIAL[0].title);
-  const [eBody, setEBody] = useState(INITIAL[0].body);
-  const [ePinned, setEPinned] = useState(INITIAL[0].pinned);
-  const [ePublish, setEPublish] = useState(INITIAL[0].status === "published");
-  const [eCover, setECover] = useState<string | null>(INITIAL[0].cover);
-  const [eImages, setEImages] = useState<string[]>(INITIAL[0].images);
-
+/* ═══ 작성 폼 ═══ */
+function NoticeComposeView({ onBack, onCreated }: { onBack: () => void; onCreated: () => void }) {
+  const [cat, setCat] = useState("일반");
+  const [title, setTitle] = useState("");
+  const [body, setBody] = useState("");
+  const [pin, setPin] = useState(false);
+  const [push, setPush] = useState(true);
+  const [when, setWhen] = useState<"즉시" | "예약">("즉시");
+  const [scheduleAt, setScheduleAt] = useState("");
+  const [saving, setSaving] = useState(false);
   const [toast, setToast] = useState<{ msg: string; tone: string } | null>(null);
-  const bodyRef = useRef<HTMLTextAreaElement>(null);
-  const coverInputRef = useRef<HTMLInputElement>(null);
-  const imgInputRef = useRef<HTMLInputElement>(null);
 
-  /* counts */
-  const pubCount = items.filter((n) => n.status === "published").length;
-  const pendCount = items.filter((n) => n.status !== "published").length;
-  const countMap: Record<FilterKey, number> = { all: items.length, published: pubCount, pending: pendCount };
+  const canSubmit = title.trim().length > 1 && body.trim().length > 4;
 
-  const filtered = filter === "all"
-    ? items
-    : filter === "published"
-      ? items.filter((n) => n.status === "published")
-      : items.filter((n) => n.status !== "published");
-
-  const selectedItem = items.find((n) => n.id === selectedId) ?? null;
-  const editorLabel = isNew ? "새 공지 작성" : "공지 편집";
-  const editorStatus = isNew ? null : selectedItem?.status ?? null;
-
-  /* load item into editor */
-  const loadEditor = (n: Notice) => {
-    setSelectedId(n.id);
-    setIsNew(false);
-    setETitle(n.title);
-    setEBody(n.body);
-    setEPinned(n.pinned);
-    setEPublish(n.status === "published");
-    setECover(n.cover);
-    setEImages(n.images);
-  };
-
-  /* new notice */
-  const handleNew = () => {
-    setIsNew(true);
-    setSelectedId(null);
-    setETitle("");
-    setEBody("");
-    setEPinned(false);
-    setEPublish(true);
-    setECover(null);
-    setEImages([]);
-  };
-
-  /* show toast */
   const flash = (msg: string, tone: string) => {
     setToast({ msg, tone });
     setTimeout(() => setToast(null), 2200);
   };
 
-  /* save */
-  const save = (asDraft: boolean) => {
-    const status: NoticeStatus = asDraft ? "draft" : "published";
-    const now = new Date();
-    const dateStr = asDraft
-      ? "임시저장"
-      : `${now.getFullYear()}.${String(now.getMonth() + 1).padStart(2, "0")}.${String(now.getDate()).padStart(2, "0")}`;
-
-    if (isNew) {
-      const newNotice: Notice = {
-        id: Date.now(),
-        title: eTitle,
-        body: eBody,
-        status,
-        pinned: ePinned,
-        date: dateStr,
-        views: 0,
-        cover: eCover,
-        images: eImages,
-      };
-      setItems((prev) => [newNotice, ...prev]);
-      setSelectedId(newNotice.id);
-      setIsNew(false);
-    } else if (selectedId) {
-      setItems((prev) =>
-        prev.map((n) =>
-          n.id === selectedId
-            ? { ...n, title: eTitle, body: eBody, status, pinned: ePinned, date: dateStr, cover: eCover, images: eImages }
-            : n,
-        ),
-      );
+  const handleSubmit = async () => {
+    if (!canSubmit || saving) return;
+    setSaving(true);
+    try {
+      await adminNoticeApi.createNotice({
+        title,
+        content: body,
+        status: when === "예약" ? "SCHEDULED" : "PUBLISHED",
+        isPinned: pin,
+        thumbnailUrl: null,
+      });
+      flash("공지가 게시되었습니다.", "green");
+      setTimeout(() => onCreated(), 600);
+    } catch {
+      flash("저장에 실패했습니다.", "red");
+    } finally {
+      setSaving(false);
     }
-    flash(asDraft ? "임시저장했어요" : "공지를 게시했어요", asDraft ? "slate" : "green");
   };
-
-  /* row toggles */
-  const togglePublish = (id: number) => {
-    setItems((prev) =>
-      prev.map((n) => {
-        if (n.id !== id) return n;
-        const next: NoticeStatus = n.status === "published" ? "draft" : "published";
-        const updated = {
-          ...n,
-          status: next,
-          date: next === "draft" ? "임시저장" : n.date === "임시저장" ? new Date().toISOString().slice(0, 10).replace(/-/g, ".") : n.date,
-        };
-        if (id === selectedId) {
-          setEPublish(next === "published");
-        }
-        return updated;
-      }),
-    );
-  };
-
-  const togglePin = (id: number) => {
-    setItems((prev) =>
-      prev.map((n) => {
-        if (n.id !== id) return n;
-        const updated = { ...n, pinned: !n.pinned };
-        if (id === selectedId) setEPinned(updated.pinned);
-        return updated;
-      }),
-    );
-  };
-
-  /* cover image */
-  const handleCoverFile = async (file: File) => {
-    if (!file.type.startsWith("image/")) return;
-    const url = await readFileAsDataURL(file);
-    setECover(url);
-  };
-
-  const onCoverDrop = (e: DragEvent) => {
-    e.preventDefault();
-    const file = e.dataTransfer.files[0];
-    if (file) handleCoverFile(file);
-  };
-
-  const onCoverInput = (e: ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) handleCoverFile(file);
-    e.target.value = "";
-  };
-
-  /* body images */
-  const addBodyImages = async (files: FileList) => {
-    const urls: string[] = [];
-    for (const f of Array.from(files)) {
-      if (f.type.startsWith("image/")) urls.push(await readFileAsDataURL(f));
-    }
-    setEImages((prev) => [...prev, ...urls]);
-  };
-
-  const onBodyImgInput = (e: ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files) addBodyImages(e.target.files);
-    e.target.value = "";
-  };
-
-  /* markdown toolbar */
-  const md = useCallback(
-    (before: string, after: string) => {
-      if (bodyRef.current) insertMarkdown(bodyRef.current, before, after, setEBody);
-    },
-    [],
-  );
 
   return (
     <AdminShell
-      active="notices"
-      breadcrumb="공지사항"
-      title="공지사항 관리"
-      icon={Megaphone}
-      desc="공지사항을 작성하고 게시 상태를 관리합니다."
-      actions={
-        <Button
-          className="bg-gradient-to-r from-blue-600 to-indigo-600 text-white"
-          size="sm"
-          onClick={handleNew}
-        >
-          <Plus /> 새 공지
-        </Button>
-      }
+      active="notices" breadcrumb="공지 작성" title="공지 작성" icon={Megaphone}
+      desc="게시하면 공지사항 목록과 (선택 시) 전체 알림으로 발송됩니다"
+      actions={<button className="av-btn" onClick={onBack}><ArrowLeft /> 목록으로</button>}
     >
-      <div className="ntc-body">
-        {/* ── Left: list ── */}
-        <div className="ntc-list">
-          {/* filter bar */}
-          <div className="ntc-list__bar">
-            <div className="ntc-seg">
-              {FILTERS.map((f) => (
-                <button
-                  key={f.key}
-                  className={`ntc-seg__btn ${filter === f.key ? "is-on" : ""}`}
-                  onClick={() => setFilter(f.key)}
-                >
-                  {f.label} <span className="ntc-seg__ct">{countMap[f.key]}</span>
-                </button>
-              ))}
-            </div>
+      <div className="av-form">
+        <section className="av-panel">
+          <div className="av-field">
+            <div className="av-flabel">분류</div>
+            <select className="av-select" style={{ width: 200 }} value={cat} onChange={(e) => setCat(e.target.value)}>
+              {CATS.map((c) => <option key={c}>{c}</option>)}
+            </select>
           </div>
+          <div className="av-field">
+            <div className="av-flabel">제목 <span className="av-count num">{title.length}/80</span></div>
+            <input className="av-input" value={title} maxLength={80} onChange={(e) => setTitle(e.target.value)}
+              placeholder="예: [점검] 6월 12일(목) 02:00~04:00 서비스 정기 점검 안내" />
+            <div className="av-hint">점검·장애 공지는 머리말([점검], [장애])을 붙이면 목록에서 식별이 쉽습니다.</div>
+          </div>
+          <div className="av-field">
+            <div className="av-flabel">본문</div>
+            <div className="nc-toolbar">
+              {TOOLBAR.map((t, i) => {
+                if (!t) return <span key={i} className="nc-tooldiv" />;
+                const Icon = ICON_MAP[t];
+                return <button key={i} className="nc-tool" aria-label={t}>{Icon && <Icon />}</button>;
+              })}
+            </div>
+            <textarea className="av-textarea nc-body" value={body} onChange={(e) => setBody(e.target.value)}
+              placeholder={"공지 내용을 입력하세요.\n\n점검 공지라면 — 일시, 영향 범위(접속 불가/일부 기능), 사유를 순서대로 적어주세요."} />
+          </div>
+        </section>
 
-          {/* rows */}
-          <div className="ntc-rows">
-            {filtered.map((n) => (
-              <div
-                key={n.id}
-                className={`ntc-row ${selectedId === n.id && !isNew ? "is-selected" : ""}`}
-                onClick={() => loadEditor(n)}
-              >
-                {/* thumbnail */}
-                <div className="ntc-row__thumb">
-                  {n.cover ? (
-                    <img src={n.cover} alt="" />
-                  ) : (
-                    <div className="ntc-row__thumb-placeholder">
-                      <Megaphone />
-                    </div>
-                  )}
+        <aside className="av-rail">
+          <section className="av-panel">
+            <div className="av-mod__h"><span className="av-mod__t">게시 설정</span></div>
+            <div style={{ padding: "12px 14px 14px" }}>
+              <div className={`av-switchrow${pin ? " on" : ""}`} onClick={() => setPin(!pin)}>
+                <span className="av-switch" />
+                <span><span className="t">상단 고정</span><span className="s" style={{ display: "block" }}>목록 최상단에 핀 고정 (최대 3개)</span></span>
+              </div>
+              <div className={`av-switchrow${push ? " on" : ""}`} onClick={() => setPush(!push)}>
+                <span className="av-switch" />
+                <span><span className="t">전체 알림 발송</span><span className="s" style={{ display: "block" }}>모든 회원에게 NOTICE 타입 알림이 갑니다 — 점검·정책 변경 등 중요 공지에만 사용하세요</span></span>
+              </div>
+            </div>
+          </section>
+          <section className="av-panel">
+            <div className="av-mod__h"><span className="av-mod__t">게시 시점</span></div>
+            <div style={{ padding: "12px 14px 14px" }}>
+              <div className="av-choices">
+                <div className={`av-choice${when === "즉시" ? " on" : ""}`} onClick={() => setWhen("즉시")}>
+                  <div className="t">즉시</div><div className="s">게시 버튼 클릭 시</div>
                 </div>
-
-                <div className="ntc-row__content">
-                  <div className="ntc-row__top">
-                    {n.pinned && <Pin className="ntc-row__pin" />}
-                    <span className={`ntc-badge ${STATUS_CLS[n.status]}`}>
-                      {STATUS_LABEL[n.status]}
-                    </span>
-                  </div>
-                  <div className="ntc-row__title">{n.title}</div>
-                  <div className="ntc-row__meta">
-                    <span>{n.date}</span>
-                    {n.views > 0 && <span>· 조회 {n.views.toLocaleString()}</span>}
-                    <div className="ntc-row__toggles" onClick={(e) => e.stopPropagation()}>
-                      <label className="ntc-toggle-label">
-                        <span>게시</span>
-                        <Switch
-                          checked={n.status === "published"}
-                          onCheckedChange={() => togglePublish(n.id)}
-                        />
-                      </label>
-                      <label className="ntc-toggle-label">
-                        <span>고정</span>
-                        <Switch
-                          checked={n.pinned}
-                          onCheckedChange={() => togglePin(n.id)}
-                        />
-                      </label>
-                    </div>
-                  </div>
+                <div className={`av-choice${when === "예약" ? " on" : ""}`} onClick={() => setWhen("예약")}>
+                  <div className="t">예약</div><div className="s">일시 지정</div>
                 </div>
               </div>
-            ))}
-          </div>
-        </div>
-
-        {/* ── Right: editor ── */}
-        <div className="ntc-editor">
-          <div className="ntc-editor__head">
-            <PenLine />
-            <span className="ntc-editor__label">{editorLabel}</span>
-            {editorStatus && (
-              <span className={`ntc-badge ${STATUS_CLS[editorStatus]}`}>
-                {STATUS_LABEL[editorStatus]}
-              </span>
-            )}
-          </div>
-
-          {/* Cover image */}
-          <div className="ntc-field">
-            <div className="ntc-field__label">대표 이미지</div>
-            {eCover ? (
-              <div className="ntc-cover-preview">
-                <img src={eCover} alt="대표 이미지" />
-                <button className="ntc-cover-preview__rm" onClick={() => setECover(null)}>
-                  <X />
-                </button>
-              </div>
-            ) : (
-              <div
-                className="ntc-cover-drop"
-                onClick={() => coverInputRef.current?.click()}
-                onDragOver={(e) => e.preventDefault()}
-                onDrop={onCoverDrop}
-              >
-                <ImagePlus />
-                <span>클릭 또는 드래그하여 대표 이미지 업로드</span>
-                <span className="ntc-cover-drop__hint">권장 1200×525 (16:7)</span>
-              </div>
-            )}
-            <input
-              ref={coverInputRef}
-              type="file"
-              accept="image/*"
-              hidden
-              onChange={onCoverInput}
-            />
-          </div>
-
-          {/* Title */}
-          <div className="ntc-field">
-            <div className="ntc-field__label">제목</div>
-            <Input
-              value={eTitle}
-              onChange={(e) => setETitle(e.target.value)}
-              placeholder="공지 제목을 입력하세요"
-            />
-          </div>
-
-          {/* Body toolbar + textarea */}
-          <div className="ntc-field">
-            <div className="ntc-field__label">내용</div>
-            <div className="ntc-toolbar">
-              <button type="button" title="굵게" onClick={() => md("**", "**")}><Bold /></button>
-              <button type="button" title="기울임" onClick={() => md("*", "*")}><Italic /></button>
-              <button type="button" title="목록" onClick={() => md("- ", "")}><List /></button>
-              <button type="button" title="인용" onClick={() => md("> ", "")}><Quote /></button>
-              <button type="button" title="링크" onClick={() => md("[", "](url)")}><Link2 /></button>
-              <button type="button" title="이미지 첨부" onClick={() => imgInputRef.current?.click()}>
-                <ImagePlus />
-              </button>
+              {when === "예약" && <input className="av-input num" style={{ marginTop: 8 }} type="datetime-local" value={scheduleAt} onChange={(e) => setScheduleAt(e.target.value)} />}
             </div>
-            <textarea
-              ref={bodyRef}
-              className="ntc-textarea"
-              value={eBody}
-              onChange={(e) => setEBody(e.target.value)}
-              placeholder="마크다운으로 내용을 작성하세요"
-            />
-            <input
-              ref={imgInputRef}
-              type="file"
-              accept="image/*"
-              multiple
-              hidden
-              onChange={onBodyImgInput}
-            />
-          </div>
+          </section>
+        </aside>
+      </div>
 
-          {/* Body images grid */}
-          {(eImages.length > 0 || true) && (
-            <div className="ntc-imgs">
-              {eImages.map((src, i) => (
-                <div key={i} className="ntc-imgs__item">
-                  <img src={src} alt="" />
-                  <button
-                    className="ntc-imgs__rm"
-                    onClick={() => setEImages((prev) => prev.filter((_, j) => j !== i))}
-                  >
-                    <X />
-                  </button>
-                </div>
-              ))}
-              <button
-                className="ntc-imgs__add"
-                onClick={() => imgInputRef.current?.click()}
-              >
-                <Plus />
-              </button>
-            </div>
-          )}
-
-          {/* Switch box */}
-          <div className="ntc-switchbox">
-            <label className="ntc-switchbox__row">
-              <div>
-                <div className="ntc-switchbox__t">상단 고정</div>
-                <div className="ntc-switchbox__d">목록 최상단에 핀 노출</div>
-              </div>
-              <Switch checked={ePinned} onCheckedChange={setEPinned} />
-            </label>
-            <label className="ntc-switchbox__row">
-              <div>
-                <div className="ntc-switchbox__t">즉시 게시</div>
-                <div className="ntc-switchbox__d">저장과 동시에 노출</div>
-              </div>
-              <Switch checked={ePublish} onCheckedChange={setEPublish} />
-            </label>
-          </div>
-
-          {/* Actions */}
-          <div className="ntc-editor__actions">
-            <Button variant="outline" size="sm" onClick={() => save(true)}>
-              <Save /> 임시저장
-            </Button>
-            <Button
-              className="bg-gradient-to-r from-blue-600 to-indigo-600 text-white"
-              size="sm"
-              onClick={() => save(false)}
-            >
-              <Send /> 게시하기
-            </Button>
+      <div className="av-composefoot">
+        <div className="av-composefoot__in">
+          <span className="av-composefoot__draft num"><Check /> 임시저장됨 · 방금</span>
+          <div className="av-composefoot__r">
+            <button className="av-btn"><Eye /> 미리보기</button>
+            <button className="av-btn">임시저장</button>
+            <button className="av-btn av-btn--ink" disabled={!canSubmit || saving}
+              style={!canSubmit ? { opacity: 0.45, cursor: "default" } : undefined} onClick={handleSubmit}>
+              {when === "예약" && <CalendarClock />}
+              {when === "예약" ? "게시 예약" : "게시"}
+            </button>
           </div>
         </div>
       </div>
+      {toast && <div className={`ntc-toast ntc-toast--${toast.tone}`}>{toast.msg}</div>}
+    </AdminShell>
+  );
+}
 
-      {/* Toast */}
-      {toast && <Toast msg={toast.msg} tone={toast.tone} />}
+/* ═══ 메인 (목록 + 작성 토글) ═══ */
+export default function AdminNotices() {
+  const [view, setView] = useState<"list" | "compose">("list");
+  const [items, setItems] = useState<Notice[]>([]);
+  const [filter, setFilter] = useState<FilterKey>("전체");
+  const [toast, setToast] = useState<{ msg: string; tone: string } | null>(null);
+  const [dialog, setDialog] = useState<DialogState | null>(null);
+
+  const loadItems = () => {
+    adminNoticeApi.getNotices().then(setItems)
+      .catch(() => flash("공지 목록을 불러오지 못했습니다.", "red"));
+  };
+
+  useEffect(() => { loadItems(); }, []);
+
+  const flash = (msg: string, tone: string) => {
+    setToast({ msg, tone });
+    setTimeout(() => setToast(null), 2200);
+  };
+
+  const handleConfirm = async () => {
+    if (!dialog) return;
+    try {
+      if (dialog.type === "delete") {
+        await adminNoticeApi.deleteNotice(dialog.notice.id);
+        setItems((prev) => prev.filter((n) => n.id !== dialog.notice.id));
+        flash("공지가 삭제되었습니다.", "green");
+      } else if (dialog.type === "pin") {
+        const updated = await adminNoticeApi.updateNotice(dialog.notice.id, { isPinned: !dialog.notice.pinned });
+        setItems((prev) => prev.map((n) => (n.id === updated.id ? updated : n)));
+        flash(updated.pinned ? "공지가 상단에 고정되었습니다." : "고정이 해제되었습니다.", "green");
+      } else {
+        const statusMap: Record<NoticeStatus, string> = { published: "PUBLISHED", draft: "DRAFT", scheduled: "SCHEDULED" };
+        const updated = await adminNoticeApi.updateNotice(dialog.notice.id, { status: statusMap[dialog.target] });
+        setItems((prev) => prev.map((n) => (n.id === updated.id ? updated : n)));
+        flash(`공지가 ${STATUS_LABEL[dialog.target]}(으)로 변경되었습니다.`, "green");
+      }
+    } catch {
+      flash("처리에 실패했습니다.", "red");
+    }
+    setDialog(null);
+  };
+
+  if (view === "compose") {
+    return <NoticeComposeView onBack={() => setView("list")} onCreated={() => { setView("list"); loadItems(); }} />;
+  }
+
+  const filtered = items.filter((n) => {
+    if (filter === "전체") return true;
+    if (filter === "게시중") return n.status === "published";
+    if (filter === "예약") return n.status === "scheduled";
+    return n.status === "draft";
+  });
+
+  return (
+    <AdminShell
+      active="notices" breadcrumb="공지사항" title="공지사항" icon={Megaphone}
+      desc="서비스 공지 작성·게시 관리"
+      actions={<button className="av-btn av-btn--ink" onClick={() => setView("compose")}><Plus /> 새 공지</button>}
+    >
+      <section className="av-panel">
+        <div className="av-filters">
+          <span className="av-muted num">{filtered.length}건</span>
+          <div className="right">
+            <div className="av-seg">
+              {(["전체", "게시중", "예약", "내림"] as FilterKey[]).map((f) => (
+                <button key={f} className={filter === f ? "on" : ""} onClick={() => setFilter(f)}>{f}</button>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        <table className="av-table">
+          <thead>
+            <tr><th>번호</th><th>제목</th><th>상태</th><th className="r">조회</th><th className="r">게시일</th><th className="r">조치</th></tr>
+          </thead>
+          <tbody>
+            {filtered.map((n) => (
+              <tr key={n.id}>
+                <td className="av-id num">{n.id}</td>
+                <td>
+                  <div className="av-cell__t" style={{ maxWidth: 560 }}>
+                    {n.pinned && <span className="nv-pin"><Pin /> 고정</span>}
+                    {n.title}
+                  </div>
+                </td>
+                <td><span className={`av-st av-st--${STATUS_CLS[n.status]}`}>{STATUS_LABEL[n.status]}</span></td>
+                <td className="r av-muted num">{n.views.toLocaleString()}</td>
+                <td className="r av-muted num">{n.date}</td>
+                <td className="r">
+                  <div className="nv-actions">
+                    <button className="av-btn" title={n.pinned ? "고정 해제" : "상단 고정"}
+                      onClick={() => setDialog({ type: "pin", notice: n })}>
+                      {n.pinned ? <PinOff /> : <Pin />}
+                    </button>
+                    {n.status === "published" && (
+                      <button className="av-btn" title="내림" onClick={() => setDialog({ type: "status", notice: n, target: "draft" })}><ArrowDownCircle /></button>
+                    )}
+                    {n.status === "draft" && (
+                      <button className="av-btn" title="게시" onClick={() => setDialog({ type: "status", notice: n, target: "published" })}><ArrowUpCircle /></button>
+                    )}
+                    <button className="av-btn" title="삭제" onClick={() => setDialog({ type: "delete", notice: n })}><Trash2 /></button>
+                  </div>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+
+        <div className="av-foot">
+          <span className="num">1–{filtered.length} / {items.length}건</span>
+          <div className="av-pager">
+            <button disabled aria-label="이전"><ChevronLeft /></button>
+            <button aria-label="다음"><ChevronRight /></button>
+          </div>
+        </div>
+      </section>
+
+      {dialog && (() => {
+        if (dialog.type === "delete") {
+          return (
+            <ConfirmDialog variant="danger" icon={<Trash2 />}
+              title="이 공지를 삭제할까요?" description="삭제하면 되돌릴 수 없습니다."
+              meta={[{ label: "제목", value: dialog.notice.title }, { label: "상태", value: STATUS_LABEL[dialog.notice.status] }, { label: "조회수", value: dialog.notice.views.toLocaleString() }]}
+              confirmLabel="삭제" onConfirm={handleConfirm} onCancel={() => setDialog(null)} />
+          );
+        }
+        if (dialog.type === "pin") {
+          const willPin = !dialog.notice.pinned;
+          return (
+            <ConfirmDialog variant="info" icon={willPin ? <Pin /> : <PinOff />}
+              title={willPin ? "이 공지를 상단에 고정할까요?" : "고정을 해제할까요?"}
+              description={willPin ? "목록 최상단에 핀 고정됩니다 (최대 3개)." : "고정이 해제되어 일반 순서로 돌아갑니다."}
+              meta={[{ label: "제목", value: dialog.notice.title }, { label: "현재", value: dialog.notice.pinned ? "고정됨" : "일반" }]}
+              confirmLabel={willPin ? "고정" : "해제"} onConfirm={handleConfirm} onCancel={() => setDialog(null)} />
+          );
+        }
+        const isPublish = dialog.target === "published";
+        return (
+          <ConfirmDialog variant="warning" icon={isPublish ? <ArrowUpCircle /> : <ArrowDownCircle />}
+            title={isPublish ? "이 공지를 게시할까요?" : "이 공지를 내릴까요?"}
+            description={isPublish ? "게시하면 모든 사용자에게 공지가 노출됩니다." : "내리면 사용자에게 더 이상 보이지 않습니다."}
+            meta={[{ label: "제목", value: dialog.notice.title }, { label: "현재 상태", value: STATUS_LABEL[dialog.notice.status] }]}
+            confirmLabel={isPublish ? "게시" : "내림"} onConfirm={handleConfirm} onCancel={() => setDialog(null)} />
+          );
+      })()}
+
+      {toast && <div className={`ntc-toast ntc-toast--${toast.tone}`}>{toast.msg}</div>}
     </AdminShell>
   );
 }

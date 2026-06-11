@@ -46,6 +46,7 @@ frontend/ios/
 # 데모/목 모드 플래그(비밀 아님, VITE_USE_MOCK=true). dev:mock/build:mock 가 클론 후 바로 동작하도록 커밋.
 !.env.mock
 *.local
+backend/src/main/resources/application.yaml
 
 # ----- Local uploads -----
 .uploads/
