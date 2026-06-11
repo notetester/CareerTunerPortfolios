@@ -13,6 +13,7 @@ import {
   demoAnalysisHistory,
   demoFitAnalyses,
   findFitByApplicationCase,
+  findFitHistoryByApplicationCase,
 } from "./data";
 
 /** 등록된 핸들러가 없을 때 반환하는 sentinel. */
@@ -103,6 +104,12 @@ const routes: MockRoute[] = [
     method: "GET",
     pattern: /^\/fit-analyses\/application-cases\/(\d+)$/,
     handler: ({ params }) => findFitByApplicationCase(Number(params[0])) ?? demoFitAnalyses[0],
+  },
+  {
+    // 재분석 히스토리(점수·역량 변화 추적)
+    method: "GET",
+    pattern: /^\/fit-analyses\/application-cases\/(\d+)\/history$/,
+    handler: ({ params }) => findFitHistoryByApplicationCase(Number(params[0])),
   },
   {
     method: "POST",
