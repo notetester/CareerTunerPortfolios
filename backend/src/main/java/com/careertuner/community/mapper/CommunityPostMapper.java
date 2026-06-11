@@ -58,4 +58,7 @@ public interface CommunityPostMapper {
     void upsertInterviewReview(CommunityInterviewReview review);
 
     void deleteInterviewReview(Long postId);
+
+    // AI 검열에 의한 숨김 (PUBLISHED → HIDDEN 전환, 다른 상태는 무시)
+    int hideIfPublished(@Param("postId") Long postId);
 }

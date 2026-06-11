@@ -111,6 +111,14 @@ careertuner:
       client-secret: ${OAUTH_GOOGLE_CLIENT_SECRET:CHANGEME}
       redirect-uri: ${OAUTH_GOOGLE_REDIRECT_URI:http://localhost:8080/api/auth/oauth/google/callback}
 
+# ─── Ollama (로컬 LLM) ───
+ai:
+  ollama:
+    base-url: ${AI_OLLAMA_BASE_URL:http://localhost:11434}
+    model: ${AI_OLLAMA_MODEL:gemma4}
+    connect-timeout: ${AI_OLLAMA_CONNECT_TIMEOUT:3s}
+    read-timeout: ${AI_OLLAMA_READ_TIMEOUT:30s}
+
 logging:
   level:
     com.careertuner: DEBUG
