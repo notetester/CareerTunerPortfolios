@@ -196,6 +196,9 @@ export function CompanyAnalysisPanel({
           <AnalysisFailureNotice
             failures={failures}
             featureType="COMPANY_RESEARCH"
+            onRetry={() => void onGenerate()}
+            retrying={generating}
+            retryLabel="기업 분석 다시 시도"
           />
         )}
 

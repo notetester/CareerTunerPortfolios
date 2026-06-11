@@ -1,9 +1,12 @@
-import { AlertCircle } from "lucide-react";
+import { AlertCircle, Loader2, RefreshCw } from "lucide-react";
 import type { BAnalysisFailureLog } from "../types/analysis";
 
 interface AnalysisFailureNoticeProps {
   failures: BAnalysisFailureLog[];
   featureType: string;
+  onRetry?: () => void;
+  retrying?: boolean;
+  retryLabel?: string;
 }
 
 function formatDateTime(value: string): string {
@@ -56,6 +59,9 @@ function displayMessage(failure: BAnalysisFailureLog, featureType: string): stri
 export function AnalysisFailureNotice({
   failures,
   featureType,
+  onRetry,
+  retrying = false,
+  retryLabel = "다시 시도",
 }: AnalysisFailureNoticeProps) {
   const failure = findVisibleFailure(failures, featureType);
   if (!failure) return null;
@@ -66,6 +72,17 @@ export function AnalysisFailureNotice({
         <AlertCircle className="size-4" />
         <span>최근 실패</span>
         <span className="text-xs font-medium text-amber-700">{formatDateTime(failure.createdAt)}</span>
+        {onRetry && (
+          <button
+            type="button"
+            className="inline-flex items-center gap-1.5 rounded-md border border-amber-300 bg-white px-2 py-1 text-xs font-semibold text-amber-800 hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-60"
+            disabled={retrying}
+            onClick={onRetry}
+          >
+            {retrying ? <Loader2 className="size-3 animate-spin" /> : <RefreshCw className="size-3" />}
+            {retryLabel}
+          </button>
+        )}
         <span className="rounded-full bg-white px-2 py-0.5 text-xs text-amber-700">재시도 가능</span>
       </div>
       <p className="mt-1 whitespace-pre-line leading-6">{displayMessage(failure, featureType)}</p>
