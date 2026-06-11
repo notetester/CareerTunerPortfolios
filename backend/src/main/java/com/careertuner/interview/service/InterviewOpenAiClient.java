@@ -7,6 +7,7 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
@@ -135,6 +136,44 @@ public class InterviewOpenAiClient implements InterviewAnswerEvaluator {
             throw new BusinessException(ErrorCode.INTERNAL_ERROR, "AI가 모범답안을 생성하지 못했습니다.");
         }
         return new ModelAnswer(modelAnswer, usage(root));
+    }
+
+    /**
+     * 여러 질문의 모범답안을 한 번의 호출로 일괄 생성한다(질문 생성 시 미리 저장용).
+     * 반환 리스트는 입력 질문 순서에 맞춘다. 일부가 비면 해당 칸은 null 일 수 있다.
+     */
+    public GeneratedModelAnswers generateModelAnswers(List<String> questions, ApplicationCase applicationCase,
+                                                      String modeLabel) {
+        StringBuilder list = new StringBuilder();
+        for (int i = 0; i < questions.size(); i++) {
+            list.append(i + 1).append(". ").append(questions.get(i)).append("\n");
+        }
+        String userPrompt = """
+                회사명: %s
+                직무명: %s
+                면접 모드: %s
+
+                아래 각 질문에 대한 모범답안을 작성하라. 반드시 질문 번호(number)를 그대로 달아 답한다.
+                질문 목록:
+                %s
+                """.formatted(applicationCase.getCompanyName(), applicationCase.getJobTitle(), modeLabel, list);
+
+        JsonNode root = post(structuredRequest("interview_model_answers", modelAnswersSchema(),
+                InterviewPromptCatalog.MODEL_ANSWER_SYSTEM_PROMPT, userPrompt, modelProperties.getGeneration()));
+        JsonNode payload = parseOutputJson(root);
+
+        String[] answers = new String[questions.size()];
+        JsonNode array = payload.path("answers");
+        if (array.isArray()) {
+            for (JsonNode item : array) {
+                int number = item.path("number").asInt(0);
+                String answer = item.path("modelAnswer").asText("").trim();
+                if (number >= 1 && number <= questions.size() && !answer.isBlank()) {
+                    answers[number - 1] = answer;
+                }
+            }
+        }
+        return new GeneratedModelAnswers(Arrays.asList(answers), usage(root));
     }
 
     /** 원 질문 + 지원자 답변 기반 꼬리 질문 생성. */
@@ -430,6 +469,15 @@ public class InterviewOpenAiClient implements InterviewAnswerEvaluator {
         return objectSchema(properties, List.of("modelAnswer"));
     }
 
+    private Map<String, Object> modelAnswersSchema() {
+        Map<String, Object> answerItem = objectSchema(
+                Map.of("number", integerSchema(), "modelAnswer", stringSchema()),
+                List.of("number", "modelAnswer"));
+        Map<String, Object> properties = new LinkedHashMap<>();
+        properties.put("answers", Map.of("type", "array", "items", answerItem));
+        return objectSchema(properties, List.of("answers"));
+    }
+
     private Map<String, Object> scoreOnlySchema() {
         Map<String, Object> properties = new LinkedHashMap<>();
         properties.put("score", integerSchema());
@@ -527,6 +575,10 @@ public class InterviewOpenAiClient implements InterviewAnswerEvaluator {
     }
 
     public record ModelAnswer(String modelAnswer, Usage usage) {
+    }
+
+    /** 여러 질문의 모범답안(입력 순서에 정렬, 빈 칸은 null 가능). */
+    public record GeneratedModelAnswers(List<String> modelAnswers, Usage usage) {
     }
 
     public record CritiqueResult(int adjustedScore, String verdict, String reason, Usage usage) {
