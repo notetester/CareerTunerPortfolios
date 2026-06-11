@@ -28,7 +28,7 @@ import tools.jackson.databind.ObjectMapper;
  * 공유 설정(OpenAiProperties)은 재사용하되, 호출/파싱은 면접 기능에 맞게 자체 구현한다.
  */
 @Service
-public class InterviewOpenAiClient {
+public class InterviewOpenAiClient implements InterviewAnswerEvaluator {
 
     private static final int MAX_ATTEMPTS = 3;
 

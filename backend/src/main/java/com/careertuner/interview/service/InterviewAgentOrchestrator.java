@@ -52,13 +52,13 @@ public class InterviewAgentOrchestrator {
     private static final String DONE = "DONE";
     private static final String FAILED = "FAILED";
 
-    private final InterviewOpenAiClient aiClient;
     private final InterviewAiUsageLogService usageLog;
     private final InterviewMapper interviewMapper;
     private final InterviewKnowledgeService knowledgeService;
     private final InterviewTrainingMapper trainingMapper;
     private final ObjectMapper objectMapper;
     private final InterviewAgentProperties properties;
+    private final InterviewAnswerEvaluator evaluator; // 선택된 평가기(OpenAI 기본 / 자체 모델)
     private final AgentPolicy policy;
 
     public InterviewAgentOrchestrator(InterviewOpenAiClient aiClient,
@@ -67,15 +67,17 @@ public class InterviewAgentOrchestrator {
                                       InterviewKnowledgeService knowledgeService,
                                       InterviewTrainingMapper trainingMapper,
                                       ObjectMapper objectMapper,
-                                      InterviewAgentProperties properties) {
-        this.aiClient = aiClient;
+                                      InterviewAgentProperties properties,
+                                      InterviewEvaluatorProvider evaluatorProvider) {
         this.usageLog = usageLog;
         this.interviewMapper = interviewMapper;
         this.knowledgeService = knowledgeService;
         this.trainingMapper = trainingMapper;
         this.objectMapper = objectMapper;
         this.properties = properties;
+        this.evaluator = evaluatorProvider.get();
         AgentPolicy rule = new RulePolicy();
+        // LLM Planner 는 OpenAI 클라이언트를 직접 쓴다(평가기 교체와 무관).
         this.policy = properties.isLlmPlanner() ? new LlmPolicy(aiClient, usageLog, rule) : rule;
     }
 
@@ -150,7 +152,7 @@ public class InterviewAgentOrchestrator {
     private void runEvaluate(AgentContext ctx) {
         long start = System.currentTimeMillis();
         try {
-            InterviewOpenAiClient.AnswerEvaluation eval = aiClient.evaluateAnswer(
+            InterviewOpenAiClient.AnswerEvaluation eval = evaluator.evaluateAnswer(
                     ctx.question.getQuestion(), ctx.answerText, ctx.applicationCase, ctx.ragContext);
             usageLog.recordSuccess(ctx.userId, ctx.caseId(), FEATURE_EVAL, eval.usage());
             ctx.eval = eval;
@@ -171,7 +173,7 @@ public class InterviewAgentOrchestrator {
         long start = System.currentTimeMillis();
         ctx.critiqued = true;
         try {
-            InterviewOpenAiClient.CritiqueResult crit = aiClient.critiqueEvaluation(
+            InterviewOpenAiClient.CritiqueResult crit = evaluator.critiqueEvaluation(
                     ctx.question.getQuestion(), ctx.answerText, ctx.eval.score(), ctx.eval.feedback());
             usageLog.recordSuccess(ctx.userId, ctx.caseId(), FEATURE_CRITIC, crit.usage());
             ctx.criticAdjusted = crit.adjustedScore();
@@ -192,7 +194,7 @@ public class InterviewAgentOrchestrator {
         long start = System.currentTimeMillis();
         ctx.reEvaluated = true;
         try {
-            InterviewOpenAiClient.AnswerEvaluation re = aiClient.evaluateAnswer(
+            InterviewOpenAiClient.AnswerEvaluation re = evaluator.evaluateAnswer(
                     ctx.question.getQuestion(), ctx.answerText, ctx.applicationCase, ctx.ragContext);
             usageLog.recordSuccess(ctx.userId, ctx.caseId(), FEATURE_EVAL, re.usage());
             int before = ctx.finalScore;
