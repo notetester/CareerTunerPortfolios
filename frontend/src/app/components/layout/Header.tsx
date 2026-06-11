@@ -68,8 +68,8 @@ const navItems = [
     icon: MessageSquare,
     children: [
       { label: "면접 모드 선택", href: "/interview?tab=modes" },
-      { label: "예상 질문 목록", href: "/interview?tab=questions" },
-      { label: "실전 모의면접", href: "/interview?tab=practice" },
+      { label: "예상 면접 질문", href: "/interview?tab=questions" },
+      { label: "복습 테스트", href: "/interview?tab=practice" },
       { label: "음성 면접", href: "/interview?tab=voice" },
       { label: "아바타 면접관", href: "/interview?tab=avatar" },
       { label: "답변 평가", href: "/interview?tab=evaluation" },
