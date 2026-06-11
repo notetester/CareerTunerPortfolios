@@ -28,6 +28,7 @@ import {
   type InterviewProgress,
   type InterviewSession,
 } from "../types/interview";
+import { AgentTimeline } from "./AgentTimeline";
 
 /**
  * 실전 모의면접 진행. 세션의 질문을 순차 출제하고, 답변→AI 평가→다음 질문으로 이어간다.
@@ -246,29 +247,7 @@ export function PracticeTab({
                   </div>
                 )}
 
-                {steps.length > 0 && (
-                  <div className="rounded-lg border border-slate-200 bg-white p-3">
-                    <div className="mb-2 flex items-center gap-1.5 text-xs font-bold text-slate-500">
-                      <Sparkles className="size-3.5 text-indigo-500" /> AI 면접관 진행 (멀티에이전트)
-                    </div>
-                    <ol className="space-y-1.5">
-                      {steps.map((s) => (
-                        <li key={s.id} className="flex items-start gap-2 text-xs">
-                          <Badge
-                            className={
-                              s.agent === "CRITIC"
-                                ? "bg-amber-100 text-amber-700"
-                                : "bg-blue-100 text-blue-700"
-                            }
-                          >
-                            {agentLabel(s.agent)}
-                          </Badge>
-                          <span className="flex-1 text-slate-600">{s.summary}</span>
-                        </li>
-                      ))}
-                    </ol>
-                  </div>
-                )}
+                <AgentTimeline steps={steps} />
 
                 <div className="flex flex-wrap justify-end gap-2">
                   <Button
@@ -301,23 +280,6 @@ function SessionHeader({ session }: { session: InterviewSession }) {
       <span>실전 모의면접 진행 중</span>
     </div>
   );
-}
-
-function agentLabel(agent: string): string {
-  switch (agent) {
-    case "EVALUATOR":
-      return "채점";
-    case "CRITIC":
-      return "검증";
-    case "PLANNER":
-      return "설계";
-    case "PROBER":
-      return "꼬리질문";
-    case "REPORTER":
-      return "리포트";
-    default:
-      return agent;
-  }
 }
 
 function ErrorLine({ message }: { message: string }) {

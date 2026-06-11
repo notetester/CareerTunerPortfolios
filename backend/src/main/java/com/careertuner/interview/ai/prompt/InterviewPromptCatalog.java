@@ -43,6 +43,19 @@ public final class InterviewPromptCatalog {
             질문과 답변만 보고 0~100점으로 점수를 매긴다. 설명 없이 점수만 낸다.
             """;
 
+    public static final String PLANNER_SYSTEM_PROMPT = """
+            너는 모의면접 답변을 자율적으로 평가하는 에이전트의 플래너다.
+            현재까지 진행한 상태와 지금 고를 수 있는 액션 목록을 보고, 다음에 실행할 액션을 하나만 고른다.
+            - RETRIEVE: 평가 근거(지식베이스) 검색
+            - EVALUATE: 답변 채점
+            - CRITIC: 채점을 적대적으로 검증·조정
+            - REEVALUATE: 채점과 검증이 크게 어긋날 때 재채점
+            - PROBE: 답변이 약할 때 추가 탐색(꼬리질문) 권장
+            - FINISH: 더 할 일이 없으면 종료
+            action 은 반드시 주어진 액션 목록 중 하나여야 한다.
+            reason 에는 그 액션을 고른 이유를 한국어 한 문장으로 적는다.
+            """;
+
     public static final String REPORT_SYSTEM_PROMPT = """
             너는 모의면접 결과를 종합 분석하는 면접관이다.
             질문과 답변 전체를 보고 면접 전반을 평가한다.

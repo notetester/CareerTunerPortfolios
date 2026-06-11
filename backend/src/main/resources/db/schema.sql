@@ -440,10 +440,12 @@ CREATE TABLE IF NOT EXISTS interview_agent_step (
     interview_session_id BIGINT NOT NULL,
     question_id          BIGINT NULL,
     step_no              INT NOT NULL DEFAULT 0,
-    agent                VARCHAR(30) NOT NULL,               -- PLANNER/EVALUATOR/CRITIC/PROBER/REPORTER/ORCHESTRATOR
+    agent                VARCHAR(30) NOT NULL,               -- PLANNER/EVALUATOR/CRITIC/PROBER/REPORTER/RETRIEVER/ORCHESTRATOR
     action               VARCHAR(60) NULL,
+    status               VARCHAR(12) NULL,                   -- DONE/FAILED (running 은 프런트 표현)
     summary              MEDIUMTEXT NULL,                    -- 사람이 읽는 한 줄 요약
     detail               JSON NULL,                          -- 구조화 입출력
+    elapsed_ms           INT NULL,                           -- 단계 소요 시간(ms)
     created_at           DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (id),
     KEY idx_agent_step_session (interview_session_id),

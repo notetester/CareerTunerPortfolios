@@ -83,6 +83,17 @@ careertuner:
     media-dir: ${MEDIA_UPLOAD_DIR:.uploads/media}
     max-file-size-bytes: ${MEDIA_MAX_FILE_SIZE_BYTES:10485760}
   interview:
+    eval:
+      # 답변 평가 모델. openai(기본/폴백) | oss(자체 파인튜닝 모델, vLLM/TGI OpenAI 호환 엔드포인트)
+      # 자체 모델 미서빙 환경은 provider=openai 로 둔다. oss 는 GPU 임대 학습 후 base-url 연결(로드맵 5장).
+      provider: ${INTERVIEW_EVAL_PROVIDER:openai}
+      base-url: ${INTERVIEW_EVAL_BASE_URL:}
+      model: ${INTERVIEW_EVAL_MODEL:}
+      api-key: ${INTERVIEW_EVAL_API_KEY:}
+    agent:
+      # 자율 루프 정책. rule(기본) | llm(시연 — LLM Planner 가 다음 액션 결정, 실패 시 rule 폴백)
+      planner: ${INTERVIEW_AGENT_PLANNER:rule}
+      max-turns: ${INTERVIEW_AGENT_MAX_TURNS:6}
     realtime:
       # 실시간 음성 면접관(OpenAI Realtime). 키는 careertuner.openai.api-key 재사용.
       # 실제 사용 가능한 Realtime 모델 id 로 교체할 것.

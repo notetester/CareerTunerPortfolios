@@ -28,7 +28,7 @@ import tools.jackson.databind.ObjectMapper;
  * 공유 설정(OpenAiProperties)은 재사용하되, 호출/파싱은 면접 기능에 맞게 자체 구현한다.
  */
 @Service
-public class InterviewOpenAiClient {
+public class InterviewOpenAiClient implements InterviewAnswerEvaluator {
 
     private static final int MAX_ATTEMPTS = 3;
 
@@ -212,6 +212,23 @@ public class InterviewOpenAiClient {
         return new ReportPayload(clampScore(payload.path("totalScore").asInt(0)), categories, summary, usage(root));
     }
 
+    /** LLM Planner(자율 루프 시연 모드): 현재 상태와 가용 액션을 보고 다음 액션을 하나 고른다. */
+    public PlanDecisionResult planNextAction(String stateSummary, List<String> availableActions) {
+        String userPrompt = """
+                현재 답변 평가 상태:
+                %s
+
+                지금 고를 수 있는 액션: %s
+                """.formatted(stateSummary, String.join(", ", availableActions));
+        JsonNode root = post(structuredRequest("interview_agent_plan", planSchema(availableActions),
+                InterviewPromptCatalog.PLANNER_SYSTEM_PROMPT, userPrompt));
+        JsonNode payload = parseOutputJson(root);
+        return new PlanDecisionResult(
+                payload.path("action").asText(""),
+                payload.path("reason").asText(""),
+                usage(root));
+    }
+
     // ───── HTTP / 파싱 인프라 ─────
 
     private JsonNode post(Map<String, Object> requestBody) {
@@ -383,6 +400,13 @@ public class InterviewOpenAiClient {
         return objectSchema(properties, List.of("totalScore", "categories", "summaryFeedback"));
     }
 
+    private Map<String, Object> planSchema(List<String> availableActions) {
+        Map<String, Object> properties = new LinkedHashMap<>();
+        properties.put("action", Map.of("type", "string", "enum", availableActions));
+        properties.put("reason", stringSchema());
+        return objectSchema(properties, List.of("action", "reason"));
+    }
+
     private Map<String, Object> objectSchema(Map<String, Object> properties, List<String> required) {
         Map<String, Object> schema = new LinkedHashMap<>();
         schema.put("type", "object");
@@ -432,6 +456,10 @@ public class InterviewOpenAiClient {
     // ───── 반환 레코드 ─────
 
     public record Usage(String model, int inputTokens, int outputTokens, int totalTokens) {
+    }
+
+    /** LLM Planner 의 다음 액션 결정. */
+    public record PlanDecisionResult(String action, String reason, Usage usage) {
     }
 
     public record GeneratedQuestion(String question, String type) {

@@ -17,6 +17,7 @@ import { getDashboardSummary, refreshDashboardSummary } from "@/features/dashboa
 import type { DashboardActivity, DashboardSummary, DashboardTodo } from "@/features/dashboard/types/dashboardSummary";
 import { TodoChecklist } from "@/features/dashboard/components/TodoChecklist";
 import { AiResultBadge } from "@/features/analysis/components/AiResultBadge";
+import { InterviewHero } from "@/features/interview/components/InterviewHero";
 
 const coreFeaturesData = [
   {
@@ -279,6 +280,7 @@ function MemberHome({ summary, loading, error, fallbackName, onRetry, onSummaryR
   return (
     <div className="min-h-screen bg-slate-50">
       <div className="max-w-[1400px] mx-auto px-4 sm:px-6 py-6 lg:py-8 space-y-6">
+        <InterviewHero />
         <section className="grid lg:grid-cols-[1.5fr_0.9fr] gap-5">
           <div className="rounded-2xl border border-slate-200 bg-white p-5 sm:p-7 shadow-sm">
             <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-5">
@@ -770,6 +772,13 @@ export function HomePage() {
               </div>
             </div>
           </div>
+        </div>
+      </section>
+
+      {/* ─── 마누스형 면접 진입 검색창 ─── */}
+      <section className="bg-white">
+        <div className="relative z-10 mx-auto -mt-8 w-full max-w-[1400px] px-4 sm:px-6">
+          <InterviewHero />
         </div>
       </section>
 
