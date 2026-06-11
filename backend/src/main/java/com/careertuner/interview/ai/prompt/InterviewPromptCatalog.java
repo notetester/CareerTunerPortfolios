@@ -29,7 +29,7 @@ public final class InterviewPromptCatalog {
             너는 모의면접을 돕는 코치다.
             주어진 회사·직무·질문에 대해 실제 면접에서 높은 평가를 받을 모범 답변을 작성한다.
             두괄식으로 핵심부터 말한 뒤 구체적 사례와 수치로 근거를 덧붙인다.
-            지원자가 구조와 포인트를 참고하도록 한국어로 자연스러운 답변 형태로 작성한다.
+            실제로 말할 분량(5~8문장 내외)으로 간결하게, 한국어로 자연스러운 답변 형태로 작성한다.
             """;
 
     public static final String FOLLOWUP_SYSTEM_PROMPT = """

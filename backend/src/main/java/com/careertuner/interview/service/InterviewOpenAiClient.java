@@ -299,8 +299,14 @@ public class InterviewOpenAiClient implements InterviewAnswerEvaluator {
 
     private Map<String, Object> structuredRequest(String name, Map<String, Object> schema,
                                                   String systemPrompt, String userPrompt) {
+        String model = properties.getModel();
         Map<String, Object> body = new LinkedHashMap<>();
-        body.put("model", properties.getModel());
+        body.put("model", model);
+        // 추론 모델(gpt-5/o-시리즈)은 기본 추론량이 커서 면접 응답이 느리고 타임아웃이 잦다.
+        // 면접 Q&A·평가·모범답안은 깊은 추론이 불필요하므로 낮은 추론량으로 응답 속도·안정성을 확보한다.
+        if (isReasoningModel(model)) {
+            body.put("reasoning", Map.of("effort", "low"));
+        }
         body.put("input", List.of(
                 message("system", systemPrompt),
                 message("user", userPrompt)));
@@ -372,6 +378,15 @@ public class InterviewOpenAiClient implements InterviewAnswerEvaluator {
 
     private int clampScore(int value) {
         return Math.max(0, Math.min(100, value));
+    }
+
+    /** gpt-5/o-시리즈 등 추론 모델 여부. 추론 모델에만 reasoning 옵션을 적용한다. */
+    private boolean isReasoningModel(String model) {
+        if (model == null) {
+            return false;
+        }
+        String m = model.toLowerCase(Locale.ROOT);
+        return m.startsWith("gpt-5") || m.startsWith("o1") || m.startsWith("o3") || m.startsWith("o4");
     }
 
     // ───── JSON Schema ─────
