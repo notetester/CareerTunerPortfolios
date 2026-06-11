@@ -1,6 +1,8 @@
 package com.careertuner.interview.service;
 
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 
 import org.springframework.stereotype.Service;
@@ -25,17 +27,21 @@ import tools.jackson.databind.ObjectMapper;
  * 고정 순서(Retriever→Evaluator→Critic)는 분기 없는 한 경로로 그대로 포함되며, 상황에 따라
  * 재평가(REEVALUATE)나 추가 탐색 권장(PROBE) 으로 분기한다. 각 단계는 trace 에 기록한다.
  *
- * <p>기본 정책은 규칙 기반({@link RulePolicy}) 이고, 시연용 LLM Planner 는 {@code planner=llm}
- * 설정으로 교체한다(Phase 3). 어떤 액션이 실패해도 면접 흐름을 끊지 않고 원 결과로 폴백한다.
+ * <p>정책은 두 가지를 병행한다.
+ * <ul>
+ *   <li>{@link RulePolicy} — 규칙 기반(운영 기본값). 상태를 보고 다음 액션을 결정한다.</li>
+ *   <li>{@link LlmPolicy} — LLM Planner(시연 모드, {@code planner=llm}). 매 턴 LLM 이 다음 액션을
+ *       고르고, 실패하면 규칙 정책으로 자동 폴백한다.</li>
+ * </ul>
+ * 어떤 액션이 실패해도 면접 흐름을 끊지 않고 원 결과로 폴백한다.
  */
 @Service
 public class InterviewAgentOrchestrator {
 
     private static final String FEATURE_EVAL = "INTERVIEW_ANSWER_EVAL";
     private static final String FEATURE_CRITIC = "INTERVIEW_CRITIC";
+    private static final String FEATURE_PLANNER = "INTERVIEW_PLANNER";
 
-    /** 무한 루프 방지 상한. (설정화는 Phase 3) */
-    private static final int MAX_TURNS = 6;
     /** Critic 의 점수 조정폭이 이 값 이상이면 이견으로 보고 1회 재평가한다. */
     private static final int REEVAL_THRESHOLD = 20;
     /** 답변이 이 길이 미만이면 추가 탐색(PROBE) 을 권장한다. */
@@ -52,6 +58,7 @@ public class InterviewAgentOrchestrator {
     private final InterviewKnowledgeService knowledgeService;
     private final InterviewTrainingMapper trainingMapper;
     private final ObjectMapper objectMapper;
+    private final InterviewAgentProperties properties;
     private final AgentPolicy policy;
 
     public InterviewAgentOrchestrator(InterviewOpenAiClient aiClient,
@@ -59,14 +66,17 @@ public class InterviewAgentOrchestrator {
                                       InterviewMapper interviewMapper,
                                       InterviewKnowledgeService knowledgeService,
                                       InterviewTrainingMapper trainingMapper,
-                                      ObjectMapper objectMapper) {
+                                      ObjectMapper objectMapper,
+                                      InterviewAgentProperties properties) {
         this.aiClient = aiClient;
         this.usageLog = usageLog;
         this.interviewMapper = interviewMapper;
         this.knowledgeService = knowledgeService;
         this.trainingMapper = trainingMapper;
         this.objectMapper = objectMapper;
-        this.policy = new RulePolicy();
+        this.properties = properties;
+        AgentPolicy rule = new RulePolicy();
+        this.policy = properties.isLlmPlanner() ? new LlmPolicy(aiClient, usageLog, rule) : rule;
     }
 
     /** 면접 답변 한 건을 자율 루프로 평가한다. */
@@ -76,12 +86,15 @@ public class InterviewAgentOrchestrator {
         AgentContext ctx = new AgentContext(userId, session, applicationCase, question, answerText);
 
         // ── 자율 루프: 정책이 다음 액션을 고르고, 더 할 일이 없으면 FINISH ──
-        while (ctx.turn < MAX_TURNS) {
-            AgentAction action = policy.decideNext(ctx);
-            if (action == AgentAction.FINISH) {
+        while (ctx.turn < properties.getMaxTurns()) {
+            PlanDecision decision = policy.decideNext(ctx);
+            if (decision.planned()) {
+                logPlannerStep(ctx, decision); // LLM 이 직접 계획한 경우에만 PLANNER 단계를 남긴다
+            }
+            if (decision.action() == AgentAction.FINISH) {
                 break;
             }
-            runAction(action, ctx);
+            runAction(decision.action(), ctx);
             ctx.turn++;
         }
 
@@ -206,17 +219,28 @@ public class InterviewAgentOrchestrator {
                         "score", ctx.finalScore)), elapsed(start));
     }
 
+    private void logPlannerStep(AgentContext ctx, PlanDecision decision) {
+        String reason = decision.reason() == null ? "" : decision.reason();
+        logStep(ctx, "PLANNER", "plan", DONE,
+                "다음 액션: " + decision.action() + (reason.isBlank() ? "" : " — " + reason),
+                detail(Map.of("action", decision.action().name(), "reason", reason)), null);
+    }
+
     // ───── 정책 ─────
 
-    /** 다음 액션을 결정하는 정책. Phase 3 에서 LLM Planner 구현으로 교체 가능. */
+    /** 다음 액션을 결정하는 정책. */
     interface AgentPolicy {
-        AgentAction decideNext(AgentContext ctx);
+        PlanDecision decideNext(AgentContext ctx);
     }
 
     /** 규칙 기반 정책(운영 기본값). 상태를 보고 다음 액션을 결정한다. */
     static final class RulePolicy implements AgentPolicy {
         @Override
-        public AgentAction decideNext(AgentContext ctx) {
+        public PlanDecision decideNext(AgentContext ctx) {
+            return new PlanDecision(decide(ctx), null, false);
+        }
+
+        private AgentAction decide(AgentContext ctx) {
             if (!ctx.ragAttempted) {
                 return AgentAction.RETRIEVE;
             }
@@ -233,6 +257,51 @@ public class InterviewAgentOrchestrator {
                 return AgentAction.PROBE;
             }
             return AgentAction.FINISH;
+        }
+    }
+
+    /** LLM Planner 정책(시연 모드). 매 턴 LLM 이 가용 액션 중 하나를 고른다. 실패 시 규칙 정책으로 폴백. */
+    static final class LlmPolicy implements AgentPolicy {
+        private final InterviewOpenAiClient aiClient;
+        private final InterviewAiUsageLogService usageLog;
+        private final AgentPolicy fallback;
+
+        LlmPolicy(InterviewOpenAiClient aiClient, InterviewAiUsageLogService usageLog, AgentPolicy fallback) {
+            this.aiClient = aiClient;
+            this.usageLog = usageLog;
+            this.fallback = fallback;
+        }
+
+        @Override
+        public PlanDecision decideNext(AgentContext ctx) {
+            List<AgentAction> available = ctx.availableActions();
+            if (available.size() == 1) {
+                // 선택지가 하나뿐이면 LLM 을 부르지 않는다(불필요한 호출/비용 방지).
+                return new PlanDecision(available.get(0), null, false);
+            }
+            try {
+                List<String> names = available.stream().map(Enum::name).toList();
+                InterviewOpenAiClient.PlanDecisionResult result =
+                        aiClient.planNextAction(ctx.stateSummary(), names);
+                usageLog.recordSuccess(ctx.userId, ctx.caseId(), FEATURE_PLANNER, result.usage());
+                AgentAction picked = parseAction(result.action(), available);
+                if (picked != null) {
+                    return new PlanDecision(picked, result.reason(), true);
+                }
+            } catch (RuntimeException ex) {
+                usageLog.recordFailure(ctx.userId, ctx.caseId(), FEATURE_PLANNER, ex.getMessage());
+                // 아래 규칙 폴백으로 진행한다.
+            }
+            return fallback.decideNext(ctx);
+        }
+
+        private AgentAction parseAction(String name, List<AgentAction> available) {
+            for (AgentAction action : available) {
+                if (action.name().equalsIgnoreCase(name == null ? "" : name.trim())) {
+                    return action;
+                }
+            }
+            return null;
         }
     }
 
@@ -287,6 +356,45 @@ public class InterviewAgentOrchestrator {
             int len = answerText == null ? 0 : answerText.trim().length();
             return len < WEAK_ANSWER_LEN || finalScore < WEAK_SCORE;
         }
+
+        /** 현재 상태에서 논리적으로 실행 가능한 액션 목록(LLM Planner 의 선택지). */
+        List<AgentAction> availableActions() {
+            List<AgentAction> list = new ArrayList<>();
+            if (!evaluated) {
+                if (!ragAttempted) {
+                    list.add(AgentAction.RETRIEVE);
+                }
+                list.add(AgentAction.EVALUATE); // 평가 전에는 종료할 수 없다
+                return list;
+            }
+            if (!critiqued) {
+                list.add(AgentAction.CRITIC);
+            }
+            if (!reEvaluated && bigDisagreement()) {
+                list.add(AgentAction.REEVALUATE);
+            }
+            if (!probeFlagged && answerWeak()) {
+                list.add(AgentAction.PROBE);
+            }
+            list.add(AgentAction.FINISH);
+            return list;
+        }
+
+        /** LLM Planner 에 넘길 사람이 읽는 상태 요약. */
+        String stateSummary() {
+            StringBuilder sb = new StringBuilder();
+            sb.append("- RAG 근거: ").append(ragAttempted ? (hasRag ? "확보" : "없음") : "미시도").append("\n");
+            sb.append("- 채점: ").append(evaluated ? (eval.score() + "점") : "미실행").append("\n");
+            sb.append("- 검증: ").append(critiqued ? (criticVerdict + " / " + criticAdjusted + "점") : "미실행").append("\n");
+            sb.append("- 재평가: ").append(reEvaluated ? "완료" : "미실행").append("\n");
+            sb.append("- 현재 최종 점수: ").append(finalScore).append("\n");
+            sb.append("- 답변 길이: ").append(answerText == null ? 0 : answerText.trim().length()).append("자");
+            return sb.toString();
+        }
+    }
+
+    /** 정책이 내린 다음 액션 결정. planned=true 면 LLM 이 직접 계획한 것이라 PLANNER 단계로 남긴다. */
+    record PlanDecision(AgentAction action, String reason, boolean planned) {
     }
 
     /** 자율 루프가 실행할 수 있는 액션. */
