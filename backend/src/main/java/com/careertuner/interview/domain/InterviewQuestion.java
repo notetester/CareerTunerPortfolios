@@ -13,6 +13,7 @@ public class InterviewQuestion {
 
     private Long id;
     private Long interviewSessionId;
+    private Long parentQuestionId;
     private String question;
     private String questionType;
     private Integer sortOrder;

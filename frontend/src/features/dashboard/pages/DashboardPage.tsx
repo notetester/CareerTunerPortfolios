@@ -6,11 +6,15 @@ import { Badge } from "@/app/components/ui/badge";
 import { Progress } from "@/app/components/ui/progress";
 import {
   Plus, Briefcase, MessageSquare, TrendingUp, Award, ArrowRight,
-  FileText, BarChart3, CheckCircle2, AlertCircle, ChevronRight,
+  FileText, BarChart3, AlertCircle, ChevronRight,
   Target, BookOpen, Bell, Calendar, Flame, Loader2, RefreshCw,
 } from "lucide-react";
 import { getDashboardSummary, refreshDashboardSummary } from "@/features/dashboard/api/dashboardApi";
-import type { DashboardActivity, DashboardSummary } from "@/features/dashboard/types/dashboardSummary";
+import type { DashboardActivity, DashboardSummary, DashboardTodo } from "@/features/dashboard/types/dashboardSummary";
+import { TodoChecklist } from "@/features/dashboard/components/TodoChecklist";
+import { RecentInterviewCard } from "@/features/dashboard/components/RecentInterviewCard";
+import { NotificationsCard } from "@/features/dashboard/components/NotificationsCard";
+import { AiResultBadge } from "@/features/analysis/components/AiResultBadge";
 
 const statusLabel: Record<string, string> = {
   DRAFT: "공고 입력",
@@ -98,6 +102,10 @@ export function DashboardPage() {
     }
   };
 
+  const handleTodosChange = (todos: DashboardTodo[]) => {
+    setSummary((previous) => (previous ? { ...previous, todos } : previous));
+  };
+
   const stats = summary?.stats;
   const pendingTodos = summary?.todos.filter((todo) => !todo.done).length ?? 0;
   const creditPercent = stats ? Math.min(100, Math.round((stats.credit / Math.max(1, stats.creditLimit)) * 100)) : 0;
@@ -139,7 +147,8 @@ export function DashboardPage() {
 
   return (
     <div className="bg-slate-50 min-h-screen">
-      <div className="max-w-[1400px] mx-auto px-6 py-8 space-y-8">
+      {/* 모바일: 하단 고정 CTA 공간 확보(pb-24). 데스크톱은 기존 여백 유지. */}
+      <div className="max-w-[1400px] mx-auto px-4 sm:px-6 py-8 space-y-8 pb-24 lg:pb-8">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div>
             <div className="flex items-center gap-2 text-sm text-slate-500 mb-1">
@@ -159,7 +168,9 @@ export function DashboardPage() {
             {summary?.aiSummary && (
               <div className="mt-3 rounded-lg bg-blue-50 px-3 py-2 text-sm text-blue-800">
                 <div className="flex items-start justify-between gap-3">
-                  <p><strong className="font-semibold">AI 요약</strong> · {summary.aiSummary}</p>
+                  <p>
+                    <strong className="font-semibold">AI 요약</strong> <AiResultBadge status={summary.analysisRun.status} /> · {summary.aiSummary}
+                  </p>
                   <button
                     type="button"
                     onClick={handleRefreshSummary}
@@ -321,20 +332,12 @@ export function DashboardPage() {
                       오늘의 할 일
                     </CardTitle>
                   </CardHeader>
-                  <CardContent className="space-y-2.5">
-                    {summary.todos.map((todo, index) => (
-                      <div key={`${todo.task}-${index}`} className="flex items-start gap-2.5">
-                        <div className={`size-4 rounded flex items-center justify-center flex-shrink-0 mt-0.5 ${todo.done ? "bg-green-500" : "border-2 border-slate-300"}`}>
-                          {todo.done && <CheckCircle2 className="size-3 text-white" />}
-                        </div>
-                        <div className="flex-1">
-                          <div className={`text-sm ${todo.done ? "line-through text-slate-400" : "text-slate-700"}`}>{todo.task}</div>
-                          <div className="text-xs text-slate-400 mt-0.5">{todo.time}</div>
-                        </div>
-                      </div>
-                    ))}
+                  <CardContent>
+                    <TodoChecklist todos={summary.todos} onTodosChange={handleTodosChange} />
                   </CardContent>
                 </Card>
+
+                <RecentInterviewCard interview={summary.recentInterview} />
 
                 <Card className="border border-amber-200 bg-amber-50">
                   <CardHeader className="pb-3">
@@ -411,10 +414,26 @@ export function DashboardPage() {
                     )}
                   </CardContent>
                 </Card>
+
+                <NotificationsCard notifications={summary.recentNotifications} />
               </div>
             </div>
           </>
         )}
+      </div>
+
+      {/* 모바일 하단 고정 주요 CTA 1개(디자인 분석 §7.1, 모바일 고려 §6.1). 데스크톱에서는 상단 버튼 사용. */}
+      <div
+        className="fixed inset-x-4 z-40 lg:hidden"
+        style={{ bottom: "calc(1rem + env(safe-area-inset-bottom, 0px))" }}
+      >
+        <Button
+          className="h-12 w-full bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 gap-2 shadow-lg"
+          onClick={() => navigate("/applications")}
+        >
+          <Plus className="size-4" />
+          새 지원 건 만들기
+        </Button>
       </div>
     </div>
   );

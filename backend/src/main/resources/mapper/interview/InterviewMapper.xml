@@ -52,10 +52,16 @@
     <!-- ── 질문 ── -->
     <insert id="insertQuestion" useGeneratedKeys="true" keyProperty="id">
         INSERT INTO interview_question
-            (interview_session_id, question, question_type, sort_order)
+            (interview_session_id, parent_question_id, question, question_type, sort_order)
         VALUES
-            (#{interviewSessionId}, #{question}, #{questionType}, #{sortOrder})
+            (#{interviewSessionId}, #{parentQuestionId}, #{question}, #{questionType}, #{sortOrder})
     </insert>
+
+    <select id="findMaxSortOrder" resultType="java.lang.Integer">
+        SELECT MAX(sort_order)
+        FROM interview_question
+        WHERE interview_session_id = #{sessionId}
+    </select>
 
     <delete id="deleteQuestionsBySessionId">
         DELETE FROM interview_question
@@ -95,6 +101,14 @@
         ORDER BY q.sort_order, a.id
     </select>
 
+    <select id="findLatestAnswerByQuestionId" resultType="com.careertuner.interview.domain.InterviewAnswer">
+        SELECT *
+        FROM interview_answer
+        WHERE question_id = #{questionId}
+        ORDER BY id DESC
+        LIMIT 1
+    </select>
+
     <!-- ── AI 사용량 ── -->
     <insert id="insertAiUsageLog" useGeneratedKeys="true" keyProperty="id">
         INSERT INTO ai_usage_log
@@ -104,4 +118,19 @@
             (#{userId}, #{applicationCaseId}, #{featureType}, #{status}, #{model},
              #{inputTokens}, #{outputTokens}, #{tokenUsage}, #{creditUsed}, #{errorMessage})
     </insert>
+
+    <!-- ── 에이전트 트레이스 ── -->
+    <insert id="insertAgentStep" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO interview_agent_step
+            (interview_session_id, question_id, step_no, agent, action, summary, detail)
+        VALUES
+            (#{interviewSessionId}, #{questionId}, #{stepNo}, #{agent}, #{action}, #{summary}, #{detail})
+    </insert>
+
+    <select id="findAgentStepsBySessionId" resultType="com.careertuner.interview.domain.InterviewAgentStep">
+        SELECT *
+        FROM interview_agent_step
+        WHERE interview_session_id = #{sessionId}
+        ORDER BY id
+    </select>
 </mapper>

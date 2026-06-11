@@ -7,6 +7,8 @@ import jakarta.validation.constraints.Size;
 public record AdminCompanyAnalysisMetadataRequest(
         @Size(max = 30) String sourceType,
         LocalDateTime checkedAt,
-        LocalDateTime refreshRecommendedAt
+        LocalDateTime refreshRecommendedAt,
+        Boolean clearCheckedAt,
+        Boolean clearRefreshRecommendedAt
 ) {
 }

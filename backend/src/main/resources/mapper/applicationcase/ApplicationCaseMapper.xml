@@ -21,10 +21,27 @@
         SELECT *
         FROM application_case
         WHERE user_id = #{userId}
+        <choose>
+            <when test="view == 'DELETED'">
+          AND deleted_at IS NOT NULL
+            </when>
+            <otherwise>
           AND deleted_at IS NULL
-        <if test="!includeArchived">
+                <choose>
+                    <when test="view == 'ARCHIVED'">
+          AND archived_at IS NOT NULL
+                    </when>
+                    <when test="view == 'ACTIVE'">
           AND archived_at IS NULL
-        </if>
+                    </when>
+                    <otherwise>
+                        <if test="!includeArchived">
+          AND archived_at IS NULL
+                        </if>
+                    </otherwise>
+                </choose>
+            </otherwise>
+        </choose>
         ORDER BY is_favorite DESC, updated_at DESC, id DESC
     </select>
 
@@ -93,6 +110,13 @@
         UPDATE application_case
         SET deleted_at = CURRENT_TIMESTAMP
         WHERE id = #{id} AND user_id = #{userId} AND deleted_at IS NULL
+    </update>
+
+    <update id="restoreDeletedApplicationCase">
+        UPDATE application_case
+        SET deleted_at = NULL,
+            archived_at = NULL
+        WHERE id = #{id} AND user_id = #{userId} AND deleted_at IS NOT NULL
     </update>
 
     <insert id="insertStatusHistory">

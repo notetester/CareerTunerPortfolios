@@ -16,6 +16,7 @@ public interface ApplicationCaseMapper {
     void insertApplicationCase(ApplicationCase applicationCase);
 
     List<ApplicationCase> findApplicationCasesByUserId(@Param("userId") Long userId,
+                                                       @Param("view") String view,
                                                        @Param("includeArchived") boolean includeArchived);
 
     ApplicationCase findApplicationCaseByIdAndUserId(@Param("id") Long id, @Param("userId") Long userId);
@@ -39,6 +40,8 @@ public interface ApplicationCaseMapper {
     int deleteApplicationCase(@Param("id") Long id, @Param("userId") Long userId);
 
     int softDeleteApplicationCase(@Param("id") Long id, @Param("userId") Long userId);
+
+    int restoreDeletedApplicationCase(@Param("id") Long id, @Param("userId") Long userId);
 
     void insertStatusHistory(@Param("applicationCaseId") Long applicationCaseId,
                              @Param("changedByUserId") Long changedByUserId,

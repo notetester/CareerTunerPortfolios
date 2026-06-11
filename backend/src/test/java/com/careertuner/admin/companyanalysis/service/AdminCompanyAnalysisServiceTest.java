@@ -3,7 +3,9 @@ package com.careertuner.admin.companyanalysis.service;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -32,14 +34,16 @@ class AdminCompanyAnalysisServiceTest {
         AdminCompanyAnalysisMetadataRequest request = new AdminCompanyAnalysisMetadataRequest(
                 "WEB",
                 LocalDateTime.of(2026, 6, 10, 9, 0),
-                LocalDateTime.of(2026, 6, 17, 9, 0));
+                LocalDateTime.of(2026, 6, 17, 9, 0),
+                false,
+                false);
 
         assertThatThrownBy(() -> service.updateMetadata(user(), 20L, request))
                 .isInstanceOf(BusinessException.class)
                 .satisfies(throwable -> assertThat(((BusinessException) throwable).getErrorCode())
                         .isEqualTo(ErrorCode.FORBIDDEN));
 
-        verify(mapper, never()).updateMetadata(any(), any(), any(), any());
+        verify(mapper, never()).updateMetadata(any(), any(), any(), any(), anyBoolean(), anyBoolean());
     }
 
     @Test
@@ -52,13 +56,15 @@ class AdminCompanyAnalysisServiceTest {
         AdminCompanyAnalysisMetadataRequest request = new AdminCompanyAnalysisMetadataRequest(
                 " WEB ",
                 checkedAt,
-                refreshRecommendedAt);
+                refreshRecommendedAt,
+                false,
+                false);
 
-        when(mapper.updateMetadata(20L, "WEB", checkedAt, refreshRecommendedAt)).thenReturn(1);
+        when(mapper.updateMetadata(20L, "WEB", checkedAt, refreshRecommendedAt, false, false)).thenReturn(1);
 
         service.updateMetadata(admin(), 20L, request);
 
-        verify(mapper).updateMetadata(20L, "WEB", checkedAt, refreshRecommendedAt);
+        verify(mapper).updateMetadata(20L, "WEB", checkedAt, refreshRecommendedAt, false, false);
     }
 
     @Test
@@ -66,13 +72,42 @@ class AdminCompanyAnalysisServiceTest {
         AdminCompanyAnalysisMapper mapper = mock(AdminCompanyAnalysisMapper.class);
         CompanyAnalysisMapper companyAnalysisMapper = mock(CompanyAnalysisMapper.class);
         AdminCompanyAnalysisService service = new AdminCompanyAnalysisService(mapper, companyAnalysisMapper);
-        AdminCompanyAnalysisMetadataRequest request = new AdminCompanyAnalysisMetadataRequest("WEB", null, null);
+        AdminCompanyAnalysisMetadataRequest request = new AdminCompanyAnalysisMetadataRequest("WEB", null, null, false, false);
 
-        when(mapper.updateMetadata(20L, "WEB", null, null)).thenReturn(1);
+        when(mapper.updateMetadata(20L, "WEB", null, null, false, false)).thenReturn(1);
 
         service.updateMetadata(admin(), 20L, request);
 
-        verify(mapper).updateMetadata(20L, "WEB", null, null);
+        verify(mapper).updateMetadata(20L, "WEB", null, null, false, false);
+    }
+
+    @Test
+    void updateMetadataClearsDateMetadataWhenRequested() {
+        AdminCompanyAnalysisMapper mapper = mock(AdminCompanyAnalysisMapper.class);
+        CompanyAnalysisMapper companyAnalysisMapper = mock(CompanyAnalysisMapper.class);
+        AdminCompanyAnalysisService service = new AdminCompanyAnalysisService(mapper, companyAnalysisMapper);
+        AdminCompanyAnalysisMetadataRequest request = new AdminCompanyAnalysisMetadataRequest("WEB", null, null, true, true);
+
+        when(mapper.updateMetadata(20L, "WEB", null, null, true, true)).thenReturn(1);
+
+        service.updateMetadata(admin(), 20L, request);
+
+        verify(mapper).updateMetadata(20L, "WEB", null, null, true, true);
+    }
+
+    @Test
+    void updateMetadataRejectsBlankSourceType() {
+        AdminCompanyAnalysisMapper mapper = mock(AdminCompanyAnalysisMapper.class);
+        CompanyAnalysisMapper companyAnalysisMapper = mock(CompanyAnalysisMapper.class);
+        AdminCompanyAnalysisService service = new AdminCompanyAnalysisService(mapper, companyAnalysisMapper);
+        AdminCompanyAnalysisMetadataRequest request = new AdminCompanyAnalysisMetadataRequest(" ", null, null, false, false);
+
+        assertThatThrownBy(() -> service.updateMetadata(admin(), 20L, request))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(throwable -> assertThat(((BusinessException) throwable).getErrorCode())
+                        .isEqualTo(ErrorCode.INVALID_INPUT));
+
+        verify(mapper, never()).updateMetadata(any(), any(), any(), any(), anyBoolean(), anyBoolean());
     }
 
     @Test
@@ -80,8 +115,8 @@ class AdminCompanyAnalysisServiceTest {
         String xml = Files.readString(Path.of("src/main/resources/mapper/admin/companyanalysis/AdminCompanyAnalysisMapper.xml"));
 
         assertThat(xml)
-                .contains("checked_at = COALESCE(#{checkedAt}, checked_at)")
-                .contains("refresh_recommended_at = COALESCE(#{refreshRecommendedAt}, refresh_recommended_at)");
+                .contains("WHEN #{clearCheckedAt} THEN NULL")
+                .contains("WHEN #{clearRefreshRecommendedAt} THEN NULL");
     }
 
     @Test
@@ -92,9 +127,11 @@ class AdminCompanyAnalysisServiceTest {
         AdminCompanyAnalysisMetadataRequest request = new AdminCompanyAnalysisMetadataRequest(
                 "WEB",
                 null,
-                null);
+                null,
+                false,
+                false);
 
-        when(mapper.updateMetadata(eq(20L), eq("WEB"), any(), any())).thenReturn(0);
+        when(mapper.updateMetadata(eq(20L), eq("WEB"), isNull(), isNull(), eq(false), eq(false))).thenReturn(0);
 
         assertThatThrownBy(() -> service.updateMetadata(admin(), 20L, request))
                 .isInstanceOf(BusinessException.class)

@@ -47,6 +47,7 @@ public class ApplicationCaseServiceImpl implements ApplicationCaseService {
     private static final int MOCK_JOB_ANALYSIS_CREDIT = 1;
     private static final int MOCK_FIT_ANALYSIS_CREDIT = 2;
     private static final int MOCK_DASHBOARD_SUMMARY_CREDIT = 1;
+    private static final Set<String> LIST_VIEWS = Set.of("ACTIVE", "ARCHIVED", "DELETED");
 
     private final ApplicationCaseMapper applicationCaseMapper;
     private final ApplicationCaseAccessService accessService;
@@ -74,8 +75,13 @@ public class ApplicationCaseServiceImpl implements ApplicationCaseService {
 
     @Override
     @Transactional(readOnly = true)
-    public List<ApplicationCaseResponse> list(Long userId, boolean includeArchived) {
-        return applicationCaseMapper.findApplicationCasesByUserId(userId, includeArchived).stream()
+    public List<ApplicationCaseResponse> list(Long userId, String view, boolean includeArchived) {
+        String normalizedView = normalizeListView(view);
+        boolean includeArchivedForLegacyRequest = normalizedView == null && includeArchived;
+        return applicationCaseMapper.findApplicationCasesByUserId(
+                        userId,
+                        normalizedView,
+                        includeArchivedForLegacyRequest).stream()
                 .map(ApplicationCaseResponse::from)
                 .toList();
     }
@@ -121,6 +127,15 @@ public class ApplicationCaseServiceImpl implements ApplicationCaseService {
     public void delete(Long userId, Long id) {
         int deleted = applicationCaseMapper.softDeleteApplicationCase(id, userId);
         if (deleted == 0) {
+            throw new BusinessException(ErrorCode.NOT_FOUND, "지원 건을 찾을 수 없습니다.");
+        }
+    }
+
+    @Override
+    @Transactional
+    public void restore(Long userId, Long id) {
+        int restored = applicationCaseMapper.restoreDeletedApplicationCase(id, userId);
+        if (restored == 0) {
             throw new BusinessException(ErrorCode.NOT_FOUND, "지원 건을 찾을 수 없습니다.");
         }
     }
@@ -288,6 +303,17 @@ public class ApplicationCaseServiceImpl implements ApplicationCaseService {
             return 5;
         }
         return Math.min(limit, 50);
+    }
+
+    private static String normalizeListView(String view) {
+        if (isBlank(view)) {
+            return null;
+        }
+        String normalized = view.trim().toUpperCase(Locale.ROOT);
+        if (!LIST_VIEWS.contains(normalized)) {
+            throw new BusinessException(ErrorCode.INVALID_INPUT, "view 값이 올바르지 않습니다.");
+        }
+        return normalized;
     }
 
     private static String normalizeOption(String value, String defaultValue, Set<String> allowedValues, String fieldName) {

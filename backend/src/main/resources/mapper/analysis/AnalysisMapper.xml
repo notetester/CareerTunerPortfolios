@@ -77,4 +77,25 @@
         WHERE ac.user_id = #{userId}
         ORDER BY ac.is_favorite DESC, COALESCE(fa.created_at, ac.updated_at) DESC, ac.id DESC
     </select>
+
+    <resultMap id="AnalysisAnswerSourceResultMap" type="com.careertuner.analysis.domain.AnalysisAnswerSource">
+        <result property="questionType" column="question_type"/>
+        <result property="score" column="score"/>
+        <result property="feedback" column="feedback"/>
+    </resultMap>
+
+    <!-- 답변 공통 약점 집계용. interview_*(D 소유) 테이블은 읽기 전용으로만 조회한다. -->
+    <select id="findAnswerSourcesByUserId" resultMap="AnalysisAnswerSourceResultMap">
+        SELECT
+            COALESCE(iq.question_type, 'EXPECTED') AS question_type,
+            ia.score,
+            ia.feedback
+        FROM interview_answer ia
+        INNER JOIN interview_question iq ON iq.id = ia.question_id
+        INNER JOIN interview_session s ON s.id = iq.interview_session_id
+        INNER JOIN application_case ac ON ac.id = s.application_case_id
+        WHERE ac.user_id = #{userId}
+          AND ia.score IS NOT NULL
+        ORDER BY ia.score ASC, ia.id DESC
+    </select>
 </mapper>

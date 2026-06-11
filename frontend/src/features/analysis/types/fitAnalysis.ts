@@ -81,9 +81,11 @@ export function parseJsonList(value: string | null | undefined): string[] {
   return [];
 }
 
+// 적합도 하이브리드 표기(기획 §8.6: "적합도 82점 / 높음"처럼 점수와 구간을 함께 표기).
+// 구간 라벨은 기획 표기 방식을 따른다: 높음 / 보완 필요 / 준비 부족.
 export function scoreTone(score: number | null | undefined) {
   const value = score ?? 0;
   if (value >= 70) return { text: "text-green-600", bg: "bg-green-100", label: "높음" };
-  if (value >= 50) return { text: "text-amber-600", bg: "bg-amber-100", label: "보통" };
-  return { text: "text-red-500", bg: "bg-red-100", label: "보완 필요" };
+  if (value >= 50) return { text: "text-amber-600", bg: "bg-amber-100", label: "보완 필요" };
+  return { text: "text-red-500", bg: "bg-red-100", label: "준비 부족" };
 }

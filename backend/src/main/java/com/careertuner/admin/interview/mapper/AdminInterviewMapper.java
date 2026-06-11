@@ -5,6 +5,7 @@ import java.util.List;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 
+import com.careertuner.admin.interview.dto.AdminInterviewAiFailureRow;
 import com.careertuner.admin.interview.dto.AdminInterviewSessionRow;
 
 @Mapper
@@ -18,4 +19,7 @@ public interface AdminInterviewMapper {
     AdminInterviewSessionRow findSession(@Param("id") Long id);
 
     String findReport(@Param("id") Long id);
+
+    /** 면접 AI 기능 실패 이력(INTERVIEW_* feature_type, status=FAILED). */
+    List<AdminInterviewAiFailureRow> findAiFailures(@Param("limit") int limit);
 }

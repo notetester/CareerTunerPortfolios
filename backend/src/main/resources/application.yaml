@@ -85,6 +85,24 @@ careertuner:
   uploads:
     job-posting-dir: ${JOB_POSTING_UPLOAD_DIR:.uploads/application-postings}
     max-file-size-bytes: ${JOB_POSTING_MAX_FILE_SIZE_BYTES:10485760}
+  file:
+    # 면접 음성/영상 등 업로드 파일 저장 위치. 큰 영상은 SPRING_SERVLET_MULTIPART_MAX_FILE_SIZE 도 함께 올린다.
+    media-dir: ${MEDIA_UPLOAD_DIR:.uploads/media}
+    max-file-size-bytes: ${MEDIA_MAX_FILE_SIZE_BYTES:10485760}
+  interview:
+    realtime:
+      # 실시간 음성 면접관(OpenAI Realtime). 키는 careertuner.openai.api-key 재사용.
+      # 실제 사용 가능한 Realtime 모델 id 로 교체할 것.
+      model: ${INTERVIEW_REALTIME_MODEL:gpt-4o-realtime-preview}
+      voice: ${INTERVIEW_REALTIME_VOICE:alloy}
+    rag:
+      # 면접 RAG(Qdrant). 기본 비활성 — Qdrant 띄우고 enabled=true 로 켜면 평가에 근거 주입.
+      enabled: ${INTERVIEW_RAG_ENABLED:false}
+      qdrant-url: ${QDRANT_URL:http://localhost:6333}
+      collection: ${INTERVIEW_RAG_COLLECTION:interview_knowledge}
+      embedding-model: ${INTERVIEW_RAG_EMBEDDING_MODEL:text-embedding-3-small}
+      dimension: ${INTERVIEW_RAG_DIMENSION:1536}
+      top-k: ${INTERVIEW_RAG_TOPK:4}
   oauth:
     # ⚠️ 아직 키 미발급 → 기본값은 placeholder. 키 수령 후 env 또는 이 값만 교체.
     kakao:

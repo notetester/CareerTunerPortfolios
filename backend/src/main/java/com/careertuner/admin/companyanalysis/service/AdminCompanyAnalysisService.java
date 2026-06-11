@@ -40,11 +40,14 @@ public class AdminCompanyAnalysisService {
     @Transactional
     public void updateMetadata(AuthUser authUser, Long analysisId, AdminCompanyAnalysisMetadataRequest request) {
         requireAdmin(authUser);
+        String sourceType = requiredSourceType(request.sourceType());
         int updated = mapper.updateMetadata(
                 analysisId,
-                blankToNull(request.sourceType()),
+                sourceType,
                 request.checkedAt(),
-                request.refreshRecommendedAt());
+                request.refreshRecommendedAt(),
+                Boolean.TRUE.equals(request.clearCheckedAt()),
+                Boolean.TRUE.equals(request.clearRefreshRecommendedAt()));
         if (updated == 0) {
             throw new BusinessException(ErrorCode.NOT_FOUND, "기업 분석을 찾을 수 없습니다.");
         }
@@ -65,5 +68,13 @@ public class AdminCompanyAnalysisService {
 
     private String blankToNull(String value) {
         return value == null || value.isBlank() ? null : value.trim();
+    }
+
+    private String requiredSourceType(String value) {
+        String sourceType = blankToNull(value);
+        if (sourceType == null) {
+            throw new BusinessException(ErrorCode.INVALID_INPUT, "sourceType 값은 필수입니다.");
+        }
+        return sourceType;
     }
 }

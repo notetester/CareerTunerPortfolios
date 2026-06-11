@@ -14,7 +14,9 @@ import {
   Plus, Calendar, Loader2, Flame, RefreshCw,
 } from "lucide-react";
 import { getDashboardSummary, refreshDashboardSummary } from "@/features/dashboard/api/dashboardApi";
-import type { DashboardActivity, DashboardSummary } from "@/features/dashboard/types/dashboardSummary";
+import type { DashboardActivity, DashboardSummary, DashboardTodo } from "@/features/dashboard/types/dashboardSummary";
+import { TodoChecklist } from "@/features/dashboard/components/TodoChecklist";
+import { AiResultBadge } from "@/features/analysis/components/AiResultBadge";
 
 const coreFeaturesData = [
   {
@@ -176,9 +178,10 @@ interface MemberHomeProps {
   fallbackName: string;
   onRetry: () => void;
   onSummaryRefreshed: (data: DashboardSummary) => void;
+  onTodosChange: (todos: DashboardTodo[]) => void;
 }
 
-function MemberHome({ summary, loading, error, fallbackName, onRetry, onSummaryRefreshed }: MemberHomeProps) {
+function MemberHome({ summary, loading, error, fallbackName, onRetry, onSummaryRefreshed, onTodosChange }: MemberHomeProps) {
   const navigate = useNavigate();
   const [refreshing, setRefreshing] = useState(false);
   const [refreshError, setRefreshError] = useState<string | null>(null);
@@ -294,7 +297,7 @@ function MemberHome({ summary, loading, error, fallbackName, onRetry, onSummaryR
                   <div className="mt-3 max-w-3xl rounded-xl bg-blue-50 px-4 py-3">
                     <div className="flex items-start justify-between gap-3">
                       <p className="text-sm leading-6 text-blue-800">
-                        <strong className="font-semibold">AI 요약</strong> · {summary.aiSummary}
+                        <strong className="font-semibold">AI 요약</strong> <AiResultBadge status={summary.analysisRun.status} /> · {summary.aiSummary}
                       </p>
                       <button
                         type="button"
@@ -371,21 +374,8 @@ function MemberHome({ summary, loading, error, fallbackName, onRetry, onSummaryR
                 오늘의 우선순위
               </CardTitle>
             </CardHeader>
-            <CardContent className="space-y-3">
-              {(summary?.todos ?? []).map((todo, index) => (
-                <div key={`${todo.task}-${index}`} className="flex items-start gap-3 rounded-lg bg-slate-50 p-3">
-                  <div className={`size-5 rounded-md flex items-center justify-center shrink-0 mt-0.5 ${todo.done ? "bg-green-500" : "border-2 border-slate-300 bg-white"}`}>
-                    {todo.done && <CheckCircle2 className="size-3.5 text-white" />}
-                  </div>
-                  <div className="min-w-0">
-                    <div className={`text-sm leading-5 ${todo.done ? "line-through text-slate-400" : "text-slate-800"}`}>{todo.task}</div>
-                    <div className="mt-1 text-xs text-slate-400">{todo.time}</div>
-                  </div>
-                </div>
-              ))}
-              {summary?.todos.length === 0 && (
-                <div className="rounded-lg bg-slate-50 p-4 text-sm text-slate-500">오늘 등록된 할 일이 없습니다.</div>
-              )}
+            <CardContent>
+              <TodoChecklist todos={summary?.todos ?? []} onTodosChange={onTodosChange} />
             </CardContent>
           </Card>
         </section>
@@ -643,6 +633,7 @@ export function HomePage() {
         fallbackName={user?.name ?? "지원자"}
         onRetry={() => setReloadToken((value) => value + 1)}
         onSummaryRefreshed={(data) => setSummary(data)}
+        onTodosChange={(todos) => setSummary((previous) => (previous ? { ...previous, todos } : previous))}
       />
     );
   }
