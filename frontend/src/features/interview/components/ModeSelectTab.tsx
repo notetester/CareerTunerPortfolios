@@ -137,7 +137,7 @@ export function ModeSelectTab({
       <div className="space-y-2">
         <Button
           size="lg"
-          className="h-14 w-full gap-2 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 sm:w-auto sm:min-w-72"
+          className="h-14 w-full gap-2 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700"
           disabled={!canStart}
           onClick={handleStart}
         >
