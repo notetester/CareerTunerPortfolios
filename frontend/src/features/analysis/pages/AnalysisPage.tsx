@@ -35,6 +35,20 @@ const roadmapPhases = [
   { phase: "다음 액션", color: "border-green-200 bg-green-50", textColor: "text-green-800" },
 ] as const;
 
+/** yyyy-MM → "M월" (해가 바뀌면 "yy년 M월"). */
+function formatMonthLabel(month: string) {
+  const [year, monthPart] = month.split("-");
+  const currentYear = String(new Date().getFullYear());
+  const label = `${Number(monthPart)}월`;
+  return year === currentYear ? label : `${year.slice(2)}년 ${label}`;
+}
+
+const tierTone: Record<string, { border: string; bg: string; text: string }> = {
+  SAFE: { border: "border-green-200", bg: "bg-green-50", text: "text-green-800" },
+  MATCH: { border: "border-blue-200", bg: "bg-blue-50", text: "text-blue-800" },
+  CHALLENGE: { border: "border-amber-200", bg: "bg-amber-50", text: "text-amber-800" },
+};
+
 function formatAnalyzedAt(value: string | null) {
   if (!value) return "분석 없음";
 
@@ -88,6 +102,8 @@ export function AnalysisPage() {
   const jobDistribution = summary?.jobDistribution ?? [];
   const answerThemes = summary?.answerThemes ?? [];
   const period = summary?.period ?? null;
+  const monthlyFitTrend = summary?.monthlyFitTrend ?? [];
+  const applicationTiers = summary?.applicationTiers ?? [];
   const topStrength = strengthTrends[0]?.skill ?? null;
   const prioritizedGaps = skillGapData.slice(0, 3);
 
@@ -491,6 +507,90 @@ export function AnalysisPage() {
                   점수 변화 그래프를 만들 분석 이력이 아직 없습니다. 지원 건별 적합도 분석을 실행하면 시간순 변화가 표시됩니다.
                 </div>
               )}
+            </CardContent>
+          </Card>
+
+          {/* 월별 평균 적합도 변화 — 준비도의 장기 흐름을 월 단위로 본다. */}
+          <Card className={`min-w-0 border border-slate-200 bg-white ${activeTab !== "score" ? "hidden" : ""}`}>
+            <CardHeader>
+              <CardTitle className="text-base flex items-center gap-2">
+                <TrendingUp className="size-4 text-blue-600" />
+                월별 평균 적합도
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              {monthlyFitTrend.length > 0 ? (
+                <div className="flex items-end gap-3 h-36 pt-2">
+                  {monthlyFitTrend.map((point, index) => (
+                    <div key={point.month} className="flex-1 flex flex-col items-center gap-1">
+                      <div className="text-xs font-black text-slate-700">{point.averageScore}</div>
+                      <div
+                        className={`w-full rounded-t-lg transition-all ${index === monthlyFitTrend.length - 1 ? "bg-green-600" : "bg-green-200"}`}
+                        style={{ height: `${Math.max(8, point.averageScore)}px` }}
+                      />
+                      <div className="text-[10px] text-slate-400 text-center whitespace-nowrap">{formatMonthLabel(point.month)}</div>
+                      <div className="text-[9px] text-slate-300">{point.analysisCount}건</div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="rounded-lg bg-slate-50 p-4 text-sm text-slate-500">
+                  월별 변화를 계산할 분석 이력이 아직 없습니다. 분석이 쌓이면 월 단위 평균 점수 흐름이 표시됩니다.
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* 상향/적정/안전 지원 분류 — 적합도 점수 기준의 지원 포트폴리오 점검. */}
+          <Card className={`min-w-0 border border-slate-200 bg-white lg:col-span-2 ${activeTab !== "trend" ? "hidden" : ""}`}>
+            <CardHeader>
+              <CardTitle className="text-base flex items-center gap-2">
+                <Target className="size-4 text-emerald-600" />
+                지원 분류 (안전 · 적정 · 상향)
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="grid gap-4 md:grid-cols-3">
+                {applicationTiers.map((tier) => {
+                  const tone = tierTone[tier.tier] ?? tierTone.MATCH;
+                  return (
+                    <div key={tier.tier} className={`rounded-xl border ${tone.border} ${tone.bg} p-4`}>
+                      <div className={`flex items-center justify-between text-sm font-bold ${tone.text}`}>
+                        {tier.label}
+                        <span className="text-lg font-black">{tier.items.length}건</span>
+                      </div>
+                      <p className="mt-1 text-xs leading-5 text-slate-500">{tier.description}</p>
+                      <div className="mt-3 space-y-1.5">
+                        {tier.items.length > 0 ? (
+                          tier.items.slice(0, 4).map((item) => (
+                            <button
+                              key={item.applicationCaseId}
+                              type="button"
+                              onClick={() => navigate(`/applications/${item.applicationCaseId}`)}
+                              className="flex w-full items-center justify-between gap-2 rounded-lg bg-white/80 px-2.5 py-1.5 text-left text-xs transition-colors hover:bg-white"
+                            >
+                              <span className="min-w-0 truncate font-medium text-slate-700">
+                                {item.companyName} · {item.jobTitle}
+                              </span>
+                              <span className="shrink-0 font-black text-slate-600">{item.fitScore ?? 0}점</span>
+                            </button>
+                          ))
+                        ) : (
+                          <div className="rounded-lg bg-white/60 px-2.5 py-1.5 text-xs text-slate-400">해당 지원 건 없음</div>
+                        )}
+                        {tier.items.length > 4 && (
+                          <div className="text-[11px] text-slate-400">외 {tier.items.length - 4}건</div>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+                {applicationTiers.length === 0 && (
+                  <div className="rounded-lg bg-slate-50 p-4 text-sm text-slate-500 md:col-span-3">
+                    적합도 분석이 쌓이면 지원 건이 안전/적정/상향으로 분류되어 지원 우선순위를 정하는 기준이 됩니다.
+                  </div>
+                )}
+              </div>
             </CardContent>
           </Card>
 

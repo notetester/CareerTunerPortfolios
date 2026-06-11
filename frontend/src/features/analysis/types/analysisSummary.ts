@@ -89,6 +89,28 @@ export interface AnalysisPeriod {
   interviewSessionCount: number;
 }
 
+/** 월별 평균 적합도 변화. month 는 yyyy-MM. */
+export interface MonthlyFitPoint {
+  month: string;
+  averageScore: number;
+  analysisCount: number;
+}
+
+export interface TierItem {
+  applicationCaseId: number;
+  companyName: string;
+  jobTitle: string;
+  fitScore: number | null;
+}
+
+/** 상향/적정/안전 지원 분류(SAFE/MATCH/CHALLENGE). 세 구간이 항상 내려온다. */
+export interface ApplicationTier {
+  tier: "SAFE" | "MATCH" | "CHALLENGE" | string;
+  label: string;
+  description: string;
+  items: TierItem[];
+}
+
 export interface AnalysisSummary {
   stats: AnalysisStats;
   skillGaps: SkillGap[];
@@ -103,5 +125,7 @@ export interface AnalysisSummary {
   jobDistribution: JobDistribution[];
   answerThemes: AnswerTheme[];
   period: AnalysisPeriod;
+  monthlyFitTrend: MonthlyFitPoint[];
+  applicationTiers: ApplicationTier[];
   analysisRun: CareerAnalysisRun;
 }

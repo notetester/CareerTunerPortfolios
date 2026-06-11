@@ -19,12 +19,15 @@ import com.careertuner.analysis.domain.AnalysisSource;
 import com.careertuner.analysis.domain.CareerAnalysisRun;
 import com.careertuner.analysis.dto.AnalysisAnswerThemeResponse;
 import com.careertuner.analysis.dto.AnalysisApplicationSummaryResponse;
+import com.careertuner.analysis.dto.AnalysisApplicationTierResponse;
 import com.careertuner.analysis.dto.AnalysisJobDistributionResponse;
+import com.careertuner.analysis.dto.AnalysisMonthlyFitResponse;
 import com.careertuner.analysis.dto.AnalysisPeriodResponse;
 import com.careertuner.analysis.dto.AnalysisScorePointResponse;
 import com.careertuner.analysis.dto.AnalysisStatResponse;
 import com.careertuner.analysis.dto.AnalysisStrengthTrendResponse;
 import com.careertuner.analysis.dto.AnalysisSummaryResponse;
+import com.careertuner.analysis.dto.AnalysisTierItemResponse;
 import com.careertuner.analysis.dto.CareerAnalysisRunResponse;
 import com.careertuner.analysis.dto.InterviewTrendResponse;
 import com.careertuner.analysis.dto.JobReadinessResponse;
@@ -84,6 +87,8 @@ public class AnalysisServiceImpl implements AnalysisService {
         List<AnalysisJobDistributionResponse> jobDistribution = jobDistribution(sources);
         List<AnalysisAnswerThemeResponse> answerThemes = answerThemes(analysisMapper.findAnswerSourcesByUserId(userId));
         AnalysisPeriodResponse period = period(sources, analyzed);
+        List<AnalysisMonthlyFitResponse> monthlyFitTrend = monthlyFitTrend(analyzed);
+        List<AnalysisApplicationTierResponse> applicationTiers = applicationTiers(analyzed);
 
         // 장기 경향 요약(16)과 다음 지원 방향(17) AI 입력. 키 주입 시 실 AI로 교체된다.
         CareerTrendAiCommand command = new CareerTrendAiCommand(
@@ -107,6 +112,7 @@ public class AnalysisServiceImpl implements AnalysisService {
                         stats, skillGaps, jobReadiness, scoreHistory, applications,
                         stored.recommendedDirections(), stored.trendSummary(), interviewTrend,
                         strengthTrends, jobDistribution, answerThemes, period,
+                        monthlyFitTrend, applicationTiers,
                         CareerAnalysisRunResponse.from(run));
             }
         }
@@ -129,7 +135,8 @@ public class AnalysisServiceImpl implements AnalysisService {
         return new AnalysisSummaryResponse(
                 stats, skillGaps, jobReadiness, scoreHistory, applications,
                 ai.recommendedDirections(), ai.trendSummary(), interviewTrend,
-                strengthTrends, jobDistribution, answerThemes, period, run);
+                strengthTrends, jobDistribution, answerThemes, period,
+                monthlyFitTrend, applicationTiers, run);
     }
 
     @Override
@@ -313,6 +320,51 @@ public class AnalysisServiceImpl implements AnalysisService {
                 })
                 .sorted(Comparator.comparingInt(AnalysisAnswerThemeResponse::averageScore))
                 .toList();
+    }
+
+    /** 월별 평균 적합도 변화: 적합도 분석 시점을 월 단위로 묶어 최근 6개월만 보여준다. */
+    private static List<AnalysisMonthlyFitResponse> monthlyFitTrend(List<AnalysisSource> analyzed) {
+        Map<java.time.YearMonth, List<Integer>> byMonth = new java.util.TreeMap<>();
+        for (AnalysisSource source : analyzed) {
+            if (source.getFitScore() == null || source.getAnalyzedAt() == null) {
+                continue;
+            }
+            byMonth.computeIfAbsent(java.time.YearMonth.from(source.getAnalyzedAt()), key -> new java.util.ArrayList<>())
+                    .add(source.getFitScore());
+        }
+        List<AnalysisMonthlyFitResponse> points = byMonth.entrySet().stream()
+                .map(entry -> new AnalysisMonthlyFitResponse(
+                        entry.getKey().toString(),
+                        (int) Math.round(entry.getValue().stream().mapToInt(Integer::intValue).average().orElse(0)),
+                        entry.getValue().size()))
+                .toList();
+        return points.size() <= 6 ? points : points.subList(points.size() - 6, points.size());
+    }
+
+    /** 상향/적정/안전 지원 분류: 최신 적합도 점수 기준의 결정적 분류. 세 구간을 항상 반환한다. */
+    private static List<AnalysisApplicationTierResponse> applicationTiers(List<AnalysisSource> analyzed) {
+        Map<String, List<AnalysisTierItemResponse>> buckets = new LinkedHashMap<>();
+        buckets.put("SAFE", new java.util.ArrayList<>());
+        buckets.put("MATCH", new java.util.ArrayList<>());
+        buckets.put("CHALLENGE", new java.util.ArrayList<>());
+        analyzed.stream()
+                .filter(source -> source.getFitScore() != null)
+                .sorted(Comparator.comparing(AnalysisSource::getFitScore).reversed())
+                .forEach(source -> {
+                    String tier = source.getFitScore() >= 80 ? "SAFE" : source.getFitScore() >= 60 ? "MATCH" : "CHALLENGE";
+                    buckets.get(tier).add(new AnalysisTierItemResponse(
+                            source.getApplicationCaseId(),
+                            source.getCompanyName(),
+                            source.getJobTitle(),
+                            source.getFitScore()));
+                });
+        return List.of(
+                new AnalysisApplicationTierResponse("SAFE", "안전 지원",
+                        "적합도 80점 이상. 합격 가능성이 높은 지원 건입니다.", buckets.get("SAFE")),
+                new AnalysisApplicationTierResponse("MATCH", "적정 지원",
+                        "적합도 60~79점. 현재 스펙과 잘 맞아 보완 1~2개로 경쟁력이 생깁니다.", buckets.get("MATCH")),
+                new AnalysisApplicationTierResponse("CHALLENGE", "상향 지원",
+                        "적합도 60점 미만. 부족 역량 보완이 전제되는 도전 지원 건입니다.", buckets.get("CHALLENGE")));
     }
 
     /** 분석 대상 기간과 데이터 수: 적합도 분석 시점의 최소/최대를 기간으로 쓴다. */
