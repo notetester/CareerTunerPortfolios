@@ -777,7 +777,7 @@ export function HomePage() {
 
       {/* ─── 마누스형 면접 진입 검색창 ─── */}
       <section className="bg-white">
-        <div className="relative z-10 mx-auto -mt-8 w-full max-w-[1400px] px-4 sm:px-6">
+        <div className="mx-auto w-full max-w-[1400px] px-4 sm:px-6 pt-8">
           <InterviewHero />
         </div>
       </section>
