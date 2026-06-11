@@ -18,7 +18,7 @@ function tagStyle(tag: string) {
 export default function NoticeListPage() {
   const [openId, setOpenId] = useState<number | null>(null);
   const [page, setPage] = useState(1);
-  const { notices, noticeLoading, fetchNotices } = useSupportStore();
+  const { notices, noticeLoading, noticeError, fetchNotices } = useSupportStore();
 
   useEffect(() => {
     fetchNotices();
@@ -66,6 +66,14 @@ export default function NoticeListPage() {
         <p>서비스 업데이트와 점검·이벤트 소식을 안내해드립니다.</p>
       </div>
 
+      {noticeLoading && (
+        <p style={{ textAlign: "center", color: "var(--muted-foreground)", padding: "48px 0" }}>불러오는 중...</p>
+      )}
+      {noticeError && !noticeLoading && (
+        <p style={{ textAlign: "center", color: "var(--destructive)", padding: "48px 0", fontSize: 14 }}>
+          공지사항을 불러오지 못했습니다. 잠시 후 다시 시도해주세요.
+        </p>
+      )}
       <div className="ct-ntable">
         <div className="ct-ntable__head">
           <span>번호</span><span>제목</span><span>날짜</span>

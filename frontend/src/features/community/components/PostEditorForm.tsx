@@ -6,6 +6,7 @@ import {
 } from "lucide-react";
 import { CATEGORIES, type CommunityCategory } from "../types/community";
 import { useCommunityStore } from "../hooks/useCommunityStore";
+import { toast } from "@/features/notification/components/toast";
 
 interface PostEditorFormProps {
   onCancel: () => void;
@@ -117,8 +118,10 @@ export function PostEditorForm({ onCancel, onSubmit }: PostEditorFormProps) {
           questions: questions.filter((q) => q.trim()),
         } : undefined,
       });
+      toast.success("글이 등록되었습니다.");
       onSubmit?.();
     } catch {
+      toast.error("글 등록에 실패했습니다. 다시 시도해주세요.");
       setSubmitting(false);
     }
   };

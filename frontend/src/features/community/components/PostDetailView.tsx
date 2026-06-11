@@ -10,6 +10,7 @@ import { ReactionButtons } from "./ReactionButtons";
 import { CommentSection } from "./CommentSection";
 import { useCommunityStore } from "../hooks/useCommunityStore";
 import { ConfirmDialog } from "@/app/components/ui/confirm-dialog";
+import { toast } from "@/features/notification/components/toast";
 import * as communityApi from "../api/communityApi";
 import { relTime } from "@/features/notification/types/notification";
 
@@ -107,7 +108,7 @@ const RESULT_LABELS: Record<string, string> = {
 };
 
 export function PostDetailView({ postId, onBack }: PostDetailViewProps) {
-  const { currentPost: d, comments, detailLoading, error, fetchPostDetail, fetchComments } = useCommunityStore();
+  const { currentPost: d, comments, detailLoading, error, fetchPostDetail, fetchComments, fetchPosts } = useCommunityStore();
   const navigate = useNavigate();
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
 
@@ -120,9 +121,12 @@ export function PostDetailView({ postId, onBack }: PostDetailViewProps) {
     try {
       await communityApi.deletePost(postId);
       setShowDeleteDialog(false);
+      toast.success("게시글이 삭제되었습니다.");
+      await fetchPosts();
       onBack();
     } catch {
       setShowDeleteDialog(false);
+      toast.error("게시글 삭제에 실패했습니다.");
     }
   };
 

@@ -35,6 +35,7 @@ public class NoticeServiceImpl implements NoticeService {
     private static final DateTimeFormatter DATE_FMT = DateTimeFormatter.ofPattern("yyyy.MM.dd");
 
     private String toTag(String category) {
+        if (category == null) return "안내";
         return CATEGORY_TAG.getOrDefault(category, category);
     }
 

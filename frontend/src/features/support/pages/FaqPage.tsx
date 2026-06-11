@@ -6,7 +6,7 @@ import "../styles/support.css";
 
 export default function FaqPage() {
   const [cat, setCat] = useState("all");
-  const { faqs, faqLoading, fetchFaqs } = useSupportStore();
+  const { faqs, faqLoading, faqError, fetchFaqs } = useSupportStore();
 
   useEffect(() => {
     fetchFaqs(cat === "all" ? undefined : cat);
@@ -37,7 +37,13 @@ export default function FaqPage() {
         ))}
       </div>
 
-      {items.length > 0 ? (
+      {faqLoading ? (
+        <p style={{ textAlign: "center", color: "var(--muted-foreground)", padding: "48px 0" }}>불러오는 중...</p>
+      ) : faqError ? (
+        <div className="ct-faq__empty" style={{ color: "var(--destructive)" }}>
+          FAQ를 불러오지 못했습니다. 잠시 후 다시 시도해주세요.
+        </div>
+      ) : items.length > 0 ? (
         <FaqAccordion items={items} />
       ) : (
         <div className="ct-faq__empty">해당 카테고리에 등록된 질문이 없습니다.</div>

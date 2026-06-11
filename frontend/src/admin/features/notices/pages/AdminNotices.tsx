@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import {
-  Megaphone, Plus, Pin, Search, ChevronLeft, ChevronRight,
+  Megaphone, Plus, Pin, PinOff, Search, ChevronLeft, ChevronRight,
   Trash2, ArrowDownCircle, ArrowUpCircle, ArrowLeft, Eye, Check, CalendarClock,
   Bold, Italic, Strikethrough, List, ListOrdered, Quote, Link2, ImageIcon, Table,
 } from "lucide-react";
@@ -23,7 +23,8 @@ const STATUS_CLS: Record<NoticeStatus, string> = {
 
 type DialogState =
   | { type: "delete"; notice: Notice }
-  | { type: "status"; notice: Notice; target: NoticeStatus };
+  | { type: "status"; notice: Notice; target: NoticeStatus }
+  | { type: "pin"; notice: Notice };
 
 /* ═══ 작성 폼 도구 ═══ */
 const CATS = ["일반", "점검", "기능 업데이트", "프로모션", "정책·약관"];
@@ -186,6 +187,10 @@ export default function AdminNotices() {
         await adminNoticeApi.deleteNotice(dialog.notice.id);
         setItems((prev) => prev.filter((n) => n.id !== dialog.notice.id));
         flash("공지가 삭제되었습니다.", "green");
+      } else if (dialog.type === "pin") {
+        const updated = await adminNoticeApi.updateNotice(dialog.notice.id, { isPinned: !dialog.notice.pinned });
+        setItems((prev) => prev.map((n) => (n.id === updated.id ? updated : n)));
+        flash(updated.pinned ? "공지가 상단에 고정되었습니다." : "고정이 해제되었습니다.", "green");
       } else {
         const statusMap: Record<NoticeStatus, string> = { published: "PUBLISHED", draft: "DRAFT", scheduled: "SCHEDULED" };
         const updated = await adminNoticeApi.updateNotice(dialog.notice.id, { status: statusMap[dialog.target] });
@@ -246,6 +251,10 @@ export default function AdminNotices() {
                 <td className="r av-muted num">{n.date}</td>
                 <td className="r">
                   <div className="nv-actions">
+                    <button className="av-btn" title={n.pinned ? "고정 해제" : "상단 고정"}
+                      onClick={() => setDialog({ type: "pin", notice: n })}>
+                      {n.pinned ? <PinOff /> : <Pin />}
+                    </button>
                     {n.status === "published" && (
                       <button className="av-btn" title="내림" onClick={() => setDialog({ type: "status", notice: n, target: "draft" })}><ArrowDownCircle /></button>
                     )}
@@ -278,6 +287,16 @@ export default function AdminNotices() {
               confirmLabel="삭제" onConfirm={handleConfirm} onCancel={() => setDialog(null)} />
           );
         }
+        if (dialog.type === "pin") {
+          const willPin = !dialog.notice.pinned;
+          return (
+            <ConfirmDialog variant="info" icon={willPin ? <Pin /> : <PinOff />}
+              title={willPin ? "이 공지를 상단에 고정할까요?" : "고정을 해제할까요?"}
+              description={willPin ? "목록 최상단에 핀 고정됩니다 (최대 3개)." : "고정이 해제되어 일반 순서로 돌아갑니다."}
+              meta={[{ label: "제목", value: dialog.notice.title }, { label: "현재", value: dialog.notice.pinned ? "고정됨" : "일반" }]}
+              confirmLabel={willPin ? "고정" : "해제"} onConfirm={handleConfirm} onCancel={() => setDialog(null)} />
+          );
+        }
         const isPublish = dialog.target === "published";
         return (
           <ConfirmDialog variant="warning" icon={isPublish ? <ArrowUpCircle /> : <ArrowDownCircle />}
@@ -285,7 +304,7 @@ export default function AdminNotices() {
             description={isPublish ? "게시하면 모든 사용자에게 공지가 노출됩니다." : "내리면 사용자에게 더 이상 보이지 않습니다."}
             meta={[{ label: "제목", value: dialog.notice.title }, { label: "현재 상태", value: STATUS_LABEL[dialog.notice.status] }]}
             confirmLabel={isPublish ? "게시" : "내림"} onConfirm={handleConfirm} onCancel={() => setDialog(null)} />
-        );
+          );
       })()}
 
       {toast && <div className={`ntc-toast ntc-toast--${toast.tone}`}>{toast.msg}</div>}

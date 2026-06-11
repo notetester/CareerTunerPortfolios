@@ -4,6 +4,7 @@ import { Heart, MessageCircle, Lock, Trash2, MessageSquareX } from "lucide-react
 import { useCommunityStore } from "../hooks/useCommunityStore";
 import { useLoginDialog } from "../hooks/useLoginDialog";
 import { ConfirmDialog } from "@/app/components/ui/confirm-dialog";
+import { toast } from "@/features/notification/components/toast";
 import * as communityApi from "../api/communityApi";
 import { relTime } from "@/features/notification/types/notification";
 import type { CommunityComment } from "../types/community";
@@ -24,17 +25,24 @@ export function CommentItem({ comment: c }: CommentItemProps) {
       await communityApi.deleteComment(c.id);
       setShowDeleteDialog(false);
       setDeleted(true);
+      toast.success("댓글이 삭제되었습니다.");
     } catch {
       setShowDeleteDialog(false);
+      toast.error("댓글 삭제에 실패했습니다.");
     }
   };
 
   if (deleted) return null;
 
   const handleLike = () => {
-    requireAuth(() => {
-      toggleReaction("COMMENT", c.id, "LIKE");
+    requireAuth(async () => {
       setLiked((v) => !v);
+      try {
+        await toggleReaction("COMMENT", c.id, "LIKE");
+      } catch {
+        setLiked((v) => !v);
+        toast.error("좋아요 처리에 실패했습니다.");
+      }
     });
   };
 

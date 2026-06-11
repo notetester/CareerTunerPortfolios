@@ -21,7 +21,7 @@ export function CommunityHomePage() {
   const [sort, setSort] = useState<SortKey>("recent");
   const [tag, setTag] = useState("");
 
-  const { posts, loading, fetchPosts } = useCommunityStore();
+  const { posts, loading, error, fetchPosts } = useCommunityStore();
   const { showLoginDialog, requireAuth, onLoginConfirm, onLoginCancel } = useLoginDialog();
 
   const filteredPosts = useMemo(() => {
@@ -110,6 +110,10 @@ export function CommunityHomePage() {
           />
           {loading ? (
             <p className="av-empty">불러오는 중...</p>
+          ) : error ? (
+            <p className="av-empty" style={{ color: "var(--destructive)" }}>
+              게시글을 불러오지 못했습니다. 잠시 후 다시 시도해주세요.
+            </p>
           ) : (
             <>
               <PostList posts={filteredPosts} onPostClick={handlePostClick} />

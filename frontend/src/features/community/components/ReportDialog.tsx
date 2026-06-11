@@ -47,6 +47,8 @@ export function ReportDialog({ targetType, targetId, target, onClose }: ReportDi
       setDone(true);
     } catch {
       setSubmitting(false);
+      const { toast: t } = await import("@/features/notification/components/toast");
+      t.error("신고 접수에 실패했습니다. 다시 시도해주세요.");
     }
   };
 

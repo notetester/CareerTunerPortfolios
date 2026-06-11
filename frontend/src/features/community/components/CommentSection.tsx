@@ -4,6 +4,7 @@ import { CommentForm } from "./CommentForm";
 import { useCommunityStore } from "../hooks/useCommunityStore";
 import { useLoginDialog } from "../hooks/useLoginDialog";
 import { ConfirmDialog } from "@/app/components/ui/confirm-dialog";
+import { toast } from "@/features/notification/components/toast";
 import type { CommunityComment } from "../types/community";
 
 interface CommentSectionProps {
@@ -16,7 +17,14 @@ export function CommentSection({ postId, comments }: CommentSectionProps) {
   const { showLoginDialog, requireAuth, onLoginConfirm, onLoginCancel } = useLoginDialog();
 
   const handleSubmit = (text: string) => {
-    requireAuth(() => addComment(postId, text));
+    requireAuth(async () => {
+      try {
+        await addComment(postId, text);
+        toast.success("댓글이 등록되었습니다.");
+      } catch {
+        toast.error("댓글 등록에 실패했습니다.");
+      }
+    });
   };
 
   return (

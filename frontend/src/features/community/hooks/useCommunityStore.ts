@@ -42,7 +42,7 @@ interface CommunityState {
     targetType: "POST" | "COMMENT",
     targetId: number,
     reactionType: "LIKE" | "BOOKMARK",
-  ) => Promise<void>;
+  ) => Promise<boolean>;
 }
 
 export const useCommunityStore = create<CommunityState>((set, get) => ({
@@ -91,10 +91,8 @@ export const useCommunityStore = create<CommunityState>((set, get) => ({
   addComment: async (postId, content) => {
     try {
       await communityApi.createComment(postId, content);
-      // 서버 기준으로 다시 fetch
       const comments = await communityApi.getComments(postId);
       set({ comments });
-      // 댓글 수 갱신
       const { currentPost } = get();
       if (currentPost && currentPost.id === postId) {
         set({
@@ -106,18 +104,18 @@ export const useCommunityStore = create<CommunityState>((set, get) => ({
       }
     } catch (e) {
       set({ error: (e as Error).message });
+      throw e;
     }
   },
 
   createPost: async (data) => {
     try {
       await communityApi.createPost(data);
-      // 성공 후 목록 갱신
       const posts = await communityApi.getPosts();
       set({ posts });
     } catch (e) {
       set({ error: (e as Error).message });
-      throw e; // 컴포넌트에서 에러 처리 가능하도록
+      throw e;
     }
   },
 
@@ -145,6 +143,10 @@ export const useCommunityStore = create<CommunityState>((set, get) => ({
           ),
         });
       }
-    } catch { /* 토글 실패 무시 */ }
+      return active;
+    } catch (e) {
+      set({ error: (e as Error).message });
+      throw e;
+    }
   },
 }));

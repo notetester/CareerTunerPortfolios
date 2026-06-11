@@ -4,13 +4,14 @@ import type { NotificationCategory } from "../types/notification";
 import { useNotificationStore } from "../hooks/useNotificationStore";
 import { NotificationFilterTabs } from "../components/NotificationFilterTabs";
 import { NotificationList } from "../components/NotificationList";
+import { toast } from "../components/toast";
 import "../styles/notification.css";
 
 const PAGE_SIZE = 6;
 
 export default function NotificationPage() {
   const {
-    unreadCount, loading,
+    unreadCount, loading, error,
     filter, setFilter, filtered,
     fetchNotifications, markAsRead, markAllAsRead,
   } = useNotificationStore();
@@ -40,7 +41,13 @@ export default function NotificationPage() {
         </div>
         <button
           className="ct-act"
-          onClick={markAllAsRead}
+          onClick={async () => {
+            try {
+              await markAllAsRead();
+            } catch {
+              toast.error("전체 읽음 처리에 실패했습니다.");
+            }
+          }}
           disabled={unreadCount === 0}
           style={unreadCount === 0 ? { opacity: 0.5, cursor: "default" } : undefined}
         >
@@ -52,13 +59,24 @@ export default function NotificationPage() {
       <NotificationFilterTabs filter={filter} onFilterChange={handleFilterChange} />
 
       {/* List */}
+      {error && !loading && (
+        <p style={{ textAlign: "center", color: "var(--destructive)", padding: "24px 0", fontSize: 14 }}>
+          알림을 불러오지 못했습니다. 잠시 후 다시 시도해주세요.
+        </p>
+      )}
       <NotificationList
         items={shown}
         loading={loading}
         hasMore={hasMore}
         remaining={list.length - limit}
         onLoadMore={() => setLimit((l) => l + PAGE_SIZE)}
-        onRead={markAsRead}
+        onRead={async (id) => {
+          try {
+            await markAsRead(id);
+          } catch {
+            toast.error("읽음 처리에 실패했습니다.");
+          }
+        }}
       />
     </div>
   );

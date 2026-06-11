@@ -65,7 +65,7 @@ interface NoticeDetailPageProps {
 }
 
 export default function NoticeDetailPage({ noticeId, onBack, onNavigate }: NoticeDetailPageProps) {
-  const { notices, currentNotice, fetchNoticeDetail } = useSupportStore();
+  const { notices, currentNotice, noticeError, fetchNoticeDetail } = useSupportStore();
 
   useEffect(() => {
     fetchNoticeDetail(noticeId);
@@ -76,7 +76,18 @@ export default function NoticeDetailPage({ noticeId, onBack, onNavigate }: Notic
 
   // currentNotice has full content from detail API; fall back to list item
   const notice = currentNotice?.id === noticeId ? currentNotice : sorted[idx];
-  if (!notice) return null;
+  if (!notice) {
+    return (
+      <div className="ct-page ct-notices">
+        <button className="ct-ndetail__back" onClick={onBack}>
+          <ArrowLeft /> 공지사항 목록
+        </button>
+        <p style={{ textAlign: "center", color: "var(--muted-foreground)", padding: "48px 0" }}>
+          {noticeError ?? "공지사항을 불러올 수 없습니다."}
+        </p>
+      </div>
+    );
+  }
 
   const prev = sorted[idx - 1] as Notice | undefined;
   const next = sorted[idx + 1] as Notice | undefined;

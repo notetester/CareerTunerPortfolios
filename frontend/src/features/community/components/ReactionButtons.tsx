@@ -4,6 +4,7 @@ import { ReportDialog } from "./ReportDialog";
 import { useCommunityStore } from "../hooks/useCommunityStore";
 import { useLoginDialog } from "../hooks/useLoginDialog";
 import { ConfirmDialog } from "@/app/components/ui/confirm-dialog";
+import { toast } from "@/features/notification/components/toast";
 
 interface ReactionButtonsProps {
   postId: number;
@@ -21,16 +22,26 @@ export function ReactionButtons({ postId, likeCount, bookmarkCount, initialLiked
   const [showReport, setShowReport] = useState(false);
 
   const handleLike = () => {
-    requireAuth(() => {
-      toggleReaction("POST", postId, "LIKE");
+    requireAuth(async () => {
       setLiked((v) => !v);
+      try {
+        await toggleReaction("POST", postId, "LIKE");
+      } catch {
+        setLiked((v) => !v);
+        toast.error("좋아요 처리에 실패했습니다.");
+      }
     });
   };
 
   const handleBookmark = () => {
-    requireAuth(() => {
-      toggleReaction("POST", postId, "BOOKMARK");
+    requireAuth(async () => {
       setSaved((v) => !v);
+      try {
+        await toggleReaction("POST", postId, "BOOKMARK");
+      } catch {
+        setSaved((v) => !v);
+        toast.error("북마크 처리에 실패했습니다.");
+      }
     });
   };
 
