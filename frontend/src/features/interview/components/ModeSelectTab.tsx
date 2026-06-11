@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { AlertCircle, BarChart3, FileText, Mic, Video } from "lucide-react";
+import { AlertCircle, BarChart3, FileText } from "lucide-react";
 import { Badge } from "@/app/components/ui/badge";
 import { Button } from "@/app/components/ui/button";
 import type { ApplicationCase } from "@/features/applications/types/applicationCase";
@@ -134,30 +134,26 @@ export function ModeSelectTab({
       </div>
 
       {/* 시작 버튼 */}
-      <div className="grid gap-4 md:grid-cols-3">
+      <div className="space-y-2">
         <Button
           size="lg"
-          className="h-14 gap-2 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700"
+          className="h-14 w-full gap-2 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 sm:w-auto sm:min-w-72"
           disabled={!canStart}
           onClick={handleStart}
         >
           <FileText className="size-5" />
-          {starting ? "시작하는 중…" : "텍스트 면접 시작"}
+          {starting ? "시작하는 중…" : "면접 시작하기"}
         </Button>
-        <Button size="lg" variant="outline" className="h-14 gap-2" disabled title="2차 예정">
-          <Mic className="size-5" />
-          음성 면접 (준비 중)
-        </Button>
-        <Button
-          size="lg"
-          variant="outline"
-          className="h-14 gap-2 border-purple-300 text-purple-700"
-          disabled
-          title="3차 예정"
-        >
-          <Video className="size-5" />
-          영상 면접 (준비 중)
-        </Button>
+        {(selectedCaseId === null || selectedMode === null) && !starting && (
+          <p className="flex items-center gap-1.5 text-sm text-amber-600">
+            <AlertCircle className="size-4" />
+            {selectedCaseId === null && selectedMode === null
+              ? "지원 건과 면접 모드를 선택하면 시작할 수 있습니다."
+              : selectedCaseId === null
+                ? "지원 건을 선택하세요."
+                : "면접 모드를 선택하세요."}
+          </p>
+        )}
       </div>
       {startError && (
         <p className="flex items-center gap-1.5 text-sm text-red-500">
