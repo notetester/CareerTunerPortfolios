@@ -201,7 +201,12 @@ export function ExpectedQuestionsTab({ session }: { session: InterviewSession | 
             <p className="text-sm text-slate-500">
               이 지원 건과 모드에 맞춘 예상 면접 질문을 AI가 생성합니다.
             </p>
-            <Button size="lg" className="gap-2" disabled={generating} onClick={handleGenerate}>
+            <Button
+              size="lg"
+              className="gap-2 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700"
+              disabled={generating}
+              onClick={handleGenerate}
+            >
               {generating ? <Loader2 className="size-5 animate-spin" /> : <Sparkles className="size-5" />}
               {generating ? "질문 생성 중…" : "질문 생성하기"}
             </Button>
