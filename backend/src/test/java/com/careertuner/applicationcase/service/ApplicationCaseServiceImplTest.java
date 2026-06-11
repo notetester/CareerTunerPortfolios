@@ -3,6 +3,7 @@ package com.careertuner.applicationcase.service;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doThrow;
@@ -49,6 +50,7 @@ import com.careertuner.jobposting.mapper.JobPostingMapper;
 import com.careertuner.jobposting.service.JobPostingFileStorage;
 import com.careertuner.jobposting.service.JobPostingService;
 import com.careertuner.jobposting.service.JobPostingTextExtractor;
+import tools.jackson.databind.ObjectMapper;
 
 class ApplicationCaseServiceImplTest {
 
@@ -65,6 +67,86 @@ class ApplicationCaseServiceImplTest {
 
         verify(applicationCaseMapper).softDeleteApplicationCase(10L, 1L);
         verify(applicationCaseMapper, never()).deleteApplicationCase(10L, 1L);
+    }
+
+    @Test
+    void listApplicationCasesUsesExplicitDeletedView() {
+        ApplicationCaseMapper applicationCaseMapper = mock(ApplicationCaseMapper.class);
+        JobPostingMapper jobPostingMapper = mock(JobPostingMapper.class);
+        ApplicationCaseAccessService accessService = new ApplicationCaseAccessService(applicationCaseMapper, jobPostingMapper);
+        ApplicationCaseServiceImpl service = applicationCaseService(applicationCaseMapper, accessService);
+        ApplicationCase deleted = ApplicationCase.builder()
+                .id(10L)
+                .userId(1L)
+                .companyName("Test Company")
+                .jobTitle("Backend Developer")
+                .sourceType("TEXT")
+                .status("DRAFT")
+                .deletedAt(LocalDateTime.now())
+                .build();
+
+        when(applicationCaseMapper.findApplicationCasesByUserId(1L, "DELETED", false)).thenReturn(List.of(deleted));
+
+        List<ApplicationCaseResponse> response = service.list(1L, "deleted", true);
+
+        assertThat(response).hasSize(1);
+        assertThat(response.get(0).id()).isEqualTo(10L);
+        verify(applicationCaseMapper).findApplicationCasesByUserId(1L, "DELETED", false);
+    }
+
+    @Test
+    void listApplicationCasesKeepsIncludeArchivedCompatibilityWhenViewIsOmitted() {
+        ApplicationCaseMapper applicationCaseMapper = mock(ApplicationCaseMapper.class);
+        JobPostingMapper jobPostingMapper = mock(JobPostingMapper.class);
+        ApplicationCaseAccessService accessService = new ApplicationCaseAccessService(applicationCaseMapper, jobPostingMapper);
+        ApplicationCaseServiceImpl service = applicationCaseService(applicationCaseMapper, accessService);
+
+        when(applicationCaseMapper.findApplicationCasesByUserId(1L, null, true)).thenReturn(List.of());
+
+        List<ApplicationCaseResponse> response = service.list(1L, null, true);
+
+        assertThat(response).isEmpty();
+        verify(applicationCaseMapper).findApplicationCasesByUserId(1L, null, true);
+    }
+
+    @Test
+    void listApplicationCasesRejectsUnknownView() {
+        ApplicationCaseMapper applicationCaseMapper = mock(ApplicationCaseMapper.class);
+        JobPostingMapper jobPostingMapper = mock(JobPostingMapper.class);
+        ApplicationCaseAccessService accessService = new ApplicationCaseAccessService(applicationCaseMapper, jobPostingMapper);
+        ApplicationCaseServiceImpl service = applicationCaseService(applicationCaseMapper, accessService);
+
+        assertThatThrownBy(() -> service.list(1L, "ALL", false))
+                .isInstanceOf(BusinessException.class);
+
+        verify(applicationCaseMapper, never()).findApplicationCasesByUserId(any(), any(), anyBoolean());
+    }
+
+    @Test
+    void restoreApplicationCaseClearsDeletedAndArchivedState() {
+        ApplicationCaseMapper applicationCaseMapper = mock(ApplicationCaseMapper.class);
+        JobPostingMapper jobPostingMapper = mock(JobPostingMapper.class);
+        ApplicationCaseAccessService accessService = new ApplicationCaseAccessService(applicationCaseMapper, jobPostingMapper);
+        ApplicationCaseServiceImpl service = applicationCaseService(applicationCaseMapper, accessService);
+
+        when(applicationCaseMapper.restoreDeletedApplicationCase(10L, 1L)).thenReturn(1);
+
+        service.restore(1L, 10L);
+
+        verify(applicationCaseMapper).restoreDeletedApplicationCase(10L, 1L);
+    }
+
+    @Test
+    void restoreApplicationCaseThrowsNotFoundWhenNoDeletedRowIsUpdated() {
+        ApplicationCaseMapper applicationCaseMapper = mock(ApplicationCaseMapper.class);
+        JobPostingMapper jobPostingMapper = mock(JobPostingMapper.class);
+        ApplicationCaseAccessService accessService = new ApplicationCaseAccessService(applicationCaseMapper, jobPostingMapper);
+        ApplicationCaseServiceImpl service = applicationCaseService(applicationCaseMapper, accessService);
+
+        when(applicationCaseMapper.restoreDeletedApplicationCase(10L, 1L)).thenReturn(0);
+
+        assertThatThrownBy(() -> service.restore(1L, 10L))
+                .isInstanceOf(BusinessException.class);
     }
 
     @Test
@@ -96,14 +178,26 @@ class ApplicationCaseServiceImplTest {
 
         when(applicationCaseMapper.findApplicationCaseByIdAndUserId(10L, 1L)).thenReturn(applicationCase);
         when(jobPostingMapper.nextRevisionForCase(10L)).thenReturn(2);
-        when(jobPostingMapper.findLatestJobPostingByCaseId(10L)).thenReturn(latest);
+        doAnswer(invocation -> {
+            JobPosting posting = invocation.getArgument(0);
+            posting.setId(31L);
+            return null;
+        }).when(jobPostingMapper).insertJobPosting(any(JobPosting.class));
+        when(jobPostingMapper.findJobPostingByIdAndCaseId(31L, 10L)).thenReturn(latest);
 
-        service.saveJobPosting(1L, 10L, new JobPostingRequest("TEXT", null, "updated posting", null));
+        JobPostingResponse response = service.saveJobPosting(1L, 10L,
+                new JobPostingRequest("updated posting", null, null, "TEXT"));
 
         ArgumentCaptor<JobPosting> postingCaptor = ArgumentCaptor.forClass(JobPosting.class);
         verify(jobPostingMapper, never()).deleteJobPostingsByCaseId(10L);
         verify(jobPostingMapper).insertJobPosting(postingCaptor.capture());
-        assertThat(postingCaptor.getValue().getRevision()).isEqualTo(2);
+        JobPosting savedPosting = postingCaptor.getValue();
+        assertThat(savedPosting.getRevision()).isEqualTo(2);
+        assertThat(savedPosting.getOriginalText()).isEqualTo("updated posting");
+        assertThat(savedPosting.getSourceType()).isEqualTo("TEXT");
+        assertThat(response.revision()).isEqualTo(2);
+        assertThat(response.originalText()).isEqualTo("updated posting");
+        assertThat(response.sourceType()).isEqualTo("TEXT");
     }
 
     @Test
@@ -138,7 +232,12 @@ class ApplicationCaseServiceImplTest {
 
         when(applicationCaseMapper.findApplicationCaseByIdAndUserId(10L, 1L)).thenReturn(applicationCase);
         when(jobPostingMapper.nextRevisionForCase(10L)).thenReturn(3);
-        when(jobPostingMapper.findLatestJobPostingByCaseId(10L)).thenReturn(latest);
+        doAnswer(invocation -> {
+            JobPosting posting = invocation.getArgument(0);
+            posting.setId(32L);
+            return null;
+        }).when(jobPostingMapper).insertJobPosting(any(JobPosting.class));
+        when(jobPostingMapper.findJobPostingByIdAndCaseId(32L, 10L)).thenReturn(latest);
 
         JobPostingResponse response = service.saveJobPosting(1L, 10L,
                 new JobPostingRequest(null, jobUrl, correctedText, "URL"));
@@ -230,7 +329,12 @@ class ApplicationCaseServiceImplTest {
         when(applicationCaseMapper.findApplicationCaseByIdAndUserId(10L, 1L)).thenReturn(applicationCase);
         when(textExtractor.extractUrl(jobUrl)).thenReturn(extracted);
         when(jobPostingMapper.nextRevisionForCase(10L)).thenReturn(4);
-        when(jobPostingMapper.findLatestJobPostingByCaseId(10L)).thenReturn(latest);
+        doAnswer(invocation -> {
+            JobPosting posting = invocation.getArgument(0);
+            posting.setId(33L);
+            return null;
+        }).when(jobPostingMapper).insertJobPosting(any(JobPosting.class));
+        when(jobPostingMapper.findJobPostingByIdAndCaseId(33L, 10L)).thenReturn(latest);
 
         JobPostingResponse response = service.saveJobPosting(1L, 10L,
                 new JobPostingRequest(null, jobUrl, null, "URL"));
@@ -345,7 +449,7 @@ class ApplicationCaseServiceImplTest {
         AiUsageLogService usageLogService = mock(AiUsageLogService.class);
         ApplicationCaseAnalysisStatusService statusService = mock(ApplicationCaseAnalysisStatusService.class);
         ApplicationCaseAccessService accessService = new ApplicationCaseAccessService(applicationCaseMapper, jobPostingMapper);
-        JobAnalysisService service = new JobAnalysisService(accessService, jobAnalysisMapper, openAiClient, usageLogService, statusService, transactionTemplate());
+        JobAnalysisService service = new JobAnalysisService(accessService, jobAnalysisMapper, openAiClient, usageLogService, statusService, transactionTemplate(), analysisJsonValidator());
 
         ApplicationCase applicationCase = applicationCase("DRAFT");
         JobPosting posting = jobPosting(30L, 2, "Java Spring REST API");
@@ -380,7 +484,7 @@ class ApplicationCaseServiceImplTest {
         AiUsageLogService usageLogService = mock(AiUsageLogService.class);
         ApplicationCaseAnalysisStatusService statusService = mock(ApplicationCaseAnalysisStatusService.class);
         ApplicationCaseAccessService accessService = new ApplicationCaseAccessService(applicationCaseMapper, jobPostingMapper);
-        JobAnalysisService service = new JobAnalysisService(accessService, jobAnalysisMapper, openAiClient, usageLogService, statusService, transactionTemplate());
+        JobAnalysisService service = new JobAnalysisService(accessService, jobAnalysisMapper, openAiClient, usageLogService, statusService, transactionTemplate(), analysisJsonValidator());
 
         when(applicationCaseMapper.findApplicationCaseByIdAndUserId(10L, 1L)).thenReturn(applicationCase("APPLIED"));
 
@@ -404,7 +508,7 @@ class ApplicationCaseServiceImplTest {
         AiUsageLogService usageLogService = mock(AiUsageLogService.class);
         ApplicationCaseAnalysisStatusService statusService = mock(ApplicationCaseAnalysisStatusService.class);
         ApplicationCaseAccessService accessService = new ApplicationCaseAccessService(applicationCaseMapper, jobPostingMapper);
-        JobAnalysisService service = new JobAnalysisService(accessService, jobAnalysisMapper, openAiClient, usageLogService, statusService, transactionTemplate());
+        JobAnalysisService service = new JobAnalysisService(accessService, jobAnalysisMapper, openAiClient, usageLogService, statusService, transactionTemplate(), analysisJsonValidator());
 
         ApplicationCase applicationCase = applicationCase("DRAFT");
         JobPosting posting = jobPosting(30L, 2, "Java Spring REST API");
@@ -435,7 +539,7 @@ class ApplicationCaseServiceImplTest {
         AiUsageLogService usageLogService = mock(AiUsageLogService.class);
         ApplicationCaseAnalysisStatusService statusService = mock(ApplicationCaseAnalysisStatusService.class);
         ApplicationCaseAccessService accessService = new ApplicationCaseAccessService(applicationCaseMapper, jobPostingMapper);
-        JobAnalysisService service = new JobAnalysisService(accessService, jobAnalysisMapper, openAiClient, usageLogService, statusService, transactionTemplate());
+        JobAnalysisService service = new JobAnalysisService(accessService, jobAnalysisMapper, openAiClient, usageLogService, statusService, transactionTemplate(), analysisJsonValidator());
         ApplicationCase applicationCase = applicationCase("READY");
         JobPosting posting = jobPosting(30L, 2, "Java Spring REST API");
         RuntimeException failure = new RuntimeException("OpenAI down");
@@ -462,7 +566,7 @@ class ApplicationCaseServiceImplTest {
         AiUsageLogService usageLogService = mock(AiUsageLogService.class);
         ApplicationCaseAnalysisStatusService statusService = mock(ApplicationCaseAnalysisStatusService.class);
         ApplicationCaseAccessService accessService = new ApplicationCaseAccessService(applicationCaseMapper, jobPostingMapper);
-        JobAnalysisService service = new JobAnalysisService(accessService, jobAnalysisMapper, openAiClient, usageLogService, statusService, transactionTemplate());
+        JobAnalysisService service = new JobAnalysisService(accessService, jobAnalysisMapper, openAiClient, usageLogService, statusService, transactionTemplate(), analysisJsonValidator());
         ApplicationCase applicationCase = applicationCase("DRAFT");
         JobPosting posting = jobPosting(30L, 2, "Java Spring REST API");
         Usage usage = new Usage("gpt-test", 100, 50, 150);
@@ -492,7 +596,7 @@ class ApplicationCaseServiceImplTest {
         AiUsageLogService usageLogService = mock(AiUsageLogService.class);
         ApplicationCaseAnalysisStatusService statusService = mock(ApplicationCaseAnalysisStatusService.class);
         ApplicationCaseAccessService accessService = new ApplicationCaseAccessService(applicationCaseMapper, jobPostingMapper);
-        CompanyAnalysisService service = new CompanyAnalysisService(accessService, companyAnalysisMapper, openAiClient, usageLogService, statusService, transactionTemplate());
+        CompanyAnalysisService service = new CompanyAnalysisService(accessService, companyAnalysisMapper, openAiClient, usageLogService, statusService, transactionTemplate(), analysisJsonValidator());
 
         ApplicationCase applicationCase = applicationCase("DRAFT");
         JobPosting posting = jobPosting(null, null, "Backend platform job posting");
@@ -539,7 +643,7 @@ class ApplicationCaseServiceImplTest {
         AiUsageLogService usageLogService = mock(AiUsageLogService.class);
         ApplicationCaseAnalysisStatusService statusService = mock(ApplicationCaseAnalysisStatusService.class);
         ApplicationCaseAccessService accessService = new ApplicationCaseAccessService(applicationCaseMapper, jobPostingMapper);
-        CompanyAnalysisService service = new CompanyAnalysisService(accessService, companyAnalysisMapper, openAiClient, usageLogService, statusService, transactionTemplate());
+        CompanyAnalysisService service = new CompanyAnalysisService(accessService, companyAnalysisMapper, openAiClient, usageLogService, statusService, transactionTemplate(), analysisJsonValidator());
 
         ApplicationCase applicationCase = applicationCase("DRAFT");
         JobPosting posting = jobPosting(30L, 3, "Backend platform job posting");
@@ -560,13 +664,13 @@ class ApplicationCaseServiceImplTest {
         verify(companyAnalysisMapper).insertCompanyAnalysis(analysisCaptor.capture());
         assertThat(analysisCaptor.getValue().getJobPostingId()).isEqualTo(30L);
         assertThat(analysisCaptor.getValue().getJobPostingRevision()).isEqualTo(3);
-        assertThat(analysisCaptor.getValue().getVerifiedFacts()).isEqualTo("[{\"fact\":\"job posting mentions B2B platform\"}]");
-        assertThat(analysisCaptor.getValue().getAiInferences()).isEqualTo("[{\"inference\":\"platform operations may be discussed\"}]");
+        assertThat(analysisCaptor.getValue().getVerifiedFacts()).isEqualTo("[{\"fact\":\"job posting mentions B2B platform\",\"source\":\"job posting\"}]");
+        assertThat(analysisCaptor.getValue().getAiInferences()).isEqualTo("[{\"inference\":\"platform operations may be discussed\",\"basis\":\"job posting mentions B2B platform\"}]");
         assertThat(analysisCaptor.getValue().getSourceType()).isEqualTo("JOB_POSTING");
         assertThat(analysisCaptor.getValue().getCheckedAt()).isBetween(before, after);
         assertThat(analysisCaptor.getValue().getRefreshRecommendedAt()).isEqualTo(analysisCaptor.getValue().getCheckedAt().plusDays(30));
-        assertThat(response.verifiedFacts()).isEqualTo("[{\"fact\":\"job posting mentions B2B platform\"}]");
-        assertThat(response.aiInferences()).isEqualTo("[{\"inference\":\"platform operations may be discussed\"}]");
+        assertThat(response.verifiedFacts()).isEqualTo("[{\"fact\":\"job posting mentions B2B platform\",\"source\":\"job posting\"}]");
+        assertThat(response.aiInferences()).isEqualTo("[{\"inference\":\"platform operations may be discussed\",\"basis\":\"job posting mentions B2B platform\"}]");
         assertThat(response.sourceType()).isEqualTo("JOB_POSTING");
         verify(statusService).markAnalyzing(1L, 10L, "DRAFT");
     }
@@ -580,7 +684,7 @@ class ApplicationCaseServiceImplTest {
         AiUsageLogService usageLogService = mock(AiUsageLogService.class);
         ApplicationCaseAnalysisStatusService statusService = mock(ApplicationCaseAnalysisStatusService.class);
         ApplicationCaseAccessService accessService = new ApplicationCaseAccessService(applicationCaseMapper, jobPostingMapper);
-        CompanyAnalysisService service = new CompanyAnalysisService(accessService, companyAnalysisMapper, openAiClient, usageLogService, statusService, transactionTemplate());
+        CompanyAnalysisService service = new CompanyAnalysisService(accessService, companyAnalysisMapper, openAiClient, usageLogService, statusService, transactionTemplate(), analysisJsonValidator());
 
         when(applicationCaseMapper.findApplicationCaseByIdAndUserId(10L, 1L)).thenReturn(applicationCase("CLOSED"));
 
@@ -661,6 +765,10 @@ class ApplicationCaseServiceImplTest {
         };
     }
 
+    private static BAnalysisJsonValidator analysisJsonValidator() {
+        return new BAnalysisJsonValidator(new ObjectMapper());
+    }
+
     private static ApplicationCase applicationCase(String status) {
         return ApplicationCase.builder()
                 .id(10L)
@@ -721,8 +829,8 @@ class ApplicationCaseServiceImplTest {
                 "[]",
                 "Interview points",
                 "[]",
-                "[{\"fact\":\"job posting mentions B2B platform\"}]",
-                "[{\"inference\":\"platform operations may be discussed\"}]",
+                "[{\"fact\":\"job posting mentions B2B platform\",\"source\":\"job posting\"}]",
+                "[{\"inference\":\"platform operations may be discussed\",\"basis\":\"job posting mentions B2B platform\"}]",
                 usage);
     }
 
@@ -734,8 +842,8 @@ class ApplicationCaseServiceImplTest {
                 .jobPostingId(30L)
                 .jobPostingRevision(3)
                 .industry("IT services")
-                .verifiedFacts("[{\"fact\":\"job posting mentions B2B platform\"}]")
-                .aiInferences("[{\"inference\":\"platform operations may be discussed\"}]")
+                .verifiedFacts("[{\"fact\":\"job posting mentions B2B platform\",\"source\":\"job posting\"}]")
+                .aiInferences("[{\"inference\":\"platform operations may be discussed\",\"basis\":\"job posting mentions B2B platform\"}]")
                 .sourceType("JOB_POSTING")
                 .checkedAt(checkedAt)
                 .refreshRecommendedAt(checkedAt.plusDays(30))

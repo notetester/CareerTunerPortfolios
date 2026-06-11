@@ -48,9 +48,6 @@
             sources = #{sources},
             verified_facts = #{verifiedFacts},
             ai_inferences = #{aiInferences},
-            source_type = #{sourceType},
-            checked_at = #{checkedAt},
-            refresh_recommended_at = #{refreshRecommendedAt},
             confirmed_at = #{confirmedAt}
         WHERE id = #{id} AND application_case_id = #{applicationCaseId}
     </update>

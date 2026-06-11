@@ -79,18 +79,23 @@ public class InterviewOpenAiClient {
         return new GeneratedQuestions(questions, usage(root));
     }
 
-    /** 단일 답변 평가(점수/피드백/개선답변). */
-    public AnswerEvaluation evaluateAnswer(String question, String answerText, ApplicationCase applicationCase) {
+    /** 단일 답변 평가(점수/피드백/개선답변). ragContext 가 있으면 평가 근거로 함께 제공한다. */
+    public AnswerEvaluation evaluateAnswer(String question, String answerText, ApplicationCase applicationCase,
+                                           String ragContext) {
+        String reference = ragContext == null || ragContext.isBlank()
+                ? ""
+                : "\n참고 자료(평가 기준·지식베이스):\n" + ragContext + "\n";
         String userPrompt = """
                 회사명: %s
                 직무명: %s
-
+                %s
                 질문:
                 %s
 
                 지원자 답변:
                 %s
-                """.formatted(applicationCase.getCompanyName(), applicationCase.getJobTitle(), question, answerText);
+                """.formatted(applicationCase.getCompanyName(), applicationCase.getJobTitle(),
+                reference, question, answerText);
 
         JsonNode root = post(structuredRequest("interview_answer_evaluation", evaluationSchema(),
                 InterviewPromptCatalog.EVALUATION_SYSTEM_PROMPT, userPrompt));
@@ -100,6 +105,83 @@ public class InterviewOpenAiClient {
                 payload.path("feedback").asText(""),
                 payload.path("improvedAnswer").asText(""),
                 usage(root));
+    }
+
+    /** 원 질문 + 지원자 답변 기반 꼬리 질문 생성. */
+    public GeneratedQuestions generateFollowUps(String question, String answerText,
+                                                ApplicationCase applicationCase, int count) {
+        String userPrompt = """
+                회사명: %s
+                직무명: %s
+                생성할 꼬리 질문 수: %d
+
+                원 질문:
+                %s
+
+                지원자 답변:
+                %s
+                """.formatted(applicationCase.getCompanyName(), applicationCase.getJobTitle(),
+                count, question, answerText == null || answerText.isBlank() ? "(답변 없음)" : answerText);
+
+        JsonNode root = post(structuredRequest("interview_follow_up_questions", questionsSchema(),
+                InterviewPromptCatalog.FOLLOWUP_SYSTEM_PROMPT, userPrompt));
+        JsonNode payload = parseOutputJson(root);
+
+        List<GeneratedQuestion> questions = new ArrayList<>();
+        JsonNode array = payload.path("questions");
+        if (array.isArray()) {
+            for (JsonNode item : array) {
+                String q = item.path("question").asText("").trim();
+                if (q.isBlank()) {
+                    continue;
+                }
+                // 꼬리 질문은 항상 FOLLOW_UP 으로 강제한다.
+                questions.add(new GeneratedQuestion(q, "FOLLOW_UP"));
+            }
+        }
+        if (questions.isEmpty()) {
+            throw new BusinessException(ErrorCode.INTERNAL_ERROR, "AI가 꼬리 질문을 생성하지 못했습니다.");
+        }
+        return new GeneratedQuestions(questions, usage(root));
+    }
+
+    /** Critic 에이전트: 원 채점 결과를 적대적으로 검증하고 필요 시 점수를 조정한다. */
+    public CritiqueResult critiqueEvaluation(String question, String answerText, int originalScore, String feedback) {
+        String userPrompt = """
+                질문:
+                %s
+
+                지원자 답변:
+                %s
+
+                원 채점 점수: %d
+                원 채점 피드백:
+                %s
+                """.formatted(question, answerText, originalScore, feedback == null ? "" : feedback);
+
+        JsonNode root = post(structuredRequest("interview_critique", critiqueSchema(),
+                InterviewPromptCatalog.CRITIC_SYSTEM_PROMPT, userPrompt));
+        JsonNode payload = parseOutputJson(root);
+        return new CritiqueResult(
+                clampScore(payload.path("adjustedScore").asInt(originalScore)),
+                payload.path("verdict").asText("유지"),
+                payload.path("reason").asText(""),
+                usage(root));
+    }
+
+    /** 평가 하니스용: 독립 심사위원이 같은 답변을 재채점한다(LLM-as-judge). */
+    public ScoreOnly judgeAnswerScore(String question, String answerText) {
+        String userPrompt = """
+                질문:
+                %s
+
+                지원자 답변:
+                %s
+                """.formatted(question, answerText);
+        JsonNode root = post(structuredRequest("interview_judge", scoreOnlySchema(),
+                InterviewPromptCatalog.JUDGE_SYSTEM_PROMPT, userPrompt));
+        JsonNode payload = parseOutputJson(root);
+        return new ScoreOnly(clampScore(payload.path("score").asInt(0)), usage(root));
     }
 
     /** 면접 전체 Q&A 기반 종합 리포트 생성. */
@@ -276,6 +358,20 @@ public class InterviewOpenAiClient {
         return objectSchema(properties, List.of("score", "feedback", "improvedAnswer"));
     }
 
+    private Map<String, Object> scoreOnlySchema() {
+        Map<String, Object> properties = new LinkedHashMap<>();
+        properties.put("score", integerSchema());
+        return objectSchema(properties, List.of("score"));
+    }
+
+    private Map<String, Object> critiqueSchema() {
+        Map<String, Object> properties = new LinkedHashMap<>();
+        properties.put("adjustedScore", integerSchema());
+        properties.put("verdict", Map.of("type", "string", "enum", List.of("유지", "조정")));
+        properties.put("reason", stringSchema());
+        return objectSchema(properties, List.of("adjustedScore", "verdict", "reason"));
+    }
+
     private Map<String, Object> reportSchema() {
         Map<String, Object> categoryItem = objectSchema(
                 Map.of("label", stringSchema(), "score", integerSchema()),
@@ -345,6 +441,12 @@ public class InterviewOpenAiClient {
     }
 
     public record AnswerEvaluation(int score, String feedback, String improvedAnswer, Usage usage) {
+    }
+
+    public record CritiqueResult(int adjustedScore, String verdict, String reason, Usage usage) {
+    }
+
+    public record ScoreOnly(int score, Usage usage) {
     }
 
     public record ReportCategory(String label, int score) {

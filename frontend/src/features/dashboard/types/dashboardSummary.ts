@@ -37,9 +37,39 @@ export interface DashboardApplication {
 }
 
 export interface DashboardTodo {
+  /** 사용자 직접 추가 항목만 존재. 파생 항목은 null. */
+  id: number | null;
+  /** 파생(자동 계산) 항목만 존재. 사용자 항목은 null. */
+  derivedKey: string | null;
+  source: "DERIVED" | "USER" | string;
   done: boolean;
   task: string;
   time: string;
+}
+
+/** 최근 면접 카드(디자인 분석 §6.4: 점수 변화·핵심 개선점·리포트 보기). 면접 기록이 없으면 null. */
+export interface DashboardRecentInterview {
+  sessionId: number;
+  applicationCaseId: number;
+  companyName: string;
+  jobTitle: string;
+  mode: string;
+  totalScore: number | null;
+  previousScore: number | null;
+  scoreDelta: number | null;
+  keyImprovement: string | null;
+  occurredAt: string;
+}
+
+/** 최근 알림(notification 읽기 전용 참조 — PRODUCT_STRUCTURE 대시보드 항목). */
+export interface DashboardNotification {
+  id: number;
+  type: string;
+  title: string;
+  message: string | null;
+  link: string | null;
+  read: boolean;
+  createdAt: string;
 }
 
 export interface DashboardActivity {
@@ -76,6 +106,8 @@ export interface DashboardSummary {
   todos: DashboardTodo[];
   activities: DashboardActivity[];
   skillGaps: DashboardSkillGap[];
+  recentInterview: DashboardRecentInterview | null;
+  recentNotifications: DashboardNotification[];
   /** 대시보드 AI 분석 결과 요약(C 담당 AI 18). API 키가 없으면 결정적 mock, 있으면 실제 구조화 분석. */
   aiSummary: string;
   analysisRun: DashboardAnalysisRun;

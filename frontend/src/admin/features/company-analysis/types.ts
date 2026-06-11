@@ -22,3 +22,11 @@ export interface AdminCompanyAnalysisRow {
   adminMemo: string | null;
   createdAt: string;
 }
+
+export interface AdminCompanyAnalysisMetadataUpdateRequest {
+  sourceType: string | null;
+  checkedAt: string | null;
+  refreshRecommendedAt: string | null;
+  clearCheckedAt?: boolean;
+  clearRefreshRecommendedAt?: boolean;
+}

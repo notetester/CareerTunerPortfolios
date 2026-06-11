@@ -56,6 +56,39 @@ export interface InterviewTrend {
   averageAnswerScore: number;
 }
 
+/** 반복 강점(자주 활용되는 강점 경험) — 기획 §8.9. matched_skills 집계. */
+export interface StrengthTrend {
+  skill: string;
+  count: number;
+  total: number;
+  percentage: number;
+}
+
+/** 자주 지원하는 직무 분포 — 디자인 분석 §6.10. */
+export interface JobDistribution {
+  jobTitle: string;
+  count: number;
+  percentage: number;
+  averageFitScore: number | null;
+}
+
+/** 자주 개선이 필요한 답변 요소(질문 유형별) — 기획 §8.9 답변의 공통 약점. */
+export interface AnswerTheme {
+  questionType: string;
+  answerCount: number;
+  averageScore: number;
+  sampleFeedback: string | null;
+}
+
+/** 분석 대상 기간과 데이터 수 — 디자인 분석 §6.10. */
+export interface AnalysisPeriod {
+  from: string | null;
+  to: string | null;
+  applicationCount: number;
+  analyzedCount: number;
+  interviewSessionCount: number;
+}
+
 export interface AnalysisSummary {
   stats: AnalysisStats;
   skillGaps: SkillGap[];
@@ -66,5 +99,9 @@ export interface AnalysisSummary {
   /** 장기 취업 경향 AI 요약(C 담당 AI 16). API 키가 없으면 결정적 mock, 있으면 실제 구조화 분석. */
   trendSummary: string;
   interviewTrend: InterviewTrend;
+  strengthTrends: StrengthTrend[];
+  jobDistribution: JobDistribution[];
+  answerThemes: AnswerTheme[];
+  period: AnalysisPeriod;
   analysisRun: CareerAnalysisRun;
 }

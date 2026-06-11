@@ -14,11 +14,16 @@ import org.springframework.transaction.annotation.Transactional;
 import com.careertuner.analysis.ai.CareerTrendAiCommand;
 import com.careertuner.analysis.ai.CareerTrendAiResult;
 import com.careertuner.analysis.ai.CareerTrendAiService;
+import com.careertuner.analysis.domain.AnalysisAnswerSource;
 import com.careertuner.analysis.domain.AnalysisSource;
 import com.careertuner.analysis.domain.CareerAnalysisRun;
+import com.careertuner.analysis.dto.AnalysisAnswerThemeResponse;
 import com.careertuner.analysis.dto.AnalysisApplicationSummaryResponse;
+import com.careertuner.analysis.dto.AnalysisJobDistributionResponse;
+import com.careertuner.analysis.dto.AnalysisPeriodResponse;
 import com.careertuner.analysis.dto.AnalysisScorePointResponse;
 import com.careertuner.analysis.dto.AnalysisStatResponse;
+import com.careertuner.analysis.dto.AnalysisStrengthTrendResponse;
 import com.careertuner.analysis.dto.AnalysisSummaryResponse;
 import com.careertuner.analysis.dto.CareerAnalysisRunResponse;
 import com.careertuner.analysis.dto.InterviewTrendResponse;
@@ -73,6 +78,12 @@ public class AnalysisServiceImpl implements AnalysisService {
         List<JobReadinessResponse> jobReadiness = jobReadiness(analyzed);
         List<AnalysisScorePointResponse> scoreHistory = scoreHistory(analyzed);
         InterviewTrendResponse interviewTrend = interviewTrend(sources);
+        // 결정적 집계(기획 §8.9, 디자인 분석 §6.10). AI 입력/캐시 fingerprint에는 포함하지 않아
+        // 기존 저장 요약이 무효화되지 않는다.
+        List<AnalysisStrengthTrendResponse> strengthTrends = strengthTrends(analyzed);
+        List<AnalysisJobDistributionResponse> jobDistribution = jobDistribution(sources);
+        List<AnalysisAnswerThemeResponse> answerThemes = answerThemes(analysisMapper.findAnswerSourcesByUserId(userId));
+        AnalysisPeriodResponse period = period(sources, analyzed);
 
         // 장기 경향 요약(16)과 다음 지원 방향(17) AI 입력. 키 주입 시 실 AI로 교체된다.
         CareerTrendAiCommand command = new CareerTrendAiCommand(
@@ -95,6 +106,7 @@ public class AnalysisServiceImpl implements AnalysisService {
                 return new AnalysisSummaryResponse(
                         stats, skillGaps, jobReadiness, scoreHistory, applications,
                         stored.recommendedDirections(), stored.trendSummary(), interviewTrend,
+                        strengthTrends, jobDistribution, answerThemes, period,
                         CareerAnalysisRunResponse.from(run));
             }
         }
@@ -116,7 +128,8 @@ public class AnalysisServiceImpl implements AnalysisService {
 
         return new AnalysisSummaryResponse(
                 stats, skillGaps, jobReadiness, scoreHistory, applications,
-                ai.recommendedDirections(), ai.trendSummary(), interviewTrend, run);
+                ai.recommendedDirections(), ai.trendSummary(), interviewTrend,
+                strengthTrends, jobDistribution, answerThemes, period, run);
     }
 
     @Override
@@ -234,6 +247,88 @@ public class AnalysisServiceImpl implements AnalysisService {
                 .sorted(Comparator.comparing(AnalysisSource::getAnalyzedAt))
                 .map(source -> new AnalysisScorePointResponse(source.getAnalyzedAt().format(SCORE_LABEL_FORMAT), source.getFitScore()))
                 .toList();
+    }
+
+    /** 반복 강점: 적합도 분석에서 매칭된 역량(matched_skills)을 지원 건 단위로 집계한다. */
+    private List<AnalysisStrengthTrendResponse> strengthTrends(List<AnalysisSource> analyzed) {
+        Map<String, Integer> counts = new LinkedHashMap<>();
+        for (AnalysisSource source : analyzed) {
+            for (String skill : parseList(source.getMatchedSkills())) {
+                counts.merge(skill, 1, Integer::sum);
+            }
+        }
+        int total = analyzed.size();
+        return counts.entrySet().stream()
+                .sorted(Map.Entry.<String, Integer>comparingByValue().reversed().thenComparing(Map.Entry.comparingByKey()))
+                .limit(8)
+                .map(entry -> new AnalysisStrengthTrendResponse(
+                        entry.getKey(), entry.getValue(), total, percentage(entry.getValue(), total)))
+                .toList();
+    }
+
+    /** 자주 지원하는 직무 분포: 전체 지원 건(미분석 포함)을 직무명으로 묶는다. */
+    private static List<AnalysisJobDistributionResponse> jobDistribution(List<AnalysisSource> sources) {
+        int total = sources.size();
+        return sources.stream()
+                .collect(Collectors.groupingBy(AnalysisSource::getJobTitle, LinkedHashMap::new, Collectors.toList()))
+                .entrySet()
+                .stream()
+                .map(entry -> {
+                    List<AnalysisSource> values = entry.getValue();
+                    var averageFit = values.stream()
+                            .filter(source -> source.getFitScore() != null)
+                            .mapToInt(AnalysisSource::getFitScore)
+                            .average();
+                    return new AnalysisJobDistributionResponse(
+                            entry.getKey(),
+                            values.size(),
+                            percentage(values.size(), total),
+                            averageFit.isPresent() ? (int) Math.round(averageFit.getAsDouble()) : null);
+                })
+                .sorted(Comparator.comparingInt(AnalysisJobDistributionResponse::count).reversed())
+                .toList();
+    }
+
+    /**
+     * 자주 개선이 필요한 답변 요소: 질문 유형별 평균 점수를 낮은 순으로 정렬하고,
+     * 유형별 최저점 답변의 피드백을 대표 개선 포인트로 제공한다(입력이 점수 오름차순 정렬이라 첫 행이 최저점).
+     */
+    private static List<AnalysisAnswerThemeResponse> answerThemes(List<AnalysisAnswerSource> answers) {
+        return answers.stream()
+                .collect(Collectors.groupingBy(AnalysisAnswerSource::getQuestionType, LinkedHashMap::new, Collectors.toList()))
+                .entrySet()
+                .stream()
+                .map(entry -> {
+                    List<AnalysisAnswerSource> values = entry.getValue();
+                    int average = (int) Math.round(values.stream()
+                            .mapToInt(AnalysisAnswerSource::getScore)
+                            .average()
+                            .orElse(0));
+                    String sampleFeedback = values.stream()
+                            .map(AnalysisAnswerSource::getFeedback)
+                            .filter(feedback -> feedback != null && !feedback.isBlank())
+                            .findFirst()
+                            .orElse(null);
+                    return new AnalysisAnswerThemeResponse(entry.getKey(), values.size(), average, sampleFeedback);
+                })
+                .sorted(Comparator.comparingInt(AnalysisAnswerThemeResponse::averageScore))
+                .toList();
+    }
+
+    /** 분석 대상 기간과 데이터 수: 적합도 분석 시점의 최소/최대를 기간으로 쓴다. */
+    private static AnalysisPeriodResponse period(List<AnalysisSource> sources, List<AnalysisSource> analyzed) {
+        var analyzedAts = analyzed.stream()
+                .map(AnalysisSource::getAnalyzedAt)
+                .filter(java.util.Objects::nonNull)
+                .sorted()
+                .toList();
+        int interviewSessions = sources.stream().mapToInt(AnalysisSource::getInterviewCount).sum();
+        return new AnalysisPeriodResponse(
+                analyzedAts.isEmpty() ? null : analyzedAts.get(0),
+                analyzedAts.isEmpty() ? null : analyzedAts.get(analyzedAts.size() - 1),
+                sources.size(),
+                analyzed.size(),
+                interviewSessions);
     }
 
     private static String bestStrategy(List<AnalysisSource> analyzed) {

@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo } from "react";
 import { Link, useNavigate, useParams } from "react-router";
 import {
   ArrowLeft,
@@ -43,6 +43,18 @@ const detailTabs: { key: DetailTab; label: string; icon: typeof Info }[] = [
   { key: "fit", label: "적합도", icon: Target },
 ];
 
+const tabSlugs: Record<DetailTab, string> = {
+  overview: "overview",
+  posting: "posting",
+  jobAnalysis: "job-analysis",
+  companyAnalysis: "company-analysis",
+  fit: "fit",
+};
+
+const tabKeysBySlug = Object.fromEntries(
+  Object.entries(tabSlugs).map(([key, slug]) => [slug, key]),
+) as Record<string, DetailTab>;
+
 export function ApplicationDetailPage() {
   const navigate = useNavigate();
   const params = useParams();
@@ -50,6 +62,7 @@ export function ApplicationDetailPage() {
     const value = Number(params.id);
     return Number.isFinite(value) && value > 0 ? value : null;
   }, [params.id]);
+  const activeTab = params.section ? tabKeysBySlug[params.section] ?? "overview" : "overview";
   const { loading: authLoading, isAuthenticated } = useAuth();
   const {
     applicationCase,
@@ -101,7 +114,11 @@ export function ApplicationDetailPage() {
     error: fitAnalysisError,
     generate: generateFit,
   } = useApplicationFitAnalysis(id, isAuthenticated && Boolean(applicationCase));
-  const [activeTab, setActiveTab] = useState<DetailTab>("overview");
+  useEffect(() => {
+    if (id && params.section && !tabKeysBySlug[params.section]) {
+      navigate(`/applications/${id}/overview`, { replace: true });
+    }
+  }, [id, navigate, params.section]);
 
   const handleUpdate = async (request: UpdateApplicationCaseRequest) => {
     if (!id) return;
@@ -185,7 +202,7 @@ export function ApplicationDetailPage() {
                   applicationCases.map((item) => (
                     <Link
                       key={item.id}
-                      to={`/applications/${item.id}`}
+                      to={`/applications/${item.id}/${tabSlugs[activeTab]}`}
                       className={`block rounded-md border px-3 py-2 text-sm transition-colors ${
                         item.id === id
                           ? "border-blue-200 bg-blue-50 text-blue-800"
@@ -239,7 +256,7 @@ export function ApplicationDetailPage() {
                     ? "bg-slate-900 text-white"
                     : "text-slate-600 hover:bg-slate-100 hover:text-slate-900"
                 }`}
-                onClick={() => setActiveTab(tab.key)}
+                onClick={() => navigate(`/applications/${id}/${tabSlugs[tab.key]}`)}
               >
                 <tab.icon className="size-4" />
                 {tab.label}
@@ -332,7 +349,7 @@ export function ApplicationDetailPage() {
                       {fitGenerating ? "분석 중..." : fitAnalyses.length > 0 ? "적합도 재분석" : "적합도 분석 생성"}
                     </Button>
                   </div>
-                  <FitAnalysisPanel analyses={fitAnalyses} loading={fitAnalysisLoading} error={fitAnalysisError} />
+                  <FitAnalysisPanel analyses={fitAnalyses} loading={fitAnalysisLoading} generating={fitGenerating} error={fitAnalysisError} />
                   <StrategyPanel analyses={fitAnalyses} loading={fitAnalysisLoading} error={fitAnalysisError} />
                   <LearningRecommendationPanel analyses={fitAnalyses} loading={fitAnalysisLoading} error={fitAnalysisError} />
                 </div>

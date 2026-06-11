@@ -74,31 +74,49 @@ DB_PASSWORD=... JWT_SECRET=... OAUTH_KAKAO_CLIENT_SECRET=... java -jar app.jar
 | Method | Path | 설명 | 인증 |
 | --- | --- | --- | --- |
 | POST | `/api/application-cases` | 지원 건 생성 | Bearer |
-| GET | `/api/application-cases` | 내 지원 건 목록 | Bearer |
+| GET | `/api/application-cases?view=ACTIVE\|ARCHIVED\|DELETED` | 내 지원 건 목록. `view` 생략 시 기존 `includeArchived` 호환 동작 유지 | Bearer |
 | GET | `/api/application-cases/{id}` | 지원 건 상세 | Bearer |
 | PATCH | `/api/application-cases/{id}` | 지원 건 수정 | Bearer |
-| DELETE | `/api/application-cases/{id}` | 지원 건 삭제(현재 구현은 물리 삭제, 목표는 소프트 삭제) | Bearer |
-| POST | `/api/application-cases/{id}/job-posting` | 텍스트/URL 공고문 저장 및 URL 본문 추출(현재 구현은 1건 교체, 목표는 revision 추가) | Bearer |
+| DELETE | `/api/application-cases/{id}` | 지원 건 소프트 삭제(`deleted_at` 기록) | Bearer |
+| PATCH | `/api/application-cases/{id}/restore` | 삭제된 지원 건 복원(`deleted_at`, `archived_at` 초기화) | Bearer |
+| POST | `/api/application-cases/{id}/job-posting` | 텍스트/URL 공고문 저장 및 revision 추가 | Bearer |
 | POST | `/api/application-cases/{id}/job-posting/upload` | PDF/이미지 업로드 및 텍스트 추출 | Bearer |
 | GET | `/api/application-cases/{id}/job-posting` | 현재 공고문 조회 | Bearer |
+| GET | `/api/application-cases/{id}/job-posting/revisions` | 공고문 revision 이력 조회 | Bearer |
 | POST | `/api/application-cases/{id}/job-analysis` | 실제 OpenAI 공고 분석 생성 | Bearer |
 | GET | `/api/application-cases/{id}/job-analysis` | 공고 분석 조회 | Bearer |
+| GET | `/api/application-cases/{id}/job-analysis/history` | 공고 분석 이력 조회 | Bearer |
+| PATCH | `/api/application-cases/{id}/job-analysis/{analysisId}/review` | 공고 분석 사용자 검수·확정 | Bearer |
 | POST | `/api/application-cases/{id}/job-analysis/mock` | 개발용 mock 공고 분석 생성 | Bearer |
 | POST | `/api/application-cases/{id}/company-analysis` | 실제 OpenAI 기업 분석 생성 | Bearer |
 | GET | `/api/application-cases/{id}/company-analysis` | 기업 분석 조회 | Bearer |
+| GET | `/api/application-cases/{id}/company-analysis/history` | 기업 분석 이력 조회 | Bearer |
+| PATCH | `/api/application-cases/{id}/company-analysis/{analysisId}/review` | 기업 분석 사용자 검수·확정 | Bearer |
 | POST | `/api/application-cases/{id}/company-analysis/mock` | 개발용 mock 기업 분석 생성 | Bearer |
 | POST | `/api/application-cases/{id}/analysis/mock` | 호환용 mock 공고/적합도 분석 생성 | Bearer |
 | GET | `/api/application-cases/{id}/analysis` | 호환용 공고/적합도 분석 조회 | Bearer |
+| GET | `/api/application-cases/{id}/ai-usage/b/failures` | 현재 지원 건의 B 분석 실패 로그 조회 | Bearer |
+| GET | `/api/admin/application-cases` | 관리자 지원 건 목록 조회 | Bearer(ADMIN) |
+| GET | `/api/admin/application-cases/{id}` | 관리자 지원 건 상세와 B 이력 조회 | Bearer(ADMIN) |
+| PATCH | `/api/admin/application-cases/{id}/status` | 관리자 지원 건 상태 변경과 처리 메모 기록 | Bearer(ADMIN) |
 | GET | `/api/admin/job-analysis` | 관리자 공고 분석 조회 | Bearer(ADMIN) |
+| PATCH | `/api/admin/job-analysis/{analysisId}/memo` | 관리자 공고 분석 운영 메모 수정 | Bearer(ADMIN) |
 | GET | `/api/admin/company-analysis` | 관리자 기업 분석 조회 | Bearer(ADMIN) |
+| PATCH | `/api/admin/company-analysis/{analysisId}/memo` | 관리자 기업 분석 운영 메모 수정 | Bearer(ADMIN) |
+| PATCH | `/api/admin/company-analysis/{analysisId}/metadata` | 관리자 기업 분석 출처 메타데이터 수정. 날짜 clear 플래그로 `checked_at`, `refresh_recommended_at` 초기화 가능 | Bearer(ADMIN) |
 | GET | `/api/admin/ai-usage/b` | 관리자 B AI 사용량 로그 조회 | Bearer(ADMIN) |
 
 실제 AI 분석과 이미지/스캔 PDF OCR은 `OPENAI_API_KEY`가 필요하다. 모델은 `OPENAI_MODEL`로 변경할 수 있으며 기본값은 `gpt-5`다.
 텍스트 PDF는 PDFBox로 먼저 추출하고, 텍스트가 없는 PDF와 이미지는 OpenAI OCR을 사용한다.
 공고문 파일 업로드는 기본 10MB까지 허용하며, 초과 시 `INVALID_INPUT` 응답으로 안내한다.
 `/analysis/mock`은 화면과 데이터 흐름 검증 및 `fit_analysis`를 포함하는 호환 API용이며, B 프론트에서는 직접 사용하지 않는다.
-목표 데이터 모델은 지원 건 보관/삭제를 `archived_at`, `deleted_at`으로 분리하고, 공고문 수정은 같은 공고의
-revision으로 저장한다. 제품 정책은 `../docs/planning/기획.md`, 데이터/API 목표 구조는
+현재 구현은 지원 건 보관/삭제를 `archived_at`, `deleted_at`으로 분리한다. 사용자 목록 API는 `view=ACTIVE|ARCHIVED|DELETED`를 지원하며,
+기존 `includeArchived=true`는 `view`가 없을 때 활성+보관 목록을 반환하는 호환 동작으로 유지한다. 복원 API는 삭제 상태와 보관 상태를 함께 비워 활성 목록으로 되돌린다.
+공고문 수정은 같은 공고의
+revision으로 저장한다. `job_posting`은 `(application_case_id, revision)` unique key로 중복 revision을 막고,
+저장 충돌이 발생하면 revision을 다시 계산해 최대 3회 재시도한다. 기업 분석 출처 메타데이터는 관리자 API에서만
+수정하며, `sourceType`은 필수이고 날짜 필드는 `clearCheckedAt`, `clearRefreshRecommendedAt` 플래그로 `NULL` 저장할 수 있다.
+사용자 검수 API는 기업 분석 본문과 구조화 JSON만 수정한다. 제품 정책은 `../docs/planning/기획.md`, 데이터/API 목표 구조는
 `../docs/ARCHITECTURE.md`와 `../docs/FEATURE_MODULE_STRUCTURE.md`를 따른다.
 
 ## JSON 컬럼 매핑 방침

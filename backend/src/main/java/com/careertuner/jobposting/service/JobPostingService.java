@@ -4,7 +4,9 @@ import java.util.Locale;
 import java.util.List;
 import java.util.Set;
 
+import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Isolation;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
@@ -27,6 +29,7 @@ public class JobPostingService {
 
     private static final String DEFAULT_SOURCE_TYPE = "TEXT";
     private static final String FEATURE_JOB_POSTING_OCR = "JOB_POSTING_OCR";
+    private static final int MAX_REVISION_INSERT_ATTEMPTS = 3;
     private static final Set<String> SOURCE_TYPES = Set.of("TEXT", "PDF", "IMAGE", "URL", "MANUAL");
 
     private final ApplicationCaseAccessService accessService;
@@ -35,7 +38,7 @@ public class JobPostingService {
     private final JobPostingFileStorage fileStorage;
     private final JobPostingTextExtractor textExtractor;
 
-    @Transactional
+    @Transactional(isolation = Isolation.READ_COMMITTED)
     public JobPostingResponse saveJobPosting(Long userId, Long applicationCaseId, JobPostingRequest request) {
         accessService.requireOwned(userId, applicationCaseId);
         String sourceType = normalizeOption(request.sourceType(), DEFAULT_SOURCE_TYPE, SOURCE_TYPES, "sourceType");
@@ -52,7 +55,6 @@ public class JobPostingService {
         validateJobPosting(request);
         JobPosting jobPosting = JobPosting.builder()
                 .applicationCaseId(applicationCaseId)
-                .revision(jobPostingMapper.nextRevisionForCase(applicationCaseId))
                 .originalText("URL".equals(sourceType) ? null : blankToNull(request.originalText()))
                 .uploadedFileUrl(blankToNull(request.uploadedFileUrl()))
                 .extractedText(blankToNull(request.extractedText()))
@@ -61,7 +63,7 @@ public class JobPostingService {
         return replaceJobPosting(applicationCaseId, jobPosting);
     }
 
-    @Transactional
+    @Transactional(isolation = Isolation.READ_COMMITTED)
     public JobPostingResponse uploadJobPostingFile(Long userId, Long applicationCaseId, MultipartFile file, String sourceType) {
         accessService.requireOwned(userId, applicationCaseId);
         try {
@@ -98,7 +100,6 @@ public class JobPostingService {
     private JobPostingResponse saveExtractedPosting(Long applicationCaseId, ExtractedPosting extracted) {
         JobPosting jobPosting = JobPosting.builder()
                 .applicationCaseId(applicationCaseId)
-                .revision(jobPostingMapper.nextRevisionForCase(applicationCaseId))
                 .originalText(blankToNull(extracted.originalText()))
                 .uploadedFileUrl(blankToNull(extracted.uploadedFileUrl()))
                 .extractedText(blankToNull(extracted.extractedText()))
@@ -108,8 +109,23 @@ public class JobPostingService {
     }
 
     private JobPostingResponse replaceJobPosting(Long applicationCaseId, JobPosting jobPosting) {
-        jobPostingMapper.insertJobPosting(jobPosting);
-        return JobPostingResponse.from(jobPostingMapper.findLatestJobPostingByCaseId(applicationCaseId));
+        for (int attempt = 0; attempt < MAX_REVISION_INSERT_ATTEMPTS; attempt++) {
+            jobPosting.setId(null);
+            jobPosting.setRevision(jobPostingMapper.nextRevisionForCase(applicationCaseId));
+            try {
+                jobPostingMapper.insertJobPosting(jobPosting);
+                JobPosting inserted = jobPostingMapper.findJobPostingByIdAndCaseId(jobPosting.getId(), applicationCaseId);
+                if (inserted == null) {
+                    throw new BusinessException(ErrorCode.NOT_FOUND, "저장된 공고문을 찾을 수 없습니다.");
+                }
+                return JobPostingResponse.from(inserted);
+            } catch (DuplicateKeyException ex) {
+                if (attempt == MAX_REVISION_INSERT_ATTEMPTS - 1) {
+                    throw new BusinessException(ErrorCode.CONFLICT, "공고문 버전 충돌이 반복되었습니다. 다시 시도해 주세요.");
+                }
+            }
+        }
+        throw new BusinessException(ErrorCode.CONFLICT, "공고문 버전 충돌이 반복되었습니다. 다시 시도해 주세요.");
     }
 
     private static void validateJobPosting(JobPostingRequest request) {
