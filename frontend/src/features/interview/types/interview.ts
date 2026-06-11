@@ -81,15 +81,17 @@ export interface SubmitAnswerRequest {
   videoUrl?: string | null;
 }
 
-/** 멀티에이전트 진행 단계 (AI 사고과정 트레이스) */
+/** 자율 에이전트 진행 단계 (AI 사고과정 트레이스) */
 export interface InterviewAgentStep {
   id: number;
   questionId: number | null;
   stepNo: number;
-  agent: string; // EVALUATOR / CRITIC / ...
+  agent: string; // RETRIEVER / EVALUATOR / CRITIC / PROBER / PLANNER / ...
   action: string | null;
+  status: string | null; // DONE / FAILED
   summary: string | null;
-  detail: string | null;
+  detail: string | null; // JSON 문자열
+  elapsedMs: number | null;
   createdAt: string;
 }
 
