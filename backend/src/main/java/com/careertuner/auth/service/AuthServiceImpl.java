@@ -194,11 +194,12 @@ public class AuthServiceImpl implements AuthService {
     public void requestPasswordReset(PasswordResetRequest request, LoginRequestContext context) {
         String email = normalizeEmail(request.email());
         User user = userMapper.findByEmail(email);
-        recordLoginHistory(user != null ? user.getId() : null, "PASSWORD_RESET", "LOCAL", "EMAIL",
-                email, true, null, context);
         if (user == null || STATUS_DELETED.equals(user.getStatus())) {
-            return;
+            recordLoginHistory(user != null ? user.getId() : null, "PASSWORD_RESET", "LOCAL", "EMAIL",
+                    email, false, user == null ? "USER_NOT_FOUND" : "ACCOUNT_DELETED", context);
+            throw new BusinessException(ErrorCode.NOT_FOUND, "등록되지 않은 이메일입니다.");
         }
+        recordLoginHistory(user.getId(), "PASSWORD_RESET", "LOCAL", "EMAIL", email, true, null, context);
         EmailVerification verification = issueEmailVerification(user, "RESET_PW", 1);
         emailService.sendPasswordResetEmail(user.getEmail(), verification.getToken());
     }
