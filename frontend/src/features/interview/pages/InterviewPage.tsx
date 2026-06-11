@@ -117,7 +117,7 @@ export function InterviewPage() {
           </TabsContent>
 
           <TabsContent value="questions" className="mt-6">
-            <ExpectedQuestionsTab session={activeSession} />
+            <ExpectedQuestionsTab session={activeSession} onGoToPractice={() => goTab("practice")} />
           </TabsContent>
 
           <TabsContent value="practice" className="mt-6">

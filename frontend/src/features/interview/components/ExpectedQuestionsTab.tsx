@@ -1,5 +1,14 @@
 import { useCallback, useEffect, useState } from "react";
-import { AlertCircle, CornerDownRight, Lightbulb, Loader2, Sparkles, ThumbsUp } from "lucide-react";
+import {
+  AlertCircle,
+  ArrowRight,
+  CornerDownRight,
+  Lightbulb,
+  Loader2,
+  RotateCcw,
+  Sparkles,
+  ThumbsUp,
+} from "lucide-react";
 import { Badge } from "@/app/components/ui/badge";
 import { Button } from "@/app/components/ui/button";
 import { Card, CardContent } from "@/app/components/ui/card";
@@ -163,11 +172,18 @@ function QuestionItem({
   );
 }
 
-export function ExpectedQuestionsTab({ session }: { session: InterviewSession | null }) {
+export function ExpectedQuestionsTab({
+  session,
+  onGoToPractice,
+}: {
+  session: InterviewSession | null;
+  onGoToPractice: () => void;
+}) {
   const [questions, setQuestions] = useState<InterviewQuestion[]>([]);
   const [loading, setLoading] = useState(false);
   const [generating, setGenerating] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [resetVersion, setResetVersion] = useState(0);
 
   const loadExisting = useCallback(async () => {
     if (!session) return;
@@ -250,8 +266,30 @@ export function ExpectedQuestionsTab({ session }: { session: InterviewSession | 
       ) : (
         <div className="space-y-3">
           {questions.map((q, i) => (
-            <QuestionItem key={q.id} question={q} index={i} onFollowUpsGenerated={loadExisting} />
+            <QuestionItem
+              key={`${q.id}-${resetVersion}`}
+              question={q}
+              index={i}
+              onFollowUpsGenerated={loadExisting}
+            />
           ))}
+
+          <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white p-4">
+            <p className="text-sm text-slate-500">
+              질문을 다 풀어봤다면, 모범답안 없이 복습 테스트로 제대로 소화했는지 점검해 보세요.
+            </p>
+            <div className="flex flex-wrap gap-2">
+              <Button variant="outline" className="gap-1.5" onClick={() => setResetVersion((v) => v + 1)}>
+                <RotateCcw className="size-4" /> 답변 다시 작성
+              </Button>
+              <Button
+                className="gap-1.5 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700"
+                onClick={onGoToPractice}
+              >
+                복습 테스트 풀러 가기 <ArrowRight className="size-4" />
+              </Button>
+            </div>
+          </div>
         </div>
       )}
     </div>
