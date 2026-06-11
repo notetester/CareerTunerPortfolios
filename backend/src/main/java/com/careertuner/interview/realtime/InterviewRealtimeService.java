@@ -76,12 +76,11 @@ public class InterviewRealtimeService {
         String instructions = buildInstructions(applicationCase, session.getMode(), questions);
         JsonNode root = requestEphemeralSession(instructions);
 
-        JsonNode secret = root.path("client_secret");
-        String value = secret.path("value").asText("");
+        String value = root.path("value").asText("");
         if (value.isBlank()) {
             throw new BusinessException(ErrorCode.INTERNAL_ERROR, "Realtime 세션 발급에 실패했습니다.");
         }
-        Long expiresAt = secret.path("expires_at").isMissingNode() ? null : secret.path("expires_at").asLong();
+        Long expiresAt = root.path("expires_at").isMissingNode() ? null : root.path("expires_at").asLong();
         return new RealtimeSessionResponse(value, expiresAt, realtimeProperties.getModel(),
                 realtimeProperties.getVoice(), realtimeUrl());
     }
@@ -111,10 +110,13 @@ public class InterviewRealtimeService {
     }
 
     private JsonNode requestEphemeralSession(String instructions) {
+        Map<String, Object> session = new LinkedHashMap<>();
+        session.put("type", "realtime");
+        session.put("model", realtimeProperties.getModel());
+        session.put("instructions", instructions);
+        session.put("audio", Map.of("output", Map.of("voice", realtimeProperties.getVoice())));
         Map<String, Object> body = new LinkedHashMap<>();
-        body.put("model", realtimeProperties.getModel());
-        body.put("voice", realtimeProperties.getVoice());
-        body.put("instructions", instructions);
+        body.put("session", session);
         try {
             String json = objectMapper.writeValueAsString(body);
             HttpRequest request = HttpRequest.newBuilder(URI.create(sessionsUrl()))
@@ -146,11 +148,11 @@ public class InterviewRealtimeService {
     }
 
     private String sessionsUrl() {
-        return baseUrl() + "/realtime/sessions";
+        return baseUrl() + "/realtime/client_secrets";
     }
 
     private String realtimeUrl() {
-        return baseUrl() + "/realtime";
+        return baseUrl() + "/realtime/calls";
     }
 
     private String truncate(String value, int max) {
