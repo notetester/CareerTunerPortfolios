@@ -31,7 +31,7 @@ import {
 import { AgentTimeline } from "./AgentTimeline";
 
 /**
- * 실전 모의면접 진행. 세션의 질문을 순차 출제하고, 답변→AI 평가→다음 질문으로 이어간다.
+ * 복습 테스트 진행. 세션의 질문을 순차 출제하고, 답변→AI 평가→다음 질문으로 이어간다.
  * 진행 판단은 백엔드 progress(답변 유무 기반)를 기준으로 한다. (AI 면접관 대화 진행)
  */
 export function PracticeTab({
@@ -74,7 +74,7 @@ export function PracticeTab({
   if (!session) {
     return (
       <div className="rounded-xl border border-dashed border-slate-200 bg-white p-10 text-center text-sm text-slate-400">
-        "면접 모드 선택" 탭에서 지원 건과 모드를 고르고 면접을 시작하면 실전 모의면접을 진행할 수 있습니다.
+        "면접 모드 선택" 탭에서 지원 건과 모드를 고르고 면접을 시작하면 복습 테스트를 진행할 수 있습니다.
       </div>
     );
   }
@@ -150,7 +150,7 @@ export function PracticeTab({
         <Card className="border border-slate-200 bg-white">
           <CardContent className="space-y-4 p-6 text-center">
             <p className="text-sm text-slate-500">
-              아직 질문이 없습니다. AI 예상 질문을 생성하면 실전 모의면접을 시작할 수 있습니다.
+              아직 질문이 없습니다. AI 예상 질문을 생성하면 복습 테스트를 시작할 수 있습니다.
             </p>
             <Button onClick={handleGenerate} disabled={generating} className="gap-1.5">
               {generating ? <Loader2 className="size-4 animate-spin" /> : <Sparkles className="size-4" />}
@@ -277,7 +277,7 @@ function SessionHeader({ session }: { session: InterviewSession }) {
   return (
     <div className="flex items-center gap-2 text-sm text-slate-500">
       <Badge className="bg-slate-100 text-slate-600">세션 #{session.id}</Badge>
-      <span>실전 모의면접 진행 중</span>
+      <span>복습 테스트 진행 중</span>
     </div>
   );
 }

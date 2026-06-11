@@ -77,7 +77,7 @@ export function InterviewPage() {
           <TabsList className="h-auto w-full justify-start overflow-x-auto border border-slate-200 bg-white p-1">
             <TabsTrigger value="modes">면접 모드 선택</TabsTrigger>
             <TabsTrigger value="questions">예상 면접 질문</TabsTrigger>
-            <TabsTrigger value="practice">실전 모의면접</TabsTrigger>
+            <TabsTrigger value="practice">복습 테스트</TabsTrigger>
             <TabsTrigger value="live">실시간 면접관</TabsTrigger>
             <TabsTrigger value="voice">음성 면접</TabsTrigger>
             <TabsTrigger value="avatar">아바타 면접관</TabsTrigger>
