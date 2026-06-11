@@ -214,6 +214,9 @@ CREATE TABLE IF NOT EXISTS fit_analysis (
     gap_recommendations      JSON NULL,                     -- 필수 미충족/우대 보완/장기 성장 분류
     certificate_recommendations JSON NULL,                  -- 자격증 우선순위와 추천 이유
     strategy_actions         JSON NULL,                     -- 지원/보완/다음 준비 과제
+    condition_matrix         JSON NULL,                     -- 요구조건-스펙 비교 매트릭스(조건/유형/판정/근거)
+    analysis_confidence      JSON NULL,                     -- 분석 신뢰도(level/입력 부족 사유)
+    apply_decision           JSON NULL,                     -- 지원 판단 카드(APPLY/COMPLEMENT/HOLD + 이유·행동)
     model                    VARCHAR(80) NULL,
     status                   VARCHAR(20) NOT NULL DEFAULT 'SUCCESS',
     error_message            VARCHAR(1000) NULL,

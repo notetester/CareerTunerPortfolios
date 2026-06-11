@@ -37,6 +37,14 @@ class OpenAiFitAnalysisAiServiceTest {
         assertThat(result.usage().mock()).isTrue();
         assertThat(result.usage().model()).isEqualTo("mock");
         assertThat(result.fitScore()).isBetween(0, 100);
+        // 비교 매트릭스는 필수+우대 조건 수만큼, 판정은 MET/PARTIAL/UNMET 중 하나여야 한다.
+        assertThat(result.conditionMatrix()).hasSize(3);
+        assertThat(result.conditionMatrix())
+                .allSatisfy(row -> assertThat(row.matchStatus()).isIn("MET", "PARTIAL", "UNMET"));
+        assertThat(result.applyDecision()).isNotNull();
+        assertThat(result.applyDecision().decision()).isIn("APPLY", "COMPLEMENT", "HOLD");
+        assertThat(result.applyDecision().reasons()).isNotEmpty();
+        assertThat(result.applyDecision().actions()).isNotEmpty();
     }
 
     @Test

@@ -24,6 +24,13 @@ public interface FitAnalysisMapper {
     FitAnalysisGenerationSource findGenerationSource(@Param("userId") Long userId,
                                                      @Param("applicationCaseId") Long applicationCaseId);
 
+    /**
+     * 재분석 히스토리: 해당 지원 건의 모든 적합도 분석 이력(오래된 순).
+     * 점수 변화·매칭/부족 역량 변화 비교에 사용한다.
+     */
+    List<FitAnalysisResult> findAllByUserIdAndApplicationCaseId(@Param("userId") Long userId,
+                                                                @Param("applicationCaseId") Long applicationCaseId);
+
     void insertFitAnalysis(FitAnalysisResult fitAnalysis);
 
     void insertLearningTask(FitAnalysisLearningTask task);

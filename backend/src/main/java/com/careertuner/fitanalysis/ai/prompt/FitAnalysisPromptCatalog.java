@@ -23,6 +23,10 @@ public final class FitAnalysisPromptCatalog {
             - learningRoadmap 은 학습 순서, 실습 과제, 예상 기간, 우선순위를 포함한다.
             - certificateRecommendations 는 자격증 우선순위와 추천 이유를 포함하고 과도한 자격증 준비는 낮은 우선순위로 안내한다.
             - strategyActions 는 지금 지원, 보완 후 재분석, 면접 준비 등 바로 실행할 다음 행동을 제안한다.
+            - conditionMatrix 는 공고의 필수/우대 조건을 행 단위로 나열하고, 지원자 보유 여부를
+              MET(충족)/PARTIAL(부분 충족)/UNMET(미충족)으로 판정하며 evidence 에 판정 근거를 적는다.
+            - applyDecision 은 최종 지원 판단으로, APPLY(지원 가능)/COMPLEMENT(보완 후 지원)/HOLD(지원 보류) 중 하나를
+              점수·필수 미충족 개수와 일관되게 고르고 reasons 와 지원 전 실행할 actions 를 제시한다.
             - 과장하지 말고, 근거가 약하면 보수적으로 평가한다.
             """;
 

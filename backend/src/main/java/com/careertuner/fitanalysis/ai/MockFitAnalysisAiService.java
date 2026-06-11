@@ -60,6 +60,8 @@ public class MockFitAnalysisAiService implements FitAnalysisAiService {
         List<FitLearningRoadmapItem> learningRoadmap = learningRoadmap(gapRecommendations);
         List<FitCertificateRecommendation> certificateRecommendations = certificateRecommendations(certificates, command.desiredJob());
         List<String> strategyActions = strategyActions(matched, gapRecommendations, fitScore);
+        List<FitConditionMatch> conditionMatrix = conditionMatrix(required, preferred, profileLower);
+        FitApplyDecision applyDecision = applyDecision(fitScore, matched, gapRecommendations);
 
         return new FitAnalysisAiResult(
                 fitScore,
@@ -73,10 +75,85 @@ public class MockFitAnalysisAiService implements FitAnalysisAiService {
                 learningRoadmap,
                 certificateRecommendations,
                 strategyActions,
+                conditionMatrix,
+                applyDecision,
                 CareerAnalysisAiUsage.mockUsage(),
                 "SUCCESS",
                 null,
                 false);
+    }
+
+    /**
+     * 요구조건-스펙 비교 매트릭스. 필수/우대 역량을 행으로 두고 보유 여부와 근거를 판정한다.
+     * 부분 일치(예: "AWS EC2" 보유, 조건 "AWS")는 PARTIAL로 분류한다.
+     */
+    private List<FitConditionMatch> conditionMatrix(List<String> required, List<String> preferred, Set<String> profileLower) {
+        List<FitConditionMatch> rows = new ArrayList<>();
+        for (String skill : required) {
+            rows.add(conditionRow(skill, "REQUIRED", profileLower));
+        }
+        for (String skill : preferred) {
+            rows.add(conditionRow(skill, "PREFERRED", profileLower));
+        }
+        return rows;
+    }
+
+    private FitConditionMatch conditionRow(String skill, String conditionType, Set<String> profileLower) {
+        String lower = skill.toLowerCase(Locale.ROOT);
+        if (profileLower.contains(lower)) {
+            return new FitConditionMatch(skill, conditionType, "MET", "프로필 보유 기술에서 동일 항목이 확인됩니다.");
+        }
+        boolean partial = profileLower.stream()
+                .anyMatch(owned -> !owned.isBlank() && (owned.contains(lower) || lower.contains(owned)));
+        if (partial) {
+            return new FitConditionMatch(skill, conditionType, "PARTIAL", "프로필에 유사/연관 기술이 있어 부분 충족으로 판정합니다.");
+        }
+        return new FitConditionMatch(skill, conditionType, "UNMET", "프로필 보유 기술에서 확인되지 않습니다.");
+    }
+
+    /** 지원 판단 카드. 점수와 필수 미충족 개수로 지원 가능/보완 후 지원/지원 보류를 결정한다. */
+    private FitApplyDecision applyDecision(int fitScore, List<String> matched, List<FitGapRecommendation> gaps) {
+        long requiredMissing = gaps.stream().filter(gap -> "REQUIRED_MISSING".equals(gap.category())).count();
+
+        String decision;
+        List<String> reasons = new ArrayList<>();
+        if (fitScore >= 70 && requiredMissing <= 1) {
+            decision = "APPLY";
+            reasons.add("적합도 %d점으로 현재 스펙 기준 지원 가능성이 높습니다.".formatted(fitScore));
+            if (!matched.isEmpty()) {
+                reasons.add("핵심 요구 역량 %s 이(가) 프로필과 매칭됩니다.".formatted(
+                        String.join(", ", matched.subList(0, Math.min(3, matched.size())))));
+            }
+        } else if (fitScore >= 50 || (requiredMissing >= 2 && fitScore >= 40)) {
+            decision = "COMPLEMENT";
+            reasons.add("적합도 %d점이며 필수 미충족 항목이 %d개라 보완 후 지원을 권장합니다.".formatted(fitScore, requiredMissing));
+            gaps.stream().filter(gap -> "HIGH".equals(gap.priority())).limit(2)
+                    .forEach(gap -> reasons.add("%s 은(는) 공고 필수 역량이지만 프로필에서 확인되지 않습니다.".formatted(gap.skill())));
+        } else {
+            decision = "HOLD";
+            reasons.add("적합도 %d점으로 기본 요구 역량 충족도가 낮아 지원 보류를 권장합니다.".formatted(fitScore));
+            if (requiredMissing > 0) {
+                reasons.add("필수 요구 역량 %d개가 미충족 상태입니다.".formatted(requiredMissing));
+            }
+        }
+
+        List<String> actions = new ArrayList<>();
+        switch (decision) {
+            case "APPLY" -> {
+                actions.add("지원서에 매칭 역량 경험을 수치·역할 중심으로 정리합니다.");
+                actions.add("마감 전 지원을 진행하고 면접 답변 준비를 병행합니다.");
+            }
+            case "COMPLEMENT" -> {
+                gaps.stream().filter(gap -> "HIGH".equals(gap.priority())).findFirst()
+                        .ifPresent(gap -> actions.add("%s 보완 결과물(작은 프로젝트/실습 기록)을 먼저 준비합니다.".formatted(gap.skill())));
+                actions.add("학습 로드맵의 상위 과제를 완료한 뒤 적합도 재분석을 실행합니다.");
+            }
+            default -> {
+                actions.add("핵심 부족 역량부터 학습 로드맵 순서대로 보완합니다.");
+                actions.add("현재 스펙과 더 맞는 공고를 우선 탐색하고, 보완 후 재분석합니다.");
+            }
+        }
+        return new FitApplyDecision(decision, reasons, actions);
     }
 
     private List<String> scoreBasis(List<String> required, List<String> matched, List<String> missing, int fitScore) {

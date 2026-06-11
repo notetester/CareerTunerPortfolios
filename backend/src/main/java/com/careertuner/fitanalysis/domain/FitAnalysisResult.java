@@ -27,6 +27,9 @@ public class FitAnalysisResult {
     private String gapRecommendations;
     private String certificateRecommendations;
     private String strategyActions;
+    private String conditionMatrix;
+    private String analysisConfidence;
+    private String applyDecision;
     private String model;
     private String status;
     private String errorMessage;

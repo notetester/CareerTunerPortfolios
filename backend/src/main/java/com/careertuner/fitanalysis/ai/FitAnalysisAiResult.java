@@ -22,6 +22,8 @@ public record FitAnalysisAiResult(
         List<FitLearningRoadmapItem> learningRoadmap,
         List<FitCertificateRecommendation> certificateRecommendations,
         List<String> strategyActions,
+        List<FitConditionMatch> conditionMatrix,
+        FitApplyDecision applyDecision,
         CareerAnalysisAiUsage usage,
         String status,
         String errorMessage,

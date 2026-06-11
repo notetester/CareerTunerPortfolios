@@ -63,6 +63,8 @@ public class OpenAiFitAnalysisAiService implements FitAnalysisAiService {
                     roadmap(payload.path("learningRoadmap")),
                     certificates(payload.path("certificateRecommendations")),
                     strings(payload.path("strategyActions")),
+                    conditionMatrix(payload.path("conditionMatrix")),
+                    applyDecision(payload.path("applyDecision")),
                     response.usage(),
                     "SUCCESS",
                     null,
@@ -81,6 +83,8 @@ public class OpenAiFitAnalysisAiService implements FitAnalysisAiService {
                     fallback.learningRoadmap(),
                     fallback.certificateRecommendations(),
                     fallback.strategyActions(),
+                    fallback.conditionMatrix(),
+                    fallback.applyDecision(),
                     new com.careertuner.analysis.ai.provider.CareerAnalysisAiUsage("mock-fallback", 0, 0, 0, true),
                     "FALLBACK",
                     exception.getMessage(),
@@ -138,6 +142,17 @@ public class OpenAiFitAnalysisAiService implements FitAnalysisAiService {
                         "priority", enumString("HIGH", "MEDIUM", "LOW"),
                         "reason", string()))));
         properties.put("strategyActions", stringArray());
+        properties.put("conditionMatrix", Map.of(
+                "type", "array",
+                "items", objectSchema(Map.of(
+                        "condition", string(),
+                        "conditionType", enumString("REQUIRED", "PREFERRED"),
+                        "matchStatus", enumString("MET", "PARTIAL", "UNMET"),
+                        "evidence", string()))));
+        properties.put("applyDecision", objectSchema(Map.of(
+                "decision", enumString("APPLY", "COMPLEMENT", "HOLD"),
+                "reasons", stringArray(),
+                "actions", stringArray())));
         return Map.of(
                 "type", "object",
                 "additionalProperties", false,
@@ -193,6 +208,30 @@ public class OpenAiFitAnalysisAiService implements FitAnalysisAiService {
             }
         }
         return values;
+    }
+
+    private List<FitConditionMatch> conditionMatrix(JsonNode node) {
+        List<FitConditionMatch> values = new ArrayList<>();
+        if (node != null && node.isArray()) {
+            for (JsonNode item : node) {
+                values.add(new FitConditionMatch(
+                        item.path("condition").asText(""),
+                        item.path("conditionType").asText("REQUIRED"),
+                        item.path("matchStatus").asText("UNMET"),
+                        item.path("evidence").asText("")));
+            }
+        }
+        return values;
+    }
+
+    private FitApplyDecision applyDecision(JsonNode node) {
+        if (node == null || node.isMissingNode() || !node.isObject()) {
+            return new FitApplyDecision("COMPLEMENT", List.of(), List.of());
+        }
+        return new FitApplyDecision(
+                node.path("decision").asText("COMPLEMENT"),
+                strings(node.path("reasons")),
+                strings(node.path("actions")));
     }
 
     private List<FitCertificateRecommendation> certificates(JsonNode node) {

@@ -17,6 +17,9 @@
         <result property="gapRecommendations" column="gap_recommendations"/>
         <result property="certificateRecommendations" column="certificate_recommendations"/>
         <result property="strategyActions" column="strategy_actions"/>
+        <result property="conditionMatrix" column="condition_matrix"/>
+        <result property="analysisConfidence" column="analysis_confidence"/>
+        <result property="applyDecision" column="apply_decision"/>
         <result property="model" column="model"/>
         <result property="status" column="status"/>
         <result property="errorMessage" column="error_message"/>
@@ -43,6 +46,9 @@
         fa.gap_recommendations,
         fa.certificate_recommendations,
         fa.strategy_actions,
+        fa.condition_matrix,
+        fa.analysis_confidence,
+        fa.apply_decision,
         fa.model,
         fa.status,
         fa.error_message,
@@ -128,13 +134,26 @@
             (application_case_id, fit_score, matched_skills, missing_skills,
              recommended_study, recommended_certificates, strategy,
              source_snapshot, score_basis, gap_recommendations, certificate_recommendations,
-             strategy_actions, model, status, error_message)
+             strategy_actions, condition_matrix, analysis_confidence, apply_decision,
+             model, status, error_message)
         VALUES
             (#{applicationCaseId}, #{fitScore}, #{matchedSkills}, #{missingSkills},
              #{recommendedStudy}, #{recommendedCertificates}, #{strategy},
              #{sourceSnapshot}, #{scoreBasis}, #{gapRecommendations}, #{certificateRecommendations},
-             #{strategyActions}, #{model}, #{status}, #{errorMessage})
+             #{strategyActions}, #{conditionMatrix}, #{analysisConfidence}, #{applyDecision},
+             #{model}, #{status}, #{errorMessage})
     </insert>
+
+    <!-- 재분석 히스토리: 같은 지원 건의 전체 분석 이력(오래된 순). 점수/역량 변화 비교용. -->
+    <select id="findAllByUserIdAndApplicationCaseId" resultMap="FitAnalysisResultMap">
+        SELECT
+        <include refid="FitAnalysisWithApplicationColumns"/>
+        FROM fit_analysis fa
+        INNER JOIN application_case ac ON ac.id = fa.application_case_id
+        WHERE ac.user_id = #{userId}
+          AND ac.id = #{applicationCaseId}
+        ORDER BY fa.id ASC
+    </select>
 
     <resultMap id="FitAnalysisLearningTaskMap" type="com.careertuner.fitanalysis.domain.FitAnalysisLearningTask">
         <id property="id" column="id"/>

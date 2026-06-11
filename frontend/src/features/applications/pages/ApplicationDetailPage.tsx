@@ -18,6 +18,7 @@ import { deleteApplicationCase, updateApplicationCase } from "../api/application
 import { ApplicationOverviewPanel } from "../components/ApplicationOverviewPanel";
 import { ApplicationStatusBadge } from "../components/ApplicationStatusBadge";
 import { CompanyAnalysisPanel } from "../components/CompanyAnalysisPanel";
+import { FitAnalysisHistoryPanel } from "../components/FitAnalysisHistoryPanel";
 import { FitAnalysisPanel } from "../components/FitAnalysisPanel";
 import { JobAnalysisPanel } from "../components/JobAnalysisPanel";
 import { JobPostingPanel } from "../components/JobPostingPanel";
@@ -352,6 +353,12 @@ export function ApplicationDetailPage() {
                   <FitAnalysisPanel analyses={fitAnalyses} loading={fitAnalysisLoading} generating={fitGenerating} error={fitAnalysisError} />
                   <StrategyPanel analyses={fitAnalyses} loading={fitAnalysisLoading} error={fitAnalysisError} />
                   <LearningRecommendationPanel analyses={fitAnalyses} loading={fitAnalysisLoading} error={fitAnalysisError} />
+                  {/* C 담당: 재분석 히스토리(점수·역량 변화 추적). 최신 분석 id가 바뀌면 다시 불러온다. */}
+                  <FitAnalysisHistoryPanel
+                    applicationCaseId={id}
+                    enabled={isAuthenticated && Boolean(applicationCase)}
+                    refreshKey={fitAnalyses[0]?.id ?? null}
+                  />
                 </div>
               )}
             </>
