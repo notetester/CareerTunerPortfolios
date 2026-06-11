@@ -6,6 +6,7 @@ import { useAuth } from "@/app/auth/AuthContext";
 import { useApplicationCases } from "@/features/applications/hooks/useApplicationCases";
 import { LoginRequiredState } from "@/features/applications/components/LoginRequiredState";
 import { ModeSelectTab } from "../components/ModeSelectTab";
+import { AutoSetupPanel } from "../components/AutoSetupPanel";
 import { ExpectedQuestionsTab } from "../components/ExpectedQuestionsTab";
 import { PracticeTab } from "../components/PracticeTab";
 import { RealtimeInterviewTab } from "../components/RealtimeInterviewTab";
@@ -37,6 +38,8 @@ export function InterviewPage() {
   const [selectedMode, setSelectedMode] = useState<InterviewMode | null>(null);
   const [selectedCaseId, setSelectedCaseId] = useState<number | null>(null);
   const [activeSession, setActiveSession] = useState<InterviewSession | null>(null);
+  // 홈 마누스 검색창에서 넘어온 요청(자동 셋업 진입).
+  const [autoPrompt] = useState(() => sessionStorage.getItem("interview.autoPrompt") ?? "");
 
   const cases = useApplicationCases(isAuthenticated);
 
@@ -44,6 +47,7 @@ export function InterviewPage() {
   const activeTab: InterviewTab = INTERVIEW_TABS.includes(requested as InterviewTab)
     ? (requested as InterviewTab)
     : "modes";
+  const autoMode = searchParams.get("auto") === "1" && autoPrompt.length > 0;
 
   const goTab = (tab: string) => setSearchParams(tab === "modes" ? {} : { tab });
 
@@ -83,19 +87,33 @@ export function InterviewPage() {
           </TabsList>
 
           <TabsContent value="modes" className="mt-6">
-            <ModeSelectTab
-              cases={cases.applicationCases}
-              casesLoading={cases.loading}
-              casesError={cases.error}
-              selectedCaseId={selectedCaseId}
-              selectedMode={selectedMode}
-              onSelectCase={setSelectedCaseId}
-              onSelectMode={setSelectedMode}
-              onSessionStarted={(session) => {
-                setActiveSession(session);
-                goTab("questions");
-              }}
-            />
+            {autoMode ? (
+              <AutoSetupPanel
+                cases={cases.applicationCases}
+                casesLoading={cases.loading}
+                prompt={autoPrompt}
+                onReady={(session) => {
+                  setActiveSession(session);
+                  sessionStorage.removeItem("interview.autoPrompt");
+                  goTab("practice");
+                }}
+                onManual={() => setSearchParams({})}
+              />
+            ) : (
+              <ModeSelectTab
+                cases={cases.applicationCases}
+                casesLoading={cases.loading}
+                casesError={cases.error}
+                selectedCaseId={selectedCaseId}
+                selectedMode={selectedMode}
+                onSelectCase={setSelectedCaseId}
+                onSelectMode={setSelectedMode}
+                onSessionStarted={(session) => {
+                  setActiveSession(session);
+                  goTab("questions");
+                }}
+              />
+            )}
           </TabsContent>
 
           <TabsContent value="questions" className="mt-6">
