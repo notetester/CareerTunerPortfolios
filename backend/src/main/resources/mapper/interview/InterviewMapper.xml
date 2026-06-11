@@ -122,9 +122,9 @@
     <!-- ── 에이전트 트레이스 ── -->
     <insert id="insertAgentStep" useGeneratedKeys="true" keyProperty="id">
         INSERT INTO interview_agent_step
-            (interview_session_id, question_id, step_no, agent, action, summary, detail)
+            (interview_session_id, question_id, step_no, agent, action, status, summary, detail, elapsed_ms)
         VALUES
-            (#{interviewSessionId}, #{questionId}, #{stepNo}, #{agent}, #{action}, #{summary}, #{detail})
+            (#{interviewSessionId}, #{questionId}, #{stepNo}, #{agent}, #{action}, #{status}, #{summary}, #{detail}, #{elapsedMs})
     </insert>
 
     <select id="findAgentStepsBySessionId" resultType="com.careertuner.interview.domain.InterviewAgentStep">
