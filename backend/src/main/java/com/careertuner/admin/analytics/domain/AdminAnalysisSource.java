@@ -22,4 +22,10 @@ public class AdminAnalysisSource {
     private String missingSkills;
     private Integer fitScore;
     private LocalDateTime analyzedAt;
+
+    // 품질 검수 휴리스틱용 추가 필드(fit_analysis 읽기 전용).
+    private String matchedSkills;
+    private String certificateRecommendations;
+    private String strategy;
+    private String status;
 }

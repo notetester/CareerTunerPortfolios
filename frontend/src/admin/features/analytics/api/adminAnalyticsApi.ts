@@ -1,13 +1,25 @@
 import { api } from "@/app/lib/api";
 import type {
+  AdminAnalysisFailure,
   AdminAnalyticsSummary,
   AdminCareerAnalysisRun,
   AdminCareerRunMemo,
   AdminCareerRunMemoRequest,
+  AdminQualityFlag,
 } from "../types/adminAnalytics";
 
 export function getAdminAnalyticsSummary() {
   return api<AdminAnalyticsSummary>("/admin/analytics/summary");
+}
+
+/** 분석 실패 큐: 적합도/장기/대시보드 분석의 FAILED·FALLBACK 결과 최신순. */
+export function getAdminAnalysisFailures() {
+  return api<AdminAnalysisFailure[]>("/admin/analytics/failures");
+}
+
+/** 품질 검수 큐: 최신 적합도 분석에 대한 결정적 휴리스틱 점검 항목. */
+export function getAdminQualityFlags() {
+  return api<AdminQualityFlag[]>("/admin/analytics/quality-flags");
 }
 
 export function getAdminCareerAnalysisRuns(userId?: number) {

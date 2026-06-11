@@ -64,6 +64,9 @@ export interface AdminFitAnalysisDetail {
   gapRecommendations: string | null;
   certificateRecommendations: string | null;
   strategyActions: string[];
+  conditionMatrix: string | null;
+  analysisConfidence: string | null;
+  applyDecision: string | null;
   model: string | null;
   status: string;
   errorMessage: string | null;

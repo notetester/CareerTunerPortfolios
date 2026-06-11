@@ -18,6 +18,24 @@
         <result property="missingSkills" column="missing_skills"/>
         <result property="fitScore" column="fit_score"/>
         <result property="analyzedAt" column="analyzed_at"/>
+        <result property="matchedSkills" column="matched_skills"/>
+        <result property="certificateRecommendations" column="certificate_recommendations"/>
+        <result property="strategy" column="strategy"/>
+        <result property="status" column="status"/>
+    </resultMap>
+
+    <resultMap id="AdminAnalysisFailureResultMap" type="com.careertuner.admin.analytics.domain.AdminAnalysisFailureSource">
+        <result property="source" column="source"/>
+        <result property="refId" column="ref_id"/>
+        <result property="userName" column="user_name"/>
+        <result property="userEmail" column="user_email"/>
+        <result property="companyName" column="company_name"/>
+        <result property="jobTitle" column="job_title"/>
+        <result property="status" column="status"/>
+        <result property="errorMessage" column="error_message"/>
+        <result property="model" column="model"/>
+        <result property="retryable" column="retryable"/>
+        <result property="createdAt" column="created_at"/>
     </resultMap>
 
     <resultMap id="AdminDailyUsageResultMap" type="com.careertuner.admin.analytics.domain.AdminDailyUsageSource">
@@ -109,7 +127,11 @@
             ac.job_title,
             fa.missing_skills,
             fa.fit_score,
-            fa.created_at AS analyzed_at
+            fa.created_at AS analyzed_at,
+            fa.matched_skills,
+            fa.certificate_recommendations,
+            fa.strategy,
+            fa.status
         FROM fit_analysis fa
         INNER JOIN application_case ac ON ac.id = fa.application_case_id
         INNER JOIN users ON users.id = ac.user_id
@@ -130,6 +152,49 @@
         WHERE created_at &gt;= DATE_SUB(CURRENT_DATE, INTERVAL 6 DAY)
         GROUP BY DATE(created_at)
         ORDER BY usage_date
+    </select>
+
+    <!-- 분석 실패 큐: 적합도 분석과 장기/대시보드 실행 이력의 비정상 결과를 합쳐 최신순으로 본다. -->
+    <select id="findAnalysisFailures" resultMap="AdminAnalysisFailureResultMap">
+        SELECT *
+        FROM (
+            SELECT
+                'FIT_ANALYSIS' AS source,
+                fa.id AS ref_id,
+                users.name AS user_name,
+                users.email AS user_email,
+                ac.company_name,
+                ac.job_title,
+                fa.status,
+                fa.error_message,
+                fa.model,
+                0 AS retryable,
+                fa.created_at
+            FROM fit_analysis fa
+            INNER JOIN application_case ac ON ac.id = fa.application_case_id
+            INNER JOIN users ON users.id = ac.user_id
+            WHERE fa.status != 'SUCCESS'
+
+            UNION ALL
+
+            SELECT
+                run.analysis_type AS source,
+                run.id AS ref_id,
+                users.name AS user_name,
+                users.email AS user_email,
+                NULL AS company_name,
+                NULL AS job_title,
+                run.status,
+                run.error_message,
+                run.model,
+                run.retryable,
+                run.created_at
+            FROM career_analysis_run run
+            INNER JOIN users ON users.id = run.user_id
+            WHERE run.status != 'SUCCESS'
+        ) failures
+        ORDER BY created_at DESC
+        LIMIT 100
     </select>
 
     <select id="findCareerAnalysisRuns" resultMap="AdminCareerAnalysisRunMap">

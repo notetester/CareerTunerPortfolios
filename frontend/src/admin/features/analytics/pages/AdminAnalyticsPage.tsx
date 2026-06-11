@@ -23,15 +23,19 @@ import { Progress } from "@/app/components/ui/progress";
 import {
   createAdminCareerRunMemo,
   deleteAdminCareerRunMemo,
+  getAdminAnalysisFailures,
   getAdminAnalyticsSummary,
   getAdminCareerAnalysisRuns,
   getAdminCareerRunMemos,
+  getAdminQualityFlags,
   updateAdminCareerRunMemo,
 } from "../api/adminAnalyticsApi";
 import type {
+  AdminAnalysisFailure,
   AdminAnalyticsSummary,
   AdminCareerAnalysisRun,
   AdminCareerRunMemo,
+  AdminQualityFlag,
 } from "../types/adminAnalytics";
 
 /**
@@ -302,9 +306,31 @@ function RunMemoPanel({
   );
 }
 
+const failureSourceLabel: Record<string, string> = {
+  FIT_ANALYSIS: "적합도 분석",
+  CAREER_TREND: "장기 취업 경향",
+  DASHBOARD_SUMMARY: "대시보드 요약",
+};
+
+const flagTypeLabel: Record<string, string> = {
+  SCORE_GAP_MISMATCH: "점수-근거 상충",
+  LOW_SCORE_NO_GAPS: "낮은 점수·근거 없음",
+  EXCESSIVE_CERTS: "자격증 과다 추천",
+  EMPTY_STRATEGY: "전략 누락",
+  DEGRADED_RESULT: "강등 결과 노출",
+};
+
+const severityTone: Record<string, string> = {
+  HIGH: "bg-red-100 text-red-700",
+  MEDIUM: "bg-amber-100 text-amber-700",
+  LOW: "bg-slate-100 text-slate-600",
+};
+
 export function AdminAnalyticsPage() {
   const [summary, setSummary] = useState<AdminAnalyticsSummary | null>(null);
   const [runs, setRuns] = useState<AdminCareerAnalysisRun[]>([]);
+  const [failures, setFailures] = useState<AdminAnalysisFailure[]>([]);
+  const [qualityFlags, setQualityFlags] = useState<AdminQualityFlag[]>([]);
   const [query, setQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState("ALL");
   const [typeFilter, setTypeFilter] = useState("ALL");
@@ -316,12 +342,16 @@ export function AdminAnalyticsPage() {
     setLoading(true);
     setError(null);
     try {
-      const [summaryData, runData] = await Promise.all([
+      const [summaryData, runData, failureData, flagData] = await Promise.all([
         getAdminAnalyticsSummary(),
         getAdminCareerAnalysisRuns(),
+        getAdminAnalysisFailures(),
+        getAdminQualityFlags(),
       ]);
       setSummary(summaryData);
       setRuns(runData);
+      setFailures(failureData);
+      setQualityFlags(flagData);
     } catch (err) {
       setError(err instanceof Error ? err.message : "분석 통계를 불러오지 못했습니다.");
     } finally {
@@ -470,6 +500,93 @@ export function AdminAnalyticsPage() {
                     ))
                   ) : (
                     <div className="text-sm text-amber-800">반복 부족 역량 데이터가 없습니다.</div>
+                  )}
+                </CardContent>
+              </Card>
+            </section>
+
+            {/* 분석 실패 큐 + 품질 검수 큐: 운영자가 우선 처리할 항목을 모아 보여준다. */}
+            <section className="grid gap-6 lg:grid-cols-2">
+              <Card className="border border-red-200 bg-white">
+                <CardHeader className="pb-3">
+                  <CardTitle className="flex items-center gap-2 text-base text-red-800">
+                    <AlertTriangle className="size-4 text-red-600" />
+                    분석 실패 큐
+                    <Badge className="bg-red-100 text-red-700">{failures.length}건</Badge>
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="max-h-96 space-y-2 overflow-y-auto">
+                  {failures.length > 0 ? (
+                    failures.map((failure) => (
+                      <div key={`${failure.source}-${failure.refId}`} className="rounded-lg border border-slate-100 p-3">
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <div className="flex flex-wrap items-center gap-2 text-sm font-semibold text-slate-800">
+                            {failure.userName}
+                            <span className="text-xs font-normal text-slate-400">({failure.userEmail})</span>
+                            <Badge className="bg-slate-100 text-slate-600">
+                              {failureSourceLabel[failure.source] ?? failure.source}
+                            </Badge>
+                          </div>
+                          <Badge className={statusTone[failure.status] ?? "bg-slate-100 text-slate-600"}>
+                            {failure.status}{failure.retryable ? " · 재시도 가능" : ""}
+                          </Badge>
+                        </div>
+                        {(failure.companyName || failure.jobTitle) && (
+                          <div className="mt-1 text-xs text-slate-500">
+                            {failure.companyName} {failure.jobTitle && `· ${failure.jobTitle}`}
+                          </div>
+                        )}
+                        <div className="mt-1 text-xs text-red-600">{failure.errorMessage || "오류 메시지 없음"}</div>
+                        <div className="mt-1 text-[11px] text-slate-400">
+                          {failure.model || "모델 없음"} · {formatDateTime(failure.createdAt)}
+                        </div>
+                      </div>
+                    ))
+                  ) : (
+                    <div className="rounded-lg bg-slate-50 p-4 text-sm text-slate-500">
+                      비정상(FAILED/FALLBACK) 분석 결과가 없습니다.
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+
+              <Card className="border border-purple-200 bg-white">
+                <CardHeader className="pb-3">
+                  <CardTitle className="flex items-center gap-2 text-base text-purple-900">
+                    <Gauge className="size-4 text-purple-600" />
+                    품질 검수 큐
+                    <Badge className="bg-purple-100 text-purple-700">{qualityFlags.length}건</Badge>
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="max-h-96 space-y-2 overflow-y-auto">
+                  {qualityFlags.length > 0 ? (
+                    qualityFlags.map((flag) => (
+                      <div key={`${flag.fitAnalysisId}-${flag.flagType}`} className="rounded-lg border border-slate-100 p-3">
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <div className="flex flex-wrap items-center gap-2 text-sm font-semibold text-slate-800">
+                            {flag.userName}
+                            <span className="text-xs font-normal text-slate-400">({flag.userEmail})</span>
+                            <Badge className="bg-purple-100 text-purple-700">
+                              {flagTypeLabel[flag.flagType] ?? flag.flagType}
+                            </Badge>
+                          </div>
+                          <Badge className={severityTone[flag.severity] ?? "bg-slate-100 text-slate-600"}>
+                            {flag.severity === "HIGH" ? "심각" : flag.severity === "MEDIUM" ? "주의" : "낮음"}
+                          </Badge>
+                        </div>
+                        <div className="mt-1 text-xs text-slate-500">
+                          {flag.companyName} · {flag.jobTitle} · 적합도 {flag.fitScore ?? 0}점
+                        </div>
+                        <div className="mt-1 text-xs leading-5 text-slate-600">{flag.detail}</div>
+                        <div className="mt-1 text-[11px] text-slate-400">
+                          분석 #{flag.fitAnalysisId} · {formatDateTime(flag.analyzedAt)}
+                        </div>
+                      </div>
+                    ))
+                  ) : (
+                    <div className="rounded-lg bg-slate-50 p-4 text-sm text-slate-500">
+                      품질 점검이 필요한 분석 결과가 없습니다.
+                    </div>
                   )}
                 </CardContent>
               </Card>

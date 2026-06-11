@@ -10,6 +10,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import com.careertuner.admin.analytics.domain.AdminAnalysisSource;
 import com.careertuner.admin.analytics.domain.AdminCareerRunMemo;
+import com.careertuner.admin.analytics.dto.AdminAnalysisFailureResponse;
 import com.careertuner.admin.analytics.dto.AdminAnalyticsStatsResponse;
 import com.careertuner.admin.analytics.dto.AdminAnalyticsSummaryResponse;
 import com.careertuner.admin.analytics.dto.AdminCareerAnalysisRunResponse;
@@ -18,6 +19,7 @@ import com.careertuner.admin.analytics.dto.AdminCareerRunMemoResponse;
 import com.careertuner.admin.analytics.dto.AdminCountResponse;
 import com.careertuner.admin.analytics.dto.AdminDailyUsageResponse;
 import com.careertuner.admin.analytics.dto.AdminFitScoreBandResponse;
+import com.careertuner.admin.analytics.dto.AdminQualityFlagResponse;
 import com.careertuner.admin.analytics.dto.AdminRecentAnalysisResponse;
 import com.careertuner.admin.analytics.dto.AdminSkillGapResponse;
 import com.careertuner.admin.analytics.mapper.AdminAnalyticsMapper;
@@ -55,6 +57,80 @@ public class AdminAnalyticsServiceImpl implements AdminAnalyticsService {
                 adminAnalyticsMapper.findDailyUsage().stream()
                         .map(AdminDailyUsageResponse::from)
                         .toList());
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<AdminAnalysisFailureResponse> listFailures() {
+        return adminAnalyticsMapper.findAnalysisFailures().stream()
+                .map(AdminAnalysisFailureResponse::from)
+                .toList();
+    }
+
+    /**
+     * 품질 검수 큐. AI를 다시 호출하지 않고 저장된 최신 분석에 결정적 휴리스틱을 적용한다.
+     * 사용자 원본은 수정하지 않으며, 조치는 적합도 운영 메모(REANALYSIS/QUALITY)로 남긴다.
+     */
+    @Override
+    @Transactional(readOnly = true)
+    public List<AdminQualityFlagResponse> listQualityFlags() {
+        List<AdminQualityFlagResponse> flags = new java.util.ArrayList<>();
+        for (AdminAnalysisSource analysis : adminAnalyticsMapper.findLatestAnalyses()) {
+            int missingCount = parseList(analysis.getMissingSkills()).size();
+            int certificateCount = certificateCount(analysis.getCertificateRecommendations());
+            Integer score = analysis.getFitScore();
+
+            if (score != null && score >= 85 && missingCount >= 5) {
+                flags.add(flag(analysis, "SCORE_GAP_MISMATCH", "HIGH",
+                        "적합도 %d점인데 부족 역량이 %d개라 점수 근거 검토가 필요합니다.".formatted(score, missingCount)));
+            }
+            if (score != null && score < 40 && missingCount == 0) {
+                flags.add(flag(analysis, "LOW_SCORE_NO_GAPS", "MEDIUM",
+                        "적합도 %d점인데 부족 역량이 비어 있어 분석 입력 확인이 필요합니다.".formatted(score)));
+            }
+            if (certificateCount > 3) {
+                flags.add(flag(analysis, "EXCESSIVE_CERTS", "MEDIUM",
+                        "자격증 추천이 %d개로 과도합니다. 실무 보완 우선 원칙과 어긋날 수 있습니다.".formatted(certificateCount)));
+            }
+            if ("SUCCESS".equals(analysis.getStatus())
+                    && (analysis.getStrategy() == null || analysis.getStrategy().isBlank())) {
+                flags.add(flag(analysis, "EMPTY_STRATEGY", "LOW",
+                        "성공 상태인데 지원 전략 문구가 비어 있습니다."));
+            }
+            if (analysis.getStatus() != null && !"SUCCESS".equals(analysis.getStatus())) {
+                flags.add(flag(analysis, "DEGRADED_RESULT", "HIGH",
+                        "%s 상태 결과가 사용자에게 노출 중입니다. 재분석 안내가 필요할 수 있습니다.".formatted(analysis.getStatus())));
+            }
+        }
+        return flags;
+    }
+
+    private static AdminQualityFlagResponse flag(AdminAnalysisSource analysis, String flagType, String severity, String detail) {
+        return new AdminQualityFlagResponse(
+                analysis.getFitAnalysisId(),
+                analysis.getApplicationCaseId(),
+                analysis.getUserName(),
+                analysis.getUserEmail(),
+                analysis.getCompanyName(),
+                analysis.getJobTitle(),
+                analysis.getFitScore(),
+                flagType,
+                severity,
+                detail,
+                analysis.getAnalyzedAt());
+    }
+
+    /** certificate_recommendations JSON 배열 길이. 객체 배열이므로 단순 노드 수만 센다. */
+    private int certificateCount(String json) {
+        if (json == null || json.isBlank()) {
+            return 0;
+        }
+        try {
+            var node = objectMapper.readTree(json);
+            return node.isArray() ? node.size() : 0;
+        } catch (Exception ignored) {
+            return 0;
+        }
     }
 
     @Override

@@ -24,6 +24,9 @@
         <result property="gapRecommendations" column="gap_recommendations"/>
         <result property="certificateRecommendations" column="certificate_recommendations"/>
         <result property="strategyActions" column="strategy_actions"/>
+        <result property="conditionMatrix" column="condition_matrix"/>
+        <result property="analysisConfidence" column="analysis_confidence"/>
+        <result property="applyDecision" column="apply_decision"/>
         <result property="model" column="model"/>
         <result property="status" column="status"/>
         <result property="errorMessage" column="error_message"/>
@@ -65,6 +68,9 @@
         fa.gap_recommendations,
         fa.certificate_recommendations,
         fa.strategy_actions,
+        fa.condition_matrix,
+        fa.analysis_confidence,
+        fa.apply_decision,
         fa.model,
         fa.status,
         fa.error_message,

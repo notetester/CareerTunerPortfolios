@@ -71,6 +71,10 @@ export default function AdminFitAnalysisPage() {
   const [editingMemo, setEditingMemo] = useState<AdminFitAnalysisMemo | null>(null);
   const [savingMemo, setSavingMemo] = useState(false);
   const [query, setQuery] = useState("");
+  // 점수 구간/분석 상태/메모 보유 필터(클라이언트 필터링).
+  const [bandFilter, setBandFilter] = useState("ALL");
+  const [resultFilter, setResultFilter] = useState("ALL");
+  const [memoOnly, setMemoOnly] = useState(false);
 
   useEffect(() => {
     let ignore = false;
@@ -132,9 +136,23 @@ export default function AdminFitAnalysisPage() {
   }, [items]);
   const visibleItems = useMemo(() => {
     const value = query.trim().toLowerCase();
-    if (!value) return items;
-    return items.filter((item) => `${item.companyName} ${item.jobTitle} ${item.userName} ${item.userEmail}`.toLowerCase().includes(value));
-  }, [items, query]);
+    return items.filter((item) => {
+      const matchesQuery =
+        !value || `${item.companyName} ${item.jobTitle} ${item.userName} ${item.userEmail}`.toLowerCase().includes(value);
+      const score = item.fitScore ?? 0;
+      const matchesBand =
+        bandFilter === "ALL" ||
+        (bandFilter === "HIGH" && score >= 80) ||
+        (bandFilter === "MID_HIGH" && score >= 70 && score < 80) ||
+        (bandFilter === "MID" && score >= 50 && score < 70) ||
+        (bandFilter === "LOW" && score < 50);
+      const matchesResult =
+        resultFilter === "ALL" ||
+        (resultFilter === "SUCCESS" ? item.status === "SUCCESS" : item.status !== "SUCCESS");
+      const matchesMemo = !memoOnly || item.memoCount > 0;
+      return matchesQuery && matchesBand && matchesResult && matchesMemo;
+    });
+  }, [items, query, bandFilter, resultFilter, memoOnly]);
 
   function resetMemoForm() {
     setMemoType("GENERAL");
@@ -238,10 +256,37 @@ export default function AdminFitAnalysisPage() {
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-2">
-              <label className="mb-3 flex items-center gap-2 rounded-md border border-slate-200 px-3">
+              <label className="mb-2 flex items-center gap-2 rounded-md border border-slate-200 px-3">
                 <Search className="size-4 text-slate-400" />
                 <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="사용자·기업·직무 검색" className="h-10 w-full bg-transparent text-sm outline-none" />
               </label>
+              <div className="mb-3 flex flex-wrap items-center gap-2">
+                <select
+                  value={bandFilter}
+                  onChange={(event) => setBandFilter(event.target.value)}
+                  className="h-9 rounded-md border border-slate-200 px-2 text-xs font-semibold text-slate-600"
+                >
+                  <option value="ALL">전체 점수</option>
+                  <option value="HIGH">80점 이상</option>
+                  <option value="MID_HIGH">70-79점</option>
+                  <option value="MID">50-69점</option>
+                  <option value="LOW">50점 미만</option>
+                </select>
+                <select
+                  value={resultFilter}
+                  onChange={(event) => setResultFilter(event.target.value)}
+                  className="h-9 rounded-md border border-slate-200 px-2 text-xs font-semibold text-slate-600"
+                >
+                  <option value="ALL">전체 상태</option>
+                  <option value="SUCCESS">성공</option>
+                  <option value="ABNORMAL">실패·Fallback</option>
+                </select>
+                <label className="flex h-9 cursor-pointer items-center gap-1.5 rounded-md border border-slate-200 px-2 text-xs font-semibold text-slate-600">
+                  <input type="checkbox" checked={memoOnly} onChange={(event) => setMemoOnly(event.target.checked)} />
+                  메모 있는 항목만
+                </label>
+                <span className="text-[11px] text-slate-400">{visibleItems.length}/{items.length}건</span>
+              </div>
               {loadingList ? (
                 <div className="flex items-center gap-2 rounded-lg bg-slate-50 p-4 text-sm text-slate-500">
                   <Loader2 className="size-4 animate-spin" />
@@ -325,6 +370,9 @@ export default function AdminFitAnalysisPage() {
                       <StructuredJsonBox title="입력 스냅샷" value={detail.sourceSnapshot} />
                       <StructuredJsonBox title="부족 역량 구조화 결과" value={detail.gapRecommendations} />
                       <StructuredJsonBox title="자격증 구조화 결과" value={detail.certificateRecommendations} />
+                      <StructuredJsonBox title="요구조건-스펙 비교 매트릭스" value={detail.conditionMatrix} />
+                      <StructuredJsonBox title="분석 신뢰도" value={detail.analysisConfidence} />
+                      <StructuredJsonBox title="지원 판단 카드" value={detail.applyDecision} />
                       <div className="rounded-lg border border-slate-100 p-4">
                         <div className="mb-3 text-sm font-bold text-slate-800">학습 체크리스트</div>
                         <div className="space-y-2">

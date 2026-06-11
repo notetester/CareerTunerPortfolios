@@ -5,6 +5,7 @@ import java.util.List;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 
+import com.careertuner.admin.analytics.domain.AdminAnalysisFailureSource;
 import com.careertuner.admin.analytics.domain.AdminAnalysisSource;
 import com.careertuner.admin.analytics.domain.AdminCareerAnalysisRun;
 import com.careertuner.admin.analytics.domain.AdminCareerRunMemo;
@@ -29,6 +30,9 @@ public interface AdminAnalyticsMapper {
     List<AdminCountSource> countApplicationsByStatus();
 
     List<AdminAnalysisSource> findLatestAnalyses();
+
+    /** 분석 실패 큐: fit_analysis + career_analysis_run 의 비정상 결과 최신순 100건. */
+    List<AdminAnalysisFailureSource> findAnalysisFailures();
 
     List<AdminDailyUsageSource> findDailyUsage();
 
