@@ -1,28 +1,55 @@
-import { useEffect, useRef, useState } from "react";
-import { Loader2, Mic, PhoneOff, Radio } from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { ClipboardList, Loader2, Mic, PhoneOff, Radio } from "lucide-react";
 import { Badge } from "@/app/components/ui/badge";
 import { Button } from "@/app/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/app/components/ui/card";
-import { createRealtimeSession } from "../api/interviewApi";
-import type { InterviewSession } from "../types/interview";
+import {
+  analyzeVoice,
+  createRealtimeSession,
+  getMediaCapabilities,
+  listSessionQuestions,
+  saveMediaResult,
+} from "../api/interviewApi";
+import { blobToPcm16Base64, computeVoiceScore, countFillers, VoiceMetricsTracker } from "../hooks/voiceAnalysis";
+import type {
+  InterviewQuestion,
+  InterviewSession,
+  MediaCapabilities,
+  TranscriptLine,
+  VoiceMetrics,
+  VoiceProfile,
+  VoiceScoreDetail,
+} from "../types/interview";
+import { VoiceScorePanel } from "./VoiceScorePanel";
 
-type Status = "idle" | "connecting" | "live" | "ended" | "error";
-type Line = { role: "ai" | "user"; text: string };
+type Status = "idle" | "connecting" | "live" | "analyzing" | "scored" | "error";
 
 /**
- * 실시간 음성 AI 면접관 (OpenAI Realtime + WebRTC).
+ * 음성 모의면접 (OpenAI Realtime + WebRTC).
  * 백엔드에서 단기 ephemeral key 를 받아 브라우저가 OpenAI 에 직접 연결한다.
- * 면접관 음성을 듣고 마이크로 답하면 실시간 대화가 이어지고, 자막(트랜스크립트)이 표시된다.
+ * 준비된 질문(미생성 시 게이트)으로 면접관이 진행하고, 종료 시
+ * 트랜스크립트 + 온디바이스 음성 지표(+ Inworld 감정) → 점수를 저장한다.
+ * 원본 음성은 서버에 올리지 않는다 (ADR-002).
  */
 export function RealtimeInterviewTab({ session }: { session: InterviewSession | null }) {
   const [status, setStatus] = useState<Status>("idle");
   const [error, setError] = useState<string | null>(null);
-  const [lines, setLines] = useState<Line[]>([]);
+  const [lines, setLines] = useState<TranscriptLine[]>([]);
+  const [questions, setQuestions] = useState<InterviewQuestion[] | null>(null);
+  const [capabilities, setCapabilities] = useState<MediaCapabilities | null>(null);
+  const [scoreDetail, setScoreDetail] = useState<VoiceScoreDetail | null>(null);
+  const [metrics, setMetrics] = useState<VoiceMetrics | null>(null);
+  const [profile, setProfile] = useState<VoiceProfile | null>(null);
+  const [saveNote, setSaveNote] = useState<string | null>(null);
 
   const pcRef = useRef<RTCPeerConnection | null>(null);
   const micRef = useRef<MediaStream | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const aiDraftRef = useRef<string>("");
+  const linesRef = useRef<TranscriptLine[]>([]);
+  const trackerRef = useRef<VoiceMetricsTracker | null>(null);
+  const recorderRef = useRef<MediaRecorder | null>(null);
+  const chunksRef = useRef<Blob[]>([]);
 
   const supported =
     typeof window !== "undefined" &&
@@ -30,12 +57,27 @@ export function RealtimeInterviewTab({ session }: { session: InterviewSession | 
     typeof navigator !== "undefined" &&
     !!navigator.mediaDevices;
 
+  // 준비된 질문(게이트) + 키 보유 여부 로드.
+  useEffect(() => {
+    if (!session) return;
+    listSessionQuestions(session.id)
+      .then((qs) => setQuestions(qs.filter((q) => q.parentQuestionId == null)))
+      .catch(() => setQuestions([]));
+    getMediaCapabilities()
+      .then(setCapabilities)
+      .catch(() => setCapabilities(null));
+  }, [session]);
+
   useEffect(() => {
     return () => cleanup();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const cleanup = () => {
+    recorderRef.current?.state === "recording" && recorderRef.current.stop();
+    recorderRef.current = null;
+    trackerRef.current?.dispose();
+    trackerRef.current = null;
     pcRef.current?.getSenders().forEach((s) => s.track?.stop());
     pcRef.current?.close();
     pcRef.current = null;
@@ -43,9 +85,12 @@ export function RealtimeInterviewTab({ session }: { session: InterviewSession | 
     micRef.current = null;
   };
 
-  const pushUser = (text: string) => {
-    if (text.trim()) setLines((prev) => [...prev, { role: "user", text: text.trim() }]);
-  };
+  const pushLine = useCallback((line: TranscriptLine) => {
+    if (!line.text.trim()) return;
+    const next = [...linesRef.current, { ...line, text: line.text.trim() }];
+    linesRef.current = next;
+    setLines(next);
+  }, []);
 
   const handleEvent = (raw: string) => {
     let ev: Record<string, unknown>;
@@ -60,9 +105,11 @@ export function RealtimeInterviewTab({ session }: { session: InterviewSession | 
     } else if (type === "response.audio_transcript.done") {
       const text = aiDraftRef.current.trim();
       aiDraftRef.current = "";
-      if (text) setLines((prev) => [...prev, { role: "ai", text }]);
+      if (text) pushLine({ role: "ai", text });
+      // 질문이 끝났다 → 다음 사용자 발화까지의 반응 지연 측정 시작.
+      trackerRef.current?.markAiSpeechEnd();
     } else if (type === "conversation.item.input_audio_transcription.completed") {
-      pushUser((ev.transcript as string) ?? "");
+      pushLine({ role: "user", text: (ev.transcript as string) ?? "" });
     }
   };
 
@@ -70,6 +117,11 @@ export function RealtimeInterviewTab({ session }: { session: InterviewSession | 
     if (!session) return;
     setStatus("connecting");
     setError(null);
+    setSaveNote(null);
+    setScoreDetail(null);
+    setMetrics(null);
+    setProfile(null);
+    linesRef.current = [];
     setLines([]);
     try {
       const rt = await createRealtimeSession(session.id);
@@ -82,10 +134,22 @@ export function RealtimeInterviewTab({ session }: { session: InterviewSession | 
         if (audioRef.current) audioRef.current.srcObject = e.streams[0];
       };
 
-      // 마이크 송신.
+      // 마이크 송신 + 온디바이스 분석(지표 샘플링 · 감정 분석용 녹음).
       const mic = await navigator.mediaDevices.getUserMedia({ audio: true });
       micRef.current = mic;
       mic.getTracks().forEach((t) => pc.addTrack(t, mic));
+
+      const tracker = new VoiceMetricsTracker();
+      tracker.start(mic);
+      trackerRef.current = tracker;
+
+      chunksRef.current = [];
+      const recorder = new MediaRecorder(mic);
+      recorder.ondataavailable = (e) => {
+        if (e.data.size > 0) chunksRef.current.push(e.data);
+      };
+      recorder.start();
+      recorderRef.current = recorder;
 
       // 이벤트 채널(트랜스크립트/세션 제어).
       const dc = pc.createDataChannel("oai-events");
@@ -132,15 +196,90 @@ export function RealtimeInterviewTab({ session }: { session: InterviewSession | 
     }
   };
 
-  const stop = () => {
+  /** 종료 → 지표 산출 → (키 있으면) 감정 분석 → 점수 저장. */
+  const stop = async () => {
+    if (!session) return;
+    setStatus("analyzing");
+
+    // 녹음 blob 을 안전하게 회수한 뒤 연결을 정리한다.
+    const recordedBlob = await new Promise<Blob | null>((resolve) => {
+      const recorder = recorderRef.current;
+      if (!recorder || recorder.state !== "recording") {
+        resolve(chunksRef.current.length > 0 ? new Blob(chunksRef.current) : null);
+        return;
+      }
+      recorder.onstop = () =>
+        resolve(chunksRef.current.length > 0 ? new Blob(chunksRef.current, { type: recorder.mimeType }) : null);
+      recorder.stop();
+    });
+    recorderRef.current = null;
+
+    const transcript = linesRef.current;
+    const userLines = transcript.filter((l) => l.role === "user").map((l) => l.text);
+    const userChars = userLines.join("").replace(/\s/g, "").length;
+    const fillers = countFillers(userLines);
+    const finalMetrics =
+      trackerRef.current?.finish(userChars, fillers) ?? null;
+
     cleanup();
-    setStatus("ended");
+
+    if (!finalMetrics) {
+      setStatus("error");
+      setError("음성 지표를 수집하지 못했습니다.");
+      return;
+    }
+
+    // Inworld 감정 분석 — 키 없거나 실패해도 점수는 브라우저 지표만으로 낸다.
+    let voiceProfile: VoiceProfile | null = null;
+    if (capabilities?.voiceProfiling && recordedBlob && recordedBlob.size > 0) {
+      try {
+        const base64 = await blobToPcm16Base64(recordedBlob);
+        const result = await analyzeVoice(session.id, base64);
+        voiceProfile = result.voiceProfile;
+      } catch {
+        setSaveNote("감정 분석(Inworld)은 실패해 브라우저 지표만으로 채점했습니다.");
+      }
+    }
+
+    const detail = computeVoiceScore(finalMetrics, voiceProfile);
+    setMetrics(finalMetrics);
+    setProfile(voiceProfile);
+    setScoreDetail(detail);
+
+    try {
+      await saveMediaResult(session.id, {
+        kind: "VOICE",
+        transcript,
+        metrics: { ...finalMetrics, voiceProfile },
+        score: detail.overall,
+        scoreDetail: { ...detail },
+      });
+      setSaveNote((prev) => prev ?? "분석 결과가 저장되었습니다. (원본 음성은 저장하지 않습니다)");
+    } catch (err) {
+      setSaveNote(
+        err instanceof Error ? `결과 저장 실패: ${err.message}` : "결과 저장에 실패했습니다.",
+      );
+    }
+    setStatus("scored");
   };
 
   if (!session) {
     return (
       <div className="rounded-xl border border-dashed border-slate-200 bg-white p-10 text-center text-sm text-slate-400">
         "면접 모드 선택" 탭에서 지원 건과 모드를 고르고 면접을 시작하면 음성 모의면접을 진행할 수 있습니다.
+      </div>
+    );
+  }
+
+  // 질문 미생성 게이트 — 준비된 질문으로만 진행한다 (ADR-002).
+  if (questions != null && questions.length === 0) {
+    return (
+      <div className="rounded-xl border border-dashed border-amber-200 bg-amber-50 p-10 text-center">
+        <ClipboardList className="mx-auto size-8 text-amber-500" />
+        <p className="mt-3 text-sm font-semibold text-amber-800">준비된 면접 질문이 없습니다</p>
+        <p className="mt-1 text-sm text-amber-700">
+          "예상 면접 질문" 탭에서 질문을 먼저 생성하면, 면접관이 그 질문으로 음성 모의면접을 진행합니다.
+        </p>
       </div>
     );
   }
@@ -157,15 +296,21 @@ export function RealtimeInterviewTab({ session }: { session: InterviewSession | 
                 <span className="size-2 animate-pulse rounded-full bg-rose-500" /> LIVE
               </Badge>
             ) : (
-              <Badge className="bg-slate-100 text-slate-600">베타</Badge>
+              <Badge className="bg-slate-100 text-slate-600">실시간 음성</Badge>
             )}
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
           <p className="text-sm text-slate-500">
-            AI 면접관이 음성으로 질문합니다. 마이크로 자연스럽게 답하면 실시간으로 대화가 이어집니다.
-            (회사·직무·면접 모드와 준비된 질문이 면접관에게 전달됩니다.)
+            AI 면접관이 준비된 질문{questions ? ` ${Math.min(questions.length, 6)}개` : ""}로 음성 면접을
+            진행합니다. 종료하면 답변 트랜스크립트와 음성 분석 점수(말 속도·군말·톤·자신감)가 저장됩니다.
           </p>
+
+          {capabilities && !capabilities.voiceProfiling && (
+            <p className="rounded-lg bg-slate-50 p-3 text-xs text-slate-500">
+              감정 분석 키(INWORLD_API_KEY)가 없어 브라우저 측정 지표만으로 채점합니다.
+            </p>
+          )}
 
           {!supported && (
             <p className="rounded-lg bg-amber-50 p-3 text-sm text-amber-700">
@@ -175,14 +320,23 @@ export function RealtimeInterviewTab({ session }: { session: InterviewSession | 
 
           {supported && (
             <div className="flex flex-wrap items-center gap-2">
-              {(status === "idle" || status === "ended" || status === "error") && (
-                <Button onClick={start} className="gap-1.5 bg-rose-600 hover:bg-rose-700">
+              {(status === "idle" || status === "scored" || status === "error") && (
+                <Button
+                  onClick={start}
+                  disabled={questions == null}
+                  className="gap-1.5 bg-rose-600 hover:bg-rose-700"
+                >
                   <Mic className="size-4" /> {status === "idle" ? "면접 시작" : "다시 시작"}
                 </Button>
               )}
               {status === "connecting" && (
                 <Button disabled className="gap-1.5">
                   <Loader2 className="size-4 animate-spin" /> 연결 중…
+                </Button>
+              )}
+              {status === "analyzing" && (
+                <Button disabled className="gap-1.5">
+                  <Loader2 className="size-4 animate-spin" /> 음성 분석 중…
                 </Button>
               )}
               {status === "live" && (
@@ -194,11 +348,16 @@ export function RealtimeInterviewTab({ session }: { session: InterviewSession | 
           )}
 
           {error && <p className="text-sm text-red-500">{error}</p>}
+          {saveNote && <p className="text-xs font-semibold text-slate-500">{saveNote}</p>}
 
           {/* 면접관 음성 출력 (자동 재생) */}
           <audio ref={audioRef} autoPlay className="hidden" />
         </CardContent>
       </Card>
+
+      {scoreDetail && metrics && (
+        <VoiceScorePanel detail={scoreDetail} metrics={metrics} profile={profile} title="음성 모의면접 점수" />
+      )}
 
       {lines.length > 0 && (
         <Card className="border border-slate-200 bg-white">
