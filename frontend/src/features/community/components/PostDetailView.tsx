@@ -1,13 +1,16 @@
-import { useEffect } from "react";
+import { useState, useEffect } from "react";
+import { useNavigate } from "react-router";
 import { Avatar, AvatarFallback } from "@/app/components/ui/avatar";
 import {
   ArrowLeft, Eye, Clock, Star,
-  Users, Calendar, Gauge,
+  Users, Calendar, Gauge, Trash2,
 } from "lucide-react";
 import { CategoryBadge } from "./CategoryBadge";
 import { ReactionButtons } from "./ReactionButtons";
 import { CommentSection } from "./CommentSection";
 import { useCommunityStore } from "../hooks/useCommunityStore";
+import { ConfirmDialog } from "@/app/components/ui/confirm-dialog";
+import * as communityApi from "../api/communityApi";
 import { relTime } from "@/features/notification/types/notification";
 
 interface PostDetailViewProps {
@@ -105,11 +108,23 @@ const RESULT_LABELS: Record<string, string> = {
 
 export function PostDetailView({ postId, onBack }: PostDetailViewProps) {
   const { currentPost: d, comments, detailLoading, error, fetchPostDetail, fetchComments } = useCommunityStore();
+  const navigate = useNavigate();
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
 
   useEffect(() => {
     fetchPostDetail(postId);
     fetchComments(postId);
   }, [postId, fetchPostDetail, fetchComments]);
+
+  const handleDelete = async () => {
+    try {
+      await communityApi.deletePost(postId);
+      setShowDeleteDialog(false);
+      onBack();
+    } catch {
+      setShowDeleteDialog(false);
+    }
+  };
 
   if (detailLoading) {
     return (
@@ -144,9 +159,18 @@ export function PostDetailView({ postId, onBack }: PostDetailViewProps) {
   return (
     <div className="ct-page ct-detail">
       {/* Back */}
-      <button className="ct-detail__back" onClick={onBack}>
-        <ArrowLeft /> 커뮤니티 목록
-      </button>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+        <button className="ct-detail__back" onClick={onBack}>
+          <ArrowLeft /> 커뮤니티 목록
+        </button>
+        <button
+          className="av-btn"
+          style={{ color: "var(--av-red, #dc2626)" }}
+          onClick={() => setShowDeleteDialog(true)}
+        >
+          <Trash2 /> 삭제
+        </button>
+      </div>
 
       {/* Head */}
       <div className="ct-detail__head">
@@ -222,6 +246,20 @@ export function PostDetailView({ postId, onBack }: PostDetailViewProps) {
 
       {/* Comments */}
       <CommentSection postId={d.id} comments={comments} />
+
+      {/* Delete dialog */}
+      {showDeleteDialog && (
+        <ConfirmDialog
+          variant="danger"
+          icon={<Trash2 />}
+          title="이 글을 삭제할까요?"
+          description={`삭제하면 댓글 ${comments.length}개와 좋아요도 함께 사라지며 되돌릴 수 없어요.`}
+          confirmLabel="삭제"
+          cancelLabel="취소"
+          onConfirm={handleDelete}
+          onCancel={() => setShowDeleteDialog(false)}
+        />
+      )}
     </div>
   );
 }

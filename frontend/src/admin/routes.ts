@@ -16,6 +16,8 @@ import AdminReports from "./features/community/pages/AdminReports";
 import AdminNotices from "./features/notices/pages/AdminNotices";
 import AdminFaq from "./features/faqs/pages/AdminFaq";
 import AdminInquiries from "./features/support-tickets/pages/AdminInquiries";
+import AdminNotifications from "./features/notifications/pages/AdminNotifications";
+import AdminTerms from "./features/terms/pages/AdminTerms";
 
 export const adminRoutes = [
   { path: "admin", Component: AdminDashboardPage },
@@ -39,6 +41,8 @@ export const adminRoutes = [
   { path: "admin/notices", Component: AdminNotices },
   { path: "admin/faq", Component: AdminFaq },
   { path: "admin/inquiries", Component: AdminInquiries },
+  { path: "admin/terms", Component: AdminTerms },
+  { path: "admin/notifications", Component: AdminNotifications },
   { path: "admin/plans", Component: AdminDashboardPage },
   { path: "admin/prompts", Component: AdminPromptsPage },
   { path: "admin/logs", Component: AdminDashboardPage },

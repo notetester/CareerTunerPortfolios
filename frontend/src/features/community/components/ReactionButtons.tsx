@@ -1,9 +1,9 @@
 import { useState } from "react";
-import { Heart, Bookmark, Flag } from "lucide-react";
-import { useNavigate } from "react-router";
+import { Heart, Bookmark, Flag, Lock } from "lucide-react";
 import { ReportDialog } from "./ReportDialog";
 import { useCommunityStore } from "../hooks/useCommunityStore";
-import { useAuth } from "@/app/auth/AuthContext";
+import { useLoginDialog } from "../hooks/useLoginDialog";
+import { ConfirmDialog } from "@/app/components/ui/confirm-dialog";
 
 interface ReactionButtonsProps {
   postId: number;
@@ -15,27 +15,23 @@ interface ReactionButtonsProps {
 
 export function ReactionButtons({ postId, likeCount, bookmarkCount, initialLiked = false, initialBookmarked = false }: ReactionButtonsProps) {
   const { toggleReaction } = useCommunityStore();
-  const { isAuthenticated } = useAuth();
-  const navigate = useNavigate();
+  const { showLoginDialog, requireAuth, onLoginConfirm, onLoginCancel } = useLoginDialog();
   const [liked, setLiked] = useState(initialLiked);
   const [saved, setSaved] = useState(initialBookmarked);
   const [showReport, setShowReport] = useState(false);
 
-  const requireAuth = () => {
-    alert("로그인이 필요합니다.");
-    navigate("/login");
-  };
-
   const handleLike = () => {
-    if (!isAuthenticated) return requireAuth();
-    toggleReaction("POST", postId, "LIKE");
-    setLiked((v) => !v);
+    requireAuth(() => {
+      toggleReaction("POST", postId, "LIKE");
+      setLiked((v) => !v);
+    });
   };
 
   const handleBookmark = () => {
-    if (!isAuthenticated) return requireAuth();
-    toggleReaction("POST", postId, "BOOKMARK");
-    setSaved((v) => !v);
+    requireAuth(() => {
+      toggleReaction("POST", postId, "BOOKMARK");
+      setSaved((v) => !v);
+    });
   };
 
   return (
@@ -55,7 +51,7 @@ export function ReactionButtons({ postId, likeCount, bookmarkCount, initialLiked
             <Bookmark /> {saved ? "저장됨" : "북마크"} {bookmarkCount}
           </button>
         </div>
-        <button className="ct-act ct-act--report" onClick={() => isAuthenticated ? setShowReport(true) : requireAuth()}>
+        <button className="ct-act ct-act--report" onClick={() => requireAuth(() => setShowReport(true))}>
           <Flag /> 신고
         </button>
       </div>
@@ -66,6 +62,19 @@ export function ReactionButtons({ postId, likeCount, bookmarkCount, initialLiked
           targetId={postId}
           target="게시글"
           onClose={() => setShowReport(false)}
+        />
+      )}
+
+      {showLoginDialog && (
+        <ConfirmDialog
+          variant="info"
+          icon={<Lock />}
+          title="로그인이 필요해요"
+          description="이 기능은 로그인 후에 이용할 수 있어요. 30초면 시작할 수 있습니다."
+          confirmLabel="로그인하기"
+          cancelLabel="둘러보기"
+          onConfirm={onLoginConfirm}
+          onCancel={onLoginCancel}
         />
       )}
     </>

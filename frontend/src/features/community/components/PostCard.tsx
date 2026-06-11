@@ -1,6 +1,4 @@
-import { Avatar, AvatarFallback } from "@/app/components/ui/avatar";
-import { Heart, MessageCircle, Eye, Flame } from "lucide-react";
-import { CategoryBadge } from "./CategoryBadge";
+import { MessageCircle, Heart } from "lucide-react";
 import { relTime } from "@/features/notification/types/notification";
 import type { CommunityPost } from "../types/community";
 
@@ -11,38 +9,22 @@ interface PostCardProps {
 
 export function PostCard({ post, onClick }: PostCardProps) {
   return (
-    <div className="ct-post" onClick={onClick}>
-      <div className="ct-post__top">
-        <CategoryBadge label={post.categoryLabel} />
-        {post.result && (
-          <span className="ct-badge ct-badge--success ct-badge--dot">{post.result}</span>
-        )}
-        {post.isHot && (
-          <span className="ct-badge ct-badge--solid">
-            <Flame /> 인기
-          </span>
-        )}
-        {(post.companyName || post.jobRole) && (
-          <span className="ct-post__co">
-            {[post.companyName, post.jobRole].filter(Boolean).join(" · ")}
-          </span>
-        )}
-      </div>
-      <div className="ct-post__title">{post.title}</div>
-      <div className="ct-post__body">{post.content}</div>
-      <div className="ct-post__foot">
-        <div className="ct-post__author">
-          <Avatar className="w-6 h-6">
-            <AvatarFallback className="text-[10px] bg-muted">{post.author.name[0]}</AvatarFallback>
-          </Avatar>
-          {post.author.name} · {relTime(post.createdAt)}
+    <article className="cv-post" onClick={onClick}>
+      <div className="cv-post__b">
+        <div className="cv-post__cat">
+          {post.categoryLabel}
+          {post.isHot && <span className="cv-post__hot">인기</span>}
         </div>
-        <div className="ct-post__meta">
-          <span><Heart /> {post.stats.likeCount}</span>
-          <span><MessageCircle /> {post.stats.commentCount}</span>
-          <span><Eye /> {post.stats.viewCount.toLocaleString()}</span>
+        <h3 className="cv-post__t">{post.title}</h3>
+        <div className="cv-post__x">{post.content}</div>
+        <div className="cv-post__meta num">
+          {post.author.name} · {relTime(post.createdAt)} · 조회 {post.stats.viewCount.toLocaleString()}
         </div>
       </div>
-    </div>
+      <div className="cv-post__stats num">
+        <span><MessageCircle />{post.stats.commentCount}</span>
+        <span><Heart />{post.stats.likeCount}</span>
+      </div>
+    </article>
   );
 }

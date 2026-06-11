@@ -60,7 +60,7 @@ export function ContactPage() {
               <button className="ct-act">고객센터로</button>
             </Link>
             <button
-              className="ct-btn-brand"
+              className="av-btn av-btn--ink"
               onClick={() => { setSubmitted(false); setTitle(""); setCategory(""); setBody(""); setFiles([]); }}
             >
               새 문의 작성
@@ -163,7 +163,7 @@ export function ContactPage() {
               <button className="ct-act">취소</button>
             </Link>
             <button
-              className="ct-btn-brand"
+              className="av-btn av-btn--ink"
               disabled={!canSubmit || submitting}
               onClick={async () => {
                 await createTicket({ category, subject: title, content: body });
