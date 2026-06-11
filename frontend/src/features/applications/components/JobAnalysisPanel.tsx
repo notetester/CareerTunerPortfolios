@@ -188,6 +188,9 @@ export function JobAnalysisPanel({
           <AnalysisFailureNotice
             failures={failures}
             featureType="JOB_ANALYSIS"
+            onRetry={() => void onGenerate()}
+            retrying={generating}
+            retryLabel="공고 분석 다시 시도"
           />
         )}
 

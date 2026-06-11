@@ -168,7 +168,10 @@ public class CompanyAnalysisService {
     }
 
     private static void ensureAnalysisRunnable(String status) {
-        if (!"DRAFT".equals(status) && !"ANALYZING".equals(status) && !"READY".equals(status)) {
+        if ("ANALYZING".equals(status)) {
+            throw new BusinessException(ErrorCode.CONFLICT, "이미 분석이 진행 중입니다. 잠시 후 결과를 확인해 주세요.");
+        }
+        if (!"DRAFT".equals(status) && !"READY".equals(status)) {
             throw new BusinessException(ErrorCode.CONFLICT, "현재 상태에서는 분석을 다시 실행할 수 없습니다.");
         }
     }
