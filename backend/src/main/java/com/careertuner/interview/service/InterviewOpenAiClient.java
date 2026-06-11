@@ -33,11 +33,14 @@ public class InterviewOpenAiClient implements InterviewAnswerEvaluator {
     private static final int MAX_ATTEMPTS = 3;
 
     private final OpenAiProperties properties;
+    private final InterviewModelProperties modelProperties;
     private final ObjectMapper objectMapper;
     private final HttpClient httpClient;
 
-    public InterviewOpenAiClient(OpenAiProperties properties, ObjectMapper objectMapper) {
+    public InterviewOpenAiClient(OpenAiProperties properties, InterviewModelProperties modelProperties,
+                                 ObjectMapper objectMapper) {
         this.properties = properties;
+        this.modelProperties = modelProperties;
         this.objectMapper = objectMapper;
         this.httpClient = HttpClient.newBuilder()
                 .connectTimeout(properties.getTimeout())
@@ -59,7 +62,7 @@ public class InterviewOpenAiClient implements InterviewAnswerEvaluator {
                 modeLabel, count, postingText == null || postingText.isBlank() ? "(공고문 없음)" : postingText);
 
         JsonNode root = post(structuredRequest("interview_questions", questionsSchema(),
-                InterviewPromptCatalog.QUESTION_SYSTEM_PROMPT, userPrompt));
+                InterviewPromptCatalog.QUESTION_SYSTEM_PROMPT, userPrompt, modelProperties.getGeneration()));
         JsonNode payload = parseOutputJson(root);
 
         List<GeneratedQuestion> questions = new ArrayList<>();
@@ -98,7 +101,7 @@ public class InterviewOpenAiClient implements InterviewAnswerEvaluator {
                 reference, question, answerText);
 
         JsonNode root = post(structuredRequest("interview_answer_evaluation", evaluationSchema(),
-                InterviewPromptCatalog.EVALUATION_SYSTEM_PROMPT, userPrompt));
+                InterviewPromptCatalog.EVALUATION_SYSTEM_PROMPT, userPrompt, modelProperties.getJudge()));
         JsonNode payload = parseOutputJson(root);
         return new AnswerEvaluation(
                 clampScore(payload.path("score").asInt(0)),
@@ -119,7 +122,7 @@ public class InterviewOpenAiClient implements InterviewAnswerEvaluator {
                 """.formatted(applicationCase.getCompanyName(), applicationCase.getJobTitle(), modeLabel, question);
 
         JsonNode root = post(structuredRequest("interview_model_answer", modelAnswerSchema(),
-                InterviewPromptCatalog.MODEL_ANSWER_SYSTEM_PROMPT, userPrompt));
+                InterviewPromptCatalog.MODEL_ANSWER_SYSTEM_PROMPT, userPrompt, modelProperties.getGeneration()));
         JsonNode payload = parseOutputJson(root);
         String modelAnswer = payload.path("modelAnswer").asText("").trim();
         if (modelAnswer.isBlank()) {
@@ -145,7 +148,7 @@ public class InterviewOpenAiClient implements InterviewAnswerEvaluator {
                 count, question, answerText == null || answerText.isBlank() ? "(답변 없음)" : answerText);
 
         JsonNode root = post(structuredRequest("interview_follow_up_questions", questionsSchema(),
-                InterviewPromptCatalog.FOLLOWUP_SYSTEM_PROMPT, userPrompt));
+                InterviewPromptCatalog.FOLLOWUP_SYSTEM_PROMPT, userPrompt, modelProperties.getGeneration()));
         JsonNode payload = parseOutputJson(root);
 
         List<GeneratedQuestion> questions = new ArrayList<>();
@@ -181,7 +184,7 @@ public class InterviewOpenAiClient implements InterviewAnswerEvaluator {
                 """.formatted(question, answerText, originalScore, feedback == null ? "" : feedback);
 
         JsonNode root = post(structuredRequest("interview_critique", critiqueSchema(),
-                InterviewPromptCatalog.CRITIC_SYSTEM_PROMPT, userPrompt));
+                InterviewPromptCatalog.CRITIC_SYSTEM_PROMPT, userPrompt, modelProperties.getJudge()));
         JsonNode payload = parseOutputJson(root);
         return new CritiqueResult(
                 clampScore(payload.path("adjustedScore").asInt(originalScore)),
@@ -200,7 +203,7 @@ public class InterviewOpenAiClient implements InterviewAnswerEvaluator {
                 %s
                 """.formatted(question, answerText);
         JsonNode root = post(structuredRequest("interview_judge", scoreOnlySchema(),
-                InterviewPromptCatalog.JUDGE_SYSTEM_PROMPT, userPrompt));
+                InterviewPromptCatalog.JUDGE_SYSTEM_PROMPT, userPrompt, modelProperties.getJudge()));
         JsonNode payload = parseOutputJson(root);
         return new ScoreOnly(clampScore(payload.path("score").asInt(0)), usage(root));
     }
@@ -208,7 +211,7 @@ public class InterviewOpenAiClient implements InterviewAnswerEvaluator {
     /** 면접 전체 Q&A 기반 종합 리포트 생성. */
     public ReportPayload generateReport(String transcript) {
         JsonNode root = post(structuredRequest("interview_report", reportSchema(),
-                InterviewPromptCatalog.REPORT_SYSTEM_PROMPT, transcript));
+                InterviewPromptCatalog.REPORT_SYSTEM_PROMPT, transcript, modelProperties.getGeneration()));
         JsonNode payload = parseOutputJson(root);
 
         List<ReportCategory> categories = new ArrayList<>();
@@ -242,7 +245,7 @@ public class InterviewOpenAiClient implements InterviewAnswerEvaluator {
                 지금 고를 수 있는 액션: %s
                 """.formatted(stateSummary, String.join(", ", availableActions));
         JsonNode root = post(structuredRequest("interview_agent_plan", planSchema(availableActions),
-                InterviewPromptCatalog.PLANNER_SYSTEM_PROMPT, userPrompt));
+                InterviewPromptCatalog.PLANNER_SYSTEM_PROMPT, userPrompt, modelProperties.getJudge()));
         JsonNode payload = parseOutputJson(root);
         return new PlanDecisionResult(
                 payload.path("action").asText(""),
@@ -298,8 +301,7 @@ public class InterviewOpenAiClient implements InterviewAnswerEvaluator {
     }
 
     private Map<String, Object> structuredRequest(String name, Map<String, Object> schema,
-                                                  String systemPrompt, String userPrompt) {
-        String model = properties.getModel();
+                                                  String systemPrompt, String userPrompt, String model) {
         Map<String, Object> body = new LinkedHashMap<>();
         body.put("model", model);
         // 추론 모델(gpt-5/o-시리즈)은 기본 추론량이 커서 면접 응답이 느리고 타임아웃이 잦다.
@@ -366,7 +368,8 @@ public class InterviewOpenAiClient implements InterviewAnswerEvaluator {
         int inputTokens = usage.path("input_tokens").asInt(0);
         int outputTokens = usage.path("output_tokens").asInt(0);
         int totalTokens = usage.path("total_tokens").asInt(inputTokens + outputTokens);
-        return new Usage(properties.getModel(), inputTokens, outputTokens, totalTokens);
+        String model = root.path("model").asText(properties.getModel());
+        return new Usage(model, inputTokens, outputTokens, totalTokens);
     }
 
     private String normalizeType(String value) {
