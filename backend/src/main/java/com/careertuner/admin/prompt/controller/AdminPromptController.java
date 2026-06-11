@@ -28,4 +28,9 @@ public class AdminPromptController {
     public ApiResponse<AdminPromptView> companyAnalysis(@AuthenticationPrincipal AuthUser authUser) {
         return ApiResponse.ok(service.companyAnalysis(authUser));
     }
+
+    @GetMapping("/profile")
+    public ApiResponse<AdminPromptView> profile(@AuthenticationPrincipal AuthUser authUser) {
+        return ApiResponse.ok(service.profile(authUser));
+    }
 }

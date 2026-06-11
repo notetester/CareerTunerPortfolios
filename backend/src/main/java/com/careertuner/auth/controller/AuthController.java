@@ -17,9 +17,13 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.careertuner.auth.dto.LoginRequest;
+import com.careertuner.auth.dto.LoginRequestContext;
 import com.careertuner.auth.dto.MeResponse;
+import com.careertuner.auth.dto.PasswordResetConfirmRequest;
+import com.careertuner.auth.dto.PasswordResetRequest;
 import com.careertuner.auth.dto.RefreshRequest;
 import com.careertuner.auth.dto.RegisterRequest;
+import com.careertuner.auth.dto.TokenRequest;
 import com.careertuner.auth.dto.TokenResponse;
 import com.careertuner.auth.service.AuthService;
 import com.careertuner.common.config.CareerTunerProperties;
@@ -27,6 +31,7 @@ import com.careertuner.common.security.AuthUser;
 import com.careertuner.common.web.ApiResponse;
 
 import jakarta.validation.Valid;
+import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
@@ -48,24 +53,28 @@ public class AuthController {
     // ── 이메일 회원가입/로그인 ──
 
     @PostMapping("/register")
-    public ApiResponse<TokenResponse> register(@Valid @RequestBody RegisterRequest request) {
-        return ApiResponse.ok(authService.register(request));
+    public ApiResponse<TokenResponse> register(@Valid @RequestBody RegisterRequest request,
+                                               HttpServletRequest servletRequest) {
+        return ApiResponse.ok(authService.register(request, LoginRequestContext.from(servletRequest)));
     }
 
     @PostMapping("/login")
-    public ApiResponse<TokenResponse> login(@Valid @RequestBody LoginRequest request) {
-        return ApiResponse.ok(authService.login(request));
+    public ApiResponse<TokenResponse> login(@Valid @RequestBody LoginRequest request,
+                                            HttpServletRequest servletRequest) {
+        return ApiResponse.ok(authService.login(request, LoginRequestContext.from(servletRequest)));
     }
 
     @PostMapping("/refresh")
-    public ApiResponse<TokenResponse> refresh(@Valid @RequestBody RefreshRequest request) {
-        return ApiResponse.ok(authService.refresh(request.refreshToken()));
+    public ApiResponse<TokenResponse> refresh(@Valid @RequestBody RefreshRequest request,
+                                              HttpServletRequest servletRequest) {
+        return ApiResponse.ok(authService.refresh(request.refreshToken(), LoginRequestContext.from(servletRequest)));
     }
 
     @PostMapping("/logout")
-    public ApiResponse<Void> logout(@RequestBody(required = false) RefreshRequest request) {
+    public ApiResponse<Void> logout(@RequestBody(required = false) RefreshRequest request,
+                                    HttpServletRequest servletRequest) {
         if (request != null) {
-            authService.logout(request.refreshToken());
+            authService.logout(request.refreshToken(), LoginRequestContext.from(servletRequest));
         }
         return ApiResponse.ok();
     }
@@ -97,6 +106,33 @@ public class AuthController {
         return ApiResponse.ok();
     }
 
+    @PostMapping("/password/reset-request")
+    public ApiResponse<Void> requestPasswordReset(@Valid @RequestBody PasswordResetRequest request,
+                                                  HttpServletRequest servletRequest) {
+        authService.requestPasswordReset(request, LoginRequestContext.from(servletRequest));
+        return ApiResponse.ok();
+    }
+
+    @PostMapping("/password/reset")
+    public ApiResponse<Void> resetPassword(@Valid @RequestBody PasswordResetConfirmRequest request,
+                                           HttpServletRequest servletRequest) {
+        authService.resetPassword(request, LoginRequestContext.from(servletRequest));
+        return ApiResponse.ok();
+    }
+
+    @PostMapping("/dormant/release-request")
+    public ApiResponse<Void> requestDormantRelease(@Valid @RequestBody PasswordResetRequest request,
+                                                   HttpServletRequest servletRequest) {
+        authService.requestDormantRelease(request, LoginRequestContext.from(servletRequest));
+        return ApiResponse.ok();
+    }
+
+    @PostMapping("/dormant/release")
+    public ApiResponse<TokenResponse> releaseDormant(@Valid @RequestBody TokenRequest request,
+                                                     HttpServletRequest servletRequest) {
+        return ApiResponse.ok(authService.releaseDormant(request, LoginRequestContext.from(servletRequest)));
+    }
+
     // ── 소셜 로그인 ──
 
     @GetMapping("/oauth/{provider}")
@@ -107,10 +143,12 @@ public class AuthController {
     @GetMapping("/oauth/{provider}/callback")
     public ResponseEntity<Void> oauthCallback(@PathVariable String provider,
                                               @RequestParam String code,
-                                              @RequestParam(required = false) String state) {
+                                              @RequestParam(required = false) String state,
+                                              HttpServletRequest servletRequest) {
         String frontend = props.getApp().getFrontendUrl();
         try {
-            TokenResponse tokens = authService.handleOAuthCallback(provider, code, state);
+            TokenResponse tokens = authService.handleOAuthCallback(provider, code, state,
+                    LoginRequestContext.from(servletRequest));
             String fragment = "/auth/callback#accessToken=" + enc(tokens.accessToken())
                     + "&refreshToken=" + enc(tokens.refreshToken())
                     + "&expiresIn=" + tokens.expiresIn();

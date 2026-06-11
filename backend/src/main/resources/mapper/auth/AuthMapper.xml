@@ -30,8 +30,8 @@
 
     <!-- 리프레시 토큰 -->
     <insert id="insertRefreshToken" useGeneratedKeys="true" keyProperty="id">
-        INSERT INTO refresh_token (user_id, token, expired_at)
-        VALUES (#{userId}, #{token}, #{expiredAt})
+        INSERT INTO refresh_token (user_id, token, expired_at, ip_address, user_agent)
+        VALUES (#{userId}, #{token}, #{expiredAt}, #{ipAddress}, #{userAgent})
     </insert>
 
     <select id="findRefreshToken" resultType="com.careertuner.auth.domain.RefreshToken">
@@ -39,10 +39,41 @@
     </select>
 
     <update id="revokeRefreshToken">
-        UPDATE refresh_token SET revoked = 1 WHERE token = #{token}
+        UPDATE refresh_token
+        SET revoked = 1,
+            revoked_at = COALESCE(revoked_at, NOW())
+        WHERE token = #{token}
     </update>
 
     <update id="revokeAllForUser">
-        UPDATE refresh_token SET revoked = 1 WHERE user_id = #{userId} AND revoked = 0
+        UPDATE refresh_token
+        SET revoked = 1,
+            revoked_at = COALESCE(revoked_at, NOW())
+        WHERE user_id = #{userId} AND revoked = 0
     </update>
+
+    <insert id="insertLoginHistory" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO user_login_history (
+            user_id, event_type, auth_provider, login_method, login_identifier,
+            success, fail_reason, ip_address, user_agent, request_uri
+        )
+        VALUES (
+            #{userId}, #{eventType}, #{authProvider}, #{loginMethod}, #{loginIdentifier},
+            #{success}, #{failReason}, #{ipAddress}, #{userAgent}, #{requestUri}
+        )
+    </insert>
+
+    <insert id="insertUserConsent" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO user_consent (user_id, consent_type, agreed, agreed_at, revoked_at, source)
+        VALUES (#{userId}, #{consentType}, #{agreed}, #{agreedAt}, #{revokedAt}, #{source})
+    </insert>
+
+    <insert id="insertUserStatusHistory">
+        INSERT INTO user_status_history (
+            user_id, actor_user_id, previous_status, new_status, reason, memo, blocked_until
+        )
+        VALUES (
+            #{userId}, #{actorUserId}, #{previousStatus}, #{newStatus}, #{reason}, #{memo}, #{blockedUntil}
+        )
+    </insert>
 </mapper>

@@ -1,10 +1,14 @@
+import { useEffect, useState } from "react";
 import { useSearchParams } from "react-router";
+import { Bell, Database, Lock, Mail, RefreshCw, Save, Shield, Smartphone, UserCog } from "lucide-react";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
+import { Checkbox } from "../components/ui/checkbox";
 import { Input } from "../components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../components/ui/tabs";
-import { Bell, Database, Lock, Mail, Shield, Smartphone, ToggleRight, UserCog } from "lucide-react";
+import { getMyConsents, revokeAiConsent, saveMyConsents, type ConsentStatus } from "../auth/consentApi";
+import { useAuth } from "../auth/AuthContext";
 
 const tabs = ["account", "privacy", "ai-consent", "notifications"] as const;
 type SettingsTab = (typeof tabs)[number];
@@ -13,23 +17,103 @@ export function SettingsPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const requestedTab = searchParams.get("tab") ?? "account";
   const activeTab: SettingsTab = tabs.includes(requestedTab as SettingsTab) ? (requestedTab as SettingsTab) : "account";
+  const { user } = useAuth();
+
+  const [consent, setConsent] = useState<ConsentStatus | null>(null);
+  const [terms, setTerms] = useState(true);
+  const [privacy, setPrivacy] = useState(true);
+  const [aiData, setAiData] = useState(false);
+  const [marketing, setMarketing] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [message, setMessage] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const load = async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const next = await getMyConsents();
+      applyConsent(next);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "동의 정보를 불러오지 못했습니다.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    void load();
+  }, []);
+
+  const applyConsent = (next: ConsentStatus) => {
+    setConsent(next);
+    setTerms(next.termsAgreed);
+    setPrivacy(next.privacyAgreed);
+    setAiData(next.aiDataAgreed);
+    setMarketing(next.marketingAgreed);
+  };
+
+  const saveConsent = async () => {
+    setSaving(true);
+    setMessage(null);
+    setError(null);
+    try {
+      const next = await saveMyConsents({
+        termsAgreed: terms,
+        privacyAgreed: privacy,
+        aiDataAgreed: aiData,
+        marketingAgreed: marketing,
+      });
+      applyConsent(next);
+      setMessage("동의 설정이 저장되었습니다.");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "동의 설정 저장에 실패했습니다.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const revokeAi = async () => {
+    setSaving(true);
+    setMessage(null);
+    setError(null);
+    try {
+      const next = await revokeAiConsent();
+      applyConsent(next);
+      setMessage("AI 데이터 사용 동의를 철회했습니다. 이후 AI 프로필 분석 기능은 제한됩니다.");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "AI 데이터 동의 철회에 실패했습니다.");
+    } finally {
+      setSaving(false);
+    }
+  };
 
   return (
     <div className="min-h-screen bg-slate-50">
       <div className="mx-auto w-full max-w-[1200px] space-y-6 px-4 py-8 sm:px-6">
-        <div>
-          <h1 className="flex items-center gap-2 text-2xl font-black text-slate-900">
-            <UserCog className="size-6 text-blue-600" />
-            설정
-          </h1>
-          <p className="mt-1 text-sm text-slate-500">계정, 개인정보, AI 데이터 사용 동의, 알림을 관리합니다</p>
+        <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
+          <div>
+            <h1 className="flex items-center gap-2 text-2xl font-black text-slate-900">
+              <UserCog className="size-6 text-blue-600" />
+              설정
+            </h1>
+            <p className="mt-1 text-sm text-slate-500">계정, 개인정보, AI 데이터 사용 동의, 알림을 관리합니다.</p>
+          </div>
+          <Button variant="outline" onClick={() => void load()} disabled={loading}>
+            <RefreshCw className={`size-4 ${loading ? "animate-spin" : ""}`} />
+            새로고침
+          </Button>
         </div>
+
+        {error && <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>}
+        {message && <div className="rounded-lg border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-700">{message}</div>}
 
         <Tabs value={activeTab} onValueChange={(value) => setSearchParams({ tab: value })}>
           <TabsList className="h-auto w-full justify-start overflow-x-auto border border-slate-200 bg-white p-1">
             <TabsTrigger value="account">계정 설정</TabsTrigger>
             <TabsTrigger value="privacy">개인정보 관리</TabsTrigger>
-            <TabsTrigger value="ai-consent">AI 데이터 사용 동의</TabsTrigger>
+            <TabsTrigger value="ai-consent">AI 데이터 동의</TabsTrigger>
             <TabsTrigger value="notifications">알림 설정</TabsTrigger>
           </TabsList>
 
@@ -42,10 +126,10 @@ export function SettingsPage() {
                 </CardTitle>
               </CardHeader>
               <CardContent className="grid gap-4 md:grid-cols-2">
-                <Input value="jiwon.kim@careertuner.dev" readOnly />
-                <Input value="김지원" readOnly />
-                <Button variant="outline">이메일 변경</Button>
-                <Button variant="outline">비밀번호 변경</Button>
+                <Input value={user?.email ?? ""} readOnly />
+                <Input value={user?.name ?? ""} readOnly />
+                <Input value={user?.role ?? ""} readOnly />
+                <Input value={user?.plan ?? ""} readOnly />
               </CardContent>
             </Card>
             <Card className="border border-slate-200 bg-white">
@@ -55,13 +139,9 @@ export function SettingsPage() {
                   보안
                 </CardTitle>
               </CardHeader>
-              <CardContent className="space-y-3">
-                {["2단계 인증", "로그인 기기 관리", "휴면 계정 전환 설정"].map((item) => (
-                  <div key={item} className="flex items-center justify-between rounded-xl bg-slate-50 p-4">
-                    <span className="text-sm font-semibold text-slate-700">{item}</span>
-                    <Button variant="outline" size="sm">관리</Button>
-                  </div>
-                ))}
+              <CardContent className="space-y-3 text-sm text-slate-600">
+                <p>비밀번호 재설정은 로그인 화면의 비밀번호 찾기에서 이메일 인증 링크로 진행합니다.</p>
+                <p>로그인 실패 잠금과 로그인 감사 로그는 백엔드에서 자동 기록됩니다.</p>
               </CardContent>
             </Card>
           </TabsContent>
@@ -71,16 +151,17 @@ export function SettingsPage() {
               <CardHeader>
                 <CardTitle className="flex items-center gap-2 text-base">
                   <Shield className="size-4 text-green-600" />
-                  개인정보 관리
+                  개인정보 처리 동의
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-3">
-                {["프로필 공개 범위", "커뮤니티 익명 표시", "지원 기록 보관 기간", "계정 데이터 내려받기", "회원 탈퇴"].map((item) => (
-                  <div key={item} className="flex items-center justify-between rounded-xl border border-slate-200 p-4">
-                    <span className="text-sm font-semibold text-slate-700">{item}</span>
-                    <Button variant="outline" size="sm">설정</Button>
-                  </div>
-                ))}
+                <ConsentToggle label="서비스 이용약관" required checked={terms} onChange={setTerms} />
+                <ConsentToggle label="개인정보 처리방침" required checked={privacy} onChange={setPrivacy} />
+                <ConsentToggle label="마케팅 정보 수신" checked={marketing} onChange={setMarketing} />
+                <Button onClick={() => void saveConsent()} disabled={saving} className="bg-blue-600 text-white hover:bg-blue-700">
+                  <Save className="size-4" />
+                  저장
+                </Button>
               </CardContent>
             </Card>
           </TabsContent>
@@ -93,21 +174,24 @@ export function SettingsPage() {
                   AI 데이터 사용 동의
                 </CardTitle>
               </CardHeader>
-              <CardContent className="space-y-3">
-                {[
-                  { label: "공고문/이력서 분석을 위한 AI 처리", required: true },
-                  { label: "면접 답변 품질 개선을 위한 학습 데이터 활용", required: false },
-                  { label: "장기 취업 경향 분석 리포트 생성", required: false },
-                  { label: "서비스 품질 개선을 위한 익명 통계 활용", required: false },
-                ].map((item) => (
-                  <div key={item.label} className="flex items-center justify-between rounded-xl border border-slate-200 p-4">
-                    <div>
-                      <div className="text-sm font-semibold text-slate-800">{item.label}</div>
-                      {item.required && <Badge className="mt-1 bg-blue-100 text-blue-700">필수</Badge>}
-                    </div>
-                    <ToggleRight className="size-8 text-blue-600" />
-                  </div>
-                ))}
+              <CardContent className="space-y-4">
+                <ConsentToggle label="프로필 요약, 기술 추출, 완성도 진단을 위한 AI 데이터 사용" checked={aiData} onChange={setAiData} />
+                <div className="rounded-lg border border-slate-200 bg-slate-50 p-4 text-sm leading-6 text-slate-600">
+                  동의가 꺼져 있으면 프로필 저장은 가능하지만 AI 요약, 기술 추출, 완성도 진단 API는 실행되지 않습니다.
+                  철회는 삭제가 아니라 감사 가능한 이력으로 남기는 방식입니다.
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <Button onClick={() => void saveConsent()} disabled={saving} className="bg-blue-600 text-white hover:bg-blue-700">
+                    <Save className="size-4" />
+                    현재 설정 저장
+                  </Button>
+                  <Button variant="outline" onClick={() => void revokeAi()} disabled={saving || !consent?.aiDataAgreed}>
+                    AI 동의 철회
+                  </Button>
+                </div>
+                <div className="text-xs text-slate-500">
+                  현재 상태: {consent?.aiDataAgreed ? <Badge className="bg-blue-100 text-blue-700">동의</Badge> : <Badge className="bg-slate-200 text-slate-700">미동의/철회</Badge>}
+                </div>
               </CardContent>
             </Card>
           </TabsContent>
@@ -125,16 +209,14 @@ export function SettingsPage() {
                   { label: "공고 분석 완료", icon: Bell },
                   { label: "면접 연습 리마인드", icon: Smartphone },
                   { label: "크레딧 부족 알림", icon: Bell },
-                  { label: "커뮤니티 댓글/좋아요", icon: Bell },
-                  { label: "결제/구독 안내", icon: Bell },
-                  { label: "마케팅 정보 수신", icon: Mail },
+                  { label: "결제/구독 안내", icon: Mail },
                 ].map((item) => (
                   <div key={item.label} className="flex items-center justify-between rounded-xl border border-slate-200 bg-slate-50 p-4">
                     <div className="flex items-center gap-2">
                       <item.icon className="size-4 text-slate-500" />
                       <span className="text-sm font-semibold text-slate-700">{item.label}</span>
                     </div>
-                    <ToggleRight className="size-7 text-blue-600" />
+                    <Checkbox defaultChecked />
                   </div>
                 ))}
               </CardContent>
@@ -143,5 +225,27 @@ export function SettingsPage() {
         </Tabs>
       </div>
     </div>
+  );
+}
+
+function ConsentToggle({
+  label,
+  required = false,
+  checked,
+  onChange,
+}: {
+  label: string;
+  required?: boolean;
+  checked: boolean;
+  onChange(next: boolean): void;
+}) {
+  return (
+    <label className="flex items-center justify-between rounded-xl border border-slate-200 p-4">
+      <div>
+        <div className="text-sm font-semibold text-slate-800">{label}</div>
+        {required && <Badge className="mt-1 bg-blue-100 text-blue-700">필수</Badge>}
+      </div>
+      <Checkbox checked={checked} onCheckedChange={(value) => onChange(value === true)} />
+    </label>
   );
 }

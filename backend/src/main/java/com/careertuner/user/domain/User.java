@@ -26,6 +26,14 @@ public class User {
     private String plan;              // FREE/BASIC/PRO/PREMIUM
     private int credit;
     private LocalDateTime lastLoginAt;
+    private LocalDateTime dormantAt;
+    private String blockedReason;
+    private LocalDateTime blockedUntil;
+    private LocalDateTime deletedAt;
+    private LocalDateTime statusChangedAt;
+    private Long statusChangedBy;
+    private int failedLoginCount;
+    private LocalDateTime lastFailedLoginAt;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
 }

@@ -63,3 +63,6 @@ pnpm-debug.log*
 
 # ----- Claude Code -----
 .claude/
+
+# ----- Local agent files -----
+.agents/
