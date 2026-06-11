@@ -178,10 +178,15 @@ public class InterviewServiceImpl implements InterviewService {
         ApplicationCase applicationCase = accessService.requireOwned(userId, session.getApplicationCaseId());
 
         // 멀티에이전트: Evaluator → Critic(적대적 검증) 으로 최종 점수를 산출하고 단계를 trace 에 남긴다.
-        // 사용자가 모범답안을 본 뒤 답했다면 그 모범답안을 만점 기준 답안지로 함께 넘긴다.
+        // 만점 기준 답안지(모범답안)는 프론트가 보낸 값 > 질문에 저장된 값 순으로 사용한다.
+        // 저장된 값을 쓰므로 블라인드인 복습 테스트도 모범답안 기준으로 채점된다.
+        String referenceModelAnswer = blankToNull(request.modelAnswer());
+        if (referenceModelAnswer == null) {
+            referenceModelAnswer = blankToNull(question.getModelAnswer());
+        }
         InterviewAgentOrchestrator.OrchestratedEvaluation evaluation =
                 orchestrator.evaluateAnswer(userId, session, applicationCase, question, request.answerText(),
-                        blankToNull(request.modelAnswer()));
+                        referenceModelAnswer);
 
         InterviewAnswer answer = InterviewAnswer.builder()
                 .questionId(questionId)
@@ -287,6 +292,11 @@ public class InterviewServiceImpl implements InterviewService {
         ApplicationCase applicationCase = accessService.requireOwned(userId, session.getApplicationCaseId());
         String modeLabel = MODE_LABELS.getOrDefault(session.getMode(), session.getMode());
 
+        // 이미 저장된 모범답안이 있으면 재사용한다 — 화면 표시와 채점 기준이 같은 답안이도록 보장한다.
+        if (question.getModelAnswer() != null && !question.getModelAnswer().isBlank()) {
+            return new ModelAnswerResponse(question.getModelAnswer());
+        }
+
         InterviewOpenAiClient.ModelAnswer generated;
         try {
             generated = aiClient.generateModelAnswer(question.getQuestion(), applicationCase, modeLabel);
@@ -295,6 +305,13 @@ public class InterviewServiceImpl implements InterviewService {
             throw ex;
         }
         aiUsageLogService.recordSuccess(userId, session.getApplicationCaseId(), FEATURE_MODEL_ANSWER, generated.usage());
+
+        // 채점 기준으로 재사용하도록 저장한다. model_answer 컬럼 적용 전이면 조용히 건너뛴다(기능은 그대로 동작).
+        try {
+            interviewMapper.updateQuestionModelAnswer(questionId, generated.modelAnswer());
+        } catch (RuntimeException ignored) {
+            // 컬럼 미적용 등 저장 실패가 모범답안 표시를 막지 않는다.
+        }
         return new ModelAnswerResponse(generated.modelAnswer());
     }
 
