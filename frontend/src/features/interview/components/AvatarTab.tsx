@@ -1,40 +1,67 @@
 import { useEffect, useRef, useState } from "react";
-import { Loader2, Square, Upload, Video } from "lucide-react";
+import { ClipboardList, Download, Loader2, PhoneOff, Play, SkipForward, Video } from "lucide-react";
+import { AgentEventsEnum, LiveAvatarSession, SessionEvent } from "@heygen/liveavatar-web-sdk";
 import { Badge } from "@/app/components/ui/badge";
 import { Button } from "@/app/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/app/components/ui/card";
-import { fetchFileObjectUrl, uploadFile } from "../api/interviewApi";
-import type { FileAsset } from "../types/interview";
+import { Progress } from "@/app/components/ui/progress";
+import {
+  analyzeVoice,
+  createAvatarSession,
+  getMediaCapabilities,
+  listSessionQuestions,
+  saveMediaResult,
+} from "../api/interviewApi";
+import { blobToPcm16Base64, computeVoiceScore, countFillers, VoiceMetricsTracker } from "../hooks/voiceAnalysis";
+import { computeVisualScore, VisualMetricsTracker, type VisualScoreDetail } from "../hooks/visualAnalysis";
+import type {
+  InterviewQuestion,
+  InterviewSession,
+  MediaCapabilities,
+  TranscriptLine,
+  VoiceMetrics,
+  VoiceProfile,
+  VoiceScoreDetail,
+} from "../types/interview";
+import { getScoreColor } from "../types/interview";
+import { VoiceScorePanel } from "./VoiceScorePanel";
 
-type Phase = "idle" | "recording" | "recorded" | "uploading" | "uploaded";
+type Status = "idle" | "connecting" | "live" | "analyzing" | "scored" | "error";
 
 /**
- * 영상 면접 녹화 → 업로드(file_asset, kind=VIDEO) → 재생.
- * 웹캠/마이크 스트림을 라이브로 미리보기하고, MediaRecorder 로 녹화한다.
- * 영상은 용량이 크므로 서버 multipart 한도(MEDIA_MAX_FILE_SIZE_BYTES /
- * SPRING_SERVLET_MULTIPART_MAX_FILE_SIZE)를 함께 올려야 큰 녹화도 저장된다.
+ * 아바타 화상 면접 (HeyGen LiveAvatar + MediaPipe).
+ * 백엔드가 발급한 단기 세션 토큰으로 아바타 면접관이 준비된 질문을 음성으로 묻고,
+ * 유저 웹캠은 온디바이스로 표정(blendshapes)·자세(pose)·음성을 분석한다.
+ * 원본 영상은 서버에 올리지 않는다 — 점수(JSON)만 저장, 원하면 로컬 다운로드 (ADR-002).
  */
-export function AvatarTab() {
-  const [phase, setPhase] = useState<Phase>("idle");
+export function AvatarTab({ session }: { session: InterviewSession | null }) {
+  const [status, setStatus] = useState<Status>("idle");
   const [error, setError] = useState<string | null>(null);
-  const [localUrl, setLocalUrl] = useState<string | null>(null);
-  const [remoteUrl, setRemoteUrl] = useState<string | null>(null);
-  const [asset, setAsset] = useState<FileAsset | null>(null);
+  const [note, setNote] = useState<string | null>(null);
+  const [capabilities, setCapabilities] = useState<MediaCapabilities | null>(null);
+  const [preparedQuestions, setPreparedQuestions] = useState<InterviewQuestion[] | null>(null);
 
-  const livePreviewRef = useRef<HTMLVideoElement | null>(null);
-  const streamRef = useRef<MediaStream | null>(null);
+  const [questions, setQuestions] = useState<string[]>([]);
+  const [questionIdx, setQuestionIdx] = useState(-1); // -1 = 아직 첫 질문 전
+  const [avatarTalking, setAvatarTalking] = useState(false);
+
+  const [voiceDetail, setVoiceDetail] = useState<VoiceScoreDetail | null>(null);
+  const [voiceMetrics, setVoiceMetrics] = useState<VoiceMetrics | null>(null);
+  const [profile, setProfile] = useState<VoiceProfile | null>(null);
+  const [visualDetail, setVisualDetail] = useState<VisualScoreDetail | null>(null);
+  const [overall, setOverall] = useState<number | null>(null);
+  const [downloadUrl, setDownloadUrl] = useState<string | null>(null);
+
+  const avatarRef = useRef<LiveAvatarSession | null>(null);
+  const avatarVideoRef = useRef<HTMLVideoElement | null>(null);
+  const selfVideoRef = useRef<HTMLVideoElement | null>(null);
+  const webcamRef = useRef<MediaStream | null>(null);
+  const voiceTrackerRef = useRef<VoiceMetricsTracker | null>(null);
+  const visualTrackerRef = useRef<VisualMetricsTracker | null>(null);
   const recorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
-  const blobRef = useRef<Blob | null>(null);
-
-  // object URL / 스트림 누수 방지.
-  useEffect(() => {
-    return () => {
-      if (localUrl) URL.revokeObjectURL(localUrl);
-      if (remoteUrl) URL.revokeObjectURL(remoteUrl);
-      streamRef.current?.getTracks().forEach((t) => t.stop());
-    };
-  }, [localUrl, remoteUrl]);
+  const questionsRef = useRef<string[]>([]);
+  const finishingRef = useRef(false);
 
   const supported =
     typeof navigator !== "undefined" &&
@@ -42,176 +69,412 @@ export function AvatarTab() {
     typeof window !== "undefined" &&
     "MediaRecorder" in window;
 
-  const pickMimeType = (): string | undefined => {
-    if (typeof MediaRecorder === "undefined") return undefined;
-    const candidates = ["video/webm;codecs=vp9,opus", "video/webm;codecs=vp8,opus", "video/webm", "video/mp4"];
-    return candidates.find((t) => MediaRecorder.isTypeSupported(t));
+  // 준비된 질문(게이트) + 키 보유 여부 로드.
+  useEffect(() => {
+    if (!session) return;
+    listSessionQuestions(session.id)
+      .then((qs) => setPreparedQuestions(qs.filter((q) => q.parentQuestionId == null)))
+      .catch(() => setPreparedQuestions([]));
+    getMediaCapabilities()
+      .then(setCapabilities)
+      .catch(() => setCapabilities(null));
+  }, [session]);
+
+  useEffect(() => {
+    return () => {
+      cleanup();
+      if (downloadUrl) URL.revokeObjectURL(downloadUrl);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const cleanup = () => {
+    recorderRef.current?.state === "recording" && recorderRef.current.stop();
+    recorderRef.current = null;
+    voiceTrackerRef.current?.dispose();
+    voiceTrackerRef.current = null;
+    visualTrackerRef.current?.dispose();
+    visualTrackerRef.current = null;
+    avatarRef.current?.stop().catch(() => undefined);
+    avatarRef.current = null;
+    webcamRef.current?.getTracks().forEach((t) => t.stop());
+    webcamRef.current = null;
   };
 
-  const startRecording = async () => {
+  const start = async () => {
+    if (!session) return;
+    setStatus("connecting");
     setError(null);
+    setNote(null);
+    setVoiceDetail(null);
+    setVoiceMetrics(null);
+    setVisualDetail(null);
+    setProfile(null);
+    setOverall(null);
+    setQuestionIdx(-1);
+    finishingRef.current = false;
+    if (downloadUrl) {
+      URL.revokeObjectURL(downloadUrl);
+      setDownloadUrl(null);
+    }
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
-      streamRef.current = stream;
-      if (livePreviewRef.current) {
-        livePreviewRef.current.srcObject = stream;
+      // 1) 서버에서 LiveAvatar 단기 토큰 + 질문 목록.
+      const avatarSession = await createAvatarSession(session.id);
+      questionsRef.current = avatarSession.questions;
+      setQuestions(avatarSession.questions);
+      if (avatarSession.sandbox) {
+        setNote("샌드박스 모드: 크레딧 소모 없음, 기본 아바타, 세션 약 1분 제한.");
       }
-      const mimeType = pickMimeType();
-      const recorder = mimeType ? new MediaRecorder(stream, { mimeType }) : new MediaRecorder(stream);
+
+      // 2) 웹캠 + 온디바이스 분석 준비.
+      const webcam = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+      webcamRef.current = webcam;
+      if (selfVideoRef.current) selfVideoRef.current.srcObject = webcam;
+
+      const voiceTracker = new VoiceMetricsTracker();
+      voiceTracker.start(webcam);
+      voiceTrackerRef.current = voiceTracker;
+
       chunksRef.current = [];
+      const recorder = new MediaRecorder(webcam);
       recorder.ondataavailable = (e) => {
         if (e.data.size > 0) chunksRef.current.push(e.data);
       };
-      recorder.onstop = () => {
-        stream.getTracks().forEach((t) => t.stop());
-        streamRef.current = null;
-        if (livePreviewRef.current) livePreviewRef.current.srcObject = null;
-        const blob = new Blob(chunksRef.current, { type: recorder.mimeType || "video/webm" });
-        blobRef.current = blob;
-        if (localUrl) URL.revokeObjectURL(localUrl);
-        setLocalUrl(URL.createObjectURL(blob));
-        setPhase("recorded");
-      };
       recorder.start();
       recorderRef.current = recorder;
-      setPhase("recording");
-    } catch {
-      setError("카메라/마이크 권한을 확인해 주세요. 녹화를 시작할 수 없습니다.");
-    }
-  };
 
-  const stopRecording = () => {
-    recorderRef.current?.stop();
-  };
+      // 표정/자세 분석은 모델 로드 실패해도 면접 자체는 계속한다.
+      const visualTracker = new VisualMetricsTracker();
+      visualTrackerRef.current = visualTracker;
+      if (selfVideoRef.current) {
+        visualTracker.start(selfVideoRef.current).catch(() => {
+          visualTrackerRef.current = null;
+          setNote((prev) => prev ?? "표정/자세 분석 모델을 불러오지 못해 음성 지표만으로 채점합니다.");
+        });
+      }
 
-  const handleUpload = async () => {
-    if (!blobRef.current) return;
-    setPhase("uploading");
-    setError(null);
-    try {
-      const ext = (blobRef.current.type.split("/")[1] ?? "webm").split(";")[0];
-      const uploaded = await uploadFile(blobRef.current, "VIDEO", { fileName: `interview-video.${ext}` });
-      setAsset(uploaded);
-      const url = await fetchFileObjectUrl(uploaded.id);
-      setRemoteUrl(url);
-      setPhase("uploaded");
+      // 3) 아바타 연결.
+      const avatar = new LiveAvatarSession(avatarSession.sessionToken, { voiceChat: false });
+      avatarRef.current = avatar;
+      avatar.on(SessionEvent.SESSION_STREAM_READY, () => {
+        if (avatarVideoRef.current) avatar.attach(avatarVideoRef.current);
+        setStatus("live");
+      });
+      avatar.on(AgentEventsEnum.AVATAR_SPEAK_STARTED, () => setAvatarTalking(true));
+      avatar.on(AgentEventsEnum.AVATAR_SPEAK_ENDED, () => {
+        setAvatarTalking(false);
+        // 질문이 끝났다 → 답변 반응 지연 측정 시작.
+        voiceTrackerRef.current?.markAiSpeechEnd();
+      });
+      avatar.on(SessionEvent.SESSION_DISCONNECTED, () => {
+        // 샌드박스 1분 제한 등으로 끊겨도 지금까지 지표로 채점한다.
+        if (!finishingRef.current) {
+          setNote("아바타 세션이 종료되어 지금까지의 답변으로 채점합니다.");
+          void finishInterview();
+        }
+      });
+      await avatar.start();
     } catch (err) {
-      setError(
-        err instanceof Error
-          ? `${err.message} (영상이 크면 서버 업로드 한도를 올려야 합니다.)`
-          : "업로드에 실패했습니다.",
-      );
-      setPhase("recorded");
+      cleanup();
+      setError(err instanceof Error ? err.message : "아바타 면접 연결에 실패했습니다.");
+      setStatus("error");
     }
   };
 
-  const reset = () => {
-    if (localUrl) URL.revokeObjectURL(localUrl);
-    if (remoteUrl) URL.revokeObjectURL(remoteUrl);
-    streamRef.current?.getTracks().forEach((t) => t.stop());
-    streamRef.current = null;
-    if (livePreviewRef.current) livePreviewRef.current.srcObject = null;
-    setLocalUrl(null);
-    setRemoteUrl(null);
-    setAsset(null);
-    blobRef.current = null;
-    setPhase("idle");
-    setError(null);
+  /** 아바타가 다음 질문을 말한다. 첫 호출이면 인사 + 1번 질문. */
+  const askNext = () => {
+    const avatar = avatarRef.current;
+    if (!avatar) return;
+    const nextIdx = questionIdx + 1;
+    if (nextIdx >= questionsRef.current.length) {
+      void finishInterview();
+      return;
+    }
+    const text =
+      nextIdx === 0
+        ? `안녕하세요, 면접을 시작하겠습니다. 첫 번째 질문입니다. ${questionsRef.current[0]}`
+        : questionsRef.current[nextIdx];
+    try {
+      avatar.repeat(text);
+      setQuestionIdx(nextIdx);
+    } catch {
+      setNote("아바타 발화 요청에 실패했습니다. 다시 시도해 주세요.");
+    }
   };
+
+  /** 종료 → 온디바이스 분석 확정 → (키 있으면) 음성 감정 분석 → 종합 점수 저장. */
+  const finishInterview = async () => {
+    if (!session || finishingRef.current) return;
+    finishingRef.current = true;
+    setStatus("analyzing");
+
+    // 측정 먼저 멈춰서 분석 대기 시간이 지표에 섞이지 않게 한다.
+    voiceTrackerRef.current?.pause();
+    const visualMetrics = visualTrackerRef.current?.finish() ?? null;
+
+    const recordedBlob = await new Promise<Blob | null>((resolve) => {
+      const recorder = recorderRef.current;
+      if (!recorder || recorder.state !== "recording") {
+        resolve(chunksRef.current.length > 0 ? new Blob(chunksRef.current) : null);
+        return;
+      }
+      recorder.onstop = () =>
+        resolve(chunksRef.current.length > 0 ? new Blob(chunksRef.current, { type: recorder.mimeType }) : null);
+      recorder.stop();
+    });
+    recorderRef.current = null;
+
+    avatarRef.current?.stop().catch(() => undefined);
+    avatarRef.current = null;
+
+    // 원본 영상은 업로드하지 않고, 원하면 로컬 다운로드만 제공.
+    if (recordedBlob && recordedBlob.size > 0) {
+      setDownloadUrl(URL.createObjectURL(recordedBlob));
+    }
+
+    // 음성 감정/전사 (Inworld) — 키 없거나 실패해도 계속.
+    let voiceProfile: VoiceProfile | null = null;
+    let userTranscript = "";
+    if (capabilities?.voiceProfiling && recordedBlob && recordedBlob.size > 0) {
+      try {
+        const base64 = await blobToPcm16Base64(recordedBlob);
+        const result = await analyzeVoice(session.id, base64);
+        voiceProfile = result.voiceProfile;
+        userTranscript = result.transcript ?? "";
+      } catch {
+        setNote((prev) => prev ?? "감정 분석(Inworld)은 실패해 측정 지표만으로 채점했습니다.");
+      }
+    }
+
+    const userChars = userTranscript.replace(/\s/g, "").length;
+    const fillers = userTranscript ? countFillers([userTranscript]) : 0;
+    const vMetrics = voiceTrackerRef.current?.finish(userChars, fillers) ?? null;
+
+    const askedQuestions = questionsRef.current.slice(0, Math.max(questionIdx + 1, 0));
+    const transcript: TranscriptLine[] = [
+      ...askedQuestions.map<TranscriptLine>((q) => ({ role: "ai", text: q })),
+      ...(userTranscript ? [{ role: "user" as const, text: userTranscript }] : []),
+    ];
+
+    const vDetail = vMetrics ? computeVoiceScore(vMetrics, voiceProfile) : null;
+    const visDetail = visualMetrics ? computeVisualScore(visualMetrics) : null;
+    const combined =
+      vDetail && visDetail
+        ? Math.round(vDetail.overall * 0.5 + visDetail.overall * 0.5)
+        : (vDetail?.overall ?? visDetail?.overall ?? 0);
+
+    setVoiceMetrics(vMetrics);
+    setVoiceDetail(vDetail);
+    setVisualDetail(visDetail);
+    setProfile(voiceProfile);
+    setOverall(combined);
+
+    cleanup();
+
+    try {
+      await saveMediaResult(session.id, {
+        kind: "AVATAR",
+        transcript: transcript.length > 0 ? transcript : null,
+        metrics: { voice: vMetrics, visual: visualMetrics, voiceProfile },
+        score: combined,
+        scoreDetail: {
+          ...(vDetail ? { ...vDetail, voiceOverall: vDetail.overall } : {}),
+          ...(visDetail ? { ...visDetail, visualOverall: visDetail.overall } : {}),
+          overall: combined,
+        },
+      });
+      setNote((prev) => prev ?? "분석 결과가 저장되었습니다. (원본 영상은 서버에 저장하지 않습니다)");
+    } catch (err) {
+      setNote(err instanceof Error ? `결과 저장 실패: ${err.message}` : "결과 저장에 실패했습니다.");
+    }
+    setStatus("scored");
+  };
+
+  if (!session) {
+    return (
+      <div className="rounded-xl border border-dashed border-slate-200 bg-white p-10 text-center text-sm text-slate-400">
+        "면접 모드 선택" 탭에서 지원 건과 모드를 고르고 면접을 시작하면 아바타 화상 면접을 진행할 수 있습니다.
+      </div>
+    );
+  }
+
+  if (preparedQuestions != null && preparedQuestions.length === 0) {
+    return (
+      <div className="rounded-xl border border-dashed border-amber-200 bg-amber-50 p-10 text-center">
+        <ClipboardList className="mx-auto size-8 text-amber-500" />
+        <p className="mt-3 text-sm font-semibold text-amber-800">준비된 면접 질문이 없습니다</p>
+        <p className="mt-1 text-sm text-amber-700">
+          "예상 면접 질문" 탭에서 질문을 먼저 생성하면, 아바타 면접관이 그 질문으로 화상 면접을 진행합니다.
+        </p>
+      </div>
+    );
+  }
+
+  const keyMissing = capabilities != null && !capabilities.avatar;
 
   return (
-    <Card className="border border-slate-200 bg-white">
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2 text-base">
-          <Video className="size-4 text-purple-600" />
-          아바타 화상 면접
-          <Badge className="bg-purple-100 text-purple-700">녹화 가능</Badge>
-        </CardTitle>
-      </CardHeader>
-      <CardContent className="space-y-4">
-        <p className="text-sm text-slate-500">
-          웹캠으로 답변을 녹화하고 서버에 저장합니다. 저장된 영상은 면접 기록과 함께 관리됩니다.
-        </p>
-
-        {!supported && (
-          <p className="rounded-lg bg-amber-50 p-3 text-sm text-amber-700">
-            이 브라우저는 영상 녹화를 지원하지 않습니다. 최신 Chrome/Edge 에서 이용해 주세요.
+    <div className="space-y-4">
+      <Card className="border border-slate-200 bg-white">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2 text-base">
+            <Video className="size-4 text-purple-600" />
+            아바타 화상 면접
+            {status === "live" ? (
+              <Badge className="gap-1 bg-purple-100 text-purple-700">
+                <span className="size-2 animate-pulse rounded-full bg-purple-500" /> LIVE
+              </Badge>
+            ) : (
+              <Badge className="bg-slate-100 text-slate-600">HeyGen LiveAvatar</Badge>
+            )}
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <p className="text-sm text-slate-500">
+            아바타 면접관이 준비된 질문 {preparedQuestions ? Math.min(preparedQuestions.length, 6) : 6}개를
+            음성으로 묻고, 웹캠으로 표정·자세·음성을 분석해 종합 점수를 제공합니다. 영상은 기기에서만
+            분석되고 서버에 저장되지 않습니다.
           </p>
-        )}
 
-        {supported && (
-          <>
-            <div className="overflow-hidden rounded-xl bg-slate-900">
-              {phase === "recording" ? (
-                <video ref={livePreviewRef} autoPlay muted playsInline className="aspect-video w-full object-cover" />
-              ) : phase === "uploaded" && remoteUrl ? (
-                <video src={remoteUrl} controls playsInline className="aspect-video w-full object-cover" />
-              ) : localUrl ? (
-                <video src={localUrl} controls playsInline className="aspect-video w-full object-cover" />
-              ) : (
-                <div className="flex aspect-video w-full items-center justify-center text-slate-400">
-                  <div className="text-center">
-                    <Video className="mx-auto size-10" />
-                    <div className="mt-2 text-sm">녹화를 시작하면 화면이 여기에 표시됩니다</div>
-                  </div>
+          {keyMissing && (
+            <p className="rounded-lg bg-amber-50 p-3 text-sm text-amber-700">
+              아바타 면접 키(HEYGEN_API_KEY)가 설정되어 있지 않아 지금은 시작할 수 없습니다. 키를 설정하면
+              바로 이용할 수 있습니다.
+            </p>
+          )}
+
+          {!supported && (
+            <p className="rounded-lg bg-amber-50 p-3 text-sm text-amber-700">
+              이 브라우저는 웹캠 녹화를 지원하지 않습니다. 최신 Chrome/Edge 에서 이용해 주세요.
+            </p>
+          )}
+
+          {/* 화면: 아바타(메인) + 내 웹캠(서브) */}
+          {(status === "connecting" || status === "live" || status === "analyzing") && (
+            <div className="relative overflow-hidden rounded-xl bg-slate-900">
+              <video ref={avatarVideoRef} autoPlay playsInline className="aspect-video w-full object-cover" />
+              <video
+                ref={selfVideoRef}
+                autoPlay
+                muted
+                playsInline
+                className="absolute bottom-3 right-3 w-1/4 rounded-lg border-2 border-white/40 object-cover"
+              />
+              {status === "connecting" && (
+                <div className="absolute inset-0 flex items-center justify-center text-sm text-slate-300">
+                  <Loader2 className="mr-2 size-4 animate-spin" /> 아바타 면접관 연결 중…
                 </div>
               )}
             </div>
+          )}
 
+          {/* 진행 표시 */}
+          {status === "live" && questions.length > 0 && (
+            <div className="space-y-1">
+              <div className="flex items-center justify-between text-xs text-slate-500">
+                <span>
+                  질문 {Math.max(questionIdx + 1, 0)} / {questions.length}
+                  {avatarTalking && " · 면접관이 말하는 중…"}
+                </span>
+              </div>
+              <Progress value={((questionIdx + 1) / questions.length) * 100} className="h-1.5" />
+              {questionIdx >= 0 && (
+                <p className="rounded-lg bg-slate-50 p-3 text-sm font-medium text-slate-700">
+                  Q{questionIdx + 1}. {questions[questionIdx]}
+                </p>
+              )}
+            </div>
+          )}
+
+          {supported && (
             <div className="flex flex-wrap items-center gap-2">
-              {phase === "idle" && (
-                <Button onClick={startRecording} className="gap-1.5 bg-purple-600 hover:bg-purple-700">
-                  <Video className="size-4" /> 녹화 시작
+              {(status === "idle" || status === "scored" || status === "error") && (
+                <Button
+                  onClick={start}
+                  disabled={keyMissing || preparedQuestions == null}
+                  className="gap-1.5 bg-purple-600 hover:bg-purple-700"
+                >
+                  <Video className="size-4" /> {status === "idle" ? "면접 시작" : "다시 시작"}
                 </Button>
               )}
-              {phase === "recording" && (
+              {status === "connecting" && (
+                <Button disabled className="gap-1.5">
+                  <Loader2 className="size-4 animate-spin" /> 연결 중…
+                </Button>
+              )}
+              {status === "analyzing" && (
+                <Button disabled className="gap-1.5">
+                  <Loader2 className="size-4 animate-spin" /> 영상·음성 분석 중…
+                </Button>
+              )}
+              {status === "live" && (
                 <>
-                  <Button onClick={stopRecording} variant="destructive" className="gap-1.5">
-                    <Square className="size-4" /> 녹화 중지
+                  <Button onClick={askNext} disabled={avatarTalking} className="gap-1.5">
+                    {questionIdx < 0 ? <Play className="size-4" /> : <SkipForward className="size-4" />}
+                    {questionIdx < 0
+                      ? "첫 질문 시작"
+                      : questionIdx + 1 >= questions.length
+                        ? "마지막 답변 완료"
+                        : "답변 완료 · 다음 질문"}
                   </Button>
-                  <span className="flex items-center gap-1.5 text-sm text-red-500">
-                    <span className="size-2 animate-pulse rounded-full bg-red-500" /> 녹화 중…
-                  </span>
+                  <Button onClick={() => void finishInterview()} variant="destructive" className="gap-1.5">
+                    <PhoneOff className="size-4" /> 면접 종료
+                  </Button>
                 </>
               )}
-              {(phase === "recorded" || phase === "uploading") && (
-                <>
-                  <Button onClick={handleUpload} disabled={phase === "uploading"} className="gap-1.5">
-                    {phase === "uploading" ? (
-                      <Loader2 className="size-4 animate-spin" />
-                    ) : (
-                      <Upload className="size-4" />
-                    )}
-                    {phase === "uploading" ? "업로드 중…" : "녹화 저장(업로드)"}
-                  </Button>
-                  <Button onClick={reset} variant="outline" disabled={phase === "uploading"}>
-                    다시 녹화
-                  </Button>
-                </>
-              )}
-              {phase === "uploaded" && (
-                <Button onClick={reset} variant="outline">
-                  다시 녹화
+              {status === "scored" && downloadUrl && (
+                <Button asChild variant="outline" className="gap-1.5">
+                  <a href={downloadUrl} download="avatar-interview.webm">
+                    <Download className="size-4" /> 내 답변 영상 다운로드
+                  </a>
                 </Button>
               )}
             </div>
-          </>
-        )}
+          )}
 
-        {error && <p className="text-sm text-red-500">{error}</p>}
+          {error && <p className="text-sm text-red-500">{error}</p>}
+          {note && <p className="text-xs font-semibold text-slate-500">{note}</p>}
+        </CardContent>
+      </Card>
 
-        {phase === "uploaded" && asset && (
-          <p className="text-xs font-semibold text-green-700">
-            저장 완료 · 파일 #{asset.id} · {formatSize(asset.sizeBytes)}
-          </p>
-        )}
-      </CardContent>
-    </Card>
+      {/* 종합 + 영상 점수 */}
+      {status === "scored" && overall != null && (
+        <Card className="border border-slate-200 bg-white">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-base">
+              종합 점수
+              <span className={`ml-auto text-2xl font-black ${getScoreColor(overall)}`}>
+                {overall}
+                <span className="text-sm font-bold text-slate-400">/100</span>
+              </span>
+            </CardTitle>
+          </CardHeader>
+          {visualDetail && (
+            <CardContent className="space-y-3">
+              {(
+                [
+                  ["expression", "표정", "자연스러운 미소, 긴장(미간) 최소화"],
+                  ["gaze", "시선 처리", "카메라(면접관) 응시 유지"],
+                  ["posture", "자세", "수평 어깨, 차분한 상체"],
+                  ["presence", "화면 유지", "얼굴이 화면에 안정적으로 잡힘"],
+                ] as const
+              ).map(([key, label, desc]) => (
+                <div key={key}>
+                  <div className="mb-1 flex items-baseline justify-between text-sm">
+                    <span className="font-semibold text-slate-700">{label}</span>
+                    <span className={`font-bold ${getScoreColor(visualDetail[key])}`}>{visualDetail[key]}</span>
+                  </div>
+                  <Progress value={visualDetail[key]} className="h-2" />
+                  <p className="mt-0.5 text-[11px] text-slate-400">{desc}</p>
+                </div>
+              ))}
+            </CardContent>
+          )}
+        </Card>
+      )}
+
+      {status === "scored" && voiceDetail && voiceMetrics && (
+        <VoiceScorePanel detail={voiceDetail} metrics={voiceMetrics} profile={profile} title="음성 점수" />
+      )}
+    </div>
   );
-}
-
-function formatSize(bytes: number | null | undefined): string {
-  if (!bytes || bytes <= 0) return "0 KB";
-  if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`;
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }

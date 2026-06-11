@@ -126,7 +126,7 @@ export function InterviewPage() {
           </TabsContent>
 
           <TabsContent value="avatar" className="mt-6">
-            <AvatarTab />
+            <AvatarTab session={activeSession} />
           </TabsContent>
 
           <TabsContent value="evaluation" className="mt-6">
