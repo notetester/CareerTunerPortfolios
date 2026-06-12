@@ -30,7 +30,7 @@ export const useNotificationStore = create<NotificationState>((set, get) => ({
     set({ loading: true, error: null });
     try {
       const notifications = await notificationApi.getNotifications();
-      const unreadCount = notifications.filter((n) => !n.isRead).length;
+      const unreadCount = await notificationApi.getUnreadCount().catch(() => get().unreadCount);
       set({ notifications, unreadCount, loading: false });
     } catch (e) {
       set({ loading: false, error: (e as Error).message });

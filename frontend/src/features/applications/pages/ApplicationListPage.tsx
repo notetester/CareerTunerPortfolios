@@ -6,6 +6,7 @@ import {
   Briefcase,
   CalendarDays,
   FileText,
+  Loader2,
   Plus,
   RefreshCw,
   Search,
@@ -34,6 +35,9 @@ import {
   APPLICATION_STATUS_OPTIONS,
   getApplicationSourceLabel,
 } from "../types/applicationCase";
+import { ApplicationExtractionBadge } from "../components/ApplicationExtractionBadge";
+import { useApplicationCaseExtractions } from "../hooks/useApplicationCaseExtractions";
+import type { ApplicationCaseExtraction } from "../types/applicationCase";
 
 type ListMode = "active" | "trash";
 type StatusFilter = "ALL" | ApplicationStatus;
@@ -92,16 +96,22 @@ function compareDeadline(a: ApplicationCase, b: ApplicationCase, direction: "asc
 
 function ApplicationCard({
   applicationCase,
+  extraction,
   busy,
+  retryingExtraction,
   mode,
   onToggleFavorite,
   onRestore,
+  onRetryExtraction,
 }: {
   applicationCase: ApplicationCase;
+  extraction: ApplicationCaseExtraction | null | undefined;
   busy: boolean;
+  retryingExtraction: boolean;
   mode: ListMode;
   onToggleFavorite(applicationCase: ApplicationCase): void;
   onRestore(applicationCase: ApplicationCase): void;
+  onRetryExtraction(applicationCase: ApplicationCase): void;
 }) {
   const isTrash = mode === "trash";
   const title = (
@@ -154,6 +164,7 @@ function ApplicationCard({
 
         <div className="flex flex-wrap gap-2">
           <ApplicationStatusBadge status={applicationCase.status} />
+          <ApplicationExtractionBadge extraction={extraction} />
           <Badge variant="outline" className="border-slate-200 bg-slate-50 text-slate-600">
             {getApplicationSourceLabel(applicationCase.sourceType)}
           </Badge>
@@ -168,6 +179,20 @@ function ApplicationCard({
             </Badge>
           )}
         </div>
+
+        {!isTrash && extraction?.status === "FAILED" && (
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            className="w-fit border-red-200 text-red-700 hover:bg-red-50 hover:text-red-800"
+            disabled={busy || retryingExtraction}
+            onClick={() => onRetryExtraction(applicationCase)}
+          >
+            {retryingExtraction ? <Loader2 className="size-4 animate-spin" /> : <RefreshCw className="size-4" />}
+            다시 추출
+          </Button>
+        )}
 
         <div className="mt-auto flex items-end justify-between gap-3 border-t border-slate-100 pt-3 text-xs text-slate-500">
           <div className="min-w-0 space-y-1">
@@ -206,9 +231,20 @@ export function ApplicationListPage({ mode = "active" }: { mode?: ListMode }) {
     isAuthenticated,
     isTrash ? { view: "DELETED" } : includeArchived,
   );
+  const applicationCaseIds = useMemo(
+    () => applicationCases.map((item) => item.id),
+    [applicationCases],
+  );
+  const {
+    extractions,
+    retryingId: retryingExtractionId,
+    error: extractionError,
+    retry: retryExtraction,
+  } = useApplicationCaseExtractions(applicationCaseIds, isAuthenticated && !isTrash);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("ALL");
   const [deadlineFilter, setDeadlineFilter] = useState<DeadlineFilter>("ALL");
+  const [favoriteOnly, setFavoriteOnly] = useState(false);
   const [sortOption, setSortOption] = useState<SortOption>("CREATED_DESC");
   const [busyId, setBusyId] = useState<number | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
@@ -233,7 +269,8 @@ export function ApplicationListPage({ mode = "active" }: { mode?: ListMode }) {
         (deadlineFilter === "WITHIN_7_DAYS" && deadlineTime !== null && deadlineTime >= todayTime && deadlineTime <= sevenDaysLater) ||
         (deadlineFilter === "WITHIN_30_DAYS" && deadlineTime !== null && deadlineTime >= todayTime && deadlineTime <= thirtyDaysLater) ||
         (deadlineFilter === "NO_DEADLINE" && deadlineTime === null);
-      return matchKeyword && matchStatus && matchDeadline;
+      const matchFavorite = !favoriteOnly || item.favorite;
+      return matchKeyword && matchStatus && matchDeadline && matchFavorite;
     });
 
     return nextItems.sort((a, b) => {
@@ -242,9 +279,9 @@ export function ApplicationListPage({ mode = "active" }: { mode?: ListMode }) {
       if (sortOption === "UPDATED_DESC") return compareRecent(a, b, "updatedAt");
       return compareRecent(a, b, "createdAt");
     });
-  }, [applicationCases, deadlineFilter, search, sortOption, statusFilter]);
+  }, [applicationCases, deadlineFilter, favoriteOnly, search, sortOption, statusFilter]);
 
-  const hasActiveFilter = search.trim() !== "" || statusFilter !== "ALL" || deadlineFilter !== "ALL";
+  const hasActiveFilter = search.trim() !== "" || statusFilter !== "ALL" || deadlineFilter !== "ALL" || favoriteOnly;
 
   const summary = useMemo(
     () => ({
@@ -375,72 +412,83 @@ export function ApplicationListPage({ mode = "active" }: { mode?: ListMode }) {
                   </SelectContent>
                 </Select>
                 {!isTrash && (
-                  <label className="flex items-center gap-2 rounded-md bg-slate-100 px-3 py-2 text-xs font-semibold text-slate-600">
-                    <Checkbox
-                      checked={includeArchived}
-                      onCheckedChange={(checked) => setIncludeArchived(Boolean(checked))}
-                    />
-                    보관 포함
-                  </label>
+                  <>
+                    <label className="flex items-center gap-2 rounded-md bg-slate-100 px-3 py-2 text-xs font-semibold text-slate-600">
+                      <Checkbox
+                        checked={includeArchived}
+                        onCheckedChange={(checked) => setIncludeArchived(Boolean(checked))}
+                      />
+                      보관 포함
+                    </label>
+                    <label className="flex items-center gap-2 rounded-md bg-slate-100 px-3 py-2 text-xs font-semibold text-slate-600">
+                      <Checkbox
+                        checked={favoriteOnly}
+                        onCheckedChange={(checked) => setFavoriteOnly(Boolean(checked))}
+                      />
+                      즐겨찾기만
+                    </label>
+                  </>
                 )}
               </div>
             </div>
 
-            <div className="flex flex-wrap gap-2">
-              <span className="flex items-center gap-2 rounded-md bg-slate-100 px-3 py-2 text-xs font-semibold text-slate-600">
-                상태
-              </span>
-              <button
-                type="button"
-                className={`rounded-md px-3 py-2 text-xs font-semibold ${
-                  statusFilter === "ALL" ? "bg-slate-900 text-white" : "bg-slate-100 text-slate-600 hover:bg-slate-200"
-                }`}
-                onClick={() => setStatusFilter("ALL")}
-              >
-                전체
-              </button>
-              {APPLICATION_STATUS_OPTIONS.map((option) => (
+            <div className="flex flex-wrap items-center gap-x-6 gap-y-2">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="flex items-center gap-2 rounded-md bg-slate-100 px-3 py-2 text-xs font-semibold text-slate-600">
+                  상태
+                </span>
                 <button
                   type="button"
-                  key={option.value}
                   className={`rounded-md px-3 py-2 text-xs font-semibold ${
-                    statusFilter === option.value
-                      ? "bg-slate-900 text-white"
-                      : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                    statusFilter === "ALL" ? "bg-slate-900 text-white" : "bg-slate-100 text-slate-600 hover:bg-slate-200"
                   }`}
-                  onClick={() => setStatusFilter(option.value)}
+                  onClick={() => setStatusFilter("ALL")}
                 >
-                  {option.label}
+                  전체
                 </button>
-              ))}
-            </div>
+                {APPLICATION_STATUS_OPTIONS.map((option) => (
+                  <button
+                    type="button"
+                    key={option.value}
+                    className={`rounded-md px-3 py-2 text-xs font-semibold ${
+                      statusFilter === option.value
+                        ? "bg-slate-900 text-white"
+                        : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                    }`}
+                    onClick={() => setStatusFilter(option.value)}
+                  >
+                    {option.label}
+                  </button>
+                ))}
+              </div>
 
-            <div className="flex flex-wrap gap-2">
-              <span className="flex items-center gap-2 rounded-md bg-slate-100 px-3 py-2 text-xs font-semibold text-slate-600">
-                마감
-              </span>
-              {deadlineFilterOptions.map((option) => (
-                <button
-                  type="button"
-                  key={option.value}
-                  className={`rounded-md px-3 py-2 text-xs font-semibold ${
-                    deadlineFilter === option.value
-                      ? "bg-blue-600 text-white"
-                      : "bg-slate-100 text-slate-600 hover:bg-slate-200"
-                  }`}
-                  onClick={() => setDeadlineFilter(option.value)}
-                >
-                  {option.label}
-                </button>
-              ))}
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="flex items-center gap-2 rounded-md bg-slate-100 px-3 py-2 text-xs font-semibold text-slate-600">
+                  마감
+                </span>
+                {deadlineFilterOptions.map((option) => (
+                  <button
+                    type="button"
+                    key={option.value}
+                    className={`rounded-md px-3 py-2 text-xs font-semibold ${
+                      deadlineFilter === option.value
+                        ? "bg-blue-600 text-white"
+                        : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                    }`}
+                    onClick={() => setDeadlineFilter(option.value)}
+                  >
+                    {option.label}
+                  </button>
+                ))}
+              </div>
             </div>
           </CardContent>
         </Card>
 
-        {(error || actionError) && (
+        {(error || actionError || extractionError) && (
           <div className="flex items-start gap-2 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
             <AlertCircle className="mt-0.5 size-4 shrink-0" />
-            <div className="flex-1">{actionError ?? error}</div>
+            <div className="flex-1">{actionError ?? error ?? extractionError}</div>
             {error && (
               <button className="font-semibold" type="button" onClick={() => void refresh()}>
                 다시 시도
@@ -493,10 +541,13 @@ export function ApplicationListPage({ mode = "active" }: { mode?: ListMode }) {
               <ApplicationCard
                 key={applicationCase.id}
                 applicationCase={applicationCase}
-                busy={busyId === applicationCase.id}
+                extraction={extractions[applicationCase.id]}
+                busy={busyId === applicationCase.id || retryingExtractionId === applicationCase.id}
+                retryingExtraction={retryingExtractionId === applicationCase.id}
                 mode={mode}
                 onToggleFavorite={(item) => void handleToggleFavorite(item)}
                 onRestore={(item) => void handleRestore(item)}
+                onRetryExtraction={(item) => void retryExtraction(item.id)}
               />
             ))}
           </div>

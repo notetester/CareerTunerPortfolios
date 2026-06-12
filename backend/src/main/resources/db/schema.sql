@@ -208,6 +208,32 @@ CREATE TABLE IF NOT EXISTS job_posting (
     CONSTRAINT fk_job_posting_case FOREIGN KEY (application_case_id) REFERENCES application_case (id) ON DELETE CASCADE
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci;
 
+CREATE TABLE IF NOT EXISTS application_case_extraction (
+    id                  BIGINT NOT NULL AUTO_INCREMENT,
+    application_case_id BIGINT NOT NULL,
+    job_posting_id      BIGINT NULL,
+    user_id             BIGINT NOT NULL,
+    source_type         VARCHAR(20) NOT NULL,
+    status              VARCHAR(20) NOT NULL DEFAULT 'QUEUED',
+    active_status_marker TINYINT GENERATED ALWAYS AS (
+        CASE WHEN status IN ('QUEUED', 'RUNNING') THEN 1 ELSE NULL END
+    ) STORED,
+    error_message       VARCHAR(1000) NULL,
+    started_at          DATETIME NULL,
+    finished_at         DATETIME NULL,
+    created_at          DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at          DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    PRIMARY KEY (id),
+    KEY idx_case_extraction_user_status (user_id, status, created_at, id),
+    KEY idx_case_extraction_case_latest (application_case_id, created_at, id),
+    KEY idx_case_extraction_job_posting (job_posting_id),
+    UNIQUE KEY uk_case_extraction_active (application_case_id, active_status_marker),
+    CONSTRAINT chk_case_extraction_status CHECK (status IN ('QUEUED', 'RUNNING', 'SUCCEEDED', 'FAILED')),
+    CONSTRAINT fk_case_extraction_case FOREIGN KEY (application_case_id) REFERENCES application_case (id) ON DELETE CASCADE,
+    CONSTRAINT fk_case_extraction_job_posting FOREIGN KEY (job_posting_id) REFERENCES job_posting (id) ON DELETE SET NULL,
+    CONSTRAINT fk_case_extraction_user FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci;
+
 CREATE TABLE IF NOT EXISTS job_analysis (
     id                  BIGINT NOT NULL AUTO_INCREMENT,
     application_case_id BIGINT NOT NULL,

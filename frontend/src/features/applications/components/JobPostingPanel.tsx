@@ -1,11 +1,13 @@
 import { useEffect, useMemo, useState } from "react";
-import { FileText, FileUp, Image, Link as LinkIcon, Loader2, PencilLine, Save, Upload } from "lucide-react";
+import { FileText, FileUp, Image, Link as LinkIcon, Loader2, PencilLine, RefreshCw, Save, Upload } from "lucide-react";
 import { Button } from "@/app/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/app/components/ui/card";
 import { Input } from "@/app/components/ui/input";
 import { Textarea } from "@/app/components/ui/textarea";
-import type { ApplicationSourceType } from "../types/applicationCase";
+import type { ApplicationCaseExtraction, ApplicationSourceType } from "../types/applicationCase";
+import { isApplicationCaseExtractionActive } from "../types/applicationCase";
 import type { JobPosting, JobPostingRequest } from "../types/jobPosting";
+import { ApplicationExtractionBadge } from "./ApplicationExtractionBadge";
 
 interface JobPostingPanelProps {
   jobPosting: JobPosting | null;
@@ -14,8 +16,11 @@ interface JobPostingPanelProps {
   saving: boolean;
   uploading: boolean;
   error: string | null;
+  extraction?: ApplicationCaseExtraction | null;
+  retryingExtraction?: boolean;
   onSave(request: JobPostingRequest): Promise<JobPosting | null>;
   onUpload(sourceType: Extract<ApplicationSourceType, "PDF" | "IMAGE">, file: File): Promise<JobPosting | null>;
+  onRetryExtraction?(): Promise<ApplicationCaseExtraction | null>;
 }
 
 const sourceOptions: {
@@ -50,8 +55,11 @@ export function JobPostingPanel({
   saving,
   uploading,
   error,
+  extraction,
+  retryingExtraction = false,
   onSave,
   onUpload,
+  onRetryExtraction,
 }: JobPostingPanelProps) {
   const initialText = useMemo(
     () => jobPosting?.extractedText ?? jobPosting?.originalText ?? "",
@@ -67,6 +75,7 @@ export function JobPostingPanel({
   const [sourceUrl, setSourceUrl] = useState(initialUrl);
   const [file, setFile] = useState<File | null>(null);
   const [localError, setLocalError] = useState<string | null>(null);
+  const extractionActive = extraction ? isApplicationCaseExtractionActive(extraction.status) : false;
 
   useEffect(() => setText(initialText), [initialText]);
   useEffect(() => setSourceUrl(initialUrl), [initialUrl]);
@@ -133,18 +142,31 @@ export function JobPostingPanel({
                 type="button"
                 size="sm"
                 variant="outline"
-                disabled={loading || uploading || saving}
+                disabled={loading || uploading || saving || extractionActive}
                 onClick={() => void handleUpload()}
               >
                 {uploading ? <Loader2 className="size-4 animate-spin" /> : <Upload className="size-4" />}
                 업로드 및 추출
               </Button>
             )}
+            {extraction?.status === "FAILED" && onRetryExtraction && (
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                className="border-red-200 text-red-700 hover:bg-red-50 hover:text-red-800"
+                disabled={retryingExtraction}
+                onClick={() => void onRetryExtraction()}
+              >
+                <RefreshCw className={`size-4 ${retryingExtraction ? "animate-spin" : ""}`} />
+                다시 추출
+              </Button>
+            )}
             <Button
               type="button"
               size="sm"
               className="bg-blue-600 text-white hover:bg-blue-700"
-              disabled={loading || saving || uploading}
+              disabled={loading || saving || uploading || extractionActive}
               onClick={() => void handleSave()}
             >
               {saving ? <Loader2 className="size-4 animate-spin" /> : <Save className="size-4" />}
@@ -154,6 +176,27 @@ export function JobPostingPanel({
         </div>
       </CardHeader>
       <CardContent className="space-y-4">
+        {extraction && (
+          <div className={`rounded-lg border px-3 py-2 text-sm ${
+            extraction.status === "FAILED"
+              ? "border-red-200 bg-red-50 text-red-700"
+              : extractionActive
+                ? "border-blue-100 bg-blue-50 text-blue-800"
+                : "border-emerald-100 bg-emerald-50 text-emerald-700"
+          }`}>
+            <div className="flex flex-wrap items-center gap-2">
+              <ApplicationExtractionBadge extraction={extraction} />
+              <span>
+                {extractionActive
+                  ? "추출이 끝나면 최신 공고문으로 자동 갱신됩니다."
+                  : extraction.status === "FAILED"
+                    ? extraction.errorMessage || "공고문 추출에 실패했습니다."
+                    : "공고문 추출이 완료됐습니다."}
+              </span>
+            </div>
+          </div>
+        )}
+
         {loading ? (
           <div className="h-52 animate-pulse rounded-lg bg-slate-100" />
         ) : (

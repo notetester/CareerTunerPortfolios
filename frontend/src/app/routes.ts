@@ -24,6 +24,7 @@ import { ForgotPasswordPage } from "./pages/ForgotPassword";
 import { ResetPasswordPage } from "./pages/ResetPassword";
 import { ReleaseDormantPage } from "./pages/ReleaseDormant";
 import { adminRoutes } from "../admin/routes";
+import NotificationPage from "@/features/notification/pages/NotificationPage";
 
 const basename = import.meta.env.BASE_URL === "/"
   ? "/"
@@ -73,6 +74,7 @@ export const router = createBrowserRouter([
       { path: "auth/forgot-password", Component: ForgotPasswordPage },
       { path: "auth/reset-password", Component: ResetPasswordPage },
       { path: "auth/release-dormant", Component: ReleaseDormantPage },
+      { path: "notifications", Component: NotificationPage },
       ...adminRoutes,
     ],
   },

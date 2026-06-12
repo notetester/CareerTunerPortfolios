@@ -10,6 +10,8 @@ import com.careertuner.notification.domain.Notification;
 @Mapper
 public interface NotificationMapper {
 
+    void insertNotification(Notification notification);
+
     List<Notification> findByUserId(@Param("userId") Long userId,
                                     @Param("offset") int offset,
                                     @Param("limit") int limit);

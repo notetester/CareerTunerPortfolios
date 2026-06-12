@@ -4,9 +4,12 @@ import java.util.List;
 
 import com.careertuner.applicationcase.dto.AnalysisResponse;
 import com.careertuner.applicationcase.dto.AiUsageFailureResponse;
+import com.careertuner.applicationcase.dto.ApplicationCaseExtractionResponse;
+import com.careertuner.applicationcase.dto.ApplicationCaseFromJobPostingResponse;
 import com.careertuner.applicationcase.dto.ApplicationCaseResponse;
 import com.careertuner.companyanalysis.dto.CompanyAnalysisResponse;
 import com.careertuner.companyanalysis.dto.CompanyAnalysisReviewRequest;
+import com.careertuner.applicationcase.dto.CreateApplicationCaseFromJobPostingRequest;
 import com.careertuner.applicationcase.dto.CreateApplicationCaseRequest;
 import com.careertuner.jobanalysis.dto.JobAnalysisReviewRequest;
 import com.careertuner.jobanalysis.dto.JobAnalysisResponse;
@@ -18,6 +21,14 @@ import org.springframework.web.multipart.MultipartFile;
 public interface ApplicationCaseService {
 
     ApplicationCaseResponse create(Long userId, CreateApplicationCaseRequest request);
+
+    ApplicationCaseFromJobPostingResponse createFromJobPosting(Long userId,
+                                                               CreateApplicationCaseFromJobPostingRequest request);
+
+    ApplicationCaseFromJobPostingResponse createFromJobPostingUpload(Long userId,
+                                                                     MultipartFile file,
+                                                                     String sourceType,
+                                                                     Boolean favorite);
 
     List<ApplicationCaseResponse> list(Long userId, String view, boolean includeArchived);
 
@@ -36,6 +47,12 @@ public interface ApplicationCaseService {
     JobPostingResponse getJobPosting(Long userId, Long applicationCaseId);
 
     List<JobPostingResponse> getJobPostingRevisions(Long userId, Long applicationCaseId);
+
+    List<ApplicationCaseExtractionResponse> getActiveExtractions(Long userId);
+
+    ApplicationCaseExtractionResponse getLatestJobPostingExtraction(Long userId, Long applicationCaseId);
+
+    ApplicationCaseExtractionResponse retryJobPostingExtraction(Long userId, Long applicationCaseId);
 
     JobAnalysisResponse createMockJobAnalysis(Long userId, Long applicationCaseId);
 

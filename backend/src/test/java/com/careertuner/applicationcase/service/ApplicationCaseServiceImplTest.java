@@ -22,16 +22,23 @@ import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.mockito.InOrder;
+import org.springframework.dao.DuplicateKeyException;
 import org.springframework.transaction.TransactionStatus;
 import org.springframework.transaction.support.TransactionCallback;
 import org.springframework.transaction.support.TransactionTemplate;
+import org.springframework.web.multipart.MultipartFile;
 
+import com.careertuner.applicationcase.domain.ApplicationCaseExtraction;
 import com.careertuner.applicationcase.domain.ApplicationCase;
 import com.careertuner.applicationcase.domain.FitAnalysis;
 import com.careertuner.applicationcase.dto.AiUsageFailureResponse;
+import com.careertuner.applicationcase.dto.ApplicationCaseFromJobPostingResponse;
+import com.careertuner.applicationcase.dto.ApplicationCaseExtractionResponse;
 import com.careertuner.applicationcase.dto.ApplicationCaseResponse;
+import com.careertuner.applicationcase.dto.CreateApplicationCaseFromJobPostingRequest;
 import com.careertuner.applicationcase.dto.CreateApplicationCaseRequest;
 import com.careertuner.applicationcase.dto.UpdateApplicationCaseRequest;
+import com.careertuner.applicationcase.mapper.ApplicationCaseExtractionMapper;
 import com.careertuner.applicationcase.mapper.ApplicationCaseMapper;
 import com.careertuner.applicationcase.service.OpenAiResponsesClient.CompanyAnalysisPayload;
 import com.careertuner.applicationcase.service.OpenAiResponsesClient.JobAnalysisPayload;
@@ -41,6 +48,7 @@ import com.careertuner.companyanalysis.dto.CompanyAnalysisResponse;
 import com.careertuner.companyanalysis.mapper.CompanyAnalysisMapper;
 import com.careertuner.companyanalysis.service.CompanyAnalysisService;
 import com.careertuner.common.exception.BusinessException;
+import com.careertuner.common.exception.ErrorCode;
 import com.careertuner.jobanalysis.domain.JobAnalysis;
 import com.careertuner.jobanalysis.dto.JobAnalysisResponse;
 import com.careertuner.jobanalysis.mapper.JobAnalysisMapper;
@@ -394,6 +402,472 @@ class ApplicationCaseServiceImplTest {
     }
 
     @Test
+    void createFromTextJobPostingQueuesExtractionAndDoesNotExtractMetadata() {
+        ApplicationCaseMapper applicationCaseMapper = mock(ApplicationCaseMapper.class);
+        JobPostingMapper jobPostingMapper = mock(JobPostingMapper.class);
+        ApplicationCaseExtractionMapper extractionMapper = mock(ApplicationCaseExtractionMapper.class);
+        JobPostingService jobPostingService = mock(JobPostingService.class);
+        OpenAiResponsesClient openAiClient = mock(OpenAiResponsesClient.class);
+        ApplicationCaseAccessService accessService = new ApplicationCaseAccessService(applicationCaseMapper, jobPostingMapper);
+        ApplicationCaseServiceImpl service = applicationCaseService(applicationCaseMapper, extractionMapper, accessService, jobPostingService, openAiClient);
+        String postingText = "Acme is hiring a Backend Engineer for Spring API development.";
+        JobPostingResponse postingResponse = new JobPostingResponse(
+                20L,
+                10L,
+                1,
+                postingText,
+                null,
+                null,
+                "TEXT",
+                LocalDateTime.now());
+
+        doAnswer(invocation -> {
+            ApplicationCase applicationCase = invocation.getArgument(0);
+            applicationCase.setId(10L);
+            return null;
+        }).when(applicationCaseMapper).insertApplicationCase(any(ApplicationCase.class));
+        doAnswer(invocation -> {
+            ApplicationCaseExtraction extraction = invocation.getArgument(0);
+            extraction.setId(30L);
+            return null;
+        }).when(extractionMapper).insertApplicationCaseExtraction(any(ApplicationCaseExtraction.class));
+        when(applicationCaseMapper.findApplicationCaseByIdAndUserId(10L, 1L)).thenReturn(ApplicationCase.builder()
+                .id(10L)
+                .userId(1L)
+                .companyName("\uAE30\uC5C5\uBA85 \uD655\uC778 \uD544\uC694")
+                .jobTitle("\uC9C1\uBB34\uBA85 \uD655\uC778 \uD544\uC694")
+                .sourceType("URL")
+                .status("DRAFT")
+                .favorite(true)
+                .build());
+        when(jobPostingService.saveJobPostingForExtractionQueue(eq(1L), eq(10L), any(JobPostingRequest.class)))
+                .thenReturn(postingResponse);
+
+        ApplicationCaseFromJobPostingResponse response = service.createFromJobPosting(1L,
+                new CreateApplicationCaseFromJobPostingRequest(postingText, null, null, "TEXT", true));
+
+        ArgumentCaptor<ApplicationCase> caseCaptor = ArgumentCaptor.forClass(ApplicationCase.class);
+        ArgumentCaptor<JobPostingRequest> postingRequestCaptor = ArgumentCaptor.forClass(JobPostingRequest.class);
+        ArgumentCaptor<ApplicationCaseExtraction> extractionCaptor = ArgumentCaptor.forClass(ApplicationCaseExtraction.class);
+        verify(applicationCaseMapper).insertApplicationCase(caseCaptor.capture());
+        verify(jobPostingService).saveJobPostingForExtractionQueue(eq(1L), eq(10L), postingRequestCaptor.capture());
+        verify(extractionMapper).insertApplicationCaseExtraction(extractionCaptor.capture());
+        verify(openAiClient, never()).extractJobPostingMetadata(any());
+        assertThat(caseCaptor.getValue().getCompanyName()).isEqualTo("\uAE30\uC5C5\uBA85 \uD655\uC778 \uD544\uC694");
+        assertThat(caseCaptor.getValue().getJobTitle()).isEqualTo("\uC9C1\uBB34\uBA85 \uD655\uC778 \uD544\uC694");
+        assertThat(caseCaptor.getValue().getPostingDate()).isNull();
+        assertThat(caseCaptor.getValue().getDeadlineDate()).isNull();
+        assertThat(caseCaptor.getValue().isFavorite()).isTrue();
+        assertThat(postingRequestCaptor.getValue().originalText()).isEqualTo(postingText);
+        assertThat(postingRequestCaptor.getValue().sourceType()).isEqualTo("TEXT");
+        assertThat(extractionCaptor.getValue().getApplicationCaseId()).isEqualTo(10L);
+        assertThat(extractionCaptor.getValue().getJobPostingId()).isEqualTo(20L);
+        assertThat(extractionCaptor.getValue().getUserId()).isEqualTo(1L);
+        assertThat(extractionCaptor.getValue().getSourceType()).isEqualTo("TEXT");
+        assertThat(extractionCaptor.getValue().getStatus()).isEqualTo("QUEUED");
+        assertThat(response.applicationCase().companyName()).isEqualTo("\uAE30\uC5C5\uBA85 \uD655\uC778 \uD544\uC694");
+        assertThat(response.jobPosting()).isSameAs(postingResponse);
+        assertThat(response.metadata().companyName()).isEqualTo("\uAE30\uC5C5\uBA85 \uD655\uC778 \uD544\uC694");
+        assertThat(response.metadata().jobTitle()).isEqualTo("\uC9C1\uBB34\uBA85 \uD655\uC778 \uD544\uC694");
+        assertThat(response.metadata().postingDate()).isNull();
+        assertThat(response.metadata().deadlineDate()).isNull();
+        assertThat(response.extractionJob().id()).isEqualTo(30L);
+        assertThat(response.extractionJob().status()).isEqualTo("QUEUED");
+    }
+
+    @Test
+    void createFromUrlJobPostingQueuesExtractionWithoutFetchingUrl() {
+        ApplicationCaseMapper applicationCaseMapper = mock(ApplicationCaseMapper.class);
+        JobPostingMapper jobPostingMapper = mock(JobPostingMapper.class);
+        ApplicationCaseExtractionMapper extractionMapper = mock(ApplicationCaseExtractionMapper.class);
+        JobPostingService jobPostingService = mock(JobPostingService.class);
+        OpenAiResponsesClient openAiClient = mock(OpenAiResponsesClient.class);
+        ApplicationCaseAccessService accessService = new ApplicationCaseAccessService(applicationCaseMapper, jobPostingMapper);
+        ApplicationCaseServiceImpl service = applicationCaseService(applicationCaseMapper, extractionMapper, accessService, jobPostingService, openAiClient);
+        String jobUrl = "https://example.com/jobs/backend";
+        JobPostingResponse postingResponse = new JobPostingResponse(
+                20L,
+                10L,
+                1,
+                null,
+                jobUrl,
+                null,
+                "URL",
+                LocalDateTime.now());
+
+        doAnswer(invocation -> {
+            ApplicationCase applicationCase = invocation.getArgument(0);
+            applicationCase.setId(10L);
+            return null;
+        }).when(applicationCaseMapper).insertApplicationCase(any(ApplicationCase.class));
+        doAnswer(invocation -> {
+            ApplicationCaseExtraction extraction = invocation.getArgument(0);
+            extraction.setId(30L);
+            return null;
+        }).when(extractionMapper).insertApplicationCaseExtraction(any(ApplicationCaseExtraction.class));
+        when(applicationCaseMapper.findApplicationCaseByIdAndUserId(10L, 1L)).thenReturn(ApplicationCase.builder()
+                .id(10L)
+                .userId(1L)
+                .companyName("기업명 확인 필요")
+                .jobTitle("직무명 확인 필요")
+                .sourceType("TEXT")
+                .status("DRAFT")
+                .build());
+        when(jobPostingService.saveJobPostingForExtractionQueue(eq(1L), eq(10L), any(JobPostingRequest.class)))
+                .thenReturn(postingResponse);
+
+        ApplicationCaseFromJobPostingResponse response = service.createFromJobPosting(1L,
+                new CreateApplicationCaseFromJobPostingRequest(null, jobUrl, null, "URL", false));
+
+        ArgumentCaptor<ApplicationCase> caseCaptor = ArgumentCaptor.forClass(ApplicationCase.class);
+        ArgumentCaptor<JobPostingRequest> postingRequestCaptor = ArgumentCaptor.forClass(JobPostingRequest.class);
+        verify(applicationCaseMapper).insertApplicationCase(caseCaptor.capture());
+        verify(jobPostingService, never()).extractUrlJobPosting(any());
+        verify(jobPostingService).saveJobPostingForExtractionQueue(eq(1L), eq(10L), postingRequestCaptor.capture());
+        assertThat(postingRequestCaptor.getValue().uploadedFileUrl()).isEqualTo(jobUrl);
+        assertThat(postingRequestCaptor.getValue().sourceType()).isEqualTo("URL");
+        assertThat(caseCaptor.getValue().getCompanyName()).isEqualTo("기업명 확인 필요");
+        assertThat(caseCaptor.getValue().getJobTitle()).isEqualTo("직무명 확인 필요");
+        assertThat(response.applicationCase().companyName()).isEqualTo("기업명 확인 필요");
+        assertThat(response.applicationCase().jobTitle()).isEqualTo("직무명 확인 필요");
+        assertThat(response.metadata().companyName()).isEqualTo("기업명 확인 필요");
+        assertThat(response.metadata().jobTitle()).isEqualTo("직무명 확인 필요");
+        assertThat(response.jobPosting()).isSameAs(postingResponse);
+        assertThat(response.extractionJob().sourceType()).isEqualTo("URL");
+        assertThat(response.extractionJob().status()).isEqualTo("QUEUED");
+    }
+
+    @Test
+    void createFromJobPostingUploadQueuesExtractionWithoutInvokingOcr() {
+        ApplicationCaseMapper applicationCaseMapper = mock(ApplicationCaseMapper.class);
+        JobPostingMapper jobPostingMapper = mock(JobPostingMapper.class);
+        ApplicationCaseExtractionMapper extractionMapper = mock(ApplicationCaseExtractionMapper.class);
+        JobPostingService jobPostingService = mock(JobPostingService.class);
+        OpenAiResponsesClient openAiClient = mock(OpenAiResponsesClient.class);
+        ApplicationCaseAccessService accessService = new ApplicationCaseAccessService(applicationCaseMapper, jobPostingMapper);
+        ApplicationCaseServiceImpl service = applicationCaseService(applicationCaseMapper, extractionMapper, accessService, jobPostingService, openAiClient);
+        MultipartFile file = mock(MultipartFile.class);
+        JobPostingResponse postingResponse = new JobPostingResponse(
+                20L,
+                10L,
+                1,
+                null,
+                "local:application-postings/10/posting.pdf",
+                null,
+                "PDF",
+                LocalDateTime.now());
+
+        doAnswer(invocation -> {
+            ApplicationCase applicationCase = invocation.getArgument(0);
+            applicationCase.setId(10L);
+            return null;
+        }).when(applicationCaseMapper).insertApplicationCase(any(ApplicationCase.class));
+        doAnswer(invocation -> {
+            ApplicationCaseExtraction extraction = invocation.getArgument(0);
+            extraction.setId(30L);
+            return null;
+        }).when(extractionMapper).insertApplicationCaseExtraction(any(ApplicationCaseExtraction.class));
+        when(applicationCaseMapper.findApplicationCaseByIdAndUserId(10L, 1L)).thenReturn(ApplicationCase.builder()
+                .id(10L)
+                .userId(1L)
+                .companyName("\uAE30\uC5C5\uBA85 \uD655\uC778 \uD544\uC694")
+                .jobTitle("\uC9C1\uBB34\uBA85 \uD655\uC778 \uD544\uC694")
+                .sourceType("PDF")
+                .status("DRAFT")
+                .build());
+        when(jobPostingService.saveUploadedJobPostingReferenceForNewCase(1L, 10L, file, "PDF"))
+                .thenReturn(postingResponse);
+
+        ApplicationCaseFromJobPostingResponse response = service.createFromJobPostingUpload(1L, file, "PDF", true);
+
+        ArgumentCaptor<ApplicationCase> caseCaptor = ArgumentCaptor.forClass(ApplicationCase.class);
+        ArgumentCaptor<ApplicationCaseExtraction> extractionCaptor = ArgumentCaptor.forClass(ApplicationCaseExtraction.class);
+        verify(applicationCaseMapper).insertApplicationCase(caseCaptor.capture());
+        verify(jobPostingService, never()).uploadJobPostingFileForNewCase(any(), any(), any(), any());
+        verify(openAiClient, never()).extractJobPostingMetadata(any());
+        verify(extractionMapper).insertApplicationCaseExtraction(extractionCaptor.capture());
+        assertThat(caseCaptor.getValue().getCompanyName()).isEqualTo("\uAE30\uC5C5\uBA85 \uD655\uC778 \uD544\uC694");
+        assertThat(caseCaptor.getValue().getJobTitle()).isEqualTo("\uC9C1\uBB34\uBA85 \uD655\uC778 \uD544\uC694");
+        assertThat(caseCaptor.getValue().isFavorite()).isTrue();
+        assertThat(extractionCaptor.getValue().getSourceType()).isEqualTo("PDF");
+        assertThat(extractionCaptor.getValue().getStatus()).isEqualTo("QUEUED");
+        assertThat(response.jobPosting()).isSameAs(postingResponse);
+        assertThat(response.metadata().companyName()).isEqualTo("\uAE30\uC5C5\uBA85 \uD655\uC778 \uD544\uC694");
+        assertThat(response.metadata().deadlineDate()).isNull();
+        assertThat(response.extractionJob().id()).isEqualTo(30L);
+    }
+
+    @Test
+    void createFromJobPostingReportsConflictWhenActiveExtractionGuardRejectsInsert() {
+        ApplicationCaseMapper applicationCaseMapper = mock(ApplicationCaseMapper.class);
+        JobPostingMapper jobPostingMapper = mock(JobPostingMapper.class);
+        ApplicationCaseExtractionMapper extractionMapper = mock(ApplicationCaseExtractionMapper.class);
+        JobPostingService jobPostingService = mock(JobPostingService.class);
+        OpenAiResponsesClient openAiClient = mock(OpenAiResponsesClient.class);
+        ApplicationCaseAccessService accessService = new ApplicationCaseAccessService(applicationCaseMapper, jobPostingMapper);
+        ApplicationCaseServiceImpl service = applicationCaseService(applicationCaseMapper, extractionMapper, accessService,
+                jobPostingService, openAiClient);
+        String postingText = "Acme is hiring a Backend Engineer.";
+
+        doAnswer(invocation -> {
+            ApplicationCase applicationCase = invocation.getArgument(0);
+            applicationCase.setId(10L);
+            return null;
+        }).when(applicationCaseMapper).insertApplicationCase(any(ApplicationCase.class));
+        when(jobPostingService.saveJobPostingForExtractionQueue(eq(1L), eq(10L), any(JobPostingRequest.class)))
+                .thenReturn(new JobPostingResponse(20L, 10L, 1, postingText, null, null, "TEXT", null));
+        doThrow(new DuplicateKeyException("uk_case_extraction_active"))
+                .when(extractionMapper)
+                .insertApplicationCaseExtraction(any(ApplicationCaseExtraction.class));
+
+        assertThatThrownBy(() -> service.createFromJobPosting(1L,
+                new CreateApplicationCaseFromJobPostingRequest(postingText, null, null, "TEXT", false)))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(throwable -> assertThat(((BusinessException) throwable).getErrorCode())
+                        .isEqualTo(ErrorCode.CONFLICT));
+
+        verify(openAiClient, never()).extractJobPostingMetadata(any());
+    }
+
+    @Test
+    void directUrlJobPostingSaveWithoutExtractedTextQueuesExtractionInsteadOfExtractingInline() {
+        ApplicationCaseMapper applicationCaseMapper = mock(ApplicationCaseMapper.class);
+        JobPostingMapper jobPostingMapper = mock(JobPostingMapper.class);
+        ApplicationCaseExtractionMapper extractionMapper = mock(ApplicationCaseExtractionMapper.class);
+        JobPostingService jobPostingService = mock(JobPostingService.class);
+        ApplicationCaseAccessService accessService = new ApplicationCaseAccessService(applicationCaseMapper, jobPostingMapper);
+        ApplicationCaseServiceImpl service = applicationCaseService(applicationCaseMapper, extractionMapper, accessService,
+                jobPostingService, mock(OpenAiResponsesClient.class));
+        String jobUrl = "https://example.com/jobs/backend";
+        JobPostingResponse queuedPosting = new JobPostingResponse(
+                20L,
+                10L,
+                2,
+                null,
+                jobUrl,
+                null,
+                "URL",
+                null);
+
+        doAnswer(invocation -> {
+            ApplicationCaseExtraction extraction = invocation.getArgument(0);
+            extraction.setId(30L);
+            return null;
+        }).when(extractionMapper).insertApplicationCaseExtraction(any(ApplicationCaseExtraction.class));
+        when(jobPostingService.saveJobPostingForExtractionQueue(eq(1L), eq(10L), any(JobPostingRequest.class)))
+                .thenReturn(queuedPosting);
+
+        JobPostingResponse response = service.saveJobPosting(1L, 10L,
+                new JobPostingRequest(null, jobUrl, null, "URL"));
+
+        ArgumentCaptor<JobPostingRequest> requestCaptor = ArgumentCaptor.forClass(JobPostingRequest.class);
+        ArgumentCaptor<ApplicationCaseExtraction> extractionCaptor = ArgumentCaptor.forClass(ApplicationCaseExtraction.class);
+        verify(jobPostingService).saveJobPostingForExtractionQueue(eq(1L), eq(10L), requestCaptor.capture());
+        verify(jobPostingService, never()).saveJobPosting(any(), any(), any());
+        verify(extractionMapper).insertApplicationCaseExtraction(extractionCaptor.capture());
+        assertThat(requestCaptor.getValue().uploadedFileUrl()).isEqualTo(jobUrl);
+        assertThat(requestCaptor.getValue().extractedText()).isNull();
+        assertThat(requestCaptor.getValue().sourceType()).isEqualTo("URL");
+        assertThat(extractionCaptor.getValue().getApplicationCaseId()).isEqualTo(10L);
+        assertThat(extractionCaptor.getValue().getJobPostingId()).isEqualTo(20L);
+        assertThat(extractionCaptor.getValue().getUserId()).isEqualTo(1L);
+        assertThat(extractionCaptor.getValue().getSourceType()).isEqualTo("URL");
+        assertThat(extractionCaptor.getValue().getStatus()).isEqualTo("QUEUED");
+        assertThat(response).isSameAs(queuedPosting);
+    }
+
+    @Test
+    void directPdfJsonSaveWithoutExtractedTextRejectsUnprocessableBackgroundExtraction() {
+        ApplicationCaseMapper applicationCaseMapper = mock(ApplicationCaseMapper.class);
+        JobPostingMapper jobPostingMapper = mock(JobPostingMapper.class);
+        ApplicationCaseExtractionMapper extractionMapper = mock(ApplicationCaseExtractionMapper.class);
+        JobPostingService jobPostingService = mock(JobPostingService.class);
+        ApplicationCaseAccessService accessService = new ApplicationCaseAccessService(applicationCaseMapper, jobPostingMapper);
+        ApplicationCaseServiceImpl service = applicationCaseService(applicationCaseMapper, extractionMapper, accessService,
+                jobPostingService, mock(OpenAiResponsesClient.class));
+
+        assertThatThrownBy(() -> service.saveJobPosting(1L, 10L,
+                new JobPostingRequest("raw pdf text", null, null, "PDF")))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(throwable -> assertThat(((BusinessException) throwable).getErrorCode())
+                        .isEqualTo(ErrorCode.INVALID_INPUT));
+
+        verify(jobPostingService, never()).saveJobPostingForExtractionQueue(any(), any(), any());
+        verify(jobPostingService, never()).saveJobPosting(any(), any(), any());
+        verify(extractionMapper, never()).insertApplicationCaseExtraction(any());
+    }
+
+    @Test
+    void directImageJsonSaveWithoutExtractedTextRejectsExternalReferenceQueueing() {
+        ApplicationCaseMapper applicationCaseMapper = mock(ApplicationCaseMapper.class);
+        JobPostingMapper jobPostingMapper = mock(JobPostingMapper.class);
+        ApplicationCaseExtractionMapper extractionMapper = mock(ApplicationCaseExtractionMapper.class);
+        JobPostingService jobPostingService = mock(JobPostingService.class);
+        ApplicationCaseAccessService accessService = new ApplicationCaseAccessService(applicationCaseMapper, jobPostingMapper);
+        ApplicationCaseServiceImpl service = applicationCaseService(applicationCaseMapper, extractionMapper, accessService,
+                jobPostingService, mock(OpenAiResponsesClient.class));
+
+        assertThatThrownBy(() -> service.saveJobPosting(1L, 10L,
+                new JobPostingRequest(null, "https://example.com/posting.png", null, "IMAGE")))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(throwable -> assertThat(((BusinessException) throwable).getErrorCode())
+                        .isEqualTo(ErrorCode.INVALID_INPUT));
+
+        verify(jobPostingService, never()).saveJobPostingForExtractionQueue(any(), any(), any());
+        verify(jobPostingService, never()).saveJobPosting(any(), any(), any());
+        verify(extractionMapper, never()).insertApplicationCaseExtraction(any());
+    }
+
+    @Test
+    void directUrlJobPostingSaveWithExtractedTextKeepsManualSaveWithoutQueueing() {
+        ApplicationCaseMapper applicationCaseMapper = mock(ApplicationCaseMapper.class);
+        JobPostingMapper jobPostingMapper = mock(JobPostingMapper.class);
+        ApplicationCaseExtractionMapper extractionMapper = mock(ApplicationCaseExtractionMapper.class);
+        JobPostingService jobPostingService = mock(JobPostingService.class);
+        ApplicationCaseAccessService accessService = new ApplicationCaseAccessService(applicationCaseMapper, jobPostingMapper);
+        ApplicationCaseServiceImpl service = applicationCaseService(applicationCaseMapper, extractionMapper, accessService,
+                jobPostingService, mock(OpenAiResponsesClient.class));
+        String jobUrl = "https://example.com/jobs/backend";
+        String extractedText = "Confirmed backend posting text";
+        JobPostingResponse savedPosting = new JobPostingResponse(
+                21L,
+                10L,
+                3,
+                null,
+                jobUrl,
+                extractedText,
+                "URL",
+                null);
+
+        when(jobPostingService.saveJobPosting(eq(1L), eq(10L), any(JobPostingRequest.class)))
+                .thenReturn(savedPosting);
+
+        JobPostingResponse response = service.saveJobPosting(1L, 10L,
+                new JobPostingRequest(null, jobUrl, extractedText, "URL"));
+
+        verify(jobPostingService).saveJobPosting(eq(1L), eq(10L), any(JobPostingRequest.class));
+        verify(jobPostingService, never()).saveJobPostingForExtractionQueue(any(), any(), any());
+        verify(extractionMapper, never()).insertApplicationCaseExtraction(any());
+        assertThat(response).isSameAs(savedPosting);
+    }
+
+    @Test
+    void directPdfJsonSaveWithExtractedTextKeepsManualSaveWithoutQueueing() {
+        ApplicationCaseMapper applicationCaseMapper = mock(ApplicationCaseMapper.class);
+        JobPostingMapper jobPostingMapper = mock(JobPostingMapper.class);
+        ApplicationCaseExtractionMapper extractionMapper = mock(ApplicationCaseExtractionMapper.class);
+        JobPostingService jobPostingService = mock(JobPostingService.class);
+        ApplicationCaseAccessService accessService = new ApplicationCaseAccessService(applicationCaseMapper, jobPostingMapper);
+        ApplicationCaseServiceImpl service = applicationCaseService(applicationCaseMapper, extractionMapper, accessService,
+                jobPostingService, mock(OpenAiResponsesClient.class));
+        String extractedText = "Confirmed PDF posting text";
+        JobPostingResponse savedPosting = new JobPostingResponse(
+                24L,
+                10L,
+                4,
+                "raw pdf text",
+                null,
+                extractedText,
+                "PDF",
+                null);
+
+        when(jobPostingService.saveJobPosting(eq(1L), eq(10L), any(JobPostingRequest.class)))
+                .thenReturn(savedPosting);
+
+        JobPostingResponse response = service.saveJobPosting(1L, 10L,
+                new JobPostingRequest("raw pdf text", null, extractedText, "PDF"));
+
+        verify(jobPostingService).saveJobPosting(eq(1L), eq(10L), any(JobPostingRequest.class));
+        verify(jobPostingService, never()).saveJobPostingForExtractionQueue(any(), any(), any());
+        verify(extractionMapper, never()).insertApplicationCaseExtraction(any());
+        assertThat(response).isSameAs(savedPosting);
+    }
+
+    @Test
+    void directTextJobPostingSaveStoresPostingAndQueuesMetadataExtraction() {
+        ApplicationCaseMapper applicationCaseMapper = mock(ApplicationCaseMapper.class);
+        JobPostingMapper jobPostingMapper = mock(JobPostingMapper.class);
+        ApplicationCaseExtractionMapper extractionMapper = mock(ApplicationCaseExtractionMapper.class);
+        JobPostingService jobPostingService = mock(JobPostingService.class);
+        ApplicationCaseAccessService accessService = new ApplicationCaseAccessService(applicationCaseMapper, jobPostingMapper);
+        ApplicationCaseServiceImpl service = applicationCaseService(applicationCaseMapper, extractionMapper, accessService,
+                jobPostingService, mock(OpenAiResponsesClient.class));
+        String postingText = "Manual posting text";
+        JobPostingResponse savedPosting = new JobPostingResponse(
+                22L,
+                10L,
+                4,
+                postingText,
+                null,
+                null,
+                "TEXT",
+                null);
+
+        when(jobPostingService.saveJobPostingForExtractionQueue(eq(1L), eq(10L), any(JobPostingRequest.class)))
+                .thenReturn(savedPosting);
+        doAnswer(invocation -> {
+            ApplicationCaseExtraction extraction = invocation.getArgument(0);
+            extraction.setId(35L);
+            return null;
+        }).when(extractionMapper).insertApplicationCaseExtraction(any(ApplicationCaseExtraction.class));
+
+        JobPostingResponse response = service.saveJobPosting(1L, 10L,
+                new JobPostingRequest(postingText, null, null, "TEXT"));
+
+        ArgumentCaptor<ApplicationCaseExtraction> extractionCaptor = ArgumentCaptor.forClass(ApplicationCaseExtraction.class);
+        verify(jobPostingService).saveJobPostingForExtractionQueue(eq(1L), eq(10L), any(JobPostingRequest.class));
+        verify(jobPostingService, never()).saveJobPosting(any(), any(), any());
+        verify(extractionMapper).insertApplicationCaseExtraction(extractionCaptor.capture());
+        assertThat(extractionCaptor.getValue().getApplicationCaseId()).isEqualTo(10L);
+        assertThat(extractionCaptor.getValue().getJobPostingId()).isEqualTo(22L);
+        assertThat(extractionCaptor.getValue().getUserId()).isEqualTo(1L);
+        assertThat(extractionCaptor.getValue().getSourceType()).isEqualTo("TEXT");
+        assertThat(extractionCaptor.getValue().getStatus()).isEqualTo("QUEUED");
+        assertThat(response).isSameAs(savedPosting);
+    }
+
+    @Test
+    void directUploadJobPostingStoresFileReferenceAndQueuesExtractionWithoutOcr() {
+        ApplicationCaseMapper applicationCaseMapper = mock(ApplicationCaseMapper.class);
+        JobPostingMapper jobPostingMapper = mock(JobPostingMapper.class);
+        ApplicationCaseExtractionMapper extractionMapper = mock(ApplicationCaseExtractionMapper.class);
+        JobPostingService jobPostingService = mock(JobPostingService.class);
+        ApplicationCaseAccessService accessService = new ApplicationCaseAccessService(applicationCaseMapper, jobPostingMapper);
+        ApplicationCaseServiceImpl service = applicationCaseService(applicationCaseMapper, extractionMapper, accessService,
+                jobPostingService, mock(OpenAiResponsesClient.class));
+        MultipartFile file = mock(MultipartFile.class);
+        JobPostingResponse queuedPosting = new JobPostingResponse(
+                23L,
+                10L,
+                5,
+                null,
+                "local:application-postings/10/posting.pdf",
+                null,
+                "PDF",
+                null);
+
+        doAnswer(invocation -> {
+            ApplicationCaseExtraction extraction = invocation.getArgument(0);
+            extraction.setId(31L);
+            return null;
+        }).when(extractionMapper).insertApplicationCaseExtraction(any(ApplicationCaseExtraction.class));
+        when(jobPostingService.saveUploadedJobPostingReferenceForNewCase(1L, 10L, file, "PDF"))
+                .thenReturn(queuedPosting);
+
+        JobPostingResponse response = service.uploadJobPostingFile(1L, 10L, file, "PDF");
+
+        ArgumentCaptor<ApplicationCaseExtraction> extractionCaptor = ArgumentCaptor.forClass(ApplicationCaseExtraction.class);
+        verify(jobPostingService).saveUploadedJobPostingReferenceForNewCase(1L, 10L, file, "PDF");
+        verify(jobPostingService, never()).uploadJobPostingFile(any(), any(), any(), any());
+        verify(extractionMapper).insertApplicationCaseExtraction(extractionCaptor.capture());
+        assertThat(extractionCaptor.getValue().getApplicationCaseId()).isEqualTo(10L);
+        assertThat(extractionCaptor.getValue().getJobPostingId()).isEqualTo(23L);
+        assertThat(extractionCaptor.getValue().getSourceType()).isEqualTo("PDF");
+        assertThat(extractionCaptor.getValue().getStatus()).isEqualTo("QUEUED");
+        assertThat(response).isSameAs(queuedPosting);
+    }
+
+    @Test
     void updateApplicationCaseClearsDeadlineDateWhenRequested() {
         ApplicationCaseMapper applicationCaseMapper = mock(ApplicationCaseMapper.class);
         JobPostingMapper jobPostingMapper = mock(JobPostingMapper.class);
@@ -430,6 +904,7 @@ class ApplicationCaseServiceImplTest {
                 null,
                 null,
                 null,
+                null,
                 true,
                 null,
                 null,
@@ -440,6 +915,56 @@ class ApplicationCaseServiceImplTest {
         verify(applicationCaseMapper).updateApplicationCase(caseCaptor.capture());
         assertThat(caseCaptor.getValue().getDeadlineDate()).isNull();
         assertThat(response.deadlineDate()).isNull();
+    }
+
+    @Test
+    void updateApplicationCaseClearsPostingDateWhenRequested() {
+        ApplicationCaseMapper applicationCaseMapper = mock(ApplicationCaseMapper.class);
+        JobPostingMapper jobPostingMapper = mock(JobPostingMapper.class);
+        ApplicationCaseAccessService accessService = new ApplicationCaseAccessService(applicationCaseMapper, jobPostingMapper);
+        ApplicationCaseServiceImpl service = applicationCaseService(applicationCaseMapper, accessService);
+        LocalDate postingDate = LocalDate.of(2026, 6, 1);
+        ApplicationCase existing = ApplicationCase.builder()
+                .id(10L)
+                .userId(1L)
+                .companyName("Test Company")
+                .jobTitle("Backend Developer")
+                .postingDate(postingDate)
+                .deadlineDate(LocalDate.of(2026, 7, 31))
+                .sourceType("TEXT")
+                .status("DRAFT")
+                .build();
+        ApplicationCase updated = ApplicationCase.builder()
+                .id(10L)
+                .userId(1L)
+                .companyName("Test Company")
+                .jobTitle("Backend Developer")
+                .postingDate(null)
+                .deadlineDate(LocalDate.of(2026, 7, 31))
+                .sourceType("TEXT")
+                .status("DRAFT")
+                .build();
+
+        when(applicationCaseMapper.findApplicationCaseByIdAndUserId(10L, 1L))
+                .thenReturn(existing)
+                .thenReturn(updated);
+
+        ApplicationCaseResponse response = service.update(1L, 10L, new UpdateApplicationCaseRequest(
+                null,
+                null,
+                null,
+                true,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null));
+
+        ArgumentCaptor<ApplicationCase> caseCaptor = ArgumentCaptor.forClass(ApplicationCase.class);
+        verify(applicationCaseMapper).updateApplicationCase(caseCaptor.capture());
+        assertThat(caseCaptor.getValue().getPostingDate()).isNull();
+        assertThat(response.postingDate()).isNull();
     }
 
     @Test
@@ -803,15 +1328,327 @@ class ApplicationCaseServiceImplTest {
         verify(applicationCaseMapper).findBFailureLogsByCaseId(10L, 5);
     }
 
+    @Test
+    void getActiveExtractionJobsScopesLookupToCurrentUser() {
+        ApplicationCaseMapper applicationCaseMapper = mock(ApplicationCaseMapper.class);
+        JobPostingMapper jobPostingMapper = mock(JobPostingMapper.class);
+        ApplicationCaseExtractionMapper extractionMapper = mock(ApplicationCaseExtractionMapper.class);
+        ApplicationCaseAccessService accessService = new ApplicationCaseAccessService(applicationCaseMapper, jobPostingMapper);
+        ApplicationCaseServiceImpl service = applicationCaseService(applicationCaseMapper, extractionMapper, accessService,
+                mock(JobPostingService.class), mock(OpenAiResponsesClient.class));
+        ApplicationCaseExtraction queued = extraction(30L, 10L, 20L, 1L, "TEXT", "QUEUED");
+
+        when(extractionMapper.findActiveExtractionsByUserId(1L)).thenReturn(List.of(queued));
+
+        List<ApplicationCaseExtractionResponse> response = service.getActiveExtractions(1L);
+
+        assertThat(response).hasSize(1);
+        assertThat(response.get(0).id()).isEqualTo(30L);
+        assertThat(response.get(0).status()).isEqualTo("QUEUED");
+        verify(extractionMapper).findActiveExtractionsByUserId(1L);
+    }
+
+    @Test
+    void getLatestExtractionJobRequiresOwnedApplicationCaseBeforeLookup() {
+        ApplicationCaseMapper applicationCaseMapper = mock(ApplicationCaseMapper.class);
+        JobPostingMapper jobPostingMapper = mock(JobPostingMapper.class);
+        ApplicationCaseExtractionMapper extractionMapper = mock(ApplicationCaseExtractionMapper.class);
+        ApplicationCaseAccessService accessService = new ApplicationCaseAccessService(applicationCaseMapper, jobPostingMapper);
+        ApplicationCaseServiceImpl service = applicationCaseService(applicationCaseMapper, extractionMapper, accessService,
+                mock(JobPostingService.class), mock(OpenAiResponsesClient.class));
+        ApplicationCaseExtraction latest = extraction(31L, 10L, 20L, 1L, "URL", "SUCCEEDED");
+
+        when(applicationCaseMapper.findApplicationCaseByIdAndUserId(10L, 1L)).thenReturn(ApplicationCase.builder()
+                .id(10L)
+                .userId(1L)
+                .build());
+        when(extractionMapper.findLatestExtractionByApplicationCaseId(10L)).thenReturn(latest);
+
+        ApplicationCaseExtractionResponse response = service.getLatestJobPostingExtraction(1L, 10L);
+
+        assertThat(response.id()).isEqualTo(31L);
+        assertThat(response.sourceType()).isEqualTo("URL");
+        verify(applicationCaseMapper).findApplicationCaseByIdAndUserId(10L, 1L);
+        verify(extractionMapper).findLatestExtractionByApplicationCaseId(10L);
+    }
+
+    @Test
+    void getLatestExtractionJobThrowsNotFoundWhenOwnedCaseHasNoExtraction() {
+        ApplicationCaseMapper applicationCaseMapper = mock(ApplicationCaseMapper.class);
+        JobPostingMapper jobPostingMapper = mock(JobPostingMapper.class);
+        ApplicationCaseExtractionMapper extractionMapper = mock(ApplicationCaseExtractionMapper.class);
+        ApplicationCaseAccessService accessService = new ApplicationCaseAccessService(applicationCaseMapper, jobPostingMapper);
+        ApplicationCaseServiceImpl service = applicationCaseService(applicationCaseMapper, extractionMapper, accessService,
+                mock(JobPostingService.class), mock(OpenAiResponsesClient.class));
+
+        when(applicationCaseMapper.findApplicationCaseByIdAndUserId(10L, 1L)).thenReturn(ApplicationCase.builder()
+                .id(10L)
+                .userId(1L)
+                .build());
+
+        assertThatThrownBy(() -> service.getLatestJobPostingExtraction(1L, 10L))
+                .isInstanceOf(BusinessException.class);
+        verify(applicationCaseMapper).findApplicationCaseByIdAndUserId(10L, 1L);
+        verify(extractionMapper).findLatestExtractionByApplicationCaseId(10L);
+    }
+
+    @Test
+    void retryJobPostingExtractionRequiresOwnedCaseAndQueuesFailedExtractionPosting() {
+        ApplicationCaseMapper applicationCaseMapper = mock(ApplicationCaseMapper.class);
+        JobPostingMapper jobPostingMapper = mock(JobPostingMapper.class);
+        ApplicationCaseExtractionMapper extractionMapper = mock(ApplicationCaseExtractionMapper.class);
+        JobPostingService jobPostingService = mock(JobPostingService.class);
+        ApplicationCaseAccessService accessService = new ApplicationCaseAccessService(applicationCaseMapper, jobPostingMapper);
+        ApplicationCaseServiceImpl service = applicationCaseService(applicationCaseMapper, extractionMapper, accessService,
+                jobPostingService, mock(OpenAiResponsesClient.class));
+        ApplicationCaseExtraction failed = extraction(40L, 10L, 20L, 1L, "PDF", "FAILED");
+
+        when(applicationCaseMapper.findApplicationCaseByIdAndUserId(10L, 1L)).thenReturn(ApplicationCase.builder()
+                .id(10L)
+                .userId(1L)
+                .build());
+        when(extractionMapper.countActiveExtractionsByApplicationCaseId(10L)).thenReturn(0);
+        when(extractionMapper.findLatestExtractionByApplicationCaseId(10L)).thenReturn(failed);
+        when(jobPostingService.getJobPostingByIdForCase(1L, 10L, 20L)).thenReturn(new JobPostingResponse(
+                20L,
+                10L,
+                1,
+                null,
+                "local:application-postings/10/posting.pdf",
+                null,
+                "PDF",
+                null));
+        doAnswer(invocation -> {
+            ApplicationCaseExtraction retry = invocation.getArgument(0);
+            retry.setId(41L);
+            return null;
+        }).when(extractionMapper).insertApplicationCaseExtraction(any(ApplicationCaseExtraction.class));
+
+        ApplicationCaseExtractionResponse response = service.retryJobPostingExtraction(1L, 10L);
+
+        ArgumentCaptor<ApplicationCaseExtraction> retryCaptor = ArgumentCaptor.forClass(ApplicationCaseExtraction.class);
+        verify(applicationCaseMapper).findApplicationCaseByIdAndUserId(10L, 1L);
+        verify(extractionMapper).countActiveExtractionsByApplicationCaseId(10L);
+        verify(extractionMapper).findLatestExtractionByApplicationCaseId(10L);
+        verify(jobPostingService).getJobPostingByIdForCase(1L, 10L, 20L);
+        verify(extractionMapper).insertApplicationCaseExtraction(retryCaptor.capture());
+        assertThat(retryCaptor.getValue().getApplicationCaseId()).isEqualTo(10L);
+        assertThat(retryCaptor.getValue().getJobPostingId()).isEqualTo(20L);
+        assertThat(retryCaptor.getValue().getUserId()).isEqualTo(1L);
+        assertThat(retryCaptor.getValue().getSourceType()).isEqualTo("PDF");
+        assertThat(retryCaptor.getValue().getStatus()).isEqualTo("QUEUED");
+        assertThat(response.id()).isEqualTo(41L);
+        assertThat(response.status()).isEqualTo("QUEUED");
+    }
+
+    @Test
+    void retryJobPostingExtractionBlocksWhenAnyActiveExtractionExistsForCase() {
+        ApplicationCaseMapper applicationCaseMapper = mock(ApplicationCaseMapper.class);
+        JobPostingMapper jobPostingMapper = mock(JobPostingMapper.class);
+        ApplicationCaseExtractionMapper extractionMapper = mock(ApplicationCaseExtractionMapper.class);
+        JobPostingService jobPostingService = mock(JobPostingService.class);
+        ApplicationCaseAccessService accessService = new ApplicationCaseAccessService(applicationCaseMapper, jobPostingMapper);
+        ApplicationCaseServiceImpl service = applicationCaseService(applicationCaseMapper, extractionMapper, accessService,
+                jobPostingService, mock(OpenAiResponsesClient.class));
+
+        when(applicationCaseMapper.findApplicationCaseByIdAndUserId(10L, 1L)).thenReturn(ApplicationCase.builder()
+                .id(10L)
+                .userId(1L)
+                .build());
+        when(extractionMapper.countActiveExtractionsByApplicationCaseId(10L)).thenReturn(1);
+
+        assertThatThrownBy(() -> service.retryJobPostingExtraction(1L, 10L))
+                .isInstanceOf(BusinessException.class);
+
+        verify(extractionMapper, never()).findLatestExtractionByApplicationCaseId(10L);
+        verify(jobPostingService, never()).getJobPosting(any(), any());
+        verify(extractionMapper, never()).insertApplicationCaseExtraction(any());
+    }
+
+    @Test
+    void retryJobPostingExtractionUsesFailedPdfPostingWhenLatestPostingIsText() {
+        ApplicationCaseMapper applicationCaseMapper = mock(ApplicationCaseMapper.class);
+        JobPostingMapper jobPostingMapper = mock(JobPostingMapper.class);
+        ApplicationCaseExtractionMapper extractionMapper = mock(ApplicationCaseExtractionMapper.class);
+        JobPostingService jobPostingService = mock(JobPostingService.class);
+        ApplicationCaseAccessService accessService = new ApplicationCaseAccessService(applicationCaseMapper, jobPostingMapper);
+        ApplicationCaseServiceImpl service = applicationCaseService(applicationCaseMapper, extractionMapper, accessService,
+                jobPostingService, mock(OpenAiResponsesClient.class));
+        ApplicationCaseExtraction failed = extraction(50L, 10L, 20L, 1L, "PDF", "FAILED");
+
+        when(applicationCaseMapper.findApplicationCaseByIdAndUserId(10L, 1L)).thenReturn(ApplicationCase.builder()
+                .id(10L)
+                .userId(1L)
+                .build());
+        when(extractionMapper.countActiveExtractionsByApplicationCaseId(10L)).thenReturn(0);
+        when(extractionMapper.findLatestExtractionByApplicationCaseId(10L)).thenReturn(failed);
+        when(jobPostingService.getJobPostingByIdForCase(1L, 10L, 20L)).thenReturn(new JobPostingResponse(
+                20L,
+                10L,
+                1,
+                null,
+                "local:application-postings/10/posting.pdf",
+                null,
+                "PDF",
+                null));
+        when(jobPostingService.getJobPosting(1L, 10L)).thenReturn(new JobPostingResponse(
+                99L,
+                10L,
+                2,
+                "manual corrected text",
+                null,
+                null,
+                "TEXT",
+                null));
+        doAnswer(invocation -> {
+            ApplicationCaseExtraction retry = invocation.getArgument(0);
+            retry.setId(51L);
+            return null;
+        }).when(extractionMapper).insertApplicationCaseExtraction(any(ApplicationCaseExtraction.class));
+
+        ApplicationCaseExtractionResponse response = service.retryJobPostingExtraction(1L, 10L);
+
+        ArgumentCaptor<ApplicationCaseExtraction> retryCaptor = ArgumentCaptor.forClass(ApplicationCaseExtraction.class);
+        verify(jobPostingService).getJobPostingByIdForCase(1L, 10L, 20L);
+        verify(jobPostingService, never()).getJobPosting(1L, 10L);
+        verify(extractionMapper).insertApplicationCaseExtraction(retryCaptor.capture());
+        assertThat(retryCaptor.getValue().getJobPostingId()).isEqualTo(20L);
+        assertThat(retryCaptor.getValue().getSourceType()).isEqualTo("PDF");
+        assertThat(response.id()).isEqualTo(51L);
+    }
+
+    @Test
+    void retryJobPostingExtractionReportsConflictWhenGuardedInsertLosesRace() {
+        ApplicationCaseMapper applicationCaseMapper = mock(ApplicationCaseMapper.class);
+        JobPostingMapper jobPostingMapper = mock(JobPostingMapper.class);
+        ApplicationCaseExtractionMapper extractionMapper = mock(ApplicationCaseExtractionMapper.class);
+        JobPostingService jobPostingService = mock(JobPostingService.class);
+        ApplicationCaseAccessService accessService = new ApplicationCaseAccessService(applicationCaseMapper, jobPostingMapper);
+        ApplicationCaseServiceImpl service = applicationCaseService(applicationCaseMapper, extractionMapper, accessService,
+                jobPostingService, mock(OpenAiResponsesClient.class));
+        ApplicationCaseExtraction failed = extraction(40L, 10L, 20L, 1L, "URL", "FAILED");
+
+        when(applicationCaseMapper.findApplicationCaseByIdAndUserId(10L, 1L)).thenReturn(ApplicationCase.builder()
+                .id(10L)
+                .userId(1L)
+                .build());
+        when(extractionMapper.countActiveExtractionsByApplicationCaseId(10L)).thenReturn(0);
+        when(extractionMapper.findLatestExtractionByApplicationCaseId(10L)).thenReturn(failed);
+        when(jobPostingService.getJobPostingByIdForCase(1L, 10L, 20L)).thenReturn(new JobPostingResponse(
+                20L,
+                10L,
+                1,
+                null,
+                "https://example.com/jobs/backend",
+                null,
+                "URL",
+                null));
+        doThrow(new DuplicateKeyException("uk_case_extraction_active"))
+                .when(extractionMapper)
+                .insertApplicationCaseExtraction(any(ApplicationCaseExtraction.class));
+
+        assertThatThrownBy(() -> service.retryJobPostingExtraction(1L, 10L))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(throwable -> assertThat(((BusinessException) throwable).getErrorCode())
+                        .isEqualTo(ErrorCode.CONFLICT));
+    }
+
+    @Test
+    void retryJobPostingExtractionRejectsWhenLatestExtractionIsNotFailed() {
+        ApplicationCaseMapper applicationCaseMapper = mock(ApplicationCaseMapper.class);
+        JobPostingMapper jobPostingMapper = mock(JobPostingMapper.class);
+        ApplicationCaseExtractionMapper extractionMapper = mock(ApplicationCaseExtractionMapper.class);
+        JobPostingService jobPostingService = mock(JobPostingService.class);
+        ApplicationCaseAccessService accessService = new ApplicationCaseAccessService(applicationCaseMapper, jobPostingMapper);
+        ApplicationCaseServiceImpl service = applicationCaseService(applicationCaseMapper, extractionMapper, accessService,
+                jobPostingService, mock(OpenAiResponsesClient.class));
+
+        when(applicationCaseMapper.findApplicationCaseByIdAndUserId(10L, 1L)).thenReturn(ApplicationCase.builder()
+                .id(10L)
+                .userId(1L)
+                .build());
+        when(extractionMapper.countActiveExtractionsByApplicationCaseId(10L)).thenReturn(0);
+        when(extractionMapper.findLatestExtractionByApplicationCaseId(10L))
+                .thenReturn(extraction(40L, 10L, 20L, 1L, "URL", "SUCCEEDED"));
+
+        assertThatThrownBy(() -> service.retryJobPostingExtraction(1L, 10L))
+                .isInstanceOf(BusinessException.class);
+
+        verify(jobPostingService, never()).getJobPosting(any(), any());
+        verify(extractionMapper, never()).insertApplicationCaseExtraction(any());
+    }
+
+    @Test
+    void retryJobPostingExtractionStopsBeforeRetryLookupWhenCaseIsNotOwned() {
+        ApplicationCaseMapper applicationCaseMapper = mock(ApplicationCaseMapper.class);
+        JobPostingMapper jobPostingMapper = mock(JobPostingMapper.class);
+        ApplicationCaseExtractionMapper extractionMapper = mock(ApplicationCaseExtractionMapper.class);
+        JobPostingService jobPostingService = mock(JobPostingService.class);
+        ApplicationCaseAccessService accessService = new ApplicationCaseAccessService(applicationCaseMapper, jobPostingMapper);
+        ApplicationCaseServiceImpl service = applicationCaseService(applicationCaseMapper, extractionMapper, accessService,
+                jobPostingService, mock(OpenAiResponsesClient.class));
+
+        assertThatThrownBy(() -> service.retryJobPostingExtraction(1L, 10L))
+                .isInstanceOf(BusinessException.class);
+
+        verify(extractionMapper, never()).countActiveExtractionsByApplicationCaseId(any());
+        verify(extractionMapper, never()).findLatestExtractionByApplicationCaseId(any());
+        verify(jobPostingService, never()).getJobPosting(any(), any());
+        verify(extractionMapper, never()).insertApplicationCaseExtraction(any());
+    }
+
     private static ApplicationCaseServiceImpl applicationCaseService(ApplicationCaseMapper applicationCaseMapper,
                                                                      ApplicationCaseAccessService accessService) {
-        return new ApplicationCaseServiceImpl(
+        return applicationCaseService(
                 applicationCaseMapper,
+                mock(ApplicationCaseExtractionMapper.class),
                 accessService,
                 mock(JobPostingService.class),
+                mock(OpenAiResponsesClient.class));
+    }
+
+    private static ApplicationCaseServiceImpl applicationCaseService(ApplicationCaseMapper applicationCaseMapper,
+                                                                     ApplicationCaseAccessService accessService,
+                                                                     JobPostingService jobPostingService,
+                                                                     OpenAiResponsesClient openAiClient) {
+        return applicationCaseService(
+                applicationCaseMapper,
+                mock(ApplicationCaseExtractionMapper.class),
+                accessService,
+                jobPostingService,
+                openAiClient);
+    }
+
+    private static ApplicationCaseServiceImpl applicationCaseService(ApplicationCaseMapper applicationCaseMapper,
+                                                                     ApplicationCaseExtractionMapper extractionMapper,
+                                                                     ApplicationCaseAccessService accessService,
+                                                                     JobPostingService jobPostingService,
+                                                                     OpenAiResponsesClient openAiClient) {
+        return new ApplicationCaseServiceImpl(
+                applicationCaseMapper,
+                extractionMapper,
+                accessService,
+                jobPostingService,
                 mock(JobAnalysisService.class),
                 mock(CompanyAnalysisService.class),
-                mock(JobAnalysisMapper.class));
+                mock(JobAnalysisMapper.class),
+                openAiClient);
+    }
+
+    private static ApplicationCaseExtraction extraction(Long id,
+                                                        Long applicationCaseId,
+                                                        Long jobPostingId,
+                                                        Long userId,
+                                                        String sourceType,
+                                                        String status) {
+        return ApplicationCaseExtraction.builder()
+                .id(id)
+                .applicationCaseId(applicationCaseId)
+                .jobPostingId(jobPostingId)
+                .userId(userId)
+                .sourceType(sourceType)
+                .status(status)
+                .build();
     }
 
     private static TransactionTemplate transactionTemplate() {

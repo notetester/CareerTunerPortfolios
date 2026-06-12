@@ -1,4 +1,4 @@
-/* ── AI 알림 (11개) ── */
+/* ── AI 알림 (13개) ── */
 export type AINotificationType =
   | "PROFILE_ANALYZED"
   | "JOB_ANALYSIS_COMPLETE"
@@ -9,6 +9,8 @@ export type AINotificationType =
   | "INTERVIEW_REPORT_READY"
   | "CORRECTION_COMPLETE"
   | "POST_SUMMARY_READY"
+  | "JOB_POSTING_EXTRACTION_SUCCEEDED"
+  | "JOB_POSTING_EXTRACTION_FAILED"
   | "LOW_CONFIDENCE_REPORT"
   | "TICKET_DRAFT_READY";
 
@@ -58,7 +60,7 @@ export interface Notification {
   createdAt: string;
 }
 
-/* ── TYPE_META: type(20종) → UI 표현 단일 소스 (디자인 시스템 Notify.jsx 기반) ── */
+/* ── TYPE_META: type(22종) → UI 표현 단일 소스 (디자인 시스템 Notify.jsx 기반) ── */
 
 export type ToastVariant = "success" | "info" | "warning" | "danger";
 
@@ -77,6 +79,8 @@ export const TYPE_META: Record<NotificationType, TypeMeta> = {
   COMPANY_ANALYSIS_COMPLETE: { cat: "ai_analysis", icon: "Building2",          variant: "success", cta: "기업 분석 보기" },
   FIT_ANALYSIS_COMPLETE:     { cat: "ai_analysis", icon: "Target",             variant: "success", cta: "적합도 분석 보기" },
   CAREER_TREND_COMPLETE:     { cat: "ai_analysis", icon: "TrendingUp",         variant: "info",    cta: "트렌드 리포트 보기" },
+  JOB_POSTING_EXTRACTION_SUCCEEDED: { cat: "ai_analysis", icon: "FileSearch",  variant: "success", cta: "지원 건 보기" },
+  JOB_POSTING_EXTRACTION_FAILED:    { cat: "ai_analysis", icon: "AlertTriangle", variant: "danger", cta: "지원 건 보기" },
   /* 면접 */
   QUESTIONS_GENERATED:       { cat: "interview",   icon: "ListChecks",         variant: "info",    cta: "예상 질문 보기" },
   INTERVIEW_REPORT_READY:    { cat: "interview",   icon: "ClipboardList",      variant: "info",    cta: "면접 리포트 보기" },
@@ -141,6 +145,8 @@ export const TYPE_TO_CATEGORY: Record<NotificationType, NotificationCategory> = 
   COMPANY_ANALYSIS_COMPLETE: "ai_analysis",
   FIT_ANALYSIS_COMPLETE: "ai_analysis",
   CAREER_TREND_COMPLETE: "ai_analysis",
+  JOB_POSTING_EXTRACTION_SUCCEEDED: "ai_analysis",
+  JOB_POSTING_EXTRACTION_FAILED: "ai_analysis",
   /* 면접 */
   QUESTIONS_GENERATED: "interview",
   INTERVIEW_REPORT_READY: "interview",

@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { AlertTriangle, CalendarDays, FileType, Loader2, Pencil, Save, Star, Trash2, X } from "lucide-react";
+import { AlertTriangle, CalendarDays, FileType, Loader2, Pencil, RefreshCw, Save, Star, Trash2, X } from "lucide-react";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -25,6 +25,7 @@ import {
 } from "@/app/components/ui/select";
 import type {
   ApplicationCase,
+  ApplicationCaseExtraction,
   ApplicationSourceType,
   ApplicationStatus,
   UpdateApplicationCaseRequest,
@@ -34,11 +35,15 @@ import {
   APPLICATION_STATUS_OPTIONS,
   getApplicationSourceLabel,
 } from "../types/applicationCase";
+import { ApplicationExtractionBadge } from "./ApplicationExtractionBadge";
 import { ApplicationStatusBadge } from "./ApplicationStatusBadge";
 
 interface ApplicationOverviewPanelProps {
   applicationCase: ApplicationCase;
+  extraction?: ApplicationCaseExtraction | null;
+  retryingExtraction?: boolean;
   onUpdate(request: UpdateApplicationCaseRequest): Promise<void>;
+  onRetryExtraction?(): Promise<ApplicationCaseExtraction | null>;
   onDelete?(): Promise<void>;
 }
 
@@ -57,7 +62,10 @@ interface BasicFormState {
 
 export function ApplicationOverviewPanel({
   applicationCase,
+  extraction,
+  retryingExtraction = false,
   onUpdate,
+  onRetryExtraction,
   onDelete,
 }: ApplicationOverviewPanelProps) {
   const [updating, setUpdating] = useState(false);
@@ -112,6 +120,7 @@ export function ApplicationOverviewPanel({
       companyName,
       jobTitle,
       postingDate: form.postingDate || null,
+      clearPostingDate: !form.postingDate,
       deadlineDate: form.deadlineDate || null,
       clearDeadlineDate: !form.deadlineDate,
       sourceType: form.sourceType,
@@ -144,6 +153,7 @@ export function ApplicationOverviewPanel({
               <div className="text-sm font-medium text-slate-600">{applicationCase.jobTitle}</div>
               <div className="flex flex-wrap gap-2">
                 <ApplicationStatusBadge status={applicationCase.status} />
+                <ApplicationExtractionBadge extraction={extraction} />
                 {applicationCase.favorite && (
                   <Badge variant="outline" className="border-amber-200 bg-amber-50 text-amber-700">
                     <Star className="size-3 fill-amber-500 text-amber-500" />
@@ -341,6 +351,31 @@ export function ApplicationOverviewPanel({
               </SelectContent>
             </Select>
           </div>
+
+          {extraction && (
+            <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+              <div className="mb-2 text-xs font-semibold text-slate-500">공고문 추출</div>
+              <div className="flex flex-wrap items-center gap-2">
+                <ApplicationExtractionBadge extraction={extraction} />
+                {extraction.status === "FAILED" && onRetryExtraction && (
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    className="h-7 border-red-200 px-2 text-xs text-red-700 hover:bg-red-50 hover:text-red-800"
+                    disabled={retryingExtraction}
+                    onClick={() => void onRetryExtraction()}
+                  >
+                    {retryingExtraction ? <Loader2 className="size-3.5 animate-spin" /> : <RefreshCw className="size-3.5" />}
+                    다시 추출
+                  </Button>
+                )}
+              </div>
+              {extraction.status === "FAILED" && extraction.errorMessage && (
+                <p className="mt-2 text-xs leading-5 text-red-600">{extraction.errorMessage}</p>
+              )}
+            </div>
+          )}
 
           <label className="flex items-center gap-3 rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm text-slate-700">
             <Checkbox

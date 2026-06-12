@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router";
 import {
   ArrowLeft,
@@ -16,6 +16,7 @@ import { Button } from "@/app/components/ui/button";
 import { Card, CardContent } from "@/app/components/ui/card";
 import { deleteApplicationCase, updateApplicationCase } from "../api/applicationCasesApi";
 import { ApplicationOverviewPanel } from "../components/ApplicationOverviewPanel";
+import { ApplicationExtractionBadge } from "../components/ApplicationExtractionBadge";
 import { ApplicationStatusBadge } from "../components/ApplicationStatusBadge";
 import { CompanyAnalysisPanel } from "../components/CompanyAnalysisPanel";
 import { FitAnalysisPanel } from "../components/FitAnalysisPanel";
@@ -25,6 +26,7 @@ import { LearningRecommendationPanel } from "../components/LearningRecommendatio
 import { LoginRequiredState } from "../components/LoginRequiredState";
 import { StrategyPanel } from "../components/StrategyPanel";
 import { useApplicationCase } from "../hooks/useApplicationCase";
+import { useApplicationCaseExtraction } from "../hooks/useApplicationCaseExtraction";
 import { useApplicationCases } from "../hooks/useApplicationCases";
 import { useBAnalysisFailureLogs } from "../hooks/useBAnalysisFailureLogs";
 import { useCompanyAnalysis } from "../hooks/useCompanyAnalysis";
@@ -32,6 +34,7 @@ import { useJobAnalysis } from "../hooks/useJobAnalysis";
 import { useJobPosting } from "../hooks/useJobPosting";
 import type { ApplicationSourceType, UpdateApplicationCaseRequest } from "../types/applicationCase";
 import type { JobPosting, JobPostingRequest } from "../types/jobPosting";
+import { registerApplicationCaseExtraction } from "../utils/applicationExtractionTracker";
 import { useApplicationFitAnalysis } from "@/features/analysis/hooks/useApplicationFitAnalysis";
 
 type DetailTab = "overview" | "posting" | "jobAnalysis" | "companyAnalysis" | "fit";
@@ -83,9 +86,17 @@ export function ApplicationDetailPage() {
     uploading: postingUploading,
     error: postingError,
     revisions: postingRevisions,
+    refresh: refreshPosting,
     save: savePosting,
     upload: uploadPosting,
   } = useJobPosting(id, isAuthenticated && Boolean(applicationCase));
+  const {
+    extraction,
+    retrying: retryingExtraction,
+    error: extractionError,
+    refresh: refreshExtraction,
+    retry: retryExtraction,
+  } = useApplicationCaseExtraction(id, isAuthenticated && Boolean(applicationCase));
   const {
     jobAnalysis,
     loading: jobAnalysisLoading,
@@ -116,11 +127,23 @@ export function ApplicationDetailPage() {
     error: fitAnalysisError,
     generate: generateFit,
   } = useApplicationFitAnalysis(id, isAuthenticated && Boolean(applicationCase));
+  const refreshedExtractionIdRef = useRef<number | null>(null);
+
   useEffect(() => {
     if (id && params.section && !tabKeysBySlug[params.section]) {
       navigate(`/applications/${id}/overview`, { replace: true });
     }
   }, [id, navigate, params.section]);
+
+  useEffect(() => {
+    if (!extraction || extraction.status !== "SUCCEEDED" || refreshedExtractionIdRef.current === extraction.id) {
+      return;
+    }
+
+    refreshedExtractionIdRef.current = extraction.id;
+    void refresh();
+    void refreshPosting();
+  }, [extraction, refresh, refreshPosting]);
 
   const handleUpdate = async (request: UpdateApplicationCaseRequest) => {
     if (!id) return;
@@ -146,17 +169,30 @@ export function ApplicationDetailPage() {
     return posting;
   };
 
+  const refreshAndTrackExtraction = async (previousExtractionId: number | null) => {
+    const latest = await refreshExtraction();
+    if (latest && latest.id !== previousExtractionId) {
+      registerApplicationCaseExtraction(latest);
+    }
+  };
+
   const handleSavePosting = async (request: JobPostingRequest): Promise<JobPosting | null> => {
+    const previousExtractionId = extraction?.id ?? null;
     const posting = await savePosting(request);
-    return syncCaseSourceType(posting);
+    const syncedPosting = await syncCaseSourceType(posting);
+    await refreshAndTrackExtraction(previousExtractionId);
+    return syncedPosting;
   };
 
   const handleUploadPosting = async (
     sourceType: Extract<ApplicationSourceType, "PDF" | "IMAGE">,
     file: File,
   ): Promise<JobPosting | null> => {
+    const previousExtractionId = extraction?.id ?? null;
     const posting = await uploadPosting(sourceType, file);
-    return syncCaseSourceType(posting);
+    const syncedPosting = await syncCaseSourceType(posting);
+    await refreshAndTrackExtraction(previousExtractionId);
+    return syncedPosting;
   };
 
   const handleDelete = async () => {
@@ -270,6 +306,20 @@ export function ApplicationDetailPage() {
               {applicationCase && (
                 <div className="mt-2 flex flex-wrap gap-2">
                   <ApplicationStatusBadge status={applicationCase.status} />
+                  <ApplicationExtractionBadge extraction={extraction} />
+                  {extraction?.status === "FAILED" && (
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      className="h-7 border-red-200 px-2 text-xs text-red-700 hover:bg-red-50 hover:text-red-800"
+                      disabled={retryingExtraction}
+                      onClick={() => void retryExtraction()}
+                    >
+                      <RefreshCw className={`size-3.5 ${retryingExtraction ? "animate-spin" : ""}`} />
+                      다시 추출
+                    </Button>
+                  )}
                 </div>
               )}
             </div>
@@ -309,6 +359,12 @@ export function ApplicationDetailPage() {
             </div>
           )}
 
+          {extractionError && (
+            <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+              {extractionError}
+            </div>
+          )}
+
           {loading || !applicationCase ? (
             <div className="h-96 animate-pulse rounded-lg bg-slate-200" />
           ) : (
@@ -317,7 +373,10 @@ export function ApplicationDetailPage() {
                 <div className="space-y-4">
                   <ApplicationOverviewPanel
                     applicationCase={applicationCase}
+                    extraction={extraction}
+                    retryingExtraction={retryingExtraction}
                     onUpdate={handleUpdate}
+                    onRetryExtraction={retryExtraction}
                     onDelete={handleDelete}
                   />
                   <Card className="border-slate-200 bg-white">
@@ -344,8 +403,11 @@ export function ApplicationDetailPage() {
                   saving={postingSaving}
                   uploading={postingUploading}
                   error={postingError}
+                  extraction={extraction}
+                  retryingExtraction={retryingExtraction}
                   onSave={handleSavePosting}
                   onUpload={handleUploadPosting}
+                  onRetryExtraction={retryExtraction}
                 />
               )}
 

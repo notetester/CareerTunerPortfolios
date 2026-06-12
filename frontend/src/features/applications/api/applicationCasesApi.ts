@@ -1,15 +1,33 @@
-import { api } from "@/app/lib/api";
+import { ApiError, api } from "@/app/lib/api";
 import type {
   ApplicationCase,
+  ApplicationCaseExtraction,
   ApplicationCaseListView,
+  ApplicationSourceType,
   CreateApplicationCaseRequest,
   UpdateApplicationCaseRequest,
 } from "../types/applicationCase";
+import type { JobPosting, JobPostingMetadata } from "../types/jobPosting";
 
 type ApplicationCaseListOptions = boolean | {
   includeArchived?: boolean;
   view?: ApplicationCaseListView;
 };
+
+export interface CreateApplicationCaseFromJobPostingRequest {
+  originalText?: string | null;
+  uploadedFileUrl?: string | null;
+  extractedText?: string | null;
+  sourceType?: ApplicationSourceType;
+  favorite?: boolean;
+}
+
+export interface CreateApplicationCaseFromJobPostingResponse {
+  applicationCase: ApplicationCase;
+  jobPosting: JobPosting;
+  metadata: JobPostingMetadata;
+  extractionJob: ApplicationCaseExtraction;
+}
 
 export function listApplicationCases(options: ApplicationCaseListOptions = false): Promise<ApplicationCase[]> {
   const params = new URLSearchParams();
@@ -37,6 +55,58 @@ export function createApplicationCase(request: CreateApplicationCaseRequest): Pr
   return api<ApplicationCase>("/application-cases", {
     method: "POST",
     body: JSON.stringify(request),
+  });
+}
+
+export function createApplicationCaseFromJobPosting(
+  request: CreateApplicationCaseFromJobPostingRequest,
+): Promise<CreateApplicationCaseFromJobPostingResponse> {
+  return api<CreateApplicationCaseFromJobPostingResponse>("/application-cases/from-job-posting", {
+    method: "POST",
+    body: JSON.stringify(request),
+  });
+}
+
+export function uploadApplicationCaseFromJobPosting(
+  file: File,
+  sourceType: Extract<ApplicationSourceType, "PDF" | "IMAGE">,
+  favorite = false,
+): Promise<CreateApplicationCaseFromJobPostingResponse> {
+  const formData = new FormData();
+  formData.append("file", file);
+  formData.append("sourceType", sourceType);
+  formData.append("favorite", String(favorite));
+
+  return api<CreateApplicationCaseFromJobPostingResponse>("/application-cases/from-job-posting/upload", {
+    method: "POST",
+    body: formData,
+  });
+}
+
+export function listActiveApplicationCaseExtractions(): Promise<ApplicationCaseExtraction[]> {
+  return api<ApplicationCaseExtraction[]>("/application-cases/extractions/active", { method: "GET" });
+}
+
+export async function getLatestApplicationCaseExtraction(
+  applicationCaseId: number,
+): Promise<ApplicationCaseExtraction | null> {
+  try {
+    const extraction = await api<ApplicationCaseExtraction | null>(
+      `/application-cases/${applicationCaseId}/job-posting/extraction`,
+      { method: "GET" },
+    );
+    return extraction ?? null;
+  } catch (error) {
+    if (error instanceof ApiError && (error.status === 404 || error.code === "NOT_FOUND")) {
+      return null;
+    }
+    throw error;
+  }
+}
+
+export function retryApplicationCaseExtraction(applicationCaseId: number): Promise<ApplicationCaseExtraction> {
+  return api<ApplicationCaseExtraction>(`/application-cases/${applicationCaseId}/job-posting/extraction/retry`, {
+    method: "POST",
   });
 }
 

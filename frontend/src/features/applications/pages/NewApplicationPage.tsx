@@ -1,15 +1,20 @@
-import { type FormEvent, type ReactNode, useMemo, useState } from "react";
+import { type FormEvent, type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router";
 import {
+  AlertCircle,
   ArrowLeft,
+  ArrowRight,
   Briefcase,
-  CheckCircle2,
+  Building2,
+  CalendarDays,
   FileText,
   Loader2,
+  RefreshCw,
+  Save,
   SearchCheck,
   Sparkles,
+  Star,
   Upload,
-  UserRound,
 } from "lucide-react";
 import { useAuth } from "@/app/auth/AuthContext";
 import { Button } from "@/app/components/ui/button";
@@ -25,14 +30,25 @@ import {
 } from "@/app/components/ui/select";
 import { Textarea } from "@/app/components/ui/textarea";
 import { createJobAnalysis, createCompanyAnalysis } from "../api/analysisApi";
-import { createApplicationCase, updateApplicationCase } from "../api/applicationCasesApi";
-import { saveJobPosting, uploadJobPostingFile } from "../api/jobPostingsApi";
+import {
+  createApplicationCaseFromJobPosting,
+  getApplicationCase,
+  getLatestApplicationCaseExtraction,
+  retryApplicationCaseExtraction,
+  updateApplicationCase,
+  uploadApplicationCaseFromJobPosting,
+  type CreateApplicationCaseFromJobPostingResponse,
+} from "../api/applicationCasesApi";
+import { getJobPosting, saveJobPosting } from "../api/jobPostingsApi";
+import { ApplicationExtractionBadge, getApplicationExtractionStatusLabel } from "../components/ApplicationExtractionBadge";
 import { LoginRequiredState } from "../components/LoginRequiredState";
-import type { ApplicationCase, ApplicationSourceType } from "../types/applicationCase";
-import { APPLICATION_SOURCE_OPTIONS } from "../types/applicationCase";
-import type { JobPosting } from "../types/jobPosting";
+import type { ApplicationCase, ApplicationCaseExtraction, ApplicationSourceType } from "../types/applicationCase";
+import { APPLICATION_SOURCE_OPTIONS, isApplicationCaseExtractionActive } from "../types/applicationCase";
+import type { JobPosting, JobPostingRequest } from "../types/jobPosting";
+import { registerApplicationCaseExtraction } from "../utils/applicationExtractionTracker";
 
-type WizardStep = 0 | 1 | 2 | 3 | 4;
+type WizardStep = 0 | 1 | 2;
+type FileSourceType = Extract<ApplicationSourceType, "PDF" | "IMAGE">;
 
 interface BasicFormState {
   companyName: string;
@@ -50,15 +66,41 @@ interface PostingFormState {
 }
 
 const steps: { label: string; icon: typeof Briefcase }[] = [
-  { label: "기본 정보", icon: Briefcase },
   { label: "공고문 등록", icon: FileText },
-  { label: "추출 확인", icon: SearchCheck },
-  { label: "프로필 선택", icon: UserRound },
-  { label: "분석 시작", icon: Sparkles },
+  { label: "추출 확인 + 지원 건 정보 확인", icon: SearchCheck },
+  { label: "분석 설정", icon: Sparkles },
 ];
+
+const EXTRACTION_POLL_INTERVAL_MS = 3000;
 
 function displayPostingText(posting: JobPosting | null): string {
   return posting?.extractedText ?? posting?.originalText ?? "";
+}
+
+function isFileSource(sourceType: ApplicationSourceType): sourceType is FileSourceType {
+  return sourceType === "PDF" || sourceType === "IMAGE";
+}
+
+function isTextSource(sourceType: ApplicationSourceType): boolean {
+  return sourceType === "TEXT" || sourceType === "MANUAL";
+}
+
+function buildRevisionRequest(jobPosting: JobPosting, confirmedText: string): JobPostingRequest {
+  if (isTextSource(jobPosting.sourceType)) {
+    return {
+      originalText: confirmedText,
+      extractedText: null,
+      uploadedFileUrl: null,
+      sourceType: jobPosting.sourceType,
+    };
+  }
+
+  return {
+    originalText: jobPosting.originalText,
+    extractedText: confirmedText,
+    uploadedFileUrl: jobPosting.uploadedFileUrl,
+    sourceType: jobPosting.sourceType,
+  };
 }
 
 export function NewApplicationPage() {
@@ -67,11 +109,14 @@ export function NewApplicationPage() {
   const [step, setStep] = useState<WizardStep>(0);
   const [createdCase, setCreatedCase] = useState<ApplicationCase | null>(null);
   const [jobPosting, setJobPosting] = useState<JobPosting | null>(null);
+  const [extractionJob, setExtractionJob] = useState<ApplicationCaseExtraction | null>(null);
   const [confirmedText, setConfirmedText] = useState("");
   const [includeCompanyAnalysis, setIncludeCompanyAnalysis] = useState(false);
   const [jobAnalysisCompleted, setJobAnalysisCompleted] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const appliedExtractionIdsRef = useRef<Set<number>>(new Set());
+  const extractionPollInFlightRef = useRef(false);
   const [basicForm, setBasicForm] = useState<BasicFormState>({
     companyName: "",
     jobTitle: "",
@@ -87,6 +132,9 @@ export function NewApplicationPage() {
   });
 
   const activePostingText = useMemo(() => displayPostingText(jobPosting), [jobPosting]);
+  const extractionActive = extractionJob ? isApplicationCaseExtractionActive(extractionJob.status) : false;
+  const activeExtractionCaseId = extractionActive ? createdCase?.id ?? null : null;
+  const activeExtractionId = extractionActive ? extractionJob?.id ?? null : null;
 
   const setBasicField = <Key extends keyof BasicFormState>(key: Key, value: BasicFormState[Key]) => {
     setBasicForm((current) => ({ ...current, [key]: value }));
@@ -96,122 +144,236 @@ export function NewApplicationPage() {
     setPostingForm((current) => ({ ...current, [key]: value }));
   };
 
-  const createCaseIfNeeded = async (): Promise<ApplicationCase> => {
-    if (createdCase) return createdCase;
-    const companyName = basicForm.companyName.trim();
-    const jobTitle = basicForm.jobTitle.trim();
-    if (!companyName || !jobTitle) {
-      throw new Error("기업명과 직무명을 입력하세요.");
-    }
-
-    const created = await createApplicationCase({
-      companyName,
-      jobTitle,
-      postingDate: basicForm.postingDate || null,
-      deadlineDate: basicForm.deadlineDate || null,
-      status: "DRAFT",
-      favorite: basicForm.favorite,
+  const applyCaseAndPosting = useCallback((
+    applicationCase: ApplicationCase,
+    extractedPosting: JobPosting | null,
+  ) => {
+    setCreatedCase(applicationCase);
+    setJobPosting(extractedPosting);
+    setConfirmedText(displayPostingText(extractedPosting));
+    setBasicForm({
+      companyName: applicationCase.companyName || "",
+      jobTitle: applicationCase.jobTitle || "",
+      postingDate: applicationCase.postingDate ?? "",
+      deadlineDate: applicationCase.deadlineDate ?? "",
+      favorite: applicationCase.favorite,
     });
-    setCreatedCase(created);
-    return created;
+    setJobAnalysisCompleted(false);
+  }, []);
+
+  const applyCompletedExtraction = useCallback(async (extraction: ApplicationCaseExtraction) => {
+    if (!createdCase || appliedExtractionIdsRef.current.has(extraction.id)) return;
+
+    const [latestCase, latestPosting] = await Promise.all([
+      getApplicationCase(createdCase.id),
+      getJobPosting(createdCase.id),
+    ]);
+    appliedExtractionIdsRef.current.add(extraction.id);
+    applyCaseAndPosting(latestCase, latestPosting);
+  }, [applyCaseAndPosting, createdCase]);
+
+  const applyExtractionResponse = (response: CreateApplicationCaseFromJobPostingResponse) => {
+    const { applicationCase, jobPosting: extractedPosting, metadata, extractionJob: nextExtractionJob } = response;
+    setCreatedCase(applicationCase);
+    setJobPosting(extractedPosting);
+    setExtractionJob(nextExtractionJob);
+    registerApplicationCaseExtraction(nextExtractionJob);
+    setConfirmedText(nextExtractionJob.status === "SUCCEEDED" ? displayPostingText(extractedPosting) : "");
+    setBasicForm({
+      companyName: nextExtractionJob.status === "SUCCEEDED"
+        ? metadata.companyName || applicationCase.companyName || ""
+        : applicationCase.companyName || "",
+      jobTitle: nextExtractionJob.status === "SUCCEEDED"
+        ? metadata.jobTitle || applicationCase.jobTitle || ""
+        : applicationCase.jobTitle || "",
+      postingDate: nextExtractionJob.status === "SUCCEEDED"
+        ? metadata.postingDate ?? applicationCase.postingDate ?? ""
+        : applicationCase.postingDate ?? "",
+      deadlineDate: nextExtractionJob.status === "SUCCEEDED"
+        ? metadata.deadlineDate ?? applicationCase.deadlineDate ?? ""
+        : applicationCase.deadlineDate ?? "",
+      favorite: applicationCase.favorite,
+    });
+    setJobAnalysisCompleted(false);
+    setStep(1);
   };
 
-  const handleBasicSubmit = async (event: FormEvent<HTMLFormElement>) => {
+  const handleExtractPosting = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setBusy(true);
     setError(null);
     try {
-      await createCaseIfNeeded();
-      setStep(1);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "지원 건을 생성하지 못했습니다.");
-    } finally {
-      setBusy(false);
-    }
-  };
+      let response: CreateApplicationCaseFromJobPostingResponse;
 
-  const syncCaseSourceType = async (
-    applicationCase: ApplicationCase,
-    sourceType: ApplicationSourceType,
-  ): Promise<ApplicationCase> => {
-    if (applicationCase.sourceType === sourceType) {
-      return applicationCase;
-    }
-    const updated = await updateApplicationCase(applicationCase.id, { sourceType });
-    setCreatedCase(updated);
-    return updated;
-  };
-
-  const handleSavePosting = async () => {
-    setBusy(true);
-    setError(null);
-    try {
-      const applicationCase = await createCaseIfNeeded();
-      let saved: JobPosting;
-
-      if (postingForm.sourceType === "PDF" || postingForm.sourceType === "IMAGE") {
+      if (isFileSource(postingForm.sourceType)) {
         if (!postingForm.file) {
           throw new Error("업로드할 파일을 선택하세요.");
         }
-        saved = await uploadJobPostingFile(applicationCase.id, postingForm.sourceType, postingForm.file);
+        response = await uploadApplicationCaseFromJobPosting(postingForm.file, postingForm.sourceType, false);
       } else if (postingForm.sourceType === "URL") {
         const url = postingForm.url.trim();
         if (!url) {
           throw new Error("공고 URL을 입력하세요.");
         }
-        saved = await saveJobPosting(applicationCase.id, {
+        response = await createApplicationCaseFromJobPosting({
           uploadedFileUrl: url,
           sourceType: "URL",
+          favorite: false,
         });
       } else {
         const text = postingForm.text.trim();
         if (!text) {
           throw new Error("공고문 내용을 입력하세요.");
         }
-        saved = await saveJobPosting(applicationCase.id, {
+        response = await createApplicationCaseFromJobPosting({
           originalText: text,
           sourceType: postingForm.sourceType,
+          favorite: false,
         });
       }
 
-      await syncCaseSourceType(applicationCase, saved.sourceType);
-      setJobPosting(saved);
-      setConfirmedText(displayPostingText(saved));
-      setJobAnalysisCompleted(false);
-      setStep(2);
+      applyExtractionResponse(response);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "공고문을 저장하지 못했습니다.");
+      setError(err instanceof Error ? err.message : "공고문을 추출하지 못했습니다.");
     } finally {
       setBusy(false);
     }
   };
 
-  const handleConfirmPosting = async () => {
-    if (!createdCase || !jobPosting) return;
-    const trimmed = confirmedText.trim();
-    if (!trimmed) {
-      setError("확인된 공고문 내용이 필요합니다.");
+  useEffect(() => {
+    if (!activeExtractionCaseId || !activeExtractionId) return;
+
+    let cancelled = false;
+    const poll = async () => {
+      if (extractionPollInFlightRef.current) return;
+      extractionPollInFlightRef.current = true;
+      try {
+        const latest = await getLatestApplicationCaseExtraction(activeExtractionCaseId);
+        if (cancelled || !latest) return;
+
+        if (latest.status === "SUCCEEDED") {
+          await applyCompletedExtraction(latest);
+          if (!cancelled) {
+            setExtractionJob(latest);
+            setError(null);
+          }
+          return;
+        }
+
+        setExtractionJob(latest);
+      } catch (err) {
+        if (!cancelled) {
+          setError(err instanceof Error ? err.message : "공고문 추출 상태를 확인하지 못했습니다.");
+        }
+      } finally {
+        extractionPollInFlightRef.current = false;
+      }
+    };
+
+    void poll();
+    const intervalId = window.setInterval(() => {
+      void poll();
+    }, EXTRACTION_POLL_INTERVAL_MS);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(intervalId);
+    };
+  }, [activeExtractionCaseId, activeExtractionId, applyCompletedExtraction]);
+
+  const saveConfirmation = async (): Promise<ApplicationCase> => {
+    if (!createdCase || !jobPosting) {
+      throw new Error("추출된 지원 건 정보가 없습니다.");
+    }
+
+    if (extractionJob && extractionJob.status !== "SUCCEEDED") {
+      throw new Error("공고문 추출이 완료된 뒤 확인할 수 있습니다.");
+    }
+
+    const companyName = basicForm.companyName.trim();
+    const jobTitle = basicForm.jobTitle.trim();
+    const trimmedPostingText = confirmedText.trim();
+
+    if (!companyName || !jobTitle) {
+      throw new Error("기업명과 직무명을 입력하세요.");
+    }
+    if (!trimmedPostingText) {
+      throw new Error("확인된 공고문 내용이 필요합니다.");
+    }
+
+    let nextPosting = jobPosting;
+    if (trimmedPostingText !== activePostingText.trim()) {
+      nextPosting = await saveJobPosting(createdCase.id, buildRevisionRequest(jobPosting, trimmedPostingText));
+      setJobPosting(nextPosting);
+      setConfirmedText(displayPostingText(nextPosting));
+      setJobAnalysisCompleted(false);
+    }
+
+    const updated = await updateApplicationCase(createdCase.id, {
+      companyName,
+      jobTitle,
+      postingDate: basicForm.postingDate || null,
+      clearPostingDate: !basicForm.postingDate,
+      deadlineDate: basicForm.deadlineDate || null,
+      clearDeadlineDate: !basicForm.deadlineDate,
+      sourceType: nextPosting.sourceType,
+      favorite: basicForm.favorite,
+    });
+    setCreatedCase(updated);
+    return updated;
+  };
+
+  const handleSaveAndExit = async () => {
+    if (createdCase && extractionJob && extractionJob.status !== "SUCCEEDED") {
+      navigate(`/applications/${createdCase.id}/overview`);
       return;
     }
 
     setBusy(true);
     setError(null);
     try {
-      if (trimmed !== activePostingText.trim()) {
-        const saved = await saveJobPosting(createdCase.id, {
-          originalText: jobPosting.sourceType === "URL" ? null : trimmed,
-          uploadedFileUrl: jobPosting.sourceType === "URL" ? jobPosting.uploadedFileUrl : null,
-          extractedText: jobPosting.sourceType === "URL" ? trimmed : null,
-          sourceType: jobPosting.sourceType,
-        });
-        await syncCaseSourceType(createdCase, saved.sourceType);
-        setJobPosting(saved);
-        setConfirmedText(displayPostingText(saved));
-        setJobAnalysisCompleted(false);
-      }
-      setStep(3);
+      const updated = await saveConfirmation();
+      navigate(`/applications/${updated.id}/overview`);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "보정한 공고문을 저장하지 못했습니다.");
+      setError(err instanceof Error ? err.message : "지원 건을 저장하지 못했습니다.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handleExitCreatedCase = () => {
+    if (createdCase) {
+      navigate(`/applications/${createdCase.id}/overview`);
+    }
+  };
+
+  const handleRetryExtraction = async () => {
+    if (!createdCase) return;
+
+    setBusy(true);
+    setError(null);
+    try {
+      const nextExtraction = await retryApplicationCaseExtraction(createdCase.id);
+      setExtractionJob(nextExtraction);
+      registerApplicationCaseExtraction(nextExtraction);
+      setConfirmedText("");
+      setJobAnalysisCompleted(false);
+      setStep(1);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "공고문 추출을 다시 시작하지 못했습니다.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handleMoveToAnalysisSettings = async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      await saveConfirmation();
+      setStep(2);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "지원 건을 저장하지 못했습니다.");
     } finally {
       setBusy(false);
     }
@@ -273,10 +435,10 @@ export function NewApplicationPage() {
             <Briefcase className="size-6 text-blue-600" />
             새 지원 건
           </h1>
-          <p className="mt-1 text-sm text-slate-500">공고 등록부터 분석 시작까지 한 흐름으로 진행합니다.</p>
+          <p className="mt-1 text-sm text-slate-500">공고문을 먼저 추출한 뒤 지원 건 정보를 확인합니다.</p>
         </div>
 
-        <div className="grid gap-2 md:grid-cols-5">
+        <div className="grid gap-2 sm:grid-cols-3">
           {steps.map((item, index) => (
             <div
               key={item.label}
@@ -289,8 +451,8 @@ export function NewApplicationPage() {
               }`}
             >
               <div className="flex items-center gap-2 text-xs font-semibold">
-                <item.icon className="size-4" />
-                {index + 1}. {item.label}
+                <item.icon className="size-4 shrink-0" />
+                <span className="min-w-0 truncate">{index + 1}. {item.label}</span>
               </div>
             </div>
           ))}
@@ -302,79 +464,22 @@ export function NewApplicationPage() {
           </CardHeader>
           <CardContent className="space-y-5">
             {step === 0 && (
-              <form className="space-y-5" onSubmit={(event) => void handleBasicSubmit(event)}>
-                <div className="grid gap-4 sm:grid-cols-2">
-                  <Field label="기업명" htmlFor="companyName">
-                    <Input
-                      id="companyName"
-                      value={basicForm.companyName}
-                      onChange={(event) => setBasicField("companyName", event.target.value)}
-                      autoComplete="organization"
-                    />
-                  </Field>
-                  <Field label="직무명" htmlFor="jobTitle">
-                    <Input
-                      id="jobTitle"
-                      value={basicForm.jobTitle}
-                      onChange={(event) => setBasicField("jobTitle", event.target.value)}
-                    />
-                  </Field>
+              <form className="space-y-5" onSubmit={(event) => void handleExtractPosting(event)}>
+                <div className="rounded-lg border border-blue-100 bg-blue-50 px-4 py-3 text-sm font-medium text-blue-800">
+                  공고문 추출을 시작하면 새 지원 건이 생성됩니다.
                 </div>
 
-                <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                  <Field label="공고일" htmlFor="postingDate">
-                    <Input
-                      id="postingDate"
-                      type="date"
-                      value={basicForm.postingDate}
-                      onChange={(event) => setBasicField("postingDate", event.target.value)}
-                    />
-                  </Field>
-                  <Field label="마감일" htmlFor="deadlineDate">
-                    <Input
-                      id="deadlineDate"
-                      type="date"
-                      value={basicForm.deadlineDate}
-                      onChange={(event) => setBasicField("deadlineDate", event.target.value)}
-                    />
-                  </Field>
-                  <Field label="기본 등록 방식">
-                    <Select
-                      value={postingForm.sourceType}
-                      onValueChange={(value) => setPostingField("sourceType", value as ApplicationSourceType)}
-                    >
-                      <SelectTrigger>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {APPLICATION_SOURCE_OPTIONS.map((option) => (
-                          <SelectItem key={option.value} value={option.value}>
-                            {option.label}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </Field>
-                </div>
-
-                <label className="flex items-center gap-3 rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm text-slate-700">
-                  <Checkbox
-                    checked={basicForm.favorite}
-                    onCheckedChange={(checked) => setBasicField("favorite", Boolean(checked))}
-                  />
-                  즐겨찾기
-                </label>
-
-                <StepActions busy={busy} primaryLabel="공고문 등록으로" />
-              </form>
-            )}
-
-            {step === 1 && (
-              <div className="space-y-5">
                 <Field label="공고문 등록 방식">
                   <Select
                     value={postingForm.sourceType}
-                    onValueChange={(value) => setPostingField("sourceType", value as ApplicationSourceType)}
+                    onValueChange={(value) => {
+                      const nextSourceType = value as ApplicationSourceType;
+                      setPostingForm((current) => ({
+                        ...current,
+                        sourceType: nextSourceType,
+                        file: current.sourceType === nextSourceType ? current.file : null,
+                      }));
+                    }}
                   >
                     <SelectTrigger>
                       <SelectValue />
@@ -389,12 +494,13 @@ export function NewApplicationPage() {
                   </Select>
                 </Field>
 
-                {(postingForm.sourceType === "TEXT" || postingForm.sourceType === "MANUAL") && (
+                {isTextSource(postingForm.sourceType) && (
                   <Field label="공고문 내용">
                     <Textarea
                       value={postingForm.text}
                       onChange={(event) => setPostingField("text", event.target.value)}
-                      className="min-h-56"
+                      className="min-h-72"
+                      placeholder="채용 공고문 전체 내용을 붙여넣으세요."
                     />
                   </Field>
                 )}
@@ -410,7 +516,7 @@ export function NewApplicationPage() {
                   </Field>
                 )}
 
-                {(postingForm.sourceType === "PDF" || postingForm.sourceType === "IMAGE") && (
+                {isFileSource(postingForm.sourceType) && (
                   <Field label="공고 파일" htmlFor="postingFile">
                     <Input
                       id="postingFile"
@@ -423,50 +529,116 @@ export function NewApplicationPage() {
 
                 <StepActions
                   busy={busy}
-                  primaryLabel="저장하고 추출 확인"
-                  onPrimary={() => void handleSavePosting()}
-                  onBack={() => setStep(0)}
+                  primaryLabel="공고문 추출 시작"
                   primaryIcon={Upload}
                 />
-              </div>
+              </form>
+            )}
+
+            {step === 1 && (
+              <>
+                {extractionJob && extractionActive ? (
+                  <ExtractionProgressState
+                    extraction={extractionJob}
+                    busy={busy}
+                    onExit={handleExitCreatedCase}
+                  />
+                ) : extractionJob?.status === "FAILED" ? (
+                  <ExtractionFailureState
+                    extraction={extractionJob}
+                    busy={busy}
+                    onRetry={() => void handleRetryExtraction()}
+                    onExit={handleExitCreatedCase}
+                  />
+                ) : (
+                  <div className="space-y-5">
+                    {extractionJob && (
+                      <div className="flex flex-wrap items-center gap-2">
+                        <ApplicationExtractionBadge extraction={extractionJob} />
+                        <span className="text-xs text-slate-500">최신 공고문과 지원 건 정보를 불러왔습니다.</span>
+                      </div>
+                    )}
+
+                    <Field label="공고문">
+                      <Textarea
+                        value={confirmedText}
+                        onChange={(event) => setConfirmedText(event.target.value)}
+                        className="min-h-72"
+                      />
+                    </Field>
+
+                    <div className="grid gap-4 md:grid-cols-2">
+                      <Field label="기업명" htmlFor="companyName">
+                        <Input
+                          id="companyName"
+                          value={basicForm.companyName}
+                          onChange={(event) => setBasicField("companyName", event.target.value)}
+                          autoComplete="organization"
+                        />
+                      </Field>
+                      <Field label="직무명" htmlFor="jobTitle">
+                        <Input
+                          id="jobTitle"
+                          value={basicForm.jobTitle}
+                          onChange={(event) => setBasicField("jobTitle", event.target.value)}
+                        />
+                      </Field>
+                    </div>
+
+                    <div className="grid gap-4 md:grid-cols-2">
+                      <Field label="공고일" htmlFor="postingDate">
+                        <Input
+                          id="postingDate"
+                          type="date"
+                          value={basicForm.postingDate}
+                          onChange={(event) => setBasicField("postingDate", event.target.value)}
+                        />
+                      </Field>
+                      <Field label="마감일" htmlFor="deadlineDate">
+                        <Input
+                          id="deadlineDate"
+                          type="date"
+                          value={basicForm.deadlineDate}
+                          onChange={(event) => setBasicField("deadlineDate", event.target.value)}
+                        />
+                      </Field>
+                    </div>
+
+                    <label className="flex items-center gap-3 rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm text-slate-700">
+                      <Checkbox
+                        checked={basicForm.favorite}
+                        onCheckedChange={(checked) => setBasicField("favorite", Boolean(checked))}
+                      />
+                      즐겨찾기
+                    </label>
+
+                    <div className="flex flex-col gap-2 sm:flex-row sm:justify-end">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        className="w-full sm:w-auto"
+                        disabled={busy}
+                        onClick={() => void handleSaveAndExit()}
+                      >
+                        {busy ? <Loader2 className="size-4 animate-spin" /> : <Save className="size-4" />}
+                        저장하고 나가기
+                      </Button>
+                      <Button
+                        type="button"
+                        className="w-full bg-blue-600 text-white hover:bg-blue-700 sm:w-auto"
+                        disabled={busy}
+                        onClick={() => void handleMoveToAnalysisSettings()}
+                      >
+                        {busy ? <Loader2 className="size-4 animate-spin" /> : <ArrowRight className="size-4" />}
+                        분석 시작으로
+                      </Button>
+                    </div>
+                  </div>
+                )}
+              </>
             )}
 
             {step === 2 && (
-              <div className="space-y-5">
-                <Field label="추출/보정된 공고문">
-                  <Textarea
-                    value={confirmedText}
-                    onChange={(event) => setConfirmedText(event.target.value)}
-                    className="min-h-72"
-                  />
-                </Field>
-                <StepActions
-                  busy={busy}
-                  primaryLabel="프로필 선택으로"
-                  onPrimary={() => void handleConfirmPosting()}
-                  onBack={() => setStep(1)}
-                  primaryIcon={CheckCircle2}
-                />
-              </div>
-            )}
-
-            {step === 3 && (
-              <div className="space-y-5">
-                <div className="rounded-lg border border-slate-200 bg-slate-50 p-4 text-sm leading-6 text-slate-600">
-                  프로필 버전 선택 API는 아직 연결하지 않습니다. 현재 기본 프로필 기준으로 분석을 시작하며,
-                  실제 프로필 버전 연동은 다음 작업 범위에서 처리합니다.
-                </div>
-                <StepActions
-                  busy={busy}
-                  primaryLabel="분석 설정으로"
-                  onPrimary={() => setStep(4)}
-                  onBack={() => setStep(2)}
-                  primaryIcon={UserRound}
-                />
-              </div>
-            )}
-
-            {step === 4 && (
               <div className="space-y-5">
                 <div className="grid gap-3 md:grid-cols-2">
                   <div className="rounded-lg border border-blue-200 bg-blue-50 p-4">
@@ -474,7 +646,7 @@ export function NewApplicationPage() {
                       <Sparkles className="size-4" />
                       공고 분석
                     </div>
-                    <p className="mt-2 text-sm leading-6 text-blue-800">필수 분석으로 항상 먼저 실행합니다.</p>
+                    <p className="mt-2 text-sm leading-6 text-blue-800">필수 분석으로 항상 실행합니다.</p>
                   </div>
                   <label className="rounded-lg border border-slate-200 bg-slate-50 p-4">
                     <div className="flex items-center gap-3">
@@ -484,22 +656,29 @@ export function NewApplicationPage() {
                       />
                       <span className="text-sm font-bold text-slate-900">기업 분석도 함께 실행</span>
                     </div>
-                    <p className="mt-2 text-sm leading-6 text-slate-600">선택하면 공고 분석 완료 후 기업 분석을 이어서 실행합니다.</p>
+                    <p className="mt-2 text-sm leading-6 text-slate-600">선택하면 공고 분석과 함께 기업 분석을 생성합니다.</p>
                   </label>
                 </div>
                 <StepActions
                   busy={busy}
                   primaryLabel={includeCompanyAnalysis ? "공고/기업 분석 시작" : "공고 분석 시작"}
                   onPrimary={() => void handleStartAnalysis()}
-                  onBack={() => setStep(3)}
+                  onBack={() => setStep(1)}
                   primaryIcon={Sparkles}
                 />
               </div>
             )}
 
             {createdCase && (
-              <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">
-                생성된 지원 건: #{createdCase.id} {createdCase.companyName} / {createdCase.jobTitle}
+              <div className="grid gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600 sm:grid-cols-2 lg:grid-cols-4">
+                <SummaryItem icon={Building2} label="기업" value={basicForm.companyName || createdCase.companyName || "미확인"} />
+                <SummaryItem icon={Briefcase} label="직무" value={basicForm.jobTitle || createdCase.jobTitle || "미확인"} />
+                <SummaryItem icon={CalendarDays} label="마감일" value={basicForm.deadlineDate || createdCase.deadlineDate || "미입력"} />
+                <SummaryItem
+                  icon={extractionJob ? SearchCheck : Star}
+                  label={extractionJob ? "추출 상태" : "즐겨찾기"}
+                  value={extractionJob ? getApplicationExtractionStatusLabel(extractionJob.status) : basicForm.favorite ? "설정" : "미설정"}
+                />
               </div>
             )}
 
@@ -510,6 +689,79 @@ export function NewApplicationPage() {
             )}
           </CardContent>
         </Card>
+      </div>
+    </div>
+  );
+}
+
+function ExtractionProgressState({
+  extraction,
+  busy,
+  onExit,
+}: {
+  extraction: ApplicationCaseExtraction;
+  busy: boolean;
+  onExit(): void;
+}) {
+  return (
+    <div className="space-y-4 rounded-lg border border-blue-100 bg-blue-50 p-5">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div className="space-y-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <ApplicationExtractionBadge extraction={extraction} />
+            <span className="text-sm font-bold text-blue-900">공고문을 분석 가능한 텍스트로 추출하고 있습니다.</span>
+          </div>
+          <p className="text-sm leading-6 text-blue-800">
+            지원 건은 이미 생성됐습니다. 이 화면을 나가도 추출은 계속 진행되며, 완료되면 알림으로 알려드립니다.
+          </p>
+        </div>
+        <Loader2 className="size-5 shrink-0 animate-spin text-blue-700" />
+      </div>
+
+      <div className="flex justify-end">
+        <Button type="button" variant="outline" disabled={busy} onClick={onExit}>
+          <Save className="size-4" />
+          저장하고 상세로 이동
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+function ExtractionFailureState({
+  extraction,
+  busy,
+  onRetry,
+  onExit,
+}: {
+  extraction: ApplicationCaseExtraction;
+  busy: boolean;
+  onRetry(): void;
+  onExit(): void;
+}) {
+  return (
+    <div className="space-y-4 rounded-lg border border-red-200 bg-red-50 p-5">
+      <div className="flex items-start gap-3">
+        <AlertCircle className="mt-0.5 size-5 shrink-0 text-red-600" />
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-center gap-2">
+            <ApplicationExtractionBadge extraction={extraction} />
+            <span className="text-sm font-bold text-red-900">공고문 추출에 실패했습니다.</span>
+          </div>
+          <p className="mt-2 text-sm leading-6 text-red-700">
+            {extraction.errorMessage || "일시적인 오류일 수 있습니다. 다시 시도하거나 생성된 지원 건 상세에서 이어서 처리할 수 있습니다."}
+          </p>
+        </div>
+      </div>
+
+      <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+        <Button type="button" variant="outline" disabled={busy} onClick={onExit}>
+          상세로 이동
+        </Button>
+        <Button type="button" className="bg-red-600 text-white hover:bg-red-700" disabled={busy} onClick={onRetry}>
+          {busy ? <Loader2 className="size-4 animate-spin" /> : <RefreshCw className="size-4" />}
+          다시 추출
+        </Button>
       </div>
     </div>
   );
@@ -548,19 +800,37 @@ function StepActions({
   return (
     <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
       {onBack && (
-        <Button type="button" variant="outline" onClick={onBack} disabled={busy}>
+        <Button type="button" variant="outline" className="w-full sm:w-auto" onClick={onBack} disabled={busy}>
           이전
         </Button>
       )}
       <Button
         type={onPrimary ? "button" : "submit"}
-        className="bg-blue-600 text-white hover:bg-blue-700"
+        className="w-full bg-blue-600 text-white hover:bg-blue-700 sm:w-auto"
         disabled={busy}
         onClick={onPrimary}
       >
         {busy ? <Loader2 className="size-4 animate-spin" /> : PrimaryIcon ? <PrimaryIcon className="size-4" /> : null}
         {primaryLabel}
       </Button>
+    </div>
+  );
+}
+
+function SummaryItem({
+  icon: Icon,
+  label,
+  value,
+}: {
+  icon: typeof Briefcase;
+  label: string;
+  value: string;
+}) {
+  return (
+    <div className="flex min-w-0 items-center gap-2">
+      <Icon className="size-4 shrink-0 text-slate-500" />
+      <span className="shrink-0 font-semibold text-slate-500">{label}</span>
+      <span className="min-w-0 truncate text-slate-700">{value}</span>
     </div>
   );
 }

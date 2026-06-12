@@ -64,7 +64,51 @@ public class JobPostingService {
     }
 
     @Transactional(isolation = Isolation.READ_COMMITTED)
+    public JobPostingResponse saveJobPostingForExtractionQueue(Long userId, Long applicationCaseId, JobPostingRequest request) {
+        accessService.requireOwned(userId, applicationCaseId);
+        String sourceType = normalizeOption(request.sourceType(), DEFAULT_SOURCE_TYPE, SOURCE_TYPES, "sourceType");
+        validateJobPosting(request);
+        JobPosting jobPosting = JobPosting.builder()
+                .applicationCaseId(applicationCaseId)
+                .originalText(blankToNull(request.originalText()))
+                .uploadedFileUrl(blankToNull(request.uploadedFileUrl()))
+                .extractedText(blankToNull(request.extractedText()))
+                .sourceType(sourceType)
+                .build();
+        return replaceJobPosting(applicationCaseId, jobPosting);
+    }
+
+    @Transactional(isolation = Isolation.READ_COMMITTED)
     public JobPostingResponse uploadJobPostingFile(Long userId, Long applicationCaseId, MultipartFile file, String sourceType) {
+        return uploadJobPostingFile(userId, applicationCaseId, file, sourceType, applicationCaseId);
+    }
+
+    @Transactional(isolation = Isolation.READ_COMMITTED)
+    public JobPostingResponse uploadJobPostingFileForNewCase(Long userId, Long applicationCaseId, MultipartFile file, String sourceType) {
+        return uploadJobPostingFile(userId, applicationCaseId, file, sourceType, null);
+    }
+
+    @Transactional(isolation = Isolation.READ_COMMITTED)
+    public JobPostingResponse saveUploadedJobPostingReferenceForNewCase(Long userId,
+                                                                        Long applicationCaseId,
+                                                                        MultipartFile file,
+                                                                        String sourceType) {
+        accessService.requireOwned(userId, applicationCaseId);
+        String normalizedSourceType = normalizeOption(sourceType, null, SOURCE_TYPES, "sourceType");
+        StoredJobPostingFile storedFile = fileStorage.store(applicationCaseId, file, normalizedSourceType);
+        JobPosting jobPosting = JobPosting.builder()
+                .applicationCaseId(applicationCaseId)
+                .uploadedFileUrl(storedFile.fileReference())
+                .sourceType(storedFile.sourceType())
+                .build();
+        return replaceJobPosting(applicationCaseId, jobPosting);
+    }
+
+    private JobPostingResponse uploadJobPostingFile(Long userId,
+                                                    Long applicationCaseId,
+                                                    MultipartFile file,
+                                                    String sourceType,
+                                                    Long failureLogApplicationCaseId) {
         accessService.requireOwned(userId, applicationCaseId);
         try {
             StoredJobPostingFile storedFile = fileStorage.store(applicationCaseId, file, sourceType);
@@ -74,15 +118,53 @@ public class JobPostingService {
             }
             return saveExtractedPosting(applicationCaseId, extracted);
         } catch (RuntimeException ex) {
+            aiUsageLogService.recordFailure(userId, failureLogApplicationCaseId, FEATURE_JOB_POSTING_OCR, ex.getMessage());
+            throw ex;
+        }
+    }
+
+    public ExtractedPosting extractUrlJobPosting(String uploadedFileUrl) {
+        return textExtractor.extractUrl(uploadedFileUrl);
+    }
+
+    public ExtractedPosting extractUploadedJobPosting(Long userId,
+                                                       Long applicationCaseId,
+                                                       String sourceType,
+                                                       String uploadedFileUrl) {
+        accessService.requireOwned(userId, applicationCaseId);
+        try {
+            StoredJobPostingFile storedFile = fileStorage.load(applicationCaseId, uploadedFileUrl, sourceType);
+            ExtractedPosting extracted = textExtractor.extractFile(storedFile);
+            if (extracted.usage() != null) {
+                aiUsageLogService.recordSuccess(userId, applicationCaseId, FEATURE_JOB_POSTING_OCR, extracted.usage());
+            }
+            return extracted;
+        } catch (RuntimeException ex) {
             aiUsageLogService.recordFailure(userId, applicationCaseId, FEATURE_JOB_POSTING_OCR, ex.getMessage());
             throw ex;
         }
+    }
+
+    @Transactional(isolation = Isolation.READ_COMMITTED)
+    public JobPostingResponse saveExtractedJobPosting(Long userId, Long applicationCaseId, ExtractedPosting extracted) {
+        accessService.requireOwned(userId, applicationCaseId);
+        return saveExtractedPosting(applicationCaseId, extracted);
     }
 
     @Transactional(readOnly = true)
     public JobPostingResponse getJobPosting(Long userId, Long applicationCaseId) {
         accessService.requireOwned(userId, applicationCaseId);
         JobPosting jobPosting = jobPostingMapper.findLatestJobPostingByCaseId(applicationCaseId);
+        if (jobPosting == null) {
+            throw new BusinessException(ErrorCode.NOT_FOUND, "공고문을 찾을 수 없습니다.");
+        }
+        return JobPostingResponse.from(jobPosting);
+    }
+
+    @Transactional(readOnly = true)
+    public JobPostingResponse getJobPostingByIdForCase(Long userId, Long applicationCaseId, Long jobPostingId) {
+        accessService.requireOwned(userId, applicationCaseId);
+        JobPosting jobPosting = jobPostingMapper.findJobPostingByIdAndCaseId(jobPostingId, applicationCaseId);
         if (jobPosting == null) {
             throw new BusinessException(ErrorCode.NOT_FOUND, "공고문을 찾을 수 없습니다.");
         }

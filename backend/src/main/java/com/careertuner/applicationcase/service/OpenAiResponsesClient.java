@@ -7,6 +7,8 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.net.http.HttpTimeoutException;
 import java.nio.charset.StandardCharsets;
+import java.time.LocalDate;
+import java.time.format.DateTimeParseException;
 import java.util.Base64;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -95,6 +97,24 @@ public class OpenAiResponsesClient {
                 json(payload, "verifiedFacts", "[]"),
                 json(payload, "aiInferences", "[]"),
                 usage);
+    }
+
+    public JobPostingMetadataPayload extractJobPostingMetadata(String postingText) {
+        JsonNode root = post(structuredRequest(
+                "job_posting_metadata",
+                jobPostingMetadataSchema(),
+                """
+                Extract metadata from a job posting.
+                Return companyName and jobTitle as concise strings when visible.
+                Return postingDate and deadlineDate only when they can be expressed as ISO yyyy-MM-dd.
+                Use null for dates that are missing, relative, ambiguous, or impossible to infer safely.
+                Do not guess.
+                """,
+                """
+                Job posting text:
+                %s
+                """.formatted(postingText)));
+        return parseJobPostingMetadataPayload(parseOutputJson(root), usage(root));
     }
 
     public TextPayload extractImageText(String contentType, byte[] bytes) {
@@ -259,6 +279,27 @@ public class OpenAiResponsesClient {
         return node.path(field).asText("");
     }
 
+    static JobPostingMetadataPayload parseJobPostingMetadataPayload(JsonNode payload, Usage usage) {
+        return new JobPostingMetadataPayload(
+                payload.path("companyName").asText(""),
+                payload.path("jobTitle").asText(""),
+                date(payload, "postingDate"),
+                date(payload, "deadlineDate"),
+                usage);
+    }
+
+    private static LocalDate date(JsonNode node, String field) {
+        String value = node.path(field).asText("");
+        if (value.isBlank()) {
+            return null;
+        }
+        try {
+            return LocalDate.parse(value.trim());
+        } catch (DateTimeParseException ex) {
+            return null;
+        }
+    }
+
     private String arrayJson(JsonNode node, String field) {
         JsonNode value = node.path(field);
         if (!value.isArray()) {
@@ -344,6 +385,15 @@ public class OpenAiResponsesClient {
                 "verifiedFacts", "aiInferences"));
     }
 
+    private Map<String, Object> jobPostingMetadataSchema() {
+        Map<String, Object> properties = new LinkedHashMap<>();
+        properties.put("companyName", stringSchema());
+        properties.put("jobTitle", stringSchema());
+        properties.put("postingDate", nullableStringSchema());
+        properties.put("deadlineDate", nullableStringSchema());
+        return objectSchema(properties, List.of("companyName", "jobTitle", "postingDate", "deadlineDate"));
+    }
+
     private Map<String, Object> objectSchema(Map<String, Object> properties, List<String> required) {
         Map<String, Object> schema = new LinkedHashMap<>();
         schema.put("type", "object");
@@ -355,6 +405,10 @@ public class OpenAiResponsesClient {
 
     private Map<String, Object> stringSchema() {
         return Map.of("type", "string");
+    }
+
+    private Map<String, Object> nullableStringSchema() {
+        return Map.of("type", List.of("string", "null"));
     }
 
     private Map<String, Object> stringArraySchema() {
@@ -450,6 +504,15 @@ public class OpenAiResponsesClient {
             String sources,
             String verifiedFacts,
             String aiInferences,
+            Usage usage
+    ) {
+    }
+
+    public record JobPostingMetadataPayload(
+            String companyName,
+            String jobTitle,
+            LocalDate postingDate,
+            LocalDate deadlineDate,
             Usage usage
     ) {
     }
