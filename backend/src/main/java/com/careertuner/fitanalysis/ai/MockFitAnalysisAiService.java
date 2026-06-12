@@ -34,10 +34,8 @@ public class MockFitAnalysisAiService implements FitAnalysisAiService {
             // 공고 분석 전이라면 기본 가이드 역량으로 안내한다.
             missing.addAll(List.of("공고 분석 먼저 실행", "필수 역량 확인 필요"));
         } else if (profile.isEmpty()) {
-            // 프로필 미입력: 절반 보유로 가정해 보완 방향을 보여준다.
-            for (int i = 0; i < required.size(); i++) {
-                (i % 2 == 0 ? matched : missing).add(required.get(i));
-            }
+            // 프로필 미입력 상태에서 보유를 추정하면 점수가 과대평가되므로 필수 역량을 모두 미충족으로 둔다.
+            missing.addAll(required);
         } else {
             for (String skill : required) {
                 (profileLower.contains(skill.toLowerCase(Locale.ROOT)) ? matched : missing).add(skill);
@@ -46,12 +44,16 @@ public class MockFitAnalysisAiService implements FitAnalysisAiService {
 
         // 우대 역량 중 미보유는 장기 보완 항목으로 분류한다.
         for (String skill : preferred) {
-            if (!profileLower.contains(skill.toLowerCase(Locale.ROOT)) && !missing.contains(skill)) {
+            if (profileLower.contains(skill.toLowerCase(Locale.ROOT))) {
+                if (!containsIgnoreCase(matched, skill)) {
+                    matched.add(skill);
+                }
+            } else if (!containsIgnoreCase(missing, skill)) {
                 missing.add(skill);
             }
         }
 
-        int fitScore = score(required, profileLower, profile.isEmpty(), matched.size());
+        int fitScore = score(required, preferred, profileLower, profile.isEmpty());
         List<String> study = missing.stream().limit(4).map(skill -> skill + " 집중 학습").toList();
         List<String> certificates = recommendCertificates(command.desiredJob());
         String strategy = strategy(command, matched, missing, fitScore);
@@ -60,6 +62,8 @@ public class MockFitAnalysisAiService implements FitAnalysisAiService {
         List<FitLearningRoadmapItem> learningRoadmap = learningRoadmap(gapRecommendations);
         List<FitCertificateRecommendation> certificateRecommendations = certificateRecommendations(certificates, command.desiredJob());
         List<String> strategyActions = strategyActions(matched, gapRecommendations, fitScore);
+        List<FitConditionMatch> conditionMatrix = conditionMatrix(required, preferred, profileLower);
+        FitApplyDecision applyDecision = applyDecision(fitScore, matched, gapRecommendations);
 
         return new FitAnalysisAiResult(
                 fitScore,
@@ -73,15 +77,91 @@ public class MockFitAnalysisAiService implements FitAnalysisAiService {
                 learningRoadmap,
                 certificateRecommendations,
                 strategyActions,
+                conditionMatrix,
+                applyDecision,
                 CareerAnalysisAiUsage.mockUsage(),
                 "SUCCESS",
                 null,
                 false);
     }
 
+    /**
+     * 요구조건-스펙 비교 매트릭스. 필수/우대 역량을 행으로 두고 보유 여부와 근거를 판정한다.
+     * 부분 일치(예: "AWS EC2" 보유, 조건 "AWS")는 PARTIAL로 분류한다.
+     */
+    private List<FitConditionMatch> conditionMatrix(List<String> required, List<String> preferred, Set<String> profileLower) {
+        List<FitConditionMatch> rows = new ArrayList<>();
+        for (String skill : required) {
+            rows.add(conditionRow(skill, "REQUIRED", profileLower));
+        }
+        for (String skill : preferred) {
+            rows.add(conditionRow(skill, "PREFERRED", profileLower));
+        }
+        return rows;
+    }
+
+    private FitConditionMatch conditionRow(String skill, String conditionType, Set<String> profileLower) {
+        String lower = skill.toLowerCase(Locale.ROOT);
+        if (profileLower.contains(lower)) {
+            return new FitConditionMatch(skill, conditionType, "MET", "프로필 보유 기술에서 동일 항목이 확인됩니다.");
+        }
+        boolean partial = profileLower.stream()
+                .anyMatch(owned -> !owned.isBlank() && (owned.contains(lower) || lower.contains(owned)));
+        if (partial) {
+            return new FitConditionMatch(skill, conditionType, "PARTIAL", "프로필에 유사/연관 기술이 있어 부분 충족으로 판정합니다.");
+        }
+        return new FitConditionMatch(skill, conditionType, "UNMET", "프로필 보유 기술에서 확인되지 않습니다.");
+    }
+
+    /** 지원 판단 카드. 점수와 필수 미충족 개수로 지원 가능/보완 후 지원/지원 보류를 결정한다. */
+    private FitApplyDecision applyDecision(int fitScore, List<String> matched, List<FitGapRecommendation> gaps) {
+        long requiredMissing = gaps.stream().filter(gap -> "REQUIRED_MISSING".equals(gap.category())).count();
+
+        String decision;
+        List<String> reasons = new ArrayList<>();
+        if (fitScore >= 70 && requiredMissing <= 1) {
+            decision = "APPLY";
+            reasons.add("적합도 %d점으로 현재 스펙 기준 지원 가능성이 높습니다.".formatted(fitScore));
+            if (!matched.isEmpty()) {
+                reasons.add("핵심 요구 역량 %s 이(가) 프로필과 매칭됩니다.".formatted(
+                        String.join(", ", matched.subList(0, Math.min(3, matched.size())))));
+            }
+        } else if (fitScore >= 50 || (requiredMissing >= 2 && fitScore >= 40)) {
+            decision = "COMPLEMENT";
+            reasons.add("적합도 %d점이며 필수 미충족 항목이 %d개라 보완 후 지원을 권장합니다.".formatted(fitScore, requiredMissing));
+            gaps.stream().filter(gap -> "HIGH".equals(gap.priority())).limit(2)
+                    .forEach(gap -> reasons.add("%s 은(는) 공고 필수 역량이지만 프로필에서 확인되지 않습니다.".formatted(gap.skill())));
+        } else {
+            decision = "HOLD";
+            reasons.add("적합도 %d점으로 기본 요구 역량 충족도가 낮아 지원 보류를 권장합니다.".formatted(fitScore));
+            if (requiredMissing > 0) {
+                reasons.add("필수 요구 역량 %d개가 미충족 상태입니다.".formatted(requiredMissing));
+            }
+        }
+
+        List<String> actions = new ArrayList<>();
+        switch (decision) {
+            case "APPLY" -> {
+                actions.add("지원서에 매칭 역량 경험을 수치·역할 중심으로 정리합니다.");
+                actions.add("마감 전 지원을 진행하고 면접 답변 준비를 병행합니다.");
+            }
+            case "COMPLEMENT" -> {
+                gaps.stream().filter(gap -> "HIGH".equals(gap.priority())).findFirst()
+                        .ifPresent(gap -> actions.add("%s 보완 결과물(작은 프로젝트/실습 기록)을 먼저 준비합니다.".formatted(gap.skill())));
+                actions.add("학습 로드맵의 상위 과제를 완료한 뒤 적합도 재분석을 실행합니다.");
+            }
+            default -> {
+                actions.add("핵심 부족 역량부터 학습 로드맵 순서대로 보완합니다.");
+                actions.add("현재 스펙과 더 맞는 공고를 우선 탐색하고, 보완 후 재분석합니다.");
+            }
+        }
+        return new FitApplyDecision(decision, reasons, actions);
+    }
+
     private List<String> scoreBasis(List<String> required, List<String> matched, List<String> missing, int fitScore) {
+        long matchedRequired = required.stream().filter(skill -> containsIgnoreCase(matched, skill)).count();
         return List.of(
-                "필수 역량 %d개 중 %d개가 현재 프로필과 매칭됩니다.".formatted(required.size(), matched.size()),
+                "필수 역량 %d개 중 %d개가 현재 프로필과 매칭됩니다.".formatted(required.size(), matchedRequired),
                 "필수·우대 조건 기준 보완 항목은 %d개입니다.".formatted(missing.size()),
                 "현재 입력 기준 직무 적합도는 %d점이며, 프로필과 공고 분석이 갱신되면 점수가 달라질 수 있습니다.".formatted(fitScore));
     }
@@ -91,13 +171,13 @@ public class MockFitAnalysisAiService implements FitAnalysisAiService {
                                                           List<String> missing) {
         List<FitGapRecommendation> result = new ArrayList<>();
         for (String skill : missing) {
-            if (required.contains(skill)) {
+            if (containsIgnoreCase(required, skill)) {
                 result.add(new FitGapRecommendation(
                         skill,
                         "REQUIRED_MISSING",
                         "HIGH",
                         "공고 필수 역량이지만 현재 프로필에서 확인되지 않습니다."));
-            } else if (preferred.contains(skill)) {
+            } else if (containsIgnoreCase(preferred, skill)) {
                 result.add(new FitGapRecommendation(
                         skill,
                         "PREFERRED_GAP",
@@ -117,13 +197,26 @@ public class MockFitAnalysisAiService implements FitAnalysisAiService {
     private List<FitLearningRoadmapItem> learningRoadmap(List<FitGapRecommendation> gaps) {
         List<FitLearningRoadmapItem> result = new ArrayList<>();
         int order = 1;
-        for (FitGapRecommendation gap : gaps.stream().limit(5).toList()) {
-            String duration = "HIGH".equals(gap.priority()) ? "1~2주" : "2~4주";
+        for (FitGapRecommendation gap : gaps.stream().limit(3).toList()) {
             result.add(new FitLearningRoadmapItem(
                     gap.skill(),
-                    "%s 핵심 개념과 실무 패턴 학습".formatted(gap.skill()),
-                    "%s을(를) 사용한 작은 결과물을 만들고 README에 선택 이유와 문제 해결 과정을 정리합니다.".formatted(gap.skill()),
-                    duration,
+                    "%s 1단계 · 핵심 개념 정리".formatted(gap.skill()),
+                    "%s의 핵심 개념과 자주 쓰는 실무 패턴을 예제 코드와 함께 정리합니다.".formatted(gap.skill()),
+                    "3~5일",
+                    gap.priority(),
+                    order++));
+            result.add(new FitLearningRoadmapItem(
+                    gap.skill(),
+                    "%s 2단계 · 적용 실습".formatted(gap.skill()),
+                    "%s을(를) 활용한 작은 기능을 구현하고 동작을 테스트합니다.".formatted(gap.skill()),
+                    "1주",
+                    gap.priority(),
+                    order++));
+            result.add(new FitLearningRoadmapItem(
+                    gap.skill(),
+                    "%s 3단계 · 포트폴리오 근거화".formatted(gap.skill()),
+                    "README에 선택 이유, 문제 해결 과정, 검증 결과를 정리해 지원서와 면접에서 설명할 근거를 만듭니다.",
+                    "2~3일",
                     gap.priority(),
                     order++));
         }
@@ -158,24 +251,26 @@ public class MockFitAnalysisAiService implements FitAnalysisAiService {
         return actions;
     }
 
-    private int score(List<String> required, Set<String> profileLower, boolean profileEmpty, int matchedSize) {
+    private int score(List<String> required,
+                      List<String> preferred,
+                      Set<String> profileLower,
+                      boolean profileEmpty) {
         if (required.isEmpty()) {
             return 0;
         }
-        double ratio;
         if (profileEmpty) {
-            ratio = 0.5;
-        } else {
-            long matchedRequired = required.stream()
-                    .filter(skill -> profileLower.contains(skill.toLowerCase(Locale.ROOT)))
-                    .count();
-            ratio = (double) matchedRequired / required.size();
+            return 10;
         }
-        int base = (int) Math.round(45 + ratio * 50);
-        if (matchedSize >= 3) {
-            base += 3;
-        }
-        return Math.max(0, Math.min(100, base));
+        long matchedRequired = required.stream()
+                .filter(skill -> profileLower.contains(skill.toLowerCase(Locale.ROOT)))
+                .count();
+        long matchedPreferred = preferred.stream()
+                .filter(skill -> profileLower.contains(skill.toLowerCase(Locale.ROOT)))
+                .count();
+        double requiredRatio = (double) matchedRequired / required.size();
+        double preferredRatio = preferred.isEmpty() ? 0 : (double) matchedPreferred / preferred.size();
+        int score = (int) Math.round(10 + requiredRatio * 70 + preferredRatio * 20);
+        return Math.max(0, Math.min(100, score));
     }
 
     private List<String> recommendCertificates(String desiredJob) {
@@ -220,13 +315,14 @@ public class MockFitAnalysisAiService implements FitAnalysisAiService {
         if (values == null) {
             return List.of();
         }
-        Set<String> result = new LinkedHashSet<>();
+        java.util.Map<String, String> result = new java.util.LinkedHashMap<>();
         for (String value : values) {
             if (value != null && !value.isBlank()) {
-                result.add(value.trim());
+                String trimmed = value.trim();
+                result.putIfAbsent(trimmed.toLowerCase(Locale.ROOT), trimmed);
             }
         }
-        return new ArrayList<>(result);
+        return new ArrayList<>(result.values());
     }
 
     private Set<String> lower(List<String> values) {
@@ -235,5 +331,9 @@ public class MockFitAnalysisAiService implements FitAnalysisAiService {
             result.add(value.toLowerCase(Locale.ROOT));
         }
         return result;
+    }
+
+    private static boolean containsIgnoreCase(List<String> values, String target) {
+        return values.stream().anyMatch(value -> value.equalsIgnoreCase(target));
     }
 }

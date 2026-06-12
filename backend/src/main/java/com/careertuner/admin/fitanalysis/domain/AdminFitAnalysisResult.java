@@ -33,10 +33,15 @@ public class AdminFitAnalysisResult {
     private String gapRecommendations;
     private String certificateRecommendations;
     private String strategyActions;
+    private String conditionMatrix;
+    private String analysisConfidence;
+    private String applyDecision;
     private String model;
+    private String promptVersion;
     private String status;
     private String errorMessage;
     private LocalDateTime createdAt;
     private int memoCount;
     private LocalDateTime latestMemoAt;
+    private boolean reanalysisRequested;
 }

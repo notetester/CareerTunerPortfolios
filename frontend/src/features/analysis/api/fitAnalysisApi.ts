@@ -1,5 +1,5 @@
 import { api } from "@/app/lib/api";
-import type { FitAnalysisDetail, FitAnalysisLearningTask } from "../types/fitAnalysis";
+import type { FitAnalysisDetail, FitAnalysisHistoryEntry, FitAnalysisLearningTask } from "../types/fitAnalysis";
 
 export function getFitAnalyses() {
   return api<FitAnalysisDetail[]>("/fit-analyses");
@@ -7,6 +7,11 @@ export function getFitAnalyses() {
 
 export function getFitAnalysisByApplicationCase(applicationCaseId: number) {
   return api<FitAnalysisDetail>(`/fit-analyses/application-cases/${applicationCaseId}`);
+}
+
+/** 재분석 히스토리(최신순). 직전 분석 대비 점수·역량 변화를 포함한다. */
+export function getFitAnalysisHistory(applicationCaseId: number) {
+  return api<FitAnalysisHistoryEntry[]>(`/fit-analyses/application-cases/${applicationCaseId}/history`);
 }
 
 /**

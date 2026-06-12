@@ -43,6 +43,7 @@ export interface CareerAnalysisRun {
   inputSnapshot: string | null;
   result: string | null;
   model: string | null;
+  promptVersion?: string | null;
   tokenUsage: number;
   errorMessage: string | null;
   retryable: boolean;
@@ -89,6 +90,92 @@ export interface AnalysisPeriod {
   interviewSessionCount: number;
 }
 
+/** 월별 평균 적합도 변화. month 는 yyyy-MM. */
+export interface MonthlyFitPoint {
+  month: string;
+  averageScore: number;
+  analysisCount: number;
+}
+
+export interface TierItem {
+  applicationCaseId: number;
+  companyName: string;
+  jobTitle: string;
+  fitScore: number | null;
+}
+
+/** 상향/적정/안전 지원 분류(SAFE/MATCH/CHALLENGE). 세 구간이 항상 내려온다. */
+export interface ApplicationTier {
+  tier: "SAFE" | "MATCH" | "CHALLENGE" | string;
+  label: string;
+  description: string;
+  items: TierItem[];
+}
+
+/** 기술스택별 평균 적합도(해당 기술이 등장한 분석들의 평균). */
+export interface SkillFitAverage {
+  skill: string;
+  analysisCount: number;
+  averageScore: number;
+  mostlyMatched: boolean;
+}
+
+/** 적합도 구간별 면접 평균 점수(상관 분석, 면접 진행 건만). */
+export interface FitInterviewBand {
+  band: "HIGH" | "MID" | "LOW" | string;
+  label: string;
+  applicationCount: number;
+  averageFitScore: number | null;
+  averageInterviewScore: number | null;
+}
+
+/** 적합도와 현재 지원 상태를 함께 반영한 지원 우선순위. */
+export interface ApplicationPriority {
+  applicationCaseId: number;
+  companyName: string;
+  jobTitle: string;
+  fitScore: number | null;
+  priorityScore: number;
+  urgency: "NOW" | "PREPARE" | "HOLD" | string;
+  reasons: string[];
+}
+
+/** 여러 지원 건에서 감지한 취업 준비 리스크와 권장 행동. */
+export interface CareerRisk {
+  riskType: string;
+  severity: "HIGH" | "MEDIUM" | "LOW" | string;
+  title: string;
+  detail: string;
+  action: string;
+}
+
+export interface CompanyTypeFit {
+  companyType: string;
+  applicationCount: number;
+  averageFitScore: number | null;
+}
+
+export interface CorrectionCorrelation {
+  correctedApplications: number;
+  uncorrectedApplications: number;
+  correctedAverageFitScore: number | null;
+  uncorrectedAverageFitScore: number | null;
+  scoreDelta: number | null;
+}
+
+export interface WeeklyChange {
+  fitScoreDelta: number | null;
+  gapCountDelta: number | null;
+  interviewScoreDelta: number | null;
+  summary: string;
+}
+
+export interface ToneStrategy {
+  tone: "DIRECT" | "ENCOURAGING" | "ACTION" | string;
+  label: string;
+  message: string;
+}
+
 export interface AnalysisSummary {
   stats: AnalysisStats;
   skillGaps: SkillGap[];
@@ -103,5 +190,19 @@ export interface AnalysisSummary {
   jobDistribution: JobDistribution[];
   answerThemes: AnswerTheme[];
   period: AnalysisPeriod;
+  monthlyFitTrend: MonthlyFitPoint[];
+  applicationTiers: ApplicationTier[];
+  skillFitAverages: SkillFitAverage[];
+  fitInterviewBands: FitInterviewBand[];
+  /** 구버전 mock/API와의 호환을 위해 optional. */
+  applicationPriorities?: ApplicationPriority[];
+  careerRisks?: CareerRisk[];
+  companyTypeFits?: CompanyTypeFit[];
+  correctionCorrelation?: CorrectionCorrelation | null;
+  weeklyChange?: WeeklyChange | null;
+  avoidJobTypes?: string[];
+  next24HourActions?: string[];
+  toneStrategies?: ToneStrategy[];
+  threeLineSummary?: string[];
   analysisRun: CareerAnalysisRun;
 }

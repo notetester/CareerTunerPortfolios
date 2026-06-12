@@ -43,6 +43,17 @@ export interface AdminDailyUsage {
   creditUsed: number;
 }
 
+export interface AdminPromptPerformance {
+  promptKey: string;
+  promptVersion: string;
+  totalCount: number;
+  successCount: number;
+  fallbackCount: number;
+  failedCount: number;
+  successRate: number;
+  averageTokenUsage: number;
+}
+
 export interface AdminAnalyticsSummary {
   stats: AdminAnalyticsStats;
   planDistribution: AdminCount[];
@@ -51,6 +62,47 @@ export interface AdminAnalyticsSummary {
   fitScoreBands: AdminFitScoreBand[];
   recentAnalyses: AdminRecentAnalysis[];
   dailyUsage: AdminDailyUsage[];
+  promptPerformance: AdminPromptPerformance[];
+}
+
+/** 분석 실패 큐 항목(fit_analysis + career_analysis_run 의 FAILED/FALLBACK 결과). */
+export interface AdminAnalysisFailure {
+  source: "FIT_ANALYSIS" | "CAREER_TREND" | "DASHBOARD_SUMMARY" | string;
+  refId: number;
+  userName: string;
+  userEmail: string;
+  companyName: string | null;
+  jobTitle: string | null;
+  status: "FAILED" | "FALLBACK" | string;
+  errorMessage: string | null;
+  model: string | null;
+  promptVersion: string | null;
+  retryable: boolean;
+  createdAt: string;
+}
+
+/** 품질 검수 큐 항목(최신 적합도 분석에 대한 결정적 휴리스틱 점검). */
+export interface AdminQualityFlag {
+  fitAnalysisId: number;
+  applicationCaseId: number;
+  userName: string;
+  userEmail: string;
+  companyName: string;
+  jobTitle: string;
+  fitScore: number | null;
+  flagType:
+    | "SCORE_GAP_MISMATCH"
+    | "LOW_SCORE_NO_GAPS"
+    | "EXCESSIVE_CERTS"
+    | "EMPTY_STRATEGY"
+    | "LOW_CONFIDENCE"
+    | "REQUIRED_GAP_APPLY"
+    | "EMPTY_CONDITION_MATRIX"
+    | "DEGRADED_RESULT"
+    | string;
+  severity: "HIGH" | "MEDIUM" | "LOW" | string;
+  detail: string;
+  analyzedAt: string;
 }
 
 export interface AdminCareerAnalysisRun {
@@ -63,6 +115,7 @@ export interface AdminCareerAnalysisRun {
   inputSnapshot: string | null;
   result: string | null;
   model: string | null;
+  promptVersion: string | null;
   tokenUsage: number;
   errorMessage: string | null;
   retryable: boolean;
@@ -88,4 +141,13 @@ export interface AdminCareerRunMemo {
 export interface AdminCareerRunMemoRequest {
   memoType: AdminCareerRunMemoType;
   content: string;
+}
+
+export interface AdminUserTimeline {
+  eventType: string;
+  refId: number;
+  summary: string;
+  status: string;
+  score: number | null;
+  createdAt: string;
 }
