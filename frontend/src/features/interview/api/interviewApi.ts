@@ -1,6 +1,7 @@
 import { api } from "@/app/lib/api";
 import { getAccessToken } from "@/app/lib/tokenStore";
 import type {
+  AvatarSession,
   CreateInterviewSessionRequest,
   FileAsset,
   GenerateFollowUpsRequest,
@@ -11,8 +12,12 @@ import type {
   InterviewQuestion,
   InterviewReport,
   InterviewSession,
+  MediaAnalysis,
+  MediaCapabilities,
   RealtimeSession,
+  SaveMediaAnalysisRequest,
   SubmitAnswerRequest,
+  VoiceAnalysisResult,
 } from "../types/interview";
 
 // 백엔드 계약: /api/interview/** , /api/file/**
@@ -60,6 +65,13 @@ export function submitAnswer(
   });
 }
 
+/** 질문에 대한 모범답안 생성(학습용). 답변 제출 전에도 호출 가능. */
+export function getModelAnswer(questionId: number): Promise<{ modelAnswer: string }> {
+  return api<{ modelAnswer: string }>(`/interview/questions/${questionId}/model-answer`, {
+    method: "POST",
+  });
+}
+
 /** 질문 + 직전 답변 기반 꼬리 질문 생성 → 갱신된 질문 목록 반환. */
 export function generateFollowUps(
   questionId: number,
@@ -89,6 +101,49 @@ export function createRealtimeSession(sessionId: number): Promise<RealtimeSessio
 /** 세션 종료 → AI 종합 리포트 생성/조회. */
 export function getInterviewReport(sessionId: number): Promise<InterviewReport> {
   return api<InterviewReport>(`/interview/sessions/${sessionId}/report`, { method: "GET" });
+}
+
+// ───── 음성/아바타 면접 분석 : /api/interview/media·sessions/** ─────
+
+/** 외부 키(Inworld/HeyGen) 보유 여부 — 기능 활성/비활성 사전 판단용. */
+export function getMediaCapabilities(): Promise<MediaCapabilities> {
+  return api<MediaCapabilities>("/interview/media/capabilities", { method: "GET" });
+}
+
+/**
+ * 음성 감정 분석 (Inworld voice profiling, 키는 서버측).
+ * audioBase64 는 16kHz mono PCM16(LINEAR16). 오디오는 분석 후 버려진다.
+ */
+export function analyzeVoice(
+  sessionId: number,
+  audioBase64: string,
+  sampleRateHertz = 16000,
+): Promise<VoiceAnalysisResult> {
+  return api<VoiceAnalysisResult>(`/interview/sessions/${sessionId}/voice-analysis`, {
+    method: "POST",
+    body: JSON.stringify({ audioBase64, sampleRateHertz, language: "ko" }),
+  });
+}
+
+/** 아바타 화상 면접 세션 토큰 발급 (LiveAvatar). 질문 미생성 시 400. */
+export function createAvatarSession(sessionId: number): Promise<AvatarSession> {
+  return api<AvatarSession>(`/interview/sessions/${sessionId}/avatar-token`, { method: "POST" });
+}
+
+/** 온디바이스 분석 결과(트랜스크립트+지표+점수) 저장. 원본 미디어는 올리지 않는다. */
+export function saveMediaResult(
+  sessionId: number,
+  request: SaveMediaAnalysisRequest,
+): Promise<MediaAnalysis> {
+  return api<MediaAnalysis>(`/interview/sessions/${sessionId}/media-results`, {
+    method: "POST",
+    body: JSON.stringify(request),
+  });
+}
+
+/** 세션의 저장된 음성/영상 분석 결과 목록 (최신순). */
+export function listMediaResults(sessionId: number): Promise<MediaAnalysis[]> {
+  return api<MediaAnalysis[]>(`/interview/sessions/${sessionId}/media-results`, { method: "GET" });
 }
 
 // ───── 파일(음성/영상) 업로드 · 다운로드 : /api/file/** ─────

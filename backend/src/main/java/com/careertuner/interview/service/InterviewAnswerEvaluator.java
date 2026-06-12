@@ -14,9 +14,16 @@ import com.careertuner.applicationcase.domain.ApplicationCase;
  */
 public interface InterviewAnswerEvaluator {
 
+    /**
+     * 답변을 채점한다.
+     *
+     * @param referenceModelAnswer 사용자에게 보여준 모범답안(답안지). 있으면 만점 기준으로 삼는다. 없으면 빈/널.
+     */
     InterviewOpenAiClient.AnswerEvaluation evaluateAnswer(String question, String answerText,
-                                                          ApplicationCase applicationCase, String ragContext);
+                                                          ApplicationCase applicationCase, String ragContext,
+                                                          String referenceModelAnswer);
 
     InterviewOpenAiClient.CritiqueResult critiqueEvaluation(String question, String answerText,
-                                                            int originalScore, String feedback);
+                                                            int originalScore, String feedback,
+                                                            String referenceModelAnswer);
 }

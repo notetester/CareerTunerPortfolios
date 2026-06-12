@@ -26,6 +26,7 @@ import com.careertuner.interview.dto.InterviewProgressResponse;
 import com.careertuner.interview.dto.InterviewQuestionResponse;
 import com.careertuner.interview.dto.InterviewReportResponse;
 import com.careertuner.interview.dto.InterviewSessionResponse;
+import com.careertuner.interview.dto.ModelAnswerResponse;
 import com.careertuner.interview.dto.SubmitAnswerRequest;
 import com.careertuner.interview.mapper.InterviewMapper;
 import lombok.RequiredArgsConstructor;
@@ -44,6 +45,7 @@ public class InterviewServiceImpl implements InterviewService {
     private static final String FEATURE_QUESTION = "INTERVIEW_QUESTION_GEN";
     private static final String FEATURE_FOLLOWUP = "INTERVIEW_FOLLOWUP_GEN";
     private static final String FEATURE_REPORT = "INTERVIEW_REPORT";
+    private static final String FEATURE_MODEL_ANSWER = "INTERVIEW_MODEL_ANSWER";
 
     private static final Map<String, String> MODE_LABELS = Map.of(
             "BASIC", "기본 면접",
@@ -105,14 +107,23 @@ public class InterviewServiceImpl implements InterviewService {
 
         interviewMapper.deleteQuestionsBySessionId(sessionId);
         int order = 0;
+        List<InterviewQuestion> inserted = new java.util.ArrayList<>();
         for (InterviewOpenAiClient.GeneratedQuestion q : generated.questions()) {
-            interviewMapper.insertQuestion(InterviewQuestion.builder()
+            InterviewQuestion entity = InterviewQuestion.builder()
                     .interviewSessionId(sessionId)
                     .question(q.question())
                     .questionType(q.type())
                     .sortOrder(order++)
-                    .build());
+                    .build();
+            interviewMapper.insertQuestion(entity); // useGeneratedKeys 로 id 채워짐
+            inserted.add(entity);
         }
+
+        // 모범답안을 미리 일괄 생성·저장한다 — 질문이 있으면 채점 기준 답안지도 항상 DB에 있게 한다.
+        // (블라인드 복습 테스트 포함, 프론트가 모범답안을 못 보내도 저장값으로 채점된다.)
+        // 실패해도 질문 생성은 막지 않는다(이후 "모범답안 보기" 시 지연 생성으로 폴백).
+        storeModelAnswers(userId, session, applicationCase, modeLabel, inserted);
+
         return listQuestions(userId, sessionId);
     }
 
@@ -176,8 +187,15 @@ public class InterviewServiceImpl implements InterviewService {
         ApplicationCase applicationCase = accessService.requireOwned(userId, session.getApplicationCaseId());
 
         // 멀티에이전트: Evaluator → Critic(적대적 검증) 으로 최종 점수를 산출하고 단계를 trace 에 남긴다.
+        // 만점 기준 답안지(모범답안)는 프론트가 보낸 값 > 질문에 저장된 값 순으로 사용한다.
+        // 저장된 값을 쓰므로 블라인드인 복습 테스트도 모범답안 기준으로 채점된다.
+        String referenceModelAnswer = blankToNull(request.modelAnswer());
+        if (referenceModelAnswer == null) {
+            referenceModelAnswer = blankToNull(question.getModelAnswer());
+        }
         InterviewAgentOrchestrator.OrchestratedEvaluation evaluation =
-                orchestrator.evaluateAnswer(userId, session, applicationCase, question, request.answerText());
+                orchestrator.evaluateAnswer(userId, session, applicationCase, question, request.answerText(),
+                        referenceModelAnswer);
 
         InterviewAnswer answer = InterviewAnswer.builder()
                 .questionId(questionId)
@@ -273,7 +291,73 @@ public class InterviewServiceImpl implements InterviewService {
         return response;
     }
 
+    @Override
+    public ModelAnswerResponse getModelAnswer(Long userId, Long questionId) {
+        InterviewQuestion question = interviewMapper.findQuestionByIdAndUserId(questionId, userId);
+        if (question == null) {
+            throw new BusinessException(ErrorCode.NOT_FOUND, "면접 질문을 찾을 수 없습니다.");
+        }
+        InterviewSession session = requireSession(userId, question.getInterviewSessionId());
+        ApplicationCase applicationCase = accessService.requireOwned(userId, session.getApplicationCaseId());
+        String modeLabel = MODE_LABELS.getOrDefault(session.getMode(), session.getMode());
+
+        // 이미 저장된 모범답안이 있으면 재사용한다 — 화면 표시와 채점 기준이 같은 답안이도록 보장한다.
+        if (question.getModelAnswer() != null && !question.getModelAnswer().isBlank()) {
+            return new ModelAnswerResponse(question.getModelAnswer());
+        }
+
+        InterviewOpenAiClient.ModelAnswer generated;
+        try {
+            generated = aiClient.generateModelAnswer(question.getQuestion(), applicationCase, modeLabel);
+        } catch (BusinessException ex) {
+            aiUsageLogService.recordFailure(userId, session.getApplicationCaseId(), FEATURE_MODEL_ANSWER, ex.getMessage());
+            throw ex;
+        }
+        aiUsageLogService.recordSuccess(userId, session.getApplicationCaseId(), FEATURE_MODEL_ANSWER, generated.usage());
+
+        // 채점 기준으로 재사용하도록 저장한다. model_answer 컬럼 적용 전이면 조용히 건너뛴다(기능은 그대로 동작).
+        try {
+            interviewMapper.updateQuestionModelAnswer(questionId, generated.modelAnswer());
+        } catch (RuntimeException ignored) {
+            // 컬럼 미적용 등 저장 실패가 모범답안 표시를 막지 않는다.
+        }
+        return new ModelAnswerResponse(generated.modelAnswer());
+    }
+
     // ───── 내부 헬퍼 ─────
+
+    /**
+     * 질문들의 모범답안을 한 번에 생성해 각 질문(model_answer)에 저장한다.
+     * 채점 기준 답안지로 재사용된다. 실패(모델 호출/컬럼 미적용)는 조용히 넘겨 질문 생성을 막지 않는다.
+     */
+    private void storeModelAnswers(Long userId, InterviewSession session, ApplicationCase applicationCase,
+                                   String modeLabel, List<InterviewQuestion> questions) {
+        if (questions.isEmpty()) {
+            return;
+        }
+        List<String> texts = questions.stream().map(InterviewQuestion::getQuestion).toList();
+        InterviewOpenAiClient.GeneratedModelAnswers answers;
+        try {
+            answers = aiClient.generateModelAnswers(texts, applicationCase, modeLabel);
+        } catch (BusinessException ex) {
+            aiUsageLogService.recordFailure(userId, session.getApplicationCaseId(), FEATURE_MODEL_ANSWER, ex.getMessage());
+            return; // 일괄 생성 실패 — 이후 개별 "모범답안 보기" 시 지연 생성으로 폴백한다.
+        }
+        aiUsageLogService.recordSuccess(userId, session.getApplicationCaseId(), FEATURE_MODEL_ANSWER, answers.usage());
+
+        List<String> list = answers.modelAnswers();
+        for (int i = 0; i < questions.size() && i < list.size(); i++) {
+            String answer = list.get(i);
+            if (answer == null || answer.isBlank()) {
+                continue;
+            }
+            try {
+                interviewMapper.updateQuestionModelAnswer(questions.get(i).getId(), answer);
+            } catch (RuntimeException ignored) {
+                // model_answer 컬럼 미적용 등 — 저장 실패가 질문 생성을 막지 않는다.
+            }
+        }
+    }
 
     private InterviewSession requireSession(Long userId, Long sessionId) {
         InterviewSession session = interviewMapper.findSessionByIdAndUserId(sessionId, userId);

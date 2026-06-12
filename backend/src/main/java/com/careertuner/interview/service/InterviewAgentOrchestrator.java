@@ -85,7 +85,20 @@ public class InterviewAgentOrchestrator {
     public OrchestratedEvaluation evaluateAnswer(Long userId, InterviewSession session,
                                                  ApplicationCase applicationCase,
                                                  InterviewQuestion question, String answerText) {
+        return evaluateAnswer(userId, session, applicationCase, question, answerText, null);
+    }
+
+    /**
+     * 면접 답변 한 건을 자율 루프로 평가한다.
+     *
+     * @param referenceModelAnswer 사용자에게 보여준 모범답안(답안지). 있으면 만점 기준으로 채점한다.
+     */
+    public OrchestratedEvaluation evaluateAnswer(Long userId, InterviewSession session,
+                                                 ApplicationCase applicationCase,
+                                                 InterviewQuestion question, String answerText,
+                                                 String referenceModelAnswer) {
         AgentContext ctx = new AgentContext(userId, session, applicationCase, question, answerText);
+        ctx.referenceModelAnswer = referenceModelAnswer;
 
         // ── 자율 루프: 정책이 다음 액션을 고르고, 더 할 일이 없으면 FINISH ──
         while (ctx.turn < properties.getMaxTurns()) {
@@ -153,7 +166,8 @@ public class InterviewAgentOrchestrator {
         long start = System.currentTimeMillis();
         try {
             InterviewOpenAiClient.AnswerEvaluation eval = evaluator.evaluateAnswer(
-                    ctx.question.getQuestion(), ctx.answerText, ctx.applicationCase, ctx.ragContext);
+                    ctx.question.getQuestion(), ctx.answerText, ctx.applicationCase, ctx.ragContext,
+                    ctx.referenceModelAnswer);
             usageLog.recordSuccess(ctx.userId, ctx.caseId(), FEATURE_EVAL, eval.usage());
             ctx.eval = eval;
             ctx.evaluated = true;
@@ -174,7 +188,8 @@ public class InterviewAgentOrchestrator {
         ctx.critiqued = true;
         try {
             InterviewOpenAiClient.CritiqueResult crit = evaluator.critiqueEvaluation(
-                    ctx.question.getQuestion(), ctx.answerText, ctx.eval.score(), ctx.eval.feedback());
+                    ctx.question.getQuestion(), ctx.answerText, ctx.eval.score(), ctx.eval.feedback(),
+                    ctx.referenceModelAnswer);
             usageLog.recordSuccess(ctx.userId, ctx.caseId(), FEATURE_CRITIC, crit.usage());
             ctx.criticAdjusted = crit.adjustedScore();
             ctx.criticVerdict = crit.verdict();
@@ -195,7 +210,8 @@ public class InterviewAgentOrchestrator {
         ctx.reEvaluated = true;
         try {
             InterviewOpenAiClient.AnswerEvaluation re = evaluator.evaluateAnswer(
-                    ctx.question.getQuestion(), ctx.answerText, ctx.applicationCase, ctx.ragContext);
+                    ctx.question.getQuestion(), ctx.answerText, ctx.applicationCase, ctx.ragContext,
+                    ctx.referenceModelAnswer);
             usageLog.recordSuccess(ctx.userId, ctx.caseId(), FEATURE_EVAL, re.usage());
             int before = ctx.finalScore;
             // 재평가와 Critic 조정값의 중간을 최종으로 채택해 한쪽으로 튀지 않게 한다.
@@ -316,6 +332,8 @@ public class InterviewAgentOrchestrator {
         final ApplicationCase applicationCase;
         final InterviewQuestion question;
         final String answerText;
+        /** 사용자에게 보여준 모범답안(답안지). 있으면 만점 기준으로 채점한다. */
+        String referenceModelAnswer;
 
         int turn = 0;
         int stepNo = 0;
