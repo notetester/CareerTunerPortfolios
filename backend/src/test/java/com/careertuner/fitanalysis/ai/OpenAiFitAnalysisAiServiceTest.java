@@ -100,4 +100,58 @@ class OpenAiFitAnalysisAiServiceTest {
         assertThat(result.errorMessage()).contains("invalid key");
         assertThat(result.retryable()).isTrue();
     }
+
+    @Test
+    void downgradesApplyDecisionWhenLlmContradictsRequiredConditions() {
+        // LLM 이 필수 조건 2개 미충족 + 60점인데 APPLY 라고 답한 모순 응답 → 가드레일이 COMPLEMENT 로 강등해야 한다.
+        CareerAnalysisOpenAiClient client = mock(CareerAnalysisOpenAiClient.class);
+        when(client.configured()).thenReturn(true);
+        var payload = new tools.jackson.databind.ObjectMapper().readTree("""
+                {
+                  "fitScore": 60,
+                  "conditionMatrix": [
+                    {"condition": "Java", "conditionType": "REQUIRED", "matchStatus": "UNMET", "evidence": ""},
+                    {"condition": "Spring", "conditionType": "REQUIRED", "matchStatus": "UNMET", "evidence": ""},
+                    {"condition": "AWS", "conditionType": "PREFERRED", "matchStatus": "MET", "evidence": ""}
+                  ],
+                  "applyDecision": {"decision": "APPLY", "reasons": ["LLM 과대평가"], "actions": ["바로 지원"]}
+                }
+                """);
+        when(client.request(anyString(), any(), anyString(), anyString()))
+                .thenReturn(new StructuredResponse(payload, new CareerAnalysisAiUsage("gpt-test", 50, 50, 100, false)));
+
+        OpenAiFitAnalysisAiService service = new OpenAiFitAnalysisAiService(client, new MockFitAnalysisAiService());
+        FitAnalysisAiResult result = service.generate(command);
+
+        assertThat(result.applyDecision().decision()).isEqualTo("COMPLEMENT");
+        assertThat(result.applyDecision().reasons()).anyMatch(reason -> reason.contains("자동 보정"));
+        // AI 가 제시한 기존 사유/행동은 보존된다.
+        assertThat(result.applyDecision().reasons()).contains("LLM 과대평가");
+        assertThat(result.applyDecision().actions()).contains("바로 지원");
+    }
+
+    @Test
+    void keepsApplyDecisionWhenRuleAllowsIt() {
+        // 78점 + 필수 미충족 1개 이하 → mock 규칙상 APPLY 허용 구간이므로 가드가 개입하지 않는다.
+        CareerAnalysisOpenAiClient client = mock(CareerAnalysisOpenAiClient.class);
+        when(client.configured()).thenReturn(true);
+        var payload = new tools.jackson.databind.ObjectMapper().readTree("""
+                {
+                  "fitScore": 78,
+                  "conditionMatrix": [
+                    {"condition": "Java", "conditionType": "REQUIRED", "matchStatus": "MET", "evidence": ""},
+                    {"condition": "Spring", "conditionType": "REQUIRED", "matchStatus": "UNMET", "evidence": ""}
+                  ],
+                  "applyDecision": {"decision": "APPLY", "reasons": ["핵심 역량 충족"], "actions": ["지원"]}
+                }
+                """);
+        when(client.request(anyString(), any(), anyString(), anyString()))
+                .thenReturn(new StructuredResponse(payload, new CareerAnalysisAiUsage("gpt-test", 50, 50, 100, false)));
+
+        OpenAiFitAnalysisAiService service = new OpenAiFitAnalysisAiService(client, new MockFitAnalysisAiService());
+        FitAnalysisAiResult result = service.generate(command);
+
+        assertThat(result.applyDecision().decision()).isEqualTo("APPLY");
+        assertThat(result.applyDecision().reasons()).noneMatch(reason -> reason.contains("자동 보정"));
+    }
 }
