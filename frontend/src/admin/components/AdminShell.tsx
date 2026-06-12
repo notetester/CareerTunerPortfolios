@@ -27,7 +27,7 @@ const NAV: NavItem[] = [
   { key: "profiles", label: "프로필 관리", icon: FileUser, href: "/admin/profiles" },
   { key: "consents", label: "동의 관리", icon: ClipboardCheck, href: "/admin/consents" },
   { key: "payments", label: "결제 관리", icon: CreditCard, ct: "34", href: "/admin/payments" },
-  { key: "reports", label: "게시판/신고", icon: MessageSquareWarning, ct: "12", href: "/admin/community" },
+  { key: "reports", label: "콘텐츠 관리", icon: MessageSquareWarning, href: "/admin/community" },
   { key: "notices", label: "공지사항", icon: Megaphone, ct: "7", href: "/admin/notices" },
   { key: "faq", label: "FAQ 관리", icon: CircleHelp, href: "/admin/faq" },
   { key: "inquiries", label: "문의 관리", icon: Mail, ct: "9", href: "/admin/inquiries" },

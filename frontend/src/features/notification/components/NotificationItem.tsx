@@ -1,4 +1,5 @@
 import { ArrowRight, type LucideIcon } from "lucide-react";
+import { useNavigate } from "react-router";
 import { Avatar, AvatarFallback } from "@/app/components/ui/avatar";
 import type { Notification } from "../types/notification";
 import { typeMeta, relTime } from "../types/notification";
@@ -39,11 +40,20 @@ function NotiIcon({ n, size }: { n: Notification; size: "sm" | "md" }) {
 
 export function NotificationItem({ notification: n, size = "md", onRead }: NotificationItemProps) {
   const meta = typeMeta(n.type);
+  const navigate = useNavigate();
+
+  const handleClick = () => {
+    onRead(n.id);
+    if (n.link) {
+      navigate(n.link);
+    }
+  };
 
   return (
     <div
       className={`ct-noti ${!n.isRead ? "unread" : ""}`}
-      onClick={() => onRead(n.id)}
+      style={{ cursor: n.link ? "pointer" : undefined }}
+      onClick={handleClick}
     >
       {!n.isRead && <span className="ct-noti__dot" />}
       <NotiIcon n={n} size={size} />
