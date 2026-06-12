@@ -22,7 +22,13 @@ public record FitAnalysisDetailResponse(
         String conditionMatrix,
         String analysisConfidence,
         String applyDecision,
+        List<FitScoreBreakdownResponse> scoreBreakdown,
+        FitActionBoardResponse actionBoard,
+        List<String> adverseStrategies,
+        List<String> next24HourActions,
+        List<FitToneStrategyResponse> toneStrategies,
         String model,
+        String promptVersion,
         String status,
         String errorMessage,
         LocalDateTime createdAt,
@@ -30,7 +36,12 @@ public record FitAnalysisDetailResponse(
         List<FitAnalysisLearningTaskResponse> learningTasks
 ) {
     public static FitAnalysisDetailResponse of(FitAnalysisResult result,
-                                               List<FitAnalysisLearningTaskResponse> learningTasks) {
+                                               List<FitAnalysisLearningTaskResponse> learningTasks,
+                                               List<FitScoreBreakdownResponse> scoreBreakdown,
+                                               FitActionBoardResponse actionBoard,
+                                               List<String> adverseStrategies,
+                                               List<String> next24HourActions,
+                                               List<FitToneStrategyResponse> toneStrategies) {
         return new FitAnalysisDetailResponse(
                 result.getId(),
                 result.getApplicationCaseId(),
@@ -48,7 +59,13 @@ public record FitAnalysisDetailResponse(
                 result.getConditionMatrix(),
                 result.getAnalysisConfidence(),
                 result.getApplyDecision(),
+                scoreBreakdown,
+                actionBoard,
+                adverseStrategies,
+                next24HourActions,
+                toneStrategies,
                 result.getModel(),
+                result.getPromptVersion(),
                 result.getStatus(),
                 result.getErrorMessage(),
                 result.getCreatedAt(),

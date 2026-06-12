@@ -27,6 +27,7 @@ import com.careertuner.dashboard.domain.DashboardInterviewSource;
 import com.careertuner.dashboard.domain.DashboardLearningProgressSource;
 import com.careertuner.dashboard.domain.DashboardTodo;
 import com.careertuner.dashboard.domain.DashboardUserSource;
+import com.careertuner.dashboard.domain.DashboardWeeklyMetricSource;
 import com.careertuner.dashboard.dto.DashboardActivityResponse;
 import com.careertuner.dashboard.dto.DashboardApplicationResponse;
 import com.careertuner.dashboard.dto.DashboardChangeResponse;
@@ -121,6 +122,7 @@ public class DashboardServiceImpl implements DashboardService {
                 DashboardUserResponse.from(user),
                 stats,
                 focus,
+                promisingApplication(applications),
                 applications.stream()
                         .limit(5)
                         .map(application -> DashboardApplicationResponse.of(application, tags(application)))
@@ -133,10 +135,28 @@ public class DashboardServiceImpl implements DashboardService {
                 recentInterview(userId),
                 recentNotifications(userId),
                 readiness(userId, applications, analyzedApplications, stats),
-                recentChange(dashboardMapper.findFitScoreHistoryByUserId(userId)),
+                recentChange(dashboardMapper.findFitScoreHistoryByUserId(userId), dashboardMapper.findWeeklyMetricsByUserId(userId)),
                 statusCounts(applications),
                 summary,
-                run);
+                run,
+                dashboardHistory(userId));
+    }
+
+    private DashboardApplicationResponse promisingApplication(List<DashboardApplicationSource> applications) {
+        return applications.stream()
+                .filter(application -> application.getFitScore() != null)
+                .filter(application -> !"CLOSED".equals(application.getStatus()))
+                .max(Comparator.comparing(DashboardApplicationSource::getFitScore))
+                .map(application -> DashboardApplicationResponse.of(application, tags(application)))
+                .orElse(null);
+    }
+
+    private List<CareerAnalysisRunResponse> dashboardHistory(Long userId) {
+        List<CareerAnalysisRunResponse> history = careerAnalysisRunService.listByUserId(userId);
+        return (history == null ? List.<CareerAnalysisRunResponse>of() : history).stream()
+                .filter(run -> "DASHBOARD_SUMMARY".equals(run.analysisType()))
+                .limit(5)
+                .toList();
     }
 
     /** 지원 상태별 건수. 상태 노출 순서는 진행 흐름(DRAFT→ANALYZING→READY→APPLIED→CLOSED)을 따른다. */
@@ -198,7 +218,7 @@ public class DashboardServiceImpl implements DashboardService {
     }
 
     /** 최근 변화 요약: 지원 건별 최신-직전 적합도 점수 차이를 집계한다. 재분석 이력이 없으면 delta null. */
-    private static DashboardChangeResponse recentChange(List<DashboardFitPointSource> history) {
+    private static DashboardChangeResponse recentChange(List<DashboardFitPointSource> history, DashboardWeeklyMetricSource weekly) {
         Map<Long, List<Integer>> byCase = new LinkedHashMap<>();
         for (DashboardFitPointSource point : history) {
             byCase.computeIfAbsent(point.getApplicationCaseId(), key -> new ArrayList<>()).add(point.getFitScore());
@@ -207,13 +227,20 @@ public class DashboardServiceImpl implements DashboardService {
                 .filter(scores -> scores.size() >= 2)
                 .map(scores -> scores.get(scores.size() - 1) - scores.get(scores.size() - 2))
                 .toList();
+        Integer weeklyFit = weekly == null ? null : delta(weekly.getCurrentFitAverage(), weekly.getPreviousFitAverage());
+        Integer weeklyGaps = weekly == null ? null : delta(weekly.getCurrentGapCount(), weekly.getPreviousGapCount());
+        Integer weeklyInterview = weekly == null ? null : delta(weekly.getCurrentInterviewAverage(), weekly.getPreviousInterviewAverage());
         if (deltas.isEmpty()) {
-            return new DashboardChangeResponse(0, 0, 0, null);
+            return new DashboardChangeResponse(0, 0, 0, null, weeklyFit, weeklyGaps, weeklyInterview);
         }
         int improved = (int) deltas.stream().filter(delta -> delta > 0).count();
         int declined = (int) deltas.stream().filter(delta -> delta < 0).count();
         int average = (int) Math.round(deltas.stream().mapToInt(Integer::intValue).average().orElse(0));
-        return new DashboardChangeResponse(deltas.size(), improved, declined, average);
+        return new DashboardChangeResponse(deltas.size(), improved, declined, average, weeklyFit, weeklyGaps, weeklyInterview);
+    }
+
+    private static Integer delta(Integer current, Integer previous) {
+        return current == null || previous == null ? null : current - previous;
     }
 
     /**
@@ -406,6 +433,7 @@ public class DashboardServiceImpl implements DashboardService {
     private static DashboardFocusResponse focus(List<DashboardApplicationSource> applications) {
         return applications.stream()
                 .filter(application -> application.getFitScore() != null)
+                .filter(application -> !"CLOSED".equals(application.getStatus()))
                 .max(Comparator.comparing(DashboardApplicationSource::getFitScore))
                 .map(application -> new DashboardFocusResponse(
                         "%s %s 준비가 %d%% 완료됐습니다."
@@ -454,6 +482,7 @@ public class DashboardServiceImpl implements DashboardService {
                                 "gap-collect", false, "관심 공고 요구 역량 3개 정리", "이번 주")));
 
         applications.stream()
+                .filter(application -> !"CLOSED".equals(application.getStatus()))
                 .filter(application -> application.getInterviewCount() == 0)
                 .findFirst()
                 .ifPresentOrElse(
@@ -466,6 +495,7 @@ public class DashboardServiceImpl implements DashboardService {
                                 "interview-all-done", true, "등록된 지원 건 모의면접 시작", "이번 주")));
 
         applications.stream()
+                .filter(application -> "READY".equals(application.getStatus()))
                 .filter(application -> application.getFitScore() != null && application.getFitScore() >= 70)
                 .findFirst()
                 .ifPresentOrElse(

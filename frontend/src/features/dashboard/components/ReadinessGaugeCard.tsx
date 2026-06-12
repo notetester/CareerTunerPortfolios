@@ -37,6 +37,13 @@ export function ReadinessGaugeCard({ readiness, recentChange }: ReadinessGaugeCa
               {recentChange.averageScoreDelta}점 (상승 {recentChange.improvedApplications} · 하락 {recentChange.declinedApplications})
             </div>
           )}
+          {(recentChange.weeklyFitScoreDelta != null || recentChange.weeklyGapCountDelta != null || recentChange.weeklyInterviewScoreDelta != null) && (
+            <div className="mt-2 flex flex-wrap gap-2 text-[11px] text-slate-500">
+              {recentChange.weeklyFitScoreDelta != null && <span>지난주 대비 적합도 {recentChange.weeklyFitScoreDelta >= 0 ? "+" : ""}{recentChange.weeklyFitScoreDelta}점</span>}
+              {recentChange.weeklyGapCountDelta != null && <span>부족 역량 {recentChange.weeklyGapCountDelta >= 0 ? "+" : ""}{recentChange.weeklyGapCountDelta}개</span>}
+              {recentChange.weeklyInterviewScoreDelta != null && <span>면접 {recentChange.weeklyInterviewScoreDelta >= 0 ? "+" : ""}{recentChange.weeklyInterviewScoreDelta}점</span>}
+            </div>
+          )}
         </div>
         <div className="space-y-2.5">
           {readiness.components.map((component) => (

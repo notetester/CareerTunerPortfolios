@@ -21,6 +21,7 @@ import com.careertuner.admin.analytics.dto.AdminCareerAnalysisRunResponse;
 import com.careertuner.admin.analytics.dto.AdminCareerRunMemoRequest;
 import com.careertuner.admin.analytics.dto.AdminCareerRunMemoResponse;
 import com.careertuner.admin.analytics.dto.AdminQualityFlagResponse;
+import com.careertuner.admin.analytics.dto.AdminUserTimelineResponse;
 import com.careertuner.admin.analytics.service.AdminAnalyticsService;
 import com.careertuner.common.exception.BusinessException;
 import com.careertuner.common.exception.ErrorCode;
@@ -56,12 +57,28 @@ public class AdminAnalyticsController {
         return ApiResponse.ok(adminAnalyticsService.listQualityFlags());
     }
 
+    @PatchMapping("/quality-flags/{fitAnalysisId}/{flagType}/resolve")
+    public ApiResponse<Void> resolveQualityFlag(@AuthenticationPrincipal AuthUser authUser,
+                                                @PathVariable Long fitAnalysisId,
+                                                @PathVariable String flagType) {
+        requireAdmin(authUser);
+        adminAnalyticsService.resolveQualityFlag(fitAnalysisId, flagType);
+        return ApiResponse.ok();
+    }
+
     @GetMapping("/runs")
     public ApiResponse<List<AdminCareerAnalysisRunResponse>> runs(
             @AuthenticationPrincipal AuthUser authUser,
             @RequestParam(required = false) Long userId) {
         requireAdmin(authUser);
         return ApiResponse.ok(adminAnalyticsService.listRuns(userId));
+    }
+
+    @GetMapping("/users/{userId}/timeline")
+    public ApiResponse<List<AdminUserTimelineResponse>> userTimeline(@AuthenticationPrincipal AuthUser authUser,
+                                                                     @PathVariable Long userId) {
+        requireAdmin(authUser);
+        return ApiResponse.ok(adminAnalyticsService.getUserTimeline(userId));
     }
 
     // ── 실행 이력 운영 메모(분석 결과 운영 메모). 적합도 메모와 동일 운영 흐름. ──

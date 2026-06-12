@@ -248,6 +248,62 @@
         ORDER BY fa.application_case_id, fa.id
     </select>
 
+    <resultMap id="DashboardWeeklyMetricResultMap" type="com.careertuner.dashboard.domain.DashboardWeeklyMetricSource">
+        <result property="currentFitAverage" column="current_fit_average"/>
+        <result property="previousFitAverage" column="previous_fit_average"/>
+        <result property="currentGapCount" column="current_gap_count"/>
+        <result property="previousGapCount" column="previous_gap_count"/>
+        <result property="currentInterviewAverage" column="current_interview_average"/>
+        <result property="previousInterviewAverage" column="previous_interview_average"/>
+    </resultMap>
+
+    <select id="findWeeklyMetricsByUserId" resultMap="DashboardWeeklyMetricResultMap">
+        SELECT
+            (SELECT ROUND(AVG(fa.fit_score)) FROM fit_analysis fa INNER JOIN application_case ac ON ac.id = fa.application_case_id
+             WHERE ac.user_id = #{userId} AND fa.created_at &gt;= DATE_SUB(NOW(), INTERVAL 7 DAY)
+               AND fa.id = (
+                   SELECT MAX(current_latest.id)
+                   FROM fit_analysis current_latest
+                   WHERE current_latest.application_case_id = fa.application_case_id
+                     AND current_latest.created_at &gt;= DATE_SUB(NOW(), INTERVAL 7 DAY)
+               )) AS current_fit_average,
+            (SELECT ROUND(AVG(fa.fit_score)) FROM fit_analysis fa INNER JOIN application_case ac ON ac.id = fa.application_case_id
+             WHERE ac.user_id = #{userId} AND fa.created_at &gt;= DATE_SUB(NOW(), INTERVAL 14 DAY)
+               AND fa.created_at &lt; DATE_SUB(NOW(), INTERVAL 7 DAY)
+               AND fa.id = (
+                   SELECT MAX(previous_latest.id)
+                   FROM fit_analysis previous_latest
+                   WHERE previous_latest.application_case_id = fa.application_case_id
+                     AND previous_latest.created_at &gt;= DATE_SUB(NOW(), INTERVAL 14 DAY)
+                     AND previous_latest.created_at &lt; DATE_SUB(NOW(), INTERVAL 7 DAY)
+               )) AS previous_fit_average,
+            (SELECT COALESCE(SUM(JSON_LENGTH(fa.missing_skills)), 0) FROM fit_analysis fa INNER JOIN application_case ac ON ac.id = fa.application_case_id
+             WHERE ac.user_id = #{userId} AND fa.created_at &gt;= DATE_SUB(NOW(), INTERVAL 7 DAY)
+               AND fa.id = (
+                   SELECT MAX(current_latest.id)
+                   FROM fit_analysis current_latest
+                   WHERE current_latest.application_case_id = fa.application_case_id
+                     AND current_latest.created_at &gt;= DATE_SUB(NOW(), INTERVAL 7 DAY)
+               )) AS current_gap_count,
+            (SELECT COALESCE(SUM(JSON_LENGTH(fa.missing_skills)), 0) FROM fit_analysis fa INNER JOIN application_case ac ON ac.id = fa.application_case_id
+             WHERE ac.user_id = #{userId} AND fa.created_at &gt;= DATE_SUB(NOW(), INTERVAL 14 DAY)
+               AND fa.created_at &lt; DATE_SUB(NOW(), INTERVAL 7 DAY)
+               AND fa.id = (
+                   SELECT MAX(previous_latest.id)
+                   FROM fit_analysis previous_latest
+                   WHERE previous_latest.application_case_id = fa.application_case_id
+                     AND previous_latest.created_at &gt;= DATE_SUB(NOW(), INTERVAL 14 DAY)
+                     AND previous_latest.created_at &lt; DATE_SUB(NOW(), INTERVAL 7 DAY)
+               )) AS previous_gap_count,
+            (SELECT ROUND(AVG(session.total_score)) FROM interview_session session INNER JOIN application_case ac ON ac.id = session.application_case_id
+             WHERE ac.user_id = #{userId} AND session.total_score IS NOT NULL
+               AND session.created_at &gt;= DATE_SUB(NOW(), INTERVAL 7 DAY)) AS current_interview_average,
+            (SELECT ROUND(AVG(session.total_score)) FROM interview_session session INNER JOIN application_case ac ON ac.id = session.application_case_id
+             WHERE ac.user_id = #{userId} AND session.total_score IS NOT NULL
+               AND session.created_at &gt;= DATE_SUB(NOW(), INTERVAL 14 DAY)
+               AND session.created_at &lt; DATE_SUB(NOW(), INTERVAL 7 DAY)) AS previous_interview_average
+    </select>
+
     <resultMap id="DashboardLearningProgressResultMap" type="com.careertuner.dashboard.domain.DashboardLearningProgressSource">
         <result property="totalTasks" column="total_tasks"/>
         <result property="completedTasks" column="completed_tasks"/>

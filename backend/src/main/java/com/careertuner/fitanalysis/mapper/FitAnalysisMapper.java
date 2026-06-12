@@ -8,6 +8,7 @@ import org.apache.ibatis.annotations.Param;
 import com.careertuner.fitanalysis.domain.FitAnalysisGenerationSource;
 import com.careertuner.fitanalysis.domain.FitAnalysisLearningTask;
 import com.careertuner.fitanalysis.domain.FitAnalysisResult;
+import com.careertuner.fitanalysis.ai.FitConditionMatch;
 
 @Mapper
 public interface FitAnalysisMapper {
@@ -32,6 +33,17 @@ public interface FitAnalysisMapper {
                                                                 @Param("applicationCaseId") Long applicationCaseId);
 
     void insertFitAnalysis(FitAnalysisResult fitAnalysis);
+
+    void insertHistory(@Param("fitAnalysisId") Long fitAnalysisId,
+                       @Param("applicationCaseId") Long applicationCaseId,
+                       @Param("previousScore") Integer previousScore,
+                       @Param("newScore") Integer newScore,
+                       @Param("diffSummary") String diffSummary);
+
+    void insertConditionMatch(@Param("fitAnalysisId") Long fitAnalysisId,
+                              @Param("row") FitConditionMatch row,
+                              @Param("severity") String severity,
+                              @Param("sortOrder") int sortOrder);
 
     void insertLearningTask(FitAnalysisLearningTask task);
 

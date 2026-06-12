@@ -133,6 +133,7 @@ export function LearningRecommendationPanel({ analyses, loading, error, onReanal
 function WeeklyPlanCard({ tasks }: { tasks: FitAnalysisLearningTask[] }) {
   const priorityRank: Record<string, number> = { HIGH: 0, MEDIUM: 1, LOW: 2 };
   const weekly = tasks
+    .slice()
     .filter((task) => !task.completed)
     .sort((a, b) => (priorityRank[a.priority] ?? 3) - (priorityRank[b.priority] ?? 3) || a.sortOrder - b.sortOrder)
     .slice(0, 3);

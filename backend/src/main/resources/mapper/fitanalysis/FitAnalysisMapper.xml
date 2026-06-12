@@ -21,6 +21,7 @@
         <result property="analysisConfidence" column="analysis_confidence"/>
         <result property="applyDecision" column="apply_decision"/>
         <result property="model" column="model"/>
+        <result property="promptVersion" column="prompt_version"/>
         <result property="status" column="status"/>
         <result property="errorMessage" column="error_message"/>
         <result property="createdAt" column="created_at"/>
@@ -50,6 +51,7 @@
         fa.analysis_confidence,
         fa.apply_decision,
         fa.model,
+        fa.prompt_version,
         fa.status,
         fa.error_message,
         fa.created_at,
@@ -138,13 +140,27 @@
              recommended_study, recommended_certificates, strategy,
              source_snapshot, score_basis, gap_recommendations, certificate_recommendations,
              strategy_actions, condition_matrix, analysis_confidence, apply_decision,
-             model, status, error_message)
+             model, prompt_version, status, error_message)
         VALUES
             (#{applicationCaseId}, #{fitScore}, #{matchedSkills}, #{missingSkills},
              #{recommendedStudy}, #{recommendedCertificates}, #{strategy},
              #{sourceSnapshot}, #{scoreBasis}, #{gapRecommendations}, #{certificateRecommendations},
              #{strategyActions}, #{conditionMatrix}, #{analysisConfidence}, #{applyDecision},
-             #{model}, #{status}, #{errorMessage})
+             #{model}, #{promptVersion}, #{status}, #{errorMessage})
+    </insert>
+
+    <insert id="insertHistory">
+        INSERT INTO fit_analysis_history
+            (fit_analysis_id, application_case_id, previous_score, new_score, diff_summary)
+        VALUES
+            (#{fitAnalysisId}, #{applicationCaseId}, #{previousScore}, #{newScore}, #{diffSummary})
+    </insert>
+
+    <insert id="insertConditionMatch">
+        INSERT INTO fit_analysis_condition_match
+            (fit_analysis_id, condition_text, condition_type, match_status, evidence, severity, sort_order)
+        VALUES
+            (#{fitAnalysisId}, #{row.condition}, #{row.conditionType}, #{row.matchStatus}, #{row.evidence}, #{severity}, #{sortOrder})
     </insert>
 
     <!-- 재분석 히스토리: 같은 지원 건의 전체 분석 이력(오래된 순). 점수/역량 변화 비교용. -->

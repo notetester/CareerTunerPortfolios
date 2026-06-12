@@ -4,6 +4,7 @@ package com.careertuner.dashboard.ai.prompt;
  * 대시보드 AI 요약 프롬프트 모음(C 담당).
  */
 public final class DashboardInsightPromptCatalog {
+    public static final String VERSION = "v0.2";
 
     private DashboardInsightPromptCatalog() {
     }

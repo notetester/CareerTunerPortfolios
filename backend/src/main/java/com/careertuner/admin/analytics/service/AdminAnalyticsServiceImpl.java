@@ -22,6 +22,8 @@ import com.careertuner.admin.analytics.dto.AdminFitScoreBandResponse;
 import com.careertuner.admin.analytics.dto.AdminQualityFlagResponse;
 import com.careertuner.admin.analytics.dto.AdminRecentAnalysisResponse;
 import com.careertuner.admin.analytics.dto.AdminSkillGapResponse;
+import com.careertuner.admin.analytics.dto.AdminUserTimelineResponse;
+import com.careertuner.admin.analytics.dto.AdminPromptPerformanceResponse;
 import com.careertuner.admin.analytics.mapper.AdminAnalyticsMapper;
 import com.careertuner.common.exception.BusinessException;
 import com.careertuner.common.exception.ErrorCode;
@@ -56,6 +58,9 @@ public class AdminAnalyticsServiceImpl implements AdminAnalyticsService {
                         .toList(),
                 adminAnalyticsMapper.findDailyUsage().stream()
                         .map(AdminDailyUsageResponse::from)
+                        .toList(),
+                adminAnalyticsMapper.findPromptPerformance().stream()
+                        .map(AdminPromptPerformanceResponse::from)
                         .toList());
     }
 
@@ -72,7 +77,7 @@ public class AdminAnalyticsServiceImpl implements AdminAnalyticsService {
      * 사용자 원본은 수정하지 않으며, 조치는 적합도 운영 메모(REANALYSIS/QUALITY)로 남긴다.
      */
     @Override
-    @Transactional(readOnly = true)
+    @Transactional
     public List<AdminQualityFlagResponse> listQualityFlags() {
         List<AdminQualityFlagResponse> flags = new java.util.ArrayList<>();
         for (AdminAnalysisSource analysis : adminAnalyticsMapper.findLatestAnalyses()) {
@@ -115,7 +120,22 @@ public class AdminAnalyticsServiceImpl implements AdminAnalyticsService {
                         "%s 상태 결과가 사용자에게 노출 중입니다. 재분석 안내가 필요할 수 있습니다.".formatted(analysis.getStatus())));
             }
         }
-        return flags;
+        for (AdminQualityFlagResponse flag : flags) {
+            adminAnalyticsMapper.upsertQualityFlag(
+                    "FIT_ANALYSIS", flag.fitAnalysisId(), flag.flagType(), flag.severity(), flag.detail());
+        }
+        return flags.stream()
+                .filter(flag -> !adminAnalyticsMapper.isQualityFlagResolved(
+                        "FIT_ANALYSIS", flag.fitAnalysisId(), flag.flagType()))
+                .toList();
+    }
+
+    @Override
+    @Transactional
+    public void resolveQualityFlag(Long fitAnalysisId, String flagType) {
+        if (adminAnalyticsMapper.resolveQualityFlag("FIT_ANALYSIS", fitAnalysisId, flagType) == 0) {
+            throw new BusinessException(ErrorCode.NOT_FOUND, "품질 플래그를 찾을 수 없습니다.");
+        }
     }
 
     private static AdminQualityFlagResponse flag(AdminAnalysisSource analysis, String flagType, String severity, String detail) {
@@ -192,6 +212,14 @@ public class AdminAnalyticsServiceImpl implements AdminAnalyticsService {
     public List<AdminCareerAnalysisRunResponse> listRuns(Long userId) {
         return adminAnalyticsMapper.findCareerAnalysisRuns(userId).stream()
                 .map(AdminCareerAnalysisRunResponse::from)
+                .toList();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<AdminUserTimelineResponse> getUserTimeline(Long userId) {
+        return adminAnalyticsMapper.findUserTimeline(userId).stream()
+                .map(AdminUserTimelineResponse::from)
                 .toList();
     }
 

@@ -107,6 +107,9 @@ export interface DashboardChange {
   improvedApplications: number;
   declinedApplications: number;
   averageScoreDelta: number | null;
+  weeklyFitScoreDelta: number | null;
+  weeklyGapCountDelta: number | null;
+  weeklyInterviewScoreDelta: number | null;
 }
 
 /** 지원 상태별 건수 요약. */
@@ -120,6 +123,7 @@ export interface DashboardAnalysisRun {
   analysisType: string;
   status: "SUCCESS" | "FALLBACK" | "FAILED" | string;
   model: string | null;
+  promptVersion?: string | null;
   tokenUsage: number;
   errorMessage: string | null;
   retryable: boolean;
@@ -130,6 +134,7 @@ export interface DashboardSummary {
   user: DashboardUser;
   stats: DashboardStats;
   focus: DashboardFocus;
+  promisingApplication?: DashboardApplication | null;
   recentApplications: DashboardApplication[];
   todos: DashboardTodo[];
   activities: DashboardActivity[];
@@ -142,4 +147,5 @@ export interface DashboardSummary {
   /** 대시보드 AI 분석 결과 요약(C 담당 AI 18). API 키가 없으면 결정적 mock, 있으면 실제 구조화 분석. */
   aiSummary: string;
   analysisRun: DashboardAnalysisRun;
+  aiHistory?: DashboardAnalysisRun[];
 }

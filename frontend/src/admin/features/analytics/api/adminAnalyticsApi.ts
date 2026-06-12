@@ -6,6 +6,7 @@ import type {
   AdminCareerRunMemo,
   AdminCareerRunMemoRequest,
   AdminQualityFlag,
+  AdminUserTimeline,
 } from "../types/adminAnalytics";
 
 export function getAdminAnalyticsSummary() {
@@ -20,6 +21,14 @@ export function getAdminAnalysisFailures() {
 /** 품질 검수 큐: 최신 적합도 분석에 대한 결정적 휴리스틱 점검 항목. */
 export function getAdminQualityFlags() {
   return api<AdminQualityFlag[]>("/admin/analytics/quality-flags");
+}
+
+export function resolveAdminQualityFlag(fitAnalysisId: number, flagType: string) {
+  return api<void>(`/admin/analytics/quality-flags/${fitAnalysisId}/${encodeURIComponent(flagType)}/resolve`, { method: "PATCH" });
+}
+
+export function getAdminUserTimeline(userId: number) {
+  return api<AdminUserTimeline[]>(`/admin/analytics/users/${userId}/timeline`);
 }
 
 export function getAdminCareerAnalysisRuns(userId?: number) {

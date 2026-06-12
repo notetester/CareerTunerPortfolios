@@ -8,6 +8,7 @@ public record DashboardSummaryResponse(
         DashboardUserResponse user,
         DashboardStatsResponse stats,
         DashboardFocusResponse focus,
+        DashboardApplicationResponse promisingApplication,
         List<DashboardApplicationResponse> recentApplications,
         List<DashboardTodoResponse> todos,
         List<DashboardActivityResponse> activities,
@@ -22,6 +23,7 @@ public record DashboardSummaryResponse(
         // 지원 상태별 요약(작성 중/분석 완료/지원 완료 등 한눈 분포).
         List<DashboardStatusCountResponse> statusCounts,
         String aiSummary,
-        CareerAnalysisRunResponse analysisRun
+        CareerAnalysisRunResponse analysisRun,
+        List<CareerAnalysisRunResponse> aiHistory
 ) {
 }

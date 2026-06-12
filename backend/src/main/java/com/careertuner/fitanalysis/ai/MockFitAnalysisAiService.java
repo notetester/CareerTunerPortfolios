@@ -44,7 +44,11 @@ public class MockFitAnalysisAiService implements FitAnalysisAiService {
 
         // 우대 역량 중 미보유는 장기 보완 항목으로 분류한다.
         for (String skill : preferred) {
-            if (!profileLower.contains(skill.toLowerCase(Locale.ROOT)) && !missing.contains(skill)) {
+            if (profileLower.contains(skill.toLowerCase(Locale.ROOT))) {
+                if (!containsIgnoreCase(matched, skill)) {
+                    matched.add(skill);
+                }
+            } else if (!containsIgnoreCase(missing, skill)) {
                 missing.add(skill);
             }
         }
@@ -155,8 +159,9 @@ public class MockFitAnalysisAiService implements FitAnalysisAiService {
     }
 
     private List<String> scoreBasis(List<String> required, List<String> matched, List<String> missing, int fitScore) {
+        long matchedRequired = required.stream().filter(skill -> containsIgnoreCase(matched, skill)).count();
         return List.of(
-                "필수 역량 %d개 중 %d개가 현재 프로필과 매칭됩니다.".formatted(required.size(), matched.size()),
+                "필수 역량 %d개 중 %d개가 현재 프로필과 매칭됩니다.".formatted(required.size(), matchedRequired),
                 "필수·우대 조건 기준 보완 항목은 %d개입니다.".formatted(missing.size()),
                 "현재 입력 기준 직무 적합도는 %d점이며, 프로필과 공고 분석이 갱신되면 점수가 달라질 수 있습니다.".formatted(fitScore));
     }
@@ -166,13 +171,13 @@ public class MockFitAnalysisAiService implements FitAnalysisAiService {
                                                           List<String> missing) {
         List<FitGapRecommendation> result = new ArrayList<>();
         for (String skill : missing) {
-            if (required.contains(skill)) {
+            if (containsIgnoreCase(required, skill)) {
                 result.add(new FitGapRecommendation(
                         skill,
                         "REQUIRED_MISSING",
                         "HIGH",
                         "공고 필수 역량이지만 현재 프로필에서 확인되지 않습니다."));
-            } else if (preferred.contains(skill)) {
+            } else if (containsIgnoreCase(preferred, skill)) {
                 result.add(new FitGapRecommendation(
                         skill,
                         "PREFERRED_GAP",
@@ -310,13 +315,14 @@ public class MockFitAnalysisAiService implements FitAnalysisAiService {
         if (values == null) {
             return List.of();
         }
-        Set<String> result = new LinkedHashSet<>();
+        java.util.Map<String, String> result = new java.util.LinkedHashMap<>();
         for (String value : values) {
             if (value != null && !value.isBlank()) {
-                result.add(value.trim());
+                String trimmed = value.trim();
+                result.putIfAbsent(trimmed.toLowerCase(Locale.ROOT), trimmed);
             }
         }
-        return new ArrayList<>(result);
+        return new ArrayList<>(result.values());
     }
 
     private Set<String> lower(List<String> values) {
@@ -325,5 +331,9 @@ public class MockFitAnalysisAiService implements FitAnalysisAiService {
             result.add(value.toLowerCase(Locale.ROOT));
         }
         return result;
+    }
+
+    private static boolean containsIgnoreCase(List<String> values, String target) {
+        return values.stream().anyMatch(value -> value.equalsIgnoreCase(target));
     }
 }

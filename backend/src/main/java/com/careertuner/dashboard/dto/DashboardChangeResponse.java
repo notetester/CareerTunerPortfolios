@@ -8,6 +8,9 @@ public record DashboardChangeResponse(
         int reanalyzedApplications,
         int improvedApplications,
         int declinedApplications,
-        Integer averageScoreDelta
+        Integer averageScoreDelta,
+        Integer weeklyFitScoreDelta,
+        Integer weeklyGapCountDelta,
+        Integer weeklyInterviewScoreDelta
 ) {
 }

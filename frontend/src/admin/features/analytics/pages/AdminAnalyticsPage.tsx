@@ -7,6 +7,7 @@ import {
   ChevronDown,
   ChevronRight,
   Cpu,
+  CheckCircle2,
   Gauge,
   Loader2,
   MessageSquarePlus,
@@ -30,6 +31,8 @@ import {
   getAdminCareerAnalysisRuns,
   getAdminCareerRunMemos,
   getAdminQualityFlags,
+  getAdminUserTimeline,
+  resolveAdminQualityFlag,
   updateAdminCareerRunMemo,
 } from "../api/adminAnalyticsApi";
 import type {
@@ -38,6 +41,7 @@ import type {
   AdminCareerAnalysisRun,
   AdminCareerRunMemo,
   AdminQualityFlag,
+  AdminUserTimeline,
 } from "../types/adminAnalytics";
 
 /**
@@ -348,6 +352,9 @@ export function AdminAnalyticsPage() {
   const [statusFilter, setStatusFilter] = useState("ALL");
   const [typeFilter, setTypeFilter] = useState("ALL");
   const [expandedId, setExpandedId] = useState<number | null>(null);
+  const [timelineUserId, setTimelineUserId] = useState<number | null>(null);
+  const [timeline, setTimeline] = useState<AdminUserTimeline[]>([]);
+  const [timelineLoading, setTimelineLoading] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -417,25 +424,42 @@ export function AdminAnalyticsPage() {
   }, [runs]);
 
   const modelStats = useMemo(() => {
-    const grouped = new Map<string, { total: number; success: number; fallback: number; failed: number; tokens: number }>();
+    const grouped = new Map<string, { analysisType: string; promptVersion: string; model: string; total: number; success: number; fallback: number; failed: number; tokens: number }>();
     runs.forEach((run) => {
       const model = run.model?.trim() || "미지정 모델";
-      const current = grouped.get(model) ?? { total: 0, success: 0, fallback: 0, failed: 0, tokens: 0 };
+      const promptVersion = run.promptVersion?.trim() || "버전 미기록";
+      const key = `${run.analysisType}:${promptVersion}:${model}`;
+      const current = grouped.get(key) ?? { analysisType: run.analysisType, promptVersion, model, total: 0, success: 0, fallback: 0, failed: 0, tokens: 0 };
       current.total += 1;
       current.tokens += run.tokenUsage;
       if (run.status === "SUCCESS") current.success += 1;
       else if (run.status === "FALLBACK") current.fallback += 1;
       else current.failed += 1;
-      grouped.set(model, current);
+      grouped.set(key, current);
     });
 
-    return Array.from(grouped, ([model, stat]) => ({
-      model,
+    return Array.from(grouped, ([key, stat]) => ({
+      key,
       ...stat,
       successRate: Math.round((stat.success * 100) / stat.total),
       averageTokens: Math.round(stat.tokens / stat.total),
     })).sort((a, b) => b.total - a.total || b.successRate - a.successRate || a.model.localeCompare(b.model));
   }, [runs]);
+
+  const resolveFlag = async (flag: AdminQualityFlag) => {
+    await resolveAdminQualityFlag(flag.fitAnalysisId, flag.flagType);
+    setQualityFlags((current) => current.filter((item) => !(item.fitAnalysisId === flag.fitAnalysisId && item.flagType === flag.flagType)));
+  };
+
+  const loadTimeline = async (userId: number) => {
+    setTimelineUserId(userId);
+    setTimelineLoading(true);
+    try {
+      setTimeline(await getAdminUserTimeline(userId));
+    } finally {
+      setTimelineLoading(false);
+    }
+  };
 
   return (
     <div className="min-h-screen bg-slate-50">
@@ -621,6 +645,9 @@ export function AdminAnalyticsPage() {
                         >
                           적합도 분석 검수 화면 열기
                         </Link>
+                        <button type="button" onClick={() => void resolveFlag(flag)} className="ml-3 inline-flex items-center gap-1 text-xs font-semibold text-green-700 hover:text-green-900">
+                          <CheckCircle2 className="size-3.5" />검수 완료
+                        </button>
                       </div>
                     ))
                   ) : (
@@ -645,9 +672,9 @@ export function AdminAnalyticsPage() {
                   {modelStats.length > 0 ? (
                     <div className="grid gap-3 lg:grid-cols-2">
                       {modelStats.map((stat) => (
-                        <div key={stat.model} className="rounded-lg border border-slate-100 bg-slate-50 p-3">
+                        <div key={stat.key} className="rounded-lg border border-slate-100 bg-slate-50 p-3">
                           <div className="flex flex-wrap items-center justify-between gap-2">
-                            <span className="text-sm font-bold text-slate-800">{stat.model}</span>
+                            <span className="text-sm font-bold text-slate-800">{analysisTypeLabel[stat.analysisType] ?? stat.analysisType} · {stat.promptVersion} · {stat.model}</span>
                             <Badge className={stat.successRate >= 90 ? "bg-green-100 text-green-700" : stat.successRate >= 70 ? "bg-amber-100 text-amber-700" : "bg-red-100 text-red-700"}>
                               성공률 {stat.successRate}%
                             </Badge>
@@ -667,6 +694,44 @@ export function AdminAnalyticsPage() {
                     <div className="rounded-lg bg-slate-50 p-4 text-sm text-slate-500">
                       모델별 비교에 사용할 분석 실행 이력이 없습니다.
                     </div>
+                  )}
+                </CardContent>
+              </Card>
+            </section>
+
+            <section>
+              <Card className="border border-indigo-200 bg-white">
+                <CardHeader className="pb-3">
+                  <CardTitle className="flex items-center gap-2 text-base">
+                    <Brain className="size-4 text-indigo-600" />
+                    프롬프트 버전별 성능
+                    <Badge className="bg-indigo-100 text-indigo-700">{summary.promptPerformance.length}개 버전</Badge>
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  {summary.promptPerformance.length > 0 ? (
+                    <div className="grid gap-3 lg:grid-cols-2">
+                      {summary.promptPerformance.map((prompt) => (
+                        <div key={`${prompt.promptKey}-${prompt.promptVersion}`} className="rounded-lg border border-slate-100 p-3">
+                          <div className="flex items-center justify-between gap-2">
+                            <strong className="text-sm text-slate-800">{prompt.promptKey} · {prompt.promptVersion}</strong>
+                            <Badge className={prompt.successRate >= 90 ? "bg-green-100 text-green-700" : prompt.successRate >= 70 ? "bg-amber-100 text-amber-700" : "bg-red-100 text-red-700"}>
+                              성공률 {prompt.successRate}%
+                            </Badge>
+                          </div>
+                          <Progress value={prompt.successRate} className="mt-2 h-2" />
+                          <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-xs text-slate-500">
+                            <span>총 {prompt.totalCount}건</span>
+                            <span className="text-green-700">성공 {prompt.successCount}</span>
+                            <span className="text-amber-700">Fallback {prompt.fallbackCount}</span>
+                            <span className="text-red-700">실패 {prompt.failedCount}</span>
+                            <span>평균 {prompt.averageTokenUsage.toLocaleString()} 토큰</span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="rounded-lg bg-slate-50 p-4 text-sm text-slate-500">프롬프트 버전별 비교 데이터가 없습니다.</div>
                   )}
                 </CardContent>
               </Card>
@@ -739,8 +804,9 @@ export function AdminAnalyticsPage() {
                                 )}
                               </div>
                               <div className="mt-1 pl-6 text-xs text-slate-500">
-                                {run.model || "모델 없음"} · {run.tokenUsage.toLocaleString()} 토큰 · {formatDateTime(run.createdAt)}
+                                {run.promptVersion || "버전 미기록"} · {run.model || "모델 없음"} · {run.tokenUsage.toLocaleString()} 토큰 · {formatDateTime(run.createdAt)}
                               </div>
+                              <button type="button" onClick={(event) => { event.stopPropagation(); void loadTimeline(run.userId); }} className="mt-1 pl-6 text-xs font-semibold text-blue-600 hover:text-blue-800">사용자 전체 분석 타임라인 보기</button>
                               {run.errorMessage && <div className="mt-1 pl-6 text-xs text-red-600">{run.errorMessage}</div>}
                             </div>
                             <Badge className={statusTone[run.status] ?? "bg-slate-100 text-slate-600"}>
@@ -779,6 +845,22 @@ export function AdminAnalyticsPage() {
                 </CardContent>
               </Card>
             </section>
+
+            {timelineUserId != null && (
+              <section>
+                <Card className="border border-blue-200 bg-white">
+                  <CardHeader><CardTitle className="text-base">사용자 #{timelineUserId} 분석 타임라인</CardTitle></CardHeader>
+                  <CardContent className="space-y-2">
+                    {timelineLoading ? <Loader2 className="size-4 animate-spin text-blue-600" /> : timeline.map((item) => (
+                      <div key={`${item.eventType}-${item.refId}`} className="rounded-lg border border-slate-100 p-3 text-sm">
+                        <div className="flex justify-between gap-2"><strong>{item.summary}</strong><Badge className={statusTone[item.status] ?? "bg-slate-100 text-slate-600"}>{item.status}</Badge></div>
+                        <div className="mt-1 text-xs text-slate-400">{item.eventType} · {item.score == null ? "점수 없음" : `${item.score}점`} · {formatDateTime(item.createdAt)}</div>
+                      </div>
+                    ))}
+                  </CardContent>
+                </Card>
+              </section>
+            )}
           </>
         )}
       </div>

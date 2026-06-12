@@ -10,6 +10,7 @@ import type {
   FitApplyDecision,
   FitConditionMatch,
   FitGapRecommendation,
+  FitScoreBreakdown,
 } from "@/features/analysis/types/fitAnalysis";
 import { parseJsonList, parseJsonValue, scoreBandDescription, scoreTone } from "@/features/analysis/types/fitAnalysis";
 import { AiResultBadge } from "@/features/analysis/components/AiResultBadge";
@@ -116,6 +117,7 @@ export function FitAnalysisPanel({ analyses, loading, generating = false, error 
                 <SkillList title="매칭된 역량" icon="match" items={matchedSkills} />
                 <SkillList title="부족한 역량" icon="gap" items={missingSkills} />
                 <DetailList title="점수 산정 근거" items={scoreBasis} />
+                <ScoreBreakdownCard items={analysis.scoreBreakdown ?? []} score={analysis.fitScore ?? 0} />
                 <div>
                   <div className="mb-2 flex items-center gap-1.5 text-sm font-semibold text-slate-800">
                     <AlertCircle className="size-4 text-amber-600" />
@@ -151,6 +153,30 @@ export function FitAnalysisPanel({ analyses, loading, generating = false, error 
             </Card>
           );
         })}
+      </div>
+    </div>
+  );
+}
+
+function ScoreBreakdownCard({ items, score }: { items: FitScoreBreakdown[]; score: number }) {
+  if (items.length === 0) return null;
+  return (
+    <div className="rounded-lg border border-blue-100 bg-blue-50/40 p-3">
+      <div className="mb-2 flex items-center justify-between text-sm font-semibold text-blue-900">
+        <span>숫자로 보는 점수 구성</span>
+        <span>{items.reduce((sum, item) => sum + item.earned, 0)} / {score}점 반영</span>
+      </div>
+      <div className="space-y-2">
+        {items.map((item) => (
+          <div key={item.key}>
+            <div className="flex items-center justify-between text-xs">
+              <span className="font-medium text-slate-700">{item.label}</span>
+              <span className="font-bold text-blue-700">{item.earned}/{item.maximum}</span>
+            </div>
+            <Progress value={item.maximum === 0 ? 0 : Math.round((item.earned / item.maximum) * 100)} className="mt-1 h-1.5" />
+            <div className="mt-0.5 text-[11px] text-slate-400">{item.explanation}</div>
+          </div>
+        ))}
       </div>
     </div>
   );

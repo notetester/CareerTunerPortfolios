@@ -370,7 +370,7 @@ export default function AdminFitAnalysisPage() {
                         { label: "사용자", value: `${detail.userName} (${detail.userEmail})` },
                         { label: "지원 상태", value: statusLabel[detail.applicationStatus] ?? detail.applicationStatus },
                         { label: "분석 시각", value: formatDateTime(detail.createdAt) },
-                        { label: "모델/상태", value: `${detail.model || "mock"} · ${detail.status}` },
+                        { label: "모델/프롬프트/상태", value: `${detail.model || "mock"} · ${detail.promptVersion || "버전 미기록"} · ${detail.status}` },
                       ].map((row) => (
                         <div key={row.label} className="rounded-lg bg-slate-50 p-3">
                           <div className="text-[11px] font-semibold text-slate-400">{row.label}</div>

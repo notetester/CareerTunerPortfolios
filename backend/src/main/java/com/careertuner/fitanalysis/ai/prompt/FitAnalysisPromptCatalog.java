@@ -7,6 +7,7 @@ package com.careertuner.fitanalysis.ai.prompt;
  * 공통 AI 클라이언트/프롬프트 엔진(ai/common, ai/prompt)은 팀장 공통 영역이므로, 여기에는 C 도메인 프롬프트만 둔다.
  */
 public final class FitAnalysisPromptCatalog {
+    public static final String VERSION = "v0.2";
 
     private FitAnalysisPromptCatalog() {
     }

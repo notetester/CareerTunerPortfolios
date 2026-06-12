@@ -42,6 +42,26 @@ export interface FitApplyDecision {
   actions: string[];
 }
 
+export interface FitScoreBreakdown {
+  key: string;
+  label: string;
+  earned: number;
+  maximum: number;
+  explanation: string;
+}
+
+export interface FitActionBoard {
+  todo: string[];
+  inProgress: string[];
+  done: string[];
+}
+
+export interface FitToneStrategy {
+  tone: "DIRECT" | "ENCOURAGING" | "ACTION" | string;
+  label: string;
+  message: string;
+}
+
 /** 재분석 히스토리 항목(최신순). 첫 분석은 previousScore/scoreDelta 가 null. */
 export interface FitAnalysisHistoryEntry {
   id: number;
@@ -86,7 +106,13 @@ export interface FitAnalysisDetail {
   conditionMatrix: string | null;
   analysisConfidence: string | null;
   applyDecision: string | null;
+  scoreBreakdown?: FitScoreBreakdown[];
+  actionBoard?: FitActionBoard | null;
+  adverseStrategies?: string[];
+  next24HourActions?: string[];
+  toneStrategies?: FitToneStrategy[];
   model: string | null;
+  promptVersion?: string | null;
   status: string | null;
   errorMessage: string | null;
   createdAt: string | null;

@@ -11,6 +11,7 @@ export interface AdminFitAnalysisListItem {
   matchedSkills: string[];
   missingSkills: string[];
   model: string | null;
+  promptVersion: string | null;
   status: string;
   errorMessage: string | null;
   createdAt: string;
@@ -70,6 +71,7 @@ export interface AdminFitAnalysisDetail {
   analysisConfidence: string | null;
   applyDecision: string | null;
   model: string | null;
+  promptVersion: string | null;
   status: string;
   errorMessage: string | null;
   createdAt: string;

@@ -7,7 +7,7 @@ import { Progress } from "@/app/components/ui/progress";
 import {
   Plus, Briefcase, MessageSquare, TrendingUp, Award, ArrowRight,
   FileText, BarChart3, AlertCircle, ChevronRight,
-  Target, BookOpen, Bell, Calendar, Flame, Loader2, RefreshCw,
+  Target, BookOpen, Bell, Calendar, Flame, Loader2, RefreshCw, Brain,
 } from "lucide-react";
 import { getDashboardSummary, refreshDashboardSummary } from "@/features/dashboard/api/dashboardApi";
 import type { DashboardActivity, DashboardSummary, DashboardTodo } from "@/features/dashboard/types/dashboardSummary";
@@ -112,10 +112,10 @@ export function DashboardPage() {
   const creditPercent = stats ? Math.min(100, Math.round((stats.credit / Math.max(1, stats.creditLimit)) * 100)) : 0;
   const highFitCount = summary?.recentApplications.filter((application) => (application.fitScore ?? 0) >= 70).length ?? 0;
   const promisingApplication = useMemo(() => {
-    return [...(summary?.recentApplications ?? [])]
+    return summary?.promisingApplication ?? [...(summary?.recentApplications ?? [])]
       .filter((application) => application.fitScore != null && application.status !== "CLOSED")
       .sort((a, b) => (b.fitScore ?? 0) - (a.fitScore ?? 0))[0] ?? null;
-  }, [summary?.recentApplications]);
+  }, [summary?.promisingApplication, summary?.recentApplications]);
   const urgentGap = summary?.skillGaps[0] ?? null;
   const statCards = useMemo(() => {
     if (!stats) return [];
@@ -388,6 +388,20 @@ export function DashboardPage() {
                 {/* C 담당: 전체 취업 준비도 게이지 + 최근 변화 요약(결정적 집계). */}
                 {summary.readiness && summary.recentChange && (
                   <ReadinessGaugeCard readiness={summary.readiness} recentChange={summary.recentChange} />
+                )}
+
+                {(summary.aiHistory?.length ?? 0) > 0 && (
+                  <Card className="border border-indigo-200 bg-white">
+                    <CardHeader className="pb-3"><CardTitle className="flex items-center gap-2 text-base"><Brain className="size-4 text-indigo-600" />AI 요약 재생성 이력</CardTitle></CardHeader>
+                    <CardContent className="space-y-2">
+                      {summary.aiHistory?.map((run) => (
+                        <div key={run.id} className="rounded-lg border border-slate-100 p-2.5 text-xs">
+                          <div className="flex items-center justify-between gap-2"><strong className="text-slate-700">{run.promptVersion ?? "버전 미기록"} · {run.model ?? "mock"}</strong><AiResultBadge status={run.status} /></div>
+                          <div className="mt-1 text-slate-400">{new Date(run.createdAt).toLocaleString("ko-KR")} · {run.tokenUsage.toLocaleString()} 토큰</div>
+                        </div>
+                      ))}
+                    </CardContent>
+                  </Card>
                 )}
 
                 <Card className="border border-slate-200 bg-white">

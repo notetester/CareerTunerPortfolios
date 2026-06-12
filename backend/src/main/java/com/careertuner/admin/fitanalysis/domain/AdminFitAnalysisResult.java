@@ -37,6 +37,7 @@ public class AdminFitAnalysisResult {
     private String analysisConfidence;
     private String applyDecision;
     private String model;
+    private String promptVersion;
     private String status;
     private String errorMessage;
     private LocalDateTime createdAt;

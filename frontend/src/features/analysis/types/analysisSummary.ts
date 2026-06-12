@@ -43,6 +43,7 @@ export interface CareerAnalysisRun {
   inputSnapshot: string | null;
   result: string | null;
   model: string | null;
+  promptVersion?: string | null;
   tokenUsage: number;
   errorMessage: string | null;
   retryable: boolean;
@@ -148,6 +149,33 @@ export interface CareerRisk {
   action: string;
 }
 
+export interface CompanyTypeFit {
+  companyType: string;
+  applicationCount: number;
+  averageFitScore: number | null;
+}
+
+export interface CorrectionCorrelation {
+  correctedApplications: number;
+  uncorrectedApplications: number;
+  correctedAverageFitScore: number | null;
+  uncorrectedAverageFitScore: number | null;
+  scoreDelta: number | null;
+}
+
+export interface WeeklyChange {
+  fitScoreDelta: number | null;
+  gapCountDelta: number | null;
+  interviewScoreDelta: number | null;
+  summary: string;
+}
+
+export interface ToneStrategy {
+  tone: "DIRECT" | "ENCOURAGING" | "ACTION" | string;
+  label: string;
+  message: string;
+}
+
 export interface AnalysisSummary {
   stats: AnalysisStats;
   skillGaps: SkillGap[];
@@ -169,5 +197,12 @@ export interface AnalysisSummary {
   /** 구버전 mock/API와의 호환을 위해 optional. */
   applicationPriorities?: ApplicationPriority[];
   careerRisks?: CareerRisk[];
+  companyTypeFits?: CompanyTypeFit[];
+  correctionCorrelation?: CorrectionCorrelation | null;
+  weeklyChange?: WeeklyChange | null;
+  avoidJobTypes?: string[];
+  next24HourActions?: string[];
+  toneStrategies?: ToneStrategy[];
+  threeLineSummary?: string[];
   analysisRun: CareerAnalysisRun;
 }

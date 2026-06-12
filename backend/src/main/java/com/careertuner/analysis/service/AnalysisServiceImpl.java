@@ -15,13 +15,17 @@ import com.careertuner.analysis.ai.CareerTrendAiCommand;
 import com.careertuner.analysis.ai.CareerTrendAiResult;
 import com.careertuner.analysis.ai.CareerTrendAiService;
 import com.careertuner.analysis.domain.AnalysisAnswerSource;
+import com.careertuner.analysis.domain.AnalysisFitPointSource;
 import com.careertuner.analysis.domain.AnalysisSource;
+import com.careertuner.analysis.domain.AnalysisWeeklyMetricSource;
 import com.careertuner.analysis.domain.CareerAnalysisRun;
 import com.careertuner.analysis.dto.AnalysisAnswerThemeResponse;
 import com.careertuner.analysis.dto.AnalysisApplicationPriorityResponse;
 import com.careertuner.analysis.dto.AnalysisApplicationSummaryResponse;
 import com.careertuner.analysis.dto.AnalysisApplicationTierResponse;
 import com.careertuner.analysis.dto.AnalysisCareerRiskResponse;
+import com.careertuner.analysis.dto.AnalysisCompanyTypeResponse;
+import com.careertuner.analysis.dto.AnalysisCorrectionCorrelationResponse;
 import com.careertuner.analysis.dto.AnalysisFitInterviewBandResponse;
 import com.careertuner.analysis.dto.AnalysisJobDistributionResponse;
 import com.careertuner.analysis.dto.AnalysisMonthlyFitResponse;
@@ -32,6 +36,8 @@ import com.careertuner.analysis.dto.AnalysisStatResponse;
 import com.careertuner.analysis.dto.AnalysisStrengthTrendResponse;
 import com.careertuner.analysis.dto.AnalysisSummaryResponse;
 import com.careertuner.analysis.dto.AnalysisTierItemResponse;
+import com.careertuner.analysis.dto.AnalysisToneStrategyResponse;
+import com.careertuner.analysis.dto.AnalysisWeeklyChangeResponse;
 import com.careertuner.analysis.dto.CareerAnalysisRunResponse;
 import com.careertuner.analysis.dto.InterviewTrendResponse;
 import com.careertuner.analysis.dto.JobReadinessResponse;
@@ -79,11 +85,12 @@ public class AnalysisServiceImpl implements AnalysisService {
         List<AnalysisSource> analyzed = sources.stream()
                 .filter(source -> source.getFitAnalysisId() != null)
                 .toList();
+        List<AnalysisFitPointSource> fitHistory = analysisMapper.findFitScoreHistoryByUserId(userId);
 
         AnalysisStatResponse stats = stats(sources, analyzed);
         List<SkillGapResponse> skillGaps = skillGaps(analyzed);
         List<JobReadinessResponse> jobReadiness = jobReadiness(analyzed);
-        List<AnalysisScorePointResponse> scoreHistory = scoreHistory(analyzed);
+        List<AnalysisScorePointResponse> scoreHistory = scoreHistory(fitHistory);
         InterviewTrendResponse interviewTrend = interviewTrend(sources);
         // 결정적 집계(기획 §8.9, 디자인 분석 §6.10). AI 입력/캐시 fingerprint에는 포함하지 않아
         // 기존 저장 요약이 무효화되지 않는다.
@@ -91,12 +98,19 @@ public class AnalysisServiceImpl implements AnalysisService {
         List<AnalysisJobDistributionResponse> jobDistribution = jobDistribution(sources);
         List<AnalysisAnswerThemeResponse> answerThemes = answerThemes(analysisMapper.findAnswerSourcesByUserId(userId));
         AnalysisPeriodResponse period = period(sources, analyzed);
-        List<AnalysisMonthlyFitResponse> monthlyFitTrend = monthlyFitTrend(analyzed);
+        List<AnalysisMonthlyFitResponse> monthlyFitTrend = monthlyFitTrend(fitHistory);
         List<AnalysisApplicationTierResponse> applicationTiers = applicationTiers(analyzed);
         List<AnalysisSkillFitResponse> skillFitAverages = skillFitAverages(analyzed);
         List<AnalysisFitInterviewBandResponse> fitInterviewBands = fitInterviewBands(analyzed);
         List<AnalysisApplicationPriorityResponse> applicationPriorities = applicationPriorities(sources);
         List<AnalysisCareerRiskResponse> careerRisks = careerRisks(sources, analyzed, skillGaps, interviewTrend);
+        List<AnalysisCompanyTypeResponse> companyTypeFits = companyTypeFits(analyzed);
+        AnalysisCorrectionCorrelationResponse correctionCorrelation = correctionCorrelation(analyzed);
+        AnalysisWeeklyChangeResponse weeklyChange = weeklyChange(analysisMapper.findWeeklyMetricsByUserId(userId));
+        List<String> avoidJobTypes = avoidJobTypes(skillGaps);
+        List<String> next24HourActions = next24HourActions(applicationPriorities, skillGaps);
+        List<AnalysisToneStrategyResponse> toneStrategies = toneStrategies(stats, skillGaps);
+        List<String> threeLineSummary = threeLineSummary(applicationPriorities, skillGaps, next24HourActions);
 
         // 장기 경향 요약(16)과 다음 지원 방향(17) AI 입력. 키 주입 시 실 AI로 교체된다.
         CareerTrendAiCommand command = new CareerTrendAiCommand(
@@ -122,6 +136,8 @@ public class AnalysisServiceImpl implements AnalysisService {
                         strengthTrends, jobDistribution, answerThemes, period,
                         monthlyFitTrend, applicationTiers, skillFitAverages, fitInterviewBands,
                         applicationPriorities, careerRisks,
+                        companyTypeFits, correctionCorrelation, weeklyChange, avoidJobTypes,
+                        next24HourActions, toneStrategies, threeLineSummary,
                         CareerAnalysisRunResponse.from(run));
             }
         }
@@ -146,7 +162,9 @@ public class AnalysisServiceImpl implements AnalysisService {
                 ai.recommendedDirections(), ai.trendSummary(), interviewTrend,
                 strengthTrends, jobDistribution, answerThemes, period,
                 monthlyFitTrend, applicationTiers, skillFitAverages, fitInterviewBands,
-                applicationPriorities, careerRisks, run);
+                applicationPriorities, careerRisks,
+                companyTypeFits, correctionCorrelation, weeklyChange, avoidJobTypes,
+                next24HourActions, toneStrategies, threeLineSummary, run);
     }
 
     @Override
@@ -186,11 +204,11 @@ public class AnalysisServiceImpl implements AnalysisService {
         int totalAnswers = sources.stream().mapToInt(AnalysisSource::getInterviewAnswerCount).sum();
         int averageSessions = weightedAverage(
                 sources,
-                AnalysisSource::getInterviewCount,
+                AnalysisSource::getScoredInterviewCount,
                 AnalysisSource::getAverageInterviewScore);
         int averageAnswers = weightedAverage(
                 sources,
-                AnalysisSource::getInterviewAnswerCount,
+                AnalysisSource::getScoredInterviewAnswerCount,
                 AnalysisSource::getAverageInterviewAnswerScore);
         return new InterviewTrendResponse(totalSessions, averageSessions, totalAnswers, averageAnswers);
     }
@@ -258,11 +276,11 @@ public class AnalysisServiceImpl implements AnalysisService {
                 .toList();
     }
 
-    private static List<AnalysisScorePointResponse> scoreHistory(List<AnalysisSource> analyzed) {
-        return analyzed.stream()
-                .filter(source -> source.getFitScore() != null && source.getAnalyzedAt() != null)
-                .sorted(Comparator.comparing(AnalysisSource::getAnalyzedAt))
-                .map(source -> new AnalysisScorePointResponse(source.getAnalyzedAt().format(SCORE_LABEL_FORMAT), source.getFitScore()))
+    private static List<AnalysisScorePointResponse> scoreHistory(List<AnalysisFitPointSource> history) {
+        return history.stream()
+                .filter(point -> point.getFitScore() != null && point.getAnalyzedAt() != null)
+                .sorted(Comparator.comparing(AnalysisFitPointSource::getAnalyzedAt))
+                .map(point -> new AnalysisScorePointResponse(point.getAnalyzedAt().format(SCORE_LABEL_FORMAT), point.getFitScore()))
                 .toList();
     }
 
@@ -333,14 +351,14 @@ public class AnalysisServiceImpl implements AnalysisService {
     }
 
     /** 월별 평균 적합도 변화: 적합도 분석 시점을 월 단위로 묶어 최근 6개월만 보여준다. */
-    private static List<AnalysisMonthlyFitResponse> monthlyFitTrend(List<AnalysisSource> analyzed) {
+    private static List<AnalysisMonthlyFitResponse> monthlyFitTrend(List<AnalysisFitPointSource> history) {
         Map<java.time.YearMonth, List<Integer>> byMonth = new java.util.TreeMap<>();
-        for (AnalysisSource source : analyzed) {
-            if (source.getFitScore() == null || source.getAnalyzedAt() == null) {
+        for (AnalysisFitPointSource point : history) {
+            if (point.getFitScore() == null || point.getAnalyzedAt() == null) {
                 continue;
             }
-            byMonth.computeIfAbsent(java.time.YearMonth.from(source.getAnalyzedAt()), key -> new java.util.ArrayList<>())
-                    .add(source.getFitScore());
+            byMonth.computeIfAbsent(java.time.YearMonth.from(point.getAnalyzedAt()), key -> new java.util.ArrayList<>())
+                    .add(point.getFitScore());
         }
         List<AnalysisMonthlyFitResponse> points = byMonth.entrySet().stream()
                 .map(entry -> new AnalysisMonthlyFitResponse(
@@ -395,7 +413,9 @@ public class AnalysisServiceImpl implements AnalysisService {
                 matchedCounts.merge(skill, 1, Integer::sum);
             }
             for (String skill : missing) {
-                scoresBySkill.computeIfAbsent(skill, key -> new java.util.ArrayList<>()).add(source.getFitScore());
+                if (!containsIgnoreCase(matched, skill)) {
+                    scoresBySkill.computeIfAbsent(skill, key -> new java.util.ArrayList<>()).add(source.getFitScore());
+                }
             }
         }
         return scoresBySkill.entrySet().stream()
@@ -584,5 +604,120 @@ public class AnalysisServiceImpl implements AnalysisService {
             return 0;
         }
         return (int) Math.round((count * 100.0) / total);
+    }
+
+    /** 기업 분석의 산업 분류를 C의 기업 유형 신호로 읽어 적합도를 비교한다. */
+    private static List<AnalysisCompanyTypeResponse> companyTypeFits(List<AnalysisSource> analyzed) {
+        return analyzed.stream()
+                .filter(source -> source.getFitScore() != null)
+                .collect(Collectors.groupingBy(
+                        source -> source.getCompanyIndustry() == null || source.getCompanyIndustry().isBlank()
+                                ? "미분류 기업"
+                                : source.getCompanyIndustry().trim(),
+                        LinkedHashMap::new,
+                        Collectors.toList()))
+                .entrySet().stream()
+                .map(entry -> new AnalysisCompanyTypeResponse(
+                        entry.getKey(),
+                        entry.getValue().size(),
+                        (int) Math.round(entry.getValue().stream().mapToInt(AnalysisSource::getFitScore).average().orElse(0))))
+                .sorted(Comparator.comparingInt(AnalysisCompanyTypeResponse::averageFitScore).reversed())
+                .toList();
+    }
+
+    /** improved_answer가 저장된 지원 건을 답변 첨삭 완료 신호로 보고 적합도 차이를 읽기 전용 집계한다. */
+    private static AnalysisCorrectionCorrelationResponse correctionCorrelation(List<AnalysisSource> analyzed) {
+        List<AnalysisSource> corrected = analyzed.stream()
+                .filter(source -> source.getFitScore() != null && source.getCorrectedAnswerCount() > 0)
+                .toList();
+        List<AnalysisSource> uncorrected = analyzed.stream()
+                .filter(source -> source.getFitScore() != null && source.getCorrectedAnswerCount() == 0)
+                .toList();
+        Integer correctedAverage = averageFitOrNull(corrected);
+        Integer uncorrectedAverage = averageFitOrNull(uncorrected);
+        Integer delta = correctedAverage == null || uncorrectedAverage == null ? null : correctedAverage - uncorrectedAverage;
+        return new AnalysisCorrectionCorrelationResponse(
+                corrected.size(), uncorrected.size(), correctedAverage, uncorrectedAverage, delta);
+    }
+
+    private static Integer averageFitOrNull(List<AnalysisSource> values) {
+        return values.isEmpty() ? null
+                : (int) Math.round(values.stream().mapToInt(AnalysisSource::getFitScore).average().orElse(0));
+    }
+
+    private static AnalysisWeeklyChangeResponse weeklyChange(AnalysisWeeklyMetricSource source) {
+        if (source == null) {
+            return new AnalysisWeeklyChangeResponse(null, null, null, "비교할 주간 데이터가 아직 없습니다.");
+        }
+        Integer fitDelta = delta(source.getCurrentFitAverage(), source.getPreviousFitAverage());
+        Integer gapDelta = delta(source.getCurrentGapCount(), source.getPreviousGapCount());
+        Integer interviewDelta = delta(source.getCurrentInterviewAverage(), source.getPreviousInterviewAverage());
+        String summary = "지난 7일 변화: 적합도 %s · 부족 역량 %s · 면접 점수 %s"
+                .formatted(deltaLabel(fitDelta, "점"), deltaLabel(gapDelta, "개"), deltaLabel(interviewDelta, "점"));
+        return new AnalysisWeeklyChangeResponse(fitDelta, gapDelta, interviewDelta, summary);
+    }
+
+    private static Integer delta(Integer current, Integer previous) {
+        return current == null || previous == null ? null : current - previous;
+    }
+
+    private static String deltaLabel(Integer delta, String unit) {
+        return delta == null ? "비교 데이터 없음" : (delta > 0 ? "+" : "") + delta + unit;
+    }
+
+    private static List<String> avoidJobTypes(List<SkillGapResponse> gaps) {
+        return gaps.stream()
+                .filter(gap -> gap.percentage() >= 50)
+                .limit(4)
+                .map(gap -> "%s을(를) 필수로 요구하는 공고 — 최근 분석의 %d%%에서 부족"
+                        .formatted(gap.skill(), gap.percentage()))
+                .toList();
+    }
+
+    private static List<String> next24HourActions(
+            List<AnalysisApplicationPriorityResponse> priorities,
+            List<SkillGapResponse> gaps) {
+        java.util.LinkedHashSet<String> actions = new java.util.LinkedHashSet<>();
+        priorities.stream().findFirst().ifPresent(priority ->
+                actions.add("%s %s 지원 자료를 최종 점검하고 제출 일정을 확정합니다."
+                        .formatted(priority.companyName(), priority.jobTitle())));
+        gaps.stream().limit(2).forEach(gap ->
+                actions.add("%s 60분 실습을 완료하고 결과를 학습 기록에 남깁니다.".formatted(gap.skill())));
+        actions.add("현재 프로필과 포트폴리오에 최신 보완 결과가 반영됐는지 확인합니다.");
+        return actions.stream().limit(3).toList();
+    }
+
+    private static List<AnalysisToneStrategyResponse> toneStrategies(
+            AnalysisStatResponse stats,
+            List<SkillGapResponse> gaps) {
+        String topGap = gaps.isEmpty() ? "핵심 부족 역량" : gaps.get(0).skill();
+        return List.of(
+                new AnalysisToneStrategyResponse("DIRECT", "냉정한 평가",
+                        "평균 적합도 %d점입니다. %s 보완이 반복해서 미뤄지면 지원 우선순위를 낮춰야 합니다."
+                                .formatted(stats.averageFitScore(), topGap)),
+                new AnalysisToneStrategyResponse("ENCOURAGING", "격려형 평가",
+                        "지금까지 쌓인 강점을 유지하면서 %s부터 해결하면 다음 지원의 경쟁력을 높일 수 있습니다."
+                                .formatted(topGap)),
+                new AnalysisToneStrategyResponse("ACTION", "실행 중심 평가",
+                        "24시간 액션 3개를 완료하고, 결과를 프로필에 반영한 뒤 적합도를 다시 확인하세요."));
+    }
+
+    private static List<String> threeLineSummary(
+            List<AnalysisApplicationPriorityResponse> priorities,
+            List<SkillGapResponse> gaps,
+            List<String> actions) {
+        String best = priorities.isEmpty()
+                ? "현재 즉시 지원을 추천할 지원 건은 없습니다."
+                : "현재 가장 먼저 검토할 지원 건은 %s %s입니다."
+                        .formatted(priorities.get(0).companyName(), priorities.get(0).jobTitle());
+        String gap = gaps.isEmpty()
+                ? "반복 부족 역량은 아직 확인되지 않았습니다."
+                : "가장 반복되는 부족 역량은 %s입니다.".formatted(gaps.get(0).skill());
+        String action = actions.isEmpty() ? "이번 주 실행 계획을 등록하세요." : actions.get(0);
+        return List.of(best, gap, action);
+    }
+
+    private static boolean containsIgnoreCase(List<String> values, String target) {
+        return values.stream().anyMatch(value -> value.equalsIgnoreCase(target));
     }
 }

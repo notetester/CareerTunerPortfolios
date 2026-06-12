@@ -37,6 +37,7 @@
         <result property="status" column="status"/>
         <result property="errorMessage" column="error_message"/>
         <result property="model" column="model"/>
+        <result property="promptVersion" column="prompt_version"/>
         <result property="retryable" column="retryable"/>
         <result property="createdAt" column="created_at"/>
     </resultMap>
@@ -75,6 +76,18 @@
         <result property="content" column="content"/>
         <result property="createdAt" column="created_at"/>
         <result property="updatedAt" column="updated_at"/>
+    </resultMap>
+
+    <resultMap id="AdminUserTimelineResultMap" type="com.careertuner.admin.analytics.domain.AdminUserTimelineSource">
+        <result property="eventType" column="event_type"/><result property="refId" column="ref_id"/>
+        <result property="summary" column="summary"/><result property="status" column="status"/>
+        <result property="score" column="score"/><result property="createdAt" column="created_at"/>
+    </resultMap>
+    <resultMap id="AdminPromptPerformanceResultMap" type="com.careertuner.admin.analytics.domain.AdminPromptPerformanceSource">
+        <result property="promptKey" column="prompt_key"/><result property="promptVersion" column="prompt_version"/>
+        <result property="totalCount" column="total_count"/><result property="successCount" column="success_count"/>
+        <result property="fallbackCount" column="fallback_count"/><result property="failedCount" column="failed_count"/>
+        <result property="averageTokenUsage" column="average_token_usage"/>
     </resultMap>
 
     <select id="countUsers" resultType="int">
@@ -203,6 +216,24 @@
         LIMIT 100
     </select>
 
+    <insert id="upsertQualityFlag">
+        INSERT INTO analysis_quality_flag (target_type, target_id, flag_type, severity, memo, resolved)
+        VALUES (#{targetType}, #{targetId}, #{flagType}, #{severity}, #{memo}, 0)
+        ON DUPLICATE KEY UPDATE severity = VALUES(severity), memo = VALUES(memo)
+    </insert>
+
+    <select id="isQualityFlagResolved" resultType="boolean">
+        SELECT COALESCE(MAX(resolved), 0)
+        FROM analysis_quality_flag
+        WHERE target_type = #{targetType} AND target_id = #{targetId} AND flag_type = #{flagType}
+    </select>
+
+    <update id="resolveQualityFlag">
+        UPDATE analysis_quality_flag
+        SET resolved = 1
+        WHERE target_type = #{targetType} AND target_id = #{targetId} AND flag_type = #{flagType}
+    </update>
+
     <select id="findCareerAnalysisRuns" resultMap="AdminCareerAnalysisRunMap">
         SELECT
             run.*,
@@ -225,6 +256,54 @@
         </if>
         ORDER BY run.created_at DESC, run.id DESC
         LIMIT 300
+    </select>
+
+    <select id="findUserTimeline" resultMap="AdminUserTimelineResultMap">
+        SELECT * FROM (
+            SELECT 'FIT_ANALYSIS' AS event_type, fa.id AS ref_id,
+                   CONCAT(ac.company_name, ' ', ac.job_title, ' 적합도 분석') AS summary,
+                   fa.status, fa.fit_score AS score, fa.created_at
+            FROM fit_analysis fa INNER JOIN application_case ac ON ac.id = fa.application_case_id
+            WHERE ac.user_id = #{userId}
+            UNION ALL
+            SELECT 'LEARNING_TASK' AS event_type, task.id AS ref_id,
+                   CONCAT(task.skill, ' 학습 과제: ', task.title) AS summary,
+                   IF(task.completed, 'COMPLETED', 'ACTIVE') AS status, NULL AS score, task.created_at
+            FROM fit_analysis_learning_task task
+            INNER JOIN fit_analysis fa ON fa.id = task.fit_analysis_id
+            INNER JOIN application_case ac ON ac.id = fa.application_case_id
+            WHERE ac.user_id = #{userId}
+            UNION ALL
+            SELECT run.analysis_type AS event_type, run.id AS ref_id,
+                   IF(run.analysis_type = 'DASHBOARD_SUMMARY', '대시보드 요약 생성', '장기 취업 경향 분석') AS summary,
+                   run.status, NULL AS score, run.created_at
+            FROM career_analysis_run run WHERE run.user_id = #{userId}
+        ) timeline
+        ORDER BY created_at DESC, ref_id DESC
+        LIMIT 200
+    </select>
+
+    <select id="findPromptPerformance" resultMap="AdminPromptPerformanceResultMap">
+        SELECT prompt_key, COALESCE(prompt_version, '버전 미기록') AS prompt_version,
+               COUNT(*) AS total_count,
+               SUM(status = 'SUCCESS') AS success_count,
+               SUM(status = 'FALLBACK') AS fallback_count,
+               SUM(status = 'FAILED') AS failed_count,
+               ROUND(AVG(token_usage)) AS average_token_usage
+        FROM (
+            SELECT 'FIT_ANALYSIS' AS prompt_key, fa.prompt_version, fa.status, COALESCE(usage_log.token_usage, 0) AS token_usage
+            FROM fit_analysis fa
+            LEFT JOIN ai_usage_log usage_log ON usage_log.application_case_id = fa.application_case_id
+                AND usage_log.feature_type = 'FIT_ANALYSIS'
+                AND usage_log.id = (SELECT MAX(latest_usage.id) FROM ai_usage_log latest_usage
+                                WHERE latest_usage.application_case_id = fa.application_case_id
+                                  AND latest_usage.feature_type = 'FIT_ANALYSIS')
+            UNION ALL
+            SELECT run.analysis_type AS prompt_key, run.prompt_version, run.status, run.token_usage
+            FROM career_analysis_run run
+        ) prompt_runs
+        GROUP BY prompt_key, prompt_version
+        ORDER BY prompt_key, prompt_version DESC
     </select>
 
     <select id="findCareerAnalysisRunById" resultMap="AdminCareerAnalysisRunMap">

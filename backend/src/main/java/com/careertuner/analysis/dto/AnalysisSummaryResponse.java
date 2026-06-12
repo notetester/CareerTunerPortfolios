@@ -22,6 +22,13 @@ public record AnalysisSummaryResponse(
         List<AnalysisFitInterviewBandResponse> fitInterviewBands,
         List<AnalysisApplicationPriorityResponse> applicationPriorities,
         List<AnalysisCareerRiskResponse> careerRisks,
+        List<AnalysisCompanyTypeResponse> companyTypeFits,
+        AnalysisCorrectionCorrelationResponse correctionCorrelation,
+        AnalysisWeeklyChangeResponse weeklyChange,
+        List<String> avoidJobTypes,
+        List<String> next24HourActions,
+        List<AnalysisToneStrategyResponse> toneStrategies,
+        List<String> threeLineSummary,
         CareerAnalysisRunResponse analysisRun
 ) {
 }

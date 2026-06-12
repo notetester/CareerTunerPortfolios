@@ -43,6 +43,17 @@ export interface AdminDailyUsage {
   creditUsed: number;
 }
 
+export interface AdminPromptPerformance {
+  promptKey: string;
+  promptVersion: string;
+  totalCount: number;
+  successCount: number;
+  fallbackCount: number;
+  failedCount: number;
+  successRate: number;
+  averageTokenUsage: number;
+}
+
 export interface AdminAnalyticsSummary {
   stats: AdminAnalyticsStats;
   planDistribution: AdminCount[];
@@ -51,6 +62,7 @@ export interface AdminAnalyticsSummary {
   fitScoreBands: AdminFitScoreBand[];
   recentAnalyses: AdminRecentAnalysis[];
   dailyUsage: AdminDailyUsage[];
+  promptPerformance: AdminPromptPerformance[];
 }
 
 /** 분석 실패 큐 항목(fit_analysis + career_analysis_run 의 FAILED/FALLBACK 결과). */
@@ -64,6 +76,7 @@ export interface AdminAnalysisFailure {
   status: "FAILED" | "FALLBACK" | string;
   errorMessage: string | null;
   model: string | null;
+  promptVersion: string | null;
   retryable: boolean;
   createdAt: string;
 }
@@ -102,6 +115,7 @@ export interface AdminCareerAnalysisRun {
   inputSnapshot: string | null;
   result: string | null;
   model: string | null;
+  promptVersion: string | null;
   tokenUsage: number;
   errorMessage: string | null;
   retryable: boolean;
@@ -127,4 +141,13 @@ export interface AdminCareerRunMemo {
 export interface AdminCareerRunMemoRequest {
   memoType: AdminCareerRunMemoType;
   content: string;
+}
+
+export interface AdminUserTimeline {
+  eventType: string;
+  refId: number;
+  summary: string;
+  status: string;
+  score: number | null;
+  createdAt: string;
 }

@@ -54,4 +54,22 @@ class MockFitAnalysisAiServiceTest {
                 .extracting(FitLearningRoadmapItem::sortOrder)
                 .containsExactly(1, 2, 3, 4, 5, 6);
     }
+
+    @Test
+    void includesOwnedPreferredSkillsInMatchedSkillsWithoutInflatingRequiredBasis() {
+        FitAnalysisAiResult result = service.generate(new FitAnalysisAiCommand(
+                "테스트기업",
+                "프론트엔드 개발자",
+                List.of("React"),
+                List.of("TypeScript", "typescript"),
+                "웹 서비스 개발",
+                List.of("React", "TypeScript"),
+                List.of(),
+                "프론트엔드 개발자"));
+
+        assertThat(result.matchedSkills()).containsExactly("React", "TypeScript");
+        assertThat(result.missingSkills()).doesNotContain("TypeScript");
+        assertThat(result.scoreBasis().get(0)).contains("필수 역량 1개 중 1개");
+        assertThat(result.conditionMatrix()).hasSize(2);
+    }
 }
