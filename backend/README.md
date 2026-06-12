@@ -119,6 +119,57 @@ revision으로 저장한다. `job_posting`은 `(application_case_id, revision)` 
 사용자 검수 API는 기업 분석 본문과 구조화 JSON만 수정한다. 제품 정책은 `../docs/planning/기획.md`, 데이터/API 목표 구조는
 `../docs/ARCHITECTURE.md`와 `../docs/FEATURE_MODULE_STRUCTURE.md`를 따른다.
 
+## C 분석·대시보드 API
+
+홈/대시보드/취업 분석/적합도 분석(C 담당) API. 모두 인증된 사용자 자신의 데이터만 다루며,
+A 프로필·B 공고/지원 건·D 면접·E 첨삭 원본은 읽기 전용으로만 참조한다.
+
+| Method | Path | 설명 | 인증 |
+| --- | --- | --- | --- |
+| GET | `/api/home/summary` | 로그인 홈 요약(포커스·다음 액션·온보딩 진행률) | Bearer |
+| GET | `/api/dashboard/summary` | 대시보드 요약(준비도 게이지·상태별 건수·최근 변화·유망 지원 건·AI 요약 이력) | Bearer |
+| POST | `/api/dashboard/summary/refresh` | 대시보드 AI 요약 재생성(크레딧 차감) | Bearer |
+| GET | `/api/dashboard/todos` | 오늘의 할 일 목록(파생+사용자 추가) | Bearer |
+| POST | `/api/dashboard/todos` | 사용자 할 일 추가 | Bearer |
+| PATCH | `/api/dashboard/todos/derived` | 파생 할 일 완료 오버라이드 | Bearer |
+| PATCH | `/api/dashboard/todos/{todoId}` | 사용자 할 일 완료 토글 | Bearer |
+| DELETE | `/api/dashboard/todos/{todoId}` | 사용자 할 일 삭제 | Bearer |
+| GET | `/api/analysis/summary` | 장기 취업 분석 요약(반복 강·약점, 직무/기업 유형/기술스택별 적합도, 지원 분류·우선순위, 리스크, 3줄 요약) | Bearer |
+| POST | `/api/analysis/summary/refresh` | 장기 경향 AI 요약 재생성(크레딧 차감) | Bearer |
+| GET | `/api/analysis/history` | 장기 분석 AI 실행 이력 | Bearer |
+| GET | `/api/analysis/plan` | 커리어 목표 + 학습 계획 조회 | Bearer |
+| PUT | `/api/analysis/plan/goal` | 분석용 커리어 목표 설정(목표 직무·기간·우선 역량·선호 기업 유형) | Bearer |
+| POST | `/api/analysis/plan/learning-plans` | 학습 계획 생성 | Bearer |
+| POST | `/api/analysis/plan/learning-plans/{planId}/tasks` | 학습 계획 과제 추가 | Bearer |
+| PATCH | `/api/analysis/plan/learning-plans/{planId}/tasks/{taskId}` | 학습 과제 완료 토글 | Bearer |
+| GET | `/api/fit-analyses` | 지원 건별 최신 적합도 분석 목록 | Bearer |
+| GET | `/api/fit-analyses/application-cases/{id}` | 지원 건의 최신 적합도 분석(비교 매트릭스·점수 산정 상세·신뢰도·지원 판단·액션 보드·톤별 전략 포함) | Bearer |
+| POST | `/api/fit-analyses/application-cases/{id}` | 적합도 분석 생성/재생성(C 담당 AI, 크레딧 차감) | Bearer |
+| GET | `/api/fit-analyses/application-cases/{id}/history` | 재분석 히스토리(점수 변화·매칭/부족 역량 변화) | Bearer |
+| PATCH | `/api/fit-analyses/{fitAnalysisId}/learning-tasks/{taskId}` | 학습 로드맵 체크리스트 완료 토글 | Bearer |
+| GET | `/api/admin/home/summary` | 관리자 홈 처리 필요 작업(실패·강등 노출·재분석 요청 등) | Bearer(ADMIN) |
+| GET | `/api/admin/dashboard/overview` | 관리자 운영 종합 현황 | Bearer(ADMIN) |
+| GET | `/api/admin/analytics/summary` | 분석 통계(점수 분포·반복 부족 역량·프롬프트 버전별 성능 등) | Bearer(ADMIN) |
+| GET | `/api/admin/analytics/failures` | 분석 실패 큐(FAILED/FALLBACK 결과 통합) | Bearer(ADMIN) |
+| GET | `/api/admin/analytics/quality-flags` | 분석 품질 검수 큐 | Bearer(ADMIN) |
+| PATCH | `/api/admin/analytics/quality-flags/{fitAnalysisId}/{flagType}/resolve` | 품질 플래그 해결 처리 | Bearer(ADMIN) |
+| GET | `/api/admin/analytics/runs?userId=` | 장기/대시보드 AI 실행 이력 | Bearer(ADMIN) |
+| GET | `/api/admin/analytics/users/{userId}/timeline` | 사용자별 분석 이력 타임라인 | Bearer(ADMIN) |
+| GET/POST | `/api/admin/analytics/runs/{runId}/memos` | 실행 이력 운영 메모 조회/작성 | Bearer(ADMIN) |
+| PATCH/DELETE | `/api/admin/analytics/runs/{runId}/memos/{memoId}` | 실행 이력 운영 메모 수정/삭제 | Bearer(ADMIN) |
+| GET | `/api/admin/fit-analyses` | 관리자 적합도 분석 목록(재분석 요청 플래그 포함) | Bearer(ADMIN) |
+| GET | `/api/admin/fit-analyses/{id}` | 관리자 적합도 분석 상세(스냅샷·매트릭스·판단 JSON 포함) | Bearer(ADMIN) |
+| GET/POST | `/api/admin/fit-analyses/{id}/memos` | 적합도 운영 메모 조회/작성 | Bearer(ADMIN) |
+| PATCH/DELETE | `/api/admin/fit-analyses/{id}/memos/{memoId}` | 적합도 운영 메모 수정/삭제 | Bearer(ADMIN) |
+| GET | `/api/admin/prompts/fit-analysis` | 적합도 분석 프롬프트 운영 조회 | Bearer(ADMIN) |
+| GET | `/api/admin/prompts/analytics` | 장기/대시보드 분석 프롬프트 운영 조회 | Bearer(ADMIN) |
+
+C 분석 AI는 `OPENAI_API_KEY`가 없으면 결정적 mock으로 동작하고, 키 주입 시 동일 엔드포인트로 실제 구조화 분석이 실행된다.
+비용이 드는 AI 요약은 `career_analysis_run`의 입력 fingerprint로 캐시하며, 명시적 재생성 시에만 크레딧을 차감한다.
+C 소유 테이블: `fit_analysis`, `fit_analysis_learning_task`, `fit_analysis_history`, `fit_analysis_condition_match`,
+`career_analysis_run`, `career_goal`, `learning_plan`, `learning_plan_task`, `dashboard_insight`, `dashboard_todo`,
+`analysis_quality_flag`, `admin_fit_analysis_memo`, `admin_career_run_memo`.
+
 ## JSON 컬럼 매핑 방침
 
 MySQL `JSON` 컬럼은 초기에는 Java `String`으로 매핑한다. 예를 들어 `required_skills`, `matched_skills`,
