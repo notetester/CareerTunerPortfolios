@@ -35,4 +35,81 @@
          WHERE post_id = #{postId} AND task_type = #{taskType}
     </select>
 
+    <!-- 검열 목록 조회 (관리자) -->
+    <select id="findModerationList" resultType="com.careertuner.community.moderation.domain.ModerationView">
+        SELECT cp.id           AS post_id,
+               cp.title,
+               cp.category     AS post_category,
+               cp.status       AS post_status,
+               cp.is_anonymous AS anonymous,
+               cp.user_id      AS author_id,
+               u.name          AS author_name,
+               ar.result_json,
+               ar.model,
+               ar.attempt_count,
+               ar.status       AS ai_status,
+               cp.created_at,
+               ar.completed_at
+          FROM post_ai_result ar
+          JOIN community_post cp ON ar.post_id = cp.id
+          LEFT JOIN users u ON cp.user_id = u.id
+         WHERE ar.task_type = 'MODERATION'
+        <if test="status != null and status != ''">
+           AND cp.status = #{status}
+        </if>
+        <if test="toxic != null">
+           AND JSON_EXTRACT(ar.result_json, '$.toxic') = #{toxic}
+        </if>
+         ORDER BY ar.completed_at DESC, cp.created_at DESC
+         LIMIT #{limit} OFFSET #{offset}
+    </select>
+
+    <!-- 검열 목록 카운트 (관리자) -->
+    <select id="countModerationList" resultType="int">
+        SELECT COUNT(*)
+          FROM post_ai_result ar
+          JOIN community_post cp ON ar.post_id = cp.id
+         WHERE ar.task_type = 'MODERATION'
+        <if test="status != null and status != ''">
+           AND cp.status = #{status}
+        </if>
+        <if test="toxic != null">
+           AND JSON_EXTRACT(ar.result_json, '$.toxic') = #{toxic}
+        </if>
+    </select>
+
+    <!-- 검열 단건 상세 (관리자) -->
+    <select id="findModerationDetail" resultType="com.careertuner.community.moderation.domain.ModerationView">
+        SELECT cp.id           AS post_id,
+               cp.title,
+               cp.content,
+               cp.category     AS post_category,
+               cp.status       AS post_status,
+               cp.is_anonymous AS anonymous,
+               cp.user_id      AS author_id,
+               u.name          AS author_name,
+               ar.result_json,
+               ar.model,
+               ar.attempt_count,
+               ar.status       AS ai_status,
+               cp.created_at,
+               ar.completed_at
+          FROM post_ai_result ar
+          JOIN community_post cp ON ar.post_id = cp.id
+          LEFT JOIN users u ON cp.user_id = u.id
+         WHERE ar.task_type = 'MODERATION'
+           AND ar.post_id = #{postId}
+    </select>
+
+    <!-- AI 판정 카테고리별 통계 -->
+    <select id="countByAiCategory" resultType="map">
+        SELECT JSON_UNQUOTE(JSON_EXTRACT(ar.result_json, '$.category')) AS category,
+               COUNT(*) AS cnt
+          FROM post_ai_result ar
+         WHERE ar.task_type = 'MODERATION'
+           AND ar.status = 'COMPLETED'
+           AND ar.result_json IS NOT NULL
+         GROUP BY category
+    </select>
+
 </mapper>

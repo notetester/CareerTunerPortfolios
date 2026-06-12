@@ -24,6 +24,9 @@ spring:
       # MySQL 미기동 상태에서도 부팅되도록 시작 시 커넥션 시도를 생략(개발 편의).
       initialization-fail-timeout: -1
 
+
+    
+
   mail:
     host: ${MAIL_HOST:smtp.naver.com}
     port: ${MAIL_PORT:465}

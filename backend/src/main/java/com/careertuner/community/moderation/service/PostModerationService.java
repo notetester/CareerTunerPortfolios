@@ -3,6 +3,8 @@ package com.careertuner.community.moderation.service;
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
+import java.util.EnumMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -10,6 +12,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.io.Resource;
+import org.springframework.core.io.ResourceLoader;
 import org.springframework.stereotype.Service;
 
 import com.careertuner.community.domain.CommunityPost;
@@ -18,8 +21,11 @@ import com.careertuner.community.mapper.CommunityPostMapper;
 import com.careertuner.community.moderation.client.OllamaClient;
 import com.careertuner.community.moderation.config.OllamaProperties;
 import com.careertuner.community.moderation.domain.AiTaskType;
+import com.careertuner.community.moderation.domain.Strictness;
 import com.careertuner.community.moderation.dto.ModerationResult;
 import com.careertuner.community.moderation.mapper.PostAiResultMapper;
+import com.careertuner.notification.domain.Notification;
+import com.careertuner.notification.mapper.NotificationMapper;
 
 import tools.jackson.databind.ObjectMapper;
 
@@ -55,40 +61,67 @@ public class PostModerationService {
     private final OllamaProperties ollamaProperties;
     private final PostAiResultMapper aiResultMapper;
     private final CommunityPostMapper postMapper;
+    private final NotificationMapper notificationMapper;
+    private final ModerationSettingService settingService;
     private final ObjectMapper objectMapper;
 
-    /** 시스템 프롬프트 (classpath 파일에서 1회 로드) */
-    private final String systemPrompt;
+    /** 기본 시스템 프롬프트 (classpath 파일에서 1회 로드) */
+    private final String baseSystemPrompt;
 
-    /** toxic 판정 시 숨김 처리 임계값 */
-    private final double hideThreshold;
+    /** 엄격도별 지침 텍스트 (classpath 파일에서 1회 로드) */
+    private final Map<Strictness, String> strictnessTexts;
 
     public PostModerationService(
             OllamaClient ollamaClient,
             OllamaProperties ollamaProperties,
             PostAiResultMapper aiResultMapper,
             CommunityPostMapper postMapper,
+            NotificationMapper notificationMapper,
+            ModerationSettingService settingService,
             ObjectMapper objectMapper,
-            @Value("classpath:prompts/moderation-system.txt") Resource promptResource,
-            @Value("${ai.moderation.hide-threshold:0.8}") double hideThreshold
+            ResourceLoader resourceLoader,
+            @Value("classpath:prompts/moderation-system.txt") Resource promptResource
     ) {
         this.ollamaClient = ollamaClient;
         this.ollamaProperties = ollamaProperties;
         this.aiResultMapper = aiResultMapper;
         this.postMapper = postMapper;
+        this.notificationMapper = notificationMapper;
+        this.settingService = settingService;
         this.objectMapper = objectMapper;
-        this.hideThreshold = hideThreshold;
 
-        // 시스템 프롬프트 파일을 1회 읽어 필드에 보관
+        // 기본 프롬프트 로드
         try {
-            this.systemPrompt = promptResource.getContentAsString(StandardCharsets.UTF_8);
+            this.baseSystemPrompt = promptResource.getContentAsString(StandardCharsets.UTF_8);
         } catch (IOException e) {
             throw new UncheckedIOException("moderation-system.txt 로드 실패", e);
+        }
+
+        // 엄격도별 지침 텍스트 로드
+        this.strictnessTexts = new EnumMap<>(Strictness.class);
+        for (Strictness s : Strictness.values()) {
+            Resource res = resourceLoader.getResource(
+                    "classpath:prompts/strictness/" + s.name() + ".txt");
+            try {
+                strictnessTexts.put(s, res.getContentAsString(StandardCharsets.UTF_8));
+            } catch (IOException e) {
+                throw new UncheckedIOException(s.name() + ".txt 로드 실패", e);
+            }
         }
     }
 
     /**
+     * 현재 설정의 엄격도를 반영한 시스템 프롬프트를 조립한다.
+     */
+    private String buildSystemPrompt() {
+        Strictness strictness = settingService.getStrictness();
+        String strictnessText = strictnessTexts.get(strictness);
+        return baseSystemPrompt + "\n\n[엄격도 지침]\n" + strictnessText;
+    }
+
+    /**
      * 순수 판정 — DB 접근 없음. 테스트 엔드포인트가 직접 호출한다.
+     * 항상 "현재 설정"으로 판정한다.
      */
     public ModerationResult judge(String title, String content) {
         String text = "제목: " + title + "\n본문: " + content;
@@ -96,7 +129,8 @@ public class PostModerationService {
             text = text.substring(0, MAX_TEXT_LENGTH);
         }
 
-        String json = ollamaClient.chat(systemPrompt, text, MODERATION_SCHEMA);
+        String prompt = buildSystemPrompt();
+        String json = ollamaClient.chat(prompt, text, MODERATION_SCHEMA);
         return parseResult(json);
     }
 
@@ -116,28 +150,34 @@ public class PostModerationService {
                 return;
             }
 
-            // 3. 판정
+            // 3. 현재 설정 스냅샷
+            Strictness currentStrictness = settingService.getStrictness();
+            double currentThreshold = settingService.getHideThreshold();
+
+            // 4. 판정
             ModerationResult result = judge(post.getTitle(), post.getContent());
 
-            // 4. 결과 저장 (COMPLETED)
-            String resultJson = objectMapper.writeValueAsString(result);
+            // 5. 결과 저장 (COMPLETED) — applied 스냅샷 병합
+            String resultJson = buildResultJson(result, currentStrictness, currentThreshold);
             aiResultMapper.complete(postId, AiTaskType.MODERATION,
                     resultJson, ollamaProperties.getModel());
 
-            // 5. 숨김 처리 (toxic + 높은 confidence)
-            if (result.toxic() && result.confidence() >= hideThreshold) {
+            // 6. 숨김 처리 (toxic + 캐시된 threshold 기준)
+            if (result.toxic() && result.confidence() >= currentThreshold) {
                 int updated = postMapper.hideIfPublished(postId);
                 if (updated > 0) {
                     log.warn("게시글 숨김 처리: postId={}, category={}, confidence={}",
                             postId, result.category(), result.confidence());
+                    sendHiddenNotification(post);
                 }
             }
 
-            log.info("검열 완료: postId={}, toxic={}, category={}, confidence={}",
-                    postId, result.toxic(), result.category(), result.confidence());
+            log.info("검열 완료: postId={}, toxic={}, category={}, confidence={}, strictness={}, threshold={}",
+                    postId, result.toxic(), result.category(), result.confidence(),
+                    currentStrictness, currentThreshold);
 
         } catch (Exception e) {
-            // 6. 실패 기록 — 예외를 다시 던지지 않는다
+            // 7. 실패 기록 — 예외를 다시 던지지 않는다
             String errorMsg = e.getMessage();
             if (errorMsg != null && errorMsg.length() > 500) {
                 errorMsg = errorMsg.substring(0, 500);
@@ -145,6 +185,91 @@ public class PostModerationService {
             aiResultMapper.fail(postId, AiTaskType.MODERATION, errorMsg);
             log.error("검열 실패: postId={}", postId, e);
         }
+    }
+
+    /**
+     * 모델 응답 JSON에 applied 스냅샷을 병합한다.
+     */
+    @SuppressWarnings("unchecked")
+    private String buildResultJson(ModerationResult result,
+                                   Strictness strictness, double hideThreshold) {
+        try {
+            // ModerationResult → Map으로 변환
+            String raw = objectMapper.writeValueAsString(result);
+            Map<String, Object> map = objectMapper.readValue(raw, LinkedHashMap.class);
+
+            // applied 스냅샷 추가
+            Map<String, Object> applied = new LinkedHashMap<>();
+            applied.put("strictness", strictness.name());
+            applied.put("hideThreshold", hideThreshold);
+            map.put("applied", applied);
+
+            return objectMapper.writeValueAsString(map);
+        } catch (Exception e) {
+            log.warn("applied 병합 실패, 원본 JSON 사용", e);
+            try {
+                return objectMapper.writeValueAsString(result);
+            } catch (Exception ex) {
+                throw new IllegalStateException("JSON 직렬화 실패", ex);
+            }
+        }
+    }
+
+    /**
+     * 검열 숨김 시 작성자에게 알림 발송.
+     */
+    private void sendHiddenNotification(CommunityPost post) {
+        String postTitle = truncate(post.getTitle(), 30);
+        Notification noti = Notification.builder()
+                .userId(post.getUserId())
+                .type("POST_HIDDEN")
+                .targetType("POST")
+                .targetId(post.getId())
+                .title("게시글이 커뮤니티 가이드라인 검토 대기 상태로 전환되었습니다")
+                .message("'" + postTitle + "' 게시글이 자동 검수에 의해 검토 대기 상태로 전환되었습니다. "
+                        + "관리자 검토 후 복원되거나 삭제될 수 있습니다.")
+                .link("/community?view=guidelines")
+                .build();
+        notificationMapper.insert(noti);
+    }
+
+    /**
+     * 관리자 복원 시 작성자에게 알림 발송.
+     */
+    void sendRestoredNotification(CommunityPost post) {
+        String postTitle = truncate(post.getTitle(), 30);
+        Notification noti = Notification.builder()
+                .userId(post.getUserId())
+                .type("POST_RESTORED")
+                .targetType("POST")
+                .targetId(post.getId())
+                .title("게시글이 복원되었습니다")
+                .message("'" + postTitle + "' 게시글이 관리자 검토를 통과하여 복원되었습니다.")
+                .link("/community/posts/" + post.getId())
+                .build();
+        notificationMapper.insert(noti);
+    }
+
+    /**
+     * 관리자 삭제 시 작성자에게 알림 발송.
+     */
+    void sendDeletedNotification(CommunityPost post) {
+        String postTitle = truncate(post.getTitle(), 30);
+        Notification noti = Notification.builder()
+                .userId(post.getUserId())
+                .type("POST_REMOVED")
+                .targetType("POST")
+                .targetId(post.getId())
+                .title("게시글이 가이드라인 위반으로 삭제되었습니다")
+                .message("'" + postTitle + "' 게시글이 커뮤니티 가이드라인 위반으로 삭제 처리되었습니다.")
+                .link("/community/posts/" + post.getId())
+                .build();
+        notificationMapper.insert(noti);
+    }
+
+    private static String truncate(String text, int maxLen) {
+        if (text == null) return "";
+        return text.length() <= maxLen ? text : text.substring(0, maxLen) + "…";
     }
 
     private ModerationResult parseResult(String json) {

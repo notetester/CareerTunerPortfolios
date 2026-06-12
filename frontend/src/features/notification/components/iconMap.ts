@@ -1,7 +1,7 @@
 import {
   UserSearch, Briefcase, Building2, Target, TrendingUp,
   ListChecks, ClipboardList, SpellCheck,
-  MessageCircle, CornerDownRight, Heart, Sparkles,
+  MessageCircle, CornerDownRight, Heart, Sparkles, EyeOff,
   AlertTriangle, Megaphone, MessageSquareReply,
   Flag, Ticket, UserPlus, ShieldAlert, FilePen,
   Bell,
@@ -12,7 +12,7 @@ import {
 export const ICON_MAP: Record<string, LucideIcon> = {
   UserSearch, Briefcase, Building2, Target, TrendingUp,
   ListChecks, ClipboardList, SpellCheck,
-  MessageCircle, CornerDownRight, Heart, Sparkles,
+  MessageCircle, CornerDownRight, Heart, Sparkles, EyeOff,
   AlertTriangle, Megaphone, MessageSquareReply,
   Flag, Ticket, UserPlus, ShieldAlert, FilePen,
   Bell,

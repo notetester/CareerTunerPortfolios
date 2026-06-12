@@ -17,6 +17,7 @@ import { AdminJobAnalysisPage } from "./features/job-analysis/pages/AdminJobAnal
 import { AdminPromptsPage } from "./features/prompts/pages/AdminPromptsPage";
 import AdminProfilePromptsPage from "./features/prompts/profile/pages/AdminProfilePrompts";
 import AdminReports from "./features/community/pages/AdminReports";
+import AdminGuidelines from "./features/community/pages/AdminGuidelines";
 import AdminNotices from "./features/notices/pages/AdminNotices";
 import AdminFaq from "./features/faqs/pages/AdminFaq";
 import AdminInquiries from "./features/support-tickets/pages/AdminInquiries";
@@ -48,6 +49,7 @@ export const adminRoutes = [
   { path: "admin/faq", Component: AdminFaq },
   { path: "admin/inquiries", Component: AdminInquiries },
   { path: "admin/terms", Component: AdminTerms },
+  { path: "admin/terms/guidelines", Component: AdminGuidelines },
   { path: "admin/notifications", Component: AdminNotifications },
   { path: "admin/plans", Component: AdminDashboardPage },
   { path: "admin/prompts", Component: AdminPromptsPage },
