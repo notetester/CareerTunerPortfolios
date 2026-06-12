@@ -16,6 +16,8 @@ export interface AdminFitAnalysisListItem {
   createdAt: string;
   memoCount: number;
   latestMemoAt: string | null;
+  /** REANALYSIS 운영 메모 보유 여부(재분석 요청 상태). */
+  reanalysisRequested: boolean;
 }
 
 export interface AdminFitAnalysisMemo {

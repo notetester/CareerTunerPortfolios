@@ -28,4 +28,7 @@ public class AdminAnalysisSource {
     private String certificateRecommendations;
     private String strategy;
     private String status;
+    private String conditionMatrix;
+    private String analysisConfidence;
+    private String applyDecision;
 }

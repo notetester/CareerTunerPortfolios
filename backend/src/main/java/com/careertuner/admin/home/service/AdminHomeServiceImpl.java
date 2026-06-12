@@ -31,6 +31,9 @@ public class AdminHomeServiceImpl implements AdminHomeService {
                 adminHomeMapper.countFitAnalysisFailures(),
                 adminHomeMapper.countUnanalyzedApplications(),
                 adminHomeMapper.countNewAnalysesLast7Days(),
+                adminHomeMapper.countDegradedLatestAnalyses(),
+                adminHomeMapper.countReanalysisRequests(),
+                adminHomeMapper.countCareerRunFailures(),
                 SHORTCUTS);
     }
 }

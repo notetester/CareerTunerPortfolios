@@ -110,6 +110,11 @@ export const demoDashboardSummary: DashboardSummary = {
     ],
   },
   recentChange: { reanalyzedApplications: 2, improvedApplications: 2, declinedApplications: 0, averageScoreDelta: 7 },
+  statusCounts: [
+    { status: "ANALYZING", count: 1 },
+    { status: "READY", count: 2 },
+    { status: "APPLIED", count: 1 },
+  ],
   aiSummary: dashboardAiSummary,
   analysisRun: {
     id: 5001,
@@ -130,6 +135,13 @@ export const demoHomeSummary: HomeSummary = {
   recentApplications: dashboardApplications,
   nextActions: demoDashboardSummary.todos,
   recentActivities: activities,
+  onboardingSteps: [
+    { key: "signup", label: "회원가입", done: true },
+    { key: "application", label: "공고(지원 건) 등록", done: true },
+    { key: "fit-analysis", label: "적합도 분석 실행", done: true },
+    { key: "learning", label: "학습 과제 완료", done: true },
+    { key: "interview", label: "모의면접 연습", done: true },
+  ],
 };
 
 const careerTrendSummary =
@@ -222,6 +234,17 @@ export const demoAnalysisSummary: AnalysisSummary = {
       description: "적합도 60점 미만. 부족 역량 보완이 전제되는 도전 지원 건입니다.",
       items: [],
     },
+  ],
+  skillFitAverages: [
+    { skill: "React", analysisCount: 3, averageScore: 80, mostlyMatched: true },
+    { skill: "TypeScript", analysisCount: 3, averageScore: 76, mostlyMatched: false },
+    { skill: "REST API", analysisCount: 2, averageScore: 81, mostlyMatched: true },
+    { skill: "AWS", analysisCount: 2, averageScore: 74, mostlyMatched: false },
+  ],
+  fitInterviewBands: [
+    { band: "HIGH", label: "적합도 70점 이상", applicationCount: 2, averageFitScore: 81, averageInterviewScore: 78 },
+    { band: "MID", label: "적합도 50~69점", applicationCount: 0, averageFitScore: null, averageInterviewScore: null },
+    { band: "LOW", label: "적합도 50점 미만", applicationCount: 0, averageFitScore: null, averageInterviewScore: null },
   ],
   analysisRun,
 };

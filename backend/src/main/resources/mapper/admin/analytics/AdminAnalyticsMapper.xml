@@ -22,6 +22,9 @@
         <result property="certificateRecommendations" column="certificate_recommendations"/>
         <result property="strategy" column="strategy"/>
         <result property="status" column="status"/>
+        <result property="conditionMatrix" column="condition_matrix"/>
+        <result property="analysisConfidence" column="analysis_confidence"/>
+        <result property="applyDecision" column="apply_decision"/>
     </resultMap>
 
     <resultMap id="AdminAnalysisFailureResultMap" type="com.careertuner.admin.analytics.domain.AdminAnalysisFailureSource">
@@ -131,7 +134,10 @@
             fa.matched_skills,
             fa.certificate_recommendations,
             fa.strategy,
-            fa.status
+            fa.status,
+            fa.condition_matrix,
+            fa.analysis_confidence,
+            fa.apply_decision
         FROM fit_analysis fa
         INNER JOIN application_case ac ON ac.id = fa.application_case_id
         INNER JOIN users ON users.id = ac.user_id

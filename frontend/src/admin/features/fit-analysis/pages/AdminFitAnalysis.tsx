@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "react-router";
 import { Badge } from "@/app/components/ui/badge";
 import { Button } from "@/app/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/app/components/ui/card";
@@ -33,6 +34,10 @@ const memoTypeOptions = [
   { value: "QUALITY", label: "품질 확인" },
   { value: "USER_INQUIRY", label: "문의 대응" },
   { value: "REANALYSIS", label: "재분석 필요" },
+  { value: "PROMPT_ISSUE", label: "프롬프트 이슈" },
+  { value: "DATA_ISSUE", label: "데이터 이슈" },
+  { value: "SCORE_DISPUTE", label: "점수 이의" },
+  { value: "CERT_RECOMMENDATION_ISSUE", label: "자격증 추천 이슈" },
 ];
 
 const statusLabel: Record<string, string> = {
@@ -60,6 +65,8 @@ function scoreTone(score: number | null) {
 }
 
 export default function AdminFitAnalysisPage() {
+  const [searchParams, setSearchParams] = useSearchParams();
+  const requestedAnalysisId = Number(searchParams.get("analysisId"));
   const [items, setItems] = useState<AdminFitAnalysisListItem[]>([]);
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [detail, setDetail] = useState<AdminFitAnalysisDetail | null>(null);
@@ -75,6 +82,7 @@ export default function AdminFitAnalysisPage() {
   const [bandFilter, setBandFilter] = useState("ALL");
   const [resultFilter, setResultFilter] = useState("ALL");
   const [memoOnly, setMemoOnly] = useState(false);
+  const [reanalysisOnly, setReanalysisOnly] = useState(false);
 
   useEffect(() => {
     let ignore = false;
@@ -98,6 +106,12 @@ export default function AdminFitAnalysisPage() {
       ignore = true;
     };
   }, []);
+
+  useEffect(() => {
+    if (Number.isFinite(requestedAnalysisId) && items.some((item) => item.id === requestedAnalysisId)) {
+      setSelectedId(requestedAnalysisId);
+    }
+  }, [items, requestedAnalysisId]);
 
   useEffect(() => {
     if (selectedId == null) {
@@ -150,9 +164,10 @@ export default function AdminFitAnalysisPage() {
         resultFilter === "ALL" ||
         (resultFilter === "SUCCESS" ? item.status === "SUCCESS" : item.status !== "SUCCESS");
       const matchesMemo = !memoOnly || item.memoCount > 0;
-      return matchesQuery && matchesBand && matchesResult && matchesMemo;
+      const matchesReanalysis = !reanalysisOnly || item.reanalysisRequested;
+      return matchesQuery && matchesBand && matchesResult && matchesMemo && matchesReanalysis;
     });
-  }, [items, query, bandFilter, resultFilter, memoOnly]);
+  }, [items, query, bandFilter, resultFilter, memoOnly, reanalysisOnly]);
 
   function resetMemoForm() {
     setMemoType("GENERAL");
@@ -285,6 +300,10 @@ export default function AdminFitAnalysisPage() {
                   <input type="checkbox" checked={memoOnly} onChange={(event) => setMemoOnly(event.target.checked)} />
                   메모 있는 항목만
                 </label>
+                <label className="flex h-9 cursor-pointer items-center gap-1.5 rounded-md border border-amber-200 bg-amber-50 px-2 text-xs font-semibold text-amber-700">
+                  <input type="checkbox" checked={reanalysisOnly} onChange={(event) => setReanalysisOnly(event.target.checked)} />
+                  재분석 필요만
+                </label>
                 <span className="text-[11px] text-slate-400">{visibleItems.length}/{items.length}건</span>
               </div>
               {loadingList ? (
@@ -297,7 +316,10 @@ export default function AdminFitAnalysisPage() {
                   <button
                     key={item.id}
                     type="button"
-                    onClick={() => setSelectedId(item.id)}
+                    onClick={() => {
+                      setSelectedId(item.id);
+                      setSearchParams({ analysisId: String(item.id) }, { replace: true });
+                    }}
                     className={`w-full rounded-lg border p-3 text-left transition-colors ${
                       selectedId === item.id ? "border-blue-300 bg-blue-50" : "border-slate-100 bg-slate-50 hover:border-blue-200"
                     }`}
@@ -314,6 +336,7 @@ export default function AdminFitAnalysisPage() {
                       <Badge className="bg-slate-100 text-slate-600">{statusLabel[item.applicationStatus] ?? item.applicationStatus}</Badge>
                       <Badge className={item.status === "SUCCESS" ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"}>{item.status}</Badge>
                       {item.memoCount > 0 && <Badge className="bg-indigo-100 text-indigo-700">메모 {item.memoCount}</Badge>}
+                      {item.reanalysisRequested && <Badge className="bg-amber-100 text-amber-700">재분석 필요</Badge>}
                     </div>
                     <Progress value={item.fitScore ?? 0} className="mt-2 h-1.5" />
                   </button>

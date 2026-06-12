@@ -86,6 +86,8 @@
                   WHERE latest_ja.application_case_id = ac.id
               )
         WHERE ac.user_id = #{userId}
+          AND ac.archived_at IS NULL
+          AND ac.deleted_at IS NULL
         ORDER BY ac.is_favorite DESC, COALESCE(fa.created_at, ac.updated_at) DESC, ac.id DESC
     </select>
 
@@ -103,6 +105,8 @@
             FROM fit_analysis fa
             INNER JOIN application_case ac ON ac.id = fa.application_case_id
             WHERE ac.user_id = #{userId}
+              AND ac.archived_at IS NULL
+              AND ac.deleted_at IS NULL
 
             UNION ALL
 
@@ -123,6 +127,8 @@
             FROM interview_session interview
             INNER JOIN application_case ac ON ac.id = interview.application_case_id
             WHERE ac.user_id = #{userId}
+              AND ac.archived_at IS NULL
+              AND ac.deleted_at IS NULL
 
             UNION ALL
 
@@ -136,6 +142,8 @@
                 NULL AS score
             FROM application_case ac
             WHERE ac.user_id = #{userId}
+              AND ac.archived_at IS NULL
+              AND ac.deleted_at IS NULL
         ) activities
         ORDER BY occurred_at DESC
         LIMIT 6
@@ -146,6 +154,8 @@
         FROM interview_session interview
         INNER JOIN application_case ac ON ac.id = interview.application_case_id
         WHERE ac.user_id = #{userId}
+          AND ac.archived_at IS NULL
+          AND ac.deleted_at IS NULL
           AND interview.created_at &gt;= DATE_SUB(CURRENT_DATE, INTERVAL WEEKDAY(CURRENT_DATE) DAY)
     </select>
 
@@ -179,6 +189,8 @@
         FROM interview_session interview
         INNER JOIN application_case ac ON ac.id = interview.application_case_id
         WHERE ac.user_id = #{userId}
+          AND ac.archived_at IS NULL
+          AND ac.deleted_at IS NULL
           AND interview.total_score IS NOT NULL
         ORDER BY occurred_at DESC, interview.id DESC
         LIMIT 2
@@ -230,6 +242,8 @@
         FROM fit_analysis fa
         INNER JOIN application_case ac ON ac.id = fa.application_case_id
         WHERE ac.user_id = #{userId}
+          AND ac.archived_at IS NULL
+          AND ac.deleted_at IS NULL
           AND fa.fit_score IS NOT NULL
         ORDER BY fa.application_case_id, fa.id
     </select>
@@ -248,6 +262,8 @@
         INNER JOIN fit_analysis fa ON fa.id = task.fit_analysis_id
         INNER JOIN application_case ac ON ac.id = fa.application_case_id
         WHERE ac.user_id = #{userId}
+          AND ac.archived_at IS NULL
+          AND ac.deleted_at IS NULL
           AND fa.id = (
               SELECT MAX(latest_fa.id)
               FROM fit_analysis latest_fa

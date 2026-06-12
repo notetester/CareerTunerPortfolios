@@ -75,6 +75,8 @@
                   WHERE latest_fa.application_case_id = ac.id
               )
         WHERE ac.user_id = #{userId}
+          AND ac.archived_at IS NULL
+          AND ac.deleted_at IS NULL
         ORDER BY ac.is_favorite DESC, COALESCE(fa.created_at, ac.updated_at) DESC, ac.id DESC
     </select>
 
@@ -95,6 +97,8 @@
         INNER JOIN interview_session s ON s.id = iq.interview_session_id
         INNER JOIN application_case ac ON ac.id = s.application_case_id
         WHERE ac.user_id = #{userId}
+          AND ac.archived_at IS NULL
+          AND ac.deleted_at IS NULL
           AND ia.score IS NOT NULL
         ORDER BY ia.score ASC, ia.id DESC
     </select>

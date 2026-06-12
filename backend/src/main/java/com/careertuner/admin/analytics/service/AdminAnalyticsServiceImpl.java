@@ -97,6 +97,19 @@ public class AdminAnalyticsServiceImpl implements AdminAnalyticsService {
                 flags.add(flag(analysis, "EMPTY_STRATEGY", "LOW",
                         "성공 상태인데 지원 전략 문구가 비어 있습니다."));
             }
+            if ("LOW".equals(jsonText(analysis.getAnalysisConfidence(), "level"))) {
+                flags.add(flag(analysis, "LOW_CONFIDENCE", "MEDIUM",
+                        "입력 데이터 부족으로 분석 신뢰도가 낮습니다. 사용자에게 입력 보강 안내가 필요한지 확인하세요."));
+            }
+            if ("APPLY".equals(jsonText(analysis.getApplyDecision(), "decision"))
+                    && requiredUnmetCount(analysis.getConditionMatrix()) > 0) {
+                flags.add(flag(analysis, "REQUIRED_GAP_APPLY", "HIGH",
+                        "필수 조건 미충족 항목이 있는데 최종 판단이 지원 가능(APPLY)으로 생성됐습니다."));
+            }
+            if ("SUCCESS".equals(analysis.getStatus()) && isEmptyArray(analysis.getConditionMatrix())) {
+                flags.add(flag(analysis, "EMPTY_CONDITION_MATRIX", "LOW",
+                        "성공 상태인데 요구조건-스펙 비교 매트릭스가 비어 있습니다."));
+            }
             if (analysis.getStatus() != null && !"SUCCESS".equals(analysis.getStatus())) {
                 flags.add(flag(analysis, "DEGRADED_RESULT", "HIGH",
                         "%s 상태 결과가 사용자에게 노출 중입니다. 재분석 안내가 필요할 수 있습니다.".formatted(analysis.getStatus())));
@@ -130,6 +143,47 @@ public class AdminAnalyticsServiceImpl implements AdminAnalyticsService {
             return node.isArray() ? node.size() : 0;
         } catch (Exception ignored) {
             return 0;
+        }
+    }
+
+    private String jsonText(String json, String field) {
+        if (json == null || json.isBlank()) {
+            return "";
+        }
+        try {
+            return objectMapper.readTree(json).path(field).asText("");
+        } catch (Exception ignored) {
+            return "";
+        }
+    }
+
+    private int requiredUnmetCount(String json) {
+        if (json == null || json.isBlank()) {
+            return 0;
+        }
+        try {
+            int count = 0;
+            for (var row : objectMapper.readTree(json)) {
+                if ("REQUIRED".equals(row.path("conditionType").asText())
+                        && "UNMET".equals(row.path("matchStatus").asText())) {
+                    count++;
+                }
+            }
+            return count;
+        } catch (Exception ignored) {
+            return 0;
+        }
+    }
+
+    private boolean isEmptyArray(String json) {
+        if (json == null || json.isBlank()) {
+            return true;
+        }
+        try {
+            var node = objectMapper.readTree(json);
+            return node.isArray() && node.isEmpty();
+        } catch (Exception ignored) {
+            return true;
         }
     }
 

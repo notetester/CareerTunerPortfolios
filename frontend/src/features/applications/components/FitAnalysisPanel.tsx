@@ -1,5 +1,6 @@
+import { useState } from "react";
 import { Link } from "react-router";
-import { AlertCircle, CheckCircle2, Database, ShieldAlert, ShieldCheck, Target } from "lucide-react";
+import { AlertCircle, CheckCircle2, Database, ShieldAlert, ShieldCheck, SlidersHorizontal, Target } from "lucide-react";
 import { Badge } from "@/app/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/app/components/ui/card";
 import { Progress } from "@/app/components/ui/progress";
@@ -46,6 +47,9 @@ export function FitAnalysisPanel({ analyses, loading, generating = false, error 
           const conditionMatrix = parseJsonValue<FitConditionMatch[]>(analysis.conditionMatrix, []);
           const confidence = parseJsonValue<FitAnalysisConfidence | null>(analysis.analysisConfidence, null);
           const decision = parseJsonValue<FitApplyDecision | null>(analysis.applyDecision, null);
+          const requiredUnmet = conditionMatrix.filter(
+            (row) => row.conditionType === "REQUIRED" && row.matchStatus === "UNMET",
+          );
           const tone = scoreTone(analysis.fitScore);
 
           return (
@@ -75,6 +79,20 @@ export function FitAnalysisPanel({ analyses, loading, generating = false, error 
                   <p className="mt-1.5 text-xs leading-5 text-slate-500">{scoreBandDescription(analysis.fitScore)}</p>
                 </div>
 
+                {/* 필수 조건 미충족 경고: 점수와 별개로 지원 전 반드시 확인할 항목을 먼저 보여준다. */}
+                {requiredUnmet.length > 0 && (
+                  <div className="rounded-lg border border-red-200 bg-red-50 p-3">
+                    <div className="flex items-center gap-1.5 text-sm font-semibold text-red-800">
+                      <AlertCircle className="size-4" />
+                      필수 조건 {requiredUnmet.length}개 미충족
+                    </div>
+                    <p className="mt-1 text-xs leading-5 text-red-700">
+                      이 공고는 {requiredUnmet.map((row) => row.condition).join(", ")} 을(를) 필수로 요구하지만 현재
+                      프로필에서 확인되지 않습니다. 지원 전 유사 경험을 프로필·지원서에 명확히 작성하거나 보완을 권장합니다.
+                    </p>
+                  </div>
+                )}
+
                 {decision && <ApplyDecisionCard decision={decision} />}
 
                 {/* 분석 신뢰도가 낮으면 점수보다 입력 보강을 먼저 안내한다. */}
@@ -93,6 +111,7 @@ export function FitAnalysisPanel({ analyses, loading, generating = false, error 
                 )}
 
                 <ConditionMatrixTable rows={conditionMatrix} />
+                <FitImpactSimulator currentScore={analysis.fitScore ?? 0} rows={conditionMatrix} />
 
                 <SkillList title="매칭된 역량" icon="match" items={matchedSkills} />
                 <SkillList title="부족한 역량" icon="gap" items={missingSkills} />
@@ -120,6 +139,8 @@ export function FitAnalysisPanel({ analyses, loading, generating = false, error 
                   {analysis.model || "mock"} · {analysis.createdAt ? new Date(analysis.createdAt).toLocaleString("ko-KR") : "생성 시각 없음"}
                 </div>
 
+                <SourceSnapshotViewer snapshot={analysis.sourceSnapshot} />
+
                 <Link
                   to={`/applications/${analysis.applicationCaseId}`}
                   className="inline-flex text-sm font-semibold text-blue-600 hover:text-blue-700"
@@ -133,6 +154,53 @@ export function FitAnalysisPanel({ analyses, loading, generating = false, error 
       </div>
     </div>
   );
+}
+
+interface SourceSnapshot {
+  jobAnalysisId: number | null;
+  jobPostingRevision: number | null;
+  jobAnalysisCreatedAt: string | null;
+  profileUpdatedAt: string | null;
+  requiredSkills?: string[];
+  profileSkills?: string[];
+}
+
+/** 분석 기준 뷰어: 이 분석이 어떤 입력(공고 분석 버전·프로필 시점)으로 만들어졌는지 펼쳐 본다. */
+function SourceSnapshotViewer({ snapshot }: { snapshot: string | null }) {
+  const parsed = parseJsonValue<SourceSnapshot | null>(snapshot, null);
+  if (!parsed) return null;
+
+  const rows = [
+    { label: "공고 분석", value: parsed.jobAnalysisId != null ? `#${parsed.jobAnalysisId} (공고 v${parsed.jobPostingRevision ?? 1})` : "분석 전" },
+    { label: "공고 분석 시점", value: formatSnapshotTime(parsed.jobAnalysisCreatedAt) },
+    { label: "프로필 갱신 시점", value: formatSnapshotTime(parsed.profileUpdatedAt) },
+    { label: "비교 입력", value: `요구 역량 ${parsed.requiredSkills?.length ?? 0}개 · 보유 기술 ${parsed.profileSkills?.length ?? 0}개` },
+  ];
+
+  return (
+    <details className="rounded-lg border border-slate-100">
+      <summary className="cursor-pointer px-3 py-2 text-xs font-semibold text-slate-600 hover:text-slate-900">
+        이 분석은 어떤 데이터를 기준으로 만들어졌나요?
+      </summary>
+      <div className="grid gap-1.5 border-t border-slate-100 px-3 py-2.5 text-xs text-slate-500">
+        {rows.map((row) => (
+          <div key={row.label} className="flex justify-between gap-3">
+            <span className="font-medium text-slate-600">{row.label}</span>
+            <span>{row.value}</span>
+          </div>
+        ))}
+        <p className="mt-1 text-[11px] leading-4 text-slate-400">
+          공고 분석이나 프로필이 이 시점 이후 바뀌었다면 적합도 재분석을 실행해 최신 기준으로 갱신하세요.
+        </p>
+      </div>
+    </details>
+  );
+}
+
+function formatSnapshotTime(value: string | null | undefined) {
+  if (!value) return "정보 없음";
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? String(value) : date.toLocaleString("ko-KR");
 }
 
 /** 분석 신뢰도 배지. HIGH는 차분하게, MEDIUM/LOW는 경고 톤으로 표시한다. */
@@ -223,6 +291,73 @@ function ConditionMatrixTable({ rows }: { rows: FitConditionMatch[] }) {
           </tbody>
         </table>
       </div>
+    </div>
+  );
+}
+
+/**
+ * 스펙 보완 시뮬레이터. 저장된 조건 매트릭스를 이용한 결정적 추정치이며,
+ * 실제 점수는 프로필을 보완한 뒤 재분석해야 확정된다.
+ */
+function FitImpactSimulator({ currentScore, rows }: { currentScore: number; rows: FitConditionMatch[] }) {
+  const candidates = rows.filter((row) => row.matchStatus !== "MET").slice(0, 6);
+  const [selected, setSelected] = useState<string[]>([]);
+  if (candidates.length === 0) return null;
+
+  const selectedRows = candidates.filter((row) => selected.includes(`${row.conditionType}:${row.condition}`));
+  const estimatedBoost = selectedRows.reduce((sum, row) => {
+    const requiredWeight = row.conditionType === "REQUIRED" ? 8 : 4;
+    return sum + (row.matchStatus === "PARTIAL" ? Math.ceil(requiredWeight / 2) : requiredWeight);
+  }, 0);
+  const estimatedScore = Math.min(100, currentScore + estimatedBoost);
+
+  const toggle = (row: FitConditionMatch) => {
+    const key = `${row.conditionType}:${row.condition}`;
+    setSelected((current) => current.includes(key) ? current.filter((item) => item !== key) : [...current, key]);
+  };
+
+  return (
+    <div className="rounded-lg border border-indigo-100 bg-indigo-50/60 p-3">
+      <div className="flex flex-wrap items-start justify-between gap-2">
+        <div>
+          <div className="flex items-center gap-1.5 text-sm font-semibold text-indigo-900">
+            <SlidersHorizontal className="size-4 text-indigo-600" />
+            스펙 보완 시뮬레이터
+          </div>
+          <p className="mt-1 text-xs leading-5 text-indigo-700">보완할 조건을 골라 예상 점수 변화를 확인하세요.</p>
+        </div>
+        <div className="text-right">
+          <div className="text-xs text-indigo-500">예상 적합도</div>
+          <div className="text-lg font-black text-indigo-700">
+            {estimatedScore}점
+            {estimatedBoost > 0 && <span className="ml-1 text-xs font-semibold text-green-600">+{estimatedBoost}</span>}
+          </div>
+        </div>
+      </div>
+      <Progress value={estimatedScore} className="mt-2 h-1.5" />
+      <div className="mt-3 flex flex-wrap gap-1.5">
+        {candidates.map((row) => {
+          const key = `${row.conditionType}:${row.condition}`;
+          const active = selected.includes(key);
+          return (
+            <button
+              key={key}
+              type="button"
+              onClick={() => toggle(row)}
+              className={`rounded-full border px-2.5 py-1 text-xs font-semibold transition-colors ${
+                active
+                  ? "border-indigo-300 bg-indigo-600 text-white"
+                  : "border-indigo-200 bg-white text-indigo-700 hover:bg-indigo-100"
+              }`}
+            >
+              {active ? "보완 가정 ✓ " : "+ "}{row.condition}
+            </button>
+          );
+        })}
+      </div>
+      <p className="mt-2 text-[11px] leading-4 text-indigo-500">
+        조건 유형별 가중치로 계산한 참고 추정치입니다. 실제 점수는 프로필에 근거를 등록하고 적합도 재분석을 실행해 확인하세요.
+      </p>
     </div>
   );
 }

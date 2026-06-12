@@ -37,6 +37,7 @@ import com.careertuner.dashboard.dto.DashboardReadinessResponse;
 import com.careertuner.dashboard.dto.DashboardRecentInterviewResponse;
 import com.careertuner.dashboard.dto.DashboardSkillGapResponse;
 import com.careertuner.dashboard.dto.DashboardStatsResponse;
+import com.careertuner.dashboard.dto.DashboardStatusCountResponse;
 import com.careertuner.dashboard.dto.DashboardSummaryResponse;
 import com.careertuner.dashboard.dto.DashboardTodoResponse;
 import com.careertuner.dashboard.dto.DashboardUserResponse;
@@ -133,8 +134,24 @@ public class DashboardServiceImpl implements DashboardService {
                 recentNotifications(userId),
                 readiness(userId, applications, analyzedApplications, stats),
                 recentChange(dashboardMapper.findFitScoreHistoryByUserId(userId)),
+                statusCounts(applications),
                 summary,
                 run);
+    }
+
+    /** 지원 상태별 건수. 상태 노출 순서는 진행 흐름(DRAFT→ANALYZING→READY→APPLIED→CLOSED)을 따른다. */
+    private static List<DashboardStatusCountResponse> statusCounts(List<DashboardApplicationSource> applications) {
+        Map<String, Long> counts = applications.stream()
+                .collect(Collectors.groupingBy(DashboardApplicationSource::getStatus, LinkedHashMap::new, Collectors.counting()));
+        List<DashboardStatusCountResponse> result = new ArrayList<>();
+        for (String status : List.of("DRAFT", "ANALYZING", "READY", "APPLIED", "CLOSED")) {
+            Long count = counts.remove(status);
+            if (count != null && count > 0) {
+                result.add(new DashboardStatusCountResponse(status, count.intValue()));
+            }
+        }
+        counts.forEach((status, count) -> result.add(new DashboardStatusCountResponse(status, count.intValue())));
+        return result;
     }
 
     /**

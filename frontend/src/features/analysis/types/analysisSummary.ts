@@ -111,6 +111,43 @@ export interface ApplicationTier {
   items: TierItem[];
 }
 
+/** 기술스택별 평균 적합도(해당 기술이 등장한 분석들의 평균). */
+export interface SkillFitAverage {
+  skill: string;
+  analysisCount: number;
+  averageScore: number;
+  mostlyMatched: boolean;
+}
+
+/** 적합도 구간별 면접 평균 점수(상관 분석, 면접 진행 건만). */
+export interface FitInterviewBand {
+  band: "HIGH" | "MID" | "LOW" | string;
+  label: string;
+  applicationCount: number;
+  averageFitScore: number | null;
+  averageInterviewScore: number | null;
+}
+
+/** 적합도와 현재 지원 상태를 함께 반영한 지원 우선순위. */
+export interface ApplicationPriority {
+  applicationCaseId: number;
+  companyName: string;
+  jobTitle: string;
+  fitScore: number | null;
+  priorityScore: number;
+  urgency: "NOW" | "PREPARE" | "HOLD" | string;
+  reasons: string[];
+}
+
+/** 여러 지원 건에서 감지한 취업 준비 리스크와 권장 행동. */
+export interface CareerRisk {
+  riskType: string;
+  severity: "HIGH" | "MEDIUM" | "LOW" | string;
+  title: string;
+  detail: string;
+  action: string;
+}
+
 export interface AnalysisSummary {
   stats: AnalysisStats;
   skillGaps: SkillGap[];
@@ -127,5 +164,10 @@ export interface AnalysisSummary {
   period: AnalysisPeriod;
   monthlyFitTrend: MonthlyFitPoint[];
   applicationTiers: ApplicationTier[];
+  skillFitAverages: SkillFitAverage[];
+  fitInterviewBands: FitInterviewBand[];
+  /** 구버전 mock/API와의 호환을 위해 optional. */
+  applicationPriorities?: ApplicationPriority[];
+  careerRisks?: CareerRisk[];
   analysisRun: CareerAnalysisRun;
 }

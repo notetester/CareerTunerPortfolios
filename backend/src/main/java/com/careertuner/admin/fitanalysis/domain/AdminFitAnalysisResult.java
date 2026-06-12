@@ -42,4 +42,5 @@ public class AdminFitAnalysisResult {
     private LocalDateTime createdAt;
     private int memoCount;
     private LocalDateTime latestMemoAt;
+    private boolean reanalysisRequested;
 }

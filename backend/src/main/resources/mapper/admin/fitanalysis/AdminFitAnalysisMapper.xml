@@ -33,6 +33,7 @@
         <result property="createdAt" column="created_at"/>
         <result property="memoCount" column="memo_count"/>
         <result property="latestMemoAt" column="latest_memo_at"/>
+        <result property="reanalysisRequested" column="reanalysis_requested"/>
     </resultMap>
 
     <resultMap id="AdminFitAnalysisMemoResultMap" type="com.careertuner.admin.fitanalysis.domain.AdminFitAnalysisMemo">
@@ -84,7 +85,13 @@
             SELECT MAX(latest_memo.updated_at)
             FROM admin_fit_analysis_memo latest_memo
             WHERE latest_memo.fit_analysis_id = fa.id
-        ) AS latest_memo_at
+        ) AS latest_memo_at,
+        EXISTS (
+            SELECT 1
+            FROM admin_fit_analysis_memo reanalysis_memo
+            WHERE reanalysis_memo.fit_analysis_id = fa.id
+              AND reanalysis_memo.memo_type = 'REANALYSIS'
+        ) AS reanalysis_requested
     </sql>
 
     <select id="findAll" resultMap="AdminFitAnalysisResultMap">

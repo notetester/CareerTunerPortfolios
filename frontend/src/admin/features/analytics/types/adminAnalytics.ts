@@ -82,6 +82,9 @@ export interface AdminQualityFlag {
     | "LOW_SCORE_NO_GAPS"
     | "EXCESSIVE_CERTS"
     | "EMPTY_STRATEGY"
+    | "LOW_CONFIDENCE"
+    | "REQUIRED_GAP_APPLY"
+    | "EMPTY_CONDITION_MATRIX"
     | "DEGRADED_RESULT"
     | string;
   severity: "HIGH" | "MEDIUM" | "LOW" | string;

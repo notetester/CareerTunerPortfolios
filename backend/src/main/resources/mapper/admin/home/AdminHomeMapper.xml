@@ -20,4 +20,28 @@
         SELECT COUNT(*) FROM fit_analysis
         WHERE created_at &gt;= (CURRENT_DATE - INTERVAL 7 DAY)
     </select>
+
+    <!-- 지원 건별 최신 적합도 분석이 비정상 상태로 사용자에게 노출 중인 건수. -->
+    <select id="countDegradedLatestAnalyses" resultType="int">
+        SELECT COUNT(*)
+        FROM fit_analysis fa
+        WHERE fa.status != 'SUCCESS'
+          AND fa.id = (
+              SELECT MAX(latest_fa.id)
+              FROM fit_analysis latest_fa
+              WHERE latest_fa.application_case_id = fa.application_case_id
+          )
+    </select>
+
+    <!-- 재분석 필요(REANALYSIS) 운영 메모가 달린 적합도 분석 수(중복 메모는 1건으로). -->
+    <select id="countReanalysisRequests" resultType="int">
+        SELECT COUNT(DISTINCT memo.fit_analysis_id)
+        FROM admin_fit_analysis_memo memo
+        WHERE memo.memo_type = 'REANALYSIS'
+    </select>
+
+    <select id="countCareerRunFailures" resultType="int">
+        SELECT COUNT(*) FROM career_analysis_run
+        WHERE status != 'SUCCESS'
+    </select>
 </mapper>

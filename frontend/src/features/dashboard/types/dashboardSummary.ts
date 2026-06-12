@@ -109,6 +109,12 @@ export interface DashboardChange {
   averageScoreDelta: number | null;
 }
 
+/** 지원 상태별 건수 요약. */
+export interface DashboardStatusCount {
+  status: string;
+  count: number;
+}
+
 export interface DashboardAnalysisRun {
   id: number;
   analysisType: string;
@@ -132,6 +138,7 @@ export interface DashboardSummary {
   recentNotifications: DashboardNotification[];
   readiness: DashboardReadiness;
   recentChange: DashboardChange;
+  statusCounts: DashboardStatusCount[];
   /** 대시보드 AI 분석 결과 요약(C 담당 AI 18). API 키가 없으면 결정적 mock, 있으면 실제 구조화 분석. */
   aiSummary: string;
   analysisRun: DashboardAnalysisRun;

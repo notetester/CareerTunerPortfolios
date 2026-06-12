@@ -22,7 +22,9 @@ public record AdminFitAnalysisListItemResponse(
         String errorMessage,
         LocalDateTime createdAt,
         int memoCount,
-        LocalDateTime latestMemoAt
+        LocalDateTime latestMemoAt,
+        // 재분석 필요(REANALYSIS) 운영 메모 보유 여부 — 관리자 재분석 요청 상태 필터용.
+        boolean reanalysisRequested
 ) {
 
     public static AdminFitAnalysisListItemResponse of(AdminFitAnalysisResult result,
@@ -45,6 +47,7 @@ public record AdminFitAnalysisListItemResponse(
                 result.getErrorMessage(),
                 result.getCreatedAt(),
                 result.getMemoCount(),
-                result.getLatestMemoAt());
+                result.getLatestMemoAt(),
+                result.isReanalysisRequested());
     }
 }

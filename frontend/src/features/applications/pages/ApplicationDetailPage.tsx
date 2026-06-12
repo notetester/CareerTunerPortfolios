@@ -352,7 +352,13 @@ export function ApplicationDetailPage() {
                   </div>
                   <FitAnalysisPanel analyses={fitAnalyses} loading={fitAnalysisLoading} generating={fitGenerating} error={fitAnalysisError} />
                   <StrategyPanel analyses={fitAnalyses} loading={fitAnalysisLoading} error={fitAnalysisError} />
-                  <LearningRecommendationPanel analyses={fitAnalyses} loading={fitAnalysisLoading} error={fitAnalysisError} />
+                  <LearningRecommendationPanel
+                    analyses={fitAnalyses}
+                    loading={fitAnalysisLoading}
+                    error={fitAnalysisError}
+                    onReanalyze={() => void generateFit()}
+                    reanalyzing={fitGenerating}
+                  />
                   {/* C 담당: 재분석 히스토리(점수·역량 변화 추적). 최신 분석 id가 바뀌면 다시 불러온다. */}
                   <FitAnalysisHistoryPanel
                     applicationCaseId={id}

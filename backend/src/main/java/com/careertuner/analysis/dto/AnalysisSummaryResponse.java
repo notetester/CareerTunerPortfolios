@@ -18,6 +18,10 @@ public record AnalysisSummaryResponse(
         AnalysisPeriodResponse period,
         List<AnalysisMonthlyFitResponse> monthlyFitTrend,
         List<AnalysisApplicationTierResponse> applicationTiers,
+        List<AnalysisSkillFitResponse> skillFitAverages,
+        List<AnalysisFitInterviewBandResponse> fitInterviewBands,
+        List<AnalysisApplicationPriorityResponse> applicationPriorities,
+        List<AnalysisCareerRiskResponse> careerRisks,
         CareerAnalysisRunResponse analysisRun
 ) {
 }

@@ -111,6 +111,12 @@ export function DashboardPage() {
   const pendingTodos = summary?.todos.filter((todo) => !todo.done).length ?? 0;
   const creditPercent = stats ? Math.min(100, Math.round((stats.credit / Math.max(1, stats.creditLimit)) * 100)) : 0;
   const highFitCount = summary?.recentApplications.filter((application) => (application.fitScore ?? 0) >= 70).length ?? 0;
+  const promisingApplication = useMemo(() => {
+    return [...(summary?.recentApplications ?? [])]
+      .filter((application) => application.fitScore != null && application.status !== "CLOSED")
+      .sort((a, b) => (b.fitScore ?? 0) - (a.fitScore ?? 0))[0] ?? null;
+  }, [summary?.recentApplications]);
+  const urgentGap = summary?.skillGaps[0] ?? null;
   const statCards = useMemo(() => {
     if (!stats) return [];
 
@@ -246,6 +252,19 @@ export function DashboardPage() {
                     전체 보기 <ArrowRight className="size-3.5" />
                   </Link>
                 </div>
+                {/* 지원 상태별 분포 한눈 요약. */}
+                {(summary.statusCounts?.length ?? 0) > 0 && (
+                  <div className="flex flex-wrap gap-1.5">
+                    {summary.statusCounts.map((item) => (
+                      <span
+                        key={item.status}
+                        className={`rounded-full px-2.5 py-1 text-xs font-semibold ${statusColor[item.status] ?? "bg-slate-100 text-slate-700"}`}
+                      >
+                        {statusLabel[item.status] ?? item.status} {item.count}건
+                      </span>
+                    ))}
+                  </div>
+                )}
                 <div className="space-y-3">
                   {summary.recentApplications.length > 0 ? (
                     summary.recentApplications.map((app) => (
@@ -326,6 +345,46 @@ export function DashboardPage() {
               </div>
 
               <div className="space-y-5">
+                {(promisingApplication || urgentGap) && (
+                  <Card className="border border-blue-200 bg-gradient-to-br from-blue-50 to-indigo-50">
+                    <CardHeader className="pb-3">
+                      <CardTitle className="text-base flex items-center gap-2 text-blue-900">
+                        <Target className="size-4 text-blue-600" />
+                        이번 주 우선순위
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent className="space-y-3">
+                      {promisingApplication && (
+                        <button
+                          type="button"
+                          onClick={() => navigate(`/applications/${promisingApplication.id}`)}
+                          className="w-full rounded-lg border border-blue-100 bg-white/80 p-3 text-left transition-colors hover:bg-white"
+                        >
+                          <div className="text-[11px] font-semibold text-blue-500">가장 유망한 지원 건</div>
+                          <div className="mt-1 text-sm font-bold text-slate-800">
+                            {promisingApplication.companyName} · {promisingApplication.jobTitle}
+                          </div>
+                          <div className="mt-1 text-xs text-slate-500">
+                            적합도 <strong className="text-blue-700">{promisingApplication.fitScore}점</strong> · 지금 준비 흐름을 먼저 점검하세요.
+                          </div>
+                        </button>
+                      )}
+                      {urgentGap && (
+                        <Link
+                          to="/analysis?tab=weakness"
+                          className="block rounded-lg border border-amber-100 bg-amber-50/90 p-3 transition-colors hover:bg-amber-50"
+                        >
+                          <div className="text-[11px] font-semibold text-amber-600">가장 시급한 보완 역량</div>
+                          <div className="mt-1 text-sm font-bold text-slate-800">{urgentGap.skill}</div>
+                          <div className="mt-1 text-xs text-slate-500">
+                            최근 분석 {urgentGap.total}건 중 {urgentGap.count}건({urgentGap.percentage}%)에서 반복 부족
+                          </div>
+                        </Link>
+                      )}
+                    </CardContent>
+                  </Card>
+                )}
+
                 {/* C 담당: 전체 취업 준비도 게이지 + 최근 변화 요약(결정적 집계). */}
                 {summary.readiness && summary.recentChange && (
                   <ReadinessGaugeCard readiness={summary.readiness} recentChange={summary.recentChange} />
@@ -394,6 +453,29 @@ export function DashboardPage() {
                     ))}
                   </CardContent>
                 </Card>
+
+                {/* 위험 알림 카드: 반복 부족 역량이 절반 이상 분석에서 나타나면 대시보드 안에서 경고한다(푸시 알림은 F 도메인). */}
+                {summary.skillGaps.some((gap) => gap.percentage >= 50 && gap.total >= 2) && (
+                  <Card className="border border-red-200 bg-red-50">
+                    <CardContent className="p-4">
+                      {(() => {
+                        const critical = summary.skillGaps.find((gap) => gap.percentage >= 50 && gap.total >= 2)!;
+                        return (
+                          <div className="flex items-start gap-2.5">
+                            <AlertCircle className="mt-0.5 size-4 shrink-0 text-red-600" />
+                            <div>
+                              <div className="text-sm font-bold text-red-800">주의: {critical.skill} 반복 부족</div>
+                              <p className="mt-1 text-xs leading-5 text-red-700">
+                                최근 분석 {critical.total}건 중 {critical.count}건에서 부족 역량으로 나타났습니다.
+                                학습 로드맵에서 {critical.skill} 과제를 우선 진행하는 것이 좋습니다.
+                              </p>
+                            </div>
+                          </div>
+                        );
+                      })()}
+                    </CardContent>
+                  </Card>
+                )}
 
                 <Card className="border border-slate-200 bg-white">
                   <CardHeader className="pb-3">

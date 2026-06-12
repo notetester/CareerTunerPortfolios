@@ -1,10 +1,12 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { Link } from "react-router";
 import {
   AlertTriangle,
   BarChart3,
   Brain,
   ChevronDown,
   ChevronRight,
+  Cpu,
   Gauge,
   Loader2,
   MessageSquarePlus,
@@ -78,6 +80,10 @@ const memoTypeOptions = [
   { value: "QUALITY", label: "분석 품질" },
   { value: "USER_INQUIRY", label: "사용자 문의" },
   { value: "REANALYSIS", label: "재분석 필요" },
+  { value: "PROMPT_ISSUE", label: "프롬프트 이슈" },
+  { value: "DATA_ISSUE", label: "데이터 이슈" },
+  { value: "SCORE_DISPUTE", label: "점수 이의" },
+  { value: "CERT_RECOMMENDATION_ISSUE", label: "자격증 추천 이슈" },
 ] as const;
 
 const memoTypeLabel: Record<string, string> = Object.fromEntries(
@@ -89,6 +95,10 @@ const memoTypeTone: Record<string, string> = {
   QUALITY: "bg-purple-100 text-purple-700",
   USER_INQUIRY: "bg-blue-100 text-blue-700",
   REANALYSIS: "bg-amber-100 text-amber-700",
+  PROMPT_ISSUE: "bg-rose-100 text-rose-700",
+  DATA_ISSUE: "bg-orange-100 text-orange-700",
+  SCORE_DISPUTE: "bg-cyan-100 text-cyan-700",
+  CERT_RECOMMENDATION_ISSUE: "bg-lime-100 text-lime-700",
 };
 
 /**
@@ -317,6 +327,9 @@ const flagTypeLabel: Record<string, string> = {
   LOW_SCORE_NO_GAPS: "낮은 점수·근거 없음",
   EXCESSIVE_CERTS: "자격증 과다 추천",
   EMPTY_STRATEGY: "전략 누락",
+  LOW_CONFIDENCE: "분석 신뢰도 낮음",
+  REQUIRED_GAP_APPLY: "필수 미충족·지원 가능 모순",
+  EMPTY_CONDITION_MATRIX: "비교 매트릭스 누락",
   DEGRADED_RESULT: "강등 결과 노출",
 };
 
@@ -401,6 +414,27 @@ export function AdminAnalyticsPage() {
       },
       { total: 0, success: 0, fallback: 0, failed: 0 },
     );
+  }, [runs]);
+
+  const modelStats = useMemo(() => {
+    const grouped = new Map<string, { total: number; success: number; fallback: number; failed: number; tokens: number }>();
+    runs.forEach((run) => {
+      const model = run.model?.trim() || "미지정 모델";
+      const current = grouped.get(model) ?? { total: 0, success: 0, fallback: 0, failed: 0, tokens: 0 };
+      current.total += 1;
+      current.tokens += run.tokenUsage;
+      if (run.status === "SUCCESS") current.success += 1;
+      else if (run.status === "FALLBACK") current.fallback += 1;
+      else current.failed += 1;
+      grouped.set(model, current);
+    });
+
+    return Array.from(grouped, ([model, stat]) => ({
+      model,
+      ...stat,
+      successRate: Math.round((stat.success * 100) / stat.total),
+      averageTokens: Math.round(stat.tokens / stat.total),
+    })).sort((a, b) => b.total - a.total || b.successRate - a.successRate || a.model.localeCompare(b.model));
   }, [runs]);
 
   return (
@@ -581,11 +615,57 @@ export function AdminAnalyticsPage() {
                         <div className="mt-1 text-[11px] text-slate-400">
                           분석 #{flag.fitAnalysisId} · {formatDateTime(flag.analyzedAt)}
                         </div>
+                        <Link
+                          to={`/admin/fit-analysis?analysisId=${flag.fitAnalysisId}`}
+                          className="mt-2 inline-flex text-xs font-semibold text-purple-700 hover:text-purple-900"
+                        >
+                          적합도 분석 검수 화면 열기
+                        </Link>
                       </div>
                     ))
                   ) : (
                     <div className="rounded-lg bg-slate-50 p-4 text-sm text-slate-500">
                       품질 점검이 필요한 분석 결과가 없습니다.
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            </section>
+
+            <section>
+              <Card className="border border-slate-200 bg-white">
+                <CardHeader className="pb-3">
+                  <CardTitle className="flex items-center gap-2 text-base">
+                    <Cpu className="size-4 text-cyan-600" />
+                    모델별 분석 운영 신뢰도
+                    <Badge className="bg-cyan-100 text-cyan-700">{modelStats.length}개 모델</Badge>
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  {modelStats.length > 0 ? (
+                    <div className="grid gap-3 lg:grid-cols-2">
+                      {modelStats.map((stat) => (
+                        <div key={stat.model} className="rounded-lg border border-slate-100 bg-slate-50 p-3">
+                          <div className="flex flex-wrap items-center justify-between gap-2">
+                            <span className="text-sm font-bold text-slate-800">{stat.model}</span>
+                            <Badge className={stat.successRate >= 90 ? "bg-green-100 text-green-700" : stat.successRate >= 70 ? "bg-amber-100 text-amber-700" : "bg-red-100 text-red-700"}>
+                              성공률 {stat.successRate}%
+                            </Badge>
+                          </div>
+                          <Progress value={stat.successRate} className="mt-2 h-2" />
+                          <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-xs text-slate-500">
+                            <span>총 {stat.total}건</span>
+                            <span className="text-green-700">성공 {stat.success}</span>
+                            <span className="text-amber-700">Fallback {stat.fallback}</span>
+                            <span className="text-red-700">실패 {stat.failed}</span>
+                            <span>평균 {stat.averageTokens.toLocaleString()} 토큰</span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="rounded-lg bg-slate-50 p-4 text-sm text-slate-500">
+                      모델별 비교에 사용할 분석 실행 이력이 없습니다.
                     </div>
                   )}
                 </CardContent>

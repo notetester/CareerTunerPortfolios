@@ -34,10 +34,8 @@ public class MockFitAnalysisAiService implements FitAnalysisAiService {
             // 공고 분석 전이라면 기본 가이드 역량으로 안내한다.
             missing.addAll(List.of("공고 분석 먼저 실행", "필수 역량 확인 필요"));
         } else if (profile.isEmpty()) {
-            // 프로필 미입력: 절반 보유로 가정해 보완 방향을 보여준다.
-            for (int i = 0; i < required.size(); i++) {
-                (i % 2 == 0 ? matched : missing).add(required.get(i));
-            }
+            // 프로필 미입력 상태에서 보유를 추정하면 점수가 과대평가되므로 필수 역량을 모두 미충족으로 둔다.
+            missing.addAll(required);
         } else {
             for (String skill : required) {
                 (profileLower.contains(skill.toLowerCase(Locale.ROOT)) ? matched : missing).add(skill);
@@ -51,7 +49,7 @@ public class MockFitAnalysisAiService implements FitAnalysisAiService {
             }
         }
 
-        int fitScore = score(required, profileLower, profile.isEmpty(), matched.size());
+        int fitScore = score(required, preferred, profileLower, profile.isEmpty());
         List<String> study = missing.stream().limit(4).map(skill -> skill + " 집중 학습").toList();
         List<String> certificates = recommendCertificates(command.desiredJob());
         String strategy = strategy(command, matched, missing, fitScore);
@@ -194,13 +192,26 @@ public class MockFitAnalysisAiService implements FitAnalysisAiService {
     private List<FitLearningRoadmapItem> learningRoadmap(List<FitGapRecommendation> gaps) {
         List<FitLearningRoadmapItem> result = new ArrayList<>();
         int order = 1;
-        for (FitGapRecommendation gap : gaps.stream().limit(5).toList()) {
-            String duration = "HIGH".equals(gap.priority()) ? "1~2주" : "2~4주";
+        for (FitGapRecommendation gap : gaps.stream().limit(3).toList()) {
             result.add(new FitLearningRoadmapItem(
                     gap.skill(),
-                    "%s 핵심 개념과 실무 패턴 학습".formatted(gap.skill()),
-                    "%s을(를) 사용한 작은 결과물을 만들고 README에 선택 이유와 문제 해결 과정을 정리합니다.".formatted(gap.skill()),
-                    duration,
+                    "%s 1단계 · 핵심 개념 정리".formatted(gap.skill()),
+                    "%s의 핵심 개념과 자주 쓰는 실무 패턴을 예제 코드와 함께 정리합니다.".formatted(gap.skill()),
+                    "3~5일",
+                    gap.priority(),
+                    order++));
+            result.add(new FitLearningRoadmapItem(
+                    gap.skill(),
+                    "%s 2단계 · 적용 실습".formatted(gap.skill()),
+                    "%s을(를) 활용한 작은 기능을 구현하고 동작을 테스트합니다.".formatted(gap.skill()),
+                    "1주",
+                    gap.priority(),
+                    order++));
+            result.add(new FitLearningRoadmapItem(
+                    gap.skill(),
+                    "%s 3단계 · 포트폴리오 근거화".formatted(gap.skill()),
+                    "README에 선택 이유, 문제 해결 과정, 검증 결과를 정리해 지원서와 면접에서 설명할 근거를 만듭니다.",
+                    "2~3일",
                     gap.priority(),
                     order++));
         }
@@ -235,24 +246,26 @@ public class MockFitAnalysisAiService implements FitAnalysisAiService {
         return actions;
     }
 
-    private int score(List<String> required, Set<String> profileLower, boolean profileEmpty, int matchedSize) {
+    private int score(List<String> required,
+                      List<String> preferred,
+                      Set<String> profileLower,
+                      boolean profileEmpty) {
         if (required.isEmpty()) {
             return 0;
         }
-        double ratio;
         if (profileEmpty) {
-            ratio = 0.5;
-        } else {
-            long matchedRequired = required.stream()
-                    .filter(skill -> profileLower.contains(skill.toLowerCase(Locale.ROOT)))
-                    .count();
-            ratio = (double) matchedRequired / required.size();
+            return 10;
         }
-        int base = (int) Math.round(45 + ratio * 50);
-        if (matchedSize >= 3) {
-            base += 3;
-        }
-        return Math.max(0, Math.min(100, base));
+        long matchedRequired = required.stream()
+                .filter(skill -> profileLower.contains(skill.toLowerCase(Locale.ROOT)))
+                .count();
+        long matchedPreferred = preferred.stream()
+                .filter(skill -> profileLower.contains(skill.toLowerCase(Locale.ROOT)))
+                .count();
+        double requiredRatio = (double) matchedRequired / required.size();
+        double preferredRatio = preferred.isEmpty() ? 0 : (double) matchedPreferred / preferred.size();
+        int score = (int) Math.round(10 + requiredRatio * 70 + preferredRatio * 20);
+        return Math.max(0, Math.min(100, score));
     }
 
     private List<String> recommendCertificates(String desiredJob) {
