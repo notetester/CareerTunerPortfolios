@@ -4,7 +4,6 @@ import { MessageSquare } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/app/components/ui/tabs";
 import { useAuth } from "@/app/auth/AuthContext";
 import { useApplicationCases } from "@/features/applications/hooks/useApplicationCases";
-import { LoginRequiredState } from "@/features/applications/components/LoginRequiredState";
 import { ModeSelectTab } from "../components/ModeSelectTab";
 import { AutoSetupPanel } from "../components/AutoSetupPanel";
 import { ExpectedQuestionsTab } from "../components/ExpectedQuestionsTab";
@@ -38,6 +37,7 @@ export function InterviewPage() {
   const tutStep = useTutorialStore((s) => s.step);
   const startTutorial = useTutorialStore((s) => s.startTutorial);
   const startDemo = useTutorialStore((s) => s.startDemo);
+  const stopDemo = useTutorialStore((s) => s.stop);
   const notifyTab = useTutorialStore((s) => s.notifyTab);
   const mockActive = mode !== "off"; // 데모/튜토리얼 둘 다 더미·게이트 우회
   const isTutorial = mode === "tutorial"; // 풍선·자동 진행은 튜토리얼만
@@ -88,10 +88,34 @@ export function InterviewPage() {
 
   if (!isAuthenticated && !mockActive && !wantTutorial && !wantDemo) {
     return (
-      <LoginRequiredState
-        title="로그인이 필요합니다"
-        description="AI 가상 면접은 로그인 후 이용할 수 있습니다."
-      />
+      <div className="min-h-[calc(100vh-72px)] bg-slate-50 px-4 py-12">
+        <div className="mx-auto max-w-md rounded-xl border border-slate-200 bg-white p-8 text-center shadow-sm">
+          <div className="mx-auto flex size-12 items-center justify-center rounded-lg bg-indigo-50 text-indigo-600">
+            <MessageSquare className="size-6" />
+          </div>
+          <h1 className="mt-4 text-xl font-bold text-slate-900">AI 가상 면접</h1>
+          <p className="mt-1 text-sm leading-6 text-slate-500">
+            로그인 없이 먼저 체험해 볼 수 있어요. 데모로 전체 기능을 바로 써보거나, 가이드와 함께 둘러보세요.
+          </p>
+          <div className="mt-5 flex flex-col gap-2">
+            <button
+              onClick={startDemo}
+              className="w-full rounded-lg bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-indigo-700"
+            >
+              지금 체험하기 (로그인 불필요)
+            </button>
+            <button
+              onClick={startTutorial}
+              className="w-full rounded-lg border border-indigo-200 bg-indigo-50 px-4 py-2.5 text-sm font-semibold text-indigo-600 transition-colors hover:bg-indigo-100"
+            >
+              가이드와 둘러보기
+            </button>
+            <a href="/login" className="mt-1 text-sm text-slate-500 transition-colors hover:text-slate-700">
+              로그인하고 실제 면접 시작 →
+            </a>
+          </div>
+        </div>
+      </div>
     );
   }
 
@@ -109,18 +133,29 @@ export function InterviewPage() {
             </p>
           </div>
           <div className="flex shrink-0 gap-2">
-            <button
-              onClick={startDemo}
-              className="rounded-lg bg-indigo-600 px-3 py-2 text-sm font-semibold text-white transition-colors hover:bg-indigo-700"
-            >
-              체험하기
-            </button>
-            <button
-              onClick={startTutorial}
-              className="rounded-lg border border-indigo-200 bg-indigo-50 px-3 py-2 text-sm font-semibold text-indigo-600 transition-colors hover:bg-indigo-100"
-            >
-              둘러보기
-            </button>
+            {mode === "off" ? (
+              <>
+                <button
+                  onClick={startDemo}
+                  className="rounded-lg bg-indigo-600 px-3 py-2 text-sm font-semibold text-white transition-colors hover:bg-indigo-700"
+                >
+                  체험하기
+                </button>
+                <button
+                  onClick={startTutorial}
+                  className="rounded-lg border border-indigo-200 bg-indigo-50 px-3 py-2 text-sm font-semibold text-indigo-600 transition-colors hover:bg-indigo-100"
+                >
+                  둘러보기
+                </button>
+              </>
+            ) : (
+              <button
+                onClick={stopDemo}
+                className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-600 transition-colors hover:bg-slate-50"
+              >
+                {mode === "demo" ? "체험 종료" : "둘러보기 종료"}
+              </button>
+            )}
           </div>
         </div>
 
