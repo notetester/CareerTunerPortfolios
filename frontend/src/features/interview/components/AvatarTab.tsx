@@ -25,6 +25,8 @@ import type {
 } from "../types/interview";
 import { getScoreColor } from "../types/interview";
 import { VoiceScorePanel } from "./VoiceScorePanel";
+import { useTutorialStore } from "../tutorial/tutorialStore";
+import { TutorialMediaPreview } from "../tutorial/TutorialMediaPreview";
 
 type Status = "idle" | "connecting" | "live" | "analyzing" | "scored" | "error";
 
@@ -35,6 +37,7 @@ type Status = "idle" | "connecting" | "live" | "analyzing" | "scored" | "error";
  * 원본 영상은 서버에 올리지 않는다 — 점수(JSON)만 저장, 원하면 로컬 다운로드 (ADR-002).
  */
 export function AvatarTab({ session }: { session: InterviewSession | null }) {
+  const tutorialActive = useTutorialStore((s) => s.active);
   const [status, setStatus] = useState<Status>("idle");
   const [error, setError] = useState<string | null>(null);
   const [note, setNote] = useState<string | null>(null);
@@ -289,6 +292,11 @@ export function AvatarTab({ session }: { session: InterviewSession | null }) {
     }
     setStatus("scored");
   };
+
+  // 튜토리얼: 실제 LiveAvatar SDK·웹캠 연결 대신 예시 결과 화면만 보여준다.
+  if (tutorialActive) {
+    return <TutorialMediaPreview kind="avatar" />;
+  }
 
   if (!session) {
     return (
