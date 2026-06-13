@@ -237,10 +237,12 @@ function ConfidenceBadge({ confidence }: { confidence: FitAnalysisConfidence }) 
       : confidence.level === "MEDIUM"
         ? { className: "bg-amber-50 text-amber-700", label: "신뢰도 보통", Icon: ShieldAlert }
         : { className: "bg-red-50 text-red-600", label: "신뢰도 낮음", Icon: ShieldAlert };
+  // 레벨과 숫자를 함께 표기("신뢰도 보통 · 72점"). score 가 없는 과거 데이터는 레벨만 표시.
   return (
     <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-semibold ${styles.className}`}>
       <styles.Icon className="size-3" />
       {styles.label}
+      {typeof confidence.score === "number" && <span className="opacity-80">· {confidence.score}점</span>}
     </span>
   );
 }

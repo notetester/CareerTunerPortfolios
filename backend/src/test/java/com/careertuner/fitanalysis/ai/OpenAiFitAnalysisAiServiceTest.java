@@ -132,7 +132,33 @@ class OpenAiFitAnalysisAiServiceTest {
 
     @Test
     void keepsApplyDecisionWhenRuleAllowsIt() {
-        // 78점 + 필수 미충족 1개 이하 → mock 규칙상 APPLY 허용 구간이므로 가드가 개입하지 않는다.
+        // 78점 + 필수 미충족 0개 → 강화된 규칙(필수 0개)에서도 APPLY 허용 구간이므로 가드가 개입하지 않는다.
+        CareerAnalysisOpenAiClient client = mock(CareerAnalysisOpenAiClient.class);
+        when(client.configured()).thenReturn(true);
+        var payload = new tools.jackson.databind.ObjectMapper().readTree("""
+                {
+                  "fitScore": 78,
+                  "conditionMatrix": [
+                    {"condition": "Java", "conditionType": "REQUIRED", "matchStatus": "MET", "evidence": ""},
+                    {"condition": "Spring", "conditionType": "REQUIRED", "matchStatus": "MET", "evidence": ""},
+                    {"condition": "AWS", "conditionType": "PREFERRED", "matchStatus": "UNMET", "evidence": ""}
+                  ],
+                  "applyDecision": {"decision": "APPLY", "reasons": ["핵심 역량 충족"], "actions": ["지원"]}
+                }
+                """);
+        when(client.request(anyString(), any(), anyString(), anyString()))
+                .thenReturn(new StructuredResponse(payload, new CareerAnalysisAiUsage("gpt-test", 50, 50, 100, false)));
+
+        OpenAiFitAnalysisAiService service = new OpenAiFitAnalysisAiService(client, new MockFitAnalysisAiService());
+        FitAnalysisAiResult result = service.generate(command);
+
+        assertThat(result.applyDecision().decision()).isEqualTo("APPLY");
+        assertThat(result.applyDecision().reasons()).noneMatch(reason -> reason.contains("자동 보정"));
+    }
+
+    @Test
+    void downgradesApplyWhenSingleRequiredUnmet() {
+        // 강화된 규칙: 필수 미충족이 1개라도 있으면 APPLY 불가 → COMPLEMENT 로 강등.
         CareerAnalysisOpenAiClient client = mock(CareerAnalysisOpenAiClient.class);
         when(client.configured()).thenReturn(true);
         var payload = new tools.jackson.databind.ObjectMapper().readTree("""
@@ -151,7 +177,7 @@ class OpenAiFitAnalysisAiServiceTest {
         OpenAiFitAnalysisAiService service = new OpenAiFitAnalysisAiService(client, new MockFitAnalysisAiService());
         FitAnalysisAiResult result = service.generate(command);
 
-        assertThat(result.applyDecision().decision()).isEqualTo("APPLY");
-        assertThat(result.applyDecision().reasons()).noneMatch(reason -> reason.contains("자동 보정"));
+        assertThat(result.applyDecision().decision()).isEqualTo("COMPLEMENT");
+        assertThat(result.applyDecision().reasons()).anyMatch(reason -> reason.contains("자동 보정"));
     }
 }

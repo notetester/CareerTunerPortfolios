@@ -391,6 +391,7 @@ const fitAnalyses: FitAnalysisDetail[] = [
     ]),
     analysisConfidence: JSON.stringify({
       level: "MEDIUM",
+      score: 72,
       reasons: ["보유 자격증 정보가 없어 자격증 추천이 일반 기준으로 제공됩니다."],
     }),
     applyDecision: JSON.stringify({
@@ -430,7 +431,7 @@ const fitAnalyses: FitAnalysisDetail[] = [
       { condition: "TypeScript", conditionType: "REQUIRED", matchStatus: "MET", evidence: "프로필 보유 기술에서 동일 항목이 확인됩니다." },
       { condition: "AWS", conditionType: "PREFERRED", matchStatus: "PARTIAL", evidence: "프로필에 유사/연관 기술이 있어 부분 충족으로 판정합니다." },
     ]),
-    analysisConfidence: JSON.stringify({ level: "HIGH", reasons: [] }),
+    analysisConfidence: JSON.stringify({ level: "HIGH", score: 100, reasons: [] }),
     applyDecision: JSON.stringify({
       decision: "APPLY",
       reasons: ["적합도 84점으로 현재 스펙 기준 지원 가능성이 높습니다.", "핵심 요구 역량 React, TypeScript 가 프로필과 매칭됩니다."],

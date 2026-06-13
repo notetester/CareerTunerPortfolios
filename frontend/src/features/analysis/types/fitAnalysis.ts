@@ -32,6 +32,8 @@ export interface FitConditionMatch {
 /** 분석 신뢰도(입력 데이터 상태 기반 결정적 계산). */
 export interface FitAnalysisConfidence {
   level: "HIGH" | "MEDIUM" | "LOW" | string;
+  /** 0~100. level 의 원천 점수(레벨은 이 점수의 구간으로 파생). 과거 데이터엔 없을 수 있어 optional. */
+  score?: number;
   reasons: string[];
 }
 
