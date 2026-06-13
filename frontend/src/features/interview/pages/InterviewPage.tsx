@@ -136,7 +136,7 @@ export function InterviewPage() {
             <TabsTrigger value="report" data-tut="tut-tab-report">면접 리포트</TabsTrigger>
           </TabsList>
 
-          <TabsContent value="modes" className="mt-6">
+          <TabsContent value="modes" data-tut="tut-panel-modes" className="mt-6">
             {autoMode ? (
               <AutoSetupPanel
                 cases={cases.applicationCases}
@@ -170,23 +170,23 @@ export function InterviewPage() {
             <ExpectedQuestionsTab session={effectiveSession} onGoToPractice={() => goTab("practice")} />
           </TabsContent>
 
-          <TabsContent value="practice" className="mt-6">
+          <TabsContent value="practice" data-tut="tut-panel-practice" className="mt-6">
             <PracticeTab session={effectiveSession} onGoToReport={() => goTab("report")} />
           </TabsContent>
 
-          <TabsContent value="live" className="mt-6">
+          <TabsContent value="live" data-tut="tut-panel-live" className="mt-6">
             <RealtimeInterviewTab session={effectiveSession} />
           </TabsContent>
 
-          <TabsContent value="avatar" className="mt-6">
+          <TabsContent value="avatar" data-tut="tut-panel-avatar" className="mt-6">
             <AvatarTab session={effectiveSession} />
           </TabsContent>
 
-          <TabsContent value="evaluation" className="mt-6">
+          <TabsContent value="evaluation" data-tut="tut-panel-evaluation" className="mt-6">
             <EvaluationCriteriaTab />
           </TabsContent>
 
-          <TabsContent value="correction" className="mt-6">
+          <TabsContent value="correction" data-tut="tut-panel-correction" className="mt-6">
             <CorrectionInfoTab />
           </TabsContent>
 

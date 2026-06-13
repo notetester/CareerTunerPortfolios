@@ -265,7 +265,7 @@ export function ExpectedQuestionsTab({
           </CardContent>
         </Card>
       ) : (
-        <div className="space-y-3">
+        <div className="space-y-3" data-tut="tut-q-list">
           {questions.map((q, i) => (
             <QuestionItem
               key={`${q.id}-${resetVersion}`}
