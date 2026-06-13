@@ -10,7 +10,7 @@ import { TUT_STEPS } from "./tutSteps";
  * 타겟 자체는 가림막 사이 구멍이라 그대로 클릭된다(awaitTab 진행).
  */
 export function TutorialOverlay() {
-  const active = useTutorialStore((s) => s.active);
+  const active = useTutorialStore((s) => s.mode === "tutorial");
   const step = useTutorialStore((s) => s.step);
   const next = useTutorialStore((s) => s.next);
   const stop = useTutorialStore((s) => s.stop);

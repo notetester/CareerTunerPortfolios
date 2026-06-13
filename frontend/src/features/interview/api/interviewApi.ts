@@ -1,6 +1,6 @@
 import { api } from "@/app/lib/api";
 import { getAccessToken } from "@/app/lib/tokenStore";
-import { isTutorialActive } from "../tutorial/tutorialStore";
+import { isDataMockActive } from "../tutorial/tutorialStore";
 import {
   dummyAgentSteps,
   dummyAnswer,
@@ -35,13 +35,13 @@ import type {
 // 백엔드 계약: /api/interview/** , /api/file/**
 // 컨트롤러는 ApiResponse<T> envelope 로 응답하고, api() 래퍼가 data 만 풀어서 돌려준다.
 //
-// 튜토리얼 모드(isTutorialActive)에서는 백엔드/AI 호출 없이 tutorial/dummyData 를 반환한다.
+// 튜토리얼 모드(isDataMockActive)에서는 백엔드/AI 호출 없이 tutorial/dummyData 를 반환한다.
 // 데이터성 탭(질문·복습·리포트)은 이 분기만으로 더미가 채워진다.
 // 음성/아바타(realtime·avatar)는 외부 SDK 연결이라 여기서 막지 않고 탭에서 처리한다(단계 C).
 
 /** 내 면접 세션 목록 (최근 기록). */
 export function listInterviewSessions(): Promise<InterviewSession[]> {
-  if (isTutorialActive()) return Promise.resolve([dummySession]);
+  if (isDataMockActive()) return Promise.resolve([dummySession]);
   return api<InterviewSession[]>("/interview/sessions", { method: "GET" });
 }
 
@@ -49,7 +49,7 @@ export function listInterviewSessions(): Promise<InterviewSession[]> {
 export function createInterviewSession(
   request: CreateInterviewSessionRequest,
 ): Promise<InterviewSession> {
-  if (isTutorialActive()) return Promise.resolve({ ...dummySession, mode: request.mode });
+  if (isDataMockActive()) return Promise.resolve({ ...dummySession, mode: request.mode });
   return api<InterviewSession>("/interview/sessions", {
     method: "POST",
     body: JSON.stringify(request),
@@ -61,7 +61,7 @@ export function generateExpectedQuestions(
   sessionId: number,
   request: GenerateQuestionsRequest,
 ): Promise<InterviewQuestion[]> {
-  if (isTutorialActive()) return Promise.resolve(dummyQuestions);
+  if (isDataMockActive()) return Promise.resolve(dummyQuestions);
   return api<InterviewQuestion[]>(`/interview/sessions/${sessionId}/generate-questions`, {
     method: "POST",
     body: JSON.stringify(request),
@@ -70,7 +70,7 @@ export function generateExpectedQuestions(
 
 /** 세션의 질문 목록 조회. */
 export function listSessionQuestions(sessionId: number): Promise<InterviewQuestion[]> {
-  if (isTutorialActive()) return Promise.resolve(dummyQuestions);
+  if (isDataMockActive()) return Promise.resolve(dummyQuestions);
   return api<InterviewQuestion[]>(`/interview/sessions/${sessionId}/questions`, { method: "GET" });
 }
 
@@ -79,7 +79,7 @@ export function submitAnswer(
   questionId: number,
   request: SubmitAnswerRequest,
 ): Promise<InterviewAnswer> {
-  if (isTutorialActive()) return Promise.resolve(dummyAnswer(questionId));
+  if (isDataMockActive()) return Promise.resolve(dummyAnswer(questionId));
   return api<InterviewAnswer>(`/interview/questions/${questionId}/answers`, {
     method: "POST",
     body: JSON.stringify(request),
@@ -88,7 +88,7 @@ export function submitAnswer(
 
 /** 질문에 대한 모범답안 생성(학습용). 답변 제출 전에도 호출 가능. */
 export function getModelAnswer(questionId: number): Promise<{ modelAnswer: string }> {
-  if (isTutorialActive()) return Promise.resolve({ modelAnswer: dummyModelAnswer });
+  if (isDataMockActive()) return Promise.resolve({ modelAnswer: dummyModelAnswer });
   return api<{ modelAnswer: string }>(`/interview/questions/${questionId}/model-answer`, {
     method: "POST",
   });
@@ -99,7 +99,7 @@ export function generateFollowUps(
   questionId: number,
   request: GenerateFollowUpsRequest = {},
 ): Promise<InterviewQuestion[]> {
-  if (isTutorialActive()) return Promise.resolve([...dummyQuestions, dummyFollowUp]);
+  if (isDataMockActive()) return Promise.resolve([...dummyQuestions, dummyFollowUp]);
   return api<InterviewQuestion[]>(`/interview/questions/${questionId}/follow-ups`, {
     method: "POST",
     body: JSON.stringify(request),
@@ -108,7 +108,7 @@ export function generateFollowUps(
 
 /** 세션 진행 상태(다음 질문/종료 여부) 조회. */
 export function getInterviewProgress(sessionId: number): Promise<InterviewProgress> {
-  if (isTutorialActive()) {
+  if (isDataMockActive()) {
     return Promise.resolve({
       sessionId,
       totalQuestions: dummyQuestions.length,
@@ -122,7 +122,7 @@ export function getInterviewProgress(sessionId: number): Promise<InterviewProgre
 
 /** 멀티에이전트 진행 단계 트레이스 조회 (Evaluator/Critic 등). */
 export function getAgentSteps(sessionId: number): Promise<InterviewAgentStep[]> {
-  if (isTutorialActive()) return Promise.resolve(dummyQuestions.flatMap((q) => dummyAgentSteps(q.id)));
+  if (isDataMockActive()) return Promise.resolve(dummyQuestions.flatMap((q) => dummyAgentSteps(q.id)));
   return api<InterviewAgentStep[]>(`/interview/sessions/${sessionId}/agent-steps`, { method: "GET" });
 }
 
@@ -134,7 +134,7 @@ export function createRealtimeSession(sessionId: number): Promise<RealtimeSessio
 
 /** 세션 종료 → AI 종합 리포트 생성/조회. */
 export function getInterviewReport(sessionId: number): Promise<InterviewReport> {
-  if (isTutorialActive()) return Promise.resolve(dummyReport);
+  if (isDataMockActive()) return Promise.resolve(dummyReport);
   return api<InterviewReport>(`/interview/sessions/${sessionId}/report`, { method: "GET" });
 }
 
@@ -142,7 +142,7 @@ export function getInterviewReport(sessionId: number): Promise<InterviewReport> 
 
 /** 외부 키(Inworld/HeyGen) 보유 여부 — 기능 활성/비활성 사전 판단용. */
 export function getMediaCapabilities(): Promise<MediaCapabilities> {
-  if (isTutorialActive()) return Promise.resolve(dummyCapabilities);
+  if (isDataMockActive()) return Promise.resolve(dummyCapabilities);
   return api<MediaCapabilities>("/interview/media/capabilities", { method: "GET" });
 }
 
@@ -172,7 +172,7 @@ export function saveMediaResult(
   sessionId: number,
   request: SaveMediaAnalysisRequest,
 ): Promise<MediaAnalysis> {
-  if (isTutorialActive()) {
+  if (isDataMockActive()) {
     return Promise.resolve({
       id: -990000,
       interviewSessionId: sessionId,
@@ -192,7 +192,7 @@ export function saveMediaResult(
 
 /** 세션의 저장된 음성/영상 분석 결과 목록 (최신순). */
 export function listMediaResults(sessionId: number): Promise<MediaAnalysis[]> {
-  if (isTutorialActive()) return Promise.resolve(dummyMediaResults);
+  if (isDataMockActive()) return Promise.resolve(dummyMediaResults);
   return api<MediaAnalysis[]>(`/interview/sessions/${sessionId}/media-results`, { method: "GET" });
 }
 

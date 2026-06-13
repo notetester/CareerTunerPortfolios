@@ -34,10 +34,13 @@ type InterviewTab = (typeof INTERVIEW_TABS)[number];
 
 export function InterviewPage() {
   const { isAuthenticated } = useAuth();
-  const tutorialActive = useTutorialStore((s) => s.active);
+  const mode = useTutorialStore((s) => s.mode);
   const tutStep = useTutorialStore((s) => s.step);
-  const startTutorial = useTutorialStore((s) => s.start);
+  const startTutorial = useTutorialStore((s) => s.startTutorial);
+  const startDemo = useTutorialStore((s) => s.startDemo);
   const notifyTab = useTutorialStore((s) => s.notifyTab);
+  const mockActive = mode !== "off"; // 데모/튜토리얼 둘 다 더미·게이트 우회
+  const isTutorial = mode === "tutorial"; // 풍선·자동 진행은 튜토리얼만
   const [searchParams, setSearchParams] = useSearchParams();
 
   // 모드 선택 탭과 질문/리포트 탭이 공유하는 상태.
@@ -58,29 +61,32 @@ export function InterviewPage() {
   const goTab = (tab: string) => setSearchParams(tab === "modes" ? {} : { tab });
 
   const wantTutorial = searchParams.get("tutorial") === "1";
+  const wantDemo = searchParams.get("demo") === "1";
 
-  // 튜토리얼 모드에서는 실제 세션 없이도 더미 세션으로 흐름을 보여준다.
-  const effectiveSession = tutorialActive ? (activeSession ?? dummySession) : activeSession;
+  // 데모/튜토리얼 모드에서는 실제 세션 없이도 더미 세션으로 흐름을 보여준다.
+  const effectiveSession = mockActive ? (activeSession ?? dummySession) : activeSession;
 
-  // ?tutorial=1 로 진입하면 튜토리얼을 자동 시작한다.
+  // ?tutorial=1 / ?demo=1 로 진입하면 해당 모드를 자동 시작한다.
   useEffect(() => {
-    if (wantTutorial && !tutorialActive) startTutorial();
-  }, [wantTutorial, tutorialActive, startTutorial]);
+    if (mode !== "off") return;
+    if (wantTutorial) startTutorial();
+    else if (wantDemo) startDemo();
+  }, [wantTutorial, wantDemo, mode, startTutorial, startDemo]);
 
-  // 현재 step 에 tab 이 지정돼 있으면 그 탭으로 자동 전환한다.
+  // 튜토리얼: 현재 step 에 tab 이 지정돼 있으면 그 탭으로 자동 전환한다.
   useEffect(() => {
-    if (!tutorialActive) return;
+    if (!isTutorial) return;
     const target = TUT_STEPS[tutStep]?.tab;
     if (target && target !== activeTab) goTab(target);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tutorialActive, tutStep]);
+  }, [isTutorial, tutStep]);
 
-  // 사용자의 탭 이동을 엔진에 알린다 (awaitTab step 자동 진행).
+  // 튜토리얼: 사용자의 탭 이동을 엔진에 알린다 (awaitTab step 자동 진행).
   useEffect(() => {
-    if (tutorialActive) notifyTab(activeTab);
-  }, [activeTab, tutorialActive, notifyTab]);
+    if (isTutorial) notifyTab(activeTab);
+  }, [activeTab, isTutorial, notifyTab]);
 
-  if (!isAuthenticated && !tutorialActive && !wantTutorial) {
+  if (!isAuthenticated && !mockActive && !wantTutorial && !wantDemo) {
     return (
       <LoginRequiredState
         title="로그인이 필요합니다"
@@ -102,12 +108,20 @@ export function InterviewPage() {
               지원 건과 모드를 고르면 AI가 질문을 만들고, 답변을 평가해 리포트를 제공합니다
             </p>
           </div>
-          <button
-            onClick={startTutorial}
-            className="shrink-0 rounded-lg border border-indigo-200 bg-indigo-50 px-3 py-2 text-sm font-semibold text-indigo-600 transition-colors hover:bg-indigo-100"
-          >
-            둘러보기
-          </button>
+          <div className="flex shrink-0 gap-2">
+            <button
+              onClick={startDemo}
+              className="rounded-lg bg-indigo-600 px-3 py-2 text-sm font-semibold text-white transition-colors hover:bg-indigo-700"
+            >
+              체험하기
+            </button>
+            <button
+              onClick={startTutorial}
+              className="rounded-lg border border-indigo-200 bg-indigo-50 px-3 py-2 text-sm font-semibold text-indigo-600 transition-colors hover:bg-indigo-100"
+            >
+              둘러보기
+            </button>
+          </div>
         </div>
 
         <Tabs value={activeTab} onValueChange={goTab}>

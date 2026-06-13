@@ -37,7 +37,7 @@ type Status = "idle" | "connecting" | "live" | "analyzing" | "scored" | "error";
  * 원본 영상은 서버에 올리지 않는다 — 점수(JSON)만 저장, 원하면 로컬 다운로드 (ADR-002).
  */
 export function AvatarTab({ session }: { session: InterviewSession | null }) {
-  const tutorialActive = useTutorialStore((s) => s.active);
+  const tutorialActive = useTutorialStore((s) => s.mode !== "off");
   const [status, setStatus] = useState<Status>("idle");
   const [error, setError] = useState<string | null>(null);
   const [note, setNote] = useState<string | null>(null);
