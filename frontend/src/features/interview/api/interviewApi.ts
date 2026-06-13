@@ -39,6 +39,10 @@ import type {
 // 데이터성 탭(질문·복습·리포트)은 이 분기만으로 더미가 채워진다.
 // 음성/아바타(realtime·avatar)는 외부 SDK 연결이라 여기서 막지 않고 탭에서 처리한다(단계 C).
 
+/** 데모/튜토리얼에서 AI 호출처럼 보이도록 더미 응답을 잠깐 지연시킨다. */
+const mockDelay = <T>(value: T, ms = 800): Promise<T> =>
+  new Promise((resolve) => setTimeout(() => resolve(value), ms));
+
 /** 내 면접 세션 목록 (최근 기록). */
 export function listInterviewSessions(): Promise<InterviewSession[]> {
   if (isDataMockActive()) return Promise.resolve([dummySession]);
@@ -61,7 +65,7 @@ export function generateExpectedQuestions(
   sessionId: number,
   request: GenerateQuestionsRequest,
 ): Promise<InterviewQuestion[]> {
-  if (isDataMockActive()) return Promise.resolve(dummyQuestions);
+  if (isDataMockActive()) return mockDelay(dummyQuestions, 900);
   return api<InterviewQuestion[]>(`/interview/sessions/${sessionId}/generate-questions`, {
     method: "POST",
     body: JSON.stringify(request),
@@ -79,7 +83,7 @@ export function submitAnswer(
   questionId: number,
   request: SubmitAnswerRequest,
 ): Promise<InterviewAnswer> {
-  if (isDataMockActive()) return Promise.resolve(dummyAnswer(questionId));
+  if (isDataMockActive()) return mockDelay(dummyAnswer(questionId), 500);
   return api<InterviewAnswer>(`/interview/questions/${questionId}/answers`, {
     method: "POST",
     body: JSON.stringify(request),
@@ -88,7 +92,7 @@ export function submitAnswer(
 
 /** 질문에 대한 모범답안 생성(학습용). 답변 제출 전에도 호출 가능. */
 export function getModelAnswer(questionId: number): Promise<{ modelAnswer: string }> {
-  if (isDataMockActive()) return Promise.resolve({ modelAnswer: dummyModelAnswer });
+  if (isDataMockActive()) return mockDelay({ modelAnswer: dummyModelAnswer }, 700);
   return api<{ modelAnswer: string }>(`/interview/questions/${questionId}/model-answer`, {
     method: "POST",
   });
@@ -99,7 +103,7 @@ export function generateFollowUps(
   questionId: number,
   request: GenerateFollowUpsRequest = {},
 ): Promise<InterviewQuestion[]> {
-  if (isDataMockActive()) return Promise.resolve([...dummyQuestions, dummyFollowUp]);
+  if (isDataMockActive()) return mockDelay([...dummyQuestions, dummyFollowUp], 800);
   return api<InterviewQuestion[]>(`/interview/questions/${questionId}/follow-ups`, {
     method: "POST",
     body: JSON.stringify(request),
@@ -134,7 +138,7 @@ export function createRealtimeSession(sessionId: number): Promise<RealtimeSessio
 
 /** 세션 종료 → AI 종합 리포트 생성/조회. */
 export function getInterviewReport(sessionId: number): Promise<InterviewReport> {
-  if (isDataMockActive()) return Promise.resolve(dummyReport);
+  if (isDataMockActive()) return mockDelay(dummyReport, 700);
   return api<InterviewReport>(`/interview/sessions/${sessionId}/report`, { method: "GET" });
 }
 
