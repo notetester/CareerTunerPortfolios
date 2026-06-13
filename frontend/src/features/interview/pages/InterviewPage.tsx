@@ -14,6 +14,8 @@ import { AvatarTab } from "../components/AvatarTab";
 import { EvaluationCriteriaTab } from "../components/EvaluationCriteriaTab";
 import { CorrectionInfoTab } from "../components/CorrectionInfoTab";
 import { InterviewReportTab } from "../components/InterviewReportTab";
+import { useTutorialStore } from "../tutorial/tutorialStore";
+import { dummySession } from "../tutorial/dummyData";
 import type { InterviewMode, InterviewSession } from "../types/interview";
 
 const INTERVIEW_TABS = [
@@ -30,6 +32,7 @@ type InterviewTab = (typeof INTERVIEW_TABS)[number];
 
 export function InterviewPage() {
   const { isAuthenticated } = useAuth();
+  const tutorialActive = useTutorialStore((s) => s.active);
   const [searchParams, setSearchParams] = useSearchParams();
 
   // 모드 선택 탭과 질문/리포트 탭이 공유하는 상태.
@@ -49,7 +52,10 @@ export function InterviewPage() {
 
   const goTab = (tab: string) => setSearchParams(tab === "modes" ? {} : { tab });
 
-  if (!isAuthenticated) {
+  // 튜토리얼 모드에서는 실제 세션 없이도 더미 세션으로 흐름을 보여준다.
+  const effectiveSession = tutorialActive ? (activeSession ?? dummySession) : activeSession;
+
+  if (!isAuthenticated && !tutorialActive) {
     return (
       <LoginRequiredState
         title="로그인이 필요합니다"
@@ -114,19 +120,19 @@ export function InterviewPage() {
           </TabsContent>
 
           <TabsContent value="questions" className="mt-6">
-            <ExpectedQuestionsTab session={activeSession} onGoToPractice={() => goTab("practice")} />
+            <ExpectedQuestionsTab session={effectiveSession} onGoToPractice={() => goTab("practice")} />
           </TabsContent>
 
           <TabsContent value="practice" className="mt-6">
-            <PracticeTab session={activeSession} onGoToReport={() => goTab("report")} />
+            <PracticeTab session={effectiveSession} onGoToReport={() => goTab("report")} />
           </TabsContent>
 
           <TabsContent value="live" className="mt-6">
-            <RealtimeInterviewTab session={activeSession} />
+            <RealtimeInterviewTab session={effectiveSession} />
           </TabsContent>
 
           <TabsContent value="avatar" className="mt-6">
-            <AvatarTab session={activeSession} />
+            <AvatarTab session={effectiveSession} />
           </TabsContent>
 
           <TabsContent value="evaluation" className="mt-6">
@@ -138,7 +144,7 @@ export function InterviewPage() {
           </TabsContent>
 
           <TabsContent value="report" className="mt-6">
-            <InterviewReportTab session={activeSession} />
+            <InterviewReportTab session={effectiveSession} />
           </TabsContent>
         </Tabs>
       </div>
