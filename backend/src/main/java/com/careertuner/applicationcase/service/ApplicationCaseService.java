@@ -52,6 +52,8 @@ public interface ApplicationCaseService {
 
     ApplicationCaseExtractionResponse getLatestJobPostingExtraction(Long userId, Long applicationCaseId);
 
+    List<ApplicationCaseExtractionResponse> getLatestJobPostingExtractions(Long userId, List<Long> applicationCaseIds);
+
     ApplicationCaseExtractionResponse retryJobPostingExtraction(Long userId, Long applicationCaseId);
 
     JobAnalysisResponse createMockJobAnalysis(Long userId, Long applicationCaseId);

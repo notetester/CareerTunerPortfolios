@@ -215,7 +215,7 @@ public class ApplicationCaseExtractionWorker {
                 .jobTitle(defaultText(metadata == null ? null : metadata.jobTitle(),
                         existing.getJobTitle(),
                         DEFAULT_JOB_TITLE))
-                .postingDate(defaultDate(metadata == null ? null : metadata.postingDate(), existing.getPostingDate()))
+                .postingDate(existing.getPostingDate())
                 .deadlineDate(defaultDate(metadata == null ? null : metadata.deadlineDate(), existing.getDeadlineDate()))
                 .sourceType(existing.getSourceType())
                 .status(existing.getStatus())

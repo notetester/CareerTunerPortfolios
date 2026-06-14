@@ -198,7 +198,7 @@ function ApplicationCard({
           <div className="min-w-0 space-y-1">
             <span className="flex items-center gap-1.5">
               <CalendarDays className="size-3.5" />
-              공고 {formatDate(applicationCase.postingDate)}
+              등록 {formatDate(applicationCase.createdAt)}
             </span>
             <span className="flex items-center gap-1.5">
               <CalendarDays className="size-3.5" />

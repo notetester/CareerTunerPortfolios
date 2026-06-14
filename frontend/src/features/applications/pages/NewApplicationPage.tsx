@@ -1,4 +1,4 @@
-import { type FormEvent, type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { type ChangeEvent, type FormEvent, type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router";
 import {
   AlertCircle,
@@ -53,7 +53,6 @@ type FileSourceType = Extract<ApplicationSourceType, "PDF" | "IMAGE">;
 interface BasicFormState {
   companyName: string;
   jobTitle: string;
-  postingDate: string;
   deadlineDate: string;
   favorite: boolean;
 }
@@ -83,6 +82,27 @@ function isFileSource(sourceType: ApplicationSourceType): sourceType is FileSour
 
 function isTextSource(sourceType: ApplicationSourceType): boolean {
   return sourceType === "TEXT" || sourceType === "MANUAL";
+}
+
+function isHttpPostingUrl(value: string): boolean {
+  try {
+    const url = new URL(value);
+    return url.protocol === "http:" || url.protocol === "https:";
+  } catch {
+    return false;
+  }
+}
+
+function validatePostingFile(sourceType: FileSourceType, file: File): string | null {
+  if (sourceType === "PDF" && file.type !== "application/pdf") {
+    return "PDF 방식에는 application/pdf 파일만 업로드할 수 있습니다.";
+  }
+
+  if (sourceType === "IMAGE" && !file.type.startsWith("image/")) {
+    return "이미지 방식에는 image/* 파일만 업로드할 수 있습니다.";
+  }
+
+  return null;
 }
 
 function buildRevisionRequest(jobPosting: JobPosting, confirmedText: string): JobPostingRequest {
@@ -120,7 +140,6 @@ export function NewApplicationPage() {
   const [basicForm, setBasicForm] = useState<BasicFormState>({
     companyName: "",
     jobTitle: "",
-    postingDate: "",
     deadlineDate: "",
     favorite: false,
   });
@@ -144,6 +163,39 @@ export function NewApplicationPage() {
     setPostingForm((current) => ({ ...current, [key]: value }));
   };
 
+  const handlePostingSourceTypeChange = (nextSourceType: ApplicationSourceType) => {
+    setPostingForm((current) => {
+      if (current.sourceType === nextSourceType) return current;
+
+      return {
+        sourceType: nextSourceType,
+        text: isTextSource(nextSourceType) && isTextSource(current.sourceType) ? current.text : "",
+        url: "",
+        file: null,
+      };
+    });
+    setError(null);
+  };
+
+  const handlePostingFileChange = (event: ChangeEvent<HTMLInputElement>) => {
+    const nextFile = event.target.files?.[0] ?? null;
+    if (!nextFile || !isFileSource(postingForm.sourceType)) {
+      setPostingField("file", null);
+      return;
+    }
+
+    const validationError = validatePostingFile(postingForm.sourceType, nextFile);
+    if (validationError) {
+      event.currentTarget.value = "";
+      setPostingField("file", null);
+      setError(validationError);
+      return;
+    }
+
+    setError(null);
+    setPostingField("file", nextFile);
+  };
+
   const applyCaseAndPosting = useCallback((
     applicationCase: ApplicationCase,
     extractedPosting: JobPosting | null,
@@ -154,7 +206,6 @@ export function NewApplicationPage() {
     setBasicForm({
       companyName: applicationCase.companyName || "",
       jobTitle: applicationCase.jobTitle || "",
-      postingDate: applicationCase.postingDate ?? "",
       deadlineDate: applicationCase.deadlineDate ?? "",
       favorite: applicationCase.favorite,
     });
@@ -186,9 +237,6 @@ export function NewApplicationPage() {
       jobTitle: nextExtractionJob.status === "SUCCEEDED"
         ? metadata.jobTitle || applicationCase.jobTitle || ""
         : applicationCase.jobTitle || "",
-      postingDate: nextExtractionJob.status === "SUCCEEDED"
-        ? metadata.postingDate ?? applicationCase.postingDate ?? ""
-        : applicationCase.postingDate ?? "",
       deadlineDate: nextExtractionJob.status === "SUCCEEDED"
         ? metadata.deadlineDate ?? applicationCase.deadlineDate ?? ""
         : applicationCase.deadlineDate ?? "",
@@ -209,11 +257,18 @@ export function NewApplicationPage() {
         if (!postingForm.file) {
           throw new Error("업로드할 파일을 선택하세요.");
         }
+        const validationError = validatePostingFile(postingForm.sourceType, postingForm.file);
+        if (validationError) {
+          throw new Error(validationError);
+        }
         response = await uploadApplicationCaseFromJobPosting(postingForm.file, postingForm.sourceType, false);
       } else if (postingForm.sourceType === "URL") {
         const url = postingForm.url.trim();
         if (!url) {
           throw new Error("공고 URL을 입력하세요.");
+        }
+        if (!isHttpPostingUrl(url)) {
+          throw new Error("공고 URL은 http:// 또는 https://로 시작해야 합니다.");
         }
         response = await createApplicationCaseFromJobPosting({
           uploadedFileUrl: url,
@@ -312,8 +367,6 @@ export function NewApplicationPage() {
     const updated = await updateApplicationCase(createdCase.id, {
       companyName,
       jobTitle,
-      postingDate: basicForm.postingDate || null,
-      clearPostingDate: !basicForm.postingDate,
       deadlineDate: basicForm.deadlineDate || null,
       clearDeadlineDate: !basicForm.deadlineDate,
       sourceType: nextPosting.sourceType,
@@ -468,18 +521,17 @@ export function NewApplicationPage() {
                 <div className="rounded-lg border border-blue-100 bg-blue-50 px-4 py-3 text-sm font-medium text-blue-800">
                   공고문 추출을 시작하면 새 지원 건이 생성됩니다.
                 </div>
+                {busy && (
+                  <div className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+                    <Loader2 className="mt-0.5 size-4 shrink-0 animate-spin" />
+                    <span>지원 건을 임시 분석중 상태로 만들고 공고문 추출을 준비하고 있습니다. 완료되면 확인 단계로 이동합니다.</span>
+                  </div>
+                )}
 
                 <Field label="공고문 등록 방식">
                   <Select
                     value={postingForm.sourceType}
-                    onValueChange={(value) => {
-                      const nextSourceType = value as ApplicationSourceType;
-                      setPostingForm((current) => ({
-                        ...current,
-                        sourceType: nextSourceType,
-                        file: current.sourceType === nextSourceType ? current.file : null,
-                      }));
-                    }}
+                    onValueChange={(value) => handlePostingSourceTypeChange(value as ApplicationSourceType)}
                   >
                     <SelectTrigger>
                       <SelectValue />
@@ -519,17 +571,18 @@ export function NewApplicationPage() {
                 {isFileSource(postingForm.sourceType) && (
                   <Field label="공고 파일" htmlFor="postingFile">
                     <Input
+                      key={postingForm.sourceType}
                       id="postingFile"
                       type="file"
                       accept={postingForm.sourceType === "PDF" ? "application/pdf" : "image/*"}
-                      onChange={(event) => setPostingField("file", event.target.files?.[0] ?? null)}
+                      onChange={handlePostingFileChange}
                     />
                   </Field>
                 )}
 
                 <StepActions
                   busy={busy}
-                  primaryLabel="공고문 추출 시작"
+                  primaryLabel={busy ? "지원 건 생성 및 추출 준비 중" : "공고문 추출 시작"}
                   primaryIcon={Upload}
                 />
               </form>
@@ -585,15 +638,7 @@ export function NewApplicationPage() {
                       </Field>
                     </div>
 
-                    <div className="grid gap-4 md:grid-cols-2">
-                      <Field label="공고일" htmlFor="postingDate">
-                        <Input
-                          id="postingDate"
-                          type="date"
-                          value={basicForm.postingDate}
-                          onChange={(event) => setBasicField("postingDate", event.target.value)}
-                        />
-                      </Field>
+                    <div className="max-w-md">
                       <Field label="마감일" htmlFor="deadlineDate">
                         <Input
                           id="deadlineDate"
@@ -712,7 +757,7 @@ function ExtractionProgressState({
             <span className="text-sm font-bold text-blue-900">공고문을 분석 가능한 텍스트로 추출하고 있습니다.</span>
           </div>
           <p className="text-sm leading-6 text-blue-800">
-            지원 건은 이미 생성됐습니다. 이 화면을 나가도 추출은 계속 진행되며, 완료되면 알림으로 알려드립니다.
+            지원 건은 이미 생성됐고 완료 전까지 임시 분석중 상태로 보일 수 있습니다. 이 화면을 나가도 추출은 계속 진행되며, 완료되면 알림으로 알려드립니다.
           </p>
         </div>
         <Loader2 className="size-5 shrink-0 animate-spin text-blue-700" />

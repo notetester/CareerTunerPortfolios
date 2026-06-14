@@ -23,6 +23,10 @@ public interface ApplicationCaseMapper {
 
     int updateApplicationCase(ApplicationCase applicationCase);
 
+    int updateApplicationCaseSourceType(@Param("id") Long id,
+                                        @Param("userId") Long userId,
+                                        @Param("sourceType") String sourceType);
+
     int markAnalysisCompleted(@Param("id") Long id, @Param("userId") Long userId);
 
     int markAnalysisStarted(@Param("id") Long id,

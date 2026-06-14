@@ -25,17 +25,80 @@
         LEFT JOIN application_case ac ON aul.application_case_id = ac.id
     </sql>
 
+    <sql id="BUsageLogWhere">
+        WHERE aul.feature_type IN ('JOB_ANALYSIS', 'COMPANY_RESEARCH', 'JOB_POSTING_OCR')
+        <if test="criteria.featureType != null">
+            AND aul.feature_type = #{criteria.featureType}
+        </if>
+        <if test="criteria.status != null">
+            AND aul.status = #{criteria.status}
+        </if>
+        <if test="criteria.keyword != null">
+            AND (
+                u.email LIKE CONCAT('%', #{criteria.keyword}, '%')
+                OR ac.company_name LIKE CONCAT('%', #{criteria.keyword}, '%')
+                OR ac.job_title LIKE CONCAT('%', #{criteria.keyword}, '%')
+                OR aul.feature_type LIKE CONCAT('%', #{criteria.keyword}, '%')
+                OR aul.status LIKE CONCAT('%', #{criteria.keyword}, '%')
+                OR aul.model LIKE CONCAT('%', #{criteria.keyword}, '%')
+                OR aul.error_message LIKE CONCAT('%', #{criteria.keyword}, '%')
+            )
+        </if>
+        <if test="criteria.applicationCaseId != null">
+            AND aul.application_case_id = #{criteria.applicationCaseId}
+        </if>
+        <if test="criteria.userId != null">
+            AND aul.user_id = #{criteria.userId}
+        </if>
+        <if test="criteria.model != null">
+            AND aul.model = #{criteria.model}
+        </if>
+        <if test="criteria.createdFrom != null">
+            AND aul.created_at &gt;= #{criteria.createdFrom}
+        </if>
+        <if test="criteria.createdTo != null">
+            AND aul.created_at &lt; DATE_ADD(#{criteria.createdTo}, INTERVAL 1 DAY)
+        </if>
+    </sql>
+
+    <sql id="BUsageLogOrderBy">
+        <choose>
+            <when test="criteria.sort == 'CREATED_AT_ASC'">ORDER BY aul.created_at ASC, aul.id ASC</when>
+            <when test="criteria.sort == 'TOKEN_USAGE_DESC'">ORDER BY aul.token_usage DESC, aul.id DESC</when>
+            <when test="criteria.sort == 'TOKEN_USAGE_ASC'">ORDER BY aul.token_usage IS NULL, aul.token_usage ASC, aul.id ASC</when>
+            <when test="criteria.sort == 'CREDIT_USED_DESC'">ORDER BY aul.credit_used DESC, aul.id DESC</when>
+            <when test="criteria.sort == 'CREDIT_USED_ASC'">ORDER BY aul.credit_used ASC, aul.id ASC</when>
+            <when test="criteria.sort == 'MODEL_DESC'">ORDER BY aul.model DESC, aul.id DESC</when>
+            <when test="criteria.sort == 'MODEL_ASC'">ORDER BY aul.model IS NULL, aul.model ASC, aul.id ASC</when>
+            <when test="criteria.sort == 'FEATURE_TYPE_DESC'">ORDER BY aul.feature_type DESC, aul.id DESC</when>
+            <when test="criteria.sort == 'FEATURE_TYPE_ASC'">ORDER BY aul.feature_type ASC, aul.id ASC</when>
+            <when test="criteria.sort == 'STATUS_DESC'">ORDER BY aul.status DESC, aul.id DESC</when>
+            <when test="criteria.sort == 'STATUS_ASC'">ORDER BY aul.status ASC, aul.id ASC</when>
+            <otherwise>ORDER BY aul.created_at DESC, aul.id DESC</otherwise>
+        </choose>
+    </sql>
+
     <select id="findBUsageLogs" resultType="com.careertuner.admin.aiusage.dto.AdminAiUsageLogRow">
         <include refid="BUsageLogSelect"/>
-        WHERE aul.feature_type IN ('JOB_ANALYSIS', 'COMPANY_RESEARCH', 'JOB_POSTING_OCR')
-        <if test="featureType != null">
-            AND aul.feature_type = #{featureType}
-        </if>
-        <if test="status != null">
-            AND aul.status = #{status}
-        </if>
-        ORDER BY aul.created_at DESC, aul.id DESC
-        LIMIT #{limit}
+        <include refid="BUsageLogWhere"/>
+        <include refid="BUsageLogOrderBy"/>
+        LIMIT #{criteria.limit} OFFSET #{criteria.offset}
+    </select>
+
+    <select id="summarizeBUsageLogs" resultType="com.careertuner.admin.aiusage.dto.AdminAiUsageSummary">
+        SELECT
+            COUNT(*) AS total_count,
+            COALESCE(SUM(CASE WHEN aul.status = 'SUCCESS' THEN 1 ELSE 0 END), 0) AS success_count,
+            COALESCE(SUM(CASE WHEN aul.status = 'FAILED' THEN 1 ELSE 0 END), 0) AS failed_count,
+            COALESCE(SUM(aul.token_usage), 0) AS token_usage,
+            COALESCE(SUM(aul.credit_used), 0) AS credit_used,
+            COALESCE(SUM(CASE WHEN aul.feature_type = 'JOB_ANALYSIS' THEN 1 ELSE 0 END), 0) AS job_analysis_count,
+            COALESCE(SUM(CASE WHEN aul.feature_type = 'COMPANY_RESEARCH' THEN 1 ELSE 0 END), 0) AS company_research_count,
+            COALESCE(SUM(CASE WHEN aul.feature_type = 'JOB_POSTING_OCR' THEN 1 ELSE 0 END), 0) AS job_posting_ocr_count
+        FROM ai_usage_log aul
+        JOIN users u ON aul.user_id = u.id
+        LEFT JOIN application_case ac ON aul.application_case_id = ac.id
+        <include refid="BUsageLogWhere"/>
     </select>
 
     <select id="findBUsageLogsByCaseId" resultType="com.careertuner.admin.aiusage.dto.AdminAiUsageLogRow">

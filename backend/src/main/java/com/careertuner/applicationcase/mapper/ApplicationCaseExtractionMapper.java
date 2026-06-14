@@ -17,6 +17,10 @@ public interface ApplicationCaseExtractionMapper {
 
     ApplicationCaseExtraction findLatestExtractionByApplicationCaseId(@Param("applicationCaseId") Long applicationCaseId);
 
+    List<ApplicationCaseExtraction> findLatestExtractionsByApplicationCaseIdsAndUserId(
+            @Param("userId") Long userId,
+            @Param("applicationCaseIds") List<Long> applicationCaseIds);
+
     List<ApplicationCaseExtraction> findStaleRunningExtractions(@Param("startedBefore") LocalDateTime startedBefore,
                                                                 @Param("limit") int limit);
 

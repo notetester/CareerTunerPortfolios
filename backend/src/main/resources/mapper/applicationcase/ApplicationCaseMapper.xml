@@ -64,6 +64,15 @@
         WHERE id = #{id} AND user_id = #{userId} AND deleted_at IS NULL
     </update>
 
+    <update id="updateApplicationCaseSourceType">
+        UPDATE application_case
+        SET source_type = #{sourceType}
+        WHERE id = #{id}
+          AND user_id = #{userId}
+          AND deleted_at IS NULL
+          AND source_type &lt;&gt; #{sourceType}
+    </update>
+
     <update id="markAnalysisCompleted">
         UPDATE application_case
         SET status = CASE

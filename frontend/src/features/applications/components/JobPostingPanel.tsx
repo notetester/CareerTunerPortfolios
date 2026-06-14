@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { type ChangeEvent, useEffect, useMemo, useState } from "react";
 import { FileText, FileUp, Image, Link as LinkIcon, Loader2, PencilLine, RefreshCw, Save, Upload } from "lucide-react";
 import { Button } from "@/app/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/app/components/ui/card";
@@ -48,6 +48,30 @@ function isFileSource(sourceType: ApplicationSourceType): sourceType is Extract<
   return sourceType === "PDF" || sourceType === "IMAGE";
 }
 
+function isHttpPostingUrl(value: string): boolean {
+  try {
+    const url = new URL(value);
+    return url.protocol === "http:" || url.protocol === "https:";
+  } catch {
+    return false;
+  }
+}
+
+function validatePostingFile(
+  sourceType: Extract<ApplicationSourceType, "PDF" | "IMAGE">,
+  file: File,
+): string | null {
+  if (sourceType === "PDF" && file.type !== "application/pdf") {
+    return "PDF 방식에는 application/pdf 파일만 업로드할 수 있습니다.";
+  }
+
+  if (sourceType === "IMAGE" && !file.type.startsWith("image/")) {
+    return "이미지 방식에는 image/* 파일만 업로드할 수 있습니다.";
+  }
+
+  return null;
+}
+
 export function JobPostingPanel({
   jobPosting,
   revisions,
@@ -81,6 +105,35 @@ export function JobPostingPanel({
   useEffect(() => setSourceUrl(initialUrl), [initialUrl]);
   useEffect(() => setSourceType(initialSourceType), [initialSourceType]);
 
+  const handleSourceTypeChange = (nextSourceType: ApplicationSourceType) => {
+    if (nextSourceType === sourceType) return;
+
+    setSourceType(nextSourceType);
+    setText(isTextSource(nextSourceType) && isTextSource(sourceType) ? text : "");
+    setSourceUrl("");
+    setFile(null);
+    setLocalError(null);
+  };
+
+  const handleFileChange = (event: ChangeEvent<HTMLInputElement>) => {
+    const nextFile = event.target.files?.[0] ?? null;
+    if (!nextFile || !isFileSource(sourceType)) {
+      setFile(null);
+      return;
+    }
+
+    const validationError = validatePostingFile(sourceType, nextFile);
+    if (validationError) {
+      event.currentTarget.value = "";
+      setFile(null);
+      setLocalError(validationError);
+      return;
+    }
+
+    setLocalError(null);
+    setFile(nextFile);
+  };
+
   const handleSave = async () => {
     const value = text.trim();
     const url = sourceUrl.trim();
@@ -91,6 +144,10 @@ export function JobPostingPanel({
     }
     if (sourceType === "URL" && !url) {
       setLocalError("공고 URL을 입력해 주세요.");
+      return;
+    }
+    if (sourceType === "URL" && !isHttpPostingUrl(url)) {
+      setLocalError("공고 URL은 http:// 또는 https://로 시작해야 합니다.");
       return;
     }
     if (isFileSource(sourceType) && !value && !url) {
@@ -112,6 +169,11 @@ export function JobPostingPanel({
     if (!isFileSource(sourceType)) return;
     if (!file) {
       setLocalError("업로드할 파일을 선택해 주세요.");
+      return;
+    }
+    const validationError = validatePostingFile(sourceType, file);
+    if (validationError) {
+      setLocalError(validationError);
       return;
     }
     setLocalError(null);
@@ -211,10 +273,7 @@ export function JobPostingPanel({
                       ? "border-blue-600 bg-blue-50 text-blue-700"
                       : "border-slate-200 bg-white text-slate-600 hover:border-blue-200 hover:bg-slate-50"
                   }`}
-                  onClick={() => {
-                    setSourceType(option.value);
-                    setLocalError(null);
-                  }}
+                  onClick={() => handleSourceTypeChange(option.value)}
                 >
                   <option.icon className="size-4" />
                   <span>{option.label}</span>
@@ -250,10 +309,11 @@ export function JobPostingPanel({
                     {sourceType === "PDF" ? "PDF 파일" : "이미지 파일"}
                   </label>
                   <Input
+                    key={sourceType}
                     id="job-posting-file"
                     type="file"
                     accept={sourceType === "PDF" ? "application/pdf" : "image/png,image/jpeg,image/webp,image/gif"}
-                    onChange={(event) => setFile(event.target.files?.[0] ?? null)}
+                    onChange={handleFileChange}
                     className="bg-white"
                   />
                 </div>

@@ -13,11 +13,15 @@ import static org.mockito.Mockito.when;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.util.List;
 
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 
 import com.careertuner.admin.companyanalysis.dto.AdminCompanyAnalysisMetadataRequest;
+import com.careertuner.admin.companyanalysis.dto.AdminCompanyAnalysisSearchCriteria;
 import com.careertuner.admin.companyanalysis.mapper.AdminCompanyAnalysisMapper;
 import com.careertuner.common.exception.BusinessException;
 import com.careertuner.common.exception.ErrorCode;
@@ -25,6 +29,60 @@ import com.careertuner.common.security.AuthUser;
 import com.careertuner.companyanalysis.mapper.CompanyAnalysisMapper;
 
 class AdminCompanyAnalysisServiceTest {
+
+    @Test
+    void companyAnalysesNormalizesCriteriaBeforeMapperCall() {
+        AdminCompanyAnalysisMapper mapper = mock(AdminCompanyAnalysisMapper.class);
+        CompanyAnalysisMapper companyAnalysisMapper = mock(CompanyAnalysisMapper.class);
+        AdminCompanyAnalysisService service = new AdminCompanyAnalysisService(mapper, companyAnalysisMapper);
+        when(mapper.findCompanyAnalyses(any())).thenReturn(List.of());
+
+        service.companyAnalyses(admin(), AdminCompanyAnalysisSearchCriteria.builder()
+                .keyword(" naver ")
+                .sourceType("job-posting")
+                .industry(" fintech ")
+                .confirmed(false)
+                .hasMemo(true)
+                .checked(true)
+                .refreshDue(false)
+                .applicationCaseId(10L)
+                .userId(20L)
+                .createdFrom(LocalDate.of(2026, 6, 1))
+                .createdTo(LocalDate.of(2026, 6, 30))
+                .sort("refreshRecommendedAt.asc")
+                .limit(500)
+                .offset(-2)
+                .build());
+
+        ArgumentCaptor<AdminCompanyAnalysisSearchCriteria> captor =
+                ArgumentCaptor.forClass(AdminCompanyAnalysisSearchCriteria.class);
+        verify(mapper).findCompanyAnalyses(captor.capture());
+        AdminCompanyAnalysisSearchCriteria criteria = captor.getValue();
+        assertThat(criteria.keyword()).isEqualTo("naver");
+        assertThat(criteria.sourceType()).isEqualTo("JOB_POSTING");
+        assertThat(criteria.industry()).isEqualTo("fintech");
+        assertThat(criteria.sort()).isEqualTo("REFRESH_RECOMMENDED_AT_ASC");
+        assertThat(criteria.limit()).isEqualTo(200);
+        assertThat(criteria.offset()).isZero();
+        assertThat(criteria.confirmed()).isFalse();
+        assertThat(criteria.hasMemo()).isTrue();
+    }
+
+    @Test
+    void companyAnalysesRejectsInvalidSourceType() {
+        AdminCompanyAnalysisMapper mapper = mock(AdminCompanyAnalysisMapper.class);
+        CompanyAnalysisMapper companyAnalysisMapper = mock(CompanyAnalysisMapper.class);
+        AdminCompanyAnalysisService service = new AdminCompanyAnalysisService(mapper, companyAnalysisMapper);
+
+        assertThatThrownBy(() -> service.companyAnalyses(admin(), AdminCompanyAnalysisSearchCriteria.builder()
+                .sourceType("unknown")
+                .build()))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(throwable -> assertThat(((BusinessException) throwable).getErrorCode())
+                        .isEqualTo(ErrorCode.INVALID_INPUT));
+
+        verify(mapper, never()).findCompanyAnalyses(any());
+    }
 
     @Test
     void updateMetadataRequiresAdminRole() {

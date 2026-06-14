@@ -77,6 +77,13 @@ public class ApplicationCaseController {
         return ApiResponse.ok(applicationCaseService.getActiveExtractions(authUser.id()));
     }
 
+    @GetMapping("/job-posting/extractions/latest")
+    public ApiResponse<List<ApplicationCaseExtractionResponse>> getLatestJobPostingExtractions(
+            @AuthenticationPrincipal AuthUser authUser,
+            @RequestParam(required = false) List<Long> applicationCaseIds) {
+        return ApiResponse.ok(applicationCaseService.getLatestJobPostingExtractions(authUser.id(), applicationCaseIds));
+    }
+
     @GetMapping("/{id}")
     public ApiResponse<ApplicationCaseResponse> get(@AuthenticationPrincipal AuthUser authUser,
                                                     @PathVariable Long id) {

@@ -15,14 +15,14 @@ import tools.jackson.databind.ObjectMapper;
 class OpenAiResponsesClientMetadataTest {
 
     @Test
-    void parseJobPostingMetadataConvertsInvalidOrBlankDatesToNull() throws Exception {
+    void parseJobPostingMetadataIgnoresPostingDateAndParsesDeadlineDate() throws Exception {
         ObjectMapper objectMapper = new ObjectMapper();
         JsonNode payload = objectMapper.readTree("""
                 {
                   "companyName": "Acme",
                   "jobTitle": "Backend Engineer",
                   "postingDate": "2026-06-01",
-                  "deadlineDate": "not clear"
+                  "deadlineDate": "2026-07-31"
                 }
                 """);
 
@@ -32,8 +32,8 @@ class OpenAiResponsesClientMetadataTest {
 
         assertThat(result.companyName()).isEqualTo("Acme");
         assertThat(result.jobTitle()).isEqualTo("Backend Engineer");
-        assertThat(result.postingDate()).isEqualTo(LocalDate.of(2026, 6, 1));
-        assertThat(result.deadlineDate()).isNull();
+        assertThat(result.postingDate()).isNull();
+        assertThat(result.deadlineDate()).isEqualTo(LocalDate.of(2026, 7, 31));
         assertThat(result.usage().totalTokens()).isEqualTo(15);
     }
 }

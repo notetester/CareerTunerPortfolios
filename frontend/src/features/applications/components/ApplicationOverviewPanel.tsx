@@ -55,7 +55,6 @@ function formatDate(value: string | null): string {
 interface BasicFormState {
   companyName: string;
   jobTitle: string;
-  postingDate: string;
   deadlineDate: string;
   sourceType: ApplicationSourceType;
 }
@@ -74,7 +73,6 @@ export function ApplicationOverviewPanel({
   const [form, setForm] = useState<BasicFormState>({
     companyName: applicationCase.companyName,
     jobTitle: applicationCase.jobTitle,
-    postingDate: applicationCase.postingDate ?? "",
     deadlineDate: applicationCase.deadlineDate ?? "",
     sourceType: applicationCase.sourceType,
   });
@@ -84,7 +82,6 @@ export function ApplicationOverviewPanel({
     setForm({
       companyName: applicationCase.companyName,
       jobTitle: applicationCase.jobTitle,
-      postingDate: applicationCase.postingDate ?? "",
       deadlineDate: applicationCase.deadlineDate ?? "",
       sourceType: applicationCase.sourceType,
     });
@@ -119,8 +116,6 @@ export function ApplicationOverviewPanel({
     await update({
       companyName,
       jobTitle,
-      postingDate: form.postingDate || null,
-      clearPostingDate: !form.postingDate,
       deadlineDate: form.deadlineDate || null,
       clearDeadlineDate: !form.deadlineDate,
       sourceType: form.sourceType,
@@ -220,20 +215,7 @@ export function ApplicationOverviewPanel({
                 </div>
               </div>
 
-              <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-                <div className="space-y-2">
-                  <label className="text-sm font-semibold text-slate-700" htmlFor="detail-posting-date">
-                    공고일
-                  </label>
-                  <Input
-                    id="detail-posting-date"
-                    type="date"
-                    value={form.postingDate}
-                    onChange={(event) => setField("postingDate", event.target.value)}
-                    disabled={updating}
-                    className="bg-white"
-                  />
-                </div>
+              <div className="grid gap-4 sm:grid-cols-2">
                 <div className="space-y-2">
                   <label className="text-sm font-semibold text-slate-700" htmlFor="detail-deadline-date">
                     마감일
@@ -296,9 +278,9 @@ export function ApplicationOverviewPanel({
               <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
                 <div className="mb-2 flex items-center gap-2 text-xs font-semibold text-slate-500">
                   <CalendarDays className="size-4" />
-                  공고일
+                  등록일
                 </div>
-                <div className="text-sm font-semibold text-slate-900">{formatDate(applicationCase.postingDate)}</div>
+                <div className="text-sm font-semibold text-slate-900">{formatDate(applicationCase.createdAt)}</div>
               </div>
               <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
                 <div className="mb-2 flex items-center gap-2 text-xs font-semibold text-slate-500">

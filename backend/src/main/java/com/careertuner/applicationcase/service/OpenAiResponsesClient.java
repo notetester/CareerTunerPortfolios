@@ -106,8 +106,10 @@ public class OpenAiResponsesClient {
                 """
                 Extract metadata from a job posting.
                 Return companyName and jobTitle as concise strings when visible.
-                Return postingDate and deadlineDate only when they can be expressed as ISO yyyy-MM-dd.
-                Use null for dates that are missing, relative, ambiguous, or impossible to infer safely.
+                Do not extract postingDate; always return null for postingDate.
+                Extract only the final application deadline as deadlineDate when it can be expressed as ISO yyyy-MM-dd.
+                For sections labeled 접수기간, 지원기간, 제출기한, 마감일, or similar, use the end date as deadlineDate.
+                Use null for deadlineDate when it is missing, relative, ambiguous, or impossible to infer safely.
                 Do not guess.
                 """,
                 """
@@ -283,7 +285,7 @@ public class OpenAiResponsesClient {
         return new JobPostingMetadataPayload(
                 payload.path("companyName").asText(""),
                 payload.path("jobTitle").asText(""),
-                date(payload, "postingDate"),
+                null,
                 date(payload, "deadlineDate"),
                 usage);
     }

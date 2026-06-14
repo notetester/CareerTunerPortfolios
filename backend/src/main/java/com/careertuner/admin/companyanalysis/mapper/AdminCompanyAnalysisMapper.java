@@ -7,11 +7,15 @@ import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 
 import com.careertuner.admin.companyanalysis.dto.AdminCompanyAnalysisRow;
+import com.careertuner.admin.companyanalysis.dto.AdminCompanyAnalysisSearchCriteria;
+import com.careertuner.admin.companyanalysis.dto.AdminCompanyAnalysisSummary;
 
 @Mapper
 public interface AdminCompanyAnalysisMapper {
 
-    List<AdminCompanyAnalysisRow> findCompanyAnalyses(@Param("limit") int limit);
+    List<AdminCompanyAnalysisRow> findCompanyAnalyses(@Param("criteria") AdminCompanyAnalysisSearchCriteria criteria);
+
+    AdminCompanyAnalysisSummary summarizeCompanyAnalyses(@Param("criteria") AdminCompanyAnalysisSearchCriteria criteria);
 
     int updateMetadata(@Param("id") Long id,
                        @Param("sourceType") String sourceType,

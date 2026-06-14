@@ -75,6 +75,18 @@ export function ApplicationDetailPage() {
     error,
     refresh,
   } = useApplicationCase(id, isAuthenticated);
+  const detailDataEnabled = isAuthenticated && Boolean(applicationCase);
+  const needsExtraction = detailDataEnabled && (activeTab === "overview" || activeTab === "posting");
+  const needsJobPosting = detailDataEnabled && (
+    activeTab === "posting" ||
+    activeTab === "jobAnalysis" ||
+    activeTab === "companyAnalysis"
+  );
+  const needsJobPostingRevisions = activeTab === "posting";
+  const needsJobAnalysis = detailDataEnabled && activeTab === "jobAnalysis";
+  const needsCompanyAnalysis = detailDataEnabled && activeTab === "companyAnalysis";
+  const needsBFailureLogs = needsJobAnalysis || needsCompanyAnalysis;
+  const needsFitAnalysis = detailDataEnabled && activeTab === "fit";
   const {
     applicationCases,
     loading: sidebarLoading,
@@ -89,36 +101,42 @@ export function ApplicationDetailPage() {
     refresh: refreshPosting,
     save: savePosting,
     upload: uploadPosting,
-  } = useJobPosting(id, isAuthenticated && Boolean(applicationCase));
+  } = useJobPosting(id, needsJobPosting, { loadRevisions: needsJobPostingRevisions });
   const {
     extraction,
     retrying: retryingExtraction,
     error: extractionError,
     refresh: refreshExtraction,
     retry: retryExtraction,
-  } = useApplicationCaseExtraction(id, isAuthenticated && Boolean(applicationCase));
+  } = useApplicationCaseExtraction(id, needsExtraction);
   const {
     jobAnalysis,
     loading: jobAnalysisLoading,
     generating: jobAnalysisGenerating,
+    reviewSaving: jobAnalysisReviewSaving,
     error: jobAnalysisError,
+    reviewError: jobAnalysisReviewError,
     history: jobAnalysisHistory,
+    refresh: refreshJobAnalysis,
     generate: generateJobAnalysis,
     review: reviewJobAnalysis,
-  } = useJobAnalysis(id, isAuthenticated && Boolean(applicationCase));
+  } = useJobAnalysis(id, needsJobAnalysis);
   const {
     companyAnalysis,
     loading: companyAnalysisLoading,
     generating: companyAnalysisGenerating,
+    reviewSaving: companyAnalysisReviewSaving,
     error: companyAnalysisError,
+    reviewError: companyAnalysisReviewError,
     history: companyAnalysisHistory,
+    refresh: refreshCompanyAnalysis,
     generate: generateCompanyAnalysis,
     review: reviewCompanyAnalysis,
-  } = useCompanyAnalysis(id, isAuthenticated && Boolean(applicationCase));
+  } = useCompanyAnalysis(id, needsCompanyAnalysis);
   const {
     failureLogs: bFailureLogs,
     refresh: refreshBFailureLogs,
-  } = useBAnalysisFailureLogs(id, isAuthenticated && Boolean(applicationCase));
+  } = useBAnalysisFailureLogs(id, needsBFailureLogs);
   const [sourceTypeSyncError, setSourceTypeSyncError] = useState<string | null>(null);
   const {
     analyses: fitAnalyses,
@@ -126,7 +144,7 @@ export function ApplicationDetailPage() {
     generating: fitGenerating,
     error: fitAnalysisError,
     generate: generateFit,
-  } = useApplicationFitAnalysis(id, isAuthenticated && Boolean(applicationCase));
+  } = useApplicationFitAnalysis(id, needsFitAnalysis);
   const refreshedExtractionIdRef = useRef<number | null>(null);
 
   useEffect(() => {
@@ -142,8 +160,10 @@ export function ApplicationDetailPage() {
 
     refreshedExtractionIdRef.current = extraction.id;
     void refresh();
-    void refreshPosting();
-  }, [extraction, refresh, refreshPosting]);
+    if (needsJobPosting) {
+      void refreshPosting();
+    }
+  }, [extraction, needsJobPosting, refresh, refreshPosting]);
 
   const handleUpdate = async (request: UpdateApplicationCaseRequest) => {
     if (!id) return;
@@ -211,6 +231,17 @@ export function ApplicationDetailPage() {
     const analysis = await generateCompanyAnalysis();
     await refreshBFailureLogs();
     return analysis;
+  };
+
+  const handleRefreshCurrentTab = async () => {
+    await refresh();
+    const tasks: Promise<unknown>[] = [];
+    if (needsExtraction) tasks.push(refreshExtraction());
+    if (needsJobPosting) tasks.push(refreshPosting());
+    if (needsJobAnalysis) tasks.push(refreshJobAnalysis());
+    if (needsCompanyAnalysis) tasks.push(refreshCompanyAnalysis());
+    if (needsBFailureLogs) tasks.push(refreshBFailureLogs());
+    await Promise.all(tasks);
   };
 
   if (authLoading) {
@@ -323,7 +354,7 @@ export function ApplicationDetailPage() {
                 </div>
               )}
             </div>
-            <Button variant="outline" onClick={() => void refresh()} disabled={loading}>
+            <Button variant="outline" onClick={() => void handleRefreshCurrentTab()} disabled={loading}>
               <RefreshCw className={`size-4 ${loading ? "animate-spin" : ""}`} />
               새로고침
             </Button>
@@ -417,8 +448,11 @@ export function ApplicationDetailPage() {
                   history={jobAnalysisHistory}
                   loading={jobAnalysisLoading}
                   generating={jobAnalysisGenerating}
+                  reviewSaving={jobAnalysisReviewSaving}
                   error={jobAnalysisError}
+                  reviewError={jobAnalysisReviewError}
                   failures={bFailureLogs}
+                  latestJobPostingRevision={jobPosting?.revision ?? null}
                   onGenerate={handleGenerateJobAnalysis}
                   onReview={reviewJobAnalysis}
                 />
@@ -430,8 +464,11 @@ export function ApplicationDetailPage() {
                   history={companyAnalysisHistory}
                   loading={companyAnalysisLoading}
                   generating={companyAnalysisGenerating}
+                  reviewSaving={companyAnalysisReviewSaving}
                   error={companyAnalysisError}
+                  reviewError={companyAnalysisReviewError}
                   failures={bFailureLogs}
+                  latestJobPostingRevision={jobPosting?.revision ?? null}
                   onGenerate={handleGenerateCompanyAnalysis}
                   onReview={reviewCompanyAnalysis}
                 />

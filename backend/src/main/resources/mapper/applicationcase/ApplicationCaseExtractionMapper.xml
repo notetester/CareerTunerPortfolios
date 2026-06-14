@@ -44,6 +44,39 @@
         LIMIT 1
     </select>
 
+    <select id="findLatestExtractionsByApplicationCaseIdsAndUserId" resultMap="ApplicationCaseExtractionResultMap">
+        SELECT
+            id,
+            application_case_id,
+            job_posting_id,
+            user_id,
+            source_type,
+            status,
+            error_message,
+            started_at,
+            finished_at,
+            created_at,
+            updated_at
+        FROM (
+            SELECT
+                e.*,
+                ROW_NUMBER() OVER (
+                    PARTITION BY e.application_case_id
+                    ORDER BY e.created_at DESC, e.id DESC
+                ) AS rn
+            FROM application_case_extraction e
+            INNER JOIN application_case ac ON ac.id = e.application_case_id
+            WHERE ac.user_id = #{userId}
+              AND ac.deleted_at IS NULL
+              AND e.application_case_id IN
+              <foreach collection="applicationCaseIds" item="applicationCaseId" open="(" separator="," close=")">
+                  #{applicationCaseId}
+              </foreach>
+        ) latest
+        WHERE rn = 1
+        ORDER BY created_at DESC, id DESC
+    </select>
+
     <select id="findStaleRunningExtractions" resultMap="ApplicationCaseExtractionResultMap">
         SELECT *
         FROM application_case_extraction

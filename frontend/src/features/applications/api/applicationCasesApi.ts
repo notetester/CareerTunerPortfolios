@@ -87,6 +87,20 @@ export function listActiveApplicationCaseExtractions(): Promise<ApplicationCaseE
   return api<ApplicationCaseExtraction[]>("/application-cases/extractions/active", { method: "GET" });
 }
 
+export function listLatestApplicationCaseExtractions(applicationCaseIds: number[]): Promise<ApplicationCaseExtraction[]> {
+  const ids = Array.from(new Set(applicationCaseIds));
+  if (ids.length === 0) {
+    return Promise.resolve([]);
+  }
+
+  const params = new URLSearchParams();
+  ids.forEach((id) => params.append("applicationCaseIds", String(id)));
+
+  return api<ApplicationCaseExtraction[]>(`/application-cases/job-posting/extractions/latest?${params}`, {
+    method: "GET",
+  });
+}
+
 export async function getLatestApplicationCaseExtraction(
   applicationCaseId: number,
 ): Promise<ApplicationCaseExtraction | null> {

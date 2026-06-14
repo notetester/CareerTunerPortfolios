@@ -18,6 +18,7 @@ import java.nio.file.Path;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.stream.LongStream;
 
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
@@ -665,6 +666,7 @@ class ApplicationCaseServiceImplTest {
         verify(jobPostingService).saveJobPostingForExtractionQueue(eq(1L), eq(10L), requestCaptor.capture());
         verify(jobPostingService, never()).saveJobPosting(any(), any(), any());
         verify(extractionMapper).insertApplicationCaseExtraction(extractionCaptor.capture());
+        verify(applicationCaseMapper).updateApplicationCaseSourceType(10L, 1L, "URL");
         assertThat(requestCaptor.getValue().uploadedFileUrl()).isEqualTo(jobUrl);
         assertThat(requestCaptor.getValue().extractedText()).isNull();
         assertThat(requestCaptor.getValue().sourceType()).isEqualTo("URL");
@@ -748,6 +750,7 @@ class ApplicationCaseServiceImplTest {
         verify(jobPostingService).saveJobPosting(eq(1L), eq(10L), any(JobPostingRequest.class));
         verify(jobPostingService, never()).saveJobPostingForExtractionQueue(any(), any(), any());
         verify(extractionMapper, never()).insertApplicationCaseExtraction(any());
+        verify(applicationCaseMapper).updateApplicationCaseSourceType(10L, 1L, "URL");
         assertThat(response).isSameAs(savedPosting);
     }
 
@@ -818,6 +821,7 @@ class ApplicationCaseServiceImplTest {
         verify(jobPostingService).saveJobPostingForExtractionQueue(eq(1L), eq(10L), any(JobPostingRequest.class));
         verify(jobPostingService, never()).saveJobPosting(any(), any(), any());
         verify(extractionMapper).insertApplicationCaseExtraction(extractionCaptor.capture());
+        verify(applicationCaseMapper).updateApplicationCaseSourceType(10L, 1L, "TEXT");
         assertThat(extractionCaptor.getValue().getApplicationCaseId()).isEqualTo(10L);
         assertThat(extractionCaptor.getValue().getJobPostingId()).isEqualTo(22L);
         assertThat(extractionCaptor.getValue().getUserId()).isEqualTo(1L);
@@ -860,6 +864,7 @@ class ApplicationCaseServiceImplTest {
         verify(jobPostingService).saveUploadedJobPostingReferenceForNewCase(1L, 10L, file, "PDF");
         verify(jobPostingService, never()).uploadJobPostingFile(any(), any(), any(), any());
         verify(extractionMapper).insertApplicationCaseExtraction(extractionCaptor.capture());
+        verify(applicationCaseMapper).updateApplicationCaseSourceType(10L, 1L, "PDF");
         assertThat(extractionCaptor.getValue().getApplicationCaseId()).isEqualTo(10L);
         assertThat(extractionCaptor.getValue().getJobPostingId()).isEqualTo(23L);
         assertThat(extractionCaptor.getValue().getSourceType()).isEqualTo("PDF");
@@ -1390,6 +1395,104 @@ class ApplicationCaseServiceImplTest {
                 .isInstanceOf(BusinessException.class);
         verify(applicationCaseMapper).findApplicationCaseByIdAndUserId(10L, 1L);
         verify(extractionMapper).findLatestExtractionByApplicationCaseId(10L);
+    }
+
+    @Test
+    void getLatestExtractionJobsReturnsEmptyWithoutMapperLookupWhenIdsAreEmpty() {
+        ApplicationCaseMapper applicationCaseMapper = mock(ApplicationCaseMapper.class);
+        JobPostingMapper jobPostingMapper = mock(JobPostingMapper.class);
+        ApplicationCaseExtractionMapper extractionMapper = mock(ApplicationCaseExtractionMapper.class);
+        ApplicationCaseAccessService accessService = new ApplicationCaseAccessService(applicationCaseMapper, jobPostingMapper);
+        ApplicationCaseServiceImpl service = applicationCaseService(applicationCaseMapper, extractionMapper, accessService,
+                mock(JobPostingService.class), mock(OpenAiResponsesClient.class));
+
+        assertThat(service.getLatestJobPostingExtractions(1L, List.of())).isEmpty();
+        assertThat(service.getLatestJobPostingExtractions(1L, null)).isEmpty();
+
+        verify(extractionMapper, never()).findLatestExtractionsByApplicationCaseIdsAndUserId(any(), any());
+    }
+
+    @Test
+    void getLatestExtractionJobsDeduplicatesIdsBeforeBulkLookup() {
+        ApplicationCaseMapper applicationCaseMapper = mock(ApplicationCaseMapper.class);
+        JobPostingMapper jobPostingMapper = mock(JobPostingMapper.class);
+        ApplicationCaseExtractionMapper extractionMapper = mock(ApplicationCaseExtractionMapper.class);
+        ApplicationCaseAccessService accessService = new ApplicationCaseAccessService(applicationCaseMapper, jobPostingMapper);
+        ApplicationCaseServiceImpl service = applicationCaseService(applicationCaseMapper, extractionMapper, accessService,
+                mock(JobPostingService.class), mock(OpenAiResponsesClient.class));
+        ApplicationCaseExtraction latest = extraction(31L, 10L, 20L, 1L, "URL", "SUCCEEDED");
+
+        when(extractionMapper.findLatestExtractionsByApplicationCaseIdsAndUserId(eq(1L), any()))
+                .thenReturn(List.of(latest));
+
+        List<ApplicationCaseExtractionResponse> response = service.getLatestJobPostingExtractions(
+                1L,
+                List.of(10L, 10L, 11L));
+
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<List<Long>> idsCaptor = ArgumentCaptor.forClass(List.class);
+        verify(extractionMapper).findLatestExtractionsByApplicationCaseIdsAndUserId(eq(1L), idsCaptor.capture());
+        assertThat(idsCaptor.getValue()).containsExactly(10L, 11L);
+        assertThat(response).hasSize(1);
+        assertThat(response.get(0).applicationCaseId()).isEqualTo(10L);
+    }
+
+    @Test
+    void getLatestExtractionJobsRejectsNonPositiveIds() {
+        ApplicationCaseMapper applicationCaseMapper = mock(ApplicationCaseMapper.class);
+        JobPostingMapper jobPostingMapper = mock(JobPostingMapper.class);
+        ApplicationCaseExtractionMapper extractionMapper = mock(ApplicationCaseExtractionMapper.class);
+        ApplicationCaseAccessService accessService = new ApplicationCaseAccessService(applicationCaseMapper, jobPostingMapper);
+        ApplicationCaseServiceImpl service = applicationCaseService(applicationCaseMapper, extractionMapper, accessService,
+                mock(JobPostingService.class), mock(OpenAiResponsesClient.class));
+
+        assertThatThrownBy(() -> service.getLatestJobPostingExtractions(1L, List.of(10L, 0L)))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(throwable -> assertThat(((BusinessException) throwable).getErrorCode())
+                        .isEqualTo(ErrorCode.INVALID_INPUT));
+
+        verify(extractionMapper, never()).findLatestExtractionsByApplicationCaseIdsAndUserId(any(), any());
+    }
+
+    @Test
+    void getLatestExtractionJobsRejectsMoreThanTwoHundredUniqueIds() {
+        ApplicationCaseMapper applicationCaseMapper = mock(ApplicationCaseMapper.class);
+        JobPostingMapper jobPostingMapper = mock(JobPostingMapper.class);
+        ApplicationCaseExtractionMapper extractionMapper = mock(ApplicationCaseExtractionMapper.class);
+        ApplicationCaseAccessService accessService = new ApplicationCaseAccessService(applicationCaseMapper, jobPostingMapper);
+        ApplicationCaseServiceImpl service = applicationCaseService(applicationCaseMapper, extractionMapper, accessService,
+                mock(JobPostingService.class), mock(OpenAiResponsesClient.class));
+        List<Long> ids = LongStream.rangeClosed(1L, 201L).boxed().toList();
+
+        assertThatThrownBy(() -> service.getLatestJobPostingExtractions(1L, ids))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(throwable -> assertThat(((BusinessException) throwable).getErrorCode())
+                        .isEqualTo(ErrorCode.INVALID_INPUT));
+
+        verify(extractionMapper, never()).findLatestExtractionsByApplicationCaseIdsAndUserId(any(), any());
+    }
+
+    @Test
+    void getLatestExtractionJobsUsesUserScopedBulkMapperAndOmitsMissingRows() {
+        ApplicationCaseMapper applicationCaseMapper = mock(ApplicationCaseMapper.class);
+        JobPostingMapper jobPostingMapper = mock(JobPostingMapper.class);
+        ApplicationCaseExtractionMapper extractionMapper = mock(ApplicationCaseExtractionMapper.class);
+        ApplicationCaseAccessService accessService = new ApplicationCaseAccessService(applicationCaseMapper, jobPostingMapper);
+        ApplicationCaseServiceImpl service = applicationCaseService(applicationCaseMapper, extractionMapper, accessService,
+                mock(JobPostingService.class), mock(OpenAiResponsesClient.class));
+        ApplicationCaseExtraction first = extraction(31L, 10L, 20L, 1L, "URL", "SUCCEEDED");
+        ApplicationCaseExtraction third = extraction(33L, 12L, 22L, 1L, "PDF", "FAILED");
+
+        when(extractionMapper.findLatestExtractionsByApplicationCaseIdsAndUserId(eq(1L), eq(List.of(10L, 11L, 12L))))
+                .thenReturn(List.of(first, third));
+
+        List<ApplicationCaseExtractionResponse> response = service.getLatestJobPostingExtractions(
+                1L,
+                List.of(10L, 11L, 12L));
+
+        verify(extractionMapper).findLatestExtractionsByApplicationCaseIdsAndUserId(1L, List.of(10L, 11L, 12L));
+        assertThat(response).extracting(ApplicationCaseExtractionResponse::applicationCaseId)
+                .containsExactly(10L, 12L);
     }
 
     @Test

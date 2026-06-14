@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Building2, Loader2, PlayCircle } from "lucide-react";
 import { Button } from "@/app/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/app/components/ui/card";
@@ -29,8 +29,11 @@ interface CompanyAnalysisPanelProps {
   history: CompanyAnalysis[];
   loading: boolean;
   generating: boolean;
+  reviewSaving: boolean;
   error: string | null;
+  reviewError: string | null;
   failures: BAnalysisFailureLog[];
+  latestJobPostingRevision: number | null;
   onGenerate(): Promise<CompanyAnalysis | null>;
   onReview(analysisId: number, request: CompanyAnalysisReviewRequest): Promise<CompanyAnalysis | null>;
 }
@@ -83,8 +86,11 @@ export function CompanyAnalysisPanel({
   history,
   loading,
   generating,
+  reviewSaving,
   error,
+  reviewError,
   failures,
+  latestJobPostingRevision,
   onGenerate,
   onReview,
 }: CompanyAnalysisPanelProps) {
@@ -104,6 +110,7 @@ export function CompanyAnalysisPanel({
     verifiedFacts: false,
     aiInferences: false,
   });
+  const [reviewSuccess, setReviewSuccess] = useState<string | null>(null);
 
   useEffect(() => {
     setForm({
@@ -126,11 +133,46 @@ export function CompanyAnalysisPanel({
 
   const setField = (key: keyof typeof form, value: string) => {
     setForm((current) => ({ ...current, [key]: value }));
+    setReviewSuccess(null);
   };
 
   const setStructuredField = <Key extends keyof CompanyStructuredRows>(key: Key, rows: CompanyStructuredRows[Key]) => {
     setStructuredRows((current) => ({ ...current, [key]: rows }));
     setStructuredFieldEdited((current) => ({ ...current, [key]: true }));
+    setReviewSuccess(null);
+  };
+
+  const isDirty = useMemo(() => {
+    if (!analysis) return false;
+
+    return (
+      form.companySummary !== (analysis.companySummary ?? "") ||
+      form.recentIssues !== (analysis.recentIssues ?? "") ||
+      form.industry !== (analysis.industry ?? "") ||
+      form.competitors !== formatJsonArrayForTextarea(analysis.competitors) ||
+      form.interviewPoints !== (analysis.interviewPoints ?? "") ||
+      form.sources !== formatJsonArrayForTextarea(analysis.sources) ||
+      structuredFieldEdited.verifiedFacts ||
+      structuredFieldEdited.aiInferences
+    );
+  }, [analysis, form, structuredFieldEdited]);
+
+  const isStale = Boolean(
+    analysis &&
+    latestJobPostingRevision !== null &&
+    analysis.jobPostingRevision !== latestJobPostingRevision,
+  );
+
+  const handleGenerate = async () => {
+    if (
+      isDirty &&
+      !window.confirm("저장하지 않은 검토 수정 내용이 있습니다. 재분석을 진행하면 입력 중인 내용이 사라질 수 있습니다. 계속할까요?")
+    ) {
+      return;
+    }
+
+    setReviewSuccess(null);
+    await onGenerate();
   };
 
   const sourceMetadata = analysis
@@ -146,7 +188,8 @@ export function CompanyAnalysisPanel({
 
   const handleReview = async () => {
     if (!analysis) return;
-    await onReview(analysis.id, {
+    setReviewSuccess(null);
+    const reviewed = await onReview(analysis.id, {
       ...form,
       competitors: serializeTextareaList(form.competitors),
       sources: serializeTextareaList(form.sources),
@@ -158,6 +201,9 @@ export function CompanyAnalysisPanel({
         : undefined,
       confirmed: true,
     });
+    if (reviewed) {
+      setReviewSuccess("수정 내용을 저장하고 확정했습니다.");
+    }
   };
 
   return (
@@ -168,6 +214,11 @@ export function CompanyAnalysisPanel({
             <CardTitle className="flex items-center gap-2 text-lg font-bold text-slate-900">
               <Building2 className="size-5 text-blue-600" />
               기업 분석
+              {isStale && (
+                <span className="rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-xs font-semibold text-amber-700">
+                  이전 공고 rev 기준
+                </span>
+              )}
             </CardTitle>
             {analysis ? (
               <p className="mt-1 text-xs text-slate-500">
@@ -183,8 +234,8 @@ export function CompanyAnalysisPanel({
             type="button"
             size="sm"
             className="bg-blue-600 text-white hover:bg-blue-700"
-            disabled={loading || generating}
-            onClick={() => void onGenerate()}
+            disabled={loading || generating || reviewSaving}
+            onClick={() => void handleGenerate()}
           >
             {generating ? <Loader2 className="size-4 animate-spin" /> : <PlayCircle className="size-4" />}
             {analysis ? "AI 재분석" : "AI 분석 실행"}
@@ -196,10 +247,29 @@ export function CompanyAnalysisPanel({
           <AnalysisFailureNotice
             failures={failures}
             featureType="COMPANY_RESEARCH"
-            onRetry={() => void onGenerate()}
+            onRetry={() => void handleGenerate()}
             retrying={generating}
             retryLabel="기업 분석 다시 시도"
           />
+        )}
+
+        {isStale && (
+          <div className="flex flex-col gap-3 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 sm:flex-row sm:items-center sm:justify-between">
+            <span>
+              현재 분석은 공고 rev {analysis?.jobPostingRevision ?? "-"} 기준입니다. 최신 공고 rev {latestJobPostingRevision} 기준으로 다시 분석할 수 있습니다.
+            </span>
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              className="border-amber-300 bg-white text-amber-800 hover:bg-amber-100"
+              disabled={loading || generating || reviewSaving}
+              onClick={() => void handleGenerate()}
+            >
+              {generating ? <Loader2 className="size-4 animate-spin" /> : <PlayCircle className="size-4" />}
+              최신 공고로 재분석
+            </Button>
+          </div>
         )}
 
         {loading ? (
@@ -249,7 +319,14 @@ export function CompanyAnalysisPanel({
             </div>
 
             <div className="space-y-3 rounded-lg border border-slate-200 bg-slate-50 p-4">
-              <div className="text-sm font-semibold text-slate-900">사용자 확인/수정</div>
+              <div className="flex flex-wrap items-center gap-2 text-sm font-semibold text-slate-900">
+                사용자 확인/수정
+                {isDirty && (
+                  <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-700">
+                    저장되지 않은 수정 있음
+                  </span>
+                )}
+              </div>
               <Input value={form.industry} onChange={(event) => setField("industry", event.target.value)} placeholder="산업" className="bg-white" />
               <Textarea value={form.companySummary} onChange={(event) => setField("companySummary", event.target.value)} className="min-h-24 bg-white" placeholder="기업 요약" />
               <Textarea value={form.recentIssues} onChange={(event) => setField("recentIssues", event.target.value)} className="min-h-24 bg-white" placeholder="최근 이슈" />
@@ -274,8 +351,18 @@ export function CompanyAnalysisPanel({
                 <Textarea value={form.sources} onChange={(event) => setField("sources", event.target.value)} className="min-h-24 bg-white" placeholder="참고 소스를 한 줄에 하나씩 입력" />
               </div>
               <Textarea value={form.interviewPoints} onChange={(event) => setField("interviewPoints", event.target.value)} className="min-h-24 bg-white" placeholder="면접 준비 포인트" />
-              <Button type="button" className="bg-slate-900 text-white hover:bg-slate-800" disabled={generating} onClick={() => void handleReview()}>
-                {generating && <Loader2 className="size-4 animate-spin" />}
+              {reviewSuccess && (
+                <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-700">
+                  {reviewSuccess}
+                </div>
+              )}
+              {reviewError && (
+                <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+                  {reviewError}
+                </div>
+              )}
+              <Button type="button" className="bg-slate-900 text-white hover:bg-slate-800" disabled={generating || reviewSaving} onClick={() => void handleReview()}>
+                {reviewSaving && <Loader2 className="size-4 animate-spin" />}
                 수정 내용 저장 및 확정
               </Button>
             </div>

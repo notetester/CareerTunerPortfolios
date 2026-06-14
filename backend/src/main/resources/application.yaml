@@ -74,7 +74,7 @@ careertuner:
     api-key: ${OPENAI_API_KEY:}
     model: ${OPENAI_MODEL:gpt-5}
     base-url: ${OPENAI_BASE_URL:https://api.openai.com/v1}
-    timeout: ${OPENAI_TIMEOUT:90s}
+    timeout: ${OPENAI_TIMEOUT:300s}
   uploads:
     job-posting-dir: ${JOB_POSTING_UPLOAD_DIR:.uploads/application-postings}
     max-file-size-bytes: ${JOB_POSTING_MAX_FILE_SIZE_BYTES:10485760}

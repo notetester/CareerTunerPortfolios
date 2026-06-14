@@ -1,6 +1,7 @@
 package com.careertuner.applicationcase.service;
 
 import java.time.LocalDateTime;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Set;
@@ -60,6 +61,7 @@ public class ApplicationCaseServiceImpl implements ApplicationCaseService {
     private static final int MOCK_JOB_ANALYSIS_CREDIT = 1;
     private static final int MOCK_FIT_ANALYSIS_CREDIT = 2;
     private static final int MOCK_DASHBOARD_SUMMARY_CREDIT = 1;
+    private static final int MAX_EXTRACTION_LOOKUP_CASE_IDS = 200;
     private static final Set<String> LIST_VIEWS = Set.of("ACTIVE", "ARCHIVED", "DELETED");
 
     private final ApplicationCaseMapper applicationCaseMapper;
@@ -224,10 +226,13 @@ public class ApplicationCaseServiceImpl implements ApplicationCaseService {
                     userId,
                     applicationCaseId,
                     request);
+            syncApplicationCaseSourceType(userId, applicationCaseId, jobPosting.sourceType());
             queueExtraction(userId, applicationCaseId, jobPosting.id(), sourceType);
             return jobPosting;
         }
-        return jobPostingService.saveJobPosting(userId, applicationCaseId, request);
+        JobPostingResponse jobPosting = jobPostingService.saveJobPosting(userId, applicationCaseId, request);
+        syncApplicationCaseSourceType(userId, applicationCaseId, jobPosting.sourceType());
+        return jobPosting;
     }
 
     @Override
@@ -239,6 +244,7 @@ public class ApplicationCaseServiceImpl implements ApplicationCaseService {
                 applicationCaseId,
                 file,
                 normalizedSourceType);
+        syncApplicationCaseSourceType(userId, applicationCaseId, jobPosting.sourceType());
         queueExtraction(userId, applicationCaseId, jobPosting.id(), normalizedSourceType);
         return jobPosting;
     }
@@ -270,6 +276,18 @@ public class ApplicationCaseServiceImpl implements ApplicationCaseService {
             throw new BusinessException(ErrorCode.NOT_FOUND, "공고 추출 작업을 찾을 수 없습니다.");
         }
         return ApplicationCaseExtractionResponse.from(extraction);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<ApplicationCaseExtractionResponse> getLatestJobPostingExtractions(Long userId, List<Long> applicationCaseIds) {
+        List<Long> normalizedIds = normalizeApplicationCaseIds(applicationCaseIds);
+        if (normalizedIds.isEmpty()) {
+            return List.of();
+        }
+        return extractionMapper.findLatestExtractionsByApplicationCaseIdsAndUserId(userId, normalizedIds).stream()
+                .map(ApplicationCaseExtractionResponse::from)
+                .toList();
     }
 
     @Override
@@ -458,6 +476,11 @@ public class ApplicationCaseServiceImpl implements ApplicationCaseService {
         return Set.of("URL", "PDF", "IMAGE").contains(sourceType) && isBlank(request.extractedText());
     }
 
+    private void syncApplicationCaseSourceType(Long userId, Long applicationCaseId, String sourceType) {
+        String normalizedSourceType = normalizeOption(sourceType, DEFAULT_SOURCE_TYPE, SOURCE_TYPES, "sourceType");
+        applicationCaseMapper.updateApplicationCaseSourceType(applicationCaseId, userId, normalizedSourceType);
+    }
+
     private static JobPostingMetadataResponse safeDefaultMetadata() {
         return new JobPostingMetadataResponse(DEFAULT_COMPANY_NAME, DEFAULT_JOB_TITLE, null, null);
     }
@@ -535,6 +558,23 @@ public class ApplicationCaseServiceImpl implements ApplicationCaseService {
             return 5;
         }
         return Math.min(limit, 50);
+    }
+
+    private static List<Long> normalizeApplicationCaseIds(List<Long> applicationCaseIds) {
+        if (applicationCaseIds == null || applicationCaseIds.isEmpty()) {
+            return List.of();
+        }
+        Set<Long> uniqueIds = new LinkedHashSet<>();
+        for (Long id : applicationCaseIds) {
+            if (id == null || id <= 0) {
+                throw new BusinessException(ErrorCode.INVALID_INPUT, "applicationCaseIds 값이 올바르지 않습니다.");
+            }
+            uniqueIds.add(id);
+        }
+        if (uniqueIds.size() > MAX_EXTRACTION_LOOKUP_CASE_IDS) {
+            throw new BusinessException(ErrorCode.INVALID_INPUT, "applicationCaseIds는 200개까지 조회할 수 있습니다.");
+        }
+        return List.copyOf(uniqueIds);
     }
 
     private static String normalizeListView(String view) {

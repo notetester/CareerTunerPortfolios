@@ -99,7 +99,7 @@ class ApplicationCaseExtractionWorkerTest {
         verify(applicationCaseMapper).updateApplicationCase(caseCaptor.capture());
         assertThat(caseCaptor.getValue().getCompanyName()).isEqualTo("Acme");
         assertThat(caseCaptor.getValue().getJobTitle()).isEqualTo("Backend Engineer");
-        assertThat(caseCaptor.getValue().getPostingDate()).isEqualTo(LocalDate.of(2026, 6, 1));
+        assertThat(caseCaptor.getValue().getPostingDate()).isNull();
         assertThat(caseCaptor.getValue().getDeadlineDate()).isEqualTo(LocalDate.of(2026, 7, 1));
         assertThat(caseCaptor.getValue().getStatus()).isEqualTo("DRAFT");
 

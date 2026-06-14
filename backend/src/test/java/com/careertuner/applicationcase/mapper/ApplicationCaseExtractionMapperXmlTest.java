@@ -76,15 +76,35 @@ class ApplicationCaseExtractionMapperXmlTest {
     }
 
     @Test
+    void latestBulkExtractionQueryScopesToCurrentUserCasesAndRanksLatestRows() throws Exception {
+        String xml = Files.readString(Path.of(
+                "src/main/resources/mapper/applicationcase/ApplicationCaseExtractionMapper.xml"));
+        int selectStart = xml.indexOf("<select id=\"findLatestExtractionsByApplicationCaseIdsAndUserId\"");
+        assertThat(selectStart).isGreaterThanOrEqualTo(0);
+        String latestBulkQuery = xml.substring(selectStart, xml.indexOf("</select>", selectStart));
+
+        assertThat(latestBulkQuery).contains("ROW_NUMBER() OVER");
+        assertThat(latestBulkQuery).contains("PARTITION BY e.application_case_id");
+        assertThat(latestBulkQuery).contains("ORDER BY e.created_at DESC, e.id DESC");
+        assertThat(latestBulkQuery).contains("INNER JOIN application_case ac ON ac.id = e.application_case_id");
+        assertThat(latestBulkQuery).contains("ac.user_id = #{userId}");
+        assertThat(latestBulkQuery).contains("ac.deleted_at IS NULL");
+        assertThat(latestBulkQuery).contains("<foreach collection=\"applicationCaseIds\"");
+        assertThat(latestBulkQuery).contains("WHERE rn = 1");
+    }
+
+    @Test
     void schemaDefinesUniqueGeneratedColumnForOneActiveExtractionPerCase() throws Exception {
         String schema = Files.readString(Path.of("src/main/resources/db/schema.sql"));
         int tableStart = schema.indexOf("CREATE TABLE IF NOT EXISTS application_case_extraction");
         assertThat(tableStart).isGreaterThanOrEqualTo(0);
         String tableDefinition = schema.substring(tableStart, schema.indexOf(") ENGINE", tableStart));
 
-        assertThat(tableDefinition).contains("active_application_case_id");
+        assertThat(tableDefinition).contains("active_status_marker");
+        assertThat(tableDefinition).doesNotContain("active_application_case_id");
         assertThat(tableDefinition).contains("GENERATED ALWAYS AS");
         assertThat(tableDefinition).contains("status IN ('QUEUED', 'RUNNING')");
-        assertThat(tableDefinition).contains("UNIQUE KEY uk_case_extraction_active");
+        assertThat(tableDefinition)
+                .contains("UNIQUE KEY uk_case_extraction_active (application_case_id, active_status_marker)");
     }
 }
