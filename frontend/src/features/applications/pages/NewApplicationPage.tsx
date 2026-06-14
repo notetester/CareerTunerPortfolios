@@ -71,6 +71,8 @@ const steps: { label: string; icon: typeof Briefcase }[] = [
 ];
 
 const EXTRACTION_POLL_INTERVAL_MS = 3000;
+const ALLOWED_IMAGE_MIME_TYPES = new Set(["image/png", "image/jpeg", "image/webp", "image/gif"]);
+const IMAGE_ACCEPT = "image/png,image/jpeg,image/webp,image/gif";
 
 function displayPostingText(posting: JobPosting | null): string {
   return posting?.extractedText ?? posting?.originalText ?? "";
@@ -98,8 +100,8 @@ function validatePostingFile(sourceType: FileSourceType, file: File): string | n
     return "PDF 방식에는 application/pdf 파일만 업로드할 수 있습니다.";
   }
 
-  if (sourceType === "IMAGE" && !file.type.startsWith("image/")) {
-    return "이미지 방식에는 image/* 파일만 업로드할 수 있습니다.";
+  if (sourceType === "IMAGE" && !ALLOWED_IMAGE_MIME_TYPES.has(file.type)) {
+    return "이미지 방식에는 PNG, JPG, WEBP, GIF 파일만 업로드할 수 있습니다.";
   }
 
   return null;
@@ -574,7 +576,7 @@ export function NewApplicationPage() {
                       key={postingForm.sourceType}
                       id="postingFile"
                       type="file"
-                      accept={postingForm.sourceType === "PDF" ? "application/pdf" : "image/*"}
+                      accept={postingForm.sourceType === "PDF" ? "application/pdf" : IMAGE_ACCEPT}
                       onChange={handlePostingFileChange}
                     />
                   </Field>

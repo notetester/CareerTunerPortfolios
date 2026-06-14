@@ -59,7 +59,7 @@ const jobAnalysisSummary: AdminJobAnalysisSummaryResponse = {
 };
 
 const usageQueryParams: AdminBUsageLogQueryParams = {
-  featureType: "JOB_ANALYSIS",
+  featureType: "JOB_POSTING_METADATA",
   status: "FAILED",
   keyword: "Example",
   applicationCaseId: 1,
@@ -105,6 +105,7 @@ const usageSummary: AdminBUsageSummaryResponse = {
   jobAnalysisCount: 10,
   companyResearchCount: 8,
   jobPostingOcrCount: 7,
+  jobPostingMetadataCount: 4,
 };
 
 void jobAnalysisQueryParams;

@@ -169,6 +169,21 @@ class AdminCompanyAnalysisServiceTest {
     }
 
     @Test
+    void updateMetadataRejectsInvalidSourceType() {
+        AdminCompanyAnalysisMapper mapper = mock(AdminCompanyAnalysisMapper.class);
+        CompanyAnalysisMapper companyAnalysisMapper = mock(CompanyAnalysisMapper.class);
+        AdminCompanyAnalysisService service = new AdminCompanyAnalysisService(mapper, companyAnalysisMapper);
+        AdminCompanyAnalysisMetadataRequest request = new AdminCompanyAnalysisMetadataRequest("crawler", null, null, false, false);
+
+        assertThatThrownBy(() -> service.updateMetadata(admin(), 20L, request))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(throwable -> assertThat(((BusinessException) throwable).getErrorCode())
+                        .isEqualTo(ErrorCode.INVALID_INPUT));
+
+        verify(mapper, never()).updateMetadata(any(), any(), any(), any(), anyBoolean(), anyBoolean());
+    }
+
+    @Test
     void updateMetadataMapperPreservesOmittedDateMetadata() throws Exception {
         String xml = Files.readString(Path.of("src/main/resources/mapper/admin/companyanalysis/AdminCompanyAnalysisMapper.xml"));
 

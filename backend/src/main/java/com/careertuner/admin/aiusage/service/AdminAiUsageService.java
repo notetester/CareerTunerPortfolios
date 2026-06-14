@@ -20,7 +20,11 @@ import lombok.RequiredArgsConstructor;
 @RequiredArgsConstructor
 public class AdminAiUsageService {
 
-    private static final List<String> FEATURE_TYPES = List.of("JOB_ANALYSIS", "COMPANY_RESEARCH", "JOB_POSTING_OCR");
+    private static final List<String> FEATURE_TYPES = List.of(
+            "JOB_ANALYSIS",
+            "COMPANY_RESEARCH",
+            "JOB_POSTING_OCR",
+            "JOB_POSTING_METADATA");
     private static final List<String> STATUSES = List.of("SUCCESS", "FAILED");
 
     private final AdminAiUsageMapper mapper;

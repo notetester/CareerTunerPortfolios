@@ -44,6 +44,7 @@ class ApplicationCaseExtractionWorkerTest {
         JobPostingMapper jobPostingMapper = mock(JobPostingMapper.class);
         JobPostingService jobPostingService = mock(JobPostingService.class);
         OpenAiResponsesClient openAiClient = mock(OpenAiResponsesClient.class);
+        AiUsageLogService aiUsageLogService = mock(AiUsageLogService.class);
         NotificationMapper notificationMapper = mock(NotificationMapper.class);
         ApplicationCaseExtractionWorker worker = worker(
                 extractionMapper,
@@ -51,6 +52,7 @@ class ApplicationCaseExtractionWorkerTest {
                 jobPostingMapper,
                 jobPostingService,
                 openAiClient,
+                aiUsageLogService,
                 notificationMapper);
         ApplicationCaseExtraction extraction = extraction(30L, 10L, 20L, 1L, "URL");
         String jobUrl = "https://example.com/jobs/backend";
@@ -75,12 +77,13 @@ class ApplicationCaseExtractionWorkerTest {
                 null));
         when(jobPostingService.saveExtractedJobPosting(eq(1L), eq(10L), any(ExtractedPosting.class)))
                 .thenReturn(new JobPostingResponse(21L, 10L, 2, jobUrl, jobUrl, extractedText, "URL", null));
+        Usage metadataUsage = new Usage("gpt-test", 10, 5, 15);
         when(openAiClient.extractJobPostingMetadata(extractedText)).thenReturn(new JobPostingMetadataPayload(
                 "Acme",
                 "Backend Engineer",
                 LocalDate.of(2026, 6, 1),
                 LocalDate.of(2026, 7, 1),
-                new Usage("gpt-test", 10, 5, 15)));
+                metadataUsage));
         when(extractionMapper.markExtractionSucceeded(30L, 21L)).thenReturn(1);
 
         int processed = worker.processQueuedExtractions();
@@ -104,6 +107,7 @@ class ApplicationCaseExtractionWorkerTest {
         assertThat(caseCaptor.getValue().getStatus()).isEqualTo("DRAFT");
 
         verify(extractionMapper).markExtractionSucceeded(30L, 21L);
+        verify(aiUsageLogService).recordSuccess(1L, 10L, "JOB_POSTING_METADATA", metadataUsage);
         ArgumentCaptor<Notification> notificationCaptor = ArgumentCaptor.forClass(Notification.class);
         verify(notificationMapper).insertNotification(notificationCaptor.capture());
         assertThat(notificationCaptor.getValue().getUserId()).isEqualTo(1L);
@@ -120,6 +124,7 @@ class ApplicationCaseExtractionWorkerTest {
         JobPostingMapper jobPostingMapper = mock(JobPostingMapper.class);
         JobPostingService jobPostingService = mock(JobPostingService.class);
         OpenAiResponsesClient openAiClient = mock(OpenAiResponsesClient.class);
+        AiUsageLogService aiUsageLogService = mock(AiUsageLogService.class);
         NotificationMapper notificationMapper = mock(NotificationMapper.class);
         ApplicationCaseExtractionWorker worker = worker(
                 extractionMapper,
@@ -127,6 +132,7 @@ class ApplicationCaseExtractionWorkerTest {
                 jobPostingMapper,
                 jobPostingService,
                 openAiClient,
+                aiUsageLogService,
                 notificationMapper);
         ApplicationCaseExtraction extraction = extraction(31L, 10L, 20L, 1L, "TEXT");
         String originalText = "Original manually pasted posting text.";
@@ -154,6 +160,7 @@ class ApplicationCaseExtractionWorkerTest {
 
         assertThat(processed).isEqualTo(1);
         verify(openAiClient).extractJobPostingMetadata(originalText);
+        verify(aiUsageLogService, never()).recordSuccess(any(), any(), any(), any());
         verify(jobPostingService, never()).extractUrlJobPosting(any());
         verify(jobPostingService, never()).extractUploadedJobPosting(any(), any(), any(), any());
         verify(jobPostingService, never()).saveExtractedJobPosting(any(), any(), any());
@@ -172,6 +179,7 @@ class ApplicationCaseExtractionWorkerTest {
         JobPostingMapper jobPostingMapper = mock(JobPostingMapper.class);
         JobPostingService jobPostingService = mock(JobPostingService.class);
         OpenAiResponsesClient openAiClient = mock(OpenAiResponsesClient.class);
+        AiUsageLogService aiUsageLogService = mock(AiUsageLogService.class);
         NotificationMapper notificationMapper = mock(NotificationMapper.class);
         ApplicationCaseExtractionWorker worker = worker(
                 extractionMapper,
@@ -179,6 +187,7 @@ class ApplicationCaseExtractionWorkerTest {
                 jobPostingMapper,
                 jobPostingService,
                 openAiClient,
+                aiUsageLogService,
                 notificationMapper);
         ApplicationCaseExtraction extraction = extraction(32L, 10L, 20L, 1L, "PDF");
         String fileReference = "local:application-postings/10/posting.pdf";
@@ -221,6 +230,7 @@ class ApplicationCaseExtractionWorkerTest {
         JobPostingMapper jobPostingMapper = mock(JobPostingMapper.class);
         JobPostingService jobPostingService = mock(JobPostingService.class);
         OpenAiResponsesClient openAiClient = mock(OpenAiResponsesClient.class);
+        AiUsageLogService aiUsageLogService = mock(AiUsageLogService.class);
         NotificationMapper notificationMapper = mock(NotificationMapper.class);
         ApplicationCaseExtractionWorker worker = worker(
                 extractionMapper,
@@ -228,6 +238,7 @@ class ApplicationCaseExtractionWorkerTest {
                 jobPostingMapper,
                 jobPostingService,
                 openAiClient,
+                aiUsageLogService,
                 notificationMapper);
         ApplicationCaseExtraction extraction = extraction(33L, 10L, 20L, 1L, "URL");
         String jobUrl = "https://example.com/jobs/backend";
@@ -254,6 +265,7 @@ class ApplicationCaseExtractionWorkerTest {
         assertThat(reasonCaptor.getValue()).hasSizeLessThanOrEqualTo(1000);
         verify(extractionMapper, never()).markExtractionSucceeded(any(), any());
         verify(applicationCaseMapper, never()).updateApplicationCase(any());
+        verify(aiUsageLogService, never()).recordFailure(any(), any(), eq("JOB_POSTING_METADATA"), any());
 
         ArgumentCaptor<Notification> notificationCaptor = ArgumentCaptor.forClass(Notification.class);
         verify(notificationMapper).insertNotification(notificationCaptor.capture());
@@ -268,6 +280,7 @@ class ApplicationCaseExtractionWorkerTest {
         JobPostingMapper jobPostingMapper = mock(JobPostingMapper.class);
         JobPostingService jobPostingService = mock(JobPostingService.class);
         OpenAiResponsesClient openAiClient = mock(OpenAiResponsesClient.class);
+        AiUsageLogService aiUsageLogService = mock(AiUsageLogService.class);
         NotificationMapper notificationMapper = mock(NotificationMapper.class);
         ApplicationCaseExtractionWorker worker = worker(
                 extractionMapper,
@@ -275,6 +288,7 @@ class ApplicationCaseExtractionWorkerTest {
                 jobPostingMapper,
                 jobPostingService,
                 openAiClient,
+                aiUsageLogService,
                 notificationMapper);
         ApplicationCaseExtraction extraction = extraction(37L, 10L, 20L, 1L, "URL");
         String jobUrl = "https://example.com/jobs/backend";
@@ -308,7 +322,48 @@ class ApplicationCaseExtractionWorkerTest {
         assertThat(processed).isEqualTo(1);
         verify(jobPostingService, never()).saveExtractedJobPosting(any(), any(), any());
         verify(applicationCaseMapper, never()).updateApplicationCase(any());
+        verify(aiUsageLogService, never()).recordSuccess(any(), any(), any(), any());
         verify(notificationMapper, never()).insertNotification(any());
+    }
+
+    @Test
+    void processQueuedExtractionRecordsMetadataFailureWhenOpenAiMetadataFails() {
+        ApplicationCaseExtractionMapper extractionMapper = mock(ApplicationCaseExtractionMapper.class);
+        ApplicationCaseMapper applicationCaseMapper = mock(ApplicationCaseMapper.class);
+        JobPostingMapper jobPostingMapper = mock(JobPostingMapper.class);
+        JobPostingService jobPostingService = mock(JobPostingService.class);
+        OpenAiResponsesClient openAiClient = mock(OpenAiResponsesClient.class);
+        AiUsageLogService aiUsageLogService = mock(AiUsageLogService.class);
+        NotificationMapper notificationMapper = mock(NotificationMapper.class);
+        ApplicationCaseExtractionWorker worker = worker(
+                extractionMapper,
+                applicationCaseMapper,
+                jobPostingMapper,
+                jobPostingService,
+                openAiClient,
+                aiUsageLogService,
+                notificationMapper);
+        ApplicationCaseExtraction extraction = extraction(38L, 10L, 20L, 1L, "TEXT");
+        String originalText = "Original manually pasted posting text.";
+
+        when(extractionMapper.findQueuedExtractions(5)).thenReturn(List.of(extraction));
+        when(extractionMapper.claimQueuedExtraction(38L)).thenReturn(1);
+        when(jobPostingMapper.findJobPostingByIdAndCaseId(20L, 10L)).thenReturn(JobPosting.builder()
+                .id(20L)
+                .applicationCaseId(10L)
+                .revision(1)
+                .originalText(originalText)
+                .sourceType("TEXT")
+                .build());
+        when(openAiClient.extractJobPostingMetadata(originalText)).thenThrow(new IllegalStateException("metadata down"));
+        when(extractionMapper.markExtractionFailed(eq(38L), any(String.class))).thenReturn(1);
+
+        int processed = worker.processQueuedExtractions();
+
+        assertThat(processed).isEqualTo(1);
+        verify(aiUsageLogService).recordFailure(1L, 10L, "JOB_POSTING_METADATA", "metadata down");
+        verify(extractionMapper).markExtractionFailed(eq(38L), any(String.class));
+        verify(applicationCaseMapper, never()).updateApplicationCase(any());
     }
 
     @Test
@@ -318,6 +373,7 @@ class ApplicationCaseExtractionWorkerTest {
         JobPostingMapper jobPostingMapper = mock(JobPostingMapper.class);
         JobPostingService jobPostingService = mock(JobPostingService.class);
         OpenAiResponsesClient openAiClient = mock(OpenAiResponsesClient.class);
+        AiUsageLogService aiUsageLogService = mock(AiUsageLogService.class);
         NotificationMapper notificationMapper = mock(NotificationMapper.class);
         ApplicationCaseExtractionWorker worker = worker(
                 extractionMapper,
@@ -325,6 +381,7 @@ class ApplicationCaseExtractionWorkerTest {
                 jobPostingMapper,
                 jobPostingService,
                 openAiClient,
+                aiUsageLogService,
                 notificationMapper);
         ApplicationCaseExtraction extraction = extraction(34L, 10L, 20L, 1L, "URL");
 
@@ -347,6 +404,7 @@ class ApplicationCaseExtractionWorkerTest {
         JobPostingMapper jobPostingMapper = mock(JobPostingMapper.class);
         JobPostingService jobPostingService = mock(JobPostingService.class);
         OpenAiResponsesClient openAiClient = mock(OpenAiResponsesClient.class);
+        AiUsageLogService aiUsageLogService = mock(AiUsageLogService.class);
         NotificationMapper notificationMapper = mock(NotificationMapper.class);
         ApplicationCaseExtractionWorker worker = worker(
                 extractionMapper,
@@ -354,6 +412,7 @@ class ApplicationCaseExtractionWorkerTest {
                 jobPostingMapper,
                 jobPostingService,
                 openAiClient,
+                aiUsageLogService,
                 notificationMapper);
         ApplicationCaseExtraction stale = ApplicationCaseExtraction.builder()
                 .id(35L)
@@ -393,6 +452,7 @@ class ApplicationCaseExtractionWorkerTest {
         JobPostingMapper jobPostingMapper = mock(JobPostingMapper.class);
         JobPostingService jobPostingService = mock(JobPostingService.class);
         OpenAiResponsesClient openAiClient = mock(OpenAiResponsesClient.class);
+        AiUsageLogService aiUsageLogService = mock(AiUsageLogService.class);
         NotificationMapper notificationMapper = mock(NotificationMapper.class);
         ApplicationCaseExtractionWorker worker = worker(
                 extractionMapper,
@@ -400,6 +460,7 @@ class ApplicationCaseExtractionWorkerTest {
                 jobPostingMapper,
                 jobPostingService,
                 openAiClient,
+                aiUsageLogService,
                 notificationMapper);
         ApplicationCaseExtraction stale = ApplicationCaseExtraction.builder()
                 .id(36L)
@@ -431,6 +492,7 @@ class ApplicationCaseExtractionWorkerTest {
                 mock(JobPostingMapper.class),
                 mock(JobPostingService.class),
                 mock(OpenAiResponsesClient.class),
+                mock(AiUsageLogService.class),
                 mock(NotificationMapper.class));
 
         when(extractionMapper.findQueuedExtractions(5)).thenThrow(new IllegalStateException("table not ready"));
@@ -443,6 +505,7 @@ class ApplicationCaseExtractionWorkerTest {
                                                           JobPostingMapper jobPostingMapper,
                                                           JobPostingService jobPostingService,
                                                           OpenAiResponsesClient openAiClient,
+                                                          AiUsageLogService aiUsageLogService,
                                                           NotificationMapper notificationMapper) {
         return new ApplicationCaseExtractionWorker(
                 extractionMapper,
@@ -450,6 +513,7 @@ class ApplicationCaseExtractionWorkerTest {
                 jobPostingMapper,
                 jobPostingService,
                 openAiClient,
+                aiUsageLogService,
                 notificationMapper,
                 transactionTemplate());
     }

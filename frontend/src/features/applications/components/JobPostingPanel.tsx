@@ -36,6 +36,9 @@ const sourceOptions: {
   { value: "MANUAL", label: "수동", description: "메모 기반 직접 입력", icon: PencilLine },
 ];
 
+const ALLOWED_IMAGE_MIME_TYPES = new Set(["image/png", "image/jpeg", "image/webp", "image/gif"]);
+const IMAGE_ACCEPT = "image/png,image/jpeg,image/webp,image/gif";
+
 function formatDateTime(value: string): string {
   return new Intl.DateTimeFormat("ko-KR", { dateStyle: "medium", timeStyle: "short" }).format(new Date(value));
 }
@@ -65,8 +68,8 @@ function validatePostingFile(
     return "PDF 방식에는 application/pdf 파일만 업로드할 수 있습니다.";
   }
 
-  if (sourceType === "IMAGE" && !file.type.startsWith("image/")) {
-    return "이미지 방식에는 image/* 파일만 업로드할 수 있습니다.";
+  if (sourceType === "IMAGE" && !ALLOWED_IMAGE_MIME_TYPES.has(file.type)) {
+    return "이미지 방식에는 PNG, JPG, WEBP, GIF 파일만 업로드할 수 있습니다.";
   }
 
   return null;
@@ -312,7 +315,7 @@ export function JobPostingPanel({
                     key={sourceType}
                     id="job-posting-file"
                     type="file"
-                    accept={sourceType === "PDF" ? "application/pdf" : "image/png,image/jpeg,image/webp,image/gif"}
+                    accept={sourceType === "PDF" ? "application/pdf" : IMAGE_ACCEPT}
                     onChange={handleFileChange}
                     className="bg-white"
                   />

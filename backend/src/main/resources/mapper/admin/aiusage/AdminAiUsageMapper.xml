@@ -26,7 +26,7 @@
     </sql>
 
     <sql id="BUsageLogWhere">
-        WHERE aul.feature_type IN ('JOB_ANALYSIS', 'COMPANY_RESEARCH', 'JOB_POSTING_OCR')
+        WHERE aul.feature_type IN ('JOB_ANALYSIS', 'COMPANY_RESEARCH', 'JOB_POSTING_OCR', 'JOB_POSTING_METADATA')
         <if test="criteria.featureType != null">
             AND aul.feature_type = #{criteria.featureType}
         </if>
@@ -94,7 +94,8 @@
             COALESCE(SUM(aul.credit_used), 0) AS credit_used,
             COALESCE(SUM(CASE WHEN aul.feature_type = 'JOB_ANALYSIS' THEN 1 ELSE 0 END), 0) AS job_analysis_count,
             COALESCE(SUM(CASE WHEN aul.feature_type = 'COMPANY_RESEARCH' THEN 1 ELSE 0 END), 0) AS company_research_count,
-            COALESCE(SUM(CASE WHEN aul.feature_type = 'JOB_POSTING_OCR' THEN 1 ELSE 0 END), 0) AS job_posting_ocr_count
+            COALESCE(SUM(CASE WHEN aul.feature_type = 'JOB_POSTING_OCR' THEN 1 ELSE 0 END), 0) AS job_posting_ocr_count,
+            COALESCE(SUM(CASE WHEN aul.feature_type = 'JOB_POSTING_METADATA' THEN 1 ELSE 0 END), 0) AS job_posting_metadata_count
         FROM ai_usage_log aul
         JOIN users u ON aul.user_id = u.id
         LEFT JOIN application_case ac ON aul.application_case_id = ac.id
@@ -103,7 +104,7 @@
 
     <select id="findBUsageLogsByCaseId" resultType="com.careertuner.admin.aiusage.dto.AdminAiUsageLogRow">
         <include refid="BUsageLogSelect"/>
-        WHERE aul.feature_type IN ('JOB_ANALYSIS', 'COMPANY_RESEARCH', 'JOB_POSTING_OCR')
+        WHERE aul.feature_type IN ('JOB_ANALYSIS', 'COMPANY_RESEARCH', 'JOB_POSTING_OCR', 'JOB_POSTING_METADATA')
           AND aul.application_case_id = #{applicationCaseId}
         ORDER BY aul.created_at DESC, aul.id DESC
         LIMIT #{limit}

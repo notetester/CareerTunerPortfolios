@@ -49,7 +49,11 @@ export interface AdminJobAnalysisRow {
   createdAt: string;
 }
 
-export type AdminBUsageFeatureType = "JOB_POSTING_OCR" | "JOB_ANALYSIS" | "COMPANY_RESEARCH";
+export type AdminBUsageFeatureType =
+  | "JOB_POSTING_OCR"
+  | "JOB_POSTING_METADATA"
+  | "JOB_ANALYSIS"
+  | "COMPANY_RESEARCH";
 
 export type AdminAiUsageStatus = "SUCCESS" | "FAILED" | "FALLBACK";
 
@@ -76,6 +80,7 @@ export interface AdminBUsageSummaryResponse {
   jobAnalysisCount: number;
   companyResearchCount: number;
   jobPostingOcrCount: number;
+  jobPostingMetadataCount: number;
 }
 
 export interface AdminAiUsageLogRow {

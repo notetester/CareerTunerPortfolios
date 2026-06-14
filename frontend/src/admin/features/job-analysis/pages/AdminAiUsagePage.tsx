@@ -65,6 +65,7 @@ const EMPTY_SUMMARY: AdminBUsageSummaryResponse = {
   jobAnalysisCount: 0,
   companyResearchCount: 0,
   jobPostingOcrCount: 0,
+  jobPostingMetadataCount: 0,
 };
 
 const FEATURE_OPTIONS: Array<{ value: UsageFilters["featureType"]; label: string }> = [
@@ -72,6 +73,7 @@ const FEATURE_OPTIONS: Array<{ value: UsageFilters["featureType"]; label: string
   { value: "JOB_ANALYSIS", label: "공고 분석" },
   { value: "COMPANY_RESEARCH", label: "기업 분석" },
   { value: "JOB_POSTING_OCR", label: "공고 OCR" },
+  { value: "JOB_POSTING_METADATA", label: "공고 메타데이터" },
 ];
 
 const STATUS_OPTIONS: Array<{ value: UsageFilters["status"]; label: string }> = [
@@ -286,10 +288,11 @@ export function AdminAiUsagePage() {
           </CardContent>
         </Card>
 
-        <div className="grid gap-3 sm:grid-cols-3">
+        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
           <FeatureCount label="공고 분석" value={summary.jobAnalysisCount} />
           <FeatureCount label="기업 분석" value={summary.companyResearchCount} />
           <FeatureCount label="공고 OCR" value={summary.jobPostingOcrCount} />
+          <FeatureCount label="공고 메타데이터" value={summary.jobPostingMetadataCount} />
         </div>
 
         <Card className="border-slate-200 bg-white">

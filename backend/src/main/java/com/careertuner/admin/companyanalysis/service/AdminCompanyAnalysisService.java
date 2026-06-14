@@ -158,7 +158,7 @@ public class AdminCompanyAnalysisService {
     }
 
     private static String requiredSourceType(String value) {
-        String sourceType = blankToNull(value);
+        String sourceType = normalizeAllowedToken(value, SOURCE_TYPES, "sourceType");
         if (sourceType == null) {
             throw new BusinessException(ErrorCode.INVALID_INPUT, "sourceType is required.");
         }

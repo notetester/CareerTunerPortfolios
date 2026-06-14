@@ -40,12 +40,14 @@ public class ApplicationCaseExtractionWorker {
     private static final String NOTIFICATION_TARGET_TYPE = "APPLICATION_CASE";
     private static final String SUCCESS_NOTIFICATION_TYPE = "JOB_POSTING_EXTRACTION_SUCCEEDED";
     private static final String FAILURE_NOTIFICATION_TYPE = "JOB_POSTING_EXTRACTION_FAILED";
+    private static final String FEATURE_JOB_POSTING_METADATA = "JOB_POSTING_METADATA";
 
     private final ApplicationCaseExtractionMapper extractionMapper;
     private final ApplicationCaseMapper applicationCaseMapper;
     private final JobPostingMapper jobPostingMapper;
     private final JobPostingService jobPostingService;
     private final OpenAiResponsesClient openAiClient;
+    private final AiUsageLogService aiUsageLogService;
     private final NotificationMapper notificationMapper;
     private final TransactionTemplate transactionTemplate;
 
@@ -111,9 +113,22 @@ public class ApplicationCaseExtractionWorker {
         JobPosting posting = requireJobPosting(extraction);
         ExtractedPosting extractedPosting = extractPostingText(extraction, posting);
         String postingText = sourceText(extractedPosting);
-        JobPostingMetadataPayload metadata = openAiClient.extractJobPostingMetadata(postingText);
+        JobPostingMetadataPayload metadata = extractJobPostingMetadata(extraction, postingText);
         boolean saveExtractedPosting = shouldSaveExtractedPosting(extraction, posting, extractedPosting);
         return new ExtractionResult(posting, extractedPosting, metadata, saveExtractedPosting);
+    }
+
+    private JobPostingMetadataPayload extractJobPostingMetadata(ApplicationCaseExtraction extraction, String postingText) {
+        try {
+            return openAiClient.extractJobPostingMetadata(postingText);
+        } catch (RuntimeException ex) {
+            aiUsageLogService.recordFailure(
+                    extraction.getUserId(),
+                    extraction.getApplicationCaseId(),
+                    FEATURE_JOB_POSTING_METADATA,
+                    errorMessage(ex));
+            throw ex;
+        }
     }
 
     private void completeSucceeded(ApplicationCaseExtraction extraction, ExtractionResult result) {
@@ -140,6 +155,13 @@ public class ApplicationCaseExtractionWorker {
             applicationCaseMapper.updateApplicationCase(updatedApplicationCase(
                     applicationCase,
                     result.metadata()));
+            if (result.metadata() != null && result.metadata().usage() != null) {
+                aiUsageLogService.recordSuccess(
+                        extraction.getUserId(),
+                        extraction.getApplicationCaseId(),
+                        FEATURE_JOB_POSTING_METADATA,
+                        result.metadata().usage());
+            }
             notificationMapper.insertNotification(successNotification(extraction));
             return null;
         });

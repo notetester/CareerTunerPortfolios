@@ -175,7 +175,7 @@
         FROM ai_usage_log failed
         WHERE failed.application_case_id = #{applicationCaseId}
           AND failed.status = 'FAILED'
-          AND failed.feature_type IN ('JOB_ANALYSIS', 'COMPANY_RESEARCH', 'JOB_POSTING_OCR')
+          AND failed.feature_type IN ('JOB_ANALYSIS', 'COMPANY_RESEARCH', 'JOB_POSTING_OCR', 'JOB_POSTING_METADATA')
           AND NOT EXISTS (
               SELECT 1
               FROM ai_usage_log success

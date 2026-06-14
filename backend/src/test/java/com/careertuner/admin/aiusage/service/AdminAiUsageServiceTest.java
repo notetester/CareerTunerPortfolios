@@ -29,7 +29,7 @@ class AdminAiUsageServiceTest {
         when(mapper.findBUsageLogs(any())).thenReturn(List.of());
 
         service.bUsageLogs(admin(), AdminAiUsageSearchCriteria.builder()
-                .featureType("job-analysis")
+                .featureType("job-posting-metadata")
                 .status("failed")
                 .keyword(" timeout ")
                 .applicationCaseId(10L)
@@ -46,7 +46,7 @@ class AdminAiUsageServiceTest {
                 ArgumentCaptor.forClass(AdminAiUsageSearchCriteria.class);
         verify(mapper).findBUsageLogs(captor.capture());
         AdminAiUsageSearchCriteria criteria = captor.getValue();
-        assertThat(criteria.featureType()).isEqualTo("JOB_ANALYSIS");
+        assertThat(criteria.featureType()).isEqualTo("JOB_POSTING_METADATA");
         assertThat(criteria.status()).isEqualTo("FAILED");
         assertThat(criteria.keyword()).isEqualTo("timeout");
         assertThat(criteria.model()).isEqualTo("gpt-4.1-mini");

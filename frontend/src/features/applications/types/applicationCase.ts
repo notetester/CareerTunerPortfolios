@@ -37,7 +37,6 @@ export interface ApplicationCaseExtraction {
   id: number;
   applicationCaseId: number;
   jobPostingId: number | null;
-  userId: number;
   sourceType: ApplicationSourceType;
   status: ApplicationCaseExtractionStatus;
   errorMessage: string | null;

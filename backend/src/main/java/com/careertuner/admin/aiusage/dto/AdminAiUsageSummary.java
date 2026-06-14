@@ -12,4 +12,5 @@ public class AdminAiUsageSummary {
     private long jobAnalysisCount;
     private long companyResearchCount;
     private long jobPostingOcrCount;
+    private long jobPostingMetadataCount;
 }
