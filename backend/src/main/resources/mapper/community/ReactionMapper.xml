@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.careertuner.community.mapper.ReactionMapper">
+
+    <!-- 게시글 리액션 조회 -->
+    <select id="findPostReaction" resultType="com.careertuner.community.domain.PostReaction">
+        SELECT *
+          FROM post_reaction
+         WHERE user_id = #{userId}
+           AND post_id = #{postId}
+           AND reaction_type = #{reactionType}
+         LIMIT 1
+    </select>
+
+    <!-- 게시글 리액션 등록 -->
+    <insert id="insertPostReaction" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO post_reaction (user_id, post_id, reaction_type)
+        VALUES (#{userId}, #{postId}, #{reactionType})
+    </insert>
+
+    <!-- 게시글 리액션 삭제 -->
+    <delete id="deletePostReaction">
+        DELETE FROM post_reaction
+         WHERE user_id = #{userId}
+           AND post_id = #{postId}
+           AND reaction_type = #{reactionType}
+    </delete>
+
+    <!-- 댓글 리액션 조회 -->
+    <select id="findCommentReaction" resultType="com.careertuner.community.domain.CommentReaction">
+        SELECT *
+          FROM comment_reaction
+         WHERE user_id = #{userId}
+           AND comment_id = #{commentId}
+           AND reaction_type = #{reactionType}
+         LIMIT 1
+    </select>
+
+    <!-- 댓글 리액션 등록 -->
+    <insert id="insertCommentReaction" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO comment_reaction (user_id, comment_id, reaction_type)
+        VALUES (#{userId}, #{commentId}, #{reactionType})
+    </insert>
+
+    <!-- 댓글 리액션 삭제 -->
+    <delete id="deleteCommentReaction">
+        DELETE FROM comment_reaction
+         WHERE user_id = #{userId}
+           AND comment_id = #{commentId}
+           AND reaction_type = #{reactionType}
+    </delete>
+
+</mapper>

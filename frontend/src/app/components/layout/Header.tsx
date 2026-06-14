@@ -3,12 +3,13 @@ import { Link, useLocation, useNavigate } from "react-router";
 import { useAuth } from "../../auth/AuthContext";
 import { Button } from "../ui/button";
 import { Badge } from "../ui/badge";
+import { NotificationBell } from "@/features/notification/components/NotificationBell";
+import "@/features/notification/styles/notification.css";
 import {
   Sparkles,
   ChevronDown,
   Menu,
   X,
-  Bell,
   User,
   LayoutDashboard,
   FileText,
@@ -67,10 +68,10 @@ const navItems = [
     icon: MessageSquare,
     children: [
       { label: "면접 모드 선택", href: "/interview?tab=modes" },
-      { label: "예상 질문 목록", href: "/interview?tab=questions" },
-      { label: "실전 모의면접", href: "/interview?tab=practice" },
-      { label: "음성 면접", href: "/interview?tab=voice" },
-      { label: "아바타 면접관", href: "/interview?tab=avatar" },
+      { label: "예상 면접 질문", href: "/interview?tab=questions" },
+      { label: "복습 테스트", href: "/interview?tab=practice" },
+      { label: "음성 모의면접", href: "/interview?tab=live" },
+      { label: "아바타 화상 면접", href: "/interview?tab=avatar" },
       { label: "답변 평가", href: "/interview?tab=evaluation" },
       { label: "면접 리포트", href: "/interview?tab=report" },
     ],
@@ -260,10 +261,7 @@ export function Header() {
                 </div>
 
                 {/* Notifications */}
-                <button className="relative p-2 rounded-lg hover:bg-slate-100 transition-colors">
-                  <Bell className="size-5 text-slate-600" />
-                  <span className="absolute top-1.5 right-1.5 size-2 bg-red-500 rounded-full"></span>
-                </button>
+                <NotificationBell />
 
                 {/* User menu */}
                 <div className="relative hidden sm:block" onMouseEnter={() => setUserMenuOpen(true)} onMouseLeave={() => setUserMenuOpen(false)}>

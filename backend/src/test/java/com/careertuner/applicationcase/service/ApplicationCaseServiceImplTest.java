@@ -13,6 +13,8 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
@@ -500,6 +502,30 @@ class ApplicationCaseServiceImplTest {
     }
 
     @Test
+    void createJobAnalysisRejectsAnalyzingStatusBeforeStartingAiRequest() {
+        ApplicationCaseMapper applicationCaseMapper = mock(ApplicationCaseMapper.class);
+        JobPostingMapper jobPostingMapper = mock(JobPostingMapper.class);
+        JobAnalysisMapper jobAnalysisMapper = mock(JobAnalysisMapper.class);
+        OpenAiResponsesClient openAiClient = mock(OpenAiResponsesClient.class);
+        AiUsageLogService usageLogService = mock(AiUsageLogService.class);
+        ApplicationCaseAnalysisStatusService statusService = mock(ApplicationCaseAnalysisStatusService.class);
+        ApplicationCaseAccessService accessService = new ApplicationCaseAccessService(applicationCaseMapper, jobPostingMapper);
+        JobAnalysisService service = new JobAnalysisService(accessService, jobAnalysisMapper, openAiClient, usageLogService, statusService, transactionTemplate(), analysisJsonValidator());
+
+        when(applicationCaseMapper.findApplicationCaseByIdAndUserId(10L, 1L)).thenReturn(applicationCase("ANALYZING"));
+
+        assertThatThrownBy(() -> service.createJobAnalysis(1L, 10L))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("이미 분석이 진행 중입니다. 잠시 후 결과를 확인해 주세요.");
+
+        verify(statusService, never()).markAnalyzing(1L, 10L, "ANALYZING");
+        verify(openAiClient, never()).analyzeJobPosting(any(ApplicationCase.class), any());
+        verify(jobAnalysisMapper, never()).insertJobAnalysis(any(JobAnalysis.class));
+        verify(usageLogService, never()).recordSuccess(eq(1L), eq(10L), eq("JOB_ANALYSIS"), any());
+        verify(usageLogService, never()).recordFailure(eq(1L), eq(10L), eq("JOB_ANALYSIS"), any());
+    }
+
+    @Test
     void createJobAnalysisKeepsPreviousAnalysesAndLinksCurrentPostingRevision() {
         ApplicationCaseMapper applicationCaseMapper = mock(ApplicationCaseMapper.class);
         JobPostingMapper jobPostingMapper = mock(JobPostingMapper.class);
@@ -697,6 +723,38 @@ class ApplicationCaseServiceImplTest {
         verify(companyAnalysisMapper, never()).insertCompanyAnalysis(any(CompanyAnalysis.class));
         verify(usageLogService, never()).recordSuccess(eq(1L), eq(10L), eq("COMPANY_RESEARCH"), any());
         verify(usageLogService, never()).recordFailure(eq(1L), eq(10L), eq("COMPANY_RESEARCH"), any());
+    }
+
+    @Test
+    void createCompanyAnalysisRejectsAnalyzingStatusBeforeStartingAiRequest() {
+        ApplicationCaseMapper applicationCaseMapper = mock(ApplicationCaseMapper.class);
+        JobPostingMapper jobPostingMapper = mock(JobPostingMapper.class);
+        CompanyAnalysisMapper companyAnalysisMapper = mock(CompanyAnalysisMapper.class);
+        OpenAiResponsesClient openAiClient = mock(OpenAiResponsesClient.class);
+        AiUsageLogService usageLogService = mock(AiUsageLogService.class);
+        ApplicationCaseAnalysisStatusService statusService = mock(ApplicationCaseAnalysisStatusService.class);
+        ApplicationCaseAccessService accessService = new ApplicationCaseAccessService(applicationCaseMapper, jobPostingMapper);
+        CompanyAnalysisService service = new CompanyAnalysisService(accessService, companyAnalysisMapper, openAiClient, usageLogService, statusService, transactionTemplate(), analysisJsonValidator());
+
+        when(applicationCaseMapper.findApplicationCaseByIdAndUserId(10L, 1L)).thenReturn(applicationCase("ANALYZING"));
+
+        assertThatThrownBy(() -> service.createCompanyAnalysis(1L, 10L))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("이미 분석이 진행 중입니다. 잠시 후 결과를 확인해 주세요.");
+
+        verify(statusService, never()).markAnalyzing(1L, 10L, "ANALYZING");
+        verify(openAiClient, never()).analyzeCompany(any(ApplicationCase.class), any());
+        verify(companyAnalysisMapper, never()).insertCompanyAnalysis(any(CompanyAnalysis.class));
+        verify(usageLogService, never()).recordSuccess(eq(1L), eq(10L), eq("COMPANY_RESEARCH"), any());
+        verify(usageLogService, never()).recordFailure(eq(1L), eq(10L), eq("COMPANY_RESEARCH"), any());
+    }
+
+    @Test
+    void analysisStatusStartMapperRequiresSameRunnablePreviousStatus() throws Exception {
+        String mapperXml = Files.readString(Path.of("src/main/resources/mapper/applicationcase/ApplicationCaseMapper.xml"));
+
+        assertThat(mapperXml).contains("status = #{previousStatus}");
+        assertThat(mapperXml).contains("#{previousStatus} IN ('DRAFT', 'READY')");
     }
 
     @Test

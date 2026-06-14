@@ -39,6 +39,9 @@ public interface InterviewMapper {
 
     InterviewQuestion findQuestionByIdAndUserId(@Param("id") Long id, @Param("userId") Long userId);
 
+    /** 질문의 모범답안(답안지)을 저장한다. 채점 기준으로 재사용한다. (model_answer 컬럼 필요) */
+    int updateQuestionModelAnswer(@Param("id") Long id, @Param("modelAnswer") String modelAnswer);
+
     /** 세션 내 가장 큰 sort_order. 꼬리 질문을 뒤에 이어 붙일 때 사용. (질문 없으면 null) */
     Integer findMaxSortOrder(@Param("sessionId") Long sessionId);
 

@@ -3,7 +3,9 @@ import { Link, useLocation } from "react-router";
 import {
   LayoutDashboard, Briefcase, BarChart3, Building2, Gauge, FileText,
   Users, CreditCard, MessageSquareWarning, Megaphone, CircleHelp,
-  Mail, Search, Bell, ChevronRight, Target, TrendingUp, ListChecks, Activity,
+  Mail, Search, Bell, ChevronRight,
+  Target, TrendingUp, ListChecks, Activity,
+  Scale, FileUser, ClipboardCheck,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import "./admin-shell.css";
@@ -30,11 +32,15 @@ const NAV: NavItem[] = [
   { key: "ai-usage", label: "B AI 사용량", icon: Gauge, href: "/admin/ai-usage" },
   { key: "prompts", label: "프롬프트 템플릿", icon: FileText, href: "/admin/prompts" },
   { key: "members", label: "회원 관리", icon: Users, ct: "1,248", href: "/admin/users" },
+  { key: "profiles", label: "프로필 관리", icon: FileUser, href: "/admin/profiles" },
+  { key: "consents", label: "동의 관리", icon: ClipboardCheck, href: "/admin/consents" },
   { key: "payments", label: "결제 관리", icon: CreditCard, ct: "34", href: "/admin/payments" },
-  { key: "reports", label: "게시판/신고", icon: MessageSquareWarning, ct: "12", href: "/admin/community" },
+  { key: "reports", label: "콘텐츠 관리", icon: MessageSquareWarning, href: "/admin/community" },
   { key: "notices", label: "공지사항", icon: Megaphone, ct: "7", href: "/admin/notices" },
   { key: "faq", label: "FAQ 관리", icon: CircleHelp, href: "/admin/faq" },
   { key: "inquiries", label: "문의 관리", icon: Mail, ct: "9", href: "/admin/inquiries" },
+  { key: "terms", label: "약관 관리", icon: Scale, href: "/admin/terms" },
+  { key: "notifications", label: "알림 모니터링", icon: Bell, href: "/admin/notifications" },
 ];
 
 interface AdminShellProps {

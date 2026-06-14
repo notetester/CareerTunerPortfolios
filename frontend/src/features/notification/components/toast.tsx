@@ -27,6 +27,7 @@ import {
   MessageCircle,
   Reply,
   Heart,
+  EyeOff,
   Megaphone,
   MessageSquareReply,
   CreditCard,
@@ -204,6 +205,7 @@ const NOTI_ICON_MAP: Record<NotificationType, LucideIcon> = {
   COMMENT: MessageCircle,
   COMMENT_REPLY: Reply,
   LIKE: Heart,
+  POST_HIDDEN: EyeOff,
   POST_SUMMARY_READY: BookOpen,
   NOTICE: Megaphone,
   TICKET_ANSWERED: MessageSquareReply,
@@ -589,7 +591,8 @@ function ToastViewport() {
   const [, forceRender] = useState(0);
 
   useEffect(() => {
-    return subscribe(() => forceRender((n) => n + 1));
+    const unsub = subscribe(() => forceRender((n) => n + 1));
+    return () => { unsub(); };
   }, []);
 
   return (

@@ -1,6 +1,7 @@
+import { useEffect } from "react";
 import { ArrowLeft, Pin, Eye, Calendar, ChevronUp, ChevronDown, List } from "lucide-react";
 import type { Notice } from "../types/support";
-import { mockNotices } from "../data/mockSupport";
+import { useSupportStore } from "../hooks/useSupportStore";
 
 function tagStyle(tag: string) {
   switch (tag) {
@@ -64,10 +65,29 @@ interface NoticeDetailPageProps {
 }
 
 export default function NoticeDetailPage({ noticeId, onBack, onNavigate }: NoticeDetailPageProps) {
-  const sorted = [...mockNotices].sort((a, b) => b.id - a.id);
+  const { notices, currentNotice, noticeError, fetchNoticeDetail } = useSupportStore();
+
+  useEffect(() => {
+    fetchNoticeDetail(noticeId);
+  }, [noticeId, fetchNoticeDetail]);
+
+  const sorted = [...notices].sort((a, b) => b.id - a.id);
   const idx = sorted.findIndex((n) => n.id === noticeId);
-  const notice = sorted[idx];
-  if (!notice) return null;
+
+  // currentNotice has full content from detail API; fall back to list item
+  const notice = currentNotice?.id === noticeId ? currentNotice : sorted[idx];
+  if (!notice) {
+    return (
+      <div className="ct-page ct-notices">
+        <button className="ct-ndetail__back" onClick={onBack}>
+          <ArrowLeft /> 공지사항 목록
+        </button>
+        <p style={{ textAlign: "center", color: "var(--muted-foreground)", padding: "48px 0" }}>
+          {noticeError ?? "공지사항을 불러올 수 없습니다."}
+        </p>
+      </div>
+    );
+  }
 
   const prev = sorted[idx - 1] as Notice | undefined;
   const next = sorted[idx + 1] as Notice | undefined;
@@ -82,7 +102,7 @@ export default function NoticeDetailPage({ noticeId, onBack, onNavigate }: Notic
         <div className="ct-ndetail__tags">
           <span className="ct-badge" style={tagStyle(notice.tag)}>{notice.tag}</span>
           {notice.isPinned && (
-            <span className="ct-badge" style={{ background: "var(--gradient-brand)", color: "#fff", fontWeight: 600 }}>
+            <span className="ct-badge" style={{ background: "var(--av-ink)", color: "#fff", fontWeight: 600 }}>
               <Pin style={{ width: 12, height: 12, strokeWidth: 2 }} /> 고정
             </span>
           )}

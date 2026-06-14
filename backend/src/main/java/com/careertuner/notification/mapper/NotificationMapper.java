@@ -1,0 +1,28 @@
+package com.careertuner.notification.mapper;
+
+import java.util.List;
+
+import org.apache.ibatis.annotations.Mapper;
+import org.apache.ibatis.annotations.Param;
+
+import com.careertuner.notification.domain.Notification;
+
+@Mapper
+public interface NotificationMapper {
+
+    List<Notification> findByUserId(@Param("userId") Long userId,
+                                    @Param("offset") int offset,
+                                    @Param("limit") int limit);
+
+    int countByUserId(@Param("userId") Long userId);
+
+    int countUnreadByUserId(@Param("userId") Long userId);
+
+    Notification findById(@Param("id") Long id);
+
+    void markAsRead(@Param("id") Long id);
+
+    void markAllAsRead(@Param("userId") Long userId);
+
+    void insert(Notification notification);
+}

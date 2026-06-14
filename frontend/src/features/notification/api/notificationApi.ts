@@ -1,32 +1,70 @@
-import { mockNotifications } from "../data/mockNotifications";
-import type { Notification } from "../types/notification";
+import { api } from "@/app/lib/api";
+import type { Notification, NotificationType } from "../types/notification";
+import { TYPE_TO_CATEGORY } from "../types/notification";
 
-// TODO: 백엔드 연동 시 mock → api() 호출로 교체
-// import { api } from "@/app/lib/api";
+interface BackendNotification {
+  id: number;
+  type: string;
+  targetType?: string;
+  targetId?: number;
+  title: string;
+  message?: string;
+  link?: string;
+  read: boolean;
+  createdAt: string;
+  actor?: {
+    id: number;
+    name: string;
+    avatarUrl?: string;
+  };
+}
 
-const delay = (ms = 300) => new Promise((r) => setTimeout(r, ms));
+interface NotificationPageResponse {
+  notifications: BackendNotification[];
+  total: number;
+  page: number;
+  size: number;
+  hasNext: boolean;
+}
+
+function toNotification(n: BackendNotification): Notification {
+  const type = n.type as NotificationType;
+  return {
+    id: n.id,
+    type,
+    category: TYPE_TO_CATEGORY[type] ?? "notice",
+    title: n.title,
+    message: n.message,
+    link: n.link,
+    targetType: n.targetType,
+    targetId: n.targetId,
+    actorId: n.actor?.id,
+    actorName: n.actor?.name,
+    isRead: n.read,
+    createdAt: n.createdAt,
+  };
+}
 
 /** 알림 목록 */
-export async function getNotifications(): Promise<Notification[]> {
-  await delay();
-  return mockNotifications;
+export async function getNotifications(page = 0, size = 20): Promise<Notification[]> {
+  const res = await api<NotificationPageResponse>(
+    `/notifications?page=${page}&size=${size}`,
+    {},
+  );
+  return res.notifications.map(toNotification);
 }
 
 /** 안 읽은 알림 수 */
 export async function getUnreadCount(): Promise<number> {
-  await delay(100);
-  return mockNotifications.filter((n) => !n.isRead).length;
+  return api<number>("/notifications/unread-count", {});
 }
 
 /** 읽음 처리 */
 export async function markAsRead(id: number): Promise<void> {
-  await delay(200);
-  const noti = mockNotifications.find((n) => n.id === id);
-  if (noti) noti.isRead = true;
+  await api<void>(`/notifications/${id}/read`, { method: "PATCH" });
 }
 
 /** 전체 읽음 */
 export async function markAllAsRead(): Promise<void> {
-  await delay(200);
-  mockNotifications.forEach((n) => { n.isRead = true; });
+  await api<void>("/notifications/read-all", { method: "POST" });
 }

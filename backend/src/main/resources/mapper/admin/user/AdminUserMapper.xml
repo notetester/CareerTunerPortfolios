@@ -1,0 +1,94 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.careertuner.admin.user.mapper.AdminUserMapper">
+
+    <sql id="userColumns">
+        u.id, u.email, u.password_enabled, u.name, u.email_verified, u.user_type, u.role,
+        u.status, u.plan, u.credit, u.last_login_at, u.dormant_at, u.blocked_reason,
+        u.blocked_until, u.deleted_at, u.status_changed_at, u.status_changed_by,
+        u.failed_login_count, u.last_failed_login_at, u.created_at, u.updated_at,
+        COALESCE(login_stats.success_count, 0) AS login_success_count,
+        COALESCE(login_stats.fail_count, 0) AS login_fail_count
+    </sql>
+
+    <sql id="loginStatsJoin">
+        LEFT JOIN (
+            SELECT user_id,
+                   SUM(CASE WHEN success = 1 THEN 1 ELSE 0 END) AS success_count,
+                   SUM(CASE WHEN success = 0 THEN 1 ELSE 0 END) AS fail_count
+            FROM user_login_history
+            WHERE user_id IS NOT NULL
+            GROUP BY user_id
+        ) login_stats ON login_stats.user_id = u.id
+    </sql>
+
+    <select id="findUsers" resultType="com.careertuner.admin.user.dto.AdminUserRow">
+        SELECT <include refid="userColumns" />
+        FROM users u
+        <include refid="loginStatsJoin" />
+        WHERE 1 = 1
+        <if test="keyword != null">
+            AND (u.email LIKE CONCAT('%', #{keyword}, '%') OR u.name LIKE CONCAT('%', #{keyword}, '%'))
+        </if>
+        <if test="status != null">
+            AND u.status = #{status}
+        </if>
+        <if test="role != null">
+            AND u.role = #{role}
+        </if>
+        ORDER BY u.created_at DESC
+        LIMIT #{limit}
+    </select>
+
+    <select id="findUser" resultType="com.careertuner.admin.user.dto.AdminUserRow">
+        SELECT <include refid="userColumns" />
+        FROM users u
+        <include refid="loginStatsJoin" />
+        WHERE u.id = #{id}
+    </select>
+
+    <select id="findLoginHistory" resultType="com.careertuner.admin.user.dto.AdminUserLoginHistoryRow">
+        SELECT *
+        FROM user_login_history
+        WHERE user_id = #{userId}
+        ORDER BY created_at DESC
+        LIMIT #{limit}
+    </select>
+
+    <select id="findStatusHistory" resultType="com.careertuner.admin.user.dto.AdminUserStatusHistoryRow">
+        SELECT *
+        FROM user_status_history
+        WHERE user_id = #{userId}
+        ORDER BY created_at DESC
+        LIMIT #{limit}
+    </select>
+
+    <select id="findConsents" resultType="com.careertuner.admin.user.dto.AdminUserConsentRow">
+        SELECT *
+        FROM user_consent
+        WHERE user_id = #{userId}
+        ORDER BY created_at DESC
+    </select>
+
+    <update id="updateStatus">
+        UPDATE users
+        SET status = #{status},
+            blocked_reason = CASE WHEN #{status} = 'BLOCKED' THEN #{reason} ELSE NULL END,
+            blocked_until = CASE WHEN #{status} = 'BLOCKED' THEN #{blockedUntil} ELSE NULL END,
+            dormant_at = CASE WHEN #{status} = 'DORMANT' THEN COALESCE(dormant_at, NOW()) ELSE NULL END,
+            deleted_at = CASE WHEN #{status} = 'DELETED' THEN COALESCE(deleted_at, NOW()) ELSE NULL END,
+            status_changed_at = NOW(),
+            status_changed_by = #{actorUserId}
+        WHERE id = #{id}
+    </update>
+
+    <insert id="insertStatusHistory">
+        INSERT INTO user_status_history (
+            user_id, actor_user_id, previous_status, new_status, reason, memo, blocked_until
+        )
+        VALUES (
+            #{userId}, #{actorUserId}, #{previousStatus}, #{newStatus}, #{reason}, #{memo}, #{blockedUntil}
+        )
+    </insert>
+</mapper>

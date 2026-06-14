@@ -79,7 +79,8 @@
         WHERE id = #{id}
           AND user_id = #{userId}
           AND deleted_at IS NULL
-          AND status IN ('DRAFT', 'ANALYZING', 'READY')
+          AND status = #{previousStatus}
+          AND #{previousStatus} IN ('DRAFT', 'READY')
     </update>
 
     <update id="markReadyAfterAnalysis">

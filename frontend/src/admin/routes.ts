@@ -7,15 +7,22 @@ import { AdminHomePage } from "./features/home/pages/AdminHomePage";
 import AdminFitAnalysisPromptsPage from "./features/prompts/fit-analysis/pages/AdminFitAnalysisPrompts";
 import AdminAnalyticsPromptsPage from "./features/prompts/analytics/pages/AdminAnalyticsPrompts";
 import { AdminApplicationCasesPage } from "./features/application-cases/pages/AdminApplicationCasesPage";
+import { AdminUsersPage } from "./features/users/pages/AdminUsersPage";
+import { AdminProfilesPage } from "./features/profiles/pages/AdminProfilesPage";
+import { AdminConsentsPage } from "./features/consents/pages/AdminConsentsPage";
 import { AdminCompanyAnalysisPage } from "./features/company-analysis/pages/AdminCompanyAnalysisPage";
 import { AdminAiUsagePage } from "./features/job-analysis/pages/AdminAiUsagePage";
 import { AdminInterviewsPage } from "./features/interviews/pages/AdminInterviewsPage";
 import { AdminJobAnalysisPage } from "./features/job-analysis/pages/AdminJobAnalysisPage";
 import { AdminPromptsPage } from "./features/prompts/pages/AdminPromptsPage";
+import AdminProfilePromptsPage from "./features/prompts/profile/pages/AdminProfilePrompts";
 import AdminReports from "./features/community/pages/AdminReports";
+import AdminGuidelines from "./features/community/pages/AdminGuidelines";
 import AdminNotices from "./features/notices/pages/AdminNotices";
 import AdminFaq from "./features/faqs/pages/AdminFaq";
 import AdminInquiries from "./features/support-tickets/pages/AdminInquiries";
+import AdminNotifications from "./features/notifications/pages/AdminNotifications";
+import AdminTerms from "./features/terms/pages/AdminTerms";
 
 export const adminRoutes = [
   { path: "admin", Component: AdminDashboardPage },
@@ -28,7 +35,9 @@ export const adminRoutes = [
   // C 프롬프트 운영 확인(적합도/장기 분석). 페이지·백엔드 존재했으나 라우트 누락이라 연결한다.
   { path: "admin/prompts/fit-analysis", Component: AdminFitAnalysisPromptsPage },
   { path: "admin/prompts/analytics", Component: AdminAnalyticsPromptsPage },
-  { path: "admin/users", Component: AdminDashboardPage },
+  { path: "admin/users", Component: AdminUsersPage },
+  { path: "admin/profiles", Component: AdminProfilesPage },
+  { path: "admin/consents", Component: AdminConsentsPage },
   { path: "admin/payments", Component: AdminDashboardPage },
   { path: "admin/application-cases", Component: AdminApplicationCasesPage },
   { path: "admin/ai-usage", Component: AdminAiUsagePage },
@@ -39,7 +48,11 @@ export const adminRoutes = [
   { path: "admin/notices", Component: AdminNotices },
   { path: "admin/faq", Component: AdminFaq },
   { path: "admin/inquiries", Component: AdminInquiries },
+  { path: "admin/terms", Component: AdminTerms },
+  { path: "admin/terms/guidelines", Component: AdminGuidelines },
+  { path: "admin/notifications", Component: AdminNotifications },
   { path: "admin/plans", Component: AdminDashboardPage },
   { path: "admin/prompts", Component: AdminPromptsPage },
+  { path: "admin/prompts/profile", Component: AdminProfilePromptsPage },
   { path: "admin/logs", Component: AdminDashboardPage },
 ];

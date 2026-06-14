@@ -1,4 +1,4 @@
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router";
 import {
   ArrowLeft,
@@ -31,7 +31,8 @@ import { useBAnalysisFailureLogs } from "../hooks/useBAnalysisFailureLogs";
 import { useCompanyAnalysis } from "../hooks/useCompanyAnalysis";
 import { useJobAnalysis } from "../hooks/useJobAnalysis";
 import { useJobPosting } from "../hooks/useJobPosting";
-import type { UpdateApplicationCaseRequest } from "../types/applicationCase";
+import type { ApplicationSourceType, UpdateApplicationCaseRequest } from "../types/applicationCase";
+import type { JobPosting, JobPostingRequest } from "../types/jobPosting";
 import { useApplicationFitAnalysis } from "@/features/analysis/hooks/useApplicationFitAnalysis";
 
 type DetailTab = "overview" | "posting" | "jobAnalysis" | "companyAnalysis" | "fit";
@@ -108,6 +109,7 @@ export function ApplicationDetailPage() {
     failureLogs: bFailureLogs,
     refresh: refreshBFailureLogs,
   } = useBAnalysisFailureLogs(id, isAuthenticated && Boolean(applicationCase));
+  const [sourceTypeSyncError, setSourceTypeSyncError] = useState<string | null>(null);
   const {
     analyses: fitAnalyses,
     loading: fitAnalysisLoading,
@@ -125,6 +127,37 @@ export function ApplicationDetailPage() {
     if (!id) return;
     const updated = await updateApplicationCase(id, request);
     setApplicationCase(updated);
+  };
+
+  const syncCaseSourceType = async (posting: JobPosting | null): Promise<JobPosting | null> => {
+    if (posting) {
+      setSourceTypeSyncError(null);
+    }
+
+    if (!id || !applicationCase || !posting || applicationCase.sourceType === posting.sourceType) {
+      return posting;
+    }
+
+    try {
+      const updated = await updateApplicationCase(id, { sourceType: posting.sourceType });
+      setApplicationCase(updated);
+    } catch {
+      setSourceTypeSyncError("공고는 저장됐지만 지원 건 유형 동기화에 실패했습니다. 새로고침 후 다시 확인해 주세요.");
+    }
+    return posting;
+  };
+
+  const handleSavePosting = async (request: JobPostingRequest): Promise<JobPosting | null> => {
+    const posting = await savePosting(request);
+    return syncCaseSourceType(posting);
+  };
+
+  const handleUploadPosting = async (
+    sourceType: Extract<ApplicationSourceType, "PDF" | "IMAGE">,
+    file: File,
+  ): Promise<JobPosting | null> => {
+    const posting = await uploadPosting(sourceType, file);
+    return syncCaseSourceType(posting);
   };
 
   const handleDelete = async () => {
@@ -271,6 +304,12 @@ export function ApplicationDetailPage() {
             </div>
           )}
 
+          {sourceTypeSyncError && (
+            <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700">
+              {sourceTypeSyncError}
+            </div>
+          )}
+
           {loading || !applicationCase ? (
             <div className="h-96 animate-pulse rounded-lg bg-slate-200" />
           ) : (
@@ -306,8 +345,8 @@ export function ApplicationDetailPage() {
                   saving={postingSaving}
                   uploading={postingUploading}
                   error={postingError}
-                  onSave={savePosting}
-                  onUpload={uploadPosting}
+                  onSave={handleSavePosting}
+                  onUpload={handleUploadPosting}
                 />
               )}
 

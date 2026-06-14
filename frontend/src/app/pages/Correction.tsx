@@ -12,7 +12,7 @@ const correctionMeta: Record<CorrectionTab, { title: string; desc: string; place
   answer: {
     title: "답변 첨삭",
     desc: "면접 답변을 직무 적합성, 구체성, 논리성 기준으로 개선합니다",
-    placeholder: "예: React 성능 최적화 경험에 대한 답변을 붙여넣으세요.",
+    placeholder: "예: 고객 불만을 해결했던 경험, 매출을 개선한 경험, 협업 갈등을 조정한 경험을 붙여넣으세요.",
     credit: 1,
   },
   cover: {
@@ -23,14 +23,14 @@ const correctionMeta: Record<CorrectionTab, { title: string; desc: string; place
   },
   resume: {
     title: "이력서 첨삭",
-    desc: "경험 표현, 기술스택 정리, 성과 중심 문장을 보강합니다",
-    placeholder: "이력서 경력/프로젝트 항목을 붙여넣으세요.",
+    desc: "경험 표현, 직무 역량 정리, 성과 중심 문장을 보강합니다",
+    placeholder: "이력서 경력, 활동, 프로젝트, 실습, 아르바이트 경험 항목을 붙여넣으세요.",
     credit: 2,
   },
   portfolio: {
     title: "포트폴리오 설명 첨삭",
-    desc: "프로젝트 배경, 역할, 문제 해결, 결과를 채용자가 읽기 좋게 다듬습니다",
-    placeholder: "포트폴리오 프로젝트 설명을 붙여넣으세요.",
+    desc: "작업물, 활동, 프로젝트의 배경, 역할, 문제 해결, 결과를 채용자가 읽기 좋게 다듬습니다",
+    placeholder: "디자인 작업물, 마케팅 캠페인, 고객 응대 개선, 개발 프로젝트 등 포트폴리오 설명을 붙여넣으세요.",
     credit: 2,
   },
 };
@@ -123,7 +123,7 @@ export function CorrectionPage() {
                       </CardTitle>
                     </CardHeader>
                     <CardContent className="space-y-2">
-                      {["카카오페이 직무 답변", "프론트엔드 자기소개서", "프로젝트 설명 개선"].map((item) => (
+                      {["영업 직무 답변", "간호사 자기소개서", "마케팅 캠페인 설명 개선"].map((item) => (
                         <div key={item} className="rounded-lg bg-slate-50 p-3 text-sm font-semibold text-slate-700">{item}</div>
                       ))}
                     </CardContent>

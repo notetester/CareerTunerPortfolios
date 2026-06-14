@@ -1,115 +1,58 @@
-import { useState, useRef, useEffect } from "react";
-import {
-  Mail, Inbox, Send, Timer, Smile, Flame,
-  ExternalLink, Save,
-} from "lucide-react";
-import { Button } from "@/app/components/ui/button";
-import {
-  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
-} from "@/app/components/ui/select";
+import { useState, useEffect } from "react";
+import { Mail, Search, ChevronLeft, ChevronRight, CheckCircle2, MessageSquareWarning } from "lucide-react";
 import AdminShell from "../../../components/AdminShell";
-import {
-  INQUIRIES as INITIAL, TEMPLATES, ASSIGNEES,
-  type Inquiry, type InquiryStatus,
-} from "../data/inquiriesData";
+import { type Inquiry } from "../data/inquiriesData";
+import * as adminTicketApi from "../api/adminTicketApi";
+import { ConfirmDialog } from "@/app/components/ui/confirm-dialog";
 import "./admin-inquiries.css";
 
-type TabKey = "pending" | "progress" | "answered" | "all";
+type FilterKey = "전체" | "대기" | "답변 완료";
 
-const TABS: { key: TabKey; label: string }[] = [
-  { key: "pending", label: "미답변" },
-  { key: "progress", label: "처리중" },
-  { key: "answered", label: "완료" },
-  { key: "all", label: "전체" },
-];
-
-const STATUS_LABEL: Record<InquiryStatus, string> = {
-  pending: "미답변", progress: "처리중", hold: "보류", answered: "답변완료",
+const STATUS_LABEL: Record<string, string> = {
+  pending: "대기", progress: "진행중", hold: "보류", answered: "답변 완료",
 };
-const STATUS_CLS: Record<InquiryStatus, string> = {
-  pending: "inq-st--pending", progress: "inq-st--progress",
-  hold: "inq-st--hold", answered: "inq-st--answered",
-};
-
-const STAT_CARDS = [
-  { label: "미답변", icon: Inbox, cls: "inq-stat--amber" },
-  { label: "오늘 답변", value: 14, icon: Send, cls: "inq-stat--blue" },
-  { label: "평균 응답", value: "5.2시간", icon: Timer, cls: "inq-stat--slate" },
-  { label: "만족도", value: "96%", icon: Smile, cls: "inq-stat--green" },
-];
-
-const CAT_COLOR: Record<string, string> = {
-  "결제": "role", "AI기능": "interview", "계정": "job",
-  "기술문제": "pass", "기타": "free",
-};
-
-function Toast({ msg, tone }: { msg: string; tone: string }) {
-  return <div className={`inq-toast inq-toast--${tone}`}>{msg}</div>;
-}
 
 export default function AdminInquiries() {
-  const [items, setItems] = useState<Inquiry[]>(INITIAL);
-  const [tab, setTab] = useState<TabKey>("pending");
-  const [selectedId, setSelectedId] = useState<number>(INITIAL[0].id);
-  const [reply, setReply] = useState("");
+  const [items, setItems] = useState<Inquiry[]>([]);
+  const [filter, setFilter] = useState<FilterKey>("전체");
+  const [query, setQuery] = useState("");
   const [toast, setToast] = useState<{ msg: string; tone: string } | null>(null);
-  const chatRef = useRef<HTMLDivElement>(null);
+  const [dialog, setDialog] = useState<{ inquiry: Inquiry; target: string } | null>(null);
 
-  const selected = items.find((i) => i.id === selectedId) ?? items[0];
-
-  /* counts */
-  const pendingCount = items.filter((i) => i.status === "pending").length;
-  const progressCount = items.filter((i) => i.status === "progress" || i.status === "hold").length;
-  const answeredCount = items.filter((i) => i.status === "answered").length;
-  const countMap: Record<TabKey, number> = {
-    pending: pendingCount, progress: progressCount, answered: answeredCount, all: items.length,
-  };
-
-  const filtered = tab === "all"
-    ? items
-    : tab === "pending"
-      ? items.filter((i) => i.status === "pending")
-      : tab === "progress"
-        ? items.filter((i) => i.status === "progress" || i.status === "hold")
-        : items.filter((i) => i.status === "answered");
-
-  /* scroll chat to bottom */
   useEffect(() => {
-    if (chatRef.current) chatRef.current.scrollTop = chatRef.current.scrollHeight;
-  }, [selected.msgs.length, selectedId]);
+    adminTicketApi.getTickets().then(setItems)
+      .catch(() => flash("문의 목록을 불러오지 못했습니다.", "red"));
+  }, []);
 
   const flash = (msg: string, tone: string) => {
     setToast({ msg, tone });
     setTimeout(() => setToast(null), 2200);
   };
 
-  /* update field */
-  const updateField = (id: number, patch: Partial<Inquiry>) => {
-    setItems((prev) => prev.map((i) => i.id === id ? { ...i, ...patch } : i));
+  const handleConfirm = async () => {
+    if (!dialog) return;
+    try {
+      const updated = await adminTicketApi.updateTicket(dialog.inquiry.id, { status: dialog.target });
+      setItems((prev) => prev.map((i) => (i.id === updated.id ? updated : i)));
+      flash(`문의가 ${STATUS_LABEL[dialog.target] ?? dialog.target}(으)로 변경되었습니다.`, "green");
+    } catch {
+      flash("처리에 실패했습니다.", "red");
+    }
+    setDialog(null);
   };
 
-  /* send reply */
-  const handleSend = () => {
-    if (!reply.trim()) return;
-    const newMsg = { who: "admin" as const, name: "관리자", time: "방금", text: reply };
-    setItems((prev) =>
-      prev.map((i) =>
-        i.id === selectedId
-          ? { ...i, status: "answered" as const, msgs: [...i.msgs, newMsg] }
-          : i,
-      ),
-    );
-    setReply("");
-    flash("답변을 전송했어요", "green");
-  };
+  const pendingCount = items.filter((i) => i.status === "pending" || i.status === "progress" || i.status === "hold").length;
+  const answeredCount = items.filter((i) => i.status === "answered").length;
 
-  /* save memo */
-  const handleSaveMemo = (memo: string) => {
-    updateField(selectedId, { memo });
-    flash("메모를 저장했어요", "slate");
-  };
-
-  const ck = CAT_COLOR[selected.cat] ?? "free";
+  const filtered = items.filter((i) => {
+    if (filter === "대기" && i.status === "answered") return false;
+    if (filter === "답변 완료" && i.status !== "answered") return false;
+    if (query) {
+      const q = query.toLowerCase();
+      if (!i.title.toLowerCase().includes(q) && !i.member.toLowerCase().includes(q)) return false;
+    }
+    return true;
+  });
 
   return (
     <AdminShell
@@ -117,199 +60,137 @@ export default function AdminInquiries() {
       breadcrumb="문의 관리"
       title="문의 관리"
       icon={Mail}
-      desc="회원 문의를 확인하고 답변합니다."
+      desc="1:1 문의 응대 — AI 답변 초안이 준비된 문의는 표시됩니다"
+      actions={<button className="av-btn">CSV</button>}
     >
-      {/* Stats */}
-      <div className="inq-stats">
-        {STAT_CARDS.map((s, idx) => (
-          <div key={s.label} className={`inq-stat ${s.cls}`}>
-            <div className="inq-stat__ic"><s.icon /></div>
-            <div>
-              <div className="inq-stat__v">{idx === 0 ? pendingCount : s.value}</div>
-              <div className="inq-stat__l">{s.label}</div>
-            </div>
-          </div>
-        ))}
+      {/* Metrics */}
+      <div className="av-metrics">
+        <div className="av-met">
+          <div className="av-met__l">답변 대기</div>
+          <div className="av-met__row"><span className="av-met__n num">{pendingCount}</span></div>
+        </div>
+        <div className="av-met">
+          <div className="av-met__l">오늘 답변</div>
+          <div className="av-met__row"><span className="av-met__n num">{answeredCount}</span></div>
+        </div>
+        <div className="av-met">
+          <div className="av-met__l">평균 첫 응답</div>
+          <div className="av-met__row"><span className="av-met__n num">–</span></div>
+        </div>
+        <div className="av-met">
+          <div className="av-met__l">응대 만족도</div>
+          <div className="av-met__row"><span className="av-met__n num">–</span></div>
+        </div>
       </div>
 
-      <div className="inq-body">
-        {/* ── Left: list ── */}
-        <div className="inq-list">
-          <div className="inq-tabs">
-            {TABS.map((t) => (
-              <button
-                key={t.key}
-                className={`inq-tab ${tab === t.key ? "is-on" : ""}`}
-                onClick={() => setTab(t.key)}
-              >
-                {t.label} <span className="inq-tab__ct">{countMap[t.key]}</span>
-              </button>
-            ))}
+      {/* Table */}
+      <section className="av-panel">
+        <div className="av-filters">
+          <div className="av-search">
+            <Search />
+            <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="회원·제목 검색" />
           </div>
-
-          <div className="inq-rows">
-            {filtered.map((i) => {
-              const c = CAT_COLOR[i.cat] ?? "free";
-              return (
-                <div
-                  key={i.id}
-                  className={`inq-row ${selectedId === i.id ? "is-selected" : ""}`}
-                  onClick={() => setSelectedId(i.id)}
-                >
-                  <div className="inq-row__top">
-                    <span className="inq-row__cat" style={{ background: `var(--cat-${c}-bg)`, color: `var(--cat-${c}-fg)` }}>
-                      {i.cat}
-                    </span>
-                    {i.priority && <span className="inq-row__urgent">🔥 긴급</span>}
-                    <span className={`inq-row__st ${STATUS_CLS[i.status]}`}>{STATUS_LABEL[i.status]}</span>
-                  </div>
-                  <div className="inq-row__title">{i.title}</div>
-                  <div className="inq-row__meta">{i.member} · {i.date}</div>
-                </div>
-              );
-            })}
-            {filtered.length === 0 && <p className="inq-empty">해당 조건의 문의가 없습니다.</p>}
-          </div>
-        </div>
-
-        {/* ── Right: thread ── */}
-        <div className="inq-thread">
-          {/* 1) Header */}
-          <div className="inq-thread__head">
-            <div className="inq-thread__badges">
-              <span className="inq-row__cat" style={{ background: `var(--cat-${ck}-bg)`, color: `var(--cat-${ck}-fg)` }}>
-                {selected.cat}
-              </span>
-              {selected.priority && <span className="inq-row__urgent">🔥 긴급</span>}
-              <span className={`inq-row__st ${STATUS_CLS[selected.status]}`}>{STATUS_LABEL[selected.status]}</span>
-            </div>
-            <h3 className="inq-thread__title">{selected.title}</h3>
-            <div className="inq-thread__meta">{selected.member} · {selected.date}</div>
-          </div>
-
-          {/* 2) Controls */}
-          <div className="inq-controls">
-            <div className="inq-controls__field">
-              <span className="inq-controls__label">상태</span>
-              <Select
-                value={selected.status}
-                onValueChange={(v) => updateField(selectedId, { status: v as InquiryStatus })}
-              >
-                <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  {(["pending", "progress", "hold", "answered"] as InquiryStatus[]).map((s) => (
-                    <SelectItem key={s} value={s}>{STATUS_LABEL[s]}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="inq-controls__field">
-              <span className="inq-controls__label">담당자</span>
-              <Select
-                value={selected.assignee}
-                onValueChange={(v) => updateField(selectedId, { assignee: v })}
-              >
-                <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  {ASSIGNEES.map((a) => <SelectItem key={a} value={a}>{a}</SelectItem>)}
-                </SelectContent>
-              </Select>
-            </div>
-            <button
-              className={`inq-controls__urgent ${selected.priority ? "is-on" : ""}`}
-              onClick={() => updateField(selectedId, { priority: !selected.priority })}
-              title="긴급 토글"
-            >
-              <Flame />
-            </button>
-          </div>
-
-          {/* 3) Member context */}
-          <div className="inq-context">
-            <span className="inq-pill">{selected.plan}</span>
-            <span className="inq-pill">가입 {selected.joined}</span>
-            <span className="inq-pill">{selected.lastPay}</span>
-            <a href="/admin/users" className="inq-context__link">회원 상세 <ExternalLink /></a>
-          </div>
-
-          {/* 4) Chat */}
-          <div className="inq-chat" ref={chatRef}>
-            {selected.msgs.map((m, i) => (
-              <div key={i} className={`inq-msg ${m.who === "admin" ? "inq-msg--admin" : "inq-msg--user"}`}>
-                <div className={`inq-msg__avatar ${m.who === "admin" ? "inq-msg__avatar--admin" : ""}`}>
-                  {m.who === "admin" ? "관" : m.name[0]}
-                </div>
-                <div className="inq-msg__body">
-                  <div className="inq-msg__name">{m.name} <span className="inq-msg__time">{m.time}</span></div>
-                  <div className="inq-msg__bubble">{m.text}</div>
-                </div>
-              </div>
-            ))}
-            {selected.status === "answered" && (
-              <div className="inq-chat__done">답변 완료된 문의입니다</div>
-            )}
-          </div>
-
-          {/* 5) Internal memo */}
-          <MemoBox memo={selected.memo} onSave={handleSaveMemo} />
-
-          {/* 6) Reply */}
-          <div className="inq-reply">
-            <div className="inq-reply__tpls">
-              {TEMPLATES.map((t) => (
-                <button
-                  key={t.label}
-                  className="inq-reply__chip"
-                  onClick={() => setReply(t.text)}
-                >
-                  {t.label}
-                </button>
+          <div className="right">
+            <div className="av-seg">
+              {(["전체", "대기", "답변 완료"] as FilterKey[]).map((f) => (
+                <button key={f} className={filter === f ? "on" : ""} onClick={() => setFilter(f)}>{f}</button>
               ))}
             </div>
-            <textarea
-              className="inq-reply__textarea"
-              value={reply}
-              onChange={(e) => setReply(e.target.value)}
-              placeholder="답변을 입력하세요"
-            />
-            <Button
-              className="bg-gradient-to-r from-blue-600 to-indigo-600 text-white w-full"
-              size="sm"
-              disabled={!reply.trim()}
-              onClick={handleSend}
-            >
-              <Send /> 답변 보내기
-            </Button>
           </div>
         </div>
-      </div>
 
-      {toast && <Toast msg={toast.msg} tone={toast.tone} />}
+        <table className="av-table">
+          <thead>
+            <tr>
+              <th>ID</th>
+              <th>회원</th>
+              <th>문의</th>
+              <th>분류</th>
+              <th>상태</th>
+              <th className="r">접수</th>
+              <th className="r">조치</th>
+            </tr>
+          </thead>
+          <tbody>
+            {filtered.map((i) => (
+              <tr key={i.id}>
+                <td className="av-id num">T-{i.id}</td>
+                <td>
+                  <div className="av-user">
+                    <span className="av-user__av">{i.member[0]}</span>
+                    <div><div className="av-user__n">{i.member}</div></div>
+                  </div>
+                </td>
+                <td>
+                  <div className="av-cell__t">{i.title}</div>
+                  <div className="av-cell__m">{i.msgs[0]?.text ?? ""}</div>
+                </td>
+                <td className="av-muted" style={{ whiteSpace: "nowrap" }}>{i.cat}</td>
+                <td>
+                  {i.status === "answered"
+                    ? <span className="av-st av-st--off">답변 완료</span>
+                    : <span className="av-st av-st--warn">대기</span>}
+                </td>
+                <td className="r av-muted num">{i.date}</td>
+                <td className="r">
+                  <div className="inq-actions">
+                    {i.status !== "answered" && (
+                      <button
+                        className="av-btn"
+                        title="답변 완료"
+                        onClick={() => setDialog({ inquiry: i, target: "answered" })}
+                      >
+                        <CheckCircle2 />
+                      </button>
+                    )}
+                    {i.status === "answered" && (
+                      <button
+                        className="av-btn"
+                        title="재오픈"
+                        onClick={() => setDialog({ inquiry: i, target: "pending" })}
+                      >
+                        <MessageSquareWarning />
+                      </button>
+                    )}
+                  </div>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+
+        <div className="av-foot">
+          <span className="num">{filtered.length}건 표시 · 전체 {items.length}건</span>
+          <div className="av-pager">
+            <button disabled aria-label="이전"><ChevronLeft /></button>
+            <button aria-label="다음"><ChevronRight /></button>
+          </div>
+        </div>
+      </section>
+
+      {dialog && (() => {
+        const isClose = dialog.target === "answered";
+        return (
+          <ConfirmDialog
+            variant={isClose ? "success" : "warning"}
+            icon={isClose ? <CheckCircle2 /> : <MessageSquareWarning />}
+            title={isClose ? "이 문의를 답변 완료 처리할까요?" : "이 문의를 다시 열까요?"}
+            description={isClose
+              ? "답변 완료로 전환하면 대기 큐에서 제거됩니다."
+              : "재오픈하면 대기 큐에 다시 추가됩니다."}
+            meta={[
+              { label: "회원", value: dialog.inquiry.member },
+              { label: "문의", value: dialog.inquiry.title },
+              { label: "분류", value: dialog.inquiry.cat },
+            ]}
+            confirmLabel={isClose ? "답변 완료" : "재오픈"}
+            onConfirm={handleConfirm}
+            onCancel={() => setDialog(null)}
+          />
+        );
+      })()}
+
+      {toast && <div className={`inq-toast inq-toast--${toast.tone}`}>{toast.msg}</div>}
     </AdminShell>
-  );
-}
-
-/* ── Internal memo sub-component ── */
-function MemoBox({ memo, onSave }: { memo: string; onSave: (v: string) => void }) {
-  const [value, setValue] = useState(memo);
-
-  useEffect(() => { setValue(memo); }, [memo]);
-
-  return (
-    <div className="inq-memo">
-      <div className="inq-memo__head">
-        <span className="inq-memo__label">내부 메모</span>
-        <span className="inq-memo__tag">회원에게 보이지 않음</span>
-      </div>
-      <textarea
-        className="inq-memo__textarea"
-        value={value}
-        onChange={(e) => setValue(e.target.value)}
-        placeholder="내부 메모를 입력하세요"
-      />
-      <Button variant="outline" size="sm" onClick={() => onSave(value)}>
-        <Save /> 메모 저장
-      </Button>
-    </div>
   );
 }

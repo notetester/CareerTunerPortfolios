@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { X, Flag, CheckCircle2 } from "lucide-react";
+import * as communityApi from "../api/communityApi";
 
 const REASONS = [
   "스팸/광고",
@@ -9,18 +10,47 @@ const REASONS = [
   "기타",
 ] as const;
 
+const REASON_MAP: Record<string, string> = {
+  "스팸/광고": "SPAM",
+  "욕설/혐오 표현": "ABUSE",
+  "허위 정보": "FALSE_INFO",
+  "개인정보 노출": "PRIVACY",
+  "기타": "OTHER",
+};
+
 interface ReportDialogProps {
+  targetType: "POST" | "COMMENT";
+  targetId: number;
   target: "게시글" | "댓글";
   onClose: () => void;
 }
 
-export function ReportDialog({ target, onClose }: ReportDialogProps) {
+export function ReportDialog({ targetType, targetId, target, onClose }: ReportDialogProps) {
   const [reason, setReason] = useState("");
   const [detail, setDetail] = useState("");
   const [done, setDone] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
 
   const isEtc = reason === "기타";
-  const canSubmit = reason && (!isEtc || detail.trim().length >= 5);
+  const canSubmit = reason && (!isEtc || detail.trim().length >= 5) && !submitting;
+
+  const handleSubmit = async () => {
+    if (!canSubmit) return;
+    setSubmitting(true);
+    try {
+      await communityApi.createReport(
+        targetType,
+        targetId,
+        REASON_MAP[reason] ?? "OTHER",
+        detail || undefined,
+      );
+      setDone(true);
+    } catch {
+      setSubmitting(false);
+      const { toast: t } = await import("@/features/notification/components/toast");
+      t.error("신고 접수에 실패했습니다. 다시 시도해주세요.");
+    }
+  };
 
   if (done) {
     return (
@@ -94,9 +124,9 @@ export function ReportDialog({ target, onClose }: ReportDialogProps) {
           <button
             className="ct-modal__submit"
             disabled={!canSubmit}
-            onClick={() => setDone(true)}
+            onClick={handleSubmit}
           >
-            신고 접수
+            {submitting ? "접수 중..." : "신고 접수"}
           </button>
         </div>
       </div>

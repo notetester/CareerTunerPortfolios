@@ -8,7 +8,7 @@ interface PostListProps {
 
 export function PostList({ posts, onPostClick }: PostListProps) {
   return (
-    <div className="ct-postlist">
+    <section className="av-panel">
       {posts.map((post) => (
         <PostCard
           key={post.id}
@@ -16,6 +16,6 @@ export function PostList({ posts, onPostClick }: PostListProps) {
           onClick={() => onPostClick?.(post)}
         />
       ))}
-    </div>
+    </section>
   );
 }

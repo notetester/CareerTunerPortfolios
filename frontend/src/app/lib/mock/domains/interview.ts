@@ -66,8 +66,8 @@ export function progress(sessionId: number): InterviewProgress {
 
 export function agentSteps(sessionId: number): InterviewAgentStep[] {
   return [
-    { id: 1, questionId: 90021, stepNo: 1, agent: "EVALUATOR", action: "답변 평가", summary: "구체성·직무적합성 채점", detail: "사용한 기술은 명확하나 정량 성과가 부족", createdAt: iso(1) },
-    { id: 2, questionId: 90021, stepNo: 2, agent: "CRITIC", action: "평가 검증", summary: "점수 근거 일관성 확인", detail: "개선 답변 제안이 질문과 정합", createdAt: iso(1) },
+    { id: 1, questionId: 90021, stepNo: 1, agent: "EVALUATOR", action: "답변 평가", status: "DONE", summary: "구체성·직무적합성 채점", detail: "사용한 기술은 명확하나 정량 성과가 부족", elapsedMs: 1240, createdAt: iso(1) },
+    { id: 2, questionId: 90021, stepNo: 2, agent: "CRITIC", action: "평가 검증", status: "DONE", summary: "점수 근거 일관성 확인", detail: "개선 답변 제안이 질문과 정합", elapsedMs: 980, createdAt: iso(1) },
   ];
 }
 

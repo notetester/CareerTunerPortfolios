@@ -1,0 +1,104 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.careertuner.admin.ticket.mapper.AdminTicketMapper">
+
+    <resultMap id="ticketListResult" type="com.careertuner.admin.ticket.dto.AdminTicketListResponse">
+        <id     property="id"          column="id"/>
+        <result property="category"    column="category"/>
+        <result property="subject"     column="subject"/>
+        <result property="memberName"  column="member_name"/>
+        <result property="createdAt"   column="created_at_str"/>
+        <result property="status"      column="status"/>
+        <result property="priority"    column="priority"/>
+        <result property="plan"        column="plan"/>
+        <result property="joinedAt"    column="joined_at"/>
+    </resultMap>
+
+    <resultMap id="messageResult" type="com.careertuner.admin.ticket.dto.AdminTicketMessageResponse">
+        <id     property="id"       column="id"/>
+        <result property="who"      column="who"/>
+        <result property="name"     column="name"/>
+        <result property="time"     column="time_str"/>
+        <result property="text"     column="content"/>
+        <result property="internal" column="is_internal"/>
+    </resultMap>
+
+    <select id="findAll" resultMap="ticketListResult">
+        SELECT t.id,
+               t.category,
+               t.subject,
+               u.name                                                          AS member_name,
+               DATE_FORMAT(t.created_at, '%Y.%m.%d %H:%i')                   AS created_at_str,
+               t.status,
+               CASE WHEN t.priority IN ('HIGH','URGENT') THEN 1 ELSE 0 END   AS priority,
+               COALESCE(u.plan, 'FREE')                                       AS plan,
+               DATE_FORMAT(u.created_at, '%Y.%m.%d')                         AS joined_at
+          FROM support_ticket t
+          JOIN users u ON u.id = t.user_id
+        <if test="status != null">
+         WHERE t.status = #{status}
+        </if>
+         ORDER BY t.created_at DESC
+    </select>
+
+    <select id="findById" resultMap="ticketListResult">
+        SELECT t.id,
+               t.category,
+               t.subject,
+               u.name                                                          AS member_name,
+               DATE_FORMAT(t.created_at, '%Y.%m.%d %H:%i')                   AS created_at_str,
+               t.status,
+               CASE WHEN t.priority IN ('HIGH','URGENT') THEN 1 ELSE 0 END   AS priority,
+               COALESCE(u.plan, 'FREE')                                       AS plan,
+               DATE_FORMAT(u.created_at, '%Y.%m.%d')                         AS joined_at
+          FROM support_ticket t
+          JOIN users u ON u.id = t.user_id
+         WHERE t.id = #{id}
+    </select>
+
+    <select id="findMessages" resultMap="messageResult">
+        SELECT m.id,
+               CASE WHEN m.sender_type = 'ADMIN' THEN 'admin' ELSE 'user' END AS who,
+               CASE WHEN m.sender_type = 'ADMIN' THEN '관리자' ELSE u.name END AS name,
+               DATE_FORMAT(m.created_at, '%Y.%m.%d %H:%i')                    AS time_str,
+               m.content,
+               m.is_internal
+          FROM support_ticket_message m
+          LEFT JOIN users u ON u.id = m.sender_id AND m.sender_type != 'ADMIN'
+         WHERE m.ticket_id = #{ticketId}
+         ORDER BY m.created_at
+    </select>
+
+    <select id="findInternalMemo" resultType="string">
+        SELECT content
+          FROM support_ticket_message
+         WHERE ticket_id = #{ticketId}
+           AND is_internal = 1
+           AND sender_type = 'ADMIN'
+         ORDER BY created_at DESC
+         LIMIT 1
+    </select>
+
+    <update id="updateTicket">
+        UPDATE support_ticket
+           SET
+        <if test="status != null">status = #{status},</if>
+        <if test="priority != null">priority = #{priority},</if>
+               updated_at = CURRENT_TIMESTAMP
+         WHERE id = #{id}
+    </update>
+
+    <update id="updateStatus">
+        UPDATE support_ticket
+           SET status     = #{status},
+               updated_at = CURRENT_TIMESTAMP
+         WHERE id = #{id}
+    </update>
+
+    <insert id="insertMessage">
+        INSERT INTO support_ticket_message (ticket_id, sender_type, sender_id, content, is_internal)
+        VALUES (#{ticketId}, #{senderType}, #{senderId}, #{content}, #{internal})
+    </insert>
+
+</mapper>

@@ -23,12 +23,19 @@ export interface TokenResponse {
 
 export type SocialProvider = "google" | "kakao" | "naver";
 
+export interface RegisterConsents {
+  termsAgreed: boolean;
+  privacyAgreed: boolean;
+  aiDataAgreed?: boolean;
+  marketingAgreed?: boolean;
+}
+
 interface AuthContextValue {
   user: MeUser | null;
   loading: boolean;
   isAuthenticated: boolean;
   login(email: string, password: string): Promise<void>;
-  register(email: string, password: string, name: string): Promise<void>;
+  register(email: string, password: string, name: string, consents: RegisterConsents): Promise<void>;
   socialLogin(provider: SocialProvider): void;
   logout(): Promise<void>;
   refreshMe(): Promise<void>;
@@ -69,10 +76,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(res.user);
   }, []);
 
-  const register = useCallback(async (email: string, password: string, name: string) => {
+  const register = useCallback(async (email: string, password: string, name: string, consents: RegisterConsents) => {
     const res = await api<TokenResponse>(
       "/auth/register",
-      { method: "POST", body: JSON.stringify({ email, password, name }) },
+      { method: "POST", body: JSON.stringify({ email, password, name, ...consents }) },
       { auth: false },
     );
     setTokens({ accessToken: res.accessToken, refreshToken: res.refreshToken });

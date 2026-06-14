@@ -15,8 +15,8 @@ export function NotificationFilterTabs({ filter, onFilterChange }: NotificationF
           onClick={() => onFilterChange(c.value as NotificationCategory)}
           style={
             filter === c.value
-              ? { background: "var(--gradient-brand)", color: "#fff", border: "1px solid transparent", borderRadius: 9999, padding: "7px 15px", fontSize: 14, fontWeight: 600, cursor: "pointer" }
-              : { background: "var(--card)", color: "var(--muted-foreground)", border: "1px solid var(--border)", borderRadius: 9999, padding: "7px 15px", fontSize: 14, fontWeight: 500, cursor: "pointer" }
+              ? { background: "var(--av-ink)", color: "#fff", border: "1px solid transparent", borderRadius: 9999, padding: "7px 15px", fontSize: 14, fontWeight: 600, cursor: "pointer" }
+              : { background: "var(--av-card)", color: "var(--av-ink-3)", border: "1px solid var(--av-line)", borderRadius: 9999, padding: "7px 15px", fontSize: 14, fontWeight: 500, cursor: "pointer" }
           }
         >
           {c.label}
