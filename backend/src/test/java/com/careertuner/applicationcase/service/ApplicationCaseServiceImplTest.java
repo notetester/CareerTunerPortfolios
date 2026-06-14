@@ -31,7 +31,6 @@ import org.springframework.web.multipart.MultipartFile;
 
 import com.careertuner.applicationcase.domain.ApplicationCaseExtraction;
 import com.careertuner.applicationcase.domain.ApplicationCase;
-import com.careertuner.applicationcase.domain.FitAnalysis;
 import com.careertuner.applicationcase.dto.AiUsageFailureResponse;
 import com.careertuner.applicationcase.dto.ApplicationCaseFromJobPostingResponse;
 import com.careertuner.applicationcase.dto.ApplicationCaseExtractionResponse;
@@ -1000,7 +999,6 @@ class ApplicationCaseServiceImplTest {
         assertThat(response.ambiguousConditions()).isEqualTo("[{\"condition\":\"experience is not explicit\",\"assumption\":\"junior\"}]");
         verify(jobAnalysisMapper, never()).deleteJobAnalysesByCaseId(10L);
         verify(jobAnalysisMapper).insertJobAnalysis(any(JobAnalysis.class));
-        verify(applicationCaseMapper, never()).insertFitAnalysis(any(FitAnalysis.class));
         verify(statusService).markAnalyzing(1L, 10L, "DRAFT");
         InOrder successOrder = inOrder(statusService, usageLogService);
         successOrder.verify(statusService).markReadyAfterAnalysis(1L, 10L, "DRAFT");

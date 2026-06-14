@@ -13,5 +13,5 @@ import lombok.Setter;
 public class JobPostingUploadProperties {
 
     private String jobPostingDir = ".uploads/application-postings";
-    private long maxFileSizeBytes = 10 * 1024 * 1024;
+    private long maxFileSizeBytes = 5 * 1024 * 1024;
 }

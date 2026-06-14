@@ -56,8 +56,6 @@ public interface ApplicationCaseService {
 
     ApplicationCaseExtractionResponse retryJobPostingExtraction(Long userId, Long applicationCaseId);
 
-    JobAnalysisResponse createMockJobAnalysis(Long userId, Long applicationCaseId);
-
     JobAnalysisResponse createJobAnalysis(Long userId, Long applicationCaseId);
 
     JobAnalysisResponse getJobAnalysis(Long userId, Long applicationCaseId);
@@ -66,8 +64,6 @@ public interface ApplicationCaseService {
 
     JobAnalysisResponse reviewJobAnalysis(Long userId, Long applicationCaseId, Long analysisId, JobAnalysisReviewRequest request);
 
-    CompanyAnalysisResponse createMockCompanyAnalysis(Long userId, Long applicationCaseId);
-
     CompanyAnalysisResponse createCompanyAnalysis(Long userId, Long applicationCaseId);
 
     CompanyAnalysisResponse getCompanyAnalysis(Long userId, Long applicationCaseId);
@@ -75,8 +71,6 @@ public interface ApplicationCaseService {
     List<CompanyAnalysisResponse> getCompanyAnalysisHistory(Long userId, Long applicationCaseId);
 
     CompanyAnalysisResponse reviewCompanyAnalysis(Long userId, Long applicationCaseId, Long analysisId, CompanyAnalysisReviewRequest request);
-
-    AnalysisResponse createMockAnalysis(Long userId, Long applicationCaseId);
 
     AnalysisResponse getAnalysis(Long userId, Long applicationCaseId);
 

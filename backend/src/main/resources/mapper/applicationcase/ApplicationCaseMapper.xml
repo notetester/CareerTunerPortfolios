@@ -24,6 +24,7 @@
         <choose>
             <when test="view == 'DELETED'">
           AND deleted_at IS NOT NULL
+          AND deleted_at &gt;= DATE_SUB(CURRENT_TIMESTAMP, INTERVAL 30 DAY)
             </when>
             <otherwise>
           AND deleted_at IS NULL
@@ -71,15 +72,6 @@
           AND user_id = #{userId}
           AND deleted_at IS NULL
           AND source_type &lt;&gt; #{sourceType}
-    </update>
-
-    <update id="markAnalysisCompleted">
-        UPDATE application_case
-        SET status = CASE
-                WHEN status IN ('DRAFT', 'ANALYZING') THEN 'READY'
-                ELSE status
-            END
-        WHERE id = #{id} AND user_id = #{userId}
     </update>
 
     <update id="markAnalysisStarted">
@@ -134,20 +126,6 @@
             (application_case_id, changed_by_user_id, previous_status, new_status, memo)
         VALUES
             (#{applicationCaseId}, #{changedByUserId}, #{previousStatus}, #{newStatus}, #{memo})
-    </insert>
-
-    <delete id="deleteFitAnalysesByCaseId">
-        DELETE FROM fit_analysis
-        WHERE application_case_id = #{applicationCaseId}
-    </delete>
-
-    <insert id="insertFitAnalysis" useGeneratedKeys="true" keyProperty="id">
-        INSERT INTO fit_analysis
-            (application_case_id, fit_score, matched_skills, missing_skills,
-             recommended_study, recommended_certificates, strategy)
-        VALUES
-            (#{applicationCaseId}, #{fitScore}, #{matchedSkills}, #{missingSkills},
-             #{recommendedStudy}, #{recommendedCertificates}, #{strategy})
     </insert>
 
     <select id="findLatestFitAnalysisByCaseId" resultType="com.careertuner.applicationcase.domain.FitAnalysis">

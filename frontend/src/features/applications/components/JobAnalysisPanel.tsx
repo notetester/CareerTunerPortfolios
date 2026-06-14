@@ -21,6 +21,7 @@ import {
   serializeEvidenceRows,
   serializeTextareaList,
 } from "../types/analysis";
+import { formatKoreaDateTime } from "../utils/dateFormat";
 import { AnalysisFailureNotice } from "./AnalysisFailureNotice";
 import { AnalysisStructuredText } from "./AnalysisStructuredText";
 import { StructuredRowsEditor, type StructuredRowsEditorField } from "./StructuredRowsEditor";
@@ -37,10 +38,6 @@ interface JobAnalysisPanelProps {
   latestJobPostingRevision: number | null;
   onGenerate(): Promise<JobAnalysis | null>;
   onReview(analysisId: number, request: JobAnalysisReviewRequest): Promise<JobAnalysis | null>;
-}
-
-function formatDateTime(value: string): string {
-  return new Intl.DateTimeFormat("ko-KR", { dateStyle: "medium", timeStyle: "short" }).format(new Date(value));
 }
 
 function SkillList({ title, value }: { title: string; value: string | null }) {
@@ -216,13 +213,16 @@ export function JobAnalysisPanel({
             </CardTitle>
             {analysis ? (
               <p className="mt-1 text-xs text-slate-500">
-                최근 분석: {formatDateTime(analysis.createdAt)}
+                최근 분석: {formatKoreaDateTime(analysis.createdAt)}
                 {analysis.jobPostingRevision ? ` · 공고 rev ${analysis.jobPostingRevision}` : ""}
-                {analysis.confirmedAt ? ` · 확정 ${formatDateTime(analysis.confirmedAt)}` : ""}
+                {analysis.confirmedAt ? ` · 확정 ${formatKoreaDateTime(analysis.confirmedAt)}` : ""}
               </p>
             ) : (
               <p className="mt-1 text-xs text-slate-500">분석 결과 없음</p>
             )}
+            <p className="mt-1 text-xs text-slate-500">
+              공고문 길이와 AI 응답 상태에 따라 분석 완료까지 시간이 걸릴 수 있습니다.
+            </p>
           </div>
           <Button
             type="button"
@@ -385,11 +385,11 @@ export function JobAnalysisPanel({
           <div className="rounded-lg border border-slate-200 bg-white">
             <div className="border-b border-slate-100 px-3 py-2 text-xs font-semibold text-slate-500">분석 이력</div>
             <div className="divide-y divide-slate-100">
-              {history.map((item) => (
+              {history.map((item, index) => (
                 <div key={item.id} className="flex flex-wrap items-center gap-3 px-3 py-2 text-xs text-slate-600">
-                  <span className="font-semibold text-slate-900">#{item.id}</span>
+                  <span className="font-semibold text-slate-900">분석 {history.length - index}</span>
                   <span>공고 rev {item.jobPostingRevision ?? "-"}</span>
-                  <span>{formatDateTime(item.createdAt)}</span>
+                  <span>{formatKoreaDateTime(item.createdAt)}</span>
                   <span>{item.confirmedAt ? "확정" : "미확정"}</span>
                   <span className="max-w-md truncate text-slate-400">{item.summary ?? "요약 없음"}</span>
                 </div>

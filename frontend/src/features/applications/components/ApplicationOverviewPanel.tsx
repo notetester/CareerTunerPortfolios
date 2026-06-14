@@ -35,6 +35,7 @@ import {
   APPLICATION_STATUS_OPTIONS,
   getApplicationSourceLabel,
 } from "../types/applicationCase";
+import { formatKoreaDate } from "../utils/dateFormat";
 import { ApplicationExtractionBadge } from "./ApplicationExtractionBadge";
 import { ApplicationStatusBadge } from "./ApplicationStatusBadge";
 
@@ -48,8 +49,7 @@ interface ApplicationOverviewPanelProps {
 }
 
 function formatDate(value: string | null): string {
-  if (!value) return "미입력";
-  return new Intl.DateTimeFormat("ko-KR", { dateStyle: "medium" }).format(new Date(value));
+  return formatKoreaDate(value);
 }
 
 interface BasicFormState {
@@ -131,7 +131,7 @@ export function ApplicationOverviewPanel({
     try {
       await onDelete();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "지원 건을 삭제하지 못했습니다.");
+      setError(err instanceof Error ? err.message : "지원 건을 삭제함으로 이동하지 못했습니다.");
       setDeleting(false);
     }
   };
@@ -228,6 +228,9 @@ export function ApplicationOverviewPanel({
                     disabled={updating}
                     className="bg-white"
                   />
+                  <p className="text-xs leading-5 text-slate-500">
+                    마감일이 없거나 상시채용이면 비워두세요.
+                  </p>
                 </div>
                 <div className="space-y-2">
                   <label className="text-sm font-semibold text-slate-700">등록 방식</label>
@@ -287,7 +290,9 @@ export function ApplicationOverviewPanel({
                   <CalendarDays className="size-4" />
                   마감일
                 </div>
-                <div className="text-sm font-semibold text-slate-900">{formatDate(applicationCase.deadlineDate)}</div>
+                <div className="text-sm font-semibold text-slate-900">
+                  {formatKoreaDate(applicationCase.deadlineDate, "마감일 없음/상시채용")}
+                </div>
               </div>
               <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
                 <div className="mb-2 flex items-center gap-2 text-xs font-semibold text-slate-500">
@@ -386,9 +391,9 @@ export function ApplicationOverviewPanel({
               <div className="flex items-start gap-2">
                 <AlertTriangle className="mt-0.5 size-4 shrink-0 text-red-600" />
                 <div className="min-w-0">
-                  <div className="text-sm font-semibold text-red-700">위험 작업</div>
+                  <div className="text-sm font-semibold text-red-700">삭제함 이동</div>
                   <p className="mt-1 text-xs leading-5 text-red-600">
-                    삭제하면 이 지원 건은 활성 목록에서 숨겨집니다. 연결된 공고문과 분석 결과는 즉시 물리 삭제되지 않습니다.
+                    삭제함으로 이동하면 이 지원 건은 활성 목록에서 숨겨집니다. 30일 동안 삭제함에서 복원할 수 있고 연결된 공고문과 분석 결과는 즉시 물리 삭제되지 않습니다.
                   </p>
                 </div>
               </div>
@@ -402,14 +407,14 @@ export function ApplicationOverviewPanel({
                     disabled={deleting || updating}
                   >
                     <Trash2 className="size-4" />
-                    {deleting ? "삭제 중" : "지원 건 삭제"}
+                    {deleting ? "이동 중" : "삭제함으로 이동"}
                   </Button>
                 </AlertDialogTrigger>
                 <AlertDialogContent>
                   <AlertDialogHeader>
-                    <AlertDialogTitle>지원 건을 삭제할까요?</AlertDialogTitle>
+                    <AlertDialogTitle>지원 건을 삭제함으로 이동할까요?</AlertDialogTitle>
                     <AlertDialogDescription>
-                      이 지원 건은 활성 목록에서 숨겨지며, 현재 화면에서는 복구할 수 없습니다. 연결된 공고문, 공고 분석, 기업 분석 결과는 즉시 물리 삭제되지 않습니다.
+                      이 지원 건은 활성 목록에서 숨겨지고 30일 동안 삭제함 목록에서 복원할 수 있습니다. 연결된 공고문, 공고 분석, 기업 분석 결과는 즉시 물리 삭제되지 않습니다.
                     </AlertDialogDescription>
                   </AlertDialogHeader>
                   <AlertDialogFooter>
@@ -419,7 +424,7 @@ export function ApplicationOverviewPanel({
                       disabled={deleting}
                       onClick={() => void handleDelete()}
                     >
-                      {deleting ? "삭제 중" : "삭제"}
+                      {deleting ? "이동 중" : "삭제함으로 이동"}
                     </AlertDialogAction>
                   </AlertDialogFooter>
                 </AlertDialogContent>

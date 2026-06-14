@@ -150,12 +150,6 @@ public class ApplicationCaseController {
         return ApiResponse.ok(applicationCaseService.retryJobPostingExtraction(authUser.id(), id));
     }
 
-    @PostMapping("/{id}/job-analysis/mock")
-    public ApiResponse<JobAnalysisResponse> createMockJobAnalysis(@AuthenticationPrincipal AuthUser authUser,
-                                                                  @PathVariable Long id) {
-        return ApiResponse.ok(applicationCaseService.createMockJobAnalysis(authUser.id(), id));
-    }
-
     @PostMapping("/{id}/job-analysis")
     public ApiResponse<JobAnalysisResponse> createJobAnalysis(@AuthenticationPrincipal AuthUser authUser,
                                                               @PathVariable Long id) {
@@ -182,12 +176,6 @@ public class ApplicationCaseController {
         return ApiResponse.ok(applicationCaseService.reviewJobAnalysis(authUser.id(), id, analysisId, request));
     }
 
-    @PostMapping("/{id}/company-analysis/mock")
-    public ApiResponse<CompanyAnalysisResponse> createMockCompanyAnalysis(@AuthenticationPrincipal AuthUser authUser,
-                                                                          @PathVariable Long id) {
-        return ApiResponse.ok(applicationCaseService.createMockCompanyAnalysis(authUser.id(), id));
-    }
-
     @PostMapping("/{id}/company-analysis")
     public ApiResponse<CompanyAnalysisResponse> createCompanyAnalysis(@AuthenticationPrincipal AuthUser authUser,
                                                                       @PathVariable Long id) {
@@ -212,12 +200,6 @@ public class ApplicationCaseController {
                                                                       @PathVariable Long analysisId,
                                                                       @Valid @RequestBody CompanyAnalysisReviewRequest request) {
         return ApiResponse.ok(applicationCaseService.reviewCompanyAnalysis(authUser.id(), id, analysisId, request));
-    }
-
-    @PostMapping("/{id}/analysis/mock")
-    public ApiResponse<AnalysisResponse> createMockAnalysis(@AuthenticationPrincipal AuthUser authUser,
-                                                            @PathVariable Long id) {
-        return ApiResponse.ok(applicationCaseService.createMockAnalysis(authUser.id(), id));
     }
 
     @GetMapping("/{id}/analysis")

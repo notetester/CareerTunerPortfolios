@@ -11,7 +11,6 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
-import com.careertuner.applicationcase.domain.AiUsageLog;
 import com.careertuner.applicationcase.domain.ApplicationCase;
 import com.careertuner.applicationcase.domain.ApplicationCaseExtraction;
 import com.careertuner.applicationcase.domain.FitAnalysis;
@@ -37,7 +36,6 @@ import com.careertuner.jobanalysis.dto.JobAnalysisReviewRequest;
 import com.careertuner.jobanalysis.dto.JobAnalysisResponse;
 import com.careertuner.jobanalysis.mapper.JobAnalysisMapper;
 import com.careertuner.jobanalysis.service.JobAnalysisService;
-import com.careertuner.jobanalysis.service.JobAnalysisService.MockAnalysisSeed;
 import com.careertuner.jobposting.dto.JobPostingRequest;
 import com.careertuner.jobposting.dto.JobPostingResponse;
 import com.careertuner.jobposting.service.JobPostingService;
@@ -58,9 +56,6 @@ public class ApplicationCaseServiceImpl implements ApplicationCaseService {
     private static final Set<String> JOB_POSTING_JSON_SOURCE_TYPES = Set.of("TEXT", "MANUAL", "URL");
     private static final Set<String> JOB_POSTING_UPLOAD_SOURCE_TYPES = Set.of("PDF", "IMAGE");
     private static final Set<String> STATUSES = Set.of("DRAFT", "ANALYZING", "READY", "APPLIED", "CLOSED");
-    private static final int MOCK_JOB_ANALYSIS_CREDIT = 1;
-    private static final int MOCK_FIT_ANALYSIS_CREDIT = 2;
-    private static final int MOCK_DASHBOARD_SUMMARY_CREDIT = 1;
     private static final int MAX_EXTRACTION_LOOKUP_CASE_IDS = 200;
     private static final Set<String> LIST_VIEWS = Set.of("ACTIVE", "ARCHIVED", "DELETED");
 
@@ -319,11 +314,6 @@ public class ApplicationCaseServiceImpl implements ApplicationCaseService {
     }
 
     @Override
-    public JobAnalysisResponse createMockJobAnalysis(Long userId, Long applicationCaseId) {
-        return jobAnalysisService.createMockJobAnalysis(userId, applicationCaseId);
-    }
-
-    @Override
     public JobAnalysisResponse createJobAnalysis(Long userId, Long applicationCaseId) {
         return jobAnalysisService.createJobAnalysis(userId, applicationCaseId);
     }
@@ -344,11 +334,6 @@ public class ApplicationCaseServiceImpl implements ApplicationCaseService {
     }
 
     @Override
-    public CompanyAnalysisResponse createMockCompanyAnalysis(Long userId, Long applicationCaseId) {
-        return companyAnalysisService.createMockCompanyAnalysis(userId, applicationCaseId);
-    }
-
-    @Override
     public CompanyAnalysisResponse createCompanyAnalysis(Long userId, Long applicationCaseId) {
         return companyAnalysisService.createCompanyAnalysis(userId, applicationCaseId);
     }
@@ -366,35 +351,6 @@ public class ApplicationCaseServiceImpl implements ApplicationCaseService {
     @Override
     public CompanyAnalysisResponse reviewCompanyAnalysis(Long userId, Long applicationCaseId, Long analysisId, CompanyAnalysisReviewRequest request) {
         return companyAnalysisService.reviewCompanyAnalysis(userId, applicationCaseId, analysisId, request);
-    }
-
-    @Override
-    @Transactional
-    public AnalysisResponse createMockAnalysis(Long userId, Long applicationCaseId) {
-        ApplicationCase applicationCase = accessService.requireOwned(userId, applicationCaseId);
-        String sourceText = accessService.sourceText(applicationCaseId);
-        MockAnalysisSeed seed = MockAnalysisSeed.from(applicationCase, sourceText);
-
-        JobAnalysis jobAnalysis = jobAnalysisService.createMockJobAnalysisEntity(applicationCase, sourceText);
-        applicationCaseMapper.deleteFitAnalysesByCaseId(applicationCaseId);
-        FitAnalysis fitAnalysis = FitAnalysis.builder()
-                .applicationCaseId(applicationCaseId)
-                .fitScore(seed.fitScore())
-                .matchedSkills(seed.matchedSkills())
-                .missingSkills(seed.missingSkills())
-                .recommendedStudy(seed.recommendedStudy())
-                .recommendedCertificates(seed.recommendedCertificates())
-                .strategy(seed.strategy())
-                .build();
-        applicationCaseMapper.insertFitAnalysis(fitAnalysis);
-
-        applicationCaseMapper.markAnalysisCompleted(applicationCaseId, userId);
-        logMockAiUsage(userId, applicationCaseId, sourceText);
-
-        return response(
-                applicationCase,
-                jobAnalysis,
-                applicationCaseMapper.findLatestFitAnalysisByCaseId(applicationCaseId));
     }
 
     @Override
@@ -527,30 +483,6 @@ public class ApplicationCaseServiceImpl implements ApplicationCaseService {
             return null;
         }
         return request.postingDate() != null ? request.postingDate() : existing.getPostingDate();
-    }
-
-    private void logMockAiUsage(Long userId, Long applicationCaseId, String sourceText) {
-        int baseTokens = estimateTokenUsage(sourceText);
-        insertMockAiUsage(userId, applicationCaseId, "JOB_ANALYSIS", baseTokens, MOCK_JOB_ANALYSIS_CREDIT);
-        insertMockAiUsage(userId, applicationCaseId, "FIT_ANALYSIS", baseTokens + 620, MOCK_FIT_ANALYSIS_CREDIT);
-        insertMockAiUsage(userId, applicationCaseId, "DASHBOARD_SUMMARY", 980, MOCK_DASHBOARD_SUMMARY_CREDIT);
-    }
-
-    private void insertMockAiUsage(Long userId, Long applicationCaseId, String featureType, int tokenUsage, int creditUsed) {
-        applicationCaseMapper.insertAiUsageLog(AiUsageLog.builder()
-                .userId(userId)
-                .applicationCaseId(applicationCaseId)
-                .featureType(featureType)
-                .status("SUCCESS")
-                .model("mock")
-                .tokenUsage(tokenUsage)
-                .creditUsed(creditUsed)
-                .build());
-    }
-
-    private static int estimateTokenUsage(String sourceText) {
-        int length = sourceText == null ? 0 : sourceText.length();
-        return Math.max(1200, Math.min(4200, 900 + length * 2));
     }
 
     private static int normalizeFailureLimit(int limit) {

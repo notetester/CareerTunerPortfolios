@@ -17,6 +17,8 @@ import com.careertuner.common.exception.ErrorCode;
 public class JobPostingFileStorage {
 
     private static final String LOCAL_REFERENCE_PREFIX = "local:application-postings/";
+    private static final long BYTES_PER_KB = 1024L;
+    private static final long BYTES_PER_MB = BYTES_PER_KB * 1024L;
     private static final Set<String> IMAGE_TYPES = Set.of("image/png", "image/jpeg", "image/webp", "image/gif");
 
     private final JobPostingUploadProperties properties;
@@ -30,7 +32,8 @@ public class JobPostingFileStorage {
             throw new BusinessException(ErrorCode.INVALID_INPUT, "업로드할 파일을 선택해 주세요.");
         }
         if (file.getSize() > properties.getMaxFileSizeBytes()) {
-            throw new BusinessException(ErrorCode.INVALID_INPUT, "업로드 파일 크기가 허용 범위를 초과했습니다.");
+            throw new BusinessException(ErrorCode.INVALID_INPUT,
+                    "공고 파일은 " + formatFileSize(properties.getMaxFileSizeBytes()) + " 이하만 업로드할 수 있습니다.");
         }
 
         String normalizedSourceType = sourceType == null ? "" : sourceType.trim().toUpperCase(Locale.ROOT);
@@ -115,6 +118,22 @@ public class JobPostingFileStorage {
             case "image/gif" -> ".gif";
             default -> "";
         };
+    }
+
+    private String formatFileSize(long bytes) {
+        if (bytes >= BYTES_PER_MB) {
+            double mb = bytes / (double) BYTES_PER_MB;
+            return bytes % BYTES_PER_MB == 0
+                    ? (bytes / BYTES_PER_MB) + "MB"
+                    : String.format(Locale.ROOT, "%.1fMB", mb);
+        }
+        if (bytes >= BYTES_PER_KB) {
+            double kb = bytes / (double) BYTES_PER_KB;
+            return bytes % BYTES_PER_KB == 0
+                    ? (bytes / BYTES_PER_KB) + "KB"
+                    : String.format(Locale.ROOT, "%.1fKB", kb);
+        }
+        return bytes + "B";
     }
 
     private String normalizeUploadSourceType(String sourceType) {

@@ -7,6 +7,12 @@ import { Textarea } from "@/app/components/ui/textarea";
 import type { ApplicationCaseExtraction, ApplicationSourceType } from "../types/applicationCase";
 import { isApplicationCaseExtractionActive } from "../types/applicationCase";
 import type { JobPosting, JobPostingRequest } from "../types/jobPosting";
+import { formatKoreaDateTime } from "../utils/dateFormat";
+import {
+  JOB_POSTING_IMAGE_ACCEPT,
+  JOB_POSTING_MAX_FILE_SIZE_LABEL,
+  validateJobPostingFile,
+} from "../utils/jobPostingUpload";
 import { ApplicationExtractionBadge } from "./ApplicationExtractionBadge";
 
 interface JobPostingPanelProps {
@@ -36,13 +42,6 @@ const sourceOptions: {
   { value: "MANUAL", label: "수동", description: "메모 기반 직접 입력", icon: PencilLine },
 ];
 
-const ALLOWED_IMAGE_MIME_TYPES = new Set(["image/png", "image/jpeg", "image/webp", "image/gif"]);
-const IMAGE_ACCEPT = "image/png,image/jpeg,image/webp,image/gif";
-
-function formatDateTime(value: string): string {
-  return new Intl.DateTimeFormat("ko-KR", { dateStyle: "medium", timeStyle: "short" }).format(new Date(value));
-}
-
 function isTextSource(sourceType: ApplicationSourceType): boolean {
   return sourceType === "TEXT" || sourceType === "MANUAL";
 }
@@ -58,21 +57,6 @@ function isHttpPostingUrl(value: string): boolean {
   } catch {
     return false;
   }
-}
-
-function validatePostingFile(
-  sourceType: Extract<ApplicationSourceType, "PDF" | "IMAGE">,
-  file: File,
-): string | null {
-  if (sourceType === "PDF" && file.type !== "application/pdf") {
-    return "PDF 방식에는 application/pdf 파일만 업로드할 수 있습니다.";
-  }
-
-  if (sourceType === "IMAGE" && !ALLOWED_IMAGE_MIME_TYPES.has(file.type)) {
-    return "이미지 방식에는 PNG, JPG, WEBP, GIF 파일만 업로드할 수 있습니다.";
-  }
-
-  return null;
 }
 
 export function JobPostingPanel({
@@ -125,7 +109,7 @@ export function JobPostingPanel({
       return;
     }
 
-    const validationError = validatePostingFile(sourceType, nextFile);
+    const validationError = validateJobPostingFile(sourceType, nextFile);
     if (validationError) {
       event.currentTarget.value = "";
       setFile(null);
@@ -174,7 +158,7 @@ export function JobPostingPanel({
       setLocalError("업로드할 파일을 선택해 주세요.");
       return;
     }
-    const validationError = validatePostingFile(sourceType, file);
+    const validationError = validateJobPostingFile(sourceType, file);
     if (validationError) {
       setLocalError(validationError);
       return;
@@ -195,7 +179,7 @@ export function JobPostingPanel({
             </CardTitle>
             {jobPosting ? (
               <p className="mt-1 text-xs text-slate-500">
-                최신 revision {jobPosting.revision} · 저장됨: {formatDateTime(jobPosting.createdAt)}
+                최신 revision {jobPosting.revision} · 저장됨: {formatKoreaDateTime(jobPosting.createdAt)}
               </p>
             ) : (
               <p className="mt-1 text-xs text-slate-500">공고문 미등록</p>
@@ -253,7 +237,7 @@ export function JobPostingPanel({
               <ApplicationExtractionBadge extraction={extraction} />
               <span>
                 {extractionActive
-                  ? "추출이 끝나면 최신 공고문으로 자동 갱신됩니다."
+                  ? "추출이 끝나면 최신 공고문으로 자동 갱신됩니다. 파일 크기와 이미지 품질에 따라 시간이 걸릴 수 있습니다."
                   : extraction.status === "FAILED"
                     ? extraction.errorMessage || "공고문 추출에 실패했습니다."
                     : "공고문 추출이 완료됐습니다."}
@@ -300,6 +284,7 @@ export function JobPostingPanel({
                 <div className="rounded-lg border border-blue-100 bg-blue-50 px-3 py-2 text-xs leading-5 text-blue-800">
                   <p>URL만 입력하면 공개 페이지 본문을 추출합니다.</p>
                   <p>로그인 페이지, 동적 렌더링 페이지, 접근 차단 페이지는 추출되지 않을 수 있습니다.</p>
+                  <p>페이지 응답 상태에 따라 추출에 시간이 걸릴 수 있습니다.</p>
                   <p>추출 결과가 부족하면 아래 텍스트를 직접 보정해 저장하세요.</p>
                 </div>
               </div>
@@ -315,15 +300,16 @@ export function JobPostingPanel({
                     key={sourceType}
                     id="job-posting-file"
                     type="file"
-                    accept={sourceType === "PDF" ? "application/pdf" : IMAGE_ACCEPT}
+                    accept={sourceType === "PDF" ? "application/pdf" : JOB_POSTING_IMAGE_ACCEPT}
                     onChange={handleFileChange}
                     className="bg-white"
                   />
                 </div>
                 <div className="space-y-1 text-xs text-slate-500">
                   <div className="font-semibold text-slate-600">추출 방식</div>
+                  <p>파일은 {JOB_POSTING_MAX_FILE_SIZE_LABEL} 이하만 업로드할 수 있습니다.</p>
                   <p>텍스트 PDF는 서버에서 바로 추출합니다.</p>
-                  <p>이미지와 스캔 PDF는 OpenAI OCR을 사용합니다.</p>
+                  <p>이미지와 스캔 PDF는 OpenAI OCR을 사용하며 완료까지 시간이 걸릴 수 있습니다.</p>
                 </div>
               </div>
             )}
@@ -363,7 +349,7 @@ export function JobPostingPanel({
                 <div key={revision.id} className="flex flex-wrap items-center justify-between gap-2 px-3 py-2 text-xs text-slate-600">
                   <span className="font-semibold text-slate-900">rev {revision.revision}</span>
                   <span>{revision.sourceType}</span>
-                  <span>{formatDateTime(revision.createdAt)}</span>
+                  <span>{formatKoreaDateTime(revision.createdAt)}</span>
                   <span className="max-w-sm truncate text-slate-400">
                     {revision.extractedText ?? revision.originalText ?? revision.uploadedFileUrl ?? "내용 없음"}
                   </span>

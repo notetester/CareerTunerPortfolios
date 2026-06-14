@@ -38,6 +38,7 @@ import {
 import { ApplicationExtractionBadge } from "../components/ApplicationExtractionBadge";
 import { useApplicationCaseExtractions } from "../hooks/useApplicationCaseExtractions";
 import type { ApplicationCaseExtraction } from "../types/applicationCase";
+import { formatKoreaDate } from "../utils/dateFormat";
 
 type ListMode = "active" | "trash";
 type StatusFilter = "ALL" | ApplicationStatus;
@@ -62,8 +63,7 @@ const sortOptions: { value: SortOption; label: string }[] = [
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 function formatDate(value: string | null, emptyLabel = "미입력"): string {
-  if (!value) return emptyLabel;
-  return new Intl.DateTimeFormat("ko-KR", { dateStyle: "medium" }).format(new Date(value));
+  return formatKoreaDate(value, emptyLabel);
 }
 
 function toDateOnlyTime(value: string | null): number | null {
@@ -175,7 +175,7 @@ function ApplicationCard({
           )}
           {isTrash && (
             <Badge variant="outline" className="border-red-200 bg-red-50 text-red-700">
-              삭제됨
+              삭제함
             </Badge>
           )}
         </div>
@@ -202,12 +202,12 @@ function ApplicationCard({
             </span>
             <span className="flex items-center gap-1.5">
               <CalendarDays className="size-3.5" />
-              마감 {formatDate(applicationCase.deadlineDate)}
+              마감 {formatDate(applicationCase.deadlineDate, "마감일 없음/상시채용")}
             </span>
             {isTrash && (
               <span className="flex items-center gap-1.5 text-red-600">
                 <Trash2 className="size-3.5" />
-                삭제 {formatDate(applicationCase.deletedAt)}
+                삭제함 이동 {formatDate(applicationCase.deletedAt)}
               </span>
             )}
           </div>
@@ -348,10 +348,10 @@ export function ApplicationListPage({ mode = "active" }: { mode?: ListMode }) {
           <div>
             <h1 className="flex items-center gap-2 text-2xl font-bold text-slate-950">
               {isTrash ? <Trash2 className="size-6 text-red-600" /> : <Briefcase className="size-6 text-blue-600" />}
-              {isTrash ? "삭제된 지원 건" : "지원 건 관리"}
+              {isTrash ? "삭제함" : "지원 건 관리"}
             </h1>
             <p className="mt-1 text-sm text-slate-500">
-              {isTrash ? "삭제된 지원 건을 확인하고 활성 목록으로 복원합니다." : "기업과 직무별 지원 준비 단위를 관리합니다."}
+              {isTrash ? "삭제함으로 이동한 지원 건을 확인하고 활성 목록으로 복원합니다. 이동 후 30일이 지나면 삭제함 목록에서 숨겨집니다." : "기업과 직무별 지원 준비 단위를 관리합니다."}
             </p>
           </div>
           <div className="flex flex-col gap-2 sm:flex-row">
@@ -370,7 +370,7 @@ export function ApplicationListPage({ mode = "active" }: { mode?: ListMode }) {
 
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
           {[
-            { label: isTrash ? "삭제됨" : "전체", value: summary.total, icon: isTrash ? Trash2 : Briefcase },
+            { label: isTrash ? "삭제함" : "전체", value: summary.total, icon: isTrash ? Trash2 : Briefcase },
             { label: "준비중", value: summary.ready, icon: FileText },
             { label: "분석중", value: summary.analyzing, icon: RefreshCw },
             { label: "즐겨찾기", value: summary.favorite, icon: Star },
@@ -511,10 +511,10 @@ export function ApplicationListPage({ mode = "active" }: { mode?: ListMode }) {
               </div>
               <div>
                 <div className="font-semibold text-slate-900">
-                  {hasActiveFilter ? "조건에 맞는 지원 건이 없습니다" : isTrash ? "삭제된 지원 건이 없습니다" : "지원 건이 없습니다"}
+                  {hasActiveFilter ? "조건에 맞는 지원 건이 없습니다" : isTrash ? "삭제함에 지원 건이 없습니다" : "지원 건이 없습니다"}
                 </div>
                 <p className="mt-1 text-sm text-slate-500">
-                  {hasActiveFilter ? "검색어와 필터 조건을 다시 확인하세요." : isTrash ? "삭제한 지원 건이 이곳에 표시됩니다." : "새 지원 건을 만들고 공고문을 등록하세요."}
+                  {hasActiveFilter ? "검색어와 필터 조건을 다시 확인하세요." : isTrash ? "삭제함으로 이동한 지 30일 이내인 지원 건이 이곳에 표시됩니다." : "새 지원 건을 만들고 공고문을 등록하세요."}
                 </p>
               </div>
               {!isTrash && (

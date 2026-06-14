@@ -46,6 +46,11 @@ import type { ApplicationCase, ApplicationCaseExtraction, ApplicationSourceType 
 import { APPLICATION_SOURCE_OPTIONS, isApplicationCaseExtractionActive } from "../types/applicationCase";
 import type { JobPosting, JobPostingRequest } from "../types/jobPosting";
 import { registerApplicationCaseExtraction } from "../utils/applicationExtractionTracker";
+import {
+  JOB_POSTING_IMAGE_ACCEPT,
+  JOB_POSTING_MAX_FILE_SIZE_LABEL,
+  validateJobPostingFile,
+} from "../utils/jobPostingUpload";
 
 type WizardStep = 0 | 1 | 2;
 type FileSourceType = Extract<ApplicationSourceType, "PDF" | "IMAGE">;
@@ -71,8 +76,6 @@ const steps: { label: string; icon: typeof Briefcase }[] = [
 ];
 
 const EXTRACTION_POLL_INTERVAL_MS = 3000;
-const ALLOWED_IMAGE_MIME_TYPES = new Set(["image/png", "image/jpeg", "image/webp", "image/gif"]);
-const IMAGE_ACCEPT = "image/png,image/jpeg,image/webp,image/gif";
 
 function displayPostingText(posting: JobPosting | null): string {
   return posting?.extractedText ?? posting?.originalText ?? "";
@@ -93,18 +96,6 @@ function isHttpPostingUrl(value: string): boolean {
   } catch {
     return false;
   }
-}
-
-function validatePostingFile(sourceType: FileSourceType, file: File): string | null {
-  if (sourceType === "PDF" && file.type !== "application/pdf") {
-    return "PDF 방식에는 application/pdf 파일만 업로드할 수 있습니다.";
-  }
-
-  if (sourceType === "IMAGE" && !ALLOWED_IMAGE_MIME_TYPES.has(file.type)) {
-    return "이미지 방식에는 PNG, JPG, WEBP, GIF 파일만 업로드할 수 있습니다.";
-  }
-
-  return null;
 }
 
 function buildRevisionRequest(jobPosting: JobPosting, confirmedText: string): JobPostingRequest {
@@ -186,7 +177,7 @@ export function NewApplicationPage() {
       return;
     }
 
-    const validationError = validatePostingFile(postingForm.sourceType, nextFile);
+    const validationError = validateJobPostingFile(postingForm.sourceType, nextFile);
     if (validationError) {
       event.currentTarget.value = "";
       setPostingField("file", null);
@@ -259,7 +250,7 @@ export function NewApplicationPage() {
         if (!postingForm.file) {
           throw new Error("업로드할 파일을 선택하세요.");
         }
-        const validationError = validatePostingFile(postingForm.sourceType, postingForm.file);
+        const validationError = validateJobPostingFile(postingForm.sourceType, postingForm.file);
         if (validationError) {
           throw new Error(validationError);
         }
@@ -521,12 +512,12 @@ export function NewApplicationPage() {
             {step === 0 && (
               <form className="space-y-5" onSubmit={(event) => void handleExtractPosting(event)}>
                 <div className="rounded-lg border border-blue-100 bg-blue-50 px-4 py-3 text-sm font-medium text-blue-800">
-                  공고문 추출을 시작하면 새 지원 건이 생성됩니다.
+                  공고문 추출을 시작하면 새 지원 건이 생성됩니다. 파일·URL 추출은 공고 품질과 응답 상태에 따라 시간이 걸릴 수 있습니다.
                 </div>
                 {busy && (
                   <div className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
                     <Loader2 className="mt-0.5 size-4 shrink-0 animate-spin" />
-                    <span>지원 건을 임시 분석중 상태로 만들고 공고문 추출을 준비하고 있습니다. 완료되면 확인 단계로 이동합니다.</span>
+                    <span>지원 건을 임시 분석중 상태로 만들고 공고문 추출을 준비하고 있습니다. 파일·이미지 추출은 몇 분 정도 걸릴 수 있으며, 완료되면 확인 단계로 이동합니다.</span>
                   </div>
                 )}
 
@@ -576,15 +567,19 @@ export function NewApplicationPage() {
                       key={postingForm.sourceType}
                       id="postingFile"
                       type="file"
-                      accept={postingForm.sourceType === "PDF" ? "application/pdf" : IMAGE_ACCEPT}
+                      accept={postingForm.sourceType === "PDF" ? "application/pdf" : JOB_POSTING_IMAGE_ACCEPT}
                       onChange={handlePostingFileChange}
                     />
+                    <span className="text-xs font-normal leading-5 text-slate-500">
+                      PDF와 이미지는 {JOB_POSTING_MAX_FILE_SIZE_LABEL} 이하만 업로드할 수 있습니다. 이미지/스캔 PDF OCR은 완료까지 시간이 걸릴 수 있습니다.
+                    </span>
                   </Field>
                 )}
 
                 <StepActions
                   busy={busy}
                   primaryLabel={busy ? "지원 건 생성 및 추출 준비 중" : "공고문 추출 시작"}
+                  onCancel={() => navigate("/applications")}
                   primaryIcon={Upload}
                 />
               </form>
@@ -648,6 +643,9 @@ export function NewApplicationPage() {
                           value={basicForm.deadlineDate}
                           onChange={(event) => setBasicField("deadlineDate", event.target.value)}
                         />
+                        <span className="text-xs font-normal leading-5 text-slate-500">
+                          마감일이 없거나 상시채용이면 비워두세요.
+                        </span>
                       </Field>
                     </div>
 
@@ -693,7 +691,7 @@ export function NewApplicationPage() {
                       <Sparkles className="size-4" />
                       공고 분석
                     </div>
-                    <p className="mt-2 text-sm leading-6 text-blue-800">필수 분석으로 항상 실행합니다.</p>
+                    <p className="mt-2 text-sm leading-6 text-blue-800">필수 분석으로 항상 실행합니다. 공고문 길이에 따라 완료까지 시간이 걸릴 수 있습니다.</p>
                   </div>
                   <label className="rounded-lg border border-slate-200 bg-slate-50 p-4">
                     <div className="flex items-center gap-3">
@@ -703,7 +701,7 @@ export function NewApplicationPage() {
                       />
                       <span className="text-sm font-bold text-slate-900">기업 분석도 함께 실행</span>
                     </div>
-                    <p className="mt-2 text-sm leading-6 text-slate-600">선택하면 공고 분석과 함께 기업 분석을 생성합니다.</p>
+                    <p className="mt-2 text-sm leading-6 text-slate-600">선택하면 공고 분석과 함께 기업 분석을 생성합니다. 외부 정보 확인이 필요해 시간이 더 걸릴 수 있습니다.</p>
                   </label>
                 </div>
                 <StepActions
@@ -720,7 +718,7 @@ export function NewApplicationPage() {
               <div className="grid gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600 sm:grid-cols-2 lg:grid-cols-4">
                 <SummaryItem icon={Building2} label="기업" value={basicForm.companyName || createdCase.companyName || "미확인"} />
                 <SummaryItem icon={Briefcase} label="직무" value={basicForm.jobTitle || createdCase.jobTitle || "미확인"} />
-                <SummaryItem icon={CalendarDays} label="마감일" value={basicForm.deadlineDate || createdCase.deadlineDate || "미입력"} />
+                <SummaryItem icon={CalendarDays} label="마감일" value={basicForm.deadlineDate || createdCase.deadlineDate || "마감일 없음/상시채용"} />
                 <SummaryItem
                   icon={extractionJob ? SearchCheck : Star}
                   label={extractionJob ? "추출 상태" : "즐겨찾기"}
@@ -759,7 +757,7 @@ function ExtractionProgressState({
             <span className="text-sm font-bold text-blue-900">공고문을 분석 가능한 텍스트로 추출하고 있습니다.</span>
           </div>
           <p className="text-sm leading-6 text-blue-800">
-            지원 건은 이미 생성됐고 완료 전까지 임시 분석중 상태로 보일 수 있습니다. 이 화면을 나가도 추출은 계속 진행되며, 완료되면 알림으로 알려드립니다.
+            지원 건은 이미 생성됐고 완료 전까지 임시 분석중 상태로 보일 수 있습니다. 파일 크기와 이미지 품질에 따라 몇 분 정도 걸릴 수 있으며, 이 화면을 나가도 추출은 계속 진행됩니다.
           </p>
         </div>
         <Loader2 className="size-5 shrink-0 animate-spin text-blue-700" />
@@ -836,16 +834,23 @@ function StepActions({
   primaryLabel,
   onPrimary,
   onBack,
+  onCancel,
   primaryIcon: PrimaryIcon,
 }: {
   busy: boolean;
   primaryLabel: string;
   onPrimary?: () => void;
   onBack?: () => void;
+  onCancel?: () => void;
   primaryIcon?: typeof Briefcase;
 }) {
   return (
     <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+      {onCancel && (
+        <Button type="button" variant="outline" className="w-full sm:w-auto" onClick={onCancel} disabled={busy}>
+          취소
+        </Button>
+      )}
       {onBack && (
         <Button type="button" variant="outline" className="w-full sm:w-auto" onClick={onBack} disabled={busy}>
           이전

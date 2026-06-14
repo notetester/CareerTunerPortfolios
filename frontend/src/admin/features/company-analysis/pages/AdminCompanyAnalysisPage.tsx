@@ -65,12 +65,25 @@ const SORT_OPTIONS = [
   { value: "industry_desc", label: "산업 내림차순" },
 ];
 
+const COMPANY_SOURCE_TYPE_OPTIONS = [
+  { value: "WEB", label: "웹 조사" },
+  { value: "JOB_POSTING", label: "공고 기반" },
+  { value: "MANUAL", label: "수동 입력" },
+  { value: "API", label: "외부 API" },
+] as const;
+
+type CompanySourceType = (typeof COMPANY_SOURCE_TYPE_OPTIONS)[number]["value"];
+
 const SELECT_CLASS =
   "h-9 rounded-md border border-slate-200 bg-white px-3 text-sm font-normal text-slate-900 outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100";
 
 function blankToNull(value: string): string | null {
   const trimmed = value.trim();
   return trimmed ? trimmed : null;
+}
+
+function isCompanySourceType(value: string | null | undefined): value is CompanySourceType {
+  return COMPANY_SOURCE_TYPE_OPTIONS.some((option) => option.value === value);
 }
 
 function booleanFilterValue(value: BooleanFilter): boolean | null {
@@ -297,6 +310,10 @@ export function AdminCompanyAnalysisPage() {
       setError("출처 유형은 비워둘 수 없습니다.");
       return;
     }
+    if (!isCompanySourceType(nextSourceType)) {
+      setError("출처 유형은 웹 조사, 공고 기반, 수동 입력, 외부 API 중 하나를 선택해 주세요.");
+      return;
+    }
 
     const checkedAt = blankToNull(metadata.checkedAt);
     const refreshRecommendedAt = blankToNull(metadata.refreshRecommendedAt);
@@ -368,7 +385,14 @@ export function AdminCompanyAnalysisPage() {
             </label>
             <label className="grid gap-1 text-xs font-semibold text-slate-500">
               출처 유형
-              <Input value={sourceType} onChange={(event) => setSourceType(event.target.value)} placeholder="WEB" />
+              <select className={SELECT_CLASS} value={sourceType} onChange={(event) => setSourceType(event.target.value)}>
+                <option value="">전체 출처</option>
+                {COMPANY_SOURCE_TYPE_OPTIONS.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
             </label>
             <label className="grid gap-1 text-xs font-semibold text-slate-500">
               산업
@@ -781,12 +805,20 @@ function MetadataEditor({
           <div className="grid gap-2 md:grid-cols-3">
             <label className="grid gap-1 text-xs font-semibold text-slate-500">
               출처 유형
-              <Input
-                value={metadata.sourceType}
+              <select
+                value={isCompanySourceType(metadata.sourceType) ? metadata.sourceType : ""}
                 onChange={(event) => onMetadataChange("sourceType", event.target.value)}
-                className="bg-white text-sm font-normal text-slate-900"
-                maxLength={30}
-              />
+                className={SELECT_CLASS}
+              >
+                <option value="" disabled>
+                  출처 선택
+                </option>
+                {COMPANY_SOURCE_TYPE_OPTIONS.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
             </label>
             <label className="grid gap-1 text-xs font-semibold text-slate-500">
               확인 시각

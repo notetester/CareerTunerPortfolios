@@ -52,11 +52,8 @@ const navItems = [
     href: "/applications",
     icon: Briefcase,
     children: [
-      { label: "새 지원 건 만들기", href: "/applications?tab=new" },
-      { label: "공고문 업로드", href: "/applications?tab=upload" },
-      { label: "지원 건별 기록", href: "/applications?tab=records" },
       { label: "전체 지원 건 목록", href: "/applications" },
-      { label: "공고문 분석 결과", href: "/applications?tab=analysis" },
+      { label: "새 지원 건 만들기", href: "/applications/new" },
       { label: "내 스펙과 비교", href: "/applications?tab=fit" },
       { label: "지원 전략", href: "/applications?tab=strategy" },
       { label: "학습/자격증 추천", href: "/applications?tab=learning" },
