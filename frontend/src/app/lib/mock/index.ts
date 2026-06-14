@@ -17,6 +17,12 @@ import {
   findFitByApplicationCase,
   findFitHistoryByApplicationCase,
 } from "./data";
+import { findJobPosting, findJobAnalysis, findCompanyAnalysis } from "./domains/applications";
+import {
+  demoInterviewSessions, findSessionQuestions, findReport, progress, agentSteps,
+  createSession, generateQuestions, submitAnswer as submitInterviewAnswer, followUps,
+  realtimeSession, fileAsset,
+} from "./domains/interview";
 
 /** 등록된 핸들러가 없을 때 반환하는 sentinel. */
 export const MOCK_UNHANDLED = Symbol("mock-unhandled");
@@ -180,6 +186,30 @@ const routes: MockRoute[] = [
     pattern: /^\/application-cases\/(\d+)$/,
     handler: ({ params }) => demoApplicationCases.find((item) => item.id === Number(params[0])) ?? demoApplicationCases[0],
   },
+
+  // ── B: 지원 건 상세 서브탭(공고문/공고분석/기업분석). 생성(mock POST)은 저장본을 그대로 반환. ──
+  { method: "GET", pattern: /^\/application-cases\/(\d+)\/job-posting$/, handler: ({ params }) => findJobPosting(Number(params[0])) },
+  { method: "GET", pattern: /^\/application-cases\/(\d+)\/job-posting\/revisions$/, handler: ({ params }) => { const p = findJobPosting(Number(params[0])); return p ? [p] : []; } },
+  { method: "GET", pattern: /^\/application-cases\/(\d+)\/job-analysis$/, handler: ({ params }) => findJobAnalysis(Number(params[0])) },
+  { method: "GET", pattern: /^\/application-cases\/(\d+)\/job-analysis\/history$/, handler: ({ params }) => { const a = findJobAnalysis(Number(params[0])); return a ? [a] : []; } },
+  { method: "POST", pattern: /^\/application-cases\/(\d+)\/job-analysis(?:\/mock)?$/, handler: ({ params }) => findJobAnalysis(Number(params[0])) },
+  { method: "GET", pattern: /^\/application-cases\/(\d+)\/company-analysis$/, handler: ({ params }) => findCompanyAnalysis(Number(params[0])) },
+  { method: "GET", pattern: /^\/application-cases\/(\d+)\/company-analysis\/history$/, handler: ({ params }) => { const a = findCompanyAnalysis(Number(params[0])); return a ? [a] : []; } },
+  { method: "POST", pattern: /^\/application-cases\/(\d+)\/company-analysis(?:\/mock)?$/, handler: ({ params }) => findCompanyAnalysis(Number(params[0])) },
+  { method: "GET", pattern: /^\/application-cases\/(\d+)\/ai-usage\/b\/failures$/, handler: () => [] },
+
+  // ── D: 가상 면접 (세션 목록/생성, 질문 생성·조회, 답변·꼬리질문, 진행·리포트·에이전트) ──
+  { method: "GET", pattern: /^\/interview\/sessions$/, handler: ok(demoInterviewSessions) },
+  { method: "POST", pattern: /^\/interview\/sessions$/, handler: ({ body }) => createSession(body as { applicationCaseId: number; mode: "BASIC" | "JOB" | "PERSONALITY" | "PRESSURE" | "REAL" | "RESUME" | "PORTFOLIO" | "COMPANY" }) },
+  { method: "GET", pattern: /^\/interview\/sessions\/(\d+)\/questions$/, handler: ({ params }) => findSessionQuestions(Number(params[0])) },
+  { method: "POST", pattern: /^\/interview\/sessions\/(\d+)\/generate-questions$/, handler: ({ params }) => generateQuestions(Number(params[0])) },
+  { method: "GET", pattern: /^\/interview\/sessions\/(\d+)\/progress$/, handler: ({ params }) => progress(Number(params[0])) },
+  { method: "GET", pattern: /^\/interview\/sessions\/(\d+)\/report$/, handler: ({ params }) => findReport(Number(params[0])) },
+  { method: "GET", pattern: /^\/interview\/sessions\/(\d+)\/agent-steps$/, handler: ({ params }) => agentSteps(Number(params[0])) },
+  { method: "POST", pattern: /^\/interview\/sessions\/(\d+)\/realtime$/, handler: () => realtimeSession() },
+  { method: "POST", pattern: /^\/interview\/questions\/(\d+)\/answers$/, handler: ({ params, body }) => submitInterviewAnswer(Number(params[0]), body as { answerText: string }) },
+  { method: "POST", pattern: /^\/interview\/questions\/(\d+)\/follow-ups$/, handler: ({ params }) => followUps(Number(params[0])) },
+  { method: "POST", pattern: /^\/file\/upload$/, handler: () => fileAsset() },
 
   // ── C: 적합도 분석 ──
   { method: "GET", pattern: /^\/fit-analyses$/, handler: ok(demoFitAnalyses) },
