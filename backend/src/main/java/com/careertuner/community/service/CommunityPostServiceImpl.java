@@ -5,6 +5,7 @@ import java.time.LocalDateTime;
 import java.util.Collections;
 import java.util.List;
 
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -22,6 +23,7 @@ import com.careertuner.community.dto.PostPageResponse;
 import com.careertuner.community.dto.UpdatePostRequest;
 import com.careertuner.community.mapper.CommunityPostMapper;
 import com.careertuner.community.mapper.ReactionMapper;
+import com.careertuner.community.moderation.event.PostModerationRequiredEvent;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -36,6 +38,7 @@ public class CommunityPostServiceImpl implements CommunityPostService {
     private final CommunityPostMapper postMapper;
     private final ReactionMapper reactionMapper;
     private final ObjectMapper objectMapper;
+    private final ApplicationEventPublisher eventPublisher;
 
     @Override
     public PostPageResponse getPosts(String category, String sort, int page, int size) {
@@ -106,6 +109,7 @@ public class CommunityPostServiceImpl implements CommunityPostService {
             upsertInterviewReview(post.getId(), request.interviewReview());
         }
 
+        eventPublisher.publishEvent(new PostModerationRequiredEvent(post.getId()));
         return post.getId();
     }
 
@@ -135,6 +139,8 @@ public class CommunityPostServiceImpl implements CommunityPostService {
                 && request.interviewReview() != null) {
             upsertInterviewReview(postId, request.interviewReview());
         }
+
+        eventPublisher.publishEvent(new PostModerationRequiredEvent(postId));
     }
 
     @Override

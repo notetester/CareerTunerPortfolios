@@ -1,10 +1,12 @@
 import { useState, useEffect, useMemo } from "react";
-import { PenLine, Lock } from "lucide-react";
+import { useSearchParams } from "react-router";
+import { PenLine, Lock, BookOpen } from "lucide-react";
 import { PostList } from "../components/PostList";
 import { PostFilters, type SortKey } from "../components/PostFilters";
 import { HotPostsSidebar } from "../components/HotPostsSidebar";
 import { PostDetailView } from "../components/PostDetailView";
 import { PostEditorForm } from "../components/PostEditorForm";
+import { CommunityGuidelinesPage } from "./CommunityGuidelinesPage";
 import { CATEGORIES } from "../types/community";
 import { useCommunityStore } from "../hooks/useCommunityStore";
 import { useLoginDialog } from "../hooks/useLoginDialog";
@@ -12,10 +14,19 @@ import { ConfirmDialog } from "@/app/components/ui/confirm-dialog";
 import type { CommunityPost } from "../types/community";
 import "../styles/community.css";
 
-type ViewMode = "list" | "detail" | "write";
+type ViewMode = "list" | "detail" | "write" | "guidelines";
 
 export function CommunityHomePage() {
-  const [viewMode, setViewMode] = useState<ViewMode>("list");
+  const [searchParams, setSearchParams] = useSearchParams();
+  const initialView = searchParams.get("view") === "guidelines" ? "guidelines" as ViewMode : "list" as ViewMode;
+  const [viewMode, setViewMode] = useState<ViewMode>(initialView);
+
+  // URL ?view=guidelines 변경 감지
+  useEffect(() => {
+    if (searchParams.get("view") === "guidelines" && viewMode !== "guidelines") {
+      setViewMode("guidelines");
+    }
+  }, [searchParams]);
   const [selectedCategory, setSelectedCategory] = useState("all");
   const [selectedPost, setSelectedPost] = useState<CommunityPost | null>(null);
   const [sort, setSort] = useState<SortKey>("recent");
@@ -59,8 +70,18 @@ export function CommunityHomePage() {
   };
 
   const handleBack = () => {
+    // 쿼리 파라미터로 진입한 경우 정리
+    if (searchParams.has("view")) {
+      setSearchParams({}, { replace: true });
+      setViewMode("list");
+      return;
+    }
     window.history.back();
   };
+
+  if (viewMode === "guidelines") {
+    return <CommunityGuidelinesPage onBack={handleBack} />;
+  }
 
   if (viewMode === "detail" && selectedPost) {
     return <PostDetailView postId={selectedPost.id} onBack={handleBack} />;
@@ -77,14 +98,23 @@ export function CommunityHomePage() {
           <h1>커뮤니티</h1>
           <p>익명으로 취업·이직·면접 이야기를 나눠보세요</p>
         </div>
-        <button className="av-btn av-btn--ink" style={{ height: 34, padding: "0 14px" }} onClick={() => {
-          requireAuth(() => {
-            setViewMode("write");
-            window.history.pushState({ view: "write" }, "");
-          });
-        }}>
-          <PenLine /> 글쓰기
-        </button>
+        <div style={{ display: "flex", gap: 8 }}>
+          <button className="av-btn" style={{ height: 34, padding: "0 14px" }} onClick={() => {
+            setViewMode("guidelines");
+            window.history.pushState({ view: "guidelines" }, "");
+            window.scrollTo(0, 0);
+          }}>
+            <BookOpen /> 가이드라인
+          </button>
+          <button className="av-btn av-btn--ink" style={{ height: 34, padding: "0 14px" }} onClick={() => {
+            requireAuth(() => {
+              setViewMode("write");
+              window.history.pushState({ view: "write" }, "");
+            });
+          }}>
+            <PenLine /> 글쓰기
+          </button>
+        </div>
       </div>
 
       <div className="uv-tabs">

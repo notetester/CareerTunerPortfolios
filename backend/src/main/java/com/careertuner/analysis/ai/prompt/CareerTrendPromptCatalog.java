@@ -4,6 +4,7 @@ package com.careertuner.analysis.ai.prompt;
  * 장기 취업 경향/다음 지원 방향 AI 프롬프트 모음(C 담당).
  */
 public final class CareerTrendPromptCatalog {
+    public static final String VERSION = "v0.2";
 
     private CareerTrendPromptCatalog() {
     }

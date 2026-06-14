@@ -24,6 +24,9 @@ spring:
       # MySQL 미기동 상태에서도 부팅되도록 시작 시 커넥션 시도를 생략(개발 편의).
       initialization-fail-timeout: -1
 
+
+    
+
   mail:
     host: ${MAIL_HOST:smtp.naver.com}
     port: ${MAIL_PORT:465}
@@ -121,6 +124,14 @@ careertuner:
       client-id: ${OAUTH_GOOGLE_CLIENT_ID:CHANGEME}
       client-secret: ${OAUTH_GOOGLE_CLIENT_SECRET:CHANGEME}
       redirect-uri: ${OAUTH_GOOGLE_REDIRECT_URI:http://localhost:8080/api/auth/oauth/google/callback}
+
+# ─── Ollama (로컬 LLM) ───
+ai:
+  ollama:
+    base-url: ${AI_OLLAMA_BASE_URL:http://localhost:11434}
+    model: ${AI_OLLAMA_MODEL:gemma4}
+    connect-timeout: ${AI_OLLAMA_CONNECT_TIMEOUT:3s}
+    read-timeout: ${AI_OLLAMA_READ_TIMEOUT:30s}
 
 logging:
   level:

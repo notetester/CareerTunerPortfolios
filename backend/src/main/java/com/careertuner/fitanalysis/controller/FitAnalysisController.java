@@ -14,6 +14,7 @@ import org.springframework.web.bind.annotation.RestController;
 import com.careertuner.common.security.AuthUser;
 import com.careertuner.common.web.ApiResponse;
 import com.careertuner.fitanalysis.dto.FitAnalysisDetailResponse;
+import com.careertuner.fitanalysis.dto.FitAnalysisHistoryEntryResponse;
 import com.careertuner.fitanalysis.dto.FitAnalysisLearningTaskResponse;
 import com.careertuner.fitanalysis.dto.UpdateLearningTaskRequest;
 import com.careertuner.fitanalysis.service.FitAnalysisService;
@@ -36,6 +37,15 @@ public class FitAnalysisController {
     public ApiResponse<FitAnalysisDetailResponse> getByApplicationCase(@AuthenticationPrincipal AuthUser authUser,
                                                                        @PathVariable Long applicationCaseId) {
         return ApiResponse.ok(fitAnalysisService.getByApplicationCase(authUser.id(), applicationCaseId));
+    }
+
+    /**
+     * 재분석 히스토리(최신순). 직전 분석 대비 점수 변화와 매칭/부족 역량 변화를 제공한다.
+     */
+    @GetMapping("/application-cases/{applicationCaseId}/history")
+    public ApiResponse<List<FitAnalysisHistoryEntryResponse>> history(@AuthenticationPrincipal AuthUser authUser,
+                                                                      @PathVariable Long applicationCaseId) {
+        return ApiResponse.ok(fitAnalysisService.getHistory(authUser.id(), applicationCaseId));
     }
 
     /**

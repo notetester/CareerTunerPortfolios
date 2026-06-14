@@ -1,8 +1,9 @@
 import { useState } from "react";
 import {
   Scale, Eye, Check, CalendarClock, Plus,
-  ChevronUp, ChevronDown, X,
+  ChevronUp, ChevronDown, X, BookOpen,
 } from "lucide-react";
+import { Link } from "react-router";
 import AdminShell from "../../../components/AdminShell";
 import "./admin-terms.css";
 
@@ -69,12 +70,22 @@ export default function AdminTerms() {
       icon={Scale}
       desc="법적 문서 작성·개정 — 게시 7일 전 공지 의무"
       actions={
-        <div className="av-seg">
-          {DOCS.map((d) => (
-            <button key={d} className={doc === d ? "on" : ""} onClick={() => setDoc(d)}>
-              {d}
-            </button>
-          ))}
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <div className="av-seg">
+            {DOCS.map((d) => (
+              <button key={d} className={doc === d ? "on" : ""} onClick={() => setDoc(d)}>
+                {d}
+              </button>
+            ))}
+          </div>
+          <Link to="/admin/terms/guidelines" style={{
+            display: "inline-flex", alignItems: "center", gap: 6,
+            padding: "6px 12px", fontSize: 12.5, fontWeight: 600, border: "1px solid #e2e8f0",
+            borderRadius: 7, background: "#fff", color: "#475569", textDecoration: "none",
+            whiteSpace: "nowrap",
+          }}>
+            <BookOpen style={{ width: 13, height: 13 }} /> 커뮤니티 가이드라인
+          </Link>
         </div>
       }
     >

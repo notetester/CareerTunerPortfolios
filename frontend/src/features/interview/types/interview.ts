@@ -79,6 +79,8 @@ export interface SubmitAnswerRequest {
   answerText: string;
   audioUrl?: string | null;
   videoUrl?: string | null;
+  /** 사용자에게 보여준 모범답안(답안지). 있으면 채점의 만점 기준으로 함께 보낸다. */
+  modelAnswer?: string | null;
 }
 
 /** 자율 에이전트 진행 단계 (AI 사고과정 트레이스) */
@@ -111,6 +113,96 @@ export interface RealtimeSession {
   model: string;
   voice: string;
   realtimeUrl: string;
+}
+
+// ───── 음성/아바타 면접 분석 (interview_media_analysis) ─────
+
+/** 대화 트랜스크립트 한 줄 */
+export interface TranscriptLine {
+  role: "ai" | "user";
+  text: string;
+}
+
+/** Inworld voice profiling 라벨 (confidence 내림차순) */
+export interface VoiceProfileLabel {
+  label: string;
+  confidence: number;
+}
+
+/** Inworld voice profiling 결과 — 신뢰도 낮으면 필드가 빠질 수 있음 */
+export interface VoiceProfile {
+  age?: VoiceProfileLabel[];
+  emotion?: VoiceProfileLabel[];
+  pitch?: VoiceProfileLabel[];
+  vocalStyle?: VoiceProfileLabel[];
+  accent?: VoiceProfileLabel[];
+}
+
+/** 서버 음성 감정 분석 응답 (POST /sessions/{id}/voice-analysis) */
+export interface VoiceAnalysisResult {
+  transcript: string;
+  voiceProfile: VoiceProfile | null;
+}
+
+/** 브라우저 온디바이스 음성 지표 */
+export interface VoiceMetrics {
+  totalSec: number;
+  speakingSec: number;
+  speechRateSpm: number | null; // 분당 음절(글자) 수
+  fillerCount: number;
+  fillerPerMin: number | null;
+  avgPitchHz: number | null;
+  pitchStdevHz: number | null;
+  avgResponseLatencySec: number | null; // 질문 후 첫 발화까지
+  maxResponseLatencySec: number | null;
+  avgVolume: number | null; // RMS 0~1
+}
+
+/** 항목별 음성 점수 (0~100) */
+export interface VoiceScoreDetail {
+  pace: number; // 말 속도
+  fluency: number; // 필러 최소화
+  stability: number; // 톤 안정감
+  confidence: number; // 자신감(성량·감정)
+  responsiveness: number; // 답변 반응 속도
+  overall: number;
+}
+
+/** 외부 키 보유 여부 (GET /media/capabilities) */
+export interface MediaCapabilities {
+  voiceProfiling: boolean;
+  avatar: boolean;
+  avatarSandbox: boolean;
+}
+
+/** 저장된 분석 결과 (interview_media_analysis) */
+export interface MediaAnalysis {
+  id: number;
+  interviewSessionId: number;
+  kind: "VOICE" | "AVATAR";
+  transcript: TranscriptLine[] | null;
+  metrics: Record<string, unknown> | null;
+  score: number;
+  scoreDetail: Record<string, number> | null;
+  createdAt: string;
+}
+
+/** 분석 결과 저장 요청 (POST /sessions/{id}/media-results) */
+export interface SaveMediaAnalysisRequest {
+  kind: "VOICE" | "AVATAR";
+  transcript: TranscriptLine[] | null;
+  metrics: Record<string, unknown> | null;
+  score: number;
+  scoreDetail: Record<string, number> | null;
+}
+
+/** 아바타 화상 면접 세션 (POST /sessions/{id}/avatar-token) */
+export interface AvatarSession {
+  sessionId: string | null;
+  sessionToken: string;
+  sandbox: boolean;
+  language: string;
+  questions: string[];
 }
 
 /** 파일 업로드 결과 (file_asset) */

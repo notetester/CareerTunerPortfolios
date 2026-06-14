@@ -25,4 +25,6 @@ public interface NotificationMapper {
     void markAsRead(@Param("id") Long id);
 
     void markAllAsRead(@Param("userId") Long userId);
+
+    void insert(Notification notification);
 }

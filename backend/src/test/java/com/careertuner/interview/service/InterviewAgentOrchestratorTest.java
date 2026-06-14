@@ -73,7 +73,7 @@ class InterviewAgentOrchestratorTest {
 
         assertThat(result.score()).isEqualTo(82);
         assertThat(agents()).containsExactly("EVALUATOR", "CRITIC");
-        verify(evaluator, times(1)).evaluateAnswer(any(), any(), any(), any());
+        verify(evaluator, times(1)).evaluateAnswer(any(), any(), any(), any(), any());
     }
 
     @Test
@@ -87,7 +87,7 @@ class InterviewAgentOrchestratorTest {
         // 재평가(80)와 Critic 조정값(50)의 중간 = 65
         assertThat(result.score()).isEqualTo(65);
         assertThat(agents()).containsExactly("EVALUATOR", "CRITIC", "EVALUATOR");
-        verify(evaluator, times(2)).evaluateAnswer(any(), any(), any(), any());
+        verify(evaluator, times(2)).evaluateAnswer(any(), any(), any(), any(), any());
     }
 
     @Test
@@ -104,12 +104,12 @@ class InterviewAgentOrchestratorTest {
     // ───── 헬퍼 ─────
 
     private void stubEval(int score) {
-        when(evaluator.evaluateAnswer(any(), any(), any(), any()))
+        when(evaluator.evaluateAnswer(any(), any(), any(), any(), any()))
                 .thenReturn(new InterviewOpenAiClient.AnswerEvaluation(score, "피드백", "개선답변", USAGE));
     }
 
     private void stubCritic(int adjusted, String verdict) {
-        when(evaluator.critiqueEvaluation(any(), any(), anyInt(), any()))
+        when(evaluator.critiqueEvaluation(any(), any(), anyInt(), any(), any()))
                 .thenReturn(new InterviewOpenAiClient.CritiqueResult(adjusted, verdict, "근거", USAGE));
     }
 

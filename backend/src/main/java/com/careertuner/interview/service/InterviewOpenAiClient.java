@@ -7,6 +7,7 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
@@ -33,11 +34,14 @@ public class InterviewOpenAiClient implements InterviewAnswerEvaluator {
     private static final int MAX_ATTEMPTS = 3;
 
     private final OpenAiProperties properties;
+    private final InterviewModelProperties modelProperties;
     private final ObjectMapper objectMapper;
     private final HttpClient httpClient;
 
-    public InterviewOpenAiClient(OpenAiProperties properties, ObjectMapper objectMapper) {
+    public InterviewOpenAiClient(OpenAiProperties properties, InterviewModelProperties modelProperties,
+                                 ObjectMapper objectMapper) {
         this.properties = properties;
+        this.modelProperties = modelProperties;
         this.objectMapper = objectMapper;
         this.httpClient = HttpClient.newBuilder()
                 .connectTimeout(properties.getTimeout())
@@ -59,7 +63,7 @@ public class InterviewOpenAiClient implements InterviewAnswerEvaluator {
                 modeLabel, count, postingText == null || postingText.isBlank() ? "(공고문 없음)" : postingText);
 
         JsonNode root = post(structuredRequest("interview_questions", questionsSchema(),
-                InterviewPromptCatalog.QUESTION_SYSTEM_PROMPT, userPrompt));
+                InterviewPromptCatalog.QUESTION_SYSTEM_PROMPT, userPrompt, modelProperties.getGeneration()));
         JsonNode payload = parseOutputJson(root);
 
         List<GeneratedQuestion> questions = new ArrayList<>();
@@ -79,32 +83,97 @@ public class InterviewOpenAiClient implements InterviewAnswerEvaluator {
         return new GeneratedQuestions(questions, usage(root));
     }
 
-    /** 단일 답변 평가(점수/피드백/개선답변). ragContext 가 있으면 평가 근거로 함께 제공한다. */
+    /**
+     * 단일 답변 평가(점수/피드백/개선답변). ragContext 가 있으면 평가 근거로 함께 제공한다.
+     * referenceModelAnswer(사용자에게 보여준 모범답안)가 있으면 만점 기준 답안지로 함께 넘긴다.
+     */
     public AnswerEvaluation evaluateAnswer(String question, String answerText, ApplicationCase applicationCase,
-                                           String ragContext) {
+                                           String ragContext, String referenceModelAnswer) {
         String reference = ragContext == null || ragContext.isBlank()
                 ? ""
                 : "\n참고 자료(평가 기준·지식베이스):\n" + ragContext + "\n";
+        String modelKey = referenceModelAnswer == null || referenceModelAnswer.isBlank()
+                ? ""
+                : "\n기준 모범답안(이 답안을 만점 기준으로 삼는다):\n" + referenceModelAnswer + "\n";
         String userPrompt = """
                 회사명: %s
                 직무명: %s
-                %s
+                %s%s
                 질문:
                 %s
 
                 지원자 답변:
                 %s
                 """.formatted(applicationCase.getCompanyName(), applicationCase.getJobTitle(),
-                reference, question, answerText);
+                reference, modelKey, question, answerText);
 
         JsonNode root = post(structuredRequest("interview_answer_evaluation", evaluationSchema(),
-                InterviewPromptCatalog.EVALUATION_SYSTEM_PROMPT, userPrompt));
+                InterviewPromptCatalog.EVALUATION_SYSTEM_PROMPT, userPrompt, modelProperties.getJudge()));
         JsonNode payload = parseOutputJson(root);
         return new AnswerEvaluation(
                 clampScore(payload.path("score").asInt(0)),
                 payload.path("feedback").asText(""),
                 payload.path("improvedAnswer").asText(""),
                 usage(root));
+    }
+
+    /** 질문에 대한 모범 답변 생성(학습용). 답변 제출 없이도 호출 가능. */
+    public ModelAnswer generateModelAnswer(String question, ApplicationCase applicationCase, String modeLabel) {
+        String userPrompt = """
+                회사명: %s
+                직무명: %s
+                면접 모드: %s
+
+                질문:
+                %s
+                """.formatted(applicationCase.getCompanyName(), applicationCase.getJobTitle(), modeLabel, question);
+
+        JsonNode root = post(structuredRequest("interview_model_answer", modelAnswerSchema(),
+                InterviewPromptCatalog.MODEL_ANSWER_SYSTEM_PROMPT, userPrompt, modelProperties.getGeneration()));
+        JsonNode payload = parseOutputJson(root);
+        String modelAnswer = payload.path("modelAnswer").asText("").trim();
+        if (modelAnswer.isBlank()) {
+            throw new BusinessException(ErrorCode.INTERNAL_ERROR, "AI가 모범답안을 생성하지 못했습니다.");
+        }
+        return new ModelAnswer(modelAnswer, usage(root));
+    }
+
+    /**
+     * 여러 질문의 모범답안을 한 번의 호출로 일괄 생성한다(질문 생성 시 미리 저장용).
+     * 반환 리스트는 입력 질문 순서에 맞춘다. 일부가 비면 해당 칸은 null 일 수 있다.
+     */
+    public GeneratedModelAnswers generateModelAnswers(List<String> questions, ApplicationCase applicationCase,
+                                                      String modeLabel) {
+        StringBuilder list = new StringBuilder();
+        for (int i = 0; i < questions.size(); i++) {
+            list.append(i + 1).append(". ").append(questions.get(i)).append("\n");
+        }
+        String userPrompt = """
+                회사명: %s
+                직무명: %s
+                면접 모드: %s
+
+                아래 각 질문에 대한 모범답안을 작성하라. 반드시 질문 번호(number)를 그대로 달아 답한다.
+                질문 목록:
+                %s
+                """.formatted(applicationCase.getCompanyName(), applicationCase.getJobTitle(), modeLabel, list);
+
+        JsonNode root = post(structuredRequest("interview_model_answers", modelAnswersSchema(),
+                InterviewPromptCatalog.MODEL_ANSWER_SYSTEM_PROMPT, userPrompt, modelProperties.getGeneration()));
+        JsonNode payload = parseOutputJson(root);
+
+        String[] answers = new String[questions.size()];
+        JsonNode array = payload.path("answers");
+        if (array.isArray()) {
+            for (JsonNode item : array) {
+                int number = item.path("number").asInt(0);
+                String answer = item.path("modelAnswer").asText("").trim();
+                if (number >= 1 && number <= questions.size() && !answer.isBlank()) {
+                    answers[number - 1] = answer;
+                }
+            }
+        }
+        return new GeneratedModelAnswers(Arrays.asList(answers), usage(root));
     }
 
     /** 원 질문 + 지원자 답변 기반 꼬리 질문 생성. */
@@ -124,7 +193,7 @@ public class InterviewOpenAiClient implements InterviewAnswerEvaluator {
                 count, question, answerText == null || answerText.isBlank() ? "(답변 없음)" : answerText);
 
         JsonNode root = post(structuredRequest("interview_follow_up_questions", questionsSchema(),
-                InterviewPromptCatalog.FOLLOWUP_SYSTEM_PROMPT, userPrompt));
+                InterviewPromptCatalog.FOLLOWUP_SYSTEM_PROMPT, userPrompt, modelProperties.getGeneration()));
         JsonNode payload = parseOutputJson(root);
 
         List<GeneratedQuestion> questions = new ArrayList<>();
@@ -146,21 +215,25 @@ public class InterviewOpenAiClient implements InterviewAnswerEvaluator {
     }
 
     /** Critic 에이전트: 원 채점 결과를 적대적으로 검증하고 필요 시 점수를 조정한다. */
-    public CritiqueResult critiqueEvaluation(String question, String answerText, int originalScore, String feedback) {
+    public CritiqueResult critiqueEvaluation(String question, String answerText, int originalScore, String feedback,
+                                             String referenceModelAnswer) {
+        String modelKey = referenceModelAnswer == null || referenceModelAnswer.isBlank()
+                ? ""
+                : "\n기준 모범답안(이 답안을 만점 기준으로 삼는다):\n" + referenceModelAnswer + "\n";
         String userPrompt = """
                 질문:
                 %s
 
                 지원자 답변:
                 %s
-
+                %s
                 원 채점 점수: %d
                 원 채점 피드백:
                 %s
-                """.formatted(question, answerText, originalScore, feedback == null ? "" : feedback);
+                """.formatted(question, answerText, modelKey, originalScore, feedback == null ? "" : feedback);
 
         JsonNode root = post(structuredRequest("interview_critique", critiqueSchema(),
-                InterviewPromptCatalog.CRITIC_SYSTEM_PROMPT, userPrompt));
+                InterviewPromptCatalog.CRITIC_SYSTEM_PROMPT, userPrompt, modelProperties.getJudge()));
         JsonNode payload = parseOutputJson(root);
         return new CritiqueResult(
                 clampScore(payload.path("adjustedScore").asInt(originalScore)),
@@ -179,7 +252,7 @@ public class InterviewOpenAiClient implements InterviewAnswerEvaluator {
                 %s
                 """.formatted(question, answerText);
         JsonNode root = post(structuredRequest("interview_judge", scoreOnlySchema(),
-                InterviewPromptCatalog.JUDGE_SYSTEM_PROMPT, userPrompt));
+                InterviewPromptCatalog.JUDGE_SYSTEM_PROMPT, userPrompt, modelProperties.getJudge()));
         JsonNode payload = parseOutputJson(root);
         return new ScoreOnly(clampScore(payload.path("score").asInt(0)), usage(root));
     }
@@ -187,7 +260,7 @@ public class InterviewOpenAiClient implements InterviewAnswerEvaluator {
     /** 면접 전체 Q&A 기반 종합 리포트 생성. */
     public ReportPayload generateReport(String transcript) {
         JsonNode root = post(structuredRequest("interview_report", reportSchema(),
-                InterviewPromptCatalog.REPORT_SYSTEM_PROMPT, transcript));
+                InterviewPromptCatalog.REPORT_SYSTEM_PROMPT, transcript, modelProperties.getGeneration()));
         JsonNode payload = parseOutputJson(root);
 
         List<ReportCategory> categories = new ArrayList<>();
@@ -221,7 +294,7 @@ public class InterviewOpenAiClient implements InterviewAnswerEvaluator {
                 지금 고를 수 있는 액션: %s
                 """.formatted(stateSummary, String.join(", ", availableActions));
         JsonNode root = post(structuredRequest("interview_agent_plan", planSchema(availableActions),
-                InterviewPromptCatalog.PLANNER_SYSTEM_PROMPT, userPrompt));
+                InterviewPromptCatalog.PLANNER_SYSTEM_PROMPT, userPrompt, modelProperties.getJudge()));
         JsonNode payload = parseOutputJson(root);
         return new PlanDecisionResult(
                 payload.path("action").asText(""),
@@ -277,9 +350,14 @@ public class InterviewOpenAiClient implements InterviewAnswerEvaluator {
     }
 
     private Map<String, Object> structuredRequest(String name, Map<String, Object> schema,
-                                                  String systemPrompt, String userPrompt) {
+                                                  String systemPrompt, String userPrompt, String model) {
         Map<String, Object> body = new LinkedHashMap<>();
-        body.put("model", properties.getModel());
+        body.put("model", model);
+        // 추론 모델(gpt-5/o-시리즈)은 기본 추론량이 커서 면접 응답이 느리고 타임아웃이 잦다.
+        // 면접 Q&A·평가·모범답안은 깊은 추론이 불필요하므로 낮은 추론량으로 응답 속도·안정성을 확보한다.
+        if (isReasoningModel(model)) {
+            body.put("reasoning", Map.of("effort", "low"));
+        }
         body.put("input", List.of(
                 message("system", systemPrompt),
                 message("user", userPrompt)));
@@ -339,7 +417,8 @@ public class InterviewOpenAiClient implements InterviewAnswerEvaluator {
         int inputTokens = usage.path("input_tokens").asInt(0);
         int outputTokens = usage.path("output_tokens").asInt(0);
         int totalTokens = usage.path("total_tokens").asInt(inputTokens + outputTokens);
-        return new Usage(properties.getModel(), inputTokens, outputTokens, totalTokens);
+        String model = root.path("model").asText(properties.getModel());
+        return new Usage(model, inputTokens, outputTokens, totalTokens);
     }
 
     private String normalizeType(String value) {
@@ -351,6 +430,15 @@ public class InterviewOpenAiClient implements InterviewAnswerEvaluator {
 
     private int clampScore(int value) {
         return Math.max(0, Math.min(100, value));
+    }
+
+    /** gpt-5/o-시리즈 등 추론 모델 여부. 추론 모델에만 reasoning 옵션을 적용한다. */
+    private boolean isReasoningModel(String model) {
+        if (model == null) {
+            return false;
+        }
+        String m = model.toLowerCase(Locale.ROOT);
+        return m.startsWith("gpt-5") || m.startsWith("o1") || m.startsWith("o3") || m.startsWith("o4");
     }
 
     // ───── JSON Schema ─────
@@ -373,6 +461,21 @@ public class InterviewOpenAiClient implements InterviewAnswerEvaluator {
         properties.put("feedback", stringSchema());
         properties.put("improvedAnswer", stringSchema());
         return objectSchema(properties, List.of("score", "feedback", "improvedAnswer"));
+    }
+
+    private Map<String, Object> modelAnswerSchema() {
+        Map<String, Object> properties = new LinkedHashMap<>();
+        properties.put("modelAnswer", stringSchema());
+        return objectSchema(properties, List.of("modelAnswer"));
+    }
+
+    private Map<String, Object> modelAnswersSchema() {
+        Map<String, Object> answerItem = objectSchema(
+                Map.of("number", integerSchema(), "modelAnswer", stringSchema()),
+                List.of("number", "modelAnswer"));
+        Map<String, Object> properties = new LinkedHashMap<>();
+        properties.put("answers", Map.of("type", "array", "items", answerItem));
+        return objectSchema(properties, List.of("answers"));
     }
 
     private Map<String, Object> scoreOnlySchema() {
@@ -469,6 +572,13 @@ public class InterviewOpenAiClient implements InterviewAnswerEvaluator {
     }
 
     public record AnswerEvaluation(int score, String feedback, String improvedAnswer, Usage usage) {
+    }
+
+    public record ModelAnswer(String modelAnswer, Usage usage) {
+    }
+
+    /** 여러 질문의 모범답안(입력 순서에 정렬, 빈 칸은 null 가능). */
+    public record GeneratedModelAnswers(List<String> modelAnswers, Usage usage) {
     }
 
     public record CritiqueResult(int adjustedScore, String verdict, String reason, Usage usage) {
