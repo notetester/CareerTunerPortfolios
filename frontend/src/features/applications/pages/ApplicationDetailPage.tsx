@@ -39,6 +39,7 @@ import { registerApplicationCaseExtraction } from "../utils/applicationExtractio
 import { useApplicationFitAnalysis } from "@/features/analysis/hooks/useApplicationFitAnalysis";
 
 type DetailTab = "overview" | "posting" | "jobAnalysis" | "companyAnalysis" | "fit";
+type DetailMode = "view" | "edit";
 
 const detailTabs: { key: DetailTab; label: string; icon: typeof Info }[] = [
   { key: "overview", label: "개요", icon: Info },
@@ -60,6 +61,15 @@ const tabKeysBySlug = Object.fromEntries(
   Object.entries(tabSlugs).map(([key, slug]) => [slug, key]),
 ) as Record<string, DetailTab>;
 
+function isBAnalysisTab(tab: DetailTab): tab is "jobAnalysis" | "companyAnalysis" {
+  return tab === "jobAnalysis" || tab === "companyAnalysis";
+}
+
+function detailPath(applicationCaseId: number, tab: DetailTab, mode: DetailMode = "view") {
+  const basePath = `/applications/${applicationCaseId}/${tabSlugs[tab]}`;
+  return isBAnalysisTab(tab) && mode === "edit" ? `${basePath}/edit` : basePath;
+}
+
 export function ApplicationDetailPage() {
   const navigate = useNavigate();
   const params = useParams();
@@ -68,6 +78,7 @@ export function ApplicationDetailPage() {
     return Number.isFinite(value) && value > 0 ? value : null;
   }, [params.id]);
   const activeTab = params.section ? tabKeysBySlug[params.section] ?? "overview" : "overview";
+  const activeMode: DetailMode = isBAnalysisTab(activeTab) && params.mode === "edit" ? "edit" : "view";
   const { loading: authLoading, isAuthenticated } = useAuth();
   const {
     applicationCase,
@@ -151,8 +162,13 @@ export function ApplicationDetailPage() {
   useEffect(() => {
     if (id && params.section && !tabKeysBySlug[params.section]) {
       navigate(`/applications/${id}/overview`, { replace: true });
+      return;
     }
-  }, [id, navigate, params.section]);
+
+    if (id && params.mode && activeMode === "view") {
+      navigate(detailPath(id, activeTab), { replace: true });
+    }
+  }, [activeMode, activeTab, id, navigate, params.mode, params.section]);
 
   useEffect(() => {
     if (!extraction || extraction.status !== "SUCCEEDED" || refreshedExtractionIdRef.current === extraction.id) {
@@ -303,7 +319,7 @@ export function ApplicationDetailPage() {
                   applicationCases.map((item) => (
                     <Link
                       key={item.id}
-                      to={`/applications/${item.id}/${tabSlugs[activeTab]}`}
+                      to={detailPath(item.id, activeTab, activeMode)}
                       className={`block rounded-md border px-3 py-2 text-sm transition-colors ${
                         item.id === id
                           ? "border-blue-200 bg-blue-50 text-blue-800"
@@ -371,7 +387,7 @@ export function ApplicationDetailPage() {
                     ? "bg-slate-900 text-white"
                     : "text-slate-600 hover:bg-slate-100 hover:text-slate-900"
                 }`}
-                onClick={() => navigate(`/applications/${id}/${tabSlugs[tab.key]}`)}
+                onClick={() => navigate(detailPath(id, tab.key))}
               >
                 <tab.icon className="size-4" />
                 {tab.label}
@@ -453,6 +469,9 @@ export function ApplicationDetailPage() {
                   error={jobAnalysisError}
                   reviewError={jobAnalysisReviewError}
                   failures={bFailureLogs}
+                  mode={activeMode}
+                  viewHref={detailPath(id, "jobAnalysis")}
+                  editHref={detailPath(id, "jobAnalysis", "edit")}
                   latestJobPostingRevision={jobPosting?.revision ?? null}
                   onGenerate={handleGenerateJobAnalysis}
                   onReview={reviewJobAnalysis}
@@ -469,6 +488,9 @@ export function ApplicationDetailPage() {
                   error={companyAnalysisError}
                   reviewError={companyAnalysisReviewError}
                   failures={bFailureLogs}
+                  mode={activeMode}
+                  viewHref={detailPath(id, "companyAnalysis")}
+                  editHref={detailPath(id, "companyAnalysis", "edit")}
                   latestJobPostingRevision={jobPosting?.revision ?? null}
                   onGenerate={handleGenerateCompanyAnalysis}
                   onReview={reviewCompanyAnalysis}

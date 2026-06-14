@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
-import { BarChart3, Loader2, PlayCircle } from "lucide-react";
+import { Link } from "react-router";
+import { BarChart3, Eye, Loader2, Pencil, PlayCircle } from "lucide-react";
 import { Button } from "@/app/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/app/components/ui/card";
 import { Input } from "@/app/components/ui/input";
@@ -29,6 +30,9 @@ import { StructuredRowsEditor, type StructuredRowsEditorField } from "./Structur
 interface JobAnalysisPanelProps {
   analysis: JobAnalysis | null;
   history: JobAnalysis[];
+  mode: "view" | "edit";
+  viewHref: string;
+  editHref: string;
   loading: boolean;
   generating: boolean;
   reviewSaving: boolean;
@@ -79,9 +83,16 @@ const AMBIGUOUS_CONDITION_EDITOR_FIELDS: readonly StructuredRowsEditorField<Ambi
   { key: "assumption", label: "가정", placeholder: "사용자 가정" },
 ];
 
+function getHistoryLabel(index: number) {
+  return index === 0 ? "최신 분석" : `이전 분석 ${index}`;
+}
+
 export function JobAnalysisPanel({
   analysis,
   history,
+  mode,
+  viewHref,
+  editHref,
   loading,
   generating,
   reviewSaving,
@@ -224,16 +235,34 @@ export function JobAnalysisPanel({
               공고문 길이와 AI 응답 상태에 따라 분석 완료까지 시간이 걸릴 수 있습니다.
             </p>
           </div>
-          <Button
-            type="button"
-            size="sm"
-            className="bg-blue-600 text-white hover:bg-blue-700"
-            disabled={loading || generating || reviewSaving}
-            onClick={() => void handleGenerate()}
-          >
-            {generating ? <Loader2 className="size-4 animate-spin" /> : <PlayCircle className="size-4" />}
-            {analysis ? "AI 재분석" : "AI 분석 실행"}
-          </Button>
+          <div className="flex flex-wrap gap-2 sm:justify-end">
+            {analysis && mode === "view" && (
+              <Button asChild size="sm" variant="outline">
+                <Link to={editHref}>
+                  <Pencil className="size-4" />
+                  수정 화면
+                </Link>
+              </Button>
+            )}
+            {analysis && mode === "edit" && (
+              <Button asChild size="sm" variant="outline">
+                <Link to={viewHref}>
+                  <Eye className="size-4" />
+                  조회 화면
+                </Link>
+              </Button>
+            )}
+            <Button
+              type="button"
+              size="sm"
+              className="bg-blue-600 text-white hover:bg-blue-700"
+              disabled={loading || generating || reviewSaving}
+              onClick={() => void handleGenerate()}
+            >
+              {generating ? <Loader2 className="size-4 animate-spin" /> : <PlayCircle className="size-4" />}
+              {analysis ? "AI 재분석" : "AI 분석 실행"}
+            </Button>
+          </div>
         </div>
       </CardHeader>
       <CardContent className="space-y-4">
@@ -311,60 +340,62 @@ export function JobAnalysisPanel({
               <AnalysisStructuredText title="모호한 조건" value={analysis.ambiguousConditions} />
             </div>
 
-            <div className="space-y-3 rounded-lg border border-slate-200 bg-slate-50 p-4">
-              <div className="flex flex-wrap items-center gap-2 text-sm font-semibold text-slate-900">
-                사용자 확인/수정
-                {isDirty && (
-                  <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-700">
-                    저장되지 않은 수정 있음
-                  </span>
+            {mode === "edit" && (
+              <div className="space-y-3 rounded-lg border border-slate-200 bg-slate-50 p-4">
+                <div className="flex flex-wrap items-center gap-2 text-sm font-semibold text-slate-900">
+                  사용자 확인/수정
+                  {isDirty && (
+                    <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-700">
+                      저장되지 않은 수정 있음
+                    </span>
+                  )}
+                </div>
+                <div className="grid gap-3 md:grid-cols-3">
+                  <Input value={form.employmentType} onChange={(event) => setField("employmentType", event.target.value)} placeholder="고용 형태" />
+                  <Input value={form.experienceLevel} onChange={(event) => setField("experienceLevel", event.target.value)} placeholder="경력 수준" />
+                  <Input value={form.difficulty} onChange={(event) => setField("difficulty", event.target.value)} placeholder="EASY/NORMAL/HARD" />
+                </div>
+                <div className="grid gap-3 md:grid-cols-2">
+                  <Textarea value={form.requiredSkills} onChange={(event) => setField("requiredSkills", event.target.value)} className="min-h-24 bg-white" placeholder={"필수 역량을 한 줄에 하나씩 입력"} />
+                  <Textarea value={form.preferredSkills} onChange={(event) => setField("preferredSkills", event.target.value)} className="min-h-24 bg-white" placeholder={"우대 역량을 한 줄에 하나씩 입력"} />
+                </div>
+                <div className="grid gap-3 md:grid-cols-2">
+                  <Textarea value={form.duties} onChange={(event) => setField("duties", event.target.value)} className="min-h-28 bg-white" placeholder="주요 업무" />
+                  <Textarea value={form.qualifications} onChange={(event) => setField("qualifications", event.target.value)} className="min-h-28 bg-white" placeholder="자격 요건" />
+                </div>
+                <Textarea value={form.summary} onChange={(event) => setField("summary", event.target.value)} className="min-h-24 bg-white" placeholder="요약" />
+                <div className="grid gap-3 md:grid-cols-2">
+                  <StructuredRowsEditor
+                    title="근거"
+                    rows={structuredRows.evidence}
+                    fields={EVIDENCE_EDITOR_FIELDS}
+                    emptyRow={EMPTY_EVIDENCE_ROW}
+                    onChange={(rows) => setStructuredField("evidence", rows)}
+                  />
+                  <StructuredRowsEditor
+                    title="모호한 조건"
+                    rows={structuredRows.ambiguousConditions}
+                    fields={AMBIGUOUS_CONDITION_EDITOR_FIELDS}
+                    emptyRow={EMPTY_AMBIGUOUS_CONDITION_ROW}
+                    onChange={(rows) => setStructuredField("ambiguousConditions", rows)}
+                  />
+                </div>
+                {reviewSuccess && (
+                  <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-700">
+                    {reviewSuccess}
+                  </div>
                 )}
+                {reviewError && (
+                  <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+                    {reviewError}
+                  </div>
+                )}
+                <Button type="button" className="bg-slate-900 text-white hover:bg-slate-800" disabled={generating || reviewSaving} onClick={() => void handleReview()}>
+                  {reviewSaving && <Loader2 className="size-4 animate-spin" />}
+                  수정 내용 저장 및 확정
+                </Button>
               </div>
-              <div className="grid gap-3 md:grid-cols-3">
-                <Input value={form.employmentType} onChange={(event) => setField("employmentType", event.target.value)} placeholder="고용 형태" />
-                <Input value={form.experienceLevel} onChange={(event) => setField("experienceLevel", event.target.value)} placeholder="경력 수준" />
-                <Input value={form.difficulty} onChange={(event) => setField("difficulty", event.target.value)} placeholder="EASY/NORMAL/HARD" />
-              </div>
-              <div className="grid gap-3 md:grid-cols-2">
-                <Textarea value={form.requiredSkills} onChange={(event) => setField("requiredSkills", event.target.value)} className="min-h-24 bg-white" placeholder={"필수 역량을 한 줄에 하나씩 입력"} />
-                <Textarea value={form.preferredSkills} onChange={(event) => setField("preferredSkills", event.target.value)} className="min-h-24 bg-white" placeholder={"우대 역량을 한 줄에 하나씩 입력"} />
-              </div>
-              <div className="grid gap-3 md:grid-cols-2">
-                <Textarea value={form.duties} onChange={(event) => setField("duties", event.target.value)} className="min-h-28 bg-white" placeholder="주요 업무" />
-                <Textarea value={form.qualifications} onChange={(event) => setField("qualifications", event.target.value)} className="min-h-28 bg-white" placeholder="자격 요건" />
-              </div>
-              <Textarea value={form.summary} onChange={(event) => setField("summary", event.target.value)} className="min-h-24 bg-white" placeholder="요약" />
-              <div className="grid gap-3 md:grid-cols-2">
-                <StructuredRowsEditor
-                  title="근거"
-                  rows={structuredRows.evidence}
-                  fields={EVIDENCE_EDITOR_FIELDS}
-                  emptyRow={EMPTY_EVIDENCE_ROW}
-                  onChange={(rows) => setStructuredField("evidence", rows)}
-                />
-                <StructuredRowsEditor
-                  title="모호한 조건"
-                  rows={structuredRows.ambiguousConditions}
-                  fields={AMBIGUOUS_CONDITION_EDITOR_FIELDS}
-                  emptyRow={EMPTY_AMBIGUOUS_CONDITION_ROW}
-                  onChange={(rows) => setStructuredField("ambiguousConditions", rows)}
-                />
-              </div>
-              {reviewSuccess && (
-                <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-700">
-                  {reviewSuccess}
-                </div>
-              )}
-              {reviewError && (
-                <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
-                  {reviewError}
-                </div>
-              )}
-              <Button type="button" className="bg-slate-900 text-white hover:bg-slate-800" disabled={generating || reviewSaving} onClick={() => void handleReview()}>
-                {reviewSaving && <Loader2 className="size-4 animate-spin" />}
-                수정 내용 저장 및 확정
-              </Button>
-            </div>
+            )}
           </>
         ) : (
           <div className="rounded-lg border border-dashed border-slate-300 bg-slate-50 p-6">
@@ -387,7 +418,7 @@ export function JobAnalysisPanel({
             <div className="divide-y divide-slate-100">
               {history.map((item, index) => (
                 <div key={item.id} className="flex flex-wrap items-center gap-3 px-3 py-2 text-xs text-slate-600">
-                  <span className="font-semibold text-slate-900">분석 {history.length - index}</span>
+                  <span className="font-semibold text-slate-900">{getHistoryLabel(index)}</span>
                   <span>공고 rev {item.jobPostingRevision ?? "-"}</span>
                   <span>{formatKoreaDateTime(item.createdAt)}</span>
                   <span>{item.confirmedAt ? "확정" : "미확정"}</span>

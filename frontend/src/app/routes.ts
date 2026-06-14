@@ -40,6 +40,7 @@ export const router = createBrowserRouter([
       { path: "applications", Component: ApplicationsPage },
       { path: "applications/new", Component: ApplicationsPage },
       { path: "applications/trash", Component: ApplicationsPage },
+      { path: "applications/:id/:section/:mode", Component: ApplicationDetailPage },
       { path: "applications/:id/:section", Component: ApplicationDetailPage },
       { path: "applications/:id", Component: ApplicationDetailPage },
       { path: "interview", Component: AIInterviewPage },

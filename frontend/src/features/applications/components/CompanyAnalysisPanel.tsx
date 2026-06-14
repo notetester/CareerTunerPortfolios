@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
-import { Building2, Loader2, PlayCircle } from "lucide-react";
+import { Link } from "react-router";
+import { Building2, Eye, Loader2, Pencil, PlayCircle } from "lucide-react";
 import { Button } from "@/app/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/app/components/ui/card";
 import { Input } from "@/app/components/ui/input";
@@ -28,6 +29,9 @@ import { StructuredRowsEditor, type StructuredRowsEditorField } from "./Structur
 interface CompanyAnalysisPanelProps {
   analysis: CompanyAnalysis | null;
   history: CompanyAnalysis[];
+  mode: "view" | "edit";
+  viewHref: string;
+  editHref: string;
   loading: boolean;
   generating: boolean;
   reviewSaving: boolean;
@@ -78,9 +82,16 @@ const AI_INFERENCE_EDITOR_FIELDS: readonly StructuredRowsEditorField<AiInference
   { key: "basis", label: "근거", placeholder: "추론 근거" },
 ];
 
+function getHistoryLabel(index: number) {
+  return index === 0 ? "최신 분석" : `이전 분석 ${index}`;
+}
+
 export function CompanyAnalysisPanel({
   analysis,
   history,
+  mode,
+  viewHref,
+  editHref,
   loading,
   generating,
   reviewSaving,
@@ -230,16 +241,34 @@ export function CompanyAnalysisPanel({
               외부 정보 확인과 AI 응답 상태에 따라 분석 완료까지 시간이 걸릴 수 있습니다.
             </p>
           </div>
-          <Button
-            type="button"
-            size="sm"
-            className="bg-blue-600 text-white hover:bg-blue-700"
-            disabled={loading || generating || reviewSaving}
-            onClick={() => void handleGenerate()}
-          >
-            {generating ? <Loader2 className="size-4 animate-spin" /> : <PlayCircle className="size-4" />}
-            {analysis ? "AI 재분석" : "AI 분석 실행"}
-          </Button>
+          <div className="flex flex-wrap gap-2 sm:justify-end">
+            {analysis && mode === "view" && (
+              <Button asChild size="sm" variant="outline">
+                <Link to={editHref}>
+                  <Pencil className="size-4" />
+                  수정 화면
+                </Link>
+              </Button>
+            )}
+            {analysis && mode === "edit" && (
+              <Button asChild size="sm" variant="outline">
+                <Link to={viewHref}>
+                  <Eye className="size-4" />
+                  조회 화면
+                </Link>
+              </Button>
+            )}
+            <Button
+              type="button"
+              size="sm"
+              className="bg-blue-600 text-white hover:bg-blue-700"
+              disabled={loading || generating || reviewSaving}
+              onClick={() => void handleGenerate()}
+            >
+              {generating ? <Loader2 className="size-4 animate-spin" /> : <PlayCircle className="size-4" />}
+              {analysis ? "AI 재분석" : "AI 분석 실행"}
+            </Button>
+          </div>
         </div>
       </CardHeader>
       <CardContent className="space-y-4">
@@ -318,54 +347,56 @@ export function CompanyAnalysisPanel({
               <p className="mt-2 whitespace-pre-line text-sm leading-6 text-slate-600">{analysis.interviewPoints ?? "내용 없음"}</p>
             </div>
 
-            <div className="space-y-3 rounded-lg border border-slate-200 bg-slate-50 p-4">
-              <div className="flex flex-wrap items-center gap-2 text-sm font-semibold text-slate-900">
-                사용자 확인/수정
-                {isDirty && (
-                  <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-700">
-                    저장되지 않은 수정 있음
-                  </span>
+            {mode === "edit" && (
+              <div className="space-y-3 rounded-lg border border-slate-200 bg-slate-50 p-4">
+                <div className="flex flex-wrap items-center gap-2 text-sm font-semibold text-slate-900">
+                  사용자 확인/수정
+                  {isDirty && (
+                    <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-700">
+                      저장되지 않은 수정 있음
+                    </span>
+                  )}
+                </div>
+                <Input value={form.industry} onChange={(event) => setField("industry", event.target.value)} placeholder="산업" className="bg-white" />
+                <Textarea value={form.companySummary} onChange={(event) => setField("companySummary", event.target.value)} className="min-h-24 bg-white" placeholder="기업 요약" />
+                <Textarea value={form.recentIssues} onChange={(event) => setField("recentIssues", event.target.value)} className="min-h-24 bg-white" placeholder="최근 이슈" />
+                <div className="grid gap-3 md:grid-cols-2">
+                  <StructuredRowsEditor
+                    title="검증된 사실"
+                    rows={structuredRows.verifiedFacts}
+                    fields={VERIFIED_FACT_EDITOR_FIELDS}
+                    emptyRow={EMPTY_VERIFIED_FACT_ROW}
+                    onChange={(rows) => setStructuredField("verifiedFacts", rows)}
+                  />
+                  <StructuredRowsEditor
+                    title="AI 추론"
+                    rows={structuredRows.aiInferences}
+                    fields={AI_INFERENCE_EDITOR_FIELDS}
+                    emptyRow={EMPTY_AI_INFERENCE_ROW}
+                    onChange={(rows) => setStructuredField("aiInferences", rows)}
+                  />
+                </div>
+                <div className="grid gap-3 md:grid-cols-2">
+                  <Textarea value={form.competitors} onChange={(event) => setField("competitors", event.target.value)} className="min-h-24 bg-white" placeholder="경쟁/비교 기업을 한 줄에 하나씩 입력" />
+                  <Textarea value={form.sources} onChange={(event) => setField("sources", event.target.value)} className="min-h-24 bg-white" placeholder="참고 소스를 한 줄에 하나씩 입력" />
+                </div>
+                <Textarea value={form.interviewPoints} onChange={(event) => setField("interviewPoints", event.target.value)} className="min-h-24 bg-white" placeholder="면접 준비 포인트" />
+                {reviewSuccess && (
+                  <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-700">
+                    {reviewSuccess}
+                  </div>
                 )}
+                {reviewError && (
+                  <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+                    {reviewError}
+                  </div>
+                )}
+                <Button type="button" className="bg-slate-900 text-white hover:bg-slate-800" disabled={generating || reviewSaving} onClick={() => void handleReview()}>
+                  {reviewSaving && <Loader2 className="size-4 animate-spin" />}
+                  수정 내용 저장 및 확정
+                </Button>
               </div>
-              <Input value={form.industry} onChange={(event) => setField("industry", event.target.value)} placeholder="산업" className="bg-white" />
-              <Textarea value={form.companySummary} onChange={(event) => setField("companySummary", event.target.value)} className="min-h-24 bg-white" placeholder="기업 요약" />
-              <Textarea value={form.recentIssues} onChange={(event) => setField("recentIssues", event.target.value)} className="min-h-24 bg-white" placeholder="최근 이슈" />
-              <div className="grid gap-3 md:grid-cols-2">
-                <StructuredRowsEditor
-                  title="검증된 사실"
-                  rows={structuredRows.verifiedFacts}
-                  fields={VERIFIED_FACT_EDITOR_FIELDS}
-                  emptyRow={EMPTY_VERIFIED_FACT_ROW}
-                  onChange={(rows) => setStructuredField("verifiedFacts", rows)}
-                />
-                <StructuredRowsEditor
-                  title="AI 추론"
-                  rows={structuredRows.aiInferences}
-                  fields={AI_INFERENCE_EDITOR_FIELDS}
-                  emptyRow={EMPTY_AI_INFERENCE_ROW}
-                  onChange={(rows) => setStructuredField("aiInferences", rows)}
-                />
-              </div>
-              <div className="grid gap-3 md:grid-cols-2">
-                <Textarea value={form.competitors} onChange={(event) => setField("competitors", event.target.value)} className="min-h-24 bg-white" placeholder="경쟁/비교 기업을 한 줄에 하나씩 입력" />
-                <Textarea value={form.sources} onChange={(event) => setField("sources", event.target.value)} className="min-h-24 bg-white" placeholder="참고 소스를 한 줄에 하나씩 입력" />
-              </div>
-              <Textarea value={form.interviewPoints} onChange={(event) => setField("interviewPoints", event.target.value)} className="min-h-24 bg-white" placeholder="면접 준비 포인트" />
-              {reviewSuccess && (
-                <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-700">
-                  {reviewSuccess}
-                </div>
-              )}
-              {reviewError && (
-                <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
-                  {reviewError}
-                </div>
-              )}
-              <Button type="button" className="bg-slate-900 text-white hover:bg-slate-800" disabled={generating || reviewSaving} onClick={() => void handleReview()}>
-                {reviewSaving && <Loader2 className="size-4 animate-spin" />}
-                수정 내용 저장 및 확정
-              </Button>
-            </div>
+            )}
           </>
         ) : (
           <div className="rounded-lg border border-dashed border-slate-300 bg-slate-50 p-6">
@@ -388,7 +419,7 @@ export function CompanyAnalysisPanel({
             <div className="divide-y divide-slate-100">
               {history.map((item, index) => (
                 <div key={item.id} className="flex flex-wrap items-center gap-3 px-3 py-2 text-xs text-slate-600">
-                  <span className="font-semibold text-slate-900">분석 {history.length - index}</span>
+                  <span className="font-semibold text-slate-900">{getHistoryLabel(index)}</span>
                   <span>공고 rev {item.jobPostingRevision ?? "-"}</span>
                   <span>{formatKoreaDateTime(item.createdAt)}</span>
                   <span>{item.confirmedAt ? "확정" : "미확정"}</span>
