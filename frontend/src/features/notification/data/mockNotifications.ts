@@ -2,17 +2,15 @@ import type { Notification } from "../types/notification";
 
 // 데모/목 표시용 샘플 알림. category/type 은 types/notification.ts 의 현재 taxonomy(TYPE_TO_CATEGORY)와 일치시킨다.
 // (옛 어휘 "analysis"/"report"/"reply"/"ANALYSIS_COMPLETED"/"REPORT_READY"/"PAYMENT" 는 deebf8e 리팩터로 폐기됨)
-// ⚠ 결제 성공/크레딧 충전 알림 타입이 현 taxonomy 에 없어 id 6·9 는 billing/CREDIT_LOW, id 8 은 notice/NOTICE 로 임시 매핑.
-//    추후 F 가 PAYMENT_* / CREDIT_RECHARGED 타입을 추가하면 해당 항목 type 을 교체한다.
 export const mockNotifications: Notification[] = [
   { id: 1, category: "ai_analysis", type: "PROFILE_ANALYZED", icon: "FileSearch", title: "이력서 분석이 완료됐어요", message: "백엔드 개발자 직무 기준 분석 리포트가 준비되었습니다. 직무 적합도 82점이에요.", createdAt: "방금", isRead: false, link: "이력서 분석 리포트" },
   { id: 2, category: "interview", type: "INTERVIEW_REPORT_READY", icon: "ClipboardList", title: "모의면접 리포트가 생성됐어요", message: "5월 30일 진행한 모의면접의 답변 분석 리포트를 확인해보세요.", createdAt: "10분 전", isRead: false, link: "모의면접 리포트" },
   { id: 3, category: "correction", type: "CORRECTION_COMPLETE", icon: "Sparkles", title: "자기소개서 분석이 완료됐어요", message: "지원동기 문항에서 보완하면 좋을 제안 3건을 찾았어요.", createdAt: "32분 전", isRead: false, link: "자소서 분석 리포트" },
   { id: 4, category: "notice", type: "TICKET_ANSWERED", icon: "MessageSquareReply", title: "1:1 문의에 답변이 등록됐어요", message: "'환불 관련 문의'에 운영팀이 답변을 남겼습니다.", createdAt: "1시간 전", isRead: false, link: "문의 내역" },
   { id: 5, category: "interview", type: "INTERVIEW_REPORT_READY", icon: "UserCheck", title: "면접 코칭 피드백이 도착했어요", message: "박OO 코치님이 모의면접 상세 피드백을 남겼습니다.", createdAt: "3시간 전", isRead: false, link: "코칭 피드백" },
-  { id: 6, category: "billing", type: "CREDIT_LOW", icon: "CreditCard", title: "결제가 완료됐어요", message: "프로 플랜(월 9,900원) 결제가 정상 처리되었습니다.", createdAt: "5시간 전", isRead: true, link: "결제 내역" },
+  { id: 6, category: "billing", type: "PAYMENT_COMPLETE", icon: "CreditCard", title: "결제가 완료됐어요", message: "프로 플랜(월 9,900원) 결제가 정상 처리되었습니다.", createdAt: "5시간 전", isRead: true, link: "결제 내역" },
   { id: 7, category: "notice", type: "NOTICE", icon: "Megaphone", title: "[점검] 서비스 정기 점검 안내", message: "6월 12일(목) 02:00~04:00 서비스 점검이 예정되어 있습니다.", createdAt: "어제", isRead: true, link: "공지사항" },
-  { id: 8, category: "notice", type: "NOTICE", icon: "RotateCcw", title: "무료 분석 횟수가 충전됐어요", message: "이번 달 무료 이력서 분석 3회가 다시 충전되었습니다.", createdAt: "어제", isRead: true, link: "이력서 분석" },
-  { id: 9, category: "billing", type: "CREDIT_LOW", icon: "CalendarClock", title: "결제 예정 안내", message: "프로 플랜이 6월 28일에 자동 갱신될 예정입니다.", createdAt: "2일 전", isRead: true, link: "멤버십 관리" },
+  { id: 8, category: "billing", type: "CREDIT_RECHARGED", icon: "RotateCcw", title: "무료 분석 횟수가 충전됐어요", message: "이번 달 무료 이력서 분석 3회가 다시 충전되었습니다.", createdAt: "어제", isRead: true, link: "이력서 분석" },
+  { id: 9, category: "billing", type: "PAYMENT_SCHEDULED", icon: "CalendarClock", title: "결제 예정 안내", message: "프로 플랜이 6월 28일에 자동 갱신될 예정입니다.", createdAt: "2일 전", isRead: true, link: "멤버십 관리" },
   { id: 10, category: "notice", type: "NOTICE", icon: "Rocket", title: "새 기능: 음성 답변 분석", message: "이제 모의면접에서 음성 답변을 분석받을 수 있어요.", createdAt: "3일 전", isRead: true, link: "공지사항" },
 ];

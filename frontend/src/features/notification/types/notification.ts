@@ -12,14 +12,18 @@ export type AINotificationType =
   | "LOW_CONFIDENCE_REPORT"
   | "TICKET_DRAFT_READY";
 
-/* ── 비-AI 알림 — 사용자 (6개) ── */
+/* ── 비-AI 알림 — 사용자 ── */
 export type UserNotificationType =
   | "COMMENT"
   | "COMMENT_REPLY"
   | "LIKE"
   | "NOTICE"
   | "TICKET_ANSWERED"
-  | "CREDIT_LOW";
+  | "CREDIT_LOW"
+  // 결제/크레딧 (E 결제 흐름에서 발생, billing 카테고리)
+  | "PAYMENT_COMPLETE"
+  | "PAYMENT_SCHEDULED"
+  | "CREDIT_RECHARGED";
 
 /* ── 비-AI 알림 — 관리자 (3개) ── */
 export type AdminNotificationType =
@@ -89,6 +93,9 @@ export const TYPE_TO_CATEGORY: Record<NotificationType, NotificationCategory> = 
   POST_SUMMARY_READY: "community",
   /* 결제 */
   CREDIT_LOW: "billing",
+  PAYMENT_COMPLETE: "billing",
+  PAYMENT_SCHEDULED: "billing",
+  CREDIT_RECHARGED: "billing",
   /* 공지/문의 */
   NOTICE: "notice",
   TICKET_ANSWERED: "notice",

@@ -3,7 +3,7 @@ import { Link, useLocation } from "react-router";
 import {
   LayoutDashboard, Briefcase, BarChart3, Building2, Gauge, FileText,
   Users, CreditCard, MessageSquareWarning, Megaphone, CircleHelp,
-  Mail, Search, Bell, ChevronRight,
+  Mail, Search, Bell, ChevronRight, Target, TrendingUp, ListChecks, Activity,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import "./admin-shell.css";
@@ -18,6 +18,12 @@ interface NavItem {
 
 const NAV: NavItem[] = [
   { key: "dashboard", label: "대시보드", icon: LayoutDashboard, href: "/admin" },
+  // C 운영 화면. 공통 AdminShell(팀장 영역) NAV에 추가 — 그동안 /admin 랜딩 바로가기로만 도달 가능했던
+  // 분석 통계·적합도·운영 대시보드·작업 큐를 사이드바에서 직접 열 수 있게 한다(발견성 보강).
+  { key: "analytics", label: "분석 통계", icon: TrendingUp, href: "/admin/analytics" },
+  { key: "fit-analysis", label: "적합도 분석", icon: Target, href: "/admin/fit-analysis" },
+  { key: "ops-dashboard", label: "운영 대시보드", icon: Activity, href: "/admin/dashboard" },
+  { key: "admin-home", label: "운영 작업 큐", icon: ListChecks, href: "/admin/home" },
   { key: "application-cases", label: "지원 건 관리", icon: Briefcase, href: "/admin/application-cases" },
   { key: "job-analysis", label: "공고 분석 조회", icon: BarChart3, href: "/admin/job-analysis" },
   { key: "company-analysis", label: "기업 분석 조회", icon: Building2, href: "/admin/company-analysis" },
