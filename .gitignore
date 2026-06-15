@@ -67,3 +67,6 @@ pnpm-debug.log*
 
 # ----- Local agent files -----
 .agents/
+
+# ----- Personal workspace -----
+personal/
