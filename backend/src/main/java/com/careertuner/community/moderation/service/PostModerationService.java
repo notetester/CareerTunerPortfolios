@@ -18,11 +18,13 @@ import org.springframework.stereotype.Service;
 import com.careertuner.community.domain.CommunityPost;
 import com.careertuner.community.domain.PostStatus;
 import com.careertuner.community.mapper.CommunityPostMapper;
+import com.careertuner.community.mapper.CommunityTagMapper;
 import com.careertuner.community.moderation.client.OllamaClient;
 import com.careertuner.community.moderation.config.OllamaProperties;
 import com.careertuner.community.moderation.domain.AiTaskType;
 import com.careertuner.community.moderation.domain.Strictness;
 import com.careertuner.community.moderation.dto.ModerationResult;
+import com.careertuner.community.moderation.dto.TagResult;
 import com.careertuner.community.moderation.mapper.PostAiResultMapper;
 import com.careertuner.notification.domain.Notification;
 import com.careertuner.notification.mapper.NotificationMapper;
@@ -45,6 +47,17 @@ public class PostModerationService {
 
     private static final int MAX_TEXT_LENGTH = 8000;
 
+    /** 태깅용 JSON 스키마 */
+    private static final Map<String, Object> TAGGING_SCHEMA = Map.of(
+            "type", "object",
+            "properties", Map.of(
+                    "tags", Map.of("type", "array",
+                            "items", Map.of("type", "string")),
+                    "confidence", Map.of("type", "number")
+            ),
+            "required", List.of("tags", "confidence")
+    );
+
     /** Ollama structured output용 JSON 스키마 (gemma4.md 검증 완료 형식) */
     private static final Map<String, Object> MODERATION_SCHEMA = Map.of(
             "type", "object",
@@ -61,12 +74,19 @@ public class PostModerationService {
     private final OllamaProperties ollamaProperties;
     private final PostAiResultMapper aiResultMapper;
     private final CommunityPostMapper postMapper;
+    private final CommunityTagMapper tagMapper;
     private final NotificationMapper notificationMapper;
     private final ModerationSettingService settingService;
     private final ObjectMapper objectMapper;
 
     /** 기본 시스템 프롬프트 (classpath 파일에서 1회 로드) */
     private final String baseSystemPrompt;
+
+    /** 태깅 시스템 프롬프트 (classpath 파일에서 1회 로드) */
+    private final String taggingSystemPrompt;
+
+    /** 태깅 신뢰도 임계값 */
+    private final double tagConfidenceThreshold;
 
     /** 엄격도별 지침 텍스트 (classpath 파일에서 1회 로드) */
     private final Map<Strictness, String> strictnessTexts;
@@ -76,25 +96,37 @@ public class PostModerationService {
             OllamaProperties ollamaProperties,
             PostAiResultMapper aiResultMapper,
             CommunityPostMapper postMapper,
+            CommunityTagMapper tagMapper,
             NotificationMapper notificationMapper,
             ModerationSettingService settingService,
             ObjectMapper objectMapper,
             ResourceLoader resourceLoader,
-            @Value("classpath:prompts/moderation-system.txt") Resource promptResource
+            @Value("classpath:prompts/moderation-system.txt") Resource promptResource,
+            @Value("classpath:prompts/tagging-system.txt") Resource taggingPromptResource,
+            @Value("${ai.tagging.confidence-threshold:0.7}") double tagConfidenceThreshold
     ) {
         this.ollamaClient = ollamaClient;
         this.ollamaProperties = ollamaProperties;
         this.aiResultMapper = aiResultMapper;
         this.postMapper = postMapper;
+        this.tagMapper = tagMapper;
         this.notificationMapper = notificationMapper;
         this.settingService = settingService;
         this.objectMapper = objectMapper;
+        this.tagConfidenceThreshold = tagConfidenceThreshold;
 
         // 기본 프롬프트 로드
         try {
             this.baseSystemPrompt = promptResource.getContentAsString(StandardCharsets.UTF_8);
         } catch (IOException e) {
             throw new UncheckedIOException("moderation-system.txt 로드 실패", e);
+        }
+
+        // 태깅 프롬프트 로드
+        try {
+            this.taggingSystemPrompt = taggingPromptResource.getContentAsString(StandardCharsets.UTF_8);
+        } catch (IOException e) {
+            throw new UncheckedIOException("tagging-system.txt 로드 실패", e);
         }
 
         // 엄격도별 지침 텍스트 로드
@@ -185,6 +217,134 @@ public class PostModerationService {
             aiResultMapper.fail(postId, AiTaskType.MODERATION, errorMsg);
             log.error("검열 실패: postId={}", postId, e);
         }
+    }
+
+    /**
+     * 신고된 게시글 AI 분류 — 자동 숨김/알림 없이 판정 결과만 저장한다.
+     * 관리자가 신고 처리 시 참고 정보로 활용한다.
+     */
+    public void classify(Long postId) {
+        try {
+            aiResultMapper.upsertPending(postId, AiTaskType.REPORT);
+
+            CommunityPost post = postMapper.findById(postId);
+            if (post == null || PostStatus.DELETED.name().equals(post.getStatus())) {
+                log.info("신고 분류 스킵: postId={} (삭제됨 또는 존재하지 않음)", postId);
+                return;
+            }
+
+            Strictness currentStrictness = settingService.getStrictness();
+            double currentThreshold = settingService.getHideThreshold();
+
+            ModerationResult result = judge(post.getTitle(), post.getContent());
+
+            String resultJson = buildResultJson(result, currentStrictness, currentThreshold);
+            aiResultMapper.complete(postId, AiTaskType.REPORT,
+                    resultJson, ollamaProperties.getModel());
+
+            log.info("신고 분류 완료: postId={}, toxic={}, category={}, confidence={}",
+                    postId, result.toxic(), result.category(), result.confidence());
+
+        } catch (Exception e) {
+            String errorMsg = e.getMessage();
+            if (errorMsg != null && errorMsg.length() > 500) {
+                errorMsg = errorMsg.substring(0, 500);
+            }
+            aiResultMapper.fail(postId, AiTaskType.REPORT, errorMsg);
+            log.error("신고 분류 실패: postId={}", postId, e);
+        }
+    }
+
+    /**
+     * AI 태깅 파이프라인 — 이벤트 리스너가 비동기로 호출한다.
+     * 신뢰도 >= 임계값이면 태그를 자동 적용하고, 미만이면 추천만 저장한다.
+     */
+    public void tag(Long postId) {
+        try {
+            aiResultMapper.upsertPending(postId, AiTaskType.TAG);
+
+            CommunityPost post = postMapper.findById(postId);
+            if (post == null || PostStatus.DELETED.name().equals(post.getStatus())) {
+                log.info("태깅 스킵: postId={} (삭제됨 또는 존재하지 않음)", postId);
+                return;
+            }
+
+            // AI 태그 추출
+            String text = "제목: " + post.getTitle() + "\n본문: " + post.getContent();
+            if (text.length() > MAX_TEXT_LENGTH) {
+                text = text.substring(0, MAX_TEXT_LENGTH);
+            }
+            String json = ollamaClient.chat(taggingSystemPrompt, text, TAGGING_SCHEMA);
+            TagResult result = objectMapper.readValue(json, TagResult.class);
+
+            boolean applied = result.confidence() >= tagConfidenceThreshold;
+
+            if (applied && result.tags() != null && !result.tags().isEmpty()) {
+                applyAiTags(postId, result.tags());
+            }
+
+            // 결과 저장
+            Map<String, Object> resultMap = new LinkedHashMap<>();
+            resultMap.put("tags", result.tags());
+            resultMap.put("confidence", result.confidence());
+            resultMap.put("applied", applied);
+            resultMap.put("threshold", tagConfidenceThreshold);
+            String resultJson = objectMapper.writeValueAsString(resultMap);
+            aiResultMapper.complete(postId, AiTaskType.TAG,
+                    resultJson, ollamaProperties.getModel());
+
+            log.info("태깅 완료: postId={}, tags={}, confidence={}, applied={}",
+                    postId, result.tags(), result.confidence(), applied);
+
+        } catch (Exception e) {
+            String errorMsg = e.getMessage();
+            if (errorMsg != null && errorMsg.length() > 500) {
+                errorMsg = errorMsg.substring(0, 500);
+            }
+            aiResultMapper.fail(postId, AiTaskType.TAG, errorMsg);
+            log.error("태깅 실패: postId={}", postId, e);
+        }
+    }
+
+    /**
+     * AI 태그를 게시글에 적용한다.
+     * 기존 AI 태그(is_ai=1)를 삭제하고, 새 AI 태그를 삽입한 뒤 tags_json 캐시를 갱신한다.
+     */
+    private void applyAiTags(Long postId, List<String> tags) {
+        // 1. 기존 AI 태그의 usage_count 감소
+        List<Long> oldAiTagIds = tagMapper.findAiTagIds(postId);
+        for (Long tagId : oldAiTagIds) {
+            tagMapper.decrementUsageCount(tagId);
+        }
+
+        // 2. 기존 AI 태그 삭제
+        tagMapper.deleteAiPostTags(postId);
+
+        // 3. 새 AI 태그 삽입
+        for (String tagName : tags) {
+            String trimmed = tagName.strip();
+            if (trimmed.isEmpty()) continue;
+
+            // community_tag 마스터에 없으면 생성
+            tagMapper.insertTag(trimmed); // INSERT IGNORE
+            Long tagId = tagMapper.findIdByName(trimmed);
+            if (tagId == null) continue;
+
+            tagMapper.insertPostTag(postId, tagId, true);
+            tagMapper.incrementUsageCount(tagId);
+        }
+
+        // 4. tags_json 캐시 갱신 (사용자 태그 + AI 태그 전체)
+        List<String> allTags = tagMapper.findTagNamesByPostId(postId);
+        String tagsJson = null;
+        if (!allTags.isEmpty()) {
+            try {
+                tagsJson = objectMapper.writeValueAsString(allTags);
+            } catch (Exception e) {
+                log.warn("tags_json 직렬화 실패: postId={}", postId, e);
+            }
+        }
+        postMapper.updateTagsJson(postId, tagsJson);
     }
 
     /**

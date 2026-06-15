@@ -5,6 +5,7 @@ import {
   ArrowLeft, Eye, Clock, Star,
   Users, Calendar, Gauge, Trash2,
 } from "lucide-react";
+import { Sparkles } from "lucide-react";
 import { CategoryBadge } from "./CategoryBadge";
 import { ReactionButtons } from "./ReactionButtons";
 import { CommentSection } from "./CommentSection";
@@ -12,6 +13,7 @@ import { useCommunityStore } from "../hooks/useCommunityStore";
 import { ConfirmDialog } from "@/app/components/ui/confirm-dialog";
 import { toast } from "@/features/notification/components/toast";
 import * as communityApi from "../api/communityApi";
+import type { ParsedAiTags } from "../api/communityApi";
 import { relTime } from "@/features/notification/types/notification";
 
 interface PostDetailViewProps {
@@ -111,10 +113,12 @@ export function PostDetailView({ postId, onBack }: PostDetailViewProps) {
   const { currentPost: d, comments, detailLoading, error, fetchPostDetail, fetchComments, fetchPosts } = useCommunityStore();
   const navigate = useNavigate();
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+  const [aiTags, setAiTags] = useState<ParsedAiTags | null>(null);
 
   useEffect(() => {
     fetchPostDetail(postId);
     fetchComments(postId);
+    communityApi.getAiTags(postId).then(setAiTags);
   }, [postId, fetchPostDetail, fetchComments]);
 
   const handleDelete = async () => {
@@ -235,8 +239,31 @@ export function PostDetailView({ postId, onBack }: PostDetailViewProps) {
         </div>
       )}
 
+      {/* Tags */}
+      {d.tags?.length > 0 && (
+        <div className="ct-detail__taglist">
+          {d.tags.map((tag) => (
+            <span key={tag} className="ct-detail__tag">{tag}</span>
+          ))}
+        </div>
+      )}
+
       {/* Body */}
       <div className="ct-prose">{renderMarkdown(d.content)}</div>
+
+      {/* AI 추천 태그 (자동 적용 안 된 경우) */}
+      {aiTags && !aiTags.applied && aiTags.tags.length > 0 && (
+        <div className="ct-ai-suggest">
+          <div className="ct-ai-suggest__h">
+            <Sparkles /> AI 추천 태그
+          </div>
+          <div className="ct-ai-suggest__tags">
+            {aiTags.tags.map((tag) => (
+              <span key={tag} className="ct-detail__tag ct-detail__tag--ai">{tag}</span>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Action bar */}
       <ReactionButtons

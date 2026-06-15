@@ -5,10 +5,9 @@ import {
 } from "lucide-react";
 import ModerationSettingsPanel from "../../moderation/pages/ModerationSettingsPanel";
 import AdminShell from "../../../components/AdminShell";
-import { type Report, REPORTS } from "../data/reportsData";
-// TODO: 백엔드 연동 시 주석 해제
-// import * as adminReportApi from "../api/adminReportApi";
-// import * as moderationApi from "../../moderation/api/moderationApi";
+import { type Report } from "../data/reportsData";
+import * as adminReportApi from "../api/adminReportApi";
+import * as moderationApi from "../../moderation/api/moderationApi";
 import type { ModerationItem, ModerationDetail, ModerationStats } from "../../moderation/types/moderation";
 import { ConfirmDialog } from "@/app/components/ui/confirm-dialog";
 import "./admin-reports.css";
@@ -99,18 +98,29 @@ function ReportsPanel({ flash }: { flash: (msg: string) => void }) {
   const [filter, setFilter] = useState<ReportFilterKey>("대기");
   const [query, setQuery] = useState("");
   const [dialog, setDialog] = useState<{ report: Report; action: ReportActionType } | null>(null);
+  const [detail, setDetail] = useState<Report | null>(null);
 
   useEffect(() => {
-    // TODO: 백엔드 연동 시 adminReportApi.getReports().then(setItems) 로 교체
-    setItems(REPORTS);
+    adminReportApi.getReports().then(setItems)
+      .catch(() => flash("신고 목록을 불러오지 못했습니다."));
   }, [flash]);
+
+  const handleRowClick = (r: Report) => {
+    adminReportApi.getReportDetail(r.id)
+      .then(setDetail)
+      .catch(() => flash("상세 정보를 불러오지 못했습니다."));
+  };
 
   const handleAction = async () => {
     if (!dialog) return;
-    // TODO: 백엔드 연동 시 adminReportApi.takeAction 으로 교체
-    const updated: Report = { ...dialog.report, status: "resolved", action: dialog.action === "DISMISSED" ? "반려됨" : "숨김 처리됨" };
-    setItems((prev) => prev.map((r) => (r.id === updated.id ? updated : r)));
-    flash("처리되었습니다.");
+    try {
+      const updated = await adminReportApi.takeAction(dialog.report.id, dialog.action);
+      setItems((prev) => prev.map((r) => (r.id === updated.id ? updated : r)));
+      if (detail && detail.id === dialog.report.id) setDetail(updated);
+      flash("처리되었습니다.");
+    } catch {
+      flash("처리에 실패했습니다.");
+    }
     setDialog(null);
   };
 
@@ -162,7 +172,7 @@ function ReportsPanel({ flash }: { flash: (msg: string) => void }) {
             </thead>
             <tbody>
               {filtered.map((r) => (
-                <tr key={r.id}>
+                <tr key={r.id} style={{ cursor: "pointer" }} onClick={() => handleRowClick(r)}>
                   <td className="av-id num">#{r.id}</td>
                   <td>
                     <div className="av-cell__t">{r.title}</div>
@@ -178,7 +188,7 @@ function ReportsPanel({ flash }: { flash: (msg: string) => void }) {
                   <td className="r av-muted num">{r.time}</td>
                   <td className="r">
                     {r.status === "pending" && (
-                      <div className="rv-actions">
+                      <div className="rv-actions" onClick={(e) => e.stopPropagation()}>
                         <button className="av-btn" title="숨김" onClick={() => setDialog({ report: r, action: "HIDDEN" })}><EyeOff /></button>
                         <button className="av-btn" title="삭제" onClick={() => setDialog({ report: r, action: "DELETED" })}><Trash2 /></button>
                         <button className="av-btn" title="기각" onClick={() => setDialog({ report: r, action: "DISMISSED" })}><XIcon /></button>
@@ -199,30 +209,124 @@ function ReportsPanel({ flash }: { flash: (msg: string) => void }) {
           </div>
         </section>
 
-        <aside className="av-rail">
-          <section className="av-panel">
-            <div className="av-mod__h">
-              <span className="av-mod__t">사유별 분포</span>
-              <span className="av-mod__s">최근 30일 · {totalReasons}건</span>
-            </div>
-            <div className="av-rates">
-              {reasonEntries.map(([label, n]) => (
-                <div className="av-rate" key={label}>
-                  <span className="av-rate__l">{label}</span>
-                  <span className="av-rate__bar">
-                    <span className="av-rate__fill" style={{ width: `${(n / maxReason) * 100}%` }} />
-                  </span>
-                  <span className="av-rate__v num"><b>{n}</b>건</span>
-                </div>
-              ))}
-            </div>
-            {reasonEntries[0] && (
-              <div className="av-note">
-                <b>{reasonEntries[0][0]}이 가장 많아요</b> — 자동 숨김 규칙 추가를 권장합니다.
+        {!detail && (
+          <aside className="av-rail">
+            <section className="av-panel">
+              <div className="av-mod__h">
+                <span className="av-mod__t">사유별 분포</span>
+                <span className="av-mod__s">최근 30일 · {totalReasons}건</span>
               </div>
-            )}
-          </section>
-        </aside>
+              <div className="av-rates">
+                {reasonEntries.map(([label, n]) => (
+                  <div className="av-rate" key={label}>
+                    <span className="av-rate__l">{label}</span>
+                    <span className="av-rate__bar">
+                      <span className="av-rate__fill" style={{ width: `${(n / maxReason) * 100}%` }} />
+                    </span>
+                    <span className="av-rate__v num"><b>{n}</b>건</span>
+                  </div>
+                ))}
+              </div>
+              {reasonEntries[0] && (
+                <div className="av-note">
+                  <b>{reasonEntries[0][0]}이 가장 많아요</b> — 자동 숨김 규칙 추가를 권장합니다.
+                </div>
+              )}
+            </section>
+          </aside>
+        )}
+
+        {detail && (
+          <aside className="av-rail">
+            <section className="av-panel">
+              <div className="av-mod__h">
+                <span className="av-mod__t">신고 상세</span>
+                <button className="av-btn" onClick={() => setDetail(null)} aria-label="닫기"><XIcon /></button>
+              </div>
+
+              <div style={{ padding: "12px 16px 0" }}>
+                <h4 style={{ margin: "0 0 4px", fontSize: "13px" }}>{detail.title}</h4>
+                <div className="av-muted" style={{ fontSize: "11.5px" }}>{detail.cat} · {detail.author}</div>
+              </div>
+
+              <div style={{
+                margin: "10px 16px", padding: "10px 12px", borderRadius: "8px",
+                background: "var(--av-bg-sub, #f8f9fa)",
+                fontSize: "12.5px", maxHeight: "8rem", overflow: "auto", whiteSpace: "pre-wrap",
+              }}>
+                {detail.excerpt}
+              </div>
+
+              {/* 신고 사유 분포 */}
+              {detail.reasons.length > 0 && (
+                <>
+                  <div className="av-mod__h" style={{ paddingTop: "4px" }}>
+                    <span className="av-mod__t">신고 사유</span>
+                    <span className="av-mod__s">{detail.cnt}건</span>
+                  </div>
+                  <div className="av-rates" style={{ paddingTop: "8px", paddingBottom: "8px" }}>
+                    {detail.reasons.map((r) => (
+                      <div className="av-rate" key={r.l}>
+                        <span className="av-rate__l">{r.l}</span>
+                        <span className="av-rate__v num"><b>{r.n}</b>건</span>
+                      </div>
+                    ))}
+                  </div>
+                </>
+              )}
+
+              {/* AI 소견 */}
+              {detail.type === "게시글" && (
+                <>
+                  <div className="av-mod__h" style={{ paddingTop: "4px" }}>
+                    <span className="av-mod__t">AI 소견</span>
+                    {detail.aiOpinion?.status === "COMPLETED" && (
+                      <span className="av-mod__s">{detail.aiOpinion.model}</span>
+                    )}
+                  </div>
+                  <div style={{ padding: "8px 16px 12px" }}>
+                    {!detail.aiOpinion && (
+                      <span className="av-muted" style={{ fontSize: "12px" }}>분석 결과 없음</span>
+                    )}
+                    {detail.aiOpinion?.status === "PENDING" && (
+                      <span className="av-muted" style={{ fontSize: "12px" }}>분석 중…</span>
+                    )}
+                    {detail.aiOpinion?.status === "FAILED" && (
+                      <span style={{ fontSize: "12px", color: "var(--av-warn, #e67e22)", wordBreak: "break-word" }}>
+                        분석 실패{detail.aiOpinion.errorMessage ? `: ${detail.aiOpinion.errorMessage}` : ""}
+                      </span>
+                    )}
+                    {detail.aiOpinion?.status === "COMPLETED" && (
+                      <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+                        <div className="av-rate">
+                          <span className="av-rate__l">판정</span>
+                          <span className="av-rate__v">
+                            {detail.aiOpinion.toxic
+                              ? <span className="av-st av-st--warn">{CATEGORY_LABELS[detail.aiOpinion.category ?? ""] ?? detail.aiOpinion.category}</span>
+                              : <span className="av-st av-st--ok">정상</span>}
+                          </span>
+                        </div>
+                        <div className="av-rate">
+                          <span className="av-rate__l">신뢰도</span>
+                          <span className="av-rate__v num">{((detail.aiOpinion.confidence ?? 0) * 100).toFixed(0)}%</span>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </>
+              )}
+
+              {/* 액션 버튼 */}
+              {detail.status === "pending" && (
+                <div style={{ display: "flex", gap: "6px", padding: "0 16px 14px" }}>
+                  <button className="av-btn" onClick={() => setDialog({ report: detail, action: "HIDDEN" })}><EyeOff /> 숨김</button>
+                  <button className="av-btn" onClick={() => setDialog({ report: detail, action: "DELETED" })}><Trash2 /> 삭제</button>
+                  <button className="av-btn" onClick={() => setDialog({ report: detail, action: "DISMISSED" })}><XIcon /> 기각</button>
+                </div>
+              )}
+            </section>
+          </aside>
+        )}
       </div>
 
       {dialog && (() => {
@@ -263,48 +367,42 @@ function ModerationPanel({ flash }: { flash: (msg: string) => void }) {
   const [dialog, setDialog] = useState<{ postId: number; title: string; action: "restore" | "delete" } | null>(null);
   const size = 20;
 
-  // TODO: 백엔드 연동 시 moderationApi.getModerationList/getModerationStats 로 교체
-  const MOCK_MOD_ITEMS: ModerationItem[] = [
-    { postId: 101, title: "★★★ 취업 컨설팅 100% 합격 ★★★", authorName: "익명_4821", category: "자유게시판", status: "HIDDEN", toxic: true, aiCategory: "spam", confidence: 0.94, attemptCount: 1, createdAt: "2026-06-10T10:00:00", moderatedAt: "2026-06-10T10:01:00" },
-    { postId: 102, title: "면접에서 욕먹은 후기", authorName: "익명_1043", category: "면접후기", status: "PUBLISHED", toxic: false, aiCategory: "normal", confidence: 0.12, attemptCount: 1, createdAt: "2026-06-10T09:00:00", moderatedAt: "2026-06-10T09:01:00" },
-    { postId: 103, title: "이 회사 절대 가지 마세요", authorName: "익명_2299", category: "취업후기", status: "HIDDEN", toxic: true, aiCategory: "abuse", confidence: 0.87, attemptCount: 1, createdAt: "2026-06-09T15:00:00", moderatedAt: "2026-06-09T15:01:00" },
-    { postId: 104, title: "스터디원 모집합니다", authorName: "익명_7741", category: "자유게시판", status: "PUBLISHED", toxic: false, aiCategory: "normal", confidence: 0.05, attemptCount: 1, createdAt: "2026-06-09T12:00:00", moderatedAt: "2026-06-09T12:00:30" },
-  ];
-
-  const MOCK_STATS: ModerationStats = { categories: [{ category: "normal", count: 182 }, { category: "abuse", count: 14 }, { category: "spam", count: 9 }, { category: "ad", count: 3 }], total: 208 };
-
   const fetchList = useCallback(() => {
-    const filtered = statusFilter ? MOCK_MOD_ITEMS.filter((i) => i.status === statusFilter) : MOCK_MOD_ITEMS;
-    setItems(filtered);
-    setTotal(filtered.length);
+    moderationApi
+      .getModerationList({ status: statusFilter || undefined, page, size })
+      .then((res) => { setItems(res.items); setTotal(res.total); })
+      .catch(() => flash("검열 목록을 불러오지 못했습니다."));
   }, [statusFilter, page, flash]);
 
   const fetchStats = useCallback(() => {
-    setStats(MOCK_STATS);
+    moderationApi.getModerationStats().then(setStats).catch(() => {});
   }, []);
 
   useEffect(() => { fetchList(); }, [fetchList]);
   useEffect(() => { fetchStats(); }, [fetchStats]);
 
   const handleRowClick = (postId: number) => {
-    // TODO: 백엔드 연동 시 moderationApi.getModerationDetail(postId) 로 교체
-    const item = MOCK_MOD_ITEMS.find((i) => i.postId === postId);
-    if (item) {
-      setDetail({ ...item, content: "게시글 본문 내용입니다. (목 데이터)", model: "gpt-4o-mini" } as ModerationDetail);
-    }
+    moderationApi.getModerationDetail(postId)
+      .then(setDetail)
+      .catch(() => flash("상세 정보를 불러오지 못했습니다."));
   };
 
   const handleAction = async () => {
     if (!dialog) return;
-    // TODO: 백엔드 연동 시 moderationApi.restorePost/deletePost 로 교체
-    if (dialog.action === "restore") {
-      flash("게시글이 복원되었습니다.");
-    } else {
-      flash("게시글이 삭제되었습니다.");
+    try {
+      if (dialog.action === "restore") {
+        await moderationApi.restorePost(dialog.postId);
+        flash("게시글이 복원되었습니다.");
+      } else {
+        await moderationApi.deletePost(dialog.postId);
+        flash("게시글이 삭제되었습니다.");
+      }
+      setDetail(null);
+      fetchList();
+      fetchStats();
+    } catch {
+      flash("처리에 실패했습니다.");
     }
-    setDetail(null);
-    fetchList();
-    fetchStats();
     setDialog(null);
   };
 

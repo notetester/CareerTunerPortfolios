@@ -2,25 +2,38 @@ package com.careertuner.admin.community.service;
 
 import java.util.List;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import com.careertuner.admin.community.dto.AdminReportActionRequest;
 import com.careertuner.admin.community.dto.AdminReportDetailResponse;
 import com.careertuner.admin.community.dto.AdminReportListResponse;
+import com.careertuner.admin.community.dto.AiOpinion;
 import com.careertuner.admin.community.mapper.AdminReportMapper;
 import com.careertuner.common.exception.BusinessException;
 import com.careertuner.common.exception.ErrorCode;
 import com.careertuner.common.security.AuthUser;
+import com.careertuner.community.moderation.domain.AiResultStatus;
+import com.careertuner.community.moderation.domain.AiTaskType;
+import com.careertuner.community.moderation.domain.PostAiResult;
+import com.careertuner.community.moderation.dto.ModerationResult;
+import com.careertuner.community.moderation.mapper.PostAiResultMapper;
 
 import lombok.RequiredArgsConstructor;
+import tools.jackson.databind.ObjectMapper;
 
 @Service
 @RequiredArgsConstructor
 @Transactional(readOnly = true)
 public class AdminReportServiceImpl implements AdminReportService {
 
+    private static final Logger log = LoggerFactory.getLogger(AdminReportServiceImpl.class);
+
     private final AdminReportMapper reportMapper;
+    private final PostAiResultMapper aiResultMapper;
+    private final ObjectMapper objectMapper;
 
     @Override
     public List<AdminReportListResponse> getReports(AuthUser authUser, String status) {
@@ -41,6 +54,16 @@ public class AdminReportServiceImpl implements AdminReportService {
             throw new BusinessException(ErrorCode.NOT_FOUND, "신고를 찾을 수 없습니다.");
         }
         var reasons = reportMapper.findReasonCounts(targetId, type);
+
+        AiOpinion aiOpinion = null;
+        if (!isComment) {
+            PostAiResult aiResult = aiResultMapper.findByPostIdAndTaskType(
+                    targetId, AiTaskType.REPORT);
+            if (aiResult != null) {
+                aiOpinion = buildAiOpinion(aiResult);
+            }
+        }
+
         return AdminReportDetailResponse.builder()
                 .id(base.getId())
                 .reason(base.getReason())
@@ -55,6 +78,7 @@ public class AdminReportServiceImpl implements AdminReportService {
                 .status(base.getStatus())
                 .action(base.getAction())
                 .reasons(reasons)
+                .aiOpinion(aiOpinion)
                 .build();
     }
 
@@ -94,6 +118,30 @@ public class AdminReportServiceImpl implements AdminReportService {
             }
         }
         return getReportDetail(authUser, id);
+    }
+
+    private AiOpinion buildAiOpinion(PostAiResult aiResult) {
+        AiOpinion.AiOpinionBuilder builder = AiOpinion.builder()
+                .status(aiResult.getStatus().name())
+                .model(aiResult.getModel())
+                .completedAt(aiResult.getCompletedAt() != null
+                        ? aiResult.getCompletedAt().toString() : null)
+                .errorMessage(aiResult.getErrorMessage());
+
+        if (aiResult.getStatus() == AiResultStatus.COMPLETED
+                && aiResult.getResultJson() != null) {
+            try {
+                ModerationResult result = objectMapper.readValue(
+                        aiResult.getResultJson(), ModerationResult.class);
+                builder.toxic(result.toxic())
+                       .category(result.category())
+                       .confidence(result.confidence());
+            } catch (Exception e) {
+                log.warn("AI 결과 JSON 파싱 실패: postId={}", aiResult.getPostId(), e);
+            }
+        }
+
+        return builder.build();
     }
 
     private void requireAdmin(AuthUser authUser) {

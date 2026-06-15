@@ -36,6 +36,7 @@ function detailToReport(b: AdminReportDetailResponse): Report {
   return {
     ...listToReport(b),
     reasons: b.reasons ?? [],
+    aiOpinion: b.aiOpinion ?? null,
   };
 }
 

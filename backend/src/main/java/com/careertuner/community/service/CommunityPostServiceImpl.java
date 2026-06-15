@@ -24,6 +24,7 @@ import com.careertuner.community.dto.UpdatePostRequest;
 import com.careertuner.community.mapper.CommunityPostMapper;
 import com.careertuner.community.mapper.ReactionMapper;
 import com.careertuner.community.moderation.event.PostModerationRequiredEvent;
+import com.careertuner.community.moderation.event.PostTagRequiredEvent;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -110,6 +111,7 @@ public class CommunityPostServiceImpl implements CommunityPostService {
         }
 
         eventPublisher.publishEvent(new PostModerationRequiredEvent(post.getId()));
+        eventPublisher.publishEvent(new PostTagRequiredEvent(post.getId()));
         return post.getId();
     }
 
@@ -141,6 +143,7 @@ public class CommunityPostServiceImpl implements CommunityPostService {
         }
 
         eventPublisher.publishEvent(new PostModerationRequiredEvent(postId));
+        eventPublisher.publishEvent(new PostTagRequiredEvent(postId));
     }
 
     @Override

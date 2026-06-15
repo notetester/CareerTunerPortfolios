@@ -117,6 +117,31 @@ export async function deletePost(id: number) {
   return api<void>(`/community/posts/${id}`, { method: "DELETE" });
 }
 
+/* ── AI 태그 ── */
+
+export interface AiTagResult {
+  postId: number;
+  taskType: string;
+  status: string;
+  resultJson: string | null;
+}
+
+export interface ParsedAiTags {
+  tags: string[];
+  confidence: number;
+  applied: boolean;
+}
+
+export async function getAiTags(postId: number): Promise<ParsedAiTags | null> {
+  try {
+    const result = await api<AiTagResult | null>(`/community/posts/${postId}/ai-tags`);
+    if (!result?.resultJson) return null;
+    return JSON.parse(result.resultJson) as ParsedAiTags;
+  } catch {
+    return null;
+  }
+}
+
 /* ── 댓글 ── */
 
 export async function getComments(postId: number) {

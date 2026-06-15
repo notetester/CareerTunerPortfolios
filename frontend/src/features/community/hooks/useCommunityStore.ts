@@ -1,7 +1,5 @@
 import { create } from "zustand";
-// TODO: 백엔드 연동 시 주석 해제
-// import * as communityApi from "../api/communityApi";
-import { mockPosts, mockHotPosts } from "../data/mockCommunity";
+import * as communityApi from "../api/communityApi";
 import type { CommunityPost, CommunityComment, CommunityCategory } from "../types/community";
 
 interface CommunityState {
@@ -56,44 +54,45 @@ export const useCommunityStore = create<CommunityState>((set, get) => ({
   detailLoading: false,
   error: null,
 
-  fetchPosts: async (category, _sort) => {
+  fetchPosts: async (category, sort) => {
     set({ loading: true, error: null });
-    // TODO: 백엔드 연동 시 아래 mock → communityApi.getPosts(category, sort) 로 교체
-    const filtered = category
-      ? mockPosts.filter((p) => p.category === category)
-      : mockPosts;
-    set({ posts: filtered, loading: false });
+    try {
+      const posts = await communityApi.getPosts(category, sort);
+      set({ posts, loading: false });
+    } catch (e) {
+      set({ loading: false, error: (e as Error).message });
+    }
   },
 
   fetchHotPosts: async () => {
-    // TODO: 백엔드 연동 시 communityApi.getHotPosts() 로 교체
-    set({ hotPosts: mockHotPosts });
+    try {
+      const hotPosts = await communityApi.getHotPosts();
+      set({ hotPosts });
+    } catch { /* 인기글 실패는 무시 */ }
   },
 
   fetchPostDetail: async (id) => {
     set({ detailLoading: true, error: null });
-    // TODO: 백엔드 연동 시 communityApi.getPostDetail(id) 로 교체
-    const found = mockPosts.find((p) => p.id === id) ?? null;
-    set({ currentPost: found, detailLoading: false });
+    try {
+      const currentPost = await communityApi.getPostDetail(id);
+      set({ currentPost, detailLoading: false });
+    } catch (e) {
+      set({ detailLoading: false, error: (e as Error).message });
+    }
   },
 
-  fetchComments: async (_postId) => {
-    // TODO: 백엔드 연동 시 communityApi.getComments(postId) 로 교체
-    set({ comments: [] });
+  fetchComments: async (postId) => {
+    try {
+      const comments = await communityApi.getComments(postId);
+      set({ comments });
+    } catch (e) {
+      set({ error: (e as Error).message });
+    }
   },
 
   addComment: async (postId, content) => {
-    // TODO: 백엔드 연동 시 communityApi.createComment + getComments 로 교체
-    const newComment: CommunityComment = {
-      id: Date.now(),
-      postId,
-      content,
-      author: { id: 0, name: "익명", isAnonymous: true },
-      likeCount: 0,
-      isAuthor: true,
-      createdAt: new Date().toISOString(),
-    };
-    const comments = [...get().comments, newComment];
+    await communityApi.createComment(postId, content);
+    const comments = await communityApi.getComments(postId);
     set({ comments });
     const { currentPost } = get();
     if (currentPost && currentPost.id === postId) {
@@ -107,30 +106,13 @@ export const useCommunityStore = create<CommunityState>((set, get) => ({
   },
 
   createPost: async (data) => {
-    // TODO: 백엔드 연동 시 communityApi.createPost + getPosts 로 교체
-    const CATEGORY_LABELS: Record<string, string> = {
-      interview_review: "면접후기", job_review: "취업후기", free: "자유게시판",
-      pass_strategy: "합격전략", portfolio: "포트폴리오", qna: "Q&A",
-    };
-    const newPost: CommunityPost = {
-      id: Date.now(),
-      category: data.category,
-      categoryLabel: CATEGORY_LABELS[data.category] ?? data.category,
-      title: data.title,
-      content: data.content,
-      tags: data.tags,
-      author: { id: 0, name: "익명", isAnonymous: true },
-      stats: { viewCount: 0, commentCount: 0, likeCount: 0, bookmarkCount: 0 },
-      status: "PUBLISHED",
-      createdAt: "방금",
-      daysAgo: 0,
-    };
-    set({ posts: [newPost, ...get().posts] });
+    await communityApi.createPost(data);
+    const posts = await communityApi.getPosts();
+    set({ posts });
   },
 
   toggleReaction: async (targetType, targetId, reactionType) => {
-    // TODO: 백엔드 연동 시 communityApi.toggleReaction 으로 교체
-    const active = true;
+    const active = await communityApi.toggleReaction(targetType, targetId, reactionType);
     const { currentPost, comments } = get();
     const delta = active ? 1 : -1;
 

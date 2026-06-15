@@ -167,6 +167,29 @@
          WHERE post_id = #{postId}
     </delete>
 
+    <!-- 태깅 배치 대상 게시글 ID 목록 -->
+    <select id="findPostIdsForTagging" resultType="java.lang.Long">
+        SELECT cp.id
+          FROM community_post cp
+         WHERE cp.status = 'PUBLISHED'
+        <if test="!force">
+           AND NOT EXISTS (
+               SELECT 1 FROM post_ai_result ar
+                WHERE ar.post_id = cp.id
+                  AND ar.task_type = 'TAG'
+                  AND ar.status = 'COMPLETED'
+           )
+        </if>
+         ORDER BY cp.id
+    </select>
+
+    <!-- tags_json 캐시 갱신 -->
+    <update id="updateTagsJson">
+        UPDATE community_post
+           SET tags_json = #{tagsJson}
+         WHERE id = #{id}
+    </update>
+
     <!-- AI 검열에 의한 숨김 (PUBLISHED인 경우에만 전환) -->
     <update id="hideIfPublished">
         UPDATE community_post

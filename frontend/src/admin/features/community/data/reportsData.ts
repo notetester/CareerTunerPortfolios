@@ -1,3 +1,13 @@
+export interface AiOpinion {
+  status: string;
+  toxic: boolean | null;
+  category: string | null;
+  confidence: number | null;
+  model: string | null;
+  completedAt: string | null;
+  errorMessage: string | null;
+}
+
 export interface Report {
   id: number;
   reason: string;
@@ -12,6 +22,7 @@ export interface Report {
   status: "pending" | "resolved";
   action?: string;
   reasons: { l: string; n: number }[];
+  aiOpinion?: AiOpinion | null;
 }
 
 export const REPORTS: Report[] = [

@@ -5,6 +5,16 @@ export interface AdminReportReasonCount {
   n: number;
 }
 
+export interface AdminAiOpinion {
+  status: string;
+  toxic: boolean | null;
+  category: string | null;
+  confidence: number | null;
+  model: string | null;
+  completedAt: string | null;
+  errorMessage: string | null;
+}
+
 export interface AdminReportListResponse {
   id: number;
   reason: string;
@@ -22,4 +32,5 @@ export interface AdminReportListResponse {
 
 export interface AdminReportDetailResponse extends AdminReportListResponse {
   reasons: AdminReportReasonCount[];
+  aiOpinion: AdminAiOpinion | null;
 }

@@ -1,7 +1,5 @@
 import { create } from "zustand";
-// TODO: 백엔드 연동 시 주석 해제
-// import * as notificationApi from "../api/notificationApi";
-import { mockNotifications } from "../data/mockNotifications";
+import * as notificationApi from "../api/notificationApi";
 import type { Notification, NotificationCategory } from "../types/notification";
 
 interface NotificationState {
@@ -30,34 +28,48 @@ export const useNotificationStore = create<NotificationState>((set, get) => ({
 
   fetchNotifications: async () => {
     set({ loading: true, error: null });
-    // TODO: 백엔드 연동 시 notificationApi.getNotifications() 로 교체
-    const notifications = mockNotifications;
-    const unreadCount = notifications.filter((n) => !n.isRead).length;
-    set({ notifications, unreadCount, loading: false });
+    try {
+      const notifications = await notificationApi.getNotifications();
+      const unreadCount = await notificationApi.getUnreadCount().catch(() => get().unreadCount);
+      set({ notifications, unreadCount, loading: false });
+    } catch (e) {
+      set({ loading: false, error: (e as Error).message });
+    }
   },
 
   fetchUnreadCount: async () => {
-    // TODO: 백엔드 연동 시 notificationApi.getUnreadCount() 로 교체
-    const unreadCount = get().notifications.filter((n) => !n.isRead).length;
-    set({ unreadCount });
+    try {
+      const unreadCount = await notificationApi.getUnreadCount();
+      set({ unreadCount });
+    } catch { /* 배지 카운트 실패는 무시 */ }
   },
 
   markAsRead: async (id) => {
-    // TODO: 백엔드 연동 시 notificationApi.markAsRead(id) 로 교체
-    set({
-      notifications: get().notifications.map((n) =>
-        n.id === id ? { ...n, isRead: true } : n,
-      ),
-      unreadCount: Math.max(0, get().unreadCount - 1),
-    });
+    try {
+      await notificationApi.markAsRead(id);
+      set({
+        notifications: get().notifications.map((n) =>
+          n.id === id ? { ...n, isRead: true } : n,
+        ),
+        unreadCount: Math.max(0, get().unreadCount - 1),
+      });
+    } catch (e) {
+      set({ error: (e as Error).message });
+      throw e;
+    }
   },
 
   markAllAsRead: async () => {
-    // TODO: 백엔드 연동 시 notificationApi.markAllAsRead() 로 교체
-    set({
-      notifications: get().notifications.map((n) => ({ ...n, isRead: true })),
-      unreadCount: 0,
-    });
+    try {
+      await notificationApi.markAllAsRead();
+      set({
+        notifications: get().notifications.map((n) => ({ ...n, isRead: true })),
+        unreadCount: 0,
+      });
+    } catch (e) {
+      set({ error: (e as Error).message });
+      throw e;
+    }
   },
 
   setFilter: (filter) => set({ filter }),
