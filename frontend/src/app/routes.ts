@@ -58,6 +58,7 @@ export const router = createBrowserRouter([
       { path: "support/faq", Component: SupportPage },
       { path: "support/notices", Component: SupportPage },
       { path: "support/contact", Component: SupportPage },
+      { path: "support/chat", Component: SupportPage },
       { path: "company/about", Component: CompanyPage },
       { path: "company/team", Component: CompanyPage },
       { path: "company/careers", Component: CompanyPage },

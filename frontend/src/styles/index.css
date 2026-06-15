@@ -2,3 +2,4 @@
 @import './tailwind.css';
 @import './theme.css';
 @import './av-base.css';
+@import '../features/support/styles/chatbot.css';
