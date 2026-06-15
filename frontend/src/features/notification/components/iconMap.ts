@@ -4,6 +4,7 @@ import {
   MessageCircle, CornerDownRight, Heart, Sparkles, EyeOff,
   AlertTriangle, Megaphone, MessageSquareReply,
   Flag, Ticket, UserPlus, ShieldAlert, FilePen,
+  CreditCard,
   Bell,
   type LucideIcon,
 } from "lucide-react";
@@ -15,5 +16,6 @@ export const ICON_MAP: Record<string, LucideIcon> = {
   MessageCircle, CornerDownRight, Heart, Sparkles, EyeOff,
   AlertTriangle, Megaphone, MessageSquareReply,
   Flag, Ticket, UserPlus, ShieldAlert, FilePen,
+  CreditCard,
   Bell,
 };
