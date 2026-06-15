@@ -1,0 +1,141 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.careertuner.applicationcase.mapper.ApplicationCaseExtractionMapper">
+
+    <resultMap id="ApplicationCaseExtractionResultMap" type="com.careertuner.applicationcase.domain.ApplicationCaseExtraction">
+        <id property="id" column="id"/>
+        <result property="applicationCaseId" column="application_case_id"/>
+        <result property="jobPostingId" column="job_posting_id"/>
+        <result property="userId" column="user_id"/>
+        <result property="sourceType" column="source_type"/>
+        <result property="status" column="status"/>
+        <result property="errorMessage" column="error_message"/>
+        <result property="startedAt" column="started_at"/>
+        <result property="finishedAt" column="finished_at"/>
+        <result property="createdAt" column="created_at"/>
+        <result property="updatedAt" column="updated_at"/>
+    </resultMap>
+
+    <insert id="insertApplicationCaseExtraction" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO application_case_extraction
+            (application_case_id, job_posting_id, user_id, source_type, status, error_message, started_at, finished_at)
+        VALUES
+            (#{applicationCaseId}, #{jobPostingId}, #{userId}, #{sourceType}, #{status},
+             #{errorMessage}, #{startedAt}, #{finishedAt})
+    </insert>
+
+    <select id="findActiveExtractionsByUserId" resultMap="ApplicationCaseExtractionResultMap">
+        SELECT *
+        FROM application_case_extraction
+        WHERE user_id = #{userId}
+          AND status IN ('QUEUED', 'RUNNING')
+        ORDER BY FIELD(status, 'RUNNING', 'QUEUED'),
+                 created_at DESC,
+                 id DESC
+        LIMIT 50
+    </select>
+
+    <select id="findLatestExtractionByApplicationCaseId" resultMap="ApplicationCaseExtractionResultMap">
+        SELECT *
+        FROM application_case_extraction
+        WHERE application_case_id = #{applicationCaseId}
+        ORDER BY created_at DESC, id DESC
+        LIMIT 1
+    </select>
+
+    <select id="findLatestExtractionsByApplicationCaseIdsAndUserId" resultMap="ApplicationCaseExtractionResultMap">
+        SELECT
+            id,
+            application_case_id,
+            job_posting_id,
+            user_id,
+            source_type,
+            status,
+            error_message,
+            started_at,
+            finished_at,
+            created_at,
+            updated_at
+        FROM (
+            SELECT
+                e.*,
+                ROW_NUMBER() OVER (
+                    PARTITION BY e.application_case_id
+                    ORDER BY e.created_at DESC, e.id DESC
+                ) AS rn
+            FROM application_case_extraction e
+            INNER JOIN application_case ac ON ac.id = e.application_case_id
+            WHERE ac.user_id = #{userId}
+              AND ac.deleted_at IS NULL
+              AND e.application_case_id IN
+              <foreach collection="applicationCaseIds" item="applicationCaseId" open="(" separator="," close=")">
+                  #{applicationCaseId}
+              </foreach>
+        ) latest
+        WHERE rn = 1
+        ORDER BY created_at DESC, id DESC
+    </select>
+
+    <select id="findStaleRunningExtractions" resultMap="ApplicationCaseExtractionResultMap">
+        SELECT *
+        FROM application_case_extraction
+        WHERE status = 'RUNNING'
+          AND started_at IS NOT NULL
+          AND started_at &lt; #{startedBefore}
+        ORDER BY started_at ASC, id ASC
+        LIMIT #{limit}
+    </select>
+
+    <select id="findQueuedExtractions" resultMap="ApplicationCaseExtractionResultMap">
+        SELECT *
+        FROM application_case_extraction
+        WHERE status = 'QUEUED'
+        ORDER BY created_at ASC, id ASC
+        LIMIT #{limit}
+    </select>
+
+    <select id="findRunningExtractionForUpdate" resultMap="ApplicationCaseExtractionResultMap">
+        SELECT *
+        FROM application_case_extraction
+        WHERE id = #{id}
+          AND status = 'RUNNING'
+        FOR UPDATE
+    </select>
+
+    <update id="claimQueuedExtraction">
+        UPDATE application_case_extraction
+        SET status = 'RUNNING',
+            error_message = NULL,
+            started_at = NOW(),
+            finished_at = NULL
+        WHERE id = #{id}
+          AND status = 'QUEUED'
+    </update>
+
+    <update id="markExtractionSucceeded">
+        UPDATE application_case_extraction
+        SET status = 'SUCCEEDED',
+            job_posting_id = #{jobPostingId},
+            error_message = NULL,
+            finished_at = NOW()
+        WHERE id = #{id}
+          AND status = 'RUNNING'
+    </update>
+
+    <update id="markExtractionFailed">
+        UPDATE application_case_extraction
+        SET status = 'FAILED',
+            error_message = #{errorMessage},
+            finished_at = NOW()
+        WHERE id = #{id}
+          AND status = 'RUNNING'
+    </update>
+
+    <select id="countActiveExtractionsByApplicationCaseId" resultType="int">
+        SELECT COUNT(*)
+        FROM application_case_extraction
+        WHERE application_case_id = #{applicationCaseId}
+          AND status IN ('QUEUED', 'RUNNING')
+    </select>
+</mapper>

@@ -1,11 +1,19 @@
-import { useEffect, useMemo, useState } from "react";
-import { FileText, FileUp, Image, Link as LinkIcon, Loader2, PencilLine, Save, Upload } from "lucide-react";
+import { type ChangeEvent, useEffect, useMemo, useState } from "react";
+import { FileText, FileUp, Image, Link as LinkIcon, Loader2, PencilLine, RefreshCw, Save, Upload } from "lucide-react";
 import { Button } from "@/app/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/app/components/ui/card";
 import { Input } from "@/app/components/ui/input";
 import { Textarea } from "@/app/components/ui/textarea";
-import type { ApplicationSourceType } from "../types/applicationCase";
+import type { ApplicationCaseExtraction, ApplicationSourceType } from "../types/applicationCase";
+import { isApplicationCaseExtractionActive } from "../types/applicationCase";
 import type { JobPosting, JobPostingRequest } from "../types/jobPosting";
+import { formatKoreaDateTime } from "../utils/dateFormat";
+import {
+  JOB_POSTING_IMAGE_ACCEPT,
+  JOB_POSTING_MAX_FILE_SIZE_LABEL,
+  validateJobPostingFile,
+} from "../utils/jobPostingUpload";
+import { ApplicationExtractionBadge } from "./ApplicationExtractionBadge";
 
 interface JobPostingPanelProps {
   jobPosting: JobPosting | null;
@@ -14,8 +22,11 @@ interface JobPostingPanelProps {
   saving: boolean;
   uploading: boolean;
   error: string | null;
+  extraction?: ApplicationCaseExtraction | null;
+  retryingExtraction?: boolean;
   onSave(request: JobPostingRequest): Promise<JobPosting | null>;
   onUpload(sourceType: Extract<ApplicationSourceType, "PDF" | "IMAGE">, file: File): Promise<JobPosting | null>;
+  onRetryExtraction?(): Promise<ApplicationCaseExtraction | null>;
 }
 
 const sourceOptions: {
@@ -31,16 +42,21 @@ const sourceOptions: {
   { value: "MANUAL", label: "수동", description: "메모 기반 직접 입력", icon: PencilLine },
 ];
 
-function formatDateTime(value: string): string {
-  return new Intl.DateTimeFormat("ko-KR", { dateStyle: "medium", timeStyle: "short" }).format(new Date(value));
-}
-
 function isTextSource(sourceType: ApplicationSourceType): boolean {
   return sourceType === "TEXT" || sourceType === "MANUAL";
 }
 
 function isFileSource(sourceType: ApplicationSourceType): sourceType is Extract<ApplicationSourceType, "PDF" | "IMAGE"> {
   return sourceType === "PDF" || sourceType === "IMAGE";
+}
+
+function isHttpPostingUrl(value: string): boolean {
+  try {
+    const url = new URL(value);
+    return url.protocol === "http:" || url.protocol === "https:";
+  } catch {
+    return false;
+  }
 }
 
 export function JobPostingPanel({
@@ -50,8 +66,11 @@ export function JobPostingPanel({
   saving,
   uploading,
   error,
+  extraction,
+  retryingExtraction = false,
   onSave,
   onUpload,
+  onRetryExtraction,
 }: JobPostingPanelProps) {
   const initialText = useMemo(
     () => jobPosting?.extractedText ?? jobPosting?.originalText ?? "",
@@ -67,10 +86,40 @@ export function JobPostingPanel({
   const [sourceUrl, setSourceUrl] = useState(initialUrl);
   const [file, setFile] = useState<File | null>(null);
   const [localError, setLocalError] = useState<string | null>(null);
+  const extractionActive = extraction ? isApplicationCaseExtractionActive(extraction.status) : false;
 
   useEffect(() => setText(initialText), [initialText]);
   useEffect(() => setSourceUrl(initialUrl), [initialUrl]);
   useEffect(() => setSourceType(initialSourceType), [initialSourceType]);
+
+  const handleSourceTypeChange = (nextSourceType: ApplicationSourceType) => {
+    if (nextSourceType === sourceType) return;
+
+    setSourceType(nextSourceType);
+    setText(isTextSource(nextSourceType) && isTextSource(sourceType) ? text : "");
+    setSourceUrl("");
+    setFile(null);
+    setLocalError(null);
+  };
+
+  const handleFileChange = (event: ChangeEvent<HTMLInputElement>) => {
+    const nextFile = event.target.files?.[0] ?? null;
+    if (!nextFile || !isFileSource(sourceType)) {
+      setFile(null);
+      return;
+    }
+
+    const validationError = validateJobPostingFile(sourceType, nextFile);
+    if (validationError) {
+      event.currentTarget.value = "";
+      setFile(null);
+      setLocalError(validationError);
+      return;
+    }
+
+    setLocalError(null);
+    setFile(nextFile);
+  };
 
   const handleSave = async () => {
     const value = text.trim();
@@ -82,6 +131,10 @@ export function JobPostingPanel({
     }
     if (sourceType === "URL" && !url) {
       setLocalError("공고 URL을 입력해 주세요.");
+      return;
+    }
+    if (sourceType === "URL" && !isHttpPostingUrl(url)) {
+      setLocalError("공고 URL은 http:// 또는 https://로 시작해야 합니다.");
       return;
     }
     if (isFileSource(sourceType) && !value && !url) {
@@ -105,6 +158,11 @@ export function JobPostingPanel({
       setLocalError("업로드할 파일을 선택해 주세요.");
       return;
     }
+    const validationError = validateJobPostingFile(sourceType, file);
+    if (validationError) {
+      setLocalError(validationError);
+      return;
+    }
     setLocalError(null);
     await onUpload(sourceType, file);
     setFile(null);
@@ -121,7 +179,7 @@ export function JobPostingPanel({
             </CardTitle>
             {jobPosting ? (
               <p className="mt-1 text-xs text-slate-500">
-                최신 revision {jobPosting.revision} · 저장됨: {formatDateTime(jobPosting.createdAt)}
+                최신 revision {jobPosting.revision} · 저장됨: {formatKoreaDateTime(jobPosting.createdAt)}
               </p>
             ) : (
               <p className="mt-1 text-xs text-slate-500">공고문 미등록</p>
@@ -133,18 +191,31 @@ export function JobPostingPanel({
                 type="button"
                 size="sm"
                 variant="outline"
-                disabled={loading || uploading || saving}
+                disabled={loading || uploading || saving || extractionActive}
                 onClick={() => void handleUpload()}
               >
                 {uploading ? <Loader2 className="size-4 animate-spin" /> : <Upload className="size-4" />}
                 업로드 및 추출
               </Button>
             )}
+            {extraction?.status === "FAILED" && onRetryExtraction && (
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                className="border-red-200 text-red-700 hover:bg-red-50 hover:text-red-800"
+                disabled={retryingExtraction}
+                onClick={() => void onRetryExtraction()}
+              >
+                <RefreshCw className={`size-4 ${retryingExtraction ? "animate-spin" : ""}`} />
+                다시 추출
+              </Button>
+            )}
             <Button
               type="button"
               size="sm"
               className="bg-blue-600 text-white hover:bg-blue-700"
-              disabled={loading || saving || uploading}
+              disabled={loading || saving || uploading || extractionActive}
               onClick={() => void handleSave()}
             >
               {saving ? <Loader2 className="size-4 animate-spin" /> : <Save className="size-4" />}
@@ -154,6 +225,27 @@ export function JobPostingPanel({
         </div>
       </CardHeader>
       <CardContent className="space-y-4">
+        {extraction && (
+          <div className={`rounded-lg border px-3 py-2 text-sm ${
+            extraction.status === "FAILED"
+              ? "border-red-200 bg-red-50 text-red-700"
+              : extractionActive
+                ? "border-blue-100 bg-blue-50 text-blue-800"
+                : "border-emerald-100 bg-emerald-50 text-emerald-700"
+          }`}>
+            <div className="flex flex-wrap items-center gap-2">
+              <ApplicationExtractionBadge extraction={extraction} />
+              <span>
+                {extractionActive
+                  ? "추출이 끝나면 최신 공고문으로 자동 갱신됩니다. 파일 크기와 이미지 품질에 따라 시간이 걸릴 수 있습니다."
+                  : extraction.status === "FAILED"
+                    ? extraction.errorMessage || "공고문 추출에 실패했습니다."
+                    : "공고문 추출이 완료됐습니다."}
+              </span>
+            </div>
+          </div>
+        )}
+
         {loading ? (
           <div className="h-52 animate-pulse rounded-lg bg-slate-100" />
         ) : (
@@ -168,10 +260,7 @@ export function JobPostingPanel({
                       ? "border-blue-600 bg-blue-50 text-blue-700"
                       : "border-slate-200 bg-white text-slate-600 hover:border-blue-200 hover:bg-slate-50"
                   }`}
-                  onClick={() => {
-                    setSourceType(option.value);
-                    setLocalError(null);
-                  }}
+                  onClick={() => handleSourceTypeChange(option.value)}
                 >
                   <option.icon className="size-4" />
                   <span>{option.label}</span>
@@ -195,6 +284,7 @@ export function JobPostingPanel({
                 <div className="rounded-lg border border-blue-100 bg-blue-50 px-3 py-2 text-xs leading-5 text-blue-800">
                   <p>URL만 입력하면 공개 페이지 본문을 추출합니다.</p>
                   <p>로그인 페이지, 동적 렌더링 페이지, 접근 차단 페이지는 추출되지 않을 수 있습니다.</p>
+                  <p>페이지 응답 상태에 따라 추출에 시간이 걸릴 수 있습니다.</p>
                   <p>추출 결과가 부족하면 아래 텍스트를 직접 보정해 저장하세요.</p>
                 </div>
               </div>
@@ -207,17 +297,19 @@ export function JobPostingPanel({
                     {sourceType === "PDF" ? "PDF 파일" : "이미지 파일"}
                   </label>
                   <Input
+                    key={sourceType}
                     id="job-posting-file"
                     type="file"
-                    accept={sourceType === "PDF" ? "application/pdf" : "image/png,image/jpeg,image/webp,image/gif"}
-                    onChange={(event) => setFile(event.target.files?.[0] ?? null)}
+                    accept={sourceType === "PDF" ? "application/pdf" : JOB_POSTING_IMAGE_ACCEPT}
+                    onChange={handleFileChange}
                     className="bg-white"
                   />
                 </div>
                 <div className="space-y-1 text-xs text-slate-500">
                   <div className="font-semibold text-slate-600">추출 방식</div>
+                  <p>파일은 {JOB_POSTING_MAX_FILE_SIZE_LABEL} 이하만 업로드할 수 있습니다.</p>
                   <p>텍스트 PDF는 서버에서 바로 추출합니다.</p>
-                  <p>이미지와 스캔 PDF는 OpenAI OCR을 사용합니다.</p>
+                  <p>이미지와 스캔 PDF는 OpenAI OCR을 사용하며 완료까지 시간이 걸릴 수 있습니다.</p>
                 </div>
               </div>
             )}
@@ -257,7 +349,7 @@ export function JobPostingPanel({
                 <div key={revision.id} className="flex flex-wrap items-center justify-between gap-2 px-3 py-2 text-xs text-slate-600">
                   <span className="font-semibold text-slate-900">rev {revision.revision}</span>
                   <span>{revision.sourceType}</span>
-                  <span>{formatDateTime(revision.createdAt)}</span>
+                  <span>{formatKoreaDateTime(revision.createdAt)}</span>
                   <span className="max-w-sm truncate text-slate-400">
                     {revision.extractedText ?? revision.originalText ?? revision.uploadedFileUrl ?? "내용 없음"}
                   </span>

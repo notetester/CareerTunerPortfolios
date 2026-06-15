@@ -17,9 +17,12 @@ import org.springframework.http.MediaType;
 
 import com.careertuner.applicationcase.dto.AnalysisResponse;
 import com.careertuner.applicationcase.dto.AiUsageFailureResponse;
+import com.careertuner.applicationcase.dto.ApplicationCaseExtractionResponse;
+import com.careertuner.applicationcase.dto.ApplicationCaseFromJobPostingResponse;
 import com.careertuner.applicationcase.dto.ApplicationCaseResponse;
 import com.careertuner.companyanalysis.dto.CompanyAnalysisResponse;
 import com.careertuner.companyanalysis.dto.CompanyAnalysisReviewRequest;
+import com.careertuner.applicationcase.dto.CreateApplicationCaseFromJobPostingRequest;
 import com.careertuner.applicationcase.dto.CreateApplicationCaseRequest;
 import com.careertuner.jobanalysis.dto.JobAnalysisResponse;
 import com.careertuner.jobanalysis.dto.JobAnalysisReviewRequest;
@@ -46,11 +49,39 @@ public class ApplicationCaseController {
         return ApiResponse.ok(applicationCaseService.create(authUser.id(), request));
     }
 
+    @PostMapping("/from-job-posting")
+    public ApiResponse<ApplicationCaseFromJobPostingResponse> createFromJobPosting(
+            @AuthenticationPrincipal AuthUser authUser,
+            @Valid @RequestBody CreateApplicationCaseFromJobPostingRequest request) {
+        return ApiResponse.ok(applicationCaseService.createFromJobPosting(authUser.id(), request));
+    }
+
+    @PostMapping(value = "/from-job-posting/upload", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public ApiResponse<ApplicationCaseFromJobPostingResponse> createFromJobPostingUpload(
+            @AuthenticationPrincipal AuthUser authUser,
+            @RequestParam("file") MultipartFile file,
+            @RequestParam("sourceType") String sourceType,
+            @RequestParam(defaultValue = "false") boolean favorite) {
+        return ApiResponse.ok(applicationCaseService.createFromJobPostingUpload(authUser.id(), file, sourceType, favorite));
+    }
+
     @GetMapping
     public ApiResponse<List<ApplicationCaseResponse>> list(@AuthenticationPrincipal AuthUser authUser,
                                                            @RequestParam(required = false) String view,
                                                            @RequestParam(defaultValue = "false") boolean includeArchived) {
         return ApiResponse.ok(applicationCaseService.list(authUser.id(), view, includeArchived));
+    }
+
+    @GetMapping("/extractions/active")
+    public ApiResponse<List<ApplicationCaseExtractionResponse>> getActiveExtractions(@AuthenticationPrincipal AuthUser authUser) {
+        return ApiResponse.ok(applicationCaseService.getActiveExtractions(authUser.id()));
+    }
+
+    @GetMapping("/job-posting/extractions/latest")
+    public ApiResponse<List<ApplicationCaseExtractionResponse>> getLatestJobPostingExtractions(
+            @AuthenticationPrincipal AuthUser authUser,
+            @RequestParam(required = false) List<Long> applicationCaseIds) {
+        return ApiResponse.ok(applicationCaseService.getLatestJobPostingExtractions(authUser.id(), applicationCaseIds));
     }
 
     @GetMapping("/{id}")
@@ -107,10 +138,16 @@ public class ApplicationCaseController {
         return ApiResponse.ok(applicationCaseService.getJobPostingRevisions(authUser.id(), id));
     }
 
-    @PostMapping("/{id}/job-analysis/mock")
-    public ApiResponse<JobAnalysisResponse> createMockJobAnalysis(@AuthenticationPrincipal AuthUser authUser,
-                                                                  @PathVariable Long id) {
-        return ApiResponse.ok(applicationCaseService.createMockJobAnalysis(authUser.id(), id));
+    @GetMapping("/{id}/job-posting/extraction")
+    public ApiResponse<ApplicationCaseExtractionResponse> getJobPostingExtraction(@AuthenticationPrincipal AuthUser authUser,
+                                                                                  @PathVariable Long id) {
+        return ApiResponse.ok(applicationCaseService.getLatestJobPostingExtraction(authUser.id(), id));
+    }
+
+    @PostMapping("/{id}/job-posting/extraction/retry")
+    public ApiResponse<ApplicationCaseExtractionResponse> retryJobPostingExtraction(@AuthenticationPrincipal AuthUser authUser,
+                                                                                   @PathVariable Long id) {
+        return ApiResponse.ok(applicationCaseService.retryJobPostingExtraction(authUser.id(), id));
     }
 
     @PostMapping("/{id}/job-analysis")
@@ -139,12 +176,6 @@ public class ApplicationCaseController {
         return ApiResponse.ok(applicationCaseService.reviewJobAnalysis(authUser.id(), id, analysisId, request));
     }
 
-    @PostMapping("/{id}/company-analysis/mock")
-    public ApiResponse<CompanyAnalysisResponse> createMockCompanyAnalysis(@AuthenticationPrincipal AuthUser authUser,
-                                                                          @PathVariable Long id) {
-        return ApiResponse.ok(applicationCaseService.createMockCompanyAnalysis(authUser.id(), id));
-    }
-
     @PostMapping("/{id}/company-analysis")
     public ApiResponse<CompanyAnalysisResponse> createCompanyAnalysis(@AuthenticationPrincipal AuthUser authUser,
                                                                       @PathVariable Long id) {
@@ -169,12 +200,6 @@ public class ApplicationCaseController {
                                                                       @PathVariable Long analysisId,
                                                                       @Valid @RequestBody CompanyAnalysisReviewRequest request) {
         return ApiResponse.ok(applicationCaseService.reviewCompanyAnalysis(authUser.id(), id, analysisId, request));
-    }
-
-    @PostMapping("/{id}/analysis/mock")
-    public ApiResponse<AnalysisResponse> createMockAnalysis(@AuthenticationPrincipal AuthUser authUser,
-                                                            @PathVariable Long id) {
-        return ApiResponse.ok(applicationCaseService.createMockAnalysis(authUser.id(), id));
     }
 
     @GetMapping("/{id}/analysis")

@@ -38,7 +38,7 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler(MaxUploadSizeExceededException.class)
     public ResponseEntity<ApiResponse<Void>> handleMaxUploadSize(MaxUploadSizeExceededException ex) {
-        String message = "업로드 파일 크기가 허용 범위를 초과했습니다. 10MB 이하 파일을 사용해 주세요.";
+        String message = "업로드 파일 크기가 허용 범위를 초과했습니다. 화면에 표시된 제한 용량 이하의 파일을 사용해 주세요.";
         return ResponseEntity.status(ErrorCode.INVALID_INPUT.getStatus())
                 .body(ApiResponse.error(ErrorCode.INVALID_INPUT.name(), message));
     }

@@ -77,10 +77,10 @@ careertuner:
     api-key: ${OPENAI_API_KEY:}
     model: ${OPENAI_MODEL:gpt-5}
     base-url: ${OPENAI_BASE_URL:https://api.openai.com/v1}
-    timeout: ${OPENAI_TIMEOUT:90s}
+    timeout: ${OPENAI_TIMEOUT:300s}
   uploads:
     job-posting-dir: ${JOB_POSTING_UPLOAD_DIR:.uploads/application-postings}
-    max-file-size-bytes: ${JOB_POSTING_MAX_FILE_SIZE_BYTES:10485760}
+    max-file-size-bytes: ${JOB_POSTING_MAX_FILE_SIZE_BYTES:5242880}
   file:
     # 면접 음성/영상 등 업로드 파일 저장 위치. 큰 영상은 SPRING_SERVLET_MULTIPART_MAX_FILE_SIZE 도 함께 올린다.
     media-dir: ${MEDIA_UPLOAD_DIR:.uploads/media}
