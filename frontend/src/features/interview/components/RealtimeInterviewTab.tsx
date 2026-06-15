@@ -21,6 +21,8 @@ import type {
   VoiceScoreDetail,
 } from "../types/interview";
 import { VoiceScorePanel } from "./VoiceScorePanel";
+import { useTutorialStore } from "../tutorial/tutorialStore";
+import { TutorialMediaPreview } from "../tutorial/TutorialMediaPreview";
 
 type Status = "idle" | "connecting" | "live" | "analyzing" | "scored" | "error";
 
@@ -32,6 +34,7 @@ type Status = "idle" | "connecting" | "live" | "analyzing" | "scored" | "error";
  * 원본 음성은 서버에 올리지 않는다 (ADR-002).
  */
 export function RealtimeInterviewTab({ session }: { session: InterviewSession | null }) {
+  const tutorialActive = useTutorialStore((s) => s.mode !== "off");
   const [status, setStatus] = useState<Status>("idle");
   const [error, setError] = useState<string | null>(null);
   const [lines, setLines] = useState<TranscriptLine[]>([]);
@@ -262,6 +265,11 @@ export function RealtimeInterviewTab({ session }: { session: InterviewSession | 
     }
     setStatus("scored");
   };
+
+  // 튜토리얼: 실제 OpenAI Realtime·마이크 연결 대신 예시 결과 화면만 보여준다.
+  if (tutorialActive) {
+    return <TutorialMediaPreview kind="voice" />;
+  }
 
   if (!session) {
     return (
