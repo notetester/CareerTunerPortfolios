@@ -14,7 +14,7 @@ export type AINotificationType =
   | "LOW_CONFIDENCE_REPORT"
   | "TICKET_DRAFT_READY";
 
-/* ── 비-AI 알림 — 사용자 (7개) ── */
+/* ── 비-AI 알림 — 사용자 (10개) ── */
 export type UserNotificationType =
   | "COMMENT"
   | "COMMENT_REPLY"
@@ -22,7 +22,11 @@ export type UserNotificationType =
   | "POST_HIDDEN"
   | "NOTICE"
   | "TICKET_ANSWERED"
-  | "CREDIT_LOW";
+  | "CREDIT_LOW"
+  // 결제/크레딧 (E 결제 흐름에서 발생, billing 카테고리)
+  | "PAYMENT_COMPLETE"
+  | "PAYMENT_SCHEDULED"
+  | "CREDIT_RECHARGED";
 
 /* ── 비-AI 알림 — 관리자 (3개) ── */
 export type AdminNotificationType =
@@ -95,6 +99,9 @@ export const TYPE_META: Record<NotificationType, TypeMeta> = {
   POST_SUMMARY_READY:        { cat: "community",   icon: "Sparkles",           variant: "info",    cta: "요약 보기" },
   /* 결제 */
   CREDIT_LOW:                { cat: "billing",     icon: "AlertTriangle",      variant: "warning", cta: "크레딧 충전" },
+  PAYMENT_COMPLETE:          { cat: "billing",     icon: "CreditCard",         variant: "success", cta: "결제 내역 보기" },
+  PAYMENT_SCHEDULED:         { cat: "billing",     icon: "CreditCard",         variant: "info",    cta: "결제 예정 보기" },
+  CREDIT_RECHARGED:          { cat: "billing",     icon: "CreditCard",         variant: "success", cta: "크레딧 보기" },
   /* 공지 */
   NOTICE:                    { cat: "notice",      icon: "Megaphone",          variant: "warning", cta: "공지 보기" },
   TICKET_ANSWERED:           { cat: "notice",      icon: "MessageSquareReply", variant: "info",    cta: "문의 답변 보기", actor: true },
@@ -162,6 +169,9 @@ export const TYPE_TO_CATEGORY: Record<NotificationType, NotificationCategory> = 
   POST_SUMMARY_READY: "community",
   /* 결제 */
   CREDIT_LOW: "billing",
+  PAYMENT_COMPLETE: "billing",
+  PAYMENT_SCHEDULED: "billing",
+  CREDIT_RECHARGED: "billing",
   /* 공지/문의 */
   NOTICE: "notice",
   TICKET_ANSWERED: "notice",

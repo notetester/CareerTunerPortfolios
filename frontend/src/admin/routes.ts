@@ -20,7 +20,7 @@ import AdminReports from "./features/community/pages/AdminReports";
 import AdminGuidelines from "./features/community/pages/AdminGuidelines";
 import AdminNotices from "./features/notices/pages/AdminNotices";
 import AdminFaq from "./features/faqs/pages/AdminFaq";
-import AdminInquiries from "./features/support-tickets/pages/AdminInquiries";
+import AdminInquiries from "./features/support-tickets/pages/AdminInquiriesAI";
 import AdminNotifications from "./features/notifications/pages/AdminNotifications";
 import AdminTerms from "./features/terms/pages/AdminTerms";
 

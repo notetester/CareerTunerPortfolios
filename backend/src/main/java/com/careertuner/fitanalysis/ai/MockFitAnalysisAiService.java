@@ -119,9 +119,11 @@ public class MockFitAnalysisAiService implements FitAnalysisAiService {
 
         String decision;
         List<String> reasons = new ArrayList<>();
-        if (fitScore >= 70 && requiredMissing <= 1) {
+        // APPLY 는 필수 미충족이 0개일 때만 허용한다. "필수"는 충족이 전제이며,
+        // 강한 우대인지 여부는 공고 분석 단계에서 필수/우대로 결론지어 입력된다(여기선 그 결론을 신뢰).
+        if (fitScore >= 70 && requiredMissing == 0) {
             decision = "APPLY";
-            reasons.add("적합도 %d점으로 현재 스펙 기준 지원 가능성이 높습니다.".formatted(fitScore));
+            reasons.add("적합도 %d점이며 필수 요구 역량을 모두 충족해 지원 가능합니다.".formatted(fitScore));
             if (!matched.isEmpty()) {
                 reasons.add("핵심 요구 역량 %s 이(가) 프로필과 매칭됩니다.".formatted(
                         String.join(", ", matched.subList(0, Math.min(3, matched.size())))));

@@ -5,9 +5,10 @@ import {
 } from "lucide-react";
 import ModerationSettingsPanel from "../../moderation/pages/ModerationSettingsPanel";
 import AdminShell from "../../../components/AdminShell";
-import { type Report } from "../data/reportsData";
-import * as adminReportApi from "../api/adminReportApi";
-import * as moderationApi from "../../moderation/api/moderationApi";
+import { type Report, REPORTS } from "../data/reportsData";
+// TODO: 백엔드 연동 시 주석 해제
+// import * as adminReportApi from "../api/adminReportApi";
+// import * as moderationApi from "../../moderation/api/moderationApi";
 import type { ModerationItem, ModerationDetail, ModerationStats } from "../../moderation/types/moderation";
 import { ConfirmDialog } from "@/app/components/ui/confirm-dialog";
 import "./admin-reports.css";
@@ -100,19 +101,16 @@ function ReportsPanel({ flash }: { flash: (msg: string) => void }) {
   const [dialog, setDialog] = useState<{ report: Report; action: ReportActionType } | null>(null);
 
   useEffect(() => {
-    adminReportApi.getReports().then(setItems)
-      .catch(() => flash("신고 목록을 불러오지 못했습니다."));
+    // TODO: 백엔드 연동 시 adminReportApi.getReports().then(setItems) 로 교체
+    setItems(REPORTS);
   }, [flash]);
 
   const handleAction = async () => {
     if (!dialog) return;
-    try {
-      const updated = await adminReportApi.takeAction(dialog.report.id, dialog.action);
-      setItems((prev) => prev.map((r) => (r.id === updated.id ? updated : r)));
-      flash("처리되었습니다.");
-    } catch {
-      flash("처리에 실패했습니다.");
-    }
+    // TODO: 백엔드 연동 시 adminReportApi.takeAction 으로 교체
+    const updated: Report = { ...dialog.report, status: "resolved", action: dialog.action === "DISMISSED" ? "반려됨" : "숨김 처리됨" };
+    setItems((prev) => prev.map((r) => (r.id === updated.id ? updated : r)));
+    flash("처리되었습니다.");
     setDialog(null);
   };
 
@@ -265,42 +263,48 @@ function ModerationPanel({ flash }: { flash: (msg: string) => void }) {
   const [dialog, setDialog] = useState<{ postId: number; title: string; action: "restore" | "delete" } | null>(null);
   const size = 20;
 
+  // TODO: 백엔드 연동 시 moderationApi.getModerationList/getModerationStats 로 교체
+  const MOCK_MOD_ITEMS: ModerationItem[] = [
+    { postId: 101, title: "★★★ 취업 컨설팅 100% 합격 ★★★", authorName: "익명_4821", category: "자유게시판", status: "HIDDEN", toxic: true, aiCategory: "spam", confidence: 0.94, attemptCount: 1, createdAt: "2026-06-10T10:00:00", moderatedAt: "2026-06-10T10:01:00" },
+    { postId: 102, title: "면접에서 욕먹은 후기", authorName: "익명_1043", category: "면접후기", status: "PUBLISHED", toxic: false, aiCategory: "normal", confidence: 0.12, attemptCount: 1, createdAt: "2026-06-10T09:00:00", moderatedAt: "2026-06-10T09:01:00" },
+    { postId: 103, title: "이 회사 절대 가지 마세요", authorName: "익명_2299", category: "취업후기", status: "HIDDEN", toxic: true, aiCategory: "abuse", confidence: 0.87, attemptCount: 1, createdAt: "2026-06-09T15:00:00", moderatedAt: "2026-06-09T15:01:00" },
+    { postId: 104, title: "스터디원 모집합니다", authorName: "익명_7741", category: "자유게시판", status: "PUBLISHED", toxic: false, aiCategory: "normal", confidence: 0.05, attemptCount: 1, createdAt: "2026-06-09T12:00:00", moderatedAt: "2026-06-09T12:00:30" },
+  ];
+
+  const MOCK_STATS: ModerationStats = { categories: [{ category: "normal", count: 182 }, { category: "abuse", count: 14 }, { category: "spam", count: 9 }, { category: "ad", count: 3 }], total: 208 };
+
   const fetchList = useCallback(() => {
-    moderationApi
-      .getModerationList({ status: statusFilter || undefined, page, size })
-      .then((res) => { setItems(res.items); setTotal(res.total); })
-      .catch(() => flash("검열 목록을 불러오지 못했습니다."));
+    const filtered = statusFilter ? MOCK_MOD_ITEMS.filter((i) => i.status === statusFilter) : MOCK_MOD_ITEMS;
+    setItems(filtered);
+    setTotal(filtered.length);
   }, [statusFilter, page, flash]);
 
   const fetchStats = useCallback(() => {
-    moderationApi.getModerationStats().then(setStats).catch(() => {});
+    setStats(MOCK_STATS);
   }, []);
 
   useEffect(() => { fetchList(); }, [fetchList]);
   useEffect(() => { fetchStats(); }, [fetchStats]);
 
   const handleRowClick = (postId: number) => {
-    moderationApi.getModerationDetail(postId)
-      .then(setDetail)
-      .catch(() => flash("상세 정보를 불러오지 못했습니다."));
+    // TODO: 백엔드 연동 시 moderationApi.getModerationDetail(postId) 로 교체
+    const item = MOCK_MOD_ITEMS.find((i) => i.postId === postId);
+    if (item) {
+      setDetail({ ...item, content: "게시글 본문 내용입니다. (목 데이터)", model: "gpt-4o-mini" } as ModerationDetail);
+    }
   };
 
   const handleAction = async () => {
     if (!dialog) return;
-    try {
-      if (dialog.action === "restore") {
-        await moderationApi.restorePost(dialog.postId);
-        flash("게시글이 복원되었습니다.");
-      } else {
-        await moderationApi.deletePost(dialog.postId);
-        flash("게시글이 삭제되었습니다.");
-      }
-      setDetail(null);
-      fetchList();
-      fetchStats();
-    } catch {
-      flash("처리에 실패했습니다.");
+    // TODO: 백엔드 연동 시 moderationApi.restorePost/deletePost 로 교체
+    if (dialog.action === "restore") {
+      flash("게시글이 복원되었습니다.");
+    } else {
+      flash("게시글이 삭제되었습니다.");
     }
+    setDetail(null);
+    fetchList();
+    fetchStats();
     setDialog(null);
   };
 

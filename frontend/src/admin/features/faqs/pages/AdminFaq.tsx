@@ -4,8 +4,9 @@ import {
   Trash2, Eye, EyeOff, ArrowLeft, Check, CornerDownRight,
 } from "lucide-react";
 import AdminShell from "../../../components/AdminShell";
-import { FAQ_CATEGORIES, type Faq, type FaqCategory } from "../data/faqData";
-import * as adminFaqApi from "../api/adminFaqApi";
+import { FAQ_CATEGORIES, FAQS, type Faq, type FaqCategory } from "../data/faqData";
+// TODO: 백엔드 연동 시 주석 해제
+// import * as adminFaqApi from "../api/adminFaqApi";
 import { ConfirmDialog } from "@/app/components/ui/confirm-dialog";
 import "./admin-faq.css";
 import "./faq-compose.css";
@@ -43,20 +44,10 @@ function FaqComposeView({ onBack, onCreated }: { onBack: () => void; onCreated: 
   const handleSubmit = async () => {
     if (!canSubmit || saving) return;
     setSaving(true);
-    try {
-      await adminFaqApi.createFaq({
-        cat: COMPOSE_TO_DB[cat] ?? "일반",
-        q,
-        a,
-        on: visible,
-      });
-      flash("FAQ가 등록되었습니다.", "green");
-      setTimeout(() => onCreated(), 600);
-    } catch {
-      flash("저장에 실패했습니다.", "red");
-    } finally {
-      setSaving(false);
-    }
+    // TODO: 백엔드 연동 시 adminFaqApi.createFaq 로 교체
+    flash("FAQ가 등록되었습니다.", "green");
+    setTimeout(() => onCreated(), 600);
+    setSaving(false);
   };
 
   return (
@@ -147,8 +138,8 @@ export default function AdminFaq() {
   const [dialog, setDialog] = useState<DialogState | null>(null);
 
   const loadItems = () => {
-    adminFaqApi.getFaqs().then(setItems)
-      .catch(() => flash("FAQ 목록을 불러오지 못했습니다.", "red"));
+    // TODO: 백엔드 연동 시 adminFaqApi.getFaqs().then(setItems) 로 교체
+    setItems(FAQS);
   };
 
   useEffect(() => { loadItems(); }, []);
@@ -160,23 +151,14 @@ export default function AdminFaq() {
 
   const handleConfirm = async () => {
     if (!dialog) return;
-    try {
-      if (dialog.type === "delete") {
-        await adminFaqApi.deleteFaq(dialog.faq.id);
-        setItems((prev) => prev.filter((f) => f.id !== dialog.faq.id));
-        flash("FAQ가 삭제되었습니다.", "green");
-      } else {
-        const updated = await adminFaqApi.updateFaq(dialog.faq.id, {
-          cat: dialog.faq.cat,
-          q: dialog.faq.q,
-          a: dialog.faq.a,
-          on: !dialog.faq.on,
-        });
-        setItems((prev) => prev.map((f) => (f.id === updated.id ? updated : f)));
-        flash(updated.on ? "FAQ가 노출로 변경되었습니다." : "FAQ가 비노출로 변경되었습니다.", "green");
-      }
-    } catch {
-      flash("처리에 실패했습니다.", "red");
+    // TODO: 백엔드 연동 시 adminFaqApi.deleteFaq/updateFaq 로 교체
+    if (dialog.type === "delete") {
+      setItems((prev) => prev.filter((f) => f.id !== dialog.faq.id));
+      flash("FAQ가 삭제되었습니다.", "green");
+    } else {
+      const updated: Faq = { ...dialog.faq, on: !dialog.faq.on };
+      setItems((prev) => prev.map((f) => (f.id === updated.id ? updated : f)));
+      flash(updated.on ? "FAQ가 노출로 변경되었습니다." : "FAQ가 비노출로 변경되었습니다.", "green");
     }
     setDialog(null);
   };

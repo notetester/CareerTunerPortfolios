@@ -3,10 +3,11 @@ import {
   BookOpen, Eye, Check, X, Plus, ChevronUp, ChevronDown, CalendarClock, Save,
 } from "lucide-react";
 import AdminShell from "../../../components/AdminShell";
-import {
-  getGuidelines, createGuideline, updateGuideline, publishGuideline,
-  type AdminGuidelineResponse, type GuidelineRule, type GuidelineParams,
-} from "../api/adminGuidelineApi";
+// TODO: 백엔드 연동 시 주석 해제
+// import {
+//   getGuidelines, createGuideline, updateGuideline, publishGuideline,
+// } from "../api/adminGuidelineApi";
+import type { AdminGuidelineResponse, GuidelineRule, GuidelineParams } from "../api/adminGuidelineApi";
 import "../styles/admin-guidelines.css";
 
 const SANCTIONS = ["삭제 + 단계 제재", "즉시 영구 제한", "삭제만 (제재 없음)"];
@@ -65,29 +66,32 @@ export default function AdminGuidelines() {
   }, []);
 
   const loadVersions = async () => {
-    try {
-      const list = await getGuidelines();
-      setVersions(list);
-      // 초안이 있으면 로드, 없으면 새 초안 준비
-      const draft = list.find((g) => g.status === "DRAFT");
-      if (draft) {
-        loadGuidelineToForm(draft);
-      } else {
-        // 게시본 기반으로 새 버전 준비
-        const published = list.find((g) => g.status === "PUBLISHED");
-        if (published) {
-          loadGuidelineToForm(published);
-          setEditId(null);
-          const vNum = parseFloat(published.versionLabel.replace("v", "")) + 0.1;
-          setVersionLabel(`v${vNum.toFixed(1)}`);
-          setSummary("");
-        }
+    // TODO: 백엔드 연동 시 getGuidelines() 로 교체
+    const MOCK_VERSIONS: AdminGuidelineResponse[] = [
+      {
+        id: 1, versionLabel: "v1.0", summary: "최초 가이드라인 게시", lede: "",
+        oksJson: JSON.stringify(DEFAULT_OKS), nosJson: JSON.stringify(DEFAULT_NOS),
+        rulesJson: JSON.stringify(DEFAULT_RULES), paramsJson: JSON.stringify(DEFAULT_PARAMS),
+        status: "PUBLISHED", enforceType: "IMMEDIATE", scheduledAt: null,
+        publishedAt: "2026-05-01T00:00:00", createdAt: "2026-05-01T00:00:00", updatedAt: "2026-05-01T00:00:00",
+      },
+    ];
+    const list = MOCK_VERSIONS;
+    setVersions(list);
+    const draft = list.find((g) => g.status === "DRAFT");
+    if (draft) {
+      loadGuidelineToForm(draft);
+    } else {
+      const published = list.find((g) => g.status === "PUBLISHED");
+      if (published) {
+        loadGuidelineToForm(published);
+        setEditId(null);
+        const vNum = parseFloat(published.versionLabel.replace("v", "")) + 0.1;
+        setVersionLabel(`v${vNum.toFixed(1)}`);
+        setSummary("");
       }
-    } catch {
-      // API 미연결 — 기본값 사용
-    } finally {
-      setLoading(false);
     }
+    setLoading(false);
   };
 
   const loadGuidelineToForm = (g: AdminGuidelineResponse) => {
@@ -105,50 +109,19 @@ export default function AdminGuidelines() {
   const handleSave = async () => {
     if (saving) return;
     setSaving(true);
-    try {
-      const data = {
-        versionLabel,
-        summary,
-        lede,
-        oks,
-        nos,
-        rules,
-        params,
-        enforceType: when === "예약" ? "SCHEDULED" : "IMMEDIATE",
-      };
-      if (editId) {
-        await updateGuideline(editId, data);
-      } else {
-        const created = await createGuideline(data);
-        setEditId(created.id);
-      }
-      setLastSaved(new Date().toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit" }));
-      flash("임시저장되었습니다.", "green");
-      loadVersions();
-    } catch {
-      flash("저장에 실패했습니다.", "red");
-    } finally {
-      setSaving(false);
-    }
+    // TODO: 백엔드 연동 시 updateGuideline/createGuideline 으로 교체
+    if (!editId) setEditId(Date.now());
+    setLastSaved(new Date().toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit" }));
+    flash("임시저장되었습니다.", "green");
+    setSaving(false);
   };
 
   const handlePublish = async () => {
     if (!editId || saving) return;
     setSaving(true);
-    try {
-      // 먼저 저장
-      await updateGuideline(editId, {
-        versionLabel, summary, lede, oks, nos, rules, params,
-        enforceType: when === "예약" ? "SCHEDULED" : "IMMEDIATE",
-      });
-      await publishGuideline(editId);
-      flash("가이드라인이 게시되었습니다.", "green");
-      loadVersions();
-    } catch {
-      flash("게시에 실패했습니다.", "red");
-    } finally {
-      setSaving(false);
-    }
+    // TODO: 백엔드 연동 시 updateGuideline + publishGuideline 으로 교체
+    flash("가이드라인이 게시되었습니다.", "green");
+    setSaving(false);
   };
 
   // 룰 조작

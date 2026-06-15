@@ -1,0 +1,42 @@
+/* CareerTuner — UserChatbot & AgentAssist animations + shared classes */
+
+/* ── Keyframes ── */
+@keyframes ctTyping {
+  0%, 60%, 100% { transform: translateY(0); opacity: 0.35; }
+  30% { transform: translateY(-4px); opacity: 1; }
+}
+@keyframes ctWave {
+  0%, 100% { height: 7px; }
+  50% { height: 28px; }
+}
+@keyframes ctPulse {
+  0% { transform: scale(0.6); opacity: 0.55; }
+  100% { transform: scale(2.4); opacity: 0; }
+}
+@keyframes ctShimmer {
+  0% { background-position: -360px 0; }
+  100% { background-position: 360px 0; }
+}
+@keyframes ctSpin {
+  to { transform: rotate(360deg); }
+}
+
+/* ── Skeleton shimmer ── */
+.ct-sk {
+  background: linear-gradient(90deg, #eef1f5 25%, #e2e8f0 37%, #eef1f5 63%);
+  background-size: 720px 100%;
+  animation: ctShimmer 1.3s infinite linear;
+  border-radius: 6px;
+}
+
+/* ── Reduced motion ── */
+@media (prefers-reduced-motion: reduce) {
+  .ct-typing-dot,
+  .ct-wave-bar,
+  .ct-pulse-ring {
+    animation: none !important;
+  }
+  .ct-sk {
+    animation: none !important;
+  }
+}
