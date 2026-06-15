@@ -197,4 +197,34 @@
          WHERE id = #{postId} AND status = 'PUBLISHED'
     </update>
 
+    <!-- 면접 질문 추출 배치 대상 (INTERVIEW_REVIEW + PUBLISHED) -->
+    <select id="findPostIdsForInterviewExtract" resultType="java.lang.Long">
+        SELECT cp.id
+          FROM community_post cp
+         WHERE cp.status = 'PUBLISHED'
+           AND cp.category = 'INTERVIEW_REVIEW'
+        <if test="!force">
+           AND NOT EXISTS (
+               SELECT 1 FROM post_ai_result ar
+                WHERE ar.post_id = cp.id
+                  AND ar.task_type = 'INTERVIEW_EXTRACT'
+                  AND ar.status = 'COMPLETED'
+           )
+        </if>
+         ORDER BY cp.id
+    </select>
+
+    <!-- 면접후기 AI 추출 결과 저장 -->
+    <update id="updateAiExtractedQuestions">
+        UPDATE community_interview_review
+           SET ai_extracted_questions = #{aiExtractedQuestions}
+         WHERE post_id = #{postId}
+    </update>
+
+    <!-- 면접 질문 추출 중복 방지: source 기준 InterviewKnowledge 삭제 -->
+    <delete id="deleteInterviewKnowledgeBySource">
+        DELETE FROM interview_knowledge
+         WHERE source = #{source}
+    </delete>
+
 </mapper>

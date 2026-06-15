@@ -68,4 +68,14 @@ public interface CommunityPostMapper {
 
     // AI 검열에 의한 숨김 (PUBLISHED → HIDDEN 전환, 다른 상태는 무시)
     int hideIfPublished(@Param("postId") Long postId);
+
+    /** 면접 질문 추출 배치 대상 (INTERVIEW_REVIEW + PUBLISHED, force=false면 이미 COMPLETED인 건 제외) */
+    List<Long> findPostIdsForInterviewExtract(@Param("force") boolean force);
+
+    // 면접후기 AI 추출 결과 저장
+    void updateAiExtractedQuestions(@Param("postId") Long postId,
+                                    @Param("aiExtractedQuestions") String aiExtractedQuestions);
+
+    // 면접 질문 추출 중복 방지: source 기준 InterviewKnowledge 삭제
+    void deleteInterviewKnowledgeBySource(@Param("source") String source);
 }

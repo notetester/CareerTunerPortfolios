@@ -11,10 +11,12 @@ import { CATEGORIES } from "../types/community";
 import { useCommunityStore } from "../hooks/useCommunityStore";
 import { useLoginDialog } from "../hooks/useLoginDialog";
 import { ConfirmDialog } from "@/app/components/ui/confirm-dialog";
-import type { CommunityPost } from "../types/community";
+import type { CommunityPost, CommunityCategory } from "../types/community";
+import { CATEGORY_META } from "../types/community";
+import type { PostEditData } from "../components/PostEditorForm";
 import "../styles/community.css";
 
-type ViewMode = "list" | "detail" | "write" | "guidelines";
+type ViewMode = "list" | "detail" | "write" | "edit" | "guidelines";
 
 export function CommunityHomePage() {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -29,6 +31,7 @@ export function CommunityHomePage() {
   }, [searchParams]);
   const [selectedCategory, setSelectedCategory] = useState("all");
   const [selectedPost, setSelectedPost] = useState<CommunityPost | null>(null);
+  const [editData, setEditData] = useState<PostEditData | null>(null);
   const [sort, setSort] = useState<SortKey>("recent");
   const [tag, setTag] = useState("");
 
@@ -84,7 +87,49 @@ export function CommunityHomePage() {
   }
 
   if (viewMode === "detail" && selectedPost) {
-    return <PostDetailView postId={selectedPost.id} onBack={handleBack} />;
+    return (
+      <PostDetailView
+        postId={selectedPost.id}
+        onBack={handleBack}
+        onEdit={() => {
+          const post = useCommunityStore.getState().currentPost;
+          if (!post) return;
+          const catMeta = CATEGORY_META[post.categoryLabel];
+          setEditData({
+            id: post.id,
+            category: catMeta?.value ?? "free",
+            title: post.title,
+            content: post.content,
+            tags: post.tags ?? [],
+            anonymous: post.author.isAnonymous,
+            interviewReview: post.interviewReview
+              ? {
+                  companyName: post.interviewReview.companyName,
+                  jobRole: post.interviewReview.jobRole,
+                  interviewType: post.interviewReview.interviewType,
+                  difficulty: post.interviewReview.difficulty,
+                  interviewDate: post.interviewReview.interviewDate,
+                  resultStatus: post.interviewReview.resultStatus,
+                  questions: post.interviewReview.questions,
+                }
+              : undefined,
+          });
+          setViewMode("edit");
+          window.history.pushState({ view: "edit" }, "");
+          window.scrollTo(0, 0);
+        }}
+      />
+    );
+  }
+
+  if (viewMode === "edit" && editData) {
+    return (
+      <PostEditorForm
+        editData={editData}
+        onCancel={handleBack}
+        onSubmit={handleBack}
+      />
+    );
   }
 
   if (viewMode === "write") {

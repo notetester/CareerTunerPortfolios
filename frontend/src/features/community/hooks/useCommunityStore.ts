@@ -38,6 +38,21 @@ interface CommunityState {
       questions?: string[];
     };
   }) => Promise<void>;
+  updatePost: (id: number, data: {
+    title: string;
+    content: string;
+    tags: string[];
+    anonymous?: boolean;
+    interviewReview?: {
+      companyName: string;
+      jobRole: string;
+      interviewType?: string;
+      difficulty?: number | null;
+      interviewDate?: string;
+      resultStatus?: string;
+      questions?: string[];
+    };
+  }) => Promise<void>;
   toggleReaction: (
     targetType: "POST" | "COMMENT",
     targetId: number,
@@ -107,6 +122,12 @@ export const useCommunityStore = create<CommunityState>((set, get) => ({
 
   createPost: async (data) => {
     await communityApi.createPost(data);
+    const posts = await communityApi.getPosts();
+    set({ posts });
+  },
+
+  updatePost: async (id, data) => {
+    await communityApi.updatePost(id, data);
     const posts = await communityApi.getPosts();
     set({ posts });
   },
