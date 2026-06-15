@@ -1,5 +1,7 @@
 import { create } from "zustand";
-import * as communityApi from "../api/communityApi";
+// TODO: 백엔드 연동 시 주석 해제
+// import * as communityApi from "../api/communityApi";
+import { mockPosts, mockHotPosts } from "../data/mockCommunity";
 import type { CommunityPost, CommunityComment, CommunityCategory } from "../types/community";
 
 interface CommunityState {
@@ -54,99 +56,102 @@ export const useCommunityStore = create<CommunityState>((set, get) => ({
   detailLoading: false,
   error: null,
 
-  fetchPosts: async (category, sort) => {
+  fetchPosts: async (category, _sort) => {
     set({ loading: true, error: null });
-    try {
-      const posts = await communityApi.getPosts(category, sort);
-      set({ posts, loading: false });
-    } catch (e) {
-      set({ loading: false, error: (e as Error).message });
-    }
+    // TODO: 백엔드 연동 시 아래 mock → communityApi.getPosts(category, sort) 로 교체
+    const filtered = category
+      ? mockPosts.filter((p) => p.category === category)
+      : mockPosts;
+    set({ posts: filtered, loading: false });
   },
 
   fetchHotPosts: async () => {
-    try {
-      const hotPosts = await communityApi.getHotPosts();
-      set({ hotPosts });
-    } catch { /* 사이드바이므로 실패 무시 */ }
+    // TODO: 백엔드 연동 시 communityApi.getHotPosts() 로 교체
+    set({ hotPosts: mockHotPosts });
   },
 
   fetchPostDetail: async (id) => {
     set({ detailLoading: true, error: null });
-    try {
-      const currentPost = await communityApi.getPostDetail(id);
-      set({ currentPost, detailLoading: false });
-    } catch (e) {
-      set({ detailLoading: false, error: (e as Error).message });
-    }
+    // TODO: 백엔드 연동 시 communityApi.getPostDetail(id) 로 교체
+    const found = mockPosts.find((p) => p.id === id) ?? null;
+    set({ currentPost: found, detailLoading: false });
   },
 
-  fetchComments: async (postId) => {
-    try {
-      const comments = await communityApi.getComments(postId);
-      set({ comments });
-    } catch { /* 댓글 로딩 실패 시 빈 배열 유지 */ }
+  fetchComments: async (_postId) => {
+    // TODO: 백엔드 연동 시 communityApi.getComments(postId) 로 교체
+    set({ comments: [] });
   },
 
   addComment: async (postId, content) => {
-    try {
-      await communityApi.createComment(postId, content);
-      const comments = await communityApi.getComments(postId);
-      set({ comments });
-      const { currentPost } = get();
-      if (currentPost && currentPost.id === postId) {
-        set({
-          currentPost: {
-            ...currentPost,
-            stats: { ...currentPost.stats, commentCount: comments.length },
-          },
-        });
-      }
-    } catch (e) {
-      set({ error: (e as Error).message });
-      throw e;
+    // TODO: 백엔드 연동 시 communityApi.createComment + getComments 로 교체
+    const newComment: CommunityComment = {
+      id: Date.now(),
+      postId,
+      content,
+      author: { id: 0, name: "익명", isAnonymous: true },
+      likeCount: 0,
+      isAuthor: true,
+      createdAt: new Date().toISOString(),
+    };
+    const comments = [...get().comments, newComment];
+    set({ comments });
+    const { currentPost } = get();
+    if (currentPost && currentPost.id === postId) {
+      set({
+        currentPost: {
+          ...currentPost,
+          stats: { ...currentPost.stats, commentCount: comments.length },
+        },
+      });
     }
   },
 
   createPost: async (data) => {
-    try {
-      await communityApi.createPost(data);
-      const posts = await communityApi.getPosts();
-      set({ posts });
-    } catch (e) {
-      set({ error: (e as Error).message });
-      throw e;
-    }
+    // TODO: 백엔드 연동 시 communityApi.createPost + getPosts 로 교체
+    const CATEGORY_LABELS: Record<string, string> = {
+      interview_review: "면접후기", job_review: "취업후기", free: "자유게시판",
+      pass_strategy: "합격전략", portfolio: "포트폴리오", qna: "Q&A",
+    };
+    const newPost: CommunityPost = {
+      id: Date.now(),
+      category: data.category,
+      categoryLabel: CATEGORY_LABELS[data.category] ?? data.category,
+      title: data.title,
+      content: data.content,
+      tags: data.tags,
+      author: { id: 0, name: "익명", isAnonymous: true },
+      stats: { viewCount: 0, commentCount: 0, likeCount: 0, bookmarkCount: 0 },
+      status: "PUBLISHED",
+      createdAt: "방금",
+      daysAgo: 0,
+    };
+    set({ posts: [newPost, ...get().posts] });
   },
 
   toggleReaction: async (targetType, targetId, reactionType) => {
-    try {
-      const active = await communityApi.toggleReaction(targetType, targetId, reactionType);
-      const { currentPost, comments } = get();
-      const delta = active ? 1 : -1;
+    // TODO: 백엔드 연동 시 communityApi.toggleReaction 으로 교체
+    const active = true;
+    const { currentPost, comments } = get();
+    const delta = active ? 1 : -1;
 
-      if (targetType === "POST" && currentPost && currentPost.id === targetId) {
-        const key = reactionType === "LIKE" ? "likeCount" : "bookmarkCount";
-        set({
-          currentPost: {
-            ...currentPost,
-            stats: { ...currentPost.stats, [key]: Math.max(0, currentPost.stats[key] + delta) },
-          },
-        });
-      }
-      if (targetType === "COMMENT") {
-        set({
-          comments: comments.map((c) =>
-            c.id === targetId
-              ? { ...c, likeCount: Math.max(0, c.likeCount + delta) }
-              : c,
-          ),
-        });
-      }
-      return active;
-    } catch (e) {
-      set({ error: (e as Error).message });
-      throw e;
+    if (targetType === "POST" && currentPost && currentPost.id === targetId) {
+      const key = reactionType === "LIKE" ? "likeCount" : "bookmarkCount";
+      set({
+        currentPost: {
+          ...currentPost,
+          stats: { ...currentPost.stats, [key]: Math.max(0, currentPost.stats[key] + delta) },
+        },
+      });
     }
+    if (targetType === "COMMENT") {
+      set({
+        comments: comments.map((c) =>
+          c.id === targetId
+            ? { ...c, likeCount: Math.max(0, c.likeCount + delta) }
+            : c,
+        ),
+      });
+    }
+    return active;
   },
 }));
