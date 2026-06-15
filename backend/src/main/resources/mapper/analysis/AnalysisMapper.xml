@@ -11,6 +11,7 @@
         <result property="status" column="status"/>
         <result property="favorite" column="is_favorite"/>
         <result property="applicationUpdatedAt" column="application_updated_at"/>
+        <result property="companyIndustry" column="company_industry"/>
         <result property="fitAnalysisId" column="fit_analysis_id"/>
         <result property="fitScore" column="fit_score"/>
         <result property="matchedSkills" column="matched_skills"/>
@@ -20,9 +21,12 @@
         <result property="strategy" column="strategy"/>
         <result property="analyzedAt" column="analyzed_at"/>
         <result property="interviewCount" column="interview_count"/>
+        <result property="scoredInterviewCount" column="scored_interview_count"/>
         <result property="averageInterviewScore" column="average_interview_score"/>
         <result property="interviewAnswerCount" column="interview_answer_count"/>
+        <result property="scoredInterviewAnswerCount" column="scored_interview_answer_count"/>
         <result property="averageInterviewAnswerScore" column="average_interview_answer_score"/>
+        <result property="correctedAnswerCount" column="corrected_answer_count"/>
     </resultMap>
 
     <select id="findSourcesByUserId" resultMap="AnalysisSourceResultMap">
@@ -34,6 +38,7 @@
             ac.status,
             ac.is_favorite,
             ac.updated_at AS application_updated_at,
+            ca.industry AS company_industry,
             fa.id AS fit_analysis_id,
             fa.fit_score,
             fa.matched_skills,
@@ -54,6 +59,12 @@
             ) AS average_interview_score,
             (
                 SELECT COUNT(*)
+                FROM interview_session scored_interview_count_source
+                WHERE scored_interview_count_source.application_case_id = ac.id
+                  AND scored_interview_count_source.total_score IS NOT NULL
+            ) AS scored_interview_count,
+            (
+                SELECT COUNT(*)
                 FROM interview_answer answer_count_source
                 INNER JOIN interview_question answer_question ON answer_question.id = answer_count_source.question_id
                 INNER JOIN interview_session answer_session ON answer_session.id = answer_question.interview_session_id
@@ -65,7 +76,25 @@
                 INNER JOIN interview_question score_question ON score_question.id = answer_score_source.question_id
                 INNER JOIN interview_session score_session ON score_session.id = score_question.interview_session_id
                 WHERE score_session.application_case_id = ac.id
-            ) AS average_interview_answer_score
+            ) AS average_interview_answer_score,
+            (
+                SELECT COUNT(*)
+                FROM interview_answer scored_answer_count_source
+                INNER JOIN interview_question scored_answer_question ON scored_answer_question.id = scored_answer_count_source.question_id
+                INNER JOIN interview_session scored_answer_session ON scored_answer_session.id = scored_answer_question.interview_session_id
+                WHERE scored_answer_session.application_case_id = ac.id
+                  AND scored_answer_count_source.score IS NOT NULL
+            ) AS scored_interview_answer_count
+            ,
+            (
+                SELECT COUNT(*)
+                FROM interview_answer corrected_answer_source
+                INNER JOIN interview_question corrected_question ON corrected_question.id = corrected_answer_source.question_id
+                INNER JOIN interview_session corrected_session ON corrected_session.id = corrected_question.interview_session_id
+                WHERE corrected_session.application_case_id = ac.id
+                  AND corrected_answer_source.improved_answer IS NOT NULL
+                  AND corrected_answer_source.improved_answer != ''
+            ) AS corrected_answer_count
         FROM application_case ac
         LEFT JOIN fit_analysis fa
                ON fa.application_case_id = ac.id
@@ -74,8 +103,68 @@
                   FROM fit_analysis latest_fa
                   WHERE latest_fa.application_case_id = ac.id
               )
+        LEFT JOIN company_analysis ca
+               ON ca.application_case_id = ac.id
+              AND ca.id = (
+                  SELECT MAX(latest_ca.id)
+                  FROM company_analysis latest_ca
+                  WHERE latest_ca.application_case_id = ac.id
+              )
         WHERE ac.user_id = #{userId}
+          AND ac.archived_at IS NULL
+          AND ac.deleted_at IS NULL
         ORDER BY ac.is_favorite DESC, COALESCE(fa.created_at, ac.updated_at) DESC, ac.id DESC
+    </select>
+
+    <resultMap id="AnalysisWeeklyMetricResultMap" type="com.careertuner.analysis.domain.AnalysisWeeklyMetricSource">
+        <result property="currentFitAverage" column="current_fit_average"/>
+        <result property="previousFitAverage" column="previous_fit_average"/>
+        <result property="currentGapCount" column="current_gap_count"/>
+        <result property="previousGapCount" column="previous_gap_count"/>
+        <result property="currentInterviewAverage" column="current_interview_average"/>
+        <result property="previousInterviewAverage" column="previous_interview_average"/>
+    </resultMap>
+
+    <select id="findWeeklyMetricsByUserId" resultMap="AnalysisWeeklyMetricResultMap">
+        SELECT
+            (SELECT ROUND(AVG(fa.fit_score)) FROM fit_analysis fa INNER JOIN application_case ac ON ac.id = fa.application_case_id
+             WHERE ac.user_id = #{userId} AND fa.created_at &gt;= DATE_SUB(NOW(), INTERVAL 7 DAY)) AS current_fit_average,
+            (SELECT ROUND(AVG(fa.fit_score)) FROM fit_analysis fa INNER JOIN application_case ac ON ac.id = fa.application_case_id
+             WHERE ac.user_id = #{userId} AND fa.created_at &gt;= DATE_SUB(NOW(), INTERVAL 14 DAY)
+               AND fa.created_at &lt; DATE_SUB(NOW(), INTERVAL 7 DAY)) AS previous_fit_average,
+            (SELECT COALESCE(SUM(JSON_LENGTH(fa.missing_skills)), 0) FROM fit_analysis fa INNER JOIN application_case ac ON ac.id = fa.application_case_id
+             WHERE ac.user_id = #{userId} AND fa.created_at &gt;= DATE_SUB(NOW(), INTERVAL 7 DAY)) AS current_gap_count,
+            (SELECT COALESCE(SUM(JSON_LENGTH(fa.missing_skills)), 0) FROM fit_analysis fa INNER JOIN application_case ac ON ac.id = fa.application_case_id
+             WHERE ac.user_id = #{userId} AND fa.created_at &gt;= DATE_SUB(NOW(), INTERVAL 14 DAY)
+               AND fa.created_at &lt; DATE_SUB(NOW(), INTERVAL 7 DAY)) AS previous_gap_count,
+            (SELECT ROUND(AVG(session.total_score)) FROM interview_session session INNER JOIN application_case ac ON ac.id = session.application_case_id
+             WHERE ac.user_id = #{userId} AND session.total_score IS NOT NULL
+               AND session.created_at &gt;= DATE_SUB(NOW(), INTERVAL 7 DAY)) AS current_interview_average,
+            (SELECT ROUND(AVG(session.total_score)) FROM interview_session session INNER JOIN application_case ac ON ac.id = session.application_case_id
+             WHERE ac.user_id = #{userId} AND session.total_score IS NOT NULL
+               AND session.created_at &gt;= DATE_SUB(NOW(), INTERVAL 14 DAY)
+               AND session.created_at &lt; DATE_SUB(NOW(), INTERVAL 7 DAY)) AS previous_interview_average
+    </select>
+
+    <resultMap id="AnalysisFitPointSourceResultMap" type="com.careertuner.analysis.domain.AnalysisFitPointSource">
+        <result property="applicationCaseId" column="application_case_id"/>
+        <result property="fitScore" column="fit_score"/>
+        <result property="analyzedAt" column="analyzed_at"/>
+    </resultMap>
+
+    <!-- 재분석을 포함한 전체 이력을 사용해야 과거 월의 점수가 최신 결과로 덮이지 않는다. -->
+    <select id="findFitScoreHistoryByUserId" resultMap="AnalysisFitPointSourceResultMap">
+        SELECT
+            fa.application_case_id,
+            fa.fit_score,
+            fa.created_at AS analyzed_at
+        FROM fit_analysis fa
+        INNER JOIN application_case ac ON ac.id = fa.application_case_id
+        WHERE ac.user_id = #{userId}
+          AND ac.archived_at IS NULL
+          AND ac.deleted_at IS NULL
+          AND fa.fit_score IS NOT NULL
+        ORDER BY fa.created_at, fa.id
     </select>
 
     <resultMap id="AnalysisAnswerSourceResultMap" type="com.careertuner.analysis.domain.AnalysisAnswerSource">
@@ -95,6 +184,8 @@
         INNER JOIN interview_session s ON s.id = iq.interview_session_id
         INNER JOIN application_case ac ON ac.id = s.application_case_id
         WHERE ac.user_id = #{userId}
+          AND ac.archived_at IS NULL
+          AND ac.deleted_at IS NULL
           AND ia.score IS NOT NULL
         ORDER BY ia.score ASC, ia.id DESC
     </select>

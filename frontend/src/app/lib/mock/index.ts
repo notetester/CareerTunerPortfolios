@@ -11,9 +11,18 @@ import {
   demoDashboardSummary,
   demoAnalysisSummary,
   demoAnalysisHistory,
+  demoCareerPlan,
+  demoApplicationCases,
   demoFitAnalyses,
   findFitByApplicationCase,
+  findFitHistoryByApplicationCase,
 } from "./data";
+import { findJobPosting, findJobAnalysis, findCompanyAnalysis } from "./domains/applications";
+import {
+  demoInterviewSessions, findSessionQuestions, findReport, progress, agentSteps,
+  createSession, generateQuestions, submitAnswer as submitInterviewAnswer, followUps,
+  realtimeSession, fileAsset,
+} from "./domains/interview";
 
 /** 등록된 핸들러가 없을 때 반환하는 sentinel. */
 export const MOCK_UNHANDLED = Symbol("mock-unhandled");
@@ -96,6 +105,111 @@ const routes: MockRoute[] = [
   { method: "GET", pattern: /^\/analysis\/summary$/, handler: ok(demoAnalysisSummary) },
   { method: "POST", pattern: /^\/analysis\/summary\/refresh$/, handler: ok(demoAnalysisSummary) },
   { method: "GET", pattern: /^\/analysis\/history$/, handler: ok(demoAnalysisHistory) },
+  { method: "GET", pattern: /^\/analysis\/plan$/, handler: ok(demoCareerPlan) },
+  {
+    method: "PUT",
+    pattern: /^\/analysis\/plan\/goal$/,
+    handler: ({ body }) => {
+      const request = body as {
+        targetJob?: string | null;
+        targetPeriod?: string | null;
+        prioritySkill?: string | null;
+        preferredCompanyType?: string | null;
+      };
+      demoCareerPlan.goal = {
+        id: demoCareerPlan.goal?.id ?? 9501,
+        targetJob: request.targetJob ?? null,
+        targetPeriod: request.targetPeriod ?? null,
+        prioritySkill: request.prioritySkill ?? null,
+        preferredCompanyType: request.preferredCompanyType ?? null,
+        updatedAt: new Date().toISOString(),
+      };
+      return demoCareerPlan.goal;
+    },
+  },
+  {
+    method: "POST",
+    pattern: /^\/analysis\/plan\/learning-plans$/,
+    handler: ({ body }) => {
+      const request = body as { title?: string; targetSkill?: string; startDate?: string | null; endDate?: string | null };
+      const plan = {
+        id: 9600 + demoCareerPlan.learningPlans.length + 1,
+        title: request.title ?? "",
+        targetSkill: request.targetSkill ?? "",
+        startDate: request.startDate ?? null,
+        endDate: request.endDate ?? null,
+        status: "ACTIVE",
+        completionRate: 0,
+        tasks: [],
+      };
+      demoCareerPlan.learningPlans.unshift(plan);
+      return plan;
+    },
+  },
+  {
+    method: "POST",
+    pattern: /^\/analysis\/plan\/learning-plans\/(\d+)\/tasks$/,
+    handler: ({ params, body }) => {
+      const plan = demoCareerPlan.learningPlans.find((item) => item.id === Number(params[0]));
+      if (!plan) return null;
+      const task = {
+        id: 9700 + plan.tasks.length + 1,
+        learningPlanId: plan.id,
+        task: (body as { task?: string })?.task ?? "",
+        done: false,
+        sortOrder: plan.tasks.length + 1,
+        completedAt: null,
+      };
+      plan.tasks.push(task);
+      plan.completionRate = Math.round((plan.tasks.filter((item) => item.done).length * 100) / plan.tasks.length);
+      return task;
+    },
+  },
+  {
+    method: "PATCH",
+    pattern: /^\/analysis\/plan\/learning-plans\/(\d+)\/tasks\/(\d+)$/,
+    handler: ({ params, body }) => {
+      const plan = demoCareerPlan.learningPlans.find((item) => item.id === Number(params[0]));
+      const task = plan?.tasks.find((item) => item.id === Number(params[1]));
+      if (!plan || !task) return null;
+      task.done = !!(body as { done?: boolean })?.done;
+      task.completedAt = task.done ? new Date().toISOString() : null;
+      plan.completionRate = Math.round((plan.tasks.filter((item) => item.done).length * 100) / plan.tasks.length);
+      return task;
+    },
+  },
+
+  // ── 지원 건 상세 셸용 읽기 응답. C 패널 데모 진입에 필요한 최소 B 원본 요약만 제공한다. ──
+  { method: "GET", pattern: /^\/application-cases$/, handler: ok(demoApplicationCases) },
+  {
+    method: "GET",
+    pattern: /^\/application-cases\/(\d+)$/,
+    handler: ({ params }) => demoApplicationCases.find((item) => item.id === Number(params[0])) ?? demoApplicationCases[0],
+  },
+
+  // ── B: 지원 건 상세 서브탭(공고문/공고분석/기업분석). 생성(mock POST)은 저장본을 그대로 반환. ──
+  { method: "GET", pattern: /^\/application-cases\/(\d+)\/job-posting$/, handler: ({ params }) => findJobPosting(Number(params[0])) },
+  { method: "GET", pattern: /^\/application-cases\/(\d+)\/job-posting\/revisions$/, handler: ({ params }) => { const p = findJobPosting(Number(params[0])); return p ? [p] : []; } },
+  { method: "GET", pattern: /^\/application-cases\/(\d+)\/job-analysis$/, handler: ({ params }) => findJobAnalysis(Number(params[0])) },
+  { method: "GET", pattern: /^\/application-cases\/(\d+)\/job-analysis\/history$/, handler: ({ params }) => { const a = findJobAnalysis(Number(params[0])); return a ? [a] : []; } },
+  { method: "POST", pattern: /^\/application-cases\/(\d+)\/job-analysis(?:\/mock)?$/, handler: ({ params }) => findJobAnalysis(Number(params[0])) },
+  { method: "GET", pattern: /^\/application-cases\/(\d+)\/company-analysis$/, handler: ({ params }) => findCompanyAnalysis(Number(params[0])) },
+  { method: "GET", pattern: /^\/application-cases\/(\d+)\/company-analysis\/history$/, handler: ({ params }) => { const a = findCompanyAnalysis(Number(params[0])); return a ? [a] : []; } },
+  { method: "POST", pattern: /^\/application-cases\/(\d+)\/company-analysis(?:\/mock)?$/, handler: ({ params }) => findCompanyAnalysis(Number(params[0])) },
+  { method: "GET", pattern: /^\/application-cases\/(\d+)\/ai-usage\/b\/failures$/, handler: () => [] },
+
+  // ── D: 가상 면접 (세션 목록/생성, 질문 생성·조회, 답변·꼬리질문, 진행·리포트·에이전트) ──
+  { method: "GET", pattern: /^\/interview\/sessions$/, handler: ok(demoInterviewSessions) },
+  { method: "POST", pattern: /^\/interview\/sessions$/, handler: ({ body }) => createSession(body as { applicationCaseId: number; mode: "BASIC" | "JOB" | "PERSONALITY" | "PRESSURE" | "REAL" | "RESUME" | "PORTFOLIO" | "COMPANY" }) },
+  { method: "GET", pattern: /^\/interview\/sessions\/(\d+)\/questions$/, handler: ({ params }) => findSessionQuestions(Number(params[0])) },
+  { method: "POST", pattern: /^\/interview\/sessions\/(\d+)\/generate-questions$/, handler: ({ params }) => generateQuestions(Number(params[0])) },
+  { method: "GET", pattern: /^\/interview\/sessions\/(\d+)\/progress$/, handler: ({ params }) => progress(Number(params[0])) },
+  { method: "GET", pattern: /^\/interview\/sessions\/(\d+)\/report$/, handler: ({ params }) => findReport(Number(params[0])) },
+  { method: "GET", pattern: /^\/interview\/sessions\/(\d+)\/agent-steps$/, handler: ({ params }) => agentSteps(Number(params[0])) },
+  { method: "POST", pattern: /^\/interview\/sessions\/(\d+)\/realtime$/, handler: () => realtimeSession() },
+  { method: "POST", pattern: /^\/interview\/questions\/(\d+)\/answers$/, handler: ({ params, body }) => submitInterviewAnswer(Number(params[0]), body as { answerText: string }) },
+  { method: "POST", pattern: /^\/interview\/questions\/(\d+)\/follow-ups$/, handler: ({ params }) => followUps(Number(params[0])) },
+  { method: "POST", pattern: /^\/file\/upload$/, handler: () => fileAsset() },
 
   // ── C: 적합도 분석 ──
   { method: "GET", pattern: /^\/fit-analyses$/, handler: ok(demoFitAnalyses) },
@@ -103,6 +217,12 @@ const routes: MockRoute[] = [
     method: "GET",
     pattern: /^\/fit-analyses\/application-cases\/(\d+)$/,
     handler: ({ params }) => findFitByApplicationCase(Number(params[0])) ?? demoFitAnalyses[0],
+  },
+  {
+    // 재분석 히스토리(점수·역량 변화 추적)
+    method: "GET",
+    pattern: /^\/fit-analyses\/application-cases\/(\d+)\/history$/,
+    handler: ({ params }) => findFitHistoryByApplicationCase(Number(params[0])),
   },
   {
     method: "POST",

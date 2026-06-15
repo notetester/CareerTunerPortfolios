@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router";
 import {
   ArrowLeft,
@@ -16,8 +16,10 @@ import { Button } from "@/app/components/ui/button";
 import { Card, CardContent } from "@/app/components/ui/card";
 import { deleteApplicationCase, updateApplicationCase } from "../api/applicationCasesApi";
 import { ApplicationOverviewPanel } from "../components/ApplicationOverviewPanel";
+import { ApplicationExtractionBadge } from "../components/ApplicationExtractionBadge";
 import { ApplicationStatusBadge } from "../components/ApplicationStatusBadge";
 import { CompanyAnalysisPanel } from "../components/CompanyAnalysisPanel";
+import { FitAnalysisHistoryPanel } from "../components/FitAnalysisHistoryPanel";
 import { FitAnalysisPanel } from "../components/FitAnalysisPanel";
 import { JobAnalysisPanel } from "../components/JobAnalysisPanel";
 import { JobPostingPanel } from "../components/JobPostingPanel";
@@ -25,6 +27,7 @@ import { LearningRecommendationPanel } from "../components/LearningRecommendatio
 import { LoginRequiredState } from "../components/LoginRequiredState";
 import { StrategyPanel } from "../components/StrategyPanel";
 import { useApplicationCase } from "../hooks/useApplicationCase";
+import { useApplicationCaseExtraction } from "../hooks/useApplicationCaseExtraction";
 import { useApplicationCases } from "../hooks/useApplicationCases";
 import { useBAnalysisFailureLogs } from "../hooks/useBAnalysisFailureLogs";
 import { useCompanyAnalysis } from "../hooks/useCompanyAnalysis";
@@ -32,9 +35,11 @@ import { useJobAnalysis } from "../hooks/useJobAnalysis";
 import { useJobPosting } from "../hooks/useJobPosting";
 import type { ApplicationSourceType, UpdateApplicationCaseRequest } from "../types/applicationCase";
 import type { JobPosting, JobPostingRequest } from "../types/jobPosting";
+import { registerApplicationCaseExtraction } from "../utils/applicationExtractionTracker";
 import { useApplicationFitAnalysis } from "@/features/analysis/hooks/useApplicationFitAnalysis";
 
 type DetailTab = "overview" | "posting" | "jobAnalysis" | "companyAnalysis" | "fit";
+type DetailMode = "view" | "edit";
 
 const detailTabs: { key: DetailTab; label: string; icon: typeof Info }[] = [
   { key: "overview", label: "개요", icon: Info },
@@ -56,6 +61,15 @@ const tabKeysBySlug = Object.fromEntries(
   Object.entries(tabSlugs).map(([key, slug]) => [slug, key]),
 ) as Record<string, DetailTab>;
 
+function isBAnalysisTab(tab: DetailTab): tab is "jobAnalysis" | "companyAnalysis" {
+  return tab === "jobAnalysis" || tab === "companyAnalysis";
+}
+
+function detailPath(applicationCaseId: number, tab: DetailTab, mode: DetailMode = "view") {
+  const basePath = `/applications/${applicationCaseId}/${tabSlugs[tab]}`;
+  return isBAnalysisTab(tab) && mode === "edit" ? `${basePath}/edit` : basePath;
+}
+
 export function ApplicationDetailPage() {
   const navigate = useNavigate();
   const params = useParams();
@@ -64,6 +78,7 @@ export function ApplicationDetailPage() {
     return Number.isFinite(value) && value > 0 ? value : null;
   }, [params.id]);
   const activeTab = params.section ? tabKeysBySlug[params.section] ?? "overview" : "overview";
+  const activeMode: DetailMode = isBAnalysisTab(activeTab) && params.mode === "edit" ? "edit" : "view";
   const { loading: authLoading, isAuthenticated } = useAuth();
   const {
     applicationCase,
@@ -72,6 +87,18 @@ export function ApplicationDetailPage() {
     error,
     refresh,
   } = useApplicationCase(id, isAuthenticated);
+  const detailDataEnabled = isAuthenticated && Boolean(applicationCase);
+  const needsExtraction = detailDataEnabled && (activeTab === "overview" || activeTab === "posting");
+  const needsJobPosting = detailDataEnabled && (
+    activeTab === "posting" ||
+    activeTab === "jobAnalysis" ||
+    activeTab === "companyAnalysis"
+  );
+  const needsJobPostingRevisions = activeTab === "posting";
+  const needsJobAnalysis = detailDataEnabled && activeTab === "jobAnalysis";
+  const needsCompanyAnalysis = detailDataEnabled && activeTab === "companyAnalysis";
+  const needsBFailureLogs = needsJobAnalysis || needsCompanyAnalysis;
+  const needsFitAnalysis = detailDataEnabled && activeTab === "fit";
   const {
     applicationCases,
     loading: sidebarLoading,
@@ -83,31 +110,45 @@ export function ApplicationDetailPage() {
     uploading: postingUploading,
     error: postingError,
     revisions: postingRevisions,
+    refresh: refreshPosting,
     save: savePosting,
     upload: uploadPosting,
-  } = useJobPosting(id, isAuthenticated && Boolean(applicationCase));
+  } = useJobPosting(id, needsJobPosting, { loadRevisions: needsJobPostingRevisions });
+  const {
+    extraction,
+    retrying: retryingExtraction,
+    error: extractionError,
+    refresh: refreshExtraction,
+    retry: retryExtraction,
+  } = useApplicationCaseExtraction(id, needsExtraction);
   const {
     jobAnalysis,
     loading: jobAnalysisLoading,
     generating: jobAnalysisGenerating,
+    reviewSaving: jobAnalysisReviewSaving,
     error: jobAnalysisError,
+    reviewError: jobAnalysisReviewError,
     history: jobAnalysisHistory,
+    refresh: refreshJobAnalysis,
     generate: generateJobAnalysis,
     review: reviewJobAnalysis,
-  } = useJobAnalysis(id, isAuthenticated && Boolean(applicationCase));
+  } = useJobAnalysis(id, needsJobAnalysis);
   const {
     companyAnalysis,
     loading: companyAnalysisLoading,
     generating: companyAnalysisGenerating,
+    reviewSaving: companyAnalysisReviewSaving,
     error: companyAnalysisError,
+    reviewError: companyAnalysisReviewError,
     history: companyAnalysisHistory,
+    refresh: refreshCompanyAnalysis,
     generate: generateCompanyAnalysis,
     review: reviewCompanyAnalysis,
-  } = useCompanyAnalysis(id, isAuthenticated && Boolean(applicationCase));
+  } = useCompanyAnalysis(id, needsCompanyAnalysis);
   const {
     failureLogs: bFailureLogs,
     refresh: refreshBFailureLogs,
-  } = useBAnalysisFailureLogs(id, isAuthenticated && Boolean(applicationCase));
+  } = useBAnalysisFailureLogs(id, needsBFailureLogs);
   const [sourceTypeSyncError, setSourceTypeSyncError] = useState<string | null>(null);
   const {
     analyses: fitAnalyses,
@@ -115,12 +156,31 @@ export function ApplicationDetailPage() {
     generating: fitGenerating,
     error: fitAnalysisError,
     generate: generateFit,
-  } = useApplicationFitAnalysis(id, isAuthenticated && Boolean(applicationCase));
+  } = useApplicationFitAnalysis(id, needsFitAnalysis);
+  const refreshedExtractionIdRef = useRef<number | null>(null);
+
   useEffect(() => {
     if (id && params.section && !tabKeysBySlug[params.section]) {
       navigate(`/applications/${id}/overview`, { replace: true });
+      return;
     }
-  }, [id, navigate, params.section]);
+
+    if (id && params.mode && activeMode === "view") {
+      navigate(detailPath(id, activeTab), { replace: true });
+    }
+  }, [activeMode, activeTab, id, navigate, params.mode, params.section]);
+
+  useEffect(() => {
+    if (!extraction || extraction.status !== "SUCCEEDED" || refreshedExtractionIdRef.current === extraction.id) {
+      return;
+    }
+
+    refreshedExtractionIdRef.current = extraction.id;
+    void refresh();
+    if (needsJobPosting) {
+      void refreshPosting();
+    }
+  }, [extraction, needsJobPosting, refresh, refreshPosting]);
 
   const handleUpdate = async (request: UpdateApplicationCaseRequest) => {
     if (!id) return;
@@ -146,17 +206,30 @@ export function ApplicationDetailPage() {
     return posting;
   };
 
+  const refreshAndTrackExtraction = async (previousExtractionId: number | null) => {
+    const latest = await refreshExtraction();
+    if (latest && latest.id !== previousExtractionId) {
+      registerApplicationCaseExtraction(latest);
+    }
+  };
+
   const handleSavePosting = async (request: JobPostingRequest): Promise<JobPosting | null> => {
+    const previousExtractionId = extraction?.id ?? null;
     const posting = await savePosting(request);
-    return syncCaseSourceType(posting);
+    const syncedPosting = await syncCaseSourceType(posting);
+    await refreshAndTrackExtraction(previousExtractionId);
+    return syncedPosting;
   };
 
   const handleUploadPosting = async (
     sourceType: Extract<ApplicationSourceType, "PDF" | "IMAGE">,
     file: File,
   ): Promise<JobPosting | null> => {
+    const previousExtractionId = extraction?.id ?? null;
     const posting = await uploadPosting(sourceType, file);
-    return syncCaseSourceType(posting);
+    const syncedPosting = await syncCaseSourceType(posting);
+    await refreshAndTrackExtraction(previousExtractionId);
+    return syncedPosting;
   };
 
   const handleDelete = async () => {
@@ -175,6 +248,17 @@ export function ApplicationDetailPage() {
     const analysis = await generateCompanyAnalysis();
     await refreshBFailureLogs();
     return analysis;
+  };
+
+  const handleRefreshCurrentTab = async () => {
+    await refresh();
+    const tasks: Promise<unknown>[] = [];
+    if (needsExtraction) tasks.push(refreshExtraction());
+    if (needsJobPosting) tasks.push(refreshPosting());
+    if (needsJobAnalysis) tasks.push(refreshJobAnalysis());
+    if (needsCompanyAnalysis) tasks.push(refreshCompanyAnalysis());
+    if (needsBFailureLogs) tasks.push(refreshBFailureLogs());
+    await Promise.all(tasks);
   };
 
   if (authLoading) {
@@ -235,7 +319,7 @@ export function ApplicationDetailPage() {
                   applicationCases.map((item) => (
                     <Link
                       key={item.id}
-                      to={`/applications/${item.id}/${tabSlugs[activeTab]}`}
+                      to={detailPath(item.id, activeTab, activeMode)}
                       className={`block rounded-md border px-3 py-2 text-sm transition-colors ${
                         item.id === id
                           ? "border-blue-200 bg-blue-50 text-blue-800"
@@ -270,10 +354,24 @@ export function ApplicationDetailPage() {
               {applicationCase && (
                 <div className="mt-2 flex flex-wrap gap-2">
                   <ApplicationStatusBadge status={applicationCase.status} />
+                  <ApplicationExtractionBadge extraction={extraction} />
+                  {extraction?.status === "FAILED" && (
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      className="h-7 border-red-200 px-2 text-xs text-red-700 hover:bg-red-50 hover:text-red-800"
+                      disabled={retryingExtraction}
+                      onClick={() => void retryExtraction()}
+                    >
+                      <RefreshCw className={`size-3.5 ${retryingExtraction ? "animate-spin" : ""}`} />
+                      다시 추출
+                    </Button>
+                  )}
                 </div>
               )}
             </div>
-            <Button variant="outline" onClick={() => void refresh()} disabled={loading}>
+            <Button variant="outline" onClick={() => void handleRefreshCurrentTab()} disabled={loading}>
               <RefreshCw className={`size-4 ${loading ? "animate-spin" : ""}`} />
               새로고침
             </Button>
@@ -289,7 +387,7 @@ export function ApplicationDetailPage() {
                     ? "bg-slate-900 text-white"
                     : "text-slate-600 hover:bg-slate-100 hover:text-slate-900"
                 }`}
-                onClick={() => navigate(`/applications/${id}/${tabSlugs[tab.key]}`)}
+                onClick={() => navigate(detailPath(id, tab.key))}
               >
                 <tab.icon className="size-4" />
                 {tab.label}
@@ -309,6 +407,12 @@ export function ApplicationDetailPage() {
             </div>
           )}
 
+          {extractionError && (
+            <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+              {extractionError}
+            </div>
+          )}
+
           {loading || !applicationCase ? (
             <div className="h-96 animate-pulse rounded-lg bg-slate-200" />
           ) : (
@@ -317,7 +421,10 @@ export function ApplicationDetailPage() {
                 <div className="space-y-4">
                   <ApplicationOverviewPanel
                     applicationCase={applicationCase}
+                    extraction={extraction}
+                    retryingExtraction={retryingExtraction}
                     onUpdate={handleUpdate}
+                    onRetryExtraction={retryExtraction}
                     onDelete={handleDelete}
                   />
                   <Card className="border-slate-200 bg-white">
@@ -344,8 +451,11 @@ export function ApplicationDetailPage() {
                   saving={postingSaving}
                   uploading={postingUploading}
                   error={postingError}
+                  extraction={extraction}
+                  retryingExtraction={retryingExtraction}
                   onSave={handleSavePosting}
                   onUpload={handleUploadPosting}
+                  onRetryExtraction={retryExtraction}
                 />
               )}
 
@@ -355,8 +465,14 @@ export function ApplicationDetailPage() {
                   history={jobAnalysisHistory}
                   loading={jobAnalysisLoading}
                   generating={jobAnalysisGenerating}
+                  reviewSaving={jobAnalysisReviewSaving}
                   error={jobAnalysisError}
+                  reviewError={jobAnalysisReviewError}
                   failures={bFailureLogs}
+                  mode={activeMode}
+                  viewHref={detailPath(id, "jobAnalysis")}
+                  editHref={detailPath(id, "jobAnalysis", "edit")}
+                  latestJobPostingRevision={jobPosting?.revision ?? null}
                   onGenerate={handleGenerateJobAnalysis}
                   onReview={reviewJobAnalysis}
                 />
@@ -368,8 +484,14 @@ export function ApplicationDetailPage() {
                   history={companyAnalysisHistory}
                   loading={companyAnalysisLoading}
                   generating={companyAnalysisGenerating}
+                  reviewSaving={companyAnalysisReviewSaving}
                   error={companyAnalysisError}
+                  reviewError={companyAnalysisReviewError}
                   failures={bFailureLogs}
+                  mode={activeMode}
+                  viewHref={detailPath(id, "companyAnalysis")}
+                  editHref={detailPath(id, "companyAnalysis", "edit")}
+                  latestJobPostingRevision={jobPosting?.revision ?? null}
                   onGenerate={handleGenerateCompanyAnalysis}
                   onReview={reviewCompanyAnalysis}
                 />
@@ -390,7 +512,19 @@ export function ApplicationDetailPage() {
                   </div>
                   <FitAnalysisPanel analyses={fitAnalyses} loading={fitAnalysisLoading} generating={fitGenerating} error={fitAnalysisError} />
                   <StrategyPanel analyses={fitAnalyses} loading={fitAnalysisLoading} error={fitAnalysisError} />
-                  <LearningRecommendationPanel analyses={fitAnalyses} loading={fitAnalysisLoading} error={fitAnalysisError} />
+                  <LearningRecommendationPanel
+                    analyses={fitAnalyses}
+                    loading={fitAnalysisLoading}
+                    error={fitAnalysisError}
+                    onReanalyze={() => void generateFit()}
+                    reanalyzing={fitGenerating}
+                  />
+                  {/* C 담당: 재분석 히스토리(점수·역량 변화 추적). 최신 분석 id가 바뀌면 다시 불러온다. */}
+                  <FitAnalysisHistoryPanel
+                    applicationCaseId={id}
+                    enabled={isAuthenticated && Boolean(applicationCase)}
+                    refreshKey={fitAnalyses[0]?.id ?? null}
+                  />
                 </div>
               )}
             </>

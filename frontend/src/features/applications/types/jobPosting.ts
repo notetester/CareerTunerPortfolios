@@ -11,6 +11,13 @@ export interface JobPosting {
   createdAt: string;
 }
 
+export interface JobPostingMetadata {
+  companyName: string;
+  jobTitle: string;
+  postingDate: string | null;
+  deadlineDate: string | null;
+}
+
 export interface JobPostingRequest {
   originalText?: string | null;
   uploadedFileUrl?: string | null;

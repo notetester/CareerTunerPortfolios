@@ -11,6 +11,7 @@ import {
 import { getAnalysisSummary, refreshAnalysisSummary } from "@/features/analysis/api/analysisSummaryApi";
 import type { AnalysisSummary } from "@/features/analysis/types/analysisSummary";
 import { AiResultBadge } from "@/features/analysis/components/AiResultBadge";
+import { CareerPlanCard } from "@/features/analysis/components/CareerPlanCard";
 
 const questionTypeLabel: Record<string, string> = {
   EXPECTED: "예상 질문",
@@ -35,6 +36,32 @@ const roadmapPhases = [
   { phase: "다음 액션", color: "border-green-200 bg-green-50", textColor: "text-green-800" },
 ] as const;
 
+/** yyyy-MM → "M월" (해가 바뀌면 "yy년 M월"). */
+function formatMonthLabel(month: string) {
+  const [year, monthPart] = month.split("-");
+  const currentYear = String(new Date().getFullYear());
+  const label = `${Number(monthPart)}월`;
+  return year === currentYear ? label : `${year.slice(2)}년 ${label}`;
+}
+
+const tierTone: Record<string, { border: string; bg: string; text: string }> = {
+  SAFE: { border: "border-green-200", bg: "bg-green-50", text: "text-green-800" },
+  MATCH: { border: "border-blue-200", bg: "bg-blue-50", text: "text-blue-800" },
+  CHALLENGE: { border: "border-amber-200", bg: "bg-amber-50", text: "text-amber-800" },
+};
+
+const urgencyTone: Record<string, { label: string; badge: string }> = {
+  NOW: { label: "지금 지원", badge: "bg-green-100 text-green-700" },
+  PREPARE: { label: "보완 후 지원", badge: "bg-blue-100 text-blue-700" },
+  HOLD: { label: "우선 보류", badge: "bg-slate-100 text-slate-600" },
+};
+
+const riskTone: Record<string, { border: string; bg: string; text: string }> = {
+  HIGH: { border: "border-red-200", bg: "bg-red-50", text: "text-red-800" },
+  MEDIUM: { border: "border-amber-200", bg: "bg-amber-50", text: "text-amber-800" },
+  LOW: { border: "border-slate-200", bg: "bg-slate-50", text: "text-slate-700" },
+};
+
 function formatAnalyzedAt(value: string | null) {
   if (!value) return "분석 없음";
 
@@ -52,6 +79,7 @@ export function AnalysisPage() {
   const [error, setError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [refreshError, setRefreshError] = useState<string | null>(null);
+  const [selectedTone, setSelectedTone] = useState("ACTION");
   const requestedTab = searchParams.get("tab") ?? "trend";
   const activeTab: AnalysisTab = analysisTabs.some((tab) => tab.key === requestedTab) ? (requestedTab as AnalysisTab) : "trend";
   const stats = summary?.stats;
@@ -88,6 +116,21 @@ export function AnalysisPage() {
   const jobDistribution = summary?.jobDistribution ?? [];
   const answerThemes = summary?.answerThemes ?? [];
   const period = summary?.period ?? null;
+  const monthlyFitTrend = summary?.monthlyFitTrend ?? [];
+  const applicationTiers = summary?.applicationTiers ?? [];
+  const skillFitAverages = summary?.skillFitAverages ?? [];
+  const fitInterviewBands = (summary?.fitInterviewBands ?? []).filter((band) => band.applicationCount > 0);
+  const applicationPriorities = summary?.applicationPriorities ?? [];
+  const careerRisks = summary?.careerRisks ?? [];
+  const companyTypeFits = summary?.companyTypeFits ?? [];
+  const correctionCorrelation = summary?.correctionCorrelation ?? null;
+  const weeklyChange = summary?.weeklyChange ?? null;
+  const avoidJobTypes = summary?.avoidJobTypes ?? [];
+  const next24HourActions = summary?.next24HourActions ?? [];
+  const toneStrategies = summary?.toneStrategies ?? [];
+  const threeLineSummary = summary?.threeLineSummary ?? [];
+  // 피해야 할 공고 유형(아이디어 38): 부족 비율이 높은 역량이 "필수"인 공고는 당분간 우선순위를 낮춘다.
+  const avoidSkills = skillGapData.filter((gap) => gap.percentage >= 50).slice(0, 3);
   const topStrength = strengthTrends[0]?.skill ?? null;
   const prioritizedGaps = skillGapData.slice(0, 3);
 
@@ -491,6 +534,300 @@ export function AnalysisPage() {
                   점수 변화 그래프를 만들 분석 이력이 아직 없습니다. 지원 건별 적합도 분석을 실행하면 시간순 변화가 표시됩니다.
                 </div>
               )}
+            </CardContent>
+          </Card>
+
+          {/* 기술스택별 평균 적합도 — 어떤 기술 중심 공고에서 강하고 약한지 본다. */}
+          <Card className={`min-w-0 border border-slate-200 bg-white ${activeTab !== "weakness" ? "hidden" : ""}`}>
+            <CardHeader>
+              <CardTitle className="text-base flex items-center gap-2">
+                <BarChart3 className="size-4 text-cyan-600" />
+                기술스택별 평균 적합도
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              {skillFitAverages.length > 0 ? (
+                skillFitAverages.map((item) => (
+                  <div key={item.skill} className="space-y-1.5">
+                    <div className="flex items-center justify-between gap-2 text-sm">
+                      <span className="flex min-w-0 items-center gap-1.5 font-medium text-slate-700">
+                        <span className="truncate">{item.skill}</span>
+                        <span className={`shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-semibold ${item.mostlyMatched ? "bg-green-50 text-green-700" : "bg-red-50 text-red-600"}`}>
+                          {item.mostlyMatched ? "주로 보유" : "주로 부족"}
+                        </span>
+                      </span>
+                      <span className="shrink-0 text-xs text-slate-500">
+                        {item.analysisCount}건 · 평균 <strong className={item.averageScore >= 70 ? "text-green-600" : item.averageScore >= 50 ? "text-amber-600" : "text-red-500"}>{item.averageScore}점</strong>
+                      </span>
+                    </div>
+                    <Progress value={item.averageScore} className="h-2" />
+                  </div>
+                ))
+              ) : (
+                <div className="rounded-lg bg-slate-50 p-4 text-sm text-slate-500">
+                  기술별 비교를 만들 분석 결과가 아직 없습니다. 분석이 쌓이면 기술 중심 공고별 강약점이 표시됩니다.
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* 피해야 할 공고 유형 — 반복 부족 역량이 필수인 공고는 보완 전까지 우선순위를 낮춘다. */}
+          <CareerPlanCard hidden={activeTab !== "recommendation"} />
+
+          <Card className={`min-w-0 border border-blue-200 bg-blue-50/40 ${activeTab !== "recommendation" ? "hidden" : ""}`}>
+            <CardHeader><CardTitle className="flex items-center gap-2 text-base"><CheckCircle2 className="size-4 text-blue-600" />지원 전 24시간 액션</CardTitle></CardHeader>
+            <CardContent className="space-y-2">
+              {next24HourActions.map((action, index) => <div key={action} className="rounded-lg bg-white p-3 text-sm text-slate-700"><strong className="mr-2 text-blue-600">{index + 1}</strong>{action}</div>)}
+              {next24HourActions.length === 0 && <div className="text-sm text-slate-500">우선 지원 건과 부족 역량이 쌓이면 24시간 액션이 생성됩니다.</div>}
+            </CardContent>
+          </Card>
+
+          <Card className={`min-w-0 border border-violet-200 bg-white ${activeTab !== "recommendation" ? "hidden" : ""}`}>
+            <CardHeader><CardTitle className="flex items-center gap-2 text-base"><MessageSquare className="size-4 text-violet-600" />지원 전략 톤 조절</CardTitle></CardHeader>
+            <CardContent>
+              <div className="flex flex-wrap gap-2">
+                {toneStrategies.map((item) => <button key={item.tone} type="button" onClick={() => setSelectedTone(item.tone)} className={`rounded-full px-3 py-1 text-xs font-semibold ${selectedTone === item.tone ? "bg-violet-600 text-white" : "bg-violet-50 text-violet-700"}`}>{item.label}</button>)}
+              </div>
+              <p className="mt-3 rounded-lg bg-violet-50 p-3 text-sm leading-6 text-violet-900">{toneStrategies.find((item) => item.tone === selectedTone)?.message ?? "톤별 전략을 생성할 분석 데이터가 필요합니다."}</p>
+            </CardContent>
+          </Card>
+
+          <Card className={`min-w-0 border border-slate-200 bg-white ${activeTab !== "recommendation" ? "hidden" : ""}`}>
+            <CardHeader>
+              <CardTitle className="text-base flex items-center gap-2">
+                <Target className="size-4 text-green-600" />
+                지금 지원할 순서
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-2.5">
+              {applicationPriorities.length > 0 ? (
+                applicationPriorities.map((item, index) => {
+                  const urgency = urgencyTone[item.urgency] ?? urgencyTone.PREPARE;
+                  return (
+                    <button
+                      key={item.applicationCaseId}
+                      type="button"
+                      onClick={() => navigate(`/applications/${item.applicationCaseId}`)}
+                      className="w-full rounded-lg border border-slate-100 p-3 text-left transition-colors hover:border-green-200 hover:bg-green-50/40"
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <div className="text-sm font-bold text-slate-800">
+                            {index + 1}. {item.companyName} · {item.jobTitle}
+                          </div>
+                          <div className="mt-1 text-xs leading-5 text-slate-500">{item.reasons.join(" · ")}</div>
+                        </div>
+                        <span className={`shrink-0 rounded-full px-2 py-0.5 text-[11px] font-semibold ${urgency.badge}`}>
+                          {urgency.label}
+                        </span>
+                      </div>
+                      <div className="mt-2 flex items-center gap-2 text-xs text-slate-500">
+                        <span>적합도 {item.fitScore ?? 0}점</span>
+                        <span>·</span>
+                        <span className="font-semibold text-green-700">우선순위 {item.priorityScore}점</span>
+                      </div>
+                    </button>
+                  );
+                })
+              ) : (
+                <div className="rounded-lg bg-slate-50 p-4 text-sm text-slate-500">
+                  진행 중인 지원 건의 적합도 분석을 완료하면 지원 순서가 표시됩니다.
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          <Card className={`min-w-0 border border-slate-200 bg-white ${activeTab !== "recommendation" ? "hidden" : ""}`}>
+            <CardHeader>
+              <CardTitle className="text-base flex items-center gap-2">
+                <AlertCircle className="size-4 text-red-500" />
+                취업 준비 리스크
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-2.5">
+              {careerRisks.length > 0 ? (
+                careerRisks.map((risk) => {
+                  const tone = riskTone[risk.severity] ?? riskTone.LOW;
+                  return (
+                    <div key={risk.riskType} className={`rounded-lg border ${tone.border} ${tone.bg} p-3`}>
+                      <div className={`text-sm font-bold ${tone.text}`}>{risk.title}</div>
+                      <p className="mt-1 text-xs leading-5 text-slate-600">{risk.detail}</p>
+                      <p className={`mt-1.5 text-xs font-semibold ${tone.text}`}>다음 행동: {risk.action}</p>
+                    </div>
+                  );
+                })
+              ) : (
+                <div className="rounded-lg bg-green-50 p-4 text-sm text-green-700">
+                  현재 데이터에서 우선 경고할 준비 리스크가 없습니다.
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* 피해야 할 공고 유형 — 반복 부족 역량이 필수인 공고는 보완 전까지 우선순위를 낮춘다. */}
+          <Card className={`min-w-0 border border-slate-200 bg-white ${activeTab !== "recommendation" ? "hidden" : ""}`}>
+            <CardHeader>
+              <CardTitle className="text-base flex items-center gap-2">
+                <AlertCircle className="size-4 text-rose-500" />
+                지금은 우선순위를 낮출 공고 유형
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-2.5">
+              {(avoidJobTypes.length > 0 || avoidSkills.length > 0) ? (
+                <>
+                  {(avoidJobTypes.length > 0 ? avoidJobTypes : avoidSkills.map((gap) => `${gap.skill}을(를) 필수로 요구하는 공고 — 최근 분석의 ${gap.percentage}%에서 부족`)).map((item) => (
+                    <div key={item} className="rounded-lg border border-rose-100 bg-rose-50/60 p-3">
+                      <div className="text-sm font-semibold text-rose-800">{item}</div>
+                    </div>
+                  ))}
+                  <p className="text-xs leading-5 text-slate-500">
+                    해당 역량을 우대 조건으로만 두는 공고를 먼저 지원하고, 학습 로드맵을 완료한 뒤 재도전하세요.
+                  </p>
+                </>
+              ) : (
+                <div className="rounded-lg bg-slate-50 p-4 text-sm text-slate-500">
+                  반복적으로 발목을 잡는 부족 역량이 아직 없습니다. 분석이 쌓이면 회피·보류 기준이 표시됩니다.
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          <Card className={`min-w-0 border border-cyan-200 bg-white ${activeTab !== "trend" ? "hidden" : ""}`}>
+            <CardHeader><CardTitle className="flex items-center gap-2 text-base"><Briefcase className="size-4 text-cyan-600" />기업·산업 유형별 적합도</CardTitle></CardHeader>
+            <CardContent className="space-y-2">
+              {companyTypeFits.map((item) => <div key={item.companyType} className="rounded-lg border border-slate-100 p-3"><div className="flex justify-between text-sm"><strong>{item.companyType}</strong><span>{item.applicationCount}건 · 평균 {item.averageFitScore ?? 0}점</span></div><Progress value={item.averageFitScore ?? 0} className="mt-2 h-1.5" /></div>)}
+              {companyTypeFits.length === 0 && <div className="text-sm text-slate-500">기업 분석의 산업 정보가 쌓이면 유형별 적합도가 표시됩니다.</div>}
+            </CardContent>
+          </Card>
+
+          <Card className={`min-w-0 border border-emerald-200 bg-emerald-50/30 ${activeTab !== "trend" ? "hidden" : ""}`}>
+            <CardHeader><CardTitle className="flex items-center gap-2 text-base"><TrendingUp className="size-4 text-emerald-600" />지난주 대비 변화와 3줄 요약</CardTitle></CardHeader>
+            <CardContent className="space-y-2">
+              <p className="rounded-lg bg-white p-3 text-sm font-semibold text-emerald-800">{weeklyChange?.summary ?? "비교할 주간 데이터가 아직 없습니다."}</p>
+              {threeLineSummary.map((line) => <div key={line} className="text-sm text-slate-700">• {line}</div>)}
+            </CardContent>
+          </Card>
+
+          <Card className={`min-w-0 border border-purple-200 bg-white ${activeTab !== "score" ? "hidden" : ""}`}>
+            <CardHeader><CardTitle className="flex items-center gap-2 text-base"><MessageSquare className="size-4 text-purple-600" />답변 첨삭 완료와 적합도 상관</CardTitle></CardHeader>
+            <CardContent>
+              {correctionCorrelation && (correctionCorrelation.correctedApplications > 0 || correctionCorrelation.uncorrectedApplications > 0) ? (
+                <div className="grid gap-3 sm:grid-cols-2"><div className="rounded-lg bg-purple-50 p-3 text-sm"><strong>첨삭 완료 지원 건</strong><div className="mt-1 text-2xl font-black text-purple-700">{correctionCorrelation.correctedAverageFitScore ?? 0}점</div><span className="text-xs text-slate-500">{correctionCorrelation.correctedApplications}건</span></div><div className="rounded-lg bg-slate-50 p-3 text-sm"><strong>미완료 지원 건</strong><div className="mt-1 text-2xl font-black text-slate-700">{correctionCorrelation.uncorrectedAverageFitScore ?? 0}점</div><span className="text-xs text-slate-500">{correctionCorrelation.uncorrectedApplications}건 · 차이 {correctionCorrelation.scoreDelta ?? 0}점</span></div></div>
+              ) : <div className="text-sm text-slate-500">개선 답변이 저장되면 적합도와의 상관을 비교합니다.</div>}
+            </CardContent>
+          </Card>
+
+          {/* 적합도-면접 상관 — 적합도 구간별 면접 평균 점수(면접 진행 건만). */}
+          <Card className={`min-w-0 border border-slate-200 bg-white ${activeTab !== "score" ? "hidden" : ""}`}>
+            <CardHeader>
+              <CardTitle className="text-base flex items-center gap-2">
+                <MessageSquare className="size-4 text-indigo-600" />
+                적합도 구간별 면접 평균
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-2.5">
+              {fitInterviewBands.length > 0 ? (
+                fitInterviewBands.map((band) => (
+                  <div key={band.band} className="rounded-lg border border-slate-100 p-3">
+                    <div className="flex items-center justify-between gap-2 text-sm">
+                      <span className="font-semibold text-slate-800">{band.label}</span>
+                      <span className="text-xs text-slate-400">지원 {band.applicationCount}건</span>
+                    </div>
+                    <div className="mt-1 flex items-center gap-4 text-xs text-slate-600">
+                      <span>적합도 평균 <strong>{band.averageFitScore ?? 0}점</strong></span>
+                      <span>면접 평균 <strong className="text-indigo-600">{band.averageInterviewScore ?? 0}점</strong></span>
+                    </div>
+                  </div>
+                ))
+              ) : (
+                <div className="rounded-lg bg-slate-50 p-4 text-sm text-slate-500">
+                  적합도와 면접 점수를 함께 비교할 데이터가 아직 없습니다. 모의면접을 진행하면 구간별 상관이 표시됩니다.
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* 월별 평균 적합도 변화 — 준비도의 장기 흐름을 월 단위로 본다. */}
+          <Card className={`min-w-0 border border-slate-200 bg-white ${activeTab !== "score" ? "hidden" : ""}`}>
+            <CardHeader>
+              <CardTitle className="text-base flex items-center gap-2">
+                <TrendingUp className="size-4 text-blue-600" />
+                월별 평균 적합도
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              {monthlyFitTrend.length > 0 ? (
+                <div className="flex items-end gap-3 h-36 pt-2">
+                  {monthlyFitTrend.map((point, index) => (
+                    <div key={point.month} className="flex-1 flex flex-col items-center gap-1">
+                      <div className="text-xs font-black text-slate-700">{point.averageScore}</div>
+                      <div
+                        className={`w-full rounded-t-lg transition-all ${index === monthlyFitTrend.length - 1 ? "bg-green-600" : "bg-green-200"}`}
+                        style={{ height: `${Math.max(8, point.averageScore)}px` }}
+                      />
+                      <div className="text-[10px] text-slate-400 text-center whitespace-nowrap">{formatMonthLabel(point.month)}</div>
+                      <div className="text-[9px] text-slate-300">{point.analysisCount}건</div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="rounded-lg bg-slate-50 p-4 text-sm text-slate-500">
+                  월별 변화를 계산할 분석 이력이 아직 없습니다. 분석이 쌓이면 월 단위 평균 점수 흐름이 표시됩니다.
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* 상향/적정/안전 지원 분류 — 적합도 점수 기준의 지원 포트폴리오 점검. */}
+          <Card className={`min-w-0 border border-slate-200 bg-white lg:col-span-2 ${activeTab !== "trend" ? "hidden" : ""}`}>
+            <CardHeader>
+              <CardTitle className="text-base flex items-center gap-2">
+                <Target className="size-4 text-emerald-600" />
+                지원 분류 (안전 · 적정 · 상향)
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="grid gap-4 md:grid-cols-3">
+                {applicationTiers.map((tier) => {
+                  const tone = tierTone[tier.tier] ?? tierTone.MATCH;
+                  return (
+                    <div key={tier.tier} className={`rounded-xl border ${tone.border} ${tone.bg} p-4`}>
+                      <div className={`flex items-center justify-between text-sm font-bold ${tone.text}`}>
+                        {tier.label}
+                        <span className="text-lg font-black">{tier.items.length}건</span>
+                      </div>
+                      <p className="mt-1 text-xs leading-5 text-slate-500">{tier.description}</p>
+                      <div className="mt-3 space-y-1.5">
+                        {tier.items.length > 0 ? (
+                          tier.items.slice(0, 4).map((item) => (
+                            <button
+                              key={item.applicationCaseId}
+                              type="button"
+                              onClick={() => navigate(`/applications/${item.applicationCaseId}`)}
+                              className="flex w-full items-center justify-between gap-2 rounded-lg bg-white/80 px-2.5 py-1.5 text-left text-xs transition-colors hover:bg-white"
+                            >
+                              <span className="min-w-0 truncate font-medium text-slate-700">
+                                {item.companyName} · {item.jobTitle}
+                              </span>
+                              <span className="shrink-0 font-black text-slate-600">{item.fitScore ?? 0}점</span>
+                            </button>
+                          ))
+                        ) : (
+                          <div className="rounded-lg bg-white/60 px-2.5 py-1.5 text-xs text-slate-400">해당 지원 건 없음</div>
+                        )}
+                        {tier.items.length > 4 && (
+                          <div className="text-[11px] text-slate-400">외 {tier.items.length - 4}건</div>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+                {applicationTiers.length === 0 && (
+                  <div className="rounded-lg bg-slate-50 p-4 text-sm text-slate-500 md:col-span-3">
+                    적합도 분석이 쌓이면 지원 건이 안전/적정/상향으로 분류되어 지원 우선순위를 정하는 기준이 됩니다.
+                  </div>
+                )}
+              </div>
             </CardContent>
           </Card>
 

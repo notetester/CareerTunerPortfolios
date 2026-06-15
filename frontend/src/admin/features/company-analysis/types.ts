@@ -1,8 +1,37 @@
+export interface AdminCompanyAnalysisQueryParams {
+  keyword?: string | null;
+  sourceType?: string | null;
+  industry?: string | null;
+  confirmed?: boolean | null;
+  hasMemo?: boolean | null;
+  checked?: boolean | null;
+  refreshDue?: boolean | null;
+  applicationCaseId?: number | null;
+  userId?: number | null;
+  createdFrom?: string | null;
+  createdTo?: string | null;
+  sort?: string | null;
+  limit?: number | null;
+  offset?: number | null;
+}
+
+export interface AdminCompanyAnalysisSummaryResponse {
+  totalCount: number;
+  confirmedCount: number;
+  unconfirmedCount: number;
+  refreshDueCount: number;
+  missingSourceCount: number;
+  checkedCount: number;
+  memoCount: number;
+}
+
 export interface AdminCompanyAnalysisRow {
   id: number;
   applicationCaseId: number;
   jobPostingId: number | null;
   jobPostingRevision: number | null;
+  latestJobPostingRevision: number | null;
+  staleAgainstLatestPosting: boolean;
   userId: number;
   userEmail: string;
   companyName: string;

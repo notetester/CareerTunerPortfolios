@@ -208,6 +208,32 @@ CREATE TABLE IF NOT EXISTS job_posting (
     CONSTRAINT fk_job_posting_case FOREIGN KEY (application_case_id) REFERENCES application_case (id) ON DELETE CASCADE
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci;
 
+CREATE TABLE IF NOT EXISTS application_case_extraction (
+    id                  BIGINT NOT NULL AUTO_INCREMENT,
+    application_case_id BIGINT NOT NULL,
+    job_posting_id      BIGINT NULL,
+    user_id             BIGINT NOT NULL,
+    source_type         VARCHAR(20) NOT NULL,
+    status              VARCHAR(20) NOT NULL DEFAULT 'QUEUED',
+    active_status_marker TINYINT GENERATED ALWAYS AS (
+        CASE WHEN status IN ('QUEUED', 'RUNNING') THEN 1 ELSE NULL END
+    ) STORED,
+    error_message       VARCHAR(1000) NULL,
+    started_at          DATETIME NULL,
+    finished_at         DATETIME NULL,
+    created_at          DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at          DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    PRIMARY KEY (id),
+    KEY idx_case_extraction_user_status (user_id, status, created_at, id),
+    KEY idx_case_extraction_case_latest (application_case_id, created_at, id),
+    KEY idx_case_extraction_job_posting (job_posting_id),
+    UNIQUE KEY uk_case_extraction_active (application_case_id, active_status_marker),
+    CONSTRAINT chk_case_extraction_status CHECK (status IN ('QUEUED', 'RUNNING', 'SUCCEEDED', 'FAILED')),
+    CONSTRAINT fk_case_extraction_case FOREIGN KEY (application_case_id) REFERENCES application_case (id) ON DELETE CASCADE,
+    CONSTRAINT fk_case_extraction_job_posting FOREIGN KEY (job_posting_id) REFERENCES job_posting (id) ON DELETE SET NULL,
+    CONSTRAINT fk_case_extraction_user FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci;
+
 CREATE TABLE IF NOT EXISTS job_analysis (
     id                  BIGINT NOT NULL AUTO_INCREMENT,
     application_case_id BIGINT NOT NULL,
@@ -287,7 +313,11 @@ CREATE TABLE IF NOT EXISTS fit_analysis (
     gap_recommendations      JSON NULL,                     -- 필수 미충족/우대 보완/장기 성장 분류
     certificate_recommendations JSON NULL,                  -- 자격증 우선순위와 추천 이유
     strategy_actions         JSON NULL,                     -- 지원/보완/다음 준비 과제
+    condition_matrix         JSON NULL,                     -- 요구조건-스펙 비교 매트릭스(조건/유형/판정/근거)
+    analysis_confidence      JSON NULL,                     -- 분석 신뢰도(level/입력 부족 사유)
+    apply_decision           JSON NULL,                     -- 지원 판단 카드(APPLY/COMPLEMENT/HOLD + 이유·행동)
     model                    VARCHAR(80) NULL,
+    prompt_version           VARCHAR(30) NULL,
     status                   VARCHAR(20) NOT NULL DEFAULT 'SUCCESS',
     error_message            VARCHAR(1000) NULL,
     created_at               DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -340,6 +370,7 @@ CREATE TABLE IF NOT EXISTS career_analysis_run (
     input_fingerprint VARCHAR(64) NULL,                    -- C 캐시 키: 입력이 동일하면 저장 결과 재사용(매 조회 AI 재실행 방지)
     result          JSON NULL,
     model           VARCHAR(80) NULL,
+    prompt_version  VARCHAR(30) NULL,
     input_tokens    INT NOT NULL DEFAULT 0,
     output_tokens   INT NOT NULL DEFAULT 0,
     token_usage     INT NOT NULL DEFAULT 0,
@@ -385,6 +416,64 @@ CREATE TABLE IF NOT EXISTS dashboard_todo (
     UNIQUE KEY uk_dashboard_todo_derived (user_id, derived_key),
     KEY idx_dashboard_todo_user (user_id, created_at),
     CONSTRAINT fk_dashboard_todo_user FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci;
+
+-- C 고도화 정규화 테이블은 운영 DB 점진 적용을 위해 patches/20260612_c_strategy_tables.sql 과 동일하게 관리한다.
+CREATE TABLE IF NOT EXISTS fit_analysis_history (
+    id BIGINT NOT NULL AUTO_INCREMENT, fit_analysis_id BIGINT NOT NULL, application_case_id BIGINT NOT NULL,
+    previous_score INT NULL, new_score INT NULL, diff_summary JSON NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, PRIMARY KEY (id),
+    UNIQUE KEY uk_fit_analysis_history_analysis (fit_analysis_id), KEY idx_fit_analysis_history_case (application_case_id, created_at),
+    CONSTRAINT fk_fit_analysis_history_analysis FOREIGN KEY (fit_analysis_id) REFERENCES fit_analysis (id) ON DELETE CASCADE,
+    CONSTRAINT fk_fit_analysis_history_case FOREIGN KEY (application_case_id) REFERENCES application_case (id) ON DELETE CASCADE
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci;
+
+CREATE TABLE IF NOT EXISTS fit_analysis_condition_match (
+    id BIGINT NOT NULL AUTO_INCREMENT, fit_analysis_id BIGINT NOT NULL, condition_text VARCHAR(500) NOT NULL,
+    condition_type VARCHAR(20) NOT NULL, match_status VARCHAR(20) NOT NULL, evidence VARCHAR(1000) NULL,
+    severity VARCHAR(20) NOT NULL DEFAULT 'MEDIUM', sort_order INT NOT NULL DEFAULT 0, PRIMARY KEY (id),
+    KEY idx_fit_condition_analysis (fit_analysis_id, sort_order),
+    CONSTRAINT fk_fit_condition_analysis FOREIGN KEY (fit_analysis_id) REFERENCES fit_analysis (id) ON DELETE CASCADE
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci;
+
+CREATE TABLE IF NOT EXISTS career_goal (
+    id BIGINT NOT NULL AUTO_INCREMENT, user_id BIGINT NOT NULL, target_job VARCHAR(255) NULL,
+    target_period VARCHAR(100) NULL, priority_skill VARCHAR(255) NULL, preferred_company_type VARCHAR(255) NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    PRIMARY KEY (id), UNIQUE KEY uk_career_goal_user (user_id),
+    CONSTRAINT fk_career_goal_user FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci;
+
+CREATE TABLE IF NOT EXISTS learning_plan (
+    id BIGINT NOT NULL AUTO_INCREMENT, user_id BIGINT NOT NULL, title VARCHAR(500) NOT NULL, target_skill VARCHAR(255) NOT NULL,
+    start_date DATE NULL, end_date DATE NULL, status VARCHAR(20) NOT NULL DEFAULT 'ACTIVE',
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    PRIMARY KEY (id), KEY idx_learning_plan_user (user_id, status, created_at),
+    CONSTRAINT fk_learning_plan_user FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci;
+
+CREATE TABLE IF NOT EXISTS learning_plan_task (
+    id BIGINT NOT NULL AUTO_INCREMENT, learning_plan_id BIGINT NOT NULL, task VARCHAR(1000) NOT NULL,
+    done TINYINT(1) NOT NULL DEFAULT 0, sort_order INT NOT NULL DEFAULT 0, completed_at DATETIME NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    PRIMARY KEY (id), KEY idx_learning_plan_task_plan (learning_plan_id, sort_order),
+    CONSTRAINT fk_learning_plan_task_plan FOREIGN KEY (learning_plan_id) REFERENCES learning_plan (id) ON DELETE CASCADE
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci;
+
+CREATE TABLE IF NOT EXISTS dashboard_insight (
+    id BIGINT NOT NULL AUTO_INCREMENT, user_id BIGINT NOT NULL, career_analysis_run_id BIGINT NULL, summary MEDIUMTEXT NOT NULL,
+    status VARCHAR(20) NOT NULL, model VARCHAR(80) NULL, token_usage INT NOT NULL DEFAULT 0,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, PRIMARY KEY (id), KEY idx_dashboard_insight_user (user_id, created_at),
+    CONSTRAINT fk_dashboard_insight_user FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE,
+    CONSTRAINT fk_dashboard_insight_run FOREIGN KEY (career_analysis_run_id) REFERENCES career_analysis_run (id) ON DELETE SET NULL
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci;
+
+CREATE TABLE IF NOT EXISTS analysis_quality_flag (
+    id BIGINT NOT NULL AUTO_INCREMENT, target_type VARCHAR(40) NOT NULL, target_id BIGINT NOT NULL,
+    flag_type VARCHAR(50) NOT NULL, severity VARCHAR(20) NOT NULL, memo VARCHAR(2000) NULL, resolved TINYINT(1) NOT NULL DEFAULT 0,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    PRIMARY KEY (id), UNIQUE KEY uk_analysis_quality_target_flag (target_type, target_id, flag_type),
+    KEY idx_analysis_quality_resolved (resolved, severity, created_at)
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci;
 
 -- =====================================================================
@@ -440,10 +529,12 @@ CREATE TABLE IF NOT EXISTS interview_agent_step (
     interview_session_id BIGINT NOT NULL,
     question_id          BIGINT NULL,
     step_no              INT NOT NULL DEFAULT 0,
-    agent                VARCHAR(30) NOT NULL,               -- PLANNER/EVALUATOR/CRITIC/PROBER/REPORTER/ORCHESTRATOR
+    agent                VARCHAR(30) NOT NULL,               -- PLANNER/EVALUATOR/CRITIC/PROBER/REPORTER/RETRIEVER/ORCHESTRATOR
     action               VARCHAR(60) NULL,
+    status               VARCHAR(12) NULL,                   -- DONE/FAILED (running 은 프런트 표현)
     summary              MEDIUMTEXT NULL,                    -- 사람이 읽는 한 줄 요약
     detail               JSON NULL,                          -- 구조화 입출력
+    elapsed_ms           INT NULL,                           -- 단계 소요 시간(ms)
     created_at           DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (id),
     KEY idx_agent_step_session (interview_session_id),

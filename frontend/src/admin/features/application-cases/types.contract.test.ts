@@ -1,4 +1,32 @@
-import type { AdminApplicationCaseDetail, AdminApplicationCaseRow } from "./types";
+import type {
+  AdminApplicationCaseDetail,
+  AdminApplicationCaseQueryParams,
+  AdminApplicationCaseRow,
+  AdminApplicationCaseSummaryResponse,
+} from "./types";
+
+const applicationCaseQueryParams: AdminApplicationCaseQueryParams = {
+  keyword: "Frontend",
+  status: "READY",
+  includeArchived: false,
+  includeDeleted: false,
+  sourceType: "TEXT",
+  favorite: true,
+  createdFrom: "2026-06-01",
+  createdTo: "2026-06-30",
+  deadlineFrom: "2026-06-15",
+  deadlineTo: "2026-07-15",
+  analysisState: "MISSING_ANY",
+  sort: "updatedAt_desc",
+  limit: 20,
+  offset: 0,
+};
+
+const blankApplicationCaseQueryParams: AdminApplicationCaseQueryParams = {
+  keyword: "   ",
+  status: "",
+  limit: undefined,
+};
 
 const applicationCaseRow: AdminApplicationCaseRow = {
   id: 1,
@@ -69,4 +97,21 @@ const applicationCaseDetail: AdminApplicationCaseDetail = {
   usageLogs: [],
 };
 
+const applicationCaseSummary: AdminApplicationCaseSummaryResponse = {
+  totalCount: 10,
+  draftCount: 1,
+  analyzingCount: 2,
+  readyCount: 4,
+  appliedCount: 2,
+  closedCount: 1,
+  missingJobAnalysisCount: 3,
+  missingCompanyAnalysisCount: 4,
+  missingAnyAnalysisCount: 5,
+  completeAnalysisCount: 5,
+  failedUsageCount: 2,
+};
+
+void applicationCaseQueryParams;
+void blankApplicationCaseQueryParams;
 void applicationCaseDetail;
+void applicationCaseSummary;

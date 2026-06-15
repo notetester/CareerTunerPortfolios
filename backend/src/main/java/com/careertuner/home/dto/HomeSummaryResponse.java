@@ -19,6 +19,8 @@ public record HomeSummaryResponse(
         String aiSummary,
         List<DashboardApplicationResponse> recentApplications,
         List<DashboardTodoResponse> nextActions,
-        List<DashboardActivityResponse> recentActivities
+        List<DashboardActivityResponse> recentActivities,
+        // 시작 준비(온보딩) 진행률: 핵심 흐름 단계별 완료 여부.
+        List<HomeOnboardingStepResponse> onboardingSteps
 ) {
 }

@@ -3,6 +3,37 @@ import type { CompanyAnalysis, JobAnalysis } from "@/features/applications/types
 import type { JobPosting } from "@/features/applications/types/jobPosting";
 import type { ApplicationSourceType, ApplicationStatus } from "@/features/applications/types/applicationCase";
 
+export interface AdminApplicationCaseQueryParams {
+  keyword?: string | null;
+  status?: string | null;
+  includeArchived?: boolean | null;
+  includeDeleted?: boolean | null;
+  sourceType?: string | null;
+  favorite?: boolean | null;
+  createdFrom?: string | null;
+  createdTo?: string | null;
+  deadlineFrom?: string | null;
+  deadlineTo?: string | null;
+  analysisState?: string | null;
+  sort?: string | null;
+  limit?: number | null;
+  offset?: number | null;
+}
+
+export interface AdminApplicationCaseSummaryResponse {
+  totalCount: number;
+  draftCount: number;
+  analyzingCount: number;
+  readyCount: number;
+  appliedCount: number;
+  closedCount: number;
+  missingJobAnalysisCount: number;
+  missingCompanyAnalysisCount: number;
+  missingAnyAnalysisCount: number;
+  completeAnalysisCount: number;
+  failedUsageCount: number;
+}
+
 export interface AdminApplicationCaseRow {
   id: number;
   userId: number;

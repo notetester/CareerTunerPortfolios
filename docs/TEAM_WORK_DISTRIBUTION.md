@@ -612,6 +612,9 @@ frontend/src/features/applications/components/StrategyPanel.tsx
 frontend/src/features/applications/components/LearningRecommendationPanel.tsx
 ```
 
+위 컴포넌트의 재분석 버튼·이력 패널 연결을 위해 `ApplicationDetailPage.tsx`에 전달 속성이나 배치 코드를 추가할 수 있다.
+단, 지원 건 상세 셸, 공고 저장·업로드, 공고/기업 분석 탭 자체의 동작은 B 소유이므로 해당 로직을 변경할 때는 B와 합의한다.
+
 홈은 공개 진입점이지만 기본 대시보드, 준비 현황 요약, 최근 분석 결과 진입을 포함하므로 C가 담당한다.
 
 ### 주요 DB

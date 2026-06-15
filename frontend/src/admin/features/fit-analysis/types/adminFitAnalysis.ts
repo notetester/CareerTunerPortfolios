@@ -11,11 +11,14 @@ export interface AdminFitAnalysisListItem {
   matchedSkills: string[];
   missingSkills: string[];
   model: string | null;
+  promptVersion: string | null;
   status: string;
   errorMessage: string | null;
   createdAt: string;
   memoCount: number;
   latestMemoAt: string | null;
+  /** REANALYSIS 운영 메모 보유 여부(재분석 요청 상태). */
+  reanalysisRequested: boolean;
 }
 
 export interface AdminFitAnalysisMemo {
@@ -64,7 +67,11 @@ export interface AdminFitAnalysisDetail {
   gapRecommendations: string | null;
   certificateRecommendations: string | null;
   strategyActions: string[];
+  conditionMatrix: string | null;
+  analysisConfidence: string | null;
+  applyDecision: string | null;
   model: string | null;
+  promptVersion: string | null;
   status: string;
   errorMessage: string | null;
   createdAt: string;

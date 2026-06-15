@@ -21,6 +21,7 @@ public class AnalysisSource {
     private String status;
     private boolean favorite;
     private LocalDateTime applicationUpdatedAt;
+    private String companyIndustry;
 
     private Long fitAnalysisId;
     private Integer fitScore;
@@ -32,7 +33,10 @@ public class AnalysisSource {
     private LocalDateTime analyzedAt;
 
     private int interviewCount;
+    private int scoredInterviewCount;
     private Integer averageInterviewScore;
     private int interviewAnswerCount;
+    private int scoredInterviewAnswerCount;
     private Integer averageInterviewAnswerScore;
+    private int correctedAnswerCount;
 }

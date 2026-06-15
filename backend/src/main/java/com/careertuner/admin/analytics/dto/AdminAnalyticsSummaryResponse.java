@@ -9,6 +9,7 @@ public record AdminAnalyticsSummaryResponse(
         List<AdminSkillGapResponse> skillGaps,
         List<AdminFitScoreBandResponse> fitScoreBands,
         List<AdminRecentAnalysisResponse> recentAnalyses,
-        List<AdminDailyUsageResponse> dailyUsage
+        List<AdminDailyUsageResponse> dailyUsage,
+        List<AdminPromptPerformanceResponse> promptPerformance
 ) {
 }

@@ -6,6 +6,7 @@ import {
   Briefcase,
   CalendarDays,
   FileText,
+  Loader2,
   Plus,
   RefreshCw,
   Search,
@@ -34,6 +35,10 @@ import {
   APPLICATION_STATUS_OPTIONS,
   getApplicationSourceLabel,
 } from "../types/applicationCase";
+import { ApplicationExtractionBadge } from "../components/ApplicationExtractionBadge";
+import { useApplicationCaseExtractions } from "../hooks/useApplicationCaseExtractions";
+import type { ApplicationCaseExtraction } from "../types/applicationCase";
+import { formatKoreaDate } from "../utils/dateFormat";
 
 type ListMode = "active" | "trash";
 type StatusFilter = "ALL" | ApplicationStatus;
@@ -58,8 +63,7 @@ const sortOptions: { value: SortOption; label: string }[] = [
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 function formatDate(value: string | null, emptyLabel = "미입력"): string {
-  if (!value) return emptyLabel;
-  return new Intl.DateTimeFormat("ko-KR", { dateStyle: "medium" }).format(new Date(value));
+  return formatKoreaDate(value, emptyLabel);
 }
 
 function toDateOnlyTime(value: string | null): number | null {
@@ -92,16 +96,22 @@ function compareDeadline(a: ApplicationCase, b: ApplicationCase, direction: "asc
 
 function ApplicationCard({
   applicationCase,
+  extraction,
   busy,
+  retryingExtraction,
   mode,
   onToggleFavorite,
   onRestore,
+  onRetryExtraction,
 }: {
   applicationCase: ApplicationCase;
+  extraction: ApplicationCaseExtraction | null | undefined;
   busy: boolean;
+  retryingExtraction: boolean;
   mode: ListMode;
   onToggleFavorite(applicationCase: ApplicationCase): void;
   onRestore(applicationCase: ApplicationCase): void;
+  onRetryExtraction(applicationCase: ApplicationCase): void;
 }) {
   const isTrash = mode === "trash";
   const title = (
@@ -154,6 +164,7 @@ function ApplicationCard({
 
         <div className="flex flex-wrap gap-2">
           <ApplicationStatusBadge status={applicationCase.status} />
+          <ApplicationExtractionBadge extraction={extraction} />
           <Badge variant="outline" className="border-slate-200 bg-slate-50 text-slate-600">
             {getApplicationSourceLabel(applicationCase.sourceType)}
           </Badge>
@@ -164,25 +175,39 @@ function ApplicationCard({
           )}
           {isTrash && (
             <Badge variant="outline" className="border-red-200 bg-red-50 text-red-700">
-              삭제됨
+              삭제함
             </Badge>
           )}
         </div>
+
+        {!isTrash && extraction?.status === "FAILED" && (
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            className="w-fit border-red-200 text-red-700 hover:bg-red-50 hover:text-red-800"
+            disabled={busy || retryingExtraction}
+            onClick={() => onRetryExtraction(applicationCase)}
+          >
+            {retryingExtraction ? <Loader2 className="size-4 animate-spin" /> : <RefreshCw className="size-4" />}
+            다시 추출
+          </Button>
+        )}
 
         <div className="mt-auto flex items-end justify-between gap-3 border-t border-slate-100 pt-3 text-xs text-slate-500">
           <div className="min-w-0 space-y-1">
             <span className="flex items-center gap-1.5">
               <CalendarDays className="size-3.5" />
-              공고 {formatDate(applicationCase.postingDate)}
+              등록 {formatDate(applicationCase.createdAt)}
             </span>
             <span className="flex items-center gap-1.5">
               <CalendarDays className="size-3.5" />
-              마감 {formatDate(applicationCase.deadlineDate)}
+              마감 {formatDate(applicationCase.deadlineDate, "마감일 없음/상시채용")}
             </span>
             {isTrash && (
               <span className="flex items-center gap-1.5 text-red-600">
                 <Trash2 className="size-3.5" />
-                삭제 {formatDate(applicationCase.deletedAt)}
+                삭제함 이동 {formatDate(applicationCase.deletedAt)}
               </span>
             )}
           </div>
@@ -206,9 +231,20 @@ export function ApplicationListPage({ mode = "active" }: { mode?: ListMode }) {
     isAuthenticated,
     isTrash ? { view: "DELETED" } : includeArchived,
   );
+  const applicationCaseIds = useMemo(
+    () => applicationCases.map((item) => item.id),
+    [applicationCases],
+  );
+  const {
+    extractions,
+    retryingId: retryingExtractionId,
+    error: extractionError,
+    retry: retryExtraction,
+  } = useApplicationCaseExtractions(applicationCaseIds, isAuthenticated && !isTrash);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("ALL");
   const [deadlineFilter, setDeadlineFilter] = useState<DeadlineFilter>("ALL");
+  const [favoriteOnly, setFavoriteOnly] = useState(false);
   const [sortOption, setSortOption] = useState<SortOption>("CREATED_DESC");
   const [busyId, setBusyId] = useState<number | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
@@ -233,7 +269,8 @@ export function ApplicationListPage({ mode = "active" }: { mode?: ListMode }) {
         (deadlineFilter === "WITHIN_7_DAYS" && deadlineTime !== null && deadlineTime >= todayTime && deadlineTime <= sevenDaysLater) ||
         (deadlineFilter === "WITHIN_30_DAYS" && deadlineTime !== null && deadlineTime >= todayTime && deadlineTime <= thirtyDaysLater) ||
         (deadlineFilter === "NO_DEADLINE" && deadlineTime === null);
-      return matchKeyword && matchStatus && matchDeadline;
+      const matchFavorite = !favoriteOnly || item.favorite;
+      return matchKeyword && matchStatus && matchDeadline && matchFavorite;
     });
 
     return nextItems.sort((a, b) => {
@@ -242,9 +279,9 @@ export function ApplicationListPage({ mode = "active" }: { mode?: ListMode }) {
       if (sortOption === "UPDATED_DESC") return compareRecent(a, b, "updatedAt");
       return compareRecent(a, b, "createdAt");
     });
-  }, [applicationCases, deadlineFilter, search, sortOption, statusFilter]);
+  }, [applicationCases, deadlineFilter, favoriteOnly, search, sortOption, statusFilter]);
 
-  const hasActiveFilter = search.trim() !== "" || statusFilter !== "ALL" || deadlineFilter !== "ALL";
+  const hasActiveFilter = search.trim() !== "" || statusFilter !== "ALL" || deadlineFilter !== "ALL" || favoriteOnly;
 
   const summary = useMemo(
     () => ({
@@ -311,10 +348,10 @@ export function ApplicationListPage({ mode = "active" }: { mode?: ListMode }) {
           <div>
             <h1 className="flex items-center gap-2 text-2xl font-bold text-slate-950">
               {isTrash ? <Trash2 className="size-6 text-red-600" /> : <Briefcase className="size-6 text-blue-600" />}
-              {isTrash ? "삭제된 지원 건" : "지원 건 관리"}
+              {isTrash ? "삭제함" : "지원 건 관리"}
             </h1>
             <p className="mt-1 text-sm text-slate-500">
-              {isTrash ? "삭제된 지원 건을 확인하고 활성 목록으로 복원합니다." : "기업과 직무별 지원 준비 단위를 관리합니다."}
+              {isTrash ? "삭제함으로 이동한 지원 건을 확인하고 활성 목록으로 복원합니다. 이동 후 30일이 지나면 삭제함 목록에서 숨겨집니다." : "기업과 직무별 지원 준비 단위를 관리합니다."}
             </p>
           </div>
           <div className="flex flex-col gap-2 sm:flex-row">
@@ -333,7 +370,7 @@ export function ApplicationListPage({ mode = "active" }: { mode?: ListMode }) {
 
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
           {[
-            { label: isTrash ? "삭제됨" : "전체", value: summary.total, icon: isTrash ? Trash2 : Briefcase },
+            { label: isTrash ? "삭제함" : "전체", value: summary.total, icon: isTrash ? Trash2 : Briefcase },
             { label: "준비중", value: summary.ready, icon: FileText },
             { label: "분석중", value: summary.analyzing, icon: RefreshCw },
             { label: "즐겨찾기", value: summary.favorite, icon: Star },
@@ -375,72 +412,83 @@ export function ApplicationListPage({ mode = "active" }: { mode?: ListMode }) {
                   </SelectContent>
                 </Select>
                 {!isTrash && (
-                  <label className="flex items-center gap-2 rounded-md bg-slate-100 px-3 py-2 text-xs font-semibold text-slate-600">
-                    <Checkbox
-                      checked={includeArchived}
-                      onCheckedChange={(checked) => setIncludeArchived(Boolean(checked))}
-                    />
-                    보관 포함
-                  </label>
+                  <>
+                    <label className="flex items-center gap-2 rounded-md bg-slate-100 px-3 py-2 text-xs font-semibold text-slate-600">
+                      <Checkbox
+                        checked={includeArchived}
+                        onCheckedChange={(checked) => setIncludeArchived(Boolean(checked))}
+                      />
+                      보관 포함
+                    </label>
+                    <label className="flex items-center gap-2 rounded-md bg-slate-100 px-3 py-2 text-xs font-semibold text-slate-600">
+                      <Checkbox
+                        checked={favoriteOnly}
+                        onCheckedChange={(checked) => setFavoriteOnly(Boolean(checked))}
+                      />
+                      즐겨찾기만
+                    </label>
+                  </>
                 )}
               </div>
             </div>
 
-            <div className="flex flex-wrap gap-2">
-              <span className="flex items-center gap-2 rounded-md bg-slate-100 px-3 py-2 text-xs font-semibold text-slate-600">
-                상태
-              </span>
-              <button
-                type="button"
-                className={`rounded-md px-3 py-2 text-xs font-semibold ${
-                  statusFilter === "ALL" ? "bg-slate-900 text-white" : "bg-slate-100 text-slate-600 hover:bg-slate-200"
-                }`}
-                onClick={() => setStatusFilter("ALL")}
-              >
-                전체
-              </button>
-              {APPLICATION_STATUS_OPTIONS.map((option) => (
+            <div className="flex flex-wrap items-center gap-x-6 gap-y-2">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="flex items-center gap-2 rounded-md bg-slate-100 px-3 py-2 text-xs font-semibold text-slate-600">
+                  상태
+                </span>
                 <button
                   type="button"
-                  key={option.value}
                   className={`rounded-md px-3 py-2 text-xs font-semibold ${
-                    statusFilter === option.value
-                      ? "bg-slate-900 text-white"
-                      : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                    statusFilter === "ALL" ? "bg-slate-900 text-white" : "bg-slate-100 text-slate-600 hover:bg-slate-200"
                   }`}
-                  onClick={() => setStatusFilter(option.value)}
+                  onClick={() => setStatusFilter("ALL")}
                 >
-                  {option.label}
+                  전체
                 </button>
-              ))}
-            </div>
+                {APPLICATION_STATUS_OPTIONS.map((option) => (
+                  <button
+                    type="button"
+                    key={option.value}
+                    className={`rounded-md px-3 py-2 text-xs font-semibold ${
+                      statusFilter === option.value
+                        ? "bg-slate-900 text-white"
+                        : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                    }`}
+                    onClick={() => setStatusFilter(option.value)}
+                  >
+                    {option.label}
+                  </button>
+                ))}
+              </div>
 
-            <div className="flex flex-wrap gap-2">
-              <span className="flex items-center gap-2 rounded-md bg-slate-100 px-3 py-2 text-xs font-semibold text-slate-600">
-                마감
-              </span>
-              {deadlineFilterOptions.map((option) => (
-                <button
-                  type="button"
-                  key={option.value}
-                  className={`rounded-md px-3 py-2 text-xs font-semibold ${
-                    deadlineFilter === option.value
-                      ? "bg-blue-600 text-white"
-                      : "bg-slate-100 text-slate-600 hover:bg-slate-200"
-                  }`}
-                  onClick={() => setDeadlineFilter(option.value)}
-                >
-                  {option.label}
-                </button>
-              ))}
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="flex items-center gap-2 rounded-md bg-slate-100 px-3 py-2 text-xs font-semibold text-slate-600">
+                  마감
+                </span>
+                {deadlineFilterOptions.map((option) => (
+                  <button
+                    type="button"
+                    key={option.value}
+                    className={`rounded-md px-3 py-2 text-xs font-semibold ${
+                      deadlineFilter === option.value
+                        ? "bg-blue-600 text-white"
+                        : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                    }`}
+                    onClick={() => setDeadlineFilter(option.value)}
+                  >
+                    {option.label}
+                  </button>
+                ))}
+              </div>
             </div>
           </CardContent>
         </Card>
 
-        {(error || actionError) && (
+        {(error || actionError || extractionError) && (
           <div className="flex items-start gap-2 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
             <AlertCircle className="mt-0.5 size-4 shrink-0" />
-            <div className="flex-1">{actionError ?? error}</div>
+            <div className="flex-1">{actionError ?? error ?? extractionError}</div>
             {error && (
               <button className="font-semibold" type="button" onClick={() => void refresh()}>
                 다시 시도
@@ -463,10 +511,10 @@ export function ApplicationListPage({ mode = "active" }: { mode?: ListMode }) {
               </div>
               <div>
                 <div className="font-semibold text-slate-900">
-                  {hasActiveFilter ? "조건에 맞는 지원 건이 없습니다" : isTrash ? "삭제된 지원 건이 없습니다" : "지원 건이 없습니다"}
+                  {hasActiveFilter ? "조건에 맞는 지원 건이 없습니다" : isTrash ? "삭제함에 지원 건이 없습니다" : "지원 건이 없습니다"}
                 </div>
                 <p className="mt-1 text-sm text-slate-500">
-                  {hasActiveFilter ? "검색어와 필터 조건을 다시 확인하세요." : isTrash ? "삭제한 지원 건이 이곳에 표시됩니다." : "새 지원 건을 만들고 공고문을 등록하세요."}
+                  {hasActiveFilter ? "검색어와 필터 조건을 다시 확인하세요." : isTrash ? "삭제함으로 이동한 지 30일 이내인 지원 건이 이곳에 표시됩니다." : "새 지원 건을 만들고 공고문을 등록하세요."}
                 </p>
               </div>
               {!isTrash && (
@@ -493,10 +541,13 @@ export function ApplicationListPage({ mode = "active" }: { mode?: ListMode }) {
               <ApplicationCard
                 key={applicationCase.id}
                 applicationCase={applicationCase}
-                busy={busyId === applicationCase.id}
+                extraction={extractions[applicationCase.id]}
+                busy={busyId === applicationCase.id || retryingExtractionId === applicationCase.id}
+                retryingExtraction={retryingExtractionId === applicationCase.id}
                 mode={mode}
                 onToggleFavorite={(item) => void handleToggleFavorite(item)}
                 onRestore={(item) => void handleRestore(item)}
+                onRetryExtraction={(item) => void retryExtraction(item.id)}
               />
             ))}
           </div>

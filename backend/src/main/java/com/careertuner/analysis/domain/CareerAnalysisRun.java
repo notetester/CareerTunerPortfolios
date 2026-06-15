@@ -21,6 +21,7 @@ public class CareerAnalysisRun {
     private String inputFingerprint;
     private String result;
     private String model;
+    private String promptVersion;
     private int inputTokens;
     private int outputTokens;
     private int tokenUsage;

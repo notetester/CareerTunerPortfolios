@@ -23,7 +23,9 @@ public interface ApplicationCaseMapper {
 
     int updateApplicationCase(ApplicationCase applicationCase);
 
-    int markAnalysisCompleted(@Param("id") Long id, @Param("userId") Long userId);
+    int updateApplicationCaseSourceType(@Param("id") Long id,
+                                        @Param("userId") Long userId,
+                                        @Param("sourceType") String sourceType);
 
     int markAnalysisStarted(@Param("id") Long id,
                             @Param("userId") Long userId,
@@ -48,10 +50,6 @@ public interface ApplicationCaseMapper {
                              @Param("previousStatus") String previousStatus,
                              @Param("newStatus") String newStatus,
                              @Param("memo") String memo);
-
-    void deleteFitAnalysesByCaseId(Long applicationCaseId);
-
-    void insertFitAnalysis(FitAnalysis fitAnalysis);
 
     FitAnalysis findLatestFitAnalysisByCaseId(Long applicationCaseId);
 

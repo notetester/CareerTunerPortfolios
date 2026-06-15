@@ -1,0 +1,80 @@
+import { useCallback, useEffect, useState } from "react";
+import {
+  getLatestApplicationCaseExtraction,
+  retryApplicationCaseExtraction,
+} from "../api/applicationCasesApi";
+import type { ApplicationCaseExtraction } from "../types/applicationCase";
+import { isApplicationCaseExtractionActive } from "../types/applicationCase";
+import { registerApplicationCaseExtraction } from "../utils/applicationExtractionTracker";
+
+const POLL_INTERVAL_MS = 3000;
+
+export function useApplicationCaseExtraction(applicationCaseId: number | null, enabled = true) {
+  const [extraction, setExtraction] = useState<ApplicationCaseExtraction | null>(null);
+  const [loading, setLoading] = useState(Boolean(applicationCaseId && enabled));
+  const [retrying, setRetrying] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const refresh = useCallback(async () => {
+    if (!applicationCaseId || !enabled) {
+      setExtraction(null);
+      setLoading(false);
+      return null;
+    }
+
+    setLoading(true);
+    setError(null);
+    try {
+      const latest = await getLatestApplicationCaseExtraction(applicationCaseId);
+      setExtraction(latest);
+      return latest;
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "공고문 추출 상태를 불러오지 못했습니다.");
+      return null;
+    } finally {
+      setLoading(false);
+    }
+  }, [applicationCaseId, enabled]);
+
+  const retry = useCallback(async () => {
+    if (!applicationCaseId) return null;
+
+    setRetrying(true);
+    setError(null);
+    try {
+      const next = await retryApplicationCaseExtraction(applicationCaseId);
+      setExtraction(next);
+      registerApplicationCaseExtraction(next);
+      return next;
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "공고문 추출을 다시 시작하지 못했습니다.");
+      return null;
+    } finally {
+      setRetrying(false);
+    }
+  }, [applicationCaseId]);
+
+  useEffect(() => {
+    void refresh();
+  }, [refresh]);
+
+  useEffect(() => {
+    if (!enabled || !extraction || !isApplicationCaseExtractionActive(extraction.status)) return;
+
+    const intervalId = window.setInterval(() => {
+      void refresh();
+    }, POLL_INTERVAL_MS);
+
+    return () => window.clearInterval(intervalId);
+  }, [enabled, extraction, refresh]);
+
+  return {
+    extraction,
+    setExtraction,
+    loading,
+    retrying,
+    error,
+    refresh,
+    retry,
+  };
+}

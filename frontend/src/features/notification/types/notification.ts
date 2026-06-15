@@ -1,4 +1,4 @@
-/* ── AI 알림 (11개) ── */
+/* ── AI 알림 (13개) ── */
 export type AINotificationType =
   | "PROFILE_ANALYZED"
   | "JOB_ANALYSIS_COMPLETE"
@@ -9,10 +9,12 @@ export type AINotificationType =
   | "INTERVIEW_REPORT_READY"
   | "CORRECTION_COMPLETE"
   | "POST_SUMMARY_READY"
+  | "JOB_POSTING_EXTRACTION_SUCCEEDED"
+  | "JOB_POSTING_EXTRACTION_FAILED"
   | "LOW_CONFIDENCE_REPORT"
   | "TICKET_DRAFT_READY";
 
-/* ── 비-AI 알림 — 사용자 (7개) ── */
+/* ── 비-AI 알림 — 사용자 (10개) ── */
 export type UserNotificationType =
   | "COMMENT"
   | "COMMENT_REPLY"
@@ -20,7 +22,11 @@ export type UserNotificationType =
   | "POST_HIDDEN"
   | "NOTICE"
   | "TICKET_ANSWERED"
-  | "CREDIT_LOW";
+  | "CREDIT_LOW"
+  // 결제/크레딧 (E 결제 흐름에서 발생, billing 카테고리)
+  | "PAYMENT_COMPLETE"
+  | "PAYMENT_SCHEDULED"
+  | "CREDIT_RECHARGED";
 
 /* ── 비-AI 알림 — 관리자 (3개) ── */
 export type AdminNotificationType =
@@ -59,7 +65,7 @@ export interface Notification {
   createdAt: string;
 }
 
-/* ── TYPE_META: type(20종) → UI 표현 단일 소스 (디자인 시스템 Notify.jsx 기반) ── */
+/* ── TYPE_META: type(22종) → UI 표현 단일 소스 (디자인 시스템 Notify.jsx 기반) ── */
 
 export type ToastVariant = "success" | "info" | "warning" | "danger";
 
@@ -78,6 +84,8 @@ export const TYPE_META: Record<NotificationType, TypeMeta> = {
   COMPANY_ANALYSIS_COMPLETE: { cat: "ai_analysis", icon: "Building2",          variant: "success", cta: "기업 분석 보기" },
   FIT_ANALYSIS_COMPLETE:     { cat: "ai_analysis", icon: "Target",             variant: "success", cta: "적합도 분석 보기" },
   CAREER_TREND_COMPLETE:     { cat: "ai_analysis", icon: "TrendingUp",         variant: "info",    cta: "트렌드 리포트 보기" },
+  JOB_POSTING_EXTRACTION_SUCCEEDED: { cat: "ai_analysis", icon: "FileSearch",  variant: "success", cta: "지원 건 보기" },
+  JOB_POSTING_EXTRACTION_FAILED:    { cat: "ai_analysis", icon: "AlertTriangle", variant: "danger", cta: "지원 건 보기" },
   /* 면접 */
   QUESTIONS_GENERATED:       { cat: "interview",   icon: "ListChecks",         variant: "info",    cta: "예상 질문 보기" },
   INTERVIEW_REPORT_READY:    { cat: "interview",   icon: "ClipboardList",      variant: "info",    cta: "면접 리포트 보기" },
@@ -91,6 +99,9 @@ export const TYPE_META: Record<NotificationType, TypeMeta> = {
   POST_SUMMARY_READY:        { cat: "community",   icon: "Sparkles",           variant: "info",    cta: "요약 보기" },
   /* 결제 */
   CREDIT_LOW:                { cat: "billing",     icon: "AlertTriangle",      variant: "warning", cta: "크레딧 충전" },
+  PAYMENT_COMPLETE:          { cat: "billing",     icon: "CreditCard",         variant: "success", cta: "결제 내역 보기" },
+  PAYMENT_SCHEDULED:         { cat: "billing",     icon: "CreditCard",         variant: "info",    cta: "결제 예정 보기" },
+  CREDIT_RECHARGED:          { cat: "billing",     icon: "CreditCard",         variant: "success", cta: "크레딧 보기" },
   /* 공지 */
   NOTICE:                    { cat: "notice",      icon: "Megaphone",          variant: "warning", cta: "공지 보기" },
   TICKET_ANSWERED:           { cat: "notice",      icon: "MessageSquareReply", variant: "info",    cta: "문의 답변 보기", actor: true },
@@ -143,6 +154,8 @@ export const TYPE_TO_CATEGORY: Record<NotificationType, NotificationCategory> = 
   COMPANY_ANALYSIS_COMPLETE: "ai_analysis",
   FIT_ANALYSIS_COMPLETE: "ai_analysis",
   CAREER_TREND_COMPLETE: "ai_analysis",
+  JOB_POSTING_EXTRACTION_SUCCEEDED: "ai_analysis",
+  JOB_POSTING_EXTRACTION_FAILED: "ai_analysis",
   /* 면접 */
   QUESTIONS_GENERATED: "interview",
   INTERVIEW_REPORT_READY: "interview",
@@ -156,6 +169,9 @@ export const TYPE_TO_CATEGORY: Record<NotificationType, NotificationCategory> = 
   POST_SUMMARY_READY: "community",
   /* 결제 */
   CREDIT_LOW: "billing",
+  PAYMENT_COMPLETE: "billing",
+  PAYMENT_SCHEDULED: "billing",
+  CREDIT_RECHARGED: "billing",
   /* 공지/문의 */
   NOTICE: "notice",
   TICKET_ANSWERED: "notice",

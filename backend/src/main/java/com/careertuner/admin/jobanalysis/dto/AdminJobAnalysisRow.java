@@ -11,6 +11,8 @@ public class AdminJobAnalysisRow {
     private Long applicationCaseId;
     private Long jobPostingId;
     private Integer jobPostingRevision;
+    private Integer latestJobPostingRevision;
+    private Boolean staleAgainstLatestPosting;
     private Long userId;
     private String userEmail;
     private String companyName;

@@ -18,9 +18,11 @@ public class InterviewAgentStep {
     private Long interviewSessionId;
     private Long questionId;
     private Integer stepNo;
-    private String agent;     // EVALUATOR/CRITIC/...
+    private String agent;     // PLANNER/RETRIEVER/EVALUATOR/CRITIC/...
     private String action;
+    private String status;    // DONE / FAILED (running 상태는 프런트가 표현)
     private String summary;
     private String detail;    // JSON 문자열
+    private Integer elapsedMs; // 해당 단계 소요 시간(ms)
     private LocalDateTime createdAt;
 }

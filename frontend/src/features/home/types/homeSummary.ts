@@ -10,6 +10,13 @@ import type {
  * 로그인 홈 요약(C 담당). 백엔드 /api/home/summary 응답 형태.
  * 대시보드 집계를 재사용하므로 dashboard 타입을 그대로 참조한다(동일 담당 C).
  */
+/** 시작 준비(온보딩) 단계. */
+export interface HomeOnboardingStep {
+  key: string;
+  label: string;
+  done: boolean;
+}
+
 export interface HomeSummary {
   user: DashboardUser;
   focus: DashboardFocus;
@@ -18,4 +25,5 @@ export interface HomeSummary {
   recentApplications: DashboardApplication[];
   nextActions: DashboardTodo[];
   recentActivities: DashboardActivity[];
+  onboardingSteps: HomeOnboardingStep[];
 }

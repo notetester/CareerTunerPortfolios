@@ -1,5 +1,6 @@
 import { AlertCircle, Loader2, RefreshCw } from "lucide-react";
 import type { BAnalysisFailureLog } from "../types/analysis";
+import { formatKoreaDateTime } from "../utils/dateFormat";
 
 interface AnalysisFailureNoticeProps {
   failures: BAnalysisFailureLog[];
@@ -7,12 +8,6 @@ interface AnalysisFailureNoticeProps {
   onRetry?: () => void;
   retrying?: boolean;
   retryLabel?: string;
-}
-
-function formatDateTime(value: string): string {
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return value;
-  return new Intl.DateTimeFormat("ko-KR", { dateStyle: "medium", timeStyle: "short" }).format(date);
 }
 
 function findVisibleFailure(
@@ -71,7 +66,7 @@ export function AnalysisFailureNotice({
       <div className="flex flex-wrap items-center gap-2 font-semibold">
         <AlertCircle className="size-4" />
         <span>최근 실패</span>
-        <span className="text-xs font-medium text-amber-700">{formatDateTime(failure.createdAt)}</span>
+        <span className="text-xs font-medium text-amber-700">{formatKoreaDateTime(failure.createdAt)}</span>
         {onRetry && (
           <button
             type="button"
