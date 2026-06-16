@@ -54,7 +54,8 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.GET,
                                 "/api/support/faq", "/api/support/notices", "/api/support/notices/**").permitAll()
                         .requestMatchers(HttpMethod.GET,
-                                "/api/billing/plans", "/api/billing/feature-benefit-policies").permitAll()
+                                "/api/billing/plans", "/api/billing/feature-benefit-policies",
+                                "/api/credit-products").permitAll()
                         // 그 외(/api/auth/me, /api/auth/logout 및 도메인 API)는 인증 필요
                         .anyRequest().authenticated())
                 .exceptionHandling(e -> e.authenticationEntryPoint(
