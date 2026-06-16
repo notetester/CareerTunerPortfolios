@@ -71,3 +71,10 @@ export function updateFaq(
 export function deleteFaq(id: number): Promise<void> {
   return api<void>(`/admin/faq/${id}`, { method: "DELETE" });
 }
+
+export function embedAllFaqs(forceAll = false): Promise<{ embeddedCount: number }> {
+  return api<{ embeddedCount: number }>(
+    `/admin/faq/embed-all?forceAll=${forceAll}`,
+    { method: "POST" },
+  );
+}

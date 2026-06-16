@@ -13,6 +13,7 @@ export interface AdminAiOpinion {
   model: string | null;
   completedAt: string | null;
   errorMessage: string | null;
+  elapsedMs: number | null;
 }
 
 export interface AdminReportListResponse {

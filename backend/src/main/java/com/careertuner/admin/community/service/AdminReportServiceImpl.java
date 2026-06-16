@@ -5,6 +5,7 @@ import java.util.List;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 import com.careertuner.admin.community.dto.AdminReportActionRequest;
@@ -20,6 +21,7 @@ import com.careertuner.community.moderation.domain.AiTaskType;
 import com.careertuner.community.moderation.domain.PostAiResult;
 import com.careertuner.community.moderation.dto.ModerationResult;
 import com.careertuner.community.moderation.mapper.PostAiResultMapper;
+import com.careertuner.community.moderation.service.PostModerationService;
 
 import lombok.RequiredArgsConstructor;
 import tools.jackson.databind.ObjectMapper;
@@ -33,6 +35,7 @@ public class AdminReportServiceImpl implements AdminReportService {
 
     private final AdminReportMapper reportMapper;
     private final PostAiResultMapper aiResultMapper;
+    private final PostModerationService moderationService;
     private final ObjectMapper objectMapper;
 
     @Override
@@ -120,13 +123,43 @@ public class AdminReportServiceImpl implements AdminReportService {
         return getReportDetail(authUser, id);
     }
 
+    @Override
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
+    public AdminReportDetailResponse reclassify(AuthUser authUser, Long id) {
+        requireAdmin(authUser);
+        boolean isComment = id >= 1_000_000L;
+        if (isComment) {
+            throw new BusinessException(ErrorCode.INVALID_INPUT, "댓글 신고는 AI 재검토를 지원하지 않습니다.");
+        }
+
+        Long postId = id;
+
+        // 신고가 존재하는지 확인
+        AdminReportListResponse base = reportMapper.findById(postId, "post");
+        if (base == null) {
+            throw new BusinessException(ErrorCode.NOT_FOUND, "신고를 찾을 수 없습니다.");
+        }
+
+        // 비동기가 아닌 동기 호출 — 관리자가 결과를 바로 확인할 수 있도록
+        moderationService.classify(postId);
+
+        return getReportDetail(authUser, id);
+    }
+
     private AiOpinion buildAiOpinion(PostAiResult aiResult) {
+        Long elapsedMs = null;
+        if (aiResult.getCreatedAt() != null && aiResult.getCompletedAt() != null) {
+            elapsedMs = java.time.Duration.between(
+                    aiResult.getCreatedAt(), aiResult.getCompletedAt()).toMillis();
+        }
+
         AiOpinion.AiOpinionBuilder builder = AiOpinion.builder()
                 .status(aiResult.getStatus().name())
                 .model(aiResult.getModel())
                 .completedAt(aiResult.getCompletedAt() != null
                         ? aiResult.getCompletedAt().toString() : null)
-                .errorMessage(aiResult.getErrorMessage());
+                .errorMessage(aiResult.getErrorMessage())
+                .elapsedMs(elapsedMs);
 
         if (aiResult.getStatus() == AiResultStatus.COMPLETED
                 && aiResult.getResultJson() != null) {

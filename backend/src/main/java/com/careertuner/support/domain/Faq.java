@@ -21,6 +21,7 @@ public class Faq {
     private boolean published;
     private Long adminId;
     private int viewCount;
+    private String embedding; // JSON 문자열 (bge-m3 1024차원 벡터)
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
 }

@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import {
   MessageSquareWarning, Search, ChevronLeft, ChevronRight,
-  EyeOff, Trash2, X as XIcon, RotateCcw, Eye, ShieldAlert, Flag, Settings2,
+  EyeOff, Trash2, X as XIcon, RotateCcw, Eye, ShieldAlert, Flag, Settings2, RefreshCw,
 } from "lucide-react";
 import ModerationSettingsPanel from "../../moderation/pages/ModerationSettingsPanel";
 import AdminShell from "../../../components/AdminShell";
@@ -99,11 +99,27 @@ function ReportsPanel({ flash }: { flash: (msg: string) => void }) {
   const [query, setQuery] = useState("");
   const [dialog, setDialog] = useState<{ report: Report; action: ReportActionType } | null>(null);
   const [detail, setDetail] = useState<Report | null>(null);
+  const [reclassifying, setReclassifying] = useState(false);
 
   useEffect(() => {
     adminReportApi.getReports().then(setItems)
       .catch(() => flash("신고 목록을 불러오지 못했습니다."));
   }, [flash]);
+
+  const handleReclassify = async () => {
+    if (!detail || reclassifying) return;
+    setReclassifying(true);
+    try {
+      const updated = await adminReportApi.reclassify(detail.id);
+      setDetail(updated);
+      setItems((prev) => prev.map((r) => (r.id === updated.id ? updated : r)));
+      flash("AI 재검토가 완료되었습니다.");
+    } catch {
+      flash("AI 재검토에 실패했습니다.");
+    } finally {
+      setReclassifying(false);
+    }
+  };
 
   const handleRowClick = (r: Report) => {
     adminReportApi.getReportDetail(r.id)
@@ -310,7 +326,28 @@ function ReportsPanel({ flash }: { flash: (msg: string) => void }) {
                           <span className="av-rate__l">신뢰도</span>
                           <span className="av-rate__v num">{((detail.aiOpinion.confidence ?? 0) * 100).toFixed(0)}%</span>
                         </div>
+                        {detail.aiOpinion.elapsedMs != null && (
+                          <div className="av-rate">
+                            <span className="av-rate__l">소요시간</span>
+                            <span className="av-rate__v num">
+                              {detail.aiOpinion.elapsedMs >= 1000
+                                ? `${(detail.aiOpinion.elapsedMs / 1000).toFixed(1)}초`
+                                : `${detail.aiOpinion.elapsedMs}ms`}
+                            </span>
+                          </div>
+                        )}
                       </div>
+                    )}
+                    {detail.aiOpinion?.status !== "PENDING" && (
+                      <button
+                        className="av-btn"
+                        style={{ marginTop: "8px", fontSize: "12px" }}
+                        disabled={reclassifying}
+                        onClick={handleReclassify}
+                      >
+                        <RefreshCw style={{ width: 13, height: 13, animation: reclassifying ? "spin 1s linear infinite" : undefined }} />
+                        {reclassifying ? "분석 중…" : "AI 재검토"}
+                      </button>
                     )}
                   </div>
                 </>

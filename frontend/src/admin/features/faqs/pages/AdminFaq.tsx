@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import {
   CircleHelp, Plus, Search, ChevronLeft, ChevronRight,
-  Trash2, Eye, EyeOff, ArrowLeft, Check, CornerDownRight,
+  Trash2, Eye, EyeOff, ArrowLeft, Check, CornerDownRight, RefreshCw,
 } from "lucide-react";
 import AdminShell from "../../../components/AdminShell";
 import { FAQ_CATEGORIES, type Faq, type FaqCategory } from "../data/faqData";
@@ -145,6 +145,20 @@ export default function AdminFaq() {
   const [query, setQuery] = useState("");
   const [toast, setToast] = useState<{ msg: string; tone: string } | null>(null);
   const [dialog, setDialog] = useState<DialogState | null>(null);
+  const [embedding, setEmbedding] = useState(false);
+
+  const handleEmbedAll = async () => {
+    if (embedding) return;
+    setEmbedding(true);
+    try {
+      const { embeddedCount } = await adminFaqApi.embedAllFaqs(true);
+      flash(`${embeddedCount}개 FAQ 임베딩 완료`, "green");
+    } catch {
+      flash("임베딩에 실패했습니다.", "red");
+    } finally {
+      setEmbedding(false);
+    }
+  };
 
   const loadItems = () => {
     adminFaqApi.getFaqs().then(setItems)
@@ -197,7 +211,14 @@ export default function AdminFaq() {
     <AdminShell
       active="faq" breadcrumb="FAQ 관리" title="FAQ 관리" icon={CircleHelp}
       desc="고객센터 자주 묻는 질문 관리"
-      actions={<button className="av-btn av-btn--ink" onClick={() => setView("compose")}><Plus /> 새 FAQ</button>}
+      actions={
+        <>
+          <button className="av-btn" onClick={handleEmbedAll} disabled={embedding}>
+            <RefreshCw className={embedding ? "spin" : ""} /> {embedding ? "임베딩 중…" : "챗봇 임베딩 갱신"}
+          </button>
+          <button className="av-btn av-btn--ink" onClick={() => setView("compose")}><Plus /> 새 FAQ</button>
+        </>
+      }
     >
       <section className="av-panel">
         <div className="av-filters">

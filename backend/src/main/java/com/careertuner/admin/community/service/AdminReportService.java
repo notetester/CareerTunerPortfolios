@@ -14,4 +14,6 @@ public interface AdminReportService {
     AdminReportDetailResponse getReportDetail(AuthUser authUser, Long id);
 
     AdminReportDetailResponse takeAction(AuthUser authUser, Long id, AdminReportActionRequest request);
+
+    AdminReportDetailResponse reclassify(AuthUser authUser, Long id);
 }

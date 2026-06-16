@@ -53,6 +53,8 @@ public class SecurityConfig {
                         // 고객센터 FAQ/공지사항 조회 공개
                         .requestMatchers(HttpMethod.GET,
                                 "/api/support/faq", "/api/support/notices", "/api/support/notices/**").permitAll()
+                        // 챗봇 질문 공개
+                        .requestMatchers(HttpMethod.POST, "/api/chatbot/ask").permitAll()
                         // 그 외(/api/auth/me, /api/auth/logout 및 도메인 API)는 인증 필요
                         .anyRequest().authenticated())
                 .exceptionHandling(e -> e.authenticationEntryPoint(

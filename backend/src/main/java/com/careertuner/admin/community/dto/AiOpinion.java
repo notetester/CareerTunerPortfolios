@@ -21,4 +21,5 @@ public class AiOpinion {
     private String model;
     private String completedAt;
     private String errorMessage;
+    private Long elapsedMs;
 }

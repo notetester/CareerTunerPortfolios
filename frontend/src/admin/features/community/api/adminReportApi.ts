@@ -73,3 +73,9 @@ export function takeAction(
     body: JSON.stringify({ action }),
   }).then(detailToReport);
 }
+
+export function reclassify(id: number): Promise<Report> {
+  return api<AdminReportDetailResponse>(`/admin/community/reports/${id}/reclassify`, {
+    method: "POST",
+  }).then(detailToReport);
+}

@@ -6,6 +6,7 @@ export interface AiOpinion {
   model: string | null;
   completedAt: string | null;
   errorMessage: string | null;
+  elapsedMs: number | null;
 }
 
 export interface Report {
