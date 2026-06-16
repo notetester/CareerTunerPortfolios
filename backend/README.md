@@ -43,6 +43,7 @@ DB_PASSWORD=... JWT_SECRET=... OAUTH_KAKAO_CLIENT_SECRET=... java -jar app.jar
 | 메일 | `MAIL_HOST` `MAIL_USERNAME` `MAIL_PASSWORD` `MAIL_FROM` `MAIL_DEV_MODE` | `smtp.naver.com` / 빈값 / 빈값 / no-reply / `true` |
 | 앱 | `APP_FRONTEND_URL` `APP_API_BASE_URL` | `http://localhost:5173` / `http://localhost:8080` |
 | 업로드 | `SPRING_SERVLET_MULTIPART_MAX_FILE_SIZE` `SPRING_SERVLET_MULTIPART_MAX_REQUEST_SIZE` `JOB_POSTING_MAX_FILE_SIZE_BYTES` | `10MB` / `12MB` / `10485760` |
+| 로컬 LLM | `AI_OLLAMA_BASE_URL` `AI_OLLAMA_MODEL` `AI_OLLAMA_CONNECT_TIMEOUT` `AI_OLLAMA_READ_TIMEOUT` | `http://localhost:11434` / `gemma4` / `3s` / `30s` |
 
 > 메일은 `MAIL_DEV_MODE=true`(또는 SMTP username 미설정)면 **실제 발송 대신 인증 링크를 로그로 출력**한다.
 > OAuth 키는 아직 미발급이라 placeholder다 — 키 수령 후 위 env(또는 yaml 기본값)만 교체하면 동작한다.
@@ -108,6 +109,9 @@ DB_PASSWORD=... JWT_SECRET=... OAUTH_KAKAO_CLIENT_SECRET=... java -jar app.jar
 
 실제 AI 분석과 이미지/스캔 PDF OCR은 `OPENAI_API_KEY`가 필요하다. 모델은 `OPENAI_MODEL`로 변경할 수 있으며 기본값은 `gpt-5`다.
 텍스트 PDF는 PDFBox로 먼저 추출하고, 텍스트가 없는 PDF와 이미지는 OpenAI OCR을 사용한다.
+자체 LLM은 현재 F 커뮤니티 검열의 Ollama 연동과 D 면접 파인튜닝 실험을 중심으로 붙어 있으며,
+A~F 담당별 목표 운영 기준은 [`../docs/planning/담당별_자체LLM_운영안.md`](../docs/planning/담당별_자체LLM_운영안.md)를 따른다.
+공통 `ai/common`, 도메인별 `A_AI_*`~`F_AI_*` 설정, 관리자 AI 상태 API는 목표 구조이므로 실제 도입 시 공통 영역 합의 후 구현한다.
 공고문 파일 업로드는 기본 10MB까지 허용하며, 초과 시 `INVALID_INPUT` 응답으로 안내한다.
 `/analysis/mock`은 화면과 데이터 흐름 검증 및 `fit_analysis`를 포함하는 호환 API용이며, B 프론트에서는 직접 사용하지 않는다.
 현재 구현은 지원 건 보관/삭제를 `archived_at`, `deleted_at`으로 분리한다. 사용자 목록 API는 `view=ACTIVE|ARCHIVED|DELETED`를 지원하며,
