@@ -1,0 +1,235 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.careertuner.billing.mapper.BillingMapper">
+
+    <select id="findActivePlans" resultType="com.careertuner.billing.domain.SubscriptionPlan">
+        SELECT id,
+               code,
+               name,
+               monthly_price,
+               yearly_price,
+               description,
+               active,
+               sort_order,
+               created_at,
+               updated_at
+          FROM subscription_plan
+         WHERE active = 1
+         ORDER BY sort_order ASC, id ASC
+    </select>
+
+    <select id="findActiveBenefitPolicies" resultType="com.careertuner.billing.domain.SubscriptionBenefitPolicy">
+        SELECT id,
+               plan_code,
+               benefit_code,
+               benefit_name,
+               benefit_type,
+               quantity,
+               reset_cycle,
+               overage_policy,
+               credit_cost,
+               active,
+               sort_order,
+               created_at,
+               updated_at
+          FROM subscription_benefit_policy
+         WHERE active = 1
+         ORDER BY plan_code ASC, sort_order ASC, id ASC
+    </select>
+
+    <select id="findActiveBenefitPoliciesByPlan" resultType="com.careertuner.billing.domain.SubscriptionBenefitPolicy">
+        SELECT id,
+               plan_code,
+               benefit_code,
+               benefit_name,
+               benefit_type,
+               quantity,
+               reset_cycle,
+               overage_policy,
+               credit_cost,
+               active,
+               sort_order,
+               created_at,
+               updated_at
+          FROM subscription_benefit_policy
+         WHERE plan_code = #{planCode}
+           AND active = 1
+         ORDER BY sort_order ASC, id ASC
+    </select>
+
+    <select id="findActiveBenefitPolicy" resultType="com.careertuner.billing.domain.SubscriptionBenefitPolicy">
+        SELECT id,
+               plan_code,
+               benefit_code,
+               benefit_name,
+               benefit_type,
+               quantity,
+               reset_cycle,
+               overage_policy,
+               credit_cost,
+               active,
+               sort_order,
+               created_at,
+               updated_at
+          FROM subscription_benefit_policy
+         WHERE plan_code = #{planCode}
+           AND benefit_code = #{benefitCode}
+           AND active = 1
+    </select>
+
+    <select id="findActiveFeatureBenefitPolicies" resultType="com.careertuner.billing.domain.AiFeatureBenefitPolicy">
+        SELECT id,
+               feature_type,
+               benefit_code,
+               charge_unit,
+               included_in_ticket,
+               default_credit_cost,
+               active,
+               created_at,
+               updated_at
+          FROM ai_feature_benefit_policy
+         WHERE active = 1
+         ORDER BY benefit_code ASC, feature_type ASC
+    </select>
+
+    <select id="findActiveFeatureBenefitPolicy" resultType="com.careertuner.billing.domain.AiFeatureBenefitPolicy">
+        SELECT id,
+               feature_type,
+               benefit_code,
+               charge_unit,
+               included_in_ticket,
+               default_credit_cost,
+               active,
+               created_at,
+               updated_at
+          FROM ai_feature_benefit_policy
+         WHERE feature_type = #{featureType}
+           AND active = 1
+    </select>
+
+    <select id="findActiveSubscription" resultType="com.careertuner.billing.domain.UserSubscription">
+        SELECT id,
+               user_id,
+               plan_code,
+               status,
+               started_at,
+               current_period_start,
+               current_period_end,
+               canceled_at,
+               created_at,
+               updated_at
+          FROM user_subscription
+         WHERE user_id = #{userId}
+           AND status = 'ACTIVE'
+           AND current_period_start &lt;= #{now}
+           AND current_period_end &gt; #{now}
+         ORDER BY id DESC
+         LIMIT 1
+    </select>
+
+    <select id="findUserPlanCode" resultType="string">
+        SELECT plan
+          FROM users
+         WHERE id = #{userId}
+    </select>
+
+    <select id="findBenefitBalances" resultType="com.careertuner.billing.domain.UserBenefitBalance">
+        SELECT id,
+               user_id,
+               benefit_code,
+               period_start,
+               period_end,
+               granted_quantity,
+               used_quantity,
+               remaining_quantity,
+               source_plan_code,
+               created_at,
+               updated_at
+          FROM user_benefit_balance
+         WHERE user_id = #{userId}
+           AND period_start = #{periodStart}
+           AND period_end = #{periodEnd}
+         ORDER BY benefit_code ASC
+    </select>
+
+    <select id="findBenefitBalance" resultType="com.careertuner.billing.domain.UserBenefitBalance">
+        SELECT id,
+               user_id,
+               benefit_code,
+               period_start,
+               period_end,
+               granted_quantity,
+               used_quantity,
+               remaining_quantity,
+               source_plan_code,
+               created_at,
+               updated_at
+          FROM user_benefit_balance
+         WHERE user_id = #{userId}
+           AND benefit_code = #{benefitCode}
+           AND period_start = #{periodStart}
+    </select>
+
+    <insert id="insertBenefitBalance" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO user_benefit_balance
+            (user_id, benefit_code, period_start, period_end, granted_quantity,
+             used_quantity, remaining_quantity, source_plan_code)
+        VALUES
+            (#{userId}, #{benefitCode}, #{periodStart}, #{periodEnd}, #{grantedQuantity},
+             #{usedQuantity}, #{remainingQuantity}, #{sourcePlanCode})
+    </insert>
+
+    <update id="consumeBenefitIfEnough">
+        UPDATE user_benefit_balance
+           SET used_quantity = used_quantity + 1,
+               remaining_quantity = remaining_quantity - 1
+         WHERE id = #{balanceId}
+           AND remaining_quantity &gt; 0
+    </update>
+
+    <update id="refundBenefit">
+        UPDATE user_benefit_balance
+           SET used_quantity = CASE WHEN used_quantity &gt; 0 THEN used_quantity - 1 ELSE 0 END,
+               remaining_quantity = remaining_quantity + 1
+         WHERE id = #{balanceId}
+    </update>
+
+    <select id="existsConsumeTransaction" resultType="boolean">
+        SELECT EXISTS (
+            SELECT 1
+              FROM benefit_transaction
+             WHERE benefit_code = #{benefitCode}
+               AND transaction_type = 'CONSUME'
+               AND ref_type = #{refType}
+               AND ref_id = #{refId}
+        )
+    </select>
+
+    <insert id="insertBenefitTransaction" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO benefit_transaction
+            (user_id, benefit_code, transaction_type, amount, balance_after,
+             ref_type, ref_id, ai_usage_log_id, reason)
+        VALUES
+            (#{userId}, #{benefitCode}, #{transactionType}, #{amount}, #{balanceAfter},
+             #{refType}, #{refId}, #{aiUsageLogId}, #{reason})
+    </insert>
+
+    <select id="findBenefitTransactionsByUser" resultType="com.careertuner.billing.domain.BenefitTransaction">
+        SELECT id,
+               user_id,
+               benefit_code,
+               transaction_type,
+               amount,
+               balance_after,
+               ref_type,
+               ref_id,
+               ai_usage_log_id,
+               reason,
+               created_at
+          FROM benefit_transaction
+         WHERE user_id = #{userId}
+         ORDER BY id DESC
+         LIMIT #{limit}
+    </select>
+</mapper>
