@@ -12,6 +12,8 @@ CareerTuner는 기능 단위로 작업을 배분한다. 각 담당자는 해당 
 - `PRODUCT_STRUCTURE.md` — 사용자 관점의 제품/메뉴 구조.
 - `FEATURE_MODULE_STRUCTURE.md` — 런타임 폴더 구조 상세, 소유권, AI 분담, 공유 파일 규칙.
 - `TEAM_WORK_DISTRIBUTION.md` — 6인 수직 분담, AI 책임, 주요 DB 소유권.
+- `planning/자체LLM_팀_도입안.md` — 팀 전체 자체 LLM 도입 근거와 공통 결정.
+- `planning/담당별_자체LLM_운영안.md` — A~F 담당별 자체 모델 운영·검증·fallback·산출물 기준.
 
 ## 1. 런타임 소스 매핑
 

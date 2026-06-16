@@ -3,6 +3,11 @@
 면접 답변 평가에 쓰는 **자체 LLM**을 직접 만든다. 학습 데이터(`interview_training_sample`)로 오픈모델
 (Qwen2.5-7B-Instruct)을 LoRA 파인튜닝하고, vLLM 으로 서빙해 백엔드 평가에 연결한다.
 
+> 이 문서는 D 담당의 기존 GPU/vLLM 실험 절차다. 팀 공통 자체 LLM 도입 근거는
+> `../../docs/planning/자체LLM_팀_도입안.md`, A~F 담당별 운영·검증·fallback·산출물 기준은
+> `../../docs/planning/담당별_자체LLM_운영안.md`를 따른다.
+> 공통 시연 기본값은 Ollama지만, D 면접 답변 평가는 GPU 서버와 OpenAI 호환 vLLM 실험 자산을 유지할 수 있다.
+
 > 목적은 최고 성능이 아니라 **"우리가 직접 학습해 서비스에 붙였다"는 증거 확보**다(로드맵 5-4).
 > 품질이 OpenAI 보다 낮아도 되고, 라이브는 OpenAI 폴백을 유지한다.
 > 데스크탑 GPU 확보가 불가능하므로 **시간제 GPU 임대**(RunPod 1순위)를 전제로 한다.
