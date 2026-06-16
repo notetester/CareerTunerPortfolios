@@ -5,7 +5,7 @@
 
     <select id="findPublishedWithoutEmbedding" resultType="com.careertuner.support.domain.Faq">
         SELECT id, question, answer, category, sort_order, is_published AS published,
-               admin_id, view_count, embedding, created_at, updated_at
+               admin_id, view_count, link_url, link_label, embedding, created_at, updated_at
           FROM faq
          WHERE is_published = 1
            AND embedding IS NULL
@@ -13,14 +13,14 @@
 
     <select id="findPublishedAll" resultType="com.careertuner.support.domain.Faq">
         SELECT id, question, answer, category, sort_order, is_published AS published,
-               admin_id, view_count, embedding, created_at, updated_at
+               admin_id, view_count, link_url, link_label, embedding, created_at, updated_at
           FROM faq
          WHERE is_published = 1
     </select>
 
     <select id="findPublishedWithEmbedding" resultType="com.careertuner.support.domain.Faq">
         SELECT id, question, answer, category, sort_order, is_published AS published,
-               admin_id, view_count, embedding, created_at, updated_at
+               admin_id, view_count, link_url, link_label, embedding, created_at, updated_at
           FROM faq
          WHERE is_published = 1
            AND embedding IS NOT NULL

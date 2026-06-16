@@ -121,8 +121,15 @@ public class ChatbotService {
             return ChatbotAnswerDto.noMatch();
         }
 
+        // 매칭 FAQ 중 link_url이 있는 것만 SiteLink로 변환 (최대 2개)
+        List<SiteLink> links = topK.stream()
+                .filter(s -> s.faq().getLinkUrl() != null && !s.faq().getLinkUrl().isBlank())
+                .limit(2)
+                .map(s -> new SiteLink(s.faq().getLinkUrl(), s.faq().getLinkLabel()))
+                .collect(Collectors.toList());
+
         double bestSimilarity = topK.get(0).similarity();
-        return new ChatbotAnswerDto(answer, matchedIds, bestSimilarity);
+        return new ChatbotAnswerDto(answer, links, matchedIds, bestSimilarity);
     }
 
     private double[] parseEmbedding(String json) {

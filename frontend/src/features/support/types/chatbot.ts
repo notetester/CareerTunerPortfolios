@@ -1,3 +1,8 @@
+export interface SiteLink {
+  url: string;
+  label: string;
+}
+
 export interface ChatEvidence {
   id: string;
   type: "도움말" | "가이드" | "공지" | "FAQ";
@@ -11,6 +16,7 @@ export interface ChatMessage {
   role: "user" | "bot";
   text: string;
   evidence: ChatEvidence[];
+  links: SiteLink[];
   ttsState: "idle" | "playing" | "paused";
   ttsProgress: number;
   timestamp: number;

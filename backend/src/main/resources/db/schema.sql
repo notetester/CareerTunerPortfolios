@@ -844,6 +844,8 @@ CREATE TABLE IF NOT EXISTS faq (
     is_published TINYINT(1)   NOT NULL DEFAULT 1,
     admin_id     BIGINT       NULL,
     view_count   INT          NOT NULL DEFAULT 0,
+    link_url     VARCHAR(200) NULL     COMMENT '관련 페이지 경로',
+    link_label   VARCHAR(100) NULL     COMMENT '이동 버튼 라벨',
     created_at   DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at   DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     PRIMARY KEY (id),

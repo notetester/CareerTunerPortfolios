@@ -1,6 +1,6 @@
 import { useState, useCallback, useRef } from "react";
 import { api } from "@/app/lib/api";
-import type { ChatMessage, ChatEvidence, BotStatus, VoiceState, ChatSession } from "../types/chatbot";
+import type { ChatMessage, ChatEvidence, BotStatus, VoiceState, ChatSession, SiteLink } from "../types/chatbot";
 
 let msgId = 0;
 const nextId = () => `msg-${++msgId}`;
@@ -8,6 +8,7 @@ const nextId = () => `msg-${++msgId}`;
 /* ── API 응답 타입 ── */
 interface ChatbotApiResponse {
   answer: string;
+  links: SiteLink[];
   matchedFaqIds: number[];
   topSimilarity: number;
 }
@@ -33,7 +34,7 @@ export function useChatbot() {
   const sendMessage = useCallback((text: string) => {
     const userMsg: ChatMessage = {
       id: nextId(), role: "user", text,
-      evidence: [], ttsState: "idle", ttsProgress: 0,
+      evidence: [], links: [], ttsState: "idle", ttsProgress: 0,
       timestamp: Date.now(),
     };
     setMessages((prev) => [...prev, userMsg]);
@@ -68,7 +69,7 @@ export function useChatbot() {
 
         const botMsg: ChatMessage = {
           id: nextId(), role: "bot", text: data.answer,
-          evidence, ttsState: "idle", ttsProgress: 0,
+          evidence, links: data.links ?? [], ttsState: "idle", ttsProgress: 0,
           timestamp: Date.now(),
         };
         setMessages((prev) => [...prev, botMsg]);
