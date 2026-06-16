@@ -1,0 +1,22 @@
+CREATE TABLE IF NOT EXISTS correction_request (
+    id                  BIGINT NOT NULL AUTO_INCREMENT,
+    user_id             BIGINT NOT NULL,
+    application_case_id BIGINT NULL,
+    correction_type     VARCHAR(40) NOT NULL,
+    source_type         VARCHAR(40) NOT NULL DEFAULT 'DIRECT_INPUT',
+    source_ref_id       BIGINT NULL,
+    original_text       MEDIUMTEXT NOT NULL,
+    improved_text       MEDIUMTEXT NULL,
+    result_json         JSON NULL,
+    status              VARCHAR(20) NOT NULL DEFAULT 'SUCCESS',
+    ai_usage_log_id     BIGINT NULL,
+    created_at          DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (id),
+    KEY idx_correction_request_user (user_id),
+    KEY idx_correction_request_case (application_case_id),
+    KEY idx_correction_request_type (correction_type),
+    KEY idx_correction_request_ai_usage (ai_usage_log_id),
+    CONSTRAINT fk_correction_request_user FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE,
+    CONSTRAINT fk_correction_request_case FOREIGN KEY (application_case_id) REFERENCES application_case (id) ON DELETE SET NULL,
+    CONSTRAINT fk_correction_request_ai_usage FOREIGN KEY (ai_usage_log_id) REFERENCES ai_usage_log (id) ON DELETE SET NULL
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci;
