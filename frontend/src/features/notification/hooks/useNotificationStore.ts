@@ -1,7 +1,5 @@
 import { create } from "zustand";
-// TODO: 백엔드 연동 시 주석 해제
-// import * as notificationApi from "../api/notificationApi";
-import { mockNotifications } from "../data/mockNotifications";
+import * as notificationApi from "../api/notificationApi";
 import type { Notification, NotificationCategory } from "../types/notification";
 
 interface NotificationState {
@@ -30,30 +28,42 @@ export const useNotificationStore = create<NotificationState>((set, get) => ({
 
   fetchNotifications: async () => {
     set({ loading: true, error: null });
-    // TODO: 백엔드 연동 시 notificationApi.getNotifications() 로 교체
-    const notifications = mockNotifications;
-    const unreadCount = notifications.filter((n) => !n.isRead).length;
-    set({ notifications, unreadCount, loading: false });
+    try {
+      const notifications = await notificationApi.getNotifications();
+      const unreadCount = await notificationApi.getUnreadCount();
+      set({ notifications, unreadCount, loading: false });
+    } catch (error) {
+      set({
+        notifications: [],
+        unreadCount: 0,
+        loading: false,
+        error: error instanceof Error ? error.message : "알림을 불러오지 못했습니다.",
+      });
+    }
   },
 
   fetchUnreadCount: async () => {
-    // TODO: 백엔드 연동 시 notificationApi.getUnreadCount() 로 교체
-    const unreadCount = get().notifications.filter((n) => !n.isRead).length;
-    set({ unreadCount });
+    try {
+      const unreadCount = await notificationApi.getUnreadCount();
+      set({ unreadCount });
+    } catch (error) {
+      set({ error: error instanceof Error ? error.message : "미읽음 알림 수를 불러오지 못했습니다." });
+    }
   },
 
   markAsRead: async (id) => {
-    // TODO: 백엔드 연동 시 notificationApi.markAsRead(id) 로 교체
+    const wasUnread = get().notifications.some((n) => n.id === id && !n.isRead);
+    await notificationApi.markAsRead(id);
     set({
       notifications: get().notifications.map((n) =>
         n.id === id ? { ...n, isRead: true } : n,
       ),
-      unreadCount: Math.max(0, get().unreadCount - 1),
+      unreadCount: wasUnread ? Math.max(0, get().unreadCount - 1) : get().unreadCount,
     });
   },
 
   markAllAsRead: async () => {
-    // TODO: 백엔드 연동 시 notificationApi.markAllAsRead() 로 교체
+    await notificationApi.markAllAsRead();
     set({
       notifications: get().notifications.map((n) => ({ ...n, isRead: true })),
       unreadCount: 0,

@@ -15,4 +15,11 @@
            AND user_id = #{userId}
     </select>
 
+    <select id="findAllByUserId" resultType="com.careertuner.support.domain.SupportTicket">
+        SELECT *
+          FROM support_ticket
+         WHERE user_id = #{userId}
+         ORDER BY created_at DESC
+    </select>
+
 </mapper>

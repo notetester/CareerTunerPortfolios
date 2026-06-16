@@ -54,9 +54,19 @@ public class TicketServiceImpl implements TicketService {
         if (ticket == null) {
             throw new BusinessException(ErrorCode.NOT_FOUND, "문의를 찾을 수 없습니다.");
         }
+        return withLatestReply(ticket);
+    }
 
-        List<TicketMessage> messages = messageMapper.findByTicketId(id);
-        TicketMessage adminReply = messages.stream()
+    @Override
+    public List<TicketResponse> listMyTickets(Long userId) {
+        return ticketMapper.findAllByUserId(userId).stream()
+                .map(this::withLatestReply)
+                .toList();
+    }
+
+    /** 티켓에 최신 관리자 답변(있으면)을 합쳐 응답으로 변환한다. */
+    private TicketResponse withLatestReply(SupportTicket ticket) {
+        TicketMessage adminReply = messageMapper.findByTicketId(ticket.getId()).stream()
                 .filter(m -> "ADMIN".equals(m.getSenderType()))
                 .reduce((a, b) -> b)
                 .orElse(null);

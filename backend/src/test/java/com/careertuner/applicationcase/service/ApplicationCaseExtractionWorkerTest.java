@@ -109,7 +109,7 @@ class ApplicationCaseExtractionWorkerTest {
         verify(extractionMapper).markExtractionSucceeded(30L, 21L);
         verify(aiUsageLogService).recordSuccess(1L, 10L, "JOB_POSTING_METADATA", metadataUsage);
         ArgumentCaptor<Notification> notificationCaptor = ArgumentCaptor.forClass(Notification.class);
-        verify(notificationMapper).insertNotification(notificationCaptor.capture());
+        verify(notificationMapper).insert(notificationCaptor.capture());
         assertThat(notificationCaptor.getValue().getUserId()).isEqualTo(1L);
         assertThat(notificationCaptor.getValue().getType()).isEqualTo("JOB_POSTING_EXTRACTION_SUCCEEDED");
         assertThat(notificationCaptor.getValue().getTargetType()).isEqualTo("APPLICATION_CASE");
@@ -268,7 +268,7 @@ class ApplicationCaseExtractionWorkerTest {
         verify(aiUsageLogService, never()).recordFailure(any(), any(), eq("JOB_POSTING_METADATA"), any());
 
         ArgumentCaptor<Notification> notificationCaptor = ArgumentCaptor.forClass(Notification.class);
-        verify(notificationMapper).insertNotification(notificationCaptor.capture());
+        verify(notificationMapper).insert(notificationCaptor.capture());
         assertThat(notificationCaptor.getValue().getType()).isEqualTo("JOB_POSTING_EXTRACTION_FAILED");
         assertThat(notificationCaptor.getValue().getLink()).isEqualTo("/applications/10/overview");
     }
@@ -323,7 +323,7 @@ class ApplicationCaseExtractionWorkerTest {
         verify(jobPostingService, never()).saveExtractedJobPosting(any(), any(), any());
         verify(applicationCaseMapper, never()).updateApplicationCase(any());
         verify(aiUsageLogService, never()).recordSuccess(any(), any(), any(), any());
-        verify(notificationMapper, never()).insertNotification(any());
+        verify(notificationMapper, never()).insert(any());
     }
 
     @Test
@@ -394,7 +394,7 @@ class ApplicationCaseExtractionWorkerTest {
         verify(jobPostingMapper, never()).findJobPostingByIdAndCaseId(any(), any());
         verify(jobPostingService, never()).extractUrlJobPosting(any());
         verify(openAiClient, never()).extractJobPostingMetadata(any());
-        verify(notificationMapper, never()).insertNotification(any());
+        verify(notificationMapper, never()).insert(any());
     }
 
     @Test
@@ -439,7 +439,7 @@ class ApplicationCaseExtractionWorkerTest {
         verify(openAiClient, never()).extractJobPostingMetadata(any());
 
         ArgumentCaptor<Notification> notificationCaptor = ArgumentCaptor.forClass(Notification.class);
-        verify(notificationMapper).insertNotification(notificationCaptor.capture());
+        verify(notificationMapper).insert(notificationCaptor.capture());
         assertThat(notificationCaptor.getValue().getType()).isEqualTo("JOB_POSTING_EXTRACTION_FAILED");
         assertThat(notificationCaptor.getValue().getTargetId()).isEqualTo(10L);
         assertThat(notificationCaptor.getValue().getLink()).isEqualTo("/applications/10/overview");
@@ -480,7 +480,7 @@ class ApplicationCaseExtractionWorkerTest {
 
         assertThat(processed).isZero();
         verify(extractionMapper).markExtractionFailed(eq(36L), any(String.class));
-        verify(notificationMapper, never()).insertNotification(any());
+        verify(notificationMapper, never()).insert(any());
     }
 
     @Test

@@ -1,4 +1,5 @@
 import { AdminDashboardPage } from "./pages/AdminDashboard";
+import { AdminPlaceholderPage } from "./pages/AdminPlaceholder";
 import { AdminOpsDashboardPage } from "./features/dashboard/pages/AdminOpsDashboardPage";
 import { AdminAnalyticsPage } from "./features/analytics/pages/AdminAnalyticsPage";
 import AdminFitAnalysisPage from "./features/fit-analysis/pages/AdminFitAnalysis";
@@ -18,9 +19,12 @@ import { AdminPromptsPage } from "./features/prompts/pages/AdminPromptsPage";
 import AdminProfilePromptsPage from "./features/prompts/profile/pages/AdminProfilePrompts";
 import AdminReports from "./features/community/pages/AdminReports";
 import AdminGuidelines from "./features/community/pages/AdminGuidelines";
+import AdminModerationPage from "./features/moderation/pages/AdminModerationPage";
 import AdminNotices from "./features/notices/pages/AdminNotices";
+import NoticeCompose from "./features/notices/pages/NoticeCompose";
 import AdminFaq from "./features/faqs/pages/AdminFaq";
-import AdminInquiries from "./features/support-tickets/pages/AdminInquiriesAI";
+import FaqCompose from "./features/faqs/pages/FaqCompose";
+import AdminInquiries from "./features/support-tickets/pages/AdminInquiries";
 import AdminNotifications from "./features/notifications/pages/AdminNotifications";
 import AdminTerms from "./features/terms/pages/AdminTerms";
 
@@ -38,21 +42,24 @@ export const adminRoutes = [
   { path: "admin/users", Component: AdminUsersPage },
   { path: "admin/profiles", Component: AdminProfilesPage },
   { path: "admin/consents", Component: AdminConsentsPage },
-  { path: "admin/payments", Component: AdminDashboardPage },
+  { path: "admin/payments", Component: AdminPlaceholderPage },
   { path: "admin/application-cases", Component: AdminApplicationCasesPage },
   { path: "admin/ai-usage", Component: AdminAiUsagePage },
   { path: "admin/job-analysis", Component: AdminJobAnalysisPage },
   { path: "admin/company-analysis", Component: AdminCompanyAnalysisPage },
   { path: "admin/interviews", Component: AdminInterviewsPage },
   { path: "admin/community", Component: AdminReports },
+  { path: "admin/moderation", Component: AdminModerationPage },
   { path: "admin/notices", Component: AdminNotices },
+  { path: "admin/notices/new", Component: NoticeCompose },
   { path: "admin/faq", Component: AdminFaq },
+  { path: "admin/faq/new", Component: FaqCompose },
   { path: "admin/inquiries", Component: AdminInquiries },
   { path: "admin/terms", Component: AdminTerms },
   { path: "admin/terms/guidelines", Component: AdminGuidelines },
   { path: "admin/notifications", Component: AdminNotifications },
-  { path: "admin/plans", Component: AdminDashboardPage },
+  { path: "admin/plans", Component: AdminPlaceholderPage },
   { path: "admin/prompts", Component: AdminPromptsPage },
   { path: "admin/prompts/profile", Component: AdminProfilePromptsPage },
-  { path: "admin/logs", Component: AdminDashboardPage },
+  { path: "admin/logs", Component: AdminPlaceholderPage },
 ];

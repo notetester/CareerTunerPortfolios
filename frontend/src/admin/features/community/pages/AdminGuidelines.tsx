@@ -3,10 +3,9 @@ import {
   BookOpen, Eye, Check, X, Plus, ChevronUp, ChevronDown, CalendarClock, Save,
 } from "lucide-react";
 import AdminShell from "../../../components/AdminShell";
-// TODO: 백엔드 연동 시 주석 해제
-// import {
-//   getGuidelines, createGuideline, updateGuideline, publishGuideline,
-// } from "../api/adminGuidelineApi";
+import {
+  getGuidelines, createGuideline, updateGuideline, publishGuideline,
+} from "../api/adminGuidelineApi";
 import type { AdminGuidelineResponse, GuidelineRule, GuidelineParams } from "../api/adminGuidelineApi";
 import "../styles/admin-guidelines.css";
 
@@ -66,32 +65,29 @@ export default function AdminGuidelines() {
   }, []);
 
   const loadVersions = async () => {
-    // TODO: 백엔드 연동 시 getGuidelines() 로 교체
-    const MOCK_VERSIONS: AdminGuidelineResponse[] = [
-      {
-        id: 1, versionLabel: "v1.0", summary: "최초 가이드라인 게시", lede: "",
-        oksJson: JSON.stringify(DEFAULT_OKS), nosJson: JSON.stringify(DEFAULT_NOS),
-        rulesJson: JSON.stringify(DEFAULT_RULES), paramsJson: JSON.stringify(DEFAULT_PARAMS),
-        status: "PUBLISHED", enforceType: "IMMEDIATE", scheduledAt: null,
-        publishedAt: "2026-05-01T00:00:00", createdAt: "2026-05-01T00:00:00", updatedAt: "2026-05-01T00:00:00",
-      },
-    ];
-    const list = MOCK_VERSIONS;
-    setVersions(list);
-    const draft = list.find((g) => g.status === "DRAFT");
-    if (draft) {
-      loadGuidelineToForm(draft);
-    } else {
-      const published = list.find((g) => g.status === "PUBLISHED");
-      if (published) {
-        loadGuidelineToForm(published);
-        setEditId(null);
-        const vNum = parseFloat(published.versionLabel.replace("v", "")) + 0.1;
-        setVersionLabel(`v${vNum.toFixed(1)}`);
-        setSummary("");
+    setLoading(true);
+    try {
+      const list = await getGuidelines();
+      setVersions(list);
+      const draft = list.find((g) => g.status === "DRAFT");
+      if (draft) {
+        loadGuidelineToForm(draft);
+      } else {
+        const published = list.find((g) => g.status === "PUBLISHED");
+        if (published) {
+          loadGuidelineToForm(published);
+          setEditId(null);
+          const vNum = parseFloat(published.versionLabel.replace("v", "")) + 0.1;
+          setVersionLabel(`v${Number.isFinite(vNum) ? vNum.toFixed(1) : "1.1"}`);
+          setSummary("");
+        }
       }
+    } catch (error) {
+      flash(error instanceof Error ? error.message : "가이드라인을 불러오지 못했습니다.", "red");
+      setVersions([]);
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   };
 
   const loadGuidelineToForm = (g: AdminGuidelineResponse) => {
@@ -106,22 +102,54 @@ export default function AdminGuidelines() {
     setWhen(g.enforceType === "SCHEDULED" ? "예약" : "즉시");
   };
 
+  const payload = () => ({
+    versionLabel,
+    summary,
+    lede,
+    oks,
+    nos,
+    rules,
+    params,
+    enforceType: when === "예약" ? "SCHEDULED" : "IMMEDIATE",
+    scheduledAt: null,
+  });
+
   const handleSave = async () => {
     if (saving) return;
     setSaving(true);
-    // TODO: 백엔드 연동 시 updateGuideline/createGuideline 으로 교체
-    if (!editId) setEditId(Date.now());
-    setLastSaved(new Date().toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit" }));
-    flash("임시저장되었습니다.", "green");
-    setSaving(false);
+    try {
+      const saved = editId
+        ? await updateGuideline(editId, payload())
+        : await createGuideline(payload());
+      setEditId(saved.id);
+      setLastSaved(new Date().toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit" }));
+      flash("임시저장되었습니다.", "green");
+      await loadVersions();
+    } catch (error) {
+      flash(error instanceof Error ? error.message : "가이드라인 저장에 실패했습니다.", "red");
+    } finally {
+      setSaving(false);
+    }
   };
 
   const handlePublish = async () => {
-    if (!editId || saving) return;
+    if (saving) return;
     setSaving(true);
-    // TODO: 백엔드 연동 시 updateGuideline + publishGuideline 으로 교체
-    flash("가이드라인이 게시되었습니다.", "green");
-    setSaving(false);
+    try {
+      const saved = editId
+        ? await updateGuideline(editId, payload())
+        : await createGuideline(payload());
+      const published = await publishGuideline(saved.id);
+      setEditId(null);
+      flash("가이드라인이 게시되었습니다.", "green");
+      await loadVersions();
+      loadGuidelineToForm(published);
+      setEditId(null);
+    } catch (error) {
+      flash(error instanceof Error ? error.message : "가이드라인 게시에 실패했습니다.", "red");
+    } finally {
+      setSaving(false);
+    }
   };
 
   // 룰 조작
@@ -346,7 +374,7 @@ export default function AdminGuidelines() {
           <button className="age-btn" onClick={handleSave} disabled={saving}>
             <Save />{saving ? "저장 중..." : "임시저장"}
           </button>
-          <button className="age-btn age-btn--ink" onClick={handlePublish} disabled={saving || !editId}>
+          <button className="age-btn age-btn--ink" onClick={handlePublish} disabled={saving}>
             <CalendarClock />{when === "예약" ? "게시 예약" : "게시"}
           </button>
         </div>
