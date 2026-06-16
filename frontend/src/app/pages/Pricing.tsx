@@ -1,97 +1,12 @@
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router";
 import { Button } from "../components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
 import { Badge } from "../components/ui/badge";
 import { CheckCircle2, X, Award, CreditCard, Zap } from "lucide-react";
-
-const plans = [
-  {
-    name: "무료",
-    price: { monthly: "0원", yearly: "0원" },
-    period: "영구 무료",
-    badge: null,
-    highlighted: false,
-    features: [
-      { label: "공고 분석", value: "월 3회" },
-      { label: "기본 예상 질문 생성", value: true },
-      { label: "텍스트 모의면접", value: "월 1회" },
-      { label: "기본 분석 리포트", value: true },
-      { label: "지원 건 저장", value: "3건" },
-      { label: "커뮤니티 이용", value: true },
-      { label: "고급 답변 첨삭", value: false },
-      { label: "음성 AI 면접", value: false },
-      { label: "기업 현황 조사", value: false },
-      { label: "장기 취업 경향 분석", value: false },
-    ],
-    cta: "무료 시작",
-    ctaVariant: "outline" as const,
-  },
-  {
-    name: "베이직",
-    price: { monthly: "9,900원", yearly: "7,900원" },
-    period: "월",
-    badge: null,
-    highlighted: false,
-    features: [
-      { label: "공고 분석", value: "월 20회" },
-      { label: "기본 예상 질문 생성", value: true },
-      { label: "텍스트 모의면접", value: "무제한" },
-      { label: "기본 분석 리포트", value: true },
-      { label: "지원 건 저장", value: "20건" },
-      { label: "커뮤니티 이용", value: true },
-      { label: "고급 답변 첨삭", value: "월 5회" },
-      { label: "음성 AI 면접", value: false },
-      { label: "기업 현황 조사", value: false },
-      { label: "장기 취업 경향 분석", value: false },
-    ],
-    cta: "시작하기",
-    ctaVariant: "outline" as const,
-  },
-  {
-    name: "프로",
-    price: { monthly: "29,000원", yearly: "23,000원" },
-    period: "월",
-    badge: "인기",
-    highlighted: true,
-    features: [
-      { label: "공고 분석", value: "무제한" },
-      { label: "기본 예상 질문 생성", value: true },
-      { label: "텍스트 모의면접", value: "무제한" },
-      { label: "기본 분석 리포트", value: true },
-      { label: "지원 건 저장", value: "무제한" },
-      { label: "커뮤니티 이용", value: true },
-      { label: "고급 답변 첨삭", value: "무제한" },
-      { label: "음성 AI 면접", value: true },
-      { label: "기업 현황 조사", value: true },
-      { label: "장기 취업 경향 분석", value: true },
-    ],
-    cta: "시작하기",
-    ctaVariant: "default" as const,
-  },
-  {
-    name: "프리미엄",
-    price: { monthly: "49,000원", yearly: "39,000원" },
-    period: "월",
-    badge: null,
-    highlighted: false,
-    features: [
-      { label: "공고 분석", value: "무제한" },
-      { label: "기본 예상 질문 생성", value: true },
-      { label: "텍스트 모의면접", value: "무제한" },
-      { label: "기본 분석 리포트", value: true },
-      { label: "지원 건 저장", value: "무제한" },
-      { label: "커뮤니티 이용", value: true },
-      { label: "고급 답변 첨삭", value: "무제한" },
-      { label: "음성 AI 면접", value: true },
-      { label: "기업 현황 조사", value: true },
-      { label: "장기 취업 경향 분석", value: true },
-    ],
-    extraFeatures: ["영상 표정/자세 분석", "자기소개서 고급 첨삭", "포트폴리오 첨삭", "AI 아바타 면접관", "1:1 전략 컨설팅"],
-    cta: "시작하기",
-    ctaVariant: "outline" as const,
-  },
-];
+import { listSubscriptionPlans } from "@/features/billing/api/subscriptionApi";
+import type { SubscriptionPlan } from "@/features/billing/types/billing";
+import { subscriptionFallbackPlans, toDisplayPlans } from "@/features/billing/utils/subscriptionDisplay";
 
 const creditOptions = [
   { amount: 10, price: "4,900원", perCredit: "490원/개" },
@@ -114,7 +29,30 @@ const creditFeatures = [
 export function PricingPage() {
   const [billingCycle, setBillingCycle] = useState<"monthly" | "yearly">("monthly");
   const [activeTab, setActiveTab] = useState<"subscription" | "credits">("subscription");
+  const [subscriptionPlans, setSubscriptionPlans] = useState<SubscriptionPlan[]>(() => subscriptionFallbackPlans());
+  const [plansError, setPlansError] = useState<string | null>(null);
   const navigate = useNavigate();
+  const displayPlans = useMemo(() => toDisplayPlans(subscriptionPlans), [subscriptionPlans]);
+
+  useEffect(() => {
+    let mounted = true;
+    listSubscriptionPlans()
+      .then((plans) => {
+        if (mounted) {
+          setSubscriptionPlans(plans);
+          setPlansError(null);
+        }
+      })
+      .catch(() => {
+        if (mounted) {
+          setSubscriptionPlans(subscriptionFallbackPlans());
+          setPlansError("구독 플랜 정책을 불러오지 못해 기본 정책으로 표시합니다.");
+        }
+      });
+    return () => {
+      mounted = false;
+    };
+  }, []);
 
   return (
     <div className="bg-slate-50 min-h-screen">
@@ -162,9 +100,14 @@ export function PricingPage() {
             </div>
 
             {/* Plans grid */}
+            {plansError && (
+              <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-800">
+                {plansError}
+              </div>
+            )}
             <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-5">
-              {plans.map((plan) => (
-                <Card key={plan.name} className={`relative border-2 ${plan.highlighted ? "border-blue-500 shadow-2xl" : "border-slate-200"}`}>
+              {displayPlans.map((plan) => (
+                <Card key={plan.code} className={`relative border-2 ${plan.highlighted ? "border-blue-500 shadow-2xl" : "border-slate-200"}`}>
                   {plan.badge && (
                     <div className="absolute -top-3 left-1/2 -translate-x-1/2">
                       <Badge className="bg-gradient-to-r from-blue-600 to-indigo-600 text-white px-4 py-0.5">{plan.badge}</Badge>
@@ -174,41 +117,37 @@ export function PricingPage() {
                     <CardTitle className="text-xl">{plan.name} 플랜</CardTitle>
                     <div className="mt-2">
                       <div className="text-3xl font-black">
-                        {billingCycle === "monthly" ? plan.price.monthly : plan.price.yearly}
+                        {billingCycle === "monthly" ? plan.monthlyPrice : plan.yearlyPrice}
                       </div>
                       <div className="text-slate-500 text-sm">/{plan.period}</div>
-                      {billingCycle === "yearly" && plan.price.monthly !== "0원" && (
-                        <div className="text-xs text-green-600 font-semibold mt-1">연 {plan.price.monthly} → {plan.price.yearly}</div>
+                      {billingCycle === "yearly" && plan.monthlyPrice !== "0원" && (
+                        <div className="text-xs text-green-600 font-semibold mt-1">연 {plan.monthlyPrice} → {plan.yearlyPrice}</div>
                       )}
                     </div>
                   </CardHeader>
                   <CardContent className="space-y-5">
                     <div className="space-y-2">
-                      {plan.features.map((f) => (
-                        <div key={f.label} className="flex items-center gap-2 text-sm">
-                          {f.value === false ? (
+                      {plan.benefits.map((benefit) => (
+                        <div key={benefit.code} className="flex items-center gap-2 text-sm">
+                          {benefit.disabled ? (
                             <X className="size-4 text-slate-300 flex-shrink-0" />
+                          ) : benefit.premium ? (
+                            <Zap className="size-4 text-purple-500 flex-shrink-0" />
                           ) : (
                             <CheckCircle2 className="size-4 text-green-600 flex-shrink-0" />
                           )}
-                          <span className={f.value === false ? "text-slate-400" : "text-slate-700"}>
-                            {f.label}
-                            {typeof f.value === "string" && f.value !== "true" && (
-                              <span className="font-semibold text-slate-900 ml-1">({f.value})</span>
-                            )}
+                          <span className={benefit.disabled ? "text-slate-400" : benefit.premium ? "text-purple-700 font-medium" : "text-slate-700"}>
+                            {benefit.label}
+                            <span className={benefit.disabled ? "font-semibold text-slate-400 ml-1" : "font-semibold text-slate-900 ml-1"}>
+                              ({benefit.text})
+                            </span>
                           </span>
-                        </div>
-                      ))}
-                      {"extraFeatures" in plan && plan.extraFeatures && plan.extraFeatures.map((f) => (
-                        <div key={f} className="flex items-center gap-2 text-sm">
-                          <Zap className="size-4 text-purple-500 flex-shrink-0" />
-                          <span className="text-purple-700 font-medium">{f}</span>
                         </div>
                       ))}
                     </div>
                     <Button
                       className={`w-full ${plan.highlighted ? "bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700" : ""}`}
-                      variant={plan.ctaVariant}
+                      variant={plan.highlighted ? "default" : "outline"}
                       onClick={() => navigate("/login")}
                     >
                       {plan.cta}

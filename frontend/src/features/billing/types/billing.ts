@@ -26,3 +26,43 @@ export interface TossPaymentConfirmResponse {
   status: string;
   balance: number;
 }
+
+export interface SubscriptionBenefitPolicy {
+  planCode: string;
+  benefitCode: string;
+  benefitName: string;
+  benefitType: string;
+  quantity: number;
+  resetCycle: string;
+  overagePolicy: string;
+  creditCost: number;
+  sortOrder: number;
+}
+
+export interface SubscriptionPlan {
+  code: "FREE" | "BASIC" | "PRO" | "PREMIUM" | string;
+  name: string;
+  monthlyPrice: number;
+  yearlyPrice?: number | null;
+  description?: string | null;
+  sortOrder: number;
+  benefits: SubscriptionBenefitPolicy[];
+}
+
+export interface UserBenefitBalance {
+  benefitCode: string;
+  benefitName: string;
+  grantedQuantity: number;
+  usedQuantity: number;
+  remainingQuantity: number;
+  sourcePlanCode: string;
+  periodStart: string;
+  periodEnd: string;
+}
+
+export interface MyBenefits {
+  planCode: string;
+  periodStart: string;
+  periodEnd: string;
+  benefits: UserBenefitBalance[];
+}

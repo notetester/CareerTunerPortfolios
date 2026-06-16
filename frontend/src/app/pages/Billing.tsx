@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router";
-import { Award, BarChart3, CheckCircle2, CreditCard, ReceiptText, Zap } from "lucide-react";
+import { Award, BarChart3, CheckCircle2, CreditCard, ReceiptText, X, Zap } from "lucide-react";
 import { useAuth } from "../auth/AuthContext";
 import { ApiError } from "../lib/api";
 import { Badge } from "../components/ui/badge";
@@ -10,26 +10,13 @@ import { Progress } from "../components/ui/progress";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../components/ui/tabs";
 import { listCreditProducts } from "@/features/billing/api/creditProductsApi";
 import { readyTossPayment } from "@/features/billing/api/paymentApi";
+import { getMyBenefits, listSubscriptionPlans } from "@/features/billing/api/subscriptionApi";
 import { requestTossCardPayment } from "@/features/billing/api/tossPaymentSdk";
-import type { CreditProduct } from "@/features/billing/types/billing";
+import type { CreditProduct, MyBenefits, SubscriptionPlan } from "@/features/billing/types/billing";
+import { subscriptionFallbackPlans, toDisplayPlans } from "@/features/billing/utils/subscriptionDisplay";
 
 const tabs = ["plans", "usage", "credits", "history"] as const;
 type BillingTab = (typeof tabs)[number];
-
-const plans = [
-  { name: "무료", price: "0원", desc: "기본 체험", features: ["공고 분석 월 3회", "텍스트 면접 월 1회", "지원 건 3건 저장"] },
-  { name: "베이직", price: "9,900원", desc: "가벼운 취업 준비", features: ["공고 분석 월 20회", "텍스트 면접 무제한", "첨삭 월 5회"] },
-  { name: "프로", price: "29,000원", desc: "집중 취업 준비", features: ["공고 분석 무제한", "음성 면접", "장기 취업 분석"], popular: true },
-  { name: "프리미엄", price: "49,000원", desc: "고급 면접 패키지", features: ["아바타 면접관", "영상/자세 분석", "1:1 전략 컨설팅"] },
-];
-
-const usageRows = [
-  { feature: "공고문 분석", used: 8, limit: 20, credit: 1 },
-  { feature: "예상 질문 생성", used: 12, limit: 40, credit: 1 },
-  { feature: "텍스트 모의면접", used: 5, limit: 999, credit: 2 },
-  { feature: "음성 모의면접", used: 2, limit: 10, credit: 3 },
-  { feature: "자기소개서 첨삭", used: 3, limit: 10, credit: 2 },
-];
 
 const payments = [
   { date: "2026-06-01", item: "프로 플랜 월간 구독", amount: "29,000원", status: "결제 완료" },
@@ -38,6 +25,7 @@ const payments = [
 ];
 
 const formatCurrency = (value: number) => `${value.toLocaleString("ko-KR")}원`;
+const formatDate = (value?: string) => (value ? new Intl.DateTimeFormat("ko-KR", { month: "long", day: "numeric" }).format(new Date(value)) : "");
 
 function errorMessage(error: unknown, fallback: string) {
   if (error instanceof ApiError || error instanceof Error) {
@@ -52,6 +40,12 @@ export function BillingPage() {
   const { isAuthenticated, user } = useAuth();
   const requestedTab = searchParams.get("tab") ?? "plans";
   const activeTab: BillingTab = tabs.includes(requestedTab as BillingTab) ? (requestedTab as BillingTab) : "plans";
+  const [subscriptionPlans, setSubscriptionPlans] = useState<SubscriptionPlan[]>(() => subscriptionFallbackPlans());
+  const [plansLoading, setPlansLoading] = useState(false);
+  const [plansError, setPlansError] = useState<string | null>(null);
+  const [myBenefits, setMyBenefits] = useState<MyBenefits | null>(null);
+  const [benefitsLoading, setBenefitsLoading] = useState(false);
+  const [benefitsError, setBenefitsError] = useState<string | null>(null);
   const [creditProducts, setCreditProducts] = useState<CreditProduct[]>([]);
   const [productsLoading, setProductsLoading] = useState(false);
   const [productsError, setProductsError] = useState<string | null>(null);
@@ -60,6 +54,26 @@ export function BillingPage() {
 
   useEffect(() => {
     let mounted = true;
+    setPlansLoading(true);
+    setPlansError(null);
+    listSubscriptionPlans()
+      .then((plans) => {
+        if (mounted) {
+          setSubscriptionPlans(plans);
+        }
+      })
+      .catch((error) => {
+        if (mounted) {
+          setPlansError(errorMessage(error, "구독 플랜 정책을 불러오지 못해 기본 정책으로 표시합니다."));
+          setSubscriptionPlans(subscriptionFallbackPlans());
+        }
+      })
+      .finally(() => {
+        if (mounted) {
+          setPlansLoading(false);
+        }
+      });
+
     setProductsLoading(true);
     setProductsError(null);
     listCreditProducts()
@@ -83,7 +97,52 @@ export function BillingPage() {
     };
   }, []);
 
+  useEffect(() => {
+    let mounted = true;
+    if (!isAuthenticated) {
+      setMyBenefits(null);
+      setBenefitsError(null);
+      setBenefitsLoading(false);
+      return () => {
+        mounted = false;
+      };
+    }
+
+    setBenefitsLoading(true);
+    setBenefitsError(null);
+    getMyBenefits()
+      .then((benefits) => {
+        if (mounted) {
+          setMyBenefits(benefits);
+        }
+      })
+      .catch((error) => {
+        if (mounted) {
+          setBenefitsError(errorMessage(error, "사용권 잔여량을 불러오지 못했습니다."));
+        }
+      })
+      .finally(() => {
+        if (mounted) {
+          setBenefitsLoading(false);
+        }
+      });
+    return () => {
+      mounted = false;
+    };
+  }, [isAuthenticated]);
+
   const balanceText = useMemo(() => (user?.credit ?? 0).toLocaleString("ko-KR"), [user?.credit]);
+  const displayPlans = useMemo(() => toDisplayPlans(subscriptionPlans), [subscriptionPlans]);
+  const benefitUsageRows = useMemo(
+    () =>
+      (myBenefits?.benefits ?? []).map((benefit) => ({
+        feature: benefit.benefitName,
+        used: benefit.usedQuantity,
+        limit: benefit.grantedQuantity,
+        remaining: benefit.remainingQuantity,
+      })),
+    [myBenefits],
+  );
 
   async function handleCreditPurchase(product: CreditProduct) {
     if (!isAuthenticated) {
@@ -123,25 +182,44 @@ export function BillingPage() {
           </TabsList>
 
           <TabsContent value="plans" className="mt-5">
+            {plansError && (
+              <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-800">
+                {plansError}
+              </div>
+            )}
+            {plansLoading && (
+              <Card className="mb-4 border border-slate-200 bg-white">
+                <CardContent className="p-5 text-center text-sm text-slate-500">구독 플랜 정책을 불러오는 중입니다.</CardContent>
+              </Card>
+            )}
             <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-              {plans.map((plan) => (
-                <Card key={plan.name} className={`relative border-2 bg-white ${plan.popular ? "border-blue-500 shadow-lg" : "border-slate-200"}`}>
-                  {plan.popular && <Badge className="absolute -top-3 left-1/2 -translate-x-1/2 bg-blue-600 text-white">추천</Badge>}
+              {displayPlans.map((plan) => (
+                <Card key={plan.code} className={`relative border-2 bg-white ${plan.highlighted ? "border-blue-500 shadow-lg" : "border-slate-200"}`}>
+                  {plan.badge && <Badge className="absolute -top-3 left-1/2 -translate-x-1/2 bg-blue-600 text-white">{plan.badge}</Badge>}
                   <CardHeader>
                     <CardTitle className="text-lg">{plan.name} 플랜</CardTitle>
-                    <p className="text-sm text-slate-500">{plan.desc}</p>
-                    <div className="pt-2 text-3xl font-black text-slate-900">{plan.price}</div>
+                    <p className="text-sm text-slate-500">{plan.description}</p>
+                    <div className="pt-2 text-3xl font-black text-slate-900">{plan.monthlyPrice}</div>
+                    <div className="text-xs font-semibold text-slate-400">/{plan.period}</div>
                   </CardHeader>
                   <CardContent className="space-y-4">
                     <div className="space-y-2">
-                      {plan.features.map((feature) => (
-                        <div key={feature} className="flex items-center gap-2 text-sm text-slate-700">
-                          <CheckCircle2 className="size-4 text-green-600" />
-                          {feature}
+                      {plan.benefits.map((benefit) => (
+                        <div key={benefit.code} className="flex items-center gap-2 text-sm">
+                          {benefit.disabled ? (
+                            <X className="size-4 shrink-0 text-slate-300" />
+                          ) : benefit.premium ? (
+                            <Zap className="size-4 shrink-0 text-purple-500" />
+                          ) : (
+                            <CheckCircle2 className="size-4 shrink-0 text-green-600" />
+                          )}
+                          <span className={benefit.disabled ? "text-slate-400" : benefit.premium ? "font-semibold text-purple-700" : "text-slate-700"}>
+                            {benefit.label} <span className={benefit.disabled ? "text-slate-400" : "font-bold text-slate-900"}>{benefit.text}</span>
+                          </span>
                         </div>
                       ))}
                     </div>
-                    <Button className={plan.popular ? "w-full bg-gradient-to-r from-blue-600 to-indigo-600" : "w-full"} variant={plan.popular ? "default" : "outline"}>
+                    <Button className={plan.highlighted ? "w-full bg-gradient-to-r from-blue-600 to-indigo-600" : "w-full"} variant={plan.highlighted ? "default" : "outline"}>
                       플랜 선택
                     </Button>
                   </CardContent>
@@ -156,22 +234,41 @@ export function BillingPage() {
                 <CardHeader>
                   <CardTitle className="flex items-center gap-2 text-base">
                     <BarChart3 className="size-4 text-blue-600" />
-                    이번 달 AI 사용량
+                    이번 달 사용권
                   </CardTitle>
+                  {myBenefits && (
+                    <p className="text-xs text-slate-500">
+                      {formatDate(myBenefits.periodStart)}부터 {formatDate(myBenefits.periodEnd)} 전까지 적용되는 {myBenefits.planCode} 플랜 사용권입니다.
+                    </p>
+                  )}
                 </CardHeader>
                 <CardContent className="space-y-4">
-                  {usageRows.map((row) => {
-                    const pct = row.limit === 999 ? 36 : Math.round((row.used / row.limit) * 100);
-                    return (
-                      <div key={row.feature} className="space-y-1.5">
-                        <div className="flex items-center justify-between text-sm">
-                          <span className="font-semibold text-slate-700">{row.feature}</span>
-                          <span className="text-xs text-slate-500">{row.limit === 999 ? `${row.used}회 사용` : `${row.used}/${row.limit}회`}</span>
+                  {!isAuthenticated ? (
+                    <div className="rounded-lg border border-slate-200 bg-slate-50 p-5 text-center text-sm text-slate-500">
+                      로그인하면 현재 플랜의 사용권 잔여량을 확인할 수 있습니다.
+                    </div>
+                  ) : benefitsLoading ? (
+                    <div className="rounded-lg border border-slate-200 bg-slate-50 p-5 text-center text-sm text-slate-500">사용권 잔여량을 불러오는 중입니다.</div>
+                  ) : benefitsError ? (
+                    <div className="rounded-lg border border-red-200 bg-red-50 p-5 text-center text-sm font-semibold text-red-700">{benefitsError}</div>
+                  ) : benefitUsageRows.length === 0 ? (
+                    <div className="rounded-lg border border-slate-200 bg-slate-50 p-5 text-center text-sm text-slate-500">이번 달 발급된 사용권이 없습니다.</div>
+                  ) : (
+                    benefitUsageRows.map((row) => {
+                      const pct = row.limit <= 0 ? 0 : Math.round((row.used / row.limit) * 100);
+                      return (
+                        <div key={row.feature} className="space-y-1.5">
+                          <div className="flex items-center justify-between text-sm">
+                            <span className="font-semibold text-slate-700">{row.feature}</span>
+                            <span className="text-xs text-slate-500">
+                              {row.used}/{row.limit}장 사용 · {row.remaining}장 남음
+                            </span>
+                          </div>
+                          <Progress value={pct} className="h-2" />
                         </div>
-                        <Progress value={pct} className="h-2" />
-                      </div>
-                    );
-                  })}
+                      );
+                    })
+                  )}
                 </CardContent>
               </Card>
               <Card className="border border-slate-200 bg-white">
