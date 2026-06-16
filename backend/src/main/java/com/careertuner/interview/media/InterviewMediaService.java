@@ -1,0 +1,115 @@
+package com.careertuner.interview.media;
+
+import java.util.List;
+import java.util.Set;
+
+import org.springframework.stereotype.Service;
+
+import com.careertuner.common.exception.BusinessException;
+import com.careertuner.common.exception.ErrorCode;
+import com.careertuner.interview.domain.InterviewMediaAnalysis;
+import com.careertuner.interview.domain.InterviewSession;
+import com.careertuner.interview.mapper.InterviewMapper;
+import com.careertuner.interview.media.dto.MediaAnalysisResponse;
+import com.careertuner.interview.media.dto.SaveMediaAnalysisRequest;
+import com.careertuner.interview.media.dto.VoiceAnalysisRequest;
+import com.careertuner.interview.media.dto.VoiceAnalysisResponse;
+
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.ObjectMapper;
+
+/**
+ * 음성/영상 면접 분석 결과 저장·조회.
+ * 원본 음성·영상은 받지 않는다 — 온디바이스 분석 결과(트랜스크립트 + 지표 + 점수 JSON)만 저장 (ADR-002).
+ */
+@Service
+public class InterviewMediaService {
+
+    private static final Set<String> KINDS = Set.of("VOICE", "AVATAR");
+
+    private final InterviewMediaMapper mediaMapper;
+    private final InterviewMapper interviewMapper;
+    private final InterviewVoiceService voiceService;
+    private final ObjectMapper objectMapper;
+
+    public InterviewMediaService(InterviewMediaMapper mediaMapper,
+                                 InterviewMapper interviewMapper,
+                                 InterviewVoiceService voiceService,
+                                 ObjectMapper objectMapper) {
+        this.mediaMapper = mediaMapper;
+        this.interviewMapper = interviewMapper;
+        this.voiceService = voiceService;
+        this.objectMapper = objectMapper;
+    }
+
+    /** 세션 소유권 확인 후 Inworld 음성 감정 분석을 위임한다. */
+    public VoiceAnalysisResponse analyzeVoice(Long userId, Long sessionId, VoiceAnalysisRequest request) {
+        requireOwnedSession(userId, sessionId);
+        return voiceService.analyze(request.audioBase64(),
+                request.sampleRateHertz() != null ? request.sampleRateHertz() : 16000,
+                request.language());
+    }
+
+    public MediaAnalysisResponse save(Long userId, Long sessionId, SaveMediaAnalysisRequest request) {
+        requireOwnedSession(userId, sessionId);
+        String kind = request.kind().toUpperCase();
+        if (!KINDS.contains(kind)) {
+            throw new BusinessException(ErrorCode.INVALID_INPUT, "kind 는 VOICE 또는 AVATAR 여야 합니다.");
+        }
+        if (request.score() < 0 || request.score() > 100) {
+            throw new BusinessException(ErrorCode.INVALID_INPUT, "score 는 0~100 이어야 합니다.");
+        }
+        InterviewMediaAnalysis analysis = InterviewMediaAnalysis.builder()
+                .interviewSessionId(sessionId)
+                .kind(kind)
+                .transcript(toJsonString(request.transcript()))
+                .metrics(toJsonString(request.metrics()))
+                .score(request.score())
+                .scoreDetail(toJsonString(request.scoreDetail()))
+                .build();
+        mediaMapper.insertMediaAnalysis(analysis);
+        return toResponse(analysis);
+    }
+
+    public List<MediaAnalysisResponse> list(Long userId, Long sessionId) {
+        requireOwnedSession(userId, sessionId);
+        return mediaMapper.findBySessionId(sessionId).stream().map(this::toResponse).toList();
+    }
+
+    private void requireOwnedSession(Long userId, Long sessionId) {
+        InterviewSession session = interviewMapper.findSessionByIdAndUserId(sessionId, userId);
+        if (session == null) {
+            throw new BusinessException(ErrorCode.NOT_FOUND, "면접 세션을 찾을 수 없습니다.");
+        }
+    }
+
+    private String toJsonString(JsonNode node) {
+        if (node == null || node.isNull() || node.isMissingNode()) {
+            return null;
+        }
+        return objectMapper.writeValueAsString(node);
+    }
+
+    private JsonNode parse(String json) {
+        if (json == null || json.isBlank()) {
+            return null;
+        }
+        try {
+            return objectMapper.readTree(json);
+        } catch (RuntimeException ex) {
+            return null;
+        }
+    }
+
+    private MediaAnalysisResponse toResponse(InterviewMediaAnalysis analysis) {
+        return new MediaAnalysisResponse(
+                analysis.getId(),
+                analysis.getInterviewSessionId(),
+                analysis.getKind(),
+                parse(analysis.getTranscript()),
+                parse(analysis.getMetrics()),
+                analysis.getScore(),
+                parse(analysis.getScoreDetail()),
+                analysis.getCreatedAt());
+    }
+}

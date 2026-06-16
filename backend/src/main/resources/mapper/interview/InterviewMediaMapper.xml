@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.careertuner.interview.media.InterviewMediaMapper">
+
+    <!-- map-underscore-to-camel-case 활성화 상태라 컬럼은 자동 매핑된다. -->
+    <!-- interview_media_analysis 테이블은 마이그레이션 패치로 추가된다 (.migrations_local 초안 참고). -->
+
+    <insert id="insertMediaAnalysis" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO interview_media_analysis
+            (interview_session_id, kind, transcript, metrics, score, score_detail)
+        VALUES
+            (#{interviewSessionId}, #{kind}, #{transcript}, #{metrics}, #{score}, #{scoreDetail})
+    </insert>
+
+    <select id="findBySessionId" resultType="com.careertuner.interview.domain.InterviewMediaAnalysis">
+        SELECT *
+        FROM interview_media_analysis
+        WHERE interview_session_id = #{sessionId}
+        ORDER BY id DESC
+    </select>
+</mapper>

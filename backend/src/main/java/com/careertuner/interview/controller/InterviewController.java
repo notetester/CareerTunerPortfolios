@@ -21,6 +21,7 @@ import com.careertuner.interview.dto.InterviewProgressResponse;
 import com.careertuner.interview.dto.InterviewQuestionResponse;
 import com.careertuner.interview.dto.InterviewReportResponse;
 import com.careertuner.interview.dto.InterviewSessionResponse;
+import com.careertuner.interview.dto.ModelAnswerResponse;
 import com.careertuner.interview.dto.RealtimeSessionResponse;
 import com.careertuner.interview.dto.SubmitAnswerRequest;
 import com.careertuner.interview.realtime.InterviewRealtimeService;
@@ -60,6 +61,12 @@ public class InterviewController {
     public ApiResponse<List<InterviewQuestionResponse>> listQuestions(@AuthenticationPrincipal AuthUser authUser,
                                                                       @PathVariable Long sessionId) {
         return ApiResponse.ok(interviewService.listQuestions(authUser.id(), sessionId));
+    }
+
+    @PostMapping("/questions/{questionId}/model-answer")
+    public ApiResponse<ModelAnswerResponse> getModelAnswer(@AuthenticationPrincipal AuthUser authUser,
+                                                           @PathVariable Long questionId) {
+        return ApiResponse.ok(interviewService.getModelAnswer(authUser.id(), questionId));
     }
 
     @PostMapping("/questions/{questionId}/answers")

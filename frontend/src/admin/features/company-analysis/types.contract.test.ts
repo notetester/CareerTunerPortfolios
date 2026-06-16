@@ -1,10 +1,33 @@
-import type { AdminCompanyAnalysisRow } from "./types";
+import type {
+  AdminCompanyAnalysisQueryParams,
+  AdminCompanyAnalysisRow,
+  AdminCompanyAnalysisSummaryResponse,
+} from "./types";
+
+const companyAnalysisQueryParams: AdminCompanyAnalysisQueryParams = {
+  keyword: "Example",
+  sourceType: "WEB",
+  industry: "SaaS",
+  confirmed: true,
+  hasMemo: false,
+  checked: true,
+  refreshDue: false,
+  applicationCaseId: 1,
+  userId: 10,
+  createdFrom: "2026-06-01",
+  createdTo: "2026-06-30",
+  sort: "createdAt_desc",
+  limit: 30,
+  offset: 0,
+};
 
 const companyAnalysisRow: AdminCompanyAnalysisRow = {
   id: 12,
   applicationCaseId: 1,
   jobPostingId: 21,
   jobPostingRevision: 2,
+  latestJobPostingRevision: 3,
+  staleAgainstLatestPosting: true,
   userId: 10,
   userEmail: "user@example.com",
   companyName: "Example Co",
@@ -25,4 +48,16 @@ const companyAnalysisRow: AdminCompanyAnalysisRow = {
   createdAt: "2026-06-02T00:00:00Z",
 };
 
+const companyAnalysisSummary: AdminCompanyAnalysisSummaryResponse = {
+  totalCount: 8,
+  confirmedCount: 3,
+  unconfirmedCount: 5,
+  refreshDueCount: 4,
+  missingSourceCount: 1,
+  checkedCount: 6,
+  memoCount: 2,
+};
+
+void companyAnalysisQueryParams;
 void companyAnalysisRow;
+void companyAnalysisSummary;

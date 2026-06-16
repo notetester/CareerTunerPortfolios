@@ -95,6 +95,37 @@ class JobPostingServiceTest {
     }
 
     @Test
+    void saveJobPostingForExtractionQueueStoresUrlReferenceWithoutExtracting() {
+        Map<Long, JobPosting> insertedById = new HashMap<>();
+        JobPostingMapper jobPostingMapper = mapperReturningInsertedRows(insertedById);
+        JobPostingTextExtractor textExtractor = mock(JobPostingTextExtractor.class);
+        JobPostingService service = new JobPostingService(
+                new ApplicationCaseAccessService(ownedApplicationCaseMapper(), jobPostingMapper),
+                jobPostingMapper,
+                mock(AiUsageLogService.class),
+                mock(JobPostingFileStorage.class),
+                textExtractor);
+        String jobUrl = "https://example.com/jobs/backend";
+
+        when(jobPostingMapper.nextRevisionForCase(10L)).thenReturn(2);
+        doAnswer(invocation -> {
+            JobPosting posting = invocation.getArgument(0);
+            posting.setId(42L);
+            insertedById.put(42L, copy(posting));
+            return null;
+        }).when(jobPostingMapper).insertJobPosting(any(JobPosting.class));
+
+        JobPostingResponse response = service.saveJobPostingForExtractionQueue(1L, 10L,
+                new JobPostingRequest(null, jobUrl, null, "URL"));
+
+        verify(textExtractor, never()).extractUrl(any());
+        assertThat(response.id()).isEqualTo(42L);
+        assertThat(response.uploadedFileUrl()).isEqualTo(jobUrl);
+        assertThat(response.extractedText()).isNull();
+        assertThat(response.sourceType()).isEqualTo("URL");
+    }
+
+    @Test
     void uploadJobPostingFileReturnsInsertedPostingInsteadOfLatestPosting() {
         Map<Long, JobPosting> insertedById = new HashMap<>();
         JobPostingMapper jobPostingMapper = mapperReturningInsertedRows(insertedById);
@@ -146,6 +177,80 @@ class JobPostingServiceTest {
         assertThat(response.revision()).isEqualTo(7);
         assertThat(response.uploadedFileUrl()).isEqualTo("local:application-postings/10/posting.pdf");
         assertThat(response.extractedText()).isEqualTo("inserted extracted text");
+    }
+
+    @Test
+    void saveUploadedJobPostingReferenceForNewCaseStoresFileReferenceWithoutOcr() {
+        Map<Long, JobPosting> insertedById = new HashMap<>();
+        JobPostingMapper jobPostingMapper = mapperReturningInsertedRows(insertedById);
+        ApplicationCaseMapper applicationCaseMapper = ownedApplicationCaseMapper();
+        AiUsageLogService usageLogService = mock(AiUsageLogService.class);
+        JobPostingFileStorage fileStorage = mock(JobPostingFileStorage.class);
+        JobPostingTextExtractor textExtractor = mock(JobPostingTextExtractor.class);
+        JobPostingService service = new JobPostingService(
+                new ApplicationCaseAccessService(applicationCaseMapper, jobPostingMapper),
+                jobPostingMapper,
+                usageLogService,
+                fileStorage,
+                textExtractor);
+        MultipartFile file = mock(MultipartFile.class);
+        StoredJobPostingFile storedFile = new StoredJobPostingFile(
+                "PDF",
+                "local:application-postings/10/posting.pdf",
+                "posting.pdf",
+                "application/pdf",
+                Path.of("posting.pdf"),
+                new byte[]{1, 2, 3});
+
+        when(fileStorage.store(10L, file, "PDF")).thenReturn(storedFile);
+        when(jobPostingMapper.nextRevisionForCase(10L)).thenReturn(8);
+        doAnswer(invocation -> {
+            JobPosting posting = invocation.getArgument(0);
+            posting.setId(52L);
+            insertedById.put(52L, copy(posting));
+            return null;
+        }).when(jobPostingMapper).insertJobPosting(any(JobPosting.class));
+
+        JobPostingResponse response = service.saveUploadedJobPostingReferenceForNewCase(1L, 10L, file, "PDF");
+
+        verify(textExtractor, never()).extractFile(any());
+        verify(usageLogService, never()).recordSuccess(any(), any(), any(), any());
+        assertThat(response.id()).isEqualTo(52L);
+        assertThat(response.revision()).isEqualTo(8);
+        assertThat(response.uploadedFileUrl()).isEqualTo("local:application-postings/10/posting.pdf");
+        assertThat(response.extractedText()).isNull();
+    }
+
+    @Test
+    void uploadJobPostingFileForNewCaseRecordsFailureWithoutUncommittedCaseId() {
+        JobPostingMapper jobPostingMapper = mapperReturningInsertedRows(new HashMap<>());
+        ApplicationCaseMapper applicationCaseMapper = ownedApplicationCaseMapper();
+        AiUsageLogService usageLogService = mock(AiUsageLogService.class);
+        JobPostingFileStorage fileStorage = mock(JobPostingFileStorage.class);
+        JobPostingTextExtractor textExtractor = mock(JobPostingTextExtractor.class);
+        JobPostingService service = new JobPostingService(
+                new ApplicationCaseAccessService(applicationCaseMapper, jobPostingMapper),
+                jobPostingMapper,
+                usageLogService,
+                fileStorage,
+                textExtractor);
+        MultipartFile file = mock(MultipartFile.class);
+        StoredJobPostingFile storedFile = new StoredJobPostingFile(
+                "PDF",
+                "local:application-postings/10/posting.pdf",
+                "posting.pdf",
+                "application/pdf",
+                Path.of("posting.pdf"),
+                new byte[]{1, 2, 3});
+        RuntimeException failure = new IllegalStateException("OCR down");
+
+        when(fileStorage.store(10L, file, "PDF")).thenReturn(storedFile);
+        when(textExtractor.extractFile(storedFile)).thenThrow(failure);
+
+        assertThatThrownBy(() -> service.uploadJobPostingFileForNewCase(1L, 10L, file, "PDF"))
+                .isSameAs(failure);
+
+        verify(usageLogService).recordFailure(1L, null, "JOB_POSTING_OCR", "OCR down");
     }
 
     @Test

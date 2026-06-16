@@ -11,8 +11,10 @@ public record InterviewAgentStepResponse(
         Integer stepNo,
         String agent,
         String action,
+        String status,
         String summary,
         String detail,
+        Integer elapsedMs,
         LocalDateTime createdAt) {
 
     public static InterviewAgentStepResponse from(InterviewAgentStep s) {
@@ -22,8 +24,10 @@ public record InterviewAgentStepResponse(
                 s.getStepNo(),
                 s.getAgent(),
                 s.getAction(),
+                s.getStatus(),
                 s.getSummary(),
                 s.getDetail(),
+                s.getElapsedMs(),
                 s.getCreatedAt());
     }
 }

@@ -1,0 +1,66 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.careertuner.admin.notice.mapper.AdminNoticeMapper">
+
+    <resultMap id="noticeResult" type="com.careertuner.admin.notice.dto.AdminNoticeResponse">
+        <id     property="id"           column="id"/>
+        <result property="title"         column="title"/>
+        <result property="content"       column="content"/>
+        <result property="category"      column="category"/>
+        <result property="status"        column="status"/>
+        <result property="pinned"        column="is_pinned"/>
+        <result property="thumbnailUrl"  column="thumbnail_url"/>
+        <result property="viewCount"     column="view_count"/>
+        <result property="publishedAt"   column="published_at"/>
+        <result property="createdAt"     column="created_at"/>
+        <result property="updatedAt"     column="updated_at"/>
+    </resultMap>
+
+    <select id="findAll" resultMap="noticeResult">
+        SELECT id, title, content, category, status, is_pinned, thumbnail_url,
+               view_count, published_at, created_at, updated_at
+          FROM notice
+         ORDER BY created_at DESC
+    </select>
+
+    <select id="findById" resultMap="noticeResult">
+        SELECT id, title, content, category, status, is_pinned, thumbnail_url,
+               view_count, published_at, created_at, updated_at
+          FROM notice
+         WHERE id = #{id}
+    </select>
+
+    <insert id="insert" useGeneratedKeys="true" keyColumn="id">
+        INSERT INTO notice (title, content, category, status, is_pinned, thumbnail_url, admin_id,
+                            published_at)
+        VALUES (#{title}, #{content}, #{category}, #{status}, #{pinned}, #{thumbnailUrl}, #{adminId},
+                <choose>
+                    <when test="setPublishedAt">CURRENT_TIMESTAMP</when>
+                    <otherwise>NULL</otherwise>
+                </choose>)
+    </insert>
+
+    <select id="lastInsertId" resultType="long">
+        SELECT LAST_INSERT_ID()
+    </select>
+
+    <update id="update">
+        UPDATE notice
+           SET title        = #{title},
+               content      = #{content},
+               category     = #{category},
+               status       = #{status},
+               is_pinned    = #{pinned},
+               thumbnail_url= #{thumbnailUrl},
+               updated_at   = CURRENT_TIMESTAMP
+               <if test="setPublishedAt">, published_at = CURRENT_TIMESTAMP</if>
+         WHERE id = #{id}
+    </update>
+
+    <delete id="delete">
+        DELETE FROM notice
+         WHERE id = #{id}
+    </delete>
+
+</mapper>

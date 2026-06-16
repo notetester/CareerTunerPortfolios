@@ -11,6 +11,7 @@ import com.careertuner.interview.dto.InterviewProgressResponse;
 import com.careertuner.interview.dto.InterviewQuestionResponse;
 import com.careertuner.interview.dto.InterviewReportResponse;
 import com.careertuner.interview.dto.InterviewSessionResponse;
+import com.careertuner.interview.dto.ModelAnswerResponse;
 import com.careertuner.interview.dto.SubmitAnswerRequest;
 
 public interface InterviewService {
@@ -35,4 +36,7 @@ public interface InterviewService {
     List<InterviewAgentStepResponse> getAgentSteps(Long userId, Long sessionId);
 
     InterviewReportResponse getReport(Long userId, Long sessionId);
+
+    /** 질문에 대한 모범 답변 생성(학습용). 답변 제출 전에도 호출 가능. */
+    ModelAnswerResponse getModelAnswer(Long userId, Long questionId);
 }

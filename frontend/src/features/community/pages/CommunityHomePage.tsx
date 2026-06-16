@@ -1,63 +1,90 @@
 import { useState, useEffect, useMemo } from "react";
-import { PenSquare } from "lucide-react";
+import { useSearchParams } from "react-router";
+import { PenLine, Lock, BookOpen } from "lucide-react";
 import { PostList } from "../components/PostList";
-import { PostFilters, type SortKey, type PeriodKey } from "../components/PostFilters";
+import { PostFilters, type SortKey } from "../components/PostFilters";
 import { HotPostsSidebar } from "../components/HotPostsSidebar";
 import { PostDetailView } from "../components/PostDetailView";
 import { PostEditorForm } from "../components/PostEditorForm";
+import { CommunityGuidelinesPage } from "./CommunityGuidelinesPage";
 import { CATEGORIES } from "../types/community";
 import { useCommunityStore } from "../hooks/useCommunityStore";
+import { useLoginDialog } from "../hooks/useLoginDialog";
+import { ConfirmDialog } from "@/app/components/ui/confirm-dialog";
 import type { CommunityPost } from "../types/community";
 import "../styles/community.css";
 
-type ViewMode = "list" | "detail" | "write";
-
-const PERIOD_MAX: Record<PeriodKey, number> = { all: Infinity, today: 0, week: 7, month: 31 };
+type ViewMode = "list" | "detail" | "write" | "guidelines";
 
 export function CommunityHomePage() {
-  const [viewMode, setViewMode] = useState<ViewMode>("list");
+  const [searchParams, setSearchParams] = useSearchParams();
+  const initialView = searchParams.get("view") === "guidelines" ? "guidelines" as ViewMode : "list" as ViewMode;
+  const [viewMode, setViewMode] = useState<ViewMode>(initialView);
+
+  // URL ?view=guidelines 변경 감지
+  useEffect(() => {
+    if (searchParams.get("view") === "guidelines" && viewMode !== "guidelines") {
+      setViewMode("guidelines");
+    }
+  }, [searchParams]);
   const [selectedCategory, setSelectedCategory] = useState("all");
   const [selectedPost, setSelectedPost] = useState<CommunityPost | null>(null);
   const [sort, setSort] = useState<SortKey>("recent");
-  const [period, setPeriod] = useState<PeriodKey>("all");
   const [tag, setTag] = useState("");
 
-  const { posts, loading, fetchPosts } = useCommunityStore();
+  const { posts, loading, error, fetchPosts } = useCommunityStore();
+  const { showLoginDialog, requireAuth, onLoginConfirm, onLoginCancel } = useLoginDialog();
 
   const filteredPosts = useMemo(() => {
-    const maxDays = PERIOD_MAX[period];
     const q = tag.trim().toLowerCase();
     return posts
-      .filter((p) => (p.daysAgo ?? 0) <= maxDays)
-      .filter((p) => !q || (p.tags ?? []).some((t) => t.toLowerCase().includes(q)))
+      .filter((p) => !q || (p.tags ?? []).some((t) => t.toLowerCase().includes(q))
+        || p.title.toLowerCase().includes(q))
       .slice()
       .sort((a, b) => {
         if (sort === "recent") return (a.daysAgo ?? 0) - (b.daysAgo ?? 0);
-        const key = sort === "likes" ? "likeCount" : sort === "comments" ? "commentCount" : "viewCount";
+        const key = sort === "likes" ? "likeCount" : "commentCount";
         return (b.stats[key] ?? 0) - (a.stats[key] ?? 0);
       });
-  }, [posts, sort, period, tag]);
+  }, [posts, sort, tag]);
 
-  // 카테고리 바뀔 때마다 목록 다시 불러오기
   useEffect(() => {
     const cat = CATEGORIES.find((c) => c.value === selectedCategory);
     fetchPosts(selectedCategory === "all" ? undefined : cat?.slug);
   }, [selectedCategory, fetchPosts]);
 
+  useEffect(() => {
+    const onPopState = () => {
+      setViewMode("list");
+      setSelectedPost(null);
+    };
+    window.addEventListener("popstate", onPopState);
+    return () => window.removeEventListener("popstate", onPopState);
+  }, []);
+
   const handlePostClick = (post: CommunityPost) => {
     setSelectedPost(post);
     setViewMode("detail");
+    window.history.pushState({ view: "detail" }, "");
     window.scrollTo(0, 0);
   };
 
   const handleBack = () => {
-    setViewMode("list");
-    setSelectedPost(null);
-    window.scrollTo(0, 0);
+    // 쿼리 파라미터로 진입한 경우 정리
+    if (searchParams.has("view")) {
+      setSearchParams({}, { replace: true });
+      setViewMode("list");
+      return;
+    }
+    window.history.back();
   };
 
-  if (viewMode === "detail") {
-    return <PostDetailView onBack={handleBack} />;
+  if (viewMode === "guidelines") {
+    return <CommunityGuidelinesPage onBack={handleBack} />;
+  }
+
+  if (viewMode === "detail" && selectedPost) {
+    return <PostDetailView postId={selectedPost.id} onBack={handleBack} />;
   }
 
   if (viewMode === "write") {
@@ -65,54 +92,63 @@ export function CommunityHomePage() {
   }
 
   return (
-    <div className="ct-page">
-      <div className="ct-pagehead">
-        <div className="ct-pagehead__row">
-          <div>
-            <h1>커뮤니티</h1>
-            <p>익명으로 취업·이직·면접 이야기를 나눠보세요.</p>
-          </div>
-          <button className="ct-btn-brand" onClick={() => setViewMode("write")}>
-            <PenSquare /> 글쓰기
+    <div className="cv-page">
+      <div className="uv-phead">
+        <div>
+          <h1>커뮤니티</h1>
+          <p>익명으로 취업·이직·면접 이야기를 나눠보세요</p>
+        </div>
+        <div style={{ display: "flex", gap: 8 }}>
+          <button className="av-btn" style={{ height: 34, padding: "0 14px" }} onClick={() => {
+            setViewMode("guidelines");
+            window.history.pushState({ view: "guidelines" }, "");
+            window.scrollTo(0, 0);
+          }}>
+            <BookOpen /> 가이드라인
+          </button>
+          <button className="av-btn av-btn--ink" style={{ height: 34, padding: "0 14px" }} onClick={() => {
+            requireAuth(() => {
+              setViewMode("write");
+              window.history.pushState({ view: "write" }, "");
+            });
+          }}>
+            <PenLine /> 글쓰기
           </button>
         </div>
       </div>
 
-      <div className="ct-board__bar">
-        <div className="ct-tabs" role="tablist">
-          {CATEGORIES.map((cat) => (
-            <button
-              key={cat.value}
-              role="tab"
-              aria-selected={selectedCategory === cat.value}
-              className="ct-tab"
-              onClick={() => setSelectedCategory(cat.value)}
-            >
-              {cat.label}
-              {cat.count != null && (
-                <span className="count">{cat.count.toLocaleString()}</span>
-              )}
-            </button>
-          ))}
-        </div>
+      <div className="uv-tabs">
+        {CATEGORIES.map((cat) => (
+          <button
+            key={cat.value}
+            className={"uv-tab" + (selectedCategory === cat.value ? " on" : "")}
+            onClick={() => setSelectedCategory(cat.value)}
+          >
+            {cat.label}
+            {cat.count != null && (
+              <span className="n num">{cat.count.toLocaleString()}</span>
+            )}
+          </button>
+        ))}
       </div>
 
-      <PostFilters
-        sort={sort} period={period} tag={tag}
-        onSortChange={setSort} onPeriodChange={setPeriod} onTagChange={setTag}
-      />
-
-      <div className="ct-grid">
+      <div className="cv-grid">
         <div>
+          <PostFilters
+            sort={sort} tag={tag}
+            onSortChange={setSort} onTagChange={setTag}
+          />
           {loading ? (
-            <p style={{ textAlign: "center", color: "var(--muted-foreground)", padding: "48px 0" }}>
-              불러오는 중...
+            <p className="av-empty">불러오는 중...</p>
+          ) : error ? (
+            <p className="av-empty" style={{ color: "var(--destructive)" }}>
+              게시글을 불러오지 못했습니다. 잠시 후 다시 시도해주세요.
             </p>
           ) : (
             <>
               <PostList posts={filteredPosts} onPostClick={handlePostClick} />
               {filteredPosts.length === 0 && (
-                <p style={{ textAlign: "center", color: "var(--muted-foreground)", padding: "48px 0" }}>
+                <p className="av-empty">
                   {posts.length === 0 ? "해당 카테고리에 게시글이 없습니다." : "검색 결과가 없습니다."}
                 </p>
               )}
@@ -121,6 +157,19 @@ export function CommunityHomePage() {
         </div>
         <HotPostsSidebar />
       </div>
+
+      {showLoginDialog && (
+        <ConfirmDialog
+          variant="info"
+          icon={<Lock />}
+          title="로그인이 필요해요"
+          description="글을 쓰려면 로그인이 필요합니다. 30초면 시작할 수 있어요."
+          confirmLabel="로그인하기"
+          cancelLabel="둘러보기"
+          onConfirm={onLoginConfirm}
+          onCancel={onLoginCancel}
+        />
+      )}
     </div>
   );
 }

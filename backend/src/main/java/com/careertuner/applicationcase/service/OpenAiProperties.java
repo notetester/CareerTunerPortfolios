@@ -17,7 +17,7 @@ public class OpenAiProperties {
     private String apiKey = "";
     private String model = "gpt-5";
     private String baseUrl = "https://api.openai.com/v1";
-    private Duration timeout = Duration.ofSeconds(90);
+    private Duration timeout = Duration.ofSeconds(300);
 
     public String responsesUrl() {
         return baseUrl.replaceAll("/+$", "") + "/responses";

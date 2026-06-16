@@ -9,7 +9,9 @@ import type {
 } from "@/features/dashboard/types/dashboardSummary";
 import type { HomeSummary } from "@/features/home/types/homeSummary";
 import type { AnalysisSummary, CareerAnalysisRun } from "@/features/analysis/types/analysisSummary";
-import type { FitAnalysisDetail, FitAnalysisLearningTask } from "@/features/analysis/types/fitAnalysis";
+import type { FitAnalysisDetail, FitAnalysisHistoryEntry, FitAnalysisLearningTask, FitScoreBreakdown } from "@/features/analysis/types/fitAnalysis";
+import type { CareerPlan } from "@/features/analysis/types/careerPlan";
+import type { ApplicationCase } from "@/features/applications/types/applicationCase";
 
 const now = Date.now();
 const iso = (daysAgo: number) => new Date(now - daysAgo * 86_400_000).toISOString();
@@ -48,10 +50,10 @@ const activities: DashboardActivity[] = [
 ];
 
 const skillGaps = [
-  { skill: "TypeScript", count: 3, total: 4, percentage: 75 },
-  { skill: "AWS", count: 2, total: 4, percentage: 50 },
-  { skill: "테스트(Jest)", count: 2, total: 4, percentage: 50 },
-  { skill: "CI/CD", count: 1, total: 4, percentage: 25 },
+  { skill: "TypeScript", count: 3, total: 3, percentage: 100 },
+  { skill: "AWS", count: 2, total: 3, percentage: 67 },
+  { skill: "테스트(Jest)", count: 2, total: 3, percentage: 67 },
+  { skill: "CI/CD", count: 1, total: 3, percentage: 33 },
 ];
 
 const dashboardAiSummary =
@@ -75,6 +77,7 @@ export const demoDashboardSummary: DashboardSummary = {
     description: "적합도 84점으로 가장 유망합니다. 면접 답변에서 TypeScript 경험을 보강하면 합격 가능성이 높아집니다.",
     readiness: 84,
   },
+  promisingApplication: dashboardApplications[0],
   recentApplications: dashboardApplications,
   todos: [
     { id: null, derivedKey: "interview-practice:102", source: "DERIVED", done: false, task: "네이버 면접 예상 질문 3개 답변 연습", time: "오늘" },
@@ -100,17 +103,45 @@ export const demoDashboardSummary: DashboardSummary = {
     { id: 9102, type: "INTERVIEW_REPORT", title: "모의면접 리포트가 준비되었습니다", message: null, link: "/interview?tab=report", read: false, createdAt: iso(1) },
     { id: 9103, type: "NOTICE", title: "CareerTuner 데모에 오신 것을 환영합니다", message: null, link: null, read: true, createdAt: iso(5) },
   ],
+  readiness: {
+    overall: 72,
+    components: [
+      { key: "analysis", label: "적합도 분석 실행률", score: 75, description: "4개 지원 건 중 3건 분석 완료" },
+      { key: "fit", label: "평균 적합도", score: 78, description: "최신 분석 기준 평균 점수" },
+      { key: "learning", label: "학습 로드맵 완료율", score: 33, description: "9개 과제 중 3개 완료" },
+      { key: "interview", label: "모의면접 연습률", score: 50, description: "4개 지원 건 중 2건 연습 진행" },
+    ],
+  },
+  recentChange: {
+    reanalyzedApplications: 2,
+    improvedApplications: 2,
+    declinedApplications: 0,
+    averageScoreDelta: 7,
+    weeklyFitScoreDelta: 7,
+    weeklyGapCountDelta: -2,
+    weeklyInterviewScoreDelta: 6,
+  },
+  statusCounts: [
+    { status: "ANALYZING", count: 1 },
+    { status: "READY", count: 2 },
+    { status: "APPLIED", count: 1 },
+  ],
   aiSummary: dashboardAiSummary,
   analysisRun: {
     id: 5001,
     analysisType: "DASHBOARD_SUMMARY",
     status: "FALLBACK",
     model: "mock-demo",
+    promptVersion: "v0.2",
     tokenUsage: 0,
     errorMessage: null,
     retryable: false,
     createdAt: iso(0),
   },
+  aiHistory: [
+    { id: 5001, analysisType: "DASHBOARD_SUMMARY", status: "FALLBACK", model: "mock-demo", promptVersion: "v0.2", tokenUsage: 0, errorMessage: null, retryable: false, createdAt: iso(0) },
+    { id: 5000, analysisType: "DASHBOARD_SUMMARY", status: "SUCCESS", model: "mock-demo", promptVersion: "v0.1", tokenUsage: 760, errorMessage: null, retryable: false, createdAt: iso(7) },
+  ],
 };
 
 export const demoHomeSummary: HomeSummary = {
@@ -120,6 +151,13 @@ export const demoHomeSummary: HomeSummary = {
   recentApplications: dashboardApplications,
   nextActions: demoDashboardSummary.todos,
   recentActivities: activities,
+  onboardingSteps: [
+    { key: "signup", label: "회원가입", done: true },
+    { key: "application", label: "공고(지원 건) 등록", done: true },
+    { key: "fit-analysis", label: "적합도 분석 실행", done: true },
+    { key: "learning", label: "학습 과제 완료", done: true },
+    { key: "interview", label: "모의면접 연습", done: true },
+  ],
 };
 
 const careerTrendSummary =
@@ -133,6 +171,7 @@ const analysisRun: CareerAnalysisRun = {
   inputSnapshot: null,
   result: JSON.stringify({ trendSummary: careerTrendSummary, recommendedDirections: [] }),
   model: "mock-demo",
+  promptVersion: "v0.2",
   tokenUsage: 0,
   errorMessage: null,
   retryable: false,
@@ -185,6 +224,103 @@ export const demoAnalysisSummary: AnalysisSummary = {
     { questionType: "PERSONALITY", answerCount: 4, averageScore: 81, sampleFeedback: null },
   ],
   period: { from: iso(20), to: iso(2), applicationCount: 4, analyzedCount: 3, interviewSessionCount: 3 },
+  monthlyFitTrend: [
+    { month: "2026-04", averageScore: 66, analysisCount: 1 },
+    { month: "2026-05", averageScore: 71, analysisCount: 2 },
+    { month: "2026-06", averageScore: 81, analysisCount: 2 },
+  ],
+  applicationTiers: [
+    {
+      tier: "SAFE",
+      label: "안전 지원",
+      description: "적합도 80점 이상. 합격 가능성이 높은 지원 건입니다.",
+      items: [{ applicationCaseId: 102, companyName: "네이버", jobTitle: "프론트엔드 개발자", fitScore: 84 }],
+    },
+    {
+      tier: "MATCH",
+      label: "적정 지원",
+      description: "적합도 60~79점. 현재 스펙과 잘 맞아 보완 1~2개로 경쟁력이 생깁니다.",
+      items: [
+        { applicationCaseId: 101, companyName: "카카오", jobTitle: "프론트엔드 개발자", fitScore: 78 },
+        { applicationCaseId: 104, companyName: "라인", jobTitle: "프론트엔드 개발자", fitScore: 71 },
+      ],
+    },
+    {
+      tier: "CHALLENGE",
+      label: "상향 지원",
+      description: "적합도 60점 미만. 부족 역량 보완이 전제되는 도전 지원 건입니다.",
+      items: [],
+    },
+  ],
+  skillFitAverages: [
+    { skill: "React", analysisCount: 3, averageScore: 80, mostlyMatched: true },
+    { skill: "TypeScript", analysisCount: 3, averageScore: 76, mostlyMatched: false },
+    { skill: "REST API", analysisCount: 2, averageScore: 81, mostlyMatched: true },
+    { skill: "AWS", analysisCount: 2, averageScore: 74, mostlyMatched: false },
+  ],
+  fitInterviewBands: [
+    { band: "HIGH", label: "적합도 70점 이상", applicationCount: 2, averageFitScore: 81, averageInterviewScore: 78 },
+    { band: "MID", label: "적합도 50~69점", applicationCount: 0, averageFitScore: null, averageInterviewScore: null },
+    { band: "LOW", label: "적합도 50점 미만", applicationCount: 0, averageFitScore: null, averageInterviewScore: null },
+  ],
+  applicationPriorities: [
+    {
+      applicationCaseId: 101,
+      companyName: "카카오",
+      jobTitle: "프론트엔드 개발자",
+      fitScore: 78,
+      priorityScore: 86,
+      urgency: "NOW",
+      reasons: ["현재 적합도 78점", "지원 준비가 완료된 상태"],
+    },
+    {
+      applicationCaseId: 104,
+      companyName: "라인",
+      jobTitle: "프론트엔드 개발자",
+      fitScore: 71,
+      priorityScore: 79,
+      urgency: "PREPARE",
+      reasons: ["현재 적합도 71점", "지원 준비가 완료된 상태"],
+    },
+  ],
+  careerRisks: [
+    {
+      riskType: "REPEATED_SKILL_GAP",
+      severity: "HIGH",
+      title: "TypeScript 부족이 반복되고 있습니다.",
+      detail: "최근 분석 3건 중 3건에서 같은 부족 역량이 확인됐습니다.",
+      action: "이번 주 학습 로드맵에서 TypeScript 과제를 최우선으로 완료하세요.",
+    },
+  ],
+  companyTypeFits: [
+    { companyType: "인터넷/SaaS", applicationCount: 2, averageFitScore: 81 },
+    { companyType: "핀테크", applicationCount: 1, averageFitScore: 78 },
+  ],
+  correctionCorrelation: {
+    correctedApplications: 2,
+    uncorrectedApplications: 1,
+    correctedAverageFitScore: 81,
+    uncorrectedAverageFitScore: 71,
+    scoreDelta: 10,
+  },
+  weeklyChange: {
+    fitScoreDelta: 7,
+    gapCountDelta: -2,
+    interviewScoreDelta: 6,
+    summary: "지난주보다 적합도와 면접 점수가 상승하고 반복 부족 역량은 감소했습니다.",
+  },
+  avoidJobTypes: ["AWS 운영 경험 필수 공고", "백엔드 실무 3년 이상 필수 공고"],
+  next24HourActions: ["TypeScript 리팩토링 결과를 README에 정리", "네이버 지원 건 면접 답변 3개 수치화"],
+  toneStrategies: [
+    { tone: "DIRECT", label: "냉정한 평가", message: "현재는 프론트엔드 지원에 집중하고 AWS 필수 공고는 후순위로 두세요." },
+    { tone: "ENCOURAGING", label: "격려형 평가", message: "강점 직무에서 점수가 꾸준히 오르고 있습니다. 반복 부족 역량 하나씩 해결하세요." },
+    { tone: "ACTION", label: "실행 중심 평가", message: "오늘 TypeScript 근거를 보강하고 이번 주 AWS 배포 실습을 완료하세요." },
+  ],
+  threeLineSummary: [
+    "현재 가장 유망한 지원 건은 네이버 프론트엔드입니다.",
+    "반복 부족 역량은 TypeScript와 AWS입니다.",
+    "이번 주에는 TypeScript 프로젝트 근거 보강을 우선하세요.",
+  ],
   analysisRun,
 };
 
@@ -197,6 +333,31 @@ function learningTasks(fitId: number): FitAnalysisLearningTask[] {
   ];
 }
 
+function demoScoreBreakdown(score: number): FitScoreBreakdown[] {
+  const definitions = [
+    ["REQUIRED", "필수 조건 충족도", 45, "필수 요구조건의 충족·부분 충족 비율"],
+    ["PREFERRED", "우대 조건 충족도", 25, "우대 요구조건의 충족·부분 충족 비율"],
+    ["PROJECT", "프로젝트 연관성", 15, "매칭 역량과 프로젝트 적용 가능성"],
+    ["EXPERIENCE", "경력·경험 신뢰도", 10, "등록된 경험 근거의 활용 가능성"],
+    ["PROFILE", "프로필 완성도 보정", 5, "분석 입력의 완성도와 신뢰도"],
+  ] as const;
+  const earned = definitions.map(([, , maximum]) => Math.floor((score * maximum) / 100));
+  let remainder = score - earned.reduce((sum, value) => sum + value, 0);
+  for (let index = 0; remainder > 0; index = (index + 1) % earned.length) {
+    if (earned[index] < definitions[index][2]) {
+      earned[index] += 1;
+      remainder -= 1;
+    }
+  }
+  return definitions.map(([key, label, maximum, explanation], index) => ({
+    key,
+    label,
+    earned: earned[index],
+    maximum,
+    explanation,
+  }));
+}
+
 const fitAnalyses: FitAnalysisDetail[] = [
   {
     id: 201, applicationCaseId: 101, fitScore: 78,
@@ -205,7 +366,14 @@ const fitAnalyses: FitAnalysisDetail[] = [
     recommendedStudy: JSON.stringify(["TypeScript 실무", "Jest 단위 테스트"]),
     recommendedCertificates: JSON.stringify(["정보처리기사"]),
     strategy: "React 경험은 충분합니다. TypeScript와 테스트 경험을 보강하면 적합도가 올라갑니다.",
-    sourceSnapshot: null,
+    sourceSnapshot: JSON.stringify({
+      jobAnalysisId: 301,
+      jobPostingRevision: 2,
+      jobAnalysisCreatedAt: iso(4),
+      profileUpdatedAt: iso(6),
+      requiredSkills: ["React", "JavaScript", "TypeScript", "테스트(Jest)"],
+      profileSkills: ["React", "JavaScript", "REST API", "Git"],
+    }),
     scoreBasis: JSON.stringify(["필수 기술 React 충족", "우대 기술 TypeScript 미충족", "협업 경험 우수"]),
     gapRecommendations: JSON.stringify([
       { skill: "TypeScript", category: "PREFERRED_GAP", priority: "HIGH", reason: "공고 우대 조건이며 최근 지원에서 반복적으로 부족" },
@@ -215,6 +383,22 @@ const fitAnalyses: FitAnalysisDetail[] = [
       { name: "정보처리기사", priority: "MEDIUM", reason: "신입/주니어 지원 시 기본 신뢰도" },
     ]),
     strategyActions: JSON.stringify(["TypeScript 리팩토링 프로젝트 1건 추가", "테스트 커버리지 사례 포트폴리오화"]),
+    conditionMatrix: JSON.stringify([
+      { condition: "React", conditionType: "REQUIRED", matchStatus: "MET", evidence: "프로필 보유 기술에서 동일 항목이 확인됩니다." },
+      { condition: "JavaScript", conditionType: "REQUIRED", matchStatus: "MET", evidence: "프로필 보유 기술에서 동일 항목이 확인됩니다." },
+      { condition: "TypeScript", conditionType: "PREFERRED", matchStatus: "UNMET", evidence: "프로필 보유 기술에서 확인되지 않습니다." },
+      { condition: "테스트(Jest)", conditionType: "PREFERRED", matchStatus: "UNMET", evidence: "프로필 보유 기술에서 확인되지 않습니다." },
+    ]),
+    analysisConfidence: JSON.stringify({
+      level: "MEDIUM",
+      score: 72,
+      reasons: ["보유 자격증 정보가 없어 자격증 추천이 일반 기준으로 제공됩니다."],
+    }),
+    applyDecision: JSON.stringify({
+      decision: "COMPLEMENT",
+      reasons: ["적합도 78점이며 우대 조건 TypeScript 가 미충족이라 보완 후 지원을 권장합니다."],
+      actions: ["TypeScript 보완 결과물(작은 프로젝트/실습 기록)을 먼저 준비합니다.", "학습 로드맵의 상위 과제를 완료한 뒤 적합도 재분석을 실행합니다."],
+    }),
     model: "mock-demo", status: "FALLBACK", errorMessage: null, createdAt: iso(3),
     application: { id: 101, companyName: "카카오", jobTitle: "프론트엔드 개발자", postingDate: iso(5), status: "READY", favorite: false, updatedAt: iso(2) },
     learningTasks: learningTasks(201),
@@ -226,7 +410,14 @@ const fitAnalyses: FitAnalysisDetail[] = [
     recommendedStudy: JSON.stringify(["AWS 배포 기초"]),
     recommendedCertificates: JSON.stringify(["AWS Cloud Practitioner"]),
     strategy: "적합도가 높습니다. 면접에서 성능 최적화 경험을 구체적 수치로 설명하세요.",
-    sourceSnapshot: null,
+    sourceSnapshot: JSON.stringify({
+      jobAnalysisId: 302,
+      jobPostingRevision: 1,
+      jobAnalysisCreatedAt: iso(3),
+      profileUpdatedAt: iso(6),
+      requiredSkills: ["React", "TypeScript", "AWS"],
+      profileSkills: ["React", "TypeScript", "REST API", "성능 최적화"],
+    }),
     scoreBasis: JSON.stringify(["필수 기술 대부분 충족", "TypeScript 실무 경험 보유", "클라우드 배포 경험 부족"]),
     gapRecommendations: JSON.stringify([
       { skill: "AWS", category: "PREFERRED_GAP", priority: "MEDIUM", reason: "배포/운영 경험을 보여주면 가산점" },
@@ -235,11 +426,38 @@ const fitAnalyses: FitAnalysisDetail[] = [
       { name: "AWS Cloud Practitioner", priority: "LOW", reason: "기초 클라우드 이해 증빙" },
     ]),
     strategyActions: JSON.stringify(["성능 개선 정량 성과 정리", "AWS 배포 과정 문서화"]),
+    conditionMatrix: JSON.stringify([
+      { condition: "React", conditionType: "REQUIRED", matchStatus: "MET", evidence: "프로필 보유 기술에서 동일 항목이 확인됩니다." },
+      { condition: "TypeScript", conditionType: "REQUIRED", matchStatus: "MET", evidence: "프로필 보유 기술에서 동일 항목이 확인됩니다." },
+      { condition: "AWS", conditionType: "PREFERRED", matchStatus: "PARTIAL", evidence: "프로필에 유사/연관 기술이 있어 부분 충족으로 판정합니다." },
+    ]),
+    analysisConfidence: JSON.stringify({ level: "HIGH", score: 100, reasons: [] }),
+    applyDecision: JSON.stringify({
+      decision: "APPLY",
+      reasons: ["적합도 84점으로 현재 스펙 기준 지원 가능성이 높습니다.", "핵심 요구 역량 React, TypeScript 가 프로필과 매칭됩니다."],
+      actions: ["지원서에 매칭 역량 경험을 수치·역할 중심으로 정리합니다.", "마감 전 지원을 진행하고 면접 답변 준비를 병행합니다."],
+    }),
     model: "mock-demo", status: "FALLBACK", errorMessage: null, createdAt: iso(2),
     application: { id: 102, companyName: "네이버", jobTitle: "프론트엔드 개발자", postingDate: iso(8), status: "APPLIED", favorite: true, updatedAt: iso(1) },
     learningTasks: learningTasks(202),
   },
-];
+].map((analysis) => ({
+  ...analysis,
+  promptVersion: "v0.2",
+  scoreBreakdown: demoScoreBreakdown(analysis.fitScore ?? 0),
+  actionBoard: {
+    todo: ["지원서에 부족 역량 보완 계획 추가"],
+    inProgress: ["TypeScript 리팩토링 프로젝트 정리"],
+    done: ["React 프로젝트 경험 정리"],
+  },
+  adverseStrategies: ["TypeScript 경험 부족은 기존 JavaScript 프로젝트의 점진적 리팩토링 결과로 대응하세요."],
+  next24HourActions: ["README에 문제 해결 과정과 검증 결과 추가", "면접에서 설명할 보완 계획 1분 답변 준비"],
+  toneStrategies: [
+    { tone: "DIRECT", label: "냉정한 평가", message: "필수 조건 미충족이 있다면 지원 전 근거를 먼저 보강하세요." },
+    { tone: "ENCOURAGING", label: "격려형 평가", message: "현재 강점을 유지하며 부족 역량을 작은 결과물로 증명하면 됩니다." },
+    { tone: "ACTION", label: "실행 중심 평가", message: "오늘 24시간 액션을 끝낸 뒤 적합도를 재분석하세요." },
+  ],
+}));
 
 export const demoFitAnalyses = fitAnalyses;
 
@@ -251,3 +469,61 @@ export const demoAnalysisHistory: CareerAnalysisRun[] = [
   analysisRun,
   { ...analysisRun, id: 6000, createdAt: iso(7) },
 ];
+
+export const demoApplicationCases: ApplicationCase[] = dashboardApplications.map((application) => ({
+  id: application.id,
+  companyName: application.companyName,
+  jobTitle: application.jobTitle,
+  postingDate: application.postingDate,
+  deadlineDate: null,
+  sourceType: "TEXT",
+  status: application.status as ApplicationCase["status"],
+  favorite: application.favorite,
+  archived: false,
+  archivedAt: null,
+  deletedAt: null,
+  createdAt: application.updatedAt,
+  updatedAt: application.updatedAt,
+}));
+
+export const demoCareerPlan: CareerPlan = {
+  goal: {
+    id: 9501,
+    targetJob: "프론트엔드 개발자",
+    targetPeriod: "2026년 하반기",
+    prioritySkill: "TypeScript",
+    preferredCompanyType: "SaaS/플랫폼",
+    updatedAt: iso(1),
+  },
+  learningPlans: [
+    {
+      id: 9601,
+      title: "TypeScript 실무 근거 만들기",
+      targetSkill: "TypeScript",
+      startDate: null,
+      endDate: null,
+      status: "ACTIVE",
+      completionRate: 50,
+      tasks: [
+        { id: 9701, learningPlanId: 9601, task: "React 컴포넌트 3개 타입 적용", done: true, sortOrder: 1, completedAt: iso(1) },
+        { id: 9702, learningPlanId: 9601, task: "API 응답 타입과 오류 처리 정리", done: false, sortOrder: 2, completedAt: null },
+      ],
+    },
+  ],
+};
+
+// 재분석 히스토리(지원 건별, 최신순). 점수·역량 변화 추적 데모.
+const fitHistoryByCase: Record<number, FitAnalysisHistoryEntry[]> = {
+  101: [
+    { id: 201, fitScore: 78, previousScore: 70, scoreDelta: 8, gainedSkills: ["REST API"], resolvedGaps: ["협업"], newGaps: [], model: "mock-demo", status: "FALLBACK", createdAt: iso(3) },
+    { id: 200, fitScore: 70, previousScore: null, scoreDelta: null, gainedSkills: [], resolvedGaps: [], newGaps: [], model: "mock-demo", status: "FALLBACK", createdAt: iso(12) },
+  ],
+  102: [
+    { id: 202, fitScore: 84, previousScore: 76, scoreDelta: 8, gainedSkills: ["TypeScript"], resolvedGaps: ["TypeScript"], newGaps: ["AWS"], model: "mock-demo", status: "FALLBACK", createdAt: iso(2) },
+    { id: 199, fitScore: 76, previousScore: null, scoreDelta: null, gainedSkills: [], resolvedGaps: [], newGaps: [], model: "mock-demo", status: "FALLBACK", createdAt: iso(14) },
+  ],
+};
+
+export function findFitHistoryByApplicationCase(applicationCaseId: number): FitAnalysisHistoryEntry[] {
+  return fitHistoryByCase[applicationCaseId] ?? [];
+}

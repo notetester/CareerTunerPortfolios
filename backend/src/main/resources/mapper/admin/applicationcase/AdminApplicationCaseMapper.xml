@@ -38,27 +38,124 @@
         JOIN users u ON ac.user_id = u.id
     </sql>
 
-    <select id="findApplicationCases" resultType="com.careertuner.admin.applicationcase.dto.AdminApplicationCaseRow">
-        <include refid="ApplicationCaseSelect"/>
+    <sql id="ApplicationCaseWhere">
         WHERE 1 = 1
-        <if test="keyword != null">
+        <if test="criteria.keyword != null">
             AND (
-                ac.company_name LIKE CONCAT('%', #{keyword}, '%')
-                OR ac.job_title LIKE CONCAT('%', #{keyword}, '%')
-                OR u.email LIKE CONCAT('%', #{keyword}, '%')
+                ac.company_name LIKE CONCAT('%', #{criteria.keyword}, '%')
+                OR ac.job_title LIKE CONCAT('%', #{criteria.keyword}, '%')
+                OR u.email LIKE CONCAT('%', #{criteria.keyword}, '%')
             )
         </if>
-        <if test="status != null">
-            AND ac.status = #{status}
+        <if test="criteria.status != null">
+            AND ac.status = #{criteria.status}
         </if>
-        <if test="!includeArchived">
+        <if test="!criteria.includeArchived">
             AND ac.archived_at IS NULL
         </if>
-        <if test="!includeDeleted">
+        <if test="!criteria.includeDeleted">
             AND ac.deleted_at IS NULL
         </if>
-        ORDER BY ac.updated_at DESC, ac.id DESC
-        LIMIT #{limit}
+        <if test="criteria.sourceType != null">
+            AND ac.source_type = #{criteria.sourceType}
+        </if>
+        <if test="criteria.favorite != null">
+            AND ac.is_favorite = #{criteria.favorite}
+        </if>
+        <if test="criteria.createdFrom != null">
+            AND ac.created_at &gt;= #{criteria.createdFrom}
+        </if>
+        <if test="criteria.createdTo != null">
+            AND ac.created_at &lt; DATE_ADD(#{criteria.createdTo}, INTERVAL 1 DAY)
+        </if>
+        <if test="criteria.deadlineFrom != null">
+            AND ac.deadline_date &gt;= #{criteria.deadlineFrom}
+        </if>
+        <if test="criteria.deadlineTo != null">
+            AND ac.deadline_date &lt;= #{criteria.deadlineTo}
+        </if>
+        <choose>
+            <when test="criteria.analysisState == 'NO_ANALYSIS'">
+                AND NOT EXISTS (SELECT 1 FROM job_analysis ja WHERE ja.application_case_id = ac.id)
+                AND NOT EXISTS (SELECT 1 FROM company_analysis ca WHERE ca.application_case_id = ac.id)
+            </when>
+            <when test="criteria.analysisState == 'MISSING_JOB_ANALYSIS'">
+                AND NOT EXISTS (SELECT 1 FROM job_analysis ja WHERE ja.application_case_id = ac.id)
+            </when>
+            <when test="criteria.analysisState == 'MISSING_COMPANY_ANALYSIS'">
+                AND NOT EXISTS (SELECT 1 FROM company_analysis ca WHERE ca.application_case_id = ac.id)
+            </when>
+            <when test="criteria.analysisState == 'MISSING_ANY_ANALYSIS'">
+                AND (
+                    NOT EXISTS (SELECT 1 FROM job_analysis ja WHERE ja.application_case_id = ac.id)
+                    OR NOT EXISTS (SELECT 1 FROM company_analysis ca WHERE ca.application_case_id = ac.id)
+                )
+            </when>
+            <when test="criteria.analysisState == 'COMPLETE_ANALYSIS'">
+                AND EXISTS (SELECT 1 FROM job_analysis ja WHERE ja.application_case_id = ac.id)
+                AND EXISTS (SELECT 1 FROM company_analysis ca WHERE ca.application_case_id = ac.id)
+            </when>
+        </choose>
+    </sql>
+
+    <sql id="ApplicationCaseOrderBy">
+        <choose>
+            <when test="criteria.sort == 'UPDATED_AT_ASC'">ORDER BY ac.updated_at ASC, ac.id ASC</when>
+            <when test="criteria.sort == 'CREATED_AT_DESC'">ORDER BY ac.created_at DESC, ac.id DESC</when>
+            <when test="criteria.sort == 'CREATED_AT_ASC'">ORDER BY ac.created_at ASC, ac.id ASC</when>
+            <when test="criteria.sort == 'DEADLINE_DATE_DESC'">ORDER BY ac.deadline_date DESC, ac.id DESC</when>
+            <when test="criteria.sort == 'DEADLINE_DATE_ASC'">ORDER BY ac.deadline_date IS NULL, ac.deadline_date ASC, ac.id ASC</when>
+            <when test="criteria.sort == 'COMPANY_NAME_DESC'">ORDER BY ac.company_name DESC, ac.id DESC</when>
+            <when test="criteria.sort == 'COMPANY_NAME_ASC'">ORDER BY ac.company_name ASC, ac.id ASC</when>
+            <when test="criteria.sort == 'LATEST_JOB_ANALYSIS_AT_DESC'">ORDER BY latest_job_analysis_at DESC, ac.id DESC</when>
+            <when test="criteria.sort == 'LATEST_JOB_ANALYSIS_AT_ASC'">ORDER BY latest_job_analysis_at IS NULL, latest_job_analysis_at ASC, ac.id ASC</when>
+            <when test="criteria.sort == 'LATEST_COMPANY_ANALYSIS_AT_DESC'">ORDER BY latest_company_analysis_at DESC, ac.id DESC</when>
+            <when test="criteria.sort == 'LATEST_COMPANY_ANALYSIS_AT_ASC'">ORDER BY latest_company_analysis_at IS NULL, latest_company_analysis_at ASC, ac.id ASC</when>
+            <otherwise>ORDER BY ac.updated_at DESC, ac.id DESC</otherwise>
+        </choose>
+    </sql>
+
+    <select id="findApplicationCases" resultType="com.careertuner.admin.applicationcase.dto.AdminApplicationCaseRow">
+        <include refid="ApplicationCaseSelect"/>
+        <include refid="ApplicationCaseWhere"/>
+        <include refid="ApplicationCaseOrderBy"/>
+        LIMIT #{criteria.limit} OFFSET #{criteria.offset}
+    </select>
+
+    <select id="summarizeApplicationCases" resultType="com.careertuner.admin.applicationcase.dto.AdminApplicationCaseSummary">
+        SELECT
+            COUNT(*) AS total_count,
+            COALESCE(SUM(CASE WHEN ac.status = 'DRAFT' THEN 1 ELSE 0 END), 0) AS draft_count,
+            COALESCE(SUM(CASE WHEN ac.status = 'ANALYZING' THEN 1 ELSE 0 END), 0) AS analyzing_count,
+            COALESCE(SUM(CASE WHEN ac.status = 'READY' THEN 1 ELSE 0 END), 0) AS ready_count,
+            COALESCE(SUM(CASE WHEN ac.status = 'APPLIED' THEN 1 ELSE 0 END), 0) AS applied_count,
+            COALESCE(SUM(CASE WHEN ac.status = 'CLOSED' THEN 1 ELSE 0 END), 0) AS closed_count,
+            COALESCE(SUM(CASE WHEN NOT EXISTS (
+                SELECT 1 FROM job_analysis ja WHERE ja.application_case_id = ac.id
+            ) THEN 1 ELSE 0 END), 0) AS missing_job_analysis_count,
+            COALESCE(SUM(CASE WHEN NOT EXISTS (
+                SELECT 1 FROM company_analysis ca WHERE ca.application_case_id = ac.id
+            ) THEN 1 ELSE 0 END), 0) AS missing_company_analysis_count,
+            COALESCE(SUM(CASE WHEN NOT EXISTS (
+                SELECT 1 FROM job_analysis ja WHERE ja.application_case_id = ac.id
+            ) OR NOT EXISTS (
+                SELECT 1 FROM company_analysis ca WHERE ca.application_case_id = ac.id
+            ) THEN 1 ELSE 0 END), 0) AS missing_any_analysis_count,
+            COALESCE(SUM(CASE WHEN EXISTS (
+                SELECT 1 FROM job_analysis ja WHERE ja.application_case_id = ac.id
+            ) AND EXISTS (
+                SELECT 1 FROM company_analysis ca WHERE ca.application_case_id = ac.id
+            ) THEN 1 ELSE 0 END), 0) AS complete_analysis_count,
+            COALESCE(SUM(CASE WHEN EXISTS (
+                SELECT 1
+                FROM ai_usage_log aul
+                WHERE aul.application_case_id = ac.id
+                  AND aul.feature_type IN ('JOB_ANALYSIS', 'COMPANY_RESEARCH', 'JOB_POSTING_OCR', 'JOB_POSTING_METADATA')
+                  AND aul.status = 'FAILED'
+            ) THEN 1 ELSE 0 END), 0) AS failed_usage_count
+        FROM application_case ac
+        JOIN users u ON ac.user_id = u.id
+        <include refid="ApplicationCaseWhere"/>
     </select>
 
     <select id="findApplicationCase" resultType="com.careertuner.admin.applicationcase.dto.AdminApplicationCaseRow">

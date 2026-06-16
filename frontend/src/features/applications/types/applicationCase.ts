@@ -4,6 +4,8 @@ export type ApplicationStatus = "DRAFT" | "ANALYZING" | "READY" | "APPLIED" | "C
 
 export type ApplicationCaseListView = "ACTIVE" | "ARCHIVED" | "DELETED";
 
+export type ApplicationCaseExtractionStatus = "QUEUED" | "RUNNING" | "SUCCEEDED" | "FAILED";
+
 export interface ApplicationCase {
   id: number;
   companyName: string;
@@ -31,10 +33,24 @@ export interface CreateApplicationCaseRequest {
   archived?: boolean;
 }
 
+export interface ApplicationCaseExtraction {
+  id: number;
+  applicationCaseId: number;
+  jobPostingId: number | null;
+  sourceType: ApplicationSourceType;
+  status: ApplicationCaseExtractionStatus;
+  errorMessage: string | null;
+  startedAt: string | null;
+  finishedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface UpdateApplicationCaseRequest {
   companyName?: string;
   jobTitle?: string;
   postingDate?: string | null;
+  clearPostingDate?: boolean;
   deadlineDate?: string | null;
   clearDeadlineDate?: boolean;
   sourceType?: ApplicationSourceType;
@@ -65,4 +81,12 @@ export function getApplicationStatusLabel(status: ApplicationStatus): string {
 
 export function getApplicationSourceLabel(sourceType: ApplicationSourceType): string {
   return APPLICATION_SOURCE_OPTIONS.find((item) => item.value === sourceType)?.label ?? sourceType;
+}
+
+export function isApplicationCaseExtractionActive(status: ApplicationCaseExtractionStatus): boolean {
+  return status === "QUEUED" || status === "RUNNING";
+}
+
+export function isApplicationCaseExtractionTerminal(status: ApplicationCaseExtractionStatus): boolean {
+  return status === "SUCCEEDED" || status === "FAILED";
 }

@@ -33,6 +33,7 @@ export function ContactPage() {
   const [submitted, setSubmitted] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const { submitting, lastTicket, createTicket } = useSupportStore();
+  const [submitFailed, setSubmitFailed] = useState(false);
 
   const addFiles = (list: FileList) => {
     const next = Array.from(list).map((f) => ({ name: f.name, size: f.size }));
@@ -60,7 +61,7 @@ export function ContactPage() {
               <button className="ct-act">고객센터로</button>
             </Link>
             <button
-              className="ct-btn-brand"
+              className="av-btn av-btn--ink"
               onClick={() => { setSubmitted(false); setTitle(""); setCategory(""); setBody(""); setFiles([]); }}
             >
               새 문의 작성
@@ -163,16 +164,26 @@ export function ContactPage() {
               <button className="ct-act">취소</button>
             </Link>
             <button
-              className="ct-btn-brand"
+              className="av-btn av-btn--ink"
               disabled={!canSubmit || submitting}
               onClick={async () => {
-                await createTicket({ category, subject: title, content: body });
-                setSubmitted(true);
-                window.scrollTo(0, 0);
+                setSubmitFailed(false);
+                try {
+                  await createTicket({ category, subject: title, content: body });
+                  setSubmitted(true);
+                  window.scrollTo(0, 0);
+                } catch {
+                  setSubmitFailed(true);
+                }
               }}
             >
               {submitting ? "전송 중…" : <>문의 보내기 <Send /></>}
             </button>
+            {submitFailed && (
+              <p style={{ color: "var(--destructive)", fontSize: 13, marginTop: 8 }}>
+                문의 전송에 실패했습니다. 네트워크 연결을 확인하고 다시 시도해주세요.
+              </p>
+            )}
           </div>
         </div>
 

@@ -1,64 +1,38 @@
-import { Search, SlidersHorizontal } from "lucide-react";
+import { Search } from "lucide-react";
 
-export type SortKey = "recent" | "likes" | "comments" | "views";
-export type PeriodKey = "all" | "today" | "week" | "month";
+export type SortKey = "recent" | "likes" | "comments";
 
 interface PostFiltersProps {
   sort: SortKey;
-  period: PeriodKey;
   tag: string;
   onSortChange: (v: SortKey) => void;
-  onPeriodChange: (v: PeriodKey) => void;
   onTagChange: (v: string) => void;
 }
 
 const SORT_OPTIONS: { value: SortKey; label: string }[] = [
-  { value: "recent", label: "최신순" },
-  { value: "likes", label: "인기순" },
-  { value: "comments", label: "댓글순" },
-  { value: "views", label: "조회순" },
+  { value: "recent", label: "최신" },
+  { value: "likes", label: "인기" },
+  { value: "comments", label: "댓글" },
 ];
 
-const PERIOD_OPTIONS: { value: PeriodKey; label: string }[] = [
-  { value: "all", label: "전체" },
-  { value: "today", label: "오늘" },
-  { value: "week", label: "이번 주" },
-  { value: "month", label: "이번 달" },
-];
-
-export function PostFilters({ sort, period, tag, onSortChange, onPeriodChange, onTagChange }: PostFiltersProps) {
+export function PostFilters({ sort, tag, onSortChange, onTagChange }: PostFiltersProps) {
   return (
-    <div className="ct-filters">
-      <div className="ct-filters__left">
-        <SlidersHorizontal className="ct-filters__ic" />
-        <div className="ct-filters__group">
-          {SORT_OPTIONS.map((o) => (
-            <button
-              key={o.value}
-              className={`ct-filters__chip ${sort === o.value ? "is-on" : ""}`}
-              onClick={() => onSortChange(o.value)}
-            >
-              {o.label}
-            </button>
-          ))}
-        </div>
-        <span className="ct-filters__sep" />
-        <div className="ct-filters__group">
-          {PERIOD_OPTIONS.map((o) => (
-            <button
-              key={o.value}
-              className={`ct-filters__chip ct-filters__chip--period ${period === o.value ? "is-on" : ""}`}
-              onClick={() => onPeriodChange(o.value)}
-            >
-              {o.label}
-            </button>
-          ))}
-        </div>
+    <div className="cv-bar">
+      <div className="av-seg">
+        {SORT_OPTIONS.map((o) => (
+          <button
+            key={o.value}
+            className={sort === o.value ? "on" : ""}
+            onClick={() => onSortChange(o.value)}
+          >
+            {o.label}
+          </button>
+        ))}
       </div>
-      <div className="ct-filters__search">
+      <div className="right av-search" style={{ width: 200 }}>
         <Search />
         <input
-          placeholder="태그 검색"
+          placeholder="태그·키워드 검색"
           value={tag}
           onChange={(e) => onTagChange(e.target.value)}
         />

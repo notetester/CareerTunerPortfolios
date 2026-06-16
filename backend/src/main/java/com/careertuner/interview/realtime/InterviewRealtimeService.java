@@ -76,12 +76,11 @@ public class InterviewRealtimeService {
         String instructions = buildInstructions(applicationCase, session.getMode(), questions);
         JsonNode root = requestEphemeralSession(instructions);
 
-        JsonNode secret = root.path("client_secret");
-        String value = secret.path("value").asText("");
+        String value = root.path("value").asText("");
         if (value.isBlank()) {
             throw new BusinessException(ErrorCode.INTERNAL_ERROR, "Realtime 세션 발급에 실패했습니다.");
         }
-        Long expiresAt = secret.path("expires_at").isMissingNode() ? null : secret.path("expires_at").asLong();
+        Long expiresAt = root.path("expires_at").isMissingNode() ? null : root.path("expires_at").asLong();
         return new RealtimeSessionResponse(value, expiresAt, realtimeProperties.getModel(),
                 realtimeProperties.getVoice(), realtimeUrl());
     }
@@ -98,12 +97,18 @@ public class InterviewRealtimeService {
         sb.append("- 답변이 부실하면 한 번 정도 꼬리 질문으로 파고든다.\n");
         sb.append("- 면접관답게 간결하고 또박또박 말한다. 정답을 대신 말해주지 않는다.\n");
         sb.append("- 인사 → 자기소개 요청 → 아래 질문들 → 마무리 순으로 자연스럽게 진행한다.\n");
-        if (!questions.isEmpty()) {
-            sb.append("\n준비된 질문 목록(순서 참고, 자연스럽게 변형 가능):\n");
+        // 준비된 본 질문(꼬리 질문 제외) 최대 6개로 진행한다 (ADR-002).
+        List<InterviewQuestion> mainQuestions = questions.stream()
+                .filter(q -> q.getParentQuestionId() == null)
+                .limit(6)
+                .toList();
+        if (!mainQuestions.isEmpty()) {
+            sb.append("\n준비된 질문 목록(이 순서대로 모두 질문하고, 표현은 자연스럽게 변형 가능):\n");
             int idx = 1;
-            for (InterviewQuestion q : questions) {
+            for (InterviewQuestion q : mainQuestions) {
                 sb.append(idx++).append(". ").append(q.getQuestion()).append("\n");
             }
+            sb.append("\n모든 질문이 끝나면 면접을 정중히 마무리하고 수고했다고 인사한다.\n");
         } else {
             sb.append("\n공고와 직무를 바탕으로 적절한 질문을 즉석에서 만들어 진행한다.\n");
         }
@@ -111,10 +116,13 @@ public class InterviewRealtimeService {
     }
 
     private JsonNode requestEphemeralSession(String instructions) {
+        Map<String, Object> session = new LinkedHashMap<>();
+        session.put("type", "realtime");
+        session.put("model", realtimeProperties.getModel());
+        session.put("instructions", instructions);
+        session.put("audio", Map.of("output", Map.of("voice", realtimeProperties.getVoice())));
         Map<String, Object> body = new LinkedHashMap<>();
-        body.put("model", realtimeProperties.getModel());
-        body.put("voice", realtimeProperties.getVoice());
-        body.put("instructions", instructions);
+        body.put("session", session);
         try {
             String json = objectMapper.writeValueAsString(body);
             HttpRequest request = HttpRequest.newBuilder(URI.create(sessionsUrl()))
@@ -146,11 +154,11 @@ public class InterviewRealtimeService {
     }
 
     private String sessionsUrl() {
-        return baseUrl() + "/realtime/sessions";
+        return baseUrl() + "/realtime/client_secrets";
     }
 
     private String realtimeUrl() {
-        return baseUrl() + "/realtime";
+        return baseUrl() + "/realtime/calls";
     }
 
     private String truncate(String value, int max) {

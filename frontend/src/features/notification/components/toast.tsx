@@ -27,6 +27,7 @@ import {
   MessageCircle,
   Reply,
   Heart,
+  EyeOff,
   Megaphone,
   MessageSquareReply,
   CreditCard,
@@ -198,16 +199,22 @@ const NOTI_ICON_MAP: Record<NotificationType, LucideIcon> = {
   COMPANY_ANALYSIS_COMPLETE: Building2,
   FIT_ANALYSIS_COMPLETE: Target,
   CAREER_TREND_COMPLETE: TrendingUp,
+  JOB_POSTING_EXTRACTION_SUCCEEDED: FileSearch,
+  JOB_POSTING_EXTRACTION_FAILED: AlertTriangle,
   QUESTIONS_GENERATED: HelpCircle,
   INTERVIEW_REPORT_READY: FileText,
   CORRECTION_COMPLETE: PenLine,
   COMMENT: MessageCircle,
   COMMENT_REPLY: Reply,
   LIKE: Heart,
+  POST_HIDDEN: EyeOff,
   POST_SUMMARY_READY: BookOpen,
   NOTICE: Megaphone,
   TICKET_ANSWERED: MessageSquareReply,
   CREDIT_LOW: CreditCard,
+  PAYMENT_COMPLETE: CreditCard,
+  PAYMENT_SCHEDULED: CreditCard,
+  CREDIT_RECHARGED: CreditCard,
   NEW_REPORT: ShieldAlert,
   NEW_TICKET: Ticket,
   NEW_USER: UserPlus,
@@ -586,7 +593,8 @@ function ToastViewport() {
   const [, forceRender] = useState(0);
 
   useEffect(() => {
-    return subscribe(() => forceRender((n) => n + 1));
+    const unsub = subscribe(() => forceRender((n) => n + 1));
+    return () => { unsub(); };
   }, []);
 
   return (

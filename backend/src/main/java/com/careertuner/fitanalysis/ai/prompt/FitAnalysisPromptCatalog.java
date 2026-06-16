@@ -7,6 +7,7 @@ package com.careertuner.fitanalysis.ai.prompt;
  * 공통 AI 클라이언트/프롬프트 엔진(ai/common, ai/prompt)은 팀장 공통 영역이므로, 여기에는 C 도메인 프롬프트만 둔다.
  */
 public final class FitAnalysisPromptCatalog {
+    public static final String VERSION = "v0.2";
 
     private FitAnalysisPromptCatalog() {
     }
@@ -20,9 +21,14 @@ public final class FitAnalysisPromptCatalog {
             - recommendedStudy 는 부족 역량을 메우는 학습 과제, recommendedCertificates 는 직무 실효성이 높은 자격증을 우선순위로 제안한다.
             - strategy 는 지원서/면접에서 강조할 점과 단기 보완 과제를 2~4문장으로 설명한다.
             - scoreBasis 는 점수 산정 근거를 설명하고, gapRecommendations 는 필수 미충족/우대 보완/장기 성장으로 구분한다.
-            - learningRoadmap 은 학습 순서, 실습 과제, 예상 기간, 우선순위를 포함한다.
+            - learningRoadmap 은 최우선 부족 역량별로 핵심 개념 → 적용 실습 → 포트폴리오 근거화의 3단계를 만들고,
+              각 단계의 학습 순서, 실습 과제, 예상 기간, 우선순위를 포함한다.
             - certificateRecommendations 는 자격증 우선순위와 추천 이유를 포함하고 과도한 자격증 준비는 낮은 우선순위로 안내한다.
             - strategyActions 는 지금 지원, 보완 후 재분석, 면접 준비 등 바로 실행할 다음 행동을 제안한다.
+            - conditionMatrix 는 공고의 필수/우대 조건을 행 단위로 나열하고, 지원자 보유 여부를
+              MET(충족)/PARTIAL(부분 충족)/UNMET(미충족)으로 판정하며 evidence 에 판정 근거를 적는다.
+            - applyDecision 은 최종 지원 판단으로, APPLY(지원 가능)/COMPLEMENT(보완 후 지원)/HOLD(지원 보류) 중 하나를
+              점수·필수 미충족 개수와 일관되게 고르고 reasons 와 지원 전 실행할 actions 를 제시한다.
             - 과장하지 말고, 근거가 약하면 보수적으로 평가한다.
             """;
 

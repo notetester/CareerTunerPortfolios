@@ -20,8 +20,13 @@ import { CompanyPage } from "./pages/Company";
 import { LegalPage } from "./pages/Legal";
 import { LoginPage } from "./pages/Login";
 import { AuthCallbackPage } from "./pages/AuthCallback";
+import { SocialConsentPage } from "./pages/SocialConsent";
 import { VerifyEmailResultPage } from "./pages/VerifyEmailResult";
+import { ForgotPasswordPage } from "./pages/ForgotPassword";
+import { ResetPasswordPage } from "./pages/ResetPassword";
+import { ReleaseDormantPage } from "./pages/ReleaseDormant";
 import { adminRoutes } from "../admin/routes";
+import NotificationPage from "@/features/notification/pages/NotificationPage";
 
 const basename = import.meta.env.BASE_URL === "/"
   ? "/"
@@ -37,6 +42,7 @@ export const router = createBrowserRouter([
       { path: "applications", Component: ApplicationsPage },
       { path: "applications/new", Component: ApplicationsPage },
       { path: "applications/trash", Component: ApplicationsPage },
+      { path: "applications/:id/:section/:mode", Component: ApplicationDetailPage },
       { path: "applications/:id/:section", Component: ApplicationDetailPage },
       { path: "applications/:id", Component: ApplicationDetailPage },
       { path: "interview", Component: AIInterviewPage },
@@ -56,6 +62,7 @@ export const router = createBrowserRouter([
       { path: "support/faq", Component: SupportPage },
       { path: "support/notices", Component: SupportPage },
       { path: "support/contact", Component: SupportPage },
+      { path: "support/chat", Component: SupportPage },
       { path: "company/about", Component: CompanyPage },
       { path: "company/team", Component: CompanyPage },
       { path: "company/careers", Component: CompanyPage },
@@ -68,7 +75,12 @@ export const router = createBrowserRouter([
       { path: "legal/copyright", Component: LegalPage },
       { path: "login", Component: LoginPage },
       { path: "auth/callback", Component: AuthCallbackPage },
+      { path: "auth/social-consent", Component: SocialConsentPage },
       { path: "auth/verify-email/result", Component: VerifyEmailResultPage },
+      { path: "auth/forgot-password", Component: ForgotPasswordPage },
+      { path: "auth/reset-password", Component: ResetPasswordPage },
+      { path: "auth/release-dormant", Component: ReleaseDormantPage },
+      { path: "notifications", Component: NotificationPage },
       ...adminRoutes,
     ],
   },

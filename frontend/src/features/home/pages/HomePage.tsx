@@ -17,6 +17,7 @@ import { getDashboardSummary, refreshDashboardSummary } from "@/features/dashboa
 import type { DashboardActivity, DashboardSummary, DashboardTodo } from "@/features/dashboard/types/dashboardSummary";
 import { TodoChecklist } from "@/features/dashboard/components/TodoChecklist";
 import { AiResultBadge } from "@/features/analysis/components/AiResultBadge";
+import { InterviewHero } from "@/features/interview/components/InterviewHero";
 
 const coreFeaturesData = [
   {
@@ -279,6 +280,7 @@ function MemberHome({ summary, loading, error, fallbackName, onRetry, onSummaryR
   return (
     <div className="min-h-screen bg-slate-50">
       <div className="max-w-[1400px] mx-auto px-4 sm:px-6 py-6 lg:py-8 space-y-6">
+        <InterviewHero />
         <section className="grid lg:grid-cols-[1.5fr_0.9fr] gap-5">
           <div className="rounded-2xl border border-slate-200 bg-white p-5 sm:p-7 shadow-sm">
             <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-5">
@@ -365,6 +367,41 @@ function MemberHome({ summary, loading, error, fallbackName, onRetry, onSummaryR
                 )}
               </div>
             </div>
+
+            {/* 시작 준비(온보딩) 진행률: 핵심 흐름에서 어디까지 왔는지 보여준다(대시보드 집계 파생). */}
+            {summary && (() => {
+              const readinessScore = (key: string) =>
+                summary.readiness?.components.find((component) => component.key === key)?.score ?? 0;
+              const steps = [
+                { key: "signup", label: "회원가입", done: true },
+                { key: "application", label: "공고 등록", done: (summary.statusCounts?.length ?? 0) > 0 },
+                { key: "fit-analysis", label: "적합도 분석", done: readinessScore("analysis") > 0 },
+                { key: "learning", label: "학습 과제 완료", done: readinessScore("learning") > 0 },
+                { key: "interview", label: "모의면접 연습", done: summary.stats.totalInterviews > 0 },
+              ];
+              const doneCount = steps.filter((step) => step.done).length;
+              if (doneCount === steps.length) return null;
+              return (
+                <div className="mt-5 rounded-xl border border-slate-200 bg-slate-50 p-4">
+                  <div className="flex items-center justify-between text-xs font-semibold text-slate-600">
+                    <span>시작 준비 {doneCount}/{steps.length} 완료</span>
+                    <span className="text-slate-400">남은 단계를 완료하면 분석 정확도가 올라갑니다</span>
+                  </div>
+                  <div className="mt-2.5 flex flex-wrap gap-2">
+                    {steps.map((step) => (
+                      <span
+                        key={step.key}
+                        className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-medium ${
+                          step.done ? "bg-green-100 text-green-700" : "bg-white text-slate-400 border border-slate-200"
+                        }`}
+                      >
+                        {step.done ? "✓" : "○"} {step.label}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              );
+            })()}
           </div>
 
           <Card className="border border-slate-200 bg-white shadow-sm">
@@ -770,6 +807,13 @@ export function HomePage() {
               </div>
             </div>
           </div>
+        </div>
+      </section>
+
+      {/* ─── 마누스형 면접 진입 검색창 ─── */}
+      <section className="bg-white">
+        <div className="mx-auto w-full max-w-[1400px] px-4 sm:px-6 pt-8">
+          <InterviewHero />
         </div>
       </section>
 

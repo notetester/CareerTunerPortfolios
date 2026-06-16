@@ -12,22 +12,33 @@ SET FOREIGN_KEY_CHECKS = 0;
 -- =====================================================================
 CREATE TABLE IF NOT EXISTS users (
     id               BIGINT       NOT NULL AUTO_INCREMENT,
-    email            VARCHAR(255) NOT NULL,
-    password         VARCHAR(255) NULL,                          -- BCrypt 해시. 소셜 전용 계정은 NULL
-    password_enabled TINYINT(1)   NOT NULL DEFAULT 1,            -- 비밀번호 로그인 가능 여부(소셜 전용=0)
+    email            VARCHAR(255) NOT NULL COMMENT '로그인 식별자로 사용하는 회원 이메일',
+    password         VARCHAR(255) NULL COMMENT 'BCrypt로 암호화한 비밀번호 해시. 소셜 전용 계정은 NULL 가능',
+    password_enabled TINYINT(1)   NOT NULL DEFAULT 1 COMMENT '비밀번호 로그인 사용 여부. 소셜 전용 계정은 0',
     name             VARCHAR(100) NOT NULL,
-    email_verified   TINYINT(1)   NOT NULL DEFAULT 0,            -- 이메일 인증 완료 여부
+    email_verified   TINYINT(1)   NOT NULL DEFAULT 0 COMMENT '이메일 인증 완료 여부',
     user_type        VARCHAR(20)  NOT NULL DEFAULT 'JOB_SEEKER', -- JOB_SEEKER/CAREER_CHANGER/EXPERIENCED
-    role             VARCHAR(20)  NOT NULL DEFAULT 'USER',       -- USER/ADMIN
-    status           VARCHAR(20)  NOT NULL DEFAULT 'ACTIVE',     -- ACTIVE/DORMANT/BLOCKED/DELETED
+    role             VARCHAR(20)  NOT NULL DEFAULT 'USER' COMMENT '회원 권한. USER 또는 ADMIN',
+    status           VARCHAR(20)  NOT NULL DEFAULT 'ACTIVE' COMMENT '회원 상태. ACTIVE/DORMANT/BLOCKED/DELETED',
     plan             VARCHAR(20)  NOT NULL DEFAULT 'FREE',       -- FREE/BASIC/PRO/PREMIUM
     credit           INT          NOT NULL DEFAULT 0,
-    last_login_at    DATETIME     NULL,
+    last_login_at    DATETIME     NULL COMMENT '마지막 로그인 성공 시각',
+    dormant_at       DATETIME     NULL COMMENT '휴면 계정으로 전환된 시각',
+    blocked_reason   VARCHAR(255) NULL COMMENT '관리자가 회원을 차단한 사유',
+    blocked_until    DATETIME     NULL COMMENT '기간 차단 만료 시각. NULL이면 무기한 또는 미차단',
+    deleted_at       DATETIME     NULL COMMENT '회원 탈퇴 또는 삭제 처리 시각',
+    status_changed_at DATETIME    NULL COMMENT '회원 상태가 마지막으로 변경된 시각',
+    status_changed_by BIGINT      NULL COMMENT '회원 상태를 변경한 관리자 ID. 시스템 변경이면 NULL',
+    failed_login_count INT        NOT NULL DEFAULT 0 COMMENT '연속 로그인 실패 횟수',
+    last_failed_login_at DATETIME NULL COMMENT '마지막 로그인 실패 시각',
     created_at       DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at       DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     PRIMARY KEY (id),
-    UNIQUE KEY uk_users_email (email)
-) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci;
+    UNIQUE KEY uk_users_email (email),
+    KEY idx_users_status (status),
+    KEY idx_users_status_changed_by (status_changed_by),
+    CONSTRAINT fk_users_status_changed_by FOREIGN KEY (status_changed_by) REFERENCES users (id) ON DELETE SET NULL
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci COMMENT = '회원 기본 정보와 로그인/권한/상태 관리 정보';
 
 -- 한 유저가 여러 소셜 계정 연동 가능 (provider별 1개)
 CREATE TABLE IF NOT EXISTS user_social (
@@ -62,16 +73,78 @@ CREATE TABLE IF NOT EXISTS email_verification (
 -- JWT refresh token (회전/폐기 관리용)
 CREATE TABLE IF NOT EXISTS refresh_token (
     id          BIGINT       NOT NULL AUTO_INCREMENT,
-    user_id     BIGINT       NOT NULL,
-    token       VARCHAR(512) NOT NULL,
-    expired_at  DATETIME     NOT NULL,
-    revoked     TINYINT(1)   NOT NULL DEFAULT 0,
+    user_id     BIGINT       NOT NULL COMMENT '토큰을 발급받은 회원 ID',
+    token       VARCHAR(512) NOT NULL COMMENT '저장된 JWT refresh token 값',
+    expired_at  DATETIME     NOT NULL COMMENT 'refresh token 만료 시각',
+    revoked     TINYINT(1)   NOT NULL DEFAULT 0 COMMENT '토큰 폐기 여부',
+    revoked_at  DATETIME     NULL COMMENT '토큰이 폐기된 시각',
+    ip_address  VARCHAR(45)  NULL COMMENT '토큰 발급 요청 IP 주소',
+    user_agent  VARCHAR(500) NULL COMMENT '토큰 발급 요청 User-Agent',
     created_at  DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (id),
     UNIQUE KEY uk_refresh_token_token (token),
     KEY idx_refresh_token_user (user_id),
     CONSTRAINT fk_refresh_token_user FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
-) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci;
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci COMMENT = 'JWT refresh token 저장 및 세션 감사 정보';
+
+-- 로그인/로그아웃/토큰 갱신 감사 로그.
+-- user_id는 실패 로그인처럼 사용자를 특정하지 못하는 이벤트를 위해 NULL 허용.
+CREATE TABLE IF NOT EXISTS user_login_history (
+    id               BIGINT       NOT NULL AUTO_INCREMENT,
+    user_id          BIGINT       NULL COMMENT '로그인 이벤트 대상 회원 ID. 실패로 회원 식별이 안 되면 NULL',
+    event_type       VARCHAR(20)  NOT NULL COMMENT '인증 이벤트 유형. LOGIN/LOGOUT/REFRESH',
+    auth_provider    VARCHAR(20)  NOT NULL DEFAULT 'LOCAL' COMMENT '인증 제공자. LOCAL/KAKAO/NAVER/GOOGLE',
+    login_method     VARCHAR(20)  NULL COMMENT '로그인 방식. EMAIL/OAUTH/REFRESH_TOKEN',
+    login_identifier VARCHAR(255) NULL COMMENT '사용자가 입력한 로그인 식별자. 보통 이메일',
+    success          TINYINT(1)   NOT NULL COMMENT '인증 성공 여부',
+    fail_reason      VARCHAR(50)  NULL COMMENT '실패 사유. USER_NOT_FOUND/WRONG_PASSWORD/BLOCKED 등',
+    ip_address       VARCHAR(45)  NULL COMMENT '요청 IP 주소',
+    user_agent       VARCHAR(500) NULL COMMENT '요청 User-Agent',
+    request_uri      VARCHAR(255) NULL COMMENT '인증 요청 URI',
+    created_at       DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (id),
+    KEY idx_user_login_history_user (user_id),
+    KEY idx_user_login_history_created (created_at),
+    KEY idx_user_login_history_success (success),
+    CONSTRAINT fk_user_login_history_user FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE SET NULL
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci COMMENT = '로그인, 로그아웃, 토큰 갱신 감사 로그';
+
+-- 관리자/시스템이 회원 상태를 바꾼 이력.
+-- users.status의 현재값만으로는 과거 차단/휴면/해제 사유를 알 수 없으므로 별도 로그로 남긴다.
+CREATE TABLE IF NOT EXISTS user_status_history (
+    id              BIGINT       NOT NULL AUTO_INCREMENT,
+    user_id         BIGINT       NOT NULL COMMENT '상태가 변경된 회원 ID',
+    actor_user_id   BIGINT       NULL COMMENT '상태를 변경한 관리자 ID. 시스템 자동 변경이면 NULL',
+    previous_status VARCHAR(20)  NULL COMMENT '변경 전 회원 상태',
+    new_status      VARCHAR(20)  NOT NULL COMMENT '변경 후 회원 상태',
+    reason          VARCHAR(255) NULL COMMENT '상태 변경 사유',
+    memo            TEXT         NULL COMMENT '관리자 내부 메모',
+    blocked_until   DATETIME     NULL COMMENT '차단 만료 시각. 차단 상태가 아니거나 무기한이면 NULL',
+    created_at      DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (id),
+    KEY idx_user_status_history_user (user_id),
+    KEY idx_user_status_history_actor (actor_user_id),
+    KEY idx_user_status_history_created (created_at),
+    CONSTRAINT fk_user_status_history_user FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE,
+    CONSTRAINT fk_user_status_history_actor FOREIGN KEY (actor_user_id) REFERENCES users (id) ON DELETE SET NULL
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci COMMENT = '회원 상태 변경 이력';
+
+-- 회원가입 및 설정 화면에서 수집하는 약관/개인정보/AI 데이터 활용 동의 이력.
+-- 철회가 가능해야 하므로 현재값만 덮어쓰지 않고 변경 이벤트를 누적한다.
+CREATE TABLE IF NOT EXISTS user_consent (
+    id           BIGINT      NOT NULL AUTO_INCREMENT,
+    user_id      BIGINT      NOT NULL COMMENT '동의 주체 회원 ID',
+    consent_type VARCHAR(40) NOT NULL COMMENT '동의 유형. TERMS/PRIVACY/AI_DATA/MARKETING',
+    agreed       TINYINT(1)  NOT NULL COMMENT '동의 여부',
+    agreed_at    DATETIME    NULL COMMENT '동의한 시각',
+    revoked_at   DATETIME    NULL COMMENT '철회한 시각',
+    source       VARCHAR(40) NULL COMMENT '동의가 발생한 위치. REGISTER/SETTINGS 등',
+    created_at   DATETIME    NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (id),
+    KEY idx_user_consent_user (user_id),
+    KEY idx_user_consent_type (consent_type),
+    CONSTRAINT fk_user_consent_user FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci COMMENT = '회원 동의 및 철회 이력';
 
 -- =====================================================================
 --  프로필
@@ -133,6 +206,32 @@ CREATE TABLE IF NOT EXISTS job_posting (
     UNIQUE KEY uk_job_posting_case_revision (application_case_id, revision),
     KEY idx_job_posting_case (application_case_id),
     CONSTRAINT fk_job_posting_case FOREIGN KEY (application_case_id) REFERENCES application_case (id) ON DELETE CASCADE
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci;
+
+CREATE TABLE IF NOT EXISTS application_case_extraction (
+    id                  BIGINT NOT NULL AUTO_INCREMENT,
+    application_case_id BIGINT NOT NULL,
+    job_posting_id      BIGINT NULL,
+    user_id             BIGINT NOT NULL,
+    source_type         VARCHAR(20) NOT NULL,
+    status              VARCHAR(20) NOT NULL DEFAULT 'QUEUED',
+    active_status_marker TINYINT GENERATED ALWAYS AS (
+        CASE WHEN status IN ('QUEUED', 'RUNNING') THEN 1 ELSE NULL END
+    ) STORED,
+    error_message       VARCHAR(1000) NULL,
+    started_at          DATETIME NULL,
+    finished_at         DATETIME NULL,
+    created_at          DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at          DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    PRIMARY KEY (id),
+    KEY idx_case_extraction_user_status (user_id, status, created_at, id),
+    KEY idx_case_extraction_case_latest (application_case_id, created_at, id),
+    KEY idx_case_extraction_job_posting (job_posting_id),
+    UNIQUE KEY uk_case_extraction_active (application_case_id, active_status_marker),
+    CONSTRAINT chk_case_extraction_status CHECK (status IN ('QUEUED', 'RUNNING', 'SUCCEEDED', 'FAILED')),
+    CONSTRAINT fk_case_extraction_case FOREIGN KEY (application_case_id) REFERENCES application_case (id) ON DELETE CASCADE,
+    CONSTRAINT fk_case_extraction_job_posting FOREIGN KEY (job_posting_id) REFERENCES job_posting (id) ON DELETE SET NULL,
+    CONSTRAINT fk_case_extraction_user FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci;
 
 CREATE TABLE IF NOT EXISTS job_analysis (
@@ -214,7 +313,11 @@ CREATE TABLE IF NOT EXISTS fit_analysis (
     gap_recommendations      JSON NULL,                     -- 필수 미충족/우대 보완/장기 성장 분류
     certificate_recommendations JSON NULL,                  -- 자격증 우선순위와 추천 이유
     strategy_actions         JSON NULL,                     -- 지원/보완/다음 준비 과제
+    condition_matrix         JSON NULL,                     -- 요구조건-스펙 비교 매트릭스(조건/유형/판정/근거)
+    analysis_confidence      JSON NULL,                     -- 분석 신뢰도(level/입력 부족 사유)
+    apply_decision           JSON NULL,                     -- 지원 판단 카드(APPLY/COMPLEMENT/HOLD + 이유·행동)
     model                    VARCHAR(80) NULL,
+    prompt_version           VARCHAR(30) NULL,
     status                   VARCHAR(20) NOT NULL DEFAULT 'SUCCESS',
     error_message            VARCHAR(1000) NULL,
     created_at               DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -267,6 +370,7 @@ CREATE TABLE IF NOT EXISTS career_analysis_run (
     input_fingerprint VARCHAR(64) NULL,                    -- C 캐시 키: 입력이 동일하면 저장 결과 재사용(매 조회 AI 재실행 방지)
     result          JSON NULL,
     model           VARCHAR(80) NULL,
+    prompt_version  VARCHAR(30) NULL,
     input_tokens    INT NOT NULL DEFAULT 0,
     output_tokens   INT NOT NULL DEFAULT 0,
     token_usage     INT NOT NULL DEFAULT 0,
@@ -312,6 +416,64 @@ CREATE TABLE IF NOT EXISTS dashboard_todo (
     UNIQUE KEY uk_dashboard_todo_derived (user_id, derived_key),
     KEY idx_dashboard_todo_user (user_id, created_at),
     CONSTRAINT fk_dashboard_todo_user FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci;
+
+-- C 고도화 정규화 테이블은 운영 DB 점진 적용을 위해 patches/20260612_c_strategy_tables.sql 과 동일하게 관리한다.
+CREATE TABLE IF NOT EXISTS fit_analysis_history (
+    id BIGINT NOT NULL AUTO_INCREMENT, fit_analysis_id BIGINT NOT NULL, application_case_id BIGINT NOT NULL,
+    previous_score INT NULL, new_score INT NULL, diff_summary JSON NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, PRIMARY KEY (id),
+    UNIQUE KEY uk_fit_analysis_history_analysis (fit_analysis_id), KEY idx_fit_analysis_history_case (application_case_id, created_at),
+    CONSTRAINT fk_fit_analysis_history_analysis FOREIGN KEY (fit_analysis_id) REFERENCES fit_analysis (id) ON DELETE CASCADE,
+    CONSTRAINT fk_fit_analysis_history_case FOREIGN KEY (application_case_id) REFERENCES application_case (id) ON DELETE CASCADE
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci;
+
+CREATE TABLE IF NOT EXISTS fit_analysis_condition_match (
+    id BIGINT NOT NULL AUTO_INCREMENT, fit_analysis_id BIGINT NOT NULL, condition_text VARCHAR(500) NOT NULL,
+    condition_type VARCHAR(20) NOT NULL, match_status VARCHAR(20) NOT NULL, evidence VARCHAR(1000) NULL,
+    severity VARCHAR(20) NOT NULL DEFAULT 'MEDIUM', sort_order INT NOT NULL DEFAULT 0, PRIMARY KEY (id),
+    KEY idx_fit_condition_analysis (fit_analysis_id, sort_order),
+    CONSTRAINT fk_fit_condition_analysis FOREIGN KEY (fit_analysis_id) REFERENCES fit_analysis (id) ON DELETE CASCADE
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci;
+
+CREATE TABLE IF NOT EXISTS career_goal (
+    id BIGINT NOT NULL AUTO_INCREMENT, user_id BIGINT NOT NULL, target_job VARCHAR(255) NULL,
+    target_period VARCHAR(100) NULL, priority_skill VARCHAR(255) NULL, preferred_company_type VARCHAR(255) NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    PRIMARY KEY (id), UNIQUE KEY uk_career_goal_user (user_id),
+    CONSTRAINT fk_career_goal_user FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci;
+
+CREATE TABLE IF NOT EXISTS learning_plan (
+    id BIGINT NOT NULL AUTO_INCREMENT, user_id BIGINT NOT NULL, title VARCHAR(500) NOT NULL, target_skill VARCHAR(255) NOT NULL,
+    start_date DATE NULL, end_date DATE NULL, status VARCHAR(20) NOT NULL DEFAULT 'ACTIVE',
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    PRIMARY KEY (id), KEY idx_learning_plan_user (user_id, status, created_at),
+    CONSTRAINT fk_learning_plan_user FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci;
+
+CREATE TABLE IF NOT EXISTS learning_plan_task (
+    id BIGINT NOT NULL AUTO_INCREMENT, learning_plan_id BIGINT NOT NULL, task VARCHAR(1000) NOT NULL,
+    done TINYINT(1) NOT NULL DEFAULT 0, sort_order INT NOT NULL DEFAULT 0, completed_at DATETIME NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    PRIMARY KEY (id), KEY idx_learning_plan_task_plan (learning_plan_id, sort_order),
+    CONSTRAINT fk_learning_plan_task_plan FOREIGN KEY (learning_plan_id) REFERENCES learning_plan (id) ON DELETE CASCADE
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci;
+
+CREATE TABLE IF NOT EXISTS dashboard_insight (
+    id BIGINT NOT NULL AUTO_INCREMENT, user_id BIGINT NOT NULL, career_analysis_run_id BIGINT NULL, summary MEDIUMTEXT NOT NULL,
+    status VARCHAR(20) NOT NULL, model VARCHAR(80) NULL, token_usage INT NOT NULL DEFAULT 0,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, PRIMARY KEY (id), KEY idx_dashboard_insight_user (user_id, created_at),
+    CONSTRAINT fk_dashboard_insight_user FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE,
+    CONSTRAINT fk_dashboard_insight_run FOREIGN KEY (career_analysis_run_id) REFERENCES career_analysis_run (id) ON DELETE SET NULL
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci;
+
+CREATE TABLE IF NOT EXISTS analysis_quality_flag (
+    id BIGINT NOT NULL AUTO_INCREMENT, target_type VARCHAR(40) NOT NULL, target_id BIGINT NOT NULL,
+    flag_type VARCHAR(50) NOT NULL, severity VARCHAR(20) NOT NULL, memo VARCHAR(2000) NULL, resolved TINYINT(1) NOT NULL DEFAULT 0,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    PRIMARY KEY (id), UNIQUE KEY uk_analysis_quality_target_flag (target_type, target_id, flag_type),
+    KEY idx_analysis_quality_resolved (resolved, severity, created_at)
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci;
 
 -- =====================================================================
@@ -367,10 +529,12 @@ CREATE TABLE IF NOT EXISTS interview_agent_step (
     interview_session_id BIGINT NOT NULL,
     question_id          BIGINT NULL,
     step_no              INT NOT NULL DEFAULT 0,
-    agent                VARCHAR(30) NOT NULL,               -- PLANNER/EVALUATOR/CRITIC/PROBER/REPORTER/ORCHESTRATOR
+    agent                VARCHAR(30) NOT NULL,               -- PLANNER/EVALUATOR/CRITIC/PROBER/REPORTER/RETRIEVER/ORCHESTRATOR
     action               VARCHAR(60) NULL,
+    status               VARCHAR(12) NULL,                   -- DONE/FAILED (running 은 프런트 표현)
     summary              MEDIUMTEXT NULL,                    -- 사람이 읽는 한 줄 요약
     detail               JSON NULL,                          -- 구조화 입출력
+    elapsed_ms           INT NULL,                           -- 단계 소요 시간(ms)
     created_at           DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (id),
     KEY idx_agent_step_session (interview_session_id),

@@ -8,6 +8,7 @@ import com.careertuner.common.exception.ErrorCode;
 import com.careertuner.common.security.AuthUser;
 import com.careertuner.companyanalysis.ai.prompt.CompanyAnalysisPromptCatalog;
 import com.careertuner.jobanalysis.ai.prompt.JobAnalysisPromptCatalog;
+import com.careertuner.profile.ai.prompt.ProfilePromptCatalog;
 
 @Service
 public class AdminPromptService {
@@ -20,6 +21,11 @@ public class AdminPromptService {
     public AdminPromptView companyAnalysis(AuthUser authUser) {
         requireAdmin(authUser);
         return CompanyAnalysisPromptCatalog.view();
+    }
+
+    public AdminPromptView profile(AuthUser authUser) {
+        requireAdmin(authUser);
+        return ProfilePromptCatalog.view();
     }
 
     private void requireAdmin(AuthUser authUser) {

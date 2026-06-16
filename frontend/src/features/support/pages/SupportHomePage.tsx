@@ -46,7 +46,7 @@ export default function SupportHomePage() {
             <Search />
             <input placeholder="예) 환불, 모의면접, 비밀번호 변경" />
           </div>
-          <button className="ct-btn-brand" style={{ height: 48, paddingLeft: 24, paddingRight: 24 }}>검색</button>
+          <button className="av-btn av-btn--ink" style={{ height: 48, paddingLeft: 24, paddingRight: 24 }}>검색</button>
         </div>
         <div className="ct-hero__tags">
           {POPULAR.map((t) => (
@@ -85,8 +85,8 @@ export default function SupportHomePage() {
               onClick={() => setCat(c.value)}
               style={
                 cat === c.value
-                  ? { background: "var(--gradient-brand)", color: "#fff", border: "1px solid transparent", borderRadius: 9999, padding: "7px 15px", fontSize: 14, fontWeight: 600, cursor: "pointer" }
-                  : { background: "var(--card)", color: "var(--muted-foreground)", border: "1px solid var(--border)", borderRadius: 9999, padding: "7px 15px", fontSize: 14, fontWeight: 500, cursor: "pointer" }
+                  ? { background: "var(--av-ink)", color: "#fff", border: "1px solid transparent", borderRadius: 9999, padding: "7px 15px", fontSize: 14, fontWeight: 600, cursor: "pointer" }
+                  : { background: "var(--av-card)", color: "var(--av-ink-3)", border: "1px solid var(--av-line)", borderRadius: 9999, padding: "7px 15px", fontSize: 14, fontWeight: 500, cursor: "pointer" }
               }
             >
               {c.label}
@@ -107,7 +107,7 @@ export default function SupportHomePage() {
           <p>운영팀이 평일 10:00~18:00에 1:1로 답변드려요. 보통 하루 안에 회신됩니다.</p>
         </div>
         <Link to="/support/contact">
-          <button className="ct-btn-brand" style={{ height: 48, paddingLeft: 24, paddingRight: 24 }}>
+          <button className="av-btn av-btn--ink" style={{ height: 48, paddingLeft: 24, paddingRight: 24 }}>
             문의하기 <ArrowRight />
           </button>
         </Link>

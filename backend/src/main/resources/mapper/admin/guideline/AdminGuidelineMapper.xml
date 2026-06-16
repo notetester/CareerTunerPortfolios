@@ -1,0 +1,77 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+  "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.careertuner.admin.guideline.mapper.AdminGuidelineMapper">
+
+  <resultMap id="guidelineResult" type="com.careertuner.admin.guideline.dto.AdminGuidelineResponse">
+    <id property="id" column="id"/>
+    <result property="versionLabel" column="version_label"/>
+    <result property="summary" column="summary"/>
+    <result property="lede" column="lede"/>
+    <result property="oksJson" column="oks_json"/>
+    <result property="nosJson" column="nos_json"/>
+    <result property="rulesJson" column="rules_json"/>
+    <result property="paramsJson" column="params_json"/>
+    <result property="status" column="status"/>
+    <result property="enforceType" column="enforce_type"/>
+    <result property="scheduledAt" column="scheduled_at"/>
+    <result property="publishedAt" column="published_at"/>
+    <result property="createdAt" column="created_at"/>
+    <result property="updatedAt" column="updated_at"/>
+  </resultMap>
+
+  <select id="findAll" resultMap="guidelineResult">
+    SELECT * FROM community_guideline
+    ORDER BY created_at DESC
+  </select>
+
+  <select id="findById" resultMap="guidelineResult">
+    SELECT * FROM community_guideline WHERE id = #{id}
+  </select>
+
+  <select id="findPublished" resultMap="guidelineResult">
+    SELECT * FROM community_guideline
+    WHERE status = 'PUBLISHED'
+    ORDER BY published_at DESC
+    LIMIT 1
+  </select>
+
+  <insert id="insert" useGeneratedKeys="true" keyColumn="id">
+    INSERT INTO community_guideline
+      (version_label, summary, lede, oks_json, nos_json, rules_json, params_json,
+       status, enforce_type, scheduled_at, admin_id,
+       published_at)
+    VALUES
+      (#{versionLabel}, #{summary}, #{lede}, #{oksJson}, #{nosJson}, #{rulesJson}, #{paramsJson},
+       #{status}, #{enforceType}, #{scheduledAt}, #{adminId},
+       <choose>
+         <when test="setPublishedAt">NOW()</when>
+         <otherwise>NULL</otherwise>
+       </choose>)
+  </insert>
+
+  <update id="update">
+    UPDATE community_guideline SET
+      version_label = #{versionLabel},
+      summary = #{summary},
+      lede = #{lede},
+      oks_json = #{oksJson},
+      nos_json = #{nosJson},
+      rules_json = #{rulesJson},
+      params_json = #{paramsJson},
+      status = #{status},
+      enforce_type = #{enforceType},
+      scheduled_at = #{scheduledAt}
+      <if test="setPublishedAt">, published_at = NOW()</if>
+    WHERE id = #{id}
+  </update>
+
+  <delete id="delete">
+    DELETE FROM community_guideline WHERE id = #{id}
+  </delete>
+
+  <select id="lastInsertId" resultType="java.lang.Long">
+    SELECT LAST_INSERT_ID()
+  </select>
+
+</mapper>

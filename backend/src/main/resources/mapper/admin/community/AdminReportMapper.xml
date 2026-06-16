@@ -1,0 +1,199 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.careertuner.admin.community.mapper.AdminReportMapper">
+
+    <resultMap id="reportListResult" type="com.careertuner.admin.community.dto.AdminReportListResponse">
+        <id     property="id"      column="id"/>
+        <result property="reason"  column="reason"/>
+        <result property="type"    column="type"/>
+        <result property="cnt"     column="cnt"/>
+        <result property="title"   column="title"/>
+        <result property="excerpt" column="excerpt"/>
+        <result property="cat"     column="cat"/>
+        <result property="catKey"  column="cat_key"/>
+        <result property="author"  column="author"/>
+        <result property="time"    column="time"/>
+        <result property="status"  column="status"/>
+        <result property="action"  column="action"/>
+    </resultMap>
+
+    <resultMap id="reasonCountResult" type="com.careertuner.admin.community.dto.ReportReasonCount">
+        <result property="l" column="reason"/>
+        <result property="n" column="cnt"/>
+    </resultMap>
+
+    <!-- 게시글 신고 목록 (대상별 그룹화) -->
+    <select id="findAll" resultMap="reportListResult">
+        SELECT id, reason, type, cnt, title, excerpt, cat, cat_key, author, time, status, action
+          FROM (
+            SELECT
+                   pr.post_id                                                                  AS id,
+                   (SELECT reason
+                      FROM post_report
+                     WHERE post_id = pr.post_id AND status = 'PENDING'
+                     GROUP BY reason
+                     ORDER BY COUNT(*) DESC
+                     LIMIT 1)                                                                  AS reason,
+                   '게시글'                                                                    AS type,
+                   COUNT(*)                                                                   AS cnt,
+                   COALESCE(cp.title, '(제목 없음)')                                          AS title,
+                   LEFT(COALESCE(cp.content, ''), 200)                                       AS excerpt,
+                   CASE cp.category
+                       WHEN 'FREE'       THEN '자유게시판'
+                       WHEN 'JOB'        THEN '취업정보'
+                       WHEN 'INTERVIEW'  THEN '면접후기'
+                       WHEN 'PORTFOLIO'  THEN '포트폴리오'
+                       ELSE cp.category
+                   END                                                                         AS cat,
+                   LOWER(COALESCE(cp.category, 'free'))                                       AS cat_key,
+                   CONCAT('익명_', pr.post_id)                                                AS author,
+                   TIMESTAMPDIFF(MINUTE, MIN(pr.created_at), NOW())                           AS time,
+                   CASE WHEN SUM(CASE WHEN pr.status = 'PENDING' THEN 1 ELSE 0 END) > 0
+                        THEN 'pending' ELSE 'resolved' END                                    AS status,
+                   MAX(CASE WHEN pr.action_taken IS NOT NULL AND pr.action_taken != 'NONE'
+                        THEN pr.action_taken ELSE NULL END)                                   AS action
+              FROM post_report pr
+              LEFT JOIN community_post cp ON cp.id = pr.post_id
+             GROUP BY pr.post_id, cp.title, cp.content, cp.category
+
+            UNION ALL
+
+            SELECT
+                   cr.comment_id + 1000000                                                    AS id,
+                   (SELECT reason
+                      FROM comment_report
+                     WHERE comment_id = cr.comment_id AND status = 'PENDING'
+                     GROUP BY reason
+                     ORDER BY COUNT(*) DESC
+                     LIMIT 1)                                                                  AS reason,
+                   '댓글'                                                                      AS type,
+                   COUNT(*)                                                                   AS cnt,
+                   LEFT(COALESCE(cc.content, ''), 50)                                        AS title,
+                   LEFT(COALESCE(cc.content, ''), 200)                                       AS excerpt,
+                   '댓글'                                                                      AS cat,
+                   'free'                                                                     AS cat_key,
+                   CONCAT('익명_', cr.comment_id)                                             AS author,
+                   TIMESTAMPDIFF(MINUTE, MIN(cr.created_at), NOW())                          AS time,
+                   CASE WHEN SUM(CASE WHEN cr.status = 'PENDING' THEN 1 ELSE 0 END) > 0
+                        THEN 'pending' ELSE 'resolved' END                                    AS status,
+                   MAX(CASE WHEN cr.action_taken IS NOT NULL AND cr.action_taken != 'NONE'
+                        THEN cr.action_taken ELSE NULL END)                                   AS action
+              FROM comment_report cr
+              LEFT JOIN community_comment cc ON cc.id = cr.comment_id
+             GROUP BY cr.comment_id, cc.content
+          ) merged
+        <if test="status != null">
+         WHERE status = #{status}
+        </if>
+         ORDER BY cnt DESC, time ASC
+    </select>
+
+    <!-- 단건 조회 (type: 'post' or 'comment') -->
+    <select id="findById" resultMap="reportListResult">
+        <if test="type == 'post'">
+        SELECT
+               pr.post_id                                                                      AS id,
+               (SELECT reason FROM post_report
+                 WHERE post_id = pr.post_id AND status = 'PENDING'
+                 GROUP BY reason ORDER BY COUNT(*) DESC LIMIT 1)                              AS reason,
+               '게시글'                                                                        AS type,
+               COUNT(*)                                                                       AS cnt,
+               COALESCE(cp.title, '(제목 없음)')                                              AS title,
+               LEFT(COALESCE(cp.content, ''), 200)                                           AS excerpt,
+               CASE cp.category
+                   WHEN 'FREE'       THEN '자유게시판'
+                   WHEN 'JOB'        THEN '취업정보'
+                   WHEN 'INTERVIEW'  THEN '면접후기'
+                   WHEN 'PORTFOLIO'  THEN '포트폴리오'
+                   ELSE cp.category END                                                        AS cat,
+               LOWER(COALESCE(cp.category, 'free'))                                           AS cat_key,
+               CONCAT('익명_', pr.post_id)                                                    AS author,
+               TIMESTAMPDIFF(MINUTE, MIN(pr.created_at), NOW())                               AS time,
+               CASE WHEN SUM(CASE WHEN pr.status='PENDING' THEN 1 ELSE 0 END) > 0
+                    THEN 'pending' ELSE 'resolved' END                                         AS status,
+               MAX(CASE WHEN pr.action_taken IS NOT NULL AND pr.action_taken != 'NONE'
+                    THEN pr.action_taken ELSE NULL END)                                        AS action
+          FROM post_report pr
+          LEFT JOIN community_post cp ON cp.id = pr.post_id
+         WHERE pr.post_id = #{id}
+         GROUP BY pr.post_id, cp.title, cp.content, cp.category
+        </if>
+        <if test="type == 'comment'">
+        SELECT
+               cr.comment_id + 1000000                                                        AS id,
+               (SELECT reason FROM comment_report
+                 WHERE comment_id = cr.comment_id AND status = 'PENDING'
+                 GROUP BY reason ORDER BY COUNT(*) DESC LIMIT 1)                              AS reason,
+               '댓글'                                                                          AS type,
+               COUNT(*)                                                                       AS cnt,
+               LEFT(COALESCE(cc.content,''), 50)                                             AS title,
+               LEFT(COALESCE(cc.content,''), 200)                                            AS excerpt,
+               '댓글'                                                                          AS cat,
+               'free'                                                                         AS cat_key,
+               CONCAT('익명_', cr.comment_id)                                                 AS author,
+               TIMESTAMPDIFF(MINUTE, MIN(cr.created_at), NOW())                              AS time,
+               CASE WHEN SUM(CASE WHEN cr.status='PENDING' THEN 1 ELSE 0 END) > 0
+                    THEN 'pending' ELSE 'resolved' END                                         AS status,
+               MAX(CASE WHEN cr.action_taken IS NOT NULL AND cr.action_taken != 'NONE'
+                    THEN cr.action_taken ELSE NULL END)                                        AS action
+          FROM comment_report cr
+          LEFT JOIN community_comment cc ON cc.id = cr.comment_id
+         WHERE cr.comment_id = #{id}
+         GROUP BY cr.comment_id, cc.content
+        </if>
+    </select>
+
+    <!-- 사유별 집계 -->
+    <select id="findReasonCounts" resultMap="reasonCountResult">
+        <if test="type == 'post'">
+        SELECT reason, COUNT(*) AS cnt
+          FROM post_report
+         WHERE post_id = #{targetId}
+         GROUP BY reason
+         ORDER BY cnt DESC
+        </if>
+        <if test="type == 'comment'">
+        SELECT reason, COUNT(*) AS cnt
+          FROM comment_report
+         WHERE comment_id = #{targetId}
+         GROUP BY reason
+         ORDER BY cnt DESC
+        </if>
+    </select>
+
+    <!-- 게시글 신고 상태 일괄 처리 -->
+    <update id="updatePostReportStatus">
+        UPDATE post_report
+           SET status      = #{status},
+               action_taken = #{actionTaken},
+               resolved_at  = CURRENT_TIMESTAMP
+         WHERE post_id = #{postId}
+           AND status  = 'PENDING'
+    </update>
+
+    <!-- 댓글 신고 상태 일괄 처리 -->
+    <update id="updateCommentReportStatus">
+        UPDATE comment_report
+           SET status       = #{status},
+               action_taken = #{actionTaken},
+               resolved_at  = CURRENT_TIMESTAMP
+         WHERE comment_id = #{commentId}
+           AND status     = 'PENDING'
+    </update>
+
+    <!-- 게시글 상태 변경 -->
+    <update id="updatePostStatus">
+        UPDATE community_post
+           SET status = #{status}
+         WHERE id = #{postId}
+    </update>
+
+    <!-- 댓글 상태 변경 -->
+    <update id="updateCommentStatus">
+        UPDATE community_comment
+           SET status = #{status}
+         WHERE id = #{commentId}
+    </update>
+
+</mapper>

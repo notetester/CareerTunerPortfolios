@@ -61,7 +61,7 @@ export function InterviewReportTab({ session }: { session: InterviewSession | nu
         <Badge className="bg-purple-100 text-purple-700">{getInterviewModeLabel(session.mode)}</Badge>
       </div>
 
-      <div className="grid gap-4 md:grid-cols-3">
+      <div className="grid gap-4 md:grid-cols-3" data-tut="tut-report-score">
         <div className="rounded-2xl border-2 border-blue-200 bg-white p-6 text-center">
           <div className="text-5xl font-black text-blue-600">{report.totalScore}</div>
           <div className="mt-1 text-sm text-slate-500">
@@ -84,7 +84,7 @@ export function InterviewReportTab({ session }: { session: InterviewSession | nu
         </div>
       </div>
 
-      <div className="space-y-3">
+      <div className="space-y-3" data-tut="tut-report-categories">
         {report.categories.map((e) => (
           <div key={e.label} className="space-y-2 rounded-xl border border-slate-200 bg-white p-4">
             <div className="flex items-center justify-between">

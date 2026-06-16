@@ -3,35 +3,55 @@ import {
   AlertCircle,
   ArrowRight,
   CheckCircle2,
-  CornerDownRight,
   FileText,
   Loader2,
   Play,
+  RotateCcw,
+  Shuffle,
   Sparkles,
-  ThumbsUp,
 } from "lucide-react";
 import { Badge } from "@/app/components/ui/badge";
 import { Button } from "@/app/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/app/components/ui/card";
+import { Card, CardContent } from "@/app/components/ui/card";
 import { Progress } from "@/app/components/ui/progress";
 import {
   generateExpectedQuestions,
-  generateFollowUps,
   getAgentSteps,
-  getInterviewProgress,
+  listSessionQuestions,
   submitAnswer,
 } from "../api/interviewApi";
 import {
   getScoreColor,
   type InterviewAgentStep,
   type InterviewAnswer,
-  type InterviewProgress,
+  type InterviewQuestion,
   type InterviewSession,
 } from "../types/interview";
+import { AgentTimeline } from "./AgentTimeline";
+
+type Phase = "loading" | "empty" | "intro" | "answering" | "scoring" | "results";
+
+interface QuestionResult {
+  question: InterviewQuestion;
+  answerText: string;
+  evaluation: InterviewAnswer;
+  steps: InterviewAgentStep[];
+}
+
+/** Fisher-Yates 셔플. 출제 순서를 무작위화한다. */
+function shuffle<T>(arr: T[]): T[] {
+  const a = [...arr];
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
 
 /**
- * 실전 모의면접 진행. 세션의 질문을 순차 출제하고, 답변→AI 평가→다음 질문으로 이어간다.
- * 진행 판단은 백엔드 progress(답변 유무 기반)를 기준으로 한다. (AI 면접관 대화 진행)
+ * 복습 테스트. 공부한 예상 면접 질문을 랜덤 순서로 출제하고,
+ * 모범답안·피드백 없이(블라인드) 전부 답한 뒤 한 번에 채점한다.
+ * 채점이 끝나면 문제별 점수·피드백·멀티에이전트 트레이스를 공개한다.
  */
 export function PracticeTab({
   session,
@@ -40,40 +60,40 @@ export function PracticeTab({
   session: InterviewSession | null;
   onGoToReport: () => void;
 }) {
-  const [progress, setProgress] = useState<InterviewProgress | null>(null);
-  const [loading, setLoading] = useState(false);
+  const [phase, setPhase] = useState<Phase>("loading");
   const [error, setError] = useState<string | null>(null);
-
-  const [answer, setAnswer] = useState("");
-  const [submitting, setSubmitting] = useState(false);
-  const [result, setResult] = useState<InterviewAnswer | null>(null);
   const [generating, setGenerating] = useState(false);
-  const [followingUp, setFollowingUp] = useState(false);
-  const [steps, setSteps] = useState<InterviewAgentStep[]>([]);
 
-  const loadProgress = useCallback(async () => {
+  const [questions, setQuestions] = useState<InterviewQuestion[]>([]);
+  const [current, setCurrent] = useState(0);
+  const [answers, setAnswers] = useState<Record<number, string>>({});
+  const [draft, setDraft] = useState("");
+  const [results, setResults] = useState<QuestionResult[]>([]);
+
+  const load = useCallback(async () => {
     if (!session) return;
-    setLoading(true);
+    setPhase("loading");
     setError(null);
     try {
-      setProgress(await getInterviewProgress(session.id));
+      const all = await listSessionQuestions(session.id);
+      // 꼬리질문은 제외하고, 공부한 예상 질문만 테스트 대상으로 한다.
+      const core = all.filter((q) => q.questionType !== "FOLLOW_UP");
+      setQuestions(core);
+      setPhase(core.length === 0 ? "empty" : "intro");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "진행 상태를 불러오지 못했습니다.");
-    } finally {
-      setLoading(false);
+      setError(err instanceof Error ? err.message : "질문을 불러오지 못했습니다.");
+      setPhase("empty");
     }
   }, [session]);
 
   useEffect(() => {
-    setResult(null);
-    setAnswer("");
-    void loadProgress();
-  }, [loadProgress]);
+    void load();
+  }, [load]);
 
   if (!session) {
     return (
       <div className="rounded-xl border border-dashed border-slate-200 bg-white p-10 text-center text-sm text-slate-400">
-        "면접 모드 선택" 탭에서 지원 건과 모드를 고르고 면접을 시작하면 실전 모의면접을 진행할 수 있습니다.
+        "면접 모드 선택" 탭에서 지원 건과 모드를 고르고 면접을 시작하면 복습 테스트를 진행할 수 있습니다.
       </div>
     );
   }
@@ -83,7 +103,7 @@ export function PracticeTab({
     setError(null);
     try {
       await generateExpectedQuestions(session.id, { mode: session.mode });
-      await loadProgress();
+      await load();
     } catch (err) {
       setError(err instanceof Error ? err.message : "질문 생성에 실패했습니다.");
     } finally {
@@ -91,84 +111,204 @@ export function PracticeTab({
     }
   };
 
-  const handleSubmit = async () => {
-    if (!answer.trim() || !progress?.currentQuestion) return;
-    setSubmitting(true);
+  const start = () => {
+    setQuestions((prev) => shuffle(prev));
+    setCurrent(0);
+    setAnswers({});
+    setDraft("");
+    setResults([]);
+    setError(null);
+    setPhase("answering");
+  };
+
+  const total = questions.length;
+  const isLast = current >= total - 1;
+
+  const goNext = () => {
+    const q = questions[current];
+    setAnswers((prev) => ({ ...prev, [q.id]: draft.trim() }));
+    setDraft("");
+    setCurrent((c) => c + 1);
+  };
+
+  const handleSubmitAll = async () => {
+    const q = questions[current];
+    const finalAnswers = { ...answers, [q.id]: draft.trim() };
+    setAnswers(finalAnswers);
+    setPhase("scoring");
     setError(null);
     try {
-      const evaluated = await submitAnswer(progress.currentQuestion.id, { answerText: answer });
-      setResult(evaluated);
-      // 멀티에이전트 진행(Evaluator→Critic) 트레이스 표시.
-      try {
-        const all = await getAgentSteps(session.id);
-        setSteps(all.filter((s) => s.questionId === progress.currentQuestion?.id));
-      } catch {
-        setSteps([]);
+      const evals: Record<number, InterviewAnswer> = {};
+      for (const question of questions) {
+        evals[question.id] = await submitAnswer(question.id, {
+          answerText: finalAnswers[question.id] ?? "",
+        });
       }
+      let steps: InterviewAgentStep[] = [];
+      try {
+        steps = await getAgentSteps(session.id);
+      } catch {
+        steps = [];
+      }
+      setResults(
+        questions.map((question) => ({
+          question,
+          answerText: finalAnswers[question.id] ?? "",
+          evaluation: evals[question.id],
+          steps: steps.filter((s) => s.questionId === question.id),
+        })),
+      );
+      setPhase("results");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "답변 평가에 실패했습니다.");
-    } finally {
-      setSubmitting(false);
+      setError(err instanceof Error ? err.message : "채점에 실패했습니다.");
+      setPhase("answering");
     }
   };
 
-  const handleFollowUp = async () => {
-    if (!progress?.currentQuestion) return;
-    setFollowingUp(true);
-    setError(null);
-    try {
-      await generateFollowUps(progress.currentQuestion.id);
-      // 꼬리 질문은 아직 답변 전이므로, 다음 질문으로 진행 시 자연스럽게 출제된다.
-      await loadProgress();
-      setResult(null);
-      setAnswer("");
-      setSteps([]);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "꼬리 질문 생성에 실패했습니다.");
-    } finally {
-      setFollowingUp(false);
-    }
-  };
+  // ───── 렌더 ─────
 
-  const handleNext = async () => {
-    setResult(null);
-    setAnswer("");
-    setSteps([]);
-    await loadProgress();
-  };
-
-  const total = progress?.totalQuestions ?? 0;
-  const answered = progress?.answeredQuestions ?? 0;
-  const percent = total > 0 ? Math.round((answered / total) * 100) : 0;
-
-  // 질문이 아직 없음 → 생성 안내.
-  if (!loading && total === 0) {
+  if (phase === "loading") {
     return (
-      <div className="space-y-4">
-        <SessionHeader session={session} />
-        <Card className="border border-slate-200 bg-white">
-          <CardContent className="space-y-4 p-6 text-center">
-            <p className="text-sm text-slate-500">
-              아직 질문이 없습니다. AI 예상 질문을 생성하면 실전 모의면접을 시작할 수 있습니다.
-            </p>
-            <Button onClick={handleGenerate} disabled={generating} className="gap-1.5">
-              {generating ? <Loader2 className="size-4 animate-spin" /> : <Sparkles className="size-4" />}
-              {generating ? "질문 생성 중…" : "질문 생성하고 시작"}
-            </Button>
-          </CardContent>
-        </Card>
-        {error && <ErrorLine message={error} />}
+      <div className="flex items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white p-10 text-sm text-slate-400">
+        <Loader2 className="size-4 animate-spin" /> 불러오는 중…
       </div>
     );
   }
 
+  if (phase === "empty") {
+    return (
+      <div className="space-y-4">
+        {error && <ErrorLine message={error} />}
+        <Card className="border border-slate-200 bg-white">
+          <CardContent className="space-y-4 p-10 text-center">
+            <p className="text-sm text-slate-500">
+              복습 테스트를 보려면 예상 면접 질문이 필요합니다. "예상 면접 질문" 탭에서 먼저 질문을 만들어 학습하세요.
+            </p>
+            <Button
+              onClick={handleGenerate}
+              disabled={generating}
+              className="gap-2 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700"
+            >
+              {generating ? <Loader2 className="size-4 animate-spin" /> : <Sparkles className="size-4" />}
+              {generating ? "질문 생성 중…" : "질문 생성하기"}
+            </Button>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
+  if (phase === "intro") {
+    return (
+      <Card className="border border-slate-200 bg-white">
+        <CardContent className="space-y-4 p-8 text-center">
+          <Shuffle className="mx-auto size-10 text-blue-600" />
+          <div>
+            <h3 className="text-lg font-black text-slate-900">복습 테스트</h3>
+            <p className="mt-1 text-sm leading-relaxed text-slate-600">
+              공부한 예상 면접 질문 <b>{total}개</b>가 <b>랜덤 순서</b>로 출제됩니다.
+              <br />
+              모범답안·피드백 없이 전부 답한 뒤 <b>한 번에 채점</b>됩니다.
+            </p>
+          </div>
+          <Button
+            onClick={start}
+            className="gap-2 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700"
+          >
+            <Play className="size-4" /> 시작하기
+          </Button>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  if (phase === "scoring") {
+    return (
+      <div className="flex items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white p-10 text-sm text-slate-500">
+        <Loader2 className="size-4 animate-spin" /> {total}개 답변을 채점하는 중…
+      </div>
+    );
+  }
+
+  if (phase === "results") {
+    const avg = results.length
+      ? Math.round(results.reduce((sum, r) => sum + (r.evaluation.score ?? 0), 0) / results.length)
+      : 0;
+    return (
+      <div className="space-y-4">
+        <Card className="border border-green-200 bg-green-50">
+          <CardContent className="flex flex-wrap items-center justify-between gap-3 p-6">
+            <div className="flex items-center gap-3">
+              <CheckCircle2 className="size-8 text-green-600" />
+              <div>
+                <h3 className="font-black text-slate-900">복습 테스트 완료</h3>
+                <p className="text-sm text-slate-600">
+                  평균 점수 <span className={getScoreColor(avg)}>{avg}점</span>
+                </p>
+              </div>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <Button variant="outline" className="gap-1.5" onClick={start}>
+                <RotateCcw className="size-4" /> 다시 풀기
+              </Button>
+              <Button
+                className="gap-1.5 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700"
+                onClick={onGoToReport}
+              >
+                <FileText className="size-4" /> 면접 리포트 보기
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+
+        {results.map((r, i) => (
+          <Card key={r.question.id} className="border border-slate-200 bg-white">
+            <CardContent className="space-y-3 p-5">
+              <div className="flex items-start gap-2">
+                <Badge className="bg-blue-100 text-blue-700">Q{i + 1}</Badge>
+                <p className="flex-1 text-sm font-semibold text-slate-900">{r.question.question}</p>
+                {r.evaluation.score !== null && (
+                  <span className={`shrink-0 text-lg font-black ${getScoreColor(r.evaluation.score)}`}>
+                    {r.evaluation.score}점
+                  </span>
+                )}
+              </div>
+              <div className="rounded-lg bg-slate-50 p-3 text-sm text-slate-700">
+                <div className="mb-1 text-xs font-bold text-slate-500">내 답변</div>
+                {r.answerText || <span className="text-slate-400">(무응답)</span>}
+              </div>
+              {r.evaluation.feedback && <p className="text-xs text-slate-600">{r.evaluation.feedback}</p>}
+              {r.evaluation.improvedAnswer && (
+                <div className="rounded-lg border border-green-100 bg-green-50 p-3">
+                  <div className="mb-1 text-xs font-bold text-green-700">AI 개선 답변</div>
+                  <p className="whitespace-pre-line text-sm leading-relaxed text-slate-700">
+                    {r.evaluation.improvedAnswer}
+                  </p>
+                </div>
+              )}
+              <AgentTimeline steps={r.steps} />
+            </CardContent>
+          </Card>
+        ))}
+      </div>
+    );
+  }
+
+  // phase === "answering"
+  const q = questions[current];
+  const percent = total > 0 ? Math.round((current / total) * 100) : 0;
   return (
     <div className="space-y-4">
-      <SessionHeader session={session} />
+      <div className="flex items-center gap-2 text-sm text-slate-500">
+        <Badge className="bg-slate-100 text-slate-600">복습 테스트</Badge>
+        <span>블라인드 · 랜덤 출제 (채점은 마지막에 한 번에)</span>
+      </div>
 
       <div className="space-y-1.5">
         <div className="flex items-center justify-between text-xs text-slate-500">
-          <span>진행률 {answered}/{total}</span>
+          <span>
+            문제 {current + 1}/{total}
+          </span>
           <span>{percent}%</span>
         </div>
         <Progress value={percent} />
@@ -176,148 +316,38 @@ export function PracticeTab({
 
       {error && <ErrorLine message={error} />}
 
-      {loading && !progress ? (
-        <div className="flex items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white p-10 text-sm text-slate-400">
-          <Loader2 className="size-4 animate-spin" /> 불러오는 중…
-        </div>
-      ) : progress?.finished ? (
-        <Card className="border border-green-200 bg-green-50">
-          <CardContent className="space-y-4 p-8 text-center">
-            <CheckCircle2 className="mx-auto size-10 text-green-600" />
-            <div>
-              <h3 className="text-lg font-black text-slate-900">면접 완료</h3>
-              <p className="mt-1 text-sm text-slate-600">
-                모든 질문에 답했습니다. AI 종합 리포트로 결과를 확인하세요.
-              </p>
-            </div>
-            <Button onClick={onGoToReport} className="gap-1.5 bg-gradient-to-r from-blue-600 to-indigo-600">
-              <FileText className="size-4" /> 면접 리포트 보기
-            </Button>
-          </CardContent>
-        </Card>
-      ) : progress?.currentQuestion ? (
-        <Card className="border border-slate-200 bg-white">
-          <CardContent className="space-y-3 p-5">
-            <div className="flex items-start gap-2">
-              {progress.currentQuestion.questionType === "FOLLOW_UP" ? (
-                <Badge className="gap-1 bg-indigo-100 text-indigo-700">
-                  <CornerDownRight className="size-3" /> 꼬리질문
-                </Badge>
-              ) : (
-                <Badge className="bg-blue-100 text-blue-700">Q{answered + 1}</Badge>
-              )}
-              <p className="flex-1 text-base font-semibold text-slate-900">
-                {progress.currentQuestion.question}
-              </p>
-            </div>
-
-            <textarea
-              value={answer}
-              onChange={(e) => setAnswer(e.target.value)}
-              placeholder="답변을 입력하세요"
-              rows={4}
-              disabled={!!result}
-              className="w-full resize-y rounded-lg border border-slate-200 p-3 text-sm outline-none focus:border-blue-400 disabled:bg-slate-50"
-            />
-
-            {!result && (
-              <div className="flex justify-end">
-                <Button disabled={!answer.trim() || submitting} onClick={handleSubmit} className="gap-1.5">
-                  {submitting ? <Loader2 className="size-4 animate-spin" /> : <Play className="size-4" />}
-                  {submitting ? "평가 중…" : "답변 제출"}
-                </Button>
-              </div>
+      <Card className="border border-slate-200 bg-white">
+        <CardContent className="space-y-3 p-5">
+          <div className="flex items-start gap-2">
+            <Badge className="bg-blue-100 text-blue-700">Q{current + 1}</Badge>
+            <p className="flex-1 text-base font-semibold text-slate-900">{q.question}</p>
+          </div>
+          <textarea
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+            placeholder="답변을 입력하세요 (채점은 마지막에 한 번에 진행됩니다)"
+            rows={5}
+            className="w-full resize-y rounded-lg border border-slate-200 p-3 text-sm outline-none focus:border-blue-400"
+          />
+          <div className="flex justify-end">
+            {isLast ? (
+              <Button
+                disabled={!draft.trim()}
+                onClick={handleSubmitAll}
+                className="gap-1.5 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700"
+              >
+                <Play className="size-4" /> 제출하고 채점
+              </Button>
+            ) : (
+              <Button disabled={!draft.trim()} onClick={goNext} className="gap-1.5">
+                다음 질문 <ArrowRight className="size-4" />
+              </Button>
             )}
-
-            {result && (
-              <div className="space-y-3 rounded-lg bg-slate-50 p-3">
-                {result.score !== null && (
-                  <div className="text-sm font-bold">
-                    점수 <span className={getScoreColor(result.score)}>{result.score}점</span>
-                  </div>
-                )}
-                {result.feedback && <p className="text-xs text-slate-600">{result.feedback}</p>}
-                {result.improvedAnswer && (
-                  <div className="rounded-lg border border-green-100 bg-green-50 p-3">
-                    <div className="mb-1 flex items-center gap-1.5 text-xs font-bold text-green-700">
-                      <ThumbsUp className="size-3.5" /> AI 개선 답변
-                    </div>
-                    <p className="text-sm leading-relaxed text-slate-700">{result.improvedAnswer}</p>
-                  </div>
-                )}
-
-                {steps.length > 0 && (
-                  <div className="rounded-lg border border-slate-200 bg-white p-3">
-                    <div className="mb-2 flex items-center gap-1.5 text-xs font-bold text-slate-500">
-                      <Sparkles className="size-3.5 text-indigo-500" /> AI 면접관 진행 (멀티에이전트)
-                    </div>
-                    <ol className="space-y-1.5">
-                      {steps.map((s) => (
-                        <li key={s.id} className="flex items-start gap-2 text-xs">
-                          <Badge
-                            className={
-                              s.agent === "CRITIC"
-                                ? "bg-amber-100 text-amber-700"
-                                : "bg-blue-100 text-blue-700"
-                            }
-                          >
-                            {agentLabel(s.agent)}
-                          </Badge>
-                          <span className="flex-1 text-slate-600">{s.summary}</span>
-                        </li>
-                      ))}
-                    </ol>
-                  </div>
-                )}
-
-                <div className="flex flex-wrap justify-end gap-2">
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    className="gap-1.5"
-                    disabled={followingUp}
-                    onClick={handleFollowUp}
-                  >
-                    <CornerDownRight className="size-3.5" />
-                    {followingUp ? "꼬리 질문 생성 중…" : "꼬리 질문 받기"}
-                  </Button>
-                  <Button size="sm" className="gap-1.5" onClick={handleNext}>
-                    다음 질문 <ArrowRight className="size-3.5" />
-                  </Button>
-                </div>
-              </div>
-            )}
-          </CardContent>
-        </Card>
-      ) : null}
+          </div>
+        </CardContent>
+      </Card>
     </div>
   );
-}
-
-function SessionHeader({ session }: { session: InterviewSession }) {
-  return (
-    <div className="flex items-center gap-2 text-sm text-slate-500">
-      <Badge className="bg-slate-100 text-slate-600">세션 #{session.id}</Badge>
-      <span>실전 모의면접 진행 중</span>
-    </div>
-  );
-}
-
-function agentLabel(agent: string): string {
-  switch (agent) {
-    case "EVALUATOR":
-      return "채점";
-    case "CRITIC":
-      return "검증";
-    case "PLANNER":
-      return "설계";
-    case "PROBER":
-      return "꼬리질문";
-    case "REPORTER":
-      return "리포트";
-    default:
-      return agent;
-  }
 }
 
 function ErrorLine({ message }: { message: string }) {

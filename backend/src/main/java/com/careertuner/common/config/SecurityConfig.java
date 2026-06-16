@@ -42,10 +42,17 @@ public class SecurityConfig {
                         // 인증 공개 엔드포인트
                         .requestMatchers(HttpMethod.POST,
                                 "/api/auth/register", "/api/auth/login",
-                                "/api/auth/refresh", "/api/auth/email/resend").permitAll()
+                                "/api/auth/refresh", "/api/auth/email/resend",
+                                "/api/auth/password/reset-request", "/api/auth/password/reset",
+                                "/api/auth/dormant/release-request", "/api/auth/dormant/release").permitAll()
                         .requestMatchers(HttpMethod.GET,
                                 "/api/auth/verify-email", "/api/auth/check/**", "/api/auth/oauth/**").permitAll()
-                        .requestMatchers(HttpMethod.GET, "/api/credit-products").permitAll()
+                        // 커뮤니티 게시글 조회 공개
+                        .requestMatchers(HttpMethod.GET,
+                                "/api/community/posts", "/api/community/posts/**").permitAll()
+                        // 고객센터 FAQ/공지사항 조회 공개
+                        .requestMatchers(HttpMethod.GET,
+                                "/api/support/faq", "/api/support/notices", "/api/support/notices/**").permitAll()
                         // 그 외(/api/auth/me, /api/auth/logout 및 도메인 API)는 인증 필요
                         .anyRequest().authenticated())
                 .exceptionHandling(e -> e.authenticationEntryPoint(

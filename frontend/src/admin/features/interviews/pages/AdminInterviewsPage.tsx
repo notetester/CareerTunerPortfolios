@@ -12,6 +12,7 @@ import {
   type InterviewReport,
 } from "@/features/interview/types/interview";
 import { getAdminInterviewSessionDetail, getAdminInterviewSessions } from "../api";
+import { TrainingPipelineCard } from "../components/TrainingPipelineCard";
 import type { AdminInterviewSessionDetail, AdminInterviewSessionRow } from "../types";
 
 function formatDateTime(value: string | null): string {
@@ -175,6 +176,7 @@ export function AdminInterviewsPage() {
 
         {/* 우: 상세 */}
         <section className="min-w-0 space-y-4">
+          <TrainingPipelineCard />
           {!detail ? (
             <Card className="border-slate-200 bg-white">
               <CardContent className="p-8 text-center text-sm text-slate-500">면접 세션을 선택하세요.</CardContent>

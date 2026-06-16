@@ -31,8 +31,8 @@ export const FAQ_CATEGORIES = [
   { value: "all", label: "전체" },
   { value: "general", label: "일반" },
   { value: "account", label: "계정" },
-  { value: "billing", label: "결제" },
-  { value: "ai", label: "AI기능" },
+  { value: "payment", label: "결제" },
+  { value: "ai_feature", label: "AI기능" },
   { value: "interview", label: "면접" },
 ] as const;
 

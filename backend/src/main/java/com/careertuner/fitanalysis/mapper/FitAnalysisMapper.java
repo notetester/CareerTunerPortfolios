@@ -8,6 +8,7 @@ import org.apache.ibatis.annotations.Param;
 import com.careertuner.fitanalysis.domain.FitAnalysisGenerationSource;
 import com.careertuner.fitanalysis.domain.FitAnalysisLearningTask;
 import com.careertuner.fitanalysis.domain.FitAnalysisResult;
+import com.careertuner.fitanalysis.ai.FitConditionMatch;
 
 @Mapper
 public interface FitAnalysisMapper {
@@ -24,7 +25,25 @@ public interface FitAnalysisMapper {
     FitAnalysisGenerationSource findGenerationSource(@Param("userId") Long userId,
                                                      @Param("applicationCaseId") Long applicationCaseId);
 
+    /**
+     * 재분석 히스토리: 해당 지원 건의 모든 적합도 분석 이력(오래된 순).
+     * 점수 변화·매칭/부족 역량 변화 비교에 사용한다.
+     */
+    List<FitAnalysisResult> findAllByUserIdAndApplicationCaseId(@Param("userId") Long userId,
+                                                                @Param("applicationCaseId") Long applicationCaseId);
+
     void insertFitAnalysis(FitAnalysisResult fitAnalysis);
+
+    void insertHistory(@Param("fitAnalysisId") Long fitAnalysisId,
+                       @Param("applicationCaseId") Long applicationCaseId,
+                       @Param("previousScore") Integer previousScore,
+                       @Param("newScore") Integer newScore,
+                       @Param("diffSummary") String diffSummary);
+
+    void insertConditionMatch(@Param("fitAnalysisId") Long fitAnalysisId,
+                              @Param("row") FitConditionMatch row,
+                              @Param("severity") String severity,
+                              @Param("sortOrder") int sortOrder);
 
     void insertLearningTask(FitAnalysisLearningTask task);
 

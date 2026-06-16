@@ -83,30 +83,6 @@ public class CompanyAnalysisService {
         }
     }
 
-    @Transactional
-    public CompanyAnalysisResponse createMockCompanyAnalysis(Long userId, Long applicationCaseId) {
-        ApplicationCase applicationCase = accessService.requireOwned(userId, applicationCaseId);
-        CompanyAnalysisSeed seed = CompanyAnalysisSeed.from(applicationCase, accessService.sourceText(applicationCaseId));
-        LocalDateTime checkedAt = LocalDateTime.now();
-
-        CompanyAnalysis companyAnalysis = CompanyAnalysis.builder()
-                .applicationCaseId(applicationCaseId)
-                .companySummary(seed.companySummary())
-                .recentIssues(seed.recentIssues())
-                .industry(seed.industry())
-                .competitors(seed.competitors())
-                .interviewPoints(seed.interviewPoints())
-                .sources(seed.sources())
-                .verifiedFacts("[]")
-                .aiInferences("[]")
-                .sourceType("JOB_POSTING")
-                .checkedAt(checkedAt)
-                .refreshRecommendedAt(checkedAt.plusDays(30))
-                .build();
-        companyAnalysisMapper.insertCompanyAnalysis(companyAnalysis);
-        return CompanyAnalysisResponse.from(companyAnalysisMapper.findLatestCompanyAnalysisByCaseId(applicationCaseId));
-    }
-
     @Transactional(readOnly = true)
     public CompanyAnalysisResponse getCompanyAnalysis(Long userId, Long applicationCaseId) {
         accessService.requireOwned(userId, applicationCaseId);
@@ -168,7 +144,10 @@ public class CompanyAnalysisService {
     }
 
     private static void ensureAnalysisRunnable(String status) {
-        if (!"DRAFT".equals(status) && !"ANALYZING".equals(status) && !"READY".equals(status)) {
+        if ("ANALYZING".equals(status)) {
+            throw new BusinessException(ErrorCode.CONFLICT, "이미 분석이 진행 중입니다. 잠시 후 결과를 확인해 주세요.");
+        }
+        if (!"DRAFT".equals(status) && !"READY".equals(status)) {
             throw new BusinessException(ErrorCode.CONFLICT, "현재 상태에서는 분석을 다시 실행할 수 없습니다.");
         }
     }
@@ -213,55 +192,4 @@ public class CompanyAnalysisService {
         }
     }
 
-    private record CompanyAnalysisSeed(
-            String companySummary,
-            String recentIssues,
-            String industry,
-            String competitors,
-            String interviewPoints,
-            String sources
-    ) {
-        static CompanyAnalysisSeed from(ApplicationCase applicationCase, String sourceText) {
-            String companyName = applicationCase.getCompanyName();
-            String jobTitle = applicationCase.getJobTitle();
-            String lowerText = (companyName + " " + jobTitle + " " + defaultString(sourceText, ""))
-                    .toLowerCase(Locale.ROOT);
-
-            boolean fintech = containsAny(lowerText, "pay", "페이", "금융", "핀테크", "bank", "은행");
-            boolean platform = containsAny(lowerText, "platform", "플랫폼", "commerce", "커머스", "서비스");
-            boolean cloud = containsAny(lowerText, "cloud", "aws", "인프라", "배포");
-
-            String industry = fintech
-                    ? "핀테크/금융 플랫폼"
-                    : platform ? "디지털 플랫폼 서비스" : "IT 서비스";
-            String competitors = fintech
-                    ? "[\"토스\",\"네이버파이낸셜\",\"카카오페이\"]"
-                    : platform ? "[\"네이버\",\"카카오\",\"쿠팡\"]" : "[\"동종 IT 서비스 기업\",\"SI/솔루션 기업\"]";
-            String recentIssues = cloud
-                    ? "공고 키워드상 클라우드 운영, 안정성, 자동화 경험을 중요하게 볼 가능성이 있습니다."
-                    : "공고와 직무 정보를 기준으로 서비스 성장성, 사용자 경험, 데이터 기반 개선 역량을 확인해야 합니다.";
-
-            return new CompanyAnalysisSeed(
-                    "%s는 %s 직무 지원에서 제품 이해와 실행 경험을 함께 확인할 가능성이 높은 기업입니다."
-                            .formatted(companyName, jobTitle),
-                    recentIssues,
-                    industry,
-                    competitors,
-                    "면접에서는 회사 서비스 이해, 직무 관련 프로젝트 경험, 협업 상황에서의 문제 해결 방식을 구체적으로 준비하는 것이 좋습니다.",
-                    "[\"지원 건 기본 정보\",\"공고문 텍스트\",\"개발용 mock seed\"]");
-        }
-
-        private static String defaultString(String value, String defaultValue) {
-            return value == null || value.isBlank() ? defaultValue : value.trim();
-        }
-
-        private static boolean containsAny(String text, String... keywords) {
-            for (String keyword : keywords) {
-                if (text.contains(keyword.toLowerCase(Locale.ROOT))) {
-                    return true;
-                }
-            }
-            return false;
-        }
-    }
 }

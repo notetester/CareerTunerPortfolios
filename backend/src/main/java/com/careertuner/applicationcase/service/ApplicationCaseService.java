@@ -4,9 +4,12 @@ import java.util.List;
 
 import com.careertuner.applicationcase.dto.AnalysisResponse;
 import com.careertuner.applicationcase.dto.AiUsageFailureResponse;
+import com.careertuner.applicationcase.dto.ApplicationCaseExtractionResponse;
+import com.careertuner.applicationcase.dto.ApplicationCaseFromJobPostingResponse;
 import com.careertuner.applicationcase.dto.ApplicationCaseResponse;
 import com.careertuner.companyanalysis.dto.CompanyAnalysisResponse;
 import com.careertuner.companyanalysis.dto.CompanyAnalysisReviewRequest;
+import com.careertuner.applicationcase.dto.CreateApplicationCaseFromJobPostingRequest;
 import com.careertuner.applicationcase.dto.CreateApplicationCaseRequest;
 import com.careertuner.jobanalysis.dto.JobAnalysisReviewRequest;
 import com.careertuner.jobanalysis.dto.JobAnalysisResponse;
@@ -18,6 +21,14 @@ import org.springframework.web.multipart.MultipartFile;
 public interface ApplicationCaseService {
 
     ApplicationCaseResponse create(Long userId, CreateApplicationCaseRequest request);
+
+    ApplicationCaseFromJobPostingResponse createFromJobPosting(Long userId,
+                                                               CreateApplicationCaseFromJobPostingRequest request);
+
+    ApplicationCaseFromJobPostingResponse createFromJobPostingUpload(Long userId,
+                                                                     MultipartFile file,
+                                                                     String sourceType,
+                                                                     Boolean favorite);
 
     List<ApplicationCaseResponse> list(Long userId, String view, boolean includeArchived);
 
@@ -37,7 +48,13 @@ public interface ApplicationCaseService {
 
     List<JobPostingResponse> getJobPostingRevisions(Long userId, Long applicationCaseId);
 
-    JobAnalysisResponse createMockJobAnalysis(Long userId, Long applicationCaseId);
+    List<ApplicationCaseExtractionResponse> getActiveExtractions(Long userId);
+
+    ApplicationCaseExtractionResponse getLatestJobPostingExtraction(Long userId, Long applicationCaseId);
+
+    List<ApplicationCaseExtractionResponse> getLatestJobPostingExtractions(Long userId, List<Long> applicationCaseIds);
+
+    ApplicationCaseExtractionResponse retryJobPostingExtraction(Long userId, Long applicationCaseId);
 
     JobAnalysisResponse createJobAnalysis(Long userId, Long applicationCaseId);
 
@@ -47,8 +64,6 @@ public interface ApplicationCaseService {
 
     JobAnalysisResponse reviewJobAnalysis(Long userId, Long applicationCaseId, Long analysisId, JobAnalysisReviewRequest request);
 
-    CompanyAnalysisResponse createMockCompanyAnalysis(Long userId, Long applicationCaseId);
-
     CompanyAnalysisResponse createCompanyAnalysis(Long userId, Long applicationCaseId);
 
     CompanyAnalysisResponse getCompanyAnalysis(Long userId, Long applicationCaseId);
@@ -56,8 +71,6 @@ public interface ApplicationCaseService {
     List<CompanyAnalysisResponse> getCompanyAnalysisHistory(Long userId, Long applicationCaseId);
 
     CompanyAnalysisResponse reviewCompanyAnalysis(Long userId, Long applicationCaseId, Long analysisId, CompanyAnalysisReviewRequest request);
-
-    AnalysisResponse createMockAnalysis(Long userId, Long applicationCaseId);
 
     AnalysisResponse getAnalysis(Long userId, Long applicationCaseId);
 
