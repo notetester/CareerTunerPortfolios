@@ -64,6 +64,10 @@ src/
 > `../docs/planning/디자인 분석.md`, `../docs/PRODUCT_STRUCTURE.md`,
 > `../docs/FEATURE_MODULE_STRUCTURE.md`를 따른다.
 
+AI 기능 화면은 자체 LLM 서버를 브라우저에서 직접 호출하지 않는다. 사용자 화면과 관리자 화면은 백엔드 `/api/**`를 통해
+AI 결과, 사용량 로그, fallback 상태를 조회한다. A~F 담당별 자체 모델 운영과 시연 기준은
+[`../docs/planning/담당별_자체LLM_운영안.md`](../docs/planning/담당별_자체LLM_운영안.md)를 따른다.
+
 ## 경로 별칭
 
 `@/*` → `src/*` (vite.config.ts와 tsconfig.json에 동일하게 설정됨).
