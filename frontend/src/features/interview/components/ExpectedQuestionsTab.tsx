@@ -158,14 +158,21 @@ function QuestionItem({
               </div>
             )}
             {result.feedback && <p className="text-xs text-slate-600">{result.feedback}</p>}
-            {result.improvedAnswer && (
+            {result.score === 100 ? (
+              <div className="rounded-lg border border-green-100 bg-green-50 p-3 text-sm font-semibold text-green-700">
+                🎉 만점이에요. 이대로 말하면 됩니다.
+              </div>
+            ) : result.improvedAnswer ? (
               <div className="rounded-lg border border-green-100 bg-green-50 p-3">
                 <div className="mb-1 flex items-center gap-1.5 text-xs font-bold text-green-700">
-                  <ThumbsUp className="size-3.5" /> AI 개선 답변
+                  <ThumbsUp className="size-3.5" />{" "}
+                  {result.score !== null && result.score >= 90
+                    ? "만점까지 한 끗 — 이렇게 다듬으면"
+                    : "AI 개선 답변"}
                 </div>
                 <p className="whitespace-pre-line text-sm leading-relaxed text-slate-700">{toSentenceLines(result.improvedAnswer)}</p>
               </div>
-            )}
+            ) : null}
             <div className="flex justify-end">
               <Button
                 size="sm"
