@@ -288,20 +288,17 @@
   --color-indigo-600: var(--primary);
   --color-indigo-700: var(--accent-2);
 
-  /* 상태색 → 테마 토큰 (다크에서 카드/뱃지 자동 대응, semantic 유지). -50/100/200=틴트 배경, 500~900=텍스트/아이콘 */
-  --color-amber-50: var(--warning-50);  --color-amber-100: var(--warning-50);  --color-amber-200: var(--warning-50);
-  --color-amber-500: var(--warning);    --color-amber-600: var(--warning);     --color-amber-700: var(--warning);   --color-amber-800: var(--warning);  --color-amber-900: var(--warning);
-  --color-yellow-50: var(--warning-50); --color-yellow-100: var(--warning-50); --color-yellow-600: var(--warning); --color-yellow-700: var(--warning); --color-yellow-800: var(--warning);
-  --color-orange-50: var(--warning-50); --color-orange-100: var(--warning-50); --color-orange-500: var(--warning); --color-orange-600: var(--warning); --color-orange-700: var(--warning);
-  --color-green-50: var(--success-50);  --color-green-100: var(--success-50);  --color-green-200: var(--success-50); --color-green-600: var(--success);  --color-green-700: var(--success);  --color-green-800: var(--success);
-  --color-emerald-50: var(--success-50);--color-emerald-100: var(--success-50);--color-emerald-600: var(--success); --color-emerald-700: var(--success);
-  --color-red-50: var(--danger-50);     --color-red-100: var(--danger-50);     --color-red-200: var(--danger-50);  --color-red-600: var(--destructive); --color-red-700: var(--destructive); --color-red-800: var(--destructive);
-  --color-rose-50: var(--danger-50);    --color-rose-100: var(--danger-50);    --color-rose-500: var(--destructive); --color-rose-600: var(--destructive); --color-rose-700: var(--destructive);
-  /* status -400/-500 보강 (쨍한 솔리드 방지) */
-  --color-green-400: var(--success);    --color-green-500: var(--success);
-  --color-emerald-400: var(--success);  --color-emerald-500: var(--success);
-  --color-red-400: var(--destructive);  --color-red-500: var(--destructive);
-  --color-amber-400: var(--warning);    --color-orange-400: var(--warning);    --color-yellow-400: var(--warning); --color-yellow-500: var(--warning);
+  /* 상태색(green/amber/red/orange/yellow/emerald/rose) → 무채색.
+     사용자 요청: 색 뱃지 전면 제거(Linear 모노톤). 배경=surface-2, 글씨/아이콘=ink-3.
+     실제 파괴적 액션(삭제·폼 에러)은 shadcn --destructive(bg-destructive) 가 담당하므로 빨강 유지됨. */
+  --color-amber-50: var(--surface-2);   --color-amber-100: var(--surface-2);   --color-amber-200: var(--surface-2);
+  --color-amber-400: var(--ink-3);  --color-amber-500: var(--ink-3);  --color-amber-600: var(--ink-3);  --color-amber-700: var(--ink-3);  --color-amber-800: var(--ink-3);  --color-amber-900: var(--ink-3);
+  --color-yellow-50: var(--surface-2);  --color-yellow-100: var(--surface-2);  --color-yellow-400: var(--ink-3); --color-yellow-500: var(--ink-3); --color-yellow-600: var(--ink-3); --color-yellow-700: var(--ink-3); --color-yellow-800: var(--ink-3);
+  --color-orange-50: var(--surface-2);  --color-orange-100: var(--surface-2);  --color-orange-400: var(--ink-3); --color-orange-500: var(--ink-3); --color-orange-600: var(--ink-3); --color-orange-700: var(--ink-3);
+  --color-green-50: var(--surface-2);   --color-green-100: var(--surface-2);   --color-green-200: var(--surface-2); --color-green-400: var(--ink-3); --color-green-500: var(--ink-3); --color-green-600: var(--ink-3); --color-green-700: var(--ink-3); --color-green-800: var(--ink-3);
+  --color-emerald-50: var(--surface-2); --color-emerald-100: var(--surface-2); --color-emerald-400: var(--ink-3); --color-emerald-500: var(--ink-3); --color-emerald-600: var(--ink-3); --color-emerald-700: var(--ink-3);
+  --color-red-50: var(--surface-2);     --color-red-100: var(--surface-2);     --color-red-200: var(--surface-2); --color-red-400: var(--ink-3); --color-red-500: var(--ink-3); --color-red-600: var(--ink-3); --color-red-700: var(--ink-3); --color-red-800: var(--ink-3);
+  --color-rose-50: var(--surface-2);    --color-rose-100: var(--surface-2);    --color-rose-500: var(--ink-3); --color-rose-600: var(--ink-3); --color-rose-700: var(--ink-3);
   /* 잡색(보라/청록/하늘/핑크) → 단일 액센트로 수렴 */
   --color-purple-50: var(--accent-soft);  --color-purple-100: var(--accent-soft); --color-purple-400: var(--accent-2); --color-purple-500: var(--accent-2); --color-purple-600: var(--accent-2); --color-purple-700: var(--accent-2); --color-purple-800: var(--accent-2);
   --color-violet-50: var(--accent-soft);  --color-violet-100: var(--accent-soft); --color-violet-500: var(--accent-2); --color-violet-600: var(--accent-2); --color-violet-700: var(--accent-2);
