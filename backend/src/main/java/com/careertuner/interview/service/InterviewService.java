@@ -12,6 +12,7 @@ import com.careertuner.interview.dto.InterviewQuestionResponse;
 import com.careertuner.interview.dto.InterviewReportResponse;
 import com.careertuner.interview.dto.InterviewSessionResponse;
 import com.careertuner.interview.dto.ModelAnswerResponse;
+import com.careertuner.interview.dto.SessionReviewResponse;
 import com.careertuner.interview.dto.SubmitAnswerRequest;
 
 public interface InterviewService {
@@ -39,4 +40,7 @@ public interface InterviewService {
 
     /** 질문에 대한 모범 답변 생성(학습용). 답변 제출 전에도 호출 가능. */
     ModelAnswerResponse getModelAnswer(Long userId, Long questionId);
+
+    /** 지난 세션 복기: 질문 + 저장된 모범답안 + 내 최신 답변/점수. (최근 면접 기록에서 들어가 보기) */
+    SessionReviewResponse getSessionReview(Long userId, Long sessionId);
 }

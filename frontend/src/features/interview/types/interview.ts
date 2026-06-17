@@ -216,6 +216,25 @@ export interface FileAsset {
   createdAt: string;
 }
 
+/** 지난 세션 복기(리뷰) 한 문항 — 질문 + 모범답안 + 내 최신 답변/점수. */
+export interface SessionReviewItem {
+  questionId: number;
+  question: string;
+  questionType: string;
+  modelAnswer: string | null;
+  answerText: string | null;
+  score: number | null;
+  feedback: string | null;
+  improvedAnswer: string | null;
+}
+
+/** 최근 면접 기록에서 들어가 보는 세션 복기 응답. */
+export interface SessionReview {
+  sessionId: number;
+  mode: string;
+  items: SessionReviewItem[];
+}
+
 // ───── UI 상수 (백엔드 데이터 아님, 화면 구성용) ─────
 
 export interface InterviewModeOption {

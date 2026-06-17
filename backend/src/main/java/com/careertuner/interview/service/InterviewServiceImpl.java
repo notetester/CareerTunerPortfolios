@@ -2,6 +2,7 @@ package com.careertuner.interview.service;
 
 import java.time.Duration;
 import java.time.LocalDateTime;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -29,6 +30,7 @@ import com.careertuner.interview.dto.InterviewQuestionResponse;
 import com.careertuner.interview.dto.InterviewReportResponse;
 import com.careertuner.interview.dto.InterviewSessionResponse;
 import com.careertuner.interview.dto.ModelAnswerResponse;
+import com.careertuner.interview.dto.SessionReviewResponse;
 import com.careertuner.interview.dto.SubmitAnswerRequest;
 import com.careertuner.interview.mapper.InterviewMapper;
 import lombok.RequiredArgsConstructor;
@@ -145,6 +147,28 @@ public class InterviewServiceImpl implements InterviewService {
         return interviewMapper.findQuestionsBySessionId(sessionId).stream()
                 .map(InterviewQuestionResponse::from)
                 .toList();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public SessionReviewResponse getSessionReview(Long userId, Long sessionId) {
+        InterviewSession session = requireSession(userId, sessionId);
+        List<InterviewQuestion> questions = interviewMapper.findQuestionsBySessionId(sessionId);
+
+        // 질문별 최신 답변(가장 큰 id)을 매핑한다. 재작성으로 답변이 여러 개일 수 있어 마지막 것만 본다.
+        Map<Long, InterviewAnswer> latestByQuestion = new HashMap<>();
+        for (InterviewAnswer answer : interviewMapper.findAnswersBySessionId(sessionId)) {
+            InterviewAnswer current = latestByQuestion.get(answer.getQuestionId());
+            if (current == null || (answer.getId() != null && current.getId() != null
+                    && answer.getId() > current.getId())) {
+                latestByQuestion.put(answer.getQuestionId(), answer);
+            }
+        }
+
+        List<SessionReviewResponse.Item> items = questions.stream()
+                .map(q -> SessionReviewResponse.Item.of(q, latestByQuestion.get(q.getId())))
+                .toList();
+        return SessionReviewResponse.of(session, items);
     }
 
     @Override
