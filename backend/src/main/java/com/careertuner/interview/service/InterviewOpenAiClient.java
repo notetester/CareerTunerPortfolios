@@ -1,11 +1,5 @@
 package com.careertuner.interview.service;
 
-import java.io.IOException;
-import java.net.URI;
-import java.net.http.HttpClient;
-import java.net.http.HttpRequest;
-import java.net.http.HttpResponse;
-import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.LinkedHashMap;
@@ -16,36 +10,31 @@ import java.util.Map;
 import org.springframework.stereotype.Service;
 
 import com.careertuner.applicationcase.domain.ApplicationCase;
-import com.careertuner.applicationcase.service.OpenAiProperties;
 import com.careertuner.common.exception.BusinessException;
 import com.careertuner.common.exception.ErrorCode;
 import com.careertuner.interview.ai.prompt.InterviewPromptCatalog;
-import tools.jackson.core.JacksonException;
+
 import tools.jackson.databind.JsonNode;
-import tools.jackson.databind.ObjectMapper;
 
 /**
- * 면접 도메인 전용 OpenAI Responses API 클라이언트.
- * 공유 설정(OpenAiProperties)은 재사용하되, 호출/파싱은 면접 기능에 맞게 자체 구현한다.
+ * 면접 도메인 구조화 LLM 호출 오케스트레이션.
+ *
+ * <p>프롬프트 구성·JSON 스키마·응답 매핑(도메인 로직)만 담당하고, 실제 provider 전송은
+ * {@link InterviewLlmGateway}(@Primary {@link FallbackInterviewLlmGateway} = Gemini 우선 → OpenAI 폴백)에 위임한다.
+ * 그래서 이 클래스의 모든 호출은 자동으로 "Gemini 1차, 실패 시 OpenAI 폴백"으로 동작한다.
+ * (클래스명은 호환을 위해 유지하지만, 전송은 더 이상 OpenAI 전용이 아니다.)
+ *
+ * <p>{@link InterviewAnswerEvaluator} 를 구현해 평가/Critic 경로의 기본 평가기로도 쓰인다.
  */
 @Service
 public class InterviewOpenAiClient implements InterviewAnswerEvaluator {
 
-    private static final int MAX_ATTEMPTS = 3;
-
-    private final OpenAiProperties properties;
     private final InterviewModelProperties modelProperties;
-    private final ObjectMapper objectMapper;
-    private final HttpClient httpClient;
+    private final InterviewLlmGateway gateway;
 
-    public InterviewOpenAiClient(OpenAiProperties properties, InterviewModelProperties modelProperties,
-                                 ObjectMapper objectMapper) {
-        this.properties = properties;
+    public InterviewOpenAiClient(InterviewModelProperties modelProperties, InterviewLlmGateway gateway) {
         this.modelProperties = modelProperties;
-        this.objectMapper = objectMapper;
-        this.httpClient = HttpClient.newBuilder()
-                .connectTimeout(properties.getTimeout())
-                .build();
+        this.gateway = gateway;
     }
 
     /** 지원 건 + 공고 기반 예상 질문 생성. */
@@ -62,9 +51,10 @@ public class InterviewOpenAiClient implements InterviewAnswerEvaluator {
                 """.formatted(applicationCase.getCompanyName(), applicationCase.getJobTitle(),
                 modeLabel, count, postingText == null || postingText.isBlank() ? "(공고문 없음)" : postingText);
 
-        JsonNode root = post(structuredRequest("interview_questions", questionsSchema(),
+        InterviewLlmGateway.Result result = gateway.complete(new InterviewLlmGateway.Request(
+                "interview_questions", questionsSchema(),
                 InterviewPromptCatalog.QUESTION_SYSTEM_PROMPT, userPrompt, modelProperties.getGeneration()));
-        JsonNode payload = parseOutputJson(root);
+        JsonNode payload = result.payload();
 
         List<GeneratedQuestion> questions = new ArrayList<>();
         JsonNode array = payload.path("questions");
@@ -80,7 +70,7 @@ public class InterviewOpenAiClient implements InterviewAnswerEvaluator {
         if (questions.isEmpty()) {
             throw new BusinessException(ErrorCode.INTERNAL_ERROR, "AI가 질문을 생성하지 못했습니다.");
         }
-        return new GeneratedQuestions(questions, usage(root));
+        return new GeneratedQuestions(questions, result.usage());
     }
 
     /**
@@ -107,14 +97,15 @@ public class InterviewOpenAiClient implements InterviewAnswerEvaluator {
                 """.formatted(applicationCase.getCompanyName(), applicationCase.getJobTitle(),
                 reference, modelKey, question, answerText);
 
-        JsonNode root = post(structuredRequest("interview_answer_evaluation", evaluationSchema(),
+        InterviewLlmGateway.Result result = gateway.complete(new InterviewLlmGateway.Request(
+                "interview_answer_evaluation", evaluationSchema(),
                 InterviewPromptCatalog.EVALUATION_SYSTEM_PROMPT, userPrompt, modelProperties.getJudge()));
-        JsonNode payload = parseOutputJson(root);
+        JsonNode payload = result.payload();
         return new AnswerEvaluation(
                 clampScore(payload.path("score").asInt(0)),
                 payload.path("feedback").asText(""),
                 payload.path("improvedAnswer").asText(""),
-                usage(root));
+                result.usage());
     }
 
     /** 질문에 대한 모범 답변 생성(학습용). 답변 제출 없이도 호출 가능. */
@@ -128,14 +119,15 @@ public class InterviewOpenAiClient implements InterviewAnswerEvaluator {
                 %s
                 """.formatted(applicationCase.getCompanyName(), applicationCase.getJobTitle(), modeLabel, question);
 
-        JsonNode root = post(structuredRequest("interview_model_answer", modelAnswerSchema(),
+        InterviewLlmGateway.Result result = gateway.complete(new InterviewLlmGateway.Request(
+                "interview_model_answer", modelAnswerSchema(),
                 InterviewPromptCatalog.MODEL_ANSWER_SYSTEM_PROMPT, userPrompt, modelProperties.getGeneration()));
-        JsonNode payload = parseOutputJson(root);
+        JsonNode payload = result.payload();
         String modelAnswer = payload.path("modelAnswer").asText("").trim();
         if (modelAnswer.isBlank()) {
             throw new BusinessException(ErrorCode.INTERNAL_ERROR, "AI가 모범답안을 생성하지 못했습니다.");
         }
-        return new ModelAnswer(modelAnswer, usage(root));
+        return new ModelAnswer(modelAnswer, result.usage());
     }
 
     /**
@@ -158,9 +150,10 @@ public class InterviewOpenAiClient implements InterviewAnswerEvaluator {
                 %s
                 """.formatted(applicationCase.getCompanyName(), applicationCase.getJobTitle(), modeLabel, list);
 
-        JsonNode root = post(structuredRequest("interview_model_answers", modelAnswersSchema(),
+        InterviewLlmGateway.Result result = gateway.complete(new InterviewLlmGateway.Request(
+                "interview_model_answers", modelAnswersSchema(),
                 InterviewPromptCatalog.MODEL_ANSWER_SYSTEM_PROMPT, userPrompt, modelProperties.getGeneration()));
-        JsonNode payload = parseOutputJson(root);
+        JsonNode payload = result.payload();
 
         String[] answers = new String[questions.size()];
         JsonNode array = payload.path("answers");
@@ -173,7 +166,7 @@ public class InterviewOpenAiClient implements InterviewAnswerEvaluator {
                 }
             }
         }
-        return new GeneratedModelAnswers(Arrays.asList(answers), usage(root));
+        return new GeneratedModelAnswers(Arrays.asList(answers), result.usage());
     }
 
     /** 원 질문 + 지원자 답변 기반 꼬리 질문 생성. */
@@ -192,9 +185,10 @@ public class InterviewOpenAiClient implements InterviewAnswerEvaluator {
                 """.formatted(applicationCase.getCompanyName(), applicationCase.getJobTitle(),
                 count, question, answerText == null || answerText.isBlank() ? "(답변 없음)" : answerText);
 
-        JsonNode root = post(structuredRequest("interview_follow_up_questions", questionsSchema(),
+        InterviewLlmGateway.Result result = gateway.complete(new InterviewLlmGateway.Request(
+                "interview_follow_up_questions", questionsSchema(),
                 InterviewPromptCatalog.FOLLOWUP_SYSTEM_PROMPT, userPrompt, modelProperties.getGeneration()));
-        JsonNode payload = parseOutputJson(root);
+        JsonNode payload = result.payload();
 
         List<GeneratedQuestion> questions = new ArrayList<>();
         JsonNode array = payload.path("questions");
@@ -211,7 +205,7 @@ public class InterviewOpenAiClient implements InterviewAnswerEvaluator {
         if (questions.isEmpty()) {
             throw new BusinessException(ErrorCode.INTERNAL_ERROR, "AI가 꼬리 질문을 생성하지 못했습니다.");
         }
-        return new GeneratedQuestions(questions, usage(root));
+        return new GeneratedQuestions(questions, result.usage());
     }
 
     /** Critic 에이전트: 원 채점 결과를 적대적으로 검증하고 필요 시 점수를 조정한다. */
@@ -232,14 +226,15 @@ public class InterviewOpenAiClient implements InterviewAnswerEvaluator {
                 %s
                 """.formatted(question, answerText, modelKey, originalScore, feedback == null ? "" : feedback);
 
-        JsonNode root = post(structuredRequest("interview_critique", critiqueSchema(),
+        InterviewLlmGateway.Result result = gateway.complete(new InterviewLlmGateway.Request(
+                "interview_critique", critiqueSchema(),
                 InterviewPromptCatalog.CRITIC_SYSTEM_PROMPT, userPrompt, modelProperties.getJudge()));
-        JsonNode payload = parseOutputJson(root);
+        JsonNode payload = result.payload();
         return new CritiqueResult(
                 clampScore(payload.path("adjustedScore").asInt(originalScore)),
                 payload.path("verdict").asText("유지"),
                 payload.path("reason").asText(""),
-                usage(root));
+                result.usage());
     }
 
     /** 평가 하니스용: 독립 심사위원이 같은 답변을 재채점한다(LLM-as-judge). */
@@ -251,17 +246,19 @@ public class InterviewOpenAiClient implements InterviewAnswerEvaluator {
                 지원자 답변:
                 %s
                 """.formatted(question, answerText);
-        JsonNode root = post(structuredRequest("interview_judge", scoreOnlySchema(),
+        InterviewLlmGateway.Result result = gateway.complete(new InterviewLlmGateway.Request(
+                "interview_judge", scoreOnlySchema(),
                 InterviewPromptCatalog.JUDGE_SYSTEM_PROMPT, userPrompt, modelProperties.getJudge()));
-        JsonNode payload = parseOutputJson(root);
-        return new ScoreOnly(clampScore(payload.path("score").asInt(0)), usage(root));
+        JsonNode payload = result.payload();
+        return new ScoreOnly(clampScore(payload.path("score").asInt(0)), result.usage());
     }
 
     /** 면접 전체 Q&A 기반 종합 리포트 생성. */
     public ReportPayload generateReport(String transcript) {
-        JsonNode root = post(structuredRequest("interview_report", reportSchema(),
+        InterviewLlmGateway.Result result = gateway.complete(new InterviewLlmGateway.Request(
+                "interview_report", reportSchema(),
                 InterviewPromptCatalog.REPORT_SYSTEM_PROMPT, transcript, modelProperties.getGeneration()));
-        JsonNode payload = parseOutputJson(root);
+        JsonNode payload = result.payload();
 
         List<ReportCategory> categories = new ArrayList<>();
         JsonNode array = payload.path("categories");
@@ -282,7 +279,7 @@ public class InterviewOpenAiClient implements InterviewAnswerEvaluator {
                 }
             }
         }
-        return new ReportPayload(clampScore(payload.path("totalScore").asInt(0)), categories, summary, usage(root));
+        return new ReportPayload(clampScore(payload.path("totalScore").asInt(0)), categories, summary, result.usage());
     }
 
     /** LLM Planner(자율 루프 시연 모드): 현재 상태와 가용 액션을 보고 다음 액션을 하나 고른다. */
@@ -293,133 +290,17 @@ public class InterviewOpenAiClient implements InterviewAnswerEvaluator {
 
                 지금 고를 수 있는 액션: %s
                 """.formatted(stateSummary, String.join(", ", availableActions));
-        JsonNode root = post(structuredRequest("interview_agent_plan", planSchema(availableActions),
+        InterviewLlmGateway.Result result = gateway.complete(new InterviewLlmGateway.Request(
+                "interview_agent_plan", planSchema(availableActions),
                 InterviewPromptCatalog.PLANNER_SYSTEM_PROMPT, userPrompt, modelProperties.getJudge()));
-        JsonNode payload = parseOutputJson(root);
+        JsonNode payload = result.payload();
         return new PlanDecisionResult(
                 payload.path("action").asText(""),
                 payload.path("reason").asText(""),
-                usage(root));
+                result.usage());
     }
 
-    // ───── HTTP / 파싱 인프라 ─────
-
-    private JsonNode post(Map<String, Object> requestBody) {
-        if (!properties.configured()) {
-            throw new BusinessException(ErrorCode.INTERNAL_ERROR, "OpenAI API 키가 설정되어 있지 않습니다.");
-        }
-        try {
-            String body = objectMapper.writeValueAsString(requestBody);
-            for (int attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
-                try {
-                    HttpRequest request = HttpRequest.newBuilder(URI.create(properties.responsesUrl()))
-                            .timeout(properties.getTimeout())
-                            .header("Authorization", "Bearer " + properties.getApiKey())
-                            .header("Content-Type", "application/json")
-                            .POST(HttpRequest.BodyPublishers.ofString(body, StandardCharsets.UTF_8))
-                            .build();
-                    HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
-                    if (response.statusCode() >= 200 && response.statusCode() < 300) {
-                        return objectMapper.readTree(response.body());
-                    }
-
-                    String message = errorMessage(response.body());
-                    if (attempt < MAX_ATTEMPTS && isRetryable(response.statusCode(), message)) {
-                        sleepBeforeRetry(attempt);
-                        continue;
-                    }
-                    throw new BusinessException(ErrorCode.INTERNAL_ERROR,
-                            "OpenAI 요청에 실패했습니다. " + truncate(message, 300));
-                } catch (IOException ex) {
-                    if (attempt < MAX_ATTEMPTS) {
-                        sleepBeforeRetry(attempt);
-                        continue;
-                    }
-                    throw new BusinessException(ErrorCode.INTERNAL_ERROR, "OpenAI 응답을 처리하지 못했습니다.");
-                }
-            }
-            throw new BusinessException(ErrorCode.INTERNAL_ERROR, "OpenAI 요청에 실패했습니다.");
-        } catch (BusinessException ex) {
-            throw ex;
-        } catch (JacksonException ex) {
-            throw new BusinessException(ErrorCode.INTERNAL_ERROR, "OpenAI 요청을 구성하지 못했습니다.");
-        } catch (InterruptedException ex) {
-            Thread.currentThread().interrupt();
-            throw new BusinessException(ErrorCode.INTERNAL_ERROR, "OpenAI 요청이 중단되었습니다.");
-        }
-    }
-
-    private Map<String, Object> structuredRequest(String name, Map<String, Object> schema,
-                                                  String systemPrompt, String userPrompt, String model) {
-        Map<String, Object> body = new LinkedHashMap<>();
-        body.put("model", model);
-        // 추론 모델(gpt-5/o-시리즈)은 기본 추론량이 커서 면접 응답이 느리고 타임아웃이 잦다.
-        // 면접 Q&A·평가·모범답안은 깊은 추론이 불필요하므로 낮은 추론량으로 응답 속도·안정성을 확보한다.
-        if (isReasoningModel(model)) {
-            body.put("reasoning", Map.of("effort", "low"));
-        }
-        body.put("input", List.of(
-                message("system", systemPrompt),
-                message("user", userPrompt)));
-        body.put("text", Map.of(
-                "format", Map.of(
-                        "type", "json_schema",
-                        "name", name,
-                        "strict", true,
-                        "schema", schema)));
-        return body;
-    }
-
-    private Map<String, Object> message(String role, String text) {
-        return Map.of("role", role, "content", List.of(Map.of("type", "input_text", "text", text)));
-    }
-
-    private JsonNode parseOutputJson(JsonNode root) {
-        String text = outputText(root).trim();
-        if (text.startsWith("```")) {
-            text = text.replaceFirst("^```(?:json)?\\s*", "").replaceFirst("\\s*```$", "").trim();
-        }
-        if (text.isBlank()) {
-            throw new BusinessException(ErrorCode.INTERNAL_ERROR, "AI 응답 본문이 비어 있습니다.");
-        }
-        try {
-            return objectMapper.readTree(text);
-        } catch (JacksonException ex) {
-            throw new BusinessException(ErrorCode.INTERNAL_ERROR, "AI 응답이 JSON 형식이 아닙니다.");
-        }
-    }
-
-    private String outputText(JsonNode root) {
-        String direct = root.path("output_text").asText("");
-        if (!direct.isBlank()) {
-            return direct;
-        }
-        StringBuilder builder = new StringBuilder();
-        JsonNode output = root.path("output");
-        if (output.isArray()) {
-            for (JsonNode item : output) {
-                JsonNode content = item.path("content");
-                if (content.isArray()) {
-                    for (JsonNode part : content) {
-                        String text = part.path("text").asText("");
-                        if (!text.isBlank()) {
-                            builder.append(text);
-                        }
-                    }
-                }
-            }
-        }
-        return builder.toString();
-    }
-
-    private Usage usage(JsonNode root) {
-        JsonNode usage = root.path("usage");
-        int inputTokens = usage.path("input_tokens").asInt(0);
-        int outputTokens = usage.path("output_tokens").asInt(0);
-        int totalTokens = usage.path("total_tokens").asInt(inputTokens + outputTokens);
-        String model = root.path("model").asText(properties.getModel());
-        return new Usage(model, inputTokens, outputTokens, totalTokens);
-    }
+    // ───── 응답 매핑 보조 ─────
 
     private String normalizeType(String value) {
         return switch (value == null ? "" : value.toUpperCase(Locale.ROOT)) {
@@ -430,15 +311,6 @@ public class InterviewOpenAiClient implements InterviewAnswerEvaluator {
 
     private int clampScore(int value) {
         return Math.max(0, Math.min(100, value));
-    }
-
-    /** gpt-5/o-시리즈 등 추론 모델 여부. 추론 모델에만 reasoning 옵션을 적용한다. */
-    private boolean isReasoningModel(String model) {
-        if (model == null) {
-            return false;
-        }
-        String m = model.toLowerCase(Locale.ROOT);
-        return m.startsWith("gpt-5") || m.startsWith("o1") || m.startsWith("o3") || m.startsWith("o4");
     }
 
     // ───── JSON Schema ─────
@@ -525,35 +397,6 @@ public class InterviewOpenAiClient implements InterviewAnswerEvaluator {
 
     private Map<String, Object> integerSchema() {
         return Map.of("type", "integer");
-    }
-
-    private String errorMessage(String body) {
-        try {
-            JsonNode root = objectMapper.readTree(body);
-            String message = root.path("error").path("message").asText("");
-            return message.isBlank() ? body : message;
-        } catch (JacksonException ex) {
-            return body;
-        }
-    }
-
-    private boolean isRetryable(int statusCode, String message) {
-        if (statusCode == 408 || statusCode == 429 || statusCode >= 500) {
-            return true;
-        }
-        String lower = message == null ? "" : message.toLowerCase(Locale.ROOT);
-        return lower.contains("timeout") || lower.contains("upstream connect") || lower.contains("disconnect/reset");
-    }
-
-    private void sleepBeforeRetry(int attempt) throws InterruptedException {
-        Thread.sleep(attempt * 1000L);
-    }
-
-    private String truncate(String value, int maxLength) {
-        if (value == null || value.length() <= maxLength) {
-            return value;
-        }
-        return value.substring(0, maxLength) + "...";
     }
 
     // ───── 반환 레코드 ─────
