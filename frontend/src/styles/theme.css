@@ -234,6 +234,59 @@
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-ring: var(--sidebar-ring);
+
+  /* ── Tailwind 팔레트 브리지 ──
+     페이지에 하드코딩된 slate/gray/zinc/blue/indigo 색을 시맨틱 토큰에 매핑.
+     → 페이지 파일을 수정하지 않고 다크/라이트가 자동 대응된다. (design.md §7)
+     주의: bg-white(흰색)는 매핑 불가(text-white 필요) → bg-card로 치환.
+           bg-slate-800/900/950 등 '의도적 다크 배경'은 foreground로 매핑돼 다크에서 뒤집히므로 개별 수정. */
+  --color-slate-50: var(--surface-2);
+  --color-slate-100: var(--muted);
+  --color-slate-200: var(--border);
+  --color-slate-300: var(--border-strong);
+  --color-slate-400: var(--ink-4);
+  --color-slate-500: var(--ink-3);
+  --color-slate-600: var(--ink-2);
+  --color-slate-700: var(--ink-2);
+  --color-slate-800: var(--foreground);
+  --color-slate-900: var(--foreground);
+  --color-slate-950: var(--foreground);
+  --color-gray-50: var(--surface-2);
+  --color-gray-100: var(--muted);
+  --color-gray-200: var(--border);
+  --color-gray-300: var(--border-strong);
+  --color-gray-400: var(--ink-4);
+  --color-gray-500: var(--ink-3);
+  --color-gray-600: var(--ink-2);
+  --color-gray-700: var(--ink-2);
+  --color-gray-800: var(--foreground);
+  --color-gray-900: var(--foreground);
+  --color-gray-950: var(--foreground);
+  --color-zinc-50: var(--surface-2);
+  --color-zinc-100: var(--muted);
+  --color-zinc-200: var(--border);
+  --color-zinc-300: var(--border-strong);
+  --color-zinc-400: var(--ink-4);
+  --color-zinc-500: var(--ink-3);
+  --color-zinc-600: var(--ink-2);
+  --color-zinc-700: var(--ink-2);
+  --color-zinc-800: var(--foreground);
+  --color-zinc-900: var(--foreground);
+  --color-zinc-950: var(--foreground);
+  --color-blue-50: var(--accent-soft);
+  --color-blue-100: var(--accent-soft);
+  --color-blue-300: var(--accent-2);
+  --color-blue-400: var(--accent-2);
+  --color-blue-500: var(--primary);
+  --color-blue-600: var(--primary);
+  --color-blue-700: var(--accent-2);
+  --color-blue-800: var(--accent-2);
+  --color-indigo-50: var(--accent-soft);
+  --color-indigo-100: var(--accent-soft);
+  --color-indigo-400: var(--accent-2);
+  --color-indigo-500: var(--primary);
+  --color-indigo-600: var(--primary);
+  --color-indigo-700: var(--accent-2);
 }
 
 @layer base {
