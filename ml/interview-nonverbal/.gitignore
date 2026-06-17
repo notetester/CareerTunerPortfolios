@@ -1,0 +1,10 @@
+# Python
+__pycache__/
+*.pyc
+
+# 데이터·모델 산출물 (repo 에 안 올림 — 용량/라이선스)
+data/
+*.joblib
+*.pkl
+*.onnx
+*.csv
