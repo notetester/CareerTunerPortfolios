@@ -162,7 +162,7 @@ public class ApplicationCaseExtractionWorker {
                         FEATURE_JOB_POSTING_METADATA,
                         result.metadata().usage());
             }
-            notificationMapper.insertNotification(successNotification(extraction));
+            notificationMapper.insert(successNotification(extraction));
             return null;
         });
     }
@@ -171,7 +171,7 @@ public class ApplicationCaseExtractionWorker {
         transactionTemplate.execute(status -> {
             String errorMessage = truncate(errorMessage(ex), MAX_ERROR_MESSAGE_LENGTH);
             if (extractionMapper.markExtractionFailed(extraction.getId(), errorMessage) == 1) {
-                notificationMapper.insertNotification(failureNotification(extraction, errorMessage));
+                notificationMapper.insert(failureNotification(extraction, errorMessage));
             }
             return null;
         });
@@ -183,7 +183,7 @@ public class ApplicationCaseExtractionWorker {
             if (extractionMapper.markExtractionFailed(extraction.getId(), errorMessage) != 1) {
                 return false;
             }
-            notificationMapper.insertNotification(failureNotification(extraction, errorMessage));
+            notificationMapper.insert(failureNotification(extraction, errorMessage));
             return true;
         }));
     }

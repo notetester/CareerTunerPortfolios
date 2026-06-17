@@ -1,5 +1,7 @@
 package com.careertuner.support.controller;
 
+import java.util.List;
+
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -29,6 +31,12 @@ public class TicketController {
             @Validated @RequestBody CreateTicketRequest request,
             @AuthenticationPrincipal AuthUser authUser) {
         return ApiResponse.ok(ticketService.createTicket(request, authUser.id()));
+    }
+
+    @GetMapping
+    public ApiResponse<List<TicketResponse>> listMyTickets(
+            @AuthenticationPrincipal AuthUser authUser) {
+        return ApiResponse.ok(ticketService.listMyTickets(authUser.id()));
     }
 
     @GetMapping("/{id}")

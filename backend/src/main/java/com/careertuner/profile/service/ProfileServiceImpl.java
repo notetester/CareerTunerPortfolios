@@ -1,11 +1,6 @@
 package com.careertuner.profile.service;
 
-import java.util.ArrayList;
-import java.util.LinkedHashSet;
 import java.util.List;
-import java.util.Locale;
-import java.util.Set;
-import java.util.regex.Pattern;
 
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -16,12 +11,17 @@ import com.careertuner.common.exception.BusinessException;
 import com.careertuner.common.exception.ErrorCode;
 import com.careertuner.common.security.AuthUser;
 import com.careertuner.consent.service.ConsentService;
+import com.careertuner.profile.ai.ProfileAiResult;
+import com.careertuner.profile.ai.ProfileAiService;
+import com.careertuner.profile.ai.ProfileCriterionScore;
 import com.careertuner.profile.domain.UserProfile;
 import com.careertuner.profile.dto.ProfileAiResponse;
 import com.careertuner.profile.dto.ProfileCompletenessResponse;
+import com.careertuner.profile.dto.ProfileCriterionScoreResponse;
 import com.careertuner.profile.dto.UserProfileRequest;
 import com.careertuner.profile.dto.UserProfileResponse;
 import com.careertuner.profile.mapper.ProfileMapper;
+
 import lombok.RequiredArgsConstructor;
 import tools.jackson.core.JacksonException;
 import tools.jackson.databind.ObjectMapper;
@@ -30,21 +30,10 @@ import tools.jackson.databind.ObjectMapper;
 @RequiredArgsConstructor
 public class ProfileServiceImpl implements ProfileService {
 
-    private static final Pattern SKILL_SPLIT = Pattern.compile("[,\\n/|]");
-    private static final List<String> KNOWN_SKILLS = List.of(
-            "커뮤니케이션", "문제 해결", "문서 작성", "자료 조사", "데이터 분석", "고객 응대",
-            "상담", "영업", "마케팅", "브랜딩", "콘텐츠 기획", "SNS 운영", "광고 운영",
-            "회계", "세무", "재무", "인사", "채용", "교육", "강의", "간호", "의료",
-            "품질 관리", "생산 관리", "물류", "구매", "서비스 운영", "기획", "디자인",
-            "Figma", "Photoshop", "Excel", "PowerPoint", "Notion", "GA4",
-            "Java", "Spring", "Spring Boot", "MyBatis", "MySQL", "React", "TypeScript",
-            "JavaScript", "HTML", "CSS", "Git", "Docker", "AWS", "REST API", "JWT",
-            "Node.js", "Python", "SQL", "Linux", "Vite", "Tailwind"
-    );
-
     private final ProfileMapper profileMapper;
     private final ApplicationCaseMapper applicationCaseMapper;
     private final ConsentService consentService;
+    private final ProfileAiService profileAiService;
     private final ObjectMapper objectMapper;
 
     @Override
@@ -78,44 +67,22 @@ public class ProfileServiceImpl implements ProfileService {
     @Override
     @Transactional
     public ProfileAiResponse summarize(AuthUser authUser) {
-        Long userId = requireUser(authUser);
-        requireAiConsent(userId);
-        UserProfile profile = findOrEmpty(userId);
-        ProfileCompletenessResponse completeness = completeness(profile);
-        List<String> skills = extractSkillNames(profile);
-        String summary = "%s 직무를 목표로 %s 기반의 경험을 정리 중입니다. %s"
-                .formatted(valueOr(profile.getDesiredJob(), "지원 희망"),
-                        skills.isEmpty() ? "프로필" : String.join(", ", skills.subList(0, Math.min(5, skills.size()))),
-                        completeness.missing().isEmpty()
-                                ? "핵심 프로필 항목이 비교적 잘 채워져 있습니다."
-                                : "보강 우선 항목은 " + String.join(", ", completeness.missing()) + "입니다.");
-        recordAi(userId, "PROFILE_SUMMARY");
-        return new ProfileAiResponse("PROFILE_SUMMARY", summary, skills,
-                strengths(profile, skills), completeness.missing(), completeness.recommendations(), completeness.score());
+        ProfileAiResult result = evaluateWithConsent(authUser, "PROFILE_SUMMARY");
+        return toAiResponse(result);
     }
 
     @Override
     @Transactional
     public ProfileAiResponse extractSkills(AuthUser authUser) {
-        Long userId = requireUser(authUser);
-        requireAiConsent(userId);
-        UserProfile profile = findOrEmpty(userId);
-        List<String> skills = extractSkillNames(profile);
-        recordAi(userId, "PROFILE_SKILL_EXTRACT");
-        return new ProfileAiResponse("PROFILE_SKILL_EXTRACT",
-                "이력서와 경험 문장에서 직무 역량 후보를 추출했습니다. 확정 전 사용자 검토가 필요합니다.",
-                skills, List.of(), List.of(), List.of("중복 역량명을 정리하고 주력 역량과 보조 역량을 나눠 주세요."), completeness(profile).score());
+        ProfileAiResult result = evaluateWithConsent(authUser, "PROFILE_SKILL_EXTRACT");
+        return toAiResponse(result);
     }
 
     @Override
     @Transactional
     public ProfileCompletenessResponse diagnoseCompleteness(AuthUser authUser) {
-        Long userId = requireUser(authUser);
-        requireAiConsent(userId);
-        UserProfile profile = findOrEmpty(userId);
-        ProfileCompletenessResponse result = completeness(profile);
-        recordAi(userId, "PROFILE_COMPLETENESS");
-        return result;
+        ProfileAiResult result = evaluateWithConsent(authUser, "PROFILE_COMPLETENESS");
+        return toCompletenessResponse(result);
     }
 
     @Override
@@ -133,89 +100,80 @@ public class ProfileServiceImpl implements ProfileService {
         return toResponse(findOrEmpty(userId));
     }
 
+    private ProfileAiResult evaluateWithConsent(AuthUser authUser, String featureType) {
+        Long userId = requireUser(authUser);
+        requireAiConsent(userId);
+        ProfileAiResult result = profileAiService.evaluate(findOrEmpty(userId), featureType);
+        recordAi(userId, result);
+        return result;
+    }
+
     private UserProfile findOrEmpty(Long userId) {
         UserProfile profile = profileMapper.findByUserId(userId);
         return profile != null ? profile : UserProfile.builder().userId(userId).build();
     }
 
-    private ProfileCompletenessResponse completeness(UserProfile p) {
-        List<String> completed = new ArrayList<>();
-        List<String> missing = new ArrayList<>();
-        addCheck(completed, missing, "희망 직무", p.getDesiredJob());
-        addCheck(completed, missing, "희망 산업", p.getDesiredIndustry());
-        addCheck(completed, missing, "이력서 원문", p.getResumeText());
-        addCheck(completed, missing, "자기소개서", p.getSelfIntro());
-        addCheck(completed, missing, "직무 역량/스킬", p.getSkills());
-        addCheck(completed, missing, "경력", p.getCareer());
-        addCheck(completed, missing, "경험/프로젝트/활동", p.getProjects());
-        addCheck(completed, missing, "학력", p.getEducation());
-        addCheck(completed, missing, "자격증", p.getCertificates());
-        addCheck(completed, missing, "포트폴리오/활동 링크", p.getPortfolioLinks());
-        int score = (int) Math.round(completed.size() * 100.0 / (completed.size() + missing.size()));
-        List<String> recommendations = missing.stream().limit(4)
-                .map(item -> item + " 정보를 입력하면 공고 매칭과 면접 질문 생성 품질이 좋아집니다.")
+    private ProfileAiResponse toAiResponse(ProfileAiResult result) {
+        return new ProfileAiResponse(
+                result.featureType(),
+                result.summary(),
+                result.extractedSkills(),
+                result.strengths(),
+                result.gaps(),
+                result.recommendations(),
+                result.completenessScore(),
+                result.jobFamily().name(),
+                result.jobFamily().label(),
+                criteria(result.criteria()),
+                result.usage().model(),
+                result.status());
+    }
+
+    private ProfileCompletenessResponse toCompletenessResponse(ProfileAiResult result) {
+        List<String> completed = result.criteria().stream()
+                .filter(row -> row.rawScore() >= 70)
+                .map(row -> row.criterion().label())
                 .toList();
-        return new ProfileCompletenessResponse(score, completed, missing, recommendations);
+        List<String> missing = result.criteria().stream()
+                .filter(row -> row.rawScore() < 70)
+                .map(row -> row.criterion().label())
+                .toList();
+        return new ProfileCompletenessResponse(
+                result.completenessScore(),
+                completed,
+                missing,
+                result.recommendations(),
+                result.jobFamily().name(),
+                result.jobFamily().label(),
+                criteria(result.criteria()),
+                result.usage().model(),
+                result.status());
     }
 
-    private List<String> extractSkillNames(UserProfile p) {
-        Set<String> result = new LinkedHashSet<>();
-        collectJsonArrayStrings(result, p.getSkills());
-        String text = String.join("\n",
-                valueOr(p.getResumeText(), ""), valueOr(p.getSelfIntro(), ""),
-                valueOr(p.getProjects(), ""), valueOr(p.getCareer(), ""));
-        String lower = text.toLowerCase(Locale.ROOT);
-        for (String skill : KNOWN_SKILLS) {
-            if (lower.contains(skill.toLowerCase(Locale.ROOT))) {
-                result.add(skill);
-            }
-        }
-        for (String token : SKILL_SPLIT.split(text)) {
-            String trimmed = token.trim();
-            if (trimmed.length() >= 2 && trimmed.length() <= 30 && trimmed.matches("[A-Za-z0-9+#. -]+")) {
-                for (String skill : KNOWN_SKILLS) {
-                    if (trimmed.equalsIgnoreCase(skill)) {
-                        result.add(skill);
-                    }
-                }
-            }
-        }
-        return new ArrayList<>(result);
+    private List<ProfileCriterionScoreResponse> criteria(List<ProfileCriterionScore> criteria) {
+        return criteria.stream()
+                .map(row -> new ProfileCriterionScoreResponse(
+                        row.criterion().name(),
+                        row.criterion().label(),
+                        row.rawScore(),
+                        row.weight(),
+                        row.weightedScore(),
+                        row.evidence(),
+                        row.improvement()))
+                .toList();
     }
 
-    private void collectJsonArrayStrings(Set<String> result, String json) {
-        if (json == null || json.isBlank()) {
-            return;
-        }
-        try {
-            objectMapper.readTree(json).forEach(node -> {
-                if (node.isTextual() && !node.asText().isBlank()) {
-                    result.add(node.asText().trim());
-                }
-            });
-        } catch (Exception ignored) {
-            // 사용자가 임시로 저장한 JSON이 아니면 AI 후보 추출에서만 제외한다.
-        }
-    }
-
-    private List<String> strengths(UserProfile p, List<String> skills) {
-        List<String> strengths = new ArrayList<>();
-        if (!skills.isEmpty()) strengths.add("직무 역량 키워드가 " + skills.size() + "개 정리되어 있습니다.");
-        if (hasText(p.getProjects())) strengths.add("경험/프로젝트/활동 기록이 입력되어 있습니다.");
-        if (hasText(p.getSelfIntro())) strengths.add("자기소개서 원문이 있어 핵심 키워드 추출이 가능합니다.");
-        return strengths;
-    }
-
-    private void recordAi(Long userId, String featureType) {
+    private void recordAi(Long userId, ProfileAiResult result) {
         applicationCaseMapper.insertAiUsageLog(AiUsageLog.builder()
                 .userId(userId)
-                .featureType(featureType)
-                .status("SUCCESS")
-                .model("profile-rule-v1")
-                .inputTokens(0)
-                .outputTokens(0)
-                .tokenUsage(0)
+                .featureType(result.featureType())
+                .status(result.status())
+                .model(result.usage().model())
+                .inputTokens(result.usage().inputTokens())
+                .outputTokens(result.usage().outputTokens())
+                .tokenUsage(result.usage().totalTokens())
                 .creditUsed(0)
+                .errorMessage(truncate(result.errorMessage(), 500))
                 .build());
     }
 
@@ -254,20 +212,15 @@ public class ProfileServiceImpl implements ProfileService {
         }
     }
 
-    private void addCheck(List<String> completed, List<String> missing, String label, String value) {
-        (hasText(value) ? completed : missing).add(label);
-    }
-
-    private boolean hasText(String value) {
-        return value != null && !value.isBlank() && !"[]".equals(value) && !"{}".equals(value) && !"null".equals(value);
-    }
-
     private String blankToNull(String value) {
         return value == null || value.isBlank() ? null : value.trim();
     }
 
-    private String valueOr(String value, String fallback) {
-        return value == null || value.isBlank() ? fallback : value;
+    private String truncate(String value, int maxLength) {
+        if (value == null || value.length() <= maxLength) {
+            return value;
+        }
+        return value.substring(0, maxLength);
     }
 
     private Long requireUser(AuthUser authUser) {

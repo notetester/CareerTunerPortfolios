@@ -17,5 +17,6 @@ public interface ConsentService {
 
     boolean hasCurrentConsent(Long userId, String consentType);
 
-    List<ConsentView> adminConsents(AuthUser authUser, String keyword, String consentType, int limit);
+    List<ConsentView> adminConsents(AuthUser authUser, String keyword, String consentType,
+                                    String status, String source, String from, String to, int limit);
 }

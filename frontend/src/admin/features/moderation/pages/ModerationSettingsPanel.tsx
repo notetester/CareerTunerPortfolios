@@ -2,8 +2,7 @@ import { useState, useEffect, useCallback } from "react";
 import {
   PlugZap, ScanText, Inbox, ChevronRight, CheckCircle2, AlertCircle,
 } from "lucide-react";
-// TODO: 백엔드 연동 시 주석 해제
-// import * as moderationApi from "../api/moderationApi";
+import * as moderationApi from "../api/moderationApi";
 import type { ModerationTestResult } from "../api/moderationApi";
 import "./moderation-settings.css";
 
@@ -95,12 +94,19 @@ export default function ModerationSettingsPanel({ flash }: { flash: (msg: string
 
   /* 설정 로드 */
   const loadSettings = useCallback(() => {
-    // TODO: 백엔드 연동 시 moderationApi.getModerationSettings() 로 교체
-    setMode("NORMAL");
-    setTh(0.80);
-    setChangedAt("2026-06-10T09:00:00");
-    setCustom(false);
-    setServerDown(false);
+    moderationApi.getModerationSettings()
+      .then((setting) => {
+        const preset = PRESETS.find((p) => p.k === setting.strictness);
+        setMode(setting.strictness);
+        setTh(setting.hideThreshold);
+        setChangedAt(setting.updatedAt);
+        setCustom(preset ? setting.hideThreshold !== preset.th : true);
+        setServerDown(false);
+      })
+      .catch((error) => {
+        setServerDown(true);
+        setToast({ ok: false, msg: error instanceof Error ? error.message : "검열 설정을 불러오지 못했습니다." });
+      });
   }, []);
 
   useEffect(() => { loadSettings(); }, [loadSettings]);
@@ -117,21 +123,30 @@ export default function ModerationSettingsPanel({ flash }: { flash: (msg: string
   /* 프리셋 적용 */
   const applyPreset = async (p: typeof PRESETS[number]) => {
     setPending(null);
-    // TODO: 백엔드 연동 시 moderationApi.updateModerationSettings 로 교체
-    setMode(p.k);
-    setTh(p.th);
-    setCustom(false);
-    setChangedAt(new Date().toISOString());
-    setToast({ ok: true, msg: `'${p.name}' 모드 적용됨 \u2014 임계값 ${p.th.toFixed(2)}` });
+    try {
+      const setting = await moderationApi.updateModerationSettings({ strictness: p.k, hideThreshold: p.th });
+      setMode(setting.strictness);
+      setTh(setting.hideThreshold);
+      setCustom(false);
+      setChangedAt(setting.updatedAt);
+      setServerDown(false);
+      setToast({ ok: true, msg: `'${p.name}' 모드 적용됨 \u2014 임계값 ${p.th.toFixed(2)}` });
+    } catch (error) {
+      setToast({ ok: false, msg: error instanceof Error ? error.message : "검열 설정 변경에 실패했습니다." });
+    }
   };
 
   /* 고급 임계값 변경 */
   const applyTh = async (v: number) => {
-    setTh(v);
-    const isCustom = v !== cur.th;
-    setCustom(isCustom);
-    // TODO: 백엔드 연동 시 moderationApi.updateModerationSettings 로 교체
-    setChangedAt(new Date().toISOString());
+    try {
+      const setting = await moderationApi.updateModerationSettings({ strictness: mode, hideThreshold: v });
+      setTh(setting.hideThreshold);
+      setCustom(setting.hideThreshold !== cur.th);
+      setChangedAt(setting.updatedAt);
+      setServerDown(false);
+    } catch (error) {
+      setToast({ ok: false, msg: error instanceof Error ? error.message : "임계값 변경에 실패했습니다." });
+    }
   };
 
   /* 판정 테스트 */
@@ -139,18 +154,15 @@ export default function ModerationSettingsPanel({ flash }: { flash: (msg: string
     if (loading || serverDown || !body.trim()) return;
     setLoading(true);
     if (result) setPrevRes(result);
-    // TODO: 백엔드 연동 시 moderationApi.testModeration 로 교체
-    setTimeout(() => {
-      const hasKeyword = /욕|씨|바보|광고|스팸|홍보|링크/.test(body);
-      const r: ModerationTestResult = {
-        toxic: hasKeyword,
-        category: hasKeyword ? "abuse" : "normal",
-        confidence: hasKeyword ? 0.85 + Math.random() * 0.1 : 0.05 + Math.random() * 0.15,
-        elapsedMs: 800 + Math.floor(Math.random() * 400),
-      };
+    try {
+      const r = await moderationApi.testModeration({ title: title || undefined, content: body });
       setResult({ r, th });
+      setServerDown(false);
+    } catch (error) {
+      setToast({ ok: false, msg: error instanceof Error ? error.message : "검열 테스트에 실패했습니다." });
+    } finally {
       setLoading(false);
-    }, 1200);
+    }
   };
 
   const fmtDate = (iso: string) => {

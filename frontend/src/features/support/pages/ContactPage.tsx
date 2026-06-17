@@ -1,4 +1,4 @@
-import { useState, useRef } from "react";
+import { useEffect, useState, useRef } from "react";
 import { Link } from "react-router";
 import {
   ArrowLeft, Send, UploadCloud, X, Paperclip,
@@ -9,7 +9,8 @@ import { Textarea } from "@/app/components/ui/textarea";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/app/components/ui/select";
-import { CONTACT_CATEGORIES } from "../types/support";
+import { getAccessToken } from "@/app/lib/tokenStore";
+import { CONTACT_CATEGORIES, type TicketStatus } from "../types/support";
 import { useSupportStore } from "../hooks/useSupportStore";
 import "../styles/support.css";
 
@@ -24,6 +25,18 @@ function fmtSize(b: number) {
     : Math.max(1, Math.round(b / 1024)) + "KB";
 }
 
+const TICKET_STATUS_LABEL: Record<TicketStatus, string> = {
+  RECEIVED: "접수됨",
+  IN_PROGRESS: "처리중",
+  ANSWERED: "답변완료",
+  CLOSED: "종료",
+};
+
+function fmtDate(value?: string) {
+  if (!value) return "";
+  return new Intl.DateTimeFormat("ko-KR", { dateStyle: "medium", timeStyle: "short" }).format(new Date(value));
+}
+
 export function ContactPage() {
   const [title, setTitle] = useState("");
   const [category, setCategory] = useState("");
@@ -32,8 +45,13 @@ export function ContactPage() {
   const [dragOver, setDragOver] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
-  const { submitting, lastTicket, createTicket } = useSupportStore();
+  const { submitting, lastTicket, createTicket, myTickets, ticketsLoading, fetchMyTickets } = useSupportStore();
   const [submitFailed, setSubmitFailed] = useState(false);
+
+  // 로그인 상태에서만 내 문의 내역을 조회한다(비로그인 GET 은 401).
+  useEffect(() => {
+    if (getAccessToken()) void fetchMyTickets();
+  }, [fetchMyTickets]);
 
   const addFiles = (list: FileList) => {
     const next = Array.from(list).map((f) => ({ name: f.name, size: f.size }));
@@ -212,6 +230,48 @@ export function ContactPage() {
           </div>
         </aside>
       </div>
+
+      {/* 내 문의 내역 — 접수만 가능하던 흐름에 추적/답변 확인을 연결한다(인증 사용자). */}
+      {getAccessToken() && (
+        <section style={{ marginTop: 28 }}>
+          <h2 style={{ fontSize: 18, fontWeight: 700, marginBottom: 12 }}>내 문의 내역</h2>
+          {ticketsLoading && (
+            <p style={{ fontSize: 14, color: "var(--muted-foreground)" }}>불러오는 중…</p>
+          )}
+          {!ticketsLoading && myTickets.length === 0 && (
+            <p style={{ fontSize: 14, color: "var(--muted-foreground)" }}>접수한 문의가 없습니다.</p>
+          )}
+          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+            {myTickets.map((t) => (
+              <div key={t.id} style={{ border: "1px solid var(--border)", borderRadius: 12, padding: 14 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
+                  <span style={{ fontWeight: 600 }}>{t.subject}</span>
+                  <span
+                    style={{
+                      fontSize: 12, fontWeight: 600, padding: "2px 10px", borderRadius: 999, whiteSpace: "nowrap",
+                      background: t.reply ? "var(--primary)" : "var(--muted)",
+                      color: t.reply ? "var(--primary-foreground)" : "var(--muted-foreground)",
+                    }}
+                  >
+                    {TICKET_STATUS_LABEL[t.status] ?? t.status}
+                  </span>
+                </div>
+                <div style={{ fontSize: 12, color: "var(--muted-foreground)", marginTop: 4 }}>
+                  접수번호 CT-{t.id} · {fmtDate(t.createdAt)}
+                </div>
+                {t.reply && (
+                  <div style={{ marginTop: 10, padding: 10, borderRadius: 8, background: "var(--muted)" }}>
+                    <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 4 }}>
+                      답변{t.repliedAt ? ` · ${fmtDate(t.repliedAt)}` : ""}
+                    </div>
+                    <div style={{ fontSize: 14, whiteSpace: "pre-wrap" }}>{t.reply}</div>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
     </div>
   );
 }
