@@ -68,7 +68,7 @@ export const TUT_STEPS: TutStep[] = [
   },
   {
     key: "live",
-    targetId: "tut-panel-live",
+    targetId: "tut-media-voice",
     title: "음성 모의면접",
     body: "AI 면접관이 음성으로 질문하고, 말 속도·필러·톤 등 말하기 지표를 분석합니다. '데모 면접 시작'으로 진행 흐름을 미리 볼 수 있어요.",
   },
@@ -81,7 +81,7 @@ export const TUT_STEPS: TutStep[] = [
   },
   {
     key: "avatar",
-    targetId: "tut-panel-avatar",
+    targetId: "tut-media-avatar",
     title: "아바타 화상 면접",
     body: "아바타 면접관과 화상으로 진행하며 표정·시선·자세까지 분석합니다. '데모 면접 시작'으로 진행 흐름을 확인해 보세요.",
   },

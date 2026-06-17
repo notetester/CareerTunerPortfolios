@@ -60,7 +60,10 @@ export function TutorialMediaPreview({ kind }: { kind: "voice" | "avatar" }) {
 
   return (
     <div className="space-y-4">
-      <div className="rounded-xl border border-indigo-200 bg-indigo-50 p-4 text-sm text-indigo-700">
+      <div
+        data-tut={kind === "avatar" ? "tut-media-avatar" : "tut-media-voice"}
+        className="rounded-xl border border-indigo-200 bg-indigo-50 p-4 text-sm text-indigo-700"
+      >
         <b>데모</b> — {label}은 실제로 카메라·마이크로 진행됩니다. 여기서는 진행 흐름을 예시로 보여드려요.
       </div>
 
