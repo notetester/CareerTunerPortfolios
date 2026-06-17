@@ -14,7 +14,7 @@ import com.careertuner.common.exception.BusinessException;
 import com.careertuner.common.exception.ErrorCode;
 import com.careertuner.common.security.AuthUser;
 import com.careertuner.notification.domain.Notification;
-import com.careertuner.notification.mapper.NotificationMapper;
+import com.careertuner.notification.service.NotificationService;
 
 import lombok.RequiredArgsConstructor;
 
@@ -24,7 +24,7 @@ import lombok.RequiredArgsConstructor;
 public class AdminTicketServiceImpl implements AdminTicketService {
 
     private final AdminTicketMapper ticketMapper;
-    private final NotificationMapper notificationMapper;
+    private final NotificationService notificationService;
 
     @Override
     public List<AdminTicketListResponse> getTickets(AuthUser authUser, String status) {
@@ -85,7 +85,7 @@ public class AdminTicketServiceImpl implements AdminTicketService {
             // 답변 등록 시 문의 작성자에게 알림(내부 메모는 제외).
             Long ownerId = ticketMapper.findUserIdById(id);
             if (ownerId != null) {
-                notificationMapper.insert(Notification.builder()
+                notificationService.notify(Notification.builder()
                         .userId(ownerId)
                         .actorId(authUser.id())
                         .type("TICKET_ANSWERED")

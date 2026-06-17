@@ -11,6 +11,7 @@ import com.careertuner.notification.domain.Notification;
 import com.careertuner.notification.dto.NotificationPageResponse;
 import com.careertuner.notification.dto.NotificationResponse;
 import com.careertuner.notification.mapper.NotificationMapper;
+import com.careertuner.notification.push.PushDispatcher;
 
 import lombok.RequiredArgsConstructor;
 
@@ -20,6 +21,14 @@ import lombok.RequiredArgsConstructor;
 public class NotificationServiceImpl implements NotificationService {
 
     private final NotificationMapper notificationMapper;
+    private final PushDispatcher pushDispatcher;
+
+    @Override
+    @Transactional
+    public void notify(Notification notification) {
+        notificationMapper.insert(notification);
+        pushDispatcher.dispatch(notification);
+    }
 
     @Override
     public NotificationPageResponse getNotifications(Long userId, int page, int size) {

@@ -21,7 +21,7 @@ import com.careertuner.billing.mapper.BillingMapper;
 import com.careertuner.common.exception.BusinessException;
 import com.careertuner.common.exception.ErrorCode;
 import com.careertuner.notification.domain.Notification;
-import com.careertuner.notification.mapper.NotificationMapper;
+import com.careertuner.notification.service.NotificationService;
 
 import lombok.RequiredArgsConstructor;
 
@@ -38,7 +38,7 @@ public class BillingServiceImpl implements BillingService {
     private static final String DEV_PROVIDER = "DEV";
 
     private final BillingMapper billingMapper;
-    private final NotificationMapper notificationMapper;
+    private final NotificationService notificationService;
 
     @Override
     public List<SubscriptionPlan> getPlans() {
@@ -189,7 +189,7 @@ public class BillingServiceImpl implements BillingService {
     }
 
     private void notify(Long userId, String type, String title, String message) {
-        notificationMapper.insert(Notification.builder()
+        notificationService.notify(Notification.builder()
                 .userId(userId)
                 .type(type)
                 .targetType("BILLING")

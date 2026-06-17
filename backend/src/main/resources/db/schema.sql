@@ -945,6 +945,39 @@ CREATE TABLE IF NOT EXISTS notification (
     CONSTRAINT fk_notification_actor FOREIGN KEY (actor_id) REFERENCES users (id) ON DELETE SET NULL
     ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci;
 
+-- 알림 수신 설정(사용자별 1행). categories_json 에 비활성 카테고리만 false 로 저장.
+CREATE TABLE IF NOT EXISTS notification_preference (
+    id                BIGINT      NOT NULL AUTO_INCREMENT,
+    user_id           BIGINT      NOT NULL,
+    push_enabled      TINYINT(1)  NOT NULL DEFAULT 1,
+    email_enabled     TINYINT(1)  NOT NULL DEFAULT 1,
+    categories_json   JSON        NULL,
+    quiet_hours_start VARCHAR(5)  NULL,
+    quiet_hours_end   VARCHAR(5)  NULL,
+    created_at        DATETIME    NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at        DATETIME    NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    PRIMARY KEY (id),
+    UNIQUE KEY uq_notification_preference_user (user_id),
+    CONSTRAINT fk_notification_preference_user FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
+    ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci;
+
+-- 푸시 구독(기기별). kind=WEB 은 web push endpoint+키, FCM/APNS 는 디바이스 토큰.
+CREATE TABLE IF NOT EXISTS push_subscription (
+    id           BIGINT       NOT NULL AUTO_INCREMENT,
+    user_id      BIGINT       NOT NULL,
+    kind         VARCHAR(10)  NOT NULL,
+    token        VARCHAR(700) NOT NULL,
+    p256dh       VARCHAR(255) NULL,
+    auth         VARCHAR(255) NULL,
+    user_agent   VARCHAR(300) NULL,
+    created_at   DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    last_used_at DATETIME     NULL,
+    PRIMARY KEY (id),
+    UNIQUE KEY uq_push_subscription_token (token(255)),
+    KEY idx_push_subscription_user (user_id),
+    CONSTRAINT fk_push_subscription_user FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
+    ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci;
+
 
 SET FOREIGN_KEY_CHECKS = 1;
 
