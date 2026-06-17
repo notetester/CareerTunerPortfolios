@@ -270,17 +270,6 @@ function BotBubble({ message, onToggleTts, variant = "widget" }: {
           <SiteLinkButtons links={message.links} />
         )}
 
-        {/* Evidence chips */}
-        {message.evidence.length > 0 && (
-          <div>
-            <div className="text-[10.5px] font-bold text-slate-400 mb-1.5 ml-0.5 tracking-wide">참고한 문서</div>
-            {variant === "full" ? (
-              <EvidenceCards evidence={message.evidence} />
-            ) : (
-              <EvidenceChips evidence={message.evidence} />
-            )}
-          </div>
-        )}
       </div>
     </div>
   );

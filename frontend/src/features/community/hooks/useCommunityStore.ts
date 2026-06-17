@@ -72,7 +72,8 @@ export const useCommunityStore = create<CommunityState>((set, get) => ({
   fetchPosts: async (category, sort) => {
     set({ loading: true, error: null });
     try {
-      const posts = await communityApi.getPosts(category, sort);
+      // 클라이언트 페이지네이션을 쓰므로 한 번에 충분히 받아온다 (서버 size 상한 100).
+      const posts = await communityApi.getPosts(category, sort, 0, 100);
       set({ posts, loading: false });
     } catch (e) {
       set({ loading: false, error: (e as Error).message });

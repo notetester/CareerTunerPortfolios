@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo } from "react";
 import { useSearchParams } from "react-router";
 import { PenLine, Lock, BookOpen } from "lucide-react";
 import { PostList } from "../components/PostList";
+import { Pager } from "../components/Pager";
 import { PostFilters, type SortKey } from "../components/PostFilters";
 import { HotPostsSidebar } from "../components/HotPostsSidebar";
 import { PostDetailView } from "../components/PostDetailView";
@@ -34,6 +35,8 @@ export function CommunityHomePage() {
   const [editData, setEditData] = useState<PostEditData | null>(null);
   const [sort, setSort] = useState<SortKey>("recent");
   const [tag, setTag] = useState("");
+  const [page, setPage] = useState(1);
+  const PER = 8;
 
   const { posts, loading, error, fetchPosts } = useCommunityStore();
   const { showLoginDialog, requireAuth, onLoginConfirm, onLoginCancel } = useLoginDialog();
@@ -50,6 +53,13 @@ export function CommunityHomePage() {
         return (b.stats[key] ?? 0) - (a.stats[key] ?? 0);
       });
   }, [posts, sort, tag]);
+
+  const totalPages = Math.max(1, Math.ceil(filteredPosts.length / PER));
+  const cur = Math.min(page, totalPages);
+  const pagePosts = filteredPosts.slice((cur - 1) * PER, cur * PER);
+
+  // 탭/정렬/태그가 바뀌면 1페이지로 리셋
+  useEffect(() => { setPage(1); }, [selectedCategory, sort, tag]);
 
   useEffect(() => {
     const cat = CATEGORIES.find((c) => c.value === selectedCategory);
@@ -191,7 +201,8 @@ export function CommunityHomePage() {
             </p>
           ) : (
             <>
-              <PostList posts={filteredPosts} onPostClick={handlePostClick} />
+              <PostList posts={pagePosts} onPostClick={handlePostClick} />
+              <Pager page={cur} totalPages={totalPages} onPage={setPage} />
               {filteredPosts.length === 0 && (
                 <p className="av-empty">
                   {posts.length === 0 ? "해당 카테고리에 게시글이 없습니다." : "검색 결과가 없습니다."}

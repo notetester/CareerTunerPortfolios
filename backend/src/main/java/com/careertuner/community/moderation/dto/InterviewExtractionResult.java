@@ -6,8 +6,7 @@ public record InterviewExtractionResult(
         String company,
         String position,
         String interviewDate,
-        String interviewRound,
-        String interviewResult,
+        String resultStatus,
         List<ExtractedQuestion> questions,
         String overallNote
 ) {

@@ -183,6 +183,22 @@
          ORDER BY cp.id
     </select>
 
+    <!-- 검열 배치 대상 게시글 ID 목록 -->
+    <select id="findPostIdsForModeration" resultType="java.lang.Long">
+        SELECT cp.id
+          FROM community_post cp
+         WHERE cp.status = 'PUBLISHED'
+        <if test="!force">
+           AND NOT EXISTS (
+               SELECT 1 FROM post_ai_result ar
+                WHERE ar.post_id = cp.id
+                  AND ar.task_type = 'MODERATION'
+                  AND ar.status = 'COMPLETED'
+           )
+        </if>
+         ORDER BY cp.id
+    </select>
+
     <!-- tags_json 캐시 갱신 -->
     <update id="updateTagsJson">
         UPDATE community_post

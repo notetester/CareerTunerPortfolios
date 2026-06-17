@@ -66,6 +66,9 @@ public interface CommunityPostMapper {
     /** 태깅 배치 대상 게시글 ID 목록 (PUBLISHED만, force=false면 이미 TAG COMPLETED인 건 제외) */
     List<Long> findPostIdsForTagging(@Param("force") boolean force);
 
+    /** 검열 배치 대상 게시글 ID 목록 (PUBLISHED만, force=false면 이미 MODERATION COMPLETED인 건 제외) */
+    List<Long> findPostIdsForModeration(@Param("force") boolean force);
+
     // AI 검열에 의한 숨김 (PUBLISHED → HIDDEN 전환, 다른 상태는 무시)
     int hideIfPublished(@Param("postId") Long postId);
 

@@ -34,6 +34,7 @@ import com.careertuner.interview.rag.InterviewKnowledgeMapper;
 import com.careertuner.notification.domain.Notification;
 import com.careertuner.notification.mapper.NotificationMapper;
 
+import tools.jackson.core.type.TypeReference;
 import tools.jackson.databind.ObjectMapper;
 
 /**
@@ -75,14 +76,13 @@ public class PostModerationService {
                     "company", Map.of("type", "string"),
                     "position", Map.of("type", "string"),
                     "interviewDate", Map.of("type", "string"),
-                    "interviewRound", Map.of("type", "string"),
-                    "interviewResult", Map.of("type", "string"),
+                    "resultStatus", Map.of("type", "string"),
                     "questions", Map.of("type", "array",
                             "items", Map.of("type", "object",
                                     "properties", Map.of(
                                             "question", Map.of("type", "string"),
                                             "questionType", Map.of("type", "string",
-                                                    "enum", List.of("TECH", "PERSONALITY", "SITUATION", "EXPECTED")),
+                                                    "enum", List.of("TECH", "PERSONALITY", "SITUATION", "EXPECTED", "FOLLOW_UP")),
                                             "context", Map.of("type", "string"),
                                             "followUps", Map.of("type", "array",
                                                     "items", Map.of("type", "string"))
@@ -386,7 +386,8 @@ public class PostModerationService {
 
             // userText 조합
             StringBuilder sb = new StringBuilder();
-            sb.append("제목: ").append(post.getTitle());
+            sb.append("[면접 후기 본문]");
+            sb.append("\n제목: ").append(post.getTitle());
             sb.append("\n본문: ").append(post.getContent());
             if (review != null) {
                 if (review.getCompanyName() != null) sb.append("\n회사명: ").append(review.getCompanyName());
@@ -394,6 +395,16 @@ public class PostModerationService {
                 if (review.getInterviewType() != null) sb.append("\n면접유형: ").append(review.getInterviewType());
                 if (review.getInterviewDate() != null) sb.append("\n면접일자: ").append(review.getInterviewDate());
                 if (review.getResultStatus() != null) sb.append("\n결과: ").append(review.getResultStatus());
+
+                // 사용자 사전 입력 질문(questions_json: 문자열 배열)을 그대로 전달.
+                // 문장은 손대지 않고 유형만 AI가 분류하도록 통합 프롬프트에 함께 넘긴다.
+                List<String> userQuestions = parseUserQuestions(review.getQuestionsJson());
+                if (!userQuestions.isEmpty()) {
+                    sb.append("\n\n[사용자 사전 입력 질문]");
+                    for (String q : userQuestions) {
+                        sb.append("\n- ").append(q);
+                    }
+                }
             }
 
             String userText = sb.toString();
@@ -403,8 +414,13 @@ public class PostModerationService {
 
             // Ollama 호출
             String json = ollamaClient.chat(extractSystemPrompt, userText, EXTRACT_SCHEMA);
+            // gemma가 백틱/인사말을 섞어 반환하는 경우를 대비해 첫 { ~ 마지막 }만 잘라낸다.
             InterviewExtractionResult result = sanitizeExtractionResult(
-                    objectMapper.readValue(json, InterviewExtractionResult.class));
+                    objectMapper.readValue(extractJsonObject(json), InterviewExtractionResult.class));
+
+            // AI가 메타데이터(회사명/직무/결과)를 출력에 echo하지 않는 경우가 잦으므로,
+            // null이면 review 행의 확정 값으로 채운다. (AI 출력에 의존하지 않음)
+            result = applyReviewFallback(result, review);
 
             // sanitize 후 JSON으로 재직렬화하여 저장 (원본 json에 "null" 문자열이 남아있을 수 있으므로)
             String sanitizedJson = objectMapper.writeValueAsString(result);
@@ -441,16 +457,89 @@ public class PostModerationService {
         }
     }
 
+    /** result_status 코드 → 한국어 라벨 (InterviewKnowledge 가독성·TTS용) */
+    private static String resultStatusLabel(String code) {
+        if (code == null) return null;
+        return switch (code.strip().toUpperCase()) {
+            case "PASSED" -> "합격";
+            case "FAILED" -> "불합격";
+            case "PENDING" -> "대기중";
+            case "UNKNOWN" -> "비공개";
+            default -> code; // 이미 라벨이거나 알 수 없는 값이면 그대로
+        };
+    }
+
+    /**
+     * AI가 메타데이터를 출력에 echo하지 않은 경우, review 행의 확정 값으로 채운다.
+     * 회사명/직무/결과는 review 행에 확실히 있으므로 AI 출력을 기다릴 필요가 없다.
+     * (이미 값이 있으면 AI 출력을 그대로 둔다.)
+     */
+    private static InterviewExtractionResult applyReviewFallback(
+            InterviewExtractionResult result, CommunityInterviewReview review) {
+        if (review == null) return result;
+        String company = result.company() != null ? result.company() : sanitizeString(review.getCompanyName());
+        String position = result.position() != null ? result.position() : sanitizeString(review.getJobRole());
+        String resultStatus = result.resultStatus() != null
+                ? result.resultStatus()
+                : resultStatusLabel(sanitizeString(review.getResultStatus()));
+        return new InterviewExtractionResult(
+                company,
+                position,
+                result.interviewDate(),
+                resultStatus,
+                result.questions(),
+                result.overallNote()
+        );
+    }
+
     /**
      * AI가 "null" 문자열을 반환하는 경우를 실제 null로 정규화한다.
      */
     private static String sanitizeString(String value) {
         if (value == null) return null;
         String trimmed = value.strip();
-        if (trimmed.isEmpty() || "null".equalsIgnoreCase(trimmed) || "없음".equals(trimmed)) {
+        if (trimmed.isEmpty()
+                || "null".equalsIgnoreCase(trimmed)
+                || "없음".equals(trimmed)
+                || "N/A".equalsIgnoreCase(trimmed)) {
             return null;
         }
         return value;
+    }
+
+    /**
+     * questions_json(사용자 입력 질문, 문자열 JSON 배열)을 파싱한다.
+     * 비어 있거나 파싱 실패 시 빈 목록 반환(기존 동작 유지).
+     */
+    private List<String> parseUserQuestions(String questionsJson) {
+        if (questionsJson == null || questionsJson.isBlank()) {
+            return List.of();
+        }
+        try {
+            List<String> parsed = objectMapper.readValue(
+                    questionsJson, new TypeReference<List<String>>() {});
+            return parsed.stream()
+                    .filter(q -> q != null && !q.isBlank())
+                    .map(String::strip)
+                    .toList();
+        } catch (Exception e) {
+            log.warn("questions_json 파싱 실패, 사용자 입력 질문 무시: {}", e.getMessage());
+            return List.of();
+        }
+    }
+
+    /**
+     * LLM 응답에서 첫 '{'부터 마지막 '}'까지만 잘라낸다.
+     * Ollama가 ```json 백틱이나 인사말을 섞어 반환해도 정상 파싱되게 하는 방어 로직.
+     */
+    private static String extractJsonObject(String raw) {
+        if (raw == null) return null;
+        int start = raw.indexOf('{');
+        int end = raw.lastIndexOf('}');
+        if (start >= 0 && end > start) {
+            return raw.substring(start, end + 1);
+        }
+        return raw;
     }
 
     /**
@@ -472,8 +561,7 @@ public class PostModerationService {
                 sanitizeString(raw.company()),
                 sanitizeString(raw.position()),
                 sanitizeString(raw.interviewDate()),
-                sanitizeString(raw.interviewRound()),
-                sanitizeString(raw.interviewResult()),
+                sanitizeString(raw.resultStatus()),
                 sanitizedQuestions,
                 sanitizeString(raw.overallNote())
         );
@@ -501,8 +589,7 @@ public class PostModerationService {
         if (result.company() != null) contentSb.append("\n[회사] ").append(result.company());
         if (result.position() != null) contentSb.append("\n[직무] ").append(result.position());
         if (result.interviewDate() != null) contentSb.append("\n[면접 시기] ").append(result.interviewDate());
-        if (result.interviewRound() != null) contentSb.append("\n[면접 차수] ").append(result.interviewRound());
-        if (result.interviewResult() != null) contentSb.append("\n[면접 결과] ").append(result.interviewResult());
+        if (result.resultStatus() != null) contentSb.append("\n[면접 결과] ").append(result.resultStatus());
 
         if (q.context() != null) {
             contentSb.append("\n\n[맥락]\n").append(q.context());
