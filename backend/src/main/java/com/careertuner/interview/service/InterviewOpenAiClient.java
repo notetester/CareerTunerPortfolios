@@ -334,8 +334,7 @@ public class InterviewOpenAiClient implements InterviewAnswerEvaluator {
         Map<String, Object> properties = new LinkedHashMap<>();
         properties.put("score", integerSchema());
         properties.put("feedback", stringSchema());
-        properties.put("improvedAnswer", stringSchema());
-        return objectSchema(properties, List.of("score", "feedback", "improvedAnswer"));
+        return objectSchema(properties, List.of("score", "feedback"));
     }
 
     private Map<String, Object> modelAnswerSchema() {

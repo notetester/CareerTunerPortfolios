@@ -36,8 +36,7 @@ public final class InterviewPromptCatalog {
             [공통]
             평가는 답변 내용, 직무 적합성, 구체성, 논리성, 적정 분량/간결성을 본다.
             feedback 에는 부족한 점과 보완 방향을 2~3문장으로 한국어로 적는다. 만점에 가까우면 무엇이 좋았는지 적는다.
-            improvedAnswer 에는 위 기준에 맞는 모범 답변을 90초~2분 분량으로 간결하게 한국어로 작성한다.
-            (기준 모범답안이 주어졌고 지원자 답변이 그와 거의 같다면 improvedAnswer 는 기준 모범답안을 그대로 제시한다.)
+            점수(score)와 피드백(feedback)만 출력한다. 별도의 모범/개선 답변은 생성하지 않는다(모범답안은 따로 제공된다).
             """;
 
     public static final String MODEL_ANSWER_SYSTEM_PROMPT = """

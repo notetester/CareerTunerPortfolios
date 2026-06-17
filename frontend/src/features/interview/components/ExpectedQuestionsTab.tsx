@@ -7,7 +7,6 @@ import {
   Loader2,
   RotateCcw,
   Sparkles,
-  ThumbsUp,
 } from "lucide-react";
 import { Badge } from "@/app/components/ui/badge";
 import { Button } from "@/app/components/ui/button";
@@ -179,17 +178,11 @@ function QuestionItem({
               <div className="rounded-lg border border-green-100 bg-green-50 p-3 text-sm font-semibold text-green-700">
                 🎉 만점이에요. 이대로 말하면 됩니다.
               </div>
-            ) : result.improvedAnswer ? (
-              <div className="rounded-lg border border-green-100 bg-green-50 p-3">
-                <div className="mb-1 flex items-center gap-1.5 text-xs font-bold text-green-700">
-                  <ThumbsUp className="size-3.5" />{" "}
-                  {result.score !== null && result.score >= 90
-                    ? "만점까지 한 끗 — 이렇게 다듬으면"
-                    : "AI 개선 답변"}
-                </div>
-                <p className="whitespace-pre-line text-sm leading-relaxed text-slate-700">{toSentenceLines(result.improvedAnswer)}</p>
-              </div>
-            ) : null}
+            ) : (
+              <p className="flex items-center gap-1.5 text-xs text-slate-500">
+                <Lightbulb className="size-3.5 text-amber-500" /> 위 "모범답안 보기"로 만점 기준 답안을 확인해 보세요.
+              </p>
+            )}
             {isPressure && followingUp && (
               <div className="flex items-center gap-1.5 text-xs text-slate-500">
                 <Loader2 className="size-3.5 animate-spin" /> 반박 질문 생성 중…
