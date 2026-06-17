@@ -16,6 +16,7 @@ import {
   generateExpectedQuestions,
   generateFollowUps,
   getModelAnswer,
+  getSessionReview,
   listSessionQuestions,
   submitAnswer,
 } from "../api/interviewApi";
@@ -32,14 +33,20 @@ function QuestionItem({
   question,
   index,
   mode,
+  initialAnswer = "",
+  initialScore = null,
+  alreadyHasRebuttal = false,
   onFollowUpsGenerated,
 }: {
   question: InterviewQuestion;
   index: number;
   mode: string;
+  initialAnswer?: string;
+  initialScore?: number | null;
+  alreadyHasRebuttal?: boolean;
   onFollowUpsGenerated: (questions: InterviewQuestion[]) => void;
 }) {
-  const [answer, setAnswer] = useState("");
+  const [answer, setAnswer] = useState(initialAnswer);
   const [submitting, setSubmitting] = useState(false);
   const [result, setResult] = useState<InterviewAnswer | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -47,7 +54,8 @@ function QuestionItem({
   const [modelAnswer, setModelAnswer] = useState<string | null>(null);
   const [loadingModel, setLoadingModel] = useState(false);
   const [showModel, setShowModel] = useState(false);
-  const [rebuttalRequested, setRebuttalRequested] = useState(false);
+  // 이미 반박(자식)이 있는 본질문은 재제출해도 자동 반박을 또 만들지 않는다(복원 답변 재제출 시 중복 방지).
+  const [rebuttalRequested, setRebuttalRequested] = useState(alreadyHasRebuttal);
 
   const isFollowUp = question.questionType === "FOLLOW_UP";
   const isPressure = mode === "PRESSURE";
@@ -122,6 +130,9 @@ function QuestionItem({
             <Badge className="bg-blue-100 text-blue-700">Q{index + 1}</Badge>
           )}
           <p className="flex-1 text-sm font-medium text-slate-800">{question.question}</p>
+          {initialScore !== null && !result && (
+            <Badge className="shrink-0 bg-slate-100 text-slate-500">이전 {initialScore}점</Badge>
+          )}
         </div>
         <textarea
           value={answer}
@@ -209,13 +220,25 @@ export function ExpectedQuestionsTab({
   const [error, setError] = useState<string | null>(null);
   const [resetVersion, setResetVersion] = useState(0);
   const [modelAnswersPreparing, setModelAnswersPreparing] = useState(false);
+  // 복원/기존 세션: 질문별 과거 최신 답변·점수 (textarea prefill + "이전 N점" 배지용)
+  const [answerMap, setAnswerMap] = useState<Record<number, { answer: string; score: number | null }>>({});
 
   const loadExisting = useCallback(async () => {
     if (!session) return;
     setLoading(true);
     setError(null);
     try {
-      setQuestions(await listSessionQuestions(session.id));
+      // 질문과 함께 과거 답변/점수를 불러와 textarea 를 채운다(복원 느낌). 답변 조회 실패는 무시하고 질문만 표시.
+      const [qs, review] = await Promise.all([
+        listSessionQuestions(session.id),
+        getSessionReview(session.id).catch(() => null),
+      ]);
+      setQuestions(qs);
+      const map: Record<number, { answer: string; score: number | null }> = {};
+      review?.items.forEach((it) => {
+        if (it.answerText) map[it.questionId] = { answer: it.answerText, score: it.score };
+      });
+      setAnswerMap(map);
     } catch (err) {
       setError(err instanceof Error ? err.message : "질문을 불러오지 못했습니다.");
     } finally {
@@ -241,6 +264,7 @@ export function ExpectedQuestionsTab({
     try {
       const generated = await generateExpectedQuestions(session.id, { mode: session.mode });
       setQuestions(generated);
+      setAnswerMap({}); // 재생성하면 과거 답변은 무효
       setModelAnswersPreparing(true); // 모범답안 백그라운드 생성 동안 잠깐 준비 중 힌트 표시
     } catch (err) {
       setError(err instanceof Error ? err.message : "질문 생성에 실패했습니다.");
@@ -323,8 +347,11 @@ export function ExpectedQuestionsTab({
             <QuestionItem
               key={`${q.id}-${resetVersion}`}
               question={q}
-              index={i}
+              index={questions.slice(0, i + 1).filter((x) => x.questionType !== "FOLLOW_UP").length - 1}
               mode={session.mode}
+              initialAnswer={answerMap[q.id]?.answer ?? ""}
+              initialScore={answerMap[q.id]?.score ?? null}
+              alreadyHasRebuttal={questions.some((x) => x.parentQuestionId === q.id)}
               onFollowUpsGenerated={(qs) => setQuestions(qs)}
             />
           ))}
