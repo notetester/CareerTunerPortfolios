@@ -47,6 +47,7 @@ function QuestionItem({
   const [followingUp, setFollowingUp] = useState(false);
   const [modelAnswer, setModelAnswer] = useState<string | null>(null);
   const [loadingModel, setLoadingModel] = useState(false);
+  const [showModel, setShowModel] = useState(false);
   const [rebuttalRequested, setRebuttalRequested] = useState(false);
 
   const isFollowUp = question.questionType === "FOLLOW_UP";
@@ -92,11 +93,17 @@ function QuestionItem({
   };
 
   const handleModelAnswer = async () => {
+    // 이미 받아둔 모범답안이면 재호출 없이 펼침/접기만 토글한다.
+    if (modelAnswer) {
+      setShowModel((v) => !v);
+      return;
+    }
     setLoadingModel(true);
     setError(null);
     try {
       const res = await getModelAnswer(question.id);
       setModelAnswer(res.modelAnswer);
+      setShowModel(true);
     } catch (err) {
       setError(err instanceof Error ? err.message : "모범답안 생성에 실패했습니다.");
     } finally {
@@ -141,7 +148,7 @@ function QuestionItem({
               onClick={handleModelAnswer}
             >
               {loadingModel ? <Loader2 className="size-3.5 animate-spin" /> : <Lightbulb className="size-3.5" />}
-              {loadingModel ? "생성 중…" : modelAnswer ? "모범답안 다시 보기" : "모범답안 보기"}
+              {loadingModel ? "생성 중…" : modelAnswer && showModel ? "모범답안 접기" : "모범답안 보기"}
             </Button>
             <Button size="sm" disabled={!answer.trim() || submitting} onClick={handleSubmit}>
               {submitting ? "평가 중…" : "답변 평가"}
@@ -149,7 +156,7 @@ function QuestionItem({
           </div>
         </div>
 
-        {modelAnswer && (
+        {showModel && modelAnswer && (
           <div className="rounded-lg border border-amber-100 bg-amber-50 p-3">
             <div className="mb-1 flex items-center gap-1.5 text-xs font-bold text-amber-700">
               <Lightbulb className="size-3.5" /> 모범답안
