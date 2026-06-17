@@ -149,7 +149,7 @@ public class FitAnalysisServiceImpl implements FitAnalysisService {
         if ("SUCCESS".equals(ai.status())) {
             notificationMapper.insert(Notification.builder()
                     .userId(userId)
-                    .type("FIT_ANALYSIS_COMPLETED")
+                    .type("FIT_ANALYSIS_COMPLETE")
                     .targetType("APPLICATION_CASE")
                     .targetId(applicationCaseId)
                     .title("적합도 분석이 완료되었습니다")

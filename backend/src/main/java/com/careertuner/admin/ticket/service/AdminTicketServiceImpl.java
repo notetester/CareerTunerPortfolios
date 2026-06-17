@@ -88,7 +88,7 @@ public class AdminTicketServiceImpl implements AdminTicketService {
                 notificationMapper.insert(Notification.builder()
                         .userId(ownerId)
                         .actorId(authUser.id())
-                        .type("SUPPORT_TICKET_ANSWERED")
+                        .type("TICKET_ANSWERED")
                         .targetType("SUPPORT_TICKET")
                         .targetId(id)
                         .title("문의에 답변이 등록되었습니다")

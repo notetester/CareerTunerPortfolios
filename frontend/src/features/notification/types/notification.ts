@@ -20,6 +20,8 @@ export type UserNotificationType =
   | "COMMENT_REPLY"
   | "LIKE"
   | "POST_HIDDEN"
+  | "POST_REMOVED"
+  | "POST_RESTORED"
   | "NOTICE"
   | "TICKET_ANSWERED"
   | "CREDIT_LOW"
@@ -96,6 +98,8 @@ export const TYPE_META: Record<NotificationType, TypeMeta> = {
   COMMENT_REPLY:             { cat: "community",   icon: "CornerDownRight",    variant: "info",    cta: "답글 보기",      actor: true },
   LIKE:                      { cat: "community",   icon: "Heart",              variant: "info",    cta: "게시글 보기",    actor: true },
   POST_HIDDEN:               { cat: "community",   icon: "EyeOff",             variant: "warning", cta: "가이드라인 보기" },
+  POST_REMOVED:              { cat: "community",   icon: "Trash2",             variant: "danger",  cta: "가이드라인 보기" },
+  POST_RESTORED:             { cat: "community",   icon: "RotateCcw",          variant: "success", cta: "게시글 보기" },
   POST_SUMMARY_READY:        { cat: "community",   icon: "Sparkles",           variant: "info",    cta: "요약 보기" },
   /* 결제 */
   CREDIT_LOW:                { cat: "billing",     icon: "AlertTriangle",      variant: "warning", cta: "크레딧 충전" },
@@ -166,6 +170,8 @@ export const TYPE_TO_CATEGORY: Record<NotificationType, NotificationCategory> = 
   COMMENT_REPLY: "community",
   LIKE: "community",
   POST_HIDDEN: "community",
+  POST_REMOVED: "community",
+  POST_RESTORED: "community",
   POST_SUMMARY_READY: "community",
   /* 결제 */
   CREDIT_LOW: "billing",
