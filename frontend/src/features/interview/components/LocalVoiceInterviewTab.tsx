@@ -6,6 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/app/components/ui/ca
 import { Progress } from "@/app/components/ui/progress";
 import {
   getMediaCapabilities,
+  getSessionReview,
   listSessionQuestions,
   saveMediaResult,
   scoreVoiceServer,
@@ -27,11 +28,14 @@ import { TutorialMediaPreview } from "../tutorial/TutorialMediaPreview";
 type Status = "idle" | "recording" | "scoring" | "done";
 
 interface AnswerResult {
+  questionId: number;
   question: string;
   transcript: string;
-  score: number;
+  score: number; // 전달력 (serve LightGBM)
   detail: VoiceScoreDetail;
   source: string;
+  contentScore: number | null; // 내용 채점 (haiku LLM)
+  contentFeedback: string | null;
 }
 
 /**
@@ -154,19 +158,32 @@ export function LocalVoiceInterviewTab({ session }: { session: InterviewSession 
         transcriptChars: chars,
         fillerCount: fillers,
       });
-      // 3) 내용 채점 (질문-답변 → interview_answer 저장, best-effort)
+      // 3) 내용 채점 (haiku) — 질문-답변 저장 후 점수/피드백 조회 (실패해도 전달력은 표시)
       const transcript: TranscriptLine[] = [
         { role: "ai", text: question },
         { role: "user", text: stt.text },
       ];
-      void scoreVoiceTranscript(session.id, transcript).catch(() => undefined);
+      let contentScore: number | null = null;
+      let contentFeedback: string | null = null;
+      try {
+        await scoreVoiceTranscript(session.id, transcript);
+        const review = await getSessionReview(session.id);
+        const item = review.items.find((it) => it.questionId === questions[questionIdx].id);
+        contentScore = item?.score ?? null;
+        contentFeedback = item?.feedback ?? null;
+      } catch {
+        // 내용 채점/조회 실패 — 전달력 점수만으로 진행
+      }
 
       const result: AnswerResult = {
+        questionId: questions[questionIdx].id,
         question,
         transcript: stt.text,
         score: server.score,
         detail: server.detail,
         source: server.source,
+        contentScore,
+        contentFeedback,
       };
       const next = [...answers, result];
       setAnswers(next);
@@ -324,7 +341,7 @@ export function LocalVoiceInterviewTab({ session }: { session: InterviewSession 
         <Card className="border border-slate-200 bg-white">
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-base">
-              답변별 전달력 점수
+              답변별 채점 (내용 · 전달력)
               {status === "done" && (
                 <span className={`ml-auto text-2xl font-black ${getScoreColor(overall)}`}>
                   {overall}
@@ -335,14 +352,31 @@ export function LocalVoiceInterviewTab({ session }: { session: InterviewSession 
           </CardHeader>
           <CardContent className="space-y-3">
             {answers.map((a, i) => (
-              <div key={i} className="rounded-lg border border-slate-100 p-3">
-                <div className="mb-1 flex items-baseline justify-between gap-2 text-sm">
-                  <span className="font-semibold text-slate-700">
-                    Q{i + 1}. {a.question}
-                  </span>
-                  <span className={`shrink-0 font-bold ${getScoreColor(a.score)}`}>{a.score}</span>
-                </div>
+              <div key={i} className="space-y-2 rounded-lg border border-slate-100 p-3">
+                <p className="text-sm font-semibold text-slate-700">
+                  Q{i + 1}. {a.question}
+                </p>
                 <p className="text-xs text-slate-500">{a.transcript || "(전사 없음)"}</p>
+                <div className="flex flex-wrap gap-4 text-sm">
+                  <span className="text-slate-600">
+                    내용 <b className={getScoreColor(a.contentScore ?? 0)}>{a.contentScore ?? "—"}</b>
+                  </span>
+                  <span className="text-slate-600">
+                    전달력 <b className={getScoreColor(a.score)}>{a.score}</b>
+                  </span>
+                </div>
+                <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-[11px] text-slate-400">
+                  <span>말속도 {a.detail.pace}</span>
+                  <span>유창성 {a.detail.fluency}</span>
+                  <span>안정감 {a.detail.stability}</span>
+                  <span>자신감 {a.detail.confidence}</span>
+                  <span>반응성 {a.detail.responsiveness}</span>
+                </div>
+                {a.contentFeedback && (
+                  <p className="rounded bg-slate-50 p-2 text-[11px] leading-relaxed text-slate-500">
+                    {a.contentFeedback}
+                  </p>
+                )}
               </div>
             ))}
           </CardContent>
