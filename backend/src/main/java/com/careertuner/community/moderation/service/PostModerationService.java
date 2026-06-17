@@ -25,7 +25,7 @@ import com.careertuner.community.moderation.domain.Strictness;
 import com.careertuner.community.moderation.dto.ModerationResult;
 import com.careertuner.community.moderation.mapper.PostAiResultMapper;
 import com.careertuner.notification.domain.Notification;
-import com.careertuner.notification.mapper.NotificationMapper;
+import com.careertuner.notification.service.NotificationService;
 
 import tools.jackson.databind.ObjectMapper;
 
@@ -61,7 +61,7 @@ public class PostModerationService {
     private final OllamaProperties ollamaProperties;
     private final PostAiResultMapper aiResultMapper;
     private final CommunityPostMapper postMapper;
-    private final NotificationMapper notificationMapper;
+    private final NotificationService notificationService;
     private final ModerationSettingService settingService;
     private final ObjectMapper objectMapper;
 
@@ -76,7 +76,7 @@ public class PostModerationService {
             OllamaProperties ollamaProperties,
             PostAiResultMapper aiResultMapper,
             CommunityPostMapper postMapper,
-            NotificationMapper notificationMapper,
+            NotificationService notificationService,
             ModerationSettingService settingService,
             ObjectMapper objectMapper,
             ResourceLoader resourceLoader,
@@ -86,7 +86,7 @@ public class PostModerationService {
         this.ollamaProperties = ollamaProperties;
         this.aiResultMapper = aiResultMapper;
         this.postMapper = postMapper;
-        this.notificationMapper = notificationMapper;
+        this.notificationService = notificationService;
         this.settingService = settingService;
         this.objectMapper = objectMapper;
 
@@ -230,7 +230,7 @@ public class PostModerationService {
                         + "관리자 검토 후 복원되거나 삭제될 수 있습니다.")
                 .link("/community?view=guidelines")
                 .build();
-        notificationMapper.insert(noti);
+        notificationService.notify(noti);
     }
 
     /**
@@ -247,7 +247,7 @@ public class PostModerationService {
                 .message("'" + postTitle + "' 게시글이 관리자 검토를 통과하여 복원되었습니다.")
                 .link("/community/posts/" + post.getId())
                 .build();
-        notificationMapper.insert(noti);
+        notificationService.notify(noti);
     }
 
     /**
@@ -264,7 +264,7 @@ public class PostModerationService {
                 .message("'" + postTitle + "' 게시글이 커뮤니티 가이드라인 위반으로 삭제 처리되었습니다.")
                 .link("/community/posts/" + post.getId())
                 .build();
-        notificationMapper.insert(noti);
+        notificationService.notify(noti);
     }
 
     private static String truncate(String text, int maxLen) {
