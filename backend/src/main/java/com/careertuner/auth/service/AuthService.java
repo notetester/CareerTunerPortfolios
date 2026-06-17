@@ -19,6 +19,9 @@ public interface AuthService {
 
     void logout(String refreshToken, LoginRequestContext context);
 
+    /** 모든 기기 로그아웃 — 해당 사용자의 모든 refresh 토큰을 폐기한다. */
+    void logoutAll(Long userId);
+
     boolean verifyEmail(String token);
 
     void resendVerification(String email);

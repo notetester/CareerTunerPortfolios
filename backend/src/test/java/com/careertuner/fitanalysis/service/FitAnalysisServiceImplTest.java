@@ -20,6 +20,7 @@ import com.careertuner.fitanalysis.ai.MockFitAnalysisAiService;
 import com.careertuner.fitanalysis.domain.FitAnalysisGenerationSource;
 import com.careertuner.fitanalysis.domain.FitAnalysisResult;
 import com.careertuner.fitanalysis.mapper.FitAnalysisMapper;
+import com.careertuner.notification.service.NotificationService;
 
 import tools.jackson.databind.ObjectMapper;
 
@@ -29,7 +30,7 @@ class FitAnalysisServiceImplTest {
     void generatePersistsHistoryAndNormalizedConditionMatches() {
         FitAnalysisMapper mapper = mock(FitAnalysisMapper.class);
         ObjectMapper objectMapper = new ObjectMapper();
-        FitAnalysisServiceImpl service = new FitAnalysisServiceImpl(mapper, new MockFitAnalysisAiService(), objectMapper);
+        FitAnalysisServiceImpl service = new FitAnalysisServiceImpl(mapper, new MockFitAnalysisAiService(), mock(NotificationService.class), objectMapper);
         FitAnalysisGenerationSource source = source();
         FitAnalysisResult previous = FitAnalysisResult.builder()
                 .id(10L).applicationCaseId(20L).fitScore(60)
@@ -57,7 +58,7 @@ class FitAnalysisServiceImplTest {
     @Test
     void scoreBreakdownNeverExceedsEachMaximumAndSumsToFitScore() {
         FitAnalysisMapper mapper = mock(FitAnalysisMapper.class);
-        FitAnalysisServiceImpl service = new FitAnalysisServiceImpl(mapper, mock(MockFitAnalysisAiService.class), new ObjectMapper());
+        FitAnalysisServiceImpl service = new FitAnalysisServiceImpl(mapper, mock(MockFitAnalysisAiService.class), mock(NotificationService.class), new ObjectMapper());
         FitAnalysisResult result = FitAnalysisResult.builder()
                 .id(11L).applicationCaseId(20L).fitScore(100)
                 .conditionMatrix("[]").gapRecommendations("[]").strategyActions("[]")

@@ -23,7 +23,7 @@ import com.careertuner.jobposting.mapper.JobPostingMapper;
 import com.careertuner.jobposting.service.JobPostingService;
 import com.careertuner.jobposting.service.JobPostingTextExtractor.ExtractedPosting;
 import com.careertuner.notification.domain.Notification;
-import com.careertuner.notification.mapper.NotificationMapper;
+import com.careertuner.notification.service.NotificationService;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -48,7 +48,7 @@ public class ApplicationCaseExtractionWorker {
     private final JobPostingService jobPostingService;
     private final OpenAiResponsesClient openAiClient;
     private final AiUsageLogService aiUsageLogService;
-    private final NotificationMapper notificationMapper;
+    private final NotificationService notificationService;
     private final TransactionTemplate transactionTemplate;
 
     @Value("${careertuner.extraction.worker.running-timeout-minutes:30}")
@@ -162,7 +162,7 @@ public class ApplicationCaseExtractionWorker {
                         FEATURE_JOB_POSTING_METADATA,
                         result.metadata().usage());
             }
-            notificationMapper.insert(successNotification(extraction));
+            notificationService.notify(successNotification(extraction));
             return null;
         });
     }
@@ -171,7 +171,7 @@ public class ApplicationCaseExtractionWorker {
         transactionTemplate.execute(status -> {
             String errorMessage = truncate(errorMessage(ex), MAX_ERROR_MESSAGE_LENGTH);
             if (extractionMapper.markExtractionFailed(extraction.getId(), errorMessage) == 1) {
-                notificationMapper.insert(failureNotification(extraction, errorMessage));
+                notificationService.notify(failureNotification(extraction, errorMessage));
             }
             return null;
         });
@@ -183,7 +183,7 @@ public class ApplicationCaseExtractionWorker {
             if (extractionMapper.markExtractionFailed(extraction.getId(), errorMessage) != 1) {
                 return false;
             }
-            notificationMapper.insert(failureNotification(extraction, errorMessage));
+            notificationService.notify(failureNotification(extraction, errorMessage));
             return true;
         }));
     }

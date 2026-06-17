@@ -20,7 +20,7 @@ export function SettingsPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const requestedTab = searchParams.get("tab") ?? "account";
   const activeTab: SettingsTab = tabs.includes(requestedTab as SettingsTab) ? (requestedTab as SettingsTab) : "account";
-  const { user, logout } = useAuth();
+  const { user, logout, logoutAll } = useAuth();
   const navigate = useNavigate();
 
   const [consent, setConsent] = useState<ConsentStatus | null>(null);
@@ -149,13 +149,22 @@ export function SettingsPage() {
                   <p>비밀번호 재설정은 로그인 화면의 비밀번호 찾기에서 이메일 인증 링크로 진행합니다.</p>
                   <p>로그인 실패 잠금과 로그인 감사 로그는 백엔드에서 자동 기록됩니다.</p>
                 </div>
-                <Button
-                  variant="outline"
-                  className="w-full text-red-600 hover:bg-red-50 sm:w-auto"
-                  onClick={async () => { await logout(); navigate("/"); }}
-                >
-                  로그아웃
-                </Button>
+                <div className="flex flex-col gap-2 sm:flex-row">
+                  <Button
+                    variant="outline"
+                    className="text-red-600 hover:bg-red-50"
+                    onClick={async () => { await logout(); navigate("/"); }}
+                  >
+                    로그아웃
+                  </Button>
+                  <Button
+                    variant="outline"
+                    className="text-red-600 hover:bg-red-50"
+                    onClick={async () => { await logoutAll(); navigate("/"); }}
+                  >
+                    모든 기기에서 로그아웃
+                  </Button>
+                </div>
               </CardContent>
             </Card>
           </TabsContent>
