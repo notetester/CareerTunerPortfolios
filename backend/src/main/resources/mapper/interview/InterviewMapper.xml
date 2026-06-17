@@ -112,10 +112,15 @@
     </delete>
 
     <select id="findQuestionsBySessionId" resultType="com.careertuner.interview.domain.InterviewQuestion">
-        SELECT *
-        FROM interview_question
-        WHERE interview_session_id = #{sessionId}
-        ORDER BY sort_order, id
+        <!-- 꼬리질문(반박)을 부모 본질문 바로 밑에 인접 배치한다.
+             정렬: 부모 sort_order 로 그룹 → 같은 그룹은 본질문(0) 먼저·꼬리(1) 뒤 → sort_order/id -->
+        SELECT q.*
+        FROM interview_question q
+        LEFT JOIN interview_question p ON p.id = q.parent_question_id
+        WHERE q.interview_session_id = #{sessionId}
+        ORDER BY COALESCE(p.sort_order, q.sort_order),
+                 (q.parent_question_id IS NOT NULL),
+                 q.sort_order, q.id
     </select>
 
     <select id="findQuestionByIdAndUserId" resultType="com.careertuner.interview.domain.InterviewQuestion">
