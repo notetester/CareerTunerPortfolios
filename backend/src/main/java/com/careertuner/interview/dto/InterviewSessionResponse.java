@@ -12,6 +12,7 @@ public record InterviewSessionResponse(
         LocalDateTime endedAt,
         Integer totalScore,
         Integer avgScore,
+        Integer avgVoiceScore,
         LocalDateTime lastResumedAt,
         LocalDateTime createdAt) {
 
@@ -24,6 +25,7 @@ public record InterviewSessionResponse(
                 s.getEndedAt(),
                 s.getTotalScore(),
                 s.getAvgAnswerScore(),
+                s.getAvgVoiceScore(),
                 s.getLastResumedAt(),
                 s.getCreatedAt());
     }

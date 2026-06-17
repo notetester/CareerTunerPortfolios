@@ -264,10 +264,15 @@ export function ModeSelectTab({
                       <div className="text-sm font-semibold text-slate-800">
                         {caseLabel(s.applicationCaseId)} · {getInterviewModeLabel(s.mode)}
                       </div>
-                      <div className="mt-0.5 text-xs text-slate-500">
-                        {formatDate(s.createdAt)}
+                      <div className="mt-0.5 flex flex-wrap items-center gap-1 text-xs text-slate-500">
+                        <span>{formatDate(s.createdAt)}</span>
                         {s.lastResumedAt && (
-                          <span className="text-indigo-500"> · 복습 {formatDate(s.lastResumedAt)}</span>
+                          <span className="text-indigo-500">· 복습 {formatDate(s.lastResumedAt)}</span>
+                        )}
+                        {s.avgVoiceScore != null && (
+                          <span className="rounded bg-emerald-50 px-1.5 py-0.5 font-semibold text-emerald-600">
+                            🎤 음성 {s.avgVoiceScore}
+                          </span>
                         )}
                       </div>
                     </div>

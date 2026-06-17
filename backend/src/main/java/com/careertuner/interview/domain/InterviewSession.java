@@ -27,4 +27,7 @@ public class InterviewSession {
 
     /** 비영속(목록 조회 계산값): 이 세션 답변 점수 평균. 리포트 미생성(total_score=null) 시 카드 점수 폴백용. */
     private Integer avgAnswerScore;
+
+    /** 비영속(목록 조회 계산값): 이 세션 음성 면접 점수 평균(interview_media_analysis kind=VOICE). */
+    private Integer avgVoiceScore;
 }

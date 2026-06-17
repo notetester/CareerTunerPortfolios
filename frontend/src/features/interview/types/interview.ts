@@ -23,6 +23,8 @@ export interface InterviewSession {
   totalScore: number | null;
   /** 답변 점수 평균(목록 조회 계산값). 리포트 미생성으로 totalScore 가 없을 때 카드 점수 폴백용. */
   avgScore: number | null;
+  /** 음성 면접 점수 평균(목록 조회 계산값, interview_media_analysis kind VOICE). */
+  avgVoiceScore: number | null;
   /** 복원(=복습) 마지막 시각. 없으면 복습한 적 없음. */
   lastResumedAt: string | null;
   createdAt: string;
