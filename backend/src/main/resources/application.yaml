@@ -103,8 +103,9 @@ careertuner:
       model: ${INTERVIEW_REALTIME_MODEL:gpt-4o-realtime-preview}
       voice: ${INTERVIEW_REALTIME_VOICE:alloy}
     rag:
-      # 면접 RAG(Qdrant). 기본 비활성 — Qdrant 띄우고 enabled=true 로 켜면 평가에 근거 주입.
-      enabled: ${INTERVIEW_RAG_ENABLED:false}
+      # 면접 RAG(Qdrant). enabled=true 로 활성화 — 관리자 지식베이스/재색인 사용.
+      # Qdrant 미가동 환경에서도 색인/검색은 best-effort 로 무해하게 건너뛴다(면접 흐름 영향 없음).
+      enabled: ${INTERVIEW_RAG_ENABLED:true}
       qdrant-url: ${QDRANT_URL:http://localhost:6333}
       collection: ${INTERVIEW_RAG_COLLECTION:interview_knowledge}
       embedding-model: ${INTERVIEW_RAG_EMBEDDING_MODEL:text-embedding-3-small}

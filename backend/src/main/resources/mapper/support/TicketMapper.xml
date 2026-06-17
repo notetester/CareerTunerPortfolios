@@ -22,4 +22,10 @@
          ORDER BY created_at DESC
     </select>
 
+    <update id="updateStatus">
+        UPDATE support_ticket
+           SET status = #{status}
+         WHERE id = #{id}
+    </update>
+
 </mapper>

@@ -8,7 +8,8 @@ import {
   Brain, BookOpen, Briefcase, Loader2, RefreshCw, CheckCircle2,
   MessageSquare, PieChart,
 } from "lucide-react";
-import { getAnalysisSummary, refreshAnalysisSummary } from "@/features/analysis/api/analysisSummaryApi";
+import { getAnalysisHistory, getAnalysisSummary, refreshAnalysisSummary } from "@/features/analysis/api/analysisSummaryApi";
+import type { AnalysisRunHistoryItem } from "@/features/analysis/api/analysisSummaryApi";
 import type { AnalysisSummary } from "@/features/analysis/types/analysisSummary";
 import { AiResultBadge } from "@/features/analysis/components/AiResultBadge";
 import { CareerPlanCard } from "@/features/analysis/components/CareerPlanCard";
@@ -903,7 +904,69 @@ export function AnalysisPage() {
             </div>
           </CardContent>
         </Card>
+
+        <AnalysisHistoryCard hidden={activeTab !== "recommendation"} />
       </div>
     </div>
+  );
+}
+
+const RUN_STATUS_LABEL: Record<string, { label: string; tone: string }> = {
+  SUCCESS: { label: "완료", tone: "bg-green-100 text-green-700" },
+  SUCCEEDED: { label: "완료", tone: "bg-green-100 text-green-700" },
+  FAILED: { label: "실패", tone: "bg-red-100 text-red-700" },
+  RUNNING: { label: "진행중", tone: "bg-amber-100 text-amber-700" },
+};
+
+const RUN_TYPE_LABEL: Record<string, string> = {
+  CAREER_TREND: "장기 취업 경향",
+  DASHBOARD_SUMMARY: "대시보드 요약",
+};
+
+/** 장기 분석 실행 이력 — GET /api/analysis/history. 토큰/원문 없이 유형·상태·시각만 노출. */
+function AnalysisHistoryCard({ hidden }: { hidden: boolean }) {
+  const [rows, setRows] = useState<AnalysisRunHistoryItem[]>([]);
+  const [loaded, setLoaded] = useState(false);
+
+  useEffect(() => {
+    if (hidden || loaded) return;
+    let ignore = false;
+    getAnalysisHistory()
+      .then((data) => { if (!ignore) { setRows(data); setLoaded(true); } })
+      .catch(() => { if (!ignore) setLoaded(true); });
+    return () => { ignore = true; };
+  }, [hidden, loaded]);
+
+  return (
+    <Card className={`border border-slate-200 bg-white ${hidden ? "hidden" : ""}`}>
+      <CardHeader>
+        <CardTitle className="text-base flex items-center gap-2">
+          <BarChart3 className="size-4 text-slate-500" />
+          장기 분석 실행 이력
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-2">
+        {rows.length > 0 ? (
+          rows.map((run) => {
+            const status = RUN_STATUS_LABEL[run.status] ?? { label: run.status, tone: "bg-slate-100 text-slate-600" };
+            return (
+              <div key={run.id} className="flex items-center justify-between gap-2 rounded-lg border border-slate-100 p-3 text-sm">
+                <div className="min-w-0">
+                  <div className="font-semibold text-slate-800">{RUN_TYPE_LABEL[run.analysisType] ?? run.analysisType}</div>
+                  <div className="mt-0.5 text-xs text-slate-400">
+                    {new Date(run.createdAt).toLocaleString("ko-KR")}{run.model ? ` · ${run.model}` : ""}
+                  </div>
+                </div>
+                <span className={`shrink-0 rounded-full px-2 py-0.5 text-[11px] font-semibold ${status.tone}`}>{status.label}</span>
+              </div>
+            );
+          })
+        ) : (
+          <div className="rounded-lg bg-slate-50 p-4 text-sm text-slate-500">
+            아직 장기 분석 실행 이력이 없습니다. 재분석을 실행하면 실행 기록이 시간순으로 쌓입니다.
+          </div>
+        )}
+      </CardContent>
+    </Card>
   );
 }

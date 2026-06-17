@@ -15,6 +15,8 @@ public interface AdminTicketMapper {
 
     AdminTicketListResponse findById(@Param("id") Long id);
 
+    Long findUserIdById(@Param("id") Long id);
+
     List<AdminTicketMessageResponse> findMessages(@Param("ticketId") Long ticketId);
 
     String findInternalMemo(@Param("ticketId") Long ticketId);

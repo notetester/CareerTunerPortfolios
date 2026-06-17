@@ -15,4 +15,6 @@ public interface TicketMapper {
     SupportTicket findByIdAndUserId(@Param("id") Long id, @Param("userId") Long userId);
 
     List<SupportTicket> findAllByUserId(@Param("userId") Long userId);
+
+    void updateStatus(@Param("id") Long id, @Param("status") String status);
 }

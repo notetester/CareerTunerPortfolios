@@ -10,7 +10,9 @@ import com.careertuner.common.exception.ErrorCode;
 import com.careertuner.support.domain.SupportTicket;
 import com.careertuner.support.domain.TicketMessage;
 import com.careertuner.support.dto.CreateTicketRequest;
+import com.careertuner.support.dto.TicketMessageView;
 import com.careertuner.support.dto.TicketResponse;
+import com.careertuner.support.dto.TicketThreadResponse;
 import com.careertuner.support.mapper.TicketMapper;
 import com.careertuner.support.mapper.TicketMessageMapper;
 
@@ -79,6 +81,54 @@ public class TicketServiceImpl implements TicketService {
                 ticket.getCreatedAt(),
                 adminReply != null ? adminReply.getContent() : null,
                 adminReply != null ? adminReply.getCreatedAt() : null);
+    }
+
+    @Override
+    public TicketThreadResponse getThread(Long ticketId, Long userId) {
+        SupportTicket ticket = ticketMapper.findByIdAndUserId(ticketId, userId);
+        if (ticket == null) {
+            throw new BusinessException(ErrorCode.NOT_FOUND, "문의를 찾을 수 없습니다.");
+        }
+        return toThread(ticket);
+    }
+
+    @Override
+    @Transactional
+    public TicketThreadResponse addUserMessage(Long ticketId, Long userId, String content) {
+        SupportTicket ticket = ticketMapper.findByIdAndUserId(ticketId, userId);
+        if (ticket == null) {
+            throw new BusinessException(ErrorCode.NOT_FOUND, "문의를 찾을 수 없습니다.");
+        }
+        TicketMessage message = TicketMessage.builder()
+                .ticketId(ticketId)
+                .senderType("USER")
+                .senderId(userId)
+                .content(content)
+                .internal(false)
+                .build();
+        messageMapper.insert(message);
+
+        // 사용자가 추가 문의를 남기면 다시 접수 상태로 되돌려 관리자가 재확인하게 한다.
+        if (!"RECEIVED".equals(ticket.getStatus())) {
+            ticketMapper.updateStatus(ticketId, "RECEIVED");
+            ticket.setStatus("RECEIVED");
+        }
+        return toThread(ticket);
+    }
+
+    /** 내부 메모(is_internal)를 제외한 전체 대화를 시간순으로 묶는다. */
+    private TicketThreadResponse toThread(SupportTicket ticket) {
+        List<TicketMessageView> messages = messageMapper.findByTicketId(ticket.getId()).stream()
+                .filter(m -> !m.isInternal())
+                .map(TicketMessageView::from)
+                .toList();
+        return new TicketThreadResponse(
+                ticket.getId(),
+                ticket.getSubject(),
+                ticket.getCategory(),
+                ticket.getStatus(),
+                ticket.getCreatedAt(),
+                messages);
     }
 
     private TicketResponse toResponse(SupportTicket ticket) {

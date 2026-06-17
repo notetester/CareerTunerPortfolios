@@ -4,7 +4,7 @@ import {
 } from "lucide-react";
 import AdminShell from "../../../components/AdminShell";
 import {
-  getGuidelines, createGuideline, updateGuideline, publishGuideline,
+  getGuidelines, createGuideline, updateGuideline, publishGuideline, getPublishedGuideline,
 } from "../api/adminGuidelineApi";
 import type { AdminGuidelineResponse, GuidelineRule, GuidelineParams } from "../api/adminGuidelineApi";
 import "../styles/admin-guidelines.css";
@@ -38,6 +38,7 @@ function parseOr<T>(json: string | null | undefined, fallback: T): T {
 
 export default function AdminGuidelines() {
   const [versions, setVersions] = useState<AdminGuidelineResponse[]>([]);
+  const [serverPublished, setServerPublished] = useState<AdminGuidelineResponse | null>(null);
   const [editId, setEditId] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -69,6 +70,8 @@ export default function AdminGuidelines() {
     try {
       const list = await getGuidelines();
       setVersions(list);
+      // 서버 기준 게시본을 권위 소스로 따로 확인한다(목록 파생 대신 published 엔드포인트 사용).
+      setServerPublished(await getPublishedGuideline().catch(() => null));
       const draft = list.find((g) => g.status === "DRAFT");
       if (draft) {
         loadGuidelineToForm(draft);
@@ -169,7 +172,7 @@ export default function AdminGuidelines() {
   const changed = PARAM_DEFS.filter((p) => params[p.k] !== p.def);
 
   // 버전 상태 표시
-  const publishedVersion = versions.find((v) => v.status === "PUBLISHED");
+  const publishedVersion = serverPublished ?? versions.find((v) => v.status === "PUBLISHED");
 
   if (loading) return (
     <AdminShell active="reports" breadcrumb="콘텐츠 관리" title="커뮤니티 가이드라인" icon={BookOpen} desc="커뮤니티 운영 정책 문서 관리">
