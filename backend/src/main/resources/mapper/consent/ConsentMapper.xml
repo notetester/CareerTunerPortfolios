@@ -37,6 +37,21 @@
             <if test="consentType != null and consentType != ''">
                 AND c.consent_type = #{consentType}
             </if>
+            <if test="status == 'AGREED'">
+                AND c.agreed = TRUE AND c.revoked_at IS NULL
+            </if>
+            <if test="status == 'REVOKED'">
+                AND (c.agreed = FALSE OR c.revoked_at IS NOT NULL)
+            </if>
+            <if test="source != null and source != ''">
+                AND c.source = #{source}
+            </if>
+            <if test="from != null and from != ''">
+                AND c.created_at &gt;= CONCAT(#{from}, ' 00:00:00')
+            </if>
+            <if test="to != null and to != ''">
+                AND c.created_at &lt;= CONCAT(#{to}, ' 23:59:59')
+            </if>
         </where>
         ORDER BY c.id DESC
         LIMIT #{limit}
