@@ -96,6 +96,28 @@ export function LocalVoiceInterviewTab({ session }: { session: InterviewSession 
     micRef.current = null;
   };
 
+  // 녹음 시작 신호음 (짧은 비프, Web Audio — API 0). 화면 안 봐도 답변 타이밍 캐치.
+  const beep = () => {
+    try {
+      const Ctx =
+        window.AudioContext ??
+        (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+      const ctx = new Ctx();
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.frequency.value = 880;
+      gain.gain.setValueAtTime(0.12, ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.18);
+      osc.start();
+      osc.stop(ctx.currentTime + 0.18);
+      osc.onended = () => ctx.close();
+    } catch {
+      // 비프 실패는 무시
+    }
+  };
+
   const startRecording = async () => {
     if (recorderRef.current) return; // 이미 녹음 중 (자동/수동 중복 방지)
     window.speechSynthesis?.cancel();
@@ -112,6 +134,7 @@ export function LocalVoiceInterviewTab({ session }: { session: InterviewSession 
       recorderRef.current = recorder;
       setError(null);
       setStatus("recording");
+      beep(); // 녹음 시작 신호음
     } catch {
       setError("마이크 접근에 실패했습니다.");
     }
@@ -300,7 +323,7 @@ export function LocalVoiceInterviewTab({ session }: { session: InterviewSession 
         <CardHeader>
           <CardTitle className="flex items-center gap-2 text-base">
             <Mic className="size-4 text-emerald-600" />
-            녹음형 음성 면접
+            자체 AI 음성 면접
             <Badge className="bg-emerald-100 text-emerald-700">베이직 · 무료</Badge>
           </CardTitle>
         </CardHeader>
@@ -355,6 +378,12 @@ export function LocalVoiceInterviewTab({ session }: { session: InterviewSession 
               <p className="rounded-lg bg-slate-50 p-3 text-sm font-medium text-slate-700">
                 Q{questionIdx + 1}. {questions[questionIdx]?.question}
               </p>
+            </div>
+          )}
+
+          {status === "recording" && (
+            <div className="flex items-center justify-center gap-2 rounded-lg bg-rose-50 py-3 text-base font-bold text-rose-700">
+              <Mic className="size-5 animate-pulse" /> 지금 답변하세요
             </div>
           )}
 

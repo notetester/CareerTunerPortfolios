@@ -70,11 +70,11 @@ export function VoiceInterviewTab({ session }: { session: InterviewSession | nul
         >
           <div className="mb-2 flex items-center gap-2">
             <Mic className="size-5 text-emerald-600" />
-            <span className="font-semibold text-slate-800">녹음형 음성 면접</span>
+            <span className="font-semibold text-slate-800">자체 AI 음성 면접</span>
             <Badge className="bg-emerald-100 text-emerald-700">베이직 · 무료</Badge>
           </div>
           <p className="text-sm text-slate-500">
-            질문을 보고 <b>답변을 녹음</b>하면 자체 AI가 채점합니다(말 속도·톤·내용). 외부 API 없이 동작하며 한 문항씩 진행합니다.
+            면접관이 질문을 읽어주면 <b>자동으로 녹음</b>됩니다. 자체 AI가 말 속도·톤·내용을 채점합니다. 외부 API 없이(무료) 동작합니다.
           </p>
         </Card>
       </div>
