@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import {
   CircleHelp, Plus, Search, ChevronLeft, ChevronRight,
-  Trash2, Eye, EyeOff, ArrowLeft, Check, CornerDownRight,
+  Trash2, Eye, EyeOff, ArrowLeft, Check, CornerDownRight, RefreshCw,
 } from "lucide-react";
 import AdminShell from "../../../components/AdminShell";
 import { FAQ_CATEGORIES, type Faq, type FaqCategory } from "../data/faqData";
@@ -52,8 +52,8 @@ function FaqComposeView({ onBack, onCreated }: { onBack: () => void; onCreated: 
       });
       flash("FAQ가 등록되었습니다.", "green");
       setTimeout(() => onCreated(), 600);
-    } catch (error) {
-      flash(error instanceof Error ? error.message : "FAQ 등록에 실패했습니다.", "red");
+    } catch {
+      flash("저장에 실패했습니다.", "red");
     } finally {
       setSaving(false);
     }
@@ -145,17 +145,27 @@ export default function AdminFaq() {
   const [query, setQuery] = useState("");
   const [toast, setToast] = useState<{ msg: string; tone: string } | null>(null);
   const [dialog, setDialog] = useState<DialogState | null>(null);
+  const [embedding, setEmbedding] = useState(false);
 
-  const loadItems = async () => {
+  const handleEmbedAll = async () => {
+    if (embedding) return;
+    setEmbedding(true);
     try {
-      setItems(await adminFaqApi.getFaqs());
-    } catch (error) {
-      flash(error instanceof Error ? error.message : "FAQ 목록을 불러오지 못했습니다.", "red");
-      setItems([]);
+      const { embeddedCount } = await adminFaqApi.embedAllFaqs(true);
+      flash(`${embeddedCount}개 FAQ 임베딩 완료`, "green");
+    } catch {
+      flash("임베딩에 실패했습니다.", "red");
+    } finally {
+      setEmbedding(false);
     }
   };
 
-  useEffect(() => { void loadItems(); }, []);
+  const loadItems = () => {
+    adminFaqApi.getFaqs().then(setItems)
+      .catch(() => flash("FAQ 목록을 불러오지 못했습니다.", "red"));
+  };
+
+  useEffect(() => { loadItems(); }, []);
 
   const flash = (msg: string, tone: string) => {
     setToast({ msg, tone });
@@ -171,14 +181,16 @@ export default function AdminFaq() {
         flash("FAQ가 삭제되었습니다.", "green");
       } else {
         const updated = await adminFaqApi.updateFaq(dialog.faq.id, {
-          ...dialog.faq,
+          cat: dialog.faq.cat,
+          q: dialog.faq.q,
+          a: dialog.faq.a,
           on: !dialog.faq.on,
         });
         setItems((prev) => prev.map((f) => (f.id === updated.id ? updated : f)));
         flash(updated.on ? "FAQ가 노출로 변경되었습니다." : "FAQ가 비노출로 변경되었습니다.", "green");
       }
-    } catch (error) {
-      flash(error instanceof Error ? error.message : "FAQ 변경에 실패했습니다.", "red");
+    } catch {
+      flash("처리에 실패했습니다.", "red");
     }
     setDialog(null);
   };
@@ -199,7 +211,14 @@ export default function AdminFaq() {
     <AdminShell
       active="faq" breadcrumb="FAQ 관리" title="FAQ 관리" icon={CircleHelp}
       desc="고객센터 자주 묻는 질문 관리"
-      actions={<button className="av-btn av-btn--ink" onClick={() => setView("compose")}><Plus /> 새 FAQ</button>}
+      actions={
+        <>
+          <button className="av-btn" onClick={handleEmbedAll} disabled={embedding}>
+            <RefreshCw className={embedding ? "spin" : ""} /> {embedding ? "임베딩 중…" : "챗봇 임베딩 갱신"}
+          </button>
+          <button className="av-btn av-btn--ink" onClick={() => setView("compose")}><Plus /> 새 FAQ</button>
+        </>
+      }
     >
       <section className="av-panel">
         <div className="av-filters">

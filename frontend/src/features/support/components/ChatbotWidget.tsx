@@ -1,4 +1,5 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
+import { useNavigate } from "react-router";
 import {
   Sparkles, MessageCircle, Mic, MicOff, ArrowUp, Minus, X,
   KeyRound, CreditCard, FileText, FileSearch, Pause, Volume2,
@@ -6,7 +7,7 @@ import {
   RotateCw, Check, Keyboard, ArrowRight, Play,
 } from "lucide-react";
 import { useChatbot } from "../hooks/useChatbot";
-import type { ChatMessage, ChatEvidence } from "../types/chatbot";
+import type { ChatMessage, ChatEvidence, SiteLink } from "../types/chatbot";
 import { SUGGESTED_QUESTIONS } from "../types/chatbot";
 
 const ICON_MAP = { KeyRound, CreditCard, FileText } as const;
@@ -264,18 +265,39 @@ function BotBubble({ message, onToggleTts, variant = "widget" }: {
           ) : null}
         </div>
 
-        {/* Evidence chips */}
-        {message.evidence.length > 0 && (
-          <div>
-            <div className="text-[10.5px] font-bold text-slate-400 mb-1.5 ml-0.5 tracking-wide">참고한 문서</div>
-            {variant === "full" ? (
-              <EvidenceCards evidence={message.evidence} />
-            ) : (
-              <EvidenceChips evidence={message.evidence} />
-            )}
-          </div>
+        {/* SiteLink buttons */}
+        {message.links && message.links.length > 0 && (
+          <SiteLinkButtons links={message.links} />
         )}
+
       </div>
+    </div>
+  );
+}
+
+function SiteLinkButtons({ links }: { links: SiteLink[] }) {
+  const navigate = useNavigate();
+
+  const handleClick = useCallback((url: string) => {
+    if (url.startsWith("http")) {
+      window.open(url, "_blank", "noopener,noreferrer");
+    } else {
+      navigate(url);
+    }
+  }, [navigate]);
+
+  return (
+    <div className="flex flex-col gap-1.5">
+      {links.map((link) => (
+        <button
+          key={link.url}
+          onClick={() => handleClick(link.url)}
+          className="flex items-center justify-center gap-1.5 w-full h-9 rounded-lg border border-blue-200 bg-blue-50 text-blue-700 text-[13px] font-semibold hover:bg-blue-100 transition-colors"
+        >
+          <ArrowRight size={14} />
+          {link.label}
+        </button>
+      ))}
     </div>
   );
 }
@@ -536,4 +558,4 @@ function InputBar({ value, onChange, onSend, onMic, onKeyDown, disabled }: {
   );
 }
 
-export { BotBubble, UserBubble, EvidenceCards, EvidenceChips, InputBar };
+export { BotBubble, UserBubble, EvidenceCards, EvidenceChips, SiteLinkButtons, InputBar };

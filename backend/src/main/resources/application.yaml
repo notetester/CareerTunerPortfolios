@@ -141,8 +141,15 @@ ai:
   ollama:
     base-url: ${AI_OLLAMA_BASE_URL:http://localhost:11434}
     model: ${AI_OLLAMA_MODEL:gemma4}
-    connect-timeout: ${AI_OLLAMA_CONNECT_TIMEOUT:3s}
-    read-timeout: ${AI_OLLAMA_READ_TIMEOUT:30s}
+    connect-timeout: ${AI_OLLAMA_CONNECT_TIMEOUT:10s}
+    read-timeout: ${AI_OLLAMA_READ_TIMEOUT:60s}
+  tagging:
+    confidence-threshold: ${AI_TAGGING_CONFIDENCE_THRESHOLD:0.7}
+  chatbot:
+    embedding-model: ${AI_CHATBOT_EMBEDDING_MODEL:bge-m3}
+    chat-model: ${AI_CHATBOT_CHAT_MODEL:gemma4}
+    similarity-threshold: ${AI_CHATBOT_SIMILARITY_THRESHOLD:0.35}
+    top-k: ${AI_CHATBOT_TOP_K:3}
 
 logging:
   level:

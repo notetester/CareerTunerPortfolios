@@ -25,6 +25,9 @@ import com.careertuner.community.dto.HotPostResponse;
 import com.careertuner.community.dto.PostDetailResponse;
 import com.careertuner.community.dto.PostPageResponse;
 import com.careertuner.community.dto.UpdatePostRequest;
+import com.careertuner.community.moderation.domain.AiTaskType;
+import com.careertuner.community.moderation.domain.PostAiResult;
+import com.careertuner.community.moderation.mapper.PostAiResultMapper;
 import com.careertuner.community.service.CommunityPostService;
 
 import lombok.RequiredArgsConstructor;
@@ -35,6 +38,7 @@ import lombok.RequiredArgsConstructor;
 public class CommunityPostController {
 
     private final CommunityPostService postService;
+    private final PostAiResultMapper aiResultMapper;
 
     @GetMapping("/hot")
     public ApiResponse<List<HotPostResponse>> getHotPosts() {
@@ -77,6 +81,12 @@ public class CommunityPostController {
     ) {
         postService.updatePost(postId, request, authUser.id());
         return ApiResponse.ok();
+    }
+
+    @GetMapping("/{postId}/ai-tags")
+    public ApiResponse<PostAiResult> getAiTags(@PathVariable Long postId) {
+        PostAiResult result = aiResultMapper.findByPostIdAndTaskType(postId, AiTaskType.TAG);
+        return ApiResponse.ok(result);
     }
 
     @DeleteMapping("/{postId}")

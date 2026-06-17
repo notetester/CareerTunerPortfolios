@@ -12,6 +12,9 @@
 .faq-toast--red { background: #dc2626; }
 @keyframes faq-toast-in { from { opacity: 0; transform: translateX(-50%) translateY(12px); } to { opacity: 1; transform: translateX(-50%) translateY(0); } }
 
+.spin { animation: spin 1s linear infinite; }
+@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+
 .faq-actions { display: flex; gap: 4px; justify-content: flex-end; }
 .faq-actions .av-btn { width: 28px; height: 28px; padding: 0; justify-content: center; }
 .faq-actions .av-btn svg { width: 13px; height: 13px; }

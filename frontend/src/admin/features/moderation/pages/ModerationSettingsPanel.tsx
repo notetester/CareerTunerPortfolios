@@ -3,7 +3,7 @@ import {
   PlugZap, ScanText, Inbox, ChevronRight, CheckCircle2, AlertCircle,
 } from "lucide-react";
 import * as moderationApi from "../api/moderationApi";
-import type { ModerationTestResult } from "../api/moderationApi";
+import type { ModerationSettingData, ModerationTestResult } from "../api/moderationApi";
 import "./moderation-settings.css";
 
 /* ── 프리셋 정의 ── */
@@ -95,18 +95,14 @@ export default function ModerationSettingsPanel({ flash }: { flash: (msg: string
   /* 설정 로드 */
   const loadSettings = useCallback(() => {
     moderationApi.getModerationSettings()
-      .then((setting) => {
-        const preset = PRESETS.find((p) => p.k === setting.strictness);
-        setMode(setting.strictness);
-        setTh(setting.hideThreshold);
-        setChangedAt(setting.updatedAt);
-        setCustom(preset ? setting.hideThreshold !== preset.th : true);
+      .then((s) => {
+        setMode(s.strictness);
+        setTh(s.hideThreshold);
+        setChangedAt(s.updatedAt);
+        setCustom(false);
         setServerDown(false);
       })
-      .catch((error) => {
-        setServerDown(true);
-        setToast({ ok: false, msg: error instanceof Error ? error.message : "검열 설정을 불러오지 못했습니다." });
-      });
+      .catch(() => setServerDown(true));
   }, []);
 
   useEffect(() => { loadSettings(); }, [loadSettings]);
@@ -124,28 +120,30 @@ export default function ModerationSettingsPanel({ flash }: { flash: (msg: string
   const applyPreset = async (p: typeof PRESETS[number]) => {
     setPending(null);
     try {
-      const setting = await moderationApi.updateModerationSettings({ strictness: p.k, hideThreshold: p.th });
-      setMode(setting.strictness);
-      setTh(setting.hideThreshold);
+      const updated = await moderationApi.updateModerationSettings({
+        strictness: p.k,
+        hideThreshold: p.th,
+      });
+      setMode(updated.strictness);
+      setTh(updated.hideThreshold);
       setCustom(false);
-      setChangedAt(setting.updatedAt);
-      setServerDown(false);
+      setChangedAt(updated.updatedAt);
       setToast({ ok: true, msg: `'${p.name}' 모드 적용됨 \u2014 임계값 ${p.th.toFixed(2)}` });
-    } catch (error) {
-      setToast({ ok: false, msg: error instanceof Error ? error.message : "검열 설정 변경에 실패했습니다." });
+    } catch {
+      setToast({ ok: false, msg: "저장 실패 \u2014 검열 서버에 연결할 수 없어요. 잠시 후 다시 시도해주세요." });
     }
   };
 
   /* 고급 임계값 변경 */
   const applyTh = async (v: number) => {
+    setTh(v);
+    const isCustom = v !== cur.th;
+    setCustom(isCustom);
     try {
-      const setting = await moderationApi.updateModerationSettings({ strictness: mode, hideThreshold: v });
-      setTh(setting.hideThreshold);
-      setCustom(setting.hideThreshold !== cur.th);
-      setChangedAt(setting.updatedAt);
-      setServerDown(false);
-    } catch (error) {
-      setToast({ ok: false, msg: error instanceof Error ? error.message : "임계값 변경에 실패했습니다." });
+      const updated = await moderationApi.updateModerationSettings({ hideThreshold: v });
+      setChangedAt(updated.updatedAt);
+    } catch {
+      setToast({ ok: false, msg: "임계값 저장 실패" });
     }
   };
 
@@ -155,11 +153,13 @@ export default function ModerationSettingsPanel({ flash }: { flash: (msg: string
     setLoading(true);
     if (result) setPrevRes(result);
     try {
-      const r = await moderationApi.testModeration({ title: title || undefined, content: body });
+      const r = await moderationApi.testModeration({
+        title: title || undefined,
+        content: body,
+      });
       setResult({ r, th });
-      setServerDown(false);
-    } catch (error) {
-      setToast({ ok: false, msg: error instanceof Error ? error.message : "검열 테스트에 실패했습니다." });
+    } catch {
+      flash("판정 테스트에 실패했습니다.");
     } finally {
       setLoading(false);
     }

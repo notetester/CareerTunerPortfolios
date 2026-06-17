@@ -63,15 +63,14 @@ function NoticeComposeView({ onBack, onCreated }: { onBack: () => void; onCreate
       await adminNoticeApi.createNotice({
         title,
         content: body,
-        category: cat,
         status: when === "예약" ? "SCHEDULED" : "PUBLISHED",
         isPinned: pin,
         thumbnailUrl: null,
       });
-      flash(when === "예약" ? "공지가 예약되었습니다." : "공지가 게시되었습니다.", "green");
+      flash("공지가 게시되었습니다.", "green");
       setTimeout(() => onCreated(), 600);
-    } catch (error) {
-      flash(error instanceof Error ? error.message : "공지 저장에 실패했습니다.", "red");
+    } catch {
+      flash("저장에 실패했습니다.", "red");
     } finally {
       setSaving(false);
     }
@@ -169,16 +168,12 @@ export default function AdminNotices() {
   const [toast, setToast] = useState<{ msg: string; tone: string } | null>(null);
   const [dialog, setDialog] = useState<DialogState | null>(null);
 
-  const loadItems = async () => {
-    try {
-      setItems(await adminNoticeApi.getNotices());
-    } catch (error) {
-      flash(error instanceof Error ? error.message : "공지 목록을 불러오지 못했습니다.", "red");
-      setItems([]);
-    }
+  const loadItems = () => {
+    adminNoticeApi.getNotices().then(setItems)
+      .catch(() => flash("공지 목록을 불러오지 못했습니다.", "red"));
   };
 
-  useEffect(() => { void loadItems(); }, []);
+  useEffect(() => { loadItems(); }, []);
 
   const flash = (msg: string, tone: string) => {
     setToast({ msg, tone });
@@ -197,13 +192,13 @@ export default function AdminNotices() {
         setItems((prev) => prev.map((n) => (n.id === updated.id ? updated : n)));
         flash(updated.pinned ? "공지가 상단에 고정되었습니다." : "고정이 해제되었습니다.", "green");
       } else {
-        const status = dialog.target === "published" ? "PUBLISHED" : dialog.target === "scheduled" ? "SCHEDULED" : "DRAFT";
-        const updated = await adminNoticeApi.updateNotice(dialog.notice.id, { status });
+        const statusMap: Record<NoticeStatus, string> = { published: "PUBLISHED", draft: "DRAFT", scheduled: "SCHEDULED" };
+        const updated = await adminNoticeApi.updateNotice(dialog.notice.id, { status: statusMap[dialog.target] });
         setItems((prev) => prev.map((n) => (n.id === updated.id ? updated : n)));
         flash(`공지가 ${STATUS_LABEL[dialog.target]}(으)로 변경되었습니다.`, "green");
       }
-    } catch (error) {
-      flash(error instanceof Error ? error.message : "공지 변경에 실패했습니다.", "red");
+    } catch {
+      flash("처리에 실패했습니다.", "red");
     }
     setDialog(null);
   };

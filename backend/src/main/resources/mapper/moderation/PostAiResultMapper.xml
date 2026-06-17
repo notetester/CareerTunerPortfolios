@@ -9,7 +9,8 @@
         VALUES (#{postId}, #{taskType}, 'PENDING', 1)
         ON DUPLICATE KEY UPDATE
             status = 'PENDING', result_json = NULL, error_message = NULL,
-            completed_at = NULL, attempt_count = attempt_count + 1
+            completed_at = NULL, created_at = CURRENT_TIMESTAMP,
+            attempt_count = attempt_count + 1
     </insert>
 
     <!-- 검열 성공 시 결과 저장 -->
