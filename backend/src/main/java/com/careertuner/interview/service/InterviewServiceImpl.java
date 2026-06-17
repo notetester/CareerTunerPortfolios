@@ -9,6 +9,8 @@ import java.util.Set;
 
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 import com.careertuner.applicationcase.domain.ApplicationCase;
 import com.careertuner.applicationcase.service.ApplicationCaseAccessService;
@@ -61,6 +63,7 @@ public class InterviewServiceImpl implements InterviewService {
     private final InterviewAiUsageLogService aiUsageLogService;
     private final InterviewAgentOrchestrator orchestrator;
     private final ObjectMapper objectMapper;
+    private final InterviewBackgroundExecutor backgroundExecutor;
 
     @Override
     @Transactional
@@ -117,10 +120,21 @@ public class InterviewServiceImpl implements InterviewService {
             inserted.add(entity);
         }
 
-        // 모범답안을 미리 일괄 생성·저장한다 — 질문이 있으면 채점 기준 답안지도 항상 DB에 있게 한다.
-        // (블라인드 복습 테스트 포함, 프론트가 모범답안을 못 보내도 저장값으로 채점된다.)
-        // 실패해도 질문 생성은 막지 않는다(이후 "모범답안 보기" 시 지연 생성으로 폴백).
-        storeModelAnswers(userId, session, applicationCase, modeLabel, inserted);
+        // 모범답안은 채점 기준 답안지이지만, 6개 일괄 생성이 느려 질문 표시를 막을 이유는 없다.
+        // → 트랜잭션 커밋 이후 백그라운드에서 생성·저장한다. 유저는 질문을 바로 받아 본다.
+        // 평가 시점까지 보통 완료되며, 미완 상태로 평가가 들어오면 submitAnswer 에서 단건 즉시 생성으로 기준을 보장한다.
+        // (afterCommit 에 거는 이유: 백그라운드 스레드가 방금 INSERT 한 질문을 볼 수 있어야 갱신이 누락되지 않는다.)
+        final Long bgUserId = userId;
+        final InterviewSession bgSession = session;
+        final ApplicationCase bgCase = applicationCase;
+        final String bgModeLabel = modeLabel;
+        final List<InterviewQuestion> bgQuestions = inserted;
+        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+            @Override
+            public void afterCommit() {
+                backgroundExecutor.run(() -> storeModelAnswers(bgUserId, bgSession, bgCase, bgModeLabel, bgQuestions));
+            }
+        });
 
         return listQuestions(userId, sessionId);
     }
@@ -190,6 +204,10 @@ public class InterviewServiceImpl implements InterviewService {
         String referenceModelAnswer = blankToNull(request.modelAnswer());
         if (referenceModelAnswer == null) {
             referenceModelAnswer = blankToNull(question.getModelAnswer());
+        }
+        if (referenceModelAnswer == null) {
+            // 백그라운드 모범답안 생성이 아직이면(빠른 평가) 채점 기준 보장을 위해 단건 즉시 생성한다.
+            referenceModelAnswer = generateModelAnswerForGrading(userId, session, applicationCase, question);
         }
         InterviewAgentOrchestrator.OrchestratedEvaluation evaluation =
                 orchestrator.evaluateAnswer(userId, session, applicationCase, question, request.answerText(),
@@ -354,6 +372,29 @@ public class InterviewServiceImpl implements InterviewService {
             } catch (RuntimeException ignored) {
                 // model_answer 컬럼 미적용 등 — 저장 실패가 질문 생성을 막지 않는다.
             }
+        }
+    }
+
+    /**
+     * 평가 직전 모범답안이 없으면(백그라운드 미완 등) 단건을 즉시 생성·저장해 채점 기준을 보장한다.
+     * 실패하면 null 을 반환해 기준 없이 평가하도록 둔다(평가 자체를 막지 않는다).
+     */
+    private String generateModelAnswerForGrading(Long userId, InterviewSession session,
+                                                 ApplicationCase applicationCase, InterviewQuestion question) {
+        String modeLabel = MODE_LABELS.getOrDefault(session.getMode(), session.getMode());
+        try {
+            InterviewOpenAiClient.ModelAnswer generated =
+                    aiClient.generateModelAnswer(question.getQuestion(), applicationCase, modeLabel);
+            aiUsageLogService.recordSuccess(userId, session.getApplicationCaseId(), FEATURE_MODEL_ANSWER, generated.usage());
+            try {
+                interviewMapper.updateQuestionModelAnswer(question.getId(), generated.modelAnswer());
+            } catch (RuntimeException ignored) {
+                // 컬럼 미적용 등 저장 실패는 채점을 막지 않는다.
+            }
+            return generated.modelAnswer();
+        } catch (BusinessException ex) {
+            aiUsageLogService.recordFailure(userId, session.getApplicationCaseId(), FEATURE_MODEL_ANSWER, ex.getMessage());
+            return null;
         }
     }
 
