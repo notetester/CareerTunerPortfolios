@@ -26,7 +26,11 @@ public class AdminConsentController {
     public ApiResponse<List<ConsentView>> consents(@AuthenticationPrincipal AuthUser authUser,
                                                    @RequestParam(required = false) String keyword,
                                                    @RequestParam(required = false) String consentType,
+                                                   @RequestParam(required = false) String status,
+                                                   @RequestParam(required = false) String source,
+                                                   @RequestParam(required = false) String from,
+                                                   @RequestParam(required = false) String to,
                                                    @RequestParam(defaultValue = "100") int limit) {
-        return ApiResponse.ok(service.adminConsents(authUser, keyword, consentType, limit));
+        return ApiResponse.ok(service.adminConsents(authUser, keyword, consentType, status, source, from, to, limit));
     }
 }
