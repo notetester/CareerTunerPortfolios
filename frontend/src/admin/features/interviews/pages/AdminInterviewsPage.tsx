@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router";
 import { BookMarked, MessageSquare, RefreshCw, Search } from "lucide-react";
+import AdminShell from "../../../components/AdminShell";
 import { Badge } from "@/app/components/ui/badge";
 import { Button } from "@/app/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/app/components/ui/card";
@@ -85,27 +86,26 @@ export function AdminInterviewsPage() {
   }, [selected?.id]);
 
   return (
-    <div className="min-h-screen bg-slate-50">
-      <div className="mx-auto grid max-w-7xl gap-5 px-4 py-8 sm:px-6 lg:grid-cols-[360px_minmax(0,1fr)]">
+    <AdminShell
+      active="interviews"
+      breadcrumb="면접 모니터링"
+      title="면접 세션 관리"
+      icon={MessageSquare}
+      desc="사용자 면접 세션과 답변·리포트, 학습 파이프라인, AI 실패를 모니터링합니다."
+      actions={
+        <div className="flex gap-2">
+          <Button asChild variant="outline" size="sm">
+            <Link to="/admin/interview/knowledge"><BookMarked className="size-4" /> RAG 지식</Link>
+          </Button>
+          <Button variant="outline" onClick={() => void loadRows()} disabled={loading}>
+            <RefreshCw className={`size-4 ${loading ? "animate-spin" : ""}`} />
+          </Button>
+        </div>
+      }
+    >
+      <div className="grid gap-5 lg:grid-cols-[360px_minmax(0,1fr)]">
         {/* 좌: 목록 */}
         <section className="space-y-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <Badge className="mb-2 bg-slate-900 text-white">D 관리자</Badge>
-              <h1 className="flex items-center gap-2 text-2xl font-bold text-slate-950">
-                <MessageSquare className="size-6 text-blue-600" />
-                면접 세션 관리
-              </h1>
-            </div>
-            <div className="flex gap-2">
-              <Button asChild variant="outline" size="sm">
-                <Link to="/admin/interview/knowledge"><BookMarked className="size-4" /> RAG 지식</Link>
-              </Button>
-              <Button variant="outline" onClick={() => void loadRows()} disabled={loading}>
-                <RefreshCw className={`size-4 ${loading ? "animate-spin" : ""}`} />
-              </Button>
-            </div>
-          </div>
 
           <Card className="border-slate-200 bg-white">
             <CardContent className="space-y-3 p-4">
@@ -275,7 +275,7 @@ export function AdminInterviewsPage() {
           )}
         </section>
       </div>
-    </div>
+    </AdminShell>
   );
 }
 
