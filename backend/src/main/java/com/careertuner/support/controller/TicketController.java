@@ -14,7 +14,9 @@ import org.springframework.web.bind.annotation.RestController;
 import com.careertuner.common.security.AuthUser;
 import com.careertuner.common.web.ApiResponse;
 import com.careertuner.support.dto.CreateTicketRequest;
+import com.careertuner.support.dto.TicketMessageRequest;
 import com.careertuner.support.dto.TicketResponse;
+import com.careertuner.support.dto.TicketThreadResponse;
 import com.careertuner.support.service.TicketService;
 
 import lombok.RequiredArgsConstructor;
@@ -44,5 +46,20 @@ public class TicketController {
             @PathVariable Long id,
             @AuthenticationPrincipal AuthUser authUser) {
         return ApiResponse.ok(ticketService.getTicket(id, authUser.id()));
+    }
+
+    @GetMapping("/{id}/messages")
+    public ApiResponse<TicketThreadResponse> getThread(
+            @PathVariable Long id,
+            @AuthenticationPrincipal AuthUser authUser) {
+        return ApiResponse.ok(ticketService.getThread(id, authUser.id()));
+    }
+
+    @PostMapping("/{id}/messages")
+    public ApiResponse<TicketThreadResponse> addMessage(
+            @PathVariable Long id,
+            @Validated @RequestBody TicketMessageRequest request,
+            @AuthenticationPrincipal AuthUser authUser) {
+        return ApiResponse.ok(ticketService.addUserMessage(id, authUser.id(), request.content()));
     }
 }

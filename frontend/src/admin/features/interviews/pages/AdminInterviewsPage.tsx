@@ -11,9 +11,9 @@ import {
   getScoreColor,
   type InterviewReport,
 } from "@/features/interview/types/interview";
-import { getAdminInterviewSessionDetail, getAdminInterviewSessions } from "../api";
+import { getAdminInterviewAiFailures, getAdminInterviewSessionDetail, getAdminInterviewSessions } from "../api";
 import { TrainingPipelineCard } from "../components/TrainingPipelineCard";
-import type { AdminInterviewSessionDetail, AdminInterviewSessionRow } from "../types";
+import type { AdminInterviewAiFailureRow, AdminInterviewSessionDetail, AdminInterviewSessionRow } from "../types";
 
 function formatDateTime(value: string | null): string {
   if (!value) return "-";
@@ -177,6 +177,7 @@ export function AdminInterviewsPage() {
         {/* 우: 상세 */}
         <section className="min-w-0 space-y-4">
           <TrainingPipelineCard />
+          <AiFailuresCard />
           {!detail ? (
             <Card className="border-slate-200 bg-white">
               <CardContent className="p-8 text-center text-sm text-slate-500">면접 세션을 선택하세요.</CardContent>
@@ -278,5 +279,57 @@ function Info({ label, value }: { label: string; value: string }) {
       <div className="text-xs font-semibold text-slate-500">{label}</div>
       <div className="mt-1 truncate text-sm font-bold text-slate-900">{value}</div>
     </div>
+  );
+}
+
+/** 면접 AI 기능 실패 모니터링 — GET /api/admin/interview/ai-failures. */
+function AiFailuresCard() {
+  const [rows, setRows] = useState<AdminInterviewAiFailureRow[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  const load = async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      setRows(await getAdminInterviewAiFailures(50));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "AI 실패 이력을 불러오지 못했습니다.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    void load();
+  }, []);
+
+  return (
+    <Card className="border-slate-200 bg-white">
+      <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+        <CardTitle className="text-base">면접 AI 실패 이력</CardTitle>
+        <Button variant="outline" size="sm" onClick={() => void load()} disabled={loading}>
+          <RefreshCw className={`size-4 ${loading ? "animate-spin" : ""}`} />
+        </Button>
+      </CardHeader>
+      <CardContent className="space-y-2">
+        {error && <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div>}
+        {!error && rows.length === 0 && !loading && (
+          <div className="rounded-lg bg-slate-50 p-4 text-center text-sm text-slate-400">최근 AI 실패가 없습니다.</div>
+        )}
+        {rows.map((r) => (
+          <div key={r.id} className="rounded-lg border border-red-100 bg-red-50/40 p-3 text-sm">
+            <div className="flex items-center justify-between gap-2">
+              <span className="font-semibold text-red-800">{r.featureType}</span>
+              <span className="shrink-0 text-xs text-slate-400">{formatDateTime(r.createdAt)}</span>
+            </div>
+            <div className="mt-0.5 truncate text-xs text-slate-500">
+              {r.userEmail}{r.companyName ? ` · ${r.companyName}` : ""}{r.jobTitle ? ` · ${r.jobTitle}` : ""}
+            </div>
+            {r.errorMessage && <div className="mt-1 line-clamp-2 text-xs text-red-600">{r.errorMessage}</div>}
+          </div>
+        ))}
+      </CardContent>
+    </Card>
   );
 }

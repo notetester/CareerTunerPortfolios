@@ -10,7 +10,8 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/app/components/ui/select";
 import { getAccessToken } from "@/app/lib/tokenStore";
-import { CONTACT_CATEGORIES, type TicketStatus } from "../types/support";
+import { CONTACT_CATEGORIES, type SupportTicket, type TicketStatus, type TicketThread } from "../types/support";
+import { addTicketMessage, getTicketThread } from "../api/supportApi";
 import { useSupportStore } from "../hooks/useSupportStore";
 import "../styles/support.css";
 
@@ -243,34 +244,124 @@ export function ContactPage() {
           )}
           <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
             {myTickets.map((t) => (
-              <div key={t.id} style={{ border: "1px solid var(--border)", borderRadius: 12, padding: 14 }}>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
-                  <span style={{ fontWeight: 600 }}>{t.subject}</span>
-                  <span
-                    style={{
-                      fontSize: 12, fontWeight: 600, padding: "2px 10px", borderRadius: 999, whiteSpace: "nowrap",
-                      background: t.reply ? "var(--primary)" : "var(--muted)",
-                      color: t.reply ? "var(--primary-foreground)" : "var(--muted-foreground)",
-                    }}
-                  >
-                    {TICKET_STATUS_LABEL[t.status] ?? t.status}
-                  </span>
-                </div>
-                <div style={{ fontSize: 12, color: "var(--muted-foreground)", marginTop: 4 }}>
-                  접수번호 CT-{t.id} · {fmtDate(t.createdAt)}
-                </div>
-                {t.reply && (
-                  <div style={{ marginTop: 10, padding: 10, borderRadius: 8, background: "var(--muted)" }}>
-                    <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 4 }}>
-                      답변{t.repliedAt ? ` · ${fmtDate(t.repliedAt)}` : ""}
-                    </div>
-                    <div style={{ fontSize: 14, whiteSpace: "pre-wrap" }}>{t.reply}</div>
-                  </div>
-                )}
-              </div>
+              <MyTicketItem key={t.id} ticket={t} onChanged={() => void fetchMyTickets()} />
             ))}
           </div>
         </section>
+      )}
+    </div>
+  );
+}
+
+/** 내 문의 한 건 — 펼치면 전체 대화(원문+답변+추가문의)를 보여주고 추가 문의를 남길 수 있다. */
+function MyTicketItem({ ticket, onChanged }: { ticket: SupportTicket; onChanged: () => void }) {
+  const [open, setOpen] = useState(false);
+  const [thread, setThread] = useState<TicketThread | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [reply, setReply] = useState("");
+  const [sending, setSending] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const toggle = async () => {
+    const next = !open;
+    setOpen(next);
+    if (next && !thread) {
+      setLoading(true);
+      try {
+        setThread(await getTicketThread(ticket.id));
+      } catch {
+        setError("대화를 불러오지 못했습니다.");
+      } finally {
+        setLoading(false);
+      }
+    }
+  };
+
+  const send = async () => {
+    const content = reply.trim();
+    if (!content) return;
+    setSending(true);
+    setError(null);
+    try {
+      setThread(await addTicketMessage(ticket.id, content));
+      setReply("");
+      onChanged();
+    } catch {
+      setError("추가 문의 전송에 실패했습니다.");
+    } finally {
+      setSending(false);
+    }
+  };
+
+  const status = thread?.status ?? ticket.status;
+
+  return (
+    <div style={{ border: "1px solid var(--border)", borderRadius: 12, padding: 14 }}>
+      <button
+        type="button"
+        onClick={() => void toggle()}
+        style={{ display: "flex", width: "100%", justifyContent: "space-between", alignItems: "center", gap: 8, background: "none", border: "none", padding: 0, cursor: "pointer", textAlign: "left" }}
+      >
+        <span style={{ fontWeight: 600 }}>{ticket.subject}</span>
+        <span
+          style={{
+            fontSize: 12, fontWeight: 600, padding: "2px 10px", borderRadius: 999, whiteSpace: "nowrap",
+            background: status === "ANSWERED" ? "var(--primary)" : "var(--muted)",
+            color: status === "ANSWERED" ? "var(--primary-foreground)" : "var(--muted-foreground)",
+          }}
+        >
+          {TICKET_STATUS_LABEL[status] ?? status}
+        </span>
+      </button>
+      <div style={{ fontSize: 12, color: "var(--muted-foreground)", marginTop: 4 }}>
+        접수번호 CT-{ticket.id} · {fmtDate(ticket.createdAt)} · {open ? "접기" : "펼쳐서 대화 보기"}
+      </div>
+
+      {open && (
+        <div style={{ marginTop: 12 }}>
+          {loading && <p style={{ fontSize: 13, color: "var(--muted-foreground)" }}>대화를 불러오는 중…</p>}
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            {thread?.messages.map((m) => (
+              <div
+                key={m.id}
+                style={{
+                  alignSelf: m.senderType === "ADMIN" ? "flex-start" : "flex-end",
+                  maxWidth: "85%",
+                  padding: 10,
+                  borderRadius: 10,
+                  background: m.senderType === "ADMIN" ? "var(--muted)" : "var(--primary)",
+                  color: m.senderType === "ADMIN" ? "inherit" : "var(--primary-foreground)",
+                }}
+              >
+                <div style={{ fontSize: 11, fontWeight: 600, opacity: 0.8, marginBottom: 2 }}>
+                  {m.senderType === "ADMIN" ? "고객센터" : "나"} · {fmtDate(m.createdAt)}
+                </div>
+                <div style={{ fontSize: 14, whiteSpace: "pre-wrap" }}>{m.content}</div>
+              </div>
+            ))}
+          </div>
+
+          <div style={{ marginTop: 10 }}>
+            <textarea
+              value={reply}
+              onChange={(e) => setReply(e.target.value.slice(0, 2000))}
+              placeholder="추가로 문의할 내용을 입력하세요"
+              style={{ width: "100%", minHeight: 64, borderRadius: 8, border: "1px solid var(--border)", padding: 8, fontSize: 14, resize: "vertical" }}
+            />
+            {error && <p style={{ fontSize: 12, color: "var(--destructive)", marginTop: 4 }}>{error}</p>}
+            <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 6 }}>
+              <button
+                type="button"
+                onClick={() => void send()}
+                disabled={sending || !reply.trim()}
+                className="av-btn av-btn--ink"
+                style={{ opacity: sending || !reply.trim() ? 0.6 : 1 }}
+              >
+                {sending ? "전송 중…" : "추가 문의 보내기"}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

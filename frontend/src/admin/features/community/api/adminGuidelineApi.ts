@@ -48,6 +48,11 @@ export function getGuidelines(): Promise<AdminGuidelineResponse[]> {
   return api<AdminGuidelineResponse[]>("/admin/guidelines");
 }
 
+/** 현재 사용자 커뮤니티에 적용 중인 게시본 가이드라인. 미게시 시 null. */
+export function getPublishedGuideline(): Promise<AdminGuidelineResponse | null> {
+  return api<AdminGuidelineResponse | null>("/admin/guidelines/published").then((g) => g ?? null);
+}
+
 export function getGuideline(id: number): Promise<AdminGuidelineResponse> {
   return api<AdminGuidelineResponse>(`/admin/guidelines/${id}`);
 }

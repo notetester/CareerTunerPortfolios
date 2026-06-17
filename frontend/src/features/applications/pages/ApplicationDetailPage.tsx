@@ -17,6 +17,7 @@ import { useAuth } from "@/app/auth/AuthContext";
 import { Button } from "@/app/components/ui/button";
 import { Card, CardContent } from "@/app/components/ui/card";
 import { deleteApplicationCase, updateApplicationCase } from "../api/applicationCasesApi";
+import { getApplicationCaseAnalysisOverview } from "../api/analysisApi";
 import { ApplicationOverviewPanel } from "../components/ApplicationOverviewPanel";
 import { ApplicationExtractionBadge } from "../components/ApplicationExtractionBadge";
 import { ApplicationStatusBadge } from "../components/ApplicationStatusBadge";
@@ -429,6 +430,7 @@ export function ApplicationDetailPage() {
                     onRetryExtraction={retryExtraction}
                     onDelete={handleDelete}
                   />
+                  <AnalysisSummaryCard applicationCaseId={id} onGoFit={() => navigate(detailPath(id, "fit"))} />
                   <Card className="border-slate-200 bg-white">
                     <CardContent className="grid gap-3 p-4 md:grid-cols-3">
                       <button
@@ -550,5 +552,59 @@ export function ApplicationDetailPage() {
         </main>
       </div>
     </div>
+  );
+}
+
+/** 지원 건 분석 종합 — GET /application-cases/{id}/analysis 로 공고/적합도 분석 완료 여부를 한눈에 보여준다. */
+function AnalysisSummaryCard({ applicationCaseId, onGoFit }: { applicationCaseId: number; onGoFit: () => void }) {
+  const [jobDone, setJobDone] = useState<boolean | null>(null);
+  const [fitDone, setFitDone] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    let ignore = false;
+    getApplicationCaseAnalysisOverview(applicationCaseId)
+      .then((data) => {
+        if (ignore) return;
+        setJobDone(Boolean(data.jobAnalysis));
+        setFitDone(Boolean(data.fitAnalysis));
+      })
+      .catch(() => {
+        if (ignore) return;
+        setJobDone(false);
+        setFitDone(false);
+      });
+    return () => { ignore = true; };
+  }, [applicationCaseId]);
+
+  const cell = (label: string, done: boolean | null, icon: typeof Target) => {
+    const Icon = icon;
+    return (
+      <div className="flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm">
+        <Icon className="size-4 text-slate-500" />
+        <span className="font-semibold text-slate-800">{label}</span>
+        <span className={`ml-auto rounded-full px-2 py-0.5 text-[11px] font-semibold ${
+          done == null ? "bg-slate-100 text-slate-500" : done ? "bg-green-100 text-green-700" : "bg-slate-100 text-slate-500"
+        }`}>
+          {done == null ? "확인 중" : done ? "완료" : "미완료"}
+        </span>
+      </div>
+    );
+  };
+
+  return (
+    <Card className="border-slate-200 bg-white">
+      <CardContent className="space-y-2 p-4">
+        <div className="flex items-center justify-between">
+          <div className="text-sm font-semibold text-slate-700">AI 분석 종합</div>
+          <button type="button" className="text-xs font-semibold text-blue-600 hover:text-blue-700" onClick={onGoFit}>
+            적합도 보기
+          </button>
+        </div>
+        <div className="grid gap-2 sm:grid-cols-2">
+          {cell("공고 분석", jobDone, BarChart3)}
+          {cell("적합도 분석", fitDone, Target)}
+        </div>
+      </CardContent>
+    </Card>
   );
 }

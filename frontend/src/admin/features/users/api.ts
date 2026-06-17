@@ -1,5 +1,10 @@
 import { api } from "@/app/lib/api";
-import type { AdminUserDetail, AdminUserRow, AdminUserStatus } from "./types";
+import type {
+  AdminUserDetail,
+  AdminUserLoginHistoryRow,
+  AdminUserRow,
+  AdminUserStatus,
+} from "./types";
 
 export function getAdminUsers(params: {
   keyword?: string;
@@ -17,6 +22,11 @@ export function getAdminUsers(params: {
 
 export function getAdminUserDetail(id: number): Promise<AdminUserDetail> {
   return api<AdminUserDetail>(`/admin/users/${id}`, { method: "GET" });
+}
+
+/** 전체 로그인 이력(상세에 포함된 요약보다 더 많은 건수)을 별도로 조회한다. */
+export function getAdminUserLoginHistory(id: number, limit = 100): Promise<AdminUserLoginHistoryRow[]> {
+  return api<AdminUserLoginHistoryRow[]>(`/admin/users/${id}/login-history?limit=${limit}`, { method: "GET" });
 }
 
 export function updateAdminUserStatus(
