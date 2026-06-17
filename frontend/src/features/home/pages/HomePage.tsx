@@ -105,12 +105,12 @@ const flowSteps = [
 ];
 
 const specComparisonData = [
-  { skill: "React", status: "보유", grade: "강점", color: "text-green-700 bg-green-100" },
-  { skill: "TypeScript", status: "일부 경험", grade: "보완 필요", color: "text-amber-700 bg-amber-100" },
-  { skill: "AWS", status: "없음", grade: "학습 필요", color: "text-red-700 bg-red-100" },
-  { skill: "Git 협업", status: "보유", grade: "강점", color: "text-green-700 bg-green-100" },
-  { skill: "REST API", status: "보유", grade: "강점", color: "text-green-700 bg-green-100" },
-  { skill: "포트폴리오", status: "부족", grade: "보완 필요", color: "text-amber-700 bg-amber-100" },
+  { skill: "React", status: "보유", grade: "강점", color: "text-green-600 bg-secondary" },
+  { skill: "TypeScript", status: "일부 경험", grade: "보완 필요", color: "text-amber-600 bg-secondary" },
+  { skill: "AWS", status: "없음", grade: "학습 필요", color: "text-red-500 bg-secondary" },
+  { skill: "Git 협업", status: "보유", grade: "강점", color: "text-green-600 bg-secondary" },
+  { skill: "REST API", status: "보유", grade: "강점", color: "text-green-600 bg-secondary" },
+  { skill: "포트폴리오", status: "부족", grade: "보완 필요", color: "text-amber-600 bg-secondary" },
 ];
 
 const communityPosts = [
@@ -765,7 +765,7 @@ export function HomePage() {
                       <div className="font-bold text-white text-sm">카카오페이 · 프론트엔드 개발자</div>
                       <div className="text-xs text-slate-200 mt-0.5">2026-08-01 공고 · React 3년 이상</div>
                     </div>
-                    <Badge className="bg-green-500/20 text-green-300 border-green-500/30">분석 완료</Badge>
+                    <Badge className="bg-secondary text-green-600">분석 완료</Badge>
                   </div>
 
                   {/* Fit score */}
