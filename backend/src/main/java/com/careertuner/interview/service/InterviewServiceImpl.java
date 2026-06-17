@@ -355,13 +355,14 @@ public class InterviewServiceImpl implements InterviewService {
         }
         aiUsageLogService.recordSuccess(userId, session.getApplicationCaseId(), FEATURE_MODEL_ANSWER, generated.usage());
 
-        // 채점 기준으로 재사용하도록 저장한다. model_answer 컬럼 적용 전이면 조용히 건너뛴다(기능은 그대로 동작).
+        // 채점 기준으로 재사용하도록 저장한다(first-writer-wins). model_answer 컬럼 적용 전이면 조용히 건너뛴다.
         try {
             interviewMapper.updateQuestionModelAnswer(questionId, generated.modelAnswer());
         } catch (RuntimeException ignored) {
             // 컬럼 미적용 등 저장 실패가 모범답안 표시를 막지 않는다.
         }
-        return new ModelAnswerResponse(generated.modelAnswer());
+        // 백그라운드 생성과 경쟁할 수 있으므로, 방금 만든 값이 아니라 확정 저장된 값을 돌려준다(표시 = 채점 기준 일치).
+        return new ModelAnswerResponse(resolveStoredModelAnswer(questionId, userId, generated.modelAnswer()));
     }
 
     // ───── 내부 헬퍼 ─────
@@ -415,11 +416,23 @@ public class InterviewServiceImpl implements InterviewService {
             } catch (RuntimeException ignored) {
                 // 컬럼 미적용 등 저장 실패는 채점을 막지 않는다.
             }
-            return generated.modelAnswer();
+            // 백그라운드 일괄 생성과 경쟁할 수 있으므로, 확정 저장된 모범답안을 채점 기준으로 쓴다(표시값과 동일 보장).
+            return resolveStoredModelAnswer(question.getId(), userId, generated.modelAnswer());
         } catch (BusinessException ex) {
             aiUsageLogService.recordFailure(userId, session.getApplicationCaseId(), FEATURE_MODEL_ANSWER, ex.getMessage());
             return null;
         }
+    }
+
+    /**
+     * 저장된(확정) 모범답안을 다시 읽어 반환한다.
+     * updateQuestionModelAnswer 가 first-writer-wins 라, 백그라운드 일괄 생성과 경쟁해도
+     * 여기서 읽은 값(=실제 저장값)이 표시·복기와 동일하다. 저장값이 없으면 방금 생성한 값으로 폴백한다.
+     */
+    private String resolveStoredModelAnswer(Long questionId, Long userId, String fallback) {
+        InterviewQuestion fresh = interviewMapper.findQuestionByIdAndUserId(questionId, userId);
+        String stored = fresh == null ? null : fresh.getModelAnswer();
+        return (stored != null && !stored.isBlank()) ? stored : fallback;
     }
 
     private InterviewSession requireSession(Long userId, Long sessionId) {
