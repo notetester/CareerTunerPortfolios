@@ -63,6 +63,15 @@ def main():
     target = labels[TARGET_KEY]
     transcription = load_pickle(args.transcription) if args.transcription else {}
 
+    # video_dir 재귀로 mp4 파일명 → 전체경로 인덱스.
+    # Kaggle 미러는 train-N/training80_XX/ 중첩 구조라 평면 join 으론 못 찾는다.
+    video_index = {}
+    for root, _, files in os.walk(args.video_dir):
+        for fn in files:
+            if fn.lower().endswith(".mp4"):
+                video_index[fn] = os.path.join(root, fn)
+    print(f"mp4 {len(video_index)}개 인덱싱 ({args.video_dir})")
+
     os.makedirs(os.path.dirname(os.path.abspath(args.out)), exist_ok=True)
     fieldnames = ["video"] + VOICE_FEATURE_KEYS + [TARGET_KEY]
     written, skipped = 0, 0
@@ -72,8 +81,9 @@ def main():
         for name in target:
             if args.limit and written >= args.limit:
                 break
-            mp4 = os.path.join(args.video_dir, name)
-            if not os.path.exists(mp4):
+            # annotation 키가 확장자 없이 올 수도 있어 ".mp4" 보정까지 시도.
+            mp4 = video_index.get(name) or video_index.get(f"{name}.mp4")
+            if not mp4:
                 skipped += 1
                 continue
             wav = None
