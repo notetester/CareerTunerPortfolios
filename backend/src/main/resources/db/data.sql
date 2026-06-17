@@ -125,10 +125,10 @@ INSERT INTO faq (category, question, answer, sort_order, is_published, admin_id)
  WHERE a.email = 'admin@careertuner.dev'
    AND NOT EXISTS (SELECT 1 FROM faq f WHERE f.question = '비밀번호를 잊어버리면 어떻게 하나요?');
 INSERT INTO faq (category, question, answer, sort_order, is_published, admin_id)
- SELECT 'payment', '크레딧은 언제 차감되나요?', '사용자가 명시적으로 AI 재분석이나 생성 작업을 실행할 때 기능별 정책에 따라 차감됩니다.', 3, 1, a.id
+ SELECT 'payment', 'AI 사용권과 크레딧은 언제 차감되나요?', 'AI 기능 사용 시 구독 사용권을 먼저 차감하고, 사용권이 부족하며 정책이 허용하는 경우에만 크레딧으로 차감됩니다.', 3, 1, a.id
  FROM users a
  WHERE a.email = 'admin@careertuner.dev'
-   AND NOT EXISTS (SELECT 1 FROM faq f WHERE f.question = '크레딧은 언제 차감되나요?');
+   AND NOT EXISTS (SELECT 1 FROM faq f WHERE f.question = 'AI 사용권과 크레딧은 언제 차감되나요?');
 INSERT INTO faq (category, question, answer, sort_order, is_published, admin_id)
  SELECT 'interview', '면접 질문은 지원 건과 연결되나요?', '면접 세션은 지원 건을 선택해 생성하며, 해당 공고와 분석 결과를 기반으로 질문을 준비합니다.', 4, 1, a.id
  FROM users a
