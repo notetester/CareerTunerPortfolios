@@ -287,6 +287,16 @@
   --color-indigo-500: var(--primary);
   --color-indigo-600: var(--primary);
   --color-indigo-700: var(--accent-2);
+
+  /* 상태색 → 테마 토큰 (다크에서 카드/뱃지 자동 대응, semantic 유지). -50/100/200=틴트 배경, 500~900=텍스트/아이콘 */
+  --color-amber-50: var(--warning-50);  --color-amber-100: var(--warning-50);  --color-amber-200: var(--warning-50);
+  --color-amber-500: var(--warning);    --color-amber-600: var(--warning);     --color-amber-700: var(--warning);   --color-amber-800: var(--warning);  --color-amber-900: var(--warning);
+  --color-yellow-50: var(--warning-50); --color-yellow-100: var(--warning-50); --color-yellow-600: var(--warning); --color-yellow-700: var(--warning); --color-yellow-800: var(--warning);
+  --color-orange-50: var(--warning-50); --color-orange-100: var(--warning-50); --color-orange-500: var(--warning); --color-orange-600: var(--warning); --color-orange-700: var(--warning);
+  --color-green-50: var(--success-50);  --color-green-100: var(--success-50);  --color-green-200: var(--success-50); --color-green-600: var(--success);  --color-green-700: var(--success);  --color-green-800: var(--success);
+  --color-emerald-50: var(--success-50);--color-emerald-100: var(--success-50);--color-emerald-600: var(--success); --color-emerald-700: var(--success);
+  --color-red-50: var(--danger-50);     --color-red-100: var(--danger-50);     --color-red-200: var(--danger-50);  --color-red-600: var(--destructive); --color-red-700: var(--destructive); --color-red-800: var(--destructive);
+  --color-rose-50: var(--danger-50);    --color-rose-100: var(--danger-50);    --color-rose-600: var(--destructive); --color-rose-700: var(--destructive);
 }
 
 @layer base {

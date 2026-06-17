@@ -329,14 +329,14 @@ function MemberHome({ summary, loading, error, fallbackName, onRetry, onSummaryR
             </div>
 
             <div className="mt-6 grid sm:grid-cols-[220px_1fr] gap-5">
-              <div className="rounded-xl bg-foreground text-background p-5">
-                <div className="text-sm text-slate-300">준비도</div>
+              <div className="rounded-xl bg-card border border-border shadow-[var(--shadow-card)] p-5">
+                <div className="text-sm text-muted-foreground">준비도</div>
                 <div className="mt-2 flex items-end gap-2">
-                  <span className="text-5xl font-black">{summary?.focus.readiness ?? 0}</span>
-                  <span className="pb-2 text-slate-300">%</span>
+                  <span className="text-5xl font-black text-primary">{summary?.focus.readiness ?? 0}</span>
+                  <span className="pb-2 text-muted-foreground">%</span>
                 </div>
                 <Progress value={summary?.focus.readiness ?? 0} className="mt-4 h-2 bg-secondary" />
-                <div className="mt-4 text-xs text-slate-300 leading-5">
+                <div className="mt-4 text-xs text-muted-foreground leading-5">
                   {summary?.focus.headline ?? "분석 가능한 지원 건이 필요합니다."}
                 </div>
               </div>
@@ -935,7 +935,7 @@ export function HomePage() {
           <div className="bg-card rounded-2xl shadow-2xl border border-slate-200 overflow-hidden">
             <div className="flex h-[480px]">
               {/* Left sidebar */}
-              <div className="w-56 bg-foreground text-background flex-shrink-0 flex flex-col">
+              <div className="w-56 bg-secondary text-foreground flex-shrink-0 flex flex-col">
                 <div className="p-4 border-b border-slate-700">
                   <div className="text-xs text-slate-400 font-semibold uppercase tracking-wide mb-3">지원 건 목록</div>
                   {[
@@ -944,7 +944,7 @@ export function HomePage() {
                     { co: "삼성SDS", job: "IT 솔루션", active: false, score: 65 },
                     { co: "라인", job: "풀스택 개발", active: false, score: 44 },
                   ].map((item) => (
-                    <div key={item.co} className={`mb-2 p-2.5 rounded-lg cursor-pointer transition-colors ${item.active ? "bg-blue-600" : "hover:bg-foreground/90"}`}>
+                    <div key={item.co} className={`mb-2 p-2.5 rounded-lg cursor-pointer transition-colors ${item.active ? "bg-primary text-primary-foreground" : "hover:bg-accent"}`}>
                       <div className="text-xs font-semibold">{item.co}</div>
                       <div className="text-[10px] text-slate-400">{item.job}</div>
                       <div className="text-[10px] mt-1 text-blue-300">적합도 {item.score}점</div>
