@@ -46,14 +46,14 @@ const PLAN_EXTRA: Record<string, string[]> = {
 const HIGHLIGHT_CODE = "PRO";
 
 const creditFeatures = [
-  { feature: "공고문 분석", credit: 1, icon: "📄" },
-  { feature: "기업 현황 조사", credit: 2, icon: "🏢" },
-  { feature: "예상 질문 생성", credit: 1, icon: "❓" },
-  { feature: "텍스트 모의면접", credit: 2, icon: "💬" },
-  { feature: "음성 모의면접", credit: 3, icon: "🎤" },
-  { feature: "영상/자세 분석 면접", credit: 5, icon: "📹" },
-  { feature: "자기소개서 첨삭", credit: 2, icon: "✍️" },
-  { feature: "전체 전략 리포트", credit: 3, icon: "📊" },
+  { feature: "공고문 분석", credit: 1, icon: "" },
+  { feature: "기업 현황 조사", credit: 2, icon: "" },
+  { feature: "예상 질문 생성", credit: 1, icon: "" },
+  { feature: "텍스트 모의면접", credit: 2, icon: "" },
+  { feature: "음성 모의면접", credit: 3, icon: "" },
+  { feature: "영상/자세 분석 면접", credit: 5, icon: "" },
+  { feature: "자기소개서 첨삭", credit: 2, icon: "" },
+  { feature: "전체 전략 리포트", credit: 3, icon: "" },
 ];
 
 const won = (n: number) => `${n.toLocaleString("ko-KR")}원`;

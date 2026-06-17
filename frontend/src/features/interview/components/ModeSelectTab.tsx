@@ -271,7 +271,7 @@ export function ModeSelectTab({
                         )}
                         {s.avgVoiceScore != null && (
                           <span className="rounded bg-emerald-50 px-1.5 py-0.5 font-semibold text-emerald-600">
-                            🎤 음성 {s.avgVoiceScore}
+                            음성 {s.avgVoiceScore}
                           </span>
                         )}
                       </div>
