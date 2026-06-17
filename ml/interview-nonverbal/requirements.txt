@@ -1,0 +1,8 @@
+numpy
+soundfile
+lightgbm
+scikit-learn
+fastapi
+uvicorn
+# mediapipe   # 2026-06-19 이후 영상 피처 추가 시
+# datasets     # ChaLearn HF 미러 다운로드 시
