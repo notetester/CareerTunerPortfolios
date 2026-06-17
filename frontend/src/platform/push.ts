@@ -7,7 +7,12 @@
 import { api } from "@/app/lib/api";
 import { isNativeApp, nativePlugin } from "./capacitor";
 
-const VAPID_PUBLIC_KEY = (import.meta.env.VITE_VAPID_PUBLIC_KEY as string | undefined) ?? "";
+// 개발용 기본 VAPID 공개키(비밀 아님) — 백엔드 careertuner.push.vapid.public-key 기본값과 반드시 동일.
+// 운영/배포는 VITE_VAPID_PUBLIC_KEY 로 교체하면 코드 변경 없이 적용된다(.env.example 참고).
+const DEV_VAPID_PUBLIC_KEY =
+  "BIHnlq45n0TUTYx1XCkGjMpap8v_GHYBKqUjrx9O3npe7HL2Nz1TU28u0Kh17q4QjP3w8ZXGJn1RIRQ25SR5Elk";
+const VAPID_PUBLIC_KEY =
+  (import.meta.env.VITE_VAPID_PUBLIC_KEY as string | undefined) || DEV_VAPID_PUBLIC_KEY;
 
 export type PushRegisterResult =
   | "subscribed"        // 백엔드에 기기 등록 완료
