@@ -171,7 +171,13 @@ function QuestionItem({
           </p>
         )}
 
-        {result && (
+        {submitting && (
+          <div className="flex items-center gap-2 rounded-lg bg-slate-50 p-3 text-sm text-slate-500">
+            <Loader2 className="size-4 animate-spin text-blue-500" /> AI가 답변을 채점·검증하고 있어요 · 보통 5~10초
+          </div>
+        )}
+
+        {!submitting && result && (
           <div className="space-y-3 rounded-lg bg-slate-50 p-3">
             {result.score !== null && (
               <div className="text-sm font-bold">
