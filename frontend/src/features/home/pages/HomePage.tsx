@@ -407,7 +407,7 @@ function MemberHome({ summary, loading, error, fallbackName, onRetry, onSummaryR
           <Card className="border border-slate-200 bg-card shadow-sm">
             <CardHeader className="pb-3">
               <CardTitle className="text-base flex items-center gap-2">
-                <Flame className="size-4 text-orange-500" />
+                <Flame className="size-4 text-muted-foreground" />
                 오늘의 우선순위
               </CardTitle>
             </CardHeader>
