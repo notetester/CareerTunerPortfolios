@@ -1,23 +1,93 @@
 """
-비언어 추론 FastAPI 서버 (ADR-006: 서버 Python 추론).  (TODO: 2026-06-19 연결)
+비언어 추론 FastAPI 서버 (ADR-006: 서버 Python 추론).
 
-음성/영상 원본 업로드 → extract_features 로 피처 추출 → LightGBM → 종합 인상 점수.
-Spring 백엔드가 HTTP 로 호출한다(자체 모델 로컬 서빙, Ollama 와 같은 결).
+음성 원본 업로드 → ffmpeg 16kHz mono 변환 → extract_voice_features → 점수.
+LightGBM 모델(train_nonverbal.py 산출)이 있으면 종합 인상 점수를 모델로,
+없으면 규칙 점수(compute_voice_score)로 폴백한다. Spring 백엔드가 HTTP 로 호출.
 
-엔드포인트(2026-06-19):
-  POST /score/voice   : 오디오 파일 + 트랜스크립트(글자수/필러) + 라이브 latency → 인상 점수
-  GET  /health        : 모델 로드 상태
-
-흐름:
-  1) train_nonverbal.py 산출 model.joblib + 정규화 통계 로드
-  2) 업로드 오디오 16kHz 변환 → extract_voice_features → voice_feature_vector
-  3) 정규화 → LightGBM predict → 0~100 종합 인상 점수 + 항목 점수
-  4) 모델 미로드/실패 시 규칙 점수(voiceAnalysis computeVoiceScore 동등)로 폴백
+실행: python -m uvicorn serve:app --host 127.0.0.1 --port 8500
 """
 
-# from fastapi import FastAPI, UploadFile
-# from extract_features import extract_voice_features, voice_feature_vector
-# import joblib, uvicorn
+import os
+import subprocess
+import tempfile
+
+import numpy as np
+from fastapi import FastAPI, File, Form, UploadFile
+
+from extract_features import (
+    compute_voice_score,
+    count_fillers,
+    extract_voice_features,
+    voice_feature_vector,
+)
+
+app = FastAPI(title="interview-nonverbal")
+
+# LightGBM 모델 (있으면 로드, 없으면 규칙 폴백)
+_MODEL = None
+_MODEL_PATH = os.path.join(os.path.dirname(__file__), "model.joblib")
+try:
+    import joblib
+
+    if os.path.exists(_MODEL_PATH):
+        _MODEL = joblib.load(_MODEL_PATH)
+except Exception:
+    _MODEL = None
+
+
+def _to_wav16k(src_path: str) -> str:
+    """업로드 오디오(webm/wav 등)를 16kHz mono wav 로 변환 (ffmpeg)."""
+    dst = src_path + ".16k.wav"
+    subprocess.run(
+        ["ffmpeg", "-y", "-i", src_path, "-ar", "16000", "-ac", "1", dst],
+        check=True,
+        capture_output=True,
+    )
+    return dst
+
+
+@app.get("/health")
+def health():
+    return {"status": "UP", "model_loaded": _MODEL is not None, "mode": "lightgbm" if _MODEL else "rule"}
+
+
+@app.post("/score/voice")
+async def score_voice(
+    audio: UploadFile = File(...),
+    transcript_chars: int = Form(0),
+    filler_count: int = Form(0),
+    latency_sec: float = Form(-1.0),
+):
+    """음성 → 인상 점수. transcript_chars/filler_count 는 프론트가 트랜스크립트에서 계산해 전달."""
+    latency = None if latency_sec is None or latency_sec < 0 else latency_sec
+    tmp = tempfile.NamedTemporaryFile(delete=False, suffix=os.path.splitext(audio.filename or "")[1] or ".bin")
+    wav = None
+    try:
+        tmp.write(await audio.read())
+        tmp.close()
+        wav = _to_wav16k(tmp.name)
+        metrics = extract_voice_features(wav, transcript_chars, filler_count)
+
+        detail = compute_voice_score(metrics, latency)  # 규칙 점수(항목별) — 항상 제공
+        overall = detail["overall"]
+        source = "rule"
+        if _MODEL is not None:
+            vec = [v if v is not None else np.nan for v in voice_feature_vector(metrics)]
+            pred = _MODEL.predict([vec])[0]
+            overall = int(max(0, min(100, round(float(np.ravel(pred)[0])))))
+            source = "lightgbm"
+        return {"score": overall, "detail": detail, "metrics": metrics, "source": source}
+    finally:
+        for p in (tmp.name, wav):
+            if p and os.path.exists(p):
+                try:
+                    os.remove(p)
+                except OSError:
+                    pass
+
 
 if __name__ == "__main__":
-    print("TODO(2026-06-19): FastAPI 추론 엔드포인트 (POST /score/voice) + 모델 로드 + 폴백")
+    import uvicorn
+
+    uvicorn.run(app, host="127.0.0.1", port=8500)

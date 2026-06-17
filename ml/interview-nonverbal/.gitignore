@@ -8,3 +8,4 @@ data/
 *.pkl
 *.onnx
 *.csv
+*.wav

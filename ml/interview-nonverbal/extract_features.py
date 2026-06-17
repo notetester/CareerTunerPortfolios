@@ -119,6 +119,41 @@ def voice_feature_vector(metrics: dict) -> list:
     return [metrics.get(k) for k in VOICE_FEATURE_KEYS]
 
 
+# ── 규칙 점수 (LightGBM 모델 없을 때 폴백) ─────────────────────
+# voiceAnalysis.ts computeVoiceScore 복제. Inworld(profile) 보정은 제외(자체화로 제거).
+NEUTRAL = 70
+
+
+def _band(v, hard_min, ideal_min, ideal_max, hard_max):
+    if ideal_min <= v <= ideal_max:
+        return 100
+    if v <= hard_min or v >= hard_max:
+        return 20
+    if v < ideal_min:
+        return round(20 + 80 * (v - hard_min) / (ideal_min - hard_min))
+    return round(20 + 80 * (hard_max - v) / (hard_max - ideal_max))
+
+
+def _clamp(v, lo, hi):
+    return max(lo, min(hi, v))
+
+
+def compute_voice_score(m: dict, latency_sec=None) -> dict:
+    """규칙 기반 항목 점수(0~100). voiceAnalysis.ts computeVoiceScore 와 동일 기준."""
+    pace = NEUTRAL if m.get("speechRateSpm") is None else _band(m["speechRateSpm"], 120, 250, 400, 550)
+    fluency = NEUTRAL if m.get("fillerPerMin") is None else _clamp(round(100 - m["fillerPerMin"] * 10), 20, 100)
+    stability = NEUTRAL
+    if m.get("avgPitchHz") and m.get("pitchStdevHz") and m["avgPitchHz"] > 0:
+        stability = _band(m["pitchStdevHz"] / m["avgPitchHz"], 0.02, 0.1, 0.35, 0.7)
+    confidence = NEUTRAL if m.get("avgVolume") is None else _band(m["avgVolume"], 0.005, 0.03, 0.15, 0.4)
+    responsiveness = NEUTRAL if latency_sec is None else _clamp(round(100 - max(0, latency_sec - 1.5) * 10.8), 30, 100)
+    overall = round(pace * 0.2 + fluency * 0.25 + stability * 0.2 + confidence * 0.2 + responsiveness * 0.15)
+    return {
+        "pace": pace, "fluency": fluency, "stability": stability,
+        "confidence": confidence, "responsiveness": responsiveness, "overall": overall,
+    }
+
+
 # ── 영상 피처 (2026-06-19 이후) ────────────────────────────────
 def extract_visual_features(video_path: str) -> dict:
     raise NotImplementedError("영상 피처(MediaPipe 표정·자세)는 2026-06-19 이후 추가 예정")
