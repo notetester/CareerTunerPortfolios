@@ -108,9 +108,12 @@ def extract_voice_features(audio_path: str, user_transcript_chars: int, filler_c
     }
 
 
-# LightGBM 입력 벡터 순서(학습·추론 공통). None 은 결측 → 학습 시 중앙값 대체 권장.
+# LightGBM 입력 벡터 순서(학습·추론 공통). None 은 결측 → LightGBM 기본 결측 분기.
+# 음향 피처만 사용 — speechRate/filler 는 언어 의존이라 학습(ChaLearn 영어)과 추론(한국어)의
+# 분포가 달라 train/serve skew 가 된다(영어 군말 토큰은 0). 이 둘은 규칙 점수(compute_voice_score)
+# 에서 한국어 metrics 로 그대로 평가하고, 모델 입력에서는 뺀다.
 VOICE_FEATURE_KEYS = [
-    "speechRateSpm", "fillerPerMin", "avgPitchHz", "pitchStdevHz", "avgVolume", "speakingSec",
+    "avgPitchHz", "pitchStdevHz", "avgVolume", "speakingSec",
 ]
 
 
