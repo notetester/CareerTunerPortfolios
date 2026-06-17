@@ -4,6 +4,7 @@ import { Badge } from "../../app/components/ui/badge";
 import { Button } from "../../app/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "../../app/components/ui/card";
 import { Progress } from "../../app/components/ui/progress";
+import AdminShell from "../components/AdminShell";
 import {
   AlertTriangle,
   BarChart3,
@@ -137,29 +138,24 @@ export function AdminDashboardPage() {
   });
 
   return (
-    <div className="min-h-screen bg-slate-50">
-      <div className="mx-auto w-full max-w-[1400px] space-y-6 px-4 py-8 sm:px-6">
-        <section className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-          <div>
-            <Badge className="mb-3 bg-slate-900 text-white">Admin Analytics</Badge>
-            <h1 className="flex items-center gap-2 text-2xl font-black text-slate-900">
-              <ShieldCheck className="size-6 text-blue-600" />
-              {currentLabel}
-            </h1>
-            <p className="mt-1 text-sm text-slate-500">
-              회원, 지원 건, 적합도 분석, 면접, AI 사용량을 실제 운영 데이터 기준으로 점검합니다.
-            </p>
-          </div>
-          <div className="flex flex-wrap gap-2">
-            <Button asChild variant="outline">
-              <Link to="/admin/fit-analysis">적합도 분석 관리</Link>
-            </Button>
-            <Button asChild className="bg-gradient-to-r from-blue-600 to-indigo-600">
-              <Link to="/admin">통계 새로 보기</Link>
-            </Button>
-          </div>
-        </section>
-
+    <AdminShell
+      active="dashboard"
+      breadcrumb="분석 대시보드"
+      title={currentLabel}
+      icon={ShieldCheck}
+      desc="회원, 지원 건, 적합도 분석, 면접, AI 사용량을 실제 운영 데이터 기준으로 점검합니다."
+      actions={
+        <>
+          <Button asChild variant="outline">
+            <Link to="/admin/fit-analysis">적합도 분석 관리</Link>
+          </Button>
+          <Button asChild className="bg-gradient-to-r from-blue-600 to-indigo-600">
+            <Link to="/admin">통계 새로 보기</Link>
+          </Button>
+        </>
+      }
+    >
+      <div className="space-y-6">
         {/* C 운영 화면 바로가기. 분석 통계 랜딩에서만 노출(다른 라우트는 이 페이지를 임시 플레이스홀더로 재사용). */}
         {location.pathname === "/admin" && (
           <section className="flex flex-wrap gap-2">
@@ -419,6 +415,6 @@ export function AdminDashboardPage() {
           </>
         )}
       </div>
-    </div>
+    </AdminShell>
   );
 }

@@ -30,10 +30,15 @@ export const useNotificationStore = create<NotificationState>((set, get) => ({
     set({ loading: true, error: null });
     try {
       const notifications = await notificationApi.getNotifications();
-      const unreadCount = await notificationApi.getUnreadCount().catch(() => get().unreadCount);
+      const unreadCount = await notificationApi.getUnreadCount();
       set({ notifications, unreadCount, loading: false });
-    } catch (e) {
-      set({ loading: false, error: (e as Error).message });
+    } catch (error) {
+      set({
+        notifications: [],
+        unreadCount: 0,
+        loading: false,
+        error: error instanceof Error ? error.message : "알림을 불러오지 못했습니다.",
+      });
     }
   },
 
@@ -41,35 +46,28 @@ export const useNotificationStore = create<NotificationState>((set, get) => ({
     try {
       const unreadCount = await notificationApi.getUnreadCount();
       set({ unreadCount });
-    } catch { /* 배지 카운트 실패는 무시 */ }
+    } catch (error) {
+      set({ error: error instanceof Error ? error.message : "미읽음 알림 수를 불러오지 못했습니다." });
+    }
   },
 
   markAsRead: async (id) => {
-    try {
-      await notificationApi.markAsRead(id);
-      set({
-        notifications: get().notifications.map((n) =>
-          n.id === id ? { ...n, isRead: true } : n,
-        ),
-        unreadCount: Math.max(0, get().unreadCount - 1),
-      });
-    } catch (e) {
-      set({ error: (e as Error).message });
-      throw e;
-    }
+    const wasUnread = get().notifications.some((n) => n.id === id && !n.isRead);
+    await notificationApi.markAsRead(id);
+    set({
+      notifications: get().notifications.map((n) =>
+        n.id === id ? { ...n, isRead: true } : n,
+      ),
+      unreadCount: wasUnread ? Math.max(0, get().unreadCount - 1) : get().unreadCount,
+    });
   },
 
   markAllAsRead: async () => {
-    try {
-      await notificationApi.markAllAsRead();
-      set({
-        notifications: get().notifications.map((n) => ({ ...n, isRead: true })),
-        unreadCount: 0,
-      });
-    } catch (e) {
-      set({ error: (e as Error).message });
-      throw e;
-    }
+    await notificationApi.markAllAsRead();
+    set({
+      notifications: get().notifications.map((n) => ({ ...n, isRead: true })),
+      unreadCount: 0,
+    });
   },
 
   setFilter: (filter) => set({ filter }),

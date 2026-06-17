@@ -26,9 +26,15 @@ interface SupportState {
     subject: string;
     content: string;
   }) => Promise<void>;
+
+  /* 내 문의 내역 */
+  myTickets: SupportTicket[];
+  ticketsLoading: boolean;
+  ticketsError: string | null;
+  fetchMyTickets: () => Promise<void>;
 }
 
-export const useSupportStore = create<SupportState>((set) => ({
+export const useSupportStore = create<SupportState>((set, get) => ({
   faqs: [],
   faqLoading: false,
   faqError: null,
@@ -39,14 +45,21 @@ export const useSupportStore = create<SupportState>((set) => ({
   submitting: false,
   submitError: null,
   lastTicket: null,
+  myTickets: [],
+  ticketsLoading: false,
+  ticketsError: null,
 
   fetchFaqs: async (category) => {
     set({ faqLoading: true, faqError: null });
     try {
       const faqs = await supportApi.getFaqs(category);
       set({ faqs, faqLoading: false });
-    } catch (e) {
-      set({ faqLoading: false, faqError: (e as Error).message });
+    } catch (error) {
+      set({
+        faqs: [],
+        faqLoading: false,
+        faqError: error instanceof Error ? error.message : "FAQ를 불러오지 못했습니다.",
+      });
     }
   },
 
@@ -55,17 +68,26 @@ export const useSupportStore = create<SupportState>((set) => ({
     try {
       const notices = await supportApi.getNotices();
       set({ notices, noticeLoading: false });
-    } catch (e) {
-      set({ noticeLoading: false, noticeError: (e as Error).message });
+    } catch (error) {
+      set({
+        notices: [],
+        noticeLoading: false,
+        noticeError: error instanceof Error ? error.message : "공지사항을 불러오지 못했습니다.",
+      });
     }
   },
 
   fetchNoticeDetail: async (id) => {
+    set({ noticeLoading: true, noticeError: null, currentNotice: null });
     try {
       const currentNotice = await supportApi.getNoticeDetail(id);
-      set({ currentNotice: currentNotice ?? null });
-    } catch (e) {
-      set({ noticeError: (e as Error).message });
+      set({ currentNotice: currentNotice ?? null, noticeLoading: false });
+    } catch (error) {
+      set({
+        currentNotice: null,
+        noticeLoading: false,
+        noticeError: error instanceof Error ? error.message : "공지사항을 불러오지 못했습니다.",
+      });
     }
   },
 
@@ -74,9 +96,29 @@ export const useSupportStore = create<SupportState>((set) => ({
     try {
       const lastTicket = await supportApi.createTicket(data);
       set({ lastTicket, submitting: false });
-    } catch (e) {
-      set({ submitting: false, submitError: (e as Error).message });
-      throw e;
+      // 접수 직후 내 문의 내역을 갱신해 새 문의가 바로 보이게 한다.
+      void get().fetchMyTickets();
+    } catch (error) {
+      set({
+        lastTicket: null,
+        submitting: false,
+        submitError: error instanceof Error ? error.message : "문의를 접수하지 못했습니다.",
+      });
+      throw error;
+    }
+  },
+
+  fetchMyTickets: async () => {
+    set({ ticketsLoading: true, ticketsError: null });
+    try {
+      const myTickets = await supportApi.getMyTickets();
+      set({ myTickets, ticketsLoading: false });
+    } catch (error) {
+      set({
+        myTickets: [],
+        ticketsLoading: false,
+        ticketsError: error instanceof Error ? error.message : "문의 내역을 불러오지 못했습니다.",
+      });
     }
   },
 }));

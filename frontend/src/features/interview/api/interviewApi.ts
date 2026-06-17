@@ -1,5 +1,17 @@
 import { api } from "@/app/lib/api";
 import { getAccessToken } from "@/app/lib/tokenStore";
+import { isDataMockActive } from "../tutorial/tutorialStore";
+import {
+  dummyAgentSteps,
+  dummyAnswer,
+  dummyCapabilities,
+  dummyFollowUp,
+  dummyMediaResults,
+  dummyModelAnswer,
+  dummyQuestions,
+  dummyReport,
+  dummySession,
+} from "../tutorial/dummyData";
 import type {
   AvatarSession,
   CreateInterviewSessionRequest,
@@ -22,9 +34,18 @@ import type {
 
 // 백엔드 계약: /api/interview/** , /api/file/**
 // 컨트롤러는 ApiResponse<T> envelope 로 응답하고, api() 래퍼가 data 만 풀어서 돌려준다.
+//
+// 튜토리얼 모드(isDataMockActive)에서는 백엔드/AI 호출 없이 tutorial/dummyData 를 반환한다.
+// 데이터성 탭(질문·복습·리포트)은 이 분기만으로 더미가 채워진다.
+// 음성/아바타(realtime·avatar)는 외부 SDK 연결이라 여기서 막지 않고 탭에서 처리한다(단계 C).
+
+/** 데모/튜토리얼에서 AI 호출처럼 보이도록 더미 응답을 잠깐 지연시킨다. */
+const mockDelay = <T>(value: T, ms = 800): Promise<T> =>
+  new Promise((resolve) => setTimeout(() => resolve(value), ms));
 
 /** 내 면접 세션 목록 (최근 기록). */
 export function listInterviewSessions(): Promise<InterviewSession[]> {
+  if (isDataMockActive()) return Promise.resolve([dummySession]);
   return api<InterviewSession[]>("/interview/sessions", { method: "GET" });
 }
 
@@ -32,6 +53,7 @@ export function listInterviewSessions(): Promise<InterviewSession[]> {
 export function createInterviewSession(
   request: CreateInterviewSessionRequest,
 ): Promise<InterviewSession> {
+  if (isDataMockActive()) return Promise.resolve({ ...dummySession, mode: request.mode });
   return api<InterviewSession>("/interview/sessions", {
     method: "POST",
     body: JSON.stringify(request),
@@ -43,6 +65,7 @@ export function generateExpectedQuestions(
   sessionId: number,
   request: GenerateQuestionsRequest,
 ): Promise<InterviewQuestion[]> {
+  if (isDataMockActive()) return mockDelay(dummyQuestions, 900);
   return api<InterviewQuestion[]>(`/interview/sessions/${sessionId}/generate-questions`, {
     method: "POST",
     body: JSON.stringify(request),
@@ -51,6 +74,7 @@ export function generateExpectedQuestions(
 
 /** 세션의 질문 목록 조회. */
 export function listSessionQuestions(sessionId: number): Promise<InterviewQuestion[]> {
+  if (isDataMockActive()) return Promise.resolve(dummyQuestions);
   return api<InterviewQuestion[]>(`/interview/sessions/${sessionId}/questions`, { method: "GET" });
 }
 
@@ -59,6 +83,7 @@ export function submitAnswer(
   questionId: number,
   request: SubmitAnswerRequest,
 ): Promise<InterviewAnswer> {
+  if (isDataMockActive()) return mockDelay(dummyAnswer(questionId), 500);
   return api<InterviewAnswer>(`/interview/questions/${questionId}/answers`, {
     method: "POST",
     body: JSON.stringify(request),
@@ -67,6 +92,7 @@ export function submitAnswer(
 
 /** 질문에 대한 모범답안 생성(학습용). 답변 제출 전에도 호출 가능. */
 export function getModelAnswer(questionId: number): Promise<{ modelAnswer: string }> {
+  if (isDataMockActive()) return mockDelay({ modelAnswer: dummyModelAnswer }, 700);
   return api<{ modelAnswer: string }>(`/interview/questions/${questionId}/model-answer`, {
     method: "POST",
   });
@@ -77,6 +103,7 @@ export function generateFollowUps(
   questionId: number,
   request: GenerateFollowUpsRequest = {},
 ): Promise<InterviewQuestion[]> {
+  if (isDataMockActive()) return mockDelay([...dummyQuestions, dummyFollowUp], 800);
   return api<InterviewQuestion[]>(`/interview/questions/${questionId}/follow-ups`, {
     method: "POST",
     body: JSON.stringify(request),
@@ -85,21 +112,33 @@ export function generateFollowUps(
 
 /** 세션 진행 상태(다음 질문/종료 여부) 조회. */
 export function getInterviewProgress(sessionId: number): Promise<InterviewProgress> {
+  if (isDataMockActive()) {
+    return Promise.resolve({
+      sessionId,
+      totalQuestions: dummyQuestions.length,
+      answeredQuestions: dummyQuestions.length,
+      finished: true,
+      currentQuestion: null,
+    });
+  }
   return api<InterviewProgress>(`/interview/sessions/${sessionId}/progress`, { method: "GET" });
 }
 
 /** 멀티에이전트 진행 단계 트레이스 조회 (Evaluator/Critic 등). */
 export function getAgentSteps(sessionId: number): Promise<InterviewAgentStep[]> {
+  if (isDataMockActive()) return Promise.resolve(dummyQuestions.flatMap((q) => dummyAgentSteps(q.id)));
   return api<InterviewAgentStep[]>(`/interview/sessions/${sessionId}/agent-steps`, { method: "GET" });
 }
 
 /** 실시간 음성 면접관 세션 발급 (ephemeral key). 프런트는 이 키로 OpenAI Realtime 에 직접 WebRTC 연결. */
 export function createRealtimeSession(sessionId: number): Promise<RealtimeSession> {
+  // 튜토리얼: 실제 WebRTC 연결이라 여기서 막지 않고 탭에서 더미 흐름 처리(단계 C).
   return api<RealtimeSession>(`/interview/sessions/${sessionId}/realtime`, { method: "POST" });
 }
 
 /** 세션 종료 → AI 종합 리포트 생성/조회. */
 export function getInterviewReport(sessionId: number): Promise<InterviewReport> {
+  if (isDataMockActive()) return mockDelay(dummyReport, 700);
   return api<InterviewReport>(`/interview/sessions/${sessionId}/report`, { method: "GET" });
 }
 
@@ -107,6 +146,7 @@ export function getInterviewReport(sessionId: number): Promise<InterviewReport> 
 
 /** 외부 키(Inworld/HeyGen) 보유 여부 — 기능 활성/비활성 사전 판단용. */
 export function getMediaCapabilities(): Promise<MediaCapabilities> {
+  if (isDataMockActive()) return Promise.resolve(dummyCapabilities);
   return api<MediaCapabilities>("/interview/media/capabilities", { method: "GET" });
 }
 
@@ -127,6 +167,7 @@ export function analyzeVoice(
 
 /** 아바타 화상 면접 세션 토큰 발급 (LiveAvatar). 질문 미생성 시 400. */
 export function createAvatarSession(sessionId: number): Promise<AvatarSession> {
+  // 튜토리얼: 실제 LiveAvatar SDK 연결이라 여기서 막지 않고 탭에서 더미 흐름 처리(단계 C).
   return api<AvatarSession>(`/interview/sessions/${sessionId}/avatar-token`, { method: "POST" });
 }
 
@@ -135,6 +176,18 @@ export function saveMediaResult(
   sessionId: number,
   request: SaveMediaAnalysisRequest,
 ): Promise<MediaAnalysis> {
+  if (isDataMockActive()) {
+    return Promise.resolve({
+      id: -990000,
+      interviewSessionId: sessionId,
+      kind: request.kind,
+      transcript: request.transcript,
+      metrics: request.metrics,
+      score: request.score,
+      scoreDetail: request.scoreDetail,
+      createdAt: "2026-06-14T10:10:00",
+    });
+  }
   return api<MediaAnalysis>(`/interview/sessions/${sessionId}/media-results`, {
     method: "POST",
     body: JSON.stringify(request),
@@ -143,6 +196,7 @@ export function saveMediaResult(
 
 /** 세션의 저장된 음성/영상 분석 결과 목록 (최신순). */
 export function listMediaResults(sessionId: number): Promise<MediaAnalysis[]> {
+  if (isDataMockActive()) return Promise.resolve(dummyMediaResults);
   return api<MediaAnalysis[]>(`/interview/sessions/${sessionId}/media-results`, { method: "GET" });
 }
 

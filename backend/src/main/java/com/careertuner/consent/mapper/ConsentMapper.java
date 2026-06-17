@@ -19,5 +19,9 @@ public interface ConsentMapper {
 
     List<ConsentView> findAdminConsents(@Param("keyword") String keyword,
                                         @Param("consentType") String consentType,
+                                        @Param("status") String status,
+                                        @Param("source") String source,
+                                        @Param("from") String from,
+                                        @Param("to") String to,
                                         @Param("limit") int limit);
 }

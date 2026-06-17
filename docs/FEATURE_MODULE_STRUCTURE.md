@@ -3,6 +3,7 @@
 이 문서는 개발자가 실제 폴더와 담당 범위를 어떻게 나눌지 정리한다.
 `PRODUCT_STRUCTURE.md`가 사용자 관점의 지도라면, 이 문서는 코드 소유권과 충돌 방지를 위한 지도다.
 6명 담당자별 기능, AI, DB 분담의 상세 내용은 `TEAM_WORK_DISTRIBUTION.md`를 함께 본다.
+담당별 자체 LLM의 학습·서빙·검증·fallback·산출물 기준은 `planning/담당별_자체LLM_운영안.md`를 따른다.
 
 ## 1. 구조 원칙
 
@@ -341,6 +342,13 @@ correction/service/CorrectionAiService
 community/service/CommunityAiService
 support/service/SupportAiService
 ```
+
+자체 LLM provider도 같은 원칙을 따른다. 공통 `AiClient`는 provider(`oss`, `openai`, `rule`, `mock`, `cache`)와 사용량 로그 규약만 담당하고,
+도메인별 prompt builder, JSON schema validator, fallback 정책은 각 담당 도메인 안에 둔다. 현재 F 커뮤니티 검열의 Ollama client는
+`community/moderation`에 구현되어 있으며, 이를 `ai/common`으로 승격할 때는 8번 공통 파일 규칙을 적용한다.
+
+모델 학습·평가 산출물은 런타임 소스와 분리해 `ml/<domain>` 하위에 둔다. 예: `ml/correction-llm`, `ml/community-llm`.
+대용량 adapter/GGUF 파일은 용량과 라이선스를 확인한 뒤 git LFS 또는 별도 보관소 사용 여부를 팀에서 결정한다.
 
 도메인별 프롬프트와 프롬프트 관리 화면도 같은 원칙을 따른다. 공통 프롬프트 엔진과 타입은
 `ai/prompt`에서 관리하지만, 기능별 프롬프트 내용은 각 담당자의 하위 폴더에 둔다.

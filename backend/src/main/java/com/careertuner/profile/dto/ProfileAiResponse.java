@@ -9,6 +9,11 @@ public record ProfileAiResponse(
         List<String> strengths,
         List<String> gaps,
         List<String> recommendations,
-        int completenessScore
+        int completenessScore,
+        String jobFamily,
+        String jobFamilyLabel,
+        List<ProfileCriterionScoreResponse> criteria,
+        String model,
+        String status
 ) {
 }

@@ -1,6 +1,7 @@
 import { type FormEvent, useState } from "react";
 import { useNavigate } from "react-router";
 import { ShieldCheck } from "lucide-react";
+import { consentTerms, type ConsentTerm } from "../auth/consentTerms";
 import { saveMyConsents } from "../auth/consentApi";
 import { Button } from "../components/ui/button";
 import { Card, CardContent } from "../components/ui/card";
@@ -54,10 +55,10 @@ export function SocialConsentPage() {
           </div>
 
           <form className="space-y-4" onSubmit={submit}>
-            <ConsentRow label="서비스 이용약관 동의" required checked={terms} onChange={setTerms} />
-            <ConsentRow label="개인정보 처리방침 동의" required checked={privacy} onChange={setPrivacy} />
-            <ConsentRow label="AI 데이터 사용 동의" checked={aiData} onChange={setAiData} />
-            <ConsentRow label="마케팅 정보 수신 동의" checked={marketing} onChange={setMarketing} />
+            <ConsentRow term={consentTerms[0]} checked={terms} onChange={setTerms} />
+            <ConsentRow term={consentTerms[1]} checked={privacy} onChange={setPrivacy} />
+            <ConsentRow term={consentTerms[2]} checked={aiData} onChange={setAiData} />
+            <ConsentRow term={consentTerms[3]} checked={marketing} onChange={setMarketing} />
 
             {error && <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div>}
             <Button type="submit" disabled={saving} className="h-11 w-full bg-blue-600 text-white hover:bg-blue-700">
@@ -71,22 +72,33 @@ export function SocialConsentPage() {
 }
 
 function ConsentRow({
-  label,
-  required = false,
+  term,
   checked,
   onChange,
 }: {
-  label: string;
-  required?: boolean;
+  term: ConsentTerm;
   checked: boolean;
   onChange(next: boolean): void;
 }) {
+  const [open, setOpen] = useState(false);
+
   return (
-    <label className="flex items-center justify-between rounded-lg border border-slate-200 p-3 text-sm">
-      <span className="font-medium text-slate-700">
-        {label} {required ? <b className="text-blue-600">(필수)</b> : <span className="text-slate-400">(선택)</span>}
-      </span>
-      <Checkbox checked={checked} onCheckedChange={(value) => onChange(value === true)} />
-    </label>
+    <div className="rounded-lg border border-slate-200 p-3 text-sm">
+      <label className="flex items-center justify-between gap-3">
+        <span className="font-medium text-slate-700">
+          {term.title} <span className="text-xs text-slate-400">{term.version}</span>{" "}
+          {term.required ? <b className="text-blue-600">(필수)</b> : <span className="text-slate-400">(선택)</span>}
+        </span>
+        <Checkbox checked={checked} onCheckedChange={(value) => onChange(value === true)} />
+      </label>
+      <button type="button" className="mt-2 text-xs font-semibold text-blue-600 hover:underline" onClick={() => setOpen((value) => !value)}>
+        {open ? "약관 접기" : "약관 보기"} · 시행일 {term.effectiveDate}
+      </button>
+      {open && (
+        <ul className="mt-2 space-y-1 rounded-md bg-slate-50 p-3 text-xs leading-5 text-slate-600">
+          {term.body.map((line) => <li key={line}>- {line}</li>)}
+        </ul>
+      )}
+    </div>
   );
 }

@@ -7,6 +7,7 @@ import { Badge } from "../components/ui/badge";
 import { Checkbox } from "../components/ui/checkbox";
 import { Input } from "../components/ui/input";
 import { ApiError } from "../lib/api";
+import { checkEmailDuplicate } from "../auth/authApi";
 import { Sparkles, Mail, Lock, Eye, EyeOff, CheckCircle2, ArrowRight, Loader2 } from "lucide-react";
 
 export function LoginPage() {
@@ -24,12 +25,29 @@ export function LoginPage() {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [dormantEmail, setDormantEmail] = useState<string | null>(null);
+  const [emailDuplicate, setEmailDuplicate] = useState(false);
   const navigate = useNavigate();
   const { login, register, socialLogin } = useAuth();
 
   const switchMode = (nextMode: "login" | "signup") => {
     setMode(nextMode);
     setError(null);
+    setEmailDuplicate(false);
+  };
+
+  // 회원가입 시 이메일 입력을 벗어나면 중복 여부를 미리 확인한다(가입 전 즉시 피드백).
+  const handleEmailBlur = async () => {
+    const normalized = email.trim();
+    if (mode !== "signup" || !/.+@.+\..+/.test(normalized)) {
+      setEmailDuplicate(false);
+      return;
+    }
+    try {
+      const { duplicate } = await checkEmailDuplicate(normalized);
+      setEmailDuplicate(duplicate);
+    } catch {
+      setEmailDuplicate(false);
+    }
   };
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
@@ -53,6 +71,10 @@ export function LoginPage() {
       }
       if (!termsAgreed || !privacyAgreed) {
         setError("필수 약관과 개인정보 처리방침에 동의해 주세요.");
+        return;
+      }
+      if (emailDuplicate) {
+        setError("이미 사용 중인 이메일입니다. 다른 이메일을 사용해 주세요.");
         return;
       }
     }
@@ -201,10 +223,14 @@ export function LoginPage() {
                   className="pl-9 h-11"
                   type="email"
                   value={email}
-                  onChange={(event) => setEmail(event.target.value)}
+                  onChange={(event) => { setEmail(event.target.value); setEmailDuplicate(false); }}
+                  onBlur={() => void handleEmailBlur()}
                   autoComplete="email"
                 />
               </div>
+              {mode === "signup" && emailDuplicate && (
+                <p className="-mt-1 text-xs text-red-600">이미 사용 중인 이메일입니다. 로그인하거나 다른 이메일을 사용해 주세요.</p>
+              )}
               <div className="relative">
                 <Lock className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-slate-400" />
                 <Input

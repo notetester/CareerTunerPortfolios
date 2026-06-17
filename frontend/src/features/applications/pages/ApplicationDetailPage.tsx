@@ -7,6 +7,8 @@ import {
   Building2,
   FileText,
   Info,
+  MessageSquare,
+  PenLine,
   Plus,
   RefreshCw,
   Target,
@@ -15,6 +17,7 @@ import { useAuth } from "@/app/auth/AuthContext";
 import { Button } from "@/app/components/ui/button";
 import { Card, CardContent } from "@/app/components/ui/card";
 import { deleteApplicationCase, updateApplicationCase } from "../api/applicationCasesApi";
+import { getApplicationCaseAnalysisOverview } from "../api/analysisApi";
 import { ApplicationOverviewPanel } from "../components/ApplicationOverviewPanel";
 import { ApplicationExtractionBadge } from "../components/ApplicationExtractionBadge";
 import { ApplicationStatusBadge } from "../components/ApplicationStatusBadge";
@@ -427,17 +430,34 @@ export function ApplicationDetailPage() {
                     onRetryExtraction={retryExtraction}
                     onDelete={handleDelete}
                   />
+                  <AnalysisSummaryCard applicationCaseId={id} onGoFit={() => navigate(detailPath(id, "fit"))} />
                   <Card className="border-slate-200 bg-white">
                     <CardContent className="grid gap-3 p-4 md:grid-cols-3">
-                      {[
-                        "적합도 분석 완료 - 위 '적합도' 탭에서 확인",
-                        "예상 질문 / 모의 면접 준비 중 - D 담당",
-                        "첨삭 기록 준비 중 - E 담당",
-                      ].map((item) => (
-                        <div key={item} className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm text-slate-600">
-                          {item}
+                      <button
+                        type="button"
+                        className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-left text-sm text-slate-700 transition-colors hover:border-blue-200 hover:bg-blue-50"
+                        onClick={() => navigate(detailPath(id, "fit"))}
+                      >
+                        <Target className="mb-2 size-4 text-blue-600" />
+                        <div className="font-semibold text-slate-900">적합도 분석</div>
+                        <div className="mt-1 text-xs text-slate-500">공고와 내 스펙 비교 결과 확인</div>
+                      </button>
+                      <button
+                        type="button"
+                        className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-left text-sm text-slate-700 transition-colors hover:border-indigo-200 hover:bg-indigo-50"
+                        onClick={() => navigate("/interview")}
+                      >
+                        <MessageSquare className="mb-2 size-4 text-indigo-600" />
+                        <div className="font-semibold text-slate-900">예상 질문 / 모의 면접</div>
+                        <div className="mt-1 text-xs text-slate-500">면접 화면에서 이 지원 건을 선택해 시작</div>
+                      </button>
+                      <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
+                        <PenLine className="mb-2 size-4" />
+                        <div className="font-semibold">첨삭</div>
+                        <div className="mt-1 text-xs">
+                          첨삭 API 준비 중. 구현 전까지 실행 기능은 비활성화됩니다.
                         </div>
-                      ))}
+                      </div>
                     </CardContent>
                   </Card>
                 </div>
@@ -532,5 +552,59 @@ export function ApplicationDetailPage() {
         </main>
       </div>
     </div>
+  );
+}
+
+/** 지원 건 분석 종합 — GET /application-cases/{id}/analysis 로 공고/적합도 분석 완료 여부를 한눈에 보여준다. */
+function AnalysisSummaryCard({ applicationCaseId, onGoFit }: { applicationCaseId: number; onGoFit: () => void }) {
+  const [jobDone, setJobDone] = useState<boolean | null>(null);
+  const [fitDone, setFitDone] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    let ignore = false;
+    getApplicationCaseAnalysisOverview(applicationCaseId)
+      .then((data) => {
+        if (ignore) return;
+        setJobDone(Boolean(data.jobAnalysis));
+        setFitDone(Boolean(data.fitAnalysis));
+      })
+      .catch(() => {
+        if (ignore) return;
+        setJobDone(false);
+        setFitDone(false);
+      });
+    return () => { ignore = true; };
+  }, [applicationCaseId]);
+
+  const cell = (label: string, done: boolean | null, icon: typeof Target) => {
+    const Icon = icon;
+    return (
+      <div className="flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm">
+        <Icon className="size-4 text-slate-500" />
+        <span className="font-semibold text-slate-800">{label}</span>
+        <span className={`ml-auto rounded-full px-2 py-0.5 text-[11px] font-semibold ${
+          done == null ? "bg-slate-100 text-slate-500" : done ? "bg-green-100 text-green-700" : "bg-slate-100 text-slate-500"
+        }`}>
+          {done == null ? "확인 중" : done ? "완료" : "미완료"}
+        </span>
+      </div>
+    );
+  };
+
+  return (
+    <Card className="border-slate-200 bg-white">
+      <CardContent className="space-y-2 p-4">
+        <div className="flex items-center justify-between">
+          <div className="text-sm font-semibold text-slate-700">AI 분석 종합</div>
+          <button type="button" className="text-xs font-semibold text-blue-600 hover:text-blue-700" onClick={onGoFit}>
+            적합도 보기
+          </button>
+        </div>
+        <div className="grid gap-2 sm:grid-cols-2">
+          {cell("공고 분석", jobDone, BarChart3)}
+          {cell("적합도 분석", fitDone, Target)}
+        </div>
+      </CardContent>
+    </Card>
   );
 }

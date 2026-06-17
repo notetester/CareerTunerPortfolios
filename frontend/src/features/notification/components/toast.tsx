@@ -36,6 +36,8 @@ import {
   UserPlus,
   AlertTriangle,
   FileEdit,
+  Trash2,
+  RotateCcw,
   type LucideIcon,
 } from "lucide-react";
 import type {
@@ -208,6 +210,8 @@ const NOTI_ICON_MAP: Record<NotificationType, LucideIcon> = {
   COMMENT_REPLY: Reply,
   LIKE: Heart,
   POST_HIDDEN: EyeOff,
+  POST_REMOVED: Trash2,
+  POST_RESTORED: RotateCcw,
   POST_SUMMARY_READY: BookOpen,
   NOTICE: Megaphone,
   TICKET_ANSWERED: MessageSquareReply,

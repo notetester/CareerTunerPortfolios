@@ -85,6 +85,16 @@ careertuner:
     # 면접 음성/영상 등 업로드 파일 저장 위치. 큰 영상은 SPRING_SERVLET_MULTIPART_MAX_FILE_SIZE 도 함께 올린다.
     media-dir: ${MEDIA_UPLOAD_DIR:.uploads/media}
     max-file-size-bytes: ${MEDIA_MAX_FILE_SIZE_BYTES:10485760}
+  push:
+    # Web Push(VAPID) 발송 키. 아래 기본값은 개발용(공개키는 프런트 VITE_VAPID_PUBLIC_KEY 와 동일해야 함).
+    # 운영에서는 PUSH_VAPID_* env 로 교체. 키가 있으면 web push 가 실제 발송된다.
+    vapid:
+      subject: ${PUSH_VAPID_SUBJECT:mailto:no-reply@careertuner.local}
+      public-key: ${PUSH_VAPID_PUBLIC_KEY:BIHnlq45n0TUTYx1XCkGjMpap8v_GHYBKqUjrx9O3npe7HL2Nz1TU28u0Kh17q4QjP3w8ZXGJn1RIRQ25SR5Elk}
+      private-key: ${PUSH_VAPID_PRIVATE_KEY:YOUR_VAPID_PRIVATE_KEY}
+    # 네이티브(FCM) 는 Firebase 서비스계정이 필요 — 미설정 시 네이티브 푸시는 로깅 폴백.
+    fcm:
+      service-account: ${PUSH_FCM_SERVICE_ACCOUNT:}
   interview:
     eval:
       # 답변 평가 모델. openai(기본/폴백) | oss(자체 파인튜닝 모델, vLLM/TGI OpenAI 호환 엔드포인트)
@@ -103,8 +113,9 @@ careertuner:
       model: ${INTERVIEW_REALTIME_MODEL:gpt-4o-realtime-preview}
       voice: ${INTERVIEW_REALTIME_VOICE:alloy}
     rag:
-      # 면접 RAG(Qdrant). 기본 비활성 — Qdrant 띄우고 enabled=true 로 켜면 평가에 근거 주입.
-      enabled: ${INTERVIEW_RAG_ENABLED:false}
+      # 면접 RAG(Qdrant). enabled=true 로 활성화 — 관리자 지식베이스/재색인 사용.
+      # Qdrant 미가동 환경에서도 색인/검색은 best-effort 로 무해하게 건너뛴다(면접 흐름 영향 없음).
+      enabled: ${INTERVIEW_RAG_ENABLED:true}
       qdrant-url: ${QDRANT_URL:http://localhost:6333}
       collection: ${INTERVIEW_RAG_COLLECTION:interview_knowledge}
       embedding-model: ${INTERVIEW_RAG_EMBEDDING_MODEL:text-embedding-3-small}

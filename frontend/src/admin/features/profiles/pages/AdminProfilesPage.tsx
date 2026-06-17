@@ -12,11 +12,23 @@ export function AdminProfilesPage() {
   const [rows, setRows] = useState<AdminUserProfile[]>([]);
   const [selected, setSelected] = useState<AdminUserProfile | null>(null);
   const [keyword, setKeyword] = useState("");
+  const [hasResume, setHasResume] = useState("");
+  const [hasSkills, setHasSkills] = useState("");
+  const [updatedFrom, setUpdatedFrom] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   const selectedUserId = selected?.userId;
   const skillCount = useMemo(() => asArray(selected?.skills).length, [selected?.skills]);
+  const filteredRows = useMemo(() => rows.filter((row) => {
+    if (hasResume === "YES" && !row.resumeText) return false;
+    if (hasResume === "NO" && row.resumeText) return false;
+    if (hasSkills === "YES" && asArray(row.skills).length === 0) return false;
+    if (hasSkills === "NO" && asArray(row.skills).length > 0) return false;
+    if (updatedFrom && row.updatedAt && row.updatedAt.slice(0, 10) < updatedFrom) return false;
+    if (updatedFrom && !row.updatedAt) return false;
+    return true;
+  }), [rows, hasResume, hasSkills, updatedFrom]);
 
   const load = async () => {
     setLoading(true);
@@ -67,8 +79,33 @@ export function AdminProfilesPage() {
                 <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-slate-400" />
                 <Input value={keyword} onChange={(event) => setKeyword(event.target.value)} placeholder="직무, 산업, 역량 검색" className="pl-9" />
               </div>
+              <div className="grid grid-cols-2 gap-2">
+                <select value={hasResume} onChange={(event) => setHasResume(event.target.value)} className="h-10 rounded-md border border-slate-200 px-3 text-sm">
+                  <option value="">이력서 전체</option>
+                  <option value="YES">이력서 있음</option>
+                  <option value="NO">이력서 없음</option>
+                </select>
+                <select value={hasSkills} onChange={(event) => setHasSkills(event.target.value)} className="h-10 rounded-md border border-slate-200 px-3 text-sm">
+                  <option value="">역량 전체</option>
+                  <option value="YES">역량 있음</option>
+                  <option value="NO">역량 없음</option>
+                </select>
+              </div>
+              <Input type="date" value={updatedFrom} onChange={(event) => setUpdatedFrom(event.target.value)} title="수정일 시작" />
               <Button className="w-full bg-blue-600 text-white hover:bg-blue-700" onClick={() => void load()}>
                 검색
+              </Button>
+              <Button
+                variant="outline"
+                className="w-full"
+                onClick={() => {
+                  setKeyword("");
+                  setHasResume("");
+                  setHasSkills("");
+                  setUpdatedFrom("");
+                }}
+              >
+                필터 초기화
               </Button>
             </CardContent>
           </Card>
@@ -76,7 +113,7 @@ export function AdminProfilesPage() {
           {error && <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>}
 
           <div className="space-y-2">
-            {rows.map((row) => (
+            {filteredRows.map((row) => (
               <button
                 key={row.userId}
                 type="button"
@@ -94,7 +131,7 @@ export function AdminProfilesPage() {
                 </div>
               </button>
             ))}
-            {!loading && rows.length === 0 && <div className="rounded-lg bg-white p-6 text-center text-sm text-slate-500">프로필 데이터가 없습니다.</div>}
+            {!loading && filteredRows.length === 0 && <div className="rounded-lg bg-white p-6 text-center text-sm text-slate-500">조건에 맞는 프로필 데이터가 없습니다.</div>}
           </div>
         </section>
 
