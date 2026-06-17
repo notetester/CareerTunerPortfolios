@@ -344,7 +344,7 @@ export function RealtimeInterviewTab({ session }: { session: InterviewSession | 
         <CardHeader>
           <CardTitle className="flex items-center gap-2 text-base">
             <Radio className="size-4 text-rose-600" />
-            음성 모의면접
+            실시간 AI 음성 면접
             {status === "live" ? (
               <Badge className="gap-1 bg-rose-100 text-rose-700">
                 <span className="size-2 animate-pulse rounded-full bg-rose-500" /> LIVE

@@ -9,8 +9,7 @@ import { ModeSelectTab } from "../components/ModeSelectTab";
 import { AutoSetupPanel } from "../components/AutoSetupPanel";
 import { ExpectedQuestionsTab } from "../components/ExpectedQuestionsTab";
 import { PracticeTab } from "../components/PracticeTab";
-import { RealtimeInterviewTab } from "../components/RealtimeInterviewTab";
-import { LocalVoiceInterviewTab } from "../components/LocalVoiceInterviewTab";
+import { VoiceInterviewTab } from "../components/VoiceInterviewTab";
 import { AvatarTab } from "../components/AvatarTab";
 import { EvaluationCriteriaTab } from "../components/EvaluationCriteriaTab";
 import { CorrectionInfoTab } from "../components/CorrectionInfoTab";
@@ -28,7 +27,6 @@ const INTERVIEW_TABS = [
   "questions",
   "practice",
   "live",
-  "local",
   "avatar",
   "evaluation",
   "correction",
@@ -178,7 +176,6 @@ export function InterviewPage() {
             <TabsTrigger value="questions" data-tut="tut-tab-questions">예상 면접 질문</TabsTrigger>
             <TabsTrigger value="practice" data-tut="tut-tab-practice">복습 테스트</TabsTrigger>
             <TabsTrigger value="live" data-tut="tut-tab-live">음성 모의면접</TabsTrigger>
-            <TabsTrigger value="local">로컬 음성 면접</TabsTrigger>
             <TabsTrigger value="avatar" data-tut="tut-tab-avatar">아바타 화상 면접</TabsTrigger>
             <TabsTrigger value="evaluation" data-tut="tut-tab-evaluation">답변 평가 기준</TabsTrigger>
             <TabsTrigger value="correction" data-tut="tut-tab-correction">AI 첨삭</TabsTrigger>
@@ -236,11 +233,7 @@ export function InterviewPage() {
           </TabsContent>
 
           <TabsContent value="live" data-tut="tut-panel-live" className="mt-6">
-            <RealtimeInterviewTab session={effectiveSession} />
-          </TabsContent>
-
-          <TabsContent value="local" className="mt-6">
-            <LocalVoiceInterviewTab session={effectiveSession} />
+            <VoiceInterviewTab session={effectiveSession} />
           </TabsContent>
 
           <TabsContent value="avatar" data-tut="tut-panel-avatar" className="mt-6">

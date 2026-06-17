@@ -218,8 +218,8 @@ export function LocalVoiceInterviewTab({ session }: { session: InterviewSession 
         <CardHeader>
           <CardTitle className="flex items-center gap-2 text-base">
             <Mic className="size-4 text-emerald-600" />
-            로컬 음성 면접
-            <Badge className="bg-emerald-100 text-emerald-700">자체 AI · API 0</Badge>
+            녹음형 음성 면접
+            <Badge className="bg-emerald-100 text-emerald-700">베이직 · 무료</Badge>
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
