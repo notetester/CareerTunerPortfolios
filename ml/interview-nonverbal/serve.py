@@ -125,6 +125,44 @@ def score_voice_base64(req: VoiceB64Request):
         _cleanup(tmp.name, wav)
 
 
+# ── 자체 STT (B 베이직 — faster-whisper 로컬, API 0) ───────────
+_STT_MODEL = None
+_STT_SIZE = os.environ.get("STT_MODEL_SIZE", "small")  # base/small/medium — 한국어는 small 권장
+
+
+def _stt():
+    """faster-whisper 모델 lazy 로드 (첫 호출 시 모델 다운로드/캐시)."""
+    global _STT_MODEL
+    if _STT_MODEL is None:
+        from faster_whisper import WhisperModel
+
+        _STT_MODEL = WhisperModel(_STT_SIZE, device="cpu", compute_type="int8")
+    return _STT_MODEL
+
+
+class TranscribeRequest(BaseModel):
+    audio_base64: str
+    audio_format: str = "webm"
+    language: str = "ko"
+
+
+@app.post("/transcribe")
+def transcribe(req: TranscribeRequest):
+    """음성 → 텍스트 (자체 STT). B 베이직 면접의 답변 전사 — OpenAI Whisper API 대체."""
+    raw = base64.b64decode(req.audio_base64)
+    tmp = tempfile.NamedTemporaryFile(delete=False, suffix=f".{req.audio_format.lstrip('.')}")
+    wav = None
+    try:
+        tmp.write(raw)
+        tmp.close()
+        wav = _to_wav16k(tmp.name)
+        segments, info = _stt().transcribe(wav, language=req.language)
+        text = " ".join(s.text.strip() for s in segments).strip()
+        return {"text": text, "language": info.language, "duration": round(info.duration, 1)}
+    finally:
+        _cleanup(tmp.name, wav)
+
+
 if __name__ == "__main__":
     import uvicorn
 
