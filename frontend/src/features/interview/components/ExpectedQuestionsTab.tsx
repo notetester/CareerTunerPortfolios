@@ -31,11 +31,13 @@ import {
 function QuestionItem({
   question,
   index,
+  mode,
   onFollowUpsGenerated,
   preparingModelAnswer = false,
 }: {
   question: InterviewQuestion;
   index: number;
+  mode: string;
   onFollowUpsGenerated: (questions: InterviewQuestion[]) => void;
   preparingModelAnswer?: boolean;
 }) {
@@ -46,8 +48,27 @@ function QuestionItem({
   const [followingUp, setFollowingUp] = useState(false);
   const [modelAnswer, setModelAnswer] = useState<string | null>(null);
   const [loadingModel, setLoadingModel] = useState(false);
+  const [rebuttalRequested, setRebuttalRequested] = useState(false);
 
   const isFollowUp = question.questionType === "FOLLOW_UP";
+  const isPressure = mode === "PRESSURE";
+
+  const handleFollowUp = async (): Promise<boolean> => {
+    setFollowingUp(true);
+    setError(null);
+    try {
+      // 반환된 전체 질문 목록을 그대로 반영한다. loadExisting(로딩 스피너로 전체 교체)을 쓰면
+      // 답변/평가 결과가 있는 카드까지 언마운트돼 "초기화"처럼 보이므로 목록만 갈아끼운다.
+      const updated = await generateFollowUps(question.id);
+      onFollowUpsGenerated(updated);
+      return true;
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "반박 질문 생성에 실패했습니다.");
+      return false;
+    } finally {
+      setFollowingUp(false);
+    }
+  };
 
   const handleSubmit = async () => {
     if (!answer.trim()) return;
@@ -59,23 +80,15 @@ function QuestionItem({
       setResult(evaluated);
     } catch (err) {
       setError(err instanceof Error ? err.message : "답변 평가에 실패했습니다.");
-    } finally {
       setSubmitting(false);
+      return;
     }
-  };
-
-  const handleFollowUp = async () => {
-    setFollowingUp(true);
-    setError(null);
-    try {
-      // 반환된 전체 질문 목록을 그대로 반영한다. loadExisting(로딩 스피너로 전체 교체)을 쓰면
-      // 답변/평가 결과가 있는 카드까지 언마운트돼 "초기화"처럼 보이므로 목록만 갈아끼운다.
-      const updated = await generateFollowUps(question.id);
-      onFollowUpsGenerated(updated);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "꼬리 질문 생성에 실패했습니다.");
-    } finally {
-      setFollowingUp(false);
+    setSubmitting(false);
+    // 압박 면접: 본질문에 답하면 반박(꼬리질문) 1개를 자동 생성한다. 반박 질문 자체엔 다시 하지 않는다(1회).
+    if (isPressure && !isFollowUp && !rebuttalRequested) {
+      setRebuttalRequested(true);
+      const ok = await handleFollowUp();
+      if (!ok) setRebuttalRequested(false); // 실패 시 재제출로 재시도 가능
     }
   };
 
@@ -177,18 +190,11 @@ function QuestionItem({
                 <p className="whitespace-pre-line text-sm leading-relaxed text-slate-700">{toSentenceLines(result.improvedAnswer)}</p>
               </div>
             ) : null}
-            <div className="flex justify-end">
-              <Button
-                size="sm"
-                variant="outline"
-                className="gap-1.5"
-                disabled={followingUp}
-                onClick={handleFollowUp}
-              >
-                <CornerDownRight className="size-3.5" />
-                {followingUp ? "꼬리 질문 생성 중…" : "꼬리 질문 받기"}
-              </Button>
-            </div>
+            {isPressure && followingUp && (
+              <div className="flex items-center gap-1.5 text-xs text-slate-500">
+                <Loader2 className="size-3.5 animate-spin" /> 반박 질문 생성 중…
+              </div>
+            )}
           </div>
         )}
       </CardContent>
@@ -325,6 +331,7 @@ export function ExpectedQuestionsTab({
               key={`${q.id}-${resetVersion}`}
               question={q}
               index={i}
+              mode={session.mode}
               onFollowUpsGenerated={(qs) => setQuestions(qs)}
               preparingModelAnswer={modelAnswersPreparing}
             />

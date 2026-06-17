@@ -185,6 +185,11 @@ public class InterviewServiceImpl implements InterviewService {
         InterviewSession session = requireSession(userId, question.getInterviewSessionId());
         ApplicationCase applicationCase = accessService.requireOwned(userId, session.getApplicationCaseId());
 
+        // 반박(꼬리) 질문은 압박 면접 전용. 다른 모드는 본질문 6개로 끝낸다(자체 LLM PROBE 태스크를 압박에 집중).
+        if (!MODE_PRESSURE.equals(session.getMode())) {
+            throw new BusinessException(ErrorCode.INVALID_INPUT, "반박(꼬리) 질문은 압박 면접에서만 생성됩니다.");
+        }
+
         InterviewAnswer answer = interviewMapper.findLatestAnswerByQuestionId(questionId);
         if (answer == null || answer.getAnswerText() == null || answer.getAnswerText().isBlank()) {
             throw new BusinessException(ErrorCode.INVALID_INPUT, "꼬리 질문은 답변을 먼저 제출한 뒤 생성할 수 있습니다.");
