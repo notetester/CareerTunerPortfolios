@@ -1,6 +1,8 @@
 // 면접 도메인 타입 + UI 상수.
 // 백엔드 interview_session / interview_question / interview_answer 스키마와 1:1로 맞춘다.
 
+import { MessageSquare, Settings2, Users, Zap, FileText, Building2, type LucideIcon } from "lucide-react";
+
 export type InterviewMode =
   | "BASIC" // 기본 면접
   | "JOB" // 직무 면접
@@ -270,7 +272,7 @@ export interface SessionPageResponse {
 
 export interface InterviewModeOption {
   id: InterviewMode;
-  icon: string;
+  icon: LucideIcon;
   title: string;
   desc: string;
   difficulty: InterviewDifficulty;
@@ -278,12 +280,12 @@ export interface InterviewModeOption {
 }
 
 export const INTERVIEW_MODES: InterviewModeOption[] = [
-  { id: "BASIC", icon: "💬", title: "기본 면접", desc: "자기소개, 지원동기, 장단점", difficulty: "하", recommended: false },
-  { id: "JOB", icon: "⚙️", title: "직무 면접", desc: "공고 기반 기술/직무 질문", difficulty: "상", recommended: true },
-  { id: "PERSONALITY", icon: "🤝", title: "인성 면접", desc: "협업, 갈등, 책임감, 태도", difficulty: "중", recommended: false },
-  { id: "PRESSURE", icon: "⚡", title: "압박 면접", desc: "꼬리 질문, 반박 질문", difficulty: "상", recommended: false },
-  { id: "RESUME", icon: "📄", title: "자소서 기반", desc: "자기소개서 문장을 기반으로 질문", difficulty: "중", recommended: false },
-  { id: "COMPANY", icon: "🏢", title: "기업 맞춤", desc: "기업 현황과 공고 기반 질문", difficulty: "상", recommended: false },
+  { id: "BASIC", icon: MessageSquare, title: "기본 면접", desc: "자기소개, 지원동기, 장단점", difficulty: "하", recommended: false },
+  { id: "JOB", icon: Settings2, title: "직무 면접", desc: "공고 기반 기술/직무 질문", difficulty: "상", recommended: true },
+  { id: "PERSONALITY", icon: Users, title: "인성 면접", desc: "협업, 갈등, 책임감, 태도", difficulty: "중", recommended: false },
+  { id: "PRESSURE", icon: Zap, title: "압박 면접", desc: "꼬리 질문, 반박 질문", difficulty: "상", recommended: false },
+  { id: "RESUME", icon: FileText, title: "자소서 기반", desc: "자기소개서 문장을 기반으로 질문", difficulty: "중", recommended: false },
+  { id: "COMPANY", icon: Building2, title: "기업 맞춤", desc: "기업 현황과 공고 기반 질문", difficulty: "상", recommended: false },
 ];
 
 export function getInterviewModeLabel(mode: InterviewMode): string {

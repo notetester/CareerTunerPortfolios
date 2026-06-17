@@ -184,7 +184,7 @@ export function ModeSelectTab({
                 </Badge>
               </div>
             )}
-            <div className="mb-3 text-3xl transition-transform group-hover:scale-110">{mode.icon}</div>
+            <div className="mb-3 text-muted-foreground transition-transform group-hover:scale-110"><mode.icon className="size-7" /></div>
             <div className="mb-1 text-sm font-bold text-slate-800">{mode.title}</div>
             <div className="mb-2 text-xs leading-relaxed text-slate-500">{mode.desc}</div>
             <Badge
