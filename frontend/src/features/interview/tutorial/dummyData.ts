@@ -26,6 +26,7 @@ export const dummySession: InterviewSession = {
   startedAt: "2026-06-14T10:00:00",
   endedAt: null,
   totalScore: null,
+  avgScore: null,
   createdAt: "2026-06-14T10:00:00",
 };
 

@@ -21,6 +21,8 @@ export interface InterviewSession {
   startedAt: string | null;
   endedAt: string | null;
   totalScore: number | null;
+  /** 답변 점수 평균(목록 조회 계산값). 리포트 미생성으로 totalScore 가 없을 때 카드 점수 폴백용. */
+  avgScore: number | null;
   createdAt: string;
 }
 

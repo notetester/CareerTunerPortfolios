@@ -29,7 +29,7 @@ interface ModeSelectTabProps {
 }
 
 function formatDate(value: string): string {
-  return new Intl.DateTimeFormat("ko-KR", { dateStyle: "medium" }).format(new Date(value));
+  return new Intl.DateTimeFormat("ko-KR", { dateStyle: "medium", timeStyle: "short" }).format(new Date(value));
 }
 
 export function ModeSelectTab({
@@ -230,8 +230,9 @@ export function ModeSelectTab({
                     <div className="mt-0.5 text-xs text-slate-500">{formatDate(s.createdAt)}</div>
                   </div>
                   <div className="text-center">
-                    <div className={`text-lg font-black ${s.totalScore !== null ? getScoreColor(s.totalScore) : "text-slate-300"}`}>
-                      {s.totalScore ?? "-"}
+                    {/* 리포트 총점 우선, 없으면 답변 평균 점수로 폴백 (복습만 해도 점수가 뜨도록) */}
+                    <div className={`text-lg font-black ${(s.totalScore ?? s.avgScore) != null ? getScoreColor((s.totalScore ?? s.avgScore) as number) : "text-slate-300"}`}>
+                      {(s.totalScore ?? s.avgScore) ?? "-"}
                     </div>
                     <div className="text-[10px] text-slate-400">점수</div>
                   </div>

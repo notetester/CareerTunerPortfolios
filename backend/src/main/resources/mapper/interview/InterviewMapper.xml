@@ -14,7 +14,12 @@
     </insert>
 
     <select id="findSessionsByUserId" resultType="com.careertuner.interview.domain.InterviewSession">
-        SELECT s.*
+        SELECT s.*,
+               (SELECT ROUND(AVG(a.score))
+                  FROM interview_answer a
+                  JOIN interview_question q ON q.id = a.question_id
+                 WHERE q.interview_session_id = s.id
+                   AND a.score IS NOT NULL) AS avg_answer_score
         FROM interview_session s
         JOIN application_case ac ON ac.id = s.application_case_id
         WHERE ac.user_id = #{userId}
