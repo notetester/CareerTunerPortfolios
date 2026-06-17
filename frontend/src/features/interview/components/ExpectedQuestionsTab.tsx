@@ -36,7 +36,7 @@ function QuestionItem({
 }: {
   question: InterviewQuestion;
   index: number;
-  onFollowUpsGenerated: () => void;
+  onFollowUpsGenerated: (questions: InterviewQuestion[]) => void;
   preparingModelAnswer?: boolean;
 }) {
   const [answer, setAnswer] = useState("");
@@ -68,8 +68,10 @@ function QuestionItem({
     setFollowingUp(true);
     setError(null);
     try {
-      await generateFollowUps(question.id);
-      onFollowUpsGenerated();
+      // 반환된 전체 질문 목록을 그대로 반영한다. loadExisting(로딩 스피너로 전체 교체)을 쓰면
+      // 답변/평가 결과가 있는 카드까지 언마운트돼 "초기화"처럼 보이므로 목록만 갈아끼운다.
+      const updated = await generateFollowUps(question.id);
+      onFollowUpsGenerated(updated);
     } catch (err) {
       setError(err instanceof Error ? err.message : "꼬리 질문 생성에 실패했습니다.");
     } finally {
@@ -157,7 +159,9 @@ function QuestionItem({
                 점수 <span className={getScoreColor(result.score)}>{result.score}점</span>
               </div>
             )}
-            {result.feedback && <p className="text-xs text-slate-600">{result.feedback}</p>}
+            {result.feedback && (
+              <p className="whitespace-pre-line text-xs leading-relaxed text-slate-600">{toSentenceLines(result.feedback)}</p>
+            )}
             {result.score === 100 ? (
               <div className="rounded-lg border border-green-100 bg-green-50 p-3 text-sm font-semibold text-green-700">
                 🎉 만점이에요. 이대로 말하면 됩니다.
@@ -321,7 +325,7 @@ export function ExpectedQuestionsTab({
               key={`${q.id}-${resetVersion}`}
               question={q}
               index={i}
-              onFollowUpsGenerated={loadExisting}
+              onFollowUpsGenerated={(qs) => setQuestions(qs)}
               preparingModelAnswer={modelAnswersPreparing}
             />
           ))}
