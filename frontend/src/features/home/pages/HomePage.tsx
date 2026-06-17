@@ -105,12 +105,12 @@ const flowSteps = [
 ];
 
 const specComparisonData = [
-  { skill: "React", status: "보유", grade: "강점", color: "text-green-600 bg-secondary" },
-  { skill: "TypeScript", status: "일부 경험", grade: "보완 필요", color: "text-amber-600 bg-secondary" },
-  { skill: "AWS", status: "없음", grade: "학습 필요", color: "text-red-500 bg-secondary" },
-  { skill: "Git 협업", status: "보유", grade: "강점", color: "text-green-600 bg-secondary" },
-  { skill: "REST API", status: "보유", grade: "강점", color: "text-green-600 bg-secondary" },
-  { skill: "포트폴리오", status: "부족", grade: "보완 필요", color: "text-amber-600 bg-secondary" },
+  { skill: "React", status: "보유", grade: "강점", color: "text-muted-foreground bg-secondary" },
+  { skill: "TypeScript", status: "일부 경험", grade: "보완 필요", color: "text-muted-foreground bg-secondary" },
+  { skill: "AWS", status: "없음", grade: "학습 필요", color: "text-muted-foreground bg-secondary" },
+  { skill: "Git 협업", status: "보유", grade: "강점", color: "text-muted-foreground bg-secondary" },
+  { skill: "REST API", status: "보유", grade: "강점", color: "text-muted-foreground bg-secondary" },
+  { skill: "포트폴리오", status: "부족", grade: "보완 필요", color: "text-muted-foreground bg-secondary" },
 ];
 
 const communityPosts = [
@@ -137,9 +137,9 @@ const dashboardStatusLabel: Record<string, string> = {
 
 const dashboardStatusColor: Record<string, string> = {
   DRAFT: "bg-slate-100 text-slate-700",
-  ANALYZING: "bg-amber-100 text-amber-700",
-  READY: "bg-blue-100 text-blue-700",
-  APPLIED: "bg-green-100 text-green-700",
+  ANALYZING: "bg-secondary text-muted-foreground",
+  READY: "bg-secondary text-muted-foreground",
+  APPLIED: "bg-secondary text-muted-foreground",
   CLOSED: "bg-zinc-100 text-zinc-500",
 };
 
@@ -286,7 +286,7 @@ function MemberHome({ summary, loading, error, fallbackName, onRetry, onSummaryR
             <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-5">
               <div className="min-w-0">
                 <div className="flex flex-wrap items-center gap-2 text-sm text-slate-500">
-                  <Badge className="bg-blue-100 text-blue-700 hover:bg-blue-100">회원 대시보드</Badge>
+                  <Badge className="bg-secondary text-muted-foreground hover:bg-secondary">회원 대시보드</Badge>
                   <span>{pendingTodos > 0 ? `오늘 확인할 항목 ${pendingTodos}건` : "오늘 일정 정리 완료"}</span>
                 </div>
                 <h1 className="mt-3 text-2xl sm:text-3xl font-black text-slate-950 tracking-normal">
@@ -392,7 +392,7 @@ function MemberHome({ summary, loading, error, fallbackName, onRetry, onSummaryR
                       <span
                         key={step.key}
                         className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-medium ${
-                          step.done ? "bg-green-100 text-green-700" : "bg-card text-slate-400 border border-slate-200"
+                          step.done ? "bg-secondary text-muted-foreground" : "bg-card text-slate-400 border border-slate-200"
                         }`}
                       >
                         {step.done ? "✓" : "○"} {step.label}
@@ -765,7 +765,7 @@ export function HomePage() {
                       <div className="font-bold text-white text-sm">카카오페이 · 프론트엔드 개발자</div>
                       <div className="text-xs text-slate-200 mt-0.5">2026-08-01 공고 · React 3년 이상</div>
                     </div>
-                    <Badge className="bg-secondary text-green-600">분석 완료</Badge>
+                    <Badge className="bg-secondary text-muted-foreground">분석 완료</Badge>
                   </div>
 
                   {/* Fit score */}
@@ -848,7 +848,7 @@ export function HomePage() {
       <section id="features" className="py-20 bg-slate-50">
         <div className="w-full max-w-[1400px] mx-auto px-6">
           <div className="text-center mb-14 space-y-3">
-            <Badge className="bg-blue-100 text-blue-700 px-4 py-1">핵심 기능</Badge>
+            <Badge className="bg-secondary text-muted-foreground px-4 py-1">핵심 기능</Badge>
             <h2 className="text-4xl font-black text-slate-900">AI가 제공하는 8가지 취업 솔루션</h2>
             <p className="text-lg text-slate-500 max-w-2xl mx-auto">
               공고 분석부터 장기 취업 전략까지, 취업 준비의 전 과정을 AI가 지원합니다
@@ -880,7 +880,7 @@ export function HomePage() {
       <section id="how-it-works" className="py-20 bg-card">
         <div className="w-full max-w-[1400px] mx-auto px-6">
           <div className="text-center mb-14 space-y-3">
-            <Badge className="bg-indigo-100 text-indigo-700 px-4 py-1">사용 방법</Badge>
+            <Badge className="bg-secondary text-muted-foreground px-4 py-1">사용 방법</Badge>
             <h2 className="text-4xl font-black text-slate-900">12단계 AI 취업 준비 프로세스</h2>
             <p className="text-lg text-slate-500 max-w-2xl mx-auto">
               회원가입부터 장기 전략 수립까지, 취업 준비의 모든 단계를 하나의 흐름으로
@@ -924,7 +924,7 @@ export function HomePage() {
       <section className="py-20 bg-muted">
         <div className="w-full max-w-[1400px] mx-auto px-6">
           <div className="text-center mb-14 space-y-3">
-            <Badge className="bg-teal-100 text-teal-700 px-4 py-1">지원 건 관리</Badge>
+            <Badge className="bg-secondary text-muted-foreground px-4 py-1">지원 건 관리</Badge>
             <h2 className="text-4xl font-black text-slate-900">지원 건마다 독립된 AI 공간</h2>
             <p className="text-lg text-slate-500 max-w-2xl mx-auto">
               ChatGPT 세션처럼 기업별·공고별로 분리 관리. 탭 8개에 모든 준비 정보가 담깁니다.
@@ -964,7 +964,7 @@ export function HomePage() {
                     <div className="font-bold text-slate-900 text-sm">카카오페이 · 프론트엔드 개발자</div>
                     <div className="text-xs text-slate-500">2026-08-01 공고 · React 3년 이상</div>
                   </div>
-                  <Badge className="bg-green-100 text-green-700 text-xs">준비중</Badge>
+                  <Badge className="bg-secondary text-muted-foreground text-xs">준비중</Badge>
                 </div>
                 <div className="flex border-b border-slate-200 bg-card overflow-x-auto">
                   {["공고분석", "기업분석", "스펙비교", "지원전략", "예상질문", "가상면접", "면접리포트", "첨삭기록"].map((tab, i) => (
@@ -983,7 +983,7 @@ export function HomePage() {
                 <div className="flex-1 overflow-y-auto p-5 space-y-4">
                   <div className="flex items-center justify-between">
                     <h3 className="font-bold text-slate-800 text-sm">내 스펙 비교 분석</h3>
-                    <Badge className="text-xs bg-blue-100 text-blue-700">직무 적합도 72점</Badge>
+                    <Badge className="text-xs bg-secondary text-muted-foreground">직무 적합도 72점</Badge>
                   </div>
                   <div className="space-y-2">
                     {specComparisonData.map((s) => (
@@ -1020,7 +1020,7 @@ export function HomePage() {
                     <div className="text-xs text-slate-500 font-semibold uppercase tracking-wide mb-2">부족 역량</div>
                     <div className="space-y-1.5">
                       {["TypeScript", "AWS 배포", "포트폴리오"].map((s) => (
-                        <div key={s} className="flex items-center gap-1.5 text-xs bg-red-50 text-red-700 px-2 py-1 rounded">
+                        <div key={s} className="flex items-center gap-1.5 text-xs bg-secondary text-muted-foreground px-2 py-1 rounded">
                           <AlertCircle className="size-3" /> {s}
                         </div>
                       ))}
@@ -1339,13 +1339,8 @@ export function HomePage() {
             {communityPosts.map((post, i) => (
               <Link to="/community" key={i}>
                 <div className="bg-card border border-slate-200 hover:border-blue-300 hover:shadow-md transition-all rounded-xl p-4 flex items-center gap-4 group">
-                  <Badge className={`flex-shrink-0 text-xs ${
-                    post.cat === "면접 후기" ? "bg-blue-100 text-blue-700" :
-                    post.cat === "합격 전략" ? "bg-green-100 text-green-700" :
-                    post.cat === "직무별 질문" ? "bg-purple-100 text-purple-700" :
-                    "bg-slate-100 text-slate-700"
-                  }`}>{post.cat}</Badge>
-                  {post.hot && <Badge className="flex-shrink-0 text-xs bg-red-100 text-red-600">HOT</Badge>}
+                  <Badge className="flex-shrink-0 text-xs bg-secondary text-muted-foreground">{post.cat}</Badge>
+                  {post.hot && <Badge className="flex-shrink-0 text-xs bg-secondary text-muted-foreground">HOT</Badge>}
                   <div className="flex-1 min-w-0">
                     <div className="font-semibold text-slate-800 text-sm truncate group-hover:text-blue-600 transition-colors">{post.title}</div>
                     <div className="text-xs text-slate-400 mt-0.5">{post.company !== "익명" ? post.company + " · " : ""}{post.job}</div>
@@ -1385,7 +1380,7 @@ export function HomePage() {
                         ))}
                       </div>
                     </div>
-                    <Badge className="ml-auto text-xs bg-blue-100 text-blue-700">{t.plan}</Badge>
+                    <Badge className="ml-auto text-xs bg-secondary text-muted-foreground">{t.plan}</Badge>
                   </div>
                   <p className="text-sm text-slate-600 leading-relaxed">"{t.text}"</p>
                 </CardContent>
