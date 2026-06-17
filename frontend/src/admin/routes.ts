@@ -1,6 +1,8 @@
 import { AdminDashboardPage } from "./pages/AdminDashboard";
-import { AdminPlaceholderPage } from "./pages/AdminPlaceholder";
 import { AdminOpsDashboardPage } from "./features/dashboard/pages/AdminOpsDashboardPage";
+import { AdminPaymentsPage } from "./features/billing/pages/AdminPaymentsPage";
+import { AdminPlansPage } from "./features/billing/pages/AdminPlansPage";
+import { AdminLogsPage } from "./features/system-logs/pages/AdminLogsPage";
 import { AdminAnalyticsPage } from "./features/analytics/pages/AdminAnalyticsPage";
 import AdminFitAnalysisPage from "./features/fit-analysis/pages/AdminFitAnalysis";
 import { AdminHomePage } from "./features/home/pages/AdminHomePage";
@@ -14,6 +16,7 @@ import { AdminConsentsPage } from "./features/consents/pages/AdminConsentsPage";
 import { AdminCompanyAnalysisPage } from "./features/company-analysis/pages/AdminCompanyAnalysisPage";
 import { AdminAiUsagePage } from "./features/job-analysis/pages/AdminAiUsagePage";
 import { AdminInterviewsPage } from "./features/interviews/pages/AdminInterviewsPage";
+import { AdminInterviewKnowledgePage } from "./features/interview-knowledge/pages/AdminInterviewKnowledgePage";
 import { AdminJobAnalysisPage } from "./features/job-analysis/pages/AdminJobAnalysisPage";
 import { AdminPromptsPage } from "./features/prompts/pages/AdminPromptsPage";
 import AdminProfilePromptsPage from "./features/prompts/profile/pages/AdminProfilePrompts";
@@ -42,12 +45,13 @@ export const adminRoutes = [
   { path: "admin/users", Component: AdminUsersPage },
   { path: "admin/profiles", Component: AdminProfilesPage },
   { path: "admin/consents", Component: AdminConsentsPage },
-  { path: "admin/payments", Component: AdminPlaceholderPage },
+  { path: "admin/payments", Component: AdminPaymentsPage },
   { path: "admin/application-cases", Component: AdminApplicationCasesPage },
   { path: "admin/ai-usage", Component: AdminAiUsagePage },
   { path: "admin/job-analysis", Component: AdminJobAnalysisPage },
   { path: "admin/company-analysis", Component: AdminCompanyAnalysisPage },
   { path: "admin/interviews", Component: AdminInterviewsPage },
+  { path: "admin/interview/knowledge", Component: AdminInterviewKnowledgePage },
   { path: "admin/community", Component: AdminReports },
   { path: "admin/moderation", Component: AdminModerationPage },
   { path: "admin/notices", Component: AdminNotices },
@@ -58,8 +62,8 @@ export const adminRoutes = [
   { path: "admin/terms", Component: AdminTerms },
   { path: "admin/terms/guidelines", Component: AdminGuidelines },
   { path: "admin/notifications", Component: AdminNotifications },
-  { path: "admin/plans", Component: AdminPlaceholderPage },
+  { path: "admin/plans", Component: AdminPlansPage },
   { path: "admin/prompts", Component: AdminPromptsPage },
   { path: "admin/prompts/profile", Component: AdminProfilePromptsPage },
-  { path: "admin/logs", Component: AdminPlaceholderPage },
+  { path: "admin/logs", Component: AdminLogsPage },
 ];

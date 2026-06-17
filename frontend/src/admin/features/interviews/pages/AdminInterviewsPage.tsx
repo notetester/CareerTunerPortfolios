@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
-import { MessageSquare, RefreshCw, Search } from "lucide-react";
+import { Link } from "react-router";
+import { BookMarked, MessageSquare, RefreshCw, Search } from "lucide-react";
 import { Badge } from "@/app/components/ui/badge";
 import { Button } from "@/app/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/app/components/ui/card";
@@ -96,9 +97,14 @@ export function AdminInterviewsPage() {
                 면접 세션 관리
               </h1>
             </div>
-            <Button variant="outline" onClick={() => void loadRows()} disabled={loading}>
-              <RefreshCw className={`size-4 ${loading ? "animate-spin" : ""}`} />
-            </Button>
+            <div className="flex gap-2">
+              <Button asChild variant="outline" size="sm">
+                <Link to="/admin/interview/knowledge"><BookMarked className="size-4" /> RAG 지식</Link>
+              </Button>
+              <Button variant="outline" onClick={() => void loadRows()} disabled={loading}>
+                <RefreshCw className={`size-4 ${loading ? "animate-spin" : ""}`} />
+              </Button>
+            </div>
           </div>
 
           <Card className="border-slate-200 bg-white">
