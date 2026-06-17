@@ -1,9 +1,9 @@
 import { useState } from "react";
-import { AlertCircle, BarChart3, ChevronDown, FileText, Loader2, Play } from "lucide-react";
+import { AlertCircle, BarChart3, ChevronDown, FileText, Loader2, Play, X } from "lucide-react";
 import { Badge } from "@/app/components/ui/badge";
 import { Button } from "@/app/components/ui/button";
 import type { ApplicationCase } from "@/features/applications/types/applicationCase";
-import { createInterviewSession, getSessionReview } from "../api/interviewApi";
+import { createInterviewSession, deleteInterviewSession, getSessionReview } from "../api/interviewApi";
 import { useInterviewSessions } from "../hooks/useInterviewSessions";
 import {
   INTERVIEW_MODES,
@@ -46,6 +46,7 @@ export function ModeSelectTab({
   const sessions = useInterviewSessions();
   const [starting, setStarting] = useState(false);
   const [startError, setStartError] = useState<string | null>(null);
+  const [deletingId, setDeletingId] = useState<number | null>(null);
   const [reviewSession, setReviewSession] = useState<InterviewSession | null>(null);
   const [review, setReview] = useState<SessionReview | null>(null);
   const [reviewOpen, setReviewOpen] = useState(false);
@@ -68,6 +69,19 @@ export function ModeSelectTab({
       setStartError(err instanceof Error ? err.message : "면접을 시작하지 못했습니다.");
     } finally {
       setStarting(false);
+    }
+  };
+
+  const handleDelete = async (id: number) => {
+    if (!window.confirm("이 면접 기록을 삭제할까요? (복습 기록도 사라집니다)")) return;
+    setDeletingId(id);
+    try {
+      await deleteInterviewSession(id);
+      sessions.removeSession(id);
+    } catch (err) {
+      window.alert(err instanceof Error ? err.message : "삭제하지 못했습니다.");
+    } finally {
+      setDeletingId(null);
     }
   };
 
@@ -214,30 +228,45 @@ export function ModeSelectTab({
           <>
             <div className="space-y-2">
               {sessions.sessions.map((s) => (
-                <button
-                  key={s.id}
-                  type="button"
-                  onClick={() => openReview(s)}
-                  className="flex w-full items-center gap-4 rounded-xl border border-slate-200 bg-white p-4 text-left transition-colors hover:border-blue-300"
-                >
-                  <div className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-purple-500 to-indigo-500 text-xs font-bold text-white">
-                    {caseLabel(s.applicationCaseId).slice(0, 1)}
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <div className="text-sm font-semibold text-slate-800">
-                      {caseLabel(s.applicationCaseId)} · {getInterviewModeLabel(s.mode)}
+                <div key={s.id} className="group relative">
+                  <button
+                    type="button"
+                    onClick={() => openReview(s)}
+                    className="flex w-full items-center gap-4 rounded-xl border border-slate-200 bg-white p-4 pr-12 text-left transition-colors hover:border-blue-300"
+                  >
+                    <div className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-purple-500 to-indigo-500 text-xs font-bold text-white">
+                      {caseLabel(s.applicationCaseId).slice(0, 1)}
                     </div>
-                    <div className="mt-0.5 text-xs text-slate-500">{formatDate(s.createdAt)}</div>
-                  </div>
-                  <div className="text-center">
-                    {/* 리포트 총점 우선, 없으면 답변 평균 점수로 폴백 (복습만 해도 점수가 뜨도록) */}
-                    <div className={`text-lg font-black ${(s.totalScore ?? s.avgScore) != null ? getScoreColor((s.totalScore ?? s.avgScore) as number) : "text-slate-300"}`}>
-                      {(s.totalScore ?? s.avgScore) ?? "-"}
+                    <div className="min-w-0 flex-1">
+                      <div className="text-sm font-semibold text-slate-800">
+                        {caseLabel(s.applicationCaseId)} · {getInterviewModeLabel(s.mode)}
+                      </div>
+                      <div className="mt-0.5 text-xs text-slate-500">
+                        {formatDate(s.createdAt)}
+                        {s.lastResumedAt && (
+                          <span className="text-indigo-500"> · 복습 {formatDate(s.lastResumedAt)}</span>
+                        )}
+                      </div>
                     </div>
-                    <div className="text-[10px] text-slate-400">점수</div>
-                  </div>
-                  <BarChart3 className="size-4 text-slate-400" />
-                </button>
+                    <div className="text-center">
+                      {/* 리포트 총점 우선, 없으면 답변 평균 점수로 폴백 (복습만 해도 점수가 뜨도록) */}
+                      <div className={`text-lg font-black ${(s.totalScore ?? s.avgScore) != null ? getScoreColor((s.totalScore ?? s.avgScore) as number) : "text-slate-300"}`}>
+                        {(s.totalScore ?? s.avgScore) ?? "-"}
+                      </div>
+                      <div className="text-[10px] text-slate-400">점수</div>
+                    </div>
+                    <BarChart3 className="size-4 text-slate-400" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleDelete(s.id)}
+                    disabled={deletingId === s.id}
+                    title="기록 삭제"
+                    className="absolute right-2 top-1/2 -translate-y-1/2 rounded-lg p-1.5 text-slate-300 opacity-0 transition hover:bg-red-50 hover:text-red-500 group-hover:opacity-100"
+                  >
+                    {deletingId === s.id ? <Loader2 className="size-4 animate-spin" /> : <X className="size-4" />}
+                  </button>
+                </div>
               ))}
             </div>
             {sessions.hasNext && (

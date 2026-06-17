@@ -98,6 +98,21 @@ public class InterviewServiceImpl implements InterviewService {
 
     @Override
     @Transactional
+    public void deleteSession(Long userId, Long sessionId) {
+        int updated = interviewMapper.softDeleteSession(sessionId, userId);
+        if (updated == 0) {
+            throw new BusinessException(ErrorCode.NOT_FOUND, "삭제할 면접 기록을 찾을 수 없습니다.");
+        }
+    }
+
+    @Override
+    @Transactional
+    public void markResumed(Long userId, Long sessionId) {
+        interviewMapper.touchSessionResumed(sessionId, userId);
+    }
+
+    @Override
+    @Transactional
     public List<InterviewQuestionResponse> generateQuestions(Long userId, Long sessionId,
                                                              GenerateQuestionsRequest request) {
         InterviewSession session = requireSession(userId, sessionId);

@@ -22,6 +22,8 @@ public class InterviewSession {
     /** interview_session.report (JSON 컬럼) 원문 문자열. */
     private String report;
     private LocalDateTime createdAt;
+    /** 복원(=복습) 마지막 시각. NULL이면 복습 안 함. */
+    private LocalDateTime lastResumedAt;
 
     /** 비영속(목록 조회 계산값): 이 세션 답변 점수 평균. 리포트 미생성(total_score=null) 시 카드 점수 폴백용. */
     private Integer avgAnswerScore;

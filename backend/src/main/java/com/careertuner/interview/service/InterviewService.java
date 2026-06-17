@@ -22,6 +22,12 @@ public interface InterviewService {
 
     SessionPageResponse listSessions(Long userId, int page, int size);
 
+    /** 최근 면접 기록 soft delete (본인 세션만). */
+    void deleteSession(Long userId, Long sessionId);
+
+    /** 기존 세션 복원(=복습) 시각 기록. */
+    void markResumed(Long userId, Long sessionId);
+
     List<InterviewQuestionResponse> generateQuestions(Long userId, Long sessionId, GenerateQuestionsRequest request);
 
     List<InterviewQuestionResponse> listQuestions(Long userId, Long sessionId);

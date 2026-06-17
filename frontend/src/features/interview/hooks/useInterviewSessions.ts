@@ -61,6 +61,12 @@ export function useInterviewSessions(enabled = true) {
     void refresh();
   }, [refresh]);
 
+  /** 삭제된 세션을 목록에서 즉시 제거한다 (soft delete 후 UI 반영). */
+  const removeSession = useCallback((id: number) => {
+    setSessions((prev) => prev.filter((s) => s.id !== id));
+    setTotal((t) => Math.max(0, t - 1));
+  }, []);
+
   /** 아직 더 받아올 수 있는 세션 수 (더보기 버튼 라벨용) */
   const remaining = Math.max(0, total - sessions.length);
 
@@ -75,5 +81,6 @@ export function useInterviewSessions(enabled = true) {
     remaining,
     refresh,
     loadMore,
+    removeSession,
   };
 }

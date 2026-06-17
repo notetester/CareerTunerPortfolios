@@ -52,6 +52,18 @@ export function listInterviewSessions(page = 0, size = 10): Promise<SessionPageR
   return api<SessionPageResponse>(`/interview/sessions?page=${page}&size=${size}`, { method: "GET" });
 }
 
+/** 면접 기록 삭제 (soft delete). */
+export function deleteInterviewSession(sessionId: number): Promise<void> {
+  if (isDataMockActive()) return Promise.resolve();
+  return api<void>(`/interview/sessions/${sessionId}`, { method: "DELETE" });
+}
+
+/** 세션 복원(=복습) 시각 기록. */
+export function markSessionResumed(sessionId: number): Promise<void> {
+  if (isDataMockActive()) return Promise.resolve();
+  return api<void>(`/interview/sessions/${sessionId}/resume`, { method: "POST" });
+}
+
 
 /** 면접 세션 생성 (지원 건 + 모드 선택). */
 export function createInterviewSession(

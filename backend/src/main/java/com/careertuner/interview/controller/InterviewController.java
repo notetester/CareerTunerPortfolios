@@ -4,6 +4,7 @@ import java.util.List;
 
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.validation.annotation.Validated;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -51,6 +52,20 @@ public class InterviewController {
             @RequestParam(defaultValue = "10") @Min(1) @Max(100) int size,
             @AuthenticationPrincipal AuthUser authUser) {
         return ApiResponse.ok(interviewService.listSessions(authUser.id(), page, size));
+    }
+
+    @DeleteMapping("/sessions/{sessionId}")
+    public ApiResponse<Void> deleteSession(@AuthenticationPrincipal AuthUser authUser,
+                                           @PathVariable Long sessionId) {
+        interviewService.deleteSession(authUser.id(), sessionId);
+        return ApiResponse.ok();
+    }
+
+    @PostMapping("/sessions/{sessionId}/resume")
+    public ApiResponse<Void> markResumed(@AuthenticationPrincipal AuthUser authUser,
+                                         @PathVariable Long sessionId) {
+        interviewService.markResumed(authUser.id(), sessionId);
+        return ApiResponse.ok();
     }
 
     @PostMapping("/sessions")

@@ -24,7 +24,8 @@
         JOIN application_case ac ON ac.id = s.application_case_id
         WHERE ac.user_id = #{userId}
           AND ac.deleted_at IS NULL
-        ORDER BY s.created_at DESC, s.id DESC
+          AND s.deleted_at IS NULL
+        ORDER BY COALESCE(s.last_resumed_at, s.created_at) DESC, s.id DESC
         LIMIT #{limit} OFFSET #{offset}
     </select>
 
@@ -34,7 +35,26 @@
         JOIN application_case ac ON ac.id = s.application_case_id
         WHERE ac.user_id = #{userId}
           AND ac.deleted_at IS NULL
+          AND s.deleted_at IS NULL
     </select>
+
+    <update id="softDeleteSession">
+        UPDATE interview_session s
+        JOIN application_case ac ON ac.id = s.application_case_id
+        SET s.deleted_at = NOW()
+        WHERE s.id = #{id}
+          AND ac.user_id = #{userId}
+          AND s.deleted_at IS NULL
+    </update>
+
+    <update id="touchSessionResumed">
+        UPDATE interview_session s
+        JOIN application_case ac ON ac.id = s.application_case_id
+        SET s.last_resumed_at = NOW()
+        WHERE s.id = #{id}
+          AND ac.user_id = #{userId}
+          AND s.deleted_at IS NULL
+    </update>
 
     <select id="findSessionByIdAndUserId" resultType="com.careertuner.interview.domain.InterviewSession">
         SELECT s.*

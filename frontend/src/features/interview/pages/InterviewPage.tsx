@@ -17,6 +17,7 @@ import { useTutorialStore } from "../tutorial/tutorialStore";
 import { dummySession } from "../tutorial/dummyData";
 import { TutorialOverlay } from "../tutorial/TutorialOverlay";
 import { TUT_STEPS } from "../tutorial/tutSteps";
+import { markSessionResumed } from "../api/interviewApi";
 import type { InterviewMode, InterviewSession } from "../types/interview";
 
 const INTERVIEW_TABS = [
@@ -187,6 +188,8 @@ export function InterviewPage() {
                   setActiveSession(session);
                   setSelectedCaseId(session.applicationCaseId);
                   setSelectedMode(session.mode);
+                  // 복원 = 복습. 마지막 복습 시각을 기록한다(실패해도 흐름은 진행).
+                  void markSessionResumed(session.id);
                   goTab("questions");
                 }}
               />

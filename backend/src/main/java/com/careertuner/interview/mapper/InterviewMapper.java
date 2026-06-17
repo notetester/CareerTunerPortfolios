@@ -24,6 +24,12 @@ public interface InterviewMapper {
 
     int countSessionsByUserId(@Param("userId") Long userId);
 
+    /** 본인 세션을 soft delete (deleted_at 기록). 이미 삭제됐거나 본인 것이 아니면 0. */
+    int softDeleteSession(@Param("id") Long id, @Param("userId") Long userId);
+
+    /** 본인 세션의 복습(복원) 시각 갱신. 본인 것이 아니거나 삭제됐으면 0. */
+    int touchSessionResumed(@Param("id") Long id, @Param("userId") Long userId);
+
     InterviewSession findSessionByIdAndUserId(@Param("id") Long id, @Param("userId") Long userId);
 
     int updateSessionResult(@Param("id") Long id,
