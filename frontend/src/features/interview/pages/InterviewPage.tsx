@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useSearchParams } from "react-router";
 import { MessageSquare } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/app/components/ui/tabs";
+import { Badge } from "@/app/components/ui/badge";
 import { useAuth } from "@/app/auth/AuthContext";
 import { useApplicationCases } from "@/features/applications/hooks/useApplicationCases";
 import { ModeSelectTab } from "../components/ModeSelectTab";
@@ -18,6 +19,7 @@ import { dummySession } from "../tutorial/dummyData";
 import { TutorialOverlay } from "../tutorial/TutorialOverlay";
 import { TUT_STEPS } from "../tutorial/tutSteps";
 import { markSessionResumed } from "../api/interviewApi";
+import { getInterviewModeLabel } from "../types/interview";
 import type { InterviewMode, InterviewSession } from "../types/interview";
 
 const INTERVIEW_TABS = [
@@ -48,6 +50,8 @@ export function InterviewPage() {
   const [selectedMode, setSelectedMode] = useState<InterviewMode | null>(null);
   const [selectedCaseId, setSelectedCaseId] = useState<number | null>(null);
   const [activeSession, setActiveSession] = useState<InterviewSession | null>(null);
+  // 현재 활성 세션이 새로 시작한 것인지(new), 과거 기록을 복원(복습)한 것인지(resumed).
+  const [sessionOrigin, setSessionOrigin] = useState<"new" | "resumed" | null>(null);
   // 홈 마누스 검색창에서 넘어온 요청(자동 셋업 진입).
   const [autoPrompt] = useState(() => sessionStorage.getItem("interview.autoPrompt") ?? "");
 
@@ -66,6 +70,9 @@ export function InterviewPage() {
 
   // 데모/튜토리얼 모드에서는 실제 세션 없이도 더미 세션으로 흐름을 보여준다.
   const effectiveSession = mockActive ? (activeSession ?? dummySession) : activeSession;
+  const activeCase = effectiveSession
+    ? cases.applicationCases.find((c) => c.id === effectiveSession.applicationCaseId)
+    : undefined;
 
   // ?tutorial=1 / ?demo=1 로 진입하면 해당 모드를 자동 시작한다.
   useEffect(() => {
@@ -146,6 +153,18 @@ export function InterviewPage() {
           </div>
         </div>
 
+        {effectiveSession && (
+          <div className="flex flex-wrap items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5">
+            <span className="text-xs text-slate-400">현재 진행</span>
+            <span className="text-sm font-semibold text-slate-800">
+              {activeCase ? `${activeCase.companyName} · ${activeCase.jobTitle} · ` : ""}
+              {getInterviewModeLabel(effectiveSession.mode)}
+            </span>
+            {sessionOrigin === "resumed" && <Badge className="bg-indigo-100 text-indigo-700">복습 중</Badge>}
+            {sessionOrigin === "new" && <Badge className="bg-green-100 text-green-700">새 세션</Badge>}
+          </div>
+        )}
+
         <Tabs value={activeTab} onValueChange={goTab}>
           <TabsList className="h-auto w-full justify-start overflow-x-auto border border-slate-200 bg-white p-1">
             <TabsTrigger value="modes" data-tut="tut-tab-modes">면접 모드 선택</TabsTrigger>
@@ -166,6 +185,7 @@ export function InterviewPage() {
                 prompt={autoPrompt}
                 onReady={(session) => {
                   setActiveSession(session);
+                  setSessionOrigin("new");
                   sessionStorage.removeItem("interview.autoPrompt");
                   goTab("practice");
                 }}
@@ -182,10 +202,12 @@ export function InterviewPage() {
                 onSelectMode={setSelectedMode}
                 onSessionStarted={(session) => {
                   setActiveSession(session);
+                  setSessionOrigin("new");
                   goTab("questions");
                 }}
                 onResume={(session) => {
                   setActiveSession(session);
+                  setSessionOrigin("resumed");
                   setSelectedCaseId(session.applicationCaseId);
                   setSelectedMode(session.mode);
                   // 복원 = 복습. 마지막 복습 시각을 기록한다(실패해도 흐름은 진행).
