@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useSearchParams } from "react-router";
+import { useNavigate, useSearchParams } from "react-router";
 import { Database, Lock, Mail, RefreshCw, Save, Shield, UserCog } from "lucide-react";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
@@ -10,6 +10,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "../components/ui/tabs"
 import { getMyConsents, revokeAiConsent, saveMyConsents, type ConsentStatus } from "../auth/consentApi";
 import { useAuth } from "../auth/AuthContext";
 import { NotificationSettings } from "@/features/notification/components/NotificationSettings";
+import { AppLockSettings } from "../components/AppLockSettings";
 
 const tabs = ["account", "privacy", "ai-consent", "notifications"] as const;
 type SettingsTab = (typeof tabs)[number];
@@ -18,7 +19,8 @@ export function SettingsPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const requestedTab = searchParams.get("tab") ?? "account";
   const activeTab: SettingsTab = tabs.includes(requestedTab as SettingsTab) ? (requestedTab as SettingsTab) : "account";
-  const { user } = useAuth();
+  const { user, logout } = useAuth();
+  const navigate = useNavigate();
 
   const [consent, setConsent] = useState<ConsentStatus | null>(null);
   const [terms, setTerms] = useState(true);
@@ -140,9 +142,19 @@ export function SettingsPage() {
                   보안
                 </CardTitle>
               </CardHeader>
-              <CardContent className="space-y-3 text-sm text-slate-600">
-                <p>비밀번호 재설정은 로그인 화면의 비밀번호 찾기에서 이메일 인증 링크로 진행합니다.</p>
-                <p>로그인 실패 잠금과 로그인 감사 로그는 백엔드에서 자동 기록됩니다.</p>
+              <CardContent className="space-y-4">
+                <AppLockSettings />
+                <div className="space-y-1.5 border-t border-slate-100 pt-3 text-sm text-slate-600">
+                  <p>비밀번호 재설정은 로그인 화면의 비밀번호 찾기에서 이메일 인증 링크로 진행합니다.</p>
+                  <p>로그인 실패 잠금과 로그인 감사 로그는 백엔드에서 자동 기록됩니다.</p>
+                </div>
+                <Button
+                  variant="outline"
+                  className="w-full text-red-600 hover:bg-red-50 sm:w-auto"
+                  onClick={async () => { await logout(); navigate("/"); }}
+                >
+                  로그아웃
+                </Button>
               </CardContent>
             </Card>
           </TabsContent>
