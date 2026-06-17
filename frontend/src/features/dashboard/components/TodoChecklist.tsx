@@ -85,17 +85,17 @@ export function TodoChecklist({ todos, onTodosChange }: TodoChecklistProps) {
             >
               <span
                 className={`mt-0.5 flex size-5 shrink-0 items-center justify-center rounded-md ${
-                  todo.done ? "bg-green-500" : "border-2 border-slate-300 bg-card"
+                  todo.done ? "bg-green-50 text-green-600" : "border-2 border-slate-300 bg-card"
                 }`}
               >
                 {busy ? (
                   <Loader2 className="size-3 animate-spin text-slate-400" />
                 ) : (
-                  todo.done && <CheckCircle2 className="size-3.5 text-white" />
+                  todo.done && <CheckCircle2 className="size-3.5 text-green-600" />
                 )}
               </span>
               <span className="min-w-0">
-                <span className={`block text-sm leading-5 ${todo.done ? "line-through text-slate-400" : "text-slate-800"}`}>
+                <span className={`block text-sm leading-5 ${todo.done ? "line-through text-muted-foreground" : "text-slate-800"}`}>
                   {todo.task}
                 </span>
                 <span className="mt-0.5 block text-xs text-slate-400">

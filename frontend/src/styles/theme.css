@@ -296,7 +296,19 @@
   --color-green-50: var(--success-50);  --color-green-100: var(--success-50);  --color-green-200: var(--success-50); --color-green-600: var(--success);  --color-green-700: var(--success);  --color-green-800: var(--success);
   --color-emerald-50: var(--success-50);--color-emerald-100: var(--success-50);--color-emerald-600: var(--success); --color-emerald-700: var(--success);
   --color-red-50: var(--danger-50);     --color-red-100: var(--danger-50);     --color-red-200: var(--danger-50);  --color-red-600: var(--destructive); --color-red-700: var(--destructive); --color-red-800: var(--destructive);
-  --color-rose-50: var(--danger-50);    --color-rose-100: var(--danger-50);    --color-rose-600: var(--destructive); --color-rose-700: var(--destructive);
+  --color-rose-50: var(--danger-50);    --color-rose-100: var(--danger-50);    --color-rose-500: var(--destructive); --color-rose-600: var(--destructive); --color-rose-700: var(--destructive);
+  /* status -400/-500 보강 (쨍한 솔리드 방지) */
+  --color-green-400: var(--success);    --color-green-500: var(--success);
+  --color-emerald-400: var(--success);  --color-emerald-500: var(--success);
+  --color-red-400: var(--destructive);  --color-red-500: var(--destructive);
+  --color-amber-400: var(--warning);    --color-orange-400: var(--warning);    --color-yellow-400: var(--warning); --color-yellow-500: var(--warning);
+  /* 잡색(보라/청록/하늘/핑크) → 단일 액센트로 수렴 */
+  --color-purple-50: var(--accent-soft);  --color-purple-100: var(--accent-soft); --color-purple-400: var(--accent-2); --color-purple-500: var(--accent-2); --color-purple-600: var(--accent-2); --color-purple-700: var(--accent-2); --color-purple-800: var(--accent-2);
+  --color-violet-50: var(--accent-soft);  --color-violet-100: var(--accent-soft); --color-violet-500: var(--accent-2); --color-violet-600: var(--accent-2); --color-violet-700: var(--accent-2);
+  --color-fuchsia-500: var(--accent-2);   --color-fuchsia-600: var(--accent-2);   --color-pink-50: var(--accent-soft); --color-pink-100: var(--accent-soft); --color-pink-500: var(--accent-2); --color-pink-600: var(--accent-2);
+  --color-sky-50: var(--accent-soft);     --color-sky-100: var(--accent-soft);    --color-sky-500: var(--accent-2); --color-sky-600: var(--accent-2);
+  --color-cyan-50: var(--accent-soft);    --color-cyan-500: var(--accent-2);      --color-cyan-600: var(--accent-2);
+  --color-teal-50: var(--accent-soft);    --color-teal-100: var(--accent-soft);   --color-teal-500: var(--accent-2); --color-teal-600: var(--accent-2); --color-teal-700: var(--accent-2);
 }
 
 @layer base {

@@ -167,9 +167,9 @@ function formatDashboardTime(value: string) {
 }
 
 function dashboardActivityMeta(type: DashboardActivity["type"]) {
-  if (type === "INTERVIEW") return { icon: MessageSquare, color: "text-purple-600", bg: "bg-purple-50" };
-  if (type === "APPLICATION") return { icon: Target, color: "text-orange-600", bg: "bg-orange-50" };
-  return { icon: FileText, color: "text-blue-600", bg: "bg-blue-50" };
+  if (type === "INTERVIEW") return { icon: MessageSquare, color: "text-muted-foreground", bg: "bg-secondary" };
+  if (type === "APPLICATION") return { icon: Target, color: "text-muted-foreground", bg: "bg-secondary" };
+  return { icon: FileText, color: "text-muted-foreground", bg: "bg-secondary" };
 }
 
 interface MemberHomeProps {
@@ -216,28 +216,28 @@ function MemberHome({ summary, loading, error, fallbackName, onRetry, onSummaryR
         label: "활성 지원 건",
         value: `${stats.activeApplications}`,
         sub: `이번 달 ${stats.newApplicationsThisMonth}건 추가`,
-        color: "from-blue-500 to-cyan-500",
+        color: "",
       },
       {
         icon: TrendingUp,
         label: "평균 적합도",
         value: `${stats.averageFitScore}점`,
         sub: `${highFitCount}건은 우선 지원 후보`,
-        color: "from-green-500 to-emerald-500",
+        color: "",
       },
       {
         icon: MessageSquare,
         label: "면접 연습",
         value: `${stats.totalInterviews}회`,
         sub: `이번 주 ${stats.interviewsThisWeek}회 진행`,
-        color: "from-purple-500 to-violet-500",
+        color: "",
       },
       {
         icon: Award,
         label: "보유 크레딧",
         value: `${stats.credit}`,
         sub: `이번 달 ${stats.creditsUsedThisMonth}크레딧 사용`,
-        color: "from-amber-500 to-orange-500",
+        color: "",
       },
     ];
   }, [highFitCount, stats]);
@@ -427,8 +427,8 @@ function MemberHome({ summary, loading, error, fallbackName, onRetry, onSummaryR
                     <div className="mt-1 text-2xl sm:text-3xl font-black text-slate-950 break-words">{card.value}</div>
                     <div className="mt-1 text-xs text-slate-400 leading-5">{card.sub}</div>
                   </div>
-                  <div className="size-10 rounded-xl bg-accent-soft flex items-center justify-center shrink-0">
-                    <card.icon className="size-5 text-primary" />
+                  <div className="size-10 rounded-xl bg-secondary flex items-center justify-center shrink-0">
+                    <card.icon className="size-5 text-muted-foreground" />
                   </div>
                 </div>
               </CardContent>
@@ -460,7 +460,7 @@ function MemberHome({ summary, loading, error, fallbackName, onRetry, onSummaryR
                             <div className="flex flex-wrap items-center gap-2">
                               <span className="font-bold text-slate-900">{application.companyName}</span>
                               <span className="text-sm text-slate-500">{application.jobTitle}</span>
-                              {application.favorite && <Badge className="bg-amber-100 text-amber-700 hover:bg-amber-100">관심</Badge>}
+                              {application.favorite && <Badge className="bg-secondary text-muted-foreground border border-border">관심</Badge>}
                             </div>
                             <div className="mt-2 flex flex-wrap items-center gap-2">
                               <Badge className={`text-xs ${dashboardStatusColor[application.status] ?? "bg-slate-100 text-slate-700"}`}>
@@ -523,20 +523,20 @@ function MemberHome({ summary, loading, error, fallbackName, onRetry, onSummaryR
           </div>
 
           <div className="space-y-5">
-            <Card className="border border-amber-200 bg-amber-50 shadow-sm">
+            <Card className="border border-border bg-card shadow-sm">
               <CardHeader className="pb-3">
-                <CardTitle className="text-base flex items-center gap-2 text-amber-800">
-                  <Award className="size-4 text-amber-600" />
+                <CardTitle className="text-base flex items-center gap-2 text-foreground">
+                  <Award className="size-4 text-primary" />
                   크레딧 현황
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
-                <div className="rounded-xl bg-card/70 p-4 text-center">
-                  <div className="text-4xl font-black text-amber-700">{summary?.stats.credit ?? 0}</div>
-                  <div className="mt-1 text-sm text-amber-700">/ {summary?.stats.creditLimit ?? 0} 크레딧 잔여</div>
+                <div className="rounded-xl bg-secondary p-4 text-center">
+                  <div className="text-4xl font-black text-foreground">{summary?.stats.credit ?? 0}</div>
+                  <div className="mt-1 text-sm text-muted-foreground">/ {summary?.stats.creditLimit ?? 0} 크레딧 잔여</div>
                   <Progress value={creditPercent} className="mt-3 h-2" />
                 </div>
-                <div className="space-y-2 text-xs text-amber-800">
+                <div className="space-y-2 text-xs text-muted-foreground">
                   <div className="flex justify-between gap-3">
                     <span>현재 플랜</span>
                     <span className="font-bold">{summary?.user.plan ?? "Free"}</span>
@@ -546,7 +546,7 @@ function MemberHome({ summary, loading, error, fallbackName, onRetry, onSummaryR
                     <span className="font-bold">{summary?.stats.creditsUsedThisMonth ?? 0} 크레딧</span>
                   </div>
                 </div>
-                <Button size="sm" variant="outline" className="w-full border-amber-400 text-amber-700 hover:bg-amber-100" onClick={() => navigate("/pricing")}>
+                <Button size="sm" variant="outline" className="w-full border-border text-foreground" onClick={() => navigate("/pricing")}>
                   크레딧 충전하기
                 </Button>
               </CardContent>
@@ -578,10 +578,10 @@ function MemberHome({ summary, loading, error, fallbackName, onRetry, onSummaryR
               </CardHeader>
               <CardContent className="grid grid-cols-2 gap-2">
                 {[
-                  { label: "지원 건", icon: Briefcase, href: "/applications", color: "text-blue-600" },
-                  { label: "면접", icon: MessageSquare, href: "/interview", color: "text-purple-600" },
-                  { label: "분석", icon: BarChart3, href: "/analysis", color: "text-green-600" },
-                  { label: "커뮤니티", icon: BookOpen, href: "/community", color: "text-orange-600" },
+                  { label: "지원 건", icon: Briefcase, href: "/applications", color: "text-muted-foreground" },
+                  { label: "면접", icon: MessageSquare, href: "/interview", color: "text-muted-foreground" },
+                  { label: "분석", icon: BarChart3, href: "/analysis", color: "text-muted-foreground" },
+                  { label: "커뮤니티", icon: BookOpen, href: "/community", color: "text-muted-foreground" },
                 ].map((menu) => (
                   <Link key={menu.label} to={menu.href}>
                     <div className="flex min-h-20 flex-col items-center justify-center gap-2 rounded-xl bg-slate-50 p-3 hover:bg-blue-50 transition-colors">
