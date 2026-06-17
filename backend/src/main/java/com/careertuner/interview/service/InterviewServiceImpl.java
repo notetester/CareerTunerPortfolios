@@ -42,7 +42,9 @@ import tools.jackson.databind.ObjectMapper;
 public class InterviewServiceImpl implements InterviewService {
 
     private static final int DEFAULT_QUESTION_COUNT = 6;
+    private static final int PRESSURE_QUESTION_COUNT = 3; // 압박: 본질문 3 + 답변마다 반박 1 = 총 6
     private static final int MAX_QUESTION_COUNT = 15;
+    private static final String MODE_PRESSURE = "PRESSURE";
     private static final int DEFAULT_FOLLOWUP_COUNT = 2;
     private static final int MAX_FOLLOWUP_COUNT = 5;
 
@@ -96,7 +98,8 @@ public class InterviewServiceImpl implements InterviewService {
         InterviewSession session = requireSession(userId, sessionId);
         ApplicationCase applicationCase = accessService.requireOwned(userId, session.getApplicationCaseId());
         String postingText = accessService.sourceText(session.getApplicationCaseId());
-        int count = resolveCount(request.count());
+        // 압박 면접은 본질문 3개(이후 답변마다 반박 1개 자동 추가 → 총 6개), 그 외 모드는 기본 6개.
+        int count = MODE_PRESSURE.equals(session.getMode()) ? PRESSURE_QUESTION_COUNT : resolveCount(request.count());
         String modeLabel = MODE_LABELS.getOrDefault(session.getMode(), session.getMode());
 
         InterviewOpenAiClient.GeneratedQuestions generated;
@@ -186,12 +189,14 @@ public class InterviewServiceImpl implements InterviewService {
         if (answer == null || answer.getAnswerText() == null || answer.getAnswerText().isBlank()) {
             throw new BusinessException(ErrorCode.INVALID_INPUT, "꼬리 질문은 답변을 먼저 제출한 뒤 생성할 수 있습니다.");
         }
-        int count = resolveFollowUpCount(request == null ? null : request.count());
+        // 압박 면접: 답변 직후 반박 1개. 그 외(수동): 기존 기본 개수.
+        boolean pressure = MODE_PRESSURE.equals(session.getMode());
+        int count = pressure ? 1 : resolveFollowUpCount(request == null ? null : request.count());
 
         InterviewOpenAiClient.GeneratedQuestions generated;
         try {
             generated = aiClient.generateFollowUps(question.getQuestion(), answer.getAnswerText(),
-                    applicationCase, count);
+                    applicationCase, count, pressure);
         } catch (BusinessException ex) {
             aiUsageLogService.recordFailure(userId, session.getApplicationCaseId(), FEATURE_FOLLOWUP, ex.getMessage());
             throw ex;

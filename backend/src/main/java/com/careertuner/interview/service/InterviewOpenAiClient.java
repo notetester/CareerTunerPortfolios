@@ -171,7 +171,7 @@ public class InterviewOpenAiClient implements InterviewAnswerEvaluator {
 
     /** 원 질문 + 지원자 답변 기반 꼬리 질문 생성. */
     public GeneratedQuestions generateFollowUps(String question, String answerText,
-                                                ApplicationCase applicationCase, int count) {
+                                                ApplicationCase applicationCase, int count, boolean pressure) {
         String userPrompt = """
                 회사명: %s
                 직무명: %s
@@ -185,9 +185,12 @@ public class InterviewOpenAiClient implements InterviewAnswerEvaluator {
                 """.formatted(applicationCase.getCompanyName(), applicationCase.getJobTitle(),
                 count, question, answerText == null || answerText.isBlank() ? "(답변 없음)" : answerText);
 
+        String systemPrompt = pressure
+                ? InterviewPromptCatalog.PRESSURE_FOLLOWUP_SYSTEM_PROMPT
+                : InterviewPromptCatalog.FOLLOWUP_SYSTEM_PROMPT;
         InterviewLlmGateway.Result result = gateway.complete(new InterviewLlmGateway.Request(
                 "interview_follow_up_questions", questionsSchema(),
-                InterviewPromptCatalog.FOLLOWUP_SYSTEM_PROMPT, userPrompt, modelProperties.getGeneration()));
+                systemPrompt, userPrompt, modelProperties.getGeneration()));
         JsonNode payload = result.payload();
 
         List<GeneratedQuestion> questions = new ArrayList<>();
