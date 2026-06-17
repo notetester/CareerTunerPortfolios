@@ -54,6 +54,51 @@ export default function AdminProfilePromptsPage() {
           </div>
         </CardHeader>
         <CardContent className="space-y-4">
+          {(prompt?.evaluationCriteria?.length ?? 0) > 0 && (
+            <div>
+              <div className="text-xs font-semibold text-slate-500">평가 기준</div>
+              <div className="mt-2 grid gap-2 md:grid-cols-2">
+                {prompt?.evaluationCriteria?.map((criterion) => (
+                  <div key={criterion.criterion} className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+                    <div className="text-sm font-bold text-slate-900">{criterion.label}</div>
+                    <div className="mt-1 text-xs leading-5 text-slate-500">{criterion.description}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+          {(prompt?.weightProfiles?.length ?? 0) > 0 && (
+            <div>
+              <div className="text-xs font-semibold text-slate-500">직무군별 가중치</div>
+              <div className="mt-2 overflow-x-auto rounded-lg border border-slate-200">
+                <table className="min-w-full divide-y divide-slate-200 text-sm">
+                  <thead className="bg-slate-50 text-xs font-bold text-slate-500">
+                    <tr>
+                      <th className="px-3 py-2 text-left">직무군</th>
+                      {prompt?.evaluationCriteria?.map((criterion) => (
+                        <th key={criterion.criterion} className="px-3 py-2 text-right">{criterion.label}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 bg-white">
+                    {prompt?.weightProfiles?.map((profile) => (
+                      <tr key={profile.jobFamily}>
+                        <td className="px-3 py-2">
+                          <div className="font-bold text-slate-900">{profile.label}</div>
+                          <div className="text-xs text-slate-500">{profile.description}</div>
+                        </td>
+                        {prompt?.evaluationCriteria?.map((criterion) => (
+                          <td key={criterion.criterion} className="px-3 py-2 text-right font-semibold text-slate-700">
+                            {profile.weights[criterion.criterion] ?? 0}%
+                          </td>
+                        ))}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
           <div>
             <div className="text-xs font-semibold text-slate-500">출력 스키마</div>
             <pre className="mt-2 max-h-72 overflow-auto whitespace-pre-wrap break-words rounded-lg border border-slate-200 bg-slate-50 p-3 text-xs leading-5 text-slate-700">

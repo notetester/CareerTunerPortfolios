@@ -9,11 +9,21 @@ import { getAdminConsents } from "../api";
 import type { AdminConsentView } from "../types";
 
 const consentTypes = ["", "TERMS", "PRIVACY", "AI_DATA", "MARKETING"];
+const consentStatuses = [
+  { value: "", label: "전체 상태" },
+  { value: "AGREED", label: "동의" },
+  { value: "REVOKED", label: "미동의/철회" },
+];
+const consentSources = ["", "REGISTER", "USER", "REVOKE"];
 
 export function AdminConsentsPage() {
   const [rows, setRows] = useState<AdminConsentView[]>([]);
   const [keyword, setKeyword] = useState("");
   const [consentType, setConsentType] = useState("");
+  const [status, setStatus] = useState("");
+  const [source, setSource] = useState("");
+  const [from, setFrom] = useState("");
+  const [to, setTo] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -21,7 +31,7 @@ export function AdminConsentsPage() {
     setLoading(true);
     setError(null);
     try {
-      setRows(await getAdminConsents({ keyword, consentType, limit: 200 }));
+      setRows(await getAdminConsents({ keyword, consentType, status, source, from, to, limit: 200 }));
     } catch (err) {
       setError(err instanceof Error ? err.message : "동의 이력을 불러오지 못했습니다.");
     } finally {
@@ -49,7 +59,7 @@ export function AdminConsentsPage() {
     >
       <div className="space-y-4">
         <Card className="border-slate-200 bg-white">
-          <CardContent className="grid gap-3 p-4 md:grid-cols-[1fr_180px_120px]">
+          <CardContent className="grid gap-3 p-4 lg:grid-cols-[minmax(220px,1fr)_150px_150px_140px_150px_150px_120px]">
             <div className="relative">
               <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-slate-400" />
               <Input value={keyword} onChange={(event) => setKeyword(event.target.value)} placeholder="이메일 또는 사용자 ID 검색" className="pl-9" />
@@ -57,8 +67,30 @@ export function AdminConsentsPage() {
             <select value={consentType} onChange={(event) => setConsentType(event.target.value)} className="h-10 rounded-md border border-slate-200 px-3 text-sm">
               {consentTypes.map((type) => <option key={type || "ALL"} value={type}>{type || "전체 동의"}</option>)}
             </select>
+            <select value={status} onChange={(event) => setStatus(event.target.value)} className="h-10 rounded-md border border-slate-200 px-3 text-sm">
+              {consentStatuses.map((item) => <option key={item.value || "ALL"} value={item.value}>{item.label}</option>)}
+            </select>
+            <select value={source} onChange={(event) => setSource(event.target.value)} className="h-10 rounded-md border border-slate-200 px-3 text-sm">
+              {consentSources.map((item) => <option key={item || "ALL"} value={item}>{item || "전체 출처"}</option>)}
+            </select>
+            <Input type="date" value={from} onChange={(event) => setFrom(event.target.value)} title="시작일" />
+            <Input type="date" value={to} onChange={(event) => setTo(event.target.value)} title="종료일" />
             <Button className="bg-blue-600 text-white hover:bg-blue-700" onClick={() => void load()}>
               검색
+            </Button>
+            <Button
+              variant="outline"
+              className="lg:col-span-7"
+              onClick={() => {
+                setKeyword("");
+                setConsentType("");
+                setStatus("");
+                setSource("");
+                setFrom("");
+                setTo("");
+              }}
+            >
+              필터 초기화
             </Button>
           </CardContent>
         </Card>
