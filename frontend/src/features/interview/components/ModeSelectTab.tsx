@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { AlertCircle, BarChart3, ChevronDown, FileText, Loader2, Play, X } from "lucide-react";
+import { Bar, BarChart, Cell, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { Badge } from "@/app/components/ui/badge";
 import { Button } from "@/app/components/ui/button";
 import type { ApplicationCase } from "@/features/applications/types/applicationCase";
@@ -117,6 +118,11 @@ export function ModeSelectTab({
   const avgScore = scored.length
     ? Math.round(scored.reduce((sum, it) => sum + (it.score ?? 0), 0) / scored.length)
     : null;
+  const scoreValues = scored.map((it) => it.score as number);
+  const maxScore = scoreValues.length ? Math.max(...scoreValues) : null;
+  const minScore = scoreValues.length ? Math.min(...scoreValues) : null;
+  // 질문별 점수 막대그래프 데이터 (미답변은 0점으로 표시)
+  const chartData = review ? review.items.map((it, i) => ({ name: `Q${i + 1}`, score: it.score ?? 0 })) : [];
 
   return (
     <div className="space-y-6">
@@ -351,6 +357,31 @@ export function ModeSelectTab({
               <p className="py-10 text-center text-sm text-red-500">{reviewError}</p>
             ) : review && review.items.length > 0 ? (
               <div className="space-y-4">
+                {scored.length > 0 && (
+                  <div className="rounded-xl border border-slate-200 bg-white p-4">
+                    <div className="mb-3 flex flex-wrap items-center justify-between gap-1">
+                      <span className="text-sm font-bold text-slate-700">질문별 점수</span>
+                      <span className="text-xs text-slate-500">
+                        평균 <b className={getScoreColor(avgScore as number)}>{avgScore}</b> · 최고 {maxScore} · 최저 {minScore}
+                      </span>
+                    </div>
+                    <ResponsiveContainer width="100%" height={180}>
+                      <BarChart data={chartData} margin={{ top: 8, right: 8, bottom: 0, left: -18 }}>
+                        <XAxis dataKey="name" tick={{ fontSize: 11 }} axisLine={false} tickLine={false} />
+                        <YAxis domain={[0, 100]} tick={{ fontSize: 11 }} axisLine={false} tickLine={false} width={32} />
+                        <Tooltip cursor={{ fill: "rgba(0,0,0,0.04)" }} formatter={(v) => [`${v}점`, "점수"]} />
+                        <Bar dataKey="score" radius={[4, 4, 0, 0]}>
+                          {chartData.map((d, i) => (
+                            <Cell
+                              key={i}
+                              fill={d.score >= 75 ? "#16a34a" : d.score >= 60 ? "#d97706" : "#ef4444"}
+                            />
+                          ))}
+                        </Bar>
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </div>
+                )}
                 {review.items.map((it, i) => (
                   <div key={it.questionId} className="rounded-xl border border-slate-200 p-4">
                     <div className="mb-2 text-sm font-bold text-slate-800">
