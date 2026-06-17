@@ -28,6 +28,7 @@ import {
   type InterviewSession,
 } from "../types/interview";
 import { AgentTimeline } from "./AgentTimeline";
+import { InterviewProgressBar } from "./InterviewProgressBar";
 
 type Phase = "loading" | "empty" | "intro" | "answering" | "scoring" | "results";
 
@@ -224,8 +225,8 @@ export function PracticeTab({
 
   if (phase === "scoring") {
     return (
-      <div className="flex items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white p-10 text-sm text-slate-500">
-        <Loader2 className="size-4 animate-spin" /> {total}개 답변을 채점하는 중…
+      <div className="rounded-xl border border-slate-200 bg-white p-10">
+        <InterviewProgressBar active estimatedMs={Math.max(8000, total * 7000)} label={`${total}개 답변을 채점하는 중`} />
       </div>
     );
   }

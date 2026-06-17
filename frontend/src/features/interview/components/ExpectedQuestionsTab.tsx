@@ -11,6 +11,7 @@ import {
 import { Badge } from "@/app/components/ui/badge";
 import { Button } from "@/app/components/ui/button";
 import { Card, CardContent } from "@/app/components/ui/card";
+import { InterviewProgressBar } from "./InterviewProgressBar";
 import {
   generateExpectedQuestions,
   generateFollowUps,
@@ -32,13 +33,11 @@ function QuestionItem({
   index,
   mode,
   onFollowUpsGenerated,
-  preparingModelAnswer = false,
 }: {
   question: InterviewQuestion;
   index: number;
   mode: string;
   onFollowUpsGenerated: (questions: InterviewQuestion[]) => void;
-  preparingModelAnswer?: boolean;
 }) {
   const [answer, setAnswer] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -131,14 +130,7 @@ function QuestionItem({
           rows={3}
           className="w-full resize-y rounded-lg border border-slate-200 p-3 text-sm outline-none focus:border-blue-400"
         />
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          {preparingModelAnswer && !modelAnswer ? (
-            <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2 py-0.5 text-[11px] text-slate-500">
-              <Loader2 className="size-3 animate-spin" /> 모범답안 준비 중
-            </span>
-          ) : (
-            <span />
-          )}
+        <div className="flex flex-wrap items-center justify-end gap-2">
           <div className="flex flex-wrap gap-2">
             <Button
               size="sm"
@@ -171,11 +163,7 @@ function QuestionItem({
           </p>
         )}
 
-        {submitting && (
-          <div className="flex items-center gap-2 rounded-lg bg-slate-50 p-3 text-sm text-slate-500">
-            <Loader2 className="size-4 animate-spin text-blue-500" /> AI가 답변을 채점·검증하고 있어요 · 보통 5~10초
-          </div>
-        )}
+        <InterviewProgressBar active={submitting} estimatedMs={8000} label="AI가 답변을 채점·검증하고 있어요" />
 
         {!submitting && result && (
           <div className="space-y-3 rounded-lg bg-slate-50 p-3">
@@ -287,11 +275,9 @@ export function ExpectedQuestionsTab({
         </p>
       )}
 
+      <InterviewProgressBar active={generating} estimatedMs={13000} label="AI가 질문을 만들고 있어요" />
       {generating ? (
         <div className="space-y-3">
-          <div className="flex items-center justify-center gap-2 rounded-xl border border-blue-100 bg-blue-50 p-4 text-sm text-blue-700">
-            <Loader2 className="size-4 animate-spin" /> AI가 질문을 만들고 있어요 · 보통 10~15초 걸립니다
-          </div>
           {[0, 1, 2, 3].map((i) => (
             <div key={i} className="space-y-3 rounded-xl border border-slate-200 bg-white p-4">
               <div className="flex items-center gap-2">
@@ -332,6 +318,7 @@ export function ExpectedQuestionsTab({
         </Card>
       ) : (
         <div className="space-y-3" data-tut="tut-q-list">
+          <InterviewProgressBar active={modelAnswersPreparing} estimatedMs={20000} label="모범답안 준비 중" />
           {questions.map((q, i) => (
             <QuestionItem
               key={`${q.id}-${resetVersion}`}
@@ -339,7 +326,6 @@ export function ExpectedQuestionsTab({
               index={i}
               mode={session.mode}
               onFollowUpsGenerated={(qs) => setQuestions(qs)}
-              preparingModelAnswer={modelAnswersPreparing}
             />
           ))}
 
