@@ -6,9 +6,7 @@ export type InterviewMode =
   | "JOB" // 직무 면접
   | "PERSONALITY" // 인성 면접
   | "PRESSURE" // 압박 면접
-  | "REAL" // 실전 면접
   | "RESUME" // 자소서 기반
-  | "PORTFOLIO" // 포트폴리오 기반
   | "COMPANY"; // 기업 맞춤
 
 export type QuestionType = "EXPECTED" | "TECH" | "PERSONALITY" | "SITUATION" | "FOLLOW_UP";
@@ -234,9 +232,7 @@ export const INTERVIEW_MODES: InterviewModeOption[] = [
   { id: "JOB", icon: "⚙️", title: "직무 면접", desc: "공고 기반 기술/직무 질문", difficulty: "상", recommended: true },
   { id: "PERSONALITY", icon: "🤝", title: "인성 면접", desc: "협업, 갈등, 책임감, 태도", difficulty: "중", recommended: false },
   { id: "PRESSURE", icon: "⚡", title: "압박 면접", desc: "꼬리 질문, 반박 질문", difficulty: "상", recommended: false },
-  { id: "REAL", icon: "⏱️", title: "실전 면접", desc: "시간 제한, 랜덤 질문", difficulty: "상", recommended: false },
   { id: "RESUME", icon: "📄", title: "자소서 기반", desc: "자기소개서 문장을 기반으로 질문", difficulty: "중", recommended: false },
-  { id: "PORTFOLIO", icon: "💼", title: "포트폴리오 기반", desc: "프로젝트 설명 중심 질문", difficulty: "중", recommended: true },
   { id: "COMPANY", icon: "🏢", title: "기업 맞춤", desc: "기업 현황과 공고 기반 질문", difficulty: "상", recommended: false },
 ];
 

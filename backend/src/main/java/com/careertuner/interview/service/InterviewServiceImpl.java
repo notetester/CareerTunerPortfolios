@@ -52,9 +52,7 @@ public class InterviewServiceImpl implements InterviewService {
             "JOB", "직무 면접",
             "PERSONALITY", "인성 면접",
             "PRESSURE", "압박 면접",
-            "REAL", "실전 면접",
             "RESUME", "자소서 기반 면접",
-            "PORTFOLIO", "포트폴리오 기반 면접",
             "COMPANY", "기업 맞춤 면접");
 
     private final InterviewMapper interviewMapper;
