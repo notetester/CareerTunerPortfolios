@@ -57,16 +57,34 @@ export function TutorialOverlay() {
   const manual = !cur.awaitTab; // awaitTab 이 없으면 수동 [다음] 버튼
   const hole = rect;
   const vh = typeof window !== "undefined" ? window.innerHeight : 800;
-  const below = !hole || hole.top < vh / 2;
 
-  const bubblePos: CSSProperties = hole
-    ? {
-        position: "fixed",
-        left: "50%",
-        transform: "translateX(-50%)",
-        ...(below ? { top: hole.bottom + 16 } : { bottom: vh - hole.top + 16 }),
-      }
-    : { position: "fixed", left: "50%", top: "50%", transform: "translate(-50%, -50%)" };
+  // 풍선은 position:fixed(뷰포트 기준)이라 top 이 화면을 벗어나면 스크롤해도 안 보인다.
+  // 타겟 아래 우선 배치하되, 아래 공간이 부족하면 위로, 타겟이 화면보다 크면 화면 안쪽에 고정해서
+  // 어떤 단계에서도 설명 풍선이 항상 보이도록 보정한다.
+  const BUBBLE_H = 200; // 풍선 높이 여유분(대략)
+  const MARGIN = 16;
+  let bubbleTop: number;
+  let arrowUp: boolean; // 풍선이 타겟 아래면 위(↑)를 가리킨다
+  if (!hole) {
+    bubbleTop = Math.max(MARGIN, vh / 2 - BUBBLE_H / 2);
+    arrowUp = false;
+  } else if (hole.bottom + MARGIN + BUBBLE_H <= vh - MARGIN) {
+    bubbleTop = hole.bottom + MARGIN; // 타겟 아래(공간 충분)
+    arrowUp = true;
+  } else if (hole.top - MARGIN - BUBBLE_H >= MARGIN) {
+    bubbleTop = hole.top - MARGIN - BUBBLE_H; // 타겟 위
+    arrowUp = false;
+  } else {
+    bubbleTop = Math.max(MARGIN, vh - MARGIN - BUBBLE_H); // 타겟이 화면보다 큼 → 하단 고정
+    arrowUp = true;
+  }
+
+  const bubblePos: CSSProperties = {
+    position: "fixed",
+    left: "50%",
+    top: bubbleTop,
+    transform: "translateX(-50%)",
+  };
 
   return (
     <div className="fixed inset-0 z-[200]" style={{ pointerEvents: "none" }}>
@@ -116,7 +134,7 @@ export function TutorialOverlay() {
               </button>
             ) : (
               <span className="animate-pulse text-xs font-semibold text-indigo-500">
-                {below ? "↑" : "↓"} 표시된 탭을 눌러보세요
+                {arrowUp ? "↑" : "↓"} 표시된 탭을 눌러보세요
               </span>
             )}
           </div>

@@ -97,7 +97,7 @@ export function ModeSelectTab({
       </div>
 
       {/* 모드 그리드 */}
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <div data-tut="tut-modes-grid" className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         {INTERVIEW_MODES.map((mode) => (
           <button
             key={mode.id}

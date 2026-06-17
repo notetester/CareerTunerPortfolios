@@ -29,9 +29,9 @@ export const TUT_STEPS: TutStep[] = [
   {
     key: "modes",
     tab: "modes",
-    targetId: "tut-panel-modes",
+    targetId: "tut-modes-grid",
     title: "1. 면접 모드 선택",
-    body: "지원 건과 면접 모드(직무·인성·압박 등)를 여기서 고르면 면접 세션이 시작됩니다. 모드에 따라 질문 성격이 달라져요.",
+    body: "위에서 지원 건을 고르고 여기서 면접 모드(직무·인성·압박 등)를 선택하면 면접 세션이 시작됩니다. 모드에 따라 질문 성격이 달라져요.",
   },
   {
     key: "questions-go",
