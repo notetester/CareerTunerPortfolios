@@ -7,6 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card"
 import { Checkbox } from "../components/ui/checkbox";
 import { Input } from "../components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../components/ui/tabs";
+import { findConsentTerm, type ConsentTerm } from "../auth/consentTerms";
 import { getMyConsents, revokeAiConsent, saveMyConsents, type ConsentStatus } from "../auth/consentApi";
 import { useAuth } from "../auth/AuthContext";
 import { NotificationSettings } from "@/features/notification/components/NotificationSettings";
@@ -168,9 +169,9 @@ export function SettingsPage() {
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-3">
-                <ConsentToggle label="서비스 이용약관" required checked={terms} onChange={setTerms} />
-                <ConsentToggle label="개인정보 처리방침" required checked={privacy} onChange={setPrivacy} />
-                <ConsentToggle label="마케팅 정보 수신" checked={marketing} onChange={setMarketing} />
+                <ConsentToggle term={findConsentTerm("TERMS")} checked={terms} onChange={setTerms} />
+                <ConsentToggle term={findConsentTerm("PRIVACY")} checked={privacy} onChange={setPrivacy} />
+                <ConsentToggle term={findConsentTerm("MARKETING")} checked={marketing} onChange={setMarketing} />
                 <Button onClick={() => void saveConsent()} disabled={saving} className="bg-blue-600 text-white hover:bg-blue-700">
                   <Save className="size-4" />
                   저장
@@ -188,7 +189,7 @@ export function SettingsPage() {
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
-                <ConsentToggle label="프로필 요약, 기술 추출, 완성도 진단을 위한 AI 데이터 사용" checked={aiData} onChange={setAiData} />
+                <ConsentToggle term={findConsentTerm("AI_DATA")} checked={aiData} onChange={setAiData} />
                 <div className="rounded-lg border border-slate-200 bg-slate-50 p-4 text-sm leading-6 text-slate-600">
                   동의가 꺼져 있으면 프로필 저장은 가능하지만 AI 요약, 기술 추출, 완성도 진단 API는 실행되지 않습니다.
                   철회는 삭제가 아니라 감사 가능한 이력으로 남기는 방식입니다.
@@ -219,23 +220,38 @@ export function SettingsPage() {
 }
 
 function ConsentToggle({
-  label,
-  required = false,
+  term,
   checked,
   onChange,
 }: {
-  label: string;
-  required?: boolean;
+  term: ConsentTerm;
   checked: boolean;
   onChange(next: boolean): void;
 }) {
+  const [open, setOpen] = useState(false);
+
   return (
-    <label className="flex items-center justify-between rounded-xl border border-slate-200 p-4">
-      <div>
-        <div className="text-sm font-semibold text-slate-800">{label}</div>
-        {required && <Badge className="mt-1 bg-blue-100 text-blue-700">필수</Badge>}
-      </div>
-      <Checkbox checked={checked} onCheckedChange={(value) => onChange(value === true)} />
-    </label>
+    <div className="rounded-xl border border-slate-200 p-4">
+      <label className="flex items-center justify-between gap-3">
+        <div>
+          <div className="text-sm font-semibold text-slate-800">
+            {term.title} <span className="text-xs font-normal text-slate-400">{term.version}</span>
+          </div>
+          <div className="mt-1 flex flex-wrap items-center gap-2">
+            {term.required && <Badge className="bg-blue-100 text-blue-700">필수</Badge>}
+            <span className="text-xs text-slate-400">시행일 {term.effectiveDate}</span>
+          </div>
+        </div>
+        <Checkbox checked={checked} onCheckedChange={(value) => onChange(value === true)} />
+      </label>
+      <button type="button" className="mt-3 text-xs font-semibold text-blue-600 hover:underline" onClick={() => setOpen((value) => !value)}>
+        {open ? "약관 접기" : "약관 전문 보기"}
+      </button>
+      {open && (
+        <ul className="mt-2 space-y-1 rounded-md bg-slate-50 p-3 text-xs leading-5 text-slate-600">
+          {term.body.map((line) => <li key={line}>- {line}</li>)}
+        </ul>
+      )}
+    </div>
   );
 }
