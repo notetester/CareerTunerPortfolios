@@ -9,6 +9,7 @@ import {
   getMediaCapabilities,
   listSessionQuestions,
   saveMediaResult,
+  scoreVoiceTranscript,
 } from "../api/interviewApi";
 import { blobToPcm16Base64, computeVoiceScore, countFillers, VoiceMetricsTracker } from "../hooks/voiceAnalysis";
 import type {
@@ -262,6 +263,19 @@ export function RealtimeInterviewTab({ session }: { session: InterviewSession | 
       setSaveNote(
         err instanceof Error ? `결과 저장 실패: ${err.message}` : "결과 저장에 실패했습니다.",
       );
+    }
+    // 답변 "내용" 채점: 트랜스크립트를 질문별로 채점해 저장한다(전달력 점수와 별개, interview_answer 경로 공유).
+    if (transcript.some((l) => l.role === "user")) {
+      try {
+        const scored = await scoreVoiceTranscript(session.id, transcript);
+        if (scored > 0) {
+          setSaveNote((prev) =>
+            `${prev ?? ""} 답변 ${scored}문항의 내용도 채점했습니다(리포트·복기에서 확인).`.trim(),
+          );
+        }
+      } catch {
+        // 내용 채점 실패는 음성(전달력) 점수 저장을 막지 않는다.
+      }
     }
     setStatus("scored");
   };

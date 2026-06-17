@@ -36,6 +36,7 @@ import com.careertuner.interview.dto.SubmitAnswerRequest;
 import com.careertuner.interview.mapper.InterviewMapper;
 import lombok.RequiredArgsConstructor;
 import tools.jackson.core.JacksonException;
+import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 
 @Service
@@ -53,6 +54,7 @@ public class InterviewServiceImpl implements InterviewService {
     private static final String FEATURE_FOLLOWUP = "INTERVIEW_FOLLOWUP_GEN";
     private static final String FEATURE_REPORT = "INTERVIEW_REPORT";
     private static final String FEATURE_MODEL_ANSWER = "INTERVIEW_MODEL_ANSWER";
+    private static final String FEATURE_VOICE_SCORING = "INTERVIEW_VOICE_SCORING";
 
     private static final Map<String, String> MODE_LABELS = Map.of(
             "BASIC", "기본 면접",
@@ -192,6 +194,67 @@ public class InterviewServiceImpl implements InterviewService {
                 .map(q -> SessionReviewResponse.Item.of(q, latestByQuestion.get(q.getId())))
                 .toList();
         return SessionReviewResponse.of(session, items);
+    }
+
+    @Override
+    @Transactional
+    public int scoreVoiceTranscript(Long userId, Long sessionId, JsonNode transcript) {
+        InterviewSession session = requireSession(userId, sessionId);
+        ApplicationCase applicationCase = accessService.requireOwned(userId, session.getApplicationCaseId());
+        // 음성 면접은 준비된 본질문으로만 진행하므로 꼬리질문은 제외하고 채점 대상으로 삼는다.
+        List<InterviewQuestion> questions = interviewMapper.findQuestionsBySessionId(sessionId).stream()
+                .filter(q -> q.getParentQuestionId() == null)
+                .toList();
+        if (questions.isEmpty()) {
+            throw new BusinessException(ErrorCode.INVALID_INPUT, "채점할 준비된 질문이 없습니다.");
+        }
+        String transcriptText = transcriptToText(transcript);
+        if (transcriptText.isBlank()) {
+            throw new BusinessException(ErrorCode.INVALID_INPUT, "채점할 대화 내용이 없습니다.");
+        }
+        List<String> questionTexts = questions.stream().map(InterviewQuestion::getQuestion).toList();
+
+        InterviewOpenAiClient.VoiceScoringResult scored;
+        try {
+            scored = aiClient.scoreVoiceTranscript(questionTexts, transcriptText,
+                    applicationCase.getCompanyName(), applicationCase.getJobTitle());
+        } catch (BusinessException ex) {
+            aiUsageLogService.recordFailure(userId, session.getApplicationCaseId(), FEATURE_VOICE_SCORING, ex.getMessage());
+            throw ex;
+        }
+        aiUsageLogService.recordSuccess(userId, session.getApplicationCaseId(), FEATURE_VOICE_SCORING, scored.usage());
+
+        int count = 0;
+        for (InterviewOpenAiClient.VoiceScoredItem item : scored.items()) {
+            if (item.number() < 1 || item.number() > questions.size() || item.answerText().isBlank()) {
+                continue;
+            }
+            InterviewQuestion q = questions.get(item.number() - 1);
+            interviewMapper.insertAnswer(InterviewAnswer.builder()
+                    .questionId(q.getId())
+                    .answerText(item.answerText())
+                    .score(item.score())
+                    .feedback(item.feedback())
+                    .build());
+            count++;
+        }
+        return count;
+    }
+
+    /** 트랜스크립트 JSON([{role,text}])을 "면접관/지원자: ..." 대화 텍스트로 변환한다. */
+    private String transcriptToText(JsonNode transcript) {
+        StringBuilder sb = new StringBuilder();
+        if (transcript != null && transcript.isArray()) {
+            for (JsonNode line : transcript) {
+                String text = line.path("text").asText("").trim();
+                if (text.isEmpty()) {
+                    continue;
+                }
+                sb.append("ai".equals(line.path("role").asText("")) ? "면접관" : "지원자")
+                        .append(": ").append(text).append("\n");
+            }
+        }
+        return sb.toString();
     }
 
     @Override

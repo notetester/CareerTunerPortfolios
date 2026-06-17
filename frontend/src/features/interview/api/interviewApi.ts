@@ -31,6 +31,7 @@ import type {
   SessionPageResponse,
   SessionReview,
   SubmitAnswerRequest,
+  TranscriptLine,
   VoiceAnalysisResult,
 } from "../types/interview";
 
@@ -62,6 +63,15 @@ export function deleteInterviewSession(sessionId: number): Promise<void> {
 export function markSessionResumed(sessionId: number): Promise<void> {
   if (isDataMockActive()) return Promise.resolve();
   return api<void>(`/interview/sessions/${sessionId}/resume`, { method: "POST" });
+}
+
+/** 음성 모의면접 트랜스크립트 → 질문별 내용 채점(interview_answer 저장). 채점한 문항 수 반환. */
+export function scoreVoiceTranscript(sessionId: number, transcript: TranscriptLine[]): Promise<number> {
+  if (isDataMockActive()) return Promise.resolve(transcript.some((l) => l.role === "user") ? 3 : 0);
+  return api<number>(`/interview/sessions/${sessionId}/score-voice`, {
+    method: "POST",
+    body: JSON.stringify({ transcript }),
+  });
 }
 
 

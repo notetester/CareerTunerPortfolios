@@ -26,6 +26,7 @@ import com.careertuner.interview.dto.InterviewReportResponse;
 import com.careertuner.interview.dto.InterviewSessionResponse;
 import com.careertuner.interview.dto.ModelAnswerResponse;
 import com.careertuner.interview.dto.RealtimeSessionResponse;
+import com.careertuner.interview.dto.ScoreVoiceTranscriptRequest;
 import com.careertuner.interview.dto.SessionPageResponse;
 import com.careertuner.interview.dto.SessionReviewResponse;
 import com.careertuner.interview.dto.SubmitAnswerRequest;
@@ -136,5 +137,12 @@ public class InterviewController {
     public ApiResponse<SessionReviewResponse> getSessionReview(@AuthenticationPrincipal AuthUser authUser,
                                                                @PathVariable Long sessionId) {
         return ApiResponse.ok(interviewService.getSessionReview(authUser.id(), sessionId));
+    }
+
+    @PostMapping("/sessions/{sessionId}/score-voice")
+    public ApiResponse<Integer> scoreVoiceTranscript(@AuthenticationPrincipal AuthUser authUser,
+                                                     @PathVariable Long sessionId,
+                                                     @Valid @RequestBody ScoreVoiceTranscriptRequest request) {
+        return ApiResponse.ok(interviewService.scoreVoiceTranscript(authUser.id(), sessionId, request.transcript()));
     }
 }

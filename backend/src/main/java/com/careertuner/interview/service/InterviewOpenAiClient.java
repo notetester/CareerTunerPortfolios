@@ -303,6 +303,51 @@ public class InterviewOpenAiClient implements InterviewAnswerEvaluator {
                 result.usage());
     }
 
+    /**
+     * 음성 모의면접 트랜스크립트를 질문별 답변으로 매핑하고 채점한다(통합 1콜).
+     * 대화 흐름(면접관/지원자 발화)에서 각 질문의 답을 추출해 점수·피드백을 매긴다. 미응답 질문은 score 0.
+     */
+    public VoiceScoringResult scoreVoiceTranscript(List<String> questions, String transcriptText,
+                                                   String companyName, String jobTitle) {
+        StringBuilder qList = new StringBuilder();
+        for (int i = 0; i < questions.size(); i++) {
+            qList.append(i + 1).append(". ").append(questions.get(i)).append("\n");
+        }
+        String system = """
+                너는 음성 모의면접 채점관이다. 면접관(ai)과 지원자(user)가 주고받은 대화에서
+                각 준비 질문(number)에 대해 지원자가 실제로 말한 답을 찾아 정리하고 채점한다.
+                JSON 만 반환한다. 지원자가 답하지 않은 질문은 answer 를 빈 문자열, score 를 0 으로 둔다.
+                내용의 구체성·직무 적합성·논리성을 기준으로 0~100 으로 채점하고, 한국어 한두 문장으로 피드백한다.
+                """;
+        String userPrompt = """
+                회사명: %s
+                직무명: %s
+
+                준비된 질문(number 로 참조):
+                %s
+                대화 트랜스크립트(role: ai=면접관, user=지원자):
+                %s
+                """.formatted(companyName, jobTitle, qList, transcriptText);
+
+        InterviewLlmGateway.Result result = gateway.complete(new InterviewLlmGateway.Request(
+                "interview_voice_transcript_scoring", voiceScoringSchema(),
+                system, userPrompt, modelProperties.getJudge()));
+        JsonNode payload = result.payload();
+
+        List<VoiceScoredItem> items = new ArrayList<>();
+        JsonNode arr = payload.path("results");
+        if (arr.isArray()) {
+            for (JsonNode it : arr) {
+                items.add(new VoiceScoredItem(
+                        it.path("number").asInt(0),
+                        it.path("answer").asText("").trim(),
+                        clampScore(it.path("score").asInt(0)),
+                        it.path("feedback").asText("").trim()));
+            }
+        }
+        return new VoiceScoringResult(items, result.usage());
+    }
+
     // ───── 응답 매핑 보조 ─────
 
     private String normalizeType(String value) {
@@ -388,6 +433,19 @@ public class InterviewOpenAiClient implements InterviewAnswerEvaluator {
         return objectSchema(properties, List.of("action", "reason"));
     }
 
+    private Map<String, Object> voiceScoringSchema() {
+        Map<String, Object> item = objectSchema(
+                Map.of(
+                        "number", integerSchema(),
+                        "answer", stringSchema(),
+                        "score", integerSchema(),
+                        "feedback", stringSchema()),
+                List.of("number", "answer", "score", "feedback"));
+        Map<String, Object> properties = new LinkedHashMap<>();
+        properties.put("results", Map.of("type", "array", "items", item));
+        return objectSchema(properties, List.of("results"));
+    }
+
     private Map<String, Object> objectSchema(Map<String, Object> properties, List<String> required) {
         Map<String, Object> schema = new LinkedHashMap<>();
         schema.put("type", "object");
@@ -441,5 +499,12 @@ public class InterviewOpenAiClient implements InterviewAnswerEvaluator {
 
     public record ReportPayload(int totalScore, List<ReportCategory> categories,
                                 List<String> summaryFeedback, Usage usage) {
+    }
+
+    /** 음성 트랜스크립트 채점 결과의 한 항목 (number 는 1-base 질문 순번). */
+    public record VoiceScoredItem(int number, String answerText, int score, String feedback) {
+    }
+
+    public record VoiceScoringResult(List<VoiceScoredItem> items, Usage usage) {
     }
 }
