@@ -33,6 +33,7 @@ import type {
   SubmitAnswerRequest,
   TranscriptLine,
   VoiceAnalysisResult,
+  VoiceScoreServerResult,
 } from "../types/interview";
 
 // 백엔드 계약: /api/interview/** , /api/file/**
@@ -209,6 +210,27 @@ export function analyzeVoice(
   return api<VoiceAnalysisResult>(`/interview/sessions/${sessionId}/voice-analysis`, {
     method: "POST",
     body: JSON.stringify({ audioBase64, sampleRateHertz, language: "ko" }),
+  });
+}
+
+/**
+ * 음성 답변 → 자체 추론 서버 점수 (ADR-006, Inworld 대체).
+ * audioBase64 는 녹음 원본(webm 등). 글자수·군말수·응답지연은 프런트가 계산해 함께 보낸다.
+ * 원본 음성은 서버에서 점수 산출 후 버려진다(전송 동의 필요).
+ */
+export function scoreVoiceServer(
+  sessionId: number,
+  payload: {
+    audioBase64: string;
+    audioFormat?: string;
+    transcriptChars?: number;
+    fillerCount?: number;
+    latencySec?: number;
+  },
+): Promise<VoiceScoreServerResult> {
+  return api<VoiceScoreServerResult>(`/interview/sessions/${sessionId}/voice-score`, {
+    method: "POST",
+    body: JSON.stringify(payload),
   });
 }
 

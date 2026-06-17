@@ -170,9 +170,18 @@ export interface VoiceScoreDetail {
   overall: number;
 }
 
+/** 자체 추론 서버 음성 점수 응답 (POST /sessions/{id}/voice-score, ADR-006) */
+export interface VoiceScoreServerResult {
+  score: number;
+  detail: VoiceScoreDetail;
+  metrics: Record<string, unknown>;
+  source: "rule" | "lightgbm";
+}
+
 /** 외부 키 보유 여부 (GET /media/capabilities) */
 export interface MediaCapabilities {
   voiceProfiling: boolean;
+  nonverbal: boolean; // 자체 추론 서버(serve) 사용 가능 여부 (ADR-006)
   avatar: boolean;
   avatarSandbox: boolean;
 }
