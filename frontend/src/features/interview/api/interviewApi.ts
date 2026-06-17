@@ -28,6 +28,7 @@ import type {
   MediaCapabilities,
   RealtimeSession,
   SaveMediaAnalysisRequest,
+  SessionReview,
   SubmitAnswerRequest,
   VoiceAnalysisResult,
 } from "../types/interview";
@@ -140,6 +141,27 @@ export function createRealtimeSession(sessionId: number): Promise<RealtimeSessio
 export function getInterviewReport(sessionId: number): Promise<InterviewReport> {
   if (isDataMockActive()) return mockDelay(dummyReport, 700);
   return api<InterviewReport>(`/interview/sessions/${sessionId}/report`, { method: "GET" });
+}
+
+/** 지난 세션 복기: 질문 + 모범답안 + 내 최신 답변/점수 (최근 면접 기록에서 들어가 보기). */
+export function getSessionReview(sessionId: number): Promise<SessionReview> {
+  if (isDataMockActive()) {
+    return Promise.resolve({
+      sessionId,
+      mode: dummySession.mode,
+      items: dummyQuestions.map((q) => ({
+        questionId: q.id,
+        question: q.question,
+        questionType: q.questionType ?? "EXPECTED",
+        modelAnswer: dummyModelAnswer,
+        answerText: null,
+        score: null,
+        feedback: null,
+        improvedAnswer: null,
+      })),
+    });
+  }
+  return api<SessionReview>(`/interview/sessions/${sessionId}/review`, { method: "GET" });
 }
 
 // ───── 음성/아바타 면접 분석 : /api/interview/media·sessions/** ─────

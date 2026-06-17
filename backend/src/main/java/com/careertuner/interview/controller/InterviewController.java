@@ -23,6 +23,7 @@ import com.careertuner.interview.dto.InterviewReportResponse;
 import com.careertuner.interview.dto.InterviewSessionResponse;
 import com.careertuner.interview.dto.ModelAnswerResponse;
 import com.careertuner.interview.dto.RealtimeSessionResponse;
+import com.careertuner.interview.dto.SessionReviewResponse;
 import com.careertuner.interview.dto.SubmitAnswerRequest;
 import com.careertuner.interview.realtime.InterviewRealtimeService;
 import com.careertuner.interview.service.InterviewService;
@@ -105,5 +106,11 @@ public class InterviewController {
     public ApiResponse<InterviewReportResponse> getReport(@AuthenticationPrincipal AuthUser authUser,
                                                           @PathVariable Long sessionId) {
         return ApiResponse.ok(interviewService.getReport(authUser.id(), sessionId));
+    }
+
+    @GetMapping("/sessions/{sessionId}/review")
+    public ApiResponse<SessionReviewResponse> getSessionReview(@AuthenticationPrincipal AuthUser authUser,
+                                                               @PathVariable Long sessionId) {
+        return ApiResponse.ok(interviewService.getSessionReview(authUser.id(), sessionId));
     }
 }

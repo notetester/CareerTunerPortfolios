@@ -3,14 +3,16 @@ import { AlertCircle, BarChart3, FileText } from "lucide-react";
 import { Badge } from "@/app/components/ui/badge";
 import { Button } from "@/app/components/ui/button";
 import type { ApplicationCase } from "@/features/applications/types/applicationCase";
-import { createInterviewSession } from "../api/interviewApi";
+import { createInterviewSession, getSessionReview } from "../api/interviewApi";
 import { useInterviewSessions } from "../hooks/useInterviewSessions";
 import {
   INTERVIEW_MODES,
   getInterviewModeLabel,
   getScoreColor,
+  toSentenceLines,
   type InterviewMode,
   type InterviewSession,
+  type SessionReview,
 } from "../types/interview";
 
 interface ModeSelectTabProps {
@@ -41,6 +43,10 @@ export function ModeSelectTab({
   const sessions = useInterviewSessions();
   const [starting, setStarting] = useState(false);
   const [startError, setStartError] = useState<string | null>(null);
+  const [review, setReview] = useState<SessionReview | null>(null);
+  const [reviewOpen, setReviewOpen] = useState(false);
+  const [reviewLoading, setReviewLoading] = useState(false);
+  const [reviewError, setReviewError] = useState<string | null>(null);
 
   const canStart = selectedCaseId !== null && selectedMode !== null && !starting;
 
@@ -58,6 +64,20 @@ export function ModeSelectTab({
       setStartError(err instanceof Error ? err.message : "면접을 시작하지 못했습니다.");
     } finally {
       setStarting(false);
+    }
+  };
+
+  const openReview = async (sessionId: number) => {
+    setReviewOpen(true);
+    setReview(null);
+    setReviewError(null);
+    setReviewLoading(true);
+    try {
+      setReview(await getSessionReview(sessionId));
+    } catch (err) {
+      setReviewError(err instanceof Error ? err.message : "면접 기록을 불러오지 못했습니다.");
+    } finally {
+      setReviewLoading(false);
     }
   };
 
@@ -97,7 +117,7 @@ export function ModeSelectTab({
       </div>
 
       {/* 모드 그리드 */}
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <div data-tut="tut-modes-grid" className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         {INTERVIEW_MODES.map((mode) => (
           <button
             key={mode.id}
@@ -175,9 +195,11 @@ export function ModeSelectTab({
         ) : (
           <div className="space-y-2">
             {sessions.sessions.map((s) => (
-              <div
+              <button
                 key={s.id}
-                className="flex items-center gap-4 rounded-xl border border-slate-200 bg-white p-4 transition-colors hover:border-blue-300"
+                type="button"
+                onClick={() => openReview(s.id)}
+                className="flex w-full items-center gap-4 rounded-xl border border-slate-200 bg-white p-4 text-left transition-colors hover:border-blue-300"
               >
                 <div className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-purple-500 to-indigo-500 text-xs font-bold text-white">
                   {caseLabel(s.applicationCaseId).slice(0, 1)}
@@ -195,11 +217,72 @@ export function ModeSelectTab({
                   <div className="text-[10px] text-slate-400">점수</div>
                 </div>
                 <BarChart3 className="size-4 text-slate-400" />
-              </div>
+              </button>
             ))}
           </div>
         )}
       </div>
+
+      {reviewOpen && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+          onClick={() => setReviewOpen(false)}
+        >
+          <div
+            className="max-h-[85vh] w-full max-w-2xl overflow-y-auto rounded-2xl bg-white p-6 shadow-xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="mb-4 flex items-center justify-between">
+              <h3 className="text-lg font-bold text-slate-900">면접 기록 복기</h3>
+              <button
+                type="button"
+                onClick={() => setReviewOpen(false)}
+                className="rounded-lg px-2 py-1 text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-600"
+              >
+                ✕
+              </button>
+            </div>
+            {reviewLoading ? (
+              <p className="py-10 text-center text-sm text-slate-400">불러오는 중…</p>
+            ) : reviewError ? (
+              <p className="py-10 text-center text-sm text-red-500">{reviewError}</p>
+            ) : review && review.items.length > 0 ? (
+              <div className="space-y-4">
+                {review.items.map((it, i) => (
+                  <div key={it.questionId} className="rounded-xl border border-slate-200 p-4">
+                    <div className="mb-2 text-sm font-bold text-slate-800">
+                      Q{i + 1}. {it.question}
+                    </div>
+                    {it.answerText && (
+                      <div className="mb-2 rounded-lg bg-slate-50 p-3">
+                        <div className="mb-1 flex items-center gap-1.5 text-xs font-bold text-slate-500">
+                          내 답변
+                          {it.score !== null && (
+                            <span className={getScoreColor(it.score)}>· {it.score}점</span>
+                          )}
+                        </div>
+                        <p className="whitespace-pre-line text-sm text-slate-700">{it.answerText}</p>
+                      </div>
+                    )}
+                    {it.modelAnswer ? (
+                      <div className="rounded-lg border border-amber-100 bg-amber-50 p-3">
+                        <div className="mb-1 text-xs font-bold text-amber-700">모범답안</div>
+                        <p className="whitespace-pre-line text-sm leading-relaxed text-slate-700">
+                          {toSentenceLines(it.modelAnswer)}
+                        </p>
+                      </div>
+                    ) : (
+                      <p className="text-xs text-slate-400">모범답안 준비 중…</p>
+                    )}
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="py-10 text-center text-sm text-slate-400">아직 생성된 질문이 없습니다.</p>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

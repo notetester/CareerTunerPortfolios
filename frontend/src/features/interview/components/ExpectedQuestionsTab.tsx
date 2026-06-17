@@ -7,7 +7,6 @@ import {
   Loader2,
   RotateCcw,
   Sparkles,
-  ThumbsUp,
 } from "lucide-react";
 import { Badge } from "@/app/components/ui/badge";
 import { Button } from "@/app/components/ui/button";
@@ -21,6 +20,7 @@ import {
 } from "../api/interviewApi";
 import {
   getScoreColor,
+  toSentenceLines,
   type InterviewAnswer,
   type InterviewQuestion,
   type InterviewSession,
@@ -30,11 +30,15 @@ import {
 function QuestionItem({
   question,
   index,
+  mode,
   onFollowUpsGenerated,
+  preparingModelAnswer = false,
 }: {
   question: InterviewQuestion;
   index: number;
-  onFollowUpsGenerated: () => void;
+  mode: string;
+  onFollowUpsGenerated: (questions: InterviewQuestion[]) => void;
+  preparingModelAnswer?: boolean;
 }) {
   const [answer, setAnswer] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -43,8 +47,28 @@ function QuestionItem({
   const [followingUp, setFollowingUp] = useState(false);
   const [modelAnswer, setModelAnswer] = useState<string | null>(null);
   const [loadingModel, setLoadingModel] = useState(false);
+  const [showModel, setShowModel] = useState(false);
+  const [rebuttalRequested, setRebuttalRequested] = useState(false);
 
   const isFollowUp = question.questionType === "FOLLOW_UP";
+  const isPressure = mode === "PRESSURE";
+
+  const handleFollowUp = async (): Promise<boolean> => {
+    setFollowingUp(true);
+    setError(null);
+    try {
+      // 반환된 전체 질문 목록을 그대로 반영한다. loadExisting(로딩 스피너로 전체 교체)을 쓰면
+      // 답변/평가 결과가 있는 카드까지 언마운트돼 "초기화"처럼 보이므로 목록만 갈아끼운다.
+      const updated = await generateFollowUps(question.id);
+      onFollowUpsGenerated(updated);
+      return true;
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "반박 질문 생성에 실패했습니다.");
+      return false;
+    } finally {
+      setFollowingUp(false);
+    }
+  };
 
   const handleSubmit = async () => {
     if (!answer.trim()) return;
@@ -56,30 +80,30 @@ function QuestionItem({
       setResult(evaluated);
     } catch (err) {
       setError(err instanceof Error ? err.message : "답변 평가에 실패했습니다.");
-    } finally {
       setSubmitting(false);
+      return;
     }
-  };
-
-  const handleFollowUp = async () => {
-    setFollowingUp(true);
-    setError(null);
-    try {
-      await generateFollowUps(question.id);
-      onFollowUpsGenerated();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "꼬리 질문 생성에 실패했습니다.");
-    } finally {
-      setFollowingUp(false);
+    setSubmitting(false);
+    // 압박 면접: 본질문에 답하면 반박(꼬리질문) 1개를 자동 생성한다. 반박 질문 자체엔 다시 하지 않는다(1회).
+    if (isPressure && !isFollowUp && !rebuttalRequested) {
+      setRebuttalRequested(true);
+      const ok = await handleFollowUp();
+      if (!ok) setRebuttalRequested(false); // 실패 시 재제출로 재시도 가능
     }
   };
 
   const handleModelAnswer = async () => {
+    // 이미 받아둔 모범답안이면 재호출 없이 펼침/접기만 토글한다.
+    if (modelAnswer) {
+      setShowModel((v) => !v);
+      return;
+    }
     setLoadingModel(true);
     setError(null);
     try {
       const res = await getModelAnswer(question.id);
       setModelAnswer(res.modelAnswer);
+      setShowModel(true);
     } catch (err) {
       setError(err instanceof Error ? err.message : "모범답안 생성에 실패했습니다.");
     } finally {
@@ -107,28 +131,37 @@ function QuestionItem({
           rows={3}
           className="w-full resize-y rounded-lg border border-slate-200 p-3 text-sm outline-none focus:border-blue-400"
         />
-        <div className="flex flex-wrap justify-end gap-2">
-          <Button
-            size="sm"
-            variant="outline"
-            className="gap-1.5"
-            disabled={loadingModel}
-            onClick={handleModelAnswer}
-          >
-            {loadingModel ? <Loader2 className="size-3.5 animate-spin" /> : <Lightbulb className="size-3.5" />}
-            {loadingModel ? "생성 중…" : modelAnswer ? "모범답안 다시 보기" : "모범답안 보기"}
-          </Button>
-          <Button size="sm" disabled={!answer.trim() || submitting} onClick={handleSubmit}>
-            {submitting ? "평가 중…" : "답변 평가"}
-          </Button>
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          {preparingModelAnswer && !modelAnswer ? (
+            <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2 py-0.5 text-[11px] text-slate-500">
+              <Loader2 className="size-3 animate-spin" /> 모범답안 준비 중
+            </span>
+          ) : (
+            <span />
+          )}
+          <div className="flex flex-wrap gap-2">
+            <Button
+              size="sm"
+              variant="outline"
+              className="gap-1.5"
+              disabled={loadingModel}
+              onClick={handleModelAnswer}
+            >
+              {loadingModel ? <Loader2 className="size-3.5 animate-spin" /> : <Lightbulb className="size-3.5" />}
+              {loadingModel ? "생성 중…" : modelAnswer && showModel ? "모범답안 접기" : "모범답안 보기"}
+            </Button>
+            <Button size="sm" disabled={!answer.trim() || submitting} onClick={handleSubmit}>
+              {submitting ? "평가 중…" : "답변 평가"}
+            </Button>
+          </div>
         </div>
 
-        {modelAnswer && (
+        {showModel && modelAnswer && (
           <div className="rounded-lg border border-amber-100 bg-amber-50 p-3">
             <div className="mb-1 flex items-center gap-1.5 text-xs font-bold text-amber-700">
               <Lightbulb className="size-3.5" /> 모범답안
             </div>
-            <p className="whitespace-pre-line text-sm leading-relaxed text-slate-700">{modelAnswer}</p>
+            <p className="whitespace-pre-line text-sm leading-relaxed text-slate-700">{toSentenceLines(modelAnswer)}</p>
           </div>
         )}
 
@@ -138,34 +171,36 @@ function QuestionItem({
           </p>
         )}
 
-        {result && (
+        {submitting && (
+          <div className="flex items-center gap-2 rounded-lg bg-slate-50 p-3 text-sm text-slate-500">
+            <Loader2 className="size-4 animate-spin text-blue-500" /> AI가 답변을 채점·검증하고 있어요 · 보통 5~10초
+          </div>
+        )}
+
+        {!submitting && result && (
           <div className="space-y-3 rounded-lg bg-slate-50 p-3">
             {result.score !== null && (
               <div className="text-sm font-bold">
                 점수 <span className={getScoreColor(result.score)}>{result.score}점</span>
               </div>
             )}
-            {result.feedback && <p className="text-xs text-slate-600">{result.feedback}</p>}
-            {result.improvedAnswer && (
-              <div className="rounded-lg border border-green-100 bg-green-50 p-3">
-                <div className="mb-1 flex items-center gap-1.5 text-xs font-bold text-green-700">
-                  <ThumbsUp className="size-3.5" /> AI 개선 답변
-                </div>
-                <p className="text-sm leading-relaxed text-slate-700">{result.improvedAnswer}</p>
+            {result.feedback && (
+              <p className="whitespace-pre-line text-xs leading-relaxed text-slate-600">{toSentenceLines(result.feedback)}</p>
+            )}
+            {result.score === 100 ? (
+              <div className="rounded-lg border border-green-100 bg-green-50 p-3 text-sm font-semibold text-green-700">
+                🎉 만점이에요. 이대로 말하면 됩니다.
+              </div>
+            ) : (
+              <p className="flex items-center gap-1.5 text-xs text-slate-500">
+                <Lightbulb className="size-3.5 text-amber-500" /> 위 "모범답안 보기"로 만점 기준 답안을 확인해 보세요.
+              </p>
+            )}
+            {isPressure && followingUp && (
+              <div className="flex items-center gap-1.5 text-xs text-slate-500">
+                <Loader2 className="size-3.5 animate-spin" /> 반박 질문 생성 중…
               </div>
             )}
-            <div className="flex justify-end">
-              <Button
-                size="sm"
-                variant="outline"
-                className="gap-1.5"
-                disabled={followingUp}
-                onClick={handleFollowUp}
-              >
-                <CornerDownRight className="size-3.5" />
-                {followingUp ? "꼬리 질문 생성 중…" : "꼬리 질문 받기"}
-              </Button>
-            </div>
           </div>
         )}
       </CardContent>
@@ -185,6 +220,7 @@ export function ExpectedQuestionsTab({
   const [generating, setGenerating] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [resetVersion, setResetVersion] = useState(0);
+  const [modelAnswersPreparing, setModelAnswersPreparing] = useState(false);
 
   const loadExisting = useCallback(async () => {
     if (!session) return;
@@ -203,6 +239,13 @@ export function ExpectedQuestionsTab({
     void loadExisting();
   }, [loadExisting]);
 
+  // 모범답안은 질문 생성 후 백그라운드에서 만들어진다. 생성 직후 잠깐 "준비 중" 힌트를 보였다가 자동으로 거둔다.
+  useEffect(() => {
+    if (!modelAnswersPreparing) return;
+    const timer = setTimeout(() => setModelAnswersPreparing(false), 25000);
+    return () => clearTimeout(timer);
+  }, [modelAnswersPreparing]);
+
   const handleGenerate = async () => {
     if (!session) return;
     setGenerating(true);
@@ -210,6 +253,7 @@ export function ExpectedQuestionsTab({
     try {
       const generated = await generateExpectedQuestions(session.id, { mode: session.mode });
       setQuestions(generated);
+      setModelAnswersPreparing(true); // 모범답안 백그라운드 생성 동안 잠깐 준비 중 힌트 표시
     } catch (err) {
       setError(err instanceof Error ? err.message : "질문 생성에 실패했습니다.");
     } finally {
@@ -243,7 +287,29 @@ export function ExpectedQuestionsTab({
         </p>
       )}
 
-      {loading ? (
+      {generating ? (
+        <div className="space-y-3">
+          <div className="flex items-center justify-center gap-2 rounded-xl border border-blue-100 bg-blue-50 p-4 text-sm text-blue-700">
+            <Loader2 className="size-4 animate-spin" /> AI가 질문을 만들고 있어요 · 보통 10~15초 걸립니다
+          </div>
+          {[0, 1, 2, 3].map((i) => (
+            <div key={i} className="space-y-3 rounded-xl border border-slate-200 bg-white p-4">
+              <div className="flex items-center gap-2">
+                <div className="size-6 shrink-0 animate-pulse rounded-full bg-slate-200" />
+                <div className="h-3.5 w-3/4 animate-pulse rounded bg-slate-200" />
+              </div>
+              <div className="space-y-2">
+                <div className="h-3 w-full animate-pulse rounded bg-slate-100" />
+                <div className="h-3 w-5/6 animate-pulse rounded bg-slate-100" />
+              </div>
+              <div className="flex justify-end gap-2">
+                <div className="h-8 w-28 animate-pulse rounded bg-slate-100" />
+                <div className="h-8 w-20 animate-pulse rounded bg-slate-100" />
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : loading ? (
         <div className="flex items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white p-10 text-sm text-slate-400">
           <Loader2 className="size-4 animate-spin" /> 불러오는 중…
         </div>
@@ -271,7 +337,9 @@ export function ExpectedQuestionsTab({
               key={`${q.id}-${resetVersion}`}
               question={q}
               index={i}
-              onFollowUpsGenerated={loadExisting}
+              mode={session.mode}
+              onFollowUpsGenerated={(qs) => setQuestions(qs)}
+              preparingModelAnswer={modelAnswersPreparing}
             />
           ))}
 

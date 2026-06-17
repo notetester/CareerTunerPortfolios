@@ -58,9 +58,12 @@
     </insert>
 
     <update id="updateQuestionModelAnswer">
+        <!-- first-writer-wins: 모범답안은 한 번 정해지면 덮어쓰지 않는다.
+             백그라운드 일괄 생성과 평가/조회 시 지연 생성이 경쟁해도 채점 기준 = 표시 = 복기가 항상 일치한다. -->
         UPDATE interview_question
         SET model_answer = #{modelAnswer}
         WHERE id = #{id}
+          AND (model_answer IS NULL OR model_answer = '')
     </update>
 
     <select id="findMaxSortOrder" resultType="java.lang.Integer">

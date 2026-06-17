@@ -95,18 +95,12 @@ export function InterviewPage() {
           </div>
           <h1 className="mt-4 text-xl font-bold text-slate-900">AI 가상 면접</h1>
           <p className="mt-1 text-sm leading-6 text-slate-500">
-            로그인 없이 먼저 체험해 볼 수 있어요. 데모로 전체 기능을 바로 써보거나, 가이드와 함께 둘러보세요.
+            로그인 없이 먼저 둘러볼 수 있어요. 가이드와 함께 전체 흐름을 살펴보세요.
           </p>
           <div className="mt-5 flex flex-col gap-2">
             <button
-              onClick={startDemo}
-              className="w-full rounded-lg bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-indigo-700"
-            >
-              지금 체험하기 (로그인 불필요)
-            </button>
-            <button
               onClick={startTutorial}
-              className="w-full rounded-lg border border-indigo-200 bg-indigo-50 px-4 py-2.5 text-sm font-semibold text-indigo-600 transition-colors hover:bg-indigo-100"
+              className="w-full rounded-lg bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-indigo-700"
             >
               가이드와 둘러보기
             </button>
@@ -134,20 +128,12 @@ export function InterviewPage() {
           </div>
           <div className="flex shrink-0 gap-2">
             {mode === "off" ? (
-              <>
-                <button
-                  onClick={startDemo}
-                  className="rounded-lg bg-indigo-600 px-3 py-2 text-sm font-semibold text-white transition-colors hover:bg-indigo-700"
-                >
-                  체험하기
-                </button>
-                <button
-                  onClick={startTutorial}
-                  className="rounded-lg border border-indigo-200 bg-indigo-50 px-3 py-2 text-sm font-semibold text-indigo-600 transition-colors hover:bg-indigo-100"
-                >
-                  둘러보기
-                </button>
-              </>
+              <button
+                onClick={startTutorial}
+                className="rounded-lg border border-indigo-200 bg-indigo-50 px-3 py-2 text-sm font-semibold text-indigo-600 transition-colors hover:bg-indigo-100"
+              >
+                둘러보기
+              </button>
             ) : (
               <button
                 onClick={stopDemo}

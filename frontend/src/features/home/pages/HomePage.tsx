@@ -1412,7 +1412,7 @@ export function HomePage() {
               무료로 시작하기
               <ArrowRight className="ml-2 size-5" />
             </Button>
-            <Button size="lg" variant="outline" className="border-white/40 text-white hover:bg-white/10 text-base px-10" onClick={() => navigate("/pricing")}>
+            <Button size="lg" variant="outline" className="border-white/40 bg-transparent text-white hover:bg-white/10 text-base px-10" onClick={() => navigate("/pricing")}>
               요금제 비교하기
             </Button>
           </div>

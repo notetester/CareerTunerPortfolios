@@ -6,9 +6,7 @@ export type InterviewMode =
   | "JOB" // 직무 면접
   | "PERSONALITY" // 인성 면접
   | "PRESSURE" // 압박 면접
-  | "REAL" // 실전 면접
   | "RESUME" // 자소서 기반
-  | "PORTFOLIO" // 포트폴리오 기반
   | "COMPANY"; // 기업 맞춤
 
 export type QuestionType = "EXPECTED" | "TECH" | "PERSONALITY" | "SITUATION" | "FOLLOW_UP";
@@ -218,6 +216,25 @@ export interface FileAsset {
   createdAt: string;
 }
 
+/** 지난 세션 복기(리뷰) 한 문항 — 질문 + 모범답안 + 내 최신 답변/점수. */
+export interface SessionReviewItem {
+  questionId: number;
+  question: string;
+  questionType: string;
+  modelAnswer: string | null;
+  answerText: string | null;
+  score: number | null;
+  feedback: string | null;
+  improvedAnswer: string | null;
+}
+
+/** 최근 면접 기록에서 들어가 보는 세션 복기 응답. */
+export interface SessionReview {
+  sessionId: number;
+  mode: string;
+  items: SessionReviewItem[];
+}
+
 // ───── UI 상수 (백엔드 데이터 아님, 화면 구성용) ─────
 
 export interface InterviewModeOption {
@@ -234,14 +251,17 @@ export const INTERVIEW_MODES: InterviewModeOption[] = [
   { id: "JOB", icon: "⚙️", title: "직무 면접", desc: "공고 기반 기술/직무 질문", difficulty: "상", recommended: true },
   { id: "PERSONALITY", icon: "🤝", title: "인성 면접", desc: "협업, 갈등, 책임감, 태도", difficulty: "중", recommended: false },
   { id: "PRESSURE", icon: "⚡", title: "압박 면접", desc: "꼬리 질문, 반박 질문", difficulty: "상", recommended: false },
-  { id: "REAL", icon: "⏱️", title: "실전 면접", desc: "시간 제한, 랜덤 질문", difficulty: "상", recommended: false },
   { id: "RESUME", icon: "📄", title: "자소서 기반", desc: "자기소개서 문장을 기반으로 질문", difficulty: "중", recommended: false },
-  { id: "PORTFOLIO", icon: "💼", title: "포트폴리오 기반", desc: "프로젝트 설명 중심 질문", difficulty: "중", recommended: true },
   { id: "COMPANY", icon: "🏢", title: "기업 맞춤", desc: "기업 현황과 공고 기반 질문", difficulty: "상", recommended: false },
 ];
 
 export function getInterviewModeLabel(mode: InterviewMode): string {
   return INTERVIEW_MODES.find((m) => m.id === mode)?.title ?? mode;
+}
+
+/** 문장 끝(.!?。) 뒤에 줄바꿈을 넣어 모범답안·개선답변을 문장 단위로 읽기 쉽게 만든다. (whitespace-pre-line 과 함께 사용) */
+export function toSentenceLines(text: string): string {
+  return text.replace(/([.!?。])\s+/g, "$1\n").trim();
 }
 
 /** 답변 평가 항목 (정적 안내) */
