@@ -32,6 +32,7 @@ import type {
   SessionReview,
   SubmitAnswerRequest,
   TranscriptLine,
+  TranscribeResult,
   VoiceAnalysisResult,
   VoiceScoreServerResult,
 } from "../types/interview";
@@ -231,6 +232,22 @@ export function scoreVoiceServer(
   return api<VoiceScoreServerResult>(`/interview/sessions/${sessionId}/voice-score`, {
     method: "POST",
     body: JSON.stringify(payload),
+  });
+}
+
+/**
+ * 음성 답변 → 자체 STT 전사 (B 베이직, faster-whisper, API 0).
+ * audioBase64 는 녹음 원본(webm 등). 원본 음성은 전사 후 버려진다.
+ */
+export function transcribeVoice(
+  sessionId: number,
+  audioBase64: string,
+  audioFormat = "webm",
+  language = "ko",
+): Promise<TranscribeResult> {
+  return api<TranscribeResult>(`/interview/sessions/${sessionId}/voice-transcribe`, {
+    method: "POST",
+    body: JSON.stringify({ audioBase64, audioFormat, language }),
   });
 }
 

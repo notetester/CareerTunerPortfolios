@@ -178,6 +178,13 @@ export interface VoiceScoreServerResult {
   source: "rule" | "lightgbm";
 }
 
+/** 자체 STT 응답 (POST /sessions/{id}/voice-transcribe) — B 베이직 답변 전사 */
+export interface TranscribeResult {
+  text: string;
+  language: string;
+  duration: number;
+}
+
 /** 외부 키 보유 여부 (GET /media/capabilities) */
 export interface MediaCapabilities {
   voiceProfiling: boolean;
