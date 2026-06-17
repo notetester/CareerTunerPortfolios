@@ -70,6 +70,20 @@ export function LocalVoiceInterviewTab({ session }: { session: InterviewSession 
 
   useEffect(() => () => cleanup(), []);
 
+  // 질문이 뜨면 면접관이 음성으로 읽어준다 (브라우저 내장 TTS, API 0).
+  useEffect(() => {
+    if (questionIdx < 0 || status !== "idle" || !questions?.[questionIdx]) return;
+    if (typeof window === "undefined" || !window.speechSynthesis) return;
+    const utter = new SpeechSynthesisUtterance(
+      `${questionIdx + 1}번 질문. ${questions[questionIdx].question}`,
+    );
+    utter.lang = "ko-KR";
+    window.speechSynthesis.cancel();
+    window.speechSynthesis.speak(utter);
+  }, [questionIdx, status, questions]);
+
+  useEffect(() => () => window.speechSynthesis?.cancel(), []);
+
   const cleanup = () => {
     if (recorderRef.current?.state === "recording") recorderRef.current.stop();
     recorderRef.current = null;
@@ -86,6 +100,7 @@ export function LocalVoiceInterviewTab({ session }: { session: InterviewSession 
   };
 
   const startRecording = async () => {
+    window.speechSynthesis?.cancel(); // 질문 읽는 중이면 멈추고 녹음 시작
     try {
       const mic = await navigator.mediaDevices.getUserMedia({ audio: true });
       micRef.current = mic;
