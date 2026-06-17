@@ -79,7 +79,7 @@ export function AdminPaymentsPage() {
 
       {error && <div className="mb-3 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>}
 
-      <Card className="border-slate-200 bg-white">
+      <Card className="border-slate-200 bg-card">
         <CardContent className="p-0">
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
@@ -125,7 +125,7 @@ export function AdminPaymentsPage() {
 
 function SummaryCard({ label, value, highlight }: { label: string; value: string; highlight?: boolean }) {
   return (
-    <Card className="border-slate-200 bg-white">
+    <Card className="border-slate-200 bg-card">
       <CardContent className="p-4">
         <div className="text-xs font-semibold text-slate-500">{label}</div>
         <div className={`mt-1 text-2xl font-black ${highlight ? "text-blue-600" : "text-slate-900"}`}>{value}</div>

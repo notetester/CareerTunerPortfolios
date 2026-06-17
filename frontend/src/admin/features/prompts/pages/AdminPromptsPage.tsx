@@ -145,7 +145,7 @@ export function AdminPromptsPage() {
           />
         )}
 
-        <Card className="border-slate-200 bg-white">
+        <Card className="border-slate-200 bg-card">
           <CardContent className="p-4">
             <div className="grid gap-3 lg:grid-cols-[auto_minmax(260px,420px)] lg:items-center lg:justify-between">
               <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as PromptTab["value"])}>
@@ -223,7 +223,7 @@ function PromptDetail({
   onCopy: (value: string, key: string) => void | Promise<void>;
 }) {
   return (
-    <Card className="border-slate-200 bg-white">
+    <Card className="border-slate-200 bg-card">
       <CardHeader>
         <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
           <div className="min-w-0">
@@ -356,7 +356,7 @@ function Alert({ tone, title, message }: { tone: "red" | "amber"; title: string;
 }
 
 function EmptyState({ title, message, tone = "slate" }: { title: string; message: string; tone?: "slate" | "red" }) {
-  const className = tone === "red" ? "border-red-200 bg-red-50 text-red-700" : "border-slate-200 bg-white text-slate-600";
+  const className = tone === "red" ? "border-red-200 bg-red-50 text-red-700" : "border-slate-200 bg-card text-slate-600";
 
   return (
     <Card className={className}>

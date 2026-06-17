@@ -87,7 +87,7 @@ export function NotificationSettings() {
 
   if (loading) {
     return (
-      <Card className="border border-slate-200 bg-white">
+      <Card className="border border-slate-200 bg-card">
         <CardContent className="flex items-center gap-2 p-6 text-sm text-slate-500">
           <Loader2 className="size-4 animate-spin" /> 알림 설정을 불러오는 중…
         </CardContent>
@@ -104,7 +104,7 @@ export function NotificationSettings() {
       )}
 
       {/* 푸시(폰 연동) */}
-      <Card className="border border-slate-200 bg-white">
+      <Card className="border border-slate-200 bg-card">
         <CardHeader>
           <CardTitle className="flex items-center gap-2 text-base">
             <Smartphone className="size-4 text-blue-600" />
@@ -133,7 +133,7 @@ export function NotificationSettings() {
       </Card>
 
       {/* 종류별 수신 */}
-      <Card className="border border-slate-200 bg-white">
+      <Card className="border border-slate-200 bg-card">
         <CardHeader>
           <CardTitle className="flex items-center gap-2 text-base">
             <Bell className="size-4 text-amber-600" />
@@ -154,7 +154,7 @@ export function NotificationSettings() {
       </Card>
 
       {/* 방해 금지 시간 */}
-      <Card className="border border-slate-200 bg-white">
+      <Card className="border border-slate-200 bg-card">
         <CardHeader>
           <CardTitle className="text-base">방해 금지 시간(선택)</CardTitle>
         </CardHeader>

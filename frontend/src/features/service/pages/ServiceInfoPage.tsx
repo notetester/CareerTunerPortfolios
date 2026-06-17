@@ -41,7 +41,7 @@ export function ServiceInfoPage() {
         <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
           {featureCards.map((feature) => (
             <Link key={feature.title} to={feature.href}>
-              <Card className="h-full border border-slate-200 bg-white transition-all hover:border-blue-300 hover:shadow-md">
+              <Card className="h-full border border-slate-200 bg-card transition-all hover:border-blue-300 hover:shadow-md">
                 <CardHeader>
                   <CardTitle className="flex items-center gap-2 text-base">
                     <feature.icon className="size-5 text-blue-600" />
@@ -56,7 +56,7 @@ export function ServiceInfoPage() {
           ))}
         </section>
 
-        <section className="rounded-2xl border border-slate-200 bg-white p-6">
+        <section className="rounded-2xl border border-slate-200 bg-card p-6">
           <h2 className="text-lg font-black text-slate-900">서비스 운영 구조</h2>
           <div className="mt-4 grid gap-3 md:grid-cols-3">
             {["지원 건 중심 데이터", "AI 사용량/크레딧 추적", "관리자 콘텐츠 운영"].map((item) => (

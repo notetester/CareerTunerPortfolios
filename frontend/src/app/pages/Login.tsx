@@ -153,7 +153,7 @@ export function LoginPage() {
               </div>
             ))}
           </div>
-          <div className="bg-white rounded-2xl border border-slate-200 p-4 shadow-sm">
+          <div className="bg-card rounded-2xl border border-slate-200 p-4 shadow-sm">
             <div className="text-xs text-slate-500 mb-2">가입 후 즉시 이용 가능</div>
             <div className="flex items-center gap-2">
               <Badge className="bg-green-100 text-green-700">무료 플랜</Badge>
@@ -163,19 +163,19 @@ export function LoginPage() {
         </div>
 
         {/* Right: Form */}
-        <Card className="border border-slate-200 shadow-xl bg-white">
+        <Card className="border border-slate-200 shadow-xl bg-card">
           <CardContent className="p-8 space-y-6">
             {/* Toggle */}
             <div className="flex bg-slate-100 rounded-xl p-1">
               <button
                 onClick={() => switchMode("login")}
-                className={`flex-1 py-2 rounded-lg text-sm font-semibold transition-colors ${mode === "login" ? "bg-white shadow-sm text-slate-900" : "text-slate-500"}`}
+                className={`flex-1 py-2 rounded-lg text-sm font-semibold transition-colors ${mode === "login" ? "bg-card shadow-sm text-slate-900" : "text-slate-500"}`}
               >
                 로그인
               </button>
               <button
                 onClick={() => switchMode("signup")}
-                className={`flex-1 py-2 rounded-lg text-sm font-semibold transition-colors ${mode === "signup" ? "bg-white shadow-sm text-slate-900" : "text-slate-500"}`}
+                className={`flex-1 py-2 rounded-lg text-sm font-semibold transition-colors ${mode === "signup" ? "bg-card shadow-sm text-slate-900" : "text-slate-500"}`}
               >
                 회원가입
               </button>

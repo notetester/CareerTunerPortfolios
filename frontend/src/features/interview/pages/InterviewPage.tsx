@@ -102,7 +102,7 @@ export function InterviewPage() {
   if (!isAuthenticated && !mockActive && !wantTutorial && !wantDemo) {
     return (
       <div className="min-h-[calc(100vh-72px)] bg-slate-50 px-4 py-12">
-        <div className="mx-auto max-w-md rounded-xl border border-slate-200 bg-white p-8 text-center shadow-sm">
+        <div className="mx-auto max-w-md rounded-xl border border-slate-200 bg-card p-8 text-center shadow-sm">
           <div className="mx-auto flex size-12 items-center justify-center rounded-lg bg-indigo-50 text-indigo-600">
             <MessageSquare className="size-6" />
           </div>
@@ -150,7 +150,7 @@ export function InterviewPage() {
             ) : (
               <button
                 onClick={stopDemo}
-                className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-600 transition-colors hover:bg-slate-50"
+                className="rounded-lg border border-slate-300 bg-card px-3 py-2 text-sm font-semibold text-slate-600 transition-colors hover:bg-slate-50"
               >
                 {mode === "demo" ? "체험 종료" : "둘러보기 종료"}
               </button>
@@ -159,7 +159,7 @@ export function InterviewPage() {
         </div>
 
         {effectiveSession && (
-          <div className="flex flex-wrap items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5">
+          <div className="flex flex-wrap items-center gap-2 rounded-xl border border-slate-200 bg-card px-4 py-2.5">
             <span className="text-xs text-slate-400">현재 진행</span>
             <span className="text-sm font-semibold text-slate-800">
               {activeCase ? `${activeCase.companyName} · ${activeCase.jobTitle} · ` : ""}
@@ -171,7 +171,7 @@ export function InterviewPage() {
         )}
 
         <Tabs value={activeTab} onValueChange={goTab}>
-          <TabsList className="h-auto w-full justify-start overflow-x-auto border border-slate-200 bg-white p-1">
+          <TabsList className="h-auto w-full justify-start overflow-x-auto border border-slate-200 bg-card p-1">
             <TabsTrigger value="modes" data-tut="tut-tab-modes">면접 모드 선택</TabsTrigger>
             <TabsTrigger value="questions" data-tut="tut-tab-questions">예상 면접 질문</TabsTrigger>
             <TabsTrigger value="practice" data-tut="tut-tab-practice">복습 테스트</TabsTrigger>

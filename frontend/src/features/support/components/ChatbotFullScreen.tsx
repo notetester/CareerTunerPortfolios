@@ -33,7 +33,7 @@ export function ChatbotFullScreen() {
   };
 
   return (
-    <div className="flex w-full bg-white border border-black/10 rounded-2xl overflow-hidden"
+    <div className="flex w-full bg-card border border-black/10 rounded-2xl overflow-hidden"
       style={{ height: "calc(100vh - 180px)", minHeight: 560, maxHeight: 780, boxShadow: "0 12px 28px rgba(15,23,42,0.12), 0 4px 10px rgba(15,23,42,0.06)" }}>
 
       {/* ── Sidebar ── */}
@@ -54,8 +54,8 @@ export function ChatbotFullScreen() {
             <button key={s.id} onClick={() => setActiveSessionId(s.id)}
               className={`text-left px-3 py-2.5 rounded-[10px] transition-colors ${
                 s.id === activeSessionId
-                  ? "bg-white border border-blue-600/25 shadow-[0_1px_2px_rgba(15,23,42,0.05)]"
-                  : "hover:bg-white/60"
+                  ? "bg-card border border-blue-600/25 shadow-[0_1px_2px_rgba(15,23,42,0.05)]"
+                  : "hover:bg-card/60"
               }`}>
               <div className={`text-[12.5px] truncate ${s.id === activeSessionId ? "font-bold text-[#030213]" : "font-semibold text-slate-600"}`}>
                 {s.title}
@@ -72,7 +72,7 @@ export function ChatbotFullScreen() {
           <div className="flex flex-wrap gap-1.5">
             {SIDEBAR_SUGGESTIONS.map((q) => (
               <button key={q} onClick={() => sendMessage(q)}
-                className="px-2.5 py-1.5 bg-white border border-black/10 rounded-full text-[11.5px] font-semibold text-slate-600 hover:border-blue-300 transition-colors">
+                className="px-2.5 py-1.5 bg-card border border-black/10 rounded-full text-[11.5px] font-semibold text-slate-600 hover:border-blue-300 transition-colors">
                 {q}
               </button>
             ))}
@@ -94,7 +94,7 @@ export function ChatbotFullScreen() {
             <div className="text-xs font-semibold" style={{ color: "#16a34a" }}>응답 가능 · 평균 응답 1초</div>
           </div>
           <div className="ml-auto">
-            <button className="inline-flex items-center gap-1.5 h-[34px] px-3 border border-black/12 rounded-lg bg-white text-slate-600 text-[12.5px] font-semibold hover:bg-slate-50 transition-colors">
+            <button className="inline-flex items-center gap-1.5 h-[34px] px-3 border border-black/12 rounded-lg bg-card text-slate-600 text-[12.5px] font-semibold hover:bg-slate-50 transition-colors">
               <Headset size={14} />
               상담사 연결
             </button>
@@ -120,7 +120,7 @@ export function ChatbotFullScreen() {
                 style={{ background: "linear-gradient(135deg, #2563eb, #4f46e5)" }}>
                 <Sparkles size={16} />
               </div>
-              <div className="bg-white border border-black/8 rounded-2xl rounded-bl-[5px] px-4 py-3.5 flex gap-1.5 items-center">
+              <div className="bg-card border border-black/8 rounded-2xl rounded-bl-[5px] px-4 py-3.5 flex gap-1.5 items-center">
                 {[0, 0.18, 0.36].map((delay, i) => (
                   <span key={i} className="ct-typing-dot w-[7px] h-[7px] rounded-full bg-slate-400"
                     style={{ animation: "ctTyping 1.2s infinite ease-in-out", animationDelay: `${delay}s` }} />

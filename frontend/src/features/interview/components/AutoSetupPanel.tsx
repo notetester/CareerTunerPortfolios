@@ -88,7 +88,7 @@ export function AutoSetupPanel({
   if (!casesLoading && cases.length === 0) {
     return (
       <Panel prompt={prompt}>
-        <div className="rounded-xl border border-dashed border-slate-200 bg-white p-8 text-center">
+        <div className="rounded-xl border border-dashed border-slate-200 bg-card p-8 text-center">
           <p className="text-sm text-slate-500">
             면접을 보려면 먼저 지원 건이 필요합니다. 지원할 공고를 등록하면 바로 자동 셋업할 수 있습니다.
           </p>
@@ -123,7 +123,7 @@ export function AutoSetupPanel({
                 className={`rounded-lg border px-3 py-1.5 text-left text-xs transition-colors ${
                   effectiveCaseId === c.id
                     ? "border-indigo-300 bg-indigo-50 ring-1 ring-indigo-200"
-                    : "border-slate-200 bg-white hover:border-indigo-200"
+                    : "border-slate-200 bg-card hover:border-indigo-200"
                 }`}
               >
                 <div className="font-bold text-slate-800">{c.companyName}</div>
@@ -170,7 +170,7 @@ export function AutoSetupPanel({
 function Panel({ prompt, children }: { prompt: string; children: React.ReactNode }) {
   return (
     <div className="space-y-4">
-      <div className="flex items-start gap-2 rounded-xl border border-slate-200 bg-white p-4">
+      <div className="flex items-start gap-2 rounded-xl border border-slate-200 bg-card p-4">
         <Sparkles className="mt-0.5 size-5 shrink-0 text-indigo-500" />
         <div>
           <div className="text-xs font-bold text-slate-400">당신의 요청</div>
@@ -197,7 +197,7 @@ function AutoTimeline({ steps }: { steps: Step[] }) {
                     ? "border-green-200 bg-green-50 text-green-600"
                     : step.state === "running"
                       ? "border-indigo-200 bg-indigo-50 text-indigo-500"
-                      : "border-slate-200 bg-white text-slate-300"
+                      : "border-slate-200 bg-card text-slate-300"
               }`}
             >
               {step.state === "running" ? (

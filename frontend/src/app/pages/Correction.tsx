@@ -63,7 +63,7 @@ export function CorrectionPage() {
         </div>
 
         <Tabs value={activeTab} onValueChange={(value) => setSearchParams({ tab: value })}>
-          <TabsList className="h-auto w-full justify-start overflow-x-auto border border-slate-200 bg-white p-1">
+          <TabsList className="h-auto w-full justify-start overflow-x-auto border border-slate-200 bg-card p-1">
             <TabsTrigger value="answer">답변 첨삭</TabsTrigger>
             <TabsTrigger value="cover">자기소개서 첨삭</TabsTrigger>
             <TabsTrigger value="resume">이력서 첨삭</TabsTrigger>
@@ -73,7 +73,7 @@ export function CorrectionPage() {
           {tabs.map((tab) => (
             <TabsContent key={tab} value={tab} className="mt-5">
               <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_320px]">
-                <Card className="border border-slate-200 bg-white">
+                <Card className="border border-slate-200 bg-card">
                   <CardHeader>
                     <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                       <div>
@@ -95,7 +95,7 @@ export function CorrectionPage() {
                       <div className="mt-2 text-sm font-semibold text-slate-700">파일 업로드 또는 텍스트 입력</div>
                       <div className="mt-1 text-xs text-slate-500">PDF, DOCX, TXT 또는 직접 붙여넣기 흐름을 지원할 예정입니다</div>
                     </div>
-                    <div className="min-h-44 rounded-xl border border-slate-200 bg-white p-4 text-sm text-slate-400">
+                    <div className="min-h-44 rounded-xl border border-slate-200 bg-card p-4 text-sm text-slate-400">
                       {active.placeholder}
                     </div>
                     <div className="flex flex-col gap-2 sm:flex-row">
@@ -107,7 +107,7 @@ export function CorrectionPage() {
                 </Card>
 
                 <div className="space-y-4">
-                  <Card className="border border-slate-200 bg-white">
+                  <Card className="border border-slate-200 bg-card">
                     <CardHeader>
                       <CardTitle className="flex items-center gap-2 text-base">
                         <CheckCircle2 className="size-4 text-green-600" />
@@ -123,7 +123,7 @@ export function CorrectionPage() {
                       ))}
                     </CardContent>
                   </Card>
-                  <Card className="border border-slate-200 bg-white">
+                  <Card className="border border-slate-200 bg-card">
                     <CardHeader>
                       <CardTitle className="flex items-center gap-2 text-base">
                         <FileText className="size-4 text-blue-600" />

@@ -82,7 +82,7 @@ export function PricingPage() {
 
         {/* Tab toggle */}
         <div className="flex justify-center">
-          <div className="bg-white border border-slate-200 rounded-xl p-1 flex">
+          <div className="bg-card border border-slate-200 rounded-xl p-1 flex">
             <button
               onClick={() => setActiveTab("subscription")}
               className={`px-6 py-2 rounded-lg text-sm font-semibold transition-colors ${activeTab === "subscription" ? "bg-blue-600 text-white" : "text-slate-600 hover:text-blue-600"}`}
@@ -107,7 +107,7 @@ export function PricingPage() {
                 onClick={() => setBillingCycle(billingCycle === "monthly" ? "yearly" : "monthly")}
                 className={`relative w-12 h-6 rounded-full transition-colors ${billingCycle === "yearly" ? "bg-blue-600" : "bg-slate-200"}`}
               >
-                <div className={`absolute top-0.5 size-5 rounded-full bg-white shadow-sm transition-transform ${billingCycle === "yearly" ? "translate-x-6" : "translate-x-0.5"}`} />
+                <div className={`absolute top-0.5 size-5 rounded-full bg-card shadow-sm transition-transform ${billingCycle === "yearly" ? "translate-x-6" : "translate-x-0.5"}`} />
               </button>
               <div className="flex items-center gap-2">
                 <span className={`text-sm font-semibold ${billingCycle === "yearly" ? "text-slate-900" : "text-slate-400"}`}>연간 결제</span>
@@ -175,7 +175,7 @@ export function PricingPage() {
                 );
               })}
               {plans.length === 0 && (
-                <div className="md:col-span-2 lg:col-span-4 rounded-xl bg-white p-10 text-center text-sm text-slate-400">
+                <div className="md:col-span-2 lg:col-span-4 rounded-xl bg-card p-10 text-center text-sm text-slate-400">
                   요금제 정보를 불러오는 중입니다.
                 </div>
               )}
@@ -190,7 +190,7 @@ export function PricingPage() {
             </div>
 
             {/* Credit cost table */}
-            <Card className="border border-slate-200 bg-white">
+            <Card className="border border-slate-200 bg-card">
               <CardHeader>
                 <CardTitle className="text-base flex items-center gap-2">
                   <Award className="size-4 text-amber-600" />
@@ -247,7 +247,7 @@ export function PricingPage() {
                   );
                 })}
                 {products.length === 0 && (
-                  <div className="md:col-span-2 lg:col-span-4 rounded-xl bg-white p-10 text-center text-sm text-slate-400">
+                  <div className="md:col-span-2 lg:col-span-4 rounded-xl bg-card p-10 text-center text-sm text-slate-400">
                     크레딧 상품을 불러오는 중입니다.
                   </div>
                 )}
@@ -265,7 +265,7 @@ export function PricingPage() {
             { q: "크레딧은 만료되나요?", a: "구매한 크레딧은 구매일로부터 1년간 유효합니다. 만료 30일 전에 알림을 발송해 드립니다." },
             { q: "환불 정책은 어떻게 되나요?", a: "결제일로부터 7일 이내, AI 기능을 사용하지 않은 경우 전액 환불 가능합니다. 자세한 내용은 이용약관을 참조해주세요." },
           ].map((item, i) => (
-            <div key={i} className="bg-white border border-slate-200 rounded-xl p-5">
+            <div key={i} className="bg-card border border-slate-200 rounded-xl p-5">
               <div className="font-bold text-slate-800 text-sm mb-2">Q. {item.q}</div>
               <div className="text-sm text-slate-600 leading-relaxed">A. {item.a}</div>
             </div>

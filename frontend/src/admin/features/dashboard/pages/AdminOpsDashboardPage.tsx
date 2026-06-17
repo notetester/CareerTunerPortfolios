@@ -70,7 +70,7 @@ export function AdminOpsDashboardPage() {
         ) : (
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {cards.map((card) => (
-              <Card key={card.label} className="border-slate-200 bg-white">
+              <Card key={card.label} className="border-slate-200 bg-card">
                 <CardContent className="p-5">
                   <div className="flex items-center justify-between">
                     <span className="text-sm font-semibold text-slate-500">{card.label}</span>

@@ -300,7 +300,7 @@ export function AvatarTab({ session }: { session: InterviewSession | null }) {
 
   if (!session) {
     return (
-      <div className="rounded-xl border border-dashed border-slate-200 bg-white p-10 text-center text-sm text-slate-400">
+      <div className="rounded-xl border border-dashed border-slate-200 bg-card p-10 text-center text-sm text-slate-400">
         "면접 모드 선택" 탭에서 지원 건과 모드를 고르고 면접을 시작하면 아바타 화상 면접을 진행할 수 있습니다.
       </div>
     );
@@ -322,7 +322,7 @@ export function AvatarTab({ session }: { session: InterviewSession | null }) {
 
   return (
     <div className="space-y-4">
-      <Card className="border border-slate-200 bg-white">
+      <Card className="border border-slate-200 bg-card">
         <CardHeader>
           <CardTitle className="flex items-center gap-2 text-base">
             <Video className="size-4 text-purple-600" />
@@ -446,7 +446,7 @@ export function AvatarTab({ session }: { session: InterviewSession | null }) {
 
       {/* 종합 + 영상 점수 */}
       {status === "scored" && overall != null && (
-        <Card className="border border-slate-200 bg-white">
+        <Card className="border border-slate-200 bg-card">
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-base">
               종합 점수

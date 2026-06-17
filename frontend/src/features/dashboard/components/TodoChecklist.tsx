@@ -85,7 +85,7 @@ export function TodoChecklist({ todos, onTodosChange }: TodoChecklistProps) {
             >
               <span
                 className={`mt-0.5 flex size-5 shrink-0 items-center justify-center rounded-md ${
-                  todo.done ? "bg-green-500" : "border-2 border-slate-300 bg-white"
+                  todo.done ? "bg-green-500" : "border-2 border-slate-300 bg-card"
                 }`}
               >
                 {busy ? (
@@ -133,7 +133,7 @@ export function TodoChecklist({ todos, onTodosChange }: TodoChecklistProps) {
           }}
           placeholder="할 일 직접 추가"
           aria-label="할 일 직접 추가"
-          className="h-10 min-w-0 flex-1 rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-800 placeholder:text-slate-400 focus:border-blue-400 focus:outline-none"
+          className="h-10 min-w-0 flex-1 rounded-lg border border-slate-200 bg-card px-3 text-sm text-slate-800 placeholder:text-slate-400 focus:border-blue-400 focus:outline-none"
         />
         <button
           type="button"

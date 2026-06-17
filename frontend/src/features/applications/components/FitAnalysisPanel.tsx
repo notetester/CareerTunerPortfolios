@@ -54,7 +54,7 @@ export function FitAnalysisPanel({ analyses, loading, generating = false, error 
           const tone = scoreTone(analysis.fitScore);
 
           return (
-            <Card key={analysis.id} className="border border-slate-200 bg-white">
+            <Card key={analysis.id} className="border border-slate-200 bg-card">
               <CardHeader className="pb-3">
                 <div className="flex items-start justify-between gap-3">
                   <div>
@@ -375,7 +375,7 @@ function FitImpactSimulator({ currentScore, rows }: { currentScore: number; rows
               className={`rounded-full border px-2.5 py-1 text-xs font-semibold transition-colors ${
                 active
                   ? "border-indigo-300 bg-indigo-600 text-white"
-                  : "border-indigo-200 bg-white text-indigo-700 hover:bg-indigo-100"
+                  : "border-indigo-200 bg-card text-indigo-700 hover:bg-indigo-100"
               }`}
             >
               {active ? "보완 가정 ✓ " : "+ "}{row.condition}
@@ -449,7 +449,7 @@ function SkillList({ title, icon, items }: { title: string; icon: "match" | "gap
 
 function StateCard({ title, description, tone = "default" }: { title: string; description?: string; tone?: "default" | "error" }) {
   return (
-    <Card className={`border ${tone === "error" ? "border-red-200 bg-red-50" : "border-slate-200 bg-white"}`}>
+    <Card className={`border ${tone === "error" ? "border-red-200 bg-red-50" : "border-slate-200 bg-card"}`}>
       <CardContent className="flex items-start gap-3 p-5">
         <Target className={`mt-0.5 size-5 ${tone === "error" ? "text-red-500" : "text-blue-600"}`} />
         <div>

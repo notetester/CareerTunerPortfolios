@@ -147,7 +147,7 @@ export function BillingPage() {
         {error && <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700">{error}</div>}
 
         <Tabs value={activeTab} onValueChange={(value) => setSearchParams({ tab: value })}>
-          <TabsList className="h-auto w-full justify-start overflow-x-auto border border-slate-200 bg-white p-1">
+          <TabsList className="h-auto w-full justify-start overflow-x-auto border border-slate-200 bg-card p-1">
             <TabsTrigger value="plans">요금제</TabsTrigger>
             <TabsTrigger value="usage">AI 사용량</TabsTrigger>
             <TabsTrigger value="credits">크레딧 충전</TabsTrigger>
@@ -160,7 +160,7 @@ export function BillingPage() {
                 const isCurrent = billing?.currentPlanCode === plan.code;
                 const popular = plan.code === "PRO";
                 return (
-                  <Card key={plan.code} className={`relative border-2 bg-white ${popular ? "border-blue-500 shadow-lg" : "border-slate-200"}`}>
+                  <Card key={plan.code} className={`relative border-2 bg-card ${popular ? "border-blue-500 shadow-lg" : "border-slate-200"}`}>
                     {popular && <Badge className="absolute -top-3 left-1/2 -translate-x-1/2 bg-blue-600 text-white">추천</Badge>}
                     <CardHeader>
                       <CardTitle className="text-lg">{plan.name} 플랜</CardTitle>
@@ -195,7 +195,7 @@ export function BillingPage() {
 
           <TabsContent value="usage" className="mt-5">
             <div className="grid gap-4 lg:grid-cols-3">
-              <Card className="border border-slate-200 bg-white lg:col-span-2">
+              <Card className="border border-slate-200 bg-card lg:col-span-2">
                 <CardHeader>
                   <CardTitle className="flex items-center gap-2 text-base">
                     <BarChart3 className="size-4 text-blue-600" />
@@ -223,7 +223,7 @@ export function BillingPage() {
                   )}
                 </CardContent>
               </Card>
-              <Card className="border border-slate-200 bg-white">
+              <Card className="border border-slate-200 bg-card">
                 <CardHeader>
                   <CardTitle className="flex items-center gap-2 text-base">
                     <Award className="size-4 text-amber-600" />
@@ -246,7 +246,7 @@ export function BillingPage() {
           <TabsContent value="credits" className="mt-5">
             <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
               {products.map((pack) => (
-                <Card key={pack.code} className={`relative border-2 bg-white ${pack.badge ? "border-amber-400 shadow-lg" : "border-slate-200"}`}>
+                <Card key={pack.code} className={`relative border-2 bg-card ${pack.badge ? "border-amber-400 shadow-lg" : "border-slate-200"}`}>
                   {pack.badge && <Badge className="absolute -top-3 left-1/2 -translate-x-1/2 bg-amber-500 text-white">{pack.badge}</Badge>}
                   <CardContent className="space-y-4 p-5 text-center">
                     <Zap className="mx-auto size-8 text-amber-500" />
@@ -270,7 +270,7 @@ export function BillingPage() {
           </TabsContent>
 
           <TabsContent value="history" className="mt-5">
-            <Card className="border border-slate-200 bg-white">
+            <Card className="border border-slate-200 bg-card">
               <CardHeader>
                 <CardTitle className="flex items-center gap-2 text-base">
                   <ReceiptText className="size-4 text-slate-600" />

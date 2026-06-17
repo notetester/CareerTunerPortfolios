@@ -43,7 +43,7 @@ export function AdminPlansPage() {
       {error && <div className="mb-3 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>}
 
       <div className="grid gap-5 lg:grid-cols-2">
-        <Card className="border-slate-200 bg-white">
+        <Card className="border-slate-200 bg-card">
           <CardHeader><CardTitle className="text-base">구독 요금제</CardTitle></CardHeader>
           <CardContent className="space-y-2">
             {(data?.plans ?? []).map((p) => (
@@ -66,7 +66,7 @@ export function AdminPlansPage() {
           </CardContent>
         </Card>
 
-        <Card className="border-slate-200 bg-white">
+        <Card className="border-slate-200 bg-card">
           <CardHeader><CardTitle className="text-base">크레딧 충전 상품</CardTitle></CardHeader>
           <CardContent className="space-y-2">
             {(data?.creditProducts ?? []).map((c) => (

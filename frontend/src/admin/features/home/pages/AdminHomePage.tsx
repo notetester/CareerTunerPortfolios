@@ -73,7 +73,7 @@ export function AdminHomePage() {
           <>
             <div className="grid gap-4 sm:grid-cols-3">
               {queue.map((item) => (
-                <Card key={item.label} className="border-slate-200 bg-white">
+                <Card key={item.label} className="border-slate-200 bg-card">
                   <CardContent className="p-5">
                     <div className="flex items-center justify-between">
                       <span className="text-sm font-semibold text-slate-500">{item.label}</span>
@@ -91,7 +91,7 @@ export function AdminHomePage() {
                 <Link
                   key={shortcut.path}
                   to={shortcut.path}
-                  className="group rounded-lg border border-slate-200 bg-white p-4 transition-colors hover:border-blue-300 hover:bg-blue-50"
+                  className="group rounded-lg border border-slate-200 bg-card p-4 transition-colors hover:border-blue-300 hover:bg-blue-50"
                 >
                   <div className="flex items-center justify-between">
                     <span className="font-semibold text-slate-800">{shortcut.label}</span>

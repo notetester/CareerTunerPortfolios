@@ -98,13 +98,13 @@ export function TutorialMediaPreview({ kind }: { kind: "voice" | "avatar" }) {
       )}
 
       {phase === "analyzing" && (
-        <div className="flex items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white p-6 text-sm text-slate-500">
+        <div className="flex items-center justify-center gap-2 rounded-xl border border-slate-200 bg-card p-6 text-sm text-slate-500">
           <Loader2 className="size-4 animate-spin" /> {kind === "avatar" ? "표정·자세·음성 분석 중…" : "음성 지표 분석 중…"}
         </div>
       )}
 
       {phase === "scored" && (
-        <div className="rounded-xl border border-slate-200 bg-white p-6">
+        <div className="rounded-xl border border-slate-200 bg-card p-6">
           <div className="flex items-center gap-3">
             <span className="text-4xl font-black text-indigo-600">
               82<span className="text-base font-bold text-slate-400">/100</span>

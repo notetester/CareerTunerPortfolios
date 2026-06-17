@@ -292,7 +292,7 @@ export function LocalVoiceInterviewTab({ session }: { session: InterviewSession 
 
   if (!session) {
     return (
-      <div className="rounded-xl border border-dashed border-slate-200 bg-white p-10 text-center text-sm text-slate-400">
+      <div className="rounded-xl border border-dashed border-slate-200 bg-card p-10 text-center text-sm text-slate-400">
         "면접 모드 선택" 탭에서 지원 건과 모드를 고르고 면접을 시작하면 로컬 음성 면접을 진행할 수 있습니다.
       </div>
     );
@@ -319,7 +319,7 @@ export function LocalVoiceInterviewTab({ session }: { session: InterviewSession 
 
   return (
     <div className="space-y-4">
-      <Card className="border border-slate-200 bg-white">
+      <Card className="border border-slate-200 bg-card">
         <CardHeader>
           <CardTitle className="flex items-center gap-2 text-base">
             <Mic className="size-4 text-emerald-600" />
@@ -431,7 +431,7 @@ export function LocalVoiceInterviewTab({ session }: { session: InterviewSession 
       </Card>
 
       {results.length > 0 && (
-        <Card className="border border-slate-200 bg-white">
+        <Card className="border border-slate-200 bg-card">
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-base">
               답변별 채점 (내용 · 전달력)

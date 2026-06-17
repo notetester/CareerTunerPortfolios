@@ -43,7 +43,7 @@ export default function AdminProfilePromptsPage() {
       )}
     >
       {error && <div className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>}
-      <Card className="border-slate-200 bg-white">
+      <Card className="border-slate-200 bg-card">
         <CardHeader>
           <div className="flex items-start justify-between gap-3">
             <div>
@@ -80,7 +80,7 @@ export default function AdminProfilePromptsPage() {
                       ))}
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-slate-100 bg-white">
+                  <tbody className="divide-y divide-slate-100 bg-card">
                     {prompt?.weightProfiles?.map((profile) => (
                       <tr key={profile.jobFamily}>
                         <td className="px-3 py-2">

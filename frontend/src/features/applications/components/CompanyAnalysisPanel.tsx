@@ -52,7 +52,7 @@ function JsonList({ title, value }: { title: string; value: string | null }) {
       {items.length > 0 ? (
         <div className="mt-2 flex flex-wrap gap-1.5">
           {items.map((item) => (
-            <span key={item} className="rounded-full bg-white px-2.5 py-1 text-xs font-semibold text-slate-700 shadow-sm">
+            <span key={item} className="rounded-full bg-card px-2.5 py-1 text-xs font-semibold text-slate-700 shadow-sm">
               {item}
             </span>
           ))}
@@ -215,7 +215,7 @@ export function CompanyAnalysisPanel({
   };
 
   return (
-    <Card className="border-slate-200 bg-white">
+    <Card className="border-slate-200 bg-card">
       <CardHeader className="gap-3">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
           <div>
@@ -291,7 +291,7 @@ export function CompanyAnalysisPanel({
               type="button"
               size="sm"
               variant="outline"
-              className="border-amber-300 bg-white text-amber-800 hover:bg-amber-100"
+              className="border-amber-300 bg-card text-amber-800 hover:bg-amber-100"
               disabled={loading || generating || reviewSaving}
               onClick={() => void handleGenerate()}
             >
@@ -357,9 +357,9 @@ export function CompanyAnalysisPanel({
                     </span>
                   )}
                 </div>
-                <Input value={form.industry} onChange={(event) => setField("industry", event.target.value)} placeholder="산업" className="bg-white" />
-                <Textarea value={form.companySummary} onChange={(event) => setField("companySummary", event.target.value)} className="min-h-24 bg-white" placeholder="기업 요약" />
-                <Textarea value={form.recentIssues} onChange={(event) => setField("recentIssues", event.target.value)} className="min-h-24 bg-white" placeholder="최근 이슈" />
+                <Input value={form.industry} onChange={(event) => setField("industry", event.target.value)} placeholder="산업" className="bg-card" />
+                <Textarea value={form.companySummary} onChange={(event) => setField("companySummary", event.target.value)} className="min-h-24 bg-card" placeholder="기업 요약" />
+                <Textarea value={form.recentIssues} onChange={(event) => setField("recentIssues", event.target.value)} className="min-h-24 bg-card" placeholder="최근 이슈" />
                 <div className="grid gap-3 md:grid-cols-2">
                   <StructuredRowsEditor
                     title="검증된 사실"
@@ -377,10 +377,10 @@ export function CompanyAnalysisPanel({
                   />
                 </div>
                 <div className="grid gap-3 md:grid-cols-2">
-                  <Textarea value={form.competitors} onChange={(event) => setField("competitors", event.target.value)} className="min-h-24 bg-white" placeholder="경쟁/비교 기업을 한 줄에 하나씩 입력" />
-                  <Textarea value={form.sources} onChange={(event) => setField("sources", event.target.value)} className="min-h-24 bg-white" placeholder="참고 소스를 한 줄에 하나씩 입력" />
+                  <Textarea value={form.competitors} onChange={(event) => setField("competitors", event.target.value)} className="min-h-24 bg-card" placeholder="경쟁/비교 기업을 한 줄에 하나씩 입력" />
+                  <Textarea value={form.sources} onChange={(event) => setField("sources", event.target.value)} className="min-h-24 bg-card" placeholder="참고 소스를 한 줄에 하나씩 입력" />
                 </div>
-                <Textarea value={form.interviewPoints} onChange={(event) => setField("interviewPoints", event.target.value)} className="min-h-24 bg-white" placeholder="면접 준비 포인트" />
+                <Textarea value={form.interviewPoints} onChange={(event) => setField("interviewPoints", event.target.value)} className="min-h-24 bg-card" placeholder="면접 준비 포인트" />
                 {reviewSuccess && (
                   <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-700">
                     {reviewSuccess}
@@ -414,7 +414,7 @@ export function CompanyAnalysisPanel({
         )}
 
         {history.length > 0 && (
-          <div className="rounded-lg border border-slate-200 bg-white">
+          <div className="rounded-lg border border-slate-200 bg-card">
             <div className="border-b border-slate-100 px-3 py-2 text-xs font-semibold text-slate-500">분석 이력</div>
             <div className="divide-y divide-slate-100">
               {history.map((item, index) => (

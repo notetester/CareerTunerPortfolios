@@ -114,7 +114,7 @@ export function SettingsPage() {
         {message && <div className="rounded-lg border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-700">{message}</div>}
 
         <Tabs value={activeTab} onValueChange={(value) => setSearchParams({ tab: value })}>
-          <TabsList className="h-auto w-full justify-start overflow-x-auto border border-slate-200 bg-white p-1">
+          <TabsList className="h-auto w-full justify-start overflow-x-auto border border-slate-200 bg-card p-1">
             <TabsTrigger value="account">계정 설정</TabsTrigger>
             <TabsTrigger value="privacy">개인정보 관리</TabsTrigger>
             <TabsTrigger value="ai-consent">AI 데이터 동의</TabsTrigger>
@@ -122,7 +122,7 @@ export function SettingsPage() {
           </TabsList>
 
           <TabsContent value="account" className="mt-5 space-y-4">
-            <Card className="border border-slate-200 bg-white">
+            <Card className="border border-slate-200 bg-card">
               <CardHeader>
                 <CardTitle className="flex items-center gap-2 text-base">
                   <Mail className="size-4 text-blue-600" />
@@ -136,7 +136,7 @@ export function SettingsPage() {
                 <Input value={user?.plan ?? ""} readOnly />
               </CardContent>
             </Card>
-            <Card className="border border-slate-200 bg-white">
+            <Card className="border border-slate-200 bg-card">
               <CardHeader>
                 <CardTitle className="flex items-center gap-2 text-base">
                   <Lock className="size-4 text-slate-600" />
@@ -170,7 +170,7 @@ export function SettingsPage() {
           </TabsContent>
 
           <TabsContent value="privacy" className="mt-5 space-y-4">
-            <Card className="border border-slate-200 bg-white">
+            <Card className="border border-slate-200 bg-card">
               <CardHeader>
                 <CardTitle className="flex items-center gap-2 text-base">
                   <Shield className="size-4 text-green-600" />
@@ -190,7 +190,7 @@ export function SettingsPage() {
           </TabsContent>
 
           <TabsContent value="ai-consent" className="mt-5">
-            <Card className="border border-slate-200 bg-white">
+            <Card className="border border-slate-200 bg-card">
               <CardHeader>
                 <CardTitle className="flex items-center gap-2 text-base">
                   <Database className="size-4 text-purple-600" />

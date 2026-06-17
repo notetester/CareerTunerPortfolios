@@ -42,7 +42,7 @@ export function InterviewReportTab({ session }: { session: InterviewSession | nu
 
   if (!session) {
     return (
-      <div className="rounded-xl border border-dashed border-slate-200 bg-white p-10 text-center text-sm text-slate-400">
+      <div className="rounded-xl border border-dashed border-slate-200 bg-card p-10 text-center text-sm text-slate-400">
         면접을 진행하고 종료하면 종합 리포트가 여기에 표시됩니다.
       </div>
     );
@@ -57,7 +57,7 @@ export function InterviewReportTab({ session }: { session: InterviewSession | nu
     );
   if (!report && media.length === 0)
     return (
-      <div className="rounded-xl border border-dashed border-slate-200 bg-white p-10 text-center text-sm text-slate-400">
+      <div className="rounded-xl border border-dashed border-slate-200 bg-card p-10 text-center text-sm text-slate-400">
         아직 생성된 리포트가 없습니다. 면접을 끝까지 진행해 주세요.
       </div>
     );
@@ -72,7 +72,7 @@ export function InterviewReportTab({ session }: { session: InterviewSession | nu
       {report && (
         <>
           <div className="grid gap-4 md:grid-cols-3" data-tut="tut-report-score">
-            <div className="rounded-2xl border-2 border-blue-200 bg-white p-6 text-center">
+            <div className="rounded-2xl border-2 border-blue-200 bg-card p-6 text-center">
               <div className="text-5xl font-black text-blue-600">{report.totalScore}</div>
               <div className="mt-1 text-sm text-slate-500">
                 총점
@@ -84,11 +84,11 @@ export function InterviewReportTab({ session }: { session: InterviewSession | nu
                 )}
               </div>
             </div>
-            <div className="rounded-2xl border border-slate-200 bg-white p-6 text-center">
+            <div className="rounded-2xl border border-slate-200 bg-card p-6 text-center">
               <div className="text-3xl font-black text-slate-700">{report.questionCount}</div>
               <div className="mt-1 text-sm text-slate-500">진행 질문 수</div>
             </div>
-            <div className="rounded-2xl border border-slate-200 bg-white p-6 text-center">
+            <div className="rounded-2xl border border-slate-200 bg-card p-6 text-center">
               <div className="text-3xl font-black text-green-600">{report.durationLabel ?? "-"}</div>
               <div className="mt-1 text-sm text-slate-500">면접 진행 시간</div>
             </div>
@@ -96,7 +96,7 @@ export function InterviewReportTab({ session }: { session: InterviewSession | nu
 
           <div className="space-y-3" data-tut="tut-report-categories">
             {report.categories.map((e) => (
-              <div key={e.label} className="space-y-2 rounded-xl border border-slate-200 bg-white p-4">
+              <div key={e.label} className="space-y-2 rounded-xl border border-slate-200 bg-card p-4">
                 <div className="flex items-center justify-between">
                   <span className="text-sm font-semibold text-slate-700">{e.label}</span>
                   <span className={`text-sm font-black ${getScoreColor(e.score)}`}>{e.score}점</span>
@@ -127,7 +127,7 @@ export function InterviewReportTab({ session }: { session: InterviewSession | nu
         <div className="space-y-3">
           <h3 className="font-bold text-slate-800">음성·영상 면접 분석</h3>
           {media.map((m) => (
-            <div key={m.id} className="space-y-2 rounded-xl border border-slate-200 bg-white p-4">
+            <div key={m.id} className="space-y-2 rounded-xl border border-slate-200 bg-card p-4">
               <div className="flex items-center justify-between">
                 <span className="flex items-center gap-1.5 text-sm font-semibold text-slate-700">
                   {m.kind === "VOICE" ? (

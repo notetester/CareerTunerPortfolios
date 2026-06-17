@@ -109,7 +109,7 @@ export function AdminInterviewKnowledgePage() {
       )}
 
       <div className="grid gap-5 lg:grid-cols-[380px_minmax(0,1fr)]">
-        <Card className="border-slate-200 bg-white">
+        <Card className="border-slate-200 bg-card">
           <CardHeader><CardTitle className="text-base">지식 문서 추가</CardTitle></CardHeader>
           <CardContent className="space-y-3">
             <Select value={kind} onValueChange={(v) => setKind(v as KnowledgeKind)}>
@@ -127,7 +127,7 @@ export function AdminInterviewKnowledgePage() {
           </CardContent>
         </Card>
 
-        <Card className="border-slate-200 bg-white">
+        <Card className="border-slate-200 bg-card">
           <CardHeader><CardTitle className="text-base">등록된 지식 ({rows.length})</CardTitle></CardHeader>
           <CardContent className="space-y-2">
             {rows.map((r) => (

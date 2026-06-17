@@ -127,7 +127,7 @@ function ApplicationCard({
   );
 
   return (
-    <Card className="h-full border-slate-200 bg-white transition-shadow hover:shadow-md">
+    <Card className="h-full border-slate-200 bg-card transition-shadow hover:shadow-md">
       <CardContent className="flex h-full flex-col gap-4 p-5">
         <div className="flex items-start justify-between gap-3">
           {isTrash ? (
@@ -376,7 +376,7 @@ export function ApplicationListPage({ mode = "active" }: { mode?: ListMode }) {
             { label: "즐겨찾기", value: summary.favorite, icon: Star },
             { label: "보관", value: summary.archived, icon: FileText },
           ].map((item) => (
-            <div key={item.label} className="rounded-lg border border-slate-200 bg-white p-4">
+            <div key={item.label} className="rounded-lg border border-slate-200 bg-card p-4">
               <div className="flex items-center justify-between">
                 <span className="text-xs font-semibold text-slate-500">{item.label}</span>
                 <item.icon className="size-4 text-slate-400" />
@@ -386,7 +386,7 @@ export function ApplicationListPage({ mode = "active" }: { mode?: ListMode }) {
           ))}
         </div>
 
-        <Card className="border-slate-200 bg-white">
+        <Card className="border-slate-200 bg-card">
           <CardContent className="space-y-3 p-4">
             <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
               <div className="relative max-w-md flex-1">
@@ -400,7 +400,7 @@ export function ApplicationListPage({ mode = "active" }: { mode?: ListMode }) {
               </div>
               <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
                 <Select value={sortOption} onValueChange={(value) => setSortOption(value as SortOption)}>
-                  <SelectTrigger className="w-full bg-white sm:w-40">
+                  <SelectTrigger className="w-full bg-card sm:w-40">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -504,7 +504,7 @@ export function ApplicationListPage({ mode = "active" }: { mode?: ListMode }) {
             ))}
           </div>
         ) : filtered.length === 0 ? (
-          <Card className="border-dashed border-slate-300 bg-white">
+          <Card className="border-dashed border-slate-300 bg-card">
             <CardContent className="flex flex-col items-center gap-4 p-10 text-center">
               <div className="flex size-12 items-center justify-center rounded-lg bg-slate-100 text-slate-500">
                 {isTrash ? <Trash2 className="size-6" /> : <Briefcase className="size-6" />}
@@ -530,7 +530,7 @@ export function ApplicationListPage({ mode = "active" }: { mode?: ListMode }) {
             {!isTrash && (
               <button
                 type="button"
-                className="flex min-h-44 flex-col items-center justify-center gap-3 rounded-lg border-2 border-dashed border-slate-300 bg-white p-6 text-slate-500 transition-colors hover:border-blue-300 hover:bg-blue-50 hover:text-blue-700"
+                className="flex min-h-44 flex-col items-center justify-center gap-3 rounded-lg border-2 border-dashed border-slate-300 bg-card p-6 text-slate-500 transition-colors hover:border-blue-300 hover:bg-blue-50 hover:text-blue-700"
                 onClick={() => navigate("/applications/new")}
               >
                 <Plus className="size-7" />

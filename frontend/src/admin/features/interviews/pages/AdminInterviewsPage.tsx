@@ -107,7 +107,7 @@ export function AdminInterviewsPage() {
         {/* 좌: 목록 */}
         <section className="space-y-4">
 
-          <Card className="border-slate-200 bg-white">
+          <Card className="border-slate-200 bg-card">
             <CardContent className="space-y-3 p-4">
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-slate-400" />
@@ -145,7 +145,7 @@ export function AdminInterviewsPage() {
 
           <div className="space-y-2">
             {rows.length === 0 && !loading ? (
-              <div className="rounded-lg border border-dashed border-slate-200 bg-white p-6 text-center text-sm text-slate-400">
+              <div className="rounded-lg border border-dashed border-slate-200 bg-card p-6 text-center text-sm text-slate-400">
                 면접 세션이 없습니다.
               </div>
             ) : (
@@ -153,7 +153,7 @@ export function AdminInterviewsPage() {
                 <button
                   key={row.id}
                   type="button"
-                  className={`w-full rounded-lg border bg-white p-3 text-left transition-colors ${
+                  className={`w-full rounded-lg border bg-card p-3 text-left transition-colors ${
                     selected?.id === row.id ? "border-blue-300 ring-2 ring-blue-100" : "border-slate-200 hover:border-blue-200"
                   }`}
                   onClick={() => setSelectedId(row.id)}
@@ -185,12 +185,12 @@ export function AdminInterviewsPage() {
           <TrainingPipelineCard />
           <AiFailuresCard />
           {!detail ? (
-            <Card className="border-slate-200 bg-white">
+            <Card className="border-slate-200 bg-card">
               <CardContent className="p-8 text-center text-sm text-slate-500">면접 세션을 선택하세요.</CardContent>
             </Card>
           ) : (
             <>
-              <Card className="border-slate-200 bg-white">
+              <Card className="border-slate-200 bg-card">
                 <CardHeader>
                   <CardTitle className="text-lg font-bold text-slate-950">
                     {detail.session.companyName} · {detail.session.jobTitle}
@@ -205,7 +205,7 @@ export function AdminInterviewsPage() {
               </Card>
 
               {report && (
-                <Card className="border-slate-200 bg-white">
+                <Card className="border-slate-200 bg-card">
                   <CardHeader>
                     <CardTitle className="text-base font-bold text-slate-900">면접 리포트</CardTitle>
                   </CardHeader>
@@ -239,14 +239,14 @@ export function AdminInterviewsPage() {
               <section className="space-y-2">
                 <h2 className="text-sm font-bold text-slate-900">질문 / 답변</h2>
                 {detail.questions.length === 0 ? (
-                  <Card className="border-slate-200 bg-white">
+                  <Card className="border-slate-200 bg-card">
                     <CardContent className="p-6 text-center text-sm text-slate-400">생성된 질문이 없습니다.</CardContent>
                   </Card>
                 ) : (
                   detail.questions.map((q, i) => {
                     const answer = answerByQuestion.get(q.id);
                     return (
-                      <Card key={q.id} className="border-slate-200 bg-white">
+                      <Card key={q.id} className="border-slate-200 bg-card">
                         <CardContent className="space-y-2 p-4 text-sm">
                           <div className="flex items-start gap-2">
                             <Badge className="bg-blue-100 text-blue-700">Q{i + 1}</Badge>
@@ -311,7 +311,7 @@ function AiFailuresCard() {
   }, []);
 
   return (
-    <Card className="border-slate-200 bg-white">
+    <Card className="border-slate-200 bg-card">
       <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
         <CardTitle className="text-base">면접 AI 실패 이력</CardTitle>
         <Button variant="outline" size="sm" onClick={() => void load()} disabled={loading}>

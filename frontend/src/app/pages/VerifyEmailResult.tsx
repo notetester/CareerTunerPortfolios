@@ -31,7 +31,7 @@ export function VerifyEmailResultPage() {
 
   return (
     <div className="min-h-[calc(100vh-120px)] flex items-center justify-center px-4">
-      <div className="w-full max-w-md text-center bg-white border border-slate-200 rounded-2xl shadow-sm p-8 space-y-4">
+      <div className="w-full max-w-md text-center bg-card border border-slate-200 rounded-2xl shadow-sm p-8 space-y-4">
         {success ? (
           <CheckCircle2 className="size-14 text-green-600 mx-auto" />
         ) : (

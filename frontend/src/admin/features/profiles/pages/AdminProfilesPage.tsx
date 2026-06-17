@@ -73,7 +73,7 @@ export function AdminProfilesPage() {
     >
       <div className="grid gap-5 lg:grid-cols-[360px_1fr]">
         <section className="space-y-4">
-          <Card className="border-slate-200 bg-white">
+          <Card className="border-slate-200 bg-card">
             <CardContent className="space-y-3 p-4">
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-slate-400" />
@@ -117,7 +117,7 @@ export function AdminProfilesPage() {
               <button
                 key={row.userId}
                 type="button"
-                className={`w-full rounded-lg border bg-white p-3 text-left transition-colors ${
+                className={`w-full rounded-lg border bg-card p-3 text-left transition-colors ${
                   selected?.userId === row.userId ? "border-blue-300 ring-2 ring-blue-100" : "border-slate-200 hover:border-blue-200"
                 }`}
                 onClick={() => row.userId && void loadDetail(row.userId)}
@@ -131,12 +131,12 @@ export function AdminProfilesPage() {
                 </div>
               </button>
             ))}
-            {!loading && filteredRows.length === 0 && <div className="rounded-lg bg-white p-6 text-center text-sm text-slate-500">조건에 맞는 프로필 데이터가 없습니다.</div>}
+            {!loading && filteredRows.length === 0 && <div className="rounded-lg bg-card p-6 text-center text-sm text-slate-500">조건에 맞는 프로필 데이터가 없습니다.</div>}
           </div>
         </section>
 
         <section className="min-w-0">
-          <Card className="border-slate-200 bg-white">
+          <Card className="border-slate-200 bg-card">
             <CardHeader>
               <CardTitle className="text-lg text-slate-950">
                 {selected ? `사용자 #${selected.userId} 프로필` : "프로필 상세"}

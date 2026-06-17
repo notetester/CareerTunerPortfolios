@@ -246,7 +246,7 @@ function MemberHome({ summary, loading, error, fallbackName, onRetry, onSummaryR
     return (
       <div className="min-h-screen bg-slate-50">
         <div className="max-w-[1400px] mx-auto px-4 sm:px-6 py-8">
-          <Card className="border border-slate-200 bg-white">
+          <Card className="border border-slate-200 bg-card">
             <CardContent className="flex items-center gap-3 p-6 text-sm text-slate-600">
               <Loader2 className="size-5 animate-spin text-blue-600" />
               회원 홈 데이터를 불러오는 중입니다.
@@ -282,7 +282,7 @@ function MemberHome({ summary, loading, error, fallbackName, onRetry, onSummaryR
       <div className="max-w-[1400px] mx-auto px-4 sm:px-6 py-6 lg:py-8 space-y-6">
         <InterviewHero />
         <section className="grid lg:grid-cols-[1.5fr_0.9fr] gap-5">
-          <div className="rounded-2xl border border-slate-200 bg-white p-5 sm:p-7 shadow-sm">
+          <div className="rounded-2xl border border-slate-200 bg-card p-5 sm:p-7 shadow-sm">
             <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-5">
               <div className="min-w-0">
                 <div className="flex flex-wrap items-center gap-2 text-sm text-slate-500">
@@ -306,7 +306,7 @@ function MemberHome({ summary, loading, error, fallbackName, onRetry, onSummaryR
                         onClick={handleRefreshSummary}
                         disabled={refreshing}
                         title="AI를 다시 실행해 최신 데이터로 요약을 재생성합니다. 크레딧 1이 차감됩니다."
-                        className="flex shrink-0 items-center gap-1 rounded-md border border-blue-200 bg-white/70 px-2 py-1 text-xs font-semibold text-blue-700 transition-colors hover:bg-white disabled:opacity-60"
+                        className="flex shrink-0 items-center gap-1 rounded-md border border-blue-200 bg-card/70 px-2 py-1 text-xs font-semibold text-blue-700 transition-colors hover:bg-card disabled:opacity-60"
                       >
                         <RefreshCw className={`size-3 ${refreshing ? "animate-spin" : ""}`} />
                         {refreshing ? "재생성 중" : "재생성 (크레딧 1)"}
@@ -392,7 +392,7 @@ function MemberHome({ summary, loading, error, fallbackName, onRetry, onSummaryR
                       <span
                         key={step.key}
                         className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-medium ${
-                          step.done ? "bg-green-100 text-green-700" : "bg-white text-slate-400 border border-slate-200"
+                          step.done ? "bg-green-100 text-green-700" : "bg-card text-slate-400 border border-slate-200"
                         }`}
                       >
                         {step.done ? "✓" : "○"} {step.label}
@@ -404,7 +404,7 @@ function MemberHome({ summary, loading, error, fallbackName, onRetry, onSummaryR
             })()}
           </div>
 
-          <Card className="border border-slate-200 bg-white shadow-sm">
+          <Card className="border border-slate-200 bg-card shadow-sm">
             <CardHeader className="pb-3">
               <CardTitle className="text-base flex items-center gap-2">
                 <Flame className="size-4 text-orange-500" />
@@ -419,7 +419,7 @@ function MemberHome({ summary, loading, error, fallbackName, onRetry, onSummaryR
 
         <section className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
           {statCards.map((card) => (
-            <Card key={card.label} className="border border-slate-200 bg-white shadow-sm">
+            <Card key={card.label} className="border border-slate-200 bg-card shadow-sm">
               <CardContent className="p-4 sm:p-5">
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
@@ -438,7 +438,7 @@ function MemberHome({ summary, loading, error, fallbackName, onRetry, onSummaryR
 
         <section className="grid lg:grid-cols-[1.45fr_0.85fr] gap-5">
           <div className="space-y-5">
-            <Card className="border border-slate-200 bg-white shadow-sm">
+            <Card className="border border-slate-200 bg-card shadow-sm">
               <CardHeader className="pb-3">
                 <div className="flex items-center justify-between gap-3">
                   <CardTitle className="text-lg">최근 지원 건</CardTitle>
@@ -495,7 +495,7 @@ function MemberHome({ summary, loading, error, fallbackName, onRetry, onSummaryR
               </CardContent>
             </Card>
 
-            <Card className="border border-slate-200 bg-white shadow-sm">
+            <Card className="border border-slate-200 bg-card shadow-sm">
               <CardHeader className="pb-3">
                 <CardTitle className="text-lg">최근 활동</CardTitle>
               </CardHeader>
@@ -531,7 +531,7 @@ function MemberHome({ summary, loading, error, fallbackName, onRetry, onSummaryR
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
-                <div className="rounded-xl bg-white/70 p-4 text-center">
+                <div className="rounded-xl bg-card/70 p-4 text-center">
                   <div className="text-4xl font-black text-amber-700">{summary?.stats.credit ?? 0}</div>
                   <div className="mt-1 text-sm text-amber-700">/ {summary?.stats.creditLimit ?? 0} 크레딧 잔여</div>
                   <Progress value={creditPercent} className="mt-3 h-2" />
@@ -552,7 +552,7 @@ function MemberHome({ summary, loading, error, fallbackName, onRetry, onSummaryR
               </CardContent>
             </Card>
 
-            <Card className="border border-slate-200 bg-white shadow-sm">
+            <Card className="border border-slate-200 bg-card shadow-sm">
               <CardHeader className="pb-3">
                 <CardTitle className="text-base">자주 부족한 역량</CardTitle>
               </CardHeader>
@@ -572,7 +572,7 @@ function MemberHome({ summary, loading, error, fallbackName, onRetry, onSummaryR
               </CardContent>
             </Card>
 
-            <Card className="border border-slate-200 bg-white shadow-sm">
+            <Card className="border border-slate-200 bg-card shadow-sm">
               <CardHeader className="pb-3">
                 <CardTitle className="text-base">빠른 이동</CardTitle>
               </CardHeader>
@@ -596,7 +596,7 @@ function MemberHome({ summary, loading, error, fallbackName, onRetry, onSummaryR
         </section>
 
         {loading && summary && (
-          <div className="fixed bottom-5 right-5 rounded-full border border-slate-200 bg-white px-4 py-2 text-sm text-slate-600 shadow-lg">
+          <div className="fixed bottom-5 right-5 rounded-full border border-slate-200 bg-card px-4 py-2 text-sm text-slate-600 shadow-lg">
             <Loader2 className="mr-2 inline size-4 animate-spin text-blue-600" />
             최신 데이터 동기화 중
           </div>
@@ -648,7 +648,7 @@ export function HomePage() {
     return (
       <div className="min-h-screen bg-slate-50">
         <div className="max-w-[1400px] mx-auto px-4 sm:px-6 py-8">
-          <Card className="border border-slate-200 bg-white">
+          <Card className="border border-slate-200 bg-card">
             <CardContent className="flex items-center gap-3 p-6 text-sm text-slate-600">
               <Loader2 className="size-5 animate-spin text-blue-600" />
               세션을 확인하는 중입니다.
@@ -676,7 +676,7 @@ export function HomePage() {
   }
 
   return (
-    <div className="bg-white">
+    <div className="bg-card">
       {/* ─── Hero ─── */}
       <section className="relative overflow-hidden bg-[#0b0c0e] text-white">
         <div className="relative w-full max-w-[1400px] mx-auto px-4 sm:px-6 py-14 lg:py-24">
@@ -726,7 +726,7 @@ export function HomePage() {
                 <Button
                   size="lg"
                   variant="outline"
-                  className="w-full sm:w-auto justify-center border-white/20 text-white bg-white/10 hover:bg-white/20 text-base px-8"
+                  className="w-full sm:w-auto justify-center border-white/20 text-white bg-card/10 hover:bg-card/20 text-base px-8"
                   onClick={() => navigate("/applications/demo")}
                 >
                   <Play className="mr-2 size-4" />
@@ -750,9 +750,9 @@ export function HomePage() {
             {/* Right mock UI */}
             <div className="relative hidden lg:block">
               <div className="absolute -inset-4 bg-transparent rounded-3xl blur-2xl" />
-              <div className="relative bg-white/10 backdrop-blur-sm border border-white/20 rounded-2xl overflow-hidden shadow-2xl">
+              <div className="relative bg-card/10 backdrop-blur-sm border border-white/20 rounded-2xl overflow-hidden shadow-2xl">
                 {/* Mock tabs */}
-                <div className="flex items-center gap-1 px-4 py-3 bg-white/5 border-b border-white/10 overflow-x-auto">
+                <div className="flex items-center gap-1 px-4 py-3 bg-card/5 border-b border-white/10 overflow-x-auto">
                   {["공고분석", "기업분석", "스펙비교", "예상질문", "가상면접"].map((t, i) => (
                     <div key={t} className={`px-3 py-1 rounded text-xs font-medium whitespace-nowrap ${i === 2 ? "bg-blue-500 text-white" : "text-slate-300"}`}>
                       {t}
@@ -769,12 +769,12 @@ export function HomePage() {
                   </div>
 
                   {/* Fit score */}
-                  <div className="bg-white/5 rounded-xl p-4 space-y-2">
+                  <div className="bg-card/5 rounded-xl p-4 space-y-2">
                     <div className="flex items-center justify-between text-sm">
                       <span className="text-slate-300">직무 적합도</span>
                       <span className="font-black text-blue-300 text-lg">72점</span>
                     </div>
-                    <div className="h-2 bg-white/10 rounded-full overflow-hidden">
+                    <div className="h-2 bg-card/10 rounded-full overflow-hidden">
                       <div className="h-full w-[72%] bg-primary rounded-full" />
                     </div>
                   </div>
@@ -782,7 +782,7 @@ export function HomePage() {
                   {/* Skills grid */}
                   <div className="grid grid-cols-2 gap-2">
                     {specComparisonData.slice(0, 4).map((s) => (
-                      <div key={s.skill} className="flex items-center justify-between bg-white/5 rounded-lg px-3 py-2">
+                      <div key={s.skill} className="flex items-center justify-between bg-card/5 rounded-lg px-3 py-2">
                         <span className="text-xs text-slate-300">{s.skill}</span>
                         <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded ${s.color}`}>
                           {s.grade}
@@ -792,7 +792,7 @@ export function HomePage() {
                   </div>
 
                   {/* Interview question preview */}
-                  <div className="bg-white/5 rounded-xl p-3">
+                  <div className="bg-card/5 rounded-xl p-3">
                     <div className="text-xs text-slate-400 mb-2 font-medium">🎯 AI 예상 질문 (직무)</div>
                     <div className="text-xs text-slate-200 leading-relaxed">
                       "React에서 상태 관리를 어떻게 설계하나요? Recoil과 Zustand를 비교 설명해주세요."
@@ -811,14 +811,14 @@ export function HomePage() {
       </section>
 
       {/* ─── 마누스형 면접 진입 검색창 ─── */}
-      <section className="bg-white">
+      <section className="bg-card">
         <div className="mx-auto w-full max-w-[1400px] px-4 sm:px-6 pt-8">
           <InterviewHero />
         </div>
       </section>
 
       {/* ─── Stats bar ─── */}
-      <section className="bg-white border-b border-slate-100">
+      <section className="bg-card border-b border-slate-100">
         <div className="w-full max-w-[1400px] mx-auto px-4 sm:px-6 py-8">
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-5 lg:gap-12">
             {[
@@ -857,7 +857,7 @@ export function HomePage() {
 
           <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-5">
             {coreFeaturesData.map((f, i) => (
-              <Card key={i} className="border border-slate-200 hover:border-blue-300 hover:shadow-lg transition-all duration-300 bg-white group">
+              <Card key={i} className="border border-slate-200 hover:border-blue-300 hover:shadow-lg transition-all duration-300 bg-card group">
                 <CardHeader className="pb-3">
                   <div className="flex items-start justify-between mb-3">
                     <div className="size-11 rounded-xl bg-accent-soft flex items-center justify-center shadow-md group-hover:scale-110 transition-transform">
@@ -877,7 +877,7 @@ export function HomePage() {
       </section>
 
       {/* ─── How It Works (Full 12-step flow) ─── */}
-      <section id="how-it-works" className="py-20 bg-white">
+      <section id="how-it-works" className="py-20 bg-card">
         <div className="w-full max-w-[1400px] mx-auto px-6">
           <div className="text-center mb-14 space-y-3">
             <Badge className="bg-indigo-100 text-indigo-700 px-4 py-1">사용 방법</Badge>
@@ -932,7 +932,7 @@ export function HomePage() {
           </div>
 
           {/* Mock 3-column layout */}
-          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 overflow-hidden">
+          <div className="bg-card rounded-2xl shadow-2xl border border-slate-200 overflow-hidden">
             <div className="flex h-[480px]">
               {/* Left sidebar */}
               <div className="w-56 bg-slate-900 text-white flex-shrink-0 flex flex-col">
@@ -959,14 +959,14 @@ export function HomePage() {
 
               {/* Center main */}
               <div className="flex-1 flex flex-col min-w-0">
-                <div className="flex items-center justify-between px-5 py-3 border-b border-slate-200 bg-white">
+                <div className="flex items-center justify-between px-5 py-3 border-b border-slate-200 bg-card">
                   <div>
                     <div className="font-bold text-slate-900 text-sm">카카오페이 · 프론트엔드 개발자</div>
                     <div className="text-xs text-slate-500">2026-08-01 공고 · React 3년 이상</div>
                   </div>
                   <Badge className="bg-green-100 text-green-700 text-xs">준비중</Badge>
                 </div>
-                <div className="flex border-b border-slate-200 bg-white overflow-x-auto">
+                <div className="flex border-b border-slate-200 bg-card overflow-x-auto">
                   {["공고분석", "기업분석", "스펙비교", "지원전략", "예상질문", "가상면접", "면접리포트", "첨삭기록"].map((tab, i) => (
                     <button
                       key={tab}
@@ -1037,7 +1037,7 @@ export function HomePage() {
                       ))}
                     </div>
                   </div>
-                  <div className="bg-white rounded-xl p-3 border border-slate-200">
+                  <div className="bg-card rounded-xl p-3 border border-slate-200">
                     <div className="text-xs text-slate-500 mb-1">크레딧 사용</div>
                     <div className="text-lg font-black text-slate-800">38 / 50</div>
                     <Progress value={76} className="mt-1 h-1.5" />
@@ -1050,7 +1050,7 @@ export function HomePage() {
       </section>
 
       {/* ─── Interview Modes ─── */}
-      <section className="py-20 bg-white">
+      <section className="py-20 bg-card">
         <div className="w-full max-w-[1400px] mx-auto px-6">
           <div className="text-center mb-14 space-y-3">
             <Badge className="bg-purple-100 text-purple-700 px-4 py-1">AI 가상 면접</Badge>
@@ -1080,7 +1080,7 @@ export function HomePage() {
                 </CardTitle>
               </CardHeader>
               <CardContent>
-                <div className="text-sm text-slate-600 bg-white rounded-lg p-3 border border-red-100">
+                <div className="text-sm text-slate-600 bg-card rounded-lg p-3 border border-red-100">
                   "학교 프로젝트에서 React를 사용해서 게시판을 만들었습니다."
                 </div>
                 <div className="mt-3 space-y-1">
@@ -1097,7 +1097,7 @@ export function HomePage() {
                 </CardTitle>
               </CardHeader>
               <CardContent>
-                <div className="text-sm text-slate-600 bg-white rounded-lg p-3 border border-green-100 leading-relaxed">
+                <div className="text-sm text-slate-600 bg-card rounded-lg p-3 border border-green-100 leading-relaxed">
                   "팀 프로젝트에서 React로 게시판 기능을 구현했습니다. 저는 목록/작성/수정/삭제 화면을 맡았고, REST API 연동과 useState/useEffect 기반 상태 관리를 구현했습니다. 입력값 검증을 추가해 데이터 무결성을 확보한 점이 좋은 평가를 받았습니다."
                 </div>
                 <div className="mt-3 space-y-1">
@@ -1119,7 +1119,7 @@ export function HomePage() {
             <h2 className="text-4xl font-black text-slate-900">일반 채용 사이트와 비교</h2>
           </div>
           <div className="max-w-4xl mx-auto grid md:grid-cols-2 gap-6">
-            <Card className="border-2 border-slate-200 bg-white">
+            <Card className="border-2 border-slate-200 bg-card">
               <CardHeader>
                 <CardTitle className="flex items-center gap-2 text-slate-700">
                   <div className="size-8 rounded-lg bg-slate-200 flex items-center justify-center">
@@ -1175,7 +1175,7 @@ export function HomePage() {
       </section>
 
       {/* ─── Pricing ─── */}
-      <section id="pricing" className="py-20 bg-white">
+      <section id="pricing" className="py-20 bg-card">
         <div className="w-full max-w-[1400px] mx-auto px-6">
           <div className="text-center mb-14 space-y-3">
             <Badge className="bg-green-100 text-green-700 px-4 py-1">요금제</Badge>
@@ -1338,7 +1338,7 @@ export function HomePage() {
           <div className="space-y-3">
             {communityPosts.map((post, i) => (
               <Link to="/community" key={i}>
-                <div className="bg-white border border-slate-200 hover:border-blue-300 hover:shadow-md transition-all rounded-xl p-4 flex items-center gap-4 group">
+                <div className="bg-card border border-slate-200 hover:border-blue-300 hover:shadow-md transition-all rounded-xl p-4 flex items-center gap-4 group">
                   <Badge className={`flex-shrink-0 text-xs ${
                     post.cat === "면접 후기" ? "bg-blue-100 text-blue-700" :
                     post.cat === "합격 전략" ? "bg-green-100 text-green-700" :
@@ -1362,7 +1362,7 @@ export function HomePage() {
       </section>
 
       {/* ─── Testimonials ─── */}
-      <section className="py-20 bg-white">
+      <section className="py-20 bg-card">
         <div className="w-full max-w-[1400px] mx-auto px-6">
           <div className="text-center mb-14 space-y-3">
             <Badge className="bg-yellow-100 text-yellow-700 px-4 py-1">사용자 후기</Badge>
@@ -1370,7 +1370,7 @@ export function HomePage() {
           </div>
           <div className="grid md:grid-cols-3 gap-6">
             {testimonials.map((t, i) => (
-              <Card key={i} className="border-2 border-slate-200 bg-white hover:border-blue-200 hover:shadow-lg transition-all">
+              <Card key={i} className="border-2 border-slate-200 bg-card hover:border-blue-200 hover:shadow-lg transition-all">
                 <CardContent className="p-6 space-y-4">
                   <div className="flex items-center gap-3">
                     <div className="size-11 rounded-full bg-accent-soft flex items-center justify-center text-primary font-bold text-base">
@@ -1408,11 +1408,11 @@ export function HomePage() {
             </p>
           </div>
           <div className="flex flex-col sm:flex-row gap-4 justify-center">
-            <Button size="lg" className="bg-white text-blue-700 hover:bg-blue-50 text-base px-10 shadow-xl" onClick={() => navigate("/login")}>
+            <Button size="lg" className="bg-card text-blue-700 hover:bg-blue-50 text-base px-10 shadow-xl" onClick={() => navigate("/login")}>
               무료로 시작하기
               <ArrowRight className="ml-2 size-5" />
             </Button>
-            <Button size="lg" variant="outline" className="border-white/40 bg-transparent text-white hover:bg-white/10 text-base px-10" onClick={() => navigate("/pricing")}>
+            <Button size="lg" variant="outline" className="border-white/40 bg-transparent text-white hover:bg-card/10 text-base px-10" onClick={() => navigate("/pricing")}>
               요금제 비교하기
             </Button>
           </div>

@@ -138,7 +138,7 @@ export function ModeSelectTab({
   return (
     <div className="space-y-6">
       {/* 지원 건 선택 */}
-      <div className="rounded-2xl border border-slate-200 bg-white p-5">
+      <div className="rounded-2xl border border-slate-200 bg-card p-5">
         <div className="mb-3 text-sm font-bold text-slate-700">지원 건 선택</div>
         {casesLoading ? (
           <p className="text-sm text-slate-400">지원 건을 불러오는 중…</p>
@@ -174,7 +174,7 @@ export function ModeSelectTab({
             className={`group relative rounded-2xl border-2 p-5 text-left transition-all hover:shadow-lg ${
               selectedMode === mode.id
                 ? "border-blue-500 bg-blue-50 shadow-lg"
-                : "border-slate-200 bg-white hover:border-blue-300"
+                : "border-slate-200 bg-card hover:border-blue-300"
             }`}
           >
             {mode.recommended && (
@@ -244,7 +244,7 @@ export function ModeSelectTab({
         ) : sessions.error ? (
           <p className="text-sm text-red-500">{sessions.error}</p>
         ) : sessions.sessions.length === 0 ? (
-          <p className="rounded-xl border border-dashed border-slate-200 bg-white p-6 text-center text-sm text-slate-400">
+          <p className="rounded-xl border border-dashed border-slate-200 bg-card p-6 text-center text-sm text-slate-400">
             아직 면접 기록이 없습니다. 위에서 모드를 골라 첫 면접을 시작해 보세요.
           </p>
         ) : (
@@ -255,7 +255,7 @@ export function ModeSelectTab({
                   <button
                     type="button"
                     onClick={() => openReview(s)}
-                    className="flex w-full items-center gap-4 rounded-xl border border-slate-200 bg-white p-4 pr-12 text-left transition-colors hover:border-blue-300"
+                    className="flex w-full items-center gap-4 rounded-xl border border-slate-200 bg-card p-4 pr-12 text-left transition-colors hover:border-blue-300"
                   >
                     <div className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-accent-soft text-xs font-bold text-primary">
                       {caseLabel(s.applicationCaseId).slice(0, 1)}
@@ -324,7 +324,7 @@ export function ModeSelectTab({
           onClick={() => setReviewOpen(false)}
         >
           <div
-            className="max-h-[85vh] w-full max-w-2xl overflow-y-auto rounded-2xl bg-white p-6 shadow-xl"
+            className="max-h-[85vh] w-full max-w-2xl overflow-y-auto rounded-2xl bg-card p-6 shadow-xl"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="mb-4 flex items-center justify-between">
@@ -346,15 +346,15 @@ export function ModeSelectTab({
                   {getInterviewModeLabel(reviewSession.mode)} · {formatDate(reviewSession.createdAt)}
                 </div>
                 <div className="mt-3 grid grid-cols-3 gap-2 text-center">
-                  <div className="rounded-lg bg-white p-2">
+                  <div className="rounded-lg bg-card p-2">
                     <div className="text-base font-black text-slate-800">{review ? review.items.length : "—"}</div>
                     <div className="text-[10px] text-slate-400">질문</div>
                   </div>
-                  <div className="rounded-lg bg-white p-2">
+                  <div className="rounded-lg bg-card p-2">
                     <div className="text-base font-black text-slate-800">{review ? answeredCount : "—"}</div>
                     <div className="text-[10px] text-slate-400">답변</div>
                   </div>
-                  <div className="rounded-lg bg-white p-2">
+                  <div className="rounded-lg bg-card p-2">
                     <div className={`text-base font-black ${avgScore !== null ? getScoreColor(avgScore) : "text-slate-300"}`}>
                       {avgScore ?? "—"}
                     </div>
@@ -380,7 +380,7 @@ export function ModeSelectTab({
             ) : review && review.items.length > 0 ? (
               <div className="space-y-4">
                 {scored.length > 0 && (
-                  <div className="rounded-xl border border-slate-200 bg-white p-4">
+                  <div className="rounded-xl border border-slate-200 bg-card p-4">
                     <div className="mb-3 flex flex-wrap items-center justify-between gap-1">
                       <span className="text-sm font-bold text-slate-700">질문별 점수</span>
                       <span className="text-xs text-slate-500">

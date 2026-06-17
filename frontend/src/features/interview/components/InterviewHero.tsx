@@ -52,13 +52,13 @@ export function InterviewHero() {
               value={value}
               onChange={(e) => setValue(e.target.value)}
               placeholder="예: 네이버 백엔드 직무 면접 준비해줘"
-              className="w-full rounded-xl border border-white/10 bg-white/10 py-3 pl-9 pr-3 text-sm text-white placeholder:text-indigo-200/60 outline-none backdrop-blur focus:border-indigo-300"
+              className="w-full rounded-xl border border-white/10 bg-card/10 py-3 pl-9 pr-3 text-sm text-white placeholder:text-indigo-200/60 outline-none backdrop-blur focus:border-indigo-300"
             />
           </div>
           <button
             type="submit"
             disabled={!value.trim()}
-            className="flex items-center justify-center gap-1.5 rounded-xl bg-white px-5 py-3 text-sm font-bold text-indigo-700 transition-colors hover:bg-indigo-50 disabled:opacity-50"
+            className="flex items-center justify-center gap-1.5 rounded-xl bg-card px-5 py-3 text-sm font-bold text-indigo-700 transition-colors hover:bg-indigo-50 disabled:opacity-50"
           >
             맡기기 <ArrowRight className="size-4" />
           </button>
@@ -70,7 +70,7 @@ export function InterviewHero() {
               key={ex}
               type="button"
               onClick={() => submit(ex)}
-              className="rounded-full border border-white/15 bg-white/5 px-3 py-1 text-xs text-indigo-100 transition-colors hover:bg-white/10"
+              className="rounded-full border border-white/15 bg-card/5 px-3 py-1 text-xs text-indigo-100 transition-colors hover:bg-card/10"
             >
               {ex}
             </button>

@@ -119,7 +119,7 @@ function QuestionItem({
   };
 
   return (
-    <Card className={isFollowUp ? "border border-indigo-200 bg-indigo-50/40" : "border border-slate-200 bg-white"}>
+    <Card className={isFollowUp ? "border border-indigo-200 bg-indigo-50/40" : "border border-slate-200 bg-card"}>
       <CardContent className="space-y-3 p-4">
         <div className="flex items-start gap-2">
           {isFollowUp ? (
@@ -275,7 +275,7 @@ export function ExpectedQuestionsTab({
 
   if (!session) {
     return (
-      <div className="rounded-xl border border-dashed border-slate-200 bg-white p-10 text-center text-sm text-slate-400">
+      <div className="rounded-xl border border-dashed border-slate-200 bg-card p-10 text-center text-sm text-slate-400">
         "면접 모드 선택" 탭에서 지원 건과 모드를 고르고 면접을 시작하면 예상 질문이 생성됩니다.
       </div>
     );
@@ -303,7 +303,7 @@ export function ExpectedQuestionsTab({
       {generating ? (
         <div className="space-y-3">
           {[0, 1, 2, 3].map((i) => (
-            <div key={i} className="space-y-3 rounded-xl border border-slate-200 bg-white p-4">
+            <div key={i} className="space-y-3 rounded-xl border border-slate-200 bg-card p-4">
               <div className="flex items-center gap-2">
                 <div className="size-6 shrink-0 animate-pulse rounded-full bg-slate-200" />
                 <div className="h-3.5 w-3/4 animate-pulse rounded bg-slate-200" />
@@ -320,11 +320,11 @@ export function ExpectedQuestionsTab({
           ))}
         </div>
       ) : loading ? (
-        <div className="flex items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white p-10 text-sm text-slate-400">
+        <div className="flex items-center justify-center gap-2 rounded-xl border border-slate-200 bg-card p-10 text-sm text-slate-400">
           <Loader2 className="size-4 animate-spin" /> 불러오는 중…
         </div>
       ) : questions.length === 0 ? (
-        <Card className="border border-slate-200 bg-white">
+        <Card className="border border-slate-200 bg-card">
           <CardContent className="flex flex-col items-center gap-4 p-10 text-center">
             <p className="text-sm text-slate-500">
               이 지원 건과 모드에 맞춘 예상 면접 질문을 AI가 생성합니다.
@@ -356,7 +356,7 @@ export function ExpectedQuestionsTab({
             />
           ))}
 
-          <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white p-4">
+          <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 bg-card p-4">
             <p className="text-sm text-slate-500">
               질문을 다 풀어봤다면, 모범답안 없이 복습 테스트로 제대로 소화했는지 점검해 보세요.
             </p>

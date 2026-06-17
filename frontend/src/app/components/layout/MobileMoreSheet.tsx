@@ -46,7 +46,7 @@ export function MobileMoreSheet({ open, onClose }: { open: boolean; onClose: () 
         onClick={onClose}
       />
       <div
-        className={`fixed inset-x-0 bottom-0 z-[61] rounded-t-2xl bg-white shadow-2xl transition-transform lg:hidden ${open ? "translate-y-0" : "translate-y-full"}`}
+        className={`fixed inset-x-0 bottom-0 z-[61] rounded-t-2xl bg-card shadow-2xl transition-transform lg:hidden ${open ? "translate-y-0" : "translate-y-full"}`}
         style={{ paddingBottom: "calc(env(safe-area-inset-bottom) + 12px)" }}
         role="dialog"
         aria-modal="true"
