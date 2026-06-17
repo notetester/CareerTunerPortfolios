@@ -21,6 +21,7 @@ import {
 } from "../api/interviewApi";
 import {
   getScoreColor,
+  toSentenceLines,
   type InterviewAnswer,
   type InterviewQuestion,
   type InterviewSession,
@@ -139,7 +140,7 @@ function QuestionItem({
             <div className="mb-1 flex items-center gap-1.5 text-xs font-bold text-amber-700">
               <Lightbulb className="size-3.5" /> 모범답안
             </div>
-            <p className="whitespace-pre-line text-sm leading-relaxed text-slate-700">{modelAnswer}</p>
+            <p className="whitespace-pre-line text-sm leading-relaxed text-slate-700">{toSentenceLines(modelAnswer)}</p>
           </div>
         )}
 
@@ -162,7 +163,7 @@ function QuestionItem({
                 <div className="mb-1 flex items-center gap-1.5 text-xs font-bold text-green-700">
                   <ThumbsUp className="size-3.5" /> AI 개선 답변
                 </div>
-                <p className="text-sm leading-relaxed text-slate-700">{result.improvedAnswer}</p>
+                <p className="whitespace-pre-line text-sm leading-relaxed text-slate-700">{toSentenceLines(result.improvedAnswer)}</p>
               </div>
             )}
             <div className="flex justify-end">

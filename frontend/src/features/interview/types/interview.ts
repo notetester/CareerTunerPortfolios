@@ -240,6 +240,11 @@ export function getInterviewModeLabel(mode: InterviewMode): string {
   return INTERVIEW_MODES.find((m) => m.id === mode)?.title ?? mode;
 }
 
+/** 문장 끝(.!?。) 뒤에 줄바꿈을 넣어 모범답안·개선답변을 문장 단위로 읽기 쉽게 만든다. (whitespace-pre-line 과 함께 사용) */
+export function toSentenceLines(text: string): string {
+  return text.replace(/([.!?。])\s+/g, "$1\n").trim();
+}
+
 /** 답변 평가 항목 (정적 안내) */
 export const EVALUATION_CRITERIA: { label: string; desc: string }[] = [
   { label: "답변 내용", desc: "질문에 제대로 답했는가 · 핵심 포인트를 짚었는가" },
