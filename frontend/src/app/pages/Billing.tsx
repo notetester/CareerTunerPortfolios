@@ -179,7 +179,7 @@ export function BillingPage() {
                       </div>
                       <Button
                         disabled={!isAuthenticated || isCurrent || busy === `sub-${plan.code}`}
-                        className={popular ? "w-full bg-gradient-to-r from-blue-600 to-indigo-600" : "w-full"}
+                        className={popular ? "w-full bg-primary" : "w-full"}
                         variant={popular ? "default" : "outline"}
                         onClick={() => void doSubscribe(plan.code)}
                       >
@@ -235,7 +235,7 @@ export function BillingPage() {
                     <div className="text-4xl font-black text-amber-600">{billing?.creditBalance ?? 0}</div>
                     <div className="text-sm text-amber-700">사용 가능 크레딧</div>
                   </div>
-                  <Button className="w-full bg-gradient-to-r from-amber-500 to-orange-500" onClick={() => setSearchParams({ tab: "credits" })}>
+                  <Button className="w-full bg-primary" onClick={() => setSearchParams({ tab: "credits" })}>
                     충전하러 가기
                   </Button>
                 </CardContent>

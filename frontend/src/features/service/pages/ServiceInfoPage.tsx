@@ -29,7 +29,7 @@ export function ServiceInfoPage() {
             단순한 채용공고 저장소가 아니라 기업/직무별 지원 건에 AI 분석, 스펙 비교, 지원 전략, 예상 질문, 모의면접, 첨삭, 장기 분석 기록을 쌓는 구조입니다.
           </p>
           <div className="flex flex-wrap gap-2">
-            <Button asChild className="bg-gradient-to-r from-blue-600 to-indigo-600">
+            <Button asChild className="bg-primary">
               <Link to="/applications?tab=new">지원 건 만들기</Link>
             </Button>
             <Button asChild variant="outline">

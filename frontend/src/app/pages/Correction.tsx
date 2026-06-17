@@ -99,7 +99,7 @@ export function CorrectionPage() {
                       {active.placeholder}
                     </div>
                     <div className="flex flex-col gap-2 sm:flex-row">
-                      <Button disabled className="bg-gradient-to-r from-blue-600 to-indigo-600">준비 중</Button>
+                      <Button disabled className="bg-primary">준비 중</Button>
                       <Button disabled variant="outline">지원 건 연결</Button>
                       <Button disabled variant="outline">임시 저장</Button>
                     </div>

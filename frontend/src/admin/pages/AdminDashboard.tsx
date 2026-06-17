@@ -149,7 +149,7 @@ export function AdminDashboardPage() {
           <Button asChild variant="outline">
             <Link to="/admin/fit-analysis">적합도 분석 관리</Link>
           </Button>
-          <Button asChild className="bg-gradient-to-r from-blue-600 to-indigo-600">
+          <Button asChild className="bg-primary">
             <Link to="/admin">통계 새로 보기</Link>
           </Button>
         </>

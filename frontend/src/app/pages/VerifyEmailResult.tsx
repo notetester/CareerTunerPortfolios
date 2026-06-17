@@ -76,7 +76,7 @@ export function VerifyEmailResultPage() {
 
         <Link
           to={success ? "/dashboard" : "/login"}
-          className="inline-block mt-2 px-5 py-2.5 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 text-white text-sm font-semibold"
+          className="inline-block mt-2 px-5 py-2.5 rounded-xl bg-primary text-white text-sm font-semibold"
         >
           {success ? "대시보드로 이동" : "로그인으로 이동"}
         </Link>

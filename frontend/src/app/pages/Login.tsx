@@ -126,15 +126,15 @@ export function LoginPage() {
   ];
 
   return (
-    <div className="min-h-[calc(100vh-120px)] bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50 flex items-center justify-center py-12 px-4">
+    <div className="min-h-[calc(100vh-120px)] bg-muted flex items-center justify-center py-12 px-4">
       <div className="w-full max-w-4xl grid md:grid-cols-2 gap-8 items-center">
         {/* Left: Brand message */}
         <div className="hidden md:block space-y-6">
           <div className="flex items-center gap-2.5">
-            <div className="size-10 rounded-xl bg-gradient-to-br from-blue-600 to-indigo-600 flex items-center justify-center shadow-md">
-              <Sparkles className="size-5 text-white" />
+            <div className="size-10 rounded-xl bg-accent-soft flex items-center justify-center shadow-md">
+              <Sparkles className="size-5 text-primary" />
             </div>
-            <span className="text-2xl font-black bg-gradient-to-r from-blue-600 to-indigo-600 bg-clip-text text-transparent">CareerTuner</span>
+            <span className="text-2xl font-black text-primary">CareerTuner</span>
           </div>
           <h2 className="text-3xl font-black text-slate-900 leading-tight">
             AI와 함께<br />취업 준비를 시작하세요
@@ -325,7 +325,7 @@ export function LoginPage() {
               <Button
                 type="submit"
                 disabled={submitting}
-                className="w-full h-11 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-base font-semibold gap-2 disabled:cursor-not-allowed disabled:opacity-70"
+                className="w-full h-11 bg-primary text-base font-semibold gap-2 disabled:cursor-not-allowed disabled:opacity-70"
               >
                 {submitting && <Loader2 className="size-4 animate-spin" />}
                 {mode === "login" ? "로그인" : "무료 회원가입"}

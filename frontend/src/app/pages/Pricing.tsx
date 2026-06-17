@@ -126,7 +126,7 @@ export function PricingPage() {
                   <Card key={plan.code} className={`relative border-2 ${highlighted ? "border-blue-500 shadow-2xl" : "border-slate-200"}`}>
                     {highlighted && (
                       <div className="absolute -top-3 left-1/2 -translate-x-1/2">
-                        <Badge className="bg-gradient-to-r from-blue-600 to-indigo-600 text-white px-4 py-0.5">인기</Badge>
+                        <Badge className="bg-primary text-white px-4 py-0.5">인기</Badge>
                       </div>
                     )}
                     <CardHeader className="text-center pt-8 pb-4">
@@ -164,7 +164,7 @@ export function PricingPage() {
                         ))}
                       </div>
                       <Button
-                        className={`w-full ${highlighted ? "bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700" : ""}`}
+                        className={`w-full ${highlighted ? "bg-primary" : ""}`}
                         variant={highlighted ? "default" : "outline"}
                         onClick={() => navigate("/billing?tab=plans")}
                       >
@@ -236,7 +236,7 @@ export function PricingPage() {
                         <div className="text-xl font-black text-slate-900">{won(opt.price)}</div>
                         <div className="text-xs text-slate-400">{perCredit}원/개</div>
                         <Button
-                          className={`w-full ${popular ? "bg-gradient-to-r from-blue-600 to-indigo-600" : best ? "bg-gradient-to-r from-green-600 to-emerald-600" : ""}`}
+                          className={`w-full ${popular ? "bg-primary" : best ? "bg-primary" : ""}`}
                           variant={popular || best ? "default" : "outline"}
                           onClick={() => navigate("/billing?tab=credits")}
                         >

@@ -126,28 +126,28 @@ export function DashboardPage() {
         label: "활성 지원 건",
         value: `${stats.activeApplications}`,
         sub: `이번 달 ${stats.newApplicationsThisMonth}건 추가`,
-        color: "from-blue-500 to-cyan-500",
+        color: "",
       },
       {
         icon: MessageSquare,
         label: "총 모의면접",
         value: `${stats.totalInterviews}`,
         sub: `이번 주 ${stats.interviewsThisWeek}회`,
-        color: "from-purple-500 to-violet-500",
+        color: "",
       },
       {
         icon: Award,
         label: "보유 크레딧",
         value: `${stats.credit}`,
         sub: `이번 달 ${stats.creditsUsedThisMonth}크레딧 사용`,
-        color: "from-amber-500 to-orange-500",
+        color: "",
       },
       {
         icon: TrendingUp,
         label: "평균 적합도",
         value: `${stats.averageFitScore}점`,
         sub: `${highFitCount}건은 우선 지원 후보`,
-        color: "from-green-500 to-emerald-500",
+        color: "",
       },
     ];
   }, [highFitCount, stats]);
@@ -197,7 +197,7 @@ export function DashboardPage() {
             )}
           </div>
           <Button
-            className="bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 gap-2"
+            className="bg-primary gap-2"
             onClick={() => navigate("/applications")}
           >
             <Plus className="size-4" />
@@ -235,8 +235,8 @@ export function DashboardPage() {
                         <div className="text-3xl font-black text-slate-900">{s.value}</div>
                         <div className="text-xs text-slate-400 mt-1">{s.sub}</div>
                       </div>
-                      <div className={`size-10 rounded-xl bg-gradient-to-br ${s.color} flex items-center justify-center`}>
-                        <s.icon className="size-5 text-white" />
+                      <div className={`size-10 rounded-xl bg-accent-soft ${s.color} flex items-center justify-center`}>
+                        <s.icon className="size-5 text-primary" />
                       </div>
                     </div>
                   </CardContent>
@@ -272,7 +272,7 @@ export function DashboardPage() {
                         <Card className="border border-slate-200 bg-white hover:border-blue-300 hover:shadow-md transition-all cursor-pointer">
                           <CardContent className="p-4">
                             <div className="flex items-center gap-4">
-                              <div className="size-10 rounded-xl bg-gradient-to-br from-blue-600 to-indigo-600 flex items-center justify-center text-white font-bold text-sm flex-shrink-0">
+                              <div className="size-10 rounded-xl bg-accent-soft flex items-center justify-center text-primary font-bold text-sm flex-shrink-0">
                                 {app.companyName[0]}
                               </div>
                               <div className="flex-1 min-w-0">
@@ -346,7 +346,7 @@ export function DashboardPage() {
 
               <div className="space-y-5">
                 {(promisingApplication || urgentGap) && (
-                  <Card className="border border-blue-200 bg-gradient-to-br from-blue-50 to-indigo-50">
+                  <Card className="border border-blue-200 bg-muted">
                     <CardHeader className="pb-3">
                       <CardTitle className="text-base flex items-center gap-2 text-blue-900">
                         <Target className="size-4 text-blue-600" />
@@ -530,7 +530,7 @@ export function DashboardPage() {
         style={{ bottom: "calc(1rem + env(safe-area-inset-bottom, 0px))" }}
       >
         <Button
-          className="h-12 w-full bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 gap-2 shadow-lg"
+          className="h-12 w-full bg-primary gap-2 shadow-lg"
           onClick={() => navigate("/applications")}
         >
           <Plus className="size-4" />

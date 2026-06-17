@@ -287,11 +287,11 @@ export function AnalysisPage() {
         )}
 
         {/* AI Strategy banner */}
-        <Card className={`border-2 border-blue-200 bg-gradient-to-r from-blue-50 to-indigo-50 ${activeTab !== "recommendation" ? "hidden" : ""}`}>
+        <Card className={`border-2 border-blue-200 bg-muted ${activeTab !== "recommendation" ? "hidden" : ""}`}>
           <CardContent className="p-6">
             <div className="flex items-start gap-4">
-              <div className="size-12 rounded-xl bg-gradient-to-br from-blue-600 to-indigo-600 flex items-center justify-center flex-shrink-0">
-                <Brain className="size-6 text-white" />
+              <div className="size-12 rounded-xl bg-accent-soft flex items-center justify-center flex-shrink-0">
+                <Brain className="size-6 text-primary" />
               </div>
               <div className="flex-1">
                 <div className="flex flex-wrap items-start justify-between gap-2">
@@ -850,7 +850,7 @@ export function AnalysisPage() {
                       onClick={() => navigate(`/applications/${a.id}`)}
                       className="flex w-full items-center gap-3 rounded-lg bg-slate-50 p-2.5 text-left text-sm transition-colors hover:bg-slate-100"
                     >
-                      <div className="size-7 rounded-lg bg-gradient-to-br from-blue-600 to-indigo-600 text-white text-xs font-bold flex items-center justify-center flex-shrink-0">
+                      <div className="size-7 rounded-lg bg-accent-soft text-primary text-xs font-bold flex items-center justify-center flex-shrink-0">
                         {a.company[0]}
                       </div>
                       <div className="flex-1 min-w-0">

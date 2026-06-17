@@ -427,8 +427,8 @@ function MemberHome({ summary, loading, error, fallbackName, onRetry, onSummaryR
                     <div className="mt-1 text-2xl sm:text-3xl font-black text-slate-950 break-words">{card.value}</div>
                     <div className="mt-1 text-xs text-slate-400 leading-5">{card.sub}</div>
                   </div>
-                  <div className={`size-10 rounded-xl bg-gradient-to-br ${card.color} flex items-center justify-center shrink-0`}>
-                    <card.icon className="size-5 text-white" />
+                  <div className="size-10 rounded-xl bg-accent-soft flex items-center justify-center shrink-0">
+                    <card.icon className="size-5 text-primary" />
                   </div>
                 </div>
               </CardContent>
@@ -453,7 +453,7 @@ function MemberHome({ summary, loading, error, fallbackName, onRetry, onSummaryR
                     <div className="rounded-xl border border-slate-200 p-4 hover:border-blue-300 hover:shadow-sm transition-all">
                       <div className="flex flex-col md:flex-row md:items-center gap-4">
                         <div className="flex items-center gap-3 min-w-0 flex-1">
-                          <div className="size-11 rounded-xl bg-gradient-to-br from-blue-600 to-indigo-600 flex items-center justify-center text-white font-bold shrink-0">
+                          <div className="size-11 rounded-xl bg-accent-soft flex items-center justify-center text-primary font-bold shrink-0">
                             {application.companyName[0]}
                           </div>
                           <div className="min-w-0">
@@ -678,7 +678,7 @@ export function HomePage() {
   return (
     <div className="bg-white">
       {/* ─── Hero ─── */}
-      <section className="relative overflow-hidden bg-[linear-gradient(135deg,#0f172a_0%,#12343b_48%,#4338ca_100%)] text-white">
+      <section className="relative overflow-hidden bg-[#0b0c0e] text-white">
         <div className="relative w-full max-w-[1400px] mx-auto px-4 sm:px-6 py-14 lg:py-24">
           <div className="grid lg:grid-cols-2 gap-12 items-center">
             {/* Left text */}
@@ -692,14 +692,14 @@ export function HomePage() {
               <h1 className="text-4xl sm:text-5xl xl:text-6xl font-black leading-tight tracking-tight">
                 <span className="sm:hidden">
                   채용공고와<br />내 스펙을<br />
-                  <span className="bg-gradient-to-r from-blue-400 to-cyan-300 bg-clip-text text-transparent">
+                  <span className="text-white">
                     AI가 정밀 분석
                   </span>
                   <br />합격 전략 완성
                 </span>
                 <span className="hidden sm:inline">
                   채용공고와 내 스펙을<br />
-                  <span className="bg-gradient-to-r from-blue-400 to-cyan-300 bg-clip-text text-transparent">
+                  <span className="text-white">
                     AI가 정밀 분석
                   </span>
                   <br />합격 전략 완성
@@ -717,7 +717,7 @@ export function HomePage() {
               <div className="flex flex-col sm:flex-row gap-3">
                 <Button
                   size="lg"
-                  className="w-full sm:w-auto justify-center bg-gradient-to-r from-blue-500 to-indigo-500 hover:from-blue-400 hover:to-indigo-400 text-white shadow-lg shadow-blue-500/30 text-base px-8"
+                  className="w-full sm:w-auto justify-center bg-primary text-white text-base px-8"
                   onClick={() => navigate("/login")}
                 >
                   무료로 시작하기
@@ -749,7 +749,7 @@ export function HomePage() {
 
             {/* Right mock UI */}
             <div className="relative hidden lg:block">
-              <div className="absolute -inset-4 bg-gradient-to-r from-blue-500/20 to-indigo-500/20 rounded-3xl blur-2xl" />
+              <div className="absolute -inset-4 bg-transparent rounded-3xl blur-2xl" />
               <div className="relative bg-white/10 backdrop-blur-sm border border-white/20 rounded-2xl overflow-hidden shadow-2xl">
                 {/* Mock tabs */}
                 <div className="flex items-center gap-1 px-4 py-3 bg-white/5 border-b border-white/10 overflow-x-auto">
@@ -775,7 +775,7 @@ export function HomePage() {
                       <span className="font-black text-blue-300 text-lg">72점</span>
                     </div>
                     <div className="h-2 bg-white/10 rounded-full overflow-hidden">
-                      <div className="h-full w-[72%] bg-gradient-to-r from-blue-500 to-cyan-500 rounded-full" />
+                      <div className="h-full w-[72%] bg-primary rounded-full" />
                     </div>
                   </div>
 
@@ -799,7 +799,7 @@ export function HomePage() {
                     </div>
                   </div>
 
-                  <Button className="w-full bg-gradient-to-r from-blue-500 to-indigo-500 text-sm">
+                  <Button className="w-full bg-primary text-sm">
                     <MessageSquare className="mr-2 size-4" />
                     AI 가상 면접 시작하기
                   </Button>
@@ -828,11 +828,11 @@ export function HomePage() {
               { icon: TrendingUp, value: "92%", label: "면접 준비도 향상", sub: "3주 사용 후 기준" },
             ].map((s) => (
               <div key={s.label} className="flex items-center gap-4 min-w-0">
-                <div className="size-12 rounded-xl bg-gradient-to-br from-blue-100 to-indigo-100 flex items-center justify-center flex-shrink-0">
-                  <s.icon className="size-6 text-blue-600" />
+                <div className="size-12 rounded-xl bg-accent-soft flex items-center justify-center flex-shrink-0">
+                  <s.icon className="size-6 text-primary" />
                 </div>
                 <div className="min-w-0">
-                  <div className="text-xl sm:text-2xl font-black bg-gradient-to-r from-blue-600 to-indigo-600 bg-clip-text text-transparent">
+                  <div className="text-xl sm:text-2xl font-black text-foreground">
                     {s.value}
                   </div>
                   <div className="font-semibold text-slate-800 text-sm">{s.label}</div>
@@ -860,8 +860,8 @@ export function HomePage() {
               <Card key={i} className="border border-slate-200 hover:border-blue-300 hover:shadow-lg transition-all duration-300 bg-white group">
                 <CardHeader className="pb-3">
                   <div className="flex items-start justify-between mb-3">
-                    <div className={`size-11 rounded-xl bg-gradient-to-br ${f.color} flex items-center justify-center shadow-md group-hover:scale-110 transition-transform`}>
-                      <f.icon className="size-5 text-white" />
+                    <div className="size-11 rounded-xl bg-accent-soft flex items-center justify-center shadow-md group-hover:scale-110 transition-transform">
+                      <f.icon className="size-5 text-primary" />
                     </div>
                     <Badge className="text-xs bg-slate-100 text-slate-600 border-slate-200">{f.badge}</Badge>
                   </div>
@@ -893,7 +893,7 @@ export function HomePage() {
                 key={i}
                 className="relative flex gap-3 p-4 rounded-xl bg-slate-50 border border-slate-200 hover:border-blue-300 hover:bg-blue-50 transition-all group"
               >
-                <div className="size-9 rounded-lg bg-gradient-to-br from-blue-600 to-indigo-600 text-white text-xs font-black flex items-center justify-center flex-shrink-0 group-hover:scale-110 transition-transform">
+                <div className="size-9 rounded-lg bg-accent-soft text-primary text-xs font-black flex items-center justify-center flex-shrink-0 group-hover:scale-110 transition-transform">
                   {s.step}
                 </div>
                 <div>
@@ -910,7 +910,7 @@ export function HomePage() {
           <div className="mt-10 text-center">
             <Button
               size="lg"
-              className="bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-base px-10"
+              className="bg-primary text-base px-10"
               onClick={() => window.location.href = "/login"}
             >
               지금 바로 시작하기
@@ -921,7 +921,7 @@ export function HomePage() {
       </section>
 
       {/* ─── Application Detail Demo (3-column layout preview) ─── */}
-      <section className="py-20 bg-gradient-to-br from-slate-50 to-blue-50">
+      <section className="py-20 bg-muted">
         <div className="w-full max-w-[1400px] mx-auto px-6">
           <div className="text-center mb-14 space-y-3">
             <Badge className="bg-teal-100 text-teal-700 px-4 py-1">지원 건 관리</Badge>
@@ -1112,7 +1112,7 @@ export function HomePage() {
       </section>
 
       {/* ─── Comparison ─── */}
-      <section className="py-20 bg-gradient-to-br from-slate-50 to-indigo-50">
+      <section className="py-20 bg-muted">
         <div className="w-full max-w-[1400px] mx-auto px-6">
           <div className="text-center mb-14 space-y-3">
             <Badge className="bg-slate-200 text-slate-700 px-4 py-1">왜 다른가요?</Badge>
@@ -1145,11 +1145,11 @@ export function HomePage() {
                 ))}
               </CardContent>
             </Card>
-            <Card className="border-2 border-blue-400 shadow-xl bg-gradient-to-br from-blue-50 to-indigo-50">
+            <Card className="border-2 border-blue-400 shadow-xl bg-card">
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
-                  <div className="size-8 rounded-lg bg-gradient-to-br from-blue-600 to-indigo-600 flex items-center justify-center">
-                    <Sparkles className="size-4 text-white" />
+                  <div className="size-8 rounded-lg bg-accent-soft flex items-center justify-center">
+                    <Sparkles className="size-4 text-primary" />
                   </div>
                   CareerTuner
                   <Badge className="ml-auto bg-blue-600 text-white">추천</Badge>
@@ -1234,7 +1234,7 @@ export function HomePage() {
                   <Card key={plan.name} className={`relative border-2 ${plan.highlighted ? "border-blue-500 shadow-2xl scale-105" : "border-slate-200"}`}>
                     {plan.badge && (
                       <div className="absolute -top-3 left-1/2 -translate-x-1/2">
-                        <Badge className="bg-gradient-to-r from-blue-600 to-indigo-600 text-white px-4">
+                        <Badge className="bg-primary text-white px-4">
                           {plan.badge}
                         </Badge>
                       </div>
@@ -1256,7 +1256,7 @@ export function HomePage() {
                         ))}
                       </div>
                       <Button
-                        className={`w-full ${plan.highlighted ? "bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700" : ""}`}
+                        className={`w-full ${plan.highlighted ? "bg-primary" : ""}`}
                         variant={plan.highlighted ? "default" : "outline"}
                         onClick={() => navigate("/login")}
                       >
@@ -1373,7 +1373,7 @@ export function HomePage() {
               <Card key={i} className="border-2 border-slate-200 bg-white hover:border-blue-200 hover:shadow-lg transition-all">
                 <CardContent className="p-6 space-y-4">
                   <div className="flex items-center gap-3">
-                    <div className="size-11 rounded-full bg-gradient-to-br from-blue-500 to-indigo-500 flex items-center justify-center text-white font-bold text-base">
+                    <div className="size-11 rounded-full bg-accent-soft flex items-center justify-center text-primary font-bold text-base">
                       {t.avatar}
                     </div>
                     <div>
@@ -1396,7 +1396,7 @@ export function HomePage() {
       </section>
 
       {/* ─── CTA ─── */}
-      <section className="py-20 bg-gradient-to-br from-blue-700 via-indigo-700 to-purple-700 text-white">
+      <section className="py-20 bg-[#0b0c0e] text-white">
         <div className="w-full max-w-[1400px] mx-auto px-6 text-center space-y-8">
           <div className="space-y-4">
             <h2 className="text-4xl lg:text-5xl font-black">

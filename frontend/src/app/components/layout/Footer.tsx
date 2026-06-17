@@ -63,8 +63,8 @@ export function Footer() {
           {/* Brand */}
           <div className="col-span-2 md:col-span-3 lg:col-span-1 space-y-4">
             <Link to="/" className="flex items-center gap-2">
-              <div className="size-8 rounded-lg bg-gradient-to-br from-blue-600 to-indigo-600 flex items-center justify-center">
-                <Sparkles className="size-4 text-white" />
+              <div className="size-8 rounded-lg bg-accent-soft flex items-center justify-center">
+                <Sparkles className="size-4 text-primary" />
               </div>
               <span className="font-black text-white text-lg">CareerTuner</span>
             </Link>
