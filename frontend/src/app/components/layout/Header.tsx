@@ -172,7 +172,11 @@ export function Header() {
   };
 
   return (
-    <header className="bg-white border-b border-slate-200 sticky top-0 z-50 shadow-sm overflow-x-clip">
+    <header
+      className="bg-white border-b border-slate-200 sticky top-0 z-50 shadow-sm overflow-x-clip"
+      // 노치/상태바 영역 확보 — iOS PWA standalone 및 네이티브 오버레이 상태바에서 헤더가 가리지 않게.
+      style={{ paddingTop: "env(safe-area-inset-top)" }}
+    >
       {/* Top utility bar */}
       <div className="hidden md:block bg-gradient-to-r from-blue-700 to-indigo-700 text-white text-xs py-1.5">
         <div className="w-full max-w-[1400px] mx-auto px-6 flex items-center justify-between">
