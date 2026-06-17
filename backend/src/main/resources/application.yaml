@@ -78,13 +78,15 @@ careertuner:
     model: ${OPENAI_MODEL:gpt-5}
     base-url: ${OPENAI_BASE_URL:https://api.openai.com/v1}
     timeout: ${OPENAI_TIMEOUT:300s}
-  gemini:
-    # 면접 LLM 1차(기본) provider. 키가 비어 있으면 자동으로 OpenAI 로 폴백한다.
-    # 선생(합성 데이터 증류) 모델로 Flash-Lite 를 기본값으로 둔다(로드맵 Phase 4).
-    api-key: ${GEMINI_API_KEY:}
-    model: ${GEMINI_MODEL:gemini-2.5-flash-lite}
-    base-url: ${GEMINI_BASE_URL:https://generativelanguage.googleapis.com/v1beta}
-    timeout: ${GEMINI_TIMEOUT:120s}
+  anthropic:
+    # 면접 LLM 1차(기본) provider(Claude Haiku). 선생(합성 데이터 증류)·런타임 공통.
+    # 키가 비어 있으면 자동으로 OpenAI 로 폴백한다(로드맵 Phase 4).
+    api-key: ${ANTHROPIC_API_KEY:}
+    model: ${ANTHROPIC_MODEL:claude-haiku-4-5-20251001}
+    base-url: ${ANTHROPIC_BASE_URL:https://api.anthropic.com/v1}
+    version: ${ANTHROPIC_VERSION:2023-06-01}
+    max-tokens: ${ANTHROPIC_MAX_TOKENS:8192}
+    timeout: ${ANTHROPIC_TIMEOUT:120s}
   uploads:
     job-posting-dir: ${JOB_POSTING_UPLOAD_DIR:.uploads/application-postings}
     max-file-size-bytes: ${JOB_POSTING_MAX_FILE_SIZE_BYTES:5242880}

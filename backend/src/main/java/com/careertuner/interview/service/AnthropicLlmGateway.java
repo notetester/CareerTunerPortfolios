@@ -20,23 +20,21 @@ import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 
 /**
- * Gemini {@code generateContent} 전송 게이트웨이(면접 LLM 1차 provider).
+ * Anthropic Messages API 전송 게이트웨이(면접 LLM 1차 provider, Claude Haiku).
  *
- * <p>구조화 출력은 {@code generationConfig.responseMimeType=application/json}(JSON 강제) +
- * 기대 스키마를 프롬프트에 임베드하는 방식으로 보장한다. responseSchema 의 정확한 스키마 dialect 가
- * API 버전별로 갈려(OpenAPI 대문자 enum vs JSON Schema) 도박 대신 안정적인 JSON 모드를 택했다.
- * 응답이 코드블록/잡설을 섞어도 펜스를 제거하고 파싱한다.
+ * <p>구조화 출력은 기대 스키마를 프롬프트에 임베드 + "순수 JSON 만 출력" 지시로 보장한다(JSON 모드 플래그가 없으므로).
+ * 응답이 코드블록/잡설을 섞어도 펜스를 제거하고 파싱하며, 실패 시 상위 디스패처가 OpenAI 로 폴백한다.
  */
 @Component
-public class GeminiLlmGateway implements InterviewLlmGateway {
+public class AnthropicLlmGateway implements InterviewLlmGateway {
 
     private static final int MAX_ATTEMPTS = 3;
 
-    private final GeminiProperties properties;
+    private final AnthropicProperties properties;
     private final ObjectMapper objectMapper;
     private final HttpClient httpClient;
 
-    public GeminiLlmGateway(GeminiProperties properties, ObjectMapper objectMapper) {
+    public AnthropicLlmGateway(AnthropicProperties properties, ObjectMapper objectMapper) {
         this.properties = properties;
         this.objectMapper = objectMapper;
         this.httpClient = HttpClient.newBuilder()
@@ -44,7 +42,7 @@ public class GeminiLlmGateway implements InterviewLlmGateway {
                 .build();
     }
 
-    /** 키 설정 여부 — 폴백 디스패처가 Gemini 시도 가능 여부 판단에 쓴다. */
+    /** 키 설정 여부 — 폴백 디스패처가 Claude 시도 가능 여부 판단에 쓴다. */
     public boolean available() {
         return properties.configured();
     }
@@ -52,7 +50,7 @@ public class GeminiLlmGateway implements InterviewLlmGateway {
     @Override
     public Result complete(Request request) {
         if (!properties.configured()) {
-            throw new BusinessException(ErrorCode.INTERNAL_ERROR, "Gemini API 키가 설정되어 있지 않습니다.");
+            throw new BusinessException(ErrorCode.INTERNAL_ERROR, "Anthropic API 키가 설정되어 있지 않습니다.");
         }
         JsonNode root = post(buildBody(request));
         return new Result(parsePayload(root), usage(root));
@@ -70,13 +68,13 @@ public class GeminiLlmGateway implements InterviewLlmGateway {
                 + "코드블록·설명·여는말 없이 순수 JSON 만 출력한다.\nJSON 스키마:\n" + schemaHint;
 
         Map<String, Object> body = new LinkedHashMap<>();
-        body.put("systemInstruction", Map.of("parts", List.of(Map.of("text", request.systemPrompt()))));
-        body.put("contents", List.of(Map.of(
+        body.put("model", properties.getModel());
+        body.put("max_tokens", properties.getMaxTokens());
+        body.put("system", request.systemPrompt());
+        body.put("messages", List.of(Map.of(
                 "role", "user",
-                "parts", List.of(Map.of("text", userText)))));
-        body.put("generationConfig", Map.of(
-                "responseMimeType", "application/json",
-                "temperature", 0.3));
+                "content", userText)));
+        body.put("temperature", 0.3);
         return body;
     }
 
@@ -87,9 +85,10 @@ public class GeminiLlmGateway implements InterviewLlmGateway {
             String body = objectMapper.writeValueAsString(requestBody);
             for (int attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
                 try {
-                    HttpRequest httpRequest = HttpRequest.newBuilder(URI.create(properties.generateContentUrl()))
+                    HttpRequest httpRequest = HttpRequest.newBuilder(URI.create(properties.messagesUrl()))
                             .timeout(properties.getTimeout())
-                            .header("x-goog-api-key", properties.getApiKey())
+                            .header("x-api-key", properties.getApiKey())
+                            .header("anthropic-version", properties.getVersion())
                             .header("Content-Type", "application/json")
                             .POST(HttpRequest.BodyPublishers.ofString(body, StandardCharsets.UTF_8))
                             .build();
@@ -104,35 +103,34 @@ public class GeminiLlmGateway implements InterviewLlmGateway {
                         continue;
                     }
                     throw new BusinessException(ErrorCode.INTERNAL_ERROR,
-                            "Gemini 요청에 실패했습니다. " + truncate(message, 300));
+                            "Anthropic 요청에 실패했습니다. " + truncate(message, 300));
                 } catch (IOException ex) {
                     if (attempt < MAX_ATTEMPTS) {
                         sleepBeforeRetry(attempt);
                         continue;
                     }
-                    throw new BusinessException(ErrorCode.INTERNAL_ERROR, "Gemini 응답을 처리하지 못했습니다.");
+                    throw new BusinessException(ErrorCode.INTERNAL_ERROR, "Anthropic 응답을 처리하지 못했습니다.");
                 }
             }
-            throw new BusinessException(ErrorCode.INTERNAL_ERROR, "Gemini 요청에 실패했습니다.");
+            throw new BusinessException(ErrorCode.INTERNAL_ERROR, "Anthropic 요청에 실패했습니다.");
         } catch (BusinessException ex) {
             throw ex;
         } catch (JacksonException ex) {
-            throw new BusinessException(ErrorCode.INTERNAL_ERROR, "Gemini 요청을 구성하지 못했습니다.");
+            throw new BusinessException(ErrorCode.INTERNAL_ERROR, "Anthropic 요청을 구성하지 못했습니다.");
         } catch (InterruptedException ex) {
             Thread.currentThread().interrupt();
-            throw new BusinessException(ErrorCode.INTERNAL_ERROR, "Gemini 요청이 중단되었습니다.");
+            throw new BusinessException(ErrorCode.INTERNAL_ERROR, "Anthropic 요청이 중단되었습니다.");
         }
     }
 
-    /** candidates[0].content.parts[*].text 를 이어붙여 JSON 으로 파싱한다. */
+    /** content[*] 의 text 블록을 이어붙여 JSON 으로 파싱한다. */
     private JsonNode parsePayload(JsonNode root) {
         StringBuilder builder = new StringBuilder();
-        JsonNode parts = root.path("candidates").path(0).path("content").path("parts");
-        if (parts.isArray()) {
-            for (JsonNode part : parts) {
-                String text = part.path("text").asText("");
-                if (!text.isBlank()) {
-                    builder.append(text);
+        JsonNode content = root.path("content");
+        if (content.isArray()) {
+            for (JsonNode block : content) {
+                if ("text".equals(block.path("type").asText(""))) {
+                    builder.append(block.path("text").asText(""));
                 }
             }
         }
@@ -141,22 +139,21 @@ public class GeminiLlmGateway implements InterviewLlmGateway {
             text = text.replaceFirst("^```(?:json)?\\s*", "").replaceFirst("\\s*```$", "").trim();
         }
         if (text.isBlank()) {
-            throw new BusinessException(ErrorCode.INTERNAL_ERROR, "Gemini 응답 본문이 비어 있습니다.");
+            throw new BusinessException(ErrorCode.INTERNAL_ERROR, "Anthropic 응답 본문이 비어 있습니다.");
         }
         try {
             return objectMapper.readTree(text);
         } catch (JacksonException ex) {
-            throw new BusinessException(ErrorCode.INTERNAL_ERROR, "Gemini 응답이 JSON 형식이 아닙니다.");
+            throw new BusinessException(ErrorCode.INTERNAL_ERROR, "Anthropic 응답이 JSON 형식이 아닙니다.");
         }
     }
 
     private InterviewOpenAiClient.Usage usage(JsonNode root) {
-        JsonNode usage = root.path("usageMetadata");
-        int inputTokens = usage.path("promptTokenCount").asInt(0);
-        int outputTokens = usage.path("candidatesTokenCount").asInt(0);
-        int totalTokens = usage.path("totalTokenCount").asInt(inputTokens + outputTokens);
-        String model = root.path("modelVersion").asText(properties.getModel());
-        return new InterviewOpenAiClient.Usage(model, inputTokens, outputTokens, totalTokens);
+        JsonNode usage = root.path("usage");
+        int inputTokens = usage.path("input_tokens").asInt(0);
+        int outputTokens = usage.path("output_tokens").asInt(0);
+        String model = root.path("model").asText(properties.getModel());
+        return new InterviewOpenAiClient.Usage(model, inputTokens, outputTokens, inputTokens + outputTokens);
     }
 
     private String errorMessage(String body) {
@@ -170,6 +167,7 @@ public class GeminiLlmGateway implements InterviewLlmGateway {
     }
 
     private boolean isRetryable(int statusCode) {
+        // 429(rate limit), 529(overloaded), 5xx
         return statusCode == 408 || statusCode == 429 || statusCode >= 500;
     }
 
