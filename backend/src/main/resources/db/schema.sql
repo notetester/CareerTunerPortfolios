@@ -591,28 +591,8 @@ CREATE TABLE IF NOT EXISTS file_asset (
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci;
 
 -- =====================================================================
---  커뮤니티 / 결제 / AI 사용량
+--  결제 / AI 사용량
 -- =====================================================================
-CREATE TABLE IF NOT EXISTS community_post (
-    id             BIGINT NOT NULL AUTO_INCREMENT,
-    user_id        BIGINT NOT NULL,
-    category       VARCHAR(30) NOT NULL,                    -- JOB_REVIEW/INTERVIEW_REVIEW/QNA/CERT/PORTFOLIO/FREE
-    title          VARCHAR(255) NOT NULL,
-    content        MEDIUMTEXT NOT NULL,
-    company_name   VARCHAR(255) NULL,
-    job_title      VARCHAR(255) NULL,
-    interview_type VARCHAR(30) NULL,                        -- FIRST/SECOND/EXECUTIVE/TECH
-    difficulty     VARCHAR(20) NULL,
-    is_anonymous   TINYINT(1) NOT NULL DEFAULT 1,
-    view_count     INT NOT NULL DEFAULT 0,
-    created_at     DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    updated_at     DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    PRIMARY KEY (id),
-    KEY idx_community_post_user (user_id),
-    KEY idx_community_post_category (category),
-    CONSTRAINT fk_community_post_user FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
-) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci;
-
 CREATE TABLE IF NOT EXISTS payment (
     id            BIGINT NOT NULL AUTO_INCREMENT,
     user_id       BIGINT NOT NULL,
@@ -648,7 +628,9 @@ CREATE TABLE IF NOT EXISTS ai_usage_log (
     CONSTRAINT fk_ai_usage_case FOREIGN KEY (application_case_id) REFERENCES application_case (id) ON DELETE SET NULL
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci;
 
--- 커뮤니티 테이블 변경 (06-09)
+-- =====================================================================
+--  커뮤니티
+-- =====================================================================
 CREATE TABLE IF NOT EXISTS community_post (
     id             BIGINT       NOT NULL AUTO_INCREMENT,
     user_id        BIGINT       NOT NULL,
@@ -673,6 +655,32 @@ CREATE TABLE IF NOT EXISTS community_post (
     KEY idx_community_post_cat_status_created (category, status, created_at DESC),
     KEY idx_community_post_cat_like (category, status, like_count DESC),
     CONSTRAINT fk_community_post_user FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
+    ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci;
+
+CREATE TABLE IF NOT EXISTS post_ai_result (
+    id            BIGINT       NOT NULL AUTO_INCREMENT,
+    post_id       BIGINT       NOT NULL,
+    task_type     VARCHAR(30)  NOT NULL,
+    status        VARCHAR(20)  NOT NULL DEFAULT 'PENDING',
+    result_json   JSON         NULL,
+    model         VARCHAR(80)  NULL,
+    error_message VARCHAR(1000) NULL,
+    attempt_count INT          NOT NULL DEFAULT 0,
+    created_at    DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    completed_at  DATETIME     NULL,
+    PRIMARY KEY (id),
+    UNIQUE KEY uk_post_ai_result_task (post_id, task_type),
+    KEY idx_post_ai_result_status (task_type, status, completed_at),
+    CONSTRAINT fk_post_ai_result_post FOREIGN KEY (post_id) REFERENCES community_post (id) ON DELETE CASCADE
+    ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci;
+
+CREATE TABLE IF NOT EXISTS ai_moderation_setting (
+    id             TINYINT      NOT NULL,
+    strictness     VARCHAR(10)  NOT NULL DEFAULT 'NORMAL',
+    hide_threshold DECIMAL(3,2) NOT NULL DEFAULT 0.80,
+    updated_at     DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    PRIMARY KEY (id),
+    CONSTRAINT chk_hide_threshold CHECK (hide_threshold BETWEEN 0.50 AND 0.95)
     ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci;
 
 
@@ -793,6 +801,27 @@ CREATE TABLE IF NOT EXISTS comment_report (
     KEY idx_cr_status (status),
     CONSTRAINT fk_cr_reporter FOREIGN KEY (reporter_id) REFERENCES users (id)             ON DELETE SET NULL,
     CONSTRAINT fk_cr_rcomment FOREIGN KEY (comment_id)  REFERENCES community_comment (id) ON DELETE CASCADE
+    ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci;
+
+CREATE TABLE IF NOT EXISTS community_guideline (
+    id            BIGINT       NOT NULL AUTO_INCREMENT,
+    version_label VARCHAR(20)  NOT NULL,
+    summary       VARCHAR(500) NULL,
+    lede          TEXT         NULL,
+    oks_json      JSON         NULL,
+    nos_json      JSON         NULL,
+    rules_json    JSON         NULL,
+    params_json   JSON         NULL,
+    status        VARCHAR(20)  NOT NULL DEFAULT 'DRAFT',
+    enforce_type  VARCHAR(20)  NOT NULL DEFAULT 'IMMEDIATE',
+    scheduled_at  DATETIME     NULL,
+    published_at  DATETIME     NULL,
+    admin_id      BIGINT       NULL,
+    created_at    DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at    DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    PRIMARY KEY (id),
+    KEY idx_guideline_status (status, published_at DESC),
+    CONSTRAINT fk_guideline_admin FOREIGN KEY (admin_id) REFERENCES users (id) ON DELETE SET NULL
     ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci;
 
 CREATE TABLE IF NOT EXISTS community_tag (

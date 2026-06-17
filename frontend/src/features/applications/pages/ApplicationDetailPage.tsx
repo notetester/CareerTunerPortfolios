@@ -7,6 +7,8 @@ import {
   Building2,
   FileText,
   Info,
+  MessageSquare,
+  PenLine,
   Plus,
   RefreshCw,
   Target,
@@ -429,15 +431,31 @@ export function ApplicationDetailPage() {
                   />
                   <Card className="border-slate-200 bg-white">
                     <CardContent className="grid gap-3 p-4 md:grid-cols-3">
-                      {[
-                        "적합도 분석 완료 - 위 '적합도' 탭에서 확인",
-                        "예상 질문 / 모의 면접 준비 중 - D 담당",
-                        "첨삭 기록 준비 중 - E 담당",
-                      ].map((item) => (
-                        <div key={item} className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm text-slate-600">
-                          {item}
+                      <button
+                        type="button"
+                        className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-left text-sm text-slate-700 transition-colors hover:border-blue-200 hover:bg-blue-50"
+                        onClick={() => navigate(detailPath(id, "fit"))}
+                      >
+                        <Target className="mb-2 size-4 text-blue-600" />
+                        <div className="font-semibold text-slate-900">적합도 분석</div>
+                        <div className="mt-1 text-xs text-slate-500">공고와 내 스펙 비교 결과 확인</div>
+                      </button>
+                      <button
+                        type="button"
+                        className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-left text-sm text-slate-700 transition-colors hover:border-indigo-200 hover:bg-indigo-50"
+                        onClick={() => navigate("/interview")}
+                      >
+                        <MessageSquare className="mb-2 size-4 text-indigo-600" />
+                        <div className="font-semibold text-slate-900">예상 질문 / 모의 면접</div>
+                        <div className="mt-1 text-xs text-slate-500">면접 화면에서 이 지원 건을 선택해 시작</div>
+                      </button>
+                      <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
+                        <PenLine className="mb-2 size-4" />
+                        <div className="font-semibold">첨삭</div>
+                        <div className="mt-1 text-xs">
+                          첨삭 API 준비 중. 구현 전까지 실행 기능은 비활성화됩니다.
                         </div>
-                      ))}
+                      </div>
                     </CardContent>
                   </Card>
                 </div>

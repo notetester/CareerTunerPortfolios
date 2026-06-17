@@ -4,7 +4,7 @@ import { Button } from "../components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
 import { Progress } from "../components/ui/progress";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../components/ui/tabs";
-import { Award, BarChart3, CheckCircle2, CreditCard, ReceiptText, Zap } from "lucide-react";
+import { AlertTriangle, Award, BarChart3, CheckCircle2, CreditCard, ReceiptText, Zap } from "lucide-react";
 
 const tabs = ["plans", "usage", "credits", "history"] as const;
 type BillingTab = (typeof tabs)[number];
@@ -53,6 +53,14 @@ export function BillingPage() {
           <p className="mt-1 text-sm text-slate-500">요금제, AI 사용량, 크레딧 충전, 결제 내역을 한 곳에서 관리합니다</p>
         </div>
 
+        <div className="flex items-start gap-3 rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+          <AlertTriangle className="mt-0.5 size-5 shrink-0" />
+          <div>
+            <div className="font-bold">결제/크레딧 API 준비 중</div>
+            <p className="mt-1 leading-6">현재 표시는 샘플 데이터입니다. 플랜 변경, 크레딧 구매, 결제 내역 조회는 백엔드 구현 후 활성화됩니다.</p>
+          </div>
+        </div>
+
         <Tabs value={activeTab} onValueChange={(value) => setSearchParams({ tab: value })}>
           <TabsList className="h-auto w-full justify-start overflow-x-auto border border-slate-200 bg-white p-1">
             <TabsTrigger value="plans">요금제</TabsTrigger>
@@ -80,8 +88,8 @@ export function BillingPage() {
                         </div>
                       ))}
                     </div>
-                    <Button className={plan.popular ? "w-full bg-gradient-to-r from-blue-600 to-indigo-600" : "w-full"} variant={plan.popular ? "default" : "outline"}>
-                      플랜 선택
+                    <Button disabled className={plan.popular ? "w-full bg-gradient-to-r from-blue-600 to-indigo-600" : "w-full"} variant={plan.popular ? "default" : "outline"}>
+                      준비 중
                     </Button>
                   </CardContent>
                 </Card>
@@ -125,7 +133,7 @@ export function BillingPage() {
                     <div className="text-4xl font-black text-amber-600">10</div>
                     <div className="text-sm text-amber-700">사용 가능 크레딧</div>
                   </div>
-                  <Button className="w-full bg-gradient-to-r from-amber-500 to-orange-500" onClick={() => setSearchParams({ tab: "credits" })}>
+                  <Button disabled className="w-full bg-gradient-to-r from-amber-500 to-orange-500" onClick={() => setSearchParams({ tab: "credits" })}>
                     충전하러 가기
                   </Button>
                 </CardContent>
@@ -145,7 +153,7 @@ export function BillingPage() {
                       <div className="text-sm text-slate-500">크레딧</div>
                     </div>
                     <div className="text-xl font-black text-blue-600">{pack.price}</div>
-                    <Button className="w-full">구매하기</Button>
+                    <Button disabled className="w-full">준비 중</Button>
                   </CardContent>
                 </Card>
               ))}
@@ -169,7 +177,7 @@ export function BillingPage() {
                     </div>
                     <div className="flex items-center gap-3">
                       <span className="text-sm font-black text-slate-900">{payment.amount}</span>
-                      <Badge className="bg-green-100 text-green-700">{payment.status}</Badge>
+                      <Badge className="bg-slate-200 text-slate-700">샘플 · {payment.status}</Badge>
                     </div>
                   </div>
                 ))}

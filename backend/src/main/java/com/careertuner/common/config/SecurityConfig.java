@@ -6,6 +6,7 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpMethod;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
+import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
 import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -24,6 +25,7 @@ import com.careertuner.common.security.JwtAuthenticationFilter;
  * 비밀번호는 BCrypt 로 저장한다.</p>
  */
 @Configuration
+@EnableMethodSecurity
 public class SecurityConfig {
 
     @Bean
@@ -49,10 +51,13 @@ public class SecurityConfig {
                                 "/api/auth/verify-email", "/api/auth/check/**", "/api/auth/oauth/**").permitAll()
                         // 커뮤니티 게시글 조회 공개
                         .requestMatchers(HttpMethod.GET,
-                                "/api/community/posts", "/api/community/posts/**").permitAll()
+                                "/api/community/posts", "/api/community/posts/**",
+                                "/api/community/guidelines/published").permitAll()
                         // 고객센터 FAQ/공지사항 조회 공개
                         .requestMatchers(HttpMethod.GET,
                                 "/api/support/faq", "/api/support/notices", "/api/support/notices/**").permitAll()
+                        // 관리자 API는 URL 레벨에서도 ADMIN 권한을 요구한다.
+                        .requestMatchers("/api/admin/**").hasRole("ADMIN")
                         // 그 외(/api/auth/me, /api/auth/logout 및 도메인 API)는 인증 필요
                         .anyRequest().authenticated())
                 .exceptionHandling(e -> e.authenticationEntryPoint(
