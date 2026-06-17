@@ -14,6 +14,7 @@ import org.springframework.stereotype.Service;
 
 import com.careertuner.common.exception.BusinessException;
 import com.careertuner.common.exception.ErrorCode;
+import com.careertuner.interview.media.dto.TranscribeResponse;
 import com.careertuner.interview.media.dto.VoiceScoreResponse;
 
 import tools.jackson.core.JacksonException;
@@ -69,7 +70,7 @@ public class InterviewNonverbalClient {
         body.put("filler_count", fillerCount != null ? fillerCount : 0);
         body.put("latency_sec", latencySec != null ? latencySec : -1.0);
 
-        JsonNode root = post(body);
+        JsonNode root = post(scoreUrl(), body);
         return new VoiceScoreResponse(
                 root.path("score").asInt(0),
                 root.path("detail"),
@@ -77,10 +78,32 @@ public class InterviewNonverbalClient {
                 root.path("source").asText("rule"));
     }
 
-    private JsonNode post(Map<String, Object> body) {
+    /** 음성 → 텍스트 (자체 STT, serve /transcribe). B 베이직 답변 전사 — OpenAI Whisper API 대체. */
+    public TranscribeResponse transcribe(String audioBase64, String audioFormat, String language) {
+        if (!properties.configured()) {
+            throw new BusinessException(ErrorCode.INTERNAL_ERROR,
+                    "비언어 추론 서버가 비활성화되어 있습니다. (careertuner.interview.nonverbal.enabled)");
+        }
+        if (audioBase64 == null || audioBase64.isBlank()) {
+            throw new BusinessException(ErrorCode.INVALID_INPUT, "오디오 데이터가 비어 있습니다.");
+        }
+        String lang = language == null || language.isBlank() ? "ko" : language;
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("audio_base64", audioBase64);
+        body.put("audio_format", audioFormat == null || audioFormat.isBlank() ? "webm" : audioFormat);
+        body.put("language", lang);
+
+        JsonNode root = post(transcribeUrl(), body);
+        return new TranscribeResponse(
+                root.path("text").asText(""),
+                root.path("language").asText(lang),
+                root.path("duration").asDouble(0));
+    }
+
+    private JsonNode post(String url, Map<String, Object> body) {
         try {
             String json = objectMapper.writeValueAsString(body);
-            HttpRequest request = HttpRequest.newBuilder(URI.create(scoreUrl()))
+            HttpRequest request = HttpRequest.newBuilder(URI.create(url))
                     .timeout(Duration.ofSeconds(properties.getTimeoutSeconds()))
                     .header("Content-Type", "application/json")
                     .POST(HttpRequest.BodyPublishers.ofString(json, StandardCharsets.UTF_8))
@@ -107,6 +130,10 @@ public class InterviewNonverbalClient {
 
     private String scoreUrl() {
         return properties.getServeUrl().replaceAll("/+$", "") + "/score/voice-base64";
+    }
+
+    private String transcribeUrl() {
+        return properties.getServeUrl().replaceAll("/+$", "") + "/transcribe";
     }
 
     private String truncate(String value, int max) {

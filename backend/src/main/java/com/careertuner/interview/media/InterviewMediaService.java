@@ -12,6 +12,8 @@ import com.careertuner.interview.domain.InterviewSession;
 import com.careertuner.interview.mapper.InterviewMapper;
 import com.careertuner.interview.media.dto.MediaAnalysisResponse;
 import com.careertuner.interview.media.dto.SaveMediaAnalysisRequest;
+import com.careertuner.interview.media.dto.TranscribeRequest;
+import com.careertuner.interview.media.dto.TranscribeResponse;
 import com.careertuner.interview.media.dto.VoiceAnalysisRequest;
 import com.careertuner.interview.media.dto.VoiceAnalysisResponse;
 import com.careertuner.interview.media.dto.VoiceScoreRequest;
@@ -60,6 +62,12 @@ public class InterviewMediaService {
         requireOwnedSession(userId, sessionId);
         return nonverbalClient.scoreVoice(request.audioBase64(), request.audioFormat(),
                 request.transcriptChars(), request.fillerCount(), request.latencySec());
+    }
+
+    /** 자체 STT(serve)로 음성 답변 전사 — B 베이직 면접 (OpenAI Whisper API 대체). 원본 음성은 전사 후 버려진다. */
+    public TranscribeResponse transcribe(Long userId, Long sessionId, TranscribeRequest request) {
+        requireOwnedSession(userId, sessionId);
+        return nonverbalClient.transcribe(request.audioBase64(), request.audioFormat(), request.language());
     }
 
     /** capabilities 노출용 — 자체 추론 서버 사용 가능 여부. */
