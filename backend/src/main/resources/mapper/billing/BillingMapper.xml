@@ -19,6 +19,22 @@
          ORDER BY sort_order ASC, id ASC
     </select>
 
+    <select id="findActivePlanByCode" resultType="com.careertuner.billing.domain.SubscriptionPlan">
+        SELECT id,
+               code,
+               name,
+               monthly_price,
+               yearly_price,
+               description,
+               active,
+               sort_order,
+               created_at,
+               updated_at
+          FROM subscription_plan
+         WHERE code = #{planCode}
+           AND active = 1
+    </select>
+
     <select id="findActiveBenefitPolicies" resultType="com.careertuner.billing.domain.SubscriptionBenefitPolicy">
         SELECT id,
                plan_code,
@@ -127,6 +143,27 @@
          ORDER BY id DESC
          LIMIT 1
     </select>
+
+    <update id="deactivateActiveSubscriptions">
+        UPDATE user_subscription
+           SET status = 'INACTIVE',
+               canceled_at = #{now}
+         WHERE user_id = #{userId}
+           AND status = 'ACTIVE'
+    </update>
+
+    <insert id="insertUserSubscription" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO user_subscription
+            (user_id, plan_code, status, started_at, current_period_start, current_period_end)
+        VALUES
+            (#{userId}, #{planCode}, #{status}, #{startedAt}, #{currentPeriodStart}, #{currentPeriodEnd})
+    </insert>
+
+    <update id="updateUserPlan">
+        UPDATE users
+           SET plan = #{planCode}
+         WHERE id = #{userId}
+    </update>
 
     <select id="findUserPlanCode" resultType="string">
         SELECT plan

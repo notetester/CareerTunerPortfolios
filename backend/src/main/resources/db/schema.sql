@@ -617,6 +617,7 @@ CREATE TABLE IF NOT EXISTS payment (
     id            BIGINT NOT NULL AUTO_INCREMENT,
     user_id       BIGINT NOT NULL,
     provider      VARCHAR(20) NULL,
+    product_type  VARCHAR(30) NOT NULL DEFAULT 'CREDIT',
     product_code  VARCHAR(50) NULL,
     order_id      VARCHAR(100) NULL,
     payment_key   VARCHAR(200) NULL,

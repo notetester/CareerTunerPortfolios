@@ -10,6 +10,9 @@ export interface CreditProduct {
 
 export interface TossPaymentReadyResponse {
   orderId: string;
+  productType: "CREDIT" | "SUBSCRIPTION" | string;
+  productCode: string;
+  planCode?: string | null;
   orderName: string;
   amount: number;
   creditAmount: number;
@@ -21,6 +24,9 @@ export interface TossPaymentReadyResponse {
 export interface TossPaymentConfirmResponse {
   orderId: string;
   paymentKey: string;
+  productType: "CREDIT" | "SUBSCRIPTION" | string;
+  productCode: string;
+  planCode?: string | null;
   amount: number;
   creditAmount: number;
   status: string;

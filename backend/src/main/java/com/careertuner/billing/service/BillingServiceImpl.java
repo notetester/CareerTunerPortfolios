@@ -94,6 +94,43 @@ public class BillingServiceImpl implements BillingService, AiBenefitUsageService
 
     @Override
     @Transactional
+    public MyBenefitsResponse activateSubscriptionAfterPayment(Long userId, String planCode) {
+        String normalizedPlanCode = normalizePlanCode(planCode);
+        if (DEFAULT_PLAN.equals(normalizedPlanCode)) {
+            throw new BusinessException(ErrorCode.INVALID_INPUT, "Free plan does not require payment.");
+        }
+        SubscriptionPlan plan = billingMapper.findActivePlanByCode(normalizedPlanCode);
+        if (plan == null || plan.getMonthlyPrice() <= 0) {
+            throw new BusinessException(ErrorCode.NOT_FOUND, "Purchasable subscription plan was not found.");
+        }
+
+        LocalDateTime now = LocalDateTime.now();
+        billingMapper.deactivateActiveSubscriptions(userId, now);
+
+        UserSubscription subscription = new UserSubscription();
+        subscription.setUserId(userId);
+        subscription.setPlanCode(normalizedPlanCode);
+        subscription.setStatus("ACTIVE");
+        subscription.setStartedAt(now);
+        subscription.setCurrentPeriodStart(now);
+        subscription.setCurrentPeriodEnd(now.plusMonths(1));
+        billingMapper.insertUserSubscription(subscription);
+
+        int updated = billingMapper.updateUserPlan(userId, normalizedPlanCode);
+        if (updated == 0) {
+            throw new BusinessException(ErrorCode.NOT_FOUND, "Subscription user was not found.");
+        }
+
+        BenefitPeriod period = new BenefitPeriod(
+                normalizedPlanCode,
+                subscription.getCurrentPeriodStart(),
+                subscription.getCurrentPeriodEnd());
+        ensureBalances(userId, period);
+        return myBenefits(userId);
+    }
+
+    @Override
+    @Transactional
     public BenefitConsumeResult consumeByFeature(Long userId,
                                                  String featureType,
                                                  String refType,

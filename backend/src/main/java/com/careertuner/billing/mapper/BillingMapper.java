@@ -18,6 +18,8 @@ public interface BillingMapper {
 
     List<SubscriptionPlan> findActivePlans();
 
+    SubscriptionPlan findActivePlanByCode(@Param("planCode") String planCode);
+
     List<SubscriptionBenefitPolicy> findActiveBenefitPolicies();
 
     List<SubscriptionBenefitPolicy> findActiveBenefitPoliciesByPlan(@Param("planCode") String planCode);
@@ -31,6 +33,14 @@ public interface BillingMapper {
 
     UserSubscription findActiveSubscription(@Param("userId") Long userId,
                                             @Param("now") LocalDateTime now);
+
+    int deactivateActiveSubscriptions(@Param("userId") Long userId,
+                                      @Param("now") LocalDateTime now);
+
+    void insertUserSubscription(UserSubscription subscription);
+
+    int updateUserPlan(@Param("userId") Long userId,
+                       @Param("planCode") String planCode);
 
     String findUserPlanCode(@Param("userId") Long userId);
 

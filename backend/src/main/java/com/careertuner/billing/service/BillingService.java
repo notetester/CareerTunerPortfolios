@@ -16,4 +16,6 @@ public interface BillingService {
     MyBenefitsResponse myBenefits(Long userId);
 
     List<BenefitTransactionResponse> myBenefitTransactions(Long userId, int limit);
+
+    MyBenefitsResponse activateSubscriptionAfterPayment(Long userId, String planCode);
 }

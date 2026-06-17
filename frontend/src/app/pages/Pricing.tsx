@@ -4,7 +4,10 @@ import { Button } from "../components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
 import { Badge } from "../components/ui/badge";
 import { CheckCircle2, X, Award, CreditCard, Zap } from "lucide-react";
+import { useAuth } from "../auth/AuthContext";
+import { readyTossPayment } from "@/features/billing/api/paymentApi";
 import { listSubscriptionPlans } from "@/features/billing/api/subscriptionApi";
+import { requestTossCardPayment } from "@/features/billing/api/tossPaymentSdk";
 import type { SubscriptionPlan } from "@/features/billing/types/billing";
 import { subscriptionFallbackPlans, toDisplayPlans } from "@/features/billing/utils/subscriptionDisplay";
 
@@ -31,7 +34,10 @@ export function PricingPage() {
   const [activeTab, setActiveTab] = useState<"subscription" | "credits">("subscription");
   const [subscriptionPlans, setSubscriptionPlans] = useState<SubscriptionPlan[]>(() => subscriptionFallbackPlans());
   const [plansError, setPlansError] = useState<string | null>(null);
+  const [paymentError, setPaymentError] = useState<string | null>(null);
+  const [payingCode, setPayingCode] = useState<string | null>(null);
   const navigate = useNavigate();
+  const { isAuthenticated } = useAuth();
   const displayPlans = useMemo(() => toDisplayPlans(subscriptionPlans), [subscriptionPlans]);
 
   useEffect(() => {
@@ -53,6 +59,28 @@ export function PricingPage() {
       mounted = false;
     };
   }, []);
+
+  async function handleSubscriptionPurchase(planCode: string) {
+    if (planCode.toUpperCase() === "FREE") {
+      navigate("/billing?tab=usage");
+      return;
+    }
+    if (!isAuthenticated) {
+      navigate("/login");
+      return;
+    }
+
+    setPaymentError(null);
+    setPayingCode(planCode);
+    try {
+      const ready = await readyTossPayment(planCode, "SUBSCRIPTION");
+      await requestTossCardPayment(ready);
+    } catch (error) {
+      setPaymentError(error instanceof Error ? error.message : "결제창을 열지 못했습니다.");
+    } finally {
+      setPayingCode(null);
+    }
+  }
 
   return (
     <div className="bg-slate-50 min-h-screen">
@@ -105,6 +133,11 @@ export function PricingPage() {
                 {plansError}
               </div>
             )}
+            {paymentError && (
+              <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700">
+                {paymentError}
+              </div>
+            )}
             <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-5">
               {displayPlans.map((plan) => (
                 <Card key={plan.code} className={`relative border-2 ${plan.highlighted ? "border-blue-500 shadow-2xl" : "border-slate-200"}`}>
@@ -148,9 +181,10 @@ export function PricingPage() {
                     <Button
                       className={`w-full ${plan.highlighted ? "bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700" : ""}`}
                       variant={plan.highlighted ? "default" : "outline"}
-                      onClick={() => navigate("/login")}
+                      disabled={payingCode !== null}
+                      onClick={() => handleSubscriptionPurchase(plan.code)}
                     >
-                      {plan.cta}
+                      {payingCode === plan.code ? "결제 준비 중" : plan.cta}
                     </Button>
                   </CardContent>
                 </Card>

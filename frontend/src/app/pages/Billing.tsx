@@ -162,6 +162,27 @@ export function BillingPage() {
     }
   }
 
+  async function handleSubscriptionPurchase(planCode: string) {
+    if (planCode.toUpperCase() === "FREE") {
+      return;
+    }
+    if (!isAuthenticated) {
+      navigate("/login");
+      return;
+    }
+
+    setPaymentError(null);
+    setPayingCode(planCode);
+    try {
+      const ready = await readyTossPayment(planCode, "SUBSCRIPTION");
+      await requestTossCardPayment(ready);
+    } catch (error) {
+      setPaymentError(errorMessage(error, "결제창을 열지 못했습니다."));
+    } finally {
+      setPayingCode(null);
+    }
+  }
+
   return (
     <div className="min-h-screen bg-slate-50">
       <div className="mx-auto w-full max-w-[1400px] space-y-6 px-4 py-8 sm:px-6">
@@ -192,6 +213,11 @@ export function BillingPage() {
                 <CardContent className="p-5 text-center text-sm text-slate-500">구독 플랜 정책을 불러오는 중입니다.</CardContent>
               </Card>
             )}
+            {paymentError && (
+              <div className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700">
+                {paymentError}
+              </div>
+            )}
             <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
               {displayPlans.map((plan) => (
                 <Card key={plan.code} className={`relative border-2 bg-white ${plan.highlighted ? "border-blue-500 shadow-lg" : "border-slate-200"}`}>
@@ -219,8 +245,13 @@ export function BillingPage() {
                         </div>
                       ))}
                     </div>
-                    <Button className={plan.highlighted ? "w-full bg-gradient-to-r from-blue-600 to-indigo-600" : "w-full"} variant={plan.highlighted ? "default" : "outline"}>
-                      플랜 선택
+                    <Button
+                      className={plan.highlighted ? "w-full bg-gradient-to-r from-blue-600 to-indigo-600" : "w-full"}
+                      variant={plan.highlighted ? "default" : "outline"}
+                      disabled={payingCode !== null || plan.code.toUpperCase() === "FREE"}
+                      onClick={() => handleSubscriptionPurchase(plan.code)}
+                    >
+                      {payingCode === plan.code ? "결제 준비 중" : plan.code.toUpperCase() === "FREE" ? "현재 플랜" : "플랜 선택"}
                     </Button>
                   </CardContent>
                 </Card>

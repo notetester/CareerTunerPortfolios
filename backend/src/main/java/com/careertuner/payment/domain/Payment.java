@@ -13,6 +13,7 @@ public class Payment {
     private Long id;
     private Long userId;
     private String provider;
+    private String productType;
     private String productCode;
     private String orderId;
     private String paymentKey;

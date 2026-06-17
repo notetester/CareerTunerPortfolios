@@ -48,6 +48,8 @@ export function BillingSuccessPage() {
       .finally(() => setLoading(false));
   }, [refreshMe, searchParams]);
 
+  const isSubscription = result?.productType === "SUBSCRIPTION";
+
   return (
     <div className="min-h-screen bg-slate-50 px-4 py-12">
       <Card className="mx-auto max-w-xl border border-slate-200 bg-white">
@@ -58,7 +60,7 @@ export function BillingSuccessPage() {
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-5">
-          {loading && <p className="text-sm text-slate-600">Toss 결제 승인 결과를 확인하고 크레딧을 충전하는 중입니다.</p>}
+          {loading && <p className="text-sm text-slate-600">Toss 결제 승인 결과를 확인하고 있습니다.</p>}
 
           {!loading && error && (
             <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700">
@@ -69,24 +71,35 @@ export function BillingSuccessPage() {
           {!loading && result && (
             <div className="space-y-3">
               <div className="rounded-lg border border-green-200 bg-green-50 px-4 py-3 text-sm font-semibold text-green-700">
-                결제가 완료되어 {result.creditAmount.toLocaleString("ko-KR")} 크레딧이 충전되었습니다.
+                {isSubscription
+                  ? `${result.planCode ?? result.productCode} 플랜 결제가 완료되어 사용권이 발급되었습니다.`
+                  : `결제가 완료되어 ${result.creditAmount.toLocaleString("ko-KR")} 크레딧이 충전되었습니다.`}
               </div>
               <div className="rounded-lg bg-slate-50 p-4 text-sm text-slate-700">
                 <div className="flex justify-between">
                   <span>결제 금액</span>
                   <strong>{result.amount.toLocaleString("ko-KR")}원</strong>
                 </div>
-                <div className="mt-2 flex justify-between">
-                  <span>현재 잔액</span>
-                  <strong>{result.balance.toLocaleString("ko-KR")} 크레딧</strong>
-                </div>
+                {isSubscription ? (
+                  <div className="mt-2 flex justify-between">
+                    <span>활성 플랜</span>
+                    <strong>{result.planCode ?? result.productCode}</strong>
+                  </div>
+                ) : (
+                  <div className="mt-2 flex justify-between">
+                    <span>현재 잔액</span>
+                    <strong>{result.balance.toLocaleString("ko-KR")} 크레딧</strong>
+                  </div>
+                )}
               </div>
             </div>
           )}
 
           <div className="flex gap-2">
             <Button asChild className="flex-1">
-              <Link to="/billing?tab=credits">크레딧 충전</Link>
+              <Link to={isSubscription ? "/billing?tab=usage" : "/billing?tab=credits"}>
+                {isSubscription ? "사용권 확인" : "크레딧 충전"}
+              </Link>
             </Button>
             <Button asChild variant="outline" className="flex-1">
               <Link to="/dashboard">대시보드</Link>
