@@ -65,7 +65,7 @@ export function VerifyEmailResultPage() {
                 type="button"
                 onClick={() => void handleResend()}
                 disabled={sending}
-                className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-slate-900 text-sm font-semibold text-white disabled:opacity-70"
+                className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-foreground text-sm font-semibold text-background disabled:opacity-70"
               >
                 {sending && <Loader2 className="size-4 animate-spin" />}
                 인증 메일 다시 보내기

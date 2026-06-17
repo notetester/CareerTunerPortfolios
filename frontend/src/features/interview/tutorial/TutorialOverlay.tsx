@@ -110,7 +110,7 @@ export function TutorialOverlay() {
           />
         </>
       ) : (
-        <div className="absolute inset-0 bg-slate-900/60" style={{ pointerEvents: "auto" }} />
+        <div className="absolute inset-0 bg-black/60" style={{ pointerEvents: "auto" }} />
       )}
 
       <div style={{ ...bubblePos, maxWidth: 420, width: "90%", pointerEvents: "auto" }}>

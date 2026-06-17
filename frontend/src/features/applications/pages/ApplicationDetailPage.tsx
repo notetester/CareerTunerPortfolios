@@ -387,7 +387,7 @@ export function ApplicationDetailPage() {
                 type="button"
                 className={`flex shrink-0 items-center gap-1.5 rounded-md px-3 py-2 text-sm font-semibold transition-colors ${
                   activeTab === tab.key
-                    ? "bg-slate-900 text-white"
+                    ? "bg-foreground text-background"
                     : "text-slate-600 hover:bg-slate-100 hover:text-slate-900"
                 }`}
                 onClick={() => navigate(detailPath(id, tab.key))}

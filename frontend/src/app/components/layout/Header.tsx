@@ -4,6 +4,7 @@ import { useAuth } from "../../auth/AuthContext";
 import { Button } from "../ui/button";
 import { Badge } from "../ui/badge";
 import { NotificationBell } from "@/features/notification/components/NotificationBell";
+import { ThemeToggle } from "./ThemeToggle";
 import "@/features/notification/styles/notification.css";
 import {
   Sparkles,
@@ -314,6 +315,8 @@ export function Header() {
                 </Button>
               </>
             )}
+
+            <ThemeToggle />
 
             {/* Mobile menu button */}
             <button

@@ -290,7 +290,7 @@ function PromptBlock({
   const copied = copiedKey === copyKey;
   const preClassName =
     tone === "dark"
-      ? "border-slate-200 bg-slate-950 text-slate-100"
+      ? "border-slate-200 bg-[#0b0c0e] text-[#e6e6e6]"
       : "border-slate-200 bg-slate-50 text-slate-700";
 
   return (

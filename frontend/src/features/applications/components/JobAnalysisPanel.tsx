@@ -390,7 +390,7 @@ export function JobAnalysisPanel({
                     {reviewError}
                   </div>
                 )}
-                <Button type="button" className="bg-slate-900 text-white hover:bg-slate-800" disabled={generating || reviewSaving} onClick={() => void handleReview()}>
+                <Button type="button" className="bg-foreground text-background hover:bg-foreground/90" disabled={generating || reviewSaving} onClick={() => void handleReview()}>
                   {reviewSaving && <Loader2 className="size-4 animate-spin" />}
                   수정 내용 저장 및 확정
                 </Button>

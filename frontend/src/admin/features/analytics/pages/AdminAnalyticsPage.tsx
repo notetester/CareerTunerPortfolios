@@ -466,7 +466,7 @@ export function AdminAnalyticsPage() {
       <div className="mx-auto w-full max-w-[1400px] space-y-6 px-4 py-8 sm:px-6">
         <section className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <Badge className="mb-2 bg-slate-900 text-white">C 관리자</Badge>
+            <Badge className="mb-2 bg-foreground text-background">C 관리자</Badge>
             <h1 className="flex items-center gap-2 text-2xl font-black text-slate-900">
               <BarChart3 className="size-6 text-indigo-600" />
               분석 통계
@@ -829,7 +829,7 @@ export function AdminAnalyticsPage() {
                                   <Brain className="size-3.5 text-indigo-600" />
                                   AI 결과
                                 </div>
-                                <pre className="max-h-72 overflow-auto whitespace-pre-wrap rounded-lg border border-slate-200 bg-slate-950 p-3 text-[11px] leading-5 text-slate-100">
+                                <pre className="max-h-72 overflow-auto whitespace-pre-wrap rounded-lg border border-slate-200 bg-[#0b0c0e] p-3 text-[11px] leading-5 text-[#e6e6e6]">
                                   {prettyJson(run.result)}
                                 </pre>
                               </div>

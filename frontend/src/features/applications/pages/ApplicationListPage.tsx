@@ -116,7 +116,7 @@ function ApplicationCard({
   const isTrash = mode === "trash";
   const title = (
     <div className="flex items-center gap-3">
-      <div className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-slate-900 text-sm font-bold text-white">
+      <div className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-foreground text-sm font-bold text-background">
         {applicationCase.companyName.slice(0, 1)}
       </div>
       <div className="min-w-0">
@@ -440,7 +440,7 @@ export function ApplicationListPage({ mode = "active" }: { mode?: ListMode }) {
                 <button
                   type="button"
                   className={`rounded-md px-3 py-2 text-xs font-semibold ${
-                    statusFilter === "ALL" ? "bg-slate-900 text-white" : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                    statusFilter === "ALL" ? "bg-foreground text-background" : "bg-slate-100 text-slate-600 hover:bg-slate-200"
                   }`}
                   onClick={() => setStatusFilter("ALL")}
                 >
@@ -452,7 +452,7 @@ export function ApplicationListPage({ mode = "active" }: { mode?: ListMode }) {
                     key={option.value}
                     className={`rounded-md px-3 py-2 text-xs font-semibold ${
                       statusFilter === option.value
-                        ? "bg-slate-900 text-white"
+                        ? "bg-foreground text-background"
                         : "bg-slate-100 text-slate-600 hover:bg-slate-200"
                     }`}
                     onClick={() => setStatusFilter(option.value)}

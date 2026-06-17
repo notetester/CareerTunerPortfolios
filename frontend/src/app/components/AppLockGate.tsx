@@ -71,7 +71,7 @@ export function AppLockGate({ children }: { children: ReactNode }) {
   return (
     <>
       {children}
-      <div className="fixed inset-0 z-[9999] flex flex-col items-center justify-center bg-slate-900/95 px-6 text-white backdrop-blur">
+      <div className="fixed inset-0 z-[9999] flex flex-col items-center justify-center bg-black/95 px-6 text-white backdrop-blur">
         <div className="flex size-16 items-center justify-center rounded-2xl bg-card/10">
           <Lock className="size-8" />
         </div>

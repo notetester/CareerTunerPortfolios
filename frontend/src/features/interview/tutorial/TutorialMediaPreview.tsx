@@ -68,7 +68,7 @@ export function TutorialMediaPreview({ kind }: { kind: "voice" | "avatar" }) {
       </div>
 
       {/* 면접관 화면 */}
-      <div className="relative flex aspect-video w-full items-center justify-center overflow-hidden rounded-xl bg-slate-900 text-slate-300">
+      <div className="relative flex aspect-video w-full items-center justify-center overflow-hidden rounded-xl bg-muted text-slate-300">
         <div className="flex flex-col items-center gap-2">
           <Icon className="size-10 opacity-70" />
           <span className="text-sm">{kind === "avatar" ? "아바타 면접관" : "AI 음성 면접관"}</span>

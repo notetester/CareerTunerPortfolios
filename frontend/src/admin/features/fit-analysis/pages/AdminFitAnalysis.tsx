@@ -508,7 +508,7 @@ function StructuredJsonBox({ title, value }: { title: string; value: string | nu
   return (
     <div className="rounded-lg border border-slate-100 p-4">
       <div className="mb-3 text-sm font-bold text-slate-800">{title}</div>
-      <pre className="max-h-52 overflow-auto whitespace-pre-wrap break-all rounded bg-slate-950 p-3 text-xs leading-5 text-slate-200">
+      <pre className="max-h-52 overflow-auto whitespace-pre-wrap break-all rounded bg-[#0b0c0e] p-3 text-xs leading-5 text-[#e6e6e6]">
         {value || "저장된 결과 없음"}
       </pre>
     </div>

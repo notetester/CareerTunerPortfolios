@@ -358,7 +358,7 @@ export function AvatarTab({ session }: { session: InterviewSession | null }) {
 
           {/* 화면: 아바타(메인) + 내 웹캠(서브) */}
           {(status === "connecting" || status === "live" || status === "analyzing") && (
-            <div className="relative overflow-hidden rounded-xl bg-slate-900">
+            <div className="relative overflow-hidden rounded-xl bg-muted">
               <video ref={avatarVideoRef} autoPlay playsInline className="aspect-video w-full object-cover" />
               <video
                 ref={selfVideoRef}

@@ -56,7 +56,7 @@ const footerLinks = [
 
 export function Footer() {
   return (
-    <footer className="bg-slate-900 text-slate-400">
+    <footer className="bg-muted text-muted-foreground">
       {/* Main footer */}
       <div className="max-w-[1400px] mx-auto px-6 pt-12 pb-8">
         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-8 mb-12">
@@ -89,7 +89,7 @@ export function Footer() {
                   key={s.label}
                   to={s.href}
                   aria-label={s.label}
-                  className="size-8 rounded-lg bg-slate-800 flex items-center justify-center hover:bg-slate-700 transition-colors"
+                  className="size-8 rounded-lg bg-card flex items-center justify-center hover:bg-secondary border border-border transition-colors"
                 >
                   <s.icon className="size-4" />
                 </Link>

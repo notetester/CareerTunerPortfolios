@@ -107,7 +107,7 @@ export default function AdminProfilePromptsPage() {
           </div>
           <div>
             <div className="text-xs font-semibold text-slate-500">System Prompt</div>
-            <pre className="mt-2 max-h-[520px] overflow-auto whitespace-pre-wrap rounded-lg border border-slate-200 bg-slate-950 p-4 text-xs leading-5 text-slate-100">
+            <pre className="mt-2 max-h-[520px] overflow-auto whitespace-pre-wrap rounded-lg border border-slate-200 bg-[#0b0c0e] p-4 text-xs leading-5 text-[#e6e6e6]">
               {prompt?.systemPrompt || "-"}
             </pre>
           </div>
