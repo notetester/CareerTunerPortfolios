@@ -306,8 +306,10 @@ public class InterviewOpenAiClient implements InterviewAnswerEvaluator {
     // ───── 응답 매핑 보조 ─────
 
     private String normalizeType(String value) {
+        // 본질문 생성 전용. FOLLOW_UP 은 꼬리질문(generateFollowUps)에서만 직접 부여하므로 여기서는 제외한다.
+        // (LLM 이 본질문을 FOLLOW_UP 으로 오분류하면 꼬리질문처럼 표시되는 버그 방지)
         return switch (value == null ? "" : value.toUpperCase(Locale.ROOT)) {
-            case "TECH", "PERSONALITY", "SITUATION", "FOLLOW_UP", "EXPECTED" -> value.toUpperCase(Locale.ROOT);
+            case "TECH", "PERSONALITY", "SITUATION", "EXPECTED" -> value.toUpperCase(Locale.ROOT);
             default -> "EXPECTED";
         };
     }
@@ -319,11 +321,13 @@ public class InterviewOpenAiClient implements InterviewAnswerEvaluator {
     // ───── JSON Schema ─────
 
     private Map<String, Object> questionsSchema() {
+        // 본질문/꼬리질문이 공유하는 스키마. 본질문은 이 type 을 그대로 저장하므로 FOLLOW_UP 을 enum 에서 뺀다.
+        // 꼬리질문(generateFollowUps)은 응답 type 을 무시하고 항상 FOLLOW_UP 으로 강제하므로 영향 없다.
         Map<String, Object> questionItem = objectSchema(
                 Map.of(
                         "question", stringSchema(),
                         "type", Map.of("type", "string",
-                                "enum", List.of("EXPECTED", "TECH", "PERSONALITY", "SITUATION", "FOLLOW_UP"))),
+                                "enum", List.of("EXPECTED", "TECH", "PERSONALITY", "SITUATION"))),
                 List.of("question", "type"));
         Map<String, Object> properties = new LinkedHashMap<>();
         properties.put("questions", Map.of("type", "array", "items", questionItem));
