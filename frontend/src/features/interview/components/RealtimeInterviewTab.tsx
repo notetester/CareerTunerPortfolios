@@ -9,9 +9,16 @@ import {
   getMediaCapabilities,
   listSessionQuestions,
   saveMediaResult,
+  scoreVoiceServer,
   scoreVoiceTranscript,
 } from "../api/interviewApi";
-import { blobToPcm16Base64, computeVoiceScore, countFillers, VoiceMetricsTracker } from "../hooks/voiceAnalysis";
+import {
+  blobToBase64,
+  blobToPcm16Base64,
+  computeVoiceScore,
+  countFillers,
+  VoiceMetricsTracker,
+} from "../hooks/voiceAnalysis";
 import type {
   InterviewQuestion,
   InterviewSession,
@@ -45,6 +52,8 @@ export function RealtimeInterviewTab({ session }: { session: InterviewSession | 
   const [metrics, setMetrics] = useState<VoiceMetrics | null>(null);
   const [profile, setProfile] = useState<VoiceProfile | null>(null);
   const [saveNote, setSaveNote] = useState<string | null>(null);
+  // 원본 음성을 자체 추론 서버로 보내 정밀 분석할지 동의 (ADR-006). 해제 시 브라우저 지표만 사용.
+  const [consent, setConsent] = useState(true);
 
   const pcRef = useRef<RTCPeerConnection | null>(null);
   const micRef = useRef<MediaStream | null>(null);
@@ -233,19 +242,42 @@ export function RealtimeInterviewTab({ session }: { session: InterviewSession | 
       return;
     }
 
-    // Inworld 감정 분석 — 키 없거나 실패해도 점수는 브라우저 지표만으로 낸다.
+    // 점수 산출: 동의 + 자체 추론 서버(nonverbal) 가능하면 서버 정밀 채점, 아니면 브라우저 지표(+Inworld 감정) 폴백.
+    let detail: VoiceScoreDetail;
     let voiceProfile: VoiceProfile | null = null;
-    if (capabilities?.voiceProfiling && recordedBlob && recordedBlob.size > 0) {
+    const hasAudio = !!recordedBlob && recordedBlob.size > 0;
+
+    if (consent && capabilities?.nonverbal && hasAudio) {
       try {
-        const base64 = await blobToPcm16Base64(recordedBlob);
-        const result = await analyzeVoice(session.id, base64);
-        voiceProfile = result.voiceProfile;
+        const audioBase64 = await blobToBase64(recordedBlob);
+        const audioFormat = (recordedBlob.type || "audio/webm").includes("webm") ? "webm" : "wav";
+        const server = await scoreVoiceServer(session.id, {
+          audioBase64,
+          audioFormat,
+          transcriptChars: userChars,
+          fillerCount: fillers,
+          latencySec: finalMetrics.avgResponseLatencySec ?? undefined,
+        });
+        detail = server.detail;
+        setSaveNote(`자체 추론 서버로 채점했습니다 (${server.source}).`);
       } catch {
-        setSaveNote("감정 분석(Inworld)은 실패해 브라우저 지표만으로 채점했습니다.");
+        detail = computeVoiceScore(finalMetrics, null);
+        setSaveNote("자체 추론 서버 호출 실패 — 브라우저 지표만으로 채점했습니다.");
       }
+    } else {
+      // Inworld 감정 분석 — 키 없거나 실패해도 점수는 브라우저 지표만으로 낸다.
+      if (capabilities?.voiceProfiling && hasAudio) {
+        try {
+          const base64 = await blobToPcm16Base64(recordedBlob);
+          const result = await analyzeVoice(session.id, base64);
+          voiceProfile = result.voiceProfile;
+        } catch {
+          setSaveNote("감정 분석(Inworld)은 실패해 브라우저 지표만으로 채점했습니다.");
+        }
+      }
+      detail = computeVoiceScore(finalMetrics, voiceProfile);
     }
 
-    const detail = computeVoiceScore(finalMetrics, voiceProfile);
     setMetrics(finalMetrics);
     setProfile(voiceProfile);
     setScoreDetail(detail);
@@ -328,10 +360,27 @@ export function RealtimeInterviewTab({ session }: { session: InterviewSession | 
             진행합니다. 종료하면 답변 트랜스크립트와 음성 분석 점수(말 속도·군말·톤·자신감)가 저장됩니다.
           </p>
 
-          {capabilities && !capabilities.voiceProfiling && (
-            <p className="rounded-lg bg-slate-50 p-3 text-xs text-slate-500">
-              감정 분석 키(INWORLD_API_KEY)가 없어 브라우저 측정 지표만으로 채점합니다.
-            </p>
+          {capabilities?.nonverbal ? (
+            <label className="flex items-start gap-2 rounded-lg bg-slate-50 p-3 text-xs text-slate-600">
+              <input
+                type="checkbox"
+                checked={consent}
+                onChange={(e) => setConsent(e.target.checked)}
+                className="mt-0.5"
+              />
+              <span>
+                <b className="text-slate-700">정밀 음성 분석(자체 AI)</b> — 원본 음성을 분석 서버로 전송해
+                자체 모델로 채점합니다. 분석 후 음성은 즉시 폐기되며 저장하지 않습니다. 해제하면 브라우저 내
+                지표만으로 채점합니다.
+              </span>
+            </label>
+          ) : (
+            capabilities &&
+            !capabilities.voiceProfiling && (
+              <p className="rounded-lg bg-slate-50 p-3 text-xs text-slate-500">
+                브라우저 측정 지표만으로 채점합니다.
+              </p>
+            )
           )}
 
           {!supported && (
