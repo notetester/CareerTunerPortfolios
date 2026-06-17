@@ -58,7 +58,7 @@ export function InterviewHero() {
           <button
             type="submit"
             disabled={!value.trim()}
-            className="flex items-center justify-center gap-1.5 rounded-xl bg-primary px-5 py-3 text-sm font-semibold text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-50"
+            className="flex items-center justify-center gap-1.5 rounded-xl bg-primary px-5 py-3 text-sm font-semibold text-primary-foreground transition-colors hover:bg-primary/90 disabled:bg-secondary disabled:text-muted-foreground"
           >
             맡기기 <ArrowRight className="size-4" />
           </button>
