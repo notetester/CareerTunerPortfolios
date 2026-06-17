@@ -68,3 +68,33 @@ export async function markAsRead(id: number): Promise<void> {
 export async function markAllAsRead(): Promise<void> {
   await api<void>("/notifications/read-all", { method: "POST" });
 }
+
+// ───── 알림 설정 ─────
+
+export interface NotificationPreference {
+  pushEnabled: boolean;
+  emailEnabled: boolean;
+  categories: Record<string, boolean>;
+  quietHoursStart: string | null;
+  quietHoursEnd: string | null;
+  pushDeviceRegistered: boolean;
+}
+
+export interface NotificationPreferenceUpdate {
+  pushEnabled?: boolean;
+  emailEnabled?: boolean;
+  categories?: Record<string, boolean>;
+  quietHoursStart?: string | null;
+  quietHoursEnd?: string | null;
+}
+
+export function getNotificationPreferences(): Promise<NotificationPreference> {
+  return api<NotificationPreference>("/notifications/preferences", { method: "GET" });
+}
+
+export function updateNotificationPreferences(update: NotificationPreferenceUpdate): Promise<NotificationPreference> {
+  return api<NotificationPreference>("/notifications/preferences", {
+    method: "PUT",
+    body: JSON.stringify(update),
+  });
+}

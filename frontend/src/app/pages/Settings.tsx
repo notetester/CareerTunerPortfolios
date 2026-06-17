@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useSearchParams } from "react-router";
-import { Bell, Database, Lock, Mail, RefreshCw, Save, Shield, Smartphone, UserCog } from "lucide-react";
+import { Database, Lock, Mail, RefreshCw, Save, Shield, UserCog } from "lucide-react";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
@@ -9,6 +9,7 @@ import { Input } from "../components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../components/ui/tabs";
 import { getMyConsents, revokeAiConsent, saveMyConsents, type ConsentStatus } from "../auth/consentApi";
 import { useAuth } from "../auth/AuthContext";
+import { NotificationSettings } from "@/features/notification/components/NotificationSettings";
 
 const tabs = ["account", "privacy", "ai-consent", "notifications"] as const;
 type SettingsTab = (typeof tabs)[number];
@@ -197,30 +198,7 @@ export function SettingsPage() {
           </TabsContent>
 
           <TabsContent value="notifications" className="mt-5">
-            <Card className="border border-slate-200 bg-white">
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2 text-base">
-                  <Bell className="size-4 text-amber-600" />
-                  알림 설정
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="grid gap-3 md:grid-cols-2">
-                {[
-                  { label: "공고 분석 완료", icon: Bell },
-                  { label: "면접 연습 리마인드", icon: Smartphone },
-                  { label: "크레딧 부족 알림", icon: Bell },
-                  { label: "결제/구독 안내", icon: Mail },
-                ].map((item) => (
-                  <div key={item.label} className="flex items-center justify-between rounded-xl border border-slate-200 bg-slate-50 p-4">
-                    <div className="flex items-center gap-2">
-                      <item.icon className="size-4 text-slate-500" />
-                      <span className="text-sm font-semibold text-slate-700">{item.label}</span>
-                    </div>
-                    <Checkbox defaultChecked />
-                  </div>
-                ))}
-              </CardContent>
-            </Card>
+            <NotificationSettings />
           </TabsContent>
         </Tabs>
       </div>
