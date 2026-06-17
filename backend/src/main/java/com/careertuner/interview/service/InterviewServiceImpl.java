@@ -30,6 +30,7 @@ import com.careertuner.interview.dto.InterviewQuestionResponse;
 import com.careertuner.interview.dto.InterviewReportResponse;
 import com.careertuner.interview.dto.InterviewSessionResponse;
 import com.careertuner.interview.dto.ModelAnswerResponse;
+import com.careertuner.interview.dto.SessionPageResponse;
 import com.careertuner.interview.dto.SessionReviewResponse;
 import com.careertuner.interview.dto.SubmitAnswerRequest;
 import com.careertuner.interview.mapper.InterviewMapper;
@@ -85,10 +86,14 @@ public class InterviewServiceImpl implements InterviewService {
     }
 
     @Override
-    public List<InterviewSessionResponse> listSessions(Long userId) {
-        return interviewMapper.findSessionsByUserId(userId).stream()
+    public SessionPageResponse listSessions(Long userId, int page, int size) {
+        int offset = page * size;
+        List<InterviewSession> sessions = interviewMapper.findSessionsByUserId(userId, offset, size);
+        int total = interviewMapper.countSessionsByUserId(userId);
+        List<InterviewSessionResponse> responses = sessions.stream()
                 .map(InterviewSessionResponse::from)
                 .toList();
+        return new SessionPageResponse(responses, total, page, size, offset + size < total);
     }
 
     @Override

@@ -20,6 +20,15 @@
         WHERE ac.user_id = #{userId}
           AND ac.deleted_at IS NULL
         ORDER BY s.created_at DESC, s.id DESC
+        LIMIT #{limit} OFFSET #{offset}
+    </select>
+
+    <select id="countSessionsByUserId" resultType="int">
+        SELECT COUNT(*)
+        FROM interview_session s
+        JOIN application_case ac ON ac.id = s.application_case_id
+        WHERE ac.user_id = #{userId}
+          AND ac.deleted_at IS NULL
     </select>
 
     <select id="findSessionByIdAndUserId" resultType="com.careertuner.interview.domain.InterviewSession">

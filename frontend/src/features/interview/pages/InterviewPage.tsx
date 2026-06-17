@@ -183,6 +183,12 @@ export function InterviewPage() {
                   setActiveSession(session);
                   goTab("questions");
                 }}
+                onResume={(session) => {
+                  setActiveSession(session);
+                  setSelectedCaseId(session.applicationCaseId);
+                  setSelectedMode(session.mode);
+                  goTab("questions");
+                }}
               />
             )}
           </TabsContent>

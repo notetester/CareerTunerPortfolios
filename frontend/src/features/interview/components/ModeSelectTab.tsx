@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { AlertCircle, BarChart3, FileText } from "lucide-react";
+import { AlertCircle, BarChart3, ChevronDown, FileText, Loader2, Play } from "lucide-react";
 import { Badge } from "@/app/components/ui/badge";
 import { Button } from "@/app/components/ui/button";
 import type { ApplicationCase } from "@/features/applications/types/applicationCase";
@@ -24,6 +24,8 @@ interface ModeSelectTabProps {
   onSelectCase(id: number): void;
   onSelectMode(mode: InterviewMode): void;
   onSessionStarted(session: InterviewSession): void;
+  /** 최근 기록에서 "이어서 복원하기"를 누르면 그 세션으로 면접 흐름을 복원한다. */
+  onResume(session: InterviewSession): void;
 }
 
 function formatDate(value: string): string {
@@ -39,10 +41,12 @@ export function ModeSelectTab({
   onSelectCase,
   onSelectMode,
   onSessionStarted,
+  onResume,
 }: ModeSelectTabProps) {
   const sessions = useInterviewSessions();
   const [starting, setStarting] = useState(false);
   const [startError, setStartError] = useState<string | null>(null);
+  const [reviewSession, setReviewSession] = useState<InterviewSession | null>(null);
   const [review, setReview] = useState<SessionReview | null>(null);
   const [reviewOpen, setReviewOpen] = useState(false);
   const [reviewLoading, setReviewLoading] = useState(false);
@@ -67,13 +71,14 @@ export function ModeSelectTab({
     }
   };
 
-  const openReview = async (sessionId: number) => {
+  const openReview = async (session: InterviewSession) => {
+    setReviewSession(session);
     setReviewOpen(true);
     setReview(null);
     setReviewError(null);
     setReviewLoading(true);
     try {
-      setReview(await getSessionReview(sessionId));
+      setReview(await getSessionReview(session.id));
     } catch (err) {
       setReviewError(err instanceof Error ? err.message : "면접 기록을 불러오지 못했습니다.");
     } finally {
@@ -81,10 +86,23 @@ export function ModeSelectTab({
     }
   };
 
+  const handleResume = () => {
+    if (!reviewSession) return;
+    setReviewOpen(false);
+    onResume(reviewSession);
+  };
+
   const caseLabel = (caseId: number) => {
     const c = cases.find((item) => item.id === caseId);
     return c ? `${c.companyName} · ${c.jobTitle}` : `지원 건 #${caseId}`;
   };
+
+  // 복기 모달 상단 요약 지표 (review 로드 후 계산)
+  const answeredCount = review ? review.items.filter((it) => it.answerText).length : 0;
+  const scored = review ? review.items.filter((it) => it.score !== null) : [];
+  const avgScore = scored.length
+    ? Math.round(scored.reduce((sum, it) => sum + (it.score ?? 0), 0) / scored.length)
+    : null;
 
   return (
     <div className="space-y-6">
@@ -193,33 +211,52 @@ export function ModeSelectTab({
             아직 면접 기록이 없습니다. 위에서 모드를 골라 첫 면접을 시작해 보세요.
           </p>
         ) : (
-          <div className="space-y-2">
-            {sessions.sessions.map((s) => (
-              <button
-                key={s.id}
-                type="button"
-                onClick={() => openReview(s.id)}
-                className="flex w-full items-center gap-4 rounded-xl border border-slate-200 bg-white p-4 text-left transition-colors hover:border-blue-300"
-              >
-                <div className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-purple-500 to-indigo-500 text-xs font-bold text-white">
-                  {caseLabel(s.applicationCaseId).slice(0, 1)}
-                </div>
-                <div className="min-w-0 flex-1">
-                  <div className="text-sm font-semibold text-slate-800">
-                    {caseLabel(s.applicationCaseId)} · {getInterviewModeLabel(s.mode)}
+          <>
+            <div className="space-y-2">
+              {sessions.sessions.map((s) => (
+                <button
+                  key={s.id}
+                  type="button"
+                  onClick={() => openReview(s)}
+                  className="flex w-full items-center gap-4 rounded-xl border border-slate-200 bg-white p-4 text-left transition-colors hover:border-blue-300"
+                >
+                  <div className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-purple-500 to-indigo-500 text-xs font-bold text-white">
+                    {caseLabel(s.applicationCaseId).slice(0, 1)}
                   </div>
-                  <div className="mt-0.5 text-xs text-slate-500">{formatDate(s.createdAt)}</div>
-                </div>
-                <div className="text-center">
-                  <div className={`text-lg font-black ${s.totalScore !== null ? getScoreColor(s.totalScore) : "text-slate-300"}`}>
-                    {s.totalScore ?? "-"}
+                  <div className="min-w-0 flex-1">
+                    <div className="text-sm font-semibold text-slate-800">
+                      {caseLabel(s.applicationCaseId)} · {getInterviewModeLabel(s.mode)}
+                    </div>
+                    <div className="mt-0.5 text-xs text-slate-500">{formatDate(s.createdAt)}</div>
                   </div>
-                  <div className="text-[10px] text-slate-400">점수</div>
-                </div>
-                <BarChart3 className="size-4 text-slate-400" />
-              </button>
-            ))}
-          </div>
+                  <div className="text-center">
+                    <div className={`text-lg font-black ${s.totalScore !== null ? getScoreColor(s.totalScore) : "text-slate-300"}`}>
+                      {s.totalScore ?? "-"}
+                    </div>
+                    <div className="text-[10px] text-slate-400">점수</div>
+                  </div>
+                  <BarChart3 className="size-4 text-slate-400" />
+                </button>
+              ))}
+            </div>
+            {sessions.hasNext && (
+              <div className="mt-3 flex justify-center">
+                <Button
+                  variant="outline"
+                  className="gap-1.5"
+                  disabled={sessions.loadingMore}
+                  onClick={sessions.loadMore}
+                >
+                  {sessions.loadingMore ? (
+                    <Loader2 className="size-4 animate-spin" />
+                  ) : (
+                    <ChevronDown className="size-4" />
+                  )}
+                  더보기 ({sessions.remaining})
+                </Button>
+              </div>
+            )}
+          </>
         )}
       </div>
 
@@ -242,6 +279,42 @@ export function ModeSelectTab({
                 ✕
               </button>
             </div>
+
+            {/* 요약 + 복원 */}
+            {reviewSession && (
+              <div className="mb-4 rounded-xl border border-slate-200 bg-slate-50 p-4">
+                <div className="text-sm font-bold text-slate-800">{caseLabel(reviewSession.applicationCaseId)}</div>
+                <div className="mt-0.5 text-xs text-slate-500">
+                  {getInterviewModeLabel(reviewSession.mode)} · {formatDate(reviewSession.createdAt)}
+                </div>
+                <div className="mt-3 grid grid-cols-3 gap-2 text-center">
+                  <div className="rounded-lg bg-white p-2">
+                    <div className="text-base font-black text-slate-800">{review ? review.items.length : "—"}</div>
+                    <div className="text-[10px] text-slate-400">질문</div>
+                  </div>
+                  <div className="rounded-lg bg-white p-2">
+                    <div className="text-base font-black text-slate-800">{review ? answeredCount : "—"}</div>
+                    <div className="text-[10px] text-slate-400">답변</div>
+                  </div>
+                  <div className="rounded-lg bg-white p-2">
+                    <div className={`text-base font-black ${avgScore !== null ? getScoreColor(avgScore) : "text-slate-300"}`}>
+                      {avgScore ?? "—"}
+                    </div>
+                    <div className="text-[10px] text-slate-400">평균점수</div>
+                  </div>
+                </div>
+                <Button
+                  className="mt-3 w-full gap-1.5 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700"
+                  onClick={handleResume}
+                >
+                  <Play className="size-4" /> 이 면접 이어서 복원하기
+                </Button>
+                <p className="mt-1.5 text-center text-[11px] text-slate-400">
+                  지원 건·모드와 생성된 질문이 그대로 복원돼 예상 질문부터 이어집니다.
+                </p>
+              </div>
+            )}
+
             {reviewLoading ? (
               <p className="py-10 text-center text-sm text-slate-400">불러오는 중…</p>
             ) : reviewError ? (

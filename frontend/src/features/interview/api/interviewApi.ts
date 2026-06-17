@@ -28,6 +28,7 @@ import type {
   MediaCapabilities,
   RealtimeSession,
   SaveMediaAnalysisRequest,
+  SessionPageResponse,
   SessionReview,
   SubmitAnswerRequest,
   VoiceAnalysisResult,
@@ -44,11 +45,13 @@ import type {
 const mockDelay = <T>(value: T, ms = 800): Promise<T> =>
   new Promise((resolve) => setTimeout(() => resolve(value), ms));
 
-/** 내 면접 세션 목록 (최근 기록). */
-export function listInterviewSessions(): Promise<InterviewSession[]> {
-  if (isDataMockActive()) return Promise.resolve([dummySession]);
-  return api<InterviewSession[]>("/interview/sessions", { method: "GET" });
+/** 내 면접 세션 목록 (최근 기록). 더보기 누적용 페이지 응답. */
+export function listInterviewSessions(page = 0, size = 10): Promise<SessionPageResponse> {
+  if (isDataMockActive())
+    return Promise.resolve({ sessions: [dummySession], total: 1, page: 0, size, hasNext: false });
+  return api<SessionPageResponse>(`/interview/sessions?page=${page}&size=${size}`, { method: "GET" });
 }
+
 
 /** 면접 세션 생성 (지원 건 + 모드 선택). */
 export function createInterviewSession(

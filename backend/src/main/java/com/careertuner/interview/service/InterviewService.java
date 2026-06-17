@@ -12,6 +12,7 @@ import com.careertuner.interview.dto.InterviewQuestionResponse;
 import com.careertuner.interview.dto.InterviewReportResponse;
 import com.careertuner.interview.dto.InterviewSessionResponse;
 import com.careertuner.interview.dto.ModelAnswerResponse;
+import com.careertuner.interview.dto.SessionPageResponse;
 import com.careertuner.interview.dto.SessionReviewResponse;
 import com.careertuner.interview.dto.SubmitAnswerRequest;
 
@@ -19,7 +20,7 @@ public interface InterviewService {
 
     InterviewSessionResponse createSession(Long userId, CreateInterviewSessionRequest request);
 
-    List<InterviewSessionResponse> listSessions(Long userId);
+    SessionPageResponse listSessions(Long userId, int page, int size);
 
     List<InterviewQuestionResponse> generateQuestions(Long userId, Long sessionId, GenerateQuestionsRequest request);
 

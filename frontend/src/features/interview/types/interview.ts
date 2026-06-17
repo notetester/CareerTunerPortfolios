@@ -235,6 +235,15 @@ export interface SessionReview {
   items: SessionReviewItem[];
 }
 
+/** 최근 면접 기록 페이지 응답 (더보기 누적 페이징). 백엔드 SessionPageResponse 와 동형. */
+export interface SessionPageResponse {
+  sessions: InterviewSession[];
+  total: number;
+  page: number;
+  size: number;
+  hasNext: boolean;
+}
+
 // ───── UI 상수 (백엔드 데이터 아님, 화면 구성용) ─────
 
 export interface InterviewModeOption {

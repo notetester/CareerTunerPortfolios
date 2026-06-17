@@ -18,7 +18,11 @@ public interface InterviewMapper {
     // ── 세션 ──
     void insertSession(InterviewSession session);
 
-    List<InterviewSession> findSessionsByUserId(@Param("userId") Long userId);
+    List<InterviewSession> findSessionsByUserId(@Param("userId") Long userId,
+                                                @Param("offset") int offset,
+                                                @Param("limit") int limit);
+
+    int countSessionsByUserId(@Param("userId") Long userId);
 
     InterviewSession findSessionByIdAndUserId(@Param("id") Long id, @Param("userId") Long userId);
 
