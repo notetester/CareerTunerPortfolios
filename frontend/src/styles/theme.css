@@ -117,7 +117,7 @@
   --accent: #1f2024;
   --accent-foreground: #f7f8f8;
 
-  --destructive: #f85149;
+  --destructive: #d8635d;
   --destructive-foreground: #ffffff;
 
   --border: rgba(255, 255, 255, 0.08);
@@ -135,8 +135,8 @@
   --accent-2: #7170ff;
   --accent-soft: rgba(113, 112, 255, 0.14);
   --ink-2: #c2c7d0;
-  --ink-3: #8a8f98;
-  --ink-4: #62666d;
+  --ink-3: #9aa0aa;
+  --ink-4: #797e88;
   --shadow-card: inset 0 1px 0 var(--edge);
   --shadow-pop: inset 0 1px 0 var(--edge), 0 30px 80px -40px rgba(0,0,0,0.9);
 
@@ -172,14 +172,14 @@
   /* Admin accent dark */
   --accent-subtle: rgba(113,112,255,0.12);
 
-  /* Status dark */
-  --success: #3fb950;
+  /* Status dark — 채도·명도 낮춰 다크에서 안 튀게 (Linear 톤) */
+  --success: #4f8f66;
   --success-foreground: #052e16;
-  --success-50: rgba(63,185,80,0.16);
-  --warning: #d29922;
-  --warning-50: rgba(210,153,34,0.12);
-  --danger-50: rgba(248,81,73,0.12);
-  --info-50: rgba(113,112,255,0.12);
+  --success-50: rgba(79,143,102,0.12);
+  --warning: #b58a40;
+  --warning-50: rgba(181,138,64,0.12);
+  --danger-50: rgba(214,99,93,0.12);
+  --info-50: rgba(113,112,255,0.10);
 }
 
 @theme inline {

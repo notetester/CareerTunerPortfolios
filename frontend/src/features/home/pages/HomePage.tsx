@@ -11,7 +11,7 @@ import {
   TrendingUp, Users, BarChart3, Zap, Shield, Clock, Star,
   ChevronRight, Play, Building2, Briefcase, BookOpen, PenTool,
   Award, Bot, Mic, Video, Brain, AlertCircle, ThumbsUp, Search,
-  Plus, Calendar, Loader2, Flame, RefreshCw,
+  Plus, Calendar, Loader2, Flame, RefreshCw, Settings2,
 } from "lucide-react";
 import { getDashboardSummary, refreshDashboardSummary } from "@/features/dashboard/api/dashboardApi";
 import type { DashboardActivity, DashboardSummary, DashboardTodo } from "@/features/dashboard/types/dashboardSummary";
@@ -24,69 +24,69 @@ const coreFeaturesData = [
     icon: FileText,
     title: "공고문 AI 분석",
     desc: "텍스트/PDF/이미지 업로드만 하면 AI가 요구 기술, 우대 조건, 직무 역량, 예상 난이도를 자동 추출",
-    color: "from-blue-500 to-cyan-500",
+    color: "",
     badge: "핵심 기능",
   },
   {
     icon: Building2,
     title: "기업 현황 조사",
     desc: "기업 주요 사업, 최근 이슈, 경쟁사, 면접에서 언급하면 좋은 포인트를 AI가 자동 정리",
-    color: "from-purple-500 to-violet-500",
+    color: "",
     badge: "프로",
   },
   {
     icon: Target,
     title: "내 스펙 비교 분석",
     desc: "공고 요구조건과 내 프로필을 1:1 비교해 직무 적합도 점수와 부족 역량을 정확히 진단",
-    color: "from-orange-500 to-rose-500",
+    color: "",
     badge: "핵심 기능",
   },
   {
     icon: BookOpen,
     title: "학습/자격증 추천",
     desc: "부족한 역량에 맞는 학습 방향, 자격증, 강의를 우선순위 기준으로 추천",
-    color: "from-green-500 to-emerald-500",
+    color: "",
     badge: "신규",
   },
   {
     icon: MessageSquare,
     title: "AI 가상 면접 (8가지 모드)",
     desc: "기본/직무/인성/압박/실전/자소서 기반 등 8가지 면접 모드로 실전처럼 연습",
-    color: "from-teal-500 to-cyan-500",
+    color: "",
     badge: "대표 기능",
   },
   {
     icon: Mic,
     title: "음성 면접 & 분석",
     desc: "마이크로 답변하면 음성 인식 텍스트 변환 + 말속도, 침묵 시간, 발화 길이까지 분석",
-    color: "from-pink-500 to-rose-500",
+    color: "",
     badge: "프로",
   },
   {
     icon: PenTool,
     title: "답변 첨삭 & 개선",
     desc: "AI가 논리성, 구체성, 직무 적합성을 평가하고 완성도 높은 개선 답변까지 제시",
-    color: "from-amber-500 to-orange-500",
+    color: "",
     badge: "핵심 기능",
   },
   {
     icon: TrendingUp,
     title: "장기 취업 경향 분석",
     desc: "여러 지원 건을 종합해 반복되는 약점, 지원 패턴, 장기 취업 전략을 AI가 추천",
-    color: "from-indigo-500 to-blue-500",
+    color: "",
     badge: "프로",
   },
 ];
 
 const interviewModes = [
-  { title: "기본 면접", desc: "자기소개, 지원동기, 장단점", icon: "💬", color: "bg-blue-50 border-blue-200" },
-  { title: "직무 면접", desc: "공고 기반 기술/직무 질문", icon: "⚙️", color: "bg-purple-50 border-purple-200" },
-  { title: "인성 면접", desc: "협업, 갈등, 책임감, 태도", icon: "🤝", color: "bg-green-50 border-green-200" },
-  { title: "압박 면접", desc: "꼬리 질문, 반박 질문", icon: "⚡", color: "bg-red-50 border-red-200" },
-  { title: "실전 면접", desc: "시간 제한, 랜덤 질문", icon: "⏱️", color: "bg-orange-50 border-orange-200" },
-  { title: "자소서 기반", desc: "자기소개서 문장 기반 질문", icon: "📄", color: "bg-teal-50 border-teal-200" },
-  { title: "포트폴리오 기반", desc: "프로젝트 설명 중심 질문", icon: "💼", color: "bg-indigo-50 border-indigo-200" },
-  { title: "기업 맞춤", desc: "기업 현황과 공고 기반 질문", icon: "🏢", color: "bg-amber-50 border-amber-200" },
+  { title: "기본 면접", desc: "자기소개, 지원동기, 장단점", icon: MessageSquare, color: "bg-card border-border" },
+  { title: "직무 면접", desc: "공고 기반 기술/직무 질문", icon: Settings2, color: "bg-card border-border" },
+  { title: "인성 면접", desc: "협업, 갈등, 책임감, 태도", icon: Users, color: "bg-card border-border" },
+  { title: "압박 면접", desc: "꼬리 질문, 반박 질문", icon: Zap, color: "bg-card border-border" },
+  { title: "실전 면접", desc: "시간 제한, 랜덤 질문", icon: Clock, color: "bg-card border-border" },
+  { title: "자소서 기반", desc: "자기소개서 문장 기반 질문", icon: FileText, color: "bg-card border-border" },
+  { title: "포트폴리오 기반", desc: "프로젝트 설명 중심 질문", icon: Briefcase, color: "bg-card border-border" },
+  { title: "기업 맞춤", desc: "기업 현황과 공고 기반 질문", icon: Building2, color: "bg-card border-border" },
 ];
 
 const flowSteps = [
@@ -118,7 +118,7 @@ const communityPosts = [
   { cat: "합격 전략", company: "네이버", job: "백엔드", title: "네이버 신입 백엔드 합격 후기 - 준비 과정 총정리", views: 5129, likes: 341, hot: true },
   { cat: "직무별 질문", company: "익명", job: "전산직", title: "공기업 전산직 자주 나오는 기술 질문 100선", views: 8293, likes: 562, hot: false },
   { cat: "취업 후기", company: "삼성SDS", job: "IT 솔루션", title: "삼성SDS IT 솔루션 최종 합격 스펙 & 준비 방법", views: 3412, likes: 187, hot: false },
-  { cat: "자유게시판", company: "익명", job: "프론트엔드", title: "CareerTuner으로 면접 준비하고 최종 합격했습니다 🎉", views: 1923, likes: 89, hot: false },
+  { cat: "자유게시판", company: "익명", job: "프론트엔드", title: "CareerTuner으로 면접 준비하고 최종 합격했습니다", views: 1923, likes: 89, hot: false },
 ];
 
 const testimonials = [
@@ -705,7 +705,7 @@ export function HomePage() {
                   <br />합격 전략 완성
                 </span>
               </h1>
-              <p className="text-base sm:text-lg text-slate-300 leading-relaxed max-w-lg">
+              <p className="text-base sm:text-lg text-slate-200 leading-relaxed max-w-lg">
                 <span className="sm:hidden">
                   공고 분석부터 AI 면접까지 <strong className="text-white">하나의 지원 건 공간</strong>에서 관리하세요.
                 </span>
@@ -739,8 +739,8 @@ export function HomePage() {
                   "카드 등록 불필요",
                   "즉시 분석 시작",
                 ].map((t) => (
-                  <div key={t} className="flex items-center gap-1.5 text-sm text-slate-300">
-                    <CheckCircle2 className="size-4 text-green-400" />
+                  <div key={t} className="flex items-center gap-1.5 text-sm text-slate-200">
+                    <CheckCircle2 className="size-4 text-muted-foreground" />
                     {t}
                   </div>
                 ))}
@@ -763,7 +763,7 @@ export function HomePage() {
                   <div className="flex items-center justify-between">
                     <div>
                       <div className="font-bold text-white text-sm">카카오페이 · 프론트엔드 개발자</div>
-                      <div className="text-xs text-slate-400 mt-0.5">2026-08-01 공고 · React 3년 이상</div>
+                      <div className="text-xs text-slate-200 mt-0.5">2026-08-01 공고 · React 3년 이상</div>
                     </div>
                     <Badge className="bg-green-500/20 text-green-300 border-green-500/30">분석 완료</Badge>
                   </div>
@@ -771,7 +771,7 @@ export function HomePage() {
                   {/* Fit score */}
                   <div className="bg-card/5 rounded-xl p-4 space-y-2">
                     <div className="flex items-center justify-between text-sm">
-                      <span className="text-slate-300">직무 적합도</span>
+                      <span className="text-slate-200">직무 적합도</span>
                       <span className="font-black text-blue-300 text-lg">72점</span>
                     </div>
                     <div className="h-2 bg-card/10 rounded-full overflow-hidden">
@@ -783,7 +783,7 @@ export function HomePage() {
                   <div className="grid grid-cols-2 gap-2">
                     {specComparisonData.slice(0, 4).map((s) => (
                       <div key={s.skill} className="flex items-center justify-between bg-card/5 rounded-lg px-3 py-2">
-                        <span className="text-xs text-slate-300">{s.skill}</span>
+                        <span className="text-xs text-slate-200">{s.skill}</span>
                         <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded ${s.color}`}>
                           {s.grade}
                         </span>
@@ -793,7 +793,7 @@ export function HomePage() {
 
                   {/* Interview question preview */}
                   <div className="bg-card/5 rounded-xl p-3">
-                    <div className="text-xs text-slate-400 mb-2 font-medium">🎯 AI 예상 질문 (직무)</div>
+                    <div className="text-xs text-slate-200 mb-2 font-medium">AI 예상 질문 (직무)</div>
                     <div className="text-xs text-slate-200 leading-relaxed">
                       "React에서 상태 관리를 어떻게 설계하나요? Recoil과 Zustand를 비교 설명해주세요."
                     </div>
@@ -953,7 +953,7 @@ export function HomePage() {
                 </div>
                 <div className="p-4">
                   <div className="text-xs text-slate-400 font-semibold uppercase tracking-wide mb-2">즐겨찾기</div>
-                  <div className="text-xs text-slate-500">⭐ 라인 · 풀스택</div>
+                  <div className="text-xs text-slate-500">라인 · 풀스택</div>
                 </div>
               </div>
 
@@ -994,9 +994,9 @@ export function HomePage() {
                       </div>
                     ))}
                   </div>
-                  <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 text-xs">
-                    <div className="font-semibold text-amber-800 mb-1">⚠ AI 준비 전략</div>
-                    <div className="text-amber-700 space-y-1">
+                  <div className="bg-card border border-border rounded-xl p-3 text-xs">
+                    <div className="font-semibold text-foreground mb-1">AI 준비 전략</div>
+                    <div className="text-muted-foreground space-y-1">
                       <p>1. TypeScript 기본 문법과 React 프로젝트 적용 사례 학습</p>
                       <p>2. AWS S3/CloudFront 배포 경험 토이 프로젝트로 보완</p>
                       <p>3. 포트폴리오에 문제 해결 사례와 수치 결과 추가</p>
@@ -1053,7 +1053,7 @@ export function HomePage() {
       <section className="py-20 bg-card">
         <div className="w-full max-w-[1400px] mx-auto px-6">
           <div className="text-center mb-14 space-y-3">
-            <Badge className="bg-purple-100 text-purple-700 px-4 py-1">AI 가상 면접</Badge>
+            <Badge className="bg-secondary text-muted-foreground border border-border px-4 py-1">AI 가상 면접</Badge>
             <h2 className="text-4xl font-black text-slate-900">8가지 면접 모드로 실전 완벽 대비</h2>
             <p className="text-lg text-slate-500 max-w-2xl mx-auto">
               기본 면접부터 압박 면접, 기업 맞춤 면접까지 — 모든 상황을 연습할 수 있습니다
@@ -1063,7 +1063,7 @@ export function HomePage() {
             {interviewModes.map((m) => (
               <Card key={m.title} className={`border ${m.color} hover:shadow-md transition-shadow cursor-pointer group`}>
                 <CardContent className="p-5 text-center space-y-2">
-                  <div className="text-3xl group-hover:scale-110 transition-transform">{m.icon}</div>
+                  <m.icon className="size-6 text-muted-foreground mx-auto group-hover:scale-110 transition-transform" />
                   <div className="font-bold text-slate-800 text-sm">{m.title}</div>
                   <div className="text-xs text-slate-500">{m.desc}</div>
                 </CardContent>
@@ -1073,31 +1073,31 @@ export function HomePage() {
 
           {/* Answer correction demo */}
           <div className="mt-12 grid md:grid-cols-2 gap-6">
-            <Card className="border border-red-200 bg-red-50">
+            <Card className="border border-border bg-card">
               <CardHeader className="pb-2">
-                <CardTitle className="text-sm flex items-center gap-2 text-red-700">
+                <CardTitle className="text-sm flex items-center gap-2 text-destructive">
                   <AlertCircle className="size-4" /> 사용자 원답변
                 </CardTitle>
               </CardHeader>
               <CardContent>
-                <div className="text-sm text-slate-600 bg-card rounded-lg p-3 border border-red-100">
+                <div className="text-sm text-slate-600 bg-secondary rounded-lg p-3 border border-border">
                   "학교 프로젝트에서 React를 사용해서 게시판을 만들었습니다."
                 </div>
                 <div className="mt-3 space-y-1">
-                  <div className="text-xs text-red-600 flex items-start gap-1.5"><AlertCircle className="size-3 mt-0.5 flex-shrink-0" /> 역할이 불명확</div>
-                  <div className="text-xs text-red-600 flex items-start gap-1.5"><AlertCircle className="size-3 mt-0.5 flex-shrink-0" /> 구체적 기능 설명 없음</div>
-                  <div className="text-xs text-red-600 flex items-start gap-1.5"><AlertCircle className="size-3 mt-0.5 flex-shrink-0" /> 문제 해결 경험 없음</div>
+                  <div className="text-xs text-destructive flex items-start gap-1.5"><AlertCircle className="size-3 mt-0.5 flex-shrink-0" /> 역할이 불명확</div>
+                  <div className="text-xs text-destructive flex items-start gap-1.5"><AlertCircle className="size-3 mt-0.5 flex-shrink-0" /> 구체적 기능 설명 없음</div>
+                  <div className="text-xs text-destructive flex items-start gap-1.5"><AlertCircle className="size-3 mt-0.5 flex-shrink-0" /> 문제 해결 경험 없음</div>
                 </div>
               </CardContent>
             </Card>
-            <Card className="border border-green-200 bg-green-50">
+            <Card className="border border-border bg-card">
               <CardHeader className="pb-2">
-                <CardTitle className="text-sm flex items-center gap-2 text-green-700">
+                <CardTitle className="text-sm flex items-center gap-2 text-green-600">
                   <ThumbsUp className="size-4" /> AI 개선 답변
                 </CardTitle>
               </CardHeader>
               <CardContent>
-                <div className="text-sm text-slate-600 bg-card rounded-lg p-3 border border-green-100 leading-relaxed">
+                <div className="text-sm text-slate-600 bg-secondary rounded-lg p-3 border border-border leading-relaxed">
                   "팀 프로젝트에서 React로 게시판 기능을 구현했습니다. 저는 목록/작성/수정/삭제 화면을 맡았고, REST API 연동과 useState/useEffect 기반 상태 관리를 구현했습니다. 입력값 검증을 추가해 데이터 무결성을 확보한 점이 좋은 평가를 받았습니다."
                 </div>
                 <div className="mt-3 space-y-1">
@@ -1178,7 +1178,7 @@ export function HomePage() {
       <section id="pricing" className="py-20 bg-card">
         <div className="w-full max-w-[1400px] mx-auto px-6">
           <div className="text-center mb-14 space-y-3">
-            <Badge className="bg-green-100 text-green-700 px-4 py-1">요금제</Badge>
+            <Badge className="bg-secondary text-muted-foreground border border-border px-4 py-1">요금제</Badge>
             <h2 className="text-4xl font-black text-slate-900">나에게 맞는 플랜 선택</h2>
             <p className="text-lg text-slate-500">무료 플랜으로 시작하고, 필요할 때 업그레이드하세요</p>
           </div>
@@ -1324,7 +1324,7 @@ export function HomePage() {
         <div className="w-full max-w-[1400px] mx-auto px-6">
           <div className="flex items-end justify-between mb-10">
             <div className="space-y-2">
-              <Badge className="bg-orange-100 text-orange-700 px-4 py-1">커뮤니티</Badge>
+              <Badge className="bg-secondary text-muted-foreground border border-border px-4 py-1">커뮤니티</Badge>
               <h2 className="text-4xl font-black text-slate-900">합격자들의 생생한 후기</h2>
               <p className="text-slate-500">취업 후기, 면접 후기, 직무별 질문 공유 게시판</p>
             </div>
@@ -1351,8 +1351,8 @@ export function HomePage() {
                     <div className="text-xs text-slate-400 mt-0.5">{post.company !== "익명" ? post.company + " · " : ""}{post.job}</div>
                   </div>
                   <div className="flex items-center gap-4 text-xs text-slate-400 flex-shrink-0">
-                    <span>👁 {post.views.toLocaleString()}</span>
-                    <span>❤ {post.likes}</span>
+                    <span>조회 {post.views.toLocaleString()}</span>
+                    <span>좋아요 {post.likes}</span>
                   </div>
                 </div>
               </Link>
@@ -1365,7 +1365,7 @@ export function HomePage() {
       <section className="py-20 bg-card">
         <div className="w-full max-w-[1400px] mx-auto px-6">
           <div className="text-center mb-14 space-y-3">
-            <Badge className="bg-yellow-100 text-yellow-700 px-4 py-1">사용자 후기</Badge>
+            <Badge className="bg-secondary text-muted-foreground border border-border px-4 py-1">사용자 후기</Badge>
             <h2 className="text-4xl font-black text-slate-900">실제 합격자들의 이야기</h2>
           </div>
           <div className="grid md:grid-cols-3 gap-6">
