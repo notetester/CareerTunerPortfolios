@@ -107,7 +107,7 @@ export function AutoSetupPanel({
 
   return (
     <Panel prompt={prompt}>
-      <div className="space-y-4 rounded-xl border border-indigo-100 bg-gradient-to-br from-indigo-50/60 to-white p-5">
+      <div className="space-y-4 rounded-xl border border-indigo-100 bg-muted p-5">
         {/* 대상 지원 건 */}
         <div className="space-y-2">
           <div className="flex items-center gap-1.5 text-xs font-bold text-slate-500">

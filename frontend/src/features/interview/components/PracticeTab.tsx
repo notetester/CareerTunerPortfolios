@@ -188,7 +188,7 @@ export function PracticeTab({
             <Button
               onClick={handleGenerate}
               disabled={generating}
-              className="gap-2 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700"
+              className="gap-2 bg-primary text-primary-foreground"
             >
               {generating ? <Loader2 className="size-4 animate-spin" /> : <Sparkles className="size-4" />}
               {generating ? "질문 생성 중…" : "질문 생성하기"}
@@ -214,7 +214,7 @@ export function PracticeTab({
           </div>
           <Button
             onClick={start}
-            className="gap-2 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700"
+            className="gap-2 bg-primary text-primary-foreground"
           >
             <Play className="size-4" /> 시작하기
           </Button>
@@ -253,7 +253,7 @@ export function PracticeTab({
                 <RotateCcw className="size-4" /> 다시 풀기
               </Button>
               <Button
-                className="gap-1.5 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700"
+                className="gap-1.5 bg-primary text-primary-foreground"
                 onClick={onGoToReport}
               >
                 <FileText className="size-4" /> 면접 리포트 보기
@@ -335,7 +335,7 @@ export function PracticeTab({
               <Button
                 disabled={!draft.trim()}
                 onClick={handleSubmitAll}
-                className="gap-1.5 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700"
+                className="gap-1.5 bg-primary text-primary-foreground"
               >
                 <Play className="size-4" /> 제출하고 채점
               </Button>

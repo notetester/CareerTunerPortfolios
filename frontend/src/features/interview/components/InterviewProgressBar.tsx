@@ -50,7 +50,7 @@ export function InterviewProgressBar({
       </div>
       <div className="h-1.5 w-full overflow-hidden rounded-full bg-slate-100">
         <div
-          className="h-full rounded-full bg-gradient-to-r from-blue-500 to-indigo-500 transition-all duration-150 ease-out"
+          className="h-full rounded-full bg-primary transition-all duration-150 ease-out"
           style={{ width: `${pct}%` }}
         />
       </div>

@@ -331,7 +331,7 @@ export function ExpectedQuestionsTab({
             </p>
             <Button
               size="lg"
-              className="gap-2 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700"
+              className="gap-2 bg-primary text-primary-foreground"
               disabled={generating}
               onClick={handleGenerate}
             >
@@ -365,7 +365,7 @@ export function ExpectedQuestionsTab({
                 <RotateCcw className="size-4" /> 답변 다시 작성
               </Button>
               <Button
-                className="gap-1.5 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700"
+                className="gap-1.5 bg-primary text-primary-foreground"
                 onClick={onGoToPractice}
               >
                 복습 테스트 풀러 가기 <ArrowRight className="size-4" />

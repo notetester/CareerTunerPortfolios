@@ -179,7 +179,7 @@ export function ModeSelectTab({
           >
             {mode.recommended && (
               <div className="absolute -right-2 -top-2">
-                <Badge className="bg-gradient-to-r from-blue-600 to-indigo-600 px-2 py-0.5 text-[9px] text-white">
+                <Badge className="bg-primary px-2 py-0.5 text-[9px] text-primary-foreground">
                   추천
                 </Badge>
               </div>
@@ -212,7 +212,7 @@ export function ModeSelectTab({
         )}
         <Button
           size="lg"
-          className="h-14 w-full gap-2 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700"
+          className="h-14 w-full gap-2 bg-primary text-primary-foreground"
           disabled={!canStart}
           onClick={handleStart}
         >
@@ -257,7 +257,7 @@ export function ModeSelectTab({
                     onClick={() => openReview(s)}
                     className="flex w-full items-center gap-4 rounded-xl border border-slate-200 bg-white p-4 pr-12 text-left transition-colors hover:border-blue-300"
                   >
-                    <div className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-purple-500 to-indigo-500 text-xs font-bold text-white">
+                    <div className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-accent-soft text-xs font-bold text-primary">
                       {caseLabel(s.applicationCaseId).slice(0, 1)}
                     </div>
                     <div className="min-w-0 flex-1">
@@ -362,7 +362,7 @@ export function ModeSelectTab({
                   </div>
                 </div>
                 <Button
-                  className="mt-3 w-full gap-1.5 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700"
+                  className="mt-3 w-full gap-1.5 bg-primary text-primary-foreground"
                   onClick={handleResume}
                 >
                   <Play className="size-4" /> 이 면접 이어서 복원하기
