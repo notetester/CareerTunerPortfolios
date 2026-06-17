@@ -27,6 +27,8 @@ interface ModeSelectTabProps {
   onSessionStarted(session: InterviewSession): void;
   /** 최근 기록에서 "이어서 복원하기"를 누르면 그 세션으로 면접 흐름을 복원한다. */
   onResume(session: InterviewSession): void;
+  /** 현재 진행 중(복원/새) 세션 라벨. 있으면 새 면접 시작 시 전환 경고를 띄운다. */
+  activeSessionLabel?: string | null;
 }
 
 function formatDate(value: string): string {
@@ -43,6 +45,7 @@ export function ModeSelectTab({
   onSelectMode,
   onSessionStarted,
   onResume,
+  activeSessionLabel,
 }: ModeSelectTabProps) {
   const sessions = useInterviewSessions();
   const [starting, setStarting] = useState(false);
@@ -58,6 +61,14 @@ export function ModeSelectTab({
 
   const handleStart = async () => {
     if (selectedCaseId === null || selectedMode === null) return;
+    if (
+      activeSessionLabel &&
+      !window.confirm(
+        `지금 '${activeSessionLabel}' 세션을 보고 있어요.\n새 면접을 시작하면 이 세션에서 나가 새로 시작합니다. 계속할까요?`,
+      )
+    ) {
+      return;
+    }
     setStarting(true);
     setStartError(null);
     try {
@@ -193,6 +204,12 @@ export function ModeSelectTab({
 
       {/* 시작 버튼 */}
       <div className="space-y-2">
+        {activeSessionLabel && (
+          <p className="flex items-center gap-1.5 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-700">
+            <AlertCircle className="size-3.5 shrink-0" />
+            지금 '{activeSessionLabel}' 진행 중이에요. 새로 시작하면 이 세션에서 나가 새 면접이 시작됩니다.
+          </p>
+        )}
         <Button
           size="lg"
           className="h-14 w-full gap-2 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700"

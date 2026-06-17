@@ -73,6 +73,11 @@ export function InterviewPage() {
   const activeCase = effectiveSession
     ? cases.applicationCases.find((c) => c.id === effectiveSession.applicationCaseId)
     : undefined;
+  // 실제 진행 중 세션 라벨(데모/튜토리얼 제외). 새 면접 시작 시 전환 경고용.
+  const activeSessionLabel =
+    !mockActive && effectiveSession
+      ? `${activeCase ? `${activeCase.companyName} · ${activeCase.jobTitle} · ` : ""}${getInterviewModeLabel(effectiveSession.mode)}`
+      : null;
 
   // ?tutorial=1 / ?demo=1 로 진입하면 해당 모드를 자동 시작한다.
   useEffect(() => {
@@ -214,6 +219,7 @@ export function InterviewPage() {
                   void markSessionResumed(session.id);
                   goTab("questions");
                 }}
+                activeSessionLabel={activeSessionLabel}
               />
             )}
           </TabsContent>
