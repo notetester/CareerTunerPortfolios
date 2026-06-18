@@ -1,8 +1,9 @@
 // 데모/목 API 레지스트리. VITE_USE_MOCK=true 일 때 api() 가 네트워크 대신 이 핸들러로 응답한다.
-// 인증 + C 담당(home/dashboard/analysis/fit) 전 흐름을 채운다. 미등록 엔드포인트는 MOCK_UNHANDLED 로
+// 인증 + C(home/dashboard/analysis/fit/plan) + B 지원건 상세 읽기(job-posting/job-analysis/company-analysis)
+// + D 가상 면접 흐름을 채운다. 미등록 엔드포인트는 MOCK_UNHANDLED 로
 // 표시해 api() 가 "데모 미제공" 에러로 처리한다(타 도메인 데이터를 임의로 날조하지 않음).
 //
-// 다른 도메인(A/B/D/E/F) 담당자가 자기 화면을 데모에 포함하려면 아래 handlers 배열에
+// 그 밖의 도메인(A/E/F·결제·커뮤니티·알림·관리자) 담당자가 자기 화면을 데모에 포함하려면 아래 routes 배열에
 //   { method, pattern, handler } 한 줄을 추가하면 된다(공통 인프라, additive).
 import {
   demoTokenResponse,

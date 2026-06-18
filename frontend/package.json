@@ -13,7 +13,8 @@
     "gen:icons": "node scripts/generate-icons.mjs",
     "mobile:sync": "vite build --mode mock && cap sync android",
     "mobile:apk": "cd android && gradlew assembleDebug",
-    "ios:sync": "vite build --mode mock && cap sync ios"
+    "ios:sync": "vite build --mode mock && cap sync ios",
+    "demo:apk": "node scripts/build-demo-apk.mjs"
   },
   "dependencies": {
     "@capacitor/android": "^8.4.0",
