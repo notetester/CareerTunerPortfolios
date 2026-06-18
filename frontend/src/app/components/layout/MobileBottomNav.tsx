@@ -11,7 +11,8 @@ const TABS = [
   { label: "분석", href: "/analysis", icon: TrendingUp },
 ] as const;
 
-/** 모바일 하단 탭 내비게이션(핵심 4개 + 더보기). lg 이상에서는 숨김. */
+/** 모바일 하단 탭 내비게이션(핵심 4개 + 더보기). 데스크톱 상단 내비가 나타나는 xl 이상에서만 숨김
+ *  (lg~xl 가로 모드/태블릿 폭에서 하단바가 사라지고 상단 풀 내비도 없던 사각지대 제거). */
 export function MobileBottomNav() {
   const location = useLocation();
   const navigate = useNavigate();
@@ -27,7 +28,7 @@ export function MobileBottomNav() {
   return (
     <>
       <nav
-        className="fixed inset-x-0 bottom-0 z-50 border-t border-slate-200 bg-card/95 backdrop-blur lg:hidden"
+        className="fixed inset-x-0 bottom-0 z-50 border-t border-slate-200 bg-card/95 backdrop-blur xl:hidden"
         style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
       >
         <div className="mx-auto grid max-w-lg grid-cols-5">
