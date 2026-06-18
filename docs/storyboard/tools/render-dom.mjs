@@ -16,8 +16,9 @@ const col = (c,i)=> COLORS[c] || COLORS[CYCLE[i%CYCLE.length]];
 const esc = (s="")=> String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
 const attr = (s="")=> String(s).replace(/&/g,"&amp;").replace(/"/g,"&quot;");
 const sanId = (s)=> "n_"+String(s).replace(/[^a-zA-Z0-9]/g,"_");
-// web: 전체 높이(mode full). app: 폰 1화면(mode phone, h 고정).
-const VP = { web: { w:1440, h:1024, dw:760, mode:"full" }, app: { w:390, h:844, dw:236, mode:"phone" } };
+// web: callout 이 있는 영역까지만 크롭(실제 브라우저 첫 화면처럼, 설명 없는 하단은 자름).
+// app: 폰 1화면(고정 높이).
+const VP = { web: { w:1440, h:1024, dw:720, mode:"crop" }, app: { w:390, h:844, dw:244, mode:"phone" } };
 
 function mermaid(j){
   const L=["flowchart LR"];
@@ -39,7 +40,7 @@ function screen(srcdocHtml, callouts, target, frameId) {
     return `<div class="co" data-anchors="${anchors}" style="${fb};border-color:${color};box-shadow:0 0 0 2px ${color}22"><span class="cb" style="background:${color}">${c.n??i+1}</span></div>`;
   }).join("");
   return `<div class="scr ${target}" data-mode="${vp.mode}" data-scale="${scale.toFixed(5)}" data-nw="${vp.w}" data-nh="${vp.h}" style="width:${vp.dw}px;height:${dh}px">`
-    + `<iframe class="screen" scrolling="no" title="${frameId}-${target}" style="width:${vp.w}px;height:${vp.h}px;transform:scale(${scale.toFixed(5)})" srcdoc="${attr(srcdocHtml)}"></iframe>`
+    + `<iframe class="screen" scrolling="no" title="${frameId}-${target}" style="width:${vp.w}px;height:${vp.h}px;zoom:${scale.toFixed(5)}" srcdoc="${attr(srcdocHtml)}"></iframe>`
     + cs + `</div>`;
 }
 
@@ -57,12 +58,10 @@ async function frameSection(f){
   <div class="fhead"><span class="fnum">${esc(f.num??f.id)}</span><h2>${esc(f.title)}</h2><span class="gtag gtag-${esc(f.group)}">${esc(GTAG[f.group]||f.group)}</span><code class="route">${esc(f.route||"")}</code><span class="feats">${feats}</span></div>
   ${f.summary?`<p class="summary">${esc(f.summary)}</p>`:""}
   <div class="shots">
-    <div class="webcol"><div class="lab">◻ 웹 · 1440 (전체)</div>${screen(webDom, f.callouts, "web", f.id)}</div>
-    <div class="rightcol">
-      <div class="appblock"><div class="lab">▢ 앱 · 390 (폰 화면)</div>${screen(appDom, f.callouts, "app", f.id)}</div>
-      <div class="capcol"><div class="captitle">흐름 설명</div><ol class="caps">${narration}</ol>${branches}</div>
-    </div>
+    <div class="col"><div class="lab">◻ 웹 · 1440 (callout 영역)</div>${screen(webDom, f.callouts, "web", f.id)}</div>
+    <div class="col"><div class="lab">▢ 앱 · 390 (폰 화면)</div>${screen(appDom, f.callouts, "app", f.id)}</div>
   </div>
+  <div class="capcol"><div class="captitle">흐름 설명</div><ol class="caps">${narration}</ol>${branches}</div>
 </section>`;
 }
 
@@ -77,19 +76,25 @@ const INJECT = `
   var css=document.getElementById('appcss').textContent;
   function norm(s){return (s||'').replace(/\\s+/g,' ').trim();}
   function findUnion(doc, anchors){
-    var u=null, els=doc.body.querySelectorAll('*');
+    var els=doc.body.querySelectorAll('*'), rects=[];
     for(var a=0;a<anchors.length;a++){
       var txt=anchors[a], best=null, bl=1e9;
       for(var i=0;i<els.length;i++){
         var t=norm(els[i].textContent);
-        if(t && t.indexOf(txt)!==-1 && t.length<bl){ var r=els[i].getBoundingClientRect(); if(r.width>1&&r.height>1){best=els[i];bl=t.length;} }
+        if(t && t.indexOf(txt)!==-1 && t.length<bl){ var r=els[i].getBoundingClientRect(); if(r.width>1&&r.height>1&&r.bottom>92){best=els[i];bl=t.length;} } // 상단 헤더 내비(~92px) 매칭 제외 — callout 은 본문 대상
       }
-      if(best){ var b=best.getBoundingClientRect(); u=u?{l:Math.min(u.l,b.left),t:Math.min(u.t,b.top),r:Math.max(u.r,b.right),b:Math.max(u.b,b.bottom)}:{l:b.left,t:b.top,r:b.right,b:b.bottom}; }
+      if(best){ var b=best.getBoundingClientRect(); rects.push({l:b.left,t:b.top,r:b.right,b:b.bottom}); }
+    }
+    if(!rects.length) return null;
+    // 근접 필터: 첫 앵커에서 세로로 700px 넘게 떨어진(오매칭) 사각형은 union 에서 제외 → 박스·크롭 콤팩트
+    var base=rects[0], u={l:base.l,t:base.t,r:base.r,b:base.b};
+    for(var k=1;k<rects.length;k++){ var rc=rects[k];
+      if(Math.abs(rc.t-base.t)<=700){ u.l=Math.min(u.l,rc.l);u.t=Math.min(u.t,rc.t);u.r=Math.max(u.r,rc.r);u.b=Math.max(u.b,rc.b); }
     }
     return u;
   }
   function measure(scr, doc, scale, NW, NH){
-    var cos=scr.querySelectorAll('.co'), pad=8;
+    var cos=scr.querySelectorAll('.co'), pad=8, maxB=0;
     for(var i=0;i<cos.length;i++){
       var co=cos[i], anchors=[]; try{anchors=JSON.parse(co.getAttribute('data-anchors')||'[]');}catch(e){}
       if(!anchors.length) continue;
@@ -99,19 +104,29 @@ const INJECT = `
       co.style.left=(L*scale).toFixed(1)+'px'; co.style.top=(T*scale).toFixed(1)+'px';
       co.style.width=((R-L)*scale).toFixed(1)+'px'; co.style.height=((B-T)*scale).toFixed(1)+'px';
       co.setAttribute('data-anchored','1');
+      if(B>maxB) maxB=B;
     }
+    return maxB;
   }
   function place(f){
     var doc; try{doc=f.contentDocument;}catch(e){return;} if(!doc||!doc.body) return;
     if(doc.head && !doc.getElementById('__appcss__')){var s=doc.createElement('style');s.id='__appcss__';s.textContent=css;doc.head.appendChild(s);}
     var scr=f.parentElement, mode=scr.getAttribute('data-mode'), scale=parseFloat(scr.getAttribute('data-scale')), NW=parseFloat(scr.getAttribute('data-nw'));
     setTimeout(function(){
-      var NH;
-      if(mode==='full'){ // 웹: 전체 높이로 확장(스크롤·잘림 제거)
+      if(mode==='crop'){
+        // 웹: 전체 렌더 후 callout 이 있는 영역까지만 보여주고 그 아래는 자른다(실제 첫 화면처럼)
         var fullH=Math.max(doc.documentElement.scrollHeight, doc.body.scrollHeight, parseFloat(scr.getAttribute('data-nh')));
-        f.style.height=fullH+'px'; scr.style.height=Math.round(fullH*scale)+'px'; NH=fullH;
-      } else { NH=parseFloat(scr.getAttribute('data-nh')); } // 앱: 폰 1화면 고정
-      setTimeout(function(){ measure(scr, doc, scale, NW, NH); }, 120); // 리플로우 후 측정
+        f.style.height=fullH+'px';
+        setTimeout(function(){
+          var maxB=measure(scr, doc, scale, NW, fullH);
+          var cropH = maxB>0 ? Math.min(maxB+50, fullH) : parseFloat(scr.getAttribute('data-nh'));
+          f.style.height=cropH+'px';                       // iframe 도 crop 높이로(zoom 이라 레이아웃 박스도 축소 → 오버플로 없음)
+          scr.style.height=Math.round(cropH*scale)+'px';
+        }, 120);
+      } else { // 앱: 폰 1화면 고정(높이 변경 없음)
+        var NH=parseFloat(scr.getAttribute('data-nh'));
+        setTimeout(function(){ measure(scr, doc, scale, NW, NH); }, 120);
+      }
     }, 320);
   }
   var ifr=document.querySelectorAll('iframe.screen');
@@ -139,20 +154,21 @@ const html = `<!doctype html><html lang="ko"><head><meta charset="utf-8"/><meta 
 .route{font-family:ui-monospace,Consolas,monospace;font-size:12px;color:var(--muted);background:var(--bg);padding:2px 7px;border-radius:6px;border:1px solid var(--line)}
 .feats{display:flex;gap:6px;flex-wrap:wrap}.pill{font-size:11px;color:#4A3FB0;background:#EEEDFE;border-radius:999px;padding:3px 9px}
 .summary{margin:2px 0 14px;color:var(--muted);font-size:14px}
-.shots{display:flex;gap:20px;align-items:flex-start}
-.webcol{flex:0 0 760px}.rightcol{flex:1;min-width:280px;display:flex;flex-direction:column;gap:16px}
+.shots{display:flex;gap:20px;align-items:flex-start;flex-wrap:wrap}
+.col{flex:0 0 auto}
+.capcol{margin-top:18px;padding-top:16px;border-top:1px solid var(--line)}
 .lab{font-size:11px;color:var(--hint);font-family:ui-monospace,monospace;margin-bottom:6px}
 .scr{position:relative;border:1px solid var(--line);border-radius:10px;overflow:hidden;background:#fff}
-.scr iframe{border:0;transform-origin:top left;background:#fff;display:block}
+.scr iframe{border:0;background:#fff;display:block}
 .co{position:absolute;border:2px dashed;border-radius:7px;pointer-events:none}
 .cb{position:absolute;top:-11px;left:-11px;width:21px;height:21px;border-radius:50%;color:#fff;font-size:12px;font-weight:600;display:flex;align-items:center;justify-content:center;box-shadow:0 1px 3px #0003}
 .captitle{font-size:15px;font-weight:600;margin-bottom:10px}
-.caps{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:10px}
+.caps{list-style:none;margin:0;padding:0;display:grid;grid-template-columns:1fr 1fr;gap:10px 28px}
 .caps li{display:flex;gap:10px;align-items:flex-start}
 .nb{flex:0 0 21px;width:21px;height:21px;border-radius:50%;color:#fff;font-size:12px;font-weight:600;display:flex;align-items:center;justify-content:center;margin-top:1px}
 .nt{font-weight:600;font-size:13.5px}.ft{font-size:11px;color:var(--accent);background:#EEEDFE;border-radius:5px;padding:1px 6px}.nd{font-size:12.5px;color:var(--muted)}.go{color:var(--accent);font-weight:500}
 .brs{margin-top:12px;display:flex;gap:7px;flex-wrap:wrap;align-items:center}.brl{font-size:11px;color:var(--hint)}.br{font-size:11px;background:#FAECE7;color:#993C1D;border-radius:6px;padding:3px 8px}
-@media(max-width:980px){.shots{flex-direction:column}.webcol{flex:0 0 auto}}
+@media(max-width:980px){.caps{grid-template-columns:1fr}}
 </style></head><body><div class="wrap">
 <div class="cover"><span class="kic">STORYBOARD · C 영역 (정적 HTML)</span><h1>${esc(m.title||"CareerTuner — C 영역 UI/UX 스토리보드")}</h1><p class="sub">${esc(m.subtitle||"")}</p>
 <div class="meta"><b>영역</b> C · <b>데모</b> ${esc(m.user||"김데모")} · <b>출처</b> ${esc(m.source||"")} · <b>생성</b> ${esc(m.date||"")}</div>
