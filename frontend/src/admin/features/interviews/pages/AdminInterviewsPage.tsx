@@ -75,6 +75,7 @@ export function AdminInterviewsPage() {
   const [total, setTotal] = useState(0);
   const SIZE = 20;
   const [activeTab, setActiveTab] = useState<"sessions" | "failures" | "training">("sessions");
+  const [detailTab, setDetailTab] = useState<"overview" | "qa" | "report" | "media">("overview");
 
   const selected = useMemo(() => rows.find((r) => r.id === selectedId) ?? rows[0] ?? null, [rows, selectedId]);
   const report = useMemo(() => parseReport(detail?.report ?? null), [detail]);
@@ -290,13 +291,24 @@ export function AdminInterviewsPage() {
                 </CardContent>
               </Card>
 
-              <MemoCard
+              <Tabs value={detailTab} onValueChange={(v) => setDetailTab(v as "overview" | "qa" | "report" | "media")} className="space-y-3">
+                <TabsList className="h-auto w-full justify-start border border-slate-200 bg-card p-1">
+                  <TabsTrigger value="overview" className="px-3 py-2">개요</TabsTrigger>
+                  <TabsTrigger value="qa" className="px-3 py-2">질문/답변</TabsTrigger>
+                  <TabsTrigger value="report" className="px-3 py-2">리포트</TabsTrigger>
+                  <TabsTrigger value="media" className="px-3 py-2">음성/영상</TabsTrigger>
+                </TabsList>
+
+                <TabsContent value="overview" className="mt-0">
+                  <MemoCard
                 sessionId={detail.session.id}
                 initial={detail.session.adminMemo}
                 onSaved={() => void loadDetail(detail.session.id)}
               />
+                </TabsContent>
 
-              {report && (
+                <TabsContent value="report" className="mt-0">
+              {report ? (
                 <Card className="border-slate-200 bg-card">
                   <CardHeader>
                     <CardTitle className="text-base font-bold text-slate-900">면접 리포트</CardTitle>
@@ -326,9 +338,15 @@ export function AdminInterviewsPage() {
                     )}
                   </CardContent>
                 </Card>
+              ) : (
+                <Card className="border-slate-200 bg-card">
+                  <CardContent className="p-6 text-center text-sm text-slate-400">생성된 리포트가 없습니다.</CardContent>
+                </Card>
               )}
+                </TabsContent>
 
-              {detail.mediaResults.length > 0 && (
+                <TabsContent value="media" className="mt-0">
+              {detail.mediaResults.length > 0 ? (
                 <Card className="border-slate-200 bg-card">
                   <CardHeader>
                     <CardTitle className="text-base font-bold text-slate-900">음성/영상 면접 분석</CardTitle>
@@ -360,8 +378,14 @@ export function AdminInterviewsPage() {
                     ))}
                   </CardContent>
                 </Card>
+              ) : (
+                <Card className="border-slate-200 bg-card">
+                  <CardContent className="p-6 text-center text-sm text-slate-400">음성/영상 분석이 없습니다.</CardContent>
+                </Card>
               )}
+                </TabsContent>
 
+                <TabsContent value="qa" className="mt-0">
               <section className="space-y-2">
                 <h2 className="text-sm font-bold text-slate-900">질문 / 답변</h2>
                 {detail.questions.length === 0 ? (
@@ -421,6 +445,8 @@ export function AdminInterviewsPage() {
                   })
                 )}
               </section>
+                </TabsContent>
+              </Tabs>
             </>
           )}
         </section>
