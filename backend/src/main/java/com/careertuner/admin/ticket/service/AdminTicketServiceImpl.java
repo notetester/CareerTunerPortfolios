@@ -13,6 +13,8 @@ import com.careertuner.admin.ticket.mapper.AdminTicketMapper;
 import com.careertuner.common.exception.BusinessException;
 import com.careertuner.common.exception.ErrorCode;
 import com.careertuner.common.security.AuthUser;
+import com.careertuner.notification.domain.Notification;
+import com.careertuner.notification.service.NotificationService;
 
 import lombok.RequiredArgsConstructor;
 
@@ -22,6 +24,7 @@ import lombok.RequiredArgsConstructor;
 public class AdminTicketServiceImpl implements AdminTicketService {
 
     private final AdminTicketMapper ticketMapper;
+    private final NotificationService notificationService;
 
     @Override
     public List<AdminTicketListResponse> getTickets(AuthUser authUser, String status) {
@@ -79,6 +82,20 @@ public class AdminTicketServiceImpl implements AdminTicketService {
         ticketMapper.insertMessage(id, "ADMIN", authUser.id(), request.content(), internal);
         if (!internal) {
             ticketMapper.updateStatus(id, "ANSWERED");
+            // 답변 등록 시 문의 작성자에게 알림(내부 메모는 제외).
+            Long ownerId = ticketMapper.findUserIdById(id);
+            if (ownerId != null) {
+                notificationService.notify(Notification.builder()
+                        .userId(ownerId)
+                        .actorId(authUser.id())
+                        .type("TICKET_ANSWERED")
+                        .targetType("SUPPORT_TICKET")
+                        .targetId(id)
+                        .title("문의에 답변이 등록되었습니다")
+                        .message(existing.getSubject())
+                        .link("/support/contact")
+                        .build());
+            }
         }
         return getTicketDetail(authUser, id);
     }

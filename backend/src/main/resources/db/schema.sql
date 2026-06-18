@@ -488,6 +488,8 @@ CREATE TABLE IF NOT EXISTS interview_session (
     total_score         INT NULL,
     report              JSON NULL,
     created_at          DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    deleted_at          DATETIME NULL,                      -- soft delete: 사용자가 기록 삭제한 시각. NULL이면 활성
+    last_resumed_at     DATETIME NULL,                      -- 복원(=복습)한 마지막 시각. 최근 기록 정렬·표시용
     PRIMARY KEY (id),
     KEY idx_interview_session_case (application_case_id),
     CONSTRAINT fk_interview_session_case FOREIGN KEY (application_case_id) REFERENCES application_case (id) ON DELETE CASCADE
@@ -1080,6 +1082,8 @@ CREATE TABLE IF NOT EXISTS faq (
     is_published TINYINT(1)   NOT NULL DEFAULT 1,
     admin_id     BIGINT       NULL,
     view_count   INT          NOT NULL DEFAULT 0,
+    link_url     VARCHAR(200) NULL     COMMENT '관련 페이지 경로',
+    link_label   VARCHAR(100) NULL     COMMENT '이동 버튼 라벨',
     created_at   DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at   DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     PRIMARY KEY (id),
@@ -1150,6 +1154,39 @@ CREATE TABLE IF NOT EXISTS notification (
     KEY idx_notification_target (target_type, target_id),
     CONSTRAINT fk_notification_user  FOREIGN KEY (user_id)  REFERENCES users (id) ON DELETE CASCADE,
     CONSTRAINT fk_notification_actor FOREIGN KEY (actor_id) REFERENCES users (id) ON DELETE SET NULL
+    ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci;
+
+-- 알림 수신 설정(사용자별 1행). categories_json 에 비활성 카테고리만 false 로 저장.
+CREATE TABLE IF NOT EXISTS notification_preference (
+    id                BIGINT      NOT NULL AUTO_INCREMENT,
+    user_id           BIGINT      NOT NULL,
+    push_enabled      TINYINT(1)  NOT NULL DEFAULT 1,
+    email_enabled     TINYINT(1)  NOT NULL DEFAULT 1,
+    categories_json   JSON        NULL,
+    quiet_hours_start VARCHAR(5)  NULL,
+    quiet_hours_end   VARCHAR(5)  NULL,
+    created_at        DATETIME    NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at        DATETIME    NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    PRIMARY KEY (id),
+    UNIQUE KEY uq_notification_preference_user (user_id),
+    CONSTRAINT fk_notification_preference_user FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
+    ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci;
+
+-- 푸시 구독(기기별). kind=WEB 은 web push endpoint+키, FCM/APNS 는 디바이스 토큰.
+CREATE TABLE IF NOT EXISTS push_subscription (
+    id           BIGINT       NOT NULL AUTO_INCREMENT,
+    user_id      BIGINT       NOT NULL,
+    kind         VARCHAR(10)  NOT NULL,
+    token        VARCHAR(700) NOT NULL,
+    p256dh       VARCHAR(255) NULL,
+    auth         VARCHAR(255) NULL,
+    user_agent   VARCHAR(300) NULL,
+    created_at   DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    last_used_at DATETIME     NULL,
+    PRIMARY KEY (id),
+    UNIQUE KEY uq_push_subscription_token (token(255)),
+    KEY idx_push_subscription_user (user_id),
+    CONSTRAINT fk_push_subscription_user FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
     ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci;
 
 

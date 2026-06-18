@@ -14,6 +14,18 @@ export function getBAnalysisFailureLogs(applicationCaseId: number, limit = 5): P
   );
 }
 
+/** 지원 건 분석 종합(공고 분석 + 적합도 분석)을 한 번에 조회한다 — GET /application-cases/{id}/analysis. */
+export interface ApplicationCaseAnalysisOverview {
+  jobAnalysis: unknown | null;
+  fitAnalysis: unknown | null;
+}
+
+export function getApplicationCaseAnalysisOverview(
+  applicationCaseId: number,
+): Promise<ApplicationCaseAnalysisOverview> {
+  return api<ApplicationCaseAnalysisOverview>(`/application-cases/${applicationCaseId}/analysis`, { method: "GET" });
+}
+
 export async function getJobAnalysis(applicationCaseId: number): Promise<JobAnalysis | null> {
   return (await api<JobAnalysis | null>(`/application-cases/${applicationCaseId}/job-analysis`, {
     method: "GET",

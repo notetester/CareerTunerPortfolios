@@ -11,7 +11,7 @@ import {
   TrendingUp, Users, BarChart3, Zap, Shield, Clock, Star,
   ChevronRight, Play, Building2, Briefcase, BookOpen, PenTool,
   Award, Bot, Mic, Video, Brain, AlertCircle, ThumbsUp, Search,
-  Plus, Calendar, Loader2, Flame, RefreshCw,
+  Plus, Calendar, Loader2, Flame, RefreshCw, Settings2,
 } from "lucide-react";
 import { getDashboardSummary, refreshDashboardSummary } from "@/features/dashboard/api/dashboardApi";
 import type { DashboardActivity, DashboardSummary, DashboardTodo } from "@/features/dashboard/types/dashboardSummary";
@@ -24,69 +24,69 @@ const coreFeaturesData = [
     icon: FileText,
     title: "공고문 AI 분석",
     desc: "텍스트/PDF/이미지 업로드만 하면 AI가 요구 기술, 우대 조건, 직무 역량, 예상 난이도를 자동 추출",
-    color: "from-blue-500 to-cyan-500",
+    color: "",
     badge: "핵심 기능",
   },
   {
     icon: Building2,
     title: "기업 현황 조사",
     desc: "기업 주요 사업, 최근 이슈, 경쟁사, 면접에서 언급하면 좋은 포인트를 AI가 자동 정리",
-    color: "from-purple-500 to-violet-500",
+    color: "",
     badge: "프로",
   },
   {
     icon: Target,
     title: "내 스펙 비교 분석",
     desc: "공고 요구조건과 내 프로필을 1:1 비교해 직무 적합도 점수와 부족 역량을 정확히 진단",
-    color: "from-orange-500 to-rose-500",
+    color: "",
     badge: "핵심 기능",
   },
   {
     icon: BookOpen,
     title: "학습/자격증 추천",
     desc: "부족한 역량에 맞는 학습 방향, 자격증, 강의를 우선순위 기준으로 추천",
-    color: "from-green-500 to-emerald-500",
+    color: "",
     badge: "신규",
   },
   {
     icon: MessageSquare,
     title: "AI 가상 면접 (8가지 모드)",
     desc: "기본/직무/인성/압박/실전/자소서 기반 등 8가지 면접 모드로 실전처럼 연습",
-    color: "from-teal-500 to-cyan-500",
+    color: "",
     badge: "대표 기능",
   },
   {
     icon: Mic,
     title: "음성 면접 & 분석",
     desc: "마이크로 답변하면 음성 인식 텍스트 변환 + 말속도, 침묵 시간, 발화 길이까지 분석",
-    color: "from-pink-500 to-rose-500",
+    color: "",
     badge: "프로",
   },
   {
     icon: PenTool,
     title: "답변 첨삭 & 개선",
     desc: "AI가 논리성, 구체성, 직무 적합성을 평가하고 완성도 높은 개선 답변까지 제시",
-    color: "from-amber-500 to-orange-500",
+    color: "",
     badge: "핵심 기능",
   },
   {
     icon: TrendingUp,
     title: "장기 취업 경향 분석",
     desc: "여러 지원 건을 종합해 반복되는 약점, 지원 패턴, 장기 취업 전략을 AI가 추천",
-    color: "from-indigo-500 to-blue-500",
+    color: "",
     badge: "프로",
   },
 ];
 
 const interviewModes = [
-  { title: "기본 면접", desc: "자기소개, 지원동기, 장단점", icon: "💬", color: "bg-blue-50 border-blue-200" },
-  { title: "직무 면접", desc: "공고 기반 기술/직무 질문", icon: "⚙️", color: "bg-purple-50 border-purple-200" },
-  { title: "인성 면접", desc: "협업, 갈등, 책임감, 태도", icon: "🤝", color: "bg-green-50 border-green-200" },
-  { title: "압박 면접", desc: "꼬리 질문, 반박 질문", icon: "⚡", color: "bg-red-50 border-red-200" },
-  { title: "실전 면접", desc: "시간 제한, 랜덤 질문", icon: "⏱️", color: "bg-orange-50 border-orange-200" },
-  { title: "자소서 기반", desc: "자기소개서 문장 기반 질문", icon: "📄", color: "bg-teal-50 border-teal-200" },
-  { title: "포트폴리오 기반", desc: "프로젝트 설명 중심 질문", icon: "💼", color: "bg-indigo-50 border-indigo-200" },
-  { title: "기업 맞춤", desc: "기업 현황과 공고 기반 질문", icon: "🏢", color: "bg-amber-50 border-amber-200" },
+  { title: "기본 면접", desc: "자기소개, 지원동기, 장단점", icon: MessageSquare, color: "bg-card border-border" },
+  { title: "직무 면접", desc: "공고 기반 기술/직무 질문", icon: Settings2, color: "bg-card border-border" },
+  { title: "인성 면접", desc: "협업, 갈등, 책임감, 태도", icon: Users, color: "bg-card border-border" },
+  { title: "압박 면접", desc: "꼬리 질문, 반박 질문", icon: Zap, color: "bg-card border-border" },
+  { title: "실전 면접", desc: "시간 제한, 랜덤 질문", icon: Clock, color: "bg-card border-border" },
+  { title: "자소서 기반", desc: "자기소개서 문장 기반 질문", icon: FileText, color: "bg-card border-border" },
+  { title: "포트폴리오 기반", desc: "프로젝트 설명 중심 질문", icon: Briefcase, color: "bg-card border-border" },
+  { title: "기업 맞춤", desc: "기업 현황과 공고 기반 질문", icon: Building2, color: "bg-card border-border" },
 ];
 
 const flowSteps = [
@@ -105,12 +105,12 @@ const flowSteps = [
 ];
 
 const specComparisonData = [
-  { skill: "React", status: "보유", grade: "강점", color: "text-green-700 bg-green-100" },
-  { skill: "TypeScript", status: "일부 경험", grade: "보완 필요", color: "text-amber-700 bg-amber-100" },
-  { skill: "AWS", status: "없음", grade: "학습 필요", color: "text-red-700 bg-red-100" },
-  { skill: "Git 협업", status: "보유", grade: "강점", color: "text-green-700 bg-green-100" },
-  { skill: "REST API", status: "보유", grade: "강점", color: "text-green-700 bg-green-100" },
-  { skill: "포트폴리오", status: "부족", grade: "보완 필요", color: "text-amber-700 bg-amber-100" },
+  { skill: "React", status: "보유", grade: "강점", color: "text-muted-foreground bg-secondary" },
+  { skill: "TypeScript", status: "일부 경험", grade: "보완 필요", color: "text-muted-foreground bg-secondary" },
+  { skill: "AWS", status: "없음", grade: "학습 필요", color: "text-muted-foreground bg-secondary" },
+  { skill: "Git 협업", status: "보유", grade: "강점", color: "text-muted-foreground bg-secondary" },
+  { skill: "REST API", status: "보유", grade: "강점", color: "text-muted-foreground bg-secondary" },
+  { skill: "포트폴리오", status: "부족", grade: "보완 필요", color: "text-muted-foreground bg-secondary" },
 ];
 
 const communityPosts = [
@@ -118,7 +118,7 @@ const communityPosts = [
   { cat: "합격 전략", company: "네이버", job: "백엔드", title: "네이버 신입 백엔드 합격 후기 - 준비 과정 총정리", views: 5129, likes: 341, hot: true },
   { cat: "직무별 질문", company: "익명", job: "전산직", title: "공기업 전산직 자주 나오는 기술 질문 100선", views: 8293, likes: 562, hot: false },
   { cat: "취업 후기", company: "삼성SDS", job: "IT 솔루션", title: "삼성SDS IT 솔루션 최종 합격 스펙 & 준비 방법", views: 3412, likes: 187, hot: false },
-  { cat: "자유게시판", company: "익명", job: "프론트엔드", title: "CareerTuner으로 면접 준비하고 최종 합격했습니다 🎉", views: 1923, likes: 89, hot: false },
+  { cat: "자유게시판", company: "익명", job: "프론트엔드", title: "CareerTuner으로 면접 준비하고 최종 합격했습니다", views: 1923, likes: 89, hot: false },
 ];
 
 const testimonials = [
@@ -137,9 +137,9 @@ const dashboardStatusLabel: Record<string, string> = {
 
 const dashboardStatusColor: Record<string, string> = {
   DRAFT: "bg-slate-100 text-slate-700",
-  ANALYZING: "bg-amber-100 text-amber-700",
-  READY: "bg-blue-100 text-blue-700",
-  APPLIED: "bg-green-100 text-green-700",
+  ANALYZING: "bg-secondary text-muted-foreground",
+  READY: "bg-secondary text-muted-foreground",
+  APPLIED: "bg-secondary text-muted-foreground",
   CLOSED: "bg-zinc-100 text-zinc-500",
 };
 
@@ -167,9 +167,9 @@ function formatDashboardTime(value: string) {
 }
 
 function dashboardActivityMeta(type: DashboardActivity["type"]) {
-  if (type === "INTERVIEW") return { icon: MessageSquare, color: "text-purple-600", bg: "bg-purple-50" };
-  if (type === "APPLICATION") return { icon: Target, color: "text-orange-600", bg: "bg-orange-50" };
-  return { icon: FileText, color: "text-blue-600", bg: "bg-blue-50" };
+  if (type === "INTERVIEW") return { icon: MessageSquare, color: "text-muted-foreground", bg: "bg-secondary" };
+  if (type === "APPLICATION") return { icon: Target, color: "text-muted-foreground", bg: "bg-secondary" };
+  return { icon: FileText, color: "text-muted-foreground", bg: "bg-secondary" };
 }
 
 interface MemberHomeProps {
@@ -216,28 +216,28 @@ function MemberHome({ summary, loading, error, fallbackName, onRetry, onSummaryR
         label: "활성 지원 건",
         value: `${stats.activeApplications}`,
         sub: `이번 달 ${stats.newApplicationsThisMonth}건 추가`,
-        color: "from-blue-500 to-cyan-500",
+        color: "",
       },
       {
         icon: TrendingUp,
         label: "평균 적합도",
         value: `${stats.averageFitScore}점`,
         sub: `${highFitCount}건은 우선 지원 후보`,
-        color: "from-green-500 to-emerald-500",
+        color: "",
       },
       {
         icon: MessageSquare,
         label: "면접 연습",
         value: `${stats.totalInterviews}회`,
         sub: `이번 주 ${stats.interviewsThisWeek}회 진행`,
-        color: "from-purple-500 to-violet-500",
+        color: "",
       },
       {
         icon: Award,
         label: "보유 크레딧",
         value: `${stats.credit}`,
         sub: `이번 달 ${stats.creditsUsedThisMonth}크레딧 사용`,
-        color: "from-amber-500 to-orange-500",
+        color: "",
       },
     ];
   }, [highFitCount, stats]);
@@ -246,7 +246,7 @@ function MemberHome({ summary, loading, error, fallbackName, onRetry, onSummaryR
     return (
       <div className="min-h-screen bg-slate-50">
         <div className="max-w-[1400px] mx-auto px-4 sm:px-6 py-8">
-          <Card className="border border-slate-200 bg-white">
+          <Card className="border border-slate-200 bg-card">
             <CardContent className="flex items-center gap-3 p-6 text-sm text-slate-600">
               <Loader2 className="size-5 animate-spin text-blue-600" />
               회원 홈 데이터를 불러오는 중입니다.
@@ -282,11 +282,11 @@ function MemberHome({ summary, loading, error, fallbackName, onRetry, onSummaryR
       <div className="max-w-[1400px] mx-auto px-4 sm:px-6 py-6 lg:py-8 space-y-6">
         <InterviewHero />
         <section className="grid lg:grid-cols-[1.5fr_0.9fr] gap-5">
-          <div className="rounded-2xl border border-slate-200 bg-white p-5 sm:p-7 shadow-sm">
+          <div className="rounded-2xl border border-slate-200 bg-card p-5 sm:p-7 shadow-sm">
             <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-5">
               <div className="min-w-0">
                 <div className="flex flex-wrap items-center gap-2 text-sm text-slate-500">
-                  <Badge className="bg-blue-100 text-blue-700 hover:bg-blue-100">회원 대시보드</Badge>
+                  <Badge className="bg-secondary text-muted-foreground hover:bg-secondary">회원 대시보드</Badge>
                   <span>{pendingTodos > 0 ? `오늘 확인할 항목 ${pendingTodos}건` : "오늘 일정 정리 완료"}</span>
                 </div>
                 <h1 className="mt-3 text-2xl sm:text-3xl font-black text-slate-950 tracking-normal">
@@ -306,7 +306,7 @@ function MemberHome({ summary, loading, error, fallbackName, onRetry, onSummaryR
                         onClick={handleRefreshSummary}
                         disabled={refreshing}
                         title="AI를 다시 실행해 최신 데이터로 요약을 재생성합니다. 크레딧 1이 차감됩니다."
-                        className="flex shrink-0 items-center gap-1 rounded-md border border-blue-200 bg-white/70 px-2 py-1 text-xs font-semibold text-blue-700 transition-colors hover:bg-white disabled:opacity-60"
+                        className="flex shrink-0 items-center gap-1 rounded-md border border-blue-200 bg-card/70 px-2 py-1 text-xs font-semibold text-blue-700 transition-colors hover:bg-card disabled:opacity-60"
                       >
                         <RefreshCw className={`size-3 ${refreshing ? "animate-spin" : ""}`} />
                         {refreshing ? "재생성 중" : "재생성 (크레딧 1)"}
@@ -329,14 +329,14 @@ function MemberHome({ summary, loading, error, fallbackName, onRetry, onSummaryR
             </div>
 
             <div className="mt-6 grid sm:grid-cols-[220px_1fr] gap-5">
-              <div className="rounded-xl bg-slate-950 text-white p-5">
-                <div className="text-sm text-slate-300">준비도</div>
+              <div className="rounded-xl bg-card border border-border shadow-[var(--shadow-card)] p-5">
+                <div className="text-sm text-muted-foreground">준비도</div>
                 <div className="mt-2 flex items-end gap-2">
-                  <span className="text-5xl font-black">{summary?.focus.readiness ?? 0}</span>
-                  <span className="pb-2 text-slate-300">%</span>
+                  <span className="text-5xl font-black text-primary">{summary?.focus.readiness ?? 0}</span>
+                  <span className="pb-2 text-muted-foreground">%</span>
                 </div>
-                <Progress value={summary?.focus.readiness ?? 0} className="mt-4 h-2 bg-slate-800" />
-                <div className="mt-4 text-xs text-slate-300 leading-5">
+                <Progress value={summary?.focus.readiness ?? 0} className="mt-4 h-2 bg-secondary" />
+                <div className="mt-4 text-xs text-muted-foreground leading-5">
                   {summary?.focus.headline ?? "분석 가능한 지원 건이 필요합니다."}
                 </div>
               </div>
@@ -392,7 +392,7 @@ function MemberHome({ summary, loading, error, fallbackName, onRetry, onSummaryR
                       <span
                         key={step.key}
                         className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-medium ${
-                          step.done ? "bg-green-100 text-green-700" : "bg-white text-slate-400 border border-slate-200"
+                          step.done ? "bg-secondary text-muted-foreground" : "bg-card text-slate-400 border border-slate-200"
                         }`}
                       >
                         {step.done ? "✓" : "○"} {step.label}
@@ -404,10 +404,10 @@ function MemberHome({ summary, loading, error, fallbackName, onRetry, onSummaryR
             })()}
           </div>
 
-          <Card className="border border-slate-200 bg-white shadow-sm">
+          <Card className="border border-slate-200 bg-card shadow-sm">
             <CardHeader className="pb-3">
               <CardTitle className="text-base flex items-center gap-2">
-                <Flame className="size-4 text-orange-500" />
+                <Flame className="size-4 text-muted-foreground" />
                 오늘의 우선순위
               </CardTitle>
             </CardHeader>
@@ -419,7 +419,7 @@ function MemberHome({ summary, loading, error, fallbackName, onRetry, onSummaryR
 
         <section className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
           {statCards.map((card) => (
-            <Card key={card.label} className="border border-slate-200 bg-white shadow-sm">
+            <Card key={card.label} className="border border-slate-200 bg-card shadow-sm">
               <CardContent className="p-4 sm:p-5">
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
@@ -427,8 +427,8 @@ function MemberHome({ summary, loading, error, fallbackName, onRetry, onSummaryR
                     <div className="mt-1 text-2xl sm:text-3xl font-black text-slate-950 break-words">{card.value}</div>
                     <div className="mt-1 text-xs text-slate-400 leading-5">{card.sub}</div>
                   </div>
-                  <div className={`size-10 rounded-xl bg-gradient-to-br ${card.color} flex items-center justify-center shrink-0`}>
-                    <card.icon className="size-5 text-white" />
+                  <div className="size-10 rounded-xl bg-secondary flex items-center justify-center shrink-0">
+                    <card.icon className="size-5 text-muted-foreground" />
                   </div>
                 </div>
               </CardContent>
@@ -438,7 +438,7 @@ function MemberHome({ summary, loading, error, fallbackName, onRetry, onSummaryR
 
         <section className="grid lg:grid-cols-[1.45fr_0.85fr] gap-5">
           <div className="space-y-5">
-            <Card className="border border-slate-200 bg-white shadow-sm">
+            <Card className="border border-slate-200 bg-card shadow-sm">
               <CardHeader className="pb-3">
                 <div className="flex items-center justify-between gap-3">
                   <CardTitle className="text-lg">최근 지원 건</CardTitle>
@@ -453,14 +453,14 @@ function MemberHome({ summary, loading, error, fallbackName, onRetry, onSummaryR
                     <div className="rounded-xl border border-slate-200 p-4 hover:border-blue-300 hover:shadow-sm transition-all">
                       <div className="flex flex-col md:flex-row md:items-center gap-4">
                         <div className="flex items-center gap-3 min-w-0 flex-1">
-                          <div className="size-11 rounded-xl bg-gradient-to-br from-blue-600 to-indigo-600 flex items-center justify-center text-white font-bold shrink-0">
+                          <div className="size-11 rounded-xl bg-accent-soft flex items-center justify-center text-primary font-bold shrink-0">
                             {application.companyName[0]}
                           </div>
                           <div className="min-w-0">
                             <div className="flex flex-wrap items-center gap-2">
                               <span className="font-bold text-slate-900">{application.companyName}</span>
                               <span className="text-sm text-slate-500">{application.jobTitle}</span>
-                              {application.favorite && <Badge className="bg-amber-100 text-amber-700 hover:bg-amber-100">관심</Badge>}
+                              {application.favorite && <Badge className="bg-secondary text-muted-foreground border border-border">관심</Badge>}
                             </div>
                             <div className="mt-2 flex flex-wrap items-center gap-2">
                               <Badge className={`text-xs ${dashboardStatusColor[application.status] ?? "bg-slate-100 text-slate-700"}`}>
@@ -495,7 +495,7 @@ function MemberHome({ summary, loading, error, fallbackName, onRetry, onSummaryR
               </CardContent>
             </Card>
 
-            <Card className="border border-slate-200 bg-white shadow-sm">
+            <Card className="border border-slate-200 bg-card shadow-sm">
               <CardHeader className="pb-3">
                 <CardTitle className="text-lg">최근 활동</CardTitle>
               </CardHeader>
@@ -523,20 +523,20 @@ function MemberHome({ summary, loading, error, fallbackName, onRetry, onSummaryR
           </div>
 
           <div className="space-y-5">
-            <Card className="border border-amber-200 bg-amber-50 shadow-sm">
+            <Card className="border border-border bg-card shadow-sm">
               <CardHeader className="pb-3">
-                <CardTitle className="text-base flex items-center gap-2 text-amber-800">
-                  <Award className="size-4 text-amber-600" />
+                <CardTitle className="text-base flex items-center gap-2 text-foreground">
+                  <Award className="size-4 text-primary" />
                   크레딧 현황
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
-                <div className="rounded-xl bg-white/70 p-4 text-center">
-                  <div className="text-4xl font-black text-amber-700">{summary?.stats.credit ?? 0}</div>
-                  <div className="mt-1 text-sm text-amber-700">/ {summary?.stats.creditLimit ?? 0} 크레딧 잔여</div>
+                <div className="rounded-xl bg-secondary p-4 text-center">
+                  <div className="text-4xl font-black text-foreground">{summary?.stats.credit ?? 0}</div>
+                  <div className="mt-1 text-sm text-muted-foreground">/ {summary?.stats.creditLimit ?? 0} 크레딧 잔여</div>
                   <Progress value={creditPercent} className="mt-3 h-2" />
                 </div>
-                <div className="space-y-2 text-xs text-amber-800">
+                <div className="space-y-2 text-xs text-muted-foreground">
                   <div className="flex justify-between gap-3">
                     <span>현재 플랜</span>
                     <span className="font-bold">{summary?.user.plan ?? "Free"}</span>
@@ -546,13 +546,13 @@ function MemberHome({ summary, loading, error, fallbackName, onRetry, onSummaryR
                     <span className="font-bold">{summary?.stats.creditsUsedThisMonth ?? 0} 크레딧</span>
                   </div>
                 </div>
-                <Button size="sm" variant="outline" className="w-full border-amber-400 text-amber-700 hover:bg-amber-100" onClick={() => navigate("/pricing")}>
+                <Button size="sm" variant="outline" className="w-full border-border text-foreground" onClick={() => navigate("/pricing")}>
                   크레딧 충전하기
                 </Button>
               </CardContent>
             </Card>
 
-            <Card className="border border-slate-200 bg-white shadow-sm">
+            <Card className="border border-slate-200 bg-card shadow-sm">
               <CardHeader className="pb-3">
                 <CardTitle className="text-base">자주 부족한 역량</CardTitle>
               </CardHeader>
@@ -572,16 +572,16 @@ function MemberHome({ summary, loading, error, fallbackName, onRetry, onSummaryR
               </CardContent>
             </Card>
 
-            <Card className="border border-slate-200 bg-white shadow-sm">
+            <Card className="border border-slate-200 bg-card shadow-sm">
               <CardHeader className="pb-3">
                 <CardTitle className="text-base">빠른 이동</CardTitle>
               </CardHeader>
               <CardContent className="grid grid-cols-2 gap-2">
                 {[
-                  { label: "지원 건", icon: Briefcase, href: "/applications", color: "text-blue-600" },
-                  { label: "면접", icon: MessageSquare, href: "/interview", color: "text-purple-600" },
-                  { label: "분석", icon: BarChart3, href: "/analysis", color: "text-green-600" },
-                  { label: "커뮤니티", icon: BookOpen, href: "/community", color: "text-orange-600" },
+                  { label: "지원 건", icon: Briefcase, href: "/applications", color: "text-muted-foreground" },
+                  { label: "면접", icon: MessageSquare, href: "/interview", color: "text-muted-foreground" },
+                  { label: "분석", icon: BarChart3, href: "/analysis", color: "text-muted-foreground" },
+                  { label: "커뮤니티", icon: BookOpen, href: "/community", color: "text-muted-foreground" },
                 ].map((menu) => (
                   <Link key={menu.label} to={menu.href}>
                     <div className="flex min-h-20 flex-col items-center justify-center gap-2 rounded-xl bg-slate-50 p-3 hover:bg-blue-50 transition-colors">
@@ -596,7 +596,7 @@ function MemberHome({ summary, loading, error, fallbackName, onRetry, onSummaryR
         </section>
 
         {loading && summary && (
-          <div className="fixed bottom-5 right-5 rounded-full border border-slate-200 bg-white px-4 py-2 text-sm text-slate-600 shadow-lg">
+          <div className="fixed bottom-5 right-5 rounded-full border border-slate-200 bg-card px-4 py-2 text-sm text-slate-600 shadow-lg">
             <Loader2 className="mr-2 inline size-4 animate-spin text-blue-600" />
             최신 데이터 동기화 중
           </div>
@@ -648,7 +648,7 @@ export function HomePage() {
     return (
       <div className="min-h-screen bg-slate-50">
         <div className="max-w-[1400px] mx-auto px-4 sm:px-6 py-8">
-          <Card className="border border-slate-200 bg-white">
+          <Card className="border border-slate-200 bg-card">
             <CardContent className="flex items-center gap-3 p-6 text-sm text-slate-600">
               <Loader2 className="size-5 animate-spin text-blue-600" />
               세션을 확인하는 중입니다.
@@ -676,9 +676,9 @@ export function HomePage() {
   }
 
   return (
-    <div className="bg-white">
+    <div className="bg-card">
       {/* ─── Hero ─── */}
-      <section className="relative overflow-hidden bg-[linear-gradient(135deg,#0f172a_0%,#12343b_48%,#4338ca_100%)] text-white">
+      <section className="relative overflow-hidden bg-[#0b0c0e] text-white">
         <div className="relative w-full max-w-[1400px] mx-auto px-4 sm:px-6 py-14 lg:py-24">
           <div className="grid lg:grid-cols-2 gap-12 items-center">
             {/* Left text */}
@@ -692,20 +692,20 @@ export function HomePage() {
               <h1 className="text-4xl sm:text-5xl xl:text-6xl font-black leading-tight tracking-tight">
                 <span className="sm:hidden">
                   채용공고와<br />내 스펙을<br />
-                  <span className="bg-gradient-to-r from-blue-400 to-cyan-300 bg-clip-text text-transparent">
+                  <span className="text-white">
                     AI가 정밀 분석
                   </span>
                   <br />합격 전략 완성
                 </span>
                 <span className="hidden sm:inline">
                   채용공고와 내 스펙을<br />
-                  <span className="bg-gradient-to-r from-blue-400 to-cyan-300 bg-clip-text text-transparent">
+                  <span className="text-white">
                     AI가 정밀 분석
                   </span>
                   <br />합격 전략 완성
                 </span>
               </h1>
-              <p className="text-base sm:text-lg text-slate-300 leading-relaxed max-w-lg">
+              <p className="text-base sm:text-lg text-slate-200 leading-relaxed max-w-lg">
                 <span className="sm:hidden">
                   공고 분석부터 AI 면접까지 <strong className="text-white">하나의 지원 건 공간</strong>에서 관리하세요.
                 </span>
@@ -717,7 +717,7 @@ export function HomePage() {
               <div className="flex flex-col sm:flex-row gap-3">
                 <Button
                   size="lg"
-                  className="w-full sm:w-auto justify-center bg-gradient-to-r from-blue-500 to-indigo-500 hover:from-blue-400 hover:to-indigo-400 text-white shadow-lg shadow-blue-500/30 text-base px-8"
+                  className="w-full sm:w-auto justify-center bg-primary text-white text-base px-8"
                   onClick={() => navigate("/login")}
                 >
                   무료로 시작하기
@@ -726,7 +726,7 @@ export function HomePage() {
                 <Button
                   size="lg"
                   variant="outline"
-                  className="w-full sm:w-auto justify-center border-white/20 text-white bg-white/10 hover:bg-white/20 text-base px-8"
+                  className="w-full sm:w-auto justify-center border-white/20 text-white bg-card/10 hover:bg-card/20 text-base px-8"
                   onClick={() => navigate("/applications/demo")}
                 >
                   <Play className="mr-2 size-4" />
@@ -739,8 +739,8 @@ export function HomePage() {
                   "카드 등록 불필요",
                   "즉시 분석 시작",
                 ].map((t) => (
-                  <div key={t} className="flex items-center gap-1.5 text-sm text-slate-300">
-                    <CheckCircle2 className="size-4 text-green-400" />
+                  <div key={t} className="flex items-center gap-1.5 text-sm text-slate-200">
+                    <CheckCircle2 className="size-4 text-muted-foreground" />
                     {t}
                   </div>
                 ))}
@@ -749,10 +749,10 @@ export function HomePage() {
 
             {/* Right mock UI */}
             <div className="relative hidden lg:block">
-              <div className="absolute -inset-4 bg-gradient-to-r from-blue-500/20 to-indigo-500/20 rounded-3xl blur-2xl" />
-              <div className="relative bg-white/10 backdrop-blur-sm border border-white/20 rounded-2xl overflow-hidden shadow-2xl">
+              <div className="absolute -inset-4 bg-transparent rounded-3xl blur-2xl" />
+              <div className="relative bg-card/10 backdrop-blur-sm border border-white/20 rounded-2xl overflow-hidden shadow-2xl">
                 {/* Mock tabs */}
-                <div className="flex items-center gap-1 px-4 py-3 bg-white/5 border-b border-white/10 overflow-x-auto">
+                <div className="flex items-center gap-1 px-4 py-3 bg-card/5 border-b border-white/10 overflow-x-auto">
                   {["공고분석", "기업분석", "스펙비교", "예상질문", "가상면접"].map((t, i) => (
                     <div key={t} className={`px-3 py-1 rounded text-xs font-medium whitespace-nowrap ${i === 2 ? "bg-blue-500 text-white" : "text-slate-300"}`}>
                       {t}
@@ -763,27 +763,27 @@ export function HomePage() {
                   <div className="flex items-center justify-between">
                     <div>
                       <div className="font-bold text-white text-sm">카카오페이 · 프론트엔드 개발자</div>
-                      <div className="text-xs text-slate-400 mt-0.5">2026-08-01 공고 · React 3년 이상</div>
+                      <div className="text-xs text-slate-200 mt-0.5">2026-08-01 공고 · React 3년 이상</div>
                     </div>
-                    <Badge className="bg-green-500/20 text-green-300 border-green-500/30">분석 완료</Badge>
+                    <Badge className="bg-secondary text-muted-foreground">분석 완료</Badge>
                   </div>
 
                   {/* Fit score */}
-                  <div className="bg-white/5 rounded-xl p-4 space-y-2">
+                  <div className="bg-card/5 rounded-xl p-4 space-y-2">
                     <div className="flex items-center justify-between text-sm">
-                      <span className="text-slate-300">직무 적합도</span>
+                      <span className="text-slate-200">직무 적합도</span>
                       <span className="font-black text-blue-300 text-lg">72점</span>
                     </div>
-                    <div className="h-2 bg-white/10 rounded-full overflow-hidden">
-                      <div className="h-full w-[72%] bg-gradient-to-r from-blue-500 to-cyan-500 rounded-full" />
+                    <div className="h-2 bg-card/10 rounded-full overflow-hidden">
+                      <div className="h-full w-[72%] bg-primary rounded-full" />
                     </div>
                   </div>
 
                   {/* Skills grid */}
                   <div className="grid grid-cols-2 gap-2">
                     {specComparisonData.slice(0, 4).map((s) => (
-                      <div key={s.skill} className="flex items-center justify-between bg-white/5 rounded-lg px-3 py-2">
-                        <span className="text-xs text-slate-300">{s.skill}</span>
+                      <div key={s.skill} className="flex items-center justify-between bg-card/5 rounded-lg px-3 py-2">
+                        <span className="text-xs text-slate-200">{s.skill}</span>
                         <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded ${s.color}`}>
                           {s.grade}
                         </span>
@@ -792,14 +792,14 @@ export function HomePage() {
                   </div>
 
                   {/* Interview question preview */}
-                  <div className="bg-white/5 rounded-xl p-3">
-                    <div className="text-xs text-slate-400 mb-2 font-medium">🎯 AI 예상 질문 (직무)</div>
+                  <div className="bg-card/5 rounded-xl p-3">
+                    <div className="text-xs text-slate-200 mb-2 font-medium">AI 예상 질문 (직무)</div>
                     <div className="text-xs text-slate-200 leading-relaxed">
                       "React에서 상태 관리를 어떻게 설계하나요? Recoil과 Zustand를 비교 설명해주세요."
                     </div>
                   </div>
 
-                  <Button className="w-full bg-gradient-to-r from-blue-500 to-indigo-500 text-sm">
+                  <Button className="w-full bg-primary text-sm">
                     <MessageSquare className="mr-2 size-4" />
                     AI 가상 면접 시작하기
                   </Button>
@@ -811,14 +811,14 @@ export function HomePage() {
       </section>
 
       {/* ─── 마누스형 면접 진입 검색창 ─── */}
-      <section className="bg-white">
+      <section className="bg-card">
         <div className="mx-auto w-full max-w-[1400px] px-4 sm:px-6 pt-8">
           <InterviewHero />
         </div>
       </section>
 
       {/* ─── Stats bar ─── */}
-      <section className="bg-white border-b border-slate-100">
+      <section className="bg-card border-b border-slate-100">
         <div className="w-full max-w-[1400px] mx-auto px-4 sm:px-6 py-8">
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-5 lg:gap-12">
             {[
@@ -828,11 +828,11 @@ export function HomePage() {
               { icon: TrendingUp, value: "92%", label: "면접 준비도 향상", sub: "3주 사용 후 기준" },
             ].map((s) => (
               <div key={s.label} className="flex items-center gap-4 min-w-0">
-                <div className="size-12 rounded-xl bg-gradient-to-br from-blue-100 to-indigo-100 flex items-center justify-center flex-shrink-0">
-                  <s.icon className="size-6 text-blue-600" />
+                <div className="size-12 rounded-xl bg-accent-soft flex items-center justify-center flex-shrink-0">
+                  <s.icon className="size-6 text-primary" />
                 </div>
                 <div className="min-w-0">
-                  <div className="text-xl sm:text-2xl font-black bg-gradient-to-r from-blue-600 to-indigo-600 bg-clip-text text-transparent">
+                  <div className="text-xl sm:text-2xl font-black text-foreground">
                     {s.value}
                   </div>
                   <div className="font-semibold text-slate-800 text-sm">{s.label}</div>
@@ -848,7 +848,7 @@ export function HomePage() {
       <section id="features" className="py-20 bg-slate-50">
         <div className="w-full max-w-[1400px] mx-auto px-6">
           <div className="text-center mb-14 space-y-3">
-            <Badge className="bg-blue-100 text-blue-700 px-4 py-1">핵심 기능</Badge>
+            <Badge className="bg-secondary text-muted-foreground px-4 py-1">핵심 기능</Badge>
             <h2 className="text-4xl font-black text-slate-900">AI가 제공하는 8가지 취업 솔루션</h2>
             <p className="text-lg text-slate-500 max-w-2xl mx-auto">
               공고 분석부터 장기 취업 전략까지, 취업 준비의 전 과정을 AI가 지원합니다
@@ -857,11 +857,11 @@ export function HomePage() {
 
           <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-5">
             {coreFeaturesData.map((f, i) => (
-              <Card key={i} className="border border-slate-200 hover:border-blue-300 hover:shadow-lg transition-all duration-300 bg-white group">
+              <Card key={i} className="border border-slate-200 hover:border-blue-300 hover:shadow-lg transition-all duration-300 bg-card group">
                 <CardHeader className="pb-3">
                   <div className="flex items-start justify-between mb-3">
-                    <div className={`size-11 rounded-xl bg-gradient-to-br ${f.color} flex items-center justify-center shadow-md group-hover:scale-110 transition-transform`}>
-                      <f.icon className="size-5 text-white" />
+                    <div className="size-11 rounded-xl bg-accent-soft flex items-center justify-center shadow-md group-hover:scale-110 transition-transform">
+                      <f.icon className="size-5 text-primary" />
                     </div>
                     <Badge className="text-xs bg-slate-100 text-slate-600 border-slate-200">{f.badge}</Badge>
                   </div>
@@ -877,10 +877,10 @@ export function HomePage() {
       </section>
 
       {/* ─── How It Works (Full 12-step flow) ─── */}
-      <section id="how-it-works" className="py-20 bg-white">
+      <section id="how-it-works" className="py-20 bg-card">
         <div className="w-full max-w-[1400px] mx-auto px-6">
           <div className="text-center mb-14 space-y-3">
-            <Badge className="bg-indigo-100 text-indigo-700 px-4 py-1">사용 방법</Badge>
+            <Badge className="bg-secondary text-muted-foreground px-4 py-1">사용 방법</Badge>
             <h2 className="text-4xl font-black text-slate-900">12단계 AI 취업 준비 프로세스</h2>
             <p className="text-lg text-slate-500 max-w-2xl mx-auto">
               회원가입부터 장기 전략 수립까지, 취업 준비의 모든 단계를 하나의 흐름으로
@@ -893,7 +893,7 @@ export function HomePage() {
                 key={i}
                 className="relative flex gap-3 p-4 rounded-xl bg-slate-50 border border-slate-200 hover:border-blue-300 hover:bg-blue-50 transition-all group"
               >
-                <div className="size-9 rounded-lg bg-gradient-to-br from-blue-600 to-indigo-600 text-white text-xs font-black flex items-center justify-center flex-shrink-0 group-hover:scale-110 transition-transform">
+                <div className="size-9 rounded-lg bg-accent-soft text-primary text-xs font-black flex items-center justify-center flex-shrink-0 group-hover:scale-110 transition-transform">
                   {s.step}
                 </div>
                 <div>
@@ -910,7 +910,7 @@ export function HomePage() {
           <div className="mt-10 text-center">
             <Button
               size="lg"
-              className="bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-base px-10"
+              className="bg-primary text-base px-10"
               onClick={() => window.location.href = "/login"}
             >
               지금 바로 시작하기
@@ -921,10 +921,10 @@ export function HomePage() {
       </section>
 
       {/* ─── Application Detail Demo (3-column layout preview) ─── */}
-      <section className="py-20 bg-gradient-to-br from-slate-50 to-blue-50">
+      <section className="py-20 bg-muted">
         <div className="w-full max-w-[1400px] mx-auto px-6">
           <div className="text-center mb-14 space-y-3">
-            <Badge className="bg-teal-100 text-teal-700 px-4 py-1">지원 건 관리</Badge>
+            <Badge className="bg-secondary text-muted-foreground px-4 py-1">지원 건 관리</Badge>
             <h2 className="text-4xl font-black text-slate-900">지원 건마다 독립된 AI 공간</h2>
             <p className="text-lg text-slate-500 max-w-2xl mx-auto">
               ChatGPT 세션처럼 기업별·공고별로 분리 관리. 탭 8개에 모든 준비 정보가 담깁니다.
@@ -932,10 +932,10 @@ export function HomePage() {
           </div>
 
           {/* Mock 3-column layout */}
-          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 overflow-hidden">
+          <div className="bg-card rounded-2xl shadow-2xl border border-slate-200 overflow-hidden">
             <div className="flex h-[480px]">
               {/* Left sidebar */}
-              <div className="w-56 bg-slate-900 text-white flex-shrink-0 flex flex-col">
+              <div className="w-56 bg-secondary text-foreground flex-shrink-0 flex flex-col">
                 <div className="p-4 border-b border-slate-700">
                   <div className="text-xs text-slate-400 font-semibold uppercase tracking-wide mb-3">지원 건 목록</div>
                   {[
@@ -944,7 +944,7 @@ export function HomePage() {
                     { co: "삼성SDS", job: "IT 솔루션", active: false, score: 65 },
                     { co: "라인", job: "풀스택 개발", active: false, score: 44 },
                   ].map((item) => (
-                    <div key={item.co} className={`mb-2 p-2.5 rounded-lg cursor-pointer transition-colors ${item.active ? "bg-blue-600" : "hover:bg-slate-800"}`}>
+                    <div key={item.co} className={`mb-2 p-2.5 rounded-lg cursor-pointer transition-colors ${item.active ? "bg-primary text-primary-foreground" : "hover:bg-accent"}`}>
                       <div className="text-xs font-semibold">{item.co}</div>
                       <div className="text-[10px] text-slate-400">{item.job}</div>
                       <div className="text-[10px] mt-1 text-blue-300">적합도 {item.score}점</div>
@@ -953,20 +953,20 @@ export function HomePage() {
                 </div>
                 <div className="p-4">
                   <div className="text-xs text-slate-400 font-semibold uppercase tracking-wide mb-2">즐겨찾기</div>
-                  <div className="text-xs text-slate-500">⭐ 라인 · 풀스택</div>
+                  <div className="text-xs text-slate-500">라인 · 풀스택</div>
                 </div>
               </div>
 
               {/* Center main */}
               <div className="flex-1 flex flex-col min-w-0">
-                <div className="flex items-center justify-between px-5 py-3 border-b border-slate-200 bg-white">
+                <div className="flex items-center justify-between px-5 py-3 border-b border-slate-200 bg-card">
                   <div>
                     <div className="font-bold text-slate-900 text-sm">카카오페이 · 프론트엔드 개발자</div>
                     <div className="text-xs text-slate-500">2026-08-01 공고 · React 3년 이상</div>
                   </div>
-                  <Badge className="bg-green-100 text-green-700 text-xs">준비중</Badge>
+                  <Badge className="bg-secondary text-muted-foreground text-xs">준비중</Badge>
                 </div>
-                <div className="flex border-b border-slate-200 bg-white overflow-x-auto">
+                <div className="flex border-b border-slate-200 bg-card overflow-x-auto">
                   {["공고분석", "기업분석", "스펙비교", "지원전략", "예상질문", "가상면접", "면접리포트", "첨삭기록"].map((tab, i) => (
                     <button
                       key={tab}
@@ -983,7 +983,7 @@ export function HomePage() {
                 <div className="flex-1 overflow-y-auto p-5 space-y-4">
                   <div className="flex items-center justify-between">
                     <h3 className="font-bold text-slate-800 text-sm">내 스펙 비교 분석</h3>
-                    <Badge className="text-xs bg-blue-100 text-blue-700">직무 적합도 72점</Badge>
+                    <Badge className="text-xs bg-secondary text-muted-foreground">직무 적합도 72점</Badge>
                   </div>
                   <div className="space-y-2">
                     {specComparisonData.map((s) => (
@@ -994,9 +994,9 @@ export function HomePage() {
                       </div>
                     ))}
                   </div>
-                  <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 text-xs">
-                    <div className="font-semibold text-amber-800 mb-1">⚠ AI 준비 전략</div>
-                    <div className="text-amber-700 space-y-1">
+                  <div className="bg-card border border-border rounded-xl p-3 text-xs">
+                    <div className="font-semibold text-foreground mb-1">AI 준비 전략</div>
+                    <div className="text-muted-foreground space-y-1">
                       <p>1. TypeScript 기본 문법과 React 프로젝트 적용 사례 학습</p>
                       <p>2. AWS S3/CloudFront 배포 경험 토이 프로젝트로 보완</p>
                       <p>3. 포트폴리오에 문제 해결 사례와 수치 결과 추가</p>
@@ -1020,7 +1020,7 @@ export function HomePage() {
                     <div className="text-xs text-slate-500 font-semibold uppercase tracking-wide mb-2">부족 역량</div>
                     <div className="space-y-1.5">
                       {["TypeScript", "AWS 배포", "포트폴리오"].map((s) => (
-                        <div key={s} className="flex items-center gap-1.5 text-xs bg-red-50 text-red-700 px-2 py-1 rounded">
+                        <div key={s} className="flex items-center gap-1.5 text-xs bg-secondary text-muted-foreground px-2 py-1 rounded">
                           <AlertCircle className="size-3" /> {s}
                         </div>
                       ))}
@@ -1037,7 +1037,7 @@ export function HomePage() {
                       ))}
                     </div>
                   </div>
-                  <div className="bg-white rounded-xl p-3 border border-slate-200">
+                  <div className="bg-card rounded-xl p-3 border border-slate-200">
                     <div className="text-xs text-slate-500 mb-1">크레딧 사용</div>
                     <div className="text-lg font-black text-slate-800">38 / 50</div>
                     <Progress value={76} className="mt-1 h-1.5" />
@@ -1050,10 +1050,10 @@ export function HomePage() {
       </section>
 
       {/* ─── Interview Modes ─── */}
-      <section className="py-20 bg-white">
+      <section className="py-20 bg-card">
         <div className="w-full max-w-[1400px] mx-auto px-6">
           <div className="text-center mb-14 space-y-3">
-            <Badge className="bg-purple-100 text-purple-700 px-4 py-1">AI 가상 면접</Badge>
+            <Badge className="bg-secondary text-muted-foreground border border-border px-4 py-1">AI 가상 면접</Badge>
             <h2 className="text-4xl font-black text-slate-900">8가지 면접 모드로 실전 완벽 대비</h2>
             <p className="text-lg text-slate-500 max-w-2xl mx-auto">
               기본 면접부터 압박 면접, 기업 맞춤 면접까지 — 모든 상황을 연습할 수 있습니다
@@ -1063,7 +1063,7 @@ export function HomePage() {
             {interviewModes.map((m) => (
               <Card key={m.title} className={`border ${m.color} hover:shadow-md transition-shadow cursor-pointer group`}>
                 <CardContent className="p-5 text-center space-y-2">
-                  <div className="text-3xl group-hover:scale-110 transition-transform">{m.icon}</div>
+                  <m.icon className="size-6 text-muted-foreground mx-auto group-hover:scale-110 transition-transform" />
                   <div className="font-bold text-slate-800 text-sm">{m.title}</div>
                   <div className="text-xs text-slate-500">{m.desc}</div>
                 </CardContent>
@@ -1073,31 +1073,31 @@ export function HomePage() {
 
           {/* Answer correction demo */}
           <div className="mt-12 grid md:grid-cols-2 gap-6">
-            <Card className="border border-red-200 bg-red-50">
+            <Card className="border border-border bg-card">
               <CardHeader className="pb-2">
-                <CardTitle className="text-sm flex items-center gap-2 text-red-700">
+                <CardTitle className="text-sm flex items-center gap-2 text-destructive">
                   <AlertCircle className="size-4" /> 사용자 원답변
                 </CardTitle>
               </CardHeader>
               <CardContent>
-                <div className="text-sm text-slate-600 bg-white rounded-lg p-3 border border-red-100">
+                <div className="text-sm text-slate-600 bg-secondary rounded-lg p-3 border border-border">
                   "학교 프로젝트에서 React를 사용해서 게시판을 만들었습니다."
                 </div>
                 <div className="mt-3 space-y-1">
-                  <div className="text-xs text-red-600 flex items-start gap-1.5"><AlertCircle className="size-3 mt-0.5 flex-shrink-0" /> 역할이 불명확</div>
-                  <div className="text-xs text-red-600 flex items-start gap-1.5"><AlertCircle className="size-3 mt-0.5 flex-shrink-0" /> 구체적 기능 설명 없음</div>
-                  <div className="text-xs text-red-600 flex items-start gap-1.5"><AlertCircle className="size-3 mt-0.5 flex-shrink-0" /> 문제 해결 경험 없음</div>
+                  <div className="text-xs text-destructive flex items-start gap-1.5"><AlertCircle className="size-3 mt-0.5 flex-shrink-0" /> 역할이 불명확</div>
+                  <div className="text-xs text-destructive flex items-start gap-1.5"><AlertCircle className="size-3 mt-0.5 flex-shrink-0" /> 구체적 기능 설명 없음</div>
+                  <div className="text-xs text-destructive flex items-start gap-1.5"><AlertCircle className="size-3 mt-0.5 flex-shrink-0" /> 문제 해결 경험 없음</div>
                 </div>
               </CardContent>
             </Card>
-            <Card className="border border-green-200 bg-green-50">
+            <Card className="border border-border bg-card">
               <CardHeader className="pb-2">
-                <CardTitle className="text-sm flex items-center gap-2 text-green-700">
+                <CardTitle className="text-sm flex items-center gap-2 text-green-600">
                   <ThumbsUp className="size-4" /> AI 개선 답변
                 </CardTitle>
               </CardHeader>
               <CardContent>
-                <div className="text-sm text-slate-600 bg-white rounded-lg p-3 border border-green-100 leading-relaxed">
+                <div className="text-sm text-slate-600 bg-secondary rounded-lg p-3 border border-border leading-relaxed">
                   "팀 프로젝트에서 React로 게시판 기능을 구현했습니다. 저는 목록/작성/수정/삭제 화면을 맡았고, REST API 연동과 useState/useEffect 기반 상태 관리를 구현했습니다. 입력값 검증을 추가해 데이터 무결성을 확보한 점이 좋은 평가를 받았습니다."
                 </div>
                 <div className="mt-3 space-y-1">
@@ -1112,14 +1112,14 @@ export function HomePage() {
       </section>
 
       {/* ─── Comparison ─── */}
-      <section className="py-20 bg-gradient-to-br from-slate-50 to-indigo-50">
+      <section className="py-20 bg-muted">
         <div className="w-full max-w-[1400px] mx-auto px-6">
           <div className="text-center mb-14 space-y-3">
             <Badge className="bg-slate-200 text-slate-700 px-4 py-1">왜 다른가요?</Badge>
             <h2 className="text-4xl font-black text-slate-900">일반 채용 사이트와 비교</h2>
           </div>
           <div className="max-w-4xl mx-auto grid md:grid-cols-2 gap-6">
-            <Card className="border-2 border-slate-200 bg-white">
+            <Card className="border-2 border-slate-200 bg-card">
               <CardHeader>
                 <CardTitle className="flex items-center gap-2 text-slate-700">
                   <div className="size-8 rounded-lg bg-slate-200 flex items-center justify-center">
@@ -1145,11 +1145,11 @@ export function HomePage() {
                 ))}
               </CardContent>
             </Card>
-            <Card className="border-2 border-blue-400 shadow-xl bg-gradient-to-br from-blue-50 to-indigo-50">
+            <Card className="border-2 border-blue-400 shadow-xl bg-card">
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
-                  <div className="size-8 rounded-lg bg-gradient-to-br from-blue-600 to-indigo-600 flex items-center justify-center">
-                    <Sparkles className="size-4 text-white" />
+                  <div className="size-8 rounded-lg bg-accent-soft flex items-center justify-center">
+                    <Sparkles className="size-4 text-primary" />
                   </div>
                   CareerTuner
                   <Badge className="ml-auto bg-blue-600 text-white">추천</Badge>
@@ -1175,10 +1175,10 @@ export function HomePage() {
       </section>
 
       {/* ─── Pricing ─── */}
-      <section id="pricing" className="py-20 bg-white">
+      <section id="pricing" className="py-20 bg-card">
         <div className="w-full max-w-[1400px] mx-auto px-6">
           <div className="text-center mb-14 space-y-3">
-            <Badge className="bg-green-100 text-green-700 px-4 py-1">요금제</Badge>
+            <Badge className="bg-secondary text-muted-foreground border border-border px-4 py-1">요금제</Badge>
             <h2 className="text-4xl font-black text-slate-900">나에게 맞는 플랜 선택</h2>
             <p className="text-lg text-slate-500">무료 플랜으로 시작하고, 필요할 때 업그레이드하세요</p>
           </div>
@@ -1234,7 +1234,7 @@ export function HomePage() {
                   <Card key={plan.name} className={`relative border-2 ${plan.highlighted ? "border-blue-500 shadow-2xl scale-105" : "border-slate-200"}`}>
                     {plan.badge && (
                       <div className="absolute -top-3 left-1/2 -translate-x-1/2">
-                        <Badge className="bg-gradient-to-r from-blue-600 to-indigo-600 text-white px-4">
+                        <Badge className="bg-primary text-white px-4">
                           {plan.badge}
                         </Badge>
                       </div>
@@ -1256,7 +1256,7 @@ export function HomePage() {
                         ))}
                       </div>
                       <Button
-                        className={`w-full ${plan.highlighted ? "bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700" : ""}`}
+                        className={`w-full ${plan.highlighted ? "bg-primary" : ""}`}
                         variant={plan.highlighted ? "default" : "outline"}
                         onClick={() => navigate("/login")}
                       >
@@ -1324,7 +1324,7 @@ export function HomePage() {
         <div className="w-full max-w-[1400px] mx-auto px-6">
           <div className="flex items-end justify-between mb-10">
             <div className="space-y-2">
-              <Badge className="bg-orange-100 text-orange-700 px-4 py-1">커뮤니티</Badge>
+              <Badge className="bg-secondary text-muted-foreground border border-border px-4 py-1">커뮤니티</Badge>
               <h2 className="text-4xl font-black text-slate-900">합격자들의 생생한 후기</h2>
               <p className="text-slate-500">취업 후기, 면접 후기, 직무별 질문 공유 게시판</p>
             </div>
@@ -1338,21 +1338,16 @@ export function HomePage() {
           <div className="space-y-3">
             {communityPosts.map((post, i) => (
               <Link to="/community" key={i}>
-                <div className="bg-white border border-slate-200 hover:border-blue-300 hover:shadow-md transition-all rounded-xl p-4 flex items-center gap-4 group">
-                  <Badge className={`flex-shrink-0 text-xs ${
-                    post.cat === "면접 후기" ? "bg-blue-100 text-blue-700" :
-                    post.cat === "합격 전략" ? "bg-green-100 text-green-700" :
-                    post.cat === "직무별 질문" ? "bg-purple-100 text-purple-700" :
-                    "bg-slate-100 text-slate-700"
-                  }`}>{post.cat}</Badge>
-                  {post.hot && <Badge className="flex-shrink-0 text-xs bg-red-100 text-red-600">HOT</Badge>}
+                <div className="bg-card border border-slate-200 hover:border-blue-300 hover:shadow-md transition-all rounded-xl p-4 flex items-center gap-4 group">
+                  <Badge className="flex-shrink-0 text-xs bg-secondary text-muted-foreground">{post.cat}</Badge>
+                  {post.hot && <Badge className="flex-shrink-0 text-xs bg-secondary text-muted-foreground">HOT</Badge>}
                   <div className="flex-1 min-w-0">
                     <div className="font-semibold text-slate-800 text-sm truncate group-hover:text-blue-600 transition-colors">{post.title}</div>
                     <div className="text-xs text-slate-400 mt-0.5">{post.company !== "익명" ? post.company + " · " : ""}{post.job}</div>
                   </div>
                   <div className="flex items-center gap-4 text-xs text-slate-400 flex-shrink-0">
-                    <span>👁 {post.views.toLocaleString()}</span>
-                    <span>❤ {post.likes}</span>
+                    <span>조회 {post.views.toLocaleString()}</span>
+                    <span>좋아요 {post.likes}</span>
                   </div>
                 </div>
               </Link>
@@ -1362,18 +1357,18 @@ export function HomePage() {
       </section>
 
       {/* ─── Testimonials ─── */}
-      <section className="py-20 bg-white">
+      <section className="py-20 bg-card">
         <div className="w-full max-w-[1400px] mx-auto px-6">
           <div className="text-center mb-14 space-y-3">
-            <Badge className="bg-yellow-100 text-yellow-700 px-4 py-1">사용자 후기</Badge>
+            <Badge className="bg-secondary text-muted-foreground border border-border px-4 py-1">사용자 후기</Badge>
             <h2 className="text-4xl font-black text-slate-900">실제 합격자들의 이야기</h2>
           </div>
           <div className="grid md:grid-cols-3 gap-6">
             {testimonials.map((t, i) => (
-              <Card key={i} className="border-2 border-slate-200 bg-white hover:border-blue-200 hover:shadow-lg transition-all">
+              <Card key={i} className="border-2 border-slate-200 bg-card hover:border-blue-200 hover:shadow-lg transition-all">
                 <CardContent className="p-6 space-y-4">
                   <div className="flex items-center gap-3">
-                    <div className="size-11 rounded-full bg-gradient-to-br from-blue-500 to-indigo-500 flex items-center justify-center text-white font-bold text-base">
+                    <div className="size-11 rounded-full bg-accent-soft flex items-center justify-center text-primary font-bold text-base">
                       {t.avatar}
                     </div>
                     <div>
@@ -1385,7 +1380,7 @@ export function HomePage() {
                         ))}
                       </div>
                     </div>
-                    <Badge className="ml-auto text-xs bg-blue-100 text-blue-700">{t.plan}</Badge>
+                    <Badge className="ml-auto text-xs bg-secondary text-muted-foreground">{t.plan}</Badge>
                   </div>
                   <p className="text-sm text-slate-600 leading-relaxed">"{t.text}"</p>
                 </CardContent>
@@ -1396,7 +1391,7 @@ export function HomePage() {
       </section>
 
       {/* ─── CTA ─── */}
-      <section className="py-20 bg-gradient-to-br from-blue-700 via-indigo-700 to-purple-700 text-white">
+      <section className="py-20 bg-[#0b0c0e] text-white">
         <div className="w-full max-w-[1400px] mx-auto px-6 text-center space-y-8">
           <div className="space-y-4">
             <h2 className="text-4xl lg:text-5xl font-black">
@@ -1408,11 +1403,11 @@ export function HomePage() {
             </p>
           </div>
           <div className="flex flex-col sm:flex-row gap-4 justify-center">
-            <Button size="lg" className="bg-white text-blue-700 hover:bg-blue-50 text-base px-10 shadow-xl" onClick={() => navigate("/login")}>
+            <Button size="lg" className="bg-card text-blue-700 hover:bg-blue-50 text-base px-10 shadow-xl" onClick={() => navigate("/login")}>
               무료로 시작하기
               <ArrowRight className="ml-2 size-5" />
             </Button>
-            <Button size="lg" variant="outline" className="border-white/40 text-white hover:bg-white/10 text-base px-10" onClick={() => navigate("/pricing")}>
+            <Button size="lg" variant="outline" className="border-white/40 bg-transparent text-white hover:bg-card/10 text-base px-10" onClick={() => navigate("/pricing")}>
               요금제 비교하기
             </Button>
           </div>

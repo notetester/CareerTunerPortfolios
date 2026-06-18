@@ -273,6 +273,11 @@ export async function blobToPcm16Base64(blob: Blob): Promise<string> {
   return bytesToBase64(new Uint8Array(pcm.buffer));
 }
 
+/** MediaRecorder 녹음(webm 등) 원본을 변환 없이 base64 로 — 서버(serve)가 ffmpeg 로 16kHz 변환한다. */
+export async function blobToBase64(blob: Blob): Promise<string> {
+  return bytesToBase64(new Uint8Array(await blob.arrayBuffer()));
+}
+
 function bytesToBase64(bytes: Uint8Array): string {
   let binary = "";
   const chunk = 0x8000;

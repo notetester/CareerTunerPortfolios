@@ -7,6 +7,7 @@ import { Badge } from "../components/ui/badge";
 import { Checkbox } from "../components/ui/checkbox";
 import { Input } from "../components/ui/input";
 import { ApiError } from "../lib/api";
+import { checkEmailDuplicate } from "../auth/authApi";
 import { Sparkles, Mail, Lock, Eye, EyeOff, CheckCircle2, ArrowRight, Loader2 } from "lucide-react";
 
 export function LoginPage() {
@@ -24,12 +25,29 @@ export function LoginPage() {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [dormantEmail, setDormantEmail] = useState<string | null>(null);
+  const [emailDuplicate, setEmailDuplicate] = useState(false);
   const navigate = useNavigate();
   const { login, register, socialLogin } = useAuth();
 
   const switchMode = (nextMode: "login" | "signup") => {
     setMode(nextMode);
     setError(null);
+    setEmailDuplicate(false);
+  };
+
+  // 회원가입 시 이메일 입력을 벗어나면 중복 여부를 미리 확인한다(가입 전 즉시 피드백).
+  const handleEmailBlur = async () => {
+    const normalized = email.trim();
+    if (mode !== "signup" || !/.+@.+\..+/.test(normalized)) {
+      setEmailDuplicate(false);
+      return;
+    }
+    try {
+      const { duplicate } = await checkEmailDuplicate(normalized);
+      setEmailDuplicate(duplicate);
+    } catch {
+      setEmailDuplicate(false);
+    }
   };
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
@@ -53,6 +71,10 @@ export function LoginPage() {
       }
       if (!termsAgreed || !privacyAgreed) {
         setError("필수 약관과 개인정보 처리방침에 동의해 주세요.");
+        return;
+      }
+      if (emailDuplicate) {
+        setError("이미 사용 중인 이메일입니다. 다른 이메일을 사용해 주세요.");
         return;
       }
     }
@@ -104,15 +126,15 @@ export function LoginPage() {
   ];
 
   return (
-    <div className="min-h-[calc(100vh-120px)] bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50 flex items-center justify-center py-12 px-4">
+    <div className="min-h-[calc(100vh-120px)] bg-muted flex items-center justify-center py-12 px-4">
       <div className="w-full max-w-4xl grid md:grid-cols-2 gap-8 items-center">
         {/* Left: Brand message */}
         <div className="hidden md:block space-y-6">
           <div className="flex items-center gap-2.5">
-            <div className="size-10 rounded-xl bg-gradient-to-br from-blue-600 to-indigo-600 flex items-center justify-center shadow-md">
-              <Sparkles className="size-5 text-white" />
+            <div className="size-10 rounded-xl bg-accent-soft flex items-center justify-center shadow-md">
+              <Sparkles className="size-5 text-primary" />
             </div>
-            <span className="text-2xl font-black bg-gradient-to-r from-blue-600 to-indigo-600 bg-clip-text text-transparent">CareerTuner</span>
+            <span className="text-2xl font-black text-primary">CareerTuner</span>
           </div>
           <h2 className="text-3xl font-black text-slate-900 leading-tight">
             AI와 함께<br />취업 준비를 시작하세요
@@ -131,7 +153,7 @@ export function LoginPage() {
               </div>
             ))}
           </div>
-          <div className="bg-white rounded-2xl border border-slate-200 p-4 shadow-sm">
+          <div className="bg-card rounded-2xl border border-slate-200 p-4 shadow-sm">
             <div className="text-xs text-slate-500 mb-2">가입 후 즉시 이용 가능</div>
             <div className="flex items-center gap-2">
               <Badge className="bg-green-100 text-green-700">무료 플랜</Badge>
@@ -141,19 +163,19 @@ export function LoginPage() {
         </div>
 
         {/* Right: Form */}
-        <Card className="border border-slate-200 shadow-xl bg-white">
+        <Card className="border border-slate-200 shadow-xl bg-card">
           <CardContent className="p-8 space-y-6">
             {/* Toggle */}
             <div className="flex bg-slate-100 rounded-xl p-1">
               <button
                 onClick={() => switchMode("login")}
-                className={`flex-1 py-2 rounded-lg text-sm font-semibold transition-colors ${mode === "login" ? "bg-white shadow-sm text-slate-900" : "text-slate-500"}`}
+                className={`flex-1 py-2 rounded-lg text-sm font-semibold transition-colors ${mode === "login" ? "bg-card shadow-sm text-slate-900" : "text-slate-500"}`}
               >
                 로그인
               </button>
               <button
                 onClick={() => switchMode("signup")}
-                className={`flex-1 py-2 rounded-lg text-sm font-semibold transition-colors ${mode === "signup" ? "bg-white shadow-sm text-slate-900" : "text-slate-500"}`}
+                className={`flex-1 py-2 rounded-lg text-sm font-semibold transition-colors ${mode === "signup" ? "bg-card shadow-sm text-slate-900" : "text-slate-500"}`}
               >
                 회원가입
               </button>
@@ -201,10 +223,14 @@ export function LoginPage() {
                   className="pl-9 h-11"
                   type="email"
                   value={email}
-                  onChange={(event) => setEmail(event.target.value)}
+                  onChange={(event) => { setEmail(event.target.value); setEmailDuplicate(false); }}
+                  onBlur={() => void handleEmailBlur()}
                   autoComplete="email"
                 />
               </div>
+              {mode === "signup" && emailDuplicate && (
+                <p className="-mt-1 text-xs text-red-600">이미 사용 중인 이메일입니다. 로그인하거나 다른 이메일을 사용해 주세요.</p>
+              )}
               <div className="relative">
                 <Lock className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-slate-400" />
                 <Input
@@ -299,7 +325,7 @@ export function LoginPage() {
               <Button
                 type="submit"
                 disabled={submitting}
-                className="w-full h-11 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-base font-semibold gap-2 disabled:cursor-not-allowed disabled:opacity-70"
+                className="w-full h-11 bg-primary text-base font-semibold gap-2 disabled:cursor-not-allowed disabled:opacity-70"
               >
                 {submitting && <Loader2 className="size-4 animate-spin" />}
                 {mode === "login" ? "로그인" : "무료 회원가입"}

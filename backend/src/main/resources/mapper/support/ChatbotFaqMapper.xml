@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.careertuner.support.chatbot.ChatbotFaqMapper">
+
+    <select id="findPublishedWithoutEmbedding" resultType="com.careertuner.support.domain.Faq">
+        SELECT id, question, answer, category, sort_order, is_published AS published,
+               admin_id, view_count, link_url, link_label, embedding, created_at, updated_at
+          FROM faq
+         WHERE is_published = 1
+           AND embedding IS NULL
+    </select>
+
+    <select id="findPublishedAll" resultType="com.careertuner.support.domain.Faq">
+        SELECT id, question, answer, category, sort_order, is_published AS published,
+               admin_id, view_count, link_url, link_label, embedding, created_at, updated_at
+          FROM faq
+         WHERE is_published = 1
+    </select>
+
+    <select id="findPublishedWithEmbedding" resultType="com.careertuner.support.domain.Faq">
+        SELECT id, question, answer, category, sort_order, is_published AS published,
+               admin_id, view_count, link_url, link_label, embedding, created_at, updated_at
+          FROM faq
+         WHERE is_published = 1
+           AND embedding IS NOT NULL
+    </select>
+
+    <update id="updateEmbedding">
+        UPDATE faq
+           SET embedding = #{embedding}
+         WHERE id = #{id}
+    </update>
+
+</mapper>

@@ -16,8 +16,8 @@ import { Button } from "@/app/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/app/components/ui/card";
 import { Input } from "@/app/components/ui/input";
 import { Textarea } from "@/app/components/ui/textarea";
-import { getAdminUserDetail, getAdminUsers, updateAdminUserStatus } from "../api";
-import type { AdminUserDetail, AdminUserRow, AdminUserStatus } from "../types";
+import { getAdminUserDetail, getAdminUserLoginHistory, getAdminUsers, updateAdminUserStatus } from "../api";
+import type { AdminUserDetail, AdminUserLoginHistoryRow, AdminUserRow, AdminUserStatus } from "../types";
 
 const STATUS_OPTIONS: Array<{ value: AdminUserStatus; label: string }> = [
   { value: "ACTIVE", label: "활성" },
@@ -190,7 +190,7 @@ export function AdminUsersPage() {
     >
       <div className="grid gap-5 lg:grid-cols-[380px_minmax(0,1fr)]">
         <section className="space-y-4">
-          <Card className="border-slate-200 bg-white">
+          <Card className="border-slate-200 bg-card">
             <CardContent className="space-y-3 p-4">
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-slate-400" />
@@ -226,7 +226,7 @@ export function AdminUsersPage() {
               <button
                 key={row.id}
                 type="button"
-                className={`w-full rounded-lg border bg-white p-3 text-left transition-colors ${
+                className={`w-full rounded-lg border bg-card p-3 text-left transition-colors ${
                   selected?.id === row.id ? "border-blue-300 ring-2 ring-blue-100" : "border-slate-200 hover:border-blue-200"
                 }`}
                 onClick={() => {
@@ -254,12 +254,12 @@ export function AdminUsersPage() {
 
         <section className="min-w-0 space-y-4">
           {!detail ? (
-            <Card className="border-slate-200 bg-white">
+            <Card className="border-slate-200 bg-card">
               <CardContent className="p-8 text-center text-sm text-slate-500">회원을 선택하세요.</CardContent>
             </Card>
           ) : (
             <>
-              <Card className="border-slate-200 bg-white">
+              <Card className="border-slate-200 bg-card">
                 <CardHeader>
                   <CardTitle className="flex items-center justify-between gap-3 text-lg font-bold text-slate-950">
                     <span>{detail.user.name}</span>
@@ -330,16 +330,7 @@ export function AdminUsersPage() {
 
               <div className="grid gap-4 xl:grid-cols-2">
                 <HistoryCard title="로그인 이력">
-                  {detail.loginHistory.length ? detail.loginHistory.map((item) => (
-                    <div key={item.id} className="rounded-lg border border-slate-100 p-3 text-sm">
-                      <div className="flex items-center justify-between gap-3">
-                        <span className="font-semibold text-slate-900">{item.eventType} / {item.loginMethod ?? "-"}</span>
-                        <Badge className={item.success ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"}>{item.success ? "성공" : "실패"}</Badge>
-                      </div>
-                      <div className="mt-1 text-xs text-slate-500">{formatDateTime(item.createdAt)} · {item.ipAddress ?? "-"}</div>
-                      {item.failReason && <div className="mt-1 text-xs text-red-600">{item.failReason}</div>}
-                    </div>
-                  )) : <EmptyText text="로그인 이력이 없습니다." />}
+                  <LoginHistorySection userId={detail.user.id} initial={detail.loginHistory} />
                 </HistoryCard>
 
                 <HistoryCard title="상태 변경 이력">
@@ -383,7 +374,7 @@ function Info({ label, value }: { label: string; value: string }) {
 
 function HistoryCard({ title, children }: { title: string; children: ReactNode }) {
   return (
-    <Card className="border-slate-200 bg-white">
+    <Card className="border-slate-200 bg-card">
       <CardHeader className="pb-3">
         <CardTitle className="text-base">{title}</CardTitle>
       </CardHeader>
@@ -394,4 +385,54 @@ function HistoryCard({ title, children }: { title: string; children: ReactNode }
 
 function EmptyText({ text }: { text: string }) {
   return <div className="rounded-lg bg-slate-50 p-4 text-center text-sm text-slate-500">{text}</div>;
+}
+
+/**
+ * 로그인 이력: 상세 응답에 포함된 요약을 먼저 보여주고, "더 보기"로
+ * 전용 엔드포인트(GET /api/admin/users/{id}/login-history)를 호출해 최근 100건까지 확장한다.
+ */
+function LoginHistorySection({ userId, initial }: { userId: number; initial: AdminUserLoginHistoryRow[] }) {
+  const [rows, setRows] = useState<AdminUserLoginHistoryRow[]>(initial);
+  const [expanded, setExpanded] = useState(false);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    setRows(initial);
+    setExpanded(false);
+  }, [initial, userId]);
+
+  const loadFull = async () => {
+    setLoading(true);
+    try {
+      setRows(await getAdminUserLoginHistory(userId, 100));
+      setExpanded(true);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  if (rows.length === 0) {
+    return <EmptyText text="로그인 이력이 없습니다." />;
+  }
+
+  return (
+    <>
+      {rows.map((item) => (
+        <div key={item.id} className="rounded-lg border border-slate-100 p-3 text-sm">
+          <div className="flex items-center justify-between gap-3">
+            <span className="font-semibold text-slate-900">{item.eventType} / {item.loginMethod ?? "-"}</span>
+            <Badge className={item.success ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"}>{item.success ? "성공" : "실패"}</Badge>
+          </div>
+          <div className="mt-1 text-xs text-slate-500">{formatDateTime(item.createdAt)} · {item.ipAddress ?? "-"}</div>
+          {item.failReason && <div className="mt-1 text-xs text-red-600">{item.failReason}</div>}
+        </div>
+      ))}
+      {!expanded && (
+        <Button variant="outline" size="sm" className="w-full" disabled={loading} onClick={() => void loadFull()}>
+          {loading && <RefreshCw className="size-3.5 animate-spin" />}
+          전체 로그인 이력 더 보기 (최근 100건)
+        </Button>
+      )}
+    </>
+  );
 }

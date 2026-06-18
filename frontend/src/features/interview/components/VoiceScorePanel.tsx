@@ -40,7 +40,7 @@ export function VoiceScorePanel({
   const topStyle = profile?.vocalStyle?.[0]?.label;
 
   return (
-    <Card className="border border-slate-200 bg-white">
+    <Card className="border border-slate-200 bg-card">
       <CardHeader>
         <CardTitle className="flex items-center gap-2 text-base">
           <Gauge className="size-4 text-blue-600" />

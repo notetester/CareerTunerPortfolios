@@ -17,6 +17,7 @@ import { useAuth } from "@/app/auth/AuthContext";
 import { Button } from "@/app/components/ui/button";
 import { Card, CardContent } from "@/app/components/ui/card";
 import { deleteApplicationCase, updateApplicationCase } from "../api/applicationCasesApi";
+import { getApplicationCaseAnalysisOverview } from "../api/analysisApi";
 import { ApplicationOverviewPanel } from "../components/ApplicationOverviewPanel";
 import { ApplicationExtractionBadge } from "../components/ApplicationExtractionBadge";
 import { ApplicationStatusBadge } from "../components/ApplicationStatusBadge";
@@ -285,7 +286,7 @@ export function ApplicationDetailPage() {
   if (!id) {
     return (
       <div className="min-h-[calc(100vh-72px)] bg-slate-50 px-4 py-10">
-        <Card className="mx-auto max-w-lg border-slate-200 bg-white">
+        <Card className="mx-auto max-w-lg border-slate-200 bg-card">
           <CardContent className="space-y-4 p-8 text-center">
             <div className="font-semibold text-slate-900">지원 건 ID가 올바르지 않습니다.</div>
             <Button onClick={() => navigate("/applications")}>목록으로 이동</Button>
@@ -312,7 +313,7 @@ export function ApplicationDetailPage() {
               </Button>
             </div>
 
-            <Card className="border-slate-200 bg-white">
+            <Card className="border-slate-200 bg-card">
               <CardContent className="space-y-2 p-3">
                 <div className="mb-2 text-xs font-semibold text-slate-500">지원 건</div>
                 {sidebarLoading ? (
@@ -379,14 +380,14 @@ export function ApplicationDetailPage() {
             </Button>
           </div>
 
-          <div className="flex overflow-x-auto rounded-lg border border-slate-200 bg-white p-1">
+          <div className="flex overflow-x-auto rounded-lg border border-slate-200 bg-card p-1">
             {detailTabs.map((tab) => (
               <button
                 key={tab.key}
                 type="button"
                 className={`flex shrink-0 items-center gap-1.5 rounded-md px-3 py-2 text-sm font-semibold transition-colors ${
                   activeTab === tab.key
-                    ? "bg-slate-900 text-white"
+                    ? "bg-foreground text-background"
                     : "text-slate-600 hover:bg-slate-100 hover:text-slate-900"
                 }`}
                 onClick={() => navigate(detailPath(id, tab.key))}
@@ -429,7 +430,8 @@ export function ApplicationDetailPage() {
                     onRetryExtraction={retryExtraction}
                     onDelete={handleDelete}
                   />
-                  <Card className="border-slate-200 bg-white">
+                  <AnalysisSummaryCard applicationCaseId={id} onGoFit={() => navigate(detailPath(id, "fit"))} />
+                  <Card className="border-slate-200 bg-card">
                     <CardContent className="grid gap-3 p-4 md:grid-cols-3">
                       <button
                         type="button"
@@ -518,7 +520,7 @@ export function ApplicationDetailPage() {
               {activeTab === "fit" && (
                 <div className="space-y-6">
                   {/* C 담당: 적합도/전략/학습 추천. 생성 트리거는 fit-analyses 엔드포인트(현재 mock). */}
-                  <div className="flex flex-col gap-3 rounded-lg border border-slate-200 bg-white p-4 sm:flex-row sm:items-center sm:justify-between">
+                  <div className="flex flex-col gap-3 rounded-lg border border-slate-200 bg-card p-4 sm:flex-row sm:items-center sm:justify-between">
                     <p className="text-sm text-slate-600">공고 분석 결과와 내 프로필을 비교해 적합도·부족 역량·학습/자격증·전략을 분석합니다.</p>
                     <Button
                       className="bg-blue-600 text-white hover:bg-blue-700"
@@ -550,5 +552,59 @@ export function ApplicationDetailPage() {
         </main>
       </div>
     </div>
+  );
+}
+
+/** 지원 건 분석 종합 — GET /application-cases/{id}/analysis 로 공고/적합도 분석 완료 여부를 한눈에 보여준다. */
+function AnalysisSummaryCard({ applicationCaseId, onGoFit }: { applicationCaseId: number; onGoFit: () => void }) {
+  const [jobDone, setJobDone] = useState<boolean | null>(null);
+  const [fitDone, setFitDone] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    let ignore = false;
+    getApplicationCaseAnalysisOverview(applicationCaseId)
+      .then((data) => {
+        if (ignore) return;
+        setJobDone(Boolean(data.jobAnalysis));
+        setFitDone(Boolean(data.fitAnalysis));
+      })
+      .catch(() => {
+        if (ignore) return;
+        setJobDone(false);
+        setFitDone(false);
+      });
+    return () => { ignore = true; };
+  }, [applicationCaseId]);
+
+  const cell = (label: string, done: boolean | null, icon: typeof Target) => {
+    const Icon = icon;
+    return (
+      <div className="flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm">
+        <Icon className="size-4 text-slate-500" />
+        <span className="font-semibold text-slate-800">{label}</span>
+        <span className={`ml-auto rounded-full px-2 py-0.5 text-[11px] font-semibold ${
+          done == null ? "bg-slate-100 text-slate-500" : done ? "bg-green-100 text-green-700" : "bg-slate-100 text-slate-500"
+        }`}>
+          {done == null ? "확인 중" : done ? "완료" : "미완료"}
+        </span>
+      </div>
+    );
+  };
+
+  return (
+    <Card className="border-slate-200 bg-card">
+      <CardContent className="space-y-2 p-4">
+        <div className="flex items-center justify-between">
+          <div className="text-sm font-semibold text-slate-700">AI 분석 종합</div>
+          <button type="button" className="text-xs font-semibold text-blue-600 hover:text-blue-700" onClick={onGoFit}>
+            적합도 보기
+          </button>
+        </div>
+        <div className="grid gap-2 sm:grid-cols-2">
+          {cell("공고 분석", jobDone, BarChart3)}
+          {cell("적합도 분석", fitDone, Target)}
+        </div>
+      </CardContent>
+    </Card>
   );
 }

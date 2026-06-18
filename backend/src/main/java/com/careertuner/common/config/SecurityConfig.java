@@ -56,9 +56,8 @@ public class SecurityConfig {
                         // 고객센터 FAQ/공지사항 조회 공개
                         .requestMatchers(HttpMethod.GET,
                                 "/api/support/faq", "/api/support/notices", "/api/support/notices/**").permitAll()
-                        // 결제 전 상품/요금제 조회 공개
-                        .requestMatchers(HttpMethod.GET,
-                                "/api/credit-products", "/api/billing/plans").permitAll()
+                        // 챗봇 질문 공개
+                        .requestMatchers(HttpMethod.POST, "/api/chatbot/ask").permitAll()
                         // 관리자 API는 URL 레벨에서도 ADMIN 권한을 요구한다.
                         .requestMatchers("/api/admin/**").hasRole("ADMIN")
                         // 그 외(/api/auth/me, /api/auth/logout 및 도메인 API)는 인증 필요
@@ -74,11 +73,21 @@ public class SecurityConfig {
         return new BCryptPasswordEncoder();
     }
 
+    /**
+     * 허용 오리진(패턴). 기본값은 Vite 개발 서버 + Capacitor 네이티브 WebView 오리진.
+     *   - Android WebView: http(s)://localhost
+     *   - iOS WebView    : capacitor://localhost
+     * 배포/LAN 테스트는 CORS_ALLOWED_ORIGINS 로 교체(쉼표 구분, 예: http://192.168.*:*,https://app.example.com).
+     * 패턴이므로 와일드카드(*)를 쓰면서도 allowCredentials=true 와 함께 동작한다.
+     */
+    @org.springframework.beans.factory.annotation.Value(
+            "${careertuner.cors.allowed-origins:http://localhost:5173,http://localhost,https://localhost,capacitor://localhost}")
+    private List<String> allowedOriginPatterns;
+
     @Bean
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration config = new CorsConfiguration();
-        // Vite 개발 서버. 배포 도메인은 환경에 맞춰 추가한다.
-        config.setAllowedOrigins(List.of("http://localhost:5173"));
+        config.setAllowedOriginPatterns(allowedOriginPatterns);
         config.setAllowedMethods(List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
         config.setAllowedHeaders(List.of("*"));
         config.setAllowCredentials(true);

@@ -38,6 +38,21 @@ interface CommunityState {
       questions?: string[];
     };
   }) => Promise<void>;
+  updatePost: (id: number, data: {
+    title: string;
+    content: string;
+    tags: string[];
+    anonymous?: boolean;
+    interviewReview?: {
+      companyName: string;
+      jobRole: string;
+      interviewType?: string;
+      difficulty?: number | null;
+      interviewDate?: string;
+      resultStatus?: string;
+      questions?: string[];
+    };
+  }) => Promise<void>;
   toggleReaction: (
     targetType: "POST" | "COMMENT",
     targetId: number,
@@ -57,14 +72,11 @@ export const useCommunityStore = create<CommunityState>((set, get) => ({
   fetchPosts: async (category, sort) => {
     set({ loading: true, error: null });
     try {
-      const posts = await communityApi.getPosts(category, sort);
+      // 클라이언트 페이지네이션을 쓰므로 한 번에 충분히 받아온다 (서버 size 상한 100).
+      const posts = await communityApi.getPosts(category, sort, 0, 100);
       set({ posts, loading: false });
-    } catch (error) {
-      set({
-        posts: [],
-        loading: false,
-        error: error instanceof Error ? error.message : "게시글을 불러오지 못했습니다.",
-      });
+    } catch (e) {
+      set({ loading: false, error: (e as Error).message });
     }
   },
 
@@ -72,9 +84,7 @@ export const useCommunityStore = create<CommunityState>((set, get) => ({
     try {
       const hotPosts = await communityApi.getHotPosts();
       set({ hotPosts });
-    } catch (error) {
-      set({ hotPosts: [], error: error instanceof Error ? error.message : "인기글을 불러오지 못했습니다." });
-    }
+    } catch { /* 인기글 실패는 무시 */ }
   },
 
   fetchPostDetail: async (id) => {
@@ -82,12 +92,8 @@ export const useCommunityStore = create<CommunityState>((set, get) => ({
     try {
       const currentPost = await communityApi.getPostDetail(id);
       set({ currentPost, detailLoading: false });
-    } catch (error) {
-      set({
-        currentPost: null,
-        detailLoading: false,
-        error: error instanceof Error ? error.message : "게시글을 불러오지 못했습니다.",
-      });
+    } catch (e) {
+      set({ detailLoading: false, error: (e as Error).message });
     }
   },
 
@@ -95,15 +101,15 @@ export const useCommunityStore = create<CommunityState>((set, get) => ({
     try {
       const comments = await communityApi.getComments(postId);
       set({ comments });
-    } catch (error) {
-      set({ comments: [], error: error instanceof Error ? error.message : "댓글을 불러오지 못했습니다." });
+    } catch (e) {
+      set({ error: (e as Error).message });
     }
   },
 
   addComment: async (postId, content) => {
-    const newComment = await communityApi.createComment(postId, content);
-    const comments = [...get().comments, newComment];
-    set({ comments, error: null });
+    await communityApi.createComment(postId, content);
+    const comments = await communityApi.getComments(postId);
+    set({ comments });
     const { currentPost } = get();
     if (currentPost && currentPost.id === postId) {
       set({
@@ -117,34 +123,35 @@ export const useCommunityStore = create<CommunityState>((set, get) => ({
 
   createPost: async (data) => {
     await communityApi.createPost(data);
-    await get().fetchPosts(undefined, "latest");
+    const posts = await communityApi.getPosts();
+    set({ posts });
+  },
+
+  updatePost: async (id, data) => {
+    await communityApi.updatePost(id, data);
+    const posts = await communityApi.getPosts();
+    set({ posts });
   },
 
   toggleReaction: async (targetType, targetId, reactionType) => {
     const active = await communityApi.toggleReaction(targetType, targetId, reactionType);
     const { currentPost, comments } = get();
     const delta = active ? 1 : -1;
-    const applyPostReaction = (post: CommunityPost): CommunityPost => {
-      const key = reactionType === "LIKE" ? "likeCount" : "bookmarkCount";
-      const flag = reactionType === "LIKE" ? "liked" : "bookmarked";
-      return {
-        ...post,
-        [flag]: active,
-        stats: { ...post.stats, [key]: Math.max(0, post.stats[key] + delta) },
-      };
-    };
 
     if (targetType === "POST" && currentPost && currentPost.id === targetId) {
-      set({ currentPost: applyPostReaction(currentPost) });
-    }
-    if (targetType === "POST") {
-      set({ posts: get().posts.map((post) => (post.id === targetId ? applyPostReaction(post) : post)) });
+      const key = reactionType === "LIKE" ? "likeCount" : "bookmarkCount";
+      set({
+        currentPost: {
+          ...currentPost,
+          stats: { ...currentPost.stats, [key]: Math.max(0, currentPost.stats[key] + delta) },
+        },
+      });
     }
     if (targetType === "COMMENT") {
       set({
         comments: comments.map((c) =>
           c.id === targetId
-            ? { ...c, liked: active, likeCount: Math.max(0, c.likeCount + delta) }
+            ? { ...c, likeCount: Math.max(0, c.likeCount + delta) }
             : c,
         ),
       });

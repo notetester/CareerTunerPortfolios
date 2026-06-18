@@ -15,6 +15,10 @@
         <result property="joinedAt"    column="joined_at"/>
     </resultMap>
 
+    <select id="findUserIdById" resultType="long">
+        SELECT user_id FROM support_ticket WHERE id = #{id}
+    </select>
+
     <resultMap id="messageResult" type="com.careertuner.admin.ticket.dto.AdminTicketMessageResponse">
         <id     property="id"       column="id"/>
         <result property="who"      column="who"/>

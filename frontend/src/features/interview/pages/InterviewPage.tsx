@@ -2,13 +2,14 @@ import { useEffect, useState } from "react";
 import { useSearchParams } from "react-router";
 import { MessageSquare } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/app/components/ui/tabs";
+import { Badge } from "@/app/components/ui/badge";
 import { useAuth } from "@/app/auth/AuthContext";
 import { useApplicationCases } from "@/features/applications/hooks/useApplicationCases";
 import { ModeSelectTab } from "../components/ModeSelectTab";
 import { AutoSetupPanel } from "../components/AutoSetupPanel";
 import { ExpectedQuestionsTab } from "../components/ExpectedQuestionsTab";
 import { PracticeTab } from "../components/PracticeTab";
-import { RealtimeInterviewTab } from "../components/RealtimeInterviewTab";
+import { VoiceInterviewTab } from "../components/VoiceInterviewTab";
 import { AvatarTab } from "../components/AvatarTab";
 import { EvaluationCriteriaTab } from "../components/EvaluationCriteriaTab";
 import { CorrectionInfoTab } from "../components/CorrectionInfoTab";
@@ -17,6 +18,8 @@ import { useTutorialStore } from "../tutorial/tutorialStore";
 import { dummySession } from "../tutorial/dummyData";
 import { TutorialOverlay } from "../tutorial/TutorialOverlay";
 import { TUT_STEPS } from "../tutorial/tutSteps";
+import { markSessionResumed } from "../api/interviewApi";
+import { getInterviewModeLabel } from "../types/interview";
 import type { InterviewMode, InterviewSession } from "../types/interview";
 
 const INTERVIEW_TABS = [
@@ -47,6 +50,8 @@ export function InterviewPage() {
   const [selectedMode, setSelectedMode] = useState<InterviewMode | null>(null);
   const [selectedCaseId, setSelectedCaseId] = useState<number | null>(null);
   const [activeSession, setActiveSession] = useState<InterviewSession | null>(null);
+  // 현재 활성 세션이 새로 시작한 것인지(new), 과거 기록을 복원(복습)한 것인지(resumed).
+  const [sessionOrigin, setSessionOrigin] = useState<"new" | "resumed" | null>(null);
   // 홈 마누스 검색창에서 넘어온 요청(자동 셋업 진입).
   const [autoPrompt] = useState(() => sessionStorage.getItem("interview.autoPrompt") ?? "");
 
@@ -65,6 +70,14 @@ export function InterviewPage() {
 
   // 데모/튜토리얼 모드에서는 실제 세션 없이도 더미 세션으로 흐름을 보여준다.
   const effectiveSession = mockActive ? (activeSession ?? dummySession) : activeSession;
+  const activeCase = effectiveSession
+    ? cases.applicationCases.find((c) => c.id === effectiveSession.applicationCaseId)
+    : undefined;
+  // 실제 진행 중 세션 라벨(데모/튜토리얼 제외). 새 면접 시작 시 전환 경고용.
+  const activeSessionLabel =
+    !mockActive && effectiveSession
+      ? `${activeCase ? `${activeCase.companyName} · ${activeCase.jobTitle} · ` : ""}${getInterviewModeLabel(effectiveSession.mode)}`
+      : null;
 
   // ?tutorial=1 / ?demo=1 로 진입하면 해당 모드를 자동 시작한다.
   useEffect(() => {
@@ -89,24 +102,18 @@ export function InterviewPage() {
   if (!isAuthenticated && !mockActive && !wantTutorial && !wantDemo) {
     return (
       <div className="min-h-[calc(100vh-72px)] bg-slate-50 px-4 py-12">
-        <div className="mx-auto max-w-md rounded-xl border border-slate-200 bg-white p-8 text-center shadow-sm">
+        <div className="mx-auto max-w-md rounded-xl border border-slate-200 bg-card p-8 text-center shadow-sm">
           <div className="mx-auto flex size-12 items-center justify-center rounded-lg bg-indigo-50 text-indigo-600">
             <MessageSquare className="size-6" />
           </div>
           <h1 className="mt-4 text-xl font-bold text-slate-900">AI 가상 면접</h1>
           <p className="mt-1 text-sm leading-6 text-slate-500">
-            로그인 없이 먼저 체험해 볼 수 있어요. 데모로 전체 기능을 바로 써보거나, 가이드와 함께 둘러보세요.
+            로그인 없이 먼저 둘러볼 수 있어요. 가이드와 함께 전체 흐름을 살펴보세요.
           </p>
           <div className="mt-5 flex flex-col gap-2">
             <button
-              onClick={startDemo}
-              className="w-full rounded-lg bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-indigo-700"
-            >
-              지금 체험하기 (로그인 불필요)
-            </button>
-            <button
               onClick={startTutorial}
-              className="w-full rounded-lg border border-indigo-200 bg-indigo-50 px-4 py-2.5 text-sm font-semibold text-indigo-600 transition-colors hover:bg-indigo-100"
+              className="w-full rounded-lg bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-indigo-700"
             >
               가이드와 둘러보기
             </button>
@@ -134,24 +141,16 @@ export function InterviewPage() {
           </div>
           <div className="flex shrink-0 gap-2">
             {mode === "off" ? (
-              <>
-                <button
-                  onClick={startDemo}
-                  className="rounded-lg bg-indigo-600 px-3 py-2 text-sm font-semibold text-white transition-colors hover:bg-indigo-700"
-                >
-                  체험하기
-                </button>
-                <button
-                  onClick={startTutorial}
-                  className="rounded-lg border border-indigo-200 bg-indigo-50 px-3 py-2 text-sm font-semibold text-indigo-600 transition-colors hover:bg-indigo-100"
-                >
-                  둘러보기
-                </button>
-              </>
+              <button
+                onClick={startTutorial}
+                className="rounded-lg border border-indigo-200 bg-indigo-50 px-3 py-2 text-sm font-semibold text-indigo-600 transition-colors hover:bg-indigo-100"
+              >
+                둘러보기
+              </button>
             ) : (
               <button
                 onClick={stopDemo}
-                className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-600 transition-colors hover:bg-slate-50"
+                className="rounded-lg border border-slate-300 bg-card px-3 py-2 text-sm font-semibold text-slate-600 transition-colors hover:bg-slate-50"
               >
                 {mode === "demo" ? "체험 종료" : "둘러보기 종료"}
               </button>
@@ -159,8 +158,20 @@ export function InterviewPage() {
           </div>
         </div>
 
+        {effectiveSession && (
+          <div className="flex flex-wrap items-center gap-2 rounded-xl border border-slate-200 bg-card px-4 py-2.5">
+            <span className="text-xs text-slate-400">현재 진행</span>
+            <span className="text-sm font-semibold text-slate-800">
+              {activeCase ? `${activeCase.companyName} · ${activeCase.jobTitle} · ` : ""}
+              {getInterviewModeLabel(effectiveSession.mode)}
+            </span>
+            {sessionOrigin === "resumed" && <Badge className="bg-indigo-100 text-indigo-700">복습 중</Badge>}
+            {sessionOrigin === "new" && <Badge className="bg-green-100 text-green-700">새 세션</Badge>}
+          </div>
+        )}
+
         <Tabs value={activeTab} onValueChange={goTab}>
-          <TabsList className="h-auto w-full justify-start overflow-x-auto border border-slate-200 bg-white p-1">
+          <TabsList className="h-auto w-full justify-start overflow-x-auto border border-slate-200 bg-card p-1">
             <TabsTrigger value="modes" data-tut="tut-tab-modes">면접 모드 선택</TabsTrigger>
             <TabsTrigger value="questions" data-tut="tut-tab-questions">예상 면접 질문</TabsTrigger>
             <TabsTrigger value="practice" data-tut="tut-tab-practice">복습 테스트</TabsTrigger>
@@ -179,6 +190,7 @@ export function InterviewPage() {
                 prompt={autoPrompt}
                 onReady={(session) => {
                   setActiveSession(session);
+                  setSessionOrigin("new");
                   sessionStorage.removeItem("interview.autoPrompt");
                   goTab("practice");
                 }}
@@ -195,8 +207,19 @@ export function InterviewPage() {
                 onSelectMode={setSelectedMode}
                 onSessionStarted={(session) => {
                   setActiveSession(session);
+                  setSessionOrigin("new");
                   goTab("questions");
                 }}
+                onResume={(session) => {
+                  setActiveSession(session);
+                  setSessionOrigin("resumed");
+                  setSelectedCaseId(session.applicationCaseId);
+                  setSelectedMode(session.mode);
+                  // 복원 = 복습. 마지막 복습 시각을 기록한다(실패해도 흐름은 진행).
+                  void markSessionResumed(session.id);
+                  goTab("questions");
+                }}
+                activeSessionLabel={activeSessionLabel}
               />
             )}
           </TabsContent>
@@ -210,7 +233,7 @@ export function InterviewPage() {
           </TabsContent>
 
           <TabsContent value="live" data-tut="tut-panel-live" className="mt-6">
-            <RealtimeInterviewTab session={effectiveSession} />
+            <VoiceInterviewTab session={effectiveSession} />
           </TabsContent>
 
           <TabsContent value="avatar" data-tut="tut-panel-avatar" className="mt-6">

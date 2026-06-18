@@ -148,7 +148,7 @@ export default function AdminInquiriesAI() {
           { icon: Timer, label: "평균 응답", value: "5.2시간" },
           { icon: Smile, label: "만족도", value: "96%" },
         ].map(({ icon: Icon, label, value }) => (
-          <div key={label} className="bg-white border border-black/10 rounded-xl shadow-sm p-4">
+          <div key={label} className="bg-card border border-black/10 rounded-xl shadow-sm p-4">
             <div className="text-[12.5px] text-[#717182] flex items-center gap-1.5">
               <Icon size={14} />{label}
             </div>
@@ -161,7 +161,7 @@ export default function AdminInquiriesAI() {
       <div className="grid gap-5 items-start" style={{ gridTemplateColumns: "340px 1fr" }}>
 
         {/* ── Inquiry List Panel ── */}
-        <div className="bg-white border border-black/10 rounded-xl shadow-sm overflow-hidden">
+        <div className="bg-card border border-black/10 rounded-xl shadow-sm overflow-hidden">
           {/* filter tabs */}
           <div className="flex items-center gap-2 px-4 py-3 border-b border-black/10">
             <div className="inline-flex rounded-[10px] p-0.5" style={{ background: "#ececf0" }}>
@@ -169,7 +169,7 @@ export default function AdminInquiriesAI() {
                 <button key={f} onClick={() => setFilter(f)}
                   className={`text-xs px-2.5 py-1 rounded-[7px] transition-colors ${
                     filter === f
-                      ? "bg-white text-[#030213] font-semibold shadow-[0_1px_2px_rgba(15,23,42,0.06)]"
+                      ? "bg-card text-[#030213] font-semibold shadow-[0_1px_2px_rgba(15,23,42,0.06)]"
                       : "text-[#717182]"
                   }`}>
                   {f}
@@ -215,7 +215,7 @@ export default function AdminInquiriesAI() {
 
         {/* ── Thread Panel ── */}
         {selected ? (
-          <div className="bg-white border border-black/10 rounded-xl shadow-sm overflow-hidden">
+          <div className="bg-card border border-black/10 rounded-xl shadow-sm overflow-hidden">
             {/* Thread header */}
             <div className="px-5 py-4 border-b border-black/10">
               <div className="flex items-center gap-2 mb-2">
@@ -241,12 +241,12 @@ export default function AdminInquiriesAI() {
             {/* Controls bar */}
             <div className="flex items-center gap-2 flex-wrap px-5 py-3 border-b border-black/10" style={{ background: "#f8fafc" }}>
               <span className="text-[11px] font-semibold text-[#717182]">상태</span>
-              <span className="inline-flex items-center gap-2 h-8 px-2.5 rounded-md border border-black/10 bg-white text-[12.5px] font-semibold">
+              <span className="inline-flex items-center gap-2 h-8 px-2.5 rounded-md border border-black/10 bg-card text-[12.5px] font-semibold">
                 {selected.status === "answered" ? "답변완료" : selected.status === "progress" ? "처리중" : "미답변"}
                 <ChevronDown size={12} className="text-[#717182]" />
               </span>
               <span className="text-[11px] font-semibold text-[#717182] ml-1">담당자</span>
-              <span className="inline-flex items-center gap-2 h-8 px-2.5 rounded-md border border-black/10 bg-white text-[12.5px] font-semibold">
+              <span className="inline-flex items-center gap-2 h-8 px-2.5 rounded-md border border-black/10 bg-card text-[12.5px] font-semibold">
                 {selected.assignee || "미지정"}
                 <ChevronDown size={12} className="text-[#717182]" />
               </span>
@@ -308,7 +308,7 @@ export default function AdminInquiriesAI() {
                 value={memo}
                 onChange={(e) => setMemo(e.target.value)}
                 placeholder="처리 경위, 인계 사항 등 운영자끼리 공유할 메모를 남기세요."
-                className="w-full min-h-[42px] p-2.5 rounded-md border bg-white text-[12.5px] leading-[1.5] placeholder:text-slate-400 resize-y"
+                className="w-full min-h-[42px] p-2.5 rounded-md border bg-card text-[12.5px] leading-[1.5] placeholder:text-slate-400 resize-y"
                 style={{ borderColor: "#fde68a" }}
               />
             </div>
@@ -341,7 +341,7 @@ export default function AdminInquiriesAI() {
               <div className="flex gap-1.5 flex-wrap mb-2.5">
                 {TEMPLATES.map((t) => (
                   <button key={t.label} onClick={() => setReplyText(t.text)}
-                    className="inline-flex items-center gap-1 text-[11.5px] font-semibold px-2.5 py-1 rounded-full border border-black/10 bg-white text-slate-600 hover:border-blue-300 transition-colors">
+                    className="inline-flex items-center gap-1 text-[11.5px] font-semibold px-2.5 py-1 rounded-full border border-black/10 bg-card text-slate-600 hover:border-blue-300 transition-colors">
                     <Zap size={12} />{t.label}
                   </button>
                 ))}
@@ -351,7 +351,7 @@ export default function AdminInquiriesAI() {
                 value={replyText}
                 onChange={(e) => setReplyText(e.target.value)}
                 placeholder="답변을 작성하세요…"
-                className="w-full min-h-[84px] p-3 rounded-md border border-black/10 bg-white text-[13px] leading-[1.65] text-slate-700 placeholder:text-slate-400 resize-y"
+                className="w-full min-h-[84px] p-3 rounded-md border border-black/10 bg-card text-[13px] leading-[1.65] text-slate-700 placeholder:text-slate-400 resize-y"
               />
 
               <div className="flex items-center justify-between mt-2.5 gap-3">
@@ -371,7 +371,7 @@ export default function AdminInquiriesAI() {
             </div>
           </div>
         ) : (
-          <div className="bg-white border border-black/10 rounded-xl shadow-sm p-12 text-center text-slate-400">
+          <div className="bg-card border border-black/10 rounded-xl shadow-sm p-12 text-center text-slate-400">
             문의를 선택하세요
           </div>
         )}
@@ -428,7 +428,7 @@ function AiCallCard({ icon, title, desc, actionLabel, onAction }: {
         <div className="text-[11.5px] text-[#717182] leading-[1.5]">{desc}</div>
       </div>
       <button onClick={onAction}
-        className="shrink-0 inline-flex items-center gap-1.5 h-[34px] px-3 rounded-lg text-[12.5px] font-bold bg-white border hover:bg-indigo-50 transition-colors"
+        className="shrink-0 inline-flex items-center gap-1.5 h-[34px] px-3 rounded-lg text-[12.5px] font-bold bg-card border hover:bg-indigo-50 transition-colors"
         style={{ borderColor: "rgba(79,70,229,0.3)", color: "#4338ca" }}>
         <Wand2 size={14} />{actionLabel}
       </button>
@@ -465,7 +465,7 @@ function AiNewUserBox() {
         <span className="text-[12.5px] font-bold" style={{ color: "#4338ca" }}>AI 회원 요약</span>
       </div>
       <div className="flex items-start gap-2.5 px-0.5 py-1.5">
-        <span className="shrink-0 w-9 h-9 rounded-[10px] bg-white border border-black/8 text-slate-400 flex items-center justify-center">
+        <span className="shrink-0 w-9 h-9 rounded-[10px] bg-card border border-black/8 text-slate-400 flex items-center justify-center">
           <UserPlus size={17} />
         </span>
         <div>
@@ -483,7 +483,7 @@ function AiSummaryReady() {
       <div className="flex items-center gap-1.5 mb-1.5">
         <Sparkles size={15} className="text-indigo-600" />
         <span className="text-[12.5px] font-bold" style={{ color: "#4338ca" }}>AI 회원 요약</span>
-        <span className="text-[10.5px] font-semibold text-slate-400 bg-white border border-black/8 rounded-full px-2 py-0.5">민감정보 제외</span>
+        <span className="text-[10.5px] font-semibold text-slate-400 bg-card border border-black/8 rounded-full px-2 py-0.5">민감정보 제외</span>
         <span className="ml-auto inline-flex items-center gap-1 text-[11px] text-slate-400">
           <RotateCw size={12} />방금 생성
         </span>
@@ -507,7 +507,7 @@ function AiDraftLoading() {
         </span>
       </div>
       <div className="rounded-[10px] p-3" style={{ background: "#f7f8ff", border: "1px solid rgba(79,70,229,0.16)" }}>
-        <div className="bg-white border border-black/8 rounded-[9px] p-3 flex flex-col gap-2">
+        <div className="bg-card border border-black/8 rounded-[9px] p-3 flex flex-col gap-2">
           <div className="ct-sk h-[11px] w-[94%]" />
           <div className="ct-sk h-[11px] w-[99%]" />
           <div className="ct-sk h-[11px] w-[72%]" />
@@ -537,7 +537,7 @@ function AiDraftReady({ onUseDraft, onRegenerate }: { onUseDraft: () => void; on
         <span className="ml-auto text-[11px] text-slate-400">AI 생성 · 그대로 전송 금지</span>
       </div>
       <div className="rounded-[10px] p-3" style={{ background: "#f7f8ff", border: "1px solid rgba(79,70,229,0.16)" }}>
-        <div className="bg-white border border-black/8 rounded-[9px] p-3 text-[13px] leading-[1.7] text-slate-700"
+        <div className="bg-card border border-black/8 rounded-[9px] p-3 text-[13px] leading-[1.7] text-slate-700"
           dangerouslySetInnerHTML={{ __html: MOCK_DRAFT.replace(/\*\*(.*?)\*\*/g, '<b>$1</b>') }} />
         <div className="mt-2.5">
           <div className="text-[10.5px] font-bold text-slate-400 mb-1.5 ml-0.5">초안이 참고한 문서</div>
@@ -558,7 +558,7 @@ function AiDraftReady({ onUseDraft, onRegenerate }: { onUseDraft: () => void; on
             <CornerDownLeft size={15} />이 초안 사용
           </button>
           <button onClick={onRegenerate}
-            className="inline-flex items-center gap-1.5 h-9 px-3 rounded-lg border border-black/12 bg-white text-slate-600 text-[12.5px] font-semibold hover:bg-slate-50 transition-colors">
+            className="inline-flex items-center gap-1.5 h-9 px-3 rounded-lg border border-black/12 bg-card text-slate-600 text-[12.5px] font-semibold hover:bg-slate-50 transition-colors">
             <RefreshCw size={14} />다시 생성
           </button>
           <button className="inline-flex items-center gap-1.5 h-9 px-3 rounded-lg bg-transparent text-[#717182] text-[12.5px] font-semibold hover:bg-slate-50 transition-colors">
@@ -575,7 +575,7 @@ function AiDisconnectedBox({ onRetry }: { onRetry: () => void }) {
     <div className="mt-3">
       <div className="rounded-[10px] p-3.5 flex items-start gap-3"
         style={{ background: "#fffbeb", border: "1px solid #fde68a" }}>
-        <span className="shrink-0 w-9 h-9 rounded-[10px] bg-white border flex items-center justify-center text-amber-700"
+        <span className="shrink-0 w-9 h-9 rounded-[10px] bg-card border flex items-center justify-center text-amber-700"
           style={{ borderColor: "#fde68a" }}>
           <WifiOff size={17} />
         </span>
@@ -584,7 +584,7 @@ function AiDisconnectedBox({ onRetry }: { onRetry: () => void }) {
           <div className="text-xs leading-relaxed" style={{ color: "#854d0e" }}>지금은 AI 요약·초안 생성이 어려워요. 평소처럼 직접 답변해 주세요.</div>
         </div>
         <button onClick={onRetry}
-          className="shrink-0 inline-flex items-center gap-1 h-[30px] px-2.5 rounded-lg text-[11.5px] font-semibold bg-white hover:bg-amber-50 transition-colors"
+          className="shrink-0 inline-flex items-center gap-1 h-[30px] px-2.5 rounded-lg text-[11.5px] font-semibold bg-card hover:bg-amber-50 transition-colors"
           style={{ border: "1px solid #fcd34d", color: "#b45309" }}>
           <RotateCw size={13} />다시 시도
         </button>
@@ -594,7 +594,7 @@ function AiDisconnectedBox({ onRetry }: { onRetry: () => void }) {
       </div>
       <div className="flex gap-1.5 flex-wrap">
         {TEMPLATES.map((t) => (
-          <span key={t.label} className="inline-flex items-center gap-1 text-[11.5px] font-semibold px-2.5 py-1 rounded-full border border-black/10 bg-white text-slate-600">
+          <span key={t.label} className="inline-flex items-center gap-1 text-[11.5px] font-semibold px-2.5 py-1 rounded-full border border-black/10 bg-card text-slate-600">
             <Zap size={12} />{t.label}
           </span>
         ))}

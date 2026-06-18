@@ -27,6 +27,22 @@ export interface SupportTicket {
   createdAt: string;
 }
 
+export interface TicketMessageView {
+  id: number;
+  senderType: "USER" | "ADMIN";
+  content: string;
+  createdAt: string;
+}
+
+export interface TicketThread {
+  id: number;
+  subject: string;
+  category: string;
+  status: TicketStatus;
+  createdAt: string;
+  messages: TicketMessageView[];
+}
+
 export const FAQ_CATEGORIES = [
   { value: "all", label: "전체" },
   { value: "general", label: "일반" },

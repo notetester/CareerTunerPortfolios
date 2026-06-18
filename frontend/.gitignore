@@ -4,6 +4,7 @@ node_modules/
 # Build output
 dist/
 dist-ssr/
+dist-apk/
 
 # Vite / tooling cache
 .vite/

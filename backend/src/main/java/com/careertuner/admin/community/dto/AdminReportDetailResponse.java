@@ -26,4 +26,5 @@ public class AdminReportDetailResponse {
     private String status;
     private String action;
     private List<ReportReasonCount> reasons;
+    private AiOpinion aiOpinion;
 }

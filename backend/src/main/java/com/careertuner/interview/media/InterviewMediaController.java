@@ -16,8 +16,12 @@ import com.careertuner.common.web.ApiResponse;
 import com.careertuner.interview.media.dto.AvatarSessionResponse;
 import com.careertuner.interview.media.dto.MediaAnalysisResponse;
 import com.careertuner.interview.media.dto.SaveMediaAnalysisRequest;
+import com.careertuner.interview.media.dto.TranscribeRequest;
+import com.careertuner.interview.media.dto.TranscribeResponse;
 import com.careertuner.interview.media.dto.VoiceAnalysisRequest;
 import com.careertuner.interview.media.dto.VoiceAnalysisResponse;
+import com.careertuner.interview.media.dto.VoiceScoreRequest;
+import com.careertuner.interview.media.dto.VoiceScoreResponse;
 
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -41,6 +45,7 @@ public class InterviewMediaController {
     public ApiResponse<Map<String, Boolean>> capabilities() {
         return ApiResponse.ok(Map.of(
                 "voiceProfiling", voiceService.enabled(),
+                "nonverbal", mediaService.nonverbalEnabled(),
                 "avatar", avatarProperties.configured(),
                 "avatarSandbox", avatarProperties.isSandbox()));
     }
@@ -51,6 +56,22 @@ public class InterviewMediaController {
                                                            @PathVariable Long sessionId,
                                                            @Valid @RequestBody VoiceAnalysisRequest request) {
         return ApiResponse.ok(mediaService.analyzeVoice(authUser.id(), sessionId, request));
+    }
+
+    /** 음성 답변 → 자체 추론 서버 점수 (ADR-006, Inworld 대체). 원본 음성은 점수 산출 후 버려진다. */
+    @PostMapping("/sessions/{sessionId}/voice-score")
+    public ApiResponse<VoiceScoreResponse> scoreVoice(@AuthenticationPrincipal AuthUser authUser,
+                                                      @PathVariable Long sessionId,
+                                                      @Valid @RequestBody VoiceScoreRequest request) {
+        return ApiResponse.ok(mediaService.scoreVoice(authUser.id(), sessionId, request));
+    }
+
+    /** 음성 답변 → 자체 STT 전사 (B 베이직, faster-whisper). 원본 음성은 전사 후 버려진다. */
+    @PostMapping("/sessions/{sessionId}/voice-transcribe")
+    public ApiResponse<TranscribeResponse> transcribe(@AuthenticationPrincipal AuthUser authUser,
+                                                      @PathVariable Long sessionId,
+                                                      @Valid @RequestBody TranscribeRequest request) {
+        return ApiResponse.ok(mediaService.transcribe(authUser.id(), sessionId, request));
     }
 
     /** 아바타 화상 면접 세션 토큰 발급 (LiveAvatar, API 키는 서버측 보관). */

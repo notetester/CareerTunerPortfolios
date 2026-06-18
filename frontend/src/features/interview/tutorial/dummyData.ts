@@ -26,6 +26,9 @@ export const dummySession: InterviewSession = {
   startedAt: "2026-06-14T10:00:00",
   endedAt: null,
   totalScore: null,
+  avgScore: null,
+  avgVoiceScore: null,
+  lastResumedAt: null,
   createdAt: "2026-06-14T10:00:00",
 };
 
@@ -102,6 +105,7 @@ export const dummyReport: InterviewReport = {
 /** 외부 키 보유 여부 — 튜토리얼에서는 음성/아바타 기능이 켜진 것처럼 보여준다. */
 export const dummyCapabilities: MediaCapabilities = {
   voiceProfiling: true,
+  nonverbal: true,
   avatar: true,
   avatarSandbox: true,
 };

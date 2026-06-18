@@ -2,11 +2,16 @@ package com.careertuner.billing.domain;
 
 import java.time.LocalDateTime;
 
-import lombok.Getter;
-import lombok.Setter;
+import lombok.AllArgsConstructor;
+import lombok.Builder;
+import lombok.Data;
+import lombok.NoArgsConstructor;
 
-@Getter
-@Setter
+/** 사용자 구독(user_subscription). */
+@Data
+@Builder
+@NoArgsConstructor
+@AllArgsConstructor
 public class UserSubscription {
 
     private Long id;
@@ -17,6 +22,4 @@ public class UserSubscription {
     private LocalDateTime currentPeriodStart;
     private LocalDateTime currentPeriodEnd;
     private LocalDateTime canceledAt;
-    private LocalDateTime createdAt;
-    private LocalDateTime updatedAt;
 }

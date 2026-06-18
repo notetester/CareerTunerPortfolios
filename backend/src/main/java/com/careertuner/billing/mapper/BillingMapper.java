@@ -6,64 +6,51 @@ import java.util.List;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 
-import com.careertuner.billing.domain.AiFeatureBenefitPolicy;
-import com.careertuner.billing.domain.BenefitTransaction;
-import com.careertuner.billing.domain.SubscriptionBenefitPolicy;
+import com.careertuner.billing.domain.CreditProduct;
+import com.careertuner.billing.domain.CreditTransaction;
+import com.careertuner.billing.domain.Payment;
 import com.careertuner.billing.domain.SubscriptionPlan;
-import com.careertuner.billing.domain.UserBenefitBalance;
 import com.careertuner.billing.domain.UserSubscription;
+import com.careertuner.billing.dto.AdminPaymentRow;
+import com.careertuner.billing.dto.AdminPaymentSummary;
+import com.careertuner.billing.dto.UsageRow;
 
 @Mapper
 public interface BillingMapper {
 
+    // 요금제 / 크레딧 상품
     List<SubscriptionPlan> findActivePlans();
 
-    SubscriptionPlan findActivePlanByCode(@Param("planCode") String planCode);
+    SubscriptionPlan findPlanByCode(@Param("code") String code);
 
-    List<SubscriptionBenefitPolicy> findActiveBenefitPolicies();
+    List<CreditProduct> findEnabledCreditProducts();
 
-    List<SubscriptionBenefitPolicy> findActiveBenefitPoliciesByPlan(@Param("planCode") String planCode);
+    CreditProduct findCreditProductByCode(@Param("code") String code);
 
-    SubscriptionBenefitPolicy findActiveBenefitPolicy(@Param("planCode") String planCode,
-                                                      @Param("benefitCode") String benefitCode);
+    // 구독
+    UserSubscription findActiveSubscription(@Param("userId") Long userId);
 
-    List<AiFeatureBenefitPolicy> findActiveFeatureBenefitPolicies();
+    void insertSubscription(UserSubscription subscription);
 
-    AiFeatureBenefitPolicy findActiveFeatureBenefitPolicy(@Param("featureType") String featureType);
+    int cancelActiveSubscription(@Param("userId") Long userId);
 
-    UserSubscription findActiveSubscription(@Param("userId") Long userId,
-                                            @Param("now") LocalDateTime now);
+    // 결제
+    List<Payment> findPaymentsByUserId(@Param("userId") Long userId);
 
-    int deactivateActiveSubscriptions(@Param("userId") Long userId,
-                                      @Param("now") LocalDateTime now);
+    void insertPayment(Payment payment);
 
-    void insertUserSubscription(UserSubscription subscription);
+    // 크레딧 원장
+    Integer latestCreditBalance(@Param("userId") Long userId);
 
-    int updateUserPlan(@Param("userId") Long userId,
-                       @Param("planCode") String planCode);
+    void insertCreditTransaction(CreditTransaction transaction);
 
-    String findUserPlanCode(@Param("userId") Long userId);
+    List<CreditTransaction> findCreditTransactionsByUserId(@Param("userId") Long userId);
 
-    List<UserBenefitBalance> findBenefitBalances(@Param("userId") Long userId,
-                                                 @Param("periodStart") LocalDateTime periodStart,
-                                                 @Param("periodEnd") LocalDateTime periodEnd);
+    // 이번 달 AI 사용량(기능별 집계)
+    List<UsageRow> monthlyUsage(@Param("userId") Long userId, @Param("from") LocalDateTime from);
 
-    UserBenefitBalance findBenefitBalance(@Param("userId") Long userId,
-                                          @Param("benefitCode") String benefitCode,
-                                          @Param("periodStart") LocalDateTime periodStart);
+    // 관리자
+    List<AdminPaymentRow> findAllPayments(@Param("status") String status);
 
-    void insertBenefitBalance(UserBenefitBalance balance);
-
-    int consumeBenefitIfEnough(@Param("balanceId") Long balanceId);
-
-    int refundBenefit(@Param("balanceId") Long balanceId);
-
-    boolean existsConsumeTransaction(@Param("benefitCode") String benefitCode,
-                                     @Param("refType") String refType,
-                                     @Param("refId") Long refId);
-
-    void insertBenefitTransaction(BenefitTransaction transaction);
-
-    List<BenefitTransaction> findBenefitTransactionsByUser(@Param("userId") Long userId,
-                                                           @Param("limit") int limit);
+    AdminPaymentSummary paymentSummary();
 }

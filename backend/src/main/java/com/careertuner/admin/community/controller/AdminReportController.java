@@ -48,4 +48,11 @@ public class AdminReportController {
             @RequestBody AdminReportActionRequest request) {
         return ApiResponse.ok(reportService.takeAction(authUser, id, request));
     }
+
+    @PostMapping("/{id}/reclassify")
+    public ApiResponse<AdminReportDetailResponse> reclassify(
+            @AuthenticationPrincipal AuthUser authUser,
+            @PathVariable Long id) {
+        return ApiResponse.ok(reportService.reclassify(authUser, id));
+    }
 }

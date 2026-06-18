@@ -3,8 +3,9 @@ import { useNavigate } from "react-router";
 import { Avatar, AvatarFallback } from "@/app/components/ui/avatar";
 import {
   ArrowLeft, Eye, Clock, Star,
-  Users, Calendar, Gauge, Trash2,
+  Users, Calendar, Gauge, Trash2, Pencil,
 } from "lucide-react";
+import { Sparkles } from "lucide-react";
 import { CategoryBadge } from "./CategoryBadge";
 import { ReactionButtons } from "./ReactionButtons";
 import { CommentSection } from "./CommentSection";
@@ -12,11 +13,14 @@ import { useCommunityStore } from "../hooks/useCommunityStore";
 import { ConfirmDialog } from "@/app/components/ui/confirm-dialog";
 import { toast } from "@/features/notification/components/toast";
 import * as communityApi from "../api/communityApi";
+import type { ParsedAiTags } from "../api/communityApi";
+import { useAuth } from "@/app/auth/AuthContext";
 import { relTime } from "@/features/notification/types/notification";
 
 interface PostDetailViewProps {
   postId: number;
   onBack: () => void;
+  onEdit?: () => void;
 }
 
 function DifficultyStars({ level }: { level: number }) {
@@ -107,14 +111,17 @@ const RESULT_LABELS: Record<string, string> = {
   PASSED: "최종합격", FAILED: "불합격", PENDING: "대기중", UNKNOWN: "비공개",
 };
 
-export function PostDetailView({ postId, onBack }: PostDetailViewProps) {
+export function PostDetailView({ postId, onBack, onEdit }: PostDetailViewProps) {
   const { currentPost: d, comments, detailLoading, error, fetchPostDetail, fetchComments, fetchPosts } = useCommunityStore();
+  const { user } = useAuth();
   const navigate = useNavigate();
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+  const [aiTags, setAiTags] = useState<ParsedAiTags | null>(null);
 
   useEffect(() => {
     fetchPostDetail(postId);
     fetchComments(postId);
+    communityApi.getAiTags(postId).then(setAiTags);
   }, [postId, fetchPostDetail, fetchComments]);
 
   const handleDelete = async () => {
@@ -167,13 +174,20 @@ export function PostDetailView({ postId, onBack }: PostDetailViewProps) {
         <button className="ct-detail__back" onClick={onBack}>
           <ArrowLeft /> 커뮤니티 목록
         </button>
-        <button
-          className="av-btn"
-          style={{ color: "var(--av-red, #dc2626)" }}
-          onClick={() => setShowDeleteDialog(true)}
-        >
-          <Trash2 /> 삭제
-        </button>
+        {user && d && user.id === d.author.id && (
+          <div style={{ display: "flex", gap: 8 }}>
+            <button className="av-btn" onClick={onEdit}>
+              <Pencil /> 수정
+            </button>
+            <button
+              className="av-btn"
+              style={{ color: "var(--av-red, #dc2626)" }}
+              onClick={() => setShowDeleteDialog(true)}
+            >
+              <Trash2 /> 삭제
+            </button>
+          </div>
+        )}
       </div>
 
       {/* Head */}
@@ -235,8 +249,31 @@ export function PostDetailView({ postId, onBack }: PostDetailViewProps) {
         </div>
       )}
 
+      {/* Tags */}
+      {d.tags?.length > 0 && (
+        <div className="ct-detail__taglist">
+          {d.tags.map((tag) => (
+            <span key={tag} className="ct-detail__tag">{tag}</span>
+          ))}
+        </div>
+      )}
+
       {/* Body */}
       <div className="ct-prose">{renderMarkdown(d.content)}</div>
+
+      {/* AI 추천 태그 (자동 적용 안 된 경우) */}
+      {aiTags && !aiTags.applied && aiTags.tags.length > 0 && (
+        <div className="ct-ai-suggest">
+          <div className="ct-ai-suggest__h">
+            <Sparkles /> AI 추천 태그
+          </div>
+          <div className="ct-ai-suggest__tags">
+            {aiTags.tags.map((tag) => (
+              <span key={tag} className="ct-detail__tag ct-detail__tag--ai">{tag}</span>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Action bar */}
       <ReactionButtons

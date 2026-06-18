@@ -60,12 +60,15 @@ export function TutorialMediaPreview({ kind }: { kind: "voice" | "avatar" }) {
 
   return (
     <div className="space-y-4">
-      <div className="rounded-xl border border-indigo-200 bg-indigo-50 p-4 text-sm text-indigo-700">
+      <div
+        data-tut={kind === "avatar" ? "tut-media-avatar" : "tut-media-voice"}
+        className="rounded-xl border border-indigo-200 bg-indigo-50 p-4 text-sm text-indigo-700"
+      >
         <b>데모</b> — {label}은 실제로 카메라·마이크로 진행됩니다. 여기서는 진행 흐름을 예시로 보여드려요.
       </div>
 
       {/* 면접관 화면 */}
-      <div className="relative flex aspect-video w-full items-center justify-center overflow-hidden rounded-xl bg-slate-900 text-slate-300">
+      <div className="relative flex aspect-video w-full items-center justify-center overflow-hidden rounded-xl bg-muted text-slate-300">
         <div className="flex flex-col items-center gap-2">
           <Icon className="size-10 opacity-70" />
           <span className="text-sm">{kind === "avatar" ? "아바타 면접관" : "AI 음성 면접관"}</span>
@@ -95,13 +98,13 @@ export function TutorialMediaPreview({ kind }: { kind: "voice" | "avatar" }) {
       )}
 
       {phase === "analyzing" && (
-        <div className="flex items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white p-6 text-sm text-slate-500">
+        <div className="flex items-center justify-center gap-2 rounded-xl border border-slate-200 bg-card p-6 text-sm text-slate-500">
           <Loader2 className="size-4 animate-spin" /> {kind === "avatar" ? "표정·자세·음성 분석 중…" : "음성 지표 분석 중…"}
         </div>
       )}
 
       {phase === "scored" && (
-        <div className="rounded-xl border border-slate-200 bg-white p-6">
+        <div className="rounded-xl border border-slate-200 bg-card p-6">
           <div className="flex items-center gap-3">
             <span className="text-4xl font-black text-indigo-600">
               82<span className="text-base font-bold text-slate-400">/100</span>

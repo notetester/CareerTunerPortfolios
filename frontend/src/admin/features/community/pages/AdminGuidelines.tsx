@@ -5,8 +5,8 @@ import {
 import AdminShell from "../../../components/AdminShell";
 import {
   getGuidelines, createGuideline, updateGuideline, publishGuideline,
+  type AdminGuidelineResponse, type GuidelineRule, type GuidelineParams,
 } from "../api/adminGuidelineApi";
-import type { AdminGuidelineResponse, GuidelineRule, GuidelineParams } from "../api/adminGuidelineApi";
 import "../styles/admin-guidelines.css";
 
 const SANCTIONS = ["삭제 + 단계 제재", "즉시 영구 제한", "삭제만 (제재 없음)"];
@@ -65,7 +65,6 @@ export default function AdminGuidelines() {
   }, []);
 
   const loadVersions = async () => {
-    setLoading(true);
     try {
       const list = await getGuidelines();
       setVersions(list);
@@ -78,13 +77,12 @@ export default function AdminGuidelines() {
           loadGuidelineToForm(published);
           setEditId(null);
           const vNum = parseFloat(published.versionLabel.replace("v", "")) + 0.1;
-          setVersionLabel(`v${Number.isFinite(vNum) ? vNum.toFixed(1) : "1.1"}`);
+          setVersionLabel(`v${vNum.toFixed(1)}`);
           setSummary("");
         }
       }
-    } catch (error) {
-      flash(error instanceof Error ? error.message : "가이드라인을 불러오지 못했습니다.", "red");
-      setVersions([]);
+    } catch {
+      // API 미연결 — 기본값 사용
     } finally {
       setLoading(false);
     }
@@ -102,51 +100,49 @@ export default function AdminGuidelines() {
     setWhen(g.enforceType === "SCHEDULED" ? "예약" : "즉시");
   };
 
-  const payload = () => ({
-    versionLabel,
-    summary,
-    lede,
-    oks,
-    nos,
-    rules,
-    params,
-    enforceType: when === "예약" ? "SCHEDULED" : "IMMEDIATE",
-    scheduledAt: null,
-  });
-
   const handleSave = async () => {
     if (saving) return;
     setSaving(true);
     try {
-      const saved = editId
-        ? await updateGuideline(editId, payload())
-        : await createGuideline(payload());
-      setEditId(saved.id);
+      const data = {
+        versionLabel,
+        summary,
+        lede,
+        oks,
+        nos,
+        rules,
+        params,
+        enforceType: when === "예약" ? "SCHEDULED" : "IMMEDIATE",
+      };
+      if (editId) {
+        await updateGuideline(editId, data);
+      } else {
+        const created = await createGuideline(data);
+        setEditId(created.id);
+      }
       setLastSaved(new Date().toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit" }));
       flash("임시저장되었습니다.", "green");
-      await loadVersions();
-    } catch (error) {
-      flash(error instanceof Error ? error.message : "가이드라인 저장에 실패했습니다.", "red");
+      loadVersions();
+    } catch {
+      flash("저장에 실패했습니다.", "red");
     } finally {
       setSaving(false);
     }
   };
 
   const handlePublish = async () => {
-    if (saving) return;
+    if (!editId || saving) return;
     setSaving(true);
     try {
-      const saved = editId
-        ? await updateGuideline(editId, payload())
-        : await createGuideline(payload());
-      const published = await publishGuideline(saved.id);
-      setEditId(null);
+      await updateGuideline(editId, {
+        versionLabel, summary, lede, oks, nos, rules, params,
+        enforceType: when === "예약" ? "SCHEDULED" : "IMMEDIATE",
+      });
+      await publishGuideline(editId);
       flash("가이드라인이 게시되었습니다.", "green");
-      await loadVersions();
-      loadGuidelineToForm(published);
-      setEditId(null);
-    } catch (error) {
-      flash(error instanceof Error ? error.message : "가이드라인 게시에 실패했습니다.", "red");
+      loadVersions();
+    } catch {
+      flash("게시에 실패했습니다.", "red");
     } finally {
       setSaving(false);
     }
@@ -374,7 +370,7 @@ export default function AdminGuidelines() {
           <button className="age-btn" onClick={handleSave} disabled={saving}>
             <Save />{saving ? "저장 중..." : "임시저장"}
           </button>
-          <button className="age-btn age-btn--ink" onClick={handlePublish} disabled={saving}>
+          <button className="age-btn age-btn--ink" onClick={handlePublish} disabled={saving || !editId}>
             <CalendarClock />{when === "예약" ? "게시 예약" : "게시"}
           </button>
         </div>

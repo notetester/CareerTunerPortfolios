@@ -126,28 +126,28 @@ export function DashboardPage() {
         label: "활성 지원 건",
         value: `${stats.activeApplications}`,
         sub: `이번 달 ${stats.newApplicationsThisMonth}건 추가`,
-        color: "from-blue-500 to-cyan-500",
+        color: "",
       },
       {
         icon: MessageSquare,
         label: "총 모의면접",
         value: `${stats.totalInterviews}`,
         sub: `이번 주 ${stats.interviewsThisWeek}회`,
-        color: "from-purple-500 to-violet-500",
+        color: "",
       },
       {
         icon: Award,
         label: "보유 크레딧",
         value: `${stats.credit}`,
         sub: `이번 달 ${stats.creditsUsedThisMonth}크레딧 사용`,
-        color: "from-amber-500 to-orange-500",
+        color: "",
       },
       {
         icon: TrendingUp,
         label: "평균 적합도",
         value: `${stats.averageFitScore}점`,
         sub: `${highFitCount}건은 우선 지원 후보`,
-        color: "from-green-500 to-emerald-500",
+        color: "",
       },
     ];
   }, [highFitCount, stats]);
@@ -183,7 +183,7 @@ export function DashboardPage() {
                     onClick={handleRefreshSummary}
                     disabled={refreshing}
                     title="AI를 다시 실행해 최신 데이터로 요약을 재생성합니다. 크레딧 1이 차감됩니다."
-                    className="flex shrink-0 items-center gap-1 rounded-md border border-blue-200 bg-white/70 px-2 py-1 text-xs font-semibold text-blue-700 transition-colors hover:bg-white disabled:opacity-60"
+                    className="flex shrink-0 items-center gap-1 rounded-md border border-blue-200 bg-card/70 px-2 py-1 text-xs font-semibold text-blue-700 transition-colors hover:bg-card disabled:opacity-60"
                   >
                     <RefreshCw className={`size-3 ${refreshing ? "animate-spin" : ""}`} />
                     {refreshing ? "재생성 중" : "재생성 (크레딧 1)"}
@@ -197,7 +197,7 @@ export function DashboardPage() {
             )}
           </div>
           <Button
-            className="bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 gap-2"
+            className="bg-primary gap-2"
             onClick={() => navigate("/applications")}
           >
             <Plus className="size-4" />
@@ -206,7 +206,7 @@ export function DashboardPage() {
         </div>
 
         {loading && (
-          <Card className="border border-slate-200 bg-white">
+          <Card className="border border-slate-200 bg-card">
             <CardContent className="flex items-center gap-3 p-5 text-sm text-slate-600">
               <Loader2 className="size-4 animate-spin text-blue-600" />
               대시보드 데이터를 불러오는 중입니다.
@@ -227,7 +227,7 @@ export function DashboardPage() {
           <>
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
               {statCards.map((s) => (
-                <Card key={s.label} className="border border-slate-200 bg-white hover:shadow-md transition-shadow">
+                <Card key={s.label} className="border border-slate-200 bg-card hover:shadow-md transition-shadow">
                   <CardContent className="p-5">
                     <div className="flex items-start justify-between gap-3">
                       <div>
@@ -235,8 +235,8 @@ export function DashboardPage() {
                         <div className="text-3xl font-black text-slate-900">{s.value}</div>
                         <div className="text-xs text-slate-400 mt-1">{s.sub}</div>
                       </div>
-                      <div className={`size-10 rounded-xl bg-gradient-to-br ${s.color} flex items-center justify-center`}>
-                        <s.icon className="size-5 text-white" />
+                      <div className={`size-10 rounded-xl bg-accent-soft ${s.color} flex items-center justify-center`}>
+                        <s.icon className="size-5 text-primary" />
                       </div>
                     </div>
                   </CardContent>
@@ -269,10 +269,10 @@ export function DashboardPage() {
                   {summary.recentApplications.length > 0 ? (
                     summary.recentApplications.map((app) => (
                       <Link to={`/applications/${app.id}`} key={app.id}>
-                        <Card className="border border-slate-200 bg-white hover:border-blue-300 hover:shadow-md transition-all cursor-pointer">
+                        <Card className="border border-slate-200 bg-card hover:border-blue-300 hover:shadow-md transition-all cursor-pointer">
                           <CardContent className="p-4">
                             <div className="flex items-center gap-4">
-                              <div className="size-10 rounded-xl bg-gradient-to-br from-blue-600 to-indigo-600 flex items-center justify-center text-white font-bold text-sm flex-shrink-0">
+                              <div className="size-10 rounded-xl bg-accent-soft flex items-center justify-center text-primary font-bold text-sm flex-shrink-0">
                                 {app.companyName[0]}
                               </div>
                               <div className="flex-1 min-w-0">
@@ -309,7 +309,7 @@ export function DashboardPage() {
                       </Link>
                     ))
                   ) : (
-                    <Card className="border border-slate-200 bg-white">
+                    <Card className="border border-slate-200 bg-card">
                       <CardContent className="p-5 text-sm text-slate-500">
                         아직 등록된 지원 건이 없습니다. 첫 공고를 등록하면 적합도와 다음 행동이 이곳에 표시됩니다.
                       </CardContent>
@@ -319,7 +319,7 @@ export function DashboardPage() {
 
                 <div className="mt-6">
                   <h2 className="font-bold text-slate-900 text-lg mb-4">최근 활동</h2>
-                  <Card className="border border-slate-200 bg-white">
+                  <Card className="border border-slate-200 bg-card">
                     <CardContent className="p-5 space-y-4">
                       {summary.activities.length > 0 ? (
                         summary.activities.map((activity, index) => {
@@ -346,7 +346,7 @@ export function DashboardPage() {
 
               <div className="space-y-5">
                 {(promisingApplication || urgentGap) && (
-                  <Card className="border border-blue-200 bg-gradient-to-br from-blue-50 to-indigo-50">
+                  <Card className="border border-blue-200 bg-muted">
                     <CardHeader className="pb-3">
                       <CardTitle className="text-base flex items-center gap-2 text-blue-900">
                         <Target className="size-4 text-blue-600" />
@@ -358,7 +358,7 @@ export function DashboardPage() {
                         <button
                           type="button"
                           onClick={() => navigate(`/applications/${promisingApplication.id}`)}
-                          className="w-full rounded-lg border border-blue-100 bg-white/80 p-3 text-left transition-colors hover:bg-white"
+                          className="w-full rounded-lg border border-blue-100 bg-card/80 p-3 text-left transition-colors hover:bg-card"
                         >
                           <div className="text-[11px] font-semibold text-blue-500">가장 유망한 지원 건</div>
                           <div className="mt-1 text-sm font-bold text-slate-800">
@@ -391,7 +391,7 @@ export function DashboardPage() {
                 )}
 
                 {(summary.aiHistory?.length ?? 0) > 0 && (
-                  <Card className="border border-indigo-200 bg-white">
+                  <Card className="border border-indigo-200 bg-card">
                     <CardHeader className="pb-3"><CardTitle className="flex items-center gap-2 text-base"><Brain className="size-4 text-indigo-600" />AI 요약 재생성 이력</CardTitle></CardHeader>
                     <CardContent className="space-y-2">
                       {summary.aiHistory?.map((run) => (
@@ -404,7 +404,7 @@ export function DashboardPage() {
                   </Card>
                 )}
 
-                <Card className="border border-slate-200 bg-white">
+                <Card className="border border-slate-200 bg-card">
                   <CardHeader className="pb-3">
                     <CardTitle className="text-base flex items-center gap-2">
                       <Flame className="size-4 text-orange-500" />
@@ -447,7 +447,7 @@ export function DashboardPage() {
                   </CardContent>
                 </Card>
 
-                <Card className="border border-slate-200 bg-white">
+                <Card className="border border-slate-200 bg-card">
                   <CardHeader className="pb-3">
                     <CardTitle className="text-base">빠른 메뉴</CardTitle>
                   </CardHeader>
@@ -491,7 +491,7 @@ export function DashboardPage() {
                   </Card>
                 )}
 
-                <Card className="border border-slate-200 bg-white">
+                <Card className="border border-slate-200 bg-card">
                   <CardHeader className="pb-3">
                     <CardTitle className="text-base flex items-center gap-2">
                       <AlertCircle className="size-4 text-red-500" />
@@ -530,7 +530,7 @@ export function DashboardPage() {
         style={{ bottom: "calc(1rem + env(safe-area-inset-bottom, 0px))" }}
       >
         <Button
-          className="h-12 w-full bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 gap-2 shadow-lg"
+          className="h-12 w-full bg-primary gap-2 shadow-lg"
           onClick={() => navigate("/applications")}
         >
           <Plus className="size-4" />

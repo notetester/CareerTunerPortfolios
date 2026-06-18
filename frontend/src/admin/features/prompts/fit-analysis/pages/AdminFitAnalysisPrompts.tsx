@@ -54,7 +54,7 @@ export default function AdminFitAnalysisPromptsPage() {
         </section>
 
         {loading && (
-          <Card className="border border-slate-200 bg-white">
+          <Card className="border border-slate-200 bg-card">
             <CardContent className="flex items-center gap-2 p-5 text-sm text-slate-500">
               <Loader2 className="size-4 animate-spin" />
               프롬프트 정보를 불러오는 중입니다.
@@ -85,7 +85,7 @@ export default function AdminFitAnalysisPromptsPage() {
 
 function PromptCard({ prompt }: { prompt: FitAnalysisPromptTemplate }) {
   return (
-    <Card className="border border-slate-200 bg-white">
+    <Card className="border border-slate-200 bg-card">
       <CardHeader className="pb-3">
         <CardTitle className="space-y-2 text-base">
           <div className="flex items-start justify-between gap-2">

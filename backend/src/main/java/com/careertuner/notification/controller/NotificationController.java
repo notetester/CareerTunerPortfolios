@@ -4,10 +4,15 @@ import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.validation.annotation.Validated;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
@@ -15,6 +20,11 @@ import org.springframework.web.bind.annotation.RestController;
 import com.careertuner.common.security.AuthUser;
 import com.careertuner.common.web.ApiResponse;
 import com.careertuner.notification.dto.NotificationPageResponse;
+import com.careertuner.notification.dto.NotificationPreferenceResponse;
+import com.careertuner.notification.dto.NotificationPreferenceUpdateRequest;
+import com.careertuner.notification.dto.PushSubscribeRequest;
+import com.careertuner.notification.push.PushService;
+import com.careertuner.notification.service.NotificationPreferenceService;
 import com.careertuner.notification.service.NotificationService;
 
 import lombok.RequiredArgsConstructor;
@@ -25,6 +35,8 @@ import lombok.RequiredArgsConstructor;
 public class NotificationController {
 
     private final NotificationService notificationService;
+    private final NotificationPreferenceService preferenceService;
+    private final PushService pushService;
 
     @GetMapping
     public ApiResponse<NotificationPageResponse> getNotifications(
@@ -56,6 +68,39 @@ public class NotificationController {
             @AuthenticationPrincipal AuthUser authUser
     ) {
         notificationService.markAllAsRead(authUser.id());
+        return ApiResponse.ok();
+    }
+
+    // ───── 알림 설정 ─────
+
+    @GetMapping("/preferences")
+    public ApiResponse<NotificationPreferenceResponse> getPreferences(@AuthenticationPrincipal AuthUser authUser) {
+        return ApiResponse.ok(preferenceService.get(authUser.id()));
+    }
+
+    @PutMapping("/preferences")
+    public ApiResponse<NotificationPreferenceResponse> updatePreferences(
+            @AuthenticationPrincipal AuthUser authUser,
+            @RequestBody NotificationPreferenceUpdateRequest request) {
+        return ApiResponse.ok(preferenceService.update(authUser.id(), request));
+    }
+
+    // ───── 푸시 기기 등록 ─────
+
+    @PostMapping("/push")
+    public ApiResponse<Void> subscribePush(
+            @AuthenticationPrincipal AuthUser authUser,
+            @Validated @RequestBody PushSubscribeRequest request,
+            @RequestHeader(value = "User-Agent", required = false) String userAgent) {
+        pushService.subscribe(authUser.id(), request, userAgent);
+        return ApiResponse.ok();
+    }
+
+    @DeleteMapping("/push")
+    public ApiResponse<Void> unsubscribePush(
+            @AuthenticationPrincipal AuthUser authUser,
+            @RequestParam String token) {
+        pushService.unsubscribe(authUser.id(), token);
         return ApiResponse.ok();
     }
 }

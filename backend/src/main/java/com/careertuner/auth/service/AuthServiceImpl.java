@@ -166,6 +166,12 @@ public class AuthServiceImpl implements AuthService {
 
     @Override
     @Transactional
+    public void logoutAll(Long userId) {
+        authMapper.revokeAllForUser(userId);
+    }
+
+    @Override
+    @Transactional
     public boolean verifyEmail(String token) {
         EmailVerification ev = authMapper.findEmailVerificationByToken(token);
         if (ev == null || ev.isUsed() || !"VERIFY".equals(ev.getPurpose())

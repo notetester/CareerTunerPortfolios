@@ -9,3 +9,17 @@ export function getAnalysisSummary() {
 export function refreshAnalysisSummary() {
   return api<AnalysisSummary>("/analysis/summary/refresh", { method: "POST" });
 }
+
+/** 장기 분석 실행 이력 한 줄(사용자 노출용 — 토큰/원문은 제외하고 유형/상태/시각만 사용). */
+export interface AnalysisRunHistoryItem {
+  id: number;
+  analysisType: string;
+  status: string;
+  model: string | null;
+  createdAt: string;
+}
+
+/** 내 장기 분석 실행 이력(최신순). */
+export function getAnalysisHistory() {
+  return api<AnalysisRunHistoryItem[]>("/analysis/history");
+}

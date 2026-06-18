@@ -28,6 +28,19 @@ export interface AdminInterviewSessionDetail {
   report: string | null;
 }
 
+/** 면접 AI 기능 실패 이력 한 줄 (ai_usage_log 기반). */
+export interface AdminInterviewAiFailureRow {
+  id: number;
+  userId: number;
+  userEmail: string;
+  applicationCaseId: number | null;
+  companyName: string | null;
+  jobTitle: string | null;
+  featureType: string;
+  errorMessage: string | null;
+  createdAt: string;
+}
+
 // ───── 학습 파이프라인 ─────
 
 /** 학습 샘플 통계. */

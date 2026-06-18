@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
-import { MessageSquare, RefreshCw, Search } from "lucide-react";
+import { Link } from "react-router";
+import { BookMarked, MessageSquare, RefreshCw, Search } from "lucide-react";
+import AdminShell from "../../../components/AdminShell";
 import { Badge } from "@/app/components/ui/badge";
 import { Button } from "@/app/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/app/components/ui/card";
@@ -11,9 +13,9 @@ import {
   getScoreColor,
   type InterviewReport,
 } from "@/features/interview/types/interview";
-import { getAdminInterviewSessionDetail, getAdminInterviewSessions } from "../api";
+import { getAdminInterviewAiFailures, getAdminInterviewSessionDetail, getAdminInterviewSessions } from "../api";
 import { TrainingPipelineCard } from "../components/TrainingPipelineCard";
-import type { AdminInterviewSessionDetail, AdminInterviewSessionRow } from "../types";
+import type { AdminInterviewAiFailureRow, AdminInterviewSessionDetail, AdminInterviewSessionRow } from "../types";
 
 function formatDateTime(value: string | null): string {
   if (!value) return "-";
@@ -84,24 +86,28 @@ export function AdminInterviewsPage() {
   }, [selected?.id]);
 
   return (
-    <div className="min-h-screen bg-slate-50">
-      <div className="mx-auto grid max-w-7xl gap-5 px-4 py-8 sm:px-6 lg:grid-cols-[360px_minmax(0,1fr)]">
+    <AdminShell
+      active="interviews"
+      breadcrumb="면접 모니터링"
+      title="면접 세션 관리"
+      icon={MessageSquare}
+      desc="사용자 면접 세션과 답변·리포트, 학습 파이프라인, AI 실패를 모니터링합니다."
+      actions={
+        <div className="flex gap-2">
+          <Button asChild variant="outline" size="sm">
+            <Link to="/admin/interview/knowledge"><BookMarked className="size-4" /> RAG 지식</Link>
+          </Button>
+          <Button variant="outline" onClick={() => void loadRows()} disabled={loading}>
+            <RefreshCw className={`size-4 ${loading ? "animate-spin" : ""}`} />
+          </Button>
+        </div>
+      }
+    >
+      <div className="grid gap-5 lg:grid-cols-[360px_minmax(0,1fr)]">
         {/* 좌: 목록 */}
         <section className="space-y-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <Badge className="mb-2 bg-slate-900 text-white">D 관리자</Badge>
-              <h1 className="flex items-center gap-2 text-2xl font-bold text-slate-950">
-                <MessageSquare className="size-6 text-blue-600" />
-                면접 세션 관리
-              </h1>
-            </div>
-            <Button variant="outline" onClick={() => void loadRows()} disabled={loading}>
-              <RefreshCw className={`size-4 ${loading ? "animate-spin" : ""}`} />
-            </Button>
-          </div>
 
-          <Card className="border-slate-200 bg-white">
+          <Card className="border-slate-200 bg-card">
             <CardContent className="space-y-3 p-4">
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-slate-400" />
@@ -139,7 +145,7 @@ export function AdminInterviewsPage() {
 
           <div className="space-y-2">
             {rows.length === 0 && !loading ? (
-              <div className="rounded-lg border border-dashed border-slate-200 bg-white p-6 text-center text-sm text-slate-400">
+              <div className="rounded-lg border border-dashed border-slate-200 bg-card p-6 text-center text-sm text-slate-400">
                 면접 세션이 없습니다.
               </div>
             ) : (
@@ -147,7 +153,7 @@ export function AdminInterviewsPage() {
                 <button
                   key={row.id}
                   type="button"
-                  className={`w-full rounded-lg border bg-white p-3 text-left transition-colors ${
+                  className={`w-full rounded-lg border bg-card p-3 text-left transition-colors ${
                     selected?.id === row.id ? "border-blue-300 ring-2 ring-blue-100" : "border-slate-200 hover:border-blue-200"
                   }`}
                   onClick={() => setSelectedId(row.id)}
@@ -177,13 +183,14 @@ export function AdminInterviewsPage() {
         {/* 우: 상세 */}
         <section className="min-w-0 space-y-4">
           <TrainingPipelineCard />
+          <AiFailuresCard />
           {!detail ? (
-            <Card className="border-slate-200 bg-white">
+            <Card className="border-slate-200 bg-card">
               <CardContent className="p-8 text-center text-sm text-slate-500">면접 세션을 선택하세요.</CardContent>
             </Card>
           ) : (
             <>
-              <Card className="border-slate-200 bg-white">
+              <Card className="border-slate-200 bg-card">
                 <CardHeader>
                   <CardTitle className="text-lg font-bold text-slate-950">
                     {detail.session.companyName} · {detail.session.jobTitle}
@@ -198,7 +205,7 @@ export function AdminInterviewsPage() {
               </Card>
 
               {report && (
-                <Card className="border-slate-200 bg-white">
+                <Card className="border-slate-200 bg-card">
                   <CardHeader>
                     <CardTitle className="text-base font-bold text-slate-900">면접 리포트</CardTitle>
                   </CardHeader>
@@ -232,14 +239,14 @@ export function AdminInterviewsPage() {
               <section className="space-y-2">
                 <h2 className="text-sm font-bold text-slate-900">질문 / 답변</h2>
                 {detail.questions.length === 0 ? (
-                  <Card className="border-slate-200 bg-white">
+                  <Card className="border-slate-200 bg-card">
                     <CardContent className="p-6 text-center text-sm text-slate-400">생성된 질문이 없습니다.</CardContent>
                   </Card>
                 ) : (
                   detail.questions.map((q, i) => {
                     const answer = answerByQuestion.get(q.id);
                     return (
-                      <Card key={q.id} className="border-slate-200 bg-white">
+                      <Card key={q.id} className="border-slate-200 bg-card">
                         <CardContent className="space-y-2 p-4 text-sm">
                           <div className="flex items-start gap-2">
                             <Badge className="bg-blue-100 text-blue-700">Q{i + 1}</Badge>
@@ -268,7 +275,7 @@ export function AdminInterviewsPage() {
           )}
         </section>
       </div>
-    </div>
+    </AdminShell>
   );
 }
 
@@ -278,5 +285,57 @@ function Info({ label, value }: { label: string; value: string }) {
       <div className="text-xs font-semibold text-slate-500">{label}</div>
       <div className="mt-1 truncate text-sm font-bold text-slate-900">{value}</div>
     </div>
+  );
+}
+
+/** 면접 AI 기능 실패 모니터링 — GET /api/admin/interview/ai-failures. */
+function AiFailuresCard() {
+  const [rows, setRows] = useState<AdminInterviewAiFailureRow[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  const load = async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      setRows(await getAdminInterviewAiFailures(50));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "AI 실패 이력을 불러오지 못했습니다.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    void load();
+  }, []);
+
+  return (
+    <Card className="border-slate-200 bg-card">
+      <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+        <CardTitle className="text-base">면접 AI 실패 이력</CardTitle>
+        <Button variant="outline" size="sm" onClick={() => void load()} disabled={loading}>
+          <RefreshCw className={`size-4 ${loading ? "animate-spin" : ""}`} />
+        </Button>
+      </CardHeader>
+      <CardContent className="space-y-2">
+        {error && <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div>}
+        {!error && rows.length === 0 && !loading && (
+          <div className="rounded-lg bg-slate-50 p-4 text-center text-sm text-slate-400">최근 AI 실패가 없습니다.</div>
+        )}
+        {rows.map((r) => (
+          <div key={r.id} className="rounded-lg border border-red-100 bg-red-50/40 p-3 text-sm">
+            <div className="flex items-center justify-between gap-2">
+              <span className="font-semibold text-red-800">{r.featureType}</span>
+              <span className="shrink-0 text-xs text-slate-400">{formatDateTime(r.createdAt)}</span>
+            </div>
+            <div className="mt-0.5 truncate text-xs text-slate-500">
+              {r.userEmail}{r.companyName ? ` · ${r.companyName}` : ""}{r.jobTitle ? ` · ${r.jobTitle}` : ""}
+            </div>
+            {r.errorMessage && <div className="mt-1 line-clamp-2 text-xs text-red-600">{r.errorMessage}</div>}
+          </div>
+        ))}
+      </CardContent>
+    </Card>
   );
 }

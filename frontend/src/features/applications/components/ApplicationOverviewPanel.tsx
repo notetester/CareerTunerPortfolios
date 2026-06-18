@@ -138,7 +138,7 @@ export function ApplicationOverviewPanel({
 
   return (
     <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_320px]">
-      <Card className="border-slate-200 bg-white">
+      <Card className="border-slate-200 bg-card">
         <CardHeader className="gap-3">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
             <div className="space-y-2">
@@ -198,7 +198,7 @@ export function ApplicationOverviewPanel({
                     onChange={(event) => setField("companyName", event.target.value)}
                     disabled={updating}
                     autoComplete="organization"
-                    className="bg-white"
+                    className="bg-card"
                   />
                 </div>
                 <div className="space-y-2">
@@ -210,7 +210,7 @@ export function ApplicationOverviewPanel({
                     value={form.jobTitle}
                     onChange={(event) => setField("jobTitle", event.target.value)}
                     disabled={updating}
-                    className="bg-white"
+                    className="bg-card"
                   />
                 </div>
               </div>
@@ -226,7 +226,7 @@ export function ApplicationOverviewPanel({
                     value={form.deadlineDate}
                     onChange={(event) => setField("deadlineDate", event.target.value)}
                     disabled={updating}
-                    className="bg-white"
+                    className="bg-card"
                   />
                   <p className="text-xs leading-5 text-slate-500">
                     마감일이 없거나 상시채용이면 비워두세요.
@@ -239,7 +239,7 @@ export function ApplicationOverviewPanel({
                     disabled={updating}
                     onValueChange={(value) => setField("sourceType", value as ApplicationSourceType)}
                   >
-                    <SelectTrigger className="bg-white">
+                    <SelectTrigger className="bg-card">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
@@ -314,7 +314,7 @@ export function ApplicationOverviewPanel({
         </CardContent>
       </Card>
 
-      <Card className="border-slate-200 bg-white">
+      <Card className="border-slate-200 bg-card">
         <CardHeader>
           <CardTitle className="text-base font-bold text-slate-900">지원 건 상태</CardTitle>
         </CardHeader>

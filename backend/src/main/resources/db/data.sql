@@ -243,3 +243,15 @@ INSERT INTO notification (user_id, actor_id, type, target_type, target_id, title
        WHERE x.user_id = u.id AND x.type = 'COMMENT' AND x.target_type = 'POST' AND x.target_id = p.id
    )
  LIMIT 1;
+
+-- 면접 RAG 지식베이스 샘플 (관리자 지식 관리 화면이 비어 보이지 않도록) -----
+INSERT INTO interview_knowledge (kind, title, content, source, indexed)
+ SELECT 'RUBRIC', 'STAR 기법 평가 기준',
+        '면접 답변은 Situation-Task-Action-Result 구조를 갖추었는지, 구체적 수치/성과가 드러나는지로 평가한다. 두루뭉술한 답변은 감점.',
+        '내부 평가 가이드', 0
+ FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM interview_knowledge WHERE title = 'STAR 기법 평가 기준');
+INSERT INTO interview_knowledge (kind, title, content, source, indexed)
+ SELECT 'QUESTION_BANK', '백엔드 공통 질문',
+        '트랜잭션 격리수준, 인덱스 동작, N+1 문제와 해결, REST 설계 원칙은 백엔드 직무 단골 질문이다.',
+        '직무 질문 은행', 0
+ FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM interview_knowledge WHERE title = '백엔드 공통 질문');
