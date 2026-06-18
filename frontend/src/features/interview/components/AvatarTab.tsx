@@ -11,8 +11,15 @@ import {
   getMediaCapabilities,
   listSessionQuestions,
   saveMediaResult,
+  scoreAvatarServer,
 } from "../api/interviewApi";
-import { blobToPcm16Base64, computeVoiceScore, countFillers, VoiceMetricsTracker } from "../hooks/voiceAnalysis";
+import {
+  blobToBase64,
+  blobToPcm16Base64,
+  computeVoiceScore,
+  countFillers,
+  VoiceMetricsTracker,
+} from "../hooks/voiceAnalysis";
 import { computeVisualScore, VisualMetricsTracker, type VisualScoreDetail } from "../hooks/visualAnalysis";
 import type {
   InterviewQuestion,
@@ -33,8 +40,9 @@ type Status = "idle" | "connecting" | "live" | "analyzing" | "scored" | "error";
 /**
  * 아바타 화상 면접 (HeyGen LiveAvatar + MediaPipe).
  * 백엔드가 발급한 단기 세션 토큰으로 아바타 면접관이 준비된 질문을 음성으로 묻고,
- * 유저 웹캠은 온디바이스로 표정(blendshapes)·자세(pose)·음성을 분석한다.
- * 원본 영상은 서버에 올리지 않는다 — 점수(JSON)만 저장, 원하면 로컬 다운로드 (ADR-002).
+ * 유저 웹캠 영상은 동의 시 자체 추론 서버(serve)로 전송해 표정·자세·음성을 채점하고(late fusion,
+ * ADR-006/007), 미동의/서버 미기동 시 온디바이스(MediaPipe)로 폴백한다. 어느 경로든 원본 영상은
+ * 점수 산출 후 폐기되고 저장은 점수(JSON)만, 원하면 로컬 다운로드.
  */
 export function AvatarTab({ session }: { session: InterviewSession | null }) {
   const tutorialActive = useTutorialStore((s) => s.mode !== "off");
@@ -54,6 +62,7 @@ export function AvatarTab({ session }: { session: InterviewSession | null }) {
   const [visualDetail, setVisualDetail] = useState<VisualScoreDetail | null>(null);
   const [overall, setOverall] = useState<number | null>(null);
   const [downloadUrl, setDownloadUrl] = useState<string | null>(null);
+  const [consent, setConsent] = useState(true); // 정밀 분석(원본 영상 서버 전송) 동의
 
   const avatarRef = useRef<LiveAvatarSession | null>(null);
   const avatarVideoRef = useRef<HTMLVideoElement | null>(null);
@@ -259,8 +268,34 @@ export function AvatarTab({ session }: { session: InterviewSession | null }) {
       ...(userTranscript ? [{ role: "user" as const, text: userTranscript }] : []),
     ];
 
-    const vDetail = vMetrics ? computeVoiceScore(vMetrics, voiceProfile) : null;
-    const visDetail = visualMetrics ? computeVisualScore(visualMetrics) : null;
+    // 온디바이스 점수는 항상 계산(폴백 + 지표 표시용). 동의 + serve 가용 시 자체 추론 점수로 교체.
+    const vLocal = vMetrics ? computeVoiceScore(vMetrics, voiceProfile) : null;
+    const visLocal = visualMetrics ? computeVisualScore(visualMetrics) : null;
+    let vDetail = vLocal;
+    let visDetail = visLocal;
+    let source = "browser";
+
+    if (consent && capabilities?.nonverbal && recordedBlob && recordedBlob.size > 0) {
+      try {
+        const videoBase64 = await blobToBase64(recordedBlob);
+        const videoFormat = (recordedBlob.type || "video/webm").includes("webm") ? "webm" : "mp4";
+        const server = await scoreAvatarServer(session.id, {
+          videoBase64,
+          videoFormat,
+          transcriptChars: userChars,
+          fillerCount: fillers,
+          latencySec: vMetrics?.avgResponseLatencySec ?? undefined,
+        });
+        // 음성/영상 각각 별 모델 점수(late fusion). 한쪽 실패면 그쪽만 온디바이스 폴백 유지.
+        vDetail = server.voice?.detail ?? vLocal;
+        visDetail = server.visual?.detail ?? visLocal;
+        source = server.visual?.source ?? server.voice?.source ?? "rule";
+        setNote((prev) => prev ?? `자체 추론 서버로 채점했습니다 (${source}).`);
+      } catch {
+        setNote((prev) => prev ?? "자체 추론 서버 호출 실패 — 온디바이스 지표로 채점했습니다.");
+      }
+    }
+
     const combined =
       vDetail && visDetail
         ? Math.round(vDetail.overall * 0.5 + visDetail.overall * 0.5)
@@ -278,7 +313,7 @@ export function AvatarTab({ session }: { session: InterviewSession | null }) {
       await saveMediaResult(session.id, {
         kind: "AVATAR",
         transcript: transcript.length > 0 ? transcript : null,
-        metrics: { voice: vMetrics, visual: visualMetrics, voiceProfile },
+        metrics: { voice: vMetrics, visual: visualMetrics, voiceProfile, source },
         score: combined,
         scoreDetail: {
           ...(vDetail ? { ...vDetail, voiceOverall: vDetail.overall } : {}),
@@ -339,8 +374,7 @@ export function AvatarTab({ session }: { session: InterviewSession | null }) {
         <CardContent className="space-y-4">
           <p className="text-sm text-slate-500">
             아바타 면접관이 준비된 질문 {preparedQuestions ? Math.min(preparedQuestions.length, 6) : 6}개를
-            음성으로 묻고, 웹캠으로 표정·자세·음성을 분석해 종합 점수를 제공합니다. 영상은 기기에서만
-            분석되고 서버에 저장되지 않습니다.
+            음성으로 묻고, 웹캠으로 표정·자세·음성을 분석해 종합 점수를 제공합니다.
           </p>
 
           {keyMissing && (
@@ -391,6 +425,22 @@ export function AvatarTab({ session }: { session: InterviewSession | null }) {
                 </p>
               )}
             </div>
+          )}
+
+          {supported && capabilities?.nonverbal && (status === "idle" || status === "scored") && (
+            <label className="flex items-start gap-2 rounded-lg border border-slate-200 bg-slate-50 p-3 text-xs text-slate-600">
+              <input
+                type="checkbox"
+                checked={consent}
+                onChange={(e) => setConsent(e.target.checked)}
+                className="mt-0.5 size-3.5"
+              />
+              <span>
+                <span className="font-semibold text-slate-700">정밀 분석(자체 AI)</span> — 원본 영상을 분석
+                서버로 전송해 자체 모델(표정·자세·음성)로 채점합니다. 분석 후 영상은 즉시 폐기되며 서버에
+                저장하지 않습니다. 끄면 브라우저 온디바이스 지표로만 채점합니다.
+              </span>
+            </label>
           )}
 
           {supported && (

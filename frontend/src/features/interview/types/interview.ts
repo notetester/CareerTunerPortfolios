@@ -3,6 +3,8 @@
 
 import { MessageSquare, Settings2, Users, Zap, FileText, Building2, type LucideIcon } from "lucide-react";
 
+import type { VisualScoreDetail } from "../hooks/visualAnalysis";
+
 export type InterviewMode =
   | "BASIC" // 기본 면접
   | "JOB" // 직무 면접
@@ -180,6 +182,24 @@ export interface VoiceScoreServerResult {
   detail: VoiceScoreDetail;
   metrics: Record<string, unknown>;
   source: "rule" | "lightgbm";
+}
+
+/** 자체 추론 서버 영상 점수 (아바타 화상면접, MediaPipe → LightGBM) */
+export interface VisualScoreServerResult {
+  score: number;
+  detail: VisualScoreDetail;
+  metrics: Record<string, unknown>;
+  source: "rule" | "lightgbm";
+}
+
+/**
+ * 자체 추론 서버 아바타 점수 응답 (POST /sessions/{id}/avatar-score, late fusion, ADR-006/007).
+ * 음성·영상을 각각 별 모델로 채점하고 결합한다. visual 은 영상 추출 실패 시 null.
+ */
+export interface AvatarScoreServerResult {
+  voice: VoiceScoreServerResult;
+  visual: VisualScoreServerResult | null;
+  combined: number;
 }
 
 /** 자체 STT 응답 (POST /sessions/{id}/voice-transcribe) — B 베이직 답변 전사 */

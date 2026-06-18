@@ -19,6 +19,7 @@ import type {
   GenerateFollowUpsRequest,
   GenerateQuestionsRequest,
   InterviewAgentStep,
+  AvatarScoreServerResult,
   InterviewAnswer,
   InterviewProgress,
   InterviewQuestion,
@@ -230,6 +231,27 @@ export function scoreVoiceServer(
   },
 ): Promise<VoiceScoreServerResult> {
   return api<VoiceScoreServerResult>(`/interview/sessions/${sessionId}/voice-score`, {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+/**
+ * 아바타 화상면접 → 자체 추론 서버 음성+영상 점수 (late fusion, ADR-006/007).
+ * videoBase64 는 녹화 원본(webm 등). serve 가 webm 1개에서 음성·영상 피처를 함께 뽑아 결합한다.
+ * 원본 영상은 서버에서 점수 산출 후 버려진다(전송 동의 필요).
+ */
+export function scoreAvatarServer(
+  sessionId: number,
+  payload: {
+    videoBase64: string;
+    videoFormat?: string;
+    transcriptChars?: number;
+    fillerCount?: number;
+    latencySec?: number;
+  },
+): Promise<AvatarScoreServerResult> {
+  return api<AvatarScoreServerResult>(`/interview/sessions/${sessionId}/avatar-score`, {
     method: "POST",
     body: JSON.stringify(payload),
   });
