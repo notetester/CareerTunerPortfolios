@@ -16,7 +16,6 @@
             s.started_at,
             s.ended_at,
             s.created_at,
-            s.admin_memo,
             (
                 SELECT COUNT(*)
                 FROM interview_question q
@@ -79,6 +78,10 @@
           AND l.feature_type LIKE 'INTERVIEW%'
         ORDER BY l.created_at DESC, l.id DESC
         LIMIT #{limit}
+    </select>
+
+    <select id="findAdminMemo" resultType="java.lang.String">
+        SELECT admin_memo FROM interview_session WHERE id = #{id}
     </select>
 
     <update id="updateAdminMemo">

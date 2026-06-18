@@ -45,6 +45,7 @@ public class AdminInterviewService {
         if (session == null) {
             throw new BusinessException(ErrorCode.NOT_FOUND, "면접 세션을 찾을 수 없습니다.");
         }
+        session.setAdminMemo(adminInterviewMapper.findAdminMemo(id));
         List<InterviewQuestionResponse> questions = interviewMapper.findQuestionsBySessionId(id).stream()
                 .map(InterviewQuestionResponse::from)
                 .toList();
