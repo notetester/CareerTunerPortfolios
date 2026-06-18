@@ -1,5 +1,5 @@
 """
-ChaLearn First Impressions V2 → 음성 피처 + 라벨 CSV (학습 입력).
+ChaLearn First Impressions V2 → 음성/영상 피처 + 라벨 CSV (학습 입력, --features voice|visual).
 
 라벨은 공식 chalearnlap(dataset 24)의 annotation pickle 에 들어 있다(HF 미러 yeray142 는
 라벨 미업로드 — age_group 만). pickle 구조:
@@ -24,7 +24,13 @@ import pickle
 import subprocess
 import tempfile
 
-from extract_features import VOICE_FEATURE_KEYS, count_fillers, extract_voice_features
+from extract_features import (
+    VISUAL_FEATURE_KEYS,
+    VOICE_FEATURE_KEYS,
+    count_fillers,
+    extract_visual_features,
+    extract_voice_features,
+)
 
 TARGET_KEY = "interview"  # 면접 호감도(0~1) → 종합 인상 점수 타겟
 
@@ -55,7 +61,11 @@ def main():
     ap.add_argument("--transcription", help="(선택) transcription_*.pkl ({파일명: 텍스트})")
     ap.add_argument("--out", required=True, help="출력 csv")
     ap.add_argument("--limit", type=int, default=0, help="앞 N개만 (서브셋 검증)")
+    ap.add_argument("--features", choices=["voice", "visual"], default="voice",
+                    help="추출할 피처 종류 (late fusion: 음성/영상 별 CSV·별 모델)")
     args = ap.parse_args()
+
+    feature_keys = VISUAL_FEATURE_KEYS if args.features == "visual" else VOICE_FEATURE_KEYS
 
     labels = load_pickle(args.annotation)
     if TARGET_KEY not in labels:
@@ -73,7 +83,7 @@ def main():
     print(f"mp4 {len(video_index)}개 인덱싱 ({args.video_dir})")
 
     os.makedirs(os.path.dirname(os.path.abspath(args.out)), exist_ok=True)
-    fieldnames = ["video"] + VOICE_FEATURE_KEYS + [TARGET_KEY]
+    fieldnames = ["video"] + feature_keys + [TARGET_KEY]
     written, skipped = 0, 0
     with open(args.out, "w", newline="", encoding="utf-8") as out:
         writer = csv.DictWriter(out, fieldnames=fieldnames)
@@ -88,13 +98,16 @@ def main():
                 continue
             wav = None
             try:
-                wav = to_wav16k(mp4)
-                text = transcription.get(name, "")
-                chars = len(text.replace(" ", "")) if text else 0
-                filler = count_fillers([text]) if text else 0
-                m = extract_voice_features(wav, chars, filler)
+                if args.features == "visual":
+                    m = extract_visual_features(mp4)  # 영상 직접(wav 변환 불필요)
+                else:
+                    wav = to_wav16k(mp4)
+                    text = transcription.get(name, "")
+                    chars = len(text.replace(" ", "")) if text else 0
+                    filler = count_fillers([text]) if text else 0
+                    m = extract_voice_features(wav, chars, filler)
                 row = {"video": name, TARGET_KEY: target[name]}
-                row.update({k: m.get(k) for k in VOICE_FEATURE_KEYS})
+                row.update({k: m.get(k) for k in feature_keys})
                 writer.writerow(row)
                 written += 1
                 if written % 100 == 0:
