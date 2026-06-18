@@ -1,26 +1,23 @@
-package com.careertuner.billing.domain;
+package com.careertuner.payment.domain;
 
 import java.time.LocalDateTime;
 
-import lombok.AllArgsConstructor;
-import lombok.Builder;
-import lombok.Data;
-import lombok.NoArgsConstructor;
+import lombok.Getter;
+import lombok.Setter;
 
-/** 결제 내역(payment). 개발 단계에서는 외부 PG 없이 즉시 성공 처리한다. */
-@Data
-@Builder
-@NoArgsConstructor
-@AllArgsConstructor
+/** payment 테이블에 저장되는 결제 건. 크레딧 단건 결제에서는 plan을 비워 둔다. */
+@Getter
+@Setter
 public class Payment {
 
     private Long id;
     private Long userId;
     private String provider;
+    private String productType;
     private String productCode;
     private String orderId;
     private String paymentKey;
-    private Integer amount;
+    private int amount;
     private String plan;
     private Integer creditAmount;
     private String status;
