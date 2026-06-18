@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router";
-import { BookMarked, MessageSquare, RefreshCw, Search } from "lucide-react";
+import { BookMarked, MessageSquare, Mic, RefreshCw, Search, Video } from "lucide-react";
 import AdminShell from "../../../components/AdminShell";
 import { Badge } from "@/app/components/ui/badge";
 import { Button } from "@/app/components/ui/button";
@@ -236,6 +236,40 @@ export function AdminInterviewsPage() {
                 </Card>
               )}
 
+              {detail.mediaResults.length > 0 && (
+                <Card className="border-slate-200 bg-card">
+                  <CardHeader>
+                    <CardTitle className="text-base font-bold text-slate-900">음성/영상 면접 분석</CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-3">
+                    {detail.mediaResults.map((m) => (
+                      <div key={m.id} className="rounded-lg border border-slate-200 p-3">
+                        <div className="mb-2 flex items-center justify-between">
+                          <Badge variant="outline">
+                            {m.kind === "AVATAR" ? "아바타 화상 면접" : "음성 모의면접"}
+                          </Badge>
+                          <span className={`text-sm font-black ${getScoreColor(m.score)}`}>{m.score}점</span>
+                        </div>
+                        {m.scoreDetail && (
+                          <div className="flex flex-wrap gap-x-3 gap-y-1 text-xs text-slate-500">
+                            {Object.entries(m.scoreDetail).map(([k, v]) => (
+                              <span key={k}>
+                                {k} <span className="font-semibold text-slate-700">{v}</span>
+                              </span>
+                            ))}
+                          </div>
+                        )}
+                        {Array.isArray(m.transcript) && m.transcript.length > 0 && (
+                          <p className="mt-2 line-clamp-2 text-xs text-slate-400">
+                            {m.transcript.map((t) => t.text).join(" ")}
+                          </p>
+                        )}
+                      </div>
+                    ))}
+                  </CardContent>
+                </Card>
+              )}
+
               <section className="space-y-2">
                 <h2 className="text-sm font-bold text-slate-900">질문 / 답변</h2>
                 {detail.questions.length === 0 ? (
@@ -261,6 +295,30 @@ export function AdminInterviewsPage() {
                                 </div>
                               )}
                               {answer.feedback && <p className="text-xs text-slate-500">{answer.feedback}</p>}
+                              {(answer.audioUrl || answer.videoUrl) && (
+                                <div className="flex flex-wrap gap-2 pt-1">
+                                  {answer.audioUrl && (
+                                    <a
+                                      href={answer.audioUrl}
+                                      target="_blank"
+                                      rel="noreferrer"
+                                      className="inline-flex items-center gap-1 rounded border border-slate-200 bg-white px-2 py-1 text-xs text-slate-600 hover:bg-slate-100"
+                                    >
+                                      <Mic className="size-3" /> 음성 답변
+                                    </a>
+                                  )}
+                                  {answer.videoUrl && (
+                                    <a
+                                      href={answer.videoUrl}
+                                      target="_blank"
+                                      rel="noreferrer"
+                                      className="inline-flex items-center gap-1 rounded border border-slate-200 bg-white px-2 py-1 text-xs text-slate-600 hover:bg-slate-100"
+                                    >
+                                      <Video className="size-3" /> 영상 답변
+                                    </a>
+                                  )}
+                                </div>
+                              )}
                             </div>
                           ) : (
                             <p className="text-xs text-slate-400">미답변</p>

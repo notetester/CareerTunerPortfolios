@@ -2,6 +2,7 @@ import type {
   InterviewAnswer,
   InterviewMode,
   InterviewQuestion,
+  MediaAnalysis,
 } from "@/features/interview/types/interview";
 
 export interface AdminInterviewSessionRow {
@@ -24,6 +25,8 @@ export interface AdminInterviewSessionDetail {
   session: AdminInterviewSessionRow;
   questions: InterviewQuestion[];
   answers: InterviewAnswer[];
+  /** 음성/영상 면접(아바타·음성 모의) 분석 결과. */
+  mediaResults: MediaAnalysis[];
   /** interview_session.report JSON 원문 (InterviewReport 직렬화). */
   report: string | null;
 }

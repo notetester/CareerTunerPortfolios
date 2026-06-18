@@ -17,6 +17,7 @@ import com.careertuner.common.security.AuthUser;
 import com.careertuner.interview.dto.InterviewAnswerResponse;
 import com.careertuner.interview.dto.InterviewQuestionResponse;
 import com.careertuner.interview.mapper.InterviewMapper;
+import com.careertuner.interview.media.InterviewMediaService;
 
 import lombok.RequiredArgsConstructor;
 
@@ -29,6 +30,7 @@ public class AdminInterviewService {
 
     private final AdminInterviewMapper adminInterviewMapper;
     private final InterviewMapper interviewMapper;
+    private final InterviewMediaService mediaService;
 
     @Transactional(readOnly = true)
     public List<AdminInterviewSessionRow> sessions(AuthUser authUser, String keyword, String mode, int limit) {
@@ -49,7 +51,8 @@ public class AdminInterviewService {
         List<InterviewAnswerResponse> answers = interviewMapper.findAnswersBySessionId(id).stream()
                 .map(InterviewAnswerResponse::from)
                 .toList();
-        return new AdminInterviewSessionDetail(session, questions, answers, adminInterviewMapper.findReport(id));
+        return new AdminInterviewSessionDetail(session, questions, answers,
+                mediaService.listBySessionId(id), adminInterviewMapper.findReport(id));
     }
 
     @Transactional(readOnly = true)

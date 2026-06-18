@@ -110,6 +110,11 @@ public class InterviewMediaService {
         return mediaMapper.findBySessionId(sessionId).stream().map(this::toResponse).toList();
     }
 
+    /** 관리자/내부용 — 세션 소유권 체크 없이 미디어 분석 결과 조회 (admin 모니터링). */
+    public List<MediaAnalysisResponse> listBySessionId(Long sessionId) {
+        return mediaMapper.findBySessionId(sessionId).stream().map(this::toResponse).toList();
+    }
+
     private void requireOwnedSession(Long userId, Long sessionId) {
         InterviewSession session = interviewMapper.findSessionByIdAndUserId(sessionId, userId);
         if (session == null) {
