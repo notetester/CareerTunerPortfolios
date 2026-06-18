@@ -10,6 +10,8 @@ import com.careertuner.common.exception.ErrorCode;
 import com.careertuner.interview.domain.InterviewMediaAnalysis;
 import com.careertuner.interview.domain.InterviewSession;
 import com.careertuner.interview.mapper.InterviewMapper;
+import com.careertuner.interview.media.dto.AvatarScoreRequest;
+import com.careertuner.interview.media.dto.AvatarScoreResponse;
 import com.careertuner.interview.media.dto.MediaAnalysisResponse;
 import com.careertuner.interview.media.dto.SaveMediaAnalysisRequest;
 import com.careertuner.interview.media.dto.TranscribeRequest;
@@ -61,6 +63,13 @@ public class InterviewMediaService {
     public VoiceScoreResponse scoreVoice(Long userId, Long sessionId, VoiceScoreRequest request) {
         requireOwnedSession(userId, sessionId);
         return nonverbalClient.scoreVoice(request.audioBase64(), request.audioFormat(),
+                request.transcriptChars(), request.fillerCount(), request.latencySec());
+    }
+
+    /** 자체 추론 서버(serve)로 아바타 음성+영상 점수 산출 (late fusion, ADR-006/007). 원본 영상은 점수 산출 후 버려진다. */
+    public AvatarScoreResponse scoreAvatar(Long userId, Long sessionId, AvatarScoreRequest request) {
+        requireOwnedSession(userId, sessionId);
+        return nonverbalClient.scoreAvatar(request.videoBase64(), request.videoFormat(),
                 request.transcriptChars(), request.fillerCount(), request.latencySec());
     }
 

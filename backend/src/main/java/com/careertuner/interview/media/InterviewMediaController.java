@@ -13,6 +13,8 @@ import org.springframework.web.bind.annotation.RestController;
 
 import com.careertuner.common.security.AuthUser;
 import com.careertuner.common.web.ApiResponse;
+import com.careertuner.interview.media.dto.AvatarScoreRequest;
+import com.careertuner.interview.media.dto.AvatarScoreResponse;
 import com.careertuner.interview.media.dto.AvatarSessionResponse;
 import com.careertuner.interview.media.dto.MediaAnalysisResponse;
 import com.careertuner.interview.media.dto.SaveMediaAnalysisRequest;
@@ -64,6 +66,14 @@ public class InterviewMediaController {
                                                       @PathVariable Long sessionId,
                                                       @Valid @RequestBody VoiceScoreRequest request) {
         return ApiResponse.ok(mediaService.scoreVoice(authUser.id(), sessionId, request));
+    }
+
+    /** 아바타 화상면접 → 자체 추론 서버 음성+영상 점수 (late fusion, ADR-006/007). 원본 영상은 점수 산출 후 버려진다. */
+    @PostMapping("/sessions/{sessionId}/avatar-score")
+    public ApiResponse<AvatarScoreResponse> scoreAvatar(@AuthenticationPrincipal AuthUser authUser,
+                                                        @PathVariable Long sessionId,
+                                                        @Valid @RequestBody AvatarScoreRequest request) {
+        return ApiResponse.ok(mediaService.scoreAvatar(authUser.id(), sessionId, request));
     }
 
     /** 음성 답변 → 자체 STT 전사 (B 베이직, faster-whisper). 원본 음성은 전사 후 버려진다. */
