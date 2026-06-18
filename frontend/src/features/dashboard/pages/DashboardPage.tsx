@@ -16,6 +16,15 @@ import { RecentInterviewCard } from "@/features/dashboard/components/RecentInter
 import { NotificationsCard } from "@/features/dashboard/components/NotificationsCard";
 import { ReadinessGaugeCard } from "@/features/dashboard/components/ReadinessGaugeCard";
 import { AiResultBadge } from "@/features/analysis/components/AiResultBadge";
+import { GuideButton, type TourStep } from "@/features/analysis/components/GuideTour";
+
+// 취업분석 대시보드 페이지 안내(가이드 투어) 스텝.
+const DASHBOARD_TOUR_STEPS: TourStep[] = [
+  { selector: "[data-tour='dash-stats']", title: "핵심 지표", body: "활성 지원 건·총 모의면접·보유 크레딧·평균 적합도를 한눈에 요약합니다." },
+  { selector: "[data-tour='dash-priority']", title: "이번 주 우선순위", body: "가장 유망한 지원 건과 가장 시급한 보완 역량을 묶어 다음 행동을 제안합니다. 눌러서 상세·약점 탭으로 이동해요." },
+  { selector: "[data-tour='dash-todos']", title: "오늘의 할 일", body: "적합도·부족 역량 분석에서 파생된 체크리스트입니다. 체크로 완료 처리하거나 직접 추가할 수 있어요." },
+  { selector: "[data-tour='dash-skillgaps']", title: "자주 부족한 역량", body: "여러 지원 건에서 반복되는 갭을 집계합니다. 절반 이상에서 부족하면 위에 경고 카드가 뜹니다." },
+];
 
 const statusLabel: Record<string, string> = {
   DRAFT: "공고 입력",
@@ -196,13 +205,16 @@ export function DashboardPage() {
               </div>
             )}
           </div>
-          <Button
-            className="bg-primary gap-2"
-            onClick={() => navigate("/applications")}
-          >
-            <Plus className="size-4" />
-            새 지원 건 만들기
-          </Button>
+          <div className="flex items-center gap-2 shrink-0">
+            <GuideButton steps={DASHBOARD_TOUR_STEPS} />
+            <Button
+              className="bg-primary gap-2"
+              onClick={() => navigate("/applications")}
+            >
+              <Plus className="size-4" />
+              새 지원 건 만들기
+            </Button>
+          </div>
         </div>
 
         {loading && (
@@ -225,7 +237,7 @@ export function DashboardPage() {
 
         {!loading && !error && summary && (
           <>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <div data-tour="dash-stats" className="grid grid-cols-2 md:grid-cols-4 gap-4">
               {statCards.map((s) => (
                 <Card key={s.label} className="border border-slate-200 bg-card hover:shadow-md transition-shadow">
                   <CardContent className="p-5">
@@ -346,7 +358,7 @@ export function DashboardPage() {
 
               <div className="space-y-5">
                 {(promisingApplication || urgentGap) && (
-                  <Card className="border border-blue-200 bg-muted">
+                  <Card data-tour="dash-priority" className="border border-blue-200 bg-muted">
                     <CardHeader className="pb-3">
                       <CardTitle className="text-base flex items-center gap-2 text-blue-900">
                         <Target className="size-4 text-blue-600" />
@@ -404,7 +416,7 @@ export function DashboardPage() {
                   </Card>
                 )}
 
-                <Card className="border border-slate-200 bg-card">
+                <Card data-tour="dash-todos" className="border border-slate-200 bg-card">
                   <CardHeader className="pb-3">
                     <CardTitle className="text-base flex items-center gap-2">
                       <Flame className="size-4 text-orange-500" />
@@ -491,7 +503,7 @@ export function DashboardPage() {
                   </Card>
                 )}
 
-                <Card className="border border-slate-200 bg-card">
+                <Card data-tour="dash-skillgaps" className="border border-slate-200 bg-card">
                   <CardHeader className="pb-3">
                     <CardTitle className="text-base flex items-center gap-2">
                       <AlertCircle className="size-4 text-red-500" />

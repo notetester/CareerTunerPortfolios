@@ -13,6 +13,15 @@ import type { AnalysisRunHistoryItem } from "@/features/analysis/api/analysisSum
 import type { AnalysisSummary } from "@/features/analysis/types/analysisSummary";
 import { AiResultBadge } from "@/features/analysis/components/AiResultBadge";
 import { CareerPlanCard } from "@/features/analysis/components/CareerPlanCard";
+import { GuideButton, type TourStep } from "../components/GuideTour";
+
+// 취업분석 페이지 안내(가이드 투어) 스텝. 기본 탭(내 지원 경향)에서 보이는 요소를 가리킨다.
+const ANALYSIS_TOUR_STEPS: TourStep[] = [
+  { selector: "[data-tour='analysis-tabs']", title: "분석 관점 탭", body: "내 지원 경향·자주 부족한 역량·직무별 준비도·적합도 점수 변화·추천 지원 방향 5개 관점을 전환합니다." },
+  { selector: "[data-tour='analysis-kpi']", title: "핵심 지표", body: "여러 지원 건을 종합한 평균 적합도·분석 완료·준비 완료·모의면접 수를 한눈에 봅니다." },
+  { selector: "[data-tour='analysis-jobdist']", title: "자주 지원하는 직무", body: "직무별 지원 비중과 평균 적합도로 지원 패턴의 쏠림을 진단합니다." },
+  { selector: "[data-tour='analysis-weekly']", title: "지난주 변화·3줄 요약", body: "지난주 대비 적합도 변화와 핵심 3줄 요약으로 다음 행동 우선순위를 잡아줍니다." },
+];
 
 const questionTypeLabel: Record<string, string> = {
   EXPECTED: "예상 질문",
@@ -172,6 +181,9 @@ export function AnalysisPage() {
   return (
     <div className="bg-slate-50 min-h-screen">
       <div className="max-w-[1400px] mx-auto px-4 sm:px-6 py-8 space-y-6 lg:space-y-8">
+        <div className="flex items-center justify-end">
+          <GuideButton steps={ANALYSIS_TOUR_STEPS} />
+        </div>
         {/* Header */}
         <div>
           <h1 className="text-2xl font-black text-slate-900 flex items-center gap-2">
@@ -229,7 +241,7 @@ export function AnalysisPage() {
           </Card>
         )}
 
-        <div className="flex overflow-x-auto rounded-xl border border-slate-200 bg-card p-1">
+        <div data-tour="analysis-tabs" className="flex overflow-x-auto rounded-xl border border-slate-200 bg-card p-1">
           {analysisTabs.map((tab) => (
             <button
               key={tab.key}
@@ -263,7 +275,7 @@ export function AnalysisPage() {
         )}
 
         {!loading && !error && stats && (
-          <div className="grid gap-3 md:grid-cols-5">
+          <div data-tour="analysis-kpi" className="grid gap-3 md:grid-cols-5">
             {[
               { label: "전체 지원 건", value: `${stats.totalApplications}건`, helper: "등록된 지원 건" },
               { label: "분석 완료", value: `${stats.analyzedApplications}건`, helper: "AI 적합도 분석 기준" },
@@ -393,7 +405,7 @@ export function AnalysisPage() {
           </Card>
 
           {/* 자주 지원하는 직무 분포 — 기획 §8.9, 디자인 분석 §6.10 */}
-          <Card className={`min-w-0 border border-slate-200 bg-card ${activeTab !== "trend" ? "hidden" : ""}`}>
+          <Card data-tour="analysis-jobdist" className={`min-w-0 border border-slate-200 bg-card ${activeTab !== "trend" ? "hidden" : ""}`}>
             <CardHeader>
               <CardTitle className="text-base flex items-center gap-2">
                 <PieChart className="size-4 text-indigo-600" />
@@ -701,7 +713,7 @@ export function AnalysisPage() {
             </CardContent>
           </Card>
 
-          <Card className={`min-w-0 border border-emerald-200 bg-emerald-50/30 ${activeTab !== "trend" ? "hidden" : ""}`}>
+          <Card data-tour="analysis-weekly" className={`min-w-0 border border-emerald-200 bg-emerald-50/30 ${activeTab !== "trend" ? "hidden" : ""}`}>
             <CardHeader><CardTitle className="flex items-center gap-2 text-base"><TrendingUp className="size-4 text-emerald-600" />지난주 대비 변화와 3줄 요약</CardTitle></CardHeader>
             <CardContent className="space-y-2">
               <p className="rounded-lg bg-card p-3 text-sm font-semibold text-emerald-800">{weeklyChange?.summary ?? "비교할 주간 데이터가 아직 없습니다."}</p>

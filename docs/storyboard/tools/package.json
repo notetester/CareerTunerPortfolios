@@ -1,0 +1,14 @@
+{
+  "name": "careertuner-c-storyboard-tools",
+  "private": true,
+  "version": "0.0.1",
+  "type": "module",
+  "description": "C 영역 스토리보드 자동 캡처/렌더 도구(공유 frontend 패키지와 분리). 데모 mock 앱을 헤드리스 브라우저로 순회 캡처한다.",
+  "scripts": {
+    "capture": "node capture.mjs",
+    "render": "node render.mjs"
+  },
+  "dependencies": {
+    "playwright-core": "^1.49.0"
+  }
+}

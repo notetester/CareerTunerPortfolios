@@ -18,6 +18,7 @@ import type { DashboardActivity, DashboardSummary, DashboardTodo } from "@/featu
 import { TodoChecklist } from "@/features/dashboard/components/TodoChecklist";
 import { AiResultBadge } from "@/features/analysis/components/AiResultBadge";
 import { InterviewHero } from "@/features/interview/components/InterviewHero";
+import { GuideButton, type TourStep } from "@/features/analysis/components/GuideTour";
 
 const coreFeaturesData = [
   {
@@ -172,6 +173,15 @@ function dashboardActivityMeta(type: DashboardActivity["type"]) {
   return { icon: FileText, color: "text-muted-foreground", bg: "bg-secondary" };
 }
 
+// C 영역 홈 페이지 안내(가이드 투어) 스텝. data-tour 앵커를 가리킨다.
+const HOME_TOUR_STEPS: TourStep[] = [
+  { selector: "[data-tour='home-ai-summary']", title: "AI 대시보드 요약", body: "최근 지원 건들을 종합한 적합도·다음 액션 요약입니다. 오른쪽 '재생성'을 누르면 최신 데이터로 AI가 다시 만들어요(크레딧 1 차감)." },
+  { selector: "[data-tour='home-readiness']", title: "준비도 점수", body: "지원 건 분석·학습·면접 진척을 합산한 전체 준비도입니다. 분석 가능한 지원 건이 없으면 0%로 표시돼요." },
+  { selector: "[data-tour='home-fit-cards']", title: "진행 중 지원 건", body: "회사·직무와 적합도 점수가 보입니다. 카드를 누르면 지원 건 상세로 이동해 공고-스펙 적합도를 확인해요." },
+  { selector: "[data-tour='home-todos']", title: "오늘의 우선순위", body: "적합도·부족 역량 분석에서 파생된 할 일입니다. 체크하면 완료 처리되고, 아래 입력창으로 직접 추가할 수 있어요." },
+  { selector: "[data-tour='home-skillgaps']", title: "자주 부족한 역량", body: "여러 지원 건에서 반복되는 갭을 집계합니다. 학습·자격증 추천의 근거가 됩니다." },
+];
+
 interface MemberHomeProps {
   summary: DashboardSummary | null;
   loading: boolean;
@@ -280,6 +290,9 @@ function MemberHome({ summary, loading, error, fallbackName, onRetry, onSummaryR
   return (
     <div className="min-h-screen bg-slate-50">
       <div className="max-w-[1400px] mx-auto px-4 sm:px-6 py-6 lg:py-8 space-y-6">
+        <div className="flex items-center justify-end">
+          <GuideButton steps={HOME_TOUR_STEPS} />
+        </div>
         <InterviewHero />
         <section className="grid lg:grid-cols-[1.5fr_0.9fr] gap-5">
           <div className="rounded-2xl border border-slate-200 bg-card p-5 sm:p-7 shadow-sm">
@@ -296,7 +309,7 @@ function MemberHome({ summary, loading, error, fallbackName, onRetry, onSummaryR
                   {summary?.focus.description ?? "지원 건을 등록하면 적합도, 면접 준비, 반복 약점이 한 화면에 정리됩니다."}
                 </p>
                 {summary?.aiSummary && (
-                  <div className="mt-3 max-w-3xl rounded-xl bg-blue-50 px-4 py-3">
+                  <div data-tour="home-ai-summary" className="mt-3 max-w-3xl rounded-xl bg-blue-50 px-4 py-3">
                     <div className="flex items-start justify-between gap-3">
                       <p className="text-sm leading-6 text-blue-800">
                         <strong className="font-semibold">AI 요약</strong> <AiResultBadge status={summary.analysisRun.status} /> · {summary.aiSummary}
@@ -329,7 +342,7 @@ function MemberHome({ summary, loading, error, fallbackName, onRetry, onSummaryR
             </div>
 
             <div className="mt-6 grid sm:grid-cols-[220px_1fr] gap-5">
-              <div className="rounded-xl bg-card border border-border shadow-[var(--shadow-card)] p-5">
+              <div data-tour="home-readiness" className="rounded-xl bg-card border border-border shadow-[var(--shadow-card)] p-5">
                 <div className="text-sm text-muted-foreground">준비도</div>
                 <div className="mt-2 flex items-end gap-2">
                   <span className="text-5xl font-black text-primary">{summary?.focus.readiness ?? 0}</span>
@@ -341,7 +354,7 @@ function MemberHome({ summary, loading, error, fallbackName, onRetry, onSummaryR
                 </div>
               </div>
 
-              <div className="grid sm:grid-cols-3 gap-3">
+              <div data-tour="home-fit-cards" className="grid sm:grid-cols-3 gap-3">
                 {urgentApplications.length > 0 ? urgentApplications.map((application) => (
                   <Link to={`/applications/${application.id}`} key={application.id} className="min-w-0">
                     <div className="h-full rounded-xl border border-slate-200 bg-slate-50 p-4 hover:border-blue-300 hover:bg-blue-50 transition-colors">
@@ -404,7 +417,7 @@ function MemberHome({ summary, loading, error, fallbackName, onRetry, onSummaryR
             })()}
           </div>
 
-          <Card className="border border-slate-200 bg-card shadow-sm">
+          <Card data-tour="home-todos" className="border border-slate-200 bg-card shadow-sm">
             <CardHeader className="pb-3">
               <CardTitle className="text-base flex items-center gap-2">
                 <Flame className="size-4 text-muted-foreground" />
@@ -552,7 +565,7 @@ function MemberHome({ summary, loading, error, fallbackName, onRetry, onSummaryR
               </CardContent>
             </Card>
 
-            <Card className="border border-slate-200 bg-card shadow-sm">
+            <Card data-tour="home-skillgaps" className="border border-slate-200 bg-card shadow-sm">
               <CardHeader className="pb-3">
                 <CardTitle className="text-base">자주 부족한 역량</CardTitle>
               </CardHeader>
