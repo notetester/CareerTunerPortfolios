@@ -27,10 +27,16 @@ import {
   getAdminInterviewAiFailures,
   getAdminInterviewSessionDetail,
   getAdminInterviewSessions,
+  getAdminInterviewSummary,
   updateAdminMemo,
 } from "../api";
 import { TrainingPipelineCard } from "../components/TrainingPipelineCard";
-import type { AdminInterviewAiFailureRow, AdminInterviewSessionDetail, AdminInterviewSessionRow } from "../types";
+import type {
+  AdminInterviewAiFailureRow,
+  AdminInterviewSessionDetail,
+  AdminInterviewSessionRow,
+  AdminInterviewSummary,
+} from "../types";
 
 function formatDateTime(value: string | null): string {
   if (!value) return "-";
@@ -73,6 +79,7 @@ export function AdminInterviewsPage() {
   const [error, setError] = useState<string | null>(null);
   const [page, setPage] = useState(1);
   const [total, setTotal] = useState(0);
+  const [summary, setSummary] = useState<AdminInterviewSummary | null>(null);
   const SIZE = 20;
   const [activeTab, setActiveTab] = useState<"sessions" | "failures" | "training">("sessions");
   const [detailTab, setDetailTab] = useState<"overview" | "qa" | "report" | "media">("overview");
@@ -114,8 +121,13 @@ export function AdminInterviewsPage() {
     }
   };
 
+  const loadSummary = () => {
+    void getAdminInterviewSummary().then(setSummary).catch(() => undefined);
+  };
+
   useEffect(() => {
     void loadRows();
+    loadSummary();
   }, []);
 
   useEffect(() => {
@@ -137,12 +149,19 @@ export function AdminInterviewsPage() {
           <Button asChild variant="outline" size="sm">
             <Link to="/admin/interview/knowledge"><BookMarked className="size-4" /> RAG 지식</Link>
           </Button>
-          <Button variant="outline" onClick={() => void loadRows()} disabled={loading}>
+          <Button variant="outline" onClick={() => { void loadRows(); loadSummary(); }} disabled={loading}>
             <RefreshCw className={`size-4 ${loading ? "animate-spin" : ""}`} />
           </Button>
         </div>
       }
     >
+      <div className="mb-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        <SummaryCard label="전체 세션" value={summary ? summary.totalSessions.toLocaleString() : "-"} icon={MessageSquare} tone="blue" />
+        <SummaryCard label="평균 총점" value={summary?.avgScore != null ? `${summary.avgScore}점` : "-"} icon={FileText} tone="green" />
+        <SummaryCard label="AI 실패" value={summary ? summary.aiFailures.toLocaleString() : "-"} icon={AlertTriangle} tone="red" />
+        <SummaryCard label="음성/영상 분석" value={summary ? summary.mediaCount.toLocaleString() : "-"} icon={Video} tone="amber" />
+      </div>
+
       <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as "sessions" | "failures" | "training")} className="space-y-4">
         <TabsList className="h-auto w-full justify-start border border-slate-200 bg-card p-1">
           <TabsTrigger value="sessions" className="gap-1.5 px-3 py-2">
@@ -462,6 +481,38 @@ export function AdminInterviewsPage() {
         </TabsContent>
       </Tabs>
     </AdminShell>
+  );
+}
+
+function SummaryCard({
+  label,
+  value,
+  icon: Icon,
+  tone,
+}: {
+  label: string;
+  value: string;
+  icon: typeof MessageSquare;
+  tone: "blue" | "green" | "amber" | "red";
+}) {
+  const toneClass = {
+    blue: "bg-blue-50 text-blue-600",
+    green: "bg-emerald-50 text-emerald-600",
+    amber: "bg-amber-50 text-amber-600",
+    red: "bg-red-50 text-red-600",
+  }[tone];
+  return (
+    <Card className="border-slate-200 bg-card">
+      <CardContent className="flex items-center justify-between p-4">
+        <div className="min-w-0">
+          <div className="text-xs font-semibold text-slate-500">{label}</div>
+          <div className="mt-1 text-2xl font-black text-slate-950">{value}</div>
+        </div>
+        <div className={`flex size-10 shrink-0 items-center justify-center rounded-lg ${toneClass}`}>
+          <Icon className="size-5" />
+        </div>
+      </CardContent>
+    </Card>
   );
 }
 

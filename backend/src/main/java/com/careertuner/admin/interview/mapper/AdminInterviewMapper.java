@@ -7,6 +7,7 @@ import org.apache.ibatis.annotations.Param;
 
 import com.careertuner.admin.interview.dto.AdminInterviewAiFailureRow;
 import com.careertuner.admin.interview.dto.AdminInterviewSessionRow;
+import com.careertuner.admin.interview.dto.AdminInterviewSummary;
 
 @Mapper
 public interface AdminInterviewMapper {
@@ -18,6 +19,8 @@ public interface AdminInterviewMapper {
             @Param("size") int size);
 
     long countSessions(@Param("keyword") String keyword, @Param("mode") String mode);
+
+    AdminInterviewSummary findSummary();
 
     AdminInterviewSessionRow findSession(@Param("id") Long id);
 

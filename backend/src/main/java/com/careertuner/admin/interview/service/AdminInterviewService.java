@@ -11,6 +11,7 @@ import com.careertuner.admin.interview.dto.AdminInterviewAiFailureRow;
 import com.careertuner.admin.interview.dto.AdminInterviewSessionDetail;
 import com.careertuner.admin.interview.dto.AdminInterviewSessionPage;
 import com.careertuner.admin.interview.dto.AdminInterviewSessionRow;
+import com.careertuner.admin.interview.dto.AdminInterviewSummary;
 import com.careertuner.admin.interview.mapper.AdminInterviewMapper;
 import com.careertuner.common.exception.BusinessException;
 import com.careertuner.common.exception.ErrorCode;
@@ -44,6 +45,12 @@ public class AdminInterviewService {
         List<AdminInterviewSessionRow> items = adminInterviewMapper.findSessions(kw, md, offset, s);
         long total = adminInterviewMapper.countSessions(kw, md);
         return new AdminInterviewSessionPage(items, total, p, s);
+    }
+
+    @Transactional(readOnly = true)
+    public AdminInterviewSummary summary(AuthUser authUser) {
+        requireAdmin(authUser);
+        return adminInterviewMapper.findSummary();
     }
 
     @Transactional(readOnly = true)

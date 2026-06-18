@@ -3,7 +3,12 @@ import type {
   AdminInterviewAiFailureRow,
   AdminInterviewSessionDetail,
   AdminInterviewSessionPage,
+  AdminInterviewSummary,
 } from "./types";
+
+export function getAdminInterviewSummary(): Promise<AdminInterviewSummary> {
+  return api<AdminInterviewSummary>("/admin/interview/summary", { method: "GET" });
+}
 
 export function getAdminInterviewSessions(params: {
   keyword?: string;

@@ -67,6 +67,14 @@
         </if>
     </select>
 
+    <select id="findSummary" resultType="com.careertuner.admin.interview.dto.AdminInterviewSummary">
+        SELECT
+            (SELECT COUNT(*) FROM interview_session) AS total_sessions,
+            (SELECT ROUND(AVG(total_score)) FROM interview_session WHERE total_score IS NOT NULL) AS avg_score,
+            (SELECT COUNT(*) FROM ai_usage_log WHERE status = 'FAILED' AND feature_type LIKE 'INTERVIEW%') AS ai_failures,
+            (SELECT COUNT(*) FROM interview_media_analysis) AS media_count
+    </select>
+
     <select id="findSession" resultType="com.careertuner.admin.interview.dto.AdminInterviewSessionRow">
         <include refid="SessionSelect"/>
         WHERE s.id = #{id}

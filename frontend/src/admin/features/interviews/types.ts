@@ -29,6 +29,13 @@ export interface AdminInterviewSessionPage {
   size: number;
 }
 
+export interface AdminInterviewSummary {
+  totalSessions: number;
+  avgScore: number | null;
+  aiFailures: number;
+  mediaCount: number;
+}
+
 export interface AdminInterviewSessionDetail {
   session: AdminInterviewSessionRow;
   questions: InterviewQuestion[];
