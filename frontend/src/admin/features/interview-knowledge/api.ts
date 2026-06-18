@@ -27,3 +27,9 @@ export const addKnowledge = (req: AddKnowledgeRequest) =>
 
 export const reindexKnowledge = () =>
   api<{ reindexed: number }>("/admin/interview/knowledge/reindex", { method: "POST" });
+
+export const updateKnowledge = (id: number, req: AddKnowledgeRequest) =>
+  api<InterviewKnowledge>(`/admin/interview/knowledge/${id}`, { method: "PUT", body: JSON.stringify(req) });
+
+export const deleteKnowledge = (id: number) =>
+  api<void>(`/admin/interview/knowledge/${id}`, { method: "DELETE" });
