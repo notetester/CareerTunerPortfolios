@@ -18,6 +18,8 @@ public class UserBenefitBalance {
     private int usedQuantity;
     private int remainingQuantity;
     private String sourcePlanCode;
+    private String sourceType;
+    private String sourceCode;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
 }
