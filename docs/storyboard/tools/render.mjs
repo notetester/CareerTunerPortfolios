@@ -1,7 +1,6 @@
-// 스토리보드 HTML 렌더러.
-// 입력: ../spec/c-flow.spec.json + ../assets/*.png
-// 출력: ../output/storyboard.html  (웹/앱 나란히 + 정규화 좌표 네모박스 오버레이 + 캡션 + Mermaid 여정도)
-// 좌표는 0~1 정규화라 표시 크기와 무관하게 정확히 얹힌다. GUI 조작 없음, 순수 데이터→HTML.
+// 스토리보드 HTML 렌더러(이미지 기반 스크롤 문서).
+// 입력: ../spec/c-flow.spec.json + ../output/annotated/*.png(capture-screens.mjs 가 실측 정렬 화면을 캡처)
+// 출력: ../output/storyboard.html  (웹/앱 나란히 + 캡션 + Mermaid 여정도). 박스는 이미지에 이미 베이크됨.
 import { readFile, writeFile, mkdir } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
@@ -39,14 +38,10 @@ function mermaid(journey) {
   return lines.join("\n");
 }
 
-function shot(file, callouts, target) {
-  const cs = (callouts || []).filter((c) => (c.target || "web") === target);
-  const boxes = cs.map((c, i) => {
-    const color = col(c.color, c.n ? c.n - 1 : i);
-    return `<div class="callout" style="left:${(c.nx * 100).toFixed(2)}%;top:${(c.ny * 100).toFixed(2)}%;width:${(c.nw * 100).toFixed(2)}%;height:${(c.nh * 100).toFixed(2)}%;border-color:${color};box-shadow:0 0 0 2px ${color}22;">`
-      + `<span class="cbadge" style="background:${color}">${c.n ?? i + 1}</span></div>`;
-  }).join("");
-  return `<div class="shot"><img src="../assets/${esc(file)}" alt=""/>${boxes}</div>`;
+// 박스는 좌표식 SVG 오버레이가 아니라, DOM 실측 정렬된 화면을 그대로 캡처한 annotated/ 이미지를 쓴다
+// (capture-screens.mjs 산출). storyboard-static.html ↔ slides ↔ PPTX ↔ 이 문서가 모두 같은 박스 정렬.
+function shot(id, target) {
+  return `<div class="shot"><img src="annotated/${esc(id)}-${target}.png" alt=""/></div>`;
 }
 
 function frameSection(f) {
@@ -72,8 +67,8 @@ function frameSection(f) {
   </div>
   ${f.summary ? `<p class="summary">${esc(f.summary)}</p>` : ""}
   <div class="shots">
-    <div class="shotcol"><div class="shotlabel">◻ 웹 · ${esc(f.web)}</div>${shot(f.web, f.callouts, "web")}</div>
-    <div class="shotcol app"><div class="shotlabel">▢ 앱 · ${esc(f.app)}</div>${shot(f.app, f.callouts, "app")}</div>
+    <div class="shotcol"><div class="shotlabel">◻ 웹 · 1440</div>${shot(f.id, "web")}</div>
+    <div class="shotcol app"><div class="shotlabel">▢ 앱 · 390</div>${shot(f.id, "app")}</div>
   </div>
   <div class="caption">
     <div class="captitle">흐름 설명 <span class="capnote">— 번호 = 화면 위 네모박스</span></div>

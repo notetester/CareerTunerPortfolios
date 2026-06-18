@@ -1,7 +1,9 @@
-# 스토리보드 주석 합성 PNG + PPTX 빌더.
-#   annotate : assets/<id>-<t>.png 위에 callout 박스+번호 배지를 그려 output/annotated/ 저장(MD/PPTX/공개repo 공용)
-#   pptx     : 표지 + 여정 슬라이드 + 프레임별 슬라이드(주석 이미지 + 캡션) → output/CareerTuner_C_Storyboard.pptx
-# usage: python build.py [annotate|pptx|both]
+# 스토리보드 PPTX/PDF 빌더.
+#   annotate : (구식·비권장) assets/<id>-<t>.png 위에 고정좌표 callout 합성. 좌표식이라 실측 정렬과 어긋남.
+#              현재는 tools/capture-screens.mjs 가 DOM 실측 정렬된 화면을 그대로 output/annotated/ 에 캡처한다.
+#   pptx     : 16:9 슬라이드 PNG(output/slides/) 를 full-bleed 로 한 장씩 → output/CareerTuner_C_Storyboard.pptx
+#   pdf      : 같은 슬라이드 PNG 를 한 페이지씩 → output/CareerTuner_C_Storyboard.pdf (PPTX 와 픽셀 일치)
+# usage: python build.py [annotate|pptx|pdf|deck]   (deck = pptx+pdf)
 import json, sys, os
 from pathlib import Path
 from PIL import Image, ImageDraw, ImageFont
@@ -66,6 +68,17 @@ def build_pptx():
     out = OUT / "CareerTuner_C_Storyboard.pptx"
     prs.save(str(out)); print("pptx ->", out, f"(slides: {len(prs.slides._sldIdLst)})")
 
-mode = sys.argv[1] if len(sys.argv) > 1 else "both"
-if mode in ("annotate","both"): annotate()
-if mode in ("pptx","both"): build_pptx()
+def build_pdf():
+    # PPTX 와 동일한 슬라이드 PNG 를 그대로 한 페이지씩 PDF 화 → 두 산출물 화면이 픽셀 단위로 일치.
+    SLIDES = sorted((OUT / "slides").glob("slide-*.png"))
+    if not SLIDES:
+        print("!! output/slides/*.png 없음 — 먼저 `node render-slides.mjs && node export.mjs slides` 실행"); return
+    imgs = [Image.open(p).convert("RGB") for p in SLIDES]
+    out = OUT / "CareerTuner_C_Storyboard.pdf"
+    imgs[0].save(str(out), save_all=True, append_images=imgs[1:], resolution=144.0)
+    print("pdf ->", out, f"(pages: {len(imgs)})")
+
+mode = sys.argv[1] if len(sys.argv) > 1 else "deck"
+if mode == "annotate": annotate()
+if mode in ("pptx","deck","both"): build_pptx()
+if mode in ("pdf","deck","both"): build_pdf()

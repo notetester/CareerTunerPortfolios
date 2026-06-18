@@ -76,61 +76,80 @@ const INJECT = `
   var css=document.getElementById('appcss').textContent;
   function norm(s){return (s||'').replace(/\\s+/g,' ').trim();}
   function findUnion(doc, anchors){
-    var els=doc.body.querySelectorAll('*'), rects=[];
-    for(var a=0;a<anchors.length;a++){
-      var txt=anchors[a], best=null, bl=1e9;
-      for(var i=0;i<els.length;i++){
-        var t=norm(els[i].textContent);
-        if(t && t.indexOf(txt)!==-1 && t.length<bl){ var r=els[i].getBoundingClientRect(); if(r.width>1&&r.height>1&&r.bottom>92){best=els[i];bl=t.length;} } // 상단 헤더 내비(~92px) 매칭 제외 — callout 은 본문 대상
-      }
-      if(best){ var b=best.getBoundingClientRect(); rects.push({l:b.left,t:b.top,r:b.right,b:b.bottom}); }
-    }
-    if(!rects.length) return null;
-    // 근접 필터: 첫 앵커에서 세로로 700px 넘게 떨어진(오매칭) 사각형은 union 에서 제외 → 박스·크롭 콤팩트
-    var base=rects[0], u={l:base.l,t:base.t,r:base.r,b:base.b};
-    for(var k=1;k<rects.length;k++){ var rc=rects[k];
-      if(Math.abs(rc.t-base.t)<=700){ u.l=Math.min(u.l,rc.l);u.t=Math.min(u.t,rc.t);u.r=Math.max(u.r,rc.r);u.b=Math.max(u.b,rc.b); }
+    var els=doc.body.querySelectorAll('*');
+    // 텍스트를 포함하는 후보 요소들(헤더 영역 제외). len=구체성 판단용.
+    function cands(txt){ var out=[]; for(var i=0;i<els.length;i++){ var t=norm(els[i].textContent);
+      if(t && t.indexOf(txt)!==-1){ var r=els[i].getBoundingClientRect(); if(r.width>1&&r.height>1&&r.bottom>92) out.push({r:r,len:t.length}); } } return out; }
+    // base = 첫 앵커의 가장 구체적(작은) 요소
+    var base=null;
+    for(var a=0;a<anchors.length && !base;a++){ var c=cands(anchors[a]); if(c.length){ c.sort(function(x,y){return x.len-y.len;}); base=c[0].r; } }
+    if(!base) return null;
+    var bc=(base.top+base.bottom)/2, u={l:base.left,t:base.top,r:base.right,b:base.bottom};
+    // 이후 앵커는 base 중심에 "가장 가까운" 후보만, 그것도 150px 이내일 때만 union(대각선/원거리 오매칭 배제)
+    for(var a2=0;a2<anchors.length;a2++){ var c2=cands(anchors[a2]); if(!c2.length) continue;
+      c2.sort(function(x,y){return Math.abs((x.r.top+x.r.bottom)/2-bc)-Math.abs((y.r.top+y.r.bottom)/2-bc);});
+      var p=c2[0].r; if(Math.abs((p.top+p.bottom)/2-bc)<=150){ u.l=Math.min(u.l,p.left);u.t=Math.min(u.t,p.top);u.r=Math.max(u.r,p.right);u.b=Math.max(u.b,p.bottom); }
     }
     return u;
   }
-  function measure(scr, doc, scale, NW, NH){
-    var cos=scr.querySelectorAll('.co'), pad=8, maxB=0;
-    for(var i=0;i<cos.length;i++){
-      var co=cos[i], anchors=[]; try{anchors=JSON.parse(co.getAttribute('data-anchors')||'[]');}catch(e){}
-      if(!anchors.length) continue;
-      var u=findUnion(doc,anchors); if(!u) continue;
-      var L=Math.max(0,u.l-pad),T=Math.max(0,u.t-pad),R=Math.min(NW,u.r+pad),B=Math.min(NH,u.b+pad);
-      if(B<=2||R<=2||T>=NH-2) continue;
-      co.style.left=(L*scale).toFixed(1)+'px'; co.style.top=(T*scale).toFixed(1)+'px';
-      co.style.width=((R-L)*scale).toFixed(1)+'px'; co.style.height=((B-T)*scale).toFixed(1)+'px';
-      co.setAttribute('data-anchored','1');
-      if(B>maxB) maxB=B;
+  // 번호 배지 충돌 방지: 박스 좌상단(-11,-11)에 고정된 배지들이 겹치면(중첩/인접 callout)
+  // 번호가 가려진다. 배치 후 한 화면 안에서 겹치는 배지를 박스 테두리를 따라 밀어 항상 보이게 한다.
+  function dedupeBadges(scr){
+    var cos=scr.querySelectorAll('.co[data-anchored="1"]'), arr=[];
+    for(var i=0;i<cos.length;i++){ var co=cos[i], cb=co.querySelector('.cb'); if(!cb) continue;
+      arr.push({cb:cb, ox:parseFloat(co.style.left), oy:parseFloat(co.style.top), w:parseFloat(co.style.width)}); }
+    var R=23, placed=[]; // 배지 지름 21 + 여유
+    for(var j=0;j<arr.length;j++){ var it=arr[j], l=it.ox-11, t=it.oy-11, base=l, tr=0;
+      while(tr<60){ var clash=false; for(var k=0;k<placed.length;k++){ var p=placed[k];
+          if(Math.abs(l-p.l)<R && Math.abs(t-p.t)<R){ clash=true; break; } }
+        if(!clash) break;
+        l+=R; if(l>base+Math.max(0,it.w-R)){ l=base; t+=R; } tr++; } // 위 테두리 오른쪽으로, 폭 넘으면 왼쪽 테두리 아래로
+      placed.push({l:l,t:t});
+      it.cb.style.left=Math.round(l-it.ox)+'px'; it.cb.style.top=Math.round(t-it.oy)+'px';
     }
-    return maxB;
+  }
+  var ifr=document.querySelectorAll('iframe.screen'), total=ifr.length, done=0, items=[];
+  // 모든 프레임 측정 끝나면 화면 높이를 "전역 최대"로 통일(프레임 간 여백/크기 차이 제거)
+  function finalize(){
+    var H=0; for(var i=0;i<items.length;i++) if(items[i].need>H) H=items[i].need;
+    for(var j=0;j<items.length;j++){ var it=items[j]; it.scr.style.height=Math.round(H)+'px'; it.f.style.height=Math.round(H/it.scale)+'px'; }
   }
   function place(f){
+    if(f.__done) return;
     var doc; try{doc=f.contentDocument;}catch(e){return;} if(!doc||!doc.body) return;
+    f.__done=true;
     if(doc.head && !doc.getElementById('__appcss__')){var s=doc.createElement('style');s.id='__appcss__';s.textContent=css;doc.head.appendChild(s);}
-    var scr=f.parentElement, mode=scr.getAttribute('data-mode'), scale=parseFloat(scr.getAttribute('data-scale')), NW=parseFloat(scr.getAttribute('data-nw'));
-    setTimeout(function(){
-      if(mode==='crop'){
-        // 웹: 전체 렌더 후 callout 이 있는 영역까지만 보여주고 그 아래는 자른다(실제 첫 화면처럼)
-        var fullH=Math.max(doc.documentElement.scrollHeight, doc.body.scrollHeight, parseFloat(scr.getAttribute('data-nh')));
-        f.style.height=fullH+'px';
-        setTimeout(function(){
-          var maxB=measure(scr, doc, scale, NW, fullH);
-          var cropH = maxB>0 ? Math.min(maxB+50, fullH) : parseFloat(scr.getAttribute('data-nh'));
-          f.style.height=cropH+'px';                       // iframe 도 crop 높이로(zoom 이라 레이아웃 박스도 축소 → 오버플로 없음)
-          scr.style.height=Math.round(cropH*scale)+'px';
-        }, 120);
-      } else { // 앱: 폰 1화면 고정(높이 변경 없음)
-        var NH=parseFloat(scr.getAttribute('data-nh'));
-        setTimeout(function(){ measure(scr, doc, scale, NW, NH); }, 120);
-      }
-    }, 320);
+    var scr=f.parentElement, mode=scr.getAttribute('data-mode'), scale=parseFloat(scr.getAttribute('data-scale')), NW=parseFloat(scr.getAttribute('data-nw')), nh=parseFloat(scr.getAttribute('data-nh'));
+    // CSS 적용(flex/grid 등장) 전 측정하면 박스가 미적용 레이아웃에 얹혀 어긋난다 → 스타일될 때까지 폴링 후 측정.
+    function styledNow(){ var all=doc.body.querySelectorAll('*'),fx=0; for(var i=0;i<all.length;i++){ var dsp=getComputedStyle(all[i]).display; if(dsp==='flex'||dsp==='grid'){ if(++fx>=3) return true; } } return false; }
+    var poll=0;
+    (function waitStyled(){
+      if(!styledNow() && poll++<40){ setTimeout(waitStyled,150); return; }
+      if(mode==='crop'){ var fullH=Math.max(doc.documentElement.scrollHeight, doc.body.scrollHeight, nh); f.style.height=fullH+'px'; }
+      setTimeout(function(){
+        var NH = mode==='crop' ? Math.max(doc.documentElement.scrollHeight, doc.body.scrollHeight, nh) : nh;
+        var cos=scr.querySelectorAll('.co'), pad=8, maxB=0;
+        for(var i=0;i<cos.length;i++){ var co=cos[i], anchors=[]; try{anchors=JSON.parse(co.getAttribute('data-anchors')||'[]');}catch(e){}
+          if(!anchors.length) continue; var u=findUnion(doc,anchors); if(!u) continue;
+          var L=Math.max(0,u.l-pad),T=Math.max(0,u.t-pad),R=Math.min(NW,u.r+pad),B=Math.min(NH,u.b+pad);
+          if(B<=2||R<=2||T>=NH-2) continue;
+          co.style.left=(L*scale).toFixed(1)+'px';co.style.top=(T*scale).toFixed(1)+'px';co.style.width=((R-L)*scale).toFixed(1)+'px';co.style.height=((B-T)*scale).toFixed(1)+'px';co.setAttribute('data-anchored','1');
+          if(B>maxB)maxB=B;
+        }
+        dedupeBadges(scr); // 번호 배지 겹침 제거(번호 항상 보이게)
+        var cropH = mode==='crop' ? (maxB>0?Math.min(maxB+50,NH):nh) : nh;
+        items.push({scr:scr,f:f,scale:scale,need:cropH*scale});
+        done++; if(done>=total) finalize();
+      },120);
+    })();
   }
-  var ifr=document.querySelectorAll('iframe.screen');
-  for(var i=0;i<ifr.length;i++){ (function(f){ f.addEventListener('load',function(){place(f);}); place(f); })(ifr[i]); }
+  // 무거운 프레임은 iframe load 가 늦어 CSS 주입/측정이 캡처보다 뒤처질 수 있다.
+  // load 이벤트 + 폴링으로 모든 iframe 의 doc.body 가 준비되는 즉시 place() 를 보장한다.
+  for(var k=0;k<ifr.length;k++){ (function(f){ f.addEventListener('load',function(){place(f);}); })(ifr[k]); }
+  function pump(){ var pending=0; for(var k=0;k<ifr.length;k++){ if(!ifr[k].__done){ pending++; place(ifr[k]); } } return pending; }
+  pump();
+  var tries=0, iv=setInterval(function(){ tries++; var p=pump();
+    if(p===0||tries>50){ clearInterval(iv); setTimeout(function(){ if(done<total) finalize(); }, 800); } }, 200);
 })();`;
 
 const html = `<!doctype html><html lang="ko"><head><meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/>
