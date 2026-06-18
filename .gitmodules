@@ -1,0 +1,4 @@
+[submodule "docs/storyboard"]
+	path = docs/storyboard
+	url = https://github.com/notetester/CareerTunerDocs.git
+	branch = main
