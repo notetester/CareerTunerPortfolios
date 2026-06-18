@@ -22,6 +22,13 @@ export interface AdminInterviewSessionRow {
   adminMemo: string | null;
 }
 
+export interface AdminInterviewSessionPage {
+  items: AdminInterviewSessionRow[];
+  total: number;
+  page: number;
+  size: number;
+}
+
 export interface AdminInterviewSessionDetail {
   session: AdminInterviewSessionRow;
   questions: InterviewQuestion[];

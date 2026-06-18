@@ -13,7 +13,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 import com.careertuner.admin.interview.dto.AdminInterviewAiFailureRow;
 import com.careertuner.admin.interview.dto.AdminInterviewSessionDetail;
-import com.careertuner.admin.interview.dto.AdminInterviewSessionRow;
+import com.careertuner.admin.interview.dto.AdminInterviewSessionPage;
 import com.careertuner.admin.interview.dto.UpdateAdminMemoRequest;
 import com.careertuner.admin.interview.service.AdminInterviewService;
 import com.careertuner.common.security.AuthUser;
@@ -29,12 +29,13 @@ public class AdminInterviewController {
     private final AdminInterviewService service;
 
     @GetMapping("/sessions")
-    public ApiResponse<List<AdminInterviewSessionRow>> sessions(
+    public ApiResponse<AdminInterviewSessionPage> sessions(
             @AuthenticationPrincipal AuthUser authUser,
             @RequestParam(required = false) String keyword,
             @RequestParam(required = false) String mode,
-            @RequestParam(defaultValue = "50") int limit) {
-        return ApiResponse.ok(service.sessions(authUser, keyword, mode, limit));
+            @RequestParam(defaultValue = "1") int page,
+            @RequestParam(defaultValue = "20") int size) {
+        return ApiResponse.ok(service.sessions(authUser, keyword, mode, page, size));
     }
 
     @GetMapping("/sessions/{id}")

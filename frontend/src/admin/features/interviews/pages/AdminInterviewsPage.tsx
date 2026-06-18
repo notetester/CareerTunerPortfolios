@@ -8,6 +8,15 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/app/components/ui/ca
 import { Input } from "@/app/components/ui/input";
 import { Progress } from "@/app/components/ui/progress";
 import {
+  Pagination,
+  PaginationContent,
+  PaginationEllipsis,
+  PaginationItem,
+  PaginationLink,
+  PaginationNext,
+  PaginationPrevious,
+} from "@/app/components/ui/pagination";
+import {
   INTERVIEW_MODES,
   getInterviewModeLabel,
   getScoreColor,
@@ -25,6 +34,17 @@ import type { AdminInterviewAiFailureRow, AdminInterviewSessionDetail, AdminInte
 function formatDateTime(value: string | null): string {
   if (!value) return "-";
   return new Intl.DateTimeFormat("ko-KR", { dateStyle: "medium", timeStyle: "short" }).format(new Date(value));
+}
+
+/** 페이지 번호 목록 — 현재 주변 + 처음/끝 + 생략(...). */
+function pageList(current: number, total: number): (number | "...")[] {
+  if (total <= 7) return Array.from({ length: total }, (_, i) => i + 1);
+  const out: (number | "...")[] = [1];
+  if (current > 3) out.push("...");
+  for (let i = Math.max(2, current - 1); i <= Math.min(total - 1, current + 1); i++) out.push(i);
+  if (current < total - 2) out.push("...");
+  out.push(total);
+  return out;
 }
 
 function parseReport(raw: string | null): InterviewReport | null {
@@ -50,6 +70,9 @@ export function AdminInterviewsPage() {
   const [mode, setMode] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [page, setPage] = useState(1);
+  const [total, setTotal] = useState(0);
+  const SIZE = 20;
 
   const selected = useMemo(() => rows.find((r) => r.id === selectedId) ?? rows[0] ?? null, [rows, selectedId]);
   const report = useMemo(() => parseReport(detail?.report ?? null), [detail]);
@@ -59,18 +82,24 @@ export function AdminInterviewsPage() {
     return map;
   }, [detail]);
 
-  const loadRows = async () => {
+  const loadRows = async (p = page) => {
     setLoading(true);
     setError(null);
     try {
-      const next = await getAdminInterviewSessions({ keyword, mode });
-      setRows(next);
-      if (!selectedId && next[0]) setSelectedId(next[0].id);
+      const res = await getAdminInterviewSessions({ keyword, mode, page: p, size: SIZE });
+      setRows(res.items);
+      setTotal(res.total);
+      if (!selectedId && res.items[0]) setSelectedId(res.items[0].id);
     } catch (err) {
       setError(err instanceof Error ? err.message : "면접 세션 목록을 불러오지 못했습니다.");
     } finally {
       setLoading(false);
     }
+  };
+
+  const goPage = (p: number) => {
+    setPage(p);
+    void loadRows(p);
   };
 
   const loadDetail = async (id: number) => {
@@ -141,7 +170,7 @@ export function AdminInterviewsPage() {
                   </Button>
                 ))}
               </div>
-              <Button className="w-full bg-blue-600 text-white hover:bg-blue-700" onClick={() => void loadRows()}>
+              <Button className="w-full bg-blue-600 text-white hover:bg-blue-700" onClick={() => goPage(1)}>
                 필터 적용
               </Button>
             </CardContent>
@@ -186,6 +215,41 @@ export function AdminInterviewsPage() {
               ))
             )}
           </div>
+
+          {total > SIZE && (
+            <div className="space-y-1">
+              <Pagination>
+                <PaginationContent className="flex-wrap">
+                  <PaginationItem>
+                    <PaginationPrevious
+                      onClick={() => { if (page > 1) goPage(page - 1); }}
+                      className={page <= 1 ? "pointer-events-none opacity-40" : "cursor-pointer"}
+                    />
+                  </PaginationItem>
+                  {pageList(page, Math.ceil(total / SIZE)).map((n, i) =>
+                    n === "..." ? (
+                      <PaginationItem key={`e${i}`}>
+                        <PaginationEllipsis />
+                      </PaginationItem>
+                    ) : (
+                      <PaginationItem key={n}>
+                        <PaginationLink isActive={n === page} onClick={() => goPage(n)} className="cursor-pointer">
+                          {n}
+                        </PaginationLink>
+                      </PaginationItem>
+                    ),
+                  )}
+                  <PaginationItem>
+                    <PaginationNext
+                      onClick={() => { if (page < Math.ceil(total / SIZE)) goPage(page + 1); }}
+                      className={page >= Math.ceil(total / SIZE) ? "pointer-events-none opacity-40" : "cursor-pointer"}
+                    />
+                  </PaginationItem>
+                </PaginationContent>
+              </Pagination>
+              <div className="text-center text-xs text-slate-400">총 {total}건</div>
+            </div>
+          )}
         </section>
 
         {/* 우: 상세 */}

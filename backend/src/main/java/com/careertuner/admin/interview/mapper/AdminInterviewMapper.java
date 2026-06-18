@@ -14,7 +14,10 @@ public interface AdminInterviewMapper {
     List<AdminInterviewSessionRow> findSessions(
             @Param("keyword") String keyword,
             @Param("mode") String mode,
-            @Param("limit") int limit);
+            @Param("offset") int offset,
+            @Param("size") int size);
+
+    long countSessions(@Param("keyword") String keyword, @Param("mode") String mode);
 
     AdminInterviewSessionRow findSession(@Param("id") Long id);
 

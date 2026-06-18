@@ -9,6 +9,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import com.careertuner.admin.interview.dto.AdminInterviewAiFailureRow;
 import com.careertuner.admin.interview.dto.AdminInterviewSessionDetail;
+import com.careertuner.admin.interview.dto.AdminInterviewSessionPage;
 import com.careertuner.admin.interview.dto.AdminInterviewSessionRow;
 import com.careertuner.admin.interview.mapper.AdminInterviewMapper;
 import com.careertuner.common.exception.BusinessException;
@@ -33,9 +34,16 @@ public class AdminInterviewService {
     private final InterviewMediaService mediaService;
 
     @Transactional(readOnly = true)
-    public List<AdminInterviewSessionRow> sessions(AuthUser authUser, String keyword, String mode, int limit) {
+    public AdminInterviewSessionPage sessions(AuthUser authUser, String keyword, String mode, int page, int size) {
         requireAdmin(authUser);
-        return adminInterviewMapper.findSessions(blankToNull(keyword), normalizeMode(mode), normalizeLimit(limit));
+        String kw = blankToNull(keyword);
+        String md = normalizeMode(mode);
+        int p = Math.max(page, 1);
+        int s = size <= 0 ? 20 : Math.min(size, 100);
+        int offset = (p - 1) * s;
+        List<AdminInterviewSessionRow> items = adminInterviewMapper.findSessions(kw, md, offset, s);
+        long total = adminInterviewMapper.countSessions(kw, md);
+        return new AdminInterviewSessionPage(items, total, p, s);
     }
 
     @Transactional(readOnly = true)

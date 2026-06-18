@@ -1,16 +1,22 @@
 import { api } from "@/app/lib/api";
-import type { AdminInterviewAiFailureRow, AdminInterviewSessionDetail, AdminInterviewSessionRow } from "./types";
+import type {
+  AdminInterviewAiFailureRow,
+  AdminInterviewSessionDetail,
+  AdminInterviewSessionPage,
+} from "./types";
 
 export function getAdminInterviewSessions(params: {
   keyword?: string;
   mode?: string;
-  limit?: number;
-} = {}): Promise<AdminInterviewSessionRow[]> {
+  page?: number;
+  size?: number;
+} = {}): Promise<AdminInterviewSessionPage> {
   const search = new URLSearchParams();
   if (params.keyword) search.set("keyword", params.keyword);
   if (params.mode) search.set("mode", params.mode);
-  search.set("limit", String(params.limit ?? 50));
-  return api<AdminInterviewSessionRow[]>(`/admin/interview/sessions?${search.toString()}`, { method: "GET" });
+  search.set("page", String(params.page ?? 1));
+  search.set("size", String(params.size ?? 20));
+  return api<AdminInterviewSessionPage>(`/admin/interview/sessions?${search.toString()}`, { method: "GET" });
 }
 
 export function getAdminInterviewSessionDetail(id: number): Promise<AdminInterviewSessionDetail> {
