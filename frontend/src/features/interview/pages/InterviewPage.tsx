@@ -10,7 +10,7 @@ import { AutoSetupPanel } from "../components/AutoSetupPanel";
 import { ExpectedQuestionsTab } from "../components/ExpectedQuestionsTab";
 import { PracticeTab } from "../components/PracticeTab";
 import { VoiceInterviewTab } from "../components/VoiceInterviewTab";
-import { AvatarTab } from "../components/AvatarTab";
+import { AvatarInterviewTab } from "../components/AvatarInterviewTab";
 import { EvaluationCriteriaTab } from "../components/EvaluationCriteriaTab";
 import { CorrectionInfoTab } from "../components/CorrectionInfoTab";
 import { InterviewReportTab } from "../components/InterviewReportTab";
@@ -237,7 +237,7 @@ export function InterviewPage() {
           </TabsContent>
 
           <TabsContent value="avatar" data-tut="tut-panel-avatar" className="mt-6">
-            <AvatarTab session={effectiveSession} />
+            <AvatarInterviewTab session={effectiveSession} />
           </TabsContent>
 
           <TabsContent value="evaluation" data-tut="tut-panel-evaluation" className="mt-6">
