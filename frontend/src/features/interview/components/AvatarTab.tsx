@@ -11,10 +11,13 @@ import {
   listSessionQuestions,
   saveMediaResult,
   scoreAvatarServer,
+  scoreVoiceTranscript,
+  transcribeVoice,
 } from "../api/interviewApi";
 import {
   blobToBase64,
   computeVoiceScore,
+  countFillers,
   VoiceMetricsTracker,
 } from "../hooks/voiceAnalysis";
 import { computeVisualScore, VisualMetricsTracker, type VisualScoreDetail } from "../hooks/visualAnalysis";
@@ -126,11 +129,16 @@ export function AvatarTab({ session }: { session: InterviewSession | null }) {
     try {
       // 1) 서버에서 LiveAvatar 단기 토큰 + 질문 목록.
       const avatarSession = await createAvatarSession(session.id);
-      questionsRef.current = avatarSession.questions;
-      setQuestions(avatarSession.questions);
-      if (avatarSession.sandbox) {
-        setNote("샌드박스 모드: 크레딧 소모 없음, 기본 아바타, 세션 약 1분 제한.");
-      }
+      // 프리미엄 체험판: LiveAvatar 무료 한도(약 2분) 안에 끝나도록 1문제만 진행한다.
+      // (정식판 = 전체 질문. 풀기 시 아래 slice(0, 1) 만 제거하면 됨.)
+      const trialQuestions = avatarSession.questions.slice(0, 1);
+      questionsRef.current = trialQuestions;
+      setQuestions(trialQuestions);
+      setNote(
+        avatarSession.sandbox
+          ? "체험판: 1문제만 제공됩니다. (정식판은 전체 질문 + 실제 면접관 아바타) · 샌드박스라 약 1~2분 제한."
+          : "체험판: 1문제만 제공됩니다. (정식판은 전체 질문 제공)",
+      );
 
       // 2) 웹캠 + 온디바이스 분석 준비.
       const webcam = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
@@ -238,10 +246,28 @@ export function AvatarTab({ session }: { session: InterviewSession | null }) {
       setDownloadUrl(URL.createObjectURL(recordedBlob));
     }
 
-    const vMetrics = voiceTrackerRef.current?.finish(0, 0) ?? null;
+    // 음성 답변 전사 (자체 STT, faster-whisper). 실패해도 전달력 지표로 진행.
+    let userTranscript = "";
+    if (recordedBlob && recordedBlob.size > 0) {
+      try {
+        const audioBase64 = await blobToBase64(recordedBlob);
+        const audioFormat = (recordedBlob.type || "audio/webm").includes("webm") ? "webm" : "wav";
+        const stt = await transcribeVoice(session.id, audioBase64, audioFormat);
+        userTranscript = stt.text ?? "";
+      } catch {
+        setNote((prev) => prev ?? "음성 전사(STT)에 실패해 전달력 지표로만 채점했습니다.");
+      }
+    }
+
+    const userChars = userTranscript.replace(/\s/g, "").length;
+    const fillers = userTranscript ? countFillers([userTranscript]) : 0;
+    const vMetrics = voiceTrackerRef.current?.finish(userChars, fillers) ?? null;
 
     const askedQuestions = questionsRef.current.slice(0, Math.max(questionIdx + 1, 0));
-    const transcript: TranscriptLine[] = askedQuestions.map<TranscriptLine>((q) => ({ role: "ai", text: q }));
+    const transcript: TranscriptLine[] = [
+      ...askedQuestions.map<TranscriptLine>((q) => ({ role: "ai", text: q })),
+      ...(userTranscript ? [{ role: "user" as const, text: userTranscript }] : []),
+    ];
 
     // 온디바이스 점수는 항상 계산(폴백 + 지표 표시용). 동의 + serve 가용 시 자체 추론 점수로 교체.
     const vLocal = vMetrics ? computeVoiceScore(vMetrics) : null;
@@ -257,6 +283,8 @@ export function AvatarTab({ session }: { session: InterviewSession | null }) {
         const server = await scoreAvatarServer(session.id, {
           videoBase64,
           videoFormat,
+          transcriptChars: userChars,
+          fillerCount: fillers,
           latencySec: vMetrics?.avgResponseLatencySec ?? undefined,
         });
         // 음성/영상 각각 별 모델 점수(late fusion). 한쪽 실패면 그쪽만 온디바이스 폴백 유지.
@@ -297,6 +325,19 @@ export function AvatarTab({ session }: { session: InterviewSession | null }) {
     } catch (err) {
       setNote(err instanceof Error ? `결과 저장 실패: ${err.message}` : "결과 저장에 실패했습니다.");
     }
+
+    // 답변 "내용" 채점: 트랜스크립트를 질문별로 채점(haiku, interview_answer 경로). 전달력 점수와 별개.
+    if (transcript.some((l) => l.role === "user")) {
+      try {
+        const scored = await scoreVoiceTranscript(session.id, transcript);
+        if (scored > 0) {
+          setNote((prev) => `${prev ?? ""} 답변 내용도 채점했습니다(리포트·복기에서 확인).`.trim());
+        }
+      } catch {
+        // 내용 채점 실패는 전달력 점수에 영향 없음 — 무시.
+      }
+    }
+
     setStatus("scored");
   };
 
