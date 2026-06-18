@@ -13,22 +13,20 @@ const page = await ctx.newPage();
 await page.goto(pathToFileURL(FILE).href, { waitUntil: "load", timeout: 30000 });
 await page.waitForTimeout(3500);
 
-// iframe 안에 실제 DOM + CSS 주입됐는지 점검
+// 앵커가 측정 적용됐는지 진단(co[data-anchored])
 const diag = await page.evaluate(() => {
-  const f = document.querySelectorAll("iframe.screen");
-  const out = [];
-  for (let i = 0; i < Math.min(f.length, 4); i++) {
-    const d = f[i].contentDocument;
-    const injected = !!(d && d.getElementById("__appcss__"));
-    const nodes = d ? d.body.querySelectorAll("*").length : 0;
-    out.push({ i, injected, nodes });
-  }
-  return { total: f.length, sample: out };
+  const co = document.querySelectorAll(".co");
+  let anchored = 0;
+  co.forEach((c) => { if (c.getAttribute("data-anchored") === "1") anchored++; });
+  return { totalCo: co.length, anchored };
 });
-console.log("iframe 진단:", JSON.stringify(diag));
+console.log("오버레이 진단:", JSON.stringify(diag), "(anchored = 실시간 측정 적용)");
 
-for (const [sel, file] of [[".frame >> nth=0", "qa-static-01.png"], [".frame >> nth=4", "qa-static-05.png"]]) {
-  try { await page.locator(sel).first().screenshot({ path: path.join(OUT, file) }); console.log("shot:", file); }
+// 11프레임 전부 캡처
+const frames = await page.locator(".frame").count();
+for (let i = 0; i < frames; i++) {
+  const file = `qa-static-${String(i + 1).padStart(2, "0")}.png`;
+  try { await page.locator(".frame").nth(i).screenshot({ path: path.join(OUT, file) }); console.log("shot:", file); }
   catch (e) { console.log("FAIL", file, e.message.split("\n")[0]); }
 }
 await browser.close();
