@@ -19,12 +19,12 @@ export function Root() {
       <OfflineBanner />
       <Header />
       {/* 하단 탭에 콘텐츠가 가리지 않도록 모바일에서 하단 패딩(탭 높이 + safe-area) 확보 */}
-      <main className={`flex-1 ${showMobileNav ? "pb-[calc(56px+env(safe-area-inset-bottom))] lg:pb-0" : ""}`}>
+      <main className={`flex-1 ${showMobileNav ? "pb-[calc(56px+env(safe-area-inset-bottom))] xl:pb-0" : ""}`}>
         <Outlet />
       </main>
       {!isApplicationDetail && <Footer />}
       {/* 하단 탭이 있는 모바일에서는 플로팅 챗봇이 탭과 겹치므로 데스크톱에서만 띄운다(모바일은 더보기>고객센터). */}
-      {!isAdmin && (showMobileNav ? <div className="hidden lg:contents">{<ChatbotBubble />}</div> : <ChatbotBubble />)}
+      {!isAdmin && (showMobileNav ? <div className="hidden xl:contents">{<ChatbotBubble />}</div> : <ChatbotBubble />)}
       {showMobileNav && <MobileBottomNav />}
     </div>
   );
