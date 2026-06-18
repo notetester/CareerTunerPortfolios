@@ -17,3 +17,9 @@ output/*.pdf
 output/storyboard.html
 output/slides.html
 output/storyboard.md
+
+# DOM 스냅샷 중간 산출물(storyboard-static.html 에 인라인됨 — 재생성 가능)
+snapshots/
+output/qa-static-*.png
+# 단, 이미지 없는 자체완결 정적 스토리보드는 메인 repo에 둔다(텍스트, React/서버/이미지 불필요):
+!output/storyboard-static.html

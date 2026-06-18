@@ -7,7 +7,11 @@ C 영역(홈·스펙비교·취업분석·대시보드)의 화면과 흐름을 *
 
 > 📦 **이미지·PPTX·PDF 등 시각 산출물은 이 repo에 두지 않습니다.** 용량 분리를 위해 별도 repo
 > [notetester/CareerTunerDocs](https://github.com/notetester/CareerTunerDocs) 에서 관리합니다.
-> 이 repo(메인)에는 **소스(`tools/`·`spec/`)와 텍스트 문서**만 둡니다. 아래 표의 바이너리/이미지 경로는 CareerTunerDocs 기준입니다.
+> 이 repo(메인)에는 **소스(`tools/`·`spec/`)와 텍스트 문서**, 그리고 아래 ✅ 정적 HTML 스토리보드만 둡니다. 표의 바이너리/이미지(PNG/PPTX/PDF) 경로는 CareerTunerDocs 기준입니다.
+
+> ✅ **메인 repo에서 바로 보는 스토리보드** → [`output/storyboard-static.html`](output/storyboard-static.html)
+> 브라우저로 열면 **실제 화면(렌더된 DOM 스냅샷)** 이 이미지 없이 그대로 나옵니다 — React·서버·이미지 불필요(우리 화면은 전부 코드/SVG라 DOM만 떠서 정적 HTML로 박았고, 앱 CSS 1벌을 열릴 때 각 화면에 주입). 화면 위 점선 박스 = 설명 지점.
+> 재생성: `node tools/capture-dom.mjs`(mock 서버 실행 중) → `node tools/render-dom.mjs`.
 
 ## 산출물
 
