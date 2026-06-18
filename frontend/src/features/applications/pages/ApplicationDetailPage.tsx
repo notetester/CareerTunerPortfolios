@@ -380,7 +380,7 @@ export function ApplicationDetailPage() {
             </Button>
           </div>
 
-          <div className="flex overflow-x-auto rounded-lg border border-slate-200 bg-card p-1">
+          <div className="flex flex-wrap gap-1 rounded-lg border border-slate-200 bg-card p-1">
             {detailTabs.map((tab) => (
               <button
                 key={tab.key}
