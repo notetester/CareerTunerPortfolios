@@ -24,10 +24,26 @@ const FRAMES = [
 ];
 
 const extract = () => {
+  // 1) 내용을 가리는 전역 플로팅 오버레이 제거(채팅 버블·오프라인 배너). 텍스트로 찾아 fixed 루트를 제거.
+  //    공고문 추출 토스트·모바일 하단탭은 callout 이 문서화하므로 유지한다.
+  const killByText = (re) => {
+    const all = Array.from(document.querySelectorAll("body *"));
+    for (const el of all) {
+      if (re.test(el.textContent || "")) {
+        let p = el, root = null;
+        while (p) { try { if (getComputedStyle(p).position === "fixed") root = p; } catch { /* */ } p = p.parentElement; }
+        if (root) { root.remove(); return; }
+      }
+    }
+  };
+  try { killByText(/무엇이든 물어보세요|궁금한 점|고객센터 챗봇/); } catch { /* */ }
+  try { killByText(/오프라인|인터넷 연결/); } catch { /* */ }
+  // 2) CSS 수집
   let css = "";
   for (const sheet of Array.from(document.styleSheets)) {
     try { for (const rule of Array.from(sheet.cssRules)) css += rule.cssText + "\n"; } catch { /* skip */ }
   }
+  // 3) body 복제 후 script/link 제거
   const body = document.body.cloneNode(true);
   body.querySelectorAll("script,link,noscript").forEach((n) => n.remove());
   return { css, bodyHtml: body.outerHTML, htmlClass: document.documentElement.className, lang: document.documentElement.lang || "ko" };

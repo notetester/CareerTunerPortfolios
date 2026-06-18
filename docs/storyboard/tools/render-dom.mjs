@@ -1,7 +1,6 @@
-// 자체완결 정적 스토리보드 + DOM 실시간 측정 오버레이.
-// 각 화면 = srcdoc iframe(DOM만), CSS 1벌은 열릴 때 주입. callout 박스는 좌표가 아니라
-// 텍스트 앵커로 iframe 안 실제 요소 위치를 런타임 측정해 얹는다(폰트 밀려도 정확). 좌표는 폴백.
-// 출력: ../output/storyboard-static.html
+// 자체완결 정적 스토리보드(이미지·React·서버 없음) + DOM 실시간 측정 오버레이.
+// 레이아웃: [웹=전체 높이(잘림/스크롤 없음)] | [오른쪽 열: 앱=폰 1화면 + 흐름 설명].
+// 박스는 좌표가 아니라 텍스트 앵커로 iframe 안 실제 요소를 런타임 측정해 얹는다(폰트 밀려도 정확).
 import { readFile, writeFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
@@ -17,7 +16,8 @@ const col = (c,i)=> COLORS[c] || COLORS[CYCLE[i%CYCLE.length]];
 const esc = (s="")=> String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
 const attr = (s="")=> String(s).replace(/&/g,"&amp;").replace(/"/g,"&quot;");
 const sanId = (s)=> "n_"+String(s).replace(/[^a-zA-Z0-9]/g,"_");
-const VP = { web: { w:1440, h:1024, dw:680 }, app: { w:390, h:844, dw:232 } };
+// web: 전체 높이(mode full). app: 폰 1화면(mode phone, h 고정).
+const VP = { web: { w:1440, h:1024, dw:760, mode:"full" }, app: { w:390, h:844, dw:236, mode:"phone" } };
 
 function mermaid(j){
   const L=["flowchart LR"];
@@ -31,15 +31,15 @@ const GTAG = { user:"사용자", admin:"관리자", state:"상태" };
 function screen(srcdocHtml, callouts, target, frameId) {
   const vp = VP[target];
   const scale = vp.dw / vp.w;
+  const dh = Math.round(vp.h * scale); // 초기 높이(web 은 JS 가 전체로 확장)
   const cs = (callouts||[]).filter((c)=>(c.target||"web")===target).map((c,i)=>{
     const color = col(c.color, (c.n??i+1)-1);
     const anchors = attr(JSON.stringify(c.anchors || []));
-    // 폴백: 앵커 측정 실패 시 기존 정규화 좌표
     const fb = `left:${(c.nx*100).toFixed(2)}%;top:${(c.ny*100).toFixed(2)}%;width:${(c.nw*100).toFixed(2)}%;height:${(c.nh*100).toFixed(2)}%`;
     return `<div class="co" data-anchors="${anchors}" style="${fb};border-color:${color};box-shadow:0 0 0 2px ${color}22"><span class="cb" style="background:${color}">${c.n??i+1}</span></div>`;
   }).join("");
-  return `<div class="scr ${target}" data-scale="${scale.toFixed(5)}" data-nw="${vp.w}" data-nh="${vp.h}" style="width:${vp.dw}px;height:${Math.round(vp.h*scale)}px">`
-    + `<iframe class="screen" title="${frameId}-${target}" style="width:${vp.w}px;height:${vp.h}px;transform:scale(${scale.toFixed(5)})" srcdoc="${attr(srcdocHtml)}"></iframe>`
+  return `<div class="scr ${target}" data-mode="${vp.mode}" data-scale="${scale.toFixed(5)}" data-nw="${vp.w}" data-nh="${vp.h}" style="width:${vp.dw}px;height:${dh}px">`
+    + `<iframe class="screen" scrolling="no" title="${frameId}-${target}" style="width:${vp.w}px;height:${vp.h}px;transform:scale(${scale.toFixed(5)})" srcdoc="${attr(srcdocHtml)}"></iframe>`
     + cs + `</div>`;
 }
 
@@ -56,8 +56,13 @@ async function frameSection(f){
   return `<section class="frame">
   <div class="fhead"><span class="fnum">${esc(f.num??f.id)}</span><h2>${esc(f.title)}</h2><span class="gtag gtag-${esc(f.group)}">${esc(GTAG[f.group]||f.group)}</span><code class="route">${esc(f.route||"")}</code><span class="feats">${feats}</span></div>
   ${f.summary?`<p class="summary">${esc(f.summary)}</p>`:""}
-  <div class="shots"><div class="col"><div class="lab">◻ 웹 · 1440</div>${screen(webDom, f.callouts, "web", f.id)}</div><div class="col"><div class="lab">▢ 앱 · 390</div>${screen(appDom, f.callouts, "app", f.id)}</div>
-    <div class="capcol"><div class="captitle">흐름 설명</div><ol class="caps">${narration}</ol>${branches}</div></div>
+  <div class="shots">
+    <div class="webcol"><div class="lab">◻ 웹 · 1440 (전체)</div>${screen(webDom, f.callouts, "web", f.id)}</div>
+    <div class="rightcol">
+      <div class="appblock"><div class="lab">▢ 앱 · 390 (폰 화면)</div>${screen(appDom, f.callouts, "app", f.id)}</div>
+      <div class="capcol"><div class="captitle">흐름 설명</div><ol class="caps">${narration}</ol>${branches}</div>
+    </div>
+  </div>
 </section>`;
 }
 
@@ -83,24 +88,31 @@ const INJECT = `
     }
     return u;
   }
+  function measure(scr, doc, scale, NW, NH){
+    var cos=scr.querySelectorAll('.co'), pad=8;
+    for(var i=0;i<cos.length;i++){
+      var co=cos[i], anchors=[]; try{anchors=JSON.parse(co.getAttribute('data-anchors')||'[]');}catch(e){}
+      if(!anchors.length) continue;
+      var u=findUnion(doc,anchors); if(!u) continue;
+      var L=Math.max(0,u.l-pad),T=Math.max(0,u.t-pad),R=Math.min(NW,u.r+pad),B=Math.min(NH,u.b+pad);
+      if(B<=2||R<=2||T>=NH-2) continue;
+      co.style.left=(L*scale).toFixed(1)+'px'; co.style.top=(T*scale).toFixed(1)+'px';
+      co.style.width=((R-L)*scale).toFixed(1)+'px'; co.style.height=((B-T)*scale).toFixed(1)+'px';
+      co.setAttribute('data-anchored','1');
+    }
+  }
   function place(f){
     var doc; try{doc=f.contentDocument;}catch(e){return;} if(!doc||!doc.body) return;
     if(doc.head && !doc.getElementById('__appcss__')){var s=doc.createElement('style');s.id='__appcss__';s.textContent=css;doc.head.appendChild(s);}
-    var scr=f.parentElement; var scale=parseFloat(scr.getAttribute('data-scale'));
-    var NW=parseFloat(scr.getAttribute('data-nw')), NH=parseFloat(scr.getAttribute('data-nh'));
+    var scr=f.parentElement, mode=scr.getAttribute('data-mode'), scale=parseFloat(scr.getAttribute('data-scale')), NW=parseFloat(scr.getAttribute('data-nw'));
     setTimeout(function(){
-      var cos=scr.querySelectorAll('.co'), pad=8;
-      for(var i=0;i<cos.length;i++){
-        var co=cos[i], anchors=[]; try{anchors=JSON.parse(co.getAttribute('data-anchors')||'[]');}catch(e){}
-        if(!anchors.length) continue;
-        var u=findUnion(doc,anchors); if(!u) continue;
-        var L=Math.max(0,u.l-pad),T=Math.max(0,u.t-pad),R=Math.min(NW,u.r+pad),B=Math.min(NH,u.b+pad);
-        if(B<=2||T>=NH-2||R<=2) continue; // 화면 밖 → 폴백 유지
-        co.style.left=(L*scale).toFixed(1)+'px'; co.style.top=(T*scale).toFixed(1)+'px';
-        co.style.width=((R-L)*scale).toFixed(1)+'px'; co.style.height=((B-T)*scale).toFixed(1)+'px';
-        co.setAttribute('data-anchored','1');
-      }
-    }, 250);
+      var NH;
+      if(mode==='full'){ // 웹: 전체 높이로 확장(스크롤·잘림 제거)
+        var fullH=Math.max(doc.documentElement.scrollHeight, doc.body.scrollHeight, parseFloat(scr.getAttribute('data-nh')));
+        f.style.height=fullH+'px'; scr.style.height=Math.round(fullH*scale)+'px'; NH=fullH;
+      } else { NH=parseFloat(scr.getAttribute('data-nh')); } // 앱: 폰 1화면 고정
+      setTimeout(function(){ measure(scr, doc, scale, NW, NH); }, 120); // 리플로우 후 측정
+    }, 320);
   }
   var ifr=document.querySelectorAll('iframe.screen');
   for(var i=0;i<ifr.length;i++){ (function(f){ f.addEventListener('load',function(){place(f);}); place(f); })(ifr[i]); }
@@ -113,7 +125,7 @@ const html = `<!doctype html><html lang="ko"><head><meta charset="utf-8"/><meta 
 <style>
 :root{--ink:#1a1a1c;--muted:#5f5e5a;--hint:#8a8980;--line:#e6e4dd;--bg:#faf9f6;--card:#fff;--accent:#6C5CE0}
 *{box-sizing:border-box} body{font-family:'Pretendard',system-ui,'Segoe UI','Malgun Gothic',sans-serif;color:var(--ink);background:var(--bg);margin:0;line-height:1.6}
-.wrap{max-width:1200px;margin:0 auto;padding:36px 24px 80px}
+.wrap{max-width:1240px;margin:0 auto;padding:36px 24px 80px}
 .cover{padding:40px 0 24px;border-bottom:1px solid var(--line);margin-bottom:30px}
 .cover .kic{display:inline-block;font-size:12px;letter-spacing:.12em;color:#fff;background:var(--accent);padding:4px 11px;border-radius:999px}
 .cover h1{font-size:30px;margin:14px 0 6px} .cover .sub{color:var(--muted);margin:0}
@@ -127,24 +139,24 @@ const html = `<!doctype html><html lang="ko"><head><meta charset="utf-8"/><meta 
 .route{font-family:ui-monospace,Consolas,monospace;font-size:12px;color:var(--muted);background:var(--bg);padding:2px 7px;border-radius:6px;border:1px solid var(--line)}
 .feats{display:flex;gap:6px;flex-wrap:wrap}.pill{font-size:11px;color:#4A3FB0;background:#EEEDFE;border-radius:999px;padding:3px 9px}
 .summary{margin:2px 0 14px;color:var(--muted);font-size:14px}
-.shots{display:flex;gap:18px;align-items:flex-start;flex-wrap:wrap}
-.col{flex:0 0 auto}.lab{font-size:11px;color:var(--hint);font-family:ui-monospace,monospace;margin-bottom:6px}
+.shots{display:flex;gap:20px;align-items:flex-start}
+.webcol{flex:0 0 760px}.rightcol{flex:1;min-width:280px;display:flex;flex-direction:column;gap:16px}
+.lab{font-size:11px;color:var(--hint);font-family:ui-monospace,monospace;margin-bottom:6px}
 .scr{position:relative;border:1px solid var(--line);border-radius:10px;overflow:hidden;background:#fff}
-.scr iframe{border:0;transform-origin:top left;background:#fff}
-.co{position:absolute;border:2px dashed;border-radius:7px;pointer-events:none;transition:all .15s ease}
+.scr iframe{border:0;transform-origin:top left;background:#fff;display:block}
+.co{position:absolute;border:2px dashed;border-radius:7px;pointer-events:none}
 .cb{position:absolute;top:-11px;left:-11px;width:21px;height:21px;border-radius:50%;color:#fff;font-size:12px;font-weight:600;display:flex;align-items:center;justify-content:center;box-shadow:0 1px 3px #0003}
-.capcol{flex:1;min-width:240px;padding-top:18px}
 .captitle{font-size:15px;font-weight:600;margin-bottom:10px}
 .caps{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:10px}
 .caps li{display:flex;gap:10px;align-items:flex-start}
 .nb{flex:0 0 21px;width:21px;height:21px;border-radius:50%;color:#fff;font-size:12px;font-weight:600;display:flex;align-items:center;justify-content:center;margin-top:1px}
 .nt{font-weight:600;font-size:13.5px}.ft{font-size:11px;color:var(--accent);background:#EEEDFE;border-radius:5px;padding:1px 6px}.nd{font-size:12.5px;color:var(--muted)}.go{color:var(--accent);font-weight:500}
 .brs{margin-top:12px;display:flex;gap:7px;flex-wrap:wrap;align-items:center}.brl{font-size:11px;color:var(--hint)}.br{font-size:11px;background:#FAECE7;color:#993C1D;border-radius:6px;padding:3px 8px}
-@media(max-width:900px){.shots{flex-direction:column}}
+@media(max-width:980px){.shots{flex-direction:column}.webcol{flex:0 0 auto}}
 </style></head><body><div class="wrap">
 <div class="cover"><span class="kic">STORYBOARD · C 영역 (정적 HTML)</span><h1>${esc(m.title||"CareerTuner — C 영역 UI/UX 스토리보드")}</h1><p class="sub">${esc(m.subtitle||"")}</p>
 <div class="meta"><b>영역</b> C · <b>데모</b> ${esc(m.user||"김데모")} · <b>출처</b> ${esc(m.source||"")} · <b>생성</b> ${esc(m.date||"")}</div>
-<div class="note">📄 <b>래스터 이미지·React·서버 없이</b> 동작 — 각 화면은 실제 렌더된 DOM 스냅샷(<code>srcdoc</code> iframe), CSS 1벌을 열릴 때 주입. 점선 박스는 <b>요소 위치를 실시간 측정</b>해 얹습니다(번호 ↔ 캡션).</div></div>
+<div class="note">📄 <b>래스터 이미지·React·서버 없이</b> 동작 — 각 화면은 실제 렌더된 DOM 스냅샷(<code>srcdoc</code> iframe), CSS 1벌을 열릴 때 주입. 웹은 전체 높이, 앱은 폰 1화면. 점선 박스는 <b>요소 위치를 실시간 측정</b>해 얹습니다(번호 ↔ 캡션).</div></div>
 <div class="flowwrap"><h3>${esc(spec.journey?.title||"C 가치 여정")}</h3><pre class="mermaid">${esc(mermaid(spec.journey))}</pre></div>
 ${frames.join("\n")}
 </div>
