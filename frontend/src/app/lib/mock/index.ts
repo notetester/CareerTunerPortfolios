@@ -1,10 +1,10 @@
 // 데모/목 API 레지스트리. VITE_USE_MOCK=true 일 때 api() 가 네트워크 대신 이 핸들러로 응답한다.
-// 인증 + C(home/dashboard/analysis/fit/plan) + B 지원건 상세 읽기(job-posting/job-analysis/company-analysis)
-// + D 가상 면접 흐름을 채운다. 미등록 엔드포인트는 MOCK_UNHANDLED 로
-// 표시해 api() 가 "데모 미제공" 에러로 처리한다(타 도메인 데이터를 임의로 날조하지 않음).
-//
-// 그 밖의 도메인(A/E/F·결제·커뮤니티·알림·관리자) 담당자가 자기 화면을 데모에 포함하려면 아래 routes 배열에
-//   { method, pattern, handler } 한 줄을 추가하면 된다(공통 인프라, additive).
+// 사용자 앱 전 도메인 + 관리자 콘솔 전 도메인을 채운다(백엔드 없이 모든 화면이 데이터가 있는 듯 동작).
+//   - 핵심(여기 coreRoutes): 인증 + C(home/dashboard/analysis/fit/plan) + B 지원건 상세 + D 가상 면접.
+//   - 도메인별 모듈(./domains/*): billing/community/notification/support/profile + applications·interview 잔여,
+//     그리고 ./domains/admin/* (운영 대시보드·회원·콘텐츠·결제·분석·면접·프롬프트).
+// 공통 계약(MockRoute/ok/iso 등)은 ./registry.ts. 새 엔드포인트는 해당 도메인 모듈의 routes 배열에
+//   { method, pattern, handler } 한 줄을 추가한다(공통 인프라, additive). 미등록 엔드포인트만 "데모 미제공".
 import {
   demoTokenResponse,
   demoUser,
@@ -25,27 +25,23 @@ import {
   realtimeSession, fileAsset,
 } from "./domains/interview";
 
+import type { MockRoute } from "./registry";
+import { ok } from "./registry";
+// 도메인별 mock 라우트(공통 인프라, additive). 새 도메인은 ./domains/<name>.ts 에 작성 후 여기에 spread 한다.
+import { billingRoutes } from "./domains/billing";
+import { communityRoutes } from "./domains/community";
+import { notificationRoutes } from "./domains/notification";
+import { supportRoutes } from "./domains/support";
+import { profileRoutes } from "./domains/profile";
+import { correctionRoutes } from "./domains/correction";
+import { applicationsExtraRoutes } from "./domains/applicationsExtra";
+import { interviewExtraRoutes } from "./domains/interviewExtra";
+import { adminRoutes } from "./domains/admin";
+
 /** 등록된 핸들러가 없을 때 반환하는 sentinel. */
 export const MOCK_UNHANDLED = Symbol("mock-unhandled");
 
-interface MockContext {
-  method: string;
-  path: string; // 쿼리스트링 제거된 경로 (예: /fit-analyses/201/learning-tasks/2011)
-  params: string[]; // 정규식 캡처 그룹
-  body: unknown;
-}
-
-type MockHandler = (ctx: MockContext) => unknown;
-
-interface MockRoute {
-  method: string;
-  pattern: RegExp;
-  handler: MockHandler;
-}
-
-const ok = <T>(value: T): MockHandler => () => value;
-
-const routes: MockRoute[] = [
+const coreRoutes: MockRoute[] = [
   // ── 인증(공통 게이트) ──
   { method: "POST", pattern: /^\/auth\/login$/, handler: ok(demoTokenResponse) },
   { method: "POST", pattern: /^\/auth\/register$/, handler: ok(demoTokenResponse) },
@@ -200,7 +196,16 @@ const routes: MockRoute[] = [
   { method: "GET", pattern: /^\/application-cases\/(\d+)\/ai-usage\/b\/failures$/, handler: () => [] },
 
   // ── D: 가상 면접 (세션 목록/생성, 질문 생성·조회, 답변·꼬리질문, 진행·리포트·에이전트) ──
-  { method: "GET", pattern: /^\/interview\/sessions$/, handler: ok(demoInterviewSessions) },
+  {
+    // 목록 응답은 페이지 envelope( SessionPageResponse: { sessions, total, page, size, hasNext } ).
+    // demoInterviewSessions 는 createSession 이 unshift 하는 원본 배열이라 그대로 두고 여기서 감싼다.
+    method: "GET",
+    pattern: /^\/interview\/sessions$/,
+    handler: ({ query }) => {
+      const size = Number(query.get("size") ?? 10) || 10;
+      return { sessions: demoInterviewSessions, total: demoInterviewSessions.length, page: 0, size, hasNext: false };
+    },
+  },
   { method: "POST", pattern: /^\/interview\/sessions$/, handler: ({ body }) => createSession(body as { applicationCaseId: number; mode: "BASIC" | "JOB" | "PERSONALITY" | "PRESSURE" | "RESUME" | "COMPANY" }) },
   { method: "GET", pattern: /^\/interview\/sessions\/(\d+)\/questions$/, handler: ({ params }) => findSessionQuestions(Number(params[0])) },
   { method: "POST", pattern: /^\/interview\/sessions\/(\d+)\/generate-questions$/, handler: ({ params }) => generateQuestions(Number(params[0])) },
@@ -257,6 +262,20 @@ const routes: MockRoute[] = [
   },
 ];
 
+// 핵심(인증·C·B·D) + 도메인별 라우트를 모두 합친 최종 레지스트리. 앞에 오는 핸들러가 우선 매칭된다.
+const routes: MockRoute[] = [
+  ...coreRoutes,
+  ...applicationsExtraRoutes,
+  ...interviewExtraRoutes,
+  ...billingRoutes,
+  ...communityRoutes,
+  ...notificationRoutes,
+  ...supportRoutes,
+  ...profileRoutes,
+  ...correctionRoutes,
+  ...adminRoutes,
+];
+
 /**
  * mock 응답을 해석한다. 등록된 핸들러가 있으면 그 `data` 페이로드를, 없으면 MOCK_UNHANDLED 를 반환.
  * 약간의 지연을 줘 실제 네트워크처럼 로딩 상태가 자연스럽게 보이도록 한다.
@@ -266,7 +285,8 @@ export async function resolveMock(
   options: RequestInit,
 ): Promise<unknown | typeof MOCK_UNHANDLED> {
   const method = (options.method ?? "GET").toUpperCase();
-  const path = rawPath.split("?")[0];
+  const [path, queryString = ""] = rawPath.split("?");
+  const query = new URLSearchParams(queryString);
   const route = routes.find((r) => r.method === method && r.pattern.test(path));
   if (!route) return MOCK_UNHANDLED;
 
@@ -281,5 +301,5 @@ export async function resolveMock(
     }
   }
   await new Promise((resolve) => setTimeout(resolve, 220));
-  return route.handler({ method, path, params, body });
+  return route.handler({ method, path, query, params, body });
 }
