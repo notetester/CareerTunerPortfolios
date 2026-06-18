@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router";
-import { BookMarked, FileText, MessageSquare, Mic, RefreshCw, Search, Video } from "lucide-react";
+import { AlertTriangle, BookMarked, DatabaseZap, FileText, MessageSquare, Mic, RefreshCw, Search, Video } from "lucide-react";
 import AdminShell from "../../../components/AdminShell";
 import { Badge } from "@/app/components/ui/badge";
 import { Button } from "@/app/components/ui/button";
@@ -16,6 +16,7 @@ import {
   PaginationNext,
   PaginationPrevious,
 } from "@/app/components/ui/pagination";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/app/components/ui/tabs";
 import {
   INTERVIEW_MODES,
   getInterviewModeLabel,
@@ -73,6 +74,7 @@ export function AdminInterviewsPage() {
   const [page, setPage] = useState(1);
   const [total, setTotal] = useState(0);
   const SIZE = 20;
+  const [activeTab, setActiveTab] = useState<"sessions" | "failures" | "training">("sessions");
 
   const selected = useMemo(() => rows.find((r) => r.id === selectedId) ?? rows[0] ?? null, [rows, selectedId]);
   const report = useMemo(() => parseReport(detail?.report ?? null), [detail]);
@@ -140,7 +142,21 @@ export function AdminInterviewsPage() {
         </div>
       }
     >
-      <div className="grid gap-5 lg:grid-cols-[360px_minmax(0,1fr)]">
+      <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as "sessions" | "failures" | "training")} className="space-y-4">
+        <TabsList className="h-auto w-full justify-start border border-slate-200 bg-card p-1">
+          <TabsTrigger value="sessions" className="gap-1.5 px-3 py-2">
+            <MessageSquare className="size-4" /> 세션 모니터링
+          </TabsTrigger>
+          <TabsTrigger value="failures" className="gap-1.5 px-3 py-2">
+            <AlertTriangle className="size-4" /> AI 실패 이력
+          </TabsTrigger>
+          <TabsTrigger value="training" className="gap-1.5 px-3 py-2">
+            <DatabaseZap className="size-4" /> 학습 파이프라인
+          </TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="sessions" className="mt-0">
+          <div className="grid gap-5 lg:grid-cols-[360px_minmax(0,1fr)]">
         {/* 좌: 목록 */}
         <section className="space-y-4">
 
@@ -254,8 +270,6 @@ export function AdminInterviewsPage() {
 
         {/* 우: 상세 */}
         <section className="min-w-0 space-y-4">
-          <TrainingPipelineCard />
-          <AiFailuresCard />
           {!detail ? (
             <Card className="border-slate-200 bg-card">
               <CardContent className="p-8 text-center text-sm text-slate-500">면접 세션을 선택하세요.</CardContent>
@@ -410,7 +424,17 @@ export function AdminInterviewsPage() {
             </>
           )}
         </section>
-      </div>
+          </div>
+        </TabsContent>
+
+        <TabsContent value="failures" className="mt-0">
+          <AiFailuresCard />
+        </TabsContent>
+
+        <TabsContent value="training" className="mt-0">
+          <TrainingPipelineCard />
+        </TabsContent>
+      </Tabs>
     </AdminShell>
   );
 }
