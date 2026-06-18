@@ -4,6 +4,7 @@ import { useAuth } from "../../auth/AuthContext";
 import { Button } from "../ui/button";
 import { Badge } from "../ui/badge";
 import { NotificationBell } from "@/features/notification/components/NotificationBell";
+import { HeaderNav } from "./HeaderNav";
 import "@/features/notification/styles/notification.css";
 import {
   Sparkles,
@@ -152,7 +153,6 @@ const navItems = [
 ];
 
 export function Header() {
-  const [openMenu, setOpenMenu] = useState<string | null>(null);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const location = useLocation();
@@ -207,49 +207,8 @@ export function Header() {
             </div>
           </Link>
 
-          {/* Desktop Navigation */}
-          <nav className="hidden xl:flex items-center gap-1">
-            {navItems.map((item) => (
-              <div
-                key={item.href}
-                className="relative"
-                onMouseEnter={() => setOpenMenu(item.label)}
-                onMouseLeave={() => setOpenMenu(null)}
-              >
-                <Link
-                  to={item.href}
-                  className={`flex items-center gap-1 px-2.5 py-2 text-sm font-medium rounded-md transition-colors ${
-                    location.pathname === item.href.split("?")[0]
-                      ? "text-primary bg-accent-soft"
-                      : "text-muted-foreground hover:text-foreground hover:bg-accent"
-                  }`}
-                >
-                  {item.label}
-                  {item.children && <ChevronDown className="size-3.5 opacity-60" />}
-                </Link>
-
-                {item.children && openMenu === item.label && (
-                  <div className="absolute top-full left-0 mt-0 w-52 bg-popover rounded-xl border border-border py-2 z-50 shadow-[var(--shadow-pop)]">
-                    <div className="px-3 py-1.5 mb-1 border-b border-border">
-                      <div className="flex items-center gap-2 text-xs font-semibold text-muted-foreground uppercase tracking-wide">
-                        <item.icon className="size-3.5" />
-                        {item.label}
-                      </div>
-                    </div>
-                    {item.children.map((child) => (
-                      <Link
-                        key={child.href}
-                        to={child.href}
-                        className="flex items-center gap-2 px-4 py-2 text-sm text-foreground hover:bg-accent transition-colors"
-                      >
-                        {child.label}
-                      </Link>
-                    ))}
-                  </div>
-                )}
-              </div>
-            ))}
-          </nav>
+          {/* Desktop Navigation (폭이 부족하면 넘치는 항목을 '더보기'로 보냄 → HeaderNav) */}
+          <HeaderNav items={navItems} pathname={location.pathname} />
 
           {/* Right side */}
           <div className="flex items-center gap-1 sm:gap-2 justify-self-end">
