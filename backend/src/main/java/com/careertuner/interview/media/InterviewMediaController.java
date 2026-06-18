@@ -20,8 +20,6 @@ import com.careertuner.interview.media.dto.MediaAnalysisResponse;
 import com.careertuner.interview.media.dto.SaveMediaAnalysisRequest;
 import com.careertuner.interview.media.dto.TranscribeRequest;
 import com.careertuner.interview.media.dto.TranscribeResponse;
-import com.careertuner.interview.media.dto.VoiceAnalysisRequest;
-import com.careertuner.interview.media.dto.VoiceAnalysisResponse;
 import com.careertuner.interview.media.dto.VoiceScoreRequest;
 import com.careertuner.interview.media.dto.VoiceScoreResponse;
 
@@ -39,28 +37,18 @@ public class InterviewMediaController {
 
     private final InterviewMediaService mediaService;
     private final InterviewAvatarService avatarService;
-    private final InterviewVoiceService voiceService;
     private final InterviewAvatarProperties avatarProperties;
 
     /** 키 보유 여부 — 프런트가 기능 활성/비활성을 미리 판단한다 (키 노출 없음). */
     @GetMapping("/media/capabilities")
     public ApiResponse<Map<String, Boolean>> capabilities() {
         return ApiResponse.ok(Map.of(
-                "voiceProfiling", voiceService.enabled(),
                 "nonverbal", mediaService.nonverbalEnabled(),
                 "avatar", avatarProperties.configured(),
                 "avatarSandbox", avatarProperties.isSandbox()));
     }
 
-    /** 음성 감정 분석 (Inworld voice profiling). 오디오는 분석 후 버려진다. */
-    @PostMapping("/sessions/{sessionId}/voice-analysis")
-    public ApiResponse<VoiceAnalysisResponse> analyzeVoice(@AuthenticationPrincipal AuthUser authUser,
-                                                           @PathVariable Long sessionId,
-                                                           @Valid @RequestBody VoiceAnalysisRequest request) {
-        return ApiResponse.ok(mediaService.analyzeVoice(authUser.id(), sessionId, request));
-    }
-
-    /** 음성 답변 → 자체 추론 서버 점수 (ADR-006, Inworld 대체). 원본 음성은 점수 산출 후 버려진다. */
+    /** 음성 답변 → 자체 추론 서버 점수 (ADR-006). 원본 음성은 점수 산출 후 버려진다. */
     @PostMapping("/sessions/{sessionId}/voice-score")
     public ApiResponse<VoiceScoreResponse> scoreVoice(@AuthenticationPrincipal AuthUser authUser,
                                                       @PathVariable Long sessionId,

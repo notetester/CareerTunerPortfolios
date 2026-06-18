@@ -131,27 +131,6 @@ export interface TranscriptLine {
   text: string;
 }
 
-/** Inworld voice profiling 라벨 (confidence 내림차순) */
-export interface VoiceProfileLabel {
-  label: string;
-  confidence: number;
-}
-
-/** Inworld voice profiling 결과 — 신뢰도 낮으면 필드가 빠질 수 있음 */
-export interface VoiceProfile {
-  age?: VoiceProfileLabel[];
-  emotion?: VoiceProfileLabel[];
-  pitch?: VoiceProfileLabel[];
-  vocalStyle?: VoiceProfileLabel[];
-  accent?: VoiceProfileLabel[];
-}
-
-/** 서버 음성 감정 분석 응답 (POST /sessions/{id}/voice-analysis) */
-export interface VoiceAnalysisResult {
-  transcript: string;
-  voiceProfile: VoiceProfile | null;
-}
-
 /** 브라우저 온디바이스 음성 지표 */
 export interface VoiceMetrics {
   totalSec: number;
@@ -211,7 +190,6 @@ export interface TranscribeResult {
 
 /** 외부 키 보유 여부 (GET /media/capabilities) */
 export interface MediaCapabilities {
-  voiceProfiling: boolean;
   nonverbal: boolean; // 자체 추론 서버(serve) 사용 가능 여부 (ADR-006)
   avatar: boolean;
   avatarSandbox: boolean;

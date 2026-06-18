@@ -125,7 +125,7 @@ def voice_feature_vector(metrics: dict) -> list:
 
 
 # ── 규칙 점수 (LightGBM 모델 없을 때 폴백) ─────────────────────
-# voiceAnalysis.ts computeVoiceScore 복제. Inworld(profile) 보정은 제외(자체화로 제거).
+# voiceAnalysis.ts computeVoiceScore 복제. 감정 프로필 보정은 제외(자체화로 제거).
 NEUTRAL = 70
 
 

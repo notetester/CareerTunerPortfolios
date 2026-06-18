@@ -26,7 +26,7 @@ import tools.jackson.databind.ObjectMapper;
  * 비언어 자체 추론 서버(Python FastAPI, ADR-006) 호출 — 음성 → 피처 추출 → 점수.
  *
  * <p>원본 음성을 base64 로 보내면 서버가 ffmpeg 16kHz 변환·피처 추출 후 점수를 낸다
- * (LightGBM 모델이 있으면 모델, 없으면 규칙 폴백). 외부 API(Inworld)를 자체 서버로 대체하기 위한 클라이언트.
+ * (LightGBM 모델이 있으면 모델, 없으면 규칙 폴백). 외부 음성 API를 자체 서버로 대체하기 위한 클라이언트.
  */
 @Service
 public class InterviewNonverbalClient {

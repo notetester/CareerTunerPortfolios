@@ -6,7 +6,6 @@ import { Button } from "@/app/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/app/components/ui/card";
 import { Progress } from "@/app/components/ui/progress";
 import {
-  analyzeVoice,
   createAvatarSession,
   getMediaCapabilities,
   listSessionQuestions,
@@ -15,9 +14,7 @@ import {
 } from "../api/interviewApi";
 import {
   blobToBase64,
-  blobToPcm16Base64,
   computeVoiceScore,
-  countFillers,
   VoiceMetricsTracker,
 } from "../hooks/voiceAnalysis";
 import { computeVisualScore, VisualMetricsTracker, type VisualScoreDetail } from "../hooks/visualAnalysis";
@@ -27,7 +24,6 @@ import type {
   MediaCapabilities,
   TranscriptLine,
   VoiceMetrics,
-  VoiceProfile,
   VoiceScoreDetail,
 } from "../types/interview";
 import { getScoreColor } from "../types/interview";
@@ -58,7 +54,6 @@ export function AvatarTab({ session }: { session: InterviewSession | null }) {
 
   const [voiceDetail, setVoiceDetail] = useState<VoiceScoreDetail | null>(null);
   const [voiceMetrics, setVoiceMetrics] = useState<VoiceMetrics | null>(null);
-  const [profile, setProfile] = useState<VoiceProfile | null>(null);
   const [visualDetail, setVisualDetail] = useState<VisualScoreDetail | null>(null);
   const [overall, setOverall] = useState<number | null>(null);
   const [downloadUrl, setDownloadUrl] = useState<string | null>(null);
@@ -121,7 +116,6 @@ export function AvatarTab({ session }: { session: InterviewSession | null }) {
     setVoiceDetail(null);
     setVoiceMetrics(null);
     setVisualDetail(null);
-    setProfile(null);
     setOverall(null);
     setQuestionIdx(-1);
     finishingRef.current = false;
@@ -214,7 +208,7 @@ export function AvatarTab({ session }: { session: InterviewSession | null }) {
     }
   };
 
-  /** 종료 → 온디바이스 분석 확정 → (키 있으면) 음성 감정 분석 → 종합 점수 저장. */
+  /** 종료 → 온디바이스 분석 확정 → 종합 점수 저장. */
   const finishInterview = async () => {
     if (!session || finishingRef.current) return;
     finishingRef.current = true;
@@ -244,32 +238,13 @@ export function AvatarTab({ session }: { session: InterviewSession | null }) {
       setDownloadUrl(URL.createObjectURL(recordedBlob));
     }
 
-    // 음성 감정/전사 (Inworld) — 키 없거나 실패해도 계속.
-    let voiceProfile: VoiceProfile | null = null;
-    let userTranscript = "";
-    if (capabilities?.voiceProfiling && recordedBlob && recordedBlob.size > 0) {
-      try {
-        const base64 = await blobToPcm16Base64(recordedBlob);
-        const result = await analyzeVoice(session.id, base64);
-        voiceProfile = result.voiceProfile;
-        userTranscript = result.transcript ?? "";
-      } catch {
-        setNote((prev) => prev ?? "감정 분석(Inworld)은 실패해 측정 지표만으로 채점했습니다.");
-      }
-    }
-
-    const userChars = userTranscript.replace(/\s/g, "").length;
-    const fillers = userTranscript ? countFillers([userTranscript]) : 0;
-    const vMetrics = voiceTrackerRef.current?.finish(userChars, fillers) ?? null;
+    const vMetrics = voiceTrackerRef.current?.finish(0, 0) ?? null;
 
     const askedQuestions = questionsRef.current.slice(0, Math.max(questionIdx + 1, 0));
-    const transcript: TranscriptLine[] = [
-      ...askedQuestions.map<TranscriptLine>((q) => ({ role: "ai", text: q })),
-      ...(userTranscript ? [{ role: "user" as const, text: userTranscript }] : []),
-    ];
+    const transcript: TranscriptLine[] = askedQuestions.map<TranscriptLine>((q) => ({ role: "ai", text: q }));
 
     // 온디바이스 점수는 항상 계산(폴백 + 지표 표시용). 동의 + serve 가용 시 자체 추론 점수로 교체.
-    const vLocal = vMetrics ? computeVoiceScore(vMetrics, voiceProfile) : null;
+    const vLocal = vMetrics ? computeVoiceScore(vMetrics) : null;
     const visLocal = visualMetrics ? computeVisualScore(visualMetrics) : null;
     let vDetail = vLocal;
     let visDetail = visLocal;
@@ -282,8 +257,6 @@ export function AvatarTab({ session }: { session: InterviewSession | null }) {
         const server = await scoreAvatarServer(session.id, {
           videoBase64,
           videoFormat,
-          transcriptChars: userChars,
-          fillerCount: fillers,
           latencySec: vMetrics?.avgResponseLatencySec ?? undefined,
         });
         // 음성/영상 각각 별 모델 점수(late fusion). 한쪽 실패면 그쪽만 온디바이스 폴백 유지.
@@ -304,7 +277,6 @@ export function AvatarTab({ session }: { session: InterviewSession | null }) {
     setVoiceMetrics(vMetrics);
     setVoiceDetail(vDetail);
     setVisualDetail(visDetail);
-    setProfile(voiceProfile);
     setOverall(combined);
 
     cleanup();
@@ -313,7 +285,7 @@ export function AvatarTab({ session }: { session: InterviewSession | null }) {
       await saveMediaResult(session.id, {
         kind: "AVATAR",
         transcript: transcript.length > 0 ? transcript : null,
-        metrics: { voice: vMetrics, visual: visualMetrics, voiceProfile, source },
+        metrics: { voice: vMetrics, visual: visualMetrics, source },
         score: combined,
         scoreDetail: {
           ...(vDetail ? { ...vDetail, voiceOverall: vDetail.overall } : {}),
@@ -531,7 +503,7 @@ export function AvatarTab({ session }: { session: InterviewSession | null }) {
       )}
 
       {status === "scored" && voiceDetail && voiceMetrics && (
-        <VoiceScorePanel detail={voiceDetail} metrics={voiceMetrics} profile={profile} title="음성 점수" />
+        <VoiceScorePanel detail={voiceDetail} metrics={voiceMetrics} title="음성 점수" />
       )}
     </div>
   );

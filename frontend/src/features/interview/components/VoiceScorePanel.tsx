@@ -1,7 +1,7 @@
 import { Gauge } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/app/components/ui/card";
 import { Progress } from "@/app/components/ui/progress";
-import type { VoiceMetrics, VoiceProfile, VoiceScoreDetail } from "../types/interview";
+import type { VoiceMetrics, VoiceScoreDetail } from "../types/interview";
 import { getScoreColor } from "../types/interview";
 
 const SCORE_LABELS: { key: keyof Omit<VoiceScoreDetail, "overall">; label: string; desc: string }[] = [
@@ -12,15 +12,6 @@ const SCORE_LABELS: { key: keyof Omit<VoiceScoreDetail, "overall">; label: strin
   { key: "responsiveness", label: "반응 속도", desc: "질문 후 머뭇거림 없이 답변 시작" },
 ];
 
-const EMOTION_KO: Record<string, string> = {
-  tender: "부드러움", sad: "침울함", calm: "차분함", neutral: "평온함", happy: "밝음",
-  angry: "날카로움", fearful: "긴장감", surprised: "놀람", disgusted: "불쾌감", unclear: "불분명",
-};
-const STYLE_KO: Record<string, string> = {
-  whispering: "속삭임", normal: "보통", singing: "노래조", mumbling: "웅얼거림", crying: "울먹임",
-  laughing: "웃음기", shouting: "고성", monotone: "단조로움", unclear: "불분명",
-};
-
 /**
  * 음성 점수 패널 — 종합 점수 + 항목별 점수 + 측정 지표 요약.
  * 음성 모의면접/아바타 화상 면접이 공용으로 쓴다.
@@ -28,17 +19,12 @@ const STYLE_KO: Record<string, string> = {
 export function VoiceScorePanel({
   detail,
   metrics,
-  profile,
   title = "음성 분석 점수",
 }: {
   detail: VoiceScoreDetail;
   metrics: VoiceMetrics;
-  profile: VoiceProfile | null;
   title?: string;
 }) {
-  const topEmotion = profile?.emotion?.[0]?.label;
-  const topStyle = profile?.vocalStyle?.[0]?.label;
-
   return (
     <Card className="border border-slate-200 bg-card">
       <CardHeader>
@@ -76,20 +62,6 @@ export function VoiceScorePanel({
             value={metrics.avgResponseLatencySec != null ? `${metrics.avgResponseLatencySec}초` : "—"}
           />
         </div>
-
-        {(topEmotion || topStyle) && (
-          <p className="text-xs text-slate-500">
-            AI 음성 인상 분석:{" "}
-            {topEmotion && (
-              <span className="font-semibold text-slate-700">{EMOTION_KO[topEmotion] ?? topEmotion}</span>
-            )}
-            {topEmotion && topStyle && " · "}
-            {topStyle && (
-              <span className="font-semibold text-slate-700">{STYLE_KO[topStyle] ?? topStyle}</span>
-            )}
-            <span className="text-slate-400"> (Inworld voice profiling)</span>
-          </p>
-        )}
       </CardContent>
     </Card>
   );
