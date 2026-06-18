@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router";
-import { BookMarked, MessageSquare, Mic, RefreshCw, Search, Video } from "lucide-react";
+import { BookMarked, FileText, MessageSquare, Mic, RefreshCw, Search, Video } from "lucide-react";
 import AdminShell from "../../../components/AdminShell";
 import { Badge } from "@/app/components/ui/badge";
 import { Button } from "@/app/components/ui/button";
@@ -94,6 +94,9 @@ export function AdminInterviewsPage() {
       desc="사용자 면접 세션과 답변·리포트, 학습 파이프라인, AI 실패를 모니터링합니다."
       actions={
         <div className="flex gap-2">
+          <Button asChild variant="outline" size="sm">
+            <Link to="/admin/prompts/interview"><FileText className="size-4" /> 프롬프트</Link>
+          </Button>
           <Button asChild variant="outline" size="sm">
             <Link to="/admin/interview/knowledge"><BookMarked className="size-4" /> RAG 지식</Link>
           </Button>
