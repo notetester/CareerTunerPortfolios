@@ -13,7 +13,12 @@ import {
   getScoreColor,
   type InterviewReport,
 } from "@/features/interview/types/interview";
-import { getAdminInterviewAiFailures, getAdminInterviewSessionDetail, getAdminInterviewSessions } from "../api";
+import {
+  getAdminInterviewAiFailures,
+  getAdminInterviewSessionDetail,
+  getAdminInterviewSessions,
+  updateAdminMemo,
+} from "../api";
 import { TrainingPipelineCard } from "../components/TrainingPipelineCard";
 import type { AdminInterviewAiFailureRow, AdminInterviewSessionDetail, AdminInterviewSessionRow } from "../types";
 
@@ -207,6 +212,12 @@ export function AdminInterviewsPage() {
                 </CardContent>
               </Card>
 
+              <MemoCard
+                sessionId={detail.session.id}
+                initial={detail.session.adminMemo}
+                onSaved={() => void loadDetail(detail.session.id)}
+              />
+
               {report && (
                 <Card className="border-slate-200 bg-card">
                   <CardHeader>
@@ -396,6 +407,63 @@ function AiFailuresCard() {
             {r.errorMessage && <div className="mt-1 line-clamp-2 text-xs text-red-600">{r.errorMessage}</div>}
           </div>
         ))}
+      </CardContent>
+    </Card>
+  );
+}
+
+/** 관리자 운영 메모 — PUT /api/admin/interview/sessions/{id}/memo. 사용자에게 노출되지 않는다. */
+function MemoCard({
+  sessionId,
+  initial,
+  onSaved,
+}: {
+  sessionId: number;
+  initial: string | null;
+  onSaved: () => void;
+}) {
+  const [memo, setMemo] = useState(initial ?? "");
+  const [saving, setSaving] = useState(false);
+  const [note, setNote] = useState<string | null>(null);
+
+  useEffect(() => {
+    setMemo(initial ?? "");
+    setNote(null);
+  }, [initial, sessionId]);
+
+  const save = async () => {
+    setSaving(true);
+    setNote(null);
+    try {
+      await updateAdminMemo(sessionId, memo);
+      setNote("저장되었습니다.");
+      onSaved();
+    } catch (e) {
+      setNote(e instanceof Error ? e.message : "메모 저장에 실패했습니다.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <Card className="border-slate-200 bg-card">
+      <CardHeader className="pb-2">
+        <CardTitle className="text-base">운영 메모</CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-2">
+        <textarea
+          value={memo}
+          onChange={(e) => setMemo(e.target.value)}
+          placeholder="이 세션에 대한 운영 메모 (사용자에게 노출되지 않습니다)"
+          rows={3}
+          className="w-full resize-y rounded-lg border border-slate-200 bg-card p-2 text-sm focus:border-blue-300 focus:outline-none"
+        />
+        <div className="flex items-center gap-2">
+          <Button size="sm" onClick={() => void save()} disabled={saving}>
+            {saving ? "저장 중..." : "메모 저장"}
+          </Button>
+          {note && <span className="text-xs text-slate-500">{note}</span>}
+        </div>
       </CardContent>
     </Card>
   );

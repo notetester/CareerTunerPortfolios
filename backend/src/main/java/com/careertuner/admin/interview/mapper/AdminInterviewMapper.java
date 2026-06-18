@@ -22,4 +22,7 @@ public interface AdminInterviewMapper {
 
     /** 면접 AI 기능 실패 이력(INTERVIEW_* feature_type, status=FAILED). */
     List<AdminInterviewAiFailureRow> findAiFailures(@Param("limit") int limit);
+
+    /** 관리자 운영 메모 갱신. */
+    int updateAdminMemo(@Param("id") Long id, @Param("adminMemo") String adminMemo);
 }

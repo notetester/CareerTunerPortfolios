@@ -21,3 +21,11 @@ export function getAdminInterviewSessionDetail(id: number): Promise<AdminIntervi
 export function getAdminInterviewAiFailures(limit = 50): Promise<AdminInterviewAiFailureRow[]> {
   return api<AdminInterviewAiFailureRow[]>(`/admin/interview/ai-failures?limit=${limit}`, { method: "GET" });
 }
+
+/** 관리자 운영 메모 저장 (사용자 미노출). */
+export function updateAdminMemo(sessionId: number, memo: string): Promise<void> {
+  return api<void>(`/admin/interview/sessions/${sessionId}/memo`, {
+    method: "PUT",
+    body: JSON.stringify({ memo }),
+  });
+}

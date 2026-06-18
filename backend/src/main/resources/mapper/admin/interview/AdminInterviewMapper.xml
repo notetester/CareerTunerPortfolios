@@ -16,6 +16,7 @@
             s.started_at,
             s.ended_at,
             s.created_at,
+            s.admin_memo,
             (
                 SELECT COUNT(*)
                 FROM interview_question q
@@ -79,4 +80,10 @@
         ORDER BY l.created_at DESC, l.id DESC
         LIMIT #{limit}
     </select>
+
+    <update id="updateAdminMemo">
+        UPDATE interview_session
+        SET admin_memo = #{adminMemo}
+        WHERE id = #{id}
+    </update>
 </mapper>

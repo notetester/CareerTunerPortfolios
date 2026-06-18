@@ -19,6 +19,7 @@ export interface AdminInterviewSessionRow {
   createdAt: string;
   questionCount: number;
   answeredCount: number;
+  adminMemo: string | null;
 }
 
 export interface AdminInterviewSessionDetail {

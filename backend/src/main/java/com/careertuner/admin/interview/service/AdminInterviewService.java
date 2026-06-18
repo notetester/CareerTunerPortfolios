@@ -61,6 +61,16 @@ public class AdminInterviewService {
         return adminInterviewMapper.findAiFailures(normalizeLimit(limit));
     }
 
+    /** 관리자 운영 메모 저장 (admin 세션 상세). 사용자에게 노출하지 않는다. */
+    @Transactional
+    public void updateMemo(AuthUser authUser, Long id, String memo) {
+        requireAdmin(authUser);
+        if (adminInterviewMapper.findSession(id) == null) {
+            throw new BusinessException(ErrorCode.NOT_FOUND, "면접 세션을 찾을 수 없습니다.");
+        }
+        adminInterviewMapper.updateAdminMemo(id, memo);
+    }
+
     private static void requireAdmin(AuthUser authUser) {
         if (authUser == null || !"ADMIN".equals(authUser.role())) {
             throw new BusinessException(ErrorCode.FORBIDDEN, "관리자 권한이 필요합니다.");
