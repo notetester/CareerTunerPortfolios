@@ -286,7 +286,7 @@ export function ApplicationDetailPage() {
   if (!id) {
     return (
       <div className="min-h-[calc(100vh-72px)] bg-slate-50 px-4 py-10">
-        <Card className="mx-auto max-w-lg border-slate-200 bg-white">
+        <Card className="mx-auto max-w-lg border-slate-200 bg-card">
           <CardContent className="space-y-4 p-8 text-center">
             <div className="font-semibold text-slate-900">지원 건 ID가 올바르지 않습니다.</div>
             <Button onClick={() => navigate("/applications")}>목록으로 이동</Button>
@@ -313,7 +313,7 @@ export function ApplicationDetailPage() {
               </Button>
             </div>
 
-            <Card className="border-slate-200 bg-white">
+            <Card className="border-slate-200 bg-card">
               <CardContent className="space-y-2 p-3">
                 <div className="mb-2 text-xs font-semibold text-slate-500">지원 건</div>
                 {sidebarLoading ? (
@@ -380,14 +380,14 @@ export function ApplicationDetailPage() {
             </Button>
           </div>
 
-          <div className="flex overflow-x-auto rounded-lg border border-slate-200 bg-white p-1">
+          <div className="flex overflow-x-auto rounded-lg border border-slate-200 bg-card p-1">
             {detailTabs.map((tab) => (
               <button
                 key={tab.key}
                 type="button"
                 className={`flex shrink-0 items-center gap-1.5 rounded-md px-3 py-2 text-sm font-semibold transition-colors ${
                   activeTab === tab.key
-                    ? "bg-slate-900 text-white"
+                    ? "bg-foreground text-background"
                     : "text-slate-600 hover:bg-slate-100 hover:text-slate-900"
                 }`}
                 onClick={() => navigate(detailPath(id, tab.key))}
@@ -431,7 +431,7 @@ export function ApplicationDetailPage() {
                     onDelete={handleDelete}
                   />
                   <AnalysisSummaryCard applicationCaseId={id} onGoFit={() => navigate(detailPath(id, "fit"))} />
-                  <Card className="border-slate-200 bg-white">
+                  <Card className="border-slate-200 bg-card">
                     <CardContent className="grid gap-3 p-4 md:grid-cols-3">
                       <button
                         type="button"
@@ -520,7 +520,7 @@ export function ApplicationDetailPage() {
               {activeTab === "fit" && (
                 <div className="space-y-6">
                   {/* C 담당: 적합도/전략/학습 추천. 생성 트리거는 fit-analyses 엔드포인트(현재 mock). */}
-                  <div className="flex flex-col gap-3 rounded-lg border border-slate-200 bg-white p-4 sm:flex-row sm:items-center sm:justify-between">
+                  <div className="flex flex-col gap-3 rounded-lg border border-slate-200 bg-card p-4 sm:flex-row sm:items-center sm:justify-between">
                     <p className="text-sm text-slate-600">공고 분석 결과와 내 프로필을 비교해 적합도·부족 역량·학습/자격증·전략을 분석합니다.</p>
                     <Button
                       className="bg-blue-600 text-white hover:bg-blue-700"
@@ -592,7 +592,7 @@ function AnalysisSummaryCard({ applicationCaseId, onGoFit }: { applicationCaseId
   };
 
   return (
-    <Card className="border-slate-200 bg-white">
+    <Card className="border-slate-200 bg-card">
       <CardContent className="space-y-2 p-4">
         <div className="flex items-center justify-between">
           <div className="text-sm font-semibold text-slate-700">AI 분석 종합</div>

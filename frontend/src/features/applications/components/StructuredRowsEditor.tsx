@@ -43,10 +43,10 @@ export function StructuredRowsEditor<T extends Record<string, string>>({
   };
 
   return (
-    <div className="rounded-lg border border-slate-200 bg-white p-3">
+    <div className="rounded-lg border border-slate-200 bg-card p-3">
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <div className="text-sm font-semibold text-slate-900">{title}</div>
-        <Button type="button" variant="outline" size="sm" className="w-full bg-white sm:w-auto" onClick={addRow}>
+        <Button type="button" variant="outline" size="sm" className="w-full bg-card sm:w-auto" onClick={addRow}>
           <Plus className="size-4" />
           행 추가
         </Button>
@@ -64,7 +64,7 @@ export function StructuredRowsEditor<T extends Record<string, string>>({
                   value={row[field.key] ?? ""}
                   onChange={(event) => updateRow(rowIndex, field.key, event.target.value)}
                   placeholder={field.placeholder}
-                  className="bg-white"
+                  className="bg-card"
                 />
               </label>
             ))}
@@ -72,7 +72,7 @@ export function StructuredRowsEditor<T extends Record<string, string>>({
               type="button"
               variant="outline"
               size="icon"
-              className="h-9 w-full bg-white text-slate-500 hover:text-red-600 sm:w-9"
+              className="h-9 w-full bg-card text-slate-500 hover:text-red-600 sm:w-9"
               title="행 삭제"
               aria-label={`${title} ${rowIndex + 1}행 삭제`}
               onClick={() => removeRow(rowIndex)}

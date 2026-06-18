@@ -42,7 +42,7 @@ export function SocialConsentPage() {
 
   return (
     <div className="flex min-h-[calc(100vh-120px)] items-center justify-center bg-slate-50 px-4 py-10">
-      <Card className="w-full max-w-lg border border-slate-200 bg-white shadow-lg">
+      <Card className="w-full max-w-lg border border-slate-200 bg-card shadow-lg">
         <CardContent className="space-y-6 p-8">
           <div className="space-y-2 text-center">
             <div className="mx-auto flex size-12 items-center justify-center rounded-xl bg-blue-600 text-white">

@@ -28,6 +28,7 @@ import {
   type InterviewSession,
 } from "../types/interview";
 import { AgentTimeline } from "./AgentTimeline";
+import { InterviewProgressBar } from "./InterviewProgressBar";
 
 type Phase = "loading" | "empty" | "intro" | "answering" | "scoring" | "results";
 
@@ -92,7 +93,7 @@ export function PracticeTab({
 
   if (!session) {
     return (
-      <div className="rounded-xl border border-dashed border-slate-200 bg-white p-10 text-center text-sm text-slate-400">
+      <div className="rounded-xl border border-dashed border-slate-200 bg-card p-10 text-center text-sm text-slate-400">
         "면접 모드 선택" 탭에서 지원 건과 모드를 고르고 면접을 시작하면 복습 테스트를 진행할 수 있습니다.
       </div>
     );
@@ -169,7 +170,7 @@ export function PracticeTab({
 
   if (phase === "loading") {
     return (
-      <div className="flex items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white p-10 text-sm text-slate-400">
+      <div className="flex items-center justify-center gap-2 rounded-xl border border-slate-200 bg-card p-10 text-sm text-slate-400">
         <Loader2 className="size-4 animate-spin" /> 불러오는 중…
       </div>
     );
@@ -179,7 +180,7 @@ export function PracticeTab({
     return (
       <div className="space-y-4">
         {error && <ErrorLine message={error} />}
-        <Card className="border border-slate-200 bg-white">
+        <Card className="border border-slate-200 bg-card">
           <CardContent className="space-y-4 p-10 text-center">
             <p className="text-sm text-slate-500">
               복습 테스트를 보려면 예상 면접 질문이 필요합니다. "예상 면접 질문" 탭에서 먼저 질문을 만들어 학습하세요.
@@ -187,7 +188,7 @@ export function PracticeTab({
             <Button
               onClick={handleGenerate}
               disabled={generating}
-              className="gap-2 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700"
+              className="gap-2 bg-primary text-primary-foreground"
             >
               {generating ? <Loader2 className="size-4 animate-spin" /> : <Sparkles className="size-4" />}
               {generating ? "질문 생성 중…" : "질문 생성하기"}
@@ -200,7 +201,7 @@ export function PracticeTab({
 
   if (phase === "intro") {
     return (
-      <Card className="border border-slate-200 bg-white">
+      <Card className="border border-slate-200 bg-card">
         <CardContent className="space-y-4 p-8 text-center">
           <Shuffle className="mx-auto size-10 text-blue-600" />
           <div>
@@ -213,7 +214,7 @@ export function PracticeTab({
           </div>
           <Button
             onClick={start}
-            className="gap-2 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700"
+            className="gap-2 bg-primary text-primary-foreground"
           >
             <Play className="size-4" /> 시작하기
           </Button>
@@ -224,8 +225,8 @@ export function PracticeTab({
 
   if (phase === "scoring") {
     return (
-      <div className="flex items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white p-10 text-sm text-slate-500">
-        <Loader2 className="size-4 animate-spin" /> {total}개 답변을 채점하는 중…
+      <div className="rounded-xl border border-slate-200 bg-card p-10">
+        <InterviewProgressBar active estimatedMs={Math.max(8000, total * 7000)} label={`${total}개 답변을 채점하는 중`} />
       </div>
     );
   }
@@ -252,7 +253,7 @@ export function PracticeTab({
                 <RotateCcw className="size-4" /> 다시 풀기
               </Button>
               <Button
-                className="gap-1.5 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700"
+                className="gap-1.5 bg-primary text-primary-foreground"
                 onClick={onGoToReport}
               >
                 <FileText className="size-4" /> 면접 리포트 보기
@@ -262,7 +263,7 @@ export function PracticeTab({
         </Card>
 
         {results.map((r, i) => (
-          <Card key={r.question.id} className="border border-slate-200 bg-white">
+          <Card key={r.question.id} className="border border-slate-200 bg-card">
             <CardContent className="space-y-3 p-5">
               <div className="flex items-start gap-2">
                 <Badge className="bg-blue-100 text-blue-700">Q{i + 1}</Badge>
@@ -316,7 +317,7 @@ export function PracticeTab({
 
       {error && <ErrorLine message={error} />}
 
-      <Card className="border border-slate-200 bg-white">
+      <Card className="border border-slate-200 bg-card">
         <CardContent className="space-y-3 p-5">
           <div className="flex items-start gap-2">
             <Badge className="bg-blue-100 text-blue-700">Q{current + 1}</Badge>
@@ -334,7 +335,7 @@ export function PracticeTab({
               <Button
                 disabled={!draft.trim()}
                 onClick={handleSubmitAll}
-                className="gap-1.5 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700"
+                className="gap-1.5 bg-primary text-primary-foreground"
               >
                 <Play className="size-4" /> 제출하고 채점
               </Button>

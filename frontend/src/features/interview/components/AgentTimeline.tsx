@@ -44,7 +44,7 @@ export function AgentTimeline({ steps }: { steps: InterviewAgentStep[] }) {
   const allShown = visible >= steps.length;
 
   return (
-    <div className="rounded-lg border border-slate-200 bg-white p-3">
+    <div className="rounded-lg border border-slate-200 bg-card p-3">
       <div className="mb-3 flex items-center gap-1.5 text-xs font-bold text-slate-500">
         <Sparkles className="size-3.5 text-indigo-500" /> AI 면접관 작업 과정
         {!allShown ? (

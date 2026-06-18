@@ -61,7 +61,7 @@ export function AdminLogsPage() {
 
       {error && <div className="mb-3 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>}
 
-      <Card className="border-slate-200 bg-white">
+      <Card className="border-slate-200 bg-card">
         <CardContent className="p-0">
           <div className="overflow-x-auto">
             <table className="w-full text-sm">

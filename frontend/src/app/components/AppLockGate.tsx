@@ -71,8 +71,8 @@ export function AppLockGate({ children }: { children: ReactNode }) {
   return (
     <>
       {children}
-      <div className="fixed inset-0 z-[9999] flex flex-col items-center justify-center bg-slate-900/95 px-6 text-white backdrop-blur">
-        <div className="flex size-16 items-center justify-center rounded-2xl bg-white/10">
+      <div className="fixed inset-0 z-[9999] flex flex-col items-center justify-center bg-black/95 px-6 text-white backdrop-blur">
+        <div className="flex size-16 items-center justify-center rounded-2xl bg-card/10">
           <Lock className="size-8" />
         </div>
         <h1 className="mt-5 text-lg font-bold">앱 잠금</h1>
@@ -80,27 +80,27 @@ export function AppLockGate({ children }: { children: ReactNode }) {
 
         <div className="mt-6 flex gap-3">
           {Array.from({ length: 6 }).map((_, i) => (
-            <span key={i} className={`size-3 rounded-full ${i < pin.length ? "bg-white" : "bg-white/25"} ${error ? "bg-red-400" : ""}`} />
+            <span key={i} className={`size-3 rounded-full ${i < pin.length ? "bg-card" : "bg-card/25"} ${error ? "bg-red-400" : ""}`} />
           ))}
         </div>
         {error && <div className="mt-2 text-sm text-red-300">PIN이 일치하지 않습니다</div>}
 
         <div className="mt-8 grid w-full max-w-xs grid-cols-3 gap-3">
           {["1", "2", "3", "4", "5", "6", "7", "8", "9"].map((n) => (
-            <button key={n} onClick={() => press(n)} className="rounded-2xl bg-white/10 py-4 text-2xl font-semibold active:bg-white/20">
+            <button key={n} onClick={() => press(n)} className="rounded-2xl bg-card/10 py-4 text-2xl font-semibold active:bg-card/20">
               {n}
             </button>
           ))}
           <button
             onClick={() => void attemptBiometric()}
             disabled={!biometricAvailable() || !biometricEnabled()}
-            className="flex items-center justify-center rounded-2xl py-4 text-white/70 active:bg-white/10 disabled:opacity-30"
+            className="flex items-center justify-center rounded-2xl py-4 text-white/70 active:bg-card/10 disabled:opacity-30"
             aria-label="생체 인증"
           >
             <Fingerprint className="size-6" />
           </button>
-          <button onClick={() => press("0")} className="rounded-2xl bg-white/10 py-4 text-2xl font-semibold active:bg-white/20">0</button>
-          <button onClick={() => { setError(false); setPin((p) => p.slice(0, -1)); }} className="flex items-center justify-center rounded-2xl py-4 text-white/70 active:bg-white/10" aria-label="지우기">
+          <button onClick={() => press("0")} className="rounded-2xl bg-card/10 py-4 text-2xl font-semibold active:bg-card/20">0</button>
+          <button onClick={() => { setError(false); setPin((p) => p.slice(0, -1)); }} className="flex items-center justify-center rounded-2xl py-4 text-white/70 active:bg-card/10" aria-label="지우기">
             <Delete className="size-6" />
           </button>
         </div>

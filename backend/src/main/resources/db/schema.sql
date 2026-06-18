@@ -488,6 +488,8 @@ CREATE TABLE IF NOT EXISTS interview_session (
     total_score         INT NULL,
     report              JSON NULL,
     created_at          DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    deleted_at          DATETIME NULL,                      -- soft delete: 사용자가 기록 삭제한 시각. NULL이면 활성
+    last_resumed_at     DATETIME NULL,                      -- 복원(=복습)한 마지막 시각. 최근 기록 정렬·표시용
     PRIMARY KEY (id),
     KEY idx_interview_session_case (application_case_id),
     CONSTRAINT fk_interview_session_case FOREIGN KEY (application_case_id) REFERENCES application_case (id) ON DELETE CASCADE

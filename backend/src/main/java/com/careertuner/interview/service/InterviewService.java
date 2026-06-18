@@ -12,14 +12,22 @@ import com.careertuner.interview.dto.InterviewQuestionResponse;
 import com.careertuner.interview.dto.InterviewReportResponse;
 import com.careertuner.interview.dto.InterviewSessionResponse;
 import com.careertuner.interview.dto.ModelAnswerResponse;
+import com.careertuner.interview.dto.SessionPageResponse;
 import com.careertuner.interview.dto.SessionReviewResponse;
 import com.careertuner.interview.dto.SubmitAnswerRequest;
+import tools.jackson.databind.JsonNode;
 
 public interface InterviewService {
 
     InterviewSessionResponse createSession(Long userId, CreateInterviewSessionRequest request);
 
-    List<InterviewSessionResponse> listSessions(Long userId);
+    SessionPageResponse listSessions(Long userId, int page, int size);
+
+    /** 최근 면접 기록 soft delete (본인 세션만). */
+    void deleteSession(Long userId, Long sessionId);
+
+    /** 기존 세션 복원(=복습) 시각 기록. */
+    void markResumed(Long userId, Long sessionId);
 
     List<InterviewQuestionResponse> generateQuestions(Long userId, Long sessionId, GenerateQuestionsRequest request);
 
@@ -43,4 +51,7 @@ public interface InterviewService {
 
     /** 지난 세션 복기: 질문 + 저장된 모범답안 + 내 최신 답변/점수. (최근 면접 기록에서 들어가 보기) */
     SessionReviewResponse getSessionReview(Long userId, Long sessionId);
+
+    /** 음성 모의면접 트랜스크립트를 질문별로 채점해 저장하고, 채점한 문항 수를 반환한다. */
+    int scoreVoiceTranscript(Long userId, Long sessionId, JsonNode transcript);
 }

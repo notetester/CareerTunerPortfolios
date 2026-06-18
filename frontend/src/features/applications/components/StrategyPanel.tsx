@@ -40,7 +40,7 @@ export function StrategyPanel({ analyses, loading, error }: StrategyPanelProps) 
           const toneStrategies = analysis.toneStrategies ?? [];
 
           return (
-            <Card key={analysis.id} className="border border-slate-200 bg-white">
+            <Card key={analysis.id} className="border border-slate-200 bg-card">
               <CardHeader className="pb-3">
                 <div className="flex items-center justify-between gap-3">
                   <div>
@@ -150,7 +150,7 @@ function ToneStrategyCard({ strategies }: { strategies: NonNullable<FitAnalysisD
       <div className="mt-2 flex flex-wrap gap-1.5">
         {strategies.map((item) => (
           <button key={item.tone} type="button" onClick={() => setTone(item.tone)}
-            className={`rounded-full px-2.5 py-1 text-xs font-semibold ${tone === item.tone ? "bg-violet-600 text-white" : "bg-white text-violet-700"}`}>
+            className={`rounded-full px-2.5 py-1 text-xs font-semibold ${tone === item.tone ? "bg-violet-600 text-white" : "bg-card text-violet-700"}`}>
             {item.label}
           </button>
         ))}
@@ -250,7 +250,7 @@ function PhasedActionPlan({ phases }: { phases: StrategyPhase[] }) {
 
 function StateCard({ title, description, tone = "default" }: { title: string; description?: string; tone?: "default" | "error" }) {
   return (
-    <Card className={`border ${tone === "error" ? "border-red-200 bg-red-50" : "border-slate-200 bg-white"}`}>
+    <Card className={`border ${tone === "error" ? "border-red-200 bg-red-50" : "border-slate-200 bg-card"}`}>
       <CardContent className="flex items-start gap-3 p-5">
         <Map className={`mt-0.5 size-5 ${tone === "error" ? "text-red-500" : "text-blue-600"}`} />
         <div>

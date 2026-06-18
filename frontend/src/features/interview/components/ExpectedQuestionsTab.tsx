@@ -11,10 +11,12 @@ import {
 import { Badge } from "@/app/components/ui/badge";
 import { Button } from "@/app/components/ui/button";
 import { Card, CardContent } from "@/app/components/ui/card";
+import { InterviewProgressBar } from "./InterviewProgressBar";
 import {
   generateExpectedQuestions,
   generateFollowUps,
   getModelAnswer,
+  getSessionReview,
   listSessionQuestions,
   submitAnswer,
 } from "../api/interviewApi";
@@ -31,16 +33,20 @@ function QuestionItem({
   question,
   index,
   mode,
+  initialAnswer = "",
+  initialScore = null,
+  alreadyHasRebuttal = false,
   onFollowUpsGenerated,
-  preparingModelAnswer = false,
 }: {
   question: InterviewQuestion;
   index: number;
   mode: string;
+  initialAnswer?: string;
+  initialScore?: number | null;
+  alreadyHasRebuttal?: boolean;
   onFollowUpsGenerated: (questions: InterviewQuestion[]) => void;
-  preparingModelAnswer?: boolean;
 }) {
-  const [answer, setAnswer] = useState("");
+  const [answer, setAnswer] = useState(initialAnswer);
   const [submitting, setSubmitting] = useState(false);
   const [result, setResult] = useState<InterviewAnswer | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -48,7 +54,8 @@ function QuestionItem({
   const [modelAnswer, setModelAnswer] = useState<string | null>(null);
   const [loadingModel, setLoadingModel] = useState(false);
   const [showModel, setShowModel] = useState(false);
-  const [rebuttalRequested, setRebuttalRequested] = useState(false);
+  // 이미 반박(자식)이 있는 본질문은 재제출해도 자동 반박을 또 만들지 않는다(복원 답변 재제출 시 중복 방지).
+  const [rebuttalRequested, setRebuttalRequested] = useState(alreadyHasRebuttal);
 
   const isFollowUp = question.questionType === "FOLLOW_UP";
   const isPressure = mode === "PRESSURE";
@@ -112,7 +119,7 @@ function QuestionItem({
   };
 
   return (
-    <Card className={isFollowUp ? "border border-indigo-200 bg-indigo-50/40" : "border border-slate-200 bg-white"}>
+    <Card className={isFollowUp ? "border border-indigo-200 bg-indigo-50/40" : "border border-slate-200 bg-card"}>
       <CardContent className="space-y-3 p-4">
         <div className="flex items-start gap-2">
           {isFollowUp ? (
@@ -123,6 +130,9 @@ function QuestionItem({
             <Badge className="bg-blue-100 text-blue-700">Q{index + 1}</Badge>
           )}
           <p className="flex-1 text-sm font-medium text-slate-800">{question.question}</p>
+          {initialScore !== null && !result && (
+            <Badge className="shrink-0 bg-slate-100 text-slate-500">이전 {initialScore}점</Badge>
+          )}
         </div>
         <textarea
           value={answer}
@@ -131,14 +141,7 @@ function QuestionItem({
           rows={3}
           className="w-full resize-y rounded-lg border border-slate-200 p-3 text-sm outline-none focus:border-blue-400"
         />
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          {preparingModelAnswer && !modelAnswer ? (
-            <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2 py-0.5 text-[11px] text-slate-500">
-              <Loader2 className="size-3 animate-spin" /> 모범답안 준비 중
-            </span>
-          ) : (
-            <span />
-          )}
+        <div className="flex flex-wrap items-center justify-end gap-2">
           <div className="flex flex-wrap gap-2">
             <Button
               size="sm"
@@ -171,11 +174,7 @@ function QuestionItem({
           </p>
         )}
 
-        {submitting && (
-          <div className="flex items-center gap-2 rounded-lg bg-slate-50 p-3 text-sm text-slate-500">
-            <Loader2 className="size-4 animate-spin text-blue-500" /> AI가 답변을 채점·검증하고 있어요 · 보통 5~10초
-          </div>
-        )}
+        <InterviewProgressBar active={submitting} estimatedMs={8000} label="AI가 답변을 채점·검증하고 있어요" />
 
         {!submitting && result && (
           <div className="space-y-3 rounded-lg bg-slate-50 p-3">
@@ -189,7 +188,7 @@ function QuestionItem({
             )}
             {result.score === 100 ? (
               <div className="rounded-lg border border-green-100 bg-green-50 p-3 text-sm font-semibold text-green-700">
-                🎉 만점이에요. 이대로 말하면 됩니다.
+                만점이에요. 이대로 말하면 됩니다.
               </div>
             ) : (
               <p className="flex items-center gap-1.5 text-xs text-slate-500">
@@ -221,13 +220,25 @@ export function ExpectedQuestionsTab({
   const [error, setError] = useState<string | null>(null);
   const [resetVersion, setResetVersion] = useState(0);
   const [modelAnswersPreparing, setModelAnswersPreparing] = useState(false);
+  // 복원/기존 세션: 질문별 과거 최신 답변·점수 (textarea prefill + "이전 N점" 배지용)
+  const [answerMap, setAnswerMap] = useState<Record<number, { answer: string; score: number | null }>>({});
 
   const loadExisting = useCallback(async () => {
     if (!session) return;
     setLoading(true);
     setError(null);
     try {
-      setQuestions(await listSessionQuestions(session.id));
+      // 질문과 함께 과거 답변/점수를 불러와 textarea 를 채운다(복원 느낌). 답변 조회 실패는 무시하고 질문만 표시.
+      const [qs, review] = await Promise.all([
+        listSessionQuestions(session.id),
+        getSessionReview(session.id).catch(() => null),
+      ]);
+      setQuestions(qs);
+      const map: Record<number, { answer: string; score: number | null }> = {};
+      review?.items.forEach((it) => {
+        if (it.answerText) map[it.questionId] = { answer: it.answerText, score: it.score };
+      });
+      setAnswerMap(map);
     } catch (err) {
       setError(err instanceof Error ? err.message : "질문을 불러오지 못했습니다.");
     } finally {
@@ -253,6 +264,7 @@ export function ExpectedQuestionsTab({
     try {
       const generated = await generateExpectedQuestions(session.id, { mode: session.mode });
       setQuestions(generated);
+      setAnswerMap({}); // 재생성하면 과거 답변은 무효
       setModelAnswersPreparing(true); // 모범답안 백그라운드 생성 동안 잠깐 준비 중 힌트 표시
     } catch (err) {
       setError(err instanceof Error ? err.message : "질문 생성에 실패했습니다.");
@@ -263,7 +275,7 @@ export function ExpectedQuestionsTab({
 
   if (!session) {
     return (
-      <div className="rounded-xl border border-dashed border-slate-200 bg-white p-10 text-center text-sm text-slate-400">
+      <div className="rounded-xl border border-dashed border-slate-200 bg-card p-10 text-center text-sm text-slate-400">
         "면접 모드 선택" 탭에서 지원 건과 모드를 고르고 면접을 시작하면 예상 질문이 생성됩니다.
       </div>
     );
@@ -287,13 +299,11 @@ export function ExpectedQuestionsTab({
         </p>
       )}
 
+      <InterviewProgressBar active={generating} estimatedMs={13000} label="AI가 질문을 만들고 있어요" />
       {generating ? (
         <div className="space-y-3">
-          <div className="flex items-center justify-center gap-2 rounded-xl border border-blue-100 bg-blue-50 p-4 text-sm text-blue-700">
-            <Loader2 className="size-4 animate-spin" /> AI가 질문을 만들고 있어요 · 보통 10~15초 걸립니다
-          </div>
           {[0, 1, 2, 3].map((i) => (
-            <div key={i} className="space-y-3 rounded-xl border border-slate-200 bg-white p-4">
+            <div key={i} className="space-y-3 rounded-xl border border-slate-200 bg-card p-4">
               <div className="flex items-center gap-2">
                 <div className="size-6 shrink-0 animate-pulse rounded-full bg-slate-200" />
                 <div className="h-3.5 w-3/4 animate-pulse rounded bg-slate-200" />
@@ -310,18 +320,18 @@ export function ExpectedQuestionsTab({
           ))}
         </div>
       ) : loading ? (
-        <div className="flex items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white p-10 text-sm text-slate-400">
+        <div className="flex items-center justify-center gap-2 rounded-xl border border-slate-200 bg-card p-10 text-sm text-slate-400">
           <Loader2 className="size-4 animate-spin" /> 불러오는 중…
         </div>
       ) : questions.length === 0 ? (
-        <Card className="border border-slate-200 bg-white">
+        <Card className="border border-slate-200 bg-card">
           <CardContent className="flex flex-col items-center gap-4 p-10 text-center">
             <p className="text-sm text-slate-500">
               이 지원 건과 모드에 맞춘 예상 면접 질문을 AI가 생성합니다.
             </p>
             <Button
               size="lg"
-              className="gap-2 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700"
+              className="gap-2 bg-primary text-primary-foreground"
               disabled={generating}
               onClick={handleGenerate}
             >
@@ -332,18 +342,21 @@ export function ExpectedQuestionsTab({
         </Card>
       ) : (
         <div className="space-y-3" data-tut="tut-q-list">
+          <InterviewProgressBar active={modelAnswersPreparing} estimatedMs={20000} label="모범답안 준비 중" />
           {questions.map((q, i) => (
             <QuestionItem
               key={`${q.id}-${resetVersion}`}
               question={q}
-              index={i}
+              index={questions.slice(0, i + 1).filter((x) => x.questionType !== "FOLLOW_UP").length - 1}
               mode={session.mode}
+              initialAnswer={answerMap[q.id]?.answer ?? ""}
+              initialScore={answerMap[q.id]?.score ?? null}
+              alreadyHasRebuttal={questions.some((x) => x.parentQuestionId === q.id)}
               onFollowUpsGenerated={(qs) => setQuestions(qs)}
-              preparingModelAnswer={modelAnswersPreparing}
             />
           ))}
 
-          <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white p-4">
+          <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 bg-card p-4">
             <p className="text-sm text-slate-500">
               질문을 다 풀어봤다면, 모범답안 없이 복습 테스트로 제대로 소화했는지 점검해 보세요.
             </p>
@@ -352,7 +365,7 @@ export function ExpectedQuestionsTab({
                 <RotateCcw className="size-4" /> 답변 다시 작성
               </Button>
               <Button
-                className="gap-1.5 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700"
+                className="gap-1.5 bg-primary text-primary-foreground"
                 onClick={onGoToPractice}
               >
                 복습 테스트 풀러 가기 <ArrowRight className="size-4" />

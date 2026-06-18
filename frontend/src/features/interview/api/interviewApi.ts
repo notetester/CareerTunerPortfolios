@@ -28,9 +28,13 @@ import type {
   MediaCapabilities,
   RealtimeSession,
   SaveMediaAnalysisRequest,
+  SessionPageResponse,
   SessionReview,
   SubmitAnswerRequest,
+  TranscriptLine,
+  TranscribeResult,
   VoiceAnalysisResult,
+  VoiceScoreServerResult,
 } from "../types/interview";
 
 // 백엔드 계약: /api/interview/** , /api/file/**
@@ -44,11 +48,34 @@ import type {
 const mockDelay = <T>(value: T, ms = 800): Promise<T> =>
   new Promise((resolve) => setTimeout(() => resolve(value), ms));
 
-/** 내 면접 세션 목록 (최근 기록). */
-export function listInterviewSessions(): Promise<InterviewSession[]> {
-  if (isDataMockActive()) return Promise.resolve([dummySession]);
-  return api<InterviewSession[]>("/interview/sessions", { method: "GET" });
+/** 내 면접 세션 목록 (최근 기록). 더보기 누적용 페이지 응답. */
+export function listInterviewSessions(page = 0, size = 10): Promise<SessionPageResponse> {
+  if (isDataMockActive())
+    return Promise.resolve({ sessions: [dummySession], total: 1, page: 0, size, hasNext: false });
+  return api<SessionPageResponse>(`/interview/sessions?page=${page}&size=${size}`, { method: "GET" });
 }
+
+/** 면접 기록 삭제 (soft delete). */
+export function deleteInterviewSession(sessionId: number): Promise<void> {
+  if (isDataMockActive()) return Promise.resolve();
+  return api<void>(`/interview/sessions/${sessionId}`, { method: "DELETE" });
+}
+
+/** 세션 복원(=복습) 시각 기록. */
+export function markSessionResumed(sessionId: number): Promise<void> {
+  if (isDataMockActive()) return Promise.resolve();
+  return api<void>(`/interview/sessions/${sessionId}/resume`, { method: "POST" });
+}
+
+/** 음성 모의면접 트랜스크립트 → 질문별 내용 채점(interview_answer 저장). 채점한 문항 수 반환. */
+export function scoreVoiceTranscript(sessionId: number, transcript: TranscriptLine[]): Promise<number> {
+  if (isDataMockActive()) return Promise.resolve(transcript.some((l) => l.role === "user") ? 3 : 0);
+  return api<number>(`/interview/sessions/${sessionId}/score-voice`, {
+    method: "POST",
+    body: JSON.stringify({ transcript }),
+  });
+}
+
 
 /** 면접 세션 생성 (지원 건 + 모드 선택). */
 export function createInterviewSession(
@@ -184,6 +211,43 @@ export function analyzeVoice(
   return api<VoiceAnalysisResult>(`/interview/sessions/${sessionId}/voice-analysis`, {
     method: "POST",
     body: JSON.stringify({ audioBase64, sampleRateHertz, language: "ko" }),
+  });
+}
+
+/**
+ * 음성 답변 → 자체 추론 서버 점수 (ADR-006, Inworld 대체).
+ * audioBase64 는 녹음 원본(webm 등). 글자수·군말수·응답지연은 프런트가 계산해 함께 보낸다.
+ * 원본 음성은 서버에서 점수 산출 후 버려진다(전송 동의 필요).
+ */
+export function scoreVoiceServer(
+  sessionId: number,
+  payload: {
+    audioBase64: string;
+    audioFormat?: string;
+    transcriptChars?: number;
+    fillerCount?: number;
+    latencySec?: number;
+  },
+): Promise<VoiceScoreServerResult> {
+  return api<VoiceScoreServerResult>(`/interview/sessions/${sessionId}/voice-score`, {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+/**
+ * 음성 답변 → 자체 STT 전사 (B 베이직, faster-whisper, API 0).
+ * audioBase64 는 녹음 원본(webm 등). 원본 음성은 전사 후 버려진다.
+ */
+export function transcribeVoice(
+  sessionId: number,
+  audioBase64: string,
+  audioFormat = "webm",
+  language = "ko",
+): Promise<TranscribeResult> {
+  return api<TranscribeResult>(`/interview/sessions/${sessionId}/voice-transcribe`, {
+    method: "POST",
+    body: JSON.stringify({ audioBase64, audioFormat, language }),
   });
 }
 

@@ -1,6 +1,8 @@
 // 면접 도메인 타입 + UI 상수.
 // 백엔드 interview_session / interview_question / interview_answer 스키마와 1:1로 맞춘다.
 
+import { MessageSquare, Settings2, Users, Zap, FileText, Building2, type LucideIcon } from "lucide-react";
+
 export type InterviewMode =
   | "BASIC" // 기본 면접
   | "JOB" // 직무 면접
@@ -21,6 +23,12 @@ export interface InterviewSession {
   startedAt: string | null;
   endedAt: string | null;
   totalScore: number | null;
+  /** 답변 점수 평균(목록 조회 계산값). 리포트 미생성으로 totalScore 가 없을 때 카드 점수 폴백용. */
+  avgScore: number | null;
+  /** 음성 면접 점수 평균(목록 조회 계산값, interview_media_analysis kind VOICE). */
+  avgVoiceScore: number | null;
+  /** 복원(=복습) 마지막 시각. 없으면 복습한 적 없음. */
+  lastResumedAt: string | null;
   createdAt: string;
 }
 
@@ -166,9 +174,25 @@ export interface VoiceScoreDetail {
   overall: number;
 }
 
+/** 자체 추론 서버 음성 점수 응답 (POST /sessions/{id}/voice-score, ADR-006) */
+export interface VoiceScoreServerResult {
+  score: number;
+  detail: VoiceScoreDetail;
+  metrics: Record<string, unknown>;
+  source: "rule" | "lightgbm";
+}
+
+/** 자체 STT 응답 (POST /sessions/{id}/voice-transcribe) — B 베이직 답변 전사 */
+export interface TranscribeResult {
+  text: string;
+  language: string;
+  duration: number;
+}
+
 /** 외부 키 보유 여부 (GET /media/capabilities) */
 export interface MediaCapabilities {
   voiceProfiling: boolean;
+  nonverbal: boolean; // 자체 추론 서버(serve) 사용 가능 여부 (ADR-006)
   avatar: boolean;
   avatarSandbox: boolean;
 }
@@ -235,11 +259,20 @@ export interface SessionReview {
   items: SessionReviewItem[];
 }
 
+/** 최근 면접 기록 페이지 응답 (더보기 누적 페이징). 백엔드 SessionPageResponse 와 동형. */
+export interface SessionPageResponse {
+  sessions: InterviewSession[];
+  total: number;
+  page: number;
+  size: number;
+  hasNext: boolean;
+}
+
 // ───── UI 상수 (백엔드 데이터 아님, 화면 구성용) ─────
 
 export interface InterviewModeOption {
   id: InterviewMode;
-  icon: string;
+  icon: LucideIcon;
   title: string;
   desc: string;
   difficulty: InterviewDifficulty;
@@ -247,12 +280,12 @@ export interface InterviewModeOption {
 }
 
 export const INTERVIEW_MODES: InterviewModeOption[] = [
-  { id: "BASIC", icon: "💬", title: "기본 면접", desc: "자기소개, 지원동기, 장단점", difficulty: "하", recommended: false },
-  { id: "JOB", icon: "⚙️", title: "직무 면접", desc: "공고 기반 기술/직무 질문", difficulty: "상", recommended: true },
-  { id: "PERSONALITY", icon: "🤝", title: "인성 면접", desc: "협업, 갈등, 책임감, 태도", difficulty: "중", recommended: false },
-  { id: "PRESSURE", icon: "⚡", title: "압박 면접", desc: "꼬리 질문, 반박 질문", difficulty: "상", recommended: false },
-  { id: "RESUME", icon: "📄", title: "자소서 기반", desc: "자기소개서 문장을 기반으로 질문", difficulty: "중", recommended: false },
-  { id: "COMPANY", icon: "🏢", title: "기업 맞춤", desc: "기업 현황과 공고 기반 질문", difficulty: "상", recommended: false },
+  { id: "BASIC", icon: MessageSquare, title: "기본 면접", desc: "자기소개, 지원동기, 장단점", difficulty: "하", recommended: false },
+  { id: "JOB", icon: Settings2, title: "직무 면접", desc: "공고 기반 기술/직무 질문", difficulty: "상", recommended: true },
+  { id: "PERSONALITY", icon: Users, title: "인성 면접", desc: "협업, 갈등, 책임감, 태도", difficulty: "중", recommended: false },
+  { id: "PRESSURE", icon: Zap, title: "압박 면접", desc: "꼬리 질문, 반박 질문", difficulty: "상", recommended: false },
+  { id: "RESUME", icon: FileText, title: "자소서 기반", desc: "자기소개서 문장을 기반으로 질문", difficulty: "중", recommended: false },
+  { id: "COMPANY", icon: Building2, title: "기업 맞춤", desc: "기업 현황과 공고 기반 질문", difficulty: "상", recommended: false },
 ];
 
 export function getInterviewModeLabel(mode: InterviewMode): string {

@@ -12,8 +12,12 @@ import com.careertuner.interview.domain.InterviewSession;
 import com.careertuner.interview.mapper.InterviewMapper;
 import com.careertuner.interview.media.dto.MediaAnalysisResponse;
 import com.careertuner.interview.media.dto.SaveMediaAnalysisRequest;
+import com.careertuner.interview.media.dto.TranscribeRequest;
+import com.careertuner.interview.media.dto.TranscribeResponse;
 import com.careertuner.interview.media.dto.VoiceAnalysisRequest;
 import com.careertuner.interview.media.dto.VoiceAnalysisResponse;
+import com.careertuner.interview.media.dto.VoiceScoreRequest;
+import com.careertuner.interview.media.dto.VoiceScoreResponse;
 
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
@@ -30,15 +34,18 @@ public class InterviewMediaService {
     private final InterviewMediaMapper mediaMapper;
     private final InterviewMapper interviewMapper;
     private final InterviewVoiceService voiceService;
+    private final InterviewNonverbalClient nonverbalClient;
     private final ObjectMapper objectMapper;
 
     public InterviewMediaService(InterviewMediaMapper mediaMapper,
                                  InterviewMapper interviewMapper,
                                  InterviewVoiceService voiceService,
+                                 InterviewNonverbalClient nonverbalClient,
                                  ObjectMapper objectMapper) {
         this.mediaMapper = mediaMapper;
         this.interviewMapper = interviewMapper;
         this.voiceService = voiceService;
+        this.nonverbalClient = nonverbalClient;
         this.objectMapper = objectMapper;
     }
 
@@ -48,6 +55,24 @@ public class InterviewMediaService {
         return voiceService.analyze(request.audioBase64(),
                 request.sampleRateHertz() != null ? request.sampleRateHertz() : 16000,
                 request.language());
+    }
+
+    /** 자체 추론 서버(serve)로 음성 점수 산출 (ADR-006, Inworld 대체). 원본 음성은 점수 산출 후 버려진다. */
+    public VoiceScoreResponse scoreVoice(Long userId, Long sessionId, VoiceScoreRequest request) {
+        requireOwnedSession(userId, sessionId);
+        return nonverbalClient.scoreVoice(request.audioBase64(), request.audioFormat(),
+                request.transcriptChars(), request.fillerCount(), request.latencySec());
+    }
+
+    /** 자체 STT(serve)로 음성 답변 전사 — B 베이직 면접 (OpenAI Whisper API 대체). 원본 음성은 전사 후 버려진다. */
+    public TranscribeResponse transcribe(Long userId, Long sessionId, TranscribeRequest request) {
+        requireOwnedSession(userId, sessionId);
+        return nonverbalClient.transcribe(request.audioBase64(), request.audioFormat(), request.language());
+    }
+
+    /** capabilities 노출용 — 자체 추론 서버 사용 가능 여부. */
+    public boolean nonverbalEnabled() {
+        return nonverbalClient.enabled();
     }
 
     public MediaAnalysisResponse save(Long userId, Long sessionId, SaveMediaAnalysisRequest request) {

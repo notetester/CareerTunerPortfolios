@@ -149,7 +149,7 @@ export function AdminDashboardPage() {
           <Button asChild variant="outline">
             <Link to="/admin/fit-analysis">적합도 분석 관리</Link>
           </Button>
-          <Button asChild className="bg-gradient-to-r from-blue-600 to-indigo-600">
+          <Button asChild className="bg-primary">
             <Link to="/admin">통계 새로 보기</Link>
           </Button>
         </>
@@ -170,7 +170,7 @@ export function AdminDashboardPage() {
               <Link
                 key={item.to}
                 to={item.to}
-                className="rounded-full border border-slate-200 bg-white px-3.5 py-1.5 text-xs font-semibold text-slate-600 transition-colors hover:border-blue-300 hover:bg-blue-50 hover:text-blue-700"
+                className="rounded-full border border-slate-200 bg-card px-3.5 py-1.5 text-xs font-semibold text-slate-600 transition-colors hover:border-blue-300 hover:bg-blue-50 hover:text-blue-700"
               >
                 {item.label}
               </Link>
@@ -179,7 +179,7 @@ export function AdminDashboardPage() {
         )}
 
         {loading && (
-          <Card className="border border-slate-200 bg-white">
+          <Card className="border border-slate-200 bg-card">
             <CardContent className="flex items-center gap-3 p-5 text-sm text-slate-600">
               <Loader2 className="size-4 animate-spin text-blue-600" />
               관리자 분석 통계를 불러오는 중입니다.
@@ -200,7 +200,7 @@ export function AdminDashboardPage() {
           <>
             <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
               {statusCards.map((card) => (
-                <Card key={card.label} className="border border-slate-200 bg-white">
+                <Card key={card.label} className="border border-slate-200 bg-card">
                   <CardContent className="p-5">
                     <div className="flex items-start justify-between gap-3">
                       <div>
@@ -220,7 +220,7 @@ export function AdminDashboardPage() {
             <section className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_380px]">
               <div className="space-y-6">
                 <div className="grid gap-4 md:grid-cols-2">
-                  <Card className="border border-slate-200 bg-white">
+                  <Card className="border border-slate-200 bg-card">
                     <CardHeader className="pb-3">
                       <CardTitle className="flex items-center gap-2 text-base">
                         <Users className="size-4 text-blue-600" />
@@ -241,7 +241,7 @@ export function AdminDashboardPage() {
                     </CardContent>
                   </Card>
 
-                  <Card className="border border-slate-200 bg-white">
+                  <Card className="border border-slate-200 bg-card">
                     <CardHeader className="pb-3">
                       <CardTitle className="flex items-center gap-2 text-base">
                         <Briefcase className="size-4 text-emerald-600" />
@@ -263,7 +263,7 @@ export function AdminDashboardPage() {
                   </Card>
                 </div>
 
-                <Card className="border border-slate-200 bg-white">
+                <Card className="border border-slate-200 bg-card">
                   <CardHeader className="pb-3">
                     <CardTitle className="flex items-center gap-2 text-base">
                       <BarChart3 className="size-4 text-purple-600" />
@@ -295,7 +295,7 @@ export function AdminDashboardPage() {
               </div>
 
               <aside className="space-y-4">
-                <Card className="border border-slate-200 bg-white">
+                <Card className="border border-slate-200 bg-card">
                   <CardHeader className="pb-3">
                     <CardTitle className="flex items-center gap-2 text-base">
                       <Gauge className="size-4 text-purple-600" />
@@ -325,7 +325,7 @@ export function AdminDashboardPage() {
                   <CardContent className="space-y-3">
                     {summary.skillGaps.length > 0 ? (
                       summary.skillGaps.slice(0, 6).map((gap) => (
-                        <div key={gap.skill} className="rounded-lg bg-white/70 px-3 py-2">
+                        <div key={gap.skill} className="rounded-lg bg-card/70 px-3 py-2">
                           <div className="flex items-center justify-between gap-3 text-sm">
                             <span className="font-semibold text-amber-900">{gap.skill}</span>
                             <span className="text-xs text-amber-700">{gap.count}/{gap.total}건</span>
@@ -339,7 +339,7 @@ export function AdminDashboardPage() {
                   </CardContent>
                 </Card>
 
-                <Card className="border border-slate-200 bg-white">
+                <Card className="border border-slate-200 bg-card">
                   <CardHeader className="pb-3">
                     <CardTitle className="flex items-center gap-2 text-base">
                       <MessageSquare className="size-4 text-blue-600" />
@@ -366,7 +366,7 @@ export function AdminDashboardPage() {
             </section>
 
             <section>
-              <Card className="border border-slate-200 bg-white">
+              <Card className="border border-slate-200 bg-card">
                 <CardHeader className="pb-3">
                   <CardTitle className="flex flex-col gap-3 text-base sm:flex-row sm:items-center sm:justify-between">
                     <span className="flex items-center gap-2">
@@ -374,7 +374,7 @@ export function AdminDashboardPage() {
                       장기 경향·대시보드 AI 실행 이력
                     </span>
                     <span className="flex flex-col gap-2 sm:flex-row">
-                      <label className="flex items-center gap-2 rounded-md border border-slate-200 bg-white px-3">
+                      <label className="flex items-center gap-2 rounded-md border border-slate-200 bg-card px-3">
                         <Search className="size-4 text-slate-400" />
                         <input
                           value={runQuery}

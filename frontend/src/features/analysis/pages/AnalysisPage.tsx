@@ -190,7 +190,7 @@ export function AnalysisPage() {
 
         {/* 모바일 우선 요약 카드(모바일 고려 §6.7): 준비도/가장 강한 역량/우선 보완 역량 중심 */}
         {!loading && !error && stats && (
-          <Card className="border border-slate-200 bg-white lg:hidden">
+          <Card className="border border-slate-200 bg-card lg:hidden">
             <CardContent className="space-y-3 p-4">
               <div className="flex items-center justify-between">
                 <div>
@@ -218,7 +218,7 @@ export function AnalysisPage() {
                   <div className="text-xs font-semibold text-red-700">우선 보완 역량</div>
                   <div className="mt-1 flex flex-wrap gap-1.5">
                     {prioritizedGaps.map((gap) => (
-                      <span key={gap.skill} className="rounded-full bg-white px-2 py-0.5 text-xs font-medium text-red-600">
+                      <span key={gap.skill} className="rounded-full bg-card px-2 py-0.5 text-xs font-medium text-red-600">
                         {gap.skill} ({gap.count}건)
                       </span>
                     ))}
@@ -229,7 +229,7 @@ export function AnalysisPage() {
           </Card>
         )}
 
-        <div className="flex overflow-x-auto rounded-xl border border-slate-200 bg-white p-1">
+        <div className="flex overflow-x-auto rounded-xl border border-slate-200 bg-card p-1">
           {analysisTabs.map((tab) => (
             <button
               key={tab.key}
@@ -245,7 +245,7 @@ export function AnalysisPage() {
         </div>
 
         {loading && (
-          <Card className="border border-slate-200 bg-white">
+          <Card className="border border-slate-200 bg-card">
             <CardContent className="flex items-center gap-3 p-5 text-sm text-slate-600">
               <Loader2 className="size-4 animate-spin text-green-600" />
               취업 분석 데이터를 불러오는 중입니다.
@@ -275,7 +275,7 @@ export function AnalysisPage() {
                 helper: `세션 평균 ${summary?.interviewTrend.averageSessionScore ?? 0}점 · 답변 평균 ${summary?.interviewTrend.averageAnswerScore ?? 0}점`,
               },
             ].map((item) => (
-              <Card key={item.label} className="border border-slate-200 bg-white">
+              <Card key={item.label} className="border border-slate-200 bg-card">
                 <CardContent className="p-4">
                   <div className="text-xs font-semibold text-slate-500">{item.label}</div>
                   <div className="mt-1 text-2xl font-black text-slate-900">{item.value}</div>
@@ -287,11 +287,11 @@ export function AnalysisPage() {
         )}
 
         {/* AI Strategy banner */}
-        <Card className={`border-2 border-blue-200 bg-gradient-to-r from-blue-50 to-indigo-50 ${activeTab !== "recommendation" ? "hidden" : ""}`}>
+        <Card className={`border-2 border-blue-200 bg-muted ${activeTab !== "recommendation" ? "hidden" : ""}`}>
           <CardContent className="p-6">
             <div className="flex items-start gap-4">
-              <div className="size-12 rounded-xl bg-gradient-to-br from-blue-600 to-indigo-600 flex items-center justify-center flex-shrink-0">
-                <Brain className="size-6 text-white" />
+              <div className="size-12 rounded-xl bg-accent-soft flex items-center justify-center flex-shrink-0">
+                <Brain className="size-6 text-primary" />
               </div>
               <div className="flex-1">
                 <div className="flex flex-wrap items-start justify-between gap-2">
@@ -303,7 +303,7 @@ export function AnalysisPage() {
                     variant="outline"
                     onClick={handleRefresh}
                     disabled={refreshing}
-                    className="border-blue-300 bg-white/70 text-blue-700 hover:bg-white"
+                    className="border-blue-300 bg-card/70 text-blue-700 hover:bg-card"
                     title="AI를 다시 실행해 최신 데이터로 요약을 재생성합니다. 크레딧 1이 차감됩니다."
                   >
                     <RefreshCw className={`size-3.5 ${refreshing ? "animate-spin" : ""}`} />
@@ -338,7 +338,7 @@ export function AnalysisPage() {
 
         <div className="grid lg:grid-cols-2 gap-6">
           {/* Skill gaps */}
-          <Card className={`min-w-0 border border-slate-200 bg-white ${activeTab !== "weakness" ? "hidden" : ""}`}>
+          <Card className={`min-w-0 border border-slate-200 bg-card ${activeTab !== "weakness" ? "hidden" : ""}`}>
             <CardHeader>
               <CardTitle className="text-base flex items-center gap-2">
                 <AlertCircle className="size-4 text-red-500" />
@@ -365,7 +365,7 @@ export function AnalysisPage() {
           </Card>
 
           {/* 반복 강점(자주 활용되는 강점 경험) — 기획 §8.9, 디자인 분석 §6.10 */}
-          <Card className={`min-w-0 border border-slate-200 bg-white ${activeTab !== "weakness" ? "hidden" : ""}`}>
+          <Card className={`min-w-0 border border-slate-200 bg-card ${activeTab !== "weakness" ? "hidden" : ""}`}>
             <CardHeader>
               <CardTitle className="text-base flex items-center gap-2">
                 <CheckCircle2 className="size-4 text-green-600" />
@@ -393,7 +393,7 @@ export function AnalysisPage() {
           </Card>
 
           {/* 자주 지원하는 직무 분포 — 기획 §8.9, 디자인 분석 §6.10 */}
-          <Card className={`min-w-0 border border-slate-200 bg-white ${activeTab !== "trend" ? "hidden" : ""}`}>
+          <Card className={`min-w-0 border border-slate-200 bg-card ${activeTab !== "trend" ? "hidden" : ""}`}>
             <CardHeader>
               <CardTitle className="text-base flex items-center gap-2">
                 <PieChart className="size-4 text-indigo-600" />
@@ -423,7 +423,7 @@ export function AnalysisPage() {
           </Card>
 
           {/* 자주 개선이 필요한 답변 요소 — 기획 §8.9(답변의 공통 약점) */}
-          <Card className={`min-w-0 border border-slate-200 bg-white ${activeTab !== "score" ? "hidden" : ""}`}>
+          <Card className={`min-w-0 border border-slate-200 bg-card ${activeTab !== "score" ? "hidden" : ""}`}>
             <CardHeader>
               <CardTitle className="text-base flex items-center gap-2">
                 <MessageSquare className="size-4 text-purple-600" />
@@ -458,7 +458,7 @@ export function AnalysisPage() {
           </Card>
 
           {/* Job readiness */}
-          <Card className={`min-w-0 border border-slate-200 bg-white ${activeTab !== "readiness" ? "hidden" : ""}`}>
+          <Card className={`min-w-0 border border-slate-200 bg-card ${activeTab !== "readiness" ? "hidden" : ""}`}>
             <CardHeader>
               <CardTitle className="text-base flex items-center gap-2">
                 <Target className="size-4 text-blue-600" />
@@ -499,7 +499,7 @@ export function AnalysisPage() {
           </Card>
 
           {/* Score history bar chart (visual) */}
-          <Card className={`min-w-0 border border-slate-200 bg-white ${activeTab !== "score" ? "hidden" : ""}`}>
+          <Card className={`min-w-0 border border-slate-200 bg-card ${activeTab !== "score" ? "hidden" : ""}`}>
             <CardHeader>
               <CardTitle className="text-base flex items-center gap-2">
                 <BarChart3 className="size-4 text-purple-600" />
@@ -539,7 +539,7 @@ export function AnalysisPage() {
           </Card>
 
           {/* 기술스택별 평균 적합도 — 어떤 기술 중심 공고에서 강하고 약한지 본다. */}
-          <Card className={`min-w-0 border border-slate-200 bg-white ${activeTab !== "weakness" ? "hidden" : ""}`}>
+          <Card className={`min-w-0 border border-slate-200 bg-card ${activeTab !== "weakness" ? "hidden" : ""}`}>
             <CardHeader>
               <CardTitle className="text-base flex items-center gap-2">
                 <BarChart3 className="size-4 text-cyan-600" />
@@ -578,12 +578,12 @@ export function AnalysisPage() {
           <Card className={`min-w-0 border border-blue-200 bg-blue-50/40 ${activeTab !== "recommendation" ? "hidden" : ""}`}>
             <CardHeader><CardTitle className="flex items-center gap-2 text-base"><CheckCircle2 className="size-4 text-blue-600" />지원 전 24시간 액션</CardTitle></CardHeader>
             <CardContent className="space-y-2">
-              {next24HourActions.map((action, index) => <div key={action} className="rounded-lg bg-white p-3 text-sm text-slate-700"><strong className="mr-2 text-blue-600">{index + 1}</strong>{action}</div>)}
+              {next24HourActions.map((action, index) => <div key={action} className="rounded-lg bg-card p-3 text-sm text-slate-700"><strong className="mr-2 text-blue-600">{index + 1}</strong>{action}</div>)}
               {next24HourActions.length === 0 && <div className="text-sm text-slate-500">우선 지원 건과 부족 역량이 쌓이면 24시간 액션이 생성됩니다.</div>}
             </CardContent>
           </Card>
 
-          <Card className={`min-w-0 border border-violet-200 bg-white ${activeTab !== "recommendation" ? "hidden" : ""}`}>
+          <Card className={`min-w-0 border border-violet-200 bg-card ${activeTab !== "recommendation" ? "hidden" : ""}`}>
             <CardHeader><CardTitle className="flex items-center gap-2 text-base"><MessageSquare className="size-4 text-violet-600" />지원 전략 톤 조절</CardTitle></CardHeader>
             <CardContent>
               <div className="flex flex-wrap gap-2">
@@ -593,7 +593,7 @@ export function AnalysisPage() {
             </CardContent>
           </Card>
 
-          <Card className={`min-w-0 border border-slate-200 bg-white ${activeTab !== "recommendation" ? "hidden" : ""}`}>
+          <Card className={`min-w-0 border border-slate-200 bg-card ${activeTab !== "recommendation" ? "hidden" : ""}`}>
             <CardHeader>
               <CardTitle className="text-base flex items-center gap-2">
                 <Target className="size-4 text-green-600" />
@@ -638,7 +638,7 @@ export function AnalysisPage() {
             </CardContent>
           </Card>
 
-          <Card className={`min-w-0 border border-slate-200 bg-white ${activeTab !== "recommendation" ? "hidden" : ""}`}>
+          <Card className={`min-w-0 border border-slate-200 bg-card ${activeTab !== "recommendation" ? "hidden" : ""}`}>
             <CardHeader>
               <CardTitle className="text-base flex items-center gap-2">
                 <AlertCircle className="size-4 text-red-500" />
@@ -666,7 +666,7 @@ export function AnalysisPage() {
           </Card>
 
           {/* 피해야 할 공고 유형 — 반복 부족 역량이 필수인 공고는 보완 전까지 우선순위를 낮춘다. */}
-          <Card className={`min-w-0 border border-slate-200 bg-white ${activeTab !== "recommendation" ? "hidden" : ""}`}>
+          <Card className={`min-w-0 border border-slate-200 bg-card ${activeTab !== "recommendation" ? "hidden" : ""}`}>
             <CardHeader>
               <CardTitle className="text-base flex items-center gap-2">
                 <AlertCircle className="size-4 text-rose-500" />
@@ -693,7 +693,7 @@ export function AnalysisPage() {
             </CardContent>
           </Card>
 
-          <Card className={`min-w-0 border border-cyan-200 bg-white ${activeTab !== "trend" ? "hidden" : ""}`}>
+          <Card className={`min-w-0 border border-cyan-200 bg-card ${activeTab !== "trend" ? "hidden" : ""}`}>
             <CardHeader><CardTitle className="flex items-center gap-2 text-base"><Briefcase className="size-4 text-cyan-600" />기업·산업 유형별 적합도</CardTitle></CardHeader>
             <CardContent className="space-y-2">
               {companyTypeFits.map((item) => <div key={item.companyType} className="rounded-lg border border-slate-100 p-3"><div className="flex justify-between text-sm"><strong>{item.companyType}</strong><span>{item.applicationCount}건 · 평균 {item.averageFitScore ?? 0}점</span></div><Progress value={item.averageFitScore ?? 0} className="mt-2 h-1.5" /></div>)}
@@ -704,12 +704,12 @@ export function AnalysisPage() {
           <Card className={`min-w-0 border border-emerald-200 bg-emerald-50/30 ${activeTab !== "trend" ? "hidden" : ""}`}>
             <CardHeader><CardTitle className="flex items-center gap-2 text-base"><TrendingUp className="size-4 text-emerald-600" />지난주 대비 변화와 3줄 요약</CardTitle></CardHeader>
             <CardContent className="space-y-2">
-              <p className="rounded-lg bg-white p-3 text-sm font-semibold text-emerald-800">{weeklyChange?.summary ?? "비교할 주간 데이터가 아직 없습니다."}</p>
+              <p className="rounded-lg bg-card p-3 text-sm font-semibold text-emerald-800">{weeklyChange?.summary ?? "비교할 주간 데이터가 아직 없습니다."}</p>
               {threeLineSummary.map((line) => <div key={line} className="text-sm text-slate-700">• {line}</div>)}
             </CardContent>
           </Card>
 
-          <Card className={`min-w-0 border border-purple-200 bg-white ${activeTab !== "score" ? "hidden" : ""}`}>
+          <Card className={`min-w-0 border border-purple-200 bg-card ${activeTab !== "score" ? "hidden" : ""}`}>
             <CardHeader><CardTitle className="flex items-center gap-2 text-base"><MessageSquare className="size-4 text-purple-600" />답변 첨삭 완료와 적합도 상관</CardTitle></CardHeader>
             <CardContent>
               {correctionCorrelation && (correctionCorrelation.correctedApplications > 0 || correctionCorrelation.uncorrectedApplications > 0) ? (
@@ -719,7 +719,7 @@ export function AnalysisPage() {
           </Card>
 
           {/* 적합도-면접 상관 — 적합도 구간별 면접 평균 점수(면접 진행 건만). */}
-          <Card className={`min-w-0 border border-slate-200 bg-white ${activeTab !== "score" ? "hidden" : ""}`}>
+          <Card className={`min-w-0 border border-slate-200 bg-card ${activeTab !== "score" ? "hidden" : ""}`}>
             <CardHeader>
               <CardTitle className="text-base flex items-center gap-2">
                 <MessageSquare className="size-4 text-indigo-600" />
@@ -749,7 +749,7 @@ export function AnalysisPage() {
           </Card>
 
           {/* 월별 평균 적합도 변화 — 준비도의 장기 흐름을 월 단위로 본다. */}
-          <Card className={`min-w-0 border border-slate-200 bg-white ${activeTab !== "score" ? "hidden" : ""}`}>
+          <Card className={`min-w-0 border border-slate-200 bg-card ${activeTab !== "score" ? "hidden" : ""}`}>
             <CardHeader>
               <CardTitle className="text-base flex items-center gap-2">
                 <TrendingUp className="size-4 text-blue-600" />
@@ -780,7 +780,7 @@ export function AnalysisPage() {
           </Card>
 
           {/* 상향/적정/안전 지원 분류 — 적합도 점수 기준의 지원 포트폴리오 점검. */}
-          <Card className={`min-w-0 border border-slate-200 bg-white lg:col-span-2 ${activeTab !== "trend" ? "hidden" : ""}`}>
+          <Card className={`min-w-0 border border-slate-200 bg-card lg:col-span-2 ${activeTab !== "trend" ? "hidden" : ""}`}>
             <CardHeader>
               <CardTitle className="text-base flex items-center gap-2">
                 <Target className="size-4 text-emerald-600" />
@@ -805,7 +805,7 @@ export function AnalysisPage() {
                               key={item.applicationCaseId}
                               type="button"
                               onClick={() => navigate(`/applications/${item.applicationCaseId}`)}
-                              className="flex w-full items-center justify-between gap-2 rounded-lg bg-white/80 px-2.5 py-1.5 text-left text-xs transition-colors hover:bg-white"
+                              className="flex w-full items-center justify-between gap-2 rounded-lg bg-card/80 px-2.5 py-1.5 text-left text-xs transition-colors hover:bg-card"
                             >
                               <span className="min-w-0 truncate font-medium text-slate-700">
                                 {item.companyName} · {item.jobTitle}
@@ -814,7 +814,7 @@ export function AnalysisPage() {
                             </button>
                           ))
                         ) : (
-                          <div className="rounded-lg bg-white/60 px-2.5 py-1.5 text-xs text-slate-400">해당 지원 건 없음</div>
+                          <div className="rounded-lg bg-card/60 px-2.5 py-1.5 text-xs text-slate-400">해당 지원 건 없음</div>
                         )}
                         {tier.items.length > 4 && (
                           <div className="text-[11px] text-slate-400">외 {tier.items.length - 4}건</div>
@@ -833,7 +833,7 @@ export function AnalysisPage() {
           </Card>
 
           {/* Application trends */}
-          <Card className={`min-w-0 border border-slate-200 bg-white ${activeTab !== "trend" ? "hidden" : ""}`}>
+          <Card className={`min-w-0 border border-slate-200 bg-card ${activeTab !== "trend" ? "hidden" : ""}`}>
             <CardHeader>
               <CardTitle className="text-base flex items-center gap-2">
                 <Briefcase className="size-4 text-orange-600" />
@@ -850,7 +850,7 @@ export function AnalysisPage() {
                       onClick={() => navigate(`/applications/${a.id}`)}
                       className="flex w-full items-center gap-3 rounded-lg bg-slate-50 p-2.5 text-left text-sm transition-colors hover:bg-slate-100"
                     >
-                      <div className="size-7 rounded-lg bg-gradient-to-br from-blue-600 to-indigo-600 text-white text-xs font-bold flex items-center justify-center flex-shrink-0">
+                      <div className="size-7 rounded-lg bg-accent-soft text-primary text-xs font-bold flex items-center justify-center flex-shrink-0">
                         {a.company[0]}
                       </div>
                       <div className="flex-1 min-w-0">
@@ -879,7 +879,7 @@ export function AnalysisPage() {
         </div>
 
         {/* Recommended direction */}
-        <Card className={`border border-slate-200 bg-white ${activeTab !== "recommendation" ? "hidden" : ""}`}>
+        <Card className={`border border-slate-200 bg-card ${activeTab !== "recommendation" ? "hidden" : ""}`}>
           <CardHeader>
             <CardTitle className="text-base flex items-center gap-2">
               <BookOpen className="size-4 text-teal-600" />
@@ -938,7 +938,7 @@ function AnalysisHistoryCard({ hidden }: { hidden: boolean }) {
   }, [hidden, loaded]);
 
   return (
-    <Card className={`border border-slate-200 bg-white ${hidden ? "hidden" : ""}`}>
+    <Card className={`border border-slate-200 bg-card ${hidden ? "hidden" : ""}`}>
       <CardHeader>
         <CardTitle className="text-base flex items-center gap-2">
           <BarChart3 className="size-4 text-slate-500" />

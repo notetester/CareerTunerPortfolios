@@ -58,7 +58,7 @@ export function AdminConsentsPage() {
       )}
     >
       <div className="space-y-4">
-        <Card className="border-slate-200 bg-white">
+        <Card className="border-slate-200 bg-card">
           <CardContent className="grid gap-3 p-4 lg:grid-cols-[minmax(220px,1fr)_150px_150px_140px_150px_150px_120px]">
             <div className="relative">
               <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-slate-400" />
@@ -97,7 +97,7 @@ export function AdminConsentsPage() {
 
         {error && <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>}
 
-        <Card className="border-slate-200 bg-white">
+        <Card className="border-slate-200 bg-card">
           <CardContent className="overflow-x-auto p-0">
             <table className="w-full min-w-[900px] text-left text-sm">
               <thead className="border-b border-slate-200 bg-slate-50 text-xs font-bold text-slate-500">

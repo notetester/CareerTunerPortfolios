@@ -173,20 +173,20 @@ export function Header() {
 
   return (
     <header
-      className="bg-white border-b border-slate-200 sticky top-0 z-50 shadow-sm overflow-x-clip"
+      className="bg-background/80 backdrop-blur-xl border-b border-border sticky top-0 z-50 overflow-x-clip"
       // 노치/상태바 영역 확보 — iOS PWA standalone 및 네이티브 오버레이 상태바에서 헤더가 가리지 않게.
       style={{ paddingTop: "env(safe-area-inset-top)" }}
     >
       {/* Top utility bar */}
-      <div className="hidden md:block bg-gradient-to-r from-blue-700 to-indigo-700 text-white text-xs py-1.5">
+      <div className="hidden md:block bg-muted text-muted-foreground text-xs py-1.5 border-b border-border">
         <div className="w-full max-w-[1400px] mx-auto px-6 flex items-center justify-between">
           <span>CareerTuner - AI 기반 채용공고 분석 및 맞춤형 면접 지원 플랫폼</span>
           <div className="flex items-center gap-4">
-            <Link to="/support" className="hover:text-blue-200 transition-colors">고객센터</Link>
-            <span className="text-blue-400">|</span>
-            <Link to="/support/notices" className="hover:text-blue-200 transition-colors">공지사항</Link>
-            <span className="text-blue-400">|</span>
-            <Link to="/support/faq" className="hover:text-blue-200 transition-colors">FAQ</Link>
+            <Link to="/support" className="hover:text-foreground transition-colors">고객센터</Link>
+            <span className="text-border">|</span>
+            <Link to="/support/notices" className="hover:text-foreground transition-colors">공지사항</Link>
+            <span className="text-border">|</span>
+            <Link to="/support/faq" className="hover:text-foreground transition-colors">FAQ</Link>
           </div>
         </div>
       </div>
@@ -196,14 +196,14 @@ export function Header() {
         <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center h-16 lg:flex lg:justify-between">
           {/* Logo */}
           <Link to="/" className="flex items-center gap-2.5 min-w-0">
-            <div className="size-9 rounded-lg bg-gradient-to-br from-blue-600 to-indigo-600 flex items-center justify-center shadow-md">
-              <Sparkles className="size-5 text-white" />
+            <div className="size-9 rounded-lg bg-primary flex items-center justify-center shadow-[inset_0_1px_0_rgba(255,255,255,0.2)]">
+              <Sparkles className="size-5 text-primary-foreground" />
             </div>
             <div>
-              <span className="text-lg font-black bg-gradient-to-r from-blue-600 to-indigo-600 bg-clip-text text-transparent">
+              <span className="text-lg font-bold tracking-tight text-foreground">
                 CareerTuner
               </span>
-              <div className="text-[10px] text-slate-400 leading-none -mt-0.5">AI 취업 전략 플랫폼</div>
+              <div className="text-[10px] text-muted-foreground leading-none -mt-0.5">AI 취업 전략 플랫폼</div>
             </div>
           </Link>
 
@@ -220,8 +220,8 @@ export function Header() {
                   to={item.href}
                   className={`flex items-center gap-1 px-2.5 py-2 text-sm font-medium rounded-md transition-colors ${
                     location.pathname === item.href.split("?")[0]
-                      ? "text-blue-600 bg-blue-50"
-                      : "text-slate-700 hover:text-blue-600 hover:bg-slate-50"
+                      ? "text-primary bg-accent-soft"
+                      : "text-muted-foreground hover:text-foreground hover:bg-accent"
                   }`}
                 >
                   {item.label}
@@ -229,9 +229,9 @@ export function Header() {
                 </Link>
 
                 {item.children && openMenu === item.label && (
-                  <div className="absolute top-full left-0 mt-0 w-52 bg-white rounded-xl shadow-xl border border-slate-100 py-2 z-50">
-                    <div className="px-3 py-1.5 mb-1 border-b border-slate-100">
-                      <div className="flex items-center gap-2 text-xs font-semibold text-slate-500 uppercase tracking-wide">
+                  <div className="absolute top-full left-0 mt-0 w-52 bg-popover rounded-xl border border-border py-2 z-50 shadow-[var(--shadow-pop)]">
+                    <div className="px-3 py-1.5 mb-1 border-b border-border">
+                      <div className="flex items-center gap-2 text-xs font-semibold text-muted-foreground uppercase tracking-wide">
                         <item.icon className="size-3.5" />
                         {item.label}
                       </div>
@@ -240,7 +240,7 @@ export function Header() {
                       <Link
                         key={child.href}
                         to={child.href}
-                        className="flex items-center gap-2 px-4 py-2 text-sm text-slate-700 hover:text-blue-600 hover:bg-blue-50 transition-colors"
+                        className="flex items-center gap-2 px-4 py-2 text-sm text-foreground hover:bg-accent transition-colors"
                       >
                         {child.label}
                       </Link>
@@ -256,9 +256,9 @@ export function Header() {
             {isLoggedIn ? (
               <>
                 {/* Credits badge */}
-                <div className="hidden md:flex items-center gap-1.5 bg-amber-50 border border-amber-200 rounded-full px-3 py-1">
-                  <Award className="size-3.5 text-amber-600" />
-                  <span className="text-xs font-semibold text-amber-700">크레딧 <span className="text-amber-900">{credit}</span></span>
+                <div className="hidden md:flex items-center gap-1.5 bg-muted border border-border rounded-full px-3 py-1">
+                  <Award className="size-3.5 text-primary" />
+                  <span className="text-xs font-semibold text-muted-foreground">크레딧 <span className="text-foreground">{credit}</span></span>
                 </div>
 
                 {/* Notifications */}
@@ -266,32 +266,32 @@ export function Header() {
 
                 {/* User menu */}
                 <div className="relative hidden sm:block" onMouseEnter={() => setUserMenuOpen(true)} onMouseLeave={() => setUserMenuOpen(false)}>
-                  <button className="flex items-center gap-2 p-1.5 rounded-lg hover:bg-slate-100 transition-colors">
-                    <div className="size-8 rounded-full bg-gradient-to-br from-blue-500 to-indigo-500 flex items-center justify-center text-white text-sm font-bold">
+                  <button className="flex items-center gap-2 p-1.5 rounded-lg hover:bg-accent transition-colors">
+                    <div className="size-8 rounded-full bg-primary flex items-center justify-center text-primary-foreground text-sm font-bold">
                       {userInitial}
                     </div>
-                    <ChevronDown className="size-3.5 text-slate-500" />
+                    <ChevronDown className="size-3.5 text-muted-foreground" />
                   </button>
                   {userMenuOpen && (
-                    <div className="absolute top-full right-0 mt-1 w-48 bg-white rounded-xl shadow-xl border border-slate-100 py-2 z-50">
-                      <div className="px-4 py-2 border-b border-slate-100">
-                        <div className="font-semibold text-sm text-slate-900">{user?.name ?? "사용자"}</div>
-                        <div className="text-xs text-slate-500 truncate">{user?.email}</div>
-                        <Badge className="mt-1 bg-blue-100 text-blue-700 text-xs px-2 py-0.5">{planLabel}</Badge>
+                    <div className="absolute top-full right-0 mt-1 w-48 bg-popover rounded-xl border border-border py-2 z-50 shadow-[var(--shadow-pop)]">
+                      <div className="px-4 py-2 border-b border-border">
+                        <div className="font-semibold text-sm text-foreground">{user?.name ?? "사용자"}</div>
+                        <div className="text-xs text-muted-foreground truncate">{user?.email}</div>
+                        <Badge className="mt-1 bg-accent-soft text-primary text-xs px-2 py-0.5">{planLabel}</Badge>
                       </div>
-                      <Link to="/dashboard" className="flex items-center gap-2 px-4 py-2 text-sm text-slate-700 hover:text-blue-600 hover:bg-blue-50">
+                      <Link to="/dashboard" className="flex items-center gap-2 px-4 py-2 text-sm text-foreground hover:bg-accent">
                         <LayoutDashboard className="size-4" /> 대시보드
                       </Link>
-                      <Link to="/profile" className="flex items-center gap-2 px-4 py-2 text-sm text-slate-700 hover:text-blue-600 hover:bg-blue-50">
+                      <Link to="/profile" className="flex items-center gap-2 px-4 py-2 text-sm text-foreground hover:bg-accent">
                         <User className="size-4" /> 내 프로필
                       </Link>
-                      <Link to="/billing" className="flex items-center gap-2 px-4 py-2 text-sm text-slate-700 hover:text-blue-600 hover:bg-blue-50">
+                      <Link to="/billing" className="flex items-center gap-2 px-4 py-2 text-sm text-foreground hover:bg-accent">
                         <CreditCard className="size-4" /> 결제/구독
                       </Link>
-                      <div className="border-t border-slate-100 mt-1 pt-1">
+                      <div className="border-t border-border mt-1 pt-1">
                         <button
                           onClick={handleLogout}
-                          className="flex w-full items-center gap-2 px-4 py-2 text-sm text-red-600 hover:bg-red-50"
+                          className="flex w-full items-center gap-2 px-4 py-2 text-sm text-destructive hover:bg-destructive/10"
                         >
                           <LogOut className="size-4" /> 로그아웃
                         </button>
@@ -307,7 +307,7 @@ export function Header() {
                 </Button>
                 <Button
                   size="sm"
-                  className="hidden sm:inline-flex bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 whitespace-nowrap"
+                  className="hidden sm:inline-flex whitespace-nowrap"
                   onClick={() => navigate("/login")}
                 >
                   무료 시작
@@ -317,7 +317,7 @@ export function Header() {
 
             {/* Mobile menu button */}
             <button
-              className="inline-flex size-10 items-center justify-center rounded-lg border border-slate-200 text-slate-700 hover:bg-slate-100 transition-colors xl:hidden"
+              className="inline-flex size-10 items-center justify-center rounded-lg border border-border text-foreground hover:bg-accent transition-colors xl:hidden"
               onClick={() => setMobileOpen(!mobileOpen)}
               aria-label="메뉴 열기"
             >
@@ -329,16 +329,16 @@ export function Header() {
 
       {/* Mobile menu */}
       {mobileOpen && (
-        <div className="xl:hidden border-t border-slate-200 bg-white">
+        <div className="xl:hidden border-t border-border bg-background">
           <div className="w-full max-w-[1400px] mx-auto px-4 sm:px-6 py-4 space-y-3">
             {navItems.map((item) => (
-              <div key={item.href} className="rounded-xl border border-slate-100 bg-white p-1">
+              <div key={item.href} className="rounded-xl border border-border bg-card p-1">
                 <Link
                   to={item.href}
-                  className="flex items-center gap-2 px-3 py-2.5 rounded-lg text-sm font-medium text-slate-700 hover:bg-slate-50"
+                  className="flex items-center gap-2 px-3 py-2.5 rounded-lg text-sm font-medium text-foreground hover:bg-accent"
                   onClick={() => setMobileOpen(false)}
                 >
-                  <item.icon className="size-4 text-slate-500" />
+                  <item.icon className="size-4 text-muted-foreground" />
                   {item.label}
                 </Link>
                 {item.children && (
@@ -347,7 +347,7 @@ export function Header() {
                       <Link
                         key={child.href}
                         to={child.href}
-                        className="rounded-md px-2 py-1.5 text-xs text-slate-500 hover:bg-blue-50 hover:text-blue-600"
+                        className="rounded-md px-2 py-1.5 text-xs text-muted-foreground hover:bg-accent hover:text-foreground"
                         onClick={() => setMobileOpen(false)}
                       >
                         {child.label}
@@ -358,24 +358,24 @@ export function Header() {
               </div>
             ))}
             {isLoggedIn ? (
-              <div className="pt-3 border-t border-slate-100 space-y-2">
-                <div className="rounded-lg bg-slate-50 px-3 py-2">
-                  <div className="text-sm font-semibold text-slate-900">{user?.name ?? "사용자"}</div>
-                  <div className="text-xs text-slate-500 truncate">{user?.email}</div>
-                  <div className="mt-1 text-xs font-semibold text-amber-700">크레딧 {credit}</div>
+              <div className="pt-3 border-t border-border space-y-2">
+                <div className="rounded-lg bg-muted px-3 py-2">
+                  <div className="text-sm font-semibold text-foreground">{user?.name ?? "사용자"}</div>
+                  <div className="text-xs text-muted-foreground truncate">{user?.email}</div>
+                  <div className="mt-1 text-xs font-semibold text-muted-foreground">크레딧 {credit}</div>
                 </div>
                 <div className="grid grid-cols-2 gap-2">
                   <Button variant="outline" onClick={() => { navigate("/profile"); setMobileOpen(false); }}>내 프로필</Button>
                   <Button variant="outline" onClick={() => { navigate("/billing?tab=credits"); setMobileOpen(false); }}>크레딧</Button>
                 </div>
-                <Button variant="outline" className="w-full text-red-600 hover:bg-red-50" onClick={handleLogout}>
+                <Button variant="outline" className="w-full text-destructive hover:bg-destructive/10" onClick={handleLogout}>
                   로그아웃
                 </Button>
               </div>
             ) : (
-              <div className="pt-3 border-t border-slate-100 flex gap-2">
+              <div className="pt-3 border-t border-border flex gap-2">
                 <Button variant="outline" className="flex-1" onClick={() => { navigate("/login"); setMobileOpen(false); }}>로그인</Button>
-                <Button className="flex-1 bg-gradient-to-r from-blue-600 to-indigo-600" onClick={() => { navigate("/login"); setMobileOpen(false); }}>무료 시작</Button>
+                <Button className="flex-1" onClick={() => { navigate("/login"); setMobileOpen(false); }}>무료 시작</Button>
               </div>
             )}
           </div>

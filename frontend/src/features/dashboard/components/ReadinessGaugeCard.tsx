@@ -16,7 +16,7 @@ export function ReadinessGaugeCard({ readiness, recentChange }: ReadinessGaugeCa
   const tone = readiness.overall >= 70 ? "text-green-600" : readiness.overall >= 50 ? "text-amber-600" : "text-red-500";
 
   return (
-    <Card className="border border-slate-200 bg-white">
+    <Card className="border border-slate-200 bg-card">
       <CardHeader className="pb-3">
         <CardTitle className="text-base flex items-center gap-2">
           <Gauge className="size-4 text-blue-600" />

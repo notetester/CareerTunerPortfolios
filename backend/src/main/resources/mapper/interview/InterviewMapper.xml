@@ -14,13 +14,51 @@
     </insert>
 
     <select id="findSessionsByUserId" resultType="com.careertuner.interview.domain.InterviewSession">
-        SELECT s.*
+        SELECT s.*,
+               (SELECT ROUND(AVG(a.score))
+                  FROM interview_answer a
+                  JOIN interview_question q ON q.id = a.question_id
+                 WHERE q.interview_session_id = s.id
+                   AND a.score IS NOT NULL) AS avg_answer_score,
+               (SELECT ROUND(AVG(m.score))
+                  FROM interview_media_analysis m
+                 WHERE m.interview_session_id = s.id
+                   AND m.kind = 'VOICE') AS avg_voice_score
         FROM interview_session s
         JOIN application_case ac ON ac.id = s.application_case_id
         WHERE ac.user_id = #{userId}
           AND ac.deleted_at IS NULL
-        ORDER BY s.created_at DESC, s.id DESC
+          AND s.deleted_at IS NULL
+        ORDER BY COALESCE(s.last_resumed_at, s.created_at) DESC, s.id DESC
+        LIMIT #{limit} OFFSET #{offset}
     </select>
+
+    <select id="countSessionsByUserId" resultType="int">
+        SELECT COUNT(*)
+        FROM interview_session s
+        JOIN application_case ac ON ac.id = s.application_case_id
+        WHERE ac.user_id = #{userId}
+          AND ac.deleted_at IS NULL
+          AND s.deleted_at IS NULL
+    </select>
+
+    <update id="softDeleteSession">
+        UPDATE interview_session s
+        JOIN application_case ac ON ac.id = s.application_case_id
+        SET s.deleted_at = NOW()
+        WHERE s.id = #{id}
+          AND ac.user_id = #{userId}
+          AND s.deleted_at IS NULL
+    </update>
+
+    <update id="touchSessionResumed">
+        UPDATE interview_session s
+        JOIN application_case ac ON ac.id = s.application_case_id
+        SET s.last_resumed_at = NOW()
+        WHERE s.id = #{id}
+          AND ac.user_id = #{userId}
+          AND s.deleted_at IS NULL
+    </update>
 
     <select id="findSessionByIdAndUserId" resultType="com.careertuner.interview.domain.InterviewSession">
         SELECT s.*
@@ -78,10 +116,15 @@
     </delete>
 
     <select id="findQuestionsBySessionId" resultType="com.careertuner.interview.domain.InterviewQuestion">
-        SELECT *
-        FROM interview_question
-        WHERE interview_session_id = #{sessionId}
-        ORDER BY sort_order, id
+        <!-- 꼬리질문(반박)을 부모 본질문 바로 밑에 인접 배치한다.
+             정렬: 부모 sort_order 로 그룹 → 같은 그룹은 본질문(0) 먼저·꼬리(1) 뒤 → sort_order/id -->
+        SELECT q.*
+        FROM interview_question q
+        LEFT JOIN interview_question p ON p.id = q.parent_question_id
+        WHERE q.interview_session_id = #{sessionId}
+        ORDER BY COALESCE(p.sort_order, q.sort_order),
+                 (q.parent_question_id IS NOT NULL),
+                 q.sort_order, q.id
     </select>
 
     <select id="findQuestionByIdAndUserId" resultType="com.careertuner.interview.domain.InterviewQuestion">

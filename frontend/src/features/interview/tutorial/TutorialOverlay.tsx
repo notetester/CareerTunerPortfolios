@@ -110,11 +110,11 @@ export function TutorialOverlay() {
           />
         </>
       ) : (
-        <div className="absolute inset-0 bg-slate-900/60" style={{ pointerEvents: "auto" }} />
+        <div className="absolute inset-0 bg-black/60" style={{ pointerEvents: "auto" }} />
       )}
 
       <div style={{ ...bubblePos, maxWidth: 420, width: "90%", pointerEvents: "auto" }}>
-        <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-2xl">
+        <div className="rounded-xl border border-slate-200 bg-card p-5 shadow-2xl">
           <div className="text-xs font-bold text-indigo-500">
             튜토리얼 · {step + 1}/{TUT_STEPS.length}
           </div>
