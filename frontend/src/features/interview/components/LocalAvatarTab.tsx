@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { ClipboardList, Download, Loader2, Maximize2, PhoneOff, Play, SkipForward, Video } from "lucide-react";
+import { ClipboardList, Download, Loader2, Lock, Maximize2, PhoneOff, Play, SkipForward, Video } from "lucide-react";
 import { Badge } from "@/app/components/ui/badge";
 import { Button } from "@/app/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/app/components/ui/card";
@@ -401,15 +401,20 @@ export function LocalAvatarTab({ session }: { session: InterviewSession | null }
 
           {/* 화면: 면접관 placeholder(메인) + 내 웹캠(서브) */}
           {(status === "connecting" || status === "live" || status === "analyzing") && (
-            <div ref={videoBoxRef} className="relative overflow-hidden rounded-xl bg-muted">
+            <div
+              ref={videoBoxRef}
+              className="relative overflow-hidden rounded-xl bg-gradient-to-b from-[#5e6ad2] to-[#37318a]"
+            >
               <img
                 src={interviewerPlaceholder}
                 alt="면접관"
-                className="aspect-video w-full object-cover"
+                className="aspect-video w-full object-contain"
               />
-              <span className="absolute left-3 top-3 rounded-md bg-black/40 px-2 py-1 text-[11px] font-medium text-white/90">
-                실제 면접관 아바타는 프리미엄에서 등장합니다
-              </span>
+              <div className="pointer-events-none absolute inset-x-0 top-0 flex justify-center px-3 pt-3">
+                <span className="flex items-center gap-1.5 rounded-full bg-black/55 px-4 py-1.5 text-sm font-bold text-white shadow-lg backdrop-blur">
+                  <Lock className="size-4 text-amber-300" /> 실제 면접관 아바타는 프리미엄 전용
+                </span>
+              </div>
               <video
                 ref={selfVideoRef}
                 autoPlay
