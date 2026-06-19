@@ -17,6 +17,7 @@ public class CommunityComment {
     private Long postId;
     private Long userId;
     private Long parentId;
+    private Long mentionUserId;   // 답글이 가리키는 대상 사용자(불변 참조). 표시명은 읽을 때 동적 렌더.
     private String content;
     private boolean anonymous;
     private String status;

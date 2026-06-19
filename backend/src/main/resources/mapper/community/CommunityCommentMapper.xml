@@ -4,8 +4,10 @@
 <mapper namespace="com.careertuner.community.mapper.CommunityCommentMapper">
 
     <!-- 게시글의 공개 댓글 목록 조회 -->
+    <!-- is_anonymous → anonymous 별칭: 도메인 필드가 anonymous(getter isAnonymous)라 자동매핑이 안 되므로 명시 -->
     <select id="findByPostId" resultType="com.careertuner.community.domain.CommunityComment">
         SELECT cc.*,
+               cc.is_anonymous AS anonymous,
                u.name AS user_name
           FROM community_comment cc
           JOIN users u ON cc.user_id = u.id
@@ -17,6 +19,7 @@
     <!-- 댓글 단건 조회 -->
     <select id="findById" resultType="com.careertuner.community.domain.CommunityComment">
         SELECT cc.*,
+               cc.is_anonymous AS anonymous,
                u.name AS user_name
           FROM community_comment cc
           JOIN users u ON cc.user_id = u.id
@@ -25,8 +28,8 @@
 
     <!-- 댓글 작성 -->
     <insert id="insert" useGeneratedKeys="true" keyProperty="id">
-        INSERT INTO community_comment (post_id, user_id, parent_id, content, is_anonymous, status)
-        VALUES (#{postId}, #{userId}, #{parentId}, #{content}, #{anonymous}, #{status})
+        INSERT INTO community_comment (post_id, user_id, parent_id, mention_user_id, content, is_anonymous, status)
+        VALUES (#{postId}, #{userId}, #{parentId}, #{mentionUserId}, #{content}, #{anonymous}, #{status})
     </insert>
 
     <!-- 댓글 상태 변경 (삭제/숨김) -->

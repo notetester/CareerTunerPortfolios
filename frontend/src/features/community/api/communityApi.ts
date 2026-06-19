@@ -175,10 +175,15 @@ export async function getComments(postId: number) {
   return api<CommunityComment[]>(`/community/posts/${postId}/comments`);
 }
 
-export async function createComment(postId: number, content: string, parentId?: number) {
+export async function createComment(
+  postId: number,
+  content: string,
+  parentId?: number,
+  anonymous = true,
+) {
   return api<CommunityComment>(`/community/posts/${postId}/comments`, {
     method: "POST",
-    body: JSON.stringify({ content, parentId: parentId ?? null }),
+    body: JSON.stringify({ content, parentId: parentId ?? null, anonymous }),
   });
 }
 

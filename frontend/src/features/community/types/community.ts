@@ -58,6 +58,8 @@ export interface InterviewReviewMetadata {
 export interface CommunityComment {
   id: number;
   postId: number;
+  parentId?: number | null;
+  mentionLabel?: string | null;
   author: PublicAuthor;
   content: string;
   likeCount: number;

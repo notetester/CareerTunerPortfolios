@@ -24,7 +24,7 @@ interface CommunityState {
   fetchCategoryCounts: () => Promise<void>;
   fetchPostDetail: (id: number) => Promise<void>;
   fetchComments: (postId: number) => Promise<void>;
-  addComment: (postId: number, content: string) => Promise<void>;
+  addComment: (postId: number, content: string, parentId?: number, anonymous?: boolean) => Promise<void>;
   createPost: (data: {
     category: CommunityCategory;
     title: string;
@@ -121,8 +121,8 @@ export const useCommunityStore = create<CommunityState>((set, get) => ({
     }
   },
 
-  addComment: async (postId, content) => {
-    await communityApi.createComment(postId, content);
+  addComment: async (postId, content, parentId, anonymous = true) => {
+    await communityApi.createComment(postId, content, parentId, anonymous);
     const comments = await communityApi.getComments(postId);
     set({ comments });
     const { currentPost } = get();
