@@ -25,6 +25,8 @@ public class ModerationSettingService {
 
     private volatile Strictness strictness = Strictness.NORMAL;
     private volatile double hideThreshold = 0.80;
+    private volatile int sanctionThreshold = 3;
+    private volatile int blockDays = 7;
 
     public ModerationSettingService(ModerationSettingMapper settingMapper) {
         this.settingMapper = settingMapper;
@@ -36,9 +38,12 @@ public class ModerationSettingService {
         if (setting != null) {
             this.strictness = setting.getStrictness();
             this.hideThreshold = setting.getHideThreshold();
-            log.info("검열 설정 로드: strictness={}, hideThreshold={}", strictness, hideThreshold);
+            this.sanctionThreshold = setting.getSanctionThreshold();
+            this.blockDays = setting.getBlockDays();
+            log.info("검열 설정 로드: strictness={}, hideThreshold={}, sanctionThreshold={}, blockDays={}",
+                    strictness, hideThreshold, sanctionThreshold, blockDays);
         } else {
-            log.warn("검열 설정 미존재, 기본값 사용: strictness=NORMAL, hideThreshold=0.80");
+            log.warn("검열 설정 미존재, 기본값 사용: strictness=NORMAL, hideThreshold=0.80, sanctionThreshold=3, blockDays=7");
         }
     }
 
@@ -50,14 +55,25 @@ public class ModerationSettingService {
         return hideThreshold;
     }
 
+    public int getSanctionThreshold() {
+        return sanctionThreshold;
+    }
+
+    public int getBlockDays() {
+        return blockDays;
+    }
+
     public ModerationSetting getCurrent() {
         return settingMapper.findById(SETTING_ID);
     }
 
-    public void update(Strictness newStrictness, double newThreshold) {
-        settingMapper.update(SETTING_ID, newStrictness.name(), newThreshold);
+    public void update(Strictness newStrictness, double newThreshold, int newSanctionThreshold, int newBlockDays) {
+        settingMapper.update(SETTING_ID, newStrictness.name(), newThreshold, newSanctionThreshold, newBlockDays);
         this.strictness = newStrictness;
         this.hideThreshold = newThreshold;
-        log.info("검열 설정 변경: strictness={}, hideThreshold={}", newStrictness, newThreshold);
+        this.sanctionThreshold = newSanctionThreshold;
+        this.blockDays = newBlockDays;
+        log.info("검열 설정 변경: strictness={}, hideThreshold={}, sanctionThreshold={}, blockDays={}",
+                newStrictness, newThreshold, newSanctionThreshold, newBlockDays);
     }
 }

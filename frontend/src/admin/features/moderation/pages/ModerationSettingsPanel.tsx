@@ -80,6 +80,10 @@ export default function ModerationSettingsPanel({ flash }: { flash: (msg: string
   const [changedAt, setChangedAt] = useState("");
   const [serverDown, setServerDown] = useState(false);
 
+  /* 사용자 제재 설정 (게시글 숨김과 별개 임계) */
+  const [sanction, setSanction] = useState(3);
+  const [blockDays, setBlockDays] = useState(7);
+
   /* UI 상태 */
   const [advOpen, setAdvOpen] = useState(false);
   const [pending, setPending] = useState<typeof PRESETS[number] | null>(null);
@@ -98,6 +102,8 @@ export default function ModerationSettingsPanel({ flash }: { flash: (msg: string
       .then((s) => {
         setMode(s.strictness);
         setTh(s.hideThreshold);
+        setSanction(s.sanctionThreshold);
+        setBlockDays(s.blockDays);
         setChangedAt(s.updatedAt);
         setCustom(false);
         setServerDown(false);
@@ -144,6 +150,19 @@ export default function ModerationSettingsPanel({ flash }: { flash: (msg: string
       setChangedAt(updated.updatedAt);
     } catch {
       setToast({ ok: false, msg: "임계값 저장 실패" });
+    }
+  };
+
+  /* 사용자 제재 설정 저장 (누적 임계 / 차단 기간) */
+  const applySanction = async (next: { sanctionThreshold?: number; blockDays?: number }) => {
+    try {
+      const updated = await moderationApi.updateModerationSettings(next);
+      setSanction(updated.sanctionThreshold);
+      setBlockDays(updated.blockDays);
+      setChangedAt(updated.updatedAt);
+      setToast({ ok: true, msg: "사용자 제재 설정이 저장됐어요." });
+    } catch {
+      setToast({ ok: false, msg: "제재 설정 저장 실패 — 잠시 후 다시 시도해주세요." });
     }
   };
 
@@ -265,6 +284,44 @@ export default function ModerationSettingsPanel({ flash }: { flash: (msg: string
             </div>
           </div>
         )}
+      </section>
+
+      {/* 사용자 제재 (검열 누적 → 자동 차단) */}
+      <section className="av-panel md-sec" aria-label="사용자 제재">
+        <div className="md-sec__h">
+          <h2>사용자 제재</h2>
+          <span className="s">숨김 글이 누적된 사용자를 자동 차단 — 게시글 숨김 임계와 별개</span>
+        </div>
+        <div className="md-adv__body" style={{ display: "flex", gap: 24, flexWrap: "wrap" }}>
+          <label style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+            <span className="av-flabel">제재 임계 (누적 숨김 글 수)</span>
+            <input
+              type="number" min={1} max={100}
+              className="av-input" style={{ width: 120 }}
+              value={sanction}
+              onChange={(e) => setSanction(Number(e.target.value))}
+              onBlur={(e) => {
+                const v = Math.min(100, Math.max(1, Number(e.target.value) || 1));
+                if (v !== sanction) applySanction({ sanctionThreshold: v });
+              }}
+            />
+            <span className="av-hint">숨김 글이 이 개수 이상이면 자동 차단</span>
+          </label>
+          <label style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+            <span className="av-flabel">차단 기간 (일)</span>
+            <input
+              type="number" min={1} max={3650}
+              className="av-input" style={{ width: 120 }}
+              value={blockDays}
+              onChange={(e) => setBlockDays(Number(e.target.value))}
+              onBlur={(e) => {
+                const v = Math.min(3650, Math.max(1, Number(e.target.value) || 1));
+                if (v !== blockDays) applySanction({ blockDays: v });
+              }}
+            />
+            <span className="av-hint">자동 차단 시 이 기간 동안 이용 제한</span>
+          </label>
+        </div>
       </section>
 
       {/* 테스트 콘솔 */}
