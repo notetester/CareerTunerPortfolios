@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from "react";
-import { useSearchParams } from "react-router";
+import { useSearchParams, useParams, useNavigate } from "react-router";
 import { PenLine, Lock, BookOpen } from "lucide-react";
 import { PostList } from "../components/PostList";
 import { Pager } from "../components/Pager";
@@ -21,7 +21,12 @@ type ViewMode = "list" | "detail" | "write" | "edit" | "guidelines";
 
 export function CommunityHomePage() {
   const [searchParams, setSearchParams] = useSearchParams();
-  const initialView = searchParams.get("view") === "guidelines" ? "guidelines" as ViewMode : "list" as ViewMode;
+  const { postId: postIdParam } = useParams();
+  const navigate = useNavigate();
+  const deepLinkPostId = postIdParam ? Number(postIdParam) : null;
+  const initialView = searchParams.get("view") === "guidelines"
+    ? "guidelines" as ViewMode
+    : deepLinkPostId != null ? "detail" as ViewMode : "list" as ViewMode;
   const [viewMode, setViewMode] = useState<ViewMode>(initialView);
 
   // URL ?view=guidelines 변경 감지
@@ -30,6 +35,14 @@ export function CommunityHomePage() {
       setViewMode("guidelines");
     }
   }, [searchParams]);
+
+  // /community/posts/:postId 딥링크(알림 클릭 등) → 상세 뷰로 진입
+  useEffect(() => {
+    if (deepLinkPostId != null && !Number.isNaN(deepLinkPostId)) {
+      setViewMode("detail");
+      window.scrollTo(0, 0);
+    }
+  }, [deepLinkPostId]);
   const [selectedCategory, setSelectedCategory] = useState("all");
   const [selectedPost, setSelectedPost] = useState<CommunityPost | null>(null);
   const [editData, setEditData] = useState<PostEditData | null>(null);
@@ -38,7 +51,7 @@ export function CommunityHomePage() {
   const [page, setPage] = useState(1);
   const PER = 8;
 
-  const { posts, loading, error, fetchPosts } = useCommunityStore();
+  const { posts, loading, error, fetchPosts, categoryCounts, fetchCategoryCounts } = useCommunityStore();
   const { showLoginDialog, requireAuth, onLoginConfirm, onLoginCancel } = useLoginDialog();
 
   const filteredPosts = useMemo(() => {
@@ -66,6 +79,11 @@ export function CommunityHomePage() {
     fetchPosts(selectedCategory === "all" ? undefined : cat?.slug);
   }, [selectedCategory, fetchPosts]);
 
+  // 탭 뱃지용 카테고리별 글 수 (목록과 동일 소스에서 집계)
+  useEffect(() => {
+    fetchCategoryCounts();
+  }, [fetchCategoryCounts]);
+
   useEffect(() => {
     const onPopState = () => {
       setViewMode("list");
@@ -83,6 +101,13 @@ export function CommunityHomePage() {
   };
 
   const handleBack = () => {
+    // 딥링크(/community/posts/:postId)로 진입한 경우 목록 URL로 복귀
+    if (deepLinkPostId != null) {
+      setSelectedPost(null);
+      setViewMode("list");
+      navigate("/community", { replace: true });
+      return;
+    }
     // 쿼리 파라미터로 진입한 경우 정리
     if (searchParams.has("view")) {
       setSearchParams({}, { replace: true });
@@ -96,10 +121,11 @@ export function CommunityHomePage() {
     return <CommunityGuidelinesPage onBack={handleBack} />;
   }
 
-  if (viewMode === "detail" && selectedPost) {
+  const detailPostId = selectedPost?.id ?? deepLinkPostId;
+  if (viewMode === "detail" && detailPostId != null) {
     return (
       <PostDetailView
-        postId={selectedPost.id}
+        postId={detailPostId}
         onBack={handleBack}
         onEdit={() => {
           const post = useCommunityStore.getState().currentPost;
@@ -180,8 +206,8 @@ export function CommunityHomePage() {
             onClick={() => setSelectedCategory(cat.value)}
           >
             {cat.label}
-            {cat.count != null && (
-              <span className="n num">{cat.count.toLocaleString()}</span>
+            {cat.value !== "all" && categoryCounts[cat.slug] != null && (
+              <span className="n num">{categoryCounts[cat.slug].toLocaleString()}</span>
             )}
           </button>
         ))}

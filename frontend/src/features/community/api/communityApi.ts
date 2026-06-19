@@ -79,7 +79,7 @@ export async function getPostDetail(id: number) {
 }
 
 export async function getHotPosts() {
-  return api<{ title: string; comments: number; views: number }[]>(
+  return api<{ id: number; title: string; comments: number; views: number }[]>(
     "/community/posts/hot", {}, { auth: false },
   );
 }

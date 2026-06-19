@@ -158,7 +158,7 @@ public class CommunityPostServiceImpl implements CommunityPostService {
         LocalDateTime since = LocalDateTime.now().minusDays(7);
         List<CommunityPost> posts = postMapper.findHotPosts(PostStatus.PUBLISHED.name(), since, 5);
         return posts.stream()
-                .map(p -> new HotPostResponse(p.getTitle(), p.getCommentCount(), p.getViewCount()))
+                .map(p -> new HotPostResponse(p.getId(), p.getTitle(), p.getCommentCount(), p.getViewCount()))
                 .toList();
     }
 

@@ -5,7 +5,9 @@ import type { CommunityPost, CommunityComment, CommunityCategory } from "../type
 interface CommunityState {
   /* 목록 */
   posts: CommunityPost[];
-  hotPosts: { title: string; comments: number; views: number }[];
+  hotPosts: { id: number; title: string; comments: number; views: number }[];
+  /** 카테고리 slug → 게시글 수 (탭 뱃지용, 목록과 동일 소스) */
+  categoryCounts: Record<string, number>;
   loading: boolean;
 
   /* 상세 */
@@ -19,6 +21,7 @@ interface CommunityState {
   /* 액션 */
   fetchPosts: (category?: CommunityCategory, sort?: string) => Promise<void>;
   fetchHotPosts: () => Promise<void>;
+  fetchCategoryCounts: () => Promise<void>;
   fetchPostDetail: (id: number) => Promise<void>;
   fetchComments: (postId: number) => Promise<void>;
   addComment: (postId: number, content: string) => Promise<void>;
@@ -63,6 +66,7 @@ interface CommunityState {
 export const useCommunityStore = create<CommunityState>((set, get) => ({
   posts: [],
   hotPosts: [],
+  categoryCounts: {},
   loading: false,
   currentPost: null,
   comments: [],
@@ -85,6 +89,17 @@ export const useCommunityStore = create<CommunityState>((set, get) => ({
       const hotPosts = await communityApi.getHotPosts();
       set({ hotPosts });
     } catch { /* 인기글 실패는 무시 */ }
+  },
+
+  fetchCategoryCounts: async () => {
+    try {
+      // 탭 뱃지는 목록과 동일 소스(community_post)를 봐야 한다.
+      // 전체 게시글을 한 번 받아 카테고리별로 집계(목록도 size 100 상한과 동일).
+      const all = await communityApi.getPosts(undefined, "latest", 0, 100);
+      const counts: Record<string, number> = {};
+      for (const p of all) counts[p.category] = (counts[p.category] ?? 0) + 1;
+      set({ categoryCounts: counts });
+    } catch { /* 카운트 실패는 무시 */ }
   },
 
   fetchPostDetail: async (id) => {

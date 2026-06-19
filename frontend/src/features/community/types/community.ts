@@ -74,13 +74,12 @@ export interface CategoryInfo {
   label: string;
   slug: CommunityCategory;
   colorClass: string;
-  count?: number;
 }
 
 export const CATEGORIES: CategoryInfo[] = [
   { value: "all", label: "전체", slug: "job-review", colorClass: "" },
-  { value: "job", label: "취업후기", slug: "job-review", colorClass: "cat-job", count: 1280 },
-  { value: "interview", label: "면접후기", slug: "interview-review", colorClass: "cat-interview", count: 940 },
+  { value: "job", label: "취업후기", slug: "job-review", colorClass: "cat-job" },
+  { value: "interview", label: "면접후기", slug: "interview-review", colorClass: "cat-interview" },
   { value: "role", label: "직무질문", slug: "job-question", colorClass: "cat-role" },
   { value: "pass", label: "합격전략", slug: "success-strategy", colorClass: "cat-pass" },
   { value: "portfolio", label: "포트폴리오", slug: "portfolio-feedback", colorClass: "cat-portfolio" },
