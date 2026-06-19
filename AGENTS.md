@@ -102,6 +102,7 @@ push 요청을 받으면 반드시 아래 순서를 따른다:
 
 - 폴더 구조는 **담당자별** `A/`~`F/`·`TOTAL/` 이고, 각 폴더 안은 `workbench/`(작업대·재현 파이프라인) + `deliverables/`(대표 산출물) 로 나뉜다. **C(이정국) 작업은 `docs/storyboard/C/` 아래에 전부 있다.**
 - 스토리보드를 보거나 작업할 때만 받는다: `git submodule update --init docs/storyboard` (처음부터 받으려면 `git clone --recursive`).
+- **`dev` pull 시 서브모듈 자동 갱신:** 한 번만 `git config submodule.recurse true` (+ `git config fetch.recurseSubmodules on-demand`) 를 설정하면, 이후 `git pull` 이 `dev` 가 고정한 서브모듈 커밋까지 자동으로 체크아웃한다(수동 `submodule update` 불필요). 이 설정은 로컬(`.git/config`)이라 클론마다 1회 설정한다.
 - 수정은 `docs/storyboard/` **안에서** commit·push 한다(그 폴더가 곧 CareerTunerDocs repo). 새 버전을 메인에 고정하려면 루트에서 `git add docs/storyboard && git commit` 으로 포인터를 갱신해 PR 한다.
 - 폴더 안내는 `docs/storyboard/README.md`, C 재생성 파이프라인·명령은 `docs/storyboard/C/workbench/README.md` 참고. 받은 직후 도구 실행 시 `cd docs/storyboard/C/workbench/tools && npm install`.
 - **AI 도구 안내:** 스토리보드 작업 요청을 받았는데 `docs/storyboard/` 가 비어 있으면, 먼저 위 `submodule update` 로 받은 뒤 진행한다.
