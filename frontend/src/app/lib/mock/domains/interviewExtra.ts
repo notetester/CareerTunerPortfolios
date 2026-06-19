@@ -6,7 +6,6 @@ import { ok, iso } from "../registry";
 import type {
   SessionReview,
   MediaCapabilities,
-  VoiceAnalysisResult,
   VoiceScoreServerResult,
   TranscribeResult,
   AvatarSession,
@@ -118,36 +117,10 @@ function sessionReview(sessionId: number): SessionReview {
 // ───── 외부 키 보유 여부 (GET /interview/media/capabilities) → api<MediaCapabilities> ─────
 
 const demoCapabilities: MediaCapabilities = {
-  voiceProfiling: true,
   nonverbal: true,
   avatar: true,
   avatarSandbox: true,
 };
-
-// ───── 음성 감정 분석 (POST /interview/sessions/:id/voice-analysis) → api<VoiceAnalysisResult> ─────
-
-function voiceAnalysis(): VoiceAnalysisResult {
-  return {
-    transcript:
-      "저는 React Query로 서버 상태를 캐싱하고 중복 호출을 줄여 목록 로딩을 약 35% 단축한 경험이 있습니다.",
-    voiceProfile: {
-      emotion: [
-        { label: "차분함", confidence: 0.71 },
-        { label: "자신감", confidence: 0.62 },
-        { label: "긴장", confidence: 0.28 },
-      ],
-      pitch: [
-        { label: "중간 톤", confidence: 0.66 },
-        { label: "낮은 톤", confidence: 0.41 },
-      ],
-      vocalStyle: [
-        { label: "또렷함", confidence: 0.69 },
-        { label: "다소 빠름", confidence: 0.44 },
-      ],
-      age: [{ label: "20대 후반", confidence: 0.58 }],
-    },
-  };
-}
 
 // ───── 자체 추론 서버 음성 점수 (POST /interview/sessions/:id/voice-score) → api<VoiceScoreServerResult> ─────
 
@@ -288,9 +261,6 @@ export const interviewExtraRoutes: MockRoute[] = [
 
   // 외부 키 보유 여부 — api<MediaCapabilities>
   { method: "GET", pattern: /^\/interview\/media\/capabilities$/, handler: ok(demoCapabilities) },
-
-  // 음성 감정 분석 — api<VoiceAnalysisResult>
-  { method: "POST", pattern: /^\/interview\/sessions\/(\d+)\/voice-analysis$/, handler: () => voiceAnalysis() },
 
   // 자체 추론 서버 음성 점수 — api<VoiceScoreServerResult>
   { method: "POST", pattern: /^\/interview\/sessions\/(\d+)\/voice-score$/, handler: () => voiceScore() },
