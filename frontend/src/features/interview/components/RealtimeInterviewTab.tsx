@@ -4,7 +4,6 @@ import { Badge } from "@/app/components/ui/badge";
 import { Button } from "@/app/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/app/components/ui/card";
 import {
-  analyzeVoice,
   createRealtimeSession,
   getMediaCapabilities,
   listSessionQuestions,
@@ -14,7 +13,6 @@ import {
 } from "../api/interviewApi";
 import {
   blobToBase64,
-  blobToPcm16Base64,
   computeVoiceScore,
   countFillers,
   VoiceMetricsTracker,
@@ -25,7 +23,6 @@ import type {
   MediaCapabilities,
   TranscriptLine,
   VoiceMetrics,
-  VoiceProfile,
   VoiceScoreDetail,
 } from "../types/interview";
 import { VoiceScorePanel } from "./VoiceScorePanel";
@@ -38,7 +35,7 @@ type Status = "idle" | "connecting" | "live" | "analyzing" | "scored" | "error";
  * 음성 모의면접 (OpenAI Realtime + WebRTC).
  * 백엔드에서 단기 ephemeral key 를 받아 브라우저가 OpenAI 에 직접 연결한다.
  * 준비된 질문(미생성 시 게이트)으로 면접관이 진행하고, 종료 시
- * 트랜스크립트 + 온디바이스 음성 지표(+ Inworld 감정) → 점수를 저장한다.
+ * 트랜스크립트 + 온디바이스 음성 지표 → 점수를 저장한다.
  * 원본 음성은 서버에 올리지 않는다 (ADR-002).
  */
 export function RealtimeInterviewTab({ session }: { session: InterviewSession | null }) {
@@ -50,7 +47,6 @@ export function RealtimeInterviewTab({ session }: { session: InterviewSession | 
   const [capabilities, setCapabilities] = useState<MediaCapabilities | null>(null);
   const [scoreDetail, setScoreDetail] = useState<VoiceScoreDetail | null>(null);
   const [metrics, setMetrics] = useState<VoiceMetrics | null>(null);
-  const [profile, setProfile] = useState<VoiceProfile | null>(null);
   const [saveNote, setSaveNote] = useState<string | null>(null);
   // 원본 음성을 자체 추론 서버로 보내 정밀 분석할지 동의 (ADR-006). 해제 시 브라우저 지표만 사용.
   const [consent, setConsent] = useState(true);
@@ -133,7 +129,6 @@ export function RealtimeInterviewTab({ session }: { session: InterviewSession | 
     setSaveNote(null);
     setScoreDetail(null);
     setMetrics(null);
-    setProfile(null);
     linesRef.current = [];
     setLines([]);
     try {
@@ -209,7 +204,7 @@ export function RealtimeInterviewTab({ session }: { session: InterviewSession | 
     }
   };
 
-  /** 종료 → 지표 산출 → (키 있으면) 감정 분석 → 점수 저장. */
+  /** 종료 → 지표 산출 → 점수 저장. */
   const stop = async () => {
     if (!session) return;
     setStatus("analyzing");
@@ -242,9 +237,8 @@ export function RealtimeInterviewTab({ session }: { session: InterviewSession | 
       return;
     }
 
-    // 점수 산출: 동의 + 자체 추론 서버(nonverbal) 가능하면 서버 정밀 채점, 아니면 브라우저 지표(+Inworld 감정) 폴백.
+    // 점수 산출: 동의 + 자체 추론 서버(nonverbal) 가능하면 서버 정밀 채점, 아니면 브라우저 지표 폴백.
     let detail: VoiceScoreDetail;
-    let voiceProfile: VoiceProfile | null = null;
     const hasAudio = !!recordedBlob && recordedBlob.size > 0;
 
     if (consent && capabilities?.nonverbal && hasAudio) {
@@ -261,32 +255,21 @@ export function RealtimeInterviewTab({ session }: { session: InterviewSession | 
         detail = server.detail;
         setSaveNote(`자체 추론 서버로 채점했습니다 (${server.source}).`);
       } catch {
-        detail = computeVoiceScore(finalMetrics, null);
+        detail = computeVoiceScore(finalMetrics);
         setSaveNote("자체 추론 서버 호출 실패 — 브라우저 지표만으로 채점했습니다.");
       }
     } else {
-      // Inworld 감정 분석 — 키 없거나 실패해도 점수는 브라우저 지표만으로 낸다.
-      if (capabilities?.voiceProfiling && hasAudio) {
-        try {
-          const base64 = await blobToPcm16Base64(recordedBlob);
-          const result = await analyzeVoice(session.id, base64);
-          voiceProfile = result.voiceProfile;
-        } catch {
-          setSaveNote("감정 분석(Inworld)은 실패해 브라우저 지표만으로 채점했습니다.");
-        }
-      }
-      detail = computeVoiceScore(finalMetrics, voiceProfile);
+      detail = computeVoiceScore(finalMetrics);
     }
 
     setMetrics(finalMetrics);
-    setProfile(voiceProfile);
     setScoreDetail(detail);
 
     try {
       await saveMediaResult(session.id, {
         kind: "VOICE",
         transcript,
-        metrics: { ...finalMetrics, voiceProfile },
+        metrics: { ...finalMetrics },
         score: detail.overall,
         scoreDetail: { ...detail },
       });
@@ -375,8 +358,7 @@ export function RealtimeInterviewTab({ session }: { session: InterviewSession | 
               </span>
             </label>
           ) : (
-            capabilities &&
-            !capabilities.voiceProfiling && (
+            capabilities && (
               <p className="rounded-lg bg-slate-50 p-3 text-xs text-slate-500">
                 브라우저 측정 지표만으로 채점합니다.
               </p>
@@ -427,7 +409,7 @@ export function RealtimeInterviewTab({ session }: { session: InterviewSession | 
       </Card>
 
       {scoreDetail && metrics && (
-        <VoiceScorePanel detail={scoreDetail} metrics={metrics} profile={profile} title="음성 모의면접 점수" />
+        <VoiceScorePanel detail={scoreDetail} metrics={metrics} title="음성 모의면접 점수" />
       )}
 
       {lines.length > 0 && (

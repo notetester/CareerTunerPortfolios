@@ -23,8 +23,11 @@ from fastapi import FastAPI, File, Form, UploadFile
 from pydantic import BaseModel
 
 from extract_features import (
+    compute_visual_score,
     compute_voice_score,
+    extract_visual_features,
     extract_voice_features,
+    visual_feature_vector,
     voice_feature_vector,
 )
 
@@ -32,11 +35,15 @@ app = FastAPI(title="interview-nonverbal")
 
 _MODEL = None
 _MODEL_PATH = os.path.join(os.path.dirname(__file__), "model.joblib")
+_VISUAL_MODEL = None
+_VISUAL_MODEL_PATH = os.path.join(os.path.dirname(__file__), "visual_model.joblib")
 try:
     import joblib
 
     if os.path.exists(_MODEL_PATH):
         _MODEL = joblib.load(_MODEL_PATH)
+    if os.path.exists(_VISUAL_MODEL_PATH):  # late fusion: 영상 전용 별 모델
+        _VISUAL_MODEL = joblib.load(_VISUAL_MODEL_PATH)
 except Exception:
     _MODEL = None
 
@@ -66,6 +73,20 @@ def _score_from_wav(wav: str, transcript_chars: int, filler_count: int, latency_
     return {"score": overall, "detail": detail, "metrics": metrics, "source": source}
 
 
+def _score_from_video(video_path: str) -> dict:
+    """영상 → 피처(MediaPipe) → (visual_model 있으면 모델 / 없으면 규칙) 점수."""
+    metrics = extract_visual_features(video_path)
+    detail = compute_visual_score(metrics)  # 항목별 규칙 점수(항상 제공)
+    overall = detail["overall"]
+    source = "rule"
+    if _VISUAL_MODEL is not None and metrics.get("samples"):
+        vec = [v if v is not None else np.nan for v in visual_feature_vector(metrics)]
+        pred = _VISUAL_MODEL.predict([vec])[0]
+        overall = int(max(0, min(100, round(float(np.ravel(pred)[0])))))
+        source = "lightgbm"
+    return {"score": overall, "detail": detail, "metrics": metrics, "source": source}
+
+
 def _cleanup(*paths):
     for p in paths:
         if p and os.path.exists(p):
@@ -77,7 +98,12 @@ def _cleanup(*paths):
 
 @app.get("/health")
 def health():
-    return {"status": "UP", "model_loaded": _MODEL is not None, "mode": "lightgbm" if _MODEL else "rule"}
+    return {
+        "status": "UP",
+        "model_loaded": _MODEL is not None,
+        "visual_model_loaded": _VISUAL_MODEL is not None,
+        "mode": "lightgbm" if _MODEL else "rule",
+    }
 
 
 @app.post("/score/voice")
@@ -121,6 +147,43 @@ def score_voice_base64(req: VoiceB64Request):
         tmp.close()
         wav = _to_wav16k(tmp.name)
         return _score_from_wav(wav, req.transcript_chars, req.filler_count, latency)
+    finally:
+        _cleanup(tmp.name, wav)
+
+
+# ── 아바타 화상면접: 음성+영상 late fusion (webm 1개 업로드) ────
+class AvatarB64Request(BaseModel):
+    video_base64: str
+    video_format: str = "webm"  # 녹화 원본 컨테이너(webm 등) — ffmpeg/opencv 가 확장자로 판별
+    transcript_chars: int = 0
+    filler_count: int = 0
+    latency_sec: float = -1.0
+
+
+@app.post("/score/avatar-base64")
+def score_avatar_base64(req: AvatarB64Request):
+    """
+    아바타 화상면접 채점 (Spring 백엔드 연동용).
+
+    webm 1개 → 음성 점수(ffmpeg 오디오 추출) + 영상 점수(MediaPipe) → late fusion 결합.
+    영상 추출 실패 시에도 음성 점수는 반환한다(combined=음성 점수). 응답:
+        {voice:{score,detail,metrics,source}, visual:{...}|null, combined:int}
+    """
+    latency = None if req.latency_sec < 0 else req.latency_sec
+    raw = base64.b64decode(req.video_base64)
+    tmp = tempfile.NamedTemporaryFile(delete=False, suffix=f".{req.video_format.lstrip('.')}")
+    wav = None
+    try:
+        tmp.write(raw)
+        tmp.close()
+        wav = _to_wav16k(tmp.name)  # webm 에서 오디오만 16k wav 로 추출
+        voice = _score_from_wav(wav, req.transcript_chars, req.filler_count, latency)
+        try:
+            visual = _score_from_video(tmp.name)  # 같은 webm 에서 프레임 디코딩
+        except Exception:  # 영상 추출 실패(얼굴 미검출·모델 다운 실패 등)해도 음성은 살린다
+            visual = None
+        combined = round(voice["score"] * 0.5 + visual["score"] * 0.5) if visual else voice["score"]
+        return {"voice": voice, "visual": visual, "combined": combined}
     finally:
         _cleanup(tmp.name, wav)
 

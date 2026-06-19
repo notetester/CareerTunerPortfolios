@@ -6,5 +6,8 @@ fastapi
 uvicorn
 python-multipart
 faster-whisper   # B(베이직) 자체 STT — 로컬 CPU, API 0
-# mediapipe   # 2026-06-19 이후 영상 피처 추가 시
-# datasets     # ChaLearn HF 미러 다운로드 시
+mediapipe        # 영상 피처(FaceLandmarker blendshape + PoseLandmarker)
+opencv-python    # 영상 프레임 디코딩(cv2.VideoCapture)
+joblib           # LightGBM 모델 저장/로드
+# datasets       # ChaLearn HF 미러 다운로드 시
+

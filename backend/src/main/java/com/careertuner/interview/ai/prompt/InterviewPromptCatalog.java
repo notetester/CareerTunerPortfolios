@@ -1,5 +1,9 @@
 package com.careertuner.interview.ai.prompt;
 
+import java.util.List;
+
+import com.careertuner.admin.prompt.dto.AdminPromptView;
+
 /** 면접 도메인(D) AI 프롬프트 모음. 질문 생성 / 답변 평가 / 종합 리포트. */
 public final class InterviewPromptCatalog {
 
@@ -102,6 +106,33 @@ public final class InterviewPromptCatalog {
             categories 는 평가 항목별 점수다(예: 답변 내용, 직무 적합성, 구체성, 논리성, 표현력, 자신감, 태도, 시간 관리).
             summaryFeedback 은 전체 면접에 대한 핵심 피드백을 3개 내외의 한국어 문장 목록으로 작성한다.
             """;
+
+    /** 관리자 운영 화면용 — 면접 도메인 프롬프트 9종을 읽기전용으로 노출한다. */
+    public static List<AdminPromptView> views() {
+        return List.of(
+                prompt("interview-question", "질문 생성",
+                        "지원 건의 회사·직무·공고로 면접 모드에 맞는 예상 질문을 생성한다.", QUESTION_SYSTEM_PROMPT),
+                prompt("interview-evaluation", "답변 평가",
+                        "기준 모범답안과 비교해 답변을 0~100점으로 채점하고 피드백을 단다.", EVALUATION_SYSTEM_PROMPT),
+                prompt("interview-model-answer", "모범답안 생성",
+                        "질문에 대해 실제 면접 기준의 간결한 모범 답변을 작성한다.", MODEL_ANSWER_SYSTEM_PROMPT),
+                prompt("interview-followup", "꼬리질문 생성",
+                        "답변의 빈틈·근거 부족을 파고드는 후속 질문을 만든다.", FOLLOWUP_SYSTEM_PROMPT),
+                prompt("interview-pressure-followup", "압박 반박 질문",
+                        "압박 면접에서 답변의 약점·모순을 짚어 반박하는 질문을 던진다.", PRESSURE_FOLLOWUP_SYSTEM_PROMPT),
+                prompt("interview-critic", "채점 검증(Critic)",
+                        "원 채점이 공정·일관적인지 적대적으로 검증하고 점수를 조정한다.", CRITIC_SYSTEM_PROMPT),
+                prompt("interview-judge", "독립 채점(Judge)",
+                        "질문과 답변만 보고 독립적으로 점수를 매긴다(채점 일관성 측정용).", JUDGE_SYSTEM_PROMPT),
+                prompt("interview-planner", "플래너(Planner)",
+                        "자율 평가 에이전트가 다음에 실행할 액션을 결정한다.", PLANNER_SYSTEM_PROMPT),
+                prompt("interview-report", "리포트 생성",
+                        "면접 전체를 종합 평가해 총점·항목별 점수·요약 피드백을 만든다.", REPORT_SYSTEM_PROMPT));
+    }
+
+    private static AdminPromptView prompt(String feature, String name, String purpose, String systemPrompt) {
+        return new AdminPromptView(feature, name, VERSION, purpose, systemPrompt, "");
+    }
 
     private InterviewPromptCatalog() {
     }

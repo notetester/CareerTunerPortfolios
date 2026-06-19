@@ -16,7 +16,7 @@ from lightgbm import LGBMRegressor
 from sklearn.metrics import mean_absolute_error
 from sklearn.model_selection import train_test_split
 
-from extract_features import VOICE_FEATURE_KEYS
+from extract_features import VISUAL_FEATURE_KEYS, VOICE_FEATURE_KEYS
 
 try:
     import joblib
@@ -26,12 +26,12 @@ except ImportError:
 TARGET_KEY = "interview"
 
 
-def load(csv_path: str):
+def load(csv_path: str, feature_keys: list):
     X, y = [], []
     with open(csv_path, newline="", encoding="utf-8") as f:
         for row in csv.DictReader(f):
             vec = []
-            for k in VOICE_FEATURE_KEYS:
+            for k in feature_keys:
                 v = row.get(k, "")
                 vec.append(float(v) if v not in ("", "None", None) else np.nan)
             X.append(vec)
@@ -42,11 +42,16 @@ def load(csv_path: str):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--csv", required=True)
-    ap.add_argument("--out", default="model.joblib")
+    ap.add_argument("--features", choices=["voice", "visual"], default="voice",
+                    help="피처 종류 (late fusion: 음성→model.joblib, 영상→visual_model.joblib)")
+    ap.add_argument("--out", help="출력 모델 경로 (기본: voice=model.joblib, visual=visual_model.joblib)")
     args = ap.parse_args()
 
-    X, y = load(args.csv)
-    print(f"데이터 {len(y)} 행, 피처 {X.shape[1]}개 {VOICE_FEATURE_KEYS}")
+    feature_keys = VISUAL_FEATURE_KEYS if args.features == "visual" else VOICE_FEATURE_KEYS
+    out_path = args.out or ("visual_model.joblib" if args.features == "visual" else "model.joblib")
+
+    X, y = load(args.csv, feature_keys)
+    print(f"[{args.features}] 데이터 {len(y)} 행, 피처 {X.shape[1]}개 {feature_keys}")
     if len(y) < 20:
         raise SystemExit("표본이 너무 적음 — 최소 수십 행 필요(서브셋 --limit 을 늘려 받을 것)")
 
@@ -59,13 +64,13 @@ def main():
 
     mae = mean_absolute_error(y_te, model.predict(X_te))
     print(f"검증 MAE: {mae:.1f} (0~100 척도)")
-    importances = dict(zip(VOICE_FEATURE_KEYS, [round(v) for v in model.feature_importances_.tolist()]))
+    importances = dict(zip(feature_keys, [round(v) for v in model.feature_importances_.tolist()]))
     print(f"피처 중요도: {importances}")
 
     if joblib is None:
         raise SystemExit("joblib 미설치 (pip install joblib)")
-    joblib.dump(model, args.out)
-    print(f"모델 저장 → {args.out}  (serve.py 가 자동 로드)")
+    joblib.dump(model, out_path)
+    print(f"모델 저장 → {out_path}  (serve.py 가 자동 로드)")
 
 
 if __name__ == "__main__":

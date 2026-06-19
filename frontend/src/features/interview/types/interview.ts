@@ -3,6 +3,8 @@
 
 import { MessageSquare, Settings2, Users, Zap, FileText, Building2, type LucideIcon } from "lucide-react";
 
+import type { VisualScoreDetail } from "../hooks/visualAnalysis";
+
 export type InterviewMode =
   | "BASIC" // 기본 면접
   | "JOB" // 직무 면접
@@ -129,27 +131,6 @@ export interface TranscriptLine {
   text: string;
 }
 
-/** Inworld voice profiling 라벨 (confidence 내림차순) */
-export interface VoiceProfileLabel {
-  label: string;
-  confidence: number;
-}
-
-/** Inworld voice profiling 결과 — 신뢰도 낮으면 필드가 빠질 수 있음 */
-export interface VoiceProfile {
-  age?: VoiceProfileLabel[];
-  emotion?: VoiceProfileLabel[];
-  pitch?: VoiceProfileLabel[];
-  vocalStyle?: VoiceProfileLabel[];
-  accent?: VoiceProfileLabel[];
-}
-
-/** 서버 음성 감정 분석 응답 (POST /sessions/{id}/voice-analysis) */
-export interface VoiceAnalysisResult {
-  transcript: string;
-  voiceProfile: VoiceProfile | null;
-}
-
 /** 브라우저 온디바이스 음성 지표 */
 export interface VoiceMetrics {
   totalSec: number;
@@ -182,6 +163,24 @@ export interface VoiceScoreServerResult {
   source: "rule" | "lightgbm";
 }
 
+/** 자체 추론 서버 영상 점수 (아바타 화상면접, MediaPipe → LightGBM) */
+export interface VisualScoreServerResult {
+  score: number;
+  detail: VisualScoreDetail;
+  metrics: Record<string, unknown>;
+  source: "rule" | "lightgbm";
+}
+
+/**
+ * 자체 추론 서버 아바타 점수 응답 (POST /sessions/{id}/avatar-score, late fusion, ADR-006/007).
+ * 음성·영상을 각각 별 모델로 채점하고 결합한다. visual 은 영상 추출 실패 시 null.
+ */
+export interface AvatarScoreServerResult {
+  voice: VoiceScoreServerResult;
+  visual: VisualScoreServerResult | null;
+  combined: number;
+}
+
 /** 자체 STT 응답 (POST /sessions/{id}/voice-transcribe) — B 베이직 답변 전사 */
 export interface TranscribeResult {
   text: string;
@@ -191,7 +190,6 @@ export interface TranscribeResult {
 
 /** 외부 키 보유 여부 (GET /media/capabilities) */
 export interface MediaCapabilities {
-  voiceProfiling: boolean;
   nonverbal: boolean; // 자체 추론 서버(serve) 사용 가능 여부 (ADR-006)
   avatar: boolean;
   avatarSandbox: boolean;

@@ -10,12 +10,12 @@ import com.careertuner.common.exception.ErrorCode;
 import com.careertuner.interview.domain.InterviewMediaAnalysis;
 import com.careertuner.interview.domain.InterviewSession;
 import com.careertuner.interview.mapper.InterviewMapper;
+import com.careertuner.interview.media.dto.AvatarScoreRequest;
+import com.careertuner.interview.media.dto.AvatarScoreResponse;
 import com.careertuner.interview.media.dto.MediaAnalysisResponse;
 import com.careertuner.interview.media.dto.SaveMediaAnalysisRequest;
 import com.careertuner.interview.media.dto.TranscribeRequest;
 import com.careertuner.interview.media.dto.TranscribeResponse;
-import com.careertuner.interview.media.dto.VoiceAnalysisRequest;
-import com.careertuner.interview.media.dto.VoiceAnalysisResponse;
 import com.careertuner.interview.media.dto.VoiceScoreRequest;
 import com.careertuner.interview.media.dto.VoiceScoreResponse;
 
@@ -33,34 +33,30 @@ public class InterviewMediaService {
 
     private final InterviewMediaMapper mediaMapper;
     private final InterviewMapper interviewMapper;
-    private final InterviewVoiceService voiceService;
     private final InterviewNonverbalClient nonverbalClient;
     private final ObjectMapper objectMapper;
 
     public InterviewMediaService(InterviewMediaMapper mediaMapper,
                                  InterviewMapper interviewMapper,
-                                 InterviewVoiceService voiceService,
                                  InterviewNonverbalClient nonverbalClient,
                                  ObjectMapper objectMapper) {
         this.mediaMapper = mediaMapper;
         this.interviewMapper = interviewMapper;
-        this.voiceService = voiceService;
         this.nonverbalClient = nonverbalClient;
         this.objectMapper = objectMapper;
     }
 
-    /** 세션 소유권 확인 후 Inworld 음성 감정 분석을 위임한다. */
-    public VoiceAnalysisResponse analyzeVoice(Long userId, Long sessionId, VoiceAnalysisRequest request) {
-        requireOwnedSession(userId, sessionId);
-        return voiceService.analyze(request.audioBase64(),
-                request.sampleRateHertz() != null ? request.sampleRateHertz() : 16000,
-                request.language());
-    }
-
-    /** 자체 추론 서버(serve)로 음성 점수 산출 (ADR-006, Inworld 대체). 원본 음성은 점수 산출 후 버려진다. */
+    /** 자체 추론 서버(serve)로 음성 점수 산출 (ADR-006). 원본 음성은 점수 산출 후 버려진다. */
     public VoiceScoreResponse scoreVoice(Long userId, Long sessionId, VoiceScoreRequest request) {
         requireOwnedSession(userId, sessionId);
         return nonverbalClient.scoreVoice(request.audioBase64(), request.audioFormat(),
+                request.transcriptChars(), request.fillerCount(), request.latencySec());
+    }
+
+    /** 자체 추론 서버(serve)로 아바타 음성+영상 점수 산출 (late fusion, ADR-006/007). 원본 영상은 점수 산출 후 버려진다. */
+    public AvatarScoreResponse scoreAvatar(Long userId, Long sessionId, AvatarScoreRequest request) {
+        requireOwnedSession(userId, sessionId);
+        return nonverbalClient.scoreAvatar(request.videoBase64(), request.videoFormat(),
                 request.transcriptChars(), request.fillerCount(), request.latencySec());
     }
 
@@ -98,6 +94,11 @@ public class InterviewMediaService {
 
     public List<MediaAnalysisResponse> list(Long userId, Long sessionId) {
         requireOwnedSession(userId, sessionId);
+        return mediaMapper.findBySessionId(sessionId).stream().map(this::toResponse).toList();
+    }
+
+    /** 관리자/내부용 — 세션 소유권 체크 없이 미디어 분석 결과 조회 (admin 모니터링). */
+    public List<MediaAnalysisResponse> listBySessionId(Long sessionId) {
         return mediaMapper.findBySessionId(sessionId).stream().map(this::toResponse).toList();
     }
 

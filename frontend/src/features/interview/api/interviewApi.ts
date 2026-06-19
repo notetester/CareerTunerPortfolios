@@ -19,6 +19,7 @@ import type {
   GenerateFollowUpsRequest,
   GenerateQuestionsRequest,
   InterviewAgentStep,
+  AvatarScoreServerResult,
   InterviewAnswer,
   InterviewProgress,
   InterviewQuestion,
@@ -33,7 +34,6 @@ import type {
   SubmitAnswerRequest,
   TranscriptLine,
   TranscribeResult,
-  VoiceAnalysisResult,
   VoiceScoreServerResult,
 } from "../types/interview";
 
@@ -193,29 +193,14 @@ export function getSessionReview(sessionId: number): Promise<SessionReview> {
 
 // ───── 음성/아바타 면접 분석 : /api/interview/media·sessions/** ─────
 
-/** 외부 키(Inworld/HeyGen) 보유 여부 — 기능 활성/비활성 사전 판단용. */
+/** 외부 키(HeyGen) 보유 여부 — 기능 활성/비활성 사전 판단용. */
 export function getMediaCapabilities(): Promise<MediaCapabilities> {
   if (isDataMockActive()) return Promise.resolve(dummyCapabilities);
   return api<MediaCapabilities>("/interview/media/capabilities", { method: "GET" });
 }
 
 /**
- * 음성 감정 분석 (Inworld voice profiling, 키는 서버측).
- * audioBase64 는 16kHz mono PCM16(LINEAR16). 오디오는 분석 후 버려진다.
- */
-export function analyzeVoice(
-  sessionId: number,
-  audioBase64: string,
-  sampleRateHertz = 16000,
-): Promise<VoiceAnalysisResult> {
-  return api<VoiceAnalysisResult>(`/interview/sessions/${sessionId}/voice-analysis`, {
-    method: "POST",
-    body: JSON.stringify({ audioBase64, sampleRateHertz, language: "ko" }),
-  });
-}
-
-/**
- * 음성 답변 → 자체 추론 서버 점수 (ADR-006, Inworld 대체).
+ * 음성 답변 → 자체 추론 서버 점수 (ADR-006).
  * audioBase64 는 녹음 원본(webm 등). 글자수·군말수·응답지연은 프런트가 계산해 함께 보낸다.
  * 원본 음성은 서버에서 점수 산출 후 버려진다(전송 동의 필요).
  */
@@ -230,6 +215,27 @@ export function scoreVoiceServer(
   },
 ): Promise<VoiceScoreServerResult> {
   return api<VoiceScoreServerResult>(`/interview/sessions/${sessionId}/voice-score`, {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+/**
+ * 아바타 화상면접 → 자체 추론 서버 음성+영상 점수 (late fusion, ADR-006/007).
+ * videoBase64 는 녹화 원본(webm 등). serve 가 webm 1개에서 음성·영상 피처를 함께 뽑아 결합한다.
+ * 원본 영상은 서버에서 점수 산출 후 버려진다(전송 동의 필요).
+ */
+export function scoreAvatarServer(
+  sessionId: number,
+  payload: {
+    videoBase64: string;
+    videoFormat?: string;
+    transcriptChars?: number;
+    fillerCount?: number;
+    latencySec?: number;
+  },
+): Promise<AvatarScoreServerResult> {
+  return api<AvatarScoreServerResult>(`/interview/sessions/${sessionId}/avatar-score`, {
     method: "POST",
     body: JSON.stringify(payload),
   });

@@ -1,12 +1,10 @@
 import { useEffect, useRef, useState } from "react";
-import { ClipboardList, Download, Loader2, Maximize2, PhoneOff, Play, SkipForward, Video } from "lucide-react";
-import { AgentEventsEnum, LiveAvatarSession, SessionEvent } from "@heygen/liveavatar-web-sdk";
+import { ClipboardList, Download, Loader2, Lock, Maximize2, PhoneOff, Play, SkipForward, Video } from "lucide-react";
 import { Badge } from "@/app/components/ui/badge";
 import { Button } from "@/app/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/app/components/ui/card";
 import { Progress } from "@/app/components/ui/progress";
 import {
-  createAvatarSession,
   getMediaCapabilities,
   getSessionReview,
   listSessionQuestions,
@@ -35,17 +33,18 @@ import { getScoreColor } from "../types/interview";
 import { VoiceScorePanel } from "./VoiceScorePanel";
 import { useTutorialStore } from "../tutorial/tutorialStore";
 import { TutorialMediaPreview } from "../tutorial/TutorialMediaPreview";
+import interviewerPlaceholder from "../assets/interviewer-placeholder.png";
 
 type Status = "idle" | "connecting" | "live" | "analyzing" | "scored" | "error";
 
 /**
- * 아바타 화상 면접 (HeyGen LiveAvatar + MediaPipe).
- * 백엔드가 발급한 단기 세션 토큰으로 아바타 면접관이 준비된 질문을 음성으로 묻고,
- * 유저 웹캠 영상은 동의 시 자체 추론 서버(serve)로 전송해 표정·자세·음성을 채점하고(late fusion,
- * ADR-006/007), 미동의/서버 미기동 시 온디바이스(MediaPipe)로 폴백한다. 어느 경로든 원본 영상은
- * 점수 산출 후 폐기되고 저장은 점수(JSON)만, 원하면 로컬 다운로드.
+ * 베이직(무료) 자체 AI 화상 면접 (브라우저 TTS + MediaPipe).
+ * 외부 아바타 API(HeyGen) 없이, 면접관 placeholder 위에서 브라우저 음성합성(speechSynthesis)이
+ * 준비된 질문을 읽어준다. 유저 웹캠 영상은 동의 시 자체 추론 서버(serve)로 전송해 표정·자세·음성을
+ * 채점하고(late fusion, ADR-006/007), 미동의/서버 미기동 시 온디바이스(MediaPipe)로 폴백한다.
+ * 어느 경로든 원본 영상은 점수 산출 후 폐기되고 저장은 점수(JSON)만, 원하면 로컬 다운로드.
  */
-export function AvatarTab({ session }: { session: InterviewSession | null }) {
+export function LocalAvatarTab({ session }: { session: InterviewSession | null }) {
   const tutorialActive = useTutorialStore((s) => s.mode !== "off");
   const [status, setStatus] = useState<Status>("idle");
   const [error, setError] = useState<string | null>(null);
@@ -66,8 +65,6 @@ export function AvatarTab({ session }: { session: InterviewSession | null }) {
   const [downloadUrl, setDownloadUrl] = useState<string | null>(null);
   const [consent, setConsent] = useState(true); // 정밀 분석(원본 영상 서버 전송) 동의
 
-  const avatarRef = useRef<LiveAvatarSession | null>(null);
-  const avatarVideoRef = useRef<HTMLVideoElement | null>(null);
   const videoBoxRef = useRef<HTMLDivElement | null>(null);
   const selfVideoRef = useRef<HTMLVideoElement | null>(null);
   const webcamRef = useRef<MediaStream | null>(null);
@@ -82,9 +79,10 @@ export function AvatarTab({ session }: { session: InterviewSession | null }) {
     typeof navigator !== "undefined" &&
     !!navigator.mediaDevices &&
     typeof window !== "undefined" &&
-    "MediaRecorder" in window;
+    "MediaRecorder" in window &&
+    "speechSynthesis" in window;
 
-  // 준비된 질문(게이트) + 키 보유 여부 로드.
+  // 준비된 질문(게이트) + capabilities 로드.
   useEffect(() => {
     if (!session) return;
     listSessionQuestions(session.id)
@@ -110,8 +108,9 @@ export function AvatarTab({ session }: { session: InterviewSession | null }) {
     voiceTrackerRef.current = null;
     visualTrackerRef.current?.dispose();
     visualTrackerRef.current = null;
-    avatarRef.current?.stop().catch(() => undefined);
-    avatarRef.current = null;
+    if (typeof window !== "undefined" && "speechSynthesis" in window) {
+      window.speechSynthesis.cancel();
+    }
     webcamRef.current?.getTracks().forEach((t) => t.stop());
     webcamRef.current = null;
   };
@@ -134,18 +133,14 @@ export function AvatarTab({ session }: { session: InterviewSession | null }) {
       setDownloadUrl(null);
     }
     try {
-      // 1) 서버에서 LiveAvatar 단기 토큰 + 질문 목록.
-      const avatarSession = await createAvatarSession(session.id);
-      // 프리미엄 체험판: LiveAvatar 무료 한도(약 2분) 안에 끝나도록 1문제만 진행한다.
-      // (정식판 = 전체 질문. 풀기 시 아래 slice(0, 1) 만 제거하면 됨.)
-      const trialQuestions = avatarSession.questions.slice(0, 1);
-      questionsRef.current = trialQuestions;
-      setQuestions(trialQuestions);
-      setNote(
-        avatarSession.sandbox
-          ? "체험판: 1문제만 제공됩니다. (정식판은 전체 질문 + 실제 면접관 아바타) · 샌드박스라 약 1~2분 제한."
-          : "체험판: 1문제만 제공됩니다. (정식판은 전체 질문 제공)",
-      );
+      // 1) 준비된 본질문 목록을 텍스트 배열로 로드 (베이직: 전체 질문, 최대 6).
+      const qs = await listSessionQuestions(session.id);
+      const mainQuestions = qs
+        .filter((q) => q.parentQuestionId == null)
+        .slice(0, 6)
+        .map((q) => q.question);
+      questionsRef.current = mainQuestions;
+      setQuestions(mainQuestions);
 
       // 2) 웹캠 + 온디바이스 분석 준비.
       const webcam = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
@@ -174,38 +169,17 @@ export function AvatarTab({ session }: { session: InterviewSession | null }) {
         });
       }
 
-      // 3) 아바타 연결.
-      const avatar = new LiveAvatarSession(avatarSession.sessionToken, { voiceChat: false });
-      avatarRef.current = avatar;
-      avatar.on(SessionEvent.SESSION_STREAM_READY, () => {
-        if (avatarVideoRef.current) avatar.attach(avatarVideoRef.current);
-        setStatus("live");
-      });
-      avatar.on(AgentEventsEnum.AVATAR_SPEAK_STARTED, () => setAvatarTalking(true));
-      avatar.on(AgentEventsEnum.AVATAR_SPEAK_ENDED, () => {
-        setAvatarTalking(false);
-        // 질문이 끝났다 → 답변 반응 지연 측정 시작.
-        voiceTrackerRef.current?.markAiSpeechEnd();
-      });
-      avatar.on(SessionEvent.SESSION_DISCONNECTED, () => {
-        // 샌드박스 1분 제한 등으로 끊겨도 지금까지 지표로 채점한다.
-        if (!finishingRef.current) {
-          setNote("아바타 세션이 종료되어 지금까지의 답변으로 채점합니다.");
-          void finishInterview();
-        }
-      });
-      await avatar.start();
+      setStatus("live");
     } catch (err) {
       cleanup();
-      setError(err instanceof Error ? err.message : "아바타 면접 연결에 실패했습니다.");
+      setError(err instanceof Error ? err.message : "화상 면접 시작에 실패했습니다.");
       setStatus("error");
     }
   };
 
-  /** 아바타가 다음 질문을 말한다. 첫 호출이면 인사 + 1번 질문. */
+  /** 브라우저 TTS로 다음 질문을 읽어준다. 첫 호출이면 인사 + 1번 질문. */
   const askNext = () => {
-    const avatar = avatarRef.current;
-    if (!avatar) return;
+    if (typeof window === "undefined" || !("speechSynthesis" in window)) return;
     const nextIdx = questionIdx + 1;
     if (nextIdx >= questionsRef.current.length) {
       void finishInterview();
@@ -216,10 +190,19 @@ export function AvatarTab({ session }: { session: InterviewSession | null }) {
         ? `안녕하세요, 면접을 시작하겠습니다. 첫 번째 질문입니다. ${questionsRef.current[0]}`
         : questionsRef.current[nextIdx];
     try {
-      avatar.repeat(text);
+      window.speechSynthesis.cancel();
+      const u = new SpeechSynthesisUtterance(text);
+      u.lang = "ko-KR";
+      u.onstart = () => setAvatarTalking(true);
+      u.onend = () => {
+        setAvatarTalking(false);
+        // 질문이 끝났다 → 답변 반응 지연 측정 시작.
+        voiceTrackerRef.current?.markAiSpeechEnd();
+      };
+      window.speechSynthesis.speak(u);
       setQuestionIdx(nextIdx);
     } catch {
-      setNote("아바타 발화 요청에 실패했습니다. 다시 시도해 주세요.");
+      setNote("질문 음성 합성에 실패했습니다. 다시 시도해 주세요.");
     }
   };
 
@@ -245,8 +228,9 @@ export function AvatarTab({ session }: { session: InterviewSession | null }) {
     });
     recorderRef.current = null;
 
-    avatarRef.current?.stop().catch(() => undefined);
-    avatarRef.current = null;
+    if (typeof window !== "undefined" && "speechSynthesis" in window) {
+      window.speechSynthesis.cancel();
+    }
 
     // 원본 영상은 업로드하지 않고, 원하면 로컬 다운로드만 제공.
     if (recordedBlob && recordedBlob.size > 0) {
@@ -362,7 +346,7 @@ export function AvatarTab({ session }: { session: InterviewSession | null }) {
     setStatus("scored");
   };
 
-  // 튜토리얼: 실제 LiveAvatar SDK·웹캠 연결 대신 예시 결과 화면만 보여준다.
+  // 튜토리얼: 실제 웹캠 연결 대신 예시 결과 화면만 보여준다.
   if (tutorialActive) {
     return <TutorialMediaPreview kind="avatar" />;
   }
@@ -370,7 +354,7 @@ export function AvatarTab({ session }: { session: InterviewSession | null }) {
   if (!session) {
     return (
       <div className="rounded-xl border border-dashed border-slate-200 bg-card p-10 text-center text-sm text-slate-400">
-        "면접 모드 선택" 탭에서 지원 건과 모드를 고르고 면접을 시작하면 아바타 화상 면접을 진행할 수 있습니다.
+        "면접 모드 선택" 탭에서 지원 건과 모드를 고르고 면접을 시작하면 자체 AI 화상 면접을 진행할 수 있습니다.
       </div>
     );
   }
@@ -381,13 +365,11 @@ export function AvatarTab({ session }: { session: InterviewSession | null }) {
         <ClipboardList className="mx-auto size-8 text-amber-500" />
         <p className="mt-3 text-sm font-semibold text-amber-800">준비된 면접 질문이 없습니다</p>
         <p className="mt-1 text-sm text-amber-700">
-          "예상 면접 질문" 탭에서 질문을 먼저 생성하면, 아바타 면접관이 그 질문으로 화상 면접을 진행합니다.
+          "예상 면접 질문" 탭에서 질문을 먼저 생성하면, 자체 AI 면접관이 그 질문으로 화상 면접을 진행합니다.
         </p>
       </div>
     );
   }
-
-  const keyMissing = capabilities != null && !capabilities.avatar;
 
   return (
     <div className="space-y-4">
@@ -395,39 +377,44 @@ export function AvatarTab({ session }: { session: InterviewSession | null }) {
         <CardHeader>
           <CardTitle className="flex items-center gap-2 text-base">
             <Video className="size-4 text-purple-600" />
-            아바타 화상 면접
+            자체 AI 화상 면접
             {status === "live" ? (
               <Badge className="gap-1 bg-purple-100 text-purple-700">
-                <span className="size-2 animate-pulse rounded-full bg-purple-500" /> LIVE
+                <span className="size-2 animate-pulse rounded-full bg-purple-500" /> LIVE · 브라우저 TTS · 자체 채점
               </Badge>
             ) : (
-              <Badge className="bg-slate-100 text-slate-600">HeyGen LiveAvatar</Badge>
+              <Badge className="bg-slate-100 text-slate-600">베이직 · 브라우저 TTS · 자체 채점</Badge>
             )}
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
           <p className="text-sm text-slate-500">
-            아바타 면접관이 준비된 질문 {preparedQuestions ? Math.min(preparedQuestions.length, 6) : 6}개를
-            음성으로 묻고, 웹캠으로 표정·자세·음성을 분석해 종합 점수를 제공합니다.
+            면접관이 준비된 질문 {preparedQuestions ? Math.min(preparedQuestions.length, 6) : 6}개를 읽어주면
+            웹캠으로 녹화·분석합니다. 외부 API 없이 무료.
           </p>
-
-          {keyMissing && (
-            <p className="rounded-lg bg-amber-50 p-3 text-sm text-amber-700">
-              아바타 면접 키(HEYGEN_API_KEY)가 설정되어 있지 않아 지금은 시작할 수 없습니다. 키를 설정하면
-              바로 이용할 수 있습니다.
-            </p>
-          )}
 
           {!supported && (
             <p className="rounded-lg bg-amber-50 p-3 text-sm text-amber-700">
-              이 브라우저는 웹캠 녹화를 지원하지 않습니다. 최신 Chrome/Edge 에서 이용해 주세요.
+              이 브라우저는 웹캠 녹화 또는 음성 합성을 지원하지 않습니다. 최신 Chrome/Edge 에서 이용해 주세요.
             </p>
           )}
 
-          {/* 화면: 아바타(메인) + 내 웹캠(서브) */}
+          {/* 화면: 면접관 placeholder(메인) + 내 웹캠(서브) */}
           {(status === "connecting" || status === "live" || status === "analyzing") && (
-            <div ref={videoBoxRef} className="relative overflow-hidden rounded-xl bg-muted">
-              <video ref={avatarVideoRef} autoPlay playsInline className="aspect-video w-full object-cover" />
+            <div
+              ref={videoBoxRef}
+              className="relative overflow-hidden rounded-xl border border-slate-200 bg-white"
+            >
+              <img
+                src={interviewerPlaceholder}
+                alt="면접관"
+                className="aspect-video w-full object-contain"
+              />
+              <div className="pointer-events-none absolute inset-x-0 top-0 flex justify-center px-3 pt-3">
+                <span className="flex items-center gap-1.5 rounded-full bg-black/55 px-4 py-1.5 text-sm font-bold text-white shadow-lg backdrop-blur">
+                  <Lock className="size-4 text-amber-300" /> 실제 면접관 아바타는 프리미엄 전용
+                </span>
+              </div>
               <video
                 ref={selfVideoRef}
                 autoPlay
@@ -449,7 +436,7 @@ export function AvatarTab({ session }: { session: InterviewSession | null }) {
               </Button>
               {status === "connecting" && (
                 <div className="absolute inset-0 flex items-center justify-center text-sm text-slate-300">
-                  <Loader2 className="mr-2 size-4 animate-spin" /> 아바타 면접관 연결 중…
+                  <Loader2 className="mr-2 size-4 animate-spin" /> 면접 준비 중…
                 </div>
               )}
             </div>
@@ -494,7 +481,7 @@ export function AvatarTab({ session }: { session: InterviewSession | null }) {
               {(status === "idle" || status === "scored" || status === "error") && (
                 <Button
                   onClick={start}
-                  disabled={keyMissing || preparedQuestions == null}
+                  disabled={preparedQuestions == null}
                   className="gap-1.5 bg-purple-600 hover:bg-purple-700"
                 >
                   <Video className="size-4" /> {status === "idle" ? "면접 시작" : "다시 시작"}
@@ -502,7 +489,7 @@ export function AvatarTab({ session }: { session: InterviewSession | null }) {
               )}
               {status === "connecting" && (
                 <Button disabled className="gap-1.5">
-                  <Loader2 className="size-4 animate-spin" /> 연결 중…
+                  <Loader2 className="size-4 animate-spin" /> 준비 중…
                 </Button>
               )}
               {status === "analyzing" && (
@@ -527,7 +514,7 @@ export function AvatarTab({ session }: { session: InterviewSession | null }) {
               )}
               {status === "scored" && downloadUrl && (
                 <Button asChild variant="outline" className="gap-1.5">
-                  <a href={downloadUrl} download="avatar-interview.webm">
+                  <a href={downloadUrl} download="local-avatar-interview.webm">
                     <Download className="size-4" /> 내 답변 영상 다운로드
                   </a>
                 </Button>

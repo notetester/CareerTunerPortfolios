@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router";
-import { BookMarked, MessageSquare, RefreshCw, Search } from "lucide-react";
+import { AlertTriangle, BookMarked, DatabaseZap, FileText, MessageSquare, Mic, RefreshCw, Search, Video } from "lucide-react";
 import AdminShell from "../../../components/AdminShell";
 import { Badge } from "@/app/components/ui/badge";
 import { Button } from "@/app/components/ui/button";
@@ -8,18 +8,50 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/app/components/ui/ca
 import { Input } from "@/app/components/ui/input";
 import { Progress } from "@/app/components/ui/progress";
 import {
+  Pagination,
+  PaginationContent,
+  PaginationEllipsis,
+  PaginationItem,
+  PaginationLink,
+  PaginationNext,
+  PaginationPrevious,
+} from "@/app/components/ui/pagination";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/app/components/ui/tabs";
+import {
   INTERVIEW_MODES,
   getInterviewModeLabel,
   getScoreColor,
   type InterviewReport,
 } from "@/features/interview/types/interview";
-import { getAdminInterviewAiFailures, getAdminInterviewSessionDetail, getAdminInterviewSessions } from "../api";
+import {
+  getAdminInterviewAiFailures,
+  getAdminInterviewSessionDetail,
+  getAdminInterviewSessions,
+  getAdminInterviewSummary,
+  updateAdminMemo,
+} from "../api";
 import { TrainingPipelineCard } from "../components/TrainingPipelineCard";
-import type { AdminInterviewAiFailureRow, AdminInterviewSessionDetail, AdminInterviewSessionRow } from "../types";
+import type {
+  AdminInterviewAiFailureRow,
+  AdminInterviewSessionDetail,
+  AdminInterviewSessionRow,
+  AdminInterviewSummary,
+} from "../types";
 
 function formatDateTime(value: string | null): string {
   if (!value) return "-";
   return new Intl.DateTimeFormat("ko-KR", { dateStyle: "medium", timeStyle: "short" }).format(new Date(value));
+}
+
+/** 페이지 번호 목록 — 현재 주변 + 처음/끝 + 생략(...). */
+function pageList(current: number, total: number): (number | "...")[] {
+  if (total <= 7) return Array.from({ length: total }, (_, i) => i + 1);
+  const out: (number | "...")[] = [1];
+  if (current > 3) out.push("...");
+  for (let i = Math.max(2, current - 1); i <= Math.min(total - 1, current + 1); i++) out.push(i);
+  if (current < total - 2) out.push("...");
+  out.push(total);
+  return out;
 }
 
 function parseReport(raw: string | null): InterviewReport | null {
@@ -45,6 +77,12 @@ export function AdminInterviewsPage() {
   const [mode, setMode] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [page, setPage] = useState(1);
+  const [total, setTotal] = useState(0);
+  const [summary, setSummary] = useState<AdminInterviewSummary | null>(null);
+  const SIZE = 20;
+  const [activeTab, setActiveTab] = useState<"sessions" | "failures" | "training">("sessions");
+  const [detailTab, setDetailTab] = useState<"overview" | "qa" | "report" | "media">("overview");
 
   const selected = useMemo(() => rows.find((r) => r.id === selectedId) ?? rows[0] ?? null, [rows, selectedId]);
   const report = useMemo(() => parseReport(detail?.report ?? null), [detail]);
@@ -54,18 +92,24 @@ export function AdminInterviewsPage() {
     return map;
   }, [detail]);
 
-  const loadRows = async () => {
+  const loadRows = async (p = page) => {
     setLoading(true);
     setError(null);
     try {
-      const next = await getAdminInterviewSessions({ keyword, mode });
-      setRows(next);
-      if (!selectedId && next[0]) setSelectedId(next[0].id);
+      const res = await getAdminInterviewSessions({ keyword, mode, page: p, size: SIZE });
+      setRows(res.items);
+      setTotal(res.total);
+      if (!selectedId && res.items[0]) setSelectedId(res.items[0].id);
     } catch (err) {
       setError(err instanceof Error ? err.message : "면접 세션 목록을 불러오지 못했습니다.");
     } finally {
       setLoading(false);
     }
+  };
+
+  const goPage = (p: number) => {
+    setPage(p);
+    void loadRows(p);
   };
 
   const loadDetail = async (id: number) => {
@@ -77,8 +121,13 @@ export function AdminInterviewsPage() {
     }
   };
 
+  const loadSummary = () => {
+    void getAdminInterviewSummary().then(setSummary).catch(() => undefined);
+  };
+
   useEffect(() => {
     void loadRows();
+    loadSummary();
   }, []);
 
   useEffect(() => {
@@ -95,15 +144,39 @@ export function AdminInterviewsPage() {
       actions={
         <div className="flex gap-2">
           <Button asChild variant="outline" size="sm">
+            <Link to="/admin/prompts/interview"><FileText className="size-4" /> 프롬프트</Link>
+          </Button>
+          <Button asChild variant="outline" size="sm">
             <Link to="/admin/interview/knowledge"><BookMarked className="size-4" /> RAG 지식</Link>
           </Button>
-          <Button variant="outline" onClick={() => void loadRows()} disabled={loading}>
+          <Button variant="outline" onClick={() => { void loadRows(); loadSummary(); }} disabled={loading}>
             <RefreshCw className={`size-4 ${loading ? "animate-spin" : ""}`} />
           </Button>
         </div>
       }
     >
-      <div className="grid gap-5 lg:grid-cols-[360px_minmax(0,1fr)]">
+      <div className="mb-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        <SummaryCard label="전체 세션" value={summary ? summary.totalSessions.toLocaleString() : "-"} icon={MessageSquare} tone="blue" />
+        <SummaryCard label="평균 총점" value={summary?.avgScore != null ? `${summary.avgScore}점` : "-"} icon={FileText} tone="green" />
+        <SummaryCard label="AI 실패" value={summary ? summary.aiFailures.toLocaleString() : "-"} icon={AlertTriangle} tone="red" />
+        <SummaryCard label="음성/영상 분석" value={summary ? summary.mediaCount.toLocaleString() : "-"} icon={Video} tone="amber" />
+      </div>
+
+      <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as "sessions" | "failures" | "training")} className="space-y-4">
+        <TabsList className="h-auto w-full justify-start border border-slate-200 bg-card p-1">
+          <TabsTrigger value="sessions" className="gap-1.5 px-3 py-2">
+            <MessageSquare className="size-4" /> 세션 모니터링
+          </TabsTrigger>
+          <TabsTrigger value="failures" className="gap-1.5 px-3 py-2">
+            <AlertTriangle className="size-4" /> AI 실패 이력
+          </TabsTrigger>
+          <TabsTrigger value="training" className="gap-1.5 px-3 py-2">
+            <DatabaseZap className="size-4" /> 학습 파이프라인
+          </TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="sessions" className="mt-0">
+          <div className="grid gap-5 lg:grid-cols-[360px_minmax(0,1fr)]">
         {/* 좌: 목록 */}
         <section className="space-y-4">
 
@@ -133,7 +206,7 @@ export function AdminInterviewsPage() {
                   </Button>
                 ))}
               </div>
-              <Button className="w-full bg-blue-600 text-white hover:bg-blue-700" onClick={() => void loadRows()}>
+              <Button className="w-full bg-blue-600 text-white hover:bg-blue-700" onClick={() => goPage(1)}>
                 필터 적용
               </Button>
             </CardContent>
@@ -178,12 +251,45 @@ export function AdminInterviewsPage() {
               ))
             )}
           </div>
+
+          {total > SIZE && (
+            <div className="space-y-1">
+              <Pagination>
+                <PaginationContent className="flex-wrap">
+                  <PaginationItem>
+                    <PaginationPrevious
+                      onClick={() => { if (page > 1) goPage(page - 1); }}
+                      className={page <= 1 ? "pointer-events-none opacity-40" : "cursor-pointer"}
+                    />
+                  </PaginationItem>
+                  {pageList(page, Math.ceil(total / SIZE)).map((n, i) =>
+                    n === "..." ? (
+                      <PaginationItem key={`e${i}`}>
+                        <PaginationEllipsis />
+                      </PaginationItem>
+                    ) : (
+                      <PaginationItem key={n}>
+                        <PaginationLink isActive={n === page} onClick={() => goPage(n)} className="cursor-pointer">
+                          {n}
+                        </PaginationLink>
+                      </PaginationItem>
+                    ),
+                  )}
+                  <PaginationItem>
+                    <PaginationNext
+                      onClick={() => { if (page < Math.ceil(total / SIZE)) goPage(page + 1); }}
+                      className={page >= Math.ceil(total / SIZE) ? "pointer-events-none opacity-40" : "cursor-pointer"}
+                    />
+                  </PaginationItem>
+                </PaginationContent>
+              </Pagination>
+              <div className="text-center text-xs text-slate-400">총 {total}건</div>
+            </div>
+          )}
         </section>
 
         {/* 우: 상세 */}
         <section className="min-w-0 space-y-4">
-          <TrainingPipelineCard />
-          <AiFailuresCard />
           {!detail ? (
             <Card className="border-slate-200 bg-card">
               <CardContent className="p-8 text-center text-sm text-slate-500">면접 세션을 선택하세요.</CardContent>
@@ -204,7 +310,24 @@ export function AdminInterviewsPage() {
                 </CardContent>
               </Card>
 
-              {report && (
+              <Tabs value={detailTab} onValueChange={(v) => setDetailTab(v as "overview" | "qa" | "report" | "media")} className="space-y-3">
+                <TabsList className="h-auto w-full justify-start border border-slate-200 bg-card p-1">
+                  <TabsTrigger value="overview" className="px-3 py-2">개요</TabsTrigger>
+                  <TabsTrigger value="qa" className="px-3 py-2">질문/답변</TabsTrigger>
+                  <TabsTrigger value="report" className="px-3 py-2">리포트</TabsTrigger>
+                  <TabsTrigger value="media" className="px-3 py-2">음성/영상</TabsTrigger>
+                </TabsList>
+
+                <TabsContent value="overview" className="mt-0">
+                  <MemoCard
+                sessionId={detail.session.id}
+                initial={detail.session.adminMemo}
+                onSaved={() => void loadDetail(detail.session.id)}
+              />
+                </TabsContent>
+
+                <TabsContent value="report" className="mt-0">
+              {report ? (
                 <Card className="border-slate-200 bg-card">
                   <CardHeader>
                     <CardTitle className="text-base font-bold text-slate-900">면접 리포트</CardTitle>
@@ -234,8 +357,54 @@ export function AdminInterviewsPage() {
                     )}
                   </CardContent>
                 </Card>
+              ) : (
+                <Card className="border-slate-200 bg-card">
+                  <CardContent className="p-6 text-center text-sm text-slate-400">생성된 리포트가 없습니다.</CardContent>
+                </Card>
               )}
+                </TabsContent>
 
+                <TabsContent value="media" className="mt-0">
+              {detail.mediaResults.length > 0 ? (
+                <Card className="border-slate-200 bg-card">
+                  <CardHeader>
+                    <CardTitle className="text-base font-bold text-slate-900">음성/영상 면접 분석</CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-3">
+                    {detail.mediaResults.map((m) => (
+                      <div key={m.id} className="rounded-lg border border-slate-200 p-3">
+                        <div className="mb-2 flex items-center justify-between">
+                          <Badge variant="outline">
+                            {m.kind === "AVATAR" ? "아바타 화상 면접" : "음성 모의면접"}
+                          </Badge>
+                          <span className={`text-sm font-black ${getScoreColor(m.score)}`}>{m.score}점</span>
+                        </div>
+                        {m.scoreDetail && (
+                          <div className="flex flex-wrap gap-x-3 gap-y-1 text-xs text-slate-500">
+                            {Object.entries(m.scoreDetail).map(([k, v]) => (
+                              <span key={k}>
+                                {k} <span className="font-semibold text-slate-700">{v}</span>
+                              </span>
+                            ))}
+                          </div>
+                        )}
+                        {Array.isArray(m.transcript) && m.transcript.length > 0 && (
+                          <p className="mt-2 line-clamp-2 text-xs text-slate-400">
+                            {m.transcript.map((t) => t.text).join(" ")}
+                          </p>
+                        )}
+                      </div>
+                    ))}
+                  </CardContent>
+                </Card>
+              ) : (
+                <Card className="border-slate-200 bg-card">
+                  <CardContent className="p-6 text-center text-sm text-slate-400">음성/영상 분석이 없습니다.</CardContent>
+                </Card>
+              )}
+                </TabsContent>
+
+                <TabsContent value="qa" className="mt-0">
               <section className="space-y-2">
                 <h2 className="text-sm font-bold text-slate-900">질문 / 답변</h2>
                 {detail.questions.length === 0 ? (
@@ -261,6 +430,30 @@ export function AdminInterviewsPage() {
                                 </div>
                               )}
                               {answer.feedback && <p className="text-xs text-slate-500">{answer.feedback}</p>}
+                              {(answer.audioUrl || answer.videoUrl) && (
+                                <div className="flex flex-wrap gap-2 pt-1">
+                                  {answer.audioUrl && (
+                                    <a
+                                      href={answer.audioUrl}
+                                      target="_blank"
+                                      rel="noreferrer"
+                                      className="inline-flex items-center gap-1 rounded border border-slate-200 bg-white px-2 py-1 text-xs text-slate-600 hover:bg-slate-100"
+                                    >
+                                      <Mic className="size-3" /> 음성 답변
+                                    </a>
+                                  )}
+                                  {answer.videoUrl && (
+                                    <a
+                                      href={answer.videoUrl}
+                                      target="_blank"
+                                      rel="noreferrer"
+                                      className="inline-flex items-center gap-1 rounded border border-slate-200 bg-white px-2 py-1 text-xs text-slate-600 hover:bg-slate-100"
+                                    >
+                                      <Video className="size-3" /> 영상 답변
+                                    </a>
+                                  )}
+                                </div>
+                              )}
                             </div>
                           ) : (
                             <p className="text-xs text-slate-400">미답변</p>
@@ -271,11 +464,55 @@ export function AdminInterviewsPage() {
                   })
                 )}
               </section>
+                </TabsContent>
+              </Tabs>
             </>
           )}
         </section>
-      </div>
+          </div>
+        </TabsContent>
+
+        <TabsContent value="failures" className="mt-0">
+          <AiFailuresCard />
+        </TabsContent>
+
+        <TabsContent value="training" className="mt-0">
+          <TrainingPipelineCard />
+        </TabsContent>
+      </Tabs>
     </AdminShell>
+  );
+}
+
+function SummaryCard({
+  label,
+  value,
+  icon: Icon,
+  tone,
+}: {
+  label: string;
+  value: string;
+  icon: typeof MessageSquare;
+  tone: "blue" | "green" | "amber" | "red";
+}) {
+  const toneClass = {
+    blue: "bg-blue-50 text-blue-600",
+    green: "bg-emerald-50 text-emerald-600",
+    amber: "bg-amber-50 text-amber-600",
+    red: "bg-red-50 text-red-600",
+  }[tone];
+  return (
+    <Card className="border-slate-200 bg-card">
+      <CardContent className="flex items-center justify-between p-4">
+        <div className="min-w-0">
+          <div className="text-xs font-semibold text-slate-500">{label}</div>
+          <div className="mt-1 text-2xl font-black text-slate-950">{value}</div>
+        </div>
+        <div className={`flex size-10 shrink-0 items-center justify-center rounded-lg ${toneClass}`}>
+          <Icon className="size-5" />
+        </div>
+      </CardContent>
+    </Card>
   );
 }
 
@@ -335,6 +572,63 @@ function AiFailuresCard() {
             {r.errorMessage && <div className="mt-1 line-clamp-2 text-xs text-red-600">{r.errorMessage}</div>}
           </div>
         ))}
+      </CardContent>
+    </Card>
+  );
+}
+
+/** 관리자 운영 메모 — PUT /api/admin/interview/sessions/{id}/memo. 사용자에게 노출되지 않는다. */
+function MemoCard({
+  sessionId,
+  initial,
+  onSaved,
+}: {
+  sessionId: number;
+  initial: string | null;
+  onSaved: () => void;
+}) {
+  const [memo, setMemo] = useState(initial ?? "");
+  const [saving, setSaving] = useState(false);
+  const [note, setNote] = useState<string | null>(null);
+
+  useEffect(() => {
+    setMemo(initial ?? "");
+    setNote(null);
+  }, [initial, sessionId]);
+
+  const save = async () => {
+    setSaving(true);
+    setNote(null);
+    try {
+      await updateAdminMemo(sessionId, memo);
+      setNote("저장되었습니다.");
+      onSaved();
+    } catch (e) {
+      setNote(e instanceof Error ? e.message : "메모 저장에 실패했습니다.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <Card className="border-slate-200 bg-card">
+      <CardHeader className="pb-2">
+        <CardTitle className="text-base">운영 메모</CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-2">
+        <textarea
+          value={memo}
+          onChange={(e) => setMemo(e.target.value)}
+          placeholder="이 세션에 대한 운영 메모 (사용자에게 노출되지 않습니다)"
+          rows={3}
+          className="w-full resize-y rounded-lg border border-slate-200 bg-card p-2 text-sm focus:border-blue-300 focus:outline-none"
+        />
+        <div className="flex items-center gap-2">
+          <Button size="sm" onClick={() => void save()} disabled={saving}>
+            {saving ? "저장 중..." : "메모 저장"}
+          </Button>
+          {note && <span className="text-xs text-slate-500">{note}</span>}
+        </div>
       </CardContent>
     </Card>
   );

@@ -14,6 +14,7 @@ import org.springframework.stereotype.Service;
 
 import com.careertuner.common.exception.BusinessException;
 import com.careertuner.common.exception.ErrorCode;
+import com.careertuner.interview.media.dto.AvatarScoreResponse;
 import com.careertuner.interview.media.dto.TranscribeResponse;
 import com.careertuner.interview.media.dto.VoiceScoreResponse;
 
@@ -25,7 +26,7 @@ import tools.jackson.databind.ObjectMapper;
  * 비언어 자체 추론 서버(Python FastAPI, ADR-006) 호출 — 음성 → 피처 추출 → 점수.
  *
  * <p>원본 음성을 base64 로 보내면 서버가 ffmpeg 16kHz 변환·피처 추출 후 점수를 낸다
- * (LightGBM 모델이 있으면 모델, 없으면 규칙 폴백). 외부 API(Inworld)를 자체 서버로 대체하기 위한 클라이언트.
+ * (LightGBM 모델이 있으면 모델, 없으면 규칙 폴백). 외부 음성 API를 자체 서버로 대체하기 위한 클라이언트.
  */
 @Service
 public class InterviewNonverbalClient {
@@ -76,6 +77,37 @@ public class InterviewNonverbalClient {
                 root.path("detail"),
                 root.path("metrics"),
                 root.path("source").asText("rule"));
+    }
+
+    /**
+     * 아바타 화상면접 점수 — webm 1개에서 음성+영상 피처를 뽑아 late fusion 결합 (serve /score/avatar-base64).
+     *
+     * @param videoBase64 녹화 원본(webm 등) base64
+     * @param videoFormat 컨테이너 확장자(webm 등). null 이면 webm
+     */
+    public AvatarScoreResponse scoreAvatar(String videoBase64, String videoFormat,
+                                           Integer transcriptChars, Integer fillerCount, Double latencySec) {
+        if (!properties.configured()) {
+            throw new BusinessException(ErrorCode.INTERNAL_ERROR,
+                    "비언어 추론 서버가 비활성화되어 있습니다. (careertuner.interview.nonverbal.enabled)");
+        }
+        if (videoBase64 == null || videoBase64.isBlank()) {
+            throw new BusinessException(ErrorCode.INVALID_INPUT, "영상 데이터가 비어 있습니다.");
+        }
+
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("video_base64", videoBase64);
+        body.put("video_format", videoFormat == null || videoFormat.isBlank() ? "webm" : videoFormat);
+        body.put("transcript_chars", transcriptChars != null ? transcriptChars : 0);
+        body.put("filler_count", fillerCount != null ? fillerCount : 0);
+        body.put("latency_sec", latencySec != null ? latencySec : -1.0);
+
+        JsonNode root = post(avatarScoreUrl(), body);
+        JsonNode visual = root.path("visual");
+        return new AvatarScoreResponse(
+                root.path("voice"),
+                visual.isMissingNode() || visual.isNull() ? null : visual,
+                root.path("combined").asInt(0));
     }
 
     /** 음성 → 텍스트 (자체 STT, serve /transcribe). B 베이직 답변 전사 — OpenAI Whisper API 대체. */
@@ -130,6 +162,10 @@ public class InterviewNonverbalClient {
 
     private String scoreUrl() {
         return properties.getServeUrl().replaceAll("/+$", "") + "/score/voice-base64";
+    }
+
+    private String avatarScoreUrl() {
+        return properties.getServeUrl().replaceAll("/+$", "") + "/score/avatar-base64";
     }
 
     private String transcribeUrl() {
