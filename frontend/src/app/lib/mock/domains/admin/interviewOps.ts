@@ -35,6 +35,7 @@ const sessions: AdminInterviewSessionRow[] = [
     createdAt: iso(2),
     questionCount: 5,
     answeredCount: 5,
+    adminMemo: null,
   },
   {
     id: 7002,
@@ -50,6 +51,7 @@ const sessions: AdminInterviewSessionRow[] = [
     createdAt: iso(4),
     questionCount: 6,
     answeredCount: 6,
+    adminMemo: null,
   },
   {
     id: 7003,
@@ -65,6 +67,7 @@ const sessions: AdminInterviewSessionRow[] = [
     createdAt: iso(5),
     questionCount: 5,
     answeredCount: 5,
+    adminMemo: null,
   },
   {
     id: 7004,
@@ -80,6 +83,7 @@ const sessions: AdminInterviewSessionRow[] = [
     createdAt: iso(1),
     questionCount: 5,
     answeredCount: 2,
+    adminMemo: null,
   },
   {
     id: 7005,
@@ -95,6 +99,7 @@ const sessions: AdminInterviewSessionRow[] = [
     createdAt: iso(8),
     questionCount: 4,
     answeredCount: 4,
+    adminMemo: null,
   },
 ];
 
@@ -269,6 +274,7 @@ function rowToDetail(row: AdminInterviewSessionRow): AdminInterviewSessionDetail
     session: row,
     questions: bundle?.questions ?? [],
     answers: bundle?.answers ?? [],
+    mediaResults: [],
     report: bundle?.report ?? null,
   };
 }
