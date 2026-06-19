@@ -98,11 +98,12 @@ push 요청을 받으면 반드시 아래 순서를 따른다:
 
 ## 스토리보드 문서(서브모듈 · 선택 다운로드)
 
-`docs/storyboard/` 는 **별도 repo [notetester/CareerTunerDocs](https://github.com/notetester/CareerTunerDocs) 를 가리키는 git 서브모듈**이다. C 영역 UI/UX 스토리보드·PPTX·PDF 등 **산출물**이라 일반 개발에는 필요 없고, 메인을 그냥 클론하면 이 폴더는 **빈 채(포인터만)** 라 본체 용량·개발에 영향이 없다.
+`docs/storyboard/` 는 **별도 repo [notetester/CareerTunerDocs](https://github.com/notetester/CareerTunerDocs) 를 가리키는 git 서브모듈**이다. 담당자별 산출물(스토리보드·PPTX·PDF·DB 설계서 등)이라 일반 개발에는 필요 없고, 메인을 그냥 클론하면 이 폴더는 **빈 채(포인터만)** 라 본체 용량·개발에 영향이 없다.
 
+- 폴더 구조는 **담당자별** `A/`~`F/`·`TOTAL/` 이고, 각 폴더 안은 `workbench/`(작업대·재현 파이프라인) + `deliverables/`(대표 산출물) 로 나뉜다. **C(이정국) 작업은 `docs/storyboard/C/` 아래에 전부 있다.**
 - 스토리보드를 보거나 작업할 때만 받는다: `git submodule update --init docs/storyboard` (처음부터 받으려면 `git clone --recursive`).
 - 수정은 `docs/storyboard/` **안에서** commit·push 한다(그 폴더가 곧 CareerTunerDocs repo). 새 버전을 메인에 고정하려면 루트에서 `git add docs/storyboard && git commit` 으로 포인터를 갱신해 PR 한다.
-- 재생성 파이프라인·명령은 `docs/storyboard/README.md` 참고. 받은 직후 도구 실행 시 `cd docs/storyboard/tools && npm install`.
+- 폴더 안내는 `docs/storyboard/README.md`, C 재생성 파이프라인·명령은 `docs/storyboard/C/workbench/README.md` 참고. 받은 직후 도구 실행 시 `cd docs/storyboard/C/workbench/tools && npm install`.
 - **AI 도구 안내:** 스토리보드 작업 요청을 받았는데 `docs/storyboard/` 가 비어 있으면, 먼저 위 `submodule update` 로 받은 뒤 진행한다.
 
 ## 개인 설정
