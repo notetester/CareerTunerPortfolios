@@ -24,7 +24,7 @@ interface RecentInterviewCardProps {
  */
 export function RecentInterviewCard({ interview }: RecentInterviewCardProps) {
   return (
-    <Card className="border border-slate-200 bg-white">
+    <Card className="border border-slate-200 bg-card">
       <CardHeader className="pb-3">
         <CardTitle className="text-base flex items-center gap-2">
           <MessageSquare className="size-4 text-purple-600" />

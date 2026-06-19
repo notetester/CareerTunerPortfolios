@@ -4,9 +4,8 @@
 // 구성:
 //  - VoiceMetricsTracker: 라이브 마이크 스트림에서 Web Audio 로 발화/침묵/피치/성량 샘플링
 //  - countFillers / computeVoiceScore: 트랜스크립트·지표 → 항목별 점수(0~100)
-//  - blobToPcm16Base64: 녹음(webm 등) → 16kHz mono PCM16(LINEAR16) base64 (Inworld 전송용)
 
-import type { VoiceMetrics, VoiceProfile, VoiceScoreDetail } from "../types/interview";
+import type { VoiceMetrics, VoiceScoreDetail } from "../types/interview";
 
 // ───── 라이브 지표 샘플링 ─────
 
@@ -61,7 +60,7 @@ export class VoiceMetricsTracker {
 
   /**
    * 샘플링만 먼저 멈춘다 (지표 확정은 finish).
-   * 면접 종료 후 비동기 분석(Inworld 등)이 끝나길 기다렸다가 finish 를 불러도
+   * 면접 종료 후 비동기 분석(자체 추론 서버 등)이 끝나길 기다렸다가 finish 를 불러도
    * 분석 대기 시간이 totalSec 에 섞이지 않게 한다.
    */
   pause() {
@@ -174,10 +173,10 @@ export function countFillers(userLines: string[]): number {
 const NEUTRAL = 70;
 
 /**
- * 브라우저 지표 + (있으면) Inworld voice profile → 항목별 점수.
+ * 브라우저 지표 → 항목별 점수.
  * 기준은 실제 면접 표준(ADR-001/002): 또박또박한 속도, 군말 최소화, 안정된 톤, 자신감, 빠른 반응.
  */
-export function computeVoiceScore(metrics: VoiceMetrics, profile: VoiceProfile | null): VoiceScoreDetail {
+export function computeVoiceScore(metrics: VoiceMetrics): VoiceScoreDetail {
   // 말 속도: 한국어 발표 적정 250~400자/분, 그 밖은 거리에 비례해 감점.
   const pace =
     metrics.speechRateSpm == null
@@ -196,20 +195,10 @@ export function computeVoiceScore(metrics: VoiceMetrics, profile: VoiceProfile |
     const cov = metrics.pitchStdevHz / metrics.avgPitchHz;
     stability = bandScore(cov, 0.02, 0.1, 0.35, 0.7);
   }
-  if (hasLabel(profile?.vocalStyle, "monotone")) stability = clamp(stability - 15, 0, 100);
 
-  // 자신감: 성량 + 감정·보컬스타일 라벨 보정.
-  let confidence =
+  // 자신감: 성량 기준.
+  const confidence =
     metrics.avgVolume == null ? NEUTRAL : bandScore(metrics.avgVolume, 0.005, 0.03, 0.15, 0.4);
-  if (hasLabel(profile?.emotion, "calm") || hasLabel(profile?.emotion, "happy") || hasLabel(profile?.emotion, "neutral")) {
-    confidence = clamp(confidence + 10, 0, 100);
-  }
-  if (hasLabel(profile?.emotion, "fearful") || hasLabel(profile?.emotion, "sad")) {
-    confidence = clamp(confidence - 15, 0, 100);
-  }
-  if (hasLabel(profile?.vocalStyle, "whispering") || hasLabel(profile?.vocalStyle, "mumbling")) {
-    confidence = clamp(confidence - 20, 0, 100);
-  }
 
   // 반응 속도: 질문 후 1.5초 내 첫 발화 = 100, 8초 = 30.
   const responsiveness =
@@ -231,46 +220,11 @@ function bandScore(value: number, hardMin: number, idealMin: number, idealMax: n
   return Math.round(20 + (80 * (hardMax - value)) / (hardMax - idealMax));
 }
 
-function hasLabel(labels: { label: string }[] | undefined, name: string): boolean {
-  return !!labels?.some((l) => l.label === name);
-}
+// ───── 오디오 변환 ─────
 
-// ───── 오디오 변환 (Inworld LINEAR16 전송용) ─────
-
-/** Inworld 전송 오디오 상한(초) — 라벨형 프로필이라 마지막 구간만으로 충분, 페이로드 폭주 방지. */
-const MAX_ANALYSIS_SEC = 120;
-const TARGET_SAMPLE_RATE = 16000;
-
-/**
- * MediaRecorder 녹음(webm/opus 등)을 16kHz mono PCM16(raw LINEAR16) base64 로 변환한다.
- * 길면 마지막 {@link MAX_ANALYSIS_SEC}초만 잘라 보낸다.
- */
-export async function blobToPcm16Base64(blob: Blob): Promise<string> {
-  const arrayBuffer = await blob.arrayBuffer();
-  const decodeCtx = new AudioContext();
-  let decoded: AudioBuffer;
-  try {
-    decoded = await decodeCtx.decodeAudioData(arrayBuffer);
-  } finally {
-    decodeCtx.close().catch(() => undefined);
-  }
-
-  const keepSec = Math.min(decoded.duration, MAX_ANALYSIS_SEC);
-  const offline = new OfflineAudioContext(1, Math.ceil(keepSec * TARGET_SAMPLE_RATE), TARGET_SAMPLE_RATE);
-  const source = offline.createBufferSource();
-  source.buffer = decoded;
-  source.connect(offline.destination);
-  // 마지막 keepSec 구간부터 재생되도록 offset 을 준다.
-  source.start(0, Math.max(0, decoded.duration - keepSec));
-  const rendered = await offline.startRendering();
-
-  const samples = rendered.getChannelData(0);
-  const pcm = new Int16Array(samples.length);
-  for (let i = 0; i < samples.length; i++) {
-    const s = Math.max(-1, Math.min(1, samples[i]));
-    pcm[i] = s < 0 ? s * 0x8000 : s * 0x7fff;
-  }
-  return bytesToBase64(new Uint8Array(pcm.buffer));
+/** MediaRecorder 녹음(webm 등) 원본을 변환 없이 base64 로 — 서버(serve)가 ffmpeg 로 16kHz 변환한다. */
+export async function blobToBase64(blob: Blob): Promise<string> {
+  return bytesToBase64(new Uint8Array(await blob.arrayBuffer()));
 }
 
 function bytesToBase64(bytes: Uint8Array): string {

@@ -250,7 +250,7 @@ function RunMemoPanel({
       ) : (
         <ul className="space-y-2">
           {memos.map((memo) => (
-            <li key={memo.id} className="rounded-lg border border-slate-100 bg-white p-2.5">
+            <li key={memo.id} className="rounded-lg border border-slate-100 bg-card p-2.5">
               {editingId === memo.id ? (
                 <div className="flex flex-col gap-2">
                   <div className="flex items-center gap-2">
@@ -466,7 +466,7 @@ export function AdminAnalyticsPage() {
       <div className="mx-auto w-full max-w-[1400px] space-y-6 px-4 py-8 sm:px-6">
         <section className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <Badge className="mb-2 bg-slate-900 text-white">C 관리자</Badge>
+            <Badge className="mb-2 bg-foreground text-background">C 관리자</Badge>
             <h1 className="flex items-center gap-2 text-2xl font-black text-slate-900">
               <BarChart3 className="size-6 text-indigo-600" />
               분석 통계
@@ -482,7 +482,7 @@ export function AdminAnalyticsPage() {
         </section>
 
         {loading && (
-          <Card className="border border-slate-200 bg-white">
+          <Card className="border border-slate-200 bg-card">
             <CardContent className="flex items-center gap-3 p-5 text-sm text-slate-600">
               <Loader2 className="size-4 animate-spin text-indigo-600" />
               분석 통계를 불러오는 중입니다.
@@ -503,7 +503,7 @@ export function AdminAnalyticsPage() {
           <>
             <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
               {statCards.map((card) => (
-                <Card key={card.label} className="border border-slate-200 bg-white">
+                <Card key={card.label} className="border border-slate-200 bg-card">
                   <CardContent className="p-5">
                     <div className="text-sm text-slate-500">{card.label}</div>
                     <div className="mt-1 text-3xl font-black text-slate-900">{card.value.toLocaleString()}</div>
@@ -514,7 +514,7 @@ export function AdminAnalyticsPage() {
             </section>
 
             <section className="grid gap-6 lg:grid-cols-2">
-              <Card className="border border-slate-200 bg-white">
+              <Card className="border border-slate-200 bg-card">
                 <CardHeader className="pb-3">
                   <CardTitle className="flex items-center gap-2 text-base">
                     <Gauge className="size-4 text-purple-600" />
@@ -548,7 +548,7 @@ export function AdminAnalyticsPage() {
                 <CardContent className="space-y-3">
                   {summary.skillGaps.length > 0 ? (
                     summary.skillGaps.slice(0, 8).map((gap) => (
-                      <div key={gap.skill} className="rounded-lg bg-white/70 px-3 py-2">
+                      <div key={gap.skill} className="rounded-lg bg-card/70 px-3 py-2">
                         <div className="flex items-center justify-between gap-3 text-sm">
                           <span className="font-semibold text-amber-900">{gap.skill}</span>
                           <span className="text-xs text-amber-700">{gap.count}/{gap.total}건 · {gap.percentage}%</span>
@@ -565,7 +565,7 @@ export function AdminAnalyticsPage() {
 
             {/* 분석 실패 큐 + 품질 검수 큐: 운영자가 우선 처리할 항목을 모아 보여준다. */}
             <section className="grid gap-6 lg:grid-cols-2">
-              <Card className="border border-red-200 bg-white">
+              <Card className="border border-red-200 bg-card">
                 <CardHeader className="pb-3">
                   <CardTitle className="flex items-center gap-2 text-base text-red-800">
                     <AlertTriangle className="size-4 text-red-600" />
@@ -608,7 +608,7 @@ export function AdminAnalyticsPage() {
                 </CardContent>
               </Card>
 
-              <Card className="border border-purple-200 bg-white">
+              <Card className="border border-purple-200 bg-card">
                 <CardHeader className="pb-3">
                   <CardTitle className="flex items-center gap-2 text-base text-purple-900">
                     <Gauge className="size-4 text-purple-600" />
@@ -660,7 +660,7 @@ export function AdminAnalyticsPage() {
             </section>
 
             <section>
-              <Card className="border border-slate-200 bg-white">
+              <Card className="border border-slate-200 bg-card">
                 <CardHeader className="pb-3">
                   <CardTitle className="flex items-center gap-2 text-base">
                     <Cpu className="size-4 text-cyan-600" />
@@ -700,7 +700,7 @@ export function AdminAnalyticsPage() {
             </section>
 
             <section>
-              <Card className="border border-indigo-200 bg-white">
+              <Card className="border border-indigo-200 bg-card">
                 <CardHeader className="pb-3">
                   <CardTitle className="flex items-center gap-2 text-base">
                     <Brain className="size-4 text-indigo-600" />
@@ -738,7 +738,7 @@ export function AdminAnalyticsPage() {
             </section>
 
             <section>
-              <Card className="border border-slate-200 bg-white">
+              <Card className="border border-slate-200 bg-card">
                 <CardHeader className="pb-3">
                   <CardTitle className="flex flex-col gap-3 text-base sm:flex-row sm:items-center sm:justify-between">
                     <span className="flex items-center gap-2">
@@ -749,7 +749,7 @@ export function AdminAnalyticsPage() {
                       </Badge>
                     </span>
                     <span className="flex flex-col gap-2 sm:flex-row">
-                      <label className="flex items-center gap-2 rounded-md border border-slate-200 bg-white px-3">
+                      <label className="flex items-center gap-2 rounded-md border border-slate-200 bg-card px-3">
                         <Search className="size-4 text-slate-400" />
                         <input
                           value={query}
@@ -829,7 +829,7 @@ export function AdminAnalyticsPage() {
                                   <Brain className="size-3.5 text-indigo-600" />
                                   AI 결과
                                 </div>
-                                <pre className="max-h-72 overflow-auto whitespace-pre-wrap rounded-lg border border-slate-200 bg-slate-950 p-3 text-[11px] leading-5 text-slate-100">
+                                <pre className="max-h-72 overflow-auto whitespace-pre-wrap rounded-lg border border-slate-200 bg-[#0b0c0e] p-3 text-[11px] leading-5 text-[#e6e6e6]">
                                   {prettyJson(run.result)}
                                 </pre>
                               </div>
@@ -848,7 +848,7 @@ export function AdminAnalyticsPage() {
 
             {timelineUserId != null && (
               <section>
-                <Card className="border border-blue-200 bg-white">
+                <Card className="border border-blue-200 bg-card">
                   <CardHeader><CardTitle className="text-base">사용자 #{timelineUserId} 분석 타임라인</CardTitle></CardHeader>
                   <CardContent className="space-y-2">
                     {timelineLoading ? <Loader2 className="size-4 animate-spin text-blue-600" /> : timeline.map((item) => (

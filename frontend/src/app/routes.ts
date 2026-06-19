@@ -9,6 +9,8 @@ import { CorrectionPage } from "./pages/Correction";
 import { AnalysisPage } from "./pages/Analysis";
 import { CommunityPage } from "./pages/Community";
 import { BillingPage } from "./pages/Billing";
+import { BillingFailPage } from "./pages/BillingFail";
+import { BillingSuccessPage } from "./pages/BillingSuccess";
 import { PricingPage } from "./pages/Pricing";
 import { ProfilePage } from "./pages/Profile";
 import { SettingsPage } from "./pages/Settings";
@@ -50,6 +52,8 @@ export const router = createBrowserRouter([
       // 알림/딥링크용 글 상세 경로. 같은 CommunityPage가 :postId를 읽어 상세 뷰를 연다. (팀장 승인 2026-06-19)
       { path: "community/posts/:postId", Component: CommunityPage },
       { path: "billing", Component: BillingPage },
+      { path: "billing/success", Component: BillingSuccessPage },
+      { path: "billing/fail", Component: BillingFailPage },
       { path: "pricing", Component: PricingPage },
       { path: "profile", Component: ProfilePage },
       { path: "settings", Component: SettingsPage },

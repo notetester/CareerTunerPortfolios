@@ -31,7 +31,7 @@ export function VerifyEmailResultPage() {
 
   return (
     <div className="min-h-[calc(100vh-120px)] flex items-center justify-center px-4">
-      <div className="w-full max-w-md text-center bg-white border border-slate-200 rounded-2xl shadow-sm p-8 space-y-4">
+      <div className="w-full max-w-md text-center bg-card border border-slate-200 rounded-2xl shadow-sm p-8 space-y-4">
         {success ? (
           <CheckCircle2 className="size-14 text-green-600 mx-auto" />
         ) : (
@@ -65,7 +65,7 @@ export function VerifyEmailResultPage() {
                 type="button"
                 onClick={() => void handleResend()}
                 disabled={sending}
-                className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-slate-900 text-sm font-semibold text-white disabled:opacity-70"
+                className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-foreground text-sm font-semibold text-background disabled:opacity-70"
               >
                 {sending && <Loader2 className="size-4 animate-spin" />}
                 인증 메일 다시 보내기
@@ -76,7 +76,7 @@ export function VerifyEmailResultPage() {
 
         <Link
           to={success ? "/dashboard" : "/login"}
-          className="inline-block mt-2 px-5 py-2.5 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 text-white text-sm font-semibold"
+          className="inline-block mt-2 px-5 py-2.5 rounded-xl bg-primary text-white text-sm font-semibold"
         >
           {success ? "대시보드로 이동" : "로그인으로 이동"}
         </Link>

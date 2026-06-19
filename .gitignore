@@ -59,6 +59,7 @@ CLAUDE.local.md
 # ----- Personal local docs -----
 personal/
 personal_*.zip
+docs/면접AI_워크플로우_의사결정.md
 
 # ----- Logs -----
 *.log

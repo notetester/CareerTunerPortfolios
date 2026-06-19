@@ -23,7 +23,7 @@ public class InterviewMediaAnalysis {
     private String kind;
     /** 대화 트랜스크립트 JSON 문자열: [{"role":"ai|user","text":"..."}] */
     private String transcript;
-    /** 측정 지표 원본 JSON 문자열 (말속도·침묵·필러·피치, 표정/자세, Inworld 프로필 등) */
+    /** 측정 지표 원본 JSON 문자열 (말속도·침묵·필러·피치, 표정/자세, 음성 프로필 등) */
     private String metrics;
     /** 종합 점수 0~100 */
     private Integer score;

@@ -1,0 +1,58 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.careertuner.credit.mapper.CreditMapper">
+
+    <!-- 크레딧 차감 기준이 되는 AI 사용량 로그를 조회한다. -->
+    <select id="findAiUsageLogById" resultType="com.careertuner.credit.domain.CreditAiUsageLog">
+        SELECT id,
+               user_id,
+               application_case_id,
+               feature_type,
+               status,
+               credit_used,
+               created_at
+          FROM ai_usage_log
+         WHERE id = #{aiUsageLogId}
+    </select>
+
+    <!-- 같은 AI 사용량 로그가 이미 AI_USAGE 차감으로 반영됐는지 확인한다. -->
+    <select id="existsTransactionByAiUsageLogIdAndType" resultType="boolean">
+        SELECT EXISTS (
+            SELECT 1
+              FROM credit_transaction
+             WHERE ai_usage_log_id = #{aiUsageLogId}
+               AND type = #{type}
+        )
+    </select>
+
+    <!-- 호출 파트가 차감 금액을 직접 지정하면 사용량 집계 금액도 같은 값으로 맞춘다. -->
+    <update id="updateAiUsageCreditUsed">
+        UPDATE ai_usage_log
+           SET credit_used = #{creditUsed}
+         WHERE id = #{aiUsageLogId}
+    </update>
+
+    <!-- 잔액이 충분할 때만 users.credit 값을 실제 차감한다. -->
+    <update id="deductUserCreditIfEnough">
+        UPDATE users
+           SET credit = credit - #{creditUsed}
+         WHERE id = #{userId}
+           AND credit >= #{creditUsed}
+    </update>
+
+    <!-- 차감 전후 잔액 확인용 사용자 크레딧을 조회한다. -->
+    <select id="findUserCredit" resultType="int">
+        SELECT credit
+          FROM users
+         WHERE id = #{userId}
+    </select>
+
+    <!-- 크레딧 변동 원장을 기록한다. -->
+    <insert id="insertCreditTransaction" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO credit_transaction
+            (user_id, ai_usage_log_id, type, amount, balance_after, feature_type, reason)
+        VALUES
+            (#{userId}, #{aiUsageLogId}, #{type}, #{amount}, #{balanceAfter}, #{featureType}, #{reason})
+    </insert>
+</mapper>

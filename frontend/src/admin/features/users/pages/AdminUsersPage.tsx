@@ -190,7 +190,7 @@ export function AdminUsersPage() {
     >
       <div className="grid gap-5 lg:grid-cols-[380px_minmax(0,1fr)]">
         <section className="space-y-4">
-          <Card className="border-slate-200 bg-white">
+          <Card className="border-slate-200 bg-card">
             <CardContent className="space-y-3 p-4">
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-slate-400" />
@@ -226,7 +226,7 @@ export function AdminUsersPage() {
               <button
                 key={row.id}
                 type="button"
-                className={`w-full rounded-lg border bg-white p-3 text-left transition-colors ${
+                className={`w-full rounded-lg border bg-card p-3 text-left transition-colors ${
                   selected?.id === row.id ? "border-blue-300 ring-2 ring-blue-100" : "border-slate-200 hover:border-blue-200"
                 }`}
                 onClick={() => {
@@ -254,12 +254,12 @@ export function AdminUsersPage() {
 
         <section className="min-w-0 space-y-4">
           {!detail ? (
-            <Card className="border-slate-200 bg-white">
+            <Card className="border-slate-200 bg-card">
               <CardContent className="p-8 text-center text-sm text-slate-500">회원을 선택하세요.</CardContent>
             </Card>
           ) : (
             <>
-              <Card className="border-slate-200 bg-white">
+              <Card className="border-slate-200 bg-card">
                 <CardHeader>
                   <CardTitle className="flex items-center justify-between gap-3 text-lg font-bold text-slate-950">
                     <span>{detail.user.name}</span>
@@ -374,7 +374,7 @@ function Info({ label, value }: { label: string; value: string }) {
 
 function HistoryCard({ title, children }: { title: string; children: ReactNode }) {
   return (
-    <Card className="border-slate-200 bg-white">
+    <Card className="border-slate-200 bg-card">
       <CardHeader className="pb-3">
         <CardTitle className="text-base">{title}</CardTitle>
       </CardHeader>

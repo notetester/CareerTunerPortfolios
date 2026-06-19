@@ -15,7 +15,7 @@ export function AnalysisStructuredText({
   const isBlue = tone === "blue";
 
   return (
-    <div className={`rounded-lg border p-4 ${isBlue ? "border-blue-100 bg-blue-50" : "border-slate-200 bg-white"}`}>
+    <div className={`rounded-lg border p-4 ${isBlue ? "border-blue-100 bg-blue-50" : "border-slate-200 bg-card"}`}>
       <div className={`text-sm font-semibold ${isBlue ? "text-blue-950" : "text-slate-900"}`}>{title}</div>
       {parsed.kind === "list" ? (
         <ul className={`mt-2 space-y-1.5 text-sm leading-6 ${isBlue ? "text-blue-900" : "text-slate-600"}`}>

@@ -8,19 +8,23 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
-import com.careertuner.billing.domain.CreditProduct;
-import com.careertuner.billing.domain.CreditTransaction;
-import com.careertuner.billing.domain.Payment;
-import com.careertuner.billing.domain.SubscriptionPlan;
+import com.careertuner.billing.dto.AiFeatureBenefitPolicyResponse;
+import com.careertuner.billing.dto.BenefitTransactionResponse;
 import com.careertuner.billing.dto.CreditPurchaseRequest;
 import com.careertuner.billing.dto.MyBillingResponse;
+import com.careertuner.billing.dto.MyBenefitsResponse;
 import com.careertuner.billing.dto.SubscribeRequest;
+import com.careertuner.billing.dto.SubscriptionPlanResponse;
 import com.careertuner.billing.dto.UsageRow;
 import com.careertuner.billing.service.BillingService;
 import com.careertuner.common.security.AuthUser;
 import com.careertuner.common.web.ApiResponse;
+import com.careertuner.credit.domain.CreditProduct;
+import com.careertuner.credit.domain.CreditTransaction;
+import com.careertuner.payment.domain.Payment;
 
 import lombok.RequiredArgsConstructor;
 
@@ -32,8 +36,13 @@ public class BillingController {
     private final BillingService billingService;
 
     @GetMapping("/plans")
-    public ApiResponse<List<SubscriptionPlan>> plans() {
-        return ApiResponse.ok(billingService.getPlans());
+    public ApiResponse<List<SubscriptionPlanResponse>> plans() {
+        return ApiResponse.ok(billingService.listPlans());
+    }
+
+    @GetMapping("/feature-benefit-policies")
+    public ApiResponse<List<AiFeatureBenefitPolicyResponse>> featureBenefitPolicies() {
+        return ApiResponse.ok(billingService.listFeatureBenefitPolicies());
     }
 
     @GetMapping("/credit-products")
@@ -59,6 +68,17 @@ public class BillingController {
     @GetMapping("/credit-transactions")
     public ApiResponse<List<CreditTransaction>> creditTransactions(@AuthenticationPrincipal AuthUser authUser) {
         return ApiResponse.ok(billingService.getMyCreditTransactions(authUser.id()));
+    }
+
+    @GetMapping("/benefits/me")
+    public ApiResponse<MyBenefitsResponse> benefits(@AuthenticationPrincipal AuthUser authUser) {
+        return ApiResponse.ok(billingService.myBenefits(authUser.id()));
+    }
+
+    @GetMapping("/benefit-transactions/me")
+    public ApiResponse<List<BenefitTransactionResponse>> benefitTransactions(@AuthenticationPrincipal AuthUser authUser,
+                                                                             @RequestParam(required = false) Integer limit) {
+        return ApiResponse.ok(billingService.myBenefitTransactions(authUser.id(), limit == null ? 50 : limit));
     }
 
     @PostMapping("/subscribe")

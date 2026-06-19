@@ -23,7 +23,7 @@ export function CompanyPage() {
   return (
     <div className="min-h-screen bg-slate-50">
       <div className="mx-auto w-full max-w-[1100px] space-y-6 px-4 py-10 sm:px-6">
-        <section className="rounded-2xl border border-slate-200 bg-white p-6">
+        <section className="rounded-2xl border border-slate-200 bg-card p-6">
           <Badge className="bg-indigo-100 text-indigo-700">{section.badge}</Badge>
           <h1 className="mt-3 flex items-center gap-2 text-3xl font-black text-slate-900">
             <Icon className="size-7 text-indigo-600" />
@@ -35,7 +35,7 @@ export function CompanyPage() {
 
         <div className="grid gap-4 md:grid-cols-3">
           {["콘텐츠 관리", "공개 상태", "어드민 승인"].map((item) => (
-            <Card key={item} className="border border-slate-200 bg-white">
+            <Card key={item} className="border border-slate-200 bg-card">
               <CardHeader>
                 <CardTitle className="text-base">{item}</CardTitle>
               </CardHeader>

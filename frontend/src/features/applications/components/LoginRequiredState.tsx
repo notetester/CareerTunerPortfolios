@@ -16,7 +16,7 @@ export function LoginRequiredState({
 
   return (
     <div className="min-h-[calc(100vh-72px)] bg-slate-50 px-4 py-12">
-      <Card className="mx-auto max-w-md border-slate-200 bg-white shadow-sm">
+      <Card className="mx-auto max-w-md border-slate-200 bg-card shadow-sm">
         <CardContent className="flex flex-col items-center gap-4 p-8 text-center">
           <div className="flex size-12 items-center justify-center rounded-lg bg-blue-50 text-blue-700">
             <LogIn className="size-6" />

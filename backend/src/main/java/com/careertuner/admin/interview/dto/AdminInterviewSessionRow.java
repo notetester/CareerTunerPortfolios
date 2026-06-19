@@ -21,4 +21,5 @@ public class AdminInterviewSessionRow {
     private LocalDateTime createdAt;
     private Integer questionCount;
     private Integer answeredCount;
+    private String adminMemo;
 }

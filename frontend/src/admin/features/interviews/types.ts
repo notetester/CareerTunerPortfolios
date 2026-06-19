@@ -2,6 +2,7 @@ import type {
   InterviewAnswer,
   InterviewMode,
   InterviewQuestion,
+  MediaAnalysis,
 } from "@/features/interview/types/interview";
 
 export interface AdminInterviewSessionRow {
@@ -18,12 +19,29 @@ export interface AdminInterviewSessionRow {
   createdAt: string;
   questionCount: number;
   answeredCount: number;
+  adminMemo: string | null;
+}
+
+export interface AdminInterviewSessionPage {
+  items: AdminInterviewSessionRow[];
+  total: number;
+  page: number;
+  size: number;
+}
+
+export interface AdminInterviewSummary {
+  totalSessions: number;
+  avgScore: number | null;
+  aiFailures: number;
+  mediaCount: number;
 }
 
 export interface AdminInterviewSessionDetail {
   session: AdminInterviewSessionRow;
   questions: InterviewQuestion[];
   answers: InterviewAnswer[];
+  /** 음성/영상 면접(아바타·음성 모의) 분석 결과. */
+  mediaResults: MediaAnalysis[];
   /** interview_session.report JSON 원문 (InterviewReport 직렬화). */
   report: string | null;
 }

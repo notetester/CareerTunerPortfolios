@@ -42,11 +42,11 @@ export function MobileMoreSheet({ open, onClose }: { open: boolean; onClose: () 
   return (
     <>
       <div
-        className={`fixed inset-0 z-[60] bg-black/40 transition-opacity lg:hidden ${open ? "opacity-100" : "pointer-events-none opacity-0"}`}
+        className={`fixed inset-0 z-[60] bg-black/40 transition-opacity xl:hidden ${open ? "opacity-100" : "pointer-events-none opacity-0"}`}
         onClick={onClose}
       />
       <div
-        className={`fixed inset-x-0 bottom-0 z-[61] rounded-t-2xl bg-white shadow-2xl transition-transform lg:hidden ${open ? "translate-y-0" : "translate-y-full"}`}
+        className={`fixed inset-x-0 bottom-0 z-[61] rounded-t-2xl bg-card shadow-2xl transition-transform xl:hidden ${open ? "translate-y-0" : "translate-y-full"}`}
         style={{ paddingBottom: "calc(env(safe-area-inset-bottom) + 12px)" }}
         role="dialog"
         aria-modal="true"
@@ -65,7 +65,7 @@ export function MobileMoreSheet({ open, onClose }: { open: boolean; onClose: () 
             onClick={() => go("/settings?tab=account")}
             className="mx-4 mb-2 flex w-[calc(100%-2rem)] items-center gap-3 rounded-xl bg-slate-50 p-3 text-left"
           >
-            <div className="flex size-11 items-center justify-center rounded-full bg-gradient-to-br from-blue-500 to-indigo-500 text-base font-bold text-white">
+            <div className="flex size-11 items-center justify-center rounded-full bg-accent-soft text-base font-bold text-primary">
               {user?.name?.trim()?.charAt(0) ?? user?.email?.charAt(0).toUpperCase() ?? "U"}
             </div>
             <div className="min-w-0 flex-1">
@@ -80,7 +80,7 @@ export function MobileMoreSheet({ open, onClose }: { open: boolean; onClose: () 
           <div className="mx-4 mb-2">
             <button
               onClick={() => go("/login")}
-              className="w-full rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 py-3 text-sm font-semibold text-white"
+              className="w-full rounded-xl bg-primary py-3 text-sm font-semibold text-white"
             >
               로그인 / 회원가입
             </button>

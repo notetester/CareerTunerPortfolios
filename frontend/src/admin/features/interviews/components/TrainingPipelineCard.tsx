@@ -81,7 +81,7 @@ export function TrainingPipelineCard() {
   const canFineTune = sampleCount >= MIN_SAMPLES_FOR_FT;
 
   return (
-    <Card className="border-slate-200 bg-white">
+    <Card className="border-slate-200 bg-card">
       <CardHeader className="flex flex-row items-center justify-between">
         <CardTitle className="flex items-center gap-2 text-base font-bold text-slate-900">
           <Database className="size-4 text-indigo-600" /> 학습 파이프라인

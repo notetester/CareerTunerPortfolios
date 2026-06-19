@@ -1,5 +1,9 @@
 package com.careertuner.interview.ai.prompt;
 
+import java.util.List;
+
+import com.careertuner.admin.prompt.dto.AdminPromptView;
+
 /** 면접 도메인(D) AI 프롬프트 모음. 질문 생성 / 답변 평가 / 종합 리포트. */
 public final class InterviewPromptCatalog {
 
@@ -36,19 +40,18 @@ public final class InterviewPromptCatalog {
             [공통]
             평가는 답변 내용, 직무 적합성, 구체성, 논리성, 적정 분량/간결성을 본다.
             feedback 에는 부족한 점과 보완 방향을 2~3문장으로 한국어로 적는다. 만점에 가까우면 무엇이 좋았는지 적는다.
-            improvedAnswer 에는 위 기준에 맞는 모범 답변을 90초~2분 분량으로 간결하게 한국어로 작성한다.
-            (기준 모범답안이 주어졌고 지원자 답변이 그와 거의 같다면 improvedAnswer 는 기준 모범답안을 그대로 제시한다.)
+            점수(score)와 피드백(feedback)만 출력한다. 별도의 모범/개선 답변은 생성하지 않는다(모범답안은 따로 제공된다).
             """;
 
     public static final String MODEL_ANSWER_SYSTEM_PROMPT = """
             너는 모의면접을 돕는 코치다.
             주어진 회사·직무·질문에 대해 실제 면접에서 높은 평가를 받을 모범 답변을 작성한다.
-            실제 면접에서 말하는 분량·방식에 맞춘다:
-            - 길이: 약 90초~2분(한국어 5~7문장). 자기소개·단답형 질문은 더 짧게(3~5문장).
-            - 구조: 두괄식으로 핵심 결론부터. 경험·행동 질문은 STAR(상황-과제-행동-결과)로 간결히.
-            - 내용: 한 가지 핵심 사례에 집중하고 구체적 행동·수치를 넣는다. 여러 사례 나열·장황한 배경 설명은 금지.
+            실제 면접에서 말하는 방식에 맞추되, 핵심만 간결하게 쓴다:
+            - 길이: 한국어 3~5문장으로 짧게. 자기소개·단답형 질문은 2~3문장. 길게 늘이지 말 것.
+            - 구조: 두괄식으로 핵심 결론부터. 경험·행동 질문은 STAR(상황-과제-행동-결과)를 한 문장씩 압축해 담는다.
+            - 내용: 한 가지 핵심 사례에만 집중하고 구체적 행동·수치를 한두 개 넣는다. 여러 사례 나열·장황한 배경 설명·반복 금지.
             - 톤: 전문적이고 자신감 있게, 군더더기 없이.
-            한국어로 실제 말하듯 자연스럽게 작성한다.
+            한국어로 실제 말하듯 자연스럽게, 그러나 간결하게 작성한다.
             """;
 
     public static final String FOLLOWUP_SYSTEM_PROMPT = """
@@ -56,6 +59,15 @@ public final class InterviewPromptCatalog {
             원 질문과 지원자의 답변을 보고, 답변의 빈틈·근거 부족·추가로 검증할 포인트를 파고드는 후속 질문을 만든다.
             각 꼬리 질문은 원 질문/답변과 자연스럽게 이어지고, 한 문장으로 명확하게 묻는다.
             답변을 평가하거나 첨삭하지 말고 꼬리 질문만 한국어로 생성한다.
+            """;
+
+    /** 압박 면접 전용 반박성 꼬리 질문. 답변의 약점을 날카롭게 파고든다(인신공격 X, 1회만 깊게). */
+    public static final String PRESSURE_FOLLOWUP_SYSTEM_PROMPT = """
+            너는 압박 면접을 진행하는 면접관이다.
+            지원자의 답변을 그대로 받아들이지 말고, 약점·근거 부족·모순·과장을 짚어 반박하는 후속 질문을 던진다.
+            전제를 흔들거나("정말 그게 최선이었나요?"), 구체적 근거·수치를 요구하거나, 불리한 상황을 가정해 재질문한다.
+            단 인신공격이 아니라 답변 내용에 대한 압박이어야 하고, 한 문장으로 명확하게 묻는다.
+            국비 주니어 수준에서 한 번만 깊게 찌르고 멈춘다. 평가·첨삭은 하지 말고 반박 질문만 한국어로 생성한다.
             """;
 
     public static final String CRITIC_SYSTEM_PROMPT = """
@@ -94,6 +106,33 @@ public final class InterviewPromptCatalog {
             categories 는 평가 항목별 점수다(예: 답변 내용, 직무 적합성, 구체성, 논리성, 표현력, 자신감, 태도, 시간 관리).
             summaryFeedback 은 전체 면접에 대한 핵심 피드백을 3개 내외의 한국어 문장 목록으로 작성한다.
             """;
+
+    /** 관리자 운영 화면용 — 면접 도메인 프롬프트 9종을 읽기전용으로 노출한다. */
+    public static List<AdminPromptView> views() {
+        return List.of(
+                prompt("interview-question", "질문 생성",
+                        "지원 건의 회사·직무·공고로 면접 모드에 맞는 예상 질문을 생성한다.", QUESTION_SYSTEM_PROMPT),
+                prompt("interview-evaluation", "답변 평가",
+                        "기준 모범답안과 비교해 답변을 0~100점으로 채점하고 피드백을 단다.", EVALUATION_SYSTEM_PROMPT),
+                prompt("interview-model-answer", "모범답안 생성",
+                        "질문에 대해 실제 면접 기준의 간결한 모범 답변을 작성한다.", MODEL_ANSWER_SYSTEM_PROMPT),
+                prompt("interview-followup", "꼬리질문 생성",
+                        "답변의 빈틈·근거 부족을 파고드는 후속 질문을 만든다.", FOLLOWUP_SYSTEM_PROMPT),
+                prompt("interview-pressure-followup", "압박 반박 질문",
+                        "압박 면접에서 답변의 약점·모순을 짚어 반박하는 질문을 던진다.", PRESSURE_FOLLOWUP_SYSTEM_PROMPT),
+                prompt("interview-critic", "채점 검증(Critic)",
+                        "원 채점이 공정·일관적인지 적대적으로 검증하고 점수를 조정한다.", CRITIC_SYSTEM_PROMPT),
+                prompt("interview-judge", "독립 채점(Judge)",
+                        "질문과 답변만 보고 독립적으로 점수를 매긴다(채점 일관성 측정용).", JUDGE_SYSTEM_PROMPT),
+                prompt("interview-planner", "플래너(Planner)",
+                        "자율 평가 에이전트가 다음에 실행할 액션을 결정한다.", PLANNER_SYSTEM_PROMPT),
+                prompt("interview-report", "리포트 생성",
+                        "면접 전체를 종합 평가해 총점·항목별 점수·요약 피드백을 만든다.", REPORT_SYSTEM_PROMPT));
+    }
+
+    private static AdminPromptView prompt(String feature, String name, String purpose, String systemPrompt) {
+        return new AdminPromptView(feature, name, VERSION, purpose, systemPrompt, "");
+    }
 
     private InterviewPromptCatalog() {
     }

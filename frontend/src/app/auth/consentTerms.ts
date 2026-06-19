@@ -1,10 +1,6 @@
 /**
  * 동의 토글에 표시하는 약관 요약 메타(설정·소셜 가입 공용).
- * 여기 body 는 화면 표시용 요약이며, 구속력 있는 전문은 /legal 페이지가 기준이다.
- *
- * 주의: 이 파일은 dev 의 Settings.tsx·SocialConsent.tsx 가 참조하는데 누락되어 있어
- * (병렬 PR 에서 import 만 추가되고 파일이 빠짐) 빌드를 막고 있었다. 사용처 시그니처에 맞춰 복원했으며,
- * 약관 문구는 동의 흐름 담당이 정식 카피로 보완하면 된다.
+ * 여기 body는 화면 표시용 요약이며, 구속력 있는 전문은 /legal 페이지가 기준이다.
  */
 export interface ConsentTerm {
   code: "TERMS" | "PRIVACY" | "AI_DATA" | "MARKETING";
@@ -19,55 +15,55 @@ export const consentTerms: ConsentTerm[] = [
   {
     code: "TERMS",
     title: "서비스 이용약관",
-    version: "v1.0",
+    version: "v2026.06",
     required: true,
-    effectiveDate: "2026-01-01",
+    effectiveDate: "2026-06-01",
     body: [
-      "CareerTuner 서비스 이용에 관한 기본 권리·의무를 정합니다.",
-      "계정, 콘텐츠, 결제·크레딧 이용 조건을 포함합니다.",
-      "전문은 이용약관(/legal/terms)에서 확인할 수 있습니다.",
+      "CareerTuner는 지원 건 기반의 취업 준비, 프로필 관리, AI 분석 보조 기능을 제공합니다.",
+      "사용자는 본인의 이력, 자기소개, 지원 정보를 정확하게 입력해야 하며 타인의 정보를 무단으로 등록할 수 없습니다.",
+      "AI 분석 결과는 취업 준비를 돕는 참고 자료이며 최종 지원 판단과 제출 책임은 사용자에게 있습니다.",
     ],
   },
   {
     code: "PRIVACY",
     title: "개인정보 처리방침",
-    version: "v1.0",
+    version: "v2026.06",
     required: true,
-    effectiveDate: "2026-01-01",
+    effectiveDate: "2026-06-01",
     body: [
-      "수집하는 개인정보 항목과 이용 목적, 보관 기간을 안내합니다.",
-      "프로필·지원 건·면접 데이터의 처리 방식을 포함합니다.",
-      "전문은 개인정보 처리방침(/legal/privacy)에서 확인할 수 있습니다.",
+      "회원 식별, 로그인, 지원 건 관리, 프로필 분석을 위해 이메일, 이름, 프로필, 이력서 원문 등을 처리합니다.",
+      "개인정보는 서비스 제공과 보안 감사 목적에 필요한 범위에서만 사용하며, 관련 법령과 내부 보관 기준에 따라 관리합니다.",
+      "사용자는 개인정보 열람, 정정, 삭제, 처리 제한을 요청할 수 있습니다.",
     ],
   },
   {
     code: "AI_DATA",
-    title: "AI 데이터 활용 동의",
-    version: "v1.0",
+    title: "AI 데이터 사용 동의",
+    version: "v2026.06",
     required: false,
-    effectiveDate: "2026-01-01",
+    effectiveDate: "2026-06-01",
     body: [
-      "프로필 요약·기술 추출·완성도 진단 등 AI 분석에 데이터를 활용합니다.",
-      "동의하지 않으면 일부 AI 기능이 제한되며, 저장 자체는 가능합니다.",
-      "철회는 삭제가 아니라 감사 가능한 이력으로 남깁니다.",
+      "프로필 요약, 직무 역량 추출, 완성도 진단 등 AI 기능 제공을 위해 사용자가 입력한 프로필과 이력 정보를 분석합니다.",
+      "동의를 철회하면 프로필 저장은 가능하지만 AI 요약, 역량 추출, 완성도 진단 기능은 제한됩니다.",
+      "AI 결과는 자동 생성된 참고 정보이므로 사용자가 확인한 뒤 활용해야 합니다.",
     ],
   },
   {
     code: "MARKETING",
-    title: "마케팅 정보 수신",
-    version: "v1.0",
+    title: "마케팅 정보 수신 동의",
+    version: "v2026.06",
     required: false,
-    effectiveDate: "2026-01-01",
+    effectiveDate: "2026-06-01",
     body: [
-      "신규 기능·이벤트·혜택 안내를 이메일/푸시로 받습니다.",
-      "언제든지 설정에서 수신을 해제할 수 있습니다.",
+      "이벤트, 신규 기능, 취업 준비 콘텐츠 안내를 이메일 또는 서비스 알림으로 받을 수 있습니다.",
+      "마케팅 수신 동의는 선택 사항이며, 동의하지 않아도 기본 서비스 이용은 가능합니다.",
+      "사용자는 언제든지 설정 화면에서 수신 동의를 변경할 수 있습니다.",
     ],
   },
 ];
 
 export function findConsentTerm(code: ConsentTerm["code"]): ConsentTerm {
-  const found = consentTerms.find((t) => t.code === code);
+  const found = consentTerms.find((term) => term.code === code);
   if (found) return found;
-  // 알 수 없는 코드는 빈 메타로 안전 폴백(렌더 깨짐 방지).
   return { code, title: code, version: "", required: false, effectiveDate: "", body: [] };
 }

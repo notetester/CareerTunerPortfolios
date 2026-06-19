@@ -19,6 +19,7 @@ import type {
   GenerateFollowUpsRequest,
   GenerateQuestionsRequest,
   InterviewAgentStep,
+  AvatarScoreServerResult,
   InterviewAnswer,
   InterviewProgress,
   InterviewQuestion,
@@ -28,8 +29,12 @@ import type {
   MediaCapabilities,
   RealtimeSession,
   SaveMediaAnalysisRequest,
+  SessionPageResponse,
+  SessionReview,
   SubmitAnswerRequest,
-  VoiceAnalysisResult,
+  TranscriptLine,
+  TranscribeResult,
+  VoiceScoreServerResult,
 } from "../types/interview";
 
 // 백엔드 계약: /api/interview/** , /api/file/**
@@ -43,11 +48,34 @@ import type {
 const mockDelay = <T>(value: T, ms = 800): Promise<T> =>
   new Promise((resolve) => setTimeout(() => resolve(value), ms));
 
-/** 내 면접 세션 목록 (최근 기록). */
-export function listInterviewSessions(): Promise<InterviewSession[]> {
-  if (isDataMockActive()) return Promise.resolve([dummySession]);
-  return api<InterviewSession[]>("/interview/sessions", { method: "GET" });
+/** 내 면접 세션 목록 (최근 기록). 더보기 누적용 페이지 응답. */
+export function listInterviewSessions(page = 0, size = 10): Promise<SessionPageResponse> {
+  if (isDataMockActive())
+    return Promise.resolve({ sessions: [dummySession], total: 1, page: 0, size, hasNext: false });
+  return api<SessionPageResponse>(`/interview/sessions?page=${page}&size=${size}`, { method: "GET" });
 }
+
+/** 면접 기록 삭제 (soft delete). */
+export function deleteInterviewSession(sessionId: number): Promise<void> {
+  if (isDataMockActive()) return Promise.resolve();
+  return api<void>(`/interview/sessions/${sessionId}`, { method: "DELETE" });
+}
+
+/** 세션 복원(=복습) 시각 기록. */
+export function markSessionResumed(sessionId: number): Promise<void> {
+  if (isDataMockActive()) return Promise.resolve();
+  return api<void>(`/interview/sessions/${sessionId}/resume`, { method: "POST" });
+}
+
+/** 음성 모의면접 트랜스크립트 → 질문별 내용 채점(interview_answer 저장). 채점한 문항 수 반환. */
+export function scoreVoiceTranscript(sessionId: number, transcript: TranscriptLine[]): Promise<number> {
+  if (isDataMockActive()) return Promise.resolve(transcript.some((l) => l.role === "user") ? 3 : 0);
+  return api<number>(`/interview/sessions/${sessionId}/score-voice`, {
+    method: "POST",
+    body: JSON.stringify({ transcript }),
+  });
+}
+
 
 /** 면접 세션 생성 (지원 건 + 모드 선택). */
 export function createInterviewSession(
@@ -142,26 +170,90 @@ export function getInterviewReport(sessionId: number): Promise<InterviewReport> 
   return api<InterviewReport>(`/interview/sessions/${sessionId}/report`, { method: "GET" });
 }
 
+/** 지난 세션 복기: 질문 + 모범답안 + 내 최신 답변/점수 (최근 면접 기록에서 들어가 보기). */
+export function getSessionReview(sessionId: number): Promise<SessionReview> {
+  if (isDataMockActive()) {
+    return Promise.resolve({
+      sessionId,
+      mode: dummySession.mode,
+      items: dummyQuestions.map((q) => ({
+        questionId: q.id,
+        question: q.question,
+        questionType: q.questionType ?? "EXPECTED",
+        modelAnswer: dummyModelAnswer,
+        answerText: null,
+        score: null,
+        feedback: null,
+        improvedAnswer: null,
+      })),
+    });
+  }
+  return api<SessionReview>(`/interview/sessions/${sessionId}/review`, { method: "GET" });
+}
+
 // ───── 음성/아바타 면접 분석 : /api/interview/media·sessions/** ─────
 
-/** 외부 키(Inworld/HeyGen) 보유 여부 — 기능 활성/비활성 사전 판단용. */
+/** 외부 키(HeyGen) 보유 여부 — 기능 활성/비활성 사전 판단용. */
 export function getMediaCapabilities(): Promise<MediaCapabilities> {
   if (isDataMockActive()) return Promise.resolve(dummyCapabilities);
   return api<MediaCapabilities>("/interview/media/capabilities", { method: "GET" });
 }
 
 /**
- * 음성 감정 분석 (Inworld voice profiling, 키는 서버측).
- * audioBase64 는 16kHz mono PCM16(LINEAR16). 오디오는 분석 후 버려진다.
+ * 음성 답변 → 자체 추론 서버 점수 (ADR-006).
+ * audioBase64 는 녹음 원본(webm 등). 글자수·군말수·응답지연은 프런트가 계산해 함께 보낸다.
+ * 원본 음성은 서버에서 점수 산출 후 버려진다(전송 동의 필요).
  */
-export function analyzeVoice(
+export function scoreVoiceServer(
+  sessionId: number,
+  payload: {
+    audioBase64: string;
+    audioFormat?: string;
+    transcriptChars?: number;
+    fillerCount?: number;
+    latencySec?: number;
+  },
+): Promise<VoiceScoreServerResult> {
+  return api<VoiceScoreServerResult>(`/interview/sessions/${sessionId}/voice-score`, {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+/**
+ * 아바타 화상면접 → 자체 추론 서버 음성+영상 점수 (late fusion, ADR-006/007).
+ * videoBase64 는 녹화 원본(webm 등). serve 가 webm 1개에서 음성·영상 피처를 함께 뽑아 결합한다.
+ * 원본 영상은 서버에서 점수 산출 후 버려진다(전송 동의 필요).
+ */
+export function scoreAvatarServer(
+  sessionId: number,
+  payload: {
+    videoBase64: string;
+    videoFormat?: string;
+    transcriptChars?: number;
+    fillerCount?: number;
+    latencySec?: number;
+  },
+): Promise<AvatarScoreServerResult> {
+  return api<AvatarScoreServerResult>(`/interview/sessions/${sessionId}/avatar-score`, {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+/**
+ * 음성 답변 → 자체 STT 전사 (B 베이직, faster-whisper, API 0).
+ * audioBase64 는 녹음 원본(webm 등). 원본 음성은 전사 후 버려진다.
+ */
+export function transcribeVoice(
   sessionId: number,
   audioBase64: string,
-  sampleRateHertz = 16000,
-): Promise<VoiceAnalysisResult> {
-  return api<VoiceAnalysisResult>(`/interview/sessions/${sessionId}/voice-analysis`, {
+  audioFormat = "webm",
+  language = "ko",
+): Promise<TranscribeResult> {
+  return api<TranscribeResult>(`/interview/sessions/${sessionId}/voice-transcribe`, {
     method: "POST",
-    body: JSON.stringify({ audioBase64, sampleRateHertz, language: "ko" }),
+    body: JSON.stringify({ audioBase64, audioFormat, language }),
   });
 }
 
