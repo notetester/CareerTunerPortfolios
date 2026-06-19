@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.careertuner.admin.log.mapper.AdminLogMapper">
+
+    <resultMap id="aiUsageRow" type="com.careertuner.admin.log.dto.AdminAiUsageLogEntry">
+        <id     property="id"           column="id"/>
+        <result property="userId"       column="user_id"/>
+        <result property="userEmail"    column="user_email"/>
+        <result property="featureType"  column="feature_type"/>
+        <result property="status"       column="status"/>
+        <result property="model"        column="model"/>
+        <result property="tokenUsage"   column="token_usage"/>
+        <result property="creditUsed"   column="credit_used"/>
+        <result property="errorMessage" column="error_message"/>
+        <result property="createdAt"    column="created_at"/>
+    </resultMap>
+
+    <select id="findRecentAiUsage" resultMap="aiUsageRow">
+        SELECT a.id, a.user_id, a.feature_type, a.status, a.model,
+               a.token_usage, a.credit_used, a.error_message, a.created_at,
+               u.email AS user_email
+          FROM ai_usage_log a
+          LEFT JOIN users u ON u.id = a.user_id
+        <where>
+            <if test="status != null and status != ''">
+                a.status = #{status}
+            </if>
+        </where>
+         ORDER BY a.id DESC
+         LIMIT #{limit}
+    </select>
+
+</mapper>

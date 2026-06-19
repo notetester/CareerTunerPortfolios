@@ -53,7 +53,7 @@ function SkillList({ title, value }: { title: string; value: string | null }) {
       {items.length > 0 ? (
         <div className="mt-2 flex flex-wrap gap-1.5">
           {items.map((item) => (
-            <span key={item} className="rounded-full bg-white px-2.5 py-1 text-xs font-semibold text-slate-700 shadow-sm">
+            <span key={item} className="rounded-full bg-card px-2.5 py-1 text-xs font-semibold text-slate-700 shadow-sm">
               {item}
             </span>
           ))}
@@ -209,7 +209,7 @@ export function JobAnalysisPanel({
   };
 
   return (
-    <Card className="border-slate-200 bg-white">
+    <Card className="border-slate-200 bg-card">
       <CardHeader className="gap-3">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
           <div>
@@ -285,7 +285,7 @@ export function JobAnalysisPanel({
               type="button"
               size="sm"
               variant="outline"
-              className="border-amber-300 bg-white text-amber-800 hover:bg-amber-100"
+              className="border-amber-300 bg-card text-amber-800 hover:bg-amber-100"
               disabled={loading || generating || reviewSaving}
               onClick={() => void handleGenerate()}
             >
@@ -356,14 +356,14 @@ export function JobAnalysisPanel({
                   <Input value={form.difficulty} onChange={(event) => setField("difficulty", event.target.value)} placeholder="EASY/NORMAL/HARD" />
                 </div>
                 <div className="grid gap-3 md:grid-cols-2">
-                  <Textarea value={form.requiredSkills} onChange={(event) => setField("requiredSkills", event.target.value)} className="min-h-24 bg-white" placeholder={"필수 역량을 한 줄에 하나씩 입력"} />
-                  <Textarea value={form.preferredSkills} onChange={(event) => setField("preferredSkills", event.target.value)} className="min-h-24 bg-white" placeholder={"우대 역량을 한 줄에 하나씩 입력"} />
+                  <Textarea value={form.requiredSkills} onChange={(event) => setField("requiredSkills", event.target.value)} className="min-h-24 bg-card" placeholder={"필수 역량을 한 줄에 하나씩 입력"} />
+                  <Textarea value={form.preferredSkills} onChange={(event) => setField("preferredSkills", event.target.value)} className="min-h-24 bg-card" placeholder={"우대 역량을 한 줄에 하나씩 입력"} />
                 </div>
                 <div className="grid gap-3 md:grid-cols-2">
-                  <Textarea value={form.duties} onChange={(event) => setField("duties", event.target.value)} className="min-h-28 bg-white" placeholder="주요 업무" />
-                  <Textarea value={form.qualifications} onChange={(event) => setField("qualifications", event.target.value)} className="min-h-28 bg-white" placeholder="자격 요건" />
+                  <Textarea value={form.duties} onChange={(event) => setField("duties", event.target.value)} className="min-h-28 bg-card" placeholder="주요 업무" />
+                  <Textarea value={form.qualifications} onChange={(event) => setField("qualifications", event.target.value)} className="min-h-28 bg-card" placeholder="자격 요건" />
                 </div>
-                <Textarea value={form.summary} onChange={(event) => setField("summary", event.target.value)} className="min-h-24 bg-white" placeholder="요약" />
+                <Textarea value={form.summary} onChange={(event) => setField("summary", event.target.value)} className="min-h-24 bg-card" placeholder="요약" />
                 <div className="grid gap-3 md:grid-cols-2">
                   <StructuredRowsEditor
                     title="근거"
@@ -390,7 +390,7 @@ export function JobAnalysisPanel({
                     {reviewError}
                   </div>
                 )}
-                <Button type="button" className="bg-slate-900 text-white hover:bg-slate-800" disabled={generating || reviewSaving} onClick={() => void handleReview()}>
+                <Button type="button" className="bg-foreground text-background hover:bg-foreground/90" disabled={generating || reviewSaving} onClick={() => void handleReview()}>
                   {reviewSaving && <Loader2 className="size-4 animate-spin" />}
                   수정 내용 저장 및 확정
                 </Button>
@@ -413,7 +413,7 @@ export function JobAnalysisPanel({
         )}
 
         {history.length > 0 && (
-          <div className="rounded-lg border border-slate-200 bg-white">
+          <div className="rounded-lg border border-slate-200 bg-card">
             <div className="border-b border-slate-100 px-3 py-2 text-xs font-semibold text-slate-500">분석 이력</div>
             <div className="divide-y divide-slate-100">
               {history.map((item, index) => (

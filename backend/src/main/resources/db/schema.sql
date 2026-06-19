@@ -488,6 +488,9 @@ CREATE TABLE IF NOT EXISTS interview_session (
     total_score         INT NULL,
     report              JSON NULL,
     created_at          DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    deleted_at          DATETIME NULL,                      -- soft delete: 사용자가 기록 삭제한 시각. NULL이면 활성
+    last_resumed_at     DATETIME NULL,                      -- 복원(=복습)한 마지막 시각. 최근 기록 정렬·표시용
+    admin_memo          TEXT NULL,                          -- 관리자 운영 메모(운영자 참고용, 사용자 미노출)
     PRIMARY KEY (id),
     KEY idx_interview_session_case (application_case_id),
     CONSTRAINT fk_interview_session_case FOREIGN KEY (application_case_id) REFERENCES application_case (id) ON DELETE CASCADE
@@ -591,31 +594,16 @@ CREATE TABLE IF NOT EXISTS file_asset (
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci;
 
 -- =====================================================================
---  커뮤니티 / 결제 / AI 사용량
+--  결제 / AI 사용량
 -- =====================================================================
-CREATE TABLE IF NOT EXISTS community_post (
-    id             BIGINT NOT NULL AUTO_INCREMENT,
-    user_id        BIGINT NOT NULL,
-    category       VARCHAR(30) NOT NULL,                    -- JOB_REVIEW/INTERVIEW_REVIEW/QNA/CERT/PORTFOLIO/FREE
-    title          VARCHAR(255) NOT NULL,
-    content        MEDIUMTEXT NOT NULL,
-    company_name   VARCHAR(255) NULL,
-    job_title      VARCHAR(255) NULL,
-    interview_type VARCHAR(30) NULL,                        -- FIRST/SECOND/EXECUTIVE/TECH
-    difficulty     VARCHAR(20) NULL,
-    is_anonymous   TINYINT(1) NOT NULL DEFAULT 1,
-    view_count     INT NOT NULL DEFAULT 0,
-    created_at     DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    updated_at     DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    PRIMARY KEY (id),
-    KEY idx_community_post_user (user_id),
-    KEY idx_community_post_category (category),
-    CONSTRAINT fk_community_post_user FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
-) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci;
-
 CREATE TABLE IF NOT EXISTS payment (
     id            BIGINT NOT NULL AUTO_INCREMENT,
     user_id       BIGINT NOT NULL,
+    provider      VARCHAR(20) NULL,
+    product_type  VARCHAR(30) NOT NULL DEFAULT 'CREDIT',
+    product_code  VARCHAR(50) NULL,
+    order_id      VARCHAR(100) NULL,
+    payment_key   VARCHAR(200) NULL,
     amount        INT NOT NULL,
     plan          VARCHAR(20) NULL,
     credit_amount INT NULL,
@@ -623,15 +611,168 @@ CREATE TABLE IF NOT EXISTS payment (
     paid_at       DATETIME NULL,
     created_at    DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (id),
+    UNIQUE KEY uk_payment_order_id (order_id),
+    UNIQUE KEY uk_payment_payment_key (payment_key),
     KEY idx_payment_user (user_id),
     CONSTRAINT fk_payment_user FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci;
+
+CREATE TABLE IF NOT EXISTS subscription_plan (
+    id            BIGINT NOT NULL AUTO_INCREMENT,
+    code          VARCHAR(30) NOT NULL,
+    name          VARCHAR(100) NOT NULL,
+    monthly_price INT NOT NULL DEFAULT 0,
+    yearly_price  INT NULL,
+    description   VARCHAR(500) NULL,
+    active        TINYINT(1) NOT NULL DEFAULT 1,
+    sort_order    INT NOT NULL DEFAULT 0,
+    created_at    DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at    DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    PRIMARY KEY (id),
+    UNIQUE KEY uk_subscription_plan_code (code)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci;
+
+CREATE TABLE IF NOT EXISTS credit_product (
+    id            BIGINT NOT NULL AUTO_INCREMENT,
+    code          VARCHAR(50) NOT NULL,
+    name          VARCHAR(100) NOT NULL,
+    price         INT NOT NULL,
+    credit_amount INT NOT NULL,
+    description   VARCHAR(500) NULL,
+    badge         VARCHAR(50) NULL,
+    enabled       TINYINT(1) NOT NULL DEFAULT 1,
+    sort_order    INT NOT NULL DEFAULT 0,
+    created_at    DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at    DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    PRIMARY KEY (id),
+    UNIQUE KEY uk_credit_product_code (code)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci;
+
+CREATE TABLE IF NOT EXISTS benefit_catalog (
+    code        VARCHAR(50) NOT NULL,
+    name        VARCHAR(100) NOT NULL,
+    description VARCHAR(500) NULL,
+    active      TINYINT(1) NOT NULL DEFAULT 1,
+    sort_order  INT NOT NULL DEFAULT 0,
+    created_at  DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at  DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    PRIMARY KEY (code)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci;
+
+CREATE TABLE IF NOT EXISTS billing_product (
+    id           BIGINT NOT NULL AUTO_INCREMENT,
+    code         VARCHAR(50) NOT NULL,
+    product_type VARCHAR(30) NOT NULL,
+    name         VARCHAR(100) NOT NULL,
+    price        INT NOT NULL,
+    description  VARCHAR(500) NULL,
+    badge        VARCHAR(50) NULL,
+    active       TINYINT(1) NOT NULL DEFAULT 1,
+    sort_order   INT NOT NULL DEFAULT 0,
+    created_at   DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at   DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    PRIMARY KEY (id),
+    UNIQUE KEY uk_billing_product_code (code),
+    KEY idx_billing_product_type (product_type, active)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci;
+
+CREATE TABLE IF NOT EXISTS billing_product_benefit (
+    id            BIGINT NOT NULL AUTO_INCREMENT,
+    product_code  VARCHAR(50) NOT NULL,
+    benefit_code  VARCHAR(50) NOT NULL,
+    quantity      INT NOT NULL,
+    validity_days INT NOT NULL DEFAULT 30,
+    sort_order    INT NOT NULL DEFAULT 0,
+    created_at    DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at    DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    PRIMARY KEY (id),
+    UNIQUE KEY uk_billing_product_benefit (product_code, benefit_code),
+    KEY idx_billing_product_benefit_code (benefit_code),
+    CONSTRAINT fk_billing_product_benefit_product FOREIGN KEY (product_code) REFERENCES billing_product (code) ON DELETE CASCADE,
+    CONSTRAINT fk_billing_product_benefit_catalog FOREIGN KEY (benefit_code) REFERENCES benefit_catalog (code)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci;
+
+CREATE TABLE IF NOT EXISTS subscription_benefit_policy (
+    id             BIGINT NOT NULL AUTO_INCREMENT,
+    plan_code      VARCHAR(30) NOT NULL,
+    benefit_code   VARCHAR(50) NOT NULL,
+    benefit_name   VARCHAR(100) NOT NULL,
+    benefit_type   VARCHAR(30) NOT NULL DEFAULT 'TICKET',
+    quantity       INT NOT NULL DEFAULT 0,
+    reset_cycle    VARCHAR(20) NOT NULL DEFAULT 'MONTHLY',
+    overage_policy VARCHAR(20) NOT NULL DEFAULT 'BLOCK',
+    credit_cost    INT NOT NULL DEFAULT 0,
+    active         TINYINT(1) NOT NULL DEFAULT 1,
+    sort_order     INT NOT NULL DEFAULT 0,
+    created_at     DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at     DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    PRIMARY KEY (id),
+    UNIQUE KEY uk_subscription_benefit_policy (plan_code, benefit_code),
+    KEY idx_subscription_benefit_policy_plan (plan_code),
+    KEY idx_subscription_benefit_policy_benefit (benefit_code),
+    CONSTRAINT fk_subscription_benefit_policy_plan FOREIGN KEY (plan_code) REFERENCES subscription_plan (code) ON DELETE CASCADE
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci;
+
+CREATE TABLE IF NOT EXISTS user_subscription (
+    id                   BIGINT NOT NULL AUTO_INCREMENT,
+    user_id              BIGINT NOT NULL,
+    plan_code            VARCHAR(30) NOT NULL,
+    status               VARCHAR(20) NOT NULL DEFAULT 'ACTIVE',
+    started_at           DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    current_period_start DATETIME NOT NULL,
+    current_period_end   DATETIME NOT NULL,
+    canceled_at          DATETIME NULL,
+    created_at           DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at           DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    PRIMARY KEY (id),
+    KEY idx_user_subscription_user_status (user_id, status),
+    KEY idx_user_subscription_plan (plan_code),
+    CONSTRAINT fk_user_subscription_user FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE,
+    CONSTRAINT fk_user_subscription_plan FOREIGN KEY (plan_code) REFERENCES subscription_plan (code)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci;
+
+CREATE TABLE IF NOT EXISTS user_benefit_balance (
+    id                 BIGINT NOT NULL AUTO_INCREMENT,
+    user_id            BIGINT NOT NULL,
+    benefit_code       VARCHAR(50) NOT NULL,
+    period_start       DATETIME NOT NULL,
+    period_end         DATETIME NOT NULL,
+    granted_quantity   INT NOT NULL DEFAULT 0,
+    used_quantity      INT NOT NULL DEFAULT 0,
+    remaining_quantity INT NOT NULL DEFAULT 0,
+    source_plan_code   VARCHAR(30) NULL,
+    source_type        VARCHAR(30) NOT NULL DEFAULT 'PLAN',
+    source_code        VARCHAR(50) NULL,
+    created_at         DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at         DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    PRIMARY KEY (id),
+    UNIQUE KEY uk_user_benefit_balance_period (user_id, benefit_code, period_start),
+    KEY idx_user_benefit_balance_user_period (user_id, period_start, period_end),
+    KEY idx_user_benefit_balance_benefit (benefit_code),
+    CONSTRAINT fk_user_benefit_balance_user FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE,
+    CONSTRAINT fk_user_benefit_balance_plan FOREIGN KEY (source_plan_code) REFERENCES subscription_plan (code)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci;
+
+CREATE TABLE IF NOT EXISTS ai_feature_benefit_policy (
+    id                  BIGINT NOT NULL AUTO_INCREMENT,
+    feature_type        VARCHAR(80) NOT NULL,
+    benefit_code        VARCHAR(50) NOT NULL,
+    charge_unit         VARCHAR(30) NOT NULL,
+    included_in_ticket  TINYINT(1) NOT NULL DEFAULT 1,
+    default_credit_cost INT NOT NULL DEFAULT 0,
+    active              TINYINT(1) NOT NULL DEFAULT 1,
+    created_at          DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at          DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    PRIMARY KEY (id),
+    UNIQUE KEY uk_ai_feature_benefit_policy_feature (feature_type),
+    KEY idx_ai_feature_benefit_policy_benefit (benefit_code)
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci;
 
 CREATE TABLE IF NOT EXISTS ai_usage_log (
     id                  BIGINT NOT NULL AUTO_INCREMENT,
     user_id             BIGINT NOT NULL,
     application_case_id BIGINT NULL,
-    feature_type        VARCHAR(40) NOT NULL,               -- JOB_ANALYSIS/COMPANY_RESEARCH/QUESTION_GEN/INTERVIEW/...
+    feature_type        VARCHAR(80) NOT NULL,               -- JOB_ANALYSIS/COMPANY_RESEARCH/QUESTION_GEN/INTERVIEW/...
     status              VARCHAR(20) NOT NULL DEFAULT 'SUCCESS',
     model               VARCHAR(80) NULL,
     input_tokens        INT NULL,
@@ -648,7 +789,278 @@ CREATE TABLE IF NOT EXISTS ai_usage_log (
     CONSTRAINT fk_ai_usage_case FOREIGN KEY (application_case_id) REFERENCES application_case (id) ON DELETE SET NULL
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci;
 
--- 커뮤니티 테이블 변경 (06-09)
+CREATE TABLE IF NOT EXISTS benefit_transaction (
+    id               BIGINT NOT NULL AUTO_INCREMENT,
+    user_id          BIGINT NOT NULL,
+    benefit_code     VARCHAR(50) NOT NULL,
+    transaction_type VARCHAR(20) NOT NULL,
+    amount           INT NOT NULL,
+    balance_after    INT NOT NULL,
+    ref_type         VARCHAR(40) NULL,
+    ref_id           BIGINT NULL,
+    ai_usage_log_id  BIGINT NULL,
+    reason           VARCHAR(255) NULL,
+    created_at       DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (id),
+    UNIQUE KEY uq_benefit_consume_ref (benefit_code, transaction_type, ref_type, ref_id),
+    KEY idx_benefit_transaction_user (user_id),
+    KEY idx_benefit_transaction_benefit (benefit_code),
+    KEY idx_benefit_transaction_ai_usage (ai_usage_log_id),
+    CONSTRAINT fk_benefit_transaction_user FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE,
+    CONSTRAINT fk_benefit_transaction_ai_usage FOREIGN KEY (ai_usage_log_id) REFERENCES ai_usage_log (id) ON DELETE SET NULL
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci;
+
+INSERT IGNORE INTO subscription_plan
+    (code, name, monthly_price, yearly_price, description, active, sort_order)
+VALUES
+    ('FREE', '무료', 0, 0, '기본 체험 플랜', 1, 10),
+    ('BASIC', '베이직', 9900, 7900, '가벼운 취업 준비 플랜', 1, 20),
+    ('PRO', '프로', 29000, 23000, '실전 취업 준비 플랜', 1, 30),
+    ('PREMIUM', '프리미엄', 49000, 39000, '고급 면접 패키지 플랜', 1, 40);
+
+INSERT INTO credit_product
+    (code, name, price, credit_amount, description, badge, enabled, sort_order)
+VALUES
+    ('CREDIT_10', '크레딧 10개', 4900, 10, 'AI 기능 추가 이용용 크레딧', NULL, 1, 10),
+    ('CREDIT_30', '크레딧 30개', 12900, 30, '자주 쓰는 사용자를 위한 크레딧 묶음', '인기', 1, 20),
+    ('CREDIT_100', '크레딧 100개', 39000, 100, '팀 프로젝트와 시연용 대용량 크레딧', '최대 할인', 1, 30)
+ON DUPLICATE KEY UPDATE
+    name = VALUES(name),
+    price = VALUES(price),
+    credit_amount = VALUES(credit_amount),
+    description = VALUES(description),
+    badge = VALUES(badge),
+    enabled = VALUES(enabled),
+    sort_order = VALUES(sort_order);
+
+INSERT INTO benefit_catalog
+    (code, name, description, active, sort_order)
+VALUES
+    ('APPLICATION_ANALYSIS', '지원건 분석권', '공고, 기업, 적합도 등 지원 건 기반 AI 분석 사용권', 1, 10),
+    ('MOCK_INTERVIEW', '모의면접권', '질문 생성, 답변 평가, 리포트 등 텍스트 면접 사용권', 1, 20),
+    ('VOICE_INTERVIEW', '음성면접권', '음성 면접과 음성 답변 채점 사용권', 1, 30),
+    ('VIDEO_ANALYSIS', '영상분석권', '영상/비언어 면접 분석 사용권', 1, 40),
+    ('AVATAR_INTERVIEW', '아바타면접권', '아바타 면접관 세션 사용권', 1, 50),
+    ('CORRECTION', 'AI 첨삭권', '면접 답변, 자기소개서, 이력서, 포트폴리오 첨삭 사용권', 1, 60),
+    ('PROFILE_AI', '프로필 AI권', '프로필 요약, 기술 추출, 완성도 진단 사용권', 1, 70),
+    ('CAREER_STRATEGY', '커리어 전략권', '부족 역량, 로드맵, 장기 경향, 대시보드 인사이트 사용권', 1, 80),
+    ('COMMUNITY_AI', '커뮤니티 AI권', '면접 후기 요약, 태그 추천, 실제 질문 추출 사용권', 1, 90)
+ON DUPLICATE KEY UPDATE
+    name = VALUES(name),
+    description = VALUES(description),
+    active = VALUES(active),
+    sort_order = VALUES(sort_order);
+
+INSERT INTO billing_product
+    (code, product_type, name, price, description, badge, active, sort_order)
+VALUES
+    ('PACK_APPLICATION_20', 'BENEFIT_PACK', '지원건 분석권 20장', 9900, '구독 포함량 소진 후 추가 분석용 사용권', NULL, 1, 110),
+    ('PACK_INTERVIEW_10', 'BENEFIT_PACK', '모의면접권 10장', 9900, '질문 생성·평가·리포트 추가 이용권', NULL, 1, 120),
+    ('PACK_CORRECTION_10', 'BENEFIT_PACK', 'AI 첨삭권 10장', 7900, '자기소개서·답변·이력서 첨삭 추가 이용권', NULL, 1, 130),
+    ('PACK_VOICE_5', 'BENEFIT_PACK', '음성면접권 5장', 9900, '음성 면접 추가 이용권', NULL, 1, 140),
+    ('PACK_VIDEO_3', 'BENEFIT_PACK', '영상분석권 3장', 12900, '영상/비언어 분석 추가 이용권', NULL, 1, 150),
+    ('PACK_AVATAR_3', 'BENEFIT_PACK', '아바타면접권 3장', 14900, '아바타 면접관 추가 이용권', NULL, 1, 160)
+ON DUPLICATE KEY UPDATE
+    product_type = VALUES(product_type),
+    name = VALUES(name),
+    price = VALUES(price),
+    description = VALUES(description),
+    badge = VALUES(badge),
+    active = VALUES(active),
+    sort_order = VALUES(sort_order);
+
+INSERT INTO billing_product_benefit
+    (product_code, benefit_code, quantity, validity_days, sort_order)
+VALUES
+    ('PACK_APPLICATION_20', 'APPLICATION_ANALYSIS', 20, 30, 10),
+    ('PACK_INTERVIEW_10', 'MOCK_INTERVIEW', 10, 30, 10),
+    ('PACK_CORRECTION_10', 'CORRECTION', 10, 30, 10),
+    ('PACK_VOICE_5', 'VOICE_INTERVIEW', 5, 30, 10),
+    ('PACK_VIDEO_3', 'VIDEO_ANALYSIS', 3, 30, 10),
+    ('PACK_AVATAR_3', 'AVATAR_INTERVIEW', 3, 30, 10)
+ON DUPLICATE KEY UPDATE
+    quantity = VALUES(quantity),
+    validity_days = VALUES(validity_days),
+    sort_order = VALUES(sort_order);
+
+INSERT IGNORE INTO subscription_benefit_policy
+    (plan_code, benefit_code, benefit_name, benefit_type, quantity, reset_cycle, overage_policy, credit_cost, active, sort_order)
+VALUES
+    ('FREE', 'APPLICATION_ANALYSIS', '지원건 분석권', 'TICKET', 3, 'MONTHLY', 'BLOCK', 0, 1, 10),
+    ('FREE', 'MOCK_INTERVIEW', '모의면접권', 'TICKET', 1, 'MONTHLY', 'BLOCK', 0, 1, 20),
+    ('FREE', 'VOICE_INTERVIEW', '음성면접권', 'TICKET', 0, 'MONTHLY', 'UPGRADE', 0, 1, 30),
+    ('FREE', 'VIDEO_ANALYSIS', '영상분석권', 'TICKET', 0, 'MONTHLY', 'UPGRADE', 0, 1, 40),
+    ('FREE', 'AVATAR_INTERVIEW', '아바타면접권', 'TICKET', 0, 'MONTHLY', 'UPGRADE', 0, 1, 50),
+    ('BASIC', 'APPLICATION_ANALYSIS', '지원건 분석권', 'TICKET', 20, 'MONTHLY', 'BLOCK', 0, 1, 10),
+    ('BASIC', 'MOCK_INTERVIEW', '모의면접권', 'TICKET', 10, 'MONTHLY', 'BLOCK', 0, 1, 20),
+    ('BASIC', 'VOICE_INTERVIEW', '음성면접권', 'TICKET', 0, 'MONTHLY', 'UPGRADE', 0, 1, 30),
+    ('BASIC', 'VIDEO_ANALYSIS', '영상분석권', 'TICKET', 0, 'MONTHLY', 'UPGRADE', 0, 1, 40),
+    ('BASIC', 'AVATAR_INTERVIEW', '아바타면접권', 'TICKET', 0, 'MONTHLY', 'UPGRADE', 0, 1, 50),
+    ('PRO', 'APPLICATION_ANALYSIS', '지원건 분석권', 'TICKET', 60, 'MONTHLY', 'BLOCK', 0, 1, 10),
+    ('PRO', 'MOCK_INTERVIEW', '모의면접권', 'TICKET', 30, 'MONTHLY', 'BLOCK', 0, 1, 20),
+    ('PRO', 'VOICE_INTERVIEW', '음성면접권', 'TICKET', 5, 'MONTHLY', 'BLOCK', 0, 1, 30),
+    ('PRO', 'VIDEO_ANALYSIS', '영상분석권', 'TICKET', 1, 'MONTHLY', 'UPGRADE', 0, 1, 40),
+    ('PRO', 'AVATAR_INTERVIEW', '아바타면접권', 'TICKET', 0, 'MONTHLY', 'UPGRADE', 0, 1, 50),
+    ('PREMIUM', 'APPLICATION_ANALYSIS', '지원건 분석권', 'TICKET', 150, 'MONTHLY', 'BLOCK', 0, 1, 10),
+    ('PREMIUM', 'MOCK_INTERVIEW', '모의면접권', 'TICKET', 60, 'MONTHLY', 'BLOCK', 0, 1, 20),
+    ('PREMIUM', 'VOICE_INTERVIEW', '음성면접권', 'TICKET', 15, 'MONTHLY', 'BLOCK', 0, 1, 30),
+    ('PREMIUM', 'VIDEO_ANALYSIS', '영상분석권', 'TICKET', 5, 'MONTHLY', 'BLOCK', 0, 1, 40),
+    ('PREMIUM', 'AVATAR_INTERVIEW', '아바타면접권', 'TICKET', 5, 'MONTHLY', 'BLOCK', 0, 1, 50);
+
+INSERT INTO subscription_benefit_policy
+    (plan_code, benefit_code, benefit_name, benefit_type, quantity, reset_cycle, overage_policy, credit_cost, active, sort_order)
+VALUES
+    ('FREE', 'CORRECTION', 'AI 첨삭권', 'TICKET', 1, 'MONTHLY', 'CREDIT', 2, 1, 60),
+    ('FREE', 'PROFILE_AI', '프로필 AI권', 'TICKET', 3, 'MONTHLY', 'CREDIT', 1, 1, 70),
+    ('FREE', 'CAREER_STRATEGY', '커리어 전략권', 'TICKET', 2, 'MONTHLY', 'CREDIT', 2, 1, 80),
+    ('FREE', 'COMMUNITY_AI', '커뮤니티 AI권', 'TICKET', 5, 'MONTHLY', 'CREDIT', 1, 1, 90),
+    ('BASIC', 'CORRECTION', 'AI 첨삭권', 'TICKET', 10, 'MONTHLY', 'CREDIT', 2, 1, 60),
+    ('BASIC', 'PROFILE_AI', '프로필 AI권', 'TICKET', 20, 'MONTHLY', 'CREDIT', 1, 1, 70),
+    ('BASIC', 'CAREER_STRATEGY', '커리어 전략권', 'TICKET', 15, 'MONTHLY', 'CREDIT', 2, 1, 80),
+    ('BASIC', 'COMMUNITY_AI', '커뮤니티 AI권', 'TICKET', 30, 'MONTHLY', 'CREDIT', 1, 1, 90),
+    ('PRO', 'CORRECTION', 'AI 첨삭권', 'TICKET', 30, 'MONTHLY', 'CREDIT', 2, 1, 60),
+    ('PRO', 'PROFILE_AI', '프로필 AI권', 'TICKET', 60, 'MONTHLY', 'CREDIT', 1, 1, 70),
+    ('PRO', 'CAREER_STRATEGY', '커리어 전략권', 'TICKET', 60, 'MONTHLY', 'CREDIT', 2, 1, 80),
+    ('PRO', 'COMMUNITY_AI', '커뮤니티 AI권', 'TICKET', 100, 'MONTHLY', 'CREDIT', 1, 1, 90),
+    ('PREMIUM', 'CORRECTION', 'AI 첨삭권', 'TICKET', 60, 'MONTHLY', 'CREDIT', 2, 1, 60),
+    ('PREMIUM', 'PROFILE_AI', '프로필 AI권', 'TICKET', 150, 'MONTHLY', 'CREDIT', 1, 1, 70),
+    ('PREMIUM', 'CAREER_STRATEGY', '커리어 전략권', 'TICKET', 100, 'MONTHLY', 'CREDIT', 2, 1, 80),
+    ('PREMIUM', 'COMMUNITY_AI', '커뮤니티 AI권', 'TICKET', 200, 'MONTHLY', 'CREDIT', 1, 1, 90)
+ON DUPLICATE KEY UPDATE
+    benefit_name = VALUES(benefit_name),
+    benefit_type = VALUES(benefit_type),
+    quantity = VALUES(quantity),
+    reset_cycle = VALUES(reset_cycle),
+    overage_policy = VALUES(overage_policy),
+    credit_cost = VALUES(credit_cost),
+    active = VALUES(active),
+    sort_order = VALUES(sort_order);
+
+UPDATE subscription_benefit_policy
+   SET overage_policy = 'CREDIT',
+       credit_cost = CASE benefit_code
+           WHEN 'APPLICATION_ANALYSIS' THEN 2
+           WHEN 'MOCK_INTERVIEW' THEN 2
+           WHEN 'VOICE_INTERVIEW' THEN 3
+           WHEN 'VIDEO_ANALYSIS' THEN 5
+           WHEN 'AVATAR_INTERVIEW' THEN 6
+           ELSE credit_cost
+       END
+ WHERE quantity > 0
+   AND benefit_code IN ('APPLICATION_ANALYSIS', 'MOCK_INTERVIEW', 'VOICE_INTERVIEW', 'VIDEO_ANALYSIS', 'AVATAR_INTERVIEW');
+
+INSERT IGNORE INTO ai_feature_benefit_policy
+    (feature_type, benefit_code, charge_unit, included_in_ticket, default_credit_cost, active)
+VALUES
+    ('JOB_POSTING_OCR', 'APPLICATION_ANALYSIS', 'PER_CASE', 1, 0, 1),
+    ('JOB_ANALYSIS', 'APPLICATION_ANALYSIS', 'PER_CASE', 1, 0, 1),
+    ('COMPANY_RESEARCH', 'APPLICATION_ANALYSIS', 'PER_CASE', 1, 0, 1),
+    ('FIT_ANALYSIS', 'APPLICATION_ANALYSIS', 'PER_CASE', 1, 0, 1),
+    ('INTERVIEW_QUESTION_GEN', 'MOCK_INTERVIEW', 'PER_SESSION', 1, 0, 1),
+    ('INTERVIEW_FOLLOWUP_GEN', 'MOCK_INTERVIEW', 'PER_SESSION', 1, 0, 1),
+    ('INTERVIEW_ANSWER_EVAL', 'MOCK_INTERVIEW', 'PER_SESSION', 1, 0, 1),
+    ('INTERVIEW_CRITIC', 'MOCK_INTERVIEW', 'PER_SESSION', 1, 0, 1),
+    ('INTERVIEW_REPORT', 'MOCK_INTERVIEW', 'PER_SESSION', 1, 0, 1),
+    ('INTERVIEW_PLANNER', 'MOCK_INTERVIEW', 'PER_SESSION', 1, 0, 1),
+    ('INTERVIEW_MODEL_ANSWER', 'MOCK_INTERVIEW', 'PER_SESSION', 1, 0, 1),
+    ('INTERVIEW_VOICE_SESSION', 'VOICE_INTERVIEW', 'PER_SESSION', 1, 0, 1),
+    ('INTERVIEW_VIDEO_ANALYSIS', 'VIDEO_ANALYSIS', 'PER_SESSION', 1, 0, 1),
+    ('INTERVIEW_AVATAR_SESSION', 'AVATAR_INTERVIEW', 'PER_SESSION', 1, 0, 1);
+
+INSERT INTO ai_feature_benefit_policy
+    (feature_type, benefit_code, charge_unit, included_in_ticket, default_credit_cost, active)
+VALUES
+    ('PROFILE_SUMMARY', 'PROFILE_AI', 'PER_REQUEST', 1, 1, 1),
+    ('PROFILE_SKILL_EXTRACT', 'PROFILE_AI', 'PER_REQUEST', 1, 1, 1),
+    ('PROFILE_SELF_INTRO_KEYWORD', 'PROFILE_AI', 'PER_REQUEST', 1, 1, 1),
+    ('PROFILE_CAREER_KEYWORD', 'PROFILE_AI', 'PER_REQUEST', 1, 1, 1),
+    ('PROFILE_COMPLETENESS', 'PROFILE_AI', 'PER_REQUEST', 1, 1, 1),
+    ('JOB_POSTING_METADATA', 'APPLICATION_ANALYSIS', 'PER_CASE', 1, 2, 1),
+    ('JOB_REQUIRED_CONDITION', 'APPLICATION_ANALYSIS', 'PER_CASE', 1, 2, 1),
+    ('JOB_PREFERRED_CONDITION', 'APPLICATION_ANALYSIS', 'PER_CASE', 1, 2, 1),
+    ('JOB_DUTY_SUMMARY', 'APPLICATION_ANALYSIS', 'PER_CASE', 1, 2, 1),
+    ('INTERVIEW_POINT_EXTRACTION', 'APPLICATION_ANALYSIS', 'PER_CASE', 1, 2, 1),
+    ('GAP_ROADMAP_RECOMMENDATION', 'CAREER_STRATEGY', 'PER_CASE', 1, 2, 1),
+    ('CERTIFICATION_RECOMMENDATION', 'CAREER_STRATEGY', 'PER_CASE', 1, 2, 1),
+    ('CAREER_TREND_ANALYSIS', 'CAREER_STRATEGY', 'PER_REQUEST', 1, 2, 1),
+    ('NEXT_APPLICATION_RECOMMENDATION', 'CAREER_STRATEGY', 'PER_REQUEST', 1, 2, 1),
+    ('DASHBOARD_INSIGHT', 'CAREER_STRATEGY', 'PER_REQUEST', 1, 2, 1),
+    ('INTERVIEW_DIALOGUE', 'MOCK_INTERVIEW', 'PER_SESSION', 1, 2, 1),
+    ('INTERVIEW_VOICE_SCORING', 'VOICE_INTERVIEW', 'PER_SESSION', 1, 3, 1),
+    ('CORRECTION_INTERVIEW_ANSWER', 'CORRECTION', 'PER_REQUEST', 1, 2, 1),
+    ('CORRECTION_SELF_INTRO', 'CORRECTION', 'PER_REQUEST', 1, 2, 1),
+    ('CORRECTION_RESUME', 'CORRECTION', 'PER_REQUEST', 1, 2, 1),
+    ('CORRECTION_PORTFOLIO', 'CORRECTION', 'PER_REQUEST', 1, 2, 1),
+    ('USAGE_PLAN_RECOMMENDATION', 'CAREER_STRATEGY', 'PER_REQUEST', 1, 1, 1),
+    ('COMMUNITY_INTERVIEW_SUMMARY', 'COMMUNITY_AI', 'PER_POST', 1, 1, 1),
+    ('COMMUNITY_AUTO_TAGGING', 'COMMUNITY_AI', 'PER_POST', 1, 1, 1),
+    ('COMMUNITY_INTERVIEW_QUESTION_EXTRACTION', 'COMMUNITY_AI', 'PER_POST', 1, 1, 1),
+    ('COMMUNITY_POST_RECOMMENDATION', 'COMMUNITY_AI', 'PER_REQUEST', 1, 1, 1)
+ON DUPLICATE KEY UPDATE
+    benefit_code = VALUES(benefit_code),
+    charge_unit = VALUES(charge_unit),
+    included_in_ticket = VALUES(included_in_ticket),
+    default_credit_cost = VALUES(default_credit_cost),
+    active = VALUES(active);
+
+UPDATE ai_feature_benefit_policy
+   SET default_credit_cost = CASE benefit_code
+       WHEN 'APPLICATION_ANALYSIS' THEN 2
+       WHEN 'MOCK_INTERVIEW' THEN 2
+       WHEN 'VOICE_INTERVIEW' THEN 3
+       WHEN 'VIDEO_ANALYSIS' THEN 5
+       WHEN 'AVATAR_INTERVIEW' THEN 6
+       WHEN 'CORRECTION' THEN 2
+       WHEN 'PROFILE_AI' THEN 1
+       WHEN 'CAREER_STRATEGY' THEN 2
+       WHEN 'COMMUNITY_AI' THEN 1
+       ELSE default_credit_cost
+   END
+ WHERE active = 1;
+
+CREATE TABLE IF NOT EXISTS credit_transaction (
+    id              BIGINT NOT NULL AUTO_INCREMENT,
+    user_id         BIGINT NOT NULL,
+    ai_usage_log_id BIGINT NULL,
+    type            VARCHAR(30) NOT NULL,                      -- AI_USAGE/CHARGE/REFUND/ADMIN_ADJUST
+    amount          INT NOT NULL,                              -- charge/refund are positive, AI usage is negative
+    balance_after   INT NOT NULL,
+    feature_type    VARCHAR(80) NULL,
+    reason          VARCHAR(255) NULL,
+    created_at      DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (id),
+    UNIQUE KEY uq_credit_transaction_ai_usage_type (ai_usage_log_id, type),
+    KEY idx_credit_transaction_user (user_id),
+    CONSTRAINT fk_credit_transaction_user FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE,
+    CONSTRAINT fk_credit_transaction_ai_usage FOREIGN KEY (ai_usage_log_id) REFERENCES ai_usage_log (id) ON DELETE SET NULL
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci;
+
+CREATE TABLE IF NOT EXISTS correction_request (
+    id                  BIGINT NOT NULL AUTO_INCREMENT,
+    user_id             BIGINT NOT NULL,
+    application_case_id BIGINT NULL,
+    correction_type     VARCHAR(40) NOT NULL,
+    source_type         VARCHAR(40) NOT NULL DEFAULT 'DIRECT_INPUT',
+    source_ref_id       BIGINT NULL,
+    original_text       MEDIUMTEXT NOT NULL,
+    improved_text       MEDIUMTEXT NULL,
+    result_json         JSON NULL,
+    status              VARCHAR(20) NOT NULL DEFAULT 'SUCCESS',
+    ai_usage_log_id     BIGINT NULL,
+    created_at          DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (id),
+    KEY idx_correction_request_user (user_id),
+    KEY idx_correction_request_case (application_case_id),
+    KEY idx_correction_request_type (correction_type),
+    KEY idx_correction_request_ai_usage (ai_usage_log_id),
+    CONSTRAINT fk_correction_request_user FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE,
+    CONSTRAINT fk_correction_request_case FOREIGN KEY (application_case_id) REFERENCES application_case (id) ON DELETE SET NULL,
+    CONSTRAINT fk_correction_request_ai_usage FOREIGN KEY (ai_usage_log_id) REFERENCES ai_usage_log (id) ON DELETE SET NULL
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci;
+
+-- =====================================================================
+--  커뮤니티
+-- =====================================================================
 CREATE TABLE IF NOT EXISTS community_post (
     id             BIGINT       NOT NULL AUTO_INCREMENT,
     user_id        BIGINT       NOT NULL,
@@ -673,6 +1085,32 @@ CREATE TABLE IF NOT EXISTS community_post (
     KEY idx_community_post_cat_status_created (category, status, created_at DESC),
     KEY idx_community_post_cat_like (category, status, like_count DESC),
     CONSTRAINT fk_community_post_user FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
+    ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci;
+
+CREATE TABLE IF NOT EXISTS post_ai_result (
+    id            BIGINT       NOT NULL AUTO_INCREMENT,
+    post_id       BIGINT       NOT NULL,
+    task_type     VARCHAR(30)  NOT NULL,
+    status        VARCHAR(20)  NOT NULL DEFAULT 'PENDING',
+    result_json   JSON         NULL,
+    model         VARCHAR(80)  NULL,
+    error_message VARCHAR(1000) NULL,
+    attempt_count INT          NOT NULL DEFAULT 0,
+    created_at    DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    completed_at  DATETIME     NULL,
+    PRIMARY KEY (id),
+    UNIQUE KEY uk_post_ai_result_task (post_id, task_type),
+    KEY idx_post_ai_result_status (task_type, status, completed_at),
+    CONSTRAINT fk_post_ai_result_post FOREIGN KEY (post_id) REFERENCES community_post (id) ON DELETE CASCADE
+    ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci;
+
+CREATE TABLE IF NOT EXISTS ai_moderation_setting (
+    id             TINYINT      NOT NULL,
+    strictness     VARCHAR(10)  NOT NULL DEFAULT 'NORMAL',
+    hide_threshold DECIMAL(3,2) NOT NULL DEFAULT 0.80,
+    updated_at     DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    PRIMARY KEY (id),
+    CONSTRAINT chk_hide_threshold CHECK (hide_threshold BETWEEN 0.50 AND 0.95)
     ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci;
 
 
@@ -795,6 +1233,27 @@ CREATE TABLE IF NOT EXISTS comment_report (
     CONSTRAINT fk_cr_rcomment FOREIGN KEY (comment_id)  REFERENCES community_comment (id) ON DELETE CASCADE
     ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci;
 
+CREATE TABLE IF NOT EXISTS community_guideline (
+    id            BIGINT       NOT NULL AUTO_INCREMENT,
+    version_label VARCHAR(20)  NOT NULL,
+    summary       VARCHAR(500) NULL,
+    lede          TEXT         NULL,
+    oks_json      JSON         NULL,
+    nos_json      JSON         NULL,
+    rules_json    JSON         NULL,
+    params_json   JSON         NULL,
+    status        VARCHAR(20)  NOT NULL DEFAULT 'DRAFT',
+    enforce_type  VARCHAR(20)  NOT NULL DEFAULT 'IMMEDIATE',
+    scheduled_at  DATETIME     NULL,
+    published_at  DATETIME     NULL,
+    admin_id      BIGINT       NULL,
+    created_at    DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at    DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    PRIMARY KEY (id),
+    KEY idx_guideline_status (status, published_at DESC),
+    CONSTRAINT fk_guideline_admin FOREIGN KEY (admin_id) REFERENCES users (id) ON DELETE SET NULL
+    ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci;
+
 CREATE TABLE IF NOT EXISTS community_tag (
     id          BIGINT       NOT NULL AUTO_INCREMENT,
     name        VARCHAR(50)  NOT NULL,
@@ -844,6 +1303,8 @@ CREATE TABLE IF NOT EXISTS faq (
     is_published TINYINT(1)   NOT NULL DEFAULT 1,
     admin_id     BIGINT       NULL,
     view_count   INT          NOT NULL DEFAULT 0,
+    link_url     VARCHAR(200) NULL     COMMENT '관련 페이지 경로',
+    link_label   VARCHAR(100) NULL     COMMENT '이동 버튼 라벨',
     created_at   DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at   DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     PRIMARY KEY (id),
@@ -914,6 +1375,39 @@ CREATE TABLE IF NOT EXISTS notification (
     KEY idx_notification_target (target_type, target_id),
     CONSTRAINT fk_notification_user  FOREIGN KEY (user_id)  REFERENCES users (id) ON DELETE CASCADE,
     CONSTRAINT fk_notification_actor FOREIGN KEY (actor_id) REFERENCES users (id) ON DELETE SET NULL
+    ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci;
+
+-- 알림 수신 설정(사용자별 1행). categories_json 에 비활성 카테고리만 false 로 저장.
+CREATE TABLE IF NOT EXISTS notification_preference (
+    id                BIGINT      NOT NULL AUTO_INCREMENT,
+    user_id           BIGINT      NOT NULL,
+    push_enabled      TINYINT(1)  NOT NULL DEFAULT 1,
+    email_enabled     TINYINT(1)  NOT NULL DEFAULT 1,
+    categories_json   JSON        NULL,
+    quiet_hours_start VARCHAR(5)  NULL,
+    quiet_hours_end   VARCHAR(5)  NULL,
+    created_at        DATETIME    NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at        DATETIME    NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    PRIMARY KEY (id),
+    UNIQUE KEY uq_notification_preference_user (user_id),
+    CONSTRAINT fk_notification_preference_user FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
+    ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci;
+
+-- 푸시 구독(기기별). kind=WEB 은 web push endpoint+키, FCM/APNS 는 디바이스 토큰.
+CREATE TABLE IF NOT EXISTS push_subscription (
+    id           BIGINT       NOT NULL AUTO_INCREMENT,
+    user_id      BIGINT       NOT NULL,
+    kind         VARCHAR(10)  NOT NULL,
+    token        VARCHAR(700) NOT NULL,
+    p256dh       VARCHAR(255) NULL,
+    auth         VARCHAR(255) NULL,
+    user_agent   VARCHAR(300) NULL,
+    created_at   DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    last_used_at DATETIME     NULL,
+    PRIMARY KEY (id),
+    UNIQUE KEY uq_push_subscription_token (token(255)),
+    KEY idx_push_subscription_user (user_id),
+    CONSTRAINT fk_push_subscription_user FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
     ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci;
 
 

@@ -85,7 +85,7 @@ export function AuthActionLayout({
 }) {
   return (
     <div className="flex min-h-[calc(100vh-120px)] items-center justify-center bg-slate-50 px-4 py-12">
-      <Card className="w-full max-w-md border border-slate-200 bg-white shadow-xl">
+      <Card className="w-full max-w-md border border-slate-200 bg-card shadow-xl">
         <CardContent className="space-y-6 p-8">
           <div className="space-y-2 text-center">
             <div className="mx-auto flex size-11 items-center justify-center rounded-xl bg-blue-600 text-lg font-black text-white">

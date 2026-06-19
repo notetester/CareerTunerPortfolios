@@ -1,0 +1,34 @@
+package com.careertuner.community.mapper;
+
+import java.util.List;
+
+import org.apache.ibatis.annotations.Mapper;
+import org.apache.ibatis.annotations.Param;
+
+@Mapper
+public interface CommunityTagMapper {
+
+    /** 태그명으로 ID 조회. 없으면 null. */
+    Long findIdByName(@Param("name") String name);
+
+    /** 태그 신규 등록. useGeneratedKeys로 id 반환. */
+    void insertTag(@Param("name") String name);
+
+    /** usage_count 증감. */
+    void incrementUsageCount(@Param("id") Long id);
+
+    void decrementUsageCount(@Param("id") Long id);
+
+    /** 해당 게시글의 AI 태그(is_ai=1) 전체 삭제. 삭제된 tag_id 목록 반환. */
+    List<Long> findAiTagIds(@Param("postId") Long postId);
+
+    void deleteAiPostTags(@Param("postId") Long postId);
+
+    /** 게시글-태그 매핑 추가. */
+    void insertPostTag(@Param("postId") Long postId,
+                       @Param("tagId") Long tagId,
+                       @Param("isAi") boolean isAi);
+
+    /** 해당 게시글의 모든 태그명 조회 (is_ai 무관). */
+    List<String> findTagNamesByPostId(@Param("postId") Long postId);
+}

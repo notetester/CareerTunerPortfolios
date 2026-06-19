@@ -75,7 +75,7 @@ const COMPANY_SOURCE_TYPE_OPTIONS = [
 type CompanySourceType = (typeof COMPANY_SOURCE_TYPE_OPTIONS)[number]["value"];
 
 const SELECT_CLASS =
-  "h-9 rounded-md border border-slate-200 bg-white px-3 text-sm font-normal text-slate-900 outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100";
+  "h-9 rounded-md border border-slate-200 bg-card px-3 text-sm font-normal text-slate-900 outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100";
 
 function blankToNull(value: string): string | null {
   const trimmed = value.trim();
@@ -369,7 +369,7 @@ export function AdminCompanyAnalysisPage() {
           <SummaryCard label="출처 누락" value={summary.missingSourceCount} icon={Link2} tone="red" />
         </div>
 
-        <div className="rounded-lg border border-slate-200 bg-white p-4">
+        <div className="rounded-lg border border-slate-200 bg-card p-4">
           <div className="grid gap-3 xl:grid-cols-[minmax(220px,1fr)_150px_150px_130px_130px_130px] xl:items-end">
             <label className="grid min-w-0 gap-1 text-xs font-semibold text-slate-500">
               검색
@@ -378,7 +378,7 @@ export function AdminCompanyAnalysisPage() {
                 <Input
                   value={keyword}
                   onChange={(event) => setKeyword(event.target.value)}
-                  className="bg-white pl-9 text-sm font-normal text-slate-900"
+                  className="bg-card pl-9 text-sm font-normal text-slate-900"
                   placeholder="회사, 공고, 사용자, 산업, 출처 검색"
                 />
               </div>
@@ -480,7 +480,7 @@ export function AdminCompanyAnalysisPage() {
         ) : (
           <>
             <div className="hidden min-w-0 gap-4 lg:grid lg:grid-cols-[minmax(0,1fr)_minmax(320px,0.85fr)] xl:grid-cols-[minmax(0,1.05fr)_minmax(360px,0.95fr)]">
-              <Card className="min-w-0 overflow-hidden rounded-lg border-slate-200 bg-white">
+              <Card className="min-w-0 overflow-hidden rounded-lg border-slate-200 bg-card">
                 <CardContent className="p-0">
                   <div className="flex items-center justify-between border-b border-slate-200 px-4 py-3">
                     <div>
@@ -537,7 +537,7 @@ export function AdminCompanyAnalysisPage() {
                 </CardContent>
               </Card>
 
-              <Card className="min-w-0 rounded-lg border-slate-200 bg-white">
+              <Card className="min-w-0 rounded-lg border-slate-200 bg-card">
                 <CardContent className="p-5">
                   {selectedRow && (
                     <CompanyAnalysisDetail
@@ -560,7 +560,7 @@ export function AdminCompanyAnalysisPage() {
               {rows.map((row) => {
                 const expanded = expandedId === row.id;
                 return (
-                  <Card key={row.id} className="overflow-hidden rounded-lg border-slate-200 bg-white">
+                  <Card key={row.id} className="overflow-hidden rounded-lg border-slate-200 bg-card">
                     <CardContent className="space-y-4 p-4">
                       <div className="flex min-w-0 items-start justify-between gap-3">
                         <div className="min-w-0">
@@ -628,7 +628,7 @@ function SummaryCard({
   }[tone];
 
   return (
-    <Card className="rounded-lg border-slate-200 bg-white">
+    <Card className="rounded-lg border-slate-200 bg-card">
       <CardContent className="flex items-center justify-between gap-3 p-4">
         <div>
           <div className="text-xs font-semibold text-slate-500">{label}</div>
@@ -653,7 +653,7 @@ function LoadingBlock() {
 
 function EmptyBlock({ message }: { message: string }) {
   return (
-    <div className="rounded-lg border border-slate-200 bg-white p-8 text-center text-sm text-slate-500">
+    <div className="rounded-lg border border-slate-200 bg-card p-8 text-center text-sm text-slate-500">
       {message}
     </div>
   );
@@ -761,7 +761,7 @@ function CompanyAnalysisDetail({
         <Textarea
           value={memo}
           onChange={(event) => onMemoChange(event.target.value)}
-          className="min-h-24 bg-white"
+          className="min-h-24 bg-card"
           placeholder="분석 오류, 출처 검증, 사용자 문의 대응을 기록"
         />
         <div className="flex justify-end">
@@ -826,7 +826,7 @@ function MetadataEditor({
                 type="datetime-local"
                 value={metadata.checkedAt}
                 onChange={(event) => onMetadataChange("checkedAt", event.target.value)}
-                className="bg-white text-sm font-normal text-slate-900"
+                className="bg-card text-sm font-normal text-slate-900"
               />
             </label>
             <label className="grid gap-1 text-xs font-semibold text-slate-500">
@@ -835,7 +835,7 @@ function MetadataEditor({
                 type="datetime-local"
                 value={metadata.refreshRecommendedAt}
                 onChange={(event) => onMetadataChange("refreshRecommendedAt", event.target.value)}
-                className="bg-white text-sm font-normal text-slate-900"
+                className="bg-card text-sm font-normal text-slate-900"
               />
             </label>
           </div>
@@ -899,7 +899,7 @@ function TagBlock({ title, items, emptyLabel }: { title: string; items: string[]
       <div className="mt-2 flex flex-wrap gap-1.5">
         {items.length > 0 ? (
           items.map((item) => (
-            <span key={item} className="max-w-full break-words rounded-full bg-white px-2 py-1 text-xs font-semibold leading-5 text-slate-700">
+            <span key={item} className="max-w-full break-words rounded-full bg-card px-2 py-1 text-xs font-semibold leading-5 text-slate-700">
               {item}
             </span>
           ))

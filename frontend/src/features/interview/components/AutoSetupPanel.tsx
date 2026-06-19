@@ -88,7 +88,7 @@ export function AutoSetupPanel({
   if (!casesLoading && cases.length === 0) {
     return (
       <Panel prompt={prompt}>
-        <div className="rounded-xl border border-dashed border-slate-200 bg-white p-8 text-center">
+        <div className="rounded-xl border border-dashed border-slate-200 bg-card p-8 text-center">
           <p className="text-sm text-slate-500">
             면접을 보려면 먼저 지원 건이 필요합니다. 지원할 공고를 등록하면 바로 자동 셋업할 수 있습니다.
           </p>
@@ -107,7 +107,7 @@ export function AutoSetupPanel({
 
   return (
     <Panel prompt={prompt}>
-      <div className="space-y-4 rounded-xl border border-indigo-100 bg-gradient-to-br from-indigo-50/60 to-white p-5">
+      <div className="space-y-4 rounded-xl border border-indigo-100 bg-muted p-5">
         {/* 대상 지원 건 */}
         <div className="space-y-2">
           <div className="flex items-center gap-1.5 text-xs font-bold text-slate-500">
@@ -123,7 +123,7 @@ export function AutoSetupPanel({
                 className={`rounded-lg border px-3 py-1.5 text-left text-xs transition-colors ${
                   effectiveCaseId === c.id
                     ? "border-indigo-300 bg-indigo-50 ring-1 ring-indigo-200"
-                    : "border-slate-200 bg-white hover:border-indigo-200"
+                    : "border-slate-200 bg-card hover:border-indigo-200"
                 }`}
               >
                 <div className="font-bold text-slate-800">{c.companyName}</div>
@@ -170,7 +170,7 @@ export function AutoSetupPanel({
 function Panel({ prompt, children }: { prompt: string; children: React.ReactNode }) {
   return (
     <div className="space-y-4">
-      <div className="flex items-start gap-2 rounded-xl border border-slate-200 bg-white p-4">
+      <div className="flex items-start gap-2 rounded-xl border border-slate-200 bg-card p-4">
         <Sparkles className="mt-0.5 size-5 shrink-0 text-indigo-500" />
         <div>
           <div className="text-xs font-bold text-slate-400">당신의 요청</div>
@@ -197,7 +197,7 @@ function AutoTimeline({ steps }: { steps: Step[] }) {
                     ? "border-green-200 bg-green-50 text-green-600"
                     : step.state === "running"
                       ? "border-indigo-200 bg-indigo-50 text-indigo-500"
-                      : "border-slate-200 bg-white text-slate-300"
+                      : "border-slate-200 bg-card text-slate-300"
               }`}
             >
               {step.state === "running" ? (
@@ -250,9 +250,7 @@ function recommendMode(prompt: string): InterviewMode {
   const p = prompt ?? "";
   if (/압박|꼬리|반박|당황|몰아/.test(p)) return "PRESSURE";
   if (/인성|성격|가치관|협업|갈등|태도/.test(p)) return "PERSONALITY";
-  if (/실전|랜덤|시간\s*제한/.test(p)) return "REAL";
   if (/자소서|자기소개서/.test(p)) return "RESUME";
-  if (/포트폴리오|프로젝트/.test(p)) return "PORTFOLIO";
   if (/기업\s*맞춤|컬처|컬쳐|회사\s*맞춤/.test(p)) return "COMPANY";
   if (/기술|직무|개발|백엔드|프론트|코딩|엔지니어|데이터|서버/.test(p)) return "JOB";
   return "JOB";

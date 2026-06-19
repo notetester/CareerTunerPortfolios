@@ -8,9 +8,28 @@ import { CATEGORIES, type CommunityCategory } from "../types/community";
 import { useCommunityStore } from "../hooks/useCommunityStore";
 import { toast } from "@/features/notification/components/toast";
 
+export interface PostEditData {
+  id: number;
+  category: string;
+  title: string;
+  content: string;
+  tags: string[];
+  anonymous: boolean;
+  interviewReview?: {
+    companyName: string;
+    jobRole: string;
+    interviewType?: string;
+    difficulty?: number | null;
+    interviewDate?: string;
+    resultStatus?: string;
+    questions?: string[];
+  };
+}
+
 interface PostEditorFormProps {
   onCancel: () => void;
   onSubmit?: () => void;
+  editData?: PostEditData;
 }
 
 const RESULT_MAP: Record<string, string> = {
@@ -77,22 +96,35 @@ function TagInput({ tags, onChange }: { tags: string[]; onChange: (t: string[]) 
   );
 }
 
-export function PostEditorForm({ onCancel, onSubmit }: PostEditorFormProps) {
-  const { createPost } = useCommunityStore();
+const REVERSE_RESULT_MAP: Record<string, string> = {
+  "PASSED": "합격", "FAILED": "불합격", "PENDING": "대기중", "UNKNOWN": "비공개",
+};
+
+export function PostEditorForm({ onCancel, onSubmit, editData }: PostEditorFormProps) {
+  const { createPost, updatePost } = useCommunityStore();
+  const isEdit = !!editData;
   const cats = CATEGORIES.filter((c) => c.value !== "all");
-  const [cat, setCat] = useState("interview");
+  const [cat, setCat] = useState(editData?.category ?? "interview");
   const [submitting, setSubmitting] = useState(false);
-  const [title, setTitle] = useState("");
-  const [bodyText, setBodyText] = useState("");
-  const [tags, setTags] = useState<string[]>([]);
-  const [anon, setAnon] = useState(true);
-  const [company, setCompany] = useState("");
-  const [role, setRole] = useState("");
-  const [itype, setIType] = useState("");
-  const [difficulty, setDifficulty] = useState(0);
-  const [date, setDate] = useState("");
-  const [result, setResult] = useState("");
-  const [questions, setQuestions] = useState([""]);
+  const [title, setTitle] = useState(editData?.title ?? "");
+  const [bodyText, setBodyText] = useState(editData?.content ?? "");
+  const [tags, setTags] = useState<string[]>(editData?.tags ?? []);
+  const [anon, setAnon] = useState(editData?.anonymous ?? true);
+  const [company, setCompany] = useState(editData?.interviewReview?.companyName ?? "");
+  const [role, setRole] = useState(editData?.interviewReview?.jobRole ?? "");
+  const [itype, setIType] = useState(editData?.interviewReview?.interviewType ?? "");
+  const [difficulty, setDifficulty] = useState(editData?.interviewReview?.difficulty ?? 0);
+  const [date, setDate] = useState(editData?.interviewReview?.interviewDate ?? "");
+  const [result, setResult] = useState(
+    editData?.interviewReview?.resultStatus
+      ? (REVERSE_RESULT_MAP[editData.interviewReview.resultStatus] ?? "")
+      : "",
+  );
+  const [questions, setQuestions] = useState(
+    editData?.interviewReview?.questions?.length
+      ? editData.interviewReview.questions
+      : [""],
+  );
 
   const isInterview = cat === "interview";
   const canPost = title.trim().length > 1 && bodyText.trim().length > 9 && !submitting;
@@ -101,27 +133,39 @@ export function PostEditorForm({ onCancel, onSubmit }: PostEditorFormProps) {
     if (!canPost) return;
     setSubmitting(true);
     const catInfo = cats.find((c) => c.value === cat);
+    const interviewPayload = isInterview ? {
+      companyName: company,
+      jobRole: role,
+      interviewType: itype || undefined,
+      difficulty: difficulty || null,
+      interviewDate: date || undefined,
+      resultStatus: RESULT_MAP[result] || undefined,
+      questions: questions.filter((q) => q.trim()),
+    } : undefined;
     try {
-      await createPost({
-        category: (catInfo?.slug ?? "free") as CommunityCategory,
-        title,
-        content: bodyText,
-        tags,
-        anonymous: anon,
-        interviewReview: isInterview ? {
-          companyName: company,
-          jobRole: role,
-          interviewType: itype || undefined,
-          difficulty: difficulty || null,
-          interviewDate: date || undefined,
-          resultStatus: RESULT_MAP[result] || undefined,
-          questions: questions.filter((q) => q.trim()),
-        } : undefined,
-      });
-      toast.success("글이 등록되었습니다.");
+      if (isEdit) {
+        await updatePost(editData.id, {
+          title,
+          content: bodyText,
+          tags,
+          anonymous: anon,
+          interviewReview: interviewPayload,
+        });
+        toast.success("글이 수정되었습니다.");
+      } else {
+        await createPost({
+          category: (catInfo?.slug ?? "free") as CommunityCategory,
+          title,
+          content: bodyText,
+          tags,
+          anonymous: anon,
+          interviewReview: interviewPayload,
+        });
+        toast.success("글이 등록되었습니다.");
+      }
       onSubmit?.();
     } catch {
-      toast.error("글 등록에 실패했습니다. 다시 시도해주세요.");
+      toast.error(isEdit ? "글 수정에 실패했습니다. 다시 시도해주세요." : "글 등록에 실패했습니다. 다시 시도해주세요.");
       setSubmitting(false);
     }
   };
@@ -136,7 +180,7 @@ export function PostEditorForm({ onCancel, onSubmit }: PostEditorFormProps) {
         <a className="wv-back" onClick={onCancel} style={{ cursor: "pointer" }}>
           <ArrowLeft />커뮤니티로 돌아가기
         </a>
-        <div className="uv-phead"><div><h1>글쓰기</h1></div></div>
+        <div className="uv-phead"><div><h1>{isEdit ? "글 수정" : "글쓰기"}</h1></div></div>
 
         {/* Category chips */}
         <div className="wv-cats">
@@ -144,7 +188,8 @@ export function PostEditorForm({ onCancel, onSubmit }: PostEditorFormProps) {
             <button
               key={c.value} type="button"
               className={"wv-cat" + (cat === c.value ? " on" : "")}
-              onClick={() => setCat(c.value)}
+              onClick={() => !isEdit && setCat(c.value)}
+              style={isEdit && cat !== c.value ? { opacity: 0.4, cursor: "default" } : undefined}
             >
               {c.label}
             </button>
@@ -262,7 +307,7 @@ export function PostEditorForm({ onCancel, onSubmit }: PostEditorFormProps) {
               style={!canPost ? { opacity: 0.45, cursor: "default" } : undefined}
               onClick={handlePost}
             >
-              등록
+              {isEdit ? "수정" : "등록"}
             </button>
           </div>
         </div>

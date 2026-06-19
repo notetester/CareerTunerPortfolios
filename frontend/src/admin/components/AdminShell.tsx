@@ -5,7 +5,7 @@ import {
   Users, CreditCard, MessageSquareWarning, Megaphone, CircleHelp,
   Mail, Search, Bell, ChevronRight,
   Target, TrendingUp, ListChecks, Activity,
-  Scale, FileUser, ClipboardCheck,
+  Scale, FileUser, ClipboardCheck, MessageSquare, ShieldAlert, Package, ScrollText,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import "./admin-shell.css";
@@ -29,18 +29,22 @@ const NAV: NavItem[] = [
   { key: "application-cases", label: "지원 건 관리", icon: Briefcase, href: "/admin/application-cases" },
   { key: "job-analysis", label: "공고 분석 조회", icon: BarChart3, href: "/admin/job-analysis" },
   { key: "company-analysis", label: "기업 분석 조회", icon: Building2, href: "/admin/company-analysis" },
+  { key: "interviews", label: "면접 모니터링", icon: MessageSquare, href: "/admin/interviews" },
   { key: "ai-usage", label: "B AI 사용량", icon: Gauge, href: "/admin/ai-usage" },
   { key: "prompts", label: "프롬프트 템플릿", icon: FileText, href: "/admin/prompts" },
   { key: "members", label: "회원 관리", icon: Users, ct: "1,248", href: "/admin/users" },
   { key: "profiles", label: "프로필 관리", icon: FileUser, href: "/admin/profiles" },
   { key: "consents", label: "동의 관리", icon: ClipboardCheck, href: "/admin/consents" },
-  { key: "payments", label: "결제 관리", icon: CreditCard, ct: "34", href: "/admin/payments" },
+  { key: "payments", label: "결제 관리", icon: CreditCard, href: "/admin/payments" },
+  { key: "plans", label: "요금제 관리", icon: Package, href: "/admin/plans" },
   { key: "reports", label: "콘텐츠 관리", icon: MessageSquareWarning, href: "/admin/community" },
+  { key: "moderation", label: "AI 검열 로그", icon: ShieldAlert, href: "/admin/moderation" },
   { key: "notices", label: "공지사항", icon: Megaphone, ct: "7", href: "/admin/notices" },
   { key: "faq", label: "FAQ 관리", icon: CircleHelp, href: "/admin/faq" },
   { key: "inquiries", label: "문의 관리", icon: Mail, ct: "9", href: "/admin/inquiries" },
   { key: "terms", label: "약관 관리", icon: Scale, href: "/admin/terms" },
   { key: "notifications", label: "알림 모니터링", icon: Bell, href: "/admin/notifications" },
+  { key: "logs", label: "시스템 로그", icon: ScrollText, href: "/admin/logs" },
 ];
 
 interface AdminShellProps {

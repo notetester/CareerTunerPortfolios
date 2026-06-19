@@ -6,6 +6,7 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpMethod;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
+import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
 import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -24,6 +25,7 @@ import com.careertuner.common.security.JwtAuthenticationFilter;
  * 비밀번호는 BCrypt 로 저장한다.</p>
  */
 @Configuration
+@EnableMethodSecurity
 public class SecurityConfig {
 
     @Bean
@@ -49,10 +51,15 @@ public class SecurityConfig {
                                 "/api/auth/verify-email", "/api/auth/check/**", "/api/auth/oauth/**").permitAll()
                         // 커뮤니티 게시글 조회 공개
                         .requestMatchers(HttpMethod.GET,
-                                "/api/community/posts", "/api/community/posts/**").permitAll()
+                                "/api/community/posts", "/api/community/posts/**",
+                                "/api/community/guidelines/published").permitAll()
                         // 고객센터 FAQ/공지사항 조회 공개
                         .requestMatchers(HttpMethod.GET,
                                 "/api/support/faq", "/api/support/notices", "/api/support/notices/**").permitAll()
+                        // 챗봇 질문 공개
+                        .requestMatchers(HttpMethod.POST, "/api/chatbot/ask").permitAll()
+                        // 관리자 API는 URL 레벨에서도 ADMIN 권한을 요구한다.
+                        .requestMatchers("/api/admin/**").hasRole("ADMIN")
                         // 그 외(/api/auth/me, /api/auth/logout 및 도메인 API)는 인증 필요
                         .anyRequest().authenticated())
                 .exceptionHandling(e -> e.authenticationEntryPoint(
@@ -66,11 +73,21 @@ public class SecurityConfig {
         return new BCryptPasswordEncoder();
     }
 
+    /**
+     * 허용 오리진(패턴). 기본값은 Vite 개발 서버 + Capacitor 네이티브 WebView 오리진.
+     *   - Android WebView: http(s)://localhost
+     *   - iOS WebView    : capacitor://localhost
+     * 배포/LAN 테스트는 CORS_ALLOWED_ORIGINS 로 교체(쉼표 구분, 예: http://192.168.*:*,https://app.example.com).
+     * 패턴이므로 와일드카드(*)를 쓰면서도 allowCredentials=true 와 함께 동작한다.
+     */
+    @org.springframework.beans.factory.annotation.Value(
+            "${careertuner.cors.allowed-origins:http://localhost:5173,http://localhost,https://localhost,capacitor://localhost}")
+    private List<String> allowedOriginPatterns;
+
     @Bean
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration config = new CorsConfiguration();
-        // Vite 개발 서버. 배포 도메인은 환경에 맞춰 추가한다.
-        config.setAllowedOrigins(List.of("http://localhost:5173"));
+        config.setAllowedOriginPatterns(allowedOriginPatterns);
         config.setAllowedMethods(List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
         config.setAllowedHeaders(List.of("*"));
         config.setAllowCredentials(true);

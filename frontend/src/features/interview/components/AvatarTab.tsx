@@ -1,26 +1,34 @@
 import { useEffect, useRef, useState } from "react";
-import { ClipboardList, Download, Loader2, PhoneOff, Play, SkipForward, Video } from "lucide-react";
+import { ClipboardList, Download, Loader2, Maximize2, PhoneOff, Play, SkipForward, Video } from "lucide-react";
 import { AgentEventsEnum, LiveAvatarSession, SessionEvent } from "@heygen/liveavatar-web-sdk";
 import { Badge } from "@/app/components/ui/badge";
 import { Button } from "@/app/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/app/components/ui/card";
 import { Progress } from "@/app/components/ui/progress";
 import {
-  analyzeVoice,
   createAvatarSession,
   getMediaCapabilities,
+  getSessionReview,
   listSessionQuestions,
   saveMediaResult,
+  scoreAvatarServer,
+  scoreVoiceTranscript,
+  transcribeVoice,
 } from "../api/interviewApi";
-import { blobToPcm16Base64, computeVoiceScore, countFillers, VoiceMetricsTracker } from "../hooks/voiceAnalysis";
+import {
+  blobToBase64,
+  computeVoiceScore,
+  countFillers,
+  VoiceMetricsTracker,
+} from "../hooks/voiceAnalysis";
 import { computeVisualScore, VisualMetricsTracker, type VisualScoreDetail } from "../hooks/visualAnalysis";
 import type {
   InterviewQuestion,
   InterviewSession,
   MediaCapabilities,
+  SessionReviewItem,
   TranscriptLine,
   VoiceMetrics,
-  VoiceProfile,
   VoiceScoreDetail,
 } from "../types/interview";
 import { getScoreColor } from "../types/interview";
@@ -33,8 +41,9 @@ type Status = "idle" | "connecting" | "live" | "analyzing" | "scored" | "error";
 /**
  * 아바타 화상 면접 (HeyGen LiveAvatar + MediaPipe).
  * 백엔드가 발급한 단기 세션 토큰으로 아바타 면접관이 준비된 질문을 음성으로 묻고,
- * 유저 웹캠은 온디바이스로 표정(blendshapes)·자세(pose)·음성을 분석한다.
- * 원본 영상은 서버에 올리지 않는다 — 점수(JSON)만 저장, 원하면 로컬 다운로드 (ADR-002).
+ * 유저 웹캠 영상은 동의 시 자체 추론 서버(serve)로 전송해 표정·자세·음성을 채점하고(late fusion,
+ * ADR-006/007), 미동의/서버 미기동 시 온디바이스(MediaPipe)로 폴백한다. 어느 경로든 원본 영상은
+ * 점수 산출 후 폐기되고 저장은 점수(JSON)만, 원하면 로컬 다운로드.
  */
 export function AvatarTab({ session }: { session: InterviewSession | null }) {
   const tutorialActive = useTutorialStore((s) => s.mode !== "off");
@@ -50,13 +59,16 @@ export function AvatarTab({ session }: { session: InterviewSession | null }) {
 
   const [voiceDetail, setVoiceDetail] = useState<VoiceScoreDetail | null>(null);
   const [voiceMetrics, setVoiceMetrics] = useState<VoiceMetrics | null>(null);
-  const [profile, setProfile] = useState<VoiceProfile | null>(null);
   const [visualDetail, setVisualDetail] = useState<VisualScoreDetail | null>(null);
   const [overall, setOverall] = useState<number | null>(null);
+  const [contentScore, setContentScore] = useState<number | null>(null);
+  const [contentItems, setContentItems] = useState<SessionReviewItem[]>([]);
   const [downloadUrl, setDownloadUrl] = useState<string | null>(null);
+  const [consent, setConsent] = useState(true); // 정밀 분석(원본 영상 서버 전송) 동의
 
   const avatarRef = useRef<LiveAvatarSession | null>(null);
   const avatarVideoRef = useRef<HTMLVideoElement | null>(null);
+  const videoBoxRef = useRef<HTMLDivElement | null>(null);
   const selfVideoRef = useRef<HTMLVideoElement | null>(null);
   const webcamRef = useRef<MediaStream | null>(null);
   const voiceTrackerRef = useRef<VoiceMetricsTracker | null>(null);
@@ -112,8 +124,9 @@ export function AvatarTab({ session }: { session: InterviewSession | null }) {
     setVoiceDetail(null);
     setVoiceMetrics(null);
     setVisualDetail(null);
-    setProfile(null);
     setOverall(null);
+    setContentScore(null);
+    setContentItems([]);
     setQuestionIdx(-1);
     finishingRef.current = false;
     if (downloadUrl) {
@@ -123,11 +136,16 @@ export function AvatarTab({ session }: { session: InterviewSession | null }) {
     try {
       // 1) 서버에서 LiveAvatar 단기 토큰 + 질문 목록.
       const avatarSession = await createAvatarSession(session.id);
-      questionsRef.current = avatarSession.questions;
-      setQuestions(avatarSession.questions);
-      if (avatarSession.sandbox) {
-        setNote("샌드박스 모드: 크레딧 소모 없음, 기본 아바타, 세션 약 1분 제한.");
-      }
+      // 프리미엄 체험판: LiveAvatar 무료 한도(약 2분) 안에 끝나도록 1문제만 진행한다.
+      // (정식판 = 전체 질문. 풀기 시 아래 slice(0, 1) 만 제거하면 됨.)
+      const trialQuestions = avatarSession.questions.slice(0, 1);
+      questionsRef.current = trialQuestions;
+      setQuestions(trialQuestions);
+      setNote(
+        avatarSession.sandbox
+          ? "체험판: 1문제만 제공됩니다. (정식판은 전체 질문 + 실제 면접관 아바타) · 샌드박스라 약 1~2분 제한."
+          : "체험판: 1문제만 제공됩니다. (정식판은 전체 질문 제공)",
+      );
 
       // 2) 웹캠 + 온디바이스 분석 준비.
       const webcam = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
@@ -205,7 +223,7 @@ export function AvatarTab({ session }: { session: InterviewSession | null }) {
     }
   };
 
-  /** 종료 → 온디바이스 분석 확정 → (키 있으면) 음성 감정 분석 → 종합 점수 저장. */
+  /** 종료 → 온디바이스 분석 확정 → 종합 점수 저장. */
   const finishInterview = async () => {
     if (!session || finishingRef.current) return;
     finishingRef.current = true;
@@ -235,17 +253,16 @@ export function AvatarTab({ session }: { session: InterviewSession | null }) {
       setDownloadUrl(URL.createObjectURL(recordedBlob));
     }
 
-    // 음성 감정/전사 (Inworld) — 키 없거나 실패해도 계속.
-    let voiceProfile: VoiceProfile | null = null;
+    // 음성 답변 전사 (자체 STT, faster-whisper). 실패해도 전달력 지표로 진행.
     let userTranscript = "";
-    if (capabilities?.voiceProfiling && recordedBlob && recordedBlob.size > 0) {
+    if (recordedBlob && recordedBlob.size > 0) {
       try {
-        const base64 = await blobToPcm16Base64(recordedBlob);
-        const result = await analyzeVoice(session.id, base64);
-        voiceProfile = result.voiceProfile;
-        userTranscript = result.transcript ?? "";
+        const audioBase64 = await blobToBase64(recordedBlob);
+        const audioFormat = (recordedBlob.type || "audio/webm").includes("webm") ? "webm" : "wav";
+        const stt = await transcribeVoice(session.id, audioBase64, audioFormat);
+        userTranscript = stt.text ?? "";
       } catch {
-        setNote((prev) => prev ?? "감정 분석(Inworld)은 실패해 측정 지표만으로 채점했습니다.");
+        setNote((prev) => prev ?? "음성 전사(STT)에 실패해 전달력 지표로만 채점했습니다.");
       }
     }
 
@@ -259,17 +276,67 @@ export function AvatarTab({ session }: { session: InterviewSession | null }) {
       ...(userTranscript ? [{ role: "user" as const, text: userTranscript }] : []),
     ];
 
-    const vDetail = vMetrics ? computeVoiceScore(vMetrics, voiceProfile) : null;
-    const visDetail = visualMetrics ? computeVisualScore(visualMetrics) : null;
+    // 온디바이스 점수는 항상 계산(폴백 + 지표 표시용). 동의 + serve 가용 시 자체 추론 점수로 교체.
+    const vLocal = vMetrics ? computeVoiceScore(vMetrics) : null;
+    const visLocal = visualMetrics ? computeVisualScore(visualMetrics) : null;
+    let vDetail = vLocal;
+    let visDetail = visLocal;
+    let source = "browser";
+
+    if (consent && capabilities?.nonverbal && recordedBlob && recordedBlob.size > 0) {
+      try {
+        const videoBase64 = await blobToBase64(recordedBlob);
+        const videoFormat = (recordedBlob.type || "video/webm").includes("webm") ? "webm" : "mp4";
+        const server = await scoreAvatarServer(session.id, {
+          videoBase64,
+          videoFormat,
+          transcriptChars: userChars,
+          fillerCount: fillers,
+          latencySec: vMetrics?.avgResponseLatencySec ?? undefined,
+        });
+        // 음성/영상 각각 별 모델 점수(late fusion). 한쪽 실패면 그쪽만 온디바이스 폴백 유지.
+        vDetail = server.voice?.detail ?? vLocal;
+        visDetail = server.visual?.detail ?? visLocal;
+        source = server.visual?.source ?? server.voice?.source ?? "rule";
+        setNote((prev) => prev ?? `자체 추론 서버로 채점했습니다 (${source}).`);
+      } catch {
+        setNote((prev) => prev ?? "자체 추론 서버 호출 실패 — 온디바이스 지표로 채점했습니다.");
+      }
+    }
+
+    // 답변 "내용" 채점: 트랜스크립트 → 질문별 haiku 채점 → 저장된 점수 조회해 표시.
+    let contentAvg: number | null = null;
+    if (transcript.some((l) => l.role === "user")) {
+      try {
+        const scored = await scoreVoiceTranscript(session.id, transcript);
+        if (scored > 0) {
+          const review = await getSessionReview(session.id);
+          const answered = review.items.filter((it) => it.score != null && !!it.answerText?.trim());
+          if (answered.length > 0) {
+            contentAvg = Math.round(
+              answered.reduce((s, it) => s + (it.score ?? 0), 0) / answered.length,
+            );
+            setContentItems(answered);
+            setContentScore(contentAvg);
+          }
+        }
+      } catch {
+        // 내용 채점 실패는 전달력·영상 점수에 영향 없음.
+      }
+    }
+
+    // 종합 = 답변 내용 + 음성 전달력 + 영상(표정·자세) 가중 평균(가용 항목만 정규화).
+    const weighted: Array<[number, number]> = [];
+    if (contentAvg != null) weighted.push([contentAvg, 0.5]);
+    if (vDetail) weighted.push([vDetail.overall, 0.25]);
+    if (visDetail) weighted.push([visDetail.overall, 0.25]);
+    const totalW = weighted.reduce((s, [, w]) => s + w, 0);
     const combined =
-      vDetail && visDetail
-        ? Math.round(vDetail.overall * 0.5 + visDetail.overall * 0.5)
-        : (vDetail?.overall ?? visDetail?.overall ?? 0);
+      totalW > 0 ? Math.round(weighted.reduce((s, [sc, w]) => s + sc * w, 0) / totalW) : 0;
 
     setVoiceMetrics(vMetrics);
     setVoiceDetail(vDetail);
     setVisualDetail(visDetail);
-    setProfile(voiceProfile);
     setOverall(combined);
 
     cleanup();
@@ -278,11 +345,12 @@ export function AvatarTab({ session }: { session: InterviewSession | null }) {
       await saveMediaResult(session.id, {
         kind: "AVATAR",
         transcript: transcript.length > 0 ? transcript : null,
-        metrics: { voice: vMetrics, visual: visualMetrics, voiceProfile },
+        metrics: { voice: vMetrics, visual: visualMetrics, source },
         score: combined,
         scoreDetail: {
           ...(vDetail ? { ...vDetail, voiceOverall: vDetail.overall } : {}),
           ...(visDetail ? { ...visDetail, visualOverall: visDetail.overall } : {}),
+          ...(contentAvg != null ? { contentScore: contentAvg } : {}),
           overall: combined,
         },
       });
@@ -290,6 +358,7 @@ export function AvatarTab({ session }: { session: InterviewSession | null }) {
     } catch (err) {
       setNote(err instanceof Error ? `결과 저장 실패: ${err.message}` : "결과 저장에 실패했습니다.");
     }
+
     setStatus("scored");
   };
 
@@ -300,7 +369,7 @@ export function AvatarTab({ session }: { session: InterviewSession | null }) {
 
   if (!session) {
     return (
-      <div className="rounded-xl border border-dashed border-slate-200 bg-white p-10 text-center text-sm text-slate-400">
+      <div className="rounded-xl border border-dashed border-slate-200 bg-card p-10 text-center text-sm text-slate-400">
         "면접 모드 선택" 탭에서 지원 건과 모드를 고르고 면접을 시작하면 아바타 화상 면접을 진행할 수 있습니다.
       </div>
     );
@@ -322,7 +391,7 @@ export function AvatarTab({ session }: { session: InterviewSession | null }) {
 
   return (
     <div className="space-y-4">
-      <Card className="border border-slate-200 bg-white">
+      <Card className="border border-slate-200 bg-card">
         <CardHeader>
           <CardTitle className="flex items-center gap-2 text-base">
             <Video className="size-4 text-purple-600" />
@@ -339,8 +408,7 @@ export function AvatarTab({ session }: { session: InterviewSession | null }) {
         <CardContent className="space-y-4">
           <p className="text-sm text-slate-500">
             아바타 면접관이 준비된 질문 {preparedQuestions ? Math.min(preparedQuestions.length, 6) : 6}개를
-            음성으로 묻고, 웹캠으로 표정·자세·음성을 분석해 종합 점수를 제공합니다. 영상은 기기에서만
-            분석되고 서버에 저장되지 않습니다.
+            음성으로 묻고, 웹캠으로 표정·자세·음성을 분석해 종합 점수를 제공합니다.
           </p>
 
           {keyMissing && (
@@ -358,7 +426,7 @@ export function AvatarTab({ session }: { session: InterviewSession | null }) {
 
           {/* 화면: 아바타(메인) + 내 웹캠(서브) */}
           {(status === "connecting" || status === "live" || status === "analyzing") && (
-            <div className="relative overflow-hidden rounded-xl bg-slate-900">
+            <div ref={videoBoxRef} className="relative overflow-hidden rounded-xl bg-muted">
               <video ref={avatarVideoRef} autoPlay playsInline className="aspect-video w-full object-cover" />
               <video
                 ref={selfVideoRef}
@@ -367,6 +435,18 @@ export function AvatarTab({ session }: { session: InterviewSession | null }) {
                 playsInline
                 className="absolute bottom-3 right-3 w-1/4 rounded-lg border-2 border-white/40 object-cover"
               />
+              <Button
+                type="button"
+                size="sm"
+                variant="secondary"
+                onClick={() => {
+                  if (document.fullscreenElement) void document.exitFullscreen();
+                  else void videoBoxRef.current?.requestFullscreen();
+                }}
+                className="absolute right-3 top-3 gap-1 opacity-80 hover:opacity-100"
+              >
+                <Maximize2 className="size-4" /> 전체화면
+              </Button>
               {status === "connecting" && (
                 <div className="absolute inset-0 flex items-center justify-center text-sm text-slate-300">
                   <Loader2 className="mr-2 size-4 animate-spin" /> 아바타 면접관 연결 중…
@@ -391,6 +471,22 @@ export function AvatarTab({ session }: { session: InterviewSession | null }) {
                 </p>
               )}
             </div>
+          )}
+
+          {supported && capabilities?.nonverbal && (status === "idle" || status === "scored") && (
+            <label className="flex items-start gap-2 rounded-lg border border-slate-200 bg-slate-50 p-3 text-xs text-slate-600">
+              <input
+                type="checkbox"
+                checked={consent}
+                onChange={(e) => setConsent(e.target.checked)}
+                className="mt-0.5 size-3.5"
+              />
+              <span>
+                <span className="font-semibold text-slate-700">정밀 분석(자체 AI)</span> — 원본 영상을 분석
+                서버로 전송해 자체 모델(표정·자세·음성)로 채점합니다. 분석 후 영상은 즉시 폐기되며 서버에
+                저장하지 않습니다. 끄면 브라우저 온디바이스 지표로만 채점합니다.
+              </span>
+            </label>
           )}
 
           {supported && (
@@ -444,9 +540,9 @@ export function AvatarTab({ session }: { session: InterviewSession | null }) {
         </CardContent>
       </Card>
 
-      {/* 종합 + 영상 점수 */}
+      {/* 종합 점수 (답변 내용 + 음성 + 영상) */}
       {status === "scored" && overall != null && (
-        <Card className="border border-slate-200 bg-white">
+        <Card className="border border-slate-200 bg-card">
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-base">
               종합 점수
@@ -456,32 +552,81 @@ export function AvatarTab({ session }: { session: InterviewSession | null }) {
               </span>
             </CardTitle>
           </CardHeader>
-          {visualDetail && (
-            <CardContent className="space-y-3">
-              {(
-                [
-                  ["expression", "표정", "자연스러운 미소, 긴장(미간) 최소화"],
-                  ["gaze", "시선 처리", "카메라(면접관) 응시 유지"],
-                  ["posture", "자세", "수평 어깨, 차분한 상체"],
-                  ["presence", "화면 유지", "얼굴이 화면에 안정적으로 잡힘"],
-                ] as const
-              ).map(([key, label, desc]) => (
-                <div key={key}>
-                  <div className="mb-1 flex items-baseline justify-between text-sm">
-                    <span className="font-semibold text-slate-700">{label}</span>
-                    <span className={`font-bold ${getScoreColor(visualDetail[key])}`}>{visualDetail[key]}</span>
-                  </div>
-                  <Progress value={visualDetail[key]} className="h-2" />
-                  <p className="mt-0.5 text-[11px] text-slate-400">{desc}</p>
+          <CardContent className="flex flex-wrap gap-x-3 gap-y-1 text-xs text-slate-500">
+            {contentScore != null && <span>답변 내용 {contentScore}</span>}
+            {voiceDetail && <span>· 음성 전달력 {voiceDetail.overall}</span>}
+            {visualDetail && <span>· 영상(표정·자세) {visualDetail.overall}</span>}
+          </CardContent>
+        </Card>
+      )}
+
+      {/* 답변 내용 점수 (전사 → haiku 채점) */}
+      {status === "scored" && contentScore != null && (
+        <Card className="border border-slate-200 bg-card">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-base">
+              답변 내용 점수
+              <span className={`ml-auto text-2xl font-black ${getScoreColor(contentScore)}`}>
+                {contentScore}
+                <span className="text-sm font-bold text-slate-400">/100</span>
+              </span>
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {contentItems.map((it) => (
+              <div key={it.questionId} className="rounded-lg border border-slate-100 bg-slate-50 p-3">
+                <div className="mb-1 flex items-baseline justify-between gap-2 text-sm">
+                  <span className="font-semibold text-slate-700">{it.question}</span>
+                  {it.score != null && (
+                    <span className={`shrink-0 font-bold ${getScoreColor(it.score)}`}>{it.score}</span>
+                  )}
                 </div>
-              ))}
-            </CardContent>
-          )}
+                {it.answerText && (
+                  <p className="mb-1 whitespace-pre-line text-xs text-slate-500">{it.answerText}</p>
+                )}
+                {it.feedback && <p className="text-[11px] text-slate-400">{it.feedback}</p>}
+              </div>
+            ))}
+          </CardContent>
+        </Card>
+      )}
+
+      {/* 영상 점수 (표정·시선·자세·화면 유지) */}
+      {status === "scored" && visualDetail && (
+        <Card className="border border-slate-200 bg-card">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-base">
+              영상 점수
+              <span className={`ml-auto text-2xl font-black ${getScoreColor(visualDetail.overall)}`}>
+                {visualDetail.overall}
+                <span className="text-sm font-bold text-slate-400">/100</span>
+              </span>
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {(
+              [
+                ["expression", "표정", "자연스러운 미소, 긴장(미간) 최소화"],
+                ["gaze", "시선 처리", "카메라(면접관) 응시 유지"],
+                ["posture", "자세", "수평 어깨, 차분한 상체"],
+                ["presence", "화면 유지", "얼굴이 화면에 안정적으로 잡힘"],
+              ] as const
+            ).map(([key, label, desc]) => (
+              <div key={key}>
+                <div className="mb-1 flex items-baseline justify-between text-sm">
+                  <span className="font-semibold text-slate-700">{label}</span>
+                  <span className={`font-bold ${getScoreColor(visualDetail[key])}`}>{visualDetail[key]}</span>
+                </div>
+                <Progress value={visualDetail[key]} className="h-2" />
+                <p className="mt-0.5 text-[11px] text-slate-400">{desc}</p>
+              </div>
+            ))}
+          </CardContent>
         </Card>
       )}
 
       {status === "scored" && voiceDetail && voiceMetrics && (
-        <VoiceScorePanel detail={voiceDetail} metrics={voiceMetrics} profile={profile} title="음성 점수" />
+        <VoiceScorePanel detail={voiceDetail} metrics={voiceMetrics} title="음성 점수" />
       )}
     </div>
   );

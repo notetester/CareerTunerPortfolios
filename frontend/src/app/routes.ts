@@ -9,6 +9,8 @@ import { CorrectionPage } from "./pages/Correction";
 import { AnalysisPage } from "./pages/Analysis";
 import { CommunityPage } from "./pages/Community";
 import { BillingPage } from "./pages/Billing";
+import { BillingFailPage } from "./pages/BillingFail";
+import { BillingSuccessPage } from "./pages/BillingSuccess";
 import { PricingPage } from "./pages/Pricing";
 import { ProfilePage } from "./pages/Profile";
 import { SettingsPage } from "./pages/Settings";
@@ -48,6 +50,8 @@ export const router = createBrowserRouter([
       { path: "analysis", Component: AnalysisPage },
       { path: "community", Component: CommunityPage },
       { path: "billing", Component: BillingPage },
+      { path: "billing/success", Component: BillingSuccessPage },
+      { path: "billing/fail", Component: BillingFailPage },
       { path: "pricing", Component: PricingPage },
       { path: "profile", Component: ProfilePage },
       { path: "settings", Component: SettingsPage },

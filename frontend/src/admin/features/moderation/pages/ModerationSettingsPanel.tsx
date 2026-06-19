@@ -2,9 +2,8 @@ import { useState, useEffect, useCallback } from "react";
 import {
   PlugZap, ScanText, Inbox, ChevronRight, CheckCircle2, AlertCircle,
 } from "lucide-react";
-// TODO: 백엔드 연동 시 주석 해제
-// import * as moderationApi from "../api/moderationApi";
-import type { ModerationTestResult } from "../api/moderationApi";
+import * as moderationApi from "../api/moderationApi";
+import type { ModerationSettingData, ModerationTestResult } from "../api/moderationApi";
 import "./moderation-settings.css";
 
 /* ── 프리셋 정의 ── */
@@ -95,12 +94,15 @@ export default function ModerationSettingsPanel({ flash }: { flash: (msg: string
 
   /* 설정 로드 */
   const loadSettings = useCallback(() => {
-    // TODO: 백엔드 연동 시 moderationApi.getModerationSettings() 로 교체
-    setMode("NORMAL");
-    setTh(0.80);
-    setChangedAt("2026-06-10T09:00:00");
-    setCustom(false);
-    setServerDown(false);
+    moderationApi.getModerationSettings()
+      .then((s) => {
+        setMode(s.strictness);
+        setTh(s.hideThreshold);
+        setChangedAt(s.updatedAt);
+        setCustom(false);
+        setServerDown(false);
+      })
+      .catch(() => setServerDown(true));
   }, []);
 
   useEffect(() => { loadSettings(); }, [loadSettings]);
@@ -117,12 +119,19 @@ export default function ModerationSettingsPanel({ flash }: { flash: (msg: string
   /* 프리셋 적용 */
   const applyPreset = async (p: typeof PRESETS[number]) => {
     setPending(null);
-    // TODO: 백엔드 연동 시 moderationApi.updateModerationSettings 로 교체
-    setMode(p.k);
-    setTh(p.th);
-    setCustom(false);
-    setChangedAt(new Date().toISOString());
-    setToast({ ok: true, msg: `'${p.name}' 모드 적용됨 \u2014 임계값 ${p.th.toFixed(2)}` });
+    try {
+      const updated = await moderationApi.updateModerationSettings({
+        strictness: p.k,
+        hideThreshold: p.th,
+      });
+      setMode(updated.strictness);
+      setTh(updated.hideThreshold);
+      setCustom(false);
+      setChangedAt(updated.updatedAt);
+      setToast({ ok: true, msg: `'${p.name}' 모드 적용됨 \u2014 임계값 ${p.th.toFixed(2)}` });
+    } catch {
+      setToast({ ok: false, msg: "저장 실패 \u2014 검열 서버에 연결할 수 없어요. 잠시 후 다시 시도해주세요." });
+    }
   };
 
   /* 고급 임계값 변경 */
@@ -130,8 +139,12 @@ export default function ModerationSettingsPanel({ flash }: { flash: (msg: string
     setTh(v);
     const isCustom = v !== cur.th;
     setCustom(isCustom);
-    // TODO: 백엔드 연동 시 moderationApi.updateModerationSettings 로 교체
-    setChangedAt(new Date().toISOString());
+    try {
+      const updated = await moderationApi.updateModerationSettings({ hideThreshold: v });
+      setChangedAt(updated.updatedAt);
+    } catch {
+      setToast({ ok: false, msg: "임계값 저장 실패" });
+    }
   };
 
   /* 판정 테스트 */
@@ -139,18 +152,17 @@ export default function ModerationSettingsPanel({ flash }: { flash: (msg: string
     if (loading || serverDown || !body.trim()) return;
     setLoading(true);
     if (result) setPrevRes(result);
-    // TODO: 백엔드 연동 시 moderationApi.testModeration 로 교체
-    setTimeout(() => {
-      const hasKeyword = /욕|씨|바보|광고|스팸|홍보|링크/.test(body);
-      const r: ModerationTestResult = {
-        toxic: hasKeyword,
-        category: hasKeyword ? "abuse" : "normal",
-        confidence: hasKeyword ? 0.85 + Math.random() * 0.1 : 0.05 + Math.random() * 0.15,
-        elapsedMs: 800 + Math.floor(Math.random() * 400),
-      };
+    try {
+      const r = await moderationApi.testModeration({
+        title: title || undefined,
+        content: body,
+      });
       setResult({ r, th });
+    } catch {
+      flash("판정 테스트에 실패했습니다.");
+    } finally {
       setLoading(false);
-    }, 1200);
+    }
   };
 
   const fmtDate = (iso: string) => {

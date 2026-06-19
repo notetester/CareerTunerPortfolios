@@ -93,7 +93,7 @@ const SORT_OPTIONS = [
 
 const PAGE_SIZE_OPTIONS = [20, 50, 100, 200] as const;
 const SELECT_CLASS_NAME =
-  "h-9 w-full rounded-md border border-slate-200 bg-white px-3 text-sm font-normal text-slate-900 outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100";
+  "h-9 w-full rounded-md border border-slate-200 bg-card px-3 text-sm font-normal text-slate-900 outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100";
 
 function formatDateTime(value: string | null | undefined): string {
   if (!value) return "-";
@@ -353,7 +353,7 @@ export function AdminApplicationCasesPage() {
 
         <div className="grid gap-5 lg:grid-cols-[360px_minmax(0,1fr)]">
         <section className="min-w-0 space-y-4">
-          <Card className="border-slate-200 bg-white">
+          <Card className="border-slate-200 bg-card">
             <CardContent className="space-y-4 p-4">
               <label className="grid gap-1 text-xs font-semibold text-slate-500">
                 검색
@@ -446,7 +446,7 @@ export function AdminApplicationCasesPage() {
                       setCreatedFrom(event.target.value);
                       resetOffset();
                     }}
-                    className="bg-white"
+                    className="bg-card"
                   />
                 </label>
                 <label className="grid gap-1 text-xs font-semibold text-slate-500">
@@ -458,7 +458,7 @@ export function AdminApplicationCasesPage() {
                       setCreatedTo(event.target.value);
                       resetOffset();
                     }}
-                    className="bg-white"
+                    className="bg-card"
                   />
                 </label>
               </div>
@@ -473,7 +473,7 @@ export function AdminApplicationCasesPage() {
                       setDeadlineFrom(event.target.value);
                       resetOffset();
                     }}
-                    className="bg-white"
+                    className="bg-card"
                   />
                 </label>
                 <label className="grid gap-1 text-xs font-semibold text-slate-500">
@@ -485,7 +485,7 @@ export function AdminApplicationCasesPage() {
                       setDeadlineTo(event.target.value);
                       resetOffset();
                     }}
-                    className="bg-white"
+                    className="bg-card"
                   />
                 </label>
               </div>
@@ -558,7 +558,7 @@ export function AdminApplicationCasesPage() {
 
           {listError && <ErrorBox message={listError} />}
 
-          <Card className="border-slate-200 bg-white">
+          <Card className="border-slate-200 bg-card">
             <CardHeader className="pb-3">
               <CardTitle className="text-sm font-bold text-slate-900">지원 건 목록</CardTitle>
             </CardHeader>
@@ -573,7 +573,7 @@ export function AdminApplicationCasesPage() {
                     <button
                       key={row.id}
                       type="button"
-                      className={`w-full rounded-lg border bg-white p-3 text-left transition-colors ${
+                      className={`w-full rounded-lg border bg-card p-3 text-left transition-colors ${
                         selected?.id === row.id ? "border-blue-300 ring-2 ring-blue-100" : "border-slate-200 hover:border-blue-200"
                       }`}
                       onClick={() => handleSelect(row.id)}
@@ -610,7 +610,7 @@ export function AdminApplicationCasesPage() {
 
         <section className="min-w-0 space-y-4">
           {selectedId === null ? (
-            <Card className="border-slate-200 bg-white">
+            <Card className="border-slate-200 bg-card">
               <CardContent className="p-8">
                 <EmptyState title="지원 건을 선택하세요." description="왼쪽 목록에서 지원 건을 선택하면 상세 정보와 분석 이력을 확인할 수 있습니다." />
               </CardContent>
@@ -629,7 +629,7 @@ export function AdminApplicationCasesPage() {
               onStatus={handleStatus}
             />
           ) : (
-            <Card className="border-slate-200 bg-white">
+            <Card className="border-slate-200 bg-card">
               <CardContent className="p-8">
                 {detailError ? (
                   <EmptyState title="상세 정보를 불러오지 못했습니다." description={detailError} />
@@ -667,7 +667,7 @@ function SummaryCard({
   }[tone];
 
   return (
-    <Card className="border-slate-200 bg-white">
+    <Card className="border-slate-200 bg-card">
       <CardContent className="flex items-center justify-between gap-3 p-4">
         <div className="min-w-0">
           <div className="text-xs font-semibold text-slate-500">{label}</div>
@@ -775,7 +775,7 @@ function DetailPanel({
 }) {
   return (
     <Tabs value={activeTab} onValueChange={onTabChange} className="space-y-4">
-      <TabsList className="h-auto w-full justify-start overflow-x-auto border border-slate-200 bg-white p-1">
+      <TabsList className="h-auto w-full justify-start overflow-x-auto border border-slate-200 bg-card p-1">
         {DETAIL_TABS.map((tab) => (
           <TabsTrigger key={tab.value} value={tab.value} className="shrink-0 px-3 py-2">
             <tab.icon className="size-4" />
@@ -830,7 +830,7 @@ function OverviewTab({
 
   return (
     <>
-      <Card className="border-slate-200 bg-white">
+      <Card className="border-slate-200 bg-card">
         <CardHeader>
           <CardTitle className="text-lg font-bold text-slate-950">
             {detail.applicationCase.companyName} · {detail.applicationCase.jobTitle}
@@ -879,7 +879,7 @@ function OverviewTab({
             <Textarea
               value={memo}
               onChange={(event) => onMemoChange(event.target.value)}
-              className="min-h-20 bg-white"
+              className="min-h-20 bg-card"
               placeholder="상태 변경 메모"
               disabled={isSaving}
             />
@@ -905,7 +905,7 @@ function PostingTab({ detail }: { detail: AdminApplicationCaseDetail }) {
   return (
     <GridSection title="공고문 revision" empty={detail.jobPostings.length === 0} emptyMessage="등록된 공고문 revision이 없습니다.">
       {detail.jobPostings.map((posting) => (
-        <Card key={posting.id} className="border-slate-200 bg-white">
+        <Card key={posting.id} className="border-slate-200 bg-card">
           <CardContent className="space-y-3 p-4 text-sm">
             <div className="flex flex-wrap items-start justify-between gap-2">
               <div className="font-semibold text-slate-900">rev {posting.revision} · {posting.sourceType}</div>
@@ -927,7 +927,7 @@ function JobAnalysisTab({ detail }: { detail: AdminApplicationCaseDetail }) {
   return (
     <GridSection title="공고 분석 이력" empty={detail.jobAnalyses.length === 0} emptyMessage="공고 분석 이력이 없습니다.">
       {detail.jobAnalyses.map((analysis) => (
-        <Card key={analysis.id} className="border-slate-200 bg-white">
+        <Card key={analysis.id} className="border-slate-200 bg-card">
           <CardContent className="space-y-3 p-4 text-sm">
             <div className="flex flex-wrap items-start justify-between gap-2">
               <div className="font-semibold text-slate-900">#{analysis.id} · 공고 rev {analysis.jobPostingRevision ?? "-"}</div>
@@ -960,7 +960,7 @@ function CompanyAnalysisTab({ detail }: { detail: AdminApplicationCaseDetail }) 
   return (
     <GridSection title="기업 분석 이력" empty={detail.companyAnalyses.length === 0} emptyMessage="기업 분석 이력이 없습니다.">
       {detail.companyAnalyses.map((analysis) => (
-        <Card key={analysis.id} className="border-slate-200 bg-white">
+        <Card key={analysis.id} className="border-slate-200 bg-card">
           <CardContent className="space-y-3 p-4 text-sm">
             <div className="flex flex-wrap items-start justify-between gap-2">
               <div className="font-semibold text-slate-900">#{analysis.id} · 공고 rev {analysis.jobPostingRevision ?? "-"}</div>
@@ -994,7 +994,7 @@ function AiLogsTab({ detail }: { detail: AdminApplicationCaseDetail }) {
   return (
     <GridSection title="B AI 사용량/실패 로그" empty={detail.usageLogs.length === 0} emptyMessage="AI 사용 로그가 없습니다.">
       {detail.usageLogs.map((log) => (
-        <Card key={log.id} className={log.status === "FAILED" ? "border-red-200 bg-red-50" : "border-slate-200 bg-white"}>
+        <Card key={log.id} className={log.status === "FAILED" ? "border-red-200 bg-red-50" : "border-slate-200 bg-card"}>
           <CardContent className="space-y-3 p-4 text-sm">
             <div className="flex flex-wrap items-start justify-between gap-2">
               <div className={log.status === "FAILED" ? "font-semibold text-red-800" : "font-semibold text-slate-900"}>
@@ -1008,7 +1008,7 @@ function AiLogsTab({ detail }: { detail: AdminApplicationCaseDetail }) {
               <Info label="크레딧" value={`${log.creditUsed ?? 0}`} />
             </div>
             {log.errorMessage ? (
-              <div className="rounded-md border border-red-200 bg-white p-3 text-xs font-medium text-red-700">
+              <div className="rounded-md border border-red-200 bg-card p-3 text-xs font-medium text-red-700">
                 <ExpandableText value={log.errorMessage} collapsedLines={4} emptyText="오류 메시지가 없습니다." />
               </div>
             ) : (
@@ -1159,7 +1159,7 @@ function ListLoadingState() {
   return (
     <div className="space-y-2" aria-busy="true">
       {Array.from({ length: 5 }).map((_, index) => (
-        <div key={index} className="rounded-lg border border-slate-200 bg-white p-3">
+        <div key={index} className="rounded-lg border border-slate-200 bg-card p-3">
           <div className="h-4 w-3/4 animate-pulse rounded bg-slate-200" />
           <div className="mt-2 h-3 w-1/2 animate-pulse rounded bg-slate-100" />
           <div className="mt-3 h-3 w-2/3 animate-pulse rounded bg-slate-100" />
@@ -1171,7 +1171,7 @@ function ListLoadingState() {
 
 function DetailLoadingState() {
   return (
-    <Card className="border-slate-200 bg-white" aria-busy="true">
+    <Card className="border-slate-200 bg-card" aria-busy="true">
       <CardContent className="space-y-4 p-5">
         <div className="h-6 w-2/5 animate-pulse rounded bg-slate-200" />
         <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">

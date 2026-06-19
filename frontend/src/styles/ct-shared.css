@@ -16,11 +16,11 @@
 /* ===== Page head ===== */
 .ct-pagehead { margin-bottom: 20px; }
 .ct-pagehead__row { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
-.ct-pagehead h1 { font-size: 28px; font-weight: 700; letter-spacing: -0.02em; }
+.ct-pagehead h1 { font-size: 28px; font-weight: 600; letter-spacing: -0.02em; }
 .ct-pagehead p { color: var(--muted-foreground); font-size: 14px; margin-top: 6px; }
 
 /* ===== Brand button ===== */
-.ct-btn-brand { display: inline-flex; align-items: center; gap: 7px; padding: 9px 18px; border-radius: 8px; border: none; cursor: pointer; font-size: 14px; font-weight: 600; color: #fff; background: var(--gradient-brand); transition: opacity 180ms; white-space: nowrap; }
+.ct-btn-brand { display: inline-flex; align-items: center; gap: 7px; padding: 9px 18px; border-radius: 8px; border: none; cursor: pointer; font-size: 14px; font-weight: 600; color: #fff; background: var(--primary); transition: opacity 180ms; white-space: nowrap; }
 .ct-btn-brand:hover { opacity: 0.9; }
 .ct-btn-brand:disabled { opacity: 0.5; cursor: default; }
 .ct-btn-brand svg { width: 16px; height: 16px; stroke-width: 2; }

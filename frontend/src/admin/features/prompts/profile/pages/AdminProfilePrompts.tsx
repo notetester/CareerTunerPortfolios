@@ -43,7 +43,7 @@ export default function AdminProfilePromptsPage() {
       )}
     >
       {error && <div className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>}
-      <Card className="border-slate-200 bg-white">
+      <Card className="border-slate-200 bg-card">
         <CardHeader>
           <div className="flex items-start justify-between gap-3">
             <div>
@@ -100,7 +100,7 @@ export default function AdminProfilePromptsPage() {
                       ))}
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-slate-100 bg-white">
+                  <tbody className="divide-y divide-slate-100 bg-card">
                     {prompt?.weightProfiles?.map((profile) => (
                       <tr key={profile.jobFamily}>
                         <td className="px-3 py-2">
@@ -149,7 +149,7 @@ export default function AdminProfilePromptsPage() {
                     <th className="px-3 py-2 text-left">검증</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-100 bg-white">
+                <tbody className="divide-y divide-slate-100 bg-card">
                   {PROFILE_OUTPUT_FIELDS.map((field) => (
                     <tr key={field.key}>
                       <td className="px-3 py-2 font-semibold text-slate-900">{field.label}</td>
@@ -211,7 +211,7 @@ function StatusCard({ label, value, tone }: { label: string; value: string; tone
 
 function PolicyItem({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-lg bg-white px-3 py-2">
+    <div className="rounded-lg bg-card px-3 py-2">
       <div className="text-[11px] font-semibold uppercase text-slate-400">{label}</div>
       <div className="mt-1 text-sm font-bold text-slate-800">{value}</div>
     </div>

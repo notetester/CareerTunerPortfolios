@@ -74,7 +74,7 @@ export function LearningRecommendationPanel({ analyses, loading, error, onReanal
             detailedCertificates.length >= 2 && gaps.some((gap) => gap.priority === "HIGH");
 
           return (
-            <Card key={analysis.id} className="border border-slate-200 bg-white">
+            <Card key={analysis.id} className="border border-slate-200 bg-card">
               <CardHeader className="pb-3">
                 <CardTitle className="text-base">{analysis.application.companyName} · {analysis.application.jobTitle}</CardTitle>
                 {learningTasks.length > 0 && (
@@ -212,7 +212,7 @@ function PortfolioTaskCard({ gaps }: { gaps: FitGapRecommendation[] }) {
       <p className="mt-1 text-xs leading-5 text-teal-700">부족 역량을 실제 결과물과 설명 근거로 바꾸는 과제입니다.</p>
       <div className="mt-2 space-y-2">
         {tasks.map((item) => (
-          <div key={item.skill} className="rounded-lg bg-white/80 p-2.5">
+          <div key={item.skill} className="rounded-lg bg-card/80 p-2.5">
             <div className="text-xs font-bold text-teal-900">{item.skill}</div>
             <div className="mt-0.5 text-xs leading-5 text-slate-600">{item.task}</div>
           </div>
@@ -245,7 +245,7 @@ function CertificateList({ recommendations, fallbackItems }: { recommendations: 
 
 function StateCard({ title, description, tone = "default" }: { title: string; description?: string; tone?: "default" | "error" }) {
   return (
-    <Card className={`border ${tone === "error" ? "border-red-200 bg-red-50" : "border-slate-200 bg-white"}`}>
+    <Card className={`border ${tone === "error" ? "border-red-200 bg-red-50" : "border-slate-200 bg-card"}`}>
       <CardContent className="flex items-start gap-3 p-5">
         <GraduationCap className={`mt-0.5 size-5 ${tone === "error" ? "text-red-500" : "text-blue-600"}`} />
         <div>

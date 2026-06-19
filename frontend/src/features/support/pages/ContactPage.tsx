@@ -1,4 +1,4 @@
-import { useState, useRef } from "react";
+import { useEffect, useState, useRef } from "react";
 import { Link } from "react-router";
 import {
   ArrowLeft, Send, UploadCloud, X, Paperclip,
@@ -9,7 +9,9 @@ import { Textarea } from "@/app/components/ui/textarea";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/app/components/ui/select";
-import { CONTACT_CATEGORIES } from "../types/support";
+import { getAccessToken } from "@/app/lib/tokenStore";
+import { CONTACT_CATEGORIES, type SupportTicket, type TicketStatus, type TicketThread } from "../types/support";
+import { addTicketMessage, getTicketThread } from "../api/supportApi";
 import { useSupportStore } from "../hooks/useSupportStore";
 import "../styles/support.css";
 
@@ -24,6 +26,18 @@ function fmtSize(b: number) {
     : Math.max(1, Math.round(b / 1024)) + "KB";
 }
 
+const TICKET_STATUS_LABEL: Record<TicketStatus, string> = {
+  RECEIVED: "접수됨",
+  IN_PROGRESS: "처리중",
+  ANSWERED: "답변완료",
+  CLOSED: "종료",
+};
+
+function fmtDate(value?: string) {
+  if (!value) return "";
+  return new Intl.DateTimeFormat("ko-KR", { dateStyle: "medium", timeStyle: "short" }).format(new Date(value));
+}
+
 export function ContactPage() {
   const [title, setTitle] = useState("");
   const [category, setCategory] = useState("");
@@ -32,8 +46,13 @@ export function ContactPage() {
   const [dragOver, setDragOver] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
-  const { submitting, lastTicket, createTicket } = useSupportStore();
+  const { submitting, lastTicket, createTicket, myTickets, ticketsLoading, fetchMyTickets } = useSupportStore();
   const [submitFailed, setSubmitFailed] = useState(false);
+
+  // 로그인 상태에서만 내 문의 내역을 조회한다(비로그인 GET 은 401).
+  useEffect(() => {
+    if (getAccessToken()) void fetchMyTickets();
+  }, [fetchMyTickets]);
 
   const addFiles = (list: FileList) => {
     const next = Array.from(list).map((f) => ({ name: f.name, size: f.size }));
@@ -212,6 +231,138 @@ export function ContactPage() {
           </div>
         </aside>
       </div>
+
+      {/* 내 문의 내역 — 접수만 가능하던 흐름에 추적/답변 확인을 연결한다(인증 사용자). */}
+      {getAccessToken() && (
+        <section style={{ marginTop: 28 }}>
+          <h2 style={{ fontSize: 18, fontWeight: 700, marginBottom: 12 }}>내 문의 내역</h2>
+          {ticketsLoading && (
+            <p style={{ fontSize: 14, color: "var(--muted-foreground)" }}>불러오는 중…</p>
+          )}
+          {!ticketsLoading && myTickets.length === 0 && (
+            <p style={{ fontSize: 14, color: "var(--muted-foreground)" }}>접수한 문의가 없습니다.</p>
+          )}
+          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+            {myTickets.map((t) => (
+              <MyTicketItem key={t.id} ticket={t} onChanged={() => void fetchMyTickets()} />
+            ))}
+          </div>
+        </section>
+      )}
+    </div>
+  );
+}
+
+/** 내 문의 한 건 — 펼치면 전체 대화(원문+답변+추가문의)를 보여주고 추가 문의를 남길 수 있다. */
+function MyTicketItem({ ticket, onChanged }: { ticket: SupportTicket; onChanged: () => void }) {
+  const [open, setOpen] = useState(false);
+  const [thread, setThread] = useState<TicketThread | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [reply, setReply] = useState("");
+  const [sending, setSending] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const toggle = async () => {
+    const next = !open;
+    setOpen(next);
+    if (next && !thread) {
+      setLoading(true);
+      try {
+        setThread(await getTicketThread(ticket.id));
+      } catch {
+        setError("대화를 불러오지 못했습니다.");
+      } finally {
+        setLoading(false);
+      }
+    }
+  };
+
+  const send = async () => {
+    const content = reply.trim();
+    if (!content) return;
+    setSending(true);
+    setError(null);
+    try {
+      setThread(await addTicketMessage(ticket.id, content));
+      setReply("");
+      onChanged();
+    } catch {
+      setError("추가 문의 전송에 실패했습니다.");
+    } finally {
+      setSending(false);
+    }
+  };
+
+  const status = thread?.status ?? ticket.status;
+
+  return (
+    <div style={{ border: "1px solid var(--border)", borderRadius: 12, padding: 14 }}>
+      <button
+        type="button"
+        onClick={() => void toggle()}
+        style={{ display: "flex", width: "100%", justifyContent: "space-between", alignItems: "center", gap: 8, background: "none", border: "none", padding: 0, cursor: "pointer", textAlign: "left" }}
+      >
+        <span style={{ fontWeight: 600 }}>{ticket.subject}</span>
+        <span
+          style={{
+            fontSize: 12, fontWeight: 600, padding: "2px 10px", borderRadius: 999, whiteSpace: "nowrap",
+            background: status === "ANSWERED" ? "var(--primary)" : "var(--muted)",
+            color: status === "ANSWERED" ? "var(--primary-foreground)" : "var(--muted-foreground)",
+          }}
+        >
+          {TICKET_STATUS_LABEL[status] ?? status}
+        </span>
+      </button>
+      <div style={{ fontSize: 12, color: "var(--muted-foreground)", marginTop: 4 }}>
+        접수번호 CT-{ticket.id} · {fmtDate(ticket.createdAt)} · {open ? "접기" : "펼쳐서 대화 보기"}
+      </div>
+
+      {open && (
+        <div style={{ marginTop: 12 }}>
+          {loading && <p style={{ fontSize: 13, color: "var(--muted-foreground)" }}>대화를 불러오는 중…</p>}
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            {thread?.messages.map((m) => (
+              <div
+                key={m.id}
+                style={{
+                  alignSelf: m.senderType === "ADMIN" ? "flex-start" : "flex-end",
+                  maxWidth: "85%",
+                  padding: 10,
+                  borderRadius: 10,
+                  background: m.senderType === "ADMIN" ? "var(--muted)" : "var(--primary)",
+                  color: m.senderType === "ADMIN" ? "inherit" : "var(--primary-foreground)",
+                }}
+              >
+                <div style={{ fontSize: 11, fontWeight: 600, opacity: 0.8, marginBottom: 2 }}>
+                  {m.senderType === "ADMIN" ? "고객센터" : "나"} · {fmtDate(m.createdAt)}
+                </div>
+                <div style={{ fontSize: 14, whiteSpace: "pre-wrap" }}>{m.content}</div>
+              </div>
+            ))}
+          </div>
+
+          <div style={{ marginTop: 10 }}>
+            <textarea
+              value={reply}
+              onChange={(e) => setReply(e.target.value.slice(0, 2000))}
+              placeholder="추가로 문의할 내용을 입력하세요"
+              style={{ width: "100%", minHeight: 64, borderRadius: 8, border: "1px solid var(--border)", padding: 8, fontSize: 14, resize: "vertical" }}
+            />
+            {error && <p style={{ fontSize: 12, color: "var(--destructive)", marginTop: 4 }}>{error}</p>}
+            <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 6 }}>
+              <button
+                type="button"
+                onClick={() => void send()}
+                disabled={sending || !reply.trim()}
+                className="av-btn av-btn--ink"
+                style={{ opacity: sending || !reply.trim() ? 0.6 : 1 }}
+              >
+                {sending ? "전송 중…" : "추가 문의 보내기"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -24,7 +24,7 @@ function formatRelative(value: string) {
  */
 export function NotificationsCard({ notifications }: NotificationsCardProps) {
   return (
-    <Card className="border border-slate-200 bg-white">
+    <Card className="border border-slate-200 bg-card">
       <CardHeader className="pb-3">
         <CardTitle className="text-base flex items-center gap-2">
           <Bell className="size-4 text-blue-600" />

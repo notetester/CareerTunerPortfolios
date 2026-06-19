@@ -30,7 +30,7 @@ export function CorrectionInfoTab() {
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
-            <div className="rounded-lg border border-red-100 bg-white p-3 text-sm text-slate-700">
+            <div className="rounded-lg border border-red-100 bg-card p-3 text-sm text-slate-700">
               {EXAMPLE.original}
             </div>
             <div className="rounded-lg bg-red-100 p-3 text-xs text-red-700">
@@ -46,7 +46,7 @@ export function CorrectionInfoTab() {
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
-            <div className="rounded-lg border border-green-100 bg-white p-3 text-sm leading-relaxed text-slate-700">
+            <div className="rounded-lg border border-green-100 bg-card p-3 text-sm leading-relaxed text-slate-700">
               {EXAMPLE.improved}
             </div>
             <div className="space-y-1">
@@ -60,7 +60,7 @@ export function CorrectionInfoTab() {
         </Card>
       </div>
 
-      <div className="flex items-center justify-between rounded-xl border border-slate-200 bg-white p-4">
+      <div className="flex items-center justify-between rounded-xl border border-slate-200 bg-card p-4">
         <div className="text-sm text-slate-600">
           자기소개서 · 이력서 · 포트폴리오 첨삭은 첨삭 메뉴에서 이용할 수 있습니다.
         </div>

@@ -232,7 +232,7 @@ export function ProfilePage() {
 
         <div className="grid gap-5 lg:grid-cols-[320px_1fr]">
           <aside className="space-y-5">
-            <Card className="border-slate-200 bg-white">
+            <Card className="border-slate-200 bg-card">
               <CardHeader>
                 <CardTitle className="text-base">완성도</CardTitle>
               </CardHeader>
@@ -255,7 +255,7 @@ export function ProfilePage() {
               </CardContent>
             </Card>
 
-            <Card className="border-slate-200 bg-white">
+            <Card className="border-slate-200 bg-card">
               <CardHeader>
                 <CardTitle className="text-base">AI 도구</CardTitle>
               </CardHeader>
@@ -281,7 +281,7 @@ export function ProfilePage() {
 
           <section className="space-y-5">
             <Tabs defaultValue="basic">
-              <TabsList className="h-auto w-full justify-start overflow-x-auto border border-slate-200 bg-white p-1">
+              <TabsList className="h-auto w-full justify-start overflow-x-auto border border-slate-200 bg-card p-1">
                 <TabsTrigger value="basic">기본</TabsTrigger>
                 <TabsTrigger value="resume">이력서</TabsTrigger>
                 <TabsTrigger value="skills">직무 역량</TabsTrigger>
@@ -290,7 +290,7 @@ export function ProfilePage() {
               </TabsList>
 
               <TabsContent value="basic" className="mt-5">
-                <Card className="border-slate-200 bg-white">
+                <Card className="border-slate-200 bg-card">
                   <CardHeader>
                     <CardTitle className="text-base">희망 조건</CardTitle>
                   </CardHeader>
@@ -321,7 +321,7 @@ export function ProfilePage() {
               </TabsContent>
 
               <TabsContent value="resume" className="mt-5">
-                <Card className="border-slate-200 bg-white">
+                <Card className="border-slate-200 bg-card">
                   <CardHeader>
                     <CardTitle className="flex items-center gap-2 text-base">
                       <FileText className="size-4 text-blue-600" />
@@ -340,7 +340,7 @@ export function ProfilePage() {
               </TabsContent>
 
               <TabsContent value="skills" className="mt-5">
-                <Card className="border-slate-200 bg-white">
+                <Card className="border-slate-200 bg-card">
                   <CardHeader>
                     <CardTitle className="text-base">직무 역량/스킬 관리</CardTitle>
                   </CardHeader>
@@ -353,7 +353,7 @@ export function ProfilePage() {
                           className={`rounded-md border px-3 py-1.5 text-sm font-semibold transition-colors ${
                             selectedSkillSet.has(skill.toLowerCase())
                               ? "border-blue-600 bg-blue-600 text-white"
-                              : "border-slate-200 bg-white text-slate-700 hover:border-blue-300"
+                              : "border-slate-200 bg-card text-slate-700 hover:border-blue-300"
                           }`}
                           onClick={() => toggleSkill(skill)}
                         >
@@ -394,7 +394,7 @@ export function ProfilePage() {
                           <Input type="month" value={item.endDate} onChange={(event) => updateEducation(index, "endDate", event.target.value)} />
                         </Field>
                         <Field label="상태" className="md:col-span-2">
-                          <select value={item.status} onChange={(event) => updateEducation(index, "status", event.target.value)} className="h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm">
+                          <select value={item.status} onChange={(event) => updateEducation(index, "status", event.target.value)} className="h-10 w-full rounded-md border border-slate-200 bg-card px-3 text-sm">
                             <option value="">선택</option>
                             <option value="재학">재학</option>
                             <option value="졸업예정">졸업예정</option>
@@ -443,7 +443,7 @@ export function ProfilePage() {
                           <Input maxLength={100} value={item.title} onChange={(event) => updateExperience(index, "title", event.target.value)} placeholder="예: 공모전, 실습, 캠페인, 개발 프로젝트" />
                         </Field>
                         <Field label="유형">
-                          <select value={item.type} onChange={(event) => updateExperience(index, "type", event.target.value)} className="h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm">
+                          <select value={item.type} onChange={(event) => updateExperience(index, "type", event.target.value)} className="h-10 w-full rounded-md border border-slate-200 bg-card px-3 text-sm">
                             <option value="">선택</option>
                             <option value="공모전">공모전</option>
                             <option value="동아리">동아리</option>
@@ -477,7 +477,7 @@ export function ProfilePage() {
               </TabsContent>
 
               <TabsContent value="ai" className="mt-5">
-                <Card className="border-slate-200 bg-white">
+                <Card className="border-slate-200 bg-card">
                   <CardHeader>
                     <CardTitle className="text-base">AI 분석 결과</CardTitle>
                   </CardHeader>
@@ -530,7 +530,7 @@ function Field({ label, className = "", children }: { label: string; className?:
 
 function EntrySection({ title, onAdd, children }: { title: string; onAdd(): void; children: React.ReactNode }) {
   return (
-    <Card className="border-slate-200 bg-white">
+    <Card className="border-slate-200 bg-card">
       <CardHeader className="flex flex-row items-center justify-between gap-3">
         <CardTitle className="text-base">{title}</CardTitle>
         <Button variant="outline" size="sm" onClick={onAdd}>
@@ -645,7 +645,7 @@ function CriterionScoreList({ values }: { values: NonNullable<ProfileAiResponse[
       <div className="mb-2 text-xs font-bold text-slate-500">평가 기준별 점수</div>
       <div className="space-y-3">
         {values.map((item) => (
-          <div key={item.criterion} className="rounded-lg border border-slate-200 bg-white p-3">
+          <div key={item.criterion} className="rounded-lg border border-slate-200 bg-card p-3">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <div className="font-bold text-slate-900">{item.label}</div>
               <Badge className="bg-slate-100 text-slate-700">

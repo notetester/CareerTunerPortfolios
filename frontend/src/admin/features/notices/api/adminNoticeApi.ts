@@ -4,7 +4,7 @@ import type { AdminNoticeResponse } from "../types/adminNotice";
 
 function toNotice(b: AdminNoticeResponse): Notice {
   const status: NoticeStatus =
-    b.status === "PUBLISHED" ? "published" : b.status === "DRAFT" ? "draft" : "draft";
+    b.status === "PUBLISHED" ? "published" : b.status === "SCHEDULED" ? "scheduled" : "draft";
   let date: string;
   if (status === "draft") {
     date = "임시저장";
@@ -35,6 +35,7 @@ export function getNotices(): Promise<Notice[]> {
 export function createNotice(data: {
   title: string;
   content: string;
+  category?: string | null;
   status: string;
   isPinned: boolean;
   thumbnailUrl: string | null;

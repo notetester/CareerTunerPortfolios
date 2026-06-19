@@ -48,7 +48,7 @@ export function AdminHomePage() {
       <div className="mx-auto w-full max-w-7xl space-y-5 px-4 py-8 sm:px-6">
         <section className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <Badge className="mb-2 bg-slate-900 text-white">C 관리자</Badge>
+            <Badge className="mb-2 bg-foreground text-background">C 관리자</Badge>
             <h1 className="flex items-center gap-2 text-2xl font-bold text-slate-950">
               <House className="size-6 text-blue-600" />
               관리자 홈
@@ -73,7 +73,7 @@ export function AdminHomePage() {
           <>
             <div className="grid gap-4 sm:grid-cols-3">
               {queue.map((item) => (
-                <Card key={item.label} className="border-slate-200 bg-white">
+                <Card key={item.label} className="border-slate-200 bg-card">
                   <CardContent className="p-5">
                     <div className="flex items-center justify-between">
                       <span className="text-sm font-semibold text-slate-500">{item.label}</span>
@@ -91,7 +91,7 @@ export function AdminHomePage() {
                 <Link
                   key={shortcut.path}
                   to={shortcut.path}
-                  className="group rounded-lg border border-slate-200 bg-white p-4 transition-colors hover:border-blue-300 hover:bg-blue-50"
+                  className="group rounded-lg border border-slate-200 bg-card p-4 transition-colors hover:border-blue-300 hover:bg-blue-50"
                 >
                   <div className="flex items-center justify-between">
                     <span className="font-semibold text-slate-800">{shortcut.label}</span>

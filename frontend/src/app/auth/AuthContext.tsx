@@ -38,6 +38,7 @@ interface AuthContextValue {
   register(email: string, password: string, name: string, consents: RegisterConsents): Promise<void>;
   socialLogin(provider: SocialProvider): void;
   logout(): Promise<void>;
+  logoutAll(): Promise<void>;
   refreshMe(): Promise<void>;
 }
 
@@ -105,6 +106,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(null);
   }, []);
 
+  const logoutAll = useCallback(async () => {
+    try {
+      await api<void>("/auth/logout-all", { method: "POST" });
+    } catch {
+      // 서버 실패와 무관하게 로컬 세션은 종료
+    }
+    clearTokens();
+    setUser(null);
+  }, []);
+
   return (
     <AuthContext.Provider
       value={{
@@ -115,6 +126,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         register,
         socialLogin,
         logout,
+        logoutAll,
         refreshMe,
       }}
     >
