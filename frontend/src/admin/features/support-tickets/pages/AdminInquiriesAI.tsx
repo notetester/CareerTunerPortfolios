@@ -4,26 +4,20 @@ import {
   ChevronDown, Flame, User, Crown, CalendarDays, MessageSquare,
   ArrowUpRight, StickyNote, AlertTriangle, CornerDownLeft,
   CornerDownRight, RefreshCw, FileSearch, Zap, Info, WifiOff,
-  RotateCw, CheckCircle2, UserPlus, PenLine, Wand2, FileText,
-  HelpCircle, Send as SendIcon,
+  RotateCw, CheckCircle2, UserPlus, PenLine, Wand2,
+  Send as SendIcon,
 } from "lucide-react";
 import AdminShell from "../../../components/AdminShell";
 import { type Inquiry, type InquiryMessage, TEMPLATES, ASSIGNEES, INQUIRIES } from "../data/inquiriesData";
-// TODO: 백엔드 연동 시 주석 해제
-// import * as adminTicketApi from "../api/adminTicketApi";
+import * as adminTicketApi from "../api/adminTicketApi";
 import "./admin-inquiries.css";
 
 type ListFilter = "미답변" | "처리중" | "완료" | "전체";
 type AiSummaryState = "none" | "loading" | "ready" | "empty" | "error";
 type AiDraftState = "none" | "loading" | "ready" | "error";
 
-/* ── Mock AI data ── */
+/* AI 회원 요약은 백엔드 API 미구현 — 표시용 mock 유지 */
 const MOCK_SUMMARY = "가입 **3개월차** 사용자예요. 과거 **결제 관련 문의가 2회** 있었고 모두 해결됐습니다. 이번 문의는 **프로 결제 직후 AI 크레딧 미반영** 건으로, 결제 자체는 정상 완료된 것으로 보여요.";
-const MOCK_DRAFT = "안녕하세요, CareerTuner입니다. 확인 결과 **결제는 정상 처리**됐고 AI 크레딧 반영이 일시적으로 지연된 것으로 보여요. 크레딧은 보통 5분 내 자동 반영되며, 지금 **수동으로 충전**해 드렸습니다. 마이페이지 > 크레딧에서 확인 부탁드리며, 그래도 보이지 않으면 바로 다시 알려주세요.";
-const MOCK_DRAFT_EVIDENCE = [
-  { id: "d1", title: "결제·크레딧 처리 가이드", icon: "file" },
-  { id: "d2", title: "크레딧 반영 지연 FAQ", icon: "help" },
-];
 
 export default function AdminInquiriesAI() {
   const [items, setItems] = useState<Inquiry[]>([]);
@@ -40,16 +34,13 @@ export default function AdminInquiriesAI() {
   const [draftLoaded, setDraftLoaded] = useState(false);
 
   useEffect(() => {
-    // TODO: 백엔드 연동 시 아래 주석 해제하고 mock 초기화 제거
-    // adminTicketApi.getTickets().then((data) => {
-    //   setItems(data);
-    //   if (data.length > 0) setSelected(data[0]);
-    // }).catch(() => {
-    //   setItems(INQUIRIES);
-    //   setSelected(INQUIRIES[0]);
-    // });
-    setItems(INQUIRIES);
-    setSelected(INQUIRIES[0]);
+    adminTicketApi.getTickets().then((data) => {
+      setItems(data);
+      if (data.length > 0) setSelected(data[0]);
+    }).catch(() => {
+      setItems(INQUIRIES);
+      setSelected(INQUIRIES[0]);
+    });
   }, []);
 
   const flash = (msg: string, tone: string) => {
@@ -64,6 +55,13 @@ export default function AdminInquiriesAI() {
     setReplyText("");
     setMemo(inq.memo || "");
     setDraftLoaded(false);
+    // 메시지 포함 상세 로드
+    adminTicketApi.getTicketDetail(inq.id)
+      .then((detail) => {
+        setSelected(detail);
+        setMemo(detail.memo || "");
+      })
+      .catch(() => { /* 실패 시 목록에서 받은 데이터 유지 */ });
   };
 
   const generateSummary = useCallback(() => {
@@ -79,34 +77,53 @@ export default function AdminInquiriesAI() {
   }, [selected]);
 
   const generateDraft = useCallback(() => {
+    if (!selected) return;
     setAiDraft("loading");
-    setTimeout(() => setAiDraft("ready"), 2200);
-  }, []);
+    adminTicketApi.generateDraft(selected.id)
+      .then((draft) => {
+        setReplyText(draft);
+        setDraftLoaded(true);
+        setAiDraft("ready");
+      })
+      .catch(() => {
+        setAiDraft("error");
+        flash("AI 초안 생성에 실패했습니다. 잠시 후 다시 시도해 주세요.", "red");
+      });
+  }, [selected]);
 
   const useDraft = () => {
-    setReplyText(MOCK_DRAFT.replace(/\*\*/g, ""));
+    // generateDraft()에서 이미 replyText에 실제 초안이 들어있음 — 확정만 처리
     setDraftLoaded(true);
   };
 
   const regenerateDraft = () => {
+    if (!selected) return;
     setAiDraft("loading");
-    setTimeout(() => setAiDraft("ready"), 1500);
+    adminTicketApi.generateDraft(selected.id)
+      .then((draft) => {
+        setReplyText(draft);
+        setDraftLoaded(true);
+        setAiDraft("ready");
+      })
+      .catch(() => {
+        setAiDraft("error");
+        flash("AI 초안 재생성에 실패했습니다.", "red");
+      });
   };
 
   const handleSendReply = async () => {
     if (!selected || !replyText.trim()) return;
-    // TODO: 백엔드 연동 시 아래 주석 해제
-    // try {
-    //   await adminTicketApi.reply(selected.id, replyText);
-    //   flash("답변이 전송되었습니다.", "green");
-    //   setReplyText("");
-    //   setDraftLoaded(false);
-    // } catch {
-    //   flash("답변 전송에 실패했습니다.", "red");
-    // }
-    flash("답변이 전송되었습니다.", "green");
-    setReplyText("");
-    setDraftLoaded(false);
+    try {
+      const updated = await adminTicketApi.reply(selected.id, replyText);
+      setItems((prev) => prev.map((i) => (i.id === updated.id ? updated : i)));
+      setSelected(updated);
+      flash("답변이 전송되었습니다.", "green");
+      setReplyText("");
+      setDraftLoaded(false);
+      setAiDraft("none");
+    } catch {
+      flash("답변 전송에 실패했습니다.", "red");
+    }
   };
 
   // Filtered list
@@ -326,7 +343,7 @@ export default function AdminInquiriesAI() {
               ) : aiDraft === "loading" ? (
                 <AiDraftLoading />
               ) : aiDraft === "ready" ? (
-                <AiDraftReady onUseDraft={useDraft} onRegenerate={regenerateDraft} />
+                <AiDraftReady draft={replyText} onUseDraft={useDraft} onRegenerate={regenerateDraft} />
               ) : null}
             </div>
 
@@ -524,7 +541,7 @@ function AiDraftLoading() {
   );
 }
 
-function AiDraftReady({ onUseDraft, onRegenerate }: { onUseDraft: () => void; onRegenerate: () => void }) {
+function AiDraftReady({ draft, onUseDraft, onRegenerate }: { draft: string; onUseDraft: () => void; onRegenerate: () => void }) {
   return (
     <div>
       <div className="flex items-center gap-2 mb-2.5">
@@ -537,20 +554,8 @@ function AiDraftReady({ onUseDraft, onRegenerate }: { onUseDraft: () => void; on
         <span className="ml-auto text-[11px] text-slate-400">AI 생성 · 그대로 전송 금지</span>
       </div>
       <div className="rounded-[10px] p-3" style={{ background: "#f7f8ff", border: "1px solid rgba(79,70,229,0.16)" }}>
-        <div className="bg-white border border-black/8 rounded-[9px] p-3 text-[13px] leading-[1.7] text-slate-700"
-          dangerouslySetInnerHTML={{ __html: MOCK_DRAFT.replace(/\*\*(.*?)\*\*/g, '<b>$1</b>') }} />
-        <div className="mt-2.5">
-          <div className="text-[10.5px] font-bold text-slate-400 mb-1.5 ml-0.5">초안이 참고한 문서</div>
-          <div className="flex flex-wrap gap-1.5">
-            {MOCK_DRAFT_EVIDENCE.map((e) => (
-              <span key={e.id}
-                className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11.5px] font-semibold"
-                style={{ background: "#eff6ff", border: "1px solid rgba(37,99,235,0.22)", color: "#1d4ed8" }}>
-                {e.icon === "file" ? <FileText size={12} /> : <HelpCircle size={12} />}
-                {e.title}
-              </span>
-            ))}
-          </div>
+        <div className="bg-white border border-black/8 rounded-[9px] p-3 text-[13px] leading-[1.7] text-slate-700 whitespace-pre-wrap">
+          {draft}
         </div>
         <div className="flex items-center gap-2 mt-3 flex-wrap">
           <button onClick={onUseDraft}
