@@ -72,6 +72,9 @@ public interface CommunityPostMapper {
     // AI 검열에 의한 숨김 (PUBLISHED → HIDDEN 전환, 다른 상태는 무시)
     int hideIfPublished(@Param("postId") Long postId);
 
+    /** 사용자별 누적 숨김 글 수 (검열 누적 제재 판정용). 복원되면 HIDDEN 해제라 자동 감소. */
+    int countHiddenByUser(@Param("userId") Long userId);
+
     /** 면접 질문 추출 배치 대상 (INTERVIEW_REVIEW + PUBLISHED, force=false면 이미 COMPLETED인 건 제외) */
     List<Long> findPostIdsForInterviewExtract(@Param("force") boolean force);
 

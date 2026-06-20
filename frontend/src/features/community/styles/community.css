@@ -188,14 +188,25 @@
 .ct-cmt__act.is-on svg { fill: var(--destructive); }
 .ct-cmt__act svg { width: 14px; height: 14px; stroke-width: 1.8; }
 .ct-cmt__act--del { margin-left: auto; }
+
+/* 중첩 답글 — 부모 밑 들여쓰기 + 스레드 라인 */
+.ct-cmt__replies { margin-left: 20px; padding-left: 14px; border-left: 2px solid var(--border); }
+.ct-cmt__replies .ct-cmt:first-child { border-top: none; }
+.ct-cform--reply { margin-top: 4px; }
+.ct-cform--reply .ct-cbar { display: none; }
 .ct-cmt__act--del:hover { color: var(--destructive, #dc2626); }
 .ct-cform { display: flex; gap: 12px; margin-top: 22px; padding-top: 22px; border-top: 1px solid var(--border); }
 .ct-cform__main { flex: 1; }
-.ct-cform__row { display: flex; justify-content: flex-end; margin-top: 10px; }
+.ct-cform__row { display: flex; align-items: center; justify-content: flex-end; gap: 8px; margin-top: 10px; }
+/* 익명 작성 토글 — 왼쪽에 두고 등록 버튼을 오른쪽으로 민다 */
+.ct-cform__anon { display: inline-flex; align-items: center; gap: 6px; margin-right: auto; font-size: 13px; color: var(--muted-foreground); cursor: pointer; white-space: nowrap; }
+.ct-cform__anon input { width: 14px; height: 14px; accent-color: var(--brand-blue); }
 .ct-cbar { display: none; }
 
 @media (max-width: 768px) {
   .ct-cform { display: none; }
+  /* 답글용 컴팩트 폼은 모바일에서도 보여야 한다(고정 바를 쓰지 않으므로) */
+  .ct-cform--reply { display: flex; }
   .ct-detail { padding-bottom: 76px; }
   .ct-cbar { display: flex; align-items: center; gap: 10px; position: fixed; left: 0; right: 0; bottom: 0; z-index: 50; background: var(--card); border-top: 1px solid var(--border); box-shadow: 0 -4px 16px rgba(15,23,42,0.08); padding: 10px 14px; padding-bottom: max(10px, env(safe-area-inset-bottom)); }
   .ct-cbar input { flex: 1; height: 40px; padding: 0 14px; border: 1px solid transparent; border-radius: 9999px; background: var(--input-background); color: var(--foreground); font-size: 14px; }

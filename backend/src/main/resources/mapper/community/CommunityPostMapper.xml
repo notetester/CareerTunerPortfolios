@@ -213,6 +213,13 @@
          WHERE id = #{postId} AND status = 'PUBLISHED'
     </update>
 
+    <!-- 사용자별 누적 숨김 글 수 (검열 누적 → 사용자 제재 판정용) -->
+    <select id="countHiddenByUser" resultType="int">
+        SELECT COUNT(*)
+          FROM community_post
+         WHERE user_id = #{userId} AND status = 'HIDDEN'
+    </select>
+
     <!-- 면접 질문 추출 배치 대상 (INTERVIEW_REVIEW + PUBLISHED) -->
     <select id="findPostIdsForInterviewExtract" resultType="java.lang.Long">
         SELECT cp.id

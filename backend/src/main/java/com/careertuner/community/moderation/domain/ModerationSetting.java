@@ -14,5 +14,7 @@ public class ModerationSetting {
     private int id;
     private Strictness strictness;
     private double hideThreshold;
+    private int sanctionThreshold;   // 누적 숨김 글 수 임계(이 이상이면 사용자 자동 차단)
+    private int blockDays;           // 자동 차단 유지 일수
     private LocalDateTime updatedAt;
 }

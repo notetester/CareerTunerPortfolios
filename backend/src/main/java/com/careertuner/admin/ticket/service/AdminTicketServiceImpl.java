@@ -5,8 +5,11 @@ import java.util.List;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import com.careertuner.admin.ticket.ai.TicketDraftAiClient;
 import com.careertuner.admin.ticket.dto.AdminTicketDetailResponse;
+import com.careertuner.admin.ticket.dto.AdminTicketDraftResponse;
 import com.careertuner.admin.ticket.dto.AdminTicketListResponse;
+import com.careertuner.admin.ticket.dto.AdminTicketMessageResponse;
 import com.careertuner.admin.ticket.dto.AdminTicketReplyRequest;
 import com.careertuner.admin.ticket.dto.AdminTicketUpdateRequest;
 import com.careertuner.admin.ticket.mapper.AdminTicketMapper;
@@ -25,6 +28,7 @@ public class AdminTicketServiceImpl implements AdminTicketService {
 
     private final AdminTicketMapper ticketMapper;
     private final NotificationService notificationService;
+    private final TicketDraftAiClient draftAiClient;
 
     @Override
     public List<AdminTicketListResponse> getTickets(AuthUser authUser, String status) {
@@ -98,6 +102,27 @@ public class AdminTicketServiceImpl implements AdminTicketService {
             }
         }
         return getTicketDetail(authUser, id);
+    }
+
+    @Override
+    public AdminTicketDraftResponse generateDraft(AuthUser authUser, Long id) {
+        requireAdmin(authUser);
+        AdminTicketDetailResponse detail = getTicketDetail(authUser, id);
+
+        StringBuilder context = new StringBuilder();
+        context.append("문의 분류: ").append(detail.getCategory()).append('\n');
+        context.append("문의 제목: ").append(detail.getSubject()).append('\n');
+        context.append("대화 내역:\n");
+        for (AdminTicketMessageResponse msg : detail.getMsgs()) {
+            if (msg.isInternal()) {
+                continue; // 내부 메모는 초안 생성 컨텍스트에서 제외
+            }
+            String speaker = "admin".equals(msg.getWho()) ? "상담사" : "고객";
+            context.append("- [").append(speaker).append("] ").append(msg.getText()).append('\n');
+        }
+
+        String draft = draftAiClient.generateDraft(context.toString());
+        return new AdminTicketDraftResponse(draft);
     }
 
     private void requireAdmin(AuthUser authUser) {

@@ -272,6 +272,8 @@ function moderationItem(d: ModerationDetail): ModerationItem {
 const moderationSettings: ModerationSettingData = {
   strictness: "MEDIUM",
   hideThreshold: 0.7,
+  sanctionThreshold: 3,
+  blockDays: 7,
   updatedAt: iso(4),
 };
 

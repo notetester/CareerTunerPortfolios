@@ -36,6 +36,8 @@ export function getModerationStats(): Promise<ModerationStats> {
 export interface ModerationSettingData {
   strictness: string;
   hideThreshold: number;
+  sanctionThreshold: number;
+  blockDays: number;
   updatedAt: string;
 }
 
@@ -46,6 +48,8 @@ export function getModerationSettings(): Promise<ModerationSettingData> {
 export function updateModerationSettings(data: {
   strictness?: string;
   hideThreshold?: number;
+  sanctionThreshold?: number;
+  blockDays?: number;
 }): Promise<ModerationSettingData> {
   return api<ModerationSettingData>("/admin/ai/moderation/settings", {
     method: "PATCH",

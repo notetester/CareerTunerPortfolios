@@ -215,6 +215,7 @@ const NOTI_ICON_MAP: Record<NotificationType, LucideIcon> = {
   POST_SUMMARY_READY: BookOpen,
   NOTICE: Megaphone,
   TICKET_ANSWERED: MessageSquareReply,
+  ACCOUNT_BLOCKED: ShieldAlert,
   CREDIT_LOW: CreditCard,
   PAYMENT_COMPLETE: CreditCard,
   PAYMENT_SCHEDULED: CreditCard,

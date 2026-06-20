@@ -113,6 +113,7 @@ public class PostModerationService {
     private final CommunityTagMapper tagMapper;
     private final NotificationService notificationService;
     private final ModerationSettingService settingService;
+    private final UserSanctionService userSanctionService;
     private final ObjectMapper objectMapper;
     private final InterviewKnowledgeMapper interviewKnowledgeMapper;
 
@@ -139,6 +140,7 @@ public class PostModerationService {
             CommunityTagMapper tagMapper,
             NotificationService notificationService,
             ModerationSettingService settingService,
+            UserSanctionService userSanctionService,
             ObjectMapper objectMapper,
             InterviewKnowledgeMapper interviewKnowledgeMapper,
             ResourceLoader resourceLoader,
@@ -154,6 +156,7 @@ public class PostModerationService {
         this.tagMapper = tagMapper;
         this.notificationService = notificationService;
         this.settingService = settingService;
+        this.userSanctionService = userSanctionService;
         this.objectMapper = objectMapper;
         this.interviewKnowledgeMapper = interviewKnowledgeMapper;
         this.tagConfidenceThreshold = tagConfidenceThreshold;
@@ -251,6 +254,12 @@ public class PostModerationService {
                     log.warn("게시글 숨김 처리: postId={}, category={}, confidence={}",
                             postId, result.category(), result.confidence());
                     sendHiddenNotification(post);
+                    // 검열 누적 → 사용자 단위 자동 제재 (best-effort: 실패해도 검열 결과엔 영향 없음)
+                    try {
+                        userSanctionService.sanctionIfNeeded(post.getUserId());
+                    } catch (Exception e) {
+                        log.error("자동 제재 처리 실패: userId={}", post.getUserId(), e);
+                    }
                 }
             }
 

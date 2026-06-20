@@ -1,3 +1,3 @@
 package com.careertuner.community.dto;
 
-public record HotPostResponse(String title, int comments, int views) {}
+public record HotPostResponse(Long id, String title, int comments, int views) {}

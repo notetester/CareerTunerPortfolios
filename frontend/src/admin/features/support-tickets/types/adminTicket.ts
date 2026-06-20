@@ -34,3 +34,7 @@ export interface AdminTicketDetailResponse {
   memo: string;
   msgs: AdminTicketMessage[];
 }
+
+export interface AdminTicketDraftResponse {
+  draft: string;
+}
