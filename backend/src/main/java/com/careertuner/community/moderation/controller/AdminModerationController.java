@@ -177,6 +177,8 @@ public class AdminModerationController {
         return ApiResponse.ok(new ModerationSettingResponse(
                 setting.getStrictness().name(),
                 setting.getHideThreshold(),
+                setting.getSanctionThreshold(),
+                setting.getBlockDays(),
                 setting.getUpdatedAt()
         ));
     }
@@ -188,6 +190,8 @@ public class AdminModerationController {
     ) {
         Strictness strictness = settingService.getStrictness();
         double threshold = settingService.getHideThreshold();
+        int sanctionThreshold = settingService.getSanctionThreshold();
+        int blockDays = settingService.getBlockDays();
 
         if (request.strictness() != null) {
             try {
@@ -204,13 +208,29 @@ public class AdminModerationController {
                         "hideThreshold는 0.50 ~ 0.95 범위여야 합니다: " + threshold);
             }
         }
+        if (request.sanctionThreshold() != null) {
+            sanctionThreshold = request.sanctionThreshold();
+            if (sanctionThreshold < 1 || sanctionThreshold > 100) {
+                throw new IllegalArgumentException(
+                        "sanctionThreshold는 1 ~ 100 범위여야 합니다: " + sanctionThreshold);
+            }
+        }
+        if (request.blockDays() != null) {
+            blockDays = request.blockDays();
+            if (blockDays < 1 || blockDays > 3650) {
+                throw new IllegalArgumentException(
+                        "blockDays는 1 ~ 3650 범위여야 합니다: " + blockDays);
+            }
+        }
 
-        settingService.update(strictness, threshold);
+        settingService.update(strictness, threshold, sanctionThreshold, blockDays);
 
         ModerationSetting updated = settingService.getCurrent();
         return ApiResponse.ok(new ModerationSettingResponse(
                 updated.getStrictness().name(),
                 updated.getHideThreshold(),
+                updated.getSanctionThreshold(),
+                updated.getBlockDays(),
                 updated.getUpdatedAt()
         ));
     }

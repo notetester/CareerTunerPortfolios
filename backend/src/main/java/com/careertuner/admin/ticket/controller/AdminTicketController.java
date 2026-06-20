@@ -13,6 +13,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.careertuner.admin.ticket.dto.AdminTicketDetailResponse;
+import com.careertuner.admin.ticket.dto.AdminTicketDraftResponse;
 import com.careertuner.admin.ticket.dto.AdminTicketListResponse;
 import com.careertuner.admin.ticket.dto.AdminTicketReplyRequest;
 import com.careertuner.admin.ticket.dto.AdminTicketUpdateRequest;
@@ -57,5 +58,13 @@ public class AdminTicketController {
             @PathVariable Long id,
             @RequestBody AdminTicketReplyRequest request) {
         return ApiResponse.ok(ticketService.reply(authUser, id, request));
+    }
+
+    /** 상담사 AI 어시스트 — 문의 내용 기반 답변 초안 생성(저장하지 않고 반환만). */
+    @PostMapping("/{id}/draft")
+    public ApiResponse<AdminTicketDraftResponse> generateDraft(
+            @AuthenticationPrincipal AuthUser authUser,
+            @PathVariable Long id) {
+        return ApiResponse.ok(ticketService.generateDraft(authUser, id));
     }
 }

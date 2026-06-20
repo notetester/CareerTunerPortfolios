@@ -2,5 +2,7 @@ package com.careertuner.community.moderation.dto;
 
 public record ModerationSettingUpdateRequest(
         String strictness,
-        Double hideThreshold
+        Double hideThreshold,
+        Integer sanctionThreshold,
+        Integer blockDays
 ) {}

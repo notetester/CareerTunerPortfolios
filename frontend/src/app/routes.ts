@@ -49,6 +49,8 @@ export const router = createBrowserRouter([
       { path: "correction", Component: CorrectionPage },
       { path: "analysis", Component: AnalysisPage },
       { path: "community", Component: CommunityPage },
+      // 알림/딥링크용 글 상세 경로. 같은 CommunityPage가 :postId를 읽어 상세 뷰를 연다. (팀장 승인 2026-06-19)
+      { path: "community/posts/:postId", Component: CommunityPage },
       { path: "billing", Component: BillingPage },
       { path: "billing/success", Component: BillingSuccessPage },
       { path: "billing/fail", Component: BillingFailPage },

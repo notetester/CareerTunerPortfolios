@@ -24,6 +24,7 @@ export type UserNotificationType =
   | "POST_RESTORED"
   | "NOTICE"
   | "TICKET_ANSWERED"
+  | "ACCOUNT_BLOCKED"
   | "CREDIT_LOW"
   // 결제/크레딧 (E 결제 흐름에서 발생, billing 카테고리)
   | "PAYMENT_COMPLETE"
@@ -109,6 +110,7 @@ export const TYPE_META: Record<NotificationType, TypeMeta> = {
   /* 공지 */
   NOTICE:                    { cat: "notice",      icon: "Megaphone",          variant: "warning", cta: "공지 보기" },
   TICKET_ANSWERED:           { cat: "notice",      icon: "MessageSquareReply", variant: "info",    cta: "문의 답변 보기", actor: true },
+  ACCOUNT_BLOCKED:           { cat: "notice",      icon: "ShieldAlert",        variant: "danger",  cta: "문의하기" },
   /* 관리자 */
   NEW_REPORT:                { cat: "admin",       icon: "Flag",               variant: "danger",  cta: "신고 확인" },
   NEW_TICKET:                { cat: "admin",       icon: "Ticket",             variant: "info",    cta: "문의 확인" },
@@ -181,6 +183,7 @@ export const TYPE_TO_CATEGORY: Record<NotificationType, NotificationCategory> = 
   /* 공지/문의 */
   NOTICE: "notice",
   TICKET_ANSWERED: "notice",
+  ACCOUNT_BLOCKED: "notice",
   /* 관리자 */
   NEW_REPORT: "admin",
   NEW_TICKET: "admin",
