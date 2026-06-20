@@ -128,11 +128,11 @@ export function InterviewPage() {
 
   return (
     <div className="min-h-screen bg-slate-50">
-      <div className="mx-auto max-w-[1400px] space-y-8 px-6 py-8">
+      <div className="mx-auto max-w-[1400px] space-y-6 px-4 py-6 md:space-y-8 md:px-6 md:py-8">
         <div className="flex items-start justify-between gap-4">
           <div>
-            <h1 className="flex items-center gap-2 text-2xl font-black text-slate-900">
-              <MessageSquare className="size-6 text-blue-600" />
+            <h1 className="flex items-center gap-2 text-xl font-black text-slate-900 md:text-2xl">
+              <MessageSquare className="size-5 text-blue-600 md:size-6" />
               AI 가상 면접
             </h1>
             <p className="mt-1 text-sm text-slate-500">
