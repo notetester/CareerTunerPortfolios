@@ -56,22 +56,39 @@ python finetune_lora.py \
 
 ---
 
-## 4. 서빙 (학습 후 — GGUF → Ollama)
+## 4. 서빙 (학습 후 — merge → GGUF → Ollama) ✅ 2026-06-20 실행 완료
+
+> 환경(실측): 원격 4090 = `C:\Users\careertuner\Desktop\interview`, conda env `interview`, Windows.
+> 실제로 밟은 절차 + 함정을 그대로 적는다(인라인 명령의 빈 곳·소형모델 디코딩 이슈 보강).
 
 ```bash
-# (1) LoRA 어댑터를 베이스에 병합
-python -c "from peft import AutoPeftModelForCausalLM; \
-m=AutoPeftModelForCausalLM.from_pretrained('out/interview-lora'); \
-m.merge_and_unload().save_pretrained('out/interview-merged')"
-# (2) GGUF 변환 (llama.cpp)
-python llama.cpp/convert_hf_to_gguf.py out/interview-merged --outfile interview-3b.gguf --outtype q4_k_m
+# (1) merge — 어댑터를 베이스에 병합 + tokenizer 저장
+#     ★인라인 python -c 는 tokenizer 저장을 빠뜨려 (2)에서 막힘. 스크립트로 함께 저장.
+python merge_and_export.py --adapter out/interview-lora --out out/interview-merged
+
+# (2) GGUF 변환 — llama.cpp(순수 python, 빌드 불필요)
+git clone --depth 1 https://github.com/ggerganov/llama.cpp
+pip install gguf sentencepiece          # ★sentencepiece 없으면 토크나이저 단계서 막힘
+python llama.cpp/convert_hf_to_gguf.py out/interview-merged --outfile interview-3b-f16.gguf --outtype f16
+#     ↑ q4_k_m(K-quant)은 llama-quantize C++ 빌드 필요 → f16 으로 빌드 회피(4090 VRAM 충분, ~6GB)
+
 # (3) Ollama 등록
-#   Modelfile:  FROM ./interview-3b.gguf
+winget install Ollama.Ollama            # 미설치 시. 설치 후 새 터미널(PATH 갱신) + Ollama 앱 백그라운드 유지
+echo FROM ./interview-3b-f16.gguf>Modelfile
+#     ★Modelfile 에 아래 2줄 필수 — 없으면 무한 반복 + 중국어/일본어 토큰 누출
+#       PARAMETER stop "<|im_end|>"
+#       PARAMETER temperature 0.2
 ollama create interview-3b -f Modelfile
-ollama run interview-3b "면접 브리핑: ..."   # 동작 확인
+
+# (4) 검증 — ★system 프롬프트 필수. 맨몸(ollama run "질문 만들어줘")이면 질문 1개만 나옴.
+ollama run interview-3b           # 대화모드 → /set system "면접관 지시" 주입 후 브리핑 → 질문 6개
 ```
 
-백엔드 연결: `interview.eval.provider=oss` + `base-url`=Ollama(OpenAI 호환 `/v1`). 미서빙 시 OpenAI 폴백.
+**검증 결과(2026-06-20)**: system 주입 시 질문 6개 정상 생성. 단 소형 3B 한계로 가끔 중국어 토큰 누출·JSON 깨짐
+→ 백엔드 `OssLlmGateway` 가 깨진 JSON 시 Claude/OpenAI 폴백(데모 안전). 품질 개선은 데이터 보강·추가학습 트랙.
+
+백엔드 연결(다음 단계): `careertuner.interview.eval.provider=oss` + `eval.base-url`=Ollama OpenAI 호환(`http://<host>:11434/v1`).
+학습된 생성 task(질문·모범답안)는 `OssLlmGateway`(화이트리스트), 채점은 `OssAnswerEvaluator`. 미서빙/미설정 시 Claude→OpenAI 폴백.
 
 ---
 
