@@ -34,12 +34,15 @@ public class FallbackInterviewLlmGateway implements InterviewLlmGateway {
     private static final Logger log = LoggerFactory.getLogger(FallbackInterviewLlmGateway.class);
 
     /**
-     * 자체 모델이 학습해 1차로 보낼 수 있는 생성 task 의 schemaName 집합(현재: 질문생성·모범답안).
-     * 미학습 task(꼬리질문·리포트·planner·judge)는 여기 없으므로 Claude 가 담당한다.
-     * 학습이 확대되면 이 집합을 넓혀 단계적으로 Claude 를 폐기한다.
+     * 자체 모델이 1차로 보낼 생성 task 의 schemaName 집합.
+     * ⚠️ 2026-06-20 외부 호출 검증 결과: QGEN(질문생성)은 학습 데이터가 seed당 1개로 적어 형식이 불안정하다
+     * (질문 대신 프로필/환각을 뱉음). 반면 채점(EVAL)은 데이터가 많아 안정적이며, 그건 이 게이트웨이가 아니라
+     * {@link InterviewEvaluatorProvider} 가 {@link OssAnswerEvaluator} 로 따로 처리한다.
+     * → 현재 생성은 전부 폴백(Claude/OpenAI)으로 두고 이 집합을 비워 둔다.
+     * QGEN/MODEL_ANSWER 데이터 보강(seed당 여러 개) + 재학습 후 "interview_questions",
+     * "interview_model_answer", "interview_model_answers" 를 채워 단계적으로 Claude 를 폐기한다.
      */
-    private static final Set<String> OSS_GENERATION_TASKS = Set.of(
-            "interview_questions", "interview_model_answer", "interview_model_answers");
+    private static final Set<String> OSS_GENERATION_TASKS = Set.of();
 
     private final OssLlmGateway oss;
     private final AnthropicLlmGateway anthropic;

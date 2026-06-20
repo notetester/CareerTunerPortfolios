@@ -150,6 +150,8 @@ public class OssAnswerEvaluator implements InterviewAnswerEvaluator {
         if (text.startsWith("```")) {
             text = text.replaceFirst("^```(?:json)?\\s*", "").replaceFirst("\\s*```$", "").trim();
         }
+        // 소형 모델이 JSON 앞뒤에 붙이는 잡설 제거(OssLlmGateway 와 공용 로직)
+        text = OssLlmGateway.extractJsonSpan(text);
         if (text.isBlank()) {
             throw new BusinessException(ErrorCode.INTERNAL_ERROR, "자체 평가 모델 응답이 비어 있습니다.");
         }

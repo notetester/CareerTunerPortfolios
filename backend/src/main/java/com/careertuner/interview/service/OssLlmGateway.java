@@ -115,6 +115,8 @@ public class OssLlmGateway implements InterviewLlmGateway {
         if (text.startsWith("```")) {
             text = text.replaceFirst("^```(?:json)?\\s*", "").replaceFirst("\\s*```$", "").trim();
         }
+        // 소형 모델이 JSON 앞뒤에 잡설(예: "JSON 출력:")을 붙이는 경우 — 첫 {/[ ~ 마지막 }/] 만 남긴다.
+        text = extractJsonSpan(text);
         if (text.isBlank()) {
             throw new BusinessException(ErrorCode.INTERNAL_ERROR, "자체 모델 응답이 비어 있습니다.");
         }
@@ -123,6 +125,15 @@ public class OssLlmGateway implements InterviewLlmGateway {
         } catch (JacksonException ex) {
             throw new BusinessException(ErrorCode.INTERNAL_ERROR, "자체 모델 응답이 JSON 형식이 아닙니다.");
         }
+    }
+
+    /** 소형 모델이 JSON 앞뒤에 붙이는 잡설을 제거 — 첫 {/[ 부터 마지막 }/] 까지만 취한다(채점기와 공용). */
+    static String extractJsonSpan(String text) {
+        int objStart = text.indexOf('{');
+        int arrStart = text.indexOf('[');
+        int start = objStart < 0 ? arrStart : (arrStart < 0 ? objStart : Math.min(objStart, arrStart));
+        int end = Math.max(text.lastIndexOf('}'), text.lastIndexOf(']'));
+        return (start >= 0 && end > start) ? text.substring(start, end + 1) : text;
     }
 
     private String chatUrl() {
