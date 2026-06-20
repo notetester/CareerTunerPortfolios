@@ -13,10 +13,11 @@
 ```
 둘 다 **같은 tailnet**(같은 Tailscale 계정/조직)에 들어가면 100.x IP 로 서로 직접 통신한다.
 
-## 0. 사전 (팀 결정) — ★C 전용 새 tailnet
-- `application.yaml` 의 `localhost`(Tailscale CGNAT 100.64.0.0/10)는 **F 쪽 tailnet** 이다. C 는 그걸 재사용하지 않고 **새 Tailscale 계정/tailnet 을 만든다.** (이번 작업 = 공유 4090 에 C 전용 새 셋업)
-- 4090 은 **공유 PC** → Tailscale 설치/계정 전환은 팀·4090 관리자 합의 후. 6개 도메인이 공유 4090 을 원격 호출하는 공통 인프라이므로 팀 차원 결정 사항.
-- ⚠️ **한 머신 = 한 tailnet 활성**: Windows Tailscale 은 여러 계정을 등록해도 동시에 활성은 하나뿐(`tailscale switch` 로 전환). 4090 이 F tailnet 에 이미 올라가 있으면, C 계정으로 전환하는 순간 F 연결이 끊긴다. 데모 시간대가 겹치면 **팀이 하나의 공용 tailnet 으로 합치는 게 정석**(권장). C 포트폴리오 데모만이라면 C 전용 tailnet 으로 독립 시연 가능.
+## 0. 사전 (팀 결정) — ★재사용 vs 신규 먼저 판정
+- ★정정: `application.yaml:163` 의 `localhost`(Tailscale CGNAT 100.64.0.0/10)는 "F 전용"이 아니라 **팀 공용 챗봇/태깅 Ollama**(`ai.ollama` model `gemma4`, `ai.chatbot`/`ai.tagging` 이 사용)다. 즉 **이미 팀 tailnet 이 존재하고 그 Ollama 가 외부(0.0.0.0)로 열려 있다.**
+- ⚠️ 만약 `localhost` 가 **이 공유 4090**이면(B-0 게이트로 확인: `tailscale ip -4` / `ollama list` 에 gemma4+careertuner-c-career-strategy-3b 공존), 새 C 계정으로 전환하는 순간 **팀 챗봇이 끊긴다.** 한 머신 = 한 tailnet 활성(`tailscale switch`). → 이 경우 **새 계정 만들지 말고 기존 팀 tailnet 재사용**(노트북만 합류 + `base-url=http://localhost:11434/v1`)이 정답이자 가장 안전.
+- `localhost` 가 4090 이 아닌 별도 머신이고 4090 이 어떤 tailnet 에도 없을 때만 **신규 C tailnet** 고려(공유 PC라 팀·관리자 승인 필수, 시연 후 원복).
+- 실행 분기·명령은 `reports/14` PART B(B-0 게이트 → 재사용/신규).
 
 ## 1. 4090 설정 (1회)
 1. Tailscale 설치: https://tailscale.com/download (Windows) → `tailscale up` → 브라우저 로그인 → **C 새 계정/tailnet** 으로 로그인(기존 F tailnet 재사용 안 함).
