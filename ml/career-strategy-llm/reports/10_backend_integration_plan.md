@@ -2,6 +2,7 @@
 
 > 2026-06-21 · C 적합도 분석에 자체모델(`careertuner-c-career-strategy-3b`)을 1차로 연결.
 > 범위: **`C_FIT_EXPLAIN`** 만(전략/로드맵 RAG/경향/7B 비교는 다음 단계). 코드는 컴파일+단위테스트 통과.
+> ✅ **2026-06-21 라이브 검증 완료** — PR #95 dev 머지, 실 API 호출(model=careertuner-c-career-strategy-3b·fitScore=45·자체모델 설명)·Ollama 중단 시 mock 폴백 확인. 결과: `reports/12_live_e2e_result.md`.
 
 ## 1. 핵심 설계 — 뉴로-심볼릭 조립
 
