@@ -213,10 +213,15 @@ public class InterviewServiceImpl implements InterviewService {
             throw new BusinessException(ErrorCode.INVALID_INPUT, "채점할 대화 내용이 없습니다.");
         }
         List<String> questionTexts = questions.stream().map(InterviewQuestion::getQuestion).toList();
+        // 텍스트 면접(evaluateAnswer)과 동일하게 저장된 모범답안을 만점 기준으로 넘긴다(§4.10 채점 레이어 통일).
+        // 백그라운드 생성으로 아직 비어 있으면 그 질문만 일반 채점으로 폴백(빈 문자열).
+        List<String> modelAnswers = questions.stream()
+                .map(q -> q.getModelAnswer() == null ? "" : q.getModelAnswer())
+                .toList();
 
         InterviewOpenAiClient.VoiceScoringResult scored;
         try {
-            scored = aiClient.scoreVoiceTranscript(questionTexts, transcriptText,
+            scored = aiClient.scoreVoiceTranscript(questionTexts, modelAnswers, transcriptText,
                     applicationCase.getCompanyName(), applicationCase.getJobTitle());
         } catch (BusinessException ex) {
             aiUsageLogService.recordFailure(userId, session.getApplicationCaseId(), FEATURE_VOICE_SCORING, ex.getMessage());

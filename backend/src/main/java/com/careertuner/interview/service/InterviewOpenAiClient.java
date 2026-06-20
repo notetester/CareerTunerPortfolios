@@ -20,8 +20,8 @@ import tools.jackson.databind.JsonNode;
  * 면접 도메인 구조화 LLM 호출 오케스트레이션.
  *
  * <p>프롬프트 구성·JSON 스키마·응답 매핑(도메인 로직)만 담당하고, 실제 provider 전송은
- * {@link InterviewLlmGateway}(@Primary {@link FallbackInterviewLlmGateway} = Gemini 우선 → OpenAI 폴백)에 위임한다.
- * 그래서 이 클래스의 모든 호출은 자동으로 "Gemini 1차, 실패 시 OpenAI 폴백"으로 동작한다.
+ * {@link InterviewLlmGateway}(@Primary {@link FallbackInterviewLlmGateway})에 위임한다.
+ * 그래서 이 클래스의 모든 호출은 자동으로 "자체 모델(학습된 생성 task) → Claude → OpenAI" 순으로 폴백한다.
  * (클래스명은 호환을 위해 유지하지만, 전송은 더 이상 OpenAI 전용이 아니다.)
  *
  * <p>{@link InterviewAnswerEvaluator} 를 구현해 평가/Critic 경로의 기본 평가기로도 쓰인다.
@@ -307,17 +307,26 @@ public class InterviewOpenAiClient implements InterviewAnswerEvaluator {
      * 음성 모의면접 트랜스크립트를 질문별 답변으로 매핑하고 채점한다(통합 1콜).
      * 대화 흐름(면접관/지원자 발화)에서 각 질문의 답을 추출해 점수·피드백을 매긴다. 미응답 질문은 score 0.
      */
-    public VoiceScoringResult scoreVoiceTranscript(List<String> questions, String transcriptText,
+    public VoiceScoringResult scoreVoiceTranscript(List<String> questions, List<String> modelAnswers,
+                                                   String transcriptText,
                                                    String companyName, String jobTitle) {
         StringBuilder qList = new StringBuilder();
         for (int i = 0; i < questions.size(); i++) {
             qList.append(i + 1).append(". ").append(questions.get(i)).append("\n");
+            // 텍스트 면접(evaluateAnswer)과 동일하게 모범답안을 만점 기준으로 주입한다(§4.10 채점 레이어 통일).
+            // 모범답안이 비어 있으면(백그라운드 미생성) 그 질문만 일반 채점으로 폴백한다.
+            String model = modelAnswers != null && i < modelAnswers.size() ? modelAnswers.get(i) : null;
+            if (model != null && !model.isBlank()) {
+                qList.append("   [기준 모범답안] ").append(model.trim()).append("\n");
+            }
         }
         String system = """
                 너는 음성 모의면접 채점관이다. 면접관(ai)과 지원자(user)가 주고받은 대화에서
                 각 준비 질문(number)에 대해 지원자가 실제로 말한 답을 찾아 정리하고 채점한다.
                 JSON 만 반환한다. 지원자가 답하지 않은 질문은 answer 를 빈 문자열, score 를 0 으로 둔다.
-                내용의 구체성·직무 적합성·논리성을 기준으로 0~100 으로 채점하고, 한국어 한두 문장으로 피드백한다.
+                질문에 [기준 모범답안] 이 주어지면 그 답안을 만점 기준으로 삼아, 지원자 답변이 그 핵심
+                내용에 얼마나 부합하는지로 0~100 채점한다. 모범답안이 없는 질문만 내용의 구체성·직무
+                적합성·논리성을 기준으로 0~100 채점한다. 채점 후 한국어 한두 문장으로 피드백한다.
                 """;
         String userPrompt = """
                 회사명: %s
