@@ -50,9 +50,11 @@ function makeSeeds(n) {
   return out
 }
 
-const N = (args && args.n) ? args.n : 12
-const seeds = makeSeeds(N)
-log(`seed ${seeds.length}개 — fan-out 시작`)
+const N = (args && args.n) ? args.n : 50
+const baseSeeds = makeSeeds(N)
+// QGEN 데이터 보강(2026-06-20): seed 당 6모드로 펼쳐 질문 다양성·QGEN 데이터량 6배 확보
+const seeds = baseSeeds.flatMap((s) => MODES.map((m) => ({ ...s, mode: m, id: `${s.id}_${m.toLowerCase()}` })))
+log(`seed ${baseSeeds.length} × ${MODES.length}모드 = ${seeds.length}건 — fan-out 시작`)
 
 const MODE_FOCUS = {
   BASIC: '자기소개·지원동기·장단점 등 기본 질문',
@@ -135,7 +137,7 @@ const results = await pipeline(seeds,
 - 질문 6개는 위 재료를 활용하되, 난이도는 국비 초급 주니어 수준으로 의도적으로 쉽게. 과한 전문성 요구 금지.
 - 면접 모드(${seed.mode})의 초점을 질문에 반영.
 - 각 질문은 한국어 한 문장, question_type 은 TECH/EXPECTED/PERSONALITY/SITUATION 중 하나.`,
-    { label: `qgen:${seed.id}`, phase: 'QGEN', schema: ANALYSIS_Q_SCHEMA }
+    { label: `qgen:${seed.id}`, phase: 'QGEN', schema: ANALYSIS_Q_SCHEMA, model: 'sonnet' }
   ),
   (gen, seed) => agent(
     `너는 한국 IT 면접 채점 데이터 생성기다. 아래 질문들 각각에 대해 (1) 모범답안 1개, (2) 답변 3종(good=우수, fair=애매, poor=망함)과 각 점수·피드백을 만들어라.
@@ -149,7 +151,7 @@ ${(gen.questions || []).map((q, i) => `${i}. ${q.question}`).join('\n')}
 - cases 3종: good(모범답안에 부합, 90~98점), fair(방향은 맞으나 빈약·짧음, 50~70점), poor(핵심 빗나감 또는 무관, 10~35점).
 - 점수는 모범답안 기준 부합도로 매긴다. feedback 은 한국어 2~3문장(부족한 점·보완 방향).
 - question_index 는 위 번호(0부터 시작).`,
-    { label: `eval:${seed.id}`, phase: 'EVAL', schema: EVAL_SCHEMA }
+    { label: `eval:${seed.id}`, phase: 'EVAL', schema: EVAL_SCHEMA, model: 'sonnet' }
   ).then(ev => ({ seed, analysis_q: gen, eval: ev }))
 )
 
