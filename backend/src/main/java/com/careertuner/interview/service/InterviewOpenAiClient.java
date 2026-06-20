@@ -20,8 +20,8 @@ import tools.jackson.databind.JsonNode;
  * 면접 도메인 구조화 LLM 호출 오케스트레이션.
  *
  * <p>프롬프트 구성·JSON 스키마·응답 매핑(도메인 로직)만 담당하고, 실제 provider 전송은
- * {@link InterviewLlmGateway}(@Primary {@link FallbackInterviewLlmGateway} = Gemini 우선 → OpenAI 폴백)에 위임한다.
- * 그래서 이 클래스의 모든 호출은 자동으로 "Gemini 1차, 실패 시 OpenAI 폴백"으로 동작한다.
+ * {@link InterviewLlmGateway}(@Primary {@link FallbackInterviewLlmGateway})에 위임한다.
+ * 그래서 이 클래스의 모든 호출은 자동으로 "자체 모델(학습된 생성 task) → Claude → OpenAI" 순으로 폴백한다.
  * (클래스명은 호환을 위해 유지하지만, 전송은 더 이상 OpenAI 전용이 아니다.)
  *
  * <p>{@link InterviewAnswerEvaluator} 를 구현해 평가/Critic 경로의 기본 평가기로도 쓰인다.
