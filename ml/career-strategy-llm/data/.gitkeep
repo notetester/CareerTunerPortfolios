@@ -1,0 +1,2 @@
+# 합성 데이터(seeds/dataset/train/val JSONL)는 여기에 생성된다. 내용은 git 추적 제외.
+# 데이터는 운영 DB에 넣지 않고 이 폴더의 JSONL 로만 관리한다.

@@ -5,7 +5,6 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
-import org.springframework.context.annotation.Primary;
 import org.springframework.stereotype.Service;
 
 import com.careertuner.analysis.ai.provider.CareerAnalysisOpenAiClient;
@@ -16,8 +15,10 @@ import tools.jackson.databind.JsonNode;
 
 /**
  * API 키가 있으면 실제 구조화 AI 분석을 실행하고, 없으면 결정적 mock으로 전체 흐름을 유지한다.
+ *
+ * <p>활성 진입점(@Primary)은 {@link FallbackFitAnalysisAiService}(OSS→OpenAI→Mock)다.
+ * 이 서비스는 그 폴백 체인의 OpenAI 단계로 호출된다(키 없으면 내부적으로 Mock 으로 폴백).
  */
-@Primary
 @Service
 public class OpenAiFitAnalysisAiService implements FitAnalysisAiService {
 
