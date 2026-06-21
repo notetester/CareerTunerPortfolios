@@ -63,14 +63,15 @@
          ORDER BY seq ASC, id ASC
     </select>
 
-    <!-- 현행 시행본(live) — 조항 복제용. tiebreaker 포함. -->
+    <!-- 현행 시행본(live) — 조항 복제용. tiebreaker 포함.
+         비교는 KST(+09:00): UTC_TIMESTAMP()(세션 무관 UTC) + 9h. 전역 세션 변경 회피. -->
     <select id="findLiveVersion" resultMap="versionResult">
         SELECT id, doc_type, version_label, status, summary, is_adverse,
                effective_date, published_at, admin_id, created_at, updated_at
           FROM legal_document_version
          WHERE doc_type = #{docType}
            AND status = 'PUBLISHED'
-           AND effective_date &lt;= NOW()
+           AND effective_date &lt;= (UTC_TIMESTAMP() + INTERVAL 9 HOUR)
          ORDER BY effective_date DESC, published_at DESC, id DESC
          LIMIT 1
     </select>

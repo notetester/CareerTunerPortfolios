@@ -27,9 +27,10 @@
 
     <!--
       현재 시행본(live) 1건.
-      PUBLISHED 중 effective_date<=NOW() 의 effective_date 최댓값 1건.
+      PUBLISHED 중 effective_date<=현재(KST) 의 effective_date 최댓값 1건.
       동률(동일 effective_date)이면 effective_date DESC, published_at DESC, id DESC 로 결정적 1건.
-      NOW() 비교는 DB 세션 타임존 기준.
+      비교 기준은 KST(+09:00). UTC_TIMESTAMP()는 세션 타임존과 무관하게 항상 UTC라 +9h=KST
+      (서버/RDS가 UTC여도 정확. DST 없는 한국은 +09:00 고정. 전역 세션 변경 회피 → 타 도메인 영향 0).
     -->
     <select id="findLiveVersion" resultMap="versionResult">
         SELECT id, doc_type, version_label, status, summary, is_adverse,
@@ -37,7 +38,7 @@
           FROM legal_document_version
          WHERE doc_type = #{docType}
            AND status = 'PUBLISHED'
-           AND effective_date &lt;= NOW()
+           AND effective_date &lt;= (UTC_TIMESTAMP() + INTERVAL 9 HOUR)
          ORDER BY effective_date DESC, published_at DESC, id DESC
          LIMIT 1
     </select>
