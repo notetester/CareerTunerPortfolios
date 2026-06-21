@@ -15,7 +15,7 @@ import json
 from collections import Counter
 
 from briefing import build_briefing
-from synth_prompts import QGEN_SYS, MA_SYS, EVAL_SYS, PROBE_SYS
+from synth_prompts import QGEN_SYS, MA_SYS, EVAL_SYS, PROBE_SYS, REPORT_SYS
 
 
 def _row(task, system, user, assistant):
@@ -73,6 +73,28 @@ def assemble(raw):
             rows.append(_row("PROBE", PROBE_SYS,
                              f"질문:\n{questions[qi]['question']}\n\n지원자 답변:\n{ans}",
                              probe))
+
+        # REPORT: 답변 품질(good/fair/poor) 세트별 종합 리포트
+        for rit in (item.get("report") or {}).get("items") or []:
+            quality = rit.get("quality")
+            qa_lines = []
+            for it in ev.get("items") or []:
+                qi = it.get("question_index", -1)
+                if qi < 0 or qi >= len(questions):
+                    continue
+                ans = next((c.get("answer") for c in (it.get("cases") or [])
+                            if c.get("quality") == quality), None)
+                if ans:
+                    qa_lines.append(f"Q{qi + 1}. {questions[qi]['question']}\nA. {ans}")
+            if not qa_lines:
+                continue
+            asst = json.dumps({
+                "total_score": rit.get("total_score", 0),
+                "categories": rit.get("categories", []),
+                "summary_feedback": rit.get("summary_feedback", []),
+            }, ensure_ascii=False)
+            rows.append(_row("REPORT", REPORT_SYS,
+                             "전체 면접 Q&A:\n" + "\n\n".join(qa_lines), asst))
     return rows
 
 

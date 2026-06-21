@@ -5,6 +5,7 @@ export const meta = {
     { title: 'QGEN', detail: 'seed → 가짜 분석 + 질문6' },
     { title: 'EVAL', detail: '질문 → 모범답안 + 답변3종 채점' },
     { title: 'PROBE', detail: '압박 답변 → 반박 꼬리질문 (압박 모드만)' },
+    { title: 'REPORT', detail: '전체 Q&A → 품질별 종합 리포트' },
   ],
 }
 
@@ -140,6 +141,28 @@ const PROBE_SCHEMA = {
   },
 }
 
+const REPORT_SCHEMA = {
+  type: 'object', additionalProperties: false, required: ['items'],
+  properties: {
+    items: {
+      type: 'array',
+      items: {
+        type: 'object', additionalProperties: false,
+        required: ['quality', 'total_score', 'categories', 'summary_feedback'],
+        properties: {
+          quality: { type: 'string', enum: ['good', 'fair', 'poor'] },
+          total_score: { type: 'integer' },
+          categories: {
+            type: 'array',
+            items: { type: 'object', additionalProperties: false, required: ['name', 'score'], properties: { name: { type: 'string' }, score: { type: 'integer' } } },
+          },
+          summary_feedback: { type: 'array', items: { type: 'string' } },
+        },
+      },
+    },
+  },
+}
+
 const results = await pipeline(seeds,
   (seed) => agent(
     `너는 한국 IT 취업 면접 데이터 생성기다. 아래 가상 지원 건에 대해 실제 채용 분석처럼 풍부하고 약간 장황한 가짜 분석을 만들고, 면접 질문 6개를 생성하라.
@@ -193,6 +216,31 @@ ${block}
 각 (질문 index × 답변 quality) 조합마다 items 에 {question_index, quality, probe} 를 하나씩 넣는다.`,
       { label: `probe:${seed.id}`, phase: 'PROBE', schema: PROBE_SCHEMA, model: 'sonnet' }
     ).then((pb) => ({ ...prev, probe: pb }))
+  },
+  // stage4 REPORT — 전 모드. 답변 품질(good/fair/poor) 세트별 종합 리포트 3개.
+  (prev, seed) => {
+    const evItems = (prev.eval && prev.eval.items) || []
+    const questions = (prev.analysis_q && prev.analysis_q.questions) || []
+    if (!evItems.length || !questions.length) return prev
+    const block = evItems.map((it) => {
+      const q = (questions[it.question_index] || {}).question || ''
+      const cs = (it.cases || []).map((c) => `  [${c.quality}] (${c.score}점) ${c.answer}`).join('\n')
+      return `질문${it.question_index}: ${q}\n${cs}`
+    }).join('\n\n')
+    return agent(
+      `너는 면접 결과를 종합 평가하는 면접관이다. 아래는 한 지원 건의 질문 6개와 각 질문에 대한 답변 3종(good/fair/poor)·점수다.
+답변 품질 세트별로(good만 모은 우수 면접 / fair만 모은 보통 면접 / poor만 모은 미흡 면접) 각각 종합 리포트를 1개씩, 총 3개 만들어라.
+- total_score: 0~100 종합(해당 세트 답변 점수들과 정합되게).
+- categories: 항목별 점수 4~6개(답변 내용/직무 적합성/구체성/논리성/표현력/태도 등).
+- summary_feedback: 핵심 피드백 3개 내외 한국어 문장.
+
+직무: ${seed.job_title} / 회사: ${seed.company_name} / 경력: ${seed.seniority}
+
+${block}
+
+items 에 quality(good/fair/poor)별 리포트를 하나씩 넣는다.`,
+      { label: `report:${seed.id}`, phase: 'REPORT', schema: REPORT_SCHEMA, model: 'sonnet' }
+    ).then((rp) => ({ ...prev, report: rp }))
   }
 )
 
