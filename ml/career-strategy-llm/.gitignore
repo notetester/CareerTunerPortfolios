@@ -4,6 +4,8 @@ data/*
 !data/.gitkeep
 out/
 *.jsonl
+# 평가 골든셋(작은 손큐레이션 jsonl)은 커밋 — 대용량 학습 jsonl 만 제외 유지
+!eval/golden_fit_cases.jsonl
 *.gguf
 *.safetensors
 __pycache__/
