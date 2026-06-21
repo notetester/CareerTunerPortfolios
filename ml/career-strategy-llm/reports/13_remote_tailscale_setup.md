@@ -14,7 +14,7 @@
 둘 다 **같은 tailnet**(같은 Tailscale 계정/조직)에 들어가면 100.x IP 로 서로 직접 통신한다.
 
 ## 0. 사전 — ★4090 점검 결과(2026-06-21): Tailscale 미설치 → 신규 가입 필요
-4090(hostname `chanssick`)을 직접 조회한 결과:
+4090 PC를 직접 조회한 결과:
 ```text
 - Tailscale 설치 여부: 미설치 (CLI/서비스 없음)
 - localhost 가 4090 자신의 주소인지: 아님 (F가 쓰던 다른 장치의 Tailscale 주소)

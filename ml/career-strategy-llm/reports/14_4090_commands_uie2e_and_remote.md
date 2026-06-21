@@ -105,7 +105,7 @@ New-Item -ItemType Directory -Force ml\career-strategy-llm\out\run_logs | Out-Nu
 
 # PART B — 원격 셋업 (시연 장소 ≠ 4090)
 
-> ✅ **4090 점검 완료(2026-06-21):** 4090(`chanssick`)은 **Tailscale 미설치**. `application.yaml:163` 의 `localhost`(model `gemma4`, 팀 챗봇/태깅)는 **F 의 다른 장치** 주소이지 4090 이 아니다 → 그 IP 로는 C 모델을 못 부른다(거긴 C 모델 없음). 따라서 **재사용 경로는 없고, 4090 을 새로 가입시켜 새 100.x 를 발급받는 것이 유일한 경로.** 4090 은 미설치라 F tailnet 전환이 아니므로 **F 장치(localhost)와 충돌 없음.**
+> ✅ **4090 점검 완료(2026-06-21):** 4090 PC는 **Tailscale 미설치**. `application.yaml:163` 의 `localhost`(model `gemma4`, 팀 챗봇/태깅)는 **F 의 다른 장치** 주소이지 4090 이 아니다 → 그 IP 로는 C 모델을 못 부른다(거긴 C 모델 없음). 따라서 **재사용 경로는 없고, 4090 을 새로 가입시켜 새 100.x 를 발급받는 것이 유일한 경로.** 4090 은 미설치라 F tailnet 전환이 아니므로 **F 장치(localhost)와 충돌 없음.**
 >
 > 권장 구조: **F 기존 장치**(F tailnet·localhost 유지, C는 미사용) / **4090**(C 또는 팀 tailnet 신규 가입 → 새 100.x, endpoint `http://<4090-new-ip>:11434/v1`) / **노트북**(같은 tailnet 가입, `OSS_BASE_URL=http://<4090-new-ip>:11434/v1`).
 
