@@ -2,9 +2,12 @@ package com.careertuner.analysis.ai.provider;
 
 import java.time.Duration;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.stereotype.Component;
 
+import jakarta.annotation.PostConstruct;
 import lombok.Getter;
 import lombok.Setter;
 
@@ -27,6 +30,11 @@ import lombok.Setter;
 @ConfigurationProperties(prefix = "careertuner.analysis.ai")
 public class CareerAnalysisAiProviderProperties {
 
+    private static final Logger log = LoggerFactory.getLogger(CareerAnalysisAiProviderProperties.class);
+
+    /** 설명 JSON truncation 방지 하한. 이 미만이면 자체모델 응답이 잘려 파싱이 깨진다(4090 검증: 512 실패 → 1024 통과). */
+    private static final int MIN_SAFE_MAX_TOKENS = 1024;
+
     /** openai(기본/폴백) | oss(자체 파인튜닝 모델) */
     private String provider = "openai";
 
@@ -34,6 +42,20 @@ public class CareerAnalysisAiProviderProperties {
 
     public boolean isOss() {
         return "oss".equalsIgnoreCase(provider);
+    }
+
+    /** 부팅 시 명백한 오설정을 빨리 잡는다(시연 중 cryptic 파싱오류 방지). */
+    @PostConstruct
+    void validate() {
+        if (oss.getMaxTokens() < MIN_SAFE_MAX_TOKENS) {
+            throw new IllegalStateException(
+                    "careertuner.analysis.ai.oss.max-tokens 는 " + MIN_SAFE_MAX_TOKENS + " 이상이어야 합니다 (현재 "
+                            + oss.getMaxTokens() + "). 이 미만은 설명 JSON 이 잘려 자체모델 응답이 깨집니다.");
+        }
+        if (isOss() && !oss.configured()) {
+            log.warn("provider=oss 이지만 oss.base-url 이 비어 있어 자체모델이 비활성입니다 — OpenAI/Mock 으로 동작합니다. "
+                    + "자체모델을 쓰려면 CAREERTUNER_ANALYSIS_AI_OSS_BASE_URL 을 설정하세요.");
+        }
     }
 
     @Getter
@@ -48,6 +70,10 @@ public class CareerAnalysisAiProviderProperties {
         private int maxTokens = 1280;
         private double temperature = 0.2;
         private Duration timeout = Duration.ofSeconds(60);
+        /** 일시적 실패(5xx/네트워크/JSON 깨짐) 재시도 횟수. 소형 모델 JSON 안정성 보강(총 시도 = maxRetries+1). */
+        private int maxRetries = 2;
+        /** 재시도 간 백오프 기준(선형 증가: 1·2·3배). */
+        private Duration retryBackoff = Duration.ofMillis(400);
 
         public boolean configured() {
             return baseUrl != null && !baseUrl.isBlank();
