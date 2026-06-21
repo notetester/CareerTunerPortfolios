@@ -111,9 +111,10 @@ New-Item -ItemType Directory -Force ml\career-strategy-llm\out\run_logs | Out-Nu
 
 ## B-1. 4090 Tailscale 신규 설치 + Ollama 노출
 ```text
-4090 은 공유 PC → Tailscale 설치 자체는 팀·관리자 동의 후(공통 인프라 변경). F 전환 충돌은 없음(미설치 신규).
+★결정(2026-06-21): 팀 공용 tailnet + 공유 4090 설치 승인됨 → 진행.
+F 기존 장치(localhost)는 별개 노드라 4090 이 합류해도 영향 없음(4090 은 자기 새 100.x 를 받음).
 ```
-1. Tailscale 설치 → `tailscale up` → **C 또는 팀 tailnet** 에 새로 가입(브라우저 로그인). `tailscale ip -4` 로 **새 100.x** 기록.
+1. Tailscale 설치 → `tailscale up` → **팀 공용 tailnet**(팀이 지정한 공용 Tailscale 계정/조직 — F 기존 tailnet 을 공용으로 쓰기로 했으면 거기에 invite 받아 합류) 에 새로 가입. `tailscale ip -4` 로 **새 100.x**(≠ localhost) 기록.
 2. Ollama 를 외부(tailnet) 인터페이스에 노출 — ★PART A(localhost 캡처)를 먼저 끝낸 뒤 바꾸는 걸 권장(아래 주의):
    ```powershell
    # 기존 Ollama 트레이를 완전 종료(Quit)한 뒤, 같은 세션에서:
