@@ -13,14 +13,37 @@
 ```
 둘 다 **같은 tailnet**(같은 Tailscale 계정/조직)에 들어가면 100.x IP 로 서로 직접 통신한다.
 
-## 0. 사전 (팀 결정) — ★재사용 vs 신규 먼저 판정
-- ★정정: `application.yaml:163` 의 `localhost`(Tailscale CGNAT 100.64.0.0/10)는 "F 전용"이 아니라 **팀 공용 챗봇/태깅 Ollama**(`ai.ollama` model `gemma4`, `ai.chatbot`/`ai.tagging` 이 사용)다. 즉 **이미 팀 tailnet 이 존재하고 그 Ollama 가 외부(0.0.0.0)로 열려 있다.**
-- ⚠️ 만약 `localhost` 가 **이 공유 4090**이면(B-0 게이트로 확인: `tailscale ip -4` / `ollama list` 에 gemma4+careertuner-c-career-strategy-3b 공존), 새 C 계정으로 전환하는 순간 **팀 챗봇이 끊긴다.** 한 머신 = 한 tailnet 활성(`tailscale switch`). → 이 경우 **새 계정 만들지 말고 기존 팀 tailnet 재사용**(노트북만 합류 + `base-url=http://localhost:11434/v1`)이 정답이자 가장 안전.
-- `localhost` 가 4090 이 아닌 별도 머신이고 4090 이 어떤 tailnet 에도 없을 때만 **신규 C tailnet** 고려(공유 PC라 팀·관리자 승인 필수, 시연 후 원복).
-- 실행 분기·명령은 `reports/14` PART B(B-0 게이트 → 재사용/신규).
+## 0. 사전 — ★4090 점검 결과(2026-06-21): Tailscale 미설치 → 신규 가입 필요
+4090(hostname `chanssick`)을 직접 조회한 결과:
+```text
+- Tailscale 설치 여부: 미설치 (CLI/서비스 없음)
+- localhost 가 4090 자신의 주소인지: 아님 (F가 쓰던 다른 장치의 Tailscale 주소)
+- 4090 이 F tailnet 에 로그인된 상태인지: 아님
+```
+이 사실로 정리되는 것:
+- `application.yaml:163` 의 `localhost`(model `gemma4`, `ai.chatbot`/`ai.tagging` 이 사용)는 **F의 다른 장치** 주소다. **4090 주소가 아니므로 C 자체모델 원격 호출에는 쓸 수 없다**(그 장치엔 `careertuner-c-career-strategy-3b` 가 없다). → "기존 IP 재사용" 경로는 성립하지 않는다.
+- C 원격 호출을 하려면 **4090 을 C 또는 팀 tailnet 에 새로 가입시켜 새 `100.x` 주소를 발급**받아야 한다. Ollama endpoint = `http://<4090-new-tailscale-ip>:11434/v1`.
+- 4090 은 현재 Tailscale 미설치라 **F tailnet→C tailnet 으로 switch 하는 상황이 아니다.** 따라서 F 기존 장치의 `localhost` 와 **직접 충돌하지 않는다.** (신규 설치이지 전환이 아님)
+- ⚠️ 일반 원칙(유지): 향후 **동일한 4090 PC** 를 여러 tailnet 사이에서 전환하면 한 번에 **하나의 active tailnet 만** 쓸 수 있다(`tailscale switch`). 지금은 해당 없음.
+- 4090 은 **공유 PC** → Tailscale 설치 자체는 팀·관리자 동의 후(공통 인프라 변경).
 
-## 1. 4090 설정 (1회)
-1. Tailscale 설치: https://tailscale.com/download (Windows) → `tailscale up` → 브라우저 로그인 → **C 새 계정/tailnet** 으로 로그인(기존 F tailnet 재사용 안 함).
+## 0-1. 권장 구조
+```text
+F 기존 장치:
+- 기존 F tailnet 유지 · localhost 유지 · C 작업에서 사용하지 않음
+
+4090 공유 PC:
+- 현재 Tailscale 미설치
+- C 또는 팀 tailnet 에 새로 가입 → 새 100.x.x.x 주소 발급
+- Ollama endpoint: http://<4090-new-tailscale-ip>:11434/v1
+
+노트북/백엔드 실행 PC:
+- 4090 과 같은 C 또는 팀 tailnet 에 가입
+- CAREERTUNER_ANALYSIS_AI_OSS_BASE_URL=http://<4090-new-tailscale-ip>:11434/v1
+```
+
+## 1. 4090 설정 (1회) — 신규 설치
+1. Tailscale 설치: https://tailscale.com/download (Windows) → `tailscale up` → 브라우저 로그인 → **C 또는 팀 tailnet** 에 새로 가입(4090 은 미설치 상태라 신규 등록, 새 100.x 주소 발급).
 2. Ollama 가 Tailscale 인터페이스에서도 듣게: 시스템 환경변수
    ```
    OLLAMA_HOST = 0.0.0.0:11434
@@ -31,7 +54,7 @@
 4. 모델 확인: `ollama list` 에 `careertuner-c-career-strategy-3b` 있어야 함.
 
 ## 2. 시연 노트북 설정
-1. Tailscale 설치 → `tailscale up` → 4090 과 **같은 C 계정/tailnet** 으로 로그인.
+1. Tailscale 설치 → `tailscale up` → 4090 과 **같은 C 또는 팀 tailnet** 에 가입.
 2. 연결 확인:
    ```powershell
    tailscale status                                   # 4090 기기가 보여야 함
@@ -71,5 +94,5 @@
 ## 6. C 관점 요약
 - 코드/스키마 변경 0. **env(base-url) 한 줄**이 localhost → Tailscale IP 로 바뀔 뿐.
 - 같은 패턴으로 다른 도메인(A/B/D/E/F)도 자기 모델 base-url 만 4090 Tailscale IP 로 두면 원격 호출된다 — 팀 공통 인프라.
-- 미확정: 공유 4090 Tailscale 설치/계정전환 승인, F tailnet 과의 동시 활성 충돌 조율, ACL 정책.
+- 미확정: 공유 4090 Tailscale 설치 승인, C 전용 vs 팀 공용 tailnet 선택, ACL 정책. (4090 미설치라 F 전환 충돌은 해당 없음)
 - 실행 순서·복붙용 명령어는 `reports/14_4090_commands_uie2e_and_remote.md`(4090 통합 명령 시트).

@@ -105,44 +105,36 @@ New-Item -ItemType Directory -Force ml\career-strategy-llm\out\run_logs | Out-Nu
 
 # PART B — 원격 셋업 (시연 장소 ≠ 4090)
 
-> ⚠️ **먼저 B-0 게이트로 현실을 확인하라.** `application.yaml:163` 의 `ai.ollama.base-url=http://localhost:11434`(model `gemma4`)는 **팀 공용 챗봇/태깅 Ollama**다(`ai.chatbot`/`ai.tagging`이 사용). `localhost`는 Tailscale CGNAT(100.64/10) IP → **이미 팀 tailnet 이 있고**, 그 Ollama 가 외부(0.0.0.0)로 열려 있다는 뜻. 이게 **같은 4090**이면 새 계정으로 전환하는 순간 팀 챗봇이 끊긴다.
+> ✅ **4090 점검 완료(2026-06-21):** 4090(`chanssick`)은 **Tailscale 미설치**. `application.yaml:163` 의 `localhost`(model `gemma4`, 팀 챗봇/태깅)는 **F 의 다른 장치** 주소이지 4090 이 아니다 → 그 IP 로는 C 모델을 못 부른다(거긴 C 모델 없음). 따라서 **재사용 경로는 없고, 4090 을 새로 가입시켜 새 100.x 를 발급받는 것이 유일한 경로.** 4090 은 미설치라 F tailnet 전환이 아니므로 **F 장치(localhost)와 충돌 없음.**
+>
+> 권장 구조: **F 기존 장치**(F tailnet·localhost 유지, C는 미사용) / **4090**(C 또는 팀 tailnet 신규 가입 → 새 100.x, endpoint `http://<4090-new-ip>:11434/v1`) / **노트북**(같은 tailnet 가입, `OSS_BASE_URL=http://<4090-new-ip>:11434/v1`).
 
-## B-0. ★게이트 (4090에서 실행 — 분기 결정)
-```powershell
-ollama list            # gemma4 와 careertuner-c-career-strategy-3b 가 같이 보이나?
-tailscale status       # 이미 어떤 tailnet 에 올라가 있나? (설치돼 있으면)
-tailscale ip -4        # 4090 의 tailnet IP 가 localhost 인가?
-```
-- **(B-재사용) `localhost` == 이 4090 이면** → 4090 은 이미 팀 tailnet 에 있고 Ollama 도 공용 노출됨. **계정 전환·새 설치 하지 말 것.** 데모 노트북만 **같은 팀 tailnet**에 합류시키고 `OSS_BASE_URL=http://localhost:11434/v1` 로 호출(B-2 로). 4090 무변경 = 가장 안전. (사전: 팀에 "C 모델도 이 Ollama 에 있음" 공유)
-- **(B-신규) `localhost` 가 다른 머신이고 4090 이 어떤 tailnet 에도 없을 때만** → 아래 B-1(신규) 진행. 단 **HARD STOP**: 4090 은 공유 PC라 팀·관리자 승인 + 기존 tailnet 의존 기능 영향 확인 후에만.
-
-## B-1. (B-신규 한정) 4090 Tailscale + Ollama 노출 — 승인 후
+## B-1. 4090 Tailscale 신규 설치 + Ollama 노출
 ```text
-HARD STOP: 팀 승인 + 'tailscale switch 로 계정 전환 시 기존 tailnet(F/챗봇) 끊김' 영향 확인 전엔 실행 금지.
-한 머신 = 한 tailnet 활성. 전환하면 그 머신의 기존 tailnet 연결이 끊긴다.
+4090 은 공유 PC → Tailscale 설치 자체는 팀·관리자 동의 후(공통 인프라 변경). F 전환 충돌은 없음(미설치 신규).
 ```
-1. Tailscale 설치 → `tailscale up` → C 계정 로그인. `tailscale ip -4` 기록.
-2. Ollama 를 외부 인터페이스에 노출 — **영구변경 회피용 임시 방식 권장**(시연용):
+1. Tailscale 설치 → `tailscale up` → **C 또는 팀 tailnet** 에 새로 가입(브라우저 로그인). `tailscale ip -4` 로 **새 100.x** 기록.
+2. Ollama 를 외부(tailnet) 인터페이스에 노출 — ★PART A(localhost 캡처)를 먼저 끝낸 뒤 바꾸는 걸 권장(아래 주의):
    ```powershell
    # 기존 Ollama 트레이를 완전 종료(Quit)한 뒤, 같은 세션에서:
    $env:OLLAMA_HOST="0.0.0.0:11434"; ollama serve
    netstat -ano | findstr 11434        # 0.0.0.0:11434 LISTENING 확인
    ```
    - 영구로 두려면 `[Environment]::SetEnvironmentVariable("OLLAMA_HOST","0.0.0.0:11434","Machine")` — 단 **관리자 권한 PowerShell** 필요, 설정 후 **Ollama 트레이 완전 종료→재시작**해야 적용(실행 중 프로세스엔 반영 안 됨). 시연 종료 후 **원복**.
-   - 더 좁게: `0.0.0.0` 대신 `<4090-tailscale-IP>:11434` 로 바인드하면 LAN 노출 없이 tailnet 만 허용.
+   - 더 좁게(권장): `0.0.0.0` 대신 `<4090-new-ip>:11434` 로 바인드 → LAN 노출 없이 tailnet 만 허용. ★주의: 이렇게 하면 **localhost(127.0.0.1) 접근이 끊겨** PART A 로컬 캡처가 안 된다. 로컬 캡처는 PART A(기본 OLLAMA_HOST)에서 먼저 끝내고, 원격 전환 시 `0.0.0.0`(localhost+tailnet 둘 다) 또는 tailnet IP 바인드를 택한다.
 3. `ollama list` 로 `careertuner-c-career-strategy-3b` 확인.
 
-## B-2. 시연 노트북 (B-재사용/신규 공통)
-1. Tailscale 설치 → 4090 과 **같은 tailnet** 합류(B-재사용=팀 tailnet, B-신규=C tailnet).
+## B-2. 시연 노트북
+1. Tailscale 설치 → 4090 과 **같은 C 또는 팀 tailnet** 합류.
 2. 도달 확인:
    ```powershell
    tailscale status                                          # 4090 보임
-   Invoke-RestMethod http://<4090-tailnet-IP>:11434/v1/models   # 모델 보이면 성공
+   Invoke-RestMethod http://<4090-new-ip>:11434/v1/models    # 모델 보이면 성공
    ```
 3. 백엔드 — ★`base-url` 만 바꾸면 안 되고 **OSS env 풀세트**를 그 세션에 다시 설정(provider=oss 없으면 OSS 경로 진입 안 함):
    ```powershell
    $env:CAREERTUNER_ANALYSIS_AI_PROVIDER="oss"
-   $env:CAREERTUNER_ANALYSIS_AI_OSS_BASE_URL="http://<4090-tailnet-IP>:11434/v1"   # B-재사용이면 localhost
+   $env:CAREERTUNER_ANALYSIS_AI_OSS_BASE_URL="http://<4090-new-ip>:11434/v1"   # B-1에서 발급된 4090 새 tailnet IP
    $env:CAREERTUNER_ANALYSIS_AI_OSS_MODEL="careertuner-c-career-strategy-3b"
    $env:CAREERTUNER_ANALYSIS_AI_OSS_MAX_TOKENS="1280"
    $env:CAREERTUNER_ANALYSIS_AI_OSS_TEMPERATURE="0.2"
@@ -155,20 +147,20 @@ HARD STOP: 팀 승인 + 'tailscale switch 로 계정 전환 시 기존 tailnet(F
 ```text
 OLLAMA_HOST=0.0.0.0 은 4090 의 모든 인터페이스(공유 오피스 LAN/Wi-Fi 포함)에 11434 개방.
 OSS api-key 도 빈값 → 같은 LAN 누구나 무인증 호출 가능. 공개 인터넷엔 닫힘(포트포워딩 안 함).
-권장: 0.0.0.0 대신 tailnet IP 바인드 / Tailscale ACL 로 노트북만 허용 / 시연 종료 후 OLLAMA_HOST 원복.
-(B-재사용이면 이미 팀이 0.0.0.0 으로 운영 중일 수 있음 — 새로 여는 게 아니라 현 상태 유지.)
+4090 은 이번에 처음 노출하는 것이므로(기존 공용 노출 아님) 범위를 좁게:
+권장: 0.0.0.0 대신 <4090-new-ip>(tailnet IP) 바인드 / Tailscale ACL 로 노트북만 허용 / 시연 종료 후 OLLAMA_HOST 원복.
 ```
 
 ## B-4. 시연 전 리허설 체크리스트
 ```text
-□ B-0 게이트로 localhost==4090 여부 판정(재사용/신규 분기)
+□ 4090 Tailscale 신규 설치 + C/팀 tailnet 가입 → 새 100.x 발급(tailscale ip -4)
 □ 4090·노트북 둘 다 tailscale status 에 서로 보임
-□ 노트북에서 http://<4090-tailnet-IP>:11434/v1/models 에 모델 보임
+□ 노트북에서 http://<4090-new-ip>:11434/v1/models 에 모델 보임
 □ 노트북 백엔드: PROVIDER=oss 포함 OSS env 풀세트 + bootRun 성공
 □ 적합도 분석 → model=careertuner-c-career-strategy-3b, strategy=자체모델 설명
 □ Ollama 잠깐 끔 → mock 폴백, 화면 안 깨짐
 □ ★백업 캡처 확보(PART A 로컬 캡처) — 라이브 막혀도 발표 증거
-□ (B-신규면) 시연 종료 후 OLLAMA_HOST/계정 원복
+□ 시연 종료 후 OLLAMA_HOST 원복(노출 범위 원상복구)
 ```
 
 ---
@@ -182,6 +174,6 @@ OSS api-key 도 빈값 → 같은 LAN 누구나 무인증 호출 가능. 공개 
 11.금지키/CJK 여부 12.(했다면)폴백 화면 13.저장 경로(out/run_logs)
 
 [PART B 원격]
-14.B-0 게이트 결과(localhost==4090?) 15.재사용/신규 분기 16.4090 tailnet IP
+14.4090 Tailscale 신규 설치·가입 tailnet(C/팀) 15.4090 새 tailnet IP 16.OLLAMA_HOST 노출 방식
 17.노트북 /v1/models 도달 18.원격 bootRun+UI 자체모델 표시 19.남은 이슈(승인/원복/ACL)
 ```
