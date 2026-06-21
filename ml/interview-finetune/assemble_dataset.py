@@ -15,7 +15,7 @@ import json
 from collections import Counter
 
 from briefing import build_briefing
-from synth_prompts import QGEN_SYS, MA_SYS, EVAL_SYS
+from synth_prompts import QGEN_SYS, MA_SYS, EVAL_SYS, PROBE_SYS
 
 
 def _row(task, system, user, assistant):
@@ -58,6 +58,21 @@ def assemble(raw):
                 asst = json.dumps({"score": c.get("score", 0), "feedback": c.get("feedback", "")},
                                   ensure_ascii=False)
                 rows.append(_row("EVAL", EVAL_SYS, user, asst))
+
+        # PROBE: 압박 모드 — 질문+답변(quality 매칭)별 반박 꼬리질문
+        ev_by_qi = {it.get("question_index"): it for it in (ev.get("items") or [])}
+        for pit in (item.get("probe") or {}).get("items") or []:
+            qi = pit.get("question_index", -1)
+            if qi < 0 or qi >= len(questions) or qi not in ev_by_qi:
+                continue
+            cases = ev_by_qi[qi].get("cases") or []
+            ans = next((c.get("answer") for c in cases if c.get("quality") == pit.get("quality")), None)
+            probe = (pit.get("probe") or "").strip()
+            if not ans or not probe:
+                continue
+            rows.append(_row("PROBE", PROBE_SYS,
+                             f"질문:\n{questions[qi]['question']}\n\n지원자 답변:\n{ans}",
+                             probe))
     return rows
 
 

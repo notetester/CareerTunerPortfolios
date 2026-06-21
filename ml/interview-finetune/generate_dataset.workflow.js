@@ -4,6 +4,7 @@ export const meta = {
   phases: [
     { title: 'QGEN', detail: 'seed → 가짜 분석 + 질문6' },
     { title: 'EVAL', detail: '질문 → 모범답안 + 답변3종 채점' },
+    { title: 'PROBE', detail: '압박 답변 → 반박 꼬리질문 (압박 모드만)' },
   ],
 }
 
@@ -122,6 +123,23 @@ const EVAL_SCHEMA = {
   },
 }
 
+const PROBE_SCHEMA = {
+  type: 'object', additionalProperties: false, required: ['items'],
+  properties: {
+    items: {
+      type: 'array',
+      items: {
+        type: 'object', additionalProperties: false, required: ['question_index', 'quality', 'probe'],
+        properties: {
+          question_index: { type: 'integer' },
+          quality: { type: 'string', enum: ['good', 'fair', 'poor'] },
+          probe: { type: 'string' },
+        },
+      },
+    },
+  },
+}
+
 const results = await pipeline(seeds,
   (seed) => agent(
     `너는 한국 IT 취업 면접 데이터 생성기다. 아래 가상 지원 건에 대해 실제 채용 분석처럼 풍부하고 약간 장황한 가짜 분석을 만들고, 면접 질문 6개를 생성하라.
@@ -154,7 +172,28 @@ ${(gen.questions || []).map((q, i) => `${i}. ${q.question}`).join('\n')}
 - 점수는 모범답안 기준 부합도로 매긴다. feedback 은 한국어 2~3문장(부족한 점·보완 방향).
 - question_index 는 위 번호(0부터 시작).`,
     { label: `eval:${seed.id}`, phase: 'EVAL', schema: EVAL_SCHEMA, model: 'sonnet' }
-  ).then(ev => ({ seed, analysis_q: gen, eval: ev }))
+  ).then(ev => ({ seed, analysis_q: gen, eval: ev })),
+  // stage3 PROBE — 압박(PRESSURE) 모드만 반박 꼬리질문 생성. 나머지 모드는 그대로 통과(agent 호출 X).
+  (prev, seed) => {
+    if (seed.mode !== 'PRESSURE') return prev
+    const evItems = (prev.eval && prev.eval.items) || []
+    const questions = (prev.analysis_q && prev.analysis_q.questions) || []
+    if (!evItems.length || !questions.length) return prev
+    const block = evItems.map((it) => {
+      const q = (questions[it.question_index] || {}).question || ''
+      const cs = (it.cases || []).map((c) => `  [${c.quality}] ${c.answer}`).join('\n')
+      return `질문${it.question_index}: ${q}\n${cs}`
+    }).join('\n\n')
+    return agent(
+      `너는 압박 면접관이다. 아래 각 질문의 지원자 답변 3종(good/fair/poor)을 각각 반박하는 압박성 꼬리질문을 1개씩 만들어라.
+약점·근거부족·모순·과장을 짚고 전제를 흔들거나 구체적 근거·수치를 요구한다. 인신공격 금지, 한국어 한 문장, 국비 주니어 수준에서 1회만 깊게 찌르고 멈춘다.
+
+${block}
+
+각 (질문 index × 답변 quality) 조합마다 items 에 {question_index, quality, probe} 를 하나씩 넣는다.`,
+      { label: `probe:${seed.id}`, phase: 'PROBE', schema: PROBE_SCHEMA, model: 'sonnet' }
+    ).then((pb) => ({ ...prev, probe: pb }))
+  }
 )
 
 const ok = results.filter(Boolean)
