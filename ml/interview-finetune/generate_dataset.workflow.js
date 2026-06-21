@@ -4,6 +4,8 @@ export const meta = {
   phases: [
     { title: 'QGEN', detail: 'seed → 가짜 분석 + 질문6' },
     { title: 'EVAL', detail: '질문 → 모범답안 + 답변3종 채점' },
+    { title: 'PROBE', detail: '압박 답변 → 반박 꼬리질문 (압박 모드만)' },
+    { title: 'REPORT', detail: '전체 Q&A → 품질별 종합 리포트' },
   ],
 }
 
@@ -26,9 +28,9 @@ const KO_P = ['넥스트', '그린', '스마트', '코어', '노바', '링크']
 const KO_S = ['페이', '랩스', '소프트', '테크', '웍스', '데이터']
 const famKeys = Object.keys(FAMILIES)
 
-function makeSeeds(n) {
+function makeSeeds(n, offset) {
   const out = []
-  for (let i = 0; i < n; i++) {
+  for (let i = offset; i < offset + n; i++) {
     const fk = famKeys[i % famKeys.length]
     const fam = FAMILIES[fk]
     const sk0 = (i * 2) % fam.skills.length
@@ -50,9 +52,13 @@ function makeSeeds(n) {
   return out
 }
 
-const N = (args && args.n) ? args.n : 12
-const seeds = makeSeeds(N)
-log(`seed ${seeds.length}개 — fan-out 시작`)
+// seed_001~012 는 기존 학습 완료 — seed_013(offset=12)부터 38개만 신규 생성
+const OFFSET = (args && args.offset != null) ? args.offset : 12
+const N = (args && args.n != null) ? args.n : 38
+const baseSeeds = makeSeeds(N, OFFSET)
+// QGEN 데이터 보강(2026-06-20): seed 당 6모드로 펼쳐 질문 다양성·QGEN 데이터량 6배 확보
+const seeds = baseSeeds.flatMap((s) => MODES.map((m) => ({ ...s, mode: m, id: `${s.id}_${m.toLowerCase()}` })))
+log(`seed ${baseSeeds.length} × ${MODES.length}모드 = ${seeds.length}건 — fan-out 시작`)
 
 const MODE_FOCUS = {
   BASIC: '자기소개·지원동기·장단점 등 기본 질문',
@@ -118,6 +124,45 @@ const EVAL_SCHEMA = {
   },
 }
 
+const PROBE_SCHEMA = {
+  type: 'object', additionalProperties: false, required: ['items'],
+  properties: {
+    items: {
+      type: 'array',
+      items: {
+        type: 'object', additionalProperties: false, required: ['question_index', 'quality', 'probe'],
+        properties: {
+          question_index: { type: 'integer' },
+          quality: { type: 'string', enum: ['good', 'fair', 'poor'] },
+          probe: { type: 'string' },
+        },
+      },
+    },
+  },
+}
+
+const REPORT_SCHEMA = {
+  type: 'object', additionalProperties: false, required: ['items'],
+  properties: {
+    items: {
+      type: 'array',
+      items: {
+        type: 'object', additionalProperties: false,
+        required: ['quality', 'total_score', 'categories', 'summary_feedback'],
+        properties: {
+          quality: { type: 'string', enum: ['good', 'fair', 'poor'] },
+          total_score: { type: 'integer' },
+          categories: {
+            type: 'array',
+            items: { type: 'object', additionalProperties: false, required: ['name', 'score'], properties: { name: { type: 'string' }, score: { type: 'integer' } } },
+          },
+          summary_feedback: { type: 'array', items: { type: 'string' } },
+        },
+      },
+    },
+  },
+}
+
 const results = await pipeline(seeds,
   (seed) => agent(
     `너는 한국 IT 취업 면접 데이터 생성기다. 아래 가상 지원 건에 대해 실제 채용 분석처럼 풍부하고 약간 장황한 가짜 분석을 만들고, 면접 질문 6개를 생성하라.
@@ -135,7 +180,7 @@ const results = await pipeline(seeds,
 - 질문 6개는 위 재료를 활용하되, 난이도는 국비 초급 주니어 수준으로 의도적으로 쉽게. 과한 전문성 요구 금지.
 - 면접 모드(${seed.mode})의 초점을 질문에 반영.
 - 각 질문은 한국어 한 문장, question_type 은 TECH/EXPECTED/PERSONALITY/SITUATION 중 하나.`,
-    { label: `qgen:${seed.id}`, phase: 'QGEN', schema: ANALYSIS_Q_SCHEMA }
+    { label: `qgen:${seed.id}`, phase: 'QGEN', schema: ANALYSIS_Q_SCHEMA, model: 'sonnet' }
   ),
   (gen, seed) => agent(
     `너는 한국 IT 면접 채점 데이터 생성기다. 아래 질문들 각각에 대해 (1) 모범답안 1개, (2) 답변 3종(good=우수, fair=애매, poor=망함)과 각 점수·피드백을 만들어라.
@@ -149,8 +194,54 @@ ${(gen.questions || []).map((q, i) => `${i}. ${q.question}`).join('\n')}
 - cases 3종: good(모범답안에 부합, 90~98점), fair(방향은 맞으나 빈약·짧음, 50~70점), poor(핵심 빗나감 또는 무관, 10~35점).
 - 점수는 모범답안 기준 부합도로 매긴다. feedback 은 한국어 2~3문장(부족한 점·보완 방향).
 - question_index 는 위 번호(0부터 시작).`,
-    { label: `eval:${seed.id}`, phase: 'EVAL', schema: EVAL_SCHEMA }
-  ).then(ev => ({ seed, analysis_q: gen, eval: ev }))
+    { label: `eval:${seed.id}`, phase: 'EVAL', schema: EVAL_SCHEMA, model: 'sonnet' }
+  ).then(ev => ({ seed, analysis_q: gen, eval: ev })),
+  // stage3 PROBE — 압박(PRESSURE) 모드만 반박 꼬리질문 생성. 나머지 모드는 그대로 통과(agent 호출 X).
+  (prev, seed) => {
+    if (seed.mode !== 'PRESSURE') return prev
+    const evItems = (prev.eval && prev.eval.items) || []
+    const questions = (prev.analysis_q && prev.analysis_q.questions) || []
+    if (!evItems.length || !questions.length) return prev
+    const block = evItems.map((it) => {
+      const q = (questions[it.question_index] || {}).question || ''
+      const cs = (it.cases || []).map((c) => `  [${c.quality}] ${c.answer}`).join('\n')
+      return `질문${it.question_index}: ${q}\n${cs}`
+    }).join('\n\n')
+    return agent(
+      `너는 압박 면접관이다. 아래 각 질문의 지원자 답변 3종(good/fair/poor)을 각각 반박하는 압박성 꼬리질문을 1개씩 만들어라.
+약점·근거부족·모순·과장을 짚고 전제를 흔들거나 구체적 근거·수치를 요구한다. 인신공격 금지, 한국어 한 문장, 국비 주니어 수준에서 1회만 깊게 찌르고 멈춘다.
+
+${block}
+
+각 (질문 index × 답변 quality) 조합마다 items 에 {question_index, quality, probe} 를 하나씩 넣는다.`,
+      { label: `probe:${seed.id}`, phase: 'PROBE', schema: PROBE_SCHEMA, model: 'sonnet' }
+    ).then((pb) => ({ ...prev, probe: pb }))
+  },
+  // stage4 REPORT — 전 모드. 답변 품질(good/fair/poor) 세트별 종합 리포트 3개.
+  (prev, seed) => {
+    const evItems = (prev.eval && prev.eval.items) || []
+    const questions = (prev.analysis_q && prev.analysis_q.questions) || []
+    if (!evItems.length || !questions.length) return prev
+    const block = evItems.map((it) => {
+      const q = (questions[it.question_index] || {}).question || ''
+      const cs = (it.cases || []).map((c) => `  [${c.quality}] (${c.score}점) ${c.answer}`).join('\n')
+      return `질문${it.question_index}: ${q}\n${cs}`
+    }).join('\n\n')
+    return agent(
+      `너는 면접 결과를 종합 평가하는 면접관이다. 아래는 한 지원 건의 질문 6개와 각 질문에 대한 답변 3종(good/fair/poor)·점수다.
+답변 품질 세트별로(good만 모은 우수 면접 / fair만 모은 보통 면접 / poor만 모은 미흡 면접) 각각 종합 리포트를 1개씩, 총 3개 만들어라.
+- total_score: 0~100 종합(해당 세트 답변 점수들과 정합되게).
+- categories: 항목별 점수 4~6개(답변 내용/직무 적합성/구체성/논리성/표현력/태도 등).
+- summary_feedback: 핵심 피드백 3개 내외 한국어 문장.
+
+직무: ${seed.job_title} / 회사: ${seed.company_name} / 경력: ${seed.seniority}
+
+${block}
+
+items 에 quality(good/fair/poor)별 리포트를 하나씩 넣는다.`,
+      { label: `report:${seed.id}`, phase: 'REPORT', schema: REPORT_SCHEMA, model: 'sonnet' }
+    ).then((rp) => ({ ...prev, report: rp }))
+  }
 )
 
 const ok = results.filter(Boolean)
