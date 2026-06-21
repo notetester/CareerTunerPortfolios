@@ -54,9 +54,9 @@
 
 | 항목 | 값 |
 | --- | --- |
-| 노트북 | 개발 노트북(tailnet IP localhost), **winget로 Tailscale 자동 설치** |
-| tailnet | 팀 공용(소유 계정은 저장소 외부 운영 관리). 노트북은 본인 계정 로그인 + **노드 공유①**(4090 localhost 공유) 수락으로 합류 |
-| 4090 | `localhost`(tailnet IP), `OLLAMA_HOST=localhost:11434`(localhost 끊김) |
+| 노트북 | 개발용 PC(시연 머신 후보) — Tailscale 클라이언트 자동 설치(winget) |
+| 접속 | 팀 공용 VPN(메시 VPN) 경유 |
+| 표준 주소 | `http://localhost:11434/v1` (팀 공용) |
 | 네트워크 | `tailscale ping` **5ms · P2P 직접연결**(DERP 릴레이 아님) |
 | 백엔드(노트북) | `provider=oss`, `OSS_BASE_URL=http://localhost:11434/v1`, JDK 21, bootRun 8.6s |
 | 호출 | 시드 계정 → `POST /api/fit-analyses/application-cases/2` → **3.0s** |
