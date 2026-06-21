@@ -1,0 +1,10 @@
+# SHA256 manifest — career-strategy-llm (mixed 학습 전송본)
+# 생성: 2026-06-20. 경로는 ml/career-strategy-llm/ 기준.
+# 검증(PowerShell): Get-FileHash .\<파일> -Algorithm SHA256
+
+0bdda8567b3b3ce47f816dd68eebf30c80e5512ebe9d743911de1040bbe03059 *data/train.mixed.jsonl
+ea25a2bb7f4ce41893a8bfe937211b8d93a32894bbaf8760147ace51a8b56639 *data/val.mixed.jsonl
+0116681836113c4b0278b2e3575a71fbe4528ffd754e76718aacfe58dd70c3de *requirements.txt
+7d71fb04ea514ee13511c2dfbd9ba48160ba8b81d0b8d7f50425e1befa13445e *scripts/finetune_lora.py
+800527f8fcb8d1be97cf80f2fa618a8b81b93e077392f818d402d1d2a8be93d4 *scripts/merge_and_export.py
+f34b0318987786dfc57a2567a53dacd396e0ff586d45cf3bf01758174ce8e0c7 *scripts/test_infer.py

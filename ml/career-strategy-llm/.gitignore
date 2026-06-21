@@ -1,0 +1,10 @@
+# 학습 입출력·모델 산출물 (추적 제외) — 재현 메타데이터/샘플만 커밋
+# (D ml/interview-finetune/.gitignore 패턴 + 모델 산출물 확장)
+data/*
+!data/.gitkeep
+out/
+*.jsonl
+*.gguf
+*.safetensors
+__pycache__/
+*.pyc

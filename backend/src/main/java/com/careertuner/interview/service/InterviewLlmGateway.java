@@ -11,9 +11,10 @@ import tools.jackson.databind.JsonNode;
  * 이 게이트웨이는 "provider 로의 전송"만 담당한다. 덕분에 한 곳만 갈아끼우면 전 호출의 provider 가 바뀐다.
  *
  * <ul>
- *   <li>{@link GeminiLlmGateway} — 1차(기본) provider</li>
- *   <li>{@link OpenAiLlmGateway} — 폴백 provider</li>
- *   <li>{@link FallbackInterviewLlmGateway} — Gemini→OpenAI 폴백 디스패처(@Primary, 호출부가 주입받는 구현)</li>
+ *   <li>{@link OssLlmGateway} — 자체 파인튜닝 모델(학습된 생성 task 1차, 점진 확대)</li>
+ *   <li>{@link AnthropicLlmGateway} — Claude(Haiku) (자체 모델 미학습 task 담당 + 1차 폴백)</li>
+ *   <li>{@link OpenAiLlmGateway} — 최종 폴백 provider</li>
+ *   <li>{@link FallbackInterviewLlmGateway} — oss→Claude→OpenAI 폴백 디스패처(@Primary, 호출부가 주입받는 구현)</li>
  * </ul>
  */
 public interface InterviewLlmGateway {

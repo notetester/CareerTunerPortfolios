@@ -100,7 +100,7 @@ push 요청을 받으면 반드시 아래 순서를 따른다:
 
 `docs/storyboard/` 는 **별도 repo [notetester/CareerTunerDocs](https://github.com/notetester/CareerTunerDocs) 를 가리키는 git 서브모듈**이다. 담당자별 산출물(스토리보드·PPTX·PDF·DB 설계서 등)이라 일반 개발에는 필요 없고, 메인을 그냥 클론하면 이 폴더는 **빈 채(포인터만)** 라 본체 용량·개발에 영향이 없다.
 
-- 폴더 구조는 **담당자별** `A/`~`F/`·`TOTAL/` 이고, 각 폴더 안은 `workbench/`(작업대·재현 파이프라인) + `deliverables/`(대표 산출물) 로 나뉜다. **C(이정국) 작업은 `docs/storyboard/C/` 아래에 전부 있다.**
+- 폴더 구조는 **담당자별** `A/`~`F/`·`TOTAL/` 이고, 각 폴더 안은 `workbench/`(작업대·재현 파이프라인) + `deliverables/`(대표 산출물) 로 나뉜다. **C 작업은 `docs/storyboard/C/` 아래에 전부 있다.**
 - 스토리보드를 보거나 작업할 때만 받는다: `git submodule update --init docs/storyboard` (처음부터 받으려면 `git clone --recursive`).
 - **`dev` pull 시 서브모듈 자동 갱신:** 한 번만 `git config submodule.recurse true` (+ `git config fetch.recurseSubmodules on-demand`) 를 설정하면, 이후 `git pull` 이 `dev` 가 고정한 서브모듈 커밋까지 자동으로 체크아웃한다(수동 `submodule update` 불필요). 이 설정은 로컬(`.git/config`)이라 클론마다 1회 설정한다.
 - 수정은 `docs/storyboard/` **안에서** commit·push 한다(그 폴더가 곧 CareerTunerDocs repo). 새 버전을 메인에 고정하려면 루트에서 `git add docs/storyboard && git commit` 으로 포인터를 갱신해 PR 한다.
