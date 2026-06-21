@@ -3,10 +3,14 @@ package com.careertuner.community.moderation.service;
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
 import java.util.EnumMap;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
+import java.util.Set;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -393,6 +397,12 @@ public class PostModerationService {
             // 면접후기 확장 데이터 조회
             CommunityInterviewReview review = postMapper.findInterviewReviewByPostId(postId);
 
+            // 사용자 사전 입력 질문(questions_json: 문자열 배열). AI 호출 후 코드 머지에서도
+            // 써야 하므로 블록 밖으로 hoist 한다.
+            List<String> userQuestions = review != null
+                    ? parseUserQuestions(review.getQuestionsJson())
+                    : List.of();
+
             // userText 조합
             StringBuilder sb = new StringBuilder();
             sb.append("[면접 후기 본문]");
@@ -405,9 +415,8 @@ public class PostModerationService {
                 if (review.getInterviewDate() != null) sb.append("\n면접일자: ").append(review.getInterviewDate());
                 if (review.getResultStatus() != null) sb.append("\n결과: ").append(review.getResultStatus());
 
-                // 사용자 사전 입력 질문(questions_json: 문자열 배열)을 그대로 전달.
-                // 문장은 손대지 않고 유형만 AI가 분류하도록 통합 프롬프트에 함께 넘긴다.
-                List<String> userQuestions = parseUserQuestions(review.getQuestionsJson());
+                // 사용자 사전 입력 질문을 AI에 함께 전달(중복 제외·유형 분류 참고용). 단, 최종
+                // questions 보존은 프롬프트가 아니라 아래 코드 머지(mergeUserAndAiQuestions)가 보증한다.
                 if (!userQuestions.isEmpty()) {
                     sb.append("\n\n[사용자 사전 입력 질문]");
                     for (String q : userQuestions) {
@@ -430,6 +439,19 @@ public class PostModerationService {
             // AI가 메타데이터(회사명/직무/결과)를 출력에 echo하지 않는 경우가 잦으므로,
             // null이면 review 행의 확정 값으로 채운다. (AI 출력에 의존하지 않음)
             result = applyReviewFallback(result, review);
+
+            // 사용자 사전 입력 질문을 코드에서 verbatim 시딩하고, AI 추출분 중 중복은 버린다.
+            // verbatim 보존을 프롬프트 신뢰가 아니라 코드가 보증한다.
+            List<InterviewExtractionResult.ExtractedQuestion> mergedQuestions =
+                    mergeUserAndAiQuestions(userQuestions, result.questions());
+            result = new InterviewExtractionResult(
+                    result.company(),
+                    result.position(),
+                    result.interviewDate(),
+                    result.resultStatus(),
+                    mergedQuestions,
+                    result.overallNote()
+            );
 
             // sanitize 후 JSON으로 재직렬화하여 저장 (원본 json에 "null" 문자열이 남아있을 수 있으므로)
             String sanitizedJson = objectMapper.writeValueAsString(result);
@@ -562,7 +584,7 @@ public class PostModerationService {
                             q.question(),
                             sanitizeString(q.questionType()),
                             sanitizeString(q.context()),
-                            q.followUps()
+                            sanitizeStringList(q.followUps())
                     ))
                     .toList();
         }
@@ -577,6 +599,81 @@ public class PostModerationService {
     }
 
     /**
+     * 문자열 리스트에서 "null"/"없음"/"N/A"/빈문자열·공백 원소를 제거한다.
+     * 예: ["트랜잭션 설명", "null", ""] → ["트랜잭션 설명"], ["null"] → [].
+     * 입력이 null이면 null 유지.
+     */
+    private static List<String> sanitizeStringList(List<String> raw) {
+        if (raw == null) return null;
+        return raw.stream()
+                .map(PostModerationService::sanitizeString)
+                .filter(Objects::nonNull)
+                .toList();
+    }
+
+    /**
+     * 사용자 사전 입력 질문을 verbatim 시딩하고, AI 추출분 중 중복을 제거해 머지한다.
+     * - 사용자 질문은 문장을 절대 수정·삭제하지 않고 그대로 questions에 넣는다(코드가 보존을 보증).
+     * - AI가 같은 질문을 echo·분류했으면 questionType/context/followUps만 차용한다.
+     * - 정규화(공백·대소문자·문장부호 정리) 비교로 중복을 판정하며, 사용자 질문을 우선한다.
+     */
+    private static List<InterviewExtractionResult.ExtractedQuestion> mergeUserAndAiQuestions(
+            List<String> userQuestions,
+            List<InterviewExtractionResult.ExtractedQuestion> aiQuestions) {
+
+        List<InterviewExtractionResult.ExtractedQuestion> merged = new ArrayList<>();
+        Set<String> seen = new LinkedHashSet<>();
+
+        // 1) 사용자 사전 입력 질문 verbatim 시딩
+        if (userQuestions != null) {
+            for (String uq : userQuestions) {
+                String key = normalizeForDedup(uq);
+                if (key.isEmpty() || !seen.add(key)) continue; // 사용자 입력 내 중복도 정리
+                InterviewExtractionResult.ExtractedQuestion aiMatch = findByNormalized(aiQuestions, key);
+                merged.add(new InterviewExtractionResult.ExtractedQuestion(
+                        uq, // verbatim — 절대 수정 금지
+                        aiMatch != null ? aiMatch.questionType() : null,
+                        aiMatch != null ? aiMatch.context() : null,
+                        aiMatch != null ? aiMatch.followUps() : null
+                ));
+            }
+        }
+
+        // 2) AI 추출분 중 사용자 질문과 중복되지 않는 것만 추가
+        if (aiQuestions != null) {
+            for (InterviewExtractionResult.ExtractedQuestion aq : aiQuestions) {
+                if (aq == null || aq.question() == null) continue;
+                String key = normalizeForDedup(aq.question());
+                if (key.isEmpty() || !seen.add(key)) continue;
+                merged.add(aq);
+            }
+        }
+        return merged;
+    }
+
+    /** 정규화 키가 일치하는 첫 AI 질문을 찾는다(echo된 사용자 질문의 분류 차용용). */
+    private static InterviewExtractionResult.ExtractedQuestion findByNormalized(
+            List<InterviewExtractionResult.ExtractedQuestion> list, String key) {
+        if (list == null) return null;
+        for (InterviewExtractionResult.ExtractedQuestion q : list) {
+            if (q != null && q.question() != null
+                    && normalizeForDedup(q.question()).equals(key)) {
+                return q;
+            }
+        }
+        return null;
+    }
+
+    /** 중복 비교용 정규화: 앞뒤 공백 제거 + 소문자화 + 문장부호·공백을 단일 공백으로 축약. */
+    private static String normalizeForDedup(String s) {
+        if (s == null) return "";
+        return s.strip()
+                .toLowerCase()
+                .replaceAll("[\\p{Punct}\\s]+", " ")
+                .strip();
+    }
+
+    /**
      * 추출된 질문 1건을 InterviewKnowledge 엔티티로 매핑한다.
      */
     private InterviewKnowledge buildInterviewKnowledge(
@@ -588,13 +685,15 @@ public class PostModerationService {
         StringBuilder titleSb = new StringBuilder();
         if (result.company() != null) titleSb.append(result.company()).append(" ");
         if (result.position() != null) titleSb.append(result.position()).append(" ");
-        if (!titleSb.isEmpty()) titleSb.append("— ");
-        titleSb.append(q.questionType());
+        if (q.questionType() != null) {
+            if (!titleSb.isEmpty()) titleSb.append("— ");
+            titleSb.append(q.questionType());
+        }
 
         // content: 구조화 텍스트
         StringBuilder contentSb = new StringBuilder();
         contentSb.append("[면접 질문]\n").append(q.question()).append("\n");
-        contentSb.append("\n[유형] ").append(q.questionType());
+        if (q.questionType() != null) contentSb.append("\n[유형] ").append(q.questionType());
         if (result.company() != null) contentSb.append("\n[회사] ").append(result.company());
         if (result.position() != null) contentSb.append("\n[직무] ").append(result.position());
         if (result.interviewDate() != null) contentSb.append("\n[면접 시기] ").append(result.interviewDate());
