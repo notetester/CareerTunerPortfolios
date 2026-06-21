@@ -1,4 +1,4 @@
-# career-strategy-llm — C 담당 자체 모델 (이정국)
+# career-strategy-llm — C 담당 자체 모델
 
 CareerTuner **C 영역(홈/스펙비교/취업분석/대시보드 + 커리어 전략 추천)** 의 자체 파인튜닝 LLM
 `careertuner-c-career-strategy` 학습·변환·서빙 파이프라인.

@@ -1,4 +1,4 @@
-# C(커리어 전략) 자체 모델 LoRA 파인튜닝 (이정국)
+# C(커리어 전략) 자체 모델 LoRA 파인튜닝
 # 공유 RTX 4090 24GB 에서 설치. CUDA 12.x 기준. Qwen2.5-3B 4bit+LoRA 는 VRAM 여유(~6~8GB).
 # (D ml/interview-finetune/requirements.txt 와 동일 스택 — 같은 인프라 재사용)
 torch>=2.3

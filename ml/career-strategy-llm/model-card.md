@@ -5,7 +5,7 @@
 | 항목 | 내용 |
 | --- | --- |
 | 모델명 | `careertuner-c-career-strategy` (alias) · `-3b` / `-7b` 변형 |
-| 담당자 | 이정국 (C) |
+| 담당자 | C 파트 |
 | 담당 도메인 | 홈/스펙비교/취업분석/대시보드 + 커리어 전략 추천 |
 | 직군 범위 | **범용**(IT 전용 아님). Phase 1 MVP는 IT/SW 중심 검증 + 비IT(마케팅·영업·디자인·회계·인사·물류·CS) 샘플 포함. 비IT 정밀 자격증/RAG/점수정책은 Phase 2 확장 |
 | base model | Phase 1 `Qwen/Qwen2.5-3B-Instruct` (Apache 2.0) · 비교 `Qwen/Qwen2.5-7B-Instruct` |

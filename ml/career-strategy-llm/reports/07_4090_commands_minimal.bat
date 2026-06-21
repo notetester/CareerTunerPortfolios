@@ -4,7 +4,7 @@ rem ============================================================
 rem  CareerTuner C 자체 LLM - 공유 RTX 4090 최소 실행 (mixed 3B)
 rem  TeamViewer 에서 복붙용. GGUF/Ollama 는 reports/00_runbook_4090.md 참고.
 rem  ★ 아래 <공유계정> 을 ZIP 압축 해제 경로에 맞게 수정하세요.
-rem    (예: cd C:\Users\careertuner\career-strategy-llm)
+rem    (예: cd C:\Users\<공유계정>\career-strategy-llm)
 rem ============================================================
 
 cd C:\Users\<공유계정>\career-strategy-llm

@@ -29,8 +29,8 @@
 
 | 항목 | 값 |
 | --- | --- |
-| 환경 | 공유 4090(`chanssick`), `dev @ 96f9ef0`, 전부 localhost(Ollama 11434 / 백엔드 8080 / 프런트 5173) |
-| 로그인 | 시드 실계정 `jiwon.kim@careertuner.dev`(user_id 2) — 실모드(`npm run dev`) |
+| 환경 | 공유 4090 PC, `dev @ 96f9ef0`, 전부 localhost(Ollama 11434 / 백엔드 8080 / 프런트 5173) |
+| 로그인 | 시드 실계정(user_id 2) — 실모드(`npm run dev`) |
 | 시연 케이스 | **application_case 2 — 국민건강보험공단 전산직** (fitAnalysisId=29) |
 | 응답 | `model=careertuner-c-career-strategy-3b`, `status=SUCCESS`, `fitScore=10`(규칙엔진) |
 | 자체모델 설명 | strategy="Java·Spring Boot·SQL 등 필수 역량을 전부 갖추지 못하고…공공기관 전산 직무에 매우 부족한 상태입니다…"(모델). gap reason(Java/Spring Boot)도 모델 enrich |
@@ -54,12 +54,12 @@
 
 | 항목 | 값 |
 | --- | --- |
-| 노트북 | Tailscale 신원 `teammate@example.com`(hostname ljk25, localhost), **winget로 Tailscale 자동 설치** |
-| tailnet | 팀 공용(주인 `hwangseongho52@gmail.com`). 노트북은 본인 계정 로그인 + **노드 공유①**(4090 `chanssick` localhost 공유) 수락으로 합류 |
+| 노트북 | 개발 노트북(tailnet IP localhost), **winget로 Tailscale 자동 설치** |
+| tailnet | 팀 공용(소유 계정은 저장소 외부 운영 관리). 노트북은 본인 계정 로그인 + **노드 공유①**(4090 localhost 공유) 수락으로 합류 |
 | 4090 | `localhost`(tailnet IP), `OLLAMA_HOST=localhost:11434`(localhost 끊김) |
 | 네트워크 | `tailscale ping` **5ms · P2P 직접연결**(DERP 릴레이 아님) |
 | 백엔드(노트북) | `provider=oss`, `OSS_BASE_URL=http://localhost:11434/v1`, JDK 21, bootRun 8.6s |
-| 호출 | 시드계정 jiwon.kim → `POST /api/fit-analyses/application-cases/2` → **3.0s** |
+| 호출 | 시드 계정 → `POST /api/fit-analyses/application-cases/2` → **3.0s** |
 | 응답 | `model=careertuner-c-career-strategy-3b`, `status=SUCCESS`, `fitScore=10`(규칙엔진), strategy=깨끗한 한국어 자체모델 |
 | ai_usage_log | `FIT_ANALYSIS·SUCCESS·careertuner-c-career-strategy-3b` — **폴백 아님(원격 자체모델 성공)** |
 
