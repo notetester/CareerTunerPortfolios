@@ -26,9 +26,9 @@ const KO_P = ['넥스트', '그린', '스마트', '코어', '노바', '링크']
 const KO_S = ['페이', '랩스', '소프트', '테크', '웍스', '데이터']
 const famKeys = Object.keys(FAMILIES)
 
-function makeSeeds(n) {
+function makeSeeds(n, offset) {
   const out = []
-  for (let i = 0; i < n; i++) {
+  for (let i = offset; i < offset + n; i++) {
     const fk = famKeys[i % famKeys.length]
     const fam = FAMILIES[fk]
     const sk0 = (i * 2) % fam.skills.length
@@ -50,8 +50,10 @@ function makeSeeds(n) {
   return out
 }
 
-const N = (args && args.n) ? args.n : 50
-const baseSeeds = makeSeeds(N)
+// seed_001~012 는 기존 학습 완료 — seed_013(offset=12)부터 38개만 신규 생성
+const OFFSET = (args && args.offset != null) ? args.offset : 12
+const N = (args && args.n != null) ? args.n : 38
+const baseSeeds = makeSeeds(N, OFFSET)
 // QGEN 데이터 보강(2026-06-20): seed 당 6모드로 펼쳐 질문 다양성·QGEN 데이터량 6배 확보
 const seeds = baseSeeds.flatMap((s) => MODES.map((m) => ({ ...s, mode: m, id: `${s.id}_${m.toLowerCase()}` })))
 log(`seed ${baseSeeds.length} × ${MODES.length}모드 = ${seeds.length}건 — fan-out 시작`)
