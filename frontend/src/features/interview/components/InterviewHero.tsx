@@ -10,7 +10,7 @@ const EXAMPLES = [
 ];
 
 /**
- * 마누스형 면접 진입 검색창. 한 줄 요청을 던지면 자동 셋업(요청 분석 → 모드 선정 → 세션·질문 생성)
+ * AI 오케스트레이터 면접 진입 검색창. 한 줄 요청을 던지면 자동 셋업(요청 분석 → 모드 선정 → 세션·질문 생성)
  * 으로 넘어간다. 요청 문장은 sessionStorage 로 전달하고 /interview?auto=1 로 이동한다.
  */
 export function InterviewHero() {
