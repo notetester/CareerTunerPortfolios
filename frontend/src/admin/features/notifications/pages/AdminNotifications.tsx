@@ -40,6 +40,7 @@ const TYPE_CAT: Record<string, string> = {
   CORRECTION_COMPLETE: "correction",
   COMMENT: "community",
   COMMENT_REPLY: "community",
+  COMMENT_HIDDEN: "community",
   LIKE: "community",
   POST_HIDDEN: "community",
   POST_SUMMARY_READY: "community",

@@ -208,6 +208,7 @@ const NOTI_ICON_MAP: Record<NotificationType, LucideIcon> = {
   CORRECTION_COMPLETE: PenLine,
   COMMENT: MessageCircle,
   COMMENT_REPLY: Reply,
+  COMMENT_HIDDEN: EyeOff,
   LIKE: Heart,
   POST_HIDDEN: EyeOff,
   POST_REMOVED: Trash2,
