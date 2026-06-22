@@ -55,4 +55,4 @@ max-retries=2 : 성공률 ?,  폴백 ?  (Δ)
 ## 7. 실행/산출물 규칙
 - 하니스 실행 결과 `out/eval/*.json`, 백엔드 로그 → **커밋 금지**(gitignore). 요약 수치만 `reports/17_eval_results_template.md` 에 옮긴다.
 - 4090 실행 명령: `reports/16_4090_eval_commands.md`.
-- 발표 슬라이드/그래프 원본은 `docs/storyboard/C/` 서브모듈(메인 repo 용량 지양).
+- 발표 슬라이드/그래프 원본은 `docs/storyboard` 서브모듈(**팀 공용** — 담당자별 `A/`~`F/`)의 `C/` 하위에 둔다(메인 repo 용량 지양). 스토리보드 자체는 C 전용이 아니라 팀 전체 공유 공간이다.
