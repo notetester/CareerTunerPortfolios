@@ -14,10 +14,10 @@ import com.careertuner.applicationcase.service.ApplicationCaseAnalysisStatusServ
 import com.careertuner.applicationcase.service.AiUsageLogService;
 import com.careertuner.applicationcase.service.ApplicationCaseAccessService;
 import com.careertuner.applicationcase.service.BAnalysisJsonValidator;
-import com.careertuner.applicationcase.service.OpenAiResponsesClient;
 import com.careertuner.applicationcase.service.OpenAiResponsesClient.JobAnalysisPayload;
 import com.careertuner.common.exception.BusinessException;
 import com.careertuner.common.exception.ErrorCode;
+import com.careertuner.jobanalysis.ai.JobAnalysisAiProvider;
 import com.careertuner.jobanalysis.domain.JobAnalysis;
 import com.careertuner.jobanalysis.dto.JobAnalysisReviewRequest;
 import com.careertuner.jobanalysis.dto.JobAnalysisResponse;
@@ -34,7 +34,7 @@ public class JobAnalysisService {
 
     private final ApplicationCaseAccessService accessService;
     private final JobAnalysisMapper jobAnalysisMapper;
-    private final OpenAiResponsesClient openAiClient;
+    private final JobAnalysisAiProvider aiProvider;
     private final AiUsageLogService aiUsageLogService;
     private final ApplicationCaseAnalysisStatusService statusService;
     private final TransactionTemplate transactionTemplate;
@@ -48,7 +48,7 @@ public class JobAnalysisService {
         String previousStatus = applicationCase.getStatus();
         statusService.markAnalyzing(userId, applicationCaseId, previousStatus);
         try {
-            JobAnalysisPayload payload = openAiClient.analyzeJobPosting(
+            JobAnalysisPayload payload = aiProvider.analyze(
                     applicationCase,
                     sourceText);
             return transactionTemplate.execute(status -> {

@@ -40,6 +40,7 @@ import com.careertuner.applicationcase.dto.CreateApplicationCaseRequest;
 import com.careertuner.applicationcase.dto.UpdateApplicationCaseRequest;
 import com.careertuner.applicationcase.mapper.ApplicationCaseExtractionMapper;
 import com.careertuner.applicationcase.mapper.ApplicationCaseMapper;
+import com.careertuner.jobanalysis.ai.JobAnalysisAiProvider;
 import com.careertuner.applicationcase.service.OpenAiResponsesClient.CompanyAnalysisPayload;
 import com.careertuner.applicationcase.service.OpenAiResponsesClient.JobAnalysisPayload;
 import com.careertuner.applicationcase.service.OpenAiResponsesClient.Usage;
@@ -976,11 +977,11 @@ class ApplicationCaseServiceImplTest {
         ApplicationCaseMapper applicationCaseMapper = mock(ApplicationCaseMapper.class);
         JobPostingMapper jobPostingMapper = mock(JobPostingMapper.class);
         JobAnalysisMapper jobAnalysisMapper = mock(JobAnalysisMapper.class);
-        OpenAiResponsesClient openAiClient = mock(OpenAiResponsesClient.class);
+        JobAnalysisAiProvider aiProvider = mock(JobAnalysisAiProvider.class);
         AiUsageLogService usageLogService = mock(AiUsageLogService.class);
         ApplicationCaseAnalysisStatusService statusService = mock(ApplicationCaseAnalysisStatusService.class);
         ApplicationCaseAccessService accessService = new ApplicationCaseAccessService(applicationCaseMapper, jobPostingMapper);
-        JobAnalysisService service = new JobAnalysisService(accessService, jobAnalysisMapper, openAiClient, usageLogService, statusService, transactionTemplate(), analysisJsonValidator());
+        JobAnalysisService service = new JobAnalysisService(accessService, jobAnalysisMapper, aiProvider, usageLogService, statusService, transactionTemplate(), analysisJsonValidator());
 
         ApplicationCase applicationCase = applicationCase("DRAFT");
         JobPosting posting = jobPosting(30L, 2, "Java Spring REST API");
@@ -989,7 +990,7 @@ class ApplicationCaseServiceImplTest {
 
         when(applicationCaseMapper.findApplicationCaseByIdAndUserId(10L, 1L)).thenReturn(applicationCase);
         when(jobPostingMapper.findLatestJobPostingByCaseId(10L)).thenReturn(posting);
-        when(openAiClient.analyzeJobPosting(applicationCase, "Java Spring REST API")).thenReturn(payload);
+        when(aiProvider.analyze(applicationCase, "Java Spring REST API")).thenReturn(payload);
         when(jobAnalysisMapper.findLatestJobAnalysisByCaseId(10L)).thenReturn(jobAnalysis());
 
         JobAnalysisResponse response = service.createJobAnalysis(1L, 10L);
@@ -1010,11 +1011,11 @@ class ApplicationCaseServiceImplTest {
         ApplicationCaseMapper applicationCaseMapper = mock(ApplicationCaseMapper.class);
         JobPostingMapper jobPostingMapper = mock(JobPostingMapper.class);
         JobAnalysisMapper jobAnalysisMapper = mock(JobAnalysisMapper.class);
-        OpenAiResponsesClient openAiClient = mock(OpenAiResponsesClient.class);
+        JobAnalysisAiProvider aiProvider = mock(JobAnalysisAiProvider.class);
         AiUsageLogService usageLogService = mock(AiUsageLogService.class);
         ApplicationCaseAnalysisStatusService statusService = mock(ApplicationCaseAnalysisStatusService.class);
         ApplicationCaseAccessService accessService = new ApplicationCaseAccessService(applicationCaseMapper, jobPostingMapper);
-        JobAnalysisService service = new JobAnalysisService(accessService, jobAnalysisMapper, openAiClient, usageLogService, statusService, transactionTemplate(), analysisJsonValidator());
+        JobAnalysisService service = new JobAnalysisService(accessService, jobAnalysisMapper, aiProvider, usageLogService, statusService, transactionTemplate(), analysisJsonValidator());
 
         when(applicationCaseMapper.findApplicationCaseByIdAndUserId(10L, 1L)).thenReturn(applicationCase("APPLIED"));
 
@@ -1023,7 +1024,7 @@ class ApplicationCaseServiceImplTest {
                 .hasMessageContaining("현재 상태에서는 분석을 다시 실행할 수 없습니다.");
 
         verify(statusService, never()).markAnalyzing(1L, 10L, "APPLIED");
-        verify(openAiClient, never()).analyzeJobPosting(any(ApplicationCase.class), any());
+        verify(aiProvider, never()).analyze(any(ApplicationCase.class), any());
         verify(jobAnalysisMapper, never()).insertJobAnalysis(any(JobAnalysis.class));
         verify(usageLogService, never()).recordSuccess(eq(1L), eq(10L), eq("JOB_ANALYSIS"), any());
         verify(usageLogService, never()).recordFailure(eq(1L), eq(10L), eq("JOB_ANALYSIS"), any());
@@ -1034,11 +1035,11 @@ class ApplicationCaseServiceImplTest {
         ApplicationCaseMapper applicationCaseMapper = mock(ApplicationCaseMapper.class);
         JobPostingMapper jobPostingMapper = mock(JobPostingMapper.class);
         JobAnalysisMapper jobAnalysisMapper = mock(JobAnalysisMapper.class);
-        OpenAiResponsesClient openAiClient = mock(OpenAiResponsesClient.class);
+        JobAnalysisAiProvider aiProvider = mock(JobAnalysisAiProvider.class);
         AiUsageLogService usageLogService = mock(AiUsageLogService.class);
         ApplicationCaseAnalysisStatusService statusService = mock(ApplicationCaseAnalysisStatusService.class);
         ApplicationCaseAccessService accessService = new ApplicationCaseAccessService(applicationCaseMapper, jobPostingMapper);
-        JobAnalysisService service = new JobAnalysisService(accessService, jobAnalysisMapper, openAiClient, usageLogService, statusService, transactionTemplate(), analysisJsonValidator());
+        JobAnalysisService service = new JobAnalysisService(accessService, jobAnalysisMapper, aiProvider, usageLogService, statusService, transactionTemplate(), analysisJsonValidator());
 
         when(applicationCaseMapper.findApplicationCaseByIdAndUserId(10L, 1L)).thenReturn(applicationCase("ANALYZING"));
 
@@ -1047,7 +1048,7 @@ class ApplicationCaseServiceImplTest {
                 .hasMessage("이미 분석이 진행 중입니다. 잠시 후 결과를 확인해 주세요.");
 
         verify(statusService, never()).markAnalyzing(1L, 10L, "ANALYZING");
-        verify(openAiClient, never()).analyzeJobPosting(any(ApplicationCase.class), any());
+        verify(aiProvider, never()).analyze(any(ApplicationCase.class), any());
         verify(jobAnalysisMapper, never()).insertJobAnalysis(any(JobAnalysis.class));
         verify(usageLogService, never()).recordSuccess(eq(1L), eq(10L), eq("JOB_ANALYSIS"), any());
         verify(usageLogService, never()).recordFailure(eq(1L), eq(10L), eq("JOB_ANALYSIS"), any());
@@ -1058,11 +1059,11 @@ class ApplicationCaseServiceImplTest {
         ApplicationCaseMapper applicationCaseMapper = mock(ApplicationCaseMapper.class);
         JobPostingMapper jobPostingMapper = mock(JobPostingMapper.class);
         JobAnalysisMapper jobAnalysisMapper = mock(JobAnalysisMapper.class);
-        OpenAiResponsesClient openAiClient = mock(OpenAiResponsesClient.class);
+        JobAnalysisAiProvider aiProvider = mock(JobAnalysisAiProvider.class);
         AiUsageLogService usageLogService = mock(AiUsageLogService.class);
         ApplicationCaseAnalysisStatusService statusService = mock(ApplicationCaseAnalysisStatusService.class);
         ApplicationCaseAccessService accessService = new ApplicationCaseAccessService(applicationCaseMapper, jobPostingMapper);
-        JobAnalysisService service = new JobAnalysisService(accessService, jobAnalysisMapper, openAiClient, usageLogService, statusService, transactionTemplate(), analysisJsonValidator());
+        JobAnalysisService service = new JobAnalysisService(accessService, jobAnalysisMapper, aiProvider, usageLogService, statusService, transactionTemplate(), analysisJsonValidator());
 
         ApplicationCase applicationCase = applicationCase("DRAFT");
         JobPosting posting = jobPosting(30L, 2, "Java Spring REST API");
@@ -1070,7 +1071,7 @@ class ApplicationCaseServiceImplTest {
 
         when(applicationCaseMapper.findApplicationCaseByIdAndUserId(10L, 1L)).thenReturn(applicationCase);
         when(jobPostingMapper.findLatestJobPostingByCaseId(10L)).thenReturn(posting);
-        when(openAiClient.analyzeJobPosting(applicationCase, "Java Spring REST API")).thenReturn(jobAnalysisPayload(usage));
+        when(aiProvider.analyze(applicationCase, "Java Spring REST API")).thenReturn(jobAnalysisPayload(usage));
         when(jobAnalysisMapper.findLatestJobAnalysisByCaseId(10L)).thenReturn(jobAnalysis());
 
         service.createJobAnalysis(1L, 10L);
@@ -1089,18 +1090,18 @@ class ApplicationCaseServiceImplTest {
         ApplicationCaseMapper applicationCaseMapper = mock(ApplicationCaseMapper.class);
         JobPostingMapper jobPostingMapper = mock(JobPostingMapper.class);
         JobAnalysisMapper jobAnalysisMapper = mock(JobAnalysisMapper.class);
-        OpenAiResponsesClient openAiClient = mock(OpenAiResponsesClient.class);
+        JobAnalysisAiProvider aiProvider = mock(JobAnalysisAiProvider.class);
         AiUsageLogService usageLogService = mock(AiUsageLogService.class);
         ApplicationCaseAnalysisStatusService statusService = mock(ApplicationCaseAnalysisStatusService.class);
         ApplicationCaseAccessService accessService = new ApplicationCaseAccessService(applicationCaseMapper, jobPostingMapper);
-        JobAnalysisService service = new JobAnalysisService(accessService, jobAnalysisMapper, openAiClient, usageLogService, statusService, transactionTemplate(), analysisJsonValidator());
+        JobAnalysisService service = new JobAnalysisService(accessService, jobAnalysisMapper, aiProvider, usageLogService, statusService, transactionTemplate(), analysisJsonValidator());
         ApplicationCase applicationCase = applicationCase("READY");
         JobPosting posting = jobPosting(30L, 2, "Java Spring REST API");
         RuntimeException failure = new RuntimeException("OpenAI down");
 
         when(applicationCaseMapper.findApplicationCaseByIdAndUserId(10L, 1L)).thenReturn(applicationCase);
         when(jobPostingMapper.findLatestJobPostingByCaseId(10L)).thenReturn(posting);
-        when(openAiClient.analyzeJobPosting(applicationCase, "Java Spring REST API")).thenThrow(failure);
+        when(aiProvider.analyze(applicationCase, "Java Spring REST API")).thenThrow(failure);
 
         assertThatThrownBy(() -> service.createJobAnalysis(1L, 10L))
                 .isSameAs(failure);
@@ -1116,11 +1117,11 @@ class ApplicationCaseServiceImplTest {
         ApplicationCaseMapper applicationCaseMapper = mock(ApplicationCaseMapper.class);
         JobPostingMapper jobPostingMapper = mock(JobPostingMapper.class);
         JobAnalysisMapper jobAnalysisMapper = mock(JobAnalysisMapper.class);
-        OpenAiResponsesClient openAiClient = mock(OpenAiResponsesClient.class);
+        JobAnalysisAiProvider aiProvider = mock(JobAnalysisAiProvider.class);
         AiUsageLogService usageLogService = mock(AiUsageLogService.class);
         ApplicationCaseAnalysisStatusService statusService = mock(ApplicationCaseAnalysisStatusService.class);
         ApplicationCaseAccessService accessService = new ApplicationCaseAccessService(applicationCaseMapper, jobPostingMapper);
-        JobAnalysisService service = new JobAnalysisService(accessService, jobAnalysisMapper, openAiClient, usageLogService, statusService, transactionTemplate(), analysisJsonValidator());
+        JobAnalysisService service = new JobAnalysisService(accessService, jobAnalysisMapper, aiProvider, usageLogService, statusService, transactionTemplate(), analysisJsonValidator());
         ApplicationCase applicationCase = applicationCase("DRAFT");
         JobPosting posting = jobPosting(30L, 2, "Java Spring REST API");
         Usage usage = new Usage("gpt-test", 100, 50, 150);
@@ -1128,7 +1129,7 @@ class ApplicationCaseServiceImplTest {
 
         when(applicationCaseMapper.findApplicationCaseByIdAndUserId(10L, 1L)).thenReturn(applicationCase);
         when(jobPostingMapper.findLatestJobPostingByCaseId(10L)).thenReturn(posting);
-        when(openAiClient.analyzeJobPosting(applicationCase, "Java Spring REST API")).thenReturn(jobAnalysisPayload(usage));
+        when(aiProvider.analyze(applicationCase, "Java Spring REST API")).thenReturn(jobAnalysisPayload(usage));
         when(jobAnalysisMapper.findLatestJobAnalysisByCaseId(10L)).thenReturn(jobAnalysis());
         doThrow(failure).when(usageLogService).recordSuccess(1L, 10L, "JOB_ANALYSIS", usage);
 
