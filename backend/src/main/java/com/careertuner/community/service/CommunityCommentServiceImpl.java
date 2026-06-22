@@ -2,8 +2,10 @@ package com.careertuner.community.service;
 
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -40,15 +42,42 @@ public class CommunityCommentServiceImpl implements CommunityCommentService {
         if (post == null) {
             throw new BusinessException(ErrorCode.NOT_FOUND, "게시글을 찾을 수 없습니다.");
         }
-        List<CommunityComment> comments = commentMapper.findByPostId(postId, CommentStatus.PUBLISHED.name());
+        // soft-delete(자삭=DELETED, 관리자=HIDDEN)는 row를 지우지 않으므로 전체를 가져온다.
+        //  - 익명N 앵커 보존(앞 사용자 자삭 시 뒷 번호 밀림 방지 → mention_user_id 라벨 불변)
+        //  - 살아있는 답글을 가진 삭제/숨김 노드를 tombstone으로 표시하기 위한 입력
+        List<CommunityComment> comments = commentMapper.findAllByPostId(postId);
+
         Map<Long, String> anonLabels = buildAnonLabels(comments);
+        // 멘션 대상이 비익명이면 익명라벨이 없으므로 실명으로 폴백(작성자 표시 경로와 동일하게 비대칭 제거).
+        // 멘션 대상은 반드시 이 글에 댓글을 단 사용자이므로 전체 목록에서 이름을 찾을 수 있다.
+        Map<Long, String> userNames = new HashMap<>();
+        for (CommunityComment c : comments) {
+            userNames.putIfAbsent(c.getUserId(), c.getUserName());
+        }
+
+        // 표시 대상 = PUBLISHED 전체 + (살아있는 자손을 가진 삭제/숨김 노드)
+        Set<Long> renderable = computeRenderable(comments);
+
         List<CommentResponse> result = new ArrayList<>(comments.size());
         for (CommunityComment c : comments) {
-            // 멘션 표시명은 저장된 mention_user_id 를 현재 익명번호로 동적 변환(번호 밀림에 안전)
-            String mentionLabel = c.getMentionUserId() != null
-                    ? anonLabels.get(c.getMentionUserId())
-                    : null;
-            result.add(toResponse(c, post.getUserId(), currentUserId, displayName(c, anonLabels), mentionLabel));
+            if (!renderable.contains(c.getId())) {
+                continue; // 살아있는 자손 없는 삭제/숨김 leaf — 렌더 제외(단 위 번호 계산엔 이미 포함됨)
+            }
+            if (!CommentStatus.PUBLISHED.name().equals(c.getStatus())) {
+                result.add(tombstone(c)); // 삭제/숨김이지만 자손이 살아있음 → 골격 유지용 tombstone
+                continue;
+            }
+            // 멘션 표시명은 저장된 mention_user_id 를 현재 익명번호로 동적 변환(번호 밀림에 안전).
+            // 익명라벨이 없으면(=대상이 비익명) 실명으로 폴백한다.
+            String mentionLabel = null;
+            if (c.getMentionUserId() != null) {
+                mentionLabel = anonLabels.get(c.getMentionUserId());
+                if (mentionLabel == null) {
+                    mentionLabel = userNames.get(c.getMentionUserId());
+                }
+            }
+            result.add(toResponse(c, post.getUserId(), currentUserId,
+                    displayName(c, anonLabels), mentionLabel, false));
         }
         return result;
     }
@@ -56,6 +85,7 @@ public class CommunityCommentServiceImpl implements CommunityCommentService {
     /**
      * 글 단위 익명 번호 부여(익명1, 익명2…) — 작성 시간 순으로 처음 등장한 사용자부터.
      * 익명이라도 서로 구분 가능해야 답글 멘션(@익명N)이 의미를 가진다.
+     * 전체 row(삭제/숨김 포함)를 입력으로 받아 번호 앵커가 사라지지 않게 한다.
      */
     private Map<Long, String> buildAnonLabels(List<CommunityComment> orderedComments) {
         Map<Long, String> labels = new HashMap<>();
@@ -65,6 +95,50 @@ public class CommunityCommentServiceImpl implements CommunityCommentService {
             }
         }
         return labels;
+    }
+
+    /**
+     * 화면에 보일 노드 id 집합.
+     * PUBLISHED 노드는 모두 표시한다. 삭제/숨김 노드는 '살아있는(=표시되는) 자손'이 있으면
+     * tombstone으로 골격만 유지한다. 디시식 2단계 평면화상 보통 루트지만,
+     * 레거시 다단계 데이터도 부모 체인을 따라 일반화 처리한다.
+     */
+    private Set<Long> computeRenderable(List<CommunityComment> comments) {
+        Map<Long, CommunityComment> byId = new HashMap<>(comments.size());
+        for (CommunityComment c : comments) {
+            byId.put(c.getId(), c);
+        }
+        Set<Long> renderable = new HashSet<>();
+        for (CommunityComment c : comments) {
+            if (!CommentStatus.PUBLISHED.name().equals(c.getStatus())) {
+                continue;
+            }
+            renderable.add(c.getId());
+            // 살아있는 노드의 조상 체인을 tombstone으로 표시(부모가 삭제/숨김이어도 트리 골격 유지).
+            // add()가 false면 이미 처리된 조상이라 중단. guard로 순환 데이터 방어.
+            Long pid = c.getParentId();
+            int guard = 0;
+            while (pid != null && byId.containsKey(pid) && renderable.add(pid) && guard++ < 1000) {
+                pid = byId.get(pid).getParentId();
+            }
+        }
+        return renderable;
+    }
+
+    /** 삭제/숨김 노드의 tombstone 응답. 본문·작성자·멘션은 비식별, 트리 골격(id/parentId/createdAt)만 유지. */
+    private CommentResponse tombstone(CommunityComment c) {
+        return new CommentResponse(
+                c.getId(),
+                c.getPostId(),
+                c.getParentId(),
+                null,
+                new PostListResponse.AuthorDto(null, "", true),
+                null,
+                0,
+                false,
+                c.getCreatedAt(),
+                false,
+                true);
     }
 
     private String displayName(CommunityComment c, Map<Long, String> anonLabels) {
@@ -116,7 +190,7 @@ public class CommunityCommentServiceImpl implements CommunityCommentService {
         log.info("댓글 작성 postId={} commentId={}", postId, comment.getId());
         // 작성 직후 응답은 프론트가 곧바로 목록을 재조회하므로 라벨은 단순값으로 둔다.
         return toResponse(comment, post.getUserId(), userId,
-                comment.isAnonymous() ? "익명" : comment.getUserName(), null);
+                comment.isAnonymous() ? "익명" : comment.getUserName(), null, false);
     }
 
     @Override
@@ -134,7 +208,7 @@ public class CommunityCommentServiceImpl implements CommunityCommentService {
     }
 
     private CommentResponse toResponse(CommunityComment c, Long postAuthorId, Long currentUserId,
-                                       String authorName, String mentionLabel) {
+                                       String authorName, String mentionLabel, boolean isDeleted) {
         boolean liked = currentUserId != null
                 && reactionMapper.findCommentReaction(currentUserId, c.getId(), "LIKE") != null;
         return new CommentResponse(
@@ -150,6 +224,7 @@ public class CommunityCommentServiceImpl implements CommunityCommentService {
                 c.getLikeCount(),
                 c.getUserId().equals(postAuthorId),
                 c.getCreatedAt(),
-                liked);
+                liked,
+                isDeleted);
     }
 }

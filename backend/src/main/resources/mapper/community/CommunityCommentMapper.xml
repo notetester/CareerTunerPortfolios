@@ -13,7 +13,19 @@
           JOIN users u ON cc.user_id = u.id
          WHERE cc.post_id = #{postId}
            AND cc.status = #{status}
-         ORDER BY cc.created_at ASC
+         ORDER BY cc.created_at ASC, cc.id ASC
+    </select>
+
+    <!-- 상태 무관 전체 댓글 조회 (soft-delete row 포함) -->
+    <!-- 익명번호 앵커 보존 + 삭제/숨김 노드의 tombstone 판정에 사용. id 2차 정렬로 동일초 tie 해소 -->
+    <select id="findAllByPostId" resultType="com.careertuner.community.domain.CommunityComment">
+        SELECT cc.*,
+               cc.is_anonymous AS anonymous,
+               u.name AS user_name
+          FROM community_comment cc
+          JOIN users u ON cc.user_id = u.id
+         WHERE cc.post_id = #{postId}
+         ORDER BY cc.created_at ASC, cc.id ASC
     </select>
 
     <!-- 댓글 단건 조회 -->
