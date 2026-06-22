@@ -245,6 +245,7 @@ function PolicyChangeList({ changes, saving, onCancel }: { changes: BillingPolic
       <CardHeader><CardTitle className="text-base">예약 변경</CardTitle></CardHeader>
       <CardContent className="space-y-2">
         {changes.map((change) => {
+          const current = parseSnapshot(change.currentSnapshotJson);
           const next = parseSnapshot(change.nextSnapshotJson);
           return (
             <div key={change.id} className="flex items-center justify-between gap-3 rounded-lg border border-slate-100 p-3">
@@ -254,7 +255,7 @@ function PolicyChangeList({ changes, saving, onCancel }: { changes: BillingPolic
                   <span className="font-semibold text-slate-900">{targetLabels[change.targetType]}</span>
                   <span className="text-xs text-slate-400">{change.targetCode}</span>
                 </div>
-                <div className="mt-1 text-xs text-slate-500">{summarizeChange(change.targetType, next)}</div>
+                <div className="mt-1 text-xs text-slate-500">{summarizeDiff(change.targetType, current, next)}</div>
                 <div className="text-xs text-slate-400">적용 시작: {change.effectiveFrom.replace("T", " ")}</div>
               </div>
               {change.status === "SCHEDULED" && (
@@ -414,4 +415,9 @@ function summarizeChange(targetType: BillingPolicyTargetType, next: Snapshot) {
   if (targetType === "CREDIT_PRODUCT") return `${won(Number(next.price ?? 0))}, 크레딧 ${next.creditAmount ?? 0}개`;
   if (targetType === "SUBSCRIPTION_BENEFIT_POLICY") return `${next.benefitName ?? next.benefitCode}: ${next.quantity ?? 0}장, 초과 ${next.creditCost ?? 0}크레딧`;
   return `${next.featureType ?? ""}: ${next.benefitCode ?? ""}, 기본 ${next.defaultCreditCost ?? 0}크레딧`;
+}
+
+function summarizeDiff(targetType: BillingPolicyTargetType, current: Snapshot, next: Snapshot) {
+  const before = Object.keys(current).length === 0 ? "현재값 없음" : summarizeChange(targetType, current);
+  return `${before} → ${summarizeChange(targetType, next)}`;
 }
