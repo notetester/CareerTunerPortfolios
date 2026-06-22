@@ -28,25 +28,28 @@ unsupported_named_entities_by_case   # 케이스별 {high:[...], review:[...], r
 ```
 각 run 결과에도 `named_entities: {high, review}` 가 붙는다.
 
-### 2-tier (신뢰도 분리)
-- **high — 제품코드**: `[A-Za-z]{2,}\d{2,}…` 패턴(CRM465/ERP900/ToolX12)이며 입력에 없음. 오탐이 거의 없어 **헤드라인 지표**로 쓴다.
-- **review — 대문자 고유명사**: 입력 밖 대문자 라틴 토큰(Salesforce류). **낮은 신뢰도**라 사람 검토용 목록으로만 둔다(오탐 일부 포함 가정).
+### 2-tier (신뢰도 + 필드 스코프 분리) — ★1차 관측 후 보정(reports/33)
+- **high — 날조된 '제품 식별자'(전 필드 스캔)**: 가짜 제품은 학습추천에 있어도 날조라 모든 필드에서 본다.
+  - (a) **영숫자 제품코드**: `[A-Za-z]{2,}\d{2,}…`(CRM465/ERP900/ToolX12).
+  - (b) **엔터프라이즈 약어 coinage**: 글자만으로 된 토큰이 약어 `{crm}` 으로 시작 + 글자 2+(예: `CRMONE`='crm'+'one'). **헤드라인 지표.**
+- **review — 입력 밖 고유명사 '보유' 주장(보유 문맥만)**: `fitSummary`+`strengths` 만 스캔(E1 grounding 과 동일). 학습추천(`strategyActions`/`learningTaskReasons`)의 실제 도구 추천은 정상이라 제외. **낮은 신뢰도**, 사람 검토용.
 
 ## 4. false-positive 방지
 관측에서 다음은 **flag 하지 않는다**:
-- **일반 기술명**: `GENERIC_TECH`(Java/React/SQL/Spring/AWS/Docker/Kubernetes … + 허용 예시 SAP/QuickBooks).
-- **입력에 이미 있는 명칭**: 공고·프로필·부족역량·duties·`expected.allowedSkills/mustMention` 에서 만든 `supported` 집합.
-- **범주/약어**: `CATEGORY_TERMS`(CRM/ERP/API/UI/CI/CD …) — 단독으로는 고유명사 날조가 아님.
-- **버전 표기**: `Java21`/`Python3` 처럼 제품코드 패턴이어도 알파벳 접두가 일반 기술명이면 제외.
+- **일반 기술명**: `GENERIC_TECH`(Java/React/SQL/Spring/AWS/Docker/Kubernetes … + SAP/QuickBooks + 1차 관측 보정 추가: HubSpot/MLflow/PyTorch/Pandas/EC2/Controller/CRUD … + coinage 충돌 흡수용 crmnext/erpnext).
+- **입력에 이미 있는 명칭**: 공고·프로필·부족역량·duties·`expected.allowedSkills/mustMention` 의 `supported` 집합.
+- **범주/약어**: `CATEGORY_TERMS`(CRM/ERP/API/UI/CI/CD …) — 단독으로는 날조 아님.
+- **버전 표기(양 티어 가드)**: 토큰의 숫자/기호 접미(`[0-9.+#_-]+$`)를 떼어 베이스가 일반 기술명이면 제외 — `Java21`/`Python3`/`C++17`. (★`Python3` 가 기존 review 로 새던 버그를 이 가드로 수정.)
+- **coinage 약어 제한**: `{crm}` 만. `erp/ai/ml/db/api/bi/ocr` 는 실제 단일토큰 제품(ERPNext/Airflow/MLflow/DBeaver/Apigee/Bitbucket/OCRmyPDF)과 충돌해 **제외**(적대적 검증).
 - **한글 일반 설명**: 라틴 토큰만 보므로 정상 한국어 설명은 0건.
 
-단위테스트 `scripts/test_entity_observer.py`(11 케이스)로 CRM465/ERP900/ToolX12 포착 + 위 오탐 미발생 + "관측이 success 를 바꾸지 않음"을 검증한다.
+단위테스트 `scripts/test_entity_observer.py`(**17 케이스**)로 CRM465/ERP900/ToolX12 + CRMONE coinage 포착, ERPNext/MLflow/Java21/Python3/C++17 오탐 미발생, review 가 학습추천이 아닌 보유 문맥만, "관측이 success 를 안 바꿈"을 검증한다.
 
-## 5. 한계 (1차 관측이라 의도적으로 제한)
-- 한글로 지어낸 회사/제품명(예: "메가솔루션")은 미포착(casing 신호 없음). high 는 라틴 제품코드 중심.
-- review tier 는 노이즈가 있을 수 있음 → 헤드라인에서 분리, 사람이 본다.
-- 입력에 있는 접두를 가진 변종 제품코드(예: 입력에 Salesforce 가 있을 때 `Salesforce99`)는 보수적으로 통과시킬 수 있음.
-- **완전한 자연어 의미검사가 아님.** 명백한 입력 밖 고유명사 1차 탐지로 제한.
+## 5. 한계 (1차 관측이라 의도적으로 제한 — 적대적 검증으로 명시)
+- **한글 날조 미포착**: 한글 회사/제품/자격명(예: "메가솔루션", 가짜 자격 "정보보안전문가1급")은 casing 신호가 없어 구조적으로 못 잡는다. high 는 라틴 식별자 중심.
+- **allowlist 도구의 보유 주장은 통과**: `strengths` 에 "Salesforce 운영 경험 보유"(입력 밖)라 해도 Salesforce 가 GENERIC_TECH 라 안 잡힌다 → '입력 대조 보유 검증'은 named-entity 스캔이 아니라 별도 로직(향후).
+- **제외 약어의 coinage 날조 미포착**: 가짜 `ERPxxxx`/`MLxxxx` 는 FP 안전을 위해 high(coinage)에서 빠진다(보유 문맥이면 review 로는 잡힐 수 있음). FP 안전 > 재현율 트레이드오프(수용).
+- **완전한 자연어 의미검사가 아님.** 명백한 입력 밖 식별자 1차 탐지로 제한.
 
 ## 6. backend 처리 방침
 - **runtime backend 에는 reject/fallback 을 걸지 않는다.** (E2 는 관측 단계)
