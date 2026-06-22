@@ -3,10 +3,14 @@ package com.careertuner.community.moderation.service;
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
 import java.util.EnumMap;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
+import java.util.Set;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -15,10 +19,13 @@ import org.springframework.core.io.Resource;
 import org.springframework.core.io.ResourceLoader;
 import org.springframework.stereotype.Service;
 
+import com.careertuner.community.domain.CommentStatus;
+import com.careertuner.community.domain.CommunityComment;
 import com.careertuner.community.domain.CommunityInterviewReview;
 import com.careertuner.community.domain.CommunityPost;
 import com.careertuner.community.domain.PostCategory;
 import com.careertuner.community.domain.PostStatus;
+import com.careertuner.community.mapper.CommunityCommentMapper;
 import com.careertuner.community.mapper.CommunityPostMapper;
 import com.careertuner.community.mapper.CommunityTagMapper;
 import com.careertuner.community.moderation.client.OllamaClient;
@@ -28,6 +35,7 @@ import com.careertuner.community.moderation.domain.Strictness;
 import com.careertuner.community.moderation.dto.InterviewExtractionResult;
 import com.careertuner.community.moderation.dto.ModerationResult;
 import com.careertuner.community.moderation.dto.TagResult;
+import com.careertuner.community.moderation.mapper.CommentAiResultMapper;
 import com.careertuner.community.moderation.mapper.PostAiResultMapper;
 import com.careertuner.interview.domain.InterviewKnowledge;
 import com.careertuner.interview.rag.InterviewKnowledgeMapper;
@@ -109,7 +117,9 @@ public class PostModerationService {
     private final OllamaClient ollamaClient;
     private final OllamaProperties ollamaProperties;
     private final PostAiResultMapper aiResultMapper;
+    private final CommentAiResultMapper commentAiResultMapper;
     private final CommunityPostMapper postMapper;
+    private final CommunityCommentMapper commentMapper;
     private final CommunityTagMapper tagMapper;
     private final NotificationService notificationService;
     private final ModerationSettingService settingService;
@@ -136,7 +146,9 @@ public class PostModerationService {
             OllamaClient ollamaClient,
             OllamaProperties ollamaProperties,
             PostAiResultMapper aiResultMapper,
+            CommentAiResultMapper commentAiResultMapper,
             CommunityPostMapper postMapper,
+            CommunityCommentMapper commentMapper,
             CommunityTagMapper tagMapper,
             NotificationService notificationService,
             ModerationSettingService settingService,
@@ -152,7 +164,9 @@ public class PostModerationService {
         this.ollamaClient = ollamaClient;
         this.ollamaProperties = ollamaProperties;
         this.aiResultMapper = aiResultMapper;
+        this.commentAiResultMapper = commentAiResultMapper;
         this.postMapper = postMapper;
+        this.commentMapper = commentMapper;
         this.tagMapper = tagMapper;
         this.notificationService = notificationService;
         this.settingService = settingService;
@@ -279,6 +293,67 @@ public class PostModerationService {
     }
 
     /**
+     * 댓글 검열 파이프라인 — 게시글 moderate() 복제. 이벤트 리스너가 비동기로 호출한다.
+     * judge()/buildResultJson() 판정 두뇌를 그대로 재사용하고, 대상만 댓글로 교체한다.
+     *
+     * 차단은 community_comment.status PUBLISHED→HIDDEN '조건부' flip 으로만 이뤄진다(soft-hide).
+     * 표시/트리/익명번호 로직(getComments)은 손대지 않고 기존 tombstone 기계를 그대로 재사용한다.
+     * 결과 테이블(comment_ai_result)은 감사/배치 전용 — 조회 경로와 조인하지 않는다.
+     *
+     * @Transactional 금지 (Ollama 호출이 길어 커넥션 풀 점유 위험 — 게시글과 동일).
+     */
+    public void moderateComment(Long commentId) {
+        try {
+            // 1. UPSERT: PENDING 기록 (재시도 시 attempt_count 증가)
+            commentAiResultMapper.upsertPending(commentId, AiTaskType.MODERATION);
+
+            // 2. 댓글 조회 — null이거나 이미 PUBLISHED가 아니면(자삭 DELETED/관리자 HIDDEN) 검열 불필요.
+            //    조건부 flip이라 굳이 안 막아도 안전하지만, 불필요한 Ollama 호출을 피한다(게시글 DELETED 스킵과 동형).
+            CommunityComment comment = commentMapper.findById(commentId);
+            if (comment == null || !CommentStatus.PUBLISHED.name().equals(comment.getStatus())) {
+                log.info("댓글 검열 스킵: commentId={} (삭제됨/숨김/존재하지 않음)", commentId);
+                return;
+            }
+
+            // 3. 현재 설정 스냅샷 (게시글과 동일 캐시 사용)
+            Strictness currentStrictness = settingService.getStrictness();
+            double currentThreshold = settingService.getHideThreshold();
+
+            // 4. 판정 — 댓글은 제목이 없으므로 본문만. judge()가 8000자 제한·프롬프트를 책임진다.
+            ModerationResult result = judge("", comment.getContent());
+
+            // 5. 결과 저장 (COMPLETED) — applied 스냅샷 병합
+            String resultJson = buildResultJson(result, currentStrictness, currentThreshold);
+            commentAiResultMapper.complete(commentId, AiTaskType.MODERATION,
+                    resultJson, ollamaProperties.getModel());
+
+            // 6. 조건부 숨김 (toxic + 캐시된 threshold). affected-rows>0 일 때만 count 감소·알림.
+            if (result.toxic() && result.confidence() >= currentThreshold) {
+                int updated = commentMapper.hideCommentIfPublished(commentId);
+                if (updated > 0) {
+                    postMapper.decrementCommentCount(comment.getPostId());
+                    log.warn("댓글 숨김 처리: commentId={}, postId={}, category={}, confidence={}",
+                            commentId, comment.getPostId(), result.category(), result.confidence());
+                    sendCommentHiddenNotification(comment);
+                }
+            }
+
+            log.info("댓글 검열 완료: commentId={}, toxic={}, category={}, confidence={}, strictness={}, threshold={}",
+                    commentId, result.toxic(), result.category(), result.confidence(),
+                    currentStrictness, currentThreshold);
+
+        } catch (Exception e) {
+            // 7. 실패 기록 — 예외를 다시 던지지 않는다 (게시글과 동일)
+            String errorMsg = e.getMessage();
+            if (errorMsg != null && errorMsg.length() > 500) {
+                errorMsg = errorMsg.substring(0, 500);
+            }
+            commentAiResultMapper.fail(commentId, AiTaskType.MODERATION, errorMsg);
+            log.error("댓글 검열 실패: commentId={}", commentId, e);
+        }
+    }
+
+    /**
      * 신고된 게시글 AI 분류 — 자동 숨김/알림 없이 판정 결과만 저장한다.
      * 관리자가 신고 처리 시 참고 정보로 활용한다.
      */
@@ -393,6 +468,12 @@ public class PostModerationService {
             // 면접후기 확장 데이터 조회
             CommunityInterviewReview review = postMapper.findInterviewReviewByPostId(postId);
 
+            // 사용자 사전 입력 질문(questions_json: 문자열 배열). AI 호출 후 코드 머지에서도
+            // 써야 하므로 블록 밖으로 hoist 한다.
+            List<String> userQuestions = review != null
+                    ? parseUserQuestions(review.getQuestionsJson())
+                    : List.of();
+
             // userText 조합
             StringBuilder sb = new StringBuilder();
             sb.append("[면접 후기 본문]");
@@ -405,9 +486,8 @@ public class PostModerationService {
                 if (review.getInterviewDate() != null) sb.append("\n면접일자: ").append(review.getInterviewDate());
                 if (review.getResultStatus() != null) sb.append("\n결과: ").append(review.getResultStatus());
 
-                // 사용자 사전 입력 질문(questions_json: 문자열 배열)을 그대로 전달.
-                // 문장은 손대지 않고 유형만 AI가 분류하도록 통합 프롬프트에 함께 넘긴다.
-                List<String> userQuestions = parseUserQuestions(review.getQuestionsJson());
+                // 사용자 사전 입력 질문을 AI에 함께 전달(중복 제외·유형 분류 참고용). 단, 최종
+                // questions 보존은 프롬프트가 아니라 아래 코드 머지(mergeUserAndAiQuestions)가 보증한다.
                 if (!userQuestions.isEmpty()) {
                     sb.append("\n\n[사용자 사전 입력 질문]");
                     for (String q : userQuestions) {
@@ -430,6 +510,19 @@ public class PostModerationService {
             // AI가 메타데이터(회사명/직무/결과)를 출력에 echo하지 않는 경우가 잦으므로,
             // null이면 review 행의 확정 값으로 채운다. (AI 출력에 의존하지 않음)
             result = applyReviewFallback(result, review);
+
+            // 사용자 사전 입력 질문을 코드에서 verbatim 시딩하고, AI 추출분 중 중복은 버린다.
+            // verbatim 보존을 프롬프트 신뢰가 아니라 코드가 보증한다.
+            List<InterviewExtractionResult.ExtractedQuestion> mergedQuestions =
+                    mergeUserAndAiQuestions(userQuestions, result.questions());
+            result = new InterviewExtractionResult(
+                    result.company(),
+                    result.position(),
+                    result.interviewDate(),
+                    result.resultStatus(),
+                    mergedQuestions,
+                    result.overallNote()
+            );
 
             // sanitize 후 JSON으로 재직렬화하여 저장 (원본 json에 "null" 문자열이 남아있을 수 있으므로)
             String sanitizedJson = objectMapper.writeValueAsString(result);
@@ -562,7 +655,7 @@ public class PostModerationService {
                             q.question(),
                             sanitizeString(q.questionType()),
                             sanitizeString(q.context()),
-                            q.followUps()
+                            sanitizeStringList(q.followUps())
                     ))
                     .toList();
         }
@@ -577,6 +670,81 @@ public class PostModerationService {
     }
 
     /**
+     * 문자열 리스트에서 "null"/"없음"/"N/A"/빈문자열·공백 원소를 제거한다.
+     * 예: ["트랜잭션 설명", "null", ""] → ["트랜잭션 설명"], ["null"] → [].
+     * 입력이 null이면 null 유지.
+     */
+    private static List<String> sanitizeStringList(List<String> raw) {
+        if (raw == null) return null;
+        return raw.stream()
+                .map(PostModerationService::sanitizeString)
+                .filter(Objects::nonNull)
+                .toList();
+    }
+
+    /**
+     * 사용자 사전 입력 질문을 verbatim 시딩하고, AI 추출분 중 중복을 제거해 머지한다.
+     * - 사용자 질문은 문장을 절대 수정·삭제하지 않고 그대로 questions에 넣는다(코드가 보존을 보증).
+     * - AI가 같은 질문을 echo·분류했으면 questionType/context/followUps만 차용한다.
+     * - 정규화(공백·대소문자·문장부호 정리) 비교로 중복을 판정하며, 사용자 질문을 우선한다.
+     */
+    private static List<InterviewExtractionResult.ExtractedQuestion> mergeUserAndAiQuestions(
+            List<String> userQuestions,
+            List<InterviewExtractionResult.ExtractedQuestion> aiQuestions) {
+
+        List<InterviewExtractionResult.ExtractedQuestion> merged = new ArrayList<>();
+        Set<String> seen = new LinkedHashSet<>();
+
+        // 1) 사용자 사전 입력 질문 verbatim 시딩
+        if (userQuestions != null) {
+            for (String uq : userQuestions) {
+                String key = normalizeForDedup(uq);
+                if (key.isEmpty() || !seen.add(key)) continue; // 사용자 입력 내 중복도 정리
+                InterviewExtractionResult.ExtractedQuestion aiMatch = findByNormalized(aiQuestions, key);
+                merged.add(new InterviewExtractionResult.ExtractedQuestion(
+                        uq, // verbatim — 절대 수정 금지
+                        aiMatch != null ? aiMatch.questionType() : null,
+                        aiMatch != null ? aiMatch.context() : null,
+                        aiMatch != null ? aiMatch.followUps() : null
+                ));
+            }
+        }
+
+        // 2) AI 추출분 중 사용자 질문과 중복되지 않는 것만 추가
+        if (aiQuestions != null) {
+            for (InterviewExtractionResult.ExtractedQuestion aq : aiQuestions) {
+                if (aq == null || aq.question() == null) continue;
+                String key = normalizeForDedup(aq.question());
+                if (key.isEmpty() || !seen.add(key)) continue;
+                merged.add(aq);
+            }
+        }
+        return merged;
+    }
+
+    /** 정규화 키가 일치하는 첫 AI 질문을 찾는다(echo된 사용자 질문의 분류 차용용). */
+    private static InterviewExtractionResult.ExtractedQuestion findByNormalized(
+            List<InterviewExtractionResult.ExtractedQuestion> list, String key) {
+        if (list == null) return null;
+        for (InterviewExtractionResult.ExtractedQuestion q : list) {
+            if (q != null && q.question() != null
+                    && normalizeForDedup(q.question()).equals(key)) {
+                return q;
+            }
+        }
+        return null;
+    }
+
+    /** 중복 비교용 정규화: 앞뒤 공백 제거 + 소문자화 + 문장부호·공백을 단일 공백으로 축약. */
+    private static String normalizeForDedup(String s) {
+        if (s == null) return "";
+        return s.strip()
+                .toLowerCase()
+                .replaceAll("[\\p{Punct}\\s]+", " ")
+                .strip();
+    }
+
+    /**
      * 추출된 질문 1건을 InterviewKnowledge 엔티티로 매핑한다.
      */
     private InterviewKnowledge buildInterviewKnowledge(
@@ -588,13 +756,15 @@ public class PostModerationService {
         StringBuilder titleSb = new StringBuilder();
         if (result.company() != null) titleSb.append(result.company()).append(" ");
         if (result.position() != null) titleSb.append(result.position()).append(" ");
-        if (!titleSb.isEmpty()) titleSb.append("— ");
-        titleSb.append(q.questionType());
+        if (q.questionType() != null) {
+            if (!titleSb.isEmpty()) titleSb.append("— ");
+            titleSb.append(q.questionType());
+        }
 
         // content: 구조화 텍스트
         StringBuilder contentSb = new StringBuilder();
         contentSb.append("[면접 질문]\n").append(q.question()).append("\n");
-        contentSb.append("\n[유형] ").append(q.questionType());
+        if (q.questionType() != null) contentSb.append("\n[유형] ").append(q.questionType());
         if (result.company() != null) contentSb.append("\n[회사] ").append(result.company());
         if (result.position() != null) contentSb.append("\n[직무] ").append(result.position());
         if (result.interviewDate() != null) contentSb.append("\n[면접 시기] ").append(result.interviewDate());
@@ -710,6 +880,25 @@ public class PostModerationService {
     }
 
     /**
+     * 댓글 검열 숨김 시 작성자에게 알림 발송. sendHiddenNotification(게시글) 동형 복제.
+     * 링크는 댓글이 속한 게시글로 이동.
+     */
+    private void sendCommentHiddenNotification(CommunityComment comment) {
+        String preview = truncate(comment.getContent(), 30);
+        Notification noti = Notification.builder()
+                .userId(comment.getUserId())
+                .type("COMMENT_HIDDEN")
+                .targetType("COMMENT")
+                .targetId(comment.getId())
+                .title("댓글이 커뮤니티 가이드라인 검토 대기 상태로 전환되었습니다")
+                .message("'" + preview + "' 댓글이 자동 검수에 의해 검토 대기 상태로 전환되었습니다. "
+                        + "관리자 검토 후 복원되거나 삭제될 수 있습니다.")
+                .link("/community/posts/" + comment.getPostId())
+                .build();
+        notificationService.notify(noti);
+    }
+
+    /**
      * 관리자 복원 시 작성자에게 알림 발송.
      */
     void sendRestoredNotification(CommunityPost post) {
@@ -739,6 +928,34 @@ public class PostModerationService {
                 .title("게시글이 가이드라인 위반으로 삭제되었습니다")
                 .message("'" + postTitle + "' 게시글이 커뮤니티 가이드라인 위반으로 삭제 처리되었습니다.")
                 .link("/community/posts/" + post.getId())
+                .build();
+        notificationService.notify(noti);
+    }
+
+    /** 관리자 댓글 복원 시 작성자에게 알림 발송. sendRestoredNotification(게시글) 동형. */
+    void sendCommentRestoredNotification(CommunityComment comment) {
+        Notification noti = Notification.builder()
+                .userId(comment.getUserId())
+                .type("COMMENT_RESTORED")
+                .targetType("COMMENT")
+                .targetId(comment.getId())
+                .title("댓글이 복원되었습니다")
+                .message("'" + truncate(comment.getContent(), 30) + "' 댓글이 관리자 검토를 통과하여 복원되었습니다.")
+                .link("/community/posts/" + comment.getPostId())
+                .build();
+        notificationService.notify(noti);
+    }
+
+    /** 관리자 댓글 삭제 시 작성자에게 알림 발송. sendDeletedNotification(게시글) 동형. */
+    void sendCommentDeletedNotification(CommunityComment comment) {
+        Notification noti = Notification.builder()
+                .userId(comment.getUserId())
+                .type("COMMENT_REMOVED")
+                .targetType("COMMENT")
+                .targetId(comment.getId())
+                .title("댓글이 가이드라인 위반으로 삭제되었습니다")
+                .message("'" + truncate(comment.getContent(), 30) + "' 댓글이 커뮤니티 가이드라인 위반으로 삭제 처리되었습니다.")
+                .link("/community/posts/" + comment.getPostId())
                 .build();
         notificationService.notify(noti);
     }

@@ -12,5 +12,6 @@ public record CommentResponse(
         int likeCount,
         boolean isAuthor,
         LocalDateTime createdAt,
-        boolean liked
+        boolean liked,
+        boolean isDeleted   // 삭제/숨김 tombstone 여부. true면 본문·작성자·멘션은 비식별 처리되어 내려간다.
 ) {}

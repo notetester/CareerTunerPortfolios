@@ -5,7 +5,7 @@ import {
   Users, CreditCard, MessageSquareWarning, Megaphone, CircleHelp,
   Mail, Search, Bell, ChevronRight,
   Target, TrendingUp, ListChecks, Activity,
-  Scale, FileUser, ClipboardCheck, MessageSquare, ShieldAlert, Package, ScrollText,
+  Scale, FileUser, ClipboardCheck, MessageSquare, Package, ScrollText,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import "./admin-shell.css";
@@ -37,8 +37,7 @@ const NAV: NavItem[] = [
   { key: "consents", label: "동의 관리", icon: ClipboardCheck, href: "/admin/consents" },
   { key: "payments", label: "결제 관리", icon: CreditCard, href: "/admin/payments" },
   { key: "plans", label: "요금제 관리", icon: Package, href: "/admin/plans" },
-  { key: "reports", label: "콘텐츠 관리", icon: MessageSquareWarning, href: "/admin/community" },
-  { key: "moderation", label: "AI 검열 로그", icon: ShieldAlert, href: "/admin/moderation" },
+  { key: "reports", label: "신고·검열 관리", icon: MessageSquareWarning, href: "/admin/community" },
   { key: "notices", label: "공지사항", icon: Megaphone, ct: "7", href: "/admin/notices" },
   { key: "faq", label: "FAQ 관리", icon: CircleHelp, href: "/admin/faq" },
   { key: "inquiries", label: "문의 관리", icon: Mail, ct: "9", href: "/admin/inquiries" },

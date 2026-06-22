@@ -66,6 +66,8 @@ export interface CommunityComment {
   isAuthor: boolean;
   createdAt: string;
   liked?: boolean;
+  /** 서버가 내려주는 tombstone 플래그. 삭제/숨김이지만 살아있는 답글이 있어 골격만 유지하는 노드. */
+  isDeleted?: boolean;
 }
 
 export type ReactionType = "LIKE" | "BOOKMARK";

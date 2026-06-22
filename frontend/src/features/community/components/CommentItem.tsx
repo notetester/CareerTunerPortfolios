@@ -31,6 +31,9 @@ export function CommentItem({ comment: c, childrenMap, depth, onReply }: Comment
   const [replyOpen, setReplyOpen] = useState(false);
 
   const replies = childrenMap.get(c.id) ?? [];
+  // 서버 tombstone(c.isDeleted) 또는 이번 세션 낙관적 자삭(deleted) 둘 다 삭제 표시.
+  // → 재조회·타 사용자·관리자 숨김에도 placeholder가 유지된다.
+  const isDeleted = deleted || !!c.isDeleted;
 
   const handleDeleteComment = async () => {
     try {
@@ -72,11 +75,11 @@ export function CommentItem({ comment: c, childrenMap, depth, onReply }: Comment
       <div className={`ct-cmt ${c.isAuthor ? "is-op" : ""}`}>
         <Avatar className="w-8 h-8 shrink-0">
           <AvatarFallback className="text-xs bg-muted">
-            {deleted ? "-" : c.author.name[0]}
+            {isDeleted ? "-" : c.author.name[0]}
           </AvatarFallback>
         </Avatar>
         <div className="ct-cmt__body">
-          {deleted ? (
+          {isDeleted ? (
             <div className="ct-cmt__text" style={{ color: "var(--muted-foreground)", fontStyle: "italic" }}>
               삭제된 댓글입니다.
             </div>

@@ -130,7 +130,7 @@ export const useCommunityStore = create<CommunityState>((set, get) => ({
       set({
         currentPost: {
           ...currentPost,
-          stats: { ...currentPost.stats, commentCount: comments.length },
+          stats: { ...currentPost.stats, commentCount: comments.filter((c) => !c.isDeleted).length },
         },
       });
     }

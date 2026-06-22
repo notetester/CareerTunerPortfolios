@@ -1,0 +1,133 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.careertuner.community.moderation.mapper.CommentAiResultMapper">
+
+    <!-- PENDING 삽입 또는 재시도 시 상태 초기화 + attempt_count 증가 (post_ai_result 복제) -->
+    <insert id="upsertPending">
+        INSERT INTO comment_ai_result (comment_id, task_type, status, attempt_count)
+        VALUES (#{commentId}, #{taskType}, 'PENDING', 1)
+        ON DUPLICATE KEY UPDATE
+            status = 'PENDING', result_json = NULL, error_message = NULL,
+            completed_at = NULL, created_at = CURRENT_TIMESTAMP,
+            attempt_count = attempt_count + 1
+    </insert>
+
+    <!-- 검열 성공 시 결과 저장 -->
+    <update id="complete">
+        UPDATE comment_ai_result
+           SET status = 'COMPLETED', result_json = #{resultJson}, model = #{model},
+               error_message = NULL, completed_at = NOW()
+         WHERE comment_id = #{commentId} AND task_type = #{taskType}
+    </update>
+
+    <!-- 검열 실패 시 에러 기록 -->
+    <update id="fail">
+        UPDATE comment_ai_result
+           SET status = 'FAILED', error_message = #{errorMessage}, completed_at = NOW()
+         WHERE comment_id = #{commentId} AND task_type = #{taskType}
+    </update>
+
+    <!-- 단건 조회 -->
+    <select id="findByCommentIdAndTaskType" resultType="com.careertuner.community.moderation.domain.CommentAiResult">
+        SELECT id, comment_id, task_type, status, result_json, model,
+               error_message, attempt_count, created_at, completed_at
+          FROM comment_ai_result
+         WHERE comment_id = #{commentId} AND task_type = #{taskType}
+    </select>
+
+    <!-- 배치 재검열 대상 댓글 ID 목록 (PUBLISHED + 검열 COMPLETED 기록 없음). 게시글 패턴 복제. -->
+    <select id="findCommentIdsForModeration" resultType="java.lang.Long">
+        SELECT cc.id
+          FROM community_comment cc
+         WHERE cc.status = 'PUBLISHED'
+        <if test="!force">
+           AND NOT EXISTS (
+               SELECT 1 FROM comment_ai_result ar
+                WHERE ar.comment_id = cc.id
+                  AND ar.task_type = 'MODERATION'
+                  AND ar.status = 'COMPLETED'
+           )
+        </if>
+         ORDER BY cc.id
+    </select>
+
+    <!-- 관리자 댓글 검열 목록 (post findModerationList 복제, ModerationView 재사용) -->
+    <!-- 댓글은 제목이 없으므로 본문 앞 50자를 title로, '댓글'을 카테고리로 매핑한다. -->
+    <select id="findCommentModerationList" resultType="com.careertuner.community.moderation.domain.ModerationView">
+        SELECT cc.id            AS post_id,
+               LEFT(cc.content, 50) AS title,
+               '댓글'            AS post_category,
+               cc.status        AS post_status,
+               cc.is_anonymous  AS anonymous,
+               cc.user_id       AS author_id,
+               u.name           AS author_name,
+               ar.result_json,
+               ar.model,
+               ar.attempt_count,
+               ar.status        AS ai_status,
+               cc.created_at,
+               ar.completed_at
+          FROM comment_ai_result ar
+          JOIN community_comment cc ON ar.comment_id = cc.id
+          LEFT JOIN users u ON cc.user_id = u.id
+         WHERE ar.task_type = 'MODERATION'
+        <if test="status != null and status != ''">
+           AND cc.status = #{status}
+        </if>
+        <if test="toxic != null">
+           AND JSON_EXTRACT(ar.result_json, '$.toxic') = #{toxic}
+        </if>
+         ORDER BY ar.completed_at DESC, cc.created_at DESC
+         LIMIT #{limit} OFFSET #{offset}
+    </select>
+
+    <!-- 관리자 댓글 검열 목록 카운트 -->
+    <select id="countCommentModerationList" resultType="int">
+        SELECT COUNT(*)
+          FROM comment_ai_result ar
+          JOIN community_comment cc ON ar.comment_id = cc.id
+         WHERE ar.task_type = 'MODERATION'
+        <if test="status != null and status != ''">
+           AND cc.status = #{status}
+        </if>
+        <if test="toxic != null">
+           AND JSON_EXTRACT(ar.result_json, '$.toxic') = #{toxic}
+        </if>
+    </select>
+
+    <!-- 관리자 댓글 검열 단건 상세 (본문 전체 포함) -->
+    <select id="findCommentModerationDetail" resultType="com.careertuner.community.moderation.domain.ModerationView">
+        SELECT cc.id            AS post_id,
+               LEFT(cc.content, 50) AS title,
+               cc.content       AS content,
+               '댓글'            AS post_category,
+               cc.status        AS post_status,
+               cc.is_anonymous  AS anonymous,
+               cc.user_id       AS author_id,
+               u.name           AS author_name,
+               ar.result_json,
+               ar.model,
+               ar.attempt_count,
+               ar.status        AS ai_status,
+               cc.created_at,
+               ar.completed_at
+          FROM comment_ai_result ar
+          JOIN community_comment cc ON ar.comment_id = cc.id
+          LEFT JOIN users u ON cc.user_id = u.id
+         WHERE ar.task_type = 'MODERATION'
+           AND ar.comment_id = #{commentId}
+    </select>
+
+    <!-- AI 판정 카테고리별 통계 (댓글) -->
+    <select id="countCommentByAiCategory" resultType="map">
+        SELECT JSON_UNQUOTE(JSON_EXTRACT(ar.result_json, '$.category')) AS category,
+               COUNT(*) AS cnt
+          FROM comment_ai_result ar
+         WHERE ar.task_type = 'MODERATION'
+           AND ar.status = 'COMPLETED'
+           AND ar.result_json IS NOT NULL
+         GROUP BY category
+    </select>
+
+</mapper>

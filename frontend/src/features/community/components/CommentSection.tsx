@@ -59,7 +59,7 @@ export function CommentSection({ postId, comments }: CommentSectionProps) {
     <>
       <div className="ct-comments">
         <h3 className="ct-comments__h">
-          댓글 <b>{comments.length}</b>
+          댓글 <b>{comments.filter((c) => !c.isDeleted).length}</b>
         </h3>
 
         <div className="ct-clist">

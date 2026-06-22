@@ -23,7 +23,6 @@ import AdminProfilePromptsPage from "./features/prompts/profile/pages/AdminProfi
 import AdminInterviewPromptsPage from "./features/prompts/interview/pages/AdminInterviewPrompts";
 import AdminReports from "./features/community/pages/AdminReports";
 import AdminGuidelines from "./features/community/pages/AdminGuidelines";
-import AdminModerationPage from "./features/moderation/pages/AdminModerationPage";
 import AdminNotices from "./features/notices/pages/AdminNotices";
 import NoticeCompose from "./features/notices/pages/NoticeCompose";
 import AdminFaq from "./features/faqs/pages/AdminFaq";
@@ -54,7 +53,6 @@ export const adminRoutes = [
   { path: "admin/interviews", Component: AdminInterviewsPage },
   { path: "admin/interview/knowledge", Component: AdminInterviewKnowledgePage },
   { path: "admin/community", Component: AdminReports },
-  { path: "admin/moderation", Component: AdminModerationPage },
   { path: "admin/notices", Component: AdminNotices },
   { path: "admin/notices/new", Component: NoticeCompose },
   { path: "admin/faq", Component: AdminFaq },
