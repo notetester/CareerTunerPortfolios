@@ -144,6 +144,26 @@ class OssFitAnalysisAiServiceTest {
     }
 
     @Test
+    void heldCertificateNotFlaggedEvenIfRuleEngineMissing() {
+        // 정보처리기사: required 이면서 profileCertificates 로 보유 → 규칙엔진 missing 에 남지만
+        // 모델이 '보유'라 말해도 사실이므로 grounding 오탐 아님(라이브 회귀 case 2 100% 폴백 원인 수정).
+        FitAnalysisAiCommand certCmd = new FitAnalysisAiCommand(
+                "공단", "전산직", List.of("Java", "정보처리기사"), List.of(), "전산 개발",
+                List.of("Java"), List.of("정보처리기사"), "전산직");
+        CareerAnalysisOssClient client = mock(CareerAnalysisOssClient.class);
+        JsonNode explain = MAPPER.readTree("""
+                {"fitSummary":"정보처리기사 자격증을 보유해 기본 역량을 갖춤","strengths":["정보처리기사 보유"],
+                 "risks":[],"strategyActions":[],"learningTaskReasons":[]}""");
+        when(client.requestFitExplain(anyString(), anyString())).thenReturn(explain);
+
+        FitAnalysisAiResult result = service(client).generate(certCmd);
+
+        assertThat(result.status()).isEqualTo("SUCCESS");
+        assertThat(result.strategy()).contains("정보처리기사");
+        verify(client, times(1)).requestFitExplain(anyString(), anyString());  // 재호출 없음(오탐 아님)
+    }
+
+    @Test
     void recoversWhenRetryReturnsGroundedExplanation() {
         CareerAnalysisOssClient client = mock(CareerAnalysisOssClient.class);
         JsonNode violating = MAPPER.readTree("""
