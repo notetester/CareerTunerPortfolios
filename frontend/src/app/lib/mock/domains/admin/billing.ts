@@ -277,6 +277,24 @@ function policyTargetCode(snapshot: Record<string, unknown>) {
   return "UNKNOWN";
 }
 
+function currentPolicySnapshot(targetType: string, snapshot: Record<string, unknown>) {
+  if (targetType === "SUBSCRIPTION_PLAN") {
+    return plans.find((plan) => plan.code === String(snapshot.code ?? "").toUpperCase()) ?? {};
+  }
+  if (targetType === "CREDIT_PRODUCT") {
+    return creditProducts.find((product) => product.code === String(snapshot.code ?? "").toUpperCase()) ?? {};
+  }
+  if (targetType === "SUBSCRIPTION_BENEFIT_POLICY") {
+    const planCode = String(snapshot.planCode ?? "").toUpperCase();
+    const benefitCode = String(snapshot.benefitCode ?? "").toUpperCase();
+    return benefitPolicies.find((policy) => policy.planCode === planCode && policy.benefitCode === benefitCode) ?? {};
+  }
+  if (targetType === "AI_FEATURE_BENEFIT_POLICY") {
+    return featureBenefitPolicies.find((policy) => policy.featureType === String(snapshot.featureType ?? "").toUpperCase()) ?? {};
+  }
+  return {};
+}
+
 export const adminBillingRoutes: MockRoute[] = [
   // ── 결제 내역: ?status= 로 필터(없으면 전체, 최신순). ──
   {
@@ -323,7 +341,7 @@ export const adminBillingRoutes: MockRoute[] = [
         id: ++policyChangeSeq,
         targetType: request.targetType,
         targetCode: policyTargetCode(nextSnapshot),
-        currentSnapshotJson: "{}",
+        currentSnapshotJson: JSON.stringify(currentPolicySnapshot(request.targetType, nextSnapshot)),
         nextSnapshotJson: JSON.stringify(nextSnapshot),
         effectiveFrom: request.effectiveFrom,
         applyMode: request.applyMode,
