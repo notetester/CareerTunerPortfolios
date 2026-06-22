@@ -74,6 +74,8 @@ public class CareerAnalysisAiProviderProperties {
         private int maxRetries = 2;
         /** 재시도 간 백오프 기준(선형 증가: 1·2·3배). */
         private Duration retryBackoff = Duration.ofMillis(400);
+        /** 설명이 '부족 역량을 보유로 서술'(grounding 위반)하면 재호출 횟수. 소진 시 폴백. */
+        private int groundingRetries = 1;
 
         public boolean configured() {
             return baseUrl != null && !baseUrl.isBlank();
