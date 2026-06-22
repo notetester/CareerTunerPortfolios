@@ -823,7 +823,7 @@ export function HomePage() {
         </div>
       </section>
 
-      {/* ─── 마누스형 면접 진입 검색창 ─── */}
+      {/* ─── AI 오케스트레이터 면접 진입 검색창 ─── */}
       <section className="bg-card">
         <div className="mx-auto w-full max-w-[1400px] px-4 sm:px-6 pt-8">
           <InterviewHero />

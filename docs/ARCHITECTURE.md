@@ -91,6 +91,13 @@ serviceinfo · support · company · legal · ai · admin
 기업 분석은 웹 검색, 외부 API, 수동 출처를 사용할 수 있으므로 출처 URL, 확인 시점, 재조회 시점,
 확인된 사실과 AI 추론의 구분을 저장할 수 있어야 한다.
 
+**AI 오케스트레이터(자동 준비 파이프라인 — 계획·설계 단계)**: 사용자의 한 줄 요청을 받아 인테이크 챗봇이
+부족 정보를 대화로 수집하고, 두뇌(Planner)가 실행계획을 만든 뒤, 오케스트레이터가 6개 도메인(프로필·공고·적합도·자소서·면접·커뮤니티)을
+순차로 호출해 지원 준비 전체를 자동화한다. 각 단계는 `자체 모델 → Claude → OpenAI` 폴백을 거쳐 일부 도메인이
+미완이어도 mock/skip 으로 완주하며, 진행 상황은 SSE 로 스트리밍한다. 오케스트레이터·플래너는 공통 영역(`ai/common`)에
+신설하므로 공통 영역 변경을 수반한다 — **수정 전 팀장 승인 또는 팀 합의 후 진행한다.** 설계·랜딩 시안은
+[`planning/prototypes/`](planning/prototypes/)와 면접 도메인 로드맵([`planning/면접 자율 에이전트 로드맵.md`](planning/면접%20자율%20에이전트%20로드맵.md))을 참조한다.
+
 ## 5. 데이터 모델 (요약)
 
 DDL 원본: [`../backend/src/main/resources/db/schema.sql`](../backend/src/main/resources/db/schema.sql)
