@@ -72,6 +72,56 @@ public class InterviewKnowledgeService {
         return mapper.findAll(limit <= 0 ? 100 : Math.min(limit, 500));
     }
 
+    /** 지식 문서 내용 수정 → 변경분 재색인(best-effort). */
+    @Transactional
+    public InterviewKnowledge update(AuthUser authUser, Long id, String kind, String title,
+                                     String content, String source) {
+        requireAdmin(authUser);
+        if (content == null || content.isBlank()) {
+            throw new BusinessException(ErrorCode.INVALID_INPUT, "지식 내용을 입력해 주세요.");
+        }
+        InterviewKnowledge doc = mapper.findById(id);
+        if (doc == null) {
+            throw new BusinessException(ErrorCode.NOT_FOUND, "지식 문서를 찾을 수 없습니다.");
+        }
+        doc.setKind(normalizeKind(kind));
+        doc.setTitle(title);
+        doc.setContent(content);
+        doc.setSource(source);
+        doc.setIndexed(false);
+        mapper.update(doc);
+
+        // 내용이 바뀌었으니 같은 id 로 재색인(upsert 가 덮어씀). Qdrant 미가동 시 indexed=false.
+        if (properties.isEnabled()) {
+            try {
+                indexOne(doc);
+                mapper.markIndexed(doc.getId());
+                doc.setIndexed(true);
+            } catch (RuntimeException ex) {
+                doc.setIndexed(false);
+            }
+        }
+        return doc;
+    }
+
+    /** 지식 문서 삭제 → 본문(MySQL) + 벡터(Qdrant) 제거. 벡터 삭제는 best-effort. */
+    @Transactional
+    public void delete(AuthUser authUser, Long id) {
+        requireAdmin(authUser);
+        InterviewKnowledge doc = mapper.findById(id);
+        if (doc == null) {
+            throw new BusinessException(ErrorCode.NOT_FOUND, "지식 문서를 찾을 수 없습니다.");
+        }
+        mapper.delete(id);
+        if (properties.isEnabled()) {
+            try {
+                qdrantClient.delete(id);
+            } catch (RuntimeException ex) {
+                // 본문 삭제 우선. 벡터 삭제 실패는 다음 reindex 로 정합성 회복.
+            }
+        }
+    }
+
     /** 전체 문서를 Qdrant 에 재색인한다. */
     @Transactional
     public int reindexAll(AuthUser authUser) {

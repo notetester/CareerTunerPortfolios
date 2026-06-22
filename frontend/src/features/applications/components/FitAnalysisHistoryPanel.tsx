@@ -44,7 +44,7 @@ export function FitAnalysisHistoryPanel({ applicationCaseId, enabled, refreshKey
 
 function HistoryEntryCard({ entry, latest }: { entry: FitAnalysisHistoryEntry; latest: boolean }) {
   return (
-    <Card className={`border ${latest ? "border-indigo-200 bg-indigo-50/40" : "border-slate-200 bg-white"}`}>
+    <Card className={`border ${latest ? "border-indigo-200 bg-indigo-50/40" : "border-slate-200 bg-card"}`}>
       <CardContent className="space-y-2.5 p-4">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div className="flex items-center gap-2">

@@ -4,19 +4,34 @@
 <mapper namespace="com.careertuner.community.mapper.CommunityCommentMapper">
 
     <!-- 게시글의 공개 댓글 목록 조회 -->
+    <!-- is_anonymous → anonymous 별칭: 도메인 필드가 anonymous(getter isAnonymous)라 자동매핑이 안 되므로 명시 -->
     <select id="findByPostId" resultType="com.careertuner.community.domain.CommunityComment">
         SELECT cc.*,
+               cc.is_anonymous AS anonymous,
                u.name AS user_name
           FROM community_comment cc
           JOIN users u ON cc.user_id = u.id
          WHERE cc.post_id = #{postId}
            AND cc.status = #{status}
-         ORDER BY cc.created_at ASC
+         ORDER BY cc.created_at ASC, cc.id ASC
+    </select>
+
+    <!-- 상태 무관 전체 댓글 조회 (soft-delete row 포함) -->
+    <!-- 익명번호 앵커 보존 + 삭제/숨김 노드의 tombstone 판정에 사용. id 2차 정렬로 동일초 tie 해소 -->
+    <select id="findAllByPostId" resultType="com.careertuner.community.domain.CommunityComment">
+        SELECT cc.*,
+               cc.is_anonymous AS anonymous,
+               u.name AS user_name
+          FROM community_comment cc
+          JOIN users u ON cc.user_id = u.id
+         WHERE cc.post_id = #{postId}
+         ORDER BY cc.created_at ASC, cc.id ASC
     </select>
 
     <!-- 댓글 단건 조회 -->
     <select id="findById" resultType="com.careertuner.community.domain.CommunityComment">
         SELECT cc.*,
+               cc.is_anonymous AS anonymous,
                u.name AS user_name
           FROM community_comment cc
           JOIN users u ON cc.user_id = u.id
@@ -25,8 +40,8 @@
 
     <!-- 댓글 작성 -->
     <insert id="insert" useGeneratedKeys="true" keyProperty="id">
-        INSERT INTO community_comment (post_id, user_id, parent_id, content, is_anonymous, status)
-        VALUES (#{postId}, #{userId}, #{parentId}, #{content}, #{anonymous}, #{status})
+        INSERT INTO community_comment (post_id, user_id, parent_id, mention_user_id, content, is_anonymous, status)
+        VALUES (#{postId}, #{userId}, #{parentId}, #{mentionUserId}, #{content}, #{anonymous}, #{status})
     </insert>
 
     <!-- 댓글 상태 변경 (삭제/숨김) -->
@@ -34,6 +49,27 @@
         UPDATE community_comment
            SET status = #{status}
          WHERE id = #{id}
+    </update>
+
+    <!-- AI 검열/관리자에 의한 숨김 (PUBLISHED인 경우에만 전환). hideIfPublished(게시글) 복제 -->
+    <update id="hideCommentIfPublished">
+        UPDATE community_comment
+           SET status = 'HIDDEN'
+         WHERE id = #{id} AND status = 'PUBLISHED'
+    </update>
+
+    <!-- 삭제 (PUBLISHED인 경우에만 전환 → count 경계 통과 판정). 이미 HIDDEN이면 0행 -->
+    <update id="deleteCommentIfPublished">
+        UPDATE community_comment
+           SET status = 'DELETED'
+         WHERE id = #{id} AND status = 'PUBLISHED'
+    </update>
+
+    <!-- 오탐 복원 (HIDDEN인 경우에만 PUBLISHED 로 전환) -->
+    <update id="restoreCommentIfHidden">
+        UPDATE community_comment
+           SET status = 'PUBLISHED'
+         WHERE id = #{id} AND status = 'HIDDEN'
     </update>
 
     <!-- 댓글 좋아요 수 증가 -->

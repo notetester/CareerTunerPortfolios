@@ -4,26 +4,20 @@ import {
   ChevronDown, Flame, User, Crown, CalendarDays, MessageSquare,
   ArrowUpRight, StickyNote, AlertTriangle, CornerDownLeft,
   CornerDownRight, RefreshCw, FileSearch, Zap, Info, WifiOff,
-  RotateCw, CheckCircle2, UserPlus, PenLine, Wand2, FileText,
-  HelpCircle, Send as SendIcon,
+  RotateCw, CheckCircle2, UserPlus, PenLine, Wand2,
+  Send as SendIcon,
 } from "lucide-react";
 import AdminShell from "../../../components/AdminShell";
 import { type Inquiry, type InquiryMessage, TEMPLATES, ASSIGNEES, INQUIRIES } from "../data/inquiriesData";
-// TODO: 백엔드 연동 시 주석 해제
-// import * as adminTicketApi from "../api/adminTicketApi";
+import * as adminTicketApi from "../api/adminTicketApi";
 import "./admin-inquiries.css";
 
 type ListFilter = "미답변" | "처리중" | "완료" | "전체";
 type AiSummaryState = "none" | "loading" | "ready" | "empty" | "error";
 type AiDraftState = "none" | "loading" | "ready" | "error";
 
-/* ── Mock AI data ── */
+/* AI 회원 요약은 백엔드 API 미구현 — 표시용 mock 유지 */
 const MOCK_SUMMARY = "가입 **3개월차** 사용자예요. 과거 **결제 관련 문의가 2회** 있었고 모두 해결됐습니다. 이번 문의는 **프로 결제 직후 AI 크레딧 미반영** 건으로, 결제 자체는 정상 완료된 것으로 보여요.";
-const MOCK_DRAFT = "안녕하세요, CareerTuner입니다. 확인 결과 **결제는 정상 처리**됐고 AI 크레딧 반영이 일시적으로 지연된 것으로 보여요. 크레딧은 보통 5분 내 자동 반영되며, 지금 **수동으로 충전**해 드렸습니다. 마이페이지 > 크레딧에서 확인 부탁드리며, 그래도 보이지 않으면 바로 다시 알려주세요.";
-const MOCK_DRAFT_EVIDENCE = [
-  { id: "d1", title: "결제·크레딧 처리 가이드", icon: "file" },
-  { id: "d2", title: "크레딧 반영 지연 FAQ", icon: "help" },
-];
 
 export default function AdminInquiriesAI() {
   const [items, setItems] = useState<Inquiry[]>([]);
@@ -40,16 +34,13 @@ export default function AdminInquiriesAI() {
   const [draftLoaded, setDraftLoaded] = useState(false);
 
   useEffect(() => {
-    // TODO: 백엔드 연동 시 아래 주석 해제하고 mock 초기화 제거
-    // adminTicketApi.getTickets().then((data) => {
-    //   setItems(data);
-    //   if (data.length > 0) setSelected(data[0]);
-    // }).catch(() => {
-    //   setItems(INQUIRIES);
-    //   setSelected(INQUIRIES[0]);
-    // });
-    setItems(INQUIRIES);
-    setSelected(INQUIRIES[0]);
+    adminTicketApi.getTickets().then((data) => {
+      setItems(data);
+      if (data.length > 0) setSelected(data[0]);
+    }).catch(() => {
+      setItems(INQUIRIES);
+      setSelected(INQUIRIES[0]);
+    });
   }, []);
 
   const flash = (msg: string, tone: string) => {
@@ -64,6 +55,13 @@ export default function AdminInquiriesAI() {
     setReplyText("");
     setMemo(inq.memo || "");
     setDraftLoaded(false);
+    // 메시지 포함 상세 로드
+    adminTicketApi.getTicketDetail(inq.id)
+      .then((detail) => {
+        setSelected(detail);
+        setMemo(detail.memo || "");
+      })
+      .catch(() => { /* 실패 시 목록에서 받은 데이터 유지 */ });
   };
 
   const generateSummary = useCallback(() => {
@@ -79,34 +77,53 @@ export default function AdminInquiriesAI() {
   }, [selected]);
 
   const generateDraft = useCallback(() => {
+    if (!selected) return;
     setAiDraft("loading");
-    setTimeout(() => setAiDraft("ready"), 2200);
-  }, []);
+    adminTicketApi.generateDraft(selected.id)
+      .then((draft) => {
+        setReplyText(draft);
+        setDraftLoaded(true);
+        setAiDraft("ready");
+      })
+      .catch(() => {
+        setAiDraft("error");
+        flash("AI 초안 생성에 실패했습니다. 잠시 후 다시 시도해 주세요.", "red");
+      });
+  }, [selected]);
 
   const useDraft = () => {
-    setReplyText(MOCK_DRAFT.replace(/\*\*/g, ""));
+    // generateDraft()에서 이미 replyText에 실제 초안이 들어있음 — 확정만 처리
     setDraftLoaded(true);
   };
 
   const regenerateDraft = () => {
+    if (!selected) return;
     setAiDraft("loading");
-    setTimeout(() => setAiDraft("ready"), 1500);
+    adminTicketApi.generateDraft(selected.id)
+      .then((draft) => {
+        setReplyText(draft);
+        setDraftLoaded(true);
+        setAiDraft("ready");
+      })
+      .catch(() => {
+        setAiDraft("error");
+        flash("AI 초안 재생성에 실패했습니다.", "red");
+      });
   };
 
   const handleSendReply = async () => {
     if (!selected || !replyText.trim()) return;
-    // TODO: 백엔드 연동 시 아래 주석 해제
-    // try {
-    //   await adminTicketApi.reply(selected.id, replyText);
-    //   flash("답변이 전송되었습니다.", "green");
-    //   setReplyText("");
-    //   setDraftLoaded(false);
-    // } catch {
-    //   flash("답변 전송에 실패했습니다.", "red");
-    // }
-    flash("답변이 전송되었습니다.", "green");
-    setReplyText("");
-    setDraftLoaded(false);
+    try {
+      const updated = await adminTicketApi.reply(selected.id, replyText);
+      setItems((prev) => prev.map((i) => (i.id === updated.id ? updated : i)));
+      setSelected(updated);
+      flash("답변이 전송되었습니다.", "green");
+      setReplyText("");
+      setDraftLoaded(false);
+      setAiDraft("none");
+    } catch {
+      flash("답변 전송에 실패했습니다.", "red");
+    }
   };
 
   // Filtered list
@@ -148,7 +165,7 @@ export default function AdminInquiriesAI() {
           { icon: Timer, label: "평균 응답", value: "5.2시간" },
           { icon: Smile, label: "만족도", value: "96%" },
         ].map(({ icon: Icon, label, value }) => (
-          <div key={label} className="bg-white border border-black/10 rounded-xl shadow-sm p-4">
+          <div key={label} className="bg-card border border-black/10 rounded-xl shadow-sm p-4">
             <div className="text-[12.5px] text-[#717182] flex items-center gap-1.5">
               <Icon size={14} />{label}
             </div>
@@ -161,7 +178,7 @@ export default function AdminInquiriesAI() {
       <div className="grid gap-5 items-start" style={{ gridTemplateColumns: "340px 1fr" }}>
 
         {/* ── Inquiry List Panel ── */}
-        <div className="bg-white border border-black/10 rounded-xl shadow-sm overflow-hidden">
+        <div className="bg-card border border-black/10 rounded-xl shadow-sm overflow-hidden">
           {/* filter tabs */}
           <div className="flex items-center gap-2 px-4 py-3 border-b border-black/10">
             <div className="inline-flex rounded-[10px] p-0.5" style={{ background: "#ececf0" }}>
@@ -169,7 +186,7 @@ export default function AdminInquiriesAI() {
                 <button key={f} onClick={() => setFilter(f)}
                   className={`text-xs px-2.5 py-1 rounded-[7px] transition-colors ${
                     filter === f
-                      ? "bg-white text-[#030213] font-semibold shadow-[0_1px_2px_rgba(15,23,42,0.06)]"
+                      ? "bg-card text-[#030213] font-semibold shadow-[0_1px_2px_rgba(15,23,42,0.06)]"
                       : "text-[#717182]"
                   }`}>
                   {f}
@@ -215,7 +232,7 @@ export default function AdminInquiriesAI() {
 
         {/* ── Thread Panel ── */}
         {selected ? (
-          <div className="bg-white border border-black/10 rounded-xl shadow-sm overflow-hidden">
+          <div className="bg-card border border-black/10 rounded-xl shadow-sm overflow-hidden">
             {/* Thread header */}
             <div className="px-5 py-4 border-b border-black/10">
               <div className="flex items-center gap-2 mb-2">
@@ -241,12 +258,12 @@ export default function AdminInquiriesAI() {
             {/* Controls bar */}
             <div className="flex items-center gap-2 flex-wrap px-5 py-3 border-b border-black/10" style={{ background: "#f8fafc" }}>
               <span className="text-[11px] font-semibold text-[#717182]">상태</span>
-              <span className="inline-flex items-center gap-2 h-8 px-2.5 rounded-md border border-black/10 bg-white text-[12.5px] font-semibold">
+              <span className="inline-flex items-center gap-2 h-8 px-2.5 rounded-md border border-black/10 bg-card text-[12.5px] font-semibold">
                 {selected.status === "answered" ? "답변완료" : selected.status === "progress" ? "처리중" : "미답변"}
                 <ChevronDown size={12} className="text-[#717182]" />
               </span>
               <span className="text-[11px] font-semibold text-[#717182] ml-1">담당자</span>
-              <span className="inline-flex items-center gap-2 h-8 px-2.5 rounded-md border border-black/10 bg-white text-[12.5px] font-semibold">
+              <span className="inline-flex items-center gap-2 h-8 px-2.5 rounded-md border border-black/10 bg-card text-[12.5px] font-semibold">
                 {selected.assignee || "미지정"}
                 <ChevronDown size={12} className="text-[#717182]" />
               </span>
@@ -308,7 +325,7 @@ export default function AdminInquiriesAI() {
                 value={memo}
                 onChange={(e) => setMemo(e.target.value)}
                 placeholder="처리 경위, 인계 사항 등 운영자끼리 공유할 메모를 남기세요."
-                className="w-full min-h-[42px] p-2.5 rounded-md border bg-white text-[12.5px] leading-[1.5] placeholder:text-slate-400 resize-y"
+                className="w-full min-h-[42px] p-2.5 rounded-md border bg-card text-[12.5px] leading-[1.5] placeholder:text-slate-400 resize-y"
                 style={{ borderColor: "#fde68a" }}
               />
             </div>
@@ -326,7 +343,7 @@ export default function AdminInquiriesAI() {
               ) : aiDraft === "loading" ? (
                 <AiDraftLoading />
               ) : aiDraft === "ready" ? (
-                <AiDraftReady onUseDraft={useDraft} onRegenerate={regenerateDraft} />
+                <AiDraftReady draft={replyText} onUseDraft={useDraft} onRegenerate={regenerateDraft} />
               ) : null}
             </div>
 
@@ -341,7 +358,7 @@ export default function AdminInquiriesAI() {
               <div className="flex gap-1.5 flex-wrap mb-2.5">
                 {TEMPLATES.map((t) => (
                   <button key={t.label} onClick={() => setReplyText(t.text)}
-                    className="inline-flex items-center gap-1 text-[11.5px] font-semibold px-2.5 py-1 rounded-full border border-black/10 bg-white text-slate-600 hover:border-blue-300 transition-colors">
+                    className="inline-flex items-center gap-1 text-[11.5px] font-semibold px-2.5 py-1 rounded-full border border-black/10 bg-card text-slate-600 hover:border-blue-300 transition-colors">
                     <Zap size={12} />{t.label}
                   </button>
                 ))}
@@ -351,7 +368,7 @@ export default function AdminInquiriesAI() {
                 value={replyText}
                 onChange={(e) => setReplyText(e.target.value)}
                 placeholder="답변을 작성하세요…"
-                className="w-full min-h-[84px] p-3 rounded-md border border-black/10 bg-white text-[13px] leading-[1.65] text-slate-700 placeholder:text-slate-400 resize-y"
+                className="w-full min-h-[84px] p-3 rounded-md border border-black/10 bg-card text-[13px] leading-[1.65] text-slate-700 placeholder:text-slate-400 resize-y"
               />
 
               <div className="flex items-center justify-between mt-2.5 gap-3">
@@ -371,7 +388,7 @@ export default function AdminInquiriesAI() {
             </div>
           </div>
         ) : (
-          <div className="bg-white border border-black/10 rounded-xl shadow-sm p-12 text-center text-slate-400">
+          <div className="bg-card border border-black/10 rounded-xl shadow-sm p-12 text-center text-slate-400">
             문의를 선택하세요
           </div>
         )}
@@ -428,7 +445,7 @@ function AiCallCard({ icon, title, desc, actionLabel, onAction }: {
         <div className="text-[11.5px] text-[#717182] leading-[1.5]">{desc}</div>
       </div>
       <button onClick={onAction}
-        className="shrink-0 inline-flex items-center gap-1.5 h-[34px] px-3 rounded-lg text-[12.5px] font-bold bg-white border hover:bg-indigo-50 transition-colors"
+        className="shrink-0 inline-flex items-center gap-1.5 h-[34px] px-3 rounded-lg text-[12.5px] font-bold bg-card border hover:bg-indigo-50 transition-colors"
         style={{ borderColor: "rgba(79,70,229,0.3)", color: "#4338ca" }}>
         <Wand2 size={14} />{actionLabel}
       </button>
@@ -465,7 +482,7 @@ function AiNewUserBox() {
         <span className="text-[12.5px] font-bold" style={{ color: "#4338ca" }}>AI 회원 요약</span>
       </div>
       <div className="flex items-start gap-2.5 px-0.5 py-1.5">
-        <span className="shrink-0 w-9 h-9 rounded-[10px] bg-white border border-black/8 text-slate-400 flex items-center justify-center">
+        <span className="shrink-0 w-9 h-9 rounded-[10px] bg-card border border-black/8 text-slate-400 flex items-center justify-center">
           <UserPlus size={17} />
         </span>
         <div>
@@ -483,7 +500,7 @@ function AiSummaryReady() {
       <div className="flex items-center gap-1.5 mb-1.5">
         <Sparkles size={15} className="text-indigo-600" />
         <span className="text-[12.5px] font-bold" style={{ color: "#4338ca" }}>AI 회원 요약</span>
-        <span className="text-[10.5px] font-semibold text-slate-400 bg-white border border-black/8 rounded-full px-2 py-0.5">민감정보 제외</span>
+        <span className="text-[10.5px] font-semibold text-slate-400 bg-card border border-black/8 rounded-full px-2 py-0.5">민감정보 제외</span>
         <span className="ml-auto inline-flex items-center gap-1 text-[11px] text-slate-400">
           <RotateCw size={12} />방금 생성
         </span>
@@ -507,7 +524,7 @@ function AiDraftLoading() {
         </span>
       </div>
       <div className="rounded-[10px] p-3" style={{ background: "#f7f8ff", border: "1px solid rgba(79,70,229,0.16)" }}>
-        <div className="bg-white border border-black/8 rounded-[9px] p-3 flex flex-col gap-2">
+        <div className="bg-card border border-black/8 rounded-[9px] p-3 flex flex-col gap-2">
           <div className="ct-sk h-[11px] w-[94%]" />
           <div className="ct-sk h-[11px] w-[99%]" />
           <div className="ct-sk h-[11px] w-[72%]" />
@@ -524,7 +541,7 @@ function AiDraftLoading() {
   );
 }
 
-function AiDraftReady({ onUseDraft, onRegenerate }: { onUseDraft: () => void; onRegenerate: () => void }) {
+function AiDraftReady({ draft, onUseDraft, onRegenerate }: { draft: string; onUseDraft: () => void; onRegenerate: () => void }) {
   return (
     <div>
       <div className="flex items-center gap-2 mb-2.5">
@@ -537,20 +554,8 @@ function AiDraftReady({ onUseDraft, onRegenerate }: { onUseDraft: () => void; on
         <span className="ml-auto text-[11px] text-slate-400">AI 생성 · 그대로 전송 금지</span>
       </div>
       <div className="rounded-[10px] p-3" style={{ background: "#f7f8ff", border: "1px solid rgba(79,70,229,0.16)" }}>
-        <div className="bg-white border border-black/8 rounded-[9px] p-3 text-[13px] leading-[1.7] text-slate-700"
-          dangerouslySetInnerHTML={{ __html: MOCK_DRAFT.replace(/\*\*(.*?)\*\*/g, '<b>$1</b>') }} />
-        <div className="mt-2.5">
-          <div className="text-[10.5px] font-bold text-slate-400 mb-1.5 ml-0.5">초안이 참고한 문서</div>
-          <div className="flex flex-wrap gap-1.5">
-            {MOCK_DRAFT_EVIDENCE.map((e) => (
-              <span key={e.id}
-                className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11.5px] font-semibold"
-                style={{ background: "#eff6ff", border: "1px solid rgba(37,99,235,0.22)", color: "#1d4ed8" }}>
-                {e.icon === "file" ? <FileText size={12} /> : <HelpCircle size={12} />}
-                {e.title}
-              </span>
-            ))}
-          </div>
+        <div className="bg-card border border-black/8 rounded-[9px] p-3 text-[13px] leading-[1.7] text-slate-700 whitespace-pre-wrap">
+          {draft}
         </div>
         <div className="flex items-center gap-2 mt-3 flex-wrap">
           <button onClick={onUseDraft}
@@ -558,7 +563,7 @@ function AiDraftReady({ onUseDraft, onRegenerate }: { onUseDraft: () => void; on
             <CornerDownLeft size={15} />이 초안 사용
           </button>
           <button onClick={onRegenerate}
-            className="inline-flex items-center gap-1.5 h-9 px-3 rounded-lg border border-black/12 bg-white text-slate-600 text-[12.5px] font-semibold hover:bg-slate-50 transition-colors">
+            className="inline-flex items-center gap-1.5 h-9 px-3 rounded-lg border border-black/12 bg-card text-slate-600 text-[12.5px] font-semibold hover:bg-slate-50 transition-colors">
             <RefreshCw size={14} />다시 생성
           </button>
           <button className="inline-flex items-center gap-1.5 h-9 px-3 rounded-lg bg-transparent text-[#717182] text-[12.5px] font-semibold hover:bg-slate-50 transition-colors">
@@ -575,7 +580,7 @@ function AiDisconnectedBox({ onRetry }: { onRetry: () => void }) {
     <div className="mt-3">
       <div className="rounded-[10px] p-3.5 flex items-start gap-3"
         style={{ background: "#fffbeb", border: "1px solid #fde68a" }}>
-        <span className="shrink-0 w-9 h-9 rounded-[10px] bg-white border flex items-center justify-center text-amber-700"
+        <span className="shrink-0 w-9 h-9 rounded-[10px] bg-card border flex items-center justify-center text-amber-700"
           style={{ borderColor: "#fde68a" }}>
           <WifiOff size={17} />
         </span>
@@ -584,7 +589,7 @@ function AiDisconnectedBox({ onRetry }: { onRetry: () => void }) {
           <div className="text-xs leading-relaxed" style={{ color: "#854d0e" }}>지금은 AI 요약·초안 생성이 어려워요. 평소처럼 직접 답변해 주세요.</div>
         </div>
         <button onClick={onRetry}
-          className="shrink-0 inline-flex items-center gap-1 h-[30px] px-2.5 rounded-lg text-[11.5px] font-semibold bg-white hover:bg-amber-50 transition-colors"
+          className="shrink-0 inline-flex items-center gap-1 h-[30px] px-2.5 rounded-lg text-[11.5px] font-semibold bg-card hover:bg-amber-50 transition-colors"
           style={{ border: "1px solid #fcd34d", color: "#b45309" }}>
           <RotateCw size={13} />다시 시도
         </button>
@@ -594,7 +599,7 @@ function AiDisconnectedBox({ onRetry }: { onRetry: () => void }) {
       </div>
       <div className="flex gap-1.5 flex-wrap">
         {TEMPLATES.map((t) => (
-          <span key={t.label} className="inline-flex items-center gap-1 text-[11.5px] font-semibold px-2.5 py-1 rounded-full border border-black/10 bg-white text-slate-600">
+          <span key={t.label} className="inline-flex items-center gap-1 text-[11.5px] font-semibold px-2.5 py-1 rounded-full border border-black/10 bg-card text-slate-600">
             <Zap size={12} />{t.label}
           </span>
         ))}

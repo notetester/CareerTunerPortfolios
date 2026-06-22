@@ -1,13 +1,13 @@
 """
-면접 답변 평가 자체 모델 LoRA 파인튜닝.
+면접 자체 모델 LoRA 파인튜닝 (멀티태스크: QGEN / MODEL_ANSWER / EVAL …).
 
-베이스: Qwen2.5-7B-Instruct (한국어 양호, 단일 A100 40GB 에서 4bit + LoRA 학습 가능).
-입력: prepare_data.py 가 만든 messages 포맷 JSONL.
-출력: LoRA 어댑터 (output_dir). vLLM 으로 베이스 모델과 함께 서빙한다(serve_vllm.sh).
+베이스: Qwen2.5-3B-Instruct (한국어 양호, 원격 RTX 4090 24GB 에서 4bit+LoRA 여유).
+입력: prepare_data.py 가 만든 messages 포맷 JSONL (합성 데이터 — assemble_dataset.py 산출).
+출력: LoRA 어댑터 (output_dir). GGUF(llama.cpp) 변환 후 로컬 Ollama 로 서빙한다.
 
-목적은 최고 성능이 아니라 "우리가 직접 학습해 평가에 붙였다"는 증거 확보다(로드맵 5-4).
+목적은 최고 성능이 아니라 "우리가 직접 학습해 붙였다"는 증거 확보다(로드맵 5-4).
 
-사용 (RunPod 등 GPU 서버):
+사용 (원격 RTX 4090):
     pip install -r requirements.txt
     python finetune_lora.py --train data/train.jsonl --eval data/val.jsonl --output out/interview-lora
 """
@@ -20,7 +20,7 @@ from peft import LoraConfig
 from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig
 from trl import SFTConfig, SFTTrainer
 
-DEFAULT_BASE = "Qwen/Qwen2.5-7B-Instruct"
+DEFAULT_BASE = "Qwen/Qwen2.5-3B-Instruct"
 
 
 def build_args():
@@ -82,7 +82,7 @@ def main():
         per_device_train_batch_size=args.batch_size,
         gradient_accumulation_steps=args.grad_accum,
         learning_rate=args.lr,
-        max_seq_length=args.max_seq_len,
+        max_length=args.max_seq_len,
         logging_steps=10,
         save_strategy="epoch",
         eval_strategy="epoch" if args.eval else "no",

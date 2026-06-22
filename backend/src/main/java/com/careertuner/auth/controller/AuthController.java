@@ -79,6 +79,12 @@ public class AuthController {
         return ApiResponse.ok();
     }
 
+    @PostMapping("/logout-all")
+    public ApiResponse<Void> logoutAll(@AuthenticationPrincipal AuthUser authUser) {
+        authService.logoutAll(authUser.id());
+        return ApiResponse.ok();
+    }
+
     @GetMapping("/me")
     public ApiResponse<MeResponse> me(@AuthenticationPrincipal AuthUser authUser) {
         return ApiResponse.ok(authService.me(authUser.id()));

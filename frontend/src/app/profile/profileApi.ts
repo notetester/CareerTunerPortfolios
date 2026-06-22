@@ -26,6 +26,11 @@ export interface ProfileAiResponse {
   gaps: string[];
   recommendations: string[];
   completenessScore: number;
+  jobFamily?: string;
+  jobFamilyLabel?: string;
+  criteria?: ProfileCriterionScore[];
+  model?: string;
+  status?: string;
 }
 
 export interface ProfileCompleteness {
@@ -33,6 +38,21 @@ export interface ProfileCompleteness {
   completed: string[];
   missing: string[];
   recommendations: string[];
+  jobFamily?: string;
+  jobFamilyLabel?: string;
+  criteria?: ProfileCriterionScore[];
+  model?: string;
+  status?: string;
+}
+
+export interface ProfileCriterionScore {
+  criterion: string;
+  label: string;
+  rawScore: number;
+  weight: number;
+  weightedScore: number;
+  evidence: string;
+  improvement: string;
 }
 
 export function getProfile(): Promise<UserProfile> {

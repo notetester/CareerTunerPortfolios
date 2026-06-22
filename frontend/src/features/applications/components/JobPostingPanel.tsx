@@ -189,7 +189,7 @@ export function JobPostingPanel({
   };
 
   return (
-    <Card className="border-slate-200 bg-white">
+    <Card className="border-slate-200 bg-card">
       <CardHeader className="gap-2">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
           <div>
@@ -301,7 +301,7 @@ export function JobPostingPanel({
                   className={`flex min-h-16 flex-col items-center justify-center gap-1 rounded-md border px-2 text-center text-sm font-semibold transition-colors ${
                     sourceType === option.value
                       ? "border-blue-600 bg-blue-50 text-blue-700"
-                      : "border-slate-200 bg-white text-slate-600 hover:border-blue-200 hover:bg-slate-50"
+                      : "border-slate-200 bg-card text-slate-600 hover:border-blue-200 hover:bg-slate-50"
                   }`}
                   onClick={() => handleSourceTypeChange(option.value)}
                 >
@@ -322,7 +322,7 @@ export function JobPostingPanel({
                   value={sourceUrl}
                   onChange={(event) => setSourceUrl(event.target.value)}
                   placeholder="https://example.com/jobs/123"
-                  className="bg-white"
+                  className="bg-card"
                 />
                 <div className="rounded-lg border border-blue-100 bg-blue-50 px-3 py-2 text-xs leading-5 text-blue-800">
                   <p>URL만 입력하면 공개 페이지 본문을 추출합니다.</p>
@@ -345,7 +345,7 @@ export function JobPostingPanel({
                     type="file"
                     accept={sourceType === "PDF" ? "application/pdf" : JOB_POSTING_IMAGE_ACCEPT}
                     onChange={handleFileChange}
-                    className="bg-white"
+                    className="bg-card"
                   />
                 </div>
                 <div className="space-y-1 text-xs text-slate-500">
@@ -365,7 +365,7 @@ export function JobPostingPanel({
                   ? "공고문 원문을 붙여넣어 주세요."
                   : "업로드 또는 URL 추출 후 결과가 표시됩니다. 필요하면 직접 보정할 수 있습니다."
               }
-              className="min-h-72 resize-y bg-white text-sm leading-6"
+              className="min-h-72 resize-y bg-card text-sm leading-6"
             />
           </>
         )}
@@ -383,7 +383,7 @@ export function JobPostingPanel({
         </div>
 
         {revisions.length > 0 && (
-          <div className="rounded-lg border border-slate-200 bg-white">
+          <div className="rounded-lg border border-slate-200 bg-card">
             <div className="border-b border-slate-100 px-3 py-2 text-xs font-semibold text-slate-500">
               공고문 revision 이력
             </div>

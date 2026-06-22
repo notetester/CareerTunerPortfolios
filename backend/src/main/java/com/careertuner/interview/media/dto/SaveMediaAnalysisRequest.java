@@ -9,7 +9,7 @@ import tools.jackson.databind.JsonNode;
  *
  * @param kind        VOICE / AVATAR
  * @param transcript  [{"role":"ai|user","text":"..."}]
- * @param metrics     측정 지표 원본 (말속도·침묵·필러·피치, 표정/자세, Inworld 프로필 등)
+ * @param metrics     측정 지표 원본 (말속도·침묵·필러·피치, 표정/자세, 음성 프로필 등)
  * @param score       종합 점수 0~100
  * @param scoreDetail 항목별 점수
  */

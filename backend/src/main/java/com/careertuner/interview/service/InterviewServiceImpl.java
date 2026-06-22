@@ -2,6 +2,7 @@ package com.careertuner.interview.service;
 
 import java.time.Duration;
 import java.time.LocalDateTime;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -9,6 +10,8 @@ import java.util.Set;
 
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 import com.careertuner.applicationcase.domain.ApplicationCase;
 import com.careertuner.applicationcase.service.ApplicationCaseAccessService;
@@ -27,10 +30,13 @@ import com.careertuner.interview.dto.InterviewQuestionResponse;
 import com.careertuner.interview.dto.InterviewReportResponse;
 import com.careertuner.interview.dto.InterviewSessionResponse;
 import com.careertuner.interview.dto.ModelAnswerResponse;
+import com.careertuner.interview.dto.SessionPageResponse;
+import com.careertuner.interview.dto.SessionReviewResponse;
 import com.careertuner.interview.dto.SubmitAnswerRequest;
 import com.careertuner.interview.mapper.InterviewMapper;
 import lombok.RequiredArgsConstructor;
 import tools.jackson.core.JacksonException;
+import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 
 @Service
@@ -38,7 +44,9 @@ import tools.jackson.databind.ObjectMapper;
 public class InterviewServiceImpl implements InterviewService {
 
     private static final int DEFAULT_QUESTION_COUNT = 6;
+    private static final int PRESSURE_QUESTION_COUNT = 3; // 압박: 본질문 3 + 답변마다 반박 1 = 총 6
     private static final int MAX_QUESTION_COUNT = 15;
+    private static final String MODE_PRESSURE = "PRESSURE";
     private static final int DEFAULT_FOLLOWUP_COUNT = 2;
     private static final int MAX_FOLLOWUP_COUNT = 5;
 
@@ -46,15 +54,14 @@ public class InterviewServiceImpl implements InterviewService {
     private static final String FEATURE_FOLLOWUP = "INTERVIEW_FOLLOWUP_GEN";
     private static final String FEATURE_REPORT = "INTERVIEW_REPORT";
     private static final String FEATURE_MODEL_ANSWER = "INTERVIEW_MODEL_ANSWER";
+    private static final String FEATURE_VOICE_SCORING = "INTERVIEW_VOICE_SCORING";
 
     private static final Map<String, String> MODE_LABELS = Map.of(
             "BASIC", "기본 면접",
             "JOB", "직무 면접",
             "PERSONALITY", "인성 면접",
             "PRESSURE", "압박 면접",
-            "REAL", "실전 면접",
             "RESUME", "자소서 기반 면접",
-            "PORTFOLIO", "포트폴리오 기반 면접",
             "COMPANY", "기업 맞춤 면접");
 
     private final InterviewMapper interviewMapper;
@@ -63,6 +70,7 @@ public class InterviewServiceImpl implements InterviewService {
     private final InterviewAiUsageLogService aiUsageLogService;
     private final InterviewAgentOrchestrator orchestrator;
     private final ObjectMapper objectMapper;
+    private final InterviewBackgroundExecutor backgroundExecutor;
 
     @Override
     @Transactional
@@ -80,10 +88,29 @@ public class InterviewServiceImpl implements InterviewService {
     }
 
     @Override
-    public List<InterviewSessionResponse> listSessions(Long userId) {
-        return interviewMapper.findSessionsByUserId(userId).stream()
+    public SessionPageResponse listSessions(Long userId, int page, int size) {
+        int offset = page * size;
+        List<InterviewSession> sessions = interviewMapper.findSessionsByUserId(userId, offset, size);
+        int total = interviewMapper.countSessionsByUserId(userId);
+        List<InterviewSessionResponse> responses = sessions.stream()
                 .map(InterviewSessionResponse::from)
                 .toList();
+        return new SessionPageResponse(responses, total, page, size, offset + size < total);
+    }
+
+    @Override
+    @Transactional
+    public void deleteSession(Long userId, Long sessionId) {
+        int updated = interviewMapper.softDeleteSession(sessionId, userId);
+        if (updated == 0) {
+            throw new BusinessException(ErrorCode.NOT_FOUND, "삭제할 면접 기록을 찾을 수 없습니다.");
+        }
+    }
+
+    @Override
+    @Transactional
+    public void markResumed(Long userId, Long sessionId) {
+        interviewMapper.touchSessionResumed(sessionId, userId);
     }
 
     @Override
@@ -93,7 +120,8 @@ public class InterviewServiceImpl implements InterviewService {
         InterviewSession session = requireSession(userId, sessionId);
         ApplicationCase applicationCase = accessService.requireOwned(userId, session.getApplicationCaseId());
         String postingText = accessService.sourceText(session.getApplicationCaseId());
-        int count = resolveCount(request.count());
+        // 압박 면접은 본질문 3개(이후 답변마다 반박 1개 자동 추가 → 총 6개), 그 외 모드는 기본 6개.
+        int count = MODE_PRESSURE.equals(session.getMode()) ? PRESSURE_QUESTION_COUNT : resolveCount(request.count());
         String modeLabel = MODE_LABELS.getOrDefault(session.getMode(), session.getMode());
 
         InterviewOpenAiClient.GeneratedQuestions generated;
@@ -119,10 +147,21 @@ public class InterviewServiceImpl implements InterviewService {
             inserted.add(entity);
         }
 
-        // 모범답안을 미리 일괄 생성·저장한다 — 질문이 있으면 채점 기준 답안지도 항상 DB에 있게 한다.
-        // (블라인드 복습 테스트 포함, 프론트가 모범답안을 못 보내도 저장값으로 채점된다.)
-        // 실패해도 질문 생성은 막지 않는다(이후 "모범답안 보기" 시 지연 생성으로 폴백).
-        storeModelAnswers(userId, session, applicationCase, modeLabel, inserted);
+        // 모범답안은 채점 기준 답안지이지만, 6개 일괄 생성이 느려 질문 표시를 막을 이유는 없다.
+        // → 트랜잭션 커밋 이후 백그라운드에서 생성·저장한다. 유저는 질문을 바로 받아 본다.
+        // 평가 시점까지 보통 완료되며, 미완 상태로 평가가 들어오면 submitAnswer 에서 단건 즉시 생성으로 기준을 보장한다.
+        // (afterCommit 에 거는 이유: 백그라운드 스레드가 방금 INSERT 한 질문을 볼 수 있어야 갱신이 누락되지 않는다.)
+        final Long bgUserId = userId;
+        final InterviewSession bgSession = session;
+        final ApplicationCase bgCase = applicationCase;
+        final String bgModeLabel = modeLabel;
+        final List<InterviewQuestion> bgQuestions = inserted;
+        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+            @Override
+            public void afterCommit() {
+                backgroundExecutor.run(() -> storeModelAnswers(bgUserId, bgSession, bgCase, bgModeLabel, bgQuestions));
+            }
+        });
 
         return listQuestions(userId, sessionId);
     }
@@ -136,6 +175,94 @@ public class InterviewServiceImpl implements InterviewService {
     }
 
     @Override
+    @Transactional(readOnly = true)
+    public SessionReviewResponse getSessionReview(Long userId, Long sessionId) {
+        InterviewSession session = requireSession(userId, sessionId);
+        List<InterviewQuestion> questions = interviewMapper.findQuestionsBySessionId(sessionId);
+
+        // 질문별 최신 답변(가장 큰 id)을 매핑한다. 재작성으로 답변이 여러 개일 수 있어 마지막 것만 본다.
+        Map<Long, InterviewAnswer> latestByQuestion = new HashMap<>();
+        for (InterviewAnswer answer : interviewMapper.findAnswersBySessionId(sessionId)) {
+            InterviewAnswer current = latestByQuestion.get(answer.getQuestionId());
+            if (current == null || (answer.getId() != null && current.getId() != null
+                    && answer.getId() > current.getId())) {
+                latestByQuestion.put(answer.getQuestionId(), answer);
+            }
+        }
+
+        List<SessionReviewResponse.Item> items = questions.stream()
+                .map(q -> SessionReviewResponse.Item.of(q, latestByQuestion.get(q.getId())))
+                .toList();
+        return SessionReviewResponse.of(session, items);
+    }
+
+    @Override
+    @Transactional
+    public int scoreVoiceTranscript(Long userId, Long sessionId, JsonNode transcript) {
+        InterviewSession session = requireSession(userId, sessionId);
+        ApplicationCase applicationCase = accessService.requireOwned(userId, session.getApplicationCaseId());
+        // 음성 면접은 준비된 본질문으로만 진행하므로 꼬리질문은 제외하고 채점 대상으로 삼는다.
+        List<InterviewQuestion> questions = interviewMapper.findQuestionsBySessionId(sessionId).stream()
+                .filter(q -> q.getParentQuestionId() == null)
+                .toList();
+        if (questions.isEmpty()) {
+            throw new BusinessException(ErrorCode.INVALID_INPUT, "채점할 준비된 질문이 없습니다.");
+        }
+        String transcriptText = transcriptToText(transcript);
+        if (transcriptText.isBlank()) {
+            throw new BusinessException(ErrorCode.INVALID_INPUT, "채점할 대화 내용이 없습니다.");
+        }
+        List<String> questionTexts = questions.stream().map(InterviewQuestion::getQuestion).toList();
+        // 텍스트 면접(evaluateAnswer)과 동일하게 저장된 모범답안을 만점 기준으로 넘긴다(§4.10 채점 레이어 통일).
+        // 백그라운드 생성으로 아직 비어 있으면 그 질문만 일반 채점으로 폴백(빈 문자열).
+        List<String> modelAnswers = questions.stream()
+                .map(q -> q.getModelAnswer() == null ? "" : q.getModelAnswer())
+                .toList();
+
+        InterviewOpenAiClient.VoiceScoringResult scored;
+        try {
+            scored = aiClient.scoreVoiceTranscript(questionTexts, modelAnswers, transcriptText,
+                    applicationCase.getCompanyName(), applicationCase.getJobTitle());
+        } catch (BusinessException ex) {
+            aiUsageLogService.recordFailure(userId, session.getApplicationCaseId(), FEATURE_VOICE_SCORING, ex.getMessage());
+            throw ex;
+        }
+        aiUsageLogService.recordSuccess(userId, session.getApplicationCaseId(), FEATURE_VOICE_SCORING, scored.usage());
+
+        int count = 0;
+        for (InterviewOpenAiClient.VoiceScoredItem item : scored.items()) {
+            if (item.number() < 1 || item.number() > questions.size() || item.answerText().isBlank()) {
+                continue;
+            }
+            InterviewQuestion q = questions.get(item.number() - 1);
+            interviewMapper.insertAnswer(InterviewAnswer.builder()
+                    .questionId(q.getId())
+                    .answerText(item.answerText())
+                    .score(item.score())
+                    .feedback(item.feedback())
+                    .build());
+            count++;
+        }
+        return count;
+    }
+
+    /** 트랜스크립트 JSON([{role,text}])을 "면접관/지원자: ..." 대화 텍스트로 변환한다. */
+    private String transcriptToText(JsonNode transcript) {
+        StringBuilder sb = new StringBuilder();
+        if (transcript != null && transcript.isArray()) {
+            for (JsonNode line : transcript) {
+                String text = line.path("text").asText("").trim();
+                if (text.isEmpty()) {
+                    continue;
+                }
+                sb.append("ai".equals(line.path("role").asText("")) ? "면접관" : "지원자")
+                        .append(": ").append(text).append("\n");
+            }
+        }
+        return sb.toString();
+    }
+
+    @Override
     @Transactional
     public List<InterviewQuestionResponse> generateFollowUps(Long userId, Long questionId,
                                                              GenerateFollowUpsRequest request) {
@@ -146,16 +273,23 @@ public class InterviewServiceImpl implements InterviewService {
         InterviewSession session = requireSession(userId, question.getInterviewSessionId());
         ApplicationCase applicationCase = accessService.requireOwned(userId, session.getApplicationCaseId());
 
+        // 반박(꼬리) 질문은 압박 면접 전용. 다른 모드는 본질문 6개로 끝낸다(자체 LLM PROBE 태스크를 압박에 집중).
+        if (!MODE_PRESSURE.equals(session.getMode())) {
+            throw new BusinessException(ErrorCode.INVALID_INPUT, "반박(꼬리) 질문은 압박 면접에서만 생성됩니다.");
+        }
+
         InterviewAnswer answer = interviewMapper.findLatestAnswerByQuestionId(questionId);
         if (answer == null || answer.getAnswerText() == null || answer.getAnswerText().isBlank()) {
             throw new BusinessException(ErrorCode.INVALID_INPUT, "꼬리 질문은 답변을 먼저 제출한 뒤 생성할 수 있습니다.");
         }
-        int count = resolveFollowUpCount(request == null ? null : request.count());
+        // 압박 면접: 답변 직후 반박 1개. 그 외(수동): 기존 기본 개수.
+        boolean pressure = MODE_PRESSURE.equals(session.getMode());
+        int count = pressure ? 1 : resolveFollowUpCount(request == null ? null : request.count());
 
         InterviewOpenAiClient.GeneratedQuestions generated;
         try {
             generated = aiClient.generateFollowUps(question.getQuestion(), answer.getAnswerText(),
-                    applicationCase, count);
+                    applicationCase, count, pressure);
         } catch (BusinessException ex) {
             aiUsageLogService.recordFailure(userId, session.getApplicationCaseId(), FEATURE_FOLLOWUP, ex.getMessage());
             throw ex;
@@ -192,6 +326,10 @@ public class InterviewServiceImpl implements InterviewService {
         String referenceModelAnswer = blankToNull(request.modelAnswer());
         if (referenceModelAnswer == null) {
             referenceModelAnswer = blankToNull(question.getModelAnswer());
+        }
+        if (referenceModelAnswer == null) {
+            // 백그라운드 모범답안 생성이 아직이면(빠른 평가) 채점 기준 보장을 위해 단건 즉시 생성한다.
+            referenceModelAnswer = generateModelAnswerForGrading(userId, session, applicationCase, question);
         }
         InterviewAgentOrchestrator.OrchestratedEvaluation evaluation =
                 orchestrator.evaluateAnswer(userId, session, applicationCase, question, request.answerText(),
@@ -315,13 +453,14 @@ public class InterviewServiceImpl implements InterviewService {
         }
         aiUsageLogService.recordSuccess(userId, session.getApplicationCaseId(), FEATURE_MODEL_ANSWER, generated.usage());
 
-        // 채점 기준으로 재사용하도록 저장한다. model_answer 컬럼 적용 전이면 조용히 건너뛴다(기능은 그대로 동작).
+        // 채점 기준으로 재사용하도록 저장한다(first-writer-wins). model_answer 컬럼 적용 전이면 조용히 건너뛴다.
         try {
             interviewMapper.updateQuestionModelAnswer(questionId, generated.modelAnswer());
         } catch (RuntimeException ignored) {
             // 컬럼 미적용 등 저장 실패가 모범답안 표시를 막지 않는다.
         }
-        return new ModelAnswerResponse(generated.modelAnswer());
+        // 백그라운드 생성과 경쟁할 수 있으므로, 방금 만든 값이 아니라 확정 저장된 값을 돌려준다(표시 = 채점 기준 일치).
+        return new ModelAnswerResponse(resolveStoredModelAnswer(questionId, userId, generated.modelAnswer()));
     }
 
     // ───── 내부 헬퍼 ─────
@@ -357,6 +496,41 @@ public class InterviewServiceImpl implements InterviewService {
                 // model_answer 컬럼 미적용 등 — 저장 실패가 질문 생성을 막지 않는다.
             }
         }
+    }
+
+    /**
+     * 평가 직전 모범답안이 없으면(백그라운드 미완 등) 단건을 즉시 생성·저장해 채점 기준을 보장한다.
+     * 실패하면 null 을 반환해 기준 없이 평가하도록 둔다(평가 자체를 막지 않는다).
+     */
+    private String generateModelAnswerForGrading(Long userId, InterviewSession session,
+                                                 ApplicationCase applicationCase, InterviewQuestion question) {
+        String modeLabel = MODE_LABELS.getOrDefault(session.getMode(), session.getMode());
+        try {
+            InterviewOpenAiClient.ModelAnswer generated =
+                    aiClient.generateModelAnswer(question.getQuestion(), applicationCase, modeLabel);
+            aiUsageLogService.recordSuccess(userId, session.getApplicationCaseId(), FEATURE_MODEL_ANSWER, generated.usage());
+            try {
+                interviewMapper.updateQuestionModelAnswer(question.getId(), generated.modelAnswer());
+            } catch (RuntimeException ignored) {
+                // 컬럼 미적용 등 저장 실패는 채점을 막지 않는다.
+            }
+            // 백그라운드 일괄 생성과 경쟁할 수 있으므로, 확정 저장된 모범답안을 채점 기준으로 쓴다(표시값과 동일 보장).
+            return resolveStoredModelAnswer(question.getId(), userId, generated.modelAnswer());
+        } catch (BusinessException ex) {
+            aiUsageLogService.recordFailure(userId, session.getApplicationCaseId(), FEATURE_MODEL_ANSWER, ex.getMessage());
+            return null;
+        }
+    }
+
+    /**
+     * 저장된(확정) 모범답안을 다시 읽어 반환한다.
+     * updateQuestionModelAnswer 가 first-writer-wins 라, 백그라운드 일괄 생성과 경쟁해도
+     * 여기서 읽은 값(=실제 저장값)이 표시·복기와 동일하다. 저장값이 없으면 방금 생성한 값으로 폴백한다.
+     */
+    private String resolveStoredModelAnswer(Long questionId, Long userId, String fallback) {
+        InterviewQuestion fresh = interviewMapper.findQuestionByIdAndUserId(questionId, userId);
+        String stored = fresh == null ? null : fresh.getModelAnswer();
+        return (stored != null && !stored.isBlank()) ? stored : fallback;
     }
 
     private InterviewSession requireSession(Long userId, Long sessionId) {

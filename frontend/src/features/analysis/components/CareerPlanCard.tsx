@@ -92,7 +92,7 @@ export function CareerPlanCard({ hidden = false }: { hidden?: boolean }) {
   };
 
   return (
-    <Card className={`min-w-0 border border-indigo-200 bg-white ${hidden ? "hidden" : ""}`}>
+    <Card className={`min-w-0 border border-indigo-200 bg-card ${hidden ? "hidden" : ""}`}>
       <CardHeader>
         <CardTitle className="flex items-center gap-2 text-base"><Target className="size-4 text-indigo-600" />커리어 목표와 학습 계획</CardTitle>
       </CardHeader>

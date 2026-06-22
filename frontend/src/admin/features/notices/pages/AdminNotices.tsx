@@ -5,9 +5,8 @@ import {
   Bold, Italic, Strikethrough, List, ListOrdered, Quote, Link2, ImageIcon, Table,
 } from "lucide-react";
 import AdminShell from "../../../components/AdminShell";
-import { type Notice, type NoticeStatus, NOTICES } from "../data/noticesData";
-// TODO: 백엔드 연동 시 주석 해제
-// import * as adminNoticeApi from "../api/adminNoticeApi";
+import { type Notice, type NoticeStatus } from "../data/noticesData";
+import * as adminNoticeApi from "../api/adminNoticeApi";
 import { ConfirmDialog } from "@/app/components/ui/confirm-dialog";
 import "./admin-notices.css";
 import "./notice-compose.css";
@@ -60,10 +59,21 @@ function NoticeComposeView({ onBack, onCreated }: { onBack: () => void; onCreate
   const handleSubmit = async () => {
     if (!canSubmit || saving) return;
     setSaving(true);
-    // TODO: 백엔드 연동 시 adminNoticeApi.createNotice 로 교체
-    flash("공지가 게시되었습니다.", "green");
-    setTimeout(() => onCreated(), 600);
-    setSaving(false);
+    try {
+      await adminNoticeApi.createNotice({
+        title,
+        content: body,
+        status: when === "예약" ? "SCHEDULED" : "PUBLISHED",
+        isPinned: pin,
+        thumbnailUrl: null,
+      });
+      flash("공지가 게시되었습니다.", "green");
+      setTimeout(() => onCreated(), 600);
+    } catch {
+      flash("저장에 실패했습니다.", "red");
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
@@ -159,8 +169,8 @@ export default function AdminNotices() {
   const [dialog, setDialog] = useState<DialogState | null>(null);
 
   const loadItems = () => {
-    // TODO: 백엔드 연동 시 adminNoticeApi.getNotices().then(setItems) 로 교체
-    setItems(NOTICES);
+    adminNoticeApi.getNotices().then(setItems)
+      .catch(() => flash("공지 목록을 불러오지 못했습니다.", "red"));
   };
 
   useEffect(() => { loadItems(); }, []);
@@ -172,18 +182,23 @@ export default function AdminNotices() {
 
   const handleConfirm = async () => {
     if (!dialog) return;
-    // TODO: 백엔드 연동 시 adminNoticeApi.deleteNotice/updateNotice 로 교체
-    if (dialog.type === "delete") {
-      setItems((prev) => prev.filter((n) => n.id !== dialog.notice.id));
-      flash("공지가 삭제되었습니다.", "green");
-    } else if (dialog.type === "pin") {
-      const updated: Notice = { ...dialog.notice, pinned: !dialog.notice.pinned };
-      setItems((prev) => prev.map((n) => (n.id === updated.id ? updated : n)));
-      flash(updated.pinned ? "공지가 상단에 고정되었습니다." : "고정이 해제되었습니다.", "green");
-    } else {
-      const updated: Notice = { ...dialog.notice, status: dialog.target };
-      setItems((prev) => prev.map((n) => (n.id === updated.id ? updated : n)));
-      flash(`공지가 ${STATUS_LABEL[dialog.target]}(으)로 변경되었습니다.`, "green");
+    try {
+      if (dialog.type === "delete") {
+        await adminNoticeApi.deleteNotice(dialog.notice.id);
+        setItems((prev) => prev.filter((n) => n.id !== dialog.notice.id));
+        flash("공지가 삭제되었습니다.", "green");
+      } else if (dialog.type === "pin") {
+        const updated = await adminNoticeApi.updateNotice(dialog.notice.id, { isPinned: !dialog.notice.pinned });
+        setItems((prev) => prev.map((n) => (n.id === updated.id ? updated : n)));
+        flash(updated.pinned ? "공지가 상단에 고정되었습니다." : "고정이 해제되었습니다.", "green");
+      } else {
+        const statusMap: Record<NoticeStatus, string> = { published: "PUBLISHED", draft: "DRAFT", scheduled: "SCHEDULED" };
+        const updated = await adminNoticeApi.updateNotice(dialog.notice.id, { status: statusMap[dialog.target] });
+        setItems((prev) => prev.map((n) => (n.id === updated.id ? updated : n)));
+        flash(`공지가 ${STATUS_LABEL[dialog.target]}(으)로 변경되었습니다.`, "green");
+      }
+    } catch {
+      flash("처리에 실패했습니다.", "red");
     }
     setDialog(null);
   };

@@ -493,7 +493,7 @@ export function NewApplicationPage() {
                   ? "border-blue-300 bg-blue-50 text-blue-800"
                   : index < step
                     ? "border-emerald-200 bg-emerald-50 text-emerald-800"
-                    : "border-slate-200 bg-white text-slate-500"
+                    : "border-slate-200 bg-card text-slate-500"
               }`}
             >
               <div className="flex items-center gap-2 text-xs font-semibold">
@@ -504,7 +504,7 @@ export function NewApplicationPage() {
           ))}
         </div>
 
-        <Card className="border-slate-200 bg-white">
+        <Card className="border-slate-200 bg-card">
           <CardHeader>
             <CardTitle className="text-lg font-bold text-slate-900">{steps[step].label}</CardTitle>
           </CardHeader>

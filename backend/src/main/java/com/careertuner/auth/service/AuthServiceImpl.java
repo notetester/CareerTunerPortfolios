@@ -166,6 +166,12 @@ public class AuthServiceImpl implements AuthService {
 
     @Override
     @Transactional
+    public void logoutAll(Long userId) {
+        authMapper.revokeAllForUser(userId);
+    }
+
+    @Override
+    @Transactional
     public boolean verifyEmail(String token) {
         EmailVerification ev = authMapper.findEmailVerificationByToken(token);
         if (ev == null || ev.isUsed() || !"VERIFY".equals(ev.getPurpose())
@@ -311,6 +317,9 @@ public class AuthServiceImpl implements AuthService {
         User user = null;
         if (info.email() != null && !info.email().isBlank()) {
             user = userMapper.findByEmail(normalizeEmail(info.email()));
+            if (user != null && STATUS_DELETED.equals(user.getStatus())) {
+                throw new BusinessException(ErrorCode.FORBIDDEN, "탈퇴 또는 삭제된 계정입니다.");
+            }
         }
         if (user == null) {
             String email = info.email() != null && !info.email().isBlank()
@@ -335,6 +344,8 @@ public class AuthServiceImpl implements AuthService {
             userMapper.insert(user);
         }
 
+        // 소셜 제공자가 이메일을 내려주고 같은 이메일의 기존 계정이 있으면 자동으로 연결한다.
+        // 단, 삭제 계정은 위에서 차단하고, 차단/휴면 계정은 연결 후 validateSocialLoginAllowed에서 로그인만 막는다.
         authMapper.insertSocial(UserSocial.builder()
                 .userId(user.getId())
                 .provider(info.provider())

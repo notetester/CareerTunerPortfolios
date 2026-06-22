@@ -3,6 +3,7 @@ import type { Inquiry, InquiryStatus, InquiryMessage } from "../data/inquiriesDa
 import type {
   AdminTicketListResponse,
   AdminTicketDetailResponse,
+  AdminTicketDraftResponse,
 } from "../types/adminTicket";
 
 function toStatus(s: string): InquiryStatus {
@@ -90,4 +91,11 @@ export function reply(
     method: "POST",
     body: JSON.stringify({ content, internal }),
   }).then(detailToInquiry);
+}
+
+/** 상담사 AI 어시스트 — 답변 초안 생성(저장 없이 초안 텍스트만 반환). */
+export function generateDraft(id: number): Promise<string> {
+  return api<AdminTicketDraftResponse>(`/admin/tickets/${id}/draft`, {
+    method: "POST",
+  }).then((r) => r.draft);
 }

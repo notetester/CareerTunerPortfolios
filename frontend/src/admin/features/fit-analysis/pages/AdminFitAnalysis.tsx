@@ -243,7 +243,7 @@ export default function AdminFitAnalysisPage() {
               { label: "평균 점수", value: `${averageScore}점` },
               { label: "운영 메모", value: `${memoSummary}건` },
             ].map((stat) => (
-              <Card key={stat.label} className="border border-slate-200 bg-white">
+              <Card key={stat.label} className="border border-slate-200 bg-card">
                 <CardContent className="p-3">
                   <div className="text-[11px] font-semibold text-slate-400">{stat.label}</div>
                   <div className="mt-1 text-xl font-black text-slate-900">{stat.value}</div>
@@ -263,7 +263,7 @@ export default function AdminFitAnalysisPage() {
         )}
 
         <section className="grid gap-6 xl:grid-cols-[420px_minmax(0,1fr)]">
-          <Card className="border border-slate-200 bg-white">
+          <Card className="border border-slate-200 bg-card">
             <CardHeader className="pb-3">
               <CardTitle className="flex items-center gap-2 text-base">
                 <ClipboardList className="size-4 text-blue-600" />
@@ -349,7 +349,7 @@ export default function AdminFitAnalysisPage() {
 
           <div className="space-y-5">
             {loadingDetail ? (
-              <Card className="border border-slate-200 bg-white">
+              <Card className="border border-slate-200 bg-card">
                 <CardContent className="flex items-center gap-2 p-5 text-sm text-slate-500">
                   <Loader2 className="size-4 animate-spin" />
                   상세를 불러오는 중입니다.
@@ -357,7 +357,7 @@ export default function AdminFitAnalysisPage() {
               </Card>
             ) : detail ? (
               <>
-                <Card className="border border-slate-200 bg-white">
+                <Card className="border border-slate-200 bg-card">
                   <CardHeader className="pb-3">
                     <CardTitle className="flex items-center justify-between gap-3 text-base">
                       <span>{detail.companyName} · {detail.jobTitle}</span>
@@ -421,7 +421,7 @@ export default function AdminFitAnalysisPage() {
                   </CardContent>
                 </Card>
 
-                <Card className="border border-slate-200 bg-white">
+                <Card className="border border-slate-200 bg-card">
                   <CardHeader className="pb-3">
                     <CardTitle className="flex items-center gap-2 text-base">
                       <MessageSquareText className="size-4 text-indigo-600" />
@@ -434,7 +434,7 @@ export default function AdminFitAnalysisPage() {
                         <select
                           value={memoType}
                           onChange={(event) => setMemoType(event.target.value)}
-                          className="h-10 rounded-md border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-700"
+                          className="h-10 rounded-md border border-slate-200 bg-card px-3 text-sm font-semibold text-slate-700"
                         >
                           {memoTypeOptions.map((option) => (
                             <option key={option.value} value={option.value}>{option.label}</option>
@@ -444,7 +444,7 @@ export default function AdminFitAnalysisPage() {
                           value={memoContent}
                           onChange={(event) => setMemoContent(event.target.value)}
                           placeholder="운영 메모를 입력하세요"
-                          className="min-h-24 flex-1 rounded-md border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 outline-none focus:border-blue-400"
+                          className="min-h-24 flex-1 rounded-md border border-slate-200 bg-card px-3 py-2 text-sm text-slate-700 outline-none focus:border-blue-400"
                         />
                       </div>
                       <div className="mt-2 flex justify-end gap-2">
@@ -493,7 +493,7 @@ export default function AdminFitAnalysisPage() {
                 </Card>
               </>
             ) : (
-              <Card className="border border-slate-200 bg-white">
+              <Card className="border border-slate-200 bg-card">
                 <CardContent className="p-5 text-sm text-slate-500">선택된 적합도 분석 결과가 없습니다.</CardContent>
               </Card>
             )}
@@ -508,7 +508,7 @@ function StructuredJsonBox({ title, value }: { title: string; value: string | nu
   return (
     <div className="rounded-lg border border-slate-100 p-4">
       <div className="mb-3 text-sm font-bold text-slate-800">{title}</div>
-      <pre className="max-h-52 overflow-auto whitespace-pre-wrap break-all rounded bg-slate-950 p-3 text-xs leading-5 text-slate-200">
+      <pre className="max-h-52 overflow-auto whitespace-pre-wrap break-all rounded bg-[#0b0c0e] p-3 text-xs leading-5 text-[#e6e6e6]">
         {value || "저장된 결과 없음"}
       </pre>
     </div>

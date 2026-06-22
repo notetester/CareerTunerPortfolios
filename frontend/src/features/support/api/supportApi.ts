@@ -1,5 +1,5 @@
 import { api } from "@/app/lib/api";
-import type { Faq, Notice, SupportTicket } from "../types/support";
+import type { Faq, Notice, SupportTicket, TicketThread } from "../types/support";
 
 /** FAQ 목록 (공개) */
 export async function getFaqs(category?: string): Promise<Faq[]> {
@@ -29,4 +29,29 @@ export async function createTicket(data: {
     body: JSON.stringify(data),
   });
   return { ...t, content: data.content };
+}
+
+/** 내 문의 목록 (인증 필요) — 백엔드 TicketResponse 에는 content 가 없어 빈 값으로 채운다. */
+export async function getMyTickets(): Promise<SupportTicket[]> {
+  const list = await api<Array<Omit<SupportTicket, "content">>>("/support/tickets", { method: "GET" });
+  return list.map((t) => ({ ...t, content: "" }));
+}
+
+/** 내 문의 단건 (인증 필요) — 최신 관리자 답변 포함. */
+export async function getMyTicket(id: number): Promise<SupportTicket> {
+  const t = await api<Omit<SupportTicket, "content">>(`/support/tickets/${id}`, { method: "GET" });
+  return { ...t, content: "" };
+}
+
+/** 내 문의 전체 대화(원문 + 관리자 답변 + 추가 문의). */
+export function getTicketThread(id: number): Promise<TicketThread> {
+  return api<TicketThread>(`/support/tickets/${id}/messages`, { method: "GET" });
+}
+
+/** 내 문의에 추가 메시지(추가 문의)를 남긴다. 갱신된 스레드를 반환. */
+export function addTicketMessage(id: number, content: string): Promise<TicketThread> {
+  return api<TicketThread>(`/support/tickets/${id}/messages`, {
+    method: "POST",
+    body: JSON.stringify({ content }),
+  });
 }

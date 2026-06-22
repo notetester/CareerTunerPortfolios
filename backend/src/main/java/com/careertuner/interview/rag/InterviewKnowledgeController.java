@@ -4,8 +4,11 @@ import java.util.List;
 import java.util.Map;
 
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -37,6 +40,20 @@ public class InterviewKnowledgeController {
     public ApiResponse<List<InterviewKnowledge>> list(@AuthenticationPrincipal AuthUser authUser,
                                                       @RequestParam(defaultValue = "100") int limit) {
         return ApiResponse.ok(service.list(authUser, limit));
+    }
+
+    @PutMapping("/{id}")
+    public ApiResponse<InterviewKnowledge> update(@AuthenticationPrincipal AuthUser authUser,
+                                                  @PathVariable Long id,
+                                                  @Valid @RequestBody AddKnowledgeRequest request) {
+        return ApiResponse.ok(service.update(authUser, id, request.kind(), request.title(),
+                request.content(), request.source()));
+    }
+
+    @DeleteMapping("/{id}")
+    public ApiResponse<Void> delete(@AuthenticationPrincipal AuthUser authUser, @PathVariable Long id) {
+        service.delete(authUser, id);
+        return ApiResponse.ok(null);
     }
 
     @PostMapping("/reindex")

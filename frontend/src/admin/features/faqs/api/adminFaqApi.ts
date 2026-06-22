@@ -4,18 +4,23 @@ import type { AdminFaqResponse } from "../types/adminFaq";
 
 const DB_TO_KR: Record<string, FaqCategory> = {
   GENERAL: "일반",
+  general: "일반",
   ACCOUNT: "계정",
+  account: "계정",
   PAYMENT: "결제",
+  payment: "결제",
   AI_FEATURE: "AI기능",
+  ai_feature: "AI기능",
   INTERVIEW: "면접",
+  interview: "면접",
 };
 
 const KR_TO_DB: Record<string, string> = {
-  "일반": "GENERAL",
-  "계정": "ACCOUNT",
-  "결제": "PAYMENT",
-  "AI기능": "AI_FEATURE",
-  "면접": "INTERVIEW",
+  "일반": "general",
+  "계정": "account",
+  "결제": "payment",
+  "AI기능": "ai_feature",
+  "면접": "interview",
 };
 
 function toFaq(b: AdminFaqResponse): Faq {
@@ -70,4 +75,11 @@ export function updateFaq(
 
 export function deleteFaq(id: number): Promise<void> {
   return api<void>(`/admin/faq/${id}`, { method: "DELETE" });
+}
+
+export function embedAllFaqs(forceAll = false): Promise<{ embeddedCount: number }> {
+  return api<{ embeddedCount: number }>(
+    `/admin/faq/embed-all?forceAll=${forceAll}`,
+    { method: "POST" },
+  );
 }

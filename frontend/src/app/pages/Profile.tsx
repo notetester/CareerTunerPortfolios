@@ -22,14 +22,16 @@ import {
 interface EducationEntry {
   school: string;
   major: string;
-  period: string;
+  startDate: string;
+  endDate: string;
   status: string;
 }
 
 interface CareerEntry {
   company: string;
   role: string;
-  period: string;
+  startDate: string;
+  endDate: string;
   tasks: string;
   achievements: string;
 }
@@ -38,7 +40,8 @@ interface ExperienceEntry {
   title: string;
   type: string;
   role: string;
-  period: string;
+  startDate: string;
+  endDate: string;
   description: string;
   result: string;
 }
@@ -65,9 +68,9 @@ interface ProfileForm {
   selfIntro: string;
 }
 
-const createEducation = (): EducationEntry => ({ school: "", major: "", period: "", status: "" });
-const createCareer = (): CareerEntry => ({ company: "", role: "", period: "", tasks: "", achievements: "" });
-const createExperience = (): ExperienceEntry => ({ title: "", type: "", role: "", period: "", description: "", result: "" });
+const createEducation = (): EducationEntry => ({ school: "", major: "", startDate: "", endDate: "", status: "" });
+const createCareer = (): CareerEntry => ({ company: "", role: "", startDate: "", endDate: "", tasks: "", achievements: "" });
+const createExperience = (): ExperienceEntry => ({ title: "", type: "", role: "", startDate: "", endDate: "", description: "", result: "" });
 const createPreferences = (): PreferencesForm => ({ region: "", workType: "", salary: "", employmentType: "" });
 
 const emptyForm: ProfileForm = {
@@ -155,6 +158,11 @@ export function ProfilePage() {
     setError(null);
     setMessage(null);
     try {
+      const validationError = validateProfile(form);
+      if (validationError) {
+        setError(validationError);
+        return;
+      }
       await saveProfile(toRequest(form));
       const nextCompleteness = await diagnoseProfileCompleteness().catch(() => null);
       setCompleteness(nextCompleteness);
@@ -224,7 +232,7 @@ export function ProfilePage() {
 
         <div className="grid gap-5 lg:grid-cols-[320px_1fr]">
           <aside className="space-y-5">
-            <Card className="border-slate-200 bg-white">
+            <Card className="border-slate-200 bg-card">
               <CardHeader>
                 <CardTitle className="text-base">완성도</CardTitle>
               </CardHeader>
@@ -233,12 +241,21 @@ export function ProfilePage() {
                   <div className="text-3xl font-black text-blue-600">{completeness?.score ?? 0}%</div>
                   <Progress value={completeness?.score ?? 0} className="mt-2 h-2" />
                 </div>
+                {completeness?.jobFamilyLabel && (
+                  <div className="rounded-md border border-blue-100 bg-blue-50 px-3 py-2">
+                    <div className="text-xs font-bold text-blue-500">평가 직무군</div>
+                    <div className="mt-1 text-sm font-bold text-blue-900">{completeness.jobFamilyLabel}</div>
+                    <div className="mt-1 text-xs text-blue-700">
+                      {completeness.model ?? "-"} · {completeness.status ?? "-"}
+                    </div>
+                  </div>
+                )}
                 <Checklist title="완료" items={completeness?.completed ?? []} done />
                 <Checklist title="보강 필요" items={completeness?.missing ?? []} />
               </CardContent>
             </Card>
 
-            <Card className="border-slate-200 bg-white">
+            <Card className="border-slate-200 bg-card">
               <CardHeader>
                 <CardTitle className="text-base">AI 도구</CardTitle>
               </CardHeader>
@@ -264,7 +281,7 @@ export function ProfilePage() {
 
           <section className="space-y-5">
             <Tabs defaultValue="basic">
-              <TabsList className="h-auto w-full justify-start overflow-x-auto border border-slate-200 bg-white p-1">
+              <TabsList className="h-auto w-full justify-start overflow-x-auto border border-slate-200 bg-card p-1">
                 <TabsTrigger value="basic">기본</TabsTrigger>
                 <TabsTrigger value="resume">이력서</TabsTrigger>
                 <TabsTrigger value="skills">직무 역량</TabsTrigger>
@@ -273,28 +290,28 @@ export function ProfilePage() {
               </TabsList>
 
               <TabsContent value="basic" className="mt-5">
-                <Card className="border-slate-200 bg-white">
+                <Card className="border-slate-200 bg-card">
                   <CardHeader>
                     <CardTitle className="text-base">희망 조건</CardTitle>
                   </CardHeader>
                   <CardContent className="grid gap-4 md:grid-cols-2">
                     <Field label="희망 직무">
-                      <Input value={form.desiredJob} onChange={(event) => update("desiredJob", event.target.value)} placeholder="예: 마케팅 AE, 간호사, 회계 담당자, 서비스 기획자" />
+                      <Input maxLength={80} value={form.desiredJob} onChange={(event) => update("desiredJob", event.target.value)} placeholder="예: 마케팅 AE, 간호사, 회계 담당자, 서비스 기획자" />
                     </Field>
                     <Field label="희망 산업">
-                      <Input value={form.desiredIndustry} onChange={(event) => update("desiredIndustry", event.target.value)} placeholder="예: 병원, 금융, 교육, 제조, IT" />
+                      <Input maxLength={80} value={form.desiredIndustry} onChange={(event) => update("desiredIndustry", event.target.value)} placeholder="예: 병원, 금융, 교육, 제조, IT" />
                     </Field>
                     <Field label="희망 지역">
-                      <Input value={form.preferences.region} onChange={(event) => updatePreferences("region", event.target.value)} placeholder="예: 서울, 경기, 원격" />
+                      <Input maxLength={80} value={form.preferences.region} onChange={(event) => updatePreferences("region", event.target.value)} placeholder="예: 서울, 경기, 원격" />
                     </Field>
                     <Field label="근무 형태">
-                      <Input value={form.preferences.workType} onChange={(event) => updatePreferences("workType", event.target.value)} placeholder="예: 사무실 근무, 교대 근무, 재택 병행" />
+                      <Input maxLength={80} value={form.preferences.workType} onChange={(event) => updatePreferences("workType", event.target.value)} placeholder="예: 사무실 근무, 교대 근무, 재택 병행" />
                     </Field>
                     <Field label="고용 형태">
-                      <Input value={form.preferences.employmentType} onChange={(event) => updatePreferences("employmentType", event.target.value)} placeholder="예: 정규직, 계약직, 인턴" />
+                      <Input maxLength={80} value={form.preferences.employmentType} onChange={(event) => updatePreferences("employmentType", event.target.value)} placeholder="예: 정규직, 계약직, 인턴" />
                     </Field>
                     <Field label="희망 연봉">
-                      <Input value={form.preferences.salary} onChange={(event) => updatePreferences("salary", event.target.value)} placeholder="예: 회사 내규, 3,200만원 이상" />
+                      <Input maxLength={80} value={form.preferences.salary} onChange={(event) => updatePreferences("salary", event.target.value)} placeholder="예: 회사 내규, 3,200만원 이상" />
                     </Field>
                     <Field label="포트폴리오/활동 링크" className="md:col-span-2">
                       <Textarea value={form.portfolioLinksText} onChange={(event) => update("portfolioLinksText", event.target.value)} placeholder="노션, 블로그, 작업물, 활동 기록 링크를 한 줄에 하나씩 입력" rows={4} />
@@ -304,7 +321,7 @@ export function ProfilePage() {
               </TabsContent>
 
               <TabsContent value="resume" className="mt-5">
-                <Card className="border-slate-200 bg-white">
+                <Card className="border-slate-200 bg-card">
                   <CardHeader>
                     <CardTitle className="flex items-center gap-2 text-base">
                       <FileText className="size-4 text-blue-600" />
@@ -323,7 +340,7 @@ export function ProfilePage() {
               </TabsContent>
 
               <TabsContent value="skills" className="mt-5">
-                <Card className="border-slate-200 bg-white">
+                <Card className="border-slate-200 bg-card">
                   <CardHeader>
                     <CardTitle className="text-base">직무 역량/스킬 관리</CardTitle>
                   </CardHeader>
@@ -336,7 +353,7 @@ export function ProfilePage() {
                           className={`rounded-md border px-3 py-1.5 text-sm font-semibold transition-colors ${
                             selectedSkillSet.has(skill.toLowerCase())
                               ? "border-blue-600 bg-blue-600 text-white"
-                              : "border-slate-200 bg-white text-slate-700 hover:border-blue-300"
+                              : "border-slate-200 bg-card text-slate-700 hover:border-blue-300"
                           }`}
                           onClick={() => toggleSkill(skill)}
                         >
@@ -365,16 +382,26 @@ export function ProfilePage() {
                     <EntryCard key={index} title={`학력 ${index + 1}`} onRemove={() => setForm((prev) => ({ ...prev, education: removeAt(prev.education, index, createEducation) }))}>
                       <div className="grid gap-4 md:grid-cols-2">
                         <Field label="학교/기관명">
-                          <Input value={item.school} onChange={(event) => updateEducation(index, "school", event.target.value)} placeholder="예: 한국대학교" />
+                          <Input maxLength={80} value={item.school} onChange={(event) => updateEducation(index, "school", event.target.value)} placeholder="예: 한국대학교" />
                         </Field>
                         <Field label="전공/과정">
-                          <Input value={item.major} onChange={(event) => updateEducation(index, "major", event.target.value)} placeholder="예: 경영학과, 간호학과, 직업훈련 과정" />
+                          <Input maxLength={80} value={item.major} onChange={(event) => updateEducation(index, "major", event.target.value)} placeholder="예: 경영학과, 간호학과, 직업훈련 과정" />
                         </Field>
-                        <Field label="기간">
-                          <Input value={item.period} onChange={(event) => updateEducation(index, "period", event.target.value)} placeholder="예: 2021.03 - 2025.02" />
+                        <Field label="시작월">
+                          <Input type="month" value={item.startDate} onChange={(event) => updateEducation(index, "startDate", event.target.value)} />
                         </Field>
-                        <Field label="상태">
-                          <Input value={item.status} onChange={(event) => updateEducation(index, "status", event.target.value)} placeholder="예: 졸업, 재학, 수료, 졸업예정" />
+                        <Field label="종료월">
+                          <Input type="month" value={item.endDate} onChange={(event) => updateEducation(index, "endDate", event.target.value)} />
+                        </Field>
+                        <Field label="상태" className="md:col-span-2">
+                          <select value={item.status} onChange={(event) => updateEducation(index, "status", event.target.value)} className="h-10 w-full rounded-md border border-slate-200 bg-card px-3 text-sm">
+                            <option value="">선택</option>
+                            <option value="재학">재학</option>
+                            <option value="졸업예정">졸업예정</option>
+                            <option value="졸업">졸업</option>
+                            <option value="수료">수료</option>
+                            <option value="중퇴">중퇴</option>
+                          </select>
                         </Field>
                       </div>
                     </EntryCard>
@@ -386,13 +413,16 @@ export function ProfilePage() {
                     <EntryCard key={index} title={`경력 ${index + 1}`} onRemove={() => setForm((prev) => ({ ...prev, career: removeAt(prev.career, index, createCareer) }))}>
                       <div className="grid gap-4 md:grid-cols-2">
                         <Field label="회사/기관명">
-                          <Input value={item.company} onChange={(event) => updateCareer(index, "company", event.target.value)} placeholder="예: ABC 병원, OO카페, 스타트업" />
+                          <Input maxLength={80} value={item.company} onChange={(event) => updateCareer(index, "company", event.target.value)} placeholder="예: ABC 병원, OO카페, 스타트업" />
                         </Field>
                         <Field label="직무/역할">
-                          <Input value={item.role} onChange={(event) => updateCareer(index, "role", event.target.value)} placeholder="예: 고객 상담, 마케팅 인턴, 회계 보조" />
+                          <Input maxLength={80} value={item.role} onChange={(event) => updateCareer(index, "role", event.target.value)} placeholder="예: 고객 상담, 마케팅 인턴, 회계 보조" />
                         </Field>
-                        <Field label="기간" className="md:col-span-2">
-                          <Input value={item.period} onChange={(event) => updateCareer(index, "period", event.target.value)} placeholder="예: 2024.01 - 2024.08" />
+                        <Field label="시작월">
+                          <Input type="month" value={item.startDate} onChange={(event) => updateCareer(index, "startDate", event.target.value)} />
+                        </Field>
+                        <Field label="종료월">
+                          <Input type="month" value={item.endDate} onChange={(event) => updateCareer(index, "endDate", event.target.value)} />
                         </Field>
                         <Field label="주요 업무" className="md:col-span-2">
                           <Textarea value={item.tasks} onChange={(event) => updateCareer(index, "tasks", event.target.value)} rows={4} placeholder="담당했던 업무를 구체적으로 적어주세요." />
@@ -410,16 +440,29 @@ export function ProfilePage() {
                     <EntryCard key={index} title={`경험 ${index + 1}`} onRemove={() => setForm((prev) => ({ ...prev, experiences: removeAt(prev.experiences, index, createExperience) }))}>
                       <div className="grid gap-4 md:grid-cols-2">
                         <Field label="활동명">
-                          <Input value={item.title} onChange={(event) => updateExperience(index, "title", event.target.value)} placeholder="예: 공모전, 실습, 캠페인, 개발 프로젝트" />
+                          <Input maxLength={100} value={item.title} onChange={(event) => updateExperience(index, "title", event.target.value)} placeholder="예: 공모전, 실습, 캠페인, 개발 프로젝트" />
                         </Field>
                         <Field label="유형">
-                          <Input value={item.type} onChange={(event) => updateExperience(index, "type", event.target.value)} placeholder="예: 공모전, 동아리, 아르바이트, 개인 프로젝트" />
+                          <select value={item.type} onChange={(event) => updateExperience(index, "type", event.target.value)} className="h-10 w-full rounded-md border border-slate-200 bg-card px-3 text-sm">
+                            <option value="">선택</option>
+                            <option value="공모전">공모전</option>
+                            <option value="동아리">동아리</option>
+                            <option value="실습">실습</option>
+                            <option value="아르바이트">아르바이트</option>
+                            <option value="개인 프로젝트">개인 프로젝트</option>
+                            <option value="팀 프로젝트">팀 프로젝트</option>
+                            <option value="봉사활동">봉사활동</option>
+                            <option value="기타">기타</option>
+                          </select>
                         </Field>
                         <Field label="역할">
-                          <Input value={item.role} onChange={(event) => updateExperience(index, "role", event.target.value)} placeholder="예: 팀장, 콘텐츠 제작, 고객 응대, 데이터 정리" />
+                          <Input maxLength={80} value={item.role} onChange={(event) => updateExperience(index, "role", event.target.value)} placeholder="예: 팀장, 콘텐츠 제작, 고객 응대, 데이터 정리" />
                         </Field>
-                        <Field label="기간">
-                          <Input value={item.period} onChange={(event) => updateExperience(index, "period", event.target.value)} placeholder="예: 2025.03 - 2025.06" />
+                        <Field label="시작월">
+                          <Input type="month" value={item.startDate} onChange={(event) => updateExperience(index, "startDate", event.target.value)} />
+                        </Field>
+                        <Field label="종료월">
+                          <Input type="month" value={item.endDate} onChange={(event) => updateExperience(index, "endDate", event.target.value)} />
                         </Field>
                         <Field label="내용" className="md:col-span-2">
                           <Textarea value={item.description} onChange={(event) => updateExperience(index, "description", event.target.value)} rows={4} placeholder="문제 상황, 맡은 일, 진행 과정을 적어주세요." />
@@ -434,7 +477,7 @@ export function ProfilePage() {
               </TabsContent>
 
               <TabsContent value="ai" className="mt-5">
-                <Card className="border-slate-200 bg-white">
+                <Card className="border-slate-200 bg-card">
                   <CardHeader>
                     <CardTitle className="text-base">AI 분석 결과</CardTitle>
                   </CardHeader>
@@ -442,17 +485,27 @@ export function ProfilePage() {
                     {!aiResult && !completeness && <p className="text-sm text-slate-500">왼쪽 AI 도구를 실행하면 결과가 표시됩니다.</p>}
                     {aiResult && (
                       <div className="space-y-4">
+                        <AiMeta
+                          jobFamilyLabel={aiResult.jobFamilyLabel}
+                          model={aiResult.model}
+                          status={aiResult.status}
+                          score={aiResult.completenessScore}
+                        />
                         <ResultBlock title="요약" value={aiResult.summary} />
                         <TagBlock title="추출 역량" values={aiResult.extractedSkills} />
                         <TagBlock title="강점" values={aiResult.strengths} />
                         <TagBlock title="보강점" values={aiResult.gaps} tone="amber" />
                         <ListBlock title="추천 액션" values={aiResult.recommendations} />
+                        <CriterionScoreList values={aiResult.criteria ?? []} />
                       </div>
                     )}
                     {completeness && (
                       <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
-                        <div className="font-bold text-slate-900">완성도 {completeness.score}%</div>
+                        <div className="font-bold text-slate-900">
+                          완성도 {completeness.score}% · {completeness.jobFamilyLabel ?? "직무군 분석 전"}
+                        </div>
                         <ListBlock title="추천 보강" values={completeness.recommendations} />
+                        <CriterionScoreList values={completeness.criteria ?? []} />
                       </div>
                     )}
                   </CardContent>
@@ -477,7 +530,7 @@ function Field({ label, className = "", children }: { label: string; className?:
 
 function EntrySection({ title, onAdd, children }: { title: string; onAdd(): void; children: React.ReactNode }) {
   return (
-    <Card className="border-slate-200 bg-white">
+    <Card className="border-slate-200 bg-card">
       <CardHeader className="flex flex-row items-center justify-between gap-3">
         <CardTitle className="text-base">{title}</CardTitle>
         <Button variant="outline" size="sm" onClick={onAdd}>
@@ -562,6 +615,53 @@ function ListBlock({ title, values }: { title: string; values: string[] }) {
   );
 }
 
+function AiMeta({ jobFamilyLabel, model, status, score }: { jobFamilyLabel?: string; model?: string; status?: string; score?: number }) {
+  return (
+    <div className="grid gap-3 rounded-lg border border-blue-100 bg-blue-50 p-4 text-sm md:grid-cols-4">
+      <div>
+        <div className="text-xs font-bold text-blue-500">직무군</div>
+        <div className="mt-1 font-bold text-blue-950">{jobFamilyLabel ?? "-"}</div>
+      </div>
+      <div>
+        <div className="text-xs font-bold text-blue-500">평가 점수</div>
+        <div className="mt-1 font-bold text-blue-950">{score ?? 0}점</div>
+      </div>
+      <div>
+        <div className="text-xs font-bold text-blue-500">모델</div>
+        <div className="mt-1 font-bold text-blue-950">{model ?? "-"}</div>
+      </div>
+      <div>
+        <div className="text-xs font-bold text-blue-500">상태</div>
+        <div className="mt-1 font-bold text-blue-950">{status ?? "-"}</div>
+      </div>
+    </div>
+  );
+}
+
+function CriterionScoreList({ values }: { values: NonNullable<ProfileAiResponse["criteria"]> }) {
+  if (!values.length) return null;
+  return (
+    <div>
+      <div className="mb-2 text-xs font-bold text-slate-500">평가 기준별 점수</div>
+      <div className="space-y-3">
+        {values.map((item) => (
+          <div key={item.criterion} className="rounded-lg border border-slate-200 bg-card p-3">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="font-bold text-slate-900">{item.label}</div>
+              <Badge className="bg-slate-100 text-slate-700">
+                원점수 {item.rawScore} · 가중치 {item.weight}%
+              </Badge>
+            </div>
+            <Progress value={item.rawScore} className="mt-2 h-2" />
+            {item.evidence && <p className="mt-2 text-sm leading-6 text-slate-600">{item.evidence}</p>}
+            {item.improvement && <p className="mt-1 text-sm leading-6 text-amber-700">{item.improvement}</p>}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function toForm(profile: UserProfile): ProfileForm {
   return {
     desiredJob: profile.desiredJob ?? "",
@@ -615,6 +715,11 @@ function parseEntries<T extends object>(value: unknown, createEmpty: () => T): T
       for (const key of Object.keys(next) as Array<keyof T>) {
         next[key] = String(item[key as string] ?? "") as T[keyof T];
       }
+      if ("period" in item && "startDate" in next && "endDate" in next) {
+        const [startDate, endDate] = splitPeriod(String(item.period ?? ""));
+        next.startDate = String(item.startDate ?? startDate) as T[keyof T];
+        next.endDate = String(item.endDate ?? endDate) as T[keyof T];
+      }
       return next;
     });
   return entries.length ? entries : [createEmpty()];
@@ -647,6 +752,9 @@ function stripEmpty<T extends object>(items: T[]): T[] {
     .map((item) => {
       const next = { ...item } as Record<string, string>;
       for (const key of Object.keys(next)) next[key] = String(next[key] ?? "").trim();
+      if ("startDate" in next || "endDate" in next) {
+        next.period = formatPeriod(next.startDate, next.endDate);
+      }
       return next as T;
     })
     .filter((item) => Object.values(item as Record<string, string>).some((value) => value.trim().length > 0));
@@ -675,4 +783,45 @@ function arrayToLines(value: unknown): string {
 function blankToNull(value: string): string | null {
   const trimmed = value.trim();
   return trimmed ? trimmed : null;
+}
+
+function validateProfile(form: ProfileForm): string | null {
+  if (!form.desiredJob.trim()) {
+    return "희망 직무는 필수입니다.";
+  }
+  if (form.desiredJob.trim().length > 80 || form.desiredIndustry.trim().length > 80) {
+    return "희망 직무와 산업은 80자 이하로 입력해 주세요.";
+  }
+  if (form.resumeText.length > 20000 || form.selfIntro.length > 10000) {
+    return "이력서 원문은 20,000자 이하, 자기소개는 10,000자 이하로 입력해 주세요.";
+  }
+  const invalidEducation = form.education.find((item) => !isValidRange(item.startDate, item.endDate));
+  if (invalidEducation) return "학력 종료월은 시작월보다 빠를 수 없습니다.";
+  const invalidCareer = form.career.find((item) => !isValidRange(item.startDate, item.endDate));
+  if (invalidCareer) return "경력 종료월은 시작월보다 빠를 수 없습니다.";
+  const invalidExperience = form.experiences.find((item) => !isValidRange(item.startDate, item.endDate));
+  if (invalidExperience) return "경험/프로젝트/활동 종료월은 시작월보다 빠를 수 없습니다.";
+  return null;
+}
+
+function isValidRange(startDate: string, endDate: string): boolean {
+  if (!startDate || !endDate) return true;
+  return startDate <= endDate;
+}
+
+function splitPeriod(period: string): [string, string] {
+  const matches = period.match(/\d{4}[.-]\d{1,2}/g);
+  if (!matches?.length) return ["", ""];
+  const normalized = matches.map((value) => {
+    const [year, month] = value.replace(".", "-").split("-");
+    return `${year}-${month.padStart(2, "0")}`;
+  });
+  return [normalized[0] ?? "", normalized[1] ?? ""];
+}
+
+function formatPeriod(startDate: string, endDate: string): string {
+  if (startDate && endDate) return `${startDate} - ${endDate}`;
+  if (startDate) return `${startDate} - 현재`;
+  if (endDate) return endDate;
+  return "";
 }

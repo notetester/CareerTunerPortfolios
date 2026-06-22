@@ -84,14 +84,14 @@ public class AdminFaqServiceImpl implements AdminFaqService {
     }
 
     private String toDbCategory(String category) {
-        if (category == null) return "GENERAL";
+        if (category == null) return "general";
         return switch (category) {
-            case "일반"   -> "GENERAL";
-            case "계정"   -> "ACCOUNT";
-            case "결제"   -> "PAYMENT";
-            case "AI기능" -> "AI_FEATURE";
-            case "면접"   -> "INTERVIEW";
-            default       -> category.toUpperCase();
+            case "일반", "GENERAL", "general" -> "general";
+            case "계정", "ACCOUNT", "account" -> "account";
+            case "결제", "PAYMENT", "payment" -> "payment";
+            case "AI기능", "AI_FEATURE", "ai_feature" -> "ai_feature";
+            case "면접", "INTERVIEW", "interview" -> "interview";
+            default -> category.toLowerCase();
         };
     }
 }

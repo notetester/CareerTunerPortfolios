@@ -1,8 +1,10 @@
 import { useEffect } from "react";
+import { useNavigate } from "react-router";
 import { useCommunityStore } from "../hooks/useCommunityStore";
 
 export function HotPostsSidebar() {
   const { hotPosts, fetchHotPosts } = useCommunityStore();
+  const navigate = useNavigate();
 
   useEffect(() => {
     fetchHotPosts();
@@ -16,7 +18,11 @@ export function HotPostsSidebar() {
         </div>
         <div className="av-list">
           {hotPosts.map((post, i) => (
-            <a key={i} href="#" onClick={(e) => e.preventDefault()}>
+            <a
+              key={post.id}
+              href={`/community/posts/${post.id}`}
+              onClick={(e) => { e.preventDefault(); navigate(`/community/posts/${post.id}`); }}
+            >
               <span className="av-rank num">{i + 1}</span>
               <span style={{ minWidth: 0 }}>
                 <span className="av-list__t" style={{ whiteSpace: "normal", lineHeight: 1.4, display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden", fontWeight: 550 }}>

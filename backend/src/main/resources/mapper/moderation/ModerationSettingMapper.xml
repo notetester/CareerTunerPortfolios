@@ -4,7 +4,7 @@
 <mapper namespace="com.careertuner.community.moderation.mapper.ModerationSettingMapper">
 
     <select id="findById" resultType="com.careertuner.community.moderation.domain.ModerationSetting">
-        SELECT id, strictness, hide_threshold, updated_at
+        SELECT id, strictness, hide_threshold, sanction_threshold, block_days, updated_at
           FROM ai_moderation_setting
          WHERE id = #{id}
     </select>
@@ -12,7 +12,9 @@
     <update id="update">
         UPDATE ai_moderation_setting
            SET strictness = #{strictness},
-               hide_threshold = #{hideThreshold}
+               hide_threshold = #{hideThreshold},
+               sanction_threshold = #{sanctionThreshold},
+               block_days = #{blockDays}
          WHERE id = #{id}
     </update>
 

@@ -70,7 +70,7 @@ export function AnalysisFailureNotice({
         {onRetry && (
           <button
             type="button"
-            className="inline-flex items-center gap-1.5 rounded-md border border-amber-300 bg-white px-2 py-1 text-xs font-semibold text-amber-800 hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-60"
+            className="inline-flex items-center gap-1.5 rounded-md border border-amber-300 bg-card px-2 py-1 text-xs font-semibold text-amber-800 hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-60"
             disabled={retrying}
             onClick={onRetry}
           >
@@ -78,7 +78,7 @@ export function AnalysisFailureNotice({
             {retryLabel}
           </button>
         )}
-        <span className="rounded-full bg-white px-2 py-0.5 text-xs text-amber-700">재시도 가능</span>
+        <span className="rounded-full bg-card px-2 py-0.5 text-xs text-amber-700">재시도 가능</span>
       </div>
       <p className="mt-1 whitespace-pre-line leading-6">{displayMessage(failure, featureType)}</p>
     </div>

@@ -19,10 +19,16 @@ export type AINotificationType =
 export type UserNotificationType =
   | "COMMENT"
   | "COMMENT_REPLY"
+  | "COMMENT_HIDDEN"
+  | "COMMENT_RESTORED"
+  | "COMMENT_REMOVED"
   | "LIKE"
   | "POST_HIDDEN"
+  | "POST_REMOVED"
+  | "POST_RESTORED"
   | "NOTICE"
   | "TICKET_ANSWERED"
+  | "ACCOUNT_BLOCKED"
   | "CREDIT_LOW"
   // 결제/크레딧 (E 결제 흐름에서 발생, billing 카테고리)
   | "PAYMENT_COMPLETE"
@@ -96,8 +102,13 @@ export const TYPE_META: Record<NotificationType, TypeMeta> = {
   /* 커뮤니티 */
   COMMENT:                   { cat: "community",   icon: "MessageCircle",      variant: "info",    cta: "댓글 보기",      actor: true },
   COMMENT_REPLY:             { cat: "community",   icon: "CornerDownRight",    variant: "info",    cta: "답글 보기",      actor: true },
+  COMMENT_HIDDEN:            { cat: "community",   icon: "EyeOff",             variant: "warning", cta: "댓글 보기" },
+  COMMENT_RESTORED:          { cat: "community",   icon: "RotateCcw",          variant: "success", cta: "댓글 보기" },
+  COMMENT_REMOVED:           { cat: "community",   icon: "Trash2",             variant: "danger",  cta: "댓글 보기" },
   LIKE:                      { cat: "community",   icon: "Heart",              variant: "info",    cta: "게시글 보기",    actor: true },
   POST_HIDDEN:               { cat: "community",   icon: "EyeOff",             variant: "warning", cta: "가이드라인 보기" },
+  POST_REMOVED:              { cat: "community",   icon: "Trash2",             variant: "danger",  cta: "가이드라인 보기" },
+  POST_RESTORED:             { cat: "community",   icon: "RotateCcw",          variant: "success", cta: "게시글 보기" },
   POST_SUMMARY_READY:        { cat: "community",   icon: "Sparkles",           variant: "info",    cta: "요약 보기" },
   /* 결제 */
   CREDIT_LOW:                { cat: "billing",     icon: "AlertTriangle",      variant: "warning", cta: "크레딧 충전" },
@@ -107,6 +118,7 @@ export const TYPE_META: Record<NotificationType, TypeMeta> = {
   /* 공지 */
   NOTICE:                    { cat: "notice",      icon: "Megaphone",          variant: "warning", cta: "공지 보기" },
   TICKET_ANSWERED:           { cat: "notice",      icon: "MessageSquareReply", variant: "info",    cta: "문의 답변 보기", actor: true },
+  ACCOUNT_BLOCKED:           { cat: "notice",      icon: "ShieldAlert",        variant: "danger",  cta: "문의하기" },
   /* 관리자 */
   NEW_REPORT:                { cat: "admin",       icon: "Flag",               variant: "danger",  cta: "신고 확인" },
   NEW_TICKET:                { cat: "admin",       icon: "Ticket",             variant: "info",    cta: "문의 확인" },
@@ -167,8 +179,13 @@ export const TYPE_TO_CATEGORY: Record<NotificationType, NotificationCategory> = 
   /* 커뮤니티 */
   COMMENT: "community",
   COMMENT_REPLY: "community",
+  COMMENT_HIDDEN: "community",
+  COMMENT_RESTORED: "community",
+  COMMENT_REMOVED: "community",
   LIKE: "community",
   POST_HIDDEN: "community",
+  POST_REMOVED: "community",
+  POST_RESTORED: "community",
   POST_SUMMARY_READY: "community",
   /* 결제 */
   CREDIT_LOW: "billing",
@@ -178,6 +195,7 @@ export const TYPE_TO_CATEGORY: Record<NotificationType, NotificationCategory> = 
   /* 공지/문의 */
   NOTICE: "notice",
   TICKET_ANSWERED: "notice",
+  ACCOUNT_BLOCKED: "notice",
   /* 관리자 */
   NEW_REPORT: "admin",
   NEW_TICKET: "admin",

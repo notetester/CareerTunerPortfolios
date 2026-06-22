@@ -17,4 +17,8 @@ public interface InterviewKnowledgeMapper {
     List<InterviewKnowledge> findAll(@Param("limit") int limit);
 
     void markIndexed(@Param("id") Long id);
+
+    void update(InterviewKnowledge knowledge);
+
+    void delete(@Param("id") Long id);
 }

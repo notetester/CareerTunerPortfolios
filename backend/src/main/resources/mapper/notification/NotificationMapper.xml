@@ -20,14 +20,6 @@
         <result property="actorAvatarUrl" column="actor_avatar_url"/>
     </resultMap>
 
-    <insert id="insertNotification" useGeneratedKeys="true" keyProperty="id">
-        INSERT INTO notification
-            (user_id, actor_id, type, target_type, target_id, title, message, link, is_read, read_at)
-        VALUES
-            (#{userId}, #{actorId}, #{type}, #{targetType}, #{targetId},
-             #{title}, #{message}, #{link}, #{read}, #{readAt})
-    </insert>
-
     <!-- 알림 목록 조회 (최신순, actor JOIN) -->
     <select id="findByUserId" resultMap="notificationResultMap">
         SELECT n.*,

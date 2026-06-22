@@ -58,9 +58,11 @@ public class ConsentServiceImpl implements ConsentService {
     }
 
     @Override
-    public List<ConsentView> adminConsents(AuthUser authUser, String keyword, String consentType, int limit) {
+    public List<ConsentView> adminConsents(AuthUser authUser, String keyword, String consentType,
+                                           String status, String source, String from, String to, int limit) {
         requireAdmin(authUser);
-        return mapper.findAdminConsents(blankToNull(keyword), blankToNull(consentType), Math.max(1, Math.min(limit, 200)));
+        return mapper.findAdminConsents(blankToNull(keyword), blankToNull(consentType), blankToNull(status),
+                blankToNull(source), blankToNull(from), blankToNull(to), Math.max(1, Math.min(limit, 200)));
     }
 
     private ConsentStatusResponse build(Long userId) {

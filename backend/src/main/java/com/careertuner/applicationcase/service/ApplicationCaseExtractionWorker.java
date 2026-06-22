@@ -26,7 +26,7 @@ import com.careertuner.jobposting.mapper.JobPostingMapper;
 import com.careertuner.jobposting.service.JobPostingService;
 import com.careertuner.jobposting.service.JobPostingTextExtractor.ExtractedPosting;
 import com.careertuner.notification.domain.Notification;
-import com.careertuner.notification.mapper.NotificationMapper;
+import com.careertuner.notification.service.NotificationService;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -58,8 +58,8 @@ public class ApplicationCaseExtractionWorker {
     private final ApplicationCaseExtractionQualityGate qualityGate;
     private final OpenAiResponsesClient openAiClient;
     private final AiUsageLogService aiUsageLogService;
-    private final NotificationMapper notificationMapper;
     private final ApplicationCaseAutoPipelineService autoPipelineService;
+    private final NotificationService notificationService;
     private final TransactionTemplate transactionTemplate;
 
     @Value("${careertuner.extraction.worker.running-timeout-minutes:30}")
@@ -200,7 +200,7 @@ public class ApplicationCaseExtractionWorker {
             }
 
             if (result.requiresReview()) {
-                notificationMapper.insertNotification(reviewRequiredNotification(extraction));
+                notificationService.notify(reviewRequiredNotification(extraction));
                 return null;
             }
 
@@ -221,7 +221,7 @@ public class ApplicationCaseExtractionWorker {
                     completedJobPostingId,
                     completedJobPostingRevision,
                     completedPostingText);
-            notificationMapper.insertNotification(successNotification(extraction));
+            notificationService.notify(successNotification(extraction));
             return null;
         });
     }
@@ -240,7 +240,7 @@ public class ApplicationCaseExtractionWorker {
                     quality == null ? null : quality.modelVersionsJson(),
                     quality != null && quality.fallbackEligible(),
                     quality == null ? null : quality.fallbackReason()) == 1) {
-                notificationMapper.insertNotification(failureNotification(extraction, errorMessage));
+                notificationService.notify(failureNotification(extraction, errorMessage));
             }
             return null;
         });
@@ -261,7 +261,7 @@ public class ApplicationCaseExtractionWorker {
                     null) != 1) {
                 return false;
             }
-            notificationMapper.insertNotification(failureNotification(extraction, errorMessage));
+            notificationService.notify(failureNotification(extraction, errorMessage));
             return true;
         }));
     }

@@ -247,7 +247,7 @@ export function AdminAiUsagePage() {
           <SummaryCard label="크레딧" value={formatNumber(summary.creditUsed)} hint="사용 크레딧 합계" />
         </div>
 
-        <Card className="border-slate-200 bg-white">
+        <Card className="border-slate-200 bg-card">
           <CardContent className="space-y-4 p-4">
             <div className="grid gap-3 xl:grid-cols-[minmax(220px,1.3fr)_160px_150px_150px_160px] xl:items-end">
               <label className="grid gap-1.5 text-sm font-semibold text-slate-700">
@@ -295,7 +295,7 @@ export function AdminAiUsagePage() {
           <FeatureCount label="공고 메타데이터" value={summary.jobPostingMetadataCount} />
         </div>
 
-        <Card className="border-slate-200 bg-white">
+        <Card className="border-slate-200 bg-card">
           <CardContent className="p-0">
             {loading ? (
               <div className="h-48 animate-pulse bg-slate-100" />
@@ -361,7 +361,7 @@ export function AdminAiUsagePage() {
                   {rows.map((row) => (
                     <div
                       key={row.id}
-                      className={`rounded-lg border p-4 ${row.status === "FAILED" ? "border-red-200 bg-red-50/70" : "border-slate-200 bg-white"}`}
+                      className={`rounded-lg border p-4 ${row.status === "FAILED" ? "border-red-200 bg-red-50/70" : "border-slate-200 bg-card"}`}
                     >
                       <div className="flex items-start justify-between gap-3">
                         <div className="min-w-0">
@@ -395,7 +395,7 @@ export function AdminAiUsagePage() {
           </CardContent>
         </Card>
 
-        <Card className="border-slate-200 bg-white">
+        <Card className="border-slate-200 bg-card">
           <CardContent className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between">
             <div className="text-sm text-slate-600">
               {formatNumber(summary.totalCount)}건 중 {formatNumber(visibleFrom)}-{formatNumber(visibleTo)} 표시
@@ -422,7 +422,7 @@ export function AdminAiUsagePage() {
 
 function SummaryCard({ label, value, hint }: { label: string; value: string; hint: string }) {
   return (
-    <Card className="border-slate-200 bg-white">
+    <Card className="border-slate-200 bg-card">
       <CardHeader className="pb-0">
         <CardTitle className="text-sm font-semibold text-slate-500">{label}</CardTitle>
       </CardHeader>
@@ -436,7 +436,7 @@ function SummaryCard({ label, value, hint }: { label: string; value: string; hin
 
 function FeatureCount({ label, value }: { label: string; value: number }) {
   return (
-    <div className="rounded-lg border border-slate-200 bg-white px-4 py-3">
+    <div className="rounded-lg border border-slate-200 bg-card px-4 py-3">
       <div className="text-xs font-semibold text-slate-500">{label}</div>
       <div className="mt-1 text-xl font-bold text-slate-950">{formatNumber(value)}</div>
     </div>
@@ -458,7 +458,7 @@ function SelectField({
     <label className="grid gap-1.5 text-sm font-semibold text-slate-700">
       <span>{label}</span>
       <select
-        className="h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm font-normal text-slate-700 outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
+        className="h-10 w-full rounded-md border border-slate-200 bg-card px-3 text-sm font-normal text-slate-700 outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
         value={value}
         onChange={(event) => onChange(event.target.value)}
       >
@@ -524,7 +524,7 @@ function ErrorSnippet({ message }: { message: string | null }) {
   }
 
   return (
-    <div title={message} className="max-w-[360px] rounded-md border border-red-200 bg-white px-2 py-1 text-xs font-medium leading-5 text-red-700">
+    <div title={message} className="max-w-[360px] rounded-md border border-red-200 bg-card px-2 py-1 text-xs font-medium leading-5 text-red-700">
       <p className="line-clamp-2 whitespace-pre-wrap break-words">{message}</p>
     </div>
   );

@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.careertuner.community.mapper.CommunityTagMapper">
+
+    <select id="findIdByName" resultType="java.lang.Long">
+        SELECT id FROM community_tag WHERE name = #{name}
+    </select>
+
+    <insert id="insertTag">
+        INSERT IGNORE INTO community_tag (name) VALUES (#{name})
+    </insert>
+
+    <update id="incrementUsageCount">
+        UPDATE community_tag SET usage_count = usage_count + 1 WHERE id = #{id}
+    </update>
+
+    <update id="decrementUsageCount">
+        UPDATE community_tag SET usage_count = GREATEST(usage_count - 1, 0) WHERE id = #{id}
+    </update>
+
+    <select id="findAiTagIds" resultType="java.lang.Long">
+        SELECT tag_id FROM community_post_tag WHERE post_id = #{postId} AND is_ai = 1
+    </select>
+
+    <delete id="deleteAiPostTags">
+        DELETE FROM community_post_tag WHERE post_id = #{postId} AND is_ai = 1
+    </delete>
+
+    <insert id="insertPostTag">
+        INSERT INTO community_post_tag (post_id, tag_id, is_ai)
+        VALUES (#{postId}, #{tagId}, #{isAi})
+    </insert>
+
+    <select id="findTagNamesByPostId" resultType="java.lang.String">
+        SELECT t.name
+          FROM community_post_tag pt
+          JOIN community_tag t ON t.id = pt.tag_id
+         WHERE pt.post_id = #{postId}
+    </select>
+
+</mapper>

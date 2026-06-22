@@ -3,7 +3,7 @@ import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../components/ui/tabs";
-import { Award, CheckCircle2, FileText, PenLine, Sparkles, Upload } from "lucide-react";
+import { AlertTriangle, Award, CheckCircle2, FileText, PenLine, Sparkles, Upload } from "lucide-react";
 
 const tabs = ["answer", "cover", "resume", "portfolio"] as const;
 type CorrectionTab = (typeof tabs)[number];
@@ -54,8 +54,16 @@ export function CorrectionPage() {
           <p className="mt-1 text-sm text-slate-500">답변, 자기소개서, 이력서, 포트폴리오 설명을 지원 건 기준으로 다듬습니다</p>
         </div>
 
+        <div className="flex items-start gap-3 rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+          <AlertTriangle className="mt-0.5 size-5 shrink-0" />
+          <div>
+            <div className="font-bold">첨삭 API 준비 중</div>
+            <p className="mt-1 leading-6">현재 화면은 입력 흐름 샘플입니다. 첨삭 실행, 파일 업로드, 최근 기록은 백엔드 구현 후 활성화됩니다.</p>
+          </div>
+        </div>
+
         <Tabs value={activeTab} onValueChange={(value) => setSearchParams({ tab: value })}>
-          <TabsList className="h-auto w-full justify-start overflow-x-auto border border-slate-200 bg-white p-1">
+          <TabsList className="h-auto w-full justify-start overflow-x-auto border border-slate-200 bg-card p-1">
             <TabsTrigger value="answer">답변 첨삭</TabsTrigger>
             <TabsTrigger value="cover">자기소개서 첨삭</TabsTrigger>
             <TabsTrigger value="resume">이력서 첨삭</TabsTrigger>
@@ -65,7 +73,7 @@ export function CorrectionPage() {
           {tabs.map((tab) => (
             <TabsContent key={tab} value={tab} className="mt-5">
               <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_320px]">
-                <Card className="border border-slate-200 bg-white">
+                <Card className="border border-slate-200 bg-card">
                   <CardHeader>
                     <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                       <div>
@@ -87,19 +95,19 @@ export function CorrectionPage() {
                       <div className="mt-2 text-sm font-semibold text-slate-700">파일 업로드 또는 텍스트 입력</div>
                       <div className="mt-1 text-xs text-slate-500">PDF, DOCX, TXT 또는 직접 붙여넣기 흐름을 지원할 예정입니다</div>
                     </div>
-                    <div className="min-h-44 rounded-xl border border-slate-200 bg-white p-4 text-sm text-slate-400">
+                    <div className="min-h-44 rounded-xl border border-slate-200 bg-card p-4 text-sm text-slate-400">
                       {active.placeholder}
                     </div>
                     <div className="flex flex-col gap-2 sm:flex-row">
-                      <Button className="bg-gradient-to-r from-blue-600 to-indigo-600">AI 첨삭 시작</Button>
-                      <Button variant="outline">지원 건 연결</Button>
-                      <Button variant="outline">임시 저장</Button>
+                      <Button disabled className="bg-primary">준비 중</Button>
+                      <Button disabled variant="outline">지원 건 연결</Button>
+                      <Button disabled variant="outline">임시 저장</Button>
                     </div>
                   </CardContent>
                 </Card>
 
                 <div className="space-y-4">
-                  <Card className="border border-slate-200 bg-white">
+                  <Card className="border border-slate-200 bg-card">
                     <CardHeader>
                       <CardTitle className="flex items-center gap-2 text-base">
                         <CheckCircle2 className="size-4 text-green-600" />
@@ -115,7 +123,7 @@ export function CorrectionPage() {
                       ))}
                     </CardContent>
                   </Card>
-                  <Card className="border border-slate-200 bg-white">
+                  <Card className="border border-slate-200 bg-card">
                     <CardHeader>
                       <CardTitle className="flex items-center gap-2 text-base">
                         <FileText className="size-4 text-blue-600" />
@@ -124,7 +132,7 @@ export function CorrectionPage() {
                     </CardHeader>
                     <CardContent className="space-y-2">
                       {["영업 직무 답변", "간호사 자기소개서", "마케팅 캠페인 설명 개선"].map((item) => (
-                        <div key={item} className="rounded-lg bg-slate-50 p-3 text-sm font-semibold text-slate-700">{item}</div>
+                        <div key={item} className="rounded-lg bg-slate-50 p-3 text-sm font-semibold text-slate-500">샘플 · {item}</div>
                       ))}
                     </CardContent>
                   </Card>

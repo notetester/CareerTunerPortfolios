@@ -59,6 +59,7 @@ CLAUDE.local.md
 # ----- Personal local docs -----
 personal/
 personal_*.zip
+docs/면접AI_워크플로우_의사결정.md
 
 # ----- Logs -----
 *.log
@@ -73,3 +74,7 @@ pnpm-debug.log*
 # ----- Local agent files -----
 .agents/
 
+
+# 로컬 키 주입 스크립트 (키 포함 — 절대 커밋 금지)
+backend/run-local.bat
+run-local.bat

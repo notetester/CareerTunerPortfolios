@@ -24,6 +24,8 @@ import com.careertuner.fitanalysis.dto.FitActionBoardResponse;
 import com.careertuner.fitanalysis.dto.FitScoreBreakdownResponse;
 import com.careertuner.fitanalysis.dto.FitToneStrategyResponse;
 import com.careertuner.fitanalysis.mapper.FitAnalysisMapper;
+import com.careertuner.notification.domain.Notification;
+import com.careertuner.notification.service.NotificationService;
 import lombok.RequiredArgsConstructor;
 import tools.jackson.core.JacksonException;
 import tools.jackson.core.type.TypeReference;
@@ -38,6 +40,7 @@ public class FitAnalysisServiceImpl implements FitAnalysisService {
 
     private final FitAnalysisMapper fitAnalysisMapper;
     private final FitAnalysisAiService fitAnalysisAiService;
+    private final NotificationService notificationService;
     private final ObjectMapper objectMapper;
 
     @Override
@@ -141,6 +144,20 @@ public class FitAnalysisServiceImpl implements FitAnalysisService {
                 tokenUsage,
                 creditUsed,
                 ai.errorMessage());
+
+        // 적합도 분석이 성공하면 사용자에게 완료 알림을 남긴다.
+        if ("SUCCESS".equals(ai.status())) {
+            notificationService.notify(Notification.builder()
+                    .userId(userId)
+                    .type("FIT_ANALYSIS_COMPLETE")
+                    .targetType("APPLICATION_CASE")
+                    .targetId(applicationCaseId)
+                    .title("적합도 분석이 완료되었습니다")
+                    .message("%s · %s 적합도 %d점".formatted(
+                            source.getCompanyName(), source.getJobTitle(), ai.fitScore()))
+                    .link("/applications/" + applicationCaseId + "/fit")
+                    .build());
+        }
 
         return getByApplicationCase(userId, applicationCaseId);
     }

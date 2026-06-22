@@ -1,13 +1,13 @@
 import { create } from "zustand";
-// TODO: 백엔드 연동 시 주석 해제
-// import * as communityApi from "../api/communityApi";
-import { mockPosts, mockHotPosts } from "../data/mockCommunity";
+import * as communityApi from "../api/communityApi";
 import type { CommunityPost, CommunityComment, CommunityCategory } from "../types/community";
 
 interface CommunityState {
   /* 목록 */
   posts: CommunityPost[];
-  hotPosts: { title: string; comments: number; views: number }[];
+  hotPosts: { id: number; title: string; comments: number; views: number }[];
+  /** 카테고리 slug → 게시글 수 (탭 뱃지용, 목록과 동일 소스) */
+  categoryCounts: Record<string, number>;
   loading: boolean;
 
   /* 상세 */
@@ -21,11 +21,27 @@ interface CommunityState {
   /* 액션 */
   fetchPosts: (category?: CommunityCategory, sort?: string) => Promise<void>;
   fetchHotPosts: () => Promise<void>;
+  fetchCategoryCounts: () => Promise<void>;
   fetchPostDetail: (id: number) => Promise<void>;
   fetchComments: (postId: number) => Promise<void>;
-  addComment: (postId: number, content: string) => Promise<void>;
+  addComment: (postId: number, content: string, parentId?: number, anonymous?: boolean) => Promise<void>;
   createPost: (data: {
     category: CommunityCategory;
+    title: string;
+    content: string;
+    tags: string[];
+    anonymous?: boolean;
+    interviewReview?: {
+      companyName: string;
+      jobRole: string;
+      interviewType?: string;
+      difficulty?: number | null;
+      interviewDate?: string;
+      resultStatus?: string;
+      questions?: string[];
+    };
+  }) => Promise<void>;
+  updatePost: (id: number, data: {
     title: string;
     content: string;
     tags: string[];
@@ -50,87 +66,90 @@ interface CommunityState {
 export const useCommunityStore = create<CommunityState>((set, get) => ({
   posts: [],
   hotPosts: [],
+  categoryCounts: {},
   loading: false,
   currentPost: null,
   comments: [],
   detailLoading: false,
   error: null,
 
-  fetchPosts: async (category, _sort) => {
+  fetchPosts: async (category, sort) => {
     set({ loading: true, error: null });
-    // TODO: 백엔드 연동 시 아래 mock → communityApi.getPosts(category, sort) 로 교체
-    const filtered = category
-      ? mockPosts.filter((p) => p.category === category)
-      : mockPosts;
-    set({ posts: filtered, loading: false });
+    try {
+      // 클라이언트 페이지네이션을 쓰므로 한 번에 충분히 받아온다 (서버 size 상한 100).
+      const posts = await communityApi.getPosts(category, sort, 0, 100);
+      set({ posts, loading: false });
+    } catch (e) {
+      set({ loading: false, error: (e as Error).message });
+    }
   },
 
   fetchHotPosts: async () => {
-    // TODO: 백엔드 연동 시 communityApi.getHotPosts() 로 교체
-    set({ hotPosts: mockHotPosts });
+    try {
+      const hotPosts = await communityApi.getHotPosts();
+      set({ hotPosts });
+    } catch { /* 인기글 실패는 무시 */ }
+  },
+
+  fetchCategoryCounts: async () => {
+    try {
+      // 탭 뱃지는 목록과 동일 소스(community_post)를 봐야 한다.
+      // 전체 게시글을 한 번 받아 카테고리별로 집계(목록도 size 100 상한과 동일).
+      const all = await communityApi.getPosts(undefined, "latest", 0, 100);
+      const counts: Record<string, number> = {};
+      for (const p of all) counts[p.category] = (counts[p.category] ?? 0) + 1;
+      set({ categoryCounts: counts });
+    } catch { /* 카운트 실패는 무시 */ }
   },
 
   fetchPostDetail: async (id) => {
     set({ detailLoading: true, error: null });
-    // TODO: 백엔드 연동 시 communityApi.getPostDetail(id) 로 교체
-    const found = mockPosts.find((p) => p.id === id) ?? null;
-    set({ currentPost: found, detailLoading: false });
+    try {
+      const currentPost = await communityApi.getPostDetail(id);
+      set({ currentPost, detailLoading: false });
+    } catch (e) {
+      set({ detailLoading: false, error: (e as Error).message });
+    }
   },
 
-  fetchComments: async (_postId) => {
-    // TODO: 백엔드 연동 시 communityApi.getComments(postId) 로 교체
-    set({ comments: [] });
+  fetchComments: async (postId) => {
+    try {
+      const comments = await communityApi.getComments(postId);
+      set({ comments });
+    } catch (e) {
+      set({ error: (e as Error).message });
+    }
   },
 
-  addComment: async (postId, content) => {
-    // TODO: 백엔드 연동 시 communityApi.createComment + getComments 로 교체
-    const newComment: CommunityComment = {
-      id: Date.now(),
-      postId,
-      content,
-      author: { id: 0, name: "익명", isAnonymous: true },
-      likeCount: 0,
-      isAuthor: true,
-      createdAt: new Date().toISOString(),
-    };
-    const comments = [...get().comments, newComment];
+  addComment: async (postId, content, parentId, anonymous = true) => {
+    await communityApi.createComment(postId, content, parentId, anonymous);
+    const comments = await communityApi.getComments(postId);
     set({ comments });
     const { currentPost } = get();
     if (currentPost && currentPost.id === postId) {
       set({
         currentPost: {
           ...currentPost,
-          stats: { ...currentPost.stats, commentCount: comments.length },
+          stats: { ...currentPost.stats, commentCount: comments.filter((c) => !c.isDeleted).length },
         },
       });
     }
   },
 
   createPost: async (data) => {
-    // TODO: 백엔드 연동 시 communityApi.createPost + getPosts 로 교체
-    const CATEGORY_LABELS: Record<string, string> = {
-      interview_review: "면접후기", job_review: "취업후기", free: "자유게시판",
-      pass_strategy: "합격전략", portfolio: "포트폴리오", qna: "Q&A",
-    };
-    const newPost: CommunityPost = {
-      id: Date.now(),
-      category: data.category,
-      categoryLabel: CATEGORY_LABELS[data.category] ?? data.category,
-      title: data.title,
-      content: data.content,
-      tags: data.tags,
-      author: { id: 0, name: "익명", isAnonymous: true },
-      stats: { viewCount: 0, commentCount: 0, likeCount: 0, bookmarkCount: 0 },
-      status: "PUBLISHED",
-      createdAt: "방금",
-      daysAgo: 0,
-    };
-    set({ posts: [newPost, ...get().posts] });
+    await communityApi.createPost(data);
+    const posts = await communityApi.getPosts();
+    set({ posts });
+  },
+
+  updatePost: async (id, data) => {
+    await communityApi.updatePost(id, data);
+    const posts = await communityApi.getPosts();
+    set({ posts });
   },
 
   toggleReaction: async (targetType, targetId, reactionType) => {
-    // TODO: 백엔드 연동 시 communityApi.toggleReaction 으로 교체
-    const active = true;
+    const active = await communityApi.toggleReaction(targetType, targetId, reactionType);
     const { currentPost, comments } = get();
     const delta = active ? 1 : -1;
 

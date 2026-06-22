@@ -9,8 +9,8 @@ const now = Date.now();
 const iso = (daysAgo: number) => new Date(now - daysAgo * 86_400_000).toISOString();
 
 export const demoInterviewSessions: InterviewSession[] = [
-  { id: 8002, applicationCaseId: 102, mode: "JOB", startedAt: iso(1), endedAt: iso(1), totalScore: 80, createdAt: iso(1) },
-  { id: 8001, applicationCaseId: 101, mode: "BASIC", startedAt: iso(3), endedAt: iso(3), totalScore: 74, createdAt: iso(3) },
+  { id: 8002, applicationCaseId: 102, mode: "JOB", startedAt: iso(1), endedAt: iso(1), totalScore: 80, avgScore: 78, avgVoiceScore: 72, lastResumedAt: null, createdAt: iso(1) },
+  { id: 8001, applicationCaseId: 101, mode: "BASIC", startedAt: iso(3), endedAt: iso(3), totalScore: 74, avgScore: 71, avgVoiceScore: null, lastResumedAt: iso(0), createdAt: iso(3) },
 ];
 
 const sessionQuestions: Record<number, InterviewQuestion[]> = {
@@ -78,7 +78,7 @@ let nextQuestionId = 96000;
 export function createSession(req: CreateInterviewSessionRequest): InterviewSession {
   const session: InterviewSession = {
     id: ++nextSessionId, applicationCaseId: req.applicationCaseId, mode: req.mode,
-    startedAt: new Date().toISOString(), endedAt: null, totalScore: null, createdAt: new Date().toISOString(),
+    startedAt: new Date().toISOString(), endedAt: null, totalScore: null, avgScore: null, avgVoiceScore: null, lastResumedAt: null, createdAt: new Date().toISOString(),
   };
   demoInterviewSessions.unshift(session);
   sessionQuestions[session.id] = [];

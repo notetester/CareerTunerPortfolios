@@ -12,5 +12,7 @@ public interface ModerationSettingMapper {
 
     int update(@Param("id") int id,
                @Param("strictness") String strictness,
-               @Param("hideThreshold") double hideThreshold);
+               @Param("hideThreshold") double hideThreshold,
+               @Param("sanctionThreshold") int sanctionThreshold,
+               @Param("blockDays") int blockDays);
 }

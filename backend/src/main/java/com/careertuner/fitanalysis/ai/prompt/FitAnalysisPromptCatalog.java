@@ -33,6 +33,24 @@ public final class FitAnalysisPromptCatalog {
             """;
 
     /**
+     * 자체 파인튜닝 모델(C_FIT_EXPLAIN)용 시스템 프롬프트. <b>학습 데이터의 system 메시지와 동일</b>해야
+     * train/serve skew 가 없다(ml/career-strategy-llm/scripts/synth_prompts.py 의 FIT_EXPLAIN_SYS 와 일치).
+     * 점수/판단은 서버 규칙엔진이 계산해 입력으로 주고, 모델은 <b>설명만</b> 생성한다(뉴로-심볼릭).
+     */
+    public static final String FIT_EXPLAIN_SYSTEM_PROMPT =
+            "너는 CareerTuner의 커리어 전략 설명 모델이다. "
+            + "적합도 점수(fitScore)와 지원판단(applyDecision), 매칭/부족 역량은 서버 규칙엔진이 이미 계산해 "
+            + "입력으로 주어진다. 너는 점수나 판단을 새로 만들거나 바꾸지 않는다. "
+            + "주어진 점수·매칭/부족 역량·프로필·공고 정보를 근거로, 지원자가 이해할 수 있는 한국어 "
+            + "적합도 설명(fitSummary), 강점(strengths), 위험요인(risks), 지원 전 보완 액션(strategyActions), "
+            + "부족역량 학습 사유(learningTaskReasons)를 생성한다. "
+            + "입력에 없는 회사명·기술·자격증·수치를 추가하지 않는다. "
+            + "합격 보장·합격률 단정 같은 표현을 쓰지 않는다. "
+            + "아래 JSON 객체만 반환한다: "
+            + "{\"fitSummary\": \"...\", \"strengths\": [\"...\"], \"risks\": [\"...\"], "
+            + "\"strategyActions\": [\"...\"], \"learningTaskReasons\": [{\"skill\": \"...\", \"why\": \"...\"}]}";
+
+    /**
      * 사용자 프롬프트 본문 생성. 실 LLM 구현체에서 공고/프로필 입력을 채워 호출한다.
      */
     public static String userPrompt(String companyName,
@@ -60,6 +78,45 @@ public final class FitAnalysisPromptCatalog {
                 """.formatted(
                 safe(companyName), safe(jobTitle), safe(requiredSkills), safe(preferredSkills),
                 safe(duties), safe(desiredJob), safe(profileSkills), safe(profileCertificates));
+    }
+
+    /**
+     * 자체모델(C_FIT_EXPLAIN) 입력 본문. 규칙엔진 사전계산값(점수/판단/매칭/부족)을 입력으로 함께 넣는다.
+     * ml/career-strategy-llm/scripts/assemble_dataset.py 의 build_fit_user 와 같은 구조여야 한다(train/serve 정합).
+     */
+    public static String fitExplainUserPrompt(String companyName, String jobTitle, String desiredJob,
+                                              String requiredSkills, String preferredSkills, String duties,
+                                              String profileSkills, String profileCertificates,
+                                              int fitScore, String applyDecision,
+                                              String matchedSkills, String missingRequiredSkills,
+                                              String missingPreferredSkills) {
+        return """
+                # 적합도 분석 입력
+                회사명: %s
+                직무명: %s
+                희망 직무: %s
+
+                ## 공고 요구
+                - 필수 스킬: %s
+                - 우대 스킬: %s
+                - 주요 업무: %s
+
+                ## 지원자 프로필
+                - 보유 스킬: %s
+                - 보유 자격증: %s
+
+                ## 규칙엔진 사전계산 (서버 확정값 — 변경 금지)
+                - 적합도 점수(fitScore): %d
+                - 지원판단(applyDecision): %s
+                - 매칭 역량: %s
+                - 부족 필수역량: %s
+                - 부족 우대역량: %s
+                """.formatted(
+                safe(companyName), safe(jobTitle), safe(desiredJob),
+                safe(requiredSkills), safe(preferredSkills), safe(duties),
+                safe(profileSkills), safe(profileCertificates),
+                fitScore, safe(applyDecision), safe(matchedSkills),
+                safe(missingRequiredSkills), safe(missingPreferredSkills));
     }
 
     private static String safe(String value) {

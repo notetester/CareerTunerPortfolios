@@ -60,6 +60,15 @@ public class QdrantClient {
                 .PUT(HttpRequest.BodyPublishers.ofString(toJson(body), StandardCharsets.UTF_8)));
     }
 
+    /** 해당 포인트(문서 id) 벡터를 컬렉션에서 삭제한다. */
+    public void delete(long id) {
+        Map<String, Object> body = Map.of("points", List.of(id));
+        String url = base() + "/collections/" + properties.getCollection() + "/points/delete?wait=true";
+        send(HttpRequest.newBuilder(URI.create(url))
+                .header("Content-Type", "application/json")
+                .POST(HttpRequest.BodyPublishers.ofString(toJson(body), StandardCharsets.UTF_8)));
+    }
+
     public List<SearchHit> search(List<Float> vector, int topK) {
         Map<String, Object> body = new LinkedHashMap<>();
         body.put("vector", vector);

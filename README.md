@@ -10,6 +10,7 @@
 CareerTuner/
  ├─ backend/    Spring Boot 4 + MyBatis + MySQL  (REST API · :8080)
  ├─ frontend/   React 18 + Vite + TypeScript      (사용자/관리자 반응형 웹/PWA-ready · :5173)
+ ├─ ml/         자체 LLM 파인튜닝/평가 실험 산출물
  └─ docs/       기획 및 아키텍처 문서
 ```
 
@@ -73,12 +74,15 @@ Spring Boot 4.0.6 · Java 21 · MyBatis · MySQL 8 · Spring Security · springd
 - [docs/FEATURE_OWNERSHIP.md](docs/FEATURE_OWNERSHIP.md) — 기능별 프론트/백엔드/어드민 분담 구조
 - [docs/TEAM_WORK_DISTRIBUTION.md](docs/TEAM_WORK_DISTRIBUTION.md) — 6명 수직분담/담당 AI 기능/주요 DB
 - [docs/planning/기획.md](docs/planning/기획.md) — 제품 목표/기능 범위/출시 우선순위
+- [docs/planning/자체LLM_팀_도입안.md](docs/planning/자체LLM_팀_도입안.md) — 팀 전체 자체 LLM 도입 근거/결정표/일정
+- [docs/planning/담당별_자체LLM_운영안.md](docs/planning/담당별_자체LLM_운영안.md) — A~F 담당별 자체 모델 운영/검증/fallback/산출물 기준
 - [docs/planning/디자인 분석.md](docs/planning/디자인%20분석.md) — UX/UI 설계 원칙
 - [docs/planning/모바일 고려.md](docs/planning/모바일%20고려.md) — 반응형 웹/PWA/Capacitor 전략
 - [docs/planning/추천 구조.md](docs/planning/추천%20구조.md) — 개발 환경과 모노레포 가이드
 - [docs/RELEASE.md](docs/RELEASE.md) — 데모·릴리즈 가이드 (웹 데모/APK 태그 릴리즈/iOS)
 - [frontend/MOBILE_BUILD.md](frontend/MOBILE_BUILD.md) — 모바일 앱 빌드 (PWA/Android/iOS, 서명 분기)
 - [backend/README.md](backend/README.md) · [frontend/README.md](frontend/README.md)
+- `docs/storyboard/` — C 영역 UI/UX 스토리보드(별도 repo [CareerTunerDocs](https://github.com/notetester/CareerTunerDocs) · **git 서브모듈** · PPTX/PDF 등 산출물). 일반 개발엔 불필요하며 메인 클론 시 빈 폴더. 받기: `git submodule update --init docs/storyboard` ([AGENTS.md](AGENTS.md) 참고)
 
 문서별 책임 범위와 충돌 처리 규칙은 [AGENTS.md](AGENTS.md)의 `문서 책임과 충돌 처리`를 따른다.
 

@@ -13,12 +13,19 @@
     "gen:icons": "node scripts/generate-icons.mjs",
     "mobile:sync": "vite build --mode mock && cap sync android",
     "mobile:apk": "cd android && gradlew assembleDebug",
-    "ios:sync": "vite build --mode mock && cap sync ios"
+    "ios:sync": "vite build --mode mock && cap sync ios",
+    "demo:apk": "node scripts/build-demo-apk.mjs"
   },
   "dependencies": {
     "@capacitor/android": "^8.4.0",
+    "@capacitor/app": "^8.1.0",
     "@capacitor/core": "^8.4.0",
+    "@capacitor/haptics": "^8.0.2",
     "@capacitor/ios": "^8.4.0",
+    "@capacitor/keyboard": "^8.0.5",
+    "@capacitor/push-notifications": "^8.1.1",
+    "@capacitor/splash-screen": "^8.0.1",
+    "@capacitor/status-bar": "^8.0.2",
     "@emotion/react": "11.14.0",
     "@emotion/styled": "11.14.1",
     "@heygen/liveavatar-web-sdk": "^0.0.18",

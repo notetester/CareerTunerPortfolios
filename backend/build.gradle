@@ -35,6 +35,13 @@ dependencies {
     // Email (verification / password reset via SMTP)
     implementation 'org.springframework.boot:spring-boot-starter-mail'
 
+    // Web Push (VAPID) — 브라우저/PWA 푸시 발송. BouncyCastle 은 암호화 provider 로 명시 추가.
+    implementation 'nl.martijndwars:web-push:5.1.1'
+    implementation 'org.bouncycastle:bcprov-jdk15on:1.70'
+
+    // 네이티브 푸시(FCM/APNs via Firebase). 서비스계정 미설정 시 빈 미생성 → 로깅 폴백(무해).
+    implementation 'com.google.firebase:firebase-admin:9.4.3'
+
     // JWT (access / refresh tokens)
     implementation 'io.jsonwebtoken:jjwt-api:0.12.6'
     runtimeOnly 'io.jsonwebtoken:jjwt-impl:0.12.6'

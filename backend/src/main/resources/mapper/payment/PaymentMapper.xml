@@ -1,0 +1,61 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.careertuner.payment.mapper.PaymentMapper">
+
+    <!-- 결제 준비 단계에서 서버가 확정한 금액과 지급 크레딧을 스냅샷으로 저장한다. -->
+    <insert id="insertPayment" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO payment
+            (user_id, provider, product_type, product_code, order_id, payment_key, amount, plan, credit_amount,
+             policy_snapshot_json, status)
+        VALUES
+            (#{userId}, #{provider}, #{productType}, #{productCode}, #{orderId}, #{paymentKey}, #{amount}, #{plan},
+             #{creditAmount}, #{policySnapshotJson}, #{status})
+    </insert>
+
+    <!-- Toss 성공 리다이렉트 이후 승인 검증에 사용할 결제 건을 조회한다. -->
+    <select id="findByOrderId" resultType="com.careertuner.payment.domain.Payment">
+        SELECT id,
+               user_id,
+               provider,
+               product_type,
+               product_code,
+               order_id,
+               payment_key,
+               amount,
+               plan,
+               credit_amount,
+               policy_snapshot_json,
+               status,
+               paid_at,
+               created_at
+          FROM payment
+         WHERE order_id = #{orderId}
+    </select>
+
+    <!-- paymentKey는 Toss 승인 완료 결제의 고유 키이므로 중복 저장을 막는다. -->
+    <select id="existsByPaymentKey" resultType="boolean">
+        SELECT EXISTS (
+            SELECT 1
+              FROM payment
+             WHERE payment_key = #{paymentKey}
+        )
+    </select>
+
+    <!-- READY 상태에서만 PAID로 바꿔 새로고침이나 중복 클릭에 의한 재충전을 막는다. -->
+    <update id="markPaidIfReady">
+        UPDATE payment
+           SET payment_key = #{paymentKey},
+               status = 'PAID',
+               paid_at = CURRENT_TIMESTAMP
+         WHERE order_id = #{orderId}
+           AND status = 'READY'
+    </update>
+
+    <!-- 충전 완료 응답에 사용할 최신 잔액을 조회한다. -->
+    <select id="findUserCredit" resultType="int">
+        SELECT credit
+          FROM users
+         WHERE id = #{userId}
+    </select>
+</mapper>

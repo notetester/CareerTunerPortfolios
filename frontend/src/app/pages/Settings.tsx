@@ -1,14 +1,17 @@
 import { useEffect, useState } from "react";
-import { useSearchParams } from "react-router";
-import { Bell, Database, Lock, Mail, RefreshCw, Save, Shield, Smartphone, UserCog } from "lucide-react";
+import { useNavigate, useSearchParams } from "react-router";
+import { Database, Lock, Mail, RefreshCw, Save, Shield, UserCog } from "lucide-react";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
 import { Checkbox } from "../components/ui/checkbox";
 import { Input } from "../components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../components/ui/tabs";
+import { findConsentTerm, type ConsentTerm } from "../auth/consentTerms";
 import { getMyConsents, revokeAiConsent, saveMyConsents, type ConsentStatus } from "../auth/consentApi";
 import { useAuth } from "../auth/AuthContext";
+import { NotificationSettings } from "@/features/notification/components/NotificationSettings";
+import { AppLockSettings } from "../components/AppLockSettings";
 
 const tabs = ["account", "privacy", "ai-consent", "notifications"] as const;
 type SettingsTab = (typeof tabs)[number];
@@ -17,7 +20,8 @@ export function SettingsPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const requestedTab = searchParams.get("tab") ?? "account";
   const activeTab: SettingsTab = tabs.includes(requestedTab as SettingsTab) ? (requestedTab as SettingsTab) : "account";
-  const { user } = useAuth();
+  const { user, logout, logoutAll } = useAuth();
+  const navigate = useNavigate();
 
   const [consent, setConsent] = useState<ConsentStatus | null>(null);
   const [terms, setTerms] = useState(true);
@@ -110,7 +114,7 @@ export function SettingsPage() {
         {message && <div className="rounded-lg border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-700">{message}</div>}
 
         <Tabs value={activeTab} onValueChange={(value) => setSearchParams({ tab: value })}>
-          <TabsList className="h-auto w-full justify-start overflow-x-auto border border-slate-200 bg-white p-1">
+          <TabsList className="h-auto w-full justify-start overflow-x-auto border border-slate-200 bg-card p-1">
             <TabsTrigger value="account">계정 설정</TabsTrigger>
             <TabsTrigger value="privacy">개인정보 관리</TabsTrigger>
             <TabsTrigger value="ai-consent">AI 데이터 동의</TabsTrigger>
@@ -118,7 +122,7 @@ export function SettingsPage() {
           </TabsList>
 
           <TabsContent value="account" className="mt-5 space-y-4">
-            <Card className="border border-slate-200 bg-white">
+            <Card className="border border-slate-200 bg-card">
               <CardHeader>
                 <CardTitle className="flex items-center gap-2 text-base">
                   <Mail className="size-4 text-blue-600" />
@@ -132,22 +136,41 @@ export function SettingsPage() {
                 <Input value={user?.plan ?? ""} readOnly />
               </CardContent>
             </Card>
-            <Card className="border border-slate-200 bg-white">
+            <Card className="border border-slate-200 bg-card">
               <CardHeader>
                 <CardTitle className="flex items-center gap-2 text-base">
                   <Lock className="size-4 text-slate-600" />
                   보안
                 </CardTitle>
               </CardHeader>
-              <CardContent className="space-y-3 text-sm text-slate-600">
-                <p>비밀번호 재설정은 로그인 화면의 비밀번호 찾기에서 이메일 인증 링크로 진행합니다.</p>
-                <p>로그인 실패 잠금과 로그인 감사 로그는 백엔드에서 자동 기록됩니다.</p>
+              <CardContent className="space-y-4">
+                <AppLockSettings />
+                <div className="space-y-1.5 border-t border-slate-100 pt-3 text-sm text-slate-600">
+                  <p>비밀번호 재설정은 로그인 화면의 비밀번호 찾기에서 이메일 인증 링크로 진행합니다.</p>
+                  <p>로그인 실패 잠금과 로그인 감사 로그는 백엔드에서 자동 기록됩니다.</p>
+                </div>
+                <div className="flex flex-col gap-2 sm:flex-row">
+                  <Button
+                    variant="outline"
+                    className="text-red-600 hover:bg-red-50"
+                    onClick={async () => { await logout(); navigate("/"); }}
+                  >
+                    로그아웃
+                  </Button>
+                  <Button
+                    variant="outline"
+                    className="text-red-600 hover:bg-red-50"
+                    onClick={async () => { await logoutAll(); navigate("/"); }}
+                  >
+                    모든 기기에서 로그아웃
+                  </Button>
+                </div>
               </CardContent>
             </Card>
           </TabsContent>
 
           <TabsContent value="privacy" className="mt-5 space-y-4">
-            <Card className="border border-slate-200 bg-white">
+            <Card className="border border-slate-200 bg-card">
               <CardHeader>
                 <CardTitle className="flex items-center gap-2 text-base">
                   <Shield className="size-4 text-green-600" />
@@ -155,9 +178,9 @@ export function SettingsPage() {
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-3">
-                <ConsentToggle label="서비스 이용약관" required checked={terms} onChange={setTerms} />
-                <ConsentToggle label="개인정보 처리방침" required checked={privacy} onChange={setPrivacy} />
-                <ConsentToggle label="마케팅 정보 수신" checked={marketing} onChange={setMarketing} />
+                <ConsentToggle term={findConsentTerm("TERMS")} checked={terms} onChange={setTerms} />
+                <ConsentToggle term={findConsentTerm("PRIVACY")} checked={privacy} onChange={setPrivacy} />
+                <ConsentToggle term={findConsentTerm("MARKETING")} checked={marketing} onChange={setMarketing} />
                 <Button onClick={() => void saveConsent()} disabled={saving} className="bg-blue-600 text-white hover:bg-blue-700">
                   <Save className="size-4" />
                   저장
@@ -167,7 +190,7 @@ export function SettingsPage() {
           </TabsContent>
 
           <TabsContent value="ai-consent" className="mt-5">
-            <Card className="border border-slate-200 bg-white">
+            <Card className="border border-slate-200 bg-card">
               <CardHeader>
                 <CardTitle className="flex items-center gap-2 text-base">
                   <Database className="size-4 text-purple-600" />
@@ -175,7 +198,7 @@ export function SettingsPage() {
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
-                <ConsentToggle label="프로필 요약, 기술 추출, 완성도 진단을 위한 AI 데이터 사용" checked={aiData} onChange={setAiData} />
+                <ConsentToggle term={findConsentTerm("AI_DATA")} checked={aiData} onChange={setAiData} />
                 <div className="rounded-lg border border-slate-200 bg-slate-50 p-4 text-sm leading-6 text-slate-600">
                   동의가 꺼져 있으면 프로필 저장은 가능하지만 AI 요약, 기술 추출, 완성도 진단 API는 실행되지 않습니다.
                   철회는 삭제가 아니라 감사 가능한 이력으로 남기는 방식입니다.
@@ -197,30 +220,7 @@ export function SettingsPage() {
           </TabsContent>
 
           <TabsContent value="notifications" className="mt-5">
-            <Card className="border border-slate-200 bg-white">
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2 text-base">
-                  <Bell className="size-4 text-amber-600" />
-                  알림 설정
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="grid gap-3 md:grid-cols-2">
-                {[
-                  { label: "공고 분석 완료", icon: Bell },
-                  { label: "면접 연습 리마인드", icon: Smartphone },
-                  { label: "크레딧 부족 알림", icon: Bell },
-                  { label: "결제/구독 안내", icon: Mail },
-                ].map((item) => (
-                  <div key={item.label} className="flex items-center justify-between rounded-xl border border-slate-200 bg-slate-50 p-4">
-                    <div className="flex items-center gap-2">
-                      <item.icon className="size-4 text-slate-500" />
-                      <span className="text-sm font-semibold text-slate-700">{item.label}</span>
-                    </div>
-                    <Checkbox defaultChecked />
-                  </div>
-                ))}
-              </CardContent>
-            </Card>
+            <NotificationSettings />
           </TabsContent>
         </Tabs>
       </div>
@@ -229,23 +229,38 @@ export function SettingsPage() {
 }
 
 function ConsentToggle({
-  label,
-  required = false,
+  term,
   checked,
   onChange,
 }: {
-  label: string;
-  required?: boolean;
+  term: ConsentTerm;
   checked: boolean;
   onChange(next: boolean): void;
 }) {
+  const [open, setOpen] = useState(false);
+
   return (
-    <label className="flex items-center justify-between rounded-xl border border-slate-200 p-4">
-      <div>
-        <div className="text-sm font-semibold text-slate-800">{label}</div>
-        {required && <Badge className="mt-1 bg-blue-100 text-blue-700">필수</Badge>}
-      </div>
-      <Checkbox checked={checked} onCheckedChange={(value) => onChange(value === true)} />
-    </label>
+    <div className="rounded-xl border border-slate-200 p-4">
+      <label className="flex items-center justify-between gap-3">
+        <div>
+          <div className="text-sm font-semibold text-slate-800">
+            {term.title} <span className="text-xs font-normal text-slate-400">{term.version}</span>
+          </div>
+          <div className="mt-1 flex flex-wrap items-center gap-2">
+            {term.required && <Badge className="bg-blue-100 text-blue-700">필수</Badge>}
+            <span className="text-xs text-slate-400">시행일 {term.effectiveDate}</span>
+          </div>
+        </div>
+        <Checkbox checked={checked} onCheckedChange={(value) => onChange(value === true)} />
+      </label>
+      <button type="button" className="mt-3 text-xs font-semibold text-blue-600 hover:underline" onClick={() => setOpen((value) => !value)}>
+        {open ? "약관 접기" : "약관 전문 보기"}
+      </button>
+      {open && (
+        <ul className="mt-2 space-y-1 rounded-md bg-slate-50 p-3 text-xs leading-5 text-slate-600">
+          {term.body.map((line) => <li key={line}>- {line}</li>)}
+        </ul>
+      )}
+    </div>
   );
 }

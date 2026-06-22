@@ -1,5 +1,6 @@
 package com.careertuner.community.service;
 
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -13,6 +14,7 @@ import com.careertuner.community.dto.CreateReportRequest;
 import com.careertuner.community.mapper.CommunityCommentMapper;
 import com.careertuner.community.mapper.CommunityPostMapper;
 import com.careertuner.community.mapper.ReportMapper;
+import com.careertuner.community.moderation.event.ReportClassifyRequiredEvent;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -26,6 +28,7 @@ public class ReportServiceImpl implements ReportService {
     private final ReportMapper reportMapper;
     private final CommunityPostMapper postMapper;
     private final CommunityCommentMapper commentMapper;
+    private final ApplicationEventPublisher eventPublisher;
 
     @Override
     @Transactional
@@ -51,6 +54,7 @@ public class ReportServiceImpl implements ReportService {
                 .detail(request.detail())
                 .status("PENDING")
                 .build());
+        eventPublisher.publishEvent(new ReportClassifyRequiredEvent(request.targetId()));
         log.info("게시글 신고 postId={} reporterId={}", request.targetId(), userId);
     }
 
