@@ -1,0 +1,648 @@
+package com.careertuner.applicationcase.service;
+
+import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+
+import org.springframework.stereotype.Service;
+
+import com.careertuner.applicationcase.domain.ApplicationCase;
+import com.careertuner.applicationcase.service.BJobSentenceClassifier.Classification;
+import com.careertuner.applicationcase.service.OpenAiResponsesClient.CompanyAnalysisPayload;
+import com.careertuner.applicationcase.service.OpenAiResponsesClient.JobAnalysisPayload;
+import com.careertuner.applicationcase.service.OpenAiResponsesClient.Usage;
+import com.careertuner.companyanalysis.ai.prompt.CompanyAnalysisPromptCatalog;
+import com.careertuner.jobanalysis.ai.prompt.JobAnalysisPromptCatalog;
+
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import tools.jackson.core.JacksonException;
+import tools.jackson.core.type.TypeReference;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.ObjectMapper;
+
+@Service
+@RequiredArgsConstructor
+@Slf4j
+public class BAnalysisGenerationService {
+
+    public static final String SELF_RULES_MODEL = "self-rules-v1";
+
+    private static final Pattern YEARS_PATTERN = Pattern.compile("(?i)(\\d+)\\+?\\s*(?:years|yrs|년)");
+    private static final int MAX_PROMPT_TEXT_LENGTH = 12_000;
+    private static final List<String> KNOWN_SKILLS = List.of(
+            "Java", "Spring", "Spring Boot", "MyBatis", "JPA", "SQL", "MySQL", "PostgreSQL",
+            "Redis", "Kafka", "RabbitMQ", "Docker", "Kubernetes", "AWS", "Azure", "GCP",
+            "Linux", "React", "TypeScript", "JavaScript", "Vue", "Node.js", "Python",
+            "Django", "FastAPI", "REST", "GraphQL", "Git", "CI/CD", "Jenkins", "GitHub Actions",
+            "JUnit", "Mockito", "Testing", "Monitoring", "Prometheus", "Grafana", "Elasticsearch",
+            "Security", "OAuth", "JWT", "Agile", "Scrum", "Figma");
+
+    private final BAnalysisProperties properties;
+    private final BLocalLlmClient localLlmClient;
+    private final BJobSentenceClassifier sentenceClassifier;
+    private final ObjectMapper objectMapper;
+
+    public GeneratedJobAnalysis generateJobAnalysis(ApplicationCase applicationCase, String postingText) {
+        Classification classification = sentenceClassifier.classify(postingText);
+        if (properties.getLocalLlm().isEnabled()) {
+            try {
+                String content = localLlmClient.chat(
+                        JobAnalysisPromptCatalog.SYSTEM_PROMPT,
+                        jobPrompt(applicationCase, postingText, classification),
+                        jobAnalysisSchema());
+                JobAnalysisPayload payload = parseLocalJobPayload(content, postingText);
+                return new GeneratedJobAnalysis(payload, null, null);
+            } catch (RuntimeException ex) {
+                String reason = "Local LLM job analysis failed; fallback to self-rules-v1: " + safeMessage(ex);
+                log.warn("{}", reason);
+                return new GeneratedJobAnalysis(
+                        selfRulesJobAnalysis(applicationCase, postingText, classification),
+                        reason,
+                        properties.getLocalLlm().getModel());
+            }
+        }
+        return new GeneratedJobAnalysis(selfRulesJobAnalysis(applicationCase, postingText, classification), null, null);
+    }
+
+    public GeneratedCompanyAnalysis generateCompanyAnalysis(ApplicationCase applicationCase, String postingText) {
+        Classification classification = sentenceClassifier.classify(postingText);
+        if (properties.getLocalLlm().isEnabled()) {
+            try {
+                String content = localLlmClient.chat(
+                        CompanyAnalysisPromptCatalog.SYSTEM_PROMPT,
+                        companyPrompt(applicationCase, postingText, classification),
+                        companyAnalysisSchema());
+                CompanyAnalysisPayload payload = parseLocalCompanyPayload(content, applicationCase, postingText);
+                return new GeneratedCompanyAnalysis(payload, null, null);
+            } catch (RuntimeException ex) {
+                String reason = "Local LLM company analysis failed; fallback to self-rules-v1: " + safeMessage(ex);
+                log.warn("{}", reason);
+                return new GeneratedCompanyAnalysis(
+                        selfRulesCompanyAnalysis(applicationCase, postingText, classification),
+                        reason,
+                        properties.getLocalLlm().getModel());
+            }
+        }
+        return new GeneratedCompanyAnalysis(selfRulesCompanyAnalysis(applicationCase, postingText, classification), null, null);
+    }
+
+    private JobAnalysisPayload selfRulesJobAnalysis(ApplicationCase applicationCase,
+                                                   String postingText,
+                                                   Classification classification) {
+        List<String> requiredSkills = extractRequiredSkills(postingText);
+        List<String> preferredSkills = extractPreferredSkills(postingText, requiredSkills);
+        String duties = joinClassified(classification, BJobSentenceClassifier.RESPONSIBILITY);
+        String qualifications = firstNonBlank(
+                joinClassified(classification, BJobSentenceClassifier.REQUIRED),
+                joinClassified(classification, BJobSentenceClassifier.QUALIFICATION),
+                extractSection(postingText, List.of("qualifications", "requirements", "required", "skills", "자격", "요건", "필수")));
+        String summary = "%s %s posting extracted by the self-hosted pipeline. Required signals: %s."
+                .formatted(defaultText(applicationCase.getCompanyName(), "Target company"),
+                        defaultText(applicationCase.getJobTitle(), "Target role"),
+                        joinPreview(requiredSkills));
+        return new JobAnalysisPayload(
+                employmentType(postingText),
+                experienceLevel(postingText),
+                toJson(requiredSkills),
+                toJson(preferredSkills),
+                defaultText(duties, firstSentences(postingText, 2)),
+                defaultText(qualifications, "Review the posting text for detailed qualification wording."),
+                difficulty(postingText, requiredSkills),
+                summary,
+                toJson(evidence(requiredSkills, postingText)),
+                toJson(ambiguousConditions(postingText)),
+                usage(SELF_RULES_MODEL, postingText.length(), summary.length() + estimateLength(requiredSkills) + estimateLength(preferredSkills)));
+    }
+
+    private CompanyAnalysisPayload selfRulesCompanyAnalysis(ApplicationCase applicationCase,
+                                                           String postingText,
+                                                           Classification classification) {
+        String companyName = defaultText(applicationCase.getCompanyName(), "Target company");
+        String companyInfo = joinClassified(classification, BJobSentenceClassifier.COMPANY_INFO);
+        String summary = companyInfo.isBlank()
+                ? "%s is represented from the uploaded job posting only. No external company API or OpenAI fallback was used."
+                        .formatted(companyName)
+                : "%s information was summarized from the uploaded job posting only: %s"
+                        .formatted(companyName, truncate(companyInfo, 260));
+        String interviewPoints = "Prepare to explain why this role matches your experience, how you handle the listed responsibilities, "
+                + "and which evidence supports the required skills: " + joinPreview(extractRequiredSkills(postingText)) + ".";
+        return new CompanyAnalysisPayload(
+                summary,
+                "Not externally researched in the default pipeline. Validate latest company news during user review.",
+                industry(postingText),
+                toJson(List.of()),
+                interviewPoints,
+                toJson(List.of(Map.of(
+                        "type", "JOB_POSTING",
+                        "label", "Uploaded job posting",
+                        "model", SELF_RULES_MODEL))),
+                toJson(verifiedFacts(applicationCase, postingText)),
+                toJson(List.of(Map.of(
+                        "inference", "Interview preparation should focus on job-posting responsibilities and skill evidence.",
+                        "basis", "Derived from extracted posting sections by local rules."))),
+                usage(SELF_RULES_MODEL, postingText.length(), summary.length() + interviewPoints.length()));
+    }
+
+    private JobAnalysisPayload parseLocalJobPayload(String content, String postingText) {
+        JsonNode root = parseObject(content);
+        JobAnalysisPayload payload = new JobAnalysisPayload(
+                text(root, "employmentType", employmentType(postingText)),
+                text(root, "experienceLevel", experienceLevel(postingText)),
+                arrayJson(root, "requiredSkills"),
+                arrayJson(root, "preferredSkills"),
+                requiredText(root, "duties"),
+                requiredText(root, "qualifications"),
+                normalizeDifficulty(text(root, "difficulty", "NORMAL")),
+                requiredText(root, "summary"),
+                objectArrayJson(root, "evidence", "field", "quote"),
+                objectArrayJson(root, "ambiguousConditions", "condition", "assumption"),
+                usage(properties.getLocalLlm().getModel(), postingText.length(), content.length()));
+        validateJobPayload(payload);
+        return payload;
+    }
+
+    private CompanyAnalysisPayload parseLocalCompanyPayload(String content,
+                                                           ApplicationCase applicationCase,
+                                                           String postingText) {
+        JsonNode root = parseObject(content);
+        CompanyAnalysisPayload payload = new CompanyAnalysisPayload(
+                requiredText(root, "companySummary"),
+                text(root, "recentIssues", "No external research was performed. Confirm recent issues during review."),
+                text(root, "industry", industry(postingText)),
+                arrayJson(root, "competitors"),
+                requiredText(root, "interviewPoints"),
+                objectArrayJson(root, "sources", "type", "label"),
+                objectArrayJson(root, "verifiedFacts", "fact", "source"),
+                objectArrayJson(root, "aiInferences", "inference", "basis"),
+                usage(properties.getLocalLlm().getModel(), postingText.length(), content.length()));
+        validateCompanyPayload(payload, applicationCase);
+        return payload;
+    }
+
+    private void validateJobPayload(JobAnalysisPayload payload) {
+        if (parseList(payload.requiredSkills()).isEmpty()) {
+            throw new IllegalStateException("Local LLM job analysis has no requiredSkills.");
+        }
+        if (isBlank(payload.summary()) || payload.summary().length() < 20) {
+            throw new IllegalStateException("Local LLM job analysis summary is too short.");
+        }
+        if (isBlank(payload.duties()) || isBlank(payload.qualifications())) {
+            throw new IllegalStateException("Local LLM job analysis is missing duties or qualifications.");
+        }
+    }
+
+    private void validateCompanyPayload(CompanyAnalysisPayload payload, ApplicationCase applicationCase) {
+        if (isBlank(payload.companySummary()) || payload.companySummary().length() < 20) {
+            throw new IllegalStateException("Local LLM company analysis summary is too short.");
+        }
+        if (isBlank(payload.interviewPoints())) {
+            throw new IllegalStateException("Local LLM company analysis is missing interviewPoints.");
+        }
+        if (!hasArrayItems(payload.verifiedFacts()) && isBlank(applicationCase.getCompanyName())) {
+            throw new IllegalStateException("Local LLM company analysis has no verifiable company fact.");
+        }
+    }
+
+    private String jobPrompt(ApplicationCase applicationCase, String postingText, Classification classification) {
+        return """
+                회사명: %s
+                직무명: %s
+
+                문장 분류 신호(JSON):
+                %s
+
+                채용공고 원문:
+                %s
+                """.formatted(
+                defaultText(applicationCase.getCompanyName(), "unknown"),
+                defaultText(applicationCase.getJobTitle(), "unknown"),
+                truncate(toJson(classification.asMap()), 4_000),
+                truncate(postingText, MAX_PROMPT_TEXT_LENGTH));
+    }
+
+    private String companyPrompt(ApplicationCase applicationCase, String postingText, Classification classification) {
+        return """
+                회사명: %s
+                직무명: %s
+
+                COMPANY_INFO 분류 문장:
+                %s
+
+                채용공고 원문:
+                %s
+                """.formatted(
+                defaultText(applicationCase.getCompanyName(), "unknown"),
+                defaultText(applicationCase.getJobTitle(), "unknown"),
+                String.join("\n", classification.textsByLabel(BJobSentenceClassifier.COMPANY_INFO)),
+                truncate(postingText, MAX_PROMPT_TEXT_LENGTH));
+    }
+
+    private Map<String, Object> jobAnalysisSchema() {
+        Map<String, Object> properties = new LinkedHashMap<>();
+        properties.put("employmentType", stringSchema());
+        properties.put("experienceLevel", stringSchema());
+        properties.put("requiredSkills", stringArraySchema());
+        properties.put("preferredSkills", stringArraySchema());
+        properties.put("duties", stringSchema());
+        properties.put("qualifications", stringSchema());
+        properties.put("difficulty", Map.of("type", "string", "enum", List.of("EASY", "NORMAL", "HARD")));
+        properties.put("summary", stringSchema());
+        properties.put("evidence", objectArraySchema(Map.of("field", stringSchema(), "quote", stringSchema()), List.of("field", "quote")));
+        properties.put("ambiguousConditions", objectArraySchema(Map.of("condition", stringSchema(), "assumption", stringSchema()), List.of("condition", "assumption")));
+        return objectSchema(properties, List.of(
+                "employmentType", "experienceLevel", "requiredSkills", "preferredSkills",
+                "duties", "qualifications", "difficulty", "summary", "evidence", "ambiguousConditions"));
+    }
+
+    private Map<String, Object> companyAnalysisSchema() {
+        Map<String, Object> properties = new LinkedHashMap<>();
+        properties.put("companySummary", stringSchema());
+        properties.put("recentIssues", stringSchema());
+        properties.put("industry", stringSchema());
+        properties.put("competitors", stringArraySchema());
+        properties.put("interviewPoints", stringSchema());
+        properties.put("sources", objectArraySchema(Map.of("type", stringSchema(), "label", stringSchema()), List.of("type", "label")));
+        properties.put("verifiedFacts", objectArraySchema(Map.of("fact", stringSchema(), "source", stringSchema()), List.of("fact", "source")));
+        properties.put("aiInferences", objectArraySchema(Map.of("inference", stringSchema(), "basis", stringSchema()), List.of("inference", "basis")));
+        return objectSchema(properties, List.of(
+                "companySummary", "recentIssues", "industry", "competitors", "interviewPoints",
+                "sources", "verifiedFacts", "aiInferences"));
+    }
+
+    private Map<String, Object> objectSchema(Map<String, Object> properties, List<String> required) {
+        return Map.of(
+                "type", "object",
+                "additionalProperties", false,
+                "properties", properties,
+                "required", required);
+    }
+
+    private Map<String, Object> objectArraySchema(Map<String, Object> properties, List<String> required) {
+        return Map.of("type", "array", "items", objectSchema(properties, required));
+    }
+
+    private Map<String, Object> stringSchema() {
+        return Map.of("type", "string");
+    }
+
+    private Map<String, Object> stringArraySchema() {
+        return Map.of("type", "array", "items", stringSchema());
+    }
+
+    private List<String> extractRequiredSkills(String text) {
+        LinkedHashSet<String> found = new LinkedHashSet<>();
+        String lower = text.toLowerCase(Locale.ROOT);
+        for (String skill : KNOWN_SKILLS) {
+            if (lower.contains(skill.toLowerCase(Locale.ROOT))) {
+                found.add(skill);
+            }
+        }
+        if (found.isEmpty()) {
+            found.add("Job posting analysis");
+        }
+        return found.stream().limit(10).toList();
+    }
+
+    private List<String> extractPreferredSkills(String text, List<String> requiredSkills) {
+        String preferredText = extractSection(text, List.of("preferred", "nice to have", "plus", "우대"));
+        LinkedHashSet<String> found = new LinkedHashSet<>();
+        String lower = preferredText.toLowerCase(Locale.ROOT);
+        for (String skill : KNOWN_SKILLS) {
+            if (lower.contains(skill.toLowerCase(Locale.ROOT)) && !containsIgnoreCase(requiredSkills, skill)) {
+                found.add(skill);
+            }
+        }
+        return found.stream().limit(6).toList();
+    }
+
+    private String extractSection(String text, List<String> markers) {
+        if (isBlank(text)) {
+            return "";
+        }
+        List<String> lines = new ArrayList<>();
+        for (String line : text.split("\\R")) {
+            String trimmed = line.trim();
+            String lower = trimmed.toLowerCase(Locale.ROOT);
+            if (!trimmed.isEmpty() && markers.stream().anyMatch(marker -> lower.contains(marker.toLowerCase(Locale.ROOT)))) {
+                lines.add(trimmed);
+            }
+        }
+        if (lines.isEmpty()) {
+            return "";
+        }
+        return String.join("\n", lines.subList(0, Math.min(6, lines.size())));
+    }
+
+    private String employmentType(String text) {
+        String lower = text.toLowerCase(Locale.ROOT);
+        if (lower.contains("intern") || lower.contains("인턴")) {
+            return "INTERN";
+        }
+        if (lower.contains("contract") || lower.contains("계약직")) {
+            return "CONTRACT";
+        }
+        if (lower.contains("part-time") || lower.contains("part time")) {
+            return "PART_TIME";
+        }
+        return "FULL_TIME";
+    }
+
+    private String experienceLevel(String text) {
+        String lower = text.toLowerCase(Locale.ROOT);
+        Matcher matcher = YEARS_PATTERN.matcher(text);
+        if (lower.contains("senior") || lower.contains("lead") || lower.contains("시니어")
+                || (matcher.find() && Integer.parseInt(matcher.group(1)) >= 5)) {
+            return "SENIOR";
+        }
+        if (lower.contains("junior") || lower.contains("entry") || lower.contains("new grad")
+                || lower.contains("신입") || lower.contains("주니어")) {
+            return "JUNIOR";
+        }
+        return "MID";
+    }
+
+    private String difficulty(String text, List<String> requiredSkills) {
+        String level = experienceLevel(text);
+        if ("SENIOR".equals(level) || requiredSkills.size() >= 8) {
+            return "HARD";
+        }
+        if ("JUNIOR".equals(level) && requiredSkills.size() <= 4) {
+            return "EASY";
+        }
+        return "NORMAL";
+    }
+
+    private String industry(String text) {
+        String lower = text.toLowerCase(Locale.ROOT);
+        if (lower.contains("fintech") || lower.contains("payment") || lower.contains("bank") || lower.contains("금융")) {
+            return "FINTECH";
+        }
+        if (lower.contains("commerce") || lower.contains("retail") || lower.contains("marketplace") || lower.contains("커머스")) {
+            return "COMMERCE";
+        }
+        if (lower.contains("health") || lower.contains("medical") || lower.contains("헬스케어")) {
+            return "HEALTHCARE";
+        }
+        if (lower.contains("education") || lower.contains("learning") || lower.contains("교육")) {
+            return "EDTECH";
+        }
+        return "TECH";
+    }
+
+    private List<Map<String, String>> evidence(List<String> requiredSkills, String postingText) {
+        List<Map<String, String>> rows = new ArrayList<>();
+        for (String skill : requiredSkills.stream().limit(5).toList()) {
+            rows.add(Map.of(
+                    "field", "requiredSkills",
+                    "quote", quoteFor(skill, postingText)));
+        }
+        return rows;
+    }
+
+    private List<Map<String, String>> verifiedFacts(ApplicationCase applicationCase, String postingText) {
+        List<Map<String, String>> rows = new ArrayList<>();
+        rows.add(Map.of(
+                "fact", "Job title: " + defaultText(applicationCase.getJobTitle(), "unknown"),
+                "source", "application_case"));
+        rows.add(Map.of(
+                "fact", "Company: " + defaultText(applicationCase.getCompanyName(), "unknown"),
+                "source", "application_case"));
+        rows.add(Map.of(
+                "fact", "Posting text was extracted and quality-gated before analysis.",
+                "source", quoteFor(defaultText(applicationCase.getJobTitle(), ""), postingText)));
+        return rows;
+    }
+
+    private List<Map<String, String>> ambiguousConditions(String text) {
+        List<Map<String, String>> rows = new ArrayList<>();
+        if (!text.toLowerCase(Locale.ROOT).contains("salary") && !text.contains("연봉")) {
+            rows.add(Map.of("condition", "salary", "assumption", "not specified in posting"));
+        }
+        if (!text.toLowerCase(Locale.ROOT).contains("remote") && !text.contains("재택")) {
+            rows.add(Map.of("condition", "work location", "assumption", "confirm during interview"));
+        }
+        return rows;
+    }
+
+    private String quoteFor(String target, String text) {
+        if (isBlank(target) || isBlank(text)) {
+            return firstSentences(text, 1);
+        }
+        String lowerTarget = target.toLowerCase(Locale.ROOT);
+        for (String line : text.split("\\R")) {
+            String trimmed = line.trim();
+            if (trimmed.toLowerCase(Locale.ROOT).contains(lowerTarget)) {
+                return truncate(trimmed, 240);
+            }
+        }
+        return firstSentences(text, 1);
+    }
+
+    private String joinClassified(Classification classification, String label) {
+        return String.join("\n", classification.textsByLabel(label).stream().limit(8).toList());
+    }
+
+    private JsonNode parseObject(String content) {
+        try {
+            JsonNode root = objectMapper.readTree(content);
+            if (!root.isObject()) {
+                throw new IllegalStateException("Local LLM response is not a JSON object.");
+            }
+            return root;
+        } catch (JacksonException ex) {
+            throw new IllegalStateException("Local LLM response JSON cannot be parsed.", ex);
+        }
+    }
+
+    private String requiredText(JsonNode root, String field) {
+        String value = text(root, field, "");
+        if (isBlank(value)) {
+            throw new IllegalStateException("Local LLM response is missing " + field + ".");
+        }
+        return value;
+    }
+
+    private String text(JsonNode root, String field, String fallback) {
+        JsonNode value = root.path(field);
+        if (!value.isString()) {
+            return fallback;
+        }
+        return value.asText().trim();
+    }
+
+    private String arrayJson(JsonNode root, String field) {
+        JsonNode value = root.path(field);
+        if (!value.isArray()) {
+            throw new IllegalStateException("Local LLM response field is not an array: " + field);
+        }
+        try {
+            return objectMapper.writeValueAsString(value);
+        } catch (JacksonException ex) {
+            throw new IllegalStateException("Local LLM response array cannot be serialized: " + field, ex);
+        }
+    }
+
+    private String objectArrayJson(JsonNode root, String field, String... requiredKeys) {
+        JsonNode value = root.path(field);
+        if (!value.isArray()) {
+            throw new IllegalStateException("Local LLM response field is not an array: " + field);
+        }
+        for (JsonNode item : value) {
+            if (!item.isObject()) {
+                throw new IllegalStateException("Local LLM response array item is not an object: " + field);
+            }
+            for (String key : requiredKeys) {
+                if (!item.path(key).isString()) {
+                    throw new IllegalStateException("Local LLM response object is missing " + field + "." + key);
+                }
+            }
+        }
+        try {
+            return objectMapper.writeValueAsString(value);
+        } catch (JacksonException ex) {
+            throw new IllegalStateException("Local LLM response object array cannot be serialized: " + field, ex);
+        }
+    }
+
+    private List<String> parseList(String json) {
+        if (isBlank(json)) {
+            return List.of();
+        }
+        try {
+            List<String> values = objectMapper.readValue(json, new TypeReference<List<String>>() {
+            });
+            return values == null ? List.of() : values.stream()
+                    .filter(value -> !isBlank(value))
+                    .map(String::trim)
+                    .toList();
+        } catch (JacksonException ex) {
+            return List.of();
+        }
+    }
+
+    private boolean hasArrayItems(String json) {
+        if (isBlank(json)) {
+            return false;
+        }
+        try {
+            JsonNode root = objectMapper.readTree(json);
+            return root.isArray() && !root.isEmpty();
+        } catch (JacksonException ex) {
+            return false;
+        }
+    }
+
+    private String toJson(Object value) {
+        try {
+            return objectMapper.writeValueAsString(value == null ? List.of() : value);
+        } catch (JacksonException ex) {
+            return "[]";
+        }
+    }
+
+    private Usage usage(String model, int inputSize, int outputSize) {
+        int inputTokens = estimateTokens(inputSize);
+        int outputTokens = estimateTokens(outputSize);
+        return new Usage(model, inputTokens, outputTokens, inputTokens + outputTokens);
+    }
+
+    private String firstSentences(String text, int maxSentences) {
+        if (isBlank(text)) {
+            return "";
+        }
+        String compact = text.trim().replaceAll("\\s+", " ");
+        String[] parts = compact.split("(?<=[.!?])\\s+");
+        List<String> selected = new ArrayList<>();
+        for (String part : parts) {
+            if (!part.isBlank()) {
+                selected.add(part.trim());
+            }
+            if (selected.size() >= maxSentences) {
+                break;
+            }
+        }
+        String result = selected.isEmpty() ? compact : String.join(" ", selected);
+        return truncate(result, 500);
+    }
+
+    private String joinPreview(List<String> values) {
+        if (values == null || values.isEmpty()) {
+            return "none";
+        }
+        return String.join(", ", values.subList(0, Math.min(5, values.size())));
+    }
+
+    private int estimateLength(List<String> values) {
+        return values == null ? 0 : values.stream().mapToInt(value -> value == null ? 0 : value.length()).sum();
+    }
+
+    private int estimateTokens(int chars) {
+        return Math.max(0, (int) Math.ceil(Math.max(0, chars) / 4.0));
+    }
+
+    private String normalizeDifficulty(String value) {
+        return switch (value) {
+            case "EASY", "NORMAL", "HARD" -> value;
+            default -> "NORMAL";
+        };
+    }
+
+    private static boolean containsIgnoreCase(List<String> values, String target) {
+        return values.stream().anyMatch(value -> value.equalsIgnoreCase(target));
+    }
+
+    private static String firstNonBlank(String... values) {
+        for (String value : values) {
+            if (!isBlank(value)) {
+                return value.trim();
+            }
+        }
+        return "";
+    }
+
+    private static String defaultText(String value, String fallback) {
+        return isBlank(value) ? fallback : value.trim();
+    }
+
+    private static String safeMessage(Throwable ex) {
+        return isBlank(ex.getMessage()) ? ex.getClass().getSimpleName() : ex.getMessage();
+    }
+
+    private static String truncate(String value, int maxLength) {
+        if (value == null || value.length() <= maxLength) {
+            return value;
+        }
+        return value.substring(0, maxLength);
+    }
+
+    private static boolean isBlank(String value) {
+        return value == null || value.isBlank();
+    }
+
+    public record GeneratedJobAnalysis(
+            JobAnalysisPayload payload,
+            String fallbackReason,
+            String fallbackAttemptedModel
+    ) {
+        public boolean fellBack() {
+            return fallbackReason != null;
+        }
+    }
+
+    public record GeneratedCompanyAnalysis(
+            CompanyAnalysisPayload payload,
+            String fallbackReason,
+            String fallbackAttemptedModel
+    ) {
+        public boolean fellBack() {
+            return fallbackReason != null;
+        }
+    }
+}

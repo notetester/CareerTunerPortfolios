@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
 
 import org.junit.jupiter.api.Test;
 
@@ -106,5 +107,51 @@ class ApplicationCaseExtractionMapperXmlTest {
         assertThat(tableDefinition).contains("status IN ('QUEUED', 'RUNNING')");
         assertThat(tableDefinition)
                 .contains("UNIQUE KEY uk_case_extraction_active (application_case_id, active_status_marker)");
+    }
+
+    @Test
+    void schemaAndPatchDefineExtractionQualityGateColumns() throws Exception {
+        String schema = Files.readString(Path.of("src/main/resources/db/schema.sql"));
+        String patch = Files.readString(Path.of(
+                "src/main/resources/db/patches/20260617_b_application_case_extraction_quality_gate.sql"));
+        int tableStart = schema.indexOf("CREATE TABLE IF NOT EXISTS application_case_extraction");
+        assertThat(tableStart).isGreaterThanOrEqualTo(0);
+        String tableDefinition = schema.substring(tableStart, schema.indexOf(") ENGINE", tableStart));
+
+        for (String column : List.of(
+                "extraction_strategy",
+                "quality_score",
+                "quality_status",
+                "quality_report_json",
+                "model_versions_json",
+                "fallback_eligible",
+                "fallback_reason",
+                "reviewed_at")) {
+            assertThat(tableDefinition).contains(column);
+            assertThat(patch).contains(column);
+        }
+        assertThat(tableDefinition).contains("chk_case_extraction_quality_status");
+        assertThat(tableDefinition).contains("'PASS', 'REVIEW_REQUIRED', 'FAILED'");
+        assertThat(patch).contains("chk_case_extraction_quality_status");
+        assertThat(patch).contains("''PASS'', ''REVIEW_REQUIRED'', ''FAILED''");
+    }
+
+    @Test
+    void schemaAndPatchDefineRuntimeAiSettingTable() throws Exception {
+        String schema = Files.readString(Path.of("src/main/resources/db/schema.sql"));
+        String patch = Files.readString(Path.of(
+                "src/main/resources/db/patches/20260617_c_ai_runtime_setting.sql"));
+        int tableStart = schema.indexOf("CREATE TABLE IF NOT EXISTS ai_runtime_setting");
+        assertThat(tableStart).isGreaterThanOrEqualTo(0);
+        String tableDefinition = schema.substring(tableStart, schema.indexOf(") ENGINE", tableStart));
+
+        for (String column : List.of("setting_key", "value_json", "updated_by", "created_at", "updated_at")) {
+            assertThat(tableDefinition).contains(column);
+            assertThat(patch).contains(column);
+        }
+        assertThat(tableDefinition).contains("PRIMARY KEY (setting_key)");
+        assertThat(tableDefinition).contains("fk_ai_runtime_setting_updated_by");
+        assertThat(patch).contains("PRIMARY KEY (setting_key)");
+        assertThat(patch).contains("fk_ai_runtime_setting_updated_by");
     }
 }

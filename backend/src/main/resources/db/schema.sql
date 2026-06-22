@@ -219,6 +219,14 @@ CREATE TABLE IF NOT EXISTS application_case_extraction (
         CASE WHEN status IN ('QUEUED', 'RUNNING') THEN 1 ELSE NULL END
     ) STORED,
     error_message       VARCHAR(1000) NULL,
+    extraction_strategy VARCHAR(40) NULL,
+    quality_score       INT NULL,
+    quality_status      VARCHAR(30) NULL,
+    quality_report_json JSON NULL,
+    model_versions_json JSON NULL,
+    fallback_eligible   TINYINT(1) NOT NULL DEFAULT 0,
+    fallback_reason     VARCHAR(255) NULL,
+    reviewed_at         DATETIME NULL,
     started_at          DATETIME NULL,
     finished_at         DATETIME NULL,
     created_at          DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -229,6 +237,7 @@ CREATE TABLE IF NOT EXISTS application_case_extraction (
     KEY idx_case_extraction_job_posting (job_posting_id),
     UNIQUE KEY uk_case_extraction_active (application_case_id, active_status_marker),
     CONSTRAINT chk_case_extraction_status CHECK (status IN ('QUEUED', 'RUNNING', 'SUCCEEDED', 'FAILED')),
+    CONSTRAINT chk_case_extraction_quality_status CHECK (quality_status IS NULL OR quality_status IN ('PASS', 'REVIEW_REQUIRED', 'FAILED')),
     CONSTRAINT fk_case_extraction_case FOREIGN KEY (application_case_id) REFERENCES application_case (id) ON DELETE CASCADE,
     CONSTRAINT fk_case_extraction_job_posting FOREIGN KEY (job_posting_id) REFERENCES job_posting (id) ON DELETE SET NULL,
     CONSTRAINT fk_case_extraction_user FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
@@ -646,6 +655,16 @@ CREATE TABLE IF NOT EXISTS ai_usage_log (
     KEY idx_ai_usage_feature (feature_type),
     CONSTRAINT fk_ai_usage_user FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE,
     CONSTRAINT fk_ai_usage_case FOREIGN KEY (application_case_id) REFERENCES application_case (id) ON DELETE SET NULL
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci;
+
+CREATE TABLE IF NOT EXISTS ai_runtime_setting (
+    setting_key VARCHAR(80) NOT NULL,
+    value_json  JSON NOT NULL,
+    updated_by  BIGINT NULL,
+    created_at  DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at  DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    PRIMARY KEY (setting_key),
+    CONSTRAINT fk_ai_runtime_setting_updated_by FOREIGN KEY (updated_by) REFERENCES users (id) ON DELETE SET NULL
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci;
 
 -- 커뮤니티 테이블 변경 (06-09)

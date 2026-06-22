@@ -4,6 +4,8 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Locale;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.scheduling.annotation.Scheduled;
@@ -14,6 +16,7 @@ import com.careertuner.applicationcase.domain.ApplicationCase;
 import com.careertuner.applicationcase.domain.ApplicationCaseExtraction;
 import com.careertuner.applicationcase.mapper.ApplicationCaseExtractionMapper;
 import com.careertuner.applicationcase.mapper.ApplicationCaseMapper;
+import com.careertuner.applicationcase.service.ApplicationCaseExtractionQualityGate.QualityGateResult;
 import com.careertuner.applicationcase.service.OpenAiResponsesClient.JobPostingMetadataPayload;
 import com.careertuner.common.exception.BusinessException;
 import com.careertuner.common.exception.ErrorCode;
@@ -40,15 +43,23 @@ public class ApplicationCaseExtractionWorker {
     private static final String NOTIFICATION_TARGET_TYPE = "APPLICATION_CASE";
     private static final String SUCCESS_NOTIFICATION_TYPE = "JOB_POSTING_EXTRACTION_SUCCEEDED";
     private static final String FAILURE_NOTIFICATION_TYPE = "JOB_POSTING_EXTRACTION_FAILED";
+    private static final String REVIEW_NOTIFICATION_TYPE = "JOB_POSTING_EXTRACTION_REVIEW_REQUIRED";
     private static final String FEATURE_JOB_POSTING_METADATA = "JOB_POSTING_METADATA";
+    private static final String INVALID_WORKER_QUALITY_STATUS_REASON = "Invalid qualityStatus from Python worker.";
+    private static final Pattern ENGLISH_HIRING_PATTERN = Pattern.compile(
+            "(?im)^\\s*(.+?)\\s+is\\s+hiring\\s+(?:a|an)\\s+([^\\n.]+)");
+    private static final Pattern DEADLINE_PATTERN = Pattern.compile(
+            "(?im)(?:deadline|마감|접수)[^0-9]{0,20}(\\d{4})[-./](\\d{1,2})[-./](\\d{1,2})");
 
     private final ApplicationCaseExtractionMapper extractionMapper;
     private final ApplicationCaseMapper applicationCaseMapper;
     private final JobPostingMapper jobPostingMapper;
     private final JobPostingService jobPostingService;
+    private final ApplicationCaseExtractionQualityGate qualityGate;
     private final OpenAiResponsesClient openAiClient;
     private final AiUsageLogService aiUsageLogService;
     private final NotificationMapper notificationMapper;
+    private final ApplicationCaseAutoPipelineService autoPipelineService;
     private final TransactionTemplate transactionTemplate;
 
     @Value("${careertuner.extraction.worker.running-timeout-minutes:30}")
@@ -112,23 +123,40 @@ public class ApplicationCaseExtractionWorker {
     private ExtractionResult extractAndAnalyze(ApplicationCaseExtraction extraction) {
         JobPosting posting = requireJobPosting(extraction);
         ExtractedPosting extractedPosting = extractPostingText(extraction, posting);
-        String postingText = sourceText(extractedPosting);
-        JobPostingMetadataPayload metadata = extractJobPostingMetadata(extraction, postingText);
+        QualityGateResult quality = qualityFromExtractedPosting(extractedPosting);
+        String postingText = defaultText(extractedPosting.extractedText(), extractedPosting.originalText(), null);
+        if (quality == null) {
+            postingText = requiredText(postingText, "postingText");
+            quality = qualityGate.evaluate(extraction.getSourceType(), extractedPosting, postingText);
+        }
+        if (quality.failed()) {
+            throw new ExtractionQualityFailedException(quality, "Extracted posting text did not pass the quality gate.");
+        }
+        postingText = requiredText(postingText, "postingText");
         boolean saveExtractedPosting = shouldSaveExtractedPosting(extraction, posting, extractedPosting);
-        return new ExtractionResult(posting, extractedPosting, metadata, saveExtractedPosting);
+        if (quality.reviewRequired()) {
+            return new ExtractionResult(posting, extractedPosting, null, saveExtractedPosting, quality, true);
+        }
+        JobPostingMetadataPayload metadata = extractJobPostingMetadata(postingText);
+        return new ExtractionResult(posting, extractedPosting, metadata, saveExtractedPosting, quality, false);
     }
 
-    private JobPostingMetadataPayload extractJobPostingMetadata(ApplicationCaseExtraction extraction, String postingText) {
-        try {
-            return openAiClient.extractJobPostingMetadata(postingText);
-        } catch (RuntimeException ex) {
-            aiUsageLogService.recordFailure(
-                    extraction.getUserId(),
-                    extraction.getApplicationCaseId(),
-                    FEATURE_JOB_POSTING_METADATA,
-                    errorMessage(ex));
-            throw ex;
+    private JobPostingMetadataPayload extractJobPostingMetadata(String postingText) {
+        Matcher hiringMatcher = ENGLISH_HIRING_PATTERN.matcher(postingText);
+        String companyName = null;
+        String jobTitle = null;
+        if (hiringMatcher.find()) {
+            companyName = cleanMetadataText(hiringMatcher.group(1));
+            jobTitle = cleanMetadataText(hiringMatcher.group(2));
         }
+        companyName = defaultText(companyName, findLabeledLine(postingText, "Company", "회사", "기업명"), null);
+        jobTitle = defaultText(jobTitle, findLabeledLine(postingText, "Role", "Position", "직무", "포지션"), null);
+        return new JobPostingMetadataPayload(
+                companyName,
+                jobTitle,
+                null,
+                findDeadlineDate(postingText),
+                null);
     }
 
     private void completeSucceeded(ApplicationCaseExtraction extraction, ExtractionResult result) {
@@ -138,16 +166,41 @@ public class ApplicationCaseExtractionWorker {
             }
 
             Long completedJobPostingId = result.sourcePosting().getId();
+            Integer completedJobPostingRevision = result.sourcePosting().getRevision();
+            String completedPostingText = defaultText(
+                    result.extractedPosting().extractedText(),
+                    result.extractedPosting().originalText(),
+                    null);
             if (result.saveExtractedPosting()) {
                 JobPostingResponse savedPosting = jobPostingService.saveExtractedJobPosting(
                         extraction.getUserId(),
                         extraction.getApplicationCaseId(),
                         result.extractedPosting());
                 completedJobPostingId = savedPosting.id();
+                completedJobPostingRevision = savedPosting.revision();
+                completedPostingText = defaultText(
+                        savedPosting.extractedText(),
+                        savedPosting.originalText(),
+                        completedPostingText);
             }
 
-            if (extractionMapper.markExtractionSucceeded(extraction.getId(), completedJobPostingId) != 1) {
+            QualityGateResult quality = result.quality();
+            if (extractionMapper.markExtractionSucceeded(
+                    extraction.getId(),
+                    completedJobPostingId,
+                    quality.extractionStrategy(),
+                    quality.qualityScore(),
+                    quality.qualityStatus(),
+                    quality.qualityReportJson(),
+                    quality.modelVersionsJson(),
+                    quality.fallbackEligible(),
+                    quality.fallbackReason()) != 1) {
                 status.setRollbackOnly();
+                return null;
+            }
+
+            if (result.requiresReview()) {
+                notificationMapper.insertNotification(reviewRequiredNotification(extraction));
                 return null;
             }
 
@@ -162,6 +215,12 @@ public class ApplicationCaseExtractionWorker {
                         FEATURE_JOB_POSTING_METADATA,
                         result.metadata().usage());
             }
+            autoPipelineService.runAfterExtractionPass(
+                    extraction.getUserId(),
+                    extraction.getApplicationCaseId(),
+                    completedJobPostingId,
+                    completedJobPostingRevision,
+                    completedPostingText);
             notificationMapper.insertNotification(successNotification(extraction));
             return null;
         });
@@ -170,7 +229,17 @@ public class ApplicationCaseExtractionWorker {
     private void completeFailed(ApplicationCaseExtraction extraction, RuntimeException ex) {
         transactionTemplate.execute(status -> {
             String errorMessage = truncate(errorMessage(ex), MAX_ERROR_MESSAGE_LENGTH);
-            if (extractionMapper.markExtractionFailed(extraction.getId(), errorMessage) == 1) {
+            QualityGateResult quality = qualityResult(ex);
+            if (extractionMapper.markExtractionFailed(
+                    extraction.getId(),
+                    errorMessage,
+                    quality == null ? null : quality.extractionStrategy(),
+                    quality == null ? null : quality.qualityScore(),
+                    quality == null ? null : quality.qualityStatus(),
+                    quality == null ? null : quality.qualityReportJson(),
+                    quality == null ? null : quality.modelVersionsJson(),
+                    quality != null && quality.fallbackEligible(),
+                    quality == null ? null : quality.fallbackReason()) == 1) {
                 notificationMapper.insertNotification(failureNotification(extraction, errorMessage));
             }
             return null;
@@ -180,7 +249,16 @@ public class ApplicationCaseExtractionWorker {
     private boolean completeStaleFailed(ApplicationCaseExtraction extraction) {
         return Boolean.TRUE.equals(transactionTemplate.execute(status -> {
             String errorMessage = "Extraction job timed out after %d minutes.".formatted(Math.max(1, runningTimeoutMinutes));
-            if (extractionMapper.markExtractionFailed(extraction.getId(), errorMessage) != 1) {
+            if (extractionMapper.markExtractionFailed(
+                    extraction.getId(),
+                    errorMessage,
+                    null,
+                    null,
+                    null,
+                    null,
+                    null,
+                    false,
+                    null) != 1) {
                 return false;
             }
             notificationMapper.insertNotification(failureNotification(extraction, errorMessage));
@@ -288,6 +366,19 @@ public class ApplicationCaseExtractionWorker {
                 .build();
     }
 
+    private Notification reviewRequiredNotification(ApplicationCaseExtraction extraction) {
+        return Notification.builder()
+                .userId(extraction.getUserId())
+                .type(REVIEW_NOTIFICATION_TYPE)
+                .targetType(NOTIFICATION_TARGET_TYPE)
+                .targetId(extraction.getApplicationCaseId())
+                .title("Job posting extraction needs review.")
+                .message("Extracted posting text needs user review before automatic analysis continues.")
+                .link(overviewLink(extraction.getApplicationCaseId()))
+                .read(false)
+                .build();
+    }
+
     private static String sourceText(ExtractedPosting extractedPosting) {
         return requiredText(defaultText(extractedPosting.extractedText(), extractedPosting.originalText(), null), "postingText");
     }
@@ -323,6 +414,71 @@ public class ApplicationCaseExtractionWorker {
 
     private static LocalDate defaultDate(LocalDate primary, LocalDate fallback) {
         return primary != null ? primary : fallback;
+    }
+
+    private static String findLabeledLine(String text, String... labels) {
+        if (isBlank(text) || labels == null || labels.length == 0) {
+            return null;
+        }
+        for (String line : text.split("\\R")) {
+            for (String label : labels) {
+                String value = valueAfterLabel(line, label);
+                if (!isBlank(value)) {
+                    return cleanMetadataText(value);
+                }
+            }
+        }
+        return null;
+    }
+
+    private static String valueAfterLabel(String line, String label) {
+        if (line == null || label == null) {
+            return null;
+        }
+        String trimmed = line.trim();
+        String lower = trimmed.toLowerCase(Locale.ROOT);
+        String normalizedLabel = label.toLowerCase(Locale.ROOT);
+        if (!lower.startsWith(normalizedLabel)) {
+            return null;
+        }
+        String value = trimmed.substring(label.length()).trim();
+        if (value.startsWith(":") || value.startsWith("-") || value.startsWith("：")) {
+            value = value.substring(1).trim();
+        }
+        return value;
+    }
+
+    private static LocalDate findDeadlineDate(String text) {
+        if (isBlank(text)) {
+            return null;
+        }
+        Matcher matcher = DEADLINE_PATTERN.matcher(text);
+        if (!matcher.find()) {
+            return null;
+        }
+        try {
+            return LocalDate.of(
+                    Integer.parseInt(matcher.group(1)),
+                    Integer.parseInt(matcher.group(2)),
+                    Integer.parseInt(matcher.group(3)));
+        } catch (RuntimeException ex) {
+            return null;
+        }
+    }
+
+    private static String cleanMetadataText(String value) {
+        if (isBlank(value)) {
+            return null;
+        }
+        String cleaned = value.trim();
+        int sentenceEnd = cleaned.indexOf('.');
+        if (sentenceEnd > 0) {
+            cleaned = cleaned.substring(0, sentenceEnd).trim();
+        }
+        if (cleaned.length() > 255) {
+            cleaned = cleaned.substring(0, 255).trim();
+        }
+        return cleaned.isBlank() ? null : cleaned;
     }
 
     private static String errorMessage(Throwable ex) {
@@ -361,11 +517,71 @@ public class ApplicationCaseExtractionWorker {
         return value == null || value.trim().isEmpty();
     }
 
+    private static QualityGateResult qualityResult(RuntimeException ex) {
+        if (ex instanceof ExtractionQualityFailedException qualityException) {
+            return qualityException.quality();
+        }
+        return null;
+    }
+
+    private static QualityGateResult qualityFromExtractedPosting(ExtractedPosting extractedPosting) {
+        if (extractedPosting == null || isBlank(extractedPosting.qualityStatus())) {
+            return null;
+        }
+        String qualityStatus = normalizeQualityStatus(extractedPosting.qualityStatus());
+        if (qualityStatus == null) {
+            return new QualityGateResult(
+                    extractedPosting.extractionStrategy(),
+                    extractedPosting.qualityScore() == null ? 0 : extractedPosting.qualityScore(),
+                    ApplicationCaseExtractionQualityGate.QUALITY_FAILED,
+                    extractedPosting.qualityReportJson(),
+                    extractedPosting.modelVersionsJson(),
+                    extractedPosting.fallbackEligible(),
+                    INVALID_WORKER_QUALITY_STATUS_REASON + " value=" + extractedPosting.qualityStatus());
+        }
+        return new QualityGateResult(
+                extractedPosting.extractionStrategy(),
+                extractedPosting.qualityScore() == null ? 0 : extractedPosting.qualityScore(),
+                qualityStatus,
+                extractedPosting.qualityReportJson(),
+                extractedPosting.modelVersionsJson(),
+                extractedPosting.fallbackEligible(),
+                extractedPosting.fallbackReason());
+    }
+
+    private static String normalizeQualityStatus(String qualityStatus) {
+        if (isBlank(qualityStatus)) {
+            return null;
+        }
+        String normalized = qualityStatus.trim().toUpperCase(Locale.ROOT);
+        return switch (normalized) {
+            case ApplicationCaseExtractionQualityGate.QUALITY_PASS,
+                    ApplicationCaseExtractionQualityGate.QUALITY_REVIEW_REQUIRED,
+                    ApplicationCaseExtractionQualityGate.QUALITY_FAILED -> normalized;
+            default -> null;
+        };
+    }
+
     private record ExtractionResult(
             JobPosting sourcePosting,
             ExtractedPosting extractedPosting,
             JobPostingMetadataPayload metadata,
-            boolean saveExtractedPosting
+            boolean saveExtractedPosting,
+            QualityGateResult quality,
+            boolean requiresReview
     ) {
+    }
+
+    private static final class ExtractionQualityFailedException extends RuntimeException {
+        private final QualityGateResult quality;
+
+        private ExtractionQualityFailedException(QualityGateResult quality, String message) {
+            super(message);
+            this.quality = quality;
+        }
+
+        private QualityGateResult quality() {
+            return quality;
+        }
     }
 }

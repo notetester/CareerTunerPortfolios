@@ -20,6 +20,14 @@ public class ApplicationCaseExtraction {
     private String sourceType;
     private String status;
     private String errorMessage;
+    private String extractionStrategy;
+    private Integer qualityScore;
+    private String qualityStatus;
+    private String qualityReportJson;
+    private String modelVersionsJson;
+    private boolean fallbackEligible;
+    private String fallbackReason;
+    private LocalDateTime reviewedAt;
     private LocalDateTime startedAt;
     private LocalDateTime finishedAt;
     private LocalDateTime createdAt;

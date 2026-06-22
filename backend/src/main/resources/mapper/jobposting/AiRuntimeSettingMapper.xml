@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.careertuner.jobposting.mapper.AiRuntimeSettingMapper">
+
+    <select id="findValueJson" resultType="string">
+        SELECT value_json
+        FROM ai_runtime_setting
+        WHERE setting_key = #{settingKey}
+        LIMIT 1
+    </select>
+
+    <insert id="upsertValueJson">
+        INSERT INTO ai_runtime_setting (setting_key, value_json, updated_by)
+        VALUES (#{settingKey}, #{valueJson}, #{updatedBy})
+        ON DUPLICATE KEY UPDATE
+            value_json = VALUES(value_json),
+            updated_by = VALUES(updated_by),
+            updated_at = NOW()
+    </insert>
+</mapper>

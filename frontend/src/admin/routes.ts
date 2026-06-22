@@ -16,6 +16,7 @@ import { AdminInterviewsPage } from "./features/interviews/pages/AdminInterviews
 import { AdminJobAnalysisPage } from "./features/job-analysis/pages/AdminJobAnalysisPage";
 import { AdminPromptsPage } from "./features/prompts/pages/AdminPromptsPage";
 import AdminProfilePromptsPage from "./features/prompts/profile/pages/AdminProfilePrompts";
+import { AdminAiSettingsPage } from "./features/settings/pages/AdminAiSettingsPage";
 import AdminReports from "./features/community/pages/AdminReports";
 import AdminGuidelines from "./features/community/pages/AdminGuidelines";
 import AdminNotices from "./features/notices/pages/AdminNotices";
@@ -41,6 +42,7 @@ export const adminRoutes = [
   { path: "admin/payments", Component: AdminDashboardPage },
   { path: "admin/application-cases", Component: AdminApplicationCasesPage },
   { path: "admin/ai-usage", Component: AdminAiUsagePage },
+  { path: "admin/ai-settings", Component: AdminAiSettingsPage },
   { path: "admin/job-analysis", Component: AdminJobAnalysisPage },
   { path: "admin/company-analysis", Component: AdminCompanyAnalysisPage },
   { path: "admin/interviews", Component: AdminInterviewsPage },

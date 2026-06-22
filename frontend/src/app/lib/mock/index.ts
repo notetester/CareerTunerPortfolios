@@ -44,12 +44,39 @@ interface MockRoute {
 
 const ok = <T>(value: T): MockHandler => () => value;
 
+let demoJobPostingFallbackSetting = {
+  enabled: false,
+  allowedStages: [] as string[],
+  availableStages: ["JOB_POSTING_PDF_OCR", "JOB_POSTING_IMAGE_OCR"],
+  source: "DEFAULT",
+};
+
 const routes: MockRoute[] = [
   // ── 인증(공통 게이트) ──
   { method: "POST", pattern: /^\/auth\/login$/, handler: ok(demoTokenResponse) },
   { method: "POST", pattern: /^\/auth\/register$/, handler: ok(demoTokenResponse) },
   { method: "GET", pattern: /^\/auth\/me$/, handler: ok(demoUser) },
   { method: "POST", pattern: /^\/auth\/logout$/, handler: ok(null) },
+
+  {
+    method: "GET",
+    pattern: /^\/admin\/ai-settings\/job-posting-fallback$/,
+    handler: () => demoJobPostingFallbackSetting,
+  },
+  {
+    method: "PATCH",
+    pattern: /^\/admin\/ai-settings\/job-posting-fallback$/,
+    handler: ({ body }) => {
+      const request = body as { enabled?: boolean; allowedStages?: string[] };
+      demoJobPostingFallbackSetting = {
+        ...demoJobPostingFallbackSetting,
+        enabled: !!request?.enabled,
+        allowedStages: request?.enabled ? request.allowedStages ?? [] : [],
+        source: "DATABASE",
+      };
+      return demoJobPostingFallbackSetting;
+    },
+  },
 
   // ── C: 홈 / 대시보드 / 취업 분석 ──
   { method: "GET", pattern: /^\/home\/summary$/, handler: ok(demoHomeSummary) },

@@ -14,4 +14,12 @@ class OpenAiPropertiesTest {
 
         assertThat(properties.getTimeout()).isEqualTo(Duration.ofSeconds(300));
     }
+
+    @Test
+    void jobPostingFallbackIsDisabledByDefault() {
+        OpenAiProperties properties = new OpenAiProperties();
+
+        assertThat(properties.isJobPostingFallbackEnabled()).isFalse();
+        assertThat(properties.jobPostingFallbackAllowed("JOB_POSTING_IMAGE_OCR")).isFalse();
+    }
 }
