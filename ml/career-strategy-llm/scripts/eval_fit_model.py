@@ -46,11 +46,17 @@ FORBIDDEN_KEYS = ["fitScore", "score", "applyDecision", "decision"]
 RAW_MAX = 8000  # raw_output 저장 시 상한(폭주 방지)
 
 # ── E2 관측(reports/30): 입력에 없는 고유명사/제품코드 날조를 '측정만' 한다(reject/fallback 아님) ──
-# high:  알파벳+숫자 제품코드(CRM465/ERP900/ToolX12류)로 입력에 없음 → 신뢰도 높은 헤드라인 지표
-# review: 입력 밖 대문자 라틴 고유명사(Salesforce류) → 낮은 신뢰도, 사람 검토용(오탐 일부 가정)
-# 오탐 방지: 일반 기술명(GENERIC_TECH)·입력에 이미 있는 명칭(supported)·범주어(CATEGORY_TERMS)는 제외.
+# high:  날조된 '제품 식별자' — (a) 알파벳+숫자 제품코드(CRM465/ERP900/ToolX12류) + (b) 엔터프라이즈
+#        약어 coinage(CRMONE류). 가짜 제품은 학습추천에 있어도 날조라 '전 필드'에서 스캔. 헤드라인 지표.
+# review: 입력 밖 대문자 고유명사를 '보유'로 주장 → strengths+fitSummary 만 스캔(E1 grounding 과 동일
+#         보유 문맥). 학습추천(strategyActions/learning)의 실제 도구 추천은 정상이라 제외. 낮은 신뢰도.
+# 오탐 방지: 일반 기술명(GENERIC_TECH)·입력 명칭(supported)·범주어(CATEGORY_TERMS)·버전표기 제외.
+# ★보정 근거: 1차 관측(reports/29-?) 실측 + 적대적 검증 — review 29/29 가 학습/위험 문맥이라 보유 스코프로
+#   한정, coinage 는 {crm} 만(erp/ai/ml/db/api 는 ERPNext/Airflow/MLflow/DBeaver/Apigee 실제 제품과 충돌).
 ENTITY_TOKEN_RE = re.compile(r"[A-Za-z][A-Za-z0-9.+#_-]*")
 PRODUCT_CODE_RE = re.compile(r"^[A-Za-z]{2,}\d{2,}[A-Za-z0-9]*$")  # CRM465, ERP900, ToolX12
+VERSION_SUFFIX_RE = re.compile(r"[0-9.+#_-]+$")  # C++17→c++, Python3→python (양 티어 버전 가드)
+COINAGE_ACRONYMS = {"crm"}  # crm+코인(CRMONE). erp/ai/ml/db/api 등은 실제 제품 충돌로 제외(적대적 검증)
 GENERIC_TECH = {
     "java", "python", "spring", "springboot", "boot", "react", "reactjs", "vue", "vuejs",
     "angular", "node", "nodejs", "express", "nestjs", "django", "flask", "fastapi", "rails",
@@ -64,6 +70,13 @@ GENERIC_TECH = {
     "confluence", "slack", "notion", "figma", "excel", "powerpoint", "word", "photoshop",
     "illustrator", "sap", "quickbooks", "salesforce", "tableau", "powerbi", "junit", "mockito",
     "gradle", "maven", "npm", "webpack", "vite", "eslint",
+    # 버전 가드 베이스(언어)
+    "c", "cpp", "c++", "c#",
+    # 보정 allowlist(1차 관측에서 학습추천으로 나온 실제 도구·표준 어휘 + coinage 충돌 흡수)
+    "hubspot", "mlflow", "pytorch", "tensorflow", "minikube", "pandas", "numpy", "pyspark",
+    "actix", "rocket", "ads", "ec2", "eks", "vpc", "s3", "dockerfile", "controller", "crud",
+    "get", "set", "lru", "anova", "studio", "rustacean", "threading", "gpu", "ssg",
+    "crmnext", "erpnext",
 }
 CATEGORY_TERMS = {  # 범주/약어 — 단독으로는 고유명사 날조가 아님(제품코드면 high 로 별도 처리)
     "crm", "erp", "saas", "paas", "iaas", "api", "sdk", "ide", "cli", "gui", "ui", "ux", "db",
@@ -114,6 +127,18 @@ def collect_text(parsed):
     return "\n".join(parts)
 
 
+def collect_possession_text(parsed):
+    """'보유'를 주장하는 필드만(fitSummary+strengths) — E2 review 티어 스코프(E1 grounding 과 동일)."""
+    parts = []
+    v = parsed.get("fitSummary")
+    if isinstance(v, str):
+        parts.append(v)
+    v = parsed.get("strengths")
+    if isinstance(v, list):
+        parts += [str(x) for x in v]
+    return "\n".join(parts)
+
+
 def supported_terms(case):
     """입력(공고/프로필/매칭/부족)·expected(allowedSkills/mustMention)에서 '지원 용어' 집합 생성(소문자 라틴 토큰)."""
     inp = case.get("input") or {}
@@ -135,21 +160,54 @@ def supported_terms(case):
     return terms
 
 
-def scan_named_entities(text, supported):
-    """입력 밖 고유명사/제품코드 관측(측정 전용). high=제품코드, review=대문자 고유명사."""
+def _version_base(low):
+    """버전/숫자 접미 제거한 베이스. 'c++17'→'c++', 'python3'→'python'(양 티어 버전 가드)."""
+    return VERSION_SUFFIX_RE.sub("", low)
+
+
+def _skip_token(low, supported):
+    """일반 기술명·입력 명칭·버전표기 베이스면 관측에서 제외(양 티어 공통)."""
+    return low in supported or low in GENERIC_TECH or _version_base(low) in GENERIC_TECH
+
+
+def scan_named_entities(full_text, possession_text, supported):
+    """입력 밖 고유명사/제품 날조 관측(측정 전용).
+
+    high(전 필드): (a) 영숫자 제품코드(CRM465) + (b) 엔터프라이즈 약어 coinage(CRMONE).
+    review(보유 문맥=fitSummary+strengths): 입력 밖 대문자 고유명사를 '보유'로 주장.
+    """
     high, review = {}, {}  # 소문자키 → 원문(대소문자 보존, 중복 제거)
-    for m in ENTITY_TOKEN_RE.finditer(text or ""):
+
+    # high — 날조 제품 식별자는 학습추천에 있어도 날조이므로 전 필드 스캔
+    for m in ENTITY_TOKEN_RE.finditer(full_text or ""):
         tok = m.group(0)
         low = tok.lower()
-        if low in supported or low in GENERIC_TECH:
+        if _skip_token(low, supported):
             continue
         if PRODUCT_CODE_RE.match(tok):
             prefix = re.match(r"^[A-Za-z]+", tok).group(0).lower()
             if prefix in GENERIC_TECH:  # Java21 / Python3 등 버전 표기는 제외
                 continue
             high.setdefault(low, tok)
-        elif len(tok) >= 3 and any(c.isupper() for c in tok) and low not in CATEGORY_TERMS:
+            continue
+        # coinage: 글자만(digit 없음), 약어 접두 + 글자 2+ (CRMONE → 'crm'+'one')
+        if tok.isalpha():
+            for acr in COINAGE_ACRONYMS:
+                if low != acr and low.startswith(acr) and len(low) >= len(acr) + 2:
+                    high.setdefault(low, tok)
+                    break
+
+    # review — 보유 주장 필드만, 입력 밖 대문자 고유명사(낮은 신뢰도)
+    for m in ENTITY_TOKEN_RE.finditer(possession_text or ""):
+        tok = m.group(0)
+        low = tok.lower()
+        if _skip_token(low, supported) or low in CATEGORY_TERMS or low in high:
+            continue
+        if PRODUCT_CODE_RE.match(tok):  # 제품코드는 high 소관
+            continue
+        if len(tok) >= 3 and any(c.isupper() for c in tok):
             review.setdefault(low, tok)
+
     return {"high": sorted(high.values()), "review": sorted(review.values())}
 
 
@@ -248,8 +306,9 @@ def evaluate(case, content, error):
     if bad_skills:
         failures.append("HALLUCINATED_SKILL")
 
-    # E2 관측: 입력 밖 고유명사/제품코드(reject 아님 — success 에 영향 없음)
-    named_entities = scan_named_entities(text, supported_terms(case))
+    # E2 관측: 입력 밖 고유명사/제품 날조(reject 아님 — success 에 영향 없음)
+    # high=전 필드(text), review=보유 문맥(fitSummary+strengths)만
+    named_entities = scan_named_entities(text, collect_possession_text(parsed), supported_terms(case))
 
     return {**base, "json_ok": True, "required_ok": not missing_keys,
             "forbidden_key": bool(forbidden_hit), "cjk_leak": cjk,
