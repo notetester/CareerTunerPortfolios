@@ -103,8 +103,7 @@ class PaymentServiceImplTest {
         when(tossPaymentClient.confirm("pay-key", "order-1", 10000))
                 .thenReturn(new ConfirmedPayment("pay-key", "order-1", 10000, "DONE"));
         when(paymentMapper.markPaidIfReady("order-1", "pay-key")).thenReturn(1);
-        when(paymentMapper.increaseUserCredit(1L, 1000)).thenReturn(1);
-        when(paymentMapper.findUserCredit(1L)).thenReturn(1500);
+        when(billingService.grantCreditsAfterPayment(1L, "CREDIT_1000", 1000)).thenReturn(1500);
 
         TossPaymentConfirmResponse response = service.confirm(
                 1L,
@@ -113,7 +112,7 @@ class PaymentServiceImplTest {
         assertThat(response.status()).isEqualTo("PAID");
         assertThat(response.productType()).isEqualTo("CREDIT");
         assertThat(response.balance()).isEqualTo(1500);
-        verify(paymentMapper).increaseUserCredit(1L, 1000);
+        verify(billingService).grantCreditsAfterPayment(1L, "CREDIT_1000", 1000);
         verify(billingService, never()).activateSubscriptionAfterPayment(any(), any(), any());
     }
 
@@ -136,7 +135,7 @@ class PaymentServiceImplTest {
         assertThat(response.productType()).isEqualTo("SUBSCRIPTION");
         assertThat(response.planCode()).isEqualTo("BASIC");
         verify(billingService).activateSubscriptionAfterPayment(1L, "BASIC", "{\"plan\":{\"code\":\"BASIC\"}}");
-        verify(paymentMapper, never()).increaseUserCredit(org.mockito.ArgumentMatchers.anyLong(), org.mockito.ArgumentMatchers.anyInt());
+        verify(billingService, never()).grantCreditsAfterPayment(any(), any(), org.mockito.ArgumentMatchers.anyInt());
     }
 
     @Test
@@ -150,7 +149,7 @@ class PaymentServiceImplTest {
                 .isEqualTo(ErrorCode.INVALID_INPUT);
 
         verify(tossPaymentClient, never()).confirm(any(), any(), org.mockito.ArgumentMatchers.anyInt());
-        verify(paymentMapper, never()).increaseUserCredit(org.mockito.ArgumentMatchers.anyLong(), org.mockito.ArgumentMatchers.anyInt());
+        verify(billingService, never()).grantCreditsAfterPayment(any(), any(), org.mockito.ArgumentMatchers.anyInt());
     }
 
     @Test

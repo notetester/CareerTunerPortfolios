@@ -780,14 +780,14 @@ function buildTargets(data: AdminPlans | null, targetType: BillingPolicyTargetTy
     return data.plans.map((plan) => ({
       code: plan.code,
       label: `${plan.name} (${plan.code})`,
-      helper: `${won(plan.monthlyPrice)} / 월 · ${plan.active ? "노출 중" : "비활성"}`,
+      helper: `${won(plan.monthlyPrice)} / 월 · ${(plan.active ?? true) ? "노출 중" : "비활성"}`,
       snapshot: {
         code: plan.code,
         name: plan.name,
         monthlyPrice: plan.monthlyPrice,
         yearlyPrice: plan.yearlyPrice ?? null,
         description: plan.description ?? null,
-        active: plan.active,
+        active: plan.active ?? true,
         sortOrder: plan.sortOrder,
       },
     }));

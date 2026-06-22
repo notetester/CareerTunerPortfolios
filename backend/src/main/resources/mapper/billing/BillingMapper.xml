@@ -170,10 +170,17 @@
     </insert>
 
     <!-- ───── 크레딧 원장 ───── -->
-    <select id="latestCreditBalance" resultType="java.lang.Integer">
-        SELECT balance_after FROM credit_transaction
-         WHERE user_id = #{userId} ORDER BY id DESC LIMIT 1
+    <select id="findUserCredit" resultType="java.lang.Integer">
+        SELECT credit
+          FROM users
+         WHERE id = #{userId}
     </select>
+
+    <update id="increaseUserCredit">
+        UPDATE users
+           SET credit = credit + #{creditAmount}
+         WHERE id = #{userId}
+    </update>
 
     <insert id="insertCreditTransaction" useGeneratedKeys="true" keyProperty="id">
         INSERT INTO credit_transaction

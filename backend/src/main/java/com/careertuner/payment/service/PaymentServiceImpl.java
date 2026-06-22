@@ -137,19 +137,20 @@ public class PaymentServiceImpl implements PaymentService {
             throw new BusinessException(ErrorCode.CONFLICT, "Payment status changed before confirmation.");
         }
 
+        int balance;
         if (PRODUCT_TYPE_SUBSCRIPTION.equals(payment.getProductType())) {
             billingService.activateSubscriptionAfterPayment(
                     payment.getUserId(),
                     payment.getPlan(),
                     payment.getPolicySnapshotJson());
+            balance = requireUserCredit(payment.getUserId());
         } else {
-            int creditRows = paymentMapper.increaseUserCredit(payment.getUserId(), requireCreditAmount(payment));
-            if (creditRows == 0) {
-                throw new BusinessException(ErrorCode.NOT_FOUND, "Payment user was not found.");
-            }
+            balance = billingService.grantCreditsAfterPayment(
+                    payment.getUserId(),
+                    payment.getProductCode(),
+                    requireCreditAmount(payment));
         }
 
-        int balance = requireUserCredit(payment.getUserId());
         return confirmedResponse(payment, request.paymentKey(), balance);
     }
 

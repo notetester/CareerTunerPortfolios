@@ -52,13 +52,6 @@
            AND status = 'READY'
     </update>
 
-    <!-- Toss 승인 성공 후 사용자 크레딧 잔액을 증가시킨다. -->
-    <update id="increaseUserCredit">
-        UPDATE users
-           SET credit = credit + #{creditAmount}
-         WHERE id = #{userId}
-    </update>
-
     <!-- 충전 완료 응답에 사용할 최신 잔액을 조회한다. -->
     <select id="findUserCredit" resultType="int">
         SELECT credit

@@ -202,28 +202,40 @@ public class BillingServiceImpl implements BillingService, AiBenefitUsageService
 
     @Override
     @Transactional
+    public int grantCreditsAfterPayment(Long userId, String productCode, int creditAmount) {
+        if (creditAmount <= 0) {
+            throw new BusinessException(ErrorCode.INVALID_INPUT, "지급 크레딧 수량이 올바르지 않습니다.");
+        }
+        int updated = billingMapper.increaseUserCredit(userId, creditAmount);
+        if (updated == 0) {
+            throw new BusinessException(ErrorCode.NOT_FOUND, "크레딧을 지급할 사용자를 찾을 수 없습니다.");
+        }
+        int balanceAfter = balanceOf(userId);
+        billingMapper.insertCreditTransaction(CreditTransaction.builder()
+                .userId(userId)
+                .type("CHARGE")
+                .amount(creditAmount)
+                .balanceAfter(balanceAfter)
+                .reason((isBlank(productCode) ? "크레딧" : productCode) + " 결제 충전")
+                .build());
+        return balanceAfter;
+    }
+
+    @Override
+    @Transactional
     public MyBillingResponse purchaseCredits(Long userId, String productCode) {
         String code = productCode == null ? "" : productCode.trim().toUpperCase();
         CreditProduct product = billingPolicyService.enabledCreditProductByCode(code);
         if (product == null || !product.isEnabled()) {
             throw new BusinessException(ErrorCode.NOT_FOUND, "충전 상품을 찾을 수 없습니다.");
         }
-        int credit = product.getCreditAmount();
-        int newBalance = balanceOf(userId) + credit;
+        grantCreditsAfterPayment(userId, product.getName(), product.getCreditAmount());
 
-        billingMapper.insertCreditTransaction(CreditTransaction.builder()
-                .userId(userId)
-                .type("CHARGE")
-                .amount(credit)
-                .balanceAfter(newBalance)
-                .reason(product.getName() + " 충전")
-                .build());
-
-        recordPayment(userId, code, product.getPrice(), null, credit,
+        recordPayment(userId, code, product.getPrice(), null, product.getCreditAmount(),
                 billingPolicyService.creditProductSnapshotJson(product));
 
         notify(userId, "CREDIT_RECHARGED", "크레딧이 충전되었습니다",
-                "크레딧 %d개가 충전되어 현재 %d개 보유 중입니다.".formatted(credit, newBalance));
+                "크레딧 %d개가 충전되어 현재 %d개 보유 중입니다.".formatted(product.getCreditAmount(), balanceOf(userId)));
         return getMyBilling(userId);
     }
 
@@ -401,7 +413,7 @@ public class BillingServiceImpl implements BillingService, AiBenefitUsageService
     }
 
     private int balanceOf(Long userId) {
-        Integer balance = billingMapper.latestCreditBalance(userId);
+        Integer balance = billingMapper.findUserCredit(userId);
         return balance != null ? balance : 0;
     }
 

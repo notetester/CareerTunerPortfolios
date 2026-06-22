@@ -56,6 +56,10 @@ public class SecurityConfig {
                         // 고객센터 FAQ/공지사항 조회 공개
                         .requestMatchers(HttpMethod.GET,
                                 "/api/support/faq", "/api/support/notices", "/api/support/notices/**").permitAll()
+                        // 결제 전 가격/상품/차감 정책 조회 공개
+                        .requestMatchers(HttpMethod.GET,
+                                "/api/billing/plans", "/api/billing/credit-products",
+                                "/api/billing/feature-benefit-policies", "/api/credit-products").permitAll()
                         // 챗봇 질문 공개
                         .requestMatchers(HttpMethod.POST, "/api/chatbot/ask").permitAll()
                         // 관리자 API는 URL 레벨에서도 ADMIN 권한을 요구한다.
