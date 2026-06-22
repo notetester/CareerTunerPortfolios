@@ -8,6 +8,8 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
 import com.careertuner.analysis.ai.provider.CareerAnalysisAiProviderProperties;
@@ -34,6 +36,16 @@ import tools.jackson.databind.JsonNode;
  */
 @Service
 public class OssFitAnalysisAiService implements FitAnalysisAiService {
+
+    private static final Logger log = LoggerFactory.getLogger(OssFitAnalysisAiService.class);
+
+    /** '보유'를 뜻하는 표현(이게 있을 때만 grounding 위반 후보). */
+    private static final String[] POSSESSION = {
+            "보유", "갖춤", "갖추고", "갖추어", "강점", "경험 있", "경험을 보유",
+            "활용 가능", "숙련", "기반이 있", "능숙", "능통"};
+    /** 결핍·부정 표현(같은 문장에 있으면 위반 아님 — false-positive 방지). */
+    private static final String[] LACK = {
+            "부족", "없", "미보유", "부재", "않", "못", "결여", "갖추지", "보유하지", "미흡", "전무"};
 
     private final CareerAnalysisOssClient ossClient;
     private final MockFitAnalysisAiService ruleEngine;
@@ -63,11 +75,31 @@ public class OssFitAnalysisAiService implements FitAnalysisAiService {
                 skeleton.fitScore(), trainingDecision(skeleton.applyDecision()),
                 join(matched), join(missingRequired), join(missingPreferred));
 
-        // 3. 자체모델 호출(설명만). 실패/검증실패 → throw → 상위 폴백.
-        JsonNode explain = ossClient.requestFitExplain(FitAnalysisPromptCatalog.FIT_EXPLAIN_SYSTEM_PROMPT, userPrompt);
-        String fitSummary = explain.path("fitSummary").asText("").trim();
-        if (fitSummary.isBlank()) {
-            throw new BusinessException(ErrorCode.INTERNAL_ERROR, "C 자체모델 설명(fitSummary)이 비어 있습니다.");
+        // 3. 자체모델 호출(설명만) + grounding guard. '부족 역량을 보유로 서술'(reports/24 E1)하면 재호출, 소진 시 throw → 폴백.
+        List<String> missing = new ArrayList<>(missingRequired);
+        missing.addAll(missingPreferred);
+        int groundingRetries = Math.max(0, properties.getOss().getGroundingRetries());
+        JsonNode explain;
+        String fitSummary;
+        int attempt = 0;
+        while (true) {
+            explain = ossClient.requestFitExplain(FitAnalysisPromptCatalog.FIT_EXPLAIN_SYSTEM_PROMPT, userPrompt);
+            fitSummary = explain.path("fitSummary").asText("").trim();
+            if (fitSummary.isBlank()) {
+                throw new BusinessException(ErrorCode.INTERNAL_ERROR, "C 자체모델 설명(fitSummary)이 비어 있습니다.");
+            }
+            String violation = groundingViolation(missing, fitSummary, strings(explain.path("strengths")));
+            if (violation == null) {
+                break;
+            }
+            log.warn("C 자체모델 grounding 위반(부족 역량을 보유로 서술): {} model={} attempt={}/{} → {}",
+                    violation, properties.getOss().getModel(), attempt, groundingRetries,
+                    attempt < groundingRetries ? "재호출" : "폴백");
+            if (attempt >= groundingRetries) {
+                throw new BusinessException(ErrorCode.INTERNAL_ERROR,
+                        "C 자체모델 설명이 부족 역량을 보유로 서술(grounding 위반)");
+            }
+            attempt++;
         }
 
         // 4. 병합: 골격(symbolic) + 모델 텍스트(neural). 금지키는 읽지 않음(구조적 제거).
@@ -170,5 +202,62 @@ public class OssFitAnalysisAiService implements FitAnalysisAiService {
             out.add(why == null ? gap : new FitGapRecommendation(gap.skill(), gap.category(), gap.priority(), why));
         }
         return out;
+    }
+
+    /**
+     * 부족 역량(missing)을 {@code fitSummary}/{@code strengths} 에서 '보유한 강점'처럼 서술하면 위반 문자열을 반환(없으면 null).
+     *
+     * <p>보수적: 한 문장에 '보유' 류 표현이 있고, '부족/없/않' 같은 결핍·부정 표현이 <b>없을 때만</b> 위반으로 본다
+     * (예: "Kubernetes 경험이 부족" 정상, "즉시 지원하기보다는" 정상 — false-positive 회피).
+     * risks/strategyActions/learningTaskReasons 는 부족 역량이 나오는 게 정상이라 검사하지 않는다.
+     * 점수/판단은 규칙엔진이 소유하며 이 검사는 그 값을 만들거나 바꾸지 않는다.
+     */
+    static String groundingViolation(List<String> missing, String fitSummary, List<String> strengths) {
+        if (missing == null || missing.isEmpty()) {
+            return null;
+        }
+        if (fitSummary != null) {
+            for (String sentence : fitSummary.split("[.!?。\\n]")) {
+                String v = violationInSentence(sentence, missing, "fitSummary");
+                if (v != null) {
+                    return v;
+                }
+            }
+        }
+        if (strengths != null) {
+            for (String item : strengths) {
+                String v = violationInSentence(item, missing, "strengths");
+                if (v != null) {
+                    return v;
+                }
+            }
+        }
+        return null;
+    }
+
+    private static String violationInSentence(String sentence, List<String> missing, String field) {
+        if (sentence == null || sentence.isBlank()) {
+            return null;
+        }
+        String phrase = firstContaining(sentence, POSSESSION);
+        if (phrase == null || firstContaining(sentence, LACK) != null) {
+            return null;   // 보유 표현이 없거나, 결핍·부정 문맥이면 위반 아님
+        }
+        String lower = sentence.toLowerCase(Locale.ROOT);
+        for (String skill : missing) {
+            if (skill != null && !skill.isBlank() && lower.contains(skill.toLowerCase(Locale.ROOT))) {
+                return "field=" + field + " missingSkill=" + skill + " phrase=" + phrase;
+            }
+        }
+        return null;
+    }
+
+    private static String firstContaining(String text, String[] needles) {
+        for (String needle : needles) {
+            if (text.contains(needle)) {
+                return needle;
+            }
+        }
+        return null;
     }
 }

@@ -286,37 +286,46 @@ def run_eval(args):
     print(f"  failure_reasons={s['failure_reasons']}  → {args.out}")
 
 
-def _first_output_by_case(path):
-    """결과 파일에서 케이스별 대표(run0) raw_output·user_prompt 추출."""
+def _select_by_case(path):
+    """케이스별 '대표 run' 선택 — 성공한 run 중 첫 번째(가장 낮은 run index). 없으면 unavailable."""
     with open(path, encoding="utf-8") as f:
         data = json.load(f)
-    out = {}
+    by = {}
     for r in data.get("results", []):
-        cid = r.get("id")
-        if cid in out:
+        by.setdefault(r.get("id"), []).append(r)
+    sel = {}
+    for cid, rows in by.items():
+        rows = sorted(rows, key=lambda r: r.get("run", 0))
+        meta = {"domainGroup": rows[0].get("domainGroup"), "expectedDecision": rows[0].get("expectedDecision"),
+                "user_prompt": next((r.get("user_prompt") for r in rows if r.get("user_prompt")), None)}
+        succ = [r for r in rows if r.get("success")]
+        if not succ:
+            sel[cid] = {**meta, "available": False, "selectedRun": None,
+                        "selectionReason": "none_successful", "output": None}
             continue
-        out[cid] = {"raw_output": r.get("raw_output"), "user_prompt": r.get("user_prompt"),
-                    "domainGroup": r.get("domainGroup"), "expectedDecision": r.get("expectedDecision"),
-                    "success": r.get("success"), "failure": r.get("failure")}
-    return out, data.get("summary", {})
+        chosen = succ[0]
+        reason = ("first_successful_run" if chosen.get("run") == rows[0].get("run")
+                  else "first_successful_run_after_failure")
+        sel[cid] = {**meta, "available": True, "selectedRun": chosen.get("run"),
+                    "selectionReason": reason, "output": chosen.get("raw_output")}
+    return sel, data.get("summary", {})
 
 
 def build_pairwise(args):
-    lora, lsum = _first_output_by_case(args.lora_result)
-    base, bsum = _first_output_by_case(args.base_result)
-    if not any(v.get("raw_output") for v in lora.values()):
-        print("[warn] lora-result 에 raw_output 이 없습니다. --save-raw 로 다시 평가하세요.")
+    lora, lsum = _select_by_case(args.lora_result)
+    base, bsum = _select_by_case(args.base_result)
     pairs = []
     for cid in lora:
         if cid not in base:
             continue
+        l, b = lora[cid], base[cid]
         pairs.append({
-            "caseId": cid,
-            "domainGroup": lora[cid].get("domainGroup"),
-            "expectedDecision": lora[cid].get("expectedDecision"),
-            "user_prompt": lora[cid].get("user_prompt"),
-            "lora_output": lora[cid].get("raw_output"),
-            "base_output": base[cid].get("raw_output"),
+            "caseId": cid, "domainGroup": l.get("domainGroup"), "expectedDecision": l.get("expectedDecision"),
+            "user_prompt": l.get("user_prompt") or b.get("user_prompt"),
+            "lora": {"available": l["available"], "selectedRun": l["selectedRun"],
+                     "selectionReason": l["selectionReason"], "output": l["output"]},
+            "base": {"available": b["available"], "selectedRun": b["selectedRun"],
+                     "selectionReason": b["selectionReason"], "output": b["output"]},
         })
     payload = {"lora_model": lsum.get("model"), "base_model": bsum.get("model"),
                "axes": ["job_fit_relevance", "specificity", "evidence_grounding",
@@ -325,7 +334,32 @@ def build_pairwise(args):
     os.makedirs(os.path.dirname(os.path.abspath(args.pairwise_out)), exist_ok=True)
     with open(args.pairwise_out, "w", encoding="utf-8") as f:
         json.dump(payload, f, ensure_ascii=False, indent=2)
-    print(f"[pairwise] {len(pairs)}쌍 → {args.pairwise_out}")
+    avail = sum(1 for p in pairs if p["lora"]["available"] and p["base"]["available"])
+    print(f"[pairwise] {len(pairs)}쌍(둘 다 available {avail}) → {args.pairwise_out}")
+    if args.blind:
+        build_blind(pairs, args)
+
+
+def build_blind(pairs, args):
+    """blind A/B 리뷰 입력 + 매핑키(별도 파일). A/B 는 caseId 해시로 결정론 배정(난수 X)."""
+    blind, key = [], {}
+    for p in pairs:
+        if not (p["lora"]["available"] and p["base"]["available"]):
+            continue
+        flip = int(hashlib.sha256(p["caseId"].encode("utf-8")).hexdigest(), 16) % 2 == 0
+        a, b = ("lora", "base") if flip else ("base", "lora")
+        blind.append({
+            "caseId": p["caseId"], "domainGroup": p["domainGroup"], "expectedDecision": p["expectedDecision"],
+            "user_prompt": p["user_prompt"],
+            "candidateA": p[a]["output"], "candidateB": p[b]["output"],
+            "hiddenMapping": "see " + os.path.basename(args.blind_key_out),
+        })
+        key[p["caseId"]] = {"A": a, "B": b}
+    for path, obj in ((args.blind_out, blind), (args.blind_key_out, key)):
+        os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(obj, f, ensure_ascii=False, indent=2)
+    print(f"[blind] {len(blind)}쌍 A/B → {args.blind_out} (매핑키 {args.blind_key_out})")
 
 
 def main():
@@ -347,6 +381,9 @@ def main():
     ap.add_argument("--lora-result")
     ap.add_argument("--base-result")
     ap.add_argument("--pairwise-out", default="out/eval/c-fit-3b-pairwise-input.json")
+    ap.add_argument("--blind", action="store_true", help="blind A/B 리뷰 입력 + 매핑키 생성")
+    ap.add_argument("--blind-out", default="out/eval/c-fit-3b-pairwise-blind.json")
+    ap.add_argument("--blind-key-out", default="out/eval/c-fit-3b-pairwise-blind-key.json")
     args = ap.parse_args()
 
     if args.pairwise:

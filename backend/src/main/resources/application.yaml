@@ -93,6 +93,8 @@ careertuner:
         # 소형 모델 JSON 안정성 보강: 일시적 실패(5xx/네트워크/JSON 깨짐) 재시도(총 시도 = max-retries+1) + 선형 백오프
         max-retries: ${CAREERTUNER_ANALYSIS_AI_OSS_MAX_RETRIES:2}
         retry-backoff: ${CAREERTUNER_ANALYSIS_AI_OSS_RETRY_BACKOFF:400ms}
+        # grounding guard: 설명이 '부족 역량을 보유로 서술'하면 재호출(소진 시 폴백). 점수/판단은 규칙엔진 소유.
+        grounding-retries: ${CAREERTUNER_ANALYSIS_AI_OSS_GROUNDING_RETRIES:1}
   anthropic:
     # 면접 LLM 1차(기본) provider(Claude Haiku). 선생(합성 데이터 증류)·런타임 공통.
     # 키가 비어 있으면 자동으로 OpenAI 로 폴백한다(로드맵 Phase 4).
