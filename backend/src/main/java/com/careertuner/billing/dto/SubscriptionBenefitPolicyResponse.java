@@ -11,6 +11,7 @@ public record SubscriptionBenefitPolicyResponse(
         String resetCycle,
         String overagePolicy,
         int creditCost,
+        boolean active,
         int sortOrder
 ) {
     public static SubscriptionBenefitPolicyResponse from(SubscriptionBenefitPolicy policy) {
@@ -23,6 +24,7 @@ public record SubscriptionBenefitPolicyResponse(
                 policy.getResetCycle(),
                 policy.getOveragePolicy(),
                 policy.getCreditCost(),
+                policy.isActive(),
                 policy.getSortOrder());
     }
 }

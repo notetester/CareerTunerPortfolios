@@ -87,7 +87,10 @@ public interface BillingMapper {
     void insertPayment(Payment payment);
 
     // 크레딧 원장
-    Integer latestCreditBalance(@Param("userId") Long userId);
+    Integer findUserCredit(@Param("userId") Long userId);
+
+    int increaseUserCredit(@Param("userId") Long userId,
+                           @Param("creditAmount") int creditAmount);
 
     void insertCreditTransaction(CreditTransaction transaction);
 

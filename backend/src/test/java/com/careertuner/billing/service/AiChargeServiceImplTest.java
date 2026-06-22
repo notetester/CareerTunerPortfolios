@@ -17,7 +17,6 @@ import com.careertuner.billing.domain.UserSubscription;
 import com.careertuner.billing.dto.AiChargeCommand;
 import com.careertuner.billing.dto.AiChargeResult;
 import com.careertuner.billing.dto.BenefitConsumeResult;
-import com.careertuner.billing.mapper.BillingMapper;
 import com.careertuner.common.exception.BusinessException;
 import com.careertuner.common.exception.ErrorCode;
 import com.careertuner.credit.dto.CreditDeductionResult;
@@ -26,12 +25,12 @@ import com.careertuner.credit.service.CreditService;
 
 class AiChargeServiceImplTest {
 
-    private final BillingMapper billingMapper = org.mockito.Mockito.mock(BillingMapper.class);
+    private final BillingPolicyService billingPolicyService = org.mockito.Mockito.mock(BillingPolicyService.class);
     private final AiBenefitUsageService benefitUsageService = org.mockito.Mockito.mock(AiBenefitUsageService.class);
     private final CreditService creditService = org.mockito.Mockito.mock(CreditService.class);
     private final CreditMapper creditMapper = org.mockito.Mockito.mock(CreditMapper.class);
     private final AiChargeServiceImpl service = new AiChargeServiceImpl(
-            billingMapper,
+            billingPolicyService,
             benefitUsageService,
             creditService,
             creditMapper);
@@ -39,11 +38,9 @@ class AiChargeServiceImplTest {
     @Test
     void ticketConsumptionDoesNotDeductCredit() {
         AiChargeCommand command = command(10L, 3);
-        when(billingMapper.findActiveFeatureBenefitPolicy("JOB_ANALYSIS"))
+        when(billingPolicyService.activeFeatureBenefitPolicy(1L, "JOB_ANALYSIS"))
                 .thenReturn(featurePolicy(true, 3));
-        when(billingMapper.findActiveSubscription(1L, null)).thenReturn(null);
-        when(billingMapper.findUserPlanCode(1L)).thenReturn("BASIC");
-        when(billingMapper.findActiveBenefitPolicy("BASIC", "APPLICATION_ANALYSIS"))
+        when(billingPolicyService.activeBenefitPolicy(1L, "APPLICATION_ANALYSIS"))
                 .thenReturn(benefitPolicy("BLOCK", 3));
         when(benefitUsageService.consumeByFeature(1L, "JOB_ANALYSIS", "APPLICATION_CASE", 100L, 10L, "analysis"))
                 .thenReturn(BenefitConsumeResult.consumed("APPLICATION_ANALYSIS", 2));
@@ -59,10 +56,9 @@ class AiChargeServiceImplTest {
     @Test
     void alreadyConsumedTicketDoesNotDeductCreditAgain() {
         AiChargeCommand command = command(10L, 3);
-        when(billingMapper.findActiveFeatureBenefitPolicy("JOB_ANALYSIS"))
+        when(billingPolicyService.activeFeatureBenefitPolicy(1L, "JOB_ANALYSIS"))
                 .thenReturn(featurePolicy(true, 3));
-        when(billingMapper.findUserPlanCode(1L)).thenReturn("BASIC");
-        when(billingMapper.findActiveBenefitPolicy("BASIC", "APPLICATION_ANALYSIS"))
+        when(billingPolicyService.activeBenefitPolicy(1L, "APPLICATION_ANALYSIS"))
                 .thenReturn(benefitPolicy("CREDIT", 3));
         when(benefitUsageService.consumeByFeature(1L, "JOB_ANALYSIS", "APPLICATION_CASE", 100L, 10L, "analysis"))
                 .thenReturn(BenefitConsumeResult.skipped("APPLICATION_ANALYSIS", 1, "ALREADY_CONSUMED"));
@@ -79,10 +75,9 @@ class AiChargeServiceImplTest {
     @Test
     void insufficientTicketFallsBackToCreditWhenPolicyAllows() {
         AiChargeCommand command = command(10L, null);
-        when(billingMapper.findActiveFeatureBenefitPolicy("JOB_ANALYSIS"))
+        when(billingPolicyService.activeFeatureBenefitPolicy(1L, "JOB_ANALYSIS"))
                 .thenReturn(featurePolicy(true, 5));
-        when(billingMapper.findUserPlanCode(1L)).thenReturn("BASIC");
-        when(billingMapper.findActiveBenefitPolicy("BASIC", "APPLICATION_ANALYSIS"))
+        when(billingPolicyService.activeBenefitPolicy(1L, "APPLICATION_ANALYSIS"))
                 .thenReturn(benefitPolicy("CREDIT", 2));
         when(benefitUsageService.consumeByFeature(1L, "JOB_ANALYSIS", "APPLICATION_CASE", 100L, 10L, "analysis"))
                 .thenThrow(new BusinessException(ErrorCode.INSUFFICIENT_CREDIT));
@@ -99,10 +94,9 @@ class AiChargeServiceImplTest {
     @Test
     void insufficientTicketDoesNotFallbackWhenPolicyBlocks() {
         AiChargeCommand command = command(10L, null);
-        when(billingMapper.findActiveFeatureBenefitPolicy("JOB_ANALYSIS"))
+        when(billingPolicyService.activeFeatureBenefitPolicy(1L, "JOB_ANALYSIS"))
                 .thenReturn(featurePolicy(true, 5));
-        when(billingMapper.findUserPlanCode(1L)).thenReturn("BASIC");
-        when(billingMapper.findActiveBenefitPolicy("BASIC", "APPLICATION_ANALYSIS"))
+        when(billingPolicyService.activeBenefitPolicy(1L, "APPLICATION_ANALYSIS"))
                 .thenReturn(benefitPolicy("BLOCK", 2));
         when(benefitUsageService.consumeByFeature(1L, "JOB_ANALYSIS", "APPLICATION_CASE", 100L, 10L, "analysis"))
                 .thenThrow(new BusinessException(ErrorCode.INSUFFICIENT_CREDIT));
@@ -118,7 +112,7 @@ class AiChargeServiceImplTest {
     @Test
     void featureWithoutTicketPolicyChargesCreditOnly() {
         AiChargeCommand command = command(10L, 4);
-        when(billingMapper.findActiveFeatureBenefitPolicy("JOB_ANALYSIS"))
+        when(billingPolicyService.activeFeatureBenefitPolicy(1L, "JOB_ANALYSIS"))
                 .thenReturn(featurePolicy(false, 5));
         when(creditService.deductByAiUsageLog(10L, 4))
                 .thenReturn(CreditDeductionResult.deducted(10L, 1L, 4, 4));

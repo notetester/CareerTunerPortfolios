@@ -9,9 +9,11 @@ import { Award, BarChart3, CheckCircle2, CreditCard, Loader2, ReceiptText, Zap }
 import { useAuth } from "../auth/AuthContext";
 import {
   cancelSubscription, getCreditProducts, getMonthlyUsage, getMyBilling, getMyPayments, getPlans,
-  purchaseCredits, subscribe,
+  subscribe,
   type CreditProduct, type MyBilling, type Payment, type SubscriptionPlan, type UsageRow,
 } from "@/features/billing/api/billingApi";
+import { readyTossPayment } from "@/features/billing/api/paymentApi";
+import { requestTossCardPayment } from "@/features/billing/api/tossPaymentSdk";
 
 const tabs = ["plans", "usage", "credits", "history"] as const;
 type BillingTab = (typeof tabs)[number];
@@ -40,6 +42,20 @@ const FEATURE_LABEL: Record<string, string> = {
 };
 
 const won = (n: number) => `${n.toLocaleString("ko-KR")}원`;
+
+function benefitLabel(plan: SubscriptionPlan, fallback: string[]) {
+  const benefits = (plan.benefits ?? []).filter((benefit) => benefit.active !== false);
+  if (benefits.length === 0) return fallback;
+  return benefits.map((benefit) => {
+    const quantity = benefit.quantity <= 0 ? "미제공" : `${benefit.quantity.toLocaleString("ko-KR")}회`;
+    const overage = benefit.overagePolicy === "CREDIT" || benefit.overagePolicy === "FALLBACK_CREDIT"
+      ? ` · 초과 ${benefit.creditCost.toLocaleString("ko-KR")}크레딧`
+      : benefit.overagePolicy === "BLOCK"
+        ? " · 초과 사용 불가"
+        : "";
+    return `${benefit.benefitName} ${quantity}${overage}`;
+  });
+}
 
 export function BillingPage() {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -79,10 +95,15 @@ export function BillingPage() {
     setBusy(`sub-${planCode}`);
     setError(null);
     try {
-      setBilling(await subscribe(planCode, "MONTHLY"));
-      await loadMine();
+      if (planCode === "FREE") {
+        setBilling(await subscribe(planCode, "MONTHLY"));
+        await loadMine();
+      } else {
+        const ready = await readyTossPayment(planCode, "SUBSCRIPTION");
+        await requestTossCardPayment(ready);
+      }
     } catch {
-      setError("구독 처리에 실패했습니다.");
+      setError("구독 결제 준비에 실패했습니다.");
     } finally {
       setBusy(null);
     }
@@ -102,10 +123,10 @@ export function BillingPage() {
     setBusy(`buy-${productCode}`);
     setError(null);
     try {
-      setBilling(await purchaseCredits(productCode));
-      await loadMine();
+      const ready = await readyTossPayment(productCode, "CREDIT");
+      await requestTossCardPayment(ready);
     } catch {
-      setError("크레딧 충전에 실패했습니다.");
+      setError("크레딧 결제 준비에 실패했습니다.");
     } finally {
       setBusy(null);
     }
@@ -166,11 +187,11 @@ export function BillingPage() {
                       <CardTitle className="text-lg">{plan.name} 플랜</CardTitle>
                       <p className="text-sm text-slate-500">{plan.description}</p>
                       <div className="pt-2 text-3xl font-black text-slate-900">{won(plan.monthlyPrice)}</div>
-                      {plan.yearlyPrice > 0 && <div className="text-xs text-slate-400">연간 {won(plan.yearlyPrice)}/월</div>}
+                      {(plan.yearlyPrice ?? 0) > 0 && <div className="text-xs text-slate-400">연간 {won(plan.yearlyPrice ?? 0)}/월</div>}
                     </CardHeader>
                     <CardContent className="space-y-4">
                       <div className="space-y-2">
-                        {(PLAN_FEATURES[plan.code] ?? []).map((feature) => (
+                        {benefitLabel(plan, PLAN_FEATURES[plan.code] ?? []).map((feature) => (
                           <div key={feature} className="flex items-center gap-2 text-sm text-slate-700">
                             <CheckCircle2 className="size-4 text-green-600" />
                             {feature}

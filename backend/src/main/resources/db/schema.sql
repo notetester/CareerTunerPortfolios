@@ -607,6 +607,7 @@ CREATE TABLE IF NOT EXISTS payment (
     amount        INT NOT NULL,
     plan          VARCHAR(20) NULL,
     credit_amount INT NULL,
+    policy_snapshot_json JSON NULL,
     status        VARCHAR(20) NOT NULL DEFAULT 'PENDING',   -- PENDING/PAID/FAILED/REFUNDED
     paid_at       DATETIME NULL,
     created_at    DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -721,6 +722,7 @@ CREATE TABLE IF NOT EXISTS user_subscription (
     started_at           DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     current_period_start DATETIME NOT NULL,
     current_period_end   DATETIME NOT NULL,
+    policy_snapshot_json JSON NULL,
     canceled_at          DATETIME NULL,
     created_at           DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at           DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
@@ -729,6 +731,25 @@ CREATE TABLE IF NOT EXISTS user_subscription (
     KEY idx_user_subscription_plan (plan_code),
     CONSTRAINT fk_user_subscription_user FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE,
     CONSTRAINT fk_user_subscription_plan FOREIGN KEY (plan_code) REFERENCES subscription_plan (code)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci;
+
+CREATE TABLE IF NOT EXISTS billing_policy_change (
+    id                    BIGINT NOT NULL AUTO_INCREMENT,
+    target_type           VARCHAR(40) NOT NULL,
+    target_code           VARCHAR(120) NOT NULL,
+    current_snapshot_json JSON NULL,
+    next_snapshot_json    JSON NOT NULL,
+    effective_from        DATETIME NOT NULL,
+    apply_mode            VARCHAR(40) NOT NULL,
+    status                VARCHAR(20) NOT NULL DEFAULT 'SCHEDULED',
+    created_by            BIGINT NULL,
+    created_at            DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    canceled_by           BIGINT NULL,
+    canceled_at           DATETIME NULL,
+    applied_at            DATETIME NULL,
+    PRIMARY KEY (id),
+    KEY idx_billing_policy_change_target (target_type, target_code, status, effective_from),
+    KEY idx_billing_policy_change_status (status, effective_from)
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci;
 
 CREATE TABLE IF NOT EXISTS user_benefit_balance (

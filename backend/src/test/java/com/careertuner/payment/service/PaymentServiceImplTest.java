@@ -11,12 +11,11 @@ import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 
 import com.careertuner.billing.domain.SubscriptionPlan;
-import com.careertuner.billing.mapper.BillingMapper;
+import com.careertuner.billing.service.BillingPolicyService;
 import com.careertuner.billing.service.BillingService;
 import com.careertuner.common.exception.BusinessException;
 import com.careertuner.common.exception.ErrorCode;
 import com.careertuner.credit.domain.CreditProduct;
-import com.careertuner.credit.mapper.CreditProductMapper;
 import com.careertuner.payment.domain.Payment;
 import com.careertuner.payment.dto.TossPaymentConfirmRequest;
 import com.careertuner.payment.dto.TossPaymentConfirmResponse;
@@ -27,16 +26,14 @@ import com.careertuner.payment.service.TossPaymentClient.ConfirmedPayment;
 
 class PaymentServiceImplTest {
 
-    private final CreditProductMapper creditProductMapper = org.mockito.Mockito.mock(CreditProductMapper.class);
-    private final BillingMapper billingMapper = org.mockito.Mockito.mock(BillingMapper.class);
     private final BillingService billingService = org.mockito.Mockito.mock(BillingService.class);
+    private final BillingPolicyService billingPolicyService = org.mockito.Mockito.mock(BillingPolicyService.class);
     private final PaymentMapper paymentMapper = org.mockito.Mockito.mock(PaymentMapper.class);
     private final TossPaymentClient tossPaymentClient = org.mockito.Mockito.mock(TossPaymentClient.class);
     private final TossPaymentProperties properties = tossProperties();
     private final PaymentServiceImpl service = new PaymentServiceImpl(
-            creditProductMapper,
-            billingMapper,
             billingService,
+            billingPolicyService,
             paymentMapper,
             tossPaymentClient,
             properties);
@@ -44,7 +41,8 @@ class PaymentServiceImplTest {
     @Test
     void readyCreatesPendingTossPaymentFromCreditProductSnapshot() {
         CreditProduct product = product("CREDIT_1000", "Credit 1000", 10000, 1000);
-        when(creditProductMapper.findEnabledProductByCode("CREDIT_1000")).thenReturn(product);
+        when(billingPolicyService.enabledCreditProductByCode("CREDIT_1000")).thenReturn(product);
+        when(billingPolicyService.creditProductSnapshotJson(product)).thenReturn("{\"code\":\"CREDIT_1000\"}");
 
         TossPaymentReadyResponse response = service.ready(
                 1L,
@@ -66,13 +64,15 @@ class PaymentServiceImplTest {
         assertThat(saved.getProductCode()).isEqualTo("CREDIT_1000");
         assertThat(saved.getPlan()).isNull();
         assertThat(saved.getCreditAmount()).isEqualTo(1000);
+        assertThat(saved.getPolicySnapshotJson()).isEqualTo("{\"code\":\"CREDIT_1000\"}");
         assertThat(saved.getStatus()).isEqualTo("READY");
     }
 
     @Test
     void readyCreatesPendingTossPaymentFromSubscriptionPlanSnapshot() {
         SubscriptionPlan plan = plan("BASIC", "Basic", 9900);
-        when(billingMapper.findActivePlanByCode("BASIC")).thenReturn(plan);
+        when(billingPolicyService.activePlanByCode("BASIC")).thenReturn(plan);
+        when(billingPolicyService.subscriptionSnapshotJson("BASIC")).thenReturn("{\"plan\":{\"code\":\"BASIC\"}}");
 
         TossPaymentReadyResponse response = service.ready(
                 1L,
@@ -92,6 +92,7 @@ class PaymentServiceImplTest {
         assertThat(saved.getProductCode()).isEqualTo("BASIC");
         assertThat(saved.getPlan()).isEqualTo("BASIC");
         assertThat(saved.getCreditAmount()).isZero();
+        assertThat(saved.getPolicySnapshotJson()).isEqualTo("{\"plan\":{\"code\":\"BASIC\"}}");
     }
 
     @Test
@@ -102,8 +103,7 @@ class PaymentServiceImplTest {
         when(tossPaymentClient.confirm("pay-key", "order-1", 10000))
                 .thenReturn(new ConfirmedPayment("pay-key", "order-1", 10000, "DONE"));
         when(paymentMapper.markPaidIfReady("order-1", "pay-key")).thenReturn(1);
-        when(paymentMapper.increaseUserCredit(1L, 1000)).thenReturn(1);
-        when(paymentMapper.findUserCredit(1L)).thenReturn(1500);
+        when(billingService.grantCreditsAfterPayment(1L, "CREDIT_1000", 1000)).thenReturn(1500);
 
         TossPaymentConfirmResponse response = service.confirm(
                 1L,
@@ -112,13 +112,14 @@ class PaymentServiceImplTest {
         assertThat(response.status()).isEqualTo("PAID");
         assertThat(response.productType()).isEqualTo("CREDIT");
         assertThat(response.balance()).isEqualTo(1500);
-        verify(paymentMapper).increaseUserCredit(1L, 1000);
-        verify(billingService, never()).activateSubscriptionAfterPayment(any(), any());
+        verify(billingService).grantCreditsAfterPayment(1L, "CREDIT_1000", 1000);
+        verify(billingService, never()).activateSubscriptionAfterPayment(any(), any(), any());
     }
 
     @Test
     void confirmApprovesTossPaymentAndActivatesSubscription() {
         Payment payment = payment("order-2", 1L, "SUBSCRIPTION", "BASIC", "BASIC", 9900, 0, "READY");
+        payment.setPolicySnapshotJson("{\"plan\":{\"code\":\"BASIC\"}}");
         when(paymentMapper.findByOrderId("order-2")).thenReturn(payment);
         when(paymentMapper.existsByPaymentKey("pay-key")).thenReturn(false);
         when(tossPaymentClient.confirm("pay-key", "order-2", 9900))
@@ -133,8 +134,8 @@ class PaymentServiceImplTest {
         assertThat(response.status()).isEqualTo("PAID");
         assertThat(response.productType()).isEqualTo("SUBSCRIPTION");
         assertThat(response.planCode()).isEqualTo("BASIC");
-        verify(billingService).activateSubscriptionAfterPayment(1L, "BASIC");
-        verify(paymentMapper, never()).increaseUserCredit(org.mockito.ArgumentMatchers.anyLong(), org.mockito.ArgumentMatchers.anyInt());
+        verify(billingService).activateSubscriptionAfterPayment(1L, "BASIC", "{\"plan\":{\"code\":\"BASIC\"}}");
+        verify(billingService, never()).grantCreditsAfterPayment(any(), any(), org.mockito.ArgumentMatchers.anyInt());
     }
 
     @Test
@@ -148,7 +149,7 @@ class PaymentServiceImplTest {
                 .isEqualTo(ErrorCode.INVALID_INPUT);
 
         verify(tossPaymentClient, never()).confirm(any(), any(), org.mockito.ArgumentMatchers.anyInt());
-        verify(paymentMapper, never()).increaseUserCredit(org.mockito.ArgumentMatchers.anyLong(), org.mockito.ArgumentMatchers.anyInt());
+        verify(billingService, never()).grantCreditsAfterPayment(any(), any(), org.mockito.ArgumentMatchers.anyInt());
     }
 
     @Test
