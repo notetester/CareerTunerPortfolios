@@ -7,6 +7,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -22,6 +23,7 @@ import com.careertuner.community.dto.PostListResponse;
 import com.careertuner.community.mapper.CommunityCommentMapper;
 import com.careertuner.community.mapper.CommunityPostMapper;
 import com.careertuner.community.mapper.ReactionMapper;
+import com.careertuner.community.moderation.event.CommentModerationRequiredEvent;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -35,6 +37,7 @@ public class CommunityCommentServiceImpl implements CommunityCommentService {
     private final CommunityCommentMapper commentMapper;
     private final CommunityPostMapper postMapper;
     private final ReactionMapper reactionMapper;
+    private final ApplicationEventPublisher eventPublisher;
 
     @Override
     public List<CommentResponse> getComments(Long postId, Long currentUserId) {
@@ -187,6 +190,10 @@ public class CommunityCommentServiceImpl implements CommunityCommentService {
         commentMapper.insert(comment);
         postMapper.incrementCommentCount(postId);
 
+        // 게시글 검열과 동형: 커밋 후 비동기 검열(AFTER_COMMIT 리스너). 작성 즉시 PUBLISHED 로 노출되고,
+        // toxic 판정 시에만 HIDDEN 으로 조건부 flip 된다(pending 윈도우엔 정상 표시).
+        eventPublisher.publishEvent(new CommentModerationRequiredEvent(comment.getId()));
+
         log.info("댓글 작성 postId={} commentId={}", postId, comment.getId());
         // 작성 직후 응답은 프론트가 곧바로 목록을 재조회하므로 라벨은 단순값으로 둔다.
         return toResponse(comment, post.getUserId(), userId,
@@ -203,8 +210,14 @@ public class CommunityCommentServiceImpl implements CommunityCommentService {
         if (!comment.getUserId().equals(userId)) {
             throw new BusinessException(ErrorCode.FORBIDDEN, "본인의 댓글만 삭제할 수 있습니다.");
         }
-        commentMapper.updateStatus(commentId, CommentStatus.DELETED.name());
-        postMapper.decrementCommentCount(comment.getPostId());
+        // comment_count = PUBLISHED 댓글 수. PUBLISHED 경계를 통과할 때만 -1.
+        // 이미 검열/관리자 숨김(HIDDEN)된 댓글을 자삭하면 0행 → 이중감소 없이 DELETED 로만 전환.
+        int published = commentMapper.deleteCommentIfPublished(commentId);
+        if (published > 0) {
+            postMapper.decrementCommentCount(comment.getPostId());
+        } else {
+            commentMapper.updateStatus(commentId, CommentStatus.DELETED.name());
+        }
     }
 
     private CommentResponse toResponse(CommunityComment c, Long postAuthorId, Long currentUserId,

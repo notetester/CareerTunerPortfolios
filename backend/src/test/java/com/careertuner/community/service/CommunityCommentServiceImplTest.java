@@ -5,6 +5,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -13,6 +14,7 @@ import java.util.List;
 
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
+import org.springframework.context.ApplicationEventPublisher;
 
 import com.careertuner.community.domain.CommentStatus;
 import com.careertuner.community.domain.CommunityComment;
@@ -23,6 +25,7 @@ import com.careertuner.community.dto.CreateCommentRequest;
 import com.careertuner.community.mapper.CommunityCommentMapper;
 import com.careertuner.community.mapper.CommunityPostMapper;
 import com.careertuner.community.mapper.ReactionMapper;
+import com.careertuner.community.moderation.event.CommentModerationRequiredEvent;
 
 /**
  * 멘션/삭제 감사 수정(M1·M2·L2·L4) 회귀 테스트.
@@ -34,9 +37,10 @@ class CommunityCommentServiceImplTest {
     private final CommunityCommentMapper commentMapper = mock(CommunityCommentMapper.class);
     private final CommunityPostMapper postMapper = mock(CommunityPostMapper.class);
     private final ReactionMapper reactionMapper = mock(ReactionMapper.class);
+    private final ApplicationEventPublisher eventPublisher = mock(ApplicationEventPublisher.class);
 
     private final CommunityCommentServiceImpl service =
-            new CommunityCommentServiceImpl(commentMapper, postMapper, reactionMapper);
+            new CommunityCommentServiceImpl(commentMapper, postMapper, reactionMapper, eventPublisher);
 
     private static final long POST_ID = 1L;
     private static final long POST_AUTHOR = 99L;
@@ -190,5 +194,84 @@ class CommunityCommentServiceImplTest {
         // (C)
         assertThat(inserted.get(2).getParentId()).isEqualTo(5L);
         assertThat(inserted.get(2).getMentionUserId()).isNull();
+    }
+
+    // ══════════════ 댓글 검열 도입 회귀 테스트 (시나리오 1·2·4·5·6·7) ══════════════
+
+    // ── 시나리오 1: 작성 직후 검열 트리거(이벤트) 발행 + pending 윈도우엔 PUBLISHED 로 정상 표시 ──
+    @Test
+    void createComment_publishesModerationEvent_andStaysPublishedDuringPendingWindow() {
+        givenPost();
+        ArgumentCaptor<CommentModerationRequiredEvent> ev =
+                ArgumentCaptor.forClass(CommentModerationRequiredEvent.class);
+
+        service.createComment(POST_ID, new CreateCommentRequest("hello", null, true), 10L);
+
+        // 검열은 AFTER_COMMIT 비동기 리스너가 받는다 — 작성 트랜잭션에서 이벤트만 발행.
+        verify(eventPublisher).publishEvent(ev.capture());
+        assertThat(ev.getValue()).isInstanceOf(CommentModerationRequiredEvent.class);
+
+        // pending 윈도우: 아직 검열 전이라 status=PUBLISHED → getComments 에 그대로 노출(작성자 본인 포함).
+        when(commentMapper.findAllByPostId(POST_ID)).thenReturn(List.of(
+                cmt(1, null, null, 10, true, CommentStatus.PUBLISHED.name(), "A", 0)));
+        List<CommentResponse> rs = service.getComments(POST_ID, 10L);
+        assertThat(rs).hasSize(1);
+        assertThat(byId(rs, 1).isDeleted()).isFalse();
+    }
+
+    // ── 시나리오 5(경계): 검열 HIDDEN 댓글을 자삭해도 comment_count 이중감소 없음(조건부 전이) ──
+    @Test
+    void deleteComment_onAlreadyHidden_doesNotDoubleDecrement() {
+        when(commentMapper.findById(2L)).thenReturn(
+                cmt(2, null, null, 10, true, CommentStatus.HIDDEN.name(), "A", 0));
+        when(commentMapper.deleteCommentIfPublished(2L)).thenReturn(0); // 이미 HIDDEN → 0행
+
+        service.deleteComment(2L, 10L);
+
+        verify(postMapper, never()).decrementCommentCount(anyLong()); // 이미 숨김 시 빠졌으므로 재감소 없음
+        verify(commentMapper).updateStatus(2L, CommentStatus.DELETED.name()); // 상태만 DELETED 로 전환
+    }
+
+    // ── 시나리오 5(정상): PUBLISHED 자삭은 한 번만 감소 ──
+    @Test
+    void deleteComment_onPublished_decrementsOnce() {
+        when(commentMapper.findById(1L)).thenReturn(
+                cmt(1, null, null, 10, true, CommentStatus.PUBLISHED.name(), "A", 0));
+        when(commentMapper.deleteCommentIfPublished(1L)).thenReturn(1); // PUBLISHED→DELETED 경계 통과
+
+        service.deleteComment(1L, 10L);
+
+        verify(postMapper).decrementCommentCount(POST_ID);
+        verify(commentMapper, never()).updateStatus(eq(1L), any()); // 조건부 전이가 처리 → 강제 updateStatus 호출 안 함
+    }
+
+    // ── 시나리오 6: 검열 HIDDEN 된 사용자 대상 @멘션 → 여전히 올바른 익명 라벨로 표시 ──
+    @Test
+    void mentionTarget_whenHiddenByModeration_keepsCorrectAnonLabel() {
+        givenPost();
+        when(commentMapper.findAllByPostId(POST_ID)).thenReturn(List.of(
+                cmt(1, null, null, 10, true, CommentStatus.PUBLISHED.name(), "A", 0),   // 익명1
+                cmt(2, 1L, null, 20, true, CommentStatus.HIDDEN.name(), "B", 1),        // 익명2 — 검열로 숨김
+                cmt(3, 1L, 20L, 30, true, CommentStatus.PUBLISHED.name(), "C", 2)       // user20(익명2) 멘션
+        ));
+
+        List<CommentResponse> rs = service.getComments(POST_ID, null);
+
+        // 숨김 노드도 익명 앵커(findAllByPostId)로 살아있어 멘션이 올바른 사람을 가리킨다.
+        assertThat(byId(rs, 3).mentionLabel()).isEqualTo("익명2");
+    }
+
+    // ── 시나리오 7: 검열 HIDDEN 후에도 뒷 사용자 익명 번호 불변(앵커 보존) ──
+    @Test
+    void hiddenByModeration_keepsLaterAnonNumberStable() {
+        givenPost();
+        when(commentMapper.findAllByPostId(POST_ID)).thenReturn(List.of(
+                cmt(1, null, null, 10, true, CommentStatus.HIDDEN.name(), "A", 0),   // 익명1 — 검열 숨김(앵커 유지)
+                cmt(2, 1L, null, 20, true, CommentStatus.PUBLISHED.name(), "B", 1)   // 익명2 — 밀리면 안 됨
+        ));
+
+        List<CommentResponse> rs = service.getComments(POST_ID, null);
+
+        assertThat(byId(rs, 2).author().name()).isEqualTo("익명2");
     }
 }

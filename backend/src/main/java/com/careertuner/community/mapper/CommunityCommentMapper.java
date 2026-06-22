@@ -27,6 +27,25 @@ public interface CommunityCommentMapper {
     void updateStatus(@Param("id") Long id,
                       @Param("status") String status);
 
+    /**
+     * PUBLISHED 댓글만 HIDDEN 으로 조건부 flip. 멱등(이미 HIDDEN/DELETED면 0행).
+     * affected-rows>0 일 때만 comment_count 를 감소시켜 이중감소·경합을 방지한다.
+     * (AI 검열 숨김·관리자 숨김 공통 경로)
+     */
+    int hideCommentIfPublished(@Param("id") Long id);
+
+    /**
+     * PUBLISHED 댓글만 DELETED 로 조건부 전이. affected-rows>0 일 때만 comment_count 감소.
+     * 이미 HIDDEN(=count 에서 이미 빠짐)인 댓글 삭제 시 0행 → 이중감소 없음.
+     */
+    int deleteCommentIfPublished(@Param("id") Long id);
+
+    /**
+     * HIDDEN 댓글만 PUBLISHED 로 복원. affected-rows>0 일 때만 comment_count 증가.
+     * (오탐 복원 경로)
+     */
+    int restoreCommentIfHidden(@Param("id") Long id);
+
     void incrementLikeCount(Long id);
 
     void decrementLikeCount(Long id);

@@ -19,10 +19,13 @@ import org.springframework.core.io.Resource;
 import org.springframework.core.io.ResourceLoader;
 import org.springframework.stereotype.Service;
 
+import com.careertuner.community.domain.CommentStatus;
+import com.careertuner.community.domain.CommunityComment;
 import com.careertuner.community.domain.CommunityInterviewReview;
 import com.careertuner.community.domain.CommunityPost;
 import com.careertuner.community.domain.PostCategory;
 import com.careertuner.community.domain.PostStatus;
+import com.careertuner.community.mapper.CommunityCommentMapper;
 import com.careertuner.community.mapper.CommunityPostMapper;
 import com.careertuner.community.mapper.CommunityTagMapper;
 import com.careertuner.community.moderation.client.OllamaClient;
@@ -32,6 +35,7 @@ import com.careertuner.community.moderation.domain.Strictness;
 import com.careertuner.community.moderation.dto.InterviewExtractionResult;
 import com.careertuner.community.moderation.dto.ModerationResult;
 import com.careertuner.community.moderation.dto.TagResult;
+import com.careertuner.community.moderation.mapper.CommentAiResultMapper;
 import com.careertuner.community.moderation.mapper.PostAiResultMapper;
 import com.careertuner.interview.domain.InterviewKnowledge;
 import com.careertuner.interview.rag.InterviewKnowledgeMapper;
@@ -113,7 +117,9 @@ public class PostModerationService {
     private final OllamaClient ollamaClient;
     private final OllamaProperties ollamaProperties;
     private final PostAiResultMapper aiResultMapper;
+    private final CommentAiResultMapper commentAiResultMapper;
     private final CommunityPostMapper postMapper;
+    private final CommunityCommentMapper commentMapper;
     private final CommunityTagMapper tagMapper;
     private final NotificationService notificationService;
     private final ModerationSettingService settingService;
@@ -140,7 +146,9 @@ public class PostModerationService {
             OllamaClient ollamaClient,
             OllamaProperties ollamaProperties,
             PostAiResultMapper aiResultMapper,
+            CommentAiResultMapper commentAiResultMapper,
             CommunityPostMapper postMapper,
+            CommunityCommentMapper commentMapper,
             CommunityTagMapper tagMapper,
             NotificationService notificationService,
             ModerationSettingService settingService,
@@ -156,7 +164,9 @@ public class PostModerationService {
         this.ollamaClient = ollamaClient;
         this.ollamaProperties = ollamaProperties;
         this.aiResultMapper = aiResultMapper;
+        this.commentAiResultMapper = commentAiResultMapper;
         this.postMapper = postMapper;
+        this.commentMapper = commentMapper;
         this.tagMapper = tagMapper;
         this.notificationService = notificationService;
         this.settingService = settingService;
@@ -279,6 +289,67 @@ public class PostModerationService {
             }
             aiResultMapper.fail(postId, AiTaskType.MODERATION, errorMsg);
             log.error("검열 실패: postId={}", postId, e);
+        }
+    }
+
+    /**
+     * 댓글 검열 파이프라인 — 게시글 moderate() 복제. 이벤트 리스너가 비동기로 호출한다.
+     * judge()/buildResultJson() 판정 두뇌를 그대로 재사용하고, 대상만 댓글로 교체한다.
+     *
+     * 차단은 community_comment.status PUBLISHED→HIDDEN '조건부' flip 으로만 이뤄진다(soft-hide).
+     * 표시/트리/익명번호 로직(getComments)은 손대지 않고 기존 tombstone 기계를 그대로 재사용한다.
+     * 결과 테이블(comment_ai_result)은 감사/배치 전용 — 조회 경로와 조인하지 않는다.
+     *
+     * @Transactional 금지 (Ollama 호출이 길어 커넥션 풀 점유 위험 — 게시글과 동일).
+     */
+    public void moderateComment(Long commentId) {
+        try {
+            // 1. UPSERT: PENDING 기록 (재시도 시 attempt_count 증가)
+            commentAiResultMapper.upsertPending(commentId, AiTaskType.MODERATION);
+
+            // 2. 댓글 조회 — null이거나 이미 PUBLISHED가 아니면(자삭 DELETED/관리자 HIDDEN) 검열 불필요.
+            //    조건부 flip이라 굳이 안 막아도 안전하지만, 불필요한 Ollama 호출을 피한다(게시글 DELETED 스킵과 동형).
+            CommunityComment comment = commentMapper.findById(commentId);
+            if (comment == null || !CommentStatus.PUBLISHED.name().equals(comment.getStatus())) {
+                log.info("댓글 검열 스킵: commentId={} (삭제됨/숨김/존재하지 않음)", commentId);
+                return;
+            }
+
+            // 3. 현재 설정 스냅샷 (게시글과 동일 캐시 사용)
+            Strictness currentStrictness = settingService.getStrictness();
+            double currentThreshold = settingService.getHideThreshold();
+
+            // 4. 판정 — 댓글은 제목이 없으므로 본문만. judge()가 8000자 제한·프롬프트를 책임진다.
+            ModerationResult result = judge("", comment.getContent());
+
+            // 5. 결과 저장 (COMPLETED) — applied 스냅샷 병합
+            String resultJson = buildResultJson(result, currentStrictness, currentThreshold);
+            commentAiResultMapper.complete(commentId, AiTaskType.MODERATION,
+                    resultJson, ollamaProperties.getModel());
+
+            // 6. 조건부 숨김 (toxic + 캐시된 threshold). affected-rows>0 일 때만 count 감소·알림.
+            if (result.toxic() && result.confidence() >= currentThreshold) {
+                int updated = commentMapper.hideCommentIfPublished(commentId);
+                if (updated > 0) {
+                    postMapper.decrementCommentCount(comment.getPostId());
+                    log.warn("댓글 숨김 처리: commentId={}, postId={}, category={}, confidence={}",
+                            commentId, comment.getPostId(), result.category(), result.confidence());
+                    sendCommentHiddenNotification(comment);
+                }
+            }
+
+            log.info("댓글 검열 완료: commentId={}, toxic={}, category={}, confidence={}, strictness={}, threshold={}",
+                    commentId, result.toxic(), result.category(), result.confidence(),
+                    currentStrictness, currentThreshold);
+
+        } catch (Exception e) {
+            // 7. 실패 기록 — 예외를 다시 던지지 않는다 (게시글과 동일)
+            String errorMsg = e.getMessage();
+            if (errorMsg != null && errorMsg.length() > 500) {
+                errorMsg = errorMsg.substring(0, 500);
+            }
+            commentAiResultMapper.fail(commentId, AiTaskType.MODERATION, errorMsg);
+            log.error("댓글 검열 실패: commentId={}", commentId, e);
         }
     }
 
@@ -804,6 +875,25 @@ public class PostModerationService {
                 .message("'" + postTitle + "' 게시글이 자동 검수에 의해 검토 대기 상태로 전환되었습니다. "
                         + "관리자 검토 후 복원되거나 삭제될 수 있습니다.")
                 .link("/community?view=guidelines")
+                .build();
+        notificationService.notify(noti);
+    }
+
+    /**
+     * 댓글 검열 숨김 시 작성자에게 알림 발송. sendHiddenNotification(게시글) 동형 복제.
+     * 링크는 댓글이 속한 게시글로 이동.
+     */
+    private void sendCommentHiddenNotification(CommunityComment comment) {
+        String preview = truncate(comment.getContent(), 30);
+        Notification noti = Notification.builder()
+                .userId(comment.getUserId())
+                .type("COMMENT_HIDDEN")
+                .targetType("COMMENT")
+                .targetId(comment.getId())
+                .title("댓글이 커뮤니티 가이드라인 검토 대기 상태로 전환되었습니다")
+                .message("'" + preview + "' 댓글이 자동 검수에 의해 검토 대기 상태로 전환되었습니다. "
+                        + "관리자 검토 후 복원되거나 삭제될 수 있습니다.")
+                .link("/community/posts/" + comment.getPostId())
                 .build();
         notificationService.notify(noti);
     }
