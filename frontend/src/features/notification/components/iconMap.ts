@@ -6,6 +6,7 @@ import {
   Flag, Ticket, UserPlus, ShieldAlert, FilePen,
   CreditCard,
   Bell,
+  RotateCcw, Trash2,
   type LucideIcon,
 } from "lucide-react";
 
@@ -18,4 +19,5 @@ export const ICON_MAP: Record<string, LucideIcon> = {
   Flag, Ticket, UserPlus, ShieldAlert, FilePen,
   CreditCard,
   Bell,
+  RotateCcw, Trash2,
 };

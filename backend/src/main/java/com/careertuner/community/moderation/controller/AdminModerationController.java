@@ -170,6 +170,46 @@ public class AdminModerationController {
         return ApiResponse.ok(adminModerationService.getStats());
     }
 
+    // ── 댓글 검열 (게시글 엔드포인트 복제, 경로만 /comments). "comments" 리터럴이 {postId}보다 우선 매칭됨 ──
+
+    /** 댓글 검열 결과 목록 */
+    @GetMapping("/moderation/comments")
+    public ApiResponse<ModerationPageResponse> commentList(
+            @RequestParam(required = false) String status,
+            @RequestParam(required = false) Boolean toxic,
+            @RequestParam(defaultValue = "1") int page,
+            @RequestParam(defaultValue = "20") int size
+    ) {
+        ModerationListRequest request = new ModerationListRequest(status, toxic, page, size);
+        return ApiResponse.ok(adminModerationService.getCommentList(request));
+    }
+
+    /** 댓글 검열 AI 판정 카테고리별 통계 */
+    @GetMapping("/moderation/comments/stats")
+    public ApiResponse<ModerationStatsResponse> commentStats() {
+        return ApiResponse.ok(adminModerationService.getCommentStats());
+    }
+
+    /** 댓글 검열 단건 상세 */
+    @GetMapping("/moderation/comments/{commentId}")
+    public ApiResponse<ModerationDetailResponse> commentDetail(@PathVariable Long commentId) {
+        return ApiResponse.ok(adminModerationService.getCommentDetail(commentId));
+    }
+
+    /** 댓글 HIDDEN → PUBLISHED 복원 */
+    @PostMapping("/moderation/comments/{commentId}/restore")
+    public ApiResponse<Void> restoreComment(@PathVariable Long commentId) {
+        adminModerationService.restoreComment(commentId);
+        return ApiResponse.ok(null);
+    }
+
+    /** 댓글 → DELETED 확정 삭제 */
+    @PostMapping("/moderation/comments/{commentId}/delete")
+    public ApiResponse<Void> deleteComment(@PathVariable Long commentId) {
+        adminModerationService.deleteComment(commentId);
+        return ApiResponse.ok(null);
+    }
+
     /** 검열 설정 조회 */
     @GetMapping("/moderation/settings")
     public ApiResponse<ModerationSettingResponse> getSettings() {

@@ -52,4 +52,82 @@
          ORDER BY cc.id
     </select>
 
+    <!-- 관리자 댓글 검열 목록 (post findModerationList 복제, ModerationView 재사용) -->
+    <!-- 댓글은 제목이 없으므로 본문 앞 50자를 title로, '댓글'을 카테고리로 매핑한다. -->
+    <select id="findCommentModerationList" resultType="com.careertuner.community.moderation.domain.ModerationView">
+        SELECT cc.id            AS post_id,
+               LEFT(cc.content, 50) AS title,
+               '댓글'            AS post_category,
+               cc.status        AS post_status,
+               cc.is_anonymous  AS anonymous,
+               cc.user_id       AS author_id,
+               u.name           AS author_name,
+               ar.result_json,
+               ar.model,
+               ar.attempt_count,
+               ar.status        AS ai_status,
+               cc.created_at,
+               ar.completed_at
+          FROM comment_ai_result ar
+          JOIN community_comment cc ON ar.comment_id = cc.id
+          LEFT JOIN users u ON cc.user_id = u.id
+         WHERE ar.task_type = 'MODERATION'
+        <if test="status != null and status != ''">
+           AND cc.status = #{status}
+        </if>
+        <if test="toxic != null">
+           AND JSON_EXTRACT(ar.result_json, '$.toxic') = #{toxic}
+        </if>
+         ORDER BY ar.completed_at DESC, cc.created_at DESC
+         LIMIT #{limit} OFFSET #{offset}
+    </select>
+
+    <!-- 관리자 댓글 검열 목록 카운트 -->
+    <select id="countCommentModerationList" resultType="int">
+        SELECT COUNT(*)
+          FROM comment_ai_result ar
+          JOIN community_comment cc ON ar.comment_id = cc.id
+         WHERE ar.task_type = 'MODERATION'
+        <if test="status != null and status != ''">
+           AND cc.status = #{status}
+        </if>
+        <if test="toxic != null">
+           AND JSON_EXTRACT(ar.result_json, '$.toxic') = #{toxic}
+        </if>
+    </select>
+
+    <!-- 관리자 댓글 검열 단건 상세 (본문 전체 포함) -->
+    <select id="findCommentModerationDetail" resultType="com.careertuner.community.moderation.domain.ModerationView">
+        SELECT cc.id            AS post_id,
+               LEFT(cc.content, 50) AS title,
+               cc.content       AS content,
+               '댓글'            AS post_category,
+               cc.status        AS post_status,
+               cc.is_anonymous  AS anonymous,
+               cc.user_id       AS author_id,
+               u.name           AS author_name,
+               ar.result_json,
+               ar.model,
+               ar.attempt_count,
+               ar.status        AS ai_status,
+               cc.created_at,
+               ar.completed_at
+          FROM comment_ai_result ar
+          JOIN community_comment cc ON ar.comment_id = cc.id
+          LEFT JOIN users u ON cc.user_id = u.id
+         WHERE ar.task_type = 'MODERATION'
+           AND ar.comment_id = #{commentId}
+    </select>
+
+    <!-- AI 판정 카테고리별 통계 (댓글) -->
+    <select id="countCommentByAiCategory" resultType="map">
+        SELECT JSON_UNQUOTE(JSON_EXTRACT(ar.result_json, '$.category')) AS category,
+               COUNT(*) AS cnt
+          FROM comment_ai_result ar
+         WHERE ar.task_type = 'MODERATION'
+           AND ar.status = 'COMPLETED'
+           AND ar.result_json IS NOT NULL
+         GROUP BY category
+    </select>
+
 </mapper>

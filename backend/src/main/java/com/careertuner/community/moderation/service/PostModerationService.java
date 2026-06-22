@@ -932,6 +932,34 @@ public class PostModerationService {
         notificationService.notify(noti);
     }
 
+    /** 관리자 댓글 복원 시 작성자에게 알림 발송. sendRestoredNotification(게시글) 동형. */
+    void sendCommentRestoredNotification(CommunityComment comment) {
+        Notification noti = Notification.builder()
+                .userId(comment.getUserId())
+                .type("COMMENT_RESTORED")
+                .targetType("COMMENT")
+                .targetId(comment.getId())
+                .title("댓글이 복원되었습니다")
+                .message("'" + truncate(comment.getContent(), 30) + "' 댓글이 관리자 검토를 통과하여 복원되었습니다.")
+                .link("/community/posts/" + comment.getPostId())
+                .build();
+        notificationService.notify(noti);
+    }
+
+    /** 관리자 댓글 삭제 시 작성자에게 알림 발송. sendDeletedNotification(게시글) 동형. */
+    void sendCommentDeletedNotification(CommunityComment comment) {
+        Notification noti = Notification.builder()
+                .userId(comment.getUserId())
+                .type("COMMENT_REMOVED")
+                .targetType("COMMENT")
+                .targetId(comment.getId())
+                .title("댓글이 가이드라인 위반으로 삭제되었습니다")
+                .message("'" + truncate(comment.getContent(), 30) + "' 댓글이 커뮤니티 가이드라인 위반으로 삭제 처리되었습니다.")
+                .link("/community/posts/" + comment.getPostId())
+                .build();
+        notificationService.notify(noti);
+    }
+
     private static String truncate(String text, int maxLen) {
         if (text == null) return "";
         return text.length() <= maxLen ? text : text.substring(0, maxLen) + "…";

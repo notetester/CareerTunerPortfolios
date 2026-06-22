@@ -41,6 +41,8 @@ const TYPE_CAT: Record<string, string> = {
   COMMENT: "community",
   COMMENT_REPLY: "community",
   COMMENT_HIDDEN: "community",
+  COMMENT_RESTORED: "community",
+  COMMENT_REMOVED: "community",
   LIKE: "community",
   POST_HIDDEN: "community",
   POST_SUMMARY_READY: "community",

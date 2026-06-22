@@ -1,12 +1,14 @@
 package com.careertuner.community.moderation.mapper;
 
 import java.util.List;
+import java.util.Map;
 
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 
 import com.careertuner.community.moderation.domain.AiTaskType;
 import com.careertuner.community.moderation.domain.CommentAiResult;
+import com.careertuner.community.moderation.domain.ModerationView;
 
 /**
  * 댓글 AI 검열 결과 매퍼. PostAiResultMapper 구조 복제(대상만 commentId).
@@ -32,4 +34,18 @@ public interface CommentAiResultMapper {
 
     /** 배치 재검열 대상 댓글 ID(아직 검열 COMPLETED 기록이 없는 PUBLISHED 댓글). post 패턴 복제. */
     List<Long> findCommentIdsForModeration(@Param("force") boolean force);
+
+    // ── 관리자 댓글 검열 목록/상세 (PostAiResultMapper.findModerationList 복제, ModerationView 재사용) ──
+
+    List<ModerationView> findCommentModerationList(@Param("status") String status,
+                                                   @Param("toxic") Boolean toxic,
+                                                   @Param("offset") int offset,
+                                                   @Param("limit") int limit);
+
+    int countCommentModerationList(@Param("status") String status,
+                                   @Param("toxic") Boolean toxic);
+
+    ModerationView findCommentModerationDetail(@Param("commentId") Long commentId);
+
+    List<Map<String, Object>> countCommentByAiCategory();
 }

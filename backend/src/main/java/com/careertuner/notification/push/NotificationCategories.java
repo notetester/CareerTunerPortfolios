@@ -24,6 +24,8 @@ public final class NotificationCategories {
             Map.entry("COMMENT", "community"),
             Map.entry("COMMENT_REPLY", "community"),
             Map.entry("COMMENT_HIDDEN", "community"),
+            Map.entry("COMMENT_RESTORED", "community"),
+            Map.entry("COMMENT_REMOVED", "community"),
             Map.entry("LIKE", "community"),
             Map.entry("POST_HIDDEN", "community"),
             Map.entry("POST_REMOVED", "community"),
