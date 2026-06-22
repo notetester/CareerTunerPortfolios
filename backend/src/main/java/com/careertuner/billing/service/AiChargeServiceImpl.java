@@ -1,17 +1,13 @@
 package com.careertuner.billing.service;
 
-import java.time.LocalDateTime;
-
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import com.careertuner.billing.domain.AiFeatureBenefitPolicy;
 import com.careertuner.billing.domain.SubscriptionBenefitPolicy;
-import com.careertuner.billing.domain.UserSubscription;
 import com.careertuner.billing.dto.AiChargeCommand;
 import com.careertuner.billing.dto.AiChargeResult;
 import com.careertuner.billing.dto.BenefitConsumeResult;
-import com.careertuner.billing.mapper.BillingMapper;
 import com.careertuner.common.exception.BusinessException;
 import com.careertuner.common.exception.ErrorCode;
 import com.careertuner.credit.dto.CreditDeductionResult;
@@ -24,12 +20,11 @@ import lombok.RequiredArgsConstructor;
 @RequiredArgsConstructor
 public class AiChargeServiceImpl implements AiChargeService {
 
-    private static final String DEFAULT_PLAN = "FREE";
     private static final String REASON_ALREADY_CONSUMED = "ALREADY_CONSUMED";
     private static final String OVERAGE_CREDIT = "CREDIT";
     private static final String OVERAGE_FALLBACK_CREDIT = "FALLBACK_CREDIT";
 
-    private final BillingMapper billingMapper;
+    private final BillingPolicyService billingPolicyService;
     private final AiBenefitUsageService benefitUsageService;
     private final CreditService creditService;
     private final CreditMapper creditMapper;
@@ -39,7 +34,8 @@ public class AiChargeServiceImpl implements AiChargeService {
     public AiChargeResult charge(AiChargeCommand command) {
         validate(command);
 
-        AiFeatureBenefitPolicy featurePolicy = billingMapper.findActiveFeatureBenefitPolicy(command.featureType());
+        AiFeatureBenefitPolicy featurePolicy = billingPolicyService.activeFeatureBenefitPolicy(
+                command.userId(), command.featureType());
         if (featurePolicy == null || !featurePolicy.isIncludedInTicket()) {
             return chargeCredit(command, creditCost(command, featurePolicy), "NO_TICKET_POLICY");
         }
@@ -113,23 +109,7 @@ public class AiChargeServiceImpl implements AiChargeService {
     }
 
     private SubscriptionBenefitPolicy currentBenefitPolicy(Long userId, String benefitCode) {
-        BenefitPeriod period = currentBenefitPeriod(userId);
-        SubscriptionBenefitPolicy policy = billingMapper.findActiveBenefitPolicy(period.planCode(), benefitCode);
-        if (policy == null && !DEFAULT_PLAN.equals(period.planCode())) {
-            policy = billingMapper.findActiveBenefitPolicy(DEFAULT_PLAN, benefitCode);
-        }
-        return policy;
-    }
-
-    private BenefitPeriod currentBenefitPeriod(Long userId) {
-        LocalDateTime now = LocalDateTime.now();
-        UserSubscription subscription = billingMapper.findActiveSubscription(userId, now);
-        if (subscription != null) {
-            return new BenefitPeriod(normalizePlanCode(subscription.getPlanCode()));
-        }
-
-        String planCode = billingMapper.findUserPlanCode(userId);
-        return new BenefitPeriod(normalizePlanCode(planCode));
+        return billingPolicyService.activeBenefitPolicy(userId, benefitCode);
     }
 
     private boolean allowsCreditFallback(SubscriptionBenefitPolicy policy) {
@@ -143,13 +123,6 @@ public class AiChargeServiceImpl implements AiChargeService {
     private int currentCredit(AiChargeCommand command) {
         Integer credit = creditMapper.findUserCredit(command.userId());
         return credit == null ? 0 : credit;
-    }
-
-    private String normalizePlanCode(String planCode) {
-        if (planCode == null || planCode.isBlank()) {
-            return DEFAULT_PLAN;
-        }
-        return planCode.trim().toUpperCase();
     }
 
     private void validate(AiChargeCommand command) {
@@ -169,6 +142,4 @@ public class AiChargeServiceImpl implements AiChargeService {
         return value == null || value.isBlank();
     }
 
-    private record BenefitPeriod(String planCode) {
-    }
 }

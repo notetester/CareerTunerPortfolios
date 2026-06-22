@@ -69,9 +69,9 @@
 
     <insert id="insertSubscription" useGeneratedKeys="true" keyProperty="id">
         INSERT INTO user_subscription
-            (user_id, plan_code, status, started_at, current_period_start, current_period_end)
+            (user_id, plan_code, status, started_at, current_period_start, current_period_end, policy_snapshot_json)
         VALUES
-            (#{userId}, #{planCode}, #{status}, #{startedAt}, #{currentPeriodStart}, #{currentPeriodEnd})
+            (#{userId}, #{planCode}, #{status}, #{startedAt}, #{currentPeriodStart}, #{currentPeriodEnd}, #{policySnapshotJson})
     </insert>
 
     <update id="cancelActiveSubscription">
@@ -162,10 +162,11 @@
 
     <insert id="insertPayment" useGeneratedKeys="true" keyProperty="id">
         INSERT INTO payment
-            (user_id, provider, product_type, product_code, order_id, payment_key, amount, plan, credit_amount, status, paid_at)
+            (user_id, provider, product_type, product_code, order_id, payment_key, amount, plan, credit_amount,
+             policy_snapshot_json, status, paid_at)
         VALUES
             (#{userId}, #{provider}, #{productType}, #{productCode}, #{orderId}, #{paymentKey},
-             #{amount}, #{plan}, #{creditAmount}, #{status}, #{paidAt})
+             #{amount}, #{plan}, #{creditAmount}, #{policySnapshotJson}, #{status}, #{paidAt})
     </insert>
 
     <!-- ───── 크레딧 원장 ───── -->

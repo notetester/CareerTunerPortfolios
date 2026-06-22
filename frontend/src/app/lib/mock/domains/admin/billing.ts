@@ -3,7 +3,10 @@
 // 응답 타입은 admin/features/billing/api.ts 가 api<T>(path) 로 기대하는 T 그대로(transform 없음).
 //   GET /admin/payments            -> AdminPaymentRow[]   (?status= 필터)
 //   GET /admin/payments/summary    -> AdminPaymentSummary
-//   GET /admin/plans               -> AdminPlans { plans, creditProducts }
+//   GET /admin/plans               -> AdminPlans { plans, creditProducts, benefitPolicies, featureBenefitPolicies }
+//   GET /admin/plans/policy-changes
+//   POST /admin/plans/policy-changes
+//   POST /admin/plans/policy-changes/{id}/cancel
 import type { MockRoute, MockContext } from "../../registry";
 import { iso } from "../../registry";
 import type { SubscriptionPlan, CreditProduct } from "@/features/billing/api/billingApi";
@@ -11,6 +14,10 @@ import type {
   AdminPaymentRow,
   AdminPaymentSummary,
   AdminPlans,
+  AiFeatureBenefitPolicy,
+  BillingPolicyChange,
+  CreateBillingPolicyChangeRequest,
+  SubscriptionBenefitPolicy,
 } from "@/admin/features/billing/api";
 
 // ── 데모 회원 결제: 김데모(9001) 외 다른 구직자/플랜 결제도 섞어 플랫폼 전체 운영 화면을 만든다. ──
@@ -202,6 +209,74 @@ const creditProducts: CreditProduct[] = [
   },
 ];
 
+const benefitPolicies: SubscriptionBenefitPolicy[] = [
+  {
+    planCode: "FREE",
+    benefitCode: "APPLICATION_ANALYSIS",
+    benefitName: "지원 건 분석",
+    benefitType: "APPLICATION_CASE",
+    quantity: 3,
+    resetCycle: "MONTHLY",
+    overagePolicy: "CREDIT",
+    creditCost: 3,
+    active: true,
+    sortOrder: 1,
+  },
+  {
+    planCode: "BASIC",
+    benefitCode: "APPLICATION_ANALYSIS",
+    benefitName: "지원 건 분석",
+    benefitType: "APPLICATION_CASE",
+    quantity: 20,
+    resetCycle: "MONTHLY",
+    overagePolicy: "CREDIT",
+    creditCost: 2,
+    active: true,
+    sortOrder: 1,
+  },
+  {
+    planCode: "PRO",
+    benefitCode: "CORRECTION",
+    benefitName: "첨삭 사용권",
+    benefitType: "CORRECTION",
+    quantity: 40,
+    resetCycle: "MONTHLY",
+    overagePolicy: "CREDIT",
+    creditCost: 2,
+    active: true,
+    sortOrder: 2,
+  },
+];
+
+const featureBenefitPolicies: AiFeatureBenefitPolicy[] = [
+  {
+    featureType: "JOB_ANALYSIS",
+    benefitCode: "APPLICATION_ANALYSIS",
+    chargeUnit: "APPLICATION_CASE",
+    includedInTicket: true,
+    defaultCreditCost: 3,
+    active: true,
+  },
+  {
+    featureType: "CORRECTION",
+    benefitCode: "CORRECTION",
+    chargeUnit: "DOCUMENT",
+    includedInTicket: true,
+    defaultCreditCost: 2,
+    active: true,
+  },
+];
+
+let policyChangeSeq = 7000;
+const policyChanges: BillingPolicyChange[] = [];
+
+function policyTargetCode(snapshot: Record<string, unknown>) {
+  if (snapshot.planCode && snapshot.benefitCode) return `${snapshot.planCode}:${snapshot.benefitCode}`;
+  if (snapshot.featureType) return String(snapshot.featureType).toUpperCase();
+  if (snapshot.code) return String(snapshot.code).toUpperCase();
+  return "UNKNOWN";
+}
+
 export const adminBillingRoutes: MockRoute[] = [
   // ── 결제 내역: ?status= 로 필터(없으면 전체, 최신순). ──
   {
@@ -228,6 +303,51 @@ export const adminBillingRoutes: MockRoute[] = [
     handler: (): AdminPlans => ({
       plans: [...plans],
       creditProducts: [...creditProducts],
+      benefitPolicies: [...benefitPolicies],
+      featureBenefitPolicies: [...featureBenefitPolicies],
     }),
+  },
+  {
+    method: "GET",
+    pattern: /^\/admin\/plans\/policy-changes$/,
+    handler: (): BillingPolicyChange[] => [...policyChanges].sort((a, b) => b.id - a.id),
+  },
+  {
+    method: "POST",
+    pattern: /^\/admin\/plans\/policy-changes$/,
+    handler: ({ body }: MockContext): BillingPolicyChange => {
+      const request = body as CreateBillingPolicyChangeRequest;
+      const nextSnapshot = request.nextSnapshot ?? {};
+      const now = new Date().toISOString();
+      const change: BillingPolicyChange = {
+        id: ++policyChangeSeq,
+        targetType: request.targetType,
+        targetCode: policyTargetCode(nextSnapshot),
+        currentSnapshotJson: "{}",
+        nextSnapshotJson: JSON.stringify(nextSnapshot),
+        effectiveFrom: request.effectiveFrom,
+        applyMode: request.applyMode,
+        status: "SCHEDULED",
+        createdBy: 1,
+        createdAt: now,
+        canceledBy: null,
+        canceledAt: null,
+      };
+      policyChanges.unshift(change);
+      return change;
+    },
+  },
+  {
+    method: "POST",
+    pattern: /^\/admin\/plans\/policy-changes\/(\d+)\/cancel$/,
+    handler: ({ params }: MockContext): BillingPolicyChange => {
+      const id = Number(params[0]);
+      const target = policyChanges.find((change) => change.id === id);
+      if (!target) throw new Error("예약 변경을 찾을 수 없습니다.");
+      target.status = "CANCELED";
+      target.canceledBy = 1;
+      target.canceledAt = new Date().toISOString();
+      return target;
+    },
   },
 ];

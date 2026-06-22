@@ -58,21 +58,22 @@ public class BillingServiceImpl implements BillingService, AiBenefitUsageService
     private static final String SOURCE_TYPE_PLAN = "PLAN";
 
     private final BillingMapper billingMapper;
+    private final BillingPolicyService billingPolicyService;
     private final NotificationService notificationService;
 
     @Override
     public List<SubscriptionPlan> getPlans() {
-        return billingMapper.findActivePlans();
+        return billingPolicyService.activePlans();
     }
 
     @Override
     public List<SubscriptionPlanResponse> listPlans() {
-        Map<String, List<SubscriptionBenefitPolicyResponse>> benefitsByPlan = billingMapper.findActiveBenefitPolicies()
+        Map<String, List<SubscriptionBenefitPolicyResponse>> benefitsByPlan = billingPolicyService.activeBenefitPolicies()
                 .stream()
                 .map(SubscriptionBenefitPolicyResponse::from)
                 .collect(Collectors.groupingBy(SubscriptionBenefitPolicyResponse::planCode));
 
-        return billingMapper.findActivePlans().stream()
+        return billingPolicyService.activePlans().stream()
                 .map(plan -> SubscriptionPlanResponse.of(
                         plan,
                         benefitsByPlan.getOrDefault(plan.getCode(), List.of()).stream()
@@ -83,14 +84,14 @@ public class BillingServiceImpl implements BillingService, AiBenefitUsageService
 
     @Override
     public List<AiFeatureBenefitPolicyResponse> listFeatureBenefitPolicies() {
-        return billingMapper.findActiveFeatureBenefitPolicies().stream()
+        return billingPolicyService.activeFeatureBenefitPolicies().stream()
                 .map(AiFeatureBenefitPolicyResponse::from)
                 .toList();
     }
 
     @Override
     public List<CreditProduct> getCreditProducts() {
-        return billingMapper.findEnabledCreditProducts();
+        return billingPolicyService.enabledCreditProducts();
     }
 
     @Override
@@ -131,7 +132,7 @@ public class BillingServiceImpl implements BillingService, AiBenefitUsageService
     public MyBenefitsResponse myBenefits(Long userId) {
         BenefitPeriod period = currentBenefitPeriod(userId);
         ensureBalances(userId, period);
-        Map<String, String> benefitNames = benefitNames(period.planCode());
+        Map<String, String> benefitNames = benefitNames(period);
         List<UserBenefitBalanceResponse> balances = billingMapper
                 .findBenefitBalances(userId, period.start(), period.end())
                 .stream()
@@ -158,7 +159,7 @@ public class BillingServiceImpl implements BillingService, AiBenefitUsageService
         if (DEFAULT_PLAN.equals(code)) {
             return cancelSubscription(userId);
         }
-        SubscriptionPlan plan = billingMapper.findActivePlanByCode(code);
+        SubscriptionPlan plan = billingPolicyService.activePlanByCode(code);
         if (plan == null || !plan.isActive()) {
             throw new BusinessException(ErrorCode.NOT_FOUND, "요금제를 찾을 수 없습니다.");
         }
@@ -169,9 +170,10 @@ public class BillingServiceImpl implements BillingService, AiBenefitUsageService
 
         LocalDateTime now = LocalDateTime.now();
         LocalDateTime end = yearly ? now.plusYears(1) : now.plusMonths(1);
+        String policySnapshotJson = billingPolicyService.subscriptionSnapshotJson(code);
 
-        recordPayment(userId, code, amount, code, null);
-        activateSubscription(userId, code, now, end);
+        recordPayment(userId, code, amount, code, null, policySnapshotJson);
+        activateSubscription(userId, code, now, end, policySnapshotJson);
 
         notify(userId, "PAYMENT_COMPLETE", "구독이 시작되었습니다",
                 "%s 플랜(%s) 구독이 활성화되었습니다.".formatted(plan.getName(), yearly ? "연간" : "월간"));
@@ -180,18 +182,21 @@ public class BillingServiceImpl implements BillingService, AiBenefitUsageService
 
     @Override
     @Transactional
-    public MyBenefitsResponse activateSubscriptionAfterPayment(Long userId, String planCode) {
+    public MyBenefitsResponse activateSubscriptionAfterPayment(Long userId, String planCode, String policySnapshotJson) {
         String code = normalizePlanCode(planCode);
         if (DEFAULT_PLAN.equals(code)) {
             throw new BusinessException(ErrorCode.INVALID_INPUT, "무료 플랜은 결제가 필요하지 않습니다.");
         }
-        SubscriptionPlan plan = billingMapper.findActivePlanByCode(code);
-        if (plan == null || plan.getMonthlyPrice() == null || plan.getMonthlyPrice() <= 0) {
+        SubscriptionPlan plan = billingPolicyService.activePlanByCode(code);
+        if (isBlank(policySnapshotJson) && (plan == null || plan.getMonthlyPrice() == null || plan.getMonthlyPrice() <= 0)) {
             throw new BusinessException(ErrorCode.NOT_FOUND, "구매 가능한 구독 플랜을 찾을 수 없습니다.");
         }
+        String snapshot = isBlank(policySnapshotJson)
+                ? billingPolicyService.baseSubscriptionSnapshotJson(code)
+                : policySnapshotJson;
 
         LocalDateTime now = LocalDateTime.now();
-        activateSubscription(userId, code, now, now.plusMonths(1));
+        activateSubscription(userId, code, now, now.plusMonths(1), snapshot);
         return myBenefits(userId);
     }
 
@@ -199,7 +204,7 @@ public class BillingServiceImpl implements BillingService, AiBenefitUsageService
     @Transactional
     public MyBillingResponse purchaseCredits(Long userId, String productCode) {
         String code = productCode == null ? "" : productCode.trim().toUpperCase();
-        CreditProduct product = billingMapper.findCreditProductByCode(code);
+        CreditProduct product = billingPolicyService.enabledCreditProductByCode(code);
         if (product == null || !product.isEnabled()) {
             throw new BusinessException(ErrorCode.NOT_FOUND, "충전 상품을 찾을 수 없습니다.");
         }
@@ -214,7 +219,8 @@ public class BillingServiceImpl implements BillingService, AiBenefitUsageService
                 .reason(product.getName() + " 충전")
                 .build());
 
-        recordPayment(userId, code, product.getPrice(), null, credit);
+        recordPayment(userId, code, product.getPrice(), null, credit,
+                billingPolicyService.creditProductSnapshotJson(product));
 
         notify(userId, "CREDIT_RECHARGED", "크레딧이 충전되었습니다",
                 "크레딧 %d개가 충전되어 현재 %d개 보유 중입니다.".formatted(credit, newBalance));
@@ -250,7 +256,7 @@ public class BillingServiceImpl implements BillingService, AiBenefitUsageService
         if (isBlank(featureType) || isBlank(refType) || refId == null) {
             throw new BusinessException(ErrorCode.INVALID_INPUT, "사용권 차감 기준이 올바르지 않습니다.");
         }
-        var featurePolicy = billingMapper.findActiveFeatureBenefitPolicy(featureType);
+        var featurePolicy = billingPolicyService.activeFeatureBenefitPolicy(userId, featureType);
         if (featurePolicy == null || !featurePolicy.isIncludedInTicket()) {
             return BenefitConsumeResult.skipped(null, 0, "NO_BENEFIT_POLICY");
         }
@@ -292,7 +298,8 @@ public class BillingServiceImpl implements BillingService, AiBenefitUsageService
 
     // ───── 내부 ─────
 
-    private void activateSubscription(Long userId, String planCode, LocalDateTime start, LocalDateTime end) {
+    private void activateSubscription(Long userId, String planCode, LocalDateTime start, LocalDateTime end,
+                                      String policySnapshotJson) {
         billingMapper.deactivateActiveSubscriptions(userId, start);
         billingMapper.insertSubscription(UserSubscription.builder()
                 .userId(userId)
@@ -301,6 +308,7 @@ public class BillingServiceImpl implements BillingService, AiBenefitUsageService
                 .startedAt(start)
                 .currentPeriodStart(start)
                 .currentPeriodEnd(end)
+                .policySnapshotJson(policySnapshotJson)
                 .build());
 
         int updated = billingMapper.updateUserPlan(userId, planCode);
@@ -308,13 +316,15 @@ public class BillingServiceImpl implements BillingService, AiBenefitUsageService
             throw new BusinessException(ErrorCode.NOT_FOUND, "구독 사용자를 찾을 수 없습니다.");
         }
 
-        ensureBalances(userId, new BenefitPeriod(planCode, start, end));
+        ensureBalances(userId, new BenefitPeriod(planCode, start, end, policySnapshotJson, true));
     }
 
     private void ensureBalances(Long userId, BenefitPeriod period) {
-        List<SubscriptionBenefitPolicy> policies = billingMapper.findActiveBenefitPoliciesByPlan(period.planCode());
+        List<SubscriptionBenefitPolicy> policies = benefitPoliciesFor(period);
         if (policies.isEmpty() && !DEFAULT_PLAN.equals(period.planCode())) {
-            policies = billingMapper.findActiveBenefitPoliciesByPlan(DEFAULT_PLAN);
+            policies = period.subscriptionPeriod()
+                    ? billingPolicyService.activeBenefitPoliciesForSubscriptionPeriod(DEFAULT_PLAN, period.policySnapshotJson())
+                    : billingPolicyService.activeBenefitPoliciesByPlan(DEFAULT_PLAN, null);
         }
 
         for (SubscriptionBenefitPolicy policy : policies) {
@@ -357,14 +367,18 @@ public class BillingServiceImpl implements BillingService, AiBenefitUsageService
             return new BenefitPeriod(
                     normalizePlanCode(subscription.getPlanCode()),
                     subscription.getCurrentPeriodStart(),
-                    subscription.getCurrentPeriodEnd());
+                    subscription.getCurrentPeriodEnd(),
+                    subscription.getPolicySnapshotJson(),
+                    true);
         }
 
         LocalDate firstDay = now.toLocalDate().withDayOfMonth(1);
         return new BenefitPeriod(
                 currentPlanCode(userId),
                 LocalDateTime.of(firstDay, LocalTime.MIN),
-                LocalDateTime.of(firstDay.plusMonths(1), LocalTime.MIN));
+                LocalDateTime.of(firstDay.plusMonths(1), LocalTime.MIN),
+                null,
+                false);
     }
 
     private String currentPlanCode(Long userId) {
@@ -378,8 +392,8 @@ public class BillingServiceImpl implements BillingService, AiBenefitUsageService
         return planCode.trim().toUpperCase();
     }
 
-    private Map<String, String> benefitNames(String planCode) {
-        return billingMapper.findActiveBenefitPoliciesByPlan(planCode).stream()
+    private Map<String, String> benefitNames(BenefitPeriod period) {
+        return benefitPoliciesFor(period).stream()
                 .collect(Collectors.toMap(
                         SubscriptionBenefitPolicy::getBenefitCode,
                         SubscriptionBenefitPolicy::getBenefitName,
@@ -391,7 +405,8 @@ public class BillingServiceImpl implements BillingService, AiBenefitUsageService
         return balance != null ? balance : 0;
     }
 
-    private void recordPayment(Long userId, String productCode, int amount, String plan, Integer creditAmount) {
+    private void recordPayment(Long userId, String productCode, int amount, String plan, Integer creditAmount,
+                               String policySnapshotJson) {
         LocalDateTime now = LocalDateTime.now();
         Payment payment = new Payment();
         payment.setUserId(userId);
@@ -403,6 +418,7 @@ public class BillingServiceImpl implements BillingService, AiBenefitUsageService
         payment.setAmount(amount);
         payment.setPlan(plan);
         payment.setCreditAmount(creditAmount);
+        payment.setPolicySnapshotJson(policySnapshotJson);
         payment.setStatus("PAID");
         payment.setPaidAt(now);
         billingMapper.insertPayment(payment);
@@ -423,6 +439,18 @@ public class BillingServiceImpl implements BillingService, AiBenefitUsageService
         return value == null || value.isBlank();
     }
 
-    private record BenefitPeriod(String planCode, LocalDateTime start, LocalDateTime end) {
+    private List<SubscriptionBenefitPolicy> benefitPoliciesFor(BenefitPeriod period) {
+        if (period.subscriptionPeriod()) {
+            return billingPolicyService.activeBenefitPoliciesForSubscriptionPeriod(
+                    period.planCode(), period.policySnapshotJson());
+        }
+        return billingPolicyService.activeBenefitPoliciesByPlan(period.planCode(), period.policySnapshotJson());
+    }
+
+    private record BenefitPeriod(String planCode,
+                                 LocalDateTime start,
+                                 LocalDateTime end,
+                                 String policySnapshotJson,
+                                 boolean subscriptionPeriod) {
     }
 }
