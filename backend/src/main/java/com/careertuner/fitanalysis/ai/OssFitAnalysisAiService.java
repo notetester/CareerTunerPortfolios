@@ -78,6 +78,18 @@ public class OssFitAnalysisAiService implements FitAnalysisAiService {
         // 3. 자체모델 호출(설명만) + grounding guard. '부족 역량을 보유로 서술'(reports/24 E1)하면 재호출, 소진 시 throw → 폴백.
         List<String> missing = new ArrayList<>(missingRequired);
         missing.addAll(missingPreferred);
+        // ★보유 자격증 제외: 규칙엔진 missing 은 cert 를 스킬로 안 쳐서 보유 cert 가 missing 에 남는다.
+        // 안 빼면 모델이 '정보처리기사 보유'(사실)를 말해도 오탐 → 과도 폴백(라이브 회귀 case 2 100% 폴백, reports/29).
+        List<String> heldCerts = command.profileCertificates();
+        if (heldCerts != null && !heldCerts.isEmpty()) {
+            Set<String> held = new HashSet<>();
+            for (String c : heldCerts) {
+                if (c != null) {
+                    held.add(c.toLowerCase(Locale.ROOT));
+                }
+            }
+            missing.removeIf(s -> s != null && held.contains(s.toLowerCase(Locale.ROOT)));
+        }
         int groundingRetries = Math.max(0, properties.getOss().getGroundingRetries());
         JsonNode explain;
         String fitSummary;
