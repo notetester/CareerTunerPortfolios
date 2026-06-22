@@ -4,6 +4,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import java.util.List;
@@ -102,5 +104,58 @@ class OssFitAnalysisAiServiceTest {
 
         assertThatThrownBy(() -> service(client).generate(command))
                 .isInstanceOf(BusinessException.class);
+    }
+
+    // ── grounding guard: 부족 역량을 '보유'로 서술하면 위반 ──
+    @Test
+    void groundingViolation_flagsMissingSkillDescribedAsPossessed() {
+        // command: required[Java,Spring]∩profile[Java] → missing = Spring(필수), AWS(우대)
+        List<String> missing = List.of("Spring", "AWS");
+        assertThat(OssFitAnalysisAiService.groundingViolation(missing, "요약입니다.", List.of("Spring 보유로 즉시 투입 가능")))
+                .contains("Spring");
+        assertThat(OssFitAnalysisAiService.groundingViolation(missing, "Spring은 강점입니다.", List.of()))
+                .contains("Spring");
+    }
+
+    @Test
+    void groundingViolation_noFalsePositiveOnNegationOrLackOrMatchedSkill() {
+        List<String> missing = List.of("Spring", "AWS");
+        // 결핍 문맥(부족) → 위반 아님
+        assertThat(OssFitAnalysisAiService.groundingViolation(missing, "Spring 경험이 부족합니다.", List.of())).isNull();
+        // 부정(보유하지 않) → 위반 아님
+        assertThat(OssFitAnalysisAiService.groundingViolation(missing, "Spring을 보유하지 않았습니다.", List.of())).isNull();
+        // '즉시 지원하기보다는' → 스킬 보유 서술 아님 → 위반 아님
+        assertThat(OssFitAnalysisAiService.groundingViolation(missing, "즉시 지원하기보다는 역량을 보완하세요.", List.of())).isNull();
+        // 매칭 역량(Java)을 보유라 해도 missing 이 아니므로 위반 아님
+        assertThat(OssFitAnalysisAiService.groundingViolation(missing, "Java를 보유하고 있습니다.", List.of("Java 보유"))).isNull();
+    }
+
+    @Test
+    void retriesOnGroundingViolationThenFallsBack() {
+        CareerAnalysisOssClient client = mock(CareerAnalysisOssClient.class);
+        JsonNode violating = MAPPER.readTree("""
+                {"fitSummary":"설명","strengths":["Spring 보유로 즉시 투입 가능"],"risks":[],"strategyActions":[],"learningTaskReasons":[]}""");
+        when(client.requestFitExplain(anyString(), anyString())).thenReturn(violating);
+
+        assertThatThrownBy(() -> service(client).generate(command))
+                .isInstanceOf(BusinessException.class);
+        // groundingRetries 기본 1 → 총 2회 호출 후 폴백 유도
+        verify(client, times(2)).requestFitExplain(anyString(), anyString());
+    }
+
+    @Test
+    void recoversWhenRetryReturnsGroundedExplanation() {
+        CareerAnalysisOssClient client = mock(CareerAnalysisOssClient.class);
+        JsonNode violating = MAPPER.readTree("""
+                {"fitSummary":"설명","strengths":["Spring 보유"],"risks":[],"strategyActions":[],"learningTaskReasons":[]}""");
+        JsonNode clean = MAPPER.readTree("""
+                {"fitSummary":"Spring 부족, 보완 권장","strengths":["Java 보유"],"risks":["Spring 미보유"],
+                 "strategyActions":["Spring 학습"],"learningTaskReasons":[]}""");
+        when(client.requestFitExplain(anyString(), anyString())).thenReturn(violating).thenReturn(clean);
+
+        FitAnalysisAiResult result = service(client).generate(command);
+
+        assertThat(result.strategy()).isEqualTo("Spring 부족, 보완 권장");
+        verify(client, times(2)).requestFitExplain(anyString(), anyString());
     }
 }
