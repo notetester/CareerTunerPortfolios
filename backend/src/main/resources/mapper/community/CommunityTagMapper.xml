@@ -27,9 +27,17 @@
         DELETE FROM community_post_tag WHERE post_id = #{postId} AND is_ai = 1
     </delete>
 
+    <!--
+        동시 태깅 시 PK(post_id, tag_id) 중복으로 INSERT가 실패하던 문제를 흡수한다.
+        충돌 시 is_ai만 갱신한다(usage_count는 이 매퍼에 결합돼 있지 않음).
+        반환 affected rows: 신규 INSERT=1, 기존 행 UPDATE=2(또는 변경 없음 0).
+        호출부(applyAiTags)는 1일 때만 usage_count를 증가시켜 동시 태깅 시
+        카운트 이중증가/드리프트를 방지한다.
+    -->
     <insert id="insertPostTag">
         INSERT INTO community_post_tag (post_id, tag_id, is_ai)
         VALUES (#{postId}, #{tagId}, #{isAi})
+        ON DUPLICATE KEY UPDATE is_ai = VALUES(is_ai)
     </insert>
 
     <select id="findTagNamesByPostId" resultType="java.lang.String">

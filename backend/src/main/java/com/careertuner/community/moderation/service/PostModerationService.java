@@ -15,9 +15,11 @@ import java.util.Set;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.core.io.Resource;
 import org.springframework.core.io.ResourceLoader;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import com.careertuner.community.domain.CommentStatus;
 import com.careertuner.community.domain.CommunityComment;
@@ -127,6 +129,13 @@ public class PostModerationService {
     private final ObjectMapper objectMapper;
     private final InterviewKnowledgeMapper interviewKnowledgeMapper;
 
+    /**
+     * 자기 자신 프록시 주입 — applyAiTags()의 @Transactional이 self-invocation
+     * (tag() → applyAiTags())에서도 실제 적용되도록 프록시 경유로 호출하기 위함.
+     * 순환 의존이라 @Lazy로 끊는다.
+     */
+    private final PostModerationService self;
+
     /** 기본 시스템 프롬프트 (classpath 파일에서 1회 로드) */
     private final String baseSystemPrompt;
 
@@ -155,6 +164,7 @@ public class PostModerationService {
             UserSanctionService userSanctionService,
             ObjectMapper objectMapper,
             InterviewKnowledgeMapper interviewKnowledgeMapper,
+            @Lazy PostModerationService self,
             ResourceLoader resourceLoader,
             @Value("classpath:prompts/moderation-system.txt") Resource promptResource,
             @Value("classpath:prompts/tagging-system.txt") Resource taggingPromptResource,
@@ -173,6 +183,7 @@ public class PostModerationService {
         this.userSanctionService = userSanctionService;
         this.objectMapper = objectMapper;
         this.interviewKnowledgeMapper = interviewKnowledgeMapper;
+        this.self = self;
         this.tagConfidenceThreshold = tagConfidenceThreshold;
 
         // 기본 프롬프트 로드
@@ -420,7 +431,9 @@ public class PostModerationService {
             boolean applied = result.confidence() >= tagConfidenceThreshold;
 
             if (applied && !filteredTags.isEmpty()) {
-                applyAiTags(postId, filteredTags);
+                // self(프록시) 경유로 호출해야 applyAiTags의 @Transactional이 적용된다.
+                // (Ollama 호출은 위에서 끝났으므로 이 DB 단계만 트랜잭션으로 묶인다.)
+                self.applyAiTags(postId, filteredTags);
             }
 
             // 결과 저장
@@ -530,11 +543,12 @@ public class PostModerationService {
             // 1. community_interview_review.ai_extracted_questions에 저장
             postMapper.updateAiExtractedQuestions(postId, sanitizedJson);
 
-            // 2. InterviewKnowledge 중복 방지: 기존 행 삭제 후 재삽입
+            // 2. InterviewKnowledge 중복 방지: 기존 행 삭제 후 재삽입.
+            //    단, 추출 질문이 비면 delete를 skip 하여 기존 RAG 지식을 보존한다.
+            //    (재적재가 비원자라 delete 후 insert가 0건이면 지식이 사라지는 문제 방지)
             String source = "CareerTuner 커뮤니티 #" + postId;
-            postMapper.deleteInterviewKnowledgeBySource(source);
-
             if (result.questions() != null && !result.questions().isEmpty()) {
+                postMapper.deleteInterviewKnowledgeBySource(source);
                 for (InterviewExtractionResult.ExtractedQuestion q : result.questions()) {
                     InterviewKnowledge knowledge = buildInterviewKnowledge(
                             q, result, postId, source);
@@ -795,8 +809,19 @@ public class PostModerationService {
     /**
      * AI 태그를 게시글에 적용한다.
      * 기존 AI 태그(is_ai=1)를 삭제하고, 새 AI 태그를 삽입한 뒤 tags_json 캐시를 갱신한다.
+     *
+     * 동일 게시글 동시 태깅 정합성:
+     * - "삭제 → INSERT → usage_count 갱신"을 한 트랜잭션으로 묶어 직렬화한다.
+     *   (Ollama 호출은 tag()에서 이미 끝났으므로 이 메서드는 순수 DB 단계만 포함 →
+     *    커넥션을 오래 점유하지 않는다.)
+     * - insertPostTag는 ON DUPLICATE KEY UPDATE라 중복키로 실패하지 않으며,
+     *   신규 INSERT(affected==1)일 때만 usage_count를 증가시켜 이중증가를 막는다.
+     *
+     * self-invocation 함정 주의: tag()에서 직접(this) 부르면 프록시를 거치지 않아
+     * @Transactional이 무효다. 반드시 self(@Lazy 프록시) 경유로 호출한다.
      */
-    private void applyAiTags(Long postId, List<String> tags) {
+    @Transactional
+    public void applyAiTags(Long postId, List<String> tags) {
         // 1. 기존 AI 태그의 usage_count 감소
         List<Long> oldAiTagIds = tagMapper.findAiTagIds(postId);
         for (Long tagId : oldAiTagIds) {
@@ -816,8 +841,13 @@ public class PostModerationService {
             Long tagId = tagMapper.findIdByName(trimmed);
             if (tagId == null) continue;
 
-            tagMapper.insertPostTag(postId, tagId, true);
-            tagMapper.incrementUsageCount(tagId);
+            // 신규 INSERT(affected==1)일 때만 usage_count 증가. 동시 태깅으로 이미
+            // 같은 (post_id, tag_id) 행이 있으면 ON DUPLICATE KEY UPDATE(affected!=1)라
+            // 카운트를 다시 올리지 않는다(이중증가/드리프트 방지).
+            int affected = tagMapper.insertPostTag(postId, tagId, true);
+            if (affected == 1) {
+                tagMapper.incrementUsageCount(tagId);
+            }
         }
 
         // 4. tags_json 캐시 갱신 (사용자 태그 + AI 태그 전체)

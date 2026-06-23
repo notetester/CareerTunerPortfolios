@@ -62,7 +62,9 @@ public class UserSanctionService {
         }
 
         int blockDays = settingService.getBlockDays();
-        LocalDateTime blockedUntil = LocalDateTime.now().plusDays(blockDays);
+        // blockedUntil 은 DB NOW()(serverTimezone=Asia/Seoul, KST 벽시계)와 비교되어 해제 판정된다.
+        // JVM 타임존(UTC 등)에 무관하게 KST 벽시계로 저장해 시간원을 일치시킨다.
+        LocalDateTime blockedUntil = LocalDateTime.now(java.time.ZoneId.of("Asia/Seoul")).plusDays(blockDays);
         String reason = "검열 누적 " + hiddenCount + "회 자동 제재";
 
         // A 도메인 인프라 재사용: 상태 변경 + 이력 + 세션 해지 (actor=null = 시스템)

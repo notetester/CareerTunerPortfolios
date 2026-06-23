@@ -17,6 +17,7 @@ import com.careertuner.common.exception.BusinessException;
 import com.careertuner.common.exception.ErrorCode;
 import com.careertuner.common.security.AuthUser;
 import com.careertuner.community.domain.CommunityComment;
+import com.careertuner.community.domain.CommunityPost;
 import com.careertuner.community.mapper.CommunityCommentMapper;
 import com.careertuner.community.mapper.CommunityPostMapper;
 import com.careertuner.community.moderation.domain.AiResultStatus;
@@ -101,10 +102,14 @@ public class AdminReportServiceImpl implements AdminReportService {
         if (!isComment) {
             switch (action) {
                 case "HIDDEN" -> {
+                    // 정책: DELETED는 종착(불가역) 상태 — DELETED 게시글은 HIDDEN으로 역행 불가.
+                    guardPostNotDeleted(targetId);
                     reportMapper.updatePostReportStatus(targetId, "CONFIRMED", "HIDDEN");
                     reportMapper.updatePostStatus(targetId, "HIDDEN");
                 }
                 case "DELETED" -> {
+                    // 정책: DELETED는 종착 상태 — 이미 DELETED면 재처리 거부(멱등성/감사 일관성).
+                    guardPostNotDeleted(targetId);
                     reportMapper.updatePostReportStatus(targetId, "CONFIRMED", "DELETED");
                     reportMapper.updatePostStatus(targetId, "DELETED");
                 }
@@ -215,6 +220,21 @@ public class AdminReportServiceImpl implements AdminReportService {
         if (c == null) return;
         if (commentMapper.restoreCommentIfHidden(commentId) > 0) {
             postMapper.incrementCommentCount(c.getPostId());
+        }
+    }
+
+    /**
+     * 게시글 상태전이 가드.
+     * 정책: DELETED는 종착(불가역) 상태이므로 DELETED→HIDDEN 역행이나 DELETED 재처리를 막는다.
+     * 사전 status 조회로 거부하고, updatePostStatus 매퍼의 status &lt;&gt; 'DELETED' 가드가 경합을 2차 방어한다.
+     */
+    private void guardPostNotDeleted(Long postId) {
+        CommunityPost post = postMapper.findById(postId);
+        if (post == null) {
+            throw new BusinessException(ErrorCode.NOT_FOUND, "게시글을 찾을 수 없습니다.");
+        }
+        if ("DELETED".equals(post.getStatus())) {
+            throw new BusinessException(ErrorCode.CONFLICT, "이미 삭제된 게시글은 상태를 변경할 수 없습니다.");
         }
     }
 
