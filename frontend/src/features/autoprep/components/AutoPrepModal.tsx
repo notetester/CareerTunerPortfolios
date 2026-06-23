@@ -15,7 +15,7 @@ interface Props {
   onNavigate: (path: string) => void;
 }
 
-/** 작업 과정 팝업. 전체 진행바 + 파트별 에너지바(시간 기반, 완료시 100% 유지) + 세부스텝 + 완료 후 액션. */
+/** 작업 과정 팝업. 전체 진행바 + 세부스텝마다 에너지바(순차 차오름, 완료시 100% 유지) + 완료 후 액션. */
 export function AutoPrepModal({ open, onClose, running, plan, parts, error, onNavigate }: Props) {
   if (!open) return null;
 
@@ -127,6 +127,9 @@ function PartGroup({
 }) {
   const meta = PREP_PARTS[part.key] ?? { label: part.key, icon: "•", part: "", estMs: 12000 };
   const action = part.status === "done" ? actionFor(part.key, caseId) : null;
+  const elapsed = usePartElapsed(part.status);
+  const count = Math.max(1, part.substeps.length);
+  const segMs = meta.estMs / count;
 
   return (
     <div className="py-3">
@@ -142,26 +145,33 @@ function PartGroup({
       </div>
 
       {part.substeps.map((s, i) => {
+        const pct = substepPct(part.status, i, count, segMs, elapsed);
+        const active = part.status === "running" && elapsed >= i * segMs && pct < 100;
         const isLast = i === part.substeps.length - 1;
-        const subRunning = part.status === "running" && isLast;
+        const showBar = part.status === "running" || part.status === "done";
         return (
           <div key={i} className="flex gap-3 py-1.5">
             <div className="flex flex-col items-center">
               <div className="grid h-7 w-7 flex-none place-items-center rounded-full bg-primary/10 text-sm text-primary">
-                {subRunning ? <Spinner /> : meta.icon}
+                {active ? <Spinner /> : pct >= 100 ? "✓" : meta.icon}
               </div>
-              {i < part.substeps.length - 1 && <div className="mt-1 w-px flex-1 bg-border" />}
+              {!isLast && <div className="mt-1 w-px flex-1 bg-border" />}
             </div>
-            <div className="flex-1 pt-0.5">
+            <div className="min-w-0 flex-1 pt-0.5">
               <div className="text-[13px] font-semibold text-foreground">{s.name}</div>
-              <div className="mt-0.5 text-xs text-muted-foreground">{s.desc}</div>
+              <div className="mb-1 mt-0.5 text-xs text-muted-foreground">{s.desc}</div>
+              {showBar && (
+                <div className="h-1 w-full overflow-hidden rounded-full bg-secondary">
+                  <div
+                    className="h-full rounded-full bg-primary transition-all duration-150 ease-out"
+                    style={{ width: `${pct}%` }}
+                  />
+                </div>
+              )}
             </div>
           </div>
         );
       })}
-
-      {/* 에너지바 — running 동안 차오르고, done 이면 100% 그대로 유지(✓). LLM 블랙박스 진행감용. */}
-      <PartEnergyBar status={part.status} estMs={meta.estMs} />
 
       {part.result && part.status !== "running" && (
         <div className="ml-10 mt-1.5 flex flex-wrap items-center gap-2">
@@ -180,40 +190,41 @@ function PartGroup({
   );
 }
 
-/** 파트 전용 에너지바. running: 0→90% 점근(시간 기반) · done: 100% 고정 + ✓ · 그 외: 미표시. */
-function PartEnergyBar({ status, estMs }: { status: PartUiStatus; estMs: number }) {
-  const [pct, setPct] = useState(0);
-
+/** 파트 running 동안 경과 시간(ms). 세부스텝 에너지바 순차 진행의 기준. */
+function usePartElapsed(status: PartUiStatus): number {
+  const [elapsed, setElapsed] = useState(0);
   useEffect(() => {
-    if (status !== "running") return;
-    setPct(0);
+    if (status !== "running") {
+      return;
+    }
     const start = Date.now();
-    const id = setInterval(() => {
-      const elapsed = Date.now() - start;
-      setPct(Math.min(90, 90 * (1 - Math.exp(-elapsed / (estMs * 0.6)))));
-    }, 120);
+    const id = setInterval(() => setElapsed(Date.now() - start), 100);
     return () => clearInterval(id);
-  }, [status, estMs]);
+  }, [status]);
+  return status === "running" ? elapsed : 0;
+}
 
-  if (status !== "running" && status !== "done") return null;
-  const filled = status === "done" ? 100 : pct;
-
-  return (
-    <div className="ml-10 mt-1.5">
-      <div className="mb-1 flex items-center justify-between text-xs">
-        <span className="text-muted-foreground">{status === "done" ? "완료" : "AI가 처리 중이에요"}</span>
-        <span className="tabular-nums font-semibold text-primary">
-          {status === "done" ? "100% ✓" : `${Math.round(filled)}%`}
-        </span>
-      </div>
-      <div className="h-1.5 w-full overflow-hidden rounded-full bg-secondary">
-        <div
-          className="h-full rounded-full bg-primary transition-all duration-150 ease-out"
-          style={{ width: `${filled}%` }}
-        />
-      </div>
-    </div>
-  );
+/**
+ * 세부스텝 i 의 진행률.
+ * done: 100 · running: i 번째 구간(segMs)에 들어오면 0→점근, 다음 구간 시작하면 100(마지막은 95%서 대기) · 그 외: 0.
+ */
+function substepPct(status: PartUiStatus, i: number, count: number, segMs: number, elapsed: number): number {
+  if (status === "done") {
+    return 100;
+  }
+  if (status !== "running") {
+    return 0;
+  }
+  const segElapsed = elapsed - i * segMs;
+  if (segElapsed < 0) {
+    return 0;
+  }
+  const isLast = i === count - 1;
+  if (!isLast && elapsed >= (i + 1) * segMs) {
+    return 100;
+  }
+  const cap = isLast ? 95 : 100;
+  return Math.min(cap, cap * (1 - Math.exp(-segElapsed / (segMs * 0.55))));
 }
 
 function actionFor(key: string, caseId: number | null): { label: string; path: string } | null {
