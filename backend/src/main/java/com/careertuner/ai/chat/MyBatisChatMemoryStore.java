@@ -44,11 +44,20 @@ public class MyBatisChatMemoryStore implements ChatMemoryStore {
         mapper.delete(toLong(memoryId));
     }
 
-    /** 새 대화 행을 만들고 발급된 conversationId 를 반환. */
-    public Long createConversation() {
+    /**
+     * 새 대화 행을 만들고 발급된 conversationId 를 반환.
+     * @param userId 로그인 유저 id(소유자). 비로그인이면 null → 익명 대화(복원 대상 아님).
+     */
+    public Long createConversation(Long userId) {
         Map<String, Object> holder = new HashMap<>();
+        holder.put("userId", userId);
         mapper.createConversation(holder);
         return ((Number) holder.get("id")).longValue();
+    }
+
+    /** 해당 유저의 가장 최근 대화 id (없으면 null). 복원 시작점. */
+    public Long findRecentConversation(Long userId) {
+        return mapper.findRecentConversationByUser(userId);
     }
 
     private Long toLong(Object memoryId) {

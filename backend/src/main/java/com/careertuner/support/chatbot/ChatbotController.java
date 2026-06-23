@@ -7,6 +7,8 @@ import java.util.stream.Collectors;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -15,8 +17,13 @@ import org.springframework.web.bind.annotation.RestController;
 
 import java.util.Optional;
 
+import dev.langchain4j.data.message.AiMessage;
+import dev.langchain4j.data.message.UserMessage;
+
 import com.careertuner.ai.chat.ChatAskRequest;
 import com.careertuner.ai.chat.ChatAskResponse;
+import com.careertuner.ai.chat.ChatHistoryResponse;
+import com.careertuner.ai.chat.ChatHistoryResponse.ChatHistoryMessage;
 import com.careertuner.ai.chat.ChatResponse;
 import com.careertuner.ai.chat.ChatResponse.SiteLink;
 import com.careertuner.ai.chat.CommunityChatAgent;
@@ -25,6 +32,7 @@ import com.careertuner.ai.chat.MessageSanitizer;
 import com.careertuner.ai.chat.MyBatisChatMemoryStore;
 import com.careertuner.ai.chat.QuickReplyAgent;
 import com.careertuner.ai.chat.SearchTrace;
+import com.careertuner.common.security.AuthUser;
 import com.careertuner.common.web.ApiResponse;
 import com.careertuner.community.search.PostHit;
 
@@ -63,14 +71,17 @@ public class ChatbotController {
      * POST /api/chatbot/ask  body: { question, conversationId? }
      */
     @PostMapping("/chatbot/ask")
-    public ApiResponse<ChatAskResponse> ask(@RequestBody ChatAskRequest req) {
+    public ApiResponse<ChatAskResponse> ask(@RequestBody ChatAskRequest req,
+                                            @AuthenticationPrincipal AuthUser authUser) {
         if (req == null || req.question() == null || req.question().isBlank()) {
             return ApiResponse.error("BAD_REQUEST", "질문을 입력해 주세요.");
         }
 
+        // 로그인 시 user_id 기록 → 나중에 "이전 대화 복원" 대상이 된다. 비로그인은 null(익명).
+        Long userId = authUser != null ? authUser.id() : null;
         Long conversationId = req.conversationId() != null
                 ? req.conversationId()
-                : memoryStore.createConversation();
+                : memoryStore.createConversation(userId);
 
         // Fast-path: 순수 내비 질의는 LLM·검색 우회 즉답 (서버 신뢰 링크라 화이트리스트 검증 생략).
         Optional<ChatResponse> fast = fastPathService.tryFastPath(req.question());
@@ -107,6 +118,47 @@ public class ChatbotController {
         } finally {
             searchTrace.clear();
         }
+    }
+
+    /**
+     * 로그인 유저의 가장 최근 대화를 복원한다(이어보기/이어가기).
+     * GET /api/chatbot/conversations/recent  (인증 필요 — SecurityConfig permitAll 미포함)
+     * <p>본인 대화만 조회(쿼리가 user_id 로 스코프). 이전 대화 없으면 data=null.
+     * 메시지는 LLM 메모리 윈도우(최근 N개) 평탄화라 전체 이력이 아니며, 링크/칩은 복원되지 않는다(텍스트만).
+     */
+    @GetMapping("/chatbot/conversations/recent")
+    public ApiResponse<ChatHistoryResponse> recentConversation(@AuthenticationPrincipal AuthUser authUser) {
+        if (authUser == null) {
+            return ApiResponse.ok(null); // 비로그인: 복원 없음(실제론 인증 필터에서 차단)
+        }
+        Long conversationId = memoryStore.findRecentConversation(authUser.id());
+        if (conversationId == null) {
+            return ApiResponse.ok(null); // 이전 대화 없음 → 빈 채팅으로 시작
+        }
+        List<ChatHistoryMessage> messages = memoryStore.getMessages(conversationId).stream()
+                .map(this::toHistoryMessage)
+                .filter(m -> m != null)
+                .collect(Collectors.toList());
+        return ApiResponse.ok(new ChatHistoryResponse(conversationId, messages));
+    }
+
+    /**
+     * LangChain4j 메모리 메시지 → UI 표시용 {role,text}.
+     * user/assistant 텍스트만 노출하고 System·툴호출·툴결과 메시지는 버린다(UI 비표시).
+     */
+    private ChatHistoryMessage toHistoryMessage(dev.langchain4j.data.message.ChatMessage m) {
+        if (m instanceof UserMessage u) {
+            String t = u.singleText();
+            return (t == null || t.isBlank()) ? null : new ChatHistoryMessage("user", t);
+        }
+        if (m instanceof AiMessage a) {
+            String t = a.text();
+            if (t == null || t.isBlank()) {
+                return null; // 툴 호출만 있는 Ai 메시지(최종 답변 아님) → 스킵
+            }
+            return new ChatHistoryMessage("bot", MessageSanitizer.stripMarkdown(t));
+        }
+        return null;
     }
 
     /**

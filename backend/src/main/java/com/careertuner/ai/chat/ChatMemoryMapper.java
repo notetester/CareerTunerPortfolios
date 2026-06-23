@@ -21,6 +21,12 @@ public interface ChatMemoryMapper {
     /** 대화 삭제 */
     void delete(@Param("conversationId") Long conversationId);
 
-    /** 새 대화 행 생성 → 생성된 conversation_id 를 holder["id"] 에 채운다 */
+    /**
+     * 새 대화 행 생성 → 생성된 conversation_id 를 holder["id"] 에 채운다.
+     * holder["userId"] 가 있으면 소유자로 기록(없으면 NULL = 익명).
+     */
     void createConversation(Map<String, Object> holder);
+
+    /** 해당 유저의 가장 최근 대화 conversation_id (없으면 null). 복원 진입점. */
+    Long findRecentConversationByUser(@Param("userId") Long userId);
 }
