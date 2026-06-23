@@ -5,6 +5,7 @@ import { Button } from "../ui/button";
 import { Badge } from "../ui/badge";
 import { NotificationBell } from "@/features/notification/components/NotificationBell";
 import { HeaderNav } from "./HeaderNav";
+import { ThemeToggle } from "./ThemeToggle";
 import "@/features/notification/styles/notification.css";
 import {
   Sparkles,
@@ -213,6 +214,7 @@ export function Header() {
 
           {/* Right side */}
           <div className="flex items-center gap-1 sm:gap-2 justify-self-end">
+            <ThemeToggle />
             {isLoggedIn ? (
               <>
                 {/* Credits badge */}
