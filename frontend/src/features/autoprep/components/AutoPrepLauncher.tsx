@@ -1,7 +1,7 @@
 import { useRef, useState } from "react";
 
 import { uploadAttachment } from "../api/autoPrepApi";
-import type { AutoPrepRequest } from "../types/autoPrep";
+import type { AutoPrepRequest, PrepCaseCandidate } from "../types/autoPrep";
 
 interface FileItem {
   file: File;
@@ -13,16 +13,19 @@ interface FileItem {
 interface Props {
   onRun: (req: AutoPrepRequest) => void;
   busy: boolean;
+  intakeMessage?: string | null;
+  candidates?: PrepCaseCandidate[];
+  onPickCase?: (caseId: number) => void;
 }
 
 const EXAMPLES = [
   "카카오 프론트 압박 면접까지",
   "토스 서버 직무 위주로",
-  "내 최근 지원 건 기본 면접",
+  "자소서만 첨삭해줘",
 ];
 
-/** 한 줄 입력 + 파일 첨부(드래그/버튼) 런처. "준비 시작" 시 업로드 완료된 파일 id 를 함께 넘긴다. */
-export function AutoPrepLauncher({ onRun, busy }: Props) {
+/** 한 줄 입력 + 파일 첨부(드래그/버튼) 런처. intake 가 지원 건을 되물으면 후보 칩을 띄운다. */
+export function AutoPrepLauncher({ onRun, busy, intakeMessage, candidates = [], onPickCase }: Props) {
   const [query, setQuery] = useState("");
   const [files, setFiles] = useState<FileItem[]>([]);
   const [drag, setDrag] = useState(false);
@@ -128,6 +131,28 @@ export function AutoPrepLauncher({ onRun, busy }: Props) {
               </button>
             </span>
           ))}
+        </div>
+      )}
+
+      {/* 인테이크 되묻기 — 지원 건이 필요한데 못 찾으면 후보를 띄워 고르게 한다 */}
+      {intakeMessage && (
+        <div className="mt-3 rounded-lg border border-primary/30 bg-primary/5 p-3">
+          <div className="mb-2 text-xs font-medium text-foreground">{intakeMessage}</div>
+          {candidates.length > 0 && (
+            <div className="flex flex-wrap gap-2">
+              {candidates.slice(0, 6).map((c) => (
+                <button
+                  key={c.id}
+                  type="button"
+                  onClick={() => onPickCase?.(c.id)}
+                  className="rounded-lg border border-border bg-card px-3 py-1.5 text-left text-xs transition hover:border-primary"
+                >
+                  <div className="font-bold text-foreground">{c.companyName}</div>
+                  <div className="text-muted-foreground">{c.jobTitle}</div>
+                </button>
+              ))}
+            </div>
+          )}
         </div>
       )}
 
