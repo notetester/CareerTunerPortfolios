@@ -7,6 +7,8 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
 import com.careertuner.ai.autoprep.dto.AutoPrepRequest;
+import com.careertuner.applicationcase.dto.ApplicationCaseResponse;
+import com.careertuner.applicationcase.service.ApplicationCaseService;
 import com.careertuner.interview.service.InterviewLlmGateway;
 
 import lombok.RequiredArgsConstructor;
@@ -26,6 +28,7 @@ import tools.jackson.databind.JsonNode;
 public class AutoPrepPlanner {
 
     private final InterviewLlmGateway llmGateway;
+    private final ApplicationCaseService applicationCaseService;
 
     @Value("${careertuner.interview.model.generation:gpt-5.4-mini}")
     private String generationModel;
@@ -41,8 +44,7 @@ public class AutoPrepPlanner {
     public PrepPlan plan(Long userId, AutoPrepRequest request) {
         PrepSlots parsed = parseSlots(request.query());
         String mode = firstNonBlank(request.mode(), parsed.mode(), "BASIC");
-        // TODO(1파트씩 확장): caseId 가 null 이면 parsed.company/jobTitle 로 사용자 지원 건 목록을 매칭한다.
-        Long caseId = request.applicationCaseId();
+        Long caseId = resolveCaseId(userId, parsed, request.applicationCaseId());
         PrepSlots slots = new PrepSlots(parsed.company(), parsed.jobTitle(), mode, caseId);
         return new PrepPlan("FULL_PREP", slots, PrepPlan.defaultSteps());
     }
@@ -60,6 +62,35 @@ public class AutoPrepPlanner {
             log.warn("AutoPrep 슬롯 파싱 실패 → 빈 슬롯으로 진행: {}", ex.getMessage());
             return new PrepSlots(null, null, null, null);
         }
+    }
+
+    /**
+     * 지원 건 결정: 명시 caseId 우선 → 슬롯의 회사명으로 사용자 지원 건 매칭 → 가장 최근 건 → 없으면 null.
+     */
+    private Long resolveCaseId(Long userId, PrepSlots parsed, Long explicit) {
+        if (explicit != null) {
+            return explicit;
+        }
+        List<ApplicationCaseResponse> cases;
+        try {
+            cases = applicationCaseService.list(userId, null, false);
+        } catch (RuntimeException ex) {
+            log.warn("AutoPrep 지원 건 목록 조회 실패: {}", ex.getMessage());
+            return null;
+        }
+        if (cases == null || cases.isEmpty()) {
+            return null;
+        }
+        String company = parsed.company();
+        if (company != null && !company.isBlank()) {
+            String key = company.trim();
+            for (ApplicationCaseResponse c : cases) {
+                if (c.companyName() != null && c.companyName().contains(key)) {
+                    return c.id();
+                }
+            }
+        }
+        return cases.get(0).id();
     }
 
     private Map<String, Object> intentSchema() {
