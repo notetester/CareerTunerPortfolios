@@ -24,6 +24,13 @@ import {
   createSession, generateQuestions, submitAnswer as submitInterviewAnswer, followUps,
   realtimeSession, fileAsset,
 } from "./domains/interview";
+import {
+  communityPostPage, demoHotPosts, findCommunityPost, demoComments, demoPublishedGuideline,
+  demoFaqs, demoNotices, notificationPage, demoNotificationPreference,
+  demoAdminReports, moderationPage, demoModerationStats, demoModerationSetting,
+  demoAdminNotices, demoAdminFaqs, demoAdminGuidelines, demoAdminTickets, adminTicketDetail,
+  demoAdminNotifications,
+} from "./domains/f-area";
 
 import type { MockRoute } from "./registry";
 import { ok } from "./registry";
@@ -260,6 +267,50 @@ const coreRoutes: MockRoute[] = [
       };
     },
   },
+
+  // ── F: 커뮤니티 (게시글/인기글/상세/댓글/AI태그/반응/신고/가이드라인) ──
+  { method: "GET", pattern: /^\/community\/posts$/, handler: () => communityPostPage() },
+  { method: "GET", pattern: /^\/community\/posts\/hot$/, handler: ok(demoHotPosts) },
+  { method: "GET", pattern: /^\/community\/posts\/(\d+)$/, handler: ({ params }) => findCommunityPost(Number(params[0])) },
+  { method: "GET", pattern: /^\/community\/posts\/(\d+)\/comments$/, handler: ok(demoComments) },
+  { method: "GET", pattern: /^\/community\/posts\/(\d+)\/ai-tags$/, handler: ({ params }) => ({ postId: Number(params[0]), taskType: "태그추천", status: "DONE", resultJson: JSON.stringify({ tags: ["면접", "백엔드", "시스템설계"], confidence: 0.86, applied: true }) }) },
+  { method: "POST", pattern: /^\/community\/posts$/, handler: () => ({ postId: 999 }) },
+  { method: "POST", pattern: /^\/community\/reactions$/, handler: () => ({ active: true }) },
+  { method: "POST", pattern: /^\/community\/reports$/, handler: ok(null) },
+  { method: "GET", pattern: /^\/community\/guidelines\/published$/, handler: ok(demoPublishedGuideline) },
+
+  // ── F: 고객센터 (FAQ / 공지 / 내 문의) ──
+  { method: "GET", pattern: /^\/support\/faq$/, handler: ok(demoFaqs) },
+  { method: "GET", pattern: /^\/support\/notices$/, handler: ok(demoNotices) },
+  { method: "GET", pattern: /^\/support\/notices\/(\d+)$/, handler: () => ({ ...demoNotices[0], content: "공지 본문 데모 콘텐츠입니다." }) },
+  { method: "GET", pattern: /^\/support\/tickets$/, handler: () => [] },
+  { method: "POST", pattern: /^\/support\/tickets$/, handler: ({ body }) => ({ id: 7099, status: "RECEIVED", priority: "NORMAL", createdAt: new Date().toISOString(), ...(body as object) }) },
+
+  // ── F: 알림 ──
+  { method: "GET", pattern: /^\/notifications$/, handler: () => notificationPage() },
+  { method: "GET", pattern: /^\/notifications\/unread-count$/, handler: ok(3) },
+  { method: "GET", pattern: /^\/notifications\/preferences$/, handler: ok(demoNotificationPreference) },
+  { method: "PUT", pattern: /^\/notifications\/preferences$/, handler: ok(demoNotificationPreference) },
+  { method: "PATCH", pattern: /^\/notifications\/(\d+)\/read$/, handler: ok(null) },
+  { method: "POST", pattern: /^\/notifications\/read-all$/, handler: ok(null) },
+
+  // ── F(관리자): 신고 / AI 검열 ──
+  { method: "GET", pattern: /^\/admin\/community\/reports$/, handler: ok(demoAdminReports) },
+  { method: "GET", pattern: /^\/admin\/community\/reports\/(\d+)$/, handler: ({ params }) => ({ ...(demoAdminReports.find((r) => r.id === Number(params[0])) ?? demoAdminReports[0]), reasons: ["욕설/비방", "허위사실"], aiOpinion: { label: "ABUSE", confidence: 0.91 } }) },
+  { method: "GET", pattern: /^\/admin\/ai\/moderation$/, handler: () => moderationPage() },
+  { method: "GET", pattern: /^\/admin\/ai\/moderation\/stats$/, handler: ok(demoModerationStats) },
+  { method: "GET", pattern: /^\/admin\/ai\/moderation\/settings$/, handler: ok(demoModerationSetting) },
+
+  // ── F(관리자): 공지 / FAQ / 가이드라인 ──
+  { method: "GET", pattern: /^\/admin\/notices$/, handler: ok(demoAdminNotices) },
+  { method: "GET", pattern: /^\/admin\/faq$/, handler: ok(demoAdminFaqs) },
+  { method: "GET", pattern: /^\/admin\/guidelines$/, handler: ok(demoAdminGuidelines) },
+  { method: "GET", pattern: /^\/admin\/guidelines\/published$/, handler: ok(demoAdminGuidelines[0]) },
+
+  // ── F(관리자): 문의(티켓) / 알림 발송 ──
+  { method: "GET", pattern: /^\/admin\/tickets$/, handler: ok(demoAdminTickets) },
+  { method: "GET", pattern: /^\/admin\/tickets\/(\d+)$/, handler: ({ params }) => adminTicketDetail(Number(params[0])) },
+  { method: "GET", pattern: /^\/admin\/notifications$/, handler: ok(demoAdminNotifications) },
 ];
 
 // 핵심(인증·C·B·D) + 도메인별 라우트를 모두 합친 최종 레지스트리. 앞에 오는 핸들러가 우선 매칭된다.
