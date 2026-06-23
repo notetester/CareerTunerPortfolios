@@ -21,6 +21,7 @@ import com.careertuner.ai.chat.ChatResponse;
 import com.careertuner.ai.chat.ChatResponse.SiteLink;
 import com.careertuner.ai.chat.CommunityChatAgent;
 import com.careertuner.ai.chat.FastPathService;
+import com.careertuner.ai.chat.MessageSanitizer;
 import com.careertuner.ai.chat.MyBatisChatMemoryStore;
 import com.careertuner.ai.chat.QuickReplyAgent;
 import com.careertuner.ai.chat.SearchTrace;
@@ -86,8 +87,8 @@ public class ChatbotController {
 
         searchTrace.clear();
         try {
-            // 에이전트는 String 반환(툴 정상 동작). 메시지는 자유 생성.
-            String message = agent.chat(conversationId, req.question());
+            // 에이전트는 String 반환(툴 정상 동작). 메시지는 자유 생성 → 마크다운 잔재 평문화.
+            String message = MessageSanitizer.stripMarkdown(agent.chat(conversationId, req.question()));
 
             // links 접지: 모델 JSON 이 아니라 이번 턴에 툴이 실제로 돌려준 출처(커뮤니티 글 + FAQ 링크)에서만 생성.
             List<SiteLink> links = collectLinks();
@@ -117,8 +118,11 @@ public class ChatbotController {
         try {
             List<FaqHit> hits = chatbotService.searchFaqHits(question);
             if (!hits.isEmpty()) {
+                // 질문과 직접 관련된 최상위 1건의 링크만 노출(연관 FAQ 링크 나열 금지).
+                // 유사도 desc 정렬이므로 linkUrl 있는 첫 hit 1건만.
                 List<SiteLink> links = hits.stream()
                         .filter(h -> h.linkUrl() != null && !h.linkUrl().isBlank())
+                        .limit(1)
                         .map(h -> new SiteLink(
                                 h.linkLabel() != null && !h.linkLabel().isBlank() ? h.linkLabel() : h.question(),
                                 h.linkUrl()))
