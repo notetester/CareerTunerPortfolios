@@ -15,7 +15,10 @@ import org.springframework.http.MediaType;
 import org.springframework.http.client.JdkClientHttpRequestFactory;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
+import org.springframework.web.client.RestClientException;
 
+import com.careertuner.common.exception.BusinessException;
+import com.careertuner.common.exception.ErrorCode;
 import com.careertuner.community.moderation.config.OllamaProperties;
 
 /**
@@ -65,22 +68,31 @@ public class TicketDraftAiClient {
 
         log.debug("티켓 답변 초안 생성 요청: model={}", ollamaProps.getModel());
 
-        @SuppressWarnings("unchecked")
-        Map<String, Object> response = restClient.post()
-                .uri("/api/chat")
-                .contentType(MediaType.APPLICATION_JSON)
-                .body(request)
-                .retrieve()
-                .body(Map.class);
+        try {
+            @SuppressWarnings("unchecked")
+            Map<String, Object> response = restClient.post()
+                    .uri("/api/chat")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .body(request)
+                    .retrieve()
+                    .body(Map.class);
 
-        if (response == null || !response.containsKey("message")) {
-            throw new IllegalStateException("Ollama chat 응답이 비어 있습니다");
+            if (response == null || !response.containsKey("message")) {
+                throw new IllegalStateException("Ollama chat 응답이 비어 있습니다");
+            }
+
+            Object messageObj = response.get("message");
+            if (!(messageObj instanceof Map)) {
+                throw new IllegalStateException("Ollama chat 응답의 message 형식이 올바르지 않습니다");
+            }
+            @SuppressWarnings("unchecked")
+            Map<String, Object> message = (Map<String, Object>) messageObj;
+            Object content = message.get("content");
+            return content == null ? "" : content.toString().strip();
+        } catch (RestClientException | ClassCastException e) {
+            log.error("티켓 답변 초안 생성 실패", e);
+            throw new BusinessException(ErrorCode.AI_UNAVAILABLE);
         }
-
-        @SuppressWarnings("unchecked")
-        Map<String, String> message = (Map<String, String>) response.get("message");
-        String content = message.get("content");
-        return content == null ? "" : content.strip();
     }
 
     private String loadSystemPrompt() {

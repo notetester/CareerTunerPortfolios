@@ -45,6 +45,54 @@ REQUIRED_KEYS = ["fitSummary", "strengths", "risks", "strategyActions", "learnin
 FORBIDDEN_KEYS = ["fitScore", "score", "applyDecision", "decision"]
 RAW_MAX = 8000  # raw_output 저장 시 상한(폭주 방지)
 
+# ── E2 관측(reports/30): 입력에 없는 고유명사/제품코드 날조를 '측정만' 한다(reject/fallback 아님) ──
+# high:  날조된 '제품 식별자' — (a) 알파벳+숫자 제품코드(CRM465/ERP900/ToolX12류) + (b) 엔터프라이즈
+#        약어 coinage(CRMONE류). 가짜 제품은 학습추천에 있어도 날조라 '전 필드'에서 스캔. 헤드라인 지표.
+# review: 입력 밖 대문자 고유명사를 '보유'로 주장 → strengths+fitSummary 만 스캔(E1 grounding 과 동일
+#         보유 문맥). 학습추천(strategyActions/learning)의 실제 도구 추천은 정상이라 제외. 낮은 신뢰도.
+# 오탐 방지: 일반 기술명(GENERIC_TECH)·입력 명칭(supported)·범주어(CATEGORY_TERMS)·버전표기 제외.
+# ★보정 근거: 1차 관측(reports/29-?) 실측 + 적대적 검증 — review 29/29 가 학습/위험 문맥이라 보유 스코프로
+#   한정, coinage 는 {crm} 만(erp/ai/ml/db/api 는 ERPNext/Airflow/MLflow/DBeaver/Apigee 실제 제품과 충돌).
+ENTITY_TOKEN_RE = re.compile(r"[A-Za-z][A-Za-z0-9.+#_-]*")
+PRODUCT_CODE_RE = re.compile(r"^[A-Za-z]{2,}\d{2,}[A-Za-z0-9]*$")  # CRM465, ERP900, ToolX12
+VERSION_SUFFIX_RE = re.compile(r"[0-9.+#_-]+$")  # C++17→c++, Python3→python (양 티어 버전 가드)
+COINAGE_ACRONYMS = {"crm"}  # crm+코인(CRMONE). erp/ai/ml/db/api 등은 실제 제품 충돌로 제외(적대적 검증)
+GENERIC_TECH = {
+    "java", "python", "spring", "springboot", "boot", "react", "reactjs", "vue", "vuejs",
+    "angular", "node", "nodejs", "express", "nestjs", "django", "flask", "fastapi", "rails",
+    "sql", "mysql", "postgresql", "postgres", "oracle", "mariadb", "mongodb", "redis", "kafka",
+    "rabbitmq", "elasticsearch", "kibana", "aws", "azure", "gcp", "docker", "kubernetes", "k8s",
+    "git", "github", "gitlab", "bitbucket", "jenkins", "nginx", "apache", "tomcat", "linux",
+    "unix", "ubuntu", "windows", "macos", "rest", "restful", "graphql", "grpc", "json", "xml",
+    "yaml", "html", "css", "scss", "sass", "tailwind", "bootstrap", "javascript", "typescript",
+    "kotlin", "swift", "golang", "go", "rust", "php", "ruby", "scala", "jpa", "mybatis",
+    "hibernate", "jwt", "oauth", "oauth2", "http", "https", "tcp", "udp", "websocket", "jira",
+    "confluence", "slack", "notion", "figma", "excel", "powerpoint", "word", "photoshop",
+    "illustrator", "sap", "quickbooks", "salesforce", "tableau", "powerbi", "junit", "mockito",
+    "gradle", "maven", "npm", "webpack", "vite", "eslint",
+    # 버전 가드 베이스(언어)
+    "c", "cpp", "c++", "c#",
+    # 보정 allowlist(1차 관측에서 학습추천으로 나온 실제 도구·표준 어휘 + coinage 충돌 흡수)
+    "hubspot", "mlflow", "pytorch", "tensorflow", "minikube", "pandas", "numpy", "pyspark",
+    "actix", "rocket", "ads", "ec2", "eks", "vpc", "s3", "dockerfile", "controller", "crud",
+    "get", "set", "lru", "anova", "studio", "rustacean", "threading", "gpu", "ssg",
+    "crmnext", "erpnext",
+}
+CATEGORY_TERMS = {  # 범주/약어 — 단독으로는 고유명사 날조가 아님(제품코드면 high 로 별도 처리)
+    "crm", "erp", "saas", "paas", "iaas", "api", "sdk", "ide", "cli", "gui", "ui", "ux", "db",
+    "orm", "mvc", "spa", "ssr", "csr", "cdn", "dns", "vpn", "ssl", "tls", "ci", "cd", "cicd",
+    "ai", "ml", "dl", "llm", "rag", "nlp", "ocr", "etl", "bi", "kpi", "roi", "qa", "devops",
+    "frontend", "backend", "fullstack", "it",
+}
+
+# ── E1 관측(reports/34): 부족 역량을 strengths/fitSummary 에서 '보유'로 서술하면 위반 ──
+# 백엔드 OssFitAnalysisAiService.groundingViolation 미러(관측 전용 — 백엔드는 retry/fallback, 하니스는 측정만).
+# 같은 문장에 보유표현 있고 결핍/부정 표현 없을 때만 위반(보수적, false-positive 방지). 보유 cert 는 missing 에서 제외(#116).
+E1_POSSESSION = ["보유", "갖춤", "갖추고", "갖추어", "강점", "경험 있", "경험을 보유",
+                 "활용 가능", "숙련", "기반이 있", "능숙", "능통"]
+E1_LACK = ["부족", "없", "미보유", "부재", "않", "못", "결여", "갖추지", "보유하지", "미흡", "전무"]
+GROUNDING_SPLIT_RE = re.compile(r"[.!?。\n]")
+
 
 def load_cases(path):
     cases = []
@@ -85,6 +133,133 @@ def collect_text(parsed):
         if isinstance(item, dict):
             parts += [str(item.get("skill", "")), str(item.get("why", ""))]
     return "\n".join(parts)
+
+
+def collect_possession_text(parsed):
+    """'보유'를 주장하는 필드만(fitSummary+strengths) — E2 review 티어 스코프(E1 grounding 과 동일)."""
+    parts = []
+    v = parsed.get("fitSummary")
+    if isinstance(v, str):
+        parts.append(v)
+    v = parsed.get("strengths")
+    if isinstance(v, list):
+        parts += [str(x) for x in v]
+    return "\n".join(parts)
+
+
+def supported_terms(case):
+    """입력(공고/프로필/매칭/부족)·expected(allowedSkills/mustMention)에서 '지원 용어' 집합 생성(소문자 라틴 토큰)."""
+    inp = case.get("input") or {}
+    exp = case.get("expected") or {}
+    terms = set()
+
+    def add(s):
+        for m in ENTITY_TOKEN_RE.finditer(str(s or "")):
+            terms.add(m.group(0).lower())
+
+    for k in ("companyName", "jobTitle", "desiredJob", "duties", "experienceLevel"):
+        add(inp.get(k))
+    for k in ("requiredSkills", "preferredSkills", "profileSkills", "profileCertificates",
+              "matchedSkills", "missingRequiredSkills", "missingPreferredSkills"):
+        for v in inp.get(k) or []:
+            add(v)
+    for v in (exp.get("allowedSkills") or []) + (exp.get("mustMention") or []):
+        add(v)
+    return terms
+
+
+def _version_base(low):
+    """버전/숫자 접미 제거한 베이스. 'c++17'→'c++', 'python3'→'python'(양 티어 버전 가드)."""
+    return VERSION_SUFFIX_RE.sub("", low)
+
+
+def _skip_token(low, supported):
+    """일반 기술명·입력 명칭·버전표기 베이스면 관측에서 제외(양 티어 공통)."""
+    return low in supported or low in GENERIC_TECH or _version_base(low) in GENERIC_TECH
+
+
+def scan_named_entities(full_text, possession_text, supported):
+    """입력 밖 고유명사/제품 날조 관측(측정 전용).
+
+    high(전 필드): (a) 영숫자 제품코드(CRM465) + (b) 엔터프라이즈 약어 coinage(CRMONE).
+    review(보유 문맥=fitSummary+strengths): 입력 밖 대문자 고유명사를 '보유'로 주장.
+    """
+    high, review = {}, {}  # 소문자키 → 원문(대소문자 보존, 중복 제거)
+
+    # high — 날조 제품 식별자는 학습추천에 있어도 날조이므로 전 필드 스캔
+    for m in ENTITY_TOKEN_RE.finditer(full_text or ""):
+        tok = m.group(0)
+        low = tok.lower()
+        if _skip_token(low, supported):
+            continue
+        if PRODUCT_CODE_RE.match(tok):
+            prefix = re.match(r"^[A-Za-z]+", tok).group(0).lower()
+            if prefix in GENERIC_TECH:  # Java21 / Python3 등 버전 표기는 제외
+                continue
+            high.setdefault(low, tok)
+            continue
+        # coinage: 글자만(digit 없음), 약어 접두 + 글자 2+ (CRMONE → 'crm'+'one')
+        if tok.isalpha():
+            for acr in COINAGE_ACRONYMS:
+                if low != acr and low.startswith(acr) and len(low) >= len(acr) + 2:
+                    high.setdefault(low, tok)
+                    break
+
+    # review — 보유 주장 필드만, 입력 밖 대문자 고유명사(낮은 신뢰도)
+    for m in ENTITY_TOKEN_RE.finditer(possession_text or ""):
+        tok = m.group(0)
+        low = tok.lower()
+        if _skip_token(low, supported) or low in CATEGORY_TERMS or low in high:
+            continue
+        if PRODUCT_CODE_RE.match(tok):  # 제품코드는 high 소관
+            continue
+        if len(tok) >= 3 and any(c.isupper() for c in tok):
+            review.setdefault(low, tok)
+
+    return {"high": sorted(high.values()), "review": sorted(review.values())}
+
+
+def _first_containing(text, needles):
+    for n in needles:
+        if n in text:
+            return n
+    return None
+
+
+def _grounding_violation_in_sentence(sentence, missing, field):
+    if not sentence or not sentence.strip():
+        return None
+    phrase = _first_containing(sentence, E1_POSSESSION)
+    if phrase is None or _first_containing(sentence, E1_LACK) is not None:
+        return None  # 보유 표현이 없거나, 결핍·부정 문맥이면 위반 아님
+    low = sentence.lower()
+    for skill in missing:
+        if skill and skill.strip() and skill.lower() in low:
+            return f"field={field} missingSkill={skill} phrase={phrase}"
+    return None
+
+
+def grounding_violation(missing, fit_summary, strengths):
+    """부족 역량을 fitSummary/strengths 에서 '보유'로 서술하면 위반 문자열, 아니면 None(백엔드 미러)."""
+    if not missing:
+        return None
+    for sentence in GROUNDING_SPLIT_RE.split(fit_summary or ""):
+        v = _grounding_violation_in_sentence(sentence, missing, "fitSummary")
+        if v:
+            return v
+    for item in strengths or []:
+        v = _grounding_violation_in_sentence(str(item), missing, "strengths")
+        if v:
+            return v
+    return None
+
+
+def grounding_missing(case):
+    """규칙엔진 missing(필수+우대)에서 보유 자격증 제외(#116) — E1 관측 대상 부족 역량."""
+    inp = case.get("input") or {}
+    held = {str(c).lower() for c in (inp.get("profileCertificates") or [])}
+    miss = list(inp.get("missingRequiredSkills") or []) + list(inp.get("missingPreferredSkills") or [])
+    return [s for s in miss if str(s).lower() not in held]
 
 
 def call_model(base_url, model, user, max_tokens, temperature, timeout):
@@ -134,7 +309,8 @@ def evaluate(case, content, error):
     base = {"id": case.get("id"), "domainGroup": case.get("domainGroup"),
             "expectedDecision": case.get("expectedDecision")}
     fail = {"json_ok": False, "required_ok": False, "forbidden_key": False,
-            "cjk_leak": False, "hallucination": False, "success": False}
+            "cjk_leak": False, "hallucination": False, "success": False,
+            "named_entities": {"high": [], "review": []}, "grounding_violation": None}
 
     if error:
         return {**base, **fail, "failure": error, "parsed": None}
@@ -160,9 +336,11 @@ def evaluate(case, content, error):
     allowed = exp.get("allowedSkills") or []
     bad_skills = []
     if allowed:
+        # 공백·대소문자 정규화 비교 — '머신 러닝' vs '머신러닝' 류 띄어쓰기 오탐 제거(reports/36).
+        allowed_norm = {re.sub(r"\s+", "", a).lower() for a in allowed}
         for item in parsed.get("learningTaskReasons", []) or []:
             sk = (item or {}).get("skill")
-            if sk and sk not in allowed:
+            if sk and re.sub(r"\s+", "", str(sk)).lower() not in allowed_norm:
                 bad_skills.append(sk)
 
     failures = []
@@ -181,9 +359,19 @@ def evaluate(case, content, error):
     if bad_skills:
         failures.append("HALLUCINATED_SKILL")
 
+    # E2 관측: 입력 밖 고유명사/제품 날조(reject 아님 — success 에 영향 없음)
+    # high=전 필드(text), review=보유 문맥(fitSummary+strengths)만
+    named_entities = scan_named_entities(text, collect_possession_text(parsed), supported_terms(case))
+    # E1 관측: 부족 역량을 보유로 서술(백엔드 grounding guard 미러, 측정 전용 — success 에 영향 없음)
+    gviolation = grounding_violation(grounding_missing(case),
+                                     parsed.get("fitSummary", ""),
+                                     [str(x) for x in (parsed.get("strengths") or [])])
+
     return {**base, "json_ok": True, "required_ok": not missing_keys,
+            "grounding_violation": gviolation,
             "forbidden_key": bool(forbidden_hit), "cjk_leak": cjk,
             "hallucination": bool(claim_hit or must_not_hit or bad_skills),
+            "named_entities": named_entities,
             "failure": failures[0] if failures else None,
             "detail": {"missing_keys": missing_keys, "forbidden_hit": forbidden_hit,
                        "must_missing": must_missing, "must_not_hit": must_not_hit,
@@ -211,6 +399,36 @@ def aggregate(results, cold_start_ms, args):
     for r in results:
         if r.get("failure"):
             reasons[r["failure"]] = reasons.get(r["failure"], 0) + 1
+
+    # ── E1 grounding 관측 지표(측정 전용) ──
+    grounding_violations = [(r.get("id"), r.get("grounding_violation")) for r in results if r.get("grounding_violation")]
+    g_by_case = {}
+    for cid, v in grounding_violations:
+        g_by_case.setdefault(cid, {"count": 0, "examples": []})
+        g_by_case[cid]["count"] += 1
+        if v not in g_by_case[cid]["examples"]:
+            g_by_case[cid]["examples"].append(v)
+
+    # ── E2 관측 지표(측정 전용) ──
+    ent_high_total = 0
+    runs_with_high = 0
+    ent_by_case = {}
+    for r in results:
+        ne = r.get("named_entities") or {}
+        hi, rv = ne.get("high") or [], ne.get("review") or []
+        ent_high_total += len(hi)
+        if hi:
+            runs_with_high += 1
+        if hi or rv:
+            e = ent_by_case.setdefault(r.get("id"), {"high": [], "review": [], "runs_flagged": 0})
+            if hi:
+                e["runs_flagged"] += 1
+            for x in hi:
+                if x not in e["high"]:
+                    e["high"].append(x)
+            for x in rv:
+                if x not in e["review"]:
+                    e["review"].append(x)
     return {
         "model": args.model, "base_url": args.base_url, "mock": bool(args.mock),
         "warmup": args.warmup, "repeat": args.repeat, "timeout_s": args.timeout,
@@ -222,6 +440,14 @@ def aggregate(results, cold_start_ms, args):
         "forbidden_key_rate": rate(lambda r: r.get("forbidden_key")),
         "cjk_leak_rate": rate(lambda r: r.get("cjk_leak")),
         "hallucination_flag_rate": rate(lambda r: r.get("hallucination")),
+        # E1 grounding 관측(측정 전용 — 백엔드 guard 가 라이브에서 얼마나 발동할지의 프록시)
+        "grounding_violation_count": len(grounding_violations),
+        "grounding_violation_rate": round(len(grounding_violations) / n, 3) if n else 0.0,
+        "grounding_violations_by_case": g_by_case,
+        # E2 관측(측정 전용 — success/실패율에 영향 없음)
+        "unsupported_named_entity_count": ent_high_total,
+        "unsupported_named_entity_rate": round(runs_with_high / n, 3) if n else 0.0,
+        "unsupported_named_entities_by_case": ent_by_case,
         "timeout_count": reasons.get("ERROR_TimeoutError", 0),
         "cold_start_latency_ms": round(cold_start_ms, 1),
         "warm_avg_latency_ms": round(sum(warm_lat) / len(warm_lat), 1) if warm_lat else 0.0,
@@ -283,6 +509,14 @@ def run_eval(args):
           f"cjk_leak={s['cjk_leak_rate']} hallucination={s['hallucination_flag_rate']} timeout={s['timeout_count']}")
     print(f"  cold_start={s['cold_start_latency_ms']}ms warm_avg={s['warm_avg_latency_ms']}ms "
           f"warm_p95={s['warm_p95_latency_ms']}ms")
+    print(f"  [E1관측] grounding_violation count={s['grounding_violation_count']} "
+          f"rate={s['grounding_violation_rate']} (부족 역량을 보유로 서술 — 백엔드 guard 발동 프록시)")
+    print(f"  [E2관측] unsupported_named_entity count={s['unsupported_named_entity_count']} "
+          f"rate={s['unsupported_named_entity_rate']} (high=제품코드; review 별도)")
+    if s["unsupported_named_entities_by_case"]:
+        for cid, e in s["unsupported_named_entities_by_case"].items():
+            if e["high"]:
+                print(f"    - {cid}: high={e['high']} (runs_flagged={e['runs_flagged']})")
     print(f"  failure_reasons={s['failure_reasons']}  → {args.out}")
 
 

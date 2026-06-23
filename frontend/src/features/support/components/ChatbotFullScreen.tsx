@@ -111,7 +111,7 @@ export function ChatbotFullScreen() {
                 </div>
               </div>
             ) : (
-              <BotBubble key={m.id} message={m} onToggleTts={toggleTts} variant="full" />
+              <BotBubble key={m.id} message={m} onToggleTts={toggleTts} variant="full" onQuickReply={sendMessage} />
             )
           )}
           {botStatus === "thinking" && (

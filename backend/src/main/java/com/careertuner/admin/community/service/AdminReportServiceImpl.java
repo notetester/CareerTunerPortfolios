@@ -16,6 +16,10 @@ import com.careertuner.admin.community.mapper.AdminReportMapper;
 import com.careertuner.common.exception.BusinessException;
 import com.careertuner.common.exception.ErrorCode;
 import com.careertuner.common.security.AuthUser;
+import com.careertuner.community.domain.CommunityComment;
+import com.careertuner.community.domain.CommunityPost;
+import com.careertuner.community.mapper.CommunityCommentMapper;
+import com.careertuner.community.mapper.CommunityPostMapper;
 import com.careertuner.community.moderation.domain.AiResultStatus;
 import com.careertuner.community.moderation.domain.AiTaskType;
 import com.careertuner.community.moderation.domain.PostAiResult;
@@ -36,6 +40,8 @@ public class AdminReportServiceImpl implements AdminReportService {
     private final AdminReportMapper reportMapper;
     private final PostAiResultMapper aiResultMapper;
     private final PostModerationService moderationService;
+    private final CommunityCommentMapper commentMapper;
+    private final CommunityPostMapper postMapper;
     private final ObjectMapper objectMapper;
 
     @Override
@@ -96,10 +102,14 @@ public class AdminReportServiceImpl implements AdminReportService {
         if (!isComment) {
             switch (action) {
                 case "HIDDEN" -> {
+                    // 정책: DELETED는 종착(불가역) 상태 — DELETED 게시글은 HIDDEN으로 역행 불가.
+                    guardPostNotDeleted(targetId);
                     reportMapper.updatePostReportStatus(targetId, "CONFIRMED", "HIDDEN");
                     reportMapper.updatePostStatus(targetId, "HIDDEN");
                 }
                 case "DELETED" -> {
+                    // 정책: DELETED는 종착 상태 — 이미 DELETED면 재처리 거부(멱등성/감사 일관성).
+                    guardPostNotDeleted(targetId);
                     reportMapper.updatePostReportStatus(targetId, "CONFIRMED", "DELETED");
                     reportMapper.updatePostStatus(targetId, "DELETED");
                 }
@@ -110,11 +120,15 @@ public class AdminReportServiceImpl implements AdminReportService {
             switch (action) {
                 case "HIDDEN" -> {
                     reportMapper.updateCommentReportStatus(targetId, "CONFIRMED", "HIDDEN");
-                    reportMapper.updateCommentStatus(targetId, "HIDDEN");
+                    hideCommentWithCount(targetId);
                 }
                 case "DELETED" -> {
                     reportMapper.updateCommentReportStatus(targetId, "CONFIRMED", "DELETED");
-                    reportMapper.updateCommentStatus(targetId, "DELETED");
+                    deleteCommentWithCount(targetId);
+                }
+                case "RESTORE", "PUBLISHED" -> {
+                    reportMapper.updateCommentReportStatus(targetId, "DISMISSED", "NONE");
+                    restoreCommentWithCount(targetId);
                 }
                 case "DISMISSED" -> reportMapper.updateCommentReportStatus(targetId, "DISMISSED", "NONE");
                 default -> throw new BusinessException(ErrorCode.INVALID_INPUT, "알 수 없는 조치입니다.");
@@ -175,6 +189,53 @@ public class AdminReportServiceImpl implements AdminReportService {
         }
 
         return builder.build();
+    }
+
+    /**
+     * 관리자 댓글 숨김 + comment_count 대칭 조정.
+     * PUBLISHED 경계를 통과할 때(affected-rows>0)만 -1 → AI 검열과의 경합 시 이중감소 없음.
+     */
+    private void hideCommentWithCount(Long commentId) {
+        CommunityComment c = commentMapper.findById(commentId);
+        if (c == null) return;
+        if (commentMapper.hideCommentIfPublished(commentId) > 0) {
+            postMapper.decrementCommentCount(c.getPostId());
+        }
+    }
+
+    /** 관리자 댓글 삭제 + count 조정. 이미 HIDDEN(=count에서 이미 빠짐)이면 DELETED 로만 전환(이중감소 없음). */
+    private void deleteCommentWithCount(Long commentId) {
+        CommunityComment c = commentMapper.findById(commentId);
+        if (c == null) return;
+        if (commentMapper.deleteCommentIfPublished(commentId) > 0) {
+            postMapper.decrementCommentCount(c.getPostId());
+        } else {
+            commentMapper.updateStatus(commentId, "DELETED");
+        }
+    }
+
+    /** 오탐 복원 HIDDEN→PUBLISHED + count +1(경계 통과 시에만). */
+    private void restoreCommentWithCount(Long commentId) {
+        CommunityComment c = commentMapper.findById(commentId);
+        if (c == null) return;
+        if (commentMapper.restoreCommentIfHidden(commentId) > 0) {
+            postMapper.incrementCommentCount(c.getPostId());
+        }
+    }
+
+    /**
+     * 게시글 상태전이 가드.
+     * 정책: DELETED는 종착(불가역) 상태이므로 DELETED→HIDDEN 역행이나 DELETED 재처리를 막는다.
+     * 사전 status 조회로 거부하고, updatePostStatus 매퍼의 status &lt;&gt; 'DELETED' 가드가 경합을 2차 방어한다.
+     */
+    private void guardPostNotDeleted(Long postId) {
+        CommunityPost post = postMapper.findById(postId);
+        if (post == null) {
+            throw new BusinessException(ErrorCode.NOT_FOUND, "게시글을 찾을 수 없습니다.");
+        }
+        if ("DELETED".equals(post.getStatus())) {
+            throw new BusinessException(ErrorCode.CONFLICT, "이미 삭제된 게시글은 상태를 변경할 수 없습니다.");
+        }
     }
 
     private void requireAdmin(AuthUser authUser) {

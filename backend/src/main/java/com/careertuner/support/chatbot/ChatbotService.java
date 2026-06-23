@@ -74,6 +74,7 @@ public class ChatbotService {
     // ── 질문 → 검색 → 답변 ──────────────────────────────────────────
 
     public ChatbotAnswerDto ask(String question) {
+        try {
         // 1. 사용자 질문 임베딩
         double[] queryVector = embeddingClient.embed(question);
 
@@ -89,6 +90,11 @@ public class ChatbotService {
         for (Faq faq : faqs) {
             double[] faqVector = parseEmbedding(faq.getEmbedding());
             if (faqVector == null) continue;
+            if (faqVector.length != queryVector.length) {
+                log.warn("FAQ #{} 임베딩 차원 불일치: faq={}, query={} → 건너뜀",
+                        faq.getId(), faqVector.length, queryVector.length);
+                continue;
+            }
             double similarity = CosineSimilarity.compute(queryVector, faqVector);
             scored.add(new ScoredFaq(faq, similarity));
         }
@@ -116,6 +122,12 @@ public class ChatbotService {
 
         String answer = chatClient.generateAnswer(faqContext, question);
 
+        // LLM 응답이 비어 있으면 관련 없음 (NPE 가드)
+        if (answer == null || answer.isBlank()) {
+            log.warn("LLM 응답이 비어 있습니다 → 관련 FAQ 없음");
+            return ChatbotAnswerDto.noMatch();
+        }
+
         // LLM이 FAQ로 답변 불가 판단 시 참고 문서 제거
         if (answer.contains("확인이 어렵습니다") || answer.contains("고객센터로 문의")) {
             return ChatbotAnswerDto.noMatch();
@@ -130,6 +142,52 @@ public class ChatbotService {
 
         double bestSimilarity = topK.get(0).similarity();
         return new ChatbotAnswerDto(answer, links, matchedIds, bestSimilarity);
+        } catch (Exception e) {
+            log.error("챗봇 응답 생성 실패 (Ollama 장애 추정): {}", e.getMessage(), e);
+            return ChatbotAnswerDto.noMatch();
+        }
+    }
+
+    /**
+     * 챗봇 에이전트의 searchFaq 툴용: 질문과 유사한 FAQ를 찾아 매칭 결과를 반환.
+     * ask()와 달리 LLM 답변 생성 없이 매칭 FAQ만 돌려준다(에이전트가 요약/응답).
+     * 각 매칭에 FAQ에 달린 link_url/link_label 을 포함한다(응답 링크 접지용).
+     * @return 매칭 FAQ 목록, 없으면 빈 리스트
+     */
+    public List<FaqHit> searchFaqHits(String question) {
+        try {
+            double[] queryVector = embeddingClient.embed(question);
+            List<Faq> faqs = faqMapper.findPublishedWithEmbedding();
+            if (faqs.isEmpty()) {
+                return List.of();
+            }
+            List<ScoredFaq> scored = new ArrayList<>();
+            for (Faq faq : faqs) {
+                double[] faqVector = parseEmbedding(faq.getEmbedding());
+                if (faqVector == null || faqVector.length != queryVector.length) {
+                    continue;
+                }
+                scored.add(new ScoredFaq(faq, CosineSimilarity.compute(queryVector, faqVector)));
+            }
+            scored.sort(Comparator.comparingDouble(ScoredFaq::similarity).reversed());
+
+            return scored.stream()
+                    .filter(s -> s.similarity() >= props.getSimilarityThreshold())
+                    .limit(props.getTopK())
+                    .map(s -> new FaqHit(s.faq().getQuestion(), s.faq().getAnswer(),
+                            s.faq().getLinkUrl(), s.faq().getLinkLabel()))
+                    .collect(Collectors.toList());
+        } catch (Exception e) {
+            log.error("FAQ 검색 실패: {}", e.getMessage());
+            return List.of();
+        }
+    }
+
+    /** 매칭 FAQ를 "Q/A" 텍스트로 합쳐 반환(모델 컨텍스트용). 없으면 빈 문자열. */
+    public String searchFaqContext(String question) {
+        return searchFaqHits(question).stream()
+                .map(h -> "Q: " + h.question() + "\nA: " + h.answer())
+                .collect(Collectors.joining("\n\n"));
     }
 
     private double[] parseEmbedding(String json) {

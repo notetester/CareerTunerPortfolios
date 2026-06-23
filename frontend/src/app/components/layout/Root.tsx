@@ -1,4 +1,4 @@
-import { Outlet, useLocation } from "react-router";
+import { Outlet, ScrollRestoration, useLocation } from "react-router";
 import { useAuth } from "@/app/auth/AuthContext";
 import { LandingPage } from "@/features/landing/pages/LandingPage";
 import { Header } from "./Header";
@@ -22,6 +22,8 @@ export function Root() {
 
   return (
     <div className="min-h-screen flex flex-col bg-slate-50">
+      {/* 라우트 이동 시 스크롤을 맨 위로 복원. 푸터(하단) 링크로 이동해도 새 페이지가 바닥에 걸리지 않게 한다. */}
+      <ScrollRestoration />
       <ApplicationExtractionMonitor />
       <OfflineBanner />
       <Header />

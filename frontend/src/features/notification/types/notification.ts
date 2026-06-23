@@ -18,6 +18,9 @@ export type AINotificationType =
 export type UserNotificationType =
   | "COMMENT"
   | "COMMENT_REPLY"
+  | "COMMENT_HIDDEN"
+  | "COMMENT_RESTORED"
+  | "COMMENT_REMOVED"
   | "LIKE"
   | "POST_HIDDEN"
   | "POST_REMOVED"
@@ -97,6 +100,9 @@ export const TYPE_META: Record<NotificationType, TypeMeta> = {
   /* 커뮤니티 */
   COMMENT:                   { cat: "community",   icon: "MessageCircle",      variant: "info",    cta: "댓글 보기",      actor: true },
   COMMENT_REPLY:             { cat: "community",   icon: "CornerDownRight",    variant: "info",    cta: "답글 보기",      actor: true },
+  COMMENT_HIDDEN:            { cat: "community",   icon: "EyeOff",             variant: "warning", cta: "댓글 보기" },
+  COMMENT_RESTORED:          { cat: "community",   icon: "RotateCcw",          variant: "success", cta: "댓글 보기" },
+  COMMENT_REMOVED:           { cat: "community",   icon: "Trash2",             variant: "danger",  cta: "댓글 보기" },
   LIKE:                      { cat: "community",   icon: "Heart",              variant: "info",    cta: "게시글 보기",    actor: true },
   POST_HIDDEN:               { cat: "community",   icon: "EyeOff",             variant: "warning", cta: "가이드라인 보기" },
   POST_REMOVED:              { cat: "community",   icon: "Trash2",             variant: "danger",  cta: "가이드라인 보기" },
@@ -170,6 +176,9 @@ export const TYPE_TO_CATEGORY: Record<NotificationType, NotificationCategory> = 
   /* 커뮤니티 */
   COMMENT: "community",
   COMMENT_REPLY: "community",
+  COMMENT_HIDDEN: "community",
+  COMMENT_RESTORED: "community",
+  COMMENT_REMOVED: "community",
   LIKE: "community",
   POST_HIDDEN: "community",
   POST_REMOVED: "community",
