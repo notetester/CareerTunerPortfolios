@@ -99,6 +99,11 @@ public class TicketServiceImpl implements TicketService {
         if (ticket == null) {
             throw new BusinessException(ErrorCode.NOT_FOUND, "문의를 찾을 수 없습니다.");
         }
+        // 종료된 문의는 사용자 메시지로 재오픈할 수 없다. 새 문의를 등록하게 한다.
+        if ("CLOSED".equals(ticket.getStatus())) {
+            throw new BusinessException(ErrorCode.INVALID_INPUT,
+                    "종료된 문의에는 메시지를 추가할 수 없습니다. 새 문의를 등록해 주세요.");
+        }
         TicketMessage message = TicketMessage.builder()
                 .ticketId(ticketId)
                 .senderType("USER")
@@ -108,8 +113,9 @@ public class TicketServiceImpl implements TicketService {
                 .build();
         messageMapper.insert(message);
 
-        // 사용자가 추가 문의를 남기면 다시 접수 상태로 되돌려 관리자가 재확인하게 한다.
-        if (!"RECEIVED".equals(ticket.getStatus())) {
+        // 답변 완료/처리 중 상태에서만 사용자 추가 문의로 다시 접수 상태로 되돌려 관리자가 재확인하게 한다.
+        // (CLOSED는 위에서 차단, RECEIVED는 이미 접수 상태라 변경 불필요)
+        if ("ANSWERED".equals(ticket.getStatus()) || "IN_PROGRESS".equals(ticket.getStatus())) {
             ticketMapper.updateStatus(ticketId, "RECEIVED");
             ticket.setStatus("RECEIVED");
         }
