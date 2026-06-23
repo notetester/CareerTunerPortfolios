@@ -27,6 +27,7 @@ import lombok.extern.slf4j.Slf4j;
  *
  * <p>두 진입: run(동기, 결과 한방) / runStream(SSE, 진행 실시간). 둘 다 같은 단계 실행 로직을 공유하고
  * 진행 보고(PrepProgress)만 다르다 — run 은 NOOP, runStream 은 SSE 전송.
+ * 첨부 파일은 시작 시 1회 로딩(플랜 게이팅)해 모든 단계에 같은 context 로 넘긴다.
  * 구현이 없거나 비활성 단계는 SKIPPED, 실패해도 FAILED 로 기록하고 끝까지 완주한다.
  */
 @Slf4j
@@ -37,6 +38,7 @@ public class AutoPrepOrchestrator {
     private static final long SSE_TIMEOUT_MS = 300_000L;
 
     private final AutoPrepPlanner planner;
+    private final AutoPrepAttachmentLoader attachmentLoader;
     private final List<PrepStepHandler> handlers;
 
     private final ExecutorService sseExecutor = Executors.newCachedThreadPool(r -> {
@@ -53,6 +55,7 @@ public class AutoPrepOrchestrator {
     /** 동기 실행 — 6파트 다 돌고 결과를 한 번에 반환. */
     public AutoPrepResponse run(Long userId, AutoPrepRequest request) {
         PrepPlan plan = planner.plan(userId, request);
+        List<PrepAttachment> attachments = attachmentLoader.load(userId, request.attachmentFileIds());
         Map<String, PrepStepHandler> byKey = byKey();
         Map<String, Object> prior = new LinkedHashMap<>();
         List<PrepStepResult> results = new ArrayList<>();
@@ -63,7 +66,7 @@ public class AutoPrepOrchestrator {
                 results.add(PrepStepResult.skipped(key, "준비중"));
                 continue;
             }
-            PrepStepResult result = executeOne(userId, request, plan, handler, prior, PrepProgress.NOOP);
+            PrepStepResult result = executeOne(userId, request, plan, attachments, handler, prior, PrepProgress.NOOP);
             results.add(result);
             accumulate(prior, result);
         }
@@ -82,6 +85,7 @@ public class AutoPrepOrchestrator {
             PrepPlan plan = planner.plan(userId, request);
             send(emitter, "plan", plan);
 
+            List<PrepAttachment> attachments = attachmentLoader.load(userId, request.attachmentFileIds());
             Map<String, PrepStepHandler> byKey = byKey();
             Map<String, Object> prior = new LinkedHashMap<>();
             List<PrepStepResult> results = new ArrayList<>();
@@ -97,7 +101,7 @@ public class AutoPrepOrchestrator {
                 }
                 PrepProgress progress = (name, desc) -> send(emitter, "substep",
                         Map.of("key", key, "name", name, "desc", desc == null ? "" : desc));
-                PrepStepResult result = executeOne(userId, request, plan, handler, prior, progress);
+                PrepStepResult result = executeOne(userId, request, plan, attachments, handler, prior, progress);
                 results.add(result);
                 accumulate(prior, result);
                 send(emitter, "part-done", result);
@@ -112,12 +116,14 @@ public class AutoPrepOrchestrator {
     }
 
     private PrepStepResult executeOne(Long userId, AutoPrepRequest request, PrepPlan plan,
-                                      PrepStepHandler handler, Map<String, Object> prior, PrepProgress progress) {
+                                      List<PrepAttachment> attachments, PrepStepHandler handler,
+                                      Map<String, Object> prior, PrepProgress progress) {
         String key = handler.key();
         long start = System.nanoTime();
         try {
             PrepStepContext context = new PrepStepContext(
-                    userId, plan.slots().applicationCaseId(), plan.slots(), request.coverLetterText(), prior);
+                    userId, plan.slots().applicationCaseId(), plan.slots(),
+                    request.coverLetterText(), attachments, prior);
             return handler.handle(context, progress);
         } catch (BusinessException ex) {
             long ms = (System.nanoTime() - start) / 1_000_000;
