@@ -1,8 +1,8 @@
-import { InterviewProgressBar } from "@/features/interview/components/InterviewProgressBar";
+import { useEffect, useState } from "react";
 
 import { PREP_PARTS } from "../types/autoPrep";
 import type { PrepPlan } from "../types/autoPrep";
-import type { PartState } from "../hooks/useAutoPrepRun";
+import type { PartState, PartUiStatus } from "../hooks/useAutoPrepRun";
 
 interface Props {
   open: boolean;
@@ -15,7 +15,7 @@ interface Props {
   onNavigate: (path: string) => void;
 }
 
-/** 작업 과정 팝업. 전체 진행바 + 파트별 에너지바(시간 기반) + 세부스텝, 완료 후 다음 액션까지. */
+/** 작업 과정 팝업. 전체 진행바 + 파트별 에너지바(시간 기반, 완료시 100% 유지) + 세부스텝 + 완료 후 액션. */
 export function AutoPrepModal({ open, onClose, running, plan, parts, error, onNavigate }: Props) {
   if (!open) return null;
 
@@ -160,15 +160,11 @@ function PartGroup({
         );
       })}
 
-      {/* 파트 진행 중 — LLM 블랙박스라 시간 기반 에너지바로 진행감을 준다 */}
-      {part.status === "running" && (
-        <div className="ml-10 mt-1.5">
-          <InterviewProgressBar active estimatedMs={meta.estMs} label="AI가 처리 중이에요" />
-        </div>
-      )}
+      {/* 에너지바 — running 동안 차오르고, done 이면 100% 그대로 유지(✓). LLM 블랙박스 진행감용. */}
+      <PartEnergyBar status={part.status} estMs={meta.estMs} />
 
       {part.result && part.status !== "running" && (
-        <div className="ml-10 mt-1 flex flex-wrap items-center gap-2">
+        <div className="ml-10 mt-1.5 flex flex-wrap items-center gap-2">
           <span className="text-xs text-muted-foreground">{part.result.summary}</span>
           {action && (
             <button
@@ -180,6 +176,42 @@ function PartGroup({
           )}
         </div>
       )}
+    </div>
+  );
+}
+
+/** 파트 전용 에너지바. running: 0→90% 점근(시간 기반) · done: 100% 고정 + ✓ · 그 외: 미표시. */
+function PartEnergyBar({ status, estMs }: { status: PartUiStatus; estMs: number }) {
+  const [pct, setPct] = useState(0);
+
+  useEffect(() => {
+    if (status !== "running") return;
+    setPct(0);
+    const start = Date.now();
+    const id = setInterval(() => {
+      const elapsed = Date.now() - start;
+      setPct(Math.min(90, 90 * (1 - Math.exp(-elapsed / (estMs * 0.6)))));
+    }, 120);
+    return () => clearInterval(id);
+  }, [status, estMs]);
+
+  if (status !== "running" && status !== "done") return null;
+  const filled = status === "done" ? 100 : pct;
+
+  return (
+    <div className="ml-10 mt-1.5">
+      <div className="mb-1 flex items-center justify-between text-xs">
+        <span className="text-muted-foreground">{status === "done" ? "완료" : "AI가 처리 중이에요"}</span>
+        <span className="tabular-nums font-semibold text-primary">
+          {status === "done" ? "100% ✓" : `${Math.round(filled)}%`}
+        </span>
+      </div>
+      <div className="h-1.5 w-full overflow-hidden rounded-full bg-secondary">
+        <div
+          className="h-full rounded-full bg-primary transition-all duration-150 ease-out"
+          style={{ width: `${filled}%` }}
+        />
+      </div>
     </div>
   );
 }
