@@ -30,7 +30,7 @@
 -- ── 법적 문서 버전 ────────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS legal_document_version (
     id              BIGINT       NOT NULL AUTO_INCREMENT,
-    doc_type        VARCHAR(20)  NOT NULL COMMENT 'TERMS | PRIVACY | MARKETING (user_consent.consent_type 와 정렬)',
+    doc_type        VARCHAR(20)  NOT NULL COMMENT 'TERMS | PRIVACY | MARKETING | AI_CONSENT | COPYRIGHT (LegalDocType 와 정렬)',
     version_label   VARCHAR(20)  NOT NULL COMMENT '표시용 버전 (예: v2.4)',
     status          VARCHAR(20)  NOT NULL DEFAULT 'DRAFT' COMMENT 'DRAFT | PUBLISHED',
     summary         VARCHAR(500) NULL     COMMENT '개정 요약 (공지·이메일 고지에 사용 / AI 자동생성 가능)',
