@@ -38,6 +38,7 @@ export const router = createBrowserRouter([
     Component: Root,
     children: [
       { index: true, Component: HomePage },
+      { path: "home", Component: HomePage },
       { path: "dashboard", Component: DashboardPage },
       { path: "applications", Component: ApplicationsPage },
       { path: "applications/new", Component: ApplicationsPage },
