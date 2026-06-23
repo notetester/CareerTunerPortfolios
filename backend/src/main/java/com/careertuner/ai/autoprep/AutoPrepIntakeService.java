@@ -6,6 +6,7 @@ import java.util.Set;
 import org.springframework.stereotype.Service;
 
 import com.careertuner.ai.autoprep.dto.AutoPrepIntakeResponse;
+import com.careertuner.ai.autoprep.dto.AutoPrepIntakeResponse.ModeOption;
 import com.careertuner.ai.autoprep.dto.AutoPrepRequest;
 import com.careertuner.applicationcase.dto.ApplicationCaseResponse;
 import com.careertuner.applicationcase.service.ApplicationCaseService;
@@ -14,39 +15,55 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
 /**
- * 인테이크 챗봇 백엔드. 한 줄 요청을 두뇌로 해석해 슬롯을 채우고, 부족하면 무엇을 더 받아야 하는지 안내한다.
+ * 인테이크 챗봇 백엔드(멀티턴). 한 줄 요청을 두뇌로 해석하고, 부족한 슬롯을 한 번에 하나씩 되묻는다.
  *
- * <p>동적 plan 과 정합: 지원 건이 필요한 파트(JOB·FIT·INTERVIEW)가 plan 에 있을 때만 caseId 를 요구한다.
- * "자소서만/프로필만/커뮤니티만" 같은 요청은 지원 건 없이도 바로 ready 다.
+ * <p>되묻기 순서: ① 지원 건이 필요한 파트(JOB·FIT·INTERVIEW)가 있는데 caseId 없음 → CASE
+ * ② 면접(INTERVIEW)이 있는데 모드 미지정 → MODE ③ 다 차면 ready. 상태는 클라이언트가 슬롯을
+ * 누적해 매 턴 보내는 stateless 방식(applicationCaseId·mode 를 다음 요청에 실어 보냄).
  */
 @Slf4j
 @Service
 @RequiredArgsConstructor
 public class AutoPrepIntakeService {
 
-    // 지원 건(공고)이 있어야 의미 있는 파트. 이게 plan 에 없으면 caseId 없이도 바로 시작 가능.
     private static final Set<String> CASE_REQUIRED = Set.of("JOB", "FIT", "INTERVIEW");
+
+    private static final List<ModeOption> MODE_OPTIONS = List.of(
+            new ModeOption("BASIC", "기본 면접"),
+            new ModeOption("JOB", "직무 면접"),
+            new ModeOption("PERSONALITY", "인성 면접"),
+            new ModeOption("PRESSURE", "압박 면접"),
+            new ModeOption("RESUME", "자소서 기반"),
+            new ModeOption("COMPANY", "기업 맞춤"));
 
     private final AutoPrepPlanner planner;
     private final ApplicationCaseService applicationCaseService;
 
     public AutoPrepIntakeResponse intake(Long userId, AutoPrepRequest request) {
         PrepPlan plan = planner.plan(userId, request);
-        boolean needsCase = plan.steps().stream().anyMatch(CASE_REQUIRED::contains);
-        boolean hasCase = plan.slots().applicationCaseId() != null;
-        boolean ready = !needsCase || hasCase;
 
-        if (ready) {
-            return new AutoPrepIntakeResponse(plan, true,
-                    "준비 완료 — " + describe(plan) + " 기준으로 시작할 수 있어요.", List.of());
+        // ① 지원 건 필요한데 없음
+        boolean needsCase = plan.steps().stream().anyMatch(CASE_REQUIRED::contains);
+        if (needsCase && plan.slots().applicationCaseId() == null) {
+            List<ApplicationCaseResponse> candidates = safeList(userId);
+            String message = candidates.isEmpty()
+                    ? "이 준비에는 지원 건이 필요해요. 채용공고로 지원 건을 먼저 만들어 주세요."
+                    : (notBlank(plan.slots().company())
+                        ? "\"" + plan.slots().company().trim() + "\" 지원 건을 못 찾았어요. 어느 지원 건으로 준비할까요?"
+                        : "어느 지원 건으로 준비할까요?");
+            return new AutoPrepIntakeResponse(plan, false, message, "CASE", candidates, List.of());
         }
 
-        // 지원 건이 필요한데 못 찾은 경우만 되묻는다.
-        List<ApplicationCaseResponse> candidates = safeList(userId);
-        String message = candidates.isEmpty()
-                ? "이 준비에는 지원 건이 필요해요. 채용공고로 지원 건을 먼저 만들어 주세요."
-                : "어느 지원 건으로 준비할까요? 아래에서 골라 주세요.";
-        return new AutoPrepIntakeResponse(plan, false, message, candidates);
+        // ② 면접인데 모드 미지정
+        boolean needsMode = plan.steps().contains("INTERVIEW");
+        boolean hasMode = notBlank(request.mode());
+        if (needsMode && !hasMode) {
+            return new AutoPrepIntakeResponse(plan, false, "면접 모드는 어떤 걸로 할까요?", "MODE", List.of(), MODE_OPTIONS);
+        }
+
+        // ③ 준비 완료
+        return new AutoPrepIntakeResponse(plan, true,
+                "좋아요 — " + describe(plan) + " 기준으로 지금 바로 준비를 시작할게요.", null, List.of(), List.of());
     }
 
     private String describe(PrepPlan plan) {
@@ -64,7 +81,6 @@ public class AutoPrepIntakeService {
         if (sb.length() == 0) {
             sb.append("선택한 내용");
         }
-        // 면접 파트가 있으면 모드를, 없으면 단계 수를 덧붙인다.
         if (plan.steps().contains("INTERVIEW")) {
             sb.append(" / ").append(modeLabel(slots.mode()));
         } else {

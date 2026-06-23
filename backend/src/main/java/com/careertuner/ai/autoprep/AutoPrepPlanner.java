@@ -59,8 +59,12 @@ public class AutoPrepPlanner {
     public PrepPlan plan(Long userId, AutoPrepRequest request) {
         ParsedIntent parsed = parseIntent(request.query());
         String mode = firstNonBlank(request.mode(), parsed.mode(), "BASIC");
-        Long caseId = resolveCaseId(userId, parsed.company(), request.applicationCaseId());
-        PrepSlots slots = new PrepSlots(parsed.company(), parsed.jobTitle(), mode, caseId);
+        // 지원 건이 확정되면 그 건의 실제 회사/직무로 보정한다(query 파싱값보다 정확).
+        ApplicationCaseResponse matched = resolveCase(userId, parsed.company(), request.applicationCaseId());
+        Long caseId = matched != null ? matched.id() : null;
+        String company = matched != null ? matched.companyName() : parsed.company();
+        String jobTitle = matched != null ? matched.jobTitle() : parsed.jobTitle();
+        PrepSlots slots = new PrepSlots(company, jobTitle, mode, caseId);
         List<String> steps = resolveSteps(parsed.parts());
         String intent = steps.size() == ALL_STEPS.size() ? "FULL_PREP" : "CUSTOM_PREP";
         return new PrepPlan(intent, slots, steps);
@@ -109,11 +113,8 @@ public class AutoPrepPlanner {
         acc.add(part);
     }
 
-    /** 지원 건 결정: 명시 caseId 우선 → 회사명 매칭 → 가장 최근 → 없으면 null. */
-    private Long resolveCaseId(Long userId, String company, Long explicit) {
-        if (explicit != null) {
-            return explicit;
-        }
+    /** 지원 건 결정: 명시 caseId 우선 → 회사명 매칭 → 회사 모호 시 최근 건 → 없으면 null. */
+    private ApplicationCaseResponse resolveCase(Long userId, String company, Long explicit) {
         List<ApplicationCaseResponse> cases;
         try {
             cases = applicationCaseService.list(userId, null, false);
@@ -124,18 +125,21 @@ public class AutoPrepPlanner {
         if (cases == null || cases.isEmpty()) {
             return null;
         }
+        if (explicit != null) {
+            return cases.stream().filter(c -> explicit.equals(c.id())).findFirst().orElse(null);
+        }
         if (company != null && !company.isBlank()) {
             String key = company.trim();
             for (ApplicationCaseResponse c : cases) {
                 if (c.companyName() != null && c.companyName().contains(key)) {
-                    return c.id();
+                    return c;
                 }
             }
             // 회사를 콕 집었는데 매칭 실패 → 최근 건으로 엉뚱하게 폴백하지 말고 null(되묻기 유도).
             return null;
         }
         // 회사가 모호하면 가장 최근 지원 건을 기본값으로.
-        return cases.get(0).id();
+        return cases.get(0);
     }
 
     private Map<String, Object> intentSchema() {
