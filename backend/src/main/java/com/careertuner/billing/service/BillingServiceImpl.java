@@ -3,6 +3,7 @@ package com.careertuner.billing.service;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
+import java.time.format.DateTimeFormatter;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
@@ -56,6 +57,7 @@ public class BillingServiceImpl implements BillingService, AiBenefitUsageService
     private static final String TRANSACTION_CONSUME = "CONSUME";
     private static final String REF_BENEFIT_BALANCE = "BENEFIT_BALANCE";
     private static final String SOURCE_TYPE_PLAN = "PLAN";
+    private static final DateTimeFormatter DATE_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd");
 
     private final BillingMapper billingMapper;
     private final BillingPolicyService billingPolicyService;
@@ -242,7 +244,16 @@ public class BillingServiceImpl implements BillingService, AiBenefitUsageService
     @Override
     @Transactional
     public MyBillingResponse cancelSubscription(Long userId) {
-        billingMapper.cancelActiveSubscription(userId);
+        UserSubscription subscription = billingMapper.findActiveSubscription(userId, LocalDateTime.now());
+        int updated = billingMapper.cancelActiveSubscription(userId);
+        if (updated > 0 && subscription != null) {
+            String endDate = subscription.getCurrentPeriodEnd() == null
+                    ? "현재 결제 기간 종료일"
+                    : subscription.getCurrentPeriodEnd().format(DATE_FORMATTER);
+            notify(userId, "SUBSCRIPTION_CANCELED", "구독 해지가 예약되었습니다",
+                    "%s 플랜은 %s까지 이용할 수 있습니다. 이후 자동 갱신되지 않습니다."
+                            .formatted(subscription.getPlanCode(), endDate));
+        }
         return getMyBilling(userId);
     }
 

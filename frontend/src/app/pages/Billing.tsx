@@ -74,6 +74,9 @@ export function BillingPage() {
   const [error, setError] = useState<string | null>(null);
   const pendingPlanCode = busy?.startsWith("sub-") ? busy.slice(4) : null;
   const pendingProductCode = busy?.startsWith("buy-") ? busy.slice(4) : null;
+  const subscriptionPeriodEnd = billing?.periodEnd ?? null;
+  const isCancelScheduled = billing?.subscriptionStatus === "CANCELED" && subscriptionPeriodEnd !== null;
+  const isSubscriptionActive = billing?.subscriptionStatus === "ACTIVE" && subscriptionPeriodEnd !== null;
 
   const loadPublic = async () => {
     const [p, c] = await Promise.all([getPlans(), getCreditProducts()]);
@@ -148,11 +151,20 @@ export function BillingPage() {
         </div>
 
         {billing && (
-          <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-blue-200 bg-blue-50 p-4">
+          <div
+            className={`flex flex-wrap items-center justify-between gap-3 rounded-lg border p-4 ${
+              isCancelScheduled ? "border-amber-200 bg-amber-50" : "border-blue-200 bg-blue-50"
+            }`}
+          >
             <div className="text-sm text-blue-900">
               현재 플랜 <strong>{billing.currentPlanName}</strong>
-              {billing.subscriptionStatus === "ACTIVE" && billing.periodEnd && (
-                <span className="ml-2 text-xs text-blue-700">~ {billing.periodEnd.slice(0, 10)}</span>
+              {isSubscriptionActive && (
+                <span className="ml-2 text-xs text-blue-700">~ {subscriptionPeriodEnd?.slice(0, 10)}</span>
+              )}
+              {isCancelScheduled && (
+                <span className="ml-2 text-xs font-semibold text-amber-700">
+                  해지 예약됨 · {subscriptionPeriodEnd?.slice(0, 10)}까지 이용 가능
+                </span>
               )}
               <span className="ml-3">보유 크레딧 <strong>{billing.creditBalance}</strong>개</span>
             </div>

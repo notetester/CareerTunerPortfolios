@@ -32,6 +32,7 @@ export type UserNotificationType =
   // 결제/크레딧 (E 결제 흐름에서 발생, billing 카테고리)
   | "PAYMENT_COMPLETE"
   | "PAYMENT_SCHEDULED"
+  | "SUBSCRIPTION_CANCELED"
   | "CREDIT_RECHARGED";
 
 /* ── 비-AI 알림 — 관리자 (3개) ── */
@@ -112,6 +113,7 @@ export const TYPE_META: Record<NotificationType, TypeMeta> = {
   CREDIT_LOW:                { cat: "billing",     icon: "AlertTriangle",      variant: "warning", cta: "크레딧 충전" },
   PAYMENT_COMPLETE:          { cat: "billing",     icon: "CreditCard",         variant: "success", cta: "결제 내역 보기" },
   PAYMENT_SCHEDULED:         { cat: "billing",     icon: "CreditCard",         variant: "info",    cta: "결제 예정 보기" },
+  SUBSCRIPTION_CANCELED:     { cat: "billing",     icon: "CalendarX",          variant: "info",    cta: "구독 상태 보기" },
   CREDIT_RECHARGED:          { cat: "billing",     icon: "CreditCard",         variant: "success", cta: "크레딧 보기" },
   /* 공지 */
   NOTICE:                    { cat: "notice",      icon: "Megaphone",          variant: "warning", cta: "공지 보기" },
@@ -188,6 +190,7 @@ export const TYPE_TO_CATEGORY: Record<NotificationType, NotificationCategory> = 
   CREDIT_LOW: "billing",
   PAYMENT_COMPLETE: "billing",
   PAYMENT_SCHEDULED: "billing",
+  SUBSCRIPTION_CANCELED: "billing",
   CREDIT_RECHARGED: "billing",
   /* 공지/문의 */
   NOTICE: "notice",

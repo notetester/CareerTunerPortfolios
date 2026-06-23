@@ -222,6 +222,7 @@ const NOTI_ICON_MAP: Record<NotificationType, LucideIcon> = {
   CREDIT_LOW: CreditCard,
   PAYMENT_COMPLETE: CreditCard,
   PAYMENT_SCHEDULED: CreditCard,
+  SUBSCRIPTION_CANCELED: CreditCard,
   CREDIT_RECHARGED: CreditCard,
   NEW_REPORT: ShieldAlert,
   NEW_TICKET: Ticket,
