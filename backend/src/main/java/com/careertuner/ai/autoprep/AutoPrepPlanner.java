@@ -1,7 +1,10 @@
 package com.careertuner.ai.autoprep;
 
+import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
@@ -16,16 +19,23 @@ import lombok.extern.slf4j.Slf4j;
 import tools.jackson.databind.JsonNode;
 
 /**
- * AI 오케스트레이터 두뇌. 한 줄 요청을 받아 슬롯(회사·직무·모드)을 파싱하고 실행 계획(PrepPlan)을 만든다.
+ * AI 오케스트레이터 두뇌. 한 줄 요청을 받아 슬롯(회사·직무·모드)과 실행할 파트를 결정한다.
  *
- * <p>슬롯 파싱은 {@link InterviewLlmGateway}(자체 LLM → Claude Haiku → OpenAI 폴백)를 재활용한다.
- * 자체 모델 미학습/실패 시에도 Claude 폴백으로 동작하므로 사용에 문제없다. 폴백조차 실패하면 빈 슬롯으로
- * 진행하고 오케가 단계별로 처리한다.
+ * <p>파트 선택(동적 plan): LLM 이 요청을 보고 어떤 단계가 필요한지 고른다("통째로"면 전체,
+ * "면접만"이면 INTERVIEW 만). 단계 간 의존(FIT·INTERVIEW ← JOB)은 코드가 클로저로 보강하고,
+ * 실행 순서는 defaultSteps 기준으로 정렬한다. 슬롯 파싱은 {@link InterviewLlmGateway}(자체→Claude→OpenAI 폴백)를 쓴다.
  */
 @Slf4j
 @Component
 @RequiredArgsConstructor
 public class AutoPrepPlanner {
+
+    private static final List<String> ALL_STEPS = PrepPlan.defaultSteps();
+
+    // 파트 의존: FIT·INTERVIEW 는 JOB 결과가 있어야 의미가 있다 → 선택 시 JOB 을 함께 끌어온다.
+    private static final Map<String, List<String>> DEPS = Map.of(
+            "FIT", List.of("JOB"),
+            "INTERVIEW", List.of("JOB"));
 
     private final InterviewLlmGateway llmGateway;
     private final ApplicationCaseService applicationCaseService;
@@ -34,40 +44,73 @@ public class AutoPrepPlanner {
     private String generationModel;
 
     private static final String INTENT_SYSTEM = """
-        너는 취업 준비 요청을 분석하는 분류기다. 사용자의 한 줄 요청에서 지원 회사명(company), 직무(jobTitle),
-        면접 모드(mode)를 추출해 JSON 으로만 답하라. 모르면 빈 문자열로 둔다.
-        mode 는 정확히 다음 중 하나: BASIC, JOB, PERSONALITY, PRESSURE, RESUME, COMPANY.
-        규칙: 압박/꼬리/반박/몰아 → PRESSURE, 인성/가치관/협업/갈등 → PERSONALITY, 자소서/자기소개서 → RESUME,
-        기업/컬처/회사맞춤 → COMPANY, 기술/직무/개발/백엔드/프론트 → JOB, 그 외 → BASIC.
+        너는 취업 준비 요청을 분석하는 분류기다. 사용자의 한 줄 요청에서 다음을 추출해 JSON 으로만 답하라.
+        - company: 지원 회사명(모르면 빈 문자열)
+        - jobTitle: 직무(모르면 빈 문자열)
+        - mode: 면접 모드. 정확히 BASIC, JOB, PERSONALITY, PRESSURE, RESUME, COMPANY 중 하나.
+          압박/꼬리/반박 → PRESSURE, 인성/가치관/협업 → PERSONALITY, 자소서 → RESUME, 기업/컬처 → COMPANY,
+          기술/직무/개발 → JOB, 그 외 → BASIC.
+        - parts: 이 요청에 필요한 준비 단계 배열. 후보:
+          PROFILE(프로필·역량), JOB(공고분석), FIT(적합도), WRITE(자소서교정), INTERVIEW(면접질문), COMMUNITY(커뮤니티).
+          규칙: "통째로/전체/다/싹/전부" 또는 모호하면 빈 배열([]) — 전체로 처리한다.
+          특정 단계만 콕 집으면("면접만","자소서만","적합도만") 그 단계만 넣는다.
         """;
 
     public PrepPlan plan(Long userId, AutoPrepRequest request) {
-        PrepSlots parsed = parseSlots(request.query());
+        ParsedIntent parsed = parseIntent(request.query());
         String mode = firstNonBlank(request.mode(), parsed.mode(), "BASIC");
-        Long caseId = resolveCaseId(userId, parsed, request.applicationCaseId());
+        Long caseId = resolveCaseId(userId, parsed.company(), request.applicationCaseId());
         PrepSlots slots = new PrepSlots(parsed.company(), parsed.jobTitle(), mode, caseId);
-        return new PrepPlan("FULL_PREP", slots, PrepPlan.defaultSteps());
+        List<String> steps = resolveSteps(parsed.parts());
+        String intent = steps.size() == ALL_STEPS.size() ? "FULL_PREP" : "CUSTOM_PREP";
+        return new PrepPlan(intent, slots, steps);
     }
 
-    private PrepSlots parseSlots(String query) {
+    private ParsedIntent parseIntent(String query) {
         if (query == null || query.isBlank()) {
-            return new PrepSlots(null, null, null, null);
+            return new ParsedIntent(null, null, null, List.of());
         }
         try {
             InterviewLlmGateway.Result result = llmGateway.complete(new InterviewLlmGateway.Request(
                     "autoprep_intent", intentSchema(), INTENT_SYSTEM, query, generationModel));
             JsonNode p = result.payload();
-            return new PrepSlots(text(p, "company"), text(p, "jobTitle"), text(p, "mode"), null);
+            return new ParsedIntent(text(p, "company"), text(p, "jobTitle"), text(p, "mode"), stringList(p, "parts"));
         } catch (RuntimeException ex) {
-            log.warn("AutoPrep 슬롯 파싱 실패 → 빈 슬롯으로 진행: {}", ex.getMessage());
-            return new PrepSlots(null, null, null, null);
+            log.warn("AutoPrep 의도 파싱 실패 → 빈 슬롯·전체 파트로 진행: {}", ex.getMessage());
+            return new ParsedIntent(null, null, null, List.of());
         }
     }
 
-    /**
-     * 지원 건 결정: 명시 caseId 우선 → 슬롯의 회사명으로 사용자 지원 건 매칭 → 가장 최근 건 → 없으면 null.
-     */
-    private Long resolveCaseId(Long userId, PrepSlots parsed, Long explicit) {
+    /** 선택 파트 + 의존 클로저를 defaultSteps 순서로 정렬. 비었으면 전체. */
+    private List<String> resolveSteps(List<String> requested) {
+        if (requested == null || requested.isEmpty()) {
+            return ALL_STEPS;
+        }
+        Set<String> selected = new LinkedHashSet<>();
+        for (String raw : requested) {
+            if (raw == null) {
+                continue;
+            }
+            String part = raw.trim().toUpperCase();
+            if (ALL_STEPS.contains(part)) {
+                addWithDeps(part, selected);
+            }
+        }
+        if (selected.isEmpty()) {
+            return ALL_STEPS;
+        }
+        return ALL_STEPS.stream().filter(selected::contains).toList();
+    }
+
+    private void addWithDeps(String part, Set<String> acc) {
+        for (String dep : DEPS.getOrDefault(part, List.of())) {
+            addWithDeps(dep, acc);
+        }
+        acc.add(part);
+    }
+
+    /** 지원 건 결정: 명시 caseId 우선 → 회사명 매칭 → 가장 최근 → 없으면 null. */
+    private Long resolveCaseId(Long userId, String company, Long explicit) {
         if (explicit != null) {
             return explicit;
         }
@@ -81,7 +124,6 @@ public class AutoPrepPlanner {
         if (cases == null || cases.isEmpty()) {
             return null;
         }
-        String company = parsed.company();
         if (company != null && !company.isBlank()) {
             String key = company.trim();
             for (ApplicationCaseResponse c : cases) {
@@ -99,14 +141,31 @@ public class AutoPrepPlanner {
                 "properties", Map.of(
                         "company", Map.of("type", "string"),
                         "jobTitle", Map.of("type", "string"),
-                        "mode", Map.of("type", "string")),
-                "required", List.of("company", "jobTitle", "mode"),
+                        "mode", Map.of("type", "string"),
+                        "parts", Map.of(
+                                "type", "array",
+                                "items", Map.of("type", "string", "enum", ALL_STEPS))),
+                "required", List.of("company", "jobTitle", "mode", "parts"),
                 "additionalProperties", false);
     }
 
     private static String text(JsonNode node, String field) {
         JsonNode v = node == null ? null : node.get(field);
         return v == null || v.isNull() ? null : v.asText();
+    }
+
+    private static List<String> stringList(JsonNode node, String field) {
+        JsonNode arr = node == null ? null : node.get(field);
+        if (arr == null || !arr.isArray()) {
+            return List.of();
+        }
+        List<String> out = new ArrayList<>();
+        arr.forEach(n -> {
+            if (n != null && !n.isNull()) {
+                out.add(n.asText());
+            }
+        });
+        return out;
     }
 
     private static String firstNonBlank(String... values) {
@@ -116,5 +175,8 @@ public class AutoPrepPlanner {
             }
         }
         return null;
+    }
+
+    private record ParsedIntent(String company, String jobTitle, String mode, List<String> parts) {
     }
 }
