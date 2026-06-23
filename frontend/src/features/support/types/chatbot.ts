@@ -17,6 +17,7 @@ export interface ChatMessage {
   text: string;
   evidence: ChatEvidence[];
   links: SiteLink[];
+  quickReplies: string[];
   ttsState: "idle" | "playing" | "paused";
   ttsProgress: number;
   timestamp: number;

@@ -1,16 +1,16 @@
 import { useState, useCallback, useRef } from "react";
 import { api } from "@/app/lib/api";
-import type { ChatMessage, ChatEvidence, BotStatus, VoiceState, ChatSession, SiteLink } from "../types/chatbot";
+import type { ChatMessage, BotStatus, VoiceState, ChatSession, SiteLink } from "../types/chatbot";
 
 let msgId = 0;
 const nextId = () => `msg-${++msgId}`;
 
-/* ── API 응답 타입 ── */
+/* ── API 응답 타입 (커뮤니티 챗봇 에이전트) ── */
 interface ChatbotApiResponse {
-  answer: string;
+  conversationId: number;
+  message: string;
   links: SiteLink[];
-  matchedFaqIds: number[];
-  topSimilarity: number;
+  quickReplies: string[];
 }
 
 const MOCK_SESSIONS: ChatSession[] = [
@@ -26,6 +26,8 @@ export function useChatbot() {
   const [sessions] = useState<ChatSession[]>(MOCK_SESSIONS);
   const [activeSessionId, setActiveSessionId] = useState<string>("s1");
   const abortRef = useRef<AbortController>();
+  // 서버 발급 대화 ID. 새 대화면 null → 첫 응답에서 받아 보관, 이후 턴마다 재사용.
+  const conversationIdRef = useRef<number | null>(null);
 
   const open = useCallback(() => setIsOpen(true), []);
   const close = useCallback(() => setIsOpen(false), []);
@@ -34,7 +36,7 @@ export function useChatbot() {
   const sendMessage = useCallback((text: string) => {
     const userMsg: ChatMessage = {
       id: nextId(), role: "user", text,
-      evidence: [], links: [], ttsState: "idle", ttsProgress: 0,
+      evidence: [], links: [], quickReplies: [], ttsState: "idle", ttsProgress: 0,
       timestamp: Date.now(),
     };
     setMessages((prev) => [...prev, userMsg]);
@@ -47,29 +49,25 @@ export function useChatbot() {
 
     api<ChatbotApiResponse>("/chatbot/ask", {
       method: "POST",
-      body: JSON.stringify({ question: text }),
+      body: JSON.stringify({ question: text, conversationId: conversationIdRef.current }),
       signal: controller.signal,
     })
       .then((data) => {
         if (controller.signal.aborted) return;
 
-        // 매칭된 FAQ가 없으면 not_found
-        if (!data.matchedFaqIds.length || data.topSimilarity === 0) {
+        // 대화 ID 보관 (다음 턴 맥락 유지)
+        conversationIdRef.current = data.conversationId;
+
+        // 에이전트가 메시지를 못 만들면 not_found
+        if (!data.message || !data.message.trim()) {
           setBotStatus("not_found");
           return;
         }
 
-        const evidence: ChatEvidence[] = data.matchedFaqIds.map((id, i) => ({
-          id: `faq-${id}`,
-          type: "FAQ" as const,
-          title: `FAQ #${id}`,
-          snippet: "",
-          url: "/support/faq",
-        }));
-
         const botMsg: ChatMessage = {
-          id: nextId(), role: "bot", text: data.answer,
-          evidence, links: data.links ?? [], ttsState: "idle", ttsProgress: 0,
+          id: nextId(), role: "bot", text: data.message,
+          evidence: [], links: data.links ?? [], quickReplies: data.quickReplies ?? [],
+          ttsState: "idle", ttsProgress: 0,
           timestamp: Date.now(),
         };
         setMessages((prev) => [...prev, botMsg]);
@@ -124,6 +122,7 @@ export function useChatbot() {
   const newSession = useCallback(() => {
     setMessages([]);
     setBotStatus("idle");
+    conversationIdRef.current = null; // 새 대화 → 서버가 새 ID 발급
   }, []);
 
   return {
