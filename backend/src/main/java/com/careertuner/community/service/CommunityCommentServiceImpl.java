@@ -42,7 +42,7 @@ public class CommunityCommentServiceImpl implements CommunityCommentService {
     @Override
     public List<CommentResponse> getComments(Long postId, Long currentUserId) {
         CommunityPost post = postMapper.findById(postId);
-        if (post == null) {
+        if (post == null || !PostStatus.PUBLISHED.name().equals(post.getStatus())) {
             throw new BusinessException(ErrorCode.NOT_FOUND, "게시글을 찾을 수 없습니다.");
         }
         // soft-delete(자삭=DELETED, 관리자=HIDDEN)는 row를 지우지 않으므로 전체를 가져온다.
