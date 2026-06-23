@@ -11,7 +11,9 @@ import sys
 import unittest
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from eval_fit_model import evaluate, scan_named_entities, supported_terms  # noqa: E402
+from eval_fit_model import (  # noqa: E402
+    evaluate, scan_named_entities, supported_terms, grounding_violation, grounding_missing,
+)
 
 # 입력에 Spring Boot/SQL/정보처리기사가 있는 전형적 케이스
 CASE = {
@@ -135,6 +137,41 @@ class ObservationDoesNotAffectSuccessTest(unittest.TestCase):
         row = evaluate(CASE, content, None)
         self.assertEqual([], row["named_entities"]["high"])
         self.assertEqual([], row["named_entities"]["review"])
+
+
+class GroundingObserverTest(unittest.TestCase):
+    """E1 grounding 관측기(백엔드 미러) — 부족 역량을 보유로 서술하면 위반."""
+
+    def test_flags_missing_skill_described_as_possessed(self):
+        self.assertIsNotNone(grounding_violation(["Spring", "AWS"], "요약입니다.", ["Spring 보유로 즉시 투입 가능"]))
+        self.assertIn("Spring", grounding_violation(["Spring"], "Spring은 강점입니다.", []))
+
+    def test_no_false_positive_on_lack_or_negation(self):
+        self.assertIsNone(grounding_violation(["Spring"], "Spring 경험이 부족합니다.", []))
+        self.assertIsNone(grounding_violation(["Spring"], "Spring을 보유하지 않았습니다.", []))
+        # 매칭 역량(missing 아님)을 보유라 해도 위반 아님
+        self.assertIsNone(grounding_violation(["AWS"], "Java를 보유하고 있습니다.", ["Java 보유"]))
+
+    def test_no_missing_no_violation(self):
+        self.assertIsNone(grounding_violation([], "무엇이든 보유합니다.", ["전부 보유"]))
+
+    def test_grounding_missing_excludes_held_certificate(self):
+        # 정보처리기사 보유(cert)면 규칙엔진 missing 에 있어도 E1 대상에서 제외(#116)
+        case = {"input": {"missingRequiredSkills": ["정보처리기사", "Java"],
+                          "missingPreferredSkills": ["AWS"], "profileCertificates": ["정보처리기사"]}}
+        self.assertEqual({"Java", "AWS"}, set(grounding_missing(case)))
+
+    def test_evaluate_records_grounding_violation(self):
+        # strengths 에서 부족 Spring Boot/SQL 을 보유로 → row.grounding_violation 기록(success 불변)
+        content = json.dumps({
+            "fitSummary": "전반적으로 적합합니다.",
+            "strengths": ["Spring Boot 보유로 즉시 투입 가능"],
+            "risks": [], "strategyActions": [], "learningTaskReasons": [],
+        }, ensure_ascii=False)
+        row = evaluate(CASE, content, None)  # CASE: missing Spring Boot, SQL
+        self.assertIsNotNone(row["grounding_violation"])
+        self.assertIn("Spring Boot", row["grounding_violation"])
+        self.assertTrue(row["success"], "관측은 success 에 영향 없음")
 
 
 if __name__ == "__main__":
