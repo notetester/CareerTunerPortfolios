@@ -24,10 +24,14 @@ public interface CommunityTagMapper {
 
     void deleteAiPostTags(@Param("postId") Long postId);
 
-    /** 게시글-태그 매핑 추가. */
-    void insertPostTag(@Param("postId") Long postId,
-                       @Param("tagId") Long tagId,
-                       @Param("isAi") boolean isAi);
+    /**
+     * 게시글-태그 매핑 추가. PK(post_id, tag_id) 중복은 ON DUPLICATE KEY UPDATE로 흡수한다.
+     * 반환 affected rows: 신규 INSERT=1, 기존 행 갱신=2(변경 없음 0).
+     * 호출부는 1(신규)일 때만 usage_count를 증가시켜 카운트 이중증가를 막는다.
+     */
+    int insertPostTag(@Param("postId") Long postId,
+                      @Param("tagId") Long tagId,
+                      @Param("isAi") boolean isAi);
 
     /** 해당 게시글의 모든 태그명 조회 (is_ai 무관). */
     List<String> findTagNamesByPostId(@Param("postId") Long postId);

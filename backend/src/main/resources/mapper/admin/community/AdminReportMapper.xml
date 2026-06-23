@@ -183,10 +183,14 @@
     </update>
 
     <!-- 게시글 상태 변경 -->
+    <!-- 정책: DELETED는 종착(불가역) 상태. DELETED→HIDDEN 등 역행을 막기 위해
+         status <> 'DELETED' 가드를 둔다. 서비스 계층에서 사전 status 조회로 1차 거부하지만,
+         경합/우회를 대비한 DB 레벨 2차 방어선이다. -->
     <update id="updatePostStatus">
         UPDATE community_post
            SET status = #{status}
          WHERE id = #{postId}
+           AND status &lt;&gt; 'DELETED'
     </update>
 
     <!-- 댓글 상태 변경 -->

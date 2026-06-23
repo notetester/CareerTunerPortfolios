@@ -1,18 +1,31 @@
 import { api } from "@/app/lib/api";
 
-/** 공개 API가 지원하는 법적문서 타입 (백엔드 LegalDocType 와 정렬). */
-export type LegalDocType = "terms" | "privacy" | "marketing";
+/** 공개 API가 지원하는 법적문서 타입 (백엔드 LegalDocType 슬러그와 정렬).
+ *  슬러그는 routes.ts 의 `legal/<seg>` 마지막 세그먼트와 1:1. */
+export type LegalDocType =
+  | "terms"
+  | "privacy"
+  | "marketing"
+  | "ai-data-consent"
+  | "copyright";
 
-export const LEGAL_DOC_TYPES = ["terms", "privacy", "marketing"] as const;
+export const LEGAL_DOC_TYPES = [
+  "terms",
+  "privacy",
+  "marketing",
+  "ai-data-consent",
+  "copyright",
+] as const;
 
 /** 라우트 path 세그먼트 → API docType.
- *  routes.ts 는 `legal/terms`·`legal/privacy`·`legal/ai-data-consent`·`legal/copyright` 를 노출하나
- *  백엔드 공개 계약은 terms|privacy|marketing 만 다룬다. ai-data-consent 는 marketing 으로 매핑하지
- *  않고(별개 동의), 미지원 path 는 그대로 두어 호출부에서 안내 처리한다. */
+ *  routes.ts 는 `legal/terms`·`legal/privacy`·`legal/ai-data-consent`·`legal/copyright` 를 노출하고
+ *  백엔드 공개 계약도 동일 슬러그를 그대로 받는다(LegalDocType.from). marketing 은 라우트 미노출. */
 export const ROUTE_TO_DOC_TYPE: Record<string, LegalDocType> = {
   terms: "terms",
   privacy: "privacy",
   marketing: "marketing",
+  "ai-data-consent": "ai-data-consent",
+  copyright: "copyright",
 };
 
 export function isLegalDocType(v: string): v is LegalDocType {

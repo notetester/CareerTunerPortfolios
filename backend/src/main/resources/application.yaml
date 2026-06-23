@@ -15,6 +15,7 @@ spring:
   #      예)  DB_PASSWORD=... OAUTH_KAKAO_CLIENT_SECRET=... JWT_SECRET=... java -jar app.jar
   # ───────────────────────────────────────────────────────────────────────
 
+  # 팀 DB(AWS) — 활성. 로컬 테스트 시 아래 localhost 블록으로 임시 교체.
   datasource:
     url: jdbc:mysql://${DB_HOST:localhost}:${DB_PORT:3306}/${DB_NAME:team1_db}?serverTimezone=Asia/Seoul&characterEncoding=UTF-8&useSSL=false&allowPublicKeyRetrieval=true
     username: ${DB_USERNAME:dbuser}
@@ -24,8 +25,12 @@ spring:
       # MySQL 미기동 상태에서도 부팅되도록 시작 시 커넥션 시도를 생략(개발 편의).
       initialization-fail-timeout: -1
 
-
-    
+  # 로컬 테스트용 (사용 시 위 팀 DB 블록 주석 처리)
+#  datasource:
+#    url: jdbc:mysql://localhost:3306/team1?serverTimezone=Asia/Seoul&characterEncoding=UTF-8&useSSL=false&allowPublicKeyRetrieval=true
+#    username: dbuser
+#    password: 1234
+#    driver-class-name: com.mysql.cj.jdbc.Driver
 
   mail:
     host: ${MAIL_HOST:smtp.naver.com}

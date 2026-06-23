@@ -3,7 +3,12 @@ import { api } from "@/app/lib/api";
 /** 관리자 법적문서 API — `/api/admin/legal/**` (ADMIN 자동 인증).
  *  계약: 작업지시서 STEP 2 / API 명세. */
 
-export type LegalDocType = "terms" | "privacy" | "marketing";
+export type LegalDocType =
+  | "terms"
+  | "privacy"
+  | "marketing"
+  | "ai-data-consent"
+  | "copyright";
 
 /** 버전 라이프사이클 배지 — 백엔드가 effective_date vs NOW() 로 계산해 내려준다. */
 export type VersionBadge = "live" | "next" | "old" | "draft";
