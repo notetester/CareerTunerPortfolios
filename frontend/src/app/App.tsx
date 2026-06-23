@@ -14,7 +14,7 @@ export default function App() {
   }, []);
 
   return (
-    <ThemeProvider attribute="class" forcedTheme="light" enableSystem={false} disableTransitionOnChange>
+    <ThemeProvider attribute="class" defaultTheme="light" enableSystem={false} disableTransitionOnChange>
       <AuthProvider>
         <AppLockGate>
           <RouterProvider router={router} />
