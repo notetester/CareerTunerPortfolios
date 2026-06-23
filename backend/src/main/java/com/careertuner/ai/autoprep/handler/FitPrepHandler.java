@@ -2,6 +2,7 @@ package com.careertuner.ai.autoprep.handler;
 
 import org.springframework.stereotype.Component;
 
+import com.careertuner.ai.autoprep.PrepProgress;
 import com.careertuner.ai.autoprep.PrepStepContext;
 import com.careertuner.ai.autoprep.PrepStepHandler;
 import com.careertuner.ai.autoprep.PrepStepResult;
@@ -26,11 +27,14 @@ public class FitPrepHandler implements PrepStepHandler {
     }
 
     @Override
-    public PrepStepResult handle(PrepStepContext context) {
+    public PrepStepResult handle(PrepStepContext context, PrepProgress progress) {
         if (context.applicationCaseId() == null) {
             return PrepStepResult.skipped("FIT", "지원 건이 없어 건너뜀");
         }
         long start = System.nanoTime();
+        progress.substep("근거 검색", "지식베이스 근거 주입");
+        progress.substep("채점", "요건 매칭 점수화");
+        progress.substep("검증", "근거 가드 적용");
         FitAnalysisDetailResponse result =
                 fitAnalysisService.generate(context.userId(), context.applicationCaseId());
         long ms = (System.nanoTime() - start) / 1_000_000;

@@ -14,6 +14,7 @@ public interface PrepStepHandler {
         return true;
     }
 
-    /** 단계 실행. 실패 시 BusinessException 을 던지면 오케가 FAILED 로 기록하고 계속 진행한다. */
-    PrepStepResult handle(PrepStepContext context);
+    /** 단계 실행. 실패 시 BusinessException 을 던지면 오케가 FAILED 로 기록하고 계속 진행한다.
+     *  progress 로 세부 작업(서브스텝)을 보고하면 SSE 로 실시간 전송된다(동기 실행은 {@link PrepProgress#NOOP}). */
+    PrepStepResult handle(PrepStepContext context, PrepProgress progress);
 }

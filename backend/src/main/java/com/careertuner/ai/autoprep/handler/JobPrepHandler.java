@@ -2,6 +2,7 @@ package com.careertuner.ai.autoprep.handler;
 
 import org.springframework.stereotype.Component;
 
+import com.careertuner.ai.autoprep.PrepProgress;
 import com.careertuner.ai.autoprep.PrepStepContext;
 import com.careertuner.ai.autoprep.PrepStepHandler;
 import com.careertuner.ai.autoprep.PrepStepResult;
@@ -26,11 +27,13 @@ public class JobPrepHandler implements PrepStepHandler {
     }
 
     @Override
-    public PrepStepResult handle(PrepStepContext context) {
+    public PrepStepResult handle(PrepStepContext context, PrepProgress progress) {
         if (context.applicationCaseId() == null) {
             return PrepStepResult.skipped("JOB", "지원 건이 없어 건너뜀 — 공고를 먼저 등록하세요.");
         }
         long start = System.nanoTime();
+        progress.substep("공고 파싱", "채용공고 본문 구조화");
+        progress.substep("핵심 요건 추출", "필수·우대 요건 분석");
         JobAnalysisResponse result =
                 jobAnalysisService.createJobAnalysis(context.userId(), context.applicationCaseId());
         long ms = (System.nanoTime() - start) / 1_000_000;

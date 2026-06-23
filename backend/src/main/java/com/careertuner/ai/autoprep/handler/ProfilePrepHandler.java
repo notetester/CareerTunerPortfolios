@@ -2,6 +2,7 @@ package com.careertuner.ai.autoprep.handler;
 
 import org.springframework.stereotype.Component;
 
+import com.careertuner.ai.autoprep.PrepProgress;
 import com.careertuner.ai.autoprep.PrepStepContext;
 import com.careertuner.ai.autoprep.PrepStepHandler;
 import com.careertuner.ai.autoprep.PrepStepResult;
@@ -29,12 +30,14 @@ public class ProfilePrepHandler implements PrepStepHandler {
     }
 
     @Override
-    public PrepStepResult handle(PrepStepContext context) {
+    public PrepStepResult handle(PrepStepContext context, PrepProgress progress) {
         long start = System.nanoTime();
+        progress.substep("프로필 로드", "보유 스펙·경력 불러오기");
         UserProfile profile = profileMapper.findByUserId(context.userId());
         if (profile == null) {
             return PrepStepResult.skipped("PROFILE", "프로필이 없어 건너뜀 — 프로필을 먼저 입력하세요.");
         }
+        progress.substep("역량 정리", "AI 요약·역량 추출");
         ProfileAiResult result = profileAiService.evaluate(profile, "PROFILE_SUMMARY");
         long ms = (System.nanoTime() - start) / 1_000_000;
         return PrepStepResult.done("PROFILE", "프로필 요약·역량 정리 완료", result, ms);

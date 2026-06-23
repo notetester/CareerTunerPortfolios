@@ -4,6 +4,7 @@ import java.util.List;
 
 import org.springframework.stereotype.Component;
 
+import com.careertuner.ai.autoprep.PrepProgress;
 import com.careertuner.ai.autoprep.PrepStepContext;
 import com.careertuner.ai.autoprep.PrepStepHandler;
 import com.careertuner.ai.autoprep.PrepStepResult;
@@ -28,8 +29,10 @@ public class CommunityPrepHandler implements PrepStepHandler {
     }
 
     @Override
-    public PrepStepResult handle(PrepStepContext context) {
+    public PrepStepResult handle(PrepStepContext context, PrepProgress progress) {
         long start = System.nanoTime();
+        progress.substep("관련 글 검색", "회사·직무 태그 매칭");
+        progress.substep("인기순 정렬", "후기·팁 큐레이션");
         List<HotPostResponse> hotPosts = communityPostService.getHotPosts();
         long ms = (System.nanoTime() - start) / 1_000_000;
         return PrepStepResult.done("COMMUNITY",

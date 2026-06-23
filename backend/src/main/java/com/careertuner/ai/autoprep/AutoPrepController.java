@@ -1,10 +1,12 @@
 package com.careertuner.ai.autoprep;
 
+import org.springframework.http.MediaType;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import com.careertuner.ai.autoprep.dto.AutoPrepIntakeResponse;
 import com.careertuner.ai.autoprep.dto.AutoPrepRequest;
@@ -39,5 +41,13 @@ public class AutoPrepController {
             @AuthenticationPrincipal AuthUser authUser,
             @RequestBody AutoPrepRequest request) {
         return ApiResponse.ok(orchestrator.run(authUser.id(), request));
+    }
+
+    /** 실행(SSE): 진행 과정을 실시간 스트리밍. 이벤트 = plan / part-start / substep / part-done / done. */
+    @PostMapping(value = "/run/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
+    public SseEmitter runStream(
+            @AuthenticationPrincipal AuthUser authUser,
+            @RequestBody AutoPrepRequest request) {
+        return orchestrator.runStream(authUser.id(), request);
     }
 }

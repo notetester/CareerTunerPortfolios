@@ -2,6 +2,7 @@ package com.careertuner.ai.autoprep.handler;
 
 import org.springframework.stereotype.Component;
 
+import com.careertuner.ai.autoprep.PrepProgress;
 import com.careertuner.ai.autoprep.PrepStepContext;
 import com.careertuner.ai.autoprep.PrepStepHandler;
 import com.careertuner.ai.autoprep.PrepStepResult;
@@ -27,12 +28,14 @@ public class WritePrepHandler implements PrepStepHandler {
     }
 
     @Override
-    public PrepStepResult handle(PrepStepContext context) {
+    public PrepStepResult handle(PrepStepContext context, PrepProgress progress) {
         String original = context.coverLetterText();
         if (original == null || original.isBlank()) {
             return PrepStepResult.skipped("WRITE", "자소서 원문이 없어 건너뜀 — 자소서를 입력하면 교정합니다.");
         }
         long start = System.nanoTime();
+        progress.substep("원문 분석", "자소서 문장 구조 파악");
+        progress.substep("문장 교정", "AI 첨삭·근거 보강");
         CorrectionResponse result = correctionService.create(
                 context.userId(),
                 new CorrectionCreateRequest("SELF_INTRO", context.applicationCaseId(), original, null, null, null));
