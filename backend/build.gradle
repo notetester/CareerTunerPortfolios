@@ -47,6 +47,12 @@ dependencies {
     runtimeOnly 'io.jsonwebtoken:jjwt-impl:0.12.6'
     runtimeOnly 'io.jsonwebtoken:jjwt-jackson:0.12.6'
 
+    // LangChain4j (Spring Boot 4 전용 스타터) — Part 2 tool-calling 게이트 측정용.
+    // 주의: 이 프로젝트는 Spring Boot 4 → 반드시 -spring-boot4-starter 사용 (Boot 3용 -spring-boot-starter 아님).
+    // langchain4j-bom 은 spring 스타터 버전을 관리하지 않으므로(별도 버전체계) 버전을 직접 명시한다.
+    implementation 'dev.langchain4j:langchain4j-spring-boot4-starter:1.16.3-beta26'        // @AiService 스캐닝
+    implementation 'dev.langchain4j:langchain4j-ollama-spring-boot4-starter:1.16.3-beta26' // OllamaChatModel 오토컨피그
+
     // Dev tooling
     compileOnly 'org.projectlombok:lombok'
     developmentOnly 'org.springframework.boot:spring-boot-devtools'

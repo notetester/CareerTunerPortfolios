@@ -122,7 +122,7 @@ function ChatbotPanel({ chatbot }: ChatbotPanelProps) {
                   m.role === "user" ? (
                     <UserBubble key={m.id} text={m.text} dimmed={isDisconnected} />
                   ) : (
-                    <BotBubble key={m.id} message={m} onToggleTts={toggleTts} variant="widget" />
+                    <BotBubble key={m.id} message={m} onToggleTts={toggleTts} variant="widget" onQuickReply={sendMessage} />
                   )
                 )}
                 {botStatus === "thinking" && <TypingIndicator />}
@@ -221,8 +221,9 @@ function UserBubble({ text, dimmed }: { text: string; dimmed?: boolean }) {
   );
 }
 
-function BotBubble({ message, onToggleTts, variant = "widget" }: {
+function BotBubble({ message, onToggleTts, variant = "widget", onQuickReply }: {
   message: ChatMessage; onToggleTts: (id: string) => void; variant?: "widget" | "full";
+  onQuickReply?: (text: string) => void;
 }) {
   const avatarSize = variant === "full" ? 34 : 28;
   const iconSize = variant === "full" ? 16 : 14;
@@ -270,7 +271,28 @@ function BotBubble({ message, onToggleTts, variant = "widget" }: {
           <SiteLinkButtons links={message.links} />
         )}
 
+        {/* Quick reply chips */}
+        {onQuickReply && message.quickReplies && message.quickReplies.length > 0 && (
+          <QuickReplyChips replies={message.quickReplies} onSelect={onQuickReply} />
+        )}
+
       </div>
+    </div>
+  );
+}
+
+function QuickReplyChips({ replies, onSelect }: { replies: string[]; onSelect: (text: string) => void }) {
+  return (
+    <div className="flex flex-wrap gap-1.5">
+      {replies.map((r) => (
+        <button
+          key={r}
+          onClick={() => onSelect(r)}
+          className="inline-flex items-center px-3 py-1.5 rounded-full border border-blue-200 bg-white text-blue-700 text-[12.5px] font-semibold hover:bg-blue-50 transition-colors"
+        >
+          {r}
+        </button>
+      ))}
     </div>
   );
 }

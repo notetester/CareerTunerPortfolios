@@ -84,4 +84,23 @@ public interface CommunityPostMapper {
 
     // 면접 질문 추출 중복 방지: source 기준 InterviewKnowledge 삭제
     void deleteInterviewKnowledgeBySource(@Param("source") String source);
+
+    // ── 챗봇 에이전트 검색용 임베딩 (community_post_embedding 별도 테이블) ──
+
+    /** 임베딩이 아직 없는 PUBLISHED 글 (id/title/content만) — 배치 임베딩 대상 */
+    List<CommunityPost> findPostsWithoutEmbedding();
+
+    /** 임베딩 upsert */
+    void upsertEmbedding(@Param("postId") Long postId,
+                         @Param("embedding") String embedding);
+
+    /**
+     * 2단계 검색 1단계: SQL 후보 좁히기. 임베딩 있는 PUBLISHED 글 중
+     * keywords(제목/본문/태그 OR LIKE) + category 로 느슨하게 후보 추출.
+     * keywords·category 가 비면 해당 필터를 생략(완화 재조회용).
+     */
+    List<com.careertuner.community.search.PostCandidate> findSearchCandidates(
+            @Param("keywords") List<String> keywords,
+            @Param("category") String category,
+            @Param("limit") int limit);
 }

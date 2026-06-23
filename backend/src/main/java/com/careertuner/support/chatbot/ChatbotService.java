@@ -148,6 +148,48 @@ public class ChatbotService {
         }
     }
 
+    /**
+     * 챗봇 에이전트의 searchFaq 툴용: 질문과 유사한 FAQ를 찾아 매칭 결과를 반환.
+     * ask()와 달리 LLM 답변 생성 없이 매칭 FAQ만 돌려준다(에이전트가 요약/응답).
+     * 각 매칭에 FAQ에 달린 link_url/link_label 을 포함한다(응답 링크 접지용).
+     * @return 매칭 FAQ 목록, 없으면 빈 리스트
+     */
+    public List<FaqHit> searchFaqHits(String question) {
+        try {
+            double[] queryVector = embeddingClient.embed(question);
+            List<Faq> faqs = faqMapper.findPublishedWithEmbedding();
+            if (faqs.isEmpty()) {
+                return List.of();
+            }
+            List<ScoredFaq> scored = new ArrayList<>();
+            for (Faq faq : faqs) {
+                double[] faqVector = parseEmbedding(faq.getEmbedding());
+                if (faqVector == null || faqVector.length != queryVector.length) {
+                    continue;
+                }
+                scored.add(new ScoredFaq(faq, CosineSimilarity.compute(queryVector, faqVector)));
+            }
+            scored.sort(Comparator.comparingDouble(ScoredFaq::similarity).reversed());
+
+            return scored.stream()
+                    .filter(s -> s.similarity() >= props.getSimilarityThreshold())
+                    .limit(props.getTopK())
+                    .map(s -> new FaqHit(s.faq().getQuestion(), s.faq().getAnswer(),
+                            s.faq().getLinkUrl(), s.faq().getLinkLabel()))
+                    .collect(Collectors.toList());
+        } catch (Exception e) {
+            log.error("FAQ 검색 실패: {}", e.getMessage());
+            return List.of();
+        }
+    }
+
+    /** 매칭 FAQ를 "Q/A" 텍스트로 합쳐 반환(모델 컨텍스트용). 없으면 빈 문자열. */
+    public String searchFaqContext(String question) {
+        return searchFaqHits(question).stream()
+                .map(h -> "Q: " + h.question() + "\nA: " + h.answer())
+                .collect(Collectors.joining("\n\n"));
+    }
+
     private double[] parseEmbedding(String json) {
         try {
             List<Double> list = objectMapper.readValue(json, new TypeReference<List<Double>>() {});

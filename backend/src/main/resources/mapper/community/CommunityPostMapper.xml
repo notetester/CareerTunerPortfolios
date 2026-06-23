@@ -250,4 +250,46 @@
          WHERE source = #{source}
     </delete>
 
+    <!-- ── 챗봇 에이전트 검색용 임베딩 (community_post_embedding) ── -->
+
+    <!-- 임베딩 없는 PUBLISHED 글 (배치 대상) -->
+    <select id="findPostsWithoutEmbedding" resultType="com.careertuner.community.domain.CommunityPost">
+        SELECT cp.id, cp.title, cp.content
+          FROM community_post cp
+         WHERE cp.status = 'PUBLISHED'
+           AND NOT EXISTS (
+               SELECT 1 FROM community_post_embedding e WHERE e.post_id = cp.id
+           )
+         ORDER BY cp.id
+    </select>
+
+    <!-- 임베딩 upsert -->
+    <insert id="upsertEmbedding">
+        INSERT INTO community_post_embedding (post_id, embedding)
+        VALUES (#{postId}, #{embedding})
+        ON DUPLICATE KEY UPDATE embedding = VALUES(embedding)
+    </insert>
+
+    <!-- 2단계 검색 1단계: SQL 후보 좁히기 (느슨하게) -->
+    <select id="findSearchCandidates" resultType="com.careertuner.community.search.PostCandidate">
+        SELECT cp.id, cp.title, cp.content, e.embedding
+          FROM community_post cp
+          JOIN community_post_embedding e ON e.post_id = cp.id
+         WHERE cp.status = 'PUBLISHED'
+        <if test="category != null and category != ''">
+           AND cp.category = #{category}
+        </if>
+        <if test="keywords != null and !keywords.isEmpty()">
+           AND (
+           <foreach collection="keywords" item="kw" separator=" OR ">
+                  cp.title LIKE CONCAT('%', #{kw}, '%')
+               OR cp.content LIKE CONCAT('%', #{kw}, '%')
+               OR cp.tags_json LIKE CONCAT('%', #{kw}, '%')
+           </foreach>
+               )
+        </if>
+         ORDER BY cp.created_at DESC
+         LIMIT #{limit}
+    </select>
+
 </mapper>
