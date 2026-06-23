@@ -17,6 +17,8 @@ import { requestTossCardPayment } from "@/features/billing/api/tossPaymentSdk";
 
 const tabs = ["plans", "usage", "credits", "history"] as const;
 type BillingTab = (typeof tabs)[number];
+const billingTabTriggerClass =
+  "min-w-32 rounded-lg border border-transparent transition-all duration-150 hover:bg-slate-100 hover:text-slate-950 hover:shadow-sm active:scale-[0.98] data-[state=active]:border-blue-600 data-[state=active]:bg-blue-600 data-[state=active]:text-white data-[state=active]:shadow-sm";
 
 // 요금제 기능 설명(마케팅 카피)은 코드별로 클라이언트에 둔다.
 const PLAN_FEATURES: Record<string, string[]> = {
@@ -171,10 +173,10 @@ export function BillingPage() {
 
         <Tabs value={activeTab} onValueChange={(value) => setSearchParams({ tab: value })}>
           <TabsList className="h-auto w-full justify-start overflow-x-auto border border-slate-200 bg-card p-1">
-            <TabsTrigger value="plans">요금제</TabsTrigger>
-            <TabsTrigger value="usage">AI 사용량</TabsTrigger>
-            <TabsTrigger value="credits">크레딧 충전</TabsTrigger>
-            <TabsTrigger value="history">결제 내역</TabsTrigger>
+            <TabsTrigger value="plans" className={billingTabTriggerClass}>요금제</TabsTrigger>
+            <TabsTrigger value="usage" className={billingTabTriggerClass}>AI 사용량</TabsTrigger>
+            <TabsTrigger value="credits" className={billingTabTriggerClass}>크레딧 충전</TabsTrigger>
+            <TabsTrigger value="history" className={billingTabTriggerClass}>결제 내역</TabsTrigger>
           </TabsList>
 
           <TabsContent value="plans" className="mt-5">
