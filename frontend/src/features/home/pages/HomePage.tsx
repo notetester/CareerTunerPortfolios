@@ -18,6 +18,7 @@ import type { DashboardActivity, DashboardSummary, DashboardTodo } from "@/featu
 import { TodoChecklist } from "@/features/dashboard/components/TodoChecklist";
 import { AiResultBadge } from "@/features/analysis/components/AiResultBadge";
 import { InterviewHero } from "@/features/interview/components/InterviewHero";
+import { AutoPrepPanel } from "@/features/autoprep/components/AutoPrepPanel";
 import { GuideButton, type TourStep } from "@/features/analysis/components/GuideTour";
 
 const coreFeaturesData = [
@@ -293,7 +294,7 @@ function MemberHome({ summary, loading, error, fallbackName, onRetry, onSummaryR
         <div className="flex items-center justify-end">
           <GuideButton steps={HOME_TOUR_STEPS} />
         </div>
-        <InterviewHero />
+        <AutoPrepPanel />
         <section className="grid lg:grid-cols-[1.5fr_0.9fr] gap-5">
           <div className="rounded-2xl border border-slate-200 bg-card p-5 sm:p-7 shadow-sm">
             <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-5">
