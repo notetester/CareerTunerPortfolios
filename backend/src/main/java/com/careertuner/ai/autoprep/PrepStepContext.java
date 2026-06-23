@@ -10,6 +10,7 @@ public record PrepStepContext(
     Long userId,
     Long applicationCaseId,
     PrepSlots slots,
+    String coverLetterText,
     Map<String, Object> prior
 ) {
 }

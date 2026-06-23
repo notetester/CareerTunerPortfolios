@@ -7,6 +7,7 @@ package com.careertuner.ai.autoprep.dto;
 public record AutoPrepRequest(
     String query,
     Long applicationCaseId,
-    String mode
+    String mode,
+    String coverLetterText
 ) {
 }

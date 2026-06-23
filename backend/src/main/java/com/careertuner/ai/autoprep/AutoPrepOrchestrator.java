@@ -48,7 +48,8 @@ public class AutoPrepOrchestrator {
             long start = System.nanoTime();
             try {
                 PrepStepContext context = new PrepStepContext(
-                        userId, plan.slots().applicationCaseId(), plan.slots(), prior);
+                        userId, plan.slots().applicationCaseId(), plan.slots(),
+                        request.coverLetterText(), prior);
                 PrepStepResult result = handler.handle(context);
                 results.add(result);
                 if (result.detail() != null) {
