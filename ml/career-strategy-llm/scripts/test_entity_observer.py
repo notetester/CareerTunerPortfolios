@@ -128,6 +128,25 @@ class ObservationDoesNotAffectSuccessTest(unittest.TestCase):
         self.assertIn("CRMONE", row["named_entities"]["high"])
         self.assertEqual([], row["named_entities"]["review"])  # 학습추천이라 review 아님
 
+    def test_whitespace_normalized_hallucination(self):
+        # allowedSkills 'Spring Boot' 인데 모델이 'SpringBoot'/'머신 러닝' 류 공백차이로 쓰면 HALLUC 오탐 아님
+        content = json.dumps({
+            "fitSummary": "보완 권장", "strengths": ["Java 보유"], "risks": ["SQL 미보유"],
+            "strategyActions": ["학습"],
+            "learningTaskReasons": [{"skill": "SpringBoot", "why": "필수"}],  # allowed: 'Spring Boot'
+        }, ensure_ascii=False)
+        row = evaluate(CASE, content, None)
+        self.assertFalse(row["hallucination"], "공백만 다른 allowed 스킬은 HALLUC 아님")
+
+    def test_real_out_of_scope_skill_flagged(self):
+        content = json.dumps({
+            "fitSummary": "보완 권장", "strengths": ["Java 보유"], "risks": [],
+            "strategyActions": ["학습"],
+            "learningTaskReasons": [{"skill": "코드리뷰", "why": "x"}],  # allowed 에 없음
+        }, ensure_ascii=False)
+        row = evaluate(CASE, content, None)
+        self.assertTrue(row["hallucination"], "범위 밖 스킬은 HALLUC")
+
     def test_clean_output_no_entities(self):
         content = json.dumps({
             "fitSummary": "필수 역량 보완이 필요합니다.",

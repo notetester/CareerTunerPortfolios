@@ -336,9 +336,11 @@ def evaluate(case, content, error):
     allowed = exp.get("allowedSkills") or []
     bad_skills = []
     if allowed:
+        # 공백·대소문자 정규화 비교 — '머신 러닝' vs '머신러닝' 류 띄어쓰기 오탐 제거(reports/36).
+        allowed_norm = {re.sub(r"\s+", "", a).lower() for a in allowed}
         for item in parsed.get("learningTaskReasons", []) or []:
             sk = (item or {}).get("skill")
-            if sk and sk not in allowed:
+            if sk and re.sub(r"\s+", "", str(sk)).lower() not in allowed_norm:
                 bad_skills.append(sk)
 
     failures = []
