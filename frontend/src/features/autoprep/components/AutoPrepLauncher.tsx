@@ -1,7 +1,7 @@
 import { useRef, useState } from "react";
 
 import { uploadAttachment } from "../api/autoPrepApi";
-import type { AutoPrepRequest, PrepCaseCandidate } from "../types/autoPrep";
+import type { AutoPrepRequest } from "../types/autoPrep";
 
 interface FileItem {
   file: File;
@@ -13,9 +13,6 @@ interface FileItem {
 interface Props {
   onRun: (req: AutoPrepRequest) => void;
   busy: boolean;
-  intakeMessage?: string | null;
-  candidates?: PrepCaseCandidate[];
-  onPickCase?: (caseId: number) => void;
 }
 
 const EXAMPLES = [
@@ -24,8 +21,8 @@ const EXAMPLES = [
   "자소서만 첨삭해줘",
 ];
 
-/** 한 줄 입력 + 파일 첨부(드래그/버튼) 런처. intake 가 지원 건을 되물으면 후보 칩을 띄운다. */
-export function AutoPrepLauncher({ onRun, busy, intakeMessage, candidates = [], onPickCase }: Props) {
+/** 한 줄 입력 + 파일 첨부(드래그/버튼) 런처. "준비 시작"을 누르면 채팅 팝업이 즉시 뜬다(되묻기는 그 안에서). */
+export function AutoPrepLauncher({ onRun, busy }: Props) {
   const [query, setQuery] = useState("");
   const [files, setFiles] = useState<FileItem[]>([]);
   const [drag, setDrag] = useState(false);
@@ -107,7 +104,7 @@ export function AutoPrepLauncher({ onRun, busy, intakeMessage, candidates = [], 
           disabled={busy}
           className="flex-none rounded-lg bg-primary px-4 text-sm font-semibold text-primary-foreground transition hover:brightness-110 disabled:opacity-50"
         >
-          {busy ? "진행 중…" : "준비 시작"}
+          준비 시작
         </button>
       </div>
 
@@ -131,28 +128,6 @@ export function AutoPrepLauncher({ onRun, busy, intakeMessage, candidates = [], 
               </button>
             </span>
           ))}
-        </div>
-      )}
-
-      {/* 인테이크 되묻기 — 지원 건이 필요한데 못 찾으면 후보를 띄워 고르게 한다 */}
-      {intakeMessage && (
-        <div className="mt-3 rounded-lg border border-primary/30 bg-primary/5 p-3">
-          <div className="mb-2 text-xs font-medium text-foreground">{intakeMessage}</div>
-          {candidates.length > 0 && (
-            <div className="flex flex-wrap gap-2">
-              {candidates.slice(0, 6).map((c) => (
-                <button
-                  key={c.id}
-                  type="button"
-                  onClick={() => onPickCase?.(c.id)}
-                  className="rounded-lg border border-border bg-card px-3 py-1.5 text-left text-xs transition hover:border-primary"
-                >
-                  <div className="font-bold text-foreground">{c.companyName}</div>
-                  <div className="text-muted-foreground">{c.jobTitle}</div>
-                </button>
-              ))}
-            </div>
-          )}
         </div>
       )}
 

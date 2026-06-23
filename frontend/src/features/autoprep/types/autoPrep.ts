@@ -39,11 +39,20 @@ export interface PrepCaseCandidate {
   status?: string;
 }
 
+/** 면접 모드 선택지(백엔드 ModeOption). */
+export interface PrepModeOption {
+  code: string;
+  label: string;
+}
+
 export interface AutoPrepIntakeResponse {
   plan: PrepPlan;
   ready: boolean;
   message: string;
+  /** 다음 물을 슬롯: "CASE"(지원 건) | "MODE"(면접 모드) | null(ready). */
+  nextAsk: "CASE" | "MODE" | null;
   candidates: PrepCaseCandidate[];
+  modes: PrepModeOption[];
 }
 
 /** 업로드된 첨부 파일(백엔드 FileAssetResponse). */

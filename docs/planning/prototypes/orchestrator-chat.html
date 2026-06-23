@@ -1,0 +1,260 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>AI 오케스트레이터 — 채팅 팝업 시안</title>
+<style>
+  :root{
+    --bg:#fafafa; --card:#ffffff; --soft:#f4f4f5; --border:#e5e7eb; --border2:#d4d4d8;
+    --ink:#18181b; --muted:#71717a; --muted2:#a1a1aa;
+    --primary:#5e6ad2; --accent:#7170ff; --ok:#16a34a; --radius:14px;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;background:var(--bg);color:var(--ink);
+    font-family:"Pretendard",-apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,sans-serif;-webkit-font-smoothing:antialiased}
+  .wrap{max-width:1040px;margin:0 auto;padding:28px 20px 80px}
+
+  /* 메인 홈 목업 */
+  .home{display:flex;border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;background:var(--card)}
+  .side{width:200px;flex:none;border-right:1px solid var(--border);padding:18px 14px;background:#fbfbfb}
+  .side .logo{font-size:13px;font-weight:700;margin-bottom:18px;display:flex;gap:7px;align-items:center}
+  .side .dot{width:8px;height:8px;border-radius:50%;background:linear-gradient(135deg,var(--primary),var(--accent))}
+  .side .nav a{display:block;font-size:12.5px;color:var(--muted);padding:7px 9px;border-radius:7px;text-decoration:none}
+  .side .nav a.cur{background:var(--soft);color:var(--ink)}
+  .main{flex:1;padding:24px;min-width:0}
+  .main h2{font-size:18px;margin:0 0 4px;font-weight:700}
+  .main .hi{font-size:12.5px;color:var(--muted);margin-bottom:20px}
+  .embed{background:linear-gradient(135deg,rgba(94,106,210,.10),rgba(113,112,255,.04));
+    border:1px solid #dfe0f0;border-radius:13px;padding:18px}
+  .embed .t{font-size:14px;font-weight:700;display:flex;align-items:center;gap:7px}
+  .embed .s{font-size:12.5px;color:var(--muted);margin:5px 0 14px}
+  .embed .bar{display:flex;gap:9px}
+  .embed input{flex:1;background:var(--card);border:1px solid var(--border);border-radius:9px;padding:11px 13px;font:inherit;font-size:13.5px;outline:0;color:var(--ink)}
+  .embed .go{font-size:13.5px;font-weight:700;color:#fff;border:0;border-radius:9px;cursor:pointer;background:linear-gradient(135deg,var(--primary),var(--accent));padding:0 18px;white-space:nowrap}
+  .cards{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:18px}
+  .cards .c{background:#fbfbfb;border:1px solid var(--border);border-radius:10px;padding:14px;height:64px}
+  .cards .c .ct{font-size:12px;color:var(--muted)}
+
+  /* 팝업(채팅 + 작업과정) */
+  .dim{position:fixed;inset:0;background:rgba(20,20,25,.42);backdrop-filter:blur(3px);
+    display:none;align-items:flex-start;justify-content:center;padding:5vh 16px;z-index:50}
+  .dim.on{display:flex;animation:fade .2s}
+  .modal{width:100%;max-width:560px;height:min(680px,86vh);display:flex;flex-direction:column;
+    background:var(--card);border:1px solid var(--border);border-radius:18px;overflow:hidden;
+    box-shadow:0 24px 70px rgba(0,0,0,.22);animation:pop .25s cubic-bezier(.2,.8,.2,1)}
+  .mhead{display:flex;align-items:center;justify-content:space-between;padding:14px 18px;border-bottom:1px solid var(--border)}
+  .mhead .ttl{font-size:14px;font-weight:700;display:flex;align-items:center;gap:8px}
+  .mhead .x{border:0;background:transparent;color:var(--muted2);font-size:18px;cursor:pointer}
+  .chat{flex:1;overflow-y:auto;padding:18px;display:flex;flex-direction:column;gap:12px;background:#fcfcfd}
+
+  .row{display:flex;gap:8px;animation:slide .25s ease}
+  .row.me{justify-content:flex-end}
+  .bub{max-width:80%;font-size:13.5px;line-height:1.5;padding:10px 13px;border-radius:14px}
+  .row.ai .bub{background:var(--card);border:1px solid var(--border);border-bottom-left-radius:4px;color:var(--ink)}
+  .row.me .bub{background:linear-gradient(135deg,var(--primary),var(--accent));color:#fff;border-bottom-right-radius:4px}
+  .av{width:28px;height:28px;border-radius:50%;flex:none;display:grid;place-items:center;font-size:14px;
+    background:rgba(94,106,210,.12)}
+  .chips{display:flex;flex-wrap:wrap;gap:7px;margin-top:9px}
+  .chip{font-size:12.5px;border:1px solid var(--border2);background:var(--card);border-radius:999px;padding:6px 12px;cursor:pointer;transition:.12s}
+  .chip:hover{border-color:var(--primary);color:var(--primary)}
+  .chip.case{border-radius:10px;text-align:left;padding:7px 11px}
+  .chip.case b{display:block;font-size:12.5px;color:var(--ink)}
+  .chip.case span{font-size:11px;color:var(--muted)}
+  .typing{display:flex;gap:3px;padding:12px 14px}
+  .typing i{width:6px;height:6px;border-radius:50%;background:var(--muted2);animation:blink 1.2s infinite}
+  .typing i:nth-child(2){animation-delay:.2s} .typing i:nth-child(3){animation-delay:.4s}
+
+  /* 작업과정 카드(채팅 안) */
+  .work{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:14px;max-width:92%}
+  .work .wt{font-size:12px;font-weight:700;color:var(--ink);margin-bottom:2px;display:flex;align-items:center;gap:6px}
+  .pg{padding:9px 0 2px}
+  .pg .ph{font-size:11.5px;font-weight:700;color:var(--ink);display:flex;gap:6px;align-items:center}
+  .pg .ph .pt{font-size:9.5px;color:var(--muted2)}
+  .pg .ph .ps{margin-left:auto;font-size:10.5px;font-weight:700}
+  .sub{display:flex;gap:10px;padding:6px 0 6px 2px}
+  .sub .ic{width:24px;height:24px;border-radius:50%;display:grid;place-items:center;font-size:12px;background:rgba(94,106,210,.12);color:var(--primary);flex:none}
+  .sub .sb{flex:1;min-width:0}
+  .sub .sn{font-size:12px;font-weight:600}
+  .sub .sd{font-size:11px;color:var(--muted);margin:1px 0 4px}
+  .ebar{height:4px;border-radius:99px;background:var(--soft);overflow:hidden}
+  .ebar>i{display:block;height:100%;border-radius:99px;background:linear-gradient(90deg,var(--primary),var(--accent));width:0;transition:width .15s}
+  .spin{width:11px;height:11px;border:2px solid var(--soft);border-top-color:var(--primary);border-radius:50%;animation:spin .7s linear infinite;display:inline-block}
+  .done-row{margin-top:10px;display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+  .done-row .gobtn{font-size:12.5px;font-weight:700;color:#fff;border:0;border-radius:9px;cursor:pointer;background:linear-gradient(135deg,var(--primary),var(--accent));padding:8px 14px}
+
+  .composer{border-top:1px solid var(--border);padding:11px 14px;display:flex;gap:8px;background:var(--card)}
+  .composer input{flex:1;border:1px solid var(--border);border-radius:10px;padding:9px 12px;font:inherit;font-size:13px;outline:0}
+  .composer button{border:0;border-radius:10px;background:linear-gradient(135deg,var(--primary),var(--accent));color:#fff;font-weight:700;font-size:13px;padding:0 14px;cursor:pointer}
+
+  @keyframes fade{from{opacity:0}to{opacity:1}}
+  @keyframes pop{from{opacity:0;transform:translateY(10px) scale(.98)}to{opacity:1;transform:none}}
+  @keyframes slide{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+  @keyframes spin{to{transform:rotate(360deg)}}
+  @keyframes blink{0%,60%,100%{opacity:.3}30%{opacity:1}}
+  @media(max-width:640px){.side{display:none}.cards{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="home">
+    <div class="side">
+      <div class="logo"><span class="dot"></span> CareerTuner</div>
+      <div class="nav">
+        <a class="cur" href="#">홈</a><a href="#">지원 건</a><a href="#">가상 면접</a><a href="#">자소서</a><a href="#">커뮤니티</a>
+      </div>
+    </div>
+    <div class="main">
+      <h2>안녕하세요 👋</h2>
+      <div class="hi">한 줄이면 지원 한 건을 통째로 준비합니다.</div>
+      <div class="embed">
+        <div class="t">⚡ AI 오케스트레이터</div>
+        <div class="s">회사·직무를 말하면 6개 AI가 알아서 준비해요.</div>
+        <div class="bar">
+          <input id="q" value="구글 백엔드 신입 면접 준비해줘" />
+          <button class="go" onclick="openChat()">준비 시작</button>
+        </div>
+      </div>
+      <div class="cards"><div class="c"><div class="ct">진행 중인 지원 건</div></div><div class="c"><div class="ct">최근 면접 리포트</div></div></div>
+    </div>
+  </div>
+</div>
+
+<!-- 채팅 팝업 -->
+<div class="dim" id="dim">
+  <div class="modal">
+    <div class="mhead">
+      <div class="ttl"><span>✦</span> AI 오케스트레이터</div>
+      <button class="x" onclick="closeChat()">✕</button>
+    </div>
+    <div class="chat" id="chat"></div>
+    <div class="composer">
+      <input id="cin" placeholder="답을 입력하거나 위 버튼을 누르세요" onkeydown="if(event.key==='Enter')sendUser()" />
+      <button onclick="sendUser()">전송</button>
+    </div>
+  </div>
+</div>
+
+<script>
+  const chat = () => document.getElementById('chat');
+  const delay = ms => new Promise(r=>setTimeout(r,ms));
+  let state = "idle";
+
+  function scrollDown(){ const c=chat(); c.scrollTop=c.scrollHeight; }
+
+  function addMe(text){
+    const r=document.createElement('div'); r.className='row me';
+    r.innerHTML='<div class="bub">'+text+'</div>';
+    chat().appendChild(r); scrollDown();
+  }
+  function addAi(html){
+    const r=document.createElement('div'); r.className='row ai';
+    r.innerHTML='<div class="av">✦</div><div class="bub">'+html+'</div>';
+    chat().appendChild(r); scrollDown(); return r;
+  }
+  async function aiTyping(ms){
+    const r=document.createElement('div'); r.className='row ai';
+    r.innerHTML='<div class="av">✦</div><div class="bub"><div class="typing"><i></i><i></i><i></i></div></div>';
+    chat().appendChild(r); scrollDown();
+    await delay(ms); r.remove();
+  }
+
+  async function openChat(){
+    document.getElementById('dim').classList.add('on');
+    chat().innerHTML=''; state="case";
+    addMe(document.getElementById('q').value);
+    await aiTyping(800);
+    // 구글 지원 건 못 찾음 → 되묻기 (멀티턴 1: 지원 건)
+    const r=addAi('"구글" 지원 건을 못 찾았어요. 어느 지원 건으로 준비할까요?');
+    const chips=document.createElement('div'); chips.className='chips';
+    [['네이버','백엔드'],['토스','서버'],['카카오','플랫폼']].forEach(([co,job])=>{
+      const b=document.createElement('button'); b.className='chip case';
+      b.innerHTML='<b>'+co+'</b><span>'+job+'</span>';
+      b.onclick=()=>pickCase(co+' '+job);
+      chips.appendChild(b);
+    });
+    r.querySelector('.bub').appendChild(chips);
+    scrollDown();
+  }
+
+  async function pickCase(label){
+    if(state!=="case") return;
+    document.querySelectorAll('.chip').forEach(c=>c.style.pointerEvents='none');
+    addMe(label);
+    state="mode";
+    await aiTyping(700);
+    // 멀티턴 2: 면접 모드
+    const r=addAi(label.split(' ')[0]+' 백엔드로 준비할게요. 면접 모드는 어떤 걸로 할까요?');
+    const chips=document.createElement('div'); chips.className='chips';
+    [['기본','BASIC'],['직무','JOB'],['압박','PRESSURE'],['인성','PERSONALITY']].forEach(([ko])=>{
+      const b=document.createElement('button'); b.className='chip'; b.textContent=ko+' 면접';
+      b.onclick=()=>pickMode(ko);
+      chips.appendChild(b);
+    });
+    r.querySelector('.bub').appendChild(chips);
+    scrollDown();
+  }
+
+  async function pickMode(mode){
+    if(state!=="mode") return;
+    document.querySelectorAll('.chip').forEach(c=>c.style.pointerEvents='none');
+    addMe(mode+' 면접');
+    state="running";
+    await aiTyping(700);
+    addAi('좋아요 — <b>'+mode+' 면접</b> 기준으로 지금 바로 준비를 시작할게요 🚀');
+    await delay(300);
+    await runWork();
+  }
+
+  function sendUser(){
+    const inp=document.getElementById('cin'); const v=inp.value.trim(); if(!v) return;
+    inp.value='';
+    if(state==="case") pickCase(v);
+    else if(state==="mode") pickMode(v);
+    else addMe(v);
+  }
+
+  // ── 작업과정 (채팅 안 카드) ──
+  const PARTS=[
+    {key:'PROFILE',name:'프로필·역량',tag:'A',subs:[['프로필 로드','보유 스펙 불러오기'],['역량 정리','AI 요약']]},
+    {key:'JOB',name:'공고 분석',tag:'B',subs:[['공고 파싱','본문 구조화'],['핵심 요건 추출','필수·우대']]},
+    {key:'FIT',name:'적합도 분석',tag:'C',subs:[['근거 검색','지식베이스'],['채점','요건 매칭'],['검증','근거 가드']]},
+    {key:'INTERVIEW',name:'예상 면접 질문',tag:'D',subs:[['세션 준비','모드 세팅'],['질문 생성','예상 질문']]},
+  ];
+
+  async function runWork(){
+    const work=document.createElement('div'); work.className='work';
+    work.innerHTML='<div class="wt">✦ 작업 과정</div>';
+    const r=document.createElement('div'); r.className='row ai';
+    r.innerHTML='<div class="av">⚙️</div>';
+    const wrap=document.createElement('div'); wrap.style.maxWidth='92%'; wrap.appendChild(work);
+    r.appendChild(wrap); chat().appendChild(r); scrollDown();
+
+    for(const p of PARTS){
+      const pg=document.createElement('div'); pg.className='pg';
+      pg.innerHTML='<div class="ph">'+p.name+' <span class="pt">·'+p.tag+'</span><span class="ps" style="color:var(--primary)">진행</span></div>';
+      work.appendChild(pg); scrollDown();
+      for(const [sn,sd] of p.subs){
+        const sub=document.createElement('div'); sub.className='sub';
+        sub.innerHTML='<div class="ic"><span class="spin"></span></div><div class="sb"><div class="sn">'+sn+'</div><div class="sd">'+sd+'</div><div class="ebar"><i></i></div></div>';
+        pg.appendChild(sub); scrollDown();
+        const bar=sub.querySelector('.ebar>i');
+        // 에너지바 차오름
+        for(let w=0;w<=100;w+=20){ bar.style.width=w+'%'; await delay(70); }
+        sub.querySelector('.ic').innerHTML='✓';
+      }
+      pg.querySelector('.ps').outerHTML='<span class="ps" style="color:var(--ok)">✓ 완료</span>';
+    }
+    // 완료 + 액션
+    const dr=document.createElement('div'); dr.className='done-row';
+    dr.innerHTML='<span style="font-size:12px;color:var(--muted)"><b style="color:var(--ink)">준비 완료</b> · 4단계</span>'+
+      '<button class="gobtn" onclick="return false">▶ 면접 시작하기</button>';
+    work.appendChild(dr); scrollDown();
+    document.getElementById('cin').placeholder='추가로 물어보거나 수정 요청하세요';
+  }
+
+  function closeChat(){ document.getElementById('dim').classList.remove('on'); }
+  document.getElementById('dim').addEventListener('click',e=>{ if(e.target.id==='dim') closeChat(); });
+</script>
+</body>
+</html>
