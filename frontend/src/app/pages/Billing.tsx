@@ -12,7 +12,7 @@ import {
   subscribe,
   type CreditProduct, type MyBilling, type Payment, type SubscriptionPlan, type UsageRow,
 } from "@/features/billing/api/billingApi";
-import { readyTossPayment } from "@/features/billing/api/paymentApi";
+import { cancelTossPayment, readyTossPayment } from "@/features/billing/api/paymentApi";
 import { requestTossCardPayment } from "@/features/billing/api/tossPaymentSdk";
 
 const tabs = ["plans", "usage", "credits", "history"] as const;
@@ -107,7 +107,12 @@ export function BillingPage() {
         await loadMine();
       } else {
         const ready = await readyTossPayment(planCode, "SUBSCRIPTION");
-        await requestTossCardPayment(ready);
+        try {
+          await requestTossCardPayment(ready);
+        } catch (err) {
+          void cancelTossPayment(ready.orderId).catch(() => {});
+          throw err;
+        }
       }
     } catch {
       setError("구독 결제 준비에 실패했습니다.");
@@ -131,7 +136,12 @@ export function BillingPage() {
     setError(null);
     try {
       const ready = await readyTossPayment(productCode, "CREDIT");
-      await requestTossCardPayment(ready);
+      try {
+        await requestTossCardPayment(ready);
+      } catch (err) {
+        void cancelTossPayment(ready.orderId).catch(() => {});
+        throw err;
+      }
     } catch {
       setError("크레딧 결제 준비에 실패했습니다.");
     } finally {

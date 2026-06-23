@@ -15,6 +15,7 @@ import com.careertuner.common.exception.BusinessException;
 import com.careertuner.common.exception.ErrorCode;
 import com.careertuner.credit.domain.CreditProduct;
 import com.careertuner.payment.domain.Payment;
+import com.careertuner.payment.dto.TossPaymentCancelResponse;
 import com.careertuner.payment.dto.TossPaymentConfirmRequest;
 import com.careertuner.payment.dto.TossPaymentConfirmResponse;
 import com.careertuner.payment.dto.TossPaymentReadyRequest;
@@ -31,6 +32,7 @@ public class PaymentServiceImpl implements PaymentService {
     private static final String PROVIDER_TOSS = "TOSS";
     private static final String STATUS_READY = "READY";
     private static final String STATUS_PAID = "PAID";
+    private static final String STATUS_CANCELED = "CANCELED";
     private static final String PRODUCT_TYPE_CREDIT = "CREDIT";
     private static final String PRODUCT_TYPE_SUBSCRIPTION = "SUBSCRIPTION";
     private static final int ORDER_ID_RANDOM_LENGTH = 8;
@@ -152,6 +154,34 @@ public class PaymentServiceImpl implements PaymentService {
         }
 
         return confirmedResponse(payment, request.paymentKey(), balance);
+    }
+
+    @Override
+    @Transactional
+    public TossPaymentCancelResponse cancelReadyPayment(Long userId, String orderId) {
+        Payment payment = requireOwnedPayment(orderId, userId);
+        normalizePaymentProductType(payment);
+
+        if (STATUS_READY.equals(payment.getStatus())) {
+            paymentMapper.markCanceledIfReady(payment.getOrderId());
+            payment.setStatus(STATUS_CANCELED);
+        }
+
+        Payment latest = paymentMapper.findByOrderId(payment.getOrderId());
+        if (latest != null) {
+            normalizePaymentProductType(latest);
+            return cancelResponse(latest);
+        }
+        return cancelResponse(payment);
+    }
+
+    private TossPaymentCancelResponse cancelResponse(Payment payment) {
+        return new TossPaymentCancelResponse(
+                payment.getOrderId(),
+                payment.getProductType(),
+                payment.getProductCode(),
+                payment.getPlan(),
+                payment.getStatus());
     }
 
     private TossPaymentConfirmResponse confirmedResponse(Payment payment, String paymentKey, int balance) {
