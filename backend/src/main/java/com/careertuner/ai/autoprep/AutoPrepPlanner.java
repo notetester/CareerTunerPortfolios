@@ -131,7 +131,10 @@ public class AutoPrepPlanner {
                     return c.id();
                 }
             }
+            // 회사를 콕 집었는데 매칭 실패 → 최근 건으로 엉뚱하게 폴백하지 말고 null(되묻기 유도).
+            return null;
         }
+        // 회사가 모호하면 가장 최근 지원 건을 기본값으로.
         return cases.get(0).id();
     }
 
