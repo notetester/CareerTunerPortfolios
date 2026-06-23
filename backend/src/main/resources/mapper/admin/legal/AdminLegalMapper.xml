@@ -111,7 +111,9 @@
     <update id="publishVersion">
         UPDATE legal_document_version
            SET status         = 'PUBLISHED',
-               published_at    = NOW(),
+               <!-- effective_date(KST 벽시계)·live 판정(UTC_TIMESTAMP()+9h)과 같은 시간원으로 통일.
+                    NOW()는 세션 TZ 의존이라 운영 세션 UTC 시 9시간 어긋나 보임(cosmetic). -->
+               published_at    = (UTC_TIMESTAMP() + INTERVAL 9 HOUR),
                effective_date  = #{effectiveDate},
                updated_at      = CURRENT_TIMESTAMP
          WHERE id = #{id}
