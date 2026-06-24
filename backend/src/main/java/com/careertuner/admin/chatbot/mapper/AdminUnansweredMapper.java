@@ -6,6 +6,7 @@ import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 
 import com.careertuner.admin.chatbot.dto.FaqBrief;
+import com.careertuner.admin.chatbot.dto.UnansweredMeta;
 import com.careertuner.admin.chatbot.dto.UnansweredRow;
 
 /**
@@ -31,4 +32,10 @@ public interface AdminUnansweredMapper {
      * @return 변경된 행 수
      */
     int updateStatusByIds(@Param("ids") List<Long> ids, @Param("status") String status);
+
+    /** 공백 질문 드릴: 대표 id 의 질문 원문 + 발생 대화 id. 없으면 null. */
+    UnansweredMeta findMetaById(@Param("id") Long id);
+
+    /** 발생 대화의 메모리 JSON(messages_json). 없거나 빈 대화면 null. */
+    String findConversationMessages(@Param("conversationId") Long conversationId);
 }

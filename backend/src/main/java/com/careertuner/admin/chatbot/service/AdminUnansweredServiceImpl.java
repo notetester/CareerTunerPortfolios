@@ -8,15 +8,26 @@ import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import dev.langchain4j.data.message.AiMessage;
+import dev.langchain4j.data.message.ChatMessage;
+import dev.langchain4j.data.message.ChatMessageDeserializer;
+import dev.langchain4j.data.message.UserMessage;
+
 import com.careertuner.admin.chatbot.ai.FaqDraftAiClient;
 import com.careertuner.admin.chatbot.dto.AdminUnansweredQuestionResponse;
+import com.careertuner.admin.chatbot.dto.ChatbotConversationDrillResponse;
+import com.careertuner.admin.chatbot.dto.ChatbotConversationDrillResponse.DrillTurn;
 import com.careertuner.admin.chatbot.dto.FaqBrief;
 import com.careertuner.admin.chatbot.dto.FaqDraftResponse;
 import com.careertuner.admin.chatbot.dto.QuestionVariant;
+import com.careertuner.admin.chatbot.dto.UnansweredMeta;
 import com.careertuner.admin.chatbot.dto.UnansweredRow;
+import com.careertuner.ai.chat.MessageSanitizer;
 import com.careertuner.admin.chatbot.mapper.AdminUnansweredMapper;
 import com.careertuner.admin.faq.dto.AdminFaqRequest;
 import com.careertuner.admin.faq.dto.AdminFaqResponse;
@@ -32,6 +43,15 @@ import lombok.RequiredArgsConstructor;
 @RequiredArgsConstructor
 @Transactional(readOnly = true)
 public class AdminUnansweredServiceImpl implements AdminUnansweredService {
+
+    private static final Logger log = LoggerFactory.getLogger(AdminUnansweredServiceImpl.class);
+
+    /**
+     * 공백 응답 폴백 문구(ChatbotController.faqFastPath 와 동일 문자열).
+     * 미스 턴은 메모리에 없을 수 있어 화면엔 이 문구를 질문 원문과 함께 고정 노출한다.
+     */
+    private static final String FALLBACK_MESSAGE =
+            "관련 안내를 찾지 못했어요. 1:1 문의를 남겨주시면 정확히 도와드릴게요.";
 
     /** 조회 가능한 상태값(전 상태). */
     private static final Set<String> QUERYABLE = Set.of("NEW", "REVIEWED", "CONVERTED", "DISMISSED");
@@ -216,6 +236,66 @@ public class AdminUnansweredServiceImpl implements AdminUnansweredService {
         // 원 질문 군집을 CONVERTED 로 표시(이미 CONVERTED 인 행은 보존).
         mapper.updateStatusByIds(memberIds, "CONVERTED");
         return created;
+    }
+
+    @Override
+    public ChatbotConversationDrillResponse getConversation(AuthUser authUser, Long id) {
+        requireAdmin(authUser);
+        if (id == null) {
+            throw new BusinessException(ErrorCode.INVALID_INPUT, "대상 id 가 필요합니다.");
+        }
+        UnansweredMeta meta = mapper.findMetaById(id);
+        if (meta == null) {
+            throw new BusinessException(ErrorCode.NOT_FOUND, "대상 질문을 찾을 수 없습니다.");
+        }
+        List<DrillTurn> contextTurns = loadContextTurns(meta.getConversationId());
+        return new ChatbotConversationDrillResponse(
+                meta.getConversationId(), meta.getQuestion(), FALLBACK_MESSAGE, contextTurns);
+    }
+
+    /**
+     * 발생 대화 메모리(messages_json)를 방어적으로 파싱해 표시용 턴 목록으로 변환.
+     * ChatbotController.toHistoryMessage 미러: UserMessage→{user, 원문}, AiMessage(비공백)→{bot, 마크다운제거}.
+     * conversationId 없음/대화 없음/'[]'/null/역직렬화 실패 어느 경우든 빈 리스트(화면은 안 깨짐).
+     */
+    private List<DrillTurn> loadContextTurns(Long conversationId) {
+        if (conversationId == null) {
+            return List.of();
+        }
+        String json = mapper.findConversationMessages(conversationId);
+        if (json == null || json.isBlank()) {
+            return List.of();
+        }
+        try {
+            List<ChatMessage> messages = ChatMessageDeserializer.messagesFromJson(json);
+            if (messages == null || messages.isEmpty()) {
+                return List.of();
+            }
+            return messages.stream()
+                    .map(this::toDrillTurn)
+                    .filter(t -> t != null)
+                    .collect(Collectors.toList());
+        } catch (Exception e) {
+            // 깨진 JSON/스키마 변화 등 — 맥락 보조는 best-effort 라 삼키고 빈 리스트.
+            log.debug("발생 대화 메모리 파싱 실패(맥락 생략): convId={}, {}", conversationId, e.getMessage());
+            return List.of();
+        }
+    }
+
+    /** 메모리 메시지 한 건 → 표시용 턴. user/assistant 텍스트만 노출, System·툴호출/결과는 스킵. */
+    private DrillTurn toDrillTurn(ChatMessage m) {
+        if (m instanceof UserMessage u) {
+            String t = u.singleText();
+            return (t == null || t.isBlank()) ? null : new DrillTurn("user", t);
+        }
+        if (m instanceof AiMessage a) {
+            String t = a.text();
+            if (t == null || t.isBlank()) {
+                return null; // 툴 호출만 있는 Ai 메시지(최종 답변 아님) → 스킵
+            }
+            return new DrillTurn("bot", MessageSanitizer.stripMarkdown(t));
+        }
+        return null;
     }
 
     /** 대표 id 가 속한 군집의 멤버 id 목록. 없으면 NOT_FOUND. */
