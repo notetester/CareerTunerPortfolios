@@ -507,7 +507,7 @@ public class ApplicationCaseServiceImpl implements ApplicationCaseService {
 
     private static String requiredText(String value, String fieldName) {
         if (isBlank(value)) {
-            throw new BusinessException(ErrorCode.INVALID_INPUT, "%s 媛믪씠 ?꾩슂?⑸땲??".formatted(fieldName));
+            throw new BusinessException(ErrorCode.INVALID_INPUT, "%s 값이 필요합니다.".formatted(fieldName));
         }
         return value.trim();
     }
@@ -563,7 +563,7 @@ public class ApplicationCaseServiceImpl implements ApplicationCaseService {
         Set<Long> uniqueIds = new LinkedHashSet<>();
         for (Long id : applicationCaseIds) {
             if (id == null || id <= 0) {
-                throw new BusinessException(ErrorCode.INVALID_INPUT, "applicationCaseIds 媛믪씠 ?щ컮瑜댁? ?딆뒿?덈떎.");
+                throw new BusinessException(ErrorCode.INVALID_INPUT, "applicationCaseIds 값이 올바르지 않습니다.");
             }
             uniqueIds.add(id);
         }
@@ -579,7 +579,7 @@ public class ApplicationCaseServiceImpl implements ApplicationCaseService {
         }
         String normalized = view.trim().toUpperCase(Locale.ROOT);
         if (!LIST_VIEWS.contains(normalized)) {
-            throw new BusinessException(ErrorCode.INVALID_INPUT, "view 媛믪씠 ?щ컮瑜댁? ?딆뒿?덈떎.");
+            throw new BusinessException(ErrorCode.INVALID_INPUT, "view 값이 올바르지 않습니다.");
         }
         return normalized;
     }
@@ -587,7 +587,7 @@ public class ApplicationCaseServiceImpl implements ApplicationCaseService {
     private static String normalizeOption(String value, String defaultValue, Set<String> allowedValues, String fieldName) {
         String normalized = isBlank(value) ? defaultValue : value.trim().toUpperCase(Locale.ROOT);
         if (normalized == null || !allowedValues.contains(normalized)) {
-            throw new BusinessException(ErrorCode.INVALID_INPUT, "%s 媛믪씠 ?щ컮瑜댁? ?딆뒿?덈떎.".formatted(fieldName));
+            throw new BusinessException(ErrorCode.INVALID_INPUT, "%s 값이 올바르지 않습니다.".formatted(fieldName));
         }
         return normalized;
     }
