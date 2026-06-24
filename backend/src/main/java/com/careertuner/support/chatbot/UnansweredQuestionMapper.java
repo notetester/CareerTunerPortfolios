@@ -13,6 +13,8 @@ public interface UnansweredQuestionMapper {
     void insert(@Param("question") String question,
                 @Param("questionNorm") String questionNorm,
                 @Param("topSimilarity") Double topSimilarity,
+                @Param("embedding") String embedding,
+                @Param("bestFaqId") Long bestFaqId,
                 @Param("userId") Long userId,
                 @Param("conversationId") Long conversationId);
 }

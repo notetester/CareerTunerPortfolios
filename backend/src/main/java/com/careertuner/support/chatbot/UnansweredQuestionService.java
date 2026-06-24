@@ -28,15 +28,18 @@ public class UnansweredQuestionService {
      * 답 못한 질문 1건 기록.
      * @param question       사용자 원문 질문(verbatim)
      * @param topSimilarity  FAQ 최고 유사도(임계 미달; 계산 불가/임베딩 FAQ 0건이면 null)
+     * @param embedding      질문 임베딩 JSON(군집화용; 직렬화 실패 시 null)
+     * @param bestFaqId      가장 가까웠던 FAQ id(없으면 null)
      * @param userId         로그인 유저 id(비로그인 null)
      * @param conversationId 발생 대화 id(있으면)
      */
-    public void record(String question, Double topSimilarity, Long userId, Long conversationId) {
+    public void record(String question, Double topSimilarity, String embedding, Long bestFaqId,
+                       Long userId, Long conversationId) {
         try {
             if (question == null || question.isBlank()) {
                 return;
             }
-            mapper.insert(question, normalize(question), topSimilarity, userId, conversationId);
+            mapper.insert(question, normalize(question), topSimilarity, embedding, bestFaqId, userId, conversationId);
         } catch (Exception e) {
             // 적재 실패는 챗봇 응답과 무관 → 로그만 남기고 흘려보낸다.
             log.warn("답 못한 질문 기록 실패(무시): {}", e.getMessage());

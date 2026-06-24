@@ -1,6 +1,7 @@
 package com.careertuner.admin.chatbot.dto;
 
 import java.time.LocalDateTime;
+import java.util.List;
 
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -8,8 +9,8 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 
 /**
- * 답 못한 질문 목록 1행(= question_norm 정규화 정확매칭 그룹 1개).
- * <p>군집화 아님 — 정규화 키 GROUP BY 빈도 집계(임베딩 군집화는 3단계).
+ * 답 못한 질문 군집 1개(운영 패널 3단계-1). 의미 기반(임베딩 코사인) 클러스터.
+ * <p>1단계의 정규화 정확매칭을 격상 — "환불 어떻게" / "환불 방법"이 한 군집으로 묶인다.
  */
 @Data
 @Builder
@@ -17,18 +18,22 @@ import lombok.NoArgsConstructor;
 @AllArgsConstructor
 public class AdminUnansweredQuestionResponse {
 
-    /** 그룹 대표 행 id(최신 행). 상태 변경 PATCH 대상 식별용. */
+    /** 대표 행 id(군집 내 대표 질문의 행). 상태변경·초안·전환 PATCH/POST 대상. */
     private Long id;
-    /** 대표 원문(그룹 내 최신 질문). */
+    /** 추천 카테고리(가장 가까웠던 FAQ의 카테고리; 없으면 null). */
+    private String category;
+    /** 대표 질문(군집에서 가장 흔한 표현). */
     private String question;
-    /** 정규화 키(그룹 식별·디버그용). */
-    private String questionNorm;
-    /** 그룹 내 행 수(반복 빈도). */
+    /** 군집에 묶인 총 문의 수. */
     private long frequency;
-    /** 그룹 내 FAQ 최고 유사도(가장 가까웠던 값; 전부 NULL이면 null). */
+    /** 군집 내 FAQ 최고 유사도(가장 가까웠던 값; 전부 NULL이면 null). */
     private Double topSimilarity;
-    /** 그룹 상태(조회 필터와 동일). */
+    /** 가장 가까웠던 기존 FAQ 질문(없으면 null) — "왜 답하지 못했나" 근거. */
+    private String bestFaqQuestion;
+    /** 군집 상태(조회 필터와 동일). */
     private String status;
     /** 마지막 발생 시각. */
     private LocalDateTime lastSeen;
+    /** 묶인 변형 질문 목록(표현별 건수, 빈도 desc). */
+    private List<QuestionVariant> variants;
 }

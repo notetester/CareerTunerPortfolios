@@ -3,77 +3,43 @@
         "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
 <mapper namespace="com.careertuner.admin.chatbot.mapper.AdminUnansweredMapper">
 
-    <resultMap id="groupedResult" type="com.careertuner.admin.chatbot.dto.AdminUnansweredQuestionResponse">
-        <id     property="id"            column="id"/>
-        <result property="question"      column="question"/>
-        <result property="questionNorm"  column="question_norm"/>
-        <result property="frequency"     column="frequency"/>
-        <result property="topSimilarity" column="top_similarity"/>
-        <result property="status"        column="status"/>
-        <result property="lastSeen"      column="last_seen"/>
-    </resultMap>
-
-    <!--
-        question_norm 정규화 정확매칭 그룹 집계(군집화 아님: 임베딩 군집화는 3단계).
-        대표 행 id = 그룹 내 최신 MAX(id), 대표 원문 = 같은 status 그룹의 최신 질문(상관 서브쿼리).
-        정렬: 빈도 desc, 최신 desc.
-    -->
-    <select id="findGrouped" resultMap="groupedResult">
-        SELECT MAX(q.id)             AS id,
-               (SELECT q2.question
-                  FROM chatbot_unanswered_question q2
-                 WHERE q2.question_norm = q.question_norm
-                   AND q2.status = #{status}
-                 ORDER BY q2.created_at DESC, q2.id DESC
-                 LIMIT 1)            AS question,
-               q.question_norm       AS question_norm,
-               COUNT(*)              AS frequency,
-               MAX(q.top_similarity) AS top_similarity,
-               MAX(q.status)         AS status,
-               MAX(q.created_at)     AS last_seen
-          FROM chatbot_unanswered_question q
-         WHERE q.status = #{status}
-         GROUP BY q.question_norm
-         ORDER BY frequency DESC, last_seen DESC
-         LIMIT #{limit} OFFSET #{offset}
+    <!-- 상태별 행 전체(임베딩 포함) — 군집화는 서비스에서. 최신순(대표 선정 tie-break 안정화용). -->
+    <select id="findRowsByStatus" resultType="com.careertuner.admin.chatbot.dto.UnansweredRow">
+        SELECT id, question, question_norm, top_similarity, best_faq_id, embedding, created_at
+          FROM chatbot_unanswered_question
+         WHERE status = #{status}
+         ORDER BY created_at DESC, id DESC
     </select>
 
-    <!-- 대표 행의 원문 질문(초안 생성 컨텍스트용). -->
-    <select id="findQuestionById" resultType="string">
-        SELECT question
+    <!-- best FAQ 표시용 요약. ids 비면 호출하지 않는다(서비스에서 가드). -->
+    <select id="findFaqBriefByIds" resultType="com.careertuner.admin.chatbot.dto.FaqBrief">
+        SELECT id, question, category
+          FROM faq
+         WHERE id IN
+        <foreach collection="ids" item="fid" open="(" separator="," close=")">
+            #{fid}
+        </foreach>
+    </select>
+
+    <!-- 대표 행의 현재 상태(군집 재구성용). -->
+    <select id="findStatusById" resultType="string">
+        SELECT status
           FROM chatbot_unanswered_question
          WHERE id = #{id}
     </select>
 
-    <!-- 대표 id 가 속한 question_norm 그룹의 행 수(반복 빈도). -->
-    <select id="countByGroup" resultType="long">
-        SELECT COUNT(*)
-          FROM chatbot_unanswered_question
-         WHERE question_norm = (
-                   SELECT question_norm FROM (
-                       SELECT question_norm
-                         FROM chatbot_unanswered_question
-                        WHERE id = #{id}
-                   ) t
-               )
-    </select>
-
     <!--
-        대표 id 가 속한 question_norm 그룹 전체를 일괄 상태변경(토픽 단위 처리).
-        같은 테이블 참조 UPDATE: 파생테이블(t) 로 감싸야 MySQL 에서 허용.
+        군집 멤버 행들을 일괄 상태변경(토픽 단위 처리).
         CONVERTED(2단계 전환 완료)는 보존하고 나머지만 옮긴다.
     -->
-    <update id="updateStatusByGroup">
+    <update id="updateStatusByIds">
         UPDATE chatbot_unanswered_question
            SET status = #{status}
-         WHERE question_norm = (
-                   SELECT question_norm FROM (
-                       SELECT question_norm
-                         FROM chatbot_unanswered_question
-                        WHERE id = #{id}
-                   ) t
-               )
-           AND status &lt;&gt; 'CONVERTED'
+         WHERE status &lt;&gt; 'CONVERTED'
+           AND id IN
+        <foreach collection="ids" item="rid" open="(" separator="," close=")">
+            #{rid}
+        </foreach>
     </update>
 
 </mapper>

@@ -185,19 +185,29 @@ public class ChatbotService {
     }
 
     /**
-     * 임계 필터 <b>전</b> FAQ 최고 유사도만 반환(운영 패널 1단계 — 미스 질문의 top_similarity 보강용).
-     * searchFaqHits 와 임베딩·정렬 로직은 같되 임계 필터를 적용하지 않는다.
-     * <p>임베딩 FAQ 가 0건이면 {@link OptionalDouble#empty()}(정상 미스 — 채울 유사도 없음).
-     * <p><b>예외를 삼키지 않는다</b>: 임베딩/Ollama 장애 시 그대로 던져, 호출부가
-     * "정상 미스(빈 결과)"와 "인프라 장애"를 구분해 장애를 미스로 오기록하지 않도록 한다.
+     * 미스 질문 분석 결과(운영 패널 수집·군집화용).
+     * @param embeddingJson 질문 임베딩 JSON 배열(수집 시 저장 → 조회 군집화에 재사용). 직렬화 실패 시 null.
+     * @param topSimilarity 임계 필터 전 FAQ 최고 유사도. 임베딩 FAQ 0건이면 null.
+     * @param bestFaqId     최고 유사도를 낸 FAQ id. 없으면 null.
      */
-    public OptionalDouble topFaqSimilarity(String question) {
+    public record FaqMiss(String embeddingJson, Double topSimilarity, Long bestFaqId) {}
+
+    /**
+     * 미스 질문을 임베딩해 FAQ 인덱스와 비교, 최고 유사도·best FAQ·임베딩(JSON)을 함께 돌려준다.
+     * 운영 패널 1단계 수집(top_similarity)과 3단계-1 군집화(embedding/best_faq_id)의 단일 소스.
+     * <p>임계 필터는 적용하지 않는다(미스 케이스 분석이므로). 임베딩 FAQ 0건이면 topSimilarity/bestFaqId 는 null.
+     * <p><b>예외를 삼키지 않는다</b>: 임베딩/Ollama 장애 시 그대로 던져, 호출부가
+     * "정상 미스"와 "인프라 장애"를 구분해 장애를 미스로 오기록하지 않도록 한다.
+     */
+    public FaqMiss analyzeMiss(String question) {
         double[] queryVector = embeddingClient.embed(question);
+        String embeddingJson = serializeEmbedding(queryVector);
         List<Faq> faqs = faqMapper.findPublishedWithEmbedding();
         if (faqs.isEmpty()) {
-            return OptionalDouble.empty();
+            return new FaqMiss(embeddingJson, null, null);
         }
         double best = Double.NEGATIVE_INFINITY;
+        Long bestFaqId = null;
         for (Faq faq : faqs) {
             double[] faqVector = parseEmbedding(faq.getEmbedding());
             if (faqVector == null || faqVector.length != queryVector.length) {
@@ -206,9 +216,28 @@ public class ChatbotService {
             double similarity = CosineSimilarity.compute(queryVector, faqVector);
             if (similarity > best) {
                 best = similarity;
+                bestFaqId = faq.getId();
             }
         }
-        return best == Double.NEGATIVE_INFINITY ? OptionalDouble.empty() : OptionalDouble.of(best);
+        Double topSimilarity = best == Double.NEGATIVE_INFINITY ? null : best;
+        return new FaqMiss(embeddingJson, topSimilarity, bestFaqId);
+    }
+
+    /**
+     * 임계 필터 전 FAQ 최고 유사도만 반환(예외는 전파). {@link #analyzeMiss(String)} 의 얇은 래퍼.
+     */
+    public OptionalDouble topFaqSimilarity(String question) {
+        Double top = analyzeMiss(question).topSimilarity();
+        return top == null ? OptionalDouble.empty() : OptionalDouble.of(top);
+    }
+
+    private String serializeEmbedding(double[] vector) {
+        try {
+            return objectMapper.writeValueAsString(vector);
+        } catch (Exception e) {
+            log.warn("질문 임베딩 직렬화 실패(군집화용 저장 생략): {}", e.getMessage());
+            return null;
+        }
     }
 
     /** 매칭 FAQ를 "Q/A" 텍스트로 합쳐 반환(모델 컨텍스트용). 없으면 빈 문자열. */

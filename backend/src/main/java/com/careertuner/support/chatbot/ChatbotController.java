@@ -203,16 +203,16 @@ public class ChatbotController {
      * 어떤 경로로도 챗봇 응답을 깨뜨리지 않는다.
      */
     private void recordUnanswered(String question, Long userId, Long conversationId) {
-        Double topSimilarity;
+        ChatbotService.FaqMiss miss;
         try {
-            topSimilarity = chatbotService.topFaqSimilarity(question)
-                    .stream().boxed().findFirst().orElse(null);
+            miss = chatbotService.analyzeMiss(question);
         } catch (Exception e) {
             // 임베딩/Ollama 장애 → FAQ 공백으로 오기록하지 않고 스킵.
             log.debug("미스 기록 스킵(임베딩/Ollama 이상 추정): {}", e.getMessage());
             return;
         }
-        unansweredQuestionService.record(question, topSimilarity, userId, conversationId);
+        unansweredQuestionService.record(question, miss.topSimilarity(), miss.embeddingJson(),
+                miss.bestFaqId(), userId, conversationId);
     }
 
     /**
