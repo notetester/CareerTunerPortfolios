@@ -30,6 +30,9 @@ import FaqCompose from "./features/faqs/pages/FaqCompose";
 import AdminInquiries from "./features/support-tickets/pages/AdminInquiriesAI";
 import AdminNotifications from "./features/notifications/pages/AdminNotifications";
 import AdminTerms from "./features/terms/pages/AdminTerms";
+import { AdminActionLogsPage } from "./features/action-logs/pages/AdminActionLogsPage";
+import { AdminPoliciesPage } from "./features/policies/pages/AdminPoliciesPage";
+import { AdminSuperAdminPage } from "./features/super-admin/pages/AdminSuperAdminPage";
 
 export const adminRoutes = [
   { path: "admin", Component: AdminDashboardPage },
@@ -45,6 +48,9 @@ export const adminRoutes = [
   { path: "admin/users", Component: AdminUsersPage },
   { path: "admin/profiles", Component: AdminProfilesPage },
   { path: "admin/consents", Component: AdminConsentsPage },
+  { path: "admin/super", Component: AdminSuperAdminPage },
+  { path: "admin/policies", Component: AdminPoliciesPage },
+  { path: "admin/action-logs", Component: AdminActionLogsPage },
   { path: "admin/payments", Component: AdminPaymentsPage },
   { path: "admin/application-cases", Component: AdminApplicationCasesPage },
   { path: "admin/ai-usage", Component: AdminAiUsagePage },

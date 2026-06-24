@@ -64,9 +64,69 @@ export interface AdminUserConsentRow {
   createdAt: string;
 }
 
+export interface AdminUserEmailVerificationRow {
+  id: number;
+  userId: number;
+  email: string;
+  purpose: string;
+  expiredAt: string;
+  used: boolean;
+  usedAt: string | null;
+  createdAt: string;
+}
+
+export interface AdminUserRefreshTokenRow {
+  id: number;
+  userId: number;
+  expiredAt: string;
+  revoked: boolean;
+  revokedAt: string | null;
+  ipAddress: string | null;
+  userAgent: string | null;
+  createdAt: string;
+}
+
+export interface AdminUserAiUsageRow {
+  id: number;
+  userId: number | null;
+  applicationCaseId: number | null;
+  featureType: string;
+  status: string;
+  model: string | null;
+  inputTokens: number;
+  outputTokens: number;
+  tokenUsage: number;
+  creditUsed: number;
+  errorMessage: string | null;
+  createdAt: string;
+}
+
+export interface AdminUserProfileSnapshot {
+  id: number;
+  userId: number;
+  desiredJob: string | null;
+  desiredIndustry: string | null;
+  education: string | null;
+  career: string | null;
+  projects: string | null;
+  skills: string | null;
+  certificates: string | null;
+  languages: string | null;
+  portfolioLinks: string | null;
+  resumeText: string | null;
+  selfIntro: string | null;
+  preferences: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface AdminUserDetail {
   user: AdminUserRow;
   loginHistory: AdminUserLoginHistoryRow[];
   statusHistory: AdminUserStatusHistoryRow[];
   consents: AdminUserConsentRow[];
+  emailVerifications: AdminUserEmailVerificationRow[];
+  refreshTokens: AdminUserRefreshTokenRow[];
+  aiUsage: AdminUserAiUsageRow[];
+  profile: AdminUserProfileSnapshot | null;
 }

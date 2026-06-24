@@ -23,7 +23,7 @@ const STATUS_OPTIONS: Array<{ value: AdminUserStatus; label: string }> = [
   { value: "ACTIVE", label: "활성" },
   { value: "DORMANT", label: "휴면" },
   { value: "BLOCKED", label: "차단" },
-  { value: "DELETED", label: "삭제" },
+  { value: "DELETED", label: "탈퇴/삭제" },
 ];
 
 const statusTone: Record<AdminUserStatus, string> = {
@@ -33,23 +33,39 @@ const statusTone: Record<AdminUserStatus, string> = {
   DELETED: "bg-slate-200 text-slate-700",
 };
 
-const statusLabel = (status: AdminUserStatus) =>
-  STATUS_OPTIONS.find((option) => option.value === status)?.label ?? status;
-
 function formatDateTime(value: string | null | undefined): string {
   if (!value) return "-";
-  return new Intl.DateTimeFormat("ko-KR", { dateStyle: "medium", timeStyle: "short" }).format(new Date(value));
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return new Intl.DateTimeFormat("ko-KR", { dateStyle: "medium", timeStyle: "short" }).format(date);
 }
 
 function toLocalInputValue(value: string | null): string {
   if (!value) return "";
   const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
   const offset = date.getTimezoneOffset() * 60000;
   return new Date(date.getTime() - offset).toISOString().slice(0, 16);
 }
 
 function toIsoOrNull(value: string): string | null {
   return value ? `${value}:00` : null;
+}
+
+function statusLabel(status: AdminUserStatus): string {
+  return STATUS_OPTIONS.find((option) => option.value === status)?.label ?? status;
+}
+
+function summarizeJson(value: string | null | undefined, emptyText = "미입력"): string {
+  if (!value || value === "[]" || value === "{}") return emptyText;
+  try {
+    const parsed: unknown = JSON.parse(value);
+    if (Array.isArray(parsed)) return parsed.length > 0 ? `${parsed.length}개 입력` : emptyText;
+    if (parsed && typeof parsed === "object") return `${Object.keys(parsed).length}개 항목`;
+    return "입력됨";
+  } catch {
+    return value.trim() ? "입력됨" : emptyText;
+  }
 }
 
 export function AdminUsersPage() {
@@ -114,7 +130,7 @@ export function AdminUsersPage() {
       }
     } catch (requestError) {
       if (selectedIdRef.current === id) {
-        setError(requestError instanceof Error ? requestError.message : "회원 상세를 불러오지 못했습니다.");
+        setError(requestError instanceof Error ? requestError.message : "회원 상세 정보를 불러오지 못했습니다.");
       }
     }
   };
@@ -137,7 +153,7 @@ export function AdminUsersPage() {
     setError(null);
     setSuccess(null);
     if (nextStatus === detail.user.status && !memo.trim()) {
-      setError("상태가 변경되지 않았습니다. 상태를 바꾸거나 관리자 메모를 입력해 주세요.");
+      setError("상태가 바뀌지 않았습니다. 상태를 변경하거나 관리자 메모를 입력해 주세요.");
       return;
     }
     if (!reason.trim()) {
@@ -180,7 +196,7 @@ export function AdminUsersPage() {
       breadcrumb="회원 관리"
       title="회원 관리"
       icon={Users}
-      desc="회원 상태, 로그인 실패, 로그인 감사 로그와 동의 이력을 확인하고 운영 상태를 변경합니다."
+      desc="회원 상세 컨텍스트, 로그인/보안 이력, 인증 이력, 프로필 상태, AI 동의와 사용 이력을 함께 확인합니다."
       actions={(
         <Button variant="outline" onClick={() => void loadRows()} disabled={loading}>
           <RefreshCw className={`size-4 ${loading ? "animate-spin" : ""}`} />
@@ -194,7 +210,12 @@ export function AdminUsersPage() {
             <CardContent className="space-y-3 p-4">
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-slate-400" />
-                <Input value={keyword} onChange={(event) => setKeyword(event.target.value)} placeholder="이름 또는 이메일 검색" className="pl-9" />
+                <Input
+                  value={keyword}
+                  onChange={(event) => setKeyword(event.target.value)}
+                  placeholder="이름 또는 이메일 검색"
+                  className="pl-9"
+                />
               </div>
               <div className="grid grid-cols-2 gap-2">
                 <select value={status} onChange={(event) => setStatus(event.target.value)} className="h-10 rounded-md border border-slate-200 px-3 text-sm">
@@ -205,6 +226,7 @@ export function AdminUsersPage() {
                   <option value="">전체 권한</option>
                   <option value="USER">USER</option>
                   <option value="ADMIN">ADMIN</option>
+                  <option value="SUPER_ADMIN">SUPER_ADMIN</option>
                 </select>
               </div>
               <Button className="w-full bg-blue-600 text-white hover:bg-blue-700" onClick={() => void loadRows()}>
@@ -255,7 +277,7 @@ export function AdminUsersPage() {
         <section className="min-w-0 space-y-4">
           {!detail ? (
             <Card className="border-slate-200 bg-card">
-              <CardContent className="p-8 text-center text-sm text-slate-500">회원을 선택하세요.</CardContent>
+              <CardContent className="p-8 text-center text-sm text-slate-500">회원을 선택해 주세요.</CardContent>
             </Card>
           ) : (
             <>
@@ -300,61 +322,130 @@ export function AdminUsersPage() {
                       상태 저장
                     </Button>
                   </div>
-                  <AlertDialog open={confirmOpen} onOpenChange={setConfirmOpen}>
-                    <AlertDialogContent>
-                      <AlertDialogHeader>
-                        <AlertDialogTitle>회원 상태를 변경할까요?</AlertDialogTitle>
-                        <AlertDialogDescription>
-                          {detail.user.email} 회원을 {statusLabel(detail.user.status)} 상태에서 {statusLabel(nextStatus)} 상태로 변경합니다.
-                          ACTIVE가 아닌 상태로 변경하면 기존 로그인 세션이 만료될 수 있습니다.
-                        </AlertDialogDescription>
-                      </AlertDialogHeader>
-                      <AlertDialogFooter>
-                        <AlertDialogCancel disabled={saving}>취소</AlertDialogCancel>
-                        <AlertDialogAction
-                          className="bg-blue-600 text-white hover:bg-blue-700"
-                          disabled={saving}
-                          onClick={(event) => {
-                            event.preventDefault();
-                            void handleUpdateStatus();
-                          }}
-                        >
-                          {saving && <RefreshCw className="size-4 animate-spin" />}
-                          변경 확정
-                        </AlertDialogAction>
-                      </AlertDialogFooter>
-                    </AlertDialogContent>
-                  </AlertDialog>
                 </CardContent>
               </Card>
 
               <div className="grid gap-4 xl:grid-cols-2">
-                <HistoryCard title="로그인 이력">
+                <HistoryCard title="로그인/보안 이력">
                   <LoginHistorySection userId={detail.user.id} initial={detail.loginHistory} />
                 </HistoryCard>
+                <HistoryCard title="이메일 인증/비밀번호 재설정 이력">
+                  {detail.emailVerifications.length ? detail.emailVerifications.map((item) => (
+                    <div key={item.id} className="rounded-lg border border-slate-100 p-3 text-sm">
+                      <div className="flex items-center justify-between gap-3">
+                        <span className="font-semibold text-slate-900">{item.purpose}</span>
+                        <Badge className={item.used ? "bg-green-100 text-green-700" : "bg-amber-100 text-amber-700"}>
+                          {item.used ? "사용됨" : "미사용"}
+                        </Badge>
+                      </div>
+                      <div className="mt-1 text-xs text-slate-500">발급 {formatDateTime(item.createdAt)} / 만료 {formatDateTime(item.expiredAt)}</div>
+                      <div className="mt-1 text-xs text-slate-500">대상 이메일 {item.email}</div>
+                    </div>
+                  )) : <EmptyText text="인증 또는 재설정 이력이 없습니다." />}
+                </HistoryCard>
+              </div>
 
+              <div className="grid gap-4 xl:grid-cols-2">
+                <HistoryCard title="프로필 입력 상태">
+                  {detail.profile ? (
+                    <div className="grid gap-2 md:grid-cols-2">
+                      <Info label="희망 직무" value={detail.profile.desiredJob ?? "미입력"} />
+                      <Info label="희망 산업" value={detail.profile.desiredIndustry ?? "미입력"} />
+                      <Info label="학력" value={summarizeJson(detail.profile.education)} />
+                      <Info label="경력" value={summarizeJson(detail.profile.career)} />
+                      <Info label="프로젝트/활동" value={summarizeJson(detail.profile.projects)} />
+                      <Info label="기술/역량" value={summarizeJson(detail.profile.skills)} />
+                      <Info label="자격증" value={summarizeJson(detail.profile.certificates)} />
+                      <Info label="포트폴리오" value={summarizeJson(detail.profile.portfolioLinks)} />
+                      <Info label="이력서 원문" value={detail.profile.resumeText ? "입력됨" : "미입력"} />
+                      <Info label="자기소개" value={detail.profile.selfIntro ? "입력됨" : "미입력"} />
+                    </div>
+                  ) : <EmptyText text="프로필이 아직 생성되지 않았습니다." />}
+                </HistoryCard>
+
+                <HistoryCard title="AI 데이터 동의/사용 이력">
+                  <div className="space-y-2">
+                    {detail.consents.map((item) => (
+                      <div key={item.id} className="rounded-lg border border-slate-100 p-3 text-sm">
+                        <div className="flex items-center justify-between gap-3">
+                          <span className="font-semibold text-slate-900">{item.consentType}</span>
+                          <Badge className={item.agreed ? "bg-green-100 text-green-700" : "bg-slate-200 text-slate-700"}>
+                            {item.agreed ? "동의" : "철회/미동의"}
+                          </Badge>
+                        </div>
+                        <div className="mt-1 text-xs text-slate-500">{formatDateTime(item.createdAt)} / {item.source ?? "-"}</div>
+                      </div>
+                    ))}
+                    {!detail.consents.length && <EmptyText text="동의 이력이 없습니다." />}
+                  </div>
+                  <div className="mt-3 space-y-2">
+                    {detail.aiUsage.map((item) => (
+                      <div key={item.id} className="rounded-lg border border-slate-100 p-3 text-sm">
+                        <div className="flex items-center justify-between gap-3">
+                          <span className="font-semibold text-slate-900">{item.featureType}</span>
+                          <Badge className={item.status === "SUCCESS" ? "bg-green-100 text-green-700" : "bg-amber-100 text-amber-700"}>{item.status}</Badge>
+                        </div>
+                        <div className="mt-1 text-xs text-slate-500">{item.model ?? "모델 미기록"} / 토큰 {item.tokenUsage} / 크레딧 {item.creditUsed}</div>
+                        {item.errorMessage && <div className="mt-1 text-xs text-red-600">{item.errorMessage}</div>}
+                      </div>
+                    ))}
+                    {!detail.aiUsage.length && <EmptyText text="AI 사용 이력이 없습니다." />}
+                  </div>
+                </HistoryCard>
+              </div>
+
+              <div className="grid gap-4 xl:grid-cols-2">
                 <HistoryCard title="상태 변경 이력">
                   {detail.statusHistory.length ? detail.statusHistory.map((item) => (
                     <div key={item.id} className="rounded-lg border border-slate-100 p-3 text-sm">
                       <div className="font-semibold text-slate-900">{item.previousStatus ?? "-"} → {item.newStatus}</div>
-                      <div className="mt-1 text-xs text-slate-500">{formatDateTime(item.createdAt)} · 관리자 #{item.actorUserId ?? "SYSTEM"}</div>
+                      <div className="mt-1 text-xs text-slate-500">{formatDateTime(item.createdAt)} / 관리자 #{item.actorUserId ?? "SYSTEM"}</div>
                       {(item.reason || item.memo) && <div className="mt-1 text-xs text-slate-600">{item.reason ?? item.memo}</div>}
                     </div>
                   )) : <EmptyText text="상태 변경 이력이 없습니다." />}
                 </HistoryCard>
+
+                <HistoryCard title="Refresh Token 세션">
+                  {detail.refreshTokens.length ? detail.refreshTokens.map((item) => (
+                    <div key={item.id} className="rounded-lg border border-slate-100 p-3 text-sm">
+                      <div className="flex items-center justify-between gap-3">
+                        <span className="font-semibold text-slate-900">세션 #{item.id}</span>
+                        <Badge className={item.revoked ? "bg-red-100 text-red-700" : "bg-green-100 text-green-700"}>
+                          {item.revoked ? "폐기" : "활성"}
+                        </Badge>
+                      </div>
+                      <div className="mt-1 text-xs text-slate-500">발급 {formatDateTime(item.createdAt)} / 만료 {formatDateTime(item.expiredAt)}</div>
+                      <div className="mt-1 text-xs text-slate-500">IP {item.ipAddress ?? "-"} / User-Agent {item.userAgent ?? "-"}</div>
+                    </div>
+                  )) : <EmptyText text="저장된 세션 이력이 없습니다." />}
+                </HistoryCard>
               </div>
 
-              <HistoryCard title="동의 이력">
-                {detail.consents.length ? detail.consents.map((item) => (
-                  <div key={item.id} className="rounded-lg border border-slate-100 p-3 text-sm">
-                    <div className="flex items-center justify-between gap-3">
-                      <span className="font-semibold text-slate-900">{item.consentType}</span>
-                      <Badge className={item.agreed ? "bg-green-100 text-green-700" : "bg-slate-200 text-slate-700"}>{item.agreed ? "동의" : "미동의/철회"}</Badge>
-                    </div>
-                    <div className="mt-1 text-xs text-slate-500">{formatDateTime(item.createdAt)} · {item.source ?? "-"}</div>
-                  </div>
-                )) : <EmptyText text="동의 이력이 없습니다." />}
-              </HistoryCard>
+              <AlertDialog open={confirmOpen} onOpenChange={setConfirmOpen}>
+                <AlertDialogContent>
+                  <AlertDialogHeader>
+                    <AlertDialogTitle>회원 상태를 변경할까요?</AlertDialogTitle>
+                    <AlertDialogDescription>
+                      {detail.user.email} 회원을 {statusLabel(detail.user.status)} 상태에서 {statusLabel(nextStatus)} 상태로 변경합니다.
+                      ACTIVE가 아닌 상태는 로그인과 서비스 사용에 영향을 줄 수 있습니다.
+                    </AlertDialogDescription>
+                  </AlertDialogHeader>
+                  <AlertDialogFooter>
+                    <AlertDialogCancel disabled={saving}>취소</AlertDialogCancel>
+                    <AlertDialogAction
+                      className="bg-blue-600 text-white hover:bg-blue-700"
+                      disabled={saving}
+                      onClick={(event) => {
+                        event.preventDefault();
+                        void handleUpdateStatus();
+                      }}
+                    >
+                      {saving && <RefreshCw className="size-4 animate-spin" />}
+                      변경 확정
+                    </AlertDialogAction>
+                  </AlertDialogFooter>
+                </AlertDialogContent>
+              </AlertDialog>
             </>
           )}
         </section>
@@ -387,10 +478,6 @@ function EmptyText({ text }: { text: string }) {
   return <div className="rounded-lg bg-slate-50 p-4 text-center text-sm text-slate-500">{text}</div>;
 }
 
-/**
- * 로그인 이력: 상세 응답에 포함된 요약을 먼저 보여주고, "더 보기"로
- * 전용 엔드포인트(GET /api/admin/users/{id}/login-history)를 호출해 최근 100건까지 확장한다.
- */
 function LoginHistorySection({ userId, initial }: { userId: number; initial: AdminUserLoginHistoryRow[] }) {
   const [rows, setRows] = useState<AdminUserLoginHistoryRow[]>(initial);
   const [expanded, setExpanded] = useState(false);
@@ -423,14 +510,14 @@ function LoginHistorySection({ userId, initial }: { userId: number; initial: Adm
             <span className="font-semibold text-slate-900">{item.eventType} / {item.loginMethod ?? "-"}</span>
             <Badge className={item.success ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"}>{item.success ? "성공" : "실패"}</Badge>
           </div>
-          <div className="mt-1 text-xs text-slate-500">{formatDateTime(item.createdAt)} · {item.ipAddress ?? "-"}</div>
+          <div className="mt-1 text-xs text-slate-500">{formatDateTime(item.createdAt)} / {item.ipAddress ?? "-"}</div>
           {item.failReason && <div className="mt-1 text-xs text-red-600">{item.failReason}</div>}
         </div>
       ))}
       {!expanded && (
         <Button variant="outline" size="sm" className="w-full" disabled={loading} onClick={() => void loadFull()}>
           {loading && <RefreshCw className="size-3.5 animate-spin" />}
-          전체 로그인 이력 더 보기 (최근 100건)
+          전체 로그인 이력 더 보기
         </Button>
       )}
     </>

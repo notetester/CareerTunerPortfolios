@@ -6,6 +6,7 @@ import {
   Mail, Search, Bell, ChevronRight,
   Target, TrendingUp, ListChecks, Activity,
   Scale, FileUser, ClipboardCheck, MessageSquare, Package, ScrollText,
+  ShieldCheck, SlidersHorizontal, History,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import "./admin-shell.css";
@@ -35,6 +36,9 @@ const NAV: NavItem[] = [
   { key: "members", label: "회원 관리", icon: Users, ct: "1,248", href: "/admin/users" },
   { key: "profiles", label: "프로필 관리", icon: FileUser, href: "/admin/profiles" },
   { key: "consents", label: "동의 관리", icon: ClipboardCheck, href: "/admin/consents" },
+  { key: "super-admin", label: "super 권한 관리", icon: ShieldCheck, href: "/admin/super" },
+  { key: "policies", label: "운영 정책 관리", icon: SlidersHorizontal, href: "/admin/policies" },
+  { key: "action-logs", label: "관리자 액션 로그", icon: History, href: "/admin/action-logs" },
   { key: "payments", label: "결제 관리", icon: CreditCard, href: "/admin/payments" },
   { key: "plans", label: "요금제 관리", icon: Package, href: "/admin/plans" },
   { key: "reports", label: "신고·검열 관리", icon: MessageSquareWarning, href: "/admin/community" },
