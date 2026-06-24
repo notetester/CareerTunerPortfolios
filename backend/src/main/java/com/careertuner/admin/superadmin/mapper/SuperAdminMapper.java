@@ -15,11 +15,17 @@ import com.careertuner.admin.superadmin.dto.AdminPermissionPolicyRow;
 @Mapper
 public interface SuperAdminMapper {
 
-    List<AdminAccountRow> findAdmins(@Param("keyword") String keyword, @Param("limit") int limit);
+    List<AdminAccountRow> findAdmins(@Param("keyword") String keyword,
+                                     @Param("sortColumn") String sortColumn,
+                                     @Param("sortDir") String sortDir,
+                                     @Param("limit") int limit);
 
     AdminAccountRow findAdmin(Long userId);
 
-    List<AdminAccountRow> searchUsers(@Param("keyword") String keyword, @Param("limit") int limit);
+    List<AdminAccountRow> searchUsers(@Param("keyword") String keyword,
+                                      @Param("sortColumn") String sortColumn,
+                                      @Param("sortDir") String sortDir,
+                                      @Param("limit") int limit);
 
     List<AdminPermissionPolicyRow> findPermissions();
 
@@ -31,7 +37,10 @@ public interface SuperAdminMapper {
 
     List<AdminGroupAssignmentRow> findUserGroups(Long userId);
 
-    List<AdminPermissionAuditRow> findAudit(@Param("userId") Long userId, @Param("limit") int limit);
+    List<AdminPermissionAuditRow> findAudit(@Param("userId") Long userId,
+                                            @Param("sortColumn") String sortColumn,
+                                            @Param("sortDir") String sortDir,
+                                            @Param("limit") int limit);
 
     void updateRole(@Param("userId") Long userId, @Param("role") String role);
 

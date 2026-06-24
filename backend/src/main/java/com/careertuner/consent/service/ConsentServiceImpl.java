@@ -93,9 +93,7 @@ public class ConsentServiceImpl implements ConsentService {
     }
 
     private void requireAdmin(AuthUser authUser) {
-        if (authUser == null || !"ADMIN".equals(authUser.role())) {
-            throw new BusinessException(ErrorCode.FORBIDDEN, "관리자 권한이 필요합니다.");
-        }
+        com.careertuner.admin.common.AdminAccess.requireAdmin(authUser);
     }
 
     private String blankToNull(String value) {

@@ -39,8 +39,6 @@ public class AdminAiSettingsService {
     }
 
     private static void requireAdmin(AuthUser authUser) {
-        if (authUser == null || !"ADMIN".equals(authUser.role())) {
-            throw new BusinessException(ErrorCode.FORBIDDEN, "Admin role is required.");
-        }
+        com.careertuner.admin.common.AdminAccess.requireAdmin(authUser);
     }
 }
