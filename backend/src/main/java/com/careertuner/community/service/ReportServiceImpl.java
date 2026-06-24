@@ -1,5 +1,7 @@
 package com.careertuner.community.service;
 
+import java.util.Objects;
+
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -44,13 +46,16 @@ public class ReportServiceImpl implements ReportService {
         if (post == null) {
             throw new BusinessException(ErrorCode.NOT_FOUND, "게시글을 찾을 수 없습니다.");
         }
+        if (Objects.equals(post.getUserId(), userId)) {
+            throw new BusinessException(ErrorCode.INVALID_INPUT, "본인이 작성한 게시글은 신고할 수 없습니다.");
+        }
         if (reportMapper.findPostReport(userId, request.targetId()) != null) {
             throw new BusinessException(ErrorCode.CONFLICT, "이미 신고한 게시글입니다.");
         }
         reportMapper.insertPostReport(PostReport.builder()
                 .reporterId(userId)
                 .postId(request.targetId())
-                .reason(request.reason())
+                .reason(request.reason().name())
                 .detail(request.detail())
                 .status("PENDING")
                 .build());
@@ -63,13 +68,16 @@ public class ReportServiceImpl implements ReportService {
         if (comment == null) {
             throw new BusinessException(ErrorCode.NOT_FOUND, "댓글을 찾을 수 없습니다.");
         }
+        if (Objects.equals(comment.getUserId(), userId)) {
+            throw new BusinessException(ErrorCode.INVALID_INPUT, "본인이 작성한 댓글은 신고할 수 없습니다.");
+        }
         if (reportMapper.findCommentReport(userId, request.targetId()) != null) {
             throw new BusinessException(ErrorCode.CONFLICT, "이미 신고한 댓글입니다.");
         }
         reportMapper.insertCommentReport(CommentReport.builder()
                 .reporterId(userId)
                 .commentId(request.targetId())
-                .reason(request.reason())
+                .reason(request.reason().name())
                 .detail(request.detail())
                 .status("PENDING")
                 .build());

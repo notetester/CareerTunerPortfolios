@@ -1,6 +1,7 @@
 package com.careertuner.admin.ticket.service;
 
 import java.util.List;
+import java.util.Set;
 
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -29,6 +30,11 @@ public class AdminTicketServiceImpl implements AdminTicketService {
     private final AdminTicketMapper ticketMapper;
     private final NotificationService notificationService;
     private final TicketDraftAiClient draftAiClient;
+
+    /** support_ticket.status 허용값(DB 저장 기준). */
+    private static final Set<String> ALLOWED_STATUS = Set.of("RECEIVED", "IN_PROGRESS", "ANSWERED", "CLOSED");
+    /** support_ticket.priority 허용값(DB 저장 기준). */
+    private static final Set<String> ALLOWED_PRIORITY = Set.of("NORMAL", "HIGH", "URGENT");
 
     @Override
     public List<AdminTicketListResponse> getTickets(AuthUser authUser, String status) {
@@ -68,8 +74,15 @@ public class AdminTicketServiceImpl implements AdminTicketService {
         if (existing == null) {
             throw new BusinessException(ErrorCode.NOT_FOUND, "문의를 찾을 수 없습니다.");
         }
-        String dbStatus = request.status() != null ? request.status().toUpperCase() : null;
+        // null 은 부분 업데이트(해당 항목 미변경)이므로 검증 스킵.
+        String dbStatus = toDbStatus(request.status());
+        if (dbStatus != null && !ALLOWED_STATUS.contains(dbStatus)) {
+            throw new BusinessException(ErrorCode.INVALID_INPUT, "허용되지 않은 상태값입니다.");
+        }
         String dbPriority = request.priority() != null ? request.priority().toUpperCase() : null;
+        if (dbPriority != null && !ALLOWED_PRIORITY.contains(dbPriority)) {
+            throw new BusinessException(ErrorCode.INVALID_INPUT, "허용되지 않은 우선순위값입니다.");
+        }
         ticketMapper.updateTicket(id, dbStatus, dbPriority);
         return getTicketDetail(authUser, id);
     }
@@ -81,6 +94,9 @@ public class AdminTicketServiceImpl implements AdminTicketService {
         AdminTicketListResponse existing = ticketMapper.findById(id);
         if (existing == null) {
             throw new BusinessException(ErrorCode.NOT_FOUND, "문의를 찾을 수 없습니다.");
+        }
+        if (request.content() == null || request.content().isBlank()) {
+            throw new BusinessException(ErrorCode.INVALID_INPUT, "답변 내용을 입력해 주세요.");
         }
         boolean internal = request.internal() != null && request.internal();
         ticketMapper.insertMessage(id, "ADMIN", authUser.id(), request.content(), internal);

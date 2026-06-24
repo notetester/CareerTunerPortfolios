@@ -21,6 +21,7 @@ import com.careertuner.admin.ticket.service.AdminTicketService;
 import com.careertuner.common.security.AuthUser;
 import com.careertuner.common.web.ApiResponse;
 
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 
 @RestController
@@ -56,7 +57,7 @@ public class AdminTicketController {
     public ApiResponse<AdminTicketDetailResponse> reply(
             @AuthenticationPrincipal AuthUser authUser,
             @PathVariable Long id,
-            @RequestBody AdminTicketReplyRequest request) {
+            @Valid @RequestBody AdminTicketReplyRequest request) {
         return ApiResponse.ok(ticketService.reply(authUser, id, request));
     }
 

@@ -22,6 +22,7 @@ import com.careertuner.admin.legal.service.AdminLegalService;
 import com.careertuner.common.security.AuthUser;
 import com.careertuner.common.web.ApiResponse;
 
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 
 /**
@@ -52,7 +53,7 @@ public class AdminLegalController {
     public ApiResponse<AdminLegalVersionDetail> createDraft(
             @AuthenticationPrincipal AuthUser authUser,
             @PathVariable String docType,
-            @RequestBody(required = false) CreateLegalDraftRequest request) {
+            @Valid @RequestBody(required = false) CreateLegalDraftRequest request) {
         return ApiResponse.ok(adminLegalService.createDraft(authUser, docType, request));
     }
 
@@ -60,7 +61,7 @@ public class AdminLegalController {
     public ApiResponse<AdminLegalVersionDetail> saveDraft(
             @AuthenticationPrincipal AuthUser authUser,
             @PathVariable Long id,
-            @RequestBody SaveLegalDraftRequest request) {
+            @Valid @RequestBody SaveLegalDraftRequest request) {
         return ApiResponse.ok(adminLegalService.saveDraft(authUser, id, request));
     }
 

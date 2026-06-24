@@ -9,13 +9,18 @@ import { BotBubble, UserBubble, InputBar } from "./ChatbotWidget";
 export function ChatbotFullScreen() {
   const chatbot = useChatbot();
   const {
-    messages, sendMessage, botStatus,
+    messages, sendMessage, botStatus, restoreRecent,
     sessions, activeSessionId, setActiveSessionId, newSession,
     startVoice, toggleTts,
   } = chatbot;
 
   const [input, setInput] = useState("");
   const scrollRef = useRef<HTMLDivElement>(null);
+
+  // 풀스크린은 진입 자체가 사용 의도 → 마운트 시 이전 대화 복원(로그인 한정, 1회).
+  useEffect(() => {
+    restoreRecent();
+  }, [restoreRecent]);
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
@@ -111,7 +116,7 @@ export function ChatbotFullScreen() {
                 </div>
               </div>
             ) : (
-              <BotBubble key={m.id} message={m} onToggleTts={toggleTts} variant="full" />
+              <BotBubble key={m.id} message={m} onToggleTts={toggleTts} variant="full" onQuickReply={sendMessage} />
             )
           )}
           {botStatus === "thinking" && (

@@ -1,12 +1,16 @@
 package com.careertuner.community.service;
 
+import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import com.careertuner.common.exception.BusinessException;
 import com.careertuner.common.exception.ErrorCode;
 import com.careertuner.community.domain.CommentReaction;
+import com.careertuner.community.domain.CommunityComment;
+import com.careertuner.community.domain.CommunityPost;
 import com.careertuner.community.domain.PostReaction;
+import com.careertuner.community.domain.PostStatus;
 import com.careertuner.community.domain.ReactionType;
 import com.careertuner.community.dto.ToggleReactionRequest;
 import com.careertuner.community.mapper.CommunityCommentMapper;
@@ -36,6 +40,14 @@ public class ReactionServiceImpl implements ReactionService {
     }
 
     private boolean togglePostReaction(Long postId, ReactionType type, Long userId) {
+        CommunityPost post = postMapper.findById(postId);
+        if (post == null || !PostStatus.PUBLISHED.name().equals(post.getStatus())) {
+            throw new BusinessException(ErrorCode.NOT_FOUND);
+        }
+        // self-like 차단 (북마크는 허용)
+        if (type == ReactionType.LIKE && userId.equals(post.getUserId())) {
+            throw new BusinessException(ErrorCode.INVALID_INPUT, "자신의 게시글에는 좋아요를 할 수 없습니다.");
+        }
         PostReaction existing = reactionMapper.findPostReaction(userId, postId, type.name());
         if (existing != null) {
             reactionMapper.deletePostReaction(userId, postId, type.name());
@@ -44,8 +56,14 @@ public class ReactionServiceImpl implements ReactionService {
             log.info("게시글 리액션 취소 postId={} userId={} type={}", postId, userId, type);
             return false;
         }
-        reactionMapper.insertPostReaction(PostReaction.builder()
-                .userId(userId).postId(postId).reactionType(type.name()).build());
+        try {
+            reactionMapper.insertPostReaction(PostReaction.builder()
+                    .userId(userId).postId(postId).reactionType(type.name()).build());
+        } catch (DuplicateKeyException e) {
+            // 동시 토글 충돌: 이미 다른 트랜잭션이 동일 리액션을 등록함. 카운트 재증가 없이 흡수.
+            log.info("게시글 리액션 동시 등록 충돌 흡수 postId={} userId={} type={}", postId, userId, type);
+            return true;
+        }
         if (type == ReactionType.LIKE) postMapper.incrementLikeCount(postId);
         else postMapper.incrementBookmarkCount(postId);
         log.info("게시글 리액션 등록 postId={} userId={} type={}", postId, userId, type);
@@ -56,6 +74,14 @@ public class ReactionServiceImpl implements ReactionService {
         if (type == ReactionType.BOOKMARK) {
             throw new BusinessException(ErrorCode.INVALID_INPUT, "댓글에는 북마크를 할 수 없습니다.");
         }
+        CommunityComment comment = commentMapper.findById(commentId);
+        if (comment == null || !PostStatus.PUBLISHED.name().equals(comment.getStatus())) {
+            throw new BusinessException(ErrorCode.NOT_FOUND);
+        }
+        // self-like 차단 (댓글 리액션은 LIKE 뿐)
+        if (userId.equals(comment.getUserId())) {
+            throw new BusinessException(ErrorCode.INVALID_INPUT, "자신의 댓글에는 좋아요를 할 수 없습니다.");
+        }
         CommentReaction existing = reactionMapper.findCommentReaction(userId, commentId, type.name());
         if (existing != null) {
             reactionMapper.deleteCommentReaction(userId, commentId, type.name());
@@ -63,8 +89,14 @@ public class ReactionServiceImpl implements ReactionService {
             log.info("댓글 리액션 취소 commentId={} userId={}", commentId, userId);
             return false;
         }
-        reactionMapper.insertCommentReaction(CommentReaction.builder()
-                .userId(userId).commentId(commentId).reactionType(type.name()).build());
+        try {
+            reactionMapper.insertCommentReaction(CommentReaction.builder()
+                    .userId(userId).commentId(commentId).reactionType(type.name()).build());
+        } catch (DuplicateKeyException e) {
+            // 동시 토글 충돌: 이미 다른 트랜잭션이 동일 리액션을 등록함. 카운트 재증가 없이 흡수.
+            log.info("댓글 리액션 동시 등록 충돌 흡수 commentId={} userId={}", commentId, userId);
+            return true;
+        }
         commentMapper.incrementLikeCount(commentId);
         log.info("댓글 리액션 등록 commentId={} userId={}", commentId, userId);
         return true;

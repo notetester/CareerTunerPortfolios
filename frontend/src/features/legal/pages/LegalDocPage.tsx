@@ -15,13 +15,20 @@ const DOC_LABELS: Record<LegalDocType, string> = {
   terms: "이용약관",
   privacy: "개인정보처리방침",
   marketing: "마케팅 수신 동의",
+  "ai-data-consent": "AI 데이터 이용 동의",
+  copyright: "저작권 정책",
 };
 
 /** `/legal/<docType>` 라우트가 실제로 존재하는 docType만 — app/routes.ts 와 동기화.
- *  routes.ts(팀장 소유)에는 legal/terms·legal/privacy 만 있고 legal/marketing 라우트가 없다.
- *  marketing 카드를 누르면 매칭되는 라우트가 없어 빈 화면으로 떨어지므로, 라우트가 생기기 전까지
- *  '관련 문서' 카드에서 제외해 죽은 링크를 만들지 않는다. (routes.ts 에 marketing 추가 시 여기 포함) */
-const ROUTED_DOC_TYPES: ReadonlySet<LegalDocType> = new Set<LegalDocType>(["terms", "privacy"]);
+ *  routes.ts(팀장 소유)에는 legal/terms·legal/privacy·legal/ai-data-consent·legal/copyright 가 있고
+ *  legal/marketing 라우트는 없다. marketing 카드를 누르면 매칭 라우트가 없어 빈 화면으로 떨어지므로,
+ *  라우트가 생기기 전까지 '관련 문서' 카드에서 제외해 죽은 링크를 만들지 않는다. */
+const ROUTED_DOC_TYPES: ReadonlySet<LegalDocType> = new Set<LegalDocType>([
+  "terms",
+  "privacy",
+  "ai-data-consent",
+  "copyright",
+]);
 
 /** routes.ts 의 `legal/<seg>` 마지막 세그먼트 → 지원 docType. 미지원이면 null. */
 function pathToDocType(pathname: string): LegalDocType | null {

@@ -81,7 +81,7 @@ public class NotificationController {
     @PutMapping("/preferences")
     public ApiResponse<NotificationPreferenceResponse> updatePreferences(
             @AuthenticationPrincipal AuthUser authUser,
-            @RequestBody NotificationPreferenceUpdateRequest request) {
+            @Validated @RequestBody NotificationPreferenceUpdateRequest request) {
         return ApiResponse.ok(preferenceService.update(authUser.id(), request));
     }
 

@@ -1,4 +1,6 @@
-import { Outlet, useLocation } from "react-router";
+import { Outlet, ScrollRestoration, useLocation } from "react-router";
+import { useAuth } from "@/app/auth/AuthContext";
+import { LandingPage } from "@/features/landing/pages/LandingPage";
 import { Header } from "./Header";
 import { Footer } from "./Footer";
 import { ChatbotBubble } from "../../../features/support/components/ChatbotWidget";
@@ -8,6 +10,11 @@ import { OfflineBanner } from "./OfflineBanner";
 
 export function Root() {
   const location = useLocation();
+  const { isAuthenticated, loading } = useAuth();
+  // 비로그인 홈(/)은 랜딩 페이지를 헤더/푸터 없이 전체화면으로 렌더한다.
+  if (location.pathname === "/" && !loading && !isAuthenticated) {
+    return <LandingPage />;
+  }
   const isApplicationDetail = /^\/applications\/(?:new|\d+)/.test(location.pathname);
   const isAdmin = location.pathname.startsWith("/admin");
   // 관리자/로그인 화면은 자체 내비라 하단 탭을 숨긴다.
@@ -15,6 +22,8 @@ export function Root() {
 
   return (
     <div className="min-h-screen flex flex-col bg-slate-50">
+      {/* 라우트 이동 시 스크롤을 맨 위로 복원. 푸터(하단) 링크로 이동해도 새 페이지가 바닥에 걸리지 않게 한다. */}
+      <ScrollRestoration />
       <ApplicationExtractionMonitor />
       <OfflineBanner />
       <Header />

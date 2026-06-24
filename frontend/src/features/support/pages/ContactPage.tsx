@@ -341,26 +341,34 @@ function MyTicketItem({ ticket, onChanged }: { ticket: SupportTicket; onChanged:
             ))}
           </div>
 
-          <div style={{ marginTop: 10 }}>
-            <textarea
-              value={reply}
-              onChange={(e) => setReply(e.target.value.slice(0, 2000))}
-              placeholder="추가로 문의할 내용을 입력하세요"
-              style={{ width: "100%", minHeight: 64, borderRadius: 8, border: "1px solid var(--border)", padding: 8, fontSize: 14, resize: "vertical" }}
-            />
-            {error && <p style={{ fontSize: 12, color: "var(--destructive)", marginTop: 4 }}>{error}</p>}
-            <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 6 }}>
-              <button
-                type="button"
-                onClick={() => void send()}
-                disabled={sending || !reply.trim()}
-                className="av-btn av-btn--ink"
-                style={{ opacity: sending || !reply.trim() ? 0.6 : 1 }}
-              >
-                {sending ? "전송 중…" : "추가 문의 보내기"}
-              </button>
+          {/* 종료(CLOSED)된 문의는 백엔드가 추가 메시지를 400으로 거절한다(전이표: 재오픈은 ANSWERED/IN_PROGRESS만).
+              사용자가 보내고 에러를 받는 동선을 없애기 위해 입력창 대신 새 문의 안내를 노출한다. */}
+          {status === "CLOSED" ? (
+            <p style={{ fontSize: 13, color: "var(--muted-foreground)", marginTop: 12, padding: "10px 12px", background: "var(--muted)", borderRadius: 8 }}>
+              종료된 문의입니다. 추가로 도움이 필요하시면 위 양식으로 새 문의를 작성해 주세요.
+            </p>
+          ) : (
+            <div style={{ marginTop: 10 }}>
+              <textarea
+                value={reply}
+                onChange={(e) => setReply(e.target.value.slice(0, 2000))}
+                placeholder="추가로 문의할 내용을 입력하세요"
+                style={{ width: "100%", minHeight: 64, borderRadius: 8, border: "1px solid var(--border)", padding: 8, fontSize: 14, resize: "vertical" }}
+              />
+              {error && <p style={{ fontSize: 12, color: "var(--destructive)", marginTop: 4 }}>{error}</p>}
+              <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 6 }}>
+                <button
+                  type="button"
+                  onClick={() => void send()}
+                  disabled={sending || !reply.trim()}
+                  className="av-btn av-btn--ink"
+                  style={{ opacity: sending || !reply.trim() ? 0.6 : 1 }}
+                >
+                  {sending ? "전송 중…" : "추가 문의 보내기"}
+                </button>
+              </div>
             </div>
-          </div>
+          )}
         </div>
       )}
     </div>

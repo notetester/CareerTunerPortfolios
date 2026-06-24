@@ -28,6 +28,7 @@ import AdminNotices from "./features/notices/pages/AdminNotices";
 import NoticeCompose from "./features/notices/pages/NoticeCompose";
 import AdminFaq from "./features/faqs/pages/AdminFaq";
 import FaqCompose from "./features/faqs/pages/FaqCompose";
+import AdminAiSupport from "./features/ai-support/pages/AdminAiSupport";
 import AdminInquiries from "./features/support-tickets/pages/AdminInquiriesAI";
 import AdminNotifications from "./features/notifications/pages/AdminNotifications";
 import AdminTerms from "./features/terms/pages/AdminTerms";
@@ -59,6 +60,7 @@ export const adminRoutes = [
   { path: "admin/notices/new", Component: NoticeCompose },
   { path: "admin/faq", Component: AdminFaq },
   { path: "admin/faq/new", Component: FaqCompose },
+  { path: "admin/ai-support", Component: AdminAiSupport },
   { path: "admin/inquiries", Component: AdminInquiries },
   { path: "admin/terms", Component: AdminTerms },
   { path: "admin/terms/guidelines", Component: AdminGuidelines },

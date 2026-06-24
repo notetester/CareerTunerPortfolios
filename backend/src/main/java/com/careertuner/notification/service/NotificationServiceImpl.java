@@ -2,6 +2,7 @@ package com.careertuner.notification.service;
 
 import java.util.List;
 
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -10,8 +11,8 @@ import com.careertuner.common.exception.ErrorCode;
 import com.careertuner.notification.domain.Notification;
 import com.careertuner.notification.dto.NotificationPageResponse;
 import com.careertuner.notification.dto.NotificationResponse;
+import com.careertuner.notification.event.NotificationPushEvent;
 import com.careertuner.notification.mapper.NotificationMapper;
-import com.careertuner.notification.push.PushDispatcher;
 
 import lombok.RequiredArgsConstructor;
 
@@ -21,13 +22,14 @@ import lombok.RequiredArgsConstructor;
 public class NotificationServiceImpl implements NotificationService {
 
     private final NotificationMapper notificationMapper;
-    private final PushDispatcher pushDispatcher;
+    private final ApplicationEventPublisher eventPublisher;
 
     @Override
     @Transactional
     public void notify(Notification notification) {
         notificationMapper.insert(notification);
-        pushDispatcher.dispatch(notification);
+        // 푸시는 알림 트랜잭션 밖에서 비동기로 발송(AFTER_COMMIT) — 커밋 지연·유령 푸시 방지.
+        eventPublisher.publishEvent(new NotificationPushEvent(notification));
     }
 
     @Override
