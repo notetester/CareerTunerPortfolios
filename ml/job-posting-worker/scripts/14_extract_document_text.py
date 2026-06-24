@@ -97,13 +97,12 @@ _PADDLE_OCR_CACHE: dict[str, Any] = {}
 
 
 def configure_ocr_cache_env(cache_root: Path | None = None) -> Path:
+    os.environ["FLAGS_use_mkldnn"] = "0"
     root = cache_root or Path(os.environ.get(
         "JOB_POSTING_AI_CACHE_DIR",
         str(Path(tempfile.gettempdir()) / "careertuner-job-posting-worker-cache"),
     ))
     root.mkdir(parents=True, exist_ok=True)
-    os.environ["HOME"] = str(root)
-    os.environ["USERPROFILE"] = str(root)
     os.environ.setdefault("XDG_CACHE_HOME", str(root / ".cache"))
     os.environ.setdefault("PADDLE_OCR_BASE_DIR", str(root / ".paddleocr"))
     return root
@@ -231,6 +230,11 @@ def existing_ocr_text(input_path: Path, existing_ocr_dir: Path | None) -> str:
 def load_paddleocr_class():
     configure_ocr_cache_env()
     try:
+        import paddle
+        paddle.set_flags({"FLAGS_use_mkldnn": False})
+    except Exception:
+        pass
+    try:
         from paddleocr import PaddleOCR
     except ImportError as exc:
         raise RuntimeError("paddleocr and paddlepaddle are required for local OCR execution.") from exc
@@ -246,9 +250,10 @@ def create_paddle_ocr(lang: str):
         return _PADDLE_OCR_CACHE[lang]
     paddle_ocr_class = load_paddleocr_class()
     constructor_options = [
-        {"use_angle_cls": True, "lang": lang, "show_log": False},
-        {"use_angle_cls": True, "lang": lang},
+        {"lang": lang, "enable_mkldnn": False},
         {"lang": lang},
+        {"enable_mkldnn": False},
+        {},
     ]
     last_error: Exception | None = None
     for options in constructor_options:
@@ -256,8 +261,10 @@ def create_paddle_ocr(lang: str):
             ocr = paddle_ocr_class(**options)
             _PADDLE_OCR_CACHE[lang] = ocr
             return ocr
-        except (TypeError, ValueError) as exc:
-            if not is_constructor_argument_error(exc):
+        except (TypeError, ValueError, RuntimeError) as exc:
+            if isinstance(exc, RuntimeError) and "Unknown argument" not in str(exc):
+                raise
+            if isinstance(exc, (TypeError, ValueError)) and not is_constructor_argument_error(exc):
                 raise
             last_error = exc
     raise RuntimeError("Unable to create PaddleOCR with supported constructor options.") from last_error
@@ -266,12 +273,15 @@ def create_paddle_ocr(lang: str):
 def collect_ocr_text(value: Any) -> list[str]:
     lines: list[str] = []
     if isinstance(value, dict):
-        for key in ("rec_texts", "texts"):
+        for key in ("rec_texts", "texts", "rec_text"):
             field = value.get(key)
-            if isinstance(field, list):
+            if isinstance(field, str) and field.strip():
+                lines.append(field.strip())
+            elif isinstance(field, list):
                 lines.extend(str(item).strip() for item in field if str(item).strip())
         for field in value.values():
-            lines.extend(collect_ocr_text(field))
+            if isinstance(field, (dict, list, tuple)):
+                lines.extend(collect_ocr_text(field))
         return lines
     if isinstance(value, (list, tuple)):
         if (
@@ -301,11 +311,37 @@ def unique_preserving_order(lines: list[str]) -> list[str]:
 
 def paddle_ocr_text(input_path: Path, lang: str) -> str:
     ocr = create_paddle_ocr(lang)
+    result = _run_paddle_ocr(ocr, input_path)
+    if isinstance(result, list) and result and isinstance(result[0], str):
+        lines = result
+    else:
+        lines = collect_ocr_text(result)
+    return normalize_text("\n".join(unique_preserving_order(lines)))
+
+
+def _run_paddle_ocr(ocr: Any, input_path: Path) -> Any:
+    path_str = str(input_path)
+    if hasattr(ocr, "predict"):
+        try:
+            results = list(ocr.predict(path_str))
+            lines: list[str] = []
+            for res in results:
+                texts = None
+                if hasattr(res, "get"):
+                    texts = res.get("rec_texts")
+                elif hasattr(res, "rec_texts"):
+                    texts = res.rec_texts
+                if texts:
+                    lines.extend(str(t).strip() for t in texts if str(t).strip())
+                else:
+                    lines.extend(collect_ocr_text(res))
+            return lines if lines else results
+        except Exception:
+            pass
     try:
-        result = ocr.ocr(str(input_path), cls=True)
+        return ocr.ocr(path_str, cls=True)
     except TypeError:
-        result = ocr.ocr(str(input_path))
-    return normalize_text("\n".join(unique_preserving_order(collect_ocr_text(result))))
+        return ocr.ocr(path_str)
 
 
 def section_hints(text: str) -> list[str]:

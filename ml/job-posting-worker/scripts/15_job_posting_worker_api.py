@@ -12,7 +12,7 @@ import json
 import sys
 import tempfile
 from http import HTTPStatus
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
 from typing import Any
 
@@ -191,8 +191,18 @@ class WorkerHandler(BaseHTTPRequestHandler):
         sys.stderr.write("[job-posting-worker] " + (format % args) + "\n")
 
 
+def warmup_ocr() -> None:
+    try:
+        DOCUMENT.configure_ocr_cache_env()
+        DOCUMENT.create_paddle_ocr("korean")
+        print("PaddleOCR warmed up (korean)", flush=True)
+    except Exception as exc:
+        print(f"PaddleOCR warmup skipped: {exc}", flush=True)
+
+
 def run_server(host: str, port: int) -> None:
-    server = ThreadingHTTPServer((host, port), WorkerHandler)
+    warmup_ocr()
+    server = HTTPServer((host, port), WorkerHandler)
     print(f"job-posting-worker listening on http://{host}:{port}", flush=True)
     server.serve_forever()
 
