@@ -107,9 +107,7 @@ public class AdminApplicationCaseService {
     }
 
     private static void requireAdmin(AuthUser authUser) {
-        if (authUser == null || !"ADMIN".equals(authUser.role())) {
-            throw new BusinessException(ErrorCode.FORBIDDEN, "Admin role is required.");
-        }
+        com.careertuner.admin.common.AdminAccess.requireAdmin(authUser);
     }
 
     private static int normalizeLimit(int limit) {

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { RefreshCw, Search, ShieldCheck } from "lucide-react";
+import { ArrowUpDown, RefreshCw, Search, ShieldCheck } from "lucide-react";
 import AdminShell from "../../../components/AdminShell";
 import {
   AlertDialog,
@@ -27,6 +27,7 @@ import {
   searchSuperUsers,
   updateSuperAdminRole,
 } from "../api";
+import type { SuperSortParams } from "../api";
 import type {
   AdminAccountRow,
   AdminPermissionAuditRow,
@@ -61,6 +62,28 @@ const ROLE_GROUP_CODES: Record<string, string[]> = {
   SUPER_ADMIN: ["ADMIN_OPERATOR", "SECURITY_OPERATOR", "SUPER_ADMIN_GROUP"],
 };
 
+type SortDir = "ASC" | "DESC";
+
+interface SortOption {
+  value: string;
+  label: string;
+}
+
+const ACCOUNT_SORT_OPTIONS: SortOption[] = [
+  { value: "createdAt", label: "가입일" },
+  { value: "lastLoginAt", label: "최근 로그인" },
+  { value: "role", label: "역할" },
+  { value: "name", label: "이름" },
+  { value: "email", label: "이메일" },
+];
+
+const AUDIT_SORT_OPTIONS: SortOption[] = [
+  { value: "createdAt", label: "변경일" },
+  { value: "actionType", label: "액션" },
+  { value: "actorEmail", label: "처리자" },
+  { value: "targetEmail", label: "대상자" },
+];
+
 function formatDateTime(value: string | null | undefined): string {
   if (!value) return "-";
   const date = new Date(value);
@@ -74,6 +97,41 @@ function roleBadgeClass(roleValue: string): string {
   return "bg-slate-200 text-slate-700";
 }
 
+function SortControls({
+  options,
+  sortBy,
+  sortDir,
+  onChange,
+}: {
+  options: SortOption[];
+  sortBy: string;
+  sortDir: SortDir;
+  onChange: (sortBy: string, sortDir: SortDir) => void;
+}) {
+  return (
+    <div className="flex flex-wrap gap-2">
+      {options.map((option) => {
+        const active = sortBy === option.value;
+        const nextDir: SortDir = active && sortDir === "DESC" ? "ASC" : "DESC";
+        return (
+          <Button
+            key={option.value}
+            type="button"
+            size="sm"
+            variant={active ? "default" : "outline"}
+            className={active ? "bg-slate-900 text-white hover:bg-slate-800" : ""}
+            onClick={() => onChange(option.value, nextDir)}
+          >
+            <ArrowUpDown className="size-3" />
+            {option.label}
+            {active && <span className="text-[11px] opacity-80">{sortDir}</span>}
+          </Button>
+        );
+      })}
+    </div>
+  );
+}
+
 export function AdminSuperAdminPage() {
   const [admins, setAdmins] = useState<AdminAccountRow[]>([]);
   const [users, setUsers] = useState<AdminAccountRow[]>([]);
@@ -84,6 +142,12 @@ export function AdminSuperAdminPage() {
   const [detail, setDetail] = useState<AdminAccountRow | null>(null);
   const [keyword, setKeyword] = useState("");
   const [userKeyword, setUserKeyword] = useState("");
+  const [adminSortBy, setAdminSortBy] = useState("createdAt");
+  const [adminSortDir, setAdminSortDir] = useState<SortDir>("DESC");
+  const [userSortBy, setUserSortBy] = useState("createdAt");
+  const [userSortDir, setUserSortDir] = useState<SortDir>("DESC");
+  const [auditSortBy, setAuditSortBy] = useState("createdAt");
+  const [auditSortDir, setAuditSortDir] = useState<SortDir>("DESC");
   const [role, setRole] = useState("ADMIN");
   const [permissionCode, setPermissionCode] = useState("");
   const [groupCode, setGroupCode] = useState("");
@@ -102,6 +166,9 @@ export function AdminSuperAdminPage() {
   const visiblePermissions = permissions.filter((item) => item.active && allowedPermissionCodes.includes(item.permissionCode));
   const visibleGroups = groups.filter((item) => item.active && allowedGroupCodes.includes(item.groupCode));
   const selectedGroup = visibleGroups.find((item) => item.groupCode === groupCode) ?? null;
+  const adminSort = useMemo<SuperSortParams>(() => ({ sortBy: adminSortBy, sortDir: adminSortDir }), [adminSortBy, adminSortDir]);
+  const userSort = useMemo<SuperSortParams>(() => ({ sortBy: userSortBy, sortDir: userSortDir }), [userSortBy, userSortDir]);
+  const auditSort = useMemo<SuperSortParams>(() => ({ sortBy: auditSortBy, sortDir: auditSortDir }), [auditSortBy, auditSortDir]);
 
   const selectUser = (user: AdminAccountRow) => {
     selectedRef.current = user.id;
@@ -118,7 +185,7 @@ export function AdminSuperAdminPage() {
     setError(null);
     try {
       const [nextAdmins, nextPermissions, nextGroups] = await Promise.all([
-        getSuperAdmins(keyword),
+        getSuperAdmins(keyword, adminSort),
         getSuperPermissions(),
         getSuperGroups(),
       ]);
@@ -129,7 +196,7 @@ export function AdminSuperAdminPage() {
       const nextSelectedId = selectedRef.current ?? selectedId ?? nextAdmins[0]?.id ?? null;
       setSelectedId(nextSelectedId);
       if (nextSelectedId) {
-        const [nextDetail, nextAudit] = await Promise.all([getSuperAdminDetail(nextSelectedId), getSuperAudit(nextSelectedId)]);
+        const [nextDetail, nextAudit] = await Promise.all([getSuperAdminDetail(nextSelectedId), getSuperAudit(nextSelectedId, auditSort)]);
         setDetail(nextDetail);
         setAudit(nextAudit);
         setRole(nextDetail.role);
@@ -147,14 +214,14 @@ export function AdminSuperAdminPage() {
   const searchUsers = async () => {
     setError(null);
     try {
-      setUsers(await searchSuperUsers(userKeyword));
+      setUsers(await searchSuperUsers(userKeyword, userSort));
     } catch (requestError) {
       setError(requestError instanceof Error ? requestError.message : "사용자 검색에 실패했습니다.");
     }
   };
 
   const reloadDetail = async (userId: number) => {
-    const [nextDetail, nextAudit] = await Promise.all([getSuperAdminDetail(userId), getSuperAudit(userId)]);
+    const [nextDetail, nextAudit] = await Promise.all([getSuperAdminDetail(userId), getSuperAudit(userId, auditSort)]);
     selectedRef.current = userId;
     setSelectedId(userId);
     setDetail(nextDetail);
@@ -164,7 +231,19 @@ export function AdminSuperAdminPage() {
 
   useEffect(() => {
     void load();
-  }, []);
+  }, [adminSortBy, adminSortDir]);
+
+  useEffect(() => {
+    if (users.length > 0) {
+      void searchUsers();
+    }
+  }, [userSortBy, userSortDir]);
+
+  useEffect(() => {
+    if (selectedId) {
+      void reloadDetail(selectedId);
+    }
+  }, [auditSortBy, auditSortDir]);
 
   useEffect(() => {
     if (!allowedPermissionCodes.includes(permissionCode)) setPermissionCode("");
@@ -182,7 +261,7 @@ export function AdminSuperAdminPage() {
       setSuccessModalText(doneMessage);
       setSuccessModalOpen(true);
       await reloadDetail(updated.id);
-      const nextAdmins = await getSuperAdmins(keyword);
+      const nextAdmins = await getSuperAdmins(keyword, adminSort);
       setAdmins(nextAdmins);
       setReason("");
     } catch (requestError) {
@@ -217,6 +296,18 @@ export function AdminSuperAdminPage() {
               <Button className="w-full bg-blue-600 text-white hover:bg-blue-700" onClick={() => void load()}>
                 관리자 검색
               </Button>
+              <div className="space-y-2">
+                <div className="text-xs font-semibold text-slate-500">관리자 목록 정렬</div>
+                <SortControls
+                  options={ACCOUNT_SORT_OPTIONS}
+                  sortBy={adminSortBy}
+                  sortDir={adminSortDir}
+                  onChange={(nextSortBy, nextSortDir) => {
+                    setAdminSortBy(nextSortBy);
+                    setAdminSortDir(nextSortDir);
+                  }}
+                />
+              </div>
             </CardContent>
           </Card>
 
@@ -254,6 +345,18 @@ export function AdminSuperAdminPage() {
               <div className="flex flex-col gap-2 md:flex-row">
                 <Input value={userKeyword} onChange={(event) => setUserKeyword(event.target.value)} placeholder="일반 사용자 이메일/이름 검색" />
                 <Button variant="outline" onClick={() => void searchUsers()}>사용자 검색</Button>
+              </div>
+              <div className="space-y-2">
+                <div className="text-xs font-semibold text-slate-500">사용자 검색 결과 정렬</div>
+                <SortControls
+                  options={ACCOUNT_SORT_OPTIONS}
+                  sortBy={userSortBy}
+                  sortDir={userSortDir}
+                  onChange={(nextSortBy, nextSortDir) => {
+                    setUserSortBy(nextSortBy);
+                    setUserSortDir(nextSortDir);
+                  }}
+                />
               </div>
               {users.length > 0 && (
                 <div className="grid gap-2 md:grid-cols-2">
@@ -388,7 +491,18 @@ export function AdminSuperAdminPage() {
           )}
 
           <Card className="border-slate-200 bg-card">
-            <CardHeader><CardTitle className="text-base">권한 변경 이력</CardTitle></CardHeader>
+            <CardHeader className="space-y-3">
+              <CardTitle className="text-base">권한 변경 이력</CardTitle>
+              <SortControls
+                options={AUDIT_SORT_OPTIONS}
+                sortBy={auditSortBy}
+                sortDir={auditSortDir}
+                onChange={(nextSortBy, nextSortDir) => {
+                  setAuditSortBy(nextSortBy);
+                  setAuditSortDir(nextSortDir);
+                }}
+              />
+            </CardHeader>
             <CardContent className="space-y-2">
               {audit.map((item) => (
                 <div key={item.id} className="rounded-lg border border-slate-100 p-3 text-sm">

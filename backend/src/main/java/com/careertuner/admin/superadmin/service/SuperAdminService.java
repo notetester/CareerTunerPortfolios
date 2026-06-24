@@ -39,22 +39,41 @@ public class SuperAdminService {
             "ADMIN", List.of("ADMIN_OPERATOR", "SECURITY_OPERATOR"),
             "SUPER_ADMIN", List.of("ADMIN_OPERATOR", "SECURITY_OPERATOR", "SUPER_ADMIN_GROUP")
     );
+    private static final Map<String, String> ACCOUNT_SORT_COLUMNS = Map.of(
+            "id", "id",
+            "email", "email",
+            "name", "name",
+            "role", "role",
+            "status", "status",
+            "lastLoginAt", "last_login_at",
+            "createdAt", "created_at"
+    );
+    private static final Map<String, String> AUDIT_SORT_COLUMNS = Map.of(
+            "createdAt", "a.created_at",
+            "actionType", "a.action_type",
+            "actorEmail", "actor.email",
+            "targetEmail", "target.email",
+            "permissionCode", "a.permission_code",
+            "groupCode", "a.group_code"
+    );
 
     private final SuperAdminMapper mapper;
     private final AdminActionLogService actionLogService;
 
     @Transactional(readOnly = true)
-    public List<AdminAccountRow> admins(AuthUser authUser, String keyword, int limit) {
+    public List<AdminAccountRow> admins(AuthUser authUser, String keyword, String sortBy, String sortDir, int limit) {
         AdminAccess.requireSuperAdmin(authUser);
-        List<AdminAccountRow> rows = mapper.findAdmins(blankToNull(keyword), normalizeLimit(limit));
+        List<AdminAccountRow> rows = mapper.findAdmins(blankToNull(keyword), normalizeAccountSortColumn(sortBy),
+                normalizeSortDir(sortDir), normalizeLimit(limit));
         rows.forEach(this::hydrateAssignments);
         return rows;
     }
 
     @Transactional(readOnly = true)
-    public List<AdminAccountRow> searchUsers(AuthUser authUser, String keyword, int limit) {
+    public List<AdminAccountRow> searchUsers(AuthUser authUser, String keyword, String sortBy, String sortDir, int limit) {
         AdminAccess.requireSuperAdmin(authUser);
-        return mapper.searchUsers(blankToNull(keyword), normalizeLimit(limit));
+        return mapper.searchUsers(blankToNull(keyword), normalizeAccountSortColumn(sortBy),
+                normalizeSortDir(sortDir), normalizeLimit(limit));
     }
 
     @Transactional(readOnly = true)
@@ -80,9 +99,9 @@ public class SuperAdminService {
     }
 
     @Transactional(readOnly = true)
-    public List<AdminPermissionAuditRow> audit(AuthUser authUser, Long userId, int limit) {
+    public List<AdminPermissionAuditRow> audit(AuthUser authUser, Long userId, String sortBy, String sortDir, int limit) {
         AdminAccess.requireSuperAdmin(authUser);
-        return mapper.findAudit(userId, normalizeLimit(limit));
+        return mapper.findAudit(userId, normalizeAuditSortColumn(sortBy), normalizeSortDir(sortDir), normalizeLimit(limit));
     }
 
     @Transactional
@@ -283,6 +302,20 @@ public class SuperAdminService {
             return 100;
         }
         return Math.min(limit, 300);
+    }
+
+    private static String normalizeAccountSortColumn(String sortBy) {
+        String normalized = blankToNull(sortBy);
+        return normalized == null ? "created_at" : ACCOUNT_SORT_COLUMNS.getOrDefault(normalized, "created_at");
+    }
+
+    private static String normalizeAuditSortColumn(String sortBy) {
+        String normalized = blankToNull(sortBy);
+        return normalized == null ? "a.created_at" : AUDIT_SORT_COLUMNS.getOrDefault(normalized, "a.created_at");
+    }
+
+    private static String normalizeSortDir(String sortDir) {
+        return "ASC".equalsIgnoreCase(blankToNull(sortDir)) ? "ASC" : "DESC";
     }
 
     private static String blankToNull(String value) {

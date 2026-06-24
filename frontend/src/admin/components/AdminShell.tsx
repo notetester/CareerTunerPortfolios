@@ -9,6 +9,7 @@ import {
   ShieldCheck, History,
   type LucideIcon,
 } from "lucide-react";
+import { useAuth } from "@/app/auth/AuthContext";
 import "./admin-shell.css";
 
 interface NavItem {
@@ -50,6 +51,8 @@ const NAV: NavItem[] = [
   { key: "logs", label: "시스템 로그", icon: ScrollText, href: "/admin/logs" },
 ];
 
+const SUPER_ADMIN_ONLY_NAV_KEYS = new Set(["super-admin", "policies", "action-logs"]);
+
 interface AdminShellProps {
   active: string;
   breadcrumb: string;
@@ -70,6 +73,13 @@ export default function AdminShell({
   children,
 }: AdminShellProps) {
   const location = useLocation();
+  const { user } = useAuth();
+  const role = user?.role;
+  const canUseAdmin = role === "ADMIN" || role === "SUPER_ADMIN";
+  const canUseCurrentPage = canUseAdmin && (role === "SUPER_ADMIN" || !SUPER_ADMIN_ONLY_NAV_KEYS.has(active));
+  const visibleNavItems = canUseAdmin
+    ? NAV.filter((item) => role === "SUPER_ADMIN" || !SUPER_ADMIN_ONLY_NAV_KEYS.has(item.key))
+    : [];
 
   return (
     <div className="adm">
@@ -82,7 +92,7 @@ export default function AdminShell({
         </div>
 
         <nav className="adm__nav">
-          {NAV.map((item) => {
+          {visibleNavItems.map((item) => {
             const isActive = item.key === active || location.pathname === item.href;
             return (
               <Link
@@ -133,7 +143,15 @@ export default function AdminShell({
             </div>
           </div>
 
-          {children}
+          {canUseCurrentPage ? (
+            children
+          ) : (
+            <section className="rounded-lg border border-slate-200 bg-white p-6 text-sm text-slate-600 shadow-sm">
+              {canUseAdmin
+                ? "슈퍼 관리자 권한이 필요한 메뉴입니다."
+                : "관리자 권한이 필요합니다. 관리자 계정으로 로그인한 뒤 다시 접근해 주세요."}
+            </section>
+          )}
         </div>
       </div>
     </div>

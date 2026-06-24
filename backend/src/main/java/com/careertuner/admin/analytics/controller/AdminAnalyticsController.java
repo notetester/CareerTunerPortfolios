@@ -15,6 +15,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+import com.careertuner.admin.common.AdminAccess;
 import com.careertuner.admin.analytics.dto.AdminAnalysisFailureResponse;
 import com.careertuner.admin.analytics.dto.AdminAnalyticsSummaryResponse;
 import com.careertuner.admin.analytics.dto.AdminCareerAnalysisRunResponse;
@@ -23,8 +24,6 @@ import com.careertuner.admin.analytics.dto.AdminCareerRunMemoResponse;
 import com.careertuner.admin.analytics.dto.AdminQualityFlagResponse;
 import com.careertuner.admin.analytics.dto.AdminUserTimelineResponse;
 import com.careertuner.admin.analytics.service.AdminAnalyticsService;
-import com.careertuner.common.exception.BusinessException;
-import com.careertuner.common.exception.ErrorCode;
 import com.careertuner.common.security.AuthUser;
 import com.careertuner.common.web.ApiResponse;
 
@@ -116,8 +115,6 @@ public class AdminAnalyticsController {
     }
 
     private static void requireAdmin(AuthUser authUser) {
-        if (!"ADMIN".equals(authUser.role())) {
-            throw new BusinessException(ErrorCode.FORBIDDEN, "관리자만 접근할 수 있습니다.");
-        }
+        AdminAccess.requireAdmin(authUser);
     }
 }
