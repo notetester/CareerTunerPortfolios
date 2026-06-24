@@ -1,0 +1,86 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.careertuner.admin.chatbot.mapper.AdminChatbotResponseLogMapper">
+
+    <!-- 기간 집계: 전 턴 수(분모)/FAQ 근거 응답 수(자동해결 분자)/전환 수. created_at ∈ [from, toExclusive). -->
+    <select id="aggregate" resultType="com.careertuner.admin.chatbot.dto.ResponseLogAggregate">
+        SELECT COUNT(*)                       AS total,
+               COALESCE(SUM(faq_referenced),0) AS answered,
+               COALESCE(SUM(handoff),0)        AS handoffs
+          FROM chatbot_response_log
+         WHERE created_at &gt;= #{from}
+           AND created_at &lt; #{toExclusive}
+    </select>
+
+    <!-- 일자별 집계(스파크라인). 별칭 date 는 예약어 → 백틱. 데이터 있는 날만 반환. -->
+    <select id="daily" resultType="com.careertuner.admin.chatbot.dto.ResponseLogDailyPoint">
+        SELECT DATE(created_at)                AS `date`,
+               COALESCE(SUM(faq_referenced),0) AS answered,
+               COALESCE(SUM(handoff),0)        AS handoffs
+          FROM chatbot_response_log
+         WHERE created_at &gt;= #{from}
+           AND created_at &lt; #{toExclusive}
+         GROUP BY DATE(created_at)
+         ORDER BY `date`
+    </select>
+
+    <!-- 답한 대화(faq_referenced=1) 페이지 행 + 인용 FAQ 질문 LEFT JOIN(미시드/삭제여도 안전). 최신순. -->
+    <select id="findReferences" resultType="com.careertuner.admin.chatbot.dto.ChatbotReferenceRow">
+        SELECT r.created_at     AS createdAt,
+               r.question       AS question,
+               f.question       AS faqQuestion,
+               r.top_similarity AS similarity,
+               r.handoff        AS handoff
+          FROM chatbot_response_log r
+          LEFT JOIN faq f ON f.id = r.matched_faq_id
+         WHERE r.faq_referenced = 1
+           AND r.created_at &gt;= #{from}
+           AND r.created_at &lt; #{toExclusive}
+         ORDER BY r.created_at DESC
+         LIMIT #{size} OFFSET #{offset}
+    </select>
+
+    <!-- 답한 대화 전체 건수(페이지 total). -->
+    <select id="countReferences" resultType="long">
+        SELECT COUNT(*)
+          FROM chatbot_response_log
+         WHERE faq_referenced = 1
+           AND created_at &gt;= #{from}
+           AND created_at &lt; #{toExclusive}
+    </select>
+
+    <!-- ── F2 임계값 미리보기(읽기 전용) — 전체 top_similarity 분포 대상(날짜 무관) ── -->
+
+    <!-- 분모: top_similarity 가 기록된 전 턴 수. -->
+    <select id="countWithSimilarity" resultType="long">
+        SELECT COUNT(*)
+          FROM chatbot_response_log
+         WHERE top_similarity IS NOT NULL
+    </select>
+
+    <!-- 분자: 후보 임계 미만인 턴 수(=이 임계라면 공백). -->
+    <select id="countBelowThreshold" resultType="long">
+        SELECT COUNT(*)
+          FROM chatbot_response_log
+         WHERE top_similarity IS NOT NULL
+           AND top_similarity &lt; #{threshold}
+    </select>
+
+    <!-- 히스토그램 raw: 0.05 폭 버킷 인덱스별 턴 수. 그릴 구간 [0.30,0.95) 만.
+         버킷식은 정수(센트) 산술 FLOOR(ROUND(top_similarity*100)/5) — 부동소수 나눗셈(FLOOR(sim/0.05))은
+         0.05 정확한 배수(0.30/0.35/0.60/0.70/0.95 …)를 IEEE-754 오차로 한 버킷 아래로 밀어 경계값이 새므로 금지.
+         정수식은 0.30→6, 0.35→7, 0.60→12, 0.70→14, 0.78→15 로 서비스 buildHistogram 인덱스와 정확히 일치한다.
+         빈 버킷은 서비스에서 0 으로 채워 연속 막대로 만든다. -->
+    <select id="similarityHistogram" resultType="com.careertuner.admin.chatbot.dto.ThresholdHistogramRow">
+        SELECT FLOOR(ROUND(top_similarity * 100) / 5) AS bucket,
+               COUNT(*)                               AS count
+          FROM chatbot_response_log
+         WHERE top_similarity IS NOT NULL
+           AND top_similarity &gt;= 0.30
+           AND top_similarity &lt; 0.95
+         GROUP BY FLOOR(ROUND(top_similarity * 100) / 5)
+         ORDER BY bucket
+    </select>
+
+</mapper>

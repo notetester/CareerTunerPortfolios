@@ -1,0 +1,207 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.careertuner.admin.superadmin.mapper.SuperAdminMapper">
+
+    <sql id="adminUserColumns">
+        id, email, name, role, status, last_login_at, created_at
+    </sql>
+
+    <select id="findAdmins" resultType="com.careertuner.admin.superadmin.dto.AdminAccountRow">
+        SELECT <include refid="adminUserColumns"/>
+        FROM users
+        WHERE role IN ('ADMIN', 'SUPER_ADMIN')
+        <if test="keyword != null">
+            AND (email LIKE CONCAT('%', #{keyword}, '%') OR name LIKE CONCAT('%', #{keyword}, '%'))
+        </if>
+        ORDER BY role DESC, created_at DESC
+        LIMIT #{limit}
+    </select>
+
+    <select id="findAdmin" resultType="com.careertuner.admin.superadmin.dto.AdminAccountRow">
+        SELECT <include refid="adminUserColumns"/>
+        FROM users
+        WHERE id = #{userId}
+    </select>
+
+    <select id="searchUsers" resultType="com.careertuner.admin.superadmin.dto.AdminAccountRow">
+        SELECT <include refid="adminUserColumns"/>
+        FROM users
+        WHERE 1 = 1
+        <if test="keyword != null">
+            AND (email LIKE CONCAT('%', #{keyword}, '%') OR name LIKE CONCAT('%', #{keyword}, '%'))
+        </if>
+        ORDER BY created_at DESC
+        LIMIT #{limit}
+    </select>
+
+    <select id="findPermissions" resultType="com.careertuner.admin.superadmin.dto.AdminPermissionPolicyRow">
+        SELECT permission_code, display_name, description, active, created_at, updated_at
+        FROM admin_permission_policy
+        ORDER BY permission_code
+    </select>
+
+    <select id="findGroups" resultType="com.careertuner.admin.superadmin.dto.AdminPermissionGroupRow">
+        SELECT g.group_code, g.display_name, g.description, g.active, g.created_at, g.updated_at,
+               COUNT(i.id) AS item_count
+        FROM admin_permission_group g
+        LEFT JOIN admin_permission_group_item i ON i.group_code = g.group_code
+        GROUP BY g.group_code, g.display_name, g.description, g.active, g.created_at, g.updated_at
+        ORDER BY g.group_code
+    </select>
+
+    <select id="findGroupPermissions" resultType="com.careertuner.admin.superadmin.dto.AdminPermissionPolicyRow">
+        SELECT p.permission_code, p.display_name, p.description, p.active, p.created_at, p.updated_at
+        FROM admin_permission_group_item i
+        JOIN admin_permission_policy p ON p.permission_code = i.permission_code
+        WHERE i.group_code = #{groupCode}
+        ORDER BY p.permission_code
+    </select>
+
+    <select id="findUserPermissions" resultType="com.careertuner.admin.superadmin.dto.AdminPermissionAssignmentRow">
+        SELECT p.id, p.user_id, p.permission_code, policy.display_name, p.granted_by, p.granted_at
+        FROM admin_user_permission p
+        JOIN admin_permission_policy policy ON policy.permission_code = p.permission_code
+        WHERE p.user_id = #{userId} AND p.revoked_at IS NULL
+        ORDER BY p.granted_at DESC
+    </select>
+
+    <select id="findUserGroups" resultType="com.careertuner.admin.superadmin.dto.AdminGroupAssignmentRow">
+        SELECT g.id, g.user_id, g.group_code, policy.display_name, g.granted_by, g.granted_at
+        FROM admin_user_group g
+        JOIN admin_permission_group policy ON policy.group_code = g.group_code
+        WHERE g.user_id = #{userId} AND g.revoked_at IS NULL
+        ORDER BY g.granted_at DESC
+    </select>
+
+    <select id="findAudit" resultType="com.careertuner.admin.superadmin.dto.AdminPermissionAuditRow">
+        SELECT a.id, a.actor_user_id, actor.email AS actor_email,
+               a.target_user_id, target.email AS target_email,
+               a.action_type, a.permission_code, a.group_code, a.reason, a.created_at
+        FROM admin_permission_audit a
+        LEFT JOIN users actor ON actor.id = a.actor_user_id
+        LEFT JOIN users target ON target.id = a.target_user_id
+        <where>
+            <if test="userId != null">
+                a.target_user_id = #{userId}
+            </if>
+        </where>
+        ORDER BY a.created_at DESC, a.id DESC
+        LIMIT #{limit}
+    </select>
+
+    <update id="updateRole">
+        UPDATE users SET role = #{role}, updated_at = NOW() WHERE id = #{userId}
+    </update>
+
+    <insert id="insertPermission">
+        INSERT INTO admin_permission_policy (permission_code, display_name, description, created_by, updated_by)
+        VALUES (#{code}, #{displayName}, #{description}, #{actorId}, #{actorId})
+    </insert>
+
+    <update id="togglePermission">
+        UPDATE admin_permission_policy
+        SET active = #{active}, updated_by = #{actorId}
+        WHERE permission_code = #{code}
+    </update>
+
+    <insert id="insertGroup">
+        INSERT INTO admin_permission_group (group_code, display_name, description, created_by, updated_by)
+        VALUES (#{code}, #{displayName}, #{description}, #{actorId}, #{actorId})
+    </insert>
+
+    <update id="toggleGroup">
+        UPDATE admin_permission_group
+        SET active = #{active}, updated_by = #{actorId}
+        WHERE group_code = #{code}
+    </update>
+
+    <insert id="addGroupItem">
+        INSERT IGNORE INTO admin_permission_group_item (group_code, permission_code, created_by)
+        VALUES (#{groupCode}, #{permissionCode}, #{actorId})
+    </insert>
+
+    <delete id="removeGroupItem">
+        DELETE FROM admin_permission_group_item
+        WHERE group_code = #{groupCode} AND permission_code = #{permissionCode}
+    </delete>
+
+    <insert id="grantPermission">
+        INSERT INTO admin_user_permission (user_id, permission_code, granted_by)
+        SELECT #{userId}, #{permissionCode}, #{actorId}
+        WHERE NOT EXISTS (
+            SELECT 1
+            FROM admin_user_permission
+            WHERE user_id = #{userId}
+              AND permission_code = #{permissionCode}
+              AND revoked_at IS NULL
+        )
+    </insert>
+
+    <update id="revokePermission">
+        UPDATE admin_user_permission
+        SET revoked_at = COALESCE(revoked_at, NOW())
+        WHERE user_id = #{userId} AND permission_code = #{permissionCode} AND revoked_at IS NULL
+    </update>
+
+    <update id="revokeAllPermissionsForUser">
+        UPDATE admin_user_permission
+        SET revoked_at = COALESCE(revoked_at, NOW())
+        WHERE user_id = #{userId} AND revoked_at IS NULL
+    </update>
+
+    <update id="revokePermissionsNotIn">
+        UPDATE admin_user_permission
+        SET revoked_at = COALESCE(revoked_at, NOW())
+        WHERE user_id = #{userId}
+          AND revoked_at IS NULL
+          AND permission_code NOT IN
+          <foreach collection="permissionCodes" item="permissionCode" open="(" separator="," close=")">
+              #{permissionCode}
+          </foreach>
+    </update>
+
+    <insert id="assignGroup">
+        INSERT INTO admin_user_group (user_id, group_code, granted_by)
+        SELECT #{userId}, #{groupCode}, #{actorId}
+        WHERE NOT EXISTS (
+            SELECT 1
+            FROM admin_user_group
+            WHERE user_id = #{userId}
+              AND group_code = #{groupCode}
+              AND revoked_at IS NULL
+        )
+    </insert>
+
+    <update id="revokeGroup">
+        UPDATE admin_user_group
+        SET revoked_at = COALESCE(revoked_at, NOW())
+        WHERE user_id = #{userId} AND group_code = #{groupCode} AND revoked_at IS NULL
+    </update>
+
+    <update id="revokeAllGroupsForUser">
+        UPDATE admin_user_group
+        SET revoked_at = COALESCE(revoked_at, NOW())
+        WHERE user_id = #{userId} AND revoked_at IS NULL
+    </update>
+
+    <update id="revokeGroupsNotIn">
+        UPDATE admin_user_group
+        SET revoked_at = COALESCE(revoked_at, NOW())
+        WHERE user_id = #{userId}
+          AND revoked_at IS NULL
+          AND group_code NOT IN
+          <foreach collection="groupCodes" item="groupCode" open="(" separator="," close=")">
+              #{groupCode}
+          </foreach>
+    </update>
+
+    <insert id="insertAudit">
+        INSERT INTO admin_permission_audit (
+            actor_user_id, target_user_id, action_type, permission_code, group_code, reason
+        )
+        VALUES (
+            #{actorId}, #{targetUserId}, #{actionType}, #{permissionCode}, #{groupCode}, #{reason}
+        )
+    </insert>
+</mapper>

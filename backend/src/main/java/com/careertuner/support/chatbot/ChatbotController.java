@@ -52,6 +52,7 @@ public class ChatbotController {
     private final ChatbotService chatbotService;
     private final FastPathService fastPathService;
     private final UnansweredQuestionService unansweredQuestionService;
+    private final ResponseLogService responseLogService;
 
     public ChatbotController(CommunityChatAgent agent,
                             QuickReplyAgent quickReplyAgent,
@@ -59,7 +60,8 @@ public class ChatbotController {
                             MyBatisChatMemoryStore memoryStore,
                             ChatbotService chatbotService,
                             FastPathService fastPathService,
-                            UnansweredQuestionService unansweredQuestionService) {
+                            UnansweredQuestionService unansweredQuestionService,
+                            ResponseLogService responseLogService) {
         this.agent = agent;
         this.quickReplyAgent = quickReplyAgent;
         this.searchTrace = searchTrace;
@@ -67,6 +69,7 @@ public class ChatbotController {
         this.chatbotService = chatbotService;
         this.fastPathService = fastPathService;
         this.unansweredQuestionService = unansweredQuestionService;
+        this.responseLogService = responseLogService;
     }
 
     /**
@@ -90,6 +93,9 @@ public class ChatbotController {
         Optional<ChatResponse> fast = fastPathService.tryFastPath(req.question());
         if (fast.isPresent()) {
             ChatResponse fr = fast.get();
+            // best-effort 적재(응답 경로 NAV_FAST). FAQ 근거 없음·전환 없음.
+            responseLogService.record(conversationId, userId, req.question(),
+                    "NAV_FAST", false, null, null, false);
             return ApiResponse.ok(new ChatAskResponse(
                     conversationId, fr.message(), fr.links(), fr.quickReplies()));
         }
@@ -109,6 +115,11 @@ public class ChatbotController {
 
             // quickReplies: 보조 기능 → 2차 호출이 실패해도 핵심(message+links)은 정상 반환.
             List<String> quickReplies = suggestQuickReplies(req.question(), message);
+
+            // best-effort 적재(AGENT). FAQ 근거 여부 = 이번 턴 searchFaq 링크 존재(finally clear 전에 읽음).
+            // 유사도/매칭 id 는 에이전트 경로에서 저렴히 없어 null(한계). 전환 없음.
+            responseLogService.record(conversationId, userId, req.question(),
+                    "AGENT", !searchTrace.faqLinks().isEmpty(), null, null, false);
 
             return ApiResponse.ok(new ChatAskResponse(conversationId, message, links, quickReplies));
         } catch (Exception e) {
@@ -182,6 +193,10 @@ public class ChatbotController {
                                 h.linkLabel() != null && !h.linkLabel().isBlank() ? h.linkLabel() : h.question(),
                                 h.linkUrl()))
                         .collect(Collectors.toList());
+                // best-effort 적재(FAQ_FAST 답함=자동 해결). 유사도/매칭 id 는 hot-path 에
+                // 저렴히 없어 null(한계). 전환 없음.
+                responseLogService.record(conversationId, userId, question,
+                        "FAQ_FAST", true, null, null, false);
                 return new ChatAskResponse(conversationId, hits.get(0).answer(), links, List.of());
             }
             // 빈 결과 = FAQ 공백 후보. 운영 패널 수집(부수효과) — 단 인프라 장애는 미스로 오기록 금지.
@@ -213,6 +228,9 @@ public class ChatbotController {
         }
         unansweredQuestionService.record(question, miss.topSimilarity(), miss.embeddingJson(),
                 miss.bestFaqId(), userId, conversationId);
+        // best-effort 적재(FAQ_FAST 미스=답 못함). 임계 미달 최고 유사도로 슬라이더 미리보기 분포에 기여.
+        responseLogService.record(conversationId, userId, question,
+                "FAQ_FAST", false, miss.topSimilarity(), null, false);
     }
 
     /**
