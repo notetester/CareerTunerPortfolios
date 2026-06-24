@@ -22,14 +22,6 @@ public class FastPathService {
     private static final List<String> EXCLUSIONS = List.of(
             "후기", "추천", "찾", "작성", "어떻게", "방법", "왜", "비교", "알려", "설명", "차이", "어떤");
 
-    /** 명백한 FAQ 전용 키워드(좁게). 포함되면 모델 판단 없이 코드가 searchFaq 를 직접 태운다. */
-    private static final List<String> FAQ_KEYWORDS = List.of(
-            "환불", "돈돌려", "결제취소", "탈퇴", "회원가입", "가입", "로그인", "비밀번호", "결제", "포인트충전", "신고");
-
-    /** 과매칭 가드: 이 단어가 있으면 커뮤니티 질문으로 보고 FAQ fast-path 적용 안 함(모델로). */
-    private static final List<String> FAQ_COMMUNITY_GUARD = List.of(
-            "후기", "추천", "면접", "자소서", "자기소개서", "글", "커뮤니티");
-
     /** 내비 단서 (목적지 키워드와 함께 있으면 이동 의도로 본다). */
     private static final List<String> NAV_CUES = List.of(
             "어디", "가기", "가고", "이동", "페이지", "바로", "열어", "보여", "보기", "가줘", "가는", "메뉴", "링크");
@@ -82,20 +74,5 @@ public class FastPathService {
             }
         }
         return Optional.empty();
-    }
-
-    /**
-     * 명백한 FAQ 전용 키워드가 있으면 true → 컨트롤러가 모델 판단 없이 searchFaq 를 직접 태운다.
-     * 단 커뮤니티 신호(후기/면접/추천 등)가 섞이면 false(모델로) — over-grounding 부활 방지.
-     */
-    public boolean isFaqIntent(String question) {
-        if (question == null || question.isBlank()) {
-            return false;
-        }
-        String norm = question.trim().toLowerCase().replace(" ", "");
-        if (FAQ_COMMUNITY_GUARD.stream().anyMatch(norm::contains)) {
-            return false;
-        }
-        return FAQ_KEYWORDS.stream().anyMatch(norm::contains);
     }
 }

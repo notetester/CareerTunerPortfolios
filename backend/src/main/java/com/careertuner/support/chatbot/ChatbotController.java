@@ -53,6 +53,7 @@ public class ChatbotController {
     private final FastPathService fastPathService;
     private final UnansweredQuestionService unansweredQuestionService;
     private final ResponseLogService responseLogService;
+    private final ChatbotProperties chatbotProperties;
 
     public ChatbotController(CommunityChatAgent agent,
                             QuickReplyAgent quickReplyAgent,
@@ -61,7 +62,8 @@ public class ChatbotController {
                             ChatbotService chatbotService,
                             FastPathService fastPathService,
                             UnansweredQuestionService unansweredQuestionService,
-                            ResponseLogService responseLogService) {
+                            ResponseLogService responseLogService,
+                            ChatbotProperties chatbotProperties) {
         this.agent = agent;
         this.quickReplyAgent = quickReplyAgent;
         this.searchTrace = searchTrace;
@@ -70,6 +72,7 @@ public class ChatbotController {
         this.fastPathService = fastPathService;
         this.unansweredQuestionService = unansweredQuestionService;
         this.responseLogService = responseLogService;
+        this.chatbotProperties = chatbotProperties;
     }
 
     /**
@@ -100,13 +103,29 @@ public class ChatbotController {
                     conversationId, fr.message(), fr.links(), fr.quickReplies()));
         }
 
-        // FAQ fast-path: 명백한 FAQ 키워드는 모델 판단을 거치지 않고 코드가 직접 searchFaq 를 태운다.
-        if (fastPathService.isFaqIntent(req.question())) {
-            return ApiResponse.ok(faqFastPath(conversationId, req.question(), userId));
+        // FAQ 임베딩 게이트: 질문 원문 임베딩 1회로 top-1 FAQ 코사인 점수를 보고 결정적으로 분기한다.
+        // (키워드 isFaqIntent 대체 — LLM 을 FAQ 판정 경로에서 빼서 검색어 재생성 flip 비결정성을 구조적으로 제거.)
+        List<FaqHit> faqHits = chatbotService.searchFaqHits(req.question());
+        double faqGate = chatbotProperties.getFaqGateThreshold();
+        if (!faqHits.isEmpty() && faqHits.get(0).score() >= faqGate) {
+            return ApiResponse.ok(faqAnswerFrom(conversationId, req.question(), userId, faqHits));
         }
 
         searchTrace.clear();
         try {
+            // 게이트 미달 → 에이전트(커뮤니티/복합). 원문 raw top-1 로 운영 FAQ공백 수집을 보존한다.
+            ChatbotService.FaqMiss miss = null;
+            try {
+                miss = chatbotService.analyzeMiss(req.question());
+            } catch (Exception e) {
+                // 임베딩/Ollama 이상 → FAQ 공백 수집만 스킵(챗봇 응답엔 무관).
+                log.debug("미스 분석 스킵(임베딩/Ollama 이상): {}", e.getMessage());
+            }
+            if (miss != null) {
+                unansweredQuestionService.record(req.question(), miss.topSimilarity(),
+                        miss.embeddingJson(), miss.bestFaqId(), userId, conversationId);
+            }
+
             // 에이전트는 String 반환(툴 정상 동작). 메시지는 자유 생성 → 마크다운 잔재 평문화.
             String message = MessageSanitizer.stripMarkdown(agent.chat(conversationId, req.question()));
 
@@ -117,9 +136,10 @@ public class ChatbotController {
             List<String> quickReplies = suggestQuickReplies(req.question(), message);
 
             // best-effort 적재(AGENT). FAQ 근거 여부 = 이번 턴 searchFaq 링크 존재(finally clear 전에 읽음).
-            // 유사도/매칭 id 는 에이전트 경로에서 저렴히 없어 null(한계). 전환 없음.
+            // 유사도 = 게이트 산출 원문 raw top-1(없으면 null). 전환 없음.
             responseLogService.record(conversationId, userId, req.question(),
-                    "AGENT", !searchTrace.faqLinks().isEmpty(), null, null, false);
+                    "AGENT", !searchTrace.faqLinks().isEmpty(),
+                    miss != null ? miss.topSimilarity() : null, null, false);
 
             return ApiResponse.ok(new ChatAskResponse(conversationId, message, links, quickReplies));
         } catch (Exception e) {
@@ -176,39 +196,25 @@ public class ChatbotController {
     }
 
     /**
-     * FAQ fast-path: 모델·툴판단을 우회하고 코드가 직접 searchFaqHits 를 태워 응답을 구성한다.
-     * 매칭 있으면 최상위 FAQ 답 + FAQ 링크(DB 출처라 신뢰), 없으면 정중히 1:1 문의 안내.
-     * 이 턴은 대화 메모리에 기록하지 않는다(FAQ 답은 자기완결적).
+     * 임베딩 게이트를 통과한 FAQ 매칭으로 즉답을 구성한다(에이전트·모델 우회 = 결정적 FAQ 경로).
+     * 트리거만 임베딩 게이트로 바뀌고, 답변/링크 접지 포맷은 기존 FAQ fast-path 로직을 그대로 재사용한다.
+     * hits 는 호출부가 게이트 판정에 쓴 것을 재사용 — 재검색(2회 임베딩) 없이 같은 임베딩 결과를 공유한다.
+     * 질문과 직접 관련된 최상위 1건의 링크만 노출(연관 FAQ 링크 나열 금지). 이 턴은 대화 메모리에 기록하지 않는다.
      */
-    private ChatAskResponse faqFastPath(Long conversationId, String question, Long userId) {
-        try {
-            List<FaqHit> hits = chatbotService.searchFaqHits(question);
-            if (!hits.isEmpty()) {
-                // 질문과 직접 관련된 최상위 1건의 링크만 노출(연관 FAQ 링크 나열 금지).
-                // 유사도 desc 정렬이므로 linkUrl 있는 첫 hit 1건만.
-                List<SiteLink> links = hits.stream()
-                        .filter(h -> h.linkUrl() != null && !h.linkUrl().isBlank())
-                        .limit(1)
-                        .map(h -> new SiteLink(
-                                h.linkLabel() != null && !h.linkLabel().isBlank() ? h.linkLabel() : h.question(),
-                                h.linkUrl()))
-                        .collect(Collectors.toList());
-                // best-effort 적재(FAQ_FAST 답함=자동 해결). 유사도/매칭 id 는 hot-path 에
-                // 저렴히 없어 null(한계). 전환 없음.
-                responseLogService.record(conversationId, userId, question,
-                        "FAQ_FAST", true, null, null, false);
-                return new ChatAskResponse(conversationId, hits.get(0).answer(), links, List.of());
-            }
-            // 빈 결과 = FAQ 공백 후보. 운영 패널 수집(부수효과) — 단 인프라 장애는 미스로 오기록 금지.
-            recordUnanswered(question, userId, conversationId);
-        } catch (Exception e) {
-            log.error("FAQ fast-path 검색 실패: {}", e.getMessage());
-        }
-        // 결과 없음/실패 → 정중한 문의 안내
-        return new ChatAskResponse(conversationId,
-                "관련 안내를 찾지 못했어요. 1:1 문의를 남겨주시면 정확히 도와드릴게요.",
-                List.of(new SiteLink("1:1 문의", "/support/contact")),
-                List.of());
+    private ChatAskResponse faqAnswerFrom(Long conversationId, String question, Long userId, List<FaqHit> hits) {
+        // 유사도 desc 정렬이므로 linkUrl 있는 첫 hit 1건만.
+        List<SiteLink> links = hits.stream()
+                .filter(h -> h.linkUrl() != null && !h.linkUrl().isBlank())
+                .limit(1)
+                .map(h -> new SiteLink(
+                        h.linkLabel() != null && !h.linkLabel().isBlank() ? h.linkLabel() : h.question(),
+                        h.linkUrl()))
+                .collect(Collectors.toList());
+        // best-effort 적재(답함=자동 해결). 영속 response_path 는 대시보드 연속성 위해 기존 FAQ_FAST 라벨 유지.
+        // 유사도 = 게이트가 본 원문 top-1(같은 임베딩). 전환 없음.
+        responseLogService.record(conversationId, userId, question,
+                "FAQ_FAST", true, hits.get(0).score(), null, false);
+        return new ChatAskResponse(conversationId, hits.get(0).answer(), links, List.of());
     }
 
     /**
