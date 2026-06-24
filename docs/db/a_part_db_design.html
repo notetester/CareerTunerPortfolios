@@ -1,0 +1,748 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>CareerTuner A파트 DB 설계서</title>
+  <style>
+    :root {
+      --ink: #16213f;
+      --muted: #5f6f8b;
+      --line: #dbe5f7;
+      --accent: #1f5fd6;
+      --accent-dark: #0f2a63;
+      --soft: #f5f8ff;
+      --th: #edf4ff;
+      --card: #ffffff;
+      --green: #0f766e;
+      --purple: #6d5dfc;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      background: #eef2f8;
+      color: var(--ink);
+      font-family: "Pretendard", "Malgun Gothic", "Segoe UI", system-ui, sans-serif;
+      line-height: 1.65;
+    }
+
+    .doc {
+      width: 1180px;
+      max-width: calc(100% - 32px);
+      margin: 0 auto;
+      background: #fff;
+      padding: 46px 56px 72px;
+      box-shadow: 0 12px 40px rgba(15, 42, 99, .08);
+    }
+
+    h1 {
+      margin: 0 0 18px;
+      padding-bottom: 18px;
+      border-bottom: 4px solid var(--accent);
+      color: var(--accent-dark);
+      font-size: 34px;
+      font-weight: 900;
+      letter-spacing: -.02em;
+    }
+
+    h2 {
+      margin: 42px 0 14px;
+      padding-left: 12px;
+      border-left: 5px solid var(--accent);
+      color: var(--accent-dark);
+      font-size: 23px;
+      font-weight: 850;
+    }
+
+    h3 {
+      margin: 28px 0 10px;
+      color: #1d2f5f;
+      font-size: 18px;
+      font-weight: 800;
+    }
+
+    p { margin: 9px 0; }
+
+    code {
+      border-radius: 5px;
+      background: #eef3ff;
+      color: #173b87;
+      padding: 2px 6px;
+      font-family: Consolas, "SFMono-Regular", monospace;
+      font-size: .92em;
+    }
+
+    .lead {
+      color: var(--muted);
+      font-size: 15px;
+    }
+
+    .summary {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 12px;
+      margin: 22px 0 10px;
+    }
+
+    .summary-card {
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      background: var(--soft);
+      padding: 16px 18px;
+    }
+
+    .summary-card strong {
+      display: block;
+      color: var(--accent-dark);
+      font-size: 15px;
+    }
+
+    .summary-card span {
+      display: block;
+      margin-top: 6px;
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 14px 0;
+      font-size: 13.5px;
+    }
+
+    th,
+    td {
+      border: 1px solid var(--line);
+      padding: 8px 10px;
+      text-align: left;
+      vertical-align: top;
+    }
+
+    th {
+      background: var(--th);
+      color: #20315c;
+      font-weight: 800;
+      white-space: nowrap;
+    }
+
+    tr:nth-child(even) td { background: #fbfdff; }
+
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      border-radius: 999px;
+      background: #e8f0ff;
+      color: #1647a7;
+      padding: 2px 8px;
+      font-size: 12px;
+      font-weight: 800;
+      line-height: 1.4;
+    }
+
+    .note {
+      border-left: 4px solid var(--accent);
+      border-radius: 10px;
+      background: #f6f9ff;
+      padding: 12px 16px;
+      color: #364b73;
+    }
+
+    .diagram-wrap {
+      margin: 22px 0 30px;
+      overflow-x: auto;
+      border: 1px solid #c6d7ff;
+      border-radius: 16px;
+      background: linear-gradient(135deg, #ffffff, #f6f9ff);
+      padding: 18px;
+    }
+
+    .erd {
+      position: relative;
+      width: 1540px;
+      height: 830px;
+      margin: 0 auto;
+      background: #fff;
+      border-radius: 12px;
+    }
+
+    .entity {
+      position: absolute;
+      overflow: hidden;
+      border: 2px solid var(--accent);
+      border-radius: 9px;
+      background: var(--card);
+      box-shadow: 0 8px 20px rgba(31, 95, 214, .08);
+    }
+
+    .entity header {
+      display: flex;
+      align-items: baseline;
+      gap: 8px;
+      border-bottom: 1px solid #bdd0fa;
+      background: linear-gradient(180deg, #f4f8ff, #e7f0ff);
+      padding: 7px 10px;
+      color: var(--accent-dark);
+      font-size: 16px;
+      font-weight: 900;
+    }
+
+    .entity header span {
+      color: #31507e;
+      font-size: 12px;
+      font-weight: 700;
+    }
+
+    .entity table {
+      margin: 0;
+      border: 0;
+      font-size: 12px;
+      line-height: 1.35;
+    }
+
+    .entity td {
+      border: 0;
+      padding: 3px 8px;
+      background: #fff !important;
+      white-space: nowrap;
+    }
+
+    .entity .key {
+      width: 34px;
+      color: #0057d8;
+      text-align: center;
+      font-weight: 900;
+    }
+
+    .entity .comment {
+      color: #20293f;
+    }
+
+    .users { left: 535px; top: 210px; width: 370px; height: 480px; }
+    .profile { left: 985px; top: 252px; width: 285px; height: 420px; }
+    .consent { left: 1310px; top: 252px; width: 225px; height: 250px; }
+    .ai-log { left: 1310px; top: 575px; width: 225px; height: 235px; }
+    .social { left: 20px; top: 20px; width: 300px; height: 120px; }
+    .token { left: 20px; top: 155px; width: 300px; height: 135px; }
+    .login-history { left: 20px; top: 305px; width: 300px; height: 145px; }
+    .status-history { left: 20px; top: 465px; width: 300px; height: 145px; }
+    .email-verification { left: 20px; top: 625px; width: 300px; height: 175px; }
+
+    .rel {
+      position: absolute;
+      background: var(--accent);
+      transform-origin: left center;
+    }
+
+    .rel::after {
+      content: "";
+      position: absolute;
+      right: -6px;
+      top: -5px;
+      width: 10px;
+      height: 10px;
+      border: 2px solid var(--accent);
+      border-radius: 50%;
+      background: #fff;
+    }
+
+    .rel-label {
+      position: absolute;
+      color: var(--accent-dark);
+      font-size: 12px;
+      font-weight: 900;
+    }
+
+    .r-social { left: 320px; top: 105px; width: 260px; height: 3px; transform: rotate(24deg); }
+    .l-social { left: 348px; top: 103px; }
+    .r-token { left: 320px; top: 225px; width: 240px; height: 3px; transform: rotate(9deg); }
+    .l-token { left: 350px; top: 205px; }
+    .r-login { left: 320px; top: 382px; width: 240px; height: 3px; transform: rotate(-8deg); }
+    .l-login { left: 350px; top: 358px; }
+    .r-status { left: 320px; top: 535px; width: 235px; height: 3px; transform: rotate(-20deg); }
+    .l-status { left: 350px; top: 507px; }
+    .r-email { left: 320px; top: 705px; width: 270px; height: 3px; transform: rotate(-42deg); }
+    .l-email { left: 350px; top: 675px; }
+    .r-profile { left: 905px; top: 440px; width: 80px; height: 3px; }
+    .l-profile { left: 928px; top: 417px; }
+    .r-consent { left: 1270px; top: 375px; width: 40px; height: 3px; }
+    .l-consent { left: 1278px; top: 351px; }
+    .r-ai { left: 1270px; top: 620px; width: 40px; height: 3px; }
+    .l-ai { left: 1278px; top: 596px; }
+
+    .legend {
+      position: absolute;
+      left: 455px;
+      bottom: 18px;
+      display: grid;
+      grid-template-columns: 235px 1fr;
+      gap: 22px;
+      width: 620px;
+      border: 2px dashed #7ba5ef;
+      border-radius: 14px;
+      background: #fff;
+      padding: 16px 20px;
+    }
+
+    .legend strong {
+      color: var(--accent-dark);
+      font-size: 15px;
+    }
+
+    .legend-list {
+      display: grid;
+      gap: 6px;
+      font-size: 13px;
+    }
+
+    .legend-list div {
+      display: grid;
+      grid-template-columns: 42px 1fr;
+      gap: 10px;
+    }
+
+    .legend-list b {
+      color: #0057d8;
+    }
+
+    .split {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+    }
+
+    .table-card {
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      background: #fff;
+      padding: 16px;
+      break-inside: avoid;
+    }
+
+    .table-card h3 { margin-top: 0; }
+
+    .table-card p {
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .page-break { break-before: page; }
+
+    @page {
+      size: A4;
+      margin: 14mm;
+    }
+
+    @media print {
+      body { background: #fff; }
+      .doc {
+        width: auto;
+        max-width: none;
+        padding: 0;
+        box-shadow: none;
+      }
+      .diagram-wrap {
+        overflow: visible;
+        padding: 0;
+        border: 0;
+      }
+      .erd {
+        transform: scale(.66);
+        transform-origin: top left;
+        margin-bottom: -280px;
+      }
+      h1 { font-size: 28px; }
+      h2 { margin-top: 30px; }
+      .table-card { break-inside: avoid; }
+    }
+  </style>
+</head>
+<body>
+<article class="doc">
+  <h1>A파트 DB 다이어그램 - 회원/프로필/동의/AI 사용 이력</h1>
+  <p class="lead">
+    이 문서는 CareerTuner A파트에서 담당한 회원 인증, 프로필 입력, 약관/AI 데이터 동의, AI 사용 이력 추적을 기준으로 정리한 DB 설계서입니다.
+    참조 문서 형식은 <code>F_DB_설계서.html</code>의 문서형 설계서 구성을 따르고, 실제 컬럼은 <code>backend/src/main/resources/db/schema.sql</code>와 A파트 patch 파일 기준으로 정리했습니다.
+  </p>
+
+  <div class="summary">
+    <div class="summary-card">
+      <strong>중심 엔티티</strong>
+      <span><code>users</code>가 회원, 인증, 프로필, 동의, AI 사용 이력의 기준점입니다.</span>
+    </div>
+    <div class="summary-card">
+      <strong>프로필 구조</strong>
+      <span><code>user_profile</code>은 사용자 1명당 1개 프로필을 저장합니다.</span>
+    </div>
+    <div class="summary-card">
+      <strong>동의 이력</strong>
+      <span><code>user_consent</code>는 동의/철회 이벤트를 누적 저장합니다.</span>
+    </div>
+    <div class="summary-card">
+      <strong>AI 추적</strong>
+      <span><code>ai_usage_log</code>는 모델명, 토큰, 상태, 비용을 기록합니다.</span>
+    </div>
+  </div>
+
+  <h2>1. 테이블 한눈에 보기</h2>
+  <table>
+    <thead>
+    <tr>
+      <th>테이블명</th>
+      <th>주요 역할</th>
+      <th>관계 요약</th>
+    </tr>
+    </thead>
+    <tbody>
+    <tr>
+      <td><code>users</code></td>
+      <td>회원 기본 정보, 로그인 식별자, 권한, 계정 상태, 휴면/차단 정보를 저장합니다.</td>
+      <td>다른 A파트 테이블의 중심 부모 테이블입니다.</td>
+    </tr>
+    <tr>
+      <td><code>user_social</code></td>
+      <td>카카오/네이버/구글 등 외부 소셜 계정 연결 정보를 저장합니다.</td>
+      <td><code>users</code> 1 : N <code>user_social</code></td>
+    </tr>
+    <tr>
+      <td><code>refresh_token</code></td>
+      <td>JWT Refresh Token과 폐기 여부, 발급 환경을 관리합니다.</td>
+      <td><code>users</code> 1 : N <code>refresh_token</code></td>
+    </tr>
+    <tr>
+      <td><code>user_login_history</code></td>
+      <td>로그인/로그아웃/토큰 갱신/비밀번호 재설정 요청 같은 인증 감사 로그를 저장합니다.</td>
+      <td><code>users</code> 1 : N <code>user_login_history</code></td>
+    </tr>
+    <tr>
+      <td><code>user_status_history</code></td>
+      <td>관리자 또는 시스템에 의한 회원 상태 변경 이력을 저장합니다.</td>
+      <td><code>users</code> 1 : N <code>user_status_history</code></td>
+    </tr>
+    <tr>
+      <td><code>email_verification</code></td>
+      <td>이메일 인증과 비밀번호 재설정 토큰을 저장합니다.</td>
+      <td><code>users</code> 1 : N <code>email_verification</code></td>
+    </tr>
+    <tr>
+      <td><code>user_profile</code></td>
+      <td>희망 직무, 학력, 경력, 프로젝트, 기술, 자기소개, 이력서 원문을 저장합니다.</td>
+      <td><code>users</code> 1 : 1 <code>user_profile</code></td>
+    </tr>
+    <tr>
+      <td><code>user_consent</code></td>
+      <td>약관, 개인정보, AI 데이터, 마케팅 동의/철회 이력을 저장합니다.</td>
+      <td><code>users</code> 1 : N <code>user_consent</code></td>
+    </tr>
+    <tr>
+      <td><code>ai_usage_log</code></td>
+      <td>AI 기능 실행 상태, 모델명, 토큰, 차감 크레딧, 실패 메시지를 저장합니다.</td>
+      <td><code>users</code> 1 : N <code>ai_usage_log</code></td>
+    </tr>
+    </tbody>
+  </table>
+
+  <h2>2. ERD</h2>
+  <p class="note">
+    이미지에서 보여준 A파트 DB 다이어그램을 HTML 요소로 재구성했습니다.
+    <code>users</code>를 중심에 두고, 왼쪽은 인증/감사/세션 계열, 오른쪽은 프로필/동의/AI 사용 이력 계열로 배치했습니다.
+  </p>
+
+  <div class="diagram-wrap">
+    <div class="erd" aria-label="A파트 DB ERD">
+      <div class="entity social">
+        <header>user_social <span>소셜 계정 연결</span></header>
+        <table>
+          <tr><td>id</td><td class="key">PK</td><td class="comment">소셜 연결 ID</td></tr>
+          <tr><td>user_id</td><td class="key">FK</td><td class="comment">회원 ID</td></tr>
+          <tr><td>provider</td><td></td><td class="comment">KAKAO/NAVER/GOOGLE</td></tr>
+          <tr><td>provider_user_id</td><td></td><td class="comment">외부 사용자 ID</td></tr>
+          <tr><td>linked_at</td><td></td><td class="comment">연결 시각</td></tr>
+        </table>
+      </div>
+
+      <div class="entity token">
+        <header>refresh_token <span>JWT 세션 관리</span></header>
+        <table>
+          <tr><td>id</td><td class="key">PK</td><td class="comment">토큰 ID</td></tr>
+          <tr><td>user_id</td><td class="key">FK</td><td class="comment">회원 ID</td></tr>
+          <tr><td>token</td><td class="key">UK</td><td class="comment">Refresh Token</td></tr>
+          <tr><td>expired_at</td><td></td><td class="comment">만료 시각</td></tr>
+          <tr><td>revoked</td><td></td><td class="comment">폐기 여부</td></tr>
+          <tr><td>created_at</td><td></td><td class="comment">발급 시각</td></tr>
+          <tr><td>...</td><td></td><td class="comment">ip, user_agent, revoked_at</td></tr>
+        </table>
+      </div>
+
+      <div class="entity login-history">
+        <header>user_login_history <span>로그인 감사 로그</span></header>
+        <table>
+          <tr><td>id</td><td class="key">PK</td><td class="comment">로그 ID</td></tr>
+          <tr><td>user_id</td><td class="key">FK</td><td class="comment">회원 ID</td></tr>
+          <tr><td>event_type</td><td></td><td class="comment">LOGIN/LOGOUT/REFRESH</td></tr>
+          <tr><td>auth_provider</td><td></td><td class="comment">LOCAL/KAKAO/NAVER/GOOGLE</td></tr>
+          <tr><td>success</td><td></td><td class="comment">성공 여부</td></tr>
+          <tr><td>created_at</td><td></td><td class="comment">발생 시각</td></tr>
+          <tr><td>...</td><td></td><td class="comment">login_method, ip, user_agent</td></tr>
+        </table>
+      </div>
+
+      <div class="entity status-history">
+        <header>user_status_history <span>회원 상태 변경 이력</span></header>
+        <table>
+          <tr><td>id</td><td class="key">PK</td><td class="comment">이력 ID</td></tr>
+          <tr><td>user_id</td><td class="key">FK</td><td class="comment">회원 ID</td></tr>
+          <tr><td>actor_user_id</td><td class="key">FK</td><td class="comment">관리자 ID</td></tr>
+          <tr><td>previous_status</td><td></td><td class="comment">변경 전 상태</td></tr>
+          <tr><td>new_status</td><td></td><td class="comment">변경 후 상태</td></tr>
+          <tr><td>created_at</td><td></td><td class="comment">변경 시각</td></tr>
+          <tr><td>...</td><td></td><td class="comment">reason, memo, blocked_until</td></tr>
+        </table>
+      </div>
+
+      <div class="entity email-verification">
+        <header>email_verification <span>이메일 인증/재설정</span></header>
+        <table>
+          <tr><td>id</td><td class="key">PK</td><td class="comment">인증 ID</td></tr>
+          <tr><td>user_id</td><td class="key">FK</td><td class="comment">회원 ID</td></tr>
+          <tr><td>email</td><td></td><td class="comment">인증 이메일</td></tr>
+          <tr><td>token</td><td class="key">UK</td><td class="comment">인증/재설정 토큰</td></tr>
+          <tr><td>purpose</td><td></td><td class="comment">VERIFY/RESET_PW</td></tr>
+          <tr><td>expired_at</td><td></td><td class="comment">만료 시각</td></tr>
+          <tr><td>used</td><td></td><td class="comment">사용 여부</td></tr>
+          <tr><td>created_at</td><td></td><td class="comment">생성 시각</td></tr>
+        </table>
+      </div>
+
+      <div class="entity users">
+        <header>users <span>회원</span></header>
+        <table>
+          <tr><td>id</td><td class="key">PK</td><td class="comment">회원 고유 ID</td></tr>
+          <tr><td>email</td><td class="key">UK</td><td class="comment">로그인 이메일</td></tr>
+          <tr><td>password</td><td></td><td class="comment">암호화된 비밀번호</td></tr>
+          <tr><td>password_enabled</td><td></td><td class="comment">비밀번호 로그인 여부</td></tr>
+          <tr><td>name</td><td></td><td class="comment">이름</td></tr>
+          <tr><td>email_verified</td><td></td><td class="comment">이메일 인증 여부</td></tr>
+          <tr><td>user_type</td><td></td><td class="comment">사용자 유형</td></tr>
+          <tr><td>role</td><td></td><td class="comment">권한 USER/ADMIN</td></tr>
+          <tr><td>status</td><td></td><td class="comment">ACTIVE/DORMANT/BLOCKED/DELETED</td></tr>
+          <tr><td>plan</td><td></td><td class="comment">구독 플랜</td></tr>
+          <tr><td>credit</td><td></td><td class="comment">보유 크레딧</td></tr>
+          <tr><td>last_login_at</td><td></td><td class="comment">마지막 로그인 시각</td></tr>
+          <tr><td>dormant_at</td><td></td><td class="comment">휴면 전환 시각</td></tr>
+          <tr><td>blocked_reason</td><td></td><td class="comment">차단 사유</td></tr>
+          <tr><td>blocked_until</td><td></td><td class="comment">차단 만료 시각</td></tr>
+          <tr><td>deleted_at</td><td></td><td class="comment">탈퇴/삭제 처리 시각</td></tr>
+          <tr><td>failed_login_count</td><td></td><td class="comment">연속 로그인 실패 횟수</td></tr>
+          <tr><td>created_at</td><td></td><td class="comment">가입일</td></tr>
+          <tr><td>updated_at</td><td></td><td class="comment">수정일</td></tr>
+        </table>
+      </div>
+
+      <div class="entity profile">
+        <header>user_profile <span>프로필</span></header>
+        <table>
+          <tr><td>id</td><td class="key">PK</td><td class="comment">프로필 ID</td></tr>
+          <tr><td>user_id</td><td class="key">FK</td><td class="comment">회원 ID</td></tr>
+          <tr><td>desired_job</td><td></td><td class="comment">희망 직무</td></tr>
+          <tr><td>desired_industry</td><td></td><td class="comment">희망 산업</td></tr>
+          <tr><td>education</td><td></td><td class="comment">학력 정보 JSON</td></tr>
+          <tr><td>career</td><td></td><td class="comment">경력 정보 JSON</td></tr>
+          <tr><td>projects</td><td></td><td class="comment">프로젝트/활동 JSON</td></tr>
+          <tr><td>skills</td><td></td><td class="comment">기술/역량 목록 JSON</td></tr>
+          <tr><td>certificates</td><td></td><td class="comment">자격증 목록 JSON</td></tr>
+          <tr><td>languages</td><td></td><td class="comment">어학 정보 JSON</td></tr>
+          <tr><td>portfolio_links</td><td></td><td class="comment">포트폴리오 링크 JSON</td></tr>
+          <tr><td>resume_text</td><td></td><td class="comment">이력서 원문</td></tr>
+          <tr><td>self_intro</td><td></td><td class="comment">자기소개 원문</td></tr>
+          <tr><td>preferences</td><td></td><td class="comment">희망 조건 JSON</td></tr>
+          <tr><td>created_at</td><td></td><td class="comment">생성일</td></tr>
+          <tr><td>updated_at</td><td></td><td class="comment">수정일</td></tr>
+        </table>
+      </div>
+
+      <div class="entity consent">
+        <header>user_consent <span>동의/철회 이력</span></header>
+        <table>
+          <tr><td>id</td><td class="key">PK</td><td class="comment">동의 이력 ID</td></tr>
+          <tr><td>user_id</td><td class="key">FK</td><td class="comment">회원 ID</td></tr>
+          <tr><td>consent_type</td><td></td><td class="comment">TERMS/PRIVACY/AI_DATA/MARKETING</td></tr>
+          <tr><td>agreed</td><td></td><td class="comment">동의 여부</td></tr>
+          <tr><td>agreed_at</td><td></td><td class="comment">동의 시각</td></tr>
+          <tr><td>revoked_at</td><td></td><td class="comment">철회 시각</td></tr>
+          <tr><td>source</td><td></td><td class="comment">발생 위치</td></tr>
+          <tr><td>created_at</td><td></td><td class="comment">생성일</td></tr>
+        </table>
+      </div>
+
+      <div class="entity ai-log">
+        <header>ai_usage_log <span>AI 사용 이력</span></header>
+        <table>
+          <tr><td>id</td><td class="key">PK</td><td class="comment">AI 로그 ID</td></tr>
+          <tr><td>user_id</td><td class="key">FK</td><td class="comment">회원 ID</td></tr>
+          <tr><td>application_case_id</td><td class="key">FK</td><td class="comment">지원 건 ID</td></tr>
+          <tr><td>feature_type</td><td></td><td class="comment">AI 기능 유형</td></tr>
+          <tr><td>status</td><td></td><td class="comment">SUCCESS/FAILED/FALLBACK</td></tr>
+          <tr><td>model</td><td></td><td class="comment">사용 모델명</td></tr>
+          <tr><td>input_tokens</td><td></td><td class="comment">입력 토큰 수</td></tr>
+          <tr><td>output_tokens</td><td></td><td class="comment">출력 토큰 수</td></tr>
+          <tr><td>token_usage</td><td></td><td class="comment">총 토큰 수</td></tr>
+          <tr><td>credit_used</td><td></td><td class="comment">차감 크레딧</td></tr>
+          <tr><td>error_message</td><td></td><td class="comment">실패 메시지</td></tr>
+          <tr><td>created_at</td><td></td><td class="comment">실행 시각</td></tr>
+        </table>
+      </div>
+
+      <div class="rel r-social"></div><div class="rel-label l-social">1:N</div>
+      <div class="rel r-token"></div><div class="rel-label l-token">1:N</div>
+      <div class="rel r-login"></div><div class="rel-label l-login">1:N</div>
+      <div class="rel r-status"></div><div class="rel-label l-status">1:N</div>
+      <div class="rel r-email"></div><div class="rel-label l-email">1:N</div>
+      <div class="rel r-profile"></div><div class="rel-label l-profile">1:1</div>
+      <div class="rel r-consent"></div><div class="rel-label l-consent">1:N</div>
+      <div class="rel r-ai"></div><div class="rel-label l-ai">1:N</div>
+
+      <div class="legend">
+        <div class="legend-list">
+          <strong>범례</strong>
+          <div><b>PK</b><span>기본키 Primary Key</span></div>
+          <div><b>FK</b><span>외래키 Foreign Key</span></div>
+          <div><b>UK</b><span>유니크키 Unique Key</span></div>
+        </div>
+        <div>
+          <strong>설명</strong>
+          <p>
+            <code>users</code>는 모든 주요 A파트 테이블의 중심 엔티티입니다.
+            <code>user_profile</code>은 사용자별 프로필을 1:1로 저장하고,
+            <code>user_consent</code>와 <code>ai_usage_log</code>는 이벤트 이력 성격이라 1:N으로 누적됩니다.
+          </p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <h2 class="page-break">3. 테이블 상세</h2>
+  <div class="split">
+    <section class="table-card">
+      <h3><code>users</code></h3>
+      <p>회원의 현재 상태를 대표하는 중심 테이블입니다. 로그인, 권한, 휴면, 차단, 탈퇴 상태를 한 곳에서 판단합니다.</p>
+      <table>
+        <thead><tr><th>컬럼</th><th>타입</th><th>키</th><th>기능 코멘트</th></tr></thead>
+        <tbody>
+        <tr><td><code>id</code></td><td>BIGINT</td><td>PK</td><td>회원 고유 ID입니다.</td></tr>
+        <tr><td><code>email</code></td><td>VARCHAR(255)</td><td>UK</td><td>일반 로그인 식별자이며 중복 가입 방지 기준입니다.</td></tr>
+        <tr><td><code>password</code></td><td>VARCHAR(255)</td><td></td><td>BCrypt 해시 비밀번호입니다. 소셜 전용 계정은 NULL일 수 있습니다.</td></tr>
+        <tr><td><code>password_enabled</code></td><td>TINYINT(1)</td><td></td><td>비밀번호 로그인이 가능한 계정인지 구분합니다.</td></tr>
+        <tr><td><code>name</code></td><td>VARCHAR(100)</td><td></td><td>서비스 화면에 표시할 사용자 이름입니다.</td></tr>
+        <tr><td><code>email_verified</code></td><td>TINYINT(1)</td><td></td><td>이메일 인증 완료 여부입니다.</td></tr>
+        <tr><td><code>user_type</code></td><td>VARCHAR(20)</td><td></td><td>취준생, 이직자, 경력자 등 사용자 유형입니다.</td></tr>
+        <tr><td><code>role</code></td><td>VARCHAR(20)</td><td></td><td>USER/ADMIN 권한을 구분합니다.</td></tr>
+        <tr><td><code>status</code></td><td>VARCHAR(20)</td><td>IDX</td><td>ACTIVE/DORMANT/BLOCKED/DELETED 계정 상태입니다.</td></tr>
+        <tr><td><code>failed_login_count</code></td><td>INT</td><td></td><td>자동 계정 잠금 정책에 사용하는 연속 실패 횟수입니다.</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section class="table-card">
+      <h3><code>user_profile</code></h3>
+      <p>사용자가 직접 입력하는 취업 준비 프로필입니다. AI 분석과 적합도 분석의 주요 입력 데이터가 됩니다.</p>
+      <table>
+        <thead><tr><th>컬럼</th><th>타입</th><th>키</th><th>기능 코멘트</th></tr></thead>
+        <tbody>
+        <tr><td><code>id</code></td><td>BIGINT</td><td>PK</td><td>프로필 고유 ID입니다.</td></tr>
+        <tr><td><code>user_id</code></td><td>BIGINT</td><td>FK/UK</td><td>회원 1명당 프로필 1개만 연결되도록 합니다.</td></tr>
+        <tr><td><code>desired_job</code></td><td>VARCHAR(255)</td><td></td><td>희망 직무입니다. 직무군 분류와 가중치 적용에 사용됩니다.</td></tr>
+        <tr><td><code>desired_industry</code></td><td>VARCHAR(255)</td><td></td><td>희망 산업입니다.</td></tr>
+        <tr><td><code>education</code></td><td>JSON</td><td></td><td>학력 목록입니다. 화면에서는 카드/표로 보여줍니다.</td></tr>
+        <tr><td><code>career</code></td><td>JSON</td><td></td><td>경력 목록입니다.</td></tr>
+        <tr><td><code>projects</code></td><td>JSON</td><td></td><td>프로젝트, 활동, 포트폴리오 경험 목록입니다.</td></tr>
+        <tr><td><code>skills</code></td><td>JSON</td><td></td><td>기술뿐 아니라 직무 역량 태그도 저장합니다.</td></tr>
+        <tr><td><code>resume_text</code></td><td>MEDIUMTEXT</td><td></td><td>이력서 원문입니다. AI 요약/보완점 분석 입력입니다.</td></tr>
+        <tr><td><code>self_intro</code></td><td>MEDIUMTEXT</td><td></td><td>자기소개서 원문입니다.</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section class="table-card">
+      <h3><code>user_consent</code></h3>
+      <p>동의 상태를 단순 현재값으로 덮어쓰지 않고, 등록/철회 이벤트를 이력으로 누적합니다.</p>
+      <table>
+        <thead><tr><th>컬럼</th><th>타입</th><th>키</th><th>기능 코멘트</th></tr></thead>
+        <tbody>
+        <tr><td><code>id</code></td><td>BIGINT</td><td>PK</td><td>동의 이력 고유 ID입니다.</td></tr>
+        <tr><td><code>user_id</code></td><td>BIGINT</td><td>FK</td><td>동의한 회원 ID입니다.</td></tr>
+        <tr><td><code>consent_type</code></td><td>VARCHAR(40)</td><td>IDX</td><td>TERMS/PRIVACY/AI_DATA/MARKETING 동의 유형입니다.</td></tr>
+        <tr><td><code>agreed</code></td><td>TINYINT(1)</td><td></td><td>동의 여부입니다.</td></tr>
+        <tr><td><code>agreed_at</code></td><td>DATETIME</td><td></td><td>동의한 시각입니다.</td></tr>
+        <tr><td><code>revoked_at</code></td><td>DATETIME</td><td></td><td>철회한 시각입니다.</td></tr>
+        <tr><td><code>source</code></td><td>VARCHAR(40)</td><td></td><td>REGISTER/SETTINGS 등 동의가 발생한 위치입니다.</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section class="table-card">
+      <h3><code>ai_usage_log</code></h3>
+      <p>AI 호출을 추적하는 공통 사용량 로그입니다. A파트 프로필 AI 분석도 이 테이블에 모델명과 실행 상태를 남깁니다.</p>
+      <table>
+        <thead><tr><th>컬럼</th><th>타입</th><th>키</th><th>기능 코멘트</th></tr></thead>
+        <tbody>
+        <tr><td><code>id</code></td><td>BIGINT</td><td>PK</td><td>AI 사용 로그 ID입니다.</td></tr>
+        <tr><td><code>user_id</code></td><td>BIGINT</td><td>FK</td><td>AI 기능을 실행한 회원입니다.</td></tr>
+        <tr><td><code>application_case_id</code></td><td>BIGINT</td><td>FK</td><td>지원 건 기반 AI 기능이면 연결됩니다. 프로필 분석은 NULL일 수 있습니다.</td></tr>
+        <tr><td><code>feature_type</code></td><td>VARCHAR(50)</td><td>IDX</td><td>PROFILE_SUMMARY, SKILL_EXTRACTION 등 AI 기능 유형입니다.</td></tr>
+        <tr><td><code>status</code></td><td>VARCHAR(20)</td><td></td><td>SUCCESS/FAILED/FALLBACK 실행 상태입니다.</td></tr>
+        <tr><td><code>model</code></td><td>VARCHAR(80)</td><td></td><td>사용한 모델명입니다. 추후 파인튜닝 모델명도 이곳에 기록합니다.</td></tr>
+        <tr><td><code>input_tokens</code></td><td>INT</td><td></td><td>모델 입력 토큰 수입니다.</td></tr>
+        <tr><td><code>output_tokens</code></td><td>INT</td><td></td><td>모델 출력 토큰 수입니다.</td></tr>
+        <tr><td><code>credit_used</code></td><td>INT</td><td></td><td>차감된 크레딧입니다.</td></tr>
+        <tr><td><code>error_message</code></td><td>VARCHAR(1000)</td><td></td><td>실패 또는 검증 오류 메시지입니다.</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section class="table-card">
+      <h3><code>user_social</code></h3>
+      <p>소셜 로그인 계정과 CareerTuner 회원 계정을 연결합니다. 같은 외부 계정이 중복 연결되지 않도록 유니크 키를 둡니다.</p>
+      <table>
+        <thead><tr><th>컬럼</th><th>타입</th><th>키</th><th>기능 코멘트</th></tr></thead>
+        <tbody>
+        <tr><td><code>id</code></td><td>BIGINT</td><td>PK</td><td>소셜 연결 ID입니다.</td></tr>
+        <tr><td><code>user_id</code></td><td>BIGINT</td><td>FK</td><td>연결된 CareerTuner 회원입니다.</td></tr>
+        <tr><td><code>provider</code></td><td>VARCHAR(20)</td><td>UK</td><td>KAKAO/NAVER/GOOGLE 제공자입니다.</td></tr>
+        <tr><td><code>provider_user_id</code></td><td>VARCHAR(255)</td><td>UK</td><td>소셜 제공자가 발급한 사용자 ID입니다.</td></tr>
+        <tr><td><code>linked_at</code></td><td>DATETIME</td><td></td><td>소셜 계정을 연결한 시각입니다.</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section class="table-card">
+      <h3><code>refresh_token</code></h3>
+      <p>Access Token 재발급과 로그아웃/세션 폐기 처리를 위해 Refresh Token을 저장합니다.</p>
+      <table>
+        <thead><tr><th>컬럼</th><th>타입</th><th>키</th><th>기능 코멘트</th></tr></thead>
+        <tbody>
+        <tr><td><code>id</code></td><td>BIGINT</td><td>PK</td><td>토큰 행 ID입니다.</td></tr>
+        <tr><td><code>user_id</code></td><td>BIGINT</td><td>FK</td><td>토큰을 발급받은 회원입니다.</td></tr>
+        <tr><td><code>token</code></td><td>VARCHAR(512)</td><td>UK</td><td>저장된 Refresh Token 값입니다.</td></tr>
+        <tr><td><code>expired_at</code></td><td>DATETIME</td><td></td><td>토큰 만료 시각입니다.</td></tr>
+        <tr><td><code>revoked</code></td><td>TINYINT(1)</td><td></td><td>로그아웃 또는 재발급으로 폐기되었는지 표시합니다.</td></tr>
+        <tr><td><code>ip_address</code></td><td>VARCHAR(45)</td><td></td><td>토큰 발급 요청 IP입니다.</td></tr>
+        <tr><td><code>user_agent</code></td><td>VARCHAR(500)</td><td></td><td>토큰 발급 요청 브라우저/기기 정보입니다.</td></tr>
+        </tbody>
+      </table>
+    </section>
+  </div>
+
+  <h2>4. 발표 설명 포인트</h2>
+  <ul>
+    <li><strong>왜 <code>users</code>가 중심인가?</strong> 로그인, 프로필, 동의, AI 사용 이력 모두 회원 단위 기능이기 때문입니다.</li>
+    <li><strong>왜 <code>user_profile</code>은 1:1인가?</strong> 현재 서비스는 사용자별 대표 프로필 하나를 관리하고, AI 분석은 그 대표 프로필을 기준으로 수행합니다.</li>
+    <li><strong>왜 동의는 이력 테이블인가?</strong> AI 데이터 활용 동의는 철회 가능해야 하므로 현재값만 덮어쓰면 감사 추적이 어렵습니다.</li>
+    <li><strong>왜 AI 사용 이력을 남기는가?</strong> 모델명, 토큰, 성공/실패, fallback 여부를 기록해야 비용 추적과 장애 분석이 가능합니다.</li>
+    <li><strong>파인튜닝 모델과의 연결점은?</strong> 추후 파인튜닝 모델을 사용하면 <code>ai_usage_log.model</code>에 모델명을 남기고, <code>status</code>/<code>error_message</code>로 검증 실패와 fallback을 추적합니다.</li>
+  </ul>
+</article>
+</body>
+</html>
