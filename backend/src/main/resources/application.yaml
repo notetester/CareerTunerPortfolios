@@ -124,7 +124,6 @@ careertuner:
       enabled: ${B_ANALYSIS_LOCAL_LLM_ENABLED:true}
       base-url: ${B_ANALYSIS_OLLAMA_BASE_URL:http://localhost:11434}
       model: ${B_ANALYSIS_OLLAMA_MODEL:careertuner-b-jobposting-r1}
-      company-model: ${B_ANALYSIS_OLLAMA_COMPANY_MODEL:qwen3:4b}
       connect-timeout: ${B_ANALYSIS_OLLAMA_CONNECT_TIMEOUT:5s}
       read-timeout: ${B_ANALYSIS_OLLAMA_READ_TIMEOUT:480s}
   file:

@@ -85,7 +85,6 @@ public class BAnalysisGenerationService {
         if (properties.getLocalLlm().isEnabled()) {
             try {
                 String content = localLlmClient.chat(
-                        properties.getLocalLlm().getCompanyModel(),
                         CompanyAnalysisPromptCatalog.SYSTEM_PROMPT,
                         companyPrompt(applicationCase, postingText, classification),
                         companyAnalysisSchema());
