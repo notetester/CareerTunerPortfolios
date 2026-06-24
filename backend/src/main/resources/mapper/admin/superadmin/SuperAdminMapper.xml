@@ -14,7 +14,7 @@
         <if test="keyword != null">
             AND (email LIKE CONCAT('%', #{keyword}, '%') OR name LIKE CONCAT('%', #{keyword}, '%'))
         </if>
-        ORDER BY role DESC, created_at DESC
+        ORDER BY ${sortColumn} ${sortDir}, id DESC
         LIMIT #{limit}
     </select>
 
@@ -31,7 +31,7 @@
         <if test="keyword != null">
             AND (email LIKE CONCAT('%', #{keyword}, '%') OR name LIKE CONCAT('%', #{keyword}, '%'))
         </if>
-        ORDER BY created_at DESC
+        ORDER BY ${sortColumn} ${sortDir}, id DESC
         LIMIT #{limit}
     </select>
 
@@ -86,7 +86,7 @@
                 a.target_user_id = #{userId}
             </if>
         </where>
-        ORDER BY a.created_at DESC, a.id DESC
+        ORDER BY ${sortColumn} ${sortDir}, a.id DESC
         LIMIT #{limit}
     </select>
 
