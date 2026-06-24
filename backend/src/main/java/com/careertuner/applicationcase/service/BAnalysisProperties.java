@@ -22,9 +22,12 @@ public class BAnalysisProperties {
 
         private boolean enabled = false;
         private String baseUrl = "http://localhost:11434";
-        private String model = "qwen2.5:3b-instruct";
-        private Duration connectTimeout = Duration.ofSeconds(3);
-        private Duration readTimeout = Duration.ofSeconds(30);
+        private String model = "careertuner-b-jobposting-r1";
+        private Duration connectTimeout = Duration.ofSeconds(5);
+        private Duration readTimeout = Duration.ofSeconds(480);
+        private int numPredict = 2048;
+        private int maxRetries = 1;
+        private double groundingThreshold = 0.6;
 
         public String chatUrl() {
             return baseUrl.replaceAll("/+$", "") + "/api/chat";

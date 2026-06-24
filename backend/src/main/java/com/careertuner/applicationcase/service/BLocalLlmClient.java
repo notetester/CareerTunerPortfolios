@@ -37,7 +37,7 @@ public class BLocalLlmClient {
                 local.getModel(),
                 false,
                 false,
-                Map.of("temperature", 0, "num_ctx", 8192),
+                Map.of("temperature", 0, "num_ctx", 8192, "num_predict", local.getNumPredict()),
                 jsonSchema,
                 List.of(
                         new Message("system", systemPrompt),

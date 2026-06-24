@@ -116,11 +116,11 @@ careertuner:
       timeout: ${JOB_POSTING_AI_WORKER_TIMEOUT:30s}
   b-analysis:
     local-llm:
-      enabled: ${B_ANALYSIS_LOCAL_LLM_ENABLED:false}
+      enabled: ${B_ANALYSIS_LOCAL_LLM_ENABLED:true}
       base-url: ${B_ANALYSIS_OLLAMA_BASE_URL:http://localhost:11434}
-      model: ${B_ANALYSIS_OLLAMA_MODEL:qwen2.5:3b-instruct}
-      connect-timeout: ${B_ANALYSIS_OLLAMA_CONNECT_TIMEOUT:3s}
-      read-timeout: ${B_ANALYSIS_OLLAMA_READ_TIMEOUT:30s}
+      model: ${B_ANALYSIS_OLLAMA_MODEL:careertuner-b-jobposting-r1}
+      connect-timeout: ${B_ANALYSIS_OLLAMA_CONNECT_TIMEOUT:5s}
+      read-timeout: ${B_ANALYSIS_OLLAMA_READ_TIMEOUT:480s}
   file:
     # 면접 음성/영상 등 업로드 파일 저장 위치. 큰 영상은 SPRING_SERVLET_MULTIPART_MAX_FILE_SIZE 도 함께 올린다.
     media-dir: ${MEDIA_UPLOAD_DIR:.uploads/media}

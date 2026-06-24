@@ -52,21 +52,30 @@ public class BAnalysisGenerationService {
     public GeneratedJobAnalysis generateJobAnalysis(ApplicationCase applicationCase, String postingText) {
         Classification classification = sentenceClassifier.classify(postingText);
         if (properties.getLocalLlm().isEnabled()) {
-            try {
-                String content = localLlmClient.chat(
-                        JobAnalysisPromptCatalog.SYSTEM_PROMPT,
-                        jobPrompt(applicationCase, postingText, classification),
-                        jobAnalysisSchema());
-                JobAnalysisPayload payload = parseLocalJobPayload(content, postingText);
-                return new GeneratedJobAnalysis(payload, null, null);
-            } catch (RuntimeException ex) {
-                String reason = "Local LLM job analysis failed; fallback to self-rules-v1: " + safeMessage(ex);
-                log.warn("{}", reason);
-                return new GeneratedJobAnalysis(
-                        selfRulesJobAnalysis(applicationCase, postingText, classification),
-                        reason,
-                        properties.getLocalLlm().getModel());
+            int maxAttempts = 1 + properties.getLocalLlm().getMaxRetries();
+            String lastError = null;
+            for (int attempt = 1; attempt <= maxAttempts; attempt++) {
+                try {
+                    String content = localLlmClient.chat(
+                            JobAnalysisPromptCatalog.SYSTEM_PROMPT,
+                            jobPrompt(applicationCase, postingText, classification),
+                            jobAnalysisSchema());
+                    JobAnalysisPayload payload = parseLocalJobPayload(content, postingText);
+                    validateGrounding(payload, postingText);
+                    log.info("Local LLM job analysis succeeded (attempt={}/{})", attempt, maxAttempts);
+                    return new GeneratedJobAnalysis(payload, null, null);
+                } catch (RuntimeException ex) {
+                    lastError = safeMessage(ex);
+                    log.warn("Local LLM job analysis attempt {}/{} failed: {}", attempt, maxAttempts, lastError);
+                }
             }
+            String reason = "Local LLM job analysis failed after %d attempts; fallback to self-rules-v1: %s"
+                    .formatted(maxAttempts, lastError);
+            log.warn("{}", reason);
+            return new GeneratedJobAnalysis(
+                    selfRulesJobAnalysis(applicationCase, postingText, classification),
+                    reason,
+                    properties.getLocalLlm().getModel());
         }
         return new GeneratedJobAnalysis(selfRulesJobAnalysis(applicationCase, postingText, classification), null, null);
     }
@@ -196,6 +205,50 @@ public class BAnalysisGenerationService {
         if (isBlank(payload.duties()) || isBlank(payload.qualifications())) {
             throw new IllegalStateException("Local LLM job analysis is missing duties or qualifications.");
         }
+    }
+
+    private void validateGrounding(JobAnalysisPayload payload, String postingText) {
+        List<String> allSkills = new ArrayList<>();
+        allSkills.addAll(parseList(payload.requiredSkills()));
+        allSkills.addAll(parseList(payload.preferredSkills()));
+        if (allSkills.isEmpty()) {
+            return;
+        }
+        String normalized = postingText.toLowerCase(Locale.ROOT).replaceAll("\\s+", "");
+        int grounded = 0;
+        for (String skill : allSkills) {
+            if (isSkillGrounded(skill, normalized)) {
+                grounded++;
+            }
+        }
+        double ratio = (double) grounded / allSkills.size();
+        double threshold = properties.getLocalLlm().getGroundingThreshold();
+        if (ratio < threshold) {
+            throw new IllegalStateException(
+                    "Grounding check failed: %.0f%% < %.0f%% threshold (%d/%d skills grounded)"
+                            .formatted(ratio * 100, threshold * 100, grounded, allSkills.size()));
+        }
+        log.debug("Grounding check passed: {}/{} skills ({}%)", grounded, allSkills.size(), (int) (ratio * 100));
+    }
+
+    private boolean isSkillGrounded(String skill, String normalizedSource) {
+        String[] tokens = skill.toLowerCase(Locale.ROOT).split("[^0-9a-zA-Z가-힣]+");
+        List<String> meaningful = new ArrayList<>();
+        for (String token : tokens) {
+            if (token.length() >= 2) {
+                meaningful.add(token);
+            }
+        }
+        if (meaningful.isEmpty()) {
+            return false;
+        }
+        int hits = 0;
+        for (String token : meaningful) {
+            if (normalizedSource.contains(token)) {
+                hits++;
+            }
+        }
+        return meaningful.size() <= 2 ? hits >= 1 : (double) hits / meaningful.size() >= 0.5;
     }
 
     private void validateCompanyPayload(CompanyAnalysisPayload payload, ApplicationCase applicationCase) {
