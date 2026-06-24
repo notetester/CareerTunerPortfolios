@@ -3,7 +3,7 @@ import { Link, useLocation } from "react-router";
 import {
   LayoutDashboard, Briefcase, BarChart3, Building2, Gauge, FileText,
   Users, CreditCard, MessageSquareWarning, Megaphone, CircleHelp,
-  Mail, Search, Bell, ChevronRight,
+  Mail, Search, Bell, ChevronRight, Bot,
   Target, TrendingUp, ListChecks, Activity,
   Scale, FileUser, ClipboardCheck, MessageSquare, Package, ScrollText,
 } from "lucide-react";
@@ -40,6 +40,7 @@ const NAV: NavItem[] = [
   { key: "reports", label: "신고·검열 관리", icon: MessageSquareWarning, href: "/admin/community" },
   { key: "notices", label: "공지사항", icon: Megaphone, ct: "7", href: "/admin/notices" },
   { key: "faq", label: "FAQ 관리", icon: CircleHelp, href: "/admin/faq" },
+  { key: "ai-support", label: "AI 상담 운영", icon: Bot, href: "/admin/ai-support" },
   { key: "inquiries", label: "문의 관리", icon: Mail, ct: "9", href: "/admin/inquiries" },
   { key: "terms", label: "약관 관리", icon: Scale, href: "/admin/terms" },
   { key: "notifications", label: "알림 모니터링", icon: Bell, href: "/admin/notifications" },
