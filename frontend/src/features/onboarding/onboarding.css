@@ -1,0 +1,121 @@
+/* 앱 온보딩 — Linear/Vercel 다크 톤(프로토타입·랜딩과 동일 팔레트). .ob 스코프로 전역 오염 방지. */
+.ob {
+  --bg: #08090a;
+  --card: #141517;
+  --card2: #1a1c1f;
+  --border: rgba(255, 255, 255, 0.08);
+  --border2: rgba(255, 255, 255, 0.14);
+  --fg: #f7f8f8;
+  --muted: #8a8f98;
+  --muted2: #62666d;
+  --accent: #5e6ad2;
+  --accent2: #7170ff;
+  --halo: #a3a2ff;
+  --grad: linear-gradient(135deg, #5e6ad2 0%, #7170ff 100%);
+  --r: 12px;
+  --r-lg: 16px;
+  --ease: cubic-bezier(0.22, 0.61, 0.36, 1);
+
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  background: var(--bg);
+  color: var(--fg);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: max(24px, env(safe-area-inset-top)) 20px max(24px, env(safe-area-inset-bottom));
+  overflow-y: auto;
+  font-family: "Pretendard", -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+.ob-shell { width: 100%; max-width: 420px; }
+
+.ob-dots { display: flex; gap: 6px; justify-content: center; margin-bottom: 22px; }
+.ob-dot { width: 26px; height: 4px; border-radius: 99px; background: var(--border2); transition: background 0.3s var(--ease); }
+.ob-dot.on { background: var(--grad); }
+
+.ob-card { position: relative; }
+.ob-center { text-align: center; }
+
+.ob-mark, .ob-bell {
+  width: 56px; height: 56px; margin: 0 auto 18px;
+  display: grid; place-items: center; font-size: 26px;
+  border-radius: 50%; background: rgba(113, 112, 255, 0.14);
+  border: 1px solid rgba(113, 112, 255, 0.3); color: var(--halo);
+}
+.ob-bell { font-size: 24px; }
+
+.ob-h1 { font-size: 24px; line-height: 1.3; font-weight: 800; letter-spacing: -0.02em; margin: 0 0 8px; text-align: center; }
+.ob-sub { font-size: 13.5px; color: var(--muted); margin: 0 0 22px; text-align: center; line-height: 1.55; }
+
+/* 소셜 버튼 */
+.ob-social { display: flex; flex-direction: column; gap: 10px; }
+.ob-soc {
+  display: flex; align-items: center; gap: 12px;
+  width: 100%; padding: 13px 16px; font-size: 14px; font-weight: 600;
+  background: var(--card); color: var(--fg); border: 1px solid var(--border2);
+  border-radius: var(--r); cursor: pointer; transition: border-color 0.15s, background 0.15s;
+}
+.ob-soc:hover:not(:disabled) { border-color: var(--accent2); background: var(--card2); }
+.ob-soc:disabled { opacity: 0.5; cursor: default; }
+.ob-soc-i { width: 22px; height: 22px; display: grid; place-items: center; font-weight: 800; font-size: 13px; border-radius: 6px; background: rgba(255, 255, 255, 0.08); }
+
+.ob-or { display: flex; align-items: center; gap: 12px; margin: 18px 0; color: var(--muted2); font-size: 12px; }
+.ob-or::before, .ob-or::after { content: ""; flex: 1; height: 1px; background: var(--border); }
+
+.ob-form { display: flex; flex-direction: column; gap: 10px; }
+.ob-input {
+  width: 100%; padding: 13px 15px; font-size: 14px;
+  background: var(--bg); color: var(--fg); border: 1px solid var(--border2);
+  border-radius: var(--r); outline: 0; transition: border-color 0.15s;
+}
+.ob-input::placeholder { color: var(--muted2); }
+.ob-input:focus { border-color: var(--accent); }
+.ob-err { font-size: 12.5px; color: #f85149; }
+
+.ob-primary {
+  width: 100%; padding: 14px 16px; font-size: 14.5px; font-weight: 700;
+  color: #fff; border: 0; border-radius: var(--r); cursor: pointer;
+  background: var(--grad); transition: filter 0.15s;
+}
+.ob-primary:hover:not(:disabled) { filter: brightness(1.08); }
+.ob-primary:disabled { opacity: 0.6; cursor: default; }
+
+.ob-ghost {
+  width: 100%; padding: 12px 16px; font-size: 13.5px; font-weight: 600;
+  color: var(--muted); background: transparent; border: 0; cursor: pointer;
+}
+.ob-ghost:hover:not(:disabled) { color: var(--fg); }
+
+.ob-actions { display: flex; flex-direction: column; gap: 6px; margin-top: 8px; }
+
+.ob-hint { font-size: 12px; color: var(--muted2); text-align: center; margin: 14px 0 0; line-height: 1.5; }
+.ob-legal { font-size: 11.5px; color: var(--muted2); text-align: center; margin: 16px 0 0; line-height: 1.6; }
+.ob-legal a { color: var(--muted); text-decoration: underline; }
+
+/* 닫기(X) — 결제 스킵 */
+.ob-x {
+  position: absolute; top: -6px; right: -6px; width: 32px; height: 32px;
+  display: grid; place-items: center; font-size: 16px;
+  background: var(--card); color: var(--muted); border: 1px solid var(--border); border-radius: 50%; cursor: pointer;
+}
+.ob-x:hover { color: var(--fg); }
+
+/* 혜택 리스트 */
+.ob-benefits { list-style: none; margin: 4px 0 18px; padding: 16px; background: var(--card); border: 1px solid var(--border); border-radius: var(--r-lg); display: flex; flex-direction: column; gap: 12px; }
+.ob-benefits li { display: flex; align-items: center; gap: 11px; font-size: 13.5px; }
+.ob-benefits li.off { opacity: 0.4; }
+.ob-b-ic { width: 20px; text-align: center; color: var(--halo); font-weight: 700; flex: none; }
+.ob-benefits li.off .ob-b-ic { color: var(--muted2); }
+.ob-b-label { flex: 1; }
+.ob-b-text { color: var(--muted); font-size: 12.5px; }
+
+.ob-price { display: flex; align-items: baseline; gap: 8px; justify-content: center; margin: 0 0 18px; }
+.ob-price-plan { font-size: 13px; color: var(--muted); font-weight: 600; }
+.ob-price-val { font-size: 22px; font-weight: 800; letter-spacing: -0.02em; }
+.ob-price-per { font-size: 13px; color: var(--muted); }
+
+@keyframes ob-fade-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+.ob-fade { animation: ob-fade-in 0.28s var(--ease); }
