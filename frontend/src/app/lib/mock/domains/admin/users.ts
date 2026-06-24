@@ -697,6 +697,10 @@ export const adminUsersRoutes: MockRoute[] = [
         loginHistory: (loginHistory[id] ?? []).slice(0, 5),
         statusHistory: statusHistory[id] ?? [],
         consents: consentsByUser[id] ?? [],
+        emailVerifications: [],
+        refreshTokens: [],
+        aiUsage: [],
+        profile: null,
       };
     },
   },
