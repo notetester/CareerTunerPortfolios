@@ -1,6 +1,15 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { RefreshCw, Search, ShieldCheck } from "lucide-react";
 import AdminShell from "../../../components/AdminShell";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/app/components/ui/alert-dialog";
 import { Badge } from "@/app/components/ui/badge";
 import { Button } from "@/app/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/app/components/ui/card";
@@ -18,13 +27,51 @@ import {
   searchSuperUsers,
   updateSuperAdminRole,
 } from "../api";
-import type { AdminAccountRow, AdminPermissionAuditRow, AdminPermissionGroupRow, AdminPermissionPolicyRow } from "../types";
+import type {
+  AdminAccountRow,
+  AdminPermissionAuditRow,
+  AdminPermissionGroupRow,
+  AdminPermissionPolicyRow,
+} from "../types";
+
+const ROLE_LABELS: Record<string, string> = {
+  USER: "일반 사용자",
+  ADMIN: "관리자",
+  SUPER_ADMIN: "슈퍼 관리자",
+};
+
+const ROLE_PERMISSION_CODES: Record<string, string[]> = {
+  USER: [],
+  ADMIN: ["USER_READ", "PROFILE_READ", "CONSENT_READ", "AI_USAGE_READ", "SECURITY_LOG_READ", "USER_STATUS_WRITE"],
+  SUPER_ADMIN: [
+    "USER_READ",
+    "PROFILE_READ",
+    "CONSENT_READ",
+    "AI_USAGE_READ",
+    "SECURITY_LOG_READ",
+    "USER_STATUS_WRITE",
+    "POLICY_MANAGE",
+    "ADMIN_PERMISSION_MANAGE",
+  ],
+};
+
+const ROLE_GROUP_CODES: Record<string, string[]> = {
+  USER: [],
+  ADMIN: ["ADMIN_OPERATOR", "SECURITY_OPERATOR"],
+  SUPER_ADMIN: ["ADMIN_OPERATOR", "SECURITY_OPERATOR", "SUPER_ADMIN_GROUP"],
+};
 
 function formatDateTime(value: string | null | undefined): string {
   if (!value) return "-";
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return value;
   return new Intl.DateTimeFormat("ko-KR", { dateStyle: "medium", timeStyle: "short" }).format(date);
+}
+
+function roleBadgeClass(roleValue: string): string {
+  if (roleValue === "SUPER_ADMIN") return "bg-purple-100 text-purple-700";
+  if (roleValue === "ADMIN") return "bg-blue-100 text-blue-700";
+  return "bg-slate-200 text-slate-700";
 }
 
 export function AdminSuperAdminPage() {
@@ -42,33 +89,53 @@ export function AdminSuperAdminPage() {
   const [groupCode, setGroupCode] = useState("");
   const [reason, setReason] = useState("");
   const [loading, setLoading] = useState(false);
-  const [message, setMessage] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [successModalOpen, setSuccessModalOpen] = useState(false);
+  const [successModalText, setSuccessModalText] = useState("변경이 완료됐습니다.");
   const [error, setError] = useState<string | null>(null);
   const selectedRef = useRef<number | null>(null);
-  selectedRef.current = selectedId;
 
   const selected = useMemo(() => admins.find((item) => item.id === selectedId) ?? detail, [admins, detail, selectedId]);
+  const selectedRole = role || selected?.role || "USER";
+  const allowedPermissionCodes = ROLE_PERMISSION_CODES[selectedRole] ?? [];
+  const allowedGroupCodes = ROLE_GROUP_CODES[selectedRole] ?? [];
+  const visiblePermissions = permissions.filter((item) => item.active && allowedPermissionCodes.includes(item.permissionCode));
+  const visibleGroups = groups.filter((item) => item.active && allowedGroupCodes.includes(item.groupCode));
+  const selectedGroup = visibleGroups.find((item) => item.groupCode === groupCode) ?? null;
+
+  const selectUser = (user: AdminAccountRow) => {
+    selectedRef.current = user.id;
+    setSelectedId(user.id);
+    setDetail(user);
+    setRole(user.role);
+    setPermissionCode("");
+    setGroupCode("");
+    setReason("");
+  };
 
   const load = async () => {
     setLoading(true);
     setError(null);
     try {
-      const [nextAdmins, nextPermissions, nextGroups, nextAudit] = await Promise.all([
+      const [nextAdmins, nextPermissions, nextGroups] = await Promise.all([
         getSuperAdmins(keyword),
         getSuperPermissions(),
         getSuperGroups(),
-        getSuperAudit(selectedRef.current ?? undefined),
       ]);
       setAdmins(nextAdmins);
       setPermissions(nextPermissions);
-      setGroups(nextGroups);
-      setAudit(nextAudit);
-      const nextSelectedId = selectedRef.current ?? nextAdmins[0]?.id ?? null;
+      setGroups(nextGroups.filter((item) => item.groupCode !== "A_PART_OPERATOR"));
+
+      const nextSelectedId = selectedRef.current ?? selectedId ?? nextAdmins[0]?.id ?? null;
       setSelectedId(nextSelectedId);
       if (nextSelectedId) {
-        const nextDetail = await getSuperAdminDetail(nextSelectedId);
+        const [nextDetail, nextAudit] = await Promise.all([getSuperAdminDetail(nextSelectedId), getSuperAudit(nextSelectedId)]);
         setDetail(nextDetail);
+        setAudit(nextAudit);
         setRole(nextDetail.role);
+      } else {
+        setDetail(null);
+        setAudit([]);
       }
     } catch (requestError) {
       setError(requestError instanceof Error ? requestError.message : "super 관리자 정보를 불러오지 못했습니다.");
@@ -88,6 +155,8 @@ export function AdminSuperAdminPage() {
 
   const reloadDetail = async (userId: number) => {
     const [nextDetail, nextAudit] = await Promise.all([getSuperAdminDetail(userId), getSuperAudit(userId)]);
+    selectedRef.current = userId;
+    setSelectedId(userId);
     setDetail(nextDetail);
     setRole(nextDetail.role);
     setAudit(nextAudit);
@@ -97,21 +166,29 @@ export function AdminSuperAdminPage() {
     void load();
   }, []);
 
-  const runMutation = async (work: () => Promise<AdminAccountRow>, doneMessage: string) => {
-    if (!selectedId) return;
-    if (!reason.trim()) {
-      setError("권한 변경 사유를 입력해 주세요.");
-      return;
-    }
+  useEffect(() => {
+    if (!allowedPermissionCodes.includes(permissionCode)) setPermissionCode("");
+    if (!allowedGroupCodes.includes(groupCode)) setGroupCode("");
+  }, [selectedRole, permissionCode, groupCode, allowedPermissionCodes, allowedGroupCodes]);
+
+  const runMutation = async (work: (targetId: number) => Promise<AdminAccountRow>, doneMessage: string) => {
+    const targetId = selected?.id ?? selectedId;
+    if (!targetId) return;
+    setSaving(true);
     setError(null);
-    setMessage(null);
     try {
-      const updated = await work();
-      setMessage(doneMessage);
+      const updated = await work(targetId);
+      selectedRef.current = updated.id;
+      setSuccessModalText(doneMessage);
+      setSuccessModalOpen(true);
       await reloadDetail(updated.id);
-      await load();
+      const nextAdmins = await getSuperAdmins(keyword);
+      setAdmins(nextAdmins);
+      setReason("");
     } catch (requestError) {
       setError(requestError instanceof Error ? requestError.message : "권한 변경에 실패했습니다.");
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -122,7 +199,12 @@ export function AdminSuperAdminPage() {
       title="super 관리자 권한 관리"
       icon={ShieldCheck}
       desc="관리자 역할, 메뉴별 권한, 권한 그룹, 변경 이력을 super 관리자만 관리합니다."
-      actions={<Button variant="outline" onClick={() => void load()} disabled={loading}><RefreshCw className={`size-4 ${loading ? "animate-spin" : ""}`} />새로고침</Button>}
+      actions={(
+        <Button variant="outline" onClick={() => void load()} disabled={loading}>
+          <RefreshCw className={`size-4 ${loading ? "animate-spin" : ""}`} />
+          새로고침
+        </Button>
+      )}
     >
       <div className="grid gap-5 xl:grid-cols-[380px_minmax(0,1fr)]">
         <section className="space-y-4">
@@ -132,12 +214,13 @@ export function AdminSuperAdminPage() {
                 <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-slate-400" />
                 <Input value={keyword} onChange={(event) => setKeyword(event.target.value)} placeholder="관리자 이메일/이름 검색" className="pl-9" />
               </div>
-              <Button className="w-full bg-blue-600 text-white hover:bg-blue-700" onClick={() => void load()}>관리자 검색</Button>
+              <Button className="w-full bg-blue-600 text-white hover:bg-blue-700" onClick={() => void load()}>
+                관리자 검색
+              </Button>
             </CardContent>
           </Card>
 
           {error && <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>}
-          {message && <div className="rounded-lg border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-700">{message}</div>}
 
           <div className="space-y-2">
             {admins.map((admin) => (
@@ -146,8 +229,7 @@ export function AdminSuperAdminPage() {
                 type="button"
                 className={`w-full rounded-lg border bg-card p-3 text-left ${selectedId === admin.id ? "border-blue-300 ring-2 ring-blue-100" : "border-slate-200 hover:border-blue-200"}`}
                 onClick={() => {
-                  selectedRef.current = admin.id;
-                  setSelectedId(admin.id);
+                  selectUser(admin);
                   void reloadDetail(admin.id);
                 }}
               >
@@ -156,7 +238,7 @@ export function AdminSuperAdminPage() {
                     <div className="truncate text-sm font-bold text-slate-950">{admin.name}</div>
                     <div className="truncate text-xs text-slate-500">{admin.email}</div>
                   </div>
-                  <Badge className={admin.role === "SUPER_ADMIN" ? "bg-purple-100 text-purple-700" : "bg-blue-100 text-blue-700"}>{admin.role}</Badge>
+                  <Badge className={roleBadgeClass(admin.role)}>{admin.role}</Badge>
                 </div>
               </button>
             ))}
@@ -181,9 +263,8 @@ export function AdminSuperAdminPage() {
                       type="button"
                       className="rounded-lg border border-slate-200 p-3 text-left hover:border-blue-200"
                       onClick={() => {
-                        setSelectedId(user.id);
-                        setDetail(user);
-                        setRole(user.role);
+                        selectUser(user);
+                        void reloadDetail(user.id);
                       }}
                     >
                       <div className="font-semibold text-slate-900">{user.name}</div>
@@ -200,31 +281,60 @@ export function AdminSuperAdminPage() {
               <CardHeader>
                 <CardTitle className="flex items-center justify-between gap-3 text-base">
                   <span>{selected.name} 권한 설정</span>
-                  <Badge className={selected.role === "SUPER_ADMIN" ? "bg-purple-100 text-purple-700" : "bg-blue-100 text-blue-700"}>{selected.role}</Badge>
+                  <Badge className={roleBadgeClass(selectedRole)}>{ROLE_LABELS[selectedRole] ?? selectedRole}</Badge>
                 </CardTitle>
                 <p className="text-sm text-slate-500">{selected.email} / 최근 로그인 {formatDateTime(selected.lastLoginAt)}</p>
               </CardHeader>
               <CardContent className="space-y-4">
                 <div className="grid gap-2 md:grid-cols-[1fr_1fr_auto]">
                   <select value={role} onChange={(event) => setRole(event.target.value)} className="h-10 rounded-md border border-slate-200 px-3 text-sm">
-                    <option value="USER">USER</option>
-                    <option value="ADMIN">ADMIN</option>
-                    <option value="SUPER_ADMIN">SUPER_ADMIN</option>
+                    <option value="USER">USER - 일반 사용자</option>
+                    <option value="ADMIN">ADMIN - 관리자</option>
+                    <option value="SUPER_ADMIN">SUPER_ADMIN - 슈퍼 관리자</option>
                   </select>
-                  <Input value={reason} onChange={(event) => setReason(event.target.value)} placeholder="변경 사유" />
-                  <Button className="bg-blue-600 text-white hover:bg-blue-700" onClick={() => void runMutation(() => updateSuperAdminRole(selected.id, role, reason), "역할을 변경했습니다.")}>역할 저장</Button>
+                  <Input value={reason} onChange={(event) => setReason(event.target.value)} placeholder="변경 사유(선택)" />
+                  <Button
+                    className="bg-blue-600 text-white hover:bg-blue-700"
+                    disabled={saving}
+                    onClick={() => void runMutation((targetId) => updateSuperAdminRole(targetId, role, reason), "변경이 완료됐습니다. 역할이 저장되었습니다.")}
+                  >
+                    역할 저장
+                  </Button>
                 </div>
+
+                {selectedRole === "USER" && (
+                  <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+                    USER 역할은 관리자 메뉴 접근 권한이 없는 일반 사용자입니다. 메뉴별 권한과 권한 그룹은 ADMIN 이상에서만 부여할 수 있습니다.
+                  </div>
+                )}
 
                 <div className="grid gap-4 lg:grid-cols-2">
                   <div className="space-y-2">
                     <div className="text-sm font-bold text-slate-900">메뉴별 권한</div>
-                    <select value={permissionCode} onChange={(event) => setPermissionCode(event.target.value)} className="h-10 w-full rounded-md border border-slate-200 px-3 text-sm">
+                    <select
+                      value={permissionCode}
+                      onChange={(event) => setPermissionCode(event.target.value)}
+                      disabled={selectedRole === "USER"}
+                      className="h-10 w-full rounded-md border border-slate-200 px-3 text-sm disabled:bg-slate-100"
+                    >
                       <option value="">권한 선택</option>
-                      {permissions.filter((item) => item.active).map((item) => <option key={item.permissionCode} value={item.permissionCode}>{item.displayName}</option>)}
+                      {visiblePermissions.map((item) => <option key={item.permissionCode} value={item.permissionCode}>{item.displayName}</option>)}
                     </select>
                     <div className="flex gap-2">
-                      <Button variant="outline" disabled={!permissionCode} onClick={() => void runMutation(() => grantSuperPermission(selected.id, permissionCode, reason), "권한을 부여했습니다.")}>부여</Button>
-                      <Button variant="outline" disabled={!permissionCode} onClick={() => void runMutation(() => revokeSuperPermission(selected.id, permissionCode, reason), "권한을 회수했습니다.")}>회수</Button>
+                      <Button
+                        variant="outline"
+                        disabled={!permissionCode || saving}
+                        onClick={() => void runMutation((targetId) => grantSuperPermission(targetId, permissionCode, reason), "변경이 완료됐습니다. 메뉴별 권한을 부여했습니다.")}
+                      >
+                        부여
+                      </Button>
+                      <Button
+                        variant="outline"
+                        disabled={!permissionCode || saving}
+                        onClick={() => void runMutation((targetId) => revokeSuperPermission(targetId, permissionCode, reason), "변경이 완료됐습니다. 메뉴별 권한을 회수했습니다.")}
+                      >
+                        회수
+                      </Button>
                     </div>
                     <div className="flex flex-wrap gap-2">
                       {detail?.permissions?.map((item) => <Badge key={item.id} className="bg-blue-100 text-blue-700">{item.displayName}</Badge>)}
@@ -233,13 +343,40 @@ export function AdminSuperAdminPage() {
 
                   <div className="space-y-2">
                     <div className="text-sm font-bold text-slate-900">권한 그룹</div>
-                    <select value={groupCode} onChange={(event) => setGroupCode(event.target.value)} className="h-10 w-full rounded-md border border-slate-200 px-3 text-sm">
+                    <select
+                      value={groupCode}
+                      onChange={(event) => setGroupCode(event.target.value)}
+                      disabled={selectedRole === "USER"}
+                      className="h-10 w-full rounded-md border border-slate-200 px-3 text-sm disabled:bg-slate-100"
+                    >
                       <option value="">그룹 선택</option>
-                      {groups.filter((item) => item.active).map((item) => <option key={item.groupCode} value={item.groupCode}>{item.displayName}</option>)}
+                      {visibleGroups.map((item) => <option key={item.groupCode} value={item.groupCode}>{item.displayName}</option>)}
                     </select>
+                    {selectedGroup && (
+                      <div className="rounded-lg bg-slate-50 p-3">
+                        <div className="text-xs font-semibold text-slate-500">이 그룹에 포함된 메뉴 권한</div>
+                        <div className="mt-2 flex flex-wrap gap-2">
+                          {(selectedGroup.permissions ?? []).map((permission) => (
+                            <Badge key={permission.permissionCode} className="bg-slate-200 text-slate-700">{permission.displayName}</Badge>
+                          ))}
+                        </div>
+                      </div>
+                    )}
                     <div className="flex gap-2">
-                      <Button variant="outline" disabled={!groupCode} onClick={() => void runMutation(() => assignSuperGroup(selected.id, groupCode, reason), "그룹을 부여했습니다.")}>부여</Button>
-                      <Button variant="outline" disabled={!groupCode} onClick={() => void runMutation(() => revokeSuperGroup(selected.id, groupCode, reason), "그룹을 회수했습니다.")}>회수</Button>
+                      <Button
+                        variant="outline"
+                        disabled={!groupCode || saving}
+                        onClick={() => void runMutation((targetId) => assignSuperGroup(targetId, groupCode, reason), "변경이 완료됐습니다. 권한 그룹을 부여했습니다.")}
+                      >
+                        부여
+                      </Button>
+                      <Button
+                        variant="outline"
+                        disabled={!groupCode || saving}
+                        onClick={() => void runMutation((targetId) => revokeSuperGroup(targetId, groupCode, reason), "변경이 완료됐습니다. 권한 그룹을 회수했습니다.")}
+                      >
+                        회수
+                      </Button>
                     </div>
                     <div className="flex flex-wrap gap-2">
                       {detail?.groups?.map((item) => <Badge key={item.id} className="bg-green-100 text-green-700">{item.displayName}</Badge>)}
@@ -265,6 +402,18 @@ export function AdminSuperAdminPage() {
           </Card>
         </section>
       </div>
+
+      <AlertDialog open={successModalOpen} onOpenChange={setSuccessModalOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>변경이 완료됐습니다</AlertDialogTitle>
+            <AlertDialogDescription>{successModalText}</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogAction onClick={() => setSuccessModalOpen(false)}>확인</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </AdminShell>
   );
 }
