@@ -4,6 +4,7 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
+import java.util.OptionalDouble;
 import java.util.stream.Collectors;
 
 import org.slf4j.Logger;
@@ -181,6 +182,33 @@ public class ChatbotService {
             log.error("FAQ 검색 실패: {}", e.getMessage());
             return List.of();
         }
+    }
+
+    /**
+     * 임계 필터 <b>전</b> FAQ 최고 유사도만 반환(운영 패널 1단계 — 미스 질문의 top_similarity 보강용).
+     * searchFaqHits 와 임베딩·정렬 로직은 같되 임계 필터를 적용하지 않는다.
+     * <p>임베딩 FAQ 가 0건이면 {@link OptionalDouble#empty()}(정상 미스 — 채울 유사도 없음).
+     * <p><b>예외를 삼키지 않는다</b>: 임베딩/Ollama 장애 시 그대로 던져, 호출부가
+     * "정상 미스(빈 결과)"와 "인프라 장애"를 구분해 장애를 미스로 오기록하지 않도록 한다.
+     */
+    public OptionalDouble topFaqSimilarity(String question) {
+        double[] queryVector = embeddingClient.embed(question);
+        List<Faq> faqs = faqMapper.findPublishedWithEmbedding();
+        if (faqs.isEmpty()) {
+            return OptionalDouble.empty();
+        }
+        double best = Double.NEGATIVE_INFINITY;
+        for (Faq faq : faqs) {
+            double[] faqVector = parseEmbedding(faq.getEmbedding());
+            if (faqVector == null || faqVector.length != queryVector.length) {
+                continue;
+            }
+            double similarity = CosineSimilarity.compute(queryVector, faqVector);
+            if (similarity > best) {
+                best = similarity;
+            }
+        }
+        return best == Double.NEGATIVE_INFINITY ? OptionalDouble.empty() : OptionalDouble.of(best);
     }
 
     /** 매칭 FAQ를 "Q/A" 텍스트로 합쳐 반환(모델 컨텍스트용). 없으면 빈 문자열. */
