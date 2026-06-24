@@ -83,6 +83,21 @@ careertuner:
     model: ${OPENAI_MODEL:gpt-5}
     base-url: ${OPENAI_BASE_URL:https://api.openai.com/v1}
     timeout: ${OPENAI_TIMEOUT:300s}
+  correction:
+    ai:
+      # E correction provider. openai keeps the current production path.
+      # self calls an OpenAI-compatible chat completions server for careertuner-e-correction, then falls back to OpenAI when enabled.
+      provider: ${CAREERTUNER_CORRECTION_AI_PROVIDER:openai}
+      fallback-enabled: ${CAREERTUNER_CORRECTION_AI_FALLBACK_ENABLED:true}
+      self:
+        base-url: ${CAREERTUNER_CORRECTION_AI_SELF_BASE_URL:}
+        model: ${CAREERTUNER_CORRECTION_AI_SELF_MODEL:careertuner-e-correction}
+        api-key: ${CAREERTUNER_CORRECTION_AI_SELF_API_KEY:}
+        max-tokens: ${CAREERTUNER_CORRECTION_AI_SELF_MAX_TOKENS:1600}
+        temperature: ${CAREERTUNER_CORRECTION_AI_SELF_TEMPERATURE:0.2}
+        timeout: ${CAREERTUNER_CORRECTION_AI_SELF_TIMEOUT:60s}
+        max-retries: ${CAREERTUNER_CORRECTION_AI_SELF_MAX_RETRIES:2}
+        retry-backoff: ${CAREERTUNER_CORRECTION_AI_SELF_RETRY_BACKOFF:400ms}
   analysis:
     ai:
       # C 적합도/취업분석 AI provider. openai(기본/폴백) | oss(자체 파인튜닝 careertuner-c-career-strategy-3b)
