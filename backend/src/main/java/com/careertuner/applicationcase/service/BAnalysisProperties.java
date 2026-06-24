@@ -28,6 +28,7 @@ public class BAnalysisProperties {
         private int numPredict = 2048;
         private int maxRetries = 1;
         private double groundingThreshold = 0.6;
+        private String companyModel = "qwen3:4b";
 
         public String chatUrl() {
             return baseUrl.replaceAll("/+$", "") + "/api/chat";

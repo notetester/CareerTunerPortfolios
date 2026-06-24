@@ -22,7 +22,12 @@ public class BLocalLlmClient {
     }
 
     public String chat(String systemPrompt, String userPrompt, Map<String, Object> jsonSchema) {
+        return chat(null, systemPrompt, userPrompt, jsonSchema);
+    }
+
+    public String chat(String modelOverride, String systemPrompt, String userPrompt, Map<String, Object> jsonSchema) {
         BAnalysisProperties.LocalLlm local = properties.getLocalLlm();
+        String model = (modelOverride != null && !modelOverride.isBlank()) ? modelOverride : local.getModel();
         var jdkClient = HttpClient.newBuilder()
                 .connectTimeout(local.getConnectTimeout())
                 .build();
@@ -34,7 +39,7 @@ public class BLocalLlmClient {
                 .requestFactory(requestFactory)
                 .build();
         OllamaChatRequest request = new OllamaChatRequest(
-                local.getModel(),
+                model,
                 false,
                 false,
                 Map.of("temperature", 0, "num_ctx", 8192, "num_predict", local.getNumPredict()),
