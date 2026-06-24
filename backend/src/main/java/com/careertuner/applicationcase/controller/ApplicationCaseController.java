@@ -24,6 +24,7 @@ import com.careertuner.companyanalysis.dto.CompanyAnalysisResponse;
 import com.careertuner.companyanalysis.dto.CompanyAnalysisReviewRequest;
 import com.careertuner.applicationcase.dto.CreateApplicationCaseFromJobPostingRequest;
 import com.careertuner.applicationcase.dto.CreateApplicationCaseRequest;
+import com.careertuner.applicationcase.dto.ReviewJobPostingExtractionRequest;
 import com.careertuner.jobanalysis.dto.JobAnalysisResponse;
 import com.careertuner.jobanalysis.dto.JobAnalysisReviewRequest;
 import com.careertuner.jobposting.dto.JobPostingRequest;
@@ -148,6 +149,13 @@ public class ApplicationCaseController {
     public ApiResponse<ApplicationCaseExtractionResponse> retryJobPostingExtraction(@AuthenticationPrincipal AuthUser authUser,
                                                                                    @PathVariable Long id) {
         return ApiResponse.ok(applicationCaseService.retryJobPostingExtraction(authUser.id(), id));
+    }
+
+    @PatchMapping("/{id}/job-posting/extraction/review")
+    public ApiResponse<ApplicationCaseExtractionResponse> reviewJobPostingExtraction(@AuthenticationPrincipal AuthUser authUser,
+                                                                                    @PathVariable Long id,
+                                                                                    @Valid @RequestBody ReviewJobPostingExtractionRequest request) {
+        return ApiResponse.ok(applicationCaseService.reviewJobPostingExtraction(authUser.id(), id, request));
     }
 
     @PostMapping("/{id}/job-analysis")

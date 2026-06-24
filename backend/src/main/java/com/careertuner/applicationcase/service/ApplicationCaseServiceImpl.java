@@ -23,6 +23,7 @@ import com.careertuner.applicationcase.dto.CreateApplicationCaseFromJobPostingRe
 import com.careertuner.applicationcase.dto.CreateApplicationCaseRequest;
 import com.careertuner.applicationcase.dto.FitAnalysisResponse;
 import com.careertuner.applicationcase.dto.JobPostingMetadataResponse;
+import com.careertuner.applicationcase.dto.ReviewJobPostingExtractionRequest;
 import com.careertuner.applicationcase.dto.UpdateApplicationCaseRequest;
 import com.careertuner.applicationcase.mapper.ApplicationCaseExtractionMapper;
 import com.careertuner.applicationcase.mapper.ApplicationCaseMapper;
@@ -39,6 +40,7 @@ import com.careertuner.jobanalysis.service.JobAnalysisService;
 import com.careertuner.jobposting.dto.JobPostingRequest;
 import com.careertuner.jobposting.dto.JobPostingResponse;
 import com.careertuner.jobposting.service.JobPostingService;
+import com.careertuner.notification.mapper.NotificationMapper;
 
 import lombok.RequiredArgsConstructor;
 
@@ -48,10 +50,15 @@ public class ApplicationCaseServiceImpl implements ApplicationCaseService {
 
     private static final String DEFAULT_SOURCE_TYPE = "TEXT";
     private static final String DEFAULT_STATUS = "DRAFT";
-    private static final String DEFAULT_COMPANY_NAME = "기업명 확인 필요";
-    private static final String DEFAULT_JOB_TITLE = "직무명 확인 필요";
+    private static final String DEFAULT_COMPANY_NAME = "\uAE30\uC5C5\uBA85 \uD655\uC778 \uD544\uC694";
+    private static final String DEFAULT_JOB_TITLE = "\uC9C1\uBB34\uBA85 \uD655\uC778 \uD544\uC694";
     private static final String EXTRACTION_STATUS_QUEUED = "QUEUED";
     private static final String EXTRACTION_STATUS_FAILED = "FAILED";
+    private static final String EXTRACTION_STATUS_SUCCEEDED = "SUCCEEDED";
+    private static final String EXTRACTION_QUALITY_REVIEW_REQUIRED = "REVIEW_REQUIRED";
+    private static final String NOTIFICATION_TARGET_TYPE = "APPLICATION_CASE";
+    private static final String REVIEW_NOTIFICATION_TYPE = "JOB_POSTING_EXTRACTION_REVIEW_REQUIRED";
+    private static final int REVIEWED_QUALITY_SCORE = 100;
     private static final Set<String> SOURCE_TYPES = Set.of("TEXT", "PDF", "IMAGE", "URL", "MANUAL");
     private static final Set<String> JOB_POSTING_JSON_SOURCE_TYPES = Set.of("TEXT", "MANUAL", "URL");
     private static final Set<String> JOB_POSTING_UPLOAD_SOURCE_TYPES = Set.of("PDF", "IMAGE");
@@ -67,6 +74,8 @@ public class ApplicationCaseServiceImpl implements ApplicationCaseService {
     private final CompanyAnalysisService companyAnalysisService;
     private final JobAnalysisMapper jobAnalysisMapper;
     private final OpenAiResponsesClient openAiClient;
+    private final NotificationMapper notificationMapper;
+    private final ApplicationCaseAutoPipelineService autoPipelineService;
 
     @Override
     @Transactional
@@ -295,7 +304,7 @@ public class ApplicationCaseServiceImpl implements ApplicationCaseService {
 
         ApplicationCaseExtraction latestExtraction = extractionMapper.findLatestExtractionByApplicationCaseId(applicationCaseId);
         if (latestExtraction == null) {
-            throw new BusinessException(ErrorCode.NOT_FOUND, "공고 추출 작업을 찾을 수 없습니다.");
+            throw new BusinessException(ErrorCode.NOT_FOUND, "Job posting extraction job was not found.");
         }
         if (!EXTRACTION_STATUS_FAILED.equals(latestExtraction.getStatus())) {
             throw new BusinessException(ErrorCode.CONFLICT, "실패한 최신 공고 추출 작업만 재시도할 수 있습니다.");
@@ -311,6 +320,53 @@ public class ApplicationCaseServiceImpl implements ApplicationCaseService {
                 applicationCaseId,
                 failedJobPostingId,
                 latestExtraction.getSourceType());
+    }
+
+    @Override
+    @Transactional
+    public ApplicationCaseExtractionResponse reviewJobPostingExtraction(Long userId,
+                                                                        Long applicationCaseId,
+                                                                        ReviewJobPostingExtractionRequest request) {
+        accessService.requireOwned(userId, applicationCaseId);
+        ApplicationCaseExtraction latestExtraction = extractionMapper.findLatestExtractionByApplicationCaseId(applicationCaseId);
+        if (latestExtraction == null) {
+            throw new BusinessException(ErrorCode.NOT_FOUND, "Job posting extraction job was not found.");
+        }
+        if (!EXTRACTION_STATUS_SUCCEEDED.equals(latestExtraction.getStatus())
+                || !EXTRACTION_QUALITY_REVIEW_REQUIRED.equals(latestExtraction.getQualityStatus())) {
+            throw new BusinessException(ErrorCode.CONFLICT, "Only REVIEW_REQUIRED extraction jobs can be reviewed.");
+        }
+
+        String reviewedText = requiredText(request.extractedText(), "extractedText");
+        JobPostingResponse reviewedPosting = jobPostingService.saveJobPosting(
+                userId,
+                applicationCaseId,
+                new JobPostingRequest(reviewedText, null, reviewedText, "MANUAL"));
+        int updated = extractionMapper.markExtractionReviewed(
+                latestExtraction.getId(),
+                reviewedPosting.id(),
+                REVIEWED_QUALITY_SCORE,
+                reviewedQualityReportJson(reviewedText.length()),
+                reviewedModelVersionsJson());
+        if (updated != 1) {
+            throw new BusinessException(ErrorCode.CONFLICT, "Extraction review could not be completed. Please refresh and try again.");
+        }
+
+        notificationMapper.markTypeAsReadByTarget(
+                userId,
+                REVIEW_NOTIFICATION_TYPE,
+                NOTIFICATION_TARGET_TYPE,
+                applicationCaseId);
+
+        autoPipelineService.runAfterExtractionPass(
+                userId,
+                applicationCaseId,
+                reviewedPosting.id(),
+                reviewedPosting.revision(),
+                reviewedText);
+
+        return ApplicationCaseExtractionResponse.from(
+                extractionMapper.findLatestExtractionByApplicationCaseId(applicationCaseId));
     }
 
     @Override
@@ -441,9 +497,17 @@ public class ApplicationCaseServiceImpl implements ApplicationCaseService {
         return new JobPostingMetadataResponse(DEFAULT_COMPANY_NAME, DEFAULT_JOB_TITLE, null, null);
     }
 
+    private static String reviewedQualityReportJson(int textLength) {
+        return "{\"qualityStatus\":\"PASS\",\"reviewed\":true,\"reviewedTextLength\":%d}".formatted(textLength);
+    }
+
+    private static String reviewedModelVersionsJson() {
+        return "{\"review\":\"user-confirmed-v1\"}";
+    }
+
     private static String requiredText(String value, String fieldName) {
         if (isBlank(value)) {
-            throw new BusinessException(ErrorCode.INVALID_INPUT, "%s 값이 필요합니다.".formatted(fieldName));
+            throw new BusinessException(ErrorCode.INVALID_INPUT, "%s 媛믪씠 ?꾩슂?⑸땲??".formatted(fieldName));
         }
         return value.trim();
     }
@@ -499,7 +563,7 @@ public class ApplicationCaseServiceImpl implements ApplicationCaseService {
         Set<Long> uniqueIds = new LinkedHashSet<>();
         for (Long id : applicationCaseIds) {
             if (id == null || id <= 0) {
-                throw new BusinessException(ErrorCode.INVALID_INPUT, "applicationCaseIds 값이 올바르지 않습니다.");
+                throw new BusinessException(ErrorCode.INVALID_INPUT, "applicationCaseIds 媛믪씠 ?щ컮瑜댁? ?딆뒿?덈떎.");
             }
             uniqueIds.add(id);
         }
@@ -515,7 +579,7 @@ public class ApplicationCaseServiceImpl implements ApplicationCaseService {
         }
         String normalized = view.trim().toUpperCase(Locale.ROOT);
         if (!LIST_VIEWS.contains(normalized)) {
-            throw new BusinessException(ErrorCode.INVALID_INPUT, "view 값이 올바르지 않습니다.");
+            throw new BusinessException(ErrorCode.INVALID_INPUT, "view 媛믪씠 ?щ컮瑜댁? ?딆뒿?덈떎.");
         }
         return normalized;
     }
@@ -523,7 +587,7 @@ public class ApplicationCaseServiceImpl implements ApplicationCaseService {
     private static String normalizeOption(String value, String defaultValue, Set<String> allowedValues, String fieldName) {
         String normalized = isBlank(value) ? defaultValue : value.trim().toUpperCase(Locale.ROOT);
         if (normalized == null || !allowedValues.contains(normalized)) {
-            throw new BusinessException(ErrorCode.INVALID_INPUT, "%s 값이 올바르지 않습니다.".formatted(fieldName));
+            throw new BusinessException(ErrorCode.INVALID_INPUT, "%s 媛믪씠 ?щ컮瑜댁? ?딆뒿?덈떎.".formatted(fieldName));
         }
         return normalized;
     }

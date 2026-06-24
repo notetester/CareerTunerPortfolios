@@ -13,6 +13,8 @@ import com.careertuner.admin.user.dto.AdminUserLoginHistoryRow;
 import com.careertuner.admin.user.dto.AdminUserRow;
 import com.careertuner.admin.user.dto.AdminUserStatusUpdateRequest;
 import com.careertuner.admin.user.mapper.AdminUserMapper;
+import com.careertuner.admin.common.AdminAccess;
+import com.careertuner.admin.ops.service.AdminActionLogService;
 import com.careertuner.auth.mapper.AuthMapper;
 import com.careertuner.common.exception.BusinessException;
 import com.careertuner.common.exception.ErrorCode;
@@ -25,10 +27,11 @@ import lombok.RequiredArgsConstructor;
 public class AdminUserService {
 
     private static final Set<String> STATUSES = Set.of("ACTIVE", "DORMANT", "BLOCKED", "DELETED");
-    private static final Set<String> ROLES = Set.of("USER", "ADMIN");
+    private static final Set<String> ROLES = Set.of("USER", "ADMIN", "SUPER_ADMIN");
 
     private final AdminUserMapper mapper;
     private final AuthMapper authMapper;
+    private final AdminActionLogService actionLogService;
 
     @Transactional(readOnly = true)
     public List<AdminUserRow> users(AuthUser authUser, String keyword, String status, String role, int limit) {
@@ -45,7 +48,11 @@ public class AdminUserService {
                 user,
                 mapper.findLoginHistory(id, 100),
                 mapper.findStatusHistory(id, 100),
-                mapper.findConsents(id));
+                mapper.findConsents(id),
+                mapper.findEmailVerifications(id, 100),
+                mapper.findRefreshTokens(id, 50),
+                mapper.findAiUsage(id, 100),
+                mapper.findProfile(id));
     }
 
     @Transactional(readOnly = true)
@@ -68,6 +75,10 @@ public class AdminUserService {
         }
         mapper.insertStatusHistory(id, authUser.id(), existing.getStatus(), nextStatus, reason,
                 blankToNull(request.memo()), blockedUntil);
+        actionLogService.record(authUser, id, "USER_STATUS_UPDATED", "USER",
+                "{\"status\":\"%s\"}".formatted(existing.getStatus()),
+                "{\"status\":\"%s\"}".formatted(nextStatus),
+                reason);
         if (!"ACTIVE".equals(nextStatus)) {
             authMapper.revokeAllForUser(id);
         }
@@ -83,9 +94,7 @@ public class AdminUserService {
     }
 
     private static void requireAdmin(AuthUser authUser) {
-        if (authUser == null || !"ADMIN".equals(authUser.role())) {
-            throw new BusinessException(ErrorCode.FORBIDDEN, "관리자 권한이 필요합니다.");
-        }
+        AdminAccess.requireAdmin(authUser);
     }
 
     private static int normalizeLimit(int limit) {

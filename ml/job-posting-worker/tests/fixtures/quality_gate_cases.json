@@ -1,0 +1,17 @@
+[
+  {
+    "name": "pass_long_with_sections",
+    "expectedStatus": "PASS",
+    "text": "Company: Acme Platform. Role: Backend Engineer. Responsibilities: build Spring APIs, operate batch workers, improve MySQL queries, review releases, and coordinate frontend contracts. Qualifications: Java, Spring Boot, MyBatis, SQL, testing, production debugging, and monitoring. Skills: Java Spring MySQL Docker Python TypeScript. Employment: full-time Seoul hybrid role with benefits. Apply: submit resume before the deadline. Deadline: 2026-07-31. This role owns commercial service reliability, incident response, regression testing, customer-impact analysis, API hardening, dashboard monitoring, and release readiness checks for repeated product operations."
+  },
+  {
+    "name": "review_short_with_sections",
+    "expectedStatus": "REVIEW_REQUIRED",
+    "text": "Company: Acme. Role: Backend Engineer. Responsibilities: build Spring APIs and operate batch workers. Qualifications: Java, Spring Boot, MySQL, testing, and production debugging. Skills: Java Spring Docker monitoring. Apply: submit resume before the deadline. The posting is usable but intentionally shorter than the automatic analysis pass threshold."
+  },
+  {
+    "name": "failed_too_short",
+    "expectedStatus": "FAILED",
+    "text": "Company: Acme. Role: Backend Engineer."
+  }
+]

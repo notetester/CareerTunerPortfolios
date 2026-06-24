@@ -7,7 +7,11 @@ import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 
 import com.careertuner.admin.user.dto.AdminUserConsentRow;
+import com.careertuner.admin.user.dto.AdminUserAiUsageRow;
+import com.careertuner.admin.user.dto.AdminUserEmailVerificationRow;
 import com.careertuner.admin.user.dto.AdminUserLoginHistoryRow;
+import com.careertuner.admin.user.dto.AdminUserProfileSnapshot;
+import com.careertuner.admin.user.dto.AdminUserRefreshTokenRow;
 import com.careertuner.admin.user.dto.AdminUserRow;
 import com.careertuner.admin.user.dto.AdminUserStatusHistoryRow;
 
@@ -26,6 +30,14 @@ public interface AdminUserMapper {
     List<AdminUserStatusHistoryRow> findStatusHistory(@Param("userId") Long userId, @Param("limit") int limit);
 
     List<AdminUserConsentRow> findConsents(@Param("userId") Long userId);
+
+    List<AdminUserEmailVerificationRow> findEmailVerifications(@Param("userId") Long userId, @Param("limit") int limit);
+
+    List<AdminUserRefreshTokenRow> findRefreshTokens(@Param("userId") Long userId, @Param("limit") int limit);
+
+    List<AdminUserAiUsageRow> findAiUsage(@Param("userId") Long userId, @Param("limit") int limit);
+
+    AdminUserProfileSnapshot findProfile(@Param("userId") Long userId);
 
     int updateStatus(@Param("id") Long id,
                      @Param("status") String status,

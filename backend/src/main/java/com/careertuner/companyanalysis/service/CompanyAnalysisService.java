@@ -13,9 +13,9 @@ import com.careertuner.applicationcase.domain.ApplicationCase;
 import com.careertuner.applicationcase.service.AiUsageLogService;
 import com.careertuner.applicationcase.service.ApplicationCaseAnalysisStatusService;
 import com.careertuner.applicationcase.service.ApplicationCaseAccessService;
+import com.careertuner.applicationcase.service.BAnalysisGenerationService;
+import com.careertuner.applicationcase.service.BAnalysisGenerationService.GeneratedCompanyAnalysis;
 import com.careertuner.applicationcase.service.BAnalysisJsonValidator;
-import com.careertuner.applicationcase.service.OpenAiResponsesClient;
-import com.careertuner.applicationcase.service.OpenAiResponsesClient.CompanyAnalysisPayload;
 import com.careertuner.common.exception.BusinessException;
 import com.careertuner.common.exception.ErrorCode;
 import com.careertuner.companyanalysis.domain.CompanyAnalysis;
@@ -35,7 +35,7 @@ public class CompanyAnalysisService {
 
     private final ApplicationCaseAccessService accessService;
     private final CompanyAnalysisMapper companyAnalysisMapper;
-    private final OpenAiResponsesClient openAiClient;
+    private final BAnalysisGenerationService bAnalysisGenerationService;
     private final AiUsageLogService aiUsageLogService;
     private final ApplicationCaseAnalysisStatusService statusService;
     private final TransactionTemplate transactionTemplate;
@@ -49,9 +49,8 @@ public class CompanyAnalysisService {
         String previousStatus = applicationCase.getStatus();
         statusService.markAnalyzing(userId, applicationCaseId, previousStatus);
         try {
-            CompanyAnalysisPayload payload = openAiClient.analyzeCompany(
-                    applicationCase,
-                    sourceText);
+            GeneratedCompanyAnalysis generated = bAnalysisGenerationService.generateCompanyAnalysis(applicationCase, sourceText);
+            var payload = generated.payload();
             LocalDateTime checkedAt = LocalDateTime.now();
             return transactionTemplate.execute(status -> {
                 CompanyAnalysis companyAnalysis = CompanyAnalysis.builder()
@@ -73,7 +72,15 @@ public class CompanyAnalysisService {
                 companyAnalysisMapper.insertCompanyAnalysis(companyAnalysis);
                 CompanyAnalysisResponse response = CompanyAnalysisResponse.from(companyAnalysisMapper.findLatestCompanyAnalysisByCaseId(applicationCaseId));
                 statusService.markReadyAfterAnalysis(userId, applicationCaseId, previousStatus);
-                aiUsageLogService.recordSuccess(userId, applicationCaseId, FEATURE_COMPANY_RESEARCH, payload.usage());
+                if (generated.fellBack()) {
+                    aiUsageLogService.recordFailure(
+                            userId,
+                            applicationCaseId,
+                            FEATURE_COMPANY_RESEARCH,
+                            generated.fallbackAttemptedModel(),
+                            generated.fallbackReason());
+                }
+                aiUsageLogService.recordLocalSuccess(userId, applicationCaseId, FEATURE_COMPANY_RESEARCH, payload.usage());
                 return response;
             });
         } catch (RuntimeException ex) {

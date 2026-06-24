@@ -20,6 +20,7 @@ import { AdminInterviewKnowledgePage } from "./features/interview-knowledge/page
 import { AdminJobAnalysisPage } from "./features/job-analysis/pages/AdminJobAnalysisPage";
 import { AdminPromptsPage } from "./features/prompts/pages/AdminPromptsPage";
 import AdminProfilePromptsPage from "./features/prompts/profile/pages/AdminProfilePrompts";
+import { AdminAiSettingsPage } from "./features/settings/pages/AdminAiSettingsPage";
 import AdminInterviewPromptsPage from "./features/prompts/interview/pages/AdminInterviewPrompts";
 import AdminReports from "./features/community/pages/AdminReports";
 import AdminGuidelines from "./features/community/pages/AdminGuidelines";
@@ -27,9 +28,13 @@ import AdminNotices from "./features/notices/pages/AdminNotices";
 import NoticeCompose from "./features/notices/pages/NoticeCompose";
 import AdminFaq from "./features/faqs/pages/AdminFaq";
 import FaqCompose from "./features/faqs/pages/FaqCompose";
+import AdminAiSupport from "./features/ai-support/pages/AdminAiSupport";
 import AdminInquiries from "./features/support-tickets/pages/AdminInquiriesAI";
 import AdminNotifications from "./features/notifications/pages/AdminNotifications";
 import AdminTerms from "./features/terms/pages/AdminTerms";
+import { AdminActionLogsPage } from "./features/action-logs/pages/AdminActionLogsPage";
+import { AdminPoliciesPage } from "./features/policies/pages/AdminPoliciesPage";
+import { AdminSuperAdminPage } from "./features/super-admin/pages/AdminSuperAdminPage";
 
 export const adminRoutes = [
   { path: "admin", Component: AdminDashboardPage },
@@ -45,9 +50,13 @@ export const adminRoutes = [
   { path: "admin/users", Component: AdminUsersPage },
   { path: "admin/profiles", Component: AdminProfilesPage },
   { path: "admin/consents", Component: AdminConsentsPage },
+  { path: "admin/super", Component: AdminSuperAdminPage },
+  { path: "admin/policies", Component: AdminPoliciesPage },
+  { path: "admin/action-logs", Component: AdminActionLogsPage },
   { path: "admin/payments", Component: AdminPaymentsPage },
   { path: "admin/application-cases", Component: AdminApplicationCasesPage },
   { path: "admin/ai-usage", Component: AdminAiUsagePage },
+  { path: "admin/ai-settings", Component: AdminAiSettingsPage },
   { path: "admin/job-analysis", Component: AdminJobAnalysisPage },
   { path: "admin/company-analysis", Component: AdminCompanyAnalysisPage },
   { path: "admin/interviews", Component: AdminInterviewsPage },
@@ -57,6 +66,7 @@ export const adminRoutes = [
   { path: "admin/notices/new", Component: NoticeCompose },
   { path: "admin/faq", Component: AdminFaq },
   { path: "admin/faq/new", Component: FaqCompose },
+  { path: "admin/ai-support", Component: AdminAiSupport },
   { path: "admin/inquiries", Component: AdminInquiries },
   { path: "admin/terms", Component: AdminTerms },
   { path: "admin/terms/guidelines", Component: AdminGuidelines },

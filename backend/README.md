@@ -101,12 +101,12 @@ PRO 플랜은 영상분석권을 월 1장 제공하고, PREMIUM 플랜은 영상
 | POST | `/api/application-cases/{id}/job-posting/upload` | PDF/이미지 업로드 및 텍스트 추출 | Bearer |
 | GET | `/api/application-cases/{id}/job-posting` | 현재 공고문 조회 | Bearer |
 | GET | `/api/application-cases/{id}/job-posting/revisions` | 공고문 revision 이력 조회 | Bearer |
-| POST | `/api/application-cases/{id}/job-analysis` | 실제 OpenAI 공고 분석 생성 | Bearer |
+| POST | `/api/application-cases/{id}/job-analysis` | 자체 공고 분석 생성(`self-rules-v1`, 선택적 로컬 LLM) | Bearer |
 | GET | `/api/application-cases/{id}/job-analysis` | 공고 분석 조회 | Bearer |
 | GET | `/api/application-cases/{id}/job-analysis/history` | 공고 분석 이력 조회 | Bearer |
 | PATCH | `/api/application-cases/{id}/job-analysis/{analysisId}/review` | 공고 분석 사용자 검수·확정 | Bearer |
 | POST | `/api/application-cases/{id}/job-analysis/mock` | 개발용 mock 공고 분석 생성 | Bearer |
-| POST | `/api/application-cases/{id}/company-analysis` | 실제 OpenAI 기업 분석 생성 | Bearer |
+| POST | `/api/application-cases/{id}/company-analysis` | 자체 기업 분석 생성(`self-rules-v1`, 선택적 로컬 LLM) | Bearer |
 | GET | `/api/application-cases/{id}/company-analysis` | 기업 분석 조회 | Bearer |
 | GET | `/api/application-cases/{id}/company-analysis/history` | 기업 분석 이력 조회 | Bearer |
 | PATCH | `/api/application-cases/{id}/company-analysis/{analysisId}/review` | 기업 분석 사용자 검수·확정 | Bearer |
@@ -124,8 +124,8 @@ PRO 플랜은 영상분석권을 월 1장 제공하고, PREMIUM 플랜은 영상
 | PATCH | `/api/admin/company-analysis/{analysisId}/metadata` | 관리자 기업 분석 출처 메타데이터 수정. 날짜 clear 플래그로 `checked_at`, `refresh_recommended_at` 초기화 가능 | Bearer(ADMIN) |
 | GET | `/api/admin/ai-usage/b` | 관리자 B AI 사용량 로그 조회 | Bearer(ADMIN) |
 
-실제 AI 분석과 이미지/스캔 PDF OCR은 `OPENAI_API_KEY`가 필요하다. 모델은 `OPENAI_MODEL`로 변경할 수 있으며 기본값은 `gpt-5`다.
-텍스트 PDF는 PDFBox로 먼저 추출하고, 텍스트가 없는 PDF와 이미지는 OpenAI OCR을 사용한다.
+공고/기업 분석은 기본적으로 `self-rules-v1` 자체 경로를 사용한다. 로컬 Qwen/Gemma 분석은 `B_ANALYSIS_LOCAL_LLM_ENABLED=true`와 Ollama 설정으로 켤 수 있으며, 모델이 없으면 기본값에서는 호출하지 않는다.
+텍스트 PDF는 PDFBox로 먼저 추출하고, 텍스트가 없는 PDF와 이미지는 자체 문서 추출 워커 또는 명시적으로 allowlist 된 OCR fallback만 사용한다. OpenAI 폴백은 `OPENAI_API_KEY`가 있을 때만 동작하며 모델은 `OPENAI_MODEL`(기본 `gpt-5`)로 바꾼다.
 자체 LLM은 현재 F 커뮤니티 검열의 Ollama 연동과 D 면접 파인튜닝 실험을 중심으로 붙어 있으며,
 A~F 담당별 목표 운영 기준은 [`../docs/planning/담당별_자체LLM_운영안.md`](../docs/planning/담당별_자체LLM_운영안.md)를 따른다.
 공통 `ai/common`, 도메인별 `A_AI_*`~`F_AI_*` 설정, 관리자 AI 상태 API는 목표 구조이므로 실제 도입 시 공통 영역 합의 후 구현한다.

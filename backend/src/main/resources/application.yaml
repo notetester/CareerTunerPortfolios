@@ -83,6 +83,8 @@ careertuner:
     model: ${OPENAI_MODEL:gpt-5}
     base-url: ${OPENAI_BASE_URL:https://api.openai.com/v1}
     timeout: ${OPENAI_TIMEOUT:300s}
+    job-posting-fallback-enabled: ${JOB_POSTING_OPENAI_FALLBACK_ENABLED:false}
+    job-posting-fallback-allowlist: ${JOB_POSTING_OPENAI_FALLBACK_ALLOWLIST:}
   correction:
     ai:
       # E correction provider. openai keeps the current production path.
@@ -127,6 +129,18 @@ careertuner:
   uploads:
     job-posting-dir: ${JOB_POSTING_UPLOAD_DIR:.uploads/application-postings}
     max-file-size-bytes: ${JOB_POSTING_MAX_FILE_SIZE_BYTES:5242880}
+  extraction:
+    ai-worker:
+      enabled: ${JOB_POSTING_AI_WORKER_ENABLED:false}
+      base-url: ${JOB_POSTING_AI_WORKER_BASE_URL:http://127.0.0.1:8091}
+      timeout: ${JOB_POSTING_AI_WORKER_TIMEOUT:30s}
+  b-analysis:
+    local-llm:
+      enabled: ${B_ANALYSIS_LOCAL_LLM_ENABLED:true}
+      base-url: ${B_ANALYSIS_OLLAMA_BASE_URL:http://localhost:11434}
+      model: ${B_ANALYSIS_OLLAMA_MODEL:careertuner-b-jobposting-r1}
+      connect-timeout: ${B_ANALYSIS_OLLAMA_CONNECT_TIMEOUT:5s}
+      read-timeout: ${B_ANALYSIS_OLLAMA_READ_TIMEOUT:480s}
   file:
     # 면접 음성/영상 등 업로드 파일 저장 위치. 큰 영상은 SPRING_SERVLET_MULTIPART_MAX_FILE_SIZE 도 함께 올린다.
     media-dir: ${MEDIA_UPLOAD_DIR:.uploads/media}

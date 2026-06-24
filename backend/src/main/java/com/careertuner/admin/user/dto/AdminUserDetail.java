@@ -6,5 +6,9 @@ public record AdminUserDetail(
         AdminUserRow user,
         List<AdminUserLoginHistoryRow> loginHistory,
         List<AdminUserStatusHistoryRow> statusHistory,
-        List<AdminUserConsentRow> consents) {
+        List<AdminUserConsentRow> consents,
+        List<AdminUserEmailVerificationRow> emailVerifications,
+        List<AdminUserRefreshTokenRow> refreshTokens,
+        List<AdminUserAiUsageRow> aiUsage,
+        AdminUserProfileSnapshot profile) {
 }
