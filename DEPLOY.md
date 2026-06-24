@@ -26,6 +26,10 @@ DB_HOST=<팀 MySQL 호스트>
 DB_NAME=<DB 이름>
 DB_USERNAME=<DB 사용자>
 DB_PASSWORD=<DB 비밀번호>
+JOB_POSTING_AI_WORKER_ENABLED=true
+JOB_POSTING_AI_WORKER_BASE_URL=http://job-posting-worker:8091
+JOB_POSTING_AI_WORKER_TIMEOUT=30s
+JOB_POSTING_WORKER_INSTALL_OCR=true
 EOF
 ```
 > `.env` 는 절대 커밋하지 않는다(.gitignore 처리됨). 실제 접속값은 팀 채널/시크릿으로 공유.

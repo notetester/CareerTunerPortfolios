@@ -10,6 +10,7 @@ export type AINotificationType =
   | "CORRECTION_COMPLETE"
   | "POST_SUMMARY_READY"
   | "JOB_POSTING_EXTRACTION_SUCCEEDED"
+  | "JOB_POSTING_EXTRACTION_REVIEW_REQUIRED"
   | "JOB_POSTING_EXTRACTION_FAILED"
   | "LOW_CONFIDENCE_REPORT"
   | "TICKET_DRAFT_READY";
@@ -91,6 +92,7 @@ export const TYPE_META: Record<NotificationType, TypeMeta> = {
   FIT_ANALYSIS_COMPLETE:     { cat: "ai_analysis", icon: "Target",             variant: "success", cta: "적합도 분석 보기" },
   CAREER_TREND_COMPLETE:     { cat: "ai_analysis", icon: "TrendingUp",         variant: "info",    cta: "트렌드 리포트 보기" },
   JOB_POSTING_EXTRACTION_SUCCEEDED: { cat: "ai_analysis", icon: "FileSearch",  variant: "success", cta: "지원 건 보기" },
+  JOB_POSTING_EXTRACTION_REVIEW_REQUIRED: { cat: "ai_analysis", icon: "FileSearch",  variant: "warning", cta: "지원 건 보기" },
   JOB_POSTING_EXTRACTION_FAILED:    { cat: "ai_analysis", icon: "AlertTriangle", variant: "danger", cta: "지원 건 보기" },
   /* 면접 */
   QUESTIONS_GENERATED:       { cat: "interview",   icon: "ListChecks",         variant: "info",    cta: "예상 질문 보기" },
@@ -167,6 +169,7 @@ export const TYPE_TO_CATEGORY: Record<NotificationType, NotificationCategory> = 
   FIT_ANALYSIS_COMPLETE: "ai_analysis",
   CAREER_TREND_COMPLETE: "ai_analysis",
   JOB_POSTING_EXTRACTION_SUCCEEDED: "ai_analysis",
+  JOB_POSTING_EXTRACTION_REVIEW_REQUIRED: "ai_analysis",
   JOB_POSTING_EXTRACTION_FAILED: "ai_analysis",
   /* 면접 */
   QUESTIONS_GENERATED: "interview",

@@ -55,7 +55,11 @@ export function ApplicationExtractionMonitor() {
     dismissLoadingToast();
 
     if (job.status === "SUCCEEDED") {
-      toast.success("공고문 추출이 완료됐습니다.");
+      if (job.qualityStatus === "REVIEW_REQUIRED") {
+        toast.warning("공고문 추출 결과 검수가 필요합니다.");
+      } else {
+        toast.success("공고문 추출이 완료됐습니다.");
+      }
     } else if (job.status === "FAILED") {
       toast.error(job.errorMessage || "공고문 추출에 실패했습니다.");
     }

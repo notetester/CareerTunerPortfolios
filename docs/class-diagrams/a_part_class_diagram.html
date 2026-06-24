@@ -1,0 +1,642 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>CareerTuner Class Diagram - A파트 회원/프로필/동의/AI</title>
+<style>
+  :root{
+    --navy:#1f3864;
+    --blue:#2f5597;
+    --green:#2e7d32;
+    --orange:#e67e22;
+    --purple:#6d5bd0;
+    --pink:#c2185b;
+    --slate:#64748b;
+    --paper:#ffffff;
+    --band:#eef3fb;
+    --ink:#172033;
+    --muted:#617089;
+    --line:#c9d4e6;
+    --soft:#f7f9fd;
+  }
+  *{ box-sizing:border-box; }
+  html,body{ margin:0; padding:0; background:#4d5666; color:var(--ink); font-family:"Pretendard","Malgun Gothic",Arial,sans-serif; }
+  #toolbar{
+    position:fixed; inset:0 0 auto 0; height:44px; z-index:1000;
+    display:flex; align-items:center; gap:14px; padding:8px 18px;
+    background:#11192a; color:#dfe6f3; font-size:13px;
+    box-shadow:0 2px 8px rgba(0,0,0,.35);
+  }
+  #toolbar b{ color:#fff; }
+  #toolbar button{ border:0; border-radius:6px; background:var(--blue); color:#fff; padding:7px 14px; cursor:pointer; font-weight:700; }
+  #toolbar button:hover{ background:#3b6cc3; }
+  #toolbar .hint{ color:#a9b6cc; }
+  #deck{ padding:62px 0 38px; }
+  .slide{
+    position:relative; overflow:hidden;
+    width:1280px; height:720px; margin:18px auto; background:var(--paper);
+    box-shadow:0 8px 28px rgba(0,0,0,.35);
+  }
+  .topbar{ position:absolute; top:0; left:0; right:0; height:14px; background:var(--navy); }
+  .corner{ position:absolute; right:0; bottom:0; width:10px; height:46px; background:var(--navy); }
+  .head{
+    position:absolute; top:14px; left:0; right:0; height:74px;
+    display:flex; align-items:center; justify-content:space-between;
+    padding:0 40px; background:linear-gradient(90deg,var(--band),#f8fbff 72%,#fff);
+  }
+  .head h1{ margin:0; color:var(--navy); font-size:32px; font-weight:900; letter-spacing:-.4px; }
+  .head .part{ font-size:15px; font-weight:900; color:#6c7a92; }
+  .sub{
+    position:absolute; top:88px; left:40px; right:40px; height:36px;
+    display:flex; align-items:center; justify-content:space-between;
+    color:#5d6b84; font-size:14px;
+  }
+  .sub b{ color:var(--blue); }
+  .body{ position:absolute; top:132px; left:40px; right:40px; bottom:38px; }
+  .footer{ position:absolute; bottom:10px; left:40px; right:40px; display:flex; justify-content:space-between; color:#99a4b8; font-size:10px; }
+
+  .cover{ background:linear-gradient(135deg,#eef3fb 0%,#e5ecf7 62%,#dbe5f3 100%); }
+  .cover .brand{ position:absolute; top:56px; right:58px; color:#5d6b84; font-size:22px; font-weight:900; }
+  .cover .title{ position:absolute; left:70px; top:150px; }
+  .cover .title .main{ color:var(--navy); font-size:76px; font-weight:950; line-height:1; letter-spacing:-2px; }
+  .cover .title .subt{ margin-top:16px; color:#62718c; font-size:34px; font-weight:850; }
+  .cover .bigA{ position:absolute; right:78px; top:234px; color:#fff; opacity:.62; font-size:280px; font-weight:950; letter-spacing:-8px; }
+  .cover .chips{ position:absolute; left:74px; bottom:98px; display:flex; flex-wrap:wrap; gap:10px; max-width:780px; }
+  .chip{ display:inline-flex; align-items:center; border-radius:999px; padding:7px 13px; font-size:13px; font-weight:800; background:#fff; color:var(--navy); border:1px solid #d9e3f3; }
+  .chip.blue{ background:#e8f0ff; color:var(--blue); }
+  .chip.green{ background:#e9f7ee; color:var(--green); }
+  .chip.purple{ background:#f0edff; color:var(--purple); }
+
+  .index-grid{ display:grid; grid-template-columns:390px 1fr; height:100%; gap:34px; }
+  .index-left{ border-radius:14px; background:linear-gradient(160deg,#eef3fb,#e3ebf8); padding:42px; display:flex; flex-direction:column; justify-content:center; }
+  .index-left .ko{ color:var(--navy); font-size:72px; font-weight:950; line-height:1; }
+  .index-left .en{ margin-top:12px; color:#8b98ad; font-size:22px; font-weight:900; letter-spacing:3px; }
+  .index-list{ display:grid; gap:14px; align-content:center; }
+  .idx-item{ display:grid; grid-template-columns:48px 1fr; gap:14px; align-items:start; }
+  .idx-num{ background:var(--navy); color:#fff; font-size:20px; font-weight:900; border-radius:5px; padding:8px 0; text-align:center; }
+  .idx-title{ color:var(--navy); font-size:24px; font-weight:900; }
+  .idx-desc{ margin-top:3px; color:#64728b; font-size:14px; line-height:1.45; }
+
+  .legend{ display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+  .pill{ display:inline-flex; align-items:center; gap:6px; border-radius:999px; padding:4px 10px; background:#f4f7fb; border:1px solid #dde6f2; font-size:11px; font-weight:850; color:#40506b; }
+  .dot{ width:9px; height:9px; border-radius:50%; }
+
+  .lanes{ display:grid; grid-template-columns:repeat(4,1fr); gap:14px; height:100%; }
+  .lanes.three{ grid-template-columns:repeat(3,1fr); }
+  .lane{ border:1px solid #e0e7f2; border-radius:10px; background:#fbfcff; padding:12px; min-width:0; }
+  .lane-title{ color:#465875; font-size:12px; font-weight:950; text-align:center; border-bottom:2px solid #e4ebf5; padding-bottom:7px; margin-bottom:10px; }
+  .stack{ display:grid; gap:9px; }
+  .classbox{ border:1px solid #aebbd0; border-radius:7px; background:#fff; overflow:hidden; box-shadow:0 2px 5px rgba(40,55,90,.08); }
+  .classbox .ttl{ display:flex; align-items:center; justify-content:space-between; gap:8px; background:var(--blue); color:#fff; padding:7px 9px; }
+  .classbox.green .ttl{ background:var(--green); }
+  .classbox.orange .ttl{ background:var(--orange); }
+  .classbox.purple .ttl{ background:var(--purple); }
+  .classbox.pink .ttl{ background:var(--pink); }
+  .classbox.slate .ttl{ background:var(--slate); }
+  .classbox.dashed{ border-style:dashed; background:#fbfcff; }
+  .classbox .name{ font-size:13px; font-weight:950; line-height:1.15; }
+  .classbox .st{ display:block; font-size:9.5px; opacity:.9; font-weight:700; }
+  .classbox .tag{ flex:0 0 auto; border-radius:999px; background:rgba(255,255,255,.92); color:#24324b; padding:2px 7px; font-size:9px; font-weight:950; }
+  .classbox .sec{ padding:7px 9px; border-top:1px solid #e3e9f3; }
+  .classbox .row{ color:#28354d; font-size:11px; line-height:1.45; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .classbox .row.wrap{ white-space:normal; }
+  .classbox .grp{ color:#7d899d; font-size:10px; font-weight:950; margin:2px 0 3px; }
+  .classbox .note{
+    background:#f7f9fd; border-top:1px solid #e6ecf6; padding:4px 9px;
+    color:#54627c; font-size:10px; line-height:1.35; font-style:italic;
+  }
+
+  .note-grid{ display:grid; grid-template-columns:1fr 1fr; gap:18px; height:100%; }
+  .note-card{ border:1px solid #d7e1ef; border-radius:12px; background:#fff; padding:18px 20px; box-shadow:0 4px 14px rgba(40,60,100,.08); }
+  .note-card h3{ margin:0 0 12px; color:var(--navy); font-size:20px; font-weight:950; }
+  .note-card p{ margin:0 0 8px; color:#394861; font-size:15px; line-height:1.6; }
+  .note-card ul{ margin:0; padding-left:18px; color:#394861; font-size:15px; line-height:1.7; }
+  .flow{ display:flex; flex-wrap:wrap; align-items:center; gap:8px; }
+  .flow .step{ border:1px solid #cfdbed; border-radius:9px; background:#f7faff; padding:9px 12px; color:#243653; font-size:13px; font-weight:850; }
+  .flow .arrow{ color:#8b98ad; font-weight:950; }
+  .summary-band{ margin-top:18px; border-left:5px solid var(--blue); background:#f5f8fe; border-radius:10px; padding:14px 18px; color:#31415b; line-height:1.6; font-size:15px; }
+
+  .exp{ height:100%; display:flex; flex-direction:column; }
+  .exp .resp{
+    display:flex; align-items:baseline; gap:11px; background:var(--band);
+    border-left:4px solid var(--navy); border-radius:4px; padding:10px 15px;
+    color:var(--ink); font-size:14px; line-height:1.5;
+  }
+  .exp .resp .rk{
+    flex:0 0 auto; color:var(--navy); background:#fff; border:1px solid var(--navy);
+    border-radius:999px; padding:2px 10px; font-size:11px; font-weight:900;
+  }
+  .exp .seclbl{
+    margin:15px 0 8px; color:var(--navy); font-size:13px; font-weight:950; letter-spacing:.3px;
+  }
+  .exp .seclbl::before{
+    content:""; display:inline-block; width:15px; height:3px; background:var(--blue);
+    border-radius:2px; vertical-align:3px; margin-right:8px;
+  }
+  .exp .pipe{ display:flex; align-items:stretch; gap:6px; }
+  .exp .step{
+    flex:1; min-width:0; background:#fff; border:1px solid #cfd8e6;
+    border-top:3px solid var(--ac,var(--blue)); border-radius:4px; padding:8px 10px 9px;
+    display:flex; flex-direction:column; gap:4px;
+  }
+  .exp .step .sg{ color:var(--ac,var(--blue)); font-size:10px; font-weight:950; letter-spacing:.3px; text-transform:uppercase; }
+  .exp .step .nm{ color:var(--ink); font-family:"Consolas","D2Coding",monospace; font-size:11px; font-weight:900; line-height:1.25; word-break:break-word; }
+  .exp .step .ds{ color:var(--muted); font-size:10.5px; line-height:1.38; }
+  .exp .parrow{ align-self:center; flex:0 0 auto; color:var(--line); font-size:17px; font-weight:950; }
+  .exp .pts{ display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+  .exp .pt{
+    background:#fbfcfe; border:1px solid #d7dce6; border-left:4px solid var(--ac,var(--navy));
+    border-radius:5px; padding:10px 13px;
+  }
+  .exp .pt h4{ margin:0 0 4px; color:var(--ac,var(--navy)); font-size:13px; font-weight:950; }
+  .exp .pt p{ margin:0; color:#3f4a5e; font-size:11.5px; line-height:1.45; }
+  .exp .foot{ margin-top:12px; color:var(--muted); font-size:11px; line-height:1.5; }
+  .exp .foot b{ color:#41506e; font-weight:850; }
+
+  .seq{ display:grid; grid-template-columns:1fr; gap:12px; }
+  .seq-row{ display:grid; grid-template-columns:42px 220px 1fr; gap:12px; align-items:center; }
+  .seq-num{ width:34px; height:34px; display:grid; place-items:center; border-radius:50%; background:var(--blue); color:#fff; font-weight:950; }
+  .seq-key{ color:var(--navy); font-size:15px; font-weight:950; }
+  .seq-text{ border:1px solid #d9e3f2; border-radius:8px; background:#fff; padding:9px 12px; color:#34445f; font-size:14px; line-height:1.45; }
+
+  @media print{
+    @page{ size:1280px 720px; margin:0; }
+    html,body{ background:#fff; }
+    #toolbar{ display:none; }
+    #deck{ padding:0; }
+    .slide{ margin:0; box-shadow:none; break-after:page; page-break-after:always; }
+    .slide:last-child{ break-after:auto; page-break-after:auto; }
+    *{ -webkit-print-color-adjust:exact; print-color-adjust:exact; }
+  }
+</style>
+</head>
+<body>
+<div id="toolbar">
+  <b>CareerTuner · Class Diagram · A파트</b>
+  <button onclick="window.print()">PDF로 인쇄 / 저장</button>
+  <span class="hint">브라우저 인쇄 설정: 가로 · 여백 없음 · 배경 그래픽 켜기 · 1280×720 기준</span>
+</div>
+<div id="deck">
+
+  <section class="slide cover">
+    <div class="topbar"></div>
+    <div class="brand">CareerTuner Class Diagram</div>
+    <div class="title">
+      <div class="main">A파트<br/>클래스 다이어그램</div>
+      <div class="subt">회원 · 프로필 · 동의 · 프로필 AI</div>
+    </div>
+    <div class="bigA">A</div>
+    <div class="chips">
+      <span class="chip blue">Spring Boot REST API</span>
+      <span class="chip green">React 사용자 화면</span>
+      <span class="chip purple">프로필 AI 평가 엔진</span>
+      <span class="chip">관리자 회원/프로필/동의 관리</span>
+    </div>
+    <div class="corner"></div>
+  </section>
+
+  <section class="slide">
+    <div class="topbar"></div>
+    <div class="head"><h1>목차</h1><div class="part">A파트 발표용 구성</div></div>
+    <div class="body">
+      <div class="index-grid">
+        <div class="index-left">
+          <div class="ko">INDEX</div>
+          <div class="en">CLASS DIAGRAM</div>
+        </div>
+        <div class="index-list">
+          <div class="idx-item"><div class="idx-num">1</div><div><div class="idx-title">패키지 구조</div><div class="idx-desc">A파트가 차지하는 프론트/백엔드/관리자 모듈과 데이터 저장 경계</div></div></div>
+          <div class="idx-item"><div class="idx-num">2</div><div><div class="idx-title">회원/인증 클래스</div><div class="idx-desc">회원가입, 로그인, 소셜 로그인, JWT, 비밀번호 재설정, 감사 로그 흐름</div></div></div>
+          <div class="idx-item"><div class="idx-num">3</div><div><div class="idx-title">동의/프로필 클래스</div><div class="idx-desc">AI 데이터 동의 확인 후 프로필 CRUD와 관리자 조회로 이어지는 구조</div></div></div>
+          <div class="idx-item"><div class="idx-num">4</div><div><div class="idx-title">프로필 AI 클래스</div><div class="idx-desc">직무군 분류, 가중치 적용, OpenAI 호출, JSON 검증, fallback 처리</div></div></div>
+          <div class="idx-item"><div class="idx-num">5</div><div><div class="idx-title">관리자/시퀀스 설명</div><div class="idx-desc">관리자 프로필·동의·프롬프트 조회와 전체 실행 순서 요약</div></div></div>
+        </div>
+      </div>
+    </div>
+    <div class="footer"><span>참조 형식: D파트 클래스 다이어그램 HTML</span><span>CareerTuner A파트</span></div>
+    <div class="corner"></div>
+  </section>
+
+  <section class="slide">
+    <div class="topbar"></div>
+    <div class="head"><h1>A파트 패키지 구조</h1><div class="part">Frontend ↔ Backend ↔ DB</div></div>
+    <div class="sub">
+      <span>사용자 기능을 완료할 때 관리자 화면과 관리자 API까지 함께 포함하는 구조</span>
+      <div class="legend">
+        <span class="pill"><span class="dot" style="background:var(--green)"></span>사용자 UI</span>
+        <span class="pill"><span class="dot" style="background:var(--blue)"></span>REST/API</span>
+        <span class="pill"><span class="dot" style="background:var(--purple)"></span>AI 엔진</span>
+        <span class="pill"><span class="dot" style="background:var(--orange)"></span>관리자</span>
+      </div>
+    </div>
+    <div class="body">
+      <div class="lanes">
+        <div class="lane">
+          <div class="lane-title">React 사용자 화면</div>
+          <div class="stack">
+            <div class="classbox green"><div class="ttl"><div><span class="name">ProfilePage</span><span class="st">page component</span></div><span class="tag">UI</span></div><div class="sec"><div class="row">+ getProfile()</div><div class="row">+ saveProfile()</div><div class="row">+ summarizeProfile()</div><div class="row">+ diagnoseProfileCompleteness()</div></div></div>
+            <div class="classbox green"><div class="ttl"><div><span class="name">SocialConsentPage</span><span class="st">page component</span></div><span class="tag">UI</span></div><div class="sec"><div class="row">+ save required consents</div><div class="row">+ continue social signup/login</div></div></div>
+            <div class="classbox green"><div class="ttl"><div><span class="name">authApi / consentApi / profileApi</span><span class="st">frontend API modules</span></div><span class="tag">API</span></div><div class="sec"><div class="row wrap">Vite proxy를 통해 /api/** 백엔드로 요청 전달</div></div></div>
+          </div>
+        </div>
+        <div class="lane">
+          <div class="lane-title">Spring Controller</div>
+          <div class="stack">
+            <div class="classbox"><div class="ttl"><div><span class="name">AuthController</span><span class="st">/api/auth/**</span></div><span class="tag">REST</span></div><div class="sec"><div class="row">+ register()</div><div class="row">+ login()</div><div class="row">+ oauthCallback()</div><div class="row">+ requestPasswordReset()</div></div></div>
+            <div class="classbox"><div class="ttl"><div><span class="name">ConsentController</span><span class="st">/api/consents/**</span></div><span class="tag">REST</span></div><div class="sec"><div class="row">+ status()</div><div class="row">+ save()</div><div class="row">+ revokeAi()</div></div></div>
+            <div class="classbox"><div class="ttl"><div><span class="name">ProfileController</span><span class="st">/api/profile/**</span></div><span class="tag">REST</span></div><div class="sec"><div class="row">+ me()</div><div class="row">+ save()</div><div class="row">+ summarize()</div><div class="row">+ extractSkills()</div><div class="row">+ diagnoseCompleteness()</div></div></div>
+          </div>
+        </div>
+        <div class="lane">
+          <div class="lane-title">Service / AI</div>
+          <div class="stack">
+            <div class="classbox"><div class="ttl"><div><span class="name">AuthServiceImpl</span><span class="st">회원/토큰/소셜/메일</span></div><span class="tag">Service</span></div><div class="sec"><div class="row">- UserMapper</div><div class="row">- AuthMapper</div><div class="row">- JwtTokenProvider</div><div class="row">- EmailService</div></div></div>
+            <div class="classbox"><div class="ttl"><div><span class="name">ProfileServiceImpl</span><span class="st">프로필 CRUD + AI 실행</span></div><span class="tag">Service</span></div><div class="sec"><div class="row">- ConsentService</div><div class="row">- ProfileAiService</div><div class="row">- ApplicationCaseMapper</div></div></div>
+            <div class="classbox purple"><div class="ttl"><div><span class="name">ProfileAiService</span><span class="st">AI 평가 인터페이스</span></div><span class="tag">AI</span></div><div class="sec"><div class="row">+ evaluate(profile, featureType)</div></div></div>
+          </div>
+        </div>
+        <div class="lane">
+          <div class="lane-title">Mapper / Domain / DB</div>
+          <div class="stack">
+            <div class="classbox slate"><div class="ttl"><div><span class="name">User / UserProfile</span><span class="st">domain</span></div><span class="tag">VO</span></div><div class="sec"><div class="row">users</div><div class="row">user_profile</div></div></div>
+            <div class="classbox slate"><div class="ttl"><div><span class="name">UserConsent / AiUsageLog</span><span class="st">domain</span></div><span class="tag">VO</span></div><div class="sec"><div class="row">user_consent</div><div class="row">ai_usage_log</div></div></div>
+            <div class="classbox slate"><div class="ttl"><div><span class="name">UserMapper / AuthMapper</span><span class="st">MyBatis</span></div><span class="tag">DB</span></div><div class="sec"><div class="row">users, refresh_token</div><div class="row">email_verification</div><div class="row">user_login_history</div></div></div>
+            <div class="classbox slate"><div class="ttl"><div><span class="name">ProfileMapper / ConsentMapper</span><span class="st">MyBatis</span></div><span class="tag">DB</span></div><div class="sec"><div class="row">user_profile</div><div class="row">user_consent</div></div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="footer"><span>패키지 책임: auth, consent, profile, profile.ai, admin.profile/admin.consent/admin.prompt</span><span>A파트 전체 모듈 구조</span></div>
+    <div class="corner"></div>
+  </section>
+
+  <section class="slide">
+    <div class="topbar"></div>
+    <div class="head"><h1>회원/인증 클래스 다이어그램</h1><div class="part">register · login · social · reset · audit</div></div>
+    <div class="sub"><span>회원 기능은 <b>AuthController → AuthServiceImpl → Mapper/Domain</b> 계층으로 분리된다.</span></div>
+    <div class="body">
+      <div class="lanes three">
+        <div class="lane">
+          <div class="lane-title">Controller / DTO</div>
+          <div class="stack">
+            <div class="classbox"><div class="ttl"><div><span class="name">AuthController</span><span class="st">@RestController</span></div><span class="tag">REST</span></div><div class="sec"><div class="row">+ register(RegisterRequest)</div><div class="row">+ login(LoginRequest)</div><div class="row">+ refresh(RefreshRequest)</div><div class="row">+ oauthRedirect(provider)</div><div class="row">+ oauthCallback(provider, code)</div><div class="row">+ requestPasswordReset()</div><div class="row">+ releaseDormant()</div></div><div class="note">회원가입, 로그인, 소셜 콜백, 비밀번호 재설정 요청을 받는 인증 API 진입점</div></div>
+            <div class="classbox dashed"><div class="ttl"><div><span class="name">Request / Response DTO</span><span class="st">record 중심</span></div><span class="tag">DTO</span></div><div class="sec"><div class="row">RegisterRequest</div><div class="row">LoginRequest</div><div class="row">TokenResponse</div><div class="row">PasswordResetRequest</div><div class="row">MeResponse</div></div></div>
+          </div>
+        </div>
+        <div class="lane">
+          <div class="lane-title">Service</div>
+          <div class="stack">
+            <div class="classbox"><div class="ttl"><div><span class="name">AuthService</span><span class="st">&lt;&lt;interface&gt;&gt;</span></div><span class="tag">IF</span></div><div class="sec"><div class="row">+ register()</div><div class="row">+ login()</div><div class="row">+ refresh()</div><div class="row">+ verifyEmail()</div><div class="row">+ handleOAuthCallback()</div></div></div>
+            <div class="classbox"><div class="ttl"><div><span class="name">AuthServiceImpl</span><span class="st">@Service</span></div><span class="tag">Impl</span></div><div class="sec"><div class="grp">dependencies</div><div class="row">- UserMapper</div><div class="row">- AuthMapper</div><div class="row">- PasswordEncoder</div><div class="row">- JwtTokenProvider</div><div class="row">- EmailService</div><div class="row">- SocialOAuthService</div><div class="grp">policy</div><div class="row">MAX_FAILED_LOGIN_COUNT = 5</div><div class="row">FAILED_LOGIN_LOCK_MINUTES = 10</div></div><div class="note">계정 상태 검증, 실패 횟수 잠금, JWT 발급, refresh token 저장, 로그인 감사 로그 기록 담당</div></div>
+            <div class="classbox orange"><div class="ttl"><div><span class="name">EmailService / SocialOAuthService</span><span class="st">external integration</span></div><span class="tag">외부</span></div><div class="sec"><div class="row">+ sendPasswordResetEmail()</div><div class="row">+ sendDormantReleaseEmail()</div><div class="row">+ fetchUserInfo(provider)</div></div></div>
+          </div>
+        </div>
+        <div class="lane">
+          <div class="lane-title">Mapper / Domain</div>
+          <div class="stack">
+            <div class="classbox slate"><div class="ttl"><div><span class="name">User</span><span class="st">users</span></div><span class="tag">Domain</span></div><div class="sec"><div class="row">id, email, password</div><div class="row">role, status, plan, credit</div><div class="row">failedLoginCount, blockedUntil</div><div class="row">emailVerified, lastLoginAt</div></div></div>
+            <div class="classbox slate"><div class="ttl"><div><span class="name">RefreshToken / UserSocial</span><span class="st">session & social</span></div><span class="tag">Domain</span></div><div class="sec"><div class="row">refresh_token.token</div><div class="row">refresh_token.expiredAt</div><div class="row">user_social.provider</div><div class="row">user_social.providerUserId</div></div></div>
+            <div class="classbox slate"><div class="ttl"><div><span class="name">EmailVerification / UserLoginHistory</span><span class="st">mail & audit</span></div><span class="tag">Domain</span></div><div class="sec"><div class="row">purpose: VERIFY / RESET_PW</div><div class="row">eventType: LOGIN / REFRESH</div><div class="row">success, failReason</div><div class="row">ipAddress, userAgent</div></div></div>
+            <div class="classbox slate"><div class="ttl"><div><span class="name">UserMapper / AuthMapper</span><span class="st">@Mapper</span></div><span class="tag">MyBatis</span></div><div class="sec"><div class="row">+ findByEmail()</div><div class="row">+ insertRefreshToken()</div><div class="row">+ insertLoginHistory()</div><div class="row">+ insertUserStatusHistory()</div></div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="footer"><span>설명 포인트: 로그인 실패 5회 잠금, refresh token 회전, 감사 로그 기록, 소셜 이메일 계정 연결 정책</span><span>회원/인증</span></div>
+    <div class="corner"></div>
+  </section>
+
+  <section class="slide">
+    <div class="topbar"></div>
+    <div class="head"><h1>동의/프로필 CRUD 클래스 다이어그램</h1><div class="part">AI 동의가 있어야 AI 기능 실행</div></div>
+    <div class="sub"><span>프로필 입력값은 화면에서는 폼 구조로, DB에서는 JSON 컬럼으로 저장된다.</span></div>
+    <div class="body">
+      <div class="lanes">
+        <div class="lane">
+          <div class="lane-title">Frontend</div>
+          <div class="stack">
+            <div class="classbox green"><div class="ttl"><div><span class="name">ProfilePage</span><span class="st">React page</span></div><span class="tag">UI</span></div><div class="sec"><div class="row">form: desiredJob</div><div class="row">form: education[]</div><div class="row">form: career[]</div><div class="row">form: experiences[]</div><div class="row">+ validateProfile()</div><div class="row">+ toRequest()</div></div></div>
+            <div class="classbox green"><div class="ttl"><div><span class="name">profileApi</span><span class="st">fetch wrapper</span></div><span class="tag">API</span></div><div class="sec"><div class="row">+ getProfile()</div><div class="row">+ saveProfile()</div><div class="row">+ summarizeProfile()</div><div class="row">+ extractProfileSkills()</div></div></div>
+            <div class="classbox green"><div class="ttl"><div><span class="name">consentApi</span><span class="st">동의 API</span></div><span class="tag">API</span></div><div class="sec"><div class="row">+ getConsentStatus()</div><div class="row">+ saveConsents()</div><div class="row">+ revokeAiConsent()</div></div></div>
+          </div>
+        </div>
+        <div class="lane">
+          <div class="lane-title">Controller / Service</div>
+          <div class="stack">
+            <div class="classbox"><div class="ttl"><div><span class="name">ConsentController</span><span class="st">/api/consents</span></div><span class="tag">REST</span></div><div class="sec"><div class="row">+ status(authUser)</div><div class="row">+ save(authUser, request)</div><div class="row">+ revokeAi(authUser)</div></div></div>
+            <div class="classbox"><div class="ttl"><div><span class="name">ConsentServiceImpl</span><span class="st">@Service</span></div><span class="tag">Service</span></div><div class="sec"><div class="row">+ status()</div><div class="row">+ save()</div><div class="row">+ revokeAi()</div><div class="row">+ hasCurrentConsent(userId, type)</div></div></div>
+            <div class="classbox"><div class="ttl"><div><span class="name">ProfileController</span><span class="st">/api/profile</span></div><span class="tag">REST</span></div><div class="sec"><div class="row">+ me()</div><div class="row">+ save()</div><div class="row">+ summarize()</div><div class="row">+ diagnoseCompleteness()</div></div></div>
+            <div class="classbox"><div class="ttl"><div><span class="name">ProfileServiceImpl</span><span class="st">@Service</span></div><span class="tag">Service</span></div><div class="sec"><div class="row">+ me()</div><div class="row">+ save()</div><div class="row">- requireAiConsent()</div><div class="row">- recordAi()</div></div></div>
+          </div>
+        </div>
+        <div class="lane">
+          <div class="lane-title">Domain / DTO</div>
+          <div class="stack">
+            <div class="classbox slate"><div class="ttl"><div><span class="name">UserProfile</span><span class="st">user_profile</span></div><span class="tag">Domain</span></div><div class="sec"><div class="row">id, userId</div><div class="row">desiredJob, desiredIndustry</div><div class="row">education, career, projects</div><div class="row">skills, certificates, languages</div><div class="row">resumeText, selfIntro</div><div class="row">preferences</div></div></div>
+            <div class="classbox slate"><div class="ttl"><div><span class="name">UserConsent</span><span class="st">user_consent</span></div><span class="tag">Domain</span></div><div class="sec"><div class="row">consentType</div><div class="row">agreed</div><div class="row">agreedAt / revokedAt</div><div class="row">source</div></div></div>
+            <div class="classbox dashed"><div class="ttl"><div><span class="name">UserProfileRequest / Response</span><span class="st">DTO</span></div><span class="tag">DTO</span></div><div class="sec"><div class="row wrap">프론트 폼 객체를 백엔드 JSON 저장 구조로 전달하고, 응답 시 다시 객체 형태로 복원</div></div></div>
+          </div>
+        </div>
+        <div class="lane">
+          <div class="lane-title">Mapper / 저장소</div>
+          <div class="stack">
+            <div class="classbox slate"><div class="ttl"><div><span class="name">ProfileMapper</span><span class="st">@Mapper</span></div><span class="tag">MyBatis</span></div><div class="sec"><div class="row">+ findByUserId(userId)</div><div class="row">+ upsert(profile)</div><div class="row">+ findAdminProfiles(keyword, limit)</div></div></div>
+            <div class="classbox slate"><div class="ttl"><div><span class="name">ConsentMapper</span><span class="st">@Mapper</span></div><span class="tag">MyBatis</span></div><div class="sec"><div class="row">+ findByUserId()</div><div class="row">+ findLatest(userId, type)</div><div class="row">+ insert(consent)</div><div class="row">+ findAdminConsents()</div></div></div>
+            <div class="note-card" style="padding:12px 14px; box-shadow:none;">
+              <h3 style="font-size:16px;">설명 포인트</h3>
+              <p style="font-size:13px;">AI_DATA 동의가 없으면 프로필 AI 분석은 실행하지 않는다. 이는 개인정보/AI 사용 동의 요구사항을 코드 계층에서 강제하는 구조다.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="footer"><span>중요: 화면에서는 표/카드/태그, DB에서는 JSON 문자열로 저장</span><span>동의/프로필</span></div>
+    <div class="corner"></div>
+  </section>
+
+  <section class="slide">
+    <div class="topbar"></div>
+    <div class="head"><h1>프로필 AI 평가 엔진 클래스 다이어그램</h1><div class="part">OpenAI + Rule fallback + 검증</div></div>
+    <div class="sub"><span>단순 챗봇 호출이 아니라, 직무군별 평가 기준과 서버 검증을 거치는 도메인 평가 엔진 구조</span></div>
+    <div class="body">
+      <div class="lanes">
+        <div class="lane">
+          <div class="lane-title">진입점</div>
+          <div class="stack">
+            <div class="classbox"><div class="ttl"><div><span class="name">ProfileServiceImpl</span><span class="st">AI 실행 전 통제</span></div><span class="tag">Service</span></div><div class="sec"><div class="row">- requireAiConsent(userId)</div><div class="row">- evaluateWithConsent()</div><div class="row">- recordAi(userId, result)</div></div><div class="note">AI_DATA 동의 확인 후 분석을 실행하고, 성공/실패/대체 실행 결과를 ai_usage_log에 저장</div></div>
+            <div class="classbox purple"><div class="ttl"><div><span class="name">ProfileAiService</span><span class="st">&lt;&lt;interface&gt;&gt;</span></div><span class="tag">AI</span></div><div class="sec"><div class="row">+ evaluate(UserProfile, featureType)</div></div></div>
+            <div class="classbox slate"><div class="ttl"><div><span class="name">AiUsageLog</span><span class="st">ai_usage_log</span></div><span class="tag">Log</span></div><div class="sec"><div class="row">featureType</div><div class="row">status</div><div class="row">model</div><div class="row">inputTokens / outputTokens</div><div class="row">errorMessage</div></div></div>
+          </div>
+        </div>
+        <div class="lane">
+          <div class="lane-title">구현체</div>
+          <div class="stack">
+            <div class="classbox purple"><div class="ttl"><div><span class="name">OpenAiProfileAiService</span><span class="st">@Primary @Service</span></div><span class="tag">AI</span></div><div class="sec"><div class="row">- CareerAnalysisOpenAiClient</div><div class="row">- RuleBasedProfileAiService</div><div class="row">- JobFamilyWeightPolicy</div><div class="row">- ProfileAiJsonValidator</div><div class="row">+ evaluate()</div><div class="row">- schema()</div></div><div class="note">OpenAI 구조화 응답을 우선 사용하고, 설정 누락·호출 실패·검증 실패 시 규칙 기반 결과로 대체</div></div>
+            <div class="classbox purple"><div class="ttl"><div><span class="name">RuleBasedProfileAiService</span><span class="st">@Service fallback</span></div><span class="tag">Rule</span></div><div class="sec"><div class="row">+ evaluate()</div><div class="row">+ extractSkillNames()</div><div class="row">- rawScores()</div><div class="row">- evidence()</div><div class="row">- improvements()</div></div></div>
+          </div>
+        </div>
+        <div class="lane">
+          <div class="lane-title">평가 정책</div>
+          <div class="stack">
+            <div class="classbox purple"><div class="ttl"><div><span class="name">JobFamily</span><span class="st">enum</span></div><span class="tag">분류</span></div><div class="sec"><div class="row">DEVELOPMENT_DATA</div><div class="row">SALES_MARKETING</div><div class="row">DESIGN_CONTENT</div><div class="row">BUSINESS_OFFICE</div><div class="row">HEALTHCARE_SERVICE</div><div class="row">EDUCATION_PUBLIC</div><div class="row">PRODUCTION_LOGISTICS</div><div class="row">GENERAL</div><div class="row">+ classify(profile)</div></div></div>
+            <div class="classbox purple"><div class="ttl"><div><span class="name">ScoreCriterion</span><span class="st">enum</span></div><span class="tag">기준</span></div><div class="sec"><div class="row">GOAL_CLARITY</div><div class="row">EXPERIENCE_SPECIFICITY</div><div class="row">ACHIEVEMENT_EVIDENCE</div><div class="row">JOB_SKILL_ALIGNMENT</div><div class="row">DOCUMENT_CONSISTENCY</div><div class="row">IMPROVEMENT_READINESS</div></div></div>
+            <div class="classbox purple"><div class="ttl"><div><span class="name">JobFamilyWeightPolicy</span><span class="st">@Component</span></div><span class="tag">가중치</span></div><div class="sec"><div class="row">+ weightsFor(family)</div><div class="row">+ adminWeightProfiles()</div><div class="row">+ adminCriteria()</div></div></div>
+          </div>
+        </div>
+        <div class="lane">
+          <div class="lane-title">검증/결과</div>
+          <div class="stack">
+            <div class="classbox purple"><div class="ttl"><div><span class="name">ProfileAiJsonValidator</span><span class="st">@Component</span></div><span class="tag">검증</span></div><div class="sec"><div class="row">+ validate(featureType, family, weights, payload, usage)</div><div class="row">- parseCriterion()</div><div class="row">- strings()</div><div class="row wrap">criterionScores 누락, 점수 범위, enum 불일치 검증</div></div><div class="note">AI가 반환한 JSON이 서버 기준과 맞는지 확인해 잘못된 점수가 그대로 노출되지 않게 방어</div></div>
+            <div class="classbox purple"><div class="ttl"><div><span class="name">ProfileScoreCalculator</span><span class="st">@Component</span></div><span class="tag">점수</span></div><div class="sec"><div class="row">+ applyWeights()</div><div class="row">+ totalScore()</div><div class="row">- clamp(0~100)</div></div></div>
+            <div class="classbox slate"><div class="ttl"><div><span class="name">ProfileAiResult</span><span class="st">record</span></div><span class="tag">결과</span></div><div class="sec"><div class="row">summary</div><div class="row">extractedSkills</div><div class="row">criteria</div><div class="row">usage</div><div class="row">status: SUCCESS/FALLBACK</div></div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="footer"><span>설명 포인트: AI 응답을 그대로 믿지 않고 서버에서 JSON 스키마와 점수 범위를 검증</span><span>프로필 AI</span></div>
+    <div class="corner"></div>
+  </section>
+
+  <section class="slide">
+    <div class="topbar"></div>
+    <div class="head"><h1>관리자 클래스 다이어그램</h1><div class="part">운영자 조회 · 필터 · 프롬프트 정책 표시</div></div>
+    <div class="sub"><span>관리자 화면은 원본 코드/프롬프트를 직접 수정하지 않고, 운영 기준과 검증 상태를 조회하는 방식으로 구성된다.</span></div>
+    <div class="body">
+      <div class="lanes three">
+        <div class="lane">
+          <div class="lane-title">Admin React</div>
+          <div class="stack">
+            <div class="classbox orange"><div class="ttl"><div><span class="name">AdminUsersPage</span><span class="st">회원 관리</span></div><span class="tag">UI</span></div><div class="sec"><div class="row">회원 상태/역할 조회</div><div class="row">로그인 이력 확인</div><div class="row">휴면/차단 상태 관리</div></div></div>
+            <div class="classbox orange"><div class="ttl"><div><span class="name">AdminProfilesPage</span><span class="st">프로필 관리</span></div><span class="tag">UI</span></div><div class="sec"><div class="row">직무/산업/역량 검색</div><div class="row">이력서/역량 보유 필터</div><div class="row">학력/경력/활동 카드 표시</div><div class="row">필요 시 원본 JSON 보기</div></div></div>
+            <div class="classbox orange"><div class="ttl"><div><span class="name">AdminConsentsPage</span><span class="st">동의 관리</span></div><span class="tag">UI</span></div><div class="sec"><div class="row">동의 유형 필터</div><div class="row">동의/철회 상태 조회</div><div class="row">source, 기간 검색</div></div></div>
+            <div class="classbox orange"><div class="ttl"><div><span class="name">AdminProfilePromptsPage</span><span class="st">AI 기준 조회</span></div><span class="tag">UI</span></div><div class="sec"><div class="row">평가 기준 표시</div><div class="row">직무군별 가중치 표시</div><div class="row">출력 필드/검증 상태 표시</div></div></div>
+          </div>
+        </div>
+        <div class="lane">
+          <div class="lane-title">Admin REST</div>
+          <div class="stack">
+            <div class="classbox"><div class="ttl"><div><span class="name">AdminProfileController</span><span class="st">/api/admin/profiles</span></div><span class="tag">REST</span></div><div class="sec"><div class="row">+ profiles(keyword, limit)</div><div class="row">+ profile(userId)</div><div class="row">→ ProfileService.adminProfiles()</div></div><div class="note">운영자가 사용자 프로필 입력 상태와 AI 분석 품질 저하 원인을 조회하는 관리자 API</div></div>
+            <div class="classbox"><div class="ttl"><div><span class="name">AdminConsentController</span><span class="st">/api/admin/consents</span></div><span class="tag">REST</span></div><div class="sec"><div class="row">+ consents(keyword, type, status, source, from, to)</div><div class="row">→ ConsentService.adminConsents()</div></div></div>
+            <div class="classbox"><div class="ttl"><div><span class="name">AdminPromptController</span><span class="st">/api/admin/prompts</span></div><span class="tag">REST</span></div><div class="sec"><div class="row">+ profile(authUser)</div><div class="row">→ AdminPromptService.profile()</div><div class="row">→ ProfilePromptCatalog.view()</div></div></div>
+            <div class="classbox dashed"><div class="ttl"><div><span class="name">requireAdmin(authUser)</span><span class="st">권한 검증</span></div><span class="tag">Guard</span></div><div class="sec"><div class="row wrap">role이 ADMIN이 아니면 FORBIDDEN 처리</div></div></div>
+          </div>
+        </div>
+        <div class="lane">
+          <div class="lane-title">조회 데이터</div>
+          <div class="stack">
+            <div class="classbox slate"><div class="ttl"><div><span class="name">AdminPromptView</span><span class="st">record</span></div><span class="tag">DTO</span></div><div class="sec"><div class="row">feature, name, version</div><div class="row">purpose</div><div class="row">schemaSummary</div><div class="row">evaluationCriteria</div><div class="row">weightProfiles</div></div></div>
+            <div class="classbox slate"><div class="ttl"><div><span class="name">ConsentView</span><span class="st">동의 조회 DTO</span></div><span class="tag">DTO</span></div><div class="sec"><div class="row">email, name</div><div class="row">consentType</div><div class="row">agreed, agreedAt</div><div class="row">revokedAt, source</div></div></div>
+            <div class="classbox slate"><div class="ttl"><div><span class="name">UserProfileResponse</span><span class="st">프로필 응답 DTO</span></div><span class="tag">DTO</span></div><div class="sec"><div class="row">desiredJob</div><div class="row">education/career/projects</div><div class="row">skills/certificates</div><div class="row">resumeText/selfIntro</div></div></div>
+            <div class="note-card" style="padding:12px 14px; box-shadow:none;">
+              <h3 style="font-size:16px;">운영 방식</h3>
+              <p style="font-size:13px;">관리자 페이지는 프롬프트 원문을 직접 편집하지 않고, 현재 적용된 평가 기준과 가중치, 검증 항목을 조회한다.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="footer"><span>설명 포인트: 운영자는 품질 저하 원인을 프로필 입력 상태, 동의 상태, AI 사용 이력에서 추적</span><span>관리자</span></div>
+    <div class="corner"></div>
+  </section>
+
+  <section class="slide">
+    <div class="topbar"></div>
+    <div class="head"><h1>설계 설명 - 회원/인증</h1><div class="part">Auth 책임과 흐름</div></div>
+    <div class="sub"><span>F파트 설계보고서 형식처럼 클래스가 맡는 책임과 처리 흐름을 분리해서 설명한다.</span></div>
+    <div class="body">
+      <div class="exp">
+        <div class="resp"><span class="rk">책임</span><span>회원가입, 로그인, 소셜 로그인, refresh token 재발급, 비밀번호 재설정, 휴면 해제, 로그인 감사 로그까지 사용자 인증 생명주기를 담당한다.</span></div>
+        <div class="seclbl">처리 흐름</div>
+        <div class="pipe">
+          <div class="step" style="--ac:var(--blue)"><div class="sg">Controller</div><div class="nm">AuthController</div><div class="ds">HTTP 요청을 받고 DTO 유효성 검증 후 서비스로 위임한다.</div></div>
+          <div class="parrow">→</div>
+          <div class="step" style="--ac:var(--green)"><div class="sg">Service</div><div class="nm">AuthServiceImpl</div><div class="ds">계정 상태, 비밀번호, 실패 횟수, 소셜 계정 연결 정책을 판단한다.</div></div>
+          <div class="parrow">→</div>
+          <div class="step" style="--ac:var(--orange)"><div class="sg">Persistence</div><div class="nm">UserMapper / AuthMapper</div><div class="ds">users, refresh_token, email_verification, user_login_history를 조회·저장한다.</div></div>
+          <div class="parrow">→</div>
+          <div class="step" style="--ac:var(--slate)"><div class="sg">Response</div><div class="nm">TokenResponse / MeResponse</div><div class="ds">JWT, refresh token, 사용자 기본 정보를 ApiResponse로 반환한다.</div></div>
+        </div>
+        <div class="seclbl">핵심 설계 포인트</div>
+        <div class="pts">
+          <div class="pt" style="--ac:var(--blue)"><h4>JWT 구조 유지</h4><p>기존 JWT 기반 인증 방식을 유지하면서 refresh_token 테이블로 세션 재발급과 폐기를 관리한다.</p></div>
+          <div class="pt" style="--ac:var(--green)"><h4>계정 상태 방어</h4><p>ACTIVE, DORMANT, BLOCKED, DELETED 상태를 서비스 계층에서 확인해 잘못된 로그인 진입을 막는다.</p></div>
+          <div class="pt" style="--ac:var(--orange)"><h4>감사 로그</h4><p>로그인, 로그아웃, refresh, 비밀번호 재설정 요청을 user_login_history에 남겨 운영자가 추적할 수 있다.</p></div>
+          <div class="pt" style="--ac:var(--purple)"><h4>소셜 계정 연결</h4><p>소셜 제공자 ID와 이메일을 기준으로 기존 계정 연결 여부를 판단해 중복 계정 생성을 줄인다.</p></div>
+        </div>
+        <div class="foot"><b>발표 설명:</b> 인증은 단순 로그인 성공/실패가 아니라 계정 상태, 보안 정책, 감사 로그, 소셜 계정 연결까지 함께 처리하는 A파트의 기본 보안 영역이다.</div>
+      </div>
+    </div>
+    <div class="footer"><span>설명 기준: AuthController → AuthServiceImpl → Mapper → Token/Log</span><span>회원/인증 설명</span></div>
+    <div class="corner"></div>
+  </section>
+
+  <section class="slide">
+    <div class="topbar"></div>
+    <div class="head"><h1>설계 설명 - 동의/프로필</h1><div class="part">Consent · Profile 책임과 흐름</div></div>
+    <div class="sub"><span>사용자 입력 화면은 편하게 구성하고, 서버에서는 동의 여부와 프로필 저장 구조를 명확히 분리한다.</span></div>
+    <div class="body">
+      <div class="exp">
+        <div class="resp"><span class="rk">책임</span><span>사용자의 약관/개인정보/AI 데이터 동의 상태를 관리하고, 희망 직무·이력·기술·자기소개 등 프로필 데이터를 저장·조회한다.</span></div>
+        <div class="seclbl">처리 흐름</div>
+        <div class="pipe">
+          <div class="step" style="--ac:var(--green)"><div class="sg">Frontend</div><div class="nm">ProfilePage / consentApi</div><div class="ds">사용자가 폼, 태그, 카드 형태로 프로필과 동의 항목을 입력한다.</div></div>
+          <div class="parrow">→</div>
+          <div class="step" style="--ac:var(--blue)"><div class="sg">Controller</div><div class="nm">ProfileController / ConsentController</div><div class="ds">인증 사용자 기준으로 저장·조회 요청을 받는다.</div></div>
+          <div class="parrow">→</div>
+          <div class="step" style="--ac:var(--green)"><div class="sg">Service</div><div class="nm">ProfileServiceImpl / ConsentServiceImpl</div><div class="ds">입력값 보정, AI 동의 확인, 동의 철회 처리를 담당한다.</div></div>
+          <div class="parrow">→</div>
+          <div class="step" style="--ac:var(--orange)"><div class="sg">DB</div><div class="nm">user_profile / user_consent</div><div class="ds">프로필 JSON 데이터와 동의 이력을 각각 저장한다.</div></div>
+        </div>
+        <div class="seclbl">핵심 설계 포인트</div>
+        <div class="pts">
+          <div class="pt" style="--ac:var(--blue)"><h4>동의 게이트</h4><p>AI_DATA 동의가 없으면 프로필 AI 분석을 실행하지 않도록 서비스 계층에서 강제한다.</p></div>
+          <div class="pt" style="--ac:var(--green)"><h4>사용자 친화 UI</h4><p>DB에는 JSON으로 저장되더라도 화면에서는 학력, 경력, 활동, 기술을 카드와 태그로 보여준다.</p></div>
+          <div class="pt" style="--ac:var(--orange)"><h4>이력 관리</h4><p>동의는 현재 상태뿐 아니라 agreedAt, revokedAt, source를 남겨 언제 어디서 동의했는지 추적한다.</p></div>
+          <div class="pt" style="--ac:var(--purple)"><h4>관리자 재사용</h4><p>사용자 프로필 응답 구조를 관리자 프로필 조회에도 재사용해 운영 화면과 사용자 화면의 데이터 의미를 맞춘다.</p></div>
+        </div>
+        <div class="foot"><b>발표 설명:</b> 프로필은 AI 분석의 원천 데이터이므로 입력 편의성, 동의 통제, 관리자 조회 가능성을 함께 고려해서 설계했다.</div>
+      </div>
+    </div>
+    <div class="footer"><span>설명 기준: ProfilePage → ProfileController/ConsentController → Service → Mapper</span><span>동의/프로필 설명</span></div>
+    <div class="corner"></div>
+  </section>
+
+  <section class="slide">
+    <div class="topbar"></div>
+    <div class="head"><h1>설계 설명 - 프로필 AI</h1><div class="part">도메인 평가 엔진 구조</div></div>
+    <div class="sub"><span>단순 챗봇 호출이 아니라 CareerTuner 전용 평가 기준과 검증 규칙을 통과해야 결과가 노출된다.</span></div>
+    <div class="body">
+      <div class="exp">
+        <div class="resp"><span class="rk">책임</span><span>사용자 프로필을 직무군으로 분류하고, 직무군별 가중치를 적용해 요약·기술 추출·완성도 진단 결과를 구조화된 JSON으로 생성한다.</span></div>
+        <div class="seclbl">처리 흐름</div>
+        <div class="pipe">
+          <div class="step" style="--ac:var(--blue)"><div class="sg">Gate</div><div class="nm">ProfileServiceImpl</div><div class="ds">AI_DATA 동의 여부와 프로필 존재 여부를 먼저 확인한다.</div></div>
+          <div class="parrow">→</div>
+          <div class="step" style="--ac:var(--purple)"><div class="sg">Policy</div><div class="nm">JobFamily / WeightPolicy</div><div class="ds">희망 직무와 프로필 내용을 기준으로 직무군과 가중치를 정한다.</div></div>
+          <div class="parrow">→</div>
+          <div class="step" style="--ac:var(--green)"><div class="sg">AI</div><div class="nm">OpenAiProfileAiService</div><div class="ds">평가 기준표와 출력 스키마를 포함해 AI 응답을 요청한다.</div></div>
+          <div class="parrow">→</div>
+          <div class="step" style="--ac:var(--orange)"><div class="sg">Validate</div><div class="nm">ProfileAiJsonValidator</div><div class="ds">JSON 구조, enum, 점수 범위, 필수 필드를 검증한다.</div></div>
+          <div class="parrow">→</div>
+          <div class="step" style="--ac:var(--slate)"><div class="sg">Fallback/Log</div><div class="nm">RuleBasedProfileAiService</div><div class="ds">실패 시 규칙 기반 결과로 대체하고 사용 이력을 저장한다.</div></div>
+        </div>
+        <div class="seclbl">핵심 설계 포인트</div>
+        <div class="pts">
+          <div class="pt" style="--ac:var(--purple)"><h4>직무군별 가중치</h4><p>개발, 마케팅, 디자인, 사무, 교육 등 직무군마다 중요한 평가 기준의 비중을 다르게 둔다.</p></div>
+          <div class="pt" style="--ac:var(--orange)"><h4>서버 검증</h4><p>AI가 반환한 결과를 그대로 믿지 않고 서버에서 스키마와 점수를 검증해 안정성을 높인다.</p></div>
+          <div class="pt" style="--ac:var(--green)"><h4>Fallback</h4><p>OpenAI 호출 실패, 설정 누락, JSON 검증 실패가 발생해도 규칙 기반 엔진으로 사용자 화면을 유지한다.</p></div>
+          <div class="pt" style="--ac:var(--blue)"><h4>교체 가능한 인터페이스</h4><p>ProfileAiService 인터페이스를 기준으로 추후 Qwen 파인튜닝 모델이나 별도 서빙 API로 교체할 수 있다.</p></div>
+        </div>
+        <div class="foot"><b>발표 설명:</b> 이 구조의 핵심은 “AI를 호출했다”가 아니라, CareerTuner의 평가 기준과 검증 규칙으로 AI 결과를 통제한다는 점이다.</div>
+      </div>
+    </div>
+    <div class="footer"><span>설명 기준: Consent Gate → JobFamily → AI Service → Validator → Fallback → ai_usage_log</span><span>프로필 AI 설명</span></div>
+    <div class="corner"></div>
+  </section>
+
+  <section class="slide">
+    <div class="topbar"></div>
+    <div class="head"><h1>설계 설명 - 관리자</h1><div class="part">운영 조회와 품질 관리</div></div>
+    <div class="sub"><span>관리자 기능은 사용자를 대신 조작하기보다 운영자가 품질 문제를 추적할 수 있게 하는 조회 중심 구조다.</span></div>
+    <div class="body">
+      <div class="exp">
+        <div class="resp"><span class="rk">책임</span><span>관리자가 회원 상태, 프로필 입력 상태, AI 데이터 동의 상태, 프로필 AI 평가 기준과 가중치를 확인할 수 있도록 운영 정보를 제공한다.</span></div>
+        <div class="seclbl">처리 흐름</div>
+        <div class="pipe">
+          <div class="step" style="--ac:var(--orange)"><div class="sg">Admin UI</div><div class="nm">AdminUsers / Profiles / Consents / Prompts</div><div class="ds">운영자가 검색, 필터, 상세 조회를 수행한다.</div></div>
+          <div class="parrow">→</div>
+          <div class="step" style="--ac:var(--blue)"><div class="sg">Controller</div><div class="nm">AdminProfileController 등</div><div class="ds">관리자 권한을 확인하고 조회 요청을 서비스에 전달한다.</div></div>
+          <div class="parrow">→</div>
+          <div class="step" style="--ac:var(--green)"><div class="sg">Service</div><div class="nm">ProfileService / ConsentService / PromptService</div><div class="ds">운영 화면에 필요한 형태로 데이터를 가공한다.</div></div>
+          <div class="parrow">→</div>
+          <div class="step" style="--ac:var(--slate)"><div class="sg">View Model</div><div class="nm">AdminPromptView / ConsentView</div><div class="ds">원본 코드 대신 기준, 버전, 검증 항목, 가중치 요약을 제공한다.</div></div>
+        </div>
+        <div class="seclbl">핵심 설계 포인트</div>
+        <div class="pts">
+          <div class="pt" style="--ac:var(--orange)"><h4>JSON 기본 노출 방지</h4><p>학력, 경력, 기술은 관리자에게 표·카드·태그로 보여주고 원본 JSON은 필요할 때만 확인한다.</p></div>
+          <div class="pt" style="--ac:var(--blue)"><h4>권한 검증</h4><p>관리자 API는 인증 사용자 role이 ADMIN인지 확인한 뒤 접근을 허용한다.</p></div>
+          <div class="pt" style="--ac:var(--purple)"><h4>프롬프트 원문 비노출</h4><p>운영 화면에는 원문 코드 대신 평가 기준, 출력 필드, 검증 상태, 가중치 프로필을 보여준다.</p></div>
+          <div class="pt" style="--ac:var(--green)"><h4>품질 추적</h4><p>프로필 입력 부족, 동의 철회, AI 실패 로그를 연결해 분석 품질 저하 원인을 찾을 수 있다.</p></div>
+        </div>
+        <div class="foot"><b>발표 설명:</b> 관리자 기능은 개발자가 보는 디버깅 화면이 아니라, 운영자가 사용자의 입력 상태와 AI 품질을 관리하는 서비스 운영 화면이다.</div>
+      </div>
+    </div>
+    <div class="footer"><span>설명 기준: Admin UI → Admin Controller → Service → 운영용 View DTO</span><span>관리자 설명</span></div>
+    <div class="corner"></div>
+  </section>
+
+  <section class="slide">
+    <div class="topbar"></div>
+    <div class="head"><h1>핵심 실행 시퀀스</h1><div class="part">프로필 AI 분석 요청 기준</div></div>
+    <div class="sub"><span>발표에서는 이 순서로 설명하면 A파트의 설계 의도가 가장 명확하다.</span></div>
+    <div class="body">
+      <div class="seq">
+        <div class="seq-row"><div class="seq-num">1</div><div class="seq-key">사용자 입력</div><div class="seq-text">ProfilePage에서 희망 직무, 학력, 경력, 활동, 기술, 이력서 원문, 자기소개를 입력하고 저장한다.</div></div>
+        <div class="seq-row"><div class="seq-num">2</div><div class="seq-key">프로필 저장</div><div class="seq-text">ProfileController.save() → ProfileServiceImpl.save() → ProfileMapper.upsert() 순서로 user_profile에 저장한다.</div></div>
+        <div class="seq-row"><div class="seq-num">3</div><div class="seq-key">AI 동의 확인</div><div class="seq-text">AI 실행 전 ProfileServiceImpl.requireAiConsent()가 ConsentService.hasCurrentConsent(userId, "AI_DATA")를 확인한다.</div></div>
+        <div class="seq-row"><div class="seq-num">4</div><div class="seq-key">직무군/가중치</div><div class="seq-text">JobFamily.classify(profile)로 직무군을 분류하고 JobFamilyWeightPolicy.weightsFor()로 평가 기준별 가중치를 가져온다.</div></div>
+        <div class="seq-row"><div class="seq-num">5</div><div class="seq-key">AI 분석</div><div class="seq-text">OpenAiProfileAiService가 구조화 JSON을 요청한다. OpenAI 설정이 없거나 실패하면 RuleBasedProfileAiService로 fallback한다.</div></div>
+        <div class="seq-row"><div class="seq-num">6</div><div class="seq-key">서버 검증</div><div class="seq-text">ProfileAiJsonValidator가 summary, extractedSkills, criterionScores, 점수 범위, 평가 기준 누락 여부를 검증한다.</div></div>
+        <div class="seq-row"><div class="seq-num">7</div><div class="seq-key">로그/응답</div><div class="seq-text">ProfileScoreCalculator가 최종 점수를 계산하고, ai_usage_log에 model, token, status, errorMessage를 기록한 뒤 프론트에 결과를 반환한다.</div></div>
+      </div>
+      <div class="summary-band">
+        <b>발표 핵심 문장:</b> A파트 프로필 AI는 단순히 프롬프트를 보내는 챗봇 구조가 아니라, 사용자의 AI 데이터 동의를 확인하고, 직무군별 평가 기준과 가중치를 적용하며, AI 응답을 서버에서 검증한 뒤 실패 시 규칙 기반 엔진으로 대체하는 안정적인 평가 구조입니다.
+      </div>
+    </div>
+    <div class="footer"><span>전체 흐름: ProfilePage → ProfileController → ProfileServiceImpl → ProfileAiService → Validator/Calculator → ai_usage_log</span><span>실행 시퀀스</span></div>
+    <div class="corner"></div>
+  </section>
+
+  <section class="slide">
+    <div class="topbar"></div>
+    <div class="head"><h1>발표 설명 포인트</h1><div class="part">처음 듣는 사람 기준 요약</div></div>
+    <div class="sub"><span>클래스 다이어그램을 설명할 때 강조하면 좋은 설계 포인트</span></div>
+    <div class="body">
+      <div class="note-grid">
+        <div class="note-card">
+          <h3>1. Controller와 Service를 분리한 이유</h3>
+          <p>Controller는 HTTP 요청과 응답만 담당하고, 실제 정책 판단은 Service가 담당한다. 이렇게 나누면 화면이 바뀌어도 핵심 비즈니스 로직을 재사용할 수 있다.</p>
+          <ul>
+            <li>AuthController: 로그인/회원가입 요청 접수</li>
+            <li>ProfileController: 프로필 저장/AI 분석 요청 접수</li>
+            <li>ServiceImpl: 상태 검증, 동의 확인, DB 저장, 로그 기록</li>
+          </ul>
+        </div>
+        <div class="note-card">
+          <h3>2. AI 응답을 검증하는 이유</h3>
+          <p>AI는 가끔 형식이 깨진 JSON이나 기준에서 벗어난 점수를 반환할 수 있다. 그래서 서버가 응답 구조와 점수 범위를 검증해야 한다.</p>
+          <ul>
+            <li>필수 필드 누락 확인</li>
+            <li>ScoreCriterion enum과 일치하는지 확인</li>
+            <li>rawScore가 0~100 사이인지 확인</li>
+            <li>실패하면 RuleBased fallback으로 안정성 확보</li>
+          </ul>
+        </div>
+        <div class="note-card">
+          <h3>3. 직무군별 가중치를 둔 이유</h3>
+          <p>개발자와 마케터, 사무직, 의료/교육/물류 직무는 중요하게 보는 역량이 다르다. JobFamilyWeightPolicy는 이 차이를 점수 계산에 반영한다.</p>
+          <ul>
+            <li>개발/데이터: 직무 역량 적합도 비중이 큼</li>
+            <li>영업/마케팅: 성과 근거와 경험 구체성이 중요</li>
+            <li>일반 직무: 특정 직무군이 불명확할 때 기본 기준 적용</li>
+          </ul>
+        </div>
+        <div class="note-card">
+          <h3>4. 관리자 화면을 함께 만든 이유</h3>
+          <p>사용자 기능만 있으면 운영자가 품질 문제를 추적하기 어렵다. 관리자 화면은 사용자 프로필 입력 상태, 동의 상태, AI 평가 기준을 확인하는 운영 도구다.</p>
+          <ul>
+            <li>프로필 입력 누락 여부 확인</li>
+            <li>AI_DATA 동의/철회 상태 조회</li>
+            <li>평가 기준과 가중치 확인</li>
+            <li>운영 중 품질 저하 원인 추적</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+    <div class="footer"><span>면접/발표 답변용 요약 포함</span><span>A파트 설명</span></div>
+    <div class="corner"></div>
+  </section>
+</div>
+</body>
+</html>

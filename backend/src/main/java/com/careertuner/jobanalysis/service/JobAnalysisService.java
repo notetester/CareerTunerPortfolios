@@ -13,9 +13,9 @@ import com.careertuner.applicationcase.domain.ApplicationCase;
 import com.careertuner.applicationcase.service.ApplicationCaseAnalysisStatusService;
 import com.careertuner.applicationcase.service.AiUsageLogService;
 import com.careertuner.applicationcase.service.ApplicationCaseAccessService;
+import com.careertuner.applicationcase.service.BAnalysisGenerationService;
+import com.careertuner.applicationcase.service.BAnalysisGenerationService.GeneratedJobAnalysis;
 import com.careertuner.applicationcase.service.BAnalysisJsonValidator;
-import com.careertuner.applicationcase.service.OpenAiResponsesClient;
-import com.careertuner.applicationcase.service.OpenAiResponsesClient.JobAnalysisPayload;
 import com.careertuner.common.exception.BusinessException;
 import com.careertuner.common.exception.ErrorCode;
 import com.careertuner.jobanalysis.domain.JobAnalysis;
@@ -34,7 +34,7 @@ public class JobAnalysisService {
 
     private final ApplicationCaseAccessService accessService;
     private final JobAnalysisMapper jobAnalysisMapper;
-    private final OpenAiResponsesClient openAiClient;
+    private final BAnalysisGenerationService bAnalysisGenerationService;
     private final AiUsageLogService aiUsageLogService;
     private final ApplicationCaseAnalysisStatusService statusService;
     private final TransactionTemplate transactionTemplate;
@@ -48,9 +48,8 @@ public class JobAnalysisService {
         String previousStatus = applicationCase.getStatus();
         statusService.markAnalyzing(userId, applicationCaseId, previousStatus);
         try {
-            JobAnalysisPayload payload = openAiClient.analyzeJobPosting(
-                    applicationCase,
-                    sourceText);
+            GeneratedJobAnalysis generated = bAnalysisGenerationService.generateJobAnalysis(applicationCase, sourceText);
+            var payload = generated.payload();
             return transactionTemplate.execute(status -> {
                 JobAnalysis jobAnalysis = JobAnalysis.builder()
                         .applicationCaseId(applicationCaseId)
@@ -70,7 +69,15 @@ public class JobAnalysisService {
                 jobAnalysisMapper.insertJobAnalysis(jobAnalysis);
                 JobAnalysisResponse response = JobAnalysisResponse.from(jobAnalysisMapper.findLatestJobAnalysisByCaseId(applicationCaseId));
                 statusService.markReadyAfterAnalysis(userId, applicationCaseId, previousStatus);
-                aiUsageLogService.recordSuccess(userId, applicationCaseId, FEATURE_JOB_ANALYSIS, payload.usage());
+                if (generated.fellBack()) {
+                    aiUsageLogService.recordFailure(
+                            userId,
+                            applicationCaseId,
+                            FEATURE_JOB_ANALYSIS,
+                            generated.fallbackAttemptedModel(),
+                            generated.fallbackReason());
+                }
+                aiUsageLogService.recordLocalSuccess(userId, applicationCaseId, FEATURE_JOB_ANALYSIS, payload.usage());
                 return response;
             });
         } catch (RuntimeException ex) {

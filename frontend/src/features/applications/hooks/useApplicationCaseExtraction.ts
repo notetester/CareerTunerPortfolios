@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import {
   getLatestApplicationCaseExtraction,
+  reviewApplicationCaseExtraction,
   retryApplicationCaseExtraction,
 } from "../api/applicationCasesApi";
 import type { ApplicationCaseExtraction } from "../types/applicationCase";
@@ -13,7 +14,9 @@ export function useApplicationCaseExtraction(applicationCaseId: number | null, e
   const [extraction, setExtraction] = useState<ApplicationCaseExtraction | null>(null);
   const [loading, setLoading] = useState(Boolean(applicationCaseId && enabled));
   const [retrying, setRetrying] = useState(false);
+  const [reviewing, setReviewing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [reviewError, setReviewError] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
     if (!applicationCaseId || !enabled) {
@@ -54,6 +57,23 @@ export function useApplicationCaseExtraction(applicationCaseId: number | null, e
     }
   }, [applicationCaseId]);
 
+  const review = useCallback(async (extractedText: string) => {
+    if (!applicationCaseId) return null;
+
+    setReviewing(true);
+    setReviewError(null);
+    try {
+      const next = await reviewApplicationCaseExtraction(applicationCaseId, extractedText);
+      setExtraction(next);
+      return next;
+    } catch (err) {
+      setReviewError(err instanceof Error ? err.message : "공고문 검수를 저장하지 못했습니다.");
+      return null;
+    } finally {
+      setReviewing(false);
+    }
+  }, [applicationCaseId]);
+
   useEffect(() => {
     void refresh();
   }, [refresh]);
@@ -73,8 +93,11 @@ export function useApplicationCaseExtraction(applicationCaseId: number | null, e
     setExtraction,
     loading,
     retrying,
+    reviewing,
     error,
+    reviewError,
     refresh,
     retry,
+    review,
   };
 }

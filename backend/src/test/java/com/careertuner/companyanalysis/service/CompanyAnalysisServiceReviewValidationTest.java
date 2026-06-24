@@ -23,8 +23,8 @@ import com.careertuner.applicationcase.mapper.ApplicationCaseMapper;
 import com.careertuner.applicationcase.service.AiUsageLogService;
 import com.careertuner.applicationcase.service.ApplicationCaseAccessService;
 import com.careertuner.applicationcase.service.ApplicationCaseAnalysisStatusService;
+import com.careertuner.applicationcase.service.BAnalysisGenerationService;
 import com.careertuner.applicationcase.service.BAnalysisJsonValidator;
-import com.careertuner.applicationcase.service.OpenAiResponsesClient;
 import com.careertuner.common.exception.BusinessException;
 import com.careertuner.common.exception.ErrorCode;
 import com.careertuner.companyanalysis.domain.CompanyAnalysis;
@@ -165,7 +165,7 @@ class CompanyAnalysisServiceReviewValidationTest {
         return new CompanyAnalysisService(
                 accessService,
                 companyAnalysisMapper,
-                mock(OpenAiResponsesClient.class),
+                mock(BAnalysisGenerationService.class),
                 mock(AiUsageLogService.class),
                 mock(ApplicationCaseAnalysisStatusService.class),
                 mock(TransactionTemplate.class),
