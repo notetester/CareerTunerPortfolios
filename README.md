@@ -82,7 +82,7 @@ Spring Boot 4.0.6 · Java 21 · MyBatis · MySQL 8 · Spring Security · springd
 - [docs/RELEASE.md](docs/RELEASE.md) — 데모·릴리즈 가이드 (웹 데모/APK 태그 릴리즈/iOS)
 - [frontend/MOBILE_BUILD.md](frontend/MOBILE_BUILD.md) — 모바일 앱 빌드 (PWA/Android/iOS, 서명 분기)
 - [backend/README.md](backend/README.md) · [frontend/README.md](frontend/README.md)
-- `docs/storyboard/` — C 영역 UI/UX 스토리보드(별도 repo [CareerTunerDocs](https://github.com/notetester/CareerTunerDocs) · **git 서브모듈** · PPTX/PDF 등 산출물). 일반 개발엔 불필요하며 메인 클론 시 빈 폴더. 받기: `git submodule update --init docs/storyboard` ([AGENTS.md](AGENTS.md) 참고)
+- `docs/storyboard/` — 담당자별 공용 산출물(UI/UX 스토리보드·DB 설계서·클래스 설계서 등, 별도 repo [CareerTunerDocs](https://github.com/notetester/CareerTunerDocs) · **git 서브모듈** · PPTX/PDF 등). 일반 개발엔 불필요하며 메인 클론 시 빈 폴더. 받기: `git submodule update --init docs/storyboard` ([AGENTS.md](AGENTS.md) 참고)
 
 문서별 책임 범위와 충돌 처리 규칙은 [AGENTS.md](AGENTS.md)의 `문서 책임과 충돌 처리`를 따른다.
 
