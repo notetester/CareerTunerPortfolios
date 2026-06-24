@@ -38,6 +38,26 @@
          LIMIT #{limit} OFFSET #{offset}
     </select>
 
+    <!-- 대표 행의 원문 질문(초안 생성 컨텍스트용). -->
+    <select id="findQuestionById" resultType="string">
+        SELECT question
+          FROM chatbot_unanswered_question
+         WHERE id = #{id}
+    </select>
+
+    <!-- 대표 id 가 속한 question_norm 그룹의 행 수(반복 빈도). -->
+    <select id="countByGroup" resultType="long">
+        SELECT COUNT(*)
+          FROM chatbot_unanswered_question
+         WHERE question_norm = (
+                   SELECT question_norm FROM (
+                       SELECT question_norm
+                         FROM chatbot_unanswered_question
+                        WHERE id = #{id}
+                   ) t
+               )
+    </select>
+
     <!--
         대표 id 가 속한 question_norm 그룹 전체를 일괄 상태변경(토픽 단위 처리).
         같은 테이블 참조 UPDATE: 파생테이블(t) 로 감싸야 MySQL 에서 허용.

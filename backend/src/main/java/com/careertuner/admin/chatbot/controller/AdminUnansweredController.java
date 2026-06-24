@@ -6,6 +6,7 @@ import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -13,7 +14,10 @@ import org.springframework.web.bind.annotation.RestController;
 
 import com.careertuner.admin.chatbot.dto.AdminUnansweredQuestionResponse;
 import com.careertuner.admin.chatbot.dto.AdminUnansweredStatusRequest;
+import com.careertuner.admin.chatbot.dto.FaqDraftResponse;
 import com.careertuner.admin.chatbot.service.AdminUnansweredService;
+import com.careertuner.admin.faq.dto.AdminFaqRequest;
+import com.careertuner.admin.faq.dto.AdminFaqResponse;
 import com.careertuner.common.security.AuthUser;
 import com.careertuner.common.web.ApiResponse;
 
@@ -48,5 +52,22 @@ public class AdminUnansweredController {
             @RequestBody AdminUnansweredStatusRequest request) {
         unansweredService.updateStatus(authUser, id, request.status());
         return ApiResponse.ok();
+    }
+
+    /** FAQ 답변 초안 생성(저장 안 함, 반환만). 운영자가 검토·수정 후 등록한다. */
+    @PostMapping("/unanswered/{id}/draft")
+    public ApiResponse<FaqDraftResponse> generateDraft(
+            @AuthenticationPrincipal AuthUser authUser,
+            @PathVariable Long id) {
+        return ApiResponse.ok(unansweredService.generateDraft(authUser, id));
+    }
+
+    /** 다듬은 초안을 FAQ로 등록하고 원 질문 그룹을 CONVERTED 로 표시. */
+    @PostMapping("/unanswered/{id}/convert")
+    public ApiResponse<AdminFaqResponse> convert(
+            @AuthenticationPrincipal AuthUser authUser,
+            @PathVariable Long id,
+            @RequestBody AdminFaqRequest request) {
+        return ApiResponse.ok(unansweredService.convert(authUser, id, request));
     }
 }
