@@ -23,4 +23,10 @@ public class ChatbotProperties {
 
     /** 검색 결과 상위 K개 */
     private int topK = 3;
+
+    /** 통합 라우팅 경계 폭(deadband). |intakeScore - faqScore| 가 이 값 미만이면 화행 분류로 판정(그 이상은 argmax 결정적). */
+    private double routeBoundary = 0.10;
+
+    /** 화행 분류(QUESTION/COMMAND)에 쓰는 모델. ③ 인테이크 에이전트와 동일한 qwen3:8b. */
+    private String speechActModel = "qwen3:8b";
 }
