@@ -21,8 +21,16 @@
     </delete>
 
     <insert id="createConversation" useGeneratedKeys="true" keyProperty="id" keyColumn="conversation_id">
-        INSERT INTO chatbot_conversation_memory (messages_json)
-        VALUES ('[]')
+        INSERT INTO chatbot_conversation_memory (user_id, messages_json)
+        VALUES (#{userId}, '[]')
     </insert>
+
+    <select id="findRecentConversationByUser" resultType="java.lang.Long">
+        SELECT conversation_id
+          FROM chatbot_conversation_memory
+         WHERE user_id = #{userId}
+         ORDER BY updated_at DESC
+         LIMIT 1
+    </select>
 
 </mapper>
