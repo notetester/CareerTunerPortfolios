@@ -51,19 +51,22 @@ public class ChatbotController {
     private final MyBatisChatMemoryStore memoryStore;
     private final ChatbotService chatbotService;
     private final FastPathService fastPathService;
+    private final UnansweredQuestionService unansweredQuestionService;
 
     public ChatbotController(CommunityChatAgent agent,
                             QuickReplyAgent quickReplyAgent,
                             SearchTrace searchTrace,
                             MyBatisChatMemoryStore memoryStore,
                             ChatbotService chatbotService,
-                            FastPathService fastPathService) {
+                            FastPathService fastPathService,
+                            UnansweredQuestionService unansweredQuestionService) {
         this.agent = agent;
         this.quickReplyAgent = quickReplyAgent;
         this.searchTrace = searchTrace;
         this.memoryStore = memoryStore;
         this.chatbotService = chatbotService;
         this.fastPathService = fastPathService;
+        this.unansweredQuestionService = unansweredQuestionService;
     }
 
     /**
@@ -93,7 +96,7 @@ public class ChatbotController {
 
         // FAQ fast-path: 명백한 FAQ 키워드는 모델 판단을 거치지 않고 코드가 직접 searchFaq 를 태운다.
         if (fastPathService.isFaqIntent(req.question())) {
-            return ApiResponse.ok(faqFastPath(conversationId, req.question()));
+            return ApiResponse.ok(faqFastPath(conversationId, req.question(), userId));
         }
 
         searchTrace.clear();
@@ -166,7 +169,7 @@ public class ChatbotController {
      * 매칭 있으면 최상위 FAQ 답 + FAQ 링크(DB 출처라 신뢰), 없으면 정중히 1:1 문의 안내.
      * 이 턴은 대화 메모리에 기록하지 않는다(FAQ 답은 자기완결적).
      */
-    private ChatAskResponse faqFastPath(Long conversationId, String question) {
+    private ChatAskResponse faqFastPath(Long conversationId, String question, Long userId) {
         try {
             List<FaqHit> hits = chatbotService.searchFaqHits(question);
             if (!hits.isEmpty()) {
@@ -181,6 +184,8 @@ public class ChatbotController {
                         .collect(Collectors.toList());
                 return new ChatAskResponse(conversationId, hits.get(0).answer(), links, List.of());
             }
+            // 빈 결과 = FAQ 공백 후보. 운영 패널 수집(부수효과) — 단 인프라 장애는 미스로 오기록 금지.
+            recordUnanswered(question, userId, conversationId);
         } catch (Exception e) {
             log.error("FAQ fast-path 검색 실패: {}", e.getMessage());
         }
@@ -189,6 +194,25 @@ public class ChatbotController {
                 "관련 안내를 찾지 못했어요. 1:1 문의를 남겨주시면 정확히 도와드릴게요.",
                 List.of(new SiteLink("1:1 문의", "/support/contact")),
                 List.of());
+    }
+
+    /**
+     * FAQ fast-path 미스 질문을 운영 패널에 수집(부수효과·best-effort).
+     * <p>"정상 미스"와 "인프라 장애"를 구분한다: topFaqSimilarity 가 던지면(임베딩/Ollama 이상)
+     * 장애로 보고 <b>기록하지 않는다</b>. 성공하면 임계 미달 최고 유사도(없으면 null)로 적재.
+     * 어떤 경로로도 챗봇 응답을 깨뜨리지 않는다.
+     */
+    private void recordUnanswered(String question, Long userId, Long conversationId) {
+        ChatbotService.FaqMiss miss;
+        try {
+            miss = chatbotService.analyzeMiss(question);
+        } catch (Exception e) {
+            // 임베딩/Ollama 장애 → FAQ 공백으로 오기록하지 않고 스킵.
+            log.debug("미스 기록 스킵(임베딩/Ollama 이상 추정): {}", e.getMessage());
+            return;
+        }
+        unansweredQuestionService.record(question, miss.topSimilarity(), miss.embeddingJson(),
+                miss.bestFaqId(), userId, conversationId);
     }
 
     /**
