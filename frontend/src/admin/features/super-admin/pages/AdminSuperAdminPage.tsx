@@ -174,10 +174,6 @@ export function AdminSuperAdminPage() {
   const runMutation = async (work: (targetId: number) => Promise<AdminAccountRow>, doneMessage: string) => {
     const targetId = selected?.id ?? selectedId;
     if (!targetId) return;
-    if (!reason.trim()) {
-      setError("권한 변경 사유를 입력해 주세요.");
-      return;
-    }
     setSaving(true);
     setError(null);
     try {
@@ -296,7 +292,7 @@ export function AdminSuperAdminPage() {
                     <option value="ADMIN">ADMIN - 관리자</option>
                     <option value="SUPER_ADMIN">SUPER_ADMIN - 슈퍼 관리자</option>
                   </select>
-                  <Input value={reason} onChange={(event) => setReason(event.target.value)} placeholder="변경 사유" />
+                  <Input value={reason} onChange={(event) => setReason(event.target.value)} placeholder="변경 사유(선택)" />
                   <Button
                     className="bg-blue-600 text-white hover:bg-blue-700"
                     disabled={saving}
