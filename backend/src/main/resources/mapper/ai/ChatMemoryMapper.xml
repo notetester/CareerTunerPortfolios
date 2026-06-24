@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.careertuner.ai.chat.ChatMemoryMapper">
+
+    <select id="findMessages" resultType="java.lang.String">
+        SELECT messages_json
+          FROM chatbot_conversation_memory
+         WHERE conversation_id = #{conversationId}
+    </select>
+
+    <insert id="upsert">
+        INSERT INTO chatbot_conversation_memory (conversation_id, messages_json)
+        VALUES (#{conversationId}, #{messagesJson})
+        ON DUPLICATE KEY UPDATE messages_json = VALUES(messages_json)
+    </insert>
+
+    <delete id="delete">
+        DELETE FROM chatbot_conversation_memory
+         WHERE conversation_id = #{conversationId}
+    </delete>
+
+    <insert id="createConversation" useGeneratedKeys="true" keyProperty="id" keyColumn="conversation_id">
+        INSERT INTO chatbot_conversation_memory (user_id, messages_json)
+        VALUES (#{userId}, '[]')
+    </insert>
+
+    <select id="findRecentConversationByUser" resultType="java.lang.Long">
+        SELECT conversation_id
+          FROM chatbot_conversation_memory
+         WHERE user_id = #{userId}
+         ORDER BY updated_at DESC
+         LIMIT 1
+    </select>
+
+</mapper>

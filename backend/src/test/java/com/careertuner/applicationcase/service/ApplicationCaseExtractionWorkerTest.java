@@ -3,6 +3,7 @@ package com.careertuner.applicationcase.service;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.mock;
@@ -10,7 +11,6 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
 
@@ -25,8 +25,6 @@ import com.careertuner.applicationcase.domain.ApplicationCase;
 import com.careertuner.applicationcase.domain.ApplicationCaseExtraction;
 import com.careertuner.applicationcase.mapper.ApplicationCaseExtractionMapper;
 import com.careertuner.applicationcase.mapper.ApplicationCaseMapper;
-import com.careertuner.applicationcase.service.OpenAiResponsesClient.JobPostingMetadataPayload;
-import com.careertuner.applicationcase.service.OpenAiResponsesClient.Usage;
 import com.careertuner.jobposting.domain.JobPosting;
 import com.careertuner.jobposting.dto.JobPostingResponse;
 import com.careertuner.jobposting.mapper.JobPostingMapper;
@@ -34,6 +32,8 @@ import com.careertuner.jobposting.service.JobPostingService;
 import com.careertuner.jobposting.service.JobPostingTextExtractor.ExtractedPosting;
 import com.careertuner.notification.domain.Notification;
 import com.careertuner.notification.service.NotificationService;
+
+import tools.jackson.databind.ObjectMapper;
 
 class ApplicationCaseExtractionWorkerTest {
 
@@ -45,6 +45,7 @@ class ApplicationCaseExtractionWorkerTest {
         JobPostingService jobPostingService = mock(JobPostingService.class);
         OpenAiResponsesClient openAiClient = mock(OpenAiResponsesClient.class);
         AiUsageLogService aiUsageLogService = mock(AiUsageLogService.class);
+        ApplicationCaseAutoPipelineService autoPipelineService = mock(ApplicationCaseAutoPipelineService.class);
         NotificationService notificationService = mock(NotificationService.class);
         ApplicationCaseExtractionWorker worker = worker(
                 extractionMapper,
@@ -53,10 +54,11 @@ class ApplicationCaseExtractionWorkerTest {
                 jobPostingService,
                 openAiClient,
                 aiUsageLogService,
+                autoPipelineService,
                 notificationService);
         ApplicationCaseExtraction extraction = extraction(30L, 10L, 20L, 1L, "URL");
         String jobUrl = "https://example.com/jobs/backend";
-        String extractedText = "Acme is hiring a Backend Engineer.";
+        String extractedText = passingPostingText("Acme is hiring a Backend Engineer.");
 
         when(extractionMapper.findQueuedExtractions(5)).thenReturn(List.of(extraction));
         when(extractionMapper.claimQueuedExtraction(30L)).thenReturn(1);
@@ -77,22 +79,24 @@ class ApplicationCaseExtractionWorkerTest {
                 null));
         when(jobPostingService.saveExtractedJobPosting(eq(1L), eq(10L), any(ExtractedPosting.class)))
                 .thenReturn(new JobPostingResponse(21L, 10L, 2, jobUrl, jobUrl, extractedText, "URL", null));
-        Usage metadataUsage = new Usage("gpt-test", 10, 5, 15);
-        when(openAiClient.extractJobPostingMetadata(extractedText)).thenReturn(new JobPostingMetadataPayload(
-                "Acme",
-                "Backend Engineer",
-                LocalDate.of(2026, 6, 1),
-                LocalDate.of(2026, 7, 1),
-                metadataUsage));
-        when(extractionMapper.markExtractionSucceeded(30L, 21L)).thenReturn(1);
+        when(extractionMapper.markExtractionSucceeded(
+                eq(30L),
+                eq(21L),
+                eq("HTML_TEXT"),
+                any(),
+                eq("PASS"),
+                any(),
+                any(),
+                eq(false),
+                any())).thenReturn(1);
 
         int processed = worker.processQueuedExtractions();
 
         assertThat(processed).isEqualTo(1);
-        InOrder order = inOrder(extractionMapper, jobPostingService, openAiClient);
+        InOrder order = inOrder(extractionMapper, jobPostingService);
         order.verify(extractionMapper).claimQueuedExtraction(30L);
         order.verify(jobPostingService).extractUrlJobPosting(jobUrl);
-        order.verify(openAiClient).extractJobPostingMetadata(extractedText);
+        verify(openAiClient, never()).extractJobPostingMetadata(any());
 
         ArgumentCaptor<ExtractedPosting> extractedCaptor = ArgumentCaptor.forClass(ExtractedPosting.class);
         verify(jobPostingService).saveExtractedJobPosting(eq(1L), eq(10L), extractedCaptor.capture());
@@ -103,11 +107,21 @@ class ApplicationCaseExtractionWorkerTest {
         assertThat(caseCaptor.getValue().getCompanyName()).isEqualTo("Acme");
         assertThat(caseCaptor.getValue().getJobTitle()).isEqualTo("Backend Engineer");
         assertThat(caseCaptor.getValue().getPostingDate()).isNull();
-        assertThat(caseCaptor.getValue().getDeadlineDate()).isEqualTo(LocalDate.of(2026, 7, 1));
+        assertThat(caseCaptor.getValue().getDeadlineDate()).isNull();
         assertThat(caseCaptor.getValue().getStatus()).isEqualTo("DRAFT");
 
-        verify(extractionMapper).markExtractionSucceeded(30L, 21L);
-        verify(aiUsageLogService).recordSuccess(1L, 10L, "JOB_POSTING_METADATA", metadataUsage);
+        verify(extractionMapper).markExtractionSucceeded(
+                eq(30L),
+                eq(21L),
+                eq("HTML_TEXT"),
+                any(),
+                eq("PASS"),
+                any(),
+                any(),
+                eq(false),
+                any());
+        verify(aiUsageLogService, never()).recordSuccess(any(), any(), any(), any());
+        verify(autoPipelineService).runAfterExtractionPass(1L, 10L, 21L, 2, extractedText);
         ArgumentCaptor<Notification> notificationCaptor = ArgumentCaptor.forClass(Notification.class);
         verify(notificationService).notify(notificationCaptor.capture());
         assertThat(notificationCaptor.getValue().getUserId()).isEqualTo(1L);
@@ -125,6 +139,7 @@ class ApplicationCaseExtractionWorkerTest {
         JobPostingService jobPostingService = mock(JobPostingService.class);
         OpenAiResponsesClient openAiClient = mock(OpenAiResponsesClient.class);
         AiUsageLogService aiUsageLogService = mock(AiUsageLogService.class);
+        ApplicationCaseAutoPipelineService autoPipelineService = mock(ApplicationCaseAutoPipelineService.class);
         NotificationService notificationService = mock(NotificationService.class);
         ApplicationCaseExtractionWorker worker = worker(
                 extractionMapper,
@@ -133,9 +148,10 @@ class ApplicationCaseExtractionWorkerTest {
                 jobPostingService,
                 openAiClient,
                 aiUsageLogService,
+                autoPipelineService,
                 notificationService);
         ApplicationCaseExtraction extraction = extraction(31L, 10L, 20L, 1L, "TEXT");
-        String originalText = "Original manually pasted posting text.";
+        String originalText = passingPostingText("Original manually pasted posting text.");
 
         when(extractionMapper.findQueuedExtractions(5)).thenReturn(List.of(extraction));
         when(extractionMapper.claimQueuedExtraction(31L)).thenReturn(1);
@@ -148,18 +164,21 @@ class ApplicationCaseExtractionWorkerTest {
                 .sourceType("TEXT")
                 .build());
         when(applicationCaseMapper.findApplicationCaseByIdAndUserId(10L, 1L)).thenReturn(existingCase());
-        when(openAiClient.extractJobPostingMetadata(originalText)).thenReturn(new JobPostingMetadataPayload(
-                "",
-                "",
-                null,
-                null,
-                null));
-        when(extractionMapper.markExtractionSucceeded(31L, 20L)).thenReturn(1);
+        when(extractionMapper.markExtractionSucceeded(
+                eq(31L),
+                eq(20L),
+                eq("TEXT_DIRECT"),
+                any(),
+                eq("PASS"),
+                any(),
+                any(),
+                eq(false),
+                any())).thenReturn(1);
 
         int processed = worker.processQueuedExtractions();
 
         assertThat(processed).isEqualTo(1);
-        verify(openAiClient).extractJobPostingMetadata(originalText);
+        verify(openAiClient, never()).extractJobPostingMetadata(any());
         verify(aiUsageLogService, never()).recordSuccess(any(), any(), any(), any());
         verify(jobPostingService, never()).extractUrlJobPosting(any());
         verify(jobPostingService, never()).extractUploadedJobPosting(any(), any(), any(), any());
@@ -167,9 +186,18 @@ class ApplicationCaseExtractionWorkerTest {
 
         ArgumentCaptor<ApplicationCase> caseCaptor = ArgumentCaptor.forClass(ApplicationCase.class);
         verify(applicationCaseMapper).updateApplicationCase(caseCaptor.capture());
-        assertThat(caseCaptor.getValue().getCompanyName()).isEqualTo("Existing Company");
-        assertThat(caseCaptor.getValue().getJobTitle()).isEqualTo("Existing Role");
-        verify(extractionMapper).markExtractionSucceeded(31L, 20L);
+        assertThat(caseCaptor.getValue().getCompanyName()).isEqualTo("Acme Corporation is hiring for a product engineering team");
+        assertThat(caseCaptor.getValue().getJobTitle()).isEqualTo("Backend Engineer position supporting a commercial SaaS platform");
+        verify(extractionMapper).markExtractionSucceeded(
+                eq(31L),
+                eq(20L),
+                eq("TEXT_DIRECT"),
+                any(),
+                eq("PASS"),
+                any(),
+                any(),
+                eq(false),
+                any());
     }
 
     @Test
@@ -180,6 +208,7 @@ class ApplicationCaseExtractionWorkerTest {
         JobPostingService jobPostingService = mock(JobPostingService.class);
         OpenAiResponsesClient openAiClient = mock(OpenAiResponsesClient.class);
         AiUsageLogService aiUsageLogService = mock(AiUsageLogService.class);
+        ApplicationCaseAutoPipelineService autoPipelineService = mock(ApplicationCaseAutoPipelineService.class);
         NotificationService notificationService = mock(NotificationService.class);
         ApplicationCaseExtractionWorker worker = worker(
                 extractionMapper,
@@ -188,10 +217,11 @@ class ApplicationCaseExtractionWorkerTest {
                 jobPostingService,
                 openAiClient,
                 aiUsageLogService,
+                autoPipelineService,
                 notificationService);
         ApplicationCaseExtraction extraction = extraction(32L, 10L, 20L, 1L, "PDF");
         String fileReference = "local:application-postings/10/posting.pdf";
-        String extractedText = "PDF extracted posting text.";
+        String extractedText = passingPostingText("PDF extracted posting text.");
 
         when(extractionMapper.findQueuedExtractions(5)).thenReturn(List.of(extraction));
         when(extractionMapper.claimQueuedExtraction(32L)).thenReturn(1);
@@ -208,19 +238,186 @@ class ApplicationCaseExtractionWorkerTest {
                 .thenReturn(new ExtractedPosting("PDF", fileReference, null, extractedText, null));
         when(jobPostingService.saveExtractedJobPosting(eq(1L), eq(10L), any(ExtractedPosting.class)))
                 .thenReturn(new JobPostingResponse(22L, 10L, 2, null, fileReference, extractedText, "PDF", null));
-        when(openAiClient.extractJobPostingMetadata(extractedText)).thenReturn(new JobPostingMetadataPayload(
-                "PDF Company",
-                "Data Engineer",
-                null,
-                null,
-                null));
-        when(extractionMapper.markExtractionSucceeded(32L, 22L)).thenReturn(1);
+        when(extractionMapper.markExtractionSucceeded(
+                eq(32L),
+                eq(22L),
+                eq("PDF_TEXT"),
+                any(),
+                eq("PASS"),
+                any(),
+                any(),
+                eq(false),
+                any())).thenReturn(1);
 
         int processed = worker.processQueuedExtractions();
 
         assertThat(processed).isEqualTo(1);
         verify(jobPostingService).extractUploadedJobPosting(1L, 10L, "PDF", fileReference);
-        verify(extractionMapper).markExtractionSucceeded(32L, 22L);
+        verify(extractionMapper).markExtractionSucceeded(
+                eq(32L),
+                eq(22L),
+                eq("PDF_TEXT"),
+                any(),
+                eq("PASS"),
+                any(),
+                any(),
+                eq(false),
+                any());
+    }
+
+    @Test
+    void processQueuedFileExtractionStopsBeforeAnalysisWhenPythonWorkerRequiresReview() {
+        ApplicationCaseExtractionMapper extractionMapper = mock(ApplicationCaseExtractionMapper.class);
+        ApplicationCaseMapper applicationCaseMapper = mock(ApplicationCaseMapper.class);
+        JobPostingMapper jobPostingMapper = mock(JobPostingMapper.class);
+        JobPostingService jobPostingService = mock(JobPostingService.class);
+        OpenAiResponsesClient openAiClient = mock(OpenAiResponsesClient.class);
+        AiUsageLogService aiUsageLogService = mock(AiUsageLogService.class);
+        NotificationService notificationService = mock(NotificationService.class);
+        ApplicationCaseAutoPipelineService autoPipelineService = mock(ApplicationCaseAutoPipelineService.class);
+        ApplicationCaseExtractionWorker worker = worker(
+                extractionMapper,
+                applicationCaseMapper,
+                jobPostingMapper,
+                jobPostingService,
+                openAiClient,
+                aiUsageLogService,
+                autoPipelineService,
+                notificationService);
+        ApplicationCaseExtraction extraction = extraction(39L, 10L, 20L, 1L, "IMAGE");
+        String fileReference = "local:application-postings/10/posting.png";
+        String extractedText = "Responsibilities: build APIs. Qualifications: Java and Spring.";
+
+        when(extractionMapper.findQueuedExtractions(5)).thenReturn(List.of(extraction));
+        when(extractionMapper.claimQueuedExtraction(39L)).thenReturn(1);
+        when(extractionMapper.findRunningExtractionForUpdate(39L)).thenReturn(extraction);
+        when(jobPostingMapper.findJobPostingByIdAndCaseId(20L, 10L)).thenReturn(JobPosting.builder()
+                .id(20L)
+                .applicationCaseId(10L)
+                .revision(1)
+                .uploadedFileUrl(fileReference)
+                .sourceType("IMAGE")
+                .build());
+        when(jobPostingService.extractUploadedJobPosting(1L, 10L, "IMAGE", fileReference))
+                .thenReturn(new ExtractedPosting(
+                        "IMAGE",
+                        fileReference,
+                        null,
+                        extractedText,
+                        null,
+                        "IMAGE_OCR",
+                        55,
+                        "REVIEW_REQUIRED",
+                        "{\"qualityStatus\":\"REVIEW_REQUIRED\"}",
+                        "{\"documentExtractionContract\":\"self_ai_v1\"}",
+                        true,
+                        "ocr_low_confidence"));
+        when(jobPostingService.saveExtractedJobPosting(eq(1L), eq(10L), any(ExtractedPosting.class)))
+                .thenReturn(new JobPostingResponse(23L, 10L, 2, null, fileReference, extractedText, "IMAGE", null));
+        when(extractionMapper.markExtractionSucceeded(
+                eq(39L),
+                eq(23L),
+                eq("IMAGE_OCR"),
+                eq(55),
+                eq("REVIEW_REQUIRED"),
+                any(),
+                any(),
+                eq(true),
+                eq("ocr_low_confidence"))).thenReturn(1);
+
+        int processed = worker.processQueuedExtractions();
+
+        assertThat(processed).isEqualTo(1);
+        verify(openAiClient, never()).extractJobPostingMetadata(any());
+        verify(applicationCaseMapper, never()).updateApplicationCase(any());
+        verify(aiUsageLogService, never()).recordSuccess(any(), any(), any(), any());
+        verify(autoPipelineService, never()).runAfterExtractionPass(any(), any(), any(), any(), any());
+        ArgumentCaptor<Notification> notificationCaptor = ArgumentCaptor.forClass(Notification.class);
+        verify(notificationService).notify(notificationCaptor.capture());
+        assertThat(notificationCaptor.getValue().getType()).isEqualTo("JOB_POSTING_EXTRACTION_REVIEW_REQUIRED");
+    }
+
+    @Test
+    void processQueuedFileExtractionFailsWhenPythonWorkerQualityStatusIsUnknown() {
+        ApplicationCaseExtractionMapper extractionMapper = mock(ApplicationCaseExtractionMapper.class);
+        ApplicationCaseMapper applicationCaseMapper = mock(ApplicationCaseMapper.class);
+        JobPostingMapper jobPostingMapper = mock(JobPostingMapper.class);
+        JobPostingService jobPostingService = mock(JobPostingService.class);
+        OpenAiResponsesClient openAiClient = mock(OpenAiResponsesClient.class);
+        AiUsageLogService aiUsageLogService = mock(AiUsageLogService.class);
+        NotificationService notificationService = mock(NotificationService.class);
+        ApplicationCaseExtractionWorker worker = worker(
+                extractionMapper,
+                applicationCaseMapper,
+                jobPostingMapper,
+                jobPostingService,
+                openAiClient,
+                aiUsageLogService,
+                notificationService);
+        ApplicationCaseExtraction extraction = extraction(40L, 10L, 20L, 1L, "IMAGE");
+        String fileReference = "local:application-postings/10/posting.png";
+
+        when(extractionMapper.findQueuedExtractions(5)).thenReturn(List.of(extraction));
+        when(extractionMapper.claimQueuedExtraction(40L)).thenReturn(1);
+        when(jobPostingMapper.findJobPostingByIdAndCaseId(20L, 10L)).thenReturn(JobPosting.builder()
+                .id(20L)
+                .applicationCaseId(10L)
+                .revision(1)
+                .uploadedFileUrl(fileReference)
+                .sourceType("IMAGE")
+                .build());
+        when(jobPostingService.extractUploadedJobPosting(1L, 10L, "IMAGE", fileReference))
+                .thenReturn(new ExtractedPosting(
+                        "IMAGE",
+                        fileReference,
+                        null,
+                        "Responsibilities: build APIs. Qualifications: Java and Spring.",
+                        null,
+                        "IMAGE_OCR",
+                        75,
+                        "AUTO_OK",
+                        "{\"qualityStatus\":\"AUTO_OK\"}",
+                        "{\"documentExtractionContract\":\"self_ai_v1\"}",
+                        false,
+                        null));
+        when(extractionMapper.markExtractionFailed(
+                eq(40L),
+                any(String.class),
+                eq("IMAGE_OCR"),
+                eq(75),
+                eq("FAILED"),
+                any(),
+                any(),
+                eq(false),
+                any())).thenReturn(1);
+
+        int processed = worker.processQueuedExtractions();
+
+        assertThat(processed).isEqualTo(1);
+        verify(extractionMapper, never()).markExtractionSucceeded(
+                any(),
+                any(),
+                any(),
+                any(),
+                any(),
+                any(),
+                any(),
+                anyBoolean(),
+                any());
+        verify(openAiClient, never()).extractJobPostingMetadata(any());
+        verify(applicationCaseMapper, never()).updateApplicationCase(any());
+        ArgumentCaptor<String> fallbackReasonCaptor = ArgumentCaptor.forClass(String.class);
+        verify(extractionMapper).markExtractionFailed(
+                eq(40L),
+                any(String.class),
+                eq("IMAGE_OCR"),
+                eq(75),
+                eq("FAILED"),
+                any(),
+                any(),
+                eq(false),
+                fallbackReasonCaptor.capture());
+        assertThat(fallbackReasonCaptor.getValue()).contains("Invalid qualityStatus");
     }
 
     @Test
@@ -254,16 +451,43 @@ class ApplicationCaseExtractionWorkerTest {
                 .sourceType("URL")
                 .build());
         when(jobPostingService.extractUrlJobPosting(jobUrl)).thenThrow(new IllegalStateException(longReason));
-        when(extractionMapper.markExtractionFailed(eq(33L), any(String.class))).thenReturn(1);
+        when(extractionMapper.markExtractionFailed(
+                eq(33L),
+                any(String.class),
+                any(),
+                any(),
+                any(),
+                any(),
+                any(),
+                eq(false),
+                any())).thenReturn(1);
 
         int processed = worker.processQueuedExtractions();
 
         assertThat(processed).isEqualTo(1);
         ArgumentCaptor<String> reasonCaptor = ArgumentCaptor.forClass(String.class);
-        verify(extractionMapper).markExtractionFailed(eq(33L), reasonCaptor.capture());
+        verify(extractionMapper).markExtractionFailed(
+                eq(33L),
+                reasonCaptor.capture(),
+                any(),
+                any(),
+                any(),
+                any(),
+                any(),
+                eq(false),
+                any());
         assertThat(reasonCaptor.getValue()).startsWith("URL fetch failed");
         assertThat(reasonCaptor.getValue()).hasSizeLessThanOrEqualTo(1000);
-        verify(extractionMapper, never()).markExtractionSucceeded(any(), any());
+        verify(extractionMapper, never()).markExtractionSucceeded(
+                any(),
+                any(),
+                any(),
+                any(),
+                any(),
+                any(),
+                any(),
+                anyBoolean(),
+                any());
         verify(applicationCaseMapper, never()).updateApplicationCase(any());
         verify(aiUsageLogService, never()).recordFailure(any(), any(), eq("JOB_POSTING_METADATA"), any());
 
@@ -292,7 +516,7 @@ class ApplicationCaseExtractionWorkerTest {
                 notificationService);
         ApplicationCaseExtraction extraction = extraction(37L, 10L, 20L, 1L, "URL");
         String jobUrl = "https://example.com/jobs/backend";
-        String extractedText = "Acme is hiring a Backend Engineer.";
+        String extractedText = passingPostingText("Acme is hiring a Backend Engineer.");
 
         when(extractionMapper.findQueuedExtractions(5)).thenReturn(List.of(extraction));
         when(extractionMapper.claimQueuedExtraction(37L)).thenReturn(1);
@@ -309,12 +533,6 @@ class ApplicationCaseExtractionWorkerTest {
                 jobUrl,
                 extractedText,
                 null));
-        when(openAiClient.extractJobPostingMetadata(extractedText)).thenReturn(new JobPostingMetadataPayload(
-                "Acme",
-                "Backend Engineer",
-                null,
-                null,
-                null));
         when(extractionMapper.findRunningExtractionForUpdate(37L)).thenReturn(null);
 
         int processed = worker.processQueuedExtractions();
@@ -327,7 +545,7 @@ class ApplicationCaseExtractionWorkerTest {
     }
 
     @Test
-    void processQueuedExtractionRecordsMetadataFailureWhenOpenAiMetadataFails() {
+    void processQueuedExtractionDoesNotCallOpenAiForMetadataByDefault() {
         ApplicationCaseExtractionMapper extractionMapper = mock(ApplicationCaseExtractionMapper.class);
         ApplicationCaseMapper applicationCaseMapper = mock(ApplicationCaseMapper.class);
         JobPostingMapper jobPostingMapper = mock(JobPostingMapper.class);
@@ -344,7 +562,7 @@ class ApplicationCaseExtractionWorkerTest {
                 aiUsageLogService,
                 notificationService);
         ApplicationCaseExtraction extraction = extraction(38L, 10L, 20L, 1L, "TEXT");
-        String originalText = "Original manually pasted posting text.";
+        String originalText = passingPostingText("Original manually pasted posting text.");
 
         when(extractionMapper.findQueuedExtractions(5)).thenReturn(List.of(extraction));
         when(extractionMapper.claimQueuedExtraction(38L)).thenReturn(1);
@@ -355,15 +573,35 @@ class ApplicationCaseExtractionWorkerTest {
                 .originalText(originalText)
                 .sourceType("TEXT")
                 .build());
-        when(openAiClient.extractJobPostingMetadata(originalText)).thenThrow(new IllegalStateException("metadata down"));
-        when(extractionMapper.markExtractionFailed(eq(38L), any(String.class))).thenReturn(1);
+        when(applicationCaseMapper.findApplicationCaseByIdAndUserId(10L, 1L)).thenReturn(existingCase());
+        when(extractionMapper.findRunningExtractionForUpdate(38L)).thenReturn(extraction);
+        when(extractionMapper.markExtractionSucceeded(
+                eq(38L),
+                eq(20L),
+                eq("TEXT_DIRECT"),
+                any(),
+                eq("PASS"),
+                any(),
+                any(),
+                eq(false),
+                any())).thenReturn(1);
 
         int processed = worker.processQueuedExtractions();
 
         assertThat(processed).isEqualTo(1);
-        verify(aiUsageLogService).recordFailure(1L, 10L, "JOB_POSTING_METADATA", "metadata down");
-        verify(extractionMapper).markExtractionFailed(eq(38L), any(String.class));
-        verify(applicationCaseMapper, never()).updateApplicationCase(any());
+        verify(openAiClient, never()).extractJobPostingMetadata(any());
+        verify(aiUsageLogService, never()).recordFailure(any(), any(), eq("JOB_POSTING_METADATA"), any());
+        verify(extractionMapper).markExtractionSucceeded(
+                eq(38L),
+                eq(20L),
+                eq("TEXT_DIRECT"),
+                any(),
+                eq("PASS"),
+                any(),
+                any(),
+                eq(false),
+                any());
+        verify(applicationCaseMapper).updateApplicationCase(any());
     }
 
     @Test
@@ -426,13 +664,31 @@ class ApplicationCaseExtractionWorkerTest {
 
         when(extractionMapper.findStaleRunningExtractions(any(LocalDateTime.class), eq(5))).thenReturn(List.of(stale));
         when(extractionMapper.findQueuedExtractions(5)).thenReturn(List.of());
-        when(extractionMapper.markExtractionFailed(eq(35L), any(String.class))).thenReturn(1);
+        when(extractionMapper.markExtractionFailed(
+                eq(35L),
+                any(String.class),
+                any(),
+                any(),
+                any(),
+                any(),
+                any(),
+                eq(false),
+                any())).thenReturn(1);
 
         int processed = worker.processQueuedExtractions();
 
         assertThat(processed).isEqualTo(1);
         ArgumentCaptor<String> reasonCaptor = ArgumentCaptor.forClass(String.class);
-        verify(extractionMapper).markExtractionFailed(eq(35L), reasonCaptor.capture());
+        verify(extractionMapper).markExtractionFailed(
+                eq(35L),
+                reasonCaptor.capture(),
+                any(),
+                any(),
+                any(),
+                any(),
+                any(),
+                eq(false),
+                any());
         assertThat(reasonCaptor.getValue()).contains("timed out");
         verify(jobPostingMapper, never()).findJobPostingByIdAndCaseId(any(), any());
         verify(jobPostingService, never()).extractUploadedJobPosting(any(), any(), any(), any());
@@ -474,12 +730,30 @@ class ApplicationCaseExtractionWorkerTest {
 
         when(extractionMapper.findStaleRunningExtractions(any(LocalDateTime.class), eq(5))).thenReturn(List.of(stale));
         when(extractionMapper.findQueuedExtractions(5)).thenReturn(List.of());
-        when(extractionMapper.markExtractionFailed(eq(36L), any(String.class))).thenReturn(0);
+        when(extractionMapper.markExtractionFailed(
+                eq(36L),
+                any(String.class),
+                any(),
+                any(),
+                any(),
+                any(),
+                any(),
+                eq(false),
+                any())).thenReturn(0);
 
         int processed = worker.processQueuedExtractions();
 
         assertThat(processed).isZero();
-        verify(extractionMapper).markExtractionFailed(eq(36L), any(String.class));
+        verify(extractionMapper).markExtractionFailed(
+                eq(36L),
+                any(String.class),
+                any(),
+                any(),
+                any(),
+                any(),
+                any(),
+                eq(false),
+                any());
         verify(notificationService, never()).notify(any());
     }
 
@@ -507,13 +781,34 @@ class ApplicationCaseExtractionWorkerTest {
                                                           OpenAiResponsesClient openAiClient,
                                                           AiUsageLogService aiUsageLogService,
                                                           NotificationService notificationService) {
-        return new ApplicationCaseExtractionWorker(
+        return worker(
                 extractionMapper,
                 applicationCaseMapper,
                 jobPostingMapper,
                 jobPostingService,
                 openAiClient,
                 aiUsageLogService,
+                mock(ApplicationCaseAutoPipelineService.class),
+                notificationService);
+    }
+
+    private static ApplicationCaseExtractionWorker worker(ApplicationCaseExtractionMapper extractionMapper,
+                                                          ApplicationCaseMapper applicationCaseMapper,
+                                                          JobPostingMapper jobPostingMapper,
+                                                          JobPostingService jobPostingService,
+                                                          OpenAiResponsesClient openAiClient,
+                                                          AiUsageLogService aiUsageLogService,
+                                                          ApplicationCaseAutoPipelineService autoPipelineService,
+                                                          NotificationService notificationService) {
+        return new ApplicationCaseExtractionWorker(
+                extractionMapper,
+                applicationCaseMapper,
+                jobPostingMapper,
+                jobPostingService,
+                new ApplicationCaseExtractionQualityGate(new ObjectMapper()),
+                openAiClient,
+                aiUsageLogService,
+                autoPipelineService,
                 notificationService,
                 transactionTemplate());
     }
@@ -543,6 +838,19 @@ class ApplicationCaseExtractionWorkerTest {
                 .status("DRAFT")
                 .favorite(true)
                 .build();
+    }
+
+    private static String passingPostingText(String seed) {
+        return """
+                %s
+                Company: Acme Corporation is hiring for a product engineering team.
+                Role: Backend Engineer position supporting a commercial SaaS platform.
+                Responsibilities: design APIs, operate Spring services, improve batch workers, and collaborate with frontend engineers.
+                Qualifications: Java, Spring Boot, MySQL, REST API design, testing experience, and production debugging.
+                Skills: Java Spring MyBatis React TypeScript Python Docker monitoring.
+                Employment: full-time role with Seoul hybrid location, benefits, and application deadline.
+                Apply: submit resume and portfolio before the deadline.
+                """.formatted(seed).repeat(3).trim();
     }
 
     private static TransactionTemplate transactionTemplate() {

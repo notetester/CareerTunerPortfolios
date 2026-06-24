@@ -83,6 +83,8 @@ careertuner:
     model: ${OPENAI_MODEL:gpt-5}
     base-url: ${OPENAI_BASE_URL:https://api.openai.com/v1}
     timeout: ${OPENAI_TIMEOUT:300s}
+    job-posting-fallback-enabled: ${JOB_POSTING_OPENAI_FALLBACK_ENABLED:false}
+    job-posting-fallback-allowlist: ${JOB_POSTING_OPENAI_FALLBACK_ALLOWLIST:}
   analysis:
     ai:
       # C 적합도/취업분석 AI provider. openai(기본/폴백) | oss(자체 파인튜닝 careertuner-c-career-strategy-3b)
@@ -112,6 +114,18 @@ careertuner:
   uploads:
     job-posting-dir: ${JOB_POSTING_UPLOAD_DIR:.uploads/application-postings}
     max-file-size-bytes: ${JOB_POSTING_MAX_FILE_SIZE_BYTES:5242880}
+  extraction:
+    ai-worker:
+      enabled: ${JOB_POSTING_AI_WORKER_ENABLED:false}
+      base-url: ${JOB_POSTING_AI_WORKER_BASE_URL:http://127.0.0.1:8091}
+      timeout: ${JOB_POSTING_AI_WORKER_TIMEOUT:30s}
+  b-analysis:
+    local-llm:
+      enabled: ${B_ANALYSIS_LOCAL_LLM_ENABLED:true}
+      base-url: ${B_ANALYSIS_OLLAMA_BASE_URL:http://localhost:11434}
+      model: ${B_ANALYSIS_OLLAMA_MODEL:careertuner-b-jobposting-r1}
+      connect-timeout: ${B_ANALYSIS_OLLAMA_CONNECT_TIMEOUT:5s}
+      read-timeout: ${B_ANALYSIS_OLLAMA_READ_TIMEOUT:480s}
   file:
     # 면접 음성/영상 등 업로드 파일 저장 위치. 큰 영상은 SPRING_SERVLET_MULTIPART_MAX_FILE_SIZE 도 함께 올린다.
     media-dir: ${MEDIA_UPLOAD_DIR:.uploads/media}
@@ -182,6 +196,28 @@ ai:
     similarity-threshold: ${AI_CHATBOT_SIMILARITY_THRESHOLD:0.35}
     top-k: ${AI_CHATBOT_TOP_K:3}
 
+# ─── LangChain4j (커뮤니티 챗봇 에이전트) ───
+# 기존 ai.ollama 와 네임스페이스 분리. 구동 모델 기본값은 Part2 게이트 통과한 qwen3:8b.
+# 모델명은 검열/FAQ용 ai.ollama.model(gemma4)과 충돌하지 않게 별도 env(AI_AGENT_MODEL)로 분리
+# → CI/GitHub Actions secret 으로 에이전트 모델만 독립 오버라이드 가능.
+langchain4j:
+  ollama:
+    chat-model:
+      base-url: ${AI_OLLAMA_BASE_URL:http://localhost:11434}
+      model-name: ${AI_AGENT_MODEL:qwen3:8b}
+      temperature: 0.0          # 라우팅 일관성 위해 낮게
+      timeout: PT120S           # 원격+로컬 추론 느림
+      think: false              # 추론 토큰 끄기 — 응답 노이즈 제거
+      return-thinking: false    # 추론 결과 미반환 (이중 안전)
+      # ⚠️ RESPONSE_FORMAT_JSON_SCHEMA 는 켜지 않는다.
+      #   Ollama 는 format(구조화 출력)이 걸리면 tool_call 을 생략하고 즉시 JSON 만 반환한다
+      #   → 검색 의도에도 searchCommunityPosts 를 안 부르는 치명적 충돌. (실측 확인)
+      #   대신 LangChain4j 가 POJO 반환타입에 맞춰 프롬프트 기반 JSON 지시를 넣어 구조화하고,
+      #   컨트롤러에 파싱 폴백을 둔다. 이러면 툴 호출이 정상 동작한다.
+      log-requests: true
+      log-responses: true
+
 logging:
   level:
     com.careertuner: DEBUG
+    dev.langchain4j: DEBUG

@@ -11,6 +11,14 @@
         <result property="sourceType" column="source_type"/>
         <result property="status" column="status"/>
         <result property="errorMessage" column="error_message"/>
+        <result property="extractionStrategy" column="extraction_strategy"/>
+        <result property="qualityScore" column="quality_score"/>
+        <result property="qualityStatus" column="quality_status"/>
+        <result property="qualityReportJson" column="quality_report_json"/>
+        <result property="modelVersionsJson" column="model_versions_json"/>
+        <result property="fallbackEligible" column="fallback_eligible"/>
+        <result property="fallbackReason" column="fallback_reason"/>
+        <result property="reviewedAt" column="reviewed_at"/>
         <result property="startedAt" column="started_at"/>
         <result property="finishedAt" column="finished_at"/>
         <result property="createdAt" column="created_at"/>
@@ -53,6 +61,14 @@
             source_type,
             status,
             error_message,
+            extraction_strategy,
+            quality_score,
+            quality_status,
+            quality_report_json,
+            model_versions_json,
+            fallback_eligible,
+            fallback_reason,
+            reviewed_at,
             started_at,
             finished_at,
             created_at,
@@ -107,6 +123,14 @@
         UPDATE application_case_extraction
         SET status = 'RUNNING',
             error_message = NULL,
+            extraction_strategy = NULL,
+            quality_score = NULL,
+            quality_status = NULL,
+            quality_report_json = NULL,
+            model_versions_json = NULL,
+            fallback_eligible = 0,
+            fallback_reason = NULL,
+            reviewed_at = NULL,
             started_at = NOW(),
             finished_at = NULL
         WHERE id = #{id}
@@ -118,6 +142,13 @@
         SET status = 'SUCCEEDED',
             job_posting_id = #{jobPostingId},
             error_message = NULL,
+            extraction_strategy = #{extractionStrategy},
+            quality_score = #{qualityScore},
+            quality_status = #{qualityStatus},
+            quality_report_json = #{qualityReportJson},
+            model_versions_json = #{modelVersionsJson},
+            fallback_eligible = #{fallbackEligible},
+            fallback_reason = #{fallbackReason},
             finished_at = NOW()
         WHERE id = #{id}
           AND status = 'RUNNING'
@@ -127,9 +158,32 @@
         UPDATE application_case_extraction
         SET status = 'FAILED',
             error_message = #{errorMessage},
+            extraction_strategy = #{extractionStrategy},
+            quality_score = #{qualityScore},
+            quality_status = #{qualityStatus},
+            quality_report_json = #{qualityReportJson},
+            model_versions_json = #{modelVersionsJson},
+            fallback_eligible = #{fallbackEligible},
+            fallback_reason = #{fallbackReason},
             finished_at = NOW()
         WHERE id = #{id}
           AND status = 'RUNNING'
+    </update>
+
+    <update id="markExtractionReviewed">
+        UPDATE application_case_extraction
+        SET job_posting_id = #{jobPostingId},
+            quality_status = 'PASS',
+            quality_score = #{qualityScore},
+            quality_report_json = #{qualityReportJson},
+            model_versions_json = #{modelVersionsJson},
+            fallback_eligible = 0,
+            fallback_reason = NULL,
+            reviewed_at = NOW(),
+            error_message = NULL
+        WHERE id = #{id}
+          AND status = 'SUCCEEDED'
+          AND quality_status = 'REVIEW_REQUIRED'
     </update>
 
     <select id="countActiveExtractionsByApplicationCaseId" resultType="int">

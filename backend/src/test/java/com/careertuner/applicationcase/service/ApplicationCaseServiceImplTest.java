@@ -37,9 +37,12 @@ import com.careertuner.applicationcase.dto.ApplicationCaseExtractionResponse;
 import com.careertuner.applicationcase.dto.ApplicationCaseResponse;
 import com.careertuner.applicationcase.dto.CreateApplicationCaseFromJobPostingRequest;
 import com.careertuner.applicationcase.dto.CreateApplicationCaseRequest;
+import com.careertuner.applicationcase.dto.ReviewJobPostingExtractionRequest;
 import com.careertuner.applicationcase.dto.UpdateApplicationCaseRequest;
 import com.careertuner.applicationcase.mapper.ApplicationCaseExtractionMapper;
 import com.careertuner.applicationcase.mapper.ApplicationCaseMapper;
+import com.careertuner.applicationcase.service.BAnalysisGenerationService.GeneratedCompanyAnalysis;
+import com.careertuner.applicationcase.service.BAnalysisGenerationService.GeneratedJobAnalysis;
 import com.careertuner.applicationcase.service.OpenAiResponsesClient.CompanyAnalysisPayload;
 import com.careertuner.applicationcase.service.OpenAiResponsesClient.JobAnalysisPayload;
 import com.careertuner.applicationcase.service.OpenAiResponsesClient.Usage;
@@ -60,6 +63,7 @@ import com.careertuner.jobposting.mapper.JobPostingMapper;
 import com.careertuner.jobposting.service.JobPostingFileStorage;
 import com.careertuner.jobposting.service.JobPostingService;
 import com.careertuner.jobposting.service.JobPostingTextExtractor;
+import com.careertuner.notification.mapper.NotificationMapper;
 import tools.jackson.databind.ObjectMapper;
 
 class ApplicationCaseServiceImplTest {
@@ -976,11 +980,11 @@ class ApplicationCaseServiceImplTest {
         ApplicationCaseMapper applicationCaseMapper = mock(ApplicationCaseMapper.class);
         JobPostingMapper jobPostingMapper = mock(JobPostingMapper.class);
         JobAnalysisMapper jobAnalysisMapper = mock(JobAnalysisMapper.class);
-        OpenAiResponsesClient openAiClient = mock(OpenAiResponsesClient.class);
+        BAnalysisGenerationService bAnalysisGenerationService = mock(BAnalysisGenerationService.class);
         AiUsageLogService usageLogService = mock(AiUsageLogService.class);
         ApplicationCaseAnalysisStatusService statusService = mock(ApplicationCaseAnalysisStatusService.class);
         ApplicationCaseAccessService accessService = new ApplicationCaseAccessService(applicationCaseMapper, jobPostingMapper);
-        JobAnalysisService service = new JobAnalysisService(accessService, jobAnalysisMapper, openAiClient, usageLogService, statusService, transactionTemplate(), analysisJsonValidator());
+        JobAnalysisService service = new JobAnalysisService(accessService, jobAnalysisMapper, bAnalysisGenerationService, usageLogService, statusService, transactionTemplate(), analysisJsonValidator());
 
         ApplicationCase applicationCase = applicationCase("DRAFT");
         JobPosting posting = jobPosting(30L, 2, "Java Spring REST API");
@@ -989,7 +993,8 @@ class ApplicationCaseServiceImplTest {
 
         when(applicationCaseMapper.findApplicationCaseByIdAndUserId(10L, 1L)).thenReturn(applicationCase);
         when(jobPostingMapper.findLatestJobPostingByCaseId(10L)).thenReturn(posting);
-        when(openAiClient.analyzeJobPosting(applicationCase, "Java Spring REST API")).thenReturn(payload);
+        when(bAnalysisGenerationService.generateJobAnalysis(applicationCase, "Java Spring REST API"))
+                .thenReturn(new GeneratedJobAnalysis(payload, null, null));
         when(jobAnalysisMapper.findLatestJobAnalysisByCaseId(10L)).thenReturn(jobAnalysis());
 
         JobAnalysisResponse response = service.createJobAnalysis(1L, 10L);
@@ -1002,7 +1007,37 @@ class ApplicationCaseServiceImplTest {
         verify(statusService).markAnalyzing(1L, 10L, "DRAFT");
         InOrder successOrder = inOrder(statusService, usageLogService);
         successOrder.verify(statusService).markReadyAfterAnalysis(1L, 10L, "DRAFT");
-        successOrder.verify(usageLogService).recordSuccess(1L, 10L, "JOB_ANALYSIS", usage);
+        successOrder.verify(usageLogService).recordLocalSuccess(1L, 10L, "JOB_ANALYSIS", usage);
+    }
+
+    @Test
+    void createJobAnalysisRecordsLocalLlmFailureWhenGeneratorFallsBack() {
+        ApplicationCaseMapper applicationCaseMapper = mock(ApplicationCaseMapper.class);
+        JobPostingMapper jobPostingMapper = mock(JobPostingMapper.class);
+        JobAnalysisMapper jobAnalysisMapper = mock(JobAnalysisMapper.class);
+        BAnalysisGenerationService bAnalysisGenerationService = mock(BAnalysisGenerationService.class);
+        AiUsageLogService usageLogService = mock(AiUsageLogService.class);
+        ApplicationCaseAnalysisStatusService statusService = mock(ApplicationCaseAnalysisStatusService.class);
+        ApplicationCaseAccessService accessService = new ApplicationCaseAccessService(applicationCaseMapper, jobPostingMapper);
+        JobAnalysisService service = new JobAnalysisService(accessService, jobAnalysisMapper, bAnalysisGenerationService, usageLogService, statusService, transactionTemplate(), analysisJsonValidator());
+
+        ApplicationCase applicationCase = applicationCase("DRAFT");
+        JobPosting posting = jobPosting(30L, 2, "Java Spring REST API");
+        Usage usage = new Usage("self-rules-v1", 100, 50, 150);
+        JobAnalysisPayload payload = jobAnalysisPayload(usage);
+        String fallbackReason = "Local LLM job analysis failed; fallback to self-rules-v1: model not found";
+
+        when(applicationCaseMapper.findApplicationCaseByIdAndUserId(10L, 1L)).thenReturn(applicationCase);
+        when(jobPostingMapper.findLatestJobPostingByCaseId(10L)).thenReturn(posting);
+        when(bAnalysisGenerationService.generateJobAnalysis(applicationCase, "Java Spring REST API"))
+                .thenReturn(new GeneratedJobAnalysis(payload, fallbackReason, "qwen-test"));
+        when(jobAnalysisMapper.findLatestJobAnalysisByCaseId(10L)).thenReturn(jobAnalysis());
+
+        service.createJobAnalysis(1L, 10L);
+
+        InOrder logOrder = inOrder(usageLogService);
+        logOrder.verify(usageLogService).recordFailure(1L, 10L, "JOB_ANALYSIS", "qwen-test", fallbackReason);
+        logOrder.verify(usageLogService).recordLocalSuccess(1L, 10L, "JOB_ANALYSIS", usage);
     }
 
     @Test
@@ -1010,11 +1045,11 @@ class ApplicationCaseServiceImplTest {
         ApplicationCaseMapper applicationCaseMapper = mock(ApplicationCaseMapper.class);
         JobPostingMapper jobPostingMapper = mock(JobPostingMapper.class);
         JobAnalysisMapper jobAnalysisMapper = mock(JobAnalysisMapper.class);
-        OpenAiResponsesClient openAiClient = mock(OpenAiResponsesClient.class);
+        BAnalysisGenerationService bAnalysisGenerationService = mock(BAnalysisGenerationService.class);
         AiUsageLogService usageLogService = mock(AiUsageLogService.class);
         ApplicationCaseAnalysisStatusService statusService = mock(ApplicationCaseAnalysisStatusService.class);
         ApplicationCaseAccessService accessService = new ApplicationCaseAccessService(applicationCaseMapper, jobPostingMapper);
-        JobAnalysisService service = new JobAnalysisService(accessService, jobAnalysisMapper, openAiClient, usageLogService, statusService, transactionTemplate(), analysisJsonValidator());
+        JobAnalysisService service = new JobAnalysisService(accessService, jobAnalysisMapper, bAnalysisGenerationService, usageLogService, statusService, transactionTemplate(), analysisJsonValidator());
 
         when(applicationCaseMapper.findApplicationCaseByIdAndUserId(10L, 1L)).thenReturn(applicationCase("APPLIED"));
 
@@ -1023,7 +1058,7 @@ class ApplicationCaseServiceImplTest {
                 .hasMessageContaining("현재 상태에서는 분석을 다시 실행할 수 없습니다.");
 
         verify(statusService, never()).markAnalyzing(1L, 10L, "APPLIED");
-        verify(openAiClient, never()).analyzeJobPosting(any(ApplicationCase.class), any());
+        verify(bAnalysisGenerationService, never()).generateJobAnalysis(any(ApplicationCase.class), any());
         verify(jobAnalysisMapper, never()).insertJobAnalysis(any(JobAnalysis.class));
         verify(usageLogService, never()).recordSuccess(eq(1L), eq(10L), eq("JOB_ANALYSIS"), any());
         verify(usageLogService, never()).recordFailure(eq(1L), eq(10L), eq("JOB_ANALYSIS"), any());
@@ -1034,11 +1069,11 @@ class ApplicationCaseServiceImplTest {
         ApplicationCaseMapper applicationCaseMapper = mock(ApplicationCaseMapper.class);
         JobPostingMapper jobPostingMapper = mock(JobPostingMapper.class);
         JobAnalysisMapper jobAnalysisMapper = mock(JobAnalysisMapper.class);
-        OpenAiResponsesClient openAiClient = mock(OpenAiResponsesClient.class);
+        BAnalysisGenerationService bAnalysisGenerationService = mock(BAnalysisGenerationService.class);
         AiUsageLogService usageLogService = mock(AiUsageLogService.class);
         ApplicationCaseAnalysisStatusService statusService = mock(ApplicationCaseAnalysisStatusService.class);
         ApplicationCaseAccessService accessService = new ApplicationCaseAccessService(applicationCaseMapper, jobPostingMapper);
-        JobAnalysisService service = new JobAnalysisService(accessService, jobAnalysisMapper, openAiClient, usageLogService, statusService, transactionTemplate(), analysisJsonValidator());
+        JobAnalysisService service = new JobAnalysisService(accessService, jobAnalysisMapper, bAnalysisGenerationService, usageLogService, statusService, transactionTemplate(), analysisJsonValidator());
 
         when(applicationCaseMapper.findApplicationCaseByIdAndUserId(10L, 1L)).thenReturn(applicationCase("ANALYZING"));
 
@@ -1047,7 +1082,7 @@ class ApplicationCaseServiceImplTest {
                 .hasMessage("이미 분석이 진행 중입니다. 잠시 후 결과를 확인해 주세요.");
 
         verify(statusService, never()).markAnalyzing(1L, 10L, "ANALYZING");
-        verify(openAiClient, never()).analyzeJobPosting(any(ApplicationCase.class), any());
+        verify(bAnalysisGenerationService, never()).generateJobAnalysis(any(ApplicationCase.class), any());
         verify(jobAnalysisMapper, never()).insertJobAnalysis(any(JobAnalysis.class));
         verify(usageLogService, never()).recordSuccess(eq(1L), eq(10L), eq("JOB_ANALYSIS"), any());
         verify(usageLogService, never()).recordFailure(eq(1L), eq(10L), eq("JOB_ANALYSIS"), any());
@@ -1058,11 +1093,11 @@ class ApplicationCaseServiceImplTest {
         ApplicationCaseMapper applicationCaseMapper = mock(ApplicationCaseMapper.class);
         JobPostingMapper jobPostingMapper = mock(JobPostingMapper.class);
         JobAnalysisMapper jobAnalysisMapper = mock(JobAnalysisMapper.class);
-        OpenAiResponsesClient openAiClient = mock(OpenAiResponsesClient.class);
+        BAnalysisGenerationService bAnalysisGenerationService = mock(BAnalysisGenerationService.class);
         AiUsageLogService usageLogService = mock(AiUsageLogService.class);
         ApplicationCaseAnalysisStatusService statusService = mock(ApplicationCaseAnalysisStatusService.class);
         ApplicationCaseAccessService accessService = new ApplicationCaseAccessService(applicationCaseMapper, jobPostingMapper);
-        JobAnalysisService service = new JobAnalysisService(accessService, jobAnalysisMapper, openAiClient, usageLogService, statusService, transactionTemplate(), analysisJsonValidator());
+        JobAnalysisService service = new JobAnalysisService(accessService, jobAnalysisMapper, bAnalysisGenerationService, usageLogService, statusService, transactionTemplate(), analysisJsonValidator());
 
         ApplicationCase applicationCase = applicationCase("DRAFT");
         JobPosting posting = jobPosting(30L, 2, "Java Spring REST API");
@@ -1070,7 +1105,8 @@ class ApplicationCaseServiceImplTest {
 
         when(applicationCaseMapper.findApplicationCaseByIdAndUserId(10L, 1L)).thenReturn(applicationCase);
         when(jobPostingMapper.findLatestJobPostingByCaseId(10L)).thenReturn(posting);
-        when(openAiClient.analyzeJobPosting(applicationCase, "Java Spring REST API")).thenReturn(jobAnalysisPayload(usage));
+        when(bAnalysisGenerationService.generateJobAnalysis(applicationCase, "Java Spring REST API"))
+                .thenReturn(new GeneratedJobAnalysis(jobAnalysisPayload(usage), null, null));
         when(jobAnalysisMapper.findLatestJobAnalysisByCaseId(10L)).thenReturn(jobAnalysis());
 
         service.createJobAnalysis(1L, 10L);
@@ -1089,18 +1125,18 @@ class ApplicationCaseServiceImplTest {
         ApplicationCaseMapper applicationCaseMapper = mock(ApplicationCaseMapper.class);
         JobPostingMapper jobPostingMapper = mock(JobPostingMapper.class);
         JobAnalysisMapper jobAnalysisMapper = mock(JobAnalysisMapper.class);
-        OpenAiResponsesClient openAiClient = mock(OpenAiResponsesClient.class);
+        BAnalysisGenerationService bAnalysisGenerationService = mock(BAnalysisGenerationService.class);
         AiUsageLogService usageLogService = mock(AiUsageLogService.class);
         ApplicationCaseAnalysisStatusService statusService = mock(ApplicationCaseAnalysisStatusService.class);
         ApplicationCaseAccessService accessService = new ApplicationCaseAccessService(applicationCaseMapper, jobPostingMapper);
-        JobAnalysisService service = new JobAnalysisService(accessService, jobAnalysisMapper, openAiClient, usageLogService, statusService, transactionTemplate(), analysisJsonValidator());
+        JobAnalysisService service = new JobAnalysisService(accessService, jobAnalysisMapper, bAnalysisGenerationService, usageLogService, statusService, transactionTemplate(), analysisJsonValidator());
         ApplicationCase applicationCase = applicationCase("READY");
         JobPosting posting = jobPosting(30L, 2, "Java Spring REST API");
         RuntimeException failure = new RuntimeException("OpenAI down");
 
         when(applicationCaseMapper.findApplicationCaseByIdAndUserId(10L, 1L)).thenReturn(applicationCase);
         when(jobPostingMapper.findLatestJobPostingByCaseId(10L)).thenReturn(posting);
-        when(openAiClient.analyzeJobPosting(applicationCase, "Java Spring REST API")).thenThrow(failure);
+        when(bAnalysisGenerationService.generateJobAnalysis(applicationCase, "Java Spring REST API")).thenThrow(failure);
 
         assertThatThrownBy(() -> service.createJobAnalysis(1L, 10L))
                 .isSameAs(failure);
@@ -1116,11 +1152,11 @@ class ApplicationCaseServiceImplTest {
         ApplicationCaseMapper applicationCaseMapper = mock(ApplicationCaseMapper.class);
         JobPostingMapper jobPostingMapper = mock(JobPostingMapper.class);
         JobAnalysisMapper jobAnalysisMapper = mock(JobAnalysisMapper.class);
-        OpenAiResponsesClient openAiClient = mock(OpenAiResponsesClient.class);
+        BAnalysisGenerationService bAnalysisGenerationService = mock(BAnalysisGenerationService.class);
         AiUsageLogService usageLogService = mock(AiUsageLogService.class);
         ApplicationCaseAnalysisStatusService statusService = mock(ApplicationCaseAnalysisStatusService.class);
         ApplicationCaseAccessService accessService = new ApplicationCaseAccessService(applicationCaseMapper, jobPostingMapper);
-        JobAnalysisService service = new JobAnalysisService(accessService, jobAnalysisMapper, openAiClient, usageLogService, statusService, transactionTemplate(), analysisJsonValidator());
+        JobAnalysisService service = new JobAnalysisService(accessService, jobAnalysisMapper, bAnalysisGenerationService, usageLogService, statusService, transactionTemplate(), analysisJsonValidator());
         ApplicationCase applicationCase = applicationCase("DRAFT");
         JobPosting posting = jobPosting(30L, 2, "Java Spring REST API");
         Usage usage = new Usage("gpt-test", 100, 50, 150);
@@ -1128,9 +1164,10 @@ class ApplicationCaseServiceImplTest {
 
         when(applicationCaseMapper.findApplicationCaseByIdAndUserId(10L, 1L)).thenReturn(applicationCase);
         when(jobPostingMapper.findLatestJobPostingByCaseId(10L)).thenReturn(posting);
-        when(openAiClient.analyzeJobPosting(applicationCase, "Java Spring REST API")).thenReturn(jobAnalysisPayload(usage));
+        when(bAnalysisGenerationService.generateJobAnalysis(applicationCase, "Java Spring REST API"))
+                .thenReturn(new GeneratedJobAnalysis(jobAnalysisPayload(usage), null, null));
         when(jobAnalysisMapper.findLatestJobAnalysisByCaseId(10L)).thenReturn(jobAnalysis());
-        doThrow(failure).when(usageLogService).recordSuccess(1L, 10L, "JOB_ANALYSIS", usage);
+        doThrow(failure).when(usageLogService).recordLocalSuccess(1L, 10L, "JOB_ANALYSIS", usage);
 
         assertThatThrownBy(() -> service.createJobAnalysis(1L, 10L))
                 .isSameAs(failure);
@@ -1146,11 +1183,11 @@ class ApplicationCaseServiceImplTest {
         ApplicationCaseMapper applicationCaseMapper = mock(ApplicationCaseMapper.class);
         JobPostingMapper jobPostingMapper = mock(JobPostingMapper.class);
         CompanyAnalysisMapper companyAnalysisMapper = mock(CompanyAnalysisMapper.class);
-        OpenAiResponsesClient openAiClient = mock(OpenAiResponsesClient.class);
+        BAnalysisGenerationService bAnalysisGenerationService = mock(BAnalysisGenerationService.class);
         AiUsageLogService usageLogService = mock(AiUsageLogService.class);
         ApplicationCaseAnalysisStatusService statusService = mock(ApplicationCaseAnalysisStatusService.class);
         ApplicationCaseAccessService accessService = new ApplicationCaseAccessService(applicationCaseMapper, jobPostingMapper);
-        CompanyAnalysisService service = new CompanyAnalysisService(accessService, companyAnalysisMapper, openAiClient, usageLogService, statusService, transactionTemplate(), analysisJsonValidator());
+        CompanyAnalysisService service = new CompanyAnalysisService(accessService, companyAnalysisMapper, bAnalysisGenerationService, usageLogService, statusService, transactionTemplate(), analysisJsonValidator());
 
         ApplicationCase applicationCase = applicationCase("DRAFT");
         JobPosting posting = jobPosting(null, null, "Backend platform job posting");
@@ -1169,7 +1206,8 @@ class ApplicationCaseServiceImplTest {
 
         when(applicationCaseMapper.findApplicationCaseByIdAndUserId(10L, 1L)).thenReturn(applicationCase);
         when(jobPostingMapper.findLatestJobPostingByCaseId(10L)).thenReturn(posting);
-        when(openAiClient.analyzeCompany(applicationCase, "Backend platform job posting")).thenReturn(payload);
+        when(bAnalysisGenerationService.generateCompanyAnalysis(applicationCase, "Backend platform job posting"))
+                .thenReturn(new GeneratedCompanyAnalysis(payload, null, null));
         when(companyAnalysisMapper.findLatestCompanyAnalysisByCaseId(10L)).thenReturn(CompanyAnalysis.builder()
                 .id(20L)
                 .applicationCaseId(10L)
@@ -1185,7 +1223,7 @@ class ApplicationCaseServiceImplTest {
         assertThat(response.id()).isEqualTo(20L);
         InOrder successOrder = inOrder(statusService, usageLogService);
         successOrder.verify(statusService).markReadyAfterAnalysis(1L, 10L, "DRAFT");
-        successOrder.verify(usageLogService).recordSuccess(1L, 10L, "COMPANY_RESEARCH", usage);
+        successOrder.verify(usageLogService).recordLocalSuccess(1L, 10L, "COMPANY_RESEARCH", usage);
     }
 
     @Test
@@ -1193,11 +1231,11 @@ class ApplicationCaseServiceImplTest {
         ApplicationCaseMapper applicationCaseMapper = mock(ApplicationCaseMapper.class);
         JobPostingMapper jobPostingMapper = mock(JobPostingMapper.class);
         CompanyAnalysisMapper companyAnalysisMapper = mock(CompanyAnalysisMapper.class);
-        OpenAiResponsesClient openAiClient = mock(OpenAiResponsesClient.class);
+        BAnalysisGenerationService bAnalysisGenerationService = mock(BAnalysisGenerationService.class);
         AiUsageLogService usageLogService = mock(AiUsageLogService.class);
         ApplicationCaseAnalysisStatusService statusService = mock(ApplicationCaseAnalysisStatusService.class);
         ApplicationCaseAccessService accessService = new ApplicationCaseAccessService(applicationCaseMapper, jobPostingMapper);
-        CompanyAnalysisService service = new CompanyAnalysisService(accessService, companyAnalysisMapper, openAiClient, usageLogService, statusService, transactionTemplate(), analysisJsonValidator());
+        CompanyAnalysisService service = new CompanyAnalysisService(accessService, companyAnalysisMapper, bAnalysisGenerationService, usageLogService, statusService, transactionTemplate(), analysisJsonValidator());
 
         ApplicationCase applicationCase = applicationCase("DRAFT");
         JobPosting posting = jobPosting(30L, 3, "Backend platform job posting");
@@ -1206,7 +1244,8 @@ class ApplicationCaseServiceImplTest {
 
         when(applicationCaseMapper.findApplicationCaseByIdAndUserId(10L, 1L)).thenReturn(applicationCase);
         when(jobPostingMapper.findLatestJobPostingByCaseId(10L)).thenReturn(posting);
-        when(openAiClient.analyzeCompany(applicationCase, "Backend platform job posting")).thenReturn(payload);
+        when(bAnalysisGenerationService.generateCompanyAnalysis(applicationCase, "Backend platform job posting"))
+                .thenReturn(new GeneratedCompanyAnalysis(payload, null, null));
         when(companyAnalysisMapper.findLatestCompanyAnalysisByCaseId(10L)).thenReturn(companyAnalysis());
 
         LocalDateTime before = LocalDateTime.now();
@@ -1234,11 +1273,11 @@ class ApplicationCaseServiceImplTest {
         ApplicationCaseMapper applicationCaseMapper = mock(ApplicationCaseMapper.class);
         JobPostingMapper jobPostingMapper = mock(JobPostingMapper.class);
         CompanyAnalysisMapper companyAnalysisMapper = mock(CompanyAnalysisMapper.class);
-        OpenAiResponsesClient openAiClient = mock(OpenAiResponsesClient.class);
+        BAnalysisGenerationService bAnalysisGenerationService = mock(BAnalysisGenerationService.class);
         AiUsageLogService usageLogService = mock(AiUsageLogService.class);
         ApplicationCaseAnalysisStatusService statusService = mock(ApplicationCaseAnalysisStatusService.class);
         ApplicationCaseAccessService accessService = new ApplicationCaseAccessService(applicationCaseMapper, jobPostingMapper);
-        CompanyAnalysisService service = new CompanyAnalysisService(accessService, companyAnalysisMapper, openAiClient, usageLogService, statusService, transactionTemplate(), analysisJsonValidator());
+        CompanyAnalysisService service = new CompanyAnalysisService(accessService, companyAnalysisMapper, bAnalysisGenerationService, usageLogService, statusService, transactionTemplate(), analysisJsonValidator());
 
         when(applicationCaseMapper.findApplicationCaseByIdAndUserId(10L, 1L)).thenReturn(applicationCase("CLOSED"));
 
@@ -1247,7 +1286,7 @@ class ApplicationCaseServiceImplTest {
                 .hasMessageContaining("현재 상태에서는 분석을 다시 실행할 수 없습니다.");
 
         verify(statusService, never()).markAnalyzing(1L, 10L, "CLOSED");
-        verify(openAiClient, never()).analyzeCompany(any(ApplicationCase.class), any());
+        verify(bAnalysisGenerationService, never()).generateCompanyAnalysis(any(ApplicationCase.class), any());
         verify(companyAnalysisMapper, never()).insertCompanyAnalysis(any(CompanyAnalysis.class));
         verify(usageLogService, never()).recordSuccess(eq(1L), eq(10L), eq("COMPANY_RESEARCH"), any());
         verify(usageLogService, never()).recordFailure(eq(1L), eq(10L), eq("COMPANY_RESEARCH"), any());
@@ -1258,11 +1297,11 @@ class ApplicationCaseServiceImplTest {
         ApplicationCaseMapper applicationCaseMapper = mock(ApplicationCaseMapper.class);
         JobPostingMapper jobPostingMapper = mock(JobPostingMapper.class);
         CompanyAnalysisMapper companyAnalysisMapper = mock(CompanyAnalysisMapper.class);
-        OpenAiResponsesClient openAiClient = mock(OpenAiResponsesClient.class);
+        BAnalysisGenerationService bAnalysisGenerationService = mock(BAnalysisGenerationService.class);
         AiUsageLogService usageLogService = mock(AiUsageLogService.class);
         ApplicationCaseAnalysisStatusService statusService = mock(ApplicationCaseAnalysisStatusService.class);
         ApplicationCaseAccessService accessService = new ApplicationCaseAccessService(applicationCaseMapper, jobPostingMapper);
-        CompanyAnalysisService service = new CompanyAnalysisService(accessService, companyAnalysisMapper, openAiClient, usageLogService, statusService, transactionTemplate(), analysisJsonValidator());
+        CompanyAnalysisService service = new CompanyAnalysisService(accessService, companyAnalysisMapper, bAnalysisGenerationService, usageLogService, statusService, transactionTemplate(), analysisJsonValidator());
 
         when(applicationCaseMapper.findApplicationCaseByIdAndUserId(10L, 1L)).thenReturn(applicationCase("ANALYZING"));
 
@@ -1271,7 +1310,7 @@ class ApplicationCaseServiceImplTest {
                 .hasMessage("이미 분석이 진행 중입니다. 잠시 후 결과를 확인해 주세요.");
 
         verify(statusService, never()).markAnalyzing(1L, 10L, "ANALYZING");
-        verify(openAiClient, never()).analyzeCompany(any(ApplicationCase.class), any());
+        verify(bAnalysisGenerationService, never()).generateCompanyAnalysis(any(ApplicationCase.class), any());
         verify(companyAnalysisMapper, never()).insertCompanyAnalysis(any(CompanyAnalysis.class));
         verify(usageLogService, never()).recordSuccess(eq(1L), eq(10L), eq("COMPANY_RESEARCH"), any());
         verify(usageLogService, never()).recordFailure(eq(1L), eq(10L), eq("COMPANY_RESEARCH"), any());
@@ -1393,6 +1432,86 @@ class ApplicationCaseServiceImplTest {
                 .isInstanceOf(BusinessException.class);
         verify(applicationCaseMapper).findApplicationCaseByIdAndUserId(10L, 1L);
         verify(extractionMapper).findLatestExtractionByApplicationCaseId(10L);
+    }
+
+    @Test
+    void reviewJobPostingExtractionSavesReviewedRevisionAndResetsQualityMetadata() {
+        ApplicationCaseMapper applicationCaseMapper = mock(ApplicationCaseMapper.class);
+        JobPostingMapper jobPostingMapper = mock(JobPostingMapper.class);
+        ApplicationCaseExtractionMapper extractionMapper = mock(ApplicationCaseExtractionMapper.class);
+        JobPostingService jobPostingService = mock(JobPostingService.class);
+        NotificationMapper notificationMapper = mock(NotificationMapper.class);
+        ApplicationCaseAutoPipelineService autoPipelineService = mock(ApplicationCaseAutoPipelineService.class);
+        ApplicationCaseAccessService accessService = new ApplicationCaseAccessService(applicationCaseMapper, jobPostingMapper);
+        ApplicationCaseServiceImpl service = applicationCaseService(applicationCaseMapper, extractionMapper, accessService,
+                jobPostingService, mock(OpenAiResponsesClient.class), notificationMapper, autoPipelineService);
+        ApplicationCaseExtraction reviewRequired = ApplicationCaseExtraction.builder()
+                .id(32L)
+                .applicationCaseId(10L)
+                .jobPostingId(20L)
+                .userId(1L)
+                .sourceType("IMAGE")
+                .status("SUCCEEDED")
+                .qualityStatus("REVIEW_REQUIRED")
+                .qualityScore(45)
+                .fallbackEligible(true)
+                .fallbackReason("ocr_low_confidence")
+                .build();
+        ApplicationCaseExtraction reviewed = ApplicationCaseExtraction.builder()
+                .id(32L)
+                .applicationCaseId(10L)
+                .jobPostingId(44L)
+                .userId(1L)
+                .sourceType("IMAGE")
+                .status("SUCCEEDED")
+                .qualityStatus("PASS")
+                .qualityScore(100)
+                .fallbackEligible(false)
+                .build();
+
+        when(applicationCaseMapper.findApplicationCaseByIdAndUserId(10L, 1L)).thenReturn(ApplicationCase.builder()
+                .id(10L)
+                .userId(1L)
+                .build());
+        when(extractionMapper.findLatestExtractionByApplicationCaseId(10L)).thenReturn(reviewRequired, reviewed);
+        when(jobPostingService.saveJobPosting(eq(1L), eq(10L), any(JobPostingRequest.class)))
+                .thenReturn(new JobPostingResponse(44L, 10L, 3, "Reviewed posting text", null, "Reviewed posting text", "MANUAL", null));
+        when(extractionMapper.markExtractionReviewed(eq(32L), eq(44L), eq(100), any(), any())).thenReturn(1);
+
+        ApplicationCaseExtractionResponse response = service.reviewJobPostingExtraction(
+                1L,
+                10L,
+                new ReviewJobPostingExtractionRequest("Reviewed posting text"));
+
+        assertThat(response.jobPostingId()).isEqualTo(44L);
+        assertThat(response.qualityStatus()).isEqualTo("PASS");
+        assertThat(response.qualityScore()).isEqualTo(100);
+        assertThat(response.fallbackEligible()).isFalse();
+        ArgumentCaptor<JobPostingRequest> postingRequestCaptor = ArgumentCaptor.forClass(JobPostingRequest.class);
+        verify(jobPostingService).saveJobPosting(eq(1L), eq(10L), postingRequestCaptor.capture());
+        assertThat(postingRequestCaptor.getValue().sourceType()).isEqualTo("MANUAL");
+        assertThat(postingRequestCaptor.getValue().extractedText()).isEqualTo("Reviewed posting text");
+        ArgumentCaptor<String> reportCaptor = ArgumentCaptor.forClass(String.class);
+        ArgumentCaptor<String> modelVersionsCaptor = ArgumentCaptor.forClass(String.class);
+        verify(extractionMapper).markExtractionReviewed(
+                eq(32L),
+                eq(44L),
+                eq(100),
+                reportCaptor.capture(),
+                modelVersionsCaptor.capture());
+        verify(notificationMapper).markTypeAsReadByTarget(
+                1L,
+                "JOB_POSTING_EXTRACTION_REVIEW_REQUIRED",
+                "APPLICATION_CASE",
+                10L);
+        verify(autoPipelineService).runAfterExtractionPass(
+                1L,
+                10L,
+                44L,
+                3,
+                "Reviewed posting text");
+        assertThat(reportCaptor.getValue()).contains("\"reviewed\":true");
+        assertThat(modelVersionsCaptor.getValue()).contains("user-confirmed-v1");
     }
 
     @Test
@@ -1725,6 +1844,38 @@ class ApplicationCaseServiceImplTest {
                                                                      ApplicationCaseAccessService accessService,
                                                                      JobPostingService jobPostingService,
                                                                      OpenAiResponsesClient openAiClient) {
+        return applicationCaseService(
+                applicationCaseMapper,
+                extractionMapper,
+                accessService,
+                jobPostingService,
+                openAiClient,
+                mock(NotificationMapper.class));
+    }
+
+    private static ApplicationCaseServiceImpl applicationCaseService(ApplicationCaseMapper applicationCaseMapper,
+                                                                     ApplicationCaseExtractionMapper extractionMapper,
+                                                                     ApplicationCaseAccessService accessService,
+                                                                     JobPostingService jobPostingService,
+                                                                     OpenAiResponsesClient openAiClient,
+                                                                     NotificationMapper notificationMapper) {
+        return applicationCaseService(
+                applicationCaseMapper,
+                extractionMapper,
+                accessService,
+                jobPostingService,
+                openAiClient,
+                notificationMapper,
+                mock(ApplicationCaseAutoPipelineService.class));
+    }
+
+    private static ApplicationCaseServiceImpl applicationCaseService(ApplicationCaseMapper applicationCaseMapper,
+                                                                     ApplicationCaseExtractionMapper extractionMapper,
+                                                                     ApplicationCaseAccessService accessService,
+                                                                     JobPostingService jobPostingService,
+                                                                     OpenAiResponsesClient openAiClient,
+                                                                     NotificationMapper notificationMapper,
+                                                                     ApplicationCaseAutoPipelineService autoPipelineService) {
         return new ApplicationCaseServiceImpl(
                 applicationCaseMapper,
                 extractionMapper,
@@ -1733,7 +1884,9 @@ class ApplicationCaseServiceImplTest {
                 mock(JobAnalysisService.class),
                 mock(CompanyAnalysisService.class),
                 mock(JobAnalysisMapper.class),
-                openAiClient);
+                openAiClient,
+                notificationMapper,
+                autoPipelineService);
     }
 
     private static ApplicationCaseExtraction extraction(Long id,

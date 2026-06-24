@@ -40,6 +40,8 @@ import type { ApplicationSourceType, UpdateApplicationCaseRequest } from "../typ
 import type { JobPosting, JobPostingRequest } from "../types/jobPosting";
 import { registerApplicationCaseExtraction } from "../utils/applicationExtractionTracker";
 import { useApplicationFitAnalysis } from "@/features/analysis/hooks/useApplicationFitAnalysis";
+import { toast } from "@/features/notification/components/toast";
+import { useNotificationStore } from "@/features/notification/hooks/useNotificationStore";
 
 type DetailTab = "overview" | "posting" | "jobAnalysis" | "companyAnalysis" | "fit";
 type DetailMode = "view" | "edit";
@@ -106,6 +108,7 @@ export function ApplicationDetailPage() {
     applicationCases,
     loading: sidebarLoading,
   } = useApplicationCases(isAuthenticated);
+  const fetchNotifications = useNotificationStore((state) => state.fetchNotifications);
   const {
     jobPosting,
     loading: postingLoading,
@@ -120,9 +123,12 @@ export function ApplicationDetailPage() {
   const {
     extraction,
     retrying: retryingExtraction,
+    reviewing: reviewingExtraction,
     error: extractionError,
+    reviewError: extractionReviewError,
     refresh: refreshExtraction,
     retry: retryExtraction,
+    review: reviewExtraction,
   } = useApplicationCaseExtraction(id, needsExtraction);
   const {
     jobAnalysis,
@@ -233,6 +239,16 @@ export function ApplicationDetailPage() {
     const syncedPosting = await syncCaseSourceType(posting);
     await refreshAndTrackExtraction(previousExtractionId);
     return syncedPosting;
+  };
+
+  const handleReviewExtraction = async (extractedText: string) => {
+    const reviewedExtraction = await reviewExtraction(extractedText);
+    if (reviewedExtraction) {
+      await refreshPosting();
+      await fetchNotifications();
+      toast.success("공고문 검수가 완료됐습니다.");
+    }
+    return reviewedExtraction;
   };
 
   const handleDelete = async () => {
@@ -473,9 +489,12 @@ export function ApplicationDetailPage() {
                   error={postingError}
                   extraction={extraction}
                   retryingExtraction={retryingExtraction}
+                  reviewingExtraction={reviewingExtraction}
+                  reviewExtractionError={extractionReviewError}
                   onSave={handleSavePosting}
                   onUpload={handleUploadPosting}
                   onRetryExtraction={retryExtraction}
+                  onReviewExtraction={handleReviewExtraction}
                 />
               )}
 

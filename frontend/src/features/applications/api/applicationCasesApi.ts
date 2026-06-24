@@ -124,6 +124,16 @@ export function retryApplicationCaseExtraction(applicationCaseId: number): Promi
   });
 }
 
+export function reviewApplicationCaseExtraction(
+  applicationCaseId: number,
+  extractedText: string,
+): Promise<ApplicationCaseExtraction> {
+  return api<ApplicationCaseExtraction>(`/application-cases/${applicationCaseId}/job-posting/extraction/review`, {
+    method: "PATCH",
+    body: JSON.stringify({ extractedText }),
+  });
+}
+
 export function updateApplicationCase(
   id: number,
   request: UpdateApplicationCaseRequest,

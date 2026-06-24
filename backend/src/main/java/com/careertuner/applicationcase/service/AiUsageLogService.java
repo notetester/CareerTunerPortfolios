@@ -34,13 +34,37 @@ public class AiUsageLogService {
                 .build());
     }
 
+    @Transactional
+    public void recordLocalSuccess(Long userId, Long applicationCaseId, String featureType, OpenAiResponsesClient.Usage usage) {
+        if (usage == null) {
+            return;
+        }
+        applicationCaseMapper.insertAiUsageLog(AiUsageLog.builder()
+                .userId(userId)
+                .applicationCaseId(applicationCaseId)
+                .featureType(featureType)
+                .status("SUCCESS")
+                .model(usage.model())
+                .inputTokens(usage.inputTokens())
+                .outputTokens(usage.outputTokens())
+                .tokenUsage(usage.totalTokens())
+                .creditUsed(0)
+                .build());
+    }
+
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void recordFailure(Long userId, Long applicationCaseId, String featureType, String message) {
+        recordFailure(userId, applicationCaseId, featureType, null, message);
+    }
+
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public void recordFailure(Long userId, Long applicationCaseId, String featureType, String model, String message) {
         applicationCaseMapper.insertAiUsageLog(AiUsageLog.builder()
                 .userId(userId)
                 .applicationCaseId(applicationCaseId)
                 .featureType(featureType)
                 .status("FAILED")
+                .model(model)
                 .creditUsed(0)
                 .errorMessage(truncate(message, 1000))
                 .build());
