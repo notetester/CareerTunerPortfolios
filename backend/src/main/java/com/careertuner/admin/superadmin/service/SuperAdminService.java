@@ -2,6 +2,7 @@ package com.careertuner.admin.superadmin.service;
 
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Set;
 
 import org.springframework.stereotype.Service;
@@ -27,6 +28,17 @@ import lombok.RequiredArgsConstructor;
 public class SuperAdminService {
 
     private static final Set<String> ADMIN_ROLES = Set.of("USER", "ADMIN", "SUPER_ADMIN");
+    private static final Map<String, List<String>> ROLE_PERMISSION_CODES = Map.of(
+            "USER", List.of(),
+            "ADMIN", List.of("USER_READ", "PROFILE_READ", "CONSENT_READ", "AI_USAGE_READ", "SECURITY_LOG_READ", "USER_STATUS_WRITE"),
+            "SUPER_ADMIN", List.of("USER_READ", "PROFILE_READ", "CONSENT_READ", "AI_USAGE_READ", "SECURITY_LOG_READ",
+                    "USER_STATUS_WRITE", "POLICY_MANAGE", "ADMIN_PERMISSION_MANAGE")
+    );
+    private static final Map<String, List<String>> ROLE_GROUP_CODES = Map.of(
+            "USER", List.of(),
+            "ADMIN", List.of("ADMIN_OPERATOR", "SECURITY_OPERATOR"),
+            "SUPER_ADMIN", List.of("ADMIN_OPERATOR", "SECURITY_OPERATOR", "SUPER_ADMIN_GROUP")
+    );
 
     private final SuperAdminMapper mapper;
     private final AdminActionLogService actionLogService;
@@ -62,7 +74,9 @@ public class SuperAdminService {
     @Transactional(readOnly = true)
     public List<AdminPermissionGroupRow> groups(AuthUser authUser) {
         AdminAccess.requireSuperAdmin(authUser);
-        return mapper.findGroups();
+        List<AdminPermissionGroupRow> rows = mapper.findGroups();
+        rows.forEach(this::hydrateGroupPermissions);
+        return rows;
     }
 
     @Transactional(readOnly = true)
@@ -77,6 +91,7 @@ public class SuperAdminService {
         AdminAccountRow before = findUser(userId);
         String nextRole = normalizeRole(role);
         mapper.updateRole(userId, nextRole);
+        revokeAssignmentsOutsideRole(userId, nextRole);
         mapper.insertAudit(authUser.id(), userId, "ROLE_UPDATED", null, null, blankToNull(reason));
         actionLogService.record(authUser, userId, "ADMIN_ROLE_UPDATED", "ADMIN_USER",
                 "{\"role\":\"%s\"}".formatted(before.getRole()),
@@ -154,6 +169,7 @@ public class SuperAdminService {
         AdminAccess.requireSuperAdmin(authUser);
         findUser(userId);
         String permission = normalizeCode(permissionCode);
+        validatePermissionAllowedForUser(userId, permission);
         mapper.grantPermission(userId, permission, authUser.id());
         mapper.insertAudit(authUser.id(), userId, "PERMISSION_GRANTED", permission, null, blankToNull(reason));
         actionLogService.record(authUser, userId, "PERMISSION_GRANTED", "ADMIN_USER",
@@ -178,6 +194,7 @@ public class SuperAdminService {
         AdminAccess.requireSuperAdmin(authUser);
         findUser(userId);
         String group = normalizeCode(groupCode);
+        validateGroupAllowedForUser(userId, group);
         mapper.assignGroup(userId, group, authUser.id());
         mapper.insertAudit(authUser.id(), userId, "GROUP_ASSIGNED", null, group, blankToNull(reason));
         actionLogService.record(authUser, userId, "GROUP_ASSIGNED", "ADMIN_USER",
@@ -208,6 +225,42 @@ public class SuperAdminService {
     private void hydrateAssignments(AdminAccountRow row) {
         row.setPermissions(mapper.findUserPermissions(row.getId()));
         row.setGroups(mapper.findUserGroups(row.getId()));
+    }
+
+    private void hydrateGroupPermissions(AdminPermissionGroupRow row) {
+        row.setPermissions(mapper.findGroupPermissions(row.getGroupCode()));
+    }
+
+    private void revokeAssignmentsOutsideRole(Long userId, String role) {
+        List<String> allowedPermissions = ROLE_PERMISSION_CODES.getOrDefault(role, List.of());
+        if (allowedPermissions.isEmpty()) {
+            mapper.revokeAllPermissionsForUser(userId);
+        } else {
+            mapper.revokePermissionsNotIn(userId, allowedPermissions);
+        }
+
+        List<String> allowedGroups = ROLE_GROUP_CODES.getOrDefault(role, List.of());
+        if (allowedGroups.isEmpty()) {
+            mapper.revokeAllGroupsForUser(userId);
+        } else {
+            mapper.revokeGroupsNotIn(userId, allowedGroups);
+        }
+    }
+
+    private void validatePermissionAllowedForUser(Long userId, String permissionCode) {
+        AdminAccountRow user = findUser(userId);
+        List<String> allowed = ROLE_PERMISSION_CODES.getOrDefault(user.getRole(), List.of());
+        if (!allowed.contains(permissionCode)) {
+            throw new BusinessException(ErrorCode.INVALID_INPUT, "해당 역할에 부여할 수 없는 메뉴 권한입니다.");
+        }
+    }
+
+    private void validateGroupAllowedForUser(Long userId, String groupCode) {
+        AdminAccountRow user = findUser(userId);
+        List<String> allowed = ROLE_GROUP_CODES.getOrDefault(user.getRole(), List.of());
+        if (!allowed.contains(groupCode)) {
+            throw new BusinessException(ErrorCode.INVALID_INPUT, "해당 역할에 부여할 수 없는 권한 그룹입니다.");
+        }
     }
 
     private static String normalizeRole(String role) {

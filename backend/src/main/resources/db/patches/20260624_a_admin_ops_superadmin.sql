@@ -140,16 +140,17 @@ VALUES
 
 INSERT IGNORE INTO admin_permission_group (group_code, display_name, description)
 VALUES
-('A_PART_OPERATOR', 'A파트 운영자', '회원/프로필/동의/AI 사용 이력 조회 권한'),
+('ADMIN_OPERATOR', '일반 관리자 그룹', '회원/프로필/동의/AI 사용 이력/보안 로그 조회 권한'),
 ('SECURITY_OPERATOR', '보안 운영자', '로그인 감사와 회원 상태 조치 권한'),
 ('SUPER_ADMIN_GROUP', '슈퍼 관리자 그룹', '관리자 권한과 운영 정책 관리 권한');
 
 INSERT IGNORE INTO admin_permission_group_item (group_code, permission_code)
 VALUES
-('A_PART_OPERATOR', 'USER_READ'),
-('A_PART_OPERATOR', 'PROFILE_READ'),
-('A_PART_OPERATOR', 'CONSENT_READ'),
-('A_PART_OPERATOR', 'AI_USAGE_READ'),
+('ADMIN_OPERATOR', 'USER_READ'),
+('ADMIN_OPERATOR', 'PROFILE_READ'),
+('ADMIN_OPERATOR', 'CONSENT_READ'),
+('ADMIN_OPERATOR', 'AI_USAGE_READ'),
+('ADMIN_OPERATOR', 'SECURITY_LOG_READ'),
 ('SECURITY_OPERATOR', 'USER_READ'),
 ('SECURITY_OPERATOR', 'USER_STATUS_WRITE'),
 ('SECURITY_OPERATOR', 'SECURITY_LOG_READ'),
