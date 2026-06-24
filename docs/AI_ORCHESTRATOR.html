@@ -282,6 +282,8 @@
         <tr><th>라벨</th><td>기본 면접</td><td>직무 면접</td><td>인성 면접</td><td>압박 면접</td><td>자소서 기반</td><td>기업 맞춤</td></tr>
       </table>
 
+      <div class="call tip"><span class="ci">✅</span><div><b>구현 현황(2026-06-24) — F가 이미 만듦.</b> 아래 경로 B는 "예정"이 아니라 <code>ai/intake</code> 패키지로 <b>이미 구현·머지됨</b>: <code>POST /api/chatbot/intake/ask</code> · <code>IntakeChatAgent</code>(LangChain4j) · 툴 3종 <code>listCases·chooseCase·chooseMode</code> · <code>IntakeSlotTrace</code>(슬롯 누적, 메모리 윈도우 40). 슬롯 다 모으면 <code>AutoPrepRequest</code> 조립 → <code>autoPrepIntakeService.intake()</code> → <code>ready</code>면 클라가 <code>/run/stream</code>. <b>남은 건 프론트 연결</b>(이 API를 호출하는 화면이 아직 없음) + 슬롯 영속화. 아래 경로 설명은 그 구조의 배경으로 읽으면 됨.</div></div>
+
       <h3>2.3 두 가지 구현 경로 — 쉬운 길부터</h3>
       <div class="tabs">
         <div class="tab on" data-tab="A">경로 A · 되묻기 API 활용 <span style="color:var(--ok)">(권장 시작점)</span></div>

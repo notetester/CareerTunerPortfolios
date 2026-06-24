@@ -348,7 +348,7 @@ public interface PrepStepHandler {
 
 ---
 
-## 10. F의 인테이크 챗봇 — 기존 챗봇에서 어떻게 확장하나
+## 10. F의 인테이크 챗봇 — `ai/intake` (구현 완료)
 
 ### 10.1 현재 챗봇(ai/chat)이 이미 가진 것
 
@@ -364,28 +364,43 @@ F의 커뮤니티 챗봇은 최근 **LangChain4j 툴호출 에이전트**로 전
 
 > 참고: 현재 챗봇 **본답변 모델은 이미 `qwen3:8b`로 전환**됐다(`gemma4`는 검열·추천칩·임베딩 보조로 남음). "gemma 쓰는 중"이라고 알고 있었다면 메인은 바뀐 상태다. **모델 최종 선택은 F가 결정**한다.
 
-### 10.2 확장 구조 (예정)
+### 10.2 구현된 구조 — `ai/intake` 패키지 (F)
 
-핵심은 "챗봇이 대화로 슬롯을 모아 → 다 채워지면 `AutoPrepRequest`로 변환 → 오케스트레이터 호출"이다.
+위에서 "예정"으로 적었던 구조를 **F가 이미 구현해 dev에 머지했다.** (이 문서 작성 시점엔 미구현이었음)
+
+**엔드포인트**: `POST /api/chatbot/intake/ask` — 한 턴씩 일반 POST(SSE 아님)
+- 요청 `IntakeAskRequest(message, conversationId)`
+- 응답 `IntakeAskResponse(conversationId, message, ready, nextAsk, autoPrepRequest)`
+
+**구성요소** (`backend/.../ai/intake/`):
+
+| 클래스 | 역할 |
+| --- | --- |
+| `IntakeChatAgent` | LangChain4j `@AiService`. `@SystemMessage(intake-chat-system.txt)` + `@MemoryId conversationId`. **String 반환**(qwen3 JSON 강제 시 툴 호출 건너뛰는 이슈 회피) |
+| `IntakeAgentConfig` | 메모리 윈도우 **40**(커뮤니티 20과 분리, 되묻기 대비), `MyBatisChatMemoryStore` 공유, qwen3:8b, 툴 3연속 제한 |
+| `IntakeTools` | `@Tool` 3종 — `listCases`(지원 건 목록), `chooseCase(caseId)`(확정), `chooseMode(code)`(모드 확정) |
+| `IntakeSlotTrace` | **슬롯 추적** — 요청 컨텍스트는 ThreadLocal(userId·conversationId), 확정 슬롯은 `ConcurrentHashMap<conversationId, SlotState>`로 대화 단위 누적. `SlotState(caseId, mode, originalQuery, fetchedCases)` |
+
+> 참고: 9·10장에서 "별도 상태 추적 객체가 필요하다"·"메모리 윈도우를 20보다 크게"라고 예측한 게 F의 `IntakeSlotTrace`·윈도우 40으로 실재한다.
+
+**intake → autoprep 연결 (이미 됨)**:
 
 ```
-[IntakeAgent (신규)]  — 사용자 대화에서 슬롯 추출
-   └ 기존 ChatMemory/ChatModel 재사용
-   └ @Tool 로 지원 건 목록 조회 등
-        │  슬롯 누적
-        ▼
-[대화 상태] — 어디까지 채워졌나(회사/직무/지원건/모드)
-        │  applicationCaseId + (면접이면) mode 확정?
-        ▼  예
-[AutoPrepRequest 생성] → POST /api/auto-prep/run/stream
+ask(message, conversationId)
+  → IntakeChatAgent.chat()              # LLM + 3종 툴로 슬롯 수집
+  → trace.snapshot()                    # 확정 슬롯(caseId, mode, originalQuery)
+  → new AutoPrepRequest(originalQuery, caseId, mode, null, null)
+  → autoPrepIntakeService.intake()      # D의 되묻기 판정(5·8장)
+  → IntakeAskResponse(ready, nextAsk, autoPrepRequest)
 ```
 
-- 슬롯 추출 결과는 JSON 스키마를 강제하기보다(qwen3가 스키마를 받으면 툴 호출을 건너뛰는 이슈가 있음) **별도 상태 추적 객체**로 모으는 편이 안전하다.
-- 대화가 길어질 수 있으니 인테이크 전용 메모리 윈도우는 20개보다 크게 잡는 걸 고려한다.
+`ready=true`면 **클라이언트가 응답의 `autoPrepRequest`를 받아 `/api/auto-prep/run/stream`을 직접 연다.** F 컨트롤러는 SSE를 프록시하지 않는다 — 슬롯 수집까지가 F, 실행 스트림은 D.
 
-### 10.3 F가 따라야 할 슬롯 계약 (재확인)
+### 10.3 남은 것 — 프론트 연결 + 슬롯 영속화
 
-확장이 어떻게 되든, 최종 산출물은 **5장의 `AutoPrepRequest`**여야 한다. 그 그릇만 맞으면 두뇌·오케스트레이터는 지금 코드 그대로 동작한다. 즉 **F와 D의 인터페이스는 `AutoPrepRequest` 하나로 고정**이다. 이 계약을 바꿀 때만 D와 합의하면 된다.
+- **프론트 미연결**: `/api/chatbot/intake/ask`를 호출하는 화면이 아직 없다. 현재 `AutoPrepChatModal`은 D의 `/api/auto-prep/intake`(칩 방식)만 쓴다. **F의 대화형 인테이크를 화면에 붙이는 게 다음 작업**(→ 11.4).
+- **슬롯 영속화 미구현**: `IntakeSlotTrace`의 슬롯은 현재 **JVM 인메모리**라 서버 재시작·다중 인스턴스에서 날아간다. 대화 메모리(`chatbot_conversation_memory`)는 DB에 있지만 슬롯은 아직 — 11장 세션 저장과 함께 D·C 합의 후 영속화.
+- **슬롯 계약은 그대로**: 최종 산출물은 5장의 `AutoPrepRequest`. F·D 인터페이스는 이 하나로 고정.
 
 ---
 
@@ -419,6 +434,21 @@ chatbot_conversation_memory  (마이그레이션: 20260623_f_chatbot_memory.sql)
 4. 홈/대시보드에 "최근 준비 세션" 목록(제목·시각)을 보여준다. (목록용 제목·타임스탬프는 별도 컬럼 필요)
 
 > 정리하면 **C팀장의 ChatGPT식 디벨롭은 F 챗봇의 세션 메모리를 기반(backbone)으로 삼는 게 가장 빠른 길**이다. 인테이크 챗봇(F)·세션 저장(C)·오케스트레이터(D)가 `conversation_id`와 `AutoPrepRequest` 두 개의 계약으로 맞물린다.
+
+### 11.4 앱 첫 화면 = 검색창 (목표 그림 vs 현재)
+
+**목표 그림** — 모바일 앱을 켜면 첫 화면이 **"한 줄 검색창 + 최근 준비 세션 목록"**이다. "구글 면접 준비해줘" 치면 인테이크 챗봇(10장) → 오케스트레이터가 돌고, 과거 준비안은 11.3의 세션 목록에서 다시 연다. **단일 자연어 진입 = 모바일에 가장 맞는 형태.** (앱 = 검색창 하나로 다 되는 에이전트)
+
+**현재(2026-06-24) 갭**:
+- 랜딩페이지(`LandingPage.tsx`)의 검색창은 **데모 시뮬레이션**(`runDemo()`)이라 실제 호출이 아니다. "시작하기"는 `/home`으로 보낸다.
+- 앱 첫 화면(`routes.ts`의 `/`)은 **랜딩이 아니라 `HomePage`**(C 담당 대시보드)다. `/landing` 경로조차 없다(랜딩은 레이아웃 밖 별도 렌더).
+- 오케스트레이터 실제 진입은 `HomePage`에 임베드된 `AutoPrepPanel`(칩 방식)뿐. F의 대화형 인테이크는 프론트 미연결(10.3).
+
+**그 그림이 되려면 (제안)**:
+1. 모바일 첫 화면을 "검색창 + 최근 세션" 중심으로 (랜딩 데모를 실 호출로 전환하거나, 앱 전용 홈을 검색창 중심으로 재구성).
+2. 그 검색창을 F의 인테이크 챗봇(`/api/chatbot/intake/ask`)에 연결 → `ready`면 `/run/stream`.
+3. 11.3 세션 저장으로 "최근 준비안" 리스트.
+→ 이 셋이 모이면 "검색창 하나로 다 되는 앱"이 완성된다. 웹 랜딩(마케팅 카피)과 앱 홈(기능)은 톤이 달라야 하고, 로그인은 "한 번 하면 다음부턴 바로 검색창" 흐름이 맞다.
 
 ---
 
