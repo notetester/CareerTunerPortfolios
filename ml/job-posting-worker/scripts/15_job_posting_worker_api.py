@@ -192,8 +192,14 @@ class WorkerHandler(BaseHTTPRequestHandler):
 
 
 def warmup_ocr() -> None:
+    DOCUMENT.configure_ocr_cache_env()
+    # 1순위 엔진(PPStructureV3)을 먼저 예열한다. 첫 요청의 모델 로딩 지연/타임아웃을 줄인다.
     try:
-        DOCUMENT.configure_ocr_cache_env()
+        DOCUMENT.create_ppstructure("korean")
+        print("PPStructureV3 warmed up (korean)", flush=True)
+    except Exception as exc:
+        print(f"PPStructureV3 warmup skipped: {exc}", flush=True)
+    try:
         DOCUMENT.create_paddle_ocr("korean")
         print("PaddleOCR warmed up (korean)", flush=True)
     except Exception as exc:
