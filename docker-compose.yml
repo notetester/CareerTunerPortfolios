@@ -32,10 +32,33 @@ services:
       JWT_SECRET: ${JWT_SECRET:-}
       # ── RAG ──
       QDRANT_URL: http://qdrant:6333
+      JOB_POSTING_AI_WORKER_ENABLED: ${JOB_POSTING_AI_WORKER_ENABLED:-true}
+      JOB_POSTING_AI_WORKER_BASE_URL: ${JOB_POSTING_AI_WORKER_BASE_URL:-http://job-posting-worker:8091}
+      JOB_POSTING_AI_WORKER_TIMEOUT: ${JOB_POSTING_AI_WORKER_TIMEOUT:-30s}
     volumes:
       - media_uploads:/app/.uploads
     depends_on:
-      - qdrant
+      qdrant:
+        condition: service_started
+      job-posting-worker:
+        condition: service_healthy
+
+  job-posting-worker:
+    build:
+      context: ./ml/job-posting-worker
+      args:
+        INSTALL_OCR: ${JOB_POSTING_WORKER_INSTALL_OCR:-false}
+    image: careertuner-job-posting-worker:latest
+    restart: unless-stopped
+    expose:
+      - "8091"
+    volumes:
+      - media_uploads:/app/.uploads:ro
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8091/health', timeout=3).read()"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
 
   qdrant:
     image: qdrant/qdrant:latest

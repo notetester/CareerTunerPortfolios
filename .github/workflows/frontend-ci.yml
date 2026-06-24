@@ -7,11 +7,17 @@ on:
   pull_request:
     paths:
       - 'frontend/**'
+      - 'backend/src/main/java/com/careertuner/applicationcase/controller/ApplicationCaseController.java'
+      - 'backend/src/main/java/com/careertuner/applicationcase/dto/ApplicationCaseExtractionResponse.java'
+      - 'backend/src/main/java/com/careertuner/applicationcase/dto/ReviewJobPostingExtractionRequest.java'
       - '.github/workflows/frontend-ci.yml'
   push:
     branches: [dev, main]
     paths:
       - 'frontend/**'
+      - 'backend/src/main/java/com/careertuner/applicationcase/controller/ApplicationCaseController.java'
+      - 'backend/src/main/java/com/careertuner/applicationcase/dto/ApplicationCaseExtractionResponse.java'
+      - 'backend/src/main/java/com/careertuner/applicationcase/dto/ReviewJobPostingExtractionRequest.java'
       - '.github/workflows/frontend-ci.yml'
   workflow_dispatch:
 

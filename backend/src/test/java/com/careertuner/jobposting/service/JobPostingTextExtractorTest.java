@@ -2,13 +2,17 @@ package com.careertuner.jobposting.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.catchThrowable;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 
 import java.io.IOException;
 import java.io.OutputStream;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
+import java.time.Duration;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -20,10 +24,242 @@ import org.junit.jupiter.api.Test;
 import com.careertuner.applicationcase.service.OpenAiResponsesClient;
 import com.careertuner.common.exception.BusinessException;
 import com.careertuner.common.exception.ErrorCode;
+import com.careertuner.jobposting.service.JobPostingFileStorage.StoredJobPostingFile;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
 
+import tools.jackson.databind.ObjectMapper;
+
 class JobPostingTextExtractorTest {
+
+    @Test
+    void imageExtractionDoesNotUseOpenAiFallbackByDefault() {
+        OpenAiResponsesClient openAiClient = mock(OpenAiResponsesClient.class);
+        JobPostingTextExtractor extractor = new JobPostingTextExtractor(openAiClient);
+
+        JobPostingTextExtractor.ExtractedPosting result = extractor.extractFile(new StoredJobPostingFile(
+                "IMAGE",
+                "local:application-postings/10/posting.png",
+                "posting.png",
+                "image/png",
+                null,
+                new byte[]{1, 2, 3}));
+
+        assertThat(result.extractedText()).isEmpty();
+        assertThat(result.usage()).isNull();
+        verify(openAiClient, never()).extractImageText(any(), any());
+    }
+
+    @Test
+    void fileExtractionUsesPythonWorkerWhenEnabledAndPreservesQualityMetadata() throws Exception {
+        HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        AtomicInteger requests = new AtomicInteger();
+        AtomicReference<String> requestBody = new AtomicReference<>();
+        server.createContext("/extract/job-posting", exchange -> {
+            requests.incrementAndGet();
+            requestBody.set(new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8));
+            sendJson(exchange, """
+                    {
+                      "text": "Responsibilities: build APIs. Qualifications: Java and Spring.",
+                      "meta": {
+                        "strategy": "IMAGE_OCR",
+                        "qualityScore": 55,
+                        "qualityStatus": "REVIEW_REQUIRED",
+                        "qualityReportJson": "{}",
+                        "modelVersions": {"documentExtractionContract": "self_ai_v1"},
+                        "fallbackEligible": true,
+                        "fallbackReason": "explicit_low_confidence",
+                        "warnings": ["ocr_low_confidence"]
+                      }
+                    }
+                    """);
+        });
+        server.start();
+
+        try {
+            JobPostingAiWorkerProperties properties = new JobPostingAiWorkerProperties();
+            properties.setEnabled(true);
+            properties.setBaseUrl("http://127.0.0.1:%d".formatted(server.getAddress().getPort()));
+            properties.setTimeout(Duration.ofSeconds(5));
+            OpenAiResponsesClient openAiClient = mock(OpenAiResponsesClient.class);
+            JobPostingTextExtractor extractor = new JobPostingTextExtractor(
+                    openAiClient,
+                    new JobPostingAiWorkerClient(properties, new ObjectMapper()),
+                    JobPostingFallbackPolicy.fromProperties(null),
+                    InetAddress::getAllByName,
+                    target -> {
+                        throw new AssertionError("File extraction should not fetch URLs");
+                    });
+
+            JobPostingTextExtractor.ExtractedPosting result = extractor.extractFile(new StoredJobPostingFile(
+                    "IMAGE",
+                    "local:application-postings/10/posting.png",
+                    "posting.png",
+                    "image/png",
+                    java.nio.file.Path.of("posting.png"),
+                    new byte[]{1, 2, 3}));
+
+            assertThat(requests).hasValue(1);
+            assertThat(requestBody.get()).contains("\"sourceType\":\"IMAGE\"");
+            assertThat(result.extractedText()).contains("Responsibilities");
+            assertThat(result.extractionStrategy()).isEqualTo("IMAGE_OCR");
+            assertThat(result.qualityScore()).isEqualTo(55);
+            assertThat(result.qualityStatus()).isEqualTo("REVIEW_REQUIRED");
+            assertThat(result.qualityReportJson()).isEqualTo("{}");
+            assertThat(result.fallbackEligible()).isTrue();
+            assertThat(result.fallbackReason()).isEqualTo("explicit_low_confidence");
+            verify(openAiClient, never()).extractImageText(any(), any());
+        } finally {
+            server.stop(0);
+        }
+    }
+
+    @Test
+    void fileExtractionPreservesPythonWorkerFailureMetadataFromErrorResponse() throws Exception {
+        HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        server.createContext("/extract/job-posting", exchange -> sendJson(exchange, """
+                {
+                  "text": "",
+                  "meta": {
+                    "strategy": "WORKER_ERROR",
+                    "qualityScore": 0,
+                    "qualityStatus": "FAILED",
+                    "metrics": {"textLength": 0},
+                    "warnings": ["worker_error:ValueError"],
+                    "sectionHints": [],
+                    "modelVersions": {"documentExtractionContract": "self_ai_v1"},
+                    "fallbackEligible": false,
+                    "fallbackReason": "worker_error"
+                  }
+                }
+                """, 500));
+        server.start();
+
+        try {
+            JobPostingAiWorkerProperties properties = new JobPostingAiWorkerProperties();
+            properties.setEnabled(true);
+            properties.setBaseUrl("http://127.0.0.1:%d".formatted(server.getAddress().getPort()));
+            properties.setTimeout(Duration.ofSeconds(5));
+            JobPostingTextExtractor extractor = new JobPostingTextExtractor(
+                    mock(OpenAiResponsesClient.class),
+                    new JobPostingAiWorkerClient(properties, new ObjectMapper()),
+                    JobPostingFallbackPolicy.fromProperties(null),
+                    InetAddress::getAllByName,
+                    target -> {
+                        throw new AssertionError("File extraction should not fetch URLs");
+                    });
+
+            JobPostingTextExtractor.ExtractedPosting result = extractor.extractFile(new StoredJobPostingFile(
+                    "IMAGE",
+                    "local:application-postings/10/posting.png",
+                    "posting.png",
+                    "image/png",
+                    java.nio.file.Path.of("posting.png"),
+                    new byte[]{1, 2, 3}));
+
+            assertThat(result.extractedText()).isEmpty();
+            assertThat(result.extractionStrategy()).isEqualTo("WORKER_ERROR");
+            assertThat(result.qualityScore()).isZero();
+            assertThat(result.qualityStatus()).isEqualTo("FAILED");
+            assertThat(result.fallbackEligible()).isFalse();
+            assertThat(result.fallbackReason()).isEqualTo("worker_error");
+            assertThat(result.qualityReportJson()).contains("worker_error:ValueError");
+        } finally {
+            server.stop(0);
+        }
+    }
+
+    @Test
+    void fileExtractionFailsClosedWhenPythonWorkerReturnsMalformedJson() throws Exception {
+        HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        server.createContext("/extract/job-posting", exchange -> sendJson(exchange, "{broken-json"));
+        server.start();
+
+        try {
+            JobPostingAiWorkerProperties properties = new JobPostingAiWorkerProperties();
+            properties.setEnabled(true);
+            properties.setBaseUrl("http://127.0.0.1:%d".formatted(server.getAddress().getPort()));
+            properties.setTimeout(Duration.ofSeconds(5));
+            OpenAiResponsesClient openAiClient = mock(OpenAiResponsesClient.class);
+            JobPostingTextExtractor extractor = new JobPostingTextExtractor(
+                    openAiClient,
+                    new JobPostingAiWorkerClient(properties, new ObjectMapper()),
+                    JobPostingFallbackPolicy.fromProperties(null),
+                    InetAddress::getAllByName,
+                    target -> {
+                        throw new AssertionError("File extraction should not fetch URLs");
+                    });
+
+            Throwable thrown = catchThrowable(() -> extractor.extractFile(new StoredJobPostingFile(
+                    "IMAGE",
+                    "local:application-postings/10/posting.png",
+                    "posting.png",
+                    "image/png",
+                    java.nio.file.Path.of("posting.png"),
+                    new byte[]{1, 2, 3})));
+
+            assertThat(thrown).isInstanceOf(BusinessException.class);
+            assertThat(((BusinessException) thrown).getErrorCode()).isEqualTo(ErrorCode.INTERNAL_ERROR);
+            assertThat(thrown.getMessage()).isEqualTo("Python job posting worker response is invalid.");
+            verify(openAiClient, never()).extractImageText(any(), any());
+        } finally {
+            server.stop(0);
+        }
+    }
+
+    @Test
+    void fileExtractionFailsClosedWhenPythonWorkerTimesOut() throws Exception {
+        HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        server.createContext("/extract/job-posting", exchange -> {
+            try {
+                Thread.sleep(1000L);
+                sendJson(exchange, """
+                        {
+                          "text": "late response",
+                          "meta": {
+                            "strategy": "IMAGE_OCR",
+                            "qualityScore": 10,
+                            "qualityStatus": "FAILED"
+                          }
+                        }
+                        """);
+            } catch (InterruptedException ex) {
+                Thread.currentThread().interrupt();
+            }
+        });
+        server.start();
+
+        try {
+            JobPostingAiWorkerProperties properties = new JobPostingAiWorkerProperties();
+            properties.setEnabled(true);
+            properties.setBaseUrl("http://127.0.0.1:%d".formatted(server.getAddress().getPort()));
+            properties.setTimeout(Duration.ofMillis(100));
+            OpenAiResponsesClient openAiClient = mock(OpenAiResponsesClient.class);
+            JobPostingTextExtractor extractor = new JobPostingTextExtractor(
+                    openAiClient,
+                    new JobPostingAiWorkerClient(properties, new ObjectMapper()),
+                    JobPostingFallbackPolicy.fromProperties(null),
+                    InetAddress::getAllByName,
+                    target -> {
+                        throw new AssertionError("File extraction should not fetch URLs");
+                    });
+
+            Throwable thrown = catchThrowable(() -> extractor.extractFile(new StoredJobPostingFile(
+                    "IMAGE",
+                    "local:application-postings/10/posting.png",
+                    "posting.png",
+                    "image/png",
+                    java.nio.file.Path.of("posting.png"),
+                    new byte[]{1, 2, 3})));
+
+            assertThat(thrown).isInstanceOf(BusinessException.class);
+            assertThat(((BusinessException) thrown).getErrorCode()).isEqualTo(ErrorCode.INTERNAL_ERROR);
+            assertThat(thrown.getMessage()).isEqualTo("Python job posting worker is unavailable.");
+            verify(openAiClient, never()).extractImageText(any(), any());
+        } finally {
+            server.stop(0);
+        }
+    }
 
     @Test
     void blocksLocalhostBeforeNetworkFetch() throws IOException {
@@ -261,6 +497,19 @@ class JobPostingTextExtractorTest {
         byte[] response = html.getBytes(StandardCharsets.UTF_8);
         exchange.getResponseHeaders().set("Content-Type", "text/html; charset=UTF-8");
         exchange.sendResponseHeaders(200, response.length);
+        try (OutputStream body = exchange.getResponseBody()) {
+            body.write(response);
+        }
+    }
+
+    private static void sendJson(HttpExchange exchange, String json) throws IOException {
+        sendJson(exchange, json, 200);
+    }
+
+    private static void sendJson(HttpExchange exchange, String json, int statusCode) throws IOException {
+        byte[] response = json.getBytes(StandardCharsets.UTF_8);
+        exchange.getResponseHeaders().set("Content-Type", "application/json; charset=UTF-8");
+        exchange.sendResponseHeaders(statusCode, response.length);
         try (OutputStream body = exchange.getResponseBody()) {
             body.write(response);
         }

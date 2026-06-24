@@ -1,0 +1,101 @@
+name: Service Pipeline CI
+
+on:
+  pull_request:
+    paths:
+      - 'backend/**'
+      - 'ml/job-posting-worker/**'
+      - 'docker-compose.yml'
+      - '.github/workflows/service-pipeline-ci.yml'
+  push:
+    branches: [dev, main]
+    paths:
+      - 'backend/**'
+      - 'ml/job-posting-worker/**'
+      - 'docker-compose.yml'
+      - '.github/workflows/service-pipeline-ci.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: service-pipeline-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend-test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Set up Java
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: gradle
+
+      - name: Make Gradle wrapper executable
+        run: chmod +x ./gradlew
+
+      - name: Test
+        run: ./gradlew test
+
+  worker-test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ml/job-posting-worker
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: ml/job-posting-worker/requirements.txt
+
+      - name: Install dependencies
+        run: python -m pip install -r requirements.txt
+
+      - name: Test
+        run: python -m unittest discover -s tests
+
+      - name: Operational drills
+        run: python scripts/17_run_worker_drills.py
+
+      - name: Synthetic 43-file stabilization drill
+        run: python scripts/19_run_synthetic_stabilization_fixture.py --count 43
+
+      - name: Release readiness static check
+        run: python scripts/18_check_release_readiness.py
+
+  worker-docker-build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+
+      - name: Validate compose config
+        env:
+          DB_HOST: localhost
+          DB_NAME: careertuner
+          DB_USERNAME: careertuner
+          DB_PASSWORD: careertuner
+          JWT_SECRET: ci-only-not-a-secret
+        run: docker compose config
+
+      - name: Run worker image smoke test
+        run: python ml/job-posting-worker/scripts/23_run_worker_docker_smoke.py --image careertuner-job-posting-worker:ci --container-name careertuner-job-posting-worker-ci --output .tmp/job_posting_worker_docker_smoke.json

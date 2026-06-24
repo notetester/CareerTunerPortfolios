@@ -30,9 +30,31 @@ public interface ApplicationCaseExtractionMapper {
 
     int claimQueuedExtraction(@Param("id") Long id);
 
-    int markExtractionSucceeded(@Param("id") Long id, @Param("jobPostingId") Long jobPostingId);
+    int markExtractionSucceeded(@Param("id") Long id,
+                                @Param("jobPostingId") Long jobPostingId,
+                                @Param("extractionStrategy") String extractionStrategy,
+                                @Param("qualityScore") Integer qualityScore,
+                                @Param("qualityStatus") String qualityStatus,
+                                @Param("qualityReportJson") String qualityReportJson,
+                                @Param("modelVersionsJson") String modelVersionsJson,
+                                @Param("fallbackEligible") boolean fallbackEligible,
+                                @Param("fallbackReason") String fallbackReason);
 
-    int markExtractionFailed(@Param("id") Long id, @Param("errorMessage") String errorMessage);
+    int markExtractionFailed(@Param("id") Long id,
+                             @Param("errorMessage") String errorMessage,
+                             @Param("extractionStrategy") String extractionStrategy,
+                             @Param("qualityScore") Integer qualityScore,
+                             @Param("qualityStatus") String qualityStatus,
+                             @Param("qualityReportJson") String qualityReportJson,
+                             @Param("modelVersionsJson") String modelVersionsJson,
+                             @Param("fallbackEligible") boolean fallbackEligible,
+                             @Param("fallbackReason") String fallbackReason);
+
+    int markExtractionReviewed(@Param("id") Long id,
+                               @Param("jobPostingId") Long jobPostingId,
+                               @Param("qualityScore") Integer qualityScore,
+                               @Param("qualityReportJson") String qualityReportJson,
+                               @Param("modelVersionsJson") String modelVersionsJson);
 
     int countActiveExtractionsByApplicationCaseId(@Param("applicationCaseId") Long applicationCaseId);
 }
