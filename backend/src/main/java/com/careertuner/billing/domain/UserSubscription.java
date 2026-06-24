@@ -21,5 +21,6 @@ public class UserSubscription {
     private LocalDateTime startedAt;
     private LocalDateTime currentPeriodStart;
     private LocalDateTime currentPeriodEnd;
+    private String policySnapshotJson;
     private LocalDateTime canceledAt;
 }

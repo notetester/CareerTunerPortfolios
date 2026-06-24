@@ -9,12 +9,11 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import com.careertuner.billing.domain.SubscriptionPlan;
-import com.careertuner.billing.mapper.BillingMapper;
+import com.careertuner.billing.service.BillingPolicyService;
 import com.careertuner.billing.service.BillingService;
 import com.careertuner.common.exception.BusinessException;
 import com.careertuner.common.exception.ErrorCode;
 import com.careertuner.credit.domain.CreditProduct;
-import com.careertuner.credit.mapper.CreditProductMapper;
 import com.careertuner.payment.domain.Payment;
 import com.careertuner.payment.dto.TossPaymentConfirmRequest;
 import com.careertuner.payment.dto.TossPaymentConfirmResponse;
@@ -39,9 +38,8 @@ public class PaymentServiceImpl implements PaymentService {
     private static final char[] ORDER_ID_CHARS = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789".toCharArray();
     private static final DateTimeFormatter ORDER_ID_TIME_FORMAT = DateTimeFormatter.ofPattern("yyyyMMddHHmmss");
 
-    private final CreditProductMapper creditProductMapper;
-    private final BillingMapper billingMapper;
     private final BillingService billingService;
+    private final BillingPolicyService billingPolicyService;
     private final PaymentMapper paymentMapper;
     private final TossPaymentClient tossPaymentClient;
     private final TossPaymentProperties tossPaymentProperties;
@@ -72,6 +70,7 @@ public class PaymentServiceImpl implements PaymentService {
         payment.setAmount(product.getPrice());
         payment.setPlan(null);
         payment.setCreditAmount(product.getCreditAmount());
+        payment.setPolicySnapshotJson(billingPolicyService.creditProductSnapshotJson(product));
         payment.setStatus(STATUS_READY);
         insertPaymentWithUniqueOrderId(payment);
 
@@ -100,6 +99,7 @@ public class PaymentServiceImpl implements PaymentService {
         payment.setAmount(plan.getMonthlyPrice());
         payment.setPlan(plan.getCode());
         payment.setCreditAmount(0);
+        payment.setPolicySnapshotJson(billingPolicyService.subscriptionSnapshotJson(plan.getCode()));
         payment.setStatus(STATUS_READY);
         insertPaymentWithUniqueOrderId(payment);
 
@@ -137,16 +137,20 @@ public class PaymentServiceImpl implements PaymentService {
             throw new BusinessException(ErrorCode.CONFLICT, "Payment status changed before confirmation.");
         }
 
+        int balance;
         if (PRODUCT_TYPE_SUBSCRIPTION.equals(payment.getProductType())) {
-            billingService.activateSubscriptionAfterPayment(payment.getUserId(), payment.getPlan());
+            billingService.activateSubscriptionAfterPayment(
+                    payment.getUserId(),
+                    payment.getPlan(),
+                    payment.getPolicySnapshotJson());
+            balance = requireUserCredit(payment.getUserId());
         } else {
-            int creditRows = paymentMapper.increaseUserCredit(payment.getUserId(), requireCreditAmount(payment));
-            if (creditRows == 0) {
-                throw new BusinessException(ErrorCode.NOT_FOUND, "Payment user was not found.");
-            }
+            balance = billingService.grantCreditsAfterPayment(
+                    payment.getUserId(),
+                    payment.getProductCode(),
+                    requireCreditAmount(payment));
         }
 
-        int balance = requireUserCredit(payment.getUserId());
         return confirmedResponse(payment, request.paymentKey(), balance);
     }
 
@@ -164,7 +168,7 @@ public class PaymentServiceImpl implements PaymentService {
     }
 
     private CreditProduct requireActiveProduct(String productCode) {
-        CreditProduct product = creditProductMapper.findEnabledProductByCode(productCode);
+        CreditProduct product = billingPolicyService.enabledCreditProductByCode(productCode);
         if (product == null) {
             throw new BusinessException(ErrorCode.NOT_FOUND, "Purchasable credit product was not found.");
         }
@@ -172,7 +176,7 @@ public class PaymentServiceImpl implements PaymentService {
     }
 
     private SubscriptionPlan requirePaidSubscriptionPlan(String planCode) {
-        SubscriptionPlan plan = billingMapper.findActivePlanByCode(planCode);
+        SubscriptionPlan plan = billingPolicyService.activePlanByCode(planCode);
         if (plan == null) {
             throw new BusinessException(ErrorCode.NOT_FOUND, "Purchasable subscription plan was not found.");
         }

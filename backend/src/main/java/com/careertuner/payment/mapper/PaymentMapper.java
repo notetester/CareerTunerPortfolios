@@ -21,10 +21,6 @@ public interface PaymentMapper {
     int markPaidIfReady(@Param("orderId") String orderId,
                         @Param("paymentKey") String paymentKey);
 
-    /** 결제 승인 후 지급 크레딧을 실제 사용자 잔액에 더한다. */
-    int increaseUserCredit(@Param("userId") Long userId,
-                           @Param("creditAmount") int creditAmount);
-
     /** 충전 후 사용자 크레딧 잔액을 조회한다. */
     Integer findUserCredit(@Param("userId") Long userId);
 }

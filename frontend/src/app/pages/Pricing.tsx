@@ -5,8 +5,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card"
 import { Badge } from "../components/ui/badge";
 import { CheckCircle2, X, Award, Zap } from "lucide-react";
 import {
-  getCreditProducts, getPlans,
-  type CreditProduct, type SubscriptionPlan,
+  getCreditProducts, getFeatureBenefitPolicies, getPlans,
+  type AiFeatureBenefitPolicy, type CreditProduct, type SubscriptionPlan,
 } from "@/features/billing/api/billingApi";
 
 // 요금제 기능 비교표(마케팅 카피)는 플랜 코드별로 클라이언트에 둔다. 가격/이름은 API 값을 쓴다.
@@ -45,29 +45,53 @@ const PLAN_EXTRA: Record<string, string[]> = {
 };
 const HIGHLIGHT_CODE = "PRO";
 
-const creditFeatures = [
-  { feature: "공고문 분석", credit: 1, icon: "" },
-  { feature: "기업 현황 조사", credit: 2, icon: "" },
-  { feature: "예상 질문 생성", credit: 1, icon: "" },
-  { feature: "텍스트 모의면접", credit: 2, icon: "" },
-  { feature: "음성 모의면접", credit: 3, icon: "" },
-  { feature: "영상/자세 분석 면접", credit: 5, icon: "" },
-  { feature: "자기소개서 첨삭", credit: 2, icon: "" },
-  { feature: "전체 전략 리포트", credit: 3, icon: "" },
-];
-
 const won = (n: number) => `${n.toLocaleString("ko-KR")}원`;
+
+const FEATURE_LABEL: Record<string, string> = {
+  APPLICATION_ANALYSIS: "공고/지원 건 분석",
+  JOB_POSTING_METADATA: "공고문 분석",
+  JOB_ANALYSIS: "공고 분석",
+  COMPANY_ANALYSIS: "기업 현황 조사",
+  FIT_ANALYSIS: "적합도 분석",
+  INTERVIEW_QUESTION: "예상 질문 생성",
+  INTERVIEW_ANSWER_EVAL: "면접 답변 평가",
+  INTERVIEW_REPORT: "면접 리포트",
+  CORRECTION_INTERVIEW_ANSWER: "면접 답변 첨삭",
+  CORRECTION_SELF_INTRO: "자기소개서 첨삭",
+  CORRECTION_RESUME: "이력서 첨삭",
+  CORRECTION_PORTFOLIO: "포트폴리오 첨삭",
+};
+
+function planFeatureRows(plan: SubscriptionPlan) {
+  const benefits = (plan.benefits ?? []).filter((benefit) => benefit.active !== false);
+  if (benefits.length === 0) return PLAN_FEATURES[plan.code] ?? [];
+  return benefits.map((benefit) => ({
+    label: benefit.benefitName,
+    value: benefit.quantity <= 0 ? false : `${benefit.quantity.toLocaleString("ko-KR")}회`,
+  }));
+}
+
+function featurePolicyRows(policies: AiFeatureBenefitPolicy[]) {
+  return policies
+    .filter((policy) => policy.active)
+    .map((policy) => ({
+      feature: FEATURE_LABEL[policy.featureType] ?? policy.featureType,
+      credit: policy.defaultCreditCost,
+    }));
+}
 
 export function PricingPage() {
   const [billingCycle, setBillingCycle] = useState<"monthly" | "yearly">("monthly");
   const [activeTab, setActiveTab] = useState<"subscription" | "credits">("subscription");
   const [plans, setPlans] = useState<SubscriptionPlan[]>([]);
   const [products, setProducts] = useState<CreditProduct[]>([]);
+  const [featurePolicies, setFeaturePolicies] = useState<AiFeatureBenefitPolicy[]>([]);
   const navigate = useNavigate();
 
   useEffect(() => {
     void getPlans().then(setPlans).catch(() => setPlans([]));
     void getCreditProducts().then(setProducts).catch(() => setProducts([]));
+    void getFeatureBenefitPolicies().then(setFeaturePolicies).catch(() => setFeaturePolicies([]));
   }, []);
 
   return (
@@ -119,8 +143,8 @@ export function PricingPage() {
             <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-5">
               {plans.map((plan) => {
                 const highlighted = plan.code === HIGHLIGHT_CODE;
-                const price = billingCycle === "monthly" ? plan.monthlyPrice : plan.yearlyPrice;
-                const features = PLAN_FEATURES[plan.code] ?? [];
+                const price = billingCycle === "monthly" ? plan.monthlyPrice : (plan.yearlyPrice ?? plan.monthlyPrice);
+                const features = planFeatureRows(plan);
                 const extra = PLAN_EXTRA[plan.code];
                 return (
                   <Card key={plan.code} className={`relative border-2 ${highlighted ? "border-blue-500 shadow-2xl" : "border-slate-200"}`}>
@@ -134,8 +158,8 @@ export function PricingPage() {
                       <div className="mt-2">
                         <div className="text-3xl font-black">{won(price)}</div>
                         <div className="text-slate-500 text-sm">/{plan.monthlyPrice === 0 ? "영구 무료" : "월"}</div>
-                        {billingCycle === "yearly" && plan.monthlyPrice > 0 && (
-                          <div className="text-xs text-green-600 font-semibold mt-1">연간 결제 시 {won(plan.yearlyPrice)}/월</div>
+                        {billingCycle === "yearly" && plan.monthlyPrice > 0 && (plan.yearlyPrice ?? 0) > 0 && (
+                          <div className="text-xs text-green-600 font-semibold mt-1">연간 결제 시 {won(plan.yearlyPrice ?? 0)}/월</div>
                         )}
                       </div>
                     </CardHeader>
@@ -199,10 +223,9 @@ export function PricingPage() {
               </CardHeader>
               <CardContent>
                 <div className="grid md:grid-cols-2 gap-3">
-                  {creditFeatures.map((item) => (
+                  {featurePolicyRows(featurePolicies).map((item) => (
                     <div key={item.feature} className="flex items-center justify-between p-3 rounded-xl bg-slate-50 border border-slate-200">
                       <div className="flex items-center gap-2">
-                        <span className="text-lg">{item.icon}</span>
                         <span className="text-sm font-medium text-slate-700">{item.feature}</span>
                       </div>
                       <div className="flex items-center gap-1 text-sm font-black text-amber-600">

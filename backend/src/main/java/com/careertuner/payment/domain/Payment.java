@@ -20,6 +20,7 @@ public class Payment {
     private int amount;
     private String plan;
     private Integer creditAmount;
+    private String policySnapshotJson;
     private String status;
     private LocalDateTime paidAt;
     private LocalDateTime createdAt;

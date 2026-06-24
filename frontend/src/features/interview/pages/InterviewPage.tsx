@@ -52,7 +52,7 @@ export function InterviewPage() {
   const [activeSession, setActiveSession] = useState<InterviewSession | null>(null);
   // 현재 활성 세션이 새로 시작한 것인지(new), 과거 기록을 복원(복습)한 것인지(resumed).
   const [sessionOrigin, setSessionOrigin] = useState<"new" | "resumed" | null>(null);
-  // 홈 마누스 검색창에서 넘어온 요청(자동 셋업 진입).
+  // 홈 AI 오케스트레이터 검색창에서 넘어온 요청(자동 셋업 진입).
   const [autoPrompt] = useState(() => sessionStorage.getItem("interview.autoPrompt") ?? "");
 
   const cases = useApplicationCases(isAuthenticated);

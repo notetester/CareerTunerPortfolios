@@ -1,14 +1,15 @@
 import { api } from "@/app/lib/api";
 
 export interface SubscriptionPlan {
-  id: number;
+  id?: number;
   code: string;
   name: string;
   monthlyPrice: number;
-  yearlyPrice: number;
+  yearlyPrice: number | null;
   description: string;
-  active: boolean;
+  active?: boolean;
   sortOrder: number;
+  benefits?: SubscriptionBenefitPolicy[];
 }
 
 export interface CreditProduct {
@@ -21,6 +22,28 @@ export interface CreditProduct {
   badge?: string | null;
   enabled: boolean;
   sortOrder: number;
+}
+
+export interface SubscriptionBenefitPolicy {
+  planCode: string;
+  benefitCode: string;
+  benefitName: string;
+  benefitType: string;
+  quantity: number;
+  resetCycle: string;
+  overagePolicy: string;
+  creditCost: number;
+  active: boolean;
+  sortOrder: number;
+}
+
+export interface AiFeatureBenefitPolicy {
+  featureType: string;
+  benefitCode: string;
+  chargeUnit: string;
+  includedInTicket: boolean;
+  defaultCreditCost: number;
+  active: boolean;
 }
 
 export interface MyBilling {
@@ -63,6 +86,8 @@ export type BillingCycle = "MONTHLY" | "YEARLY";
 
 export const getPlans = () => api<SubscriptionPlan[]>("/billing/plans", {}, { auth: false });
 export const getCreditProducts = () => api<CreditProduct[]>("/billing/credit-products", {}, { auth: false });
+export const getFeatureBenefitPolicies = () =>
+  api<AiFeatureBenefitPolicy[]>("/billing/feature-benefit-policies", {}, { auth: false });
 export const getMyBilling = () => api<MyBilling>("/billing/me");
 export const getMyPayments = () => api<Payment[]>("/billing/payments");
 export const getMonthlyUsage = () => api<UsageRow[]>("/billing/usage");

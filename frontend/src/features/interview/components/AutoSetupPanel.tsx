@@ -17,7 +17,7 @@ import { createInterviewSession, generateExpectedQuestions } from "../api/interv
 import { getInterviewModeLabel, type InterviewMode, type InterviewSession } from "../types/interview";
 
 /**
- * 마누스형 자동 셋업 패널.
+ * AI 오케스트레이터 자동 셋업 패널.
  * 사용자가 홈에서 "○○ 면접 준비해줘" 한 줄을 던지면, 에이전트가 요청 분석 → 모드 선정 →
  * 세션 생성 → 질문 생성을 단계별로 자동 수행하고, 그 과정을 타임라인으로 보여준다.
  * (기존 면접 API 를 그대로 엮어 진입 UX 만 자율 에이전트처럼 묶었다.)

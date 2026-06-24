@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.careertuner.billing.mapper.BillingPolicyChangeMapper">
+
+    <insert id="insert" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO billing_policy_change
+            (target_type, target_code, current_snapshot_json, next_snapshot_json,
+             effective_from, apply_mode, status, created_by)
+        VALUES
+            (#{targetType}, #{targetCode}, #{currentSnapshotJson}, #{nextSnapshotJson},
+             #{effectiveFrom}, #{applyMode}, #{status}, #{createdBy})
+    </insert>
+
+    <select id="findById" resultType="com.careertuner.billing.domain.BillingPolicyChange">
+        SELECT *
+          FROM billing_policy_change
+         WHERE id = #{id}
+    </select>
+
+    <select id="findRecent" resultType="com.careertuner.billing.domain.BillingPolicyChange">
+        SELECT *
+          FROM billing_policy_change
+         ORDER BY id DESC
+         LIMIT #{limit}
+    </select>
+
+    <select id="findLatestEffective" resultType="com.careertuner.billing.domain.BillingPolicyChange">
+        SELECT *
+          FROM billing_policy_change
+         WHERE target_type = #{targetType}
+           AND target_code = #{targetCode}
+           AND status = 'SCHEDULED'
+           AND effective_from &lt;= #{asOf}
+         ORDER BY effective_from DESC, id DESC
+         LIMIT 1
+    </select>
+
+    <update id="cancelScheduled">
+        UPDATE billing_policy_change
+           SET status = 'CANCELED',
+               canceled_by = #{canceledBy},
+               canceled_at = CURRENT_TIMESTAMP
+         WHERE id = #{id}
+           AND status = 'SCHEDULED'
+    </update>
+</mapper>

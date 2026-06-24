@@ -8,5 +8,7 @@ import com.careertuner.credit.domain.CreditProduct;
 /** 관리자 요금제/크레딧 상품 관리 화면용 묶음 응답. */
 public record AdminPlansResponse(
         List<SubscriptionPlan> plans,
-        List<CreditProduct> creditProducts
+        List<CreditProduct> creditProducts,
+        List<SubscriptionBenefitPolicyResponse> benefitPolicies,
+        List<AiFeatureBenefitPolicyResponse> featureBenefitPolicies
 ) {}

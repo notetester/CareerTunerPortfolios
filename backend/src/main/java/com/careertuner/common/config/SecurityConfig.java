@@ -2,6 +2,7 @@ package com.careertuner.common.config;
 
 import java.util.List;
 
+import jakarta.servlet.DispatcherType;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpMethod;
@@ -38,6 +39,8 @@ public class SecurityConfig {
                 .httpBasic(basic -> basic.disable())
                 .formLogin(form -> form.disable())
                 .authorizeHttpRequests(auth -> auth
+                        // 비동기(SSE)·에러 내부 재디스패치는 원 요청에서 이미 인증됨 → 허용(없으면 SSE/async 가 401)
+                        .dispatcherTypeMatchers(DispatcherType.ASYNC, DispatcherType.ERROR).permitAll()
                         .requestMatchers("/api/health", "/api/health/**").permitAll()
                         .requestMatchers("/swagger-ui.html", "/swagger-ui/**",
                                 "/v3/api-docs/**", "/api-docs/**").permitAll()
@@ -58,6 +61,10 @@ public class SecurityConfig {
                         // 고객센터 FAQ/공지사항 조회 공개
                         .requestMatchers(HttpMethod.GET,
                                 "/api/support/faq", "/api/support/notices", "/api/support/notices/**").permitAll()
+                        // 결제 전 가격/상품/차감 정책 조회 공개
+                        .requestMatchers(HttpMethod.GET,
+                                "/api/billing/plans", "/api/billing/credit-products",
+                                "/api/billing/feature-benefit-policies", "/api/credit-products").permitAll()
                         // 챗봇 질문 공개
                         .requestMatchers(HttpMethod.POST, "/api/chatbot/ask").permitAll()
                         // 관리자 API는 URL 레벨에서도 ADMIN 권한을 요구한다.

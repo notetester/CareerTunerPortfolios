@@ -6,9 +6,11 @@
     <!-- 결제 준비 단계에서 서버가 확정한 금액과 지급 크레딧을 스냅샷으로 저장한다. -->
     <insert id="insertPayment" useGeneratedKeys="true" keyProperty="id">
         INSERT INTO payment
-            (user_id, provider, product_type, product_code, order_id, payment_key, amount, plan, credit_amount, status)
+            (user_id, provider, product_type, product_code, order_id, payment_key, amount, plan, credit_amount,
+             policy_snapshot_json, status)
         VALUES
-            (#{userId}, #{provider}, #{productType}, #{productCode}, #{orderId}, #{paymentKey}, #{amount}, #{plan}, #{creditAmount}, #{status})
+            (#{userId}, #{provider}, #{productType}, #{productCode}, #{orderId}, #{paymentKey}, #{amount}, #{plan},
+             #{creditAmount}, #{policySnapshotJson}, #{status})
     </insert>
 
     <!-- Toss 성공 리다이렉트 이후 승인 검증에 사용할 결제 건을 조회한다. -->
@@ -23,6 +25,7 @@
                amount,
                plan,
                credit_amount,
+               policy_snapshot_json,
                status,
                paid_at,
                created_at
@@ -47,13 +50,6 @@
                paid_at = CURRENT_TIMESTAMP
          WHERE order_id = #{orderId}
            AND status = 'READY'
-    </update>
-
-    <!-- Toss 승인 성공 후 사용자 크레딧 잔액을 증가시킨다. -->
-    <update id="increaseUserCredit">
-        UPDATE users
-           SET credit = credit + #{creditAmount}
-         WHERE id = #{userId}
     </update>
 
     <!-- 충전 완료 응답에 사용할 최신 잔액을 조회한다. -->
