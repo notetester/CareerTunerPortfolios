@@ -42,4 +42,18 @@
         </foreach>
     </update>
 
+    <!-- 공백 질문 드릴: 대표 id 의 질문 원문 + 발생 대화 id. -->
+    <select id="findMetaById" resultType="com.careertuner.admin.chatbot.dto.UnansweredMeta">
+        SELECT question, conversation_id
+          FROM chatbot_unanswered_question
+         WHERE id = #{id}
+    </select>
+
+    <!-- 발생 대화의 메모리 JSON(있으면). 없거나 비면 null/'[]'. -->
+    <select id="findConversationMessages" resultType="string">
+        SELECT messages_json
+          FROM chatbot_conversation_memory
+         WHERE conversation_id = #{conversationId}
+    </select>
+
 </mapper>
