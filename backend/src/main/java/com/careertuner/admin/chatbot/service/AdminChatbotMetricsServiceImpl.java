@@ -1,6 +1,7 @@
 package com.careertuner.admin.chatbot.service;
 
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.List;
@@ -13,8 +14,11 @@ import org.springframework.transaction.annotation.Transactional;
 import com.careertuner.admin.chatbot.dto.ChatbotMetricCard;
 import com.careertuner.admin.chatbot.dto.ChatbotMetricPoint;
 import com.careertuner.admin.chatbot.dto.ChatbotMetricsResponse;
+import com.careertuner.admin.chatbot.dto.ResponseLogAggregate;
+import com.careertuner.admin.chatbot.dto.ResponseLogDailyPoint;
 import com.careertuner.admin.chatbot.dto.UnansweredRow;
 import com.careertuner.admin.chatbot.mapper.AdminChatbotMetricsMapper;
+import com.careertuner.admin.chatbot.mapper.AdminChatbotResponseLogMapper;
 import com.careertuner.common.exception.BusinessException;
 import com.careertuner.common.exception.ErrorCode;
 import com.careertuner.common.security.AuthUser;
@@ -22,8 +26,10 @@ import com.careertuner.common.security.AuthUser;
 import lombok.RequiredArgsConstructor;
 
 /**
- * 메트릭 밴드 집계(읽기 전용). S1 범위는 FAQ 공백 카드만 — 기존 chatbot_unanswered_question +
- * QuestionClusterer 만으로 동작(턴 응답 로그 불필요). 나머지 3카드는 null 로 둔다(가짜 숫자 금지).
+ * 메트릭 밴드 집계(읽기 전용). FAQ 공백 카드(faqGap)는 chatbot_unanswered_question +
+ * QuestionClusterer 군집 수로(S1), 자동해결률·FAQ참조수·전환율은 chatbot_response_log 집계로 낸다(S2).
+ * <p>response_log 가 비면(기간 내 턴 0) 세 카드는 통째로 null → 프론트는 "수집 중"/"—"로 표시(가짜 숫자 금지).
+ * 헤드라인 value/delta 는 정확한 비율/건수이고, 스파크라인 series 는 일자별 "건수" 추이다(비율 아님).
  */
 @Service
 @RequiredArgsConstructor
@@ -36,6 +42,7 @@ public class AdminChatbotMetricsServiceImpl implements AdminChatbotMetricsServic
     private static final int DEFAULT_WINDOW_DAYS = 7;
 
     private final AdminChatbotMetricsMapper metricsMapper;
+    private final AdminChatbotResponseLogMapper responseLogMapper;
     private final QuestionClusterer clusterer;
 
     @Override
@@ -49,9 +56,75 @@ public class AdminChatbotMetricsServiceImpl implements AdminChatbotMetricsServic
 
         ChatbotMetricCard faqGap = buildGapCard(start, end);
 
-        // S1 범위: 자동해결률·FAQ참조수·전환율은 chatbot_response_log 집계(후속)가 선행이라 아직 null.
-        // 프론트는 null 카드를 "수집 중"/"—"로 표시한다(디자인 목업 숫자 하드코딩 금지).
-        return new ChatbotMetricsResponse(null, null, faqGap, null);
+        // 자동해결률·FAQ참조수·전환율: chatbot_response_log 집계(S2). 기간은 [from, toExclusive) 반열린 구간.
+        LocalDateTime curFrom = start.atStartOfDay();
+        LocalDateTime curTo = end.plusDays(1).atStartOfDay();
+        long windowDays = ChronoUnit.DAYS.between(start, end) + 1;
+        LocalDate prevEnd = start.minusDays(1);
+        LocalDate prevStart = prevEnd.minusDays(windowDays - 1);
+        LocalDateTime prevFrom = prevStart.atStartOfDay();
+        LocalDateTime prevTo = prevEnd.plusDays(1).atStartOfDay();
+
+        ResponseLogAggregate cur = responseLogMapper.aggregate(curFrom, curTo);
+        ResponseLogAggregate prev = responseLogMapper.aggregate(prevFrom, prevTo);
+        List<ResponseLogDailyPoint> dailies = responseLogMapper.daily(curFrom, curTo);
+
+        ChatbotMetricCard autoResolveRate = buildAutoResolveCard(cur, prev, dailies, start, end);
+        ChatbotMetricCard faqReferenceCount = buildFaqReferenceCard(cur, prev, dailies, start, end);
+        ChatbotMetricCard handoffRate = buildHandoffCard(cur, prev, dailies, start, end);
+
+        return new ChatbotMetricsResponse(autoResolveRate, faqReferenceCount, faqGap, handoffRate);
+    }
+
+    /**
+     * 자동 해결률 카드: value=answered/total(0~1), delta=직전 기간 비율 대비(직전 턴 없으면 null),
+     * series=일자별 answered 건수. 기간 내 턴이 0이면 카드 통째 null(가짜 숫자 금지).
+     */
+    private ChatbotMetricCard buildAutoResolveCard(ResponseLogAggregate cur, ResponseLogAggregate prev,
+                                                   List<ResponseLogDailyPoint> dailies, LocalDate start, LocalDate end) {
+        if (cur.getTotal() == 0) {
+            return null;
+        }
+        double value = (double) cur.getAnswered() / cur.getTotal();
+        Double delta = (prev.getTotal() > 0)
+                ? value - (double) prev.getAnswered() / prev.getTotal()
+                : null;
+        return new ChatbotMetricCard(value, delta,
+                fillFromDaily(dailies, ResponseLogDailyPoint::getAnswered, start, end));
+    }
+
+    /**
+     * FAQ 참조 응답 수 카드: value=answered(건수), delta=직전 기간 건수 대비(직전 턴 없으면 null),
+     * series=일자별 answered 건수. 기간 내 턴이 0이면 카드 통째 null.
+     */
+    private ChatbotMetricCard buildFaqReferenceCard(ResponseLogAggregate cur, ResponseLogAggregate prev,
+                                                    List<ResponseLogDailyPoint> dailies, LocalDate start, LocalDate end) {
+        if (cur.getTotal() == 0) {
+            return null;
+        }
+        double value = (double) cur.getAnswered();
+        Double delta = (prev.getTotal() > 0)
+                ? (double) (cur.getAnswered() - prev.getAnswered())
+                : null;
+        return new ChatbotMetricCard(value, delta,
+                fillFromDaily(dailies, ResponseLogDailyPoint::getAnswered, start, end));
+    }
+
+    /**
+     * 상담사 전환율 카드: value=handoffs/total(0~1), delta=직전 기간 비율 대비(직전 턴 없으면 null),
+     * series=일자별 handoff 건수. 기간 내 턴이 0이면 카드 통째 null.
+     */
+    private ChatbotMetricCard buildHandoffCard(ResponseLogAggregate cur, ResponseLogAggregate prev,
+                                               List<ResponseLogDailyPoint> dailies, LocalDate start, LocalDate end) {
+        if (cur.getTotal() == 0) {
+            return null;
+        }
+        double value = (double) cur.getHandoffs() / cur.getTotal();
+        Double delta = (prev.getTotal() > 0)
+                ? value - (double) prev.getHandoffs() / prev.getTotal()
+                : null;
+        return new ChatbotMetricCard(value, delta,
+                fillFromDaily(dailies, ResponseLogDailyPoint::getHandoffs, start, end));
     }
 
     /** FAQ 공백 카드: 기간 내 NEW 군집 수 + 직전 동일길이 기간 대비 델타 + 일자 시계열. */
@@ -73,6 +146,22 @@ public class AdminChatbotMetricsServiceImpl implements AdminChatbotMetricsServic
         List<UnansweredRow> rows = metricsMapper.findRowsByStatusAndRange(
                 GAP_STATUS, start.atStartOfDay(), end.plusDays(1).atStartOfDay());
         return rows.isEmpty() ? 0L : clusterer.cluster(rows).size();
+    }
+
+    /**
+     * response_log 일자별 집계(데이터 있는 날만)에서 카드별 값(answered/handoffs)을 뽑아 [start,end] 전
+     * 일자로 펴고 빈 날은 0 — 연속 스파크라인. count 의미는 "일자별 건수"(비율 아님 — 헤드라인만 비율).
+     */
+    private List<ChatbotMetricPoint> fillFromDaily(List<ResponseLogDailyPoint> raw,
+                                                   java.util.function.ToLongFunction<ResponseLogDailyPoint> extractor,
+                                                   LocalDate start, LocalDate end) {
+        Map<LocalDate, Long> byDate = raw.stream()
+                .collect(Collectors.toMap(ResponseLogDailyPoint::getDate, extractor::applyAsLong, (a, b) -> a));
+        List<ChatbotMetricPoint> out = new ArrayList<>();
+        for (LocalDate d = start; !d.isAfter(end); d = d.plusDays(1)) {
+            out.add(new ChatbotMetricPoint(d, byDate.getOrDefault(d, 0L)));
+        }
+        return out;
     }
 
     /** 쿼리 결과(데이터 있는 날만)를 [start,end] 전 일자로 펴서 빈 날은 0 — 연속 스파크라인. */
