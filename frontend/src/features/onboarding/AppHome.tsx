@@ -1,10 +1,11 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useNavigate } from "react-router";
 import {
   Plus, Mic, ArrowUp, Sparkles, Menu, X, SquarePen,
-  LayoutDashboard, Briefcase, User, Settings,
+  LayoutDashboard, Briefcase, User, Settings, FileText, AlertCircle,
 } from "lucide-react";
 import { AutoPrepChatModal } from "@/features/autoprep/components/AutoPrepChatModal";
+import { uploadAttachment } from "@/features/autoprep/api/autoPrepApi";
 import { ThemeToggle } from "@/app/components/layout/ThemeToggle";
 import type { AutoPrepRequest } from "@/features/autoprep/types/autoPrep";
 import "./apphome.css";
@@ -35,17 +36,40 @@ const RECENT = [
   { id: 3, title: "토스 서버 직무 면접", when: "3일 전" },
 ];
 
+// 첨부 파일 — 업로드 진행/완료/실패 상태를 칩으로 보여준다.
+interface FileItem { file: File; id?: number; uploading: boolean; error?: boolean; }
+
 export function AppHome() {
   const navigate = useNavigate();
   const [q, setQ] = useState("");
   const [req, setReq] = useState<AutoPrepRequest | null>(null);
   const [drawer, setDrawer] = useState(false);
+  const [files, setFiles] = useState<FileItem[]>([]);
+  const fileRef = useRef<HTMLInputElement>(null);
+
+  // 선택/드롭한 파일을 즉시 업로드(kind=ATTACHMENT)해 fileId 확보. AutoPrepLauncher 와 동일 패턴.
+  const addFiles = async (list: FileList | null) => {
+    if (!list || list.length === 0) return;
+    const items: FileItem[] = Array.from(list).map((file) => ({ file, uploading: true }));
+    setFiles((prev) => [...prev, ...items]);
+    for (const item of items) {
+      try {
+        const res = await uploadAttachment(item.file);
+        setFiles((prev) => prev.map((f) => (f === item ? { ...f, id: res.id, uploading: false } : f)));
+      } catch {
+        setFiles((prev) => prev.map((f) => (f === item ? { ...f, uploading: false, error: true } : f)));
+      }
+    }
+  };
+  const removeFile = (target: FileItem) => setFiles((prev) => prev.filter((f) => f !== target));
 
   const run = (text: string) => {
     const t = text.trim();
-    if (!t) return;
-    setReq({ query: t });
+    const ids = files.filter((f) => f.id != null).map((f) => f.id as number);
+    if (!t && ids.length === 0) return;
+    setReq({ query: t || undefined, attachmentFileIds: ids.length ? ids : undefined });
     setQ("");
+    setFiles([]);
   };
 
   return (
@@ -73,8 +97,19 @@ export function AppHome() {
             <button key={c} className="ah-chip" onClick={() => run(c)}>{c}</button>
           ))}
         </div>
+        {files.length > 0 && (
+          <div className="ah-files">
+            {files.map((f, i) => (
+              <span key={i} className={`ah-file${f.uploading ? " up" : ""}${f.error ? " err" : ""}`}>
+                {f.error ? <AlertCircle size={13} /> : <FileText size={13} />}
+                <span className="ah-file-n">{f.file.name}</span>
+                <button className="ah-file-x" onClick={() => removeFile(f)} aria-label="첨부 제거"><X size={12} /></button>
+              </span>
+            ))}
+          </div>
+        )}
         <div className="ah-inputbar">
-          <button className="ah-ic" aria-label="첨부"><Plus size={20} /></button>
+          <button className="ah-ic" onClick={() => fileRef.current?.click()} aria-label="파일 첨부"><Plus size={20} /></button>
           <input
             className="ah-input"
             placeholder="네이버 백엔드 신입 통째로 준비해줘"
@@ -83,10 +118,20 @@ export function AppHome() {
             onKeyDown={(e) => e.key === "Enter" && run(q)}
           />
           <button className="ah-ic" aria-label="음성"><Mic size={18} /></button>
-          <button className="ah-send" onClick={() => run(q)} disabled={!q.trim()} aria-label="보내기">
+          <button className="ah-send" onClick={() => run(q)} disabled={!q.trim() && !files.some((f) => f.id != null)} aria-label="보내기">
             <ArrowUp size={18} />
           </button>
         </div>
+        <input
+          ref={fileRef}
+          type="file"
+          multiple
+          className="ah-fileinput"
+          onChange={(e) => {
+            void addFiles(e.target.files);
+            e.target.value = "";
+          }}
+        />
       </div>
 
       {drawer && (

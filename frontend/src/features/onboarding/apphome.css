@@ -74,6 +74,22 @@
 }
 .ah-send:disabled { opacity: 0.4; cursor: default; }
 
+/* 첨부 파일 칩 (입력창 위) */
+.ah-files { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 8px; padding: 0 6px; animation: ah-rise 0.3s var(--ease) both; }
+.ah-file {
+  display: inline-flex; align-items: center; gap: 6px; max-width: 200px;
+  font-size: 12px; color: var(--ink2); background: var(--card2);
+  border: 1px solid var(--border); padding: 6px 8px 6px 11px; border-radius: 999px;
+}
+.ah-file.up { opacity: 0.55; }
+.ah-file.err { color: var(--destructive); border-color: var(--destructive); }
+.ah-file > svg { flex: none; color: var(--muted); }
+.ah-file.err > svg { color: var(--destructive); }
+.ah-file-n { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ah-file-x { display: grid; place-items: center; flex: none; padding: 0; color: var(--muted); background: 0; border: 0; cursor: pointer; }
+.ah-file-x:hover { color: var(--fg); }
+.ah-fileinput { display: none; }
+
 /* 좌측 드로어 — 세션 목록 + 계정/대시보드 진입 */
 .ah-drawer-wrap { position: fixed; inset: 0; z-index: 50; background: rgba(2, 3, 4, 0.5); backdrop-filter: blur(2px); animation: ah-fade 0.2s ease; }
 .ah-drawer {
