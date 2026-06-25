@@ -211,13 +211,18 @@ public class ChatbotController {
      */
     private ChatAskResponse enterIntake(Long conversationId, String question, Long userId, String route) {
         IntakeAskResponse r = intakeAskService.ask(userId, question, conversationId);
+        // 지원건 세션 fork 가 일어나면 응답 conversationId 가 새 id 로 바뀐다 — sticky 도 새 id 기준으로 옮긴다.
+        Long effectiveId = r.conversationId();
+        if (effectiveId != null && !effectiveId.equals(conversationId)) {
+            intakeModeStore.exit(conversationId); // 원(잡담) 대화의 sticky 정리
+        }
         if (r.ready()) {
-            intakeModeStore.exit(conversationId);
+            intakeModeStore.exit(effectiveId);
         } else {
-            intakeModeStore.enter(conversationId);
+            intakeModeStore.enter(effectiveId);
         }
         return new ChatAskResponse(
-                r.conversationId(),
+                effectiveId,
                 r.message(),
                 List.of(),
                 List.of(),

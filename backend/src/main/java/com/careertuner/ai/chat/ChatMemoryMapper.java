@@ -29,4 +29,9 @@ public interface ChatMemoryMapper {
 
     /** 해당 유저의 가장 최근 대화 conversation_id (없으면 null). 복원 진입점. */
     Long findRecentConversationByUser(@Param("userId") Long userId);
+
+    /** fork 로 만든 지원건 세션에 application_case_id·title 을 바인딩(세션↔지원건 매핑·목록 제목). */
+    void bindCase(@Param("conversationId") Long conversationId,
+                  @Param("applicationCaseId") Long applicationCaseId,
+                  @Param("title") String title);
 }

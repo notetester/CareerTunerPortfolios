@@ -33,4 +33,11 @@
          LIMIT 1
     </select>
 
+    <update id="bindCase">
+        UPDATE chatbot_conversation_memory
+           SET application_case_id = #{applicationCaseId},
+               title               = #{title}
+         WHERE conversation_id = #{conversationId}
+    </update>
+
 </mapper>

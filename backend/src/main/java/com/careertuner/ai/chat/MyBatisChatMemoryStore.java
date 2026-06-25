@@ -60,6 +60,11 @@ public class MyBatisChatMemoryStore implements ChatMemoryStore {
         return mapper.findRecentConversationByUser(userId);
     }
 
+    /** fork 로 만든 대화에 지원 건 id·제목을 바인딩한다(지원건 세션 표식 — 세션 목록/매핑). */
+    public void bindCase(Long conversationId, Long applicationCaseId, String title) {
+        mapper.bindCase(conversationId, applicationCaseId, title);
+    }
+
     private Long toLong(Object memoryId) {
         if (memoryId instanceof Number n) {
             return n.longValue();

@@ -41,6 +41,10 @@ public class IntakeSlotTrace {
         volatile String mode;
         volatile String originalQuery;
         volatile List<ApplicationCaseResponse> fetchedCases = List.of();
+        /** fork 구간 시작 인덱스 = 인테이크 진입 직전 memory 메시지 수(첫 턴 1회 기록). */
+        volatile Integer entryOffset;
+        /** 이 대화가 바인딩된 지원 건 id(fork 후 설정). 같은 건 재확정 시 재-fork 방지(케이스 전환만 격리). */
+        volatile Long boundCaseId;
     }
 
     private SlotState currentState() {
@@ -85,6 +89,44 @@ public class IntakeSlotTrace {
     /** chooseMode 가 코드 검증을 통과한 뒤에만 호출. */
     public void confirmMode(String mode) {
         currentState().mode = mode;
+    }
+
+    /**
+     * 첫 인테이크 턴이면 "진입 직전 memory 메시지 수"를 fork 구간 시작점으로 1회 기록한다.
+     * 이미 기록됐으면(=첫 턴 아님) supplier 를 호출하지 않는다(불필요한 memory 조회 회피).
+     */
+    public void recordEntryOffsetIfAbsent(java.util.function.IntSupplier offsetSupplier) {
+        SlotState state = currentState();
+        if (state.entryOffset == null) {
+            state.entryOffset = offsetSupplier.getAsInt();
+        }
+    }
+
+    /** fork 구간 시작 인덱스(진입 직전 메시지 수). 미기록이면 null. */
+    public Integer entryOffset() {
+        return currentState().entryOffset;
+    }
+
+    /** 이 대화가 바인딩된 지원 건 id(fork 전이면 null). 같은 건 재확정 시 재-fork 방지에 쓴다. */
+    public Long boundCaseId() {
+        return currentState().boundCaseId;
+    }
+
+    /**
+     * fork 후처리: 누적 슬롯을 원 대화→새 대화로 이전하고, 바인딩 건과 새 진입 offset 을 갱신한다.
+     * 다음 케이스로 전환하면 그 구간만 다시 fork 되도록 entryOffset 을 새 대화 길이로 재무장한다.
+     */
+    public void migrateToFork(Long oldConversationId, Long newConversationId,
+                              Long boundCaseId, int newEntryOffset) {
+        SlotState state = slotsByConversation.remove(oldConversationId);
+        if (state == null) {
+            state = new SlotState();
+        }
+        state.boundCaseId = boundCaseId;
+        state.entryOffset = newEntryOffset;
+        if (newConversationId != null) {
+            slotsByConversation.put(newConversationId, state);
+        }
     }
 
     /** 컨트롤러가 AutoPrepRequest 조립에 쓰는 확정 슬롯 스냅샷. */
