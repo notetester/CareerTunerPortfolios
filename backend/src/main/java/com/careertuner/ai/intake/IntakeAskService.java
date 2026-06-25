@@ -1,5 +1,7 @@
 package com.careertuner.ai.intake;
 
+import java.util.List;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -48,16 +50,18 @@ public class IntakeAskService {
                     slots.originalQuery(), slots.caseId(), slots.mode(), null, null);
 
             // ready/nextAsk 판정은 D 의 기존 서비스에 위임(의존그래프·파트선택 재구현 금지).
+            // candidates·modes 는 D 가 nextAsk 에 맞춰 결정적으로 채워주는 칩 후보 — 버리지 않고 그대로 전달한다.
             AutoPrepIntakeResponse check = autoPrepIntakeService.intake(userId, autoPrepRequest);
 
             return new IntakeAskResponse(
-                    conversationId, answer, check.ready(), check.nextAsk(), autoPrepRequest);
+                    conversationId, answer, check.ready(), check.nextAsk(), autoPrepRequest,
+                    check.candidates(), check.modes());
         } catch (Exception e) {
             log.error("인테이크 에이전트 응답 실패 (Ollama 장애 추정): {}", e.getMessage(), e);
             return new IntakeAskResponse(
                     conversationId,
                     "지금은 답변을 생성하기 어렵습니다. 잠시 후 다시 시도해 주세요.",
-                    false, null, null);
+                    false, null, null, List.of(), List.of());
         } finally {
             trace.clear();
         }

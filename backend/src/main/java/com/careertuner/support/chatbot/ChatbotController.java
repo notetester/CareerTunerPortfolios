@@ -32,8 +32,10 @@ import com.careertuner.ai.chat.MessageSanitizer;
 import com.careertuner.ai.chat.MyBatisChatMemoryStore;
 import com.careertuner.ai.chat.QuickReplyAgent;
 import com.careertuner.ai.chat.SearchTrace;
+import com.careertuner.ai.autoprep.dto.AutoPrepIntakeResponse;
 import com.careertuner.ai.intake.IntakeAskService;
 import com.careertuner.ai.intake.dto.IntakeAskResponse;
+import com.careertuner.applicationcase.dto.ApplicationCaseResponse;
 import com.careertuner.common.security.AuthUser;
 import com.careertuner.common.web.ApiResponse;
 import com.careertuner.community.search.PostHit;
@@ -51,6 +53,10 @@ public class ChatbotController {
     private static final List<String> AFFIRMATIVE = List.of(
             "시작", "네", "예", "응", "ㅇㅇ", "그래", "좋아", "할래", "해줘", "ok", "오케이", "yes");
 
+    /** 오케스트레이터 모드 이탈 신호(모드 활성 중에만 판정). 배너 ⏏ 도 이 키워드를 보낸다. */
+    private static final List<String> EXIT_COMMANDS = List.of(
+            "그만", "취소", "종료", "일반상담", "나가기", "중단", "그만할래");
+
     private final CommunityChatAgent agent;
     private final QuickReplyAgent quickReplyAgent;
     private final SearchTrace searchTrace;
@@ -63,6 +69,7 @@ public class ChatbotController {
     private final UnifiedChatRouter router;
     private final RouteConfirmStore routeConfirmStore;
     private final IntakeAskService intakeAskService;
+    private final IntakeModeStore intakeModeStore;
 
     public ChatbotController(CommunityChatAgent agent,
                             QuickReplyAgent quickReplyAgent,
@@ -75,7 +82,8 @@ public class ChatbotController {
                             ChatbotProperties chatbotProperties,
                             UnifiedChatRouter router,
                             RouteConfirmStore routeConfirmStore,
-                            IntakeAskService intakeAskService) {
+                            IntakeAskService intakeAskService,
+                            IntakeModeStore intakeModeStore) {
         this.agent = agent;
         this.quickReplyAgent = quickReplyAgent;
         this.searchTrace = searchTrace;
@@ -88,6 +96,7 @@ public class ChatbotController {
         this.router = router;
         this.routeConfirmStore = routeConfirmStore;
         this.intakeAskService = intakeAskService;
+        this.intakeModeStore = intakeModeStore;
     }
 
     /**
@@ -112,6 +121,21 @@ public class ChatbotController {
                 : memoryStore.createConversation(userId);
         String question = req.question();
 
+        // sticky 모드(오케스트레이터 유지): 이미 ③ 에 머무는 대화는 라우팅·FAQ·NAV 를 전부 건너뛰고 ③ 직행한다.
+        // 단 이탈 신호("그만"/⏏)면 즉시 일반 모드로 복귀. (오분류로 ①(FAQ)로 새는 것을 구조적으로 차단)
+        if (intakeModeStore.isActive(conversationId)) {
+            if (isExitCommand(question)) {
+                intakeModeStore.exit(conversationId);
+                log.info("//TODO[diag-unified-route] mode=active exit -> route=이탈(일반복귀)");
+                return ApiResponse.ok(new ChatAskResponse(
+                        conversationId,
+                        "일반 상담 모드로 돌아왔어요. 무엇이든 물어보세요.",
+                        List.of(), List.of(), "이탈", null, false));
+            }
+            log.info("//TODO[diag-unified-route] mode=active -> route=③(유지)");
+            return ApiResponse.ok(enterIntake(conversationId, question, userId, "③(유지)"));
+        }
+
         // Fast-path: 순수 내비 질의는 LLM·검색 우회 즉답 (서버 신뢰 링크라 화이트리스트 검증 생략).
         Optional<ChatResponse> fast = fastPathService.tryFastPath(question);
         if (fast.isPresent()) {
@@ -119,7 +143,7 @@ public class ChatbotController {
             responseLogService.record(conversationId, userId, question,
                     "NAV_FAST", false, null, null, false);
             return ApiResponse.ok(new ChatAskResponse(
-                    conversationId, fr.message(), fr.links(), fr.quickReplies(), "NAV", null));
+                    conversationId, fr.message(), fr.links(), fr.quickReplies(), "NAV", null, false));
         }
 
         // 확인 대기(1턴) 소비: 이 턴은 라우팅을 돌리지 않는다. (오분류 안전판 A)
@@ -148,7 +172,8 @@ public class ChatbotController {
                         List.of(),
                         List.of("시작", "그냥 질문이에요"),
                         "확인반환",
-                        null));
+                        null,
+                        false));
             }
             default -> {
                 logDiag(d, "①");
@@ -176,16 +201,58 @@ public class ChatbotController {
         return AFFIRMATIVE.stream().anyMatch(norm::contains);
     }
 
-    /** ③ 인테이크 입구로 데려다준다(한 턴). sticky 유지는 다음 PR — 여기서 모드 표시를 set 하지 않는다. */
+    /** 모드 활성 중 이탈 신호 판정("그만"/"취소"/⏏ 등). */
+    private boolean isExitCommand(String question) {
+        if (question == null) {
+            return false;
+        }
+        String norm = question.trim().toLowerCase().replace(" ", "");
+        return EXIT_COMMANDS.stream().anyMatch(norm::contains);
+    }
+
+    /**
+     * ③ 인테이크 입구로 데려다주고(한 턴) sticky 모드를 갱신한다.
+     * ready 면 RUN 을 프런트 SSE 가 이어받으므로 sticky 종료, 아니면 모드 유지(다음 턴도 ③ 직행).
+     * inOrchestration 은 항상 true — ready 전환 턴도 위젯이 배너를 유지한 채 실행 화면으로 넘어가야 하므로.
+     */
     private ChatAskResponse enterIntake(Long conversationId, String question, Long userId, String route) {
         IntakeAskResponse r = intakeAskService.ask(userId, question, conversationId);
+        if (r.ready()) {
+            intakeModeStore.exit(conversationId);
+        } else {
+            intakeModeStore.enter(conversationId);
+        }
         return new ChatAskResponse(
                 r.conversationId(),
                 r.message(),
                 List.of(),
                 List.of(),
                 route,
-                new ChatAskResponse.IntakeStep(r.ready(), r.nextAsk(), r.autoPrepRequest()));
+                new ChatAskResponse.IntakeStep(
+                        r.ready(), r.nextAsk(), r.autoPrepRequest(),
+                        toCandidates(r.candidates()), toModes(r.modes())),
+                true);
+    }
+
+    /** 지원 건 후보 → 칩 렌더용 최소 필드로 축약. */
+    private List<ChatAskResponse.CaseCandidate> toCandidates(List<ApplicationCaseResponse> cases) {
+        if (cases == null) {
+            return List.of();
+        }
+        return cases.stream()
+                .map(c -> new ChatAskResponse.CaseCandidate(
+                        c.id(), c.companyName(), c.jobTitle(), c.status()))
+                .collect(Collectors.toList());
+    }
+
+    /** 면접 모드 선택지 → 칩 렌더용으로 변환. */
+    private List<ChatAskResponse.ModeOption> toModes(List<AutoPrepIntakeResponse.ModeOption> modes) {
+        if (modes == null) {
+            return List.of();
+        }
+        return modes.stream()
+                .map(m -> new ChatAskResponse.ModeOption(m.code(), m.label()))
+                .collect(Collectors.toList());
     }
 
     /**
@@ -231,7 +298,7 @@ public class ChatbotController {
                     "AGENT", !searchTrace.faqLinks().isEmpty(),
                     miss != null ? miss.topSimilarity() : null, null, false);
 
-            return new ChatAskResponse(conversationId, message, links, quickReplies, route, null);
+            return new ChatAskResponse(conversationId, message, links, quickReplies, route, null, false);
         } catch (Exception e) {
             log.error("챗봇 에이전트 응답 실패 (Ollama 장애 추정): {}", e.getMessage(), e);
             return new ChatAskResponse(
@@ -240,7 +307,8 @@ public class ChatbotController {
                     List.of(),
                     List.of(),
                     route,
-                    null);
+                    null,
+                    false);
         } finally {
             searchTrace.clear();
         }
@@ -305,7 +373,7 @@ public class ChatbotController {
         // 유사도 = 게이트가 본 원문 top-1(같은 임베딩). 전환 없음.
         responseLogService.record(conversationId, userId, question,
                 "FAQ_FAST", true, hits.get(0).score(), null, false);
-        return new ChatAskResponse(conversationId, hits.get(0).answer(), links, List.of(), route, null);
+        return new ChatAskResponse(conversationId, hits.get(0).answer(), links, List.of(), route, null, false);
     }
 
     /**
