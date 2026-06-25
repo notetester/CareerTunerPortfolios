@@ -114,7 +114,6 @@ public class IntakeAskService {
         String originalQuery = (String) row.get("originalQuery");
         int entryOffset = memoryStore.getMessages(conversationId).size();
         trace.restore(conversationId, caseId, mode, originalQuery, entryOffset);
-        log.info("//TODO[diag-slot] restore conv={} caseId={} mode={}", conversationId, caseId, mode);
     }
 
     /**
@@ -126,7 +125,6 @@ public class IntakeAskService {
             return;
         }
         slotMapper.upsert(conversationId, userId, slots.caseId(), slots.mode(), slots.originalQuery(), null);
-        log.info("//TODO[diag-slot] upsert conv={} caseId={} mode={}", conversationId, slots.caseId(), slots.mode());
     }
 
     private static Long toLong(Object value) {
