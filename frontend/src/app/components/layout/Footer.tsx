@@ -1,5 +1,6 @@
 import { Link } from "react-router";
 import { Sparkles, Youtube, Instagram, Twitter, MessageCircle } from "lucide-react";
+import { isAppContext } from "@/platform/capacitor";
 
 const footerLinks = [
   {
@@ -55,6 +56,9 @@ const footerLinks = [
 ];
 
 export function Footer() {
+  // 앱(네이티브/앱 미리보기)에선 웹용 푸터(SEO·법적고지·마케팅 링크)를 숨긴다. 웹은 그대로 노출.
+  if (isAppContext()) return null;
+
   return (
     <footer className="bg-muted text-muted-foreground">
       {/* Main footer */}
