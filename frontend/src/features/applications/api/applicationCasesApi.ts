@@ -134,6 +134,18 @@ export function reviewApplicationCaseExtraction(
   });
 }
 
+// 사용자가 수정·확정한 공고문을 검수된 최신 본문으로 저장하고, OCR/추출 없이 분석만 1회 재실행한다.
+// 최신 추출이 SUCCEEDED(PASS 또는 REVIEW_REQUIRED)일 때만 허용된다.
+export function confirmApplicationCaseExtraction(
+  applicationCaseId: number,
+  extractedText: string,
+): Promise<ApplicationCaseExtraction> {
+  return api<ApplicationCaseExtraction>(`/application-cases/${applicationCaseId}/job-posting/extraction/confirm`, {
+    method: "PATCH",
+    body: JSON.stringify({ extractedText }),
+  });
+}
+
 export function updateApplicationCase(
   id: number,
   request: UpdateApplicationCaseRequest,
