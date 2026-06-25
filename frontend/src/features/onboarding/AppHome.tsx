@@ -5,6 +5,7 @@ import {
   LayoutDashboard, Briefcase, User, Settings,
 } from "lucide-react";
 import { AutoPrepChatModal } from "@/features/autoprep/components/AutoPrepChatModal";
+import { ThemeToggle } from "@/app/components/layout/ThemeToggle";
 import type { AutoPrepRequest } from "@/features/autoprep/types/autoPrep";
 import "./apphome.css";
 
@@ -55,6 +56,7 @@ export function AppHome() {
         </button>
         <div className="ah-brand">CareerTuner</div>
         <div className="ah-right">
+          <ThemeToggle />
           <span className="ah-credit"><Sparkles size={13} strokeWidth={2} /> 2,400</span>
           <button className="ah-up" onClick={() => navigate("/pricing")}>업그레이드</button>
         </div>
