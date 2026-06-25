@@ -11,6 +11,27 @@ export interface ChatEvidence {
   url: string;
 }
 
+/* ── 오케스트레이터 인테이크 메타(칩 렌더용) ── */
+export interface IntakeCaseCandidate {
+  id: number;
+  companyName: string;
+  jobTitle: string;
+  status?: string;
+}
+
+export interface IntakeModeOption {
+  code: string;
+  label: string;
+}
+
+/** 봇 말풍선에 딸려오는 ③ 인테이크 한 턴 메타. nextAsk 가 가리키는 칩만 채워진다. */
+export interface IntakeStepMeta {
+  ready: boolean;
+  nextAsk: "CASE" | "MODE" | null;
+  candidates: IntakeCaseCandidate[];
+  modes: IntakeModeOption[];
+}
+
 export interface ChatMessage {
   id: string;
   role: "user" | "bot";
@@ -21,6 +42,8 @@ export interface ChatMessage {
   ttsState: "idle" | "playing" | "paused";
   ttsProgress: number;
   timestamp: number;
+  /** ③ 인테이크 턴에서만 set — 지원 건/면접 모드 칩 렌더에 쓴다. */
+  intake?: IntakeStepMeta;
 }
 
 export type BotStatus = "idle" | "thinking" | "answered" | "not_found" | "disconnected";

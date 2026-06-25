@@ -176,7 +176,7 @@ public class ChatbotService {
                     .filter(s -> s.similarity() >= props.getSimilarityThreshold())
                     .limit(props.getTopK())
                     .map(s -> new FaqHit(s.faq().getQuestion(), s.faq().getAnswer(),
-                            s.faq().getLinkUrl(), s.faq().getLinkLabel()))
+                            s.faq().getLinkUrl(), s.faq().getLinkLabel(), s.similarity()))
                     .collect(Collectors.toList());
         } catch (Exception e) {
             log.error("FAQ 검색 실패: {}", e.getMessage());
