@@ -181,7 +181,12 @@ public class ChatbotController {
                         null,
                         false));
             }
+            case AGENT -> {
+                // catch-all: 커뮤니티 글 검색·인사·잡담 → FAQ 게이트 우회하고 에이전트 직행.
+                return ApiResponse.ok(agentPath(conversationId, question, userId, "①에이전트"));
+            }
             default -> {
+                // FAQ Target → faqPath 게이트(즉답/미달 시 에이전트).
                 return ApiResponse.ok(faqPath(conversationId, question, userId, "①"));
             }
         }
@@ -266,10 +271,18 @@ public class ChatbotController {
         if (!faqHits.isEmpty() && faqHits.get(0).score() >= faqGate) {
             return faqAnswerFrom(conversationId, question, userId, faqHits, route);
         }
+        // 게이트 미달 → 커뮤니티 에이전트(통합 라우터 AGENT catch-all 과 동일 경로).
+        return agentPath(conversationId, question, userId, route);
+    }
 
+    /**
+     * ① 커뮤니티 에이전트 직행(FAQ 게이트 우회). {@link #faqPath} 게이트 미달과 통합 라우터 AGENT(catch-all)가 공유.
+     * 글 검색(searchCommunityPosts)·인사/잡담 자연응답은 에이전트가 스스로 판단해 처리한다(시스템 프롬프트).
+     * 원문 raw top-1 로 운영 FAQ공백 수집을 보존한다.
+     */
+    private ChatAskResponse agentPath(Long conversationId, String question, Long userId, String route) {
         searchTrace.clear();
         try {
-            // 게이트 미달 → 에이전트(커뮤니티/복합). 원문 raw top-1 로 운영 FAQ공백 수집을 보존한다.
             ChatbotService.FaqMiss miss = null;
             try {
                 miss = chatbotService.analyzeMiss(question);
