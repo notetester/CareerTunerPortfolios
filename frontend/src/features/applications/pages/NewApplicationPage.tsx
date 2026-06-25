@@ -35,6 +35,7 @@ import {
   getApplicationCase,
   getLatestApplicationCaseExtraction,
   retryApplicationCaseExtraction,
+  reviewApplicationCaseExtraction,
   updateApplicationCase,
   uploadApplicationCaseFromJobPosting,
   type CreateApplicationCaseFromJobPostingResponse,
@@ -43,7 +44,11 @@ import { getJobPosting, saveJobPosting } from "../api/jobPostingsApi";
 import { ApplicationExtractionBadge, getApplicationExtractionStatusLabel } from "../components/ApplicationExtractionBadge";
 import { LoginRequiredState } from "../components/LoginRequiredState";
 import type { ApplicationCase, ApplicationCaseExtraction, ApplicationSourceType } from "../types/applicationCase";
-import { APPLICATION_SOURCE_OPTIONS, isApplicationCaseExtractionActive } from "../types/applicationCase";
+import {
+  APPLICATION_SOURCE_OPTIONS,
+  isApplicationCaseExtractionActive,
+  isApplicationCaseExtractionReviewRequired,
+} from "../types/applicationCase";
 import type { JobPosting, JobPostingRequest } from "../types/jobPosting";
 import { registerApplicationCaseExtraction } from "../utils/applicationExtractionTracker";
 import {
@@ -145,6 +150,7 @@ export function NewApplicationPage() {
 
   const activePostingText = useMemo(() => displayPostingText(jobPosting), [jobPosting]);
   const extractionActive = extractionJob ? isApplicationCaseExtractionActive(extractionJob.status) : false;
+  const extractionReviewRequired = isApplicationCaseExtractionReviewRequired(extractionJob);
   const activeExtractionCaseId = extractionActive ? createdCase?.id ?? null : null;
   const activeExtractionId = extractionActive ? extractionJob?.id ?? null : null;
 
@@ -350,7 +356,19 @@ export function NewApplicationPage() {
     }
 
     let nextPosting = jobPosting;
-    if (trimmedPostingText !== activePostingText.trim()) {
+    if (isApplicationCaseExtractionReviewRequired(extractionJob)) {
+      // 품질 게이트가 REVIEW_REQUIRED → 검수 확정 API로 텍스트를 확정하고 품질을 PASS로 전환한 뒤 진행한다.
+      const reviewed = await reviewApplicationCaseExtraction(createdCase.id, trimmedPostingText);
+      setExtractionJob(reviewed);
+      registerApplicationCaseExtraction(reviewed);
+      const reviewedPosting = await getJobPosting(createdCase.id);
+      if (reviewedPosting) {
+        nextPosting = reviewedPosting;
+        setJobPosting(reviewedPosting);
+        setConfirmedText(displayPostingText(reviewedPosting));
+      }
+      setJobAnalysisCompleted(false);
+    } else if (trimmedPostingText !== activePostingText.trim()) {
       nextPosting = await saveJobPosting(createdCase.id, buildRevisionRequest(jobPosting, trimmedPostingText));
       setJobPosting(nextPosting);
       setConfirmedText(displayPostingText(nextPosting));
@@ -609,6 +627,12 @@ export function NewApplicationPage() {
                       </div>
                     )}
 
+                    {extractionReviewRequired && (
+                      <div className="break-words rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm leading-6 text-amber-800">
+                        추출 품질이 자동 분석 기준에 부족합니다. 아래 공고문을 확인·보정한 뒤 진행하면 검수 확정 후 분석을 이어갑니다.
+                      </div>
+                    )}
+
                     <Field label="공고문">
                       <Textarea
                         value={confirmedText}
@@ -675,7 +699,7 @@ export function NewApplicationPage() {
                         onClick={() => void handleMoveToAnalysisSettings()}
                       >
                         {busy ? <Loader2 className="size-4 animate-spin" /> : <ArrowRight className="size-4" />}
-                        분석 시작으로
+                        {extractionReviewRequired ? "검수 확정 후 분석 설정으로" : "분석 시작으로"}
                       </Button>
                     </div>
                   </div>

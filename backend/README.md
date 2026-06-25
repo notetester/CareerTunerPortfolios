@@ -124,9 +124,9 @@ PRO 플랜은 영상분석권을 월 1장 제공하고, PREMIUM 플랜은 영상
 | PATCH | `/api/admin/company-analysis/{analysisId}/metadata` | 관리자 기업 분석 출처 메타데이터 수정. 날짜 clear 플래그로 `checked_at`, `refresh_recommended_at` 초기화 가능 | Bearer(ADMIN) |
 | GET | `/api/admin/ai-usage/b` | 관리자 B AI 사용량 로그 조회 | Bearer(ADMIN) |
 
-공고/기업 분석은 기본적으로 `self-rules-v1` 자체 경로를 사용한다. 로컬 Qwen/Gemma 분석은 `B_ANALYSIS_LOCAL_LLM_ENABLED=true`와 Ollama 설정으로 켤 수 있으며, 모델이 없으면 기본값에서는 호출하지 않는다.
+공고/기업 분석은 기본적으로 자체 파인튜닝 모델 `careertuner-b-jobposting-r1`(Ollama)을 사용한다(`B_ANALYSIS_LOCAL_LLM_ENABLED` 기본 `true`). 스키마·그라운딩 검증을 통과하지 못하거나 모델 호출이 실패하면 1회 재시도 후 `self-rules-v1` 규칙 경로로 폴백한다. Ollama 미서빙 환경에서는 `B_ANALYSIS_LOCAL_LLM_ENABLED=false`로 끄면 곧장 `self-rules-v1`을 사용한다. 모델·주소·타임아웃은 `B_ANALYSIS_OLLAMA_MODEL`, `B_ANALYSIS_OLLAMA_BASE_URL`, `B_ANALYSIS_OLLAMA_READ_TIMEOUT`(기본 480s)로 조정한다.
 텍스트 PDF는 PDFBox로 먼저 추출하고, 텍스트가 없는 PDF와 이미지는 자체 문서 추출 워커 또는 명시적으로 allowlist 된 OCR fallback만 사용한다. OpenAI 폴백은 `OPENAI_API_KEY`가 있을 때만 동작하며 모델은 `OPENAI_MODEL`(기본 `gpt-5`)로 바꾼다.
-자체 LLM은 현재 F 커뮤니티 검열의 Ollama 연동과 D 면접 파인튜닝 실험을 중심으로 붙어 있으며,
+자체 LLM은 B 공고/기업 분석(`careertuner-b-jobposting-r1`)과 F 커뮤니티 검열의 Ollama 연동, D 면접 파인튜닝 실험을 중심으로 붙어 있으며,
 A~F 담당별 목표 운영 기준은 [`../docs/planning/담당별_자체LLM_운영안.md`](../docs/planning/담당별_자체LLM_운영안.md)를 따른다.
 공통 `ai/common`, 도메인별 `A_AI_*`~`F_AI_*` 설정, 관리자 AI 상태 API는 목표 구조이므로 실제 도입 시 공통 영역 합의 후 구현한다.
 공고문 파일 업로드는 기본 10MB까지 허용하며, 초과 시 `INVALID_INPUT` 응답으로 안내한다.

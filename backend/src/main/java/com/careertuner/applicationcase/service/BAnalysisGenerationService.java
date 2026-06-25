@@ -36,6 +36,15 @@ public class BAnalysisGenerationService {
 
     private static final Pattern YEARS_PATTERN = Pattern.compile("(?i)(\\d+)\\+?\\s*(?:years|yrs|년)");
     private static final int MAX_PROMPT_TEXT_LENGTH = 12_000;
+    // 경력 연차 보정: 5년 이상이면 SENIOR로 본다(self-rules experienceLevel과 동일 기준).
+    private static final int SENIOR_YEARS_THRESHOLD = 5;
+    // "2024년" 같은 날짜/연도 오탐을 거르기 위한 현실적인 경력 연차 상한.
+    private static final int MAX_REALISTIC_YEARS = 30;
+    // requiredSkills 문장 필터: 이보다 길거나 단어가 많으면 스킬이 아니라 업무 문장으로 본다.
+    private static final int SKILL_MAX_LENGTH = 30;
+    private static final int SKILL_MAX_WORDS = 4;
+    private static final Pattern SKILL_SENTENCE_PATTERN =
+            Pattern.compile("및|또는|등의|에 대한|설계 및|개발 및|구축 및|담당");
     private static final List<String> KNOWN_SKILLS = List.of(
             "Java", "Spring", "Spring Boot", "MyBatis", "JPA", "SQL", "MySQL", "PostgreSQL",
             "Redis", "Kafka", "RabbitMQ", "Docker", "Kubernetes", "AWS", "Azure", "GCP",
@@ -163,9 +172,9 @@ public class BAnalysisGenerationService {
         JsonNode root = parseObject(content);
         JobAnalysisPayload payload = new JobAnalysisPayload(
                 text(root, "employmentType", employmentType(postingText)),
-                text(root, "experienceLevel", experienceLevel(postingText)),
-                arrayJson(root, "requiredSkills"),
-                arrayJson(root, "preferredSkills"),
+                reconcileExperienceLevel(text(root, "experienceLevel", experienceLevel(postingText)), postingText),
+                filterSkillItems(arrayJson(root, "requiredSkills"), postingText),
+                filterSkillItems(arrayJson(root, "preferredSkills"), null),
                 requiredText(root, "duties"),
                 requiredText(root, "qualifications"),
                 normalizeDifficulty(text(root, "difficulty", "NORMAL")),
@@ -175,6 +184,69 @@ public class BAnalysisGenerationService {
                 usage(properties.getLocalLlm().getModel(), postingText.length(), content.length()));
         validateJobPayload(payload);
         return payload;
+    }
+
+    /**
+     * R1 모델이 "경력 5년 이상" 공고를 JUNIOR로 오분류하는 사례가 있어, 공고 원문에 명시된
+     * 경력 연차를 정규식으로 파싱해 experienceLevel을 보정한다. 명시된 연차가 없으면 모델 값을 그대로 둔다.
+     */
+    private String reconcileExperienceLevel(String llmValue, String postingText) {
+        Integer years = maxStatedYears(postingText);
+        if (years == null) {
+            return llmValue;
+        }
+        if (years >= SENIOR_YEARS_THRESHOLD) {
+            return "SENIOR";
+        }
+        if (years >= 1 && "JUNIOR".equals(llmValue)) {
+            return "MID";
+        }
+        return llmValue;
+    }
+
+    private Integer maxStatedYears(String text) {
+        Matcher matcher = YEARS_PATTERN.matcher(text);
+        Integer max = null;
+        while (matcher.find()) {
+            int value = Integer.parseInt(matcher.group(1));
+            if (value >= 1 && value <= MAX_REALISTIC_YEARS && (max == null || value > max)) {
+                max = value;
+            }
+        }
+        return max;
+    }
+
+    /**
+     * R1 모델이 requiredSkills/preferredSkills에 "결제 시스템 백엔드 API 설계 및 개발" 같은 업무 문장을
+     * 스킬로 섞어 넣는 경우가 있어, 스킬처럼 보이지 않는 항목을 후처리로 걸러낸다.
+     * 모든 항목이 걸러지면 fallbackPostingText 기반 규칙 추출로 폴백해 빈 배열을 막는다(폴백 텍스트가 없으면 원본 유지).
+     */
+    private String filterSkillItems(String skillsJson, String fallbackPostingText) {
+        List<String> skills = parseList(skillsJson);
+        if (skills.isEmpty()) {
+            return skillsJson;
+        }
+        List<String> filtered = skills.stream().filter(this::looksLikeSkill).toList();
+        if (filtered.size() == skills.size()) {
+            return skillsJson;
+        }
+        if (filtered.isEmpty()) {
+            return fallbackPostingText != null ? toJson(extractRequiredSkills(fallbackPostingText)) : skillsJson;
+        }
+        log.debug("Filtered {} non-skill item(s) from LLM skills: {} -> {}",
+                skills.size() - filtered.size(), skills, filtered);
+        return toJson(filtered);
+    }
+
+    private boolean looksLikeSkill(String value) {
+        String trimmed = value == null ? "" : value.trim();
+        if (trimmed.isEmpty() || trimmed.length() > SKILL_MAX_LENGTH) {
+            return false;
+        }
+        if (trimmed.split("\\s+").length > SKILL_MAX_WORDS) {
+            return false;
+        }
+        return !SKILL_SENTENCE_PATTERN.matcher(trimmed).find();
     }
 
     private CompanyAnalysisPayload parseLocalCompanyPayload(String content,

@@ -61,6 +61,65 @@ class BAnalysisGenerationServiceTest {
     }
 
     @Test
+    void localLlmExperienceLevelIsCorrectedFromStatedYears() {
+        BAnalysisProperties properties = new BAnalysisProperties();
+        properties.getLocalLlm().setEnabled(true);
+        properties.getLocalLlm().setModel("qwen-test");
+        BLocalLlmClient localLlmClient = mock(BLocalLlmClient.class);
+        when(localLlmClient.chat(anyString(), anyString(), any())).thenReturn("""
+                {
+                  "employmentType": "FULL_TIME",
+                  "experienceLevel": "JUNIOR",
+                  "requiredSkills": ["Java", "Spring Boot"],
+                  "preferredSkills": [],
+                  "duties": "Spring API 개발과 운영",
+                  "qualifications": "Java와 Spring Boot 경험",
+                  "difficulty": "NORMAL",
+                  "summary": "백엔드 개발자를 위한 공고 분석 요약입니다.",
+                  "evidence": [{"field":"requiredSkills","quote":"Java"}],
+                  "ambiguousConditions": [{"condition":"salary","assumption":"not specified"}]
+                }
+                """);
+        BAnalysisGenerationService service = service(properties, localLlmClient);
+
+        BAnalysisGenerationService.GeneratedJobAnalysis result = service.generateJobAnalysis(
+                applicationCase(), "Java 백엔드 개발 경력 5년 이상. Spring Boot 경험 필수.");
+
+        assertThat(result.fellBack()).isFalse();
+        assertThat(result.payload().experienceLevel()).isEqualTo("SENIOR");
+    }
+
+    @Test
+    void localLlmRequiredSkillsDropBusinessSentences() {
+        BAnalysisProperties properties = new BAnalysisProperties();
+        properties.getLocalLlm().setEnabled(true);
+        properties.getLocalLlm().setModel("qwen-test");
+        BLocalLlmClient localLlmClient = mock(BLocalLlmClient.class);
+        when(localLlmClient.chat(anyString(), anyString(), any())).thenReturn("""
+                {
+                  "employmentType": "FULL_TIME",
+                  "experienceLevel": "MID",
+                  "requiredSkills": ["Java", "Spring Boot", "결제 시스템 백엔드 API 설계 및 개발"],
+                  "preferredSkills": [],
+                  "duties": "결제 시스템 백엔드 API 설계 및 개발",
+                  "qualifications": "Java와 Spring Boot 경험",
+                  "difficulty": "NORMAL",
+                  "summary": "결제 시스템 백엔드 개발자 공고 분석 요약입니다.",
+                  "evidence": [{"field":"requiredSkills","quote":"Java"}],
+                  "ambiguousConditions": [{"condition":"salary","assumption":"not specified"}]
+                }
+                """);
+        BAnalysisGenerationService service = service(properties, localLlmClient);
+
+        BAnalysisGenerationService.GeneratedJobAnalysis result = service.generateJobAnalysis(
+                applicationCase(), "결제 시스템 백엔드 API 설계 및 개발. Java, Spring Boot 경험 필수.");
+
+        assertThat(result.fellBack()).isFalse();
+        assertThat(result.payload().requiredSkills()).contains("Java", "Spring Boot");
+        assertThat(result.payload().requiredSkills()).doesNotContain("결제 시스템 백엔드 API 설계 및 개발");
+    }
+
+    @Test
     void localLlmInvalidJsonFallsBackToSelfRules() {
         BAnalysisProperties properties = new BAnalysisProperties();
         properties.getLocalLlm().setEnabled(true);
