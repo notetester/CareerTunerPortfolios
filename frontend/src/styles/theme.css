@@ -75,6 +75,20 @@
   --gradient-brand: linear-gradient(135deg, #5e6ad2 0%, #7170ff 100%);
   --gradient-brand-soft: linear-gradient(135deg, #eef0fb 0%, #f3f2fd 100%);
 
+  /* AI 오케스트레이터 전용 강조색(인디고→바이올렛) — 일반 모드(brand)와 시각적으로 또렷이 구분.
+     챗봇 위젯의 모드 전환 신호에만 쓴다(인라인 style var(--orch-*)). design_handoff_orchestrator_widget 기준. */
+  --orch-indigo: #4338ca;
+  --orch-violet: #6d28d9;
+  --orch-point: #7c3aed;
+  --orch-label: #5b21b6;
+  --orch-surface: #f3effe;       /* 선택 카드/아이콘 배경 */
+  --orch-header-tint: #f7f5ff;   /* 헤더 틴트 */
+  --orch-chat-bg: #f6f5fc;       /* 채팅 배경 */
+  --orch-input-bg: #f1eefb;      /* 입력 배경 */
+  --orch-track: #e7e1f7;         /* 진행바 track */
+  --gradient-orchestrator: linear-gradient(135deg, #4338ca, #6d28d9);
+  --gradient-orchestrator-bar: linear-gradient(90deg, #4338ca, #7c3aed);
+
   /* Community category colors */
   --cat-job-bg: #eff6ff;        --cat-job-fg: #2563eb;
   --cat-interview-bg: #faf5ff;  --cat-interview-fg: #9333ea;
@@ -159,6 +173,19 @@
   --gradient-brand-soft: linear-gradient(135deg, #16171a 0%, #1a1b1e 100%);
   --brand-blue: #7170ff;
   --brand-indigo: #828fff;
+
+  /* 오케스트레이터(다크) — 그라데이션은 그대로 선명하게, 표면만 어둡게 */
+  --orch-indigo: #4338ca;
+  --orch-violet: #6d28d9;
+  --orch-point: #8b5cf6;
+  --orch-label: #c4b5fd;
+  --orch-surface: rgba(124, 58, 237, 0.18);
+  --orch-header-tint: rgba(124, 58, 237, 0.12);
+  --orch-chat-bg: #0d0e12;
+  --orch-input-bg: rgba(124, 58, 237, 0.14);
+  --orch-track: rgba(124, 58, 237, 0.24);
+  --gradient-orchestrator: linear-gradient(135deg, #4f46e5, #7c3aed);
+  --gradient-orchestrator-bar: linear-gradient(90deg, #6366f1, #8b5cf6);
 
   /* Category dark */
   --cat-job-bg: rgba(37,99,235,0.16);       --cat-job-fg: #93c5fd;
