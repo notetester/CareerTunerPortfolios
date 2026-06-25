@@ -4,6 +4,7 @@ import { intake } from "../api/autoPrepApi";
 import { useAutoPrepRun } from "../hooks/useAutoPrepRun";
 import type { AutoPrepRequest, PrepCaseCandidate, PrepModeOption } from "../types/autoPrep";
 import { AutoPrepWorkView } from "./AutoPrepWorkView";
+import "./autoprep-modal.css";
 
 interface ChipData {
   kind: "case" | "mode";
@@ -109,11 +110,11 @@ export function AutoPrepChatModal({ open, initialRequest, onClose, onNavigate }:
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-start justify-center bg-black/50 p-4 pt-[6vh] backdrop-blur-sm"
+      className="ap-overlay fixed inset-0 z-50 flex items-start justify-center bg-black/50 p-4 pt-[6vh] backdrop-blur-sm"
       onClick={onClose}
     >
       <div
-        className="flex h-[min(680px,86vh)] w-full max-w-[560px] flex-col overflow-hidden rounded-2xl border border-border bg-card shadow-2xl"
+        className="ap-box flex h-[min(680px,86vh)] w-full max-w-[560px] flex-col overflow-hidden rounded-2xl border border-border bg-card shadow-2xl"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between border-b border-border px-4 py-3">

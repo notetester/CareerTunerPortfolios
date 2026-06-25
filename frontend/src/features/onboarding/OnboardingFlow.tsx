@@ -3,6 +3,7 @@ import { useNavigate } from "react-router";
 import { useAuth } from "@/app/auth/AuthContext";
 import { enablePush, isPushSupported } from "@/platform/push";
 import { subscriptionFallbackPlans, toDisplayPlans } from "@/features/billing/utils/subscriptionDisplay";
+import { Sparkles, FileText, MessageSquare, Mic, Video, UserRound, X, Bell, type LucideIcon } from "lucide-react";
 import "./onboarding.css";
 
 /**
@@ -13,6 +14,8 @@ import "./onboarding.css";
 
 const KEY = "careertuner.onboarding";
 const USE_MOCK = import.meta.env.VITE_USE_MOCK === "true";
+// ?ob 로 강제 미리보기 중이고 실데이터 모드면, 실제 로그인 없이 화면만 넘긴다(디자인 확인용).
+const PREVIEW = typeof window !== "undefined" && new URLSearchParams(window.location.search).has("ob") && !USE_MOCK;
 
 export function isOnboarded(): boolean {
   try {
@@ -32,24 +35,51 @@ function markOnboarded() {
 type Step = "login" | "billing" | "permission";
 const ORDER: Step[] = ["login", "billing", "permission"];
 
+const GoogleIcon = (
+  <svg viewBox="0 0 48 48" width="17" height="17" aria-hidden>
+    <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z" />
+    <path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z" />
+    <path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z" />
+    <path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z" />
+  </svg>
+);
+const KakaoIcon = (
+  <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden>
+    <path fill="#191919" d="M12 3.5C6.9 3.5 2.75 6.74 2.75 10.74c0 2.55 1.7 4.79 4.27 6.07-.16.57-.92 3.19-.95 3.39 0 0-.02.16.08.22.1.06.23.01.23.01.28-.04 3.27-2.14 3.79-2.5.59.08 1.2.13 1.83.13 5.1 0 9.25-3.24 9.25-7.24S17.1 3.5 12 3.5z" />
+  </svg>
+);
+const NaverIcon = (
+  <svg viewBox="0 0 24 24" width="13" height="13" aria-hidden>
+    <path fill="#fff" d="M16.27 3v9.41L8.73 3H4v18h4.73v-9.41L16.27 21H21V3z" />
+  </svg>
+);
+const MailIcon = (
+  <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden>
+    <rect x="3" y="5" width="18" height="14" rx="2" />
+    <path d="m3 7 9 6 9-6" />
+  </svg>
+);
+
 const PROVIDERS = [
-  ["google", "Google", "G"],
-  ["kakao", "카카오", "K"],
-  ["naver", "네이버", "N"],
+  { id: "google", label: "Google", icon: GoogleIcon, cls: "g" },
+  { id: "kakao", label: "카카오", icon: KakaoIcon, cls: "k" },
+  { id: "naver", label: "네이버", icon: NaverIcon, cls: "n" },
 ] as const;
 
 export function OnboardingFlow() {
   const nav = useNavigate();
-  const { login, isAuthenticated } = useAuth();
-  const [step, setStep] = useState<Step>(isAuthenticated ? "billing" : "login");
+  const { login } = useAuth();
+  // ?ob 미리보기·앱 첫 실행 모두 로그인 화면부터 보여준다(이미 로그인돼 있어도 온보딩은 처음부터).
+  const [step, setStep] = useState<Step>("login");
   const [email, setEmail] = useState("");
   const [pw, setPw] = useState("");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
+  const [emailOpen, setEmailOpen] = useState(false);
 
   const finish = () => {
     markOnboarded();
-    nav("/home", { replace: true });
+    nav("/", { replace: true });
   };
 
   // mock 모드: 아무 값이나 통과(데모 계정). 소셜 버튼도 동일하게 demo 로그인으로 시연.
@@ -58,7 +88,7 @@ export function OnboardingFlow() {
     setBusy(true);
     setErr("");
     try {
-      await login(email.trim() || "demo@careertuner.dev", pw || "demo1234");
+      if (!PREVIEW) await login(email.trim() || "demo@careertuner.dev", pw || "demo1234");
       setStep("billing");
     } catch {
       setErr("로그인에 실패했어요. 다시 시도해 주세요.");
@@ -91,46 +121,55 @@ export function OnboardingFlow() {
         </div>
 
         {step === "login" && (
-          <section className="ob-card ob-fade">
-            <div className="ob-mark">✦</div>
-            <h1 className="ob-h1">CareerTuner에<br />오신 것을 환영합니다</h1>
-            <p className="ob-sub">한 줄이면 지원 한 건을 통째로 준비해요.</p>
+          <section className="ob-card ob-login ob-fade">
+            <img className="ob-logo" src="/icons/icon.svg" alt="CareerTuner" width={72} height={72} />
+            <h1 className="ob-welcome">
+              <span className="ob-brand">CareerTuner</span>에<br />오신 것을 환영합니다
+            </h1>
 
             <div className="ob-social">
-              {PROVIDERS.map(([id, label, icon]) => (
-                <button key={id} className="ob-soc" onClick={doLogin} disabled={busy}>
-                  <span className="ob-soc-i">{icon}</span>
-                  {label}으로 계속하기
+              {PROVIDERS.map((p) => (
+                <button key={p.id} className={`ob-soc s-${p.cls}`} onClick={doLogin} disabled={busy}>
+                  <span className="ob-soc-ic">{p.icon}</span>
+                  <span className="ob-soc-tx">{p.label}로 계속하기</span>
                 </button>
               ))}
             </div>
 
             <div className="ob-or"><span>또는</span></div>
 
-            <div className="ob-form">
-              <input
-                className="ob-input"
-                type="email"
-                placeholder="이메일"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                onKeyDown={(e) => e.key === "Enter" && doLogin()}
-              />
-              <input
-                className="ob-input"
-                type="password"
-                placeholder="비밀번호"
-                value={pw}
-                onChange={(e) => setPw(e.target.value)}
-                onKeyDown={(e) => e.key === "Enter" && doLogin()}
-              />
-              {err && <div className="ob-err">{err}</div>}
-              <button className="ob-primary" onClick={doLogin} disabled={busy}>
-                {busy ? "잠시만요…" : "이메일로 계속하기"}
+            {!emailOpen ? (
+              <button className="ob-soc s-mail" onClick={() => setEmailOpen(true)} disabled={busy}>
+                <span className="ob-soc-ic">{MailIcon}</span>
+                <span className="ob-soc-tx">이메일로 계속하기</span>
               </button>
-            </div>
+            ) : (
+              <div className="ob-form">
+                <input
+                  className="ob-input"
+                  type="email"
+                  placeholder="이메일"
+                  autoFocus
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && doLogin()}
+                />
+                <input
+                  className="ob-input"
+                  type="password"
+                  placeholder="비밀번호"
+                  value={pw}
+                  onChange={(e) => setPw(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && doLogin()}
+                />
+                {err && <div className="ob-err">{err}</div>}
+                <button className="ob-primary" onClick={doLogin} disabled={busy}>
+                  {busy ? "잠시만요…" : "계속하기"}
+                </button>
+              </div>
+            )}
 
-            {USE_MOCK && <p className="ob-hint">데모 모드 — 아무 값이나 입력하면 바로 들어가져요.</p>}
+            {USE_MOCK && <p className="ob-hint">데모 — 아무 버튼이나 누르면 바로 들어가져요.</p>}
             <p className="ob-legal">
               계속 진행하면 <a href="/legal/terms">서비스 약관</a>에 동의하며,{" "}
               <a href="/legal/privacy">개인정보 처리방침</a>을 읽었음을 확인하는 것입니다.
@@ -142,18 +181,14 @@ export function OnboardingFlow() {
 
         {step === "permission" && (
           <section className="ob-card ob-fade ob-center">
-            <div className="ob-bell">🔔</div>
-            <h1 className="ob-h1">알림을 켜둘까요?</h1>
-            <p className="ob-sub">
-              면접 준비 진행 상황과 결과를 실시간으로 받아볼 수 있어요. 언제든 설정에서 끌 수 있습니다.
-            </p>
+            <div className="ob-bell"><Bell size={30} strokeWidth={1.6} /></div>
+            <h1 className="ob-welcome ob-welcome-sm">알림 권한 요청</h1>
+            <p className="ob-sub">메시지와 면접 진행 상황을 실시간으로 받기 위해 필요합니다.</p>
             <div className="ob-actions">
               <button className="ob-primary" onClick={askPush} disabled={busy}>
-                {busy ? "요청 중…" : "알림 허용"}
+                {busy ? "요청 중…" : "허용"}
               </button>
-              <button className="ob-ghost" onClick={finish} disabled={busy}>
-                나중에 할게요
-              </button>
+              <button className="ob-ghost" onClick={finish} disabled={busy}>나중에</button>
             </div>
           </section>
         )}
@@ -162,6 +197,14 @@ export function OnboardingFlow() {
   );
 }
 
+const BENEFIT_ICON: Record<string, LucideIcon> = {
+  APPLICATION_ANALYSIS: FileText,
+  MOCK_INTERVIEW: MessageSquare,
+  VOICE_INTERVIEW: Mic,
+  VIDEO_ANALYSIS: Video,
+  AVATAR_INTERVIEW: UserRound,
+};
+
 function BillingStep({ onFree, onSkip }: { onFree: () => void; onSkip: () => void }) {
   const pro = useMemo(() => {
     const plans = toDisplayPlans(subscriptionFallbackPlans());
@@ -169,32 +212,39 @@ function BillingStep({ onFree, onSkip }: { onFree: () => void; onSkip: () => voi
   }, []);
 
   return (
-    <section className="ob-card ob-fade">
-      <button className="ob-x" onClick={onSkip} aria-label="건너뛰기">✕</button>
-      <div className="ob-mark">✨</div>
-      <h1 className="ob-h1">더 빠르게 준비하려면</h1>
-      <p className="ob-sub">{pro.name} 플랜으로 모든 기능을 충분히 쓸 수 있어요.</p>
+    <section className="ob-card ob-bill ob-fade">
+      <button className="ob-x" onClick={onSkip} aria-label="건너뛰기">
+        <X size={18} />
+      </button>
+      <div className="ob-spark">
+        <Sparkles size={34} strokeWidth={1.6} />
+      </div>
+      <h1 className="ob-welcome ob-welcome-sm">
+        {pro.name} 플랜으로<br />더 빠르게 준비하기
+      </h1>
 
       <ul className="ob-benefits">
-        {pro.benefits.map((b) => (
-          <li key={b.code} className={b.disabled ? "off" : ""}>
-            <span className="ob-b-ic">{b.disabled ? "—" : b.premium ? "★" : "✓"}</span>
-            <span className="ob-b-label">{b.label}</span>
-            <span className="ob-b-text">{b.text}</span>
-          </li>
-        ))}
+        {pro.benefits.map((b) => {
+          const Icon = BENEFIT_ICON[b.code] ?? Sparkles;
+          return (
+            <li key={b.code} className={b.disabled ? "off" : ""}>
+              <Icon className="ob-b-ic" size={19} strokeWidth={1.7} />
+              <span className="ob-b-label">{b.label}</span>
+              <span className="ob-b-text">{b.text}</span>
+            </li>
+          );
+        })}
       </ul>
 
-      <div className="ob-price">
-        <span className="ob-price-plan">{pro.name}</span>
-        <span className="ob-price-val">{pro.monthlyPrice}</span>
-        <span className="ob-price-per">/ 월</span>
+      <div className="ob-pricebox">
+        <span className="ob-radio" />
+        <span className="ob-pb-name">{pro.name}</span>
+        <span className="ob-pb-val">{pro.monthlyPrice}</span>
+        <span className="ob-pb-per">/ 월</span>
       </div>
 
-      <div className="ob-actions">
-        <button className="ob-primary" onClick={onFree}>무료로 계속하기</button>
-        <button className="ob-ghost" onClick={onSkip}>요금제는 나중에</button>
-      </div>
+      <button className="ob-primary" onClick={onFree}>무료로 계속하기</button>
+      <button className="ob-textbtn" onClick={onSkip}>요금제는 나중에</button>
       <p className="ob-hint">결제 안 해도 무료로 시작할 수 있어요. 필요할 때 업그레이드하면 됩니다.</p>
     </section>
   );

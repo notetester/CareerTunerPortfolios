@@ -19,14 +19,16 @@
   position: fixed;
   inset: 0;
   z-index: 60;
-  background: var(--bg);
+  background-color: var(--bg);
+  background-image: radial-gradient(rgba(120, 125, 170, 0.07) 1px, transparent 1.4px);
+  background-size: 22px 22px;
   color: var(--fg);
   display: flex;
   align-items: center;
   justify-content: center;
   padding: max(24px, env(safe-area-inset-top)) 20px max(24px, env(safe-area-inset-bottom));
   overflow-y: auto;
-  font-family: "Pretendard", -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  font-family: "Wanted Sans Variable", "Pretendard Variable", "Pretendard", -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Segoe UI", Roboto, sans-serif;
   -webkit-font-smoothing: antialiased;
 }
 
@@ -45,22 +47,34 @@
   border-radius: 50%; background: rgba(113, 112, 255, 0.14);
   border: 1px solid rgba(113, 112, 255, 0.3); color: var(--halo);
 }
-.ob-bell { font-size: 24px; }
+.ob-bell { color: #6ea8ff; }
+.ob-bell svg { display: block; }
 
 .ob-h1 { font-size: 24px; line-height: 1.3; font-weight: 800; letter-spacing: -0.02em; margin: 0 0 8px; text-align: center; }
 .ob-sub { font-size: 13.5px; color: var(--muted); margin: 0 0 22px; text-align: center; line-height: 1.55; }
 
-/* 소셜 버튼 */
-.ob-social { display: flex; flex-direction: column; gap: 10px; }
+/* 로고 + 환영 제목 (마누스 레이아웃) */
+.ob-logo { display: block; width: 72px; height: 72px; margin: 6px auto 26px; border-radius: 18px; }
+.ob-welcome { font-size: 28px; line-height: 1.32; font-weight: 800; letter-spacing: -0.02em; text-align: center; margin: 0 0 38px; }
+.ob-brand { background: var(--grad); -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; color: transparent; }
+
+/* 소셜/계속 버튼 — 브랜드색 아이콘 좌측, 텍스트 중앙 정렬 */
+.ob-social { display: flex; flex-direction: column; gap: 11px; }
 .ob-soc {
-  display: flex; align-items: center; gap: 12px;
-  width: 100%; padding: 13px 16px; font-size: 14px; font-weight: 600;
-  background: var(--card); color: var(--fg); border: 1px solid var(--border2);
-  border-radius: var(--r); cursor: pointer; transition: border-color 0.15s, background 0.15s;
+  position: relative; display: flex; align-items: center; justify-content: center;
+  width: 100%; padding: 15px 18px; font-size: 14.5px; font-weight: 600;
+  background: #17181b; color: var(--fg); border: 1px solid var(--border);
+  border-radius: 14px; cursor: pointer; transition: background 0.15s, border-color 0.15s;
 }
-.ob-soc:hover:not(:disabled) { border-color: var(--accent2); background: var(--card2); }
-.ob-soc:disabled { opacity: 0.5; cursor: default; }
-.ob-soc-i { width: 22px; height: 22px; display: grid; place-items: center; font-weight: 800; font-size: 13px; border-radius: 6px; background: rgba(255, 255, 255, 0.08); }
+.ob-soc:hover:not(:disabled) { background: #1e1f23; border-color: var(--border2); }
+.ob-soc:disabled { opacity: 0.55; cursor: default; }
+.ob-soc.s-mail { margin-top: 11px; }
+.ob-soc-ic { position: absolute; left: 15px; width: 26px; height: 26px; display: grid; place-items: center; border-radius: 50%; }
+.ob-soc-tx { text-align: center; }
+.s-g .ob-soc-ic { background: #fff; }
+.s-k .ob-soc-ic { background: #fee500; }
+.s-n .ob-soc-ic { background: #03c75a; }
+.s-mail .ob-soc-ic { background: rgba(255, 255, 255, 0.1); color: var(--muted); }
 
 .ob-or { display: flex; align-items: center; gap: 12px; margin: 18px 0; color: var(--muted2); font-size: 12px; }
 .ob-or::before, .ob-or::after { content: ""; flex: 1; height: 1px; background: var(--border); }
@@ -97,25 +111,36 @@
 
 /* 닫기(X) — 결제 스킵 */
 .ob-x {
-  position: absolute; top: -6px; right: -6px; width: 32px; height: 32px;
-  display: grid; place-items: center; font-size: 16px;
+  position: absolute; top: -6px; right: -6px; width: 34px; height: 34px;
+  display: grid; place-items: center;
   background: var(--card); color: var(--muted); border: 1px solid var(--border); border-radius: 50%; cursor: pointer;
 }
 .ob-x:hover { color: var(--fg); }
 
-/* 혜택 리스트 */
-.ob-benefits { list-style: none; margin: 4px 0 18px; padding: 16px; background: var(--card); border: 1px solid var(--border); border-radius: var(--r-lg); display: flex; flex-direction: column; gap: 12px; }
-.ob-benefits li { display: flex; align-items: center; gap: 11px; font-size: 13.5px; }
+/* 상단 sparkle (이모지 대신 라인 아이콘) */
+.ob-spark { display: grid; place-items: center; color: var(--halo); margin: 4px auto 18px; }
+.ob-welcome-sm { font-size: 23px; margin-bottom: 24px; }
+
+/* 혜택 리스트 — 라인 아이콘 좌측 */
+.ob-benefits { list-style: none; margin: 4px 0 20px; padding: 18px; background: var(--card); border: 1px solid var(--border); border-radius: var(--r-lg); display: flex; flex-direction: column; gap: 15px; }
+.ob-benefits li { display: flex; align-items: center; gap: 13px; font-size: 14px; }
 .ob-benefits li.off { opacity: 0.4; }
-.ob-b-ic { width: 20px; text-align: center; color: var(--halo); font-weight: 700; flex: none; }
+.ob-b-ic { color: var(--halo); flex: none; }
 .ob-benefits li.off .ob-b-ic { color: var(--muted2); }
-.ob-b-label { flex: 1; }
+.ob-b-label { flex: 1; font-weight: 500; }
 .ob-b-text { color: var(--muted); font-size: 12.5px; }
 
-.ob-price { display: flex; align-items: baseline; gap: 8px; justify-content: center; margin: 0 0 18px; }
-.ob-price-plan { font-size: 13px; color: var(--muted); font-weight: 600; }
-.ob-price-val { font-size: 22px; font-weight: 800; letter-spacing: -0.02em; }
-.ob-price-per { font-size: 13px; color: var(--muted); }
+/* 가격 박스 (마누스풍 라디오 선택) */
+.ob-pricebox { display: flex; align-items: center; gap: 12px; padding: 16px 18px; border: 1.5px solid var(--accent2); border-radius: 14px; margin: 0 0 16px; }
+.ob-radio { width: 20px; height: 20px; border-radius: 50%; border: 2px solid var(--fg); position: relative; flex: none; }
+.ob-radio::after { content: ""; position: absolute; inset: 4px; border-radius: 50%; background: var(--fg); }
+.ob-pb-name { font-weight: 700; font-size: 15px; }
+.ob-pb-val { margin-left: auto; font-size: 18px; font-weight: 800; letter-spacing: -0.02em; }
+.ob-pb-per { color: var(--muted); font-size: 13px; }
+
+/* 텍스트 버튼 */
+.ob-textbtn { display: block; width: 100%; padding: 11px; margin-top: 4px; font-size: 13px; color: var(--muted); background: 0; border: 0; cursor: pointer; }
+.ob-textbtn:hover { color: var(--fg); }
 
 @keyframes ob-fade-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
 .ob-fade { animation: ob-fade-in 0.28s var(--ease); }
