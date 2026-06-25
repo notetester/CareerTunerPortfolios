@@ -126,13 +126,11 @@ public class ChatbotController {
         if (intakeModeStore.isActive(conversationId)) {
             if (isExitCommand(question)) {
                 intakeModeStore.exit(conversationId);
-                log.info("//TODO[diag-unified-route] mode=active exit -> route=이탈(일반복귀)");
                 return ApiResponse.ok(new ChatAskResponse(
                         conversationId,
                         "일반 상담 모드로 돌아왔어요. 무엇이든 물어보세요.",
                         List.of(), List.of(), "이탈", null, false));
             }
-            log.info("//TODO[diag-unified-route] mode=active -> route=③(유지)");
             return ApiResponse.ok(enterIntake(conversationId, question, userId, "③(유지)"));
         }
 
@@ -149,10 +147,8 @@ public class ChatbotController {
         // 확인 대기(1턴) 소비: 이 턴은 라우팅을 돌리지 않는다. (오분류 안전판 A)
         if (routeConfirmStore.consumePending(conversationId)) {
             if (isAffirmative(question)) {
-                log.info("//TODO[diag-unified-route] confirmPending=true 긍정 -> route=③(확인후)");
                 return ApiResponse.ok(enterIntake(conversationId, question, userId, "③(확인후)"));
             }
-            log.info("//TODO[diag-unified-route] confirmPending=true 부정 -> route=①(확인후)");
             return ApiResponse.ok(faqPath(conversationId, question, userId, "①(확인후)"));
         }
 
@@ -160,12 +156,10 @@ public class ChatbotController {
         UnifiedChatRouter.Decision d = router.decide(question);
         switch (d.target()) {
             case INTAKE_DIRECT -> {
-                logDiag(d, "③");
                 return ApiResponse.ok(enterIntake(conversationId, question, userId, "③"));
             }
             case INTAKE_CONFIRM -> {
                 routeConfirmStore.markPending(conversationId);
-                logDiag(d, "확인반환");
                 return ApiResponse.ok(new ChatAskResponse(
                         conversationId,
                         "면접 준비를 도와드릴까요?",
@@ -177,7 +171,6 @@ public class ChatbotController {
             }
             case FALLBACK -> {
                 // 약신호(FAQ도 의도도 불명확) → 에이전트로 보내지 않고 정중한 되묻기로 끊는다.
-                logDiag(d, "되묻기");
                 return ApiResponse.ok(new ChatAskResponse(
                         conversationId,
                         "질문을 정확히 이해하지 못했어요. 좀 더 구체적으로 말씀해 주시겠어요? "
@@ -189,21 +182,9 @@ public class ChatbotController {
                         false));
             }
             default -> {
-                logDiag(d, "①");
                 return ApiResponse.ok(faqPath(conversationId, question, userId, "①"));
             }
         }
-    }
-
-    /** //TODO[diag-unified-route] 요청당 진단 로그(라우팅 점수·구역·화행·경로). */
-    private void logDiag(UnifiedChatRouter.Decision d, String route) {
-        log.info("//TODO[diag-unified-route] faqScore={} intakeScore={} diff={} zone={} speechAct={} route={}",
-                String.format("%.3f", d.faqScore()),
-                String.format("%.3f", d.intakeScore()),
-                String.format("%+.3f", d.diff()),
-                d.boundary() ? "경계" : "명확",
-                d.speechAct(),
-                route);
     }
 
     private boolean isAffirmative(String question) {
