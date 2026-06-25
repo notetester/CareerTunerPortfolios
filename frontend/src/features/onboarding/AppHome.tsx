@@ -57,6 +57,7 @@ export function AppHome() {
         <div className="ah-brand">CareerTuner</div>
         <div className="ah-right">
           <ThemeToggle />
+          {/* 크레딧 잔량 = mock. 구독 사용권 잔량 표시·실행 전 차감 미리보기는 E 결제 DB/UX 합의 후. 차감은 E 공통서비스가 사용권 먼저→크레딧 보조로 처리(면접 파트는 호출만). */}
           <span className="ah-credit"><Sparkles size={13} strokeWidth={2} /> 2,400</span>
           <button className="ah-up" onClick={() => navigate("/pricing")}>업그레이드</button>
         </div>
