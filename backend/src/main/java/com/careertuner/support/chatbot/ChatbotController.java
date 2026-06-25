@@ -12,6 +12,7 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -24,6 +25,7 @@ import com.careertuner.ai.chat.ChatAskRequest;
 import com.careertuner.ai.chat.ChatAskResponse;
 import com.careertuner.ai.chat.ChatHistoryResponse;
 import com.careertuner.ai.chat.ChatHistoryResponse.ChatHistoryMessage;
+import com.careertuner.ai.chat.ChatSessionSummary;
 import com.careertuner.ai.chat.ChatResponse;
 import com.careertuner.ai.chat.ChatResponse.SiteLink;
 import com.careertuner.ai.chat.CommunityChatAgent;
@@ -346,6 +348,45 @@ public class ChatbotController {
         Long conversationId = memoryStore.findRecentConversation(authUser.id());
         if (conversationId == null) {
             return ApiResponse.ok(null); // 이전 대화 없음 → 빈 채팅으로 시작
+        }
+        List<ChatHistoryMessage> messages = memoryStore.getMessages(conversationId).stream()
+                .map(this::toHistoryMessage)
+                .filter(m -> m != null)
+                .collect(Collectors.toList());
+        return ApiResponse.ok(new ChatHistoryResponse(conversationId, messages));
+    }
+
+    /**
+     * 세션 목록(사이드바): 로그인 유저의 인테이크(지원건) 세션 최대 5건(application_case_id 있는 것만, 최근순).
+     * 잡담/FAQ 대화는 application_case_id NULL 이라 자연 제외된다.
+     * GET /api/chatbot/conversations
+     */
+    @GetMapping("/chatbot/conversations")
+    public ApiResponse<List<ChatSessionSummary>> listConversations(@AuthenticationPrincipal AuthUser authUser) {
+        if (authUser == null) {
+            return ApiResponse.ok(List.of());
+        }
+        List<ChatSessionSummary> sessions = memoryStore.listIntakeSessions(authUser.id()).stream()
+                .map(r -> new ChatSessionSummary(
+                        ((Number) r.get("conversationId")).longValue(),
+                        (String) r.get("title")))
+                .collect(Collectors.toList());
+        return ApiResponse.ok(sessions);
+    }
+
+    /**
+     * 세션 클릭 시 그 대화의 메시지 로드(이어보기). 본인 대화만 접근 가능.
+     * GET /api/chatbot/conversations/{conversationId}/messages
+     */
+    @GetMapping("/chatbot/conversations/{conversationId}/messages")
+    public ApiResponse<ChatHistoryResponse> conversationMessages(@PathVariable Long conversationId,
+                                                                 @AuthenticationPrincipal AuthUser authUser) {
+        if (authUser == null) {
+            return ApiResponse.error("UNAUTHORIZED", "로그인이 필요합니다.");
+        }
+        Long owner = memoryStore.findOwnerUserId(conversationId);
+        if (owner == null || !owner.equals(authUser.id())) {
+            return ApiResponse.error("FORBIDDEN", "접근할 수 없는 대화입니다.");
         }
         List<ChatHistoryMessage> messages = memoryStore.getMessages(conversationId).stream()
                 .map(this::toHistoryMessage)

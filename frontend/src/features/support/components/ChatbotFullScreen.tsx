@@ -10,17 +10,19 @@ export function ChatbotFullScreen() {
   const chatbot = useChatbot();
   const {
     messages, sendMessage, botStatus, restoreRecent,
-    sessions, activeSessionId, setActiveSessionId, newSession,
+    sessions, activeSessionId, newSession,
+    loadSessions, openSession,
     startVoice, toggleTts,
   } = chatbot;
 
   const [input, setInput] = useState("");
   const scrollRef = useRef<HTMLDivElement>(null);
 
-  // 풀스크린은 진입 자체가 사용 의도 → 마운트 시 이전 대화 복원(로그인 한정, 1회).
+  // 풀스크린은 진입 자체가 사용 의도 → 마운트 시 이전 대화 복원(로그인 한정, 1회) + 세션 목록 로드.
   useEffect(() => {
     restoreRecent();
-  }, [restoreRecent]);
+    loadSessions();
+  }, [restoreRecent, loadSessions]);
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
@@ -56,7 +58,7 @@ export function ChatbotFullScreen() {
 
         <div className="flex-1 overflow-y-auto px-2.5 flex flex-col gap-1">
           {sessions.map((s) => (
-            <button key={s.id} onClick={() => setActiveSessionId(s.id)}
+            <button key={s.id} onClick={() => openSession(s.id)}
               className={`text-left px-3 py-2.5 rounded-[10px] transition-colors ${
                 s.id === activeSessionId
                   ? "bg-card border border-blue-600/25 shadow-[0_1px_2px_rgba(15,23,42,0.05)]"

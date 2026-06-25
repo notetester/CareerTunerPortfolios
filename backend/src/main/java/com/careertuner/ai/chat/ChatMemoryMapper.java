@@ -1,5 +1,6 @@
 package com.careertuner.ai.chat;
 
+import java.util.List;
 import java.util.Map;
 
 import org.apache.ibatis.annotations.Mapper;
@@ -34,4 +35,10 @@ public interface ChatMemoryMapper {
     void bindCase(@Param("conversationId") Long conversationId,
                   @Param("applicationCaseId") Long applicationCaseId,
                   @Param("title") String title);
+
+    /** 유저의 인테이크(지원건) 세션 목록 — application_case_id 있는 것만, 최근순 최대 5(사이드바용). */
+    List<Map<String, Object>> findIntakeSessionsByUser(@Param("userId") Long userId);
+
+    /** 대화 소유자 user_id(없으면 null). 메시지 조회 권한 확인용. */
+    Long findOwnerUserId(@Param("conversationId") Long conversationId);
 }

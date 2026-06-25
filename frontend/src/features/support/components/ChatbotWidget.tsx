@@ -4,7 +4,7 @@ import {
   Sparkles, MessageCircle, Mic, MicOff, ArrowUp, Minus, X,
   KeyRound, CreditCard, FileText, FileSearch, Pause, Volume2,
   ArrowUpRight, Shield, SearchX, Headset, PenLine, WifiOff,
-  RotateCw, Check, Keyboard, ArrowRight, Play, LogOut,
+  RotateCw, Check, Keyboard, ArrowRight, Play, LogOut, History, Plus,
 } from "lucide-react";
 import { useChatbot } from "../hooks/useChatbot";
 import type {
@@ -74,11 +74,15 @@ function ChatbotPanel({ chatbot }: ChatbotPanelProps) {
     orchestrator, runStarted, runParts, runRunning, runPlan, runCaseId,
     selectCase, selectMode,
     showExitSheet, openExitSheet, closeExitSheet, exitOrchestrator,
+    sessions, activeSessionId, openSession, newSession, loadSessions,
   } = chatbot;
 
   const navigate = useNavigate();
   const [input, setInput] = useState("");
+  const [showSessions, setShowSessions] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
+
+  const handleOpenSessions = () => { loadSessions(); setShowSessions(true); };
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
@@ -130,6 +134,7 @@ function ChatbotPanel({ chatbot }: ChatbotPanelProps) {
         orchestrator={orchestrator}
         isDisconnected={isDisconnected}
         isVoiceListening={voiceState === "listening"}
+        onSessions={handleOpenSessions}
         onMinimize={minimize}
         onClose={close}
       />
@@ -201,6 +206,17 @@ function ChatbotPanel({ chatbot }: ChatbotPanelProps) {
 
       {/* ── Exit confirm sheet ── */}
       {showExitSheet && <ExitSheet onConfirm={exitOrchestrator} onCancel={closeExitSheet} />}
+
+      {/* ── Session panel (사이드바: 목록·전환·새 세션) ── */}
+      {showSessions && (
+        <SessionPanel
+          sessions={sessions}
+          activeSessionId={activeSessionId}
+          onOpen={(id) => { openSession(id); setShowSessions(false); }}
+          onNew={() => { newSession(); setShowSessions(false); }}
+          onClose={() => setShowSessions(false)}
+        />
+      )}
     </div>
   );
 }
@@ -329,11 +345,64 @@ function ExitSheet({ onConfirm, onCancel }: { onConfirm: () => void; onCancel: (
   );
 }
 
+/** 세션 사이드바(오버레이): 인테이크 세션 목록 + 전환 + 새 세션. */
+function SessionPanel({ sessions, activeSessionId, onOpen, onNew, onClose }: {
+  sessions: { id: string; title: string }[];
+  activeSessionId: string;
+  onOpen: (id: string) => void;
+  onNew: () => void;
+  onClose: () => void;
+}) {
+  return (
+    <div className="absolute inset-0 z-10 flex flex-col" style={{ background: "rgba(20,16,40,0.42)" }}
+      onClick={onClose}>
+      <div className="m-3.5 rounded-[18px] bg-card overflow-hidden flex flex-col max-h-[460px]"
+        style={{ boxShadow: "0 20px 50px rgba(20,16,40,0.4)" }}
+        onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-between px-4 py-3 border-b border-black/8">
+          <div className="text-[13.5px] font-extrabold">면접 준비 세션</div>
+          <button onClick={onClose} aria-label="닫기"
+            className="w-7 h-7 rounded-lg flex items-center justify-center text-slate-400 hover:bg-slate-100 transition-colors">
+            <X size={15} />
+          </button>
+        </div>
+        <div className="p-3">
+          <button onClick={onNew}
+            className="flex items-center justify-center gap-1.5 w-full h-[40px] rounded-lg text-white text-[13px] font-bold hover:opacity-90 transition-opacity"
+            style={{ background: "var(--gradient-orchestrator)" }}>
+            <Plus size={15} />
+            새 면접 준비
+          </button>
+        </div>
+        <div className="px-3 pb-3 overflow-y-auto flex flex-col gap-1.5">
+          {sessions.length === 0 ? (
+            <div className="text-[12px] leading-[1.6] text-slate-400 text-center py-6">
+              아직 준비 중인 지원 건이 없어요.<br />“카카오 백엔드 면접 준비해줘”처럼 시작해 보세요.
+            </div>
+          ) : (
+            sessions.map((s) => (
+              <button key={s.id} onClick={() => onOpen(s.id)}
+                className={`text-left px-3 py-2.5 rounded-[10px] transition-colors ${
+                  s.id === activeSessionId
+                    ? "bg-secondary border border-black/10"
+                    : "border border-transparent hover:bg-secondary/60"
+                }`}>
+                <div className="text-[13px] font-bold text-foreground truncate">{s.title}</div>
+                <div className="text-[11px] text-muted-foreground mt-0.5">면접 준비 세션</div>
+              </button>
+            ))
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 /* ════════════════ Sub-components ════════════════ */
 
-function WidgetHeader({ orchestrator, isDisconnected, isVoiceListening, onMinimize, onClose }: {
+function WidgetHeader({ orchestrator, isDisconnected, isVoiceListening, onSessions, onMinimize, onClose }: {
   orchestrator?: boolean; isDisconnected: boolean; isVoiceListening: boolean;
-  onMinimize: () => void; onClose: () => void;
+  onSessions: () => void; onMinimize: () => void; onClose: () => void;
 }) {
   return (
     <div className="flex items-center gap-2.5 px-4 py-3.5 border-b border-black/8 transition-colors"
@@ -365,6 +434,10 @@ function WidgetHeader({ orchestrator, isDisconnected, isVoiceListening, onMinimi
         )}
       </div>
       <div className="ml-auto flex gap-1 text-slate-400">
+        <button onClick={onSessions} aria-label="면접 준비 세션"
+          className="w-[30px] h-[30px] rounded-lg flex items-center justify-center hover:bg-slate-100 transition-colors">
+          <History size={16} />
+        </button>
         <button onClick={onMinimize} className="w-[30px] h-[30px] rounded-lg flex items-center justify-center hover:bg-slate-100 transition-colors">
           <Minus size={17} />
         </button>

@@ -43,9 +43,11 @@ interface ChatHistoryResponse {
   messages: { role: "user" | "bot"; text: string }[];
 }
 
-const MOCK_SESSIONS: ChatSession[] = [
-  { id: "s1", title: "새 대화", lastMessage: "방금", meta: "", updatedAt: Date.now() },
-];
+/* ── 세션 목록 API 응답 (GET /chatbot/conversations) ── */
+interface SessionSummaryDto {
+  conversationId: number;
+  title: string | null;
+}
 
 export function useChatbot() {
   const [isOpen, setIsOpen] = useState(false);
@@ -53,8 +55,8 @@ export function useChatbot() {
   const [botStatus, setBotStatus] = useState<BotStatus>("idle");
   const [voiceState, setVoiceState] = useState<VoiceState>("idle");
   const [interimTranscript, setInterimTranscript] = useState("");
-  const [sessions] = useState<ChatSession[]>(MOCK_SESSIONS);
-  const [activeSessionId, setActiveSessionId] = useState<string>("s1");
+  const [sessions, setSessions] = useState<ChatSession[]>([]);
+  const [activeSessionId, setActiveSessionId] = useState<string>("");
 
   // ── 오케스트레이터 모드 상태 ──
   const [orchestrator, setOrchestrator] = useState(false);   // 모드 배너/색 분기의 단일 소스
@@ -99,10 +101,54 @@ export function useChatbot() {
       });
   }, []);
 
+  /* ── 세션 목록(사이드바) 로드 — 로그인 유저의 인테이크(지원건) 세션 최대 5건. ── */
+  const loadSessions = useCallback(() => {
+    if (!getAccessToken()) { setSessions([]); return; }
+    api<SessionSummaryDto[] | null>("/chatbot/conversations")
+      .then((data) => {
+        setSessions(
+          (data ?? []).map((s) => ({
+            id: String(s.conversationId),
+            title: s.title || "면접 준비 세션",
+            lastMessage: "면접 준비",
+            meta: "",
+            updatedAt: 0,
+          })),
+        );
+      })
+      .catch((err) => console.error("세션 목록 로드 실패:", err));
+  }, []);
+
+  /* ── 세션 클릭 → 그 conversationId 로 전환 + 메시지 로드. 다음 요청부터 백엔드가 슬롯 복원(Phase D). ── */
+  const openSession = useCallback((id: string) => {
+    const conversationId = Number(id);
+    if (!Number.isFinite(conversationId)) return;
+    conversationIdRef.current = conversationId;
+    setActiveSessionId(id);
+    run.reset();
+    runStartedRef.current = false;
+    setRunStarted(false);
+    setRunCaseId(null);
+    setOrchestrator(true); // 인테이크(지원건) 세션 — 모드 배너 유지
+    setShowExitSheet(false);
+    api<ChatHistoryResponse | null>(`/chatbot/conversations/${conversationId}/messages`)
+      .then((data) => {
+        const msgs: ChatMessage[] = (data?.messages ?? []).map((m) => ({
+          id: nextId(), role: m.role, text: m.text,
+          evidence: [], links: [], quickReplies: [],
+          ttsState: "idle" as const, ttsProgress: 0, timestamp: Date.now(),
+        }));
+        setMessages(msgs);
+        setBotStatus(msgs.length ? "answered" : "idle");
+      })
+      .catch((err) => console.error("세션 로드 실패:", err));
+  }, [run]);
+
   const open = useCallback(() => {
     setIsOpen(true);
     restoreRecent();
-  }, [restoreRecent]);
+    loadSessions();
+  }, [restoreRecent, loadSessions]);
   const close = useCallback(() => setIsOpen(false), []);
   const minimize = useCallback(() => setIsOpen(false), []);
 
@@ -269,6 +315,7 @@ export function useChatbot() {
     retryConnection,
     toggleTts,
     sessions, activeSessionId, setActiveSessionId, newSession,
+    loadSessions, openSession,
     // 오케스트레이터
     orchestrator,
     runStarted,

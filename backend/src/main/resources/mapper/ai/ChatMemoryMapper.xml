@@ -40,4 +40,20 @@
          WHERE conversation_id = #{conversationId}
     </update>
 
+    <select id="findIntakeSessionsByUser" resultType="map">
+        SELECT conversation_id AS conversationId,
+               title           AS title
+          FROM chatbot_conversation_memory
+         WHERE user_id = #{userId}
+           AND application_case_id IS NOT NULL
+         ORDER BY updated_at DESC
+         LIMIT 5
+    </select>
+
+    <select id="findOwnerUserId" resultType="java.lang.Long">
+        SELECT user_id
+          FROM chatbot_conversation_memory
+         WHERE conversation_id = #{conversationId}
+    </select>
+
 </mapper>
