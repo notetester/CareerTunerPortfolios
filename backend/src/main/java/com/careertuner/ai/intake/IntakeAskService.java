@@ -2,6 +2,7 @@ package com.careertuner.ai.intake;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -20,12 +21,11 @@ import dev.langchain4j.data.message.ChatMessage;
  * 인테이크 한 턴 처리 코어. {@link IntakeController} 가 쓰던 본문을 그대로 옮긴 것으로,
  * 통합 라우터(① 입구)가 ③ 입구로 보낼 때도 같은 로직을 재사용한다(중복 제거).
  *
- * <p><b>범위:</b> 한 턴만 처리한다 — 슬롯 접지·ready 판정 위임 등 ③ 내부 멀티턴 동작은 변경하지 않는다.
- * conversationId 발급은 호출부가 책임진다(여기는 non-null 가정).</p>
+ * <p><b>지원건 세션 fork(Phase B):</b> 한 턴에 지원 건이 새로 확정되면 새 conversationId 를 발급해
+ * "인테이크 진입~confirm" 구간만 복사하고 application_case_id·title 을 바인딩한다.</p>
  *
- * <p><b>지원건 세션 fork(Phase B):</b> 한 턴에 지원 건이 새로 확정되면(슬롯 caseId) 새 conversationId 를
- * 발급해 "인테이크 진입~confirm" 구간만 복사하고 application_case_id·title 을 바인딩한다. 응답의
- * conversationId 가 새 id 로 바뀌어 내려가고, 프론트는 그 값을 그대로 다음 턴에 회신한다(자동 채택).</p>
+ * <p><b>슬롯 영속(Phase C/D):</b> 턴 종료 후 확정 슬롯(caseId·mode·originalQuery)을
+ * chatbot_intake_slot 에 upsert 하고, 메모리에 슬롯이 없으면(재시작/재방문) DB 에서 복원한다.</p>
  */
 @Service
 public class IntakeAskService {
@@ -36,20 +36,26 @@ public class IntakeAskService {
     private final IntakeSlotTrace trace;
     private final AutoPrepIntakeService autoPrepIntakeService;
     private final MyBatisChatMemoryStore memoryStore;
+    private final ChatbotIntakeSlotMapper slotMapper;
 
     public IntakeAskService(IntakeChatAgent agent,
                             IntakeSlotTrace trace,
                             AutoPrepIntakeService autoPrepIntakeService,
-                            MyBatisChatMemoryStore memoryStore) {
+                            MyBatisChatMemoryStore memoryStore,
+                            ChatbotIntakeSlotMapper slotMapper) {
         this.agent = agent;
         this.trace = trace;
         this.autoPrepIntakeService = autoPrepIntakeService;
         this.memoryStore = memoryStore;
+        this.slotMapper = slotMapper;
     }
 
     public IntakeAskResponse ask(Long userId, String message, Long conversationId) {
         trace.clear();
         try {
+            // [Phase D] 재시작/재방문 복원: 메모리에 슬롯이 없고 DB 에 있으면 적재(begin 전에).
+            restoreSlotIfAbsent(conversationId);
+
             // 요청 컨텍스트 주입 + 첫 발화면 originalQuery 고정(툴이 userId 를, 컨트롤러가 query 를 읽는다).
             trace.begin(userId, conversationId, message);
             // 첫 인테이크 턴이면 "진입 직전 memory 메시지 수"를 fork 구간 시작점으로 1회 기록(B-0 확정).
@@ -63,13 +69,14 @@ public class IntakeAskService {
                     slots.originalQuery(), slots.caseId(), slots.mode(), null, null);
 
             // ready/nextAsk 판정은 D 의 기존 서비스에 위임(의존그래프·파트선택 재구현 금지).
-            // candidates·modes 는 D 가 nextAsk 에 맞춰 결정적으로 채워주는 칩 후보 — 버리지 않고 그대로 전달한다.
             AutoPrepIntakeResponse check = autoPrepIntakeService.intake(userId, autoPrepRequest);
 
             // ★ 지원건 세션 fork: 이 턴에 지원 건이 새로 확정됐으면 새 conversationId 로 진입~confirm 구간을 옮긴다.
-            //   (D 호출 성공 후에 수행 — 실패 턴은 orphan 대화를 만들지 않는다.)
             Long effectiveConversationId =
                     maybeForkOnCaseConfirmed(conversationId, userId, slots.caseId());
+
+            // [Phase C] 슬롯 DB 영속(턴 종료 후). 지원 건 확정 세션만 저장(fork 됐으면 새 id 로).
+            persistSlot(effectiveConversationId, userId, slots);
 
             return new IntakeAskResponse(
                     effectiveConversationId, answer, check.ready(), check.nextAsk(), autoPrepRequest,
@@ -86,6 +93,47 @@ public class IntakeAskService {
     }
 
     /**
+     * 통합 라우터(컨트롤러)가 "이 대화가 (재시작/재방문이라도) 복원할 지원건 세션인지" 판정하는 데 쓴다.
+     * chatbot_intake_slot 에 행이 있으면 = 지원 건이 확정된 세션(persistSlot 은 caseId 확정 때만 저장).
+     */
+    public boolean isPersistedIntakeSession(Long conversationId) {
+        return conversationId != null && slotMapper.findByConversation(conversationId) != null;
+    }
+
+    /** 메모리에 슬롯이 없고 DB 에 있으면 복원(재시작/재방문). entryOffset 은 현재 memory 길이로 재무장. */
+    private void restoreSlotIfAbsent(Long conversationId) {
+        if (conversationId == null || trace.hasSlot(conversationId)) {
+            return;
+        }
+        Map<String, Object> row = slotMapper.findByConversation(conversationId);
+        if (row == null) {
+            return;
+        }
+        Long caseId = toLong(row.get("applicationCaseId"));
+        String mode = (String) row.get("mode");
+        String originalQuery = (String) row.get("originalQuery");
+        int entryOffset = memoryStore.getMessages(conversationId).size();
+        trace.restore(conversationId, caseId, mode, originalQuery, entryOffset);
+        log.info("//TODO[diag-slot] restore conv={} caseId={} mode={}", conversationId, caseId, mode);
+    }
+
+    /**
+     * 지원 건이 확정된 세션의 슬롯만 영속(잡담/미확정은 저장 안 함 → 세션 목록·복원 대상에서 자연 제외).
+     * fetched_cases 는 listCases 재조회로 대체 가능한 파생 캐시라 영속하지 않는다(null).
+     */
+    private void persistSlot(Long conversationId, Long userId, IntakeSlotTrace.IntakeSlots slots) {
+        if (conversationId == null || slots.caseId() == null) {
+            return;
+        }
+        slotMapper.upsert(conversationId, userId, slots.caseId(), slots.mode(), slots.originalQuery(), null);
+        log.info("//TODO[diag-slot] upsert conv={} caseId={} mode={}", conversationId, slots.caseId(), slots.mode());
+    }
+
+    private static Long toLong(Object value) {
+        return (value instanceof Number n) ? n.longValue() : null;
+    }
+
+    /**
      * 지원 건이 새로 확정된 턴이면 fork 한다: 새 conversationId 를 발급해 "진입~confirm" 구간만 복사하고
      * application_case_id·title 을 바인딩한 뒤, 누적 슬롯을 새 대화로 이전한다.
      *
@@ -94,7 +142,6 @@ public class IntakeAskService {
      *       (무한 바인딩 방지 + 케이스 전환 시에만 또 fork 되어 세션 격리 — 리스크6).</li>
      *   <li>원본 대화 행은 건드리지 않는다(파괴적 수정 회피 — 결정1). 잡담 방은 application_case_id NULL 로 남아
      *       세션 목록(Phase E)에 안 뜨므로 중복으로 안 보인다.</li>
-     *   <li>슬롯 DB 영속(chatbot_intake_slot)·세션 목록은 별도 Phase — 여기선 fork 만(슬롯은 인메모리 이전).</li>
      * </ul>
      *
      * @return fork 했으면 새 conversationId, 아니면 원본 conversationId.

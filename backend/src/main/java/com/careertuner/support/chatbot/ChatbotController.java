@@ -134,6 +134,14 @@ public class ChatbotController {
             return ApiResponse.ok(enterIntake(conversationId, question, userId, "③(유지)"));
         }
 
+        // 영속 세션 복원: 재시작/재방문으로 메모리 sticky 는 없지만 DB 에 인테이크(지원건) 세션이면
+        // 되살려 ③ 로 잇는다(슬롯은 IntakeAskService 가 DB 에서 복원). 이탈어("그만")는 제외.
+        if (req.conversationId() != null && !isExitCommand(question)
+                && intakeAskService.isPersistedIntakeSession(conversationId)) {
+            intakeModeStore.enter(conversationId);
+            return ApiResponse.ok(enterIntake(conversationId, question, userId, "③(복원)"));
+        }
+
         // Fast-path: 순수 내비 질의는 LLM·검색 우회 즉답 (서버 신뢰 링크라 화이트리스트 검증 생략).
         Optional<ChatResponse> fast = fastPathService.tryFastPath(question);
         if (fast.isPresent()) {

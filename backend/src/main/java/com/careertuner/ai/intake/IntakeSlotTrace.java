@@ -129,6 +129,29 @@ public class IntakeSlotTrace {
         }
     }
 
+    /** 이 대화의 누적 슬롯이 메모리에 있는지(없으면 DB 복원 후보 — 재시작/재방문). */
+    public boolean hasSlot(Long conversationId) {
+        return conversationId != null && slotsByConversation.containsKey(conversationId);
+    }
+
+    /**
+     * DB 에서 읽은 슬롯을 메모리로 복원(재시작/재방문). entryOffset·boundCaseId 는 파생값이라 인자/규칙으로 채운다.
+     * boundCaseId = caseId(이미 그 건에 바인딩된 세션이므로 같은 건 재확정은 재-fork 안 함).
+     * entryOffset 은 호출부가 현재 memory 길이로 넘긴다(다음 케이스 전환은 현재 지점부터 fork).
+     */
+    public void restore(Long conversationId, Long caseId, String mode, String originalQuery, int entryOffset) {
+        if (conversationId == null) {
+            return;
+        }
+        SlotState state = new SlotState();
+        state.caseId = caseId;
+        state.mode = mode;
+        state.originalQuery = originalQuery;
+        state.boundCaseId = caseId;
+        state.entryOffset = entryOffset;
+        slotsByConversation.put(conversationId, state);
+    }
+
     /** 컨트롤러가 AutoPrepRequest 조립에 쓰는 확정 슬롯 스냅샷. */
     public IntakeSlots snapshot() {
         SlotState state = currentState();
