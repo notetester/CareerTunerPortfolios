@@ -257,7 +257,7 @@ export function JobPostingPanel({
                 size="sm"
                 variant="outline"
                 className="border-amber-200 text-amber-700 hover:bg-amber-50 hover:text-amber-800"
-                disabled={reviewingExtraction}
+                disabled={reviewingExtraction || saving || uploading || confirmingExtraction}
                 onClick={() => void handleReviewExtraction()}
               >
                 {reviewingExtraction ? <Loader2 className="size-4 animate-spin" /> : <CheckCircle2 className="size-4" />}
