@@ -686,7 +686,7 @@ export function NewApplicationPage() {
                       <Sparkles className="size-4" />
                       공고 분석
                     </div>
-                    <p className="mt-2 text-sm leading-6 text-blue-800">추출/검수가 끝나면 공고 분석이 자동으로 생성됩니다. 공고문을 수정하면 다시 추출·분석을 거쳐 최신 내용으로 갱신됩니다.</p>
+                    <p className="mt-2 text-sm leading-6 text-blue-800">추출/검수가 끝나면 공고 분석이 자동으로 생성됩니다. 공고문을 수정하면 확정된 텍스트 기준으로 분석을 다시 갱신합니다.</p>
                   </div>
                   <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
                     <div className="flex items-center gap-2 text-sm font-bold text-slate-900">
