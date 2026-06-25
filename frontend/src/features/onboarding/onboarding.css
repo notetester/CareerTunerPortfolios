@@ -1,17 +1,16 @@
 /* 앱 온보딩 — Linear/Vercel 다크 톤(프로토타입·랜딩과 동일 팔레트). .ob 스코프로 전역 오염 방지. */
 .ob {
-  --bg: #08090a;
-  --card: #141517;
-  --card2: #1a1c1f;
-  --border: rgba(255, 255, 255, 0.08);
-  --border2: rgba(255, 255, 255, 0.14);
-  --fg: #f7f8f8;
-  --muted: #8a8f98;
-  --muted2: #62666d;
-  --accent: #5e6ad2;
-  --accent2: #7170ff;
-  --halo: #a3a2ff;
-  --grad: linear-gradient(135deg, #5e6ad2 0%, #7170ff 100%);
+  /* theme.css 토큰 매핑 — 라이트/다크 토글을 따라간다. (--card·--border 는 theme 상속) */
+  --bg: var(--background);
+  --card2: var(--secondary);
+  --border2: var(--border-strong);
+  --fg: var(--foreground);
+  --muted: var(--muted-foreground);
+  --muted2: var(--ink-4);
+  --accent: var(--primary);
+  --accent2: var(--ring);
+  --halo: var(--ring);
+  --grad: var(--gradient-brand);
   --r: 12px;
   --r-lg: 16px;
   --ease: cubic-bezier(0.22, 0.61, 0.36, 1);
@@ -63,10 +62,10 @@
 .ob-soc {
   position: relative; display: flex; align-items: center; justify-content: center;
   width: 100%; padding: 15px 18px; font-size: 14.5px; font-weight: 600;
-  background: #17181b; color: var(--fg); border: 1px solid var(--border);
+  background: var(--secondary); color: var(--fg); border: 1px solid var(--border);
   border-radius: 14px; cursor: pointer; transition: background 0.15s, border-color 0.15s;
 }
-.ob-soc:hover:not(:disabled) { background: #1e1f23; border-color: var(--border2); }
+.ob-soc:hover:not(:disabled) { background: var(--accent); border-color: var(--border2); }
 .ob-soc:disabled { opacity: 0.55; cursor: default; }
 .ob-soc.s-mail { margin-top: 11px; }
 .ob-soc-ic { position: absolute; left: 15px; width: 26px; height: 26px; display: grid; place-items: center; border-radius: 50%; }

@@ -14,6 +14,27 @@ export function isNativeApp(): boolean {
   }
 }
 
+/**
+ * 앱 컨텍스트 판단 — 네이티브 앱이거나, 웹에서 ?home/?ob 로 앱을 미리보는 세션.
+ * 웹 브라우저로도 앱 동작(로고·네비 분기 등)을 확인할 수 있게 한다.
+ */
+export function isAppContext(): boolean {
+  if (isNativeApp()) return true;
+  try {
+    return sessionStorage.getItem("ct.appPreview") === "1";
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * "홈으로" 가는 경로 — 앱은 검색창 메인(AppHome), 웹은 대시보드 홈.
+ * 로고·"홈으로" 버튼 등 홈 진입점은 전부 이걸 써서 앱/웹을 자동 분기한다.
+ */
+export function homePath(): string {
+  return isAppContext() ? "/?home" : "/home";
+}
+
 export function platformName(): "web" | "ios" | "android" {
   try {
     const p = Capacitor.getPlatform();

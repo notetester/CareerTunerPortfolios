@@ -1,17 +1,16 @@
 /* 앱 첫 화면 — 마누스 메인 레이아웃. .ah 스코프, Linear/Vercel 다크. */
 .ah {
-  --bg: #08090a;
-  --card: #141517;
-  --card2: #1a1c1f;
-  --fg: #f7f8f8;
-  --ink2: #c2c7d0;
-  --muted: #8a8f98;
-  --muted2: #62666d;
-  --border: rgba(255, 255, 255, 0.08);
-  --border2: rgba(255, 255, 255, 0.14);
-  --accent: #5e6ad2;
-  --accent2: #7170ff;
-  --grad: linear-gradient(135deg, #5e6ad2 0%, #7170ff 100%);
+  /* theme.css 토큰 매핑 — 라이트/다크 토글을 따라간다. (--card·--border 는 theme 상속) */
+  --bg: var(--background);
+  --card2: var(--secondary);
+  --fg: var(--foreground);
+  --ink2: var(--ink-2);
+  --muted: var(--muted-foreground);
+  --muted2: var(--ink-4);
+  --border2: var(--border-strong);
+  --accent: var(--primary);
+  --accent2: var(--ring);
+  --grad: var(--gradient-brand);
   --ease: cubic-bezier(0.22, 0.61, 0.36, 1);
 
   position: fixed;
@@ -55,7 +54,7 @@
 .ah-dock { padding: 12px 14px calc(16px + env(safe-area-inset-bottom)); }
 .ah-inputbar {
   display: flex; align-items: center; gap: 4px;
-  background: #161719; border: 1px solid var(--border);
+  background: var(--secondary); border: 1px solid var(--border);
   border-radius: 24px; padding: 6px 8px;
   animation: ah-rise 0.45s var(--ease) 0.08s both;
 }

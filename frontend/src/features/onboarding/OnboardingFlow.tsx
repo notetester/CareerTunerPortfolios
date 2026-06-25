@@ -1,7 +1,6 @@
 import { useMemo, useState } from "react";
 import { useNavigate } from "react-router";
 import { useAuth } from "@/app/auth/AuthContext";
-import { enablePush, isPushSupported } from "@/platform/push";
 import { subscriptionFallbackPlans, toDisplayPlans } from "@/features/billing/utils/subscriptionDisplay";
 import { Sparkles, FileText, MessageSquare, Mic, Video, UserRound, X, Bell, type LucideIcon } from "lucide-react";
 import "./onboarding.css";
@@ -79,7 +78,7 @@ export function OnboardingFlow() {
 
   const finish = () => {
     markOnboarded();
-    nav("/", { replace: true });
+    nav("/?home", { replace: true });
   };
 
   // mock 모드: 아무 값이나 통과(데모 계정). 소셜 버튼도 동일하게 demo 로그인으로 시연.
@@ -97,16 +96,9 @@ export function OnboardingFlow() {
     }
   };
 
-  const askPush = async () => {
-    setBusy(true);
-    try {
-      if (isPushSupported()) await enablePush();
-    } catch {
-      /* 권한 거부/미지원이어도 온보딩은 완료 */
-    } finally {
-      setBusy(false);
-      finish();
-    }
+  const askPush = () => {
+    // 포트폴리오/시연용 — 실제 OS 권한 요청(enablePush)은 시연 중 막힐 수 있어 mock 처리. 바로 다음으로.
+    finish();
   };
 
   const stepIndex = ORDER.indexOf(step);
