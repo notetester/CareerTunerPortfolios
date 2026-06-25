@@ -4,11 +4,17 @@ import {
   Sparkles, MessageCircle, Mic, MicOff, ArrowUp, Minus, X,
   KeyRound, CreditCard, FileText, FileSearch, Pause, Volume2,
   ArrowUpRight, Shield, SearchX, Headset, PenLine, WifiOff,
-  RotateCw, Check, Keyboard, ArrowRight, Play,
+  RotateCw, Check, Keyboard, ArrowRight, Play, LogOut,
 } from "lucide-react";
 import { useChatbot } from "../hooks/useChatbot";
-import type { ChatMessage, ChatEvidence, SiteLink } from "../types/chatbot";
+import type {
+  ChatMessage, ChatEvidence, SiteLink, IntakeCaseCandidate, IntakeModeOption,
+} from "../types/chatbot";
 import { SUGGESTED_QUESTIONS } from "../types/chatbot";
+import { AutoPrepWorkView } from "@/features/autoprep/components/AutoPrepWorkView";
+
+/** 오케스트레이터 정체성 글리프(U+2726). */
+const ORCH_GLYPH = "✦";
 
 const ICON_MAP = { KeyRound, CreditCard, FileText } as const;
 
@@ -54,19 +60,29 @@ interface ChatbotPanelProps {
   chatbot: ReturnType<typeof useChatbot>;
 }
 
+/** 면접 모드 코드 → 라벨(배너 서브텍스트용). 백엔드 MODE_OPTIONS 와 동일. */
+const MODE_LABELS: Record<string, string> = {
+  BASIC: "기본 면접", JOB: "직무 면접", PERSONALITY: "인성 면접",
+  PRESSURE: "압박 면접", RESUME: "자소서 기반", COMPANY: "기업 맞춤",
+};
+
 function ChatbotPanel({ chatbot }: ChatbotPanelProps) {
   const {
-    close, minimize, messages, sendMessage, botStatus, setBotStatus,
+    close, minimize, messages, sendMessage, botStatus,
     voiceState, startVoice, cancelVoice, confirmVoice, setVoiceState,
     interimTranscript, retryConnection, toggleTts,
+    orchestrator, runStarted, runParts, runRunning, runPlan, runCaseId,
+    selectCase, selectMode,
+    showExitSheet, openExitSheet, closeExitSheet, exitOrchestrator,
   } = chatbot;
 
+  const navigate = useNavigate();
   const [input, setInput] = useState("");
   const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
-  }, [messages, botStatus]);
+  }, [messages, botStatus, runParts]);
 
   const handleSend = () => {
     const text = input.trim();
@@ -83,19 +99,43 @@ function ChatbotPanel({ chatbot }: ChatbotPanelProps) {
   };
 
   const isDisconnected = botStatus === "disconnected";
-  const isVoiceActive = voiceState === "listening" || voiceState === "denied";
+
+  // 활성 칩은 "마지막 봇 메시지"의 인테이크 턴에만 노출(이전 턴 칩은 비활성).
+  const lastBotId = [...messages].reverse().find((m) => m.role === "bot")?.id;
+
+  // 배너 서브텍스트: 실행 중이면 지원 건/모드, 인테이크면 진행 단계.
+  let bannerSubtitle = "정보 확인 중";
+  if (runStarted) {
+    const s = runPlan?.slots;
+    bannerSubtitle = [s?.company, s?.jobTitle, s?.mode ? MODE_LABELS[s.mode] ?? s.mode : null]
+      .filter(Boolean).join(" · ") || "면접 준비 진행 중";
+  } else {
+    const lastIntake = [...messages].reverse().find((m) => m.role === "bot" && m.intake)?.intake;
+    bannerSubtitle =
+      lastIntake?.nextAsk === "CASE" ? "면접 준비 · 지원 건 확인 중 (1/2)"
+      : lastIntake?.nextAsk === "MODE" ? "면접 준비 · 면접 모드 확인 중 (2/2)"
+      : "면접 준비 · 정보 확인 중";
+  }
 
   return (
     <div className="fixed right-5 bottom-5 z-50 w-[360px] h-[560px] flex flex-col bg-card border border-black/10 rounded-2xl overflow-hidden"
-      style={{ boxShadow: "0 12px 28px rgba(15,23,42,0.12), 0 4px 10px rgba(15,23,42,0.06)" }}>
+      style={{
+        boxShadow: orchestrator
+          ? "0 16px 40px rgba(109,40,217,0.22), 0 4px 12px rgba(15,23,42,0.06)"
+          : "0 12px 28px rgba(15,23,42,0.12), 0 4px 10px rgba(15,23,42,0.06)",
+      }}>
 
       {/* ── Header ── */}
       <WidgetHeader
+        orchestrator={orchestrator}
         isDisconnected={isDisconnected}
         isVoiceListening={voiceState === "listening"}
         onMinimize={minimize}
         onClose={close}
       />
+
+      {/* ── Mode Banner (인테이크·실행 내내 유지) ── */}
+      {orchestrator && <ModeBanner subtitle={bannerSubtitle} onExit={openExitSheet} />}
 
       {/* ── Body ── */}
       {voiceState === "listening" ? (
@@ -113,7 +153,8 @@ function ChatbotPanel({ chatbot }: ChatbotPanelProps) {
         <DisconnectedView onRetry={retryConnection} />
       ) : (
         <>
-          <div ref={scrollRef} className="flex-1 p-4 overflow-y-auto flex flex-col gap-3.5" style={{ background: "#f8fafc" }}>
+          <div ref={scrollRef} className="flex-1 p-4 overflow-y-auto flex flex-col gap-3.5"
+            style={{ background: orchestrator ? "var(--orch-chat-bg)" : "#f8fafc" }}>
             {messages.length === 0 && botStatus === "idle" ? (
               <EmptyState onSelect={sendMessage} />
             ) : (
@@ -122,10 +163,26 @@ function ChatbotPanel({ chatbot }: ChatbotPanelProps) {
                   m.role === "user" ? (
                     <UserBubble key={m.id} text={m.text} dimmed={isDisconnected} />
                   ) : (
-                    <BotBubble key={m.id} message={m} onToggleTts={toggleTts} variant="widget" onQuickReply={sendMessage} />
+                    <div key={m.id} className="flex flex-col gap-2.5">
+                      <BotBubble message={m} onToggleTts={toggleTts} variant="widget"
+                        onQuickReply={sendMessage} orchestrator={orchestrator} />
+                      {m.id === lastBotId && m.intake && !m.intake.ready && !runStarted && (
+                        <IntakeChips intake={m.intake} onSelectCase={selectCase} onSelectMode={selectMode} />
+                      )}
+                    </div>
                   )
                 )}
-                {botStatus === "thinking" && <TypingIndicator />}
+                {runStarted && (
+                  <div className="ml-[37px]">
+                    <AutoPrepWorkView
+                      running={runRunning}
+                      parts={runParts}
+                      caseId={runCaseId}
+                      onNavigate={(p) => navigate(p)}
+                    />
+                  </div>
+                )}
+                {botStatus === "thinking" && <TypingIndicator orchestrator={orchestrator} />}
                 {botStatus === "not_found" && <NotFoundView />}
               </>
             )}
@@ -137,33 +194,172 @@ function ChatbotPanel({ chatbot }: ChatbotPanelProps) {
             onMic={startVoice}
             onKeyDown={handleKeyDown}
             disabled={botStatus === "thinking"}
+            orchestrator={orchestrator}
           />
         </>
       )}
+
+      {/* ── Exit confirm sheet ── */}
+      {showExitSheet && <ExitSheet onConfirm={exitOrchestrator} onCancel={closeExitSheet} />}
+    </div>
+  );
+}
+
+/* ════════════════ Orchestrator components ════════════════ */
+
+function OrchestratorAvatar({ size = 28, iconScale = 0.52 }: { size?: number; iconScale?: number }) {
+  return (
+    <div className="rounded-full flex items-center justify-center text-white shrink-0 font-bold"
+      style={{ width: size, height: size, background: "var(--gradient-orchestrator)", fontSize: size * iconScale }}>
+      {ORCH_GLYPH}
+    </div>
+  );
+}
+
+function ModeBanner({ subtitle, onExit }: { subtitle: string; onExit: () => void }) {
+  return (
+    <div role="status" aria-live="polite"
+      className="flex items-center gap-2.5 px-3.5 py-2.5 text-white"
+      style={{ background: "var(--gradient-orchestrator)" }}>
+      <div className="w-[26px] h-[26px] rounded-[8px] flex items-center justify-center text-white shrink-0 font-bold text-[14px]"
+        style={{ background: "rgba(255,255,255,0.16)" }}>
+        {ORCH_GLYPH}
+      </div>
+      <div className="leading-tight min-w-0 flex-1">
+        <div className="text-[12.5px] font-extrabold">AI 오케스트레이터</div>
+        <div className="text-[10.5px] truncate" style={{ color: "rgba(255,255,255,0.78)" }}>{subtitle}</div>
+      </div>
+      <button onClick={onExit} aria-label="일반 상담으로 돌아가기"
+        className="inline-flex items-center gap-1 h-7 px-2.5 rounded-full text-[11px] font-bold text-white shrink-0 transition-colors hover:bg-white/15"
+        style={{ border: "1px solid rgba(255,255,255,0.34)", background: "rgba(255,255,255,0.10)" }}>
+        <LogOut size={13} />
+        일반 상담으로
+      </button>
+    </div>
+  );
+}
+
+function IntakeChips({ intake, onSelectCase, onSelectMode }: {
+  intake: NonNullable<ChatMessage["intake"]>;
+  onSelectCase: (c: IntakeCaseCandidate) => void;
+  onSelectMode: (m: IntakeModeOption) => void;
+}) {
+  if (intake.nextAsk === "CASE" && intake.candidates.length > 0) {
+    return (
+      <div className="ml-[37px] flex flex-col gap-2">
+        {intake.candidates.map((c) => (
+          <ApplicationChip key={c.id} candidate={c} onSelect={() => onSelectCase(c)} />
+        ))}
+      </div>
+    );
+  }
+  if (intake.nextAsk === "MODE" && intake.modes.length > 0) {
+    return (
+      <div className="ml-[37px] flex flex-wrap gap-1.5">
+        {intake.modes.map((m) => (
+          <ModeChip key={m.code} mode={m} onSelect={() => onSelectMode(m)} />
+        ))}
+      </div>
+    );
+  }
+  return null;
+}
+
+function ApplicationChip({ candidate, onSelect }: { candidate: IntakeCaseCandidate; onSelect: () => void }) {
+  const initial = candidate.companyName?.trim().charAt(0) || "?";
+  return (
+    <button onClick={onSelect} role="button"
+      className="group flex items-center gap-2.5 w-full min-h-[56px] px-3 py-2.5 rounded-[13px] bg-card text-left transition-all hover:shadow-[0_4px_12px_rgba(109,40,217,0.10)]"
+      style={{ border: "1px solid rgba(0,0,0,0.10)" }}>
+      <span className="w-[34px] h-[34px] rounded-[9px] flex items-center justify-center text-white font-extrabold text-[15px] shrink-0"
+        style={{ background: "var(--gradient-orchestrator)" }}>
+        {initial}
+      </span>
+      <span className="flex-1 min-w-0">
+        <span className="block text-[13.5px] font-bold text-foreground truncate">{candidate.companyName}</span>
+        <span className="block text-[11.5px] font-semibold text-muted-foreground truncate">{candidate.jobTitle}</span>
+      </span>
+      <ArrowRight size={15} className="shrink-0 text-muted-foreground transition-colors"
+        style={{ color: "var(--orch-point)" }} />
+    </button>
+  );
+}
+
+function ModeChip({ mode, onSelect }: { mode: IntakeModeOption; onSelect: () => void }) {
+  return (
+    <button onClick={onSelect} role="button"
+      className="inline-flex items-center px-3 py-2 rounded-full bg-card text-[12.5px] font-semibold text-muted-foreground transition-colors hover:text-foreground"
+      style={{ border: "1px solid rgba(0,0,0,0.12)" }}>
+      {mode.label}
+    </button>
+  );
+}
+
+function ExitSheet({ onConfirm, onCancel }: { onConfirm: () => void; onCancel: () => void }) {
+  return (
+    <div className="absolute inset-0 z-10 flex flex-col justify-end" style={{ background: "rgba(20,16,40,0.42)" }}
+      onClick={onCancel}>
+      <div className="m-3.5 rounded-[18px] bg-card px-[18px] pt-5 pb-4 text-center"
+        style={{ boxShadow: "0 20px 50px rgba(20,16,40,0.4)" }}
+        onClick={(e) => e.stopPropagation()}>
+        <div className="mx-auto w-[46px] h-[46px] rounded-[13px] flex items-center justify-center mb-3"
+          style={{ background: "var(--orch-surface)", color: "var(--orch-violet)" }}>
+          <LogOut size={22} />
+        </div>
+        <div className="text-base font-extrabold mb-1.5">오케스트레이터를 종료할까요?</div>
+        <div className="text-[13px] leading-[1.6] text-muted-foreground mb-4">
+          지금 종료하면 일반 상담 모드로 돌아가요. 진행 중인 준비는 멈춰요.
+        </div>
+        <div className="flex flex-col gap-2">
+          <button onClick={onConfirm}
+            className="h-[46px] rounded-[11px] bg-foreground text-background text-sm font-bold hover:opacity-90 transition-opacity">
+            종료하고 일반 상담으로
+          </button>
+          <button onClick={onCancel}
+            className="h-[42px] rounded-[11px] bg-card text-[13.5px] font-semibold text-muted-foreground hover:bg-secondary transition-colors"
+            style={{ border: "1px solid rgba(0,0,0,0.14)" }}>
+            계속 준비하기
+          </button>
+        </div>
+        <div className="mt-3 text-[11px] text-muted-foreground">
+          입력창에 <b>“그만”</b> 이라고 보내도 빠져나올 수 있어요.
+        </div>
+      </div>
     </div>
   );
 }
 
 /* ════════════════ Sub-components ════════════════ */
 
-function WidgetHeader({ isDisconnected, isVoiceListening, onMinimize, onClose }: {
-  isDisconnected: boolean; isVoiceListening: boolean;
+function WidgetHeader({ orchestrator, isDisconnected, isVoiceListening, onMinimize, onClose }: {
+  orchestrator?: boolean; isDisconnected: boolean; isVoiceListening: boolean;
   onMinimize: () => void; onClose: () => void;
 }) {
   return (
-    <div className="flex items-center gap-2.5 px-4 py-3.5 border-b border-black/8">
-      <div className="relative w-9 h-9 rounded-full flex items-center justify-center text-white"
-        style={{ background: isDisconnected ? "#e2e8f0" : "linear-gradient(135deg, #2563eb, #4f46e5)" }}>
-        <Sparkles size={18} className={isDisconnected ? "text-slate-400" : ""} />
-        <span className="absolute -right-px -bottom-px w-[11px] h-[11px] rounded-full border-2 border-white"
-          style={{ background: isDisconnected ? "#94a3b8" : "#16a34a" }} />
-      </div>
+    <div className="flex items-center gap-2.5 px-4 py-3.5 border-b border-black/8 transition-colors"
+      style={{ background: orchestrator ? "var(--orch-header-tint)" : undefined }}>
+      {orchestrator && !isDisconnected ? (
+        <div className="relative">
+          <OrchestratorAvatar size={36} iconScale={0.5} />
+          <span className="absolute -right-px -bottom-px w-[11px] h-[11px] rounded-full border-2 border-white"
+            style={{ background: "#16a34a" }} />
+        </div>
+      ) : (
+        <div className="relative w-9 h-9 rounded-full flex items-center justify-center text-white"
+          style={{ background: isDisconnected ? "#e2e8f0" : "linear-gradient(135deg, #2563eb, #4f46e5)" }}>
+          <Sparkles size={18} className={isDisconnected ? "text-slate-400" : ""} />
+          <span className="absolute -right-px -bottom-px w-[11px] h-[11px] rounded-full border-2 border-white"
+            style={{ background: isDisconnected ? "#94a3b8" : "#16a34a" }} />
+        </div>
+      )}
       <div className="leading-tight">
         <div className="text-sm font-bold">튜너봇</div>
         {isVoiceListening ? (
           <div className="text-[11.5px] font-semibold text-red-600">● 음성 인식 중</div>
         ) : isDisconnected ? (
           <div className="text-[11.5px] font-semibold text-slate-400">연결 대기 중</div>
+        ) : orchestrator ? (
+          <div className="text-[11.5px] font-bold" style={{ color: "var(--orch-point)" }}>오케스트레이터 모드</div>
         ) : (
           <div className="text-[11.5px] font-semibold" style={{ color: "#16a34a" }}>응답 가능</div>
         )}
@@ -221,9 +417,9 @@ function UserBubble({ text, dimmed }: { text: string; dimmed?: boolean }) {
   );
 }
 
-function BotBubble({ message, onToggleTts, variant = "widget", onQuickReply }: {
+function BotBubble({ message, onToggleTts, variant = "widget", onQuickReply, orchestrator }: {
   message: ChatMessage; onToggleTts: (id: string) => void; variant?: "widget" | "full";
-  onQuickReply?: (text: string) => void;
+  onQuickReply?: (text: string) => void; orchestrator?: boolean;
 }) {
   const avatarSize = variant === "full" ? 34 : 28;
   const iconSize = variant === "full" ? 16 : 14;
@@ -231,10 +427,16 @@ function BotBubble({ message, onToggleTts, variant = "widget", onQuickReply }: {
 
   return (
     <div className="flex gap-2.5 items-start">
-      <div className="rounded-full flex items-center justify-center text-white shrink-0 mt-0.5"
-        style={{ width: avatarSize, height: avatarSize, background: "linear-gradient(135deg, #2563eb, #4f46e5)" }}>
-        <Sparkles size={iconSize} />
-      </div>
+      {orchestrator ? (
+        <div className="mt-0.5">
+          <OrchestratorAvatar size={avatarSize} iconScale={0.5} />
+        </div>
+      ) : (
+        <div className="rounded-full flex items-center justify-center text-white shrink-0 mt-0.5"
+          style={{ width: avatarSize, height: avatarSize, background: "linear-gradient(135deg, #2563eb, #4f46e5)" }}>
+          <Sparkles size={iconSize} />
+        </div>
+      )}
       <div className={`${maxW} flex flex-col gap-2.5`}>
         <div className="bg-card border border-black/8 rounded-[15px] rounded-tl-[5px] px-3.5 py-3 text-[13.5px] leading-[1.65] text-slate-700">
           <span dangerouslySetInnerHTML={{ __html: message.text.replace(/\*\*(.*?)\*\*/g, '<b class="text-[#030213]">$1</b>') }} />
@@ -365,14 +567,18 @@ function EvidenceCards({ evidence }: { evidence: ChatEvidence[] }) {
   );
 }
 
-function TypingIndicator() {
+function TypingIndicator({ orchestrator }: { orchestrator?: boolean }) {
   return (
     <>
       <div className="flex gap-2.5 items-end">
-        <div className="w-7 h-7 rounded-full flex items-center justify-center text-white shrink-0"
-          style={{ background: "linear-gradient(135deg, #2563eb, #4f46e5)" }}>
-          <Sparkles size={14} />
-        </div>
+        {orchestrator ? (
+          <OrchestratorAvatar size={28} iconScale={0.5} />
+        ) : (
+          <div className="w-7 h-7 rounded-full flex items-center justify-center text-white shrink-0"
+            style={{ background: "linear-gradient(135deg, #2563eb, #4f46e5)" }}>
+            <Sparkles size={14} />
+          </div>
+        )}
         <div className="bg-card border border-black/8 rounded-[15px] rounded-bl-[5px] px-4 py-3.5 flex gap-1.5 items-center">
           {[0, 0.18, 0.36].map((delay, i) => (
             <span key={i} className="ct-typing-dot w-[7px] h-[7px] rounded-full bg-slate-400"
@@ -544,34 +750,38 @@ function MicDeniedView({ onRetry, onTextMode }: { onRetry: () => void; onTextMod
   );
 }
 
-function InputBar({ value, onChange, onSend, onMic, onKeyDown, disabled }: {
+function InputBar({ value, onChange, onSend, onMic, onKeyDown, disabled, orchestrator }: {
   value: string; onChange: (v: string) => void;
   onSend: () => void; onMic: () => void;
   onKeyDown: (e: React.KeyboardEvent) => void;
-  disabled: boolean;
+  disabled: boolean; orchestrator?: boolean;
 }) {
   const hasText = value.trim().length > 0;
 
   return (
     <div className="px-3 py-2.5 border-t border-black/8 flex items-center gap-2">
-      <div className="flex-1 flex items-center gap-2 rounded-full px-4 pr-2 py-2" style={{ background: "#f3f3f5" }}>
+      <div className="flex-1 flex items-center gap-2 rounded-full px-4 pr-2 py-2"
+        style={{ background: orchestrator ? "var(--orch-input-bg)" : "#f3f3f5" }}>
         <input
           value={value}
           onChange={(e) => onChange(e.target.value)}
           onKeyDown={onKeyDown}
-          placeholder="메시지를 입력하세요"
+          placeholder={orchestrator ? "메시지를 입력하거나 위 선택지를 눌러보세요" : "메시지를 입력하세요"}
           className="flex-1 bg-transparent border-none outline-none text-[13px] text-[#030213] placeholder:text-slate-400"
           disabled={disabled}
         />
-        <button onClick={onMic}
-          className="w-[30px] h-[30px] rounded-full flex items-center justify-center text-slate-500 hover:bg-slate-200 transition-colors">
-          <Mic size={16} />
-        </button>
+        {/* mic 은 일반 모드에서만(오케스트레이터 모드는 입력 집중). */}
+        {!orchestrator && (
+          <button onClick={onMic}
+            className="w-[30px] h-[30px] rounded-full flex items-center justify-center text-slate-500 hover:bg-slate-200 transition-colors">
+            <Mic size={16} />
+          </button>
+        )}
       </div>
       <button onClick={onSend} disabled={!hasText}
         className="w-10 h-10 rounded-full flex items-center justify-center text-white shrink-0 transition-all"
         style={{
-          background: hasText ? "linear-gradient(135deg, #2563eb, #4f46e5)" : "#e2e8f0",
+          background: !hasText ? "#e2e8f0" : orchestrator ? "var(--gradient-orchestrator)" : "linear-gradient(135deg, #2563eb, #4f46e5)",
           color: hasText ? "#fff" : "#94a3b8",
         }}>
         <ArrowUp size={17} />
