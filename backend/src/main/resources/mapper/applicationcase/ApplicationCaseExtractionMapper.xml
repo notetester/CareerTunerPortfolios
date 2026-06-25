@@ -98,7 +98,7 @@
         FROM application_case_extraction
         WHERE status = 'RUNNING'
           AND started_at IS NOT NULL
-          AND started_at &lt; #{startedBefore}
+          AND started_at &lt; DATE_SUB(NOW(), INTERVAL #{timeoutMinutes} MINUTE)
         ORDER BY started_at ASC, id ASC
         LIMIT #{limit}
     </select>
@@ -183,7 +183,7 @@
             error_message = NULL
         WHERE id = #{id}
           AND status = 'SUCCEEDED'
-          AND quality_status = 'REVIEW_REQUIRED'
+          AND quality_status IN ('PASS', 'REVIEW_REQUIRED')
     </update>
 
     <select id="countActiveExtractionsByApplicationCaseId" resultType="int">
