@@ -195,6 +195,8 @@ ai:
     embedding-model: ${AI_CHATBOT_EMBEDDING_MODEL:bge-m3}
     chat-model: ${AI_CHATBOT_CHAT_MODEL:gemma4}
     similarity-threshold: ${AI_CHATBOT_SIMILARITY_THRESHOLD:0.35}
+    # FAQ 임베딩 게이트 임계(별도 키 — 위 similarity-threshold=검색후보 컷오프와 물리 분리. 게이트만 독립 튜닝).
+    faq-gate-threshold: ${AI_CHATBOT_FAQ_GATE_THRESHOLD:0.35}
     top-k: ${AI_CHATBOT_TOP_K:3}
 
 # ─── LangChain4j (커뮤니티 챗봇 에이전트) ───

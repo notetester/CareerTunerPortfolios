@@ -47,7 +47,7 @@ public class UnansweredQuestionService {
     }
 
     /**
-     * 빈도 집계 키. FastPathService.isFaqIntent 와 <b>동일 규칙</b>(trim+소문자+공백제거)으로 일관성 유지.
+     * 빈도 집계 키. trim+소문자+공백제거로 정규화해 같은 질문의 표기 흔들림을 한 키로 모은다.
      * 컬럼 길이(255) 초과 시 절단.
      */
     private String normalize(String question) {

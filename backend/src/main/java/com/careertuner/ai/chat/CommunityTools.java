@@ -67,7 +67,7 @@ public class CommunityTools {
         return "제목: " + post.getTitle() + "\n본문:\n" + content;
     }
 
-    @Tool("회원·계정·가입·로그인·탈퇴·결제·환불·포인트·신고 등 사이트 이용법·정책·절차에 관한 질문일 때 호출한다. 이런 질문은 직접 답하지 말고 반드시 이 툴로 실제 FAQ를 찾는다. 커뮤니티 글이 아니라 운영 FAQ를 묻는 경우다.")
+    @Tool("회원·계정·가입·로그인·탈퇴·결제·환불·포인트·신고·작성 등 사이트 이용법·정책·절차에 관한 질문일 때 호출한다. 이런 질문은 직접 답하지 말고 반드시 이 툴로 실제 FAQ를 찾는다. 커뮤니티 글이 아니라 운영 FAQ를 묻는 경우다.")
     public String searchFaq(@P("FAQ 검색 키워드") String query) {
         log.info("TOOL searchFaq(query='{}')", query);
         List<FaqHit> hits = chatbotService.searchFaqHits(query);
