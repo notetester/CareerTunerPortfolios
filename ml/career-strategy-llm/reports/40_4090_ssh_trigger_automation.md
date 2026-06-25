@@ -11,7 +11,11 @@ A(노트북 Claude Code) ──jobs/open push──▶ CareerTunerAI(GitHub) ─
    └ watch_and_progress(결과 감지·임계 게이트) → Claude Code 가 정책 내에서 다음 job 자동 진행
 ```
 - **메시지 버스 = CareerTunerAI GitHub repo**: `jobs/open`(A→B 명령), `results/`·`STATUS_4090`(B→A 응답), `HANDOFF_4090`(지시).
-- **주 트리거 = SSH over Tailscale**(즉시), **백업 = GitHub polling**(N분, SSH 장애 시).
+- **채널 모델(2026-06-25 결정)**:
+  - 기본 운영/디버그 = **앱 SSH 풀세션**(Codex/Claude 앱 "연결>SSH")로 4090에 직접 접속 — 경로·로그·실패·unknown job 처리.
+  - 반복 자동 실행 = **forced-command SSH wrapper**(known job 트리거, 좁고 안전).
+  - 백업 = GitHub polling · 최후 fallback = TeamViewer.
+- **키 2개 분리**: 트리거 키 `careertuner_4090_ed25519`(forced-command, wrapper 한정) ↔ 앱 풀세션 키(forced-command 없음, 신뢰 머신). `setup_4090_ssh.ps1 -NotebookPubKey <트리거> -AppFullKey <앱>`.
 
 ## 2. 역할
 | 주체 | 하는 일 | 하지 않는 일 |
@@ -32,8 +36,8 @@ json_parse<0.95 · success<0.85 · cjk>0.05 · e2>0.02 · timeout>0 · 동일 jo
 
 ## 5. 보안
 - 4090 Windows OpenSSH Server, **password 로그인 비활성**, 키 인증만.
-- 노트북/Codex 키는 **forced command** 로 wrapper 한 줄에 고정(키가 새도 다른 명령 불가).
-- 방화벽: 노트북 Tailscale IP(또는 100.64.0.0/10)만 22번 허용, 일반 LAN/공인망 차단.
+- **트리거 키 = forced command** 로 wrapper 한 줄에 고정(키가 새도 다른 명령 불가). **앱 풀세션 키 = 넓은 권한**이라 신뢰 머신(앱)에서만, 사람이 의도적으로 사용. 둘은 별도 키.
+- 방화벽: Tailscale 대역(100.64.0.0/10)만 22번 허용(트리거 머신 2대 대응), 일반 LAN/공인망 차단.
 - 노트북 개인키 `~/.ssh/careertuner_4090_ed25519` 는 어디에도 커밋 안 함.
 
 ## 6. 산출물
