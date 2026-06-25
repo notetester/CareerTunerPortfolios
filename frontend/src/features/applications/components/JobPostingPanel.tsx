@@ -1,11 +1,11 @@
 import { type ChangeEvent, useEffect, useMemo, useState } from "react";
-import { FileText, FileUp, Image, Link as LinkIcon, Loader2, PencilLine, RefreshCw, Save, Upload } from "lucide-react";
+import { CheckCircle2, FileText, FileUp, Image, Link as LinkIcon, Loader2, PencilLine, RefreshCw, Save, Upload } from "lucide-react";
 import { Button } from "@/app/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/app/components/ui/card";
 import { Input } from "@/app/components/ui/input";
 import { Textarea } from "@/app/components/ui/textarea";
 import type { ApplicationCaseExtraction, ApplicationSourceType } from "../types/applicationCase";
-import { isApplicationCaseExtractionActive } from "../types/applicationCase";
+import { isApplicationCaseExtractionActive, isApplicationCaseExtractionReviewRequired } from "../types/applicationCase";
 import type { JobPosting, JobPostingRequest } from "../types/jobPosting";
 import { formatKoreaDateTime } from "../utils/dateFormat";
 import {
@@ -24,9 +24,12 @@ interface JobPostingPanelProps {
   error: string | null;
   extraction?: ApplicationCaseExtraction | null;
   retryingExtraction?: boolean;
+  reviewingExtraction?: boolean;
+  reviewExtractionError?: string | null;
   onSave(request: JobPostingRequest): Promise<JobPosting | null>;
   onUpload(sourceType: Extract<ApplicationSourceType, "PDF" | "IMAGE">, file: File): Promise<JobPosting | null>;
   onRetryExtraction?(): Promise<ApplicationCaseExtraction | null>;
+  onReviewExtraction?(extractedText: string): Promise<ApplicationCaseExtraction | null>;
 }
 
 const sourceOptions: {
@@ -68,9 +71,12 @@ export function JobPostingPanel({
   error,
   extraction,
   retryingExtraction = false,
+  reviewingExtraction = false,
+  reviewExtractionError = null,
   onSave,
   onUpload,
   onRetryExtraction,
+  onReviewExtraction,
 }: JobPostingPanelProps) {
   const initialText = useMemo(
     () => jobPosting?.extractedText ?? jobPosting?.originalText ?? "",
@@ -87,6 +93,7 @@ export function JobPostingPanel({
   const [file, setFile] = useState<File | null>(null);
   const [localError, setLocalError] = useState<string | null>(null);
   const extractionActive = extraction ? isApplicationCaseExtractionActive(extraction.status) : false;
+  const extractionReviewRequired = isApplicationCaseExtractionReviewRequired(extraction);
 
   useEffect(() => setText(initialText), [initialText]);
   useEffect(() => setSourceUrl(initialUrl), [initialUrl]);
@@ -168,6 +175,19 @@ export function JobPostingPanel({
     setFile(null);
   };
 
+  const handleReviewExtraction = async () => {
+    if (!onReviewExtraction) return;
+
+    const value = text.trim();
+    if (!value) {
+      setLocalError("검수할 공고문 텍스트를 입력해 주세요.");
+      return;
+    }
+
+    setLocalError(null);
+    await onReviewExtraction(value);
+  };
+
   return (
     <Card className="border-slate-200 bg-card">
       <CardHeader className="gap-2">
@@ -211,6 +231,19 @@ export function JobPostingPanel({
                 다시 추출
               </Button>
             )}
+            {extractionReviewRequired && onReviewExtraction && (
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                className="border-amber-200 text-amber-700 hover:bg-amber-50 hover:text-amber-800"
+                disabled={reviewingExtraction}
+                onClick={() => void handleReviewExtraction()}
+              >
+                {reviewingExtraction ? <Loader2 className="size-4 animate-spin" /> : <CheckCircle2 className="size-4" />}
+                검수 확정
+              </Button>
+            )}
             <Button
               type="button"
               size="sm"
@@ -225,18 +258,28 @@ export function JobPostingPanel({
         </div>
       </CardHeader>
       <CardContent className="space-y-4">
+        {extractionReviewRequired && (
+          <div className="break-words rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm leading-6 text-amber-800">
+            추출 품질이 자동 분석 기준에 부족합니다. 아래 텍스트를 확인하고 수정한 뒤 검수 확정을 눌러 주세요.
+          </div>
+        )}
+
         {extraction && (
           <div className={`rounded-lg border px-3 py-2 text-sm ${
             extraction.status === "FAILED"
               ? "border-red-200 bg-red-50 text-red-700"
               : extractionActive
                 ? "border-blue-100 bg-blue-50 text-blue-800"
-                : "border-emerald-100 bg-emerald-50 text-emerald-700"
+                : extractionReviewRequired
+                  ? "border-amber-200 bg-amber-50 text-amber-800"
+                  : "border-emerald-100 bg-emerald-50 text-emerald-700"
           }`}>
             <div className="flex flex-wrap items-center gap-2">
               <ApplicationExtractionBadge extraction={extraction} />
-              <span>
-                {extractionActive
+              <span className="min-w-0 break-words">
+                {extractionReviewRequired
+                  ? "추출 텍스트 검수가 필요합니다. 내용을 확인하고 확정해야 자동 분석을 이어갑니다."
+                  : extractionActive
                   ? "추출이 끝나면 최신 공고문으로 자동 갱신됩니다. 파일 크기와 이미지 품질에 따라 시간이 걸릴 수 있습니다."
                   : extraction.status === "FAILED"
                     ? extraction.errorMessage || "공고문 추출에 실패했습니다."
@@ -309,7 +352,7 @@ export function JobPostingPanel({
                   <div className="font-semibold text-slate-600">추출 방식</div>
                   <p>파일은 {JOB_POSTING_MAX_FILE_SIZE_LABEL} 이하만 업로드할 수 있습니다.</p>
                   <p>텍스트 PDF는 서버에서 바로 추출합니다.</p>
-                  <p>이미지와 스캔 PDF는 OpenAI OCR을 사용하며 완료까지 시간이 걸릴 수 있습니다.</p>
+                  <p>이미지와 스캔 PDF는 자체 OCR로 텍스트를 추출하며 완료까지 시간이 걸릴 수 있습니다.</p>
                 </div>
               </div>
             )}
@@ -327,13 +370,13 @@ export function JobPostingPanel({
           </>
         )}
 
-        {(localError || error) && (
-          <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
-            {localError ?? error}
+        {(localError || error || reviewExtractionError) && (
+          <div className="break-words rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+            {localError ?? error ?? reviewExtractionError}
           </div>
         )}
 
-        <div className="grid gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs leading-5 text-slate-500 sm:grid-cols-3">
+        <div className="grid gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs leading-5 text-slate-500 sm:grid-cols-3 [&>span]:min-w-0 [&>span]:break-words">
           <span>저장 출처: {sourceOptions.find((option) => option.value === sourceType)?.label}</span>
           <span>파일 참조: {jobPosting?.uploadedFileUrl ?? "없음"}</span>
           <span>저장 필드: {isTextSource(sourceType) ? "originalText" : "extractedText"}</span>

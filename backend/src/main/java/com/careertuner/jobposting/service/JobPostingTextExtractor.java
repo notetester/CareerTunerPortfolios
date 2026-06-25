@@ -48,27 +48,58 @@ public class JobPostingTextExtractor {
     private static final int URL_TIMEOUT_MILLIS = 5000;
     private static final int URL_MAX_BODY_SIZE = 1_000_000;
     private static final String USER_AGENT = "CareerTuner/1.0";
-
     private final OpenAiResponsesClient openAiClient;
+    private final JobPostingAiWorkerClient aiWorkerClient;
+    private final JobPostingFallbackPolicy fallbackPolicy;
     private final HostResolver hostResolver;
     private final HttpFetcher httpFetcher;
 
     @Autowired
-    public JobPostingTextExtractor(OpenAiResponsesClient openAiClient) {
-        this(openAiClient, InetAddress::getAllByName, new DirectSocketHttpFetcher());
+    public JobPostingTextExtractor(OpenAiResponsesClient openAiClient,
+                                   JobPostingAiWorkerClient aiWorkerClient,
+                                   JobPostingFallbackPolicy fallbackPolicy) {
+        this(openAiClient, aiWorkerClient, fallbackPolicy, InetAddress::getAllByName, new DirectSocketHttpFetcher());
+    }
+
+    JobPostingTextExtractor(OpenAiResponsesClient openAiClient) {
+        this(openAiClient, JobPostingAiWorkerClient.disabled(), JobPostingFallbackPolicy.fromProperties(null), InetAddress::getAllByName, new DirectSocketHttpFetcher());
     }
 
     JobPostingTextExtractor(OpenAiResponsesClient openAiClient, HostResolver hostResolver, HttpFetcher httpFetcher) {
+        this(openAiClient, JobPostingAiWorkerClient.disabled(), JobPostingFallbackPolicy.fromProperties(null), hostResolver, httpFetcher);
+    }
+
+    JobPostingTextExtractor(OpenAiResponsesClient openAiClient,
+                            JobPostingAiWorkerClient aiWorkerClient,
+                            JobPostingFallbackPolicy fallbackPolicy,
+                            HostResolver hostResolver,
+                            HttpFetcher httpFetcher) {
         this.openAiClient = openAiClient;
+        this.aiWorkerClient = Objects.requireNonNull(aiWorkerClient, "aiWorkerClient");
+        this.fallbackPolicy = Objects.requireNonNull(fallbackPolicy, "fallbackPolicy");
         this.hostResolver = Objects.requireNonNull(hostResolver, "hostResolver");
         this.httpFetcher = Objects.requireNonNull(httpFetcher, "httpFetcher");
     }
 
     public ExtractedPosting extractFile(StoredJobPostingFile file) {
+        return aiWorkerClient.extractFile(file).orElseGet(() -> extractFileLocally(file));
+    }
+
+    private ExtractedPosting extractFileLocally(StoredJobPostingFile file) {
         if ("PDF".equals(file.sourceType())) {
             String text = extractTextPdf(file);
             OpenAiResponsesClient.Usage usage = null;
             if (text.isBlank()) {
+                if (!fallbackPolicy.allowed(JobPostingFallbackPolicy.STAGE_PDF_OCR)) {
+                    return new ExtractedPosting(file.sourceType(), file.fileReference(), null, "", null,
+                            "IMAGE_PDF_OCR",
+                            0,
+                            "FAILED",
+                            null,
+                            null,
+                            false,
+                            "OpenAI fallback disabled and Python worker unavailable.");
+                }
                 OpenAiResponsesClient.TextPayload payload = openAiClient.extractPdfText(file.originalFilename(), file.bytes());
                 text = payload.text();
                 usage = payload.usage();
@@ -76,6 +107,16 @@ public class JobPostingTextExtractor {
             return new ExtractedPosting(file.sourceType(), file.fileReference(), null, limit(text), usage);
         }
 
+        if (!fallbackPolicy.allowed(JobPostingFallbackPolicy.STAGE_IMAGE_OCR)) {
+            return new ExtractedPosting(file.sourceType(), file.fileReference(), null, "", null,
+                    "IMAGE_OCR",
+                    0,
+                    "FAILED",
+                    null,
+                    null,
+                    false,
+                    "OpenAI fallback disabled and Python worker unavailable.");
+        }
         OpenAiResponsesClient.TextPayload payload = openAiClient.extractImageText(file.contentType(), file.bytes());
         return new ExtractedPosting(file.sourceType(), file.fileReference(), null, limit(payload.text()), payload.usage());
     }
@@ -91,7 +132,9 @@ public class JobPostingTextExtractor {
             if (text.isBlank()) {
                 throw new BusinessException(ErrorCode.INVALID_INPUT, "URL에서 공고문 텍스트를 추출하지 못했습니다.");
             }
-            return new ExtractedPosting("URL", validatedUrl.normalizedUrl(), validatedUrl.normalizedUrl(), limit(text), null);
+            String limitedText = limit(text);
+            return aiWorkerClient.extractText("URL", validatedUrl.normalizedUrl(), validatedUrl.normalizedUrl(), limitedText)
+                    .orElseGet(() -> new ExtractedPosting("URL", validatedUrl.normalizedUrl(), validatedUrl.normalizedUrl(), limitedText, null));
         } catch (BusinessException ex) {
             throw ex;
         } catch (IOException ex) {
@@ -662,8 +705,29 @@ public class JobPostingTextExtractor {
             String uploadedFileUrl,
             String originalText,
             String extractedText,
-            OpenAiResponsesClient.Usage usage
+            OpenAiResponsesClient.Usage usage,
+            String extractionStrategy,
+            Integer qualityScore,
+            String qualityStatus,
+            String qualityReportJson,
+            String modelVersionsJson,
+            boolean fallbackEligible,
+            String fallbackReason
     ) {
+        public ExtractedPosting(String sourceType,
+                                String uploadedFileUrl,
+                                String originalText,
+                                String extractedText,
+                                OpenAiResponsesClient.Usage usage) {
+            this(sourceType, uploadedFileUrl, originalText, extractedText, usage,
+                    null,
+                    null,
+                    null,
+                    null,
+                    null,
+                    false,
+                    null);
+        }
     }
 
     @FunctionalInterface

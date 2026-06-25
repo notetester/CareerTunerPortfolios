@@ -78,3 +78,12 @@ pnpm-debug.log*
 # 로컬 키 주입 스크립트 (키 포함 — 절대 커밋 금지)
 backend/run-local.bat
 run-local.bat
+
+# ----- Python (ml 워커 등) -----
+# .pyc/__pycache__ 는 .py 로부터 자동 생성되는 빌드 산출물이라 추적하지 않는다.
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.venv/
+venv/

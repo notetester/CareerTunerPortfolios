@@ -3,11 +3,13 @@ import { Link, useLocation } from "react-router";
 import {
   LayoutDashboard, Briefcase, BarChart3, Building2, Gauge, FileText,
   Users, CreditCard, MessageSquareWarning, Megaphone, CircleHelp,
-  Mail, Search, Bell, ChevronRight, Bot,
+  Mail, Search, Bell, ChevronRight, Bot, SlidersHorizontal,
   Target, TrendingUp, ListChecks, Activity,
   Scale, FileUser, ClipboardCheck, MessageSquare, Package, ScrollText,
+  ShieldCheck, History,
+  type LucideIcon,
 } from "lucide-react";
-import type { LucideIcon } from "lucide-react";
+import { useAuth } from "@/app/auth/AuthContext";
 import "./admin-shell.css";
 
 interface NavItem {
@@ -20,21 +22,23 @@ interface NavItem {
 
 const NAV: NavItem[] = [
   { key: "dashboard", label: "대시보드", icon: LayoutDashboard, href: "/admin" },
-  // C 운영 화면. 공통 AdminShell(팀장 영역) NAV에 추가 — 그동안 /admin 랜딩 바로가기로만 도달 가능했던
-  // 분석 통계·적합도·운영 대시보드·작업 큐를 사이드바에서 직접 열 수 있게 한다(발견성 보강).
   { key: "analytics", label: "분석 통계", icon: TrendingUp, href: "/admin/analytics" },
   { key: "fit-analysis", label: "적합도 분석", icon: Target, href: "/admin/fit-analysis" },
   { key: "ops-dashboard", label: "운영 대시보드", icon: Activity, href: "/admin/dashboard" },
-  { key: "admin-home", label: "운영 작업 큐", icon: ListChecks, href: "/admin/home" },
+  { key: "admin-home", label: "운영 작업 홈", icon: ListChecks, href: "/admin/home" },
   { key: "application-cases", label: "지원 건 관리", icon: Briefcase, href: "/admin/application-cases" },
   { key: "job-analysis", label: "공고 분석 조회", icon: BarChart3, href: "/admin/job-analysis" },
   { key: "company-analysis", label: "기업 분석 조회", icon: Building2, href: "/admin/company-analysis" },
   { key: "interviews", label: "면접 모니터링", icon: MessageSquare, href: "/admin/interviews" },
   { key: "ai-usage", label: "B AI 사용량", icon: Gauge, href: "/admin/ai-usage" },
+  { key: "ai-settings", label: "AI 운영 설정", icon: SlidersHorizontal, href: "/admin/ai-settings" },
   { key: "prompts", label: "프롬프트 템플릿", icon: FileText, href: "/admin/prompts" },
   { key: "members", label: "회원 관리", icon: Users, ct: "1,248", href: "/admin/users" },
   { key: "profiles", label: "프로필 관리", icon: FileUser, href: "/admin/profiles" },
   { key: "consents", label: "동의 관리", icon: ClipboardCheck, href: "/admin/consents" },
+  { key: "super-admin", label: "super 권한 관리", icon: ShieldCheck, href: "/admin/super" },
+  { key: "policies", label: "운영 정책 관리", icon: SlidersHorizontal, href: "/admin/policies" },
+  { key: "action-logs", label: "관리자 액션 로그", icon: History, href: "/admin/action-logs" },
   { key: "payments", label: "결제 관리", icon: CreditCard, href: "/admin/payments" },
   { key: "plans", label: "요금제 관리", icon: Package, href: "/admin/plans" },
   { key: "reports", label: "신고·검열 관리", icon: MessageSquareWarning, href: "/admin/community" },
@@ -47,6 +51,8 @@ const NAV: NavItem[] = [
   { key: "logs", label: "시스템 로그", icon: ScrollText, href: "/admin/logs" },
 ];
 
+const SUPER_ADMIN_ONLY_NAV_KEYS = new Set(["super-admin", "policies", "action-logs"]);
+
 interface AdminShellProps {
   active: string;
   breadcrumb: string;
@@ -58,21 +64,35 @@ interface AdminShellProps {
 }
 
 export default function AdminShell({
-  active, breadcrumb, title, icon: Icon, desc, actions, children,
+  active,
+  breadcrumb,
+  title,
+  icon: Icon,
+  desc,
+  actions,
+  children,
 }: AdminShellProps) {
   const location = useLocation();
+  const { user } = useAuth();
+  const role = user?.role;
+  const canUseAdmin = role === "ADMIN" || role === "SUPER_ADMIN";
+  const canUseCurrentPage = canUseAdmin && (role === "SUPER_ADMIN" || !SUPER_ADMIN_ONLY_NAV_KEYS.has(active));
+  const visibleNavItems = canUseAdmin
+    ? NAV.filter((item) => role === "SUPER_ADMIN" || !SUPER_ADMIN_ONLY_NAV_KEYS.has(item.key))
+    : [];
 
   return (
     <div className="adm">
-      {/* Sidebar */}
       <aside className="adm__side">
         <div className="adm__logo">
           <span className="adm__logo-icon">CT</span>
-          <span className="adm__logo-text">CareerTuner <b>Admin</b></span>
+          <span className="adm__logo-text">
+            CareerTuner <b>Admin</b>
+          </span>
         </div>
 
         <nav className="adm__nav">
-          {NAV.map((item) => {
+          {visibleNavItems.map((item) => {
             const isActive = item.key === active || location.pathname === item.href;
             return (
               <Link
@@ -89,16 +109,14 @@ export default function AdminShell({
         </nav>
       </aside>
 
-      {/* Main */}
       <div className="adm__main">
-        {/* Top bar */}
         <header className="adm__topbar">
           <div className="adm__search">
             <Search />
             <input type="text" placeholder="검색..." />
           </div>
           <div className="adm__topbar-right">
-            <button className="adm__topbar-bell">
+            <button className="adm__topbar-bell" type="button">
               <Bell />
               <span className="adm__topbar-dot" />
             </button>
@@ -109,7 +127,6 @@ export default function AdminShell({
           </div>
         </header>
 
-        {/* Page header */}
         <div className="adm__content">
           <div className="adm__page-head">
             <div className="adm__bread">
@@ -117,14 +134,24 @@ export default function AdminShell({
             </div>
             <div className="adm__title-row">
               <div>
-                <h1 className="adm__title"><Icon /> {title}</h1>
+                <h1 className="adm__title">
+                  <Icon /> {title}
+                </h1>
                 <p className="adm__desc">{desc}</p>
               </div>
               {actions && <div className="adm__actions">{actions}</div>}
             </div>
           </div>
 
-          {children}
+          {canUseCurrentPage ? (
+            children
+          ) : (
+            <section className="rounded-lg border border-slate-200 bg-white p-6 text-sm text-slate-600 shadow-sm">
+              {canUseAdmin
+                ? "슈퍼 관리자 권한이 필요한 메뉴입니다."
+                : "관리자 권한이 필요합니다. 관리자 계정으로 로그인한 뒤 다시 접근해 주세요."}
+            </section>
+          )}
         </div>
       </div>
     </div>

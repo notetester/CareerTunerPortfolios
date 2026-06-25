@@ -6,6 +6,8 @@ export type ApplicationCaseListView = "ACTIVE" | "ARCHIVED" | "DELETED";
 
 export type ApplicationCaseExtractionStatus = "QUEUED" | "RUNNING" | "SUCCEEDED" | "FAILED";
 
+export type ApplicationCaseExtractionQualityStatus = "PASS" | "REVIEW_REQUIRED" | "FAILED";
+
 export interface ApplicationCase {
   id: number;
   companyName: string;
@@ -40,6 +42,14 @@ export interface ApplicationCaseExtraction {
   sourceType: ApplicationSourceType;
   status: ApplicationCaseExtractionStatus;
   errorMessage: string | null;
+  extractionStrategy: string | null;
+  qualityScore: number | null;
+  qualityStatus: ApplicationCaseExtractionQualityStatus | null;
+  qualityReportJson: string | null;
+  modelVersionsJson: string | null;
+  fallbackEligible: boolean;
+  fallbackReason: string | null;
+  reviewedAt: string | null;
   startedAt: string | null;
   finishedAt: string | null;
   createdAt: string;
@@ -89,4 +99,10 @@ export function isApplicationCaseExtractionActive(status: ApplicationCaseExtract
 
 export function isApplicationCaseExtractionTerminal(status: ApplicationCaseExtractionStatus): boolean {
   return status === "SUCCEEDED" || status === "FAILED";
+}
+
+export function isApplicationCaseExtractionReviewRequired(
+  extraction: ApplicationCaseExtraction | null | undefined,
+): boolean {
+  return extraction?.status === "SUCCEEDED" && extraction.qualityStatus === "REVIEW_REQUIRED";
 }

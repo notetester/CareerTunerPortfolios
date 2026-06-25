@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.careertuner.support.chatbot.ResponseLogMapper">
+
+    <!-- 응답 1턴 = 1행 append. created_at 은 DB 기본값(CURRENT_TIMESTAMP). -->
+    <insert id="insert">
+        INSERT INTO chatbot_response_log
+            (conversation_id, user_id, question, response_path, faq_referenced, top_similarity, matched_faq_id, handoff)
+        VALUES
+            (#{conversationId}, #{userId}, #{question}, #{responsePath}, #{faqReferenced}, #{topSimilarity}, #{matchedFaqId}, #{handoff})
+    </insert>
+
+</mapper>

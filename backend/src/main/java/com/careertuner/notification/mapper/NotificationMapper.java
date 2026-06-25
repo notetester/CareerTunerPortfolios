@@ -24,5 +24,10 @@ public interface NotificationMapper {
 
     void markAllAsRead(@Param("userId") Long userId);
 
+    int markTypeAsReadByTarget(@Param("userId") Long userId,
+                               @Param("type") String type,
+                               @Param("targetType") String targetType,
+                               @Param("targetId") Long targetId);
+
     void insert(Notification notification);
 }

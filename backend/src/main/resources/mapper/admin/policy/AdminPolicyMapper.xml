@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.careertuner.admin.policy.mapper.AdminPolicyMapper">
+
+    <select id="findAll" resultType="com.careertuner.admin.policy.dto.AdminSystemPolicyRow">
+        SELECT id, policy_code, display_name, description,
+               JSON_UNQUOTE(JSON_EXTRACT(config_json, '$')) AS config_json,
+               schedule_type, active, last_run_at, last_run_status, last_run_message,
+               updated_by, created_at, updated_at
+        FROM admin_system_policy
+        ORDER BY policy_code
+    </select>
+
+    <select id="findByCode" resultType="com.careertuner.admin.policy.dto.AdminSystemPolicyRow">
+        SELECT id, policy_code, display_name, description,
+               JSON_UNQUOTE(JSON_EXTRACT(config_json, '$')) AS config_json,
+               schedule_type, active, last_run_at, last_run_status, last_run_message,
+               updated_by, created_at, updated_at
+        FROM admin_system_policy
+        WHERE policy_code = #{policyCode}
+    </select>
+
+    <update id="updatePolicy">
+        UPDATE admin_system_policy
+        SET config_json = CAST(#{configJson} AS JSON),
+            schedule_type = #{scheduleType},
+            active = COALESCE(#{active}, active),
+            updated_by = #{updatedBy}
+        WHERE policy_code = #{policyCode}
+    </update>
+
+    <update id="updateLastRun">
+        UPDATE admin_system_policy
+        SET last_run_at = NOW(),
+            last_run_status = #{status},
+            last_run_message = #{message},
+            updated_by = #{updatedBy}
+        WHERE policy_code = #{policyCode}
+    </update>
+</mapper>

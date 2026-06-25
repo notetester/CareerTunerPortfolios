@@ -14,13 +14,12 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+import com.careertuner.admin.common.AdminAccess;
 import com.careertuner.admin.fitanalysis.dto.AdminFitAnalysisDetailResponse;
 import com.careertuner.admin.fitanalysis.dto.AdminFitAnalysisListItemResponse;
 import com.careertuner.admin.fitanalysis.dto.AdminFitAnalysisMemoRequest;
 import com.careertuner.admin.fitanalysis.dto.AdminFitAnalysisMemoResponse;
 import com.careertuner.admin.fitanalysis.service.AdminFitAnalysisService;
-import com.careertuner.common.exception.BusinessException;
-import com.careertuner.common.exception.ErrorCode;
 import com.careertuner.common.security.AuthUser;
 import com.careertuner.common.web.ApiResponse;
 
@@ -80,8 +79,6 @@ public class AdminFitAnalysisController {
     }
 
     private static void requireAdmin(AuthUser authUser) {
-        if (!"ADMIN".equals(authUser.role())) {
-            throw new BusinessException(ErrorCode.FORBIDDEN, "관리자만 접근할 수 있습니다.");
-        }
+        AdminAccess.requireAdmin(authUser);
     }
 }
