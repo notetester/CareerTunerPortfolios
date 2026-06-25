@@ -352,7 +352,7 @@ export function JobPostingPanel({
                   <div className="font-semibold text-slate-600">추출 방식</div>
                   <p>파일은 {JOB_POSTING_MAX_FILE_SIZE_LABEL} 이하만 업로드할 수 있습니다.</p>
                   <p>텍스트 PDF는 서버에서 바로 추출합니다.</p>
-                  <p>이미지와 스캔 PDF는 OpenAI OCR을 사용하며 완료까지 시간이 걸릴 수 있습니다.</p>
+                  <p>이미지와 스캔 PDF는 자체 OCR로 텍스트를 추출하며 완료까지 시간이 걸릴 수 있습니다.</p>
                 </div>
               </div>
             )}
