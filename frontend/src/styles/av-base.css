@@ -1,11 +1,13 @@
 /* ════════ CareerTuner v2 — 공유 베이스. 규율: 잉크 + 파랑 1색, 상태색만 예외 ════════ */
 :root {
-  --av-ink: #0f172a; --av-ink-2: #475569; --av-ink-3: #94a3b8;
-  --av-line: #e2e8f0; --av-line-soft: #eef2f6;
-  --av-bg: #fafbfc; --av-card: #ffffff;
-  --av-blue: #2563eb; --av-blue-soft: #eff6ff;
-  --av-green: #15803d; --av-amber: #b45309; --av-red: #dc2626;
-  --av-track: #f1f5f9;
+  /* theme.css 시맨틱 토큰에 연결 — 라이트/다크 토글을 자동으로 따라간다.
+     av-* 를 쓰는 21개 파일(커뮤니티·고객센터·알림·관리자)이 이 한 곳으로 다크 대응된다. */
+  --av-ink: var(--foreground); --av-ink-2: var(--muted-foreground); --av-ink-3: var(--ink-4);
+  --av-line: var(--border); --av-line-soft: var(--border);
+  --av-bg: var(--background); --av-card: var(--card);
+  --av-blue: var(--primary); --av-blue-soft: var(--accent-soft);
+  --av-green: var(--success); --av-amber: var(--warning); --av-red: var(--destructive);
+  --av-track: var(--secondary);
 }
 .num { font-variant-numeric: tabular-nums; }
 
@@ -13,14 +15,14 @@
 .av-seg { display: inline-flex; border: 1px solid var(--av-line); border-radius: 7px; background: var(--av-card); padding: 2px; }
 .av-seg button { border: none; background: none; cursor: pointer; font-size: 12px; font-weight: 500;
   color: var(--av-ink-2); padding: 4px 10px; border-radius: 5px; white-space: nowrap; }
-.av-seg button.on { background: var(--av-ink); color: #fff; font-weight: 600; }
+.av-seg button.on { background: var(--av-ink); color: var(--av-bg); font-weight: 600; }
 .av-btn { display: inline-flex; align-items: center; gap: 6px; height: 30px; padding: 0 11px;
   border: 1px solid var(--av-line); border-radius: 7px; background: var(--av-card); font-size: 12px;
   font-weight: 600; color: var(--av-ink-2); cursor: pointer; white-space: nowrap; text-decoration: none; }
 .av-btn:hover { border-color: var(--av-ink-3); color: var(--av-ink); }
 .av-btn svg { width: 13px; height: 13px; stroke-width: 2; }
-.av-btn--ink { background: var(--av-ink); border-color: var(--av-ink); color: #fff; }
-.av-btn--ink:hover { background: #1e293b; color: #fff; }
+.av-btn--ink { background: var(--av-ink); border-color: var(--av-ink); color: var(--av-bg); }
+.av-btn--ink:hover { opacity: 0.9; }
 .av-btn--red { background: var(--av-red); border-color: var(--av-red); color: #fff; }
 .av-btn--red:hover { opacity: 0.9; }
 .av-search { position: relative; width: 230px; }
@@ -68,7 +70,7 @@
 .av-table td.r { text-align: right; }
 .av-table tbody tr { border-bottom: 1px solid var(--av-line-soft); }
 .av-table tbody tr:last-child { border-bottom: none; }
-.av-table tbody tr:hover { background: #fafbfd; }
+.av-table tbody tr:hover { background: var(--av-track); }
 .av-table tbody tr.sel { background: var(--av-blue-soft); }
 .av-table td { padding: 9px 14px; vertical-align: middle; }
 .av-id { font-size: 11.5px; color: var(--av-ink-3); white-space: nowrap; font-variant-numeric: tabular-nums; }
@@ -106,7 +108,7 @@
 .av-rate__l { font-size: 12px; color: var(--av-ink-2); display: flex; align-items: center; gap: 7px; white-space: nowrap; }
 .av-rate__bar { height: 5px; border-radius: 99px; background: var(--av-track); overflow: hidden; }
 .av-rate__fill { height: 100%; border-radius: 99px; background: var(--av-blue); display: block; }
-.av-rate.low .av-rate__fill { background: #b9cdf3; }
+.av-rate.low .av-rate__fill { background: color-mix(in srgb, var(--av-blue) 40%, var(--av-card)); }
 .av-rate__v { font-size: 11.5px; color: var(--av-ink-3); text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
 .av-rate__v b { color: var(--av-ink); font-weight: 650; font-size: 12px; }
 .av-note { margin: 2px 16px 16px; padding: 9px 11px 9px 12px; border-left: 2px solid var(--av-blue);
@@ -115,7 +117,7 @@
 .av-days { display: flex; align-items: flex-end; gap: 7px; height: 92px; padding: 14px 16px 0; }
 .av-day { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: flex-end; height: 100%; }
 .av-day__v { font-size: 9.5px; color: var(--av-ink-3); margin-bottom: 3px; font-variant-numeric: tabular-nums; }
-.av-day__bar { width: 100%; max-width: 22px; border-radius: 3px 3px 0 0; background: #dbe4f0; }
+.av-day__bar { width: 100%; max-width: 22px; border-radius: 3px 3px 0 0; background: var(--av-track); }
 .av-day.today .av-day__bar { background: var(--av-blue); }
 .av-day.today .av-day__v { color: var(--av-blue); font-weight: 650; }
 .av-days__x { display: grid; grid-template-columns: repeat(7, 1fr); gap: 7px; padding: 6px 16px 14px; }
@@ -156,7 +158,7 @@
 .av-flabel .opt { font-size: 11px; font-weight: 500; color: var(--av-ink-3); }
 .av-input { width: 100%; height: 34px; padding: 0 11px; border: 1px solid var(--av-line); border-radius: 7px;
   background: var(--av-card); font-size: 13px; color: var(--av-ink); }
-.av-input::placeholder, .av-textarea::placeholder { color: #cbd5e1; }
+.av-input::placeholder, .av-textarea::placeholder { color: var(--av-ink-3); }
 .av-input:focus, .av-textarea:focus { outline: none; border-color: var(--av-blue); box-shadow: 0 0 0 3px rgba(37,99,235,0.12); }
 .av-textarea { width: 100%; min-height: 120px; padding: 10px 11px; border: 1px solid var(--av-line); border-radius: 7px;
   background: var(--av-card); font-size: 13px; line-height: 1.7; color: var(--av-ink); resize: vertical; }
@@ -170,7 +172,7 @@
 .av-switchrow:hover { border-color: var(--av-line); }
 .av-switchrow .t { font-size: 12.5px; font-weight: 600; }
 .av-switchrow .s { font-size: 11.5px; color: var(--av-ink-3); margin-top: 2px; line-height: 1.5; }
-.av-switch { flex: none; width: 32px; height: 19px; border-radius: 99px; background: #d6dee8; position: relative;
+.av-switch { flex: none; width: 32px; height: 19px; border-radius: 99px; background: var(--av-track); position: relative;
   transition: background .15s ease; margin-top: 1px; }
 .av-switch::after { content: ""; position: absolute; top: 2px; left: 2px; width: 15px; height: 15px; border-radius: 50%;
   background: #fff; box-shadow: 0 1px 2px rgba(15,23,42,0.2); transition: left .15s ease; }
