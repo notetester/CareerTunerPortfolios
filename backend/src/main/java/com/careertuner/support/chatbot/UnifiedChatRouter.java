@@ -32,7 +32,9 @@ public class UnifiedChatRouter {
         /** ③ 인테이크 즉시 진입(명확구역 argmax 가 인테이크 우세). */
         INTAKE_DIRECT,
         /** 경계구역 COMMAND — 바로 진입 말고 확인 1턴(오분류 안전판). */
-        INTAKE_CONFIRM
+        INTAKE_CONFIRM,
+        /** 약신호(둘 다 weakGate 미만) — FAQ도 의도도 불명확 → 정중한 되묻기로 끊는다. */
+        FALLBACK
     }
 
     public record Decision(Target target, double faqScore, double intakeScore,
@@ -48,9 +50,6 @@ public class UnifiedChatRouter {
             "자소서 좀 봐줘",
             "이력서 첨삭해줘",
             "면접 예상질문 만들어줘");
-
-    /** 둘 다 이 게이트 미만이면 "둘 다 약함" → ① fallback(기존 동작 유지). */
-    private static final double WEAK_GATE = 0.35;
 
     private final ChatbotService chatbotService;
     private final OllamaEmbeddingClient embeddingClient;
@@ -84,9 +83,10 @@ public class UnifiedChatRouter {
 
         double diff = intakeScore - faqScore;
 
-        // 둘 다 약함 → ① fallback.
-        if (faqScore < WEAK_GATE && intakeScore < WEAK_GATE) {
-            return new Decision(Target.FAQ, faqScore, intakeScore, diff, false, null);
+        // 둘 다 약함 → FAQ도 의도도 불명확 → 되묻기(fallback). 코퍼스 밖·무의미 입력 차단.
+        double weakGate = props.getWeakGate();
+        if (faqScore < weakGate && intakeScore < weakGate) {
+            return new Decision(Target.FALLBACK, faqScore, intakeScore, diff, false, null);
         }
 
         boolean boundary = Math.abs(diff) < props.getRouteBoundary();

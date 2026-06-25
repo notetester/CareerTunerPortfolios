@@ -34,6 +34,13 @@ public class ChatbotProperties {
     /** 통합 라우팅 경계 폭(deadband). |intakeScore - faqScore| 가 이 값 미만이면 화행 분류로 판정(그 이상은 argmax 결정적). */
     private double routeBoundary = 0.10;
 
+    /**
+     * 약신호 게이트. faqScore·intakeScore 가 <b>둘 다</b> 이 값 미만이면 "FAQ도 아니고 명확한 의도도
+     * 없는" 미달로 보고 정중한 되묻기(fallback)로 끊는다. 코퍼스 밖·무의미 입력 차단용.
+     * 실측(2026-06-25): 비FAQ faqScore ≤0.45 / 진짜 FAQ ≥0.57 로 분리 → 0.52 채택(B/C 회귀 무손실).
+     */
+    private double weakGate = 0.52;
+
     /** 화행 분류(QUESTION/COMMAND)에 쓰는 모델. ③ 인테이크 에이전트와 동일한 qwen3:8b. */
     private String speechActModel = "qwen3:8b";
 }

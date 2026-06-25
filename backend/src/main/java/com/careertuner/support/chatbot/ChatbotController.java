@@ -175,6 +175,19 @@ public class ChatbotController {
                         null,
                         false));
             }
+            case FALLBACK -> {
+                // 약신호(FAQ도 의도도 불명확) → 에이전트로 보내지 않고 정중한 되묻기로 끊는다.
+                logDiag(d, "되묻기");
+                return ApiResponse.ok(new ChatAskResponse(
+                        conversationId,
+                        "질문을 정확히 이해하지 못했어요. 좀 더 구체적으로 말씀해 주시겠어요? "
+                                + "(예: \"환불 어떻게 해요\" 같은 이용 문의, 또는 \"네이버 백엔드 면접 준비해줘\" 같은 작업 요청)",
+                        List.of(),
+                        List.of(),
+                        "되묻기",
+                        null,
+                        false));
+            }
             default -> {
                 logDiag(d, "①");
                 return ApiResponse.ok(faqPath(conversationId, question, userId, "①"));
