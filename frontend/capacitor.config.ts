@@ -8,11 +8,17 @@ import type { CapacitorConfig } from '@capacitor/cli';
 //   실데이터까지 보려면 도달 가능한 백엔드를 가리켜야 한다. 두 가지 방법:
 //   1) 아래 server.url 주석을 풀어 호스팅된 화면을 로드(thin shell). 또는
 //   2) API base 를 환경변수로 분리해 PC LAN IP(예: http://192.168.x.x:8080)로 빌드(백엔드 CORS 허용 필요).
+// 실기기 live reload: run-app-livereload.bat 이 CAP_SERVER_URL(=http://<LAN_IP>:5173)을 주입한다.
+// env 가 없으면 server 미설정 = 번들(dist) 로드 = 프로덕션 APK. → 이 파일은 그대로 커밋해도 안전하다.
+const devServerUrl = process.env.CAP_SERVER_URL;
+
 const config: CapacitorConfig = {
   appId: 'com.careertuner.app',
   appName: 'CareerTuner',
   webDir: 'dist',
-  // server: { url: 'https://notetester.github.io/CareerTunerDemo/', cleartext: false },
+  // server: { url: 'https://notetester.github.io/CareerTunerDemo/', cleartext: false }, // 호스팅 데모용(선택)
+  // CAP_SERVER_URL 있을 때만 server 주입 — 폰 WebView가 PC dev 서버를 직접 로드(live reload).
+  ...(devServerUrl ? { server: { url: devServerUrl, cleartext: true } } : {}),
   android: {
     // 디버그 APK 사이드로드(BlueStacks) 시 자체서명 사용. 평문 http 백엔드를 쓸 경우에만 허용.
     allowMixedContent: true,
