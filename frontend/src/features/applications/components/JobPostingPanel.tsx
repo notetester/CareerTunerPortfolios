@@ -231,7 +231,7 @@ export function JobPostingPanel({
                 type="button"
                 size="sm"
                 variant="outline"
-                disabled={loading || uploading || saving || confirmingExtraction || extractionActive}
+                disabled={loading || uploading || saving || reviewingExtraction || confirmingExtraction || extractionActive}
                 onClick={() => void handleUpload()}
               >
                 {uploading ? <Loader2 className="size-4 animate-spin" /> : <Upload className="size-4" />}
@@ -268,7 +268,7 @@ export function JobPostingPanel({
               type="button"
               size="sm"
               className="bg-blue-600 text-white hover:bg-blue-700"
-              disabled={loading || saving || uploading || confirmingExtraction || extractionActive || disableSaveForReview}
+              disabled={loading || saving || uploading || reviewingExtraction || confirmingExtraction || extractionActive || disableSaveForReview}
               onClick={() => void handleSave()}
             >
               {saving || confirmingExtraction ? <Loader2 className="size-4 animate-spin" /> : <Save className="size-4" />}
