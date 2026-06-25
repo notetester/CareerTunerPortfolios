@@ -3,7 +3,6 @@ package com.careertuner.admin.ops.service;
 import java.util.List;
 
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 import com.careertuner.admin.common.AdminAccess;
@@ -20,7 +19,7 @@ public class AdminActionLogService {
 
     private final AdminActionLogMapper mapper;
 
-    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    @Transactional
     public void record(AuthUser actor, Long targetUserId, String actionType, String targetType,
                        String beforeValue, String afterValue, String reason) {
         Long actorId = actor == null ? null : actor.id();

@@ -90,20 +90,22 @@ class ExtractionOptions:
     long_image_ratio: float = 3.0
     long_image_min_height: int = 4000
     enable_paddle_ocr: bool = True
+    # 레이아웃 인식 OCR(PPStructureV3): 표·2단 공고의 읽기 순서 복원. 실패 시 기본 line-OCR 폴백.
+    enable_ppstructure: bool = True
     paddle_ocr_lang: str = "korean"
 
 
 _PADDLE_OCR_CACHE: dict[str, Any] = {}
+_PPSTRUCTURE_CACHE: dict[str, Any] = {}
 
 
 def configure_ocr_cache_env(cache_root: Path | None = None) -> Path:
+    os.environ["FLAGS_use_mkldnn"] = "0"
     root = cache_root or Path(os.environ.get(
         "JOB_POSTING_AI_CACHE_DIR",
         str(Path(tempfile.gettempdir()) / "careertuner-job-posting-worker-cache"),
     ))
     root.mkdir(parents=True, exist_ok=True)
-    os.environ["HOME"] = str(root)
-    os.environ["USERPROFILE"] = str(root)
     os.environ.setdefault("XDG_CACHE_HOME", str(root / ".cache"))
     os.environ.setdefault("PADDLE_OCR_BASE_DIR", str(root / ".paddleocr"))
     return root
@@ -231,6 +233,11 @@ def existing_ocr_text(input_path: Path, existing_ocr_dir: Path | None) -> str:
 def load_paddleocr_class():
     configure_ocr_cache_env()
     try:
+        import paddle
+        paddle.set_flags({"FLAGS_use_mkldnn": False})
+    except Exception:
+        pass
+    try:
         from paddleocr import PaddleOCR
     except ImportError as exc:
         raise RuntimeError("paddleocr and paddlepaddle are required for local OCR execution.") from exc
@@ -246,9 +253,10 @@ def create_paddle_ocr(lang: str):
         return _PADDLE_OCR_CACHE[lang]
     paddle_ocr_class = load_paddleocr_class()
     constructor_options = [
-        {"use_angle_cls": True, "lang": lang, "show_log": False},
-        {"use_angle_cls": True, "lang": lang},
+        {"lang": lang, "enable_mkldnn": False},
         {"lang": lang},
+        {"enable_mkldnn": False},
+        {},
     ]
     last_error: Exception | None = None
     for options in constructor_options:
@@ -256,8 +264,10 @@ def create_paddle_ocr(lang: str):
             ocr = paddle_ocr_class(**options)
             _PADDLE_OCR_CACHE[lang] = ocr
             return ocr
-        except (TypeError, ValueError) as exc:
-            if not is_constructor_argument_error(exc):
+        except (TypeError, ValueError, RuntimeError) as exc:
+            if isinstance(exc, RuntimeError) and "Unknown argument" not in str(exc):
+                raise
+            if isinstance(exc, (TypeError, ValueError)) and not is_constructor_argument_error(exc):
                 raise
             last_error = exc
     raise RuntimeError("Unable to create PaddleOCR with supported constructor options.") from last_error
@@ -266,12 +276,15 @@ def create_paddle_ocr(lang: str):
 def collect_ocr_text(value: Any) -> list[str]:
     lines: list[str] = []
     if isinstance(value, dict):
-        for key in ("rec_texts", "texts"):
+        for key in ("rec_texts", "texts", "rec_text"):
             field = value.get(key)
-            if isinstance(field, list):
+            if isinstance(field, str) and field.strip():
+                lines.append(field.strip())
+            elif isinstance(field, list):
                 lines.extend(str(item).strip() for item in field if str(item).strip())
         for field in value.values():
-            lines.extend(collect_ocr_text(field))
+            if isinstance(field, (dict, list, tuple)):
+                lines.extend(collect_ocr_text(field))
         return lines
     if isinstance(value, (list, tuple)):
         if (
@@ -301,11 +314,116 @@ def unique_preserving_order(lines: list[str]) -> list[str]:
 
 def paddle_ocr_text(input_path: Path, lang: str) -> str:
     ocr = create_paddle_ocr(lang)
+    result = _run_paddle_ocr(ocr, input_path)
+    if isinstance(result, list) and result and isinstance(result[0], str):
+        lines = result
+    else:
+        lines = collect_ocr_text(result)
+    return normalize_text("\n".join(unique_preserving_order(lines)))
+
+
+def _run_paddle_ocr(ocr: Any, input_path: Path) -> Any:
+    path_str = str(input_path)
+    if hasattr(ocr, "predict"):
+        try:
+            results = list(ocr.predict(path_str))
+            lines: list[str] = []
+            for res in results:
+                texts = None
+                if hasattr(res, "get"):
+                    texts = res.get("rec_texts")
+                elif hasattr(res, "rec_texts"):
+                    texts = res.rec_texts
+                if texts:
+                    lines.extend(str(t).strip() for t in texts if str(t).strip())
+                else:
+                    lines.extend(collect_ocr_text(res))
+            return lines if lines else results
+        except Exception:
+            pass
     try:
-        result = ocr.ocr(str(input_path), cls=True)
+        return ocr.ocr(path_str, cls=True)
     except TypeError:
-        result = ocr.ocr(str(input_path))
-    return normalize_text("\n".join(unique_preserving_order(collect_ocr_text(result))))
+        return ocr.ocr(path_str)
+
+
+def load_ppstructure_class():
+    configure_ocr_cache_env()
+    try:
+        import paddle
+
+        paddle.set_flags({"FLAGS_use_mkldnn": False})
+    except Exception:
+        pass
+    try:
+        from paddleocr import PPStructureV3
+    except ImportError as exc:
+        raise RuntimeError("paddleocr (PPStructureV3) is required for layout-aware OCR.") from exc
+    return PPStructureV3
+
+
+def create_ppstructure(lang: str):
+    if lang in _PPSTRUCTURE_CACHE:
+        return _PPSTRUCTURE_CACHE[lang]
+    ppstructure_class = load_ppstructure_class()
+    # enable_mkldnn=False 는 PaddleX 공통 kwargs 로 하위 모델 전체에 전파돼 oneDNN 런타임 크래시를 막는다.
+    constructor_options = [
+        {"lang": lang, "enable_mkldnn": False},
+        {"lang": lang},
+        {"enable_mkldnn": False},
+        {},
+    ]
+    last_error: Exception | None = None
+    for options in constructor_options:
+        try:
+            engine = ppstructure_class(**options)
+            _PPSTRUCTURE_CACHE[lang] = engine
+            return engine
+        except (TypeError, ValueError, RuntimeError) as exc:
+            last_error = exc
+    raise RuntimeError("Unable to create PPStructureV3 with supported options.") from last_error
+
+
+def ppstructure_text(input_path: Path, lang: str) -> str:
+    engine = create_ppstructure(lang)
+    # 공고 추출에 불필요한 무거운 모듈은 끈다(수식/도장/차트). 레이아웃+표+텍스트만 사용.
+    results = list(engine.predict(
+        str(input_path),
+        use_formula_recognition=False,
+        use_seal_recognition=False,
+        use_chart_recognition=False,
+    ))
+    lines: list[str] = []
+    for res in results:
+        blocks = res.get("parsing_res_list") if hasattr(res, "get") else None
+        if not blocks:
+            # 레이아웃 블록이 없으면 원시 OCR 결과로라도 텍스트를 건진다.
+            ocr_res = res.get("overall_ocr_res") if hasattr(res, "get") else None
+            if ocr_res is not None:
+                lines.extend(collect_ocr_text(ocr_res))
+            continue
+        for block in blocks:
+            content = _ppstructure_block_content(block)
+            if content:
+                lines.append(content)
+    return normalize_text("\n".join(lines))
+
+
+def _ppstructure_block_content(block: Any) -> str:
+    label = str(_ppstructure_block_attr(block, "label") or "").lower()
+    content = str(_ppstructure_block_attr(block, "content") or "").strip()
+    if not content:
+        return ""
+    # 표 블록은 HTML 로 오는 경우가 있어 셀 텍스트만 남긴다.
+    if "table" in label and "<" in content and ">" in content:
+        content = strip_html_text(content)
+    return content
+
+
+def _ppstructure_block_attr(block: Any, name: str) -> Any:
+    if isinstance(block, dict):
+        return block.get(name)
+    return getattr(block, name, None)
 
 
 def section_hints(text: str) -> list[str]:
@@ -428,6 +546,17 @@ def extract_text_for_strategy(
         if text:
             return normalize_text(text), "EXISTING_OCR", warnings
         next_warnings = list(warnings)
+        # 1순위: 레이아웃 인식 OCR(PPStructureV3) — 표·2단 공고의 읽기 순서를 복원한다.
+        if options.enable_ppstructure:
+            try:
+                text = ppstructure_text(input_path, options.paddle_ocr_lang)
+                if text:
+                    return text, "PPSTRUCTURE", next_warnings
+                next_warnings.append("ppstructure_empty_result")
+            except Exception as exc:
+                next_warnings.append("ppstructure_failed")
+                next_warnings.append(f"ppstructure_error:{exc.__class__.__name__}")
+        # 2순위(폴백): 기본 line-OCR. 레이아웃 인식 실패/빈 결과 시 사용.
         if options.enable_paddle_ocr:
             try:
                 text = paddle_ocr_text(input_path, options.paddle_ocr_lang)
@@ -449,7 +578,7 @@ def model_versions() -> dict[str, str]:
     return {
         "documentExtractionContract": "self_ai_v1",
         "qualityGate": "heuristic_20260617",
-        "ocr": "existing_output_or_paddleocr",
+        "ocr": "existing_output_or_ppstructurev3",
     }
 
 
