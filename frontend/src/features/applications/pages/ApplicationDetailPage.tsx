@@ -39,7 +39,12 @@ import { useJobPosting } from "../hooks/useJobPosting";
 import type { ApplicationSourceType, UpdateApplicationCaseRequest } from "../types/applicationCase";
 import type { JobPosting, JobPostingRequest } from "../types/jobPosting";
 import { registerApplicationCaseExtraction } from "../utils/applicationExtractionTracker";
-import { isConfirmableTextCorrection, requestPostingText } from "../utils/jobPostingConfirm";
+import {
+  currentPostingText,
+  hasPostingSourceChange,
+  isConfirmableTextCorrection,
+  requestPostingText,
+} from "../utils/jobPostingConfirm";
 import { useApplicationFitAnalysis } from "@/features/analysis/hooks/useApplicationFitAnalysis";
 import { toast } from "@/features/notification/components/toast";
 import { useNotificationStore } from "@/features/notification/hooks/useNotificationStore";
@@ -227,6 +232,15 @@ export function ApplicationDetailPage() {
   };
 
   const handleSavePosting = async (request: JobPostingRequest): Promise<JobPosting | null> => {
+    // 소스/URL·본문 모두 변경 없음: 새 revision·재추출을 만들지 않고 그대로 둔다.
+    if (
+      jobPosting &&
+      !hasPostingSourceChange(request, jobPosting) &&
+      requestPostingText(request) === currentPostingText(jobPosting)
+    ) {
+      return jobPosting;
+    }
+
     // PASS 공고의 본문만 수정한 경우: OCR/추출을 다시 돌리지 않고 confirm(분석만 갱신)로 보낸다.
     if (jobPosting && isConfirmableTextCorrection({ request, jobPosting, extraction })) {
       const confirmed = await confirmExtraction(requestPostingText(request));

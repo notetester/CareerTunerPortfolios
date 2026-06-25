@@ -231,7 +231,7 @@ export function JobPostingPanel({
                 type="button"
                 size="sm"
                 variant="outline"
-                disabled={loading || uploading || saving || extractionActive}
+                disabled={loading || uploading || saving || confirmingExtraction || extractionActive}
                 onClick={() => void handleUpload()}
               >
                 {uploading ? <Loader2 className="size-4 animate-spin" /> : <Upload className="size-4" />}
