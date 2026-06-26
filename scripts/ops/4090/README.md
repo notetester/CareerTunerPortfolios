@@ -31,7 +31,7 @@
 ssh -i ~/.ssh/careertuner_4090_full_ed25519 hsy82@<4090-Tailscale-IP> echo ok
 ```
 ## 재부팅 검증
-재부팅 → 자동 로그인/부팅 후 `CareerTuner-SSH-SelfHeal` 작업이 SSH 를 재적용한다. 다시 노트북에서 `ssh ... echo ok`.
+재부팅 → 자동 로그인/부팅 후 `CareerTuner-SSH-Persist` 작업이 SSH 를 재적용한다. 다시 노트북에서 `ssh ... echo ok`.
 
 ## 동작(self-heal, 멱등)
 sshd Automatic+기동 · authorized_keys 작성 + **ACL 교정**(Administrators/SYSTEM only — 이게 핵심) · sshd_config pubkey-only · 방화벽 22 Tailscale 한정 · Tailscale Automatic. 로그 `C:\ProgramData\CareerTuner4090\logs\ssh-self-heal.log`.
