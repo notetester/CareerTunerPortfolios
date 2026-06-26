@@ -155,7 +155,7 @@ export function useChatbot() {
   const close = useCallback(() => setIsOpen(false), []);
   const minimize = useCallback(() => setIsOpen(false), []);
 
-  const sendMessage = useCallback((text: string) => {
+  const sendMessage = useCallback((text: string, opts?: { selectedCaseId?: number; selectedModeCode?: string }) => {
     const userMsg: ChatMessage = {
       id: nextId(), role: "user", text,
       evidence: [], links: [], quickReplies: [], ttsState: "idle", ttsProgress: 0,
@@ -170,7 +170,13 @@ export function useChatbot() {
 
     api<ChatbotApiResponse>("/chatbot/ask", {
       method: "POST",
-      body: JSON.stringify({ question: text, conversationId: conversationIdRef.current }),
+      body: JSON.stringify({
+        question: text,
+        conversationId: conversationIdRef.current,
+        // ③ 칩/버튼 직접 선택 시 caseId·modeCode 를 실어 보낸다 → 백엔드가 qwen3 거치지 않고 결정적 confirm.
+        ...(opts?.selectedCaseId != null ? { selectedCaseId: opts.selectedCaseId } : {}),
+        ...(opts?.selectedModeCode ? { selectedModeCode: opts.selectedModeCode } : {}),
+      }),
       signal: controller.signal,
     })
       .then((data) => {
@@ -237,11 +243,13 @@ export function useChatbot() {
 
   /* ── 칩 선택 → 자연어 메시지로 변환해 전송(③ 슬롯 접지: chooseCase/chooseMode). ── */
   const selectCase = useCallback((c: IntakeCaseCandidate) => {
-    sendMessage(`${c.companyName} ${c.jobTitle} 지원 건으로 진행할게요`);
+    // caseId 를 함께 실어 결정적 바인딩(qwen3 미경유). 텍스트는 대화 맥락·히스토리 자연스러움용으로 유지.
+    sendMessage(`${c.companyName} ${c.jobTitle} 지원 건으로 진행할게요`, { selectedCaseId: c.id });
   }, [sendMessage]);
 
   const selectMode = useCallback((m: IntakeModeOption) => {
-    sendMessage(`${m.label}으로 할게요`);
+    // modeCode 를 함께 실어 결정적 확정(case 확정된 상태에서만 백엔드가 반영).
+    sendMessage(`${m.label}으로 할게요`, { selectedModeCode: m.code });
   }, [sendMessage]);
 
   /* ── 모드 이탈: 실행 전이면 백엔드 모드 해제("그만"), 실행 중/후면 로컬 정리만. ── */

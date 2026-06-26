@@ -140,7 +140,8 @@ public class ChatbotController {
         // sticky 모드(오케스트레이터 유지): 이미 ③ 에 머무는 대화는 라우팅·FAQ·NAV 를 전부 건너뛰고 ③ 직행한다.
         // (이탈은 위에서 이미 처리됨 — 여기 도달하면 이탈 신호 아님.)
         if (intakeModeStore.isActive(conversationId)) {
-            return ApiResponse.ok(enterIntake(conversationId, question, userId, "③(유지)"));
+            return ApiResponse.ok(enterIntake(conversationId, question, userId, "③(유지)",
+                    req.selectedCaseId(), req.selectedModeCode()));
         }
 
         // 영속 세션 복원: 재시작/재방문으로 메모리 sticky 는 없지만 DB 에 PENDING 인테이크(지원건) 세션이면
@@ -148,7 +149,8 @@ public class ChatbotController {
         if (req.conversationId() != null
                 && intakeAskService.isPersistedIntakeSession(conversationId)) {
             intakeModeStore.enter(conversationId);
-            return ApiResponse.ok(enterIntake(conversationId, question, userId, "③(복원)"));
+            return ApiResponse.ok(enterIntake(conversationId, question, userId, "③(복원)",
+                    req.selectedCaseId(), req.selectedModeCode()));
         }
 
         // Fast-path: 순수 내비 질의는 LLM·검색 우회 즉답 (서버 신뢰 링크라 화이트리스트 검증 생략).
@@ -164,7 +166,8 @@ public class ChatbotController {
         // 확인 대기(1턴) 소비: 이 턴은 라우팅을 돌리지 않는다. (오분류 안전판 A)
         if (routeConfirmStore.consumePending(conversationId)) {
             if (isAffirmative(question)) {
-                return ApiResponse.ok(enterIntake(conversationId, question, userId, "③(확인후)"));
+                return ApiResponse.ok(enterIntake(conversationId, question, userId, "③(확인후)",
+                        req.selectedCaseId(), req.selectedModeCode()));
             }
             return ApiResponse.ok(faqPath(conversationId, question, userId, "①(확인후)"));
         }
@@ -173,7 +176,8 @@ public class ChatbotController {
         UnifiedChatRouter.Decision d = router.decide(question);
         switch (d.target()) {
             case INTAKE_DIRECT -> {
-                return ApiResponse.ok(enterIntake(conversationId, question, userId, "③"));
+                return ApiResponse.ok(enterIntake(conversationId, question, userId, "③",
+                        req.selectedCaseId(), req.selectedModeCode()));
             }
             case INTAKE_CONFIRM -> {
                 routeConfirmStore.markPending(conversationId);
@@ -231,8 +235,9 @@ public class ChatbotController {
      * ready 면 RUN 을 프런트 SSE 가 이어받으므로 sticky 종료, 아니면 모드 유지(다음 턴도 ③ 직행).
      * inOrchestration 은 항상 true — ready 전환 턴도 위젯이 배너를 유지한 채 실행 화면으로 넘어가야 하므로.
      */
-    private ChatAskResponse enterIntake(Long conversationId, String question, Long userId, String route) {
-        IntakeAskResponse r = intakeAskService.ask(userId, question, conversationId);
+    private ChatAskResponse enterIntake(Long conversationId, String question, Long userId, String route,
+                                        Long selectedCaseId, String selectedModeCode) {
+        IntakeAskResponse r = intakeAskService.ask(userId, question, conversationId, selectedCaseId, selectedModeCode);
         // 지원건 세션 fork 가 일어나면 응답 conversationId 가 새 id 로 바뀐다 — sticky 도 새 id 기준으로 옮긴다.
         Long effectiveId = r.conversationId();
         if (effectiveId != null && !effectiveId.equals(conversationId)) {
