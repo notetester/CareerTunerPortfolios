@@ -91,6 +91,13 @@ public class IntakeTools {
 
     @Tool("면접 모드를 확정한다. code 는 BASIC/JOB/PERSONALITY/PRESSURE/RESUME/COMPANY 중 하나여야 한다.")
     public String chooseMode(@P("면접 모드 코드(BASIC/JOB/PERSONALITY/PRESSURE/RESUME/COMPANY)") String code) {
+        // caseId 선행조건(하네스 무결성): 지원 건이 확정되기 전에는 모드를 확정하지 않는다.
+        // qwen3 가 listCases/chooseCase 를 건너뛰고 chooseMode 로 직행해도, case 없이 mode 가 잠겨
+        // 거짓 ready 로 새는 것을 코드 레벨에서 차단한다(CASE→MODE 순서 강제, @Transactional 식 무결성).
+        // caseId 는 이미 주입된 trace 에서 읽는다(요청 범위). 거부 문자열은 모델에 되먹여 case 단계로 유도.
+        if (trace.snapshot().caseId() == null) {
+            return "먼저 어느 지원 건(회사·직무)을 준비할지 정해야 해요. 지원 건 목록을 보여주고 고르게 해 주세요.";
+        }
         if (code == null || code.isBlank()) {
             return "면접 모드 코드가 필요해요.";
         }
