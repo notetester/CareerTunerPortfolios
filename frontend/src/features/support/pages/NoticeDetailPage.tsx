@@ -102,7 +102,7 @@ export default function NoticeDetailPage({ noticeId, onBack, onNavigate }: Notic
         <div className="ct-ndetail__tags">
           <span className="ct-badge" style={tagStyle(notice.tag)}>{notice.tag}</span>
           {notice.isPinned && (
-            <span className="ct-badge" style={{ background: "var(--av-ink)", color: "#fff", fontWeight: 600 }}>
+            <span className="ct-badge" style={{ background: "var(--av-ink)", color: "var(--av-bg)", fontWeight: 600 }}>
               <Pin style={{ width: 12, height: 12, strokeWidth: 2 }} /> 고정
             </span>
           )}

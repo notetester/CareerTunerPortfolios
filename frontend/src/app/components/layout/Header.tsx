@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router";
+import { homePath } from "@/platform/capacitor";
 import { useAuth } from "../../auth/AuthContext";
 import { Button } from "../ui/button";
 import { Badge } from "../ui/badge";
@@ -197,7 +198,7 @@ export function Header() {
       <div className="w-full max-w-[1400px] mx-auto px-4 sm:px-6">
         <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center h-16 lg:flex lg:justify-between">
           {/* Logo */}
-          <Link to="/" className="flex items-center gap-2.5 min-w-0">
+          <Link to={homePath()} className="flex items-center gap-2.5 min-w-0">
             <div className="size-9 rounded-lg bg-primary flex items-center justify-center shadow-[inset_0_1px_0_rgba(255,255,255,0.2)]">
               <Sparkles className="size-5 text-primary-foreground" />
             </div>

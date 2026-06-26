@@ -29,7 +29,7 @@
 .ais-row { display: block; width: 100%; text-align: left; border: none; background: none; cursor: pointer;
   padding: 12px 15px; border-bottom: 1px solid var(--line-soft); }
 .ais-row:last-child { border-bottom: none; }
-.ais-row:hover { background: #fafbfd; }
+.ais-row:hover { background: var(--av-track); }
 .ais-row.sel { background: var(--blue-soft); box-shadow: inset 2px 0 0 var(--blue); }
 .ais-row__top { display: flex; align-items: center; gap: 8px; }
 .ais-row__q { font-size: 12.5px; font-weight: 600; line-height: 1.45; flex: 1;
@@ -86,7 +86,7 @@
 .ais-cta { padding: 16px 18px; }
 .ais-btn { display: inline-flex; align-items: center; gap: 7px; height: 36px; padding: 0 14px; border-radius: 9px;
   border: 1px solid var(--line); background: var(--card); color: var(--ink); font-size: 13px; font-weight: 600; cursor: pointer; }
-.ais-btn:hover { background: #f8fafc; }
+.ais-btn:hover { background: var(--av-track); }
 .ais-btn:disabled { opacity: .55; cursor: default; }
 .ais-btn svg { width: 15px; height: 15px; }
 .ais-btn--ink { border: none; background: var(--ink); color: #fff; }
@@ -198,7 +198,7 @@
 .ais-table td.r { text-align: right; }
 .ais-table tbody tr { border-bottom: 1px solid var(--line-soft); }
 .ais-table tbody tr:last-child { border-bottom: none; }
-.ais-table tbody tr:hover { background: #fafbfd; }
+.ais-table tbody tr:hover { background: var(--av-track); }
 .ais-table td { padding: 10px 15px; vertical-align: middle; }
 .ais-muted { font-size: 12px; color: var(--ink-3); white-space: nowrap; }
 .ais-cell__t { font-size: 12.5px; font-weight: 500; display: -webkit-box; -webkit-line-clamp: 2;
@@ -225,7 +225,7 @@
 /* 발생 대화 드릴 버튼(상세 패널) */
 .ais-drill-btn { display: inline-flex; align-items: center; gap: 7px; height: 32px; padding: 0 12px; border-radius: 8px;
   border: 1px solid var(--line); background: var(--card); color: var(--ink); font-size: 12.5px; font-weight: 600; cursor: pointer; }
-.ais-drill-btn:hover { background: #f8fafc; }
+.ais-drill-btn:hover { background: var(--av-track); }
 .ais-drill-btn svg { width: 14px; height: 14px; }
 
 /* 드릴 모달 */
