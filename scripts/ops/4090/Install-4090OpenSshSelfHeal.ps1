@@ -33,7 +33,7 @@ param(
     [string]$TailscaleRange = "100.64.0.0/10",
     [string]$OpsDir = "C:\Users\careertuner\CareerTunerOps",
     [string]$LogDir = "C:\ProgramData\CareerTuner4090\logs",
-    [string]$TaskName = "CareerTuner-SSH-SelfHeal"
+    [string]$TaskName = "CareerTuner-SSH-Persist"
 )
 $ErrorActionPreference = "Stop"
 
@@ -92,7 +92,10 @@ Write-Host "[1/3] self-heal 스크립트 생성(키 포함, repo 밖): $selfHeal
 # OnStart + 매시간 SYSTEM 작업
 $action = New-ScheduledTaskAction -Execute "powershell.exe" -Argument "-NoProfile -ExecutionPolicy Bypass -File `"$selfHealPath`""
 $t1 = New-ScheduledTaskTrigger -AtStartup
-$t2 = New-ScheduledTaskTrigger -Once -At (Get-Date) -RepetitionInterval (New-TimeSpan -Hours 1) -RepetitionDuration ([TimeSpan]::MaxValue)
+# 주의: -RepetitionDuration ([TimeSpan]::MaxValue) 는 작업 XML 범위초과 오류 → 생성 후 Duration='' (무기한)로 설정.
+$t2 = New-ScheduledTaskTrigger -Once -At (Get-Date)
+$t2.Repetition.Interval = "PT1H"
+$t2.Repetition.Duration = ""
 $principal = New-ScheduledTaskPrincipal -UserId "SYSTEM" -LogonType ServiceAccount -RunLevel Highest
 $settings = New-ScheduledTaskSettingsSet -StartWhenAvailable -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries
 Register-ScheduledTask -TaskName $TaskName -Action $action -Trigger @($t1, $t2) -Principal $principal -Settings $settings -Force | Out-Null
