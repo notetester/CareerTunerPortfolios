@@ -92,6 +92,12 @@ public class IntakeAskService {
             //   사용자가 명시 선택한 값으로 덮어써 최종 권위를 가진다(last-write-wins → F 승). qwen3 를 바인딩 루프에서 제거.
             applyExplicitSelections(userId, selectedCaseId, selectedModeCode);
 
+            // ★(A-1) 텍스트 case 답변 결정적 재매칭 — qwen3 의 chooseCase 는 실측상 텍스트를 무시하고 첫 건(보통 id1)을
+            //   집는다(메모리 수칙3, "현대차"→카카오페이 거짓 진행). 칩이 아닌 텍스트로 case 를 답한 턴이면 qwen3 가 박은
+            //   caseId 를 신뢰하지 않고, 후보 companyName 과 사용자 텍스트를 코드가 매칭해 덮거나(정확히 1건) 비운다(0/2건+
+            //   → 다운스트림 CASE-ask 재노출). OptionA 와 같은 원칙: 명확한 선택은 코드가 강제, qwen3 는 이해만.
+            reconcileTextCaseAnswer(userId, message, selectedCaseId);
+
             // 코드가 검증·확정한 슬롯만 그릇에 채운다. (coverLetterText·attachmentFileIds 는 2단계)
             IntakeSlotTrace.IntakeSlots slots = trace.snapshot();
             AutoPrepRequest autoPrepRequest = new AutoPrepRequest(
@@ -178,6 +184,73 @@ public class IntakeAskService {
                 trace.confirmMode(code);
             }
         }
+    }
+
+    /**
+     * 텍스트로 case 를 답한 턴에서 qwen3 의 chooseCase 결과를 코드 매칭으로 교정한다(A-1 회귀 차단).
+     * <ul>
+     *   <li>칩 선택(selectedCaseId!=null)이면 이미 결정적으로 바인딩됐으니 건드리지 않는다.</li>
+     *   <li>이미 지원 건에 바인딩(fork)된 대화면 이건 case 선택 턴이 아니다(예: MODE 답변) — 스킵.</li>
+     *   <li>qwen3 가 이 턴에 caseId 를 안 박았으면(침묵) 기존 b3 가드(caseAutoDefaulted)가 처리 — 스킵.</li>
+     * </ul>
+     * 위를 통과하면 qwen3 가 박은 id 를 버리고, 사용자 텍스트와 후보 companyName 을 매칭한다.
+     * 정확히 1건이면 그 id 로 덮어 확정, 0건/2건 이상이면 caseId 를 비워 다운스트림 CASE-ask 로 되돌린다(거짓 진행 차단).
+     */
+    private void reconcileTextCaseAnswer(Long userId, String message, Long selectedCaseId) {
+        if (selectedCaseId != null || trace.boundCaseId() != null || trace.snapshot().caseId() == null) {
+            return;
+        }
+        List<ApplicationCaseResponse> owned = safeListCases(userId);
+        List<ApplicationCaseResponse> matched = matchCasesByText(message, owned);
+        if (matched.size() == 1) {
+            trace.recordFetchedCases(owned);            // chooseCase 화이트리스트·세션 title 백업용
+            trace.confirmCase(matched.get(0).id());     // qwen3 의 (대개 틀린) id 를 코드 매칭 결과로 덮는다.
+        } else {
+            trace.confirmCase(null);                    // 모호/불일치 → 비워서 CASE-ask 재노출.
+        }
+    }
+
+    /**
+     * 사용자 텍스트와 후보 companyName 매칭. 2단계:
+     * <ol>
+     *   <li><b>정확일치 우선</b>: 정규화 후 companyName 이 텍스트와 정확히 같은 후보가 딱 1건이면 그것만 반환.
+     *       불량 데이터(회사명에 공고 본문이 통째로 든 후보)가 부분일치로 끼어들어도 정확명은 확정시킨다.</li>
+     *   <li><b>양방향 부분일치</b>: 정확일치가 0/2건+ 일 때만. 짧거나 모호한 입력은 여러 건이 잡혀
+     *       호출부에서 CASE-ask 로 되돌아간다(거짓 진행 차단).</li>
+     * </ol>
+     */
+    private List<ApplicationCaseResponse> matchCasesByText(String message, List<ApplicationCaseResponse> cases) {
+        String m = normalizeForMatch(message);
+        if (m.isBlank() || cases == null) {
+            return List.of();
+        }
+        List<ApplicationCaseResponse> exact = new ArrayList<>();
+        List<ApplicationCaseResponse> partial = new ArrayList<>();
+        for (ApplicationCaseResponse c : cases) {
+            String company = normalizeForMatch(c.companyName());
+            if (company.isBlank()) {
+                continue;
+            }
+            if (company.equals(m)) {
+                exact.add(c);
+            }
+            if (m.contains(company) || company.contains(m)) {
+                partial.add(c);
+            }
+        }
+        return exact.size() == 1 ? exact : partial;
+    }
+
+    /** 공백·법인 표기((주)/㈜/주식회사) 제거 + 소문자화 — "현대자동차 (주)" 와 "현대자동차" 를 같게 본다. */
+    private static String normalizeForMatch(String s) {
+        if (s == null) {
+            return "";
+        }
+        return s.replaceAll("\\s+", "")
+                .replace("(주)", "")
+                .replace("㈜", "")
+                .replace("주식회사", "")
+                .toLowerCase(Locale.ROOT);
     }
 
     /**
