@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.mock;
@@ -662,7 +663,7 @@ class ApplicationCaseExtractionWorkerTest {
                 .startedAt(LocalDateTime.now().minusMinutes(45))
                 .build();
 
-        when(extractionMapper.findStaleRunningExtractions(any(LocalDateTime.class), eq(5))).thenReturn(List.of(stale));
+        when(extractionMapper.findStaleRunningExtractions(anyLong(), eq(5))).thenReturn(List.of(stale));
         when(extractionMapper.findQueuedExtractions(5)).thenReturn(List.of());
         when(extractionMapper.markExtractionFailed(
                 eq(35L),
@@ -728,7 +729,7 @@ class ApplicationCaseExtractionWorkerTest {
                 .startedAt(LocalDateTime.now().minusMinutes(45))
                 .build();
 
-        when(extractionMapper.findStaleRunningExtractions(any(LocalDateTime.class), eq(5))).thenReturn(List.of(stale));
+        when(extractionMapper.findStaleRunningExtractions(anyLong(), eq(5))).thenReturn(List.of(stale));
         when(extractionMapper.findQueuedExtractions(5)).thenReturn(List.of());
         when(extractionMapper.markExtractionFailed(
                 eq(36L),
