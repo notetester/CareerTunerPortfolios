@@ -8,7 +8,7 @@ import {
 } from "lucide-react";
 import { useChatbot } from "../hooks/useChatbot";
 import type {
-  ChatMessage, ChatEvidence, SiteLink, IntakeCaseCandidate, IntakeModeOption,
+  ChatMessage, ChatEvidence, SiteLink, IntakeCaseCandidate, IntakeModeOption, ChatSession,
 } from "../types/chatbot";
 import { SUGGESTED_QUESTIONS } from "../types/chatbot";
 import { AutoPrepWorkView } from "@/features/autoprep/components/AutoPrepWorkView";
@@ -65,6 +65,23 @@ const MODE_LABELS: Record<string, string> = {
   BASIC: "기본 면접", JOB: "직무 면접", PERSONALITY: "인성 면접",
   PRESSURE: "압박 면접", RESUME: "자소서 기반", COMPANY: "기업 맞춤",
 };
+
+/** 면접 모드 코드 → 짧은 배지 라벨(SessionRow 모드 배지용 — MODE_LABELS 보다 압축). */
+const MODE_BADGE: Record<string, string> = {
+  BASIC: "기본", JOB: "직무", PERSONALITY: "인성",
+  PRESSURE: "압박", RESUME: "자소서", COMPANY: "기업맞춤",
+};
+
+/** epoch millis → 상대시각("방금"/"3분 전"/"2시간 전"/"5일 전"). 0/미지정이면 빈 문자열. */
+function relativeTime(ts: number): string {
+  if (!ts) return "";
+  const m = Math.floor((Date.now() - ts) / 60000);
+  if (m < 1) return "방금";
+  if (m < 60) return `${m}분 전`;
+  const h = Math.floor(m / 60);
+  if (h < 24) return `${h}시간 전`;
+  return `${Math.floor(h / 24)}일 전`;
+}
 
 function ChatbotPanel({ chatbot }: ChatbotPanelProps) {
   const {
@@ -345,9 +362,53 @@ function ExitSheet({ onConfirm, onCancel }: { onConfirm: () => void; onCancel: (
   );
 }
 
+/**
+ * 세션 행(카드형) — design_handoff README 의 SessionRow 스펙(ApplicationChip 확장).
+ * [이니셜 아이콘] [ title(굵게) / (모드 배지 · 상대시각) ]. 진행률·안읽음은 범위 밖(제외).
+ */
+function SessionRow({ session, active, onClick }: {
+  session: ChatSession; active: boolean; onClick: () => void;
+}) {
+  const initial = session.title?.trim().charAt(0) || "?";
+  const badge = session.mode ? MODE_BADGE[session.mode] : null;
+  const when = relativeTime(session.updatedAt);
+  // 토큰 외 hex(#faf8ff)·rgba 보더라 Tailwind hover로 못 빼고, active 행은 호버를 막아야 해
+  // JS 핸들러로 처리. 기본/호버 값을 한 곳에서 관리(중복 하드코딩 제거).
+  const REST = { background: "transparent", borderColor: "rgba(0,0,0,0.10)" };
+  const HOVER = { background: "#faf8ff", borderColor: "rgba(124,58,237,0.32)" };
+  return (
+    <button onClick={onClick} role="button" aria-pressed={active}
+      className="group flex items-center gap-2.5 w-full px-3 py-2.5 rounded-[13px] text-left transition-all"
+      style={
+        active
+          ? { background: "var(--orch-surface)", border: "1.5px solid var(--orch-violet)" }
+          : { background: REST.background, border: `1px solid ${REST.borderColor}` }
+      }
+      onMouseEnter={(e) => { if (!active) Object.assign(e.currentTarget.style, HOVER); }}
+      onMouseLeave={(e) => { if (!active) Object.assign(e.currentTarget.style, REST); }}>
+      <span className="w-[34px] h-[34px] rounded-[9px] flex items-center justify-center text-white font-extrabold text-[15px] shrink-0"
+        style={{ background: "var(--gradient-orchestrator)" }}>
+        {initial}
+      </span>
+      <span className="flex-1 min-w-0">
+        <span className="block text-[13px] font-bold text-foreground truncate">{session.title}</span>
+        <span className="flex items-center gap-1.5 mt-0.5">
+          {badge && (
+            <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-[10.5px] font-bold leading-none"
+              style={{ background: "#f0ecfb", color: "var(--orch-violet)" }}>
+              {badge}
+            </span>
+          )}
+          {when && <span className="text-[11px] text-muted-foreground">{when}</span>}
+        </span>
+      </span>
+    </button>
+  );
+}
+
 /** 세션 사이드바(오버레이): 인테이크 세션 목록 + 전환 + 새 세션. */
 function SessionPanel({ sessions, activeSessionId, onOpen, onNew, onClose }: {
-  sessions: { id: string; title: string }[];
+  sessions: ChatSession[];
   activeSessionId: string;
   onOpen: (id: string) => void;
   onNew: () => void;
@@ -381,15 +442,8 @@ function SessionPanel({ sessions, activeSessionId, onOpen, onNew, onClose }: {
             </div>
           ) : (
             sessions.map((s) => (
-              <button key={s.id} onClick={() => onOpen(s.id)}
-                className={`text-left px-3 py-2.5 rounded-[10px] transition-colors ${
-                  s.id === activeSessionId
-                    ? "bg-secondary border border-black/10"
-                    : "border border-transparent hover:bg-secondary/60"
-                }`}>
-                <div className="text-[13px] font-bold text-foreground truncate">{s.title}</div>
-                <div className="text-[11px] text-muted-foreground mt-0.5">면접 준비 세션</div>
-              </button>
+              <SessionRow key={s.id} session={s} active={s.id === activeSessionId}
+                onClick={() => onOpen(s.id)} />
             ))
           )}
         </div>

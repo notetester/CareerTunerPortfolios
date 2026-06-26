@@ -55,6 +55,8 @@ export interface ChatSession {
   lastMessage: string;
   meta: string;
   updatedAt: number;
+  /** 면접 모드 코드(BASIC/JOB/…). 슬롯 미설정 세션은 null — 모드 배지 생략. */
+  mode?: string | null;
 }
 
 export const SUGGESTED_QUESTIONS = [

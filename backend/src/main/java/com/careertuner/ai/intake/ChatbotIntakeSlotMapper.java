@@ -20,6 +20,13 @@ public interface ChatbotIntakeSlotMapper {
                 @Param("originalQuery") String originalQuery,
                 @Param("fetchedCases") String fetchedCases);
 
-    /** conversationId 의 슬롯 1건(없으면 null). 복원·세션 판정 진입점. */
+    /** conversationId 의 슬롯 1건(없으면 null). 복원·세션 판정 진입점. status 포함. */
     Map<String, Object> findByConversation(@Param("conversationId") Long conversationId);
+
+    /**
+     * 슬롯 생명주기 status 전환(PENDING→READY 등). upsert 와 분리해 status 만 갱신한다
+     * (upsert 의 ON DUPLICATE KEY UPDATE 는 status 를 건드리지 않아 기존 단계를 보존).
+     */
+    void markStatus(@Param("conversationId") Long conversationId,
+                    @Param("status") String status);
 }

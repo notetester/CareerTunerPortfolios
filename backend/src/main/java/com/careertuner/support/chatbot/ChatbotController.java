@@ -123,22 +123,29 @@ public class ChatbotController {
                 : memoryStore.createConversation(userId);
         String question = req.question();
 
+        // 이탈 신호("그만"/⏏): 메모리 sticky(활성) 또는 DB 영속(PENDING/READY) 인테이크면 라우터 전에 즉시 복귀.
+        // 슬롯이 있으면 DONE 으로 닫아(재복원 차단) 재시작된 PENDING 세션도 깔끔히 중단되고, READY 세션의 "그만"이
+        // 라우터 FALLBACK 으로 새는 것(버그2)도 막는다. (status 3단계 — sticky 와 영속 양쪽을 한 핸들러로 통합)
+        if (req.conversationId() != null && isExitCommand(question)
+                && (intakeModeStore.isActive(conversationId)
+                        || intakeAskService.hasOpenIntakeSlot(conversationId))) {
+            intakeModeStore.exit(conversationId);
+            intakeAskService.closeIntakeSession(conversationId);
+            return ApiResponse.ok(new ChatAskResponse(
+                    conversationId,
+                    "일반 상담 모드로 돌아왔어요. 무엇이든 물어보세요.",
+                    List.of(), List.of(), "이탈", null, false));
+        }
+
         // sticky 모드(오케스트레이터 유지): 이미 ③ 에 머무는 대화는 라우팅·FAQ·NAV 를 전부 건너뛰고 ③ 직행한다.
-        // 단 이탈 신호("그만"/⏏)면 즉시 일반 모드로 복귀. (오분류로 ①(FAQ)로 새는 것을 구조적으로 차단)
+        // (이탈은 위에서 이미 처리됨 — 여기 도달하면 이탈 신호 아님.)
         if (intakeModeStore.isActive(conversationId)) {
-            if (isExitCommand(question)) {
-                intakeModeStore.exit(conversationId);
-                return ApiResponse.ok(new ChatAskResponse(
-                        conversationId,
-                        "일반 상담 모드로 돌아왔어요. 무엇이든 물어보세요.",
-                        List.of(), List.of(), "이탈", null, false));
-            }
             return ApiResponse.ok(enterIntake(conversationId, question, userId, "③(유지)"));
         }
 
-        // 영속 세션 복원: 재시작/재방문으로 메모리 sticky 는 없지만 DB 에 인테이크(지원건) 세션이면
-        // 되살려 ③ 로 잇는다(슬롯은 IntakeAskService 가 DB 에서 복원). 이탈어("그만")는 제외.
-        if (req.conversationId() != null && !isExitCommand(question)
+        // 영속 세션 복원: 재시작/재방문으로 메모리 sticky 는 없지만 DB 에 PENDING 인테이크(지원건) 세션이면
+        // 되살려 ③ 로 잇는다(슬롯은 IntakeAskService 가 DB 에서 복원). READY/DONE 은 isPersistedIntakeSession=false.
+        if (req.conversationId() != null
                 && intakeAskService.isPersistedIntakeSession(conversationId)) {
             intakeModeStore.enter(conversationId);
             return ApiResponse.ok(enterIntake(conversationId, question, userId, "③(복원)"));
@@ -369,9 +376,29 @@ public class ChatbotController {
         List<ChatSessionSummary> sessions = memoryStore.listIntakeSessions(authUser.id()).stream()
                 .map(r -> new ChatSessionSummary(
                         ((Number) r.get("conversationId")).longValue(),
-                        (String) r.get("title")))
+                        (String) r.get("title"),
+                        (String) r.get("mode"),
+                        toEpochMillis(r.get("updatedAt"))))
                 .collect(Collectors.toList());
         return ApiResponse.ok(sessions);
+    }
+
+    /**
+     * MyBatis Map 의 DATETIME 값(드라이버/버전별 {@link java.sql.Timestamp} 또는 {@link java.time.LocalDateTime})을
+     * epoch millis 로 정규화한다. LocalDateTime 은 저장이 Asia/Seoul 벽시계이므로 같은 zone 으로 해석해
+     * 프런트 {@code Date.now()}(UTC epoch)와의 상대시각 차이가 정확하다.
+     */
+    private static Long toEpochMillis(Object v) {
+        if (v instanceof java.sql.Timestamp ts) {
+            return ts.getTime();
+        }
+        if (v instanceof java.time.LocalDateTime ldt) {
+            return ldt.atZone(java.time.ZoneId.of("Asia/Seoul")).toInstant().toEpochMilli();
+        }
+        if (v instanceof Number n) {
+            return n.longValue();
+        }
+        return null;
     }
 
     /**

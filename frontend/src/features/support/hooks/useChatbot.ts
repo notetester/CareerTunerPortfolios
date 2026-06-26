@@ -47,6 +47,8 @@ interface ChatHistoryResponse {
 interface SessionSummaryDto {
   conversationId: number;
   title: string | null;
+  mode: string | null;
+  updatedAt: number | null;
 }
 
 export function useChatbot() {
@@ -112,7 +114,8 @@ export function useChatbot() {
             title: s.title || "면접 준비 세션",
             lastMessage: "면접 준비",
             meta: "",
-            updatedAt: 0,
+            updatedAt: s.updatedAt ?? 0,
+            mode: s.mode,
           })),
         );
       })

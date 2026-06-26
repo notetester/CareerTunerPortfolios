@@ -78,6 +78,14 @@ public class IntakeAskService {
             // [Phase C] 슬롯 DB 영속(턴 종료 후). 지원 건 확정 세션만 저장(fork 됐으면 새 id 로).
             persistSlot(effectiveConversationId, userId, slots);
 
+            // [Phase C·status 3단계] ready 도달 = 슬롯 충족·run 을 프런트에 위임한 시점 → 더는 sticky-인테이크 아님.
+            // status 를 READY 로 승급해 다음 턴부터 isPersistedIntakeSession=false(라우터 정상 판정·이탈 가능).
+            // persistSlot 직후라 행이 존재하고, fork 됐으면 effectiveConversationId 가 새 id 라 정확히 그 슬롯이 찍힌다.
+            // (ready 면 caseId·mode 충족이 보장되므로 persistSlot 도 항상 행을 만든 상태.)
+            if (check.ready() && slots.caseId() != null) {
+                slotMapper.markStatus(effectiveConversationId, "READY");
+            }
+
             return new IntakeAskResponse(
                     effectiveConversationId, answer, check.ready(), check.nextAsk(), autoPrepRequest,
                     check.candidates(), check.modes());
@@ -94,10 +102,44 @@ public class IntakeAskService {
 
     /**
      * 통합 라우터(컨트롤러)가 "이 대화가 (재시작/재방문이라도) 복원할 지원건 세션인지" 판정하는 데 쓴다.
-     * chatbot_intake_slot 에 행이 있으면 = 지원 건이 확정된 세션(persistSlot 은 caseId 확정 때만 저장).
+     *
+     * <p><b>status 게이트(방향 A):</b> 행 존재만 보던 것을 <b>status==PENDING(인테이크 진행 중)</b>일 때만
+     * true 로 좁힌다. READY(슬롯 충족·run 을 프런트에 위임한 시점)/DONE 은 더는 sticky-인테이크가 아니므로
+     * false 를 돌려 라우터가 정상 판정(FAQ·이탈 등)하게 둔다. — 완료 후 ③ 삼킴/이탈 불가 버그의 근본 차단.</p>
      */
     public boolean isPersistedIntakeSession(Long conversationId) {
-        return conversationId != null && slotMapper.findByConversation(conversationId) != null;
+        if (conversationId == null) {
+            return false;
+        }
+        Map<String, Object> row = slotMapper.findByConversation(conversationId);
+        return row != null && "PENDING".equals(row.get("status"));
+    }
+
+    /**
+     * 이탈("그만") 판정용: 슬롯 행이 있고 아직 닫히지 않았으면(PENDING/READY) true. DONE/행없음이면 false.
+     *
+     * <p>{@link #isPersistedIntakeSession}(PENDING 만)과 달리 READY 도 포함한다 — 복원 대상은 아니지만
+     * "그만" 이탈 시엔 친절한 일반 모드 복귀 응답으로 받아 라우터 FALLBACK(버그2)을 막아야 하기 때문.</p>
+     */
+    public boolean hasOpenIntakeSlot(Long conversationId) {
+        if (conversationId == null) {
+            return false;
+        }
+        Map<String, Object> row = slotMapper.findByConversation(conversationId);
+        return row != null && !"DONE".equals(row.get("status"));
+    }
+
+    /**
+     * 이탈("그만") 시 슬롯을 DONE 으로 닫는다 → 재복원(PENDING)·sticky 차단. 행 없으면 no-op.
+     *
+     * <p>마이그레이션 주석의 "DONE 예약·미사용"은 <b>run 완료</b>(백엔드가 못 보는 이벤트)를 가리킨다.
+     * 사용자의 명시적 "그만"은 백엔드가 직접 관측하는 이탈이므로 터미널 상태 DONE 로 닫는 게 맞다.</p>
+     */
+    public void closeIntakeSession(Long conversationId) {
+        if (conversationId == null) {
+            return;
+        }
+        slotMapper.markStatus(conversationId, "DONE");
     }
 
     /** 메모리에 슬롯이 없고 DB 에 있으면 복원(재시작/재방문). entryOffset 은 현재 memory 길이로 재무장. */
