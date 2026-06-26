@@ -451,7 +451,7 @@ function LoadingToast({
   onClose: () => void;
 }) {
   return (
-    <div className="ct-toast ct-toast--loading ct-toast--light" role="status" aria-live="polite">
+    <div className="ct-toast ct-toast--loading" role="status" aria-live="polite">
       <span className="ct-toast__spinner" />
       <span className="ct-toast__label">{item.message}</span>
       <CloseBtn onClick={onClose} />
