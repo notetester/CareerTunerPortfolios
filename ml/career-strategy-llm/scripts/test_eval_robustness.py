@@ -42,6 +42,26 @@ class EvalRobustnessTest(unittest.TestCase):
         self.assertTrue(row["json_ok"])
         self.assertEqual([], row["detail"]["bad_skills"])  # SQL·Spring Boot 모두 allowed
 
+    def test_wa_compound_string_not_whitewashed(self):
+        # 7B 실제 패턴 '와/과' 복합 스킬구 — 크래시 없이 처리, 정규화로 자동 whitewash되지 않고 judge 잔여로 남김.
+        case = {"id": "t", "input": {}, "expected": {"allowedSkills": ["Java", "Spring Boot"]}}
+        c = json.dumps({"fitSummary": "보완", "strengths": [], "risks": [],
+                        "strategyActions": [], "learningTaskReasons": ["Java와 Spring Boot"]}, ensure_ascii=False)
+        row = evaluate(case, c, None)
+        self.assertTrue(row["json_ok"])
+        self.assertIn("Java와 Spring Boot", row["detail"]["bad_skills"])
+        self.assertIn("Java와 Spring Boot", row["detail"]["bad_skills_residual"])  # judge로, whitewash 아님
+
+    def test_product_code_string_not_whitewashed(self):
+        # 입력 밖 제품코드가 문자열 항목으로 와도 normalizer 가 whitewash 하지 않고 valid_error 후보(잔여)로 남김.
+        case = {"id": "t", "input": {}, "expected": {"allowedSkills": ["고객 상담", "VOC 관리"]}}
+        c = json.dumps({"fitSummary": "보완", "strengths": [], "risks": [],
+                        "strategyActions": [], "learningTaskReasons": ["CRM465 운영"]}, ensure_ascii=False)
+        row = evaluate(case, c, None)
+        self.assertIn("CRM465 운영", row["detail"]["bad_skills"])
+        self.assertIn("CRM465 운영", row["detail"]["bad_skills_residual"])
+        self.assertNotIn("CRM465 운영", row["detail"]["bad_skills_resolved_fp"])
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

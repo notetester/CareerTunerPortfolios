@@ -4,6 +4,12 @@
 > **결론: 7B base는 3B LoRA를 못 이긴다 → 7B 전환 보류, 3B LoRA 유지 + RAG 우선.**
 > 4090 GPU 실측. raw 결과는 CareerTunerAI artifact repo에만(`results/2026-06-26-7b-smoke-002/`).
 
+## 0. #145 반영 상태 감사 (이 문서가 follow-up인 이유)
+GitHub 실측 감사 결과, **PR #145는 merged diff 기준 `reports/48_7b_smoke_benchmark_plan.md` 1개만 반영**됐다(merged=True, head=`aabb82c`).
+- dev에 **누락**: `reports/49`(이 문서), `scripts/test_eval_robustness.py`, `eval_fit_model.py`의 learningTaskReasons 문자열-항목 가드. → dev의 `eval_fit_model.py:343`은 여전히 `sk = (item or {}).get("skill")`라 7B/base가 문자열 학습추천을 내면 다시 크래시할 수 있는 상태였다.
+- **불일치 원인**: #145는 head가 `aabb82c`(reports/48 커밋)인 상태로 merge됐고, 하니스 견고성 수정(`d018e29`)·reports/49(`3f0c3b1`)는 그 **이후** LEE-JEONG-GUCK에 push돼 merge에 포함되지 못했다. PR 본문은 사후 편집(PATCH)으로 "48+수정+49"라 적혀 있었으나 **이미 merge된 diff는 reports/48만**이라 본문과 실제가 어긋났다(보고 오류).
+- **조치**: 누락된 **하니스 견고성 수정 + 회귀 테스트 + reports/49**를 이 follow-up PR로 닫는다. #145는 reports/48 계획만 반영된 PR로 정정 기록한다.
+
 ## 1. 실행 개요 (#142 merge 확인 후 진행)
 - **#142(judgeId)·#141(병렬지표) 모두 dev 머지 확인.** dev 최신에서 LEE-JEONG-GUCK 작업.
 - **7B preflight**: 4090에 `qwen2.5:7b-instruct` 미설치 → base pull(`ollama pull`, **fine-tuning 아님**, 4.7GB). 3모델 `/v1/models` 확인.
@@ -60,5 +66,5 @@
 backend 서비스 모델/기본값 변경·7B fine-tuning·RAG 착수·D/F 모델·E1 guard 완화·E2 observer→validator 승격 없음. main repo raw JSON/log 미커밋. PR 자가 merge 금지. (reports/48 계획의 stage3 repeat3은 7B 무유망으로 미실시.)
 
 ## 산출물
-- 메인 repo: 이 결과(49) + reports/48(계획). 코드는 #141(병렬지표)·#142(judgeId)·#145(48+하니스 견고성).
+- 메인 repo: reports/48(계획, #145 머지됨) + 이 결과(49, follow-up PR) + 하니스 견고성 수정·test_eval_robustness(follow-up PR). 기반 코드: #141(병렬지표)·#142(judgeId) 머지됨.
 - CareerTunerAI: `results/2026-06-26-7b-smoke-002/`(3모델 eval JSON·runtime_metrics·vram_snapshot·preflight), `results/2026-06-26-7b-smoke-002-judge/`(packet·3-lens verdicts·consensus·semantic_metrics).
