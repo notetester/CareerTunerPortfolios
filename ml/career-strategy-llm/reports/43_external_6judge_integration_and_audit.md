@@ -42,6 +42,10 @@
 1. **'10명 독립'은 과장.** 내부 claude 3-lens(grounding/semantic/mechanics)는 **동일 Claude 모델 3프롬프트** ensemble
    이라 독립 판정자가 아니다. 독립 *모델*은 사실상 3종(Claude·GPT/Codex·Gemini).
 2. **벤더는 3개**(Anthropic·OpenAI·Google). Codex·GPT 는 모두 OpenAI 계열 → "4벤더"는 근거 없음(정정).
+   추가로 **Codex 가 내부(reports/41 SSH 패널)·외부(codex-user) 양쪽에 등장**해 전체10 중 **2표가 OpenAI Codex 계열**
+   (부분상관 가능). 즉 '판정자가 늘자 동률 해소'(§2)의 독립성은 Codex 중복기여만큼 약화된다 — OpenAI 가중이 사실상
+   2배. valid_error=0 결론엔 영향 없으나(전 판정자 0), gray↔fp 경계의 '판정자 수' 신뢰도는 Codex 1표로 정규화해 보면
+   민감도가 더 크다(헤드라인은 이 caveat 와 함께만 유효).
 3. **출처는 폴더 라벨 신뢰.** 외부 6파일 모두 내부 `judge` 메타가 `chatgpt`(평가지 응답 템플릿 placeholder 를
    채운 AI 가 그대로 둠). claude-web·claude-code-ext 는 요약 제목까지 `judge: chatgpt`. 즉 "어느 AI 가 판정했나"는
    **사용자가 폴더로 부여한 라벨**에 의존하며 파일 내용만으로 교차검증되지 않는다(판정 *내용* 충실성과는 무관).

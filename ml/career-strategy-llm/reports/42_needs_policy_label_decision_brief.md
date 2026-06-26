@@ -17,7 +17,8 @@
 | C | 사내 안전관리 시스템 운영 | 안전(EHS) | 2:2 | unresolved |
 | D | 수요예측 기반 발주 최적화 | 물류(SCM) | 2:2 | soft_match |
 
-(나머지 9건: harness_fp 5 · acceptable_gray 4, agreement ≥3/4 — 추가 판정 불필요.)
+(나머지 9건: agreement ≥3/4 — 추가 판정 불필요. *이 표의 라벨/카운트는 내부 4판정 스냅샷이며,
+이후 외부6 통합 전체10 합의에서 9건은 harness_fp 6 · acceptable_gray 3 으로 갱신됨 — 최종 분포는 [reports/43](43_external_6judge_integration_and_audit.md) §2·§3 단일출처.*)
 
 ## 2. 제안 규칙 (한 줄로 비준 가능)
 > **harness_false_positive** ⟺ 미매칭 토큰그룹이 **전부 discrete allowedSkill에 매핑**된다
@@ -36,7 +37,9 @@
 | C | `사내 안전관리 시스템 운영`(duties 도구명 verbatim, **allowedSkill 없음**) | 미매핑 | **acceptable_gray** |
 | D | `수요예측`(=allowed, soft) + `발주 최적화`(duties 서술·skill 없음) | **일부만** 매핑 | **acceptable_gray** |
 
-→ 동률 4건은 **gray 3 · fp 1** 로 확정. 최종 13건 분포: **harness_fp 6 · acceptable_gray 7 · valid_error 0**.
+→ 동률 4건은 **전부 acceptable_gray (gray 4 · fp 0)** 로 확정(위 §3 표 — B 가 reports/43 에서 fp→gray 로 번복됨).
+**최종 13건 분포(전체10 합의 · [reports/43](43_external_6judge_integration_and_audit.md) §2·§3 단일출처): harness_fp 6 · acceptable_gray 7 · valid_error 0 · needs_policy 0.**
+(동률 4건 gray 4 + 나머지 9건 fp 6·gray 3 = fp 6·gray 7. 이전 'gray 3·fp 1'·'9건 fp 5·gray 4' 는 내부4 스냅샷이라 정정.)
 
 ## 4. 하니스 함의 (별도 PR로만, 이번엔 결정만)
 - **harness_fp 클래스(6건)** 는 `skill_normalizer` 의 `SPLIT_RE`/`SUFFIX_NOUNS` 확장으로 결정론적 해소 가능

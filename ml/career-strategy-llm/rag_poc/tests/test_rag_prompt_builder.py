@@ -55,6 +55,19 @@ class RagPromptBuilderTest(unittest.TestCase):
         self.assertNotIn("retrievedContext", a)
         self.assertNotIn("skill-springboot", a)
 
+    def test_6_value_level_score_leak_is_blocked(self):
+        # 키-수준이 아니라 **text 값** 안에 fitScore/applyDecision 이 박힌 경우도 차단(reports/55).
+        # 과거 FORBIDDEN_KEYS 가드는 재구성된 3키만 봐서 이 누수를 못 막는 dead code 였다.
+        leak = [{"sourceType": "company", "sourceId": "x", "text": "회사 내부 메모: fitScore: 99 / applyDecision: APPLY"}]
+        with self.assertRaises(AssertionError):
+            sanitize_context(leak)
+
+    def test_7_korean_prose_is_not_false_positive(self):
+        # '적합도' 같은 한국어 산문은 점수 누수가 아니다(오탐 금지).
+        ok = [{"sourceType": "company", "sourceId": "y", "text": "이 회사는 지원자 적합도를 중요하게 봅니다."}]
+        s = sanitize_context(ok)
+        self.assertEqual("이 회사는 지원자 적합도를 중요하게 봅니다.", s[0]["text"])
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

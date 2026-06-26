@@ -43,7 +43,7 @@ GitHub 실측 감사 결과, **PR #145는 merged diff 기준 `reports/48_7b_smok
 | acceptable_gray | 0 | 5 | 4 |
 | harness_false_positive | 1 | 1 | 5 |
 
-- **유일한 valid_error = `MSSQL`(3B base)** — allowedSkills엔 일반 `SQL`만 있는데 특정 제품(Microsoft SQL Server)을 학습스킬로 제시(2 valid_error / 1 gray, needsHumanReview). **프로덕션 후보인 3B LoRA는 valid_error 0.**
+- **유일한 valid_error = `MSSQL`(3B base) — unique 1건.** allowedSkills엔 일반 `SQL`만 있는데 특정 제품(Microsoft SQL Server)을 학습스킬로 제시(judge 합의 valid_error, needsHumanReview). **표(§4)·합의(§5) 모두 semantic valid_error=1(unique candidate 기준)** — 단일출처는 산출물 `results/2026-06-26-7b-smoke-002-judge/consensus`(occurrence 분해는 그 산출물 기준이며 본문 카운트는 unique). **프로덕션 후보인 3B LoRA는 valid_error 0.**
 - **7B의 raw 날조 16건 중 진짜 날조는 0.** 잔여 9건은 전부 `Java와 Spring Boot`·`Spring Boot와 REST API`·`React와 TypeScript` 같은 **'와/과' 복합 스킬구**(정규화 SPLIT_RE에 '와/과' 미포함이라 잔류) — 포맷 일탈이지 범위밖 날조 아님. 즉 7B의 높은 raw 카운트는 **품질 저하가 아니라 포맷 규율 약화**.
 
 ## 5. judge 절차 (semantic 처리)

@@ -99,7 +99,9 @@ class EmbeddingRetriever:
         return {c.get("chunkId") for c in self.chunks
                 if in_scope(c, user_id=user_id, application_id=application_id)}
 
-    def retrieve(self, query, *, user_id=None, application_id=None, top_k=5, min_score=None):
+    def retrieve(self, query, *, user_id=None, application_id=None, top_k=5, min_score=0.0):
+        # min_score 기본 0.0 — 무관 query 의 음수/직교 cosine 청크를 top_k 에서 제외(reports/55).
+        # 과거 기본 None 은 임계가 없어 음수 cosine 도 통과시켜 lexical(기본 0.0)과 의미가 어긋났다.
         # ① scope filter 를 **검색 전에** 적용 — 허용 chunk 만 후보로
         allowed = [c for c in self.chunks if in_scope(c, user_id=user_id, application_id=application_id)]
         # ② 허용 후보에 대해서만 임베딩 cosine 랭킹

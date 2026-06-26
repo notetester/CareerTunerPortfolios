@@ -37,12 +37,31 @@ if (-not (Test-Path $AK)) { $fail += "C: authorized_keys 파일 없음 ($AK)" }
 elseif (-not ((Get-Content $AK -ErrorAction SilentlyContinue) -match 'ssh-')) { $fail += "I: authorized_keys 에 유효 키 없음" }
 else { Note "C ok: authorized_keys 존재 + 키 $(@(Get-Content $AK | Where-Object {$_ -match 'ssh-'}).Count)개" }
 
-# D ACL — Administrators/SYSTEM 외 권한이 있으면 sshd 가 파일 무시
+# D ACL — SYSTEM/Administrators 외 권한이 있으면 sshd 가 파일 무시.
+# ★ icacls 문자열 매칭(과거)은 'Everyone:(F)'/'Users:(RX)' 처럼 백슬래시 없는 위험 principal 을 놓쳤다.
+#   Get-Acl 로 ACE 를 구조적으로 열거하고 허용 SID(SYSTEM/Administrators)만 화이트리스트한다.
 if (Test-Path $AK) {
-    $acl = (icacls $AK) 2>$null
-    $bad = $acl | Where-Object { $_ -match ':\(' -and $_ -notmatch 'Administrators|SYSTEM|BUILTIN\\Administrators|NT AUTHORITY\\SYSTEM' -and $_ -match '\\' }
-    if ($bad) { $fail += "D: administrators_authorized_keys ACL 에 Administrators/SYSTEM 외 항목 — sshd 가 키 무시: $bad" }
-    else { Note "D ok: ACL Administrators/SYSTEM 한정" }
+    try {
+        $acl = Get-Acl $AK
+        $allowSids = @('S-1-5-18', 'S-1-5-32-544')   # NT AUTHORITY\SYSTEM, BUILTIN\Administrators
+        $badAces = @()
+        foreach ($ace in $acl.Access) {
+            $sid = $null
+            try { $sid = $ace.IdentityReference.Translate([System.Security.Principal.SecurityIdentifier]).Value }
+            catch { $sid = $ace.IdentityReference.Value }
+            if ($allowSids -notcontains $sid) {
+                $badAces += "$($ace.IdentityReference.Value)[$sid]:$($ace.FileSystemRights)"
+            }
+        }
+        # 소유자도 SYSTEM/Administrators 여야 sshd 가 신뢰(아니면 키 무시).
+        $ownerSid = $null
+        try { $ownerSid = $acl.GetOwner([System.Security.Principal.SecurityIdentifier]).Value } catch {}
+        if ($ownerSid -and ($allowSids -notcontains $ownerSid)) {
+            $badAces += "OWNER=$($acl.Owner)[$ownerSid]"
+        }
+        if ($badAces) { $fail += "D: administrators_authorized_keys ACL/소유자에 SYSTEM/Administrators 외 항목 — sshd 가 키 무시: $($badAces -join ', ')" }
+        else { Note "D ok: ACL/소유자 SYSTEM/Administrators 한정(구조적 검사)" }
+    } catch { $fail += "D: ACL 조회 실패 — $($_.Exception.Message)" }
 }
 
 # E sshd_config

@@ -40,14 +40,23 @@ def _safety_counts(rows):
             "e1_grounding": e1, "e2_high": e2, "contract_fail": fail}
 
 
+def _violation_sum(c):
+    """verdict 용 위반 합. **이중계산 방지(reports/55)**: hallucinated_raw 는 normalized(residual)의
+    상위집합이라 합산에서 제외한다. 둘을 동시에 더하면 환각이 2배로 잡혀 어느 차원이 변했느냐에 따라
+    verdict 방향이 뒤집힌다. judge 대상이 되는 normalized residual + E1 + E2 + contract_fail 로만 본다.
+    (raw 는 A/B dict 에 정보로 남되 verdict 합엔 안 들어간다.)"""
+    return c["hallucinated_normalized"] + c["e1_grounding"] + c["e2_high"] + c["contract_fail"]
+
+
 def per_case_delta(pair, a_rows, b_rows):
     """A(lora_only) vs B(lora_with_retrieved_context) per-case 비교 → improvement/regression/neutral.
 
-    개선 신호 합(hallucinated_raw+normalized+e1+e2+contract_fail)을 비교: B 가 작으면 improvement, 크면 regression.
+    개선 신호 합(normalized residual + e1 + e2 + contract_fail)을 비교: B 가 작으면 improvement, 크면 regression.
+    raw 는 상위집합이라 합산 제외(이중계산 방지) — _violation_sum 참조.
     """
     a, b = _safety_counts(a_rows), _safety_counts(b_rows)
-    a_sum = sum(a.values())
-    b_sum = sum(b.values())
+    a_sum = _violation_sum(a)
+    b_sum = _violation_sum(b)
     if b_sum < a_sum:
         verdict = "rag_improvement"
     elif b_sum > a_sum:
@@ -87,7 +96,7 @@ def main(argv=None):
             variant_rows[v] = rows
             by_variant[v] += rows
             raw_records.append({"caseId": p["caseId"], "hardType": p.get("hardType"),
-                                "variant": v, "n": len(rows), "agg": aggregate(rows)})
+                                "variant": v, "n": len(rows), "agg": aggregate(rows, mock=a.mock)})
         per_case.append(per_case_delta(p, variant_rows["lora_only"],
                                        variant_rows["lora_with_retrieved_context"]))
 
@@ -101,8 +110,10 @@ def main(argv=None):
     })
 
     print(f"=== R2b A/B (hard cases) (mock={a.mock} model={a.model} repeat={a.repeat} cases={len(pairs)}) ===")
+    if a.mock:
+        print("  ⚠ mock 모드 — retrievedContext 무시(A==B). RAG 효과 지표는 실측 아님(배선검증 전용).")
     for v in VARIANTS:
-        print(f"[{v}] {aggregate(by_variant[v])}")
+        print(f"[{v}] {aggregate(by_variant[v], mock=a.mock)}")
     print(f"[per-case] headroom(A 위반>0)={len(headroom_cases)}/{len(per_case)} "
           f"rag_improvement={len(improvement)} rag_regression={len(regression)} "
           f"neutral={len(per_case) - len(improvement) - len(regression)}")
@@ -118,7 +129,8 @@ def main(argv=None):
         with open(out, "w", encoding="utf-8") as f:
             json.dump({
                 "mock": bool(a.mock), "model": a.model, "repeat": a.repeat, "cases": len(pairs),
-                "summary": {v: aggregate(by_variant[v]) for v in VARIANTS},
+                "rag_metrics_valid": (not a.mock),
+                "summary": {v: aggregate(by_variant[v], mock=a.mock) for v in VARIANTS},
                 "perCase": per_case,
                 "perCaseVariant": raw_records,
                 "ragImprovementCases": [c["caseId"] for c in improvement],

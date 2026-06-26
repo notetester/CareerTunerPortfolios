@@ -68,6 +68,29 @@ class ValidateTest(unittest.TestCase):
         c = make_case(forbiddenClaims=["합격 보장", "즉시 지원"])
         self.assertTrue(any("bare" in e for e in validate_case(c)))
 
+    # ── 안전불변식 직접 보호(reports/55): 사실 필드(matched/missing)를 손-조작해
+    #    규칙엔진 재계산값과 어긋나게 만들면 validate_case 가 잡아야 한다. 과거엔 make_case 가
+    #    항상 정확히 채워 이 실패경로가 한 번도 안 돌았다(헬퍼명만 'wrong_matched').
+    def test_detects_tampered_matched_skills(self):
+        c = make_case()                              # 실제 matched=['Java'](profile=['Java'])
+        c["input"]["matchedSkills"] = ["Java", "SQL"]   # SQL 은 미보유인데 매칭으로 위조
+        self.assertTrue(any("matchedSkills 불일치" in e for e in validate_case(c)))
+
+    def test_detects_tampered_missing_required(self):
+        c = make_case()                              # 실제 missing_req=['Spring','SQL']
+        c["input"]["missingRequiredSkills"] = ["Spring"]   # SQL 누락을 숨김
+        self.assertTrue(any("missingRequiredSkills 불일치" in e for e in validate_case(c)))
+
+    def test_detects_tampered_missing_preferred(self):
+        c = make_case()                              # 실제 missing_pref=['AWS']
+        c["input"]["missingPreferredSkills"] = []    # AWS 미보유를 숨김
+        self.assertTrue(any("missingPreferredSkills 불일치" in e for e in validate_case(c)))
+
+    def test_detects_mustmention_outside_allowed(self):
+        c = make_case(mustMention=["Kubernetes"])    # allowedSkills(req+pref)에 없음 → 모순
+        self.assertTrue(any("mustMention" in e and "allowedSkills 에 없음" in e
+                            for e in validate_case(c)))
+
 
 class FullGoldenSetTest(unittest.TestCase):
     def test_repo_golden_set_validates_clean(self):
