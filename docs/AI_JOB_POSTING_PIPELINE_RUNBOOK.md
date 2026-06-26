@@ -124,8 +124,7 @@ When extraction quality is `PASS`, Spring continues the commercial service flow 
 5. Generate `fit_analysis`, strategy actions, condition matrix, and learning tasks through the local deterministic fit model.
 6. Create a `JOB` interview session and seed interview-prep questions.
 
-The default pipeline model label is `self-rules-v1`. Usage logs are written with `credit_used=0` for these local stages.
-Optional Qwen/Gemma analysis through the B-owned Ollama adapter is disabled by default. Enable it only after a local model is installed by setting `B_ANALYSIS_LOCAL_LLM_ENABLED=true`, `B_ANALYSIS_OLLAMA_BASE_URL`, and `B_ANALYSIS_OLLAMA_MODEL`; invalid JSON, timeout, or model absence falls back to `self-rules-v1`.
+Analysis through the B-owned Ollama adapter is **enabled by default** (`B_ANALYSIS_LOCAL_LLM_ENABLED=true`) and serves the fine-tuned `careertuner-b-jobposting-r1` model. Schema/grounding validation failures, invalid JSON, timeout, or model absence fall back to the `self-rules-v1` rule path after one retry; usage logs are written with `credit_used=0` for these local stages. Set `B_ANALYSIS_LOCAL_LLM_ENABLED=false` to skip the model and use `self-rules-v1` directly. Override the endpoint, model, and read timeout with `B_ANALYSIS_OLLAMA_BASE_URL`, `B_ANALYSIS_OLLAMA_MODEL`, and `B_ANALYSIS_OLLAMA_READ_TIMEOUT` (default 480s).
 
 `REVIEW_REQUIRED` stops before step 3. The user review endpoint resumes steps 3-6 after the edited text is confirmed.
 
