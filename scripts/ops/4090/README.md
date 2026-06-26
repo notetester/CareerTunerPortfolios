@@ -3,6 +3,8 @@
 4090(RTX 4090, Windows, Tailscale, Ollama) 의 SSH 접속을 **재부팅 이후에도 유지**하기 위한 현장 스크립트.
 배경·전체 계층 설계는 [docs/ops/4090_CONNECTIVITY_HARDENING_PLAN.md](../../../docs/ops/4090_CONNECTIVITY_HARDENING_PLAN.md).
 
+> **Layer 2/3(SSH 외 두 번째 실행 경로):** 이 폴더는 Layer 0/1(SSH self-healing) 전용이다. SSH 가 죽어도 도는 백업 경로는 [docs/ops/4090_GITHUB_ACTIONS_TAILSCALE_POC.md](../../../docs/ops/4090_GITHUB_ACTIONS_TAILSCALE_POC.md)(L2: GitHub Actions+Tailscale, 수동 workflow 초안 [`.github/workflows/4090-job-trigger.yml`](../../../.github/workflows/4090-job-trigger.yml)) 와 [docs/ops/4090_MCP_SERVER_POC_PLAN.md](../../../docs/ops/4090_MCP_SERVER_POC_PLAN.md)(L3: MCP 서버 계획) 참고. **방식 A(hosted runner+SSH)는 이 폴더의 L0 self-heal 이 SSH 를 살려둬야 동작한다.**
+
 > ⚠ 이 디렉터리는 **키 없는 템플릿**이다. private key·token·Tailscale auth key 는 절대 커밋하지 않는다.
 > 공개키는 실행 시 **파라미터(placeholder)** 로만 전달한다.
 
