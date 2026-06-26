@@ -62,6 +62,25 @@ class EvalRobustnessTest(unittest.TestCase):
         self.assertIn("CRM465 운영", row["detail"]["bad_skills_residual"])
         self.assertNotIn("CRM465 운영", row["detail"]["bad_skills_resolved_fp"])
 
+    def test_str_learningtask_content_is_scored(self):
+        # collect_text 가 문자열 항목을 본문에 포함 → 그 안의 CJK·금지문구가 채점된다(과거엔 드롭, reports/55).
+        case = {"id": "t", "input": {},
+                "expected": {"allowedSkills": ["SQL"], "forbiddenClaims": ["합격 보장"]}}
+        c = json.dumps({"fitSummary": "보완", "strengths": [], "risks": [], "strategyActions": [],
+                        "learningTaskReasons": ["机器学习 합격 보장"]}, ensure_ascii=False)
+        row = evaluate(case, c, None)
+        self.assertTrue(row["cjk_leak"])                         # 机器学习(중국어)이 본문에 포함돼 잡힘
+        self.assertIn("합격 보장", row["detail"]["claim_hit"])     # 금지문구도 잡힘(과거엔 침묵 누락)
+
+    def test_latin_must_mention_word_boundary(self):
+        # mustMention 'SQL' 은 'MySQL' 부분일치로 충족되면 안 된다(라틴 경계 매칭, reports/55).
+        case = {"id": "t", "input": {},
+                "expected": {"allowedSkills": ["MySQL"], "mustMention": ["SQL"]}}
+        c = json.dumps({"fitSummary": "MySQL 경험 보유", "strengths": [], "risks": [],
+                        "strategyActions": [], "learningTaskReasons": []}, ensure_ascii=False)
+        row = evaluate(case, c, None)
+        self.assertIn("SQL", row["detail"]["must_missing"])       # MySQL 만으론 SQL 충족 아님
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

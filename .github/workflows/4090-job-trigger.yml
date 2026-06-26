@@ -25,6 +25,11 @@ on:
         description: '실행할 jobId (형식: YYYY-MM-DD-slug, 예: 2026-06-26-rag-r2)'
         required: true
         type: string
+      dryRun:
+        description: 'true=preflight 만(secret/형식/tailnet/4090 도달성 검증, job 미트리거). false=실제 트리거.'
+        required: false
+        type: boolean
+        default: true
 
 # 최소 권한.
 permissions:
@@ -101,11 +106,38 @@ jobs:
           chmod 644 ~/.ssh/known_hosts
           echo "SSH key·known_hosts 설치 완료(값 미출력)."
 
+      # ── 4.5) preflight: 4090 SSH 포트 도달성 probe(forced-command 미발동) ──
+      #     trigger 키는 forced-command 라 SSH 로 임의 명령(echo 등)을 못 돌린다. 그래서 wrapper 를
+      #     건드리지 않고 **TCP 연결만** 확인해 4090 도달성을 본다(job 트리거 아님).
+      #     - dryRun: 도달 못 해도 실패로 보지 않음(4090 offline 은 예상 상태 — 정보만 기록).
+      #     - 실제 실행(dryRun=false): 도달 못 하면 트리거 전에 즉시 실패(헛 트리거 방지).
+      - name: Preflight — 4090 SSH reachability probe (no job trigger)
+        env:
+          H4090_HOST: ${{ secrets.H4090_HOST }}
+          DRY_RUN: ${{ inputs.dryRun }}
+        run: |
+          set +e
+          timeout 15 bash -c "cat < /dev/null > /dev/tcp/${H4090_HOST}/22"
+          code=$?
+          set -e
+          if [ "${code}" -eq 0 ]; then
+            echo "preflight: 4090 SSH(22) 도달 가능."
+          else
+            echo "preflight: 4090 SSH(22) 도달 불가(probe exit ${code}) — 박스 sleep/off 또는 tailnet 미연결 추정."
+            if [ "${DRY_RUN}" = "false" ]; then
+              echo "::error::실제 트리거(dryRun=false)인데 4090 미도달 — 헛 트리거 방지 위해 중단."
+              exit 1
+            fi
+            echo "::warning::dryRun 이라 미도달을 실패로 보지 않음(4090 복구 후 재시도)."
+          fi
+
       # ── 5) forced-command SSH 트리거 — 4090 wrapper 에 jobId 만 전달 ──
       #     trigger 키는 4090 에서 command="...run_careertuner_job.ps1",no-pty 로 묶여 있어,
       #     워크플로는 임의 명령을 못 보낸다. 아래 'run' 인자는 wrapper 가 해석할 jobId 뿐이다.
       #     StrictHostKeyChecking=yes 로 known_hosts pinning 강제(미일치 시 연결 거부).
+      #     ★ dryRun=true 면 이 step 을 건너뛴다(preflight 만). 기본값 dryRun=true 라 실수 dispatch 도 안전.
       - name: Trigger 4090 job via forced-command SSH
+        if: ${{ inputs.dryRun == false }}
         env:
           H4090_HOST: ${{ secrets.H4090_HOST }}
           H4090_SSH_USER: ${{ secrets.H4090_SSH_USER }}
@@ -127,3 +159,10 @@ jobs:
             exit "${code}"
           fi
           echo "4090 job 트리거 성공: ${JOB_ID} (결과는 CareerTunerAI 에 push 됨)."
+
+      # ── 6) dryRun 요약 — preflight 만 돈 경우 job 미트리거를 명시 ──
+      - name: Dry-run summary
+        if: ${{ inputs.dryRun == true }}
+        run: |
+          echo "dryRun=true — preflight(secret/jobId 형식/tailnet/4090 도달성)만 수행했고 **job 은 트리거하지 않음**."
+          echo "실제 실행: 같은 워크플로를 dryRun=false 로 다시 dispatch."

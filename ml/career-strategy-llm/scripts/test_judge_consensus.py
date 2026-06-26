@@ -8,6 +8,7 @@ import unittest
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from judge_consensus import consensus_for_candidate, run_consensus, CONF_THRESHOLD  # noqa: E402
+from semantic_skill_judge import canon_decision, normalize_verdict, validate_verdict  # noqa: E402
 
 
 def v(judge, decision, conf=0.9, hr=False):
@@ -53,6 +54,54 @@ class ConsensusRuleTest(unittest.TestCase):
         self.assertEqual("needs_policy", r["finalDecision"])
         self.assertTrue(r["needsHumanReview"])
         self.assertEqual("0/0", r["agreement"])
+
+    def test_tie_preserves_confidence(self):
+        # 1-1 동률에서 둘 다 0.9 확신이면 conf 가 0.0 으로 사라지면 안 된다(과거 버그).
+        r = consensus_for_candidate([v("a", "valid_error", 0.9), v("b", "acceptable_gray", 0.9)])
+        self.assertEqual("needs_policy", r["finalDecision"])
+        self.assertEqual(0.9, r["confidence"])
+        self.assertEqual("tie 1-1", r["agreement"])
+
+
+class VerdictGateTest(unittest.TestCase):
+    """semantic_skill_judge 의 경계 게이트(외부 judge 신뢰불가 verdict 차단)를 직접 호출 검증.
+    과거엔 consensus 테스트가 헬퍼 v()로 항상 well-formed verdict 만 만들어 이 게이트가 미검증이었다."""
+
+    def test_validate_rejects_unknown_decision(self):
+        errs = validate_verdict({"candidateId": "c1", "decision": "banana", "confidence": 0.5})
+        self.assertTrue(any("decision" in e for e in errs))
+
+    def test_validate_rejects_out_of_range_confidence(self):
+        self.assertTrue(any("confidence" in e for e in
+                            validate_verdict({"candidateId": "c1", "decision": "valid_error", "confidence": 1.5})))
+        self.assertTrue(any("confidence" in e for e in
+                            validate_verdict({"candidateId": "c1", "decision": "valid_error", "confidence": -0.1})))
+
+    def test_validate_rejects_nonbool_human_review(self):
+        errs = validate_verdict({"candidateId": "c1", "decision": "valid_error",
+                                 "confidence": 0.5, "needsHumanReview": "yes"})
+        self.assertTrue(any("needsHumanReview" in e for e in errs))
+
+    def test_validate_rejects_empty_candidate(self):
+        errs = validate_verdict({"candidateId": "", "decision": "valid_error", "confidence": 0.5})
+        self.assertTrue(any("candidateId" in e for e in errs))
+
+    def test_validate_accepts_clean(self):
+        self.assertEqual([], validate_verdict({"candidateId": "c1", "decision": "valid_error",
+                                               "confidence": 0.9, "needsHumanReview": False}))
+
+    def test_canon_decision_aliases_to_gray(self):
+        self.assertEqual("acceptable_gray", canon_decision("acceptable_same_skill"))
+        self.assertEqual("acceptable_gray", canon_decision("acceptable_learning_context"))
+        self.assertEqual("valid_error", canon_decision("valid_error"))
+
+    def test_normalize_carries_synthetic_flag(self):
+        nv = normalize_verdict({"candidateId": "c1", "decision": "acceptable",
+                                "confidence": 0.6, "synthetic": True})
+        self.assertEqual("acceptable_gray", nv["decision"])   # alias 정규화
+        self.assertTrue(nv["synthetic"])                      # mock 식별 플래그 보존
+        self.assertFalse(normalize_verdict({"candidateId": "c2", "decision": "valid_error",
+                                            "confidence": 0.9})["synthetic"])
 
 
 class MetricsTest(unittest.TestCase):

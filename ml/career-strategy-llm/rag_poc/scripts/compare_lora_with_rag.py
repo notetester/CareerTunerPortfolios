@@ -81,13 +81,13 @@ def run_variant(pair, variant, *, mock, base_url, model, timeout, repeat):
     return rows
 
 
-def aggregate(rows):
+def aggregate(rows, *, mock=False):
     n = len(rows) or 1
     def rate(pred): return round(sum(1 for r in rows if pred(r)) / n, 3)
     raw = sum(len((r.get("detail") or {}).get("bad_skills") or []) for r in rows)
     resid = sum(len((r.get("detail") or {}).get("bad_skills_residual") or []) for r in rows)
     lat = [r.get("latency_ms", 0.0) for r in rows]
-    return {
+    agg = {
         "n": len(rows),
         "success_rate": rate(lambda r: r.get("success")),
         "json_parse_rate": rate(lambda r: r.get("json_ok")),
@@ -99,6 +99,13 @@ def aggregate(rows):
         "avg_latency_ms": round(sum(lat) / n, 1),
         "context_used_avg_overlap": round(sum(r["rag"]["contextOverlap"] for r in rows) / n, 4),
     }
+    if mock:
+        # mock 은 retrievedContext 를 안 봐서 A==B → overlap 이 B 에서만 비제로인 건 '동어반복 아티팩트'다.
+        # RAG 효과 지표를 실측으로 오인하지 않게 명시 표식(reports/55). mock 은 배선검증 전용.
+        agg["mock"] = True
+        agg["rag_metrics_valid"] = False
+        agg["_note"] = "mock=retrievedContext 무시 → A==B; context_used_avg_overlap 은 tautological(실측 아님)"
+    return agg
 
 
 def main(argv=None):
@@ -120,17 +127,22 @@ def main(argv=None):
                                timeout=a.timeout, repeat=a.repeat)
             by_variant[v] += rows
             raw_records.append({"caseId": p["caseId"], "variant": v,
-                                "n": len(rows), "agg": aggregate(rows)})
+                                "n": len(rows), "agg": aggregate(rows, mock=a.mock)})
 
     print(f"=== R2 A/B 비교 (mock={a.mock} model={a.model} repeat={a.repeat} cases={len(pairs)}) ===")
+    if a.mock:
+        print("  ⚠ mock 모드 — retrievedContext 무시(A==B). RAG 효과 지표는 실측 아님(배선검증 전용).")
     for v in VARIANTS:
-        print(f"[{v}] {aggregate(by_variant[v])}")
+        print(f"[{v}] {aggregate(by_variant[v], mock=a.mock)}")
 
     if a.out_dir:
         os.makedirs(a.out_dir, exist_ok=True)
         with open(os.path.join(a.out_dir, "rag_r2_ab_raw.json"), "w", encoding="utf-8") as f:
-            json.dump({"perCaseVariant": raw_records,
-                       "summary": {v: aggregate(by_variant[v]) for v in VARIANTS}}, f, ensure_ascii=False, indent=2)
+            json.dump({"mock": bool(a.mock), "model": a.model, "repeat": a.repeat, "cases": len(pairs),
+                       "rag_metrics_valid": (not a.mock),
+                       "perCaseVariant": raw_records,
+                       "summary": {v: aggregate(by_variant[v], mock=a.mock) for v in VARIANTS}},
+                      f, ensure_ascii=False, indent=2)
         print(f"  raw → {a.out_dir}/rag_r2_ab_raw.json")
     return 0
 

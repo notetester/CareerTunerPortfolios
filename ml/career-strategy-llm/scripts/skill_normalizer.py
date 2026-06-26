@@ -26,6 +26,11 @@ import unicodedata
 #   안전장치는 '제거 후 allowedSkill 정확매칭' 게이트다 — 깎아도 allowed 와 정확히 안 맞으면
 #   resolve 하지 않고 unresolved/soft 로 남긴다. 따라서 입력 밖 제품/코드명('CRM465 운영')은
 #   매칭 대상이 없어 절대 오탐 처리되지 않고 judge 후보로 유지된다(valid_error 보호).
+#
+#   ★ 경계 안전(reports/55, 2026-06-27): 접미는 **공백 경계가 있을 때만**('SAP WMS 운영' → ' 운영')
+#     제거한다. '품질관리'(=품질+관리)처럼 접미가 앞 형태소에 붙어 **별개 복합명사**를 이루는
+#     경우는 깎지 않는다. 경계 없이 깎으면 '품질관리'+allowed['품질']→정확매칭→false_positive 로
+#     환각 후보가 침묵 whitewash 되는 안전불변식 위반이 생긴다.
 SUFFIX_NOUNS = [
     "방법론", "프레임워크", "솔루션", "시스템", "플랫폼", "도구", "툴",
     "사용법", "활용법", "활용", "실습", "경험", "이해", "지식", "능력", "기술", "스킬",
@@ -48,19 +53,45 @@ def _nfkc(s):
     return unicodedata.normalize("NFKC", str(s or ""))
 
 
+# 단어 구성 문자(한글 음절/자모·한자·영숫자). 토큰 경계 판정용.
+_WORD_CHAR = re.compile(r"[0-9A-Za-z가-힣ㄱ-ㆎ一-鿿]")
+
+
+def _at_token_boundary(text, sub):
+    """sub 가 text 안에 토큰 경계(앞뒤가 비단어문자 또는 문자열 끝)로 등장하면 True.
+    '데이터 기반 수요예측'⊃'수요예측'(앞 공백)→True, '품질관리'⊃'품질'(뒤 '관')→False,
+    '자바스크립트'⊃'자바'(뒤 '스')→False. 부분형태소 매칭으로 인한 오탐/whitewash 차단."""
+    if not sub:
+        return False
+    start = 0
+    while True:
+        i = text.find(sub, start)
+        if i < 0:
+            return False
+        before = text[i - 1] if i > 0 else ""
+        after = text[i + len(sub)] if i + len(sub) < len(text) else ""
+        if not _WORD_CHAR.match(before) and not _WORD_CHAR.match(after):
+            return True
+        start = i + 1
+
+
 def _key(s):
     """공백 제거 + 소문자 + NFKC — 하니스 비교를 NFKC 까지 확장한 정규화 키."""
     return re.sub(r"\s+", "", _nfkc(s)).lower()
 
 
 def _strip_suffix_nouns(s):
-    """flagged 끝의 wrapper 명사를 반복 제거. 'X 프레임워크 이해'→'X'."""
+    """flagged 끝의 wrapper 명사를 반복 제거. 'X 프레임워크 이해'→'X'.
+
+    ★ 공백 경계가 있을 때만(' '+suf) 제거한다. '품질관리'처럼 접미가 앞 형태소에 붙어
+    별개 복합명사를 이루면 깎지 않는다 — 경계 없이 깎으면 allowed['품질']로 whitewash 된다."""
     cur = _nfkc(s).strip()
     changed = True
     while changed:
         changed = False
         for suf in SUFFIX_NOUNS:
-            if cur.endswith(suf) and len(cur) > len(suf):
+            sep = " " + suf
+            if cur.endswith(sep) and len(cur) > len(sep):
                 cur = cur[: -len(suf)].strip()
                 changed = True
                 break
@@ -112,13 +143,19 @@ def _match_part(part, allowed_keys):
 
 
 def _substring_hit(part, allowed_items):
-    """allowedSkill 이 조각 안에 부분문자열로 들어있으면 그 allowed 원문 반환(soft)."""
-    pk = _key(part)
-    if not pk:
+    """allowedSkill 이 조각 안에 **토큰 경계**로 들어있으면 그 allowed 원문 반환(soft).
+
+    ★ 토큰 경계 강제(reports/55): 공백을 보존한 정규화 텍스트에서 allowed 가 단어 경계로
+    등장할 때만 soft 로 본다. '데이터 기반 수요예측'⊃'수요예측'(공백 경계)→soft, 그러나
+    '자바스크립트'⊃'자바'·'품질관리'⊃'품질'(형태소 중간)→매칭 안 함(JavaScript≠Java 등 오탐 차단)."""
+    n = re.sub(r"\s+", " ", _nfkc(part)).strip().lower()
+    if not n:
         return None
     for a in allowed_items:
-        ak = _key(a)
-        if ak and ak in pk and ak != pk:
+        an = re.sub(r"\s+", " ", _nfkc(a)).strip().lower()
+        if not an or an == n:
+            continue
+        if _at_token_boundary(n, an):
             return a
     return None
 
@@ -217,6 +254,14 @@ def _selfcheck():
         # 안전 불변식 — 입력 밖 제품/코드명은 접미 제거해도 매칭 대상이 없어 unresolved 유지(valid_error 보호)
         ("CRM465 운영", ["고객 상담", "VOC 관리"], "unresolved"),
         ("ERP 도입 경험이 있는 경우", ["재무 설계", "세무 지식"], "unresolved"),
+        # 안전 불변식(reports/55) — 접미가 앞 형태소에 '붙은' 별개 복합명사는 whitewash 금지.
+        #   경계 없는 접미 제거였다면 '품질관리'→'품질'→false_positive 로 환각이 침묵 누락됐다.
+        #   이제 공백 경계가 없어 깎이지 않고, 부분형태소 substring 도 토큰경계로 막혀 unresolved(judge 후보) 유지.
+        ("품질관리", ["품질", "원가절감"], "unresolved"),
+        ("영업관리", ["영업", "신규개척"], "unresolved"),
+        ("재고관리", ["재고", "물류 KPI 분석"], "unresolved"),
+        # 안전 불변식 — JavaScript≠Java: 부분형태소 substring 으로 soft 묶이면 안 됨
+        ("자바스크립트", ["자바", "타입스크립트"], "unresolved"),
     ]
     ok = 0
     for flagged, allowed, exp in cases:

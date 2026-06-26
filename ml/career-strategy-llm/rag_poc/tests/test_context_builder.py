@@ -9,7 +9,9 @@ import unittest
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.join(HERE, "..", "scripts"))
-from build_retrieved_context import build_retrieved_context, FORBIDDEN_KEYS  # noqa: E402
+from build_retrieved_context import (  # noqa: E402
+    build_retrieved_context, FORBIDDEN_KEYS, _assert_no_score_keys, scan_text_for_score_leak,
+)
 
 SAMPLE = [
     {"chunkId": "chunk-job-a-001", "sourceType": "job_posting", "sourceId": "job-001",
@@ -41,6 +43,23 @@ class ContextBuilderTest(unittest.TestCase):
         big = SAMPLE * 10
         ctx = build_retrieved_context(big, max_items=3)
         self.assertEqual(3, len(ctx["retrievedContext"]))
+
+    def test_guard_fires_on_extra_key(self):
+        # 회귀 가드: builder 가 pass-through 로 바뀌어 항목에 금지/추가 키가 끼면 _assert 가 발화해야 한다.
+        # (과거엔 재구성된 3키만 봐서 절대 발화 못 하는 dead code 였음.)
+        with self.assertRaises(AssertionError):
+            _assert_no_score_keys({"retrievedContext": [
+                {"sourceType": "jd", "sourceId": "1", "text": "x", "score": 0.5}]})
+
+    def test_guard_fires_on_value_level_leak(self):
+        # text 값 안에 점수/판단이 박히면 차단(키-수준만으론 못 막는 누수).
+        with self.assertRaises(AssertionError):
+            _assert_no_score_keys({"retrievedContext": [
+                {"sourceType": "jd", "sourceId": "1", "text": "applyDecision: REJECT 라고 적힘"}]})
+
+    def test_value_leak_scanner_no_false_positive(self):
+        self.assertIsNone(scan_text_for_score_leak("적합도가 높은 회사입니다."))
+        self.assertIsNotNone(scan_text_for_score_leak("fitScore: 88"))
 
 
 if __name__ == "__main__":

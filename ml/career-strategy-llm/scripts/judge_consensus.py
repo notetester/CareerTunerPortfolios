@@ -65,22 +65,33 @@ def consensus_for_candidate(verdicts):
 
     tie = len(winners) > 1
     final = "needs_policy" if tie else winners[0]
-    win_conf = [v["confidence"] for v in verdicts if canon_decision(v["decision"]) == final]
-    conf = round(sum(win_conf) / len(win_conf), 3) if win_conf else 0.0
+    # confidence: 동률이면 final='needs_policy' 이지만 아무도 needs_policy 에 투표 안 했을 때 win_conf 가
+    # 비어 conf=0.0 으로 진짜 확신(예: 양쪽 0.9)을 잃는 버그가 있었다(reports/55). 동률에선 '갈린 라벨
+    # (winners)에 투표한 verdict 들'의 confidence 평균으로 본다 — 판정자들이 얼마나 확신하며 갈렸는지.
+    if tie:
+        conf_pool = [v["confidence"] for v in verdicts if canon_decision(v["decision"]) in winners]
+        agreement = "tie " + "-".join(str(votes[w]) for w in winners)
+    else:
+        conf_pool = [v["confidence"] for v in verdicts if canon_decision(v["decision"]) == final]
+        agreement = f"{top}/{n}"
+    conf = round(sum(conf_pool) / len(conf_pool), 3) if conf_pool else 0.0
 
     any_hr = any(v.get("needsHumanReview") for v in verdicts)
     any_policy = any(canon_decision(v["decision"]) == "needs_policy" for v in verdicts)
     no_majority = top * 2 <= n            # 과반 미달
     human = bool(tie or any_hr or any_policy or no_majority or conf < CONF_THRESHOLD)
 
+    synthetic = any(v.get("synthetic") for v in verdicts)
     return {
         "finalDecision": final,
-        "needsHumanReview": human,
-        "agreement": f"{top}/{n}",
+        "needsHumanReview": human or synthetic,   # mock 혼입 후보는 항상 검토 대상
+        "agreement": agreement,
         "confidence": conf,
+        "synthetic": synthetic,
         "votes": votes,
         "perJudge": [{"judge": v.get("judge"), "decision": canon_decision(v["decision"]),
                       "confidence": v["confidence"], "needsHumanReview": v.get("needsHumanReview", False),
+                      "synthetic": bool(v.get("synthetic")),
                       "rationale": v.get("rationale", "")} for v in verdicts],
     }
 
@@ -113,6 +124,11 @@ def run_consensus(candidates, verdicts_by_cand, stats):
     resolved = stats.get("stage1_resolved_false_positive", 0)
     residual = stats.get("stage1_residual_to_judge", 0)
 
+    # mock(synthetic) verdict 혼입 탐지 — 혼입 시 이 집계는 실측 judge 결과가 아니다(리포트 인용 금지).
+    syn_verdicts = sum(1 for vs in verdicts_by_cand.values() for v in vs if v.get("synthetic"))
+    total_verdicts = sum(len(vs) for vs in verdicts_by_cand.values())
+    is_synthetic = syn_verdicts > 0
+
     metrics = {
         "raw_hallucination_flag_items": raw,
         "stage1_resolved_false_positive": resolved,
@@ -127,6 +143,10 @@ def run_consensus(candidates, verdicts_by_cand, stats):
         "judge_confidence": round(sum(confs) / len(confs), 3) if confs else 0.0,
         "needs_human_review_candidates": human,
         "conf_threshold": CONF_THRESHOLD,
+        # synthetic(mock) 혼입 표식 — True 면 실측 judge 결과가 아니므로 리포트가 실측으로 인용 금지.
+        "synthetic_verdict_count": syn_verdicts,
+        "total_verdict_count": total_verdicts,
+        "is_synthetic": is_synthetic,
     }
     return rows, metrics
 
@@ -139,8 +159,14 @@ def _unique_by_decision(rows):
 
 
 def _parse_verdict_specs(specs):
-    """['claude=path', ...] → {candidateId: [verdict,...]}, 검증 오류 리스트."""
+    """['claude=path', ...] → {candidateId: [verdict,...]}, 검증 오류 리스트.
+
+    같은 judge 가 같은 후보를 중복 투표(같은 파일 두 줄 등)하면 그 라벨이 2표로 이중계산돼
+    다수결/과반 경계를 왜곡한다. (candidateId, judge) 키로 dedup 하고 confidence 높은 쪽만 유지한다.
+    """
     by_cand, errs = {}, []
+    seen = {}   # (candidateId, judge) -> by_cand[cid] 리스트 내 인덱스
+    dups = 0
     for spec in specs:
         judge, path = (spec.split("=", 1) if "=" in spec else (None, spec))
         for v in _load_jsonl(path):
@@ -151,7 +177,19 @@ def _parse_verdict_specs(specs):
             nv = normalize_verdict(v, default_judge=judge or "external")
             if judge:
                 nv["judge"] = judge
-            by_cand.setdefault(nv["candidateId"], []).append(nv)
+            cid = nv["candidateId"]
+            key = (cid, nv.get("judge"))
+            lst = by_cand.setdefault(cid, [])
+            if key in seen:
+                dups += 1
+                idx = seen[key]
+                if nv.get("confidence", 0) >= lst[idx].get("confidence", 0):
+                    lst[idx] = nv      # 중복은 이중계산하지 않고 최고 confidence 만 유지
+            else:
+                seen[key] = len(lst)
+                lst.append(nv)
+    if dups:
+        print(f"[consensus] 같은 judge 의 중복 투표 {dups}건 dedup(최고 confidence 유지).")
     return by_cand, errs
 
 
@@ -191,6 +229,9 @@ def main():
           f"acceptable_gray={metrics['acceptable_gray_count']} needs_policy={metrics['needs_policy_count']}")
     print(f"  unique_by_decision={metrics['unique_by_final_decision']} "
           f"needsHumanReview={metrics['needs_human_review_candidates']} conf={metrics['judge_confidence']}")
+    if metrics.get("is_synthetic"):
+        print(f"  ⚠ synthetic(mock) verdict {metrics['synthetic_verdict_count']}/{metrics['total_verdict_count']} 혼입 "
+              "— 이 집계는 실측 judge 결과가 아닙니다(배선 점검 전용, 리포트 인용 금지).")
     print(f"  → {cpath}\n  → {mpath}")
 
 

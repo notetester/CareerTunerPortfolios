@@ -42,23 +42,33 @@ foreach ($p in @($FullSessionPubKey, $TriggerPubKey)) {
     if ($p -and $p -match '<.*PUBKEY.*>') { throw "공개키 placeholder 가 채워지지 않았습니다: '$p'" }
 }
 if ($FullSessionPubKey -notmatch '^ssh-(ed25519|rsa|ecdsa)') { throw "FullSessionPubKey 형식이 공개키가 아닙니다." }
-if ($FullSessionPubKey -match 'PRIVATE KEY') { throw "private key 로 보입니다 — 공개키만 전달하세요." }
+# 키를 코드가 아닌 데이터 파일로 분리하지만, 방어심화로 authorized_keys 줄 무결성을 깨는 문자는 거부.
+foreach ($p in @($FullSessionPubKey, $TriggerPubKey)) {
+    if ($p) {
+        if ($p -match 'PRIVATE KEY') { throw "private key 로 보입니다 — 공개키만 전달하세요." }
+        if ($p -match '["`\r\n]') { throw "공개키에 허용되지 않는 문자(따옴표/백틱/개행)가 있습니다: '$p'" }
+    }
+}
 
 New-Item -ItemType Directory -Force -Path $OpsDir, $LogDir | Out-Null
 
-# 부팅마다 실행될 self-heal 스크립트 본문(키를 OpsDir 안에만 기록 — repo 밖)
+# 부팅마다 실행될 self-heal 스크립트 본문.
+# ★ 코드/데이터 분리(보안): 공개키 값을 스크립트 소스에 보간하지 않는다. 키는 OpsDir\authorized_keys.txt
+#   에 데이터로 1회 기록(아래)하고, self-heal 은 그 파일을 Copy-Item 으로 복사만 한다. 따라서 키 값이
+#   매 부팅 SYSTEM 권한으로 재파싱·실행되는 인젝션 경로가 없다.
 $selfHeal = @'
 param([string]$LogDir = "__LOGDIR__")
 $ErrorActionPreference = "Continue"
-$AK  = "C:\ProgramData\ssh\administrators_authorized_keys"
-$CFG = "C:\ProgramData\ssh\sshd_config"
+$AK    = "C:\ProgramData\ssh\administrators_authorized_keys"
+$AKSRC = "__AKSRC__"
+$CFG   = "C:\ProgramData\ssh\sshd_config"
 function Log($m){ $l="$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')  $m"; try{Add-Content (Join-Path $LogDir 'ssh-self-heal.log') $l}catch{}; Write-Host $l }
 Log "self-heal start"
 Set-Service sshd -StartupType Automatic -ErrorAction SilentlyContinue
 if((Get-Service sshd -ErrorAction SilentlyContinue).Status -ne 'Running'){ Start-Service sshd; Log "sshd started" }
 try{ Set-Service Tailscale -StartupType Automatic -ErrorAction SilentlyContinue }catch{}
-$keys = @(__KEY_LINES__)
-Set-Content -Path $AK -Value $keys -Encoding ascii
+if(Test-Path $AKSRC){ Copy-Item -Path $AKSRC -Destination $AK -Force; Log "authorized_keys copied from data file" }
+else { Log "WARN authorized_keys data file missing: $AKSRC" }
 icacls $AK /inheritance:r | Out-Null
 icacls $AK /grant "Administrators:F" /grant "SYSTEM:F" | Out-Null
 Log "authorized_keys + ACL reapplied"
@@ -78,28 +88,39 @@ try{
 Log "self-heal done (sshd=$((Get-Service sshd).Status))"
 '@
 
-# 키 라인 구성(풀세션 plain + 선택 트리거 forced-command)
-$keyLines = @("`"$FullSessionPubKey`"")
+# 키 파일을 authorized_keys 형식 '데이터'로 생성(풀세션 plain + 선택 트리거 forced-command).
+# self-heal 은 이 파일을 복사만 하므로 키 값이 코드로 재파싱되지 않는다(코드/데이터 분리).
+$akLines = @($FullSessionPubKey)
 if ($TriggerPubKey) {
-    $fc = 'command=`"powershell -NoProfile -ExecutionPolicy Bypass -File ' + $WrapperPath + '`",no-port-forwarding,no-agent-forwarding,no-X11-forwarding,no-pty ' + $TriggerPubKey
-    $keyLines += "`"$fc`""
+    # authorized_keys 옵션 형식: command="..." 은 평문 큰따옴표(PowerShell 이스케이프 아님 — 파일에 그대로 기록).
+    $fc = 'command="powershell -NoProfile -ExecutionPolicy Bypass -File ' + $WrapperPath + '",no-port-forwarding,no-agent-forwarding,no-X11-forwarding,no-pty ' + $TriggerPubKey
+    $akLines += $fc
 }
-$selfHeal = $selfHeal.Replace("__LOGDIR__", $LogDir).Replace("__TSRANGE__", $TailscaleRange).Replace("__KEY_LINES__", ($keyLines -join ", "))
+$akSrcPath = Join-Path $OpsDir "authorized_keys.txt"
+Set-Content -Path $akSrcPath -Value $akLines -Encoding ascii
+Write-Host "[1/3] authorized_keys 데이터 파일 생성(키 포함, repo 밖): $akSrcPath"
+
+$selfHeal = $selfHeal.Replace("__LOGDIR__", $LogDir).Replace("__TSRANGE__", $TailscaleRange).Replace("__AKSRC__", $akSrcPath)
 $selfHealPath = Join-Path $OpsDir "ssh-self-heal.ps1"
 Set-Content -Path $selfHealPath -Value $selfHeal -Encoding utf8
-Write-Host "[1/3] self-heal 스크립트 생성(키 포함, repo 밖): $selfHealPath"
+Write-Host "      self-heal 스크립트 생성(키 미포함, 데이터 파일만 참조): $selfHealPath"
 
 # OnStart + 매시간 SYSTEM 작업
 $action = New-ScheduledTaskAction -Execute "powershell.exe" -Argument "-NoProfile -ExecutionPolicy Bypass -File `"$selfHealPath`""
 $t1 = New-ScheduledTaskTrigger -AtStartup
-# 주의: -RepetitionDuration ([TimeSpan]::MaxValue) 는 작업 XML 범위초과 오류 → 생성 후 Duration='' (무기한)로 설정.
-$t2 = New-ScheduledTaskTrigger -Once -At (Get-Date)
-$t2.Repetition.Interval = "PT1H"
-$t2.Repetition.Duration = ""
+# ★ 반복 트리거는 생성 시 -RepetitionInterval 로 만든다. -Once 만으로 만든 뒤 $t2.Repetition.Interval 에
+#   대입하면 .Repetition 이 $null 이라 'property Interval cannot be found' 예외가 나고($ErrorActionPreference=Stop)
+#   Register-ScheduledTask 전에 install 이 중단돼 self-heal 작업이 아예 등록되지 않는다(과거 회귀). RepetitionInterval
+#   만 주고 Duration 은 생략하면 무기한 반복(범위초과 오류 없음).
+$t2 = New-ScheduledTaskTrigger -Once -At (Get-Date) -RepetitionInterval (New-TimeSpan -Hours 1)
 $principal = New-ScheduledTaskPrincipal -UserId "SYSTEM" -LogonType ServiceAccount -RunLevel Highest
 $settings = New-ScheduledTaskSettingsSet -StartWhenAvailable -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries
 Register-ScheduledTask -TaskName $TaskName -Action $action -Trigger @($t1, $t2) -Principal $principal -Settings $settings -Force | Out-Null
-Write-Host "[2/3] 스케줄 작업 '$TaskName' 등록(OnStart + 매시간, SYSTEM)"
+# 등록 검증: 트리거 2개(OnStart + 매시간 반복)가 실제로 들어갔는지 확인.
+$rt = Get-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue
+$ntrig = @($rt.Triggers).Count
+if ($ntrig -lt 2) { Write-Warning "트리거가 $ntrig 개 — OnStart+매시간 반복 등록이 불완전할 수 있습니다." }
+Write-Host "[2/3] 스케줄 작업 '$TaskName' 등록(OnStart + 매시간, SYSTEM) — 트리거 $ntrig 개"
 
 Write-Host "[3/3] 즉시 1회 self-heal 실행..."
 & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $selfHealPath

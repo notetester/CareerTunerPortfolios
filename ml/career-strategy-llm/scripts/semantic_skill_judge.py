@@ -65,6 +65,8 @@ def normalize_verdict(v, default_judge="external"):
         "confidence": float(v.get("confidence", 0.0)),
         "rationale": v.get("rationale", ""),
         "needsHumanReview": bool(v.get("needsHumanReview", False)),
+        # mock(결정론 더미) verdict 식별 플래그 — consensus/리포트가 실측으로 오인하지 않게 보존.
+        "synthetic": bool(v.get("synthetic", False)),
     }
 
 
@@ -90,21 +92,27 @@ def validate_verdict_file(path):
 def mock_judge(candidates, judge_name="mock"):
     """결정론 더미 judge — normalizer 힌트만 사용(실판정 아님).
 
-    soft_match(allowed 부분문자열 존재) → acceptable_gray.
-    매칭 0건(no_match) → needs_policy(범위밖일 수 있으나 단정 금지) + needsHumanReview.
+    soft_match(allowed 부분문자열 존재) → acceptable_gray(단, mock 은 단정 금지).
+    매칭 0건(no_match) → needs_policy(범위밖일 수 있으나 단정 금지).
     부분 나열(partial_list) → needs_policy.
+
+    ★ mock 은 절대 '검토 불요(needsHumanReview=False)'로 단정하지 않는다(reports/55). soft_match 를
+      acceptable_gray·hr=False 로 내리면 그 whitewash 가 consensus 까지 전파된다. 모든 mock verdict 에
+      needsHumanReview=True + synthetic=True 를 달아 실측으로 오인되지 않게 한다.
     """
     verdicts = []
     for c in candidates:
         st = (c.get("normalizer") or {}).get("status")
         method = (c.get("normalizer") or {}).get("method")
         if st == "soft_match":
-            dec, conf, hr, why = "acceptable_gray", 0.6, False, "allowed 스킬이 부분문자열로 포함(여분 토큰)"
+            dec, conf, why = "acceptable_gray", 0.6, "allowed 스킬이 부분문자열로 포함(여분 토큰) — mock 추정"
         else:
-            dec, conf, hr, why = "needs_policy", 0.4, True, f"결정론 미해소({method}) — 의미 판정 필요"
+            dec, conf, why = "needs_policy", 0.4, f"결정론 미해소({method}) — 의미 판정 필요"
         verdicts.append({
             "candidateId": c["candidateId"], "judge": judge_name,
-            "decision": dec, "confidence": conf, "rationale": why, "needsHumanReview": hr,
+            "decision": dec, "confidence": conf, "rationale": why,
+            "needsHumanReview": True,   # mock 은 검토 불요로 단정하지 않음(whitewash 전파 차단)
+            "synthetic": True,          # 실판정 아님 — consensus/리포트 식별용
         })
     return verdicts
 

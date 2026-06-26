@@ -13,7 +13,7 @@ import sys
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 sys.path.insert(0, os.path.join(HERE, "..", "..", "scripts"))  # ml/.../scripts
-from build_retrieved_context import FORBIDDEN_KEYS  # noqa: E402
+from build_retrieved_context import CONTEXT_KEYS, scan_text_for_score_leak  # noqa: E402
 
 try:
     from synth_prompts import FIT_EXPLAIN_SYS  # noqa: E402  (train/serve 일관성)
@@ -26,17 +26,19 @@ RAG_SYS_ADDENDUM = (
     "만들지 않는다. fitScore 와 applyDecision 은 입력값을 그대로 두고 절대 바꾸지 않는다."
 )
 
-CONTEXT_KEYS = ("sourceType", "sourceId", "text")
-
-
 def sanitize_context(retrieved_context):
-    """retrievedContext 를 sourceType/sourceId/text 로만 정제(score/vector/ranking metadata 제거·금지키 가드)."""
+    """retrievedContext 를 sourceType/sourceId/text 로만 정제.
+
+    1차 방어 = 화이트리스트 재구성(score/vector/ranking metadata 는 키 자체가 빠진다).
+    2차 방어 = **text 값-수준 점수/판단 누수 스캔**. 키-수준만으론 text 안의 'fitScore: 92 /
+      applyDecision: REJECT' 같은 값 누수를 못 막아, 점수·판단이 prompt 근거로 새는 걸 차단한다.
+      (과거의 FORBIDDEN_KEYS 교집합 가드는 재구성된 3키만 봐서 절대 발화 못 하는 dead code 였음.)"""
     out = []
     for c in retrieved_context or []:
-        item = {"sourceType": c.get("sourceType"), "sourceId": c.get("sourceId"), "text": c.get("text", "")}
-        bad = FORBIDDEN_KEYS & set(item.keys())
-        if bad:
-            raise AssertionError(f"retrievedContext 금지 키: {bad}")
+        item = {k: c.get(k, "") if k == "text" else c.get(k) for k in CONTEXT_KEYS}
+        leak = scan_text_for_score_leak(item["text"])
+        if leak:
+            raise AssertionError(f"retrievedContext text 값에 점수/판단 누수: {leak!r}")
         out.append(item)
     return out
 
