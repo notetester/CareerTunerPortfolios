@@ -5,8 +5,8 @@
 > 핵심: 결정론 해소 15→**21** occ, judge 잔여 15→**9** occ(−40%), **최종 분류 불변**(harness_fp 23 / gray 7 / valid_error 0).
 
 ## 1. PR
-- 브랜치 `LEE-JEONG-GUCK` → `dev`. (이 작업은 reports/39 의 `skill_normalizer.py` 위에 쌓이므로 같은 브랜치에 누적.)
-- **PR URL: (push 후 본 reports/44 상단에 기입)**
+- 브랜치 `LEE-JEONG-GUCK` → `dev`. (reports/39 #138 머지 후속이라 같은 브랜치에 reports/40–44 누적.)
+- **PR: https://github.com/notetester/CareerTuner/pull/141**
 - 머지는 팀장(자가 merge 금지). 프로덕션 점수/판단·E1 guard·E2 observer·D/F 모델 **불변**.
 
 ## 2. normalizer 에 추가한 규칙 (`scripts/skill_normalizer.py`)
