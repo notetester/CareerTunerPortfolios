@@ -34,7 +34,22 @@ public class BAnalysisGenerationService {
 
     public static final String SELF_RULES_MODEL = "self-rules-v1";
 
-    private static final Pattern YEARS_PATTERN = Pattern.compile("(?i)(\\d+)\\+?\\s*(?:years|yrs|년)");
+    // 경력 연차는 연차 숫자가 경력 키워드와 "결합"된 경우만 인정한다(단순 "N년" 근접 매칭은 오탐이 많음).
+    // "설립 10년차"·"서비스 운영 5년"·"5년 연속 성장"(연혁/기간), "operating for 5 yrs"(단위만 있는 영어 기간)는
+    // 구조적으로 배제하고, "5+ yrs exp" 같은 영어 결합은 인정한다.
+    // - NOT_IRRELEVANT: 경력 키워드 뒤 부정어를 경력 연차로 오인("10년차 경력 무관")하지 않도록 배제.
+    //   조사(은/는/이/가/도/에/과/와)·라벨 구분자([:：-])·띄어쓰기 변형과
+    //   "무관/관계 없/상관 없/제한 없/불문" 어휘까지 포괄("경력: 무관"·"경력에 상관없이"·"경력과 무관하게" 등).
+    // - \b...\b: "exp"가 "exported"·"expert" 같은 다른 단어에 걸리지 않도록 단어 경계 강제.
+    // - [^\d\n]{0,N}: 다른 숫자나 줄바꿈을 넘지 않는 좁은 간격만 허용.
+    private static final String NOT_IRRELEVANT =
+            "(?!(?:은|는|이|가|도|에|과|와)?\\s*[:：\\-]?\\s*(?:무관|관계\\s*없|상관\\s*없|제한\\s*없|불문))";
+    private static final Pattern EXPERIENCE_YEARS_PATTERN = Pattern.compile(
+            "(?i)"
+            + "(?:경력|경험|실무)" + NOT_IRRELEVANT + "[^\\d\\n]{0,6}(\\d+)\\s*년"            // 1: 경력 … N년
+            + "|(\\d+)\\s*년[^\\d\\n]{0,8}(?:경력|경험|실무)" + NOT_IRRELEVANT                 // 2: N년 … 경력
+            + "|\\b(?:experience|exp)\\b[^\\d\\n]{0,12}(\\d+)\\s*\\+?\\s*(?:years?|yrs?)"      // 3: experience … N years
+            + "|(\\d+)\\s*\\+?\\s*(?:years?|yrs?)[^\\d\\n]{0,8}\\b(?:experience|exp)\\b");     // 4: N years … experience
     private static final int MAX_PROMPT_TEXT_LENGTH = 12_000;
     // 경력 연차 보정: 5년 이상이면 SENIOR로 본다(self-rules experienceLevel과 동일 기준).
     private static final int SENIOR_YEARS_THRESHOLD = 5;
@@ -191,29 +206,72 @@ public class BAnalysisGenerationService {
      * 경력 연차를 정규식으로 파싱해 experienceLevel을 보정한다. 명시된 연차가 없으면 모델 값을 그대로 둔다.
      */
     private String reconcileExperienceLevel(String llmValue, String postingText) {
+        String normalized = normalizeExperienceLevel(llmValue);
         Integer years = maxStatedYears(postingText);
         if (years == null) {
-            return llmValue;
+            return normalized;
         }
         if (years >= SENIOR_YEARS_THRESHOLD) {
             return "SENIOR";
         }
-        if (years >= 1 && "JUNIOR".equals(llmValue)) {
+        if (years >= 1 && "JUNIOR".equals(normalized)) {
             return "MID";
         }
-        return llmValue;
+        return normalized;
     }
 
+    /**
+     * R1 모델이 enum 대신 "intermediate", "MEDIUM", 숫자 등 비표준 값을 반환하는 사례가 있어,
+     * experienceLevel을 JUNIOR/MID/SENIOR 표준 값으로 정규화한다. 분류 불가 값은 MID로 수렴한다.
+     */
+    private String normalizeExperienceLevel(String value) {
+        String lower = value == null ? "" : value.trim().toLowerCase(Locale.ROOT);
+        if (lower.equals("junior") || lower.equals("mid") || lower.equals("senior")) {
+            return lower.toUpperCase(Locale.ROOT);
+        }
+        if (lower.contains("senior") || lower.contains("시니어") || lower.contains("lead")
+                || lower.contains("principal") || lower.contains("staff") || lower.contains("expert")) {
+            return "SENIOR";
+        }
+        if (lower.contains("junior") || lower.contains("entry") || lower.contains("intern")
+                || lower.contains("new grad") || lower.contains("신입") || lower.contains("주니어")) {
+            return "JUNIOR";
+        }
+        return "MID";
+    }
+
+    /**
+     * 공고 원문에서 경력 연차를 추출한다. 연차 숫자가 경력 키워드(경력/경험/실무, experience/exp)와 결합된
+     * 경우만 인정하므로, "2024년"(날짜)·"설립 10년차"(연혁)·"서비스 운영 5년"(기간)·"5년 연속 성장",
+     * "operating for 5 yrs"(영어 기간)는 자연히 배제된다. 여러 건이면 가장 큰 연차를 반환한다.
+     */
     private Integer maxStatedYears(String text) {
-        Matcher matcher = YEARS_PATTERN.matcher(text);
+        Matcher matcher = EXPERIENCE_YEARS_PATTERN.matcher(text);
         Integer max = null;
         while (matcher.find()) {
-            int value = Integer.parseInt(matcher.group(1));
-            if (value >= 1 && value <= MAX_REALISTIC_YEARS && (max == null || value > max)) {
+            String digits = firstNonNull(matcher.group(1), matcher.group(2), matcher.group(3), matcher.group(4));
+            if (digits == null || digits.length() > 2) {
+                // 2자리 초과(>=100)는 경력 연차로 비현실적 → 무시(파싱 오버플로 방지 겸).
+                continue;
+            }
+            int value = Integer.parseInt(digits);
+            if (value < 1 || value > MAX_REALISTIC_YEARS) {
+                continue;
+            }
+            if (max == null || value > max) {
                 max = value;
             }
         }
         return max;
+    }
+
+    private String firstNonNull(String... values) {
+        for (String value : values) {
+            if (value != null) {
+                return value;
+            }
+        }
+        return null;
     }
 
     /**
@@ -372,7 +430,7 @@ public class BAnalysisGenerationService {
     private Map<String, Object> jobAnalysisSchema() {
         Map<String, Object> properties = new LinkedHashMap<>();
         properties.put("employmentType", stringSchema());
-        properties.put("experienceLevel", stringSchema());
+        properties.put("experienceLevel", Map.of("type", "string", "enum", List.of("JUNIOR", "MID", "SENIOR")));
         properties.put("requiredSkills", stringArraySchema());
         properties.put("preferredSkills", stringArraySchema());
         properties.put("duties", stringSchema());
@@ -481,9 +539,9 @@ public class BAnalysisGenerationService {
 
     private String experienceLevel(String text) {
         String lower = text.toLowerCase(Locale.ROOT);
-        Matcher matcher = YEARS_PATTERN.matcher(text);
+        Integer years = maxStatedYears(text);
         if (lower.contains("senior") || lower.contains("lead") || lower.contains("시니어")
-                || (matcher.find() && Integer.parseInt(matcher.group(1)) >= 5)) {
+                || (years != null && years >= SENIOR_YEARS_THRESHOLD)) {
             return "SENIOR";
         }
         if (lower.contains("junior") || lower.contains("entry") || lower.contains("new grad")

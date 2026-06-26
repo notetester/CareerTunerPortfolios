@@ -427,7 +427,17 @@ def _ppstructure_block_attr(block: Any, name: str) -> Any:
 
 
 def section_hints(text: str) -> list[str]:
-    return [keyword for keyword in SECTION_KEYWORDS if keyword in text]
+    # 헤더 띄어쓰기/대소문자 차이로 섹션을 놓치지 않도록 공백 제거 + casefold 후 매칭한다.
+    # 예: 본문 "담당 업무"가 키워드 "담당업무"와 매칭된다. 정규화 형태로 중복(예: "함께할업무"/"함께할 업무") 제거.
+    collapsed = re.sub(r"\s+", "", text).casefold()
+    hints: list[str] = []
+    seen: set[str] = set()
+    for keyword in SECTION_KEYWORDS:
+        norm = re.sub(r"\s+", "", keyword).casefold()
+        if norm and norm in collapsed and norm not in seen:
+            seen.add(norm)
+            hints.append(keyword)
+    return hints
 
 
 def count_noise_hits(text: str) -> int:
