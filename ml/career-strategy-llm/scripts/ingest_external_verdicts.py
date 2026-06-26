@@ -22,6 +22,8 @@ sys.path.insert(0, SCRIPT_DIR)
 from semantic_skill_judge import canon_decision  # noqa: E402
 
 VALID = {"valid_error", "acceptable_gray", "harness_false_positive", "needs_policy"}
+# 자기검증 불가 placeholder — 이게 보이면 출처는 운영자 폴더 라벨에만 의존(reports/43 caveat 3)
+PLACEHOLDER_IDS = {"chatgpt", "<당신의 식별자>", "<judgeid>", "judge", ""}
 
 
 def _load(path):
@@ -37,11 +39,14 @@ def _load(path):
 def ingest_one(label, path, cand_ids, out_dir):
     rows = _load(path)
     seen, norm, problems = set(), [], []
+    self_ids = set()
     for r in rows:
         cid = r.get("candidateId")
         if cid not in cand_ids:
             problems.append(f"unknown candidateId: {cid}")
             continue
+        sid = str(r.get("judgeId") or r.get("judge") or "").strip()
+        self_ids.add(sid.lower())
         if cid in seen:
             problems.append(f"duplicate candidateId: {cid}")
             continue
@@ -57,7 +62,8 @@ def ingest_one(label, path, cand_ids, out_dir):
             problems.append(f"bad confidence @ {cid}")
         norm.append({
             "candidateId": cid,
-            "judge": label,                       # 실제 출처로 재라벨
+            "judge": label,                       # 실제 출처로 재라벨(운영자 폴더 라벨)
+            "selfReportedJudgeId": sid or None,   # 파일이 스스로 밝힌 식별자(자기검증용)
             "decision": dec,
             "confidence": conf,
             "rationale": r.get("rationale", ""),
@@ -66,6 +72,9 @@ def ingest_one(label, path, cand_ids, out_dir):
     missing = sorted(cand_ids - seen)
     if missing:
         problems.append(f"missing {len(missing)} candidates: {[m.split('::')[1] for m in missing]}")
+    # 출처 자기검증: 파일이 밝힌 식별자가 placeholder 면 출처는 폴더 라벨에만 의존(reports/43 caveat 3)
+    if self_ids and self_ids <= PLACEHOLDER_IDS:
+        problems.append(f"judgeId placeholder({sorted(self_ids)}) — 출처 자기검증 불가, 폴더 라벨('{label}')에 의존")
     out_path = os.path.join(out_dir, f"verdicts_ext_{label}.jsonl")
     with open(out_path, "w", encoding="utf-8") as f:
         for r in norm:

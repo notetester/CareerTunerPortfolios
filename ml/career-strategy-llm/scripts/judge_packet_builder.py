@@ -157,9 +157,12 @@ CHATGPT_HEADER = """# Semantic Skill Judge — 후보 판정 패킷 (ChatGPT/사
 
 ## 응답 형식 (후보당 JSON 한 줄)
 ```
-{"candidateId": "...", "judge": "chatgpt", "decision": "acceptable_gray", "confidence": 0.0~1.0, "rationale": "한 줄 근거", "needsHumanReview": false}
+{"candidateId": "...", "judgeId": "<당신의 식별자>", "decision": "acceptable_gray", "confidence": 0.0~1.0, "rationale": "한 줄 근거", "needsHumanReview": false}
 ```
-판단이 갈리거나 confidence 가 낮으면 `needsHumanReview: true` 로 표시하세요.
+- **★ `judgeId` 는 반드시 본인 식별자로 채우세요** — 예: `gpt-5.5`, `gemini-2.0`, `claude-opus-4`, 또는 본인 이름.
+  `chatgpt` 같은 placeholder 를 그대로 두지 마세요(출처 자기검증이 안 됩니다 — reports/43 caveat).
+  과거 호환을 위해 `judge` 필드명을 써도 되지만, 가능하면 `judgeId` 로 본인을 명시하세요.
+- 판단이 갈리거나 confidence 가 낮으면 `needsHumanReview: true` 로 표시하세요.
 
 ---
 """
@@ -181,7 +184,7 @@ def render_chatgpt_packet(candidates):
         lines.append(f"- **모델 출력 근거(why)**: {why}")
         lines.append(f"- **occurrences**: {c['occurrences']}")
         lines.append("")
-        lines.append(f'응답: `{{"candidateId": "{c["candidateId"]}", "judge": "chatgpt", "decision": "", "confidence": 0.0, "rationale": "", "needsHumanReview": false}}`')
+        lines.append(f'응답: `{{"candidateId": "{c["candidateId"]}", "judgeId": "<당신의 식별자>", "decision": "", "confidence": 0.0, "rationale": "", "needsHumanReview": false}}`')
         lines.append("\n---")
     return "\n".join(lines)
 
