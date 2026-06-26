@@ -698,7 +698,7 @@ export function HomePage() {
             {/* Left text */}
             <div className="space-y-7 min-w-0">
               <div className="flex items-center gap-3">
-                <Badge className="bg-blue-500/20 text-blue-300 border-blue-500/30 px-3 py-1 max-w-full whitespace-normal text-left">
+                <Badge className="bg-blue-500/20 text-[#93c5fd] border-blue-500/30 px-3 py-1 max-w-full whitespace-normal text-left">
                   <Sparkles className="size-3 mr-1.5" />
                   AI 취업 전략 플랫폼 · 2026 NEW
                 </Badge>
@@ -719,7 +719,7 @@ export function HomePage() {
                   <br />합격 전략 완성
                 </span>
               </h1>
-              <p className="text-base sm:text-lg text-slate-200 leading-relaxed max-w-lg">
+              <p className="text-base sm:text-lg text-white/80 leading-relaxed max-w-lg">
                 <span className="sm:hidden">
                   공고 분석부터 AI 면접까지 <strong className="text-white">하나의 지원 건 공간</strong>에서 관리하세요.
                 </span>
@@ -753,8 +753,8 @@ export function HomePage() {
                   "카드 등록 불필요",
                   "즉시 분석 시작",
                 ].map((t) => (
-                  <div key={t} className="flex items-center gap-1.5 text-sm text-slate-200">
-                    <CheckCircle2 className="size-4 text-muted-foreground" />
+                  <div key={t} className="flex items-center gap-1.5 text-sm text-white/80">
+                    <CheckCircle2 className="size-4 text-white/50" />
                     {t}
                   </div>
                 ))}
@@ -768,7 +768,7 @@ export function HomePage() {
                 {/* Mock tabs */}
                 <div className="flex items-center gap-1 px-4 py-3 bg-card/5 border-b border-white/10 overflow-x-auto">
                   {["공고분석", "기업분석", "스펙비교", "예상질문", "가상면접"].map((t, i) => (
-                    <div key={t} className={`px-3 py-1 rounded text-xs font-medium whitespace-nowrap ${i === 2 ? "bg-blue-500 text-white" : "text-slate-300"}`}>
+                    <div key={t} className={`px-3 py-1 rounded text-xs font-medium whitespace-nowrap ${i === 2 ? "bg-blue-500 text-white" : "text-white/55"}`}>
                       {t}
                     </div>
                   ))}
@@ -777,16 +777,16 @@ export function HomePage() {
                   <div className="flex items-center justify-between">
                     <div>
                       <div className="font-bold text-white text-sm">카카오페이 · 프론트엔드 개발자</div>
-                      <div className="text-xs text-slate-200 mt-0.5">2026-08-01 공고 · React 3년 이상</div>
+                      <div className="text-xs text-white/80 mt-0.5">2026-08-01 공고 · React 3년 이상</div>
                     </div>
-                    <Badge className="bg-secondary text-muted-foreground">분석 완료</Badge>
+                    <Badge className="bg-white/10 text-white/70">분석 완료</Badge>
                   </div>
 
                   {/* Fit score */}
                   <div className="bg-card/5 rounded-xl p-4 space-y-2">
                     <div className="flex items-center justify-between text-sm">
-                      <span className="text-slate-200">직무 적합도</span>
-                      <span className="font-black text-blue-300 text-lg">72점</span>
+                      <span className="text-white/80">직무 적합도</span>
+                      <span className="font-black text-[#93c5fd] text-lg">72점</span>
                     </div>
                     <div className="h-2 bg-card/10 rounded-full overflow-hidden">
                       <div className="h-full w-[72%] bg-primary rounded-full" />
@@ -797,7 +797,7 @@ export function HomePage() {
                   <div className="grid grid-cols-2 gap-2">
                     {specComparisonData.slice(0, 4).map((s) => (
                       <div key={s.skill} className="flex items-center justify-between bg-card/5 rounded-lg px-3 py-2">
-                        <span className="text-xs text-slate-200">{s.skill}</span>
+                        <span className="text-xs text-white/80">{s.skill}</span>
                         <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded ${s.color}`}>
                           {s.grade}
                         </span>
@@ -807,8 +807,8 @@ export function HomePage() {
 
                   {/* Interview question preview */}
                   <div className="bg-card/5 rounded-xl p-3">
-                    <div className="text-xs text-slate-200 mb-2 font-medium">AI 예상 질문 (직무)</div>
-                    <div className="text-xs text-slate-200 leading-relaxed">
+                    <div className="text-xs text-white/80 mb-2 font-medium">AI 예상 질문 (직무)</div>
+                    <div className="text-xs text-white/80 leading-relaxed">
                       "React에서 상태 관리를 어떻게 설계하나요? Recoil과 Zustand를 비교 설명해주세요."
                     </div>
                   </div>

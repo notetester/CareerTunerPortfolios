@@ -1,0 +1,130 @@
+/* 앱 첫 화면 — 마누스 메인 레이아웃. .ah 스코프, Linear/Vercel 다크. */
+.ah {
+  /* theme.css 토큰 매핑 — 라이트/다크 토글을 따라간다. (--card·--border 는 theme 상속) */
+  --bg: var(--background);
+  --card2: var(--secondary);
+  --fg: var(--foreground);
+  --ink2: var(--ink-2);
+  --muted: var(--muted-foreground);
+  --muted2: var(--ink-4);
+  --border2: var(--border-strong);
+  --accent: var(--primary);
+  --accent2: var(--ring);
+  --grad: var(--gradient-brand);
+  --ease: cubic-bezier(0.22, 0.61, 0.36, 1);
+
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  background: var(--bg);
+  color: var(--fg);
+  display: flex;
+  flex-direction: column;
+  font-family: "Wanted Sans Variable", "Pretendard Variable", "Pretendard", -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Segoe UI", Roboto, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  padding-top: env(safe-area-inset-top);
+}
+
+.ah-top { display: flex; align-items: center; gap: 10px; padding: 12px 14px; }
+.ah-menu { width: 36px; height: 36px; flex: none; display: grid; place-items: center; color: var(--muted); background: 0; border: 0; border-radius: 8px; cursor: pointer; }
+.ah-menu:hover { color: var(--fg); }
+.ah-brand { font-size: 15px; font-weight: 800; letter-spacing: -0.01em; }
+.ah-right { margin-left: auto; display: flex; align-items: center; gap: 10px; }
+.ah-credit {
+  display: inline-flex; align-items: center; gap: 5px;
+  font-size: 12.5px; font-weight: 600; color: var(--accent2);
+  background: rgba(113, 112, 255, 0.12); border: 1px solid rgba(113, 112, 255, 0.25);
+  padding: 5px 10px; border-radius: 999px;
+}
+.ah-up { font-size: 12.5px; font-weight: 700; color: var(--accent2); background: 0; border: 0; cursor: pointer; }
+.ah-up:hover { text-decoration: underline; }
+
+.ah-center { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 20px; }
+.ah-q { font-size: 26px; font-weight: 700; letter-spacing: -0.02em; text-align: center; margin: 0; animation: ah-rise 0.4s var(--ease) both; }
+
+/* 질문 추천 칩 (랜딩 hero 와 동일 톤) */
+.ah-chips { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; margin: 0 0 10px; padding: 0 6px; animation: ah-rise 0.5s var(--ease) 0.14s both; }
+.ah-chip {
+  font-size: 13px; color: var(--muted); background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--border); padding: 8px 14px; border-radius: 999px;
+  cursor: pointer; transition: 0.18s var(--ease); font: inherit;
+}
+.ah-chip:hover { color: var(--fg); border-color: var(--border2); background: rgba(255, 255, 255, 0.07); }
+
+.ah-dock { padding: 12px 14px calc(16px + env(safe-area-inset-bottom)); }
+.ah-inputbar {
+  display: flex; align-items: center; gap: 4px;
+  background: var(--secondary); border: 1px solid var(--border);
+  border-radius: 24px; padding: 6px 8px;
+  animation: ah-rise 0.45s var(--ease) 0.08s both;
+}
+.ah-input {
+  flex: 1; min-width: 0; background: 0; border: 0; outline: 0;
+  color: var(--fg); font: inherit; font-size: 14px; padding: 9px 6px;
+}
+.ah-input::placeholder { color: var(--muted); }
+.ah-ic {
+  width: 36px; height: 36px; flex: none; display: grid; place-items: center;
+  color: var(--muted); background: 0; border: 0; border-radius: 50%; cursor: pointer;
+}
+.ah-ic:hover { color: var(--fg); }
+.ah-send {
+  width: 36px; height: 36px; flex: none; display: grid; place-items: center;
+  color: #fff; background: var(--grad); border: 0; border-radius: 50%; cursor: pointer;
+}
+.ah-send:disabled { opacity: 0.4; cursor: default; }
+
+/* 첨부 파일 칩 (입력창 위) */
+.ah-files { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 8px; padding: 0 6px; animation: ah-rise 0.3s var(--ease) both; }
+.ah-file {
+  display: inline-flex; align-items: center; gap: 6px; max-width: 200px;
+  font-size: 12px; color: var(--ink2); background: var(--card2);
+  border: 1px solid var(--border); padding: 6px 8px 6px 11px; border-radius: 999px;
+}
+.ah-file.up { opacity: 0.55; }
+.ah-file.err { color: var(--destructive); border-color: var(--destructive); }
+.ah-file > svg { flex: none; color: var(--muted); }
+.ah-file.err > svg { color: var(--destructive); }
+.ah-file-n { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ah-file-x { display: grid; place-items: center; flex: none; padding: 0; color: var(--muted); background: 0; border: 0; cursor: pointer; }
+.ah-file-x:hover { color: var(--fg); }
+.ah-fileinput { display: none; }
+
+/* 좌측 드로어 — 세션 목록 + 계정/대시보드 진입 */
+.ah-drawer-wrap { position: fixed; inset: 0; z-index: 50; background: rgba(2, 3, 4, 0.5); backdrop-filter: blur(2px); animation: ah-fade 0.2s ease; }
+.ah-drawer {
+  position: absolute; left: 0; top: 0; bottom: 0; width: min(300px, 82vw);
+  background: var(--card); border-right: 1px solid var(--border);
+  display: flex; flex-direction: column;
+  padding: calc(14px + env(safe-area-inset-top)) 0 calc(12px + env(safe-area-inset-bottom));
+  animation: ah-slide 0.26s var(--ease);
+}
+.ah-dr-top { display: flex; align-items: center; padding: 4px 14px 12px; }
+.ah-dr-title { font-size: 15px; font-weight: 800; }
+.ah-dr-x { margin-left: auto; width: 30px; height: 30px; display: grid; place-items: center; color: var(--muted); background: 0; border: 0; cursor: pointer; border-radius: 7px; }
+.ah-dr-x:hover { color: var(--fg); }
+.ah-dr-new {
+  display: flex; align-items: center; gap: 9px; margin: 0 12px 6px;
+  padding: 11px 13px; font-size: 13.5px; font-weight: 600; color: var(--fg);
+  background: var(--card2); border: 1px solid var(--border); border-radius: 10px; cursor: pointer;
+}
+.ah-dr-new:hover { border-color: var(--border2); }
+.ah-dr-sect { font-size: 11px; font-weight: 600; color: var(--muted2); text-transform: uppercase; letter-spacing: 0.04em; padding: 12px 18px 6px; }
+.ah-dr-list { flex: 1; overflow-y: auto; padding: 0 8px; }
+.ah-dr-item { display: flex; flex-direction: column; align-items: flex-start; width: 100%; text-align: left; padding: 10px 12px; background: 0; border: 0; border-radius: 8px; cursor: pointer; }
+.ah-dr-item:hover { background: var(--card2); }
+.ah-dr-t { font-size: 13px; color: var(--ink2); }
+.ah-dr-item:hover .ah-dr-t { color: var(--fg); }
+.ah-dr-when { font-size: 11px; color: var(--muted2); margin-top: 2px; }
+.ah-dr-menu { border-top: 1px solid var(--border); padding: 8px; margin-top: auto; }
+.ah-dr-link { display: flex; align-items: center; gap: 11px; width: 100%; text-align: left; padding: 10px 12px; font-size: 13.5px; color: var(--ink2); background: 0; border: 0; border-radius: 8px; cursor: pointer; }
+.ah-dr-link:hover { background: var(--card2); color: var(--fg); }
+.ah-dr-link svg { color: var(--muted); flex: none; }
+
+/* 진입 애니메이션 */
+@keyframes ah-rise { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+@keyframes ah-fade { from { opacity: 0; } to { opacity: 1; } }
+@keyframes ah-slide { from { transform: translateX(-100%); } to { transform: none; } }
+@media (prefers-reduced-motion: reduce) {
+  .ah-q, .ah-chips, .ah-inputbar, .ah-drawer-wrap, .ah-drawer { animation: none; }
+}
