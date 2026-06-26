@@ -340,7 +340,13 @@ def evaluate(case, content, error):
         # 공백·대소문자 정규화 비교 — '머신 러닝' vs '머신러닝' 류 띄어쓰기 오탐 제거(reports/36).
         allowed_norm = {re.sub(r"\s+", "", a).lower() for a in allowed}
         for item in parsed.get("learningTaskReasons", []) or []:
-            sk = (item or {}).get("skill")
+            # 견고성: 일부 모델(예: 7B)이 {skill,why} 대신 문자열 항목으로 출력 → 문자열은 스킬명으로 취급.
+            if isinstance(item, str):
+                sk = item
+            elif isinstance(item, dict):
+                sk = item.get("skill")
+            else:
+                sk = None
             if sk and re.sub(r"\s+", "", str(sk)).lower() not in allowed_norm:
                 bad_skills.append(sk)
 
