@@ -8,8 +8,14 @@ The worker exposes `POST /extract/job-posting` and returns extracted text plus t
 
 ```powershell
 python -m pip install -r requirements.txt
+# Windows/PaddleOCR 재현 안정성: 한글 OCR이 cp949로 깨지지 않도록 UTF-8 강제 + oneDNN 우회 명시
+$env:PYTHONUTF8="1"
+$env:PYTHONIOENCODING="utf-8"
+$env:FLAGS_use_mkldnn="0"
 python scripts\15_job_posting_worker_api.py --host 127.0.0.1 --port 8091
 ```
+
+> Windows에서 `PYTHONUTF8=1` 없이 띄우면 한글 OCR 결과가 cp949로 깨져 `?`/surrogate로 반환된다(영어만 생존). `FLAGS_use_mkldnn=0`은 코드 내부(`configure_ocr_cache_env`)에서도 설정되지만, paddle import 시점에 따라 런타임 설정이 늦을 수 있어 로컬 실행·warmup 장애 재현 방지를 위해 셸에서도 명시한다.
 
 Install the optional self-hosted OCR engine when the worker must process scanned PDFs or images without pre-generated OCR text:
 
@@ -30,7 +36,7 @@ Spring integration:
 ```properties
 JOB_POSTING_AI_WORKER_ENABLED=true
 JOB_POSTING_AI_WORKER_BASE_URL=http://127.0.0.1:8091
-JOB_POSTING_AI_WORKER_TIMEOUT=30s
+JOB_POSTING_AI_WORKER_TIMEOUT=120s
 JOB_POSTING_AI_CACHE_DIR=/tmp/careertuner-job-posting-worker-cache
 ```
 
