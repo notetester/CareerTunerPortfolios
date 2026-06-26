@@ -17,8 +17,16 @@ const config: CapacitorConfig = {
   appName: 'CareerTuner',
   webDir: 'dist',
   // server: { url: 'https://notetester.github.io/CareerTunerDemo/', cleartext: false }, // 호스팅 데모용(선택)
-  // CAP_SERVER_URL 있을 때만 server 주입 — 폰 WebView가 PC dev 서버를 직접 로드(live reload).
-  ...(devServerUrl ? { server: { url: devServerUrl, cleartext: true } } : {}),
+  server: {
+    // 평문 http 백엔드(예: Tailscale 100.x:8080, serve HTTPS 미사용)를 앱에서 호출하려면:
+    //   androidScheme:'http' → 앱 origin 도 http (외부 http API 와 same-scheme)
+    //   cleartext:true       → AndroidManifest usesCleartextTraffic=true (외부 평문 http 허용)
+    // cleartext 를 조건부가 아니라 항상 켜야 번들(실데이터) 빌드에도 들어간다.
+    androidScheme: 'http',
+    cleartext: true,
+    // CAP_SERVER_URL 있으면 live reload(폰 WebView 가 PC dev 서버 로드), 없으면 번들(dist).
+    ...(devServerUrl ? { url: devServerUrl } : {}),
+  },
   android: {
     // 디버그 APK 사이드로드(BlueStacks) 시 자체서명 사용. 평문 http 백엔드를 쓸 경우에만 허용.
     allowMixedContent: true,
