@@ -3,6 +3,11 @@
 > reports/41 다모델 합의의 **잔여 결정 1건**을 사람/팀이 한 번에 비준하도록 정리.
 > 13후보 중 **동률(2:2)로 갈린 4건**만이 실제 판단 대상이고, **valid_error(진짜 날조)는 4건 모두 0**.
 > 즉 결정은 "오류냐"가 아니라 **`acceptable_gray` vs `harness_false_positive` 라벨 컨벤션** 하나다.
+>
+> **[정정 2026-06-26 — reports/43]** 외부 6평가를 더한 다모델 합의(10판정)에서 동률 4건이 전부 해소됐고,
+> 아래 §3 항목 **B(현장 인력 배치…)의 `harness_false_positive` 권고는 외부6 6:0·전체10 8:2 로
+> `acceptable_gray` 로 번복**됐다. §2 규칙은 reports/43 §6 으로 정정한다(다개념 결합/추상접미 구는 매핑돼도 gray).
+> valid_error=0 결론은 불변.
 
 ## 1. 결정 대상: 동률 4건 (나머지 9건은 이미 합의)
 | # | flaggedText | 직무 | 투표(gray:fp) | normalizer |
@@ -27,7 +32,7 @@
 | # | 미매칭 부분 | allowedSkill 매핑 여부 | 권고 |
 | --- | --- | --- | --- |
 | A | `물류 관리`(우산개념·skill 없음) + `KPI 분석`(=`물류 KPI 분석`) | **일부만** 매핑 | **acceptable_gray** |
-| B | `현장 인력 배치와 작업 동선 조정`(=`현장 인력 운영`, duties 동일 문장) | **전부** 매핑 | **harness_false_positive** |
+| B | `현장 인력 배치와 작업 동선 조정`(=`현장 인력 운영`, duties 동일 문장) | **전부** 매핑 | ~~harness_false_positive~~ → **acceptable_gray** (reports/43 번복) |
 | C | `사내 안전관리 시스템 운영`(duties 도구명 verbatim, **allowedSkill 없음**) | 미매핑 | **acceptable_gray** |
 | D | `수요예측`(=allowed, soft) + `발주 최적화`(duties 서술·skill 없음) | **일부만** 매핑 | **acceptable_gray** |
 
