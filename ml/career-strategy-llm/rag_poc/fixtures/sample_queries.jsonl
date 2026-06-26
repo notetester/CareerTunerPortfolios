@@ -1,0 +1,4 @@
+{"queryId": "q-app-a", "userId": "user-a", "applicationId": "app-a", "query": "Java Spring Boot REST API SQL 백엔드 역량과 SQLD 자격 근거", "note": "app-a 지원 건: 공고+조사+프로필(user-a)+global catalog 검색 가능"}
+{"queryId": "q-user-a-noapp", "userId": "user-a", "applicationId": null, "query": "SQL JPA 보유 정보처리기사", "note": "applicationId 없음 → application_private 제외, user-a user_private + global만"}
+{"queryId": "q-no-user", "userId": null, "applicationId": null, "query": "SQL Python 역량", "note": "userId 없음 → user_private/application_private 전부 제외(fail-closed), global만"}
+{"queryId": "q-app-b", "userId": "user-b", "applicationId": "app-b", "query": "Python Spark 데이터 파이프라인", "note": "app-b 지원 건: user-b 본인 것만"}
