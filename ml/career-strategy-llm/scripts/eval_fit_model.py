@@ -38,6 +38,7 @@ sys.path.insert(0, SCRIPT_DIR)
 
 from synth_prompts import FIT_EXPLAIN_SYS          # noqa: E402
 from assemble_dataset import build_fit_user        # noqa: E402
+from skill_normalizer import classify_flagged_skill, JUDGE_STATUSES, RESOLVED_FP_STATUSES  # noqa: E402
 
 # 중국어/일본어 누출 탐지: 일본어 가나 + CJK 한자(Ext-A/통합). 한국어(한글)는 제외.
 CJK_RE = re.compile(r"[぀-ヿ㐀-䶿一-鿿]")
@@ -343,6 +344,17 @@ def evaluate(case, content, error):
             if sk and re.sub(r"\s+", "", str(sk)).lower() not in allowed_norm:
                 bad_skills.append(sk)
 
+    # ── 병렬 지표(측정 전용): stage1 결정론 정규화기로 bad_skills 재분류 ──
+    # raw bad_skills/hallucination/failure/E2 는 불변. 정규화 후 잔여(judge 대상)만 별도 카운트.
+    # 입력 밖 제품/코드명은 매칭 대상이 없어 resolved 되지 않고 residual 로 남는다(valid_error 보호).
+    bad_skills_residual, bad_skills_resolved_fp = [], []
+    for b in bad_skills:
+        st = classify_flagged_skill(b, allowed)["status"]
+        if st in RESOLVED_FP_STATUSES:
+            bad_skills_resolved_fp.append(b)
+        elif st in JUDGE_STATUSES:
+            bad_skills_residual.append(b)
+
     failures = []
     if missing_keys:
         failures.append("MISSING_REQUIRED_KEY")
@@ -375,7 +387,9 @@ def evaluate(case, content, error):
             "failure": failures[0] if failures else None,
             "detail": {"missing_keys": missing_keys, "forbidden_hit": forbidden_hit,
                        "must_missing": must_missing, "must_not_hit": must_not_hit,
-                       "claim_hit": claim_hit, "bad_skills": bad_skills},
+                       "claim_hit": claim_hit, "bad_skills": bad_skills,
+                       "bad_skills_residual": bad_skills_residual,
+                       "bad_skills_resolved_fp": bad_skills_resolved_fp},
             "success": not failures, "parsed": parsed}
 
 
@@ -429,6 +443,13 @@ def aggregate(results, cold_start_ms, args):
             for x in rv:
                 if x not in e["review"]:
                     e["review"].append(x)
+
+    # ── 병렬 HALLUCINATED_SKILL 지표(측정 전용, raw 'hallucination_flag_rate' 불변) ──
+    # raw: 공백·소문자만 정규화한 원시 카운트 / normalized: stage1 결정론 정규화 후 잔여(judge 대상)
+    # resolved_fp: 정규화로 오탐 해소. semantic(valid_error)은 judge consensus 산출물이라 하니스 단독 불가.
+    hsk_raw = sum(len((r.get("detail") or {}).get("bad_skills") or []) for r in results)
+    hsk_residual = sum(len((r.get("detail") or {}).get("bad_skills_residual") or []) for r in results)
+    hsk_resolved = sum(len((r.get("detail") or {}).get("bad_skills_resolved_fp") or []) for r in results)
     return {
         "model": args.model, "base_url": args.base_url, "mock": bool(args.mock),
         "warmup": args.warmup, "repeat": args.repeat, "timeout_s": args.timeout,
@@ -440,6 +461,10 @@ def aggregate(results, cold_start_ms, args):
         "forbidden_key_rate": rate(lambda r: r.get("forbidden_key")),
         "cjk_leak_rate": rate(lambda r: r.get("cjk_leak")),
         "hallucination_flag_rate": rate(lambda r: r.get("hallucination")),
+        # 병렬 HALLUCINATED_SKILL 지표(stage1 정규화 후) — 위 raw 지표는 그대로 유지
+        "hallucinated_skill_raw_count": hsk_raw,
+        "hallucinated_skill_normalized_count": hsk_residual,
+        "hallucinated_skill_resolved_fp_count": hsk_resolved,
         # E1 grounding 관측(측정 전용 — 백엔드 guard 가 라이브에서 얼마나 발동할지의 프록시)
         "grounding_violation_count": len(grounding_violations),
         "grounding_violation_rate": round(len(grounding_violations) / n, 3) if n else 0.0,

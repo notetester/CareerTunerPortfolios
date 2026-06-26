@@ -63,17 +63,47 @@ class SuffixAndParenTest(unittest.TestCase):
 
 
 class SoftMatchTest(unittest.TestCase):
-    """allowed 가 부분문자열로 들어있으나 여분 토큰 존재 → judge(soft_match)."""
+    """allowed 가 부분문자열로 들어있으나 여분 토큰(접미어 아님) 존재 → judge(soft_match)."""
 
     def test_prefix_context(self):
         self.assertEqual("soft_match", status("데이터 기반 수요예측", ["수요예측", "SCM 시스템 운영"]))
 
     def test_extra_skill_token(self):
+        # '발주 최적화'는 접미어 목록에 없는 추가 개념 → 정확매칭 불가, substring 으로만 soft
         self.assertEqual("soft_match", status("수요예측 기반 발주 최적화", ["수요예측", "SAP WMS"]))
 
-    def test_head_noun_not_stripped(self):
-        # '관리'(스킬 헤드)는 접미제거 안 함 → 'WMS 운영' 류는 substring 으로만 soft
-        self.assertEqual("soft_match", status("위험물 운송 관리", ["위험물 운송", "재고 운영"]))
+    def test_prefix_modifier_stays_soft(self):
+        # 접두 수식('글로벌 공급망')은 제거 대상 아님 → substring soft
+        self.assertEqual("soft_match", status("글로벌 공급망 수요예측", ["수요예측"]))
+
+
+class HeadVerbSuffixTest(unittest.TestCase):
+    """헤드 동사형 접미(운영/관리/협상/기초) 제거 후 정확매칭 → false_positive(reports/43 비준).
+
+    안전: 제거 후 allowedSkill 과 정확매칭될 때만 resolve. 매칭 안 되면 unresolved 유지.
+    """
+
+    def test_suffix_operation(self):
+        self.assertEqual("false_positive", status("SAP WMS 운영", ["SAP WMS", "수요예측"]))
+
+    def test_suffix_management(self):
+        self.assertEqual("false_positive", status("위험물 운송 관리", ["위험물 운송", "재고 운영"]))
+
+    def test_suffix_negotiation(self):
+        self.assertEqual("false_positive", status("무역 영어 협상", ["무역 영어"]))
+
+    def test_suffix_basics(self):
+        self.assertEqual("false_positive", status("SCM 기초", ["SCM", "재고 운영"]))
+
+
+class ConditionalClauseTest(unittest.TestCase):
+    """공고 조건/우대 절이 skill 필드에 새어든 형태 → 절 제거 후 정확매칭 → false_positive."""
+
+    def test_experience_condition(self):
+        self.assertEqual("false_positive", status("SV 경험이 있는 경우", ["SV 경험", "점포 운영관리"]))
+
+    def test_if_present_condition(self):
+        self.assertEqual("false_positive", status("Python 경험이 있으면", ["Python", "SQL"]))
 
 
 class UnresolvedTest(unittest.TestCase):
@@ -118,6 +148,22 @@ class ConservatismTest(unittest.TestCase):
 
     def test_status_partitions(self):
         self.assertEqual(set(), JUDGE_STATUSES & RESOLVED_FP_STATUSES)
+
+    def test_product_code_not_resolved_by_suffix_strip(self):
+        # 입력 밖 구체 제품/코드명은 접미(운영) 제거해도 매칭 대상이 없어 unresolved 유지 → valid_error 후보 보호
+        r = classify_flagged_skill("CRM465 운영", ["고객 상담", "VOC 관리"])
+        self.assertEqual("unresolved", r["status"])
+        self.assertNotIn(r["status"], RESOLVED_FP_STATUSES)
+
+    def test_product_code_not_resolved_by_conditional_strip(self):
+        r = classify_flagged_skill("CRMOne 도입 경험이 있는 경우", ["VOC 관리", "고객 상담"])
+        self.assertEqual("unresolved", r["status"])
+        self.assertNotIn(r["status"], RESOLVED_FP_STATUSES)
+
+    def test_duties_only_system_stays_gray(self):
+        # allowedSkills 에 없는 일반 시스템/도구 표현은 접미 제거해도 unresolved(자동 fp 금지)
+        self.assertEqual("unresolved", status(
+            "사내 안전관리 시스템 운영", ["산업안전 관리", "위험성 평가", "안전보건 법규"]))
 
 
 if __name__ == "__main__":

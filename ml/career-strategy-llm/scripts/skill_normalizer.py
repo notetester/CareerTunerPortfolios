@@ -22,15 +22,26 @@ import re
 import unicodedata
 
 # '~에 대한 지식/사용법' 류 wrapper 명사 — flagged 끝에서 반복 제거해 핵심 스킬을 노출.
-# 주의: '관리·운영·분석·설계·수립' 등 **스킬 헤드**는 제외(헤드까지 깎으면 무관 스킬과 오매칭).
-#       그런 경우는 exact/공백 정규화 또는 substring(soft_match)으로만 인정한다.
+# 운영·관리·협상 등 **스킬 헤드 동사형**도 포함한다(reports/43 정책 비준, 2026-06-26):
+#   안전장치는 '제거 후 allowedSkill 정확매칭' 게이트다 — 깎아도 allowed 와 정확히 안 맞으면
+#   resolve 하지 않고 unresolved/soft 로 남긴다. 따라서 입력 밖 제품/코드명('CRM465 운영')은
+#   매칭 대상이 없어 절대 오탐 처리되지 않고 judge 후보로 유지된다(valid_error 보호).
 SUFFIX_NOUNS = [
     "방법론", "프레임워크", "솔루션", "시스템", "플랫폼", "도구", "툴",
     "사용법", "활용법", "활용", "실습", "경험", "이해", "지식", "능력", "기술", "스킬",
+    "운영", "관리", "기초", "협상",
 ]
 # 나열 구분자: 콤마류 + 한국어 접속 '및' + 슬래시/중점/'&'. (영문 'and' 는 단어 내 오분할 위험으로 공백 경계만)
 SPLIT_RE = re.compile(r"\s*(?:,|、|·|/|&|및|\band\b)\s*")
 PAREN_RE = re.compile(r"[\(\（][^\)\）]*[\)\）]")
+# 조건/우대 절 꼬리 — 공고 요구문이 skill 필드에 새어든 형태('SV 경험이 있는 경우' → 'SV 경험').
+# 보수적으로 명확한 조건절 꼬리만 제거(핵심 스킬 명사는 보존).
+CONDITIONAL_RE = re.compile(
+    r"\s*(?:이|가|을|를|은|는)?\s*있(?:는|을)\s*경우$"   # ~(이)있는/있을 경우
+    r"|\s*(?:이|가)?\s*있으면$"                          # ~(이)있으면
+    r"|\s*(?:인|일)\s*경우$"                             # ~인/일 경우
+    r"|\s*우대(?:\s*함)?$"                               # ~우대 / 우대함
+)
 
 
 def _nfkc(s):
@@ -56,6 +67,16 @@ def _strip_suffix_nouns(s):
     return cur
 
 
+def _strip_conditional(s):
+    """flagged 끝의 조건/우대 절을 반복 제거. 'SV 경험이 있는 경우'→'SV 경험'."""
+    cur = _nfkc(s).strip()
+    prev = None
+    while cur != prev:
+        prev = cur
+        cur = CONDITIONAL_RE.sub("", cur).strip()
+    return cur
+
+
 def _variants(part):
     """한 조각의 정규화 변형들(정확매칭 시도용): 원형·괄호제거·접미제거·괄호안 내용."""
     out = []
@@ -69,6 +90,12 @@ def _variants(part):
     inner = " ".join(m.strip("()（） ") for m in PAREN_RE.findall(base)).strip()
     if inner:
         out.append(inner)
+    # 조건/우대 절 제거 변형 추가('SV 경험이 있는 경우'→'SV 경험')
+    for v in list(out):
+        cond = _strip_conditional(v)
+        if cond and cond != v and cond not in out:
+            out.append(cond)
+    # 접미 wrapper 제거 변형 추가(조건절 제거 결과에도 적용)
     for v in list(out):
         stripped = _strip_suffix_nouns(v)
         if stripped and stripped not in out:
@@ -173,15 +200,23 @@ def _selfcheck():
         ("급여 정산, 4대보험 실무, 근태 관리, 협업, 문서화, 커뮤니케이션",
          ["급여 정산", "4대보험 실무", "근태 관리", "협업", "문서화", "커뮤니케이션"], "false_positive"),
         ("커뮤니케이션 프레임워크 이해", ["교육 운영", "커뮤니케이션"], "false_positive"),
+        # false_positive — 헤드 동사형 접미(운영/관리/협상) 제거 후 정확매칭(reports/43 비준)
+        ("SAP WMS 운영", ["SAP WMS", "수요예측", "무역 영어"], "false_positive"),
+        ("위험물 운송 관리", ["재고 운영", "위험물 운송", "무역 영어"], "false_positive"),
+        ("무역 영어 협상", ["무역 영어", "SAP WMS"], "false_positive"),
+        # false_positive — 조건/우대 절 제거 후 정확매칭
+        ("SV 경험이 있는 경우", ["SV 경험", "점포 운영관리"], "false_positive"),
         # soft_match — allowed 가 부분문자열, 여분 토큰 존재 → judge
         ("데이터 기반 수요예측", ["수요예측", "SCM 시스템 운영"], "soft_match"),
         ("수요예측 기반 발주 최적화", ["수요예측", "SAP WMS", "위험물 운송"], "soft_match"),
-        ("위험물 운송 관리", ["재고 운영", "위험물 운송", "무역 영어"], "soft_match"),
         # unresolved — 매칭 0건(범위밖 후보) 또는 부분 나열 → judge
         ("헬프데스크 솔루션 이해", ["고객 상담", "VOC 관리", "클레임 응대"], "unresolved"),
         ("LMS 솔루션 선택 및 사용법", ["교육과정 기획", "교육 운영", "커뮤니케이션"], "unresolved"),
         ("사내 안전관리 시스템 운영", ["산업안전 관리", "위험성 평가", "안전보건 법규"], "unresolved"),
         ("물류 관리 및 KPI 분석", ["물류 KPI 분석", "WMS 운영", "입출고 관리"], "unresolved"),
+        # 안전 불변식 — 입력 밖 제품/코드명은 접미 제거해도 매칭 대상이 없어 unresolved 유지(valid_error 보호)
+        ("CRM465 운영", ["고객 상담", "VOC 관리"], "unresolved"),
+        ("ERP 도입 경험이 있는 경우", ["재무 설계", "세무 지식"], "unresolved"),
     ]
     ok = 0
     for flagged, allowed, exp in cases:
