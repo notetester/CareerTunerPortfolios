@@ -45,6 +45,11 @@ public class IntakeSlotTrace {
         volatile Integer entryOffset;
         /** 이 대화가 바인딩된 지원 건 id(fork 후 설정). 같은 건 재확정 시 재-fork 방지(케이스 전환만 격리). */
         volatile Long boundCaseId;
+        /** (b) 깡통 온보딩 수집 단계(JOB/SKILLS/COLLECTED). null=미진입. */
+        volatile String onboardingStep;
+        /** (b) 온보딩에서 받은 직무·기술 — 유저 답 *그대로*(가공 0). 배열 변환은 (e) save 단계의 코드가. */
+        volatile String onboardingJob;
+        volatile String onboardingSkills;
     }
 
     private SlotState currentState() {
@@ -152,6 +157,49 @@ public class IntakeSlotTrace {
         slotsByConversation.put(conversationId, state);
     }
 
+    // ──────── (b) 깡통 온보딩 수집 (대화 단위, ThreadLocal 무관·인메모리·미영속·LLM 40창 미사용) ────────
+
+    /** 온보딩 단계(JOB/SKILLS/COLLECTED). 미진입이면 null. */
+    public String onboardingStep(Long conversationId) {
+        if (conversationId == null) {
+            return null;
+        }
+        SlotState state = slotsByConversation.get(conversationId);
+        return state == null ? null : state.onboardingStep;
+    }
+
+    /** 온보딩 단계 전이. */
+    public void setOnboardingStep(Long conversationId, String step) {
+        if (conversationId == null) {
+            return;
+        }
+        slotsByConversation.computeIfAbsent(conversationId, key -> new SlotState()).onboardingStep = step;
+    }
+
+    /** 받은 직무를 유저 답 *그대로* 누적(가공·해석 없음). */
+    public void recordOnboardingJob(Long conversationId, String job) {
+        if (conversationId == null) {
+            return;
+        }
+        slotsByConversation.computeIfAbsent(conversationId, key -> new SlotState()).onboardingJob = job;
+    }
+
+    /** 받은 기술을 유저 답 *그대로* 누적(배열 변환은 (e) save 에서). */
+    public void recordOnboardingSkills(Long conversationId, String skills) {
+        if (conversationId == null) {
+            return;
+        }
+        slotsByConversation.computeIfAbsent(conversationId, key -> new SlotState()).onboardingSkills = skills;
+    }
+
+    /** 온보딩 수집 스냅샷(검증·(e) 변환용). */
+    public OnboardingCollected onboarding(Long conversationId) {
+        SlotState state = conversationId == null ? null : slotsByConversation.get(conversationId);
+        return state == null
+                ? new OnboardingCollected(null, null, null)
+                : new OnboardingCollected(state.onboardingStep, state.onboardingJob, state.onboardingSkills);
+    }
+
     /** 컨트롤러가 AutoPrepRequest 조립에 쓰는 확정 슬롯 스냅샷. */
     public IntakeSlots snapshot() {
         SlotState state = currentState();
@@ -166,4 +214,7 @@ public class IntakeSlotTrace {
 
     /** 코드가 검증·확정한 슬롯 스냅샷(요청 범위). */
     public record IntakeSlots(Long caseId, String mode, String originalQuery) {}
+
+    /** (b) 온보딩 수집 스냅샷(직무·기술은 유저 답 원문 그대로). */
+    public record OnboardingCollected(String step, String job, String skills) {}
 }

@@ -39,6 +39,7 @@ import com.careertuner.ai.chat.SearchTrace;
 import com.careertuner.ai.chat.SummaryAgent;
 import com.careertuner.ai.autoprep.dto.AutoPrepIntakeResponse;
 import com.careertuner.ai.intake.IntakeAskService;
+import com.careertuner.ai.intake.IntakeSlotTrace;
 import com.careertuner.ai.intake.dto.IntakeAskResponse;
 import com.careertuner.applicationcase.dto.ApplicationCaseResponse;
 import com.careertuner.applicationcase.service.ApplicationCaseService;
@@ -82,6 +83,8 @@ public class ChatbotController {
     // (a) 깡통계정 온보딩 게이트용 read 의존(호출만, A·B 도메인 무수정).
     private final ProfileMapper profileMapper;
     private final ApplicationCaseService applicationCaseService;
+    // (b) 온보딩 수집 슬롯(인메모리·대화키). 직무·기술을 모았다가 (e)에서 저장.
+    private final IntakeSlotTrace intakeSlotTrace;
 
     public ChatbotController(CommunityChatAgent agent,
                             QuickReplyAgent quickReplyAgent,
@@ -99,7 +102,8 @@ public class ChatbotController {
                             CommunityTools communityTools,
                             SummaryAgent summaryAgent,
                             ProfileMapper profileMapper,
-                            ApplicationCaseService applicationCaseService) {
+                            ApplicationCaseService applicationCaseService,
+                            IntakeSlotTrace intakeSlotTrace) {
         this.agent = agent;
         this.quickReplyAgent = quickReplyAgent;
         this.searchTrace = searchTrace;
@@ -117,6 +121,40 @@ public class ChatbotController {
         this.summaryAgent = summaryAgent;
         this.profileMapper = profileMapper;
         this.applicationCaseService = applicationCaseService;
+        this.intakeSlotTrace = intakeSlotTrace;
+    }
+
+    /**
+     * (b) 깡통 온보딩 수집: 직무→기술 순차 질문, 유저 답을 *그대로* 슬롯에 누적(가공 0). 슬롯=인메모리(LLM 40창 미사용·휘발).
+     * 결정성(§6-1,2): 챗봇은 질문만 친절(예시·범위), 답 해석/부풀림 금지·스킬추출 AI 미사용. 저장(ProfileService.save)은 (e).
+     * 매 턴 재판정(저장 전까지 깡통 유지)이라 step 으로 진행 단계를 이어간다. case 입력(d)·저장(e)·면접합류(f)는 다음 단계.
+     */
+    private ChatAskResponse onboardingTurn(Long conversationId, Long userId, String question) {
+        String step = intakeSlotTrace.onboardingStep(conversationId);
+        String route;
+        String message;
+        if (step == null) {
+            intakeSlotTrace.setOnboardingStep(conversationId, "JOB");
+            route = "④온보딩:직무";
+            message = "취업 준비, 막막하시죠? 같이 채워볼게요. 먼저 — 어떤 직무로 지원하세요? (예: 프론트엔드 개발자, 백엔드 개발자)";
+        } else if ("JOB".equals(step)) {
+            intakeSlotTrace.recordOnboardingJob(conversationId, question);   // 유저 답 그대로(가공 0)
+            intakeSlotTrace.setOnboardingStep(conversationId, "SKILLS");
+            route = "④온보딩:기술";
+            message = "좋아요. 주로 다루는 기술을 알려주세요. 3~4개면 충분해요. (예: React, TypeScript, Spring)";
+        } else if ("SKILLS".equals(step)) {
+            intakeSlotTrace.recordOnboardingSkills(conversationId, question); // 그대로
+            intakeSlotTrace.setOnboardingStep(conversationId, "COLLECTED");
+            IntakeSlotTrace.OnboardingCollected got = intakeSlotTrace.onboarding(conversationId);
+            route = "④온보딩:수집완료";
+            message = "받았어요 — 직무 \"" + got.job() + "\", 기술 \"" + got.skills()
+                    + "\". 다음은 지원할 공고예요(다음 단계에서 이어집니다).";
+        } else {
+            route = "④온보딩:대기";
+            message = "직무·기술은 받아뒀어요. 공고 입력 단계는 곧 붙습니다.";
+        }
+        responseLogService.record(conversationId, userId, question, "ONBOARDING", false, null, null, false);
+        return new ChatAskResponse(conversationId, message, List.of(), List.of(), route, null, false, null);
     }
 
     /**
@@ -199,15 +237,11 @@ public class ChatbotController {
                     conversationId, fr.message(), fr.links(), fr.quickReplies(), "NAV", null, false, null));
         }
 
-        // (a) 깡통계정 온보딩 게이트: 프로필 행 없음 + 지원 건 0건 = 순수 깡통 → 온보딩 분기.
+        // (a)(b) 깡통계정 온보딩: 프로필 행 없음 + 지원 건 0건 = 순수 깡통 → 온보딩 수집(직무→기술).
         //   여기까지 온 건 exit/sticky/DB복원/fastPath 가 아닌 신규 라우팅 턴 — 비-깡통은 false 로 통과해 아래 기존 흐름.
-        //   스텁(분기 확인용): sticky(intakeModeStore=인테이크 case 흐름) 안 건드림(깡통엔 case 없어 부적합). 매 턴 재판정.
+        //   sticky(intakeModeStore=인테이크 case 흐름) 안 건드림(깡통엔 case 없어 부적합). 매 턴 재판정(저장 전까지 깡통 유지).
         if (isBlankAccountForOnboarding(userId)) {
-            responseLogService.record(conversationId, userId, question, "ONBOARDING", false, null, null, false);
-            return ApiResponse.ok(new ChatAskResponse(
-                    conversationId,
-                    "온보딩에 진입했어요. (프로필·지원 건이 아직 없어 온보딩 대상이에요 — 대화 수집은 다음 단계에서 붙습니다.)",
-                    List.of(), List.of(), "④온보딩", null, false, null));
+            return ApiResponse.ok(onboardingTurn(conversationId, userId, question));
         }
 
         // 확인 대기(1턴) 소비: 이 턴은 라우팅을 돌리지 않는다. (오분류 안전판 A)
