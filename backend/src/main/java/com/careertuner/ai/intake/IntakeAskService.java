@@ -304,6 +304,11 @@ public class IntakeAskService {
         if (row == null) {
             return;
         }
+        // status 게이트: PENDING 만 복원한다(isPersistedIntakeSession 과 정합). READY/DONE 슬롯은
+        // 되살리지 않아 완료·이탈 세션이 인테이크 턴에서 옛 case/mode 로 stale 부활하는 것을 막는다.
+        if (!"PENDING".equals(row.get("status"))) {
+            return;
+        }
         Long caseId = toLong(row.get("applicationCaseId"));
         String mode = (String) row.get("mode");
         String originalQuery = (String) row.get("originalQuery");
