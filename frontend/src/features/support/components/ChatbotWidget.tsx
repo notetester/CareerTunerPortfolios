@@ -89,7 +89,7 @@ function ChatbotPanel({ chatbot }: ChatbotPanelProps) {
     voiceState, startVoice, cancelVoice, confirmVoice, setVoiceState,
     interimTranscript, retryConnection, toggleTts,
     orchestrator, runStarted, runParts, runRunning, runPlan, runCaseId,
-    selectCase, selectMode,
+    selectCase, selectMode, summarizePosts,
     showExitSheet, openExitSheet, closeExitSheet, exitOrchestrator,
     sessions, activeSessionId, openSession, newSession, loadSessions,
   } = chatbot;
@@ -187,7 +187,7 @@ function ChatbotPanel({ chatbot }: ChatbotPanelProps) {
                   ) : (
                     <div key={m.id} className="flex flex-col gap-2.5">
                       <BotBubble message={m} onToggleTts={toggleTts} variant="widget"
-                        onQuickReply={sendMessage} orchestrator={orchestrator} />
+                        onQuickReply={sendMessage} onSummarize={summarizePosts} orchestrator={orchestrator} />
                       {m.id === lastBotId && m.intake && !m.intake.ready && !runStarted && (
                         <IntakeChips intake={m.intake} onSelectCase={selectCase} onSelectMode={selectMode} />
                       )}
@@ -544,9 +544,9 @@ function UserBubble({ text, dimmed }: { text: string; dimmed?: boolean }) {
   );
 }
 
-function BotBubble({ message, onToggleTts, variant = "widget", onQuickReply, orchestrator }: {
+function BotBubble({ message, onToggleTts, variant = "widget", onQuickReply, onSummarize, orchestrator }: {
   message: ChatMessage; onToggleTts: (id: string) => void; variant?: "widget" | "full";
-  onQuickReply?: (text: string) => void; orchestrator?: boolean;
+  onQuickReply?: (text: string) => void; onSummarize?: (postIds: number[]) => void; orchestrator?: boolean;
 }) {
   const avatarSize = variant === "full" ? 34 : 28;
   const iconSize = variant === "full" ? 16 : 14;
@@ -600,12 +600,38 @@ function BotBubble({ message, onToggleTts, variant = "widget", onQuickReply, orc
           <SiteLinkButtons links={message.links} />
         )}
 
+        {/* 추천 후기 압축 요약 칩 (오케스트레이터 톤 — 일반 퀵리플라이와 시각적 구분) */}
+        {onSummarize && message.summaryChip && message.summaryChip.postIds.length > 0 && (
+          <SummaryChipButton chip={message.summaryChip} onSummarize={onSummarize} />
+        )}
+
         {/* Quick reply chips */}
         {onQuickReply && message.quickReplies && message.quickReplies.length > 0 && (
           <QuickReplyChips replies={message.quickReplies} onSelect={onQuickReply} />
         )}
 
       </div>
+    </div>
+  );
+}
+
+/** 추천 후기 압축 요약 전용 버튼 — 보라(오케스트레이터) 톤·굵은 테두리로 일반 칩과 구분. */
+function SummaryChipButton({ chip, onSummarize }: {
+  chip: NonNullable<ChatMessage["summaryChip"]>; onSummarize: (postIds: number[]) => void;
+}) {
+  return (
+    <div className="flex flex-wrap gap-1.5">
+      <button
+        onClick={() => onSummarize(chip.postIds)}
+        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[12.5px] font-bold transition-colors"
+        style={{
+          border: "1.5px solid var(--orch-violet)",
+          background: "var(--orch-surface)",
+          color: "var(--orch-violet)",
+        }}>
+        <Sparkles size={13} />
+        {chip.label}
+      </button>
     </div>
   );
 }

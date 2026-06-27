@@ -44,6 +44,8 @@ export interface ChatMessage {
   timestamp: number;
   /** ③ 인테이크 턴에서만 set — 지원 건/면접 모드 칩 렌더에 쓴다. */
   intake?: IntakeStepMeta;
+  /** 추천 후기 압축 요약 칩 — agentPath 턴에서 검색된 글이 2개 이상일 때만 set. */
+  summaryChip?: { label: string; postIds: number[] };
 }
 
 export type BotStatus = "idle" | "thinking" | "answered" | "not_found" | "disconnected";

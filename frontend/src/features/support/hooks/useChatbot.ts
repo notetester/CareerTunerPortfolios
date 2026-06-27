@@ -35,6 +35,8 @@ interface ChatbotApiResponse {
   intake?: IntakeStepResp | null;
   /** 이 턴 이후 위젯이 오케스트레이터 모드를 유지해야 하는지의 단일 신호. */
   inOrchestration?: boolean;
+  /** 추천 후기 압축 요약 칩 — 검색된 글이 2개 이상일 때만 주입(아니면 null). */
+  summaryChip?: { label: string; postIds: number[] } | null;
 }
 
 /* ── 이전 대화 복원 응답 (GET /chatbot/conversations/recent) ── */
@@ -210,6 +212,7 @@ export function useChatbot() {
                 modes: intake.modes ?? [],
               }
             : undefined,
+          summaryChip: data.summaryChip ?? undefined,
         };
         setMessages((prev) => [...prev, botMsg]);
         setBotStatus("answered");
@@ -240,6 +243,43 @@ export function useChatbot() {
         setBotStatus("disconnected");
       });
   }, [run]);
+
+  /* ── 추천 후기 압축 요약 칩 → 묶음 요약 요청(POST /chatbot/summarize-posts). ── */
+  const summarizePosts = useCallback((postIds: number[]) => {
+    if (!postIds || postIds.length === 0) return;
+
+    const userMsg: ChatMessage = {
+      id: nextId(), role: "user", text: "추천 후기 요약해줘",
+      evidence: [], links: [], quickReplies: [], ttsState: "idle", ttsProgress: 0,
+      timestamp: Date.now(),
+    };
+    setMessages((prev) => [...prev, userMsg]);
+    setBotStatus("thinking");
+
+    api<ChatbotApiResponse>("/chatbot/summarize-posts", {
+      method: "POST",
+      body: JSON.stringify({ conversationId: conversationIdRef.current, postIds }),
+    })
+      .then((data) => {
+        conversationIdRef.current = data.conversationId;
+        if (!data.message || !data.message.trim()) {
+          setBotStatus("not_found");
+          return;
+        }
+        const botMsg: ChatMessage = {
+          id: nextId(), role: "bot", text: data.message,
+          evidence: [], links: data.links ?? [], quickReplies: data.quickReplies ?? [],
+          ttsState: "idle", ttsProgress: 0,
+          timestamp: Date.now(),
+        };
+        setMessages((prev) => [...prev, botMsg]);
+        setBotStatus("answered");
+      })
+      .catch((err) => {
+        console.error("추천 후기 요약 API 오류:", err);
+        setBotStatus("disconnected");
+      });
+  }, []);
 
   /* ── 칩 선택 → 자연어 메시지로 변환해 전송(③ 슬롯 접지: chooseCase/chooseMode). ── */
   const selectCase = useCallback((c: IntakeCaseCandidate) => {
@@ -336,6 +376,7 @@ export function useChatbot() {
     runError: run.error,
     runCaseId,
     selectCase, selectMode,
+    summarizePosts,
     showExitSheet,
     openExitSheet: () => setShowExitSheet(true),
     closeExitSheet: () => setShowExitSheet(false),

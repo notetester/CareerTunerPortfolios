@@ -28,12 +28,15 @@ import com.careertuner.ai.chat.ChatHistoryResponse.ChatHistoryMessage;
 import com.careertuner.ai.chat.ChatSessionSummary;
 import com.careertuner.ai.chat.ChatResponse;
 import com.careertuner.ai.chat.ChatResponse.SiteLink;
+import com.careertuner.ai.chat.ChatSummarizeRequest;
 import com.careertuner.ai.chat.CommunityChatAgent;
+import com.careertuner.ai.chat.CommunityTools;
 import com.careertuner.ai.chat.FastPathService;
 import com.careertuner.ai.chat.MessageSanitizer;
 import com.careertuner.ai.chat.MyBatisChatMemoryStore;
 import com.careertuner.ai.chat.QuickReplyAgent;
 import com.careertuner.ai.chat.SearchTrace;
+import com.careertuner.ai.chat.SummaryAgent;
 import com.careertuner.ai.autoprep.dto.AutoPrepIntakeResponse;
 import com.careertuner.ai.intake.IntakeAskService;
 import com.careertuner.ai.intake.dto.IntakeAskResponse;
@@ -72,6 +75,8 @@ public class ChatbotController {
     private final RouteConfirmStore routeConfirmStore;
     private final IntakeAskService intakeAskService;
     private final IntakeModeStore intakeModeStore;
+    private final CommunityTools communityTools;
+    private final SummaryAgent summaryAgent;
 
     public ChatbotController(CommunityChatAgent agent,
                             QuickReplyAgent quickReplyAgent,
@@ -85,7 +90,9 @@ public class ChatbotController {
                             UnifiedChatRouter router,
                             RouteConfirmStore routeConfirmStore,
                             IntakeAskService intakeAskService,
-                            IntakeModeStore intakeModeStore) {
+                            IntakeModeStore intakeModeStore,
+                            CommunityTools communityTools,
+                            SummaryAgent summaryAgent) {
         this.agent = agent;
         this.quickReplyAgent = quickReplyAgent;
         this.searchTrace = searchTrace;
@@ -99,6 +106,8 @@ public class ChatbotController {
         this.routeConfirmStore = routeConfirmStore;
         this.intakeAskService = intakeAskService;
         this.intakeModeStore = intakeModeStore;
+        this.communityTools = communityTools;
+        this.summaryAgent = summaryAgent;
     }
 
     /**
@@ -134,7 +143,7 @@ public class ChatbotController {
             return ApiResponse.ok(new ChatAskResponse(
                     conversationId,
                     "일반 상담 모드로 돌아왔어요. 무엇이든 물어보세요.",
-                    List.of(), List.of(), "이탈", null, false));
+                    List.of(), List.of(), "이탈", null, false, null));
         }
 
         // sticky 모드(오케스트레이터 유지): 이미 ③ 에 머무는 대화는 라우팅·FAQ·NAV 를 전부 건너뛰고 ③ 직행한다.
@@ -160,7 +169,7 @@ public class ChatbotController {
             responseLogService.record(conversationId, userId, question,
                     "NAV_FAST", false, null, null, false);
             return ApiResponse.ok(new ChatAskResponse(
-                    conversationId, fr.message(), fr.links(), fr.quickReplies(), "NAV", null, false));
+                    conversationId, fr.message(), fr.links(), fr.quickReplies(), "NAV", null, false, null));
         }
 
         // 확인 대기(1턴) 소비: 이 턴은 라우팅을 돌리지 않는다. (오분류 안전판 A)
@@ -188,7 +197,8 @@ public class ChatbotController {
                         List.of("시작", "그냥 질문이에요"),
                         "확인반환",
                         null,
-                        false));
+                        false,
+                        null));
             }
             case FALLBACK -> {
                 // 약신호(FAQ도 의도도 불명확) → 에이전트로 보내지 않고 정중한 되묻기로 끊는다.
@@ -200,7 +210,8 @@ public class ChatbotController {
                         List.of(),
                         "되묻기",
                         null,
-                        false));
+                        false,
+                        null));
             }
             case AGENT -> {
                 // catch-all: 커뮤니티 글 검색·인사·잡담 → FAQ 게이트 우회하고 에이전트 직행.
@@ -257,7 +268,8 @@ public class ChatbotController {
                 new ChatAskResponse.IntakeStep(
                         r.ready(), r.nextAsk(), r.autoPrepRequest(),
                         toCandidates(r.candidates()), toModes(r.modes())),
-                true);
+                true,
+                null);
     }
 
     /** 지원 건 후보 → 칩 렌더용 최소 필드로 축약. */
@@ -328,13 +340,16 @@ public class ChatbotController {
             boolean postsPresented = !searchTrace.snapshot().isEmpty();
             List<String> quickReplies = suggestQuickReplies(question, message, postsPresented);
 
+            // 글이 2개 이상 제시된 턴에서만 묶음 요약 칩 주입(snapshot 은 finally clear 전에 읽는다).
+            ChatAskResponse.SummaryChip summaryChip = buildSummaryChip(searchTrace.snapshot());
+
             // best-effort 적재(AGENT). FAQ 근거 여부 = 이번 턴 searchFaq 링크 존재(finally clear 전에 읽음).
             // 유사도 = 게이트 산출 원문 raw top-1(없으면 null). 전환 없음.
             responseLogService.record(conversationId, userId, question,
                     "AGENT", !searchTrace.faqLinks().isEmpty(),
                     miss != null ? miss.topSimilarity() : null, null, false);
 
-            return new ChatAskResponse(conversationId, message, links, quickReplies, route, null, false);
+            return new ChatAskResponse(conversationId, message, links, quickReplies, route, null, false, summaryChip);
         } catch (Exception e) {
             log.error("챗봇 에이전트 응답 실패 (Ollama 장애 추정): {}", e.getMessage(), e);
             return new ChatAskResponse(
@@ -344,7 +359,8 @@ public class ChatbotController {
                     List.of(),
                     route,
                     null,
-                    false);
+                    false,
+                    null);
         } finally {
             searchTrace.clear();
         }
@@ -468,7 +484,7 @@ public class ChatbotController {
         // 유사도 = 게이트가 본 원문 top-1(같은 임베딩). 전환 없음.
         responseLogService.record(conversationId, userId, question,
                 "FAQ_FAST", true, hits.get(0).score(), null, false);
-        return new ChatAskResponse(conversationId, hits.get(0).answer(), links, List.of(), route, null, false);
+        return new ChatAskResponse(conversationId, hits.get(0).answer(), links, List.of(), route, null, false, null);
     }
 
     /**
@@ -490,7 +506,29 @@ public class ChatbotController {
      * qwen3 가 시스템 프롬프트 예시("이 글 요약해줘")를 맥락 무관하게 베끼는 것을 게이트로 차단하기 위함.
      * 이번 턴에 글이 실제로 제시되지 않았으면 이 패턴에 걸리는 칩은 버린다.
      */
-    private static final Pattern POST_CHIP = Pattern.compile("글|후기|게시|본문|요약");
+    private static final Pattern POST_CHIP = Pattern.compile("글|후기|게시|본문");
+
+    /** "요약" free chip 은 이제 summaryChip 이 소유 → postsPresented 와 무관하게 항상 제거. */
+    private static final Pattern SUMMARY_CHIP = Pattern.compile("요약");
+
+    /** 묶음 요약 칩 최대 글 수(top-k). */
+    private static final int SUMMARY_TOP_K = 3;
+
+    /**
+     * 이번 턴 검색 스냅샷으로 묶음 요약 칩을 만든다.
+     * 글이 2개 이상일 때만 앞에서부터 최대 3개 postId 를 담아 칩을 만들고, 1개 이하면 null.
+     */
+    private ChatAskResponse.SummaryChip buildSummaryChip(List<PostHit> snapshot) {
+        if (snapshot == null || snapshot.size() < 2) {
+            return null;
+        }
+        List<Long> postIds = snapshot.stream()
+                .limit(SUMMARY_TOP_K)
+                .map(PostHit::postId)
+                .collect(Collectors.toList());
+        String label = "추천 후기 " + postIds.size() + "개 요약";
+        return new ChatAskResponse.SummaryChip(label, postIds);
+    }
 
     /**
      * quickReplies 2차 호출. 실패는 보조 기능이므로 삼켜서 빈 리스트로(graceful degradation).
@@ -505,16 +543,59 @@ public class ChatbotController {
             if (chips == null) {
                 return List.of();
             }
-            if (postsPresented) {
-                return chips;
-            }
+            // "요약" 칩은 summaryChip 이 소유 → postsPresented 무관하게 항상 제거.
             return chips.stream()
-                    .filter(c -> c != null && !POST_CHIP.matcher(c).find())
+                    .filter(c -> c != null && !SUMMARY_CHIP.matcher(c).find())
+                    // 그 외 글 관련 칩(후기/글/게시/본문)은 글 미제시 턴에서만 결정적으로 제거.
+                    .filter(c -> postsPresented || !POST_CHIP.matcher(c).find())
                     .collect(Collectors.toList());
         } catch (Exception e) {
             log.warn("quickReplies 생성 실패(무시): {}", e.getMessage());
             return List.of();
         }
+    }
+
+    /**
+     * 추천했던 후기들을 묶어 핵심만 평문으로 압축 요약한다(summaryChip 클릭 → 이 엔드포인트).
+     * POST /api/chatbot/summarize-posts  body: { conversationId?, postIds }
+     *
+     * <p>postIds 는 dedup 후 최대 3개만 사용한다. 비공개/삭제(getPostContent 가 "찾을 수 없"으로 시작)는 제외하고,
+     * 남은 본문을 이어 요약 에이전트에 넘긴다. 응답은 묶음 요약 평문(summaryChip=null, links/quickReplies=[]).
+     */
+    @PostMapping("/chatbot/summarize-posts")
+    public ApiResponse<ChatAskResponse> summarizePosts(@RequestBody ChatSummarizeRequest req) {
+        if (req == null || req.postIds() == null || req.postIds().isEmpty()) {
+            return ApiResponse.error("BAD_REQUEST", "요약할 글을 선택해 주세요.");
+        }
+
+        // dedup(순서 보존) 후 최대 3개.
+        List<Long> ids = req.postIds().stream()
+                .filter(id -> id != null)
+                .distinct()
+                .limit(SUMMARY_TOP_K)
+                .collect(Collectors.toList());
+
+        // 각 글 본문 수집 — 비공개/삭제("찾을 수 없"으로 시작)는 제외.
+        List<String> bodies = ids.stream()
+                .map(communityTools::getPostContent)
+                .filter(c -> c != null && !c.startsWith("해당 글을 찾을 수 없"))
+                .collect(Collectors.toList());
+
+        String message;
+        if (bodies.isEmpty()) {
+            message = "추천했던 글을 더 이상 볼 수 없어요.";
+        } else {
+            try {
+                String postsBlock = String.join("\n\n---\n\n", bodies);
+                message = MessageSanitizer.stripMarkdown(summaryAgent.summarize(postsBlock));
+            } catch (Exception e) {
+                log.error("후기 묶음 요약 실패 (Ollama 장애 추정): {}", e.getMessage(), e);
+                message = "지금은 요약을 만들기 어려워요. 잠시 후 다시 시도해 주세요.";
+            }
+        }
+
+        return ApiResponse.ok(new ChatAskResponse(
+                req.conversationId(), message, List.of(), List.of(), "요약", null, false, null));
     }
 
     /**
