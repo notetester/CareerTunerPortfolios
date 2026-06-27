@@ -11,6 +11,9 @@ multi-ecosystem-groups:
       timezone: "Asia/Seoul"
     labels:
       - "dependencies"
+    commit-message:
+      prefix: "deps"
+      include: "scope"
 
 updates:
   # Frontend: React/Vite/TypeScript/Capacitor npm dependencies.
@@ -19,9 +22,6 @@ updates:
     patterns:
       - "*"
     multi-ecosystem-group: "career-tuner-dependencies"
-    commit-message:
-      prefix: "deps"
-      include: "scope"
 
   # Backend: Spring Boot/Gradle dependencies.
   - package-ecosystem: "gradle"
@@ -29,9 +29,6 @@ updates:
     patterns:
       - "*"
     multi-ecosystem-group: "career-tuner-dependencies"
-    commit-message:
-      prefix: "deps"
-      include: "scope"
 
   # ML workers: Python requirements files under ml/**.
   - package-ecosystem: "pip"
@@ -40,9 +37,6 @@ updates:
     patterns:
       - "*"
     multi-ecosystem-group: "career-tuner-dependencies"
-    commit-message:
-      prefix: "deps"
-      include: "scope"
     exclude-paths:
       - "**/.venv/**"
       - "**/venv/**"
@@ -61,9 +55,6 @@ updates:
     patterns:
       - "*"
     multi-ecosystem-group: "career-tuner-dependencies"
-    commit-message:
-      prefix: "deps"
-      include: "scope"
 
   # GitHub Actions used by workflows under .github/workflows.
   - package-ecosystem: "github-actions"
@@ -71,6 +62,3 @@ updates:
     patterns:
       - "*"
     multi-ecosystem-group: "career-tuner-dependencies"
-    commit-message:
-      prefix: "deps"
-      include: "scope"
