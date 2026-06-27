@@ -1,9 +1,17 @@
-# Dependabot version updates for CareerTuner.
-# Keep update noise low by collecting all supported ecosystems into one weekly PR.
+# CareerTuner dependency update policy.
+#
+# Repository shape:
+# - frontend/: React/Vite/TypeScript/Capacitor npm app
+# - backend/: Spring Boot 4 + Gradle API
+# - ml/: Python model, evaluation, OCR, and worker experiments
+# - Docker/GitHub Actions: demo, release, and worker automation
+#
+# Keep runtime updates reviewable as one weekly platform PR, while Python ML
+# experiments are grouped separately because they can affect reproducibility.
 version: 2
 
 multi-ecosystem-groups:
-  career-tuner-dependencies:
+  careertuner-runtime:
     schedule:
       interval: "weekly"
       day: "sunday"
@@ -11,32 +19,83 @@ multi-ecosystem-groups:
       timezone: "Asia/Seoul"
     labels:
       - "dependencies"
-    commit-message:
-      prefix: "deps"
-      include: "scope"
+      - "area/runtime"
 
 updates:
-  # Frontend: React/Vite/TypeScript/Capacitor npm dependencies.
+  # Frontend web/PWA/mobile shell dependencies.
   - package-ecosystem: "npm"
     directory: "/frontend"
-    patterns:
-      - "*"
-    multi-ecosystem-group: "career-tuner-dependencies"
+    target-branch: "dev"
+    patterns: ["*"]
+    multi-ecosystem-group: "careertuner-runtime"
+    commit-message:
+      prefix: "deps(frontend)"
+      include: "scope"
 
-  # Backend: Spring Boot/Gradle dependencies.
+  # Backend API dependencies: Spring Boot, MyBatis, security, JWT, OpenAPI, PDF, mail, push.
   - package-ecosystem: "gradle"
     directory: "/backend"
-    patterns:
-      - "*"
-    multi-ecosystem-group: "career-tuner-dependencies"
+    target-branch: "dev"
+    patterns: ["*"]
+    multi-ecosystem-group: "careertuner-runtime"
+    commit-message:
+      prefix: "deps(backend)"
+      include: "scope"
 
-  # ML workers: Python requirements files under ml/**.
+  # Container base images for local compose, backend API, and job-posting worker.
+  - package-ecosystem: "docker"
+    directories:
+      - "/"
+      - "/backend"
+      - "/ml/job-posting-worker"
+    target-branch: "dev"
+    patterns: ["*"]
+    multi-ecosystem-group: "careertuner-runtime"
+    commit-message:
+      prefix: "deps(docker)"
+      include: "scope"
+
+  # Demo deploy, mobile release, 4090 trigger, and CI workflows.
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    target-branch: "dev"
+    patterns: ["*"]
+    multi-ecosystem-group: "careertuner-runtime"
+    commit-message:
+      prefix: "deps(actions)"
+      include: "scope"
+
+  # Python ML, OCR, and offline evaluation requirements.
   - package-ecosystem: "pip"
     directories:
-      - "/ml/**"
-    patterns:
-      - "*"
-    multi-ecosystem-group: "career-tuner-dependencies"
+      - "/docs/ai-training"
+      - "/ml/career-strategy-llm"
+      - "/ml/interview-finetune"
+      - "/ml/interview-nonverbal"
+      - "/ml/job-posting-worker"
+    schedule:
+      interval: "weekly"
+      day: "sunday"
+      time: "05:00"
+      timezone: "Asia/Seoul"
+    target-branch: "dev"
+    labels:
+      - "dependencies"
+      - "area/ml"
+    commit-message:
+      prefix: "deps(ml)"
+      include: "scope"
+    open-pull-requests-limit: 2
+    groups:
+      ml-python-minor-patch:
+        patterns: ["*"]
+        update-types:
+          - "minor"
+          - "patch"
+      ml-python-major:
+        patterns: ["*"]
+        update-types:
+          - "major"
     exclude-paths:
       - "**/.venv/**"
       - "**/venv/**"
@@ -45,20 +104,3 @@ updates:
       - "**/outputs/**"
       - "**/models/**"
       - "**/data/**"
-
-  # Container base images in docker-compose.yml and Dockerfiles.
-  - package-ecosystem: "docker"
-    directories:
-      - "/"
-      - "/backend"
-      - "/ml/job-posting-worker"
-    patterns:
-      - "*"
-    multi-ecosystem-group: "career-tuner-dependencies"
-
-  # GitHub Actions used by workflows under .github/workflows.
-  - package-ecosystem: "github-actions"
-    directory: "/"
-    patterns:
-      - "*"
-    multi-ecosystem-group: "career-tuner-dependencies"
