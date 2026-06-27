@@ -1,0 +1,76 @@
+# Dependabot version updates for CareerTuner.
+# Keep update noise low by collecting all supported ecosystems into one weekly PR.
+version: 2
+
+multi-ecosystem-groups:
+  career-tuner-dependencies:
+    schedule:
+      interval: "weekly"
+      day: "sunday"
+      time: "04:00"
+      timezone: "Asia/Seoul"
+    labels:
+      - "dependencies"
+
+updates:
+  # Frontend: React/Vite/TypeScript/Capacitor npm dependencies.
+  - package-ecosystem: "npm"
+    directory: "/frontend"
+    patterns:
+      - "*"
+    multi-ecosystem-group: "career-tuner-dependencies"
+    commit-message:
+      prefix: "deps"
+      include: "scope"
+
+  # Backend: Spring Boot/Gradle dependencies.
+  - package-ecosystem: "gradle"
+    directory: "/backend"
+    patterns:
+      - "*"
+    multi-ecosystem-group: "career-tuner-dependencies"
+    commit-message:
+      prefix: "deps"
+      include: "scope"
+
+  # ML workers: Python requirements files under ml/**.
+  - package-ecosystem: "pip"
+    directories:
+      - "/ml/**"
+    patterns:
+      - "*"
+    multi-ecosystem-group: "career-tuner-dependencies"
+    commit-message:
+      prefix: "deps"
+      include: "scope"
+    exclude-paths:
+      - "**/.venv/**"
+      - "**/venv/**"
+      - "**/__pycache__/**"
+      - "**/artifacts/**"
+      - "**/outputs/**"
+      - "**/models/**"
+      - "**/data/**"
+
+  # Container base images in docker-compose.yml and Dockerfiles.
+  - package-ecosystem: "docker"
+    directories:
+      - "/"
+      - "/backend"
+      - "/ml/job-posting-worker"
+    patterns:
+      - "*"
+    multi-ecosystem-group: "career-tuner-dependencies"
+    commit-message:
+      prefix: "deps"
+      include: "scope"
+
+  # GitHub Actions used by workflows under .github/workflows.
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    patterns:
+      - "*"
+    multi-ecosystem-group: "career-tuner-dependencies"
+    commit-message:
+      prefix: "deps"
+      include: "scope"
