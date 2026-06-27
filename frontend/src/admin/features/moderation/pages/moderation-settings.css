@@ -47,7 +47,7 @@
 /* 테스트 콘솔 */
 .md-console { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 0; }
 .md-console__in { padding: 14px 16px 16px; border-right: 1px solid var(--av-line-soft); }
-.md-console__out { padding: 14px 16px 16px; background: #fafbfd; }
+.md-console__out { padding: 14px 16px 16px; background: var(--av-track); }
 .md-out__head { display: flex; align-items: baseline; gap: 8px; margin-bottom: 10px; }
 .md-out__t { font-size: 12px; font-weight: 650; }
 .md-out__s { font-size: 11px; color: var(--av-ink-3); margin-left: auto; white-space: nowrap; }
@@ -109,12 +109,12 @@
 
 /* 토스트 */
 .md-toast { position: fixed; bottom: 22px; left: 50%; transform: translateX(-50%); z-index: 70;
-  display: flex; align-items: center; gap: 8px; background: var(--av-ink); color: #fff;
+  display: flex; align-items: center; gap: 8px; background: var(--av-ink); color: var(--av-bg);
   border-radius: 9px; padding: 10px 14px; font-size: 12.5px; font-weight: 600;
   box-shadow: 0 8px 24px rgba(15,23,42,0.3); white-space: nowrap; }
 .md-toast svg { width: 14px; height: 14px; stroke-width: 2.2; }
 .md-toast.ok svg { color: #4ade80; }
-.md-toast.err { background: var(--av-red); }
+.md-toast.err { background: var(--av-red); color: #fff; }
 
 /* 검토 대기 placeholder */
 .md-queue__empty { padding: 30px 20px; text-align: center; }

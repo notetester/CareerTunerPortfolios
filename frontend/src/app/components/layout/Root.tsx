@@ -1,6 +1,9 @@
 import { Outlet, ScrollRestoration, useLocation } from "react-router";
 import { useAuth } from "@/app/auth/AuthContext";
 import { LandingPage } from "@/features/landing/pages/LandingPage";
+import { isNativeApp } from "@/platform/capacitor";
+import { OnboardingFlow, isOnboarded } from "@/features/onboarding/OnboardingFlow";
+import { AppHome } from "@/features/onboarding/AppHome";
 import { Header } from "./Header";
 import { Footer } from "./Footer";
 import { ChatbotBubble } from "../../../features/support/components/ChatbotWidget";
@@ -11,9 +14,17 @@ import { OfflineBanner } from "./OfflineBanner";
 export function Root() {
   const location = useLocation();
   const { isAuthenticated, loading } = useAuth();
-  // 비로그인 홈(/)은 랜딩 페이지를 헤더/푸터 없이 전체화면으로 렌더한다.
-  if (location.pathname === "/" && !loading && !isAuthenticated) {
-    return <LandingPage />;
+  // 앱(네이티브) 진입: 온보딩 미완료면 온보딩 퍼널, 완료면 검색창 메인(AppHome).
+  // 웹에선 ?ob(온보딩)·?home(검색창 메인) 쿼리로 미리볼 수 있다(디자인 확인용).
+  const search = typeof window !== "undefined" ? window.location.search : "";
+  const forceOnboarding = new URLSearchParams(search).has("ob");
+  const forceHome = new URLSearchParams(search).has("home");
+  if (location.pathname === "/" && !loading) {
+    if (forceOnboarding) return <OnboardingFlow />;
+    if (forceHome) return <AppHome />;
+    if (isNativeApp()) return isOnboarded() ? <AppHome /> : <OnboardingFlow />;
+    // 비로그인 홈(/)은 랜딩 페이지를 헤더/푸터 없이 전체화면으로 렌더한다.
+    if (!isAuthenticated) return <LandingPage />;
   }
   const isApplicationDetail = /^\/applications\/(?:new|\d+)/.test(location.pathname);
   const isAdmin = location.pathname.startsWith("/admin");

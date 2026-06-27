@@ -6,9 +6,20 @@ import type {
   AdminPermissionPolicyRow,
 } from "./types";
 
-export function getSuperAdmins(keyword = ""): Promise<AdminAccountRow[]> {
+export interface SuperSortParams {
+  sortBy?: string;
+  sortDir?: "ASC" | "DESC";
+}
+
+function appendSortParams(search: URLSearchParams, sort?: SuperSortParams) {
+  if (sort?.sortBy) search.set("sortBy", sort.sortBy);
+  if (sort?.sortDir) search.set("sortDir", sort.sortDir);
+}
+
+export function getSuperAdmins(keyword = "", sort?: SuperSortParams): Promise<AdminAccountRow[]> {
   const search = new URLSearchParams();
   if (keyword) search.set("keyword", keyword);
+  appendSortParams(search, sort);
   search.set("limit", "100");
   return api<AdminAccountRow[]>(`/admin/super/admins?${search.toString()}`, { method: "GET" });
 }
@@ -17,9 +28,10 @@ export function getSuperAdminDetail(userId: number): Promise<AdminAccountRow> {
   return api<AdminAccountRow>(`/admin/super/admins/${userId}`, { method: "GET" });
 }
 
-export function searchSuperUsers(keyword = ""): Promise<AdminAccountRow[]> {
+export function searchSuperUsers(keyword = "", sort?: SuperSortParams): Promise<AdminAccountRow[]> {
   const search = new URLSearchParams();
   if (keyword) search.set("keyword", keyword);
+  appendSortParams(search, sort);
   search.set("limit", "50");
   return api<AdminAccountRow[]>(`/admin/super/users/search?${search.toString()}`, { method: "GET" });
 }
@@ -32,9 +44,10 @@ export function getSuperGroups(): Promise<AdminPermissionGroupRow[]> {
   return api<AdminPermissionGroupRow[]>("/admin/super/groups", { method: "GET" });
 }
 
-export function getSuperAudit(userId?: number): Promise<AdminPermissionAuditRow[]> {
+export function getSuperAudit(userId?: number, sort?: SuperSortParams): Promise<AdminPermissionAuditRow[]> {
   const search = new URLSearchParams();
   if (userId) search.set("userId", String(userId));
+  appendSortParams(search, sort);
   search.set("limit", "100");
   return api<AdminPermissionAuditRow[]>(`/admin/super/audit?${search.toString()}`, { method: "GET" });
 }

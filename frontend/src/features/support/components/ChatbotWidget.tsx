@@ -4,11 +4,17 @@ import {
   Sparkles, MessageCircle, Mic, MicOff, ArrowUp, Minus, X,
   KeyRound, CreditCard, FileText, FileSearch, Pause, Volume2,
   ArrowUpRight, Shield, SearchX, Headset, PenLine, WifiOff,
-  RotateCw, Check, Keyboard, ArrowRight, Play,
+  RotateCw, Check, Keyboard, ArrowRight, Play, LogOut,
 } from "lucide-react";
 import { useChatbot } from "../hooks/useChatbot";
-import type { ChatMessage, ChatEvidence, SiteLink } from "../types/chatbot";
+import type {
+  ChatMessage, ChatEvidence, SiteLink, IntakeCaseCandidate, IntakeModeOption,
+} from "../types/chatbot";
 import { SUGGESTED_QUESTIONS } from "../types/chatbot";
+import { AutoPrepWorkView } from "@/features/autoprep/components/AutoPrepWorkView";
+
+/** 오케스트레이터 정체성 글리프(U+2726). */
+const ORCH_GLYPH = "✦";
 
 const ICON_MAP = { KeyRound, CreditCard, FileText } as const;
 
@@ -24,15 +30,15 @@ export function ChatbotBubble() {
   return (
     <div className="fixed right-5 bottom-5 z-50 flex flex-col items-end gap-2">
       {tooltipVisible && (
-        <div className="relative bg-card border border-black/10 rounded-[14px] rounded-br-[5px] shadow-lg p-3 pr-9 max-w-[236px]">
+        <div className="relative bg-card border border-border rounded-[14px] rounded-br-[5px] shadow-lg p-3 pr-9 max-w-[236px]">
           <button
             onClick={() => setTooltipVisible(false)}
-            className="absolute top-2.5 right-2.5 w-[18px] h-[18px] rounded-full bg-slate-100 flex items-center justify-center text-slate-400 hover:bg-slate-200 transition-colors"
+            className="absolute top-2.5 right-2.5 w-[18px] h-[18px] rounded-full bg-secondary flex items-center justify-center text-muted-foreground hover:bg-secondary transition-colors"
           >
             <X size={11} />
           </button>
           <div className="text-[13px] font-bold mb-0.5">무엇이든 물어보세요</div>
-          <div className="text-[12px] leading-[1.55] text-slate-500">
+          <div className="text-[12px] leading-[1.55] text-muted-foreground">
             기능 사용법·요금·공지까지 AI가 바로 찾아드려요.
           </div>
         </div>
@@ -54,19 +60,29 @@ interface ChatbotPanelProps {
   chatbot: ReturnType<typeof useChatbot>;
 }
 
+/** 면접 모드 코드 → 라벨(배너 서브텍스트용). 백엔드 MODE_OPTIONS 와 동일. */
+const MODE_LABELS: Record<string, string> = {
+  BASIC: "기본 면접", JOB: "직무 면접", PERSONALITY: "인성 면접",
+  PRESSURE: "압박 면접", RESUME: "자소서 기반", COMPANY: "기업 맞춤",
+};
+
 function ChatbotPanel({ chatbot }: ChatbotPanelProps) {
   const {
-    close, minimize, messages, sendMessage, botStatus, setBotStatus,
+    close, minimize, messages, sendMessage, botStatus,
     voiceState, startVoice, cancelVoice, confirmVoice, setVoiceState,
     interimTranscript, retryConnection, toggleTts,
+    orchestrator, runStarted, runParts, runRunning, runPlan, runCaseId,
+    selectCase, selectMode,
+    showExitSheet, openExitSheet, closeExitSheet, exitOrchestrator,
   } = chatbot;
 
+  const navigate = useNavigate();
   const [input, setInput] = useState("");
   const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
-  }, [messages, botStatus]);
+  }, [messages, botStatus, runParts]);
 
   const handleSend = () => {
     const text = input.trim();
@@ -83,19 +99,43 @@ function ChatbotPanel({ chatbot }: ChatbotPanelProps) {
   };
 
   const isDisconnected = botStatus === "disconnected";
-  const isVoiceActive = voiceState === "listening" || voiceState === "denied";
+
+  // 활성 칩은 "마지막 봇 메시지"의 인테이크 턴에만 노출(이전 턴 칩은 비활성).
+  const lastBotId = [...messages].reverse().find((m) => m.role === "bot")?.id;
+
+  // 배너 서브텍스트: 실행 중이면 지원 건/모드, 인테이크면 진행 단계.
+  let bannerSubtitle = "정보 확인 중";
+  if (runStarted) {
+    const s = runPlan?.slots;
+    bannerSubtitle = [s?.company, s?.jobTitle, s?.mode ? MODE_LABELS[s.mode] ?? s.mode : null]
+      .filter(Boolean).join(" · ") || "면접 준비 진행 중";
+  } else {
+    const lastIntake = [...messages].reverse().find((m) => m.role === "bot" && m.intake)?.intake;
+    bannerSubtitle =
+      lastIntake?.nextAsk === "CASE" ? "면접 준비 · 지원 건 확인 중 (1/2)"
+      : lastIntake?.nextAsk === "MODE" ? "면접 준비 · 면접 모드 확인 중 (2/2)"
+      : "면접 준비 · 정보 확인 중";
+  }
 
   return (
-    <div className="fixed right-5 bottom-5 z-50 w-[360px] h-[560px] flex flex-col bg-card border border-black/10 rounded-2xl overflow-hidden"
-      style={{ boxShadow: "0 12px 28px rgba(15,23,42,0.12), 0 4px 10px rgba(15,23,42,0.06)" }}>
+    <div className="fixed right-5 bottom-5 z-50 w-[360px] h-[560px] flex flex-col bg-card border border-border rounded-2xl overflow-hidden"
+      style={{
+        boxShadow: orchestrator
+          ? "0 16px 40px rgba(109,40,217,0.22), 0 4px 12px rgba(15,23,42,0.06)"
+          : "0 12px 28px rgba(15,23,42,0.12), 0 4px 10px rgba(15,23,42,0.06)",
+      }}>
 
       {/* ── Header ── */}
       <WidgetHeader
+        orchestrator={orchestrator}
         isDisconnected={isDisconnected}
         isVoiceListening={voiceState === "listening"}
         onMinimize={minimize}
         onClose={close}
       />
+
+      {/* ── Mode Banner (인테이크·실행 내내 유지) ── */}
+      {orchestrator && <ModeBanner subtitle={bannerSubtitle} onExit={openExitSheet} />}
 
       {/* ── Body ── */}
       {voiceState === "listening" ? (
@@ -113,7 +153,8 @@ function ChatbotPanel({ chatbot }: ChatbotPanelProps) {
         <DisconnectedView onRetry={retryConnection} />
       ) : (
         <>
-          <div ref={scrollRef} className="flex-1 p-4 overflow-y-auto flex flex-col gap-3.5" style={{ background: "#f8fafc" }}>
+          <div ref={scrollRef} className="flex-1 p-4 overflow-y-auto flex flex-col gap-3.5"
+            style={{ background: orchestrator ? "var(--orch-chat-bg)" : "var(--secondary)" }}>
             {messages.length === 0 && botStatus === "idle" ? (
               <EmptyState onSelect={sendMessage} />
             ) : (
@@ -122,10 +163,26 @@ function ChatbotPanel({ chatbot }: ChatbotPanelProps) {
                   m.role === "user" ? (
                     <UserBubble key={m.id} text={m.text} dimmed={isDisconnected} />
                   ) : (
-                    <BotBubble key={m.id} message={m} onToggleTts={toggleTts} variant="widget" onQuickReply={sendMessage} />
+                    <div key={m.id} className="flex flex-col gap-2.5">
+                      <BotBubble message={m} onToggleTts={toggleTts} variant="widget"
+                        onQuickReply={sendMessage} orchestrator={orchestrator} />
+                      {m.id === lastBotId && m.intake && !m.intake.ready && !runStarted && (
+                        <IntakeChips intake={m.intake} onSelectCase={selectCase} onSelectMode={selectMode} />
+                      )}
+                    </div>
                   )
                 )}
-                {botStatus === "thinking" && <TypingIndicator />}
+                {runStarted && (
+                  <div className="ml-[37px]">
+                    <AutoPrepWorkView
+                      running={runRunning}
+                      parts={runParts}
+                      caseId={runCaseId}
+                      onNavigate={(p) => navigate(p)}
+                    />
+                  </div>
+                )}
+                {botStatus === "thinking" && <TypingIndicator orchestrator={orchestrator} />}
                 {botStatus === "not_found" && <NotFoundView />}
               </>
             )}
@@ -137,42 +194,181 @@ function ChatbotPanel({ chatbot }: ChatbotPanelProps) {
             onMic={startVoice}
             onKeyDown={handleKeyDown}
             disabled={botStatus === "thinking"}
+            orchestrator={orchestrator}
           />
         </>
       )}
+
+      {/* ── Exit confirm sheet ── */}
+      {showExitSheet && <ExitSheet onConfirm={exitOrchestrator} onCancel={closeExitSheet} />}
+    </div>
+  );
+}
+
+/* ════════════════ Orchestrator components ════════════════ */
+
+function OrchestratorAvatar({ size = 28, iconScale = 0.52 }: { size?: number; iconScale?: number }) {
+  return (
+    <div className="rounded-full flex items-center justify-center text-white shrink-0 font-bold"
+      style={{ width: size, height: size, background: "var(--gradient-orchestrator)", fontSize: size * iconScale }}>
+      {ORCH_GLYPH}
+    </div>
+  );
+}
+
+function ModeBanner({ subtitle, onExit }: { subtitle: string; onExit: () => void }) {
+  return (
+    <div role="status" aria-live="polite"
+      className="flex items-center gap-2.5 px-3.5 py-2.5 text-white"
+      style={{ background: "var(--gradient-orchestrator)" }}>
+      <div className="w-[26px] h-[26px] rounded-[8px] flex items-center justify-center text-white shrink-0 font-bold text-[14px]"
+        style={{ background: "rgba(255,255,255,0.16)" }}>
+        {ORCH_GLYPH}
+      </div>
+      <div className="leading-tight min-w-0 flex-1">
+        <div className="text-[12.5px] font-extrabold">AI 오케스트레이터</div>
+        <div className="text-[10.5px] truncate" style={{ color: "rgba(255,255,255,0.78)" }}>{subtitle}</div>
+      </div>
+      <button onClick={onExit} aria-label="일반 상담으로 돌아가기"
+        className="inline-flex items-center gap-1 h-7 px-2.5 rounded-full text-[11px] font-bold text-white shrink-0 transition-colors hover:bg-white/15"
+        style={{ border: "1px solid rgba(255,255,255,0.34)", background: "rgba(255,255,255,0.10)" }}>
+        <LogOut size={13} />
+        일반 상담으로
+      </button>
+    </div>
+  );
+}
+
+function IntakeChips({ intake, onSelectCase, onSelectMode }: {
+  intake: NonNullable<ChatMessage["intake"]>;
+  onSelectCase: (c: IntakeCaseCandidate) => void;
+  onSelectMode: (m: IntakeModeOption) => void;
+}) {
+  if (intake.nextAsk === "CASE" && intake.candidates.length > 0) {
+    return (
+      <div className="ml-[37px] flex flex-col gap-2">
+        {intake.candidates.map((c) => (
+          <ApplicationChip key={c.id} candidate={c} onSelect={() => onSelectCase(c)} />
+        ))}
+      </div>
+    );
+  }
+  if (intake.nextAsk === "MODE" && intake.modes.length > 0) {
+    return (
+      <div className="ml-[37px] flex flex-wrap gap-1.5">
+        {intake.modes.map((m) => (
+          <ModeChip key={m.code} mode={m} onSelect={() => onSelectMode(m)} />
+        ))}
+      </div>
+    );
+  }
+  return null;
+}
+
+function ApplicationChip({ candidate, onSelect }: { candidate: IntakeCaseCandidate; onSelect: () => void }) {
+  const initial = candidate.companyName?.trim().charAt(0) || "?";
+  return (
+    <button onClick={onSelect} role="button"
+      className="group flex items-center gap-2.5 w-full min-h-[56px] px-3 py-2.5 rounded-[13px] bg-card text-left transition-all hover:shadow-[0_4px_12px_rgba(109,40,217,0.10)]"
+      style={{ border: "1px solid rgba(0,0,0,0.10)" }}>
+      <span className="w-[34px] h-[34px] rounded-[9px] flex items-center justify-center text-white font-extrabold text-[15px] shrink-0"
+        style={{ background: "var(--gradient-orchestrator)" }}>
+        {initial}
+      </span>
+      <span className="flex-1 min-w-0">
+        <span className="block text-[13.5px] font-bold text-foreground truncate">{candidate.companyName}</span>
+        <span className="block text-[11.5px] font-semibold text-muted-foreground truncate">{candidate.jobTitle}</span>
+      </span>
+      <ArrowRight size={15} className="shrink-0 text-muted-foreground transition-colors"
+        style={{ color: "var(--orch-point)" }} />
+    </button>
+  );
+}
+
+function ModeChip({ mode, onSelect }: { mode: IntakeModeOption; onSelect: () => void }) {
+  return (
+    <button onClick={onSelect} role="button"
+      className="inline-flex items-center px-3 py-2 rounded-full bg-card text-[12.5px] font-semibold text-muted-foreground transition-colors hover:text-foreground"
+      style={{ border: "1px solid rgba(0,0,0,0.12)" }}>
+      {mode.label}
+    </button>
+  );
+}
+
+function ExitSheet({ onConfirm, onCancel }: { onConfirm: () => void; onCancel: () => void }) {
+  return (
+    <div className="absolute inset-0 z-10 flex flex-col justify-end" style={{ background: "rgba(20,16,40,0.42)" }}
+      onClick={onCancel}>
+      <div className="m-3.5 rounded-[18px] bg-card px-[18px] pt-5 pb-4 text-center"
+        style={{ boxShadow: "0 20px 50px rgba(20,16,40,0.4)" }}
+        onClick={(e) => e.stopPropagation()}>
+        <div className="mx-auto w-[46px] h-[46px] rounded-[13px] flex items-center justify-center mb-3"
+          style={{ background: "var(--orch-surface)", color: "var(--orch-violet)" }}>
+          <LogOut size={22} />
+        </div>
+        <div className="text-base font-extrabold mb-1.5">오케스트레이터를 종료할까요?</div>
+        <div className="text-[13px] leading-[1.6] text-muted-foreground mb-4">
+          지금 종료하면 일반 상담 모드로 돌아가요. 진행 중인 준비는 멈춰요.
+        </div>
+        <div className="flex flex-col gap-2">
+          <button onClick={onConfirm}
+            className="h-[46px] rounded-[11px] bg-foreground text-background text-sm font-bold hover:opacity-90 transition-opacity">
+            종료하고 일반 상담으로
+          </button>
+          <button onClick={onCancel}
+            className="h-[42px] rounded-[11px] bg-card text-[13.5px] font-semibold text-muted-foreground hover:bg-secondary transition-colors"
+            style={{ border: "1px solid rgba(0,0,0,0.14)" }}>
+            계속 준비하기
+          </button>
+        </div>
+        <div className="mt-3 text-[11px] text-muted-foreground">
+          입력창에 <b>“그만”</b> 이라고 보내도 빠져나올 수 있어요.
+        </div>
+      </div>
     </div>
   );
 }
 
 /* ════════════════ Sub-components ════════════════ */
 
-function WidgetHeader({ isDisconnected, isVoiceListening, onMinimize, onClose }: {
-  isDisconnected: boolean; isVoiceListening: boolean;
+function WidgetHeader({ orchestrator, isDisconnected, isVoiceListening, onMinimize, onClose }: {
+  orchestrator?: boolean; isDisconnected: boolean; isVoiceListening: boolean;
   onMinimize: () => void; onClose: () => void;
 }) {
   return (
-    <div className="flex items-center gap-2.5 px-4 py-3.5 border-b border-black/8">
-      <div className="relative w-9 h-9 rounded-full flex items-center justify-center text-white"
-        style={{ background: isDisconnected ? "#e2e8f0" : "linear-gradient(135deg, #2563eb, #4f46e5)" }}>
-        <Sparkles size={18} className={isDisconnected ? "text-slate-400" : ""} />
-        <span className="absolute -right-px -bottom-px w-[11px] h-[11px] rounded-full border-2 border-white"
-          style={{ background: isDisconnected ? "#94a3b8" : "#16a34a" }} />
-      </div>
+    <div className="flex items-center gap-2.5 px-4 py-3.5 border-b border-border transition-colors"
+      style={{ background: orchestrator ? "var(--orch-header-tint)" : undefined }}>
+      {orchestrator && !isDisconnected ? (
+        <div className="relative">
+          <OrchestratorAvatar size={36} iconScale={0.5} />
+          <span className="absolute -right-px -bottom-px w-[11px] h-[11px] rounded-full border-2 border-card"
+            style={{ background: "#16a34a" }} />
+        </div>
+      ) : (
+        <div className="relative w-9 h-9 rounded-full flex items-center justify-center text-white"
+          style={{ background: isDisconnected ? "var(--muted)" : "linear-gradient(135deg, #2563eb, #4f46e5)" }}>
+          <Sparkles size={18} className={isDisconnected ? "text-muted-foreground" : ""} />
+          <span className="absolute -right-px -bottom-px w-[11px] h-[11px] rounded-full border-2 border-card"
+            style={{ background: isDisconnected ? "var(--muted-foreground)" : "#16a34a" }} />
+        </div>
+      )}
       <div className="leading-tight">
         <div className="text-sm font-bold">튜너봇</div>
         {isVoiceListening ? (
           <div className="text-[11.5px] font-semibold text-red-600">● 음성 인식 중</div>
         ) : isDisconnected ? (
-          <div className="text-[11.5px] font-semibold text-slate-400">연결 대기 중</div>
+          <div className="text-[11.5px] font-semibold text-muted-foreground">연결 대기 중</div>
+        ) : orchestrator ? (
+          <div className="text-[11.5px] font-bold" style={{ color: "var(--orch-point)" }}>오케스트레이터 모드</div>
         ) : (
           <div className="text-[11.5px] font-semibold" style={{ color: "#16a34a" }}>응답 가능</div>
         )}
       </div>
-      <div className="ml-auto flex gap-1 text-slate-400">
-        <button onClick={onMinimize} className="w-[30px] h-[30px] rounded-lg flex items-center justify-center hover:bg-slate-100 transition-colors">
+      <div className="ml-auto flex gap-1 text-muted-foreground">
+        <button onClick={onMinimize} className="w-[30px] h-[30px] rounded-lg flex items-center justify-center hover:bg-secondary transition-colors">
           <Minus size={17} />
         </button>
-        <button onClick={onClose} className="w-[30px] h-[30px] rounded-lg flex items-center justify-center hover:bg-slate-100 transition-colors">
+        <button onClick={onClose} className="w-[30px] h-[30px] rounded-lg flex items-center justify-center hover:bg-secondary transition-colors">
           <X size={17} />
         </button>
       </div>
@@ -189,20 +385,20 @@ function EmptyState({ onSelect }: { onSelect: (text: string) => void }) {
           <Sparkles size={25} />
         </div>
         <div className="text-base font-extrabold mb-1">안녕하세요, 튜너봇이에요</div>
-        <div className="text-[13px] leading-relaxed text-slate-500 max-w-[250px]">
+        <div className="text-[13px] leading-relaxed text-muted-foreground max-w-[250px]">
           CareerTuner 이용 중 궁금한 점을 물어보세요. FAQ와 공지를 찾아 바로 알려드릴게요.
         </div>
       </div>
-      <div className="text-[11.5px] font-bold text-slate-400 mb-2 ml-0.5">자주 묻는 질문</div>
+      <div className="text-[11.5px] font-bold text-muted-foreground mb-2 ml-0.5">자주 묻는 질문</div>
       <div className="flex flex-col gap-2">
         {SUGGESTED_QUESTIONS.map(({ icon, text }) => {
           const Icon = ICON_MAP[icon];
           return (
             <button key={text} onClick={() => onSelect(text)}
-              className="flex items-center gap-2.5 px-3 py-2.5 bg-card border border-black/10 rounded-xl text-[13px] font-medium text-slate-700 shadow-[0_1px_2px_rgba(15,23,42,0.04)] hover:border-blue-300 hover:bg-blue-50/30 transition-colors text-left">
-              <Icon size={15} className="text-blue-600 shrink-0" />
+              className="flex items-center gap-2.5 px-3 py-2.5 bg-card border border-border rounded-xl text-[13px] font-medium text-foreground shadow-[0_1px_2px_rgba(15,23,42,0.04)] hover:border-primary/40 hover:bg-primary/10 transition-colors text-left">
+              <Icon size={15} className="text-primary shrink-0" />
               <span className="flex-1">{text}</span>
-              <ArrowRight size={15} className="text-slate-300 shrink-0" />
+              <ArrowRight size={15} className="text-muted-foreground shrink-0" />
             </button>
           );
         })}
@@ -221,9 +417,9 @@ function UserBubble({ text, dimmed }: { text: string; dimmed?: boolean }) {
   );
 }
 
-function BotBubble({ message, onToggleTts, variant = "widget", onQuickReply }: {
+function BotBubble({ message, onToggleTts, variant = "widget", onQuickReply, orchestrator }: {
   message: ChatMessage; onToggleTts: (id: string) => void; variant?: "widget" | "full";
-  onQuickReply?: (text: string) => void;
+  onQuickReply?: (text: string) => void; orchestrator?: boolean;
 }) {
   const avatarSize = variant === "full" ? 34 : 28;
   const iconSize = variant === "full" ? 16 : 14;
@@ -231,21 +427,27 @@ function BotBubble({ message, onToggleTts, variant = "widget", onQuickReply }: {
 
   return (
     <div className="flex gap-2.5 items-start">
-      <div className="rounded-full flex items-center justify-center text-white shrink-0 mt-0.5"
-        style={{ width: avatarSize, height: avatarSize, background: "linear-gradient(135deg, #2563eb, #4f46e5)" }}>
-        <Sparkles size={iconSize} />
-      </div>
+      {orchestrator ? (
+        <div className="mt-0.5">
+          <OrchestratorAvatar size={avatarSize} iconScale={0.5} />
+        </div>
+      ) : (
+        <div className="rounded-full flex items-center justify-center text-white shrink-0 mt-0.5"
+          style={{ width: avatarSize, height: avatarSize, background: "linear-gradient(135deg, #2563eb, #4f46e5)" }}>
+          <Sparkles size={iconSize} />
+        </div>
+      )}
       <div className={`${maxW} flex flex-col gap-2.5`}>
-        <div className="bg-card border border-black/8 rounded-[15px] rounded-tl-[5px] px-3.5 py-3 text-[13.5px] leading-[1.65] text-slate-700">
-          <span dangerouslySetInnerHTML={{ __html: message.text.replace(/\*\*(.*?)\*\*/g, '<b class="text-[#030213]">$1</b>') }} />
+        <div className="bg-card border border-border rounded-[15px] rounded-tl-[5px] px-3.5 py-3 text-[13.5px] leading-[1.65] text-foreground">
+          <span dangerouslySetInnerHTML={{ __html: message.text.replace(/\*\*(.*?)\*\*/g, '<b class="text-foreground">$1</b>') }} />
 
           {/* TTS controls */}
           {message.ttsState !== "idle" || variant === "full" ? (
-            <div className="flex items-center gap-2 mt-2.5 pt-2.5 border-t border-black/6">
+            <div className="flex items-center gap-2 mt-2.5 pt-2.5 border-t border-border">
               {variant === "full" ? (
                 <>
                   <button onClick={() => onToggleTts(message.id)}
-                    className="inline-flex items-center gap-1.5 h-[30px] px-3 rounded-full bg-blue-50 text-blue-600 text-xs font-semibold hover:bg-blue-100 transition-colors">
+                    className="inline-flex items-center gap-1.5 h-[30px] px-3 rounded-full bg-primary/10 text-primary text-xs font-semibold hover:bg-primary/20 transition-colors">
                     <Volume2 size={14} />
                     <span className="text-xs font-semibold">음성으로 듣기</span>
                   </button>
@@ -253,13 +455,13 @@ function BotBubble({ message, onToggleTts, variant = "widget", onQuickReply }: {
               ) : (
                 <>
                   <button onClick={() => onToggleTts(message.id)}
-                    className="w-[26px] h-[26px] rounded-full bg-blue-50 text-blue-600 flex items-center justify-center hover:bg-blue-100 transition-colors">
+                    className="w-[26px] h-[26px] rounded-full bg-primary/10 text-primary flex items-center justify-center hover:bg-primary/20 transition-colors">
                     {message.ttsState === "playing" ? <Pause size={13} /> : <Play size={13} />}
                   </button>
-                  <div className="flex-1 h-1 rounded-full bg-slate-200 relative overflow-hidden">
+                  <div className="flex-1 h-1 rounded-full bg-secondary relative overflow-hidden">
                     <div className="absolute left-0 top-0 bottom-0 bg-blue-600 rounded-full" style={{ width: `${message.ttsProgress || 46}%` }} />
                   </div>
-                  <span className="text-[10.5px] text-slate-400 tabular-nums">0:06</span>
+                  <span className="text-[10.5px] text-muted-foreground tabular-nums">0:06</span>
                 </>
               )}
             </div>
@@ -288,7 +490,7 @@ function QuickReplyChips({ replies, onSelect }: { replies: string[]; onSelect: (
         <button
           key={r}
           onClick={() => onSelect(r)}
-          className="inline-flex items-center px-3 py-1.5 rounded-full border border-blue-200 bg-white text-blue-700 text-[12.5px] font-semibold hover:bg-blue-50 transition-colors"
+          className="inline-flex items-center px-3 py-1.5 rounded-full border border-primary/30 bg-card text-primary text-[12.5px] font-semibold hover:bg-primary/10 transition-colors"
         >
           {r}
         </button>
@@ -314,7 +516,7 @@ function SiteLinkButtons({ links }: { links: SiteLink[] }) {
         <button
           key={link.url}
           onClick={() => handleClick(link.url)}
-          className="flex items-center justify-center gap-1.5 w-full h-9 rounded-lg border border-blue-200 bg-blue-50 text-blue-700 text-[13px] font-semibold hover:bg-blue-100 transition-colors"
+          className="flex items-center justify-center gap-1.5 w-full h-9 rounded-lg border border-primary/30 bg-primary/10 text-primary text-[13px] font-semibold hover:bg-primary/20 transition-colors"
         >
           <ArrowRight size={14} />
           {link.label}
@@ -329,7 +531,7 @@ function EvidenceChips({ evidence }: { evidence: ChatEvidence[] }) {
     <div className="flex flex-wrap gap-1.5">
       {evidence.map((e) => (
         <a key={e.id} href={e.url}
-          className="inline-flex items-center gap-1 px-2.5 py-1 bg-blue-50 border border-blue-600/20 rounded-full text-[11.5px] font-semibold text-blue-700 hover:bg-blue-100 transition-colors">
+          className="inline-flex items-center gap-1 px-2.5 py-1 bg-primary/10 border border-primary/20 rounded-full text-[11.5px] font-semibold text-primary hover:bg-primary/20 transition-colors">
           <FileText size={12} />
           {e.title}
           <ArrowUpRight size={11} className="opacity-60" />
@@ -340,47 +542,51 @@ function EvidenceChips({ evidence }: { evidence: ChatEvidence[] }) {
 }
 
 function EvidenceCards({ evidence }: { evidence: ChatEvidence[] }) {
-  const iconBg: Record<string, string> = { "도움말": "bg-blue-50 text-blue-600", "가이드": "bg-green-50 text-green-600", "FAQ": "bg-blue-50 text-blue-600", "공지": "bg-amber-50 text-amber-600" };
-  const badgeBg: Record<string, string> = { "도움말": "bg-blue-50 text-blue-700", "가이드": "bg-green-50 text-green-700", "FAQ": "bg-blue-50 text-blue-700", "공지": "bg-amber-50 text-amber-700" };
+  const iconBg: Record<string, string> = { "도움말": "bg-primary/10 text-primary", "가이드": "bg-green-50 dark:bg-green-500/15 text-green-600", "FAQ": "bg-primary/10 text-primary", "공지": "bg-amber-50 dark:bg-amber-500/15 text-amber-600" };
+  const badgeBg: Record<string, string> = { "도움말": "bg-primary/10 text-primary", "가이드": "bg-green-50 dark:bg-green-500/15 text-green-700", "FAQ": "bg-primary/10 text-primary", "공지": "bg-amber-50 dark:bg-amber-500/15 text-amber-700" };
 
   return (
     <div className="flex flex-col gap-2.5">
       {evidence.map((e) => (
         <a key={e.id} href={e.url}
-          className="flex gap-3 items-start bg-card border border-black/10 rounded-xl p-3.5 shadow-[0_1px_2px_rgba(15,23,42,0.04)] hover:border-blue-300 transition-colors">
-          <span className={`shrink-0 w-9 h-9 rounded-[9px] flex items-center justify-center ${iconBg[e.type] || "bg-blue-50 text-blue-600"}`}>
+          className="flex gap-3 items-start bg-card border border-border rounded-xl p-3.5 shadow-[0_1px_2px_rgba(15,23,42,0.04)] hover:border-primary/40 transition-colors">
+          <span className={`shrink-0 w-9 h-9 rounded-[9px] flex items-center justify-center ${iconBg[e.type] || "bg-primary/10 text-primary"}`}>
             {e.type === "가이드" ? <Shield size={17} /> : <FileText size={17} />}
           </span>
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-1.5 mb-0.5">
-              <span className={`text-[10px] font-bold rounded-full px-2 py-0.5 ${badgeBg[e.type] || "bg-blue-50 text-blue-700"}`}>{e.type}</span>
+              <span className={`text-[10px] font-bold rounded-full px-2 py-0.5 ${badgeBg[e.type] || "bg-primary/10 text-primary"}`}>{e.type}</span>
               <span className="text-[13.5px] font-bold">{e.title}</span>
             </div>
-            <div className="text-xs leading-[1.55] text-slate-500">{e.snippet}</div>
+            <div className="text-xs leading-[1.55] text-muted-foreground">{e.snippet}</div>
           </div>
-          <ArrowUpRight size={16} className="text-slate-300 shrink-0 mt-0.5" />
+          <ArrowUpRight size={16} className="text-muted-foreground shrink-0 mt-0.5" />
         </a>
       ))}
     </div>
   );
 }
 
-function TypingIndicator() {
+function TypingIndicator({ orchestrator }: { orchestrator?: boolean }) {
   return (
     <>
       <div className="flex gap-2.5 items-end">
-        <div className="w-7 h-7 rounded-full flex items-center justify-center text-white shrink-0"
-          style={{ background: "linear-gradient(135deg, #2563eb, #4f46e5)" }}>
-          <Sparkles size={14} />
-        </div>
-        <div className="bg-card border border-black/8 rounded-[15px] rounded-bl-[5px] px-4 py-3.5 flex gap-1.5 items-center">
+        {orchestrator ? (
+          <OrchestratorAvatar size={28} iconScale={0.5} />
+        ) : (
+          <div className="w-7 h-7 rounded-full flex items-center justify-center text-white shrink-0"
+            style={{ background: "linear-gradient(135deg, #2563eb, #4f46e5)" }}>
+            <Sparkles size={14} />
+          </div>
+        )}
+        <div className="bg-card border border-border rounded-[15px] rounded-bl-[5px] px-4 py-3.5 flex gap-1.5 items-center">
           {[0, 0.18, 0.36].map((delay, i) => (
-            <span key={i} className="ct-typing-dot w-[7px] h-[7px] rounded-full bg-slate-400"
+            <span key={i} className="ct-typing-dot w-[7px] h-[7px] rounded-full bg-muted-foreground"
               style={{ animation: "ctTyping 1.2s infinite ease-in-out", animationDelay: `${delay}s` }} />
           ))}
         </div>
       </div>
-      <div className="flex items-center gap-1.5 ml-[37px] text-[11px] text-slate-400">
+      <div className="flex items-center gap-1.5 ml-[37px] text-[11px] text-muted-foreground">
         <FileSearch size={12} />
         도움말 문서를 찾는 중이에요…
       </div>
@@ -396,25 +602,25 @@ function NotFoundView() {
         <Sparkles size={14} />
       </div>
       <div className="max-w-[86%] flex flex-col gap-2.5">
-        <div className="bg-card border border-black/8 rounded-[15px] rounded-tl-[5px] px-3.5 py-3">
+        <div className="bg-card border border-border rounded-[15px] rounded-tl-[5px] px-3.5 py-3">
           <div className="flex items-center gap-1.5 text-[12.5px] font-bold text-amber-700 mb-1.5">
             <SearchX size={15} />
             정확한 답변을 찾지 못했어요
           </div>
-          <div className="text-[13px] leading-[1.65] text-slate-600">
-            관련 문서를 확인했지만 확실한 안내가 없어서, <b className="text-[#030213]">잘못된 정보를 드리지 않으려고</b> 답변을 멈췄어요. 상담사가 정확히 도와드릴게요.
+          <div className="text-[13px] leading-[1.65] text-foreground">
+            관련 문서를 확인했지만 확실한 안내가 없어서, <b className="text-foreground">잘못된 정보를 드리지 않으려고</b> 답변을 멈췄어요. 상담사가 정확히 도와드릴게요.
           </div>
         </div>
-        <button className="flex items-center justify-center gap-1.5 w-full h-[42px] rounded-lg bg-[#030213] text-white text-[13.5px] font-bold hover:bg-[#1a1a2e] transition-colors">
+        <button className="flex items-center justify-center gap-1.5 w-full h-[42px] rounded-lg bg-primary text-white text-[13.5px] font-bold hover:brightness-110 transition-colors">
           <Headset size={16} />
           상담사 연결하기
         </button>
         <a href="/support/contact"
-          className="flex items-center justify-center gap-1.5 w-full h-10 rounded-lg border border-black/12 bg-card text-slate-700 text-[13px] font-semibold hover:bg-slate-50 transition-colors">
+          className="flex items-center justify-center gap-1.5 w-full h-10 rounded-lg border border-border bg-card text-foreground text-[13px] font-semibold hover:bg-secondary transition-colors">
           <PenLine size={15} />
           1:1 문의 남기기
         </a>
-        <div className="text-[11px] text-slate-400 text-center">
+        <div className="text-[11px] text-muted-foreground text-center">
           상담 가능 시간 평일 09:00–18:00 · 보통 5분 내 응답
         </div>
       </div>
@@ -425,25 +631,25 @@ function NotFoundView() {
 function DisconnectedView({ onRetry }: { onRetry: () => void }) {
   return (
     <>
-      <div className="flex-1 p-4 flex flex-col" style={{ background: "#f8fafc" }}>
+      <div className="flex-1 p-4 flex flex-col" style={{ background: "var(--secondary)" }}>
         <div className="mt-auto flex flex-col items-center text-center px-1.5 pb-1">
-          <div className="w-12 h-12 rounded-[14px] bg-amber-50 flex items-center justify-center text-amber-700 mb-3">
+          <div className="w-12 h-12 rounded-[14px] bg-amber-50 dark:bg-amber-500/15 flex items-center justify-center text-amber-700 mb-3">
             <WifiOff size={23} />
           </div>
           <div className="text-sm font-extrabold mb-1">AI 상담이 일시적으로 어려워요</div>
-          <div className="text-[12.5px] leading-relaxed text-slate-500 max-w-[262px]">
+          <div className="text-[12.5px] leading-relaxed text-muted-foreground max-w-[262px]">
             잠시 후 다시 시도하거나, 지금 바로 1:1 문의를 남기면 상담사가 순서대로 답변드려요.
           </div>
         </div>
       </div>
-      <div className="px-3 py-2.5 border-t border-black/8 flex flex-col gap-2.5">
+      <div className="px-3 py-2.5 border-t border-border flex flex-col gap-2.5">
         <a href="/support/contact"
-          className="flex items-center justify-center gap-1.5 w-full h-[42px] rounded-lg bg-[#030213] text-white text-[13.5px] font-bold hover:bg-[#1a1a2e] transition-colors">
+          className="flex items-center justify-center gap-1.5 w-full h-[42px] rounded-lg bg-primary text-white text-[13.5px] font-bold hover:brightness-110 transition-colors">
           <PenLine size={16} />
           1:1 문의 남기기
         </a>
         <button onClick={onRetry}
-          className="flex items-center justify-center gap-1.5 w-full h-9 rounded-lg bg-transparent text-slate-500 text-[12.5px] font-semibold hover:bg-slate-50 transition-colors">
+          className="flex items-center justify-center gap-1.5 w-full h-9 rounded-lg bg-transparent text-muted-foreground text-[12.5px] font-semibold hover:bg-secondary transition-colors">
           <RotateCw size={14} />
           다시 연결 시도
         </button>
@@ -457,7 +663,7 @@ function VoiceListeningView({ interimTranscript, onCancel, onConfirm }: {
 }) {
   return (
     <>
-      <div className="flex-1 p-4 flex flex-col items-center justify-center" style={{ background: "#f8fafc" }}>
+      <div className="flex-1 p-4 flex flex-col items-center justify-center" style={{ background: "var(--secondary)" }}>
         {/* Pulse rings + mic button */}
         <div className="relative w-[104px] h-[104px] flex items-center justify-center mb-2">
           {[0, 0.6, 1.2].map((delay, i) => (
@@ -484,15 +690,15 @@ function VoiceListeningView({ interimTranscript, onCancel, onConfirm }: {
 
         <div className="text-sm font-bold mb-2.5">듣고 있어요…</div>
         {interimTranscript && (
-          <div className="bg-card border border-black/8 rounded-xl px-3.5 py-2.5 text-[13px] leading-relaxed text-slate-700 max-w-[280px] text-center">
-            {interimTranscript}<span className="text-slate-400"> 확인…</span>
+          <div className="bg-card border border-border rounded-xl px-3.5 py-2.5 text-[13px] leading-relaxed text-foreground max-w-[280px] text-center">
+            {interimTranscript}<span className="text-muted-foreground"> 확인…</span>
           </div>
         )}
       </div>
 
-      <div className="px-3 py-3 border-t border-black/8 flex items-center justify-center gap-2.5">
+      <div className="px-3 py-3 border-t border-border flex items-center justify-center gap-2.5">
         <button onClick={onCancel}
-          className="flex items-center justify-center gap-1.5 h-[42px] px-5 border border-black/12 rounded-full bg-card text-slate-600 text-[13px] font-semibold hover:bg-slate-50 transition-colors">
+          className="flex items-center justify-center gap-1.5 h-[42px] px-5 border border-border rounded-full bg-card text-foreground text-[13px] font-semibold hover:bg-secondary transition-colors">
           <X size={15} />
           취소
         </button>
@@ -509,33 +715,33 @@ function VoiceListeningView({ interimTranscript, onCancel, onConfirm }: {
 function MicDeniedView({ onRetry, onTextMode }: { onRetry: () => void; onTextMode: () => void }) {
   return (
     <>
-      <div className="flex-1 p-4 flex flex-col items-center justify-center text-center" style={{ background: "#f8fafc" }}>
-        <div className="w-[54px] h-[54px] rounded-[15px] bg-red-50 flex items-center justify-center text-[#d4183d] mb-3.5">
+      <div className="flex-1 p-4 flex flex-col items-center justify-center text-center" style={{ background: "var(--secondary)" }}>
+        <div className="w-[54px] h-[54px] rounded-[15px] bg-red-50 dark:bg-red-500/15 flex items-center justify-center text-destructive mb-3.5">
           <MicOff size={25} />
         </div>
         <div className="text-[15px] font-extrabold mb-1.5">마이크 권한이 필요해요</div>
-        <div className="text-[12.5px] leading-relaxed text-slate-500 max-w-[266px] mb-4">
+        <div className="text-[12.5px] leading-relaxed text-muted-foreground max-w-[266px] mb-4">
           음성으로 물어보려면 브라우저에서 마이크 사용을 허용해 주세요. 그동안엔 텍스트로 입력할 수 있어요.
         </div>
-        <div className="w-full max-w-[288px] bg-card border border-black/8 rounded-xl p-3 text-left flex flex-col gap-2.5">
-          <div className="flex gap-2.5 items-start text-[12.5px] leading-[1.5] text-slate-600">
-            <span className="shrink-0 w-[18px] h-[18px] rounded-full bg-blue-50 text-blue-600 text-[11px] font-extrabold flex items-center justify-center">1</span>
+        <div className="w-full max-w-[288px] bg-card border border-border rounded-xl p-3 text-left flex flex-col gap-2.5">
+          <div className="flex gap-2.5 items-start text-[12.5px] leading-[1.5] text-foreground">
+            <span className="shrink-0 w-[18px] h-[18px] rounded-full bg-primary/10 text-primary text-[11px] font-extrabold flex items-center justify-center">1</span>
             주소창 왼쪽 자물쇠 아이콘을 누르세요
           </div>
-          <div className="flex gap-2.5 items-start text-[12.5px] leading-[1.5] text-slate-600">
-            <span className="shrink-0 w-[18px] h-[18px] rounded-full bg-blue-50 text-blue-600 text-[11px] font-extrabold flex items-center justify-center">2</span>
+          <div className="flex gap-2.5 items-start text-[12.5px] leading-[1.5] text-foreground">
+            <span className="shrink-0 w-[18px] h-[18px] rounded-full bg-primary/10 text-primary text-[11px] font-extrabold flex items-center justify-center">2</span>
             마이크 권한을 '허용'으로 바꿔주세요
           </div>
         </div>
       </div>
-      <div className="px-3 py-2.5 border-t border-black/8 flex flex-col gap-2.5">
+      <div className="px-3 py-2.5 border-t border-border flex flex-col gap-2.5">
         <button onClick={onRetry}
-          className="flex items-center justify-center gap-1.5 w-full h-[42px] rounded-lg bg-[#030213] text-white text-[13.5px] font-bold hover:bg-[#1a1a2e] transition-colors">
+          className="flex items-center justify-center gap-1.5 w-full h-[42px] rounded-lg bg-primary text-white text-[13.5px] font-bold hover:brightness-110 transition-colors">
           <RotateCw size={16} />
           권한 다시 요청
         </button>
         <button onClick={onTextMode}
-          className="flex items-center justify-center gap-1.5 w-full h-9 rounded-lg bg-transparent text-slate-500 text-[12.5px] font-semibold hover:bg-slate-50 transition-colors">
+          className="flex items-center justify-center gap-1.5 w-full h-9 rounded-lg bg-transparent text-muted-foreground text-[12.5px] font-semibold hover:bg-secondary transition-colors">
           <Keyboard size={14} />
           텍스트로 입력하기
         </button>
@@ -544,35 +750,39 @@ function MicDeniedView({ onRetry, onTextMode }: { onRetry: () => void; onTextMod
   );
 }
 
-function InputBar({ value, onChange, onSend, onMic, onKeyDown, disabled }: {
+function InputBar({ value, onChange, onSend, onMic, onKeyDown, disabled, orchestrator }: {
   value: string; onChange: (v: string) => void;
   onSend: () => void; onMic: () => void;
   onKeyDown: (e: React.KeyboardEvent) => void;
-  disabled: boolean;
+  disabled: boolean; orchestrator?: boolean;
 }) {
   const hasText = value.trim().length > 0;
 
   return (
-    <div className="px-3 py-2.5 border-t border-black/8 flex items-center gap-2">
-      <div className="flex-1 flex items-center gap-2 rounded-full px-4 pr-2 py-2" style={{ background: "#f3f3f5" }}>
+    <div className="px-3 py-2.5 border-t border-border flex items-center gap-2">
+      <div className="flex-1 flex items-center gap-2 rounded-full px-4 pr-2 py-2"
+        style={{ background: orchestrator ? "var(--orch-input-bg)" : "var(--secondary)" }}>
         <input
           value={value}
           onChange={(e) => onChange(e.target.value)}
           onKeyDown={onKeyDown}
-          placeholder="메시지를 입력하세요"
-          className="flex-1 bg-transparent border-none outline-none text-[13px] text-[#030213] placeholder:text-slate-400"
+          placeholder={orchestrator ? "메시지를 입력하거나 위 선택지를 눌러보세요" : "메시지를 입력하세요"}
+          className="flex-1 bg-transparent border-none outline-none text-[13px] text-foreground placeholder:text-muted-foreground"
           disabled={disabled}
         />
-        <button onClick={onMic}
-          className="w-[30px] h-[30px] rounded-full flex items-center justify-center text-slate-500 hover:bg-slate-200 transition-colors">
-          <Mic size={16} />
-        </button>
+        {/* mic 은 일반 모드에서만(오케스트레이터 모드는 입력 집중). */}
+        {!orchestrator && (
+          <button onClick={onMic}
+            className="w-[30px] h-[30px] rounded-full flex items-center justify-center text-muted-foreground hover:bg-secondary transition-colors">
+            <Mic size={16} />
+          </button>
+        )}
       </div>
       <button onClick={onSend} disabled={!hasText}
         className="w-10 h-10 rounded-full flex items-center justify-center text-white shrink-0 transition-all"
         style={{
-          background: hasText ? "linear-gradient(135deg, #2563eb, #4f46e5)" : "#e2e8f0",
-          color: hasText ? "#fff" : "#94a3b8",
+          background: !hasText ? "var(--muted)" : orchestrator ? "var(--gradient-orchestrator)" : "linear-gradient(135deg, #2563eb, #4f46e5)",
+          color: hasText ? "#fff" : "var(--muted-foreground)",
         }}>
         <ArrowUp size={17} />
       </button>

@@ -28,8 +28,7 @@ class DocumentTextExtractionTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             cache = Path(tmp) / "ocr-cache"
             original = {
-                "HOME": os.environ.get("HOME"),
-                "USERPROFILE": os.environ.get("USERPROFILE"),
+                "FLAGS_use_mkldnn": os.environ.get("FLAGS_use_mkldnn"),
                 "XDG_CACHE_HOME": os.environ.get("XDG_CACHE_HOME"),
                 "PADDLE_OCR_BASE_DIR": os.environ.get("PADDLE_OCR_BASE_DIR"),
             }
@@ -40,8 +39,8 @@ class DocumentTextExtractionTest(unittest.TestCase):
                 configured = module.configure_ocr_cache_env(cache)
 
                 self.assertEqual(configured, cache)
-                self.assertEqual(os.environ["HOME"], str(cache))
-                self.assertEqual(os.environ["USERPROFILE"], str(cache))
+                # PaddlePaddle 3.x 의 oneDNN 런타임 크래시를 막기 위해 mkldnn 을 끈다.
+                self.assertEqual(os.environ["FLAGS_use_mkldnn"], "0")
                 self.assertEqual(os.environ["XDG_CACHE_HOME"], str(cache / ".cache"))
                 self.assertEqual(os.environ["PADDLE_OCR_BASE_DIR"], str(cache / ".paddleocr"))
                 self.assertTrue(cache.exists())
@@ -132,6 +131,27 @@ class DocumentTextExtractionTest(unittest.TestCase):
         self.assertGreaterEqual(analysis["qualityScore"], 40)
         self.assertNotIn("section_keywords_missing", analysis["warnings"])
 
+    def test_section_hints_match_spaced_and_mixed_case_headers(self):
+        module = load_script()
+
+        # 띄어쓴 한글 헤더도 붙여쓰기 키워드와 매칭되어야 한다(예: "담당 업무" -> "담당업무").
+        spaced = "\n".join(
+            ["회사 소개", "담당 업무", "자격 요건", "근무 조건", "접수 방법"]
+        )
+        spaced_hints = module.section_hints(spaced)
+        for keyword in ("회사소개", "담당업무", "자격요건", "근무조건", "접수방법"):
+            self.assertIn(keyword, spaced_hints)
+
+        # 영어 섹션 키워드는 대소문자 무관하게 매칭되어야 한다.
+        english_hints = module.section_hints("Company\nRESPONSIBILITIES\nqualifications\napply")
+        for keyword in ("Company", "Responsibilities", "Qualifications", "Apply"):
+            self.assertIn(keyword, english_hints)
+
+        # 동일 개념의 띄어쓰기 변형은 한 번만 집계되어야 한다(함께할업무 / 함께할 업무).
+        dedup_hints = module.section_hints("우리와 함께할 업무를 소개합니다")
+        self.assertEqual(dedup_hints.count("함께할업무"), 1)
+        self.assertNotIn("함께할 업무", dedup_hints)
+
     def test_classifies_long_image_and_uses_existing_ocr_text(self):
         module = load_script()
         with tempfile.TemporaryDirectory() as tmp:
@@ -176,7 +196,7 @@ class DocumentTextExtractionTest(unittest.TestCase):
             self.assertTrue(result["fallbackEligible"])
             self.assertIn("ocr_not_executed", result["warnings"])
 
-    def test_image_pdf_uses_local_paddleocr_when_existing_ocr_is_missing(self):
+    def test_image_pdf_falls_back_to_line_ocr_when_ppstructure_unavailable(self):
         module = load_script()
 
         class FakePaddleOCR:
@@ -198,6 +218,11 @@ class DocumentTextExtractionTest(unittest.TestCase):
                 ]
                 return [[None, [line, 0.98]] for line in repeated]
 
+        # 레이아웃 인식(PPStructureV3)이 불가하면 기본 line-OCR 로 폴백한다.
+        def _ppstructure_unavailable():
+            raise RuntimeError("PPStructureV3 unavailable in test")
+
+        module.load_ppstructure_class = _ppstructure_unavailable
         module.load_paddleocr_class = lambda: FakePaddleOCR
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -209,9 +234,57 @@ class DocumentTextExtractionTest(unittest.TestCase):
 
             self.assertEqual(result["strategy"], "IMAGE_PDF_OCR")
             self.assertEqual(result["textSource"], "PADDLE_OCR")
+            self.assertIn("ppstructure_failed", result["warnings"])
             self.assertEqual(result["qualityStatus"], "PASS")
             self.assertGreaterEqual(result["qualityScore"], 70)
-            self.assertEqual(result["modelVersions"]["ocr"], "existing_output_or_paddleocr")
+            self.assertEqual(result["modelVersions"]["ocr"], "existing_output_or_ppstructurev3")
+            self.assertIn("Responsibilities", (output_dir / "scan.txt").read_text(encoding="utf-8"))
+
+    def test_image_pdf_uses_ppstructure_layout_text_when_available(self):
+        module = load_script()
+
+        class FakeBlock:
+            def __init__(self, label, content):
+                self.label = label
+                self.content = content
+
+        class FakeResult(dict):
+            pass
+
+        class FakePPStructure:
+            def __init__(self, **kwargs):
+                self.kwargs = kwargs
+
+            def predict(self, path, **kwargs):
+                blocks = [
+                    FakeBlock("text", "Company: Acme\nRole: Backend Engineer"),
+                    FakeBlock("text", "Responsibilities: build APIs and operate services"),
+                    FakeBlock("text", "Qualifications: Java Spring MySQL Docker testing"),
+                    FakeBlock("text", "Skills: Java Spring MySQL Docker Python React TypeScript"),
+                ] + [
+                    FakeBlock(
+                        "text",
+                        f"Responsibilities detail {index}: production ownership and collaboration experience required",
+                    )
+                    for index in range(12)
+                ]
+                result = FakeResult()
+                result["parsing_res_list"] = blocks
+                return [result]
+
+        module.load_ppstructure_class = lambda: FakePPStructure
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            pdf_path = root / "scan.pdf"
+            output_dir = root / "out"
+            pdf_path.write_bytes(b"%PDF-1.4\n% image-only placeholder\n")
+
+            result = module.extract_document(input_path=pdf_path, output_dir=output_dir)
+
+            self.assertEqual(result["strategy"], "IMAGE_PDF_OCR")
+            self.assertEqual(result["textSource"], "PPSTRUCTURE")
+            self.assertEqual(result["qualityStatus"], "PASS")
+            self.assertEqual(result["modelVersions"]["ocr"], "existing_output_or_ppstructurev3")
             self.assertIn("Responsibilities", (output_dir / "scan.txt").read_text(encoding="utf-8"))
 
     def test_batch_run_writes_report_without_warning_format_collision(self):

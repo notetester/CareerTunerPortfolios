@@ -14,7 +14,7 @@
         <if test="keyword != null">
             AND (email LIKE CONCAT('%', #{keyword}, '%') OR name LIKE CONCAT('%', #{keyword}, '%'))
         </if>
-        ORDER BY role DESC, created_at DESC
+        ORDER BY ${sortColumn} ${sortDir}, id DESC
         LIMIT #{limit}
     </select>
 
@@ -31,7 +31,7 @@
         <if test="keyword != null">
             AND (email LIKE CONCAT('%', #{keyword}, '%') OR name LIKE CONCAT('%', #{keyword}, '%'))
         </if>
-        ORDER BY created_at DESC
+        ORDER BY ${sortColumn} ${sortDir}, id DESC
         LIMIT #{limit}
     </select>
 
@@ -48,6 +48,14 @@
         LEFT JOIN admin_permission_group_item i ON i.group_code = g.group_code
         GROUP BY g.group_code, g.display_name, g.description, g.active, g.created_at, g.updated_at
         ORDER BY g.group_code
+    </select>
+
+    <select id="findGroupPermissions" resultType="com.careertuner.admin.superadmin.dto.AdminPermissionPolicyRow">
+        SELECT p.permission_code, p.display_name, p.description, p.active, p.created_at, p.updated_at
+        FROM admin_permission_group_item i
+        JOIN admin_permission_policy p ON p.permission_code = i.permission_code
+        WHERE i.group_code = #{groupCode}
+        ORDER BY p.permission_code
     </select>
 
     <select id="findUserPermissions" resultType="com.careertuner.admin.superadmin.dto.AdminPermissionAssignmentRow">
@@ -78,7 +86,7 @@
                 a.target_user_id = #{userId}
             </if>
         </where>
-        ORDER BY a.created_at DESC, a.id DESC
+        ORDER BY ${sortColumn} ${sortDir}, a.id DESC
         LIMIT #{limit}
     </select>
 
@@ -136,6 +144,23 @@
         WHERE user_id = #{userId} AND permission_code = #{permissionCode} AND revoked_at IS NULL
     </update>
 
+    <update id="revokeAllPermissionsForUser">
+        UPDATE admin_user_permission
+        SET revoked_at = COALESCE(revoked_at, NOW())
+        WHERE user_id = #{userId} AND revoked_at IS NULL
+    </update>
+
+    <update id="revokePermissionsNotIn">
+        UPDATE admin_user_permission
+        SET revoked_at = COALESCE(revoked_at, NOW())
+        WHERE user_id = #{userId}
+          AND revoked_at IS NULL
+          AND permission_code NOT IN
+          <foreach collection="permissionCodes" item="permissionCode" open="(" separator="," close=")">
+              #{permissionCode}
+          </foreach>
+    </update>
+
     <insert id="assignGroup">
         INSERT INTO admin_user_group (user_id, group_code, granted_by)
         SELECT #{userId}, #{groupCode}, #{actorId}
@@ -152,6 +177,23 @@
         UPDATE admin_user_group
         SET revoked_at = COALESCE(revoked_at, NOW())
         WHERE user_id = #{userId} AND group_code = #{groupCode} AND revoked_at IS NULL
+    </update>
+
+    <update id="revokeAllGroupsForUser">
+        UPDATE admin_user_group
+        SET revoked_at = COALESCE(revoked_at, NOW())
+        WHERE user_id = #{userId} AND revoked_at IS NULL
+    </update>
+
+    <update id="revokeGroupsNotIn">
+        UPDATE admin_user_group
+        SET revoked_at = COALESCE(revoked_at, NOW())
+        WHERE user_id = #{userId}
+          AND revoked_at IS NULL
+          AND group_code NOT IN
+          <foreach collection="groupCodes" item="groupCode" open="(" separator="," close=")">
+              #{groupCode}
+          </foreach>
     </update>
 
     <insert id="insertAudit">

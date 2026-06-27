@@ -19,11 +19,18 @@ import {
 } from "../utils/applicationExtractionTracker";
 
 const POLL_INTERVAL_MS = 4000;
+// [임시 방어] 백엔드가 stuck 추출 job 을 계속 active 로 반환하면(근본 원인은 B 도메인의
+// 추출 파이프라인/데이터) 진행 토스트가 영영 안 닫혀 앱 화면/터치를 막는다. 이 시간을 넘겨
+// "진행 중" 이 지속되면 stuck 으로 보고 토스트를 닫고 억제한다. 정상 추출 상한
+// (JOB_POSTING_AI_WORKER_TIMEOUT≈120s)보다 길게 둬 정상 흐름은 건드리지 않는다.
+const STUCK_LOADING_TIMEOUT_MS = 180000;
 
 export function ApplicationExtractionMonitor() {
   const { loading: authLoading, isAuthenticated } = useAuth();
   const fetchNotifications = useNotificationStore((state) => state.fetchNotifications);
   const loadingToastIdRef = useRef<number | null>(null);
+  const loadingShownAtRef = useRef(0);
+  const loadingSuppressedRef = useRef(false);
   const activeJobsRef = useRef<Map<number, ApplicationCaseExtraction>>(new Map());
   const handledTerminalJobIdsRef = useRef<Set<number>>(new Set());
   const pollingRef = useRef(false);
@@ -36,15 +43,27 @@ export function ApplicationExtractionMonitor() {
   }, []);
 
   const syncLoadingToast = useCallback((activeCount: number) => {
-    if (activeCount > 0 && loadingToastIdRef.current === null) {
-      loadingToastIdRef.current = toast.loading(
-        activeCount === 1 ? "공고문 추출이 진행 중입니다." : `공고문 추출 ${activeCount}건이 진행 중입니다.`,
-      );
+    if (activeCount === 0) {
+      loadingSuppressedRef.current = false;
+      dismissLoadingToast();
       return;
     }
 
-    if (activeCount === 0) {
+    // stuck 으로 판정돼 억제 중이면 더 띄우지 않는다(active 가 0 이 되면 위에서 해제).
+    if (loadingSuppressedRef.current) return;
+
+    if (loadingToastIdRef.current === null) {
+      loadingToastIdRef.current = toast.loading(
+        activeCount === 1 ? "공고문 추출이 진행 중입니다." : `공고문 추출 ${activeCount}건이 진행 중입니다.`,
+      );
+      loadingShownAtRef.current = Date.now();
+      return;
+    }
+
+    // 이미 떠 있는데 정상 상한을 넘겨 계속 active → stuck 으로 보고 닫고 억제한다.
+    if (Date.now() - loadingShownAtRef.current > STUCK_LOADING_TIMEOUT_MS) {
       dismissLoadingToast();
+      loadingSuppressedRef.current = true;
     }
   }, [dismissLoadingToast]);
 

@@ -37,15 +37,19 @@ public class SuperAdminController {
     @GetMapping("/admins")
     public ApiResponse<List<AdminAccountRow>> admins(@AuthenticationPrincipal AuthUser authUser,
                                                      @RequestParam(required = false) String keyword,
+                                                     @RequestParam(required = false) String sortBy,
+                                                     @RequestParam(required = false) String sortDir,
                                                      @RequestParam(defaultValue = "100") int limit) {
-        return ApiResponse.ok(service.admins(authUser, keyword, limit));
+        return ApiResponse.ok(service.admins(authUser, keyword, sortBy, sortDir, limit));
     }
 
     @GetMapping("/users/search")
     public ApiResponse<List<AdminAccountRow>> searchUsers(@AuthenticationPrincipal AuthUser authUser,
                                                           @RequestParam(required = false) String keyword,
+                                                          @RequestParam(required = false) String sortBy,
+                                                          @RequestParam(required = false) String sortDir,
                                                           @RequestParam(defaultValue = "50") int limit) {
-        return ApiResponse.ok(service.searchUsers(authUser, keyword, limit));
+        return ApiResponse.ok(service.searchUsers(authUser, keyword, sortBy, sortDir, limit));
     }
 
     @GetMapping("/admins/{userId}")
@@ -148,7 +152,9 @@ public class SuperAdminController {
     @GetMapping("/audit")
     public ApiResponse<List<AdminPermissionAuditRow>> audit(@AuthenticationPrincipal AuthUser authUser,
                                                             @RequestParam(required = false) Long userId,
+                                                            @RequestParam(required = false) String sortBy,
+                                                            @RequestParam(required = false) String sortDir,
                                                             @RequestParam(defaultValue = "100") int limit) {
-        return ApiResponse.ok(service.audit(authUser, userId, limit));
+        return ApiResponse.ok(service.audit(authUser, userId, sortBy, sortDir, limit));
     }
 }

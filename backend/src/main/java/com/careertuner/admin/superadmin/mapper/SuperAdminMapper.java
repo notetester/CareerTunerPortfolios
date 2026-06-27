@@ -15,21 +15,32 @@ import com.careertuner.admin.superadmin.dto.AdminPermissionPolicyRow;
 @Mapper
 public interface SuperAdminMapper {
 
-    List<AdminAccountRow> findAdmins(@Param("keyword") String keyword, @Param("limit") int limit);
+    List<AdminAccountRow> findAdmins(@Param("keyword") String keyword,
+                                     @Param("sortColumn") String sortColumn,
+                                     @Param("sortDir") String sortDir,
+                                     @Param("limit") int limit);
 
     AdminAccountRow findAdmin(Long userId);
 
-    List<AdminAccountRow> searchUsers(@Param("keyword") String keyword, @Param("limit") int limit);
+    List<AdminAccountRow> searchUsers(@Param("keyword") String keyword,
+                                      @Param("sortColumn") String sortColumn,
+                                      @Param("sortDir") String sortDir,
+                                      @Param("limit") int limit);
 
     List<AdminPermissionPolicyRow> findPermissions();
 
     List<AdminPermissionGroupRow> findGroups();
 
+    List<AdminPermissionPolicyRow> findGroupPermissions(String groupCode);
+
     List<AdminPermissionAssignmentRow> findUserPermissions(Long userId);
 
     List<AdminGroupAssignmentRow> findUserGroups(Long userId);
 
-    List<AdminPermissionAuditRow> findAudit(@Param("userId") Long userId, @Param("limit") int limit);
+    List<AdminPermissionAuditRow> findAudit(@Param("userId") Long userId,
+                                            @Param("sortColumn") String sortColumn,
+                                            @Param("sortDir") String sortDir,
+                                            @Param("limit") int limit);
 
     void updateRole(@Param("userId") Long userId, @Param("role") String role);
 
@@ -53,10 +64,18 @@ public interface SuperAdminMapper {
 
     void revokePermission(@Param("userId") Long userId, @Param("permissionCode") String permissionCode);
 
+    void revokeAllPermissionsForUser(@Param("userId") Long userId);
+
+    void revokePermissionsNotIn(@Param("userId") Long userId, @Param("permissionCodes") List<String> permissionCodes);
+
     void assignGroup(@Param("userId") Long userId, @Param("groupCode") String groupCode,
                      @Param("actorId") Long actorId);
 
     void revokeGroup(@Param("userId") Long userId, @Param("groupCode") String groupCode);
+
+    void revokeAllGroupsForUser(@Param("userId") Long userId);
+
+    void revokeGroupsNotIn(@Param("userId") Long userId, @Param("groupCodes") List<String> groupCodes);
 
     void insertAudit(@Param("actorId") Long actorId, @Param("targetUserId") Long targetUserId,
                      @Param("actionType") String actionType, @Param("permissionCode") String permissionCode,

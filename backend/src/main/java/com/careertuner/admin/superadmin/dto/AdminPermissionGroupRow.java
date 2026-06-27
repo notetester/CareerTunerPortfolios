@@ -1,6 +1,8 @@
 package com.careertuner.admin.superadmin.dto;
 
 import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.List;
 
 import lombok.Data;
 
@@ -13,4 +15,5 @@ public class AdminPermissionGroupRow {
     private long itemCount;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
+    private List<AdminPermissionPolicyRow> permissions = new ArrayList<>();
 }

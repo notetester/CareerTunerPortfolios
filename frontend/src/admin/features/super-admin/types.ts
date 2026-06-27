@@ -43,6 +43,7 @@ export interface AdminPermissionGroupRow {
   description: string | null;
   active: boolean;
   itemCount: number;
+  permissions?: AdminPermissionPolicyRow[];
   createdAt: string;
   updatedAt: string;
 }

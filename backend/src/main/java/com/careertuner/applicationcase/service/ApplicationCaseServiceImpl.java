@@ -23,6 +23,7 @@ import com.careertuner.applicationcase.dto.CreateApplicationCaseFromJobPostingRe
 import com.careertuner.applicationcase.dto.CreateApplicationCaseRequest;
 import com.careertuner.applicationcase.dto.FitAnalysisResponse;
 import com.careertuner.applicationcase.dto.JobPostingMetadataResponse;
+import com.careertuner.applicationcase.dto.ConfirmJobPostingExtractionRequest;
 import com.careertuner.applicationcase.dto.ReviewJobPostingExtractionRequest;
 import com.careertuner.applicationcase.dto.UpdateApplicationCaseRequest;
 import com.careertuner.applicationcase.mapper.ApplicationCaseExtractionMapper;
@@ -55,6 +56,7 @@ public class ApplicationCaseServiceImpl implements ApplicationCaseService {
     private static final String EXTRACTION_STATUS_QUEUED = "QUEUED";
     private static final String EXTRACTION_STATUS_FAILED = "FAILED";
     private static final String EXTRACTION_STATUS_SUCCEEDED = "SUCCEEDED";
+    private static final String EXTRACTION_QUALITY_PASS = "PASS";
     private static final String EXTRACTION_QUALITY_REVIEW_REQUIRED = "REVIEW_REQUIRED";
     private static final String NOTIFICATION_TARGET_TYPE = "APPLICATION_CASE";
     private static final String REVIEW_NOTIFICATION_TYPE = "JOB_POSTING_EXTRACTION_REVIEW_REQUIRED";
@@ -337,7 +339,39 @@ public class ApplicationCaseServiceImpl implements ApplicationCaseService {
             throw new BusinessException(ErrorCode.CONFLICT, "Only REVIEW_REQUIRED extraction jobs can be reviewed.");
         }
 
-        String reviewedText = requiredText(request.extractedText(), "extractedText");
+        return applyConfirmedPosting(userId, applicationCaseId, latestExtraction, request.extractedText());
+    }
+
+    @Override
+    @Transactional
+    public ApplicationCaseExtractionResponse confirmEditedPosting(Long userId,
+                                                                  Long applicationCaseId,
+                                                                  ConfirmJobPostingExtractionRequest request) {
+        accessService.requireOwned(userId, applicationCaseId);
+        ApplicationCaseExtraction latestExtraction = extractionMapper.findLatestExtractionByApplicationCaseId(applicationCaseId);
+        if (latestExtraction == null) {
+            throw new BusinessException(ErrorCode.NOT_FOUND, "Job posting extraction job was not found.");
+        }
+        // 사용자가 직접 고친 텍스트는 OCR/추출 품질 게이트를 다시 탈 대상이 아니라 검수된 입력으로 본다.
+        // 추출이 끝난(PASS 또는 REVIEW_REQUIRED) 건만 확정 가능. 진행 중/실패 건은 거부한다.
+        if (!EXTRACTION_STATUS_SUCCEEDED.equals(latestExtraction.getStatus())
+                || !(EXTRACTION_QUALITY_PASS.equals(latestExtraction.getQualityStatus())
+                        || EXTRACTION_QUALITY_REVIEW_REQUIRED.equals(latestExtraction.getQualityStatus()))) {
+            throw new BusinessException(ErrorCode.CONFLICT, "Only a completed extraction can be confirmed.");
+        }
+
+        return applyConfirmedPosting(userId, applicationCaseId, latestExtraction, request.extractedText());
+    }
+
+    /**
+     * 사용자가 확정한 텍스트를 검수된 최신 공고문(MANUAL revision)으로 저장하고, OCR/추출을 다시 돌리지 않고
+     * 분석 파이프라인만 1회 실행한다. 검수(review)와 수정 확정(confirm)이 공유하는 내부 로직이다.
+     */
+    private ApplicationCaseExtractionResponse applyConfirmedPosting(Long userId,
+                                                                    Long applicationCaseId,
+                                                                    ApplicationCaseExtraction latestExtraction,
+                                                                    String requestedText) {
+        String reviewedText = requiredText(requestedText, "extractedText");
         JobPostingResponse reviewedPosting = jobPostingService.saveJobPosting(
                 userId,
                 applicationCaseId,
@@ -507,7 +541,7 @@ public class ApplicationCaseServiceImpl implements ApplicationCaseService {
 
     private static String requiredText(String value, String fieldName) {
         if (isBlank(value)) {
-            throw new BusinessException(ErrorCode.INVALID_INPUT, "%s 媛믪씠 ?꾩슂?⑸땲??".formatted(fieldName));
+            throw new BusinessException(ErrorCode.INVALID_INPUT, "%s 값이 필요합니다.".formatted(fieldName));
         }
         return value.trim();
     }
@@ -563,7 +597,7 @@ public class ApplicationCaseServiceImpl implements ApplicationCaseService {
         Set<Long> uniqueIds = new LinkedHashSet<>();
         for (Long id : applicationCaseIds) {
             if (id == null || id <= 0) {
-                throw new BusinessException(ErrorCode.INVALID_INPUT, "applicationCaseIds 媛믪씠 ?щ컮瑜댁? ?딆뒿?덈떎.");
+                throw new BusinessException(ErrorCode.INVALID_INPUT, "applicationCaseIds 값이 올바르지 않습니다.");
             }
             uniqueIds.add(id);
         }
@@ -579,7 +613,7 @@ public class ApplicationCaseServiceImpl implements ApplicationCaseService {
         }
         String normalized = view.trim().toUpperCase(Locale.ROOT);
         if (!LIST_VIEWS.contains(normalized)) {
-            throw new BusinessException(ErrorCode.INVALID_INPUT, "view 媛믪씠 ?щ컮瑜댁? ?딆뒿?덈떎.");
+            throw new BusinessException(ErrorCode.INVALID_INPUT, "view 값이 올바르지 않습니다.");
         }
         return normalized;
     }
@@ -587,7 +621,7 @@ public class ApplicationCaseServiceImpl implements ApplicationCaseService {
     private static String normalizeOption(String value, String defaultValue, Set<String> allowedValues, String fieldName) {
         String normalized = isBlank(value) ? defaultValue : value.trim().toUpperCase(Locale.ROOT);
         if (normalized == null || !allowedValues.contains(normalized)) {
-            throw new BusinessException(ErrorCode.INVALID_INPUT, "%s 媛믪씠 ?щ컮瑜댁? ?딆뒿?덈떎.".formatted(fieldName));
+            throw new BusinessException(ErrorCode.INVALID_INPUT, "%s 값이 올바르지 않습니다.".formatted(fieldName));
         }
         return normalized;
     }

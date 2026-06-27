@@ -6,6 +6,7 @@ import { Input } from "@/app/components/ui/input";
 import { Textarea } from "@/app/components/ui/textarea";
 import type { ApplicationCaseExtraction, ApplicationSourceType } from "../types/applicationCase";
 import { isApplicationCaseExtractionActive, isApplicationCaseExtractionReviewRequired } from "../types/applicationCase";
+import { shouldDisableSaveForReview } from "../utils/jobPostingConfirm";
 import type { JobPosting, JobPostingRequest } from "../types/jobPosting";
 import { formatKoreaDateTime } from "../utils/dateFormat";
 import {
@@ -25,7 +26,9 @@ interface JobPostingPanelProps {
   extraction?: ApplicationCaseExtraction | null;
   retryingExtraction?: boolean;
   reviewingExtraction?: boolean;
+  confirmingExtraction?: boolean;
   reviewExtractionError?: string | null;
+  confirmExtractionError?: string | null;
   onSave(request: JobPostingRequest): Promise<JobPosting | null>;
   onUpload(sourceType: Extract<ApplicationSourceType, "PDF" | "IMAGE">, file: File): Promise<JobPosting | null>;
   onRetryExtraction?(): Promise<ApplicationCaseExtraction | null>;
@@ -72,7 +75,9 @@ export function JobPostingPanel({
   extraction,
   retryingExtraction = false,
   reviewingExtraction = false,
+  confirmingExtraction = false,
   reviewExtractionError = null,
+  confirmExtractionError = null,
   onSave,
   onUpload,
   onRetryExtraction,
@@ -94,6 +99,21 @@ export function JobPostingPanel({
   const [localError, setLocalError] = useState<string | null>(null);
   const extractionActive = extraction ? isApplicationCaseExtractionActive(extraction.status) : false;
   const extractionReviewRequired = isApplicationCaseExtractionReviewRequired(extraction);
+  const extractionPass = extraction?.status === "SUCCEEDED" && extraction.qualityStatus === "PASS";
+  // 저장 버튼이 만들 요청을 현재 폼 상태로 미리 구성해(handleSave와 동일 형태) 라우팅 판정에 사용한다.
+  const pendingSaveRequest = useMemo<JobPostingRequest>(() => {
+    const value = text.trim();
+    return {
+      sourceType,
+      uploadedFileUrl: sourceUrl.trim() || null,
+      originalText: isTextSource(sourceType) ? value : null,
+      extractedText: value || null,
+    };
+  }, [sourceType, text, sourceUrl]);
+  // REVIEW_REQUIRED + 소스/URL 변경 없음 → 일반 저장을 막고 "검수 확정" 버튼으로 유도한다.
+  const disableSaveForReview = jobPosting
+    ? shouldDisableSaveForReview({ request: pendingSaveRequest, jobPosting, extraction })
+    : false;
 
   useEffect(() => setText(initialText), [initialText]);
   useEffect(() => setSourceUrl(initialUrl), [initialUrl]);
@@ -211,7 +231,7 @@ export function JobPostingPanel({
                 type="button"
                 size="sm"
                 variant="outline"
-                disabled={loading || uploading || saving || extractionActive}
+                disabled={loading || uploading || saving || reviewingExtraction || confirmingExtraction || extractionActive}
                 onClick={() => void handleUpload()}
               >
                 {uploading ? <Loader2 className="size-4 animate-spin" /> : <Upload className="size-4" />}
@@ -237,7 +257,7 @@ export function JobPostingPanel({
                 size="sm"
                 variant="outline"
                 className="border-amber-200 text-amber-700 hover:bg-amber-50 hover:text-amber-800"
-                disabled={reviewingExtraction}
+                disabled={reviewingExtraction || saving || uploading || confirmingExtraction}
                 onClick={() => void handleReviewExtraction()}
               >
                 {reviewingExtraction ? <Loader2 className="size-4 animate-spin" /> : <CheckCircle2 className="size-4" />}
@@ -248,10 +268,10 @@ export function JobPostingPanel({
               type="button"
               size="sm"
               className="bg-blue-600 text-white hover:bg-blue-700"
-              disabled={loading || saving || uploading || extractionActive}
+              disabled={loading || saving || uploading || reviewingExtraction || confirmingExtraction || extractionActive || disableSaveForReview}
               onClick={() => void handleSave()}
             >
-              {saving ? <Loader2 className="size-4 animate-spin" /> : <Save className="size-4" />}
+              {saving || confirmingExtraction ? <Loader2 className="size-4 animate-spin" /> : <Save className="size-4" />}
               {sourceType === "URL" ? "URL 저장" : "저장"}
             </Button>
           </div>
@@ -352,7 +372,7 @@ export function JobPostingPanel({
                   <div className="font-semibold text-slate-600">추출 방식</div>
                   <p>파일은 {JOB_POSTING_MAX_FILE_SIZE_LABEL} 이하만 업로드할 수 있습니다.</p>
                   <p>텍스트 PDF는 서버에서 바로 추출합니다.</p>
-                  <p>이미지와 스캔 PDF는 OpenAI OCR을 사용하며 완료까지 시간이 걸릴 수 있습니다.</p>
+                  <p>이미지와 스캔 PDF는 자체 OCR로 텍스트를 추출하며 완료까지 시간이 걸릴 수 있습니다.</p>
                 </div>
               </div>
             )}
@@ -367,12 +387,22 @@ export function JobPostingPanel({
               }
               className="min-h-72 resize-y bg-card text-sm leading-6"
             />
+
+            {extractionReviewRequired ? (
+              <p className="text-xs leading-5 text-slate-500">
+                검수가 필요한 공고문은 텍스트를 보정한 뒤 [검수 확정]을 눌러 분석을 이어가세요. 소스나 URL을 바꾸면 새 추출 작업이 시작됩니다.
+              </p>
+            ) : extractionPass ? (
+              <p className="text-xs leading-5 text-slate-500">
+                추출 완료된 공고문을 수정해 저장하면, 수정된 텍스트 기준으로 분석만 다시 갱신됩니다. 소스나 URL을 바꾸면 새 추출 작업이 시작됩니다.
+              </p>
+            ) : null}
           </>
         )}
 
-        {(localError || error || reviewExtractionError) && (
+        {(localError || error || reviewExtractionError || confirmExtractionError) && (
           <div className="break-words rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
-            {localError ?? error ?? reviewExtractionError}
+            {localError ?? error ?? reviewExtractionError ?? confirmExtractionError}
           </div>
         )}
 

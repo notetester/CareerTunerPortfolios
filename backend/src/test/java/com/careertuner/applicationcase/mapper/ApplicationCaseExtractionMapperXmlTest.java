@@ -45,7 +45,7 @@ class ApplicationCaseExtractionMapperXmlTest {
         String staleQuery = xml.substring(selectStart, xml.indexOf("</select>", selectStart));
 
         assertThat(staleQuery).contains("status = 'RUNNING'");
-        assertThat(staleQuery).contains("started_at &lt; #{startedBefore}");
+        assertThat(staleQuery).contains("started_at &lt; DATE_SUB(NOW(), INTERVAL #{timeoutMinutes} MINUTE)");
         assertThat(staleQuery).contains("ORDER BY started_at ASC, id ASC");
         assertThat(staleQuery).contains("LIMIT #{limit}");
     }
@@ -61,6 +61,18 @@ class ApplicationCaseExtractionMapperXmlTest {
         assertThat(lockQuery).contains("WHERE id = #{id}");
         assertThat(lockQuery).contains("status = 'RUNNING'");
         assertThat(lockQuery).contains("FOR UPDATE");
+    }
+
+    @Test
+    void reviewedExtractionUpdateAllowsPassAndReviewRequiredStatuses() throws Exception {
+        String xml = Files.readString(Path.of(
+                "src/main/resources/mapper/applicationcase/ApplicationCaseExtractionMapper.xml"));
+        int updateStart = xml.indexOf("<update id=\"markExtractionReviewed\"");
+        assertThat(updateStart).isGreaterThanOrEqualTo(0);
+        String reviewUpdate = xml.substring(updateStart, xml.indexOf("</update>", updateStart));
+
+        assertThat(reviewUpdate).contains("status = 'SUCCEEDED'");
+        assertThat(reviewUpdate).contains("quality_status IN ('PASS', 'REVIEW_REQUIRED')");
     }
 
     @Test

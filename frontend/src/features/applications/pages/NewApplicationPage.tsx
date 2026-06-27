@@ -29,22 +29,27 @@ import {
   SelectValue,
 } from "@/app/components/ui/select";
 import { Textarea } from "@/app/components/ui/textarea";
-import { createJobAnalysis, createCompanyAnalysis } from "../api/analysisApi";
 import {
   createApplicationCaseFromJobPosting,
   getApplicationCase,
+  confirmApplicationCaseExtraction,
   getLatestApplicationCaseExtraction,
   retryApplicationCaseExtraction,
+  reviewApplicationCaseExtraction,
   updateApplicationCase,
   uploadApplicationCaseFromJobPosting,
   type CreateApplicationCaseFromJobPostingResponse,
 } from "../api/applicationCasesApi";
-import { getJobPosting, saveJobPosting } from "../api/jobPostingsApi";
+import { getJobPosting } from "../api/jobPostingsApi";
 import { ApplicationExtractionBadge, getApplicationExtractionStatusLabel } from "../components/ApplicationExtractionBadge";
 import { LoginRequiredState } from "../components/LoginRequiredState";
 import type { ApplicationCase, ApplicationCaseExtraction, ApplicationSourceType } from "../types/applicationCase";
-import { APPLICATION_SOURCE_OPTIONS, isApplicationCaseExtractionActive } from "../types/applicationCase";
-import type { JobPosting, JobPostingRequest } from "../types/jobPosting";
+import {
+  APPLICATION_SOURCE_OPTIONS,
+  isApplicationCaseExtractionActive,
+  isApplicationCaseExtractionReviewRequired,
+} from "../types/applicationCase";
+import type { JobPosting } from "../types/jobPosting";
 import { registerApplicationCaseExtraction } from "../utils/applicationExtractionTracker";
 import {
   JOB_POSTING_IMAGE_ACCEPT,
@@ -72,7 +77,7 @@ interface PostingFormState {
 const steps: { label: string; icon: typeof Briefcase }[] = [
   { label: "공고문 등록", icon: FileText },
   { label: "추출 확인 + 지원 건 정보 확인", icon: SearchCheck },
-  { label: "분석 설정", icon: Sparkles },
+  { label: "분석 결과 확인", icon: Sparkles },
 ];
 
 const EXTRACTION_POLL_INTERVAL_MS = 3000;
@@ -98,24 +103,6 @@ function isHttpPostingUrl(value: string): boolean {
   }
 }
 
-function buildRevisionRequest(jobPosting: JobPosting, confirmedText: string): JobPostingRequest {
-  if (isTextSource(jobPosting.sourceType)) {
-    return {
-      originalText: confirmedText,
-      extractedText: null,
-      uploadedFileUrl: null,
-      sourceType: jobPosting.sourceType,
-    };
-  }
-
-  return {
-    originalText: jobPosting.originalText,
-    extractedText: confirmedText,
-    uploadedFileUrl: jobPosting.uploadedFileUrl,
-    sourceType: jobPosting.sourceType,
-  };
-}
-
 export function NewApplicationPage() {
   const navigate = useNavigate();
   const { loading: authLoading, isAuthenticated } = useAuth();
@@ -124,8 +111,9 @@ export function NewApplicationPage() {
   const [jobPosting, setJobPosting] = useState<JobPosting | null>(null);
   const [extractionJob, setExtractionJob] = useState<ApplicationCaseExtraction | null>(null);
   const [confirmedText, setConfirmedText] = useState("");
-  const [includeCompanyAnalysis, setIncludeCompanyAnalysis] = useState(false);
-  const [jobAnalysisCompleted, setJobAnalysisCompleted] = useState(false);
+  // 추출/검수 통과 시 백엔드 자동 파이프라인이 공고·기업 분석을 생성한다(단일 진실원).
+  // 이 값은 결과 화면 이동 시 어느 탭으로 보낼지만 결정한다(분석 생성과 무관).
+  const [landOnCompanyAnalysis, setLandOnCompanyAnalysis] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const appliedExtractionIdsRef = useRef<Set<number>>(new Set());
@@ -145,6 +133,7 @@ export function NewApplicationPage() {
 
   const activePostingText = useMemo(() => displayPostingText(jobPosting), [jobPosting]);
   const extractionActive = extractionJob ? isApplicationCaseExtractionActive(extractionJob.status) : false;
+  const extractionReviewRequired = isApplicationCaseExtractionReviewRequired(extractionJob);
   const activeExtractionCaseId = extractionActive ? createdCase?.id ?? null : null;
   const activeExtractionId = extractionActive ? extractionJob?.id ?? null : null;
 
@@ -202,7 +191,6 @@ export function NewApplicationPage() {
       deadlineDate: applicationCase.deadlineDate ?? "",
       favorite: applicationCase.favorite,
     });
-    setJobAnalysisCompleted(false);
   }, []);
 
   const applyCompletedExtraction = useCallback(async (extraction: ApplicationCaseExtraction) => {
@@ -235,7 +223,6 @@ export function NewApplicationPage() {
         : applicationCase.deadlineDate ?? "",
       favorite: applicationCase.favorite,
     });
-    setJobAnalysisCompleted(false);
     setStep(1);
   };
 
@@ -349,12 +336,31 @@ export function NewApplicationPage() {
       throw new Error("확인된 공고문 내용이 필요합니다.");
     }
 
+    // 분석 실행의 단일 진실원은 백엔드 자동 파이프라인이다. 검수/수정 확정 API가 텍스트를 확정하고
+    // OCR 재실행 없이 분석만 1회 갱신하므로, 프런트는 createJobAnalysis 등을 직접 호출하지 않는다.
     let nextPosting = jobPosting;
-    if (trimmedPostingText !== activePostingText.trim()) {
-      nextPosting = await saveJobPosting(createdCase.id, buildRevisionRequest(jobPosting, trimmedPostingText));
-      setJobPosting(nextPosting);
-      setConfirmedText(displayPostingText(nextPosting));
-      setJobAnalysisCompleted(false);
+    if (isApplicationCaseExtractionReviewRequired(extractionJob)) {
+      // 품질 게이트 REVIEW_REQUIRED → 검수 확정(review).
+      const reviewed = await reviewApplicationCaseExtraction(createdCase.id, trimmedPostingText);
+      setExtractionJob(reviewed);
+      registerApplicationCaseExtraction(reviewed);
+      const reviewedPosting = await getJobPosting(createdCase.id);
+      if (reviewedPosting) {
+        nextPosting = reviewedPosting;
+        setJobPosting(reviewedPosting);
+        setConfirmedText(displayPostingText(reviewedPosting));
+      }
+    } else if (trimmedPostingText !== activePostingText.trim()) {
+      // PASS 상태에서 공고문 수정 → 수정 확정(confirm). TEXT/URL/PDF/IMAGE 모두 동일 경로.
+      const confirmed = await confirmApplicationCaseExtraction(createdCase.id, trimmedPostingText);
+      setExtractionJob(confirmed);
+      registerApplicationCaseExtraction(confirmed);
+      const confirmedPosting = await getJobPosting(createdCase.id);
+      if (confirmedPosting) {
+        nextPosting = confirmedPosting;
+        setJobPosting(confirmedPosting);
+        setConfirmedText(displayPostingText(confirmedPosting));
+      }
     }
 
     const updated = await updateApplicationCase(createdCase.id, {
@@ -403,7 +409,6 @@ export function NewApplicationPage() {
       setExtractionJob(nextExtraction);
       registerApplicationCaseExtraction(nextExtraction);
       setConfirmedText("");
-      setJobAnalysisCompleted(false);
       setStep(1);
     } catch (err) {
       setError(err instanceof Error ? err.message : "공고문 추출을 다시 시작하지 못했습니다.");
@@ -425,26 +430,10 @@ export function NewApplicationPage() {
     }
   };
 
-  const handleStartAnalysis = async () => {
+  const handleStartAnalysis = () => {
     if (!createdCase) return;
-    setBusy(true);
-    setError(null);
-    try {
-      if (!jobAnalysisCompleted) {
-        await createJobAnalysis(createdCase.id);
-        setJobAnalysisCompleted(true);
-      }
-      if (includeCompanyAnalysis) {
-        await createCompanyAnalysis(createdCase.id);
-        navigate(`/applications/${createdCase.id}/company-analysis`);
-      } else {
-        navigate(`/applications/${createdCase.id}/job-analysis`);
-      }
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "분석을 시작하지 못했습니다.");
-    } finally {
-      setBusy(false);
-    }
+    // 분석은 추출 통과 시 백엔드 자동 파이프라인이 이미 생성한다. 프런트는 결과 화면으로 이동만 한다.
+    navigate(`/applications/${createdCase.id}/${landOnCompanyAnalysis ? "company-analysis" : "job-analysis"}`);
   };
 
   if (authLoading) {
@@ -609,6 +598,12 @@ export function NewApplicationPage() {
                       </div>
                     )}
 
+                    {extractionReviewRequired && (
+                      <div className="break-words rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm leading-6 text-amber-800">
+                        추출 품질이 자동 분석 기준에 부족합니다. 아래 공고문을 확인·보정한 뒤 진행하면 검수 확정 후 분석을 이어갑니다.
+                      </div>
+                    )}
+
                     <Field label="공고문">
                       <Textarea
                         value={confirmedText}
@@ -675,7 +670,7 @@ export function NewApplicationPage() {
                         onClick={() => void handleMoveToAnalysisSettings()}
                       >
                         {busy ? <Loader2 className="size-4 animate-spin" /> : <ArrowRight className="size-4" />}
-                        분석 시작으로
+                        {extractionReviewRequired ? "검수 확정 후 결과 확인" : "결과 확인으로"}
                       </Button>
                     </div>
                   </div>
@@ -691,22 +686,26 @@ export function NewApplicationPage() {
                       <Sparkles className="size-4" />
                       공고 분석
                     </div>
-                    <p className="mt-2 text-sm leading-6 text-blue-800">필수 분석으로 항상 실행합니다. 공고문 길이에 따라 완료까지 시간이 걸릴 수 있습니다.</p>
+                    <p className="mt-2 text-sm leading-6 text-blue-800">추출/검수가 끝나면 공고 분석이 자동으로 생성됩니다. 공고문을 수정하면 확정된 텍스트 기준으로 분석을 다시 갱신합니다.</p>
                   </div>
-                  <label className="rounded-lg border border-slate-200 bg-slate-50 p-4">
-                    <div className="flex items-center gap-3">
-                      <Checkbox
-                        checked={includeCompanyAnalysis}
-                        onCheckedChange={(checked) => setIncludeCompanyAnalysis(Boolean(checked))}
-                      />
-                      <span className="text-sm font-bold text-slate-900">기업 분석도 함께 실행</span>
+                  <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
+                    <div className="flex items-center gap-2 text-sm font-bold text-slate-900">
+                      <Building2 className="size-4" />
+                      기업 분석
                     </div>
-                    <p className="mt-2 text-sm leading-6 text-slate-600">선택하면 공고 분석과 함께 기업 분석을 생성합니다. 외부 정보 확인이 필요해 시간이 더 걸릴 수 있습니다.</p>
-                  </label>
+                    <p className="mt-2 text-sm leading-6 text-slate-600">기업 분석도 공고 내 정보 기준으로 함께 생성됩니다. 결과 화면에서 탭으로 확인할 수 있습니다.</p>
+                    <label className="mt-3 flex items-center gap-3 text-sm text-slate-700">
+                      <Checkbox
+                        checked={landOnCompanyAnalysis}
+                        onCheckedChange={(checked) => setLandOnCompanyAnalysis(Boolean(checked))}
+                      />
+                      완료 후 기업 분석 화면으로 이동
+                    </label>
+                  </div>
                 </div>
                 <StepActions
                   busy={busy}
-                  primaryLabel={includeCompanyAnalysis ? "공고/기업 분석 시작" : "공고 분석 시작"}
+                  primaryLabel="분석 결과 보기"
                   onPrimary={() => void handleStartAnalysis()}
                   onBack={() => setStep(1)}
                   primaryIcon={Sparkles}

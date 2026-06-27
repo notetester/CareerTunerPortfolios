@@ -14,6 +14,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 import com.careertuner.admin.chatbot.dto.AdminUnansweredQuestionResponse;
 import com.careertuner.admin.chatbot.dto.AdminUnansweredStatusRequest;
+import com.careertuner.admin.chatbot.dto.ChatbotConversationDrillResponse;
 import com.careertuner.admin.chatbot.dto.FaqDraftResponse;
 import com.careertuner.admin.chatbot.service.AdminUnansweredService;
 import com.careertuner.admin.faq.dto.AdminFaqRequest;
@@ -69,5 +70,13 @@ public class AdminUnansweredController {
             @PathVariable Long id,
             @RequestBody AdminFaqRequest request) {
         return ApiResponse.ok(unansweredService.convert(authUser, id, request));
+    }
+
+    /** 공백→발생 대화 드릴(F3-B). 대표 질문이 나온 대화(질문 원문+폴백 문구+주변 맥락)를 본다. */
+    @GetMapping("/unanswered/{id}/conversation")
+    public ApiResponse<ChatbotConversationDrillResponse> getConversation(
+            @AuthenticationPrincipal AuthUser authUser,
+            @PathVariable Long id) {
+        return ApiResponse.ok(unansweredService.getConversation(authUser, id));
     }
 }
