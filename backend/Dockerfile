@@ -3,7 +3,7 @@
 # build context 는 backend/ 디렉터리 기준.
 
 # ───── build ─────
-FROM eclipse-temurin:21-jdk AS build
+FROM eclipse-temurin:25-jdk AS build
 WORKDIR /app
 
 # 의존성 캐시 최적화: 빌드 스크립트 먼저 복사.
@@ -16,7 +16,7 @@ COPY src ./src
 RUN ./gradlew bootJar -x test --no-daemon
 
 # ───── runtime ─────
-FROM eclipse-temurin:21-jre
+FROM eclipse-temurin:25-jre
 WORKDIR /app
 
 # 업로드 파일 기본 저장 경로(.uploads/*)는 볼륨으로 마운트 권장.
