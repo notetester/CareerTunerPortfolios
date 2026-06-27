@@ -324,7 +324,9 @@ public class ChatbotController {
             List<SiteLink> links = collectLinks();
 
             // quickReplies: 보조 기능 → 2차 호출이 실패해도 핵심(message+links)은 정상 반환.
-            List<String> quickReplies = suggestQuickReplies(question, message);
+            // 글 제시 여부를 finally clear 전에 읽어 게이트로 넘긴다(이번 턴 검색 툴이 글을 돌려줬을 때만 글 칩 허용).
+            boolean postsPresented = !searchTrace.snapshot().isEmpty();
+            List<String> quickReplies = suggestQuickReplies(question, message, postsPresented);
 
             // best-effort 적재(AGENT). FAQ 근거 여부 = 이번 턴 searchFaq 링크 존재(finally clear 전에 읽음).
             // 유사도 = 게이트 산출 원문 raw top-1(없으면 null). 전환 없음.
@@ -483,12 +485,32 @@ public class ChatbotController {
         return links;
     }
 
-    /** quickReplies 2차 호출. 실패는 보조 기능이므로 삼켜서 빈 리스트로(graceful degradation). */
-    private List<String> suggestQuickReplies(String question, String answer) {
+    /**
+     * 글(커뮤니티 후기/게시글)을 가리키는 칩을 식별하는 결정적 패턴.
+     * qwen3 가 시스템 프롬프트 예시("이 글 요약해줘")를 맥락 무관하게 베끼는 것을 게이트로 차단하기 위함.
+     * 이번 턴에 글이 실제로 제시되지 않았으면 이 패턴에 걸리는 칩은 버린다.
+     */
+    private static final Pattern POST_CHIP = Pattern.compile("글|후기|게시|본문|요약");
+
+    /**
+     * quickReplies 2차 호출. 실패는 보조 기능이므로 삼켜서 빈 리스트로(graceful degradation).
+     * <p><b>글 칩 게이트:</b> 모델은 응답 맥락(글이 검색·제시됐는지)을 모른 채 칩을 자유 생성하므로,
+     * 이번 턴에 글이 실제로 제시됐을 때({@code postsPresented})만 글 관련 칩을 허용하고 아니면 결정적으로 필터링한다.
+     * 글과 무관한 칩(예: "다른 직무", "신입 위주로")은 그대로 유지한다.
+     */
+    private List<String> suggestQuickReplies(String question, String answer, boolean postsPresented) {
         try {
             String context = "사용자: " + question + "\n챗봇: " + answer;
             List<String> chips = quickReplyAgent.suggest(context);
-            return chips == null ? List.of() : chips;
+            if (chips == null) {
+                return List.of();
+            }
+            if (postsPresented) {
+                return chips;
+            }
+            return chips.stream()
+                    .filter(c -> c != null && !POST_CHIP.matcher(c).find())
+                    .collect(Collectors.toList());
         } catch (Exception e) {
             log.warn("quickReplies 생성 실패(무시): {}", e.getMessage());
             return List.of();
