@@ -41,9 +41,11 @@ import com.careertuner.ai.autoprep.dto.AutoPrepIntakeResponse;
 import com.careertuner.ai.intake.IntakeAskService;
 import com.careertuner.ai.intake.dto.IntakeAskResponse;
 import com.careertuner.applicationcase.dto.ApplicationCaseResponse;
+import com.careertuner.applicationcase.service.ApplicationCaseService;
 import com.careertuner.common.security.AuthUser;
 import com.careertuner.common.web.ApiResponse;
 import com.careertuner.community.search.PostHit;
+import com.careertuner.profile.mapper.ProfileMapper;
 
 @RestController
 @RequestMapping("/api")
@@ -77,6 +79,9 @@ public class ChatbotController {
     private final IntakeModeStore intakeModeStore;
     private final CommunityTools communityTools;
     private final SummaryAgent summaryAgent;
+    // (a) 깡통계정 온보딩 게이트용 read 의존(호출만, A·B 도메인 무수정).
+    private final ProfileMapper profileMapper;
+    private final ApplicationCaseService applicationCaseService;
 
     public ChatbotController(CommunityChatAgent agent,
                             QuickReplyAgent quickReplyAgent,
@@ -92,7 +97,9 @@ public class ChatbotController {
                             IntakeAskService intakeAskService,
                             IntakeModeStore intakeModeStore,
                             CommunityTools communityTools,
-                            SummaryAgent summaryAgent) {
+                            SummaryAgent summaryAgent,
+                            ProfileMapper profileMapper,
+                            ApplicationCaseService applicationCaseService) {
         this.agent = agent;
         this.quickReplyAgent = quickReplyAgent;
         this.searchTrace = searchTrace;
@@ -108,6 +115,26 @@ public class ChatbotController {
         this.intakeModeStore = intakeModeStore;
         this.communityTools = communityTools;
         this.summaryAgent = summaryAgent;
+        this.profileMapper = profileMapper;
+        this.applicationCaseService = applicationCaseService;
+    }
+
+    /**
+     * (a) 깡통계정 온보딩 게이트 판정: 프로필 행 없음 + 지원 건 0건. 코드(DB 조회)로 결정 — 모델(qwen3)에 안 물음(§6-2).
+     * 비로그인(userId==null)은 대상 아님(프로필 저장에 사용자 필요 + 챗봇은 인증 필수). 조회 실패 시 false(보수적: 온보딩 미진입, 기존 흐름).
+     * A(ProfileMapper)·B(ApplicationCaseService)의 기존 read 메서드 호출만 — 그쪽 코드 무수정.
+     */
+    private boolean isBlankAccountForOnboarding(Long userId) {
+        if (userId == null) {
+            return false;
+        }
+        try {
+            return profileMapper.findByUserId(userId) == null
+                    && applicationCaseService.list(userId, null, false).isEmpty();
+        } catch (RuntimeException ex) {
+            log.warn("온보딩 게이트 판정 실패(온보딩 미진입으로 처리): {}", ex.getMessage());
+            return false;
+        }
     }
 
     /**
@@ -170,6 +197,17 @@ public class ChatbotController {
                     "NAV_FAST", false, null, null, false);
             return ApiResponse.ok(new ChatAskResponse(
                     conversationId, fr.message(), fr.links(), fr.quickReplies(), "NAV", null, false, null));
+        }
+
+        // (a) 깡통계정 온보딩 게이트: 프로필 행 없음 + 지원 건 0건 = 순수 깡통 → 온보딩 분기.
+        //   여기까지 온 건 exit/sticky/DB복원/fastPath 가 아닌 신규 라우팅 턴 — 비-깡통은 false 로 통과해 아래 기존 흐름.
+        //   스텁(분기 확인용): sticky(intakeModeStore=인테이크 case 흐름) 안 건드림(깡통엔 case 없어 부적합). 매 턴 재판정.
+        if (isBlankAccountForOnboarding(userId)) {
+            responseLogService.record(conversationId, userId, question, "ONBOARDING", false, null, null, false);
+            return ApiResponse.ok(new ChatAskResponse(
+                    conversationId,
+                    "온보딩에 진입했어요. (프로필·지원 건이 아직 없어 온보딩 대상이에요 — 대화 수집은 다음 단계에서 붙습니다.)",
+                    List.of(), List.of(), "④온보딩", null, false, null));
         }
 
         // 확인 대기(1턴) 소비: 이 턴은 라우팅을 돌리지 않는다. (오분류 안전판 A)
