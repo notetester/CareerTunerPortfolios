@@ -10,6 +10,7 @@ import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -37,6 +38,7 @@ import com.careertuner.applicationcase.dto.ApplicationCaseExtractionResponse;
 import com.careertuner.applicationcase.dto.ApplicationCaseResponse;
 import com.careertuner.applicationcase.dto.CreateApplicationCaseFromJobPostingRequest;
 import com.careertuner.applicationcase.dto.CreateApplicationCaseRequest;
+import com.careertuner.applicationcase.dto.ConfirmJobPostingExtractionRequest;
 import com.careertuner.applicationcase.dto.ReviewJobPostingExtractionRequest;
 import com.careertuner.applicationcase.dto.UpdateApplicationCaseRequest;
 import com.careertuner.applicationcase.mapper.ApplicationCaseExtractionMapper;
@@ -1512,6 +1514,148 @@ class ApplicationCaseServiceImplTest {
                 "Reviewed posting text");
         assertThat(reportCaptor.getValue()).contains("\"reviewed\":true");
         assertThat(modelVersionsCaptor.getValue()).contains("user-confirmed-v1");
+    }
+
+    @Test
+    void confirmEditedPostingOnPassExtractionSavesRevisionAndRunsPipelineOnce() {
+        ApplicationCaseMapper applicationCaseMapper = mock(ApplicationCaseMapper.class);
+        JobPostingMapper jobPostingMapper = mock(JobPostingMapper.class);
+        ApplicationCaseExtractionMapper extractionMapper = mock(ApplicationCaseExtractionMapper.class);
+        JobPostingService jobPostingService = mock(JobPostingService.class);
+        NotificationMapper notificationMapper = mock(NotificationMapper.class);
+        ApplicationCaseAutoPipelineService autoPipelineService = mock(ApplicationCaseAutoPipelineService.class);
+        ApplicationCaseAccessService accessService = new ApplicationCaseAccessService(applicationCaseMapper, jobPostingMapper);
+        ApplicationCaseServiceImpl service = applicationCaseService(applicationCaseMapper, extractionMapper, accessService,
+                jobPostingService, mock(OpenAiResponsesClient.class), notificationMapper, autoPipelineService);
+        ApplicationCaseExtraction passed = ApplicationCaseExtraction.builder()
+                .id(50L)
+                .applicationCaseId(10L)
+                .jobPostingId(20L)
+                .userId(1L)
+                .sourceType("IMAGE")
+                .status("SUCCEEDED")
+                .qualityStatus("PASS")
+                .qualityScore(90)
+                .fallbackEligible(false)
+                .build();
+        ApplicationCaseExtraction confirmed = ApplicationCaseExtraction.builder()
+                .id(50L)
+                .applicationCaseId(10L)
+                .jobPostingId(61L)
+                .userId(1L)
+                .sourceType("IMAGE")
+                .status("SUCCEEDED")
+                .qualityStatus("PASS")
+                .qualityScore(100)
+                .fallbackEligible(false)
+                .build();
+
+        when(applicationCaseMapper.findApplicationCaseByIdAndUserId(10L, 1L)).thenReturn(ApplicationCase.builder()
+                .id(10L)
+                .userId(1L)
+                .build());
+        when(extractionMapper.findLatestExtractionByApplicationCaseId(10L)).thenReturn(passed, confirmed);
+        when(jobPostingService.saveJobPosting(eq(1L), eq(10L), any(JobPostingRequest.class)))
+                .thenReturn(new JobPostingResponse(61L, 10L, 4, "Edited posting text", null, "Edited posting text", "MANUAL", null));
+        when(extractionMapper.markExtractionReviewed(eq(50L), eq(61L), eq(100), any(), any())).thenReturn(1);
+
+        ApplicationCaseExtractionResponse response = service.confirmEditedPosting(
+                1L,
+                10L,
+                new ConfirmJobPostingExtractionRequest("Edited posting text"));
+
+        assertThat(response.jobPostingId()).isEqualTo(61L);
+        assertThat(response.qualityStatus()).isEqualTo("PASS");
+        ArgumentCaptor<JobPostingRequest> postingRequestCaptor = ArgumentCaptor.forClass(JobPostingRequest.class);
+        verify(jobPostingService).saveJobPosting(eq(1L), eq(10L), postingRequestCaptor.capture());
+        assertThat(postingRequestCaptor.getValue().sourceType()).isEqualTo("MANUAL");
+        assertThat(postingRequestCaptor.getValue().extractedText()).isEqualTo("Edited posting text");
+        // OCR/추출은 다시 돌리지 않고(분석만), 자동 파이프라인은 정확히 1회 실행한다.
+        verify(jobPostingService, never()).saveJobPostingForExtractionQueue(any(), any(), any());
+        verify(extractionMapper, never()).insertApplicationCaseExtraction(any());
+        verify(autoPipelineService, times(1)).runAfterExtractionPass(1L, 10L, 61L, 4, "Edited posting text");
+    }
+
+    @Test
+    void confirmEditedPostingAllowsReviewRequiredExtraction() {
+        ApplicationCaseMapper applicationCaseMapper = mock(ApplicationCaseMapper.class);
+        JobPostingMapper jobPostingMapper = mock(JobPostingMapper.class);
+        ApplicationCaseExtractionMapper extractionMapper = mock(ApplicationCaseExtractionMapper.class);
+        JobPostingService jobPostingService = mock(JobPostingService.class);
+        NotificationMapper notificationMapper = mock(NotificationMapper.class);
+        ApplicationCaseAutoPipelineService autoPipelineService = mock(ApplicationCaseAutoPipelineService.class);
+        ApplicationCaseAccessService accessService = new ApplicationCaseAccessService(applicationCaseMapper, jobPostingMapper);
+        ApplicationCaseServiceImpl service = applicationCaseService(applicationCaseMapper, extractionMapper, accessService,
+                jobPostingService, mock(OpenAiResponsesClient.class), notificationMapper, autoPipelineService);
+        ApplicationCaseExtraction reviewRequired = ApplicationCaseExtraction.builder()
+                .id(51L)
+                .applicationCaseId(10L)
+                .jobPostingId(20L)
+                .userId(1L)
+                .sourceType("IMAGE")
+                .status("SUCCEEDED")
+                .qualityStatus("REVIEW_REQUIRED")
+                .build();
+        ApplicationCaseExtraction confirmed = ApplicationCaseExtraction.builder()
+                .id(51L)
+                .applicationCaseId(10L)
+                .jobPostingId(62L)
+                .userId(1L)
+                .sourceType("IMAGE")
+                .status("SUCCEEDED")
+                .qualityStatus("PASS")
+                .build();
+
+        when(applicationCaseMapper.findApplicationCaseByIdAndUserId(10L, 1L)).thenReturn(ApplicationCase.builder()
+                .id(10L)
+                .userId(1L)
+                .build());
+        when(extractionMapper.findLatestExtractionByApplicationCaseId(10L)).thenReturn(reviewRequired, confirmed);
+        when(jobPostingService.saveJobPosting(eq(1L), eq(10L), any(JobPostingRequest.class)))
+                .thenReturn(new JobPostingResponse(62L, 10L, 2, "Edited posting text", null, "Edited posting text", "MANUAL", null));
+        when(extractionMapper.markExtractionReviewed(eq(51L), eq(62L), eq(100), any(), any())).thenReturn(1);
+
+        ApplicationCaseExtractionResponse response = service.confirmEditedPosting(
+                1L,
+                10L,
+                new ConfirmJobPostingExtractionRequest("Edited posting text"));
+
+        assertThat(response.qualityStatus()).isEqualTo("PASS");
+        verify(autoPipelineService, times(1)).runAfterExtractionPass(1L, 10L, 62L, 2, "Edited posting text");
+    }
+
+    @Test
+    void confirmEditedPostingRejectsNonCompletedExtraction() {
+        ApplicationCaseMapper applicationCaseMapper = mock(ApplicationCaseMapper.class);
+        JobPostingMapper jobPostingMapper = mock(JobPostingMapper.class);
+        ApplicationCaseExtractionMapper extractionMapper = mock(ApplicationCaseExtractionMapper.class);
+        JobPostingService jobPostingService = mock(JobPostingService.class);
+        NotificationMapper notificationMapper = mock(NotificationMapper.class);
+        ApplicationCaseAutoPipelineService autoPipelineService = mock(ApplicationCaseAutoPipelineService.class);
+        ApplicationCaseAccessService accessService = new ApplicationCaseAccessService(applicationCaseMapper, jobPostingMapper);
+        ApplicationCaseServiceImpl service = applicationCaseService(applicationCaseMapper, extractionMapper, accessService,
+                jobPostingService, mock(OpenAiResponsesClient.class), notificationMapper, autoPipelineService);
+        ApplicationCaseExtraction running = ApplicationCaseExtraction.builder()
+                .id(52L)
+                .applicationCaseId(10L)
+                .userId(1L)
+                .sourceType("IMAGE")
+                .status("RUNNING")
+                .build();
+
+        when(applicationCaseMapper.findApplicationCaseByIdAndUserId(10L, 1L)).thenReturn(ApplicationCase.builder()
+                .id(10L)
+                .userId(1L)
+                .build());
+        when(extractionMapper.findLatestExtractionByApplicationCaseId(10L)).thenReturn(running);
+
+        assertThatThrownBy(() -> service.confirmEditedPosting(
+                1L,
+                10L,
+                new ConfirmJobPostingExtractionRequest("Edited posting text")))
+                .isInstanceOf(BusinessException.class);
+        verify(jobPostingService, never()).saveJobPosting(any(), any(), any());
+        verify(autoPipelineService, never()).runAfterExtractionPass(any(), any(), any(), any(), any());
     }
 
     @Test

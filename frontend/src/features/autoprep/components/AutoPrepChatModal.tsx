@@ -4,6 +4,8 @@ import { intake } from "../api/autoPrepApi";
 import { useAutoPrepRun } from "../hooks/useAutoPrepRun";
 import type { AutoPrepRequest, PrepCaseCandidate, PrepModeOption } from "../types/autoPrep";
 import { AutoPrepWorkView } from "./AutoPrepWorkView";
+import { isAppContext } from "@/platform/capacitor";
+import "./autoprep-modal.css";
 
 interface ChipData {
   kind: "case" | "mode";
@@ -107,13 +109,22 @@ export function AutoPrepChatModal({ open, initialRequest, onClose, onNavigate }:
   const caseId = run.plan?.slots.applicationCaseId ?? slots.applicationCaseId ?? null;
   const lastIdx = messages.length - 1;
 
+  const fullscreen = isAppContext();
   return (
     <div
-      className="fixed inset-0 z-50 flex items-start justify-center bg-black/50 p-4 pt-[6vh] backdrop-blur-sm"
-      onClick={onClose}
+      className={
+        fullscreen
+          ? "ap-overlay fixed inset-0 z-50 flex flex-col bg-background"
+          : "ap-overlay fixed inset-0 z-50 flex items-start justify-center bg-black/50 p-4 pt-[6vh] backdrop-blur-sm"
+      }
+      onClick={fullscreen ? undefined : onClose}
     >
       <div
-        className="flex h-[min(680px,86vh)] w-full max-w-[560px] flex-col overflow-hidden rounded-2xl border border-border bg-card shadow-2xl"
+        className={
+          fullscreen
+            ? "ap-box flex h-full w-full flex-col overflow-hidden bg-card pt-[env(safe-area-inset-top)]"
+            : "ap-box flex h-[min(680px,86vh)] w-full max-w-[560px] flex-col overflow-hidden rounded-2xl border border-border bg-card shadow-2xl"
+        }
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between border-b border-border px-4 py-3">

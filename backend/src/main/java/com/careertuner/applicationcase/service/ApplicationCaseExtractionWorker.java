@@ -1,7 +1,6 @@
 package com.careertuner.applicationcase.service;
 
 import java.time.LocalDate;
-import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Locale;
 import java.util.regex.Matcher;
@@ -89,9 +88,8 @@ public class ApplicationCaseExtractionWorker {
     }
 
     private int expireStaleRunningExtractions() {
-        LocalDateTime startedBefore = LocalDateTime.now().minusMinutes(Math.max(1, runningTimeoutMinutes));
         List<ApplicationCaseExtraction> staleExtractions = extractionMapper.findStaleRunningExtractions(
-                startedBefore,
+                Math.max(1, runningTimeoutMinutes),
                 BATCH_SIZE);
         if (staleExtractions == null || staleExtractions.isEmpty()) {
             return 0;

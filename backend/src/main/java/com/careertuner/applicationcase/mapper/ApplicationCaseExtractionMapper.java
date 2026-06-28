@@ -1,6 +1,5 @@
 package com.careertuner.applicationcase.mapper;
 
-import java.time.LocalDateTime;
 import java.util.List;
 
 import org.apache.ibatis.annotations.Mapper;
@@ -21,7 +20,7 @@ public interface ApplicationCaseExtractionMapper {
             @Param("userId") Long userId,
             @Param("applicationCaseIds") List<Long> applicationCaseIds);
 
-    List<ApplicationCaseExtraction> findStaleRunningExtractions(@Param("startedBefore") LocalDateTime startedBefore,
+    List<ApplicationCaseExtraction> findStaleRunningExtractions(@Param("timeoutMinutes") long timeoutMinutes,
                                                                 @Param("limit") int limit);
 
     List<ApplicationCaseExtraction> findQueuedExtractions(@Param("limit") int limit);

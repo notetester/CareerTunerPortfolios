@@ -1,0 +1,139 @@
+# CareerTuner Dependabot configuration.
+#
+# Dependency graph snapshot checked while writing this file:
+# - npm: frontend/package.json + package-lock.json
+# - Gradle: backend/build.gradle
+# - pip: docs/ai-training and ml/* requirements files
+# - Docker: docker-compose.yml, backend/Dockerfile, ml/job-posting-worker/Dockerfile
+# - GitHub Actions: .github/workflows/*.yml
+#
+# Do not use multi-ecosystem-groups here. CareerTuner's frontend, backend,
+# ML/OCR workers, and release workflows have different test gates and risk
+# profiles, so separate area PRs are easier to review and less likely to block
+# each other.
+version: 2
+
+updates:
+  - package-ecosystem: "npm"
+    directory: "/frontend"
+    schedule:
+      interval: "weekly"
+      day: "sunday"
+      time: "04:00"
+      timezone: "Asia/Seoul"
+    target-branch: "dev"
+    labels:
+      - "dependencies"
+      - "area/frontend"
+    commit-message:
+      prefix: "deps(frontend)"
+      include: "scope"
+    open-pull-requests-limit: 3
+    groups:
+      frontend-minor-patch:
+        patterns: ["*"]
+        update-types:
+          - "minor"
+          - "patch"
+      frontend-major:
+        patterns: ["*"]
+        update-types:
+          - "major"
+
+  - package-ecosystem: "gradle"
+    directory: "/backend"
+    schedule:
+      interval: "weekly"
+      day: "sunday"
+      time: "04:30"
+      timezone: "Asia/Seoul"
+    target-branch: "dev"
+    labels:
+      - "dependencies"
+      - "area/backend"
+    commit-message:
+      prefix: "deps(backend)"
+      include: "scope"
+    open-pull-requests-limit: 3
+    groups:
+      backend-minor-patch:
+        patterns: ["*"]
+        update-types:
+          - "minor"
+          - "patch"
+      backend-major:
+        patterns: ["*"]
+        update-types:
+          - "major"
+
+  - package-ecosystem: "pip"
+    directories:
+      - "/docs/ai-training"
+      - "/ml/career-strategy-llm"
+      - "/ml/interview-finetune"
+      - "/ml/interview-nonverbal"
+      - "/ml/job-posting-worker"
+    schedule:
+      interval: "weekly"
+      day: "sunday"
+      time: "05:00"
+      timezone: "Asia/Seoul"
+    target-branch: "dev"
+    labels:
+      - "dependencies"
+      - "area/ml"
+    commit-message:
+      prefix: "deps(ml)"
+      include: "scope"
+    open-pull-requests-limit: 2
+    groups:
+      ml-minor-patch:
+        patterns: ["*"]
+        update-types:
+          - "minor"
+          - "patch"
+      ml-major:
+        patterns: ["*"]
+        update-types:
+          - "major"
+
+  - package-ecosystem: "docker"
+    directories:
+      - "/"
+      - "/backend"
+      - "/ml/job-posting-worker"
+    schedule:
+      interval: "weekly"
+      day: "sunday"
+      time: "05:30"
+      timezone: "Asia/Seoul"
+    target-branch: "dev"
+    labels:
+      - "dependencies"
+      - "area/infra"
+    commit-message:
+      prefix: "deps(docker)"
+      include: "scope"
+    open-pull-requests-limit: 2
+    groups:
+      docker-images:
+        patterns: ["*"]
+
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "sunday"
+      time: "06:00"
+      timezone: "Asia/Seoul"
+    target-branch: "dev"
+    labels:
+      - "dependencies"
+      - "area/ci"
+    commit-message:
+      prefix: "deps(actions)"
+      include: "scope"
+    open-pull-requests-limit: 2
+    groups:
+      github-actions:
+        patterns: ["*"]

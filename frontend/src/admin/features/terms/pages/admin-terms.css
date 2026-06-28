@@ -1,7 +1,7 @@
 /* ===== AdminTerms v2 — 조항 에디터 + 버전 이력 ===== */
 
 .tv-clause { border: 1px solid var(--av-line-soft); border-radius: 8px; margin-bottom: 10px; overflow: hidden; }
-.tv-clause__h { display: flex; align-items: center; gap: 8px; padding: 9px 12px; background: #fafbfd;
+.tv-clause__h { display: flex; align-items: center; gap: 8px; padding: 9px 12px; background: var(--av-track);
   border-bottom: 1px solid var(--av-line-soft); }
 .tv-clause__no { font-size: 11.5px; font-weight: 700; color: var(--av-blue); white-space: nowrap; }
 .tv-clause__t { flex: 1; border: none; background: none; font-size: 13px; font-weight: 650; color: var(--av-ink); }

@@ -11,6 +11,7 @@ import com.careertuner.companyanalysis.dto.CompanyAnalysisResponse;
 import com.careertuner.companyanalysis.dto.CompanyAnalysisReviewRequest;
 import com.careertuner.applicationcase.dto.CreateApplicationCaseFromJobPostingRequest;
 import com.careertuner.applicationcase.dto.CreateApplicationCaseRequest;
+import com.careertuner.applicationcase.dto.ConfirmJobPostingExtractionRequest;
 import com.careertuner.applicationcase.dto.ReviewJobPostingExtractionRequest;
 import com.careertuner.jobanalysis.dto.JobAnalysisReviewRequest;
 import com.careertuner.jobanalysis.dto.JobAnalysisResponse;
@@ -60,6 +61,10 @@ public interface ApplicationCaseService {
     ApplicationCaseExtractionResponse reviewJobPostingExtraction(Long userId,
                                                                  Long applicationCaseId,
                                                                  ReviewJobPostingExtractionRequest request);
+
+    ApplicationCaseExtractionResponse confirmEditedPosting(Long userId,
+                                                           Long applicationCaseId,
+                                                           ConfirmJobPostingExtractionRequest request);
 
     JobAnalysisResponse createJobAnalysis(Long userId, Long applicationCaseId);
 
