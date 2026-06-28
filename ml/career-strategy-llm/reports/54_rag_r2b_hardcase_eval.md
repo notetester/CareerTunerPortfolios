@@ -1,7 +1,7 @@
-# R2b — RAG 가 도움 되는 어려운 케이스(hard-case)에서 A/B 재평가 **(설계·하니스만, 실측 미완)** (2026-06-26)
+# R2b — RAG 가 도움 되는 어려운 케이스(hard-case)에서 A/B 재평가 **(실측 완료)** (2026-06-26 설계 · 2026-06-27 실측)
 
 > reports/53(R2)에서 합성 8케이스가 **너무 쉬워** A(LoRA only)도 이미 success 1.0·E1 0·hallucination 0 → RAG 개선 폭(headroom)이 없어 효과가 불명확했다. R2b 는 **base 가 grounding/hallucination 에서 실제로 헷갈릴 hard-case**(입력 밖 제품명 날조·유사기술 혼동·자격 catalog 근거 등)로 A/B 를 다시 측정한다. **backend 통합 아님** — Spring API·서비스 runtime prompt·기본 모델·LangChain/Spring AI 변경 없음. **synthetic 케이스(실제 개인정보 미사용).**
-> **실행 상태(2026-06-26): 4090 SSH Connection timed out(박스 sleep/off 또는 Tailscale 드롭 추정, 인증 문제 아님) → 실측 대기.** 하니스는 mock 으로 오프라인 검증 완료(무크래시, 테스트 8/8 통과). job spec·report skeleton 까지 작성, raw 미커밋(§7).
+> **실행 상태(2026-06-27): 실측 완료.** 4090 복구 후 origin/dev 격리 worktree(타 팀원 체크아웃 미간섭) + 로컬 Ollama(careertuner-c-career-strategy-3b)로 repeat 2 A/B 실행. raw → CareerTunerAI `results/2026-06-26-rag-r2b-hardcase-001/`(commit f4fbc90). 수치·판정은 §8·§13.
 
 ## 1. #152 merge 확인 결과
 PR #152(R2 RAG A/B 실측) **merged** (merge commit `d7ea37d`, dev 반영). 이어 #153 도 merge(`3cb480b`). 본 작업은 dev 최신에서 `LEE-rag-r2b-hardcase` 브랜치를 끊어 진행. R2b 는 R2 의 후속(어려운 케이스 재평가)이다.
@@ -60,40 +60,52 @@ A(3B LoRA only) vs B(3B LoRA + retrievedContext) 를 **같은 입력·retrievedC
 - **미실행 사유:** 4090 SSH `Connection timed out`(인증이 아니라 박스 도달 불가). 복구 시 위 command 한 줄로 실측 가능.
 
 ## 8. 지표 결과
-**실측 미실행(4090 timed out) — 아래는 채울 표.** 참고로 mock(결정론, ctx 무시) 검증 시 하니스가 정상 산출하는 필드는: contract success/json/CJK, E1/E2 count, raw/normalized hallucination, context_used_avg_overlap(B>0 확인됨 0.07), per-case verdict. mock 은 ctx 를 안 쓰므로 A==B 라 improvement=0(설계상; 개선은 실모델에서만 드러남).
+**실측 완료(2026-06-27, 4090 Ollama, repeat 2 → variant 당 n=32).** raw → CareerTunerAI `results/2026-06-26-rag-r2b-hardcase-001/rag_r2b_hardcase_ab_raw.json`(commit f4fbc90, `mock=false`).
 
 | 지표 | A `lora_only` | B `lora_with_retrieved_context` |
 | --- | --- | --- |
-| contract success | _(실측 대기)_ | _(실측 대기)_ |
-| json_parse_rate | _(실측 대기)_ | _(실측 대기)_ |
-| CJK leak | _(실측 대기)_ | _(실측 대기)_ |
-| E1 grounding violation | _(실측 대기)_ | _(실측 대기)_ |
-| E2 high(제품코드 날조) | _(실측 대기)_ | _(실측 대기)_ |
-| raw / normalized hallucination | _(실측 대기)_ | _(실측 대기)_ |
-| avg latency | _(실측 대기)_ | _(실측 대기)_ |
-| retrievedContext used(overlap) | 0.0(설계상) | _(실측 대기, mock 0.07)_ |
+| contract success | 0.938 | **1.0** ↑ |
+| json_parse_rate | 1.0 | 1.0 |
+| CJK leak | 0.062 | **0.0** ↓ |
+| E1 grounding violation | 3 | **5** ↑(악화) |
+| E2 high(제품코드 날조) | 0 | 0 |
+| raw / normalized hallucination | 0 / 0 | 0 / 0 |
+| avg latency | 1796 ms | 1706 ms |
+| retrievedContext used(overlap) | 0.0 | 0.299 |
 
-per-case: headroom(A 위반>0) 케이스 수 / rag_improvement / rag_regression / neutral — _(실측 대기)_.
+per-case: headroom(A 위반>0) **4/16** · rag_improvement **3** · rag_regression **3** · neutral **10** (net wash).
+- improvement: `hard-mssql-001`(A E1:1→B 0) · `hard-fakeprod-004`(A contract_fail 2→B 0) · `hard-invariant-016`(A E1:1→B 0)
+- regression: `hard-cert-006`(B E1:0→1) · `hard-data-011`(B E1:0→2) · `hard-data-012`(B E1:0→1) — **전부 E1 grounding 증가**
+- semantic judge 필요 후보(normalized residual>0): **없음**(양 variant hallucination 0/0).
 
 ## 9. RAG 가 개선한 점
-_(실측 대기)_ — hard-case 설계 의도: B 가 retrievedContext 로 (a) MSSQL/제품코드 날조(E2 high·hallucinated_skill) (b) 유사기술·데이터 도구 혼동(허용 밖 스킬) (c) 회사 사실 날조 를 줄이는 것을 본다. R2 와 달리 A 에 headroom 이 있어 개선이 측정 가능해야 한다(개선 시 `rag_improvement` 케이스로 카운트).
+실측 improvement 3건 — 공통적으로 **retrievedContext 가 '구분(disambiguation)'을 제공할 때** 개선됐다.
+- `hard-mssql-001`(MSSQL vs SQL): ctx 가 "SQL 은 일반 역량, 특정 제품(MSSQL)과 구분"을 명시 → A 의 E1 과claim(부족 역량을 보유로 서술)을 B 가 해소(E1 1→0).
+- `hard-fakeprod-004`(입력 밖 제품명): A 는 contract fail 2건(CJK leak 등으로 success 깨짐) → B 가 ctx 근거로 안정화(fail 2→0). 전체 success 0.938→1.0, CJK 0.062→0 의 주된 원인.
+- `hard-invariant-016`(score/decision 불변): A E1 1→B 0.
+또한 B 는 ctx 를 실제 활용(overlap 0.0→0.299)했고 latency 회귀 없음(1796→1706ms). fitScore/applyDecision 은 양 variant 불변(§10).
 
 ## 10. RAG 가 악화시킨 점
-_(실측 대기)_ — `rag_regression` 케이스(B 가 A 대비 위반 증가)로 카운트. negative control 2건은 ctx 0건이라 B==A 여야(악화 없음 확인). score_decision_invariant 2건은 양 variant 에서 fitScore/applyDecision 불변이어야(test_7 로 fixture 단계 보장, 실측에서 출력 불변 재확인).
+실측 regression 3건 — **전부 E1 grounding 위반 증가**이고, 공통 원인은 **'직무 요건을 나열하는 ctx'를 모델이 '지원자 보유'로 혼동(conflation)** 한 것이다.
+- `hard-data-011`·`hard-data-012`(데이터 직무 혼동): ctx 가 Spark/Pandas/ETL 등 **공고 요구 스킬**을 언급 → 모델이 부족 역량을 보유로 서술(E1 0→2, 0→1).
+- `hard-cert-006`(자격 catalog): ctx 의 자격 설명을 보유로 과claim(E1 0→1).
+즉 RAG 의 grounding 효과는 **양방향**이다 — ctx 가 '구분'을 주면 도움(§9), '직무 요건 나열'이면 보유 conflation 을 유발해 악화. negative control 2건(`hard-negctrl-013/014`)은 ctx 0건이라 B==A(악화 없음 확인), score_decision_invariant 2건은 fitScore/applyDecision 불변 확인.
 
 ## 11. 개인정보 / 보안 확인
 - 케이스 synthetic — 이메일/전화/주민번호 패턴 없음(test_1). 실제 이력서/지원 건 미사용. 회사명은 "회사 A~P" placeholder.
 - retrievedContext 에 score/fitScore/applyDecision 없음, 키는 sourceType/sourceId/text 만(test_4). 점수/판단은 rule engine/server 소유, builder 미생성.
-- raw outputs 는 CareerTunerAI results 에만(main repo 미커밋). OpenAI embedding/외부 API 호출 없음. 실측은 4090 미도달로 미실행 → raw 자체가 아직 없음.
+- raw outputs 는 CareerTunerAI results 에만(main repo 미커밋, commit f4fbc90). 외부 API 호출 없음 — 로컬 Ollama(4090) careertuner-c-career-strategy-3b 만 사용.
 
 ## 12. backend 미변경 확인
 PR diff 는 `rag_poc/`(fixtures/scripts/tests) + `reports/54` 뿐. `backend/` 파일·서비스 runtime prompt·기본 모델·LangChain/Spring AI 변경 0. `docs/ops`·`scripts/ops`·`.github` 미수정(다른 에이전트 담당). synth_prompts.FIT_EXPLAIN_SYS·eval_fit_model·build_rag_eval_cases·rag_prompt_builder 는 **import 재사용만**(수정 없음).
 
 ## 13. 다음 단계 판단
-**판정: 실행 대기(실측 미완) — 아직 어떤 정량 판정도 내리지 않는다.** R2b 케이스셋은 R2 의 headroom 부재를 **설계상 의도적으로 해소하려 한** 것이지(base 가 틀리기 쉬운 8유형: MSSQL/제품코드/유사기술/데이터 도구/회사 사실/자격 catalog), **실제로 base 가 이 케이스들에서 틀리는지(=headroom 이 존재하는지)는 실모델 A/B 미실행이라 미검증**이다. mock 은 ctx 를 무시해 A==B(improvement 정보가치 0)라 RAG 효과를 보여주지 못한다. 따라서 'headroom 해소'는 **케이스셋 설계 의도**일 뿐 실측된 사실이 아니며, 후속 리포트가 '하드케이스로 해소됨'을 검증된 것처럼 인용하면 안 된다. 4090 SSH 복구 시 §7 command 한 줄로 실측 → §8~10 채운 뒤에야 판정 가능.
-- **실측 트리거:** 4090 도달 복구(박스 wake/Tailscale 재연결) 후 `jobs/open/2026-06-26-rag-r2b-hardcase-001.json` command 실행, raw → CareerTunerAI results, semantic judge 후보(normalized residual>0) 있으면 judge packet 절차(별도).
-- 유의미 개선(rag_improvement > rag_regression, E2/hallucination 감소) 확인 시에만 R3 backend(Spring AI/LangChain4j) 통합 검토(점수/판단·E1/E2 불변).
-- semantic judge 필요 여부: **현재 미정(실측 후 normalized residual>0 케이스로 판단).** 하니스 단독으로는 semantic valid_error 단정 안 함 — judge 필요 후보만 기록.
+**판정: 실측상 RAG 효과는 net wash(rag_improvement 3 = rag_regression 3) — '하드케이스로 RAG 우위 입증'은 성립하지 않는다.** 단 메커니즘은 정보가치가 크다:
+- RAG 는 **계약 안정성(success 0.938→1.0)·CJK(0.062→0)를 개선**하고 ctx 를 실제 활용(overlap 0.299)하며 latency 회귀 없음.
+- 그러나 **E1 grounding 은 악화(3→5)** — ctx 가 직무 요건을 나열하면 모델이 '보유'로 conflation(§10). hallucination(allowed-skill 날조)은 양쪽 0/0 이라 이 차원엔 애초에 headroom 이 없었다.
+- 따라서 **R3 backend(Spring AI/LangChain4j) 통합은 보류**한다 — 현 기준(rag_improvement > rag_regression, E2/hallucination 감소)을 충족하지 못한다. RAG 를 도입하려면 먼저 **grounding conflation 을 차단**해야 한다: ctx 를 '제품/자격 구분'형으로 스코프하거나, prompt 에서 '공고 요구 ≠ 지원자 보유'를 분리하거나, E1 guard 로 출력 교정(E1 guard 는 백엔드 미러라 프로덕션에선 이 위반을 잡지만, raw 모델 품질 자체가 악화함을 이 실측이 보여준다).
+- semantic judge: normalized residual 양쪽 0 → judge 필요 후보 없음(이번 셋 valid_error 0).
+- 후속 제안(별건): conflation 완화 prompt/ctx 스코프 A/B(R2c) 후 재측정. 측정 하니스 한정, 점수/판단·E1/E2·D·F 불변 유지.
 
 ## 자체 검증
 - ✅ PR diff 에 backend 파일 없음(rag_poc + reports/54). docs/ops·scripts/ops·.github 미수정.
