@@ -126,6 +126,19 @@ export default function AdminInquiriesAI() {
     }
   };
 
+  // 상태 변경: BE PATCH /admin/tickets/{id}(status) 호출(BE 완비) → 목록·상세 동기화. priority/담당자는 별도(미배선).
+  const changeStatus = async (status: string) => {
+    if (!selected || status === selected.status) return;
+    try {
+      const updated = await adminTicketApi.updateTicket(selected.id, { status });
+      setItems((prev) => prev.map((i) => (i.id === updated.id ? updated : i)));
+      setSelected(updated);
+      flash("문의 상태를 변경했습니다.", "green");
+    } catch {
+      flash("상태 변경에 실패했습니다.", "red");
+    }
+  };
+
   // Filtered list
   const filtered = items.filter((i) => {
     if (filter === "미답변") return i.status === "pending";
@@ -258,10 +271,15 @@ export default function AdminInquiriesAI() {
             {/* Controls bar */}
             <div className="flex items-center gap-2 flex-wrap px-5 py-3 border-b border-black/10" style={{ background: "#f8fafc" }}>
               <span className="text-[11px] font-semibold text-[#717182]">상태</span>
-              <span className="inline-flex items-center gap-2 h-8 px-2.5 rounded-md border border-black/10 bg-card text-[12.5px] font-semibold">
-                {selected.status === "answered" ? "답변완료" : selected.status === "progress" ? "처리중" : "미답변"}
-                <ChevronDown size={12} className="text-[#717182]" />
-              </span>
+              <select
+                value={selected.status}
+                onChange={(e) => changeStatus(e.target.value)}
+                className="h-8 px-2.5 rounded-md border border-black/10 bg-card text-[12.5px] font-semibold cursor-pointer"
+              >
+                <option value="pending">미답변</option>
+                <option value="progress">처리중</option>
+                <option value="answered">답변완료</option>
+              </select>
               <span className="text-[11px] font-semibold text-[#717182] ml-1">담당자</span>
               <span className="inline-flex items-center gap-2 h-8 px-2.5 rounded-md border border-black/10 bg-card text-[12.5px] font-semibold">
                 {selected.assignee || "미지정"}
