@@ -42,6 +42,9 @@ import com.careertuner.ai.intake.IntakeAskService;
 import com.careertuner.ai.intake.IntakeSlotTrace;
 import com.careertuner.ai.intake.dto.IntakeAskResponse;
 import com.careertuner.applicationcase.dto.ApplicationCaseResponse;
+import com.careertuner.applicationcase.dto.ApplicationCaseExtractionResponse;
+import com.careertuner.applicationcase.dto.CreateApplicationCaseFromJobPostingRequest;
+import com.careertuner.applicationcase.dto.UpdateApplicationCaseRequest;
 import com.careertuner.applicationcase.service.ApplicationCaseService;
 import com.careertuner.common.security.AuthUser;
 import com.careertuner.common.web.ApiResponse;
@@ -56,6 +59,10 @@ public class ChatbotController {
 
     /** 환각 링크 차단: 실제 커뮤니티 글 경로만 통과 (모델이 만든 임의 url 제거). */
     private static final Pattern LINK_WHITELIST = Pattern.compile("^/community/posts/\\d+$");
+
+    /** (d) 공고 추출 규칙기반 파싱 실패 시 case 에 남는 기본값(B 도메인 ApplicationCaseServiceImpl 와 동일 문구). */
+    private static final String ONB_DEFAULT_COMPANY = "기업명 확인 필요";
+    private static final String ONB_DEFAULT_JOBTITLE = "직무명 확인 필요";
 
     /** 확인 응답에서 "시작" 쪽으로 본다(그 외는 안전하게 ① 로). */
     private static final List<String> AFFIRMATIVE = List.of(
@@ -131,37 +138,171 @@ public class ChatbotController {
      */
     private ChatAskResponse onboardingTurn(Long conversationId, Long userId, String question) {
         String step = intakeSlotTrace.onboardingStep(conversationId);
-        String route;
-        String message;
+        RouteMessage rm;
         if (step == null) {
             intakeSlotTrace.setOnboardingStep(conversationId, "JOB");
-            route = "④온보딩:직무";
-            message = "취업 준비, 막막하시죠? 같이 채워볼게요. 먼저 — 어떤 직무로 지원하세요? (예: 프론트엔드 개발자, 백엔드 개발자)";
+            rm = new RouteMessage("④온보딩:직무",
+                    "취업 준비, 막막하시죠? 같이 채워볼게요. 먼저 — 어떤 직무로 지원하세요? (예: 프론트엔드 개발자, 백엔드 개발자)");
         } else if ("JOB".equals(step)) {
             intakeSlotTrace.recordOnboardingJob(conversationId, question);   // 유저 답 그대로(가공 0)
             intakeSlotTrace.setOnboardingStep(conversationId, "SKILLS");
-            route = "④온보딩:기술";
-            message = "좋아요. 주로 다루는 기술을 알려주세요. 3~4개면 충분해요. (예: React, TypeScript, Spring)";
+            rm = new RouteMessage("④온보딩:기술",
+                    "좋아요. 주로 다루는 기술을 알려주세요. 3~4개면 충분해요. (예: React, TypeScript, Spring)");
         } else if ("SKILLS".equals(step)) {
             intakeSlotTrace.recordOnboardingSkills(conversationId, question); // 그대로
-            intakeSlotTrace.setOnboardingStep(conversationId, "COLLECTED");
+            intakeSlotTrace.setOnboardingStep(conversationId, "AWAIT_POSTING");
             IntakeSlotTrace.OnboardingCollected got = intakeSlotTrace.onboarding(conversationId);
-            route = "④온보딩:수집완료";
-            message = "받았어요 — 직무 \"" + got.job() + "\", 기술 \"" + got.skills()
-                    + "\". 다음은 지원할 공고예요(다음 단계에서 이어집니다).";
+            rm = new RouteMessage("④온보딩:공고요청",
+                    "받았어요 — 직무 \"" + got.job() + "\", 기술 \"" + got.skills()
+                            + "\". 이제 지원할 공고 전문을 붙여넣어 주세요(회사명·직무·자격요건이 담긴 원문이면 좋아요).");
+        } else if ("AWAIT_POSTING".equals(step)) {
+            rm = onboardingCreateCase(conversationId, userId, question);
+        } else if ("EXTRACTING".equals(step)) {
+            rm = onboardingPollExtraction(conversationId, userId);
+        } else if ("AWAIT_COMPANY".equals(step)) {
+            rm = onboardingFillField(conversationId, userId, question, true, "회사명을 입력해 주세요. 어느 회사 공고인가요?");
+        } else if ("AWAIT_JOBTITLE".equals(step)) {
+            rm = onboardingFillField(conversationId, userId, question, false, "직무명을 입력해 주세요. (예: 백엔드 개발자)");
         } else {
-            route = "④온보딩:대기";
-            message = "직무·기술은 받아뒀어요. 공고 입력 단계는 곧 붙습니다.";
+            // CASE_READY 등 종단 — 라우터의 sticky 가 여기 도달 전에 풀리는 게 정상(방어용).
+            rm = new RouteMessage("④온보딩:완료대기", "지원 건 준비가 끝났어요. 면접 준비를 이어서 진행해 주세요.");
         }
         responseLogService.record(conversationId, userId, question, "ONBOARDING", false, null, null, false);
-        return new ChatAskResponse(conversationId, message, List.of(), List.of(), route, null, false, null);
+        return new ChatAskResponse(conversationId, rm.message(), List.of(), List.of(), rm.route(), null, false, null);
     }
+
+    /**
+     * (d) AWAIT_POSTING: 사용자 공고 원문 → B.createFromJobPosting(sourceType=TEXT) 로 지원 건 생성(비동기 추출 큐잉).
+     * AI 가 회사명을 정하지 않는다 — 생성만 하고 추출 결과는 다음 턴 폴링(EXTRACTING)에서 본다. 분석(FIT/면접)은
+     * 트리거하지 않음(추출 SUCCEEDED 후 자동 파이프라인 또는 (f) autoPrep 소관 — DEFAULT 회사명 프롬프트 오염 회피).
+     */
+    private RouteMessage onboardingCreateCase(Long conversationId, Long userId, String question) {
+        if (question == null || question.trim().length() < 20) {
+            return new RouteMessage("④온보딩:공고요청",
+                    "공고 전문이 조금 짧아요. 회사명·직무·자격요건이 담긴 공고 내용을 붙여넣어 주세요.");
+        }
+        try {
+            var created = applicationCaseService.createFromJobPosting(
+                    userId,
+                    new CreateApplicationCaseFromJobPostingRequest(question, null, null, "TEXT", null));
+            intakeSlotTrace.setOnboardingCaseId(conversationId, created.applicationCase().id());
+            intakeSlotTrace.setOnboardingStep(conversationId, "EXTRACTING");
+            return new RouteMessage("④온보딩:공고생성",
+                    "공고 받았어요. 회사·직무 정보를 읽고 있어요(보통 몇 초). 준비되면 아무 메시지나 보내주시면 진행 상황을 알려드릴게요.");
+        } catch (RuntimeException ex) {
+            log.warn("온보딩 case 생성 실패(공고 재요청): {}", ex.getMessage());
+            // step 은 AWAIT_POSTING 유지 — 재시도.
+            return new RouteMessage("④온보딩:공고생성실패",
+                    "공고를 등록하는 중 문제가 생겼어요. 공고 전문을 다시 붙여넣어 주시겠어요?");
+        }
+    }
+
+    /**
+     * (d) EXTRACTING: 비동기 추출 상태를 턴 사이로 폴링(한 턴 블로킹 대기는 지연·타임아웃 위험).
+     * SUCCEEDED → case 재조회로 파싱 결과 확인(PASS=자동 채움 / REVIEW_REQUIRED=DEFAULT 유지 → 유저 확정).
+     * 미완(QUEUED/RUNNING)=대기, FAILED=공고 재요청. 추출 상태/품질은 B 도메인이 판정 — 챗봇은 결과만 읽는다.
+     */
+    private RouteMessage onboardingPollExtraction(Long conversationId, Long userId) {
+        Long caseId = intakeSlotTrace.onboardingCaseId(conversationId);
+        if (caseId == null) {
+            intakeSlotTrace.setOnboardingStep(conversationId, "AWAIT_POSTING");
+            return new RouteMessage("④온보딩:공고요청",
+                    "공고 정보를 다시 받아야 할 것 같아요. 공고 전문을 붙여넣어 주세요.");
+        }
+        ApplicationCaseExtractionResponse ext = null;
+        try {
+            ext = applicationCaseService.getLatestJobPostingExtraction(userId, caseId);
+        } catch (RuntimeException ex) {
+            log.warn("온보딩 추출 상태 조회 실패(대기 유지): {}", ex.getMessage());
+        }
+        String status = ext == null ? null : ext.status();
+        if ("FAILED".equals(status)) {
+            intakeSlotTrace.setOnboardingStep(conversationId, "AWAIT_POSTING");
+            return new RouteMessage("④온보딩:추출실패",
+                    "공고 분석에 실패했어요. 공고 전문을 다시 붙여넣어 주시겠어요?");
+        }
+        if (!"SUCCEEDED".equals(status)) {
+            // null/QUEUED/RUNNING — 아직 진행 중. step 유지.
+            return new RouteMessage("④온보딩:추출대기",
+                    "아직 공고를 분석 중이에요. 잠시 후 다시 메시지를 보내주세요.");
+        }
+        try {
+            return onboardingResolveCase(conversationId, applicationCaseService.get(userId, caseId));
+        } catch (RuntimeException ex) {
+            log.warn("온보딩 case 재조회 실패(대기 유지): {}", ex.getMessage());
+            return new RouteMessage("④온보딩:추출대기",
+                    "공고 정보를 확인하는 중이에요. 잠시 후 다시 메시지를 보내주세요.");
+        }
+    }
+
+    /**
+     * (d) AWAIT_COMPANY/AWAIT_JOBTITLE: 파싱 실패한 회사명/직무명을 유저가 확정 → B.update 로 그 컬럼만 채운다.
+     * (update 는 null 인자를 기존값 유지로 처리 — 부분 갱신.) 빈 입력은 재질문. update 는 분석 파이프라인을
+     * 트리거하지 않음(컬럼만 패치) — 분석은 (f) autoPrep 에서 정상 회사명으로 생성된다.
+     */
+    private RouteMessage onboardingFillField(Long conversationId, Long userId, String question,
+                                             boolean company, String reaskMessage) {
+        if (question == null || question.isBlank()) {
+            return new RouteMessage(company ? "④온보딩:확인-회사" : "④온보딩:확인-직무", reaskMessage);
+        }
+        Long caseId = intakeSlotTrace.onboardingCaseId(conversationId);
+        if (caseId == null) {
+            intakeSlotTrace.setOnboardingStep(conversationId, "AWAIT_POSTING");
+            return new RouteMessage("④온보딩:공고요청",
+                    "공고 정보를 다시 받아야 할 것 같아요. 공고 전문을 붙여넣어 주세요.");
+        }
+        String value = question.trim();
+        try {
+            applicationCaseService.update(userId, caseId, company
+                    ? new UpdateApplicationCaseRequest(value, null, null, null, null, null, null, null, null, null)
+                    : new UpdateApplicationCaseRequest(null, value, null, null, null, null, null, null, null, null));
+            return onboardingResolveCase(conversationId, applicationCaseService.get(userId, caseId));
+        } catch (RuntimeException ex) {
+            log.warn("온보딩 case 보정 update 실패(재질문): {}", ex.getMessage());
+            return new RouteMessage(company ? "④온보딩:확인-회사" : "④온보딩:확인-직무",
+                    "정보를 저장하는 중 문제가 생겼어요. 다시 한 번 입력해 주시겠어요?");
+        }
+    }
+
+    /**
+     * (d) 추출/보정 후 case 상태로 다음 단계 결정: 회사명·직무명이 DEFAULT 면 그 항목만 유저에게 묻고,
+     * 둘 다 채워졌으면 CASE_READY(종단). 빈 입력으로 DEFAULT 가 남으면 자연히 같은 항목을 재질문(self-heal).
+     */
+    private RouteMessage onboardingResolveCase(Long conversationId, ApplicationCaseResponse caseNow) {
+        if (ONB_DEFAULT_COMPANY.equals(caseNow.companyName())) {
+            intakeSlotTrace.setOnboardingStep(conversationId, "AWAIT_COMPANY");
+            return new RouteMessage("④온보딩:확인-회사",
+                    "공고는 등록했는데 회사명을 자동으로 못 읽었어요. 어느 회사 공고인가요?");
+        }
+        if (ONB_DEFAULT_JOBTITLE.equals(caseNow.jobTitle())) {
+            intakeSlotTrace.setOnboardingStep(conversationId, "AWAIT_JOBTITLE");
+            return new RouteMessage("④온보딩:확인-직무",
+                    "회사는 \"" + caseNow.companyName() + "\"로 확인됐어요. 직무명도 알려주세요. (예: 백엔드 개발자)");
+        }
+        intakeSlotTrace.setOnboardingStep(conversationId, "CASE_READY");
+        return new RouteMessage("④온보딩:공고완료",
+                "회사 \"" + caseNow.companyName() + "\", 직무 \"" + caseNow.jobTitle()
+                        + "\"로 지원 건을 만들었어요! 이제 면접 준비로 이어집니다.");
+    }
+
+    /** (d) 온보딩 턴의 라우트 태그 + 사용자 메시지 묶음(내부 분기 헬퍼 반환형). */
+    private record RouteMessage(String route, String message) {}
 
     /**
      * (a) 깡통계정 온보딩 게이트 판정: 프로필 행 없음 + 지원 건 0건. 코드(DB 조회)로 결정 — 모델(qwen3)에 안 물음(§6-2).
      * 비로그인(userId==null)은 대상 아님(프로필 저장에 사용자 필요 + 챗봇은 인증 필수). 조회 실패 시 false(보수적: 온보딩 미진입, 기존 흐름).
      * A(ProfileMapper)·B(ApplicationCaseService)의 기존 read 메서드 호출만 — 그쪽 코드 무수정.
      */
+    /**
+     * (d) 온보딩이 진행 중인가 — 단계가 설정됐고 아직 종단(CASE_READY)이 아니면 true.
+     * case 생성 후 게이트(깡통 판정)가 false 가 돼도 추출 폴링·보정을 이어가도록 sticky 라우팅의 근거가 된다.
+     * 인메모리 슬롯 기준이라 백엔드 재시작 시 휘발(MVP — 온보딩 중간이탈 복원은 명시적 제외, 설계 §1).
+     */
+    private boolean isOnboardingInProgress(Long conversationId) {
+        String step = intakeSlotTrace.onboardingStep(conversationId);
+        return step != null && !"CASE_READY".equals(step);
+    }
+
     private boolean isBlankAccountForOnboarding(Long userId) {
         if (userId == null) {
             return false;
@@ -237,10 +378,12 @@ public class ChatbotController {
                     conversationId, fr.message(), fr.links(), fr.quickReplies(), "NAV", null, false, null));
         }
 
-        // (a)(b) 깡통계정 온보딩: 프로필 행 없음 + 지원 건 0건 = 순수 깡통 → 온보딩 수집(직무→기술).
+        // (a)(b)(d) 깡통계정 온보딩: 프로필 행 없음 + 지원 건 0건 = 순수 깡통 → 온보딩(직무→기술→공고).
         //   여기까지 온 건 exit/sticky/DB복원/fastPath 가 아닌 신규 라우팅 턴 — 비-깡통은 false 로 통과해 아래 기존 흐름.
-        //   sticky(intakeModeStore=인테이크 case 흐름) 안 건드림(깡통엔 case 없어 부적합). 매 턴 재판정(저장 전까지 깡통 유지).
-        if (isBlankAccountForOnboarding(userId)) {
+        //   sticky(intakeModeStore=인테이크 case 흐름) 안 건드림. ★(d) 공고로 case 가 생기면 게이트는 false 가 되지만,
+        //   온보딩이 진행 중(CASE_READY 종단 전)이면 sticky 로 onboardingTurn 을 유지해 비동기 추출 폴링·회사/직무 보정을
+        //   이어간다. CASE_READY 면 sticky 가 풀려 아래 기존 흐름(인테이크)으로 자연 인계된다((f) 합류 지점).
+        if (isOnboardingInProgress(conversationId) || isBlankAccountForOnboarding(userId)) {
             return ApiResponse.ok(onboardingTurn(conversationId, userId, question));
         }
 
