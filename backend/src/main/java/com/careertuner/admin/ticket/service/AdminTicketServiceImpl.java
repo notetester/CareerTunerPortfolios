@@ -35,15 +35,20 @@ public class AdminTicketServiceImpl implements AdminTicketService {
     private static final Set<String> ALLOWED_STATUS = Set.of("RECEIVED", "IN_PROGRESS", "ANSWERED", "CLOSED");
     /** support_ticket.priority 허용값(DB 저장 기준). */
     private static final Set<String> ALLOWED_PRIORITY = Set.of("NORMAL", "HIGH", "URGENT");
+    /** support_ticket.category 저장 표준(CreateTicketRequest @Pattern 이 강제하는 한글 라벨). */
+    private static final Set<String> CATEGORY_LABELS = Set.of("계정", "결제", "AI기능", "기술문제", "기타");
 
     @Override
     public List<AdminTicketListResponse> getTickets(AuthUser authUser, String status) {
         requireAdmin(authUser);
         String dbStatus = toDbStatus(status);
         List<AdminTicketListResponse> tickets = ticketMapper.findAll(dbStatus);
-        // 목록도 상세(getTicketDetail)와 동일하게 status 를 프런트 값으로 변환한다.
-        // (findAll 은 DB enum(RECEIVED/IN_PROGRESS/ANSWERED/CLOSED)을 그대로 내려 FE toStatus 기본값(pending)으로 떨어졌음)
-        tickets.forEach(t -> t.setStatus(toFrontStatus(t.getStatus())));
+        // 목록도 상세(getTicketDetail)와 동일하게 status·category 를 표시값으로 변환한다.
+        // status: DB enum → 프런트 값. category: toCategoryLabel 이 라벨이면 그대로·enum 이면 라벨로(라벨 인식).
+        tickets.forEach(t -> {
+            t.setStatus(toFrontStatus(t.getStatus()));
+            t.setCategory(toCategoryLabel(t.getCategory()));
+        });
         return tickets;
     }
 
@@ -169,8 +174,14 @@ public class AdminTicketServiceImpl implements AdminTicketService {
         };
     }
 
+    /**
+     * 저장 표준은 한글 라벨(CreateTicketRequest @Pattern)이라 라벨이면 그대로 통과시킨다.
+     * 검증을 우회해 들어온 enum 값(PAYMENT/AI_FEATURE/…)만 라벨로 변환하고, 그 외 미상값은 "기타".
+     * (이전 버전은 enum→라벨만 알아 정상 라벨을 "기타"로 떨궜다 — 방향 자체를 라벨 인식으로 수정.)
+     */
     private String toCategoryLabel(String category) {
         if (category == null) return "기타";
+        if (CATEGORY_LABELS.contains(category)) return category;   // 이미 라벨(저장 표준)
         return switch (category.toUpperCase()) {
             case "PAYMENT"        -> "결제";
             case "AI_FEATURE"     -> "AI기능";
