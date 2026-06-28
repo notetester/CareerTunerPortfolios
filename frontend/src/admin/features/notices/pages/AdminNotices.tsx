@@ -65,6 +65,7 @@ function NoticeComposeView({ onBack, onCreated }: { onBack: () => void; onCreate
         content: body,
         status: when === "예약" ? "SCHEDULED" : "PUBLISHED",
         isPinned: pin,
+        category: cat,
         thumbnailUrl: null,
       });
       flash("공지가 게시되었습니다.", "green");
