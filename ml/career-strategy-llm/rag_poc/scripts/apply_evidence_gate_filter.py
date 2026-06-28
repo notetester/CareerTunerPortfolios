@@ -26,8 +26,9 @@ from compare_lora_with_evidence_gated_rag import (  # noqa: E402  (R2d audit 재
 from eval_fit_model import extract_json_span, GROUNDING_SPLIT_RE, _grounding_violation_in_sentence  # noqa: E402
 
 MODES = ("reject", "review", "rewrite")
-# 보유 표현(unsupported)을 대체할 안전 문구.
-_SAFE_TMPL = "{skill}은(는) 공고가 요구하는 역량으로, 현재 보유가 아니라 학습·보완이 필요합니다."
+# 보유 표현(unsupported)을 대체할 안전 문구. '보유' 등 possession 단어를 쓰지 않는다 —
+# 쓰면 재-audit 에서 '{skill} … 보유' 가 다시 보유 주장으로 잡혀 violation 이 남는다(R2f 에서 발견).
+_SAFE_TMPL = "{skill}은(는) 공고가 요구하는 역량이므로 학습·보완이 필요합니다."
 
 
 def _classify_source(skill, buckets):
