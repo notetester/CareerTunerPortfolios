@@ -68,7 +68,7 @@ CareerTuner는 채용공고, 사용자 프로필, 경력/자격증, 자기소개
 
 ## 의존성 업데이트
 
-의존성 업데이트는 [.github/dependabot.yml](.github/dependabot.yml)에서 영역별로 관리합니다.
+의존성 업데이트는 [.github/dependabot.yml](.github/dependabot.yml)에서 하나의 주간 multi-ecosystem group으로 묶어 관리합니다. 목적은 프런트엔드, 백엔드, ML/OCR, Docker, GitHub Actions 업데이트가 생태계별로 흩어진 PR을 만들지 않게 하는 것입니다.
 
 - `frontend`: React/Vite/TypeScript/Capacitor npm 의존성
 - `backend`: Spring Boot, MyBatis, Spring Security, JWT, OpenAPI, PDF/mail/push 관련 Gradle 의존성
@@ -76,7 +76,7 @@ CareerTuner는 채용공고, 사용자 프로필, 경력/자격증, 자기소개
 - `docker`: compose, backend image, job-posting worker image
 - `github-actions`: 데모 배포, 모바일 릴리즈, 4090 trigger, CI workflow actions
 
-실제 악용 가능한 취약점, 공개 CVE, secret 노출, 인증/권한 우회와 연결된 업데이트는 일반 버전 업데이트보다 우선 검토합니다. ML requirements는 재현성과 GPU/4090 실행 환경에 영향을 줄 수 있으므로 프런트/백엔드 런타임 업데이트와 분리해서 봅니다.
+실제 악용 가능한 취약점, 공개 CVE, secret 노출, 인증/권한 우회와 연결된 업데이트는 일반 버전 업데이트보다 우선 검토합니다. ML requirements는 재현성과 GPU/4090 실행 환경에 영향을 줄 수 있으므로 통합 PR 안에서도 별도 테스트 결과와 변경 범위를 확인합니다.
 
 ## 수정과 공개
 
