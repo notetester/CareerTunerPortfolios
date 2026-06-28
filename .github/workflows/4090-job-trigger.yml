@@ -46,7 +46,7 @@ jobs:
     steps:
       # ── 0) 메인 repo 체크아웃(워크플로 자체 참조용; 결과/큐는 CareerTunerAI) ──
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       # ── 1) 필수 secret 미설정 가드 — 비어 있으면 즉시 실패(부분 실행 방지) ──
       - name: Verify required secrets are configured
@@ -84,7 +84,7 @@ jobs:
 
       # ── 3) tailnet 임시 합류(ephemeral, tagged) — 작업 종료 시 노드 자동 삭제 ──
       - name: Join tailnet (Tailscale)
-        uses: tailscale/github-action@v3
+        uses: tailscale/github-action@v4
         with:
           authkey: ${{ secrets.TAILSCALE_AUTHKEY }}
           # ephemeral·tagged auth key 권장(설계 §5). 태그는 tailnet ACL 에 맞춘다.

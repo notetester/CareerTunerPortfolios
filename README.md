@@ -61,7 +61,7 @@ git tag demo-apk-3 && git push origin demo-apk-3
 
 ## 기술 스택
 
-Spring Boot 4.0.6 · Java 21 · MyBatis · MySQL 8 · Spring Security · springdoc-openapi
+Spring Boot 4.1.0 · Java 21 · MyBatis · MySQL 8 · Spring Security · springdoc-openapi
 ／ React 18 · Vite 6 · TypeScript · Tailwind CSS v4 · shadcn/ui · react-router 7
 
 > 영속성은 **MyBatis만** 사용한다(JPA 미사용).
