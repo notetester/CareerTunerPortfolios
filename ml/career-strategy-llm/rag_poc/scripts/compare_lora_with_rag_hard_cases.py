@@ -27,6 +27,7 @@ sys.path.insert(0, os.path.join(HERE, "..", "..", "scripts"))  # ml/.../scripts
 # 모델 호출·채점·집계 로직 재사용(중복 구현 금지)
 from compare_lora_with_rag import run_variant, aggregate, VARIANTS  # noqa: E402
 from build_rag_hard_cases import build_hard_pairs  # noqa: E402
+from _io_utils import configure_stdout_utf8  # noqa: E402
 
 
 def _safety_counts(rows):
@@ -75,6 +76,7 @@ def per_case_delta(pair, a_rows, b_rows):
 
 
 def main(argv=None):
+    configure_stdout_utf8()
     ap = argparse.ArgumentParser(description="R2b A/B 비교(hard cases) — LoRA only vs LoRA+retrievedContext")
     ap.add_argument("--mock", action="store_true", help="Ollama 없이 결정론 mock(오프라인 검증)")
     ap.add_argument("--base-url", default="http://localhost:11434/v1")

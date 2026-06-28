@@ -25,6 +25,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 from build_rag_hard_cases import load_hard_cases, build_hard_pairs  # noqa: E402
 from build_retrieved_context import CONTEXT_KEYS, FORBIDDEN_KEYS, scan_text_for_score_leak  # noqa: E402
+from _io_utils import configure_stdout_utf8  # noqa: E402
 
 EMAIL_RE = re.compile(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}")
 PHONE_RE = re.compile(r"01[016789][- ]?\d{3,4}[- ]?\d{4}")
@@ -105,6 +106,7 @@ def validate():
 
 
 def main():
+    configure_stdout_utf8()
     cases, pairs, errs = validate()
     print(f"[validate_rag_hard_cases] cases={len(cases)} pairs={len(pairs)}")
     if errs:
