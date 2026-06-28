@@ -189,6 +189,13 @@ export async function createComment(
   });
 }
 
+export async function updateComment(commentId: number, content: string) {
+  return api<CommunityComment>(`/community/comments/${commentId}`, {
+    method: "PUT",
+    body: JSON.stringify({ content }),
+  });
+}
+
 export async function deleteComment(commentId: number) {
   return api<void>(`/community/comments/${commentId}`, { method: "DELETE" });
 }
