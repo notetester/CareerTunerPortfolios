@@ -54,7 +54,7 @@ updates:
     patterns: ["*"]
     multi-ecosystem-group: "careertuner-dependencies"
     ignore:
-      # Project runtime contracts are Java 21 and Python 3.12. Major base-image
+      # Project runtime contracts are Java 21 and Python 3.x. Major base-image
       # upgrades need an explicit migration, not an automatic dependency PR.
       - dependency-name: "eclipse-temurin"
         update-types:
