@@ -40,7 +40,11 @@ public class AdminTicketServiceImpl implements AdminTicketService {
     public List<AdminTicketListResponse> getTickets(AuthUser authUser, String status) {
         requireAdmin(authUser);
         String dbStatus = toDbStatus(status);
-        return ticketMapper.findAll(dbStatus);
+        List<AdminTicketListResponse> tickets = ticketMapper.findAll(dbStatus);
+        // 목록도 상세(getTicketDetail)와 동일하게 status 를 프런트 값으로 변환한다.
+        // (findAll 은 DB enum(RECEIVED/IN_PROGRESS/ANSWERED/CLOSED)을 그대로 내려 FE toStatus 기본값(pending)으로 떨어졌음)
+        tickets.forEach(t -> t.setStatus(toFrontStatus(t.getStatus())));
+        return tickets;
     }
 
     @Override
