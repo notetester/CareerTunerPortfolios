@@ -43,7 +43,7 @@ CareerTuner/                IntelliJ로 이 루트를 연다
 
 | 영역 | 선택 |
 | --- | --- |
-| 백엔드 | Spring Boot 4.0.6, Java 21, Spring Security, springdoc-openapi |
+| 백엔드 | Spring Boot 4.1.0, Java 21, Spring Security, springdoc-openapi |
 | 영속성 | **MyBatis** (JPA 미사용), MySQL 8 |
 | 프런트엔드 | React 18, Vite 6, TypeScript, Tailwind CSS v4, shadcn/ui, react-router 7 |
 | AI/ML | OpenAI Responses API, Ollama 로컬 LLM, LoRA/QLoRA 자체 모델 실험, JSON schema 검증/fallback |

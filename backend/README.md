@@ -1,6 +1,6 @@
 # CareerTuner — Backend
 
-Spring Boot **4.0.6** / Java **21** / **MyBatis** / **MySQL 8** REST API 서버.
+Spring Boot **4.1.0** / Java **21** / **MyBatis** / **MySQL 8** REST API 서버.
 인증은 **JWT(Access/Refresh) + Spring Security(stateless)**, 비밀번호는 **BCrypt**.
 
 이 문서는 백엔드의 **현재 구현·실행 상태**를 설명한다. 목표 기능 범위와 출시 우선순위는
