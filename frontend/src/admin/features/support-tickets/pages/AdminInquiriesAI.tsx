@@ -139,6 +139,19 @@ export default function AdminInquiriesAI() {
     }
   };
 
+  // 내부 메모 저장: BE 는 is_internal 메시지로 저장(reply internal=true) → 상태변경·회원알림 없음. 상세는 최신 내부메모를 보여줌.
+  const saveMemo = async () => {
+    if (!selected || !memo.trim()) return;
+    try {
+      const updated = await adminTicketApi.reply(selected.id, memo.trim(), true);
+      setSelected(updated);
+      setMemo(updated.memo || "");
+      flash("내부 메모를 저장했습니다.", "green");
+    } catch {
+      flash("메모 저장에 실패했습니다.", "red");
+    }
+  };
+
   // Filtered list
   const filtered = items.filter((i) => {
     if (filter === "미답변") return i.status === "pending";
@@ -346,6 +359,16 @@ export default function AdminInquiriesAI() {
                 className="w-full min-h-[42px] p-2.5 rounded-md border bg-card text-[12.5px] leading-[1.5] placeholder:text-slate-400 resize-y"
                 style={{ borderColor: "#fde68a" }}
               />
+              <div className="mt-2 flex justify-end">
+                <button
+                  onClick={saveMemo}
+                  disabled={!memo.trim()}
+                  className="h-8 px-3 rounded-md text-[12px] font-bold text-white disabled:opacity-45 disabled:cursor-default"
+                  style={{ background: "#92400e" }}
+                >
+                  메모 저장
+                </button>
+              </div>
             </div>
 
             {/* AI Draft */}
