@@ -54,18 +54,16 @@ export function CommunityHomePage() {
   const { posts, loading, error, fetchPosts, categoryCounts, fetchCategoryCounts } = useCommunityStore();
   const { showLoginDialog, requireAuth, onLoginConfirm, onLoginCancel } = useLoginDialog();
 
+  // 검색(keyword)은 서버에서 필터된 posts 로 들어오므로 여기선 정렬만(클라 keyword 필터 제거 — 최신 100건 한정 누락 해소).
   const filteredPosts = useMemo(() => {
-    const q = tag.trim().toLowerCase();
     return posts
-      .filter((p) => !q || (p.tags ?? []).some((t) => t.toLowerCase().includes(q))
-        || p.title.toLowerCase().includes(q))
       .slice()
       .sort((a, b) => {
         if (sort === "recent") return (a.daysAgo ?? 0) - (b.daysAgo ?? 0);
         const key = sort === "likes" ? "likeCount" : "commentCount";
         return (b.stats[key] ?? 0) - (a.stats[key] ?? 0);
       });
-  }, [posts, sort, tag]);
+  }, [posts, sort]);
 
   const totalPages = Math.max(1, Math.ceil(filteredPosts.length / PER));
   const cur = Math.min(page, totalPages);
@@ -76,8 +74,14 @@ export function CommunityHomePage() {
 
   useEffect(() => {
     const cat = CATEGORIES.find((c) => c.value === selectedCategory);
-    fetchPosts(selectedCategory === "all" ? undefined : cat?.slug);
-  }, [selectedCategory, fetchPosts]);
+    const slug = selectedCategory === "all" ? undefined : cat?.slug;
+    const kw = tag.trim();
+    // 검색어 입력은 디바운스(300ms)로 서버 조회, 카테고리 변경·검색어 클리어는 즉시.
+    const t = setTimeout(() => {
+      fetchPosts(slug, undefined, kw || undefined);
+    }, kw ? 300 : 0);
+    return () => clearTimeout(t);
+  }, [selectedCategory, tag, fetchPosts]);
 
   // 탭 뱃지용 카테고리별 글 수 (목록과 동일 소스에서 집계)
   useEffect(() => {
@@ -231,7 +235,7 @@ export function CommunityHomePage() {
               <Pager page={cur} totalPages={totalPages} onPage={setPage} />
               {filteredPosts.length === 0 && (
                 <p className="av-empty">
-                  {posts.length === 0 ? "해당 카테고리에 게시글이 없습니다." : "검색 결과가 없습니다."}
+                  {tag.trim() ? "검색 결과가 없습니다." : "해당 카테고리에 게시글이 없습니다."}
                 </p>
               )}
             </>

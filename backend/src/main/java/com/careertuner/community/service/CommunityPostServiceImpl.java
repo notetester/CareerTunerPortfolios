@@ -43,11 +43,12 @@ public class CommunityPostServiceImpl implements CommunityPostService {
     private final ApplicationEventPublisher eventPublisher;
 
     @Override
-    public PostPageResponse getPosts(String category, String sort, int page, int size) {
+    public PostPageResponse getPosts(String category, String keyword, String sort, int page, int size) {
         int offset = page * size;
         String status = PostStatus.PUBLISHED.name();
-        List<CommunityPost> posts = postMapper.findAll(category, status, sort, offset, size);
-        int total = postMapper.countAll(category, status);
+        String kw = (keyword == null || keyword.isBlank()) ? null : keyword.trim();
+        List<CommunityPost> posts = postMapper.findAll(category, status, sort, kw, offset, size);
+        int total = postMapper.countAll(category, status, kw);
         return new PostPageResponse(
                 posts.stream().map(this::toListResponse).toList(),
                 total, page, size
