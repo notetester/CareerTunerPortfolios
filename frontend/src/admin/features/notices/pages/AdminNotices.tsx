@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import {
   Megaphone, Plus, Pin, PinOff, Search, ChevronLeft, ChevronRight,
-  Trash2, ArrowDownCircle, ArrowUpCircle, ArrowLeft, Eye, Check, CalendarClock,
+  Trash2, ArrowDownCircle, ArrowUpCircle, ArrowLeft, Eye, Check, CalendarClock, Pencil,
   Bold, Italic, Strikethrough, List, ListOrdered, Quote, Link2, ImageIcon, Table,
 } from "lucide-react";
 import AdminShell from "../../../components/AdminShell";
@@ -38,13 +38,13 @@ const ICON_MAP: Record<string, React.ElementType> = {
 };
 
 /* ═══ 작성 폼 ═══ */
-function NoticeComposeView({ onBack, onCreated }: { onBack: () => void; onCreated: () => void }) {
-  const [cat, setCat] = useState("일반");
-  const [title, setTitle] = useState("");
-  const [body, setBody] = useState("");
-  const [pin, setPin] = useState(false);
+function NoticeComposeView({ editing, onBack, onSaved }: { editing: Notice | null; onBack: () => void; onSaved: () => void }) {
+  const [cat, setCat] = useState(editing?.category ?? "일반");
+  const [title, setTitle] = useState(editing?.title ?? "");
+  const [body, setBody] = useState(editing?.body ?? "");
+  const [pin, setPin] = useState(editing?.pinned ?? false);
   const [push, setPush] = useState(true);
-  const [when, setWhen] = useState<"즉시" | "예약">("즉시");
+  const [when, setWhen] = useState<"즉시" | "예약">(editing?.status === "scheduled" ? "예약" : "즉시");
   const [scheduleAt, setScheduleAt] = useState("");
   const [saving, setSaving] = useState(false);
   const [toast, setToast] = useState<{ msg: string; tone: string } | null>(null);
@@ -60,16 +60,27 @@ function NoticeComposeView({ onBack, onCreated }: { onBack: () => void; onCreate
     if (!canSubmit || saving) return;
     setSaving(true);
     try {
-      await adminNoticeApi.createNotice({
-        title,
-        content: body,
-        status: when === "예약" ? "SCHEDULED" : "PUBLISHED",
-        isPinned: pin,
-        category: cat,
-        thumbnailUrl: null,
-      });
-      flash("공지가 게시되었습니다.", "green");
-      setTimeout(() => onCreated(), 600);
+      if (editing) {
+        // 수정: 제목/본문/분류/고정만 갱신. 상태(게시/예약/임시)는 목록 토글이 관리하므로 보존(BE가 null 필드 coalesce).
+        await adminNoticeApi.updateNotice(editing.id, {
+          title,
+          content: body,
+          category: cat,
+          isPinned: pin,
+        });
+        flash("공지가 수정되었습니다.", "green");
+      } else {
+        await adminNoticeApi.createNotice({
+          title,
+          content: body,
+          status: when === "예약" ? "SCHEDULED" : "PUBLISHED",
+          isPinned: pin,
+          category: cat,
+          thumbnailUrl: null,
+        });
+        flash("공지가 게시되었습니다.", "green");
+      }
+      setTimeout(() => onSaved(), 600);
     } catch {
       flash("저장에 실패했습니다.", "red");
     } finally {
@@ -79,8 +90,8 @@ function NoticeComposeView({ onBack, onCreated }: { onBack: () => void; onCreate
 
   return (
     <AdminShell
-      active="notices" breadcrumb="공지 작성" title="공지 작성" icon={Megaphone}
-      desc="게시하면 공지사항 목록과 (선택 시) 전체 알림으로 발송됩니다"
+      active="notices" breadcrumb={editing ? "공지 수정" : "공지 작성"} title={editing ? "공지 수정" : "공지 작성"} icon={Megaphone}
+      desc={editing ? "내용을 수정하고 저장하면 즉시 반영됩니다" : "게시하면 공지사항 목록과 (선택 시) 전체 알림으로 발송됩니다"}
       actions={<button className="av-btn" onClick={onBack}><ArrowLeft /> 목록으로</button>}
     >
       <div className="av-form">
@@ -125,6 +136,7 @@ function NoticeComposeView({ onBack, onCreated }: { onBack: () => void; onCreate
               </div>
             </div>
           </section>
+          {!editing && (
           <section className="av-panel">
             <div className="av-mod__h"><span className="av-mod__t">게시 시점</span></div>
             <div style={{ padding: "12px 14px 14px" }}>
@@ -139,6 +151,7 @@ function NoticeComposeView({ onBack, onCreated }: { onBack: () => void; onCreate
               {when === "예약" && <input className="av-input num" style={{ marginTop: 8 }} type="datetime-local" value={scheduleAt} onChange={(e) => setScheduleAt(e.target.value)} />}
             </div>
           </section>
+          )}
         </aside>
       </div>
 
@@ -150,8 +163,8 @@ function NoticeComposeView({ onBack, onCreated }: { onBack: () => void; onCreate
             <button className="av-btn">임시저장</button>
             <button className="av-btn av-btn--ink" disabled={!canSubmit || saving}
               style={!canSubmit ? { opacity: 0.45, cursor: "default" } : undefined} onClick={handleSubmit}>
-              {when === "예약" && <CalendarClock />}
-              {when === "예약" ? "게시 예약" : "게시"}
+              {!editing && when === "예약" && <CalendarClock />}
+              {editing ? "수정 저장" : when === "예약" ? "게시 예약" : "게시"}
             </button>
           </div>
         </div>
@@ -164,6 +177,7 @@ function NoticeComposeView({ onBack, onCreated }: { onBack: () => void; onCreate
 /* ═══ 메인 (목록 + 작성 토글) ═══ */
 export default function AdminNotices() {
   const [view, setView] = useState<"list" | "compose">("list");
+  const [editing, setEditing] = useState<Notice | null>(null);   // null=새 공지, Notice=수정
   const [items, setItems] = useState<Notice[]>([]);
   const [filter, setFilter] = useState<FilterKey>("전체");
   const [toast, setToast] = useState<{ msg: string; tone: string } | null>(null);
@@ -205,7 +219,11 @@ export default function AdminNotices() {
   };
 
   if (view === "compose") {
-    return <NoticeComposeView onBack={() => setView("list")} onCreated={() => { setView("list"); loadItems(); }} />;
+    return <NoticeComposeView
+      editing={editing}
+      onBack={() => { setView("list"); setEditing(null); }}
+      onSaved={() => { setView("list"); setEditing(null); loadItems(); }}
+    />;
   }
 
   const filtered = items.filter((n) => {
@@ -219,7 +237,7 @@ export default function AdminNotices() {
     <AdminShell
       active="notices" breadcrumb="공지사항" title="공지사항" icon={Megaphone}
       desc="서비스 공지 작성·게시 관리"
-      actions={<button className="av-btn av-btn--ink" onClick={() => setView("compose")}><Plus /> 새 공지</button>}
+      actions={<button className="av-btn av-btn--ink" onClick={() => { setEditing(null); setView("compose"); }}><Plus /> 새 공지</button>}
     >
       <section className="av-panel">
         <div className="av-filters">
@@ -252,6 +270,10 @@ export default function AdminNotices() {
                 <td className="r av-muted num">{n.date}</td>
                 <td className="r">
                   <div className="nv-actions">
+                    <button className="av-btn" title="수정"
+                      onClick={() => { setEditing(n); setView("compose"); }}>
+                      <Pencil />
+                    </button>
                     <button className="av-btn" title={n.pinned ? "고정 해제" : "상단 고정"}
                       onClick={() => setDialog({ type: "pin", notice: n })}>
                       {n.pinned ? <PinOff /> : <Pin />}

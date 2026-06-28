@@ -8,6 +8,7 @@ export interface Notice {
   date: string;
   views: number;
   body: string;
+  category?: string;
   cover: string | null;
   images: string[];
 }
