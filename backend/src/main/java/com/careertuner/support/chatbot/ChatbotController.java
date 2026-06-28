@@ -1,7 +1,9 @@
 package com.careertuner.support.chatbot;
 
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
@@ -37,7 +39,9 @@ import com.careertuner.ai.chat.MyBatisChatMemoryStore;
 import com.careertuner.ai.chat.QuickReplyAgent;
 import com.careertuner.ai.chat.SearchTrace;
 import com.careertuner.ai.chat.SummaryAgent;
+import com.careertuner.ai.autoprep.AutoPrepIntakeService;
 import com.careertuner.ai.autoprep.dto.AutoPrepIntakeResponse;
+import com.careertuner.ai.autoprep.dto.AutoPrepRequest;
 import com.careertuner.ai.intake.IntakeAskService;
 import com.careertuner.ai.intake.IntakeSlotTrace;
 import com.careertuner.ai.intake.dto.IntakeAskResponse;
@@ -96,6 +100,8 @@ public class ChatbotController {
     private final ApplicationCaseService applicationCaseService;
     // (e) 모은 직무·기술 저장용 A 도메인 write 의존(기존 save 호출만, A 코드 무수정).
     private final ProfileService profileService;
+    // (f) mode 칩 제시·ready 판정 재활용(intake() 직접 호출 — agent.chat·라우터 우회). D 코드 무수정.
+    private final AutoPrepIntakeService autoPrepIntakeService;
     // (b) 온보딩 수집 슬롯(인메모리·대화키). 직무·기술을 모았다가 (e)에서 저장.
     private final IntakeSlotTrace intakeSlotTrace;
 
@@ -117,6 +123,7 @@ public class ChatbotController {
                             ProfileMapper profileMapper,
                             ApplicationCaseService applicationCaseService,
                             ProfileService profileService,
+                            AutoPrepIntakeService autoPrepIntakeService,
                             IntakeSlotTrace intakeSlotTrace) {
         this.agent = agent;
         this.quickReplyAgent = quickReplyAgent;
@@ -136,6 +143,7 @@ public class ChatbotController {
         this.profileMapper = profileMapper;
         this.applicationCaseService = applicationCaseService;
         this.profileService = profileService;
+        this.autoPrepIntakeService = autoPrepIntakeService;
         this.intakeSlotTrace = intakeSlotTrace;
     }
 
@@ -144,7 +152,8 @@ public class ChatbotController {
      * 결정성(§6-1,2): 챗봇은 질문만 친절(예시·범위), 답 해석/부풀림 금지·스킬추출 AI 미사용. 저장(ProfileService.save)은 (e).
      * 매 턴 재판정(저장 전까지 깡통 유지)이라 step 으로 진행 단계를 이어간다. case 입력(d)·저장(e)·면접합류(f)는 다음 단계.
      */
-    private ChatAskResponse onboardingTurn(Long conversationId, AuthUser authUser, String question) {
+    private ChatAskResponse onboardingTurn(Long conversationId, AuthUser authUser, String question,
+                                           String selectedModeCode) {
         Long userId = authUser.id();   // 라우팅에서 authUser != null 보장. save((e))가 authUser 를 요구해 끝까지 내린다.
         String step = intakeSlotTrace.onboardingStep(conversationId);
         RouteMessage rm;
@@ -172,12 +181,15 @@ public class ChatbotController {
             rm = onboardingFillField(conversationId, authUser, question, true, "회사명을 입력해 주세요. 어느 회사 공고인가요?");
         } else if ("AWAIT_JOBTITLE".equals(step)) {
             rm = onboardingFillField(conversationId, authUser, question, false, "직무명을 입력해 주세요. (예: 백엔드 개발자)");
+        } else if ("AWAIT_MODE".equals(step)) {
+            rm = onboardingModeStep(conversationId, authUser, selectedModeCode);
         } else {
-            // CASE_READY 등 종단 — 라우터의 sticky 가 여기 도달 전에 풀리는 게 정상(방어용).
-            rm = new RouteMessage("④온보딩:완료대기", "지원 건 준비가 끝났어요. 면접 준비를 이어서 진행해 주세요.");
+            // DONE 등 종단 — 라우터의 sticky 가 여기 도달 전에 풀리는 게 정상(방어용).
+            rm = new RouteMessage("④온보딩:완료대기", "면접 준비가 시작됐어요. 잠시만 기다려 주세요.");
         }
         responseLogService.record(conversationId, userId, question, "ONBOARDING", false, null, null, false);
-        return new ChatAskResponse(conversationId, rm.message(), List.of(), List.of(), rm.route(), null, false, null);
+        return new ChatAskResponse(conversationId, rm.message(), List.of(), List.of(),
+                rm.route(), rm.intake(), rm.inOrchestration(), null);
     }
 
     /**
@@ -277,8 +289,8 @@ public class ChatbotController {
 
     /**
      * (d) 추출/보정 후 case 상태로 다음 단계 결정: 회사명·직무명이 DEFAULT 면 그 항목만 유저에게 묻고,
-     * 둘 다 채워졌으면 CASE_READY(종단). 빈 입력으로 DEFAULT 가 남으면 자연히 같은 항목을 재질문(self-heal).
-     * (e) CASE_READY 전이는 case 가 확정된 유일한 지점 → 여기서 *딱 한 번* 프로필을 저장한다("늦게 save").
+     * 둘 다 채워졌으면 프로필 저장 후 AWAIT_MODE(mode 칩)로 넘어간다. 빈 입력으로 DEFAULT 가 남으면 같은 항목 재질문(self-heal).
+     * (e) 이 "둘 다 채워짐" 지점이 case 가 확정된 유일한 곳 → 여기서 *딱 한 번* 프로필을 저장한다("늦게 save").
      */
     private RouteMessage onboardingResolveCase(Long conversationId, AuthUser authUser, ApplicationCaseResponse caseNow) {
         if (ONB_DEFAULT_COMPANY.equals(caseNow.companyName())) {
@@ -291,13 +303,57 @@ public class ChatbotController {
             return new RouteMessage("④온보딩:확인-직무",
                     "회사는 \"" + caseNow.companyName() + "\"로 확인됐어요. 직무명도 알려주세요. (예: 백엔드 개발자)");
         }
-        // ★(e) save 타이밍 = case 확정 직후, CASE_READY 전이 전. case 가 이미 있으니 게이트는 false →
-        //   이 시점 이탈해도 "프로필O+case0" 막다른 길이 안 생긴다(측정 §5e "늦게 save"). save 는 이 한 곳에서만.
+        // ★(e) save 타이밍 = case 확정 직후. case 가 이미 있으니 게이트는 false → 이 시점 이탈해도
+        //   "프로필O+case0" 막다른 길이 안 생긴다(측정 §5e "늦게 save"). save 는 이 한 곳에서만.
         saveOnboardingProfile(conversationId, authUser);
-        intakeSlotTrace.setOnboardingStep(conversationId, "CASE_READY");
-        return new RouteMessage("④온보딩:공고완료",
-                "회사 \"" + caseNow.companyName() + "\", 직무 \"" + caseNow.jobTitle()
-                        + "\"로 지원 건을 만들었어요! 이제 면접 준비로 이어집니다.");
+        // (f) 회사·직무·프로필이 다 찼으니 마지막으로 면접 mode 를 받아 인테이크로 인계한다(같은 턴에 mode 칩 제시).
+        intakeSlotTrace.setOnboardingStep(conversationId, "AWAIT_MODE");
+        return onboardingModeStep(conversationId, authUser, null);
+    }
+
+    /**
+     * (f) AWAIT_MODE: 마지막 단계 — 면접 mode 칩을 받아 autoPrepRequest 를 조립해 프론트 run 으로 인계한다.
+     * <p>mode 칩·ready 판정은 인테이크의 권위 서비스 {@code autoPrepIntakeService.intake} 를 *직접* 부른다
+     * (agent.chat·라우터 우회 = 갈래2). query=null 이면 {@code AutoPrepPlanner.parseIntent} 가 LLM 미호출로 즉시
+     * 빈 의도→전체단계 → caseId+mode 만으로 결정적 ready 산출(로컬 LLM 0 검증 가능). 실제 분석 run 은 프론트가
+     * autoPrepRequest 로 이어받아 기존 autoPrep 가 수행(LLM 필요·배포 확인) — 여기 범위는 ready+요청 산출까지.</p>
+     * <p>★결정성(§6·발견①): mode 는 칩(selectedModeCode)으로만 확정. 자유텍스트/qwen3 추론 0 — 유효 칩이 아니면
+     * 칩을 다시 제시(텍스트로 mode 를 정하지 않는다). 유효 코드 집합은 서비스가 돌려준 칩에서 그대로 가져온다(중복 정의 X).</p>
+     */
+    private RouteMessage onboardingModeStep(Long conversationId, AuthUser authUser, String selectedModeCode) {
+        Long userId = authUser.id();
+        Long caseId = intakeSlotTrace.onboardingCaseId(conversationId);
+        if (caseId == null) {
+            intakeSlotTrace.setOnboardingStep(conversationId, "AWAIT_POSTING");
+            return new RouteMessage("④온보딩:공고요청",
+                    "공고 정보를 다시 받아야 할 것 같아요. 공고 전문을 붙여넣어 주세요.");
+        }
+        // case 만 바운드하고 mode 는 비워 부르면(권위 서비스) nextAsk=MODE + 6칩(MODE_OPTIONS)을 결정적으로 돌려준다.
+        AutoPrepIntakeResponse modeResp = autoPrepIntakeService.intake(
+                userId, new AutoPrepRequest(null, caseId, null, null, null));
+        List<AutoPrepIntakeResponse.ModeOption> chips = modeResp.modes() == null ? List.of() : modeResp.modes();
+        if (chips.isEmpty()) {   // 방어: case 미소유 등으로 MODE 단계가 안 나오면 재질문
+            return new RouteMessage("④온보딩:모드선택",
+                    "면접 모드를 불러오지 못했어요. 잠시 후 다시 시도해 주세요.");
+        }
+        Set<String> validCodes = chips.stream()
+                .map(m -> m.code().toUpperCase(Locale.ROOT))
+                .collect(Collectors.toSet());
+        String code = selectedModeCode == null ? null : selectedModeCode.trim().toUpperCase(Locale.ROOT);
+        if (code == null || !validCodes.contains(code)) {
+            // ★발견① — 칩만. 텍스트/qwen3 로 mode 추론하지 않고 칩을 (다시) 제시한다.
+            return new RouteMessage("④온보딩:모드선택",
+                    "마지막으로, 면접 모드를 골라주세요.",
+                    new ChatAskResponse.IntakeStep(false, "MODE", null, List.of(), toModes(chips)),
+                    true);
+        }
+        // 유효 칩 선택 → caseId+mode 로 autoPrepRequest 조립(=enterIntake 와 동일 구조). query=null(전체 준비·LLM 0).
+        AutoPrepRequest autoPrepRequest = new AutoPrepRequest(null, caseId, code, null, null);
+        intakeSlotTrace.setOnboardingStep(conversationId, "DONE");   // 종단 → 다음 턴부터 sticky 풀림
+        return new RouteMessage("④온보딩:면접인계",
+                "면접 준비를 시작할게요!",
+                new ChatAskResponse.IntakeStep(true, null, autoPrepRequest, List.of(), List.of()),
+                true);
     }
 
     /**
@@ -331,8 +387,16 @@ public class ChatbotController {
         }
     }
 
-    /** (d) 온보딩 턴의 라우트 태그 + 사용자 메시지 묶음(내부 분기 헬퍼 반환형). */
-    private record RouteMessage(String route, String message) {}
+    /**
+     * (d)(f) 온보딩 턴 결과: 라우트 태그 + 사용자 메시지 + (f) 인계용 IntakeStep·오케 배너 플래그.
+     * 대부분 분기는 2-arg(인테이크 메타 없음); mode 칩 제시·면접 인계 턴만 intake/inOrchestration 을 채운다.
+     */
+    private record RouteMessage(String route, String message,
+                               ChatAskResponse.IntakeStep intake, boolean inOrchestration) {
+        RouteMessage(String route, String message) {
+            this(route, message, null, false);
+        }
+    }
 
     /**
      * (a) 깡통계정 온보딩 게이트 판정: 프로필 행 없음 + 지원 건 0건. 코드(DB 조회)로 결정 — 모델(qwen3)에 안 물음(§6-2).
@@ -340,13 +404,13 @@ public class ChatbotController {
      * A(ProfileMapper)·B(ApplicationCaseService)의 기존 read 메서드 호출만 — 그쪽 코드 무수정.
      */
     /**
-     * (d) 온보딩이 진행 중인가 — 단계가 설정됐고 아직 종단(CASE_READY)이 아니면 true.
-     * case 생성 후 게이트(깡통 판정)가 false 가 돼도 추출 폴링·보정을 이어가도록 sticky 라우팅의 근거가 된다.
+     * (d)(f) 온보딩이 진행 중인가 — 단계가 설정됐고 아직 종단(DONE=면접 인계 완료)이 아니면 true.
+     * case 생성 후 게이트(깡통 판정)가 false 가 돼도 추출 폴링·보정·mode 선택을 이어가도록 sticky 라우팅의 근거가 된다.
      * 인메모리 슬롯 기준이라 백엔드 재시작 시 휘발(MVP — 온보딩 중간이탈 복원은 명시적 제외, 설계 §1).
      */
     private boolean isOnboardingInProgress(Long conversationId) {
         String step = intakeSlotTrace.onboardingStep(conversationId);
-        return step != null && !"CASE_READY".equals(step);
+        return step != null && !"DONE".equals(step);
     }
 
     private boolean isBlankAccountForOnboarding(Long userId) {
@@ -427,11 +491,11 @@ public class ChatbotController {
         // (a)(b)(d) 깡통계정 온보딩: 프로필 행 없음 + 지원 건 0건 = 순수 깡통 → 온보딩(직무→기술→공고).
         //   여기까지 온 건 exit/sticky/DB복원/fastPath 가 아닌 신규 라우팅 턴 — 비-깡통은 false 로 통과해 아래 기존 흐름.
         //   sticky(intakeModeStore=인테이크 case 흐름) 안 건드림. ★(d) 공고로 case 가 생기면 게이트는 false 가 되지만,
-        //   온보딩이 진행 중(CASE_READY 종단 전)이면 sticky 로 onboardingTurn 을 유지해 비동기 추출 폴링·회사/직무 보정을
-        //   이어간다. CASE_READY 면 sticky 가 풀려 아래 기존 흐름(인테이크)으로 자연 인계된다((f) 합류 지점).
+        //   온보딩이 진행 중(DONE 종단 전)이면 sticky 로 onboardingTurn 을 유지해 비동기 추출 폴링·회사/직무 보정·
+        //   mode 선택을 이어간다. (f) 면접 인계로 DONE 되면 sticky 가 풀린다(인계 자체는 onboardingTurn 안에서 끝남).
         if (authUser != null
                 && (isOnboardingInProgress(conversationId) || isBlankAccountForOnboarding(userId))) {
-            return ApiResponse.ok(onboardingTurn(conversationId, authUser, question));
+            return ApiResponse.ok(onboardingTurn(conversationId, authUser, question, req.selectedModeCode()));
         }
 
         // 확인 대기(1턴) 소비: 이 턴은 라우팅을 돌리지 않는다. (오분류 안전판 A)
