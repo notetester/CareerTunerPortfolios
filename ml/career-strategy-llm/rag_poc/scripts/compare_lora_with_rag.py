@@ -22,6 +22,7 @@ sys.path.insert(0, HERE)
 sys.path.insert(0, os.path.join(HERE, "..", "..", "scripts"))  # ml/.../scripts
 from build_rag_eval_cases import build_cases, build_pairs  # noqa: E402
 from eval_fit_model import evaluate  # noqa: E402  (기존 채점 로직 재사용)
+from _io_utils import configure_stdout_utf8  # noqa: E402
 
 VARIANTS = ["lora_only", "lora_with_retrieved_context"]
 
@@ -109,6 +110,7 @@ def aggregate(rows, *, mock=False):
 
 
 def main(argv=None):
+    configure_stdout_utf8()
     ap = argparse.ArgumentParser()
     ap.add_argument("--mock", action="store_true")
     ap.add_argument("--base-url", default="http://localhost:11434/v1")
