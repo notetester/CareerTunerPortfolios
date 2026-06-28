@@ -49,7 +49,11 @@ import com.careertuner.applicationcase.service.ApplicationCaseService;
 import com.careertuner.common.security.AuthUser;
 import com.careertuner.common.web.ApiResponse;
 import com.careertuner.community.search.PostHit;
+import com.careertuner.profile.dto.UserProfileRequest;
 import com.careertuner.profile.mapper.ProfileMapper;
+import com.careertuner.profile.service.ProfileService;
+
+import java.util.Arrays;
 
 @RestController
 @RequestMapping("/api")
@@ -90,6 +94,8 @@ public class ChatbotController {
     // (a) 깡통계정 온보딩 게이트용 read 의존(호출만, A·B 도메인 무수정).
     private final ProfileMapper profileMapper;
     private final ApplicationCaseService applicationCaseService;
+    // (e) 모은 직무·기술 저장용 A 도메인 write 의존(기존 save 호출만, A 코드 무수정).
+    private final ProfileService profileService;
     // (b) 온보딩 수집 슬롯(인메모리·대화키). 직무·기술을 모았다가 (e)에서 저장.
     private final IntakeSlotTrace intakeSlotTrace;
 
@@ -110,6 +116,7 @@ public class ChatbotController {
                             SummaryAgent summaryAgent,
                             ProfileMapper profileMapper,
                             ApplicationCaseService applicationCaseService,
+                            ProfileService profileService,
                             IntakeSlotTrace intakeSlotTrace) {
         this.agent = agent;
         this.quickReplyAgent = quickReplyAgent;
@@ -128,6 +135,7 @@ public class ChatbotController {
         this.summaryAgent = summaryAgent;
         this.profileMapper = profileMapper;
         this.applicationCaseService = applicationCaseService;
+        this.profileService = profileService;
         this.intakeSlotTrace = intakeSlotTrace;
     }
 
@@ -136,7 +144,8 @@ public class ChatbotController {
      * 결정성(§6-1,2): 챗봇은 질문만 친절(예시·범위), 답 해석/부풀림 금지·스킬추출 AI 미사용. 저장(ProfileService.save)은 (e).
      * 매 턴 재판정(저장 전까지 깡통 유지)이라 step 으로 진행 단계를 이어간다. case 입력(d)·저장(e)·면접합류(f)는 다음 단계.
      */
-    private ChatAskResponse onboardingTurn(Long conversationId, Long userId, String question) {
+    private ChatAskResponse onboardingTurn(Long conversationId, AuthUser authUser, String question) {
+        Long userId = authUser.id();   // 라우팅에서 authUser != null 보장. save((e))가 authUser 를 요구해 끝까지 내린다.
         String step = intakeSlotTrace.onboardingStep(conversationId);
         RouteMessage rm;
         if (step == null) {
@@ -147,7 +156,7 @@ public class ChatbotController {
             intakeSlotTrace.recordOnboardingJob(conversationId, question);   // 유저 답 그대로(가공 0)
             intakeSlotTrace.setOnboardingStep(conversationId, "SKILLS");
             rm = new RouteMessage("④온보딩:기술",
-                    "좋아요. 주로 다루는 기술을 알려주세요. 3~4개면 충분해요. (예: React, TypeScript, Spring)");
+                    "좋아요. 주로 다루는 기술을 콤마(,)로 구분해서 알려주세요. 3~4개면 충분해요. (예: React, TypeScript, Spring)");
         } else if ("SKILLS".equals(step)) {
             intakeSlotTrace.recordOnboardingSkills(conversationId, question); // 그대로
             intakeSlotTrace.setOnboardingStep(conversationId, "AWAIT_POSTING");
@@ -158,11 +167,11 @@ public class ChatbotController {
         } else if ("AWAIT_POSTING".equals(step)) {
             rm = onboardingCreateCase(conversationId, userId, question);
         } else if ("EXTRACTING".equals(step)) {
-            rm = onboardingPollExtraction(conversationId, userId);
+            rm = onboardingPollExtraction(conversationId, authUser);
         } else if ("AWAIT_COMPANY".equals(step)) {
-            rm = onboardingFillField(conversationId, userId, question, true, "회사명을 입력해 주세요. 어느 회사 공고인가요?");
+            rm = onboardingFillField(conversationId, authUser, question, true, "회사명을 입력해 주세요. 어느 회사 공고인가요?");
         } else if ("AWAIT_JOBTITLE".equals(step)) {
-            rm = onboardingFillField(conversationId, userId, question, false, "직무명을 입력해 주세요. (예: 백엔드 개발자)");
+            rm = onboardingFillField(conversationId, authUser, question, false, "직무명을 입력해 주세요. (예: 백엔드 개발자)");
         } else {
             // CASE_READY 등 종단 — 라우터의 sticky 가 여기 도달 전에 풀리는 게 정상(방어용).
             rm = new RouteMessage("④온보딩:완료대기", "지원 건 준비가 끝났어요. 면접 준비를 이어서 진행해 주세요.");
@@ -202,7 +211,8 @@ public class ChatbotController {
      * SUCCEEDED → case 재조회로 파싱 결과 확인(PASS=자동 채움 / REVIEW_REQUIRED=DEFAULT 유지 → 유저 확정).
      * 미완(QUEUED/RUNNING)=대기, FAILED=공고 재요청. 추출 상태/품질은 B 도메인이 판정 — 챗봇은 결과만 읽는다.
      */
-    private RouteMessage onboardingPollExtraction(Long conversationId, Long userId) {
+    private RouteMessage onboardingPollExtraction(Long conversationId, AuthUser authUser) {
+        Long userId = authUser.id();
         Long caseId = intakeSlotTrace.onboardingCaseId(conversationId);
         if (caseId == null) {
             intakeSlotTrace.setOnboardingStep(conversationId, "AWAIT_POSTING");
@@ -227,7 +237,7 @@ public class ChatbotController {
                     "아직 공고를 분석 중이에요. 잠시 후 다시 메시지를 보내주세요.");
         }
         try {
-            return onboardingResolveCase(conversationId, applicationCaseService.get(userId, caseId));
+            return onboardingResolveCase(conversationId, authUser, applicationCaseService.get(userId, caseId));
         } catch (RuntimeException ex) {
             log.warn("온보딩 case 재조회 실패(대기 유지): {}", ex.getMessage());
             return new RouteMessage("④온보딩:추출대기",
@@ -240,8 +250,9 @@ public class ChatbotController {
      * (update 는 null 인자를 기존값 유지로 처리 — 부분 갱신.) 빈 입력은 재질문. update 는 분석 파이프라인을
      * 트리거하지 않음(컬럼만 패치) — 분석은 (f) autoPrep 에서 정상 회사명으로 생성된다.
      */
-    private RouteMessage onboardingFillField(Long conversationId, Long userId, String question,
+    private RouteMessage onboardingFillField(Long conversationId, AuthUser authUser, String question,
                                              boolean company, String reaskMessage) {
+        Long userId = authUser.id();
         if (question == null || question.isBlank()) {
             return new RouteMessage(company ? "④온보딩:확인-회사" : "④온보딩:확인-직무", reaskMessage);
         }
@@ -256,7 +267,7 @@ public class ChatbotController {
             applicationCaseService.update(userId, caseId, company
                     ? new UpdateApplicationCaseRequest(value, null, null, null, null, null, null, null, null, null)
                     : new UpdateApplicationCaseRequest(null, value, null, null, null, null, null, null, null, null));
-            return onboardingResolveCase(conversationId, applicationCaseService.get(userId, caseId));
+            return onboardingResolveCase(conversationId, authUser, applicationCaseService.get(userId, caseId));
         } catch (RuntimeException ex) {
             log.warn("온보딩 case 보정 update 실패(재질문): {}", ex.getMessage());
             return new RouteMessage(company ? "④온보딩:확인-회사" : "④온보딩:확인-직무",
@@ -267,8 +278,9 @@ public class ChatbotController {
     /**
      * (d) 추출/보정 후 case 상태로 다음 단계 결정: 회사명·직무명이 DEFAULT 면 그 항목만 유저에게 묻고,
      * 둘 다 채워졌으면 CASE_READY(종단). 빈 입력으로 DEFAULT 가 남으면 자연히 같은 항목을 재질문(self-heal).
+     * (e) CASE_READY 전이는 case 가 확정된 유일한 지점 → 여기서 *딱 한 번* 프로필을 저장한다("늦게 save").
      */
-    private RouteMessage onboardingResolveCase(Long conversationId, ApplicationCaseResponse caseNow) {
+    private RouteMessage onboardingResolveCase(Long conversationId, AuthUser authUser, ApplicationCaseResponse caseNow) {
         if (ONB_DEFAULT_COMPANY.equals(caseNow.companyName())) {
             intakeSlotTrace.setOnboardingStep(conversationId, "AWAIT_COMPANY");
             return new RouteMessage("④온보딩:확인-회사",
@@ -279,10 +291,44 @@ public class ChatbotController {
             return new RouteMessage("④온보딩:확인-직무",
                     "회사는 \"" + caseNow.companyName() + "\"로 확인됐어요. 직무명도 알려주세요. (예: 백엔드 개발자)");
         }
+        // ★(e) save 타이밍 = case 확정 직후, CASE_READY 전이 전. case 가 이미 있으니 게이트는 false →
+        //   이 시점 이탈해도 "프로필O+case0" 막다른 길이 안 생긴다(측정 §5e "늦게 save"). save 는 이 한 곳에서만.
+        saveOnboardingProfile(conversationId, authUser);
         intakeSlotTrace.setOnboardingStep(conversationId, "CASE_READY");
         return new RouteMessage("④온보딩:공고완료",
                 "회사 \"" + caseNow.companyName() + "\", 직무 \"" + caseNow.jobTitle()
                         + "\"로 지원 건을 만들었어요! 이제 면접 준비로 이어집니다.");
+    }
+
+    /**
+     * (e) 슬롯에 모은 직무·기술을 A.ProfileService.save 로 *한 번* 저장(전체 덮어쓰기 upsert). A 코드 무수정 — 호출만.
+     * ★skills 변환: 슬롯은 자유텍스트("Java, Spring") → 토큰화해 List 로 넘겨야 JSON *배열*로 저장돼 FIT 가 읽는
+     *   배열과 일치한다(그대로 String 으로 주면 JSON 문자열로 저장돼 FIT 매칭 깨짐 — 측정). FIT 매칭은 스킬 *완전일치*
+     *   집합이라(Mock 엔진) 한 원소에 여러 스킬이 뭉치면 매칭 0 → 콤마 외 줄바꿈·/·중점·;·"및"·"그리고"도 구분자로 보고,
+     *   대소문자 무시 중복은 제거한다(공백 분리는 "Spring Boot" 같은 복합어를 깨므로 제외). 직무·기술 외 필드는
+     *   null(전 필드 nullable). 저장 실패해도 case 는 이미 만들어졌으므로 CASE_READY 는 진행(로그만) — 프로필은
+     *   이후 /profile 에서 보완 가능. 게이트(누가 온보딩 타나)와는 분리된 로직이다.
+     */
+    private void saveOnboardingProfile(Long conversationId, AuthUser authUser) {
+        IntakeSlotTrace.OnboardingCollected got = intakeSlotTrace.onboarding(conversationId);
+        String desiredJob = got.job() == null || got.job().isBlank() ? null : got.job().trim();
+        List<String> skills = got.skills() == null ? List.of()
+                : Arrays.stream(got.skills().split("[,\\n/·;]+|\\s+및\\s+|\\s+그리고\\s+"))
+                        .map(String::trim)
+                        .filter(s -> !s.isEmpty())
+                        .collect(Collectors.toMap(
+                                s -> s.toLowerCase(),   // 대소문자 무시 dedup, 첫 등장 원문·순서 보존
+                                s -> s,
+                                (first, dup) -> first,
+                                java.util.LinkedHashMap::new))
+                        .values().stream().toList();
+        try {
+            profileService.save(authUser, new UserProfileRequest(
+                    desiredJob, null, null, null, null, skills,
+                    null, null, null, null, null, null));
+        } catch (RuntimeException ex) {
+            log.warn("온보딩 프로필 저장 실패(case 는 생성됨, CASE_READY 진행): {}", ex.getMessage());
+        }
     }
 
     /** (d) 온보딩 턴의 라우트 태그 + 사용자 메시지 묶음(내부 분기 헬퍼 반환형). */
@@ -383,8 +429,9 @@ public class ChatbotController {
         //   sticky(intakeModeStore=인테이크 case 흐름) 안 건드림. ★(d) 공고로 case 가 생기면 게이트는 false 가 되지만,
         //   온보딩이 진행 중(CASE_READY 종단 전)이면 sticky 로 onboardingTurn 을 유지해 비동기 추출 폴링·회사/직무 보정을
         //   이어간다. CASE_READY 면 sticky 가 풀려 아래 기존 흐름(인테이크)으로 자연 인계된다((f) 합류 지점).
-        if (isOnboardingInProgress(conversationId) || isBlankAccountForOnboarding(userId)) {
-            return ApiResponse.ok(onboardingTurn(conversationId, userId, question));
+        if (authUser != null
+                && (isOnboardingInProgress(conversationId) || isBlankAccountForOnboarding(userId))) {
+            return ApiResponse.ok(onboardingTurn(conversationId, authUser, question));
         }
 
         // 확인 대기(1턴) 소비: 이 턴은 라우팅을 돌리지 않는다. (오분류 안전판 A)
