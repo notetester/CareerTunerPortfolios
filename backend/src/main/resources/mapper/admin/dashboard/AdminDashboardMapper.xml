@@ -30,8 +30,16 @@
         WHERE created_at &gt;= DATE_FORMAT(CURRENT_DATE, '%Y-%m-01')
     </select>
 
+    <!-- 검토 대기: home 과 동일 기준(지원 건별 최신 적합도 분석 중 REVIEW_REQUIRED)으로 통일한다. -->
     <select id="countReviewRequiredAnalyses" resultType="int">
-        SELECT COUNT(*) FROM fit_analysis_gate_result
-        WHERE gate_status = 'REVIEW_REQUIRED'
+        SELECT COUNT(*)
+        FROM fit_analysis fa
+        INNER JOIN fit_analysis_gate_result gr ON gr.fit_analysis_id = fa.id
+        WHERE gr.gate_status = 'REVIEW_REQUIRED'
+          AND fa.id = (
+              SELECT MAX(latest_fa.id)
+              FROM fit_analysis latest_fa
+              WHERE latest_fa.application_case_id = fa.application_case_id
+          )
     </select>
 </mapper>

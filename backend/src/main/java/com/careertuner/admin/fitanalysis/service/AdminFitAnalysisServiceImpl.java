@@ -15,6 +15,7 @@ import com.careertuner.admin.fitanalysis.domain.AdminFitAnalysisMemo;
 import com.careertuner.common.exception.BusinessException;
 import com.careertuner.common.exception.ErrorCode;
 import com.careertuner.fitanalysis.dto.FitAnalysisLearningTaskResponse;
+import com.careertuner.fitanalysis.dto.FitSafetyResponse;
 import com.careertuner.fitanalysis.mapper.FitAnalysisMapper;
 import lombok.RequiredArgsConstructor;
 import tools.jackson.core.type.TypeReference;
@@ -25,6 +26,8 @@ import tools.jackson.databind.ObjectMapper;
 public class AdminFitAnalysisServiceImpl implements AdminFitAnalysisService {
 
     private static final TypeReference<List<String>> STRING_LIST = new TypeReference<>() {
+    };
+    private static final TypeReference<List<FitSafetyResponse.Reason>> GATE_REASON_LIST = new TypeReference<>() {
     };
 
     private final AdminFitAnalysisMapper adminFitAnalysisMapper;
@@ -57,6 +60,7 @@ public class AdminFitAnalysisServiceImpl implements AdminFitAnalysisService {
                 parseList(result.getRecommendedCertificates()),
                 parseList(result.getScoreBasis()),
                 parseList(result.getStrategyActions()),
+                parseGateReasons(result.getGateReasonsJson()),
                 fitAnalysisMapper.findLearningTasksByFitAnalysisId(id).stream()
                         .map(FitAnalysisLearningTaskResponse::from)
                         .toList(),
@@ -127,6 +131,19 @@ public class AdminFitAnalysisServiceImpl implements AdminFitAnalysisService {
                     .filter(item -> !item.isBlank())
                     .distinct()
                     .toList();
+        }
+    }
+
+    /** gate_reasons_json 을 reason 목록으로 파싱한다(없거나 깨지면 빈 목록). */
+    private List<FitSafetyResponse.Reason> parseGateReasons(String value) {
+        if (value == null || value.isBlank()) {
+            return List.of();
+        }
+        try {
+            List<FitSafetyResponse.Reason> reasons = objectMapper.readValue(value, GATE_REASON_LIST);
+            return reasons == null ? List.of() : reasons;
+        } catch (Exception ignored) {
+            return List.of();
         }
     }
 

@@ -86,8 +86,17 @@ export interface AdminFitAnalysisDetail {
   gateReasonCount: number;
   gateMaxSeverity: string | null;
   evidenceGateVersion: string | null;
+  /** 실제 gate reason 목록(축약). 상세에서 왜 검토 필요인지 판단용. */
+  gateReasons: AdminFitAnalysisGateReason[];
   learningTasks: AdminFitAnalysisLearningTask[];
   memos: AdminFitAnalysisMemo[];
+}
+
+export interface AdminFitAnalysisGateReason {
+  type: string;
+  claim: string;
+  reason: string;
+  severity: string;
 }
 
 export interface AdminFitAnalysisMemoRequest {
