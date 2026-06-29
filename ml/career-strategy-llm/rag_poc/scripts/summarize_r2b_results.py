@@ -16,6 +16,10 @@ import json
 import os
 import sys
 
+HERE = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, HERE)
+from _io_utils import configure_stdout_utf8  # noqa: E402
+
 
 def _variant_line(name, agg):
     keys = ["success_rate", "json_parse_rate", "cjk_leak_rate", "grounding_violation_count",
@@ -69,6 +73,7 @@ def summarize(data):
 
 
 def main():
+    configure_stdout_utf8()
     ap = argparse.ArgumentParser(description="R2b 결과 요약(mock-not-real 가드)")
     ap.add_argument("raw", help="rag_r2b_hardcase_ab_raw.json 또는 rag_r2_ab_raw.json")
     ap.add_argument("--md", help="요약 markdown 출력 경로(미지정 시 stdout)")
