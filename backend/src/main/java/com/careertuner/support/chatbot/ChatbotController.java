@@ -25,6 +25,8 @@ import dev.langchain4j.data.message.ChatMessage;
 import dev.langchain4j.data.message.UserMessage;
 
 import com.careertuner.ai.chat.ChatAskRequest;
+import com.careertuner.ai.chat.ChipSuggestion;
+import com.careertuner.ai.chat.QuickReplyParser;
 import com.careertuner.ai.chat.ChatAskResponse;
 import com.careertuner.ai.chat.ChatHistoryResponse;
 import com.careertuner.ai.chat.ChatHistoryResponse.ChatHistoryMessage;
@@ -892,16 +894,13 @@ public class ChatbotController {
     private List<String> suggestQuickReplies(Long userId, Long conversationId,
                                              String question, String answer, boolean postsPresented) {
         try {
-            List<String> chips = quickReplyAgent.suggest(buildChipContext(userId, conversationId, question, answer));
-            if (chips == null) {
-                return List.of();
-            }
-            // "요약" 칩은 summaryChip 이 소유 → postsPresented 무관하게 항상 제거.
-            return chips.stream()
-                    .filter(c -> c != null && !SUMMARY_CHIP.matcher(c).find())
-                    // 그 외 글 관련 칩(후기/글/게시/본문)은 글 미제시 턴에서만 결정적으로 제거.
-                    .filter(c -> postsPresented || !POST_CHIP.matcher(c).find())
+            String raw = quickReplyAgent.suggest(buildChipContext(userId, conversationId, question, answer));
+            // 게이트 필터를 선별(최대 N) 전에 적용해, 유효 칩으로만 N개를 채운다.
+            List<ChipSuggestion> gated = QuickReplyParser.parse(raw).stream()
+                    .filter(c -> c.text() != null && !SUMMARY_CHIP.matcher(c.text()).find())
+                    .filter(c -> postsPresented || !POST_CHIP.matcher(c.text()).find())
                     .collect(Collectors.toList());
+            return QuickReplyParser.select(gated, 3);
         } catch (Exception e) {
             log.warn("quickReplies 생성 실패(무시): {}", e.getMessage());
             return List.of();
