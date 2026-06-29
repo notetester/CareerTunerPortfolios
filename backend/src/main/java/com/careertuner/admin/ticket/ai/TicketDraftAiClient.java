@@ -95,6 +95,56 @@ public class TicketDraftAiClient {
         }
     }
 
+    private static final String SUMMARY_SYSTEM_PROMPT =
+            "너는 CareerTuner 고객센터 상담사를 돕는 AI 어시스턴트다. "
+          + "아래 회원 정보와 과거 문의 이력을 읽고, 상담사가 이 회원을 빠르게 파악하도록 "
+          + "3~4문장의 한국어 존댓말 요약을 작성하라. 가입 시기·구독 등급·과거 문의 빈도와 해결 양상·이번 문의 맥락을 "
+          + "자연스럽게 엮되, 제공된 정보에 없는 사실(결제 금액·외부 데이터 등)은 절대 지어내지 마라. "
+          + "비밀번호·연락처 같은 민감정보는 언급하지 마라. 요약 본문만 출력한다.";
+
+    /**
+     * 회원 정보·과거 문의 이력 컨텍스트를 받아 상담사용 회원 요약을 생성한다.
+     * 초안 생성과 동일한 Ollama /api/chat 호출 인프라를 재사용하되 요약 프롬프트를 쓴다.
+     */
+    public String summarizeMember(String memberContext) {
+        Map<String, Object> request = Map.of(
+                "model", ollamaProps.getModel(),
+                "stream", false,
+                "options", Map.of("temperature", 0.3, "num_ctx", 4096),
+                "messages", List.of(
+                        Map.of("role", "system", "content", SUMMARY_SYSTEM_PROMPT),
+                        Map.of("role", "user", "content", memberContext)
+                )
+        );
+
+        log.debug("회원 요약 생성 요청: model={}", ollamaProps.getModel());
+
+        try {
+            @SuppressWarnings("unchecked")
+            Map<String, Object> response = restClient.post()
+                    .uri("/api/chat")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .body(request)
+                    .retrieve()
+                    .body(Map.class);
+
+            if (response == null || !response.containsKey("message")) {
+                throw new IllegalStateException("Ollama chat 응답이 비어 있습니다");
+            }
+            Object messageObj = response.get("message");
+            if (!(messageObj instanceof Map)) {
+                throw new IllegalStateException("Ollama chat 응답의 message 형식이 올바르지 않습니다");
+            }
+            @SuppressWarnings("unchecked")
+            Map<String, Object> message = (Map<String, Object>) messageObj;
+            Object content = message.get("content");
+            return content == null ? "" : content.toString().strip();
+        } catch (RestClientException | ClassCastException e) {
+            log.error("회원 요약 생성 실패", e);
+            throw new BusinessException(ErrorCode.AI_UNAVAILABLE);
+        }
+    }
+
     private String loadSystemPrompt() {
         try (InputStream is = new ClassPathResource("prompts/ticket-draft-system.txt").getInputStream()) {
             return new String(is.readAllBytes(), StandardCharsets.UTF_8);

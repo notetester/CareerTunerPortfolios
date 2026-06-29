@@ -16,8 +16,6 @@ type ListFilter = "미답변" | "처리중" | "완료" | "전체";
 type AiSummaryState = "none" | "loading" | "ready" | "empty" | "error";
 type AiDraftState = "none" | "loading" | "ready" | "error";
 
-/* AI 회원 요약은 백엔드 API 미구현 — 표시용 mock 유지 */
-const MOCK_SUMMARY = "가입 **3개월차** 사용자예요. 과거 **결제 관련 문의가 2회** 있었고 모두 해결됐습니다. 이번 문의는 **프로 결제 직후 AI 크레딧 미반영** 건으로, 결제 자체는 정상 완료된 것으로 보여요.";
 
 export default function AdminInquiriesAI() {
   const [items, setItems] = useState<Inquiry[]>([]);
@@ -27,6 +25,7 @@ export default function AdminInquiriesAI() {
 
   // AI states
   const [aiSummary, setAiSummary] = useState<AiSummaryState>("none");
+  const [summaryText, setSummaryText] = useState("");
   const [aiDraft, setAiDraft] = useState<AiDraftState>("none");
   const [replyText, setReplyText] = useState("");
   const [memo, setMemo] = useState("");
@@ -65,15 +64,22 @@ export default function AdminInquiriesAI() {
   };
 
   const generateSummary = useCallback(() => {
+    if (!selected) return;
     setAiSummary("loading");
-    setTimeout(() => {
-      // simulate new user check
-      if (selected && selected.joined && selected.joined >= "2026.06") {
-        setAiSummary("empty");
-      } else {
+    adminTicketApi.generateMemberSummary(selected.id)
+      .then((text) => {
+        const trimmed = (text || "").trim();
+        if (!trimmed) {
+          setAiSummary("empty");
+          return;
+        }
+        setSummaryText(trimmed);
         setAiSummary("ready");
-      }
-    }, 1800);
+      })
+      .catch(() => {
+        setAiSummary("none");
+        flash("AI 회원 요약 생성에 실패했습니다. 잠시 후 다시 시도해 주세요.", "red");
+      });
   }, [selected]);
 
   const generateDraft = useCallback(() => {
@@ -334,7 +340,7 @@ export default function AdminInquiriesAI() {
               ) : aiSummary === "empty" ? (
                 <AiNewUserBox />
               ) : aiSummary === "ready" ? (
-                <AiSummaryReady />
+                <AiSummaryReady summary={summaryText} />
               ) : null}
             </div>
 
@@ -535,7 +541,7 @@ function AiNewUserBox() {
   );
 }
 
-function AiSummaryReady() {
+function AiSummaryReady({ summary }: { summary: string }) {
   return (
     <div className="mt-3 rounded-[10px] p-3" style={{ background: "#f7f8ff", border: "1px solid rgba(79,70,229,0.16)" }}>
       <div className="flex items-center gap-1.5 mb-1.5">
@@ -547,7 +553,7 @@ function AiSummaryReady() {
         </span>
       </div>
       <div className="text-[13px] leading-[1.65] text-slate-600"
-        dangerouslySetInnerHTML={{ __html: MOCK_SUMMARY.replace(/\*\*(.*?)\*\*/g, '<b class="text-[#030213]">$1</b>') }} />
+        dangerouslySetInnerHTML={{ __html: summary.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/\*\*(.*?)\*\*/g, '<b class="text-[#030213]">$1</b>') }} />
     </div>
   );
 }

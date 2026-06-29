@@ -99,3 +99,9 @@ export function generateDraft(id: number): Promise<string> {
     method: "POST",
   }).then((r) => r.draft);
 }
+
+export function generateMemberSummary(id: number): Promise<string> {
+  return api<{ summary: string }>(`/admin/tickets/${id}/member-summary`, {
+    method: "POST",
+  }).then((r) => r.summary);
+}

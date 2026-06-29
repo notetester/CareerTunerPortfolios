@@ -12,6 +12,7 @@ import com.careertuner.admin.ticket.dto.AdminTicketDraftResponse;
 import com.careertuner.admin.ticket.dto.AdminTicketListResponse;
 import com.careertuner.admin.ticket.dto.AdminTicketMessageResponse;
 import com.careertuner.admin.ticket.dto.AdminTicketReplyRequest;
+import com.careertuner.admin.ticket.dto.AdminTicketSummaryResponse;
 import com.careertuner.admin.ticket.dto.AdminTicketUpdateRequest;
 import com.careertuner.admin.ticket.mapper.AdminTicketMapper;
 import com.careertuner.common.exception.BusinessException;
@@ -148,6 +149,45 @@ public class AdminTicketServiceImpl implements AdminTicketService {
 
         String draft = draftAiClient.generateDraft(context.toString());
         return new AdminTicketDraftResponse(draft);
+    }
+
+    @Override
+    public AdminTicketSummaryResponse generateMemberSummary(AuthUser authUser, Long id) {
+        requireAdmin(authUser);
+        AdminTicketListResponse ticket = ticketMapper.findById(id);
+        if (ticket == null) {
+            throw new BusinessException(ErrorCode.NOT_FOUND, "문의를 찾을 수 없습니다.");
+        }
+        Long userId = ticketMapper.findUserIdById(id);
+        List<AdminTicketListResponse> history = userId != null
+                ? ticketMapper.findByUserId(userId)
+                : List.of();
+
+        StringBuilder context = new StringBuilder();
+        context.append("[회원 정보]\n");
+        context.append("이름: ").append(ticket.getMemberName()).append('\n');
+        context.append("구독 등급: ").append(ticket.getPlan()).append('\n');
+        context.append("가입일: ").append(ticket.getJoinedAt()).append('\n');
+        context.append("총 문의 건수: ").append(history.size()).append("건\n");
+
+        context.append("\n[과거 문의 이력]\n");
+        if (history.isEmpty()) {
+            context.append("- (이력 없음 — 이번이 첫 문의)\n");
+        } else {
+            for (AdminTicketListResponse h : history) {
+                context.append("- [").append(h.getCategory()).append("] ")
+                       .append(h.getSubject())
+                       .append(" (상태: ").append(h.getStatus())
+                       .append(", ").append(h.getCreatedAt()).append(")\n");
+            }
+        }
+
+        context.append("\n[이번 문의]\n");
+        context.append("분류: ").append(ticket.getCategory()).append('\n');
+        context.append("제목: ").append(ticket.getSubject()).append('\n');
+
+        String summary = draftAiClient.summarizeMember(context.toString());
+        return new AdminTicketSummaryResponse(summary);
     }
 
     private void requireAdmin(AuthUser authUser) {
