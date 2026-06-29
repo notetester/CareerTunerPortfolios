@@ -107,7 +107,7 @@
 /* ===== Post detail tags ===== */
 .ct-detail__taglist { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 18px; }
 .ct-detail__tag { display: inline-block; padding: 4px 12px; border-radius: 9999px; background: var(--av-blue-soft, #eff6ff); color: var(--av-blue, #2563eb); font-size: 13px; font-weight: 500; }
-.ct-detail__tag--ai { background: #f0fdf4; color: #16a34a; border: 1px dashed #bbf7d0; }
+.ct-detail__tag--ai { background: var(--success-50); color: var(--success); border: 1px dashed var(--success); }
 
 /* AI 추천 태그 섹션 */
 .ct-ai-suggest { margin: 20px 0; padding: 14px 16px; border-radius: 10px; background: #f0fdf4; border: 1px solid #bbf7d0; }
@@ -240,7 +240,7 @@
 .ct-qrow { display: flex; align-items: center; gap: 9px; }
 .ct-qrow__n { flex: none; width: 24px; height: 24px; border-radius: 50%; background: var(--av-blue-soft); color: var(--av-blue); font-size: 12px; font-weight: 700; display: flex; align-items: center; justify-content: center; }
 .ct-qrow__rm { flex: none; width: 36px; height: 36px; border-radius: 6px; border: 1px solid var(--av-line); background: var(--av-card); cursor: pointer; color: var(--av-ink-3); display: flex; align-items: center; justify-content: center; transition: background 180ms, color 180ms, border-color 180ms; }
-.ct-qrow__rm:hover { background: #fef2f2; color: var(--av-red); border-color: transparent; }
+.ct-qrow__rm:hover { background: var(--danger-50); color: var(--av-red); border-color: transparent; }
 .ct-qrow__rm:disabled { opacity: 0.4; cursor: default; }
 .ct-qrow__rm svg { width: 16px; height: 16px; stroke-width: 1.9; }
 .ct-qadd { display: inline-flex; align-items: center; gap: 6px; margin-top: 12px; padding: 8px 14px; border-radius: 8px; white-space: nowrap; border: 1px dashed var(--av-line); background: none; cursor: pointer; color: var(--av-blue); font-size: 14px; font-weight: 500; transition: background 180ms, border-color 180ms; }
@@ -270,7 +270,7 @@
 .ct-rgroup__row { display: flex; align-items: center; gap: 10px; padding: 11px 14px; border-radius: 10px; border: 1px solid var(--border);
   cursor: pointer; font-size: 14px; font-weight: 500; color: var(--foreground); transition: background 180ms, border-color 180ms; }
 .ct-rgroup__row:hover { background: var(--muted); }
-.ct-rgroup__row.is-on { background: #eff6ff; border-color: var(--brand-blue); }
+.ct-rgroup__row.is-on { background: var(--info-50); border-color: var(--brand-blue); }
 .dark .ct-rgroup__row.is-on { background: rgba(37,99,235,0.12); }
 .ct-radio { width: 18px; height: 18px; border-radius: 50%; border: 2px solid var(--border); flex: none;
   display: flex; align-items: center; justify-content: center; transition: border-color 180ms; }

@@ -13,6 +13,13 @@
         <if test="category != null">
            AND cp.category = #{category}
         </if>
+        <if test="keyword != null">
+           AND (cp.title LIKE CONCAT('%', #{keyword}, '%')
+                OR cp.content LIKE CONCAT('%', #{keyword}, '%')
+                OR cp.company_name LIKE CONCAT('%', #{keyword}, '%')
+                OR cp.job_title LIKE CONCAT('%', #{keyword}, '%')
+                OR cp.tags_json LIKE CONCAT('%', #{keyword}, '%'))
+        </if>
         <choose>
             <when test="sort == 'popular'">
                 ORDER BY cp.like_count DESC, cp.created_at DESC
@@ -37,6 +44,13 @@
          WHERE cp.status = #{status}
         <if test="category != null">
            AND cp.category = #{category}
+        </if>
+        <if test="keyword != null">
+           AND (cp.title LIKE CONCAT('%', #{keyword}, '%')
+                OR cp.content LIKE CONCAT('%', #{keyword}, '%')
+                OR cp.company_name LIKE CONCAT('%', #{keyword}, '%')
+                OR cp.job_title LIKE CONCAT('%', #{keyword}, '%')
+                OR cp.tags_json LIKE CONCAT('%', #{keyword}, '%'))
         </if>
     </select>
 

@@ -37,4 +37,12 @@ public class CommunityAgentConfig {
                 .chatModel(chatModel)
                 .build();
     }
+
+    /** 추천 후기 묶음 요약 생성기 — 툴/메모리 없음(단발 입력→평문 요약). */
+    @Bean
+    public SummaryAgent summaryAgent(ChatModel chatModel) {
+        return AiServices.builder(SummaryAgent.class)
+                .chatModel(chatModel)
+                .build();
+    }
 }

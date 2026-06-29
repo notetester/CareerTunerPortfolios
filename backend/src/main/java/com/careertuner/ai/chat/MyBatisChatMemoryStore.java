@@ -60,6 +60,21 @@ public class MyBatisChatMemoryStore implements ChatMemoryStore {
         return mapper.findRecentConversationByUser(userId);
     }
 
+    /** fork 로 만든 대화에 지원 건 id·제목을 바인딩한다(지원건 세션 표식 — 세션 목록/매핑). */
+    public void bindCase(Long conversationId, Long applicationCaseId, String title) {
+        mapper.bindCase(conversationId, applicationCaseId, title);
+    }
+
+    /** 유저의 인테이크(지원건) 세션 목록(최근순 최대 5). 사이드바용. */
+    public List<Map<String, Object>> listIntakeSessions(Long userId) {
+        return mapper.findIntakeSessionsByUser(userId);
+    }
+
+    /** 대화 소유자 user_id(없으면 null). 메시지 조회 권한 확인용. */
+    public Long findOwnerUserId(Long conversationId) {
+        return mapper.findOwnerUserId(conversationId);
+    }
+
     private Long toLong(Object memoryId) {
         if (memoryId instanceof Number n) {
             return n.longValue();

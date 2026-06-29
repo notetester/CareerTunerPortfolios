@@ -11,5 +11,7 @@ public interface CommunityCommentService {
 
     CommentResponse createComment(Long postId, CreateCommentRequest request, Long userId);
 
+    CommentResponse updateComment(Long commentId, String content, Long userId);
+
     void deleteComment(Long commentId, Long userId);
 }

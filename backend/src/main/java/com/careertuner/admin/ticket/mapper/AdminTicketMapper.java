@@ -17,6 +17,9 @@ public interface AdminTicketMapper {
 
     Long findUserIdById(@Param("id") Long id);
 
+    /** 해당 회원의 모든 문의 이력(최근순) — 회원 요약 컨텍스트용. */
+    List<AdminTicketListResponse> findByUserId(@Param("userId") Long userId);
+
     List<AdminTicketMessageResponse> findMessages(@Param("ticketId") Long ticketId);
 
     String findInternalMemo(@Param("ticketId") Long ticketId);

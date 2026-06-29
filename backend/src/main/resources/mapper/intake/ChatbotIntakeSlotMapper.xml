@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.careertuner.ai.intake.ChatbotIntakeSlotMapper">
+
+    <insert id="upsert">
+        INSERT INTO chatbot_intake_slot
+            (conversation_id, user_id, application_case_id, mode, original_query, fetched_cases)
+        VALUES
+            (#{conversationId}, #{userId}, #{applicationCaseId}, #{mode}, #{originalQuery}, #{fetchedCases})
+        ON DUPLICATE KEY UPDATE
+            user_id             = VALUES(user_id),
+            application_case_id  = VALUES(application_case_id),
+            mode                = VALUES(mode),
+            original_query      = VALUES(original_query),
+            fetched_cases       = VALUES(fetched_cases)
+    </insert>
+
+    <select id="findByConversation" resultType="map">
+        SELECT conversation_id     AS conversationId,
+               user_id             AS userId,
+               application_case_id  AS applicationCaseId,
+               mode                AS mode,
+               status              AS status,
+               original_query      AS originalQuery,
+               fetched_cases       AS fetchedCases
+          FROM chatbot_intake_slot
+         WHERE conversation_id = #{conversationId}
+    </select>
+
+    <!-- 슬롯 단계 전환(PENDING→READY 등). upsert 와 분리 — 기존 슬롯값은 보존하고 status 만 바꾼다. -->
+    <update id="markStatus">
+        UPDATE chatbot_intake_slot
+           SET status = #{status}
+         WHERE conversation_id = #{conversationId}
+    </update>
+
+</mapper>

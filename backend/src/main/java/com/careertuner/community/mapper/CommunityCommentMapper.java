@@ -40,6 +40,9 @@ public interface CommunityCommentMapper {
      */
     int deleteCommentIfPublished(@Param("id") Long id);
 
+    /** PUBLISHED 댓글의 본문만 수정(본인 검증은 서비스). 숨김/삭제 댓글은 0행 → 수정 불가. */
+    int updateContentIfPublished(@Param("id") Long id, @Param("content") String content);
+
     /**
      * HIDDEN 댓글만 PUBLISHED 로 복원. affected-rows>0 일 때만 comment_count 증가.
      * (오탐 복원 경로)

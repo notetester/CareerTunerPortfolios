@@ -65,6 +65,13 @@
          WHERE id = #{id} AND status = 'PUBLISHED'
     </update>
 
+    <!-- 본문 수정 (PUBLISHED인 경우에만). 숨김/삭제 댓글은 0행 → 수정 불가 -->
+    <update id="updateContentIfPublished">
+        UPDATE community_comment
+           SET content = #{content}
+         WHERE id = #{id} AND status = 'PUBLISHED'
+    </update>
+
     <!-- 오탐 복원 (HIDDEN인 경우에만 PUBLISHED 로 전환) -->
     <update id="restoreCommentIfHidden">
         UPDATE community_comment

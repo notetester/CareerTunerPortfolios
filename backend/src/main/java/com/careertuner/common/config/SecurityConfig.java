@@ -65,8 +65,8 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.GET,
                                 "/api/billing/plans", "/api/billing/credit-products",
                                 "/api/billing/feature-benefit-policies", "/api/credit-products").permitAll()
-                        // 챗봇 질문 공개
-                        .requestMatchers(HttpMethod.POST, "/api/chatbot/ask").permitAll()
+                        // 챗봇 질문·추천 후기 요약 공개(비로그인도 사용)
+                        .requestMatchers(HttpMethod.POST, "/api/chatbot/ask", "/api/chatbot/summarize-posts").permitAll()
                         // 관리자 API는 URL 레벨에서도 관리자 권한을 요구한다.
                         // SUPER_ADMIN은 관리자 권한 체계를 관리하는 상위 역할이므로 일반 관리자 API도 접근 가능하다.
                         .requestMatchers("/api/admin/**").hasAnyRole("ADMIN", "SUPER_ADMIN")

@@ -23,7 +23,7 @@ import com.careertuner.community.moderation.service.AdminInterviewExtractService
  */
 @RestController
 @RequestMapping("/api/admin/ai/interview-extract")
-@PreAuthorize("hasRole('ADMIN')")
+@PreAuthorize("hasAnyRole('ADMIN','SUPER_ADMIN')")
 public class AdminInterviewExtractController {
 
     private final AdminInterviewExtractService extractService;

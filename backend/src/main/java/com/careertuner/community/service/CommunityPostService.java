@@ -10,7 +10,7 @@ import com.careertuner.community.dto.UpdatePostRequest;
 
 public interface CommunityPostService {
 
-    PostPageResponse getPosts(String category, String sort, int page, int size);
+    PostPageResponse getPosts(String category, String keyword, String sort, int page, int size);
 
     PostDetailResponse getPostDetail(Long postId, Long currentUserId);
 

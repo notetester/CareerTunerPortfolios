@@ -24,7 +24,11 @@ public class NoticeServiceImpl implements NoticeService {
 
     private final NoticeMapper noticeMapper;
 
+    // 저장된 영어 카테고리 코드 → 한글 표시 라벨. 어드민 작성 공지는 한글로 저장되므로
+    // 맵에 없으면(=이미 한글) toTag 가 그대로 통과시킨다. 시드/레거시 영어코드만 변환한다.
     private static final Map<String, String> CATEGORY_TAG = Map.of(
+            "SERVICE", "서비스 안내",
+            "COMMUNITY", "커뮤니티",
             "GENERAL", "안내",
             "UPDATE", "업데이트",
             "MAINTENANCE", "점검",

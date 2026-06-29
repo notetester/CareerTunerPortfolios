@@ -23,7 +23,7 @@ import com.careertuner.community.moderation.service.AdminTaggingService.BatchSta
  */
 @RestController
 @RequestMapping("/api/admin/ai/tagging")
-@PreAuthorize("hasRole('ADMIN')")
+@PreAuthorize("hasAnyRole('ADMIN','SUPER_ADMIN')")
 public class AdminTaggingController {
 
     private final AdminTaggingService taggingService;

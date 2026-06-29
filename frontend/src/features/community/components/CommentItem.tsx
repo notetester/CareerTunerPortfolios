@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Avatar, AvatarFallback } from "@/app/components/ui/avatar";
-import { Heart, MessageCircle, Lock, Trash2, MessageSquareX } from "lucide-react";
+import { Heart, MessageCircle, Lock, Trash2, MessageSquareX, Pencil } from "lucide-react";
 import { useCommunityStore } from "../hooks/useCommunityStore";
 import { useLoginDialog } from "../hooks/useLoginDialog";
 import { ConfirmDialog } from "@/app/components/ui/confirm-dialog";
@@ -29,6 +29,10 @@ export function CommentItem({ comment: c, childrenMap, depth, onReply }: Comment
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [deleted, setDeleted] = useState(false);
   const [replyOpen, setReplyOpen] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const [editText, setEditText] = useState(c.content);
+  const [contentOverride, setContentOverride] = useState<string | null>(null); // 낙관적 수정 표시(삭제 패턴과 동형)
+  const [saving, setSaving] = useState(false);
 
   const replies = childrenMap.get(c.id) ?? [];
   // 서버 tombstone(c.isDeleted) 또는 이번 세션 낙관적 자삭(deleted) 둘 다 삭제 표시.
@@ -44,6 +48,22 @@ export function CommentItem({ comment: c, childrenMap, depth, onReply }: Comment
     } catch {
       setShowDeleteDialog(false);
       toast.error("댓글 삭제에 실패했습니다.");
+    }
+  };
+
+  const handleEditSave = async () => {
+    const text = editText.trim();
+    if (!text || saving) return;
+    setSaving(true);
+    try {
+      await communityApi.updateComment(c.id, text);
+      setContentOverride(text);
+      setEditing(false);
+      toast.success("댓글이 수정되었습니다.");
+    } catch {
+      toast.error("댓글 수정에 실패했습니다.");
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -90,10 +110,28 @@ export function CommentItem({ comment: c, childrenMap, depth, onReply }: Comment
                 {c.isAuthor && <span className="ct-cmt__op">작성자</span>}
                 <span className="ct-cmt__time">{relTime(c.createdAt)}</span>
               </div>
-              <div className="ct-cmt__text">
-                {c.mentionLabel && <span className="ct-cmt__mention">@{c.mentionLabel}</span>}
-                {c.mentionLabel ? " " : ""}{c.content}
-              </div>
+              {editing ? (
+                <div style={{ marginTop: 4 }}>
+                  <textarea
+                    className="ct-cmt__editbox"
+                    value={editText}
+                    onChange={(e) => setEditText(e.target.value)}
+                    maxLength={5000}
+                    rows={3}
+                    style={{ width: "100%", resize: "vertical", padding: 8, borderRadius: 8, border: "1px solid var(--border)" }}
+                    autoFocus
+                  />
+                  <div style={{ display: "flex", gap: 6, justifyContent: "flex-end", marginTop: 6 }}>
+                    <button className="ct-cmt__act" onClick={() => { setEditing(false); setEditText(contentOverride ?? c.content); }}>취소</button>
+                    <button className="ct-cmt__act" disabled={saving || !editText.trim()} onClick={handleEditSave}>저장</button>
+                  </div>
+                </div>
+              ) : (
+                <div className="ct-cmt__text">
+                  {c.mentionLabel && <span className="ct-cmt__mention">@{c.mentionLabel}</span>}
+                  {c.mentionLabel ? " " : ""}{contentOverride ?? c.content}
+                </div>
+              )}
               <div className="ct-cmt__foot">
                 <button
                   className={`ct-cmt__act ${liked ? "is-on" : ""}`}
@@ -104,7 +142,12 @@ export function CommentItem({ comment: c, childrenMap, depth, onReply }: Comment
                 <button className="ct-cmt__act" onClick={handleReplyClick}>
                   <MessageCircle /> 답글
                 </button>
-                {c.isAuthor && (
+                {c.mine && !editing && (
+                  <button className="ct-cmt__act" onClick={() => { setEditText(contentOverride ?? c.content); setEditing(true); }}>
+                    <Pencil /> 수정
+                  </button>
+                )}
+                {c.mine && (
                   <button className="ct-cmt__act ct-cmt__act--del" onClick={() => setShowDeleteDialog(true)}>
                     <Trash2 /> 삭제
                   </button>

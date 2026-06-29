@@ -33,4 +33,28 @@
          LIMIT #{limit}
     </select>
 
+    <select id="countAll" resultType="long">
+        SELECT COUNT(*) FROM notification
+    </select>
+
+    <select id="countRead" resultType="long">
+        SELECT COUNT(*) FROM notification WHERE is_read = 1
+    </select>
+
+    <select id="countByType" resultType="java.util.Map">
+        SELECT type                                         AS type,
+               COUNT(*)                                     AS sent,
+               SUM(CASE WHEN is_read = 1 THEN 1 ELSE 0 END) AS `read`
+          FROM notification
+         GROUP BY type
+    </select>
+
+    <select id="countByDayLast7" resultType="java.util.Map">
+        SELECT DATE_FORMAT(created_at, '%Y-%m-%d') AS day,
+               COUNT(*)                            AS cnt
+          FROM notification
+         WHERE created_at >= CURDATE() - INTERVAL 6 DAY
+         GROUP BY DATE_FORMAT(created_at, '%Y-%m-%d')
+    </select>
+
 </mapper>

@@ -4,11 +4,11 @@ import {
   Sparkles, MessageCircle, Mic, MicOff, ArrowUp, Minus, X,
   KeyRound, CreditCard, FileText, FileSearch, Pause, Volume2,
   ArrowUpRight, Shield, SearchX, Headset, PenLine, WifiOff,
-  RotateCw, Check, Keyboard, ArrowRight, Play, LogOut,
+  RotateCw, Check, Keyboard, ArrowRight, Play, LogOut, History, Plus,
 } from "lucide-react";
 import { useChatbot } from "../hooks/useChatbot";
 import type {
-  ChatMessage, ChatEvidence, SiteLink, IntakeCaseCandidate, IntakeModeOption,
+  ChatMessage, ChatEvidence, SiteLink, IntakeCaseCandidate, IntakeModeOption, ChatSession,
 } from "../types/chatbot";
 import { SUGGESTED_QUESTIONS } from "../types/chatbot";
 import { AutoPrepWorkView } from "@/features/autoprep/components/AutoPrepWorkView";
@@ -66,19 +66,40 @@ const MODE_LABELS: Record<string, string> = {
   PRESSURE: "압박 면접", RESUME: "자소서 기반", COMPANY: "기업 맞춤",
 };
 
+/** 면접 모드 코드 → 짧은 배지 라벨(SessionRow 모드 배지용 — MODE_LABELS 보다 압축). */
+const MODE_BADGE: Record<string, string> = {
+  BASIC: "기본", JOB: "직무", PERSONALITY: "인성",
+  PRESSURE: "압박", RESUME: "자소서", COMPANY: "기업맞춤",
+};
+
+/** epoch millis → 상대시각("방금"/"3분 전"/"2시간 전"/"5일 전"). 0/미지정이면 빈 문자열. */
+function relativeTime(ts: number): string {
+  if (!ts) return "";
+  const m = Math.floor((Date.now() - ts) / 60000);
+  if (m < 1) return "방금";
+  if (m < 60) return `${m}분 전`;
+  const h = Math.floor(m / 60);
+  if (h < 24) return `${h}시간 전`;
+  return `${Math.floor(h / 24)}일 전`;
+}
+
 function ChatbotPanel({ chatbot }: ChatbotPanelProps) {
   const {
     close, minimize, messages, sendMessage, botStatus,
     voiceState, startVoice, cancelVoice, confirmVoice, setVoiceState,
     interimTranscript, retryConnection, toggleTts,
     orchestrator, runStarted, runParts, runRunning, runPlan, runCaseId,
-    selectCase, selectMode,
+    selectCase, selectMode, summarizePosts,
     showExitSheet, openExitSheet, closeExitSheet, exitOrchestrator,
+    sessions, activeSessionId, openSession, newSession, loadSessions,
   } = chatbot;
 
   const navigate = useNavigate();
   const [input, setInput] = useState("");
+  const [showSessions, setShowSessions] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
+
+  const handleOpenSessions = () => { loadSessions(); setShowSessions(true); };
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
@@ -130,6 +151,7 @@ function ChatbotPanel({ chatbot }: ChatbotPanelProps) {
         orchestrator={orchestrator}
         isDisconnected={isDisconnected}
         isVoiceListening={voiceState === "listening"}
+        onSessions={handleOpenSessions}
         onMinimize={minimize}
         onClose={close}
       />
@@ -165,7 +187,7 @@ function ChatbotPanel({ chatbot }: ChatbotPanelProps) {
                   ) : (
                     <div key={m.id} className="flex flex-col gap-2.5">
                       <BotBubble message={m} onToggleTts={toggleTts} variant="widget"
-                        onQuickReply={sendMessage} orchestrator={orchestrator} />
+                        onQuickReply={sendMessage} onSummarize={summarizePosts} orchestrator={orchestrator} />
                       {m.id === lastBotId && m.intake && !m.intake.ready && !runStarted && (
                         <IntakeChips intake={m.intake} onSelectCase={selectCase} onSelectMode={selectMode} />
                       )}
@@ -201,6 +223,17 @@ function ChatbotPanel({ chatbot }: ChatbotPanelProps) {
 
       {/* ── Exit confirm sheet ── */}
       {showExitSheet && <ExitSheet onConfirm={exitOrchestrator} onCancel={closeExitSheet} />}
+
+      {/* ── Session panel (사이드바: 목록·전환·새 세션) ── */}
+      {showSessions && (
+        <SessionPanel
+          sessions={sessions}
+          activeSessionId={activeSessionId}
+          onOpen={(id) => { openSession(id); setShowSessions(false); }}
+          onNew={() => { newSession(); setShowSessions(false); }}
+          onClose={() => setShowSessions(false)}
+        />
+      )}
     </div>
   );
 }
@@ -329,11 +362,101 @@ function ExitSheet({ onConfirm, onCancel }: { onConfirm: () => void; onCancel: (
   );
 }
 
+/**
+ * 세션 행(카드형) — design_handoff README 의 SessionRow 스펙(ApplicationChip 확장).
+ * [이니셜 아이콘] [ title(굵게) / (모드 배지 · 상대시각) ]. 진행률·안읽음은 범위 밖(제외).
+ */
+function SessionRow({ session, active, onClick }: {
+  session: ChatSession; active: boolean; onClick: () => void;
+}) {
+  const initial = session.title?.trim().charAt(0) || "?";
+  const badge = session.mode ? MODE_BADGE[session.mode] : null;
+  const when = relativeTime(session.updatedAt);
+  // 호버 배경/보더가 토큰·rgba라 Tailwind hover 유틸로 못 빼고, active 행은 호버를 막아야 해
+  // JS 핸들러로 처리. 기본/호버 값을 한 곳에서 관리(테마 토큰 재사용).
+  const REST = { background: "transparent", borderColor: "var(--border)" };
+  const HOVER = { background: "var(--orch-header-tint)", borderColor: "rgba(124,58,237,0.32)" };
+  return (
+    <button onClick={onClick} role="button" aria-pressed={active}
+      className="group flex items-center gap-2.5 w-full px-3 py-2.5 rounded-[13px] text-left transition-all"
+      style={
+        active
+          ? { background: "var(--orch-surface)", border: "1.5px solid var(--orch-violet)" }
+          : { background: REST.background, border: `1px solid ${REST.borderColor}` }
+      }
+      onMouseEnter={(e) => { if (!active) Object.assign(e.currentTarget.style, HOVER); }}
+      onMouseLeave={(e) => { if (!active) Object.assign(e.currentTarget.style, REST); }}>
+      <span className="w-[34px] h-[34px] rounded-[9px] flex items-center justify-center text-white font-extrabold text-[15px] shrink-0"
+        style={{ background: "var(--gradient-orchestrator)" }}>
+        {initial}
+      </span>
+      <span className="flex-1 min-w-0">
+        <span className="block text-[13px] font-bold text-foreground truncate">{session.title}</span>
+        <span className="flex items-center gap-1.5 mt-0.5">
+          {badge && (
+            <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-[10.5px] font-bold leading-none"
+              style={{ background: "var(--orch-surface)", color: "var(--orch-violet)" }}>
+              {badge}
+            </span>
+          )}
+          {when && <span className="text-[11px] text-muted-foreground">{when}</span>}
+        </span>
+      </span>
+    </button>
+  );
+}
+
+/** 세션 사이드바(오버레이): 인테이크 세션 목록 + 전환 + 새 세션. */
+function SessionPanel({ sessions, activeSessionId, onOpen, onNew, onClose }: {
+  sessions: ChatSession[];
+  activeSessionId: string;
+  onOpen: (id: string) => void;
+  onNew: () => void;
+  onClose: () => void;
+}) {
+  return (
+    <div className="absolute inset-0 z-10 flex flex-col" style={{ background: "rgba(20,16,40,0.42)" }}
+      onClick={onClose}>
+      <div className="m-3.5 rounded-[18px] bg-card overflow-hidden flex flex-col max-h-[460px]"
+        style={{ boxShadow: "0 20px 50px rgba(20,16,40,0.4)" }}
+        onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-between px-4 py-3 border-b border-border">
+          <div className="text-[13.5px] font-extrabold">면접 준비 세션</div>
+          <button onClick={onClose} aria-label="닫기"
+            className="w-7 h-7 rounded-lg flex items-center justify-center text-muted-foreground hover:bg-accent transition-colors">
+            <X size={15} />
+          </button>
+        </div>
+        <div className="p-3">
+          <button onClick={onNew}
+            className="flex items-center justify-center gap-1.5 w-full h-[40px] rounded-lg text-white text-[13px] font-bold hover:opacity-90 transition-opacity"
+            style={{ background: "var(--gradient-orchestrator)" }}>
+            <Plus size={15} />
+            새 면접 준비
+          </button>
+        </div>
+        <div className="px-3 pb-3 overflow-y-auto flex flex-col gap-1.5">
+          {sessions.length === 0 ? (
+            <div className="text-[12px] leading-[1.6] text-muted-foreground text-center py-6">
+              아직 준비 중인 지원 건이 없어요.<br />“카카오 백엔드 면접 준비해줘”처럼 시작해 보세요.
+            </div>
+          ) : (
+            sessions.map((s) => (
+              <SessionRow key={s.id} session={s} active={s.id === activeSessionId}
+                onClick={() => onOpen(s.id)} />
+            ))
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 /* ════════════════ Sub-components ════════════════ */
 
-function WidgetHeader({ orchestrator, isDisconnected, isVoiceListening, onMinimize, onClose }: {
+function WidgetHeader({ orchestrator, isDisconnected, isVoiceListening, onSessions, onMinimize, onClose }: {
   orchestrator?: boolean; isDisconnected: boolean; isVoiceListening: boolean;
-  onMinimize: () => void; onClose: () => void;
+  onSessions: () => void; onMinimize: () => void; onClose: () => void;
 }) {
   return (
     <div className="flex items-center gap-2.5 px-4 py-3.5 border-b border-border transition-colors"
@@ -365,6 +488,10 @@ function WidgetHeader({ orchestrator, isDisconnected, isVoiceListening, onMinimi
         )}
       </div>
       <div className="ml-auto flex gap-1 text-muted-foreground">
+        <button onClick={onSessions} aria-label="면접 준비 세션"
+          className="w-[30px] h-[30px] rounded-lg flex items-center justify-center hover:bg-secondary transition-colors">
+          <History size={16} />
+        </button>
         <button onClick={onMinimize} className="w-[30px] h-[30px] rounded-lg flex items-center justify-center hover:bg-secondary transition-colors">
           <Minus size={17} />
         </button>
@@ -417,9 +544,9 @@ function UserBubble({ text, dimmed }: { text: string; dimmed?: boolean }) {
   );
 }
 
-function BotBubble({ message, onToggleTts, variant = "widget", onQuickReply, orchestrator }: {
+function BotBubble({ message, onToggleTts, variant = "widget", onQuickReply, onSummarize, orchestrator }: {
   message: ChatMessage; onToggleTts: (id: string) => void; variant?: "widget" | "full";
-  onQuickReply?: (text: string) => void; orchestrator?: boolean;
+  onQuickReply?: (text: string) => void; onSummarize?: (postIds: number[]) => void; orchestrator?: boolean;
 }) {
   const avatarSize = variant === "full" ? 34 : 28;
   const iconSize = variant === "full" ? 16 : 14;
@@ -473,12 +600,38 @@ function BotBubble({ message, onToggleTts, variant = "widget", onQuickReply, orc
           <SiteLinkButtons links={message.links} />
         )}
 
+        {/* 추천 후기 압축 요약 칩 (오케스트레이터 톤 — 일반 퀵리플라이와 시각적 구분) */}
+        {onSummarize && message.summaryChip && message.summaryChip.postIds.length > 0 && (
+          <SummaryChipButton chip={message.summaryChip} onSummarize={onSummarize} />
+        )}
+
         {/* Quick reply chips */}
         {onQuickReply && message.quickReplies && message.quickReplies.length > 0 && (
           <QuickReplyChips replies={message.quickReplies} onSelect={onQuickReply} />
         )}
 
       </div>
+    </div>
+  );
+}
+
+/** 추천 후기 압축 요약 전용 버튼 — 보라(오케스트레이터) 톤·굵은 테두리로 일반 칩과 구분. */
+function SummaryChipButton({ chip, onSummarize }: {
+  chip: NonNullable<ChatMessage["summaryChip"]>; onSummarize: (postIds: number[]) => void;
+}) {
+  return (
+    <div className="flex flex-wrap gap-1.5">
+      <button
+        onClick={() => onSummarize(chip.postIds)}
+        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[12.5px] font-bold transition-colors"
+        style={{
+          border: "1.5px solid var(--orch-violet)",
+          background: "var(--orch-surface)",
+          color: "var(--orch-violet)",
+        }}>
+        <Sparkles size={13} />
+        {chip.label}
+      </button>
     </div>
   );
 }

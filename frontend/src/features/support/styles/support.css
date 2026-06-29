@@ -98,7 +98,7 @@
 .ct-ndetail__foot { display: flex; justify-content: center; margin-top: 26px; }
 
 /* notice prose */
-.ct-nprose { font-size: 16px; line-height: 1.8; color: #334155; padding-top: 22px; }
+.ct-nprose { font-size: 16px; line-height: 1.8; color: var(--ink-2); padding-top: 22px; }
 .ct-nprose h2 { font-size: 17px; font-weight: 700; color: var(--av-ink); margin: 26px 0 10px; }
 .ct-nprose p { margin: 12px 0; }
 .ct-nprose strong { font-weight: 600; color: var(--av-ink); }
@@ -161,7 +161,7 @@
 .ct-file__name { font-size: 14px; color: var(--av-ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; }
 .ct-file__size { font-size: 12px; color: var(--av-ink-3); flex: none; }
 .ct-file__rm { flex: none; width: 26px; height: 26px; border: none; background: none; border-radius: 6px; cursor: pointer; color: var(--av-ink-3); display: flex; align-items: center; justify-content: center; }
-.ct-file__rm:hover { background: #fef2f2; color: var(--av-red); }
+.ct-file__rm:hover { background: var(--danger-50); color: var(--av-red); }
 .ct-file__rm svg { width: 15px; height: 15px; stroke-width: 2; }
 .ct-contact__actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 4px; }
 
@@ -181,7 +181,7 @@
 
 /* success state */
 .ct-done { max-width: 460px; margin: 24px auto; text-align: center; background: var(--av-card); border: 1px solid var(--av-line); border-radius: 10px; padding: 44px 32px; }
-.ct-done__ic { width: 64px; height: 64px; border-radius: 50%; background: #f0fdf4; color: var(--av-green); display: flex; align-items: center; justify-content: center; margin: 0 auto 18px; }
+.ct-done__ic { width: 64px; height: 64px; border-radius: 50%; background: var(--success-50); color: var(--av-green); display: flex; align-items: center; justify-content: center; margin: 0 auto 18px; }
 .ct-done__ic svg { width: 30px; height: 30px; stroke-width: 2; }
 .ct-done h3 { font-size: 20px; font-weight: 700; }
 .ct-done p { font-size: 14px; color: var(--av-ink-3); margin-top: 8px; line-height: 1.6; }

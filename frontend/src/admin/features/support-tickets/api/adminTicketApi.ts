@@ -11,6 +11,7 @@ function toStatus(s: string): InquiryStatus {
     case "pending":  return "pending";
     case "progress": return "progress";
     case "answered": return "answered";
+    case "closed":   return "closed";
     default:         return "pending";
   }
 }
@@ -98,4 +99,10 @@ export function generateDraft(id: number): Promise<string> {
   return api<AdminTicketDraftResponse>(`/admin/tickets/${id}/draft`, {
     method: "POST",
   }).then((r) => r.draft);
+}
+
+export function generateMemberSummary(id: number): Promise<string> {
+  return api<{ summary: string }>(`/admin/tickets/${id}/member-summary`, {
+    method: "POST",
+  }).then((r) => r.summary);
 }

@@ -9,6 +9,7 @@ import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
 import com.careertuner.community.mapper.CommunityPostMapper;
+import com.careertuner.community.moderation.mapper.CommentAiResultMapper;
 import com.careertuner.community.moderation.service.PostModerationService;
 
 /**
@@ -43,14 +44,17 @@ public class ModerationRetryScheduler {
     private static final int BATCH_LIMIT = 20;
 
     private final CommunityPostMapper postMapper;
+    private final CommentAiResultMapper commentAiResultMapper;
     private final PostModerationService moderationService;
 
     /** 직전 실행이 길어질 때 다음 실행이 겹치지 않도록 보호. */
     private final AtomicBoolean running = new AtomicBoolean(false);
 
     public ModerationRetryScheduler(CommunityPostMapper postMapper,
+                                    CommentAiResultMapper commentAiResultMapper,
                                     PostModerationService moderationService) {
         this.postMapper = postMapper;
+        this.commentAiResultMapper = commentAiResultMapper;
         this.moderationService = moderationService;
     }
 
@@ -66,11 +70,12 @@ public class ModerationRetryScheduler {
         }
         try {
             int moderated = retryModeration();
+            int commentModerated = retryCommentModeration();
             int tagged = retryTagging();
             int extracted = retryInterviewExtract();
-            if (moderated > 0 || tagged > 0 || extracted > 0) {
-                log.info("검열 재처리 스케줄러 완료: 검열={}건, 태깅={}건, 면접추출={}건 (유형별 상한 {})",
-                        moderated, tagged, extracted, BATCH_LIMIT);
+            if (moderated > 0 || commentModerated > 0 || tagged > 0 || extracted > 0) {
+                log.info("검열 재처리 스케줄러 완료: 검열={}건, 댓글검열={}건, 태깅={}건, 면접추출={}건 (유형별 상한 {})",
+                        moderated, commentModerated, tagged, extracted, BATCH_LIMIT);
             }
         } catch (RuntimeException ex) {
             log.warn("검열 재처리 스케줄러 주기 스킵: {}", rootCauseMessage(ex));
@@ -88,6 +93,20 @@ public class ModerationRetryScheduler {
                 processed++;
             } catch (Exception e) {
                 log.warn("검열 재처리 실패: postId={}", postId, e);
+            }
+        }
+        return processed;
+    }
+
+    private int retryCommentModeration() {
+        List<Long> commentIds = limit(commentAiResultMapper.findCommentIdsForModeration(false));
+        int processed = 0;
+        for (Long commentId : commentIds) {
+            try {
+                moderationService.moderateComment(commentId);
+                processed++;
+            } catch (Exception e) {
+                log.warn("댓글 검열 재처리 실패: commentId={}", commentId, e);
             }
         }
         return processed;

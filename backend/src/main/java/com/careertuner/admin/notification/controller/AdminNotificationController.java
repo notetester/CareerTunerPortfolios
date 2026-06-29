@@ -9,6 +9,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.careertuner.admin.notification.dto.AdminNotificationResponse;
+import com.careertuner.admin.notification.dto.AdminNotificationStatsResponse;
 import com.careertuner.admin.notification.service.AdminNotificationService;
 import com.careertuner.common.security.AuthUser;
 import com.careertuner.common.web.ApiResponse;
@@ -27,5 +28,11 @@ public class AdminNotificationController {
             @AuthenticationPrincipal AuthUser authUser,
             @RequestParam(defaultValue = "100") int size) {
         return ApiResponse.ok(notificationService.getNotifications(authUser, size));
+    }
+
+    @GetMapping("/stats")
+    public ApiResponse<AdminNotificationStatsResponse> getStats(
+            @AuthenticationPrincipal AuthUser authUser) {
+        return ApiResponse.ok(notificationService.getStats(authUser));
     }
 }

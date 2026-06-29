@@ -19,7 +19,7 @@ interface CommunityState {
   error: string | null;
 
   /* 액션 */
-  fetchPosts: (category?: CommunityCategory, sort?: string) => Promise<void>;
+  fetchPosts: (category?: CommunityCategory, sort?: string, keyword?: string) => Promise<void>;
   fetchHotPosts: () => Promise<void>;
   fetchCategoryCounts: () => Promise<void>;
   fetchPostDetail: (id: number) => Promise<void>;
@@ -73,11 +73,12 @@ export const useCommunityStore = create<CommunityState>((set, get) => ({
   detailLoading: false,
   error: null,
 
-  fetchPosts: async (category, sort) => {
+  fetchPosts: async (category, sort, keyword) => {
     set({ loading: true, error: null });
     try {
-      // 클라이언트 페이지네이션을 쓰므로 한 번에 충분히 받아온다 (서버 size 상한 100).
-      const posts = await communityApi.getPosts(category, sort, 0, 100);
+      // 검색어는 서버에서 필터(제목·본문·회사·직무·태그 LIKE) — 기존 "최신 100건만 메모리 필터" 누락을 해소.
+      // 단 매칭이 100건을 넘으면 클라 페이지네이션 상한(size=100)에 걸린다 → 서버 페이지네이션은 후속(total 미사용).
+      const posts = await communityApi.getPosts(category, sort, 0, 100, keyword);
       set({ posts, loading: false });
     } catch (e) {
       set({ loading: false, error: (e as Error).message });

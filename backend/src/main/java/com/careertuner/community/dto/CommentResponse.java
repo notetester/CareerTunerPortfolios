@@ -10,7 +10,8 @@ public record CommentResponse(
         PostListResponse.AuthorDto author,
         String content,
         int likeCount,
-        boolean isAuthor,
+        boolean isAuthor,   // 이 댓글이 게시글 작성자(OP)의 것인지 — "작성자" 배지용
+        boolean mine,       // 현재 사용자 본인 댓글인지 — 수정/삭제 버튼 게이팅용(익명이라 author.id null이어도 판정 가능)
         LocalDateTime createdAt,
         boolean liked,
         boolean isDeleted   // 삭제/숨김 tombstone 여부. true면 본문·작성자·멘션은 비식별 처리되어 내려간다.

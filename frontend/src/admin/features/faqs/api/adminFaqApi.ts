@@ -30,6 +30,7 @@ function toFaq(b: AdminFaqResponse): Faq {
     q: b.question,
     a: b.answer,
     on: b.published,
+    sortOrder: b.sortOrder,
     images: [],
     yt: "",
   };
@@ -59,17 +60,21 @@ export function createFaq(data: {
 
 export function updateFaq(
   id: number,
-  data: { cat: FaqCategory; q: string; a: string; on: boolean },
+  data: { cat: FaqCategory; q: string; a: string; on: boolean; sortOrder?: number },
 ): Promise<Faq> {
+  // sortOrder 는 줄 때만 전송 — 생략 시 BE 가 기존값 유지(coalesce). 토글·편집이 순서를 0으로 리셋하던 것 방지.
+  const body: {
+    category: string; question: string; answer: string; isPublished: boolean; sortOrder?: number;
+  } = {
+    category: KR_TO_DB[data.cat] ?? "GENERAL",
+    question: data.q,
+    answer: data.a,
+    isPublished: data.on,
+  };
+  if (data.sortOrder !== undefined) body.sortOrder = data.sortOrder;
   return api<AdminFaqResponse>(`/admin/faq/${id}`, {
     method: "PUT",
-    body: JSON.stringify({
-      category: KR_TO_DB[data.cat] ?? "GENERAL",
-      question: data.q,
-      answer: data.a,
-      isPublished: data.on,
-      sortOrder: 0,
-    }),
+    body: JSON.stringify(body),
   }).then(toFaq);
 }
 

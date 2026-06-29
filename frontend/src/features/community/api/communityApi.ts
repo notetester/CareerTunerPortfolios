@@ -66,9 +66,11 @@ export async function getPosts(
   sort = "latest",
   page = 0,
   size = 20,
+  keyword?: string,
 ) {
   const params = new URLSearchParams({ sort, page: String(page), size: String(size) });
   if (category) params.set("category", categoryToEnum(category));
+  if (keyword && keyword.trim()) params.set("keyword", keyword.trim());
   const data = await api<PostPageData>(`/community/posts?${params}`, {}, { auth: false });
   return data.posts.map(mapPost);
 }
@@ -184,6 +186,13 @@ export async function createComment(
   return api<CommunityComment>(`/community/posts/${postId}/comments`, {
     method: "POST",
     body: JSON.stringify({ content, parentId: parentId ?? null, anonymous }),
+  });
+}
+
+export async function updateComment(commentId: number, content: string) {
+  return api<CommunityComment>(`/community/comments/${commentId}`, {
+    method: "PUT",
+    body: JSON.stringify({ content }),
   });
 }
 
