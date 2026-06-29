@@ -273,7 +273,7 @@ function ReportsPanel({ flash }: { flash: (msg: string) => void }) {
 
               <div style={{
                 margin: "10px 16px", padding: "10px 12px", borderRadius: "8px",
-                background: "var(--av-bg-sub, #f8f9fa)",
+                background: "var(--muted)",
                 fontSize: "12.5px", maxHeight: "8rem", overflow: "auto", whiteSpace: "pre-wrap",
               }}>
                 {detail.excerpt}
@@ -560,7 +560,7 @@ function ModerationPanel({ flash }: { flash: (msg: string) => void }) {
               </div>
 
               <div style={{
-                background: "var(--av-bg-sub, #f8f9fa)", padding: "0.75rem", borderRadius: "0.5rem",
+                background: "var(--muted)", padding: "0.75rem", borderRadius: "0.5rem",
                 fontSize: "0.9rem", maxHeight: "12rem", overflow: "auto", margin: "0 16px 1rem", whiteSpace: "pre-wrap",
               }}>
                 {detail.content}
@@ -798,7 +798,7 @@ function CommentModerationPanel({ flash }: { flash: (msg: string) => void }) {
               </div>
 
               <div style={{
-                background: "var(--av-bg-sub, #f8f9fa)", padding: "0.75rem", borderRadius: "0.5rem",
+                background: "var(--muted)", padding: "0.75rem", borderRadius: "0.5rem",
                 fontSize: "0.9rem", maxHeight: "12rem", overflow: "auto", margin: "0 16px 1rem", whiteSpace: "pre-wrap",
               }}>
                 {detail.content}
