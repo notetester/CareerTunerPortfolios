@@ -20,3 +20,27 @@
 .inq-actions { display: flex; gap: 4px; justify-content: flex-end; }
 .inq-actions .av-btn { width: 28px; height: 28px; padding: 0; justify-content: center; }
 .inq-actions .av-btn svg { width: 13px; height: 13px; }
+
+/* ── 상태 칩: 라이트 파스텔 + .dark 반투명(ct-badge 패턴). 상태 구분 유지하며 다크 가독성 확보 ── */
+.inq-st--pending  { background: #fffbeb; color: #b45309; }
+.inq-st--progress { background: #eff6ff; color: #1d4ed8; }
+.inq-st--answered { background: #f0fdf4; color: #15803d; }
+.inq-st--hold,
+.inq-st--closed   { background: #f1f5f9; color: #475569; }
+.dark .inq-st--pending  { background: rgba(245,158,11,0.16); color: #fcd34d; }
+.dark .inq-st--progress { background: rgba(59,130,246,0.16); color: #93c5fd; }
+.dark .inq-st--answered { background: rgba(34,197,94,0.16);  color: #86efac; }
+.dark .inq-st--hold,
+.dark .inq-st--closed   { background: rgba(148,163,184,0.16); color: #cbd5e1; }
+
+/* ── 긴급 칩 ── */
+.inq-urgent { background: #fef2f2; color: #d4183d; }
+.dark .inq-urgent { background: rgba(220,38,38,0.18); color: #fca5a5; }
+
+/* ── amber 영역(내부메모·AI 경고): 다크 반투명 ── */
+.inq-memo { background: #fffdf5; }
+.dark .inq-memo { background: rgba(245,158,11,0.08); }
+.inq-amber-box { background: #fffbeb; border: 1px solid #fde68a; }
+.dark .inq-amber-box { background: rgba(245,158,11,0.12); border-color: rgba(245,158,11,0.32); }
+.inq-amber-ink { color: #92400e; }
+.dark .inq-amber-ink { color: #fcd34d; }

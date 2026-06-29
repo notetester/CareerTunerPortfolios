@@ -17,12 +17,12 @@ type AiSummaryState = "none" | "loading" | "ready" | "empty" | "error";
 type AiDraftState = "none" | "loading" | "ready" | "error";
 
 /** 티켓 상태별 표시(라벨·뱃지색) — 목록·상세 뱃지가 공유한다. */
-const STATUS_META: Record<InquiryStatus, { label: string; bg: string; color: string }> = {
-  pending:  { label: "미답변",   bg: "#fffbeb", color: "#b45309" },
-  progress: { label: "처리중",   bg: "#eff6ff", color: "#1d4ed8" },
-  answered: { label: "답변완료", bg: "#f0fdf4", color: "#15803d" },
-  hold:     { label: "보류",     bg: "#f1f5f9", color: "#475569" },
-  closed:   { label: "종료",     bg: "#f1f5f9", color: "#475569" },
+const STATUS_META: Record<InquiryStatus, { label: string; cls: string }> = {
+  pending:  { label: "미답변",   cls: "inq-st--pending" },
+  progress: { label: "처리중",   cls: "inq-st--progress" },
+  answered: { label: "답변완료", cls: "inq-st--answered" },
+  hold:     { label: "보류",     cls: "inq-st--hold" },
+  closed:   { label: "종료",     cls: "inq-st--closed" },
 };
 
 
@@ -249,13 +249,11 @@ export default function AdminInquiriesAI() {
                 <div className="flex items-center gap-1.5 mb-1">
                   <span className="text-[11px] font-bold px-2 py-0.5 rounded-full" style={{ background: "var(--muted)", color: "var(--muted-foreground)" }}>{inq.cat}</span>
                   {inq.priority && (
-                    <span className="text-[10.5px] font-extrabold px-1.5 py-0.5 rounded-full inline-flex items-center gap-0.5"
-                      style={{ background: "#fef2f2", color: "#d4183d" }}>
+                    <span className="text-[10.5px] font-extrabold px-1.5 py-0.5 rounded-full inline-flex items-center gap-0.5 inq-urgent">
                       <Flame size={10} />긴급
                     </span>
                   )}
-                  <span className="ml-auto text-[11px] font-bold px-2 py-0.5 rounded-full"
-                    style={{ background: STATUS_META[inq.status].bg, color: STATUS_META[inq.status].color }}>
+                  <span className={`ml-auto text-[11px] font-bold px-2 py-0.5 rounded-full ${STATUS_META[inq.status].cls}`}>
                     {STATUS_META[inq.status].label}
                   </span>
                 </div>
@@ -276,13 +274,11 @@ export default function AdminInquiriesAI() {
               <div className="flex items-center gap-2 mb-2">
                 <span className="text-[11px] font-bold px-2 py-0.5 rounded-full" style={{ background: "var(--muted)", color: "var(--muted-foreground)" }}>{selected.cat}</span>
                 {selected.priority && (
-                  <span className="text-[10.5px] font-extrabold px-1.5 py-0.5 rounded-full inline-flex items-center gap-0.5"
-                    style={{ background: "#fef2f2", color: "#d4183d" }}>
+                  <span className="text-[10.5px] font-extrabold px-1.5 py-0.5 rounded-full inline-flex items-center gap-0.5 inq-urgent">
                     <Flame size={10} />긴급
                   </span>
                 )}
-                <span className="text-[11px] font-bold px-2 py-0.5 rounded-full"
-                  style={{ background: STATUS_META[selected.status].bg, color: STATUS_META[selected.status].color }}>
+                <span className={`text-[11px] font-bold px-2 py-0.5 rounded-full ${STATUS_META[selected.status].cls}`}>
                   {STATUS_META[selected.status].label}
                 </span>
               </div>
@@ -312,8 +308,7 @@ export default function AdminInquiriesAI() {
                 <ChevronDown size={12} className="text-[var(--muted-foreground)]" />
               </span>
               {selected.priority && (
-                <span className="ml-auto inline-flex items-center gap-1 h-8 px-3 rounded-md text-xs font-semibold"
-                  style={{ background: "#fef2f2", color: "#d4183d" }}>
+                <span className="ml-auto inline-flex items-center gap-1 h-8 px-3 rounded-md text-xs font-semibold inq-urgent">
                   <Flame size={14} />긴급 해제
                 </span>
               )}
@@ -359,8 +354,8 @@ export default function AdminInquiriesAI() {
             </div>
 
             {/* Internal memo */}
-            <div className="px-5 py-3.5 border-t border-border" style={{ background: "#fffdf5" }}>
-              <div className="text-xs font-bold mb-2 flex items-center gap-1.5" style={{ color: "#92400e" }}>
+            <div className="px-5 py-3.5 border-t border-border inq-memo">
+              <div className="text-xs font-bold mb-2 flex items-center gap-1.5 inq-amber-ink">
                 <StickyNote size={14} />
                 내부 메모
                 <span className="font-semibold text-[10.5px] text-[var(--muted-foreground)] bg-[var(--muted)] rounded-full px-1.5 py-0.5">회원에게 보이지 않음</span>
@@ -601,8 +596,7 @@ function AiDraftReady({ draft, onUseDraft, onRegenerate }: { draft: string; onUs
       <div className="flex items-center gap-2 mb-2.5">
         <Sparkles size={15} className="text-indigo-600" />
         <span className="text-[12.5px] font-bold" style={{ color: "var(--accent-2)" }}>AI 답변 초안</span>
-        <span className="inline-flex items-center gap-1 text-[10.5px] font-extrabold px-2 py-0.5 rounded-full"
-          style={{ color: "#b45309", background: "#fffbeb", border: "1px solid #fde68a" }}>
+        <span className="inline-flex items-center gap-1 text-[10.5px] font-extrabold px-2 py-0.5 rounded-full inq-amber-box inq-amber-ink">
           <AlertTriangle size={11} />검토 필요
         </span>
         <span className="ml-auto text-[11px] text-muted-foreground">AI 생성 · 그대로 전송 금지</span>
@@ -613,7 +607,7 @@ function AiDraftReady({ draft, onUseDraft, onRegenerate }: { draft: string; onUs
         </div>
         <div className="flex items-center gap-2 mt-3 flex-wrap">
           <button onClick={onUseDraft}
-            className="inline-flex items-center gap-1.5 h-9 px-3.5 rounded-lg bg-[#030213] text-white text-[12.5px] font-bold hover:bg-[#1a1a2e] transition-colors">
+            className="inline-flex items-center gap-1.5 h-9 px-3.5 rounded-lg bg-foreground text-background text-[12.5px] font-bold hover:opacity-90 transition-opacity">
             <CornerDownLeft size={15} />이 초안 사용
           </button>
           <button onClick={onRegenerate}
@@ -632,15 +626,13 @@ function AiDraftReady({ draft, onUseDraft, onRegenerate }: { draft: string; onUs
 function AiDisconnectedBox({ onRetry }: { onRetry: () => void }) {
   return (
     <div className="mt-3">
-      <div className="rounded-[10px] p-3.5 flex items-start gap-3"
-        style={{ background: "#fffbeb", border: "1px solid #fde68a" }}>
-        <span className="shrink-0 w-9 h-9 rounded-[10px] bg-card border flex items-center justify-center text-amber-700"
-          style={{ borderColor: "#fde68a" }}>
+      <div className="rounded-[10px] p-3.5 flex items-start gap-3 inq-amber-box">
+        <span className="shrink-0 w-9 h-9 rounded-[10px] bg-card border border-border flex items-center justify-center text-amber-700">
           <WifiOff size={17} />
         </span>
         <div className="flex-1">
-          <div className="text-[13px] font-bold mb-0.5" style={{ color: "#92400e" }}>AI 보조를 사용할 수 없어요</div>
-          <div className="text-xs leading-relaxed" style={{ color: "#854d0e" }}>지금은 AI 요약·초안 생성이 어려워요. 평소처럼 직접 답변해 주세요.</div>
+          <div className="text-[13px] font-bold mb-0.5 inq-amber-ink">AI 보조를 사용할 수 없어요</div>
+          <div className="text-xs leading-relaxed inq-amber-ink">지금은 AI 요약·초안 생성이 어려워요. 평소처럼 직접 답변해 주세요.</div>
         </div>
         <button onClick={onRetry}
           className="shrink-0 inline-flex items-center gap-1 h-[30px] px-2.5 rounded-lg text-[11.5px] font-semibold bg-card hover:bg-amber-50 transition-colors"
