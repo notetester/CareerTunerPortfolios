@@ -21,6 +21,9 @@ import com.careertuner.community.moderation.config.OllamaProperties;
 /**
  * 챗봇 답변 생성용 Ollama /api/chat 클라이언트.
  * 기존 OllamaClient(검열용)를 수정하지 않고 별도 구현.
+ *
+ * <p>Ollama 가 죽거나 비면 {@link SupportTextFallbackGenerator} 가 Claude(Haiku)→목업으로 폴백하므로,
+ * 사용자가 챗봇에 질문했을 때 어떤 상황에서도 화면이 깨지지 않는다.
  */
 @Component
 public class OllamaChatClient {
@@ -29,10 +32,13 @@ public class OllamaChatClient {
 
     private final RestClient restClient;
     private final ChatbotProperties chatbotProps;
+    private final SupportTextFallbackGenerator fallback;
     private final String systemPrompt;
 
-    public OllamaChatClient(OllamaProperties ollamaProps, ChatbotProperties chatbotProps) {
+    public OllamaChatClient(OllamaProperties ollamaProps, ChatbotProperties chatbotProps,
+                            SupportTextFallbackGenerator fallback) {
         this.chatbotProps = chatbotProps;
+        this.fallback = fallback;
 
         var jdkClient = HttpClient.newBuilder()
                 .connectTimeout(Duration.ofSeconds(10))
@@ -52,7 +58,12 @@ public class OllamaChatClient {
         String prompt = systemPrompt
                 .replace("{faqContext}", faqContext)
                 .replace("{userQuestion}", userQuestion);
+        return fallback.generate(prompt, userQuestion,
+                () -> callOllama(prompt, userQuestion),
+                "현재 챗봇 답변을 생성할 수 없습니다. 잠시 후 다시 시도해 주세요.");
+    }
 
+    private String callOllama(String prompt, String userQuestion) {
         Map<String, Object> request = Map.of(
                 "model", chatbotProps.getChatModel(),
                 "stream", false,
@@ -77,9 +88,14 @@ public class OllamaChatClient {
             throw new IllegalStateException("Ollama chat 응답이 비어 있습니다");
         }
 
+        Object messageObj = response.get("message");
+        if (!(messageObj instanceof Map)) {
+            throw new IllegalStateException("Ollama chat 응답의 message 형식이 올바르지 않습니다");
+        }
         @SuppressWarnings("unchecked")
-        Map<String, String> message = (Map<String, String>) response.get("message");
-        return message.get("content");
+        Map<String, Object> message = (Map<String, Object>) messageObj;
+        Object content = message.get("content");
+        return content == null ? "" : content.toString().strip();
     }
 
     private String loadSystemPrompt() {
