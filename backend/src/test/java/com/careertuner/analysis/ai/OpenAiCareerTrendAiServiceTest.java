@@ -24,7 +24,7 @@ class OpenAiCareerTrendAiServiceTest {
         OpenAiCareerTrendAiService service = new OpenAiCareerTrendAiService(
                 client,
                 new MockCareerTrendAiService(),
-                objectMapper);
+                new CareerTrendStructuredMapper(objectMapper));
 
         CareerTrendAiResult result = service.generate(new CareerTrendAiCommand(null, null, null, null, null, null));
 

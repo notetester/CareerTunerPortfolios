@@ -24,7 +24,7 @@ class OpenAiDashboardInsightAiServiceTest {
         OpenAiDashboardInsightAiService service = new OpenAiDashboardInsightAiService(
                 client,
                 new MockDashboardInsightAiService(),
-                objectMapper);
+                new DashboardInsightStructuredMapper(objectMapper));
 
         DashboardInsightAiResult result = service.summarize(new DashboardInsightAiCommand(null, null, null));
 
