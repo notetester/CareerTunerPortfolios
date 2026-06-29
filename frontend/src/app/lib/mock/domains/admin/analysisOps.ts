@@ -607,6 +607,19 @@ function buildFitDetail(id: number): AdminFitAnalysisDetail {
     gateReasonCount: item.gateReasonCount,
     gateMaxSeverity: item.gateMaxSeverity,
     evidenceGateVersion: item.gateStatus ? "r3-review-first" : null,
+    gateReasons:
+      item.gateStatus === "REVIEW_REQUIRED"
+        ? [
+            {
+              type: "matched_skill_without_user_evidence",
+              claim: item.missingSkills[0] ?? "Spark",
+              reason: "AI 매칭 역량이 사용자 원본 근거(프로필 스킬/자격)에 없음",
+              severity: item.gateMaxSeverity ?? "warning",
+            },
+          ]
+        : item.gateStatus === "REJECTED"
+          ? [{ type: "structural", claim: "-", reason: "핵심 계약 필드 누락 또는 점수 범위 위반", severity: "critical" }]
+          : [],
     learningTasks:
       item.status === "FAILED"
         ? []

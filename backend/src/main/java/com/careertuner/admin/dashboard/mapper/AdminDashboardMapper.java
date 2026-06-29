@@ -21,6 +21,6 @@ public interface AdminDashboardMapper {
 
     int countAiCallsThisMonth();
 
-    /** review-first evidence gate 가 REVIEW_REQUIRED 로 판정한 적합도 분석 총수(검토 대기). */
+    /** 검토 대기: 지원 건별 최신 적합도 분석 중 gate_status=REVIEW_REQUIRED 인 건수(home 과 동일 기준). */
     int countReviewRequiredAnalyses();
 }

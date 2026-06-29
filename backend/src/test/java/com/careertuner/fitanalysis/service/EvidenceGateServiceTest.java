@@ -135,6 +135,89 @@ class EvidenceGateServiceTest {
         assertThat(EvidenceGateDecision.VERSION).isEqualTo("r3-review-first");
     }
 
+    // ── #174 후속 hotfix(reports/62): userEvidence 에서 ai.matchedSkills 제거 회귀 ──
+
+    @Test
+    void aiMatchedSkillWithoutUserEvidenceIsReviewCritical() {
+        // 순환 오류 핵심: AI 가 Spark 를 matched 로 만들었지만 사용자 원본 근거는 Java 뿐 → 검토 필요(critical).
+        FitAnalysisAiResult ai = ai(60, List.of("Spark"), List.of(), "Spark 역량을 보유하고 있습니다.");
+        EvidenceGateDecision decision = gate.evaluate(command(List.of("Spark"), List.of(), List.of("Java"), List.of()), ai);
+
+        assertThat(decision.gateStatus()).isEqualTo(EvidenceGateDecision.STATUS_REVIEW_REQUIRED);
+        assertThat(decision.needsHumanReview()).isTrue();
+        assertThat(decision.reasons()).anySatisfy(reason -> {
+            assertThat(reason.claim()).isEqualTo("Spark");
+            assertThat(reason.severity()).isEqualTo(EvidenceGateDecision.SEVERITY_CRITICAL);
+        });
+    }
+
+    @Test
+    void aiMatchedSkillFlaggedEvenWithoutPossessionClaim() {
+        // 텍스트에 보유 서술이 없어도 matched 자체가 근거 없는 단정이면 검출한다.
+        FitAnalysisAiResult ai = ai(60, List.of("Spark"), List.of(), "전반적으로 적합합니다.");
+        EvidenceGateDecision decision = gate.evaluate(command(List.of("Spark"), List.of(), List.of("Java"), List.of()), ai);
+
+        assertThat(decision.gateStatus()).isEqualTo(EvidenceGateDecision.STATUS_REVIEW_REQUIRED);
+        assertThat(decision.reasons()).anySatisfy(reason ->
+                assertThat(reason.type()).isEqualTo("matched_skill_without_user_evidence"));
+    }
+
+    @Test
+    void scoreBasisPossessionClaimIsReview() {
+        FitAnalysisAiResult ai = aiFull(60, List.of(), List.of(), "전반적으로 적합합니다.",
+                List.of("Spark 경험을 보유해 데이터 처리 요건에 부합합니다."), List.of(), DEFAULT_DECISION);
+        EvidenceGateDecision decision = gate.evaluate(command(List.of("Spark"), List.of(), List.of("Java"), List.of()), ai);
+
+        assertThat(decision.gateStatus()).isEqualTo(EvidenceGateDecision.STATUS_REVIEW_REQUIRED);
+    }
+
+    @Test
+    void strategyActionsPossessionClaimIsReview() {
+        FitAnalysisAiResult ai = aiFull(60, List.of(), List.of(), "전반적으로 적합합니다.",
+                List.of(), List.of("Spark 강점을 중심으로 자기소개서를 작성하세요."), DEFAULT_DECISION);
+        EvidenceGateDecision decision = gate.evaluate(command(List.of("Spark"), List.of(), List.of("Java"), List.of()), ai);
+
+        assertThat(decision.gateStatus()).isEqualTo(EvidenceGateDecision.STATUS_REVIEW_REQUIRED);
+    }
+
+    @Test
+    void applyDecisionReasonPossessionClaimIsReview() {
+        FitApplyDecision decisionCard = new FitApplyDecision(
+                "APPLY", List.of("Spark 역량을 보유해 지원 가치가 있습니다."), List.of());
+        FitAnalysisAiResult ai = aiFull(60, List.of(), List.of(), "전반적으로 적합합니다.", List.of(), List.of(), decisionCard);
+        EvidenceGateDecision decision = gate.evaluate(command(List.of("Spark"), List.of(), List.of("Java"), List.of()), ai);
+
+        assertThat(decision.gateStatus()).isEqualTo(EvidenceGateDecision.STATUS_REVIEW_REQUIRED);
+    }
+
+    @Test
+    void applyDecisionActionsPossessionClaimIsReview() {
+        // applyDecision.actions() 도 사용자 노출 텍스트라 보유 단정을 검출해야 한다(reasons() 와 별개 경로).
+        FitApplyDecision decisionCard = new FitApplyDecision(
+                "COMPLEMENT", List.of(), List.of("Spark 강점을 먼저 준비하세요."));
+        FitAnalysisAiResult ai = aiFull(60, List.of(), List.of(), "전반적으로 적합합니다.", List.of(), List.of(), decisionCard);
+        EvidenceGateDecision decision = gate.evaluate(command(List.of("Spark"), List.of(), List.of("Java"), List.of()), ai);
+
+        assertThat(decision.gateStatus()).isEqualTo(EvidenceGateDecision.STATUS_REVIEW_REQUIRED);
+    }
+
+    @Test
+    void genuineUserEvidencePasses() {
+        // 사용자 원본 근거에 실제로 Spark 가 있으면 matched/보유 서술 모두 정상.
+        FitAnalysisAiResult ai = ai(70, List.of("Spark"), List.of(), "Spark 역량을 보유하고 있습니다.");
+        EvidenceGateDecision decision = gate.evaluate(command(List.of("Spark"), List.of(), List.of("Spark"), List.of()), ai);
+
+        assertThat(decision.gateStatus()).isEqualTo(EvidenceGateDecision.STATUS_PASSED);
+    }
+
+    @Test
+    void lackContextWithoutMatchedPasses() {
+        FitAnalysisAiResult ai = ai(50, List.of(), List.of("Spark"), "Spark 경험이 부족하여 보완이 필요합니다.");
+        EvidenceGateDecision decision = gate.evaluate(command(List.of("Spark"), List.of(), List.of("Java"), List.of()), ai);
+
+        assertThat(decision.gateStatus()).isEqualTo(EvidenceGateDecision.STATUS_PASSED);
+    }
+
     private static final FitApplyDecision DEFAULT_DECISION = new FitApplyDecision("HOLD", List.of(), List.of());
 
     private static FitAnalysisAiResult ai(int fitScore, List<String> matched, List<String> missing, String fitSummary) {
@@ -143,9 +226,15 @@ class EvidenceGateServiceTest {
 
     private static FitAnalysisAiResult ai(int fitScore, List<String> matched, List<String> missing,
                                           String fitSummary, FitApplyDecision decision) {
+        return aiFull(fitScore, matched, missing, fitSummary, List.of(), List.of(), decision);
+    }
+
+    private static FitAnalysisAiResult aiFull(int fitScore, List<String> matched, List<String> missing,
+                                              String fitSummary, List<String> scoreBasis,
+                                              List<String> strategyActions, FitApplyDecision decision) {
         return new FitAnalysisAiResult(
                 fitScore, matched, missing, List.of(), List.of(), fitSummary,
-                List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), decision,
+                scoreBasis, List.of(), List.of(), List.of(), strategyActions, List.of(), decision,
                 new CareerAnalysisAiUsage("test-model", 0, 0, 0, false), "SUCCESS", null, false);
     }
 

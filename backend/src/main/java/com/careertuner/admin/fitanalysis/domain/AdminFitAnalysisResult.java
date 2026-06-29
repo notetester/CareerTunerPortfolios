@@ -51,4 +51,6 @@ public class AdminFitAnalysisResult {
     private Integer gateReasonCount;
     private String gateMaxSeverity;
     private String evidenceGateVersion;
+    // 축약 gate reason 목록 JSON([{type,claim,reason,severity}]). 상세에서만 파싱해 노출(개인정보·원문 제외).
+    private String gateReasonsJson;
 }

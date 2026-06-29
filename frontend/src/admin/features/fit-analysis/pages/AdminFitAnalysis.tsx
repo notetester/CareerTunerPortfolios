@@ -99,11 +99,12 @@ export default function AdminFitAnalysisPage() {
     setLoadingList(true);
     setError(null);
 
-    getAdminFitAnalyses()
+    // '검토 필요만'은 서버 1차 필터(reviewRequiredOnly)로 후보군을 줄인다. 나머지 필터는 클라이언트 유지.
+    getAdminFitAnalyses(reviewOnly)
       .then((data) => {
         if (ignore) return;
         setItems(data);
-        setSelectedId(data[0]?.id ?? null);
+        setSelectedId((current) => (current != null && data.some((item) => item.id === current) ? current : data[0]?.id ?? null));
       })
       .catch((requestError) => {
         if (!ignore) setError(requestError instanceof Error ? requestError.message : "적합도 분석 목록을 불러오지 못했습니다.");
@@ -115,7 +116,7 @@ export default function AdminFitAnalysisPage() {
     return () => {
       ignore = true;
     };
-  }, []);
+  }, [reviewOnly]);
 
   useEffect(() => {
     if (Number.isFinite(requestedAnalysisId) && items.some((item) => item.id === requestedAnalysisId)) {
@@ -175,10 +176,10 @@ export default function AdminFitAnalysisPage() {
         (resultFilter === "SUCCESS" ? item.status === "SUCCESS" : item.status !== "SUCCESS");
       const matchesMemo = !memoOnly || item.memoCount > 0;
       const matchesReanalysis = !reanalysisOnly || item.reanalysisRequested;
-      const matchesReview = !reviewOnly || item.gateStatus === "REVIEW_REQUIRED";
-      return matchesQuery && matchesBand && matchesResult && matchesMemo && matchesReanalysis && matchesReview;
+      // 검토 필요 필터는 서버(reviewRequiredOnly)에서 처리하므로 여기서는 클라이언트 필터를 두지 않는다.
+      return matchesQuery && matchesBand && matchesResult && matchesMemo && matchesReanalysis;
     });
-  }, [items, query, bandFilter, resultFilter, memoOnly, reanalysisOnly, reviewOnly]);
+  }, [items, query, bandFilter, resultFilter, memoOnly, reanalysisOnly]);
 
   function resetMemoForm() {
     setMemoType("GENERAL");
@@ -204,7 +205,7 @@ export default function AdminFitAnalysisPage() {
         await createAdminFitAnalysisMemo(detail.id, { memoType, content: memoContent });
       }
       const refreshedDetail = await getAdminFitAnalysis(detail.id);
-      const refreshedItems = await getAdminFitAnalyses();
+      const refreshedItems = await getAdminFitAnalyses(reviewOnly);
       setDetail(refreshedDetail);
       setItems(refreshedItems);
       resetMemoForm();
@@ -223,7 +224,7 @@ export default function AdminFitAnalysisPage() {
     try {
       await deleteAdminFitAnalysisMemo(detail.id, memo.id);
       const refreshedDetail = await getAdminFitAnalysis(detail.id);
-      const refreshedItems = await getAdminFitAnalyses();
+      const refreshedItems = await getAdminFitAnalyses(reviewOnly);
       setDetail(refreshedDetail);
       setItems(refreshedItems);
       if (editingMemo?.id === memo.id) resetMemoForm();
@@ -425,6 +426,30 @@ export default function AdminFitAnalysisPage() {
                               : "근거 검토를 통과한 분석입니다."}
                           {detail.evidenceGateVersion ? ` (정책 ${detail.evidenceGateVersion})` : ""}
                         </p>
+                        {detail.gateReasons.length > 0 && (
+                          <ul className="mt-2 space-y-1">
+                            {detail.gateReasons.map((gateReason, index) => (
+                              <li
+                                key={`${gateReason.type}:${gateReason.claim}:${index}`}
+                                className="flex items-start gap-2 rounded bg-white/60 px-2 py-1 text-xs"
+                              >
+                                <span
+                                  className={`shrink-0 rounded px-1.5 py-0.5 font-bold ${
+                                    gateReason.severity === "critical"
+                                      ? "bg-red-100 text-red-700"
+                                      : "bg-amber-100 text-amber-700"
+                                  }`}
+                                >
+                                  {gateReason.severity}
+                                </span>
+                                <span>
+                                  <strong>{gateReason.claim}</strong> · {gateReason.reason}{" "}
+                                  <span className="text-slate-400">({gateReason.type})</span>
+                                </span>
+                              </li>
+                            ))}
+                          </ul>
+                        )}
                       </div>
                     )}
 

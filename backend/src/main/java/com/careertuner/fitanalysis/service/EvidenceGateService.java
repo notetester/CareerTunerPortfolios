@@ -23,6 +23,11 @@ import com.careertuner.fitanalysis.ai.FitAnalysisAiResult;
  * <p>이 서비스는 순수 함수다(외부 호출 없음). 점수/applyDecision/matchedSkills/missingSkills 를 <b>읽기만</b> 하고
  * 절대 바꾸지 않는다. RAG runtime 자동주입·rewrite 자동노출은 하지 않는다(설계 비목표).
  *
+ * <p><b>userEvidence 기준(#174 후속 hotfix, reports/62)</b>: 사용자 보유 근거는 <b>사용자 원본 입력</b>
+ * (`profileSkills` + `profileCertificates`)만으로 한정한다. AI 출력 {@code matchedSkills} 는 AI 파생 결과이므로
+ * userEvidence 가 아니다 — matchedSkills 를 보유 근거로 신뢰하면 AI 가 잘못 만든 매칭을 다시 신뢰하는 순환 오류가 된다.
+ * matchedSkills 는 별도 derived 버킷으로 분리하고, 사용자 원본 근거에 없는 matched 항목은 검토 후보로 본다.
+ *
  * <p>E1 guard 와의 관계: E1 은 AI 서비스 내부의 hard guard(위반 시 재호출→폴백)이고, 이 gate 는 그 위에 얹는 soft
  * review 층이다. 둘은 독립이며 서로를 약화하지 않는다. 휴리스틱(보유/결핍 표현)은 의도적으로 E1 과 동일 기준을 쓰되
  * E1 코드는 손대지 않기 위해 self-contained 로 복제한다.
@@ -38,22 +43,32 @@ public class EvidenceGateService {
     private static final String[] LACK = {
             "부족", "없", "미보유", "부재", "않", "못", "결여", "갖추지", "보유하지", "미흡", "전무"};
 
+    /** AI 매칭이 사용자 원본 근거에 없을 때(순환 오류 방지). */
+    private static final String TYPE_MATCHED_WITHOUT_EVIDENCE = "matched_skill_without_user_evidence";
+    /** 사용자 노출 텍스트가 공고 요구 역량을 보유로 단정했으나 사용자 원본 근거가 없을 때. */
+    private static final String TYPE_REQUIREMENT_AS_OWNED = "requirement_as_owned";
+
     /**
      * 적합도 분석 입력({@code command})과 AI 결과({@code ai})로 gate 를 결정한다.
      *
      * <p>핵심 계약 필드(점수 범위·applyDecision·matched/missing)가 깨졌으면 {@code REJECTED}(자동 확정 금지).
-     * 그 외에는 설명 free-text(fitSummary)에서 '보유로 단정했지만 userEvidence 에 없는 역량'을 찾아
-     * 있으면 {@code REVIEW_REQUIRED}, 없으면 {@code PASSED}.
+     * 그 외에는 (1) AI matchedSkills 중 사용자 원본 근거에 없는 항목, (2) 사용자 노출 텍스트에서 '보유로 단정'했으나
+     * 사용자 원본 근거에 없는 공고 요구 역량을 찾아 있으면 {@code REVIEW_REQUIRED}, 없으면 {@code PASSED}.
      */
     public EvidenceGateDecision evaluate(FitAnalysisAiCommand command, FitAnalysisAiResult ai) {
-        List<String> userEvidence = distinct(concat(
-                ai.matchedSkills(), command.profileSkills(), command.profileCertificates()));
-        List<String> jobRequirements = distinct(concat(
-                command.requiredSkills(), command.preferredSkills(), ai.missingSkills()));
-        // 현 runtime 은 RAG off 라 카탈로그/회사 컨텍스트는 모델 입력에 없다(빈 버킷으로 명시).
+        // userEvidence = 사용자 원본 입력만(프로필 스킬/자격). AI 파생 matchedSkills 는 제외한다.
+        List<String> userEvidence = distinct(concat(command.profileSkills(), command.profileCertificates()));
+        List<String> derivedMatched = distinct(nullSafe(ai.matchedSkills()));
+        List<String> jobRequirements = distinct(concat(command.requiredSkills(), command.preferredSkills()));
+        List<String> missingSkills = distinct(nullSafe(ai.missingSkills()));
+
+        // evidence 버킷 스냅샷: userEvidence 만 userOwned=true, derived/missing/jobRequirements 는 false.
+        // 현 runtime 은 RAG off 라 catalogFacts/companyContext 는 빈 버킷.
         List<EvidenceGateDecision.EvidenceSource> sources = List.of(
                 new EvidenceGateDecision.EvidenceSource("userEvidence", true, userEvidence),
+                new EvidenceGateDecision.EvidenceSource("derivedMatchedSkills", false, derivedMatched),
                 new EvidenceGateDecision.EvidenceSource("jobRequirements", false, jobRequirements),
+                new EvidenceGateDecision.EvidenceSource("missingSkills", false, missingSkills),
                 new EvidenceGateDecision.EvidenceSource("catalogFacts", false, List.of()),
                 new EvidenceGateDecision.EvidenceSource("companyContext", false, List.of()));
 
@@ -68,12 +83,18 @@ public class EvidenceGateService {
                     sources);
         }
 
-        // 2) free-text(fitSummary=strategy) 에서 unsupported user-owned claim 탐지.
         Set<String> userEvidenceLower = lower(userEvidence);
         Set<String> requiredLower = lower(nullSafe(command.requiredSkills()));
-        List<EvidenceGateDecision.Reason> reasons = auditClaims(
-                ai.strategy(), jobRequirements, userEvidenceLower, requiredLower);
+        // 텍스트 보유단정 탐지 대상: 공고 요구(required+preferred) + AI 가 부족이라 한 역량(missing). 보유로 단정되면 위반.
+        List<String> detectionRequirements = distinct(concat(jobRequirements, missingSkills, List.of()));
 
+        Map<String, EvidenceGateDecision.Reason> byClaim = new LinkedHashMap<>();
+        // 2) AI matchedSkills 순환 오류: matched 인데 사용자 원본 근거에 없으면 검토 후보(텍스트 단정과 무관하게).
+        auditMatchedSkills(derivedMatched, userEvidenceLower, requiredLower, byClaim);
+        // 3) 사용자 노출 텍스트(strategy/scoreBasis/strategyActions/applyDecision)에서 보유 단정 탐지.
+        auditTextClaims(userFacingTexts(ai), detectionRequirements, userEvidenceLower, requiredLower, byClaim);
+
+        List<EvidenceGateDecision.Reason> reasons = new ArrayList<>(byClaim.values());
         if (reasons.isEmpty()) {
             return new EvidenceGateDecision(
                     EvidenceGateDecision.STATUS_PASSED, false, null, List.of(), sources);
@@ -88,49 +109,111 @@ public class EvidenceGateService {
     }
 
     /**
-     * fitSummary 문장들에서 '보유로 단정'(보유 표현 있고 결핍·부정 표현 없음)했는데 userEvidence 에 없는
+     * AI matchedSkills 중 사용자 원본 근거(profileSkills/profileCertificates)에 없는 항목을 검토 후보로 만든다.
+     * 텍스트에 보유 서술이 없어도 매칭 자체가 근거 없는 단정이므로 검출한다(순환 오류 차단의 핵심).
+     */
+    private void auditMatchedSkills(List<String> derivedMatched,
+                                    Set<String> userEvidenceLower,
+                                    Set<String> requiredLower,
+                                    Map<String, EvidenceGateDecision.Reason> byClaim) {
+        for (String skill : derivedMatched) {
+            String key = skill.toLowerCase(Locale.ROOT);
+            if (userEvidenceLower.contains(key)) {
+                continue; // 사용자 원본 근거에 실제로 있으면 정상
+            }
+            String severity = severityFor(key, requiredLower);
+            String reason = EvidenceGateDecision.SEVERITY_CRITICAL.equals(severity)
+                    ? "AI 매칭 역량이 필수 요구이나 사용자 원본 근거(프로필 스킬/자격)에 없음"
+                    : "AI 매칭 역량이 사용자 원본 근거(프로필 스킬/자격)에 없음";
+            putReason(byClaim, key, new EvidenceGateDecision.Reason(
+                    TYPE_MATCHED_WITHOUT_EVIDENCE, skill, reason, severity));
+        }
+    }
+
+    /**
+     * 사용자 노출 텍스트 문장들에서 '보유로 단정'(보유 표현 있고 결핍·부정 표현 없음)했는데 사용자 원본 근거에 없는
      * 공고 요구 역량을 찾아 reason 으로 만든다. claim 기준 중복 제거(최고 심각도 유지).
      */
-    private List<EvidenceGateDecision.Reason> auditClaims(String fitSummary,
-                                                          List<String> jobRequirements,
-                                                          Set<String> userEvidenceLower,
-                                                          Set<String> requiredLower) {
-        if (fitSummary == null || fitSummary.isBlank() || jobRequirements.isEmpty()) {
-            return List.of();
+    private void auditTextClaims(List<String> texts,
+                                 List<String> detectionRequirements,
+                                 Set<String> userEvidenceLower,
+                                 Set<String> requiredLower,
+                                 Map<String, EvidenceGateDecision.Reason> byClaim) {
+        if (detectionRequirements.isEmpty()) {
+            return;
         }
-        Map<String, EvidenceGateDecision.Reason> byClaim = new LinkedHashMap<>();
-        for (String sentence : fitSummary.split("[.!?。\\n]")) {
-            if (sentence == null || sentence.isBlank()) {
+        for (String text : texts) {
+            if (text == null || text.isBlank()) {
                 continue;
             }
-            if (firstContaining(sentence, POSSESSION) == null || firstContaining(sentence, LACK) != null) {
-                continue; // 보유 표현이 없거나 결핍·부정 문맥이면 위반 아님
-            }
-            String lower = sentence.toLowerCase(Locale.ROOT);
-            for (String skill : jobRequirements) {
-                if (skill == null || skill.isBlank()) {
+            for (String sentence : text.split("[.!?。\\n]")) {
+                if (sentence == null || sentence.isBlank()) {
                     continue;
                 }
-                String key = skill.toLowerCase(Locale.ROOT);
-                if (userEvidenceLower.contains(key) || !lower.contains(key)) {
-                    continue; // 실제 보유했거나 문장에 안 나오면 위반 아님
+                if (firstContaining(sentence, POSSESSION) == null || firstContaining(sentence, LACK) != null) {
+                    continue; // 보유 표현이 없거나 결핍·부정 문맥이면 위반 아님
                 }
-                boolean hardRequired = requiredLower.contains(key);
-                String severity = hardRequired
-                        ? EvidenceGateDecision.SEVERITY_CRITICAL : EvidenceGateDecision.SEVERITY_WARNING;
-                String reason = hardRequired
-                        ? "필수 요구 역량을 보유로 단정했으나 userEvidence 미지원"
-                        : "공고 요구 역량을 보유로 단정했으나 userEvidence 미지원";
-                EvidenceGateDecision.Reason existing = byClaim.get(key);
-                if (existing == null
-                        || (EvidenceGateDecision.SEVERITY_CRITICAL.equals(severity)
-                            && !EvidenceGateDecision.SEVERITY_CRITICAL.equals(existing.severity()))) {
-                    byClaim.put(key, new EvidenceGateDecision.Reason(
-                            "requirement_as_owned", skill, reason, severity));
+                String lower = sentence.toLowerCase(Locale.ROOT);
+                for (String skill : detectionRequirements) {
+                    String key = skill.toLowerCase(Locale.ROOT);
+                    if (userEvidenceLower.contains(key) || !lower.contains(key)) {
+                        continue; // 실제 보유했거나 문장에 안 나오면 위반 아님
+                    }
+                    String severity = severityFor(key, requiredLower);
+                    String reason = EvidenceGateDecision.SEVERITY_CRITICAL.equals(severity)
+                            ? "필수 요구 역량을 보유로 단정했으나 사용자 원본 근거 없음"
+                            : "공고 요구 역량을 보유로 단정했으나 사용자 원본 근거 없음";
+                    putReason(byClaim, key, new EvidenceGateDecision.Reason(
+                            TYPE_REQUIREMENT_AS_OWNED, skill, reason, severity));
                 }
             }
         }
-        return new ArrayList<>(byClaim.values());
+    }
+
+    /** 사용자에게 노출될 가능성이 높은 텍스트(명확한 accessor 만 — reflection 미사용). */
+    private static List<String> userFacingTexts(FitAnalysisAiResult ai) {
+        List<String> texts = new ArrayList<>();
+        addText(texts, ai.strategy());
+        addTexts(texts, ai.scoreBasis());
+        addTexts(texts, ai.strategyActions());
+        if (ai.applyDecision() != null) {
+            addTexts(texts, ai.applyDecision().reasons());
+            addTexts(texts, ai.applyDecision().actions());
+        }
+        return texts;
+    }
+
+    /** required 면 critical, 그 외(우대 또는 공고 요구 밖)면 warning. */
+    private static String severityFor(String key, Set<String> requiredLower) {
+        return requiredLower.contains(key)
+                ? EvidenceGateDecision.SEVERITY_CRITICAL : EvidenceGateDecision.SEVERITY_WARNING;
+    }
+
+    /** claim 중복 제거: 비어 있으면 추가, 기존이 warning 이고 신규가 critical 이면 교체. */
+    private static void putReason(Map<String, EvidenceGateDecision.Reason> byClaim,
+                                  String key,
+                                  EvidenceGateDecision.Reason reason) {
+        EvidenceGateDecision.Reason existing = byClaim.get(key);
+        if (existing == null
+                || (EvidenceGateDecision.SEVERITY_CRITICAL.equals(reason.severity())
+                    && !EvidenceGateDecision.SEVERITY_CRITICAL.equals(existing.severity()))) {
+            byClaim.put(key, reason);
+        }
+    }
+
+    private static void addText(List<String> out, String value) {
+        if (value != null && !value.isBlank()) {
+            out.add(value);
+        }
+    }
+
+    private static void addTexts(List<String> out, List<String> values) {
+        if (values == null) {
+            return;
+        }
+        for (String value : values) {
+            addText(out, value);
+        }
     }
 
     private static List<String> concat(List<String> a, List<String> b, List<String> c) {
@@ -145,6 +228,10 @@ public class EvidenceGateService {
             out.addAll(c);
         }
         return out;
+    }
+
+    private static List<String> concat(List<String> a, List<String> b) {
+        return concat(a, b, List.of());
     }
 
     private static List<String> distinct(List<String> values) {
