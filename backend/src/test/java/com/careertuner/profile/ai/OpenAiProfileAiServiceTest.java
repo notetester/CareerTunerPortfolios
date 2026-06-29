@@ -61,6 +61,7 @@ class OpenAiProfileAiServiceTest {
                 ruleBasedService,
                 new JobFamilyWeightPolicy(),
                 new ProfileAiJsonValidator(new ProfileScoreCalculator()),
+                new ProfileAiSchemaProvider(),
                 objectMapper);
     }
 
