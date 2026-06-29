@@ -11,7 +11,7 @@ import com.careertuner.admin.fitanalysis.domain.AdminFitAnalysisResult;
 @Mapper
 public interface AdminFitAnalysisMapper {
 
-    List<AdminFitAnalysisResult> findAll();
+    List<AdminFitAnalysisResult> findAll(@Param("reviewRequiredOnly") boolean reviewRequiredOnly);
 
     AdminFitAnalysisResult findById(Long id);
 

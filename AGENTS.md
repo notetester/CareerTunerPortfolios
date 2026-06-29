@@ -8,7 +8,7 @@
 채용공고에 맞춰 스펙·면접 답변을 조정하는 AI 취업 전략 플랫폼. 핵심 단위는 공고가 아니라 **지원 건(Application Case)**.
 
 ```text
-backend/    Spring Boot 4.0.6 + Java 21 + MyBatis + MySQL 8  (REST API, :8080)
+backend/    Spring Boot 4.1.0 + Java 21 + MyBatis + MySQL 8  (REST API, :8080)
 frontend/   React 18 + Vite 6 + TypeScript + Tailwind v4     (사용자/관리자 SPA, :5173)
 docs/       기획·아키텍처 문서
 ```

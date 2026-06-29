@@ -21,7 +21,7 @@ jobs:
 
     steps:
       - name: Checkout private source repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Set up Node
         uses: actions/setup-node@v6
@@ -62,7 +62,7 @@ jobs:
           echo "No obvious secret patterns found."
 
       - name: Checkout public demo repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           repository: notetester/CareerTunerDemo
           token: ${{ secrets.DEMO_REPO_TOKEN }}

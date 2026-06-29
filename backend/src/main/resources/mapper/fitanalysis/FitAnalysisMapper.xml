@@ -223,6 +223,44 @@
           AND fit_analysis_id = #{fitAnalysisId}
     </select>
 
+    <!-- review-first evidence gate(R3): 결정 1행 + evidence 버킷 스냅샷. fit_analysis 와 1:1/1:N, ON DELETE CASCADE. -->
+    <resultMap id="FitAnalysisGateResultMap" type="com.careertuner.fitanalysis.domain.FitAnalysisGateResult">
+        <id property="id" column="id"/>
+        <result property="fitAnalysisId" column="fit_analysis_id"/>
+        <result property="gateStatus" column="gate_status"/>
+        <result property="needsHumanReview" column="needs_human_review"/>
+        <result property="reasonCount" column="reason_count"/>
+        <result property="maxSeverity" column="max_severity"/>
+        <result property="gateReasonsJson" column="gate_reasons_json"/>
+        <result property="evidenceGateVersion" column="evidence_gate_version"/>
+        <result property="ragRuntimeEnabled" column="rag_runtime_enabled"/>
+        <result property="rewriteApplied" column="rewrite_applied"/>
+        <result property="createdAt" column="created_at"/>
+    </resultMap>
+
+    <insert id="insertGateResult" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO fit_analysis_gate_result
+            (fit_analysis_id, gate_status, needs_human_review, reason_count, max_severity,
+             gate_reasons_json, evidence_gate_version, rag_runtime_enabled, rewrite_applied)
+        VALUES
+            (#{fitAnalysisId}, #{gateStatus}, #{needsHumanReview}, #{reasonCount}, #{maxSeverity},
+             #{gateReasonsJson}, #{evidenceGateVersion}, #{ragRuntimeEnabled}, #{rewriteApplied})
+    </insert>
+
+    <insert id="insertEvidenceSource">
+        INSERT INTO fit_analysis_evidence_source
+            (fit_analysis_id, source_type, user_owned, item_count, items_json)
+        VALUES
+            (#{fitAnalysisId}, #{sourceType}, #{userOwned}, #{itemCount}, #{itemsJson})
+    </insert>
+
+    <select id="findGateResultByFitAnalysisId" resultMap="FitAnalysisGateResultMap">
+        SELECT id, fit_analysis_id, gate_status, needs_human_review, reason_count, max_severity,
+               gate_reasons_json, evidence_gate_version, rag_runtime_enabled, rewrite_applied, created_at
+        FROM fit_analysis_gate_result
+        WHERE fit_analysis_id = #{fitAnalysisId}
+    </select>
+
     <!-- 공통 ai_usage_log 기록(공통 규약). 스키마 변경은 공통 영역이므로 기존 컬럼만 사용한다. -->
     <insert id="insertAiUsageLog">
         INSERT INTO ai_usage_log

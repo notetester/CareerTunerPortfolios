@@ -4,7 +4,7 @@ torch>=2.3
 transformers>=4.45
 peft>=0.13
 trl>=0.11
-datasets>=3.0
+datasets>=5.0.0
 accelerate>=1.0
 bitsandbytes>=0.44
 # 서빙: 학습 후 GGUF(llama.cpp) 변환 → 로컬 Ollama (vLLM 대신)

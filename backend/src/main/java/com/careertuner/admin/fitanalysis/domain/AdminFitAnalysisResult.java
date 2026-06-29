@@ -44,4 +44,11 @@ public class AdminFitAnalysisResult {
     private int memoCount;
     private LocalDateTime latestMemoAt;
     private boolean reanalysisRequested;
+
+    // review-first evidence gate(R3) — LEFT JOIN fit_analysis_gate_result. R3 이전 분석은 NULL.
+    private String gateStatus;
+    private Boolean gateNeedsHumanReview;
+    private Integer gateReasonCount;
+    private String gateMaxSeverity;
+    private String evidenceGateVersion;
 }

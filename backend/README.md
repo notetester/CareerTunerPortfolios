@@ -1,6 +1,6 @@
 # CareerTuner — Backend
 
-Spring Boot **4.0.6** / Java **21** / **MyBatis** / **MySQL 8** REST API 서버.
+Spring Boot **4.1.0** / Java **21** / **MyBatis** / **MySQL 8** REST API 서버.
 인증은 **JWT(Access/Refresh) + Spring Security(stateless)**, 비밀번호는 **BCrypt**.
 
 이 문서는 백엔드의 **현재 구현·실행 상태**를 설명한다. 목표 기능 범위와 출시 우선순위는
@@ -101,17 +101,20 @@ PRO 플랜은 영상분석권을 월 1장 제공하고, PREMIUM 플랜은 영상
 | POST | `/api/application-cases/{id}/job-posting/upload` | PDF/이미지 업로드 및 텍스트 추출 | Bearer |
 | GET | `/api/application-cases/{id}/job-posting` | 현재 공고문 조회 | Bearer |
 | GET | `/api/application-cases/{id}/job-posting/revisions` | 공고문 revision 이력 조회 | Bearer |
+| GET | `/api/application-cases/extractions/active` | 진행 중인 내 공고문 추출 작업 조회 | Bearer |
+| GET | `/api/application-cases/job-posting/extractions/latest?applicationCaseIds=...` | 지원 건별 최신 공고문 추출 상태 일괄 조회 | Bearer |
+| GET | `/api/application-cases/{id}/job-posting/extraction` | 현재 지원 건의 최신 공고문 추출 상태 조회 | Bearer |
+| POST | `/api/application-cases/{id}/job-posting/extraction/retry` | 실패한 공고문 추출 재시도 | Bearer |
+| PATCH | `/api/application-cases/{id}/job-posting/extraction/review` | `REVIEW_REQUIRED` 추출 텍스트 검수 확정 후 자동 분석 재개 | Bearer |
+| PATCH | `/api/application-cases/{id}/job-posting/extraction/confirm` | 사용자가 수정한 공고문 텍스트 확정 후 OCR 없이 자동 분석 갱신 | Bearer |
 | POST | `/api/application-cases/{id}/job-analysis` | 자체 공고 분석 생성(`self-rules-v1`, 선택적 로컬 LLM) | Bearer |
 | GET | `/api/application-cases/{id}/job-analysis` | 공고 분석 조회 | Bearer |
 | GET | `/api/application-cases/{id}/job-analysis/history` | 공고 분석 이력 조회 | Bearer |
 | PATCH | `/api/application-cases/{id}/job-analysis/{analysisId}/review` | 공고 분석 사용자 검수·확정 | Bearer |
-| POST | `/api/application-cases/{id}/job-analysis/mock` | 개발용 mock 공고 분석 생성 | Bearer |
 | POST | `/api/application-cases/{id}/company-analysis` | 자체 기업 분석 생성(`self-rules-v1`, 선택적 로컬 LLM) | Bearer |
 | GET | `/api/application-cases/{id}/company-analysis` | 기업 분석 조회 | Bearer |
 | GET | `/api/application-cases/{id}/company-analysis/history` | 기업 분석 이력 조회 | Bearer |
 | PATCH | `/api/application-cases/{id}/company-analysis/{analysisId}/review` | 기업 분석 사용자 검수·확정 | Bearer |
-| POST | `/api/application-cases/{id}/company-analysis/mock` | 개발용 mock 기업 분석 생성 | Bearer |
-| POST | `/api/application-cases/{id}/analysis/mock` | 호환용 mock 공고/적합도 분석 생성 | Bearer |
 | GET | `/api/application-cases/{id}/analysis` | 호환용 공고/적합도 분석 조회 | Bearer |
 | GET | `/api/application-cases/{id}/ai-usage/b/failures` | 현재 지원 건의 B 분석 실패 로그 조회 | Bearer |
 | GET | `/api/admin/application-cases` | 관리자 지원 건 목록 조회 | Bearer(ADMIN) |
@@ -124,13 +127,12 @@ PRO 플랜은 영상분석권을 월 1장 제공하고, PREMIUM 플랜은 영상
 | PATCH | `/api/admin/company-analysis/{analysisId}/metadata` | 관리자 기업 분석 출처 메타데이터 수정. 날짜 clear 플래그로 `checked_at`, `refresh_recommended_at` 초기화 가능 | Bearer(ADMIN) |
 | GET | `/api/admin/ai-usage/b` | 관리자 B AI 사용량 로그 조회 | Bearer(ADMIN) |
 
-공고/기업 분석은 기본적으로 `self-rules-v1` 자체 경로를 사용한다. 로컬 Qwen/Gemma 분석은 `B_ANALYSIS_LOCAL_LLM_ENABLED=true`와 Ollama 설정으로 켤 수 있으며, 모델이 없으면 기본값에서는 호출하지 않는다.
+공고/기업 분석은 기본적으로 자체 파인튜닝 모델 `careertuner-b-jobposting-r1`(Ollama)을 사용한다(`B_ANALYSIS_LOCAL_LLM_ENABLED` 기본 `true`). 스키마·그라운딩 검증을 통과하지 못하거나 모델 호출이 실패하면 1회 재시도 후 `self-rules-v1` 규칙 경로로 폴백한다. Ollama 미서빙 환경에서는 `B_ANALYSIS_LOCAL_LLM_ENABLED=false`로 끄면 곧장 `self-rules-v1`을 사용한다. 모델·주소·타임아웃은 `B_ANALYSIS_OLLAMA_MODEL`, `B_ANALYSIS_OLLAMA_BASE_URL`, `B_ANALYSIS_OLLAMA_READ_TIMEOUT`(기본 480s)로 조정한다.
 텍스트 PDF는 PDFBox로 먼저 추출하고, 텍스트가 없는 PDF와 이미지는 자체 문서 추출 워커 또는 명시적으로 allowlist 된 OCR fallback만 사용한다. OpenAI 폴백은 `OPENAI_API_KEY`가 있을 때만 동작하며 모델은 `OPENAI_MODEL`(기본 `gpt-5`)로 바꾼다.
-자체 LLM은 현재 F 커뮤니티 검열의 Ollama 연동과 D 면접 파인튜닝 실험을 중심으로 붙어 있으며,
+자체 LLM은 B 공고/기업 분석(`careertuner-b-jobposting-r1`)과 F 커뮤니티 검열의 Ollama 연동, D 면접 파인튜닝 실험을 중심으로 붙어 있으며,
 A~F 담당별 목표 운영 기준은 [`../docs/planning/담당별_자체LLM_운영안.md`](../docs/planning/담당별_자체LLM_운영안.md)를 따른다.
 공통 `ai/common`, 도메인별 `A_AI_*`~`F_AI_*` 설정, 관리자 AI 상태 API는 목표 구조이므로 실제 도입 시 공통 영역 합의 후 구현한다.
 공고문 파일 업로드는 기본 10MB까지 허용하며, 초과 시 `INVALID_INPUT` 응답으로 안내한다.
-`/analysis/mock`은 화면과 데이터 흐름 검증 및 `fit_analysis`를 포함하는 호환 API용이며, B 프론트에서는 직접 사용하지 않는다.
 현재 구현은 지원 건 보관/삭제를 `archived_at`, `deleted_at`으로 분리한다. 사용자 목록 API는 `view=ACTIVE|ARCHIVED|DELETED`를 지원하며,
 기존 `includeArchived=true`는 `view`가 없을 때 활성+보관 목록을 반환하는 호환 동작으로 유지한다. 복원 API는 삭제 상태와 보관 상태를 함께 비워 활성 목록으로 되돌린다.
 공고문 수정은 같은 공고의

@@ -131,6 +131,27 @@ class DocumentTextExtractionTest(unittest.TestCase):
         self.assertGreaterEqual(analysis["qualityScore"], 40)
         self.assertNotIn("section_keywords_missing", analysis["warnings"])
 
+    def test_section_hints_match_spaced_and_mixed_case_headers(self):
+        module = load_script()
+
+        # 띄어쓴 한글 헤더도 붙여쓰기 키워드와 매칭되어야 한다(예: "담당 업무" -> "담당업무").
+        spaced = "\n".join(
+            ["회사 소개", "담당 업무", "자격 요건", "근무 조건", "접수 방법"]
+        )
+        spaced_hints = module.section_hints(spaced)
+        for keyword in ("회사소개", "담당업무", "자격요건", "근무조건", "접수방법"):
+            self.assertIn(keyword, spaced_hints)
+
+        # 영어 섹션 키워드는 대소문자 무관하게 매칭되어야 한다.
+        english_hints = module.section_hints("Company\nRESPONSIBILITIES\nqualifications\napply")
+        for keyword in ("Company", "Responsibilities", "Qualifications", "Apply"):
+            self.assertIn(keyword, english_hints)
+
+        # 동일 개념의 띄어쓰기 변형은 한 번만 집계되어야 한다(함께할업무 / 함께할 업무).
+        dedup_hints = module.section_hints("우리와 함께할 업무를 소개합니다")
+        self.assertEqual(dedup_hints.count("함께할업무"), 1)
+        self.assertNotIn("함께할 업무", dedup_hints)
+
     def test_classifies_long_image_and_uses_existing_ocr_text(self):
         module = load_script()
         with tempfile.TemporaryDirectory() as tmp:

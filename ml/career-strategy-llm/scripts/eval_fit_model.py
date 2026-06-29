@@ -28,6 +28,7 @@ import hashlib
 import json
 import os
 import re
+import socket
 import sys
 import time
 import urllib.error
@@ -38,6 +39,7 @@ sys.path.insert(0, SCRIPT_DIR)
 
 from synth_prompts import FIT_EXPLAIN_SYS          # noqa: E402
 from assemble_dataset import build_fit_user        # noqa: E402
+from skill_normalizer import classify_flagged_skill, JUDGE_STATUSES, RESOLVED_FP_STATUSES  # noqa: E402
 
 # 중국어/일본어 누출 탐지: 일본어 가나 + CJK 한자(Ext-A/통합). 한국어(한글)는 제외.
 CJK_RE = re.compile(r"[぀-ヿ㐀-䶿一-鿿]")
@@ -120,6 +122,17 @@ def extract_json_span(text):
     return text[start:end + 1] if (start >= 0 and end > start) else text
 
 
+def _learning_task_text(item):
+    """learningTaskReasons 한 항목을 채점용 텍스트로. {skill,why} dict 도, 7B 처럼 문자열로
+    출력한 항목도 모두 본문에 포함한다(아래 bad_skills 의 str 처리와 대칭 — reports/55).
+    str 항목을 버리면 그 안의 CJK/금지문구/금지언급/E2 명사가 침묵으로 채점 누락된다."""
+    if isinstance(item, dict):
+        return [str(item.get("skill", "")), str(item.get("why", ""))]
+    if isinstance(item, str):
+        return [item]
+    return [str(item)]
+
+
 def collect_text(parsed):
     parts = []
     v = parsed.get("fitSummary")
@@ -130,8 +143,7 @@ def collect_text(parsed):
         if isinstance(v, list):
             parts += [str(x) for x in v]
     for item in parsed.get("learningTaskReasons", []) or []:
-        if isinstance(item, dict):
-            parts += [str(item.get("skill", "")), str(item.get("why", ""))]
+        parts += _learning_task_text(item)
     return "\n".join(parts)
 
 
@@ -145,6 +157,24 @@ def collect_possession_text(parsed):
     if isinstance(v, list):
         parts += [str(x) for x in v]
     return "\n".join(parts)
+
+
+# 라틴/기호 위주 토큰(영문 스킬명·약어). 한국어/혼합 토큰은 매칭 의미가 달라 제외.
+_LATIN_TERM_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9 +#./\-]*$")
+
+
+def term_in_text(text, term):
+    """term 이 text 안에 등장하면 True. **라틴/기호 토큰은 영숫자 경계를 강제**해
+    'SQL' 이 'MySQL' 에, 'Java' 가 'JavaScript' 에 부분일치하는 계약 채점 오탐을 막는다
+    (reports/55). 한국어/혼합 토큰은 기존 부분문자열 동작 유지(조사·활용 가변성 때문에
+    경계 강제가 오히려 누락을 부른다 — 한국어 negation 미해결은 docstring 한계로 둠)."""
+    text = str(text or "")
+    term = str(term or "")
+    if not term:
+        return False
+    if _LATIN_TERM_RE.match(term):
+        return re.search(rf"(?<![A-Za-z0-9])(?:{re.escape(term)})(?![A-Za-z0-9])", text) is not None
+    return term in text
 
 
 def supported_terms(case):
@@ -234,7 +264,14 @@ def _grounding_violation_in_sentence(sentence, missing, field):
         return None  # 보유 표현이 없거나, 결핍·부정 문맥이면 위반 아님
     low = sentence.lower()
     for skill in missing:
-        if skill and skill.strip() and skill.lower() in low:
+        s = (skill or "").strip()
+        if not s:
+            continue
+        # 라틴/기호 토큰은 영숫자 경계 강제('R'/'Go'/'C' 가 단어 내부에 부분일치하는 grounding 오탐 차단).
+        if _LATIN_TERM_RE.match(s):
+            if re.search(rf"(?<![A-Za-z0-9])(?:{re.escape(s)})(?![A-Za-z0-9])", sentence, re.IGNORECASE):
+                return f"field={field} missingSkill={skill} phrase={phrase}"
+        elif s.lower() in low:
             return f"field={field} missingSkill={skill} phrase={phrase}"
     return None
 
@@ -287,6 +324,13 @@ def call_model(base_url, model, user, max_tokens, temperature, timeout):
         return content, latency, None, usage
     except urllib.error.HTTPError as e:
         return "", (time.perf_counter() - t0) * 1000, f"HTTP_{e.code}", None
+    except urllib.error.URLError as e:  # connect 단계 timeout 이 여기로 감싸져 온다
+        # reason 이 socket.timeout/TimeoutError 면 read-timeout 과 같은 'ERROR_Timeout' 으로 통일(과소집계 방지).
+        reason = getattr(e, "reason", None)
+        name = "Timeout" if isinstance(reason, (socket.timeout, TimeoutError)) else f"URLError_{type(reason).__name__ if reason else 'unknown'}"
+        return "", (time.perf_counter() - t0) * 1000, f"ERROR_{name}", None
+    except (socket.timeout, TimeoutError):
+        return "", (time.perf_counter() - t0) * 1000, "ERROR_Timeout", None
     except Exception as e:  # noqa: BLE001
         return "", (time.perf_counter() - t0) * 1000, f"ERROR_{type(e).__name__}", None
 
@@ -330,18 +374,35 @@ def evaluate(case, content, error):
     missing_keys = [k for k in req_keys if k not in parsed]
     forbidden_hit = [k for k in forb_keys if k in parsed]
     cjk = bool(CJK_RE.search(text))
-    must_missing = [m for m in (exp.get("mustMention") or []) if m not in text]
-    must_not_hit = [m for m in (exp.get("mustNotMention") or []) if m in text]
-    claim_hit = [c for c in (exp.get("forbiddenClaims") or []) if c in text]
+    must_missing = [m for m in (exp.get("mustMention") or []) if not term_in_text(text, m)]
+    must_not_hit = [m for m in (exp.get("mustNotMention") or []) if term_in_text(text, m)]
+    claim_hit = [c for c in (exp.get("forbiddenClaims") or []) if term_in_text(text, c)]
     allowed = exp.get("allowedSkills") or []
     bad_skills = []
     if allowed:
         # 공백·대소문자 정규화 비교 — '머신 러닝' vs '머신러닝' 류 띄어쓰기 오탐 제거(reports/36).
         allowed_norm = {re.sub(r"\s+", "", a).lower() for a in allowed}
         for item in parsed.get("learningTaskReasons", []) or []:
-            sk = (item or {}).get("skill")
+            # 견고성: 일부 모델(예: 7B)이 {skill,why} 대신 문자열 항목으로 출력 → 문자열은 스킬명으로 취급.
+            if isinstance(item, str):
+                sk = item
+            elif isinstance(item, dict):
+                sk = item.get("skill")
+            else:
+                sk = None
             if sk and re.sub(r"\s+", "", str(sk)).lower() not in allowed_norm:
                 bad_skills.append(sk)
+
+    # ── 병렬 지표(측정 전용): stage1 결정론 정규화기로 bad_skills 재분류 ──
+    # raw bad_skills/hallucination/failure/E2 는 불변. 정규화 후 잔여(judge 대상)만 별도 카운트.
+    # 입력 밖 제품/코드명은 매칭 대상이 없어 resolved 되지 않고 residual 로 남는다(valid_error 보호).
+    bad_skills_residual, bad_skills_resolved_fp = [], []
+    for b in bad_skills:
+        st = classify_flagged_skill(b, allowed)["status"]
+        if st in RESOLVED_FP_STATUSES:
+            bad_skills_resolved_fp.append(b)
+        elif st in JUDGE_STATUSES:
+            bad_skills_residual.append(b)
 
     failures = []
     if missing_keys:
@@ -375,7 +436,9 @@ def evaluate(case, content, error):
             "failure": failures[0] if failures else None,
             "detail": {"missing_keys": missing_keys, "forbidden_hit": forbidden_hit,
                        "must_missing": must_missing, "must_not_hit": must_not_hit,
-                       "claim_hit": claim_hit, "bad_skills": bad_skills},
+                       "claim_hit": claim_hit, "bad_skills": bad_skills,
+                       "bad_skills_residual": bad_skills_residual,
+                       "bad_skills_resolved_fp": bad_skills_resolved_fp},
             "success": not failures, "parsed": parsed}
 
 
@@ -429,6 +492,13 @@ def aggregate(results, cold_start_ms, args):
             for x in rv:
                 if x not in e["review"]:
                     e["review"].append(x)
+
+    # ── 병렬 HALLUCINATED_SKILL 지표(측정 전용, raw 'hallucination_flag_rate' 불변) ──
+    # raw: 공백·소문자만 정규화한 원시 카운트 / normalized: stage1 결정론 정규화 후 잔여(judge 대상)
+    # resolved_fp: 정규화로 오탐 해소. semantic(valid_error)은 judge consensus 산출물이라 하니스 단독 불가.
+    hsk_raw = sum(len((r.get("detail") or {}).get("bad_skills") or []) for r in results)
+    hsk_residual = sum(len((r.get("detail") or {}).get("bad_skills_residual") or []) for r in results)
+    hsk_resolved = sum(len((r.get("detail") or {}).get("bad_skills_resolved_fp") or []) for r in results)
     return {
         "model": args.model, "base_url": args.base_url, "mock": bool(args.mock),
         "warmup": args.warmup, "repeat": args.repeat, "timeout_s": args.timeout,
@@ -440,6 +510,10 @@ def aggregate(results, cold_start_ms, args):
         "forbidden_key_rate": rate(lambda r: r.get("forbidden_key")),
         "cjk_leak_rate": rate(lambda r: r.get("cjk_leak")),
         "hallucination_flag_rate": rate(lambda r: r.get("hallucination")),
+        # 병렬 HALLUCINATED_SKILL 지표(stage1 정규화 후) — 위 raw 지표는 그대로 유지
+        "hallucinated_skill_raw_count": hsk_raw,
+        "hallucinated_skill_normalized_count": hsk_residual,
+        "hallucinated_skill_resolved_fp_count": hsk_resolved,
         # E1 grounding 관측(측정 전용 — 백엔드 guard 가 라이브에서 얼마나 발동할지의 프록시)
         "grounding_violation_count": len(grounding_violations),
         "grounding_violation_rate": round(len(grounding_violations) / n, 3) if n else 0.0,
@@ -448,7 +522,10 @@ def aggregate(results, cold_start_ms, args):
         "unsupported_named_entity_count": ent_high_total,
         "unsupported_named_entity_rate": round(runs_with_high / n, 3) if n else 0.0,
         "unsupported_named_entities_by_case": ent_by_case,
-        "timeout_count": reasons.get("ERROR_TimeoutError", 0),
+        # read/connect 타임아웃을 모두 합산('ERROR_Timeout' 통일 + 구 'ERROR_TimeoutError' 호환).
+        "timeout_count": sum(c for k, c in reasons.items()
+                             if k in ("ERROR_Timeout", "ERROR_TimeoutError")
+                             or k.startswith("ERROR_URLError_timeout")),
         "cold_start_latency_ms": round(cold_start_ms, 1),
         "warm_avg_latency_ms": round(sum(warm_lat) / len(warm_lat), 1) if warm_lat else 0.0,
         "warm_p95_latency_ms": percentile(warm_lat, 95),

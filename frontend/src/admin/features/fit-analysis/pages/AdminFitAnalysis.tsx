@@ -64,6 +64,14 @@ function scoreTone(score: number | null) {
   return "text-red-500";
 }
 
+// review-first evidence gate(R3) 상태 뱃지. R3 이전 분석(gateStatus=null)은 뱃지를 그리지 않는다.
+function gateBadge(status: string | null): { label: string; cls: string } | null {
+  if (status === "REVIEW_REQUIRED") return { label: "검토 필요", cls: "bg-orange-100 text-orange-700" };
+  if (status === "REJECTED") return { label: "반려", cls: "bg-red-100 text-red-700" };
+  if (status === "PASSED") return { label: "근거 통과", cls: "bg-green-100 text-green-700" };
+  return null;
+}
+
 export default function AdminFitAnalysisPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const requestedAnalysisId = Number(searchParams.get("analysisId"));
@@ -83,6 +91,8 @@ export default function AdminFitAnalysisPage() {
   const [resultFilter, setResultFilter] = useState("ALL");
   const [memoOnly, setMemoOnly] = useState(false);
   const [reanalysisOnly, setReanalysisOnly] = useState(false);
+  // review-first evidence gate 검토 필요(REVIEW_REQUIRED) 항목만 보기(클라이언트 필터).
+  const [reviewOnly, setReviewOnly] = useState(false);
 
   useEffect(() => {
     let ignore = false;
@@ -165,9 +175,10 @@ export default function AdminFitAnalysisPage() {
         (resultFilter === "SUCCESS" ? item.status === "SUCCESS" : item.status !== "SUCCESS");
       const matchesMemo = !memoOnly || item.memoCount > 0;
       const matchesReanalysis = !reanalysisOnly || item.reanalysisRequested;
-      return matchesQuery && matchesBand && matchesResult && matchesMemo && matchesReanalysis;
+      const matchesReview = !reviewOnly || item.gateStatus === "REVIEW_REQUIRED";
+      return matchesQuery && matchesBand && matchesResult && matchesMemo && matchesReanalysis && matchesReview;
     });
-  }, [items, query, bandFilter, resultFilter, memoOnly, reanalysisOnly]);
+  }, [items, query, bandFilter, resultFilter, memoOnly, reanalysisOnly, reviewOnly]);
 
   function resetMemoForm() {
     setMemoType("GENERAL");
@@ -304,6 +315,10 @@ export default function AdminFitAnalysisPage() {
                   <input type="checkbox" checked={reanalysisOnly} onChange={(event) => setReanalysisOnly(event.target.checked)} />
                   재분석 필요만
                 </label>
+                <label className="flex h-9 cursor-pointer items-center gap-1.5 rounded-md border border-orange-200 bg-orange-50 px-2 text-xs font-semibold text-orange-700">
+                  <input type="checkbox" checked={reviewOnly} onChange={(event) => setReviewOnly(event.target.checked)} />
+                  검토 필요만
+                </label>
                 <span className="text-[11px] text-slate-400">{visibleItems.length}/{items.length}건</span>
               </div>
               {loadingList ? (
@@ -337,6 +352,9 @@ export default function AdminFitAnalysisPage() {
                       <Badge className={item.status === "SUCCESS" ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"}>{item.status}</Badge>
                       {item.memoCount > 0 && <Badge className="bg-indigo-100 text-indigo-700">메모 {item.memoCount}</Badge>}
                       {item.reanalysisRequested && <Badge className="bg-amber-100 text-amber-700">재분석 필요</Badge>}
+                      {gateBadge(item.gateStatus) && (
+                        <Badge className={gateBadge(item.gateStatus)!.cls}>{gateBadge(item.gateStatus)!.label}</Badge>
+                      )}
                     </div>
                     <Progress value={item.fitScore ?? 0} className="mt-2 h-1.5" />
                   </button>
@@ -378,6 +396,37 @@ export default function AdminFitAnalysisPage() {
                         </div>
                       ))}
                     </div>
+
+                    {detail.gateStatus && (
+                      <div
+                        className={`rounded-lg border p-3 text-sm ${
+                          detail.gateStatus === "REVIEW_REQUIRED"
+                            ? "border-orange-200 bg-orange-50 text-orange-800"
+                            : detail.gateStatus === "REJECTED"
+                              ? "border-red-200 bg-red-50 text-red-800"
+                              : "border-green-200 bg-green-50 text-green-800"
+                        }`}
+                      >
+                        <div className="flex flex-wrap items-center gap-2 font-bold">
+                          <AlertCircle className="size-4" />
+                          근거 검토(evidence gate): {gateBadge(detail.gateStatus)?.label ?? detail.gateStatus}
+                          {detail.gateMaxSeverity && (
+                            <Badge className="bg-white/70 text-slate-700">심각도 {detail.gateMaxSeverity}</Badge>
+                          )}
+                          {detail.gateReasonCount > 0 && (
+                            <Badge className="bg-white/70 text-slate-700">지적 {detail.gateReasonCount}건</Badge>
+                          )}
+                        </div>
+                        <p className="mt-1 text-xs leading-relaxed">
+                          {detail.gateStatus === "REVIEW_REQUIRED"
+                            ? "AI 설명이 미보유 역량을 보유로 단정했을 가능성이 있어 자동 확정 대상이 아닙니다. 점수·지원 판단은 변경되지 않습니다."
+                            : detail.gateStatus === "REJECTED"
+                              ? "핵심 계약 필드가 깨져 재생성 검토가 필요합니다. 점수·지원 판단은 변경되지 않습니다."
+                              : "근거 검토를 통과한 분석입니다."}
+                          {detail.evidenceGateVersion ? ` (정책 ${detail.evidenceGateVersion})` : ""}
+                        </p>
+                      </div>
+                    )}
 
                     <div className="grid gap-4 lg:grid-cols-2">
                       <SkillBox title="매칭 역량" icon="match" items={detail.matchedSkills} />

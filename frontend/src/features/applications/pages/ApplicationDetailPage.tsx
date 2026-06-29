@@ -39,6 +39,12 @@ import { useJobPosting } from "../hooks/useJobPosting";
 import type { ApplicationSourceType, UpdateApplicationCaseRequest } from "../types/applicationCase";
 import type { JobPosting, JobPostingRequest } from "../types/jobPosting";
 import { registerApplicationCaseExtraction } from "../utils/applicationExtractionTracker";
+import {
+  currentPostingText,
+  hasPostingSourceChange,
+  isConfirmableTextCorrection,
+  requestPostingText,
+} from "../utils/jobPostingConfirm";
 import { useApplicationFitAnalysis } from "@/features/analysis/hooks/useApplicationFitAnalysis";
 import { toast } from "@/features/notification/components/toast";
 import { useNotificationStore } from "@/features/notification/hooks/useNotificationStore";
@@ -124,11 +130,14 @@ export function ApplicationDetailPage() {
     extraction,
     retrying: retryingExtraction,
     reviewing: reviewingExtraction,
+    confirming: confirmingExtraction,
     error: extractionError,
     reviewError: extractionReviewError,
+    confirmError: extractionConfirmError,
     refresh: refreshExtraction,
     retry: retryExtraction,
     review: reviewExtraction,
+    confirm: confirmExtraction,
   } = useApplicationCaseExtraction(id, needsExtraction);
   const {
     jobAnalysis,
@@ -223,6 +232,29 @@ export function ApplicationDetailPage() {
   };
 
   const handleSavePosting = async (request: JobPostingRequest): Promise<JobPosting | null> => {
+    // 소스/URL·본문 모두 변경 없음: 새 revision·재추출을 만들지 않고 그대로 둔다.
+    if (
+      jobPosting &&
+      !hasPostingSourceChange(request, jobPosting) &&
+      requestPostingText(request) === currentPostingText(jobPosting)
+    ) {
+      return jobPosting;
+    }
+
+    // PASS 공고의 본문만 수정한 경우: OCR/추출을 다시 돌리지 않고 confirm(분석만 갱신)로 보낸다.
+    if (jobPosting && isConfirmableTextCorrection({ request, jobPosting, extraction })) {
+      const confirmed = await confirmExtraction(requestPostingText(request));
+      if (!confirmed) {
+        return jobPosting;
+      }
+      const refreshed = await refreshPosting();
+      await fetchNotifications();
+      await refreshBFailureLogs();
+      toast.success("수정한 공고문 기준으로 분석을 갱신했습니다.");
+      return refreshed ?? jobPosting;
+    }
+
+    // 소스/URL 변경 등 재추출이 필요한 경우: 기존 추출 큐잉 경로.
     const previousExtractionId = extraction?.id ?? null;
     const posting = await savePosting(request);
     const syncedPosting = await syncCaseSourceType(posting);
@@ -490,7 +522,9 @@ export function ApplicationDetailPage() {
                   extraction={extraction}
                   retryingExtraction={retryingExtraction}
                   reviewingExtraction={reviewingExtraction}
+                  confirmingExtraction={confirmingExtraction}
                   reviewExtractionError={extractionReviewError}
+                  confirmExtractionError={extractionConfirmError}
                   onSave={handleSavePosting}
                   onUpload={handleUploadPosting}
                   onRetryExtraction={retryExtraction}

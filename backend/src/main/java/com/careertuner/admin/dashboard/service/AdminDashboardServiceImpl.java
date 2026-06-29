@@ -23,6 +23,7 @@ public class AdminDashboardServiceImpl implements AdminDashboardService {
                 adminDashboardMapper.countApplications(),
                 adminDashboardMapper.countFitAnalyses(),
                 adminDashboardMapper.countInterviewSessions(),
-                adminDashboardMapper.countAiCallsThisMonth());
+                adminDashboardMapper.countAiCallsThisMonth(),
+                adminDashboardMapper.countReviewRequiredAnalyses());
     }
 }

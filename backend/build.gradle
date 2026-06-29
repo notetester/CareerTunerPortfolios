@@ -1,6 +1,6 @@
 plugins {
     id 'java'
-    id 'org.springframework.boot' version '4.0.6'
+    id 'org.springframework.boot' version '4.1.0'
     id 'io.spring.dependency-management' version '1.1.7'
 }
 
@@ -28,30 +28,31 @@ dependencies {
     implementation 'org.springframework.boot:spring-boot-starter-webmvc'
     implementation 'org.springframework.boot:spring-boot-starter-validation'
     implementation 'org.springframework.boot:spring-boot-starter-security'
-    implementation 'org.springdoc:springdoc-openapi-starter-webmvc-ui:3.0.2'
-    implementation 'org.apache.pdfbox:pdfbox:3.0.5'
-    implementation 'org.jsoup:jsoup:1.18.3'
+    implementation 'org.springdoc:springdoc-openapi-starter-webmvc-ui:3.0.3'
+    implementation 'org.apache.pdfbox:pdfbox:3.0.7'
+    implementation 'org.jsoup:jsoup:1.22.2'
 
     // Email (verification / password reset via SMTP)
     implementation 'org.springframework.boot:spring-boot-starter-mail'
 
     // Web Push (VAPID) — 브라우저/PWA 푸시 발송. BouncyCastle 은 암호화 provider 로 명시 추가.
-    implementation 'nl.martijndwars:web-push:5.1.1'
+    implementation 'nl.martijndwars:web-push:5.1.2'
+    implementation 'org.bitbucket.b_c:jose4j:0.9.6'
     implementation 'org.bouncycastle:bcprov-jdk15on:1.70'
 
     // 네이티브 푸시(FCM/APNs via Firebase). 서비스계정 미설정 시 빈 미생성 → 로깅 폴백(무해).
-    implementation 'com.google.firebase:firebase-admin:9.4.3'
+    implementation 'com.google.firebase:firebase-admin:9.9.0'
 
     // JWT (access / refresh tokens)
-    implementation 'io.jsonwebtoken:jjwt-api:0.12.6'
-    runtimeOnly 'io.jsonwebtoken:jjwt-impl:0.12.6'
-    runtimeOnly 'io.jsonwebtoken:jjwt-jackson:0.12.6'
+    implementation 'io.jsonwebtoken:jjwt-api:0.13.0'
+    runtimeOnly 'io.jsonwebtoken:jjwt-impl:0.13.0'
+    runtimeOnly 'io.jsonwebtoken:jjwt-jackson:0.13.0'
 
     // LangChain4j (Spring Boot 4 전용 스타터) — Part 2 tool-calling 게이트 측정용.
     // 주의: 이 프로젝트는 Spring Boot 4 → 반드시 -spring-boot4-starter 사용 (Boot 3용 -spring-boot-starter 아님).
     // langchain4j-bom 은 spring 스타터 버전을 관리하지 않으므로(별도 버전체계) 버전을 직접 명시한다.
-    implementation 'dev.langchain4j:langchain4j-spring-boot4-starter:1.16.3-beta26'        // @AiService 스캐닝
-    implementation 'dev.langchain4j:langchain4j-ollama-spring-boot4-starter:1.16.3-beta26' // OllamaChatModel 오토컨피그
+    implementation 'dev.langchain4j:langchain4j-spring-boot4-starter:1.17.0-beta27'        // @AiService 스캐닝
+    implementation 'dev.langchain4j:langchain4j-ollama-spring-boot4-starter:1.17.0-beta27' // OllamaChatModel 오토컨피그
 
     // Dev tooling
     compileOnly 'org.projectlombok:lombok'

@@ -19,6 +19,11 @@ export interface AdminFitAnalysisListItem {
   latestMemoAt: string | null;
   /** REANALYSIS 운영 메모 보유 여부(재분석 요청 상태). */
   reanalysisRequested: boolean;
+  /** review-first evidence gate(R3). R3 이전 분석은 null. PASSED/REVIEW_REQUIRED/REJECTED. */
+  gateStatus: string | null;
+  needsHumanReview: boolean;
+  gateReasonCount: number;
+  gateMaxSeverity: string | null;
 }
 
 export interface AdminFitAnalysisMemo {
@@ -75,6 +80,12 @@ export interface AdminFitAnalysisDetail {
   status: string;
   errorMessage: string | null;
   createdAt: string;
+  /** review-first evidence gate(R3). R3 이전 분석은 null. */
+  gateStatus: string | null;
+  needsHumanReview: boolean;
+  gateReasonCount: number;
+  gateMaxSeverity: string | null;
+  evidenceGateVersion: string | null;
   learningTasks: AdminFitAnalysisLearningTask[];
   memos: AdminFitAnalysisMemo[];
 }
