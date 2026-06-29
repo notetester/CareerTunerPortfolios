@@ -445,6 +445,39 @@ CREATE TABLE IF NOT EXISTS fit_analysis_condition_match (
     CONSTRAINT fk_fit_condition_analysis FOREIGN KEY (fit_analysis_id) REFERENCES fit_analysis (id) ON DELETE CASCADE
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci;
 
+-- C 소유 R3 review-first evidence gate. patches/20260629_c_fit_analysis_evidence_gate.sql 과 동일하게 관리한다.
+-- 적합도 AI 설명의 결정론 후처리 안전층(점수/판단·원본 미변경, E1 grounding guard 위의 soft review 층).
+CREATE TABLE IF NOT EXISTS fit_analysis_evidence_source (
+    id              BIGINT       NOT NULL AUTO_INCREMENT,
+    fit_analysis_id BIGINT       NOT NULL,
+    source_type     VARCHAR(40)  NOT NULL,                 -- userEvidence/jobRequirements/catalogFacts/companyContext
+    user_owned      TINYINT(1)   NOT NULL DEFAULT 0,
+    item_count      INT          NOT NULL DEFAULT 0,
+    items_json      JSON         NULL,                     -- 축약 스킬/근거 목록(원문·개인정보 제외)
+    created_at      DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (id),
+    KEY idx_fit_evidence_source_analysis (fit_analysis_id, source_type),
+    CONSTRAINT fk_fit_evidence_source_analysis FOREIGN KEY (fit_analysis_id) REFERENCES fit_analysis (id) ON DELETE CASCADE
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci;
+
+CREATE TABLE IF NOT EXISTS fit_analysis_gate_result (
+    id                    BIGINT       NOT NULL AUTO_INCREMENT,
+    fit_analysis_id       BIGINT       NOT NULL,
+    gate_status           VARCHAR(20)  NOT NULL,            -- PASSED/REVIEW_REQUIRED/REJECTED
+    needs_human_review    TINYINT(1)   NOT NULL DEFAULT 0,
+    reason_count          INT          NOT NULL DEFAULT 0,
+    max_severity          VARCHAR(20)  NULL,                -- warning/critical
+    gate_reasons_json     JSON         NULL,                -- [{type,claim,reason,severity}] 축약(개인정보 제외)
+    evidence_gate_version VARCHAR(40)  NOT NULL,
+    rag_runtime_enabled   TINYINT(1)   NOT NULL DEFAULT 0,
+    rewrite_applied       TINYINT(1)   NOT NULL DEFAULT 0,
+    created_at            DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (id),
+    UNIQUE KEY uk_fit_gate_result_analysis (fit_analysis_id),
+    KEY idx_fit_gate_result_status (gate_status, created_at),
+    CONSTRAINT fk_fit_gate_result_analysis FOREIGN KEY (fit_analysis_id) REFERENCES fit_analysis (id) ON DELETE CASCADE
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci;
+
 CREATE TABLE IF NOT EXISTS career_goal (
     id BIGINT NOT NULL AUTO_INCREMENT, user_id BIGINT NOT NULL, target_job VARCHAR(255) NULL,
     target_period VARCHAR(100) NULL, priority_skill VARCHAR(255) NULL, preferred_company_type VARCHAR(255) NULL,

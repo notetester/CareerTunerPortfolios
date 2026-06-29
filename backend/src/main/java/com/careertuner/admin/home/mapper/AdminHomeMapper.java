@@ -23,6 +23,9 @@ public interface AdminHomeMapper {
     /** 재분석 필요(REANALYSIS) 운영 메모가 달린 적합도 분석 수. */
     int countReanalysisRequests();
 
+    /** review-first evidence gate 가 REVIEW_REQUIRED 로 판정한, 지원 건별 최신 적합도 분석 수(검토 큐 크기). */
+    int countReviewRequiredAnalyses();
+
     /** 장기 경향/대시보드 요약 실행 이력의 비정상(FAILED/FALLBACK) 건수. */
     int countCareerRunFailures();
 }

@@ -5,6 +5,7 @@ import java.util.List;
 
 import com.careertuner.admin.fitanalysis.domain.AdminFitAnalysisResult;
 import com.careertuner.fitanalysis.dto.FitAnalysisLearningTaskResponse;
+import com.careertuner.fitanalysis.dto.FitSafetyResponse;
 
 public record AdminFitAnalysisDetailResponse(
         Long id,
@@ -35,6 +36,14 @@ public record AdminFitAnalysisDetailResponse(
         String status,
         String errorMessage,
         LocalDateTime createdAt,
+        // review-first evidence gate(R3). R3 이전 분석은 gateStatus=null.
+        String gateStatus,
+        boolean needsHumanReview,
+        int gateReasonCount,
+        String gateMaxSeverity,
+        String evidenceGateVersion,
+        // 실제 gate reason 목록(상세 화면에서 '왜 검토 필요인지' 판단용). 축약(개인정보·원문 제외).
+        List<FitSafetyResponse.Reason> gateReasons,
         List<FitAnalysisLearningTaskResponse> learningTasks,
         List<AdminFitAnalysisMemoResponse> memos
 ) {
@@ -46,6 +55,7 @@ public record AdminFitAnalysisDetailResponse(
                                                     List<String> recommendedCertificates,
                                                     List<String> scoreBasis,
                                                     List<String> strategyActions,
+                                                    List<FitSafetyResponse.Reason> gateReasons,
                                                     List<FitAnalysisLearningTaskResponse> learningTasks,
                                                     List<AdminFitAnalysisMemoResponse> memos) {
         return new AdminFitAnalysisDetailResponse(
@@ -77,6 +87,12 @@ public record AdminFitAnalysisDetailResponse(
                 result.getStatus(),
                 result.getErrorMessage(),
                 result.getCreatedAt(),
+                result.getGateStatus(),
+                Boolean.TRUE.equals(result.getGateNeedsHumanReview()),
+                result.getGateReasonCount() == null ? 0 : result.getGateReasonCount(),
+                result.getGateMaxSeverity(),
+                result.getEvidenceGateVersion(),
+                gateReasons,
                 learningTasks,
                 memos);
     }

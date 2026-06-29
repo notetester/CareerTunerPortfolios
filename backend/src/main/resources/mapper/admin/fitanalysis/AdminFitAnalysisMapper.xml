@@ -35,6 +35,12 @@
         <result property="memoCount" column="memo_count"/>
         <result property="latestMemoAt" column="latest_memo_at"/>
         <result property="reanalysisRequested" column="reanalysis_requested"/>
+        <result property="gateStatus" column="gate_status"/>
+        <result property="gateNeedsHumanReview" column="gate_needs_human_review"/>
+        <result property="gateReasonCount" column="gate_reason_count"/>
+        <result property="gateMaxSeverity" column="gate_max_severity"/>
+        <result property="evidenceGateVersion" column="evidence_gate_version"/>
+        <result property="gateReasonsJson" column="gate_reasons_json"/>
     </resultMap>
 
     <resultMap id="AdminFitAnalysisMemoResultMap" type="com.careertuner.admin.fitanalysis.domain.AdminFitAnalysisMemo">
@@ -93,7 +99,13 @@
             FROM admin_fit_analysis_memo reanalysis_memo
             WHERE reanalysis_memo.fit_analysis_id = fa.id
               AND reanalysis_memo.memo_type = 'REANALYSIS'
-        ) AS reanalysis_requested
+        ) AS reanalysis_requested,
+        gr.gate_status,
+        gr.needs_human_review AS gate_needs_human_review,
+        gr.reason_count AS gate_reason_count,
+        gr.max_severity AS gate_max_severity,
+        gr.evidence_gate_version,
+        gr.gate_reasons_json
     </sql>
 
     <select id="findAll" resultMap="AdminFitAnalysisResultMap">
@@ -102,6 +114,12 @@
         FROM fit_analysis fa
         INNER JOIN application_case ac ON ac.id = fa.application_case_id
         INNER JOIN users ON users.id = ac.user_id
+        LEFT JOIN fit_analysis_gate_result gr ON gr.fit_analysis_id = fa.id
+        <where>
+            <if test="reviewRequiredOnly">
+                gr.gate_status = 'REVIEW_REQUIRED'
+            </if>
+        </where>
         ORDER BY fa.created_at DESC, fa.id DESC
     </select>
 
@@ -111,6 +129,7 @@
         FROM fit_analysis fa
         INNER JOIN application_case ac ON ac.id = fa.application_case_id
         INNER JOIN users ON users.id = ac.user_id
+        LEFT JOIN fit_analysis_gate_result gr ON gr.fit_analysis_id = fa.id
         WHERE fa.id = #{id}
     </select>
 
