@@ -8,13 +8,22 @@ import {
   Send as SendIcon,
 } from "lucide-react";
 import AdminShell from "../../../components/AdminShell";
-import { type Inquiry, type InquiryMessage, TEMPLATES, ASSIGNEES, INQUIRIES } from "../data/inquiriesData";
+import { type Inquiry, type InquiryStatus, type InquiryMessage, TEMPLATES, ASSIGNEES, INQUIRIES } from "../data/inquiriesData";
 import * as adminTicketApi from "../api/adminTicketApi";
 import "./admin-inquiries.css";
 
 type ListFilter = "미답변" | "처리중" | "완료" | "전체";
 type AiSummaryState = "none" | "loading" | "ready" | "empty" | "error";
 type AiDraftState = "none" | "loading" | "ready" | "error";
+
+/** 티켓 상태별 표시(라벨·뱃지색) — 목록·상세 뱃지가 공유한다. */
+const STATUS_META: Record<InquiryStatus, { label: string; bg: string; color: string }> = {
+  pending:  { label: "미답변",   bg: "#fffbeb", color: "#b45309" },
+  progress: { label: "처리중",   bg: "#eff6ff", color: "#1d4ed8" },
+  answered: { label: "답변완료", bg: "#f0fdf4", color: "#15803d" },
+  hold:     { label: "보류",     bg: "#f1f5f9", color: "#475569" },
+  closed:   { label: "종료",     bg: "#f1f5f9", color: "#475569" },
+};
 
 
 export default function AdminInquiriesAI() {
@@ -246,11 +255,8 @@ export default function AdminInquiriesAI() {
                     </span>
                   )}
                   <span className="ml-auto text-[11px] font-bold px-2 py-0.5 rounded-full"
-                    style={{
-                      background: inq.status === "answered" ? "#f0fdf4" : inq.status === "progress" ? "#eff6ff" : "#fffbeb",
-                      color: inq.status === "answered" ? "#15803d" : inq.status === "progress" ? "#1d4ed8" : "#b45309",
-                    }}>
-                    {inq.status === "answered" ? "답변완료" : inq.status === "progress" ? "처리중" : "미답변"}
+                    style={{ background: STATUS_META[inq.status].bg, color: STATUS_META[inq.status].color }}>
+                    {STATUS_META[inq.status].label}
                   </span>
                 </div>
                 <div className="text-[13.5px] font-semibold truncate">{inq.title}</div>
@@ -276,8 +282,8 @@ export default function AdminInquiriesAI() {
                   </span>
                 )}
                 <span className="text-[11px] font-bold px-2 py-0.5 rounded-full"
-                  style={{ background: "#fffbeb", color: "#b45309" }}>
-                  {selected.status === "answered" ? "답변완료" : selected.status === "progress" ? "처리중" : "미답변"}
+                  style={{ background: STATUS_META[selected.status].bg, color: STATUS_META[selected.status].color }}>
+                  {STATUS_META[selected.status].label}
                 </span>
               </div>
               <div className="text-[17px] font-bold">{selected.title}</div>
@@ -298,6 +304,7 @@ export default function AdminInquiriesAI() {
                 <option value="pending">미답변</option>
                 <option value="progress">처리중</option>
                 <option value="answered">답변완료</option>
+                <option value="closed">종료</option>
               </select>
               <span className="text-[11px] font-semibold text-[#717182] ml-1">담당자</span>
               <span className="inline-flex items-center gap-2 h-8 px-2.5 rounded-md border border-black/10 bg-card text-[12.5px] font-semibold">

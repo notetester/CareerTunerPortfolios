@@ -200,6 +200,7 @@ public class AdminTicketServiceImpl implements AdminTicketService {
             case "pending"  -> "RECEIVED";
             case "progress" -> "IN_PROGRESS";
             case "answered" -> "ANSWERED";
+            case "closed"   -> "CLOSED";
             default         -> frontStatus.toUpperCase();
         };
     }
@@ -209,7 +210,8 @@ public class AdminTicketServiceImpl implements AdminTicketService {
         return switch (dbStatus) {
             case "RECEIVED"    -> "pending";
             case "IN_PROGRESS" -> "progress";
-            case "ANSWERED", "CLOSED" -> "answered";
+            case "ANSWERED"    -> "answered";
+            case "CLOSED"      -> "closed";
             default -> "pending";
         };
     }

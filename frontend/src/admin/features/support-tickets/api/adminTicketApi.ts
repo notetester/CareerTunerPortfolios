@@ -11,6 +11,7 @@ function toStatus(s: string): InquiryStatus {
     case "pending":  return "pending";
     case "progress": return "progress";
     case "answered": return "answered";
+    case "closed":   return "closed";
     default:         return "pending";
   }
 }
