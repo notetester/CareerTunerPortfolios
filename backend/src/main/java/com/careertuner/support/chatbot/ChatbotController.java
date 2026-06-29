@@ -448,6 +448,24 @@ public class ChatbotController {
                 : memoryStore.createConversation(userId);
         String question = req.question();
 
+        // 소유권 가드(IDOR 방어): 클라이언트가 '기존' conversationId 를 보냈을 때만 검사한다.
+        //  - owner != null(실유저 소유 대화) → 본인만 접근. 비로그인은 로그인 유도(에러 아님), 타유저는 거부.
+        //  - owner == null(익명 대화 or 미존재 행) → 통과 = 비로그인 FAQ 다중턴 보존(permitAll 유지).
+        //  - 신규(req.conversationId()==null)는 위에서 본인 소유 새 id 가 발급됐으므로 검사 불필요.
+        // 소유 판정은 조회(GET conversationMessages)와 동일한 memoryStore.findOwnerUserId 재사용.
+        if (req.conversationId() != null) {
+            Long owner = memoryStore.findOwnerUserId(conversationId);
+            if (owner != null && !owner.equals(userId)) {
+                if (userId == null) {
+                    return ApiResponse.ok(new ChatAskResponse(
+                            conversationId,
+                            "로그인하면 이전 대화를 이어갈 수 있어요. 로그인 후 다시 시도해 주세요.",
+                            List.of(), List.of("로그인"), "로그인필요", null, false, null));
+                }
+                return ApiResponse.error("FORBIDDEN", "접근할 수 없는 대화입니다.");
+            }
+        }
+
         // 이탈 신호("그만"/⏏): 메모리 sticky(활성) 또는 DB 영속(PENDING/READY) 인테이크면 라우터 전에 즉시 복귀.
         // 슬롯이 있으면 DONE 으로 닫아(재복원 차단) 재시작된 PENDING 세션도 깔끔히 중단되고, READY 세션의 "그만"이
         // 라우터 FALLBACK 으로 새는 것(버그2)도 막는다. (status 3단계 — sticky 와 영속 양쪽을 한 핸들러로 통합)
