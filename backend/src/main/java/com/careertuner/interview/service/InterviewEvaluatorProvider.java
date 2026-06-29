@@ -19,7 +19,9 @@ public class InterviewEvaluatorProvider {
                                       ObjectProvider<OssAnswerEvaluator> ossProvider) {
         OssAnswerEvaluator oss = ossProvider.getIfAvailable();
         if (properties.isOss() && oss != null) {
-            this.evaluator = oss;
+            // 자체모델 채점이 실패/미서빙(예: 4090 미접근)이면 Claude→OpenAI→목업으로 폴백하도록 래핑한다.
+            // (기존엔 OssAnswerEvaluator 예외가 그대로 전파돼 채점이 통째로 터졌다.)
+            this.evaluator = new FallbackInterviewAnswerEvaluator(oss, openAiClient, properties);
             this.providerName = "oss";
         } else {
             this.evaluator = openAiClient;
