@@ -24,6 +24,12 @@ public interface CommunityTagMapper {
 
     void deleteAiPostTags(@Param("postId") Long postId);
 
+    /** 해당 게시글의 사용자 입력 태그(is_ai=0) tag_id 목록. */
+    List<Long> findUserTagIds(@Param("postId") Long postId);
+
+    /** 해당 게시글의 사용자 입력 태그(is_ai=0) 전체 삭제. */
+    void deleteUserPostTags(@Param("postId") Long postId);
+
     /**
      * 게시글-태그 매핑 추가. PK(post_id, tag_id) 중복은 ON DUPLICATE KEY UPDATE로 흡수한다.
      * 반환 affected rows: 신규 INSERT=1, 기존 행 갱신=2(변경 없음 0).

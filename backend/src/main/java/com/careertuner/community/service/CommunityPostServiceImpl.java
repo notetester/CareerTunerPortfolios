@@ -22,6 +22,7 @@ import com.careertuner.community.dto.PostListResponse;
 import com.careertuner.community.dto.PostPageResponse;
 import com.careertuner.community.dto.UpdatePostRequest;
 import com.careertuner.community.mapper.CommunityPostMapper;
+import com.careertuner.community.mapper.CommunityTagMapper;
 import com.careertuner.community.mapper.ReactionMapper;
 import com.careertuner.community.moderation.event.InterviewExtractRequiredEvent;
 import com.careertuner.community.moderation.event.PostModerationRequiredEvent;
@@ -38,6 +39,7 @@ import tools.jackson.databind.ObjectMapper;
 public class CommunityPostServiceImpl implements CommunityPostService {
 
     private final CommunityPostMapper postMapper;
+    private final CommunityTagMapper tagMapper;
     private final ReactionMapper reactionMapper;
     private final ObjectMapper objectMapper;
     private final ApplicationEventPublisher eventPublisher;
@@ -106,6 +108,7 @@ public class CommunityPostServiceImpl implements CommunityPostService {
                 .build();
 
         postMapper.insert(post);
+        applyUserTags(post.getId(), request.tags());
 
         if (PostCategory.INTERVIEW_REVIEW == request.category()
                 && request.interviewReview() != null) {
@@ -140,6 +143,7 @@ public class CommunityPostServiceImpl implements CommunityPostService {
         post.setTagsJson(toJson(request.tags()));
         post.setAnonymous(request.anonymous());
         postMapper.update(post);
+        applyUserTags(postId, request.tags());
 
         // 면접후기: upsert 1쿼리로 insert or update 처리
         if (PostCategory.INTERVIEW_REVIEW.name().equals(post.getCategory())
@@ -263,6 +267,35 @@ public class CommunityPostServiceImpl implements CommunityPostService {
                 liked,
                 bookmarked
         );
+    }
+
+    /**
+     * 사용자 직접 입력 태그를 정규화 테이블(community_post_tag, is_ai=0)에 반영한다.
+     * 설계규칙(f_schema.sql:216-219): post_tag 가 원본, tags_json 은 표시 캐시.
+     * 사용자 태그를 여기 넣어야 이후 AI 태깅의 tags_json 재구성(findTagNamesByPostId)이 사용자 태그를 보존한다.
+     * AI 태그 처리(PostModerationService.applyAiTags)와 동형이며 대상만 is_ai=0. 수정 시 기존 사용자 태그를 갈아끼운다.
+     */
+    private void applyUserTags(Long postId, List<String> tags) {
+        // 1. 기존 사용자 태그 usage_count 감소 후 삭제 (수정 시 재반영). AI 태그(is_ai=1)는 건드리지 않는다.
+        for (Long tagId : tagMapper.findUserTagIds(postId)) {
+            tagMapper.decrementUsageCount(tagId);
+        }
+        tagMapper.deleteUserPostTags(postId);
+
+        if (tags == null) return;
+
+        // 2. 새 사용자 태그 삽입 (마스터 INSERT IGNORE → post_tag is_ai=0). 신규 INSERT(affected==1)일 때만 usage 증가.
+        for (String tagName : tags) {
+            String trimmed = tagName == null ? "" : tagName.strip();
+            if (trimmed.isEmpty()) continue;
+            tagMapper.insertTag(trimmed);
+            Long tagId = tagMapper.findIdByName(trimmed);
+            if (tagId == null) continue;
+            int affected = tagMapper.insertPostTag(postId, tagId, false);
+            if (affected == 1) {
+                tagMapper.incrementUsageCount(tagId);
+            }
+        }
     }
 
     private String toJson(List<String> list) {
