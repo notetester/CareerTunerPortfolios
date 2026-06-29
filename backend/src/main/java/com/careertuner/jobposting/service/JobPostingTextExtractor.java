@@ -32,9 +32,12 @@ import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.text.PDFTextStripper;
 import org.jsoup.Jsoup;
 import org.jsoup.nodes.Document;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
+import com.careertuner.applicationcase.service.BAnthropicClient;
 import com.careertuner.applicationcase.service.OpenAiResponsesClient;
 import com.careertuner.common.exception.BusinessException;
 import com.careertuner.common.exception.ErrorCode;
@@ -48,7 +51,13 @@ public class JobPostingTextExtractor {
     private static final int URL_TIMEOUT_MILLIS = 5000;
     private static final int URL_MAX_BODY_SIZE = 1_000_000;
     private static final String USER_AGENT = "CareerTuner/1.0";
+    private static final Logger log = LoggerFactory.getLogger(JobPostingTextExtractor.class);
+
     private final OpenAiResponsesClient openAiClient;
+    // 공고 OCR 1차 폴백(Claude Vision). 생성자 오버로드(테스트 다수)를 건드리지 않으려 선택적 필드 주입.
+    // 미주입(테스트)이면 null → 기존 OpenAI 경로만 사용한다.
+    @Autowired(required = false)
+    private BAnthropicClient anthropicClient;
     private final JobPostingAiWorkerClient aiWorkerClient;
     private final JobPostingFallbackPolicy fallbackPolicy;
     private final HostResolver hostResolver;
@@ -88,37 +97,48 @@ public class JobPostingTextExtractor {
     private ExtractedPosting extractFileLocally(StoredJobPostingFile file) {
         if ("PDF".equals(file.sourceType())) {
             String text = extractTextPdf(file);
-            OpenAiResponsesClient.Usage usage = null;
-            if (text.isBlank()) {
-                if (!fallbackPolicy.allowed(JobPostingFallbackPolicy.STAGE_PDF_OCR)) {
-                    return new ExtractedPosting(file.sourceType(), file.fileReference(), null, "", null,
-                            "IMAGE_PDF_OCR",
-                            0,
-                            "FAILED",
-                            null,
-                            null,
-                            false,
-                            "OpenAI fallback disabled and Python worker unavailable.");
-                }
-                OpenAiResponsesClient.TextPayload payload = openAiClient.extractPdfText(file.originalFilename(), file.bytes());
-                text = payload.text();
-                usage = payload.usage();
+            if (!text.isBlank()) {
+                return new ExtractedPosting(file.sourceType(), file.fileReference(), null, limit(text), null);
             }
-            return new ExtractedPosting(file.sourceType(), file.fileReference(), null, limit(text), usage);
+            // 텍스트가 없는 스캔/이미지 PDF → OCR 폴백.
+            return ocrFallback(file, true);
         }
+        return ocrFallback(file, false);
+    }
 
-        if (!fallbackPolicy.allowed(JobPostingFallbackPolicy.STAGE_IMAGE_OCR)) {
-            return new ExtractedPosting(file.sourceType(), file.fileReference(), null, "", null,
-                    "IMAGE_OCR",
-                    0,
-                    "FAILED",
-                    null,
-                    null,
-                    false,
-                    "OpenAI fallback disabled and Python worker unavailable.");
+    /**
+     * 이미지/스캔 공고문 OCR 폴백: Claude(Haiku) Vision → OpenAI Vision(정책 허용 시) → 추출 실패 안내.
+     * 최종 단계는 목업이 아니다 — 가짜 공고문은 잘못된 분석으로 이어지므로, 실패 시 사용자가 텍스트로 직접 입력하도록 안내한다.
+     */
+    private ExtractedPosting ocrFallback(StoredJobPostingFile file, boolean pdf) {
+        // 1) Claude(Haiku) Vision — 공통 키라 1차 폴백. 미설정/실패 시 OpenAI 로.
+        if (anthropicClient != null && anthropicClient.configured()) {
+            try {
+                String text = pdf
+                        ? anthropicClient.extractPdfText(file.bytes())
+                        : anthropicClient.extractImageText(file.contentType(), file.bytes());
+                return new ExtractedPosting(file.sourceType(), file.fileReference(), null, limit(text), null);
+            } catch (RuntimeException ex) {
+                log.warn("공고 OCR: Claude 실패 → OpenAI 폴백 ({}): {}", pdf ? "PDF" : "IMAGE", ex.getMessage());
+            }
         }
-        OpenAiResponsesClient.TextPayload payload = openAiClient.extractImageText(file.contentType(), file.bytes());
-        return new ExtractedPosting(file.sourceType(), file.fileReference(), null, limit(payload.text()), payload.usage());
+        // 2) OpenAI Vision — 폴백 정책이 허용할 때만.
+        String stage = pdf ? JobPostingFallbackPolicy.STAGE_PDF_OCR : JobPostingFallbackPolicy.STAGE_IMAGE_OCR;
+        if (fallbackPolicy.allowed(stage)) {
+            OpenAiResponsesClient.TextPayload payload = pdf
+                    ? openAiClient.extractPdfText(file.originalFilename(), file.bytes())
+                    : openAiClient.extractImageText(file.contentType(), file.bytes());
+            return new ExtractedPosting(file.sourceType(), file.fileReference(), null, limit(payload.text()), payload.usage());
+        }
+        // 3) 최종: 추출 실패 안내(목업 아님 — 가짜 공고문은 잘못된 분석을 부른다).
+        return new ExtractedPosting(file.sourceType(), file.fileReference(), null, "", null,
+                pdf ? "IMAGE_PDF_OCR" : "IMAGE_OCR",
+                0,
+                "FAILED",
+                null,
+                null,
+                false,
+                "OCR providers unavailable (Claude/OpenAI). 공고문을 텍스트로 직접 입력해 주세요.");
     }
 
     public ExtractedPosting extractUrl(String url) {

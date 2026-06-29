@@ -6,6 +6,7 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
+import java.util.Base64;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -75,6 +76,66 @@ public class BAnthropicClient {
 
         JsonNode root = post(body);
         return extractContent(root);
+    }
+
+    /**
+     * 이미지에서 공고문 텍스트를 추출한다(Claude Vision OCR). 공고 이미지/스캔본을 글자로 옮긴다.
+     * 실패 시 예외를 던져 상위({@code JobPostingTextExtractor})가 OpenAI Vision 으로 폴백한다.
+     */
+    public String extractImageText(String contentType, byte[] bytes) {
+        if (!configured()) {
+            throw new IllegalStateException("Anthropic API key is not configured.");
+        }
+        String base64 = Base64.getEncoder().encodeToString(bytes);
+        Map<String, Object> imageBlock = Map.of("type", "image",
+                "source", Map.of("type", "base64", "media_type", contentType, "data", base64));
+        Map<String, Object> textBlock = Map.of("type", "text",
+                "text", "이미지 안의 채용공고 텍스트만 한국어 원문에 가깝게 추출하라. 설명·요약·여는말 없이 본문 텍스트만 반환한다.");
+        return visionExtract(List.of(imageBlock, textBlock));
+    }
+
+    /**
+     * 스캔/이미지 PDF에서 공고문 텍스트를 추출한다(Claude Vision OCR).
+     * Anthropic document 입력은 200K 컨텍스트 모델 기준 최대 100페이지·32MB(공고문엔 충분).
+     * 실패 시 예외를 던져 상위가 OpenAI Vision 으로 폴백한다.
+     */
+    public String extractPdfText(byte[] bytes) {
+        if (!configured()) {
+            throw new IllegalStateException("Anthropic API key is not configured.");
+        }
+        String base64 = Base64.getEncoder().encodeToString(bytes);
+        Map<String, Object> documentBlock = Map.of("type", "document",
+                "source", Map.of("type", "base64", "media_type", "application/pdf", "data", base64));
+        Map<String, Object> textBlock = Map.of("type", "text",
+                "text", "PDF 모든 페이지에서 채용공고 텍스트만 추출하라. 설명·요약 없이 읽힌 본문 텍스트만 반환한다.");
+        return visionExtract(List.of(documentBlock, textBlock));
+    }
+
+    private String visionExtract(List<Map<String, Object>> content) {
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("model", properties.getModel());
+        body.put("max_tokens", properties.getMaxTokens());
+        body.put("messages", List.of(Map.of("role", "user", "content", content)));
+        body.put("temperature", 0);
+        return extractPlainText(post(body));
+    }
+
+    /** OCR 응답용 — chat 과 달리 코드펜스를 벗기지 않고 text 블록을 그대로 이어붙인다(원문에 ``` 가 있을 수 있음). */
+    private String extractPlainText(JsonNode root) {
+        StringBuilder builder = new StringBuilder();
+        JsonNode content = root.path("content");
+        if (content.isArray()) {
+            for (JsonNode block : content) {
+                if ("text".equals(block.path("type").asText(""))) {
+                    builder.append(block.path("text").asText(""));
+                }
+            }
+        }
+        String text = builder.toString().trim();
+        if (text.isBlank()) {
+            throw new IllegalStateException("Anthropic vision response content is empty.");
+        }
+        return text;
     }
 
     private JsonNode post(Map<String, Object> requestBody) {
