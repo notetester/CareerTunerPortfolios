@@ -45,7 +45,9 @@ class ApplicationCaseAutoPipelineServiceTest {
                 properties,
                 mock(BLocalLlmClient.class),
                 new BJobSentenceClassifier(),
-                objectMapper);
+                objectMapper,
+                mock(BAnthropicClient.class),
+                mock(OpenAiResponsesClient.class));
         ApplicationCaseAutoPipelineService service = new ApplicationCaseAutoPipelineService(
                 applicationCaseMapper,
                 jobAnalysisMapper,

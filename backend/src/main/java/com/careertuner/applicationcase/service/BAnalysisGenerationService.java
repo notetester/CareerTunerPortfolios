@@ -72,19 +72,29 @@ public class BAnalysisGenerationService {
     private final BLocalLlmClient localLlmClient;
     private final BJobSentenceClassifier sentenceClassifier;
     private final ObjectMapper objectMapper;
+    private final BAnthropicClient anthropicClient;
+    private final OpenAiResponsesClient openAiResponsesClient;
 
+    /**
+     * 공고 분석 폴백 체인: 자체모델(Ollama) → Claude(Haiku) → OpenAI → self-rules-v1.
+     * self-rules-v1 은 외부 호출 없는 결정적 규칙 생성기라 절대 예외로 끝나지 않는 최종 안전망이다.
+     * 어떤 AI 도 시도되지 않은 경우(전부 비활성/미설정)는 의도된 기본 동작이라 fallback 으로 표시하지 않는다.
+     */
     public GeneratedJobAnalysis generateJobAnalysis(ApplicationCase applicationCase, String postingText) {
         Classification classification = sentenceClassifier.classify(postingText);
+        String lastError = null;
+
+        // 1) 자체모델(Ollama) — provider 활성 시 재시도. 실패하면 아래로 폴백.
         if (properties.getLocalLlm().isEnabled()) {
             int maxAttempts = 1 + properties.getLocalLlm().getMaxRetries();
-            String lastError = null;
             for (int attempt = 1; attempt <= maxAttempts; attempt++) {
                 try {
                     String content = localLlmClient.chat(
                             JobAnalysisPromptCatalog.SYSTEM_PROMPT,
                             jobPrompt(applicationCase, postingText, classification),
                             jobAnalysisSchema());
-                    JobAnalysisPayload payload = parseLocalJobPayload(content, postingText);
+                    JobAnalysisPayload payload = parseLocalJobPayload(content, postingText,
+                            properties.getLocalLlm().getModel());
                     validateGrounding(payload, postingText);
                     log.info("Local LLM job analysis succeeded (attempt={}/{})", attempt, maxAttempts);
                     return new GeneratedJobAnalysis(payload, null, null);
@@ -93,37 +103,114 @@ public class BAnalysisGenerationService {
                     log.warn("Local LLM job analysis attempt {}/{} failed: {}", attempt, maxAttempts, lastError);
                 }
             }
-            String reason = "Local LLM job analysis failed after %d attempts; fallback to self-rules-v1: %s"
-                    .formatted(maxAttempts, lastError);
-            log.warn("{}", reason);
-            return new GeneratedJobAnalysis(
-                    selfRulesJobAnalysis(applicationCase, postingText, classification),
-                    reason,
-                    properties.getLocalLlm().getModel());
         }
-        return new GeneratedJobAnalysis(selfRulesJobAnalysis(applicationCase, postingText, classification), null, null);
+
+        // 2) 1차 폴백: Claude(Haiku) — 공통 키라 가장 안정적. 같은 스키마/검증 재사용.
+        if (anthropicClient.configured()) {
+            try {
+                String content = anthropicClient.chat(
+                        JobAnalysisPromptCatalog.SYSTEM_PROMPT,
+                        jobPrompt(applicationCase, postingText, classification),
+                        jobAnalysisSchema());
+                JobAnalysisPayload payload = parseLocalJobPayload(content, postingText, anthropicClient.model());
+                validateGrounding(payload, postingText);
+                log.info("Claude job analysis succeeded");
+                return new GeneratedJobAnalysis(payload, null, null);
+            } catch (RuntimeException ex) {
+                lastError = safeMessage(ex);
+                log.warn("Claude job analysis failed: {}", lastError);
+            }
+        }
+
+        // 3) 2차 폴백: OpenAI.
+        if (openAiResponsesClient.configured()) {
+            try {
+                JobAnalysisPayload payload = openAiResponsesClient.analyzeJobPosting(applicationCase, postingText);
+                log.info("OpenAI job analysis succeeded");
+                return new GeneratedJobAnalysis(payload, null, null);
+            } catch (RuntimeException ex) {
+                lastError = safeMessage(ex);
+                log.warn("OpenAI job analysis failed: {}", lastError);
+            }
+        }
+
+        // 4) 최종 안전망: self-rules-v1.
+        if (lastError == null) {
+            // 아무 AI provider 도 시도되지 않음(전부 비활성/미설정) → 의도된 기본 동작.
+            return new GeneratedJobAnalysis(
+                    selfRulesJobAnalysis(applicationCase, postingText, classification), null, null);
+        }
+        String reason = "Local/Claude/OpenAI job analysis unavailable; fallback to self-rules-v1: " + lastError;
+        log.warn("{}", reason);
+        return new GeneratedJobAnalysis(
+                selfRulesJobAnalysis(applicationCase, postingText, classification),
+                reason,
+                properties.getLocalLlm().getModel());
     }
 
+    /**
+     * 회사 분석 폴백 체인: 자체모델(Ollama) → Claude(Haiku) → OpenAI → self-rules-v1(최종 안전망).
+     */
     public GeneratedCompanyAnalysis generateCompanyAnalysis(ApplicationCase applicationCase, String postingText) {
         Classification classification = sentenceClassifier.classify(postingText);
+        String lastError = null;
+
+        // 1) 자체모델(Ollama).
         if (properties.getLocalLlm().isEnabled()) {
             try {
                 String content = localLlmClient.chat(
                         CompanyAnalysisPromptCatalog.SYSTEM_PROMPT,
                         companyPrompt(applicationCase, postingText, classification),
                         companyAnalysisSchema());
-                CompanyAnalysisPayload payload = parseLocalCompanyPayload(content, applicationCase, postingText);
+                CompanyAnalysisPayload payload = parseLocalCompanyPayload(content, applicationCase, postingText,
+                        properties.getLocalLlm().getModel());
                 return new GeneratedCompanyAnalysis(payload, null, null);
             } catch (RuntimeException ex) {
-                String reason = "Local LLM company analysis failed; fallback to self-rules-v1: " + safeMessage(ex);
-                log.warn("{}", reason);
-                return new GeneratedCompanyAnalysis(
-                        selfRulesCompanyAnalysis(applicationCase, postingText, classification),
-                        reason,
-                        properties.getLocalLlm().getModel());
+                lastError = safeMessage(ex);
+                log.warn("Local LLM company analysis failed: {}", lastError);
             }
         }
-        return new GeneratedCompanyAnalysis(selfRulesCompanyAnalysis(applicationCase, postingText, classification), null, null);
+
+        // 2) 1차 폴백: Claude(Haiku).
+        if (anthropicClient.configured()) {
+            try {
+                String content = anthropicClient.chat(
+                        CompanyAnalysisPromptCatalog.SYSTEM_PROMPT,
+                        companyPrompt(applicationCase, postingText, classification),
+                        companyAnalysisSchema());
+                CompanyAnalysisPayload payload = parseLocalCompanyPayload(content, applicationCase, postingText,
+                        anthropicClient.model());
+                log.info("Claude company analysis succeeded");
+                return new GeneratedCompanyAnalysis(payload, null, null);
+            } catch (RuntimeException ex) {
+                lastError = safeMessage(ex);
+                log.warn("Claude company analysis failed: {}", lastError);
+            }
+        }
+
+        // 3) 2차 폴백: OpenAI.
+        if (openAiResponsesClient.configured()) {
+            try {
+                CompanyAnalysisPayload payload = openAiResponsesClient.analyzeCompany(applicationCase, postingText);
+                log.info("OpenAI company analysis succeeded");
+                return new GeneratedCompanyAnalysis(payload, null, null);
+            } catch (RuntimeException ex) {
+                lastError = safeMessage(ex);
+                log.warn("OpenAI company analysis failed: {}", lastError);
+            }
+        }
+
+        // 4) 최종 안전망: self-rules-v1.
+        if (lastError == null) {
+            return new GeneratedCompanyAnalysis(
+                    selfRulesCompanyAnalysis(applicationCase, postingText, classification), null, null);
+        }
+        String reason = "Local/Claude/OpenAI company analysis unavailable; fallback to self-rules-v1: " + lastError;
+        log.warn("{}", reason);
+        return new GeneratedCompanyAnalysis(
+                selfRulesCompanyAnalysis(applicationCase, postingText, classification),
+                reason,
+                properties.getLocalLlm().getModel());
     }
 
     private JobAnalysisPayload selfRulesJobAnalysis(ApplicationCase applicationCase,
@@ -183,7 +270,7 @@ public class BAnalysisGenerationService {
                 usage(SELF_RULES_MODEL, postingText.length(), summary.length() + interviewPoints.length()));
     }
 
-    private JobAnalysisPayload parseLocalJobPayload(String content, String postingText) {
+    private JobAnalysisPayload parseLocalJobPayload(String content, String postingText, String modelLabel) {
         JsonNode root = parseObject(content);
         JobAnalysisPayload payload = new JobAnalysisPayload(
                 text(root, "employmentType", employmentType(postingText)),
@@ -196,7 +283,7 @@ public class BAnalysisGenerationService {
                 requiredText(root, "summary"),
                 objectArrayJson(root, "evidence", "field", "quote"),
                 objectArrayJson(root, "ambiguousConditions", "condition", "assumption"),
-                usage(properties.getLocalLlm().getModel(), postingText.length(), content.length()));
+                usage(modelLabel, postingText.length(), content.length()));
         validateJobPayload(payload);
         return payload;
     }
@@ -309,7 +396,8 @@ public class BAnalysisGenerationService {
 
     private CompanyAnalysisPayload parseLocalCompanyPayload(String content,
                                                            ApplicationCase applicationCase,
-                                                           String postingText) {
+                                                           String postingText,
+                                                           String modelLabel) {
         JsonNode root = parseObject(content);
         CompanyAnalysisPayload payload = new CompanyAnalysisPayload(
                 requiredText(root, "companySummary"),
@@ -320,7 +408,7 @@ public class BAnalysisGenerationService {
                 objectArrayJson(root, "sources", "type", "label"),
                 objectArrayJson(root, "verifiedFacts", "fact", "source"),
                 objectArrayJson(root, "aiInferences", "inference", "basis"),
-                usage(properties.getLocalLlm().getModel(), postingText.length(), content.length()));
+                usage(modelLabel, postingText.length(), content.length()));
         validateCompanyPayload(payload, applicationCase);
         return payload;
     }

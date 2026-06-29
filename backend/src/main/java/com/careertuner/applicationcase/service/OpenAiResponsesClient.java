@@ -45,6 +45,11 @@ public class OpenAiResponsesClient {
                 .build();
     }
 
+    /** OpenAI 키 설정 여부 — 폴백 디스패처가 OpenAI 단계 시도 가능 여부 판단에 쓴다. */
+    public boolean configured() {
+        return properties.configured();
+    }
+
     public JobAnalysisPayload analyzeJobPosting(ApplicationCase applicationCase, String postingText) {
         JsonNode root = post(structuredRequest(
                 "job_analysis",
