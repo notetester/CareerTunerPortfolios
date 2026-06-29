@@ -21,9 +21,12 @@ import org.springframework.web.bind.annotation.RestController;
 import java.util.Optional;
 
 import dev.langchain4j.data.message.AiMessage;
+import dev.langchain4j.data.message.ChatMessage;
 import dev.langchain4j.data.message.UserMessage;
 
 import com.careertuner.ai.chat.ChatAskRequest;
+import com.careertuner.ai.chat.ChipSuggestion;
+import com.careertuner.ai.chat.QuickReplyParser;
 import com.careertuner.ai.chat.ChatAskResponse;
 import com.careertuner.ai.chat.ChatHistoryResponse;
 import com.careertuner.ai.chat.ChatHistoryResponse.ChatHistoryMessage;
@@ -53,10 +56,12 @@ import com.careertuner.applicationcase.service.ApplicationCaseService;
 import com.careertuner.common.security.AuthUser;
 import com.careertuner.common.web.ApiResponse;
 import com.careertuner.community.search.PostHit;
+import com.careertuner.profile.domain.UserProfile;
 import com.careertuner.profile.dto.UserProfileRequest;
 import com.careertuner.profile.mapper.ProfileMapper;
 import com.careertuner.profile.service.ProfileService;
 
+import java.util.ArrayList;
 import java.util.Arrays;
 
 @RestController
@@ -682,7 +687,7 @@ public class ChatbotController {
             // quickReplies: 보조 기능 → 2차 호출이 실패해도 핵심(message+links)은 정상 반환.
             // 글 제시 여부를 finally clear 전에 읽어 게이트로 넘긴다(이번 턴 검색 툴이 글을 돌려줬을 때만 글 칩 허용).
             boolean postsPresented = !searchTrace.snapshot().isEmpty();
-            List<String> quickReplies = suggestQuickReplies(question, message, postsPresented);
+            List<String> quickReplies = suggestQuickReplies(userId, conversationId, question, message, postsPresented);
 
             // 글이 2개 이상 제시된 턴에서만 묶음 요약 칩 주입(snapshot 은 finally clear 전에 읽는다).
             ChatAskResponse.SummaryChip summaryChip = buildSummaryChip(searchTrace.snapshot());
@@ -876,26 +881,89 @@ public class ChatbotController {
 
     /**
      * quickReplies 2차 호출. 실패는 보조 기능이므로 삼켜서 빈 리스트로(graceful degradation).
-     * <p><b>글 칩 게이트:</b> 모델은 응답 맥락(글이 검색·제시됐는지)을 모른 채 칩을 자유 생성하므로,
-     * 이번 턴에 글이 실제로 제시됐을 때({@code postsPresented})만 글 관련 칩을 허용하고 아니면 결정적으로 필터링한다.
-     * 글과 무관한 칩(예: "다른 직무", "신입 위주로")은 그대로 유지한다.
+     *
+     * <p><b>맥락 주입(질문8 결정):</b> 로그인 유저는 프로필+대화이력을, 비로그인은 대화맥락만 모델에 준다
+     * ({@link #buildChipContext}). 케이스/현재단계는 이 경로(커뮤니티)에 바인딩돼 있지 않아 제외한다.
+     *
+     * <p><b>선별:</b> 모델이 매긴 relevance/importance 로 {@link QuickReplyParser#select 가변 컷}한다.
+     * 절대 임계값은 안 쓴다(8B 절대점수 불안정 → 칩 깜빡임).
+     *
+     * <p><b>글 칩 게이트(보존):</b> 모델은 글 제시 여부를 모른 채 칩을 자유 생성하므로, 이번 턴에 글이
+     * 실제로 제시됐을 때({@code postsPresented})만 글 관련 칩을 허용한다. "요약" 칩은 summaryChip 소유라 항상 제거.
      */
-    private List<String> suggestQuickReplies(String question, String answer, boolean postsPresented) {
+    private List<String> suggestQuickReplies(Long userId, Long conversationId,
+                                             String question, String answer, boolean postsPresented) {
         try {
-            String context = "사용자: " + question + "\n챗봇: " + answer;
-            List<String> chips = quickReplyAgent.suggest(context);
-            if (chips == null) {
-                return List.of();
-            }
-            // "요약" 칩은 summaryChip 이 소유 → postsPresented 무관하게 항상 제거.
-            return chips.stream()
-                    .filter(c -> c != null && !SUMMARY_CHIP.matcher(c).find())
-                    // 그 외 글 관련 칩(후기/글/게시/본문)은 글 미제시 턴에서만 결정적으로 제거.
-                    .filter(c -> postsPresented || !POST_CHIP.matcher(c).find())
+            String raw = quickReplyAgent.suggest(buildChipContext(userId, conversationId, question, answer));
+            // 게이트 필터를 선별(최대 N) 전에 적용해, 유효 칩으로만 N개를 채운다.
+            List<ChipSuggestion> gated = QuickReplyParser.parse(raw).stream()
+                    .filter(c -> c.text() != null && !SUMMARY_CHIP.matcher(c.text()).find())
+                    .filter(c -> postsPresented || !POST_CHIP.matcher(c.text()).find())
                     .collect(Collectors.toList());
+            return QuickReplyParser.select(gated, 3);
         } catch (Exception e) {
             log.warn("quickReplies 생성 실패(무시): {}", e.getMessage());
             return List.of();
+        }
+    }
+
+    /**
+     * 칩 생성 맥락 조립. 비로그인은 대화맥락만, 로그인은 프로필을 더한다(최소 침습 — A 도메인 read 만).
+     * 케이스/현재단계는 이 경로에 바인딩이 없어 넣지 않는다.
+     */
+    private String buildChipContext(Long userId, Long conversationId, String question, String answer) {
+        StringBuilder sb = new StringBuilder();
+        if (userId != null) {
+            UserProfile p = null;
+            try {
+                p = profileMapper.findByUserId(userId);
+            } catch (Exception e) {
+                log.debug("칩 맥락 프로필 조회 스킵: {}", e.getMessage());
+            }
+            if (p != null) {
+                sb.append("[프로필]\n");
+                appendIfPresent(sb, "희망직무", p.getDesiredJob());
+                appendIfPresent(sb, "희망산업", p.getDesiredIndustry());
+                appendIfPresent(sb, "보유스킬", p.getSkills());
+                appendIfPresent(sb, "자격증", p.getCertificates());
+                appendIfPresent(sb, "자기소개", p.getSelfIntro());
+                sb.append('\n');
+            }
+        }
+        String history = recentHistoryText(conversationId, 8);
+        if (!history.isBlank()) {
+            sb.append("[대화맥락]\n").append(history);
+        } else {
+            sb.append("[대화맥락]\n사용자: ").append(question).append("\n챗봇: ").append(answer);
+        }
+        return sb.toString();
+    }
+
+    private static void appendIfPresent(StringBuilder sb, String label, String value) {
+        if (value != null && !value.isBlank()) {
+            sb.append("- ").append(label).append(": ").append(value.trim()).append('\n');
+        }
+    }
+
+    /** 대화 메모리에서 최근 {@code maxLines} 줄(USER/AI 텍스트만)을 오래된→최신으로 만든다. 실패 시 빈 문자열. */
+    private String recentHistoryText(Long conversationId, int maxLines) {
+        if (conversationId == null) {
+            return "";
+        }
+        try {
+            List<String> lines = new ArrayList<>();
+            for (ChatMessage m : memoryStore.getMessages(conversationId)) {
+                if (m instanceof UserMessage um) {
+                    lines.add("사용자: " + um.singleText());
+                } else if (m instanceof AiMessage am && am.text() != null && !am.text().isBlank()) {
+                    lines.add("챗봇: " + am.text());
+                }
+            }
+            int from = Math.max(0, lines.size() - maxLines);
+            return String.join("\n", lines.subList(from, lines.size()));
+        } catch (Exception e) {
+            log.debug("칩 맥락 대화이력 조회 스킵: {}", e.getMessage());
+            return "";
         }
     }
 
