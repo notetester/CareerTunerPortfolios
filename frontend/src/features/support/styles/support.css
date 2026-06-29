@@ -98,7 +98,7 @@
 .ct-ndetail__foot { display: flex; justify-content: center; margin-top: 26px; }
 
 /* notice prose */
-.ct-nprose { font-size: 16px; line-height: 1.8; color: #334155; padding-top: 22px; }
+.ct-nprose { font-size: 16px; line-height: 1.8; color: var(--ink-2); padding-top: 22px; }
 .ct-nprose h2 { font-size: 17px; font-weight: 700; color: var(--av-ink); margin: 26px 0 10px; }
 .ct-nprose p { margin: 12px 0; }
 .ct-nprose strong { font-weight: 600; color: var(--av-ink); }

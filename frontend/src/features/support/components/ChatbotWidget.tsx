@@ -372,10 +372,10 @@ function SessionRow({ session, active, onClick }: {
   const initial = session.title?.trim().charAt(0) || "?";
   const badge = session.mode ? MODE_BADGE[session.mode] : null;
   const when = relativeTime(session.updatedAt);
-  // 토큰 외 hex(#faf8ff)·rgba 보더라 Tailwind hover로 못 빼고, active 행은 호버를 막아야 해
-  // JS 핸들러로 처리. 기본/호버 값을 한 곳에서 관리(중복 하드코딩 제거).
-  const REST = { background: "transparent", borderColor: "rgba(0,0,0,0.10)" };
-  const HOVER = { background: "#faf8ff", borderColor: "rgba(124,58,237,0.32)" };
+  // 호버 배경/보더가 토큰·rgba라 Tailwind hover 유틸로 못 빼고, active 행은 호버를 막아야 해
+  // JS 핸들러로 처리. 기본/호버 값을 한 곳에서 관리(테마 토큰 재사용).
+  const REST = { background: "transparent", borderColor: "var(--border)" };
+  const HOVER = { background: "var(--orch-header-tint)", borderColor: "rgba(124,58,237,0.32)" };
   return (
     <button onClick={onClick} role="button" aria-pressed={active}
       className="group flex items-center gap-2.5 w-full px-3 py-2.5 rounded-[13px] text-left transition-all"
@@ -395,7 +395,7 @@ function SessionRow({ session, active, onClick }: {
         <span className="flex items-center gap-1.5 mt-0.5">
           {badge && (
             <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-[10.5px] font-bold leading-none"
-              style={{ background: "#f0ecfb", color: "var(--orch-violet)" }}>
+              style={{ background: "var(--orch-surface)", color: "var(--orch-violet)" }}>
               {badge}
             </span>
           )}
@@ -420,10 +420,10 @@ function SessionPanel({ sessions, activeSessionId, onOpen, onNew, onClose }: {
       <div className="m-3.5 rounded-[18px] bg-card overflow-hidden flex flex-col max-h-[460px]"
         style={{ boxShadow: "0 20px 50px rgba(20,16,40,0.4)" }}
         onClick={(e) => e.stopPropagation()}>
-        <div className="flex items-center justify-between px-4 py-3 border-b border-black/8">
+        <div className="flex items-center justify-between px-4 py-3 border-b border-border">
           <div className="text-[13.5px] font-extrabold">면접 준비 세션</div>
           <button onClick={onClose} aria-label="닫기"
-            className="w-7 h-7 rounded-lg flex items-center justify-center text-slate-400 hover:bg-slate-100 transition-colors">
+            className="w-7 h-7 rounded-lg flex items-center justify-center text-muted-foreground hover:bg-accent transition-colors">
             <X size={15} />
           </button>
         </div>
@@ -437,7 +437,7 @@ function SessionPanel({ sessions, activeSessionId, onOpen, onNew, onClose }: {
         </div>
         <div className="px-3 pb-3 overflow-y-auto flex flex-col gap-1.5">
           {sessions.length === 0 ? (
-            <div className="text-[12px] leading-[1.6] text-slate-400 text-center py-6">
+            <div className="text-[12px] leading-[1.6] text-muted-foreground text-center py-6">
               아직 준비 중인 지원 건이 없어요.<br />“카카오 백엔드 면접 준비해줘”처럼 시작해 보세요.
             </div>
           ) : (
