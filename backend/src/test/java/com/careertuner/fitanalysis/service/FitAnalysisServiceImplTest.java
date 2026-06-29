@@ -86,7 +86,7 @@ class FitAnalysisServiceImplTest {
         assertThat(gate.getValue().isRagRuntimeEnabled()).isFalse();
         assertThat(gate.getValue().isRewriteApplied()).isFalse();
         assertThat(gate.getValue().getGateStatus()).isIn("PASSED", "REVIEW_REQUIRED", "REJECTED");
-        verify(mapper, times(4)).insertEvidenceSource(eq(11L), anyString(), anyBoolean(), anyInt(), anyString());
+        verify(mapper, times(6)).insertEvidenceSource(eq(11L), anyString(), anyBoolean(), anyInt(), anyString());
 
         // gate 는 점수/판단을 바꾸지 않는다: 저장된 fit_analysis 행의 점수/판단이 규칙엔진 산출 그대로다.
         ArgumentCaptor<FitAnalysisResult> row = ArgumentCaptor.forClass(FitAnalysisResult.class);

@@ -40,6 +40,7 @@
         <result property="gateReasonCount" column="gate_reason_count"/>
         <result property="gateMaxSeverity" column="gate_max_severity"/>
         <result property="evidenceGateVersion" column="evidence_gate_version"/>
+        <result property="gateReasonsJson" column="gate_reasons_json"/>
     </resultMap>
 
     <resultMap id="AdminFitAnalysisMemoResultMap" type="com.careertuner.admin.fitanalysis.domain.AdminFitAnalysisMemo">
@@ -103,7 +104,8 @@
         gr.needs_human_review AS gate_needs_human_review,
         gr.reason_count AS gate_reason_count,
         gr.max_severity AS gate_max_severity,
-        gr.evidence_gate_version
+        gr.evidence_gate_version,
+        gr.gate_reasons_json
     </sql>
 
     <select id="findAll" resultMap="AdminFitAnalysisResultMap">

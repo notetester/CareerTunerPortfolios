@@ -38,7 +38,7 @@ export function AdminOpsDashboardPage() {
         { label: "적합도 분석", value: overview.totalFitAnalyses, sub: "누적 생성", icon: Target },
         { label: "면접 세션", value: overview.totalInterviewSessions, sub: "누적", icon: Video },
         { label: "이번 달 AI 호출", value: overview.aiCallsThisMonth, sub: "ai_usage_log 기준", icon: Sparkles },
-        { label: "근거 검토 대기", value: overview.reviewRequiredAnalyses, sub: "evidence gate REVIEW_REQUIRED", icon: ShieldAlert },
+        { label: "근거 검토 대기", value: overview.reviewRequiredAnalyses, sub: "최신 지원 건 기준", icon: ShieldAlert },
       ]
     : [];
 
