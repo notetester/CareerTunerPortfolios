@@ -98,7 +98,7 @@ export function NotificationSettings() {
   return (
     <div className="space-y-4">
       {flash && (
-        <div className={`rounded-lg px-4 py-2.5 text-sm ${flash.tone === "ok" ? "border border-green-200 bg-green-50 text-green-700" : "border border-red-200 bg-red-50 text-red-700"}`}>
+        <div className={`rounded-lg px-4 py-2.5 text-sm border border-border ${flash.tone === "ok" ? "bg-[var(--success-50)] text-[var(--success)]" : "bg-[var(--danger-50)] text-[var(--destructive)]"}`}>
           {flash.msg}
         </div>
       )}
