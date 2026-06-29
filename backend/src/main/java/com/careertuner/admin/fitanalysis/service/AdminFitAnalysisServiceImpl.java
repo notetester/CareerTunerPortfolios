@@ -33,8 +33,8 @@ public class AdminFitAnalysisServiceImpl implements AdminFitAnalysisService {
 
     @Override
     @Transactional(readOnly = true)
-    public List<AdminFitAnalysisListItemResponse> list() {
-        return adminFitAnalysisMapper.findAll().stream()
+    public List<AdminFitAnalysisListItemResponse> list(boolean reviewRequiredOnly) {
+        return adminFitAnalysisMapper.findAll(reviewRequiredOnly).stream()
                 .map(result -> AdminFitAnalysisListItemResponse.of(
                         result,
                         parseList(result.getMatchedSkills()),

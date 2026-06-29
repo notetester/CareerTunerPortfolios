@@ -9,7 +9,7 @@ import com.careertuner.admin.fitanalysis.dto.AdminFitAnalysisMemoResponse;
 
 public interface AdminFitAnalysisService {
 
-    List<AdminFitAnalysisListItemResponse> list();
+    List<AdminFitAnalysisListItemResponse> list(boolean reviewRequiredOnly);
 
     AdminFitAnalysisDetailResponse get(Long id);
 

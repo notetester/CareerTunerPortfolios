@@ -20,4 +20,7 @@ public interface AdminDashboardMapper {
     int countInterviewSessions();
 
     int countAiCallsThisMonth();
+
+    /** review-first evidence gate 가 REVIEW_REQUIRED 로 판정한 적합도 분석 총수(검토 대기). */
+    int countReviewRequiredAnalyses();
 }

@@ -33,7 +33,9 @@ public record FitAnalysisDetailResponse(
         String errorMessage,
         LocalDateTime createdAt,
         FitAnalysisApplicationResponse application,
-        List<FitAnalysisLearningTaskResponse> learningTasks
+        List<FitAnalysisLearningTaskResponse> learningTasks,
+        // review-first evidence gate 안전 블록(R3). 과거 분석엔 없으므로 null 가능(하위호환).
+        FitSafetyResponse safety
 ) {
     public static FitAnalysisDetailResponse of(FitAnalysisResult result,
                                                List<FitAnalysisLearningTaskResponse> learningTasks,
@@ -41,7 +43,8 @@ public record FitAnalysisDetailResponse(
                                                FitActionBoardResponse actionBoard,
                                                List<String> adverseStrategies,
                                                List<String> next24HourActions,
-                                               List<FitToneStrategyResponse> toneStrategies) {
+                                               List<FitToneStrategyResponse> toneStrategies,
+                                               FitSafetyResponse safety) {
         return new FitAnalysisDetailResponse(
                 result.getId(),
                 result.getApplicationCaseId(),
@@ -70,6 +73,7 @@ public record FitAnalysisDetailResponse(
                 result.getErrorMessage(),
                 result.getCreatedAt(),
                 FitAnalysisApplicationResponse.from(result),
-                learningTasks);
+                learningTasks,
+                safety);
     }
 }

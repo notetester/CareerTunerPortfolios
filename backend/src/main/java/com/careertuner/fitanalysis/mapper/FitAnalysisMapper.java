@@ -5,6 +5,7 @@ import java.util.List;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 
+import com.careertuner.fitanalysis.domain.FitAnalysisGateResult;
 import com.careertuner.fitanalysis.domain.FitAnalysisGenerationSource;
 import com.careertuner.fitanalysis.domain.FitAnalysisLearningTask;
 import com.careertuner.fitanalysis.domain.FitAnalysisResult;
@@ -56,6 +57,19 @@ public interface FitAnalysisMapper {
 
     FitAnalysisLearningTask findLearningTaskById(@Param("fitAnalysisId") Long fitAnalysisId,
                                                  @Param("taskId") Long taskId);
+
+    /** review-first evidence gate 결정 저장(fit_analysis 1건당 1행). */
+    void insertGateResult(FitAnalysisGateResult gate);
+
+    /** gate 가 사용한 evidence 버킷 스냅샷 저장(감사·재현용, 스킬명/축약만). */
+    void insertEvidenceSource(@Param("fitAnalysisId") Long fitAnalysisId,
+                              @Param("sourceType") String sourceType,
+                              @Param("userOwned") boolean userOwned,
+                              @Param("itemCount") int itemCount,
+                              @Param("itemsJson") String itemsJson);
+
+    /** 적합도 응답 safety 블록 구성을 위한 gate 결정 조회(없으면 null = R3 이전 분석). */
+    FitAnalysisGateResult findGateResultByFitAnalysisId(@Param("fitAnalysisId") Long fitAnalysisId);
 
     /**
      * 공통 ai_usage_log 기록(공통 규약). C 도메인 사용량을 동일 스키마로 남긴다.
