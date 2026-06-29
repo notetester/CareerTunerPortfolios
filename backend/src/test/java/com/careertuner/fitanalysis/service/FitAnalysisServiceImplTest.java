@@ -2,12 +2,14 @@ package com.careertuner.fitanalysis.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -15,8 +17,10 @@ import java.time.LocalDateTime;
 import java.util.List;
 
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 
 import com.careertuner.fitanalysis.ai.MockFitAnalysisAiService;
+import com.careertuner.fitanalysis.domain.FitAnalysisGateResult;
 import com.careertuner.fitanalysis.domain.FitAnalysisGenerationSource;
 import com.careertuner.fitanalysis.domain.FitAnalysisResult;
 import com.careertuner.fitanalysis.mapper.FitAnalysisMapper;
@@ -30,7 +34,7 @@ class FitAnalysisServiceImplTest {
     void generatePersistsHistoryAndNormalizedConditionMatches() {
         FitAnalysisMapper mapper = mock(FitAnalysisMapper.class);
         ObjectMapper objectMapper = new ObjectMapper();
-        FitAnalysisServiceImpl service = new FitAnalysisServiceImpl(mapper, new MockFitAnalysisAiService(), mock(NotificationService.class), objectMapper);
+        FitAnalysisServiceImpl service = new FitAnalysisServiceImpl(mapper, new MockFitAnalysisAiService(), new EvidenceGateService(), mock(NotificationService.class), objectMapper);
         FitAnalysisGenerationSource source = source();
         FitAnalysisResult previous = FitAnalysisResult.builder()
                 .id(10L).applicationCaseId(20L).fitScore(60)
@@ -56,9 +60,45 @@ class FitAnalysisServiceImplTest {
     }
 
     @Test
+    void generatePersistsEvidenceGateWithoutMutatingScoreOrDecision() {
+        FitAnalysisMapper mapper = mock(FitAnalysisMapper.class);
+        FitAnalysisServiceImpl service = new FitAnalysisServiceImpl(
+                mapper, new MockFitAnalysisAiService(), new EvidenceGateService(),
+                mock(NotificationService.class), new ObjectMapper());
+        when(mapper.findGenerationSource(1L, 20L)).thenReturn(source());
+        doAnswer(invocation -> {
+            FitAnalysisResult row = invocation.getArgument(0);
+            row.setId(11L);
+            row.setCreatedAt(LocalDateTime.of(2026, 6, 29, 10, 0));
+            return null;
+        }).when(mapper).insertFitAnalysis(any(FitAnalysisResult.class));
+        when(mapper.findLatestByUserIdAndApplicationCaseId(1L, 20L)).thenReturn(null, FitAnalysisResult.builder()
+                .id(11L).applicationCaseId(20L).fitScore(45)
+                .conditionMatrix("[]").gapRecommendations("[]").strategyActions("[]").build());
+        when(mapper.findLearningTasksByFitAnalysisId(11L)).thenReturn(List.of());
+
+        service.generate(1L, 20L);
+
+        // gate 결정 1행 저장 + evidence 버킷 4개 스냅샷. RAG/rewrite 는 보류(false), 버전 고정.
+        ArgumentCaptor<FitAnalysisGateResult> gate = ArgumentCaptor.forClass(FitAnalysisGateResult.class);
+        verify(mapper).insertGateResult(gate.capture());
+        assertThat(gate.getValue().getEvidenceGateVersion()).isEqualTo("r3-review-first");
+        assertThat(gate.getValue().isRagRuntimeEnabled()).isFalse();
+        assertThat(gate.getValue().isRewriteApplied()).isFalse();
+        assertThat(gate.getValue().getGateStatus()).isIn("PASSED", "REVIEW_REQUIRED", "REJECTED");
+        verify(mapper, times(4)).insertEvidenceSource(eq(11L), anyString(), anyBoolean(), anyInt(), anyString());
+
+        // gate 는 점수/판단을 바꾸지 않는다: 저장된 fit_analysis 행의 점수/판단이 규칙엔진 산출 그대로다.
+        ArgumentCaptor<FitAnalysisResult> row = ArgumentCaptor.forClass(FitAnalysisResult.class);
+        verify(mapper).insertFitAnalysis(row.capture());
+        assertThat(row.getValue().getFitScore()).isNotNull();
+        assertThat(row.getValue().getApplyDecision()).isNotBlank();
+    }
+
+    @Test
     void scoreBreakdownNeverExceedsEachMaximumAndSumsToFitScore() {
         FitAnalysisMapper mapper = mock(FitAnalysisMapper.class);
-        FitAnalysisServiceImpl service = new FitAnalysisServiceImpl(mapper, mock(MockFitAnalysisAiService.class), mock(NotificationService.class), new ObjectMapper());
+        FitAnalysisServiceImpl service = new FitAnalysisServiceImpl(mapper, mock(MockFitAnalysisAiService.class), new EvidenceGateService(), mock(NotificationService.class), new ObjectMapper());
         FitAnalysisResult result = FitAnalysisResult.builder()
                 .id(11L).applicationCaseId(20L).fitScore(100)
                 .conditionMatrix("[]").gapRecommendations("[]").strategyActions("[]")

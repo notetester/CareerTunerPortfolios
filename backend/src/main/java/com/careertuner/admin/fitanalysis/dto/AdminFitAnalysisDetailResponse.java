@@ -35,6 +35,12 @@ public record AdminFitAnalysisDetailResponse(
         String status,
         String errorMessage,
         LocalDateTime createdAt,
+        // review-first evidence gate(R3). R3 이전 분석은 gateStatus=null.
+        String gateStatus,
+        boolean needsHumanReview,
+        int gateReasonCount,
+        String gateMaxSeverity,
+        String evidenceGateVersion,
         List<FitAnalysisLearningTaskResponse> learningTasks,
         List<AdminFitAnalysisMemoResponse> memos
 ) {
@@ -77,6 +83,11 @@ public record AdminFitAnalysisDetailResponse(
                 result.getStatus(),
                 result.getErrorMessage(),
                 result.getCreatedAt(),
+                result.getGateStatus(),
+                Boolean.TRUE.equals(result.getGateNeedsHumanReview()),
+                result.getGateReasonCount() == null ? 0 : result.getGateReasonCount(),
+                result.getGateMaxSeverity(),
+                result.getEvidenceGateVersion(),
                 learningTasks,
                 memos);
     }

@@ -18,5 +18,7 @@ export interface AdminHomeSummary {
   reanalysisRequests: number;
   /** 장기/대시보드 실행 이력의 비정상 건수. */
   careerRunFailures: number;
+  /** review-first evidence gate 가 검토 필요(REVIEW_REQUIRED)로 판정한 최신 분석 수(R3 검토 큐). */
+  reviewRequiredAnalyses: number;
   shortcuts: AdminHomeShortcut[];
 }

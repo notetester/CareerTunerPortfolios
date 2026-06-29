@@ -29,4 +29,9 @@
         SELECT COUNT(*) FROM ai_usage_log
         WHERE created_at &gt;= DATE_FORMAT(CURRENT_DATE, '%Y-%m-01')
     </select>
+
+    <select id="countReviewRequiredAnalyses" resultType="int">
+        SELECT COUNT(*) FROM fit_analysis_gate_result
+        WHERE gate_status = 'REVIEW_REQUIRED'
+    </select>
 </mapper>

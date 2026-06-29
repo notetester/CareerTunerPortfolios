@@ -14,6 +14,7 @@ import com.careertuner.fitanalysis.ai.FitAnalysisAiResult;
 import com.careertuner.fitanalysis.ai.FitAnalysisAiService;
 import com.careertuner.fitanalysis.ai.FitAnalysisConfidence;
 import com.careertuner.fitanalysis.ai.prompt.FitAnalysisPromptCatalog;
+import com.careertuner.fitanalysis.domain.FitAnalysisGateResult;
 import com.careertuner.fitanalysis.domain.FitAnalysisGenerationSource;
 import com.careertuner.fitanalysis.domain.FitAnalysisLearningTask;
 import com.careertuner.fitanalysis.domain.FitAnalysisResult;
@@ -21,6 +22,7 @@ import com.careertuner.fitanalysis.dto.FitAnalysisDetailResponse;
 import com.careertuner.fitanalysis.dto.FitAnalysisHistoryEntryResponse;
 import com.careertuner.fitanalysis.dto.FitAnalysisLearningTaskResponse;
 import com.careertuner.fitanalysis.dto.FitActionBoardResponse;
+import com.careertuner.fitanalysis.dto.FitSafetyResponse;
 import com.careertuner.fitanalysis.dto.FitScoreBreakdownResponse;
 import com.careertuner.fitanalysis.dto.FitToneStrategyResponse;
 import com.careertuner.fitanalysis.mapper.FitAnalysisMapper;
@@ -40,6 +42,7 @@ public class FitAnalysisServiceImpl implements FitAnalysisService {
 
     private final FitAnalysisMapper fitAnalysisMapper;
     private final FitAnalysisAiService fitAnalysisAiService;
+    private final EvidenceGateService evidenceGateService;
     private final NotificationService notificationService;
     private final ObjectMapper objectMapper;
 
@@ -83,6 +86,9 @@ public class FitAnalysisServiceImpl implements FitAnalysisService {
         FitAnalysisAiResult ai = fitAnalysisAiService.generate(command);
         // 신뢰도는 AI 판단이 아니라 입력 상태 기반의 결정적 계산이라 mock/실 AI 모두 동일하게 산정된다.
         FitAnalysisConfidence confidence = FitAnalysisConfidence.evaluate(command);
+        // review-first evidence gate: AI 호출 + 기존 E1 grounding guard '이후'의 결정론 후처리 안전층.
+        // 점수/applyDecision/매칭/부족은 읽기만 하고 바꾸지 않는다(노출·검토 상태만 결정).
+        EvidenceGateDecision gate = evidenceGateService.evaluate(command, ai);
 
         FitAnalysisResult row = FitAnalysisResult.builder()
                 .applicationCaseId(applicationCaseId)
@@ -112,6 +118,7 @@ public class FitAnalysisServiceImpl implements FitAnalysisService {
                 previous == null ? null : previous.getFitScore(),
                 row.getFitScore(),
                 toJson(historyDiff(previous, row)));
+        persistGate(row.getId(), gate);
         int conditionOrder = 1;
         for (var condition : ai.conditionMatrix()) {
             String severity = "REQUIRED".equals(condition.conditionType()) && "UNMET".equals(condition.matchStatus())
@@ -278,7 +285,47 @@ public class FitAnalysisServiceImpl implements FitAnalysisService {
                 actionBoard(actions, tasks),
                 adverseStrategies(gaps),
                 next24HourActions(actions, gaps),
-                toneStrategies(result.getFitScore(), gaps));
+                toneStrategies(result.getFitScore(), gaps),
+                safety(result.getId()));
+    }
+
+    /** evidence gate 결정과 evidence 버킷 스냅샷을 C-only 테이블에 저장한다(원본·점수 미변경). */
+    private void persistGate(Long fitAnalysisId, EvidenceGateDecision gate) {
+        fitAnalysisMapper.insertGateResult(FitAnalysisGateResult.builder()
+                .fitAnalysisId(fitAnalysisId)
+                .gateStatus(gate.gateStatus())
+                .needsHumanReview(gate.needsHumanReview())
+                .reasonCount(gate.reasons().size())
+                .maxSeverity(gate.maxSeverity())
+                .gateReasonsJson(toJson(gate.reasons()))
+                .evidenceGateVersion(EvidenceGateDecision.VERSION)
+                .ragRuntimeEnabled(EvidenceGateDecision.RAG_RUNTIME_ENABLED)
+                .rewriteApplied(EvidenceGateDecision.REWRITE_APPLIED)
+                .build());
+        for (EvidenceGateDecision.EvidenceSource src : gate.evidenceSources()) {
+            fitAnalysisMapper.insertEvidenceSource(
+                    fitAnalysisId, src.sourceType(), src.userOwned(), src.items().size(), toJson(src.items()));
+        }
+    }
+
+    /** 저장된 gate 결정을 응답 safety 블록으로 변환한다. R3 이전 분석은 gate 가 없어 null(하위호환). */
+    private FitSafetyResponse safety(Long fitAnalysisId) {
+        FitAnalysisGateResult gate = fitAnalysisMapper.findGateResultByFitAnalysisId(fitAnalysisId);
+        if (gate == null) {
+            return null;
+        }
+        List<FitSafetyResponse.Reason> reasons = parseValue(
+                gate.getGateReasonsJson(),
+                new TypeReference<List<FitSafetyResponse.Reason>>() {},
+                List.of());
+        return new FitSafetyResponse(
+                gate.getGateStatus(),
+                gate.isNeedsHumanReview(),
+                gate.getMaxSeverity(),
+                reasons,
+                gate.getEvidenceGateVersion(),
+                gate.isRagRuntimeEnabled(),
+                gate.isRewriteApplied());
     }
 
     private Map<String, Object> historyDiff(FitAnalysisResult previous, FitAnalysisResult current) {
