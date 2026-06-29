@@ -44,4 +44,17 @@
         SELECT COUNT(*) FROM career_analysis_run
         WHERE status != 'SUCCESS'
     </select>
+
+    <!-- review-first evidence gate 검토 큐: 지원 건별 최신 적합도 분석 중 REVIEW_REQUIRED 상태 건수. -->
+    <select id="countReviewRequiredAnalyses" resultType="int">
+        SELECT COUNT(*)
+        FROM fit_analysis fa
+        INNER JOIN fit_analysis_gate_result gr ON gr.fit_analysis_id = fa.id
+        WHERE gr.gate_status = 'REVIEW_REQUIRED'
+          AND fa.id = (
+              SELECT MAX(latest_fa.id)
+              FROM fit_analysis latest_fa
+              WHERE latest_fa.application_case_id = fa.application_case_id
+          )
+    </select>
 </mapper>

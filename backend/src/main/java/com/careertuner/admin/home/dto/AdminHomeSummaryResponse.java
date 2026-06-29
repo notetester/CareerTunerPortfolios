@@ -16,6 +16,8 @@ public record AdminHomeSummaryResponse(
         int degradedLatestAnalyses,
         int reanalysisRequests,
         int careerRunFailures,
+        // review-first evidence gate 가 검토 필요로 판정한 최신 분석 수(R3 검토 큐).
+        int reviewRequiredAnalyses,
         List<AdminHomeShortcutResponse> shortcuts
 ) {
 }

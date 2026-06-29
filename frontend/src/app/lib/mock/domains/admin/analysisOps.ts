@@ -440,6 +440,10 @@ const fitAnalysisList: AdminFitAnalysisListItem[] = [
     memoCount: 1,
     latestMemoAt: iso(1),
     reanalysisRequested: false,
+    gateStatus: "PASSED",
+    needsHumanReview: false,
+    gateReasonCount: 0,
+    gateMaxSeverity: null,
   },
   {
     id: 5102,
@@ -461,6 +465,10 @@ const fitAnalysisList: AdminFitAnalysisListItem[] = [
     memoCount: 0,
     latestMemoAt: null,
     reanalysisRequested: false,
+    gateStatus: "PASSED",
+    needsHumanReview: false,
+    gateReasonCount: 0,
+    gateMaxSeverity: null,
   },
   {
     id: 5103,
@@ -482,6 +490,10 @@ const fitAnalysisList: AdminFitAnalysisListItem[] = [
     memoCount: 1,
     latestMemoAt: iso(2),
     reanalysisRequested: true,
+    gateStatus: "REVIEW_REQUIRED",
+    needsHumanReview: true,
+    gateReasonCount: 1,
+    gateMaxSeverity: "warning",
   },
   {
     id: 5104,
@@ -503,6 +515,10 @@ const fitAnalysisList: AdminFitAnalysisListItem[] = [
     memoCount: 0,
     latestMemoAt: null,
     reanalysisRequested: false,
+    gateStatus: "REJECTED",
+    needsHumanReview: true,
+    gateReasonCount: 1,
+    gateMaxSeverity: "critical",
   },
 ];
 
@@ -586,6 +602,11 @@ function buildFitDetail(id: number): AdminFitAnalysisDetail {
     status: item.status,
     errorMessage: item.errorMessage,
     createdAt: item.createdAt,
+    gateStatus: item.gateStatus,
+    needsHumanReview: item.needsHumanReview,
+    gateReasonCount: item.gateReasonCount,
+    gateMaxSeverity: item.gateMaxSeverity,
+    evidenceGateVersion: item.gateStatus ? "r3-review-first" : null,
     learningTasks:
       item.status === "FAILED"
         ? []

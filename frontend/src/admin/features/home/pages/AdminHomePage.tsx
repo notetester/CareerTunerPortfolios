@@ -36,6 +36,7 @@ export function AdminHomePage() {
     ? [
         { label: "적합도 분석 실패", value: summary.fitAnalysisFailures, tone: "text-red-600", icon: AlertTriangle, hint: "AI 호출 실패 건 재시도 확인" },
         { label: "강등 결과 노출", value: summary.degradedLatestAnalyses, tone: "text-red-600", icon: AlertTriangle, hint: "최신 분석이 FALLBACK/FAILED 상태" },
+        { label: "근거 검토 필요", value: summary.reviewRequiredAnalyses, tone: "text-orange-600", icon: AlertTriangle, hint: "evidence gate 가 검토 필요로 판정한 최신 분석" },
         { label: "재분석 요청", value: summary.reanalysisRequests, tone: "text-amber-600", icon: ClipboardList, hint: "재분석 필요 메모가 달린 분석" },
         { label: "미분석 지원 건", value: summary.unanalyzedApplications, tone: "text-amber-600", icon: ClipboardList, hint: "적합도 분석 미실행" },
         { label: "장기 분석 실패", value: summary.careerRunFailures, tone: "text-rose-600", icon: AlertTriangle, hint: "장기 경향·대시보드 요약 실행 실패" },
@@ -65,7 +66,7 @@ export function AdminHomePage() {
 
         {loading ? (
           <div className="grid gap-4 sm:grid-cols-3">
-            {Array.from({ length: 6 }).map((_, index) => (
+            {Array.from({ length: 7 }).map((_, index) => (
               <div key={index} className="h-28 animate-pulse rounded-lg bg-slate-200" />
             ))}
           </div>
