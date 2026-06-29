@@ -5,6 +5,7 @@ import java.util.Map;
 
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionTemplate;
 
 import com.careertuner.applicationcase.domain.ApplicationCase;
 import com.careertuner.applicationcase.service.ApplicationCaseAccessService;
@@ -39,9 +40,10 @@ public class CorrectionService {
     private final CorrectionAiClient aiClient;
     private final CorrectionAiUsageLogService usageLogService;
     private final ApplicationCaseAccessService applicationCaseAccessService;
+    private final CorrectionContextService contextService;
+    private final TransactionTemplate transactionTemplate;
     private final ObjectMapper objectMapper;
 
-    @Transactional
     public CorrectionResponse create(Long userId, CorrectionCreateRequest request) {
         String correctionType = normalizeCorrectionType(request == null ? null : request.correctionType());
         String originalText = normalizeOriginalText(request == null ? null : request.originalText());
@@ -51,6 +53,12 @@ public class CorrectionService {
                 ? null
                 : applicationCaseAccessService.requireOwned(userId, applicationCaseId);
         String featureType = featureType(correctionType);
+        var selfInput = contextService.build(
+                userId,
+                correctionType,
+                applicationCase,
+                originalText,
+                request == null ? null : request.questionText());
 
         CorrectionPayload payload;
         try {
@@ -61,27 +69,31 @@ public class CorrectionService {
                     applicationCaseId,
                     applicationCase,
                     originalText,
-                    request == null ? null : request.questionText()));
+                    request == null ? null : request.questionText(),
+                    selfInput));
         } catch (RuntimeException ex) {
             usageLogService.recordFailure(userId, applicationCaseId, featureType, userFacingFailureMessage(ex));
             throw ex;
         }
 
-        Long aiUsageLogId = usageLogService.recordSuccess(userId, applicationCaseId, featureType, payload.usage());
-        CorrectionRequest correction = CorrectionRequest.builder()
-                .userId(userId)
-                .applicationCaseId(applicationCaseId)
-                .correctionType(correctionType)
-                .sourceType(sourceType)
-                .sourceRefId(request == null ? null : request.sourceRefId())
-                .originalText(originalText)
-                .improvedText(payload.improvedText())
-                .resultJson(resultJson(payload))
-                .status("SUCCESS")
-                .aiUsageLogId(aiUsageLogId)
-                .build();
-        correctionMapper.insert(correction);
-        return CorrectionResponse.from(correction, resultPayload(payload));
+        return transactionTemplate.execute(status -> {
+            Long aiUsageLogId = usageLogService.recordSuccess(
+                    userId, applicationCaseId, featureType, payload.usage());
+            CorrectionRequest correction = CorrectionRequest.builder()
+                    .userId(userId)
+                    .applicationCaseId(applicationCaseId)
+                    .correctionType(correctionType)
+                    .sourceType(sourceType)
+                    .sourceRefId(request == null ? null : request.sourceRefId())
+                    .originalText(originalText)
+                    .improvedText(payload.improvedText())
+                    .resultJson(resultJson(payload))
+                    .status("SUCCESS")
+                    .aiUsageLogId(aiUsageLogId)
+                    .build();
+            correctionMapper.insert(correction);
+            return CorrectionResponse.from(correction, resultPayload(payload));
+        });
     }
 
     @Transactional(readOnly = true)
@@ -152,11 +164,15 @@ public class CorrectionService {
 
     private String resultJson(CorrectionPayload payload) {
         try {
-            return objectMapper.writeValueAsString(Map.of(
-                    "summary", payload.summary(),
-                    "issues", payload.issues(),
-                    "changeReasons", payload.changeReasons(),
-                    "suggestions", payload.suggestions()));
+            Map<String, Object> result = new java.util.LinkedHashMap<>();
+            result.put("summary", payload.summary());
+            result.put("issues", payload.issues());
+            result.put("changeReasons", payload.changeReasons());
+            result.put("suggestions", payload.suggestions());
+            if (payload.modelResult() != null && !payload.modelResult().isEmpty()) {
+                result.put("modelResult", payload.modelResult());
+            }
+            return objectMapper.writeValueAsString(result);
         } catch (JacksonException ex) {
             throw new BusinessException(ErrorCode.INTERNAL_ERROR, "Correction result could not be serialized.");
         }
@@ -167,10 +183,29 @@ public class CorrectionService {
             return CorrectionResultPayload.empty();
         }
         try {
-            return objectMapper.readValue(resultJson, CorrectionResultPayload.class);
+            var root = objectMapper.readTree(resultJson);
+            return new CorrectionResultPayload(
+                    root.path("summary").asText(""),
+                    stringList(root.path("issues")),
+                    stringList(root.path("changeReasons")),
+                    stringList(root.path("suggestions")));
         } catch (JacksonException ex) {
             return CorrectionResultPayload.empty();
         }
+    }
+
+    private List<String> stringList(tools.jackson.databind.JsonNode node) {
+        if (!node.isArray()) {
+            return List.of();
+        }
+        List<String> values = new java.util.ArrayList<>();
+        for (var item : node) {
+            String value = item.asText("").trim();
+            if (!value.isBlank()) {
+                values.add(value);
+            }
+        }
+        return List.copyOf(values);
     }
 
     private String userFacingFailureMessage(RuntimeException ex) {

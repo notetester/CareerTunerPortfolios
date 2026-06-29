@@ -31,23 +31,24 @@ import tools.jackson.databind.ObjectMapper;
 @Slf4j
 public class OpenAiCorrectionProvider implements CorrectionAiProvider {
 
-    private static final int MAX_ATTEMPTS = 3;
-
     private final OpenAiProperties properties;
+    private final CorrectionAiProperties correctionProperties;
     private final ObjectMapper objectMapper;
     private final CorrectionAiPayloadParser payloadParser;
     private final HttpClient httpClient;
 
     public OpenAiCorrectionProvider(
             OpenAiProperties properties,
+            CorrectionAiProperties correctionProperties,
             ObjectMapper objectMapper,
             CorrectionAiPayloadParser payloadParser
     ) {
         this.properties = properties;
+        this.correctionProperties = correctionProperties;
         this.objectMapper = objectMapper;
         this.payloadParser = payloadParser;
         this.httpClient = HttpClient.newBuilder()
-                .connectTimeout(properties.getTimeout())
+                .connectTimeout(correctionProperties.getOpenAiTimeout())
                 .build();
     }
 
@@ -56,7 +57,7 @@ public class OpenAiCorrectionProvider implements CorrectionAiProvider {
         JsonNode root = post(structuredRequest(
                 "correction_result",
                 correctionSchema(),
-                CorrectionPromptCatalog.SYSTEM_PROMPT,
+                CorrectionPromptCatalog.OPENAI_SYSTEM_PROMPT,
                 CorrectionPromptBuilder.userPrompt(command)));
         return payloadParser.parsePayload(outputText(root), usage(root));
     }
@@ -67,10 +68,11 @@ public class OpenAiCorrectionProvider implements CorrectionAiProvider {
         }
         try {
             String body = objectMapper.writeValueAsString(requestBody);
-            for (int attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+            int maxAttempts = Math.max(1, correctionProperties.getOpenAiMaxAttempts());
+            for (int attempt = 1; attempt <= maxAttempts; attempt++) {
                 try {
                     HttpRequest request = HttpRequest.newBuilder(URI.create(properties.responsesUrl()))
-                            .timeout(properties.getTimeout())
+                            .timeout(correctionProperties.getOpenAiTimeout())
                             .header("Authorization", "Bearer " + properties.getApiKey())
                             .header("Content-Type", "application/json")
                             .POST(HttpRequest.BodyPublishers.ofString(body, StandardCharsets.UTF_8))
@@ -81,19 +83,20 @@ public class OpenAiCorrectionProvider implements CorrectionAiProvider {
                     }
 
                     String message = errorMessage(response.body());
-                    if (attempt < MAX_ATTEMPTS && isRetryable(response.statusCode(), message)) {
+                    if (attempt < maxAttempts && isRetryable(response.statusCode(), message)) {
                         sleepBeforeRetry(attempt);
                         continue;
                     }
                     throw new BusinessException(ErrorCode.INTERNAL_ERROR,
                             "OpenAI request failed. " + truncate(message, 300));
                 } catch (IOException ex) {
-                    log.warn("Correction OpenAI request I/O failure on attempt {}/{}", attempt, MAX_ATTEMPTS, ex);
+                    log.warn("Correction OpenAI request I/O failure on attempt {}/{}", attempt, maxAttempts, ex);
                     if (ex instanceof HttpTimeoutException || containsIgnoreCase(ex.getMessage(), "timeout")) {
                         throw new BusinessException(ErrorCode.INTERNAL_ERROR,
-                                "OpenAI request timed out after %d seconds.".formatted(properties.getTimeout().toSeconds()));
+                                "OpenAI request timed out after %d seconds."
+                                        .formatted(correctionProperties.getOpenAiTimeout().toSeconds()));
                     }
-                    if (attempt < MAX_ATTEMPTS) {
+                    if (attempt < maxAttempts) {
                         sleepBeforeRetry(attempt);
                         continue;
                     }

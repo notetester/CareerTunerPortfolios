@@ -16,6 +16,8 @@ public class CorrectionAiProperties {
 
     private String provider = "openai";
     private boolean fallbackEnabled = true;
+    private Duration openAiTimeout = Duration.ofSeconds(30);
+    private int openAiMaxAttempts = 1;
     private Self self = new Self();
 
     public boolean selfProviderEnabled() {
@@ -26,12 +28,16 @@ public class CorrectionAiProperties {
     @Setter
     public static class Self {
         private String baseUrl = "";
-        private String model = "careertuner-e-correction";
+        private String model = "careertuner-e-correction:8b";
+        private String fallbackModel = "careertuner-e-correction-3b:latest";
         private String apiKey = "";
         private int maxTokens = 1600;
         private double temperature = 0.2;
-        private Duration timeout = Duration.ofSeconds(60);
-        private int maxRetries = 2;
+        private Duration connectTimeout = Duration.ofSeconds(3);
+        private Duration timeout = Duration.ofSeconds(20);
+        private Duration totalTimeBudget = Duration.ofSeconds(30);
+        private int primaryMaxAttempts = 2;
+        private int fallbackMaxAttempts = 1;
         private Duration retryBackoff = Duration.ofMillis(400);
 
         public boolean configured() {
