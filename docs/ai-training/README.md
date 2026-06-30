@@ -84,6 +84,7 @@
 | `HEALTHCARE_SERVICE` | 의료, 간호, 상담, 고객 서비스 |
 | `EDUCATION_PUBLIC` | 교육, 강의, 행정, 공공 |
 | `PRODUCTION_LOGISTICS` | 생산, 품질, 물류, 구매, 현장 운영 |
+| `ENGINEERING_TECHNICAL` | 기계, 전기전자, 건설, 설비, 화학, 바이오, 환경안전, 연구개발 |
 | `GENERAL` | 직무군 판단이 애매한 일반 프로필 |
 
 ## 2. 데이터 생성
