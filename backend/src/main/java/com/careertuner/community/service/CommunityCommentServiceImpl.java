@@ -139,6 +139,7 @@ public class CommunityCommentServiceImpl implements CommunityCommentService {
                 null,
                 0,
                 false,
+                false,
                 c.getCreatedAt(),
                 false,
                 true);
@@ -202,6 +203,33 @@ public class CommunityCommentServiceImpl implements CommunityCommentService {
 
     @Override
     @Transactional
+    public CommentResponse updateComment(Long commentId, String content, Long userId) {
+        CommunityComment comment = commentMapper.findById(commentId);
+        if (comment == null) {
+            throw new BusinessException(ErrorCode.NOT_FOUND, "댓글을 찾을 수 없습니다.");
+        }
+        if (!comment.getUserId().equals(userId)) {
+            throw new BusinessException(ErrorCode.FORBIDDEN, "본인의 댓글만 수정할 수 있습니다.");
+        }
+        // PUBLISHED 댓글의 본문만 수정. 숨김/삭제 댓글은 0행 → 수정 불가.
+        int updated = commentMapper.updateContentIfPublished(commentId, content);
+        if (updated == 0) {
+            throw new BusinessException(ErrorCode.CONFLICT, "숨김 또는 삭제된 댓글은 수정할 수 없습니다.");
+        }
+        // 편집 본문 재검열(작성·게시글 편집과 동형 — toxic 시 HIDDEN 으로 조건부 flip).
+        eventPublisher.publishEvent(new CommentModerationRequiredEvent(commentId));
+        log.info("댓글 수정 commentId={}", commentId);
+        CommunityComment fresh = commentMapper.findById(commentId);
+        CommunityPost post = postMapper.findById(fresh.getPostId());
+        Long postAuthorId = post != null ? post.getUserId() : null;
+        // 응답 라벨은 단순값(익명 등). FE 는 낙관적으로 본문만 갱신한다(편집 흐름은 목록 재조회 안 함 —
+        // 작성의 pending 윈도우와 동형: 편집 본문이 재검열로 HIDDEN 되면 다음 재조회/타 클라에서 반영).
+        return toResponse(fresh, postAuthorId, userId,
+                fresh.isAnonymous() ? "익명" : fresh.getUserName(), null, false);
+    }
+
+    @Override
+    @Transactional
     public void deleteComment(Long commentId, Long userId) {
         CommunityComment comment = commentMapper.findById(commentId);
         if (comment == null) {
@@ -236,6 +264,7 @@ public class CommunityCommentServiceImpl implements CommunityCommentService {
                 c.getContent(),
                 c.getLikeCount(),
                 c.getUserId().equals(postAuthorId),
+                currentUserId != null && currentUserId.equals(c.getUserId()),
                 c.getCreatedAt(),
                 liked,
                 isDeleted);

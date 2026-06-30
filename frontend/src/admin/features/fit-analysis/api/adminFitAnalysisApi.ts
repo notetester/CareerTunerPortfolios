@@ -6,8 +6,9 @@ import type {
   AdminFitAnalysisMemoRequest,
 } from "../types/adminFitAnalysis";
 
-export function getAdminFitAnalyses() {
-  return api<AdminFitAnalysisListItem[]>("/admin/fit-analyses");
+export function getAdminFitAnalyses(reviewRequiredOnly = false) {
+  const query = reviewRequiredOnly ? "?reviewRequiredOnly=true" : "";
+  return api<AdminFitAnalysisListItem[]>(`/admin/fit-analyses${query}`);
 }
 
 export function getAdminFitAnalysis(id: number) {

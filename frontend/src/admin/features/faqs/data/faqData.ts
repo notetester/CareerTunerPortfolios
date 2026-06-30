@@ -6,6 +6,7 @@ export interface Faq {
   q: string;
   a: string;
   on: boolean;
+  sortOrder?: number;
   images: string[];
   yt: string;
 }

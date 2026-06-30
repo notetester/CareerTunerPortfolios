@@ -11,7 +11,7 @@ import jakarta.validation.constraints.Size;
 public record CreatePostRequest(
         @NotNull PostCategory category,
         @NotBlank @Size(max = 255) String title,
-        @NotBlank String content,
+        @NotBlank @Size(max = 5000) String content,
         boolean anonymous,
         List<String> tags,
         String companyName,

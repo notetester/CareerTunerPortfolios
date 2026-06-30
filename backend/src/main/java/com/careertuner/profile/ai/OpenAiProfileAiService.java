@@ -1,7 +1,5 @@
 package com.careertuner.profile.ai;
 
-import java.util.LinkedHashMap;
-import java.util.List;
 import java.util.Map;
 
 import org.springframework.stereotype.Service;
@@ -16,6 +14,14 @@ import lombok.RequiredArgsConstructor;
 import tools.jackson.core.JacksonException;
 import tools.jackson.databind.ObjectMapper;
 
+/**
+ * 프로필 평가의 OpenAI 단계. 키가 있으면 실제 평가를, 없거나 실패하면 규칙기반({@link RuleBasedProfileAiService})
+ * 으로 폴백한다.
+ *
+ * <p>활성 진입점(@Primary)은 {@link FallbackProfileAiService}(Claude→OpenAI)다. 이 서비스는 그 폴백 체인의
+ * OpenAI 단계이며, 내부 규칙기반 폴백이 최종 안전망이다. 스키마는 {@link ProfileAiSchemaProvider}, 응답 파싱은
+ * {@link ProfileAiJsonValidator} 를 Claude 단계와 공유한다.
+ */
 @Service
 @RequiredArgsConstructor
 public class OpenAiProfileAiService implements ProfileAiService {
@@ -24,6 +30,7 @@ public class OpenAiProfileAiService implements ProfileAiService {
     private final RuleBasedProfileAiService ruleBasedService;
     private final JobFamilyWeightPolicy weightPolicy;
     private final ProfileAiJsonValidator validator;
+    private final ProfileAiSchemaProvider schemaProvider;
     private final ObjectMapper objectMapper;
 
     @Override
@@ -36,8 +43,8 @@ public class OpenAiProfileAiService implements ProfileAiService {
 
         try {
             StructuredResponse response = openAiClient.request(
-                    "profile_evaluation",
-                    schema(),
+                    ProfileAiSchemaProvider.SCHEMA_NAME,
+                    schemaProvider.schema(),
                     ProfilePromptCatalog.SYSTEM_PROMPT,
                     ProfilePromptCatalog.userPrompt(featureType, jobFamily, weights, json(profile)));
             return validator.validate(featureType, jobFamily, weights, response.payload(), response.usage());
@@ -57,49 +64,6 @@ public class OpenAiProfileAiService implements ProfileAiService {
                     "FALLBACK",
                     exception.getMessage());
         }
-    }
-
-    private Map<String, Object> schema() {
-        Map<String, Object> criterionScore = new LinkedHashMap<>();
-        criterionScore.put("criterion", enumString(List.of(ScoreCriterion.values()).stream().map(Enum::name).toList()));
-        criterionScore.put("rawScore", Map.of("type", "integer", "minimum", 0, "maximum", 100));
-        criterionScore.put("evidence", string());
-        criterionScore.put("improvement", string());
-
-        Map<String, Object> properties = new LinkedHashMap<>();
-        properties.put("summary", string());
-        properties.put("extractedSkills", stringArray());
-        properties.put("strengths", stringArray());
-        properties.put("gaps", stringArray());
-        properties.put("recommendations", stringArray());
-        properties.put("criterionScores", Map.of(
-                "type", "array",
-                "items", objectSchema(criterionScore)));
-        return Map.of(
-                "type", "object",
-                "additionalProperties", false,
-                "properties", properties,
-                "required", List.copyOf(properties.keySet()));
-    }
-
-    private Map<String, Object> stringArray() {
-        return Map.of("type", "array", "items", string());
-    }
-
-    private Map<String, Object> string() {
-        return Map.of("type", "string");
-    }
-
-    private Map<String, Object> enumString(List<String> values) {
-        return Map.of("type", "string", "enum", values);
-    }
-
-    private Map<String, Object> objectSchema(Map<String, Object> properties) {
-        return Map.of(
-                "type", "object",
-                "additionalProperties", false,
-                "properties", properties,
-                "required", List.copyOf(properties.keySet()));
     }
 
     private String json(Object value) {

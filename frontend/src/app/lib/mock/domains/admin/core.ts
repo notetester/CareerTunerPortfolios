@@ -17,6 +17,7 @@ const dashboardOverview: AdminDashboardOverview = {
   totalFitAnalyses: 18,
   totalInterviewSessions: 23,
   aiCallsThisMonth: 412,
+  reviewRequiredAnalyses: 2,
 };
 
 // ── 관리자 홈: 지금 처리할 적합도 분석 작업 대기 큐 + 운영 바로가기 ──
@@ -27,6 +28,7 @@ const homeSummary: AdminHomeSummary = {
   degradedLatestAnalyses: 1,
   reanalysisRequests: 3,
   careerRunFailures: 1,
+  reviewRequiredAnalyses: 2,
   shortcuts: [
     { label: "적합도 분석 관리", path: "/admin/fit-analysis", description: "전체 지원 건의 적합도 분석 결과를 점검하고 재분석합니다." },
     { label: "운영 종합 대시보드", path: "/admin/dashboard", description: "회원·지원·분석·면접·AI 호출 현황 카운트를 봅니다." },

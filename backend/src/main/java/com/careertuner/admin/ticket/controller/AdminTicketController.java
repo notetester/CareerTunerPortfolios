@@ -16,6 +16,7 @@ import com.careertuner.admin.ticket.dto.AdminTicketDetailResponse;
 import com.careertuner.admin.ticket.dto.AdminTicketDraftResponse;
 import com.careertuner.admin.ticket.dto.AdminTicketListResponse;
 import com.careertuner.admin.ticket.dto.AdminTicketReplyRequest;
+import com.careertuner.admin.ticket.dto.AdminTicketSummaryResponse;
 import com.careertuner.admin.ticket.dto.AdminTicketUpdateRequest;
 import com.careertuner.admin.ticket.service.AdminTicketService;
 import com.careertuner.common.security.AuthUser;
@@ -67,5 +68,12 @@ public class AdminTicketController {
             @AuthenticationPrincipal AuthUser authUser,
             @PathVariable Long id) {
         return ApiResponse.ok(ticketService.generateDraft(authUser, id));
+    }
+
+    @PostMapping("/{id}/member-summary")
+    public ApiResponse<AdminTicketSummaryResponse> generateMemberSummary(
+            @AuthenticationPrincipal AuthUser authUser,
+            @PathVariable Long id) {
+        return ApiResponse.ok(ticketService.generateMemberSummary(authUser, id));
     }
 }

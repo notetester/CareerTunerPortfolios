@@ -183,8 +183,8 @@ export default function AdminGuidelines() {
       actions={
         <a className="adm__actions-btn" href="/community" target="_blank" rel="noopener noreferrer" style={{
           display: "inline-flex", alignItems: "center", gap: 6, padding: "7px 14px",
-          fontSize: 12.5, fontWeight: 600, border: "1px solid #e2e8f0", borderRadius: 7,
-          background: "#fff", color: "#475569", textDecoration: "none", whiteSpace: "nowrap",
+          fontSize: 12.5, fontWeight: 600, border: "1px solid var(--av-line)", borderRadius: 7,
+          background: "var(--av-card)", color: "var(--av-ink-2)", textDecoration: "none", whiteSpace: "nowrap",
         }}><Eye style={{ width: 13, height: 13 }} />현재 게시본 보기</a>
       }
     >

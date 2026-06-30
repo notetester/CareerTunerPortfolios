@@ -41,6 +41,17 @@ public class IntakeSlotTrace {
         volatile String mode;
         volatile String originalQuery;
         volatile List<ApplicationCaseResponse> fetchedCases = List.of();
+        /** fork 구간 시작 인덱스 = 인테이크 진입 직전 memory 메시지 수(첫 턴 1회 기록). */
+        volatile Integer entryOffset;
+        /** 이 대화가 바인딩된 지원 건 id(fork 후 설정). 같은 건 재확정 시 재-fork 방지(케이스 전환만 격리). */
+        volatile Long boundCaseId;
+        /** (b)(d) 깡통 온보딩 단계(JOB/SKILLS/AWAIT_POSTING/EXTRACTING/AWAIT_COMPANY/AWAIT_JOBTITLE/CASE_READY). null=미진입. */
+        volatile String onboardingStep;
+        /** (b) 온보딩에서 받은 직무·기술 — 유저 답 *그대로*(가공 0). 배열 변환은 (e) save 단계의 코드가. */
+        volatile String onboardingJob;
+        volatile String onboardingSkills;
+        /** (d) 온보딩에서 생성한 지원 건 id(공고 추출 폴링·보정 update 대상). 미생성이면 null. */
+        volatile Long onboardingCaseId;
     }
 
     private SlotState currentState() {
@@ -87,6 +98,127 @@ public class IntakeSlotTrace {
         currentState().mode = mode;
     }
 
+    /**
+     * 첫 인테이크 턴이면 "진입 직전 memory 메시지 수"를 fork 구간 시작점으로 1회 기록한다.
+     * 이미 기록됐으면(=첫 턴 아님) supplier 를 호출하지 않는다(불필요한 memory 조회 회피).
+     */
+    public void recordEntryOffsetIfAbsent(java.util.function.IntSupplier offsetSupplier) {
+        SlotState state = currentState();
+        if (state.entryOffset == null) {
+            state.entryOffset = offsetSupplier.getAsInt();
+        }
+    }
+
+    /** fork 구간 시작 인덱스(진입 직전 메시지 수). 미기록이면 null. */
+    public Integer entryOffset() {
+        return currentState().entryOffset;
+    }
+
+    /** 이 대화가 바인딩된 지원 건 id(fork 전이면 null). 같은 건 재확정 시 재-fork 방지에 쓴다. */
+    public Long boundCaseId() {
+        return currentState().boundCaseId;
+    }
+
+    /**
+     * fork 후처리: 누적 슬롯을 원 대화→새 대화로 이전하고, 바인딩 건과 새 진입 offset 을 갱신한다.
+     * 다음 케이스로 전환하면 그 구간만 다시 fork 되도록 entryOffset 을 새 대화 길이로 재무장한다.
+     */
+    public void migrateToFork(Long oldConversationId, Long newConversationId,
+                              Long boundCaseId, int newEntryOffset) {
+        SlotState state = slotsByConversation.remove(oldConversationId);
+        if (state == null) {
+            state = new SlotState();
+        }
+        state.boundCaseId = boundCaseId;
+        state.entryOffset = newEntryOffset;
+        if (newConversationId != null) {
+            slotsByConversation.put(newConversationId, state);
+        }
+    }
+
+    /** 이 대화의 누적 슬롯이 메모리에 있는지(없으면 DB 복원 후보 — 재시작/재방문). */
+    public boolean hasSlot(Long conversationId) {
+        return conversationId != null && slotsByConversation.containsKey(conversationId);
+    }
+
+    /**
+     * DB 에서 읽은 슬롯을 메모리로 복원(재시작/재방문). entryOffset·boundCaseId 는 파생값이라 인자/규칙으로 채운다.
+     * boundCaseId = caseId(이미 그 건에 바인딩된 세션이므로 같은 건 재확정은 재-fork 안 함).
+     * entryOffset 은 호출부가 현재 memory 길이로 넘긴다(다음 케이스 전환은 현재 지점부터 fork).
+     */
+    public void restore(Long conversationId, Long caseId, String mode, String originalQuery, int entryOffset) {
+        if (conversationId == null) {
+            return;
+        }
+        SlotState state = new SlotState();
+        state.caseId = caseId;
+        state.mode = mode;
+        state.originalQuery = originalQuery;
+        state.boundCaseId = caseId;
+        state.entryOffset = entryOffset;
+        slotsByConversation.put(conversationId, state);
+    }
+
+    // ──────── (b) 깡통 온보딩 수집 (대화 단위, ThreadLocal 무관·인메모리·미영속·LLM 40창 미사용) ────────
+
+    /** 온보딩 단계(JOB/SKILLS/COLLECTED). 미진입이면 null. */
+    public String onboardingStep(Long conversationId) {
+        if (conversationId == null) {
+            return null;
+        }
+        SlotState state = slotsByConversation.get(conversationId);
+        return state == null ? null : state.onboardingStep;
+    }
+
+    /** 온보딩 단계 전이. */
+    public void setOnboardingStep(Long conversationId, String step) {
+        if (conversationId == null) {
+            return;
+        }
+        slotsByConversation.computeIfAbsent(conversationId, key -> new SlotState()).onboardingStep = step;
+    }
+
+    /** 받은 직무를 유저 답 *그대로* 누적(가공·해석 없음). */
+    public void recordOnboardingJob(Long conversationId, String job) {
+        if (conversationId == null) {
+            return;
+        }
+        slotsByConversation.computeIfAbsent(conversationId, key -> new SlotState()).onboardingJob = job;
+    }
+
+    /** 받은 기술을 유저 답 *그대로* 누적(배열 변환은 (e) save 에서). */
+    public void recordOnboardingSkills(Long conversationId, String skills) {
+        if (conversationId == null) {
+            return;
+        }
+        slotsByConversation.computeIfAbsent(conversationId, key -> new SlotState()).onboardingSkills = skills;
+    }
+
+    /** (d) 온보딩에서 생성한 지원 건 id. 미생성이면 null. */
+    public Long onboardingCaseId(Long conversationId) {
+        if (conversationId == null) {
+            return null;
+        }
+        SlotState state = slotsByConversation.get(conversationId);
+        return state == null ? null : state.onboardingCaseId;
+    }
+
+    /** (d) 공고로 생성한 지원 건 id 기록(추출 폴링·보정 update 대상). */
+    public void setOnboardingCaseId(Long conversationId, Long caseId) {
+        if (conversationId == null) {
+            return;
+        }
+        slotsByConversation.computeIfAbsent(conversationId, key -> new SlotState()).onboardingCaseId = caseId;
+    }
+
+    /** 온보딩 수집 스냅샷(검증·(e) 변환용). */
+    public OnboardingCollected onboarding(Long conversationId) {
+        SlotState state = conversationId == null ? null : slotsByConversation.get(conversationId);
+        return state == null
+                ? new OnboardingCollected(null, null, null)
+                : new OnboardingCollected(state.onboardingStep, state.onboardingJob, state.onboardingSkills);
+    }
+
     /** 컨트롤러가 AutoPrepRequest 조립에 쓰는 확정 슬롯 스냅샷. */
     public IntakeSlots snapshot() {
         SlotState state = currentState();
@@ -101,4 +233,7 @@ public class IntakeSlotTrace {
 
     /** 코드가 검증·확정한 슬롯 스냅샷(요청 범위). */
     public record IntakeSlots(Long caseId, String mode, String originalQuery) {}
+
+    /** (b) 온보딩 수집 스냅샷(직무·기술은 유저 답 원문 그대로). */
+    public record OnboardingCollected(String step, String job, String skills) {}
 }

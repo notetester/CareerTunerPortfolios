@@ -12,6 +12,8 @@ public record AdminDashboardOverviewResponse(
         int totalApplications,
         int totalFitAnalyses,
         int totalInterviewSessions,
-        int aiCallsThisMonth
+        int aiCallsThisMonth,
+        // review-first evidence gate 검토 대기(REVIEW_REQUIRED) 적합도 분석 수(R3).
+        int reviewRequiredAnalyses
 ) {
 }

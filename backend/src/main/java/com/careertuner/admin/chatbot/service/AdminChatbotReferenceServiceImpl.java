@@ -64,7 +64,7 @@ public class AdminChatbotReferenceServiceImpl implements AdminChatbotReferenceSe
     }
 
     private void requireAdmin(AuthUser authUser) {
-        if (authUser == null || !"ADMIN".equals(authUser.role())) {
+        if (authUser == null || !com.careertuner.admin.common.AdminAccess.isAdmin(authUser)) {
             throw new BusinessException(ErrorCode.FORBIDDEN, "관리자 권한이 필요합니다.");
         }
     }

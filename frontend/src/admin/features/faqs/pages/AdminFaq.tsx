@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import {
-  CircleHelp, Plus, Search, ChevronLeft, ChevronRight,
+  CircleHelp, Plus, Search, ChevronLeft, ChevronRight, ChevronUp, ChevronDown,
   Trash2, Eye, EyeOff, ArrowLeft, Check, CornerDownRight, RefreshCw,
 } from "lucide-react";
 import AdminShell from "../../../components/AdminShell";
@@ -195,6 +195,29 @@ export default function AdminFaq() {
     setDialog(null);
   };
 
+  // 순서 변경은 전체 목록 기준으로만(필터/검색 중엔 부분목록이라 전역 순서와 안 맞음 → 숨김).
+  const reorderable = catFilter === "전체" && !query.trim();
+
+  // ↑↓ 이동: items 에서 인접 스왑 후, 새 위치(index)를 sort_order 로 영속한다.
+  // 첫 이동 때 0 베이스라인이 0..n-1 로 정규화되고, 이후엔 바뀐 항목만 PUT 된다(기존값=index면 스킵).
+  const move = async (index: number, dir: -1 | 1) => {
+    const target = index + dir;
+    if (target < 0 || target >= items.length) return;
+    const next = [...items];
+    [next[index], next[target]] = [next[target], next[index]];
+    setItems(next);
+    try {
+      const updates = next.flatMap((f, i) =>
+        f.sortOrder === i ? [] : [adminFaqApi.updateFaq(f.id, { cat: f.cat, q: f.q, a: f.a, on: f.on, sortOrder: i })]);
+      await Promise.all(updates);
+      loadItems();
+      flash("순서를 변경했습니다.", "green");
+    } catch {
+      flash("순서 변경에 실패했습니다.", "red");
+      loadItems();
+    }
+  };
+
   if (view === "compose") {
     return <FaqComposeView onBack={() => setView("list")} onCreated={() => { setView("list"); loadItems(); }} />;
   }
@@ -242,7 +265,7 @@ export default function AdminFaq() {
             </tr>
           </thead>
           <tbody>
-            {filtered.map((f) => (
+            {filtered.map((f, i) => (
               <tr key={f.id}>
                 <td className="av-id num">#{f.id}</td>
                 <td><div className="av-cell__t" style={{ maxWidth: 520 }}>{f.q}</div></td>
@@ -255,6 +278,16 @@ export default function AdminFaq() {
                 <td className="r av-muted num">–</td>
                 <td className="r">
                   <div className="faq-actions">
+                    {reorderable && (
+                      <>
+                        <button className="av-btn" title="위로" disabled={i === 0} onClick={() => move(i, -1)}>
+                          <ChevronUp />
+                        </button>
+                        <button className="av-btn" title="아래로" disabled={i === filtered.length - 1} onClick={() => move(i, 1)}>
+                          <ChevronDown />
+                        </button>
+                      </>
+                    )}
                     <button className="av-btn" title={f.on ? "비노출" : "노출"}
                       onClick={() => setDialog({ type: "toggle", faq: f })}>
                       {f.on ? <EyeOff /> : <Eye />}

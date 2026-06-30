@@ -27,6 +27,14 @@
         DELETE FROM community_post_tag WHERE post_id = #{postId} AND is_ai = 1
     </delete>
 
+    <select id="findUserTagIds" resultType="java.lang.Long">
+        SELECT tag_id FROM community_post_tag WHERE post_id = #{postId} AND is_ai = 0
+    </select>
+
+    <delete id="deleteUserPostTags">
+        DELETE FROM community_post_tag WHERE post_id = #{postId} AND is_ai = 0
+    </delete>
+
     <!--
         동시 태깅 시 PK(post_id, tag_id) 중복으로 INSERT가 실패하던 문제를 흡수한다.
         충돌 시 is_ai만 갱신한다(usage_count는 이 매퍼에 결합돼 있지 않음).

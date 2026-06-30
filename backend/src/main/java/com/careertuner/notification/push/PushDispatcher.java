@@ -1,5 +1,9 @@
 package com.careertuner.notification.push;
 
+import java.time.LocalTime;
+import java.time.ZoneId;
+import java.time.format.DateTimeParseException;
+
 import org.springframework.stereotype.Component;
 
 import com.careertuner.notification.domain.Notification;
@@ -33,11 +37,49 @@ public class PushDispatcher {
             if (Boolean.FALSE.equals(pref.categories().get(category))) {
                 return;
             }
+            // 방해금지 시간대(KST)면 푸시는 보내지 않는다. in-app 알림은 이미 저장돼 있어 사용자가 나중에 확인할 수 있다.
+            if (isWithinQuietHours(pref.quietHoursStart(), pref.quietHoursEnd())) {
+                return;
+            }
             for (var subscription : pushSubscriptionMapper.findByUserId(notification.getUserId())) {
                 pushSender.send(subscription, notification.getTitle(), notification.getMessage(), notification.getLink());
             }
         } catch (RuntimeException ex) {
             // 푸시는 보조 채널 — 실패해도 in-app 알림에는 영향 주지 않는다.
         }
+    }
+
+    private static final ZoneId KST = ZoneId.of("Asia/Seoul");
+
+    /** 지금(KST)이 사용자의 방해금지 시간대 안인지 판정. */
+    static boolean isWithinQuietHours(String start, String end) {
+        return isWithinQuietHours(start, end, LocalTime.now(KST));
+    }
+
+    /**
+     * 방해금지 구간 판정. 시작 포함·끝 제외([start, end)). 자정을 넘기는 구간(start &gt; end)도 처리한다.
+     * 미설정(빈값)·형식 오류·시작==끝은 "방해금지 없음"(false)으로 본다 — 안전하게 발송을 허용한다.
+     */
+    static boolean isWithinQuietHours(String start, String end, LocalTime now) {
+        if (start == null || start.isBlank() || end == null || end.isBlank()) {
+            return false;
+        }
+        LocalTime s;
+        LocalTime e;
+        try {
+            s = LocalTime.parse(start.trim());
+            e = LocalTime.parse(end.trim());
+        } catch (DateTimeParseException ex) {
+            return false;
+        }
+        if (s.equals(e)) {
+            return false;
+        }
+        if (s.isBefore(e)) {
+            // 같은 날 구간 [s, e)
+            return !now.isBefore(s) && now.isBefore(e);
+        }
+        // 자정을 넘기는 구간 (예: 22:00~07:00) → [s, 24:00) ∪ [00:00, e)
+        return !now.isBefore(s) || now.isBefore(e);
     }
 }

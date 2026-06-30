@@ -33,4 +33,30 @@
          LIMIT 1
     </select>
 
+    <update id="bindCase">
+        UPDATE chatbot_conversation_memory
+           SET application_case_id = #{applicationCaseId},
+               title               = #{title}
+         WHERE conversation_id = #{conversationId}
+    </update>
+
+    <select id="findIntakeSessionsByUser" resultType="map">
+        SELECT m.conversation_id AS conversationId,
+               m.title           AS title,
+               s.mode            AS mode,
+               m.updated_at      AS updatedAt
+          FROM chatbot_conversation_memory m
+          LEFT JOIN chatbot_intake_slot s ON s.conversation_id = m.conversation_id
+         WHERE m.user_id = #{userId}
+           AND m.application_case_id IS NOT NULL
+         ORDER BY m.updated_at DESC
+         LIMIT 5
+    </select>
+
+    <select id="findOwnerUserId" resultType="java.lang.Long">
+        SELECT user_id
+          FROM chatbot_conversation_memory
+         WHERE conversation_id = #{conversationId}
+    </select>
+
 </mapper>

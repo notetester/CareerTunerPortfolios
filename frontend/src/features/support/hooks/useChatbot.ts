@@ -35,6 +35,8 @@ interface ChatbotApiResponse {
   intake?: IntakeStepResp | null;
   /** 이 턴 이후 위젯이 오케스트레이터 모드를 유지해야 하는지의 단일 신호. */
   inOrchestration?: boolean;
+  /** 추천 후기 압축 요약 칩 — 검색된 글이 2개 이상일 때만 주입(아니면 null). */
+  summaryChip?: { label: string; postIds: number[] } | null;
 }
 
 /* ── 이전 대화 복원 응답 (GET /chatbot/conversations/recent) ── */
@@ -43,9 +45,13 @@ interface ChatHistoryResponse {
   messages: { role: "user" | "bot"; text: string }[];
 }
 
-const MOCK_SESSIONS: ChatSession[] = [
-  { id: "s1", title: "새 대화", lastMessage: "방금", meta: "", updatedAt: Date.now() },
-];
+/* ── 세션 목록 API 응답 (GET /chatbot/conversations) ── */
+interface SessionSummaryDto {
+  conversationId: number;
+  title: string | null;
+  mode: string | null;
+  updatedAt: number | null;
+}
 
 export function useChatbot() {
   const [isOpen, setIsOpen] = useState(false);
@@ -53,8 +59,8 @@ export function useChatbot() {
   const [botStatus, setBotStatus] = useState<BotStatus>("idle");
   const [voiceState, setVoiceState] = useState<VoiceState>("idle");
   const [interimTranscript, setInterimTranscript] = useState("");
-  const [sessions] = useState<ChatSession[]>(MOCK_SESSIONS);
-  const [activeSessionId, setActiveSessionId] = useState<string>("s1");
+  const [sessions, setSessions] = useState<ChatSession[]>([]);
+  const [activeSessionId, setActiveSessionId] = useState<string>("");
 
   // ── 오케스트레이터 모드 상태 ──
   const [orchestrator, setOrchestrator] = useState(false);   // 모드 배너/색 분기의 단일 소스
@@ -99,14 +105,59 @@ export function useChatbot() {
       });
   }, []);
 
+  /* ── 세션 목록(사이드바) 로드 — 로그인 유저의 인테이크(지원건) 세션 최대 5건. ── */
+  const loadSessions = useCallback(() => {
+    if (!getAccessToken()) { setSessions([]); return; }
+    api<SessionSummaryDto[] | null>("/chatbot/conversations")
+      .then((data) => {
+        setSessions(
+          (data ?? []).map((s) => ({
+            id: String(s.conversationId),
+            title: s.title || "면접 준비 세션",
+            lastMessage: "면접 준비",
+            meta: "",
+            updatedAt: s.updatedAt ?? 0,
+            mode: s.mode,
+          })),
+        );
+      })
+      .catch((err) => console.error("세션 목록 로드 실패:", err));
+  }, []);
+
+  /* ── 세션 클릭 → 그 conversationId 로 전환 + 메시지 로드. 다음 요청부터 백엔드가 슬롯 복원(Phase D). ── */
+  const openSession = useCallback((id: string) => {
+    const conversationId = Number(id);
+    if (!Number.isFinite(conversationId)) return;
+    conversationIdRef.current = conversationId;
+    setActiveSessionId(id);
+    run.reset();
+    runStartedRef.current = false;
+    setRunStarted(false);
+    setRunCaseId(null);
+    setOrchestrator(true); // 인테이크(지원건) 세션 — 모드 배너 유지
+    setShowExitSheet(false);
+    api<ChatHistoryResponse | null>(`/chatbot/conversations/${conversationId}/messages`)
+      .then((data) => {
+        const msgs: ChatMessage[] = (data?.messages ?? []).map((m) => ({
+          id: nextId(), role: m.role, text: m.text,
+          evidence: [], links: [], quickReplies: [],
+          ttsState: "idle" as const, ttsProgress: 0, timestamp: Date.now(),
+        }));
+        setMessages(msgs);
+        setBotStatus(msgs.length ? "answered" : "idle");
+      })
+      .catch((err) => console.error("세션 로드 실패:", err));
+  }, [run]);
+
   const open = useCallback(() => {
     setIsOpen(true);
     restoreRecent();
-  }, [restoreRecent]);
+    loadSessions();
+  }, [restoreRecent, loadSessions]);
   const close = useCallback(() => setIsOpen(false), []);
   const minimize = useCallback(() => setIsOpen(false), []);
 
-  const sendMessage = useCallback((text: string) => {
+  const sendMessage = useCallback((text: string, opts?: { selectedCaseId?: number; selectedModeCode?: string }) => {
     const userMsg: ChatMessage = {
       id: nextId(), role: "user", text,
       evidence: [], links: [], quickReplies: [], ttsState: "idle", ttsProgress: 0,
@@ -121,7 +172,13 @@ export function useChatbot() {
 
     api<ChatbotApiResponse>("/chatbot/ask", {
       method: "POST",
-      body: JSON.stringify({ question: text, conversationId: conversationIdRef.current }),
+      body: JSON.stringify({
+        question: text,
+        conversationId: conversationIdRef.current,
+        // ③ 칩/버튼 직접 선택 시 caseId·modeCode 를 실어 보낸다 → 백엔드가 qwen3 거치지 않고 결정적 confirm.
+        ...(opts?.selectedCaseId != null ? { selectedCaseId: opts.selectedCaseId } : {}),
+        ...(opts?.selectedModeCode ? { selectedModeCode: opts.selectedModeCode } : {}),
+      }),
       signal: controller.signal,
     })
       .then((data) => {
@@ -155,6 +212,7 @@ export function useChatbot() {
                 modes: intake.modes ?? [],
               }
             : undefined,
+          summaryChip: data.summaryChip ?? undefined,
         };
         setMessages((prev) => [...prev, botMsg]);
         setBotStatus("answered");
@@ -186,13 +244,52 @@ export function useChatbot() {
       });
   }, [run]);
 
+  /* ── 추천 후기 압축 요약 칩 → 묶음 요약 요청(POST /chatbot/summarize-posts). ── */
+  const summarizePosts = useCallback((postIds: number[]) => {
+    if (!postIds || postIds.length === 0) return;
+
+    const userMsg: ChatMessage = {
+      id: nextId(), role: "user", text: "추천 후기 요약해줘",
+      evidence: [], links: [], quickReplies: [], ttsState: "idle", ttsProgress: 0,
+      timestamp: Date.now(),
+    };
+    setMessages((prev) => [...prev, userMsg]);
+    setBotStatus("thinking");
+
+    api<ChatbotApiResponse>("/chatbot/summarize-posts", {
+      method: "POST",
+      body: JSON.stringify({ conversationId: conversationIdRef.current, postIds }),
+    })
+      .then((data) => {
+        conversationIdRef.current = data.conversationId;
+        if (!data.message || !data.message.trim()) {
+          setBotStatus("not_found");
+          return;
+        }
+        const botMsg: ChatMessage = {
+          id: nextId(), role: "bot", text: data.message,
+          evidence: [], links: data.links ?? [], quickReplies: data.quickReplies ?? [],
+          ttsState: "idle", ttsProgress: 0,
+          timestamp: Date.now(),
+        };
+        setMessages((prev) => [...prev, botMsg]);
+        setBotStatus("answered");
+      })
+      .catch((err) => {
+        console.error("추천 후기 요약 API 오류:", err);
+        setBotStatus("disconnected");
+      });
+  }, []);
+
   /* ── 칩 선택 → 자연어 메시지로 변환해 전송(③ 슬롯 접지: chooseCase/chooseMode). ── */
   const selectCase = useCallback((c: IntakeCaseCandidate) => {
-    sendMessage(`${c.companyName} ${c.jobTitle} 지원 건으로 진행할게요`);
+    // caseId 를 함께 실어 결정적 바인딩(qwen3 미경유). 텍스트는 대화 맥락·히스토리 자연스러움용으로 유지.
+    sendMessage(`${c.companyName} ${c.jobTitle} 지원 건으로 진행할게요`, { selectedCaseId: c.id });
   }, [sendMessage]);
 
   const selectMode = useCallback((m: IntakeModeOption) => {
-    sendMessage(`${m.label}으로 할게요`);
+    // modeCode 를 함께 실어 결정적 확정(case 확정된 상태에서만 백엔드가 반영).
+    sendMessage(`${m.label}으로 할게요`, { selectedModeCode: m.code });
   }, [sendMessage]);
 
   /* ── 모드 이탈: 실행 전이면 백엔드 모드 해제("그만"), 실행 중/후면 로컬 정리만. ── */
@@ -269,6 +366,7 @@ export function useChatbot() {
     retryConnection,
     toggleTts,
     sessions, activeSessionId, setActiveSessionId, newSession,
+    loadSessions, openSession,
     // 오케스트레이터
     orchestrator,
     runStarted,
@@ -278,6 +376,7 @@ export function useChatbot() {
     runError: run.error,
     runCaseId,
     selectCase, selectMode,
+    summarizePosts,
     showExitSheet,
     openExitSheet: () => setShowExitSheet(true),
     closeExitSheet: () => setShowExitSheet(false),

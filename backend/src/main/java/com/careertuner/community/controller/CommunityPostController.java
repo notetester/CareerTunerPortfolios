@@ -48,11 +48,12 @@ public class CommunityPostController {
     @GetMapping
     public ApiResponse<PostPageResponse> getPosts(
             @RequestParam(required = false) String category,
+            @RequestParam(required = false) String keyword,
             @RequestParam(defaultValue = "latest") String sort,
             @RequestParam(defaultValue = "0") @Min(0) int page,
             @RequestParam(defaultValue = "20") @Min(1) @Max(100) int size
     ) {
-        return ApiResponse.ok(postService.getPosts(category, sort, page, size));
+        return ApiResponse.ok(postService.getPosts(category, keyword, sort, page, size));
     }
 
     @GetMapping("/{postId}")

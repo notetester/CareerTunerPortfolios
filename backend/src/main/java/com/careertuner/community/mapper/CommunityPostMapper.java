@@ -15,11 +15,13 @@ public interface CommunityPostMapper {
     List<CommunityPost> findAll(@Param("category") String category,
                                 @Param("status") String status,
                                 @Param("sort") String sort,
+                                @Param("keyword") String keyword,
                                 @Param("offset") int offset,
                                 @Param("limit") int limit);
 
     int countAll(@Param("category") String category,
-                 @Param("status") String status);
+                 @Param("status") String status,
+                 @Param("keyword") String keyword);
 
     CommunityPost findById(Long id);
 
