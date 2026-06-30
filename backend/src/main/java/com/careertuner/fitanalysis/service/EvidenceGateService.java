@@ -148,7 +148,7 @@ public class EvidenceGateService {
             if (text == null || text.isBlank()) {
                 continue;
             }
-            for (String sentence : text.split("[.!?。\\n]")) {
+            for (String sentence : text.split("\\.(?![A-Za-z0-9])|[!?。\\n]")) {
                 if (sentence == null || sentence.isBlank()) {
                     continue;
                 }
