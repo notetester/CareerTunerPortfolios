@@ -2,7 +2,7 @@
 
 Last updated: 2026-06-30
 기준 branch: dev
-기준 PR 범위: #174, #175, #180, #182, #183, #184, #186, #187 포함
+기준 PR 범위: #174, #175, #180, #182, #183, #184, #186, #187, #188, #190 포함
 
 상태 표기:
 - `[x] 완료`
@@ -36,7 +36,11 @@ Last updated: 2026-06-30
 - [~] 보류 또는 조건부 유지 — production prompt 에 retrievedContext 를 자동 주입하지 않는다([reports/60](reports/60_rag_r3_pre_backend_gate_design.md), [reports/61](reports/61_rag_r3_review_first_gate_implementation.md)).
 - [~] 보류 또는 조건부 유지 — RAG 는 점수/지원판단이 아니라 설명 근거 보강 전용 후보로만 유지한다([reports/50](reports/50_rag_design_plan.md)).
 - [x] 완료 — RAG 재도입 전 조건과 hard-case benchmark 기준을 문서화했다([reports/67](reports/67_rag_reentry_criteria_and_hardcase_benchmark.md)).
-- [ ] 미완료 — RAG 재도입 실측은 scoped source, 개인정보 격리, unsupported claim 감소 지표가 함께 준비된 뒤 별도 benchmark 로 수행한다.
+- [x] 완료 — RAG 재도입 hard-case fixture v1 과 dry-run payload 생성 골격을 구성했다([reports/69](reports/69_rag_hardcase_benchmark_fixture.md)).
+- [x] 완료 — RAG hard-case offline A/B runner 골격과 aggregate summarizer 를 추가했다([reports/70](reports/70_rag_hardcase_offline_ab_runner.md)).
+- [~] 보류 또는 조건부 유지 — raw output/result JSON 은 CareerTunerAI artifact repo 에 저장한다.
+- [~] 보류 또는 조건부 유지 — 긴 실험 분석 문서는 CareerTunerAIDocs 에 저장한다.
+- [ ] 미완료 — RAG hard-case benchmark 실제 모델 실행 및 A/B 결과 분석은 scoped source, 개인정보 격리, unsupported claim 감소 지표 기준으로 별도 수행한다.
 
 ## 4. Evidence gate / safety 상태
 
@@ -67,7 +71,9 @@ Last updated: 2026-06-30
 
 - [x] 완료 — R3 자동 검증 보강과 최상위 체크리스트 정리(PR #186 후속, [reports/66](reports/66_r3_auto_verification_and_ai_checklist.md)).
 - [x] 완료 — model-card R3 safety 반영과 RAG 재평가 기준 정리([reports/67](reports/67_rag_reentry_criteria_and_hardcase_benchmark.md), [reports/68](reports/68_model_card_r3_safety_update.md)).
+- [x] 완료 — RAG 재도입 hard-case fixture v1 구성([reports/69](reports/69_rag_hardcase_benchmark_fixture.md)).
+- [x] 완료 — RAG hard-case offline A/B runner 골격 추가([reports/70](reports/70_rag_hardcase_offline_ab_runner.md)).
 - [ ] 미완료 — 관리자 gate review 처리 workflow 설계: 검토 완료, 재분석 요청, memo/reason 연결.
 - [ ] 미완료 — R3 gate reason 로그를 기반으로 false-positive 샘플 리뷰와 alias 후보 triage.
-- [ ] 미완료 — RAG 재도입 전용 hard-case benchmark 실행: scoped context, 개인정보 격리, unsupported claim 감소 기준.
+- [ ] 미완료 — 4090/Ollama 기준 실제 3B LoRA A/B 실행 및 결과 분석: scoped context, 개인정보 격리, unsupported claim 감소 기준.
 - [ ] 미완료 — model-card 다음 개정: R3 운영 데이터와 gate reason 분포 반영.
