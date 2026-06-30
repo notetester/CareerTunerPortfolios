@@ -4,7 +4,6 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
-import org.springframework.context.annotation.Primary;
 import org.springframework.stereotype.Service;
 
 import com.careertuner.analysis.ai.provider.CareerAnalysisAiUsage;
@@ -17,7 +16,6 @@ import lombok.RequiredArgsConstructor;
 import tools.jackson.core.JacksonException;
 import tools.jackson.databind.ObjectMapper;
 
-@Primary
 @Service
 @RequiredArgsConstructor
 public class OpenAiProfileAiService implements ProfileAiService {

@@ -19,6 +19,7 @@ public class JobFamilyWeightPolicy {
             case HEALTHCARE_SERVICE -> weights(15, 25, 20, 20, 10, 10);
             case EDUCATION_PUBLIC -> weights(15, 25, 15, 20, 15, 10);
             case PRODUCTION_LOGISTICS -> weights(10, 25, 25, 20, 10, 10);
+            case ENGINEERING_TECHNICAL -> weights(15, 20, 20, 25, 10, 10);
             case GENERAL -> weights(15, 20, 20, 20, 15, 10);
         };
     }
