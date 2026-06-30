@@ -132,8 +132,8 @@ ApplicationWindow {
             }
             PracticePage {}                        // 1 면접 연습
             ReportPage {}                          // 2 면접 리포트
-            Placeholder { label: "연결된 기기 (준비 중)" } // 3
-            Placeholder { label: "설정 (준비 중)" }        // 4
+            DevicesPage {}                         // 3 연결된 기기
+            SettingsPage {}                        // 4 설정
             JobDetailPage {                        // 5 작업 상세 (카드 클릭 진입)
                 id: detailPage
                 onBack: stack.currentIndex = 0
