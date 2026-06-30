@@ -218,6 +218,84 @@ class EvidenceGateServiceTest {
         assertThat(decision.gateStatus()).isEqualTo(EvidenceGateDecision.STATUS_PASSED);
     }
 
+    // ── #175 후속(reports/63): curated alias canonical key 비교 ──
+
+    @Test
+    void apacheSparkAliasPassesMatchedAudit() {
+        FitAnalysisAiResult ai = ai(70, List.of("Spark"), List.of(), "Spark 역량을 보유하고 있습니다.");
+        EvidenceGateDecision decision = gate.evaluate(command(List.of("Spark"), List.of(), List.of("Apache Spark"), List.of()), ai);
+
+        assertThat(decision.gateStatus()).isEqualTo(EvidenceGateDecision.STATUS_PASSED);
+        assertThat(decision.reasons()).isEmpty();
+    }
+
+    @Test
+    void apacheSparkAliasPassesScoreBasisClaimAudit() {
+        FitAnalysisAiResult ai = aiFull(70, List.of(), List.of(), "전반적으로 적합합니다.",
+                List.of("Spark 경험을 보유해 데이터 처리 요건에 부합합니다."), List.of(), DEFAULT_DECISION);
+        EvidenceGateDecision decision = gate.evaluate(command(List.of("Spark"), List.of(), List.of("Apache Spark"), List.of()), ai);
+
+        assertThat(decision.gateStatus()).isEqualTo(EvidenceGateDecision.STATUS_PASSED);
+        assertThat(decision.reasons()).isEmpty();
+    }
+
+    @Test
+    void javascriptDoesNotSatisfyJava() {
+        FitAnalysisAiResult ai = ai(70, List.of("Java"), List.of(), "Java 역량을 보유하고 있습니다.");
+        EvidenceGateDecision decision = gate.evaluate(command(List.of("Java"), List.of(), List.of("JavaScript"), List.of()), ai);
+
+        assertThat(decision.gateStatus()).isEqualTo(EvidenceGateDecision.STATUS_REVIEW_REQUIRED);
+        assertThat(decision.reasons()).anySatisfy(reason -> {
+            assertThat(reason.claim()).isEqualTo("Java");
+            assertThat(reason.severity()).isEqualTo(EvidenceGateDecision.SEVERITY_CRITICAL);
+        });
+    }
+
+    @Test
+    void genericSqlDoesNotPassWithMssql() {
+        FitAnalysisAiResult ai = ai(70, List.of("SQL"), List.of(), "SQL 역량을 보유하고 있습니다.");
+        EvidenceGateDecision decision = gate.evaluate(command(List.of("SQL"), List.of(), List.of("MSSQL"), List.of()), ai);
+
+        assertThat(decision.gateStatus()).isEqualTo(EvidenceGateDecision.STATUS_REVIEW_REQUIRED);
+        assertThat(decision.reasons()).anySatisfy(reason -> assertThat(reason.claim()).isEqualTo("SQL"));
+    }
+
+    @Test
+    void postgresAliasPasses() {
+        FitAnalysisAiResult ai = ai(70, List.of("Postgres"), List.of(), "Postgres 경험을 보유하고 있습니다.");
+        EvidenceGateDecision decision = gate.evaluate(command(List.of("Postgres"), List.of(), List.of("PostgreSQL"), List.of()), ai);
+
+        assertThat(decision.gateStatus()).isEqualTo(EvidenceGateDecision.STATUS_PASSED);
+        assertThat(decision.reasons()).isEmpty();
+    }
+
+    @Test
+    void kubernetesAliasPasses() {
+        FitAnalysisAiResult ai = ai(70, List.of("K8s"), List.of(), "K8s 운영 경험을 보유하고 있습니다.");
+        EvidenceGateDecision decision = gate.evaluate(command(List.of("K8s"), List.of(), List.of("Kubernetes"), List.of()), ai);
+
+        assertThat(decision.gateStatus()).isEqualTo(EvidenceGateDecision.STATUS_PASSED);
+        assertThat(decision.reasons()).isEmpty();
+    }
+
+    @Test
+    void springDoesNotSatisfySpringBoot() {
+        FitAnalysisAiResult ai = ai(70, List.of("Spring Boot"), List.of(), "Spring Boot 역량을 보유하고 있습니다.");
+        EvidenceGateDecision decision = gate.evaluate(command(List.of("Spring Boot"), List.of(), List.of("Spring"), List.of()), ai);
+
+        assertThat(decision.gateStatus()).isEqualTo(EvidenceGateDecision.STATUS_REVIEW_REQUIRED);
+        assertThat(decision.reasons()).anySatisfy(reason -> assertThat(reason.claim()).isEqualTo("Spring Boot"));
+    }
+
+    @Test
+    void reactDoesNotSatisfyReactNative() {
+        FitAnalysisAiResult ai = ai(70, List.of("React Native"), List.of(), "React Native 역량을 보유하고 있습니다.");
+        EvidenceGateDecision decision = gate.evaluate(command(List.of("React Native"), List.of(), List.of("React"), List.of()), ai);
+
+        assertThat(decision.gateStatus()).isEqualTo(EvidenceGateDecision.STATUS_REVIEW_REQUIRED);
+        assertThat(decision.reasons()).anySatisfy(reason -> assertThat(reason.claim()).isEqualTo("React Native"));
+    }
+
     private static final FitApplyDecision DEFAULT_DECISION = new FitApplyDecision("HOLD", List.of(), List.of());
 
     private static FitAnalysisAiResult ai(int fitScore, List<String> matched, List<String> missing, String fitSummary) {
