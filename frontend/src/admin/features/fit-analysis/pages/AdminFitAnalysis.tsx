@@ -159,6 +159,7 @@ export default function AdminFitAnalysisPage() {
   const memoSummary = useMemo(() => {
     return items.reduce((sum, item) => sum + item.memoCount, 0);
   }, [items]);
+  const detailGateReasons = detail?.gateReasons ?? [];
   const visibleItems = useMemo(() => {
     const value = query.trim().toLowerCase();
     return items.filter((item) => {
@@ -426,9 +427,9 @@ export default function AdminFitAnalysisPage() {
                               : "근거 검토를 통과한 분석입니다."}
                           {detail.evidenceGateVersion ? ` (정책 ${detail.evidenceGateVersion})` : ""}
                         </p>
-                        {detail.gateReasons.length > 0 && (
+                        {detailGateReasons.length > 0 && (
                           <ul className="mt-2 space-y-1">
-                            {detail.gateReasons.map((gateReason, index) => (
+                            {detailGateReasons.map((gateReason, index) => (
                               <li
                                 key={`${gateReason.type}:${gateReason.claim}:${index}`}
                                 className="flex items-start gap-2 rounded bg-white/60 px-2 py-1 text-xs"

@@ -1,0 +1,69 @@
+# C Career Strategy AI Roadmap Checklist
+
+Last updated: 2026-06-30
+기준 branch: dev
+기준 PR 범위: #174, #175, #180, #182, #183, #184, #186 포함
+
+상태 표기:
+- `[x] 완료`
+- `[~] 보류 또는 조건부 유지`
+- `[ ] 미완료`
+- `[!] 주의 필요`
+
+## 1. Production runtime 상태
+
+- [x] 완료 — C 적합도 분석 runtime 은 `FallbackFitAnalysisAiService` primary dispatcher 기준으로 운영한다(PR #183, PR #184).
+- [x] 완료 — R3 review-first evidence gate 가 backend service layer 에 연결되어 `safety`/gate result/evidence source 를 기록한다(PR #174, [reports/61](reports/61_rag_r3_review_first_gate_implementation.md)).
+- [x] 완료 — gate 는 `fitScore`, `applyDecision`, `matchedSkills`, `missingSkills` 를 변경하지 않는다(PR #174, PR #175, [reports/61](reports/61_rag_r3_review_first_gate_implementation.md), [reports/62](reports/62_rag_r3_evidence_gate_user_evidence_hotfix.md)).
+- [x] 완료 — 관리자 적합도 상세/목록, 홈, 대시보드에 gate 검토 상태와 최신 지원 건 기준 검토 대기 수가 연결되어 있다(PR #174, PR #175, [reports/62](reports/62_rag_r3_evidence_gate_user_evidence_hotfix.md)).
+- [x] 완료 — dev 통합 기준 R3 계열과 Spring provider 회귀 테스트가 통과한 상태를 확인했다(PR #186, [reports/65](reports/65_r3_evidence_gate_dev_integration_check.md)).
+- [~] 보류 또는 조건부 유지 — RAG runtime 자동 주입과 rewrite 자동 사용자 노출은 현재 production runtime 에 연결하지 않는다([reports/60](reports/60_rag_r3_pre_backend_gate_design.md), [reports/61](reports/61_rag_r3_review_first_gate_implementation.md)).
+
+## 2. Model / benchmark 상태
+
+- [x] 완료 — 3B LoRA 계열은 C fit analysis 설명 생성의 현재 기준 모델로 유지한다([model-card](model-card.md), [reports/49](reports/49_7b_smoke_benchmark_result.md)).
+- [x] 완료 — 7B base smoke 결과만으로는 3B LoRA 교체 근거가 부족하다고 판단했다([reports/49](reports/49_7b_smoke_benchmark_result.md)).
+- [x] 완료 — golden/eval 계열 하니스와 4090 실행 명령 아카이브가 남아 있다([reports/25](reports/25_4090_eval_reliability_commands.md), [reports/35](reports/35_4090_golden60_eval_commands.md)).
+- [~] 보류 또는 조건부 유지 — 7B 전환, 7B LoRA 재학습, GGUF 재생성은 RAG/evidence gate 이후 별도 재평가 전까지 보류한다([reports/49](reports/49_7b_smoke_benchmark_result.md)).
+- [ ] 미완료 — R3 이후 상태를 반영한 정식 모델 벤치마크 재실행은 아직 별도 작업으로 남아 있다.
+
+## 3. RAG 상태
+
+- [x] 완료 — RAG 설계, offline retrieval PoC, local embedding/vector PoC 를 문서화했다(PR #147 계열, [reports/50](reports/50_rag_design_plan.md), [reports/51](reports/51_rag_offline_poc_result.md), [reports/52](reports/52_rag_local_embedding_poc_result.md)).
+- [x] 완료 — R2b~R2f 실측에서 retrievedContext 주입은 단순 개선으로 확정되지 않았고, review/reject gate 쪽이 더 안정적인 안전 레버로 확인되었다([reports/54](reports/54_rag_r2b_hardcase_eval.md), [reports/57](reports/57_rag_r2d_evidence_gate_eval.md), [reports/59](reports/59_rag_r2f_output_capture_gate_eval.md)).
+- [~] 보류 또는 조건부 유지 — production prompt 에 retrievedContext 를 자동 주입하지 않는다([reports/60](reports/60_rag_r3_pre_backend_gate_design.md), [reports/61](reports/61_rag_r3_review_first_gate_implementation.md)).
+- [~] 보류 또는 조건부 유지 — RAG 는 점수/지원판단이 아니라 설명 근거 보강 전용 후보로만 유지한다([reports/50](reports/50_rag_design_plan.md)).
+- [ ] 미완료 — RAG 재도입은 scoped source, 개인정보 격리, unsupported claim 감소 지표가 함께 준비된 뒤 재평가한다.
+
+## 4. Evidence gate / safety 상태
+
+- [x] 완료 — R3 review-first gate 는 `PASSED`, `REVIEW_REQUIRED`, `REJECTED` 상태를 결정론으로 산출한다(PR #174, [reports/61](reports/61_rag_r3_review_first_gate_implementation.md)).
+- [x] 완료 — userEvidence 는 #175 이후 `profileSkills + profileCertificates` 로 고정하고, AI 파생 `matchedSkills` 는 보유 근거로 신뢰하지 않는다(PR #175, [reports/62](reports/62_rag_r3_evidence_gate_user_evidence_hotfix.md)).
+- [x] 완료 — `SkillAliasNormalizer` 는 curated alias map 만 사용하며 substring/fuzzy matching 을 추가하지 않는다(PR #180, [reports/63](reports/63_rag_r3_evidence_gate_skill_alias_normalizer.md)).
+- [x] 완료 — mention-boundary 정책은 `Next.js`/`React Native`/`Spring Boot`/구체 DB명 false-positive 를 차단한다(PR #182, [reports/64](reports/64_rag_r3_skill_alias_mention_boundary.md)).
+- [x] 완료 — 관리자 응답 변환은 legacy `gateStatus=null` 과 `gateReasonsJson` null/빈 배열/정상/깨진 JSON 을 안전하게 처리하도록 자동 검증을 추가했다(PR #186 후속, [reports/66](reports/66_r3_auto_verification_and_ai_checklist.md)).
+- [!] 주의 필요 — alias map 은 보수적 allow-list 이므로 새 alias 추가 시 false-negative 위험 케이스를 함께 테스트해야 한다.
+
+## 5. Data / training backlog
+
+- [x] 완료 — Phase 1 MVP 데이터/평가 문서와 model-card 기준은 유지되어 있다([README](README.md), [model-card](model-card.md)).
+- [~] 보류 또는 조건부 유지 — 비IT 직군 정밀 자격증/역량 카탈로그와 RAG grounding 은 Phase 2 확장 대상으로 둔다([README](README.md), [model-card](model-card.md)).
+- [ ] 미완료 — CJK/자기모순/직군별 hard case 를 반영한 추가 학습 데이터 큐레이션은 별도 backlog 다.
+- [ ] 미완료 — R3 gate reason 축적 데이터를 모델 개선 학습셋으로 환류하는 파이프라인은 아직 없다.
+- [!] 주의 필요 — raw eval/output 파일은 main repo 에 커밋하지 않고 artifact 경로 또는 별도 저장소 원칙을 유지한다.
+
+## 6. Admin / observability 상태
+
+- [x] 완료 — 관리자 fit-analysis 목록/상세에서 gate status, reason count, severity, 상세 reason 을 확인할 수 있다(PR #175, [reports/62](reports/62_rag_r3_evidence_gate_user_evidence_hotfix.md)).
+- [x] 완료 — 관리자 홈과 대시보드의 검토 대기 카운트는 지원 건별 최신 fit_analysis 기준으로 통일되어 있다(PR #175, [reports/62](reports/62_rag_r3_evidence_gate_user_evidence_hotfix.md)).
+- [x] 완료 — `reviewRequiredOnly=true` 목록 필터는 서버 SQL 에서 `REVIEW_REQUIRED` 만 반환하도록 고정했다(PR #175, [reports/66](reports/66_r3_auto_verification_and_ai_checklist.md)).
+- [~] 보류 또는 조건부 유지 — 운영자가 gate reason 을 처리/해결 완료로 표시하는 별도 workflow 는 아직 도입하지 않았다.
+- [ ] 미완료 — gate status 분포, false-positive rate, alias 추가 요청량을 보는 장기 운영 리포트는 추후 후보로 남아 있다.
+
+## 7. Current next candidates
+
+- [x] 완료 — R3 자동 검증 보강과 최상위 체크리스트 정리(PR #186 후속, [reports/66](reports/66_r3_auto_verification_and_ai_checklist.md)).
+- [ ] 미완료 — 관리자 gate review 처리 workflow 설계: 검토 완료, 재분석 요청, memo/reason 연결.
+- [ ] 미완료 — R3 gate reason 로그를 기반으로 false-positive 샘플 리뷰와 alias 후보 triage.
+- [ ] 미완료 — RAG 재도입 전용 hard-case 벤치마크 재구성: scoped context, 개인정보 격리, unsupported claim 감소 기준.
+- [ ] 미완료 — model-card 에 R3 production safety 상태를 반영한 다음 개정.
