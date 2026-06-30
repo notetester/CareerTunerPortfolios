@@ -85,6 +85,14 @@ careertuner:
     timeout: ${OPENAI_TIMEOUT:300s}
     job-posting-fallback-enabled: ${JOB_POSTING_OPENAI_FALLBACK_ENABLED:false}
     job-posting-fallback-allowlist: ${JOB_POSTING_OPENAI_FALLBACK_ALLOWLIST:}
+  profile:
+    ai:
+      finetuned:
+        # A파트 프로필 자체 파인튜닝 모델 서버. 기본은 꺼두어 팀원 환경에서 원격 서버 의존성을 만들지 않는다.
+        enabled: ${PROFILE_AI_FINETUNED_ENABLED:false}
+        base-url: ${PROFILE_AI_FINETUNED_BASE_URL:}
+        model: ${PROFILE_AI_FINETUNED_MODEL:qwen3-profile-lora-v3}
+        timeout: ${PROFILE_AI_FINETUNED_TIMEOUT:60s}
   analysis:
     ai:
       # C 적합도/취업분석 AI provider. openai(기본/폴백) | oss(자체 파인튜닝 careertuner-c-career-strategy-3b)

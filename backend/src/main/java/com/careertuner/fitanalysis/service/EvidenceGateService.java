@@ -35,6 +35,8 @@ import com.careertuner.fitanalysis.ai.FitAnalysisAiResult;
 @Service
 public class EvidenceGateService {
 
+    private final SkillAliasNormalizer skillAliasNormalizer = new SkillAliasNormalizer();
+
     /** '보유'를 뜻하는 표현(E1 과 동일 기준). */
     private static final String[] POSSESSION = {
             "보유", "갖춤", "갖추고", "갖추어", "강점", "경험 있", "경험을 보유",
@@ -83,16 +85,16 @@ public class EvidenceGateService {
                     sources);
         }
 
-        Set<String> userEvidenceLower = lower(userEvidence);
-        Set<String> requiredLower = lower(nullSafe(command.requiredSkills()));
+        Set<String> userEvidenceKeys = canonicalKeys(userEvidence);
+        Set<String> requiredKeys = canonicalKeys(nullSafe(command.requiredSkills()));
         // 텍스트 보유단정 탐지 대상: 공고 요구(required+preferred) + AI 가 부족이라 한 역량(missing). 보유로 단정되면 위반.
-        List<String> detectionRequirements = distinct(concat(jobRequirements, missingSkills, List.of()));
+        List<SkillClaim> detectionRequirements = skillClaims(distinct(concat(jobRequirements, missingSkills, List.of())));
 
         Map<String, EvidenceGateDecision.Reason> byClaim = new LinkedHashMap<>();
         // 2) AI matchedSkills 순환 오류: matched 인데 사용자 원본 근거에 없으면 검토 후보(텍스트 단정과 무관하게).
-        auditMatchedSkills(derivedMatched, userEvidenceLower, requiredLower, byClaim);
+        auditMatchedSkills(derivedMatched, userEvidenceKeys, requiredKeys, byClaim);
         // 3) 사용자 노출 텍스트(strategy/scoreBasis/strategyActions/applyDecision)에서 보유 단정 탐지.
-        auditTextClaims(userFacingTexts(ai), detectionRequirements, userEvidenceLower, requiredLower, byClaim);
+        auditTextClaims(userFacingTexts(ai), detectionRequirements, userEvidenceKeys, requiredKeys, byClaim);
 
         List<EvidenceGateDecision.Reason> reasons = new ArrayList<>(byClaim.values());
         if (reasons.isEmpty()) {
@@ -113,15 +115,15 @@ public class EvidenceGateService {
      * 텍스트에 보유 서술이 없어도 매칭 자체가 근거 없는 단정이므로 검출한다(순환 오류 차단의 핵심).
      */
     private void auditMatchedSkills(List<String> derivedMatched,
-                                    Set<String> userEvidenceLower,
-                                    Set<String> requiredLower,
+                                    Set<String> userEvidenceKeys,
+                                    Set<String> requiredKeys,
                                     Map<String, EvidenceGateDecision.Reason> byClaim) {
         for (String skill : derivedMatched) {
-            String key = skill.toLowerCase(Locale.ROOT);
-            if (userEvidenceLower.contains(key)) {
+            String key = skillAliasNormalizer.canonicalize(skill);
+            if (key.isBlank() || userEvidenceKeys.contains(key)) {
                 continue; // 사용자 원본 근거에 실제로 있으면 정상
             }
-            String severity = severityFor(key, requiredLower);
+            String severity = severityFor(key, requiredKeys);
             String reason = EvidenceGateDecision.SEVERITY_CRITICAL.equals(severity)
                     ? "AI 매칭 역량이 필수 요구이나 사용자 원본 근거(프로필 스킬/자격)에 없음"
                     : "AI 매칭 역량이 사용자 원본 근거(프로필 스킬/자격)에 없음";
@@ -135,9 +137,9 @@ public class EvidenceGateService {
      * 공고 요구 역량을 찾아 reason 으로 만든다. claim 기준 중복 제거(최고 심각도 유지).
      */
     private void auditTextClaims(List<String> texts,
-                                 List<String> detectionRequirements,
-                                 Set<String> userEvidenceLower,
-                                 Set<String> requiredLower,
+                                 List<SkillClaim> detectionRequirements,
+                                 Set<String> userEvidenceKeys,
+                                 Set<String> requiredKeys,
                                  Map<String, EvidenceGateDecision.Reason> byClaim) {
         if (detectionRequirements.isEmpty()) {
             return;
@@ -146,25 +148,24 @@ public class EvidenceGateService {
             if (text == null || text.isBlank()) {
                 continue;
             }
-            for (String sentence : text.split("[.!?。\\n]")) {
+            for (String sentence : text.split("\\.(?![A-Za-z0-9])|[!?。\\n]")) {
                 if (sentence == null || sentence.isBlank()) {
                     continue;
                 }
                 if (firstContaining(sentence, POSSESSION) == null || firstContaining(sentence, LACK) != null) {
                     continue; // 보유 표현이 없거나 결핍·부정 문맥이면 위반 아님
                 }
-                String lower = sentence.toLowerCase(Locale.ROOT);
-                for (String skill : detectionRequirements) {
-                    String key = skill.toLowerCase(Locale.ROOT);
-                    if (userEvidenceLower.contains(key) || !lower.contains(key)) {
+                for (SkillClaim skill : detectionRequirements) {
+                    if (userEvidenceKeys.contains(skill.key())
+                            || !skillAliasNormalizer.containsCanonicalMention(sentence, skill.key())) {
                         continue; // 실제 보유했거나 문장에 안 나오면 위반 아님
                     }
-                    String severity = severityFor(key, requiredLower);
+                    String severity = severityFor(skill.key(), requiredKeys);
                     String reason = EvidenceGateDecision.SEVERITY_CRITICAL.equals(severity)
                             ? "필수 요구 역량을 보유로 단정했으나 사용자 원본 근거 없음"
                             : "공고 요구 역량을 보유로 단정했으나 사용자 원본 근거 없음";
-                    putReason(byClaim, key, new EvidenceGateDecision.Reason(
-                            TYPE_REQUIREMENT_AS_OWNED, skill, reason, severity));
+                    putReason(byClaim, skill.key(), new EvidenceGateDecision.Reason(
+                            TYPE_REQUIREMENT_AS_OWNED, skill.claim(), reason, severity));
                 }
             }
         }
@@ -184,8 +185,8 @@ public class EvidenceGateService {
     }
 
     /** required 면 critical, 그 외(우대 또는 공고 요구 밖)면 warning. */
-    private static String severityFor(String key, Set<String> requiredLower) {
-        return requiredLower.contains(key)
+    private static String severityFor(String key, Set<String> requiredKeys) {
+        return requiredKeys.contains(key)
                 ? EvidenceGateDecision.SEVERITY_CRITICAL : EvidenceGateDecision.SEVERITY_WARNING;
     }
 
@@ -249,11 +250,28 @@ public class EvidenceGateService {
         return out;
     }
 
-    private static Set<String> lower(List<String> values) {
+    private Set<String> canonicalKeys(List<String> values) {
         Set<String> out = new LinkedHashSet<>();
         for (String value : values) {
             if (value != null && !value.isBlank()) {
-                out.add(value.trim().toLowerCase(Locale.ROOT));
+                String key = skillAliasNormalizer.canonicalize(value);
+                if (!key.isBlank()) {
+                    out.add(key);
+                }
+            }
+        }
+        return out;
+    }
+
+    private List<SkillClaim> skillClaims(List<String> values) {
+        Set<String> seen = new LinkedHashSet<>();
+        List<SkillClaim> out = new ArrayList<>();
+        for (String value : values) {
+            if (value != null && !value.isBlank()) {
+                String key = skillAliasNormalizer.canonicalize(value);
+                if (!key.isBlank() && seen.add(value.trim().toLowerCase(Locale.ROOT) + "\n" + key)) {
+                    out.add(new SkillClaim(value.trim(), key));
+                }
             }
         }
         return out;
@@ -270,5 +288,8 @@ public class EvidenceGateService {
             }
         }
         return null;
+    }
+
+    private record SkillClaim(String claim, String key) {
     }
 }
