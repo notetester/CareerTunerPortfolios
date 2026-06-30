@@ -15,17 +15,60 @@
 | 주요 task | `C_FIT_EXPLAIN`(MVP) / `C_STRATEGY` / `C_LEARNING_ROADMAP` / `C_TREND_SUMMARY` |
 | 입력 형식 | 구조화 텍스트: 공고 요구 + 프로필 + **규칙엔진 사전계산값(fitScore/판단/matched/missing)** |
 | 출력 형식 | 설명 JSON (fitSummary/strengths/risks/strategyActions/learningTaskReasons). **점수 미포함** |
-| 검증 방식 | JSON 스키마 + 원문근거(입력 외 사실 추가 금지) + 점수/판단 불변 검증 |
-| fallback | OSS → OpenAI → Mock (백엔드 `FallbackCareerAnalysisClient`, D 패턴 미러) |
-| 알려진 한계 | 소형(3B) 모델 JSON 깨짐/긴 출력 시 Ollama 500/한국어 토큰 누출 가능 → format=json + 폴백으로 방어. **UI E2E 실측(2026-06-21): 3건 중 1건 OSS 성공, 2건(JSON 파싱·500) mock 폴백 — 폴백이 화면 보장**. 안정화는 Phase 2~3 |
+| 검증 방식 | JSON 스키마 + 원문근거(입력 외 사실 추가 금지) + 점수/판단 불변 검증 + E1 grounding hard guard + R3 review-first evidence gate |
+| fallback | OSS → OpenAI → Mock (백엔드 `FallbackFitAnalysisAiService` @Primary) |
+| 알려진 한계 | 소형(3B) 모델 JSON 깨짐/긴 출력 시 Ollama 500/한국어 토큰 누출 가능 → format=json + 폴백으로 방어. R3 이후에도 alias map 밖 표면형과 운영 false-positive/false-negative feedback loop는 별도 과제 |
 | 라이선스 주의 | base Qwen2.5 Apache 2.0. 공개데이터는 공공누리 유형 확인(제1유형+출처표시면 상업 OK) |
 | 실제 서비스 연결 경로 | `fitanalysis/ai` `FallbackFitAnalysisAiService`(@Primary) → `OssFitAnalysisAiService`(뉴로-심볼릭) → `CareerAnalysisOssClient` → Ollama `careertuner-c-career-strategy-3b`. provider=oss+base-url 설정 시 활성(원격경로 미확정) |
-| 마지막 평가 일자 | 2026-06-21 서빙 검증(test_infer 4/4, ollama run) + 백엔드 단위테스트 18/18. 골든셋 정량평가는 Phase 3 |
+| 마지막 평가 일자 | 2026-06-30 R3 evidence gate dev 통합·자동 검증 확인(reports/65~66). 7B smoke는 2026-06-26 reports/49 기준 |
 
 ## 뉴로-심볼릭 설계 요지
 
 점수·판단(`fitScore`/`applyDecision`/`matchedSkills`/`missing*`)은 **서버 규칙엔진이 결정론적으로 계산**하고,
 LLM은 그 값을 입력으로 받아 **한국어 설명/추천만** 생성한다. → 점수 재현성·감사가능성 확보, 환각이 설명 문장에 국한.
+
+## Production safety layer
+
+현재 production path 는 모델 출력을 그대로 신뢰하지 않는다. 실제 적합도 분석 설명 경로는 다음 계층으로 본다.
+
+```text
+3B LoRA / provider output
+→ E1 grounding hard guard
+→ R3 review-first evidence gate
+→ admin review state / safety response
+```
+
+- **E1 grounding hard guard**: 명백한 grounding violation 을 hard guard 로 다룬다. OSS 설명 생성에서 위반을 감지하면 retry/fallback 경로로 이동해 사용자 화면이 깨지지 않도록 한다.
+- **R3 review-first evidence gate**: 모델 출력 이후 결정론 검사로 `PASSED` / `REVIEW_REQUIRED` / `REJECTED` review state 를 남긴다. gate 는 설명을 자동 교정하지 않고, 관리자 검토 상태와 `safety` 응답으로 분리한다.
+- **불변 필드**: R3는 `fitScore`, `applyDecision`, `matchedSkills`, `missingSkills` 를 변경하지 않는다. 점수와 지원판단은 계속 서버 규칙엔진의 산출물이다.
+- **근거 분리**: `userEvidence` 는 `profileSkills + profileCertificates` 기준이다. `matchedSkills` 는 AI/규칙 산출의 derived evidence 이며 사용자 보유 근거로 신뢰하지 않는다.
+- **검출 범위**: gate 는 사용자에게 표시되는 핵심 설명 필드에서 unsupported possession claim 을 감지하고, gate reason/evidence source 를 감사 가능하게 남긴다.
+- **alias/mention 정책**: `SkillAliasNormalizer` 는 curated alias map 기반이다. substring/fuzzy matching 은 사용하지 않는다. mention-boundary 보강으로 `Next.js`/`React Native`/`Spring Boot`/`PostgreSQL` 류 false-positive 를 줄였다.
+
+## Current deployment decision
+
+- **3B LoRA 유지**: `careertuner-c-career-strategy-3b` 계열을 현재 기준 모델로 유지한다.
+- **7B base 전환 보류**: reports/49 smoke 결과만으로는 3B LoRA 교체 근거가 부족하다. 7B base 는 latency/VRAM 비용이 높고 golden60 기준 명확한 우위를 보이지 않았다.
+- **RAG runtime 자동 통합 보류**: R2b~R2f 실측에서 retrievedContext 주입은 net wash 이거나 grounding conflation 을 늘렸다. production prompt 에 자동 연결하지 않는다.
+- **rewrite 자동 노출 보류**: R2f rewrite 는 detector-safe 와 score-preserving 은 보였지만 의미손실과 malformed 문제가 있어 사용자 자동 노출 대상이 아니다.
+- **R3 safety layer 적용**: 현재 운영 안전성은 prompt 만이 아니라 E1 hard guard + R3 review-first gate 의 결정론 계층으로 보강한다.
+
+## Known limitations after R3
+
+- curated alias map 에 없는 표면형은 false-positive 로 REVIEW_REQUIRED 처리될 수 있다.
+- gate reason 이 운영자에게 과도하거나 중복으로 느껴질 수 있다.
+- DB fixture 기반 mapper 통합 테스트는 아직 없다. 현재 일부 관리자 SQL 검증은 정적 XML 테스트로 고정되어 있다.
+- 운영 false-positive / false-negative feedback loop 는 아직 없다.
+- RAG 재도입 조건은 별도 hard-case benchmark 재구성이 필요하다([reports/67](reports/67_rag_reentry_criteria_and_hardcase_benchmark.md)).
+
+## Re-evaluation triggers
+
+- 운영 `REVIEW_REQUIRED` reason 이 과도하게 쌓일 때.
+- alias 후보가 반복적으로 발생할 때.
+- 특정 직군/기술군에서 false-positive 가 반복될 때.
+- 3B LoRA 출력 품질이 E1 + R3 gate 로도 감당되지 않을 때.
+- 7B LoRA 또는 새로운 base model 이 golden set 에서 latency/VRAM 비용을 감수할 만큼 명확히 우위일 때.
+- RAG hard-case benchmark 에서 unsupported possession claim 감소가 검증될 때.
 
 ## 학습 실측 (3B, 2026-06-21)
 

@@ -1,0 +1,346 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CareerTuner 데스크탑 앱 — C++ / Qt 기술 스택 설명</title>
+<style>
+  :root{
+    --bg:#0d1117; --bg2:#161b22; --bg3:#1c2330; --bg4:#222b38; --border:#30363d;
+    --text:#e6edf3; --muted:#8b949e; --accent:#7c5cff; --accent2:#2dd4bf;
+    --green:#3fb950; --yellow:#d29922; --blue:#58a6ff; --red:#f85149;
+    --qt:#41cd52; --cpp:#00599c; --radius:12px;
+  }
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{font-family:"Pretendard",-apple-system,"Segoe UI","Malgun Gothic",sans-serif;
+    background:var(--bg);color:var(--text);line-height:1.7;padding:0 0 90px;}
+  .wrap{max-width:1060px;margin:0 auto;padding:0 24px;}
+  code{font-family:"Consolas","D2Coding",monospace;background:#0a0d12;padding:1px 7px;border-radius:5px;font-size:.92em;color:#a5d6ff;}
+
+  header.hero{background:linear-gradient(135deg,#04243a 0%,#0d1117 55%);border-bottom:1px solid var(--border);
+    padding:54px 0 42px;text-align:center;}
+  .badge{display:inline-block;font-size:13px;color:var(--qt);border:1px solid var(--qt);border-radius:999px;
+    padding:4px 14px;margin-bottom:18px;letter-spacing:.5px;font-weight:600;}
+  header.hero h1{font-size:36px;line-height:1.28;margin-bottom:14px;}
+  header.hero h1 .cpp{color:#4d9fd4;} header.hero h1 .qt{color:var(--qt);}
+  header.hero p{color:var(--muted);font-size:16px;max-width:700px;margin:0 auto;}
+  .crumb{margin-top:14px;font-size:13px;color:var(--muted);}
+  .crumb a{color:var(--accent);text-decoration:none;}
+
+  section{margin-top:58px;}
+  .kicker{color:var(--accent2);font-size:13px;font-weight:700;letter-spacing:1px;text-transform:uppercase;}
+  h2{font-size:27px;margin:6px 0 16px;}
+  h3{font-size:18px;margin:24px 0 10px;color:#cdd6e0;}
+  p.lead{color:var(--muted);font-size:16px;margin-bottom:10px;}
+  .text p{margin-bottom:13px;} .text b{color:var(--text);}
+
+  .card{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);padding:22px 24px;}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:16px;}
+  .grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;}
+  @media(max-width:840px){.grid2,.grid3{grid-template-columns:1fr;}}
+
+  .easy{border-left:3px solid var(--accent);background:rgba(124,92,255,.08);padding:12px 18px;border-radius:0 8px 8px 0;margin:14px 0;color:#d6ccff;font-size:14.5px;}
+  .easy strong{color:var(--accent);}
+  .tip{border-left:3px solid var(--accent2);background:rgba(45,212,191,.08);padding:14px 18px;border-radius:0 8px 8px 0;margin:16px 0;color:#b8efe7;}
+  .tip strong{color:var(--accent2);}
+  .note{border-left:3px solid var(--yellow);background:rgba(210,153,34,.08);padding:14px 18px;border-radius:0 8px 8px 0;margin:16px 0;color:#e8d9b0;}
+  .note strong{color:var(--yellow);}
+
+  /* 한 장 요약 */
+  .summary{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-top:10px;}
+  @media(max-width:840px){.summary{grid-template-columns:1fr 1fr;}}
+  .scard{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);padding:18px;text-align:center;}
+  .scard .lbl{font-size:12px;color:var(--muted);margin-bottom:6px;}
+  .scard .val{font-size:18px;font-weight:800;}
+  .scard.c1 .val{color:#4d9fd4;} .scard.c2 .val{color:var(--qt);} .scard.c3 .val{color:var(--accent2);} .scard.c4 .val{color:var(--yellow);}
+  .scard .ex{font-size:11.5px;color:var(--muted);margin-top:5px;}
+
+  /* 용어 */
+  dl.terms{display:grid;grid-template-columns:140px 1fr;gap:12px 18px;}
+  dl.terms dt{color:var(--accent2);font-weight:700;}
+  dl.terms dd{color:var(--muted);}
+  dl.terms dd b{color:var(--text);}
+  @media(max-width:840px){dl.terms{grid-template-columns:1fr;}dl.terms dt{margin-top:8px;}}
+
+  /* 왜 카드 */
+  .why{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);padding:20px;}
+  .why .ic{font-size:28px;} .why h4{font-size:16px;margin:10px 0 6px;} .why p{font-size:13.5px;color:var(--muted);}
+
+  /* 엔진/얼굴 구조도 */
+  .stack{max-width:620px;margin:0 auto;}
+  .layer{border-radius:12px;padding:18px 22px;margin:0 auto;border:1px solid var(--border);}
+  .layer.ui{background:linear-gradient(135deg,rgba(65,205,82,.12),var(--bg2));border-color:rgba(65,205,82,.4);}
+  .layer.core{background:linear-gradient(135deg,rgba(0,89,156,.18),var(--bg2));border-color:rgba(77,159,212,.5);}
+  .layer.server{background:linear-gradient(135deg,rgba(124,92,255,.12),var(--bg2));border-color:rgba(124,92,255,.4);}
+  .layer .lt{font-size:16px;font-weight:800;display:flex;align-items:center;gap:10px;}
+  .layer.ui .lt{color:var(--qt);} .layer.core .lt{color:#5fb0e0;} .layer.server .lt{color:var(--accent);}
+  .layer .ld{font-size:13.5px;color:var(--muted);margin-top:6px;}
+  .layer .tags{margin-top:10px;display:flex;gap:7px;flex-wrap:wrap;}
+  .layer .tg{font-size:11.5px;border:1px solid var(--border);border-radius:999px;padding:3px 10px;color:var(--muted);}
+  .vsig{text-align:center;color:var(--muted);font-size:13px;padding:8px 0;}
+  .vsig b{color:var(--text);}
+
+  /* 트리 */
+  .tree{background:#0a0d12;border:1px solid var(--border);border-radius:10px;padding:18px 20px;
+    font-family:"Consolas","D2Coding",monospace;font-size:13px;line-height:1.85;color:#c9d1d9;overflow-x:auto;}
+  .tree .d{color:var(--qt);} .tree .cpp{color:#5fb0e0;} .tree .cm{color:#6a7380;}
+
+  /* 매핑 테이블 */
+  table{width:100%;border-collapse:collapse;margin:12px 0;font-size:14px;}
+  th,td{text-align:left;padding:10px 12px;border-bottom:1px solid var(--border);vertical-align:top;}
+  th{color:var(--accent2);font-weight:700;background:var(--bg3);}
+  td{color:var(--muted);} td b,td code{color:var(--text);}
+  tr:hover td{background:rgba(255,255,255,.02);}
+
+  /* 빌드 흐름 */
+  .build{display:flex;align-items:center;gap:10px;flex-wrap:wrap;justify-content:center;margin:18px 0;}
+  .bstep{background:var(--bg2);border:1px solid var(--border);border-radius:11px;padding:14px 18px;text-align:center;min-width:130px;}
+  .bstep .bi{font-size:24px;} .bstep .bt{font-size:13px;font-weight:700;margin-top:6px;} .bstep .bs{font-size:11px;color:var(--muted);margin-top:2px;}
+  .bstep.fin{border-color:var(--green);} .bstep.fin .bt{color:var(--green);}
+  .barrow{color:var(--accent2);font-size:22px;}
+
+  /* 크로스플랫폼 */
+  .platforms{display:flex;gap:14px;justify-content:center;flex-wrap:wrap;margin-top:14px;}
+  .plat{background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:16px 24px;text-align:center;min-width:140px;}
+  .plat .pi{font-size:30px;} .plat .pn{font-weight:700;font-size:14px;margin-top:6px;} .plat .pf{font-size:11.5px;color:var(--muted);margin-top:2px;}
+
+  /* 로드맵 */
+  .roadmap{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;}
+  @media(max-width:840px){.roadmap{grid-template-columns:1fr;}}
+  .phase{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);padding:20px;}
+  .phase .num{font-size:13px;font-weight:800;}
+  .phase.p1{border-top:3px solid var(--green);} .phase.p1 .num{color:var(--green);}
+  .phase.p2{border-top:3px solid var(--blue);} .phase.p2 .num{color:var(--blue);}
+  .phase.p3{border-top:3px solid var(--yellow);} .phase.p3 .num{color:var(--yellow);}
+  .phase h4{margin:6px 0 10px;font-size:16px;}
+  .phase ul{list-style:none;} .phase li{color:var(--muted);font-size:13.5px;padding:5px 0 5px 18px;position:relative;}
+  .phase li:before{content:"›";position:absolute;left:3px;color:var(--accent2);}
+
+  footer{margin-top:64px;padding-top:24px;border-top:1px solid var(--border);color:var(--muted);font-size:13px;text-align:center;}
+</style>
+</head>
+<body>
+
+<header class="hero">
+  <div class="wrap">
+    <span class="badge">기술 스택 결정 · 팀 공유용</span>
+    <h1>데스크탑 앱은 <span class="cpp">C++</span> / <span class="qt">Qt</span> 로 만든다</h1>
+    <p>"웹 감싸기"가 아닌 진짜 네이티브 프로그램. 이 문서는 C++·Qt·QML이 각각 뭔지, 우리 앱이 어떻게 만들어지는지를 비전공자도 이해할 수 있게 풀어서 설명한다.</p>
+    <div class="crumb">개념·목업 → <a href="desktop-app-concept.html">desktop-app-concept.html</a> · 클릭 데모 → <a href="desktop-app-prototype.html">desktop-app-prototype.html</a></div>
+  </div>
+</header>
+
+<div class="wrap">
+
+  <!-- 한 장 요약 -->
+  <section style="margin-top:40px;">
+    <div class="kicker">한 장 요약</div>
+    <h2>무엇으로 만드나</h2>
+    <div class="summary">
+      <div class="scard c1"><div class="lbl">언어</div><div class="val">C++ 17</div><div class="ex">빠르고 강력한 프로그래밍 언어</div></div>
+      <div class="scard c2"><div class="lbl">프레임워크</div><div class="val">Qt 6</div><div class="ex">C++로 앱 만드는 도구 세트</div></div>
+      <div class="scard c3"><div class="lbl">화면(UI)</div><div class="val">QML</div><div class="ex">화면 전용 언어 (웹과 비슷)</div></div>
+      <div class="scard c4"><div class="lbl">빌드</div><div class="val">CMake</div><div class="ex">실행파일로 묶는 도구</div></div>
+    </div>
+    <div class="easy"><strong>한 줄로:</strong> <b>C++</b>로 속을 짜고, <b>Qt</b>라는 도구 세트로 화면·네트워크를 붙이고, 화면은 <b>QML</b>로 그리고, <b>CMake</b>로 묶어서 하나의 실행파일(<code>CareerTuner.exe</code>)을 만든다. 결과물은 윈도우·맥·리눅스에서 다 도는 진짜 프로그램.</div>
+  </section>
+
+  <!-- 용어 -->
+  <section>
+    <div class="kicker">먼저 용어부터</div>
+    <h2>낯선 단어 풀이</h2>
+    <div class="card">
+      <dl class="terms">
+        <dt>C++ (씨쁠쁠)</dt>
+        <dd>프로그램을 만드는 <b>빠르고 강력한 언어</b>. 크롬 브라우저, 게임 엔진(언리얼), 윈도우 프로그램 상당수가 C++로 만들어진다.</dd>
+        <dt>Qt (큐트)</dt>
+        <dd>C++로 <b>데스크탑 앱을 만들게 해주는 도구 세트(프레임워크)</b>. 화면 그리기·네트워크·파일 처리가 다 들어있다. 한 번 만들면 <b>윈도우·맥·리눅스에서 전부 돈다.</b></dd>
+        <dt>QML (큐엠엘)</dt>
+        <dd>Qt에서 <b>화면(UI)을 만드는 전용 언어</b>. HTML+CSS+JavaScript와 느낌이 비슷해서 웹 해본 사람은 금방 배운다. <b>애니메이션이 강점.</b></dd>
+        <dt>CMake (씨메이크)</dt>
+        <dd>흩어진 소스코드들을 <b>실행파일로 묶는(빌드) 레시피</b>를 적는 도구. "이 파일들을 이렇게 컴파일해" 라고 알려준다.</dd>
+        <dt>컴파일</dt>
+        <dd>사람이 쓴 코드(<code>.cpp</code>)를 컴퓨터가 바로 실행하는 파일(<code>.exe</code>)로 <b>번역</b>하는 과정.</dd>
+        <dt>네이티브 앱</dt>
+        <dd>브라우저(웹뷰)로 감싼 게 아니라 <b>OS에서 직접 도는 진짜 프로그램</b>. 우리가 목표한 "제대로 된 하나의 프로그램".</dd>
+        <dt>SSE</dt>
+        <dd>서버가 클라이언트로 진행 상황을 <b>실시간으로 흘려보내는 기술</b>. "분석 끝남 → 질문 생성됨 → ..."이 실시간으로 뜨는 이유.</dd>
+      </dl>
+    </div>
+  </section>
+
+  <!-- 왜 C++/Qt -->
+  <section>
+    <div class="kicker">왜 이걸로?</div>
+    <h2>C++ / Qt 를 고른 이유</h2>
+    <div class="grid3">
+      <div class="why">
+        <div class="ic">🧱</div>
+        <h4>진짜 네이티브</h4>
+        <p>웹을 감싼 게 아니라 OS에서 직접 도는 무거운 프로그램. 우리가 처음에 정한 <b>"제대로 된 하나의 프로그램"</b> 목표에 정확히 맞는다.</p>
+      </div>
+      <div class="why">
+        <div class="ic">🌍</div>
+        <h4>크로스플랫폼</h4>
+        <p><b>한 번 짜면 윈도우·맥·리눅스 전부</b>에서 돈다. 코드를 OS별로 다시 안 짜도 된다. (윈도우 전용 도구로는 못 하는 것)</p>
+      </div>
+      <div class="why">
+        <div class="ic">✨</div>
+        <h4>모던 UI 가능</h4>
+        <p>QML로 우리가 만든 <b>프로토타입의 애니메이션·실시간 진행·토스트</b>를 그대로 구현한다. 화면이 부드럽고 살아있다.</p>
+      </div>
+    </div>
+    <div class="tip"><strong>핵심:</strong> 데스크탑 앱이 하는 일은 "화면을 그리고 + 서버와 통신"이다. 무거운 AI 계산은 <b>서버가</b> 한다(이전에 정한 결정). C++/Qt는 이 네이티브 클라이언트를 가장 단단하게, 그리고 여러 OS에서 한 번에 만들 수 있게 해준다.</div>
+  </section>
+
+  <!-- 엔진/얼굴 구조 -->
+  <section>
+    <div class="kicker">앱의 속 구조</div>
+    <h2>C++ 는 "엔진", QML 은 "얼굴"</h2>
+    <p class="lead">앱은 두 부분으로 나뉜다. <b>안 보이지만 일하는 C++ 코어(엔진)</b>와, <b>눈에 보이는 QML 화면(얼굴)</b>. 자동차로 치면 엔진과 계기판이다.</p>
+
+    <div class="stack">
+      <div class="layer ui">
+        <div class="lt">🎨 QML — 얼굴 (화면)</div>
+        <div class="ld">사용자가 보고 누르는 부분. 버튼·작업 카드·진행률 바·애니메이션·토스트.</div>
+        <div class="tags"><span class="tg">대시보드</span><span class="tg">작업 상세</span><span class="tg">면접 연습</span><span class="tg">리포트</span><span class="tg">폰 미러</span></div>
+      </div>
+      <div class="vsig">↕ 서로 신호를 주고받음 <b>(C++가 데이터를 주면 → QML이 그림)</b></div>
+      <div class="layer core">
+        <div class="lt">⚙️ C++ — 엔진 (두뇌)</div>
+        <div class="ld">안 보이지만 실제로 일하는 곳. 서버와 통신하고, 데이터를 관리하고, 로그인 토큰을 다룬다.</div>
+        <div class="tags"><span class="tg">ApiClient (서버 호출)</span><span class="tg">SseClient (실시간)</span><span class="tg">AuthService (로그인)</span><span class="tg">JobModel (데이터)</span></div>
+      </div>
+      <div class="vsig">↕ 인터넷 (HTTP / SSE)</div>
+      <div class="layer server">
+        <div class="lt">🖥️ 서버 (기존 Spring + 4090)</div>
+        <div class="ld">실제 AI 작업을 돌리는 곳. 데스크탑 앱은 여기에 "접속"만 한다. <b>새로 만들지 않고 기존 것을 그대로 쓴다.</b></div>
+      </div>
+    </div>
+    <div class="easy"><strong>왜 나누나?</strong> 화면 담당(QML)과 일 담당(C++)을 분리하면, 화면 디자인을 바꿔도 엔진은 안 건드리고, 반대로 서버 통신 로직을 고쳐도 화면은 그대로다. 유지보수가 쉬워진다.</div>
+  </section>
+
+  <!-- 폴더 구조 -->
+  <section>
+    <div class="kicker">프로젝트 구조</div>
+    <h2>파일이 이렇게 생긴다</h2>
+    <div class="tree">
+<span class="d">CareerTuner.Desktop/</span>          <span class="cm"># C++17 · Qt 6 데스크탑 앱 (별도 프로젝트)</span>
+├─ CMakeLists.txt            <span class="cm"># 빌드 레시피 (어떤 파일을 어떻게 묶을지)</span>
+├─ <span class="cpp">main.cpp</span>                 <span class="cm"># 앱 시작점 · 트레이(시계 옆 아이콘) 상주</span>
+├─ <span class="d">qml/</span>                     <span class="cm"># ── 얼굴(화면) ──</span>
+│   ├─ Main.qml              <span class="cm"># 전체 셸 (왼쪽 사이드바 + 화면 전환)</span>
+│   ├─ DashboardPage.qml     <span class="cm"># 작업 큐 카드 목록</span>
+│   ├─ JobDetailPage.qml     <span class="cm"># 의존그래프 + 단계별 결과</span>
+│   ├─ PracticePage.qml      <span class="cm"># 면접 연습 (질문·답변·녹음)</span>
+│   ├─ ReportPage.qml        <span class="cm"># 면접 리포트 (점수·평가)</span>
+│   └─ PhoneMirror.qml       <span class="cm"># 우측 폰 미러 (모바일 동기화)</span>
+├─ <span class="d">core/</span>                    <span class="cm"># ── 엔진(로직) ──</span>
+│   ├─ <span class="cpp">ApiClient</span>            <span class="cm"># 서버 REST 호출 + 로그인 토큰(JWT) 첨부</span>
+│   ├─ <span class="cpp">SseClient</span>            <span class="cm"># 실시간 스트림 받기 + 끊기면 자동 재연결</span>
+│   ├─ <span class="cpp">AuthService</span>          <span class="cm"># 로그인 · 토큰 갱신</span>
+│   └─ <span class="cpp">JobModel</span>             <span class="cm"># 작업 목록 데이터 (화면에 자동 연결)</span>
+└─ <span class="d">resources/</span>               <span class="cm"># 아이콘 · 다크 테마 스타일</span>
+    </div>
+    <div class="note"><strong>협업 안전:</strong> 이 데스크탑 앱은 <b>완전히 별도 프로젝트</b>다. 기존 <code>backend/</code>·<code>frontend/</code> 코드를 건드리지 않으므로 다른 팀원 작업과 충돌하지 않는다.</div>
+  </section>
+
+  <!-- SSE 쉽게 -->
+  <section>
+    <div class="kicker">핵심 기능 하나</div>
+    <h2>"끊겨도 안 놓친다" — 실시간 진행 받기</h2>
+    <div class="card text">
+      <p>면접 준비 작업은 시간이 걸린다. 서버가 진행 상황을 <b>실시간으로 찔러주면(SSE)</b>, C++의 <b>SseClient</b>가 받아서 화면(QML)에 바로 표시한다.</p>
+      <p>문제는 <b>인터넷이 끊기거나 노트북을 닫았을 때</b>다. 보통이면 그 사이 진행을 놓친다. 우리는 이렇게 푼다:</p>
+      <p>① 받은 이벤트마다 <b>번호(seq)</b>가 붙는다. ② 앱은 "마지막으로 본 번호"를 기억한다. ③ 다시 연결될 때 <b>"나 N번까지 봤어"</b>라고 서버에 알린다(<code>Last-Event-ID</code>). ④ 서버는 <b>N번 다음부터</b> 다시 보내준다.</p>
+      <div class="easy"><strong>비유:</strong> 드라마를 보다 잠들어도, 넷플릭스가 "여기까지 봤어요" 기억했다가 그 다음 화부터 틀어주는 것과 같다. C++로 이 동작을 충분히 깔끔하게 만들 수 있다.</div>
+    </div>
+  </section>
+
+  <!-- 프로토타입 매핑 -->
+  <section>
+    <div class="kicker">헛일 아님</div>
+    <h2>만든 프로토타입이 그대로 설계도가 된다</h2>
+    <p class="lead">앞서 만든 클릭 가능한 프로토타입(<a href="desktop-app-prototype.html" style="color:var(--accent);">HTML</a>)의 화면들이 Qt(QML) 컴포넌트로 <b>1:1로 옮겨진다.</b> 디자인을 새로 짜는 게 아니다.</p>
+    <table>
+      <tr><th>프로토타입 화면 (HTML)</th><th>Qt 에서 (QML)</th><th>역할</th></tr>
+      <tr><td>좌측 사이드바</td><td><code>Main.qml</code> 의 네비</td><td>화면 전환 메뉴</td></tr>
+      <tr><td>작업 카드 목록</td><td><code>DashboardPage.qml</code> + Repeater</td><td>진행 중 작업 표시</td></tr>
+      <tr><td>의존그래프 / 단계 결과</td><td><code>JobDetailPage.qml</code></td><td>작업 상세</td></tr>
+      <tr><td>실시간 로그 도크</td><td>QML <code>ListView</code> (자동 스크롤)</td><td>SSE 로그 표시</td></tr>
+      <tr><td>우측 폰 미러</td><td><code>PhoneMirror.qml</code></td><td>모바일 동기화 시각화</td></tr>
+      <tr><td>토스트 알림</td><td>QML <code>Popup</code></td><td>완료/전송 알림</td></tr>
+    </table>
+    <div class="tip"><strong>의미:</strong> 프로토타입은 단순 그림이 아니라 <b>실제 구현의 청사진</b>이다. 팀원들이 본 그 화면이 그대로 앱이 된다.</div>
+  </section>
+
+  <!-- 빌드 흐름 -->
+  <section>
+    <div class="kicker">어떻게 프로그램이 되나</div>
+    <h2>소스코드 → 실행파일</h2>
+    <div class="build">
+      <div class="bstep"><div class="bi">📝</div><div class="bt">소스코드</div><div class="bs">.cpp · .h · .qml</div></div>
+      <span class="barrow">→</span>
+      <div class="bstep"><div class="bi">📋</div><div class="bt">CMake</div><div class="bs">빌드 레시피 적용</div></div>
+      <span class="barrow">→</span>
+      <div class="bstep"><div class="bi">⚙️</div><div class="bt">컴파일러</div><div class="bs">기계어로 번역</div></div>
+      <span class="barrow">→</span>
+      <div class="bstep fin"><div class="bi">📦</div><div class="bt">CareerTuner.exe</div><div class="bs">실행파일 완성</div></div>
+    </div>
+    <h3>같은 코드로 여러 OS</h3>
+    <p class="lead">Qt 덕분에 <b>같은 소스코드를</b> 각 OS에서 빌드하면 그 OS용 프로그램이 나온다.</p>
+    <div class="platforms">
+      <div class="plat"><div class="pi">🪟</div><div class="pn">Windows</div><div class="pf">CareerTuner.exe</div></div>
+      <div class="plat"><div class="pi">🍎</div><div class="pn">macOS</div><div class="pf">CareerTuner.app</div></div>
+      <div class="plat"><div class="pi">🐧</div><div class="pn">Linux</div><div class="pf">실행 바이너리</div></div>
+    </div>
+    <p class="lead" style="text-align:center;margin-top:14px;">＊ 우선은 <b>Windows부터</b> 만들고, 크로스플랫폼은 여력이 될 때 켠다.</p>
+  </section>
+
+  <!-- 로드맵 -->
+  <section>
+    <div class="kicker">만드는 순서</div>
+    <h2>데스크탑 앱 구현 단계</h2>
+    <div class="roadmap">
+      <div class="phase p1">
+        <div class="num">STEP 1 · 골격</div>
+        <h4>앱이 켜지고 서버에 붙는다</h4>
+        <ul>
+          <li>메인 창 + 사이드바 (Main.qml)</li>
+          <li>로그인 → JWT 토큰 받기</li>
+          <li>대시보드 + 작업 카드</li>
+          <li>SseClient — 실시간 진행 받기</li>
+          <li>트레이 상주</li>
+        </ul>
+      </div>
+      <div class="phase p2">
+        <div class="num">STEP 2 · 화면</div>
+        <h4>주요 화면을 채운다</h4>
+        <ul>
+          <li>작업 상세 (의존그래프)</li>
+          <li>면접 연습 화면</li>
+          <li>면접 리포트</li>
+          <li>완료 알림(Windows 토스트)</li>
+        </ul>
+      </div>
+      <div class="phase p3">
+        <div class="num">STEP 3 · 네이티브</div>
+        <h4>데스크탑만의 강점</h4>
+        <ul>
+          <li>고화질 녹화 (화면 + 웹캠)</li>
+          <li>폰 미러 · 디스패치 연동</li>
+          <li>크로스플랫폼 빌드</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <footer>
+    CareerTuner · 데스크탑 앱 기술 스택 (C++ / Qt 6 / QML) · 담당 D 정원일<br>
+    관련 문서: <a href="desktop-app-concept.html" style="color:var(--accent);">개념·목업</a> · <a href="desktop-app-prototype.html" style="color:var(--accent);">클릭 데모</a><br>
+    데스크탑 클라이언트는 별도 프로젝트이며, 서버측 공통 영역(작업 저장·푸시) 변경은 팀 합의 후 진행한다.
+  </footer>
+
+</div>
+</body>
+</html>
