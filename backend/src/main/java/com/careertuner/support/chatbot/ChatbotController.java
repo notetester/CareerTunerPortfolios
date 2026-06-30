@@ -421,6 +421,11 @@ public class ChatbotController {
         return step != null && !"DONE".equals(step);
     }
 
+    /** 이 대화가 "그만"으로 온보딩을 거부했는지(DB 영속 권위). 거부 후엔 깡통계정이어도 재진입하지 않는다. */
+    private boolean isOnboardingDeclined(Long conversationId) {
+        return memoryStore.isOnboardingDeclined(conversationId);
+    }
+
     private boolean isBlankAccountForOnboarding(Long userId) {
         if (userId == null) {
             return false;
@@ -474,18 +479,29 @@ public class ChatbotController {
             }
         }
 
-        // 이탈 신호("그만"/⏏): 메모리 sticky(활성) 또는 DB 영속(PENDING/READY) 인테이크면 라우터 전에 즉시 복귀.
-        // 슬롯이 있으면 DONE 으로 닫아(재복원 차단) 재시작된 PENDING 세션도 깔끔히 중단되고, READY 세션의 "그만"이
-        // 라우터 FALLBACK 으로 새는 것(버그2)도 막는다. (status 3단계 — sticky 와 영속 양쪽을 한 핸들러로 통합)
-        if (req.conversationId() != null && isExitCommand(question)
-                && (intakeModeStore.isActive(conversationId)
-                        || intakeAskService.hasOpenIntakeSlot(conversationId))) {
-            intakeModeStore.exit(conversationId);
-            intakeAskService.closeIntakeSession(conversationId);
-            return ApiResponse.ok(new ChatAskResponse(
-                    conversationId,
-                    "일반 상담 모드로 돌아왔어요. 무엇이든 물어보세요.",
-                    List.of(), List.of(), "이탈", null, false, null));
+        // 이탈 신호("그만"/⏏): 라우터·온보딩 게이트 전에 즉시 복귀. (status 3단계 — sticky/영속/온보딩을 한 핸들러로 통합)
+        //  ⓐ 온보딩(깡통계정 또는 진행 중): "그만" 거부를 DB 에 영속(onboarding_declined_at)해 재시작·재진입까지 막고,
+        //     인메모리 onboarding 슬롯은 정리한다(권위 = DB). 이 핸들러가 onboardingTurn 보다 위라 슬롯 오염도 동시 차단.
+        //  ⓑ 일반 인테이크(메모리 sticky 또는 DB PENDING/READY): 기존대로 sticky 해제 + 세션 DONE 으로 닫음(재복원·FALLBACK 차단).
+        if (req.conversationId() != null && isExitCommand(question)) {
+            if (isOnboardingInProgress(conversationId) || isBlankAccountForOnboarding(userId)) {
+                memoryStore.markOnboardingDeclined(conversationId);
+                intakeSlotTrace.clearOnboarding(conversationId);
+                intakeModeStore.exit(conversationId); // 혹시 같이 떠 있던 sticky 도 보수적 정리
+                return ApiResponse.ok(new ChatAskResponse(
+                        conversationId,
+                        "온보딩을 건너뛸게요. 언제든 다시 시작할 수 있어요. 궁금한 거 있으면 편하게 물어봐 주세요.",
+                        List.of(), List.of(), "온보딩이탈", null, false, null));
+            }
+            if (intakeModeStore.isActive(conversationId)
+                    || intakeAskService.hasOpenIntakeSlot(conversationId)) {
+                intakeModeStore.exit(conversationId);
+                intakeAskService.closeIntakeSession(conversationId);
+                return ApiResponse.ok(new ChatAskResponse(
+                        conversationId,
+                        "일반 상담 모드로 돌아왔어요. 무엇이든 물어보세요.",
+                        List.of(), List.of(), "이탈", null, false, null));
+            }
         }
 
         // sticky 모드(오케스트레이터 유지): 이미 ③ 에 머무는 대화는 라우팅·FAQ·NAV 를 전부 건너뛰고 ③ 직행한다.
@@ -519,8 +535,11 @@ public class ChatbotController {
         //   sticky(intakeModeStore=인테이크 case 흐름) 안 건드림. ★(d) 공고로 case 가 생기면 게이트는 false 가 되지만,
         //   온보딩이 진행 중(DONE 종단 전)이면 sticky 로 onboardingTurn 을 유지해 비동기 추출 폴링·회사/직무 보정·
         //   mode 선택을 이어간다. (f) 면접 인계로 DONE 되면 sticky 가 풀린다(인계 자체는 onboardingTurn 안에서 끝남).
+        //  ★ 거부 영속 차단: "그만"으로 온보딩을 거부한 대화는 깡통계정이어도(게이트 true) 재진입하지 않는다.
+        //    declined 조회(DB)는 온보딩 후보일 때만 타도록 OR 뒤(단축평가)에 둔다 — 일반 유저는 조회 0.
         if (authUser != null
-                && (isOnboardingInProgress(conversationId) || isBlankAccountForOnboarding(userId))) {
+                && (isOnboardingInProgress(conversationId) || isBlankAccountForOnboarding(userId))
+                && !isOnboardingDeclined(conversationId)) {
             return ApiResponse.ok(onboardingTurn(conversationId, authUser, question, req.selectedModeCode()));
         }
 

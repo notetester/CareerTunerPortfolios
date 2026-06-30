@@ -211,6 +211,24 @@ public class IntakeSlotTrace {
         slotsByConversation.computeIfAbsent(conversationId, key -> new SlotState()).onboardingCaseId = caseId;
     }
 
+    /**
+     * 온보딩 인메모리 상태 정리(프로세스 내 즉시 정리용 — "그만" 탈출 시).
+     * step/job/skills/caseId 만 비운다(영속 거부 권위는 DB onboarding_declined_at).
+     * 일반 intake 슬롯(caseId/mode/originalQuery)은 건드리지 않는다.
+     */
+    public void clearOnboarding(Long conversationId) {
+        if (conversationId == null) {
+            return;
+        }
+        SlotState state = slotsByConversation.get(conversationId);
+        if (state != null) {
+            state.onboardingStep = null;
+            state.onboardingJob = null;
+            state.onboardingSkills = null;
+            state.onboardingCaseId = null;
+        }
+    }
+
     /** 온보딩 수집 스냅샷(검증·(e) 변환용). */
     public OnboardingCollected onboarding(Long conversationId) {
         SlotState state = conversationId == null ? null : slotsByConversation.get(conversationId);
