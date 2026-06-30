@@ -77,13 +77,31 @@ public class ChatbotController {
     private static final String ONB_DEFAULT_COMPANY = "기업명 확인 필요";
     private static final String ONB_DEFAULT_JOBTITLE = "직무명 확인 필요";
 
-    /** 확인 응답에서 "시작" 쪽으로 본다(그 외는 안전하게 ① 로). */
-    private static final List<String> AFFIRMATIVE = List.of(
-            "시작", "네", "예", "응", "ㅇㅇ", "그래", "좋아", "할래", "해줘", "ok", "오케이", "yes");
+    /**
+     * 확인 응답에서 "시작" 쪽으로 본다(그 외는 안전하게 ① 로). 정규화된 입력과 <b>정확일치</b>로만 판정한다
+     * (부분문자열 contains 는 "네이버"가 "네"로 오탐 → 정확매칭이 곧 길이필터 역할).
+     */
+    private static final Set<String> AFFIRMATIVE = Set.of(
+            "시작", "네", "넵", "네네", "예", "응", "응응", "어", "ㅇㅇ", "그래", "그래요",
+            "좋아", "좋아요", "할래", "해줘", "ok", "오케이", "yes");
 
     /** 오케스트레이터 모드 이탈 신호(모드 활성 중에만 판정). 배너 ⏏ 도 이 키워드를 보낸다. */
     private static final List<String> EXIT_COMMANDS = List.of(
             "그만", "취소", "종료", "일반상담", "나가기", "중단", "그만할래");
+
+    /**
+     * 이탈 키워드별 허용 접미사(조사·어미). 매칭은 키워드 정확일치 <b>또는</b> "키워드로 시작 + 나머지가 이 집합에
+     * 정확히 포함"일 때만 — 단순 startsWith/contains 가 아니다. "그만두지않을래요"는 "그만"으로 시작하지만 접미사
+     * "두지않을래요"가 없어 탈락(오탐 차단). "중단된 프로젝트"는 "중단" 시작이나 접미사 "된프로젝트"가 없어 탈락.
+     */
+    private static final Map<String, Set<String>> EXIT_SUFFIXES = Map.of(
+            "그만", Set.of("요", "할래", "할게", "하자", "둘게"),
+            "취소", Set.of("요", "할게", "해줘"),
+            "종료", Set.of("요", "해줘"),
+            "중단", Set.of("요", "할게", "해줘"),
+            "나가기", Set.of("요"),
+            "일반상담", Set.of("요"),
+            "그만할래", Set.of("요"));
 
     private final CommunityChatAgent agent;
     private final QuickReplyAgent quickReplyAgent;
@@ -595,21 +613,34 @@ public class ChatbotController {
         }
     }
 
-    private boolean isAffirmative(String question) {
+    /** 확인 1턴 긍정 판정 — 화이트리스트 정확일치만(문장은 어느 항목과도 정확일치 안 해 자동 탈락 = 오탐 0). */
+    static boolean isAffirmative(String question) {
         if (question == null) {
             return false;
         }
         String norm = question.trim().toLowerCase().replace(" ", "");
-        return AFFIRMATIVE.stream().anyMatch(norm::contains);
+        return AFFIRMATIVE.contains(norm);
     }
 
-    /** 모드 활성 중 이탈 신호 판정("그만"/"취소"/⏏ 등). */
-    private boolean isExitCommand(String question) {
+    /**
+     * 모드 활성 중 이탈 신호 판정("그만"/"취소"/⏏ 등). 키워드 정확일치 또는 키워드+허용접미사(EXIT_SUFFIXES)일 때만.
+     * 부분문자열 contains 를 버려 "중단된 프로젝트"·"종료된 공고"·"환불 취소 절차" 같은 답변의 오탐을 막는다.
+     */
+    static boolean isExitCommand(String question) {
         if (question == null) {
             return false;
         }
         String norm = question.trim().toLowerCase().replace(" ", "");
-        return EXIT_COMMANDS.stream().anyMatch(norm::contains);
+        for (String kw : EXIT_COMMANDS) {
+            if (norm.equals(kw)) {
+                return true;
+            }
+            if (norm.startsWith(kw) && norm.length() > kw.length()
+                    && EXIT_SUFFIXES.getOrDefault(kw, Set.of()).contains(norm.substring(kw.length()))) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /**
