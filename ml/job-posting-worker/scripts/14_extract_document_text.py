@@ -497,14 +497,106 @@ def quality_status(score: int, metrics: dict[str, Any]) -> str:
     return "FAILED"
 
 
+# 핵심 업무 섹션(담당업무/주요업무/responsibilities) 헤더로 인식할 키워드.
+CRITICAL_SECTION_HEADERS = [
+    "담당업무", "주요업무", "업무내용", "함께할업무", "함께할 업무",
+    "responsibilities", "duties", "what you will do",
+]
+# 업무 본문에 실제 업무/기술 내용이 있는지 판별하는 토큰(하나라도 있으면 useful line).
+USEFUL_WORK_TOKENS = [
+    "개발", "운영", "설계", "구축", "개선", "관리", "분석", "협업", "구현", "담당", "수행", "기획",
+    "build", "operate", "develop", "design", "manage", "implement", "maintain",
+    "api", "react", "vue", "typescript", "javascript", "spring", "node", "python",
+    "java", "kotlin", "aws", "sql", "kubernetes", "docker", "mysql",
+]
+_ISOLATED_JAMO = re.compile(r"[㄰-㆏]")
+
+
+# 헤더 줄 앞뒤에 흔히 붙는 불릿/구두점(예: "자격요건:", "·우대사항", "주요업무 -").
+_HEADER_TRIM_CHARS = " \t·•◦▪‣▶▷●○■□*-–—:：.|"
+
+
+def _normalize_header_token(value: str) -> str:
+    """앞뒤 불릿·구두점·공백을 제거하고 casefold 한 헤더 매칭용 토큰을 만든다."""
+    return re.sub(r"\s+", "", value.strip(_HEADER_TRIM_CHARS)).casefold()
+
+
+def _is_header_like_line(line: str) -> bool:
+    """한 줄이 섹션 헤더처럼 보이는지(불릿·구두점 정규화 후 섹션 키워드와 정확히 일치 + 짧음) 판정한다."""
+    norm = _normalize_header_token(line)
+    if not norm or len(norm) > 16:
+        return False
+    return any(_normalize_header_token(keyword) == norm for keyword in SECTION_KEYWORDS)
+
+
+def _is_useful_work_line(line: str) -> bool:
+    lower = line.casefold()
+    return any(token in lower for token in USEFUL_WORK_TOKENS)
+
+
+def _meaningful_char_count(text: str) -> int:
+    return sum(1 for ch in text if ch.isalnum() or 0xAC00 <= ord(ch) <= 0xD7A3)
+
+
+def _is_suspect_line(line: str) -> bool:
+    """OCR 파편으로 의심되는 줄: 고립 자모/희귀 유니코드/짧은 토큰 위주/의미 글자 거의 없음."""
+    stripped = line.strip()
+    if not stripped:
+        return False
+    if _ISOLATED_JAMO.search(stripped):
+        return True
+    for ch in stripped:
+        if ch.isspace() or ch.isalnum() or 0xAC00 <= ord(ch) <= 0xD7A3:
+            continue
+        if ch in "·/,.()[]{}%~:;-+–—'\"!?&•…":
+            continue
+        return True  # 흔치 않은 기호/유니코드 포함
+    tokens = stripped.split()
+    if len(tokens) >= 3 and sum(1 for t in tokens if len(t) <= 2) / len(tokens) > 0.7:
+        return True
+    return _meaningful_char_count(stripped) <= 2
+
+
+def critical_section_metrics(normalized_text: str) -> dict[str, Any]:
+    """핵심 업무 섹션 헤더~다음 헤더 사이 본문의 품질 지표를 측정한다."""
+    lines = [line.strip() for line in normalized_text.splitlines() if line.strip()]
+    header_norms = {_normalize_header_token(keyword) for keyword in CRITICAL_SECTION_HEADERS}
+    body: list[str] | None = None
+    for index, line in enumerate(lines):
+        norm = _normalize_header_token(line)
+        if norm in header_norms and len(norm) <= 16:
+            body = []
+            for following in lines[index + 1:]:
+                if _is_header_like_line(following):
+                    break
+                body.append(following)
+            break
+    if body is None:
+        return {"exists": False, "usefulLineCount": 0, "meaningfulCharCount": 0, "suspectLineRatio": 0.0}
+    useful = sum(1 for line in body if _is_useful_work_line(line))
+    suspect = sum(1 for line in body if _is_suspect_line(line))
+    meaningful = sum(_meaningful_char_count(line) for line in body)
+    return {
+        "exists": True,
+        "usefulLineCount": useful,
+        "meaningfulCharCount": meaningful,
+        "suspectLineRatio": round(suspect / len(body), 4) if body else 0.0,
+    }
+
+
 def analyze_quality(text: str, seed_warnings: list[str] | None = None) -> dict[str, Any]:
     normalized = normalize_text(text)
     hints = section_hints(normalized)
+    critical = critical_section_metrics(normalized)
     metrics = {
         "textLength": len(normalized),
         "sectionKeywordHitCount": len(hints),
         "sectionKeywords": hints,
         "noiseKeywordHitCount": count_noise_hits(normalized),
+        "criticalSectionExists": critical["exists"],
+        "criticalSectionUsefulLineCount": critical["usefulLineCount"],
+        "criticalSectionMeaningfulCharCount": critical["meaningfulCharCount"],
+        "criticalSectionSuspectLineRatio": critical["suspectLineRatio"],
         **line_metrics(normalized),
     }
     score = quality_score(metrics)
@@ -520,6 +612,14 @@ def analyze_quality(text: str, seed_warnings: list[str] | None = None) -> dict[s
     if metrics["singleCharLineRatio"] >= 0.25:
         warnings.append("too_many_single_char_lines")
     status = quality_status(score, metrics)
+    # 핵심 업무 섹션 본문에 useful line 이 0 이고(짧거나 파편화) → PASS 를 REVIEW_REQUIRED 로 강등한다.
+    # "짧음" 단독이 아니라 "유용한 업무 내용 부재 + (너무 짧거나 suspect 지배)" 로 정상 짧은 섹션을 보호한다.
+    if (critical["exists"]
+            and critical["usefulLineCount"] == 0
+            and (critical["meaningfulCharCount"] < 30 or critical["suspectLineRatio"] >= 0.5)):
+        warnings.append("critical_section_content_insufficient")
+        if status == "PASS":
+            status = "REVIEW_REQUIRED"
     return {
         "qualityScore": score,
         "qualityStatus": status,
