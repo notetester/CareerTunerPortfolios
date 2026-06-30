@@ -59,12 +59,23 @@ Item {
                 RowLayout {
                     spacing: 12
                     Rectangle {
+                        id: micBtn
+                        property bool recording: false
                         width: 46; height: 46; radius: 23
-                        color: "transparent"; border.color: "#f85149"; border.width: 2
-                        Rectangle { anchors.centerIn: parent; width: 18; height: 18; radius: 4; color: "#f85149" }
-                        MouseArea { anchors.fill: parent } // TODO: 녹음 시작/중지
+                        color: recording ? "#f85149" : "transparent"
+                        border.color: "#f85149"; border.width: 2
+                        Rectangle {
+                            anchors.centerIn: parent
+                            width: 18; height: 18
+                            radius: micBtn.recording ? 9 : 4
+                            color: micBtn.recording ? "#ffffff" : "#f85149"
+                        }
+                        MouseArea { anchors.fill: parent; onClicked: micBtn.recording = !micBtn.recording }
                     }
-                    Text { text: "🎤 음성 답변 녹음"; color: "#8b949e"; font.pixelSize: 12 }
+                    Text {
+                        text: micBtn.recording ? "🔴 녹음 중... (다시 누르면 중지)" : "🎤 음성 답변 녹음"
+                        color: micBtn.recording ? "#f85149" : "#8b949e"; font.pixelSize: 12
+                    }
                     Item { Layout.fillWidth: true }
                     Button { text: "꼬리질문 받기" }
                     Button { text: "답변 제출 → 다음" }

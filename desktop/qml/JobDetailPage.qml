@@ -5,6 +5,12 @@ import QtQuick.Layouts
 // 작업 상세: AI 오케스트레이터 실행 그래프(의존 레인) + 단계별 결과.
 // 현재는 샘플 레이아웃 — 추후 C++(JobModel/이벤트)에서 실제 데이터 주입.
 Item {
+    id: detail
+    property int jobId: 128
+    property string jobTitle: "삼성전자 · SW 개발직군"
+    property string jobMode: "직무 면접"
+    signal back()
+
     property var lanes: [
         { label: "1차",    nodes: [{n:"공고 분석", s:"done"}] },
         { label: "병렬",   nodes: [{n:"프로필 정리", s:"done"}, {n:"자소서 분석", s:"done"}, {n:"적합도 분석", s:"done"}] },
@@ -20,10 +26,15 @@ Item {
         anchors.margins: 24
         spacing: 16
 
-        ColumnLayout {
-            spacing: 2
-            Text { text: "삼성전자 · SW 개발직군"; color: "#e6edf3"; font.pixelSize: 22; font.bold: true }
-            Text { text: "직무 면접 · 지원 건 #128 · 진행 중 65%"; color: "#8b949e"; font.pixelSize: 13 }
+        RowLayout {
+            Layout.fillWidth: true
+            ColumnLayout {
+                spacing: 2
+                Text { text: detail.jobTitle; color: "#e6edf3"; font.pixelSize: 22; font.bold: true }
+                Text { text: detail.jobMode + " · 지원 건 #" + detail.jobId; color: "#8b949e"; font.pixelSize: 13 }
+            }
+            Item { Layout.fillWidth: true }
+            Button { text: "← 대시보드"; onClicked: detail.back() }
         }
 
         Text { text: "AI 오케스트레이터 — 실행 그래프 (의존 관계)"; color: "#8b949e"; font.pixelSize: 12; font.bold: true }

@@ -4,6 +4,10 @@ import QtQuick.Layouts
 
 // 작업 대시보드: jobModel(C++ JobModel)을 ListView 로 바인딩.
 Item {
+    id: dash
+    signal openDetail(int jobId, string title, string mode)
+    signal requestNewJob()
+
     ColumnLayout {
         anchors.fill: parent
         anchors.margins: 24
@@ -20,7 +24,7 @@ Item {
             Item { Layout.fillWidth: true }
             Button {
                 text: "＋ 새 면접 준비"
-                // TODO: 새 작업 위저드(되묻기 CASE/MODE) 연결
+                onClicked: dash.requestNewJob()
             }
         }
 
@@ -84,7 +88,7 @@ Item {
 
                 MouseArea {
                     anchors.fill: parent
-                    // TODO: 클릭 시 작업 상세(JobDetailPage)로 전환
+                    onClicked: dash.openDetail(jobId, title, mode)
                 }
             }
         }

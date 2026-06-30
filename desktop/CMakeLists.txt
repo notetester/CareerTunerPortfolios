@@ -28,6 +28,7 @@ qt_add_qml_module(CareerTunerDesktop
         qml/PracticePage.qml
         qml/ReportPage.qml
         qml/PhoneMirror.qml
+        qml/NewJobDialog.qml
 )
 
 target_link_libraries(CareerTunerDesktop PRIVATE
