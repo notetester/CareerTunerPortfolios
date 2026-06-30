@@ -28,6 +28,8 @@ docs/       기획·아키텍처 문서
 | 소유권 빠른 참조 | `docs/FEATURE_OWNERSHIP.md` |
 | 현재 구현·실행·API 상태 | 런타임 소스와 `backend/README.md`, `frontend/README.md` |
 | UX와 모바일 세부 원칙 | `docs/planning/디자인 분석.md`, `docs/planning/모바일 고려.md` |
+| AI 장문 실험 보고서·누적 해석 | `docs/ai-reports/` 서브모듈 |
+| AI raw output·benchmark artifact | `docs/ai-artifacts/` 서브모듈 |
 
 - 같은 주제에서는 위 표의 담당 문서를 우선한다. 제품 기획이 구현 규칙을, 현재 코드가 목표 제품 범위를 자동으로 덮어쓰지 않는다.
 - 기획·아키텍처 문서는 목표 상태를 포함할 수 있고, 런타임 소스와 모듈 README는 현재 구현 상태를 설명한다.
@@ -95,6 +97,29 @@ push 요청을 받으면 반드시 아래 순서를 따른다:
 | [docs/TEAM_WORK_DISTRIBUTION.md](docs/TEAM_WORK_DISTRIBUTION.md) | 6명 수직 분담·AI 기능·주요 DB |
 | [backend/README.md](backend/README.md) | 백엔드 실행·환경변수·API 목록·시드 계정 |
 | [frontend/README.md](frontend/README.md) | 프런트 실행·스크립트·폴더 구조 |
+| [docs/AI_REPOSITORY_BOUNDARIES.md](docs/AI_REPOSITORY_BOUNDARIES.md) | AI 보고서·artifact 저장소 경계와 서브모듈 운용 |
+
+## AI 보고서·artifact 서브모듈
+
+AI 관련 산출물은 본체에 계속 누적하지 않는다.
+
+| 경로 | 서브모듈 repo | 용도 |
+| --- | --- | --- |
+| `docs/ai-reports/` | `notetester/CareerTunerAIDocs` | 장문 실험 보고서, 누적 해석, 사람이 읽는 분석 문서 |
+| `docs/ai-artifacts/` | `notetester/CareerTunerAI` | generated requests, raw model outputs, result JSON, manifests, aggregate summaries |
+
+- `CareerTuner` main repo 에는 제품 코드, 소형 fixture, validator, runner, 짧은 checklist/index, artifact path/commit SHA 만 남긴다.
+- `ml/career-strategy-llm/scripts/` 는 C 영역의 재현용 validator/runner/helper 를 두는 본체 경로다. A~F 공통 AI artifact 와 반복 benchmark artifact 주변 파일은 `CareerTunerAI` submodule 인 `docs/ai-artifacts/` 로 둔다.
+- `ml/career-strategy-llm/reports/` 는 기존 `reports/NN` 링크를 깨지 않기 위한 transitional mirror 다. 새 장문 보고서는 `docs/ai-reports/areas/c-career-strategy/reports/` 에 추가한다.
+- raw output, generated result, `reports/generated/` 는 `CareerTuner` main repo 에 커밋하지 않는다.
+- submodule 이 비어 있으면 필요한 것만 받는다:
+
+```bash
+git submodule update --init docs/ai-reports
+git submodule update --init docs/ai-artifacts
+```
+
+- submodule 안에서 수정한 파일은 그 submodule repo 에서 먼저 commit/push 한 뒤, 루트에서 submodule pointer 를 갱신해 PR 한다.
 
 ## 스토리보드 문서(서브모듈 · 선택 다운로드)
 

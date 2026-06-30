@@ -31,6 +31,7 @@ Last updated: 2026-06-30
 
 ## 3. RAG 상태
 
+- [x] 완료 — AI 장문 보고서와 raw artifact 저장 경계를 A~F 공통 submodule 로 분리했다(`docs/ai-reports/`, `docs/ai-artifacts/`, [docs/AI_REPOSITORY_BOUNDARIES](../../docs/AI_REPOSITORY_BOUNDARIES.md)).
 - [x] 완료 — RAG 설계, offline retrieval PoC, local embedding/vector PoC 를 문서화했다(PR #147 계열, [reports/50](reports/50_rag_design_plan.md), [reports/51](reports/51_rag_offline_poc_result.md), [reports/52](reports/52_rag_local_embedding_poc_result.md)).
 - [x] 완료 — R2b~R2f 실측에서 retrievedContext 주입은 단순 개선으로 확정되지 않았고, review/reject gate 쪽이 더 안정적인 안전 레버로 확인되었다([reports/54](reports/54_rag_r2b_hardcase_eval.md), [reports/57](reports/57_rag_r2d_evidence_gate_eval.md), [reports/59](reports/59_rag_r2f_output_capture_gate_eval.md)).
 - [~] 보류 또는 조건부 유지 — production prompt 에 retrievedContext 를 자동 주입하지 않는다([reports/60](reports/60_rag_r3_pre_backend_gate_design.md), [reports/61](reports/61_rag_r3_review_first_gate_implementation.md)).
@@ -38,7 +39,7 @@ Last updated: 2026-06-30
 - [x] 완료 — RAG 재도입 전 조건과 hard-case benchmark 기준을 문서화했다([reports/67](reports/67_rag_reentry_criteria_and_hardcase_benchmark.md)).
 - [x] 완료 — RAG 재도입 hard-case fixture v1 과 dry-run payload 생성 골격을 구성했다([reports/69](reports/69_rag_hardcase_benchmark_fixture.md)).
 - [x] 완료 — RAG hard-case offline A/B runner 골격과 aggregate summarizer 를 추가했다([reports/70](reports/70_rag_hardcase_offline_ab_runner.md)).
-- [x] 완료 — 4090/Ollama 기준 RAG hard-case 3B LoRA A/B run 을 1회 실행하고 CareerTunerAI artifact path/commit SHA 를 기록했다([reports/71](reports/71_rag_hardcase_actual_3b_ab_run.md), CareerTunerAI `rag-hardcase-benchmark/runs/rag_hardcase_v1_20260630_1635`, commit `468ef2fd95116b13b8d72b842ed336ec3edb10ed`).
+- [x] 완료 — 4090/Ollama 기준 RAG hard-case 3B LoRA A/B run 을 1회 실행하고 CareerTunerAI artifact path/commit SHA 를 기록했다([reports/71](reports/71_rag_hardcase_actual_3b_ab_run.md), CareerTunerAI `benchmarks/rag-hardcase/runs/rag_hardcase_v1_20260630_1635`, commit `8939d5856bf7edc9b9c93a7f9ff94034ab8d0a4e`).
 - [~] 보류 또는 조건부 유지 — raw output/result JSON 은 CareerTunerAI artifact repo 에 저장한다.
 - [~] 보류 또는 조건부 유지 — 긴 실험 분석 문서는 CareerTunerAIDocs 에 저장한다.
 - [ ] 미완료 — RAG hard-case benchmark 결과의 R3 gate evaluator 와 semantic judge 기반 A/B 품질 분석은 scoped source, 개인정보 격리, unsupported claim 감소 지표 기준으로 별도 수행한다.
