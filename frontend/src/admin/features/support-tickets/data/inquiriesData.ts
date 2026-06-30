@@ -1,4 +1,4 @@
-export type InquiryStatus = "pending" | "progress" | "hold" | "answered";
+export type InquiryStatus = "pending" | "progress" | "hold" | "answered" | "closed";
 
 export interface InquiryMessage {
   who: "user" | "admin";

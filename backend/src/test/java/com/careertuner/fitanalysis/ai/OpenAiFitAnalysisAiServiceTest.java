@@ -30,7 +30,7 @@ class OpenAiFitAnalysisAiServiceTest {
     void usesDeterministicMockWhenApiKeyIsMissing() {
         CareerAnalysisOpenAiClient client = mock(CareerAnalysisOpenAiClient.class);
         when(client.configured()).thenReturn(false);
-        OpenAiFitAnalysisAiService service = new OpenAiFitAnalysisAiService(client, new MockFitAnalysisAiService());
+        OpenAiFitAnalysisAiService service = new OpenAiFitAnalysisAiService(client, new MockFitAnalysisAiService(), new FitAnalysisStructuredMapper());
 
         FitAnalysisAiResult result = service.generate(command);
 
@@ -76,7 +76,7 @@ class OpenAiFitAnalysisAiServiceTest {
                         payload,
                         new CareerAnalysisAiUsage("gpt-5", 100, 50, 150, false)));
 
-        OpenAiFitAnalysisAiService service = new OpenAiFitAnalysisAiService(client, new MockFitAnalysisAiService());
+        OpenAiFitAnalysisAiService service = new OpenAiFitAnalysisAiService(client, new MockFitAnalysisAiService(), new FitAnalysisStructuredMapper());
         FitAnalysisAiResult result = service.generate(command);
 
         assertThat(result.fitScore()).isEqualTo(82);
@@ -92,7 +92,7 @@ class OpenAiFitAnalysisAiServiceTest {
         when(client.request(anyString(), any(), anyString(), anyString()))
                 .thenThrow(new IllegalStateException("invalid key"));
 
-        OpenAiFitAnalysisAiService service = new OpenAiFitAnalysisAiService(client, new MockFitAnalysisAiService());
+        OpenAiFitAnalysisAiService service = new OpenAiFitAnalysisAiService(client, new MockFitAnalysisAiService(), new FitAnalysisStructuredMapper());
         FitAnalysisAiResult result = service.generate(command);
 
         assertThat(result.status()).isEqualTo("FALLBACK");
@@ -120,7 +120,7 @@ class OpenAiFitAnalysisAiServiceTest {
         when(client.request(anyString(), any(), anyString(), anyString()))
                 .thenReturn(new StructuredResponse(payload, new CareerAnalysisAiUsage("gpt-test", 50, 50, 100, false)));
 
-        OpenAiFitAnalysisAiService service = new OpenAiFitAnalysisAiService(client, new MockFitAnalysisAiService());
+        OpenAiFitAnalysisAiService service = new OpenAiFitAnalysisAiService(client, new MockFitAnalysisAiService(), new FitAnalysisStructuredMapper());
         FitAnalysisAiResult result = service.generate(command);
 
         assertThat(result.applyDecision().decision()).isEqualTo("COMPLEMENT");
@@ -149,7 +149,7 @@ class OpenAiFitAnalysisAiServiceTest {
         when(client.request(anyString(), any(), anyString(), anyString()))
                 .thenReturn(new StructuredResponse(payload, new CareerAnalysisAiUsage("gpt-test", 50, 50, 100, false)));
 
-        OpenAiFitAnalysisAiService service = new OpenAiFitAnalysisAiService(client, new MockFitAnalysisAiService());
+        OpenAiFitAnalysisAiService service = new OpenAiFitAnalysisAiService(client, new MockFitAnalysisAiService(), new FitAnalysisStructuredMapper());
         FitAnalysisAiResult result = service.generate(command);
 
         assertThat(result.applyDecision().decision()).isEqualTo("APPLY");
@@ -174,7 +174,7 @@ class OpenAiFitAnalysisAiServiceTest {
         when(client.request(anyString(), any(), anyString(), anyString()))
                 .thenReturn(new StructuredResponse(payload, new CareerAnalysisAiUsage("gpt-test", 50, 50, 100, false)));
 
-        OpenAiFitAnalysisAiService service = new OpenAiFitAnalysisAiService(client, new MockFitAnalysisAiService());
+        OpenAiFitAnalysisAiService service = new OpenAiFitAnalysisAiService(client, new MockFitAnalysisAiService(), new FitAnalysisStructuredMapper());
         FitAnalysisAiResult result = service.generate(command);
 
         assertThat(result.applyDecision().decision()).isEqualTo("COMPLEMENT");

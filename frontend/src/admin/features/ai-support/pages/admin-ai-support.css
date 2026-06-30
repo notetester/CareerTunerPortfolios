@@ -1,10 +1,11 @@
 /* AI 상담 운영 — FAQ 공백 뷰. 디자인 핸드오프(design_handoff_rag_console) rg-* 포팅.
    토큰은 페이지 로컬로 정의(앱 전역 토큰 비의존). 색·간격은 핸드오프 확정값. */
 .ais {
-  --ink: #0f172a; --ink-2: #475569; --ink-3: #94a3b8;
-  --blue: #2563eb; --blue-soft: #eff6ff;
-  --green: #15803d; --amber: #b45309; --amber-2: #f59e0b; --red: #dc2626;
-  --line: #e2e8f0; --line-soft: #eef2f6; --bg: #fafbfc; --card: #fff; --track: #f1f5f9;
+  /* 앱 전역 av-* 토큰에 매핑 — 라이트/다크 자동 대응(기존 핸드오프 값은 라이트 토큰과 동일) */
+  --ink: var(--av-ink); --ink-2: var(--av-ink-2); --ink-3: var(--av-ink-3);
+  --blue: var(--av-blue); --blue-soft: var(--av-blue-soft);
+  --green: var(--av-green); --amber: var(--av-amber); --amber-2: #f59e0b; --red: var(--av-red);
+  --line: var(--av-line); --line-soft: var(--av-line-soft); --bg: var(--av-bg); --card: var(--av-card); --track: var(--av-track);
   color: var(--ink);
   font-variant-numeric: tabular-nums;
 }
@@ -40,7 +41,7 @@
 .ais-sim b { color: var(--amber); font-weight: 700; }
 .ais-tag { display: inline-flex; align-items: center; gap: 4px; font-size: 10px; font-weight: 650; padding: 2px 7px; border-radius: 99px; }
 .ais-tag--new { background: #eef2ff; color: #4338ca; }
-.ais-tag--rev { background: #fffbeb; color: var(--amber); }
+.ais-tag--rev { background: var(--warning-50); color: var(--amber); }
 .ais-tag--done { background: #ecfdf5; color: var(--green); }
 .ais-tag--dis { background: #f1f5f9; color: var(--ink-3); }
 
@@ -56,7 +57,7 @@
 .ais-sec__t { font-size: 11px; font-weight: 650; color: var(--ink-3); letter-spacing: .04em; text-transform: uppercase; margin-bottom: 10px; }
 
 /* why-failed */
-.ais-why { display: flex; gap: 11px; padding: 12px 13px; border: 1px solid #fde9d4; background: #fffaf3; border-radius: 9px; }
+.ais-why { display: flex; gap: 11px; padding: 12px 13px; border: 1px solid var(--warning-50); background: var(--warning-50); border-radius: 9px; }
 .ais-why svg { width: 16px; height: 16px; color: var(--amber); flex: none; margin-top: 1px; }
 .ais-why__b { font-size: 12px; color: var(--ink-2); line-height: 1.6; }
 .ais-why__b b { color: var(--ink); font-weight: 650; }
@@ -74,7 +75,7 @@
 
 /* fallback bubble */
 .ais-bub { display: flex; gap: 9px; }
-.ais-bub__av { width: 26px; height: 26px; border-radius: 7px; background: var(--ink); color: #fff; flex: none;
+.ais-bub__av { width: 26px; height: 26px; border-radius: 7px; background: var(--ink); color: var(--bg); flex: none;
   display: flex; align-items: center; justify-content: center; }
 .ais-bub__av svg { width: 14px; height: 14px; }
 .ais-bub__body { background: var(--track); border-radius: 3px 10px 10px 10px; padding: 10px 13px; font-size: 12.5px;
@@ -89,8 +90,8 @@
 .ais-btn:hover { background: var(--av-track); }
 .ais-btn:disabled { opacity: .55; cursor: default; }
 .ais-btn svg { width: 15px; height: 15px; }
-.ais-btn--ink { border: none; background: var(--ink); color: #fff; }
-.ais-btn--ink:hover { background: #1e293b; }
+.ais-btn--ink { border: none; background: var(--ink); color: var(--bg); }
+.ais-btn--ink:hover { opacity: 0.9; }
 .ais-cta__hint { font-size: 11px; color: var(--ink-3); margin-top: 8px; }
 .ais-genwait { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px;
   padding: 40px 20px; color: var(--ink-3); }
@@ -250,7 +251,7 @@
 .ais-msg { display: flex; gap: 9px; align-items: flex-start; }
 .ais-msg.me { flex-direction: row-reverse; }
 .ais-msg__av { width: 26px; height: 26px; border-radius: 7px; flex: none; display: flex; align-items: center; justify-content: center;
-  background: var(--ink); color: #fff; }
+  background: var(--ink); color: var(--bg); }
 .ais-msg.me .ais-msg__av { background: var(--blue); }
 .ais-msg__av svg { width: 14px; height: 14px; }
 .ais-msg__body { background: var(--track); border-radius: 3px 10px 10px 10px; padding: 10px 13px; font-size: 12.5px;

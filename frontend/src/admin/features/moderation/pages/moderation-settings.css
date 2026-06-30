@@ -1,7 +1,7 @@
 /* AI 검열 설정 패널 — av-base 위에 얹는 화면 전용 스타일 */
 
 /* 서버 연결 실패 배너 */
-.md-banner { display: flex; align-items: flex-start; gap: 9px; border: 1px solid #fde68a; background: #fffbeb;
+.md-banner { display: flex; align-items: flex-start; gap: 9px; border: 1px solid var(--warning-50); background: var(--warning-50);
   border-radius: 10px; padding: 11px 14px; margin-bottom: 16px; }
 .md-banner svg { width: 15px; height: 15px; stroke-width: 2; color: var(--av-amber); flex: none; margin-top: 1px; }
 .md-banner .t { font-size: 12.5px; font-weight: 700; color: var(--av-amber); }
@@ -60,7 +60,7 @@
 .md-cat { display: inline-flex; align-items: center; gap: 5px; font-size: 11px; font-weight: 700;
   border-radius: 99px; padding: 3px 9px; white-space: nowrap; }
 .md-cat--abuse { background: #fef2f2; color: var(--av-red); }
-.md-cat--spam { background: #fff7ed; color: #c2410c; }
+.md-cat--spam { background: var(--warning-50); color: var(--av-amber); }
 .md-cat--ad { background: #fefce8; color: #a16207; }
 .md-cat--normal { background: #f0fdf4; color: var(--av-green); }
 .md-res__ms { margin-left: auto; font-size: 11px; color: var(--av-ink-3); white-space: nowrap; }

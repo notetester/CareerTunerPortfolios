@@ -63,7 +63,8 @@ export interface CommunityComment {
   author: PublicAuthor;
   content: string;
   likeCount: number;
-  isAuthor: boolean;
+  isAuthor: boolean;   // 게시글 작성자(OP) 댓글 여부 — "작성자" 배지용
+  mine?: boolean;      // 본인 댓글 여부 — 수정/삭제 버튼 게이팅용
   createdAt: string;
   liked?: boolean;
   /** 서버가 내려주는 tombstone 플래그. 삭제/숨김이지만 살아있는 답글이 있어 골격만 유지하는 노드. */

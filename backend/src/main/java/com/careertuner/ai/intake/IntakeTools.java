@@ -1,8 +1,6 @@
 package com.careertuner.ai.intake;
 
 import java.util.List;
-import java.util.Locale;
-import java.util.Map;
 
 import org.springframework.stereotype.Component;
 
@@ -21,18 +19,6 @@ import dev.langchain4j.agent.tool.Tool;
  */
 @Component
 public class IntakeTools {
-
-    /**
-     * 면접 모드 6종. {@code AutoPrepIntakeService.MODE_OPTIONS} 와 동일 계약이지만 그 상수는 D 의 private 이라
-     * 직접 참조 대신 코드만 미러한다(검증·라벨용). 코드 집합 변경은 D 와 합의 대상.
-     */
-    private static final Map<String, String> MODE_LABELS = Map.of(
-            "BASIC", "기본 면접",
-            "JOB", "직무 면접",
-            "PERSONALITY", "인성 면접",
-            "PRESSURE", "압박 면접",
-            "RESUME", "자소서 기반",
-            "COMPANY", "기업 맞춤");
 
     private final ApplicationCaseService applicationCaseService;
     private final IntakeSlotTrace trace;
@@ -89,18 +75,14 @@ public class IntakeTools {
                 + " · " + nonBlank(match.jobTitle(), "(직무 미정)") + "\" 로 정했어요.";
     }
 
-    @Tool("면접 모드를 확정한다. code 는 BASIC/JOB/PERSONALITY/PRESSURE/RESUME/COMPANY 중 하나여야 한다.")
-    public String chooseMode(@P("면접 모드 코드(BASIC/JOB/PERSONALITY/PRESSURE/RESUME/COMPANY)") String code) {
-        if (code == null || code.isBlank()) {
-            return "면접 모드 코드가 필요해요.";
-        }
-        String normalized = code.trim().toUpperCase(Locale.ROOT);
-        String label = MODE_LABELS.get(normalized);
-        if (label == null) {
-            return "지원하지 않는 모드예요. BASIC/JOB/PERSONALITY/PRESSURE/RESUME/COMPANY 중에서 골라 주세요.";
-        }
-        trace.confirmMode(normalized);
-        return "면접 모드를 \"" + label + "\" 로 정했어요.";
+    @Tool("면접 모드(BASIC/JOB/PERSONALITY/PRESSURE/RESUME/COMPANY)는 사용자가 화면의 모드 칩에서 직접 고른다. "
+            + "이 도구는 모드를 확정하지 않으며, 모드가 필요하면 호출해 사용자에게 칩으로 고르도록 안내만 한다.")
+    public String chooseMode(@P("무시됨 — 모드는 칩(selectedModeCode)으로만 확정한다") String code) {
+        // 발견①(mode 결정성): mode 는 6개 고정 enum 의 닫힌 선택지라 자유텍스트 이해가 불필요하다. 모델(qwen3)이
+        // 텍스트로 mode 를 결정하는 경로를 원천 제거한다 — 이 도구는 더는 trace 에 mode 를 쓰지 않는다.
+        // mode 확정은 오직 칩(selectedModeCode → applyExplicitSelections 의 trace.confirmMode)으로만 한다.
+        // (case→mode 순서 가드는 칩 경로 쪽이 독립 보유하므로 여기선 불필요.)
+        return "면접 유형은 제가 임의로 정하지 않아요. 화면의 면접 유형 칩에서 직접 골라 주세요.";
     }
 
     private static String nonBlank(String value, String fallback) {

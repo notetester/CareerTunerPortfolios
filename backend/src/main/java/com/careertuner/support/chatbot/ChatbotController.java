@@ -1,7 +1,9 @@
 package com.careertuner.support.chatbot;
 
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
@@ -12,33 +14,55 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.Optional;
 
 import dev.langchain4j.data.message.AiMessage;
+import dev.langchain4j.data.message.ChatMessage;
 import dev.langchain4j.data.message.UserMessage;
 
 import com.careertuner.ai.chat.ChatAskRequest;
+import com.careertuner.ai.chat.ChipSuggestion;
+import com.careertuner.ai.chat.QuickReplyParser;
 import com.careertuner.ai.chat.ChatAskResponse;
 import com.careertuner.ai.chat.ChatHistoryResponse;
 import com.careertuner.ai.chat.ChatHistoryResponse.ChatHistoryMessage;
+import com.careertuner.ai.chat.ChatSessionSummary;
 import com.careertuner.ai.chat.ChatResponse;
 import com.careertuner.ai.chat.ChatResponse.SiteLink;
+import com.careertuner.ai.chat.ChatSummarizeRequest;
 import com.careertuner.ai.chat.CommunityChatAgent;
+import com.careertuner.ai.chat.CommunityTools;
 import com.careertuner.ai.chat.FastPathService;
 import com.careertuner.ai.chat.MessageSanitizer;
 import com.careertuner.ai.chat.MyBatisChatMemoryStore;
 import com.careertuner.ai.chat.QuickReplyAgent;
 import com.careertuner.ai.chat.SearchTrace;
+import com.careertuner.ai.chat.SummaryAgent;
+import com.careertuner.ai.autoprep.AutoPrepIntakeService;
 import com.careertuner.ai.autoprep.dto.AutoPrepIntakeResponse;
+import com.careertuner.ai.autoprep.dto.AutoPrepRequest;
 import com.careertuner.ai.intake.IntakeAskService;
+import com.careertuner.ai.intake.IntakeSlotTrace;
 import com.careertuner.ai.intake.dto.IntakeAskResponse;
 import com.careertuner.applicationcase.dto.ApplicationCaseResponse;
+import com.careertuner.applicationcase.dto.ApplicationCaseExtractionResponse;
+import com.careertuner.applicationcase.dto.CreateApplicationCaseFromJobPostingRequest;
+import com.careertuner.applicationcase.dto.UpdateApplicationCaseRequest;
+import com.careertuner.applicationcase.service.ApplicationCaseService;
 import com.careertuner.common.security.AuthUser;
 import com.careertuner.common.web.ApiResponse;
 import com.careertuner.community.search.PostHit;
+import com.careertuner.profile.domain.UserProfile;
+import com.careertuner.profile.dto.UserProfileRequest;
+import com.careertuner.profile.mapper.ProfileMapper;
+import com.careertuner.profile.service.ProfileService;
+
+import java.util.ArrayList;
+import java.util.Arrays;
 
 @RestController
 @RequestMapping("/api")
@@ -48,6 +72,10 @@ public class ChatbotController {
 
     /** 환각 링크 차단: 실제 커뮤니티 글 경로만 통과 (모델이 만든 임의 url 제거). */
     private static final Pattern LINK_WHITELIST = Pattern.compile("^/community/posts/\\d+$");
+
+    /** (d) 공고 추출 규칙기반 파싱 실패 시 case 에 남는 기본값(B 도메인 ApplicationCaseServiceImpl 와 동일 문구). */
+    private static final String ONB_DEFAULT_COMPANY = "기업명 확인 필요";
+    private static final String ONB_DEFAULT_JOBTITLE = "직무명 확인 필요";
 
     /** 확인 응답에서 "시작" 쪽으로 본다(그 외는 안전하게 ① 로). */
     private static final List<String> AFFIRMATIVE = List.of(
@@ -59,6 +87,7 @@ public class ChatbotController {
 
     private final CommunityChatAgent agent;
     private final QuickReplyAgent quickReplyAgent;
+    private final QuickReplyParser quickReplyParser;
     private final SearchTrace searchTrace;
     private final MyBatisChatMemoryStore memoryStore;
     private final ChatbotService chatbotService;
@@ -70,9 +99,21 @@ public class ChatbotController {
     private final RouteConfirmStore routeConfirmStore;
     private final IntakeAskService intakeAskService;
     private final IntakeModeStore intakeModeStore;
+    private final CommunityTools communityTools;
+    private final SummaryAgent summaryAgent;
+    // (a) 깡통계정 온보딩 게이트용 read 의존(호출만, A·B 도메인 무수정).
+    private final ProfileMapper profileMapper;
+    private final ApplicationCaseService applicationCaseService;
+    // (e) 모은 직무·기술 저장용 A 도메인 write 의존(기존 save 호출만, A 코드 무수정).
+    private final ProfileService profileService;
+    // (f) mode 칩 제시·ready 판정 재활용(intake() 직접 호출 — agent.chat·라우터 우회). D 코드 무수정.
+    private final AutoPrepIntakeService autoPrepIntakeService;
+    // (b) 온보딩 수집 슬롯(인메모리·대화키). 직무·기술을 모았다가 (e)에서 저장.
+    private final IntakeSlotTrace intakeSlotTrace;
 
     public ChatbotController(CommunityChatAgent agent,
                             QuickReplyAgent quickReplyAgent,
+                            QuickReplyParser quickReplyParser,
                             SearchTrace searchTrace,
                             MyBatisChatMemoryStore memoryStore,
                             ChatbotService chatbotService,
@@ -83,9 +124,17 @@ public class ChatbotController {
                             UnifiedChatRouter router,
                             RouteConfirmStore routeConfirmStore,
                             IntakeAskService intakeAskService,
-                            IntakeModeStore intakeModeStore) {
+                            IntakeModeStore intakeModeStore,
+                            CommunityTools communityTools,
+                            SummaryAgent summaryAgent,
+                            ProfileMapper profileMapper,
+                            ApplicationCaseService applicationCaseService,
+                            ProfileService profileService,
+                            AutoPrepIntakeService autoPrepIntakeService,
+                            IntakeSlotTrace intakeSlotTrace) {
         this.agent = agent;
         this.quickReplyAgent = quickReplyAgent;
+        this.quickReplyParser = quickReplyParser;
         this.searchTrace = searchTrace;
         this.memoryStore = memoryStore;
         this.chatbotService = chatbotService;
@@ -97,6 +146,292 @@ public class ChatbotController {
         this.routeConfirmStore = routeConfirmStore;
         this.intakeAskService = intakeAskService;
         this.intakeModeStore = intakeModeStore;
+        this.communityTools = communityTools;
+        this.summaryAgent = summaryAgent;
+        this.profileMapper = profileMapper;
+        this.applicationCaseService = applicationCaseService;
+        this.profileService = profileService;
+        this.autoPrepIntakeService = autoPrepIntakeService;
+        this.intakeSlotTrace = intakeSlotTrace;
+    }
+
+    /**
+     * (b) 깡통 온보딩 수집: 직무→기술 순차 질문, 유저 답을 *그대로* 슬롯에 누적(가공 0). 슬롯=인메모리(LLM 40창 미사용·휘발).
+     * 결정성(§6-1,2): 챗봇은 질문만 친절(예시·범위), 답 해석/부풀림 금지·스킬추출 AI 미사용. 저장(ProfileService.save)은 (e).
+     * 매 턴 재판정(저장 전까지 깡통 유지)이라 step 으로 진행 단계를 이어간다. case 입력(d)·저장(e)·면접합류(f)는 다음 단계.
+     */
+    private ChatAskResponse onboardingTurn(Long conversationId, AuthUser authUser, String question,
+                                           String selectedModeCode) {
+        Long userId = authUser.id();   // 라우팅에서 authUser != null 보장. save((e))가 authUser 를 요구해 끝까지 내린다.
+        String step = intakeSlotTrace.onboardingStep(conversationId);
+        RouteMessage rm;
+        if (step == null) {
+            intakeSlotTrace.setOnboardingStep(conversationId, "JOB");
+            rm = new RouteMessage("④온보딩:직무",
+                    "취업 준비, 막막하시죠? 같이 채워볼게요. 먼저 — 어떤 직무로 지원하세요? (예: 프론트엔드 개발자, 백엔드 개발자)");
+        } else if ("JOB".equals(step)) {
+            intakeSlotTrace.recordOnboardingJob(conversationId, question);   // 유저 답 그대로(가공 0)
+            intakeSlotTrace.setOnboardingStep(conversationId, "SKILLS");
+            rm = new RouteMessage("④온보딩:기술",
+                    "좋아요. 주로 다루는 기술을 콤마(,)로 구분해서 알려주세요. 3~4개면 충분해요. (예: React, TypeScript, Spring)");
+        } else if ("SKILLS".equals(step)) {
+            intakeSlotTrace.recordOnboardingSkills(conversationId, question); // 그대로
+            intakeSlotTrace.setOnboardingStep(conversationId, "AWAIT_POSTING");
+            IntakeSlotTrace.OnboardingCollected got = intakeSlotTrace.onboarding(conversationId);
+            rm = new RouteMessage("④온보딩:공고요청",
+                    "받았어요 — 직무 \"" + got.job() + "\", 기술 \"" + got.skills()
+                            + "\". 이제 지원할 공고 전문을 붙여넣어 주세요(회사명·직무·자격요건이 담긴 원문이면 좋아요).");
+        } else if ("AWAIT_POSTING".equals(step)) {
+            rm = onboardingCreateCase(conversationId, userId, question);
+        } else if ("EXTRACTING".equals(step)) {
+            rm = onboardingPollExtraction(conversationId, authUser);
+        } else if ("AWAIT_COMPANY".equals(step)) {
+            rm = onboardingFillField(conversationId, authUser, question, true, "회사명을 입력해 주세요. 어느 회사 공고인가요?");
+        } else if ("AWAIT_JOBTITLE".equals(step)) {
+            rm = onboardingFillField(conversationId, authUser, question, false, "직무명을 입력해 주세요. (예: 백엔드 개발자)");
+        } else if ("AWAIT_MODE".equals(step)) {
+            rm = onboardingModeStep(conversationId, authUser, selectedModeCode);
+        } else {
+            // DONE 등 종단 — 라우터의 sticky 가 여기 도달 전에 풀리는 게 정상(방어용).
+            rm = new RouteMessage("④온보딩:완료대기", "면접 준비가 시작됐어요. 잠시만 기다려 주세요.");
+        }
+        responseLogService.record(conversationId, userId, question, "ONBOARDING", false, null, null, false);
+        return new ChatAskResponse(conversationId, rm.message(), List.of(), List.of(),
+                rm.route(), rm.intake(), rm.inOrchestration(), null);
+    }
+
+    /**
+     * (d) AWAIT_POSTING: 사용자 공고 원문 → B.createFromJobPosting(sourceType=TEXT) 로 지원 건 생성(비동기 추출 큐잉).
+     * AI 가 회사명을 정하지 않는다 — 생성만 하고 추출 결과는 다음 턴 폴링(EXTRACTING)에서 본다. 분석(FIT/면접)은
+     * 트리거하지 않음(추출 SUCCEEDED 후 자동 파이프라인 또는 (f) autoPrep 소관 — DEFAULT 회사명 프롬프트 오염 회피).
+     */
+    private RouteMessage onboardingCreateCase(Long conversationId, Long userId, String question) {
+        if (question == null || question.trim().length() < 20) {
+            return new RouteMessage("④온보딩:공고요청",
+                    "공고 전문이 조금 짧아요. 회사명·직무·자격요건이 담긴 공고 내용을 붙여넣어 주세요.");
+        }
+        try {
+            var created = applicationCaseService.createFromJobPosting(
+                    userId,
+                    new CreateApplicationCaseFromJobPostingRequest(question, null, null, "TEXT", null));
+            intakeSlotTrace.setOnboardingCaseId(conversationId, created.applicationCase().id());
+            intakeSlotTrace.setOnboardingStep(conversationId, "EXTRACTING");
+            return new RouteMessage("④온보딩:공고생성",
+                    "공고 받았어요. 회사·직무 정보를 읽고 있어요(보통 몇 초). 준비되면 아무 메시지나 보내주시면 진행 상황을 알려드릴게요.");
+        } catch (RuntimeException ex) {
+            log.warn("온보딩 case 생성 실패(공고 재요청): {}", ex.getMessage());
+            // step 은 AWAIT_POSTING 유지 — 재시도.
+            return new RouteMessage("④온보딩:공고생성실패",
+                    "공고를 등록하는 중 문제가 생겼어요. 공고 전문을 다시 붙여넣어 주시겠어요?");
+        }
+    }
+
+    /**
+     * (d) EXTRACTING: 비동기 추출 상태를 턴 사이로 폴링(한 턴 블로킹 대기는 지연·타임아웃 위험).
+     * SUCCEEDED → case 재조회로 파싱 결과 확인(PASS=자동 채움 / REVIEW_REQUIRED=DEFAULT 유지 → 유저 확정).
+     * 미완(QUEUED/RUNNING)=대기, FAILED=공고 재요청. 추출 상태/품질은 B 도메인이 판정 — 챗봇은 결과만 읽는다.
+     */
+    private RouteMessage onboardingPollExtraction(Long conversationId, AuthUser authUser) {
+        Long userId = authUser.id();
+        Long caseId = intakeSlotTrace.onboardingCaseId(conversationId);
+        if (caseId == null) {
+            intakeSlotTrace.setOnboardingStep(conversationId, "AWAIT_POSTING");
+            return new RouteMessage("④온보딩:공고요청",
+                    "공고 정보를 다시 받아야 할 것 같아요. 공고 전문을 붙여넣어 주세요.");
+        }
+        ApplicationCaseExtractionResponse ext = null;
+        try {
+            ext = applicationCaseService.getLatestJobPostingExtraction(userId, caseId);
+        } catch (RuntimeException ex) {
+            log.warn("온보딩 추출 상태 조회 실패(대기 유지): {}", ex.getMessage());
+        }
+        String status = ext == null ? null : ext.status();
+        if ("FAILED".equals(status)) {
+            intakeSlotTrace.setOnboardingStep(conversationId, "AWAIT_POSTING");
+            return new RouteMessage("④온보딩:추출실패",
+                    "공고 분석에 실패했어요. 공고 전문을 다시 붙여넣어 주시겠어요?");
+        }
+        if (!"SUCCEEDED".equals(status)) {
+            // null/QUEUED/RUNNING — 아직 진행 중. step 유지.
+            return new RouteMessage("④온보딩:추출대기",
+                    "아직 공고를 분석 중이에요. 잠시 후 다시 메시지를 보내주세요.");
+        }
+        try {
+            return onboardingResolveCase(conversationId, authUser, applicationCaseService.get(userId, caseId));
+        } catch (RuntimeException ex) {
+            log.warn("온보딩 case 재조회 실패(대기 유지): {}", ex.getMessage());
+            return new RouteMessage("④온보딩:추출대기",
+                    "공고 정보를 확인하는 중이에요. 잠시 후 다시 메시지를 보내주세요.");
+        }
+    }
+
+    /**
+     * (d) AWAIT_COMPANY/AWAIT_JOBTITLE: 파싱 실패한 회사명/직무명을 유저가 확정 → B.update 로 그 컬럼만 채운다.
+     * (update 는 null 인자를 기존값 유지로 처리 — 부분 갱신.) 빈 입력은 재질문. update 는 분석 파이프라인을
+     * 트리거하지 않음(컬럼만 패치) — 분석은 (f) autoPrep 에서 정상 회사명으로 생성된다.
+     */
+    private RouteMessage onboardingFillField(Long conversationId, AuthUser authUser, String question,
+                                             boolean company, String reaskMessage) {
+        Long userId = authUser.id();
+        if (question == null || question.isBlank()) {
+            return new RouteMessage(company ? "④온보딩:확인-회사" : "④온보딩:확인-직무", reaskMessage);
+        }
+        Long caseId = intakeSlotTrace.onboardingCaseId(conversationId);
+        if (caseId == null) {
+            intakeSlotTrace.setOnboardingStep(conversationId, "AWAIT_POSTING");
+            return new RouteMessage("④온보딩:공고요청",
+                    "공고 정보를 다시 받아야 할 것 같아요. 공고 전문을 붙여넣어 주세요.");
+        }
+        String value = question.trim();
+        try {
+            applicationCaseService.update(userId, caseId, company
+                    ? new UpdateApplicationCaseRequest(value, null, null, null, null, null, null, null, null, null)
+                    : new UpdateApplicationCaseRequest(null, value, null, null, null, null, null, null, null, null));
+            return onboardingResolveCase(conversationId, authUser, applicationCaseService.get(userId, caseId));
+        } catch (RuntimeException ex) {
+            log.warn("온보딩 case 보정 update 실패(재질문): {}", ex.getMessage());
+            return new RouteMessage(company ? "④온보딩:확인-회사" : "④온보딩:확인-직무",
+                    "정보를 저장하는 중 문제가 생겼어요. 다시 한 번 입력해 주시겠어요?");
+        }
+    }
+
+    /**
+     * (d) 추출/보정 후 case 상태로 다음 단계 결정: 회사명·직무명이 DEFAULT 면 그 항목만 유저에게 묻고,
+     * 둘 다 채워졌으면 프로필 저장 후 AWAIT_MODE(mode 칩)로 넘어간다. 빈 입력으로 DEFAULT 가 남으면 같은 항목 재질문(self-heal).
+     * (e) 이 "둘 다 채워짐" 지점이 case 가 확정된 유일한 곳 → 여기서 *딱 한 번* 프로필을 저장한다("늦게 save").
+     */
+    private RouteMessage onboardingResolveCase(Long conversationId, AuthUser authUser, ApplicationCaseResponse caseNow) {
+        if (ONB_DEFAULT_COMPANY.equals(caseNow.companyName())) {
+            intakeSlotTrace.setOnboardingStep(conversationId, "AWAIT_COMPANY");
+            return new RouteMessage("④온보딩:확인-회사",
+                    "공고는 등록했는데 회사명을 자동으로 못 읽었어요. 어느 회사 공고인가요?");
+        }
+        if (ONB_DEFAULT_JOBTITLE.equals(caseNow.jobTitle())) {
+            intakeSlotTrace.setOnboardingStep(conversationId, "AWAIT_JOBTITLE");
+            return new RouteMessage("④온보딩:확인-직무",
+                    "회사는 \"" + caseNow.companyName() + "\"로 확인됐어요. 직무명도 알려주세요. (예: 백엔드 개발자)");
+        }
+        // ★(e) save 타이밍 = case 확정 직후. case 가 이미 있으니 게이트는 false → 이 시점 이탈해도
+        //   "프로필O+case0" 막다른 길이 안 생긴다(측정 §5e "늦게 save"). save 는 이 한 곳에서만.
+        saveOnboardingProfile(conversationId, authUser);
+        // (f) 회사·직무·프로필이 다 찼으니 마지막으로 면접 mode 를 받아 인테이크로 인계한다(같은 턴에 mode 칩 제시).
+        intakeSlotTrace.setOnboardingStep(conversationId, "AWAIT_MODE");
+        return onboardingModeStep(conversationId, authUser, null);
+    }
+
+    /**
+     * (f) AWAIT_MODE: 마지막 단계 — 면접 mode 칩을 받아 autoPrepRequest 를 조립해 프론트 run 으로 인계한다.
+     * <p>mode 칩·ready 판정은 인테이크의 권위 서비스 {@code autoPrepIntakeService.intake} 를 *직접* 부른다
+     * (agent.chat·라우터 우회 = 갈래2). query=null 이면 {@code AutoPrepPlanner.parseIntent} 가 LLM 미호출로 즉시
+     * 빈 의도→전체단계 → caseId+mode 만으로 결정적 ready 산출(로컬 LLM 0 검증 가능). 실제 분석 run 은 프론트가
+     * autoPrepRequest 로 이어받아 기존 autoPrep 가 수행(LLM 필요·배포 확인) — 여기 범위는 ready+요청 산출까지.</p>
+     * <p>★결정성(§6·발견①): mode 는 칩(selectedModeCode)으로만 확정. 자유텍스트/qwen3 추론 0 — 유효 칩이 아니면
+     * 칩을 다시 제시(텍스트로 mode 를 정하지 않는다). 유효 코드 집합은 서비스가 돌려준 칩에서 그대로 가져온다(중복 정의 X).</p>
+     */
+    private RouteMessage onboardingModeStep(Long conversationId, AuthUser authUser, String selectedModeCode) {
+        Long userId = authUser.id();
+        Long caseId = intakeSlotTrace.onboardingCaseId(conversationId);
+        if (caseId == null) {
+            intakeSlotTrace.setOnboardingStep(conversationId, "AWAIT_POSTING");
+            return new RouteMessage("④온보딩:공고요청",
+                    "공고 정보를 다시 받아야 할 것 같아요. 공고 전문을 붙여넣어 주세요.");
+        }
+        // case 만 바운드하고 mode 는 비워 부르면(권위 서비스) nextAsk=MODE + 6칩(MODE_OPTIONS)을 결정적으로 돌려준다.
+        AutoPrepIntakeResponse modeResp = autoPrepIntakeService.intake(
+                userId, new AutoPrepRequest(null, caseId, null, null, null));
+        List<AutoPrepIntakeResponse.ModeOption> chips = modeResp.modes() == null ? List.of() : modeResp.modes();
+        if (chips.isEmpty()) {   // 방어: case 미소유 등으로 MODE 단계가 안 나오면 재질문
+            return new RouteMessage("④온보딩:모드선택",
+                    "면접 모드를 불러오지 못했어요. 잠시 후 다시 시도해 주세요.");
+        }
+        Set<String> validCodes = chips.stream()
+                .map(m -> m.code().toUpperCase(Locale.ROOT))
+                .collect(Collectors.toSet());
+        String code = selectedModeCode == null ? null : selectedModeCode.trim().toUpperCase(Locale.ROOT);
+        if (code == null || !validCodes.contains(code)) {
+            // ★발견① — 칩만. 텍스트/qwen3 로 mode 추론하지 않고 칩을 (다시) 제시한다.
+            return new RouteMessage("④온보딩:모드선택",
+                    "마지막으로, 면접 모드를 골라주세요.",
+                    new ChatAskResponse.IntakeStep(false, "MODE", null, List.of(), toModes(chips)),
+                    true);
+        }
+        // 유효 칩 선택 → caseId+mode 로 autoPrepRequest 조립(=enterIntake 와 동일 구조). query=null(전체 준비·LLM 0).
+        AutoPrepRequest autoPrepRequest = new AutoPrepRequest(null, caseId, code, null, null);
+        intakeSlotTrace.setOnboardingStep(conversationId, "DONE");   // 종단 → 다음 턴부터 sticky 풀림
+        return new RouteMessage("④온보딩:면접인계",
+                "면접 준비를 시작할게요!",
+                new ChatAskResponse.IntakeStep(true, null, autoPrepRequest, List.of(), List.of()),
+                true);
+    }
+
+    /**
+     * (e) 슬롯에 모은 직무·기술을 A.ProfileService.save 로 *한 번* 저장(전체 덮어쓰기 upsert). A 코드 무수정 — 호출만.
+     * ★skills 변환: 슬롯은 자유텍스트("Java, Spring") → 토큰화해 List 로 넘겨야 JSON *배열*로 저장돼 FIT 가 읽는
+     *   배열과 일치한다(그대로 String 으로 주면 JSON 문자열로 저장돼 FIT 매칭 깨짐 — 측정). FIT 매칭은 스킬 *완전일치*
+     *   집합이라(Mock 엔진) 한 원소에 여러 스킬이 뭉치면 매칭 0 → 콤마 외 줄바꿈·/·중점·;·"및"·"그리고"도 구분자로 보고,
+     *   대소문자 무시 중복은 제거한다(공백 분리는 "Spring Boot" 같은 복합어를 깨므로 제외). 직무·기술 외 필드는
+     *   null(전 필드 nullable). 저장 실패해도 case 는 이미 만들어졌으므로 CASE_READY 는 진행(로그만) — 프로필은
+     *   이후 /profile 에서 보완 가능. 게이트(누가 온보딩 타나)와는 분리된 로직이다.
+     */
+    private void saveOnboardingProfile(Long conversationId, AuthUser authUser) {
+        IntakeSlotTrace.OnboardingCollected got = intakeSlotTrace.onboarding(conversationId);
+        String desiredJob = got.job() == null || got.job().isBlank() ? null : got.job().trim();
+        List<String> skills = got.skills() == null ? List.of()
+                : Arrays.stream(got.skills().split("[,\\n/·;]+|\\s+및\\s+|\\s+그리고\\s+"))
+                        .map(String::trim)
+                        .filter(s -> !s.isEmpty())
+                        .collect(Collectors.toMap(
+                                s -> s.toLowerCase(),   // 대소문자 무시 dedup, 첫 등장 원문·순서 보존
+                                s -> s,
+                                (first, dup) -> first,
+                                java.util.LinkedHashMap::new))
+                        .values().stream().toList();
+        try {
+            profileService.save(authUser, new UserProfileRequest(
+                    desiredJob, null, null, null, null, skills,
+                    null, null, null, null, null, null));
+        } catch (RuntimeException ex) {
+            log.warn("온보딩 프로필 저장 실패(case 는 생성됨, CASE_READY 진행): {}", ex.getMessage());
+        }
+    }
+
+    /**
+     * (d)(f) 온보딩 턴 결과: 라우트 태그 + 사용자 메시지 + (f) 인계용 IntakeStep·오케 배너 플래그.
+     * 대부분 분기는 2-arg(인테이크 메타 없음); mode 칩 제시·면접 인계 턴만 intake/inOrchestration 을 채운다.
+     */
+    private record RouteMessage(String route, String message,
+                               ChatAskResponse.IntakeStep intake, boolean inOrchestration) {
+        RouteMessage(String route, String message) {
+            this(route, message, null, false);
+        }
+    }
+
+    /**
+     * (a) 깡통계정 온보딩 게이트 판정: 프로필 행 없음 + 지원 건 0건. 코드(DB 조회)로 결정 — 모델(qwen3)에 안 물음(§6-2).
+     * 비로그인(userId==null)은 대상 아님(프로필 저장에 사용자 필요 + 챗봇은 인증 필수). 조회 실패 시 false(보수적: 온보딩 미진입, 기존 흐름).
+     * A(ProfileMapper)·B(ApplicationCaseService)의 기존 read 메서드 호출만 — 그쪽 코드 무수정.
+     */
+    /**
+     * (d)(f) 온보딩이 진행 중인가 — 단계가 설정됐고 아직 종단(DONE=면접 인계 완료)이 아니면 true.
+     * case 생성 후 게이트(깡통 판정)가 false 가 돼도 추출 폴링·보정·mode 선택을 이어가도록 sticky 라우팅의 근거가 된다.
+     * 인메모리 슬롯 기준이라 백엔드 재시작 시 휘발(MVP — 온보딩 중간이탈 복원은 명시적 제외, 설계 §1).
+     */
+    private boolean isOnboardingInProgress(Long conversationId) {
+        String step = intakeSlotTrace.onboardingStep(conversationId);
+        return step != null && !"DONE".equals(step);
+    }
+
+    private boolean isBlankAccountForOnboarding(Long userId) {
+        if (userId == null) {
+            return false;
+        }
+        try {
+            return profileMapper.findByUserId(userId) == null
+                    && applicationCaseService.list(userId, null, false).isEmpty();
+        } catch (RuntimeException ex) {
+            log.warn("온보딩 게이트 판정 실패(온보딩 미진입으로 처리): {}", ex.getMessage());
+            return false;
+        }
     }
 
     /**
@@ -121,17 +456,52 @@ public class ChatbotController {
                 : memoryStore.createConversation(userId);
         String question = req.question();
 
-        // sticky 모드(오케스트레이터 유지): 이미 ③ 에 머무는 대화는 라우팅·FAQ·NAV 를 전부 건너뛰고 ③ 직행한다.
-        // 단 이탈 신호("그만"/⏏)면 즉시 일반 모드로 복귀. (오분류로 ①(FAQ)로 새는 것을 구조적으로 차단)
-        if (intakeModeStore.isActive(conversationId)) {
-            if (isExitCommand(question)) {
-                intakeModeStore.exit(conversationId);
-                return ApiResponse.ok(new ChatAskResponse(
-                        conversationId,
-                        "일반 상담 모드로 돌아왔어요. 무엇이든 물어보세요.",
-                        List.of(), List.of(), "이탈", null, false));
+        // 소유권 가드(IDOR 방어): 클라이언트가 '기존' conversationId 를 보냈을 때만 검사한다.
+        //  - owner != null(실유저 소유 대화) → 본인만 접근. 비로그인은 로그인 유도(에러 아님), 타유저는 거부.
+        //  - owner == null(익명 대화 or 미존재 행) → 통과 = 비로그인 FAQ 다중턴 보존(permitAll 유지).
+        //  - 신규(req.conversationId()==null)는 위에서 본인 소유 새 id 가 발급됐으므로 검사 불필요.
+        // 소유 판정은 조회(GET conversationMessages)와 동일한 memoryStore.findOwnerUserId 재사용.
+        if (req.conversationId() != null) {
+            Long owner = memoryStore.findOwnerUserId(conversationId);
+            if (owner != null && !owner.equals(userId)) {
+                if (userId == null) {
+                    return ApiResponse.ok(new ChatAskResponse(
+                            conversationId,
+                            "로그인하면 이전 대화를 이어갈 수 있어요. 로그인 후 다시 시도해 주세요.",
+                            List.of(), List.of("로그인"), "로그인필요", null, false, null));
+                }
+                return ApiResponse.error("FORBIDDEN", "접근할 수 없는 대화입니다.");
             }
-            return ApiResponse.ok(enterIntake(conversationId, question, userId, "③(유지)"));
+        }
+
+        // 이탈 신호("그만"/⏏): 메모리 sticky(활성) 또는 DB 영속(PENDING/READY) 인테이크면 라우터 전에 즉시 복귀.
+        // 슬롯이 있으면 DONE 으로 닫아(재복원 차단) 재시작된 PENDING 세션도 깔끔히 중단되고, READY 세션의 "그만"이
+        // 라우터 FALLBACK 으로 새는 것(버그2)도 막는다. (status 3단계 — sticky 와 영속 양쪽을 한 핸들러로 통합)
+        if (req.conversationId() != null && isExitCommand(question)
+                && (intakeModeStore.isActive(conversationId)
+                        || intakeAskService.hasOpenIntakeSlot(conversationId))) {
+            intakeModeStore.exit(conversationId);
+            intakeAskService.closeIntakeSession(conversationId);
+            return ApiResponse.ok(new ChatAskResponse(
+                    conversationId,
+                    "일반 상담 모드로 돌아왔어요. 무엇이든 물어보세요.",
+                    List.of(), List.of(), "이탈", null, false, null));
+        }
+
+        // sticky 모드(오케스트레이터 유지): 이미 ③ 에 머무는 대화는 라우팅·FAQ·NAV 를 전부 건너뛰고 ③ 직행한다.
+        // (이탈은 위에서 이미 처리됨 — 여기 도달하면 이탈 신호 아님.)
+        if (intakeModeStore.isActive(conversationId)) {
+            return ApiResponse.ok(enterIntake(conversationId, question, userId, "③(유지)",
+                    req.selectedCaseId(), req.selectedModeCode()));
+        }
+
+        // 영속 세션 복원: 재시작/재방문으로 메모리 sticky 는 없지만 DB 에 PENDING 인테이크(지원건) 세션이면
+        // 되살려 ③ 로 잇는다(슬롯은 IntakeAskService 가 DB 에서 복원). READY/DONE 은 isPersistedIntakeSession=false.
+        if (req.conversationId() != null
+                && intakeAskService.isPersistedIntakeSession(conversationId)) {
+            intakeModeStore.enter(conversationId);
+            return ApiResponse.ok(enterIntake(conversationId, question, userId, "③(복원)",
+                    req.selectedCaseId(), req.selectedModeCode()));
         }
 
         // Fast-path: 순수 내비 질의는 LLM·검색 우회 즉답 (서버 신뢰 링크라 화이트리스트 검증 생략).
@@ -141,13 +511,24 @@ public class ChatbotController {
             responseLogService.record(conversationId, userId, question,
                     "NAV_FAST", false, null, null, false);
             return ApiResponse.ok(new ChatAskResponse(
-                    conversationId, fr.message(), fr.links(), fr.quickReplies(), "NAV", null, false));
+                    conversationId, fr.message(), fr.links(), fr.quickReplies(), "NAV", null, false, null));
+        }
+
+        // (a)(b)(d) 깡통계정 온보딩: 프로필 행 없음 + 지원 건 0건 = 순수 깡통 → 온보딩(직무→기술→공고).
+        //   여기까지 온 건 exit/sticky/DB복원/fastPath 가 아닌 신규 라우팅 턴 — 비-깡통은 false 로 통과해 아래 기존 흐름.
+        //   sticky(intakeModeStore=인테이크 case 흐름) 안 건드림. ★(d) 공고로 case 가 생기면 게이트는 false 가 되지만,
+        //   온보딩이 진행 중(DONE 종단 전)이면 sticky 로 onboardingTurn 을 유지해 비동기 추출 폴링·회사/직무 보정·
+        //   mode 선택을 이어간다. (f) 면접 인계로 DONE 되면 sticky 가 풀린다(인계 자체는 onboardingTurn 안에서 끝남).
+        if (authUser != null
+                && (isOnboardingInProgress(conversationId) || isBlankAccountForOnboarding(userId))) {
+            return ApiResponse.ok(onboardingTurn(conversationId, authUser, question, req.selectedModeCode()));
         }
 
         // 확인 대기(1턴) 소비: 이 턴은 라우팅을 돌리지 않는다. (오분류 안전판 A)
         if (routeConfirmStore.consumePending(conversationId)) {
             if (isAffirmative(question)) {
-                return ApiResponse.ok(enterIntake(conversationId, question, userId, "③(확인후)"));
+                return ApiResponse.ok(enterIntake(conversationId, question, userId, "③(확인후)",
+                        req.selectedCaseId(), req.selectedModeCode()));
             }
             return ApiResponse.ok(faqPath(conversationId, question, userId, "①(확인후)"));
         }
@@ -156,7 +537,8 @@ public class ChatbotController {
         UnifiedChatRouter.Decision d = router.decide(question);
         switch (d.target()) {
             case INTAKE_DIRECT -> {
-                return ApiResponse.ok(enterIntake(conversationId, question, userId, "③"));
+                return ApiResponse.ok(enterIntake(conversationId, question, userId, "③",
+                        req.selectedCaseId(), req.selectedModeCode()));
             }
             case INTAKE_CONFIRM -> {
                 routeConfirmStore.markPending(conversationId);
@@ -167,7 +549,8 @@ public class ChatbotController {
                         List.of("시작", "그냥 질문이에요"),
                         "확인반환",
                         null,
-                        false));
+                        false,
+                        null));
             }
             case FALLBACK -> {
                 // 약신호(FAQ도 의도도 불명확) → 에이전트로 보내지 않고 정중한 되묻기로 끊는다.
@@ -179,9 +562,15 @@ public class ChatbotController {
                         List.of(),
                         "되묻기",
                         null,
-                        false));
+                        false,
+                        null));
+            }
+            case AGENT -> {
+                // catch-all: 커뮤니티 글 검색·인사·잡담 → FAQ 게이트 우회하고 에이전트 직행.
+                return ApiResponse.ok(agentPath(conversationId, question, userId, "①에이전트"));
             }
             default -> {
+                // FAQ Target → faqPath 게이트(즉답/미달 시 에이전트).
                 return ApiResponse.ok(faqPath(conversationId, question, userId, "①"));
             }
         }
@@ -209,15 +598,21 @@ public class ChatbotController {
      * ready 면 RUN 을 프런트 SSE 가 이어받으므로 sticky 종료, 아니면 모드 유지(다음 턴도 ③ 직행).
      * inOrchestration 은 항상 true — ready 전환 턴도 위젯이 배너를 유지한 채 실행 화면으로 넘어가야 하므로.
      */
-    private ChatAskResponse enterIntake(Long conversationId, String question, Long userId, String route) {
-        IntakeAskResponse r = intakeAskService.ask(userId, question, conversationId);
+    private ChatAskResponse enterIntake(Long conversationId, String question, Long userId, String route,
+                                        Long selectedCaseId, String selectedModeCode) {
+        IntakeAskResponse r = intakeAskService.ask(userId, question, conversationId, selectedCaseId, selectedModeCode);
+        // 지원건 세션 fork 가 일어나면 응답 conversationId 가 새 id 로 바뀐다 — sticky 도 새 id 기준으로 옮긴다.
+        Long effectiveId = r.conversationId();
+        if (effectiveId != null && !effectiveId.equals(conversationId)) {
+            intakeModeStore.exit(conversationId); // 원(잡담) 대화의 sticky 정리
+        }
         if (r.ready()) {
-            intakeModeStore.exit(conversationId);
+            intakeModeStore.exit(effectiveId);
         } else {
-            intakeModeStore.enter(conversationId);
+            intakeModeStore.enter(effectiveId);
         }
         return new ChatAskResponse(
-                r.conversationId(),
+                effectiveId,
                 r.message(),
                 List.of(),
                 List.of(),
@@ -225,7 +620,8 @@ public class ChatbotController {
                 new ChatAskResponse.IntakeStep(
                         r.ready(), r.nextAsk(), r.autoPrepRequest(),
                         toCandidates(r.candidates()), toModes(r.modes())),
-                true);
+                true,
+                null);
     }
 
     /** 지원 건 후보 → 칩 렌더용 최소 필드로 축약. */
@@ -261,10 +657,18 @@ public class ChatbotController {
         if (!faqHits.isEmpty() && faqHits.get(0).score() >= faqGate) {
             return faqAnswerFrom(conversationId, question, userId, faqHits, route);
         }
+        // 게이트 미달 → 커뮤니티 에이전트(통합 라우터 AGENT catch-all 과 동일 경로).
+        return agentPath(conversationId, question, userId, route);
+    }
 
+    /**
+     * ① 커뮤니티 에이전트 직행(FAQ 게이트 우회). {@link #faqPath} 게이트 미달과 통합 라우터 AGENT(catch-all)가 공유.
+     * 글 검색(searchCommunityPosts)·인사/잡담 자연응답은 에이전트가 스스로 판단해 처리한다(시스템 프롬프트).
+     * 원문 raw top-1 로 운영 FAQ공백 수집을 보존한다.
+     */
+    private ChatAskResponse agentPath(Long conversationId, String question, Long userId, String route) {
         searchTrace.clear();
         try {
-            // 게이트 미달 → 에이전트(커뮤니티/복합). 원문 raw top-1 로 운영 FAQ공백 수집을 보존한다.
             ChatbotService.FaqMiss miss = null;
             try {
                 miss = chatbotService.analyzeMiss(question);
@@ -284,7 +688,12 @@ public class ChatbotController {
             List<SiteLink> links = collectLinks();
 
             // quickReplies: 보조 기능 → 2차 호출이 실패해도 핵심(message+links)은 정상 반환.
-            List<String> quickReplies = suggestQuickReplies(question, message);
+            // 글 제시 여부를 finally clear 전에 읽어 게이트로 넘긴다(이번 턴 검색 툴이 글을 돌려줬을 때만 글 칩 허용).
+            boolean postsPresented = !searchTrace.snapshot().isEmpty();
+            List<String> quickReplies = suggestQuickReplies(userId, conversationId, question, message, postsPresented);
+
+            // 글이 2개 이상 제시된 턴에서만 묶음 요약 칩 주입(snapshot 은 finally clear 전에 읽는다).
+            ChatAskResponse.SummaryChip summaryChip = buildSummaryChip(searchTrace.snapshot());
 
             // best-effort 적재(AGENT). FAQ 근거 여부 = 이번 턴 searchFaq 링크 존재(finally clear 전에 읽음).
             // 유사도 = 게이트 산출 원문 raw top-1(없으면 null). 전환 없음.
@@ -292,7 +701,7 @@ public class ChatbotController {
                     "AGENT", !searchTrace.faqLinks().isEmpty(),
                     miss != null ? miss.topSimilarity() : null, null, false);
 
-            return new ChatAskResponse(conversationId, message, links, quickReplies, route, null, false);
+            return new ChatAskResponse(conversationId, message, links, quickReplies, route, null, false, summaryChip);
         } catch (Exception e) {
             log.error("챗봇 에이전트 응답 실패 (Ollama 장애 추정): {}", e.getMessage(), e);
             return new ChatAskResponse(
@@ -302,7 +711,8 @@ public class ChatbotController {
                     List.of(),
                     route,
                     null,
-                    false);
+                    false,
+                    null);
         } finally {
             searchTrace.clear();
         }
@@ -320,6 +730,65 @@ public class ChatbotController {
         Long conversationId = memoryStore.findRecentConversation(authUser.id());
         if (conversationId == null) {
             return ApiResponse.ok(null); // 이전 대화 없음 → 빈 채팅으로 시작
+        }
+        List<ChatHistoryMessage> messages = memoryStore.getMessages(conversationId).stream()
+                .map(this::toHistoryMessage)
+                .filter(m -> m != null)
+                .collect(Collectors.toList());
+        return ApiResponse.ok(new ChatHistoryResponse(conversationId, messages));
+    }
+
+    /**
+     * 세션 목록(사이드바): 로그인 유저의 인테이크(지원건) 세션 최대 5건(application_case_id 있는 것만, 최근순).
+     * 잡담/FAQ 대화는 application_case_id NULL 이라 자연 제외된다.
+     * GET /api/chatbot/conversations
+     */
+    @GetMapping("/chatbot/conversations")
+    public ApiResponse<List<ChatSessionSummary>> listConversations(@AuthenticationPrincipal AuthUser authUser) {
+        if (authUser == null) {
+            return ApiResponse.ok(List.of());
+        }
+        List<ChatSessionSummary> sessions = memoryStore.listIntakeSessions(authUser.id()).stream()
+                .map(r -> new ChatSessionSummary(
+                        ((Number) r.get("conversationId")).longValue(),
+                        (String) r.get("title"),
+                        (String) r.get("mode"),
+                        toEpochMillis(r.get("updatedAt"))))
+                .collect(Collectors.toList());
+        return ApiResponse.ok(sessions);
+    }
+
+    /**
+     * MyBatis Map 의 DATETIME 값(드라이버/버전별 {@link java.sql.Timestamp} 또는 {@link java.time.LocalDateTime})을
+     * epoch millis 로 정규화한다. LocalDateTime 은 저장이 Asia/Seoul 벽시계이므로 같은 zone 으로 해석해
+     * 프런트 {@code Date.now()}(UTC epoch)와의 상대시각 차이가 정확하다.
+     */
+    private static Long toEpochMillis(Object v) {
+        if (v instanceof java.sql.Timestamp ts) {
+            return ts.getTime();
+        }
+        if (v instanceof java.time.LocalDateTime ldt) {
+            return ldt.atZone(java.time.ZoneId.of("Asia/Seoul")).toInstant().toEpochMilli();
+        }
+        if (v instanceof Number n) {
+            return n.longValue();
+        }
+        return null;
+    }
+
+    /**
+     * 세션 클릭 시 그 대화의 메시지 로드(이어보기). 본인 대화만 접근 가능.
+     * GET /api/chatbot/conversations/{conversationId}/messages
+     */
+    @GetMapping("/chatbot/conversations/{conversationId}/messages")
+    public ApiResponse<ChatHistoryResponse> conversationMessages(@PathVariable Long conversationId,
+                                                                 @AuthenticationPrincipal AuthUser authUser) {
+        if (authUser == null) {
+            return ApiResponse.error("UNAUTHORIZED", "로그인이 필요합니다.");
+        }
+        Long owner = memoryStore.findOwnerUserId(conversationId);
+        if (owner == null || !owner.equals(authUser.id())) {
+            return ApiResponse.error("FORBIDDEN", "접근할 수 없는 대화입니다.");
         }
         List<ChatHistoryMessage> messages = memoryStore.getMessages(conversationId).stream()
                 .map(this::toHistoryMessage)
@@ -367,7 +836,7 @@ public class ChatbotController {
         // 유사도 = 게이트가 본 원문 top-1(같은 임베딩). 전환 없음.
         responseLogService.record(conversationId, userId, question,
                 "FAQ_FAST", true, hits.get(0).score(), null, false);
-        return new ChatAskResponse(conversationId, hits.get(0).answer(), links, List.of(), route, null, false);
+        return new ChatAskResponse(conversationId, hits.get(0).answer(), links, List.of(), route, null, false, null);
     }
 
     /**
@@ -384,16 +853,164 @@ public class ChatbotController {
         return links;
     }
 
-    /** quickReplies 2차 호출. 실패는 보조 기능이므로 삼켜서 빈 리스트로(graceful degradation). */
-    private List<String> suggestQuickReplies(String question, String answer) {
+    /**
+     * 글(커뮤니티 후기/게시글)을 가리키는 칩을 식별하는 결정적 패턴.
+     * qwen3 가 시스템 프롬프트 예시("이 글 요약해줘")를 맥락 무관하게 베끼는 것을 게이트로 차단하기 위함.
+     * 이번 턴에 글이 실제로 제시되지 않았으면 이 패턴에 걸리는 칩은 버린다.
+     */
+    private static final Pattern POST_CHIP = Pattern.compile("글|후기|게시|본문");
+
+    /** "요약" free chip 은 이제 summaryChip 이 소유 → postsPresented 와 무관하게 항상 제거. */
+    private static final Pattern SUMMARY_CHIP = Pattern.compile("요약");
+
+    /** 묶음 요약 칩 최대 글 수(top-k). */
+    private static final int SUMMARY_TOP_K = 3;
+
+    /**
+     * 이번 턴 검색 스냅샷으로 묶음 요약 칩을 만든다.
+     * 글이 2개 이상일 때만 앞에서부터 최대 3개 postId 를 담아 칩을 만들고, 1개 이하면 null.
+     */
+    private ChatAskResponse.SummaryChip buildSummaryChip(List<PostHit> snapshot) {
+        if (snapshot == null || snapshot.size() < 2) {
+            return null;
+        }
+        List<Long> postIds = snapshot.stream()
+                .limit(SUMMARY_TOP_K)
+                .map(PostHit::postId)
+                .collect(Collectors.toList());
+        String label = "추천 후기 " + postIds.size() + "개 요약";
+        return new ChatAskResponse.SummaryChip(label, postIds);
+    }
+
+    /**
+     * quickReplies 2차 호출. 실패는 보조 기능이므로 삼켜서 빈 리스트로(graceful degradation).
+     *
+     * <p><b>맥락 주입(질문8 결정):</b> 로그인 유저는 프로필+대화이력을, 비로그인은 대화맥락만 모델에 준다
+     * ({@link #buildChipContext}). 케이스/현재단계는 이 경로(커뮤니티)에 바인딩돼 있지 않아 제외한다.
+     *
+     * <p><b>선별:</b> 모델이 매긴 relevance/importance 로 {@link QuickReplyParser#select 가변 컷}한다.
+     * 절대 임계값은 안 쓴다(8B 절대점수 불안정 → 칩 깜빡임).
+     *
+     * <p><b>글 칩 게이트(보존):</b> 모델은 글 제시 여부를 모른 채 칩을 자유 생성하므로, 이번 턴에 글이
+     * 실제로 제시됐을 때({@code postsPresented})만 글 관련 칩을 허용한다. "요약" 칩은 summaryChip 소유라 항상 제거.
+     */
+    private List<String> suggestQuickReplies(Long userId, Long conversationId,
+                                             String question, String answer, boolean postsPresented) {
         try {
-            String context = "사용자: " + question + "\n챗봇: " + answer;
-            List<String> chips = quickReplyAgent.suggest(context);
-            return chips == null ? List.of() : chips;
+            String raw = quickReplyAgent.suggest(buildChipContext(userId, conversationId, question, answer));
+            // 게이트 필터를 선별(최대 N) 전에 적용해, 유효 칩으로만 N개를 채운다.
+            List<ChipSuggestion> gated = quickReplyParser.parse(raw).stream()
+                    .filter(c -> c.text() != null && !SUMMARY_CHIP.matcher(c.text()).find())
+                    .filter(c -> postsPresented || !POST_CHIP.matcher(c.text()).find())
+                    .collect(Collectors.toList());
+            return QuickReplyParser.select(gated, 3);
         } catch (Exception e) {
             log.warn("quickReplies 생성 실패(무시): {}", e.getMessage());
             return List.of();
         }
+    }
+
+    /**
+     * 칩 생성 맥락 조립. 비로그인은 대화맥락만, 로그인은 프로필을 더한다(최소 침습 — A 도메인 read 만).
+     * 케이스/현재단계는 이 경로에 바인딩이 없어 넣지 않는다.
+     */
+    private String buildChipContext(Long userId, Long conversationId, String question, String answer) {
+        StringBuilder sb = new StringBuilder();
+        if (userId != null) {
+            UserProfile p = null;
+            try {
+                p = profileMapper.findByUserId(userId);
+            } catch (Exception e) {
+                log.debug("칩 맥락 프로필 조회 스킵: {}", e.getMessage());
+            }
+            if (p != null) {
+                sb.append("[프로필]\n");
+                appendIfPresent(sb, "희망직무", p.getDesiredJob());
+                appendIfPresent(sb, "희망산업", p.getDesiredIndustry());
+                appendIfPresent(sb, "보유스킬", p.getSkills());
+                appendIfPresent(sb, "자격증", p.getCertificates());
+                appendIfPresent(sb, "자기소개", p.getSelfIntro());
+                sb.append('\n');
+            }
+        }
+        String history = recentHistoryText(conversationId, 8);
+        if (!history.isBlank()) {
+            sb.append("[대화맥락]\n").append(history);
+        } else {
+            sb.append("[대화맥락]\n사용자: ").append(question).append("\n챗봇: ").append(answer);
+        }
+        return sb.toString();
+    }
+
+    private static void appendIfPresent(StringBuilder sb, String label, String value) {
+        if (value != null && !value.isBlank()) {
+            sb.append("- ").append(label).append(": ").append(value.trim()).append('\n');
+        }
+    }
+
+    /** 대화 메모리에서 최근 {@code maxLines} 줄(USER/AI 텍스트만)을 오래된→최신으로 만든다. 실패 시 빈 문자열. */
+    private String recentHistoryText(Long conversationId, int maxLines) {
+        if (conversationId == null) {
+            return "";
+        }
+        try {
+            List<String> lines = new ArrayList<>();
+            for (ChatMessage m : memoryStore.getMessages(conversationId)) {
+                if (m instanceof UserMessage um) {
+                    lines.add("사용자: " + um.singleText());
+                } else if (m instanceof AiMessage am && am.text() != null && !am.text().isBlank()) {
+                    lines.add("챗봇: " + am.text());
+                }
+            }
+            int from = Math.max(0, lines.size() - maxLines);
+            return String.join("\n", lines.subList(from, lines.size()));
+        } catch (Exception e) {
+            log.debug("칩 맥락 대화이력 조회 스킵: {}", e.getMessage());
+            return "";
+        }
+    }
+
+    /**
+     * 추천했던 후기들을 묶어 핵심만 평문으로 압축 요약한다(summaryChip 클릭 → 이 엔드포인트).
+     * POST /api/chatbot/summarize-posts  body: { conversationId?, postIds }
+     *
+     * <p>postIds 는 dedup 후 최대 3개만 사용한다. 비공개/삭제(getPostContent 가 "찾을 수 없"으로 시작)는 제외하고,
+     * 남은 본문을 이어 요약 에이전트에 넘긴다. 응답은 묶음 요약 평문(summaryChip=null, links/quickReplies=[]).
+     */
+    @PostMapping("/chatbot/summarize-posts")
+    public ApiResponse<ChatAskResponse> summarizePosts(@RequestBody ChatSummarizeRequest req) {
+        if (req == null || req.postIds() == null || req.postIds().isEmpty()) {
+            return ApiResponse.error("BAD_REQUEST", "요약할 글을 선택해 주세요.");
+        }
+
+        // dedup(순서 보존) 후 최대 3개.
+        List<Long> ids = req.postIds().stream()
+                .filter(id -> id != null)
+                .distinct()
+                .limit(SUMMARY_TOP_K)
+                .collect(Collectors.toList());
+
+        // 각 글 본문 수집 — 비공개/삭제("찾을 수 없"으로 시작)는 제외.
+        List<String> bodies = ids.stream()
+                .map(communityTools::getPostContent)
+                .filter(c -> c != null && !c.startsWith("해당 글을 찾을 수 없"))
+                .collect(Collectors.toList());
+
+        String message;
+        if (bodies.isEmpty()) {
+            message = "추천했던 글을 더 이상 볼 수 없어요.";
+        } else {
+            try {
+                String postsBlock = String.join("\n\n---\n\n", bodies);
+                message = MessageSanitizer.stripMarkdown(summaryAgent.summarize(postsBlock));
+            } catch (Exception e) {
+                log.error("후기 묶음 요약 실패 (Ollama 장애 추정): {}", e.getMessage(), e);
+                message = "지금은 요약을 만들기 어려워요. 잠시 후 다시 시도해 주세요.";
+            }
+        }
+
+        return ApiResponse.ok(new ChatAskResponse(
+                req.conversationId(), message, List.of(), List.of(), "요약", null, false, null));
     }
 
     /**

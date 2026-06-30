@@ -85,27 +85,14 @@ careertuner:
     timeout: ${OPENAI_TIMEOUT:300s}
     job-posting-fallback-enabled: ${JOB_POSTING_OPENAI_FALLBACK_ENABLED:false}
     job-posting-fallback-allowlist: ${JOB_POSTING_OPENAI_FALLBACK_ALLOWLIST:}
-  correction:
+  profile:
     ai:
-      # E correction provider. openai keeps the current production path.
-      # self calls an OpenAI-compatible chat completions server for careertuner-e-correction, then falls back to OpenAI when enabled.
-      provider: ${CAREERTUNER_CORRECTION_AI_PROVIDER:openai}
-      fallback-enabled: ${CAREERTUNER_CORRECTION_AI_FALLBACK_ENABLED:true}
-      open-ai-timeout: ${CAREERTUNER_CORRECTION_AI_OPENAI_TIMEOUT:30s}
-      open-ai-max-attempts: ${CAREERTUNER_CORRECTION_AI_OPENAI_MAX_ATTEMPTS:1}
-      self:
-        base-url: ${CAREERTUNER_CORRECTION_AI_SELF_BASE_URL:}
-        model: ${CAREERTUNER_CORRECTION_AI_SELF_MODEL:careertuner-e-correction:8b}
-        fallback-model: ${CAREERTUNER_CORRECTION_AI_SELF_FALLBACK_MODEL:careertuner-e-correction-3b:latest}
-        api-key: ${CAREERTUNER_CORRECTION_AI_SELF_API_KEY:}
-        max-tokens: ${CAREERTUNER_CORRECTION_AI_SELF_MAX_TOKENS:1600}
-        temperature: ${CAREERTUNER_CORRECTION_AI_SELF_TEMPERATURE:0.2}
-        connect-timeout: ${CAREERTUNER_CORRECTION_AI_SELF_CONNECT_TIMEOUT:3s}
-        timeout: ${CAREERTUNER_CORRECTION_AI_SELF_TIMEOUT:20s}
-        total-time-budget: ${CAREERTUNER_CORRECTION_AI_SELF_TOTAL_TIME_BUDGET:30s}
-        primary-max-attempts: ${CAREERTUNER_CORRECTION_AI_SELF_PRIMARY_MAX_ATTEMPTS:2}
-        fallback-max-attempts: ${CAREERTUNER_CORRECTION_AI_SELF_FALLBACK_MAX_ATTEMPTS:1}
-        retry-backoff: ${CAREERTUNER_CORRECTION_AI_SELF_RETRY_BACKOFF:400ms}
+      finetuned:
+        # A파트 프로필 자체 파인튜닝 모델 서버. 기본은 꺼두어 팀원 환경에서 원격 서버 의존성을 만들지 않는다.
+        enabled: ${PROFILE_AI_FINETUNED_ENABLED:false}
+        base-url: ${PROFILE_AI_FINETUNED_BASE_URL:}
+        model: ${PROFILE_AI_FINETUNED_MODEL:qwen3-profile-lora-v3}
+        timeout: ${PROFILE_AI_FINETUNED_TIMEOUT:60s}
   analysis:
     ai:
       # C 적합도/취업분석 AI provider. openai(기본/폴백) | oss(자체 파인튜닝 careertuner-c-career-strategy-3b)

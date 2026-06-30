@@ -8,6 +8,7 @@ import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
@@ -16,6 +17,7 @@ import com.careertuner.common.security.AuthUser;
 import com.careertuner.common.web.ApiResponse;
 import com.careertuner.community.dto.CommentResponse;
 import com.careertuner.community.dto.CreateCommentRequest;
+import com.careertuner.community.dto.UpdateCommentRequest;
 import com.careertuner.community.service.CommunityCommentService;
 
 import lombok.RequiredArgsConstructor;
@@ -41,6 +43,14 @@ public class CommunityCommentController {
             @Validated @RequestBody CreateCommentRequest request,
             @AuthenticationPrincipal AuthUser authUser) {
         return ApiResponse.ok(commentService.createComment(postId, request, authUser.id()));
+    }
+
+    @PutMapping("/comments/{commentId}")
+    public ApiResponse<CommentResponse> updateComment(
+            @PathVariable Long commentId,
+            @Validated @RequestBody UpdateCommentRequest request,
+            @AuthenticationPrincipal AuthUser authUser) {
+        return ApiResponse.ok(commentService.updateComment(commentId, request.content(), authUser.id()));
     }
 
     @DeleteMapping("/comments/{commentId}")

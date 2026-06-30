@@ -32,7 +32,7 @@
 
 /* ── surfaces ── */
 .ct-toast--light {
-  background: #ffffff;
+  background: var(--card);
   color: var(--foreground);
   border: 1px solid var(--border);
 }

@@ -36,7 +36,7 @@ import com.careertuner.community.moderation.service.PostModerationService;
  */
 @RestController
 @RequestMapping("/api/admin/ai")
-@PreAuthorize("hasRole('ADMIN')")
+@PreAuthorize("hasAnyRole('ADMIN','SUPER_ADMIN')")
 public class AdminModerationController {
 
     private final PostModerationService moderationService;

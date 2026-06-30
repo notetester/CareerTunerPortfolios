@@ -1,34 +1,32 @@
 package com.careertuner.dashboard.ai;
 
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Map;
-
-import org.springframework.context.annotation.Primary;
 import org.springframework.stereotype.Service;
 
 import com.careertuner.analysis.ai.provider.CareerAnalysisAiUsage;
 import com.careertuner.analysis.ai.provider.CareerAnalysisOpenAiClient;
 import com.careertuner.analysis.ai.provider.CareerAnalysisOpenAiClient.StructuredResponse;
 import com.careertuner.dashboard.ai.prompt.DashboardInsightPromptCatalog;
-import tools.jackson.core.JacksonException;
-import tools.jackson.databind.JsonNode;
-import tools.jackson.databind.ObjectMapper;
 
-@Primary
+/**
+ * 대시보드 요약의 OpenAI 단계. 키가 있으면 실제 요약을, 없거나 실패하면 결정적 mock 으로 폴백한다.
+ *
+ * <p>활성 진입점(@Primary)은 {@link FallbackDashboardInsightAiService}(Claude→OpenAI)다. 이 서비스는 그
+ * 폴백 체인의 OpenAI 단계이며, 내부 mock 폴백이 최종 안전망이다. 스키마·파싱은
+ * {@link DashboardInsightStructuredMapper} 를 Claude 단계와 공유한다.
+ */
 @Service
 public class OpenAiDashboardInsightAiService implements DashboardInsightAiService {
 
     private final CareerAnalysisOpenAiClient openAiClient;
     private final MockDashboardInsightAiService mockService;
-    private final ObjectMapper objectMapper;
+    private final DashboardInsightStructuredMapper mapper;
 
     public OpenAiDashboardInsightAiService(CareerAnalysisOpenAiClient openAiClient,
                                            MockDashboardInsightAiService mockService,
-                                           ObjectMapper objectMapper) {
+                                           DashboardInsightStructuredMapper mapper) {
         this.openAiClient = openAiClient;
         this.mockService = mockService;
-        this.objectMapper = objectMapper;
+        this.mapper = mapper;
     }
 
     @Override
@@ -38,17 +36,11 @@ public class OpenAiDashboardInsightAiService implements DashboardInsightAiServic
         }
         try {
             StructuredResponse response = openAiClient.request(
-                    "dashboard_insight",
-                    schema(),
+                    DashboardInsightStructuredMapper.SCHEMA_NAME,
+                    mapper.schema(),
                     DashboardInsightPromptCatalog.SYSTEM_PROMPT,
-                    DashboardInsightPromptCatalog.userPrompt(json(command)));
-            JsonNode payload = response.payload();
-            return new DashboardInsightAiResult(
-                    text(payload.path("summary")),
-                    response.usage(),
-                    "SUCCESS",
-                    null,
-                    false);
+                    mapper.userPrompt(command));
+            return mapper.toResult(response.payload(), response.usage());
         } catch (RuntimeException exception) {
             DashboardInsightAiResult fallback = mockService.summarize(command);
             return new DashboardInsightAiResult(
@@ -57,28 +49,6 @@ public class OpenAiDashboardInsightAiService implements DashboardInsightAiServic
                     "FALLBACK",
                     exception.getMessage(),
                     true);
-        }
-    }
-
-    private Map<String, Object> schema() {
-        Map<String, Object> properties = new LinkedHashMap<>();
-        properties.put("summary", Map.of("type", "string"));
-        return Map.of(
-                "type", "object",
-                "additionalProperties", false,
-                "properties", properties,
-                "required", List.copyOf(properties.keySet()));
-    }
-
-    private String text(JsonNode node) {
-        return node == null ? "" : node.asText("");
-    }
-
-    private String json(Object value) {
-        try {
-            return objectMapper.writeValueAsString(value);
-        } catch (JacksonException exception) {
-            return "{}";
         }
     }
 }

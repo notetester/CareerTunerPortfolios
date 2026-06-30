@@ -23,7 +23,7 @@
 
 /* ── Skeleton shimmer ── */
 .ct-sk {
-  background: linear-gradient(90deg, #eef1f5 25%, #e2e8f0 37%, #eef1f5 63%);
+  background: linear-gradient(90deg, var(--muted) 25%, var(--surface-3) 37%, var(--muted) 63%);
   background-size: 720px 100%;
   animation: ctShimmer 1.3s infinite linear;
   border-radius: 6px;

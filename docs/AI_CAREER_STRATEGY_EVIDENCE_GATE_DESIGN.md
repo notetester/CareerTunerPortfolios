@@ -1,5 +1,12 @@
 # AI 직무적합 — review-first Evidence Gate 설계 초안 (R3-pre)
 
+> [!WARNING]
+> 이 문서는 R3 이전 설계 초안이다. 최신 구현 상태는
+> [`ml/career-strategy-llm/AI_ROADMAP_CHECKLIST.md`](../ml/career-strategy-llm/AI_ROADMAP_CHECKLIST.md) 및
+> [`reports/61`](../ml/career-strategy-llm/reports/61_rag_r3_review_first_gate_implementation.md)~
+> [`reports/65`](../ml/career-strategy-llm/reports/65_r3_evidence_gate_dev_integration_check.md)를 기준으로 확인한다.
+> PR #175 이후 `userEvidence` 는 `profileSkills + profileCertificates` 로 고정되었고, AI 파생 `matchedSkills` 는 보유 근거로 신뢰하지 않는다.
+
 > **상태: 설계 초안(design only). 구현 아님.** 이 문서는 C 자체 LLM RAG 실험(R2b~R2f, `ml/career-strategy-llm/reports/54~59`)의
 > 결론을 backend service layer 안전장치로 어떻게 가져올지 제안한다. **Spring Boot 코드·runtime prompt·기본 모델·
 > API 동작은 변경하지 않는다.** 실제 클래스 생성/수정은 backend owner(D/F) 리뷰·합의 후 별도 PR 에서.

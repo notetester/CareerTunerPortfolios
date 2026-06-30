@@ -5,6 +5,7 @@ import java.util.List;
 import com.careertuner.admin.ticket.dto.AdminTicketDetailResponse;
 import com.careertuner.admin.ticket.dto.AdminTicketDraftResponse;
 import com.careertuner.admin.ticket.dto.AdminTicketListResponse;
+import com.careertuner.admin.ticket.dto.AdminTicketSummaryResponse;
 import com.careertuner.admin.ticket.dto.AdminTicketReplyRequest;
 import com.careertuner.admin.ticket.dto.AdminTicketUpdateRequest;
 import com.careertuner.common.security.AuthUser;
@@ -20,4 +21,6 @@ public interface AdminTicketService {
     AdminTicketDetailResponse reply(AuthUser authUser, Long id, AdminTicketReplyRequest request);
 
     AdminTicketDraftResponse generateDraft(AuthUser authUser, Long id);
+
+    AdminTicketSummaryResponse generateMemberSummary(AuthUser authUser, Long id);
 }

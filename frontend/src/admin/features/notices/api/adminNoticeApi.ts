@@ -17,6 +17,7 @@ function toNotice(b: AdminNoticeResponse): Notice {
     id: b.id,
     title: b.title,
     body: b.content,
+    category: b.category ?? undefined,
     status,
     pinned: b.pinned,
     date,
@@ -51,6 +52,7 @@ export function updateNotice(
   data: {
     title?: string;
     content?: string;
+    category?: string | null;
     status?: string;
     isPinned?: boolean;
     thumbnailUrl?: string | null;

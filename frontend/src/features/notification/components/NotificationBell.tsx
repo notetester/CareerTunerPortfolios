@@ -112,14 +112,14 @@ export function NotificationBell() {
   return (
     <span className="ct-belln" ref={ref}>
       <button
-        className="relative p-2 rounded-lg hover:bg-slate-100 transition-colors"
+        className="relative p-2 rounded-lg hover:bg-accent transition-colors"
         aria-label="알림"
         onClick={() => {
           if (!open) fetchNotifications(); // 패널 열 때 최신 목록 동기화
           setOpen((o) => !o);
         }}
       >
-        <Bell className="size-5 text-slate-600" />
+        <Bell className="size-5 text-muted-foreground" />
       </button>
       {unreadCount > 0 && (
         <span className="ct-belln__badge">{unreadCount > 9 ? "9+" : unreadCount}</span>

@@ -74,9 +74,6 @@ function relTime(ts?: string | null): string | null {
   return new Date(t).toLocaleDateString("ko-KR", { month: "long", day: "numeric" });
 }
 
-function dayKey(date: Date): string {
-  return date.toISOString().slice(0, 10);
-}
 
 function dayLabel(date: Date): string {
   return new Intl.DateTimeFormat("ko-KR", { weekday: "short" }).format(date).replace("요일", "");
@@ -101,6 +98,7 @@ function toRow(row: adminNotificationApi.AdminNotificationRow): NotifRow {
 
 export default function AdminNotifications() {
   const [allRows, setAllRows] = useState<NotifRow[]>([]);
+  const [agg, setAgg] = useState<adminNotificationApi.AdminNotificationStats | null>(null);
   const [query, setQuery] = useState("");
   const [cat, setCat] = useState("전체");
   const [read, setRead] = useState("전체");
@@ -111,8 +109,13 @@ export default function AdminNotifications() {
     setLoading(true);
     setError(null);
     try {
-      const rows = await adminNotificationApi.getNotifications(100);
+      // 목록은 최근분(표시용), 통계는 전체 집계(BE)로 분리 — 목록 캡이 통계를 왜곡하지 않게.
+      const [rows, stats] = await Promise.all([
+        adminNotificationApi.getNotifications(100),
+        adminNotificationApi.getStats(),
+      ]);
       setAllRows(rows.map(toRow));
+      setAgg(stats);
     } catch {
       setError("알림 목록을 불러오지 못했습니다.");
     } finally {
@@ -139,51 +142,25 @@ export default function AdminNotifications() {
     return true;
   }), [allRows, cat, query, read]);
 
+  // 모든 집계는 BE(agg)에서 끝난다. 여기서는 받은 숫자를 표시용으로 매핑만 한다(요일 라벨·막대 높이 등 표시 전용).
   const stats = useMemo(() => {
-    const totalSent = allRows.length;
-    const readCount = allRows.filter((r) => r.isRead).length;
-    const readRate = totalSent ? Math.round((readCount / totalSent) * 100) : 0;
-
-    const days = Array.from({ length: 7 }, (_, i) => {
-      const d = new Date();
-      d.setHours(0, 0, 0, 0);
-      d.setDate(d.getDate() - (6 - i));
-      return { key: dayKey(d), d: dayLabel(d), v: 0, today: i === 6 };
+    const days = (agg?.trend ?? []).map((t) => {
+      const [y, m, d] = t.date.split("-").map(Number);
+      return { key: t.date, d: dayLabel(new Date(y, m - 1, d)), v: t.count, today: t.today };
     });
-    const dayByKey = new Map(days.map((d) => [d.key, d]));
-
-    const rates = Object.keys(CATS).map((key) => ({ cat: key, sent: 0, read: 0, rate: 0, low: false }));
-    const rateByCat = new Map(rates.map((r) => [r.cat, r]));
-
-    for (const row of allRows) {
-      const date = new Date(row.createdAt);
-      const daily = dayByKey.get(dayKey(date));
-      if (daily) daily.v += 1;
-
-      const category = TYPE_CAT[row.type] ?? "admin";
-      const bucket = rateByCat.get(category);
-      if (bucket) {
-        bucket.sent += 1;
-        if (row.isRead) bucket.read += 1;
-      }
-    }
-
-    for (const bucket of rates) {
-      bucket.rate = bucket.sent ? Math.round((bucket.read / bucket.sent) * 100) : 0;
-      bucket.low = bucket.sent > 0 && bucket.rate < 50;
-    }
-
     return {
-      totalSent,
-      readCount,
-      readRate,
-      unreadCount: totalSent - readCount,
-      todaySent: days[6]?.v ?? 0,
+      totalSent: agg?.totalSent ?? 0,
+      readCount: agg?.readCount ?? 0,
+      readRate: agg?.readRate ?? 0,
+      unreadCount: agg?.unreadCount ?? 0,
+      todaySent: agg?.todaySent ?? 0,
       days,
       maxDay: Math.max(1, ...days.map((d) => d.v)),
-      rates: rates.filter((r) => r.sent > 0),
+      rates: (agg?.categories ?? []).map((c) => ({
+        cat: c.category, sent: c.sent, read: c.read, rate: c.rate, low: c.low,
+      })),
     };
-  }, [allRows]);
+  }, [agg]);
 
   return (
     <AdminShell
@@ -198,7 +175,7 @@ export default function AdminNotifications() {
         <div className="av-met">
           <div className="av-met__l">오늘 발송</div>
           <div className="av-met__row"><span className="av-met__n num">{stats.todaySent}</span></div>
-          <div className="av-met__d num">최근 목록 기준</div>
+          <div className="av-met__d num">전체 기준</div>
         </div>
         <div className="av-met">
           <div className="av-met__l">최근 발송</div>
@@ -302,7 +279,7 @@ export default function AdminNotifications() {
           <section className="av-panel">
             <div className="av-mod__h">
               <span className="av-mod__t">타입별 읽음률</span>
-              <span className="av-mod__s">최근 목록 기준</span>
+              <span className="av-mod__s">전체 기준</span>
             </div>
             <div className="av-rates">
               {stats.rates.length === 0 ? (

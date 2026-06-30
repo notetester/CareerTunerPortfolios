@@ -507,15 +507,122 @@ class BAnalysisGenerationServiceTest {
         assertThat(result.fallbackAttemptedModel()).isEqualTo("qwen-test");
         assertThat(result.fallbackReason()).contains("fallback to self-rules-v1");
         assertThat(result.payload().usage().model()).isEqualTo(BAnalysisGenerationService.SELF_RULES_MODEL);
-        assertThat(result.payload().companySummary()).contains("Acme");
+        assertThat(result.payload().companySummary())
+                .contains("Acme")
+                .doesNotContain("information was summarized", "No external company API");
+    }
+
+    @Test
+    void companyAnalysisFallbackDoesNotLeakUnknownPlaceholders() {
+        // 회사명/직무명이 미상 placeholder 인 채로 self-rules 폴백을 타도, 영어 보일러플레이트나
+        // "기업명 확인 필요" 같은 placeholder 가 사용자 노출 payload(summary·verifiedFacts 등)에 새지 않아야 한다.
+        BAnalysisProperties properties = new BAnalysisProperties();
+        properties.getLocalLlm().setEnabled(true);
+        properties.getLocalLlm().setModel("qwen-test");
+        BLocalLlmClient localLlmClient = mock(BLocalLlmClient.class);
+        when(localLlmClient.chat(anyString(), anyString(), any())).thenReturn("{}");
+        BAnalysisGenerationService service = service(properties, localLlmClient);
+
+        ApplicationCase unknownNames = ApplicationCase.builder()
+                .id(11L)
+                .userId(1L)
+                .companyName("기업명 확인 필요")
+                .jobTitle("직무명 확인 필요")
+                .status("DRAFT")
+                .build();
+
+        BAnalysisGenerationService.GeneratedCompanyAnalysis result =
+                service.generateCompanyAnalysis(unknownNames, postingText());
+
+        assertThat(result.fellBack()).isTrue();
+        assertThat(result.payload().companySummary())
+                .doesNotContain("기업명 확인 필요", "Target company",
+                        "information was summarized", "No external company API")
+                .contains("외부 기업 정보나 OpenAI 폴백은 사용하지 않았습니다");
+        assertThat(result.payload().recentIssues()).doesNotContain("Not externally researched");
+        assertThat(result.payload().sources()).doesNotContain("Uploaded job posting");
+        assertThat(result.payload().interviewPoints()).doesNotContain("Prepare to explain");
+        assertThat(result.payload().aiInferences())
+                .doesNotContain("Interview preparation should focus", "Derived from extracted");
+        assertThat(result.payload().verifiedFacts())
+                .doesNotContain("기업명 확인 필요", "직무명 확인 필요")
+                .contains("품질 게이트");
+    }
+
+    @Test
+    void claudeUsedWhenLocalDisabledAndClaudeConfigured() {
+        // 자체모델 비활성 + Claude 키 있음 → Claude(Haiku)로 1차 폴백, self-rules 로 안 떨어진다.
+        BAnalysisProperties properties = new BAnalysisProperties(); // localLlm 비활성
+        BLocalLlmClient localLlmClient = mock(BLocalLlmClient.class);
+        BAnthropicClient anthropicClient = mock(BAnthropicClient.class);
+        when(anthropicClient.configured()).thenReturn(true);
+        when(anthropicClient.model()).thenReturn("claude-haiku-test");
+        when(anthropicClient.chat(anyString(), anyString(), any())).thenReturn(validJobJson());
+        BAnalysisGenerationService service =
+                service(properties, localLlmClient, anthropicClient, mock(OpenAiResponsesClient.class));
+
+        BAnalysisGenerationService.GeneratedJobAnalysis result =
+                service.generateJobAnalysis(applicationCase(), postingText());
+
+        assertThat(result.fellBack()).isFalse();
+        assertThat(result.payload().usage().model()).isEqualTo("claude-haiku-test");
+        assertThat(result.payload().requiredSkills()).contains("Java", "Spring Boot");
+        verify(localLlmClient, never()).chat(anyString(), anyString(), any());
+    }
+
+    @Test
+    void claudeUsedWhenOllamaFails() {
+        // 자체모델이 깨진 JSON 으로 실패 → Claude(Haiku)로 폴백 성공.
+        BAnalysisProperties properties = new BAnalysisProperties();
+        properties.getLocalLlm().setEnabled(true);
+        properties.getLocalLlm().setModel("qwen-test");
+        BLocalLlmClient localLlmClient = mock(BLocalLlmClient.class);
+        when(localLlmClient.chat(anyString(), anyString(), any())).thenReturn("{}");
+        BAnthropicClient anthropicClient = mock(BAnthropicClient.class);
+        when(anthropicClient.configured()).thenReturn(true);
+        when(anthropicClient.model()).thenReturn("claude-haiku-test");
+        when(anthropicClient.chat(anyString(), anyString(), any())).thenReturn(validJobJson());
+        BAnalysisGenerationService service =
+                service(properties, localLlmClient, anthropicClient, mock(OpenAiResponsesClient.class));
+
+        BAnalysisGenerationService.GeneratedJobAnalysis result =
+                service.generateJobAnalysis(applicationCase(), postingText());
+
+        assertThat(result.fellBack()).isFalse();
+        assertThat(result.payload().usage().model()).isEqualTo("claude-haiku-test");
+    }
+
+    private static String validJobJson() {
+        return """
+                {
+                  "employmentType": "FULL_TIME",
+                  "experienceLevel": "MID",
+                  "requiredSkills": ["Java", "Spring Boot"],
+                  "preferredSkills": ["Docker"],
+                  "duties": "Spring API 개발과 운영",
+                  "qualifications": "Java와 Spring Boot 경험",
+                  "difficulty": "NORMAL",
+                  "summary": "백엔드 개발자를 위한 공고 분석 요약입니다.",
+                  "evidence": [{"field":"requiredSkills","quote":"Java와 Spring Boot 경험"}],
+                  "ambiguousConditions": [{"condition":"salary","assumption":"not specified"}]
+                }
+                """;
     }
 
     private static BAnalysisGenerationService service(BAnalysisProperties properties, BLocalLlmClient localLlmClient) {
+        return service(properties, localLlmClient, mock(BAnthropicClient.class), mock(OpenAiResponsesClient.class));
+    }
+
+    private static BAnalysisGenerationService service(BAnalysisProperties properties, BLocalLlmClient localLlmClient,
+                                                      BAnthropicClient anthropicClient,
+                                                      OpenAiResponsesClient openAiResponsesClient) {
         return new BAnalysisGenerationService(
                 properties,
                 localLlmClient,
                 new BJobSentenceClassifier(),
-                new ObjectMapper());
+                new ObjectMapper(),
+                anthropicClient,
+                openAiResponsesClient);
     }
 
     private static ApplicationCase applicationCase() {
