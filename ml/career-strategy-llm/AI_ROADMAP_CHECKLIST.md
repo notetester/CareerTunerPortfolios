@@ -1,8 +1,8 @@
 # C Career Strategy AI Roadmap Checklist
 
-Last updated: 2026-06-30
+Last updated: 2026-07-01
 기준 branch: dev
-기준 PR 범위: #174, #175, #180, #182, #183, #184, #186, #187, #188, #190, #191 포함
+기준 PR 범위: #174, #175, #180, #182, #183, #184, #186, #187, #188, #190, #191, #193 포함
 
 상태 표기:
 - `[x] 완료`
@@ -40,9 +40,11 @@ Last updated: 2026-06-30
 - [x] 완료 — RAG 재도입 hard-case fixture v1 과 dry-run payload 생성 골격을 구성했다([reports/69](../../docs/ai-reports/areas/c-career-strategy/reports/69_rag_hardcase_benchmark_fixture.md)).
 - [x] 완료 — RAG hard-case offline A/B runner 골격과 aggregate summarizer 를 추가했다([reports/70](../../docs/ai-reports/areas/c-career-strategy/reports/70_rag_hardcase_offline_ab_runner.md)).
 - [x] 완료 — 4090/Ollama 기준 RAG hard-case 3B LoRA A/B run 을 1회 실행하고 CareerTunerAI artifact path/commit SHA 를 기록했다([reports/71](../../docs/ai-reports/areas/c-career-strategy/reports/71_rag_hardcase_actual_3b_ab_run.md), CareerTunerAI `benchmarks/rag-hardcase/runs/rag_hardcase_v1_20260630_1635`, commit `8939d5856bf7edc9b9c93a7f9ff94034ab8d0a4e`).
+- [x] 완료 — RAG hard-case 실제 출력의 offline R3-like evaluator / semantic observer A/B 분석을 수행했다([reports/72 summary](reports/72_rag_hardcase_r3_semantic_ab_analysis.md), [AIDocs report 73](../../docs/ai-reports/areas/c-career-strategy/reports/73_rag_hardcase_v1_r3_semantic_analysis.md), CareerTunerAI `benchmarks/rag-hardcase/evaluations/rag_hardcase_v1_20260630_1635_r3_semantic_eval`, commit `78167ea981f7d85035116cd1c65e15460223e1c4`).
 - [~] 보류 또는 조건부 유지 — raw output/result JSON 은 CareerTunerAI artifact repo 에 저장한다.
 - [~] 보류 또는 조건부 유지 — 긴 실험 분석 문서는 CareerTunerAIDocs 에 저장한다.
-- [ ] 미완료 — RAG hard-case benchmark 결과의 R3 gate evaluator 와 semantic judge 기반 A/B 품질 분석은 scoped source, 개인정보 격리, unsupported claim 감소 지표 기준으로 별도 수행한다.
+- [~] 보류 또는 조건부 유지 — RAG runtime 재도입은 reports/72 결과 기준으로 계속 보류하고, 제한 재평가 후보로만 유지한다.
+- [ ] 미완료 — 외부 또는 별도 local semantic judge LLM 으로 model-reported unsupported count 를 독립 검증하는 작업은 후속으로 남아 있다.
 
 ## 4. Evidence gate / safety 상태
 
@@ -76,7 +78,8 @@ Last updated: 2026-06-30
 - [x] 완료 — RAG 재도입 hard-case fixture v1 구성([reports/69](../../docs/ai-reports/areas/c-career-strategy/reports/69_rag_hardcase_benchmark_fixture.md)).
 - [x] 완료 — RAG hard-case offline A/B runner 골격 추가([reports/70](../../docs/ai-reports/areas/c-career-strategy/reports/70_rag_hardcase_offline_ab_runner.md)).
 - [x] 완료 — 4090/Ollama 기준 실제 3B LoRA A/B 실행 및 CareerTunerAI artifact 저장([reports/71](../../docs/ai-reports/areas/c-career-strategy/reports/71_rag_hardcase_actual_3b_ab_run.md)).
+- [x] 완료 — RAG hard-case 실제 출력의 offline R3-like/semantic A/B 분석 및 CareerTunerAI/CareerTunerAIDocs 산출물 저장([reports/72 summary](reports/72_rag_hardcase_r3_semantic_ab_analysis.md), [AIDocs report 73](../../docs/ai-reports/areas/c-career-strategy/reports/73_rag_hardcase_v1_r3_semantic_analysis.md)).
 - [ ] 미완료 — 관리자 gate review 처리 workflow 설계: 검토 완료, 재분석 요청, memo/reason 연결.
 - [ ] 미완료 — R3 gate reason 로그를 기반으로 false-positive 샘플 리뷰와 alias 후보 triage.
-- [ ] 미완료 — RAG hard-case 실제 출력의 semantic judge/R3 gate 기반 A/B 결과 분석: scoped context, 개인정보 격리, unsupported claim 감소 기준.
+- [ ] 미완료 — RAG hard-case 실제 출력의 외부 semantic judge 독립 검증: scoped context, 개인정보 격리, unsupported claim 감소 기준.
 - [ ] 미완료 — model-card 다음 개정: R3 운영 데이터와 gate reason 분포 반영.
