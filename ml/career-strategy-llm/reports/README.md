@@ -4,6 +4,10 @@
 CareerTuner 본체는 최신 상태 요약과 출처 링크만 남기고, 장문 보고서는
 `CareerTunerAIDocs` 서브모듈에 둔다.
 
+짧은 compatibility summary:
+
+- [72_rag_hardcase_r3_semantic_ab_analysis](72_rag_hardcase_r3_semantic_ab_analysis.md)
+
 먼저 읽을 문서:
 
 - [../CURRENT_STATE.md](../CURRENT_STATE.md)
@@ -88,3 +92,4 @@ raw model output, generated request/result JSON, benchmark manifest, aggregate s
 - [70_rag_hardcase_offline_ab_runner](../../../docs/ai-reports/areas/c-career-strategy/reports/70_rag_hardcase_offline_ab_runner.md)
 - [71_rag_hardcase_actual_3b_ab_run](../../../docs/ai-reports/areas/c-career-strategy/reports/71_rag_hardcase_actual_3b_ab_run.md)
 - [72_c_raw_artifact_classification_map](../../../docs/ai-reports/areas/c-career-strategy/reports/72_c_raw_artifact_classification_map.md)
+- [73_rag_hardcase_v1_r3_semantic_analysis](../../../docs/ai-reports/areas/c-career-strategy/reports/73_rag_hardcase_v1_r3_semantic_analysis.md)
