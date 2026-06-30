@@ -84,8 +84,64 @@ public class SelfLlmCorrectionProvider implements CorrectionAiProvider {
                 Map.of("role", "user", "content", json(input.toRequestMap()))));
         body.put("temperature", properties.getSelf().getTemperature());
         body.put("max_tokens", properties.getSelf().getMaxTokens());
-        body.put("response_format", Map.of("type", "json_object"));
+        body.put("response_format", responseFormat(input.taskType()));
         return json(body);
+    }
+
+    private Map<String, Object> responseFormat(String taskType) {
+        Map<String, Object> changeProperties = new LinkedHashMap<>();
+        changeProperties.put("before", stringSchema());
+        changeProperties.put("after", stringSchema());
+        changeProperties.put("reason", stringSchema());
+        changeProperties.put("evidence_source", Map.of(
+                "type", "string",
+                "enum", List.of("original_text", "user_profile_facts", "job_context")));
+
+        Map<String, Object> changeSchema = objectSchema(
+                changeProperties,
+                List.of("before", "after", "reason", "evidence_source"));
+
+        Map<String, Object> properties = new LinkedHashMap<>();
+        properties.put("status", Map.of("type", "string", "enum", List.of("ok")));
+        properties.put("task_type", Map.of("type", "string", "enum", List.of(taskType)));
+        properties.put("corrected_text", stringSchema());
+        properties.put("summary", stringSchema());
+        properties.put("changes", Map.of(
+                "type", "array",
+                "minItems", 1,
+                "items", changeSchema));
+        properties.put("risk_flags", stringArraySchema());
+        properties.put("preserved_meaning", Map.of("type", "boolean"));
+        properties.put("added_facts", stringArraySchema());
+        properties.put("recommended_keywords", stringArraySchema());
+        properties.put("confidence", Map.of("type", "number", "minimum", 0, "maximum", 1));
+
+        Map<String, Object> schema = objectSchema(properties, List.of(
+                "status", "task_type", "corrected_text", "summary", "changes",
+                "risk_flags", "preserved_meaning", "added_facts", "recommended_keywords", "confidence"));
+        return Map.of(
+                "type", "json_schema",
+                "json_schema", Map.of(
+                        "name", "e_correction_result",
+                        "strict", true,
+                        "schema", schema));
+    }
+
+    private Map<String, Object> objectSchema(Map<String, Object> schemaProperties, List<String> required) {
+        Map<String, Object> schema = new LinkedHashMap<>();
+        schema.put("type", "object");
+        schema.put("additionalProperties", false);
+        schema.put("properties", schemaProperties);
+        schema.put("required", required);
+        return schema;
+    }
+
+    private Map<String, Object> stringSchema() {
+        return Map.of("type", "string", "minLength", 1);
+    }
+
+    private Map<String, Object> stringArraySchema() {
+        return Map.of("type", "array", "items", Map.of("type", "string"));
     }
 
     private JsonNode sendOnce(Self self, String payload, Duration timeout) {

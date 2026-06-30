@@ -151,7 +151,7 @@ revision으로 저장한다. `job_posting`은 `(application_case_id, revision)` 
 | GET | `/api/corrections` | 내 첨삭 이력 조회 | Bearer |
 | GET | `/api/corrections/{id}` | 내 첨삭 결과 상세 조회 | Bearer |
 
-E 자체 모델은 학습 계약의 10개 JSON 키를 검증하고, 8B를 최대 2회 호출한 뒤 3B를 1회 호출한다. timeout은 같은 모델을 재시도하지 않으며 자체 모델 전체 시간 예산 30초를 넘기면 OpenAI로 전환한다. 운영 연결 시 `CAREERTUNER_CORRECTION_AI_PROVIDER=self`, `CAREERTUNER_CORRECTION_AI_SELF_BASE_URL=http://localhost:11434/v1`을 설정한다. OpenAI 최종 폴백에는 `OPENAI_API_KEY`가 필요하다.
+E 자체 모델은 strict JSON Schema로 학습 계약의 10개 키를 강제·검증하고, 8B를 최대 2회 호출한 뒤 3B를 1회 호출한다. 첨삭 화면 진입 또는 AutoPrep에서 WRITE 사용이 예견되면 8B만 비동기로 워밍하며, 워밍은 크레딧·사용권·AI 사용 로그를 차감하지 않는다. timeout은 같은 모델을 재시도하지 않으며 자체 모델 실패 또는 시간 예산 소진 시 Haiku를 3차 방어로 호출하고, Haiku도 실패하거나 미설정이면 OpenAI로 전환한다. 운영 연결 시 `CAREERTUNER_CORRECTION_AI_PROVIDER=self`, `CAREERTUNER_CORRECTION_AI_SELF_BASE_URL=http://localhost:11434/v1`을 설정한다. Haiku에는 `ANTHROPIC_API_KEY`, OpenAI 최종 폴백에는 `OPENAI_API_KEY`가 필요하다.
 
 ## C 분석·대시보드 API
 

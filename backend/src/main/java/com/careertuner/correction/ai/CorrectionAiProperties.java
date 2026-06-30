@@ -19,6 +19,7 @@ public class CorrectionAiProperties {
     private Duration openAiTimeout = Duration.ofSeconds(30);
     private int openAiMaxAttempts = 1;
     private Self self = new Self();
+    private Warmup warmup = new Warmup();
 
     public boolean selfProviderEnabled() {
         return "self".equalsIgnoreCase(provider) && self.configured();
@@ -43,5 +44,14 @@ public class CorrectionAiProperties {
         public boolean configured() {
             return baseUrl != null && !baseUrl.isBlank();
         }
+    }
+
+    @Getter
+    @Setter
+    public static class Warmup {
+        private boolean enabled = true;
+        private Duration keepAlive = Duration.ofMinutes(10);
+        private Duration requestTimeout = Duration.ofSeconds(30);
+        private Duration retryCooldown = Duration.ofMinutes(1);
     }
 }

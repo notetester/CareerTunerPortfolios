@@ -34,6 +34,7 @@ class CorrectionAiClientTest {
 
         verify(fixture.openAi).correct(fixture.command);
         verify(fixture.self, never()).correct(any(), any(), any());
+        verify(fixture.anthropic, never()).correct(any());
     }
 
     @Test
@@ -47,6 +48,7 @@ class CorrectionAiClientTest {
 
         verify(fixture.self).correct(eq(fixture.command), eq("8b"), any(Duration.class));
         verify(fixture.self, never()).correct(eq(fixture.command), eq("3b"), any(Duration.class));
+        verify(fixture.anthropic, never()).correct(any());
         verify(fixture.openAi, never()).correct(any());
     }
 
@@ -82,14 +84,35 @@ class CorrectionAiClientTest {
     }
 
     @Test
-    @DisplayName("3B failure uses OpenAI as the final fallback")
-    void correct_fallsBackToOpenAiAfter3bFailure() {
+    @DisplayName("3B failure uses Anthropic as the third defense")
+    void correct_fallsBackToAnthropicAfter3bFailure() {
+        Fixture fixture = fixture(true);
+        CorrectionPayload expected = payload("haiku");
+        when(fixture.self.correct(eq(fixture.command), eq("8b"), any(Duration.class)))
+                .thenThrow(new SelfLlmCallException("primary down", false));
+        when(fixture.self.correct(eq(fixture.command), eq("3b"), any(Duration.class)))
+                .thenThrow(new SelfLlmCallException("fallback down", false));
+        when(fixture.anthropic.configured()).thenReturn(true);
+        when(fixture.anthropic.correct(fixture.command)).thenReturn(expected);
+
+        assertThat(fixture.client.correct(fixture.command)).isSameAs(expected);
+
+        verify(fixture.anthropic).correct(fixture.command);
+        verify(fixture.openAi, never()).correct(any());
+    }
+
+    @Test
+    @DisplayName("Anthropic failure uses OpenAI as the final fallback")
+    void correct_fallsBackToOpenAiAfterAnthropicFailure() {
         Fixture fixture = fixture(true);
         CorrectionPayload expected = payload("openai");
         when(fixture.self.correct(eq(fixture.command), eq("8b"), any(Duration.class)))
                 .thenThrow(new SelfLlmCallException("primary down", false));
         when(fixture.self.correct(eq(fixture.command), eq("3b"), any(Duration.class)))
                 .thenThrow(new SelfLlmCallException("fallback down", false));
+        when(fixture.anthropic.configured()).thenReturn(true);
+        when(fixture.anthropic.correct(fixture.command))
+                .thenThrow(new IllegalStateException("anthropic down"));
         when(fixture.openAi.correct(fixture.command)).thenReturn(expected);
 
         assertThat(fixture.client.correct(fixture.command)).isSameAs(expected);
@@ -123,8 +146,17 @@ class CorrectionAiClientTest {
         }
         OpenAiCorrectionProvider openAi = mock(OpenAiCorrectionProvider.class);
         SelfLlmCorrectionProvider self = mock(SelfLlmCorrectionProvider.class);
+        AnthropicCorrectionProvider anthropic = mock(AnthropicCorrectionProvider.class);
+        CorrectionModelWarmupService warmup = mock(CorrectionModelWarmupService.class);
         CorrectionCommand command = command();
-        return new Fixture(properties, openAi, self, new CorrectionAiClient(properties, openAi, self), command);
+        return new Fixture(
+                properties,
+                openAi,
+                self,
+                anthropic,
+                warmup,
+                new CorrectionAiClient(properties, openAi, self, anthropic, warmup),
+                command);
     }
 
     private CorrectionCommand command() {
@@ -140,6 +172,8 @@ class CorrectionAiClientTest {
             CorrectionAiProperties properties,
             OpenAiCorrectionProvider openAi,
             SelfLlmCorrectionProvider self,
+            AnthropicCorrectionProvider anthropic,
+            CorrectionModelWarmupService warmup,
             CorrectionAiClient client,
             CorrectionCommand command
     ) {

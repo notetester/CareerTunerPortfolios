@@ -21,6 +21,8 @@ public class CorrectionAiClient {
     private final CorrectionAiProperties properties;
     private final OpenAiCorrectionProvider openAiProvider;
     private final SelfLlmCorrectionProvider selfLlmProvider;
+    private final AnthropicCorrectionProvider anthropicProvider;
+    private final CorrectionModelWarmupService warmupService;
 
     public CorrectionPayload correct(CorrectionCommand command) {
         if (!properties.selfProviderEnabled()) {
@@ -28,6 +30,7 @@ public class CorrectionAiClient {
         }
 
         var self = properties.getSelf();
+        warmupService.awaitIfInProgress(self.getTimeout());
         long deadline = System.nanoTime() + positive(self.getTotalTimeBudget()).toNanos();
         try {
             return invokeModel(command, self.getModel(), self.getPrimaryMaxAttempts(), deadline);
@@ -47,7 +50,17 @@ public class CorrectionAiClient {
             }
         }
 
-        log.warn("Self correction model chain failed or exhausted its time budget. Falling back to OpenAI.");
+        if (anthropicProvider.configured()) {
+            try {
+                return anthropicProvider.correct(command);
+            } catch (RuntimeException anthropicFailure) {
+                log.warn("Anthropic correction fallback failed: {}", anthropicFailure.getMessage());
+            }
+        } else {
+            log.warn("Anthropic correction fallback is not configured. Skipping to OpenAI.");
+        }
+
+        log.warn("Self and Anthropic correction chain failed. Falling back to OpenAI.");
         return openAiProvider.correct(command);
     }
 

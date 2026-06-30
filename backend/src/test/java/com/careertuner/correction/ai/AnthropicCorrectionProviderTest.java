@@ -5,7 +5,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
-import java.time.Duration;
 import java.util.concurrent.atomic.AtomicReference;
 
 import org.junit.jupiter.api.AfterEach;
@@ -18,7 +17,7 @@ import com.sun.net.httpserver.HttpServer;
 
 import tools.jackson.databind.ObjectMapper;
 
-class SelfLlmCorrectionProviderTest {
+class AnthropicCorrectionProviderTest {
 
     private HttpServer server;
 
@@ -30,12 +29,14 @@ class SelfLlmCorrectionProviderTest {
     }
 
     @Test
-    @DisplayName("calls the requested Ollama model once and maps the trained output schema")
-    void correct_callsRequestedModelAndMapsOutput() throws IOException {
+    @DisplayName("calls Haiku once and validates the trained correction output contract")
+    void correct_callsHaikuAndMapsOutput() throws IOException {
         AtomicReference<String> requestBody = new AtomicReference<>();
+        AtomicReference<String> apiKey = new AtomicReference<>();
         server = HttpServer.create(new InetSocketAddress(0), 0);
-        server.createContext("/v1/chat/completions", exchange -> {
+        server.createContext("/v1/messages", exchange -> {
             requestBody.set(new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8));
+            apiKey.set(exchange.getRequestHeaders().getFirst("x-api-key"));
             byte[] response = responseJson().getBytes(StandardCharsets.UTF_8);
             exchange.getResponseHeaders().add("Content-Type", "application/json");
             exchange.sendResponseHeaders(200, response.length);
@@ -44,26 +45,25 @@ class SelfLlmCorrectionProviderTest {
         });
         server.start();
 
-        CorrectionAiProperties properties = new CorrectionAiProperties();
-        properties.getSelf().setBaseUrl("http://localhost:" + server.getAddress().getPort());
+        CorrectionAnthropicProperties properties = new CorrectionAnthropicProperties();
+        properties.setApiKey("test-key");
+        properties.setBaseUrl("http://localhost:" + server.getAddress().getPort() + "/v1");
+        CorrectionAiProperties correctionProperties = new CorrectionAiProperties();
         ObjectMapper objectMapper = new ObjectMapper();
-        SelfLlmCorrectionProvider provider = new SelfLlmCorrectionProvider(
-                properties, objectMapper, new SelfCorrectionOutputParser(objectMapper));
+        AnthropicCorrectionProvider provider = new AnthropicCorrectionProvider(
+                properties,
+                correctionProperties,
+                objectMapper,
+                new SelfCorrectionOutputParser(objectMapper));
 
-        CorrectionPayload payload = provider.correct(command(), "careertuner-e-correction:8b", Duration.ofSeconds(2));
+        CorrectionPayload payload = provider.correct(command());
 
         assertThat(payload.improvedText()).isEqualTo("개선된 문장");
         assertThat(payload.issues()).containsExactly("근거 확인 필요");
-        assertThat(payload.changeReasons()).containsExactly("표현을 구체화했다");
-        assertThat(payload.usage().model()).isEqualTo("careertuner-e-correction:8b");
-        assertThat(payload.modelResult()).containsEntry("task_type", "SELF_INTRO_CORRECTION");
-        assertThat(requestBody.get()).contains(
-                "careertuner-e-correction:8b",
-                "SELF_INTRO_CORRECTION",
-                "json_schema",
-                "risk_flags",
-                "additionalProperties",
-                "strict");
+        assertThat(payload.usage().model()).isEqualTo("claude-haiku-4-5-20251001");
+        assertThat(payload.usage().totalTokens()).isEqualTo(30);
+        assertThat(apiKey.get()).isEqualTo("test-key");
+        assertThat(requestBody.get()).contains("SELF_INTRO_CORRECTION", "max_tokens");
     }
 
     private CorrectionCommand command() {
@@ -72,15 +72,14 @@ class SelfLlmCorrectionProviderTest {
 
     private String responseJson() {
         String content = """
-                <think></think>
                 {"status":"ok","task_type":"SELF_INTRO_CORRECTION","corrected_text":"개선된 문장","summary":"요약",\
                 "changes":[{"before":"원문","after":"개선된 문장","reason":"표현을 구체화했다","evidence_source":"original_text"}],\
                 "risk_flags":["근거 확인 필요"],"preserved_meaning":true,"added_facts":[],\
                 "recommended_keywords":["문서 정리"],"confidence":0.8}
                 """.replace("\n", "");
         return """
-                {"model":"careertuner-e-correction:8b","choices":[{"message":{"content":%s}}],
-                 "usage":{"prompt_tokens":10,"completion_tokens":20,"total_tokens":30}}
+                {"model":"claude-haiku-4-5-20251001","content":[{"type":"text","text":%s}],
+                 "usage":{"input_tokens":10,"output_tokens":20}}
                 """.formatted(jsonString(content));
     }
 
