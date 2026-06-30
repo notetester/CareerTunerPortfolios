@@ -25,14 +25,14 @@ import tools.jackson.databind.ObjectMapper;
 public class FineTunedProfileAiService implements ProfileAiService {
 
     private final FineTunedProfileAiProperties properties;
-    private final OpenAiProfileAiService fallbackService;
+    private final FallbackProfileAiService fallbackService;
     private final JobFamilyWeightPolicy weightPolicy;
     private final ProfileAiJsonValidator validator;
     private final ObjectMapper objectMapper;
     private final HttpClient httpClient;
 
     public FineTunedProfileAiService(FineTunedProfileAiProperties properties,
-                                     OpenAiProfileAiService fallbackService,
+                                     FallbackProfileAiService fallbackService,
                                      JobFamilyWeightPolicy weightPolicy,
                                      ProfileAiJsonValidator validator,
                                      ObjectMapper objectMapper) {
