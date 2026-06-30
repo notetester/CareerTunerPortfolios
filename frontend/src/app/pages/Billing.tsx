@@ -14,9 +14,21 @@ import {
 } from "@/features/billing/api/billingApi";
 import { cancelTossPayment, readyTossPayment } from "@/features/billing/api/paymentApi";
 import { requestTossCardPayment } from "@/features/billing/api/tossPaymentSdk";
+import {
+  acknowledgeRefundPolicy,
+  createPolicyActionKey,
+  getCurrentRefundPolicy,
+  type CurrentRefundPolicy,
+} from "@/features/billing/api/refundPolicyApi";
+import { RefundPolicyConfirmDialog } from "@/features/billing/components/RefundPolicyConfirmDialog";
 
 const tabs = ["plans", "usage", "credits", "history"] as const;
 type BillingTab = (typeof tabs)[number];
+type PendingPayment = {
+  productCode: string;
+  productType: "CREDIT" | "SUBSCRIPTION";
+  policyAcknowledgementKey: string;
+};
 const billingTabTriggerClass =
   "min-w-32 rounded-lg border border-transparent transition-all duration-150 hover:bg-slate-100 hover:text-slate-950 hover:shadow-sm active:scale-[0.98] data-[state=active]:border-blue-600 data-[state=active]:bg-blue-600 data-[state=active]:text-white data-[state=active]:shadow-sm";
 
@@ -72,6 +84,9 @@ export function BillingPage() {
   const [payments, setPayments] = useState<Payment[]>([]);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [refundPolicy, setRefundPolicy] = useState<CurrentRefundPolicy | null>(null);
+  const [pendingPayment, setPendingPayment] = useState<PendingPayment | null>(null);
+  const [policyBusy, setPolicyBusy] = useState(false);
   const pendingPlanCode = busy?.startsWith("sub-") ? busy.slice(4) : null;
   const pendingProductCode = busy?.startsWith("buy-") ? busy.slice(4) : null;
   const subscriptionPeriodEnd = billing?.periodEnd ?? null;
@@ -106,16 +121,16 @@ export function BillingPage() {
         setBilling(await subscribe(planCode, "MONTHLY"));
         await loadMine();
       } else {
-        const ready = await readyTossPayment(planCode, "SUBSCRIPTION");
-        try {
-          await requestTossCardPayment(ready);
-        } catch (err) {
-          void cancelTossPayment(ready.orderId).catch(() => {});
-          throw err;
-        }
+        const policy = await getCurrentRefundPolicy();
+        setRefundPolicy(policy);
+        setPendingPayment({
+          productCode: planCode,
+          productType: "SUBSCRIPTION",
+          policyAcknowledgementKey: createPolicyActionKey("PAYMENT"),
+        });
       }
-    } catch {
-      setError("구독 결제 준비에 실패했습니다.");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "구독 결제 준비에 실패했습니다.");
     } finally {
       setBusy(null);
     }
@@ -135,22 +150,62 @@ export function BillingPage() {
     setBusy(`buy-${productCode}`);
     setError(null);
     try {
-      const ready = await readyTossPayment(productCode, "CREDIT");
+      const policy = await getCurrentRefundPolicy();
+      setRefundPolicy(policy);
+      setPendingPayment({
+        productCode,
+        productType: "CREDIT",
+        policyAcknowledgementKey: createPolicyActionKey("PAYMENT"),
+      });
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "크레딧 결제 준비에 실패했습니다.");
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const confirmPolicyAndPay = async () => {
+    if (!pendingPayment || !refundPolicy) {
+      setError("결제에 적용할 환불 정책을 다시 확인해 주세요.");
+      return;
+    }
+    setPolicyBusy(true);
+    setError(null);
+    try {
+      await acknowledgeRefundPolicy(
+        refundPolicy.id,
+        "PAYMENT",
+        pendingPayment.policyAcknowledgementKey,
+      );
+      const ready = await readyTossPayment(
+        pendingPayment.productCode,
+        pendingPayment.productType,
+        refundPolicy.id,
+        pendingPayment.policyAcknowledgementKey,
+      );
       try {
         await requestTossCardPayment(ready);
       } catch (err) {
         void cancelTossPayment(ready.orderId).catch(() => {});
         throw err;
       }
-    } catch {
-      setError("크레딧 결제 준비에 실패했습니다.");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "결제 준비에 실패했습니다.");
     } finally {
-      setBusy(null);
+      setPolicyBusy(false);
+      setPendingPayment(null);
     }
   };
 
   return (
     <div className="min-h-screen bg-slate-50">
+      <RefundPolicyConfirmDialog
+        open={pendingPayment !== null}
+        policy={refundPolicy}
+        busy={policyBusy}
+        onCancel={() => setPendingPayment(null)}
+        onConfirm={() => void confirmPolicyAndPay()}
+      />
       <div className="mx-auto w-full max-w-[1400px] space-y-6 px-4 py-8 sm:px-6">
         <div>
           <h1 className="flex items-center gap-2 text-2xl font-black text-slate-900">

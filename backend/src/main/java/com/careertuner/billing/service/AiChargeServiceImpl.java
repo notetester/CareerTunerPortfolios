@@ -25,6 +25,7 @@ public class AiChargeServiceImpl implements AiChargeService {
     private static final String OVERAGE_FALLBACK_CREDIT = "FALLBACK_CREDIT";
 
     private final BillingPolicyService billingPolicyService;
+    private final RefundPolicyService refundPolicyService;
     private final AiBenefitUsageService benefitUsageService;
     private final CreditService creditService;
     private final CreditMapper creditMapper;
@@ -40,6 +41,9 @@ public class AiChargeServiceImpl implements AiChargeService {
             return chargeCredit(command, creditCost(command, featurePolicy), "NO_TICKET_POLICY");
         }
 
+        refundPolicyService.requireUsageAcknowledgement(
+                command.userId(), RefundPolicyService.TRIGGER_BENEFIT_USE,
+                command.policyAcknowledgementKey());
         SubscriptionBenefitPolicy benefitPolicy = currentBenefitPolicy(command.userId(), featurePolicy.getBenefitCode());
         try {
             BenefitConsumeResult ticket = benefitUsageService.consumeByFeature(
@@ -78,6 +82,9 @@ public class AiChargeServiceImpl implements AiChargeService {
         if (creditCost <= 0) {
             return AiChargeResult.skipped(null, 0, currentCredit(command), skipReason);
         }
+        refundPolicyService.requireUsageAcknowledgement(
+                command.userId(), RefundPolicyService.TRIGGER_CREDIT_USE,
+                command.policyAcknowledgementKey());
         if (command.aiUsageLogId() == null) {
             throw new BusinessException(ErrorCode.INVALID_INPUT, "크레딧 차감에는 AI 사용 로그가 필요합니다.");
         }

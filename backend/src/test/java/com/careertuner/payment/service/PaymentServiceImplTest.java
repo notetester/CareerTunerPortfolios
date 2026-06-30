@@ -11,8 +11,10 @@ import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 
 import com.careertuner.billing.domain.SubscriptionPlan;
+import com.careertuner.billing.domain.RefundPolicy;
 import com.careertuner.billing.service.BillingPolicyService;
 import com.careertuner.billing.service.BillingService;
+import com.careertuner.billing.service.RefundPolicyService;
 import com.careertuner.common.exception.BusinessException;
 import com.careertuner.common.exception.ErrorCode;
 import com.careertuner.credit.domain.CreditProduct;
@@ -28,12 +30,14 @@ class PaymentServiceImplTest {
 
     private final BillingService billingService = org.mockito.Mockito.mock(BillingService.class);
     private final BillingPolicyService billingPolicyService = org.mockito.Mockito.mock(BillingPolicyService.class);
+    private final RefundPolicyService refundPolicyService = org.mockito.Mockito.mock(RefundPolicyService.class);
     private final PaymentMapper paymentMapper = org.mockito.Mockito.mock(PaymentMapper.class);
     private final TossPaymentClient tossPaymentClient = org.mockito.Mockito.mock(TossPaymentClient.class);
     private final TossPaymentProperties properties = tossProperties();
     private final PaymentServiceImpl service = new PaymentServiceImpl(
             billingService,
             billingPolicyService,
+            refundPolicyService,
             paymentMapper,
             tossPaymentClient,
             properties);
@@ -41,8 +45,12 @@ class PaymentServiceImplTest {
     @Test
     void readyCreatesPendingTossPaymentFromCreditProductSnapshot() {
         CreditProduct product = product("CREDIT_1000", "Credit 1000", 10000, 1000);
+        RefundPolicy refundPolicy = refundPolicy(1L);
         when(billingPolicyService.enabledCreditProductByCode("CREDIT_1000")).thenReturn(product);
         when(billingPolicyService.creditProductSnapshotJson(product)).thenReturn("{\"code\":\"CREDIT_1000\"}");
+        when(refundPolicyService.requirePaymentAcknowledgement(1L, null, null)).thenReturn(refundPolicy);
+        when(refundPolicyService.appendPaymentSnapshot("{\"code\":\"CREDIT_1000\"}", refundPolicy, null))
+                .thenReturn("{\"code\":\"CREDIT_1000\",\"refundPolicy\":{\"id\":1}}");
 
         TossPaymentReadyResponse response = service.ready(
                 1L,
@@ -64,15 +72,19 @@ class PaymentServiceImplTest {
         assertThat(saved.getProductCode()).isEqualTo("CREDIT_1000");
         assertThat(saved.getPlan()).isNull();
         assertThat(saved.getCreditAmount()).isEqualTo(1000);
-        assertThat(saved.getPolicySnapshotJson()).isEqualTo("{\"code\":\"CREDIT_1000\"}");
+        assertThat(saved.getPolicySnapshotJson()).contains("refundPolicy");
         assertThat(saved.getStatus()).isEqualTo("READY");
     }
 
     @Test
     void readyCreatesPendingTossPaymentFromSubscriptionPlanSnapshot() {
         SubscriptionPlan plan = plan("BASIC", "Basic", 9900);
+        RefundPolicy refundPolicy = refundPolicy(1L);
         when(billingPolicyService.activePlanByCode("BASIC")).thenReturn(plan);
         when(billingPolicyService.subscriptionSnapshotJson("BASIC")).thenReturn("{\"plan\":{\"code\":\"BASIC\"}}");
+        when(refundPolicyService.requirePaymentAcknowledgement(1L, null, null)).thenReturn(refundPolicy);
+        when(refundPolicyService.appendPaymentSnapshot("{\"plan\":{\"code\":\"BASIC\"}}", refundPolicy, null))
+                .thenReturn("{\"plan\":{\"code\":\"BASIC\"},\"refundPolicy\":{\"id\":1}}");
 
         TossPaymentReadyResponse response = service.ready(
                 1L,
@@ -92,7 +104,7 @@ class PaymentServiceImplTest {
         assertThat(saved.getProductCode()).isEqualTo("BASIC");
         assertThat(saved.getPlan()).isEqualTo("BASIC");
         assertThat(saved.getCreditAmount()).isZero();
-        assertThat(saved.getPolicySnapshotJson()).isEqualTo("{\"plan\":{\"code\":\"BASIC\"}}");
+        assertThat(saved.getPolicySnapshotJson()).contains("refundPolicy");
     }
 
     @Test
@@ -189,6 +201,15 @@ class PaymentServiceImplTest {
         plan.setMonthlyPrice(monthlyPrice);
         plan.setActive(true);
         return plan;
+    }
+
+    private static RefundPolicy refundPolicy(Long id) {
+        RefundPolicy policy = new RefundPolicy();
+        policy.setId(id);
+        policy.setPolicyCode("REFUND_DEFAULT");
+        policy.setVersion(1);
+        policy.setStatus("PUBLISHED");
+        return policy;
     }
 
     private static Payment payment(String orderId,

@@ -1,5 +1,6 @@
 import { api } from "@/app/lib/api";
 import type { CreditProduct, SubscriptionPlan } from "@/features/billing/api/billingApi";
+import type { RefundPolicyRules } from "@/features/billing/api/refundPolicyApi";
 
 export interface SubscriptionBenefitPolicy {
   planCode: string;
@@ -79,6 +80,33 @@ export interface CreateBillingPolicyChangeRequest {
   nextSnapshot: Record<string, unknown>;
 }
 
+export interface AdminRefundPolicy {
+  id: number;
+  policyCode: string;
+  version: number;
+  title: string;
+  summary: string | null;
+  content: string;
+  rulesJson: string;
+  status: "DRAFT" | "PUBLISHED";
+  adverse: boolean;
+  effectiveAt: string | null;
+  publishedAt: string | null;
+  noticeId: number | null;
+  createdBy: number | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface SaveAdminRefundPolicyRequest {
+  title: string;
+  summary: string;
+  content: string;
+  rules: RefundPolicyRules;
+  adverse: boolean;
+  effectiveAt: string;
+}
+
 export const getAdminPayments = (status?: string) =>
   api<AdminPaymentRow[]>(`/admin/payments${status ? `?status=${encodeURIComponent(status)}` : ""}`, { method: "GET" });
 
@@ -98,3 +126,15 @@ export const createBillingPolicyChange = (request: CreateBillingPolicyChangeRequ
 
 export const cancelBillingPolicyChange = (id: number) =>
   api<BillingPolicyChange>(`/admin/plans/policy-changes/${id}/cancel`, { method: "POST" });
+
+export const getAdminRefundPolicies = () =>
+  api<AdminRefundPolicy[]>("/admin/refund-policies", { method: "GET" });
+
+export const saveAdminRefundPolicyDraft = (request: SaveAdminRefundPolicyRequest) =>
+  api<AdminRefundPolicy>("/admin/refund-policies/draft", {
+    method: "PUT",
+    body: JSON.stringify(request),
+  });
+
+export const publishAdminRefundPolicy = (id: number) =>
+  api<AdminRefundPolicy>(`/admin/refund-policies/${id}/publish`, { method: "POST" });

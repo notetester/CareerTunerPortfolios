@@ -10,6 +10,7 @@ import { ChatbotBubble } from "../../../features/support/components/ChatbotWidge
 import { ApplicationExtractionMonitor } from "@/features/applications/components/ApplicationExtractionMonitor";
 import { MobileBottomNav } from "./MobileBottomNav";
 import { OfflineBanner } from "./OfflineBanner";
+import { RefundPolicyToastGate } from "@/features/billing/components/RefundPolicyToastGate";
 
 export function Root() {
   const location = useLocation();
@@ -37,6 +38,7 @@ export function Root() {
       <ScrollRestoration />
       <ApplicationExtractionMonitor />
       <OfflineBanner />
+      <RefundPolicyToastGate enabled={isAuthenticated && !isAdmin} />
       <Header />
       {/* 하단 탭에 콘텐츠가 가리지 않도록 모바일에서 하단 패딩(탭 높이 + safe-area) 확보 */}
       <main className={`flex-1 ${showMobileNav ? "pb-[calc(56px+env(safe-area-inset-bottom))] xl:pb-0" : ""}`}>

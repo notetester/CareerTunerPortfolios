@@ -11,6 +11,8 @@ import org.springframework.transaction.annotation.Transactional;
 import com.careertuner.billing.domain.SubscriptionPlan;
 import com.careertuner.billing.service.BillingPolicyService;
 import com.careertuner.billing.service.BillingService;
+import com.careertuner.billing.domain.RefundPolicy;
+import com.careertuner.billing.service.RefundPolicyService;
 import com.careertuner.common.exception.BusinessException;
 import com.careertuner.common.exception.ErrorCode;
 import com.careertuner.credit.domain.CreditProduct;
@@ -42,6 +44,7 @@ public class PaymentServiceImpl implements PaymentService {
 
     private final BillingService billingService;
     private final BillingPolicyService billingPolicyService;
+    private final RefundPolicyService refundPolicyService;
     private final PaymentMapper paymentMapper;
     private final TossPaymentClient tossPaymentClient;
     private final TossPaymentProperties tossPaymentProperties;
@@ -50,16 +53,25 @@ public class PaymentServiceImpl implements PaymentService {
     @Override
     @Transactional
     public TossPaymentReadyResponse ready(Long userId, String email, TossPaymentReadyRequest request) {
+        if (request == null) {
+            throw new BusinessException(ErrorCode.INVALID_INPUT, "결제 요청 정보가 필요합니다.");
+        }
+        RefundPolicy refundPolicy = refundPolicyService.requirePaymentAcknowledgement(
+                userId, request.refundPolicyId(), request.policyAcknowledgementKey());
         if (PRODUCT_TYPE_SUBSCRIPTION.equals(request.productType())) {
-            return readySubscription(userId, email, request.productCode());
+            return readySubscription(
+                    userId, email, request.productCode(), refundPolicy, request.policyAcknowledgementKey());
         }
         if (!PRODUCT_TYPE_CREDIT.equals(request.productType())) {
             throw new BusinessException(ErrorCode.INVALID_INPUT, "Unsupported payment product type.");
         }
-        return readyCredit(userId, email, request.productCode());
+        return readyCredit(
+                userId, email, request.productCode(), refundPolicy, request.policyAcknowledgementKey());
     }
 
-    private TossPaymentReadyResponse readyCredit(Long userId, String email, String productCode) {
+    private TossPaymentReadyResponse readyCredit(
+            Long userId, String email, String productCode, RefundPolicy refundPolicy,
+            String policyAcknowledgementKey) {
         CreditProduct product = requireActiveProduct(productCode);
         validateProduct(product);
 
@@ -72,7 +84,8 @@ public class PaymentServiceImpl implements PaymentService {
         payment.setAmount(product.getPrice());
         payment.setPlan(null);
         payment.setCreditAmount(product.getCreditAmount());
-        payment.setPolicySnapshotJson(billingPolicyService.creditProductSnapshotJson(product));
+        payment.setPolicySnapshotJson(refundPolicyService.appendPaymentSnapshot(
+                billingPolicyService.creditProductSnapshotJson(product), refundPolicy, policyAcknowledgementKey));
         payment.setStatus(STATUS_READY);
         insertPaymentWithUniqueOrderId(payment);
 
@@ -89,7 +102,9 @@ public class PaymentServiceImpl implements PaymentService {
                 tossPaymentProperties.getFailUrl());
     }
 
-    private TossPaymentReadyResponse readySubscription(Long userId, String email, String planCode) {
+    private TossPaymentReadyResponse readySubscription(
+            Long userId, String email, String planCode, RefundPolicy refundPolicy,
+            String policyAcknowledgementKey) {
         SubscriptionPlan plan = requirePaidSubscriptionPlan(planCode);
 
         Payment payment = new Payment();
@@ -101,7 +116,9 @@ public class PaymentServiceImpl implements PaymentService {
         payment.setAmount(plan.getMonthlyPrice());
         payment.setPlan(plan.getCode());
         payment.setCreditAmount(0);
-        payment.setPolicySnapshotJson(billingPolicyService.subscriptionSnapshotJson(plan.getCode()));
+        payment.setPolicySnapshotJson(refundPolicyService.appendPaymentSnapshot(
+                billingPolicyService.subscriptionSnapshotJson(plan.getCode()), refundPolicy,
+                policyAcknowledgementKey));
         payment.setStatus(STATUS_READY);
         insertPaymentWithUniqueOrderId(payment);
 
