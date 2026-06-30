@@ -1,12 +1,32 @@
+import { useEffect, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router";
 import { XCircle } from "lucide-react";
 import { Button } from "../components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
+import { cancelTossPayment } from "@/features/billing/api/paymentApi";
 
 export function BillingFailPage() {
   const [searchParams] = useSearchParams();
+  const requestedRef = useRef(false);
+  const [returnTab, setReturnTab] = useState<"plans" | "credits">("credits");
   const code = searchParams.get("code");
+  const orderId = searchParams.get("orderId");
   const message = searchParams.get("message") || "결제가 완료되지 않았습니다.";
+
+  useEffect(() => {
+    if (requestedRef.current || !orderId) {
+      return;
+    }
+    requestedRef.current = true;
+
+    cancelTossPayment(orderId)
+      .then((payment) => {
+        if (payment.productType === "SUBSCRIPTION") {
+          setReturnTab("plans");
+        }
+      })
+      .catch(() => {});
+  }, [orderId]);
 
   return (
     <div className="min-h-screen bg-slate-50 px-4 py-12">
@@ -24,7 +44,7 @@ export function BillingFailPage() {
           </div>
           <div className="flex gap-2">
             <Button asChild className="flex-1">
-              <Link to="/billing?tab=credits">다시 시도</Link>
+              <Link to={`/billing?tab=${returnTab}`}>다시 시도</Link>
             </Button>
             <Button asChild variant="outline" className="flex-1">
               <Link to="/billing">결제 관리</Link>

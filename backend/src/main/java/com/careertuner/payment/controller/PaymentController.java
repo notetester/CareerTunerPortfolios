@@ -8,6 +8,8 @@ import org.springframework.web.bind.annotation.RestController;
 
 import com.careertuner.common.security.AuthUser;
 import com.careertuner.common.web.ApiResponse;
+import com.careertuner.payment.dto.TossPaymentCancelRequest;
+import com.careertuner.payment.dto.TossPaymentCancelResponse;
 import com.careertuner.payment.dto.TossPaymentConfirmRequest;
 import com.careertuner.payment.dto.TossPaymentConfirmResponse;
 import com.careertuner.payment.dto.TossPaymentReadyRequest;
@@ -36,5 +38,11 @@ public class PaymentController {
     public ApiResponse<TossPaymentConfirmResponse> confirm(@AuthenticationPrincipal AuthUser authUser,
                                                            @Valid @RequestBody TossPaymentConfirmRequest request) {
         return ApiResponse.ok(paymentService.confirm(authUser.id(), request));
+    }
+
+    @PostMapping("/cancel")
+    public ApiResponse<TossPaymentCancelResponse> cancel(@AuthenticationPrincipal AuthUser authUser,
+                                                         @Valid @RequestBody TossPaymentCancelRequest request) {
+        return ApiResponse.ok(paymentService.cancelReadyPayment(authUser.id(), request.orderId()));
     }
 }

@@ -12,11 +12,13 @@ import {
   subscribe,
   type CreditProduct, type MyBilling, type Payment, type SubscriptionPlan, type UsageRow,
 } from "@/features/billing/api/billingApi";
-import { readyTossPayment } from "@/features/billing/api/paymentApi";
+import { cancelTossPayment, readyTossPayment } from "@/features/billing/api/paymentApi";
 import { requestTossCardPayment } from "@/features/billing/api/tossPaymentSdk";
 
 const tabs = ["plans", "usage", "credits", "history"] as const;
 type BillingTab = (typeof tabs)[number];
+const billingTabTriggerClass =
+  "min-w-32 rounded-lg border border-transparent transition-all duration-150 hover:bg-slate-100 hover:text-slate-950 hover:shadow-sm active:scale-[0.98] data-[state=active]:border-blue-600 data-[state=active]:bg-blue-600 data-[state=active]:text-white data-[state=active]:shadow-sm";
 
 // 요금제 기능 설명(마케팅 카피)은 코드별로 클라이언트에 둔다.
 const PLAN_FEATURES: Record<string, string[]> = {
@@ -70,6 +72,11 @@ export function BillingPage() {
   const [payments, setPayments] = useState<Payment[]>([]);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const pendingPlanCode = busy?.startsWith("sub-") ? busy.slice(4) : null;
+  const pendingProductCode = busy?.startsWith("buy-") ? busy.slice(4) : null;
+  const subscriptionPeriodEnd = billing?.periodEnd ?? null;
+  const isCancelScheduled = billing?.subscriptionStatus === "CANCELED" && subscriptionPeriodEnd !== null;
+  const isSubscriptionActive = billing?.subscriptionStatus === "ACTIVE" && subscriptionPeriodEnd !== null;
 
   const loadPublic = async () => {
     const [p, c] = await Promise.all([getPlans(), getCreditProducts()]);
@@ -100,7 +107,12 @@ export function BillingPage() {
         await loadMine();
       } else {
         const ready = await readyTossPayment(planCode, "SUBSCRIPTION");
-        await requestTossCardPayment(ready);
+        try {
+          await requestTossCardPayment(ready);
+        } catch (err) {
+          void cancelTossPayment(ready.orderId).catch(() => {});
+          throw err;
+        }
       }
     } catch {
       setError("구독 결제 준비에 실패했습니다.");
@@ -124,7 +136,12 @@ export function BillingPage() {
     setError(null);
     try {
       const ready = await readyTossPayment(productCode, "CREDIT");
-      await requestTossCardPayment(ready);
+      try {
+        await requestTossCardPayment(ready);
+      } catch (err) {
+        void cancelTossPayment(ready.orderId).catch(() => {});
+        throw err;
+      }
     } catch {
       setError("크레딧 결제 준비에 실패했습니다.");
     } finally {
@@ -144,11 +161,20 @@ export function BillingPage() {
         </div>
 
         {billing && (
-          <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-blue-200 bg-blue-50 p-4">
+          <div
+            className={`flex flex-wrap items-center justify-between gap-3 rounded-lg border p-4 ${
+              isCancelScheduled ? "border-amber-200 bg-amber-50" : "border-blue-200 bg-blue-50"
+            }`}
+          >
             <div className="text-sm text-blue-900">
               현재 플랜 <strong>{billing.currentPlanName}</strong>
-              {billing.subscriptionStatus === "ACTIVE" && billing.periodEnd && (
-                <span className="ml-2 text-xs text-blue-700">~ {billing.periodEnd.slice(0, 10)}</span>
+              {isSubscriptionActive && (
+                <span className="ml-2 text-xs text-blue-700">~ {subscriptionPeriodEnd?.slice(0, 10)}</span>
+              )}
+              {isCancelScheduled && (
+                <span className="ml-2 text-xs font-semibold text-amber-700">
+                  해지 예약됨 · {subscriptionPeriodEnd?.slice(0, 10)}까지 이용 가능
+                </span>
               )}
               <span className="ml-3">보유 크레딧 <strong>{billing.creditBalance}</strong>개</span>
             </div>
@@ -169,10 +195,10 @@ export function BillingPage() {
 
         <Tabs value={activeTab} onValueChange={(value) => setSearchParams({ tab: value })}>
           <TabsList className="h-auto w-full justify-start overflow-x-auto border border-slate-200 bg-card p-1">
-            <TabsTrigger value="plans">요금제</TabsTrigger>
-            <TabsTrigger value="usage">AI 사용량</TabsTrigger>
-            <TabsTrigger value="credits">크레딧 충전</TabsTrigger>
-            <TabsTrigger value="history">결제 내역</TabsTrigger>
+            <TabsTrigger value="plans" className={billingTabTriggerClass}>요금제</TabsTrigger>
+            <TabsTrigger value="usage" className={billingTabTriggerClass}>AI 사용량</TabsTrigger>
+            <TabsTrigger value="credits" className={billingTabTriggerClass}>크레딧 충전</TabsTrigger>
+            <TabsTrigger value="history" className={billingTabTriggerClass}>결제 내역</TabsTrigger>
           </TabsList>
 
           <TabsContent value="plans" className="mt-5">
@@ -180,8 +206,19 @@ export function BillingPage() {
               {plans.map((plan) => {
                 const isCurrent = billing?.currentPlanCode === plan.code;
                 const popular = plan.code === "PRO";
+                const isPending = pendingPlanCode === plan.code;
                 return (
-                  <Card key={plan.code} className={`relative border-2 bg-card ${popular ? "border-blue-500 shadow-lg" : "border-slate-200"}`}>
+                  <Card
+                    key={plan.code}
+                    className={`relative border-2 transition-all duration-200 ${
+                      isPending
+                        ? "border-blue-600 bg-blue-50/70 shadow-xl shadow-blue-100 ring-2 ring-blue-200"
+                        : popular
+                          ? "border-blue-500 bg-card shadow-lg"
+                          : "border-slate-200 bg-card hover:border-slate-300 hover:shadow-md"
+                    }`}
+                    aria-busy={isPending}
+                  >
                     {popular && <Badge className="absolute -top-3 left-1/2 -translate-x-1/2 bg-blue-600 text-white">추천</Badge>}
                     <CardHeader>
                       <CardTitle className="text-lg">{plan.name} 플랜</CardTitle>
@@ -199,14 +236,19 @@ export function BillingPage() {
                         ))}
                       </div>
                       <Button
-                        disabled={!isAuthenticated || isCurrent || busy === `sub-${plan.code}`}
-                        className={popular ? "w-full bg-primary" : "w-full"}
+                        disabled={!isAuthenticated || isCurrent || busy !== null}
+                        className={isPending ? "w-full bg-blue-700 shadow-lg shadow-blue-200" : popular ? "w-full bg-primary" : "w-full"}
                         variant={popular ? "default" : "outline"}
                         onClick={() => void doSubscribe(plan.code)}
                       >
-                        {busy === `sub-${plan.code}` && <Loader2 className="size-4 animate-spin" />}
-                        {isCurrent ? "현재 플랜" : plan.code === "FREE" ? "무료 사용" : "이 플랜 구독"}
+                        {isPending && <Loader2 className="size-4 animate-spin" />}
+                        {isPending ? "결제창 준비 중" : isCurrent ? "현재 플랜" : plan.code === "FREE" ? "무료 사용" : "이 플랜 구독"}
                       </Button>
+                      {isPending && (
+                        <div className="rounded-md border border-blue-200 bg-white/80 px-3 py-2 text-center text-xs font-semibold text-blue-700">
+                          선택한 요금제 결제 요청을 보내고 있습니다.
+                        </div>
+                      )}
                     </CardContent>
                   </Card>
                 );
@@ -266,27 +308,45 @@ export function BillingPage() {
 
           <TabsContent value="credits" className="mt-5">
             <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-              {products.map((pack) => (
-                <Card key={pack.code} className={`relative border-2 bg-card ${pack.badge ? "border-amber-400 shadow-lg" : "border-slate-200"}`}>
-                  {pack.badge && <Badge className="absolute -top-3 left-1/2 -translate-x-1/2 bg-amber-500 text-white">{pack.badge}</Badge>}
-                  <CardContent className="space-y-4 p-5 text-center">
-                    <Zap className="mx-auto size-8 text-amber-500" />
-                    <div>
-                      <div className="text-4xl font-black text-slate-900">{pack.creditAmount}</div>
-                      <div className="text-sm text-slate-500">크레딧</div>
-                    </div>
-                    <div className="text-xl font-black text-blue-600">{won(pack.price)}</div>
-                    <Button
-                      className="w-full"
-                      disabled={!isAuthenticated || busy === `buy-${pack.code}`}
-                      onClick={() => void doPurchase(pack.code)}
-                    >
-                      {busy === `buy-${pack.code}` && <Loader2 className="size-4 animate-spin" />}
-                      {isAuthenticated ? "충전하기" : "로그인 필요"}
-                    </Button>
-                  </CardContent>
-                </Card>
-              ))}
+              {products.map((pack) => {
+                const isPending = pendingProductCode === pack.code;
+                return (
+                  <Card
+                    key={pack.code}
+                    className={`relative border-2 transition-all duration-200 ${
+                      isPending
+                        ? "border-amber-500 bg-amber-50/80 shadow-xl shadow-amber-100 ring-2 ring-amber-200"
+                        : pack.badge
+                          ? "border-amber-400 bg-card shadow-lg"
+                          : "border-slate-200 bg-card hover:border-slate-300 hover:shadow-md"
+                    }`}
+                    aria-busy={isPending}
+                  >
+                    {pack.badge && <Badge className="absolute -top-3 left-1/2 -translate-x-1/2 bg-amber-500 text-white">{pack.badge}</Badge>}
+                    <CardContent className="space-y-4 p-5 text-center">
+                      <Zap className={`mx-auto size-8 ${isPending ? "text-amber-600" : "text-amber-500"}`} />
+                      <div>
+                        <div className="text-4xl font-black text-slate-900">{pack.creditAmount}</div>
+                        <div className="text-sm text-slate-500">크레딧</div>
+                      </div>
+                      <div className="text-xl font-black text-blue-600">{won(pack.price)}</div>
+                      <Button
+                        className={isPending ? "w-full bg-amber-600 text-white hover:bg-amber-600" : "w-full"}
+                        disabled={!isAuthenticated || busy !== null}
+                        onClick={() => void doPurchase(pack.code)}
+                      >
+                        {isPending && <Loader2 className="size-4 animate-spin" />}
+                        {isPending ? "결제창 준비 중" : isAuthenticated ? "충전하기" : "로그인 필요"}
+                      </Button>
+                      {isPending && (
+                        <div className="rounded-md border border-amber-200 bg-white/80 px-3 py-2 text-xs font-semibold text-amber-700">
+                          선택한 크레딧 상품 결제 요청을 보내고 있습니다.
+                        </div>
+                      )}
+                    </CardContent>
+                  </Card>
+                );
+              })}
             </div>
           </TabsContent>
 

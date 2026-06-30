@@ -1,0 +1,12 @@
+{
+  "raw_count": 320,
+  "trainable_count": 320,
+  "hardcase_count": 0,
+  "trainable_task_counts": {
+    "SELF_INTRO_CORRECTION": 71,
+    "INTERVIEW_ANSWER_CORRECTION": 71,
+    "RESUME_EXPRESSION_IMPROVEMENT": 89,
+    "PORTFOLIO_DESCRIPTION_IMPROVEMENT": 89
+  },
+  "hardcase_ids": []
+}
