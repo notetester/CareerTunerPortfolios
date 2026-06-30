@@ -87,6 +87,7 @@ public class ChatbotController {
 
     private final CommunityChatAgent agent;
     private final QuickReplyAgent quickReplyAgent;
+    private final QuickReplyParser quickReplyParser;
     private final SearchTrace searchTrace;
     private final MyBatisChatMemoryStore memoryStore;
     private final ChatbotService chatbotService;
@@ -112,6 +113,7 @@ public class ChatbotController {
 
     public ChatbotController(CommunityChatAgent agent,
                             QuickReplyAgent quickReplyAgent,
+                            QuickReplyParser quickReplyParser,
                             SearchTrace searchTrace,
                             MyBatisChatMemoryStore memoryStore,
                             ChatbotService chatbotService,
@@ -132,6 +134,7 @@ public class ChatbotController {
                             IntakeSlotTrace intakeSlotTrace) {
         this.agent = agent;
         this.quickReplyAgent = quickReplyAgent;
+        this.quickReplyParser = quickReplyParser;
         this.searchTrace = searchTrace;
         this.memoryStore = memoryStore;
         this.chatbotService = chatbotService;
@@ -896,7 +899,7 @@ public class ChatbotController {
         try {
             String raw = quickReplyAgent.suggest(buildChipContext(userId, conversationId, question, answer));
             // 게이트 필터를 선별(최대 N) 전에 적용해, 유효 칩으로만 N개를 채운다.
-            List<ChipSuggestion> gated = QuickReplyParser.parse(raw).stream()
+            List<ChipSuggestion> gated = quickReplyParser.parse(raw).stream()
                     .filter(c -> c.text() != null && !SUMMARY_CHIP.matcher(c.text()).find())
                     .filter(c -> postsPresented || !POST_CHIP.matcher(c.text()).find())
                     .collect(Collectors.toList());

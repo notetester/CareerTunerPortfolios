@@ -8,11 +8,15 @@ import java.util.List;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
+import tools.jackson.databind.ObjectMapper;
+
 /**
  * quickReply 견고 파서/선별 검증. 8B 가 흘리는 포맷에서도 throw 없이 칩을 건지는지,
  * 선별이 점수 기반 가변 컷(절대 임계값 X)으로 동작하는지 확인한다.
  */
 class QuickReplyParserTest {
+
+    private final QuickReplyParser parser = new QuickReplyParser(new ObjectMapper());
 
     @Test
     @DisplayName("정상 단일 배열 — 점수까지 파싱")
@@ -23,7 +27,7 @@ class QuickReplyParserTest {
                 [{"text":"강점 근거 찾기","relevance":90,"importance":80},
                  {"text":"STAR로 풀기","relevance":70,"importance":60}]
                 ```""";
-        List<ChipSuggestion> chips = QuickReplyParser.parse(raw);
+        List<ChipSuggestion> chips = parser.parse(raw);
         assertThat(chips).hasSize(2);
         assertThat(chips.get(0).text()).isEqualTo("강점 근거 찾기");
         assertThat(chips.get(0).relevance()).isEqualTo(90);
@@ -39,7 +43,7 @@ class QuickReplyParserTest {
                 [{"text":"B","relevance":80,"importance":70}]
                 [{"text":"C","relevance":70,"importance":60}]
                 ```""";
-        List<ChipSuggestion> chips = QuickReplyParser.parse(raw);
+        List<ChipSuggestion> chips = parser.parse(raw);
         assertThat(chips).extracting(ChipSuggestion::text).containsExactly("A", "B", "C");
     }
 
@@ -50,7 +54,7 @@ class QuickReplyParserTest {
                 ```chips
                 [{"text":"문자열점수","relevance":"85","importance":"70.0"}]
                 ```""";
-        List<ChipSuggestion> chips = QuickReplyParser.parse(raw);
+        List<ChipSuggestion> chips = parser.parse(raw);
         assertThat(chips).hasSize(1);
         assertThat(chips.get(0).relevance()).isEqualTo(85);
         assertThat(chips.get(0).importance()).isEqualTo(70);
@@ -65,7 +69,7 @@ class QuickReplyParserTest {
                  {"text":"점수없음"},
                  {"chip":"대체키도 허용"}]
                 ```""";
-        List<ChipSuggestion> chips = QuickReplyParser.parse(raw);
+        List<ChipSuggestion> chips = parser.parse(raw);
         assertThat(chips).extracting(ChipSuggestion::text).containsExactly("점수없음", "대체키도 허용");
         assertThat(chips.get(0).relevance()).isZero();
     }
@@ -73,17 +77,17 @@ class QuickReplyParserTest {
     @Test
     @DisplayName("빈 배열 → 빈 리스트")
     void emptyArrayYieldsEmpty() {
-        assertThat(QuickReplyParser.parse("```chips\n[]\n```")).isEmpty();
+        assertThat(parser.parse("```chips\n[]\n```")).isEmpty();
     }
 
     @Test
     @DisplayName("깨진 JSON / 블록 없음 / null → throw 없이 빈 리스트")
     void brokenInputNeverThrows() {
         assertThatCode(() -> {
-            assertThat(QuickReplyParser.parse(null)).isEmpty();
-            assertThat(QuickReplyParser.parse("")).isEmpty();
-            assertThat(QuickReplyParser.parse("그냥 평문, 칩 없음")).isEmpty();
-            assertThat(QuickReplyParser.parse("```chips\n[{\"text\":\"깨짐\", relevance:}]\n```")).isEmpty();
+            assertThat(parser.parse(null)).isEmpty();
+            assertThat(parser.parse("")).isEmpty();
+            assertThat(parser.parse("그냥 평문, 칩 없음")).isEmpty();
+            assertThat(parser.parse("```chips\n[{\"text\":\"깨짐\", relevance:}]\n```")).isEmpty();
         }).doesNotThrowAnyException();
     }
 
@@ -91,7 +95,7 @@ class QuickReplyParserTest {
     @DisplayName("블록 밖 본문에 객체가 흩어져도 긁어 모음")
     void scrapesObjectsOutsideBlock() {
         String raw = "여기 {\"text\":\"E\",\"relevance\":75,\"importance\":60} 저기도 {\"text\":\"F\",\"relevance\":50}";
-        assertThat(QuickReplyParser.parse(raw)).extracting(ChipSuggestion::text).containsExactly("E", "F");
+        assertThat(parser.parse(raw)).extracting(ChipSuggestion::text).containsExactly("E", "F");
     }
 
     @Test
