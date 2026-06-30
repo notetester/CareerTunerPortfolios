@@ -152,6 +152,86 @@ class DocumentTextExtractionTest(unittest.TestCase):
         self.assertEqual(dedup_hints.count("함께할업무"), 1)
         self.assertNotIn("함께할 업무", dedup_hints)
 
+    def test_garbled_critical_section_demotes_pass_to_review(self):
+        module = load_script()
+        # 케이스 55 패턴: 회사소개/자격요건/우대사항은 정상이지만 주요업무 본문이 OCR 파편으로 소실된 공고.
+        # 섹션 키워드·길이만 보면 PASS 지만, 핵심 업무 섹션에 useful line 이 0 이라 REVIEW_REQUIRED 로 강등되어야 한다.
+        text = "\n".join(
+            [
+                "회사소개",
+                "넥스트클라우드는 핀테크 결제 플랫폼을 운영하는 기업입니다. 대용량 트래픽을 안정적으로 처리합니다.",
+                "주요업무",
+                "티",
+                "공 Y (을 ) AY",
+                "우표눔를용라어를ㅋ크이극아",
+                "자격요건",
+                "Java와 Spring Boot 개발 경력 5년 이상. SQL 활용 능력과 Git 협업 경험이 있으신 분.",
+                "우대사항",
+                "Kubernetes, Docker 운영 경험과 AWS 클라우드 인프라 경험을 우대합니다.",
+                "근무조건",
+                "정규직이며 서울 강남구에서 근무합니다. 연봉은 협의합니다.",
+            ]
+        )
+        text = text + "\n" + ("핀테크 결제 서비스를 안정적으로 제공하기 위해 노력합니다. " * 12)
+
+        analysis = module.analyze_quality(text)
+
+        self.assertEqual(analysis["qualityStatus"], "REVIEW_REQUIRED")
+        self.assertIn("critical_section_content_insufficient", analysis["warnings"])
+        self.assertEqual(analysis["metrics"]["criticalSectionUsefulLineCount"], 0)
+
+    def test_valid_short_critical_section_is_not_demoted(self):
+        module = load_script()
+        # "API 개발 및 운영" 처럼 짧지만 유용한 업무 본문은 강등되면 안 된다(false positive 방지).
+        text = "\n".join(
+            [
+                "회사소개",
+                "핀테크 결제 플랫폼을 운영하는 기업입니다. 대용량 트래픽을 안정적으로 처리하며 성장하고 있습니다.",
+                "주요업무",
+                "Spring Boot 기반 REST API 개발 및 운영을 담당합니다.",
+                "MySQL 데이터 모델링과 쿼리 성능 개선을 수행합니다.",
+                "자격요건",
+                "Java와 Spring Boot 개발 경력 5년 이상. SQL 활용 능력과 Git 협업 경험이 있으신 분.",
+                "우대사항",
+                "Kubernetes, Docker 운영 경험과 AWS 클라우드 인프라 경험을 우대합니다.",
+                "근무조건",
+                "정규직이며 서울 강남구에서 근무합니다. 연봉은 협의합니다.",
+            ]
+        )
+        text = text + "\n" + ("안정적인 서비스 운영 경험을 바탕으로 시스템을 개선합니다. " * 12)
+
+        analysis = module.analyze_quality(text)
+
+        self.assertNotIn("critical_section_content_insufficient", analysis["warnings"])
+        self.assertGreaterEqual(analysis["metrics"]["criticalSectionUsefulLineCount"], 1)
+
+    def test_garbled_critical_section_with_colon_headers_demotes(self):
+        module = load_script()
+        # 헤더에 콜론/불릿이 붙어도(자격요건:, 주요업무:) 섹션 경계를 끊어 본문 소실을 잡아야 한다.
+        text = "\n".join(
+            [
+                "회사소개:",
+                "넥스트클라우드는 핀테크 결제 플랫폼을 운영하는 기업입니다. 대용량 트래픽을 안정적으로 처리합니다.",
+                "주요업무:",
+                "티",
+                "공 Y (을 ) AY",
+                "우표눔를용라어를ㅋ크이극아",
+                "자격요건:",
+                "Java와 Spring Boot 개발 경력 5년 이상. SQL 활용 능력과 Git 협업 경험.",
+                "우대사항:",
+                "Kubernetes, Docker 운영 경험과 AWS 클라우드 인프라 경험을 우대합니다.",
+                "근무조건:",
+                "정규직이며 서울 강남구에서 근무합니다.",
+            ]
+        )
+        text = text + "\n" + ("핀테크 결제 서비스를 안정적으로 제공하기 위해 노력합니다. " * 12)
+
+        analysis = module.analyze_quality(text)
+
+        self.assertEqual(analysis["qualityStatus"], "REVIEW_REQUIRED")
+        self.assertIn("critical_section_content_insufficient", analysis["warnings"])
+        self.assertEqual(analysis["metrics"]["criticalSectionUsefulLineCount"], 0)
+
     def test_classifies_long_image_and_uses_existing_ocr_text(self):
         module = load_script()
         with tempfile.TemporaryDirectory() as tmp:

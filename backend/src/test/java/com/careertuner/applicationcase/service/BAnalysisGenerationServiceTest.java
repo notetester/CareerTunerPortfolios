@@ -507,7 +507,46 @@ class BAnalysisGenerationServiceTest {
         assertThat(result.fallbackAttemptedModel()).isEqualTo("qwen-test");
         assertThat(result.fallbackReason()).contains("fallback to self-rules-v1");
         assertThat(result.payload().usage().model()).isEqualTo(BAnalysisGenerationService.SELF_RULES_MODEL);
-        assertThat(result.payload().companySummary()).contains("Acme");
+        assertThat(result.payload().companySummary())
+                .contains("Acme")
+                .doesNotContain("information was summarized", "No external company API");
+    }
+
+    @Test
+    void companyAnalysisFallbackDoesNotLeakUnknownPlaceholders() {
+        // 회사명/직무명이 미상 placeholder 인 채로 self-rules 폴백을 타도, 영어 보일러플레이트나
+        // "기업명 확인 필요" 같은 placeholder 가 사용자 노출 payload(summary·verifiedFacts 등)에 새지 않아야 한다.
+        BAnalysisProperties properties = new BAnalysisProperties();
+        properties.getLocalLlm().setEnabled(true);
+        properties.getLocalLlm().setModel("qwen-test");
+        BLocalLlmClient localLlmClient = mock(BLocalLlmClient.class);
+        when(localLlmClient.chat(anyString(), anyString(), any())).thenReturn("{}");
+        BAnalysisGenerationService service = service(properties, localLlmClient);
+
+        ApplicationCase unknownNames = ApplicationCase.builder()
+                .id(11L)
+                .userId(1L)
+                .companyName("기업명 확인 필요")
+                .jobTitle("직무명 확인 필요")
+                .status("DRAFT")
+                .build();
+
+        BAnalysisGenerationService.GeneratedCompanyAnalysis result =
+                service.generateCompanyAnalysis(unknownNames, postingText());
+
+        assertThat(result.fellBack()).isTrue();
+        assertThat(result.payload().companySummary())
+                .doesNotContain("기업명 확인 필요", "Target company",
+                        "information was summarized", "No external company API")
+                .contains("외부 기업 정보나 OpenAI 폴백은 사용하지 않았습니다");
+        assertThat(result.payload().recentIssues()).doesNotContain("Not externally researched");
+        assertThat(result.payload().sources()).doesNotContain("Uploaded job posting");
+        assertThat(result.payload().interviewPoints()).doesNotContain("Prepare to explain");
+        assertThat(result.payload().aiInferences())
+                .doesNotContain("Interview preparation should focus", "Derived from extracted");
+        assertThat(result.payload().verifiedFacts())
+                .doesNotContain("기업명 확인 필요", "직무명 확인 필요")
+                .contains("품질 게이트");
     }
 
     @Test

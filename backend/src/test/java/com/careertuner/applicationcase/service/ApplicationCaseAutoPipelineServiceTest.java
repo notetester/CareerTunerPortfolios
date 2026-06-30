@@ -95,7 +95,9 @@ class ApplicationCaseAutoPipelineServiceTest {
         ArgumentCaptor<CompanyAnalysis> companyCaptor = ArgumentCaptor.forClass(CompanyAnalysis.class);
         verify(companyAnalysisMapper).insertCompanyAnalysis(companyCaptor.capture());
         assertThat(companyCaptor.getValue().getSourceType()).isEqualTo("JOB_POSTING");
-        assertThat(companyCaptor.getValue().getCompanySummary()).contains("No external company API or OpenAI fallback was used");
+        assertThat(companyCaptor.getValue().getCompanySummary()).contains("외부 기업 정보나 OpenAI 폴백은 사용하지 않았습니다");
+        assertThat(companyCaptor.getValue().getCompanySummary())
+                .doesNotContain("information was summarized", "No external company API");
 
         ArgumentCaptor<FitAnalysisResult> fitCaptor = ArgumentCaptor.forClass(FitAnalysisResult.class);
         verify(fitAnalysisMapper).insertFitAnalysis(fitCaptor.capture());
