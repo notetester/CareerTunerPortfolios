@@ -1,6 +1,7 @@
 package com.careertuner.community.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
@@ -16,6 +17,8 @@ import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.springframework.context.ApplicationEventPublisher;
 
+import com.careertuner.common.exception.BusinessException;
+import com.careertuner.common.exception.ErrorCode;
 import com.careertuner.community.domain.CommentStatus;
 import com.careertuner.community.domain.CommunityComment;
 import com.careertuner.community.domain.CommunityPost;
@@ -194,6 +197,65 @@ class CommunityCommentServiceImplTest {
         // (C)
         assertThat(inserted.get(2).getParentId()).isEqualTo(5L);
         assertThat(inserted.get(2).getMentionUserId()).isNull();
+    }
+
+    // ══════════════ #4 삭제댓글 답글 부활 차단 (답글 생성 시 부모 status 가드) ══════════════
+
+    // ── PUBLISHED 부모에 답글 → 정상 생성 ──
+    @Test
+    void reply_toPublishedParent_succeeds() {
+        givenPost();
+        when(commentMapper.findById(5L)).thenReturn(
+                cmt(5, null, null, 10, true, CommentStatus.PUBLISHED.name(), "A", 0));
+
+        service.createComment(POST_ID, new CreateCommentRequest("x", 5L, true), 20L);
+
+        verify(commentMapper).insert(any(CommunityComment.class));
+        verify(postMapper).incrementCommentCount(POST_ID);
+    }
+
+    // ── DELETED 부모에 답글 → 거부(부활 차단), 삽입/카운트 없음 ──
+    @Test
+    void reply_toDeletedParent_isRejected() {
+        givenPost();
+        when(commentMapper.findById(5L)).thenReturn(
+                cmt(5, null, null, 10, true, CommentStatus.DELETED.name(), "A", 0));
+
+        assertThatThrownBy(() ->
+                service.createComment(POST_ID, new CreateCommentRequest("x", 5L, true), 20L))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode").isEqualTo(ErrorCode.CONFLICT);
+
+        verify(commentMapper, never()).insert(any());
+        verify(postMapper, never()).incrementCommentCount(anyLong());
+    }
+
+    // ── HIDDEN(검열 숨김) 부모에 답글 → 거부, 삽입/카운트 없음 ──
+    @Test
+    void reply_toHiddenParent_isRejected() {
+        givenPost();
+        when(commentMapper.findById(5L)).thenReturn(
+                cmt(5, null, null, 10, true, CommentStatus.HIDDEN.name(), "A", 0));
+
+        assertThatThrownBy(() ->
+                service.createComment(POST_ID, new CreateCommentRequest("x", 5L, true), 20L))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode").isEqualTo(ErrorCode.CONFLICT);
+
+        verify(commentMapper, never()).insert(any());
+        verify(postMapper, never()).incrementCommentCount(anyLong());
+    }
+
+    // ── 최상위 댓글(부모 없음) 생성은 가드 영향 없음 ──
+    @Test
+    void topLevelComment_isUnaffectedByParentGuard() {
+        givenPost();
+
+        service.createComment(POST_ID, new CreateCommentRequest("hello", null, true), 10L);
+
+        verify(commentMapper).insert(any(CommunityComment.class));
+        verify(postMapper).incrementCommentCount(POST_ID);
+        verify(commentMapper, never()).findById(anyLong()); // 부모 조회 자체가 없음
     }
 
     // ══════════════ 댓글 검열 도입 회귀 테스트 (시나리오 1·2·4·5·6·7) ══════════════
