@@ -78,7 +78,13 @@ public class ApplicationCaseExtractionQualityGate {
             "업무예요",
             "입사지원",
             "이력서",
-            "포지션"
+            "포지션",
+            "직무내용",
+            "모집직무",
+            "합류하게 되면 이런 일을 하게 됩니다",
+            "이런동료를기다립니다",
+            "이런 분이라면 더욱좋습니다",
+            "이런 분을 찾습니다"
     );
     private static final List<String> CRITICAL_SECTION_HEADERS = List.of(
             "담당업무",
@@ -86,6 +92,8 @@ public class ApplicationCaseExtractionQualityGate {
             "업무내용",
             "함께할업무",
             "함께할 업무",
+            "직무내용",
+            "합류하게 되면 이런 일을 하게 됩니다",
             "responsibilities",
             "duties",
             "what you will do"

@@ -149,4 +149,46 @@ class ApplicationCaseExtractionQualityGateTest {
         assertThat(report.path("metrics").path("criticalSectionExists").asBoolean()).isTrue();
         assertThat(report.path("metrics").path("criticalSectionUsefulLineCount").asInt()).isGreaterThanOrEqualTo(1);
     }
+
+    @Test
+    void realWorldDutiesHeaderJikmuNaeyongIsRecognized() throws Exception {
+        // 두레팜(고용24) 실측 헤더 "직무내용" 을 업무 섹션으로 인식해야 한다.
+        String text = String.join("\n",
+                "회사소개",
+                "핀테크 결제 플랫폼을 운영하는 기업입니다.",
+                "직무내용",
+                "데이터 수집 및 분석, AI 모델 개발과 운영을 담당합니다.",
+                "이런동료를기다립니다",
+                "Java와 Spring Boot 개발 경험이 있으신 분.")
+                + "\n"
+                + "안정적인 서비스를 제공하기 위해 노력합니다. ".repeat(12);
+
+        ApplicationCaseExtractionQualityGate.QualityGateResult result =
+                qualityGate.evaluate("TEXT", null, text);
+        JsonNode report = objectMapper.readTree(result.qualityReportJson());
+
+        assertThat(report.path("metrics").path("criticalSectionExists").asBoolean()).isTrue();
+        assertThat(report.path("metrics").path("criticalSectionUsefulLineCount").asInt()).isGreaterThanOrEqualTo(1);
+        assertThat(report.path("warnings").toString()).doesNotContain("critical_section_content_insufficient");
+    }
+
+    @Test
+    void positionNameHeaderIsNotTreatedAsCriticalDutiesSection() throws Exception {
+        // "모집직무" 는 직무명 헤더라 critical duties 로 잡으면 안 된다(업무 본문 없이 직무명만으로 PASS 방지).
+        String text = String.join("\n",
+                "회사소개",
+                "핀테크 결제 플랫폼을 운영하는 기업입니다.",
+                "모집직무",
+                "AI 개발자, 데이터 분석가",
+                "자격요건",
+                "Python 경험이 있으신 분.")
+                + "\n"
+                + "안정적인 서비스를 제공합니다. ".repeat(40);
+
+        ApplicationCaseExtractionQualityGate.QualityGateResult result =
+                qualityGate.evaluate("TEXT", null, text);
+        JsonNode report = objectMapper.readTree(result.qualityReportJson());
+
+        assertThat(report.path("metrics").path("criticalSectionExists").asBoolean()).isFalse();
+    }
 }
