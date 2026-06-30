@@ -1,10 +1,49 @@
 #include "JobModel.h"
+#include "ApiClient.h"
+#include <QJsonArray>
+#include <QJsonObject>
+
+static QString modeLabel(const QString& m)
+{
+    if (m == "BASIC")       return QStringLiteral("기본 면접");
+    if (m == "JOB")         return QStringLiteral("직무 면접");
+    if (m == "COMPANY")     return QStringLiteral("기업 맞춤");
+    if (m == "PERSONALITY") return QStringLiteral("인성 면접");
+    if (m == "PRESSURE")    return QStringLiteral("압박 면접");
+    if (m == "RESUME")      return QStringLiteral("자소서 면접");
+    return m;
+}
 
 JobModel::JobModel(QObject* parent) : QAbstractListModel(parent)
 {
-    // 서버 연결 전 화면 확인용 시드 데이터(추후 ApiClient 결과로 대체).
-    m_jobs.push_back({128, QStringLiteral("삼성전자 · SW 개발직군"), QStringLiteral("직무 면접"), QStringLiteral("RUNNING"), 65});
-    m_jobs.push_back({126, QStringLiteral("네이버 · 백엔드 인턴"),   QStringLiteral("인성 면접"), QStringLiteral("DONE"),    100});
+    // 실데이터는 로그인 후 reload() 로 채운다.
+}
+
+void JobModel::reload()
+{
+    if (!m_api) return;
+    m_api->get("/api/interview/sessions?page=0&size=20",
+        [this](bool ok, const QJsonObject& data, const QString&) {
+            beginResetModel();
+            m_jobs.clear();
+            if (ok) {
+                const QJsonArray arr = data.value("sessions").toArray();
+                for (const QJsonValue& v : arr) {
+                    const QJsonObject s = v.toObject();
+                    const QString mode = modeLabel(s.value("mode").toString());
+                    const bool ended = !s.value("endedAt").isNull();
+                    Job j;
+                    j.id       = s.value("id").toInteger();
+                    j.mode     = mode;
+                    j.title    = mode + QStringLiteral("  ·  지원건 #") + QString::number(s.value("applicationCaseId").toInteger());
+                    j.status   = ended ? QStringLiteral("DONE") : QStringLiteral("RUNNING");
+                    j.progress = ended ? 100
+                               : ((!s.value("avgScore").isNull() || !s.value("avgVoiceScore").isNull()) ? 60 : 20);
+                    m_jobs.push_back(j);
+                }
+            }
+            endResetModel();
+        });
 }
 
 int JobModel::rowCount(const QModelIndex& parent) const

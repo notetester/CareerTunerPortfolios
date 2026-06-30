@@ -17,7 +17,7 @@ class ApiClient : public QObject
 public:
     explicit ApiClient(QObject* parent = nullptr);
 
-    void setBaseUrl(const QString& url) { m_baseUrl = url; }
+    Q_INVOKABLE void setBaseUrl(const QString& url) { m_baseUrl = url; }
     void setToken(const QString& token) { m_token = token; }
     QString baseUrl() const { return m_baseUrl; }
     QString token() const { return m_token; }

@@ -51,7 +51,19 @@ ApplicationWindow {
         onJobCreated: (company, mode) => win.createJob(company, mode)
     }
 
+    // ── 로그인 게이트 ──
+    property bool loggedIn: false
+    Connections {
+        target: auth
+        function onLoggedIn(token) { win.loggedIn = true; jobModel.reload() }
+    }
+    LoginPage {
+        visible: !win.loggedIn
+        anchors.fill: parent
+    }
+
     RowLayout {
+        visible: win.loggedIn
         anchors.fill: parent
         spacing: 0
 

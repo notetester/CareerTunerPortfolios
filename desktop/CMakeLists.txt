@@ -31,6 +31,7 @@ qt_add_qml_module(CareerTunerDesktop
         qml/NewJobDialog.qml
         qml/DevicesPage.qml
         qml/SettingsPage.qml
+        qml/LoginPage.qml
 )
 
 target_link_libraries(CareerTunerDesktop PRIVATE

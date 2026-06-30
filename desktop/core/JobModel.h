@@ -3,6 +3,8 @@
 #include <QVector>
 #include <QString>
 
+class ApiClient;
+
 // 작업(Job) 한 건.
 struct Job {
     qint64  id;
@@ -22,6 +24,9 @@ public:
 
     explicit JobModel(QObject* parent = nullptr);
 
+    void setApi(ApiClient* api) { m_api = api; }
+    Q_INVOKABLE void reload();   // 서버에서 면접 세션 목록을 로드해 모델을 채움
+
     int rowCount(const QModelIndex& parent = QModelIndex()) const override;
     QVariant data(const QModelIndex& index, int role) const override;
     QHash<int, QByteArray> roleNames() const override;
@@ -35,4 +40,5 @@ public:
 private:
     int indexOf(qint64 id) const;
     QVector<Job> m_jobs;
+    ApiClient* m_api = nullptr;
 };
