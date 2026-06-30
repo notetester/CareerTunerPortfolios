@@ -1,0 +1,16 @@
+# 빌드 산출물
+build/
+build-*/
+*.user
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+Makefile
+
+# Qt Creator
+*.autosave
+*.pro.user*
+
+# IDE
+.vscode/
+.idea/
