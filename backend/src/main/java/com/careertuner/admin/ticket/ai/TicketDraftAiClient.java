@@ -15,7 +15,10 @@ import org.springframework.http.MediaType;
 import org.springframework.http.client.JdkClientHttpRequestFactory;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
+import org.springframework.web.client.RestClientException;
 
+import com.careertuner.common.exception.BusinessException;
+import com.careertuner.common.exception.ErrorCode;
 import com.careertuner.community.moderation.config.OllamaProperties;
 import com.careertuner.support.chatbot.SupportTextFallbackGenerator;
 
