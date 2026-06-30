@@ -31,6 +31,7 @@ Last updated: 2026-06-30
 
 ## 3. RAG 상태
 
+- [x] 완료 — AI 장문 보고서와 raw artifact 저장 경계를 A~F 공통 submodule 로 분리했다(`docs/ai-reports/`, `docs/ai-artifacts/`, [docs/AI_REPOSITORY_BOUNDARIES](../../docs/AI_REPOSITORY_BOUNDARIES.md)).
 - [x] 완료 — RAG 설계, offline retrieval PoC, local embedding/vector PoC 를 문서화했다(PR #147 계열, [reports/50](reports/50_rag_design_plan.md), [reports/51](reports/51_rag_offline_poc_result.md), [reports/52](reports/52_rag_local_embedding_poc_result.md)).
 - [x] 완료 — R2b~R2f 실측에서 retrievedContext 주입은 단순 개선으로 확정되지 않았고, review/reject gate 쪽이 더 안정적인 안전 레버로 확인되었다([reports/54](reports/54_rag_r2b_hardcase_eval.md), [reports/57](reports/57_rag_r2d_evidence_gate_eval.md), [reports/59](reports/59_rag_r2f_output_capture_gate_eval.md)).
 - [~] 보류 또는 조건부 유지 — production prompt 에 retrievedContext 를 자동 주입하지 않는다([reports/60](reports/60_rag_r3_pre_backend_gate_design.md), [reports/61](reports/61_rag_r3_review_first_gate_implementation.md)).
