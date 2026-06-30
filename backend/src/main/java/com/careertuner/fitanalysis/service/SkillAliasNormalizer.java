@@ -18,6 +18,7 @@ public final class SkillAliasNormalizer {
 
     private static final Map<String, String> ALIASES = aliases();
     private static final Map<String, List<String>> ALIASES_BY_CANONICAL = aliasesByCanonical();
+    private static final Map<String, List<String>> BLOCKED_PHRASES_BY_CANONICAL = blockedPhrasesByCanonical();
 
     public String canonicalize(String value) {
         String normalized = normalize(value);
@@ -32,9 +33,10 @@ public final class SkillAliasNormalizer {
         if (normalizedText.isBlank() || canonicalKey == null || canonicalKey.isBlank()) {
             return false;
         }
-        List<String> aliases = ALIASES_BY_CANONICAL.getOrDefault(canonicalKey, List.of(canonicalKey));
+        String normalizedKey = canonicalize(canonicalKey);
+        List<String> aliases = ALIASES_BY_CANONICAL.getOrDefault(normalizedKey, List.of(normalizedKey));
         for (String alias : aliases) {
-            if (containsWithAsciiBoundary(normalizedText, alias)) {
+            if (containsAllowedMention(normalizedText, alias, normalizedKey)) {
                 return true;
             }
         }
@@ -86,8 +88,30 @@ public final class SkillAliasNormalizer {
         return Collections.unmodifiableMap(out);
     }
 
+    private static Map<String, List<String>> blockedPhrasesByCanonical() {
+        Map<String, List<String>> map = new LinkedHashMap<>();
+        block(map, "java", "javascript");
+        block(map, "node", "node.js", "nodejs");
+        block(map, "react", "react native");
+        block(map, "spring", "spring boot");
+        block(map, "sql", "mysql", "mssql", "postgresql", "postgres");
+
+        Map<String, List<String>> out = new LinkedHashMap<>();
+        for (Map.Entry<String, List<String>> entry : map.entrySet()) {
+            out.put(entry.getKey(), List.copyOf(entry.getValue()));
+        }
+        return Collections.unmodifiableMap(out);
+    }
+
     private static void alias(Map<String, String> map, String alias, String canonical) {
         map.put(normalize(alias), normalize(canonical));
+    }
+
+    private static void block(Map<String, List<String>> map, String canonical, String... phrases) {
+        String normalizedCanonical = normalize(canonical);
+        for (String phrase : phrases) {
+            map.computeIfAbsent(normalizedCanonical, ignored -> new ArrayList<>()).add(normalize(phrase));
+        }
     }
 
     private static String normalize(String value) {
@@ -107,17 +131,37 @@ public final class SkillAliasNormalizer {
                 .trim();
     }
 
-    private static boolean containsWithAsciiBoundary(String text, String alias) {
+    private static boolean containsAllowedMention(String text, String alias, String canonicalKey) {
         if (alias.isBlank()) {
             return false;
         }
         int index = text.indexOf(alias);
         while (index >= 0) {
             int end = index + alias.length();
-            if (hasAsciiBoundary(text, index, end)) {
+            if (hasAsciiBoundary(text, index, end)
+                    && !isDottedShortAliasSuffix(text, alias, index)
+                    && !isBlockedCompoundMention(text, canonicalKey, index, end)) {
                 return true;
             }
             index = text.indexOf(alias, index + 1);
+        }
+        return false;
+    }
+
+    private static boolean isDottedShortAliasSuffix(String text, String alias, int start) {
+        return alias.length() <= 2 && start > 0 && text.charAt(start - 1) == '.';
+    }
+
+    private static boolean isBlockedCompoundMention(String text, String canonicalKey, int start, int end) {
+        for (String blockedPhrase : BLOCKED_PHRASES_BY_CANONICAL.getOrDefault(canonicalKey, List.of())) {
+            int phraseStart = text.indexOf(blockedPhrase);
+            while (phraseStart >= 0) {
+                int phraseEnd = phraseStart + blockedPhrase.length();
+                if (phraseStart <= start && phraseEnd >= end && hasAsciiBoundary(text, phraseStart, phraseEnd)) {
+                    return true;
+                }
+                phraseStart = text.indexOf(blockedPhrase, phraseStart + 1);
+            }
         }
         return false;
     }

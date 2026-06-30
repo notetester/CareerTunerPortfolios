@@ -296,6 +296,80 @@ class EvidenceGateServiceTest {
         assertThat(decision.reasons()).anySatisfy(reason -> assertThat(reason.claim()).isEqualTo("React Native"));
     }
 
+    // ── #180 후속(reports/64): mention-boundary false-positive 보강 ──
+
+    @Test
+    void nextJsDoesNotSatisfyJavascriptMention() {
+        FitAnalysisAiResult ai = ai(70, List.of(), List.of(), "Next.js 경험을 보유하고 있습니다.");
+        EvidenceGateDecision decision = gate.evaluate(command(List.of("JavaScript"), List.of(), List.of("Java"), List.of()), ai);
+
+        assertThat(decision.gateStatus()).isEqualTo(EvidenceGateDecision.STATUS_PASSED);
+        assertThat(decision.reasons()).isEmpty();
+    }
+
+    @Test
+    void standaloneJsSatisfiesJavascriptMention() {
+        FitAnalysisAiResult ai = ai(70, List.of(), List.of(), "JS 경험을 보유하고 있습니다.");
+        EvidenceGateDecision decision = gate.evaluate(command(List.of("JavaScript"), List.of(), List.of("Java"), List.of()), ai);
+
+        assertThat(decision.gateStatus()).isEqualTo(EvidenceGateDecision.STATUS_REVIEW_REQUIRED);
+        assertThat(decision.reasons()).anySatisfy(reason -> assertThat(reason.claim()).isEqualTo("JavaScript"));
+    }
+
+    @Test
+    void reactNativeDoesNotSatisfyReactMention() {
+        FitAnalysisAiResult ai = ai(70, List.of(), List.of(), "React Native 경험을 보유하고 있습니다.");
+        EvidenceGateDecision decision = gate.evaluate(command(List.of("React"), List.of(), List.of("Vue"), List.of()), ai);
+
+        assertThat(decision.gateStatus()).isEqualTo(EvidenceGateDecision.STATUS_PASSED);
+        assertThat(decision.reasons()).isEmpty();
+    }
+
+    @Test
+    void standaloneReactSatisfiesReactMention() {
+        FitAnalysisAiResult ai = ai(70, List.of(), List.of(), "React 경험을 보유하고 있습니다.");
+        EvidenceGateDecision decision = gate.evaluate(command(List.of("React"), List.of(), List.of("Vue"), List.of()), ai);
+
+        assertThat(decision.gateStatus()).isEqualTo(EvidenceGateDecision.STATUS_REVIEW_REQUIRED);
+        assertThat(decision.reasons()).anySatisfy(reason -> assertThat(reason.claim()).isEqualTo("React"));
+    }
+
+    @Test
+    void springBootDoesNotSatisfySpringMention() {
+        FitAnalysisAiResult ai = ai(70, List.of(), List.of(), "Spring Boot 경험을 보유하고 있습니다.");
+        EvidenceGateDecision decision = gate.evaluate(command(List.of("Spring"), List.of(), List.of("Java"), List.of()), ai);
+
+        assertThat(decision.gateStatus()).isEqualTo(EvidenceGateDecision.STATUS_PASSED);
+        assertThat(decision.reasons()).isEmpty();
+    }
+
+    @Test
+    void standaloneSpringSatisfiesSpringMention() {
+        FitAnalysisAiResult ai = ai(70, List.of(), List.of(), "Spring 경험을 보유하고 있습니다.");
+        EvidenceGateDecision decision = gate.evaluate(command(List.of("Spring"), List.of(), List.of("Java"), List.of()), ai);
+
+        assertThat(decision.gateStatus()).isEqualTo(EvidenceGateDecision.STATUS_REVIEW_REQUIRED);
+        assertThat(decision.reasons()).anySatisfy(reason -> assertThat(reason.claim()).isEqualTo("Spring"));
+    }
+
+    @Test
+    void postgresqlDoesNotSatisfyGenericSqlMention() {
+        FitAnalysisAiResult ai = ai(70, List.of(), List.of(), "PostgreSQL 경험을 보유하고 있습니다.");
+        EvidenceGateDecision decision = gate.evaluate(command(List.of("SQL"), List.of(), List.of("Java"), List.of()), ai);
+
+        assertThat(decision.gateStatus()).isEqualTo(EvidenceGateDecision.STATUS_PASSED);
+        assertThat(decision.reasons()).isEmpty();
+    }
+
+    @Test
+    void standaloneSqlSatisfiesGenericSqlMention() {
+        FitAnalysisAiResult ai = ai(70, List.of(), List.of(), "SQL 경험을 보유하고 있습니다.");
+        EvidenceGateDecision decision = gate.evaluate(command(List.of("SQL"), List.of(), List.of("Java"), List.of()), ai);
+
+        assertThat(decision.gateStatus()).isEqualTo(EvidenceGateDecision.STATUS_REVIEW_REQUIRED);
+        assertThat(decision.reasons()).anySatisfy(reason -> assertThat(reason.claim()).isEqualTo("SQL"));
+    }
+
     private static final FitApplyDecision DEFAULT_DECISION = new FitApplyDecision("HOLD", List.of(), List.of());
 
     private static FitAnalysisAiResult ai(int fitScore, List<String> matched, List<String> missing, String fitSummary) {
