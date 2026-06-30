@@ -110,7 +110,7 @@ AI 관련 산출물은 본체에 계속 누적하지 않는다.
 
 - `CareerTuner` main repo 에는 제품 코드, 소형 fixture, validator, runner, 짧은 checklist/index, artifact path/commit SHA 만 남긴다.
 - `ml/career-strategy-llm/scripts/` 는 C 영역의 재현용 validator/runner/helper 를 두는 본체 경로다. A~F 공통 AI artifact 와 반복 benchmark artifact 주변 파일은 `CareerTunerAI` submodule 인 `docs/ai-artifacts/` 로 둔다.
-- `ml/career-strategy-llm/reports/` 는 기존 `reports/NN` 링크를 깨지 않기 위한 transitional mirror 다. 새 장문 보고서는 `docs/ai-reports/career-strategy-llm/reports/` 에 추가한다.
+- `ml/career-strategy-llm/reports/` 는 기존 `reports/NN` 링크를 깨지 않기 위한 transitional mirror 다. 새 장문 보고서는 `docs/ai-reports/areas/c-career-strategy/reports/` 에 추가한다.
 - raw output, generated result, `reports/generated/` 는 `CareerTuner` main repo 에 커밋하지 않는다.
 - submodule 이 비어 있으면 필요한 것만 받는다:
 

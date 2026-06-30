@@ -5,7 +5,7 @@
 새 기준 경로:
 
 ```text
-D:/dev/CareerTuner/docs/ai-reports/career-strategy-llm/reports/
+D:/dev/CareerTuner/docs/ai-reports/areas/c-career-strategy/reports/
 ```
 
 현재 이 폴더는 기존 `reports/NN` 링크와 코드 주석을 깨지 않기 위한 transitional mirror 로 유지한다. 새 장문 보고서를 계속 누적하지 말고, main repo 에는 짧은 요약과 artifact path/commit SHA 만 남긴다.

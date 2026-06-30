@@ -39,7 +39,7 @@ Last updated: 2026-06-30
 - [x] 완료 — RAG 재도입 전 조건과 hard-case benchmark 기준을 문서화했다([reports/67](reports/67_rag_reentry_criteria_and_hardcase_benchmark.md)).
 - [x] 완료 — RAG 재도입 hard-case fixture v1 과 dry-run payload 생성 골격을 구성했다([reports/69](reports/69_rag_hardcase_benchmark_fixture.md)).
 - [x] 완료 — RAG hard-case offline A/B runner 골격과 aggregate summarizer 를 추가했다([reports/70](reports/70_rag_hardcase_offline_ab_runner.md)).
-- [x] 완료 — 4090/Ollama 기준 RAG hard-case 3B LoRA A/B run 을 1회 실행하고 CareerTunerAI artifact path/commit SHA 를 기록했다([reports/71](reports/71_rag_hardcase_actual_3b_ab_run.md), CareerTunerAI `rag-hardcase-benchmark/runs/rag_hardcase_v1_20260630_1635`, commit `468ef2fd95116b13b8d72b842ed336ec3edb10ed`).
+- [x] 완료 — 4090/Ollama 기준 RAG hard-case 3B LoRA A/B run 을 1회 실행하고 CareerTunerAI artifact path/commit SHA 를 기록했다([reports/71](reports/71_rag_hardcase_actual_3b_ab_run.md), CareerTunerAI `benchmarks/rag-hardcase/runs/rag_hardcase_v1_20260630_1635`, commit `8939d5856bf7edc9b9c93a7f9ff94034ab8d0a4e`).
 - [~] 보류 또는 조건부 유지 — raw output/result JSON 은 CareerTunerAI artifact repo 에 저장한다.
 - [~] 보류 또는 조건부 유지 — 긴 실험 분석 문서는 CareerTunerAIDocs 에 저장한다.
 - [ ] 미완료 — RAG hard-case benchmark 결과의 R3 gate evaluator 와 semantic judge 기반 A/B 품질 분석은 scoped source, 개인정보 격리, unsupported claim 감소 지표 기준으로 별도 수행한다.

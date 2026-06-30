@@ -84,7 +84,7 @@ AI 산출물은 성격별로 분리한다.
 
 * `scripts/` — 재현 가능한 validator, runner, deterministic helper. 제품/평가 재현에 필요한 최소 스크립트만 둔다.
 * `reports/` — 기존 `reports/NN` 링크를 깨지 않기 위한 transitional mirror. 새 장문 보고서는 추가하지 않는다.
-* `../../docs/ai-reports/career-strategy-llm/reports/` — `CareerTunerAIDocs` submodule. C 장문 실험 보고서와 누적 해석 문서를 둔다.
+* `../../docs/ai-reports/areas/c-career-strategy/reports/` — `CareerTunerAIDocs` submodule. C 장문 실험 보고서와 누적 해석 문서를 둔다.
 * `../../docs/ai-artifacts/` — `CareerTunerAI` submodule. A~F 공통 raw output, generated requests/results, benchmark manifest, aggregate summary 를 둔다.
 * main repo 에는 짧은 checklist/index 와 artifact path/commit SHA 만 남긴다.
 

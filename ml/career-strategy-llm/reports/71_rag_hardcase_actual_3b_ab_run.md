@@ -55,7 +55,7 @@ cd D:/dev/CareerTuner/ml/career-strategy-llm
 
 python scripts/run_rag_hardcase_benchmark.py \
   --fixture data/rag_hardcase_benchmark/rag_hardcases_v1.jsonl \
-  --out D:/dev/CareerTunerAI/rag-hardcase-benchmark/runs/rag_hardcase_v1_20260630_1635 \
+  --out D:/dev/CareerTunerAI/benchmarks/rag-hardcase/runs/rag_hardcase_v1_20260630_1635 \
   --provider ollama \
   --base-url http://localhost:11434 \
   --model careertuner-c-career-strategy-3b:latest \
@@ -66,13 +66,13 @@ aggregate summary 생성:
 
 ```bash
 python scripts/summarize_rag_hardcase_results.py \
-  --results D:/dev/CareerTunerAI/rag-hardcase-benchmark/runs/rag_hardcase_v1_20260630_1635/results \
-  --out D:/dev/CareerTunerAI/rag-hardcase-benchmark/runs/rag_hardcase_v1_20260630_1635/aggregate_summary.json
+  --results D:/dev/CareerTunerAI/benchmarks/rag-hardcase/runs/rag_hardcase_v1_20260630_1635/results \
+  --out D:/dev/CareerTunerAI/benchmarks/rag-hardcase/runs/rag_hardcase_v1_20260630_1635/aggregate_summary.json
 ```
 
 ## 7. CareerTunerAI artifact path
 ```text
-D:/dev/CareerTunerAI/rag-hardcase-benchmark/runs/rag_hardcase_v1_20260630_1635
+D:/dev/CareerTunerAI/benchmarks/rag-hardcase/runs/rag_hardcase_v1_20260630_1635
 ```
 
 저장 대상:
@@ -85,7 +85,7 @@ D:/dev/CareerTunerAI/rag-hardcase-benchmark/runs/rag_hardcase_v1_20260630_1635
 
 ## 8. CareerTunerAI commit SHA
 ```text
-468ef2fd95116b13b8d72b842ed336ec3edb10ed
+8939d5856bf7edc9b9c93a7f9ff94034ab8d0a4e
 ```
 
 ## 9. aggregate summary 요약

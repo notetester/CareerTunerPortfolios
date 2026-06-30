@@ -48,7 +48,7 @@ python scripts/run_rag_hardcase_benchmark.py \
 ```bash
 python scripts/run_rag_hardcase_benchmark.py \
   --fixture data/rag_hardcase_benchmark/rag_hardcases_v1.jsonl \
-  --out D:/dev/CareerTunerAI/rag-hardcase-benchmark/runs/rag_hardcase_v1_YYYYMMDD_HHMM \
+  --out D:/dev/CareerTunerAI/benchmarks/rag-hardcase/runs/rag_hardcase_v1_YYYYMMDD_HHMM \
   --provider ollama \
   --base-url http://127.0.0.1:11434 \
   --model careertuner-c-career-strategy-3b
@@ -144,7 +144,7 @@ dry-run placeholder 라서 latency/output length 는 `None` 이다.
 실제 모델 호출 산출물은 다음 repo 에 저장한다.
 
 ```text
-D:/dev/CareerTunerAI/rag-hardcase-benchmark/runs/<run-id>/
+D:/dev/CareerTunerAI/benchmarks/rag-hardcase/runs/<run-id>/
 ```
 
 저장 대상:
@@ -161,7 +161,7 @@ D:/dev/CareerTunerAI/rag-hardcase-benchmark/runs/<run-id>/
 긴 실험 분석 보고서는 CareerTuner main repo 에 누적하지 않는다. 필요 시 다음 repo 에 저장한다.
 
 ```text
-D:/dev/CareerTunerAIDocs/rag-hardcase-benchmark/reports/
+D:/dev/CareerTunerAIDocs/areas/c-career-strategy/reports/
 ```
 
 이번 작업에서는 장문 분석 문서를 작성하지 않았다.
