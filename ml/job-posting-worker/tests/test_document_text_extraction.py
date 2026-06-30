@@ -232,6 +232,96 @@ class DocumentTextExtractionTest(unittest.TestCase):
         self.assertIn("critical_section_content_insufficient", analysis["warnings"])
         self.assertEqual(analysis["metrics"]["criticalSectionUsefulLineCount"], 0)
 
+    def test_inline_garbled_critical_section_demotes(self):
+        module = load_script()
+        cases = [
+            "\n".join(
+                [
+                    "Company: Acme Payments",
+                    "Acme Payments operates reliable fintech payment platforms for high-volume merchants.",
+                    "Responsibilities: 티",
+                    "공 Y (을 ) AY",
+                    "우표눔를용라어를ㅋ크이극아",
+                    "Qualifications: Java Spring Boot SQL",
+                    "Benefits: remote option and flexible work",
+                ]
+            ),
+            "\n".join(
+                [
+                    "Company: Acme Payments",
+                    "Acme Payments operates reliable fintech payment platforms for high-volume merchants.",
+                    "What you will do: 티",
+                    "공 Y (을 ) AY",
+                    "우표눔를용라어를ㅋ크이극아",
+                    "Qualifications: Java Spring Boot SQL",
+                    "Benefits: remote option and flexible work",
+                ]
+            ),
+            "\n".join(
+                [
+                    "회사소개: 넥스트클라우드는 핀테크 결제 플랫폼을 운영하는 기업입니다.",
+                    "주요업무: 티",
+                    "공 Y (을 ) AY",
+                    "우표눔를용라어를ㅋ크이극아",
+                    "자격요건: Java와 Spring Boot 개발 경험",
+                    "우대사항: Kubernetes, Docker 운영 경험",
+                ]
+            ),
+        ]
+
+        for text in cases:
+            with self.subTest(text=text.splitlines()[0]):
+                text = text + "\n" + ("핀테크 결제 서비스를 안정적으로 제공하기 위해 노력합니다. " * 12)
+
+                analysis = module.analyze_quality(text)
+
+                self.assertEqual(analysis["qualityStatus"], "REVIEW_REQUIRED")
+                self.assertIn("critical_section_content_insufficient", analysis["warnings"])
+                self.assertTrue(analysis["metrics"]["criticalSectionExists"])
+                self.assertEqual(analysis["metrics"]["criticalSectionUsefulLineCount"], 0)
+
+    def test_inline_valid_critical_section_is_not_demoted(self):
+        module = load_script()
+        cases = [
+            "\n".join(
+                [
+                    "Company: Acme Payments",
+                    "Acme Payments operates reliable fintech payment platforms for high-volume merchants.",
+                    "Responsibilities: build APIs and operate services",
+                    "Qualifications: Java Spring Boot SQL",
+                    "Benefits: remote option and flexible work",
+                ]
+            ),
+            "\n".join(
+                [
+                    "Company: Acme Payments",
+                    "Acme Payments operates reliable fintech payment platforms for high-volume merchants.",
+                    "What you will do: build APIs and operate services",
+                    "Qualifications: Java Spring Boot SQL",
+                    "Benefits: remote option and flexible work",
+                ]
+            ),
+            "\n".join(
+                [
+                    "회사소개: 넥스트클라우드는 핀테크 결제 플랫폼을 운영하는 기업입니다.",
+                    "주요업무: API 개발 및 운영",
+                    "자격요건: Java와 Spring Boot 개발 경험",
+                    "우대사항: Kubernetes, Docker 운영 경험",
+                ]
+            ),
+        ]
+
+        for text in cases:
+            with self.subTest(text=text.splitlines()[0]):
+                text = text + "\n" + ("안정적인 서비스 운영 경험을 바탕으로 시스템을 개선합니다. " * 12)
+
+                analysis = module.analyze_quality(text)
+
+                self.assertEqual(analysis["qualityStatus"], "PASS")
+                self.assertNotIn("critical_section_content_insufficient", analysis["warnings"])
+                self.assertTrue(analysis["metrics"]["criticalSectionExists"])
+                self.assertGreaterEqual(analysis["metrics"]["criticalSectionUsefulLineCount"], 1)
+
     def test_classifies_long_image_and_uses_existing_ocr_text(self):
         module = load_script()
         with tempfile.TemporaryDirectory() as tmp:

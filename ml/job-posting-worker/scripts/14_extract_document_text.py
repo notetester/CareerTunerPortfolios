@@ -34,6 +34,7 @@ SECTION_KEYWORDS = [
     "Position",
     "Responsibilities",
     "Duties",
+    "What you will do",
     "Qualifications",
     "Requirements",
     "Skills",
@@ -514,6 +515,7 @@ _ISOLATED_JAMO = re.compile(r"[㄰-㆏]")
 
 # 헤더 줄 앞뒤에 흔히 붙는 불릿/구두점(예: "자격요건:", "·우대사항", "주요업무 -").
 _HEADER_TRIM_CHARS = " \t·•◦▪‣▶▷●○■□*-–—:：.|"
+_INLINE_HEADER_SEPARATORS = (":", "：", "-", "–", "—")
 
 
 def _normalize_header_token(value: str) -> str:
@@ -527,6 +529,28 @@ def _is_header_like_line(line: str) -> bool:
     if not norm or len(norm) > 16:
         return False
     return any(_normalize_header_token(keyword) == norm for keyword in SECTION_KEYWORDS)
+
+
+def _split_inline_section_header(line: str) -> list[str]:
+    """Split "Responsibilities: body" into logical header/body lines for quality metrics only."""
+    stripped = line.strip()
+    if not stripped:
+        return []
+    section_norms = {_normalize_header_token(keyword) for keyword in SECTION_KEYWORDS}
+    for separator in _INLINE_HEADER_SEPARATORS:
+        separator_index = stripped.find(separator)
+        if separator_index <= 0:
+            continue
+        prefix = stripped[:separator_index]
+        prefix_norm = _normalize_header_token(prefix)
+        if not prefix_norm or len(prefix_norm) > 16 or prefix_norm not in section_norms:
+            continue
+        body = stripped[separator_index + len(separator):].strip()
+        logical_lines = [prefix.strip()]
+        if body:
+            logical_lines.append(body)
+        return logical_lines
+    return [stripped]
 
 
 def _is_useful_work_line(line: str) -> bool:
@@ -559,7 +583,8 @@ def _is_suspect_line(line: str) -> bool:
 
 def critical_section_metrics(normalized_text: str) -> dict[str, Any]:
     """핵심 업무 섹션 헤더~다음 헤더 사이 본문의 품질 지표를 측정한다."""
-    lines = [line.strip() for line in normalized_text.splitlines() if line.strip()]
+    physical_lines = [line.strip() for line in normalized_text.splitlines() if line.strip()]
+    lines = [logical for line in physical_lines for logical in _split_inline_section_header(line)]
     header_norms = {_normalize_header_token(keyword) for keyword in CRITICAL_SECTION_HEADERS}
     body: list[str] | None = None
     for index, line in enumerate(lines):
