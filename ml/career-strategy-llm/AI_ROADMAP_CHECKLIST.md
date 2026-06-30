@@ -2,7 +2,7 @@
 
 Last updated: 2026-06-30
 기준 branch: dev
-기준 PR 범위: #174, #175, #180, #182, #183, #184, #186 포함
+기준 PR 범위: #174, #175, #180, #182, #183, #184, #186, #187 포함
 
 상태 표기:
 - `[x] 완료`
@@ -12,11 +12,12 @@ Last updated: 2026-06-30
 
 ## 1. Production runtime 상태
 
-- [x] 완료 — C 적합도 분석 runtime 은 `FallbackFitAnalysisAiService` primary dispatcher 기준으로 운영한다(PR #183, PR #184).
+- [x] 완료 — C 적합도 분석 runtime 은 `FallbackFitAnalysisAiService` primary dispatcher 기준으로 운영한다(PR #183, PR #184, [reports/65](reports/65_r3_evidence_gate_dev_integration_check.md)).
 - [x] 완료 — R3 review-first evidence gate 가 backend service layer 에 연결되어 `safety`/gate result/evidence source 를 기록한다(PR #174, [reports/61](reports/61_rag_r3_review_first_gate_implementation.md)).
 - [x] 완료 — gate 는 `fitScore`, `applyDecision`, `matchedSkills`, `missingSkills` 를 변경하지 않는다(PR #174, PR #175, [reports/61](reports/61_rag_r3_review_first_gate_implementation.md), [reports/62](reports/62_rag_r3_evidence_gate_user_evidence_hotfix.md)).
 - [x] 완료 — 관리자 적합도 상세/목록, 홈, 대시보드에 gate 검토 상태와 최신 지원 건 기준 검토 대기 수가 연결되어 있다(PR #174, PR #175, [reports/62](reports/62_rag_r3_evidence_gate_user_evidence_hotfix.md)).
 - [x] 완료 — dev 통합 기준 R3 계열과 Spring provider 회귀 테스트가 통과한 상태를 확인했다(PR #186, [reports/65](reports/65_r3_evidence_gate_dev_integration_check.md)).
+- [x] 완료 — R3 자동 검증 보강과 체크리스트 정리를 반영했다(PR #187, [reports/66](reports/66_r3_auto_verification_and_ai_checklist.md)).
 - [~] 보류 또는 조건부 유지 — RAG runtime 자동 주입과 rewrite 자동 사용자 노출은 현재 production runtime 에 연결하지 않는다([reports/60](reports/60_rag_r3_pre_backend_gate_design.md), [reports/61](reports/61_rag_r3_review_first_gate_implementation.md)).
 
 ## 2. Model / benchmark 상태
@@ -25,6 +26,7 @@ Last updated: 2026-06-30
 - [x] 완료 — 7B base smoke 결과만으로는 3B LoRA 교체 근거가 부족하다고 판단했다([reports/49](reports/49_7b_smoke_benchmark_result.md)).
 - [x] 완료 — golden/eval 계열 하니스와 4090 실행 명령 아카이브가 남아 있다([reports/25](reports/25_4090_eval_reliability_commands.md), [reports/35](reports/35_4090_golden60_eval_commands.md)).
 - [~] 보류 또는 조건부 유지 — 7B 전환, 7B LoRA 재학습, GGUF 재생성은 RAG/evidence gate 이후 별도 재평가 전까지 보류한다([reports/49](reports/49_7b_smoke_benchmark_result.md)).
+- [x] 완료 — model-card 에 R3 production safety 상태를 반영했다([model-card](model-card.md), [reports/68](reports/68_model_card_r3_safety_update.md)).
 - [ ] 미완료 — R3 이후 상태를 반영한 정식 모델 벤치마크 재실행은 아직 별도 작업으로 남아 있다.
 
 ## 3. RAG 상태
@@ -33,7 +35,8 @@ Last updated: 2026-06-30
 - [x] 완료 — R2b~R2f 실측에서 retrievedContext 주입은 단순 개선으로 확정되지 않았고, review/reject gate 쪽이 더 안정적인 안전 레버로 확인되었다([reports/54](reports/54_rag_r2b_hardcase_eval.md), [reports/57](reports/57_rag_r2d_evidence_gate_eval.md), [reports/59](reports/59_rag_r2f_output_capture_gate_eval.md)).
 - [~] 보류 또는 조건부 유지 — production prompt 에 retrievedContext 를 자동 주입하지 않는다([reports/60](reports/60_rag_r3_pre_backend_gate_design.md), [reports/61](reports/61_rag_r3_review_first_gate_implementation.md)).
 - [~] 보류 또는 조건부 유지 — RAG 는 점수/지원판단이 아니라 설명 근거 보강 전용 후보로만 유지한다([reports/50](reports/50_rag_design_plan.md)).
-- [ ] 미완료 — RAG 재도입은 scoped source, 개인정보 격리, unsupported claim 감소 지표가 함께 준비된 뒤 재평가한다.
+- [x] 완료 — RAG 재도입 전 조건과 hard-case benchmark 기준을 문서화했다([reports/67](reports/67_rag_reentry_criteria_and_hardcase_benchmark.md)).
+- [ ] 미완료 — RAG 재도입 실측은 scoped source, 개인정보 격리, unsupported claim 감소 지표가 함께 준비된 뒤 별도 benchmark 로 수행한다.
 
 ## 4. Evidence gate / safety 상태
 
@@ -63,7 +66,8 @@ Last updated: 2026-06-30
 ## 7. Current next candidates
 
 - [x] 완료 — R3 자동 검증 보강과 최상위 체크리스트 정리(PR #186 후속, [reports/66](reports/66_r3_auto_verification_and_ai_checklist.md)).
+- [x] 완료 — model-card R3 safety 반영과 RAG 재평가 기준 정리([reports/67](reports/67_rag_reentry_criteria_and_hardcase_benchmark.md), [reports/68](reports/68_model_card_r3_safety_update.md)).
 - [ ] 미완료 — 관리자 gate review 처리 workflow 설계: 검토 완료, 재분석 요청, memo/reason 연결.
 - [ ] 미완료 — R3 gate reason 로그를 기반으로 false-positive 샘플 리뷰와 alias 후보 triage.
-- [ ] 미완료 — RAG 재도입 전용 hard-case 벤치마크 재구성: scoped context, 개인정보 격리, unsupported claim 감소 기준.
-- [ ] 미완료 — model-card 에 R3 production safety 상태를 반영한 다음 개정.
+- [ ] 미완료 — RAG 재도입 전용 hard-case benchmark 실행: scoped context, 개인정보 격리, unsupported claim 감소 기준.
+- [ ] 미완료 — model-card 다음 개정: R3 운영 데이터와 gate reason 분포 반영.
