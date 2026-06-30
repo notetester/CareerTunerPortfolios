@@ -89,10 +89,16 @@ ApplicationWindow {
             currentIndex: 0
 
             DashboardPage {}                       // 0 작업 대시보드
-            Placeholder { label: "면접 연습 (준비 중)" }   // 1
-            Placeholder { label: "면접 리포트 (준비 중)" } // 2
+            PracticePage {}                        // 1 면접 연습
+            ReportPage {}                          // 2 면접 리포트
             Placeholder { label: "연결된 기기 (준비 중)" } // 3
             Placeholder { label: "설정 (준비 중)" }        // 4
+        }
+
+        // ── 우측 폰 미러 (모바일 동기화 시각화) ──
+        PhoneMirror {
+            Layout.preferredWidth: 300
+            Layout.fillHeight: true
         }
     }
 

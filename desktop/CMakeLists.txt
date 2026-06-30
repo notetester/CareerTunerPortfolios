@@ -6,7 +6,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_AUTOMOC ON)
 
 # Qt 6.5+ : Quick(QML) · Network(HTTP/SSE) · Widgets(트레이 아이콘)
-find_package(Qt6 6.5 REQUIRED COMPONENTS Quick Network Widgets)
+find_package(Qt6 6.5 REQUIRED COMPONENTS Quick QuickControls2 Network Widgets)
 qt_standard_project_setup(REQUIRES 6.5)
 
 qt_add_executable(CareerTunerDesktop
@@ -24,10 +24,15 @@ qt_add_qml_module(CareerTunerDesktop
     QML_FILES
         qml/Main.qml
         qml/DashboardPage.qml
+        qml/JobDetailPage.qml
+        qml/PracticePage.qml
+        qml/ReportPage.qml
+        qml/PhoneMirror.qml
 )
 
 target_link_libraries(CareerTunerDesktop PRIVATE
     Qt6::Quick
+    Qt6::QuickControls2
     Qt6::Network
     Qt6::Widgets
 )

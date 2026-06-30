@@ -3,6 +3,8 @@
 #include <QQmlContext>
 #include <QSystemTrayIcon>
 #include <QMenu>
+#include <QQuickStyle>
+#include <QStyle>
 
 #include "core/ApiClient.h"
 #include "core/AuthService.h"
@@ -19,6 +21,9 @@ int main(int argc, char* argv[])
     app.setApplicationName("CareerTuner Desktop");
     app.setOrganizationName("CareerTuner");
     app.setQuitOnLastWindowClosed(false); // 창 닫아도 종료 안 함 → 트레이 상주
+
+    // 네이티브 스타일은 Controls 커스터마이징을 막음 → Fusion 으로 다크 테마 허용
+    QQuickStyle::setStyle("Fusion");
 
     // ── 엔진(C++ 코어) ──
     ApiClient   api;
@@ -41,6 +46,7 @@ int main(int argc, char* argv[])
     // ── 트레이 (창 닫아도 작업 계속) ──
     // TODO: 아이콘 리소스(:/icon.png) 추가 — 현재는 시스템 기본.
     QSystemTrayIcon tray;
+    tray.setIcon(app.style()->standardIcon(QStyle::SP_ComputerIcon)); // TODO: 전용 아이콘 리소스로 교체
     tray.setToolTip("CareerTuner — 면접 준비 컨트롤 센터");
     QMenu trayMenu;
     QAction* showAct = trayMenu.addAction("열기");
