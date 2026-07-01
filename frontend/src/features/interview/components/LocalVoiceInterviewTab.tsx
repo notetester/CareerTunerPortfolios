@@ -13,7 +13,8 @@ import {
   scoreVoiceTranscript,
   transcribeVoice,
 } from "../api/interviewApi";
-import { blobToBase64, countFillers } from "../hooks/voiceAnalysis";
+import { blobToBase64, computeVoiceScore, countFillers, VoiceMetricsTracker } from "../hooks/voiceAnalysis";
+import { BrowserSttTracker } from "../hooks/speechToText";
 import type {
   InterviewQuestion,
   InterviewSession,
@@ -31,6 +32,10 @@ interface Recording {
   questionId: number;
   question: string;
   blob: Blob;
+  /** 녹음 중 수집한 온디바이스 음향 지표 트래커 — serve 미기동 시 전달력 폴백 채점에 쓴다. */
+  tracker: VoiceMetricsTracker | null;
+  /** 녹음 중 브라우저 음성인식(Web Speech)으로 받아둔 전사 — serve STT 미기동 시 전사 폴백. */
+  webSpeechText: string;
 }
 
 interface AnswerResult {
@@ -71,6 +76,8 @@ export function LocalVoiceInterviewTab({ session }: { session: InterviewSession 
   const chunksRef = useRef<Blob[]>([]);
   const micRef = useRef<MediaStream | null>(null);
   const recordingsRef = useRef<Recording[]>([]);
+  const trackerRef = useRef<VoiceMetricsTracker | null>(null);
+  const sttRef = useRef<BrowserSttTracker | null>(null);
 
   const supported =
     typeof navigator !== "undefined" &&
@@ -94,6 +101,11 @@ export function LocalVoiceInterviewTab({ session }: { session: InterviewSession 
     recorderRef.current = null;
     micRef.current?.getTracks().forEach((t) => t.stop());
     micRef.current = null;
+    // finishAnswer 가 Recording 으로 이관하지 못한 트래커만 정리(중단 등). 이관된 것은 trackerRef=null 이라 무해.
+    trackerRef.current?.dispose();
+    trackerRef.current = null;
+    sttRef.current?.dispose();
+    sttRef.current = null;
   };
 
   // 녹음 시작 신호음 (짧은 비프, Web Audio — API 0). 화면 안 봐도 답변 타이밍 캐치.
@@ -126,6 +138,15 @@ export function LocalVoiceInterviewTab({ session }: { session: InterviewSession 
       const mic = await navigator.mediaDevices.getUserMedia({ audio: true });
       micRef.current = mic;
       chunksRef.current = [];
+      // 온디바이스 음향 지표 수집 시작(serve 미기동 시 전달력 폴백용). 녹음 시작 = 질문 TTS 직후 → 반응 지연 측정.
+      const tracker = new VoiceMetricsTracker();
+      tracker.start(mic);
+      tracker.markAiSpeechEnd();
+      trackerRef.current = tracker;
+      // serve STT 폴백용 브라우저 음성인식 병행 시작(미지원 브라우저면 조용히 no-op).
+      const stt = new BrowserSttTracker();
+      stt.start();
+      sttRef.current = stt;
       const recorder = new MediaRecorder(mic);
       recorder.ondataavailable = (e) => {
         if (e.data.size > 0) chunksRef.current.push(e.data);
@@ -185,11 +206,20 @@ export function LocalVoiceInterviewTab({ session }: { session: InterviewSession 
         resolve(chunksRef.current.length ? new Blob(chunksRef.current, { type: r.mimeType }) : null);
       r.stop();
     });
+    // 트래커는 샘플링만 멈추고(지표 확정은 채점 때 전사 글자수로) Recording 으로 이관 — cleanup 의 dispose 대상에서 뺀다.
+    const tracker = trackerRef.current;
+    tracker?.pause();
+    trackerRef.current = null;
+    // 브라우저 음성인식 정지 → 누적 전사 확보(serve STT 실패 시 폴백으로 쓴다).
+    const webSpeechText = sttRef.current?.stop() ?? "";
+    sttRef.current = null;
     cleanup();
 
     const q = questions[questionIdx];
     if (blob && blob.size > 0 && q) {
-      recordingsRef.current.push({ questionId: q.id, question: q.question, blob });
+      recordingsRef.current.push({ questionId: q.id, question: q.question, blob, tracker, webSpeechText });
+    } else {
+      tracker?.dispose();
     }
 
     const nextIdx = questionIdx + 1;
@@ -210,26 +240,40 @@ export function LocalVoiceInterviewTab({ session }: { session: InterviewSession 
     const out: AnswerResult[] = [];
     for (let i = 0; i < recs.length; i++) {
       const rec = recs[i];
+      const audioBase64 = await blobToBase64(rec.blob).catch(() => "");
+      const audioFormat = (rec.blob.type || "audio/webm").includes("webm") ? "webm" : "wav";
+
+      // 1) 전사: serve STT(faster-whisper) 우선, 실패 시 브라우저 음성인식(Web Speech) 폴백.
+      let transcript = "";
       try {
-        const audioBase64 = await blobToBase64(rec.blob);
-        const audioFormat = (rec.blob.type || "audio/webm").includes("webm") ? "webm" : "wav";
         const stt = await transcribeVoice(session.id, audioBase64, audioFormat);
-        const chars = stt.text.replace(/\s/g, "").length;
-        const fillers = countFillers([stt.text]);
+        transcript = stt.text;
+      } catch {
+        transcript = rec.webSpeechText; // serve 미기동 → 브라우저 STT 폴백
+      }
+      const chars = transcript.replace(/\s/g, "").length;
+      const fillers = transcript ? countFillers([transcript]) : 0;
+
+      // 2) 내용 채점(백엔드 haiku, serve 무관) — 전사만 있으면 호출. serve 죽어도 전사가 있으면 채점된다.
+      if (transcript) {
+        await scoreVoiceTranscript(session.id, [
+          { role: "ai", text: rec.question },
+          { role: "user", text: transcript },
+        ]).catch(() => undefined);
+      }
+
+      // 3) 전달력: serve LightGBM 우선, 실패 시 브라우저가 수집한 음향 지표로 온디바이스 폴백.
+      try {
         const server = await scoreVoiceServer(session.id, {
           audioBase64,
           audioFormat,
           transcriptChars: chars,
           fillerCount: fillers,
         });
-        await scoreVoiceTranscript(session.id, [
-          { role: "ai", text: rec.question },
-          { role: "user", text: stt.text },
-        ]).catch(() => undefined);
         out.push({
           questionId: rec.questionId,
           question: rec.question,
-          transcript: stt.text,
+          transcript,
           score: server.score,
           detail: server.detail,
           source: server.source,
@@ -237,16 +281,21 @@ export function LocalVoiceInterviewTab({ session }: { session: InterviewSession 
           contentFeedback: null,
         });
       } catch {
+        // serve 미기동 → 온디바이스 규칙점수(피치·성량·반응). 전사 없으면 말속도·군말은 중립 처리.
+        const metrics = rec.tracker?.finish(chars, fillers) ?? null;
+        const detail = metrics ? computeVoiceScore(metrics) : ZERO_DETAIL;
         out.push({
           questionId: rec.questionId,
           question: rec.question,
-          transcript: "",
-          score: 0,
-          detail: ZERO_DETAIL,
-          source: "error",
+          transcript,
+          score: detail.overall,
+          detail,
+          source: metrics ? "browser" : "error",
           contentScore: null,
           contentFeedback: null,
         });
+      } finally {
+        rec.tracker?.dispose();
       }
       setScoreProgress(i + 1);
     }
@@ -335,7 +384,8 @@ export function LocalVoiceInterviewTab({ session }: { session: InterviewSession 
 
           {serveOff && (
             <p className="rounded-lg bg-amber-50 p-3 text-sm text-amber-700">
-              자체 추론 서버(serve)가 꺼져 있어 시작할 수 없습니다. (ml/interview-nonverbal/run-serve.bat 기동)
+              자체 추론 서버(serve)가 꺼져 있어 <b>전달력만 브라우저에서 채점</b>합니다(전사·내용 채점은 없음).
+              전체 기능은 ml/interview-nonverbal/run-serve.bat 기동 후 이용하세요.
             </p>
           )}
 
@@ -345,7 +395,7 @@ export function LocalVoiceInterviewTab({ session }: { session: InterviewSession 
             </p>
           )}
 
-          {!started && !serveOff && (
+          {!started && (
             <label className="flex items-start gap-2 rounded-lg bg-slate-50 p-3 text-xs text-slate-600">
               <input
                 type="checkbox"
@@ -396,7 +446,7 @@ export function LocalVoiceInterviewTab({ session }: { session: InterviewSession 
             </div>
           )}
 
-          {supported && !serveOff && (
+          {supported && (
             <div className="flex flex-wrap items-center gap-2">
               {!started && (
                 <Button
