@@ -15,6 +15,7 @@ import lombok.NoArgsConstructor;
 public class UserSubscription {
 
     private Long id;
+    private Long paymentId;
     private Long userId;
     private String planCode;
     private String status;

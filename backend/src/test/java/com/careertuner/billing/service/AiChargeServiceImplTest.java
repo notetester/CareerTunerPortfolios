@@ -26,11 +26,13 @@ import com.careertuner.credit.service.CreditService;
 class AiChargeServiceImplTest {
 
     private final BillingPolicyService billingPolicyService = org.mockito.Mockito.mock(BillingPolicyService.class);
+    private final RefundPolicyService refundPolicyService = org.mockito.Mockito.mock(RefundPolicyService.class);
     private final AiBenefitUsageService benefitUsageService = org.mockito.Mockito.mock(AiBenefitUsageService.class);
     private final CreditService creditService = org.mockito.Mockito.mock(CreditService.class);
     private final CreditMapper creditMapper = org.mockito.Mockito.mock(CreditMapper.class);
     private final AiChargeServiceImpl service = new AiChargeServiceImpl(
             billingPolicyService,
+            refundPolicyService,
             benefitUsageService,
             creditService,
             creditMapper);
@@ -132,7 +134,8 @@ class AiChargeServiceImplTest {
                 100L,
                 aiUsageLogId,
                 creditCost,
-                "analysis");
+                "analysis",
+                "test-action");
     }
 
     private static AiFeatureBenefitPolicy featurePolicy(boolean includedInTicket, int defaultCreditCost) {

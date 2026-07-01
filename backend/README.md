@@ -44,6 +44,7 @@ DB_PASSWORD=... JWT_SECRET=... OAUTH_KAKAO_CLIENT_SECRET=... java -jar app.jar
 | 앱 | `APP_FRONTEND_URL` `APP_API_BASE_URL` | `http://localhost:5173` / `http://localhost:8080` |
 | 업로드 | `SPRING_SERVLET_MULTIPART_MAX_FILE_SIZE` `SPRING_SERVLET_MULTIPART_MAX_REQUEST_SIZE` `JOB_POSTING_MAX_FILE_SIZE_BYTES` | `10MB` / `12MB` / `10485760` |
 | 로컬 LLM | `AI_OLLAMA_BASE_URL` `AI_OLLAMA_MODEL` `AI_OLLAMA_CONNECT_TIMEOUT` `AI_OLLAMA_READ_TIMEOUT` | `http://localhost:11434` / `gemma4` / `3s` / `30s` |
+| E 첨삭 LLM | `CAREERTUNER_CORRECTION_AI_PROVIDER` `CAREERTUNER_CORRECTION_AI_SELF_BASE_URL` `CAREERTUNER_CORRECTION_AI_SELF_MODEL` `CAREERTUNER_CORRECTION_AI_SELF_FALLBACK_MODEL` | `openai` / 빈값 / `careertuner-e-correction:8b` / `careertuner-e-correction-3b:latest` |
 
 > 메일은 `MAIL_DEV_MODE=true`(또는 SMTP username 미설정)면 **실제 발송 대신 인증 링크를 로그로 출력**한다.
 > OAuth 키는 아직 미발급이라 placeholder다 — 키 수령 후 위 env(또는 yaml 기본값)만 교체하면 동작한다.
@@ -79,9 +80,27 @@ DB_PASSWORD=... JWT_SECRET=... OAUTH_KAKAO_CLIENT_SECRET=... java -jar app.jar
 | GET | `/api/billing/feature-benefit-policies` | AI 기능 코드와 사용권 코드 매핑 조회 | - |
 | GET | `/api/billing/benefits/me` | 내 현재 구독 기간 사용권 잔여량 조회. 잔여량이 없으면 현재 플랜 기준으로 자동 발급 | Bearer |
 | GET | `/api/billing/benefit-transactions/me?limit=50` | 내 사용권 지급·차감 원장 조회 | Bearer |
+| GET | `/api/billing/refund-policy/current` | 현재 시행 환불정책과 사용자 고지 상태 조회 | Bearer |
+| POST | `/api/billing/refund-policy/acknowledgements` | 정책 버전별 결제·크레딧·사용권 고지 확인 기록 | Bearer |
+| POST | `/api/billing/charge-preview` | AI 기능 실행 전 사용권/크레딧 예상 차감량과 적용 환불정책 조회 | Bearer |
+| GET | `/api/billing/refunds` | 내 환불 신청과 처리 결과 조회 | Bearer |
+| POST | `/api/billing/refunds/preview` | 결제 당시 정책·현재 게시 정책과 사용 이력으로 환불 가능 여부 사전 판정 | Bearer |
+| POST | `/api/billing/refunds` | 결제 건의 사용 이력을 자동 판정하고 전액 환불 검토 신청 | Bearer |
+| GET | `/api/admin/refund-policies` | 환불정책 초안·게시 버전 조회 | Bearer(ADMIN) |
+| PUT | `/api/admin/refund-policies/draft` | 환불정책 초안 생성 또는 수정 | Bearer(ADMIN) |
+| GET | `/api/admin/refunds` | 환불 요청과 자동 판정 근거 조회 | Bearer(ADMIN) |
+| POST | `/api/admin/refunds/{id}/approve` | 가결제 건 전액 환불 승인 | Bearer(ADMIN) |
+| POST | `/api/admin/refunds/{id}/reject` | 환불 불가 처리 | Bearer(ADMIN) |
+| POST | `/api/admin/refund-policies/{id}/publish` | 정책 게시, 환불정책 공지 자동 생성·고정 | Bearer(ADMIN) |
 
 현재 구독제 사용권 정책은 `subscription_plan`, `subscription_benefit_policy`,
 `user_subscription`, `user_benefit_balance`, `ai_feature_benefit_policy`, `benefit_transaction` 테이블로 관리한다.
+환불 고지 기준은 `refund_policy`의 게시 버전으로 관리하고, 사용자별 고지 시점은
+`refund_policy_acknowledgement`에 기록한다. 결제 대기 건에는 결제 당시 환불정책이
+`payment.policy_snapshot_json`에 함께 저장된다. AI 기능은 차감 미리보기에서 발급한
+`actionKey`로 건별 고지를 기록하고, 실제 `AiChargeService` 차감 시 동일 키를 재검증한다.
+환불 신청은 `refund_request`에 결제 당시 정책과 결제 이후 크레딧·사용권 사용 여부를 판정 근거로 남긴다.
+가결제 단계에서는 관리자가 전액 환불 또는 환불 불가만 결정하며 실제 PG 취소와 부분 환불은 수행하지 않는다.
 PRO 플랜은 영상분석권을 월 1장 제공하고, PREMIUM 플랜은 영상분석권과 아바타면접권을 각각 월 5장 제공한다.
 실제 결제 승인과 구독 갱신 자동화는 아직 연결 전이며, 구독 기간이 없으면 기존 `users.plan` 값을 기준으로 해당 월의 사용권을 발급한다.
 
@@ -129,7 +148,7 @@ PRO 플랜은 영상분석권을 월 1장 제공하고, PREMIUM 플랜은 영상
 
 공고/기업 분석은 기본적으로 자체 파인튜닝 모델 `careertuner-b-jobposting-r1`(Ollama)을 사용한다(`B_ANALYSIS_LOCAL_LLM_ENABLED` 기본 `true`). 스키마·그라운딩 검증을 통과하지 못하거나 모델 호출이 실패하면 1회 재시도 후 `self-rules-v1` 규칙 경로로 폴백한다. Ollama 미서빙 환경에서는 `B_ANALYSIS_LOCAL_LLM_ENABLED=false`로 끄면 곧장 `self-rules-v1`을 사용한다. 모델·주소·타임아웃은 `B_ANALYSIS_OLLAMA_MODEL`, `B_ANALYSIS_OLLAMA_BASE_URL`, `B_ANALYSIS_OLLAMA_READ_TIMEOUT`(기본 480s)로 조정한다.
 텍스트 PDF는 PDFBox로 먼저 추출하고, 텍스트가 없는 PDF와 이미지는 자체 문서 추출 워커 또는 명시적으로 allowlist 된 OCR fallback만 사용한다. OpenAI 폴백은 `OPENAI_API_KEY`가 있을 때만 동작하며 모델은 `OPENAI_MODEL`(기본 `gpt-5`)로 바꾼다.
-자체 LLM은 B 공고/기업 분석(`careertuner-b-jobposting-r1`)과 F 커뮤니티 검열의 Ollama 연동, D 면접 파인튜닝 실험을 중심으로 붙어 있으며,
+자체 LLM은 B 공고/기업 분석(`careertuner-b-jobposting-r1`), E 첨삭(`careertuner-e-correction:8b` → `careertuner-e-correction-3b:latest` → OpenAI), F 커뮤니티 검열의 Ollama 연동과 D 면접 파인튜닝 실험을 중심으로 붙어 있으며,
 A~F 담당별 목표 운영 기준은 [`../docs/planning/담당별_자체LLM_운영안.md`](../docs/planning/담당별_자체LLM_운영안.md)를 따른다.
 공통 `ai/common`, 도메인별 `A_AI_*`~`F_AI_*` 설정, 관리자 AI 상태 API는 목표 구조이므로 실제 도입 시 공통 영역 합의 후 구현한다.
 공고문 파일 업로드는 기본 10MB까지 허용하며, 초과 시 `INVALID_INPUT` 응답으로 안내한다.
@@ -141,6 +160,16 @@ revision으로 저장한다. `job_posting`은 `(application_case_id, revision)` 
 수정하며, `sourceType`은 필수이고 날짜 필드는 `clearCheckedAt`, `clearRefreshRecommendedAt` 플래그로 `NULL` 저장할 수 있다.
 사용자 검수 API는 기업 분석 본문과 구조화 JSON만 수정한다. 제품 정책은 `../docs/planning/기획.md`, 데이터/API 목표 구조는
 `../docs/ARCHITECTURE.md`와 `../docs/FEATURE_MODULE_STRUCTURE.md`를 따른다.
+
+## E 첨삭 API
+
+| Method | Path | 설명 | 인증 |
+| --- | --- | --- | --- |
+| POST | `/api/corrections` | 자기소개서·면접 답변·이력서·포트폴리오 설명 첨삭 생성 | Bearer |
+| GET | `/api/corrections` | 내 첨삭 이력 조회 | Bearer |
+| GET | `/api/corrections/{id}` | 내 첨삭 결과 상세 조회 | Bearer |
+
+E 자체 모델은 strict JSON Schema로 학습 계약의 10개 키를 강제·검증하고, 8B를 최대 2회 호출한 뒤 3B를 1회 호출한다. 첨삭 화면 진입 또는 AutoPrep에서 WRITE 사용이 예견되면 8B만 비동기로 워밍하며, 워밍은 크레딧·사용권·AI 사용 로그를 차감하지 않는다. timeout은 같은 모델을 재시도하지 않으며 자체 모델 실패 또는 시간 예산 소진 시 Haiku를 3차 방어로 호출하고, Haiku도 실패하거나 미설정이면 OpenAI로 전환한다. 운영 연결 시 `CAREERTUNER_CORRECTION_AI_PROVIDER=self`, `CAREERTUNER_CORRECTION_AI_SELF_BASE_URL=http://localhost:11434/v1`을 설정한다. Haiku에는 `ANTHROPIC_API_KEY`, OpenAI 최종 폴백에는 `OPENAI_API_KEY`가 필요하다.
 
 ## C 분석·대시보드 API
 

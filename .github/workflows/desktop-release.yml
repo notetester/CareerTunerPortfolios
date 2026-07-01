@@ -1,0 +1,57 @@
+name: Desktop Release
+
+# desktop-v* 태그를 push 하면 Windows 빌드 → Qt 런타임 묶기 → GitHub Release 자동 생성.
+# 수동 실행(workflow_dispatch)도 가능.
+on:
+  push:
+    tags:
+      - 'desktop-v*'
+  workflow_dispatch:
+
+permissions:
+  contents: write   # Release 생성에 필요
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: desktop
+    steps:
+      - uses: actions/checkout@v4
+
+      # 러너에 이미 있는 MSVC 컴파일러 + Qt 6.8.3(msvc) 설치
+      - name: Install Qt 6.8.3
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: '6.8.3'
+          host: windows
+          target: desktop
+          arch: win64_msvc2022_64
+          cache: true
+
+      - name: Configure & build (Release)
+        run: |
+          cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+          cmake --build build --config Release
+
+      # exe 옆에 Qt DLL·QML 플러그인 복사 (독립 실행 가능하게)
+      - name: Deploy Qt runtime
+        run: windeployqt --qmldir qml --release --no-translations build/Release/CareerTunerDesktop.exe
+
+      - name: Package zip
+        shell: pwsh
+        run: |
+          $ver = "${{ github.ref_name }}"
+          Compress-Archive -Path build/Release/* -DestinationPath "CareerTunerDesktop-$ver-win64.zip" -Force
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: "CareerTuner Desktop ${{ github.ref_name }}"
+          files: desktop/CareerTunerDesktop-*.zip
+          body: |
+            CareerTuner 데스크탑 앱 (Windows x64).
+
+            압축을 풀고 `CareerTunerDesktop.exe` 를 실행하세요. Qt 설치 불필요.
+            백엔드 기본 주소: `http://localhost:8080` (원격은 추후 설정 화면에서 변경).

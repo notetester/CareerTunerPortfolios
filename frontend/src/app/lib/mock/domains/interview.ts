@@ -41,11 +41,20 @@ const reports: Record<number, InterviewReport> = {
       "정량 성과(로딩 35% 단축 등)를 더 활용하면 설득력이 높아집니다.",
       "협업 질문에서 본인의 역할을 더 명확히 드러내세요.",
     ],
+    questionScores: [
+      { questionId: 90021, order: 1, question: "본인의 강점을 직무와 연결해 설명해주세요.", score: 82, feedback: "강점과 직무 요구를 잘 연결했습니다. 근거 사례를 하나 더 붙이면 완성도가 올라갑니다." },
+      { questionId: 90022, order: 2, question: "가장 성과가 컸던 프로젝트는 무엇인가요?", score: 85, feedback: "정량 성과가 분명해 설득력이 높습니다." },
+      { questionId: 90023, order: 3, question: "팀 프로젝트에서 협업 갈등을 어떻게 풀었나요?", score: 74, feedback: "상황 설명은 좋았으나 본인의 역할과 기여를 더 드러내세요." },
+    ],
   },
   8001: {
     totalScore: 74, previousScore: null, questionCount: 2, durationLabel: "9분",
     categories: [{ label: "구체성", score: 68 }, { label: "표현력", score: 80 }],
     summaryFeedback: ["기본 질문에 무난히 답변했습니다.", "지원동기에 회사 분석 내용을 연결하면 좋습니다."],
+    questionScores: [
+      { questionId: 90011, order: 1, question: "자기소개를 1분 내로 해주세요.", score: 76, feedback: "핵심 이력을 잘 요약했습니다. 지원 직무와의 접점을 앞부분에 배치하면 좋습니다." },
+      { questionId: 90012, order: 2, question: "이 회사에 지원한 동기는 무엇인가요?", score: 72, feedback: "동기는 분명하나 회사 분석 근거를 덧붙이면 설득력이 높아집니다." },
+    ],
   },
 };
 

@@ -70,12 +70,25 @@ export default defineConfig({
 
   server: {
     port: 5173,
+    // Windows 기본 'localhost' 바인딩이 IPv6(::1)로 잡히면 tailscale serve(127.0.0.1)가 못 붙어 502 가 난다.
+    // IPv4 루프백으로 고정해 serve 프록시가 항상 닿게 한다. (모바일 live reload 는 CLI --host 0.0.0.0 로 override)
+    host: '127.0.0.1',
+    // Tailscale serve(HTTPS)로 tailnet(*.ts.net) 호스트에서 접속할 때 Vite 의 Host 체크를 통과시킨다.
+    // 마이크/카메라(getUserMedia)는 보안 컨텍스트(HTTPS)에서만 열리므로, 원격/모바일에서
+    // 면접 음성·영상을 쓰려면 http LAN/Tailscale IP 가 아니라 https://<machine>.ts.net 로 붙어야 한다.
+    allowedHosts: ['.ts.net'],
     proxy: {
       // Forward API calls to the Spring Boot backend during development.
       // Browser hits localhost:5173/api/*, Vite proxies to localhost:8080/api/*.
       '/api': {
         target: 'http://localhost:8080',
         changeOrigin: true,
+        // tailnet HTTPS(https://<machine>.ts.net) 로 접속하면 브라우저가 Origin 을 붙여 보내,
+        // 백엔드 CORS 필터가 403(Invalid CORS request)로 막는다. /api 는 프록시로 same-origin
+        // 전달되므로 Origin 헤더를 제거해 백엔드가 동일 출처 요청으로 처리하게 한다.
+        configure: (proxy) => {
+          proxy.on('proxyReq', (proxyReq) => proxyReq.removeHeader('origin'))
+        },
       },
     },
   },

@@ -3,6 +3,7 @@ package com.careertuner.billing.service;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
+import java.time.format.DateTimeFormatter;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
@@ -56,6 +57,7 @@ public class BillingServiceImpl implements BillingService, AiBenefitUsageService
     private static final String TRANSACTION_CONSUME = "CONSUME";
     private static final String REF_BENEFIT_BALANCE = "BENEFIT_BALANCE";
     private static final String SOURCE_TYPE_PLAN = "PLAN";
+    private static final DateTimeFormatter DATE_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd");
 
     private final BillingMapper billingMapper;
     private final BillingPolicyService billingPolicyService;
@@ -172,8 +174,8 @@ public class BillingServiceImpl implements BillingService, AiBenefitUsageService
         LocalDateTime end = yearly ? now.plusYears(1) : now.plusMonths(1);
         String policySnapshotJson = billingPolicyService.subscriptionSnapshotJson(code);
 
-        recordPayment(userId, code, amount, code, null, policySnapshotJson);
-        activateSubscription(userId, code, now, end, policySnapshotJson);
+        Payment payment = recordPayment(userId, code, amount, code, null, policySnapshotJson);
+        activateSubscription(userId, payment.getId(), code, now, end, policySnapshotJson);
 
         notify(userId, "PAYMENT_COMPLETE", "구독이 시작되었습니다",
                 "%s 플랜(%s) 구독이 활성화되었습니다.".formatted(plan.getName(), yearly ? "연간" : "월간"));
@@ -182,7 +184,8 @@ public class BillingServiceImpl implements BillingService, AiBenefitUsageService
 
     @Override
     @Transactional
-    public MyBenefitsResponse activateSubscriptionAfterPayment(Long userId, String planCode, String policySnapshotJson) {
+    public MyBenefitsResponse activateSubscriptionAfterPayment(Long userId, Long paymentId, String planCode,
+                                                               String policySnapshotJson) {
         String code = normalizePlanCode(planCode);
         if (DEFAULT_PLAN.equals(code)) {
             throw new BusinessException(ErrorCode.INVALID_INPUT, "무료 플랜은 결제가 필요하지 않습니다.");
@@ -196,7 +199,7 @@ public class BillingServiceImpl implements BillingService, AiBenefitUsageService
                 : policySnapshotJson;
 
         LocalDateTime now = LocalDateTime.now();
-        activateSubscription(userId, code, now, now.plusMonths(1), snapshot);
+        activateSubscription(userId, paymentId, code, now, now.plusMonths(1), snapshot);
         return myBenefits(userId);
     }
 
@@ -242,7 +245,16 @@ public class BillingServiceImpl implements BillingService, AiBenefitUsageService
     @Override
     @Transactional
     public MyBillingResponse cancelSubscription(Long userId) {
-        billingMapper.cancelActiveSubscription(userId);
+        UserSubscription subscription = billingMapper.findActiveSubscription(userId, LocalDateTime.now());
+        int updated = billingMapper.cancelActiveSubscription(userId);
+        if (updated > 0 && subscription != null) {
+            String endDate = subscription.getCurrentPeriodEnd() == null
+                    ? "현재 결제 기간 종료일"
+                    : subscription.getCurrentPeriodEnd().format(DATE_FORMATTER);
+            notify(userId, "SUBSCRIPTION_CANCELED", "구독 해지가 예약되었습니다",
+                    "%s 플랜은 %s까지 이용할 수 있습니다. 이후 자동 갱신되지 않습니다."
+                            .formatted(subscription.getPlanCode(), endDate));
+        }
         return getMyBilling(userId);
     }
 
@@ -310,10 +322,11 @@ public class BillingServiceImpl implements BillingService, AiBenefitUsageService
 
     // ───── 내부 ─────
 
-    private void activateSubscription(Long userId, String planCode, LocalDateTime start, LocalDateTime end,
+    private void activateSubscription(Long userId, Long paymentId, String planCode, LocalDateTime start, LocalDateTime end,
                                       String policySnapshotJson) {
         billingMapper.deactivateActiveSubscriptions(userId, start);
         billingMapper.insertSubscription(UserSubscription.builder()
+                .paymentId(paymentId)
                 .userId(userId)
                 .planCode(planCode)
                 .status("ACTIVE")
@@ -417,8 +430,8 @@ public class BillingServiceImpl implements BillingService, AiBenefitUsageService
         return balance != null ? balance : 0;
     }
 
-    private void recordPayment(Long userId, String productCode, int amount, String plan, Integer creditAmount,
-                               String policySnapshotJson) {
+    private Payment recordPayment(Long userId, String productCode, int amount, String plan, Integer creditAmount,
+                                  String policySnapshotJson) {
         LocalDateTime now = LocalDateTime.now();
         Payment payment = new Payment();
         payment.setUserId(userId);
@@ -434,6 +447,7 @@ public class BillingServiceImpl implements BillingService, AiBenefitUsageService
         payment.setStatus("PAID");
         payment.setPaidAt(now);
         billingMapper.insertPayment(payment);
+        return payment;
     }
 
     private void notify(Long userId, String type, String title, String message) {

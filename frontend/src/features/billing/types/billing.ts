@@ -33,6 +33,14 @@ export interface TossPaymentConfirmResponse {
   balance: number;
 }
 
+export interface TossPaymentCancelResponse {
+  orderId: string;
+  productType: "CREDIT" | "SUBSCRIPTION" | string;
+  productCode: string;
+  planCode?: string | null;
+  status: string;
+}
+
 export interface SubscriptionBenefitPolicy {
   planCode: string;
   benefitCode: string;

@@ -91,6 +91,24 @@ serviceinfo · support · company · legal · ai · admin
 기업 분석은 웹 검색, 외부 API, 수동 출처를 사용할 수 있으므로 출처 URL, 확인 시점, 재조회 시점,
 확인된 사실과 AI 추론의 구분을 저장할 수 있어야 한다.
 
+### 4.1 Spring Bean / AI Provider 계약
+
+A/B/C/D/E/F 어느 영역이든 같은 인터페이스에 구현체가 여러 개 있으면 **선택 지점은 한 곳**이어야 한다.
+특히 AI provider, fallback dispatcher, parser, sender처럼 `ProfileAiService`, `FitAnalysisAiService`,
+`InterviewLlmGateway`, `PushSender` 류의 전략 인터페이스는 다음 규칙을 따른다.
+
+- 하나의 전략 인터페이스에는 `@Primary` 구현체를 최대 하나만 둔다.
+- 새 자체모델·Claude·OpenAI provider를 추가할 때 호출부가 주입받는 인터페이스 구현체를 여러 `@Primary`로 만들지 않는다.
+- provider 우선순위는 primary dispatcher 한 곳에서 결정한다. 예: `자체모델 → Claude → OpenAI → 규칙/Mock`.
+- 새 outer wrapper를 primary로 만들면 기존 dispatcher/provider의 `@Primary`는 제거하고, wrapper가 기존 dispatcher를 구체 타입으로 주입받아 감싼다.
+- 조건부 provider가 필요해도 `@ConditionalOnProperty`만으로 모호성을 숨기지 않는다. 기본 설정과 CI 설정에서 단일 primary가 보장되어야 한다.
+- Spring Boot 4/Jackson 3 환경에서는 애플리케이션 코드가 Spring 관리 `tools.jackson.databind.ObjectMapper` Bean을 주입받아 쓴다. `com.fasterxml.jackson.*` import 또는 `new ObjectMapper()` 직접 생성은 금지한다.
+
+이 계약은 테스트로도 고정한다.
+
+- `backend/src/test/java/com/careertuner/SpringBeanConventionTests.java` — `src/main/java` 전체에서 같은 인터페이스에 `@Primary` 구현체가 2개 이상 생기면 실패한다.
+- `backend/src/test/java/com/careertuner/JacksonUsageConventionTests.java` — 애플리케이션 코드의 Jackson 2 import와 직접 `ObjectMapper` 생성을 차단한다.
+
 **AI 오케스트레이터(자동 준비 파이프라인 — ✅ 구현 완료 2026-06-23)**: 사용자의 한 줄 요청을 받아 인테이크 챗봇이
 부족 정보를 **멀티턴 대화**로 수집하고(지원 건→모드), 두뇌(Planner)가 **동적 실행계획(필요 파트 선택)**을 만든 뒤, 오케스트레이터가
 **의존 그래프대로 병렬** 호출해 6개 도메인(프로필·공고·적합도·자소서·면접·커뮤니티) 지원 준비 전체를 자동화한다. 각 단계는

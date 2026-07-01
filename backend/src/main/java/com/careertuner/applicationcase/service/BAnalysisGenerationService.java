@@ -244,29 +244,30 @@ public class BAnalysisGenerationService {
     private CompanyAnalysisPayload selfRulesCompanyAnalysis(ApplicationCase applicationCase,
                                                            String postingText,
                                                            Classification classification) {
-        String companyName = defaultText(applicationCase.getCompanyName(), "Target company");
+        String knownCompany = knownCompanyName(applicationCase.getCompanyName());
+        String companyLabel = knownCompany == null ? "해당 기업" : knownCompany;
         String companyInfo = joinClassified(classification, BJobSentenceClassifier.COMPANY_INFO);
         String summary = companyInfo.isBlank()
-                ? "%s is represented from the uploaded job posting only. No external company API or OpenAI fallback was used."
-                        .formatted(companyName)
-                : "%s information was summarized from the uploaded job posting only: %s"
-                        .formatted(companyName, truncate(companyInfo, 260));
-        String interviewPoints = "Prepare to explain why this role matches your experience, how you handle the listed responsibilities, "
-                + "and which evidence supports the required skills: " + joinPreview(extractRequiredSkills(postingText)) + ".";
+                ? "%s 정보는 업로드된 공고문만으로 정리했습니다. 외부 기업 정보나 OpenAI 폴백은 사용하지 않았습니다."
+                        .formatted(companyLabel)
+                : "%s 정보를 업로드된 공고문 기준으로 요약했습니다: %s"
+                        .formatted(companyLabel, truncate(companyInfo, 260));
+        String interviewPoints = "이 직무가 본인 경험과 어떻게 맞는지, 명시된 담당 업무를 어떻게 수행할지, "
+                + "요구 기술을 뒷받침할 근거가 무엇인지 설명할 수 있도록 준비하세요: " + joinPreview(extractRequiredSkills(postingText)) + ".";
         return new CompanyAnalysisPayload(
                 summary,
-                "Not externally researched in the default pipeline. Validate latest company news during user review.",
+                "기본 파이프라인에서는 외부 조사를 수행하지 않았습니다. 검수 단계에서 최신 기업 뉴스를 확인하세요.",
                 industry(postingText),
                 toJson(List.of()),
                 interviewPoints,
                 toJson(List.of(Map.of(
                         "type", "JOB_POSTING",
-                        "label", "Uploaded job posting",
+                        "label", "업로드한 공고문",
                         "model", SELF_RULES_MODEL))),
                 toJson(verifiedFacts(applicationCase, postingText)),
                 toJson(List.of(Map.of(
-                        "inference", "Interview preparation should focus on job-posting responsibilities and skill evidence.",
-                        "basis", "Derived from extracted posting sections by local rules."))),
+                        "inference", "면접 준비는 공고문의 담당 업무와 요구 기술 근거에 집중하는 것이 좋습니다.",
+                        "basis", "추출된 공고문 섹션을 로컬 규칙으로 도출했습니다."))),
                 usage(SELF_RULES_MODEL, postingText.length(), summary.length() + interviewPoints.length()));
     }
 
@@ -679,15 +680,18 @@ public class BAnalysisGenerationService {
 
     private List<Map<String, String>> verifiedFacts(ApplicationCase applicationCase, String postingText) {
         List<Map<String, String>> rows = new ArrayList<>();
+        String jobTitle = knownJobTitle(applicationCase.getJobTitle());
+        if (jobTitle != null) {
+            rows.add(Map.of("fact", "직무명: " + jobTitle, "source", "application_case"));
+        }
+        String companyName = knownCompanyName(applicationCase.getCompanyName());
+        if (companyName != null) {
+            rows.add(Map.of("fact", "기업명: " + companyName, "source", "application_case"));
+        }
+        // 회사·직무가 미상이어도 품질 신호로 쓰이는 추출 사실은 항상 남긴다(validateCompanyPayload 의존).
         rows.add(Map.of(
-                "fact", "Job title: " + defaultText(applicationCase.getJobTitle(), "unknown"),
-                "source", "application_case"));
-        rows.add(Map.of(
-                "fact", "Company: " + defaultText(applicationCase.getCompanyName(), "unknown"),
-                "source", "application_case"));
-        rows.add(Map.of(
-                "fact", "Posting text was extracted and quality-gated before analysis.",
-                "source", quoteFor(defaultText(applicationCase.getJobTitle(), ""), postingText)));
+                "fact", "공고문이 추출되어 품질 게이트를 통과한 뒤 분석되었습니다.",
+                "source", quoteFor(jobTitle == null ? "" : jobTitle, postingText)));
         return rows;
     }
 
@@ -880,6 +884,33 @@ public class BAnalysisGenerationService {
 
     private static String defaultText(String value, String fallback) {
         return isBlank(value) ? fallback : value.trim();
+    }
+
+    /**
+     * 회사명이 미상이면 null 을 반환한다. blank, "기업명 확인 필요" placeholder, "Target company"/"unknown"
+     * fallback 값을 미상으로 본다. placeholder 상수를 다른 클래스에서 끌어오지 않고(공통 경계 변경 회피)
+     * 회사명 필드 한정 predicate 로 감지한다.
+     */
+    private static String knownCompanyName(String value) {
+        String trimmed = value == null ? "" : value.trim();
+        if (trimmed.isEmpty()
+                || "Target company".equals(trimmed)
+                || "unknown".equals(trimmed)
+                || (trimmed.contains("기업명") && trimmed.contains("확인 필요"))) {
+            return null;
+        }
+        return trimmed;
+    }
+
+    /** 직무명이 미상이면 null 을 반환한다(blank, "직무명 확인 필요" placeholder, "unknown"). */
+    private static String knownJobTitle(String value) {
+        String trimmed = value == null ? "" : value.trim();
+        if (trimmed.isEmpty()
+                || "unknown".equals(trimmed)
+                || (trimmed.contains("직무명") && trimmed.contains("확인 필요"))) {
+            return null;
+        }
+        return trimmed;
     }
 
     private static String safeMessage(Throwable ex) {

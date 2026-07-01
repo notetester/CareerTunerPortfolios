@@ -11,10 +11,13 @@ import org.springframework.transaction.annotation.Transactional;
 import com.careertuner.billing.domain.SubscriptionPlan;
 import com.careertuner.billing.service.BillingPolicyService;
 import com.careertuner.billing.service.BillingService;
+import com.careertuner.billing.domain.RefundPolicy;
+import com.careertuner.billing.service.RefundPolicyService;
 import com.careertuner.common.exception.BusinessException;
 import com.careertuner.common.exception.ErrorCode;
 import com.careertuner.credit.domain.CreditProduct;
 import com.careertuner.payment.domain.Payment;
+import com.careertuner.payment.dto.TossPaymentCancelResponse;
 import com.careertuner.payment.dto.TossPaymentConfirmRequest;
 import com.careertuner.payment.dto.TossPaymentConfirmResponse;
 import com.careertuner.payment.dto.TossPaymentReadyRequest;
@@ -31,6 +34,7 @@ public class PaymentServiceImpl implements PaymentService {
     private static final String PROVIDER_TOSS = "TOSS";
     private static final String STATUS_READY = "READY";
     private static final String STATUS_PAID = "PAID";
+    private static final String STATUS_CANCELED = "CANCELED";
     private static final String PRODUCT_TYPE_CREDIT = "CREDIT";
     private static final String PRODUCT_TYPE_SUBSCRIPTION = "SUBSCRIPTION";
     private static final int ORDER_ID_RANDOM_LENGTH = 8;
@@ -40,6 +44,7 @@ public class PaymentServiceImpl implements PaymentService {
 
     private final BillingService billingService;
     private final BillingPolicyService billingPolicyService;
+    private final RefundPolicyService refundPolicyService;
     private final PaymentMapper paymentMapper;
     private final TossPaymentClient tossPaymentClient;
     private final TossPaymentProperties tossPaymentProperties;
@@ -48,16 +53,25 @@ public class PaymentServiceImpl implements PaymentService {
     @Override
     @Transactional
     public TossPaymentReadyResponse ready(Long userId, String email, TossPaymentReadyRequest request) {
+        if (request == null) {
+            throw new BusinessException(ErrorCode.INVALID_INPUT, "결제 요청 정보가 필요합니다.");
+        }
+        RefundPolicy refundPolicy = refundPolicyService.requirePaymentAcknowledgement(
+                userId, request.refundPolicyId(), request.policyAcknowledgementKey());
         if (PRODUCT_TYPE_SUBSCRIPTION.equals(request.productType())) {
-            return readySubscription(userId, email, request.productCode());
+            return readySubscription(
+                    userId, email, request.productCode(), refundPolicy, request.policyAcknowledgementKey());
         }
         if (!PRODUCT_TYPE_CREDIT.equals(request.productType())) {
             throw new BusinessException(ErrorCode.INVALID_INPUT, "Unsupported payment product type.");
         }
-        return readyCredit(userId, email, request.productCode());
+        return readyCredit(
+                userId, email, request.productCode(), refundPolicy, request.policyAcknowledgementKey());
     }
 
-    private TossPaymentReadyResponse readyCredit(Long userId, String email, String productCode) {
+    private TossPaymentReadyResponse readyCredit(
+            Long userId, String email, String productCode, RefundPolicy refundPolicy,
+            String policyAcknowledgementKey) {
         CreditProduct product = requireActiveProduct(productCode);
         validateProduct(product);
 
@@ -70,7 +84,8 @@ public class PaymentServiceImpl implements PaymentService {
         payment.setAmount(product.getPrice());
         payment.setPlan(null);
         payment.setCreditAmount(product.getCreditAmount());
-        payment.setPolicySnapshotJson(billingPolicyService.creditProductSnapshotJson(product));
+        payment.setPolicySnapshotJson(refundPolicyService.appendPaymentSnapshot(
+                billingPolicyService.creditProductSnapshotJson(product), refundPolicy, policyAcknowledgementKey));
         payment.setStatus(STATUS_READY);
         insertPaymentWithUniqueOrderId(payment);
 
@@ -87,7 +102,9 @@ public class PaymentServiceImpl implements PaymentService {
                 tossPaymentProperties.getFailUrl());
     }
 
-    private TossPaymentReadyResponse readySubscription(Long userId, String email, String planCode) {
+    private TossPaymentReadyResponse readySubscription(
+            Long userId, String email, String planCode, RefundPolicy refundPolicy,
+            String policyAcknowledgementKey) {
         SubscriptionPlan plan = requirePaidSubscriptionPlan(planCode);
 
         Payment payment = new Payment();
@@ -99,7 +116,9 @@ public class PaymentServiceImpl implements PaymentService {
         payment.setAmount(plan.getMonthlyPrice());
         payment.setPlan(plan.getCode());
         payment.setCreditAmount(0);
-        payment.setPolicySnapshotJson(billingPolicyService.subscriptionSnapshotJson(plan.getCode()));
+        payment.setPolicySnapshotJson(refundPolicyService.appendPaymentSnapshot(
+                billingPolicyService.subscriptionSnapshotJson(plan.getCode()), refundPolicy,
+                policyAcknowledgementKey));
         payment.setStatus(STATUS_READY);
         insertPaymentWithUniqueOrderId(payment);
 
@@ -141,6 +160,7 @@ public class PaymentServiceImpl implements PaymentService {
         if (PRODUCT_TYPE_SUBSCRIPTION.equals(payment.getProductType())) {
             billingService.activateSubscriptionAfterPayment(
                     payment.getUserId(),
+                    payment.getId(),
                     payment.getPlan(),
                     payment.getPolicySnapshotJson());
             balance = requireUserCredit(payment.getUserId());
@@ -152,6 +172,34 @@ public class PaymentServiceImpl implements PaymentService {
         }
 
         return confirmedResponse(payment, request.paymentKey(), balance);
+    }
+
+    @Override
+    @Transactional
+    public TossPaymentCancelResponse cancelReadyPayment(Long userId, String orderId) {
+        Payment payment = requireOwnedPayment(orderId, userId);
+        normalizePaymentProductType(payment);
+
+        if (STATUS_READY.equals(payment.getStatus())) {
+            paymentMapper.markCanceledIfReady(payment.getOrderId());
+            payment.setStatus(STATUS_CANCELED);
+        }
+
+        Payment latest = paymentMapper.findByOrderId(payment.getOrderId());
+        if (latest != null) {
+            normalizePaymentProductType(latest);
+            return cancelResponse(latest);
+        }
+        return cancelResponse(payment);
+    }
+
+    private TossPaymentCancelResponse cancelResponse(Payment payment) {
+        return new TossPaymentCancelResponse(
+                payment.getOrderId(),
+                payment.getProductType(),
+                payment.getProductCode(),
+                payment.getPlan(),
+                payment.getStatus());
     }
 
     private TossPaymentConfirmResponse confirmedResponse(Payment payment, String paymentKey, int balance) {

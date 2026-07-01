@@ -120,6 +120,28 @@ export function InterviewReportTab({ session }: { session: InterviewSession | nu
               </ul>
             </div>
           )}
+
+          {(report.questionScores ?? []).length > 0 && (
+            <div className="space-y-3" data-tut="tut-report-questions">
+              <h3 className="font-bold text-slate-800">질문별 채점</h3>
+              {(report.questionScores ?? []).map((q) => (
+                <div key={q.questionId} className="space-y-2 rounded-xl border border-slate-200 bg-card p-4">
+                  <div className="flex items-start justify-between gap-3">
+                    <span className="text-sm font-semibold text-slate-700">
+                      Q{q.order}. {q.question}
+                    </span>
+                    {q.score !== null ? (
+                      <span className={`shrink-0 text-sm font-black ${getScoreColor(q.score)}`}>{q.score}점</span>
+                    ) : (
+                      <span className="shrink-0 text-xs text-slate-400">미채점</span>
+                    )}
+                  </div>
+                  {q.score !== null && <Progress value={q.score} className="h-2" />}
+                  {q.feedback && <p className="text-sm leading-relaxed text-slate-500">{q.feedback}</p>}
+                </div>
+              ))}
+            </div>
+          )}
         </>
       )}
 
