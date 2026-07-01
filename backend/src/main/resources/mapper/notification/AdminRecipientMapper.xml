@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.careertuner.notification.mapper.AdminRecipientMapper">
+
+    <!-- 관리자 알림 팬아웃 대상: 활성 관리자(userId) 목록 -->
+    <select id="findActiveAdminIds" resultType="long">
+        SELECT id
+        FROM users
+        WHERE role IN ('ADMIN', 'SUPER_ADMIN')
+          AND status = 'ACTIVE'
+        ORDER BY id
+    </select>
+
+</mapper>

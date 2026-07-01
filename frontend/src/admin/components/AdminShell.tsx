@@ -10,6 +10,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { useAuth } from "@/app/auth/AuthContext";
+import { NotificationBell } from "@/features/notification/components/NotificationBell";
 import "./admin-shell.css";
 
 interface NavItem {
@@ -127,6 +128,7 @@ export default function AdminShell({
             >
               <ExternalLink className="size-4" /> 사이트로 돌아가기
             </Link>
+            <NotificationBell />
             <div className="adm__profile">
               <div className="adm__avatar">A</div>
               <span className="adm__profile-name">관리자</span>

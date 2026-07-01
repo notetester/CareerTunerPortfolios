@@ -36,7 +36,11 @@ public final class NotificationCategories {
             Map.entry("PAYMENT_SCHEDULED", "billing"),
             Map.entry("CREDIT_RECHARGED", "billing"),
             Map.entry("NOTICE", "notice"),
-            Map.entry("TICKET_ANSWERED", "notice"));
+            Map.entry("TICKET_ANSWERED", "notice"),
+            // 관리자 전용(USER_CATEGORIES 에는 넣지 않아 사용자가 토글할 수 없다)
+            Map.entry("NEW_REPORT", "admin"),
+            Map.entry("NEW_TICKET", "admin"),
+            Map.entry("NEW_USER", "admin"));
 
     private NotificationCategories() {
     }
