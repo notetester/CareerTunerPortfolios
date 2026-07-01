@@ -65,6 +65,17 @@ export interface InterviewReport {
   durationLabel: string | null;
   categories: { label: string; score: number }[];
   summaryFeedback: string[];
+  /** 질문별 채점 — 음성/영상 면접도 텍스트와 동일하게 질문 단위 점수·피드백을 노출한다. */
+  questionScores: InterviewReportQuestionScore[];
+}
+
+/** 리포트의 질문별 채점 한 건. */
+export interface InterviewReportQuestionScore {
+  questionId: number;
+  order: number;
+  question: string;
+  score: number | null;
+  feedback: string | null;
 }
 
 // ───── 요청 DTO ─────
