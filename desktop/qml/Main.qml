@@ -18,34 +18,6 @@ ApplicationWindow {
     readonly property color cMuted:  "#8b949e"
     readonly property color cText:   "#e6edf3"
 
-    // ── 새 작업 생성 + 진행 시뮬레이션 (백엔드 없이 데모용) ──
-    property int nextJobId: 200
-    property int simJobId: -1
-    property int simProgress: 0
-
-    function createJob(company, mode) {
-        nextJobId += 1
-        jobModel.upsert(nextJobId, company, mode, "RUNNING", 0)
-        simJobId = nextJobId
-        simProgress = 0
-        simTimer.start()
-    }
-
-    Timer {
-        id: simTimer
-        interval: 380; repeat: true
-        onTriggered: {
-            win.simProgress += 12
-            if (win.simProgress >= 100) {
-                win.simProgress = 100
-                jobModel.setProgress(win.simJobId, 100, "DONE")
-                simTimer.stop()
-            } else {
-                jobModel.setProgress(win.simJobId, win.simProgress, "RUNNING")
-            }
-        }
-    }
-
     NewJobDialog {
         id: newJobDialog
         onJobCreated: (caseId, mode) => jobModel.createSession(caseId, mode)

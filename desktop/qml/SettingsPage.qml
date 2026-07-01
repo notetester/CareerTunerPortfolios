@@ -35,11 +35,11 @@ Item {
                     TextField {
                         id: urlField
                         Layout.fillWidth: true
-                        text: "http://localhost:8080"
+                        text: api.baseUrl()
                         color: "#e6edf3"
                         background: Rectangle { color: "#0d1117"; border.color: "#30363d"; radius: 8 }
                     }
-                    Button { text: "적용"; onClicked: srvMsg.text = "✓ 적용됨: " + urlField.text }
+                    Button { text: "적용"; onClicked: { api.setBaseUrl(urlField.text); srvMsg.text = "✓ 적용됨: " + urlField.text } }
                 }
                 Text { text: "원격(Tailscale) 백엔드면 100.x 주소로 변경"; color: "#8b949e"; font.pixelSize: 11 }
                 Text { id: srvMsg; text: ""; color: "#2dd4bf"; font.pixelSize: 12; visible: text !== "" }
