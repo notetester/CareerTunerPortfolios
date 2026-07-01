@@ -33,7 +33,8 @@ public class NoticeServiceImpl implements NoticeService {
             "UPDATE", "업데이트",
             "MAINTENANCE", "점검",
             "EVENT", "이벤트",
-            "POLICY", "정책"
+            "POLICY", "정책",
+            "REFUND_POLICY", "정책"
     );
 
     private static final DateTimeFormatter DATE_FMT = DateTimeFormatter.ofPattern("yyyy.MM.dd");

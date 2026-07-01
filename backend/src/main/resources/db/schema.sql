@@ -758,6 +758,7 @@ CREATE TABLE IF NOT EXISTS subscription_benefit_policy (
 
 CREATE TABLE IF NOT EXISTS user_subscription (
     id                   BIGINT NOT NULL AUTO_INCREMENT,
+    payment_id           BIGINT NULL,
     user_id              BIGINT NOT NULL,
     plan_code            VARCHAR(30) NOT NULL,
     status               VARCHAR(20) NOT NULL DEFAULT 'ACTIVE',
@@ -769,9 +770,11 @@ CREATE TABLE IF NOT EXISTS user_subscription (
     created_at           DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at           DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     PRIMARY KEY (id),
+    UNIQUE KEY uk_user_subscription_payment (payment_id),
     KEY idx_user_subscription_user_status (user_id, status),
     KEY idx_user_subscription_plan (plan_code),
     CONSTRAINT fk_user_subscription_user FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE,
+    CONSTRAINT fk_user_subscription_payment FOREIGN KEY (payment_id) REFERENCES payment (id) ON DELETE SET NULL,
     CONSTRAINT fk_user_subscription_plan FOREIGN KEY (plan_code) REFERENCES subscription_plan (code)
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci;
 
@@ -1365,6 +1368,103 @@ CREATE TABLE IF NOT EXISTS notice (
     KEY idx_notice_list (status, is_pinned DESC, published_at DESC),
     CONSTRAINT fk_notice_admin FOREIGN KEY (admin_id) REFERENCES users (id) ON DELETE SET NULL
     ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci;
+
+-- 환불 정책은 게시된 버전을 덮어쓰지 않고 버전 행을 계속 추가한다.
+-- 현재 시행 정책은 PUBLISHED + effective_at <= NOW() 중 최신 버전으로 계산한다.
+CREATE TABLE IF NOT EXISTS refund_policy (
+    id             BIGINT       NOT NULL AUTO_INCREMENT,
+    policy_code    VARCHAR(50)  NOT NULL DEFAULT 'REFUND_DEFAULT',
+    version        INT          NOT NULL,
+    title          VARCHAR(255) NOT NULL,
+    summary        VARCHAR(500) NULL,
+    content        MEDIUMTEXT   NOT NULL,
+    rules_json     JSON         NOT NULL,
+    status         VARCHAR(20)  NOT NULL DEFAULT 'DRAFT',
+    is_adverse     TINYINT(1)   NOT NULL DEFAULT 0,
+    effective_at   DATETIME     NULL,
+    published_at   DATETIME     NULL,
+    notice_id      BIGINT       NULL,
+    created_by     BIGINT       NULL,
+    created_at     DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at     DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    draft_slot     TINYINT GENERATED ALWAYS AS
+        (CASE WHEN status = 'DRAFT' THEN 1 ELSE NULL END) STORED,
+    PRIMARY KEY (id),
+    UNIQUE KEY uk_refund_policy_code_version (policy_code, version),
+    UNIQUE KEY uk_refund_policy_single_draft (policy_code, draft_slot),
+    KEY idx_refund_policy_current (policy_code, status, effective_at, version),
+    KEY idx_refund_policy_notice (notice_id),
+    CONSTRAINT fk_refund_policy_notice FOREIGN KEY (notice_id) REFERENCES notice (id) ON DELETE SET NULL,
+    CONSTRAINT fk_refund_policy_admin FOREIGN KEY (created_by) REFERENCES users (id) ON DELETE SET NULL,
+    CONSTRAINT chk_refund_policy_status CHECK (status IN ('DRAFT', 'PUBLISHED'))
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci;
+
+-- 정책을 실제로 고지한 버전과 시점을 남긴다. NOTICE는 토스트 노출,
+-- PAYMENT/CREDIT_USE/BENEFIT_USE는 각 행위 전 정책 확인 기록이다.
+CREATE TABLE IF NOT EXISTS refund_policy_acknowledgement (
+    id               BIGINT      NOT NULL AUTO_INCREMENT,
+    user_id          BIGINT      NOT NULL,
+    refund_policy_id BIGINT      NOT NULL,
+    trigger_type     VARCHAR(30) NOT NULL,
+    action_key       VARCHAR(120) NOT NULL DEFAULT 'GLOBAL',
+    acknowledged_at  DATETIME    NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    created_at       DATETIME    NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (id),
+    UNIQUE KEY uk_refund_policy_ack (user_id, refund_policy_id, trigger_type, action_key),
+    KEY idx_refund_policy_ack_policy (refund_policy_id, trigger_type),
+    CONSTRAINT fk_refund_policy_ack_user FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE,
+    CONSTRAINT fk_refund_policy_ack_policy FOREIGN KEY (refund_policy_id) REFERENCES refund_policy (id) ON DELETE CASCADE,
+    CONSTRAINT chk_refund_policy_ack_trigger CHECK
+        (trigger_type IN ('NOTICE', 'PAYMENT', 'CREDIT_USE', 'BENEFIT_USE'))
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci;
+
+-- 가결제 단계의 환불 신청과 관리자 최종 판정을 보관한다.
+-- 실제 PG 취소나 부분 환불은 수행하지 않고 승인 시 payment 상태만 REFUNDED 로 변경한다.
+CREATE TABLE IF NOT EXISTS refund_request (
+    id                  BIGINT        NOT NULL AUTO_INCREMENT,
+    payment_id          BIGINT        NOT NULL,
+    user_id             BIGINT        NOT NULL,
+    status              VARCHAR(30)   NOT NULL DEFAULT 'REQUESTED',
+    reason_code         VARCHAR(40)   NOT NULL,
+    reason_text         VARCHAR(1000) NULL,
+    eligibility_result  VARCHAR(30)   NOT NULL,
+    credit_used         TINYINT(1)    NOT NULL DEFAULT 0,
+    benefit_used        TINYINT(1)    NOT NULL DEFAULT 0,
+    refund_amount       INT           NOT NULL,
+    decision_basis_json JSON          NOT NULL,
+    reviewed_by         BIGINT        NULL,
+    reviewed_reason     VARCHAR(1000) NULL,
+    requested_at        DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    reviewed_at         DATETIME      NULL,
+    updated_at          DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    PRIMARY KEY (id),
+    UNIQUE KEY uk_refund_request_payment (payment_id),
+    KEY idx_refund_request_user (user_id, requested_at),
+    KEY idx_refund_request_status (status, requested_at),
+    CONSTRAINT fk_refund_request_payment FOREIGN KEY (payment_id) REFERENCES payment (id),
+    CONSTRAINT fk_refund_request_user FOREIGN KEY (user_id) REFERENCES users (id),
+    CONSTRAINT fk_refund_request_reviewer FOREIGN KEY (reviewed_by) REFERENCES users (id) ON DELETE SET NULL,
+    CONSTRAINT chk_refund_request_status CHECK (status IN ('REQUESTED', 'APPROVED', 'REJECTED')),
+    CONSTRAINT chk_refund_request_eligibility CHECK
+        (eligibility_result IN ('ELIGIBLE', 'INELIGIBLE', 'REVIEW_REQUIRED'))
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci;
+
+INSERT IGNORE INTO refund_policy
+    (policy_code, version, title, summary, content, rules_json, status, is_adverse,
+     effective_at, published_at, created_by)
+VALUES
+    ('REFUND_DEFAULT', 1, '환불 정책',
+     '전자상거래 관련 법령과 서비스 운영 기준에 따른 기본 환불 정책입니다.',
+     '결제 후 7일 이내이며 유료 기능을 사용하지 않은 경우 전액 환불을 신청할 수 있습니다. 크레딧 또는 사용권을 사용한 결제 건과 중복 결제, 시스템 오류 등 예외 사유는 운영자가 결제 및 사용 이력을 확인한 뒤 처리합니다.',
+     JSON_OBJECT(
+         'legalBasis', 'E_COMMERCE_ACT',
+         'withdrawalDays', 7,
+         'unusedPolicy', 'FULL_REFUND',
+         'usedPolicy', 'NO_REFUND',
+         'exceptionCodes', JSON_ARRAY('DUPLICATE_PAYMENT', 'SYSTEM_ERROR', 'LEGAL_REQUIREMENT'),
+         'noticeScopes', JSON_ARRAY('PAYMENT', 'CREDIT_USE', 'BENEFIT_USE')
+     ),
+     'PUBLISHED', 0, '2026-01-01 00:00:00', CURRENT_TIMESTAMP, NULL);
 
 --  faq / faq_media
 CREATE TABLE IF NOT EXISTS faq (

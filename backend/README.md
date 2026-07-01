@@ -80,9 +80,27 @@ DB_PASSWORD=... JWT_SECRET=... OAUTH_KAKAO_CLIENT_SECRET=... java -jar app.jar
 | GET | `/api/billing/feature-benefit-policies` | AI 기능 코드와 사용권 코드 매핑 조회 | - |
 | GET | `/api/billing/benefits/me` | 내 현재 구독 기간 사용권 잔여량 조회. 잔여량이 없으면 현재 플랜 기준으로 자동 발급 | Bearer |
 | GET | `/api/billing/benefit-transactions/me?limit=50` | 내 사용권 지급·차감 원장 조회 | Bearer |
+| GET | `/api/billing/refund-policy/current` | 현재 시행 환불정책과 사용자 고지 상태 조회 | Bearer |
+| POST | `/api/billing/refund-policy/acknowledgements` | 정책 버전별 결제·크레딧·사용권 고지 확인 기록 | Bearer |
+| POST | `/api/billing/charge-preview` | AI 기능 실행 전 사용권/크레딧 예상 차감량과 적용 환불정책 조회 | Bearer |
+| GET | `/api/billing/refunds` | 내 환불 신청과 처리 결과 조회 | Bearer |
+| POST | `/api/billing/refunds/preview` | 결제 당시 정책·현재 게시 정책과 사용 이력으로 환불 가능 여부 사전 판정 | Bearer |
+| POST | `/api/billing/refunds` | 결제 건의 사용 이력을 자동 판정하고 전액 환불 검토 신청 | Bearer |
+| GET | `/api/admin/refund-policies` | 환불정책 초안·게시 버전 조회 | Bearer(ADMIN) |
+| PUT | `/api/admin/refund-policies/draft` | 환불정책 초안 생성 또는 수정 | Bearer(ADMIN) |
+| GET | `/api/admin/refunds` | 환불 요청과 자동 판정 근거 조회 | Bearer(ADMIN) |
+| POST | `/api/admin/refunds/{id}/approve` | 가결제 건 전액 환불 승인 | Bearer(ADMIN) |
+| POST | `/api/admin/refunds/{id}/reject` | 환불 불가 처리 | Bearer(ADMIN) |
+| POST | `/api/admin/refund-policies/{id}/publish` | 정책 게시, 환불정책 공지 자동 생성·고정 | Bearer(ADMIN) |
 
 현재 구독제 사용권 정책은 `subscription_plan`, `subscription_benefit_policy`,
 `user_subscription`, `user_benefit_balance`, `ai_feature_benefit_policy`, `benefit_transaction` 테이블로 관리한다.
+환불 고지 기준은 `refund_policy`의 게시 버전으로 관리하고, 사용자별 고지 시점은
+`refund_policy_acknowledgement`에 기록한다. 결제 대기 건에는 결제 당시 환불정책이
+`payment.policy_snapshot_json`에 함께 저장된다. AI 기능은 차감 미리보기에서 발급한
+`actionKey`로 건별 고지를 기록하고, 실제 `AiChargeService` 차감 시 동일 키를 재검증한다.
+환불 신청은 `refund_request`에 결제 당시 정책과 결제 이후 크레딧·사용권 사용 여부를 판정 근거로 남긴다.
+가결제 단계에서는 관리자가 전액 환불 또는 환불 불가만 결정하며 실제 PG 취소와 부분 환불은 수행하지 않는다.
 PRO 플랜은 영상분석권을 월 1장 제공하고, PREMIUM 플랜은 영상분석권과 아바타면접권을 각각 월 5장 제공한다.
 실제 결제 승인과 구독 갱신 자동화는 아직 연결 전이며, 구독 기간이 없으면 기존 `users.plan` 값을 기준으로 해당 월의 사용권을 발급한다.
 
