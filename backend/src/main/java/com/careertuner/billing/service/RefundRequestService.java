@@ -17,6 +17,7 @@ import com.careertuner.billing.dto.RefundRequestCreateRequest;
 import com.careertuner.billing.dto.RefundRequestResponse;
 import com.careertuner.billing.dto.RefundReviewRequest;
 import com.careertuner.billing.mapper.RefundRequestMapper;
+import com.careertuner.admin.common.AdminAccess;
 import com.careertuner.common.exception.BusinessException;
 import com.careertuner.common.exception.ErrorCode;
 import com.careertuner.common.security.AuthUser;
@@ -222,8 +223,7 @@ public class RefundRequestService {
     }
 
     private void requireAdmin(AuthUser authUser) {
-        if (authUser == null || authUser.id() == null) throw new BusinessException(ErrorCode.UNAUTHORIZED, "관리자 로그인이 필요합니다.");
-        if (!"ADMIN".equalsIgnoreCase(authUser.role())) throw new BusinessException(ErrorCode.FORBIDDEN, "관리자만 환불 요청을 처리할 수 있습니다.");
+        AdminAccess.requireAdmin(authUser);
     }
 
     private String trimToNull(String value) {

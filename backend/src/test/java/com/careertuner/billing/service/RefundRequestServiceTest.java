@@ -92,7 +92,7 @@ class RefundRequestServiceTest {
         when(mapper.approve(100L, 9L, "미사용 확인")).thenReturn(1);
 
         RefundRequestResponse result = service.approve(
-                new AuthUser(9L, "admin@careertuner.dev", "ADMIN"),
+                new AuthUser(9L, "super-admin@careertuner.dev", "SUPER_ADMIN"),
                 100L,
                 new RefundReviewRequest("미사용 확인"));
 
