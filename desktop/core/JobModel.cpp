@@ -122,6 +122,15 @@ void JobModel::markResumed(int sessionId)
         });
 }
 
+void JobModel::dispatchToPhone(int sessionId)
+{
+    if (!m_api) return;
+    m_api->post("/api/interview/sessions/" + QString::number(sessionId) + "/dispatch", QJsonObject(),
+        [this, sessionId](bool ok, const QJsonValue&, const QString&) {
+            if (ok) emit dispatched(sessionId);   // 서버가 알림 저장+푸시 발송 → 폰/웹 알림 벨에 뜸
+        });
+}
+
 int JobModel::rowCount(const QModelIndex& parent) const
 {
     if (parent.isValid()) return 0;

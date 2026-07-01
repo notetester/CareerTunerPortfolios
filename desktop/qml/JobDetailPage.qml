@@ -19,6 +19,7 @@ Item {
         function onQuestionsReady(questions) { detail.questionList = questions }
         function onProgressReady(p) { detail.progress = p }
         function onResumed(sid) { detail.resumeMsg = "✓ 이어받기 기록됨 — 폰 CareerTuner 앱에서 최근 세션으로 이어받으세요." }
+        function onDispatched(sid) { detail.resumeMsg = "✓ 폰으로 알림을 보냈어요 — 폰·웹 앱 알림 벨에서 확인하세요 (최대 30초)." }
     }
 
     property var lanes: [
@@ -49,7 +50,7 @@ Item {
                 }
             }
             Item { Layout.fillWidth: true }
-            Button { text: "📱 폰으로 이어받기"; onClicked: jobModel.markResumed(detail.jobId) }
+            Button { text: "📱 폰으로 보내기"; onClicked: { jobModel.dispatchToPhone(detail.jobId); jobModel.markResumed(detail.jobId) } }
             Button { text: "← 대시보드"; onClicked: detail.back() }
         }
 

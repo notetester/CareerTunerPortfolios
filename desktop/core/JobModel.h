@@ -33,12 +33,14 @@ public:
     Q_INVOKABLE void loadQuestions(int sessionId);                   // 질문 목록 → questionsReady
     Q_INVOKABLE void loadProgress(int sessionId);                    // 진행률 → progressReady
     Q_INVOKABLE void markResumed(int sessionId);                     // 이어받기 시각 기록 → resumed
+    Q_INVOKABLE void dispatchToPhone(int sessionId);                 // 폰/웹으로 알림 발송 → dispatched
 
 signals:
     void casesReady(const QVariantList& cases);
     void questionsReady(const QVariantList& questions);
     void progressReady(const QVariantMap& progress);
     void resumed(int sessionId);
+    void dispatched(int sessionId);
 
 public:
 
