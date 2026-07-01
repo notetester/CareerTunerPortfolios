@@ -12,6 +12,8 @@ import type {
   CreditTransaction,
   BillingCycle,
 } from "@/features/billing/api/billingApi";
+import type { CurrentRefundPolicy } from "@/features/billing/api/refundPolicyApi";
+import type { RefundReasonCode, RefundRequestRow } from "@/features/billing/api/refundRequestApi";
 
 // ── 공개 정보: 요금제 목록 ──
 const plans: SubscriptionPlan[] = [
@@ -119,6 +121,7 @@ const payments: Payment[] = [
   {
     id: 5001,
     provider: "TOSS",
+    productType: "SUBSCRIPTION",
     productCode: "PLAN_PRO",
     orderId: "ORD-20260601-PRO-5001",
     amount: 19900,
@@ -131,6 +134,7 @@ const payments: Payment[] = [
   {
     id: 5002,
     provider: "TOSS",
+    productType: "CREDIT",
     productCode: "CREDIT_100",
     orderId: "ORD-20260605-C100-5002",
     amount: 9000,
@@ -143,6 +147,7 @@ const payments: Payment[] = [
   {
     id: 5003,
     provider: "KAKAOPAY",
+    productType: "CREDIT",
     productCode: "CREDIT_30",
     orderId: "ORD-20260610-C30-5003",
     amount: 3000,
@@ -176,6 +181,21 @@ const creditTransactions: CreditTransaction[] = [
   { id: 6007, type: "USE", amount: -3, balanceAfter: 222, reason: "적합도 분석 - 라인", createdAt: iso(2) },
 ];
 
+const currentRefundPolicy: CurrentRefundPolicy = {
+  id: 1,
+  policyCode: "REFUND_DEFAULT",
+  version: 1,
+  title: "환불 정책",
+  summary: "결제 후 7일 이내 미사용 결제 건은 전액 환불 검토가 가능하며, 크레딧 또는 사용권 사용 시 환불이 제한됩니다.",
+  content: "환불 신청은 관리자가 결제 및 사용 이력을 확인한 뒤 전액 환불 또는 환불 불가로 처리합니다.",
+  rulesJson: JSON.stringify({ withdrawalDays: 7, unusedPolicy: "FULL_REFUND", usedPolicy: "NO_REFUND" }),
+  effectiveAt: "2026-01-01T00:00:00",
+  noticeId: 1,
+  acknowledgedTriggers: [],
+};
+
+const refundRequests: RefundRequestRow[] = [];
+
 interface SubscribeBody {
   planCode?: string;
   cycle?: BillingCycle;
@@ -195,6 +215,46 @@ export const billingRoutes: MockRoute[] = [
   { method: "GET", pattern: /^\/billing\/payments$/, handler: () => [...payments] },
   { method: "GET", pattern: /^\/billing\/usage$/, handler: () => [...usage] },
   { method: "GET", pattern: /^\/billing\/credit-transactions$/, handler: () => [...creditTransactions] },
+  { method: "GET", pattern: /^\/billing\/refund-policy\/current$/, handler: () => ({ ...currentRefundPolicy }) },
+  { method: "POST", pattern: /^\/billing\/refund-policy\/acknowledgements$/, handler: () => ({ ...currentRefundPolicy }) },
+  { method: "GET", pattern: /^\/billing\/refunds$/, handler: () => [...refundRequests] },
+  {
+    method: "POST",
+    pattern: /^\/billing\/refunds$/,
+    handler: ({ body }: MockContext) => {
+      const request = body as { paymentId?: number; reasonCode?: RefundReasonCode; reasonText?: string } | undefined;
+      const payment = payments.find((row) => row.id === request?.paymentId);
+      if (!payment) return null;
+      const row: RefundRequestRow = {
+        id: 7000 + refundRequests.length + 1,
+        paymentId: payment.id,
+        userId: 1,
+        userEmail: "demo@careertuner.test",
+        userName: "김데모",
+        orderId: payment.orderId,
+        productType: payment.productType,
+        productCode: payment.productCode,
+        plan: payment.plan,
+        paymentAmount: payment.amount,
+        paidAt: payment.paidAt,
+        paymentStatus: payment.status,
+        status: "REQUESTED",
+        reasonCode: request?.reasonCode ?? "CHANGE_OF_MIND",
+        reasonText: request?.reasonText ?? null,
+        eligibilityResult: "ELIGIBLE",
+        creditUsed: false,
+        benefitUsed: false,
+        refundAmount: payment.amount,
+        decisionBasisJson: "{}",
+        reviewedBy: null,
+        reviewedReason: null,
+        requestedAt: new Date().toISOString(),
+        reviewedAt: null,
+      };
+      refundRequests.unshift(row);
+      return row;
+    },
+  },
 
   // ── 구독 신청: planCode 로 현재 플랜을 갱신하고 갱신된 MyBilling 반환 ──
   {
@@ -233,6 +293,7 @@ export const billingRoutes: MockRoute[] = [
         payments.unshift({
           id: 5000 + payments.length + 1,
           provider: "TOSS",
+          productType: "CREDIT",
           productCode: product.code,
           orderId: `ORD-DEMO-${product.code}-${5000 + payments.length + 1}`,
           amount: product.price,

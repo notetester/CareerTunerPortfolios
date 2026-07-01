@@ -1,13 +1,16 @@
 import { useEffect, useState } from "react";
-import { CreditCard, RefreshCw } from "lucide-react";
+import { CreditCard, RefreshCw, RotateCcw } from "lucide-react";
 import AdminShell from "../../../components/AdminShell";
 import { Badge } from "@/app/components/ui/badge";
 import { Button } from "@/app/components/ui/button";
 import { Card, CardContent } from "@/app/components/ui/card";
 import {
-  getAdminPayments, getAdminPaymentSummary,
+  approveAdminRefundRequest, getAdminPayments, getAdminPaymentSummary, getAdminRefundRequests,
+  rejectAdminRefundRequest,
   type AdminPaymentRow, type AdminPaymentSummary,
 } from "../api";
+import type { RefundRequestRow } from "@/features/billing/api/refundRequestApi";
+import { toast } from "@/features/notification/components/toast";
 
 const STATUS_FILTERS = [
   { value: "", label: "전체" },
@@ -25,14 +28,21 @@ export function AdminPaymentsPage() {
   const [status, setStatus] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [refunds, setRefunds] = useState<RefundRequestRow[]>([]);
+  const [refundStatus, setRefundStatus] = useState("REQUESTED");
+  const [reviewingId, setReviewingId] = useState<number | null>(null);
 
   const load = async (nextStatus = status) => {
     setLoading(true);
     setError(null);
     try {
-      const [list, sum] = await Promise.all([getAdminPayments(nextStatus || undefined), getAdminPaymentSummary()]);
+      const [list, sum, refundList] = await Promise.all([
+        getAdminPayments(nextStatus || undefined), getAdminPaymentSummary(),
+        getAdminRefundRequests(refundStatus || undefined),
+      ]);
       setRows(list);
       setSummary(sum);
+      setRefunds(refundList);
     } catch (e) {
       setError(e instanceof Error ? e.message : "결제 내역을 불러오지 못했습니다.");
     } finally {
@@ -44,6 +54,34 @@ export function AdminPaymentsPage() {
     void load("");
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  const loadRefunds = async (nextStatus: string) => {
+    setRefundStatus(nextStatus);
+    try {
+      setRefunds(await getAdminRefundRequests(nextStatus || undefined));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "환불 요청을 불러오지 못했습니다.");
+    }
+  };
+
+  const review = async (row: RefundRequestRow, approve: boolean) => {
+    const reason = window.prompt(approve ? "전액 환불 승인 사유를 입력하세요." : "환불 불가 사유를 입력하세요.");
+    if (!reason?.trim()) return;
+    if (!window.confirm(approve ? "이 결제 건을 전액 환불 처리하시겠습니까?" : "이 환불 신청을 거절하시겠습니까?")) return;
+    setReviewingId(row.id);
+    try {
+      if (approve) await approveAdminRefundRequest(row.id, reason.trim());
+      else await rejectAdminRefundRequest(row.id, reason.trim());
+      toast.success(approve ? "전액 환불로 처리했습니다." : "환불 불가로 처리했습니다.");
+      await Promise.all([load(status), loadRefunds(refundStatus)]);
+    } catch (e) {
+      const message = e instanceof Error ? e.message : "환불 요청 처리에 실패했습니다.";
+      setError(message);
+      toast.error(message);
+    } finally {
+      setReviewingId(null);
+    }
+  };
 
   return (
     <AdminShell
@@ -119,8 +157,60 @@ export function AdminPaymentsPage() {
           </div>
         </CardContent>
       </Card>
+
+      <Card className="mt-5 border-slate-200 bg-card">
+        <CardContent className="p-0">
+          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 p-4">
+            <div>
+              <div className="flex items-center gap-2 font-bold text-slate-900"><RotateCcw className="size-4" />환불 요청</div>
+              <p className="mt-1 text-xs text-slate-500">결제 당시 정책과 사용 이력을 확인해 전액 환불 또는 환불 불가로 처리합니다.</p>
+            </div>
+            <div className="flex gap-2">
+              {[["REQUESTED", "검토 중"], ["APPROVED", "승인"], ["REJECTED", "불가"], ["", "전체"]].map(([value, label]) => (
+                <Button key={value || "all"} size="sm" variant={refundStatus === value ? "default" : "outline"}
+                  onClick={() => void loadRefunds(value)}>{label}</Button>
+              ))}
+            </div>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead><tr className="border-b border-slate-200 text-left text-xs font-semibold text-slate-500">
+                <th className="px-4 py-3">회원/주문</th><th className="px-4 py-3">결제</th>
+                <th className="px-4 py-3">판정 근거</th><th className="px-4 py-3">신청 사유</th><th className="px-4 py-3">처리</th>
+              </tr></thead>
+              <tbody>
+                {refunds.map((row) => (
+                  <tr key={row.id} className="border-b border-slate-100 align-top">
+                    <td className="px-4 py-3"><div className="font-semibold">{row.userName ?? "-"}</div><div className="text-xs text-slate-500">{row.userEmail}</div><div className="mt-1 text-xs">{row.orderId}</div></td>
+                    <td className="px-4 py-3"><div>{row.plan ? `${row.plan} 구독` : row.productCode}</div><div className="font-bold">{won(row.paymentAmount)}</div><div className="text-xs text-slate-500">{fmt(row.paidAt)}</div></td>
+                    <td className="px-4 py-3"><EligibilityBadge result={row.eligibilityResult} /><div className="mt-2 text-xs text-slate-600">크레딧 {row.creditUsed ? "사용" : "미사용"} · 사용권 {row.benefitUsed ? "사용" : "미사용"}</div></td>
+                    <td className="max-w-56 px-4 py-3"><div className="font-semibold">{reasonLabel(row.reasonCode)}</div><div className="mt-1 break-words text-xs text-slate-500">{row.reasonText || "상세 내용 없음"}</div>{row.reviewedReason && <div className="mt-2 text-xs text-blue-700">처리 사유: {row.reviewedReason}</div>}</td>
+                    <td className="px-4 py-3">
+                      {row.status === "REQUESTED" ? <div className="flex min-w-36 gap-2">
+                        <Button size="sm" disabled={reviewingId === row.id} onClick={() => void review(row, true)}>전액 환불</Button>
+                        <Button size="sm" variant="outline" disabled={reviewingId === row.id} onClick={() => void review(row, false)}>환불 불가</Button>
+                      </div> : <Badge className={row.status === "APPROVED" ? "bg-blue-100 text-blue-700" : "bg-slate-200 text-slate-700"}>{row.status === "APPROVED" ? "전액 환불" : "환불 불가"}</Badge>}
+                    </td>
+                  </tr>
+                ))}
+                {refunds.length === 0 && <tr><td colSpan={5} className="px-4 py-10 text-center text-sm text-slate-400">환불 요청이 없습니다.</td></tr>}
+              </tbody>
+            </table>
+          </div>
+        </CardContent>
+      </Card>
     </AdminShell>
   );
+}
+
+function EligibilityBadge({ result }: { result: RefundRequestRow["eligibilityResult"] }) {
+  const label = result === "ELIGIBLE" ? "환불 가능" : result === "INELIGIBLE" ? "정책상 불가" : "예외 검토";
+  const color = result === "ELIGIBLE" ? "bg-green-100 text-green-700" : result === "INELIGIBLE" ? "bg-red-100 text-red-700" : "bg-amber-100 text-amber-700";
+  return <Badge className={color}>{label}</Badge>;
+}
+
+function reasonLabel(code: string) {
+  return ({ CHANGE_OF_MIND: "단순 변심", DUPLICATE_PAYMENT: "중복 결제", SYSTEM_ERROR: "시스템 오류", LEGAL_REQUIREMENT: "법적 사유", OTHER: "기타" } as Record<string, string>)[code] ?? code;
 }
 
 function SummaryCard({ label, value, highlight }: { label: string; value: string; highlight?: boolean }) {

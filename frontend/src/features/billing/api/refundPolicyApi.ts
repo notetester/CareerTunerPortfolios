@@ -28,7 +28,7 @@ export const defaultRefundPolicyRules: RefundPolicyRules = {
   legalBasis: "E_COMMERCE_ACT",
   withdrawalDays: 7,
   unusedPolicy: "FULL_REFUND",
-  usedPolicy: "MANUAL_REVIEW",
+  usedPolicy: "NO_REFUND",
   exceptionCodes: ["DUPLICATE_PAYMENT", "SYSTEM_ERROR", "LEGAL_REQUIREMENT"],
   noticeScopes: ["PAYMENT", "CREDIT_USE", "BENEFIT_USE"],
 };

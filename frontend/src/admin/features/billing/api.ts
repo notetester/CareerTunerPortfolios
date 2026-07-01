@@ -1,6 +1,7 @@
 import { api } from "@/app/lib/api";
 import type { CreditProduct, SubscriptionPlan } from "@/features/billing/api/billingApi";
 import type { RefundPolicyRules } from "@/features/billing/api/refundPolicyApi";
+import type { RefundRequestRow } from "@/features/billing/api/refundRequestApi";
 
 export interface SubscriptionBenefitPolicy {
   planCode: string;
@@ -112,6 +113,21 @@ export const getAdminPayments = (status?: string) =>
 
 export const getAdminPaymentSummary = () =>
   api<AdminPaymentSummary>("/admin/payments/summary", { method: "GET" });
+
+export const getAdminRefundRequests = (status?: string) =>
+  api<RefundRequestRow[]>(`/admin/refunds${status ? `?status=${encodeURIComponent(status)}` : ""}`, { method: "GET" });
+
+export const approveAdminRefundRequest = (id: number, reviewedReason: string) =>
+  api<RefundRequestRow>(`/admin/refunds/${id}/approve`, {
+    method: "POST",
+    body: JSON.stringify({ reviewedReason }),
+  });
+
+export const rejectAdminRefundRequest = (id: number, reviewedReason: string) =>
+  api<RefundRequestRow>(`/admin/refunds/${id}/reject`, {
+    method: "POST",
+    body: JSON.stringify({ reviewedReason }),
+  });
 
 export const getAdminPlans = () => api<AdminPlans>("/admin/plans", { method: "GET" });
 

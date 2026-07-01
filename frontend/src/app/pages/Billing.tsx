@@ -5,7 +5,7 @@ import { Button } from "../components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
 import { Progress } from "../components/ui/progress";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../components/ui/tabs";
-import { Award, BarChart3, CheckCircle2, CreditCard, Loader2, ReceiptText, Zap } from "lucide-react";
+import { Award, BarChart3, CheckCircle2, CreditCard, Loader2, ReceiptText, RotateCcw, Zap } from "lucide-react";
 import { useAuth } from "../auth/AuthContext";
 import {
   cancelSubscription, getCreditProducts, getMonthlyUsage, getMyBilling, getMyPayments, getPlans,
@@ -21,6 +21,11 @@ import {
   type CurrentRefundPolicy,
 } from "@/features/billing/api/refundPolicyApi";
 import { RefundPolicyConfirmDialog } from "@/features/billing/components/RefundPolicyConfirmDialog";
+import { RefundRequestDialog } from "@/features/billing/components/RefundRequestDialog";
+import {
+  createRefundRequest, getMyRefundRequests,
+  type RefundReasonCode, type RefundRequestRow,
+} from "@/features/billing/api/refundRequestApi";
 
 const tabs = ["plans", "usage", "credits", "history"] as const;
 type BillingTab = (typeof tabs)[number];
@@ -82,6 +87,9 @@ export function BillingPage() {
   const [billing, setBilling] = useState<MyBilling | null>(null);
   const [usage, setUsage] = useState<UsageRow[]>([]);
   const [payments, setPayments] = useState<Payment[]>([]);
+  const [refundRequests, setRefundRequests] = useState<RefundRequestRow[]>([]);
+  const [refundPayment, setRefundPayment] = useState<Payment | null>(null);
+  const [refundBusy, setRefundBusy] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [refundPolicy, setRefundPolicy] = useState<CurrentRefundPolicy | null>(null);
@@ -105,6 +113,11 @@ export function BillingPage() {
     setBilling(me);
     setUsage(u);
     setPayments(pay);
+    try {
+      setRefundRequests(await getMyRefundRequests());
+    } catch {
+      setRefundRequests([]);
+    }
   };
 
   useEffect(() => {
@@ -197,6 +210,31 @@ export function BillingPage() {
     }
   };
 
+  const openRefundRequest = async (payment: Payment) => {
+    setError(null);
+    try {
+      setRefundPolicy(await getCurrentRefundPolicy());
+      setRefundPayment(payment);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "환불 정책을 불러오지 못했습니다.");
+    }
+  };
+
+  const submitRefundRequest = async (reasonCode: RefundReasonCode, reasonText: string) => {
+    if (!refundPayment) return;
+    setRefundBusy(true);
+    setError(null);
+    try {
+      await createRefundRequest(refundPayment.id, reasonCode, reasonText);
+      setRefundPayment(null);
+      await loadMine();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "환불 신청에 실패했습니다.");
+    } finally {
+      setRefundBusy(false);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-slate-50">
       <RefundPolicyConfirmDialog
@@ -205,6 +243,13 @@ export function BillingPage() {
         busy={policyBusy}
         onCancel={() => setPendingPayment(null)}
         onConfirm={() => void confirmPolicyAndPay()}
+      />
+      <RefundRequestDialog
+        payment={refundPayment}
+        policy={refundPolicy}
+        busy={refundBusy}
+        onCancel={() => setRefundPayment(null)}
+        onSubmit={(reasonCode, reasonText) => void submitRefundRequest(reasonCode, reasonText)}
       />
       <div className="mx-auto w-full max-w-[1400px] space-y-6 px-4 py-8 sm:px-6">
         <div>
@@ -406,6 +451,7 @@ export function BillingPage() {
           </TabsContent>
 
           <TabsContent value="history" className="mt-5">
+            <div className="space-y-4">
             <Card className="border border-slate-200 bg-card">
               <CardHeader>
                 <CardTitle className="flex items-center gap-2 text-base">
@@ -415,7 +461,9 @@ export function BillingPage() {
               </CardHeader>
               <CardContent className="space-y-3">
                 {payments.length > 0 ? (
-                  payments.map((payment) => (
+                  payments.map((payment) => {
+                    const refund = refundRequests.find((row) => row.paymentId === payment.id);
+                    return (
                     <div key={payment.id} className="flex flex-col gap-2 rounded-xl border border-slate-200 bg-slate-50 p-4 sm:flex-row sm:items-center sm:justify-between">
                       <div>
                         <div className="text-sm font-semibold text-slate-800">
@@ -428,9 +476,16 @@ export function BillingPage() {
                         <Badge className={payment.status === "PAID" ? "bg-green-100 text-green-700" : "bg-slate-200 text-slate-700"}>
                           {payment.status === "PAID" ? "결제 완료" : payment.status}
                         </Badge>
+                        {payment.status === "PAID" && !refund && (
+                          <Button size="sm" variant="outline" onClick={() => void openRefundRequest(payment)}>
+                            환불 신청
+                          </Button>
+                        )}
+                        {refund && <RefundStatusBadge status={refund.status} />}
                       </div>
                     </div>
-                  ))
+                    );
+                  })
                 ) : (
                   <div className="rounded-lg bg-slate-50 p-6 text-center text-sm text-slate-500">
                     {isAuthenticated ? "결제 내역이 없습니다." : "로그인하면 결제 내역이 표시됩니다."}
@@ -438,9 +493,42 @@ export function BillingPage() {
                 )}
               </CardContent>
             </Card>
+            <Card className="border border-slate-200 bg-card">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2 text-base">
+                  <RotateCcw className="size-4 text-slate-600" />
+                  환불 신청 및 처리 내역
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                {refundRequests.length > 0 ? refundRequests.map((refund) => (
+                  <div key={refund.id} className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <div>
+                        <div className="text-sm font-semibold text-slate-800">주문번호 {refund.orderId}</div>
+                        <div className="mt-1 text-xs text-slate-500">
+                          {refund.requestedAt.slice(0, 10)} 신청 · {won(refund.refundAmount)} · {refund.creditUsed || refund.benefitUsed ? "사용 이력 있음" : "사용 이력 없음"}
+                        </div>
+                      </div>
+                      <RefundStatusBadge status={refund.status} />
+                    </div>
+                    {refund.reviewedReason && <p className="mt-2 text-xs text-slate-600">관리자 답변: {refund.reviewedReason}</p>}
+                  </div>
+                )) : (
+                  <div className="rounded-lg bg-slate-50 p-6 text-center text-sm text-slate-500">환불 신청 내역이 없습니다.</div>
+                )}
+              </CardContent>
+            </Card>
+            </div>
           </TabsContent>
         </Tabs>
       </div>
     </div>
   );
+}
+
+function RefundStatusBadge({ status }: { status: RefundRequestRow["status"] }) {
+  const label = status === "REQUESTED" ? "검토 중" : status === "APPROVED" ? "전액 환불" : "환불 불가";
+  const color = status === "REQUESTED" ? "bg-amber-100 text-amber-700" : status === "APPROVED" ? "bg-blue-100 text-blue-700" : "bg-slate-200 text-slate-700";
+  return <Badge className={color}>{label}</Badge>;
 }
