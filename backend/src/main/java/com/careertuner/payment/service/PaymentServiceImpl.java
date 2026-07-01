@@ -160,6 +160,7 @@ public class PaymentServiceImpl implements PaymentService {
         if (PRODUCT_TYPE_SUBSCRIPTION.equals(payment.getProductType())) {
             billingService.activateSubscriptionAfterPayment(
                     payment.getUserId(),
+                    payment.getId(),
                     payment.getPlan(),
                     payment.getPolicySnapshotJson());
             balance = requireUserCredit(payment.getUserId());

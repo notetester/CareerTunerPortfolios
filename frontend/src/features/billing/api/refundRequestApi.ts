@@ -34,7 +34,28 @@ export interface RefundRequestRow {
   reviewedAt: string | null;
 }
 
+export interface RefundEligibility {
+  paymentId: number;
+  eligibilityResult: "ELIGIBLE" | "INELIGIBLE" | "REVIEW_REQUIRED";
+  decisionCode: string;
+  message: string;
+  creditUsed: boolean;
+  benefitUsed: boolean;
+  refundAmount: number;
+  policyId: number | null;
+  policyVersion: number;
+  policyTitle: string | null;
+  policySummary: string | null;
+  withdrawalDays: number;
+}
+
 export const getMyRefundRequests = () => api<RefundRequestRow[]>("/billing/refunds");
+
+export const previewRefundRequest = (paymentId: number, reasonCode: RefundReasonCode) =>
+  api<RefundEligibility>("/billing/refunds/preview", {
+    method: "POST",
+    body: JSON.stringify({ paymentId, reasonCode }),
+  });
 
 export const createRefundRequest = (
   paymentId: number,

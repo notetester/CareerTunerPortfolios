@@ -125,7 +125,7 @@ class PaymentServiceImplTest {
         assertThat(response.productType()).isEqualTo("CREDIT");
         assertThat(response.balance()).isEqualTo(1500);
         verify(billingService).grantCreditsAfterPayment(1L, "CREDIT_1000", 1000);
-        verify(billingService, never()).activateSubscriptionAfterPayment(any(), any(), any());
+        verify(billingService, never()).activateSubscriptionAfterPayment(any(), any(), any(), any());
     }
 
     @Test
@@ -146,7 +146,7 @@ class PaymentServiceImplTest {
         assertThat(response.status()).isEqualTo("PAID");
         assertThat(response.productType()).isEqualTo("SUBSCRIPTION");
         assertThat(response.planCode()).isEqualTo("BASIC");
-        verify(billingService).activateSubscriptionAfterPayment(1L, "BASIC", "{\"plan\":{\"code\":\"BASIC\"}}");
+        verify(billingService).activateSubscriptionAfterPayment(1L, 20L, "BASIC", "{\"plan\":{\"code\":\"BASIC\"}}");
         verify(billingService, never()).grantCreditsAfterPayment(any(), any(), org.mockito.ArgumentMatchers.anyInt());
     }
 
@@ -221,6 +221,7 @@ class PaymentServiceImplTest {
                                    int creditAmount,
                                    String status) {
         Payment payment = new Payment();
+        payment.setId(20L);
         payment.setUserId(userId);
         payment.setProvider("TOSS");
         payment.setProductType(productType);

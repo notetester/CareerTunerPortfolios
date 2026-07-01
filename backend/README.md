@@ -84,6 +84,7 @@ DB_PASSWORD=... JWT_SECRET=... OAUTH_KAKAO_CLIENT_SECRET=... java -jar app.jar
 | POST | `/api/billing/refund-policy/acknowledgements` | 정책 버전별 결제·크레딧·사용권 고지 확인 기록 | Bearer |
 | POST | `/api/billing/charge-preview` | AI 기능 실행 전 사용권/크레딧 예상 차감량과 적용 환불정책 조회 | Bearer |
 | GET | `/api/billing/refunds` | 내 환불 신청과 처리 결과 조회 | Bearer |
+| POST | `/api/billing/refunds/preview` | 결제 당시 정책·현재 게시 정책과 사용 이력으로 환불 가능 여부 사전 판정 | Bearer |
 | POST | `/api/billing/refunds` | 결제 건의 사용 이력을 자동 판정하고 전액 환불 검토 신청 | Bearer |
 | GET | `/api/admin/refund-policies` | 환불정책 초안·게시 버전 조회 | Bearer(ADMIN) |
 | PUT | `/api/admin/refund-policies/draft` | 환불정책 초안 생성 또는 수정 | Bearer(ADMIN) |

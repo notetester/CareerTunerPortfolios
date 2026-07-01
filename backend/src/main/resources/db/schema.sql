@@ -758,6 +758,7 @@ CREATE TABLE IF NOT EXISTS subscription_benefit_policy (
 
 CREATE TABLE IF NOT EXISTS user_subscription (
     id                   BIGINT NOT NULL AUTO_INCREMENT,
+    payment_id           BIGINT NULL,
     user_id              BIGINT NOT NULL,
     plan_code            VARCHAR(30) NOT NULL,
     status               VARCHAR(20) NOT NULL DEFAULT 'ACTIVE',
@@ -769,9 +770,11 @@ CREATE TABLE IF NOT EXISTS user_subscription (
     created_at           DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at           DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     PRIMARY KEY (id),
+    UNIQUE KEY uk_user_subscription_payment (payment_id),
     KEY idx_user_subscription_user_status (user_id, status),
     KEY idx_user_subscription_plan (plan_code),
     CONSTRAINT fk_user_subscription_user FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE,
+    CONSTRAINT fk_user_subscription_payment FOREIGN KEY (payment_id) REFERENCES payment (id) ON DELETE SET NULL,
     CONSTRAINT fk_user_subscription_plan FOREIGN KEY (plan_code) REFERENCES subscription_plan (code)
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci;
 

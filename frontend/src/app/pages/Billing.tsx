@@ -14,6 +14,7 @@ import {
 } from "@/features/billing/api/billingApi";
 import { cancelTossPayment, readyTossPayment } from "@/features/billing/api/paymentApi";
 import { requestTossCardPayment } from "@/features/billing/api/tossPaymentSdk";
+import type { TossPaymentReadyResponse } from "@/features/billing/types/billing";
 import {
   acknowledgeRefundPolicy,
   createPolicyActionKey,
@@ -23,8 +24,8 @@ import {
 import { RefundPolicyConfirmDialog } from "@/features/billing/components/RefundPolicyConfirmDialog";
 import { RefundRequestDialog } from "@/features/billing/components/RefundRequestDialog";
 import {
-  createRefundRequest, getMyRefundRequests,
-  type RefundReasonCode, type RefundRequestRow,
+  createRefundRequest, getMyRefundRequests, previewRefundRequest,
+  type RefundEligibility, type RefundReasonCode, type RefundRequestRow,
 } from "@/features/billing/api/refundRequestApi";
 
 const tabs = ["plans", "usage", "credits", "history"] as const;
@@ -90,11 +91,15 @@ export function BillingPage() {
   const [refundRequests, setRefundRequests] = useState<RefundRequestRow[]>([]);
   const [refundPayment, setRefundPayment] = useState<Payment | null>(null);
   const [refundBusy, setRefundBusy] = useState(false);
+  const [refundEligibility, setRefundEligibility] = useState<RefundEligibility | null>(null);
+  const [refundError, setRefundError] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [refundPolicy, setRefundPolicy] = useState<CurrentRefundPolicy | null>(null);
   const [pendingPayment, setPendingPayment] = useState<PendingPayment | null>(null);
+  const [readyPayment, setReadyPayment] = useState<TossPaymentReadyResponse | null>(null);
   const [policyBusy, setPolicyBusy] = useState(false);
+  const [paymentLaunchBusy, setPaymentLaunchBusy] = useState(false);
   const pendingPlanCode = busy?.startsWith("sub-") ? busy.slice(4) : null;
   const pendingProductCode = busy?.startsWith("buy-") ? busy.slice(4) : null;
   const subscriptionPeriodEnd = billing?.periodEnd ?? null;
@@ -196,40 +201,97 @@ export function BillingPage() {
         refundPolicy.id,
         pendingPayment.policyAcknowledgementKey,
       );
-      try {
-        await requestTossCardPayment(ready);
-      } catch (err) {
-        void cancelTossPayment(ready.orderId).catch(() => {});
-        throw err;
-      }
+      setReadyPayment(ready);
+      setPendingPayment(null);
     } catch (e) {
       setError(e instanceof Error ? e.message : "결제 준비에 실패했습니다.");
+      setPendingPayment(null);
     } finally {
       setPolicyBusy(false);
-      setPendingPayment(null);
+    }
+  };
+
+  const openTossPayment = async () => {
+    if (!readyPayment) return;
+    const ready = readyPayment;
+    setPaymentLaunchBusy(true);
+    setError(null);
+    try {
+      await requestTossCardPayment(ready);
+    } catch (e) {
+      try {
+        await cancelTossPayment(ready.orderId);
+      } catch {
+        // 결제창 오류를 우선 노출하고, 취소 API 실패는 다음 결제 내역 갱신에서 정리한다.
+      }
+      setReadyPayment(null);
+      setError(e instanceof Error ? e.message : "Toss 결제창을 열지 못했습니다.");
+      await loadMine().catch(() => {});
+    } finally {
+      setPaymentLaunchBusy(false);
+    }
+  };
+
+  const cancelPreparedPayment = async () => {
+    if (!readyPayment || paymentLaunchBusy) return;
+    const orderId = readyPayment.orderId;
+    setPaymentLaunchBusy(true);
+    setError(null);
+    try {
+      await cancelTossPayment(orderId);
+      setReadyPayment(null);
+      await loadMine();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "준비된 결제를 취소하지 못했습니다.");
+    } finally {
+      setPaymentLaunchBusy(false);
     }
   };
 
   const openRefundRequest = async (payment: Payment) => {
-    setError(null);
+    setRefundPayment(payment);
+    setRefundEligibility(null);
+    setRefundError(null);
+    setRefundBusy(true);
     try {
-      setRefundPolicy(await getCurrentRefundPolicy());
-      setRefundPayment(payment);
+      const [policy, eligibility] = await Promise.all([
+        getCurrentRefundPolicy(),
+        previewRefundRequest(payment.id, "CHANGE_OF_MIND"),
+      ]);
+      setRefundPolicy(policy);
+      setRefundEligibility(eligibility);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "환불 정책을 불러오지 못했습니다.");
+      setRefundError(e instanceof Error ? e.message : "환불 가능 여부를 확인하지 못했습니다.");
+    } finally {
+      setRefundBusy(false);
+    }
+  };
+
+  const previewRefundReason = async (reasonCode: RefundReasonCode) => {
+    if (!refundPayment) return;
+    setRefundBusy(true);
+    setRefundError(null);
+    try {
+      setRefundEligibility(await previewRefundRequest(refundPayment.id, reasonCode));
+    } catch (e) {
+      setRefundEligibility(null);
+      setRefundError(e instanceof Error ? e.message : "환불 가능 여부를 확인하지 못했습니다.");
+    } finally {
+      setRefundBusy(false);
     }
   };
 
   const submitRefundRequest = async (reasonCode: RefundReasonCode, reasonText: string) => {
     if (!refundPayment) return;
     setRefundBusy(true);
-    setError(null);
+    setRefundError(null);
     try {
       await createRefundRequest(refundPayment.id, reasonCode, reasonText);
       setRefundPayment(null);
+      setRefundEligibility(null);
       await loadMine();
     } catch (e) {
-      setError(e instanceof Error ? e.message : "환불 신청에 실패했습니다.");
+      setRefundError(e instanceof Error ? e.message : "환불 신청에 실패했습니다.");
     } finally {
       setRefundBusy(false);
     }
@@ -247,8 +309,15 @@ export function BillingPage() {
       <RefundRequestDialog
         payment={refundPayment}
         policy={refundPolicy}
+        eligibility={refundEligibility}
+        error={refundError}
         busy={refundBusy}
-        onCancel={() => setRefundPayment(null)}
+        onCancel={() => {
+          setRefundPayment(null);
+          setRefundEligibility(null);
+          setRefundError(null);
+        }}
+        onReasonChange={(reasonCode) => void previewRefundReason(reasonCode)}
         onSubmit={(reasonCode, reasonText) => void submitRefundRequest(reasonCode, reasonText)}
       />
       <div className="mx-auto w-full max-w-[1400px] space-y-6 px-4 py-8 sm:px-6">
@@ -292,6 +361,26 @@ export function BillingPage() {
           </div>
         )}
         {error && <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700">{error}</div>}
+        {readyPayment && (
+          <div className="flex flex-col gap-4 rounded-xl border border-blue-200 bg-blue-50 p-4 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <div className="font-semibold text-blue-950">Toss 결제 준비가 완료되었습니다.</div>
+              <div className="mt-1 text-sm text-blue-800">
+                {readyPayment.orderName} · {won(readyPayment.amount)}
+              </div>
+              <div className="mt-1 text-xs text-blue-700">정책 확인 창을 닫았습니다. 아래 버튼을 눌러 안전하게 결제창을 여세요.</div>
+            </div>
+            <div className="flex shrink-0 gap-2">
+              <Button variant="outline" disabled={paymentLaunchBusy} onClick={() => void cancelPreparedPayment()}>
+                결제 취소
+              </Button>
+              <Button disabled={paymentLaunchBusy} onClick={() => void openTossPayment()}>
+                {paymentLaunchBusy && <Loader2 className="size-4 animate-spin" />}
+                Toss 결제창 열기
+              </Button>
+            </div>
+          </div>
+        )}
 
         <Tabs value={activeTab} onValueChange={(value) => setSearchParams({ tab: value })}>
           <TabsList className="h-auto w-full justify-start overflow-x-auto border border-slate-200 bg-card p-1">
@@ -336,7 +425,7 @@ export function BillingPage() {
                         ))}
                       </div>
                       <Button
-                        disabled={!isAuthenticated || isCurrent || busy !== null}
+                        disabled={!isAuthenticated || isCurrent || busy !== null || readyPayment !== null}
                         className={isPending ? "w-full bg-blue-700 shadow-lg shadow-blue-200" : popular ? "w-full bg-primary" : "w-full"}
                         variant={popular ? "default" : "outline"}
                         onClick={() => void doSubscribe(plan.code)}
@@ -432,7 +521,7 @@ export function BillingPage() {
                       <div className="text-xl font-black text-blue-600">{won(pack.price)}</div>
                       <Button
                         className={isPending ? "w-full bg-amber-600 text-white hover:bg-amber-600" : "w-full"}
-                        disabled={!isAuthenticated || busy !== null}
+                        disabled={!isAuthenticated || busy !== null || readyPayment !== null}
                         onClick={() => void doPurchase(pack.code)}
                       >
                         {isPending && <Loader2 className="size-4 animate-spin" />}
@@ -474,7 +563,7 @@ export function BillingPage() {
                       <div className="flex items-center gap-3">
                         <span className="text-sm font-black text-slate-900">{won(payment.amount)}</span>
                         <Badge className={payment.status === "PAID" ? "bg-green-100 text-green-700" : "bg-slate-200 text-slate-700"}>
-                          {payment.status === "PAID" ? "결제 완료" : payment.status}
+                          {payment.status === "PAID" ? "결제 완료" : "결제 취소"}
                         </Badge>
                         {payment.status === "PAID" && !refund && (
                           <Button size="sm" variant="outline" onClick={() => void openRefundRequest(payment)}>

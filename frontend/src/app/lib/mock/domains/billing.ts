@@ -13,7 +13,7 @@ import type {
   BillingCycle,
 } from "@/features/billing/api/billingApi";
 import type { CurrentRefundPolicy } from "@/features/billing/api/refundPolicyApi";
-import type { RefundReasonCode, RefundRequestRow } from "@/features/billing/api/refundRequestApi";
+import type { RefundEligibility, RefundReasonCode, RefundRequestRow } from "@/features/billing/api/refundRequestApi";
 
 // ── 공개 정보: 요금제 목록 ──
 const plans: SubscriptionPlan[] = [
@@ -217,6 +217,34 @@ export const billingRoutes: MockRoute[] = [
   { method: "GET", pattern: /^\/billing\/credit-transactions$/, handler: () => [...creditTransactions] },
   { method: "GET", pattern: /^\/billing\/refund-policy\/current$/, handler: () => ({ ...currentRefundPolicy }) },
   { method: "POST", pattern: /^\/billing\/refund-policy\/acknowledgements$/, handler: () => ({ ...currentRefundPolicy }) },
+  {
+    method: "POST",
+    pattern: /^\/billing\/refunds\/preview$/,
+    handler: ({ body }: MockContext) => {
+      const request = body as { paymentId?: number; reasonCode?: RefundReasonCode } | undefined;
+      const payment = payments.find((row) => row.id === request?.paymentId);
+      if (!payment) return null;
+      const exception = request?.reasonCode === "DUPLICATE_PAYMENT" || request?.reasonCode === "SYSTEM_ERROR" || request?.reasonCode === "LEGAL_REQUIREMENT";
+      const elapsedDays = Math.floor((Date.now() - new Date(payment.paidAt ?? payment.createdAt).getTime()) / 86_400_000);
+      const result: RefundEligibility["eligibilityResult"] = exception ? "REVIEW_REQUIRED" : elapsedDays > 7 ? "INELIGIBLE" : "ELIGIBLE";
+      return {
+        paymentId: payment.id,
+        eligibilityResult: result,
+        decisionCode: exception ? "EXCEPTION_REVIEW" : elapsedDays > 7 ? "WITHDRAWAL_PERIOD_EXPIRED" : "UNUSED_WITHIN_PERIOD",
+        message: exception ? "예외 사유로 접수되며 관리자가 결제 및 사용 이력을 검토합니다."
+          : elapsedDays > 7 ? `결제일로부터 ${elapsedDays}일이 지나 정책상 환불 신청 기간(7일)이 종료되었습니다.`
+            : "미사용·신청 기간 내 결제로 전액 환불 검토를 신청할 수 있습니다.",
+        creditUsed: false,
+        benefitUsed: false,
+        refundAmount: payment.amount,
+        policyId: currentRefundPolicy.id,
+        policyVersion: currentRefundPolicy.version,
+        policyTitle: currentRefundPolicy.title,
+        policySummary: currentRefundPolicy.summary,
+        withdrawalDays: 7,
+      } satisfies RefundEligibility;
+    },
+  },
   { method: "GET", pattern: /^\/billing\/refunds$/, handler: () => [...refundRequests] },
   {
     method: "POST",

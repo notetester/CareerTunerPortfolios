@@ -11,6 +11,8 @@ import org.springframework.web.bind.annotation.RestController;
 
 import com.careertuner.billing.dto.RefundRequestCreateRequest;
 import com.careertuner.billing.dto.RefundRequestResponse;
+import com.careertuner.billing.dto.RefundEligibilityRequest;
+import com.careertuner.billing.dto.RefundEligibilityResponse;
 import com.careertuner.billing.service.RefundRequestService;
 import com.careertuner.common.security.AuthUser;
 import com.careertuner.common.web.ApiResponse;
@@ -34,5 +36,12 @@ public class RefundRequestController {
             @AuthenticationPrincipal AuthUser authUser,
             @Valid @RequestBody RefundRequestCreateRequest request) {
         return ApiResponse.ok(service.create(authUser.id(), request));
+    }
+
+    @PostMapping("/preview")
+    public ApiResponse<RefundEligibilityResponse> preview(
+            @AuthenticationPrincipal AuthUser authUser,
+            @Valid @RequestBody RefundEligibilityRequest request) {
+        return ApiResponse.ok(service.preview(authUser.id(), request));
     }
 }

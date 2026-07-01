@@ -54,7 +54,7 @@ export function BillingSuccessPage() {
     <div className="min-h-screen bg-slate-50 px-4 py-12">
       <Card className="mx-auto max-w-xl border border-slate-200 bg-white">
         <CardHeader>
-          <CardTitle className="flex items-center gap-2 text-xl">
+          <CardTitle className="flex items-center gap-2 text-xl text-[#16171a]">
             {loading ? <Loader2 className="size-5 animate-spin text-blue-600" /> : <CheckCircle2 className="size-5 text-green-600" />}
             결제 승인
           </CardTitle>
@@ -99,12 +99,16 @@ export function BillingSuccessPage() {
           )}
 
           <div className="flex gap-2">
-            <Button asChild className="flex-1">
+            <Button asChild className="flex-1 text-white">
               <Link to={isSubscription ? "/billing?tab=usage" : "/billing?tab=credits"}>
                 {isSubscription ? "사용권 확인" : "크레딧 충전"}
               </Link>
             </Button>
-            <Button asChild variant="outline" className="flex-1">
+            <Button
+              asChild
+              variant="outline"
+              className="flex-1 border-[#d6d6dc] bg-white text-[#16171a] hover:bg-[#f0f0f2] hover:text-[#16171a] dark:bg-white dark:text-[#16171a] dark:hover:bg-[#f0f0f2] dark:hover:text-[#16171a]"
+            >
               <Link to="/dashboard">대시보드</Link>
             </Button>
           </div>
