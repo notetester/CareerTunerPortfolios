@@ -1,4 +1,6 @@
+import { useEffect } from "react";
 import { useSearchParams } from "react-router";
+import { warmupCorrectionModel } from "@/features/correction/api/correctionApi";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
@@ -42,6 +44,12 @@ export function CorrectionPage() {
   const requestedTab = searchParams.get("tab") ?? "answer";
   const activeTab: CorrectionTab = tabs.includes(requestedTab as CorrectionTab) ? (requestedTab as CorrectionTab) : "answer";
   const active = correctionMeta[activeTab];
+
+  useEffect(() => {
+    void warmupCorrectionModel().catch(() => {
+      // 워밍 실패는 실제 첨삭 요청의 자체모델/Haiku/OpenAI 폴백에 맡긴다.
+    });
+  }, []);
 
   return (
     <div className="min-h-screen bg-slate-50">

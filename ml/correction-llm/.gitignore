@@ -1,0 +1,28 @@
+__pycache__/
+*.py[cod]
+out/
+*.gguf
+*.safetensors
+*.bin
+*.pt
+*.pth
+*.onnx
+
+# Keep only final dataset/evaluation artifacts in git. Intermediate seed
+# generations remain local so the PR stays reviewable.
+data/*
+!data/raw.seed.360.jsonl
+!data/raw.train.seed360.hardfailfix.320.jsonl
+!data/train.seed360.hardfailfix.messages.jsonl
+!data/val.seed360.mixed40.messages.jsonl
+!data/raw.val.seed240.mixed.40.jsonl
+!data/raw.hardcase.val.20.jsonl
+!data/validate.seed.360.summary.json
+!data/dataset.train.seed360.summary.json
+!data/dataset.val.seed360.summary.json
+
+reports/*.jsonl
+!reports/eval.seed360.mixed40.soft.jsonl
+!reports/eval.seed360.hardcase20.soft.jsonl
+!reports/eval.qwen3-8b.mixed40.soft.jsonl
+!reports/eval.qwen3-8b.hardcase20.soft.jsonl

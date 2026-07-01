@@ -63,8 +63,11 @@ export function BillingSuccessPage() {
           {loading && <p className="text-sm text-slate-600">Toss 결제 승인 결과를 확인하고 있습니다.</p>}
 
           {!loading && error && (
-            <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700">
-              {error}
+            <div className="space-y-2 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+              <div className="font-semibold">{error}</div>
+              <p className="text-xs leading-relaxed text-red-600">
+                결제 승인 여부 확인 중 문제가 발생했습니다. 실제 결제 알림을 받았다면 같은 상품을 반복 결제하지 말고 결제 내역을 확인해 주세요.
+              </p>
             </div>
           )}
 

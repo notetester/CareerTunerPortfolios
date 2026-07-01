@@ -62,7 +62,7 @@
     <select id="findActiveSubscription" resultType="com.careertuner.billing.domain.UserSubscription">
         SELECT * FROM user_subscription
          WHERE user_id = #{userId}
-           AND status = 'ACTIVE'
+           AND status IN ('ACTIVE', 'CANCELED')
            AND (#{now} IS NULL OR (current_period_start &lt;= #{now} AND current_period_end &gt; #{now}))
          ORDER BY id DESC LIMIT 1
     </select>

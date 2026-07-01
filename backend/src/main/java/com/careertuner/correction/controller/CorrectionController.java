@@ -15,6 +15,8 @@ import com.careertuner.common.security.AuthUser;
 import com.careertuner.common.web.ApiResponse;
 import com.careertuner.correction.dto.CorrectionCreateRequest;
 import com.careertuner.correction.dto.CorrectionResponse;
+import com.careertuner.correction.dto.CorrectionWarmupResponse;
+import com.careertuner.correction.ai.CorrectionModelWarmupService;
 import com.careertuner.correction.service.CorrectionService;
 
 import jakarta.validation.Valid;
@@ -26,6 +28,13 @@ import lombok.RequiredArgsConstructor;
 public class CorrectionController {
 
     private final CorrectionService correctionService;
+    private final CorrectionModelWarmupService warmupService;
+
+    @PostMapping("/warmup")
+    public ApiResponse<CorrectionWarmupResponse> warmup(@AuthenticationPrincipal AuthUser authUser) {
+        authUser.id();
+        return ApiResponse.ok(warmupService.warmAsync("CORRECTION_PAGE"));
+    }
 
     @PostMapping
     public ApiResponse<CorrectionResponse> create(@AuthenticationPrincipal AuthUser authUser,

@@ -33,7 +33,7 @@ out/career-strategy-merged-3b/      (merged HF 모델; model.safetensors ~6.17GB
 scripts/test_infer.py               (갱신본 — 위 SHA256 확인)
 scripts/synth_prompts.py
 scripts/assemble_dataset.py
-reports/00_runbook_4090.md          (GGUF/Ollama 상세 §4~§6)
+../../docs/ai-reports/areas/c-career-strategy/reports/00_runbook_4090.md          (GGUF/Ollama 상세 §4~§6)
 ```
 
 ## 1차 생성 테스트 (test_infer)
