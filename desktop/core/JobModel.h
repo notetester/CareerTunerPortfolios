@@ -27,6 +27,10 @@ public:
     explicit JobModel(QObject* parent = nullptr);
 
     void setApi(ApiClient* api) { m_api = api; }
+
+    Q_PROPERTY(QVariantMap current READ current NOTIFY currentChanged)
+    QVariantMap current() const { return m_current; }   // 현재(최근) 세션 요약 — 폰미러/디스패치용
+
     Q_INVOKABLE void reload();                                       // 면접 세션 목록 로드
     Q_INVOKABLE void loadCases();                                    // 지원건 목록 → casesReady
     Q_INVOKABLE void createSession(int caseId, const QString& mode); // 세션 생성 후 reload
@@ -41,6 +45,7 @@ signals:
     void progressReady(const QVariantMap& progress);
     void resumed(int sessionId);
     void dispatched(int sessionId);
+    void currentChanged();
 
 public:
 
@@ -57,5 +62,6 @@ public:
 private:
     int indexOf(qint64 id) const;
     QVector<Job> m_jobs;
+    QVariantMap m_current;
     ApiClient* m_api = nullptr;
 };

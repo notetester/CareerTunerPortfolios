@@ -44,6 +44,17 @@ void JobModel::reload()
                 }
             }
             endResetModel();
+            if (!m_jobs.isEmpty()) {
+                const Job& j = m_jobs.first();
+                m_current = QVariantMap{
+                    {"id", static_cast<qint64>(j.id)},
+                    {"title", j.title}, {"mode", j.mode},
+                    {"status", j.status}, {"progress", j.progress}
+                };
+            } else {
+                m_current.clear();
+            }
+            emit currentChanged();
         });
 }
 

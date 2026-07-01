@@ -40,18 +40,23 @@ Rectangle {
                 // 동기화된 작업 카드
                 Rectangle {
                     Layout.fillWidth: true
+                    visible: jobModel.current.id !== undefined
                     color: "#161b22"; border.color: "#30363d"; radius: 12
                     implicitHeight: pcol.implicitHeight + 24
                     ColumnLayout {
                         id: pcol
                         x: 12; y: 12; width: parent.width - 24
                         spacing: 6
-                        Text { text: "삼성전자 · SW 개발직군"; color: "#e6edf3"; font.pixelSize: 13; font.bold: true }
-                        Text { text: "직무 면접 · #128"; color: "#8b949e"; font.pixelSize: 11 }
+                        Text {
+                            text: jobModel.current.title || ""
+                            color: "#e6edf3"; font.pixelSize: 13; font.bold: true
+                            width: parent.width; elide: Text.ElideRight
+                        }
+                        Text { text: (jobModel.current.mode || "") + " · #" + (jobModel.current.id || ""); color: "#8b949e"; font.pixelSize: 11 }
                         Rectangle {
                             Layout.fillWidth: true; height: 6; radius: 3; color: "#0a0d12"
                             Rectangle {
-                                width: parent.width * 0.65; height: 6; radius: 3
+                                width: parent.width * (jobModel.current.progress || 0) / 100; height: 6; radius: 3
                                 gradient: Gradient {
                                     orientation: Gradient.Horizontal
                                     GradientStop { position: 0.0; color: "#7c5cff" }
@@ -59,8 +64,17 @@ Rectangle {
                                 }
                             }
                         }
-                        Text { text: "⟳ 모의면접 · 65%"; color: "#2dd4bf"; font.pixelSize: 11 }
+                        Text {
+                            text: (jobModel.current.status === "DONE" ? "✓ 완료" : "⟳ 진행 중") + " · " + (jobModel.current.progress || 0) + "%"
+                            color: "#2dd4bf"; font.pixelSize: 11
+                        }
                     }
+                }
+                Text {
+                    visible: jobModel.current.id === undefined
+                    text: "로그인하면 진행 중 작업이 여기 표시됩니다"
+                    color: "#8b949e"; font.pixelSize: 11
+                    Layout.fillWidth: true; wrapMode: Text.WordWrap; horizontalAlignment: Text.AlignHCenter
                 }
 
                 Item { Layout.fillHeight: true }

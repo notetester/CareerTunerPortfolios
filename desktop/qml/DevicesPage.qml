@@ -6,6 +6,11 @@ import QtQuick.Layouts
 Item {
     id: devices
 
+    Connections {
+        target: jobModel
+        function onDispatched(sid) { devices.showDispatch("✓ 폰으로 알림을 보냈어요 — 폰 CareerTuner 앱 알림 벨에 30초 안에 뜹니다.") }
+    }
+
     ColumnLayout {
         anchors.fill: parent
         anchors.margins: 24
@@ -54,6 +59,15 @@ Item {
                             Text { text: "온라인"; color: "#3fb950"; font.pixelSize: 12; font.bold: true }
                         }
                     }
+                    MouseArea {
+                        anchors.fill: parent
+                        onClicked: {
+                            if (!modelData.me) {
+                                if (jobModel.current.id !== undefined) jobModel.dispatchToPhone(jobModel.current.id)
+                                else devices.showDispatch("진행 중인 작업이 없습니다.")
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -72,11 +86,17 @@ Item {
                     spacing: 10
                     Button {
                         text: "📲 현재 작업을 폰으로 보내기"
-                        onClicked: devices.showDispatch("✓ 현재 작업을 갤럭시 S20으로 보냈습니다. 폰에서 이어볼 수 있어요.")
+                        onClicked: {
+                            if (jobModel.current.id !== undefined) jobModel.dispatchToPhone(jobModel.current.id)
+                            else devices.showDispatch("진행 중인 작업이 없습니다. 대시보드에서 세션을 먼저 여세요.")
+                        }
                     }
                     Button {
                         text: "🖥️ 폰에서 하던 세션 이어받기"
-                        onClicked: devices.showDispatch("✓ 폰에서 진행하던 세션을 데스크탑으로 가져왔습니다.")
+                        onClicked: {
+                            if (jobModel.current.id !== undefined) { jobModel.markResumed(jobModel.current.id); devices.showDispatch("✓ '" + (jobModel.current.title || "") + "' 세션을 이어받았습니다.") }
+                            else devices.showDispatch("이어받을 세션이 없습니다.")
+                        }
                     }
                 }
                 Text { id: dispMsg; text: ""; color: "#2dd4bf"; font.pixelSize: 13; visible: text !== "" }
