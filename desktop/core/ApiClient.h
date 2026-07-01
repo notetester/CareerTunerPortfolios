@@ -20,7 +20,7 @@ public:
 
     Q_INVOKABLE void setBaseUrl(const QString& url) { m_baseUrl = url; }
     void setToken(const QString& token) { m_token = token; }
-    QString baseUrl() const { return m_baseUrl; }
+    Q_INVOKABLE QString baseUrl() const { return m_baseUrl; }
     QString token() const { return m_token; }
 
     // ok = envelope.success, data = envelope.data, message = envelope.message
@@ -34,6 +34,8 @@ private:
     void handle(QNetworkReply* reply, JsonCallback cb);
 
     QNetworkAccessManager m_nam;
-    QString m_baseUrl = "http://localhost:8080";
+    // 기본은 팀 공용 원격 백엔드(Tailscale). 로컬 백엔드로 시연하려면
+    // 설정 화면에서 http://localhost:8080 으로 바꾸면 된다(setBaseUrl).
+    QString m_baseUrl = "https://careertuner-dev.example.invalid";
     QString m_token;
 };
