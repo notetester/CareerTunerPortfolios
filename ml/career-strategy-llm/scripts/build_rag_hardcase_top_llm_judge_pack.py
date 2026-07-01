@@ -3,7 +3,8 @@
 This script does not call any model or external API. It only combines existing
 synthetic fixture, A/B run, offline evaluator, and Qwen judge artifacts into
 machine-readable JSONL packets plus Markdown prompts that can be pasted into
-GPT/Claude/Gemini-class judges by a human reviewer.
+the current top reasoning/analysis model available through each
+ChatGPT/Claude/Gemini interface by a human reviewer.
 """
 
 from __future__ import annotations
@@ -11,6 +12,7 @@ from __future__ import annotations
 import argparse
 import json
 import re
+import shutil
 import sys
 from collections import Counter
 from datetime import datetime, timezone
@@ -30,22 +32,38 @@ CAREERTUNER_AI_ROOT = Path("D:/dev/CareerTunerAI").resolve()
 
 VARIANTS = ("A_lora_only", "B_structured_evidence_buckets")
 MODEL_PROMPTS = {
-    "gpt4o": {
-        "judge_id": "gpt-4o",
-        "file": "gpt4o_judge_prompt.md",
-        "subset_file": "gpt4o_disagreement13_judge_prompt.md",
+    "openai_chatgpt": {
+        "judge_provider": "OpenAI",
+        "judge_interface": "ChatGPT",
+        "target_description": "ChatGPT 계열 현재 최상위 reasoning/analysis 모델",
+        "file": "openai_chatgpt_judge_prompt.md",
+        "subset_file": "openai_chatgpt_disagreement13_judge_prompt.md",
     },
-    "claude": {
-        "judge_id": "claude-3.5-sonnet",
-        "file": "claude_judge_prompt.md",
-        "subset_file": "claude_disagreement13_judge_prompt.md",
+    "anthropic_claude": {
+        "judge_provider": "Anthropic",
+        "judge_interface": "Claude",
+        "target_description": "Claude 계열 현재 최상위 reasoning/analysis 모델",
+        "file": "anthropic_claude_judge_prompt.md",
+        "subset_file": "anthropic_claude_disagreement13_judge_prompt.md",
     },
-    "gemini": {
-        "judge_id": "gemini-1.5-pro",
-        "file": "gemini_judge_prompt.md",
-        "subset_file": "gemini_disagreement13_judge_prompt.md",
+    "google_gemini": {
+        "judge_provider": "Google",
+        "judge_interface": "Gemini",
+        "target_description": "Gemini 계열 현재 최상위 reasoning/analysis 모델",
+        "file": "google_gemini_judge_prompt.md",
+        "subset_file": "google_gemini_disagreement13_judge_prompt.md",
     },
 }
+GENERATED_PACK_ENTRIES = (
+    "manifest.json",
+    "judge_packets.jsonl",
+    "judge_packets_disagreement13.jsonl",
+    "expected_output_schema.json",
+    "README.md",
+    "prompts",
+    "prompts_subset_disagreement13",
+    "responses",
+)
 
 PRIMARY_LABELS = [
     "POSITIVE_UNSUPPORTED_OWNERSHIP",
@@ -121,6 +139,16 @@ def output_policy(out_dir: Path) -> str:
     if resolved.is_relative_to(GENERATED_ROOT):
         return "career-tuner-generated-ignore"
     return "external-local-output"
+
+
+def clean_generated_pack(out_dir: Path) -> None:
+    resolved = out_dir.resolve()
+    for entry in GENERATED_PACK_ENTRIES:
+        path = resolved / entry
+        if path.is_dir():
+            shutil.rmtree(path)
+        elif path.exists():
+            path.unlink()
 
 
 def truncate(text: str, limit: int) -> tuple[str, bool]:
@@ -383,10 +411,12 @@ def disagreement_keys_from_summary(summary: dict[str, Any]) -> set[tuple[str, st
 def expected_output_schema() -> dict[str, Any]:
     return {
         "judgeMeta": {
-            "judgeId": "gpt-4o|claude-3.5-sonnet|gemini-1.5-pro",
-            "packetSchemaVersion": "rag-hardcase-top-llm-judge-packet/v1",
-            "packetSubset": "all|disagreement13",
-            "judgedAt": "ISO-8601 timestamp if available",
+            "judgeProvider": "OpenAI | Anthropic | Google",
+            "judgeInterface": "ChatGPT | Claude | Gemini",
+            "modelNameAsReportedByInterface": "<평가 화면에 표시되는 모델명을 그대로 기입>",
+            "rubricVersion": "rag-hardcase-judge-rubric-v2",
+            "evaluationDate": "<YYYY-MM-DD>",
+            "notes": "",
         },
         "itemJudgments": [
             {
@@ -495,14 +525,18 @@ def expected_output_schema() -> dict[str, Any]:
 
 
 def render_prompt(template: str,
-                  judge_id: str,
+                  judge_provider: str,
+                  judge_interface: str,
+                  target_description: str,
                   subset_name: str,
                   packets: list[dict[str, Any]],
                   schema: dict[str, Any]) -> str:
     packets_jsonl = "\n".join(json.dumps(packet, ensure_ascii=False) for packet in packets)
     return (
         template
-        .replace("{{JUDGE_ID}}", judge_id)
+        .replace("{{JUDGE_PROVIDER}}", judge_provider)
+        .replace("{{JUDGE_INTERFACE}}", judge_interface)
+        .replace("{{JUDGE_TARGET_DESCRIPTION}}", target_description)
         .replace("{{SUBSET_NAME}}", subset_name)
         .replace("{{PACKET_COUNT}}", str(len(packets)))
         .replace("{{EXPECTED_OUTPUT_SCHEMA_JSON}}", json.dumps(schema, ensure_ascii=False, indent=2))
@@ -522,7 +556,18 @@ def write_prompt_set(out_dir: Path,
     for spec in MODEL_PROMPTS.values():
         filename = spec["subset_file"] if use_subset_names else spec["file"]
         path = folder / filename
-        write_text(path, render_prompt(template, spec["judge_id"], subset_name, packets, schema))
+        write_text(
+            path,
+            render_prompt(
+                template=template,
+                judge_provider=spec["judge_provider"],
+                judge_interface=spec["judge_interface"],
+                target_description=spec["target_description"],
+                subset_name=subset_name,
+                packets=packets,
+                schema=schema,
+            ),
+        )
         files.append(str(path.relative_to(out_dir)).replace("\\", "/"))
     return files
 
@@ -538,7 +583,7 @@ def markdown_readme(out_dir: Path,
     subset_list = "\n".join(f"- `{item}`" for item in subset_prompt_files) if subset_prompt_files else "- none"
     return f"""# RAG hard-case top LLM judge pack
 
-This artifact is a copy/paste evaluation pack for GPT-4o, Claude, and Gemini-class judges.
+This artifact is a copy/paste evaluation pack for the current top reasoning/analysis model available through each ChatGPT, Claude, and Gemini interface.
 It does not contain real user data and was generated from synthetic RAG hard-case fixtures.
 
 ## Scope
@@ -566,8 +611,8 @@ Disagreement subset prompt files:
 
 ## Human workflow
 
-1. Open one prompt file for the target model.
-2. Paste the entire Markdown prompt into that model.
+1. Open one prompt file for the target provider/interface.
+2. Paste the entire Markdown prompt into the current top reasoning/analysis model available through that interface.
 3. Save the model's JSON-only response under `responses/` in a future follow-up task.
 4. Do not use this pack to connect RAG runtime to production.
 """
@@ -629,6 +674,7 @@ def build_pack(fixture: Path,
 
     template = template_path.read_text(encoding="utf-8")
     schema = expected_output_schema()
+    clean_generated_pack(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
     write_jsonl(out_dir / "judge_packets.jsonl", selected_packets)
     write_json(out_dir / "expected_output_schema.json", schema)
@@ -657,7 +703,7 @@ def build_pack(fixture: Path,
 
     write_text(out_dir / "responses" / "README.md", (
         "# Model response drop zone\n\n"
-        "Save future GPT/Claude/Gemini JSON-only responses here in a follow-up task.\n"
+        "Save future ChatGPT/Claude/Gemini interface JSON-only responses here in a follow-up task.\n"
         "No responses are generated by this pack builder.\n"
     ))
     write_text(

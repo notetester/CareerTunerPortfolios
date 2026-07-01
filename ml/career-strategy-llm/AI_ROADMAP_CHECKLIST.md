@@ -42,11 +42,11 @@ Last updated: 2026-07-01
 - [x] 완료 — 4090/Ollama 기준 RAG hard-case 3B LoRA A/B run 을 1회 실행하고 CareerTunerAI artifact path/commit SHA 를 기록했다([reports/71](../../docs/ai-reports/areas/c-career-strategy/reports/71_rag_hardcase_actual_3b_ab_run.md), CareerTunerAI `benchmarks/rag-hardcase/runs/rag_hardcase_v1_20260630_1635`, commit `8939d5856bf7edc9b9c93a7f9ff94034ab8d0a4e`).
 - [x] 완료 — RAG hard-case 실제 출력의 offline R3-like evaluator / semantic observer A/B 분석을 수행했다([reports/72 summary](reports/72_rag_hardcase_r3_semantic_ab_analysis.md), [AIDocs report 73](../../docs/ai-reports/areas/c-career-strategy/reports/73_rag_hardcase_v1_r3_semantic_analysis.md), CareerTunerAI `benchmarks/rag-hardcase/evaluations/rag_hardcase_v1_20260630_1635_r3_semantic_eval`, commit `78167ea981f7d85035116cd1c65e15460223e1c4`).
 - [x] 완료 — RAG hard-case 실제 출력의 local/private independent semantic judge 검증을 수행했다([reports/74 summary](reports/74_rag_hardcase_independent_semantic_judge.md), [AIDocs report 74](../../docs/ai-reports/areas/c-career-strategy/reports/74_rag_hardcase_v1_independent_semantic_judge.md), CareerTunerAI `benchmarks/rag-hardcase/judge-results/rag_hardcase_v1_20260630_1635_semantic_judge`, commit `4bf1fc70b3acd8946d7eee8f06787477446466af`).
-- [x] 완료 — GPT/Claude/Gemini급 top LLM judge 용 평가팩과 label taxonomy v2 를 생성했다([reports/75 summary](reports/75_rag_hardcase_top_llm_judge_pack.md), [AIDocs report 75](../../docs/ai-reports/areas/c-career-strategy/reports/75_rag_hardcase_top_llm_judge_pack_plan.md), CareerTunerAI `benchmarks/rag-hardcase/top-llm-judge-packs/rag_hardcase_v1_20260630_1635_top_llm_judge_pack`, commit `499a01051e0bd58d0f10045620d866a57c43f756`).
+- [x] 완료 — ChatGPT/Claude/Gemini 인터페이스의 현재 최상위 reasoning/analysis 모델용 평가팩과 label taxonomy v2 를 생성했다([reports/75 summary](reports/75_rag_hardcase_top_llm_judge_pack.md), [AIDocs report 75](../../docs/ai-reports/areas/c-career-strategy/reports/75_rag_hardcase_top_llm_judge_pack_plan.md), CareerTunerAI `benchmarks/rag-hardcase/top-llm-judge-packs/rag_hardcase_v1_20260630_1635_top_llm_judge_pack`, commit `5be737de2f2c9fbfd5dc36d3d0f42654d23e254e`).
 - [~] 보류 또는 조건부 유지 — raw output/result JSON 은 CareerTunerAI artifact repo 에 저장한다.
 - [~] 보류 또는 조건부 유지 — 긴 실험 분석 문서는 CareerTunerAIDocs 에 저장한다.
 - [~] 보류 또는 조건부 유지 — RAG runtime 재도입은 top LLM judge 결과 취합 전까지 `KEEP_RAG_DISABLED` 를 유지하고, offline/scoped 재평가 후보로만 둔다.
-- [ ] 미완료 — GPT/Claude/Gemini judge 결과 취합 및 human gold label 확정은 후속으로 남아 있다.
+- [ ] 미완료 — ChatGPT/Claude/Gemini interface judge 결과 취합 및 human gold label 확정은 후속으로 남아 있다.
 
 ## 4. Evidence gate / safety 상태
 
@@ -85,5 +85,5 @@ Last updated: 2026-07-01
 - [x] 완료 — RAG hard-case top LLM judge 평가팩 생성 및 CareerTunerAI/CareerTunerAIDocs 산출물 저장([reports/75 summary](reports/75_rag_hardcase_top_llm_judge_pack.md), [AIDocs report 75](../../docs/ai-reports/areas/c-career-strategy/reports/75_rag_hardcase_top_llm_judge_pack_plan.md)).
 - [ ] 미완료 — 관리자 gate review 처리 workflow 설계: 검토 완료, 재분석 요청, memo/reason 연결.
 - [ ] 미완료 — R3 gate reason 로그를 기반으로 false-positive 샘플 리뷰와 alias 후보 triage.
-- [ ] 미완료 — GPT/Claude/Gemini judge 결과 취합과 disagreement human review.
+- [ ] 미완료 — ChatGPT/Claude/Gemini interface judge 결과 취합과 disagreement human review.
 - [ ] 미완료 — model-card 다음 개정: R3 운영 데이터와 gate reason 분포 반영.
