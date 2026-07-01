@@ -51,6 +51,16 @@ public class BAnalysisGenerationService {
             + "|\\b(?:experience|exp)\\b[^\\d\\n]{0,12}(\\d+)\\s*\\+?\\s*(?:years?|yrs?)"      // 3: experience … N years
             + "|(\\d+)\\s*\\+?\\s*(?:years?|yrs?)[^\\d\\n]{0,8}\\b(?:experience|exp)\\b");     // 4: N years … experience
     private static final int MAX_PROMPT_TEXT_LENGTH = 12_000;
+    // 컨텍스트 예산 절단(이슈 D 후속 #1): 공고 원문이 길어 num_ctx 를 넘기면 R1 이 400 으로 통째 폴백되므로,
+    // 원문을 윈도 예산에 맞춰 미리 절단해 R1 경로를 유지한다. 한글은 토큰 밀도가 높아(실측 ~1.6자/토큰)
+    // 보수적으로 1.4자/토큰을 가정한다(가정이 실제보다 작을수록 더 안전: 윈도에 여유가 생김).
+    private static final double CHARS_PER_TOKEN = 1.4;
+    // 공고 원문 외 고정 오버헤드(토큰): 시스템 프롬프트 + JSON 스키마(format) + 라벨/템플릿.
+    private static final int FIXED_PROMPT_OVERHEAD_TOKENS = 600;
+    // 문장 분류 신호는 보조 힌트라 원문보다 작게 캡한다(기존 4000 → 컨텍스트 예산 보호).
+    private static final int CLASSIFICATION_CHAR_CAP = 2_000;
+    // 컨텍스트가 아무리 작아도 최소한 이만큼은 원문을 남긴다.
+    private static final int MIN_POSTING_CHARS = 2_000;
     // 경력 연차 보정: 5년 이상이면 SENIOR로 본다(self-rules experienceLevel과 동일 기준).
     private static final int SENIOR_YEARS_THRESHOLD = 5;
     // "2024년" 같은 날짜/연도 오탐을 거르기 위한 현실적인 경력 연차 상한.
@@ -60,6 +70,21 @@ public class BAnalysisGenerationService {
     private static final int SKILL_MAX_WORDS = 4;
     private static final Pattern SKILL_SENTENCE_PATTERN =
             Pattern.compile("및|또는|등의|에 대한|설계 및|개발 및|구축 및|담당");
+    // 짧은 비스킬 토큰 제거(이슈 D 후속 #3): 길이/단어/문장 필터를 통과하지만 스킬이 아닌 항목.
+    // - "경력"·"5년"·"경력5년" 등 연차 토큰
+    // - "|T장비기술지원" 처럼 OCR이 'I'를 '|'로 깨뜨린 잡음
+    // - "전산운영직"·"전산관리자"·"백업전문가" 처럼 직무명/역할 접미사로 끝나는 항목
+    // 보수적으로 명백한 비스킬만 제거한다(정상 스킬 과제거 방지).
+    private static final Pattern NON_SKILL_PATTERN =
+            Pattern.compile("경력|\\d\\s*년|[|]|(?:직|관리자|전문가|담당자|사원)$");
+    // 묶음 스킬 salvage(이슈 D 후속 #4) 시 top-level 분할 구분자. 슬래시(/)는 CI/CD·TCP/IP·웹/서버 보존 위해 제외한다.
+    private static final String TOP_LEVEL_SKILL_DELIMITERS = ",;·ㆍ";
+    // 괄호 앞 대표 토큰 salvage 의 regex fallback 신호(과복구 방지). 공백 없는 단일 토큰에서:
+    // 기술 기호(. + # / -)/숫자가 있거나(Node.js·CI/CD·C#), 전부 대문자 약어(AWS·GCP·SQL)일 때만 기술 토큰으로 본다.
+    // "Payment System"(공백 영문 구문)·"결제 시스템"(한국어)처럼 기술 신호 없는 업무명 조각은 배제된다.
+    private static final Pattern TECH_SIGNAL_PATTERN = Pattern.compile("[0-9.+#/\\-]");
+    private static final Pattern UPPER_ACRONYM_PATTERN = Pattern.compile("[A-Z][A-Z0-9]+");
+    private static final Pattern WHITESPACE_PATTERN = Pattern.compile("\\s");
     private static final List<String> KNOWN_SKILLS = List.of(
             "Java", "Spring", "Spring Boot", "MyBatis", "JPA", "SQL", "MySQL", "PostgreSQL",
             "Redis", "Kafka", "RabbitMQ", "Docker", "Kubernetes", "AWS", "Azure", "GCP",
@@ -273,9 +298,13 @@ public class BAnalysisGenerationService {
 
     private JobAnalysisPayload parseLocalJobPayload(String content, String postingText, String modelLabel) {
         JsonNode root = parseObject(content);
-        JobAnalysisPayload payload = new JobAnalysisPayload(
-                text(root, "employmentType", employmentType(postingText)),
+        String employmentType = normalizeEmploymentType(text(root, "employmentType", employmentType(postingText)), postingText);
+        String experienceLevel = capExperienceForEmploymentType(
                 reconcileExperienceLevel(text(root, "experienceLevel", experienceLevel(postingText)), postingText),
+                employmentType);
+        JobAnalysisPayload payload = new JobAnalysisPayload(
+                employmentType,
+                experienceLevel,
                 filterSkillItems(arrayJson(root, "requiredSkills"), postingText),
                 filterSkillItems(arrayJson(root, "preferredSkills"), null),
                 requiredText(root, "duties"),
@@ -306,6 +335,41 @@ public class BAnalysisGenerationService {
             return "MID";
         }
         return normalized;
+    }
+
+    /**
+     * R1 모델이 employmentType에 "인턴", "정규직", "일반근로자" 등 enum 밖 자유 텍스트를 반환하는 사례가 있어,
+     * FULL_TIME/CONTRACT/INTERN/PART_TIME 표준 enum으로 정규화한다. 분류 불가 값은 원문 규칙 추출로 폴백한다.
+     */
+    private String normalizeEmploymentType(String value, String postingText) {
+        String lower = value == null ? "" : value.trim().toLowerCase(Locale.ROOT);
+        if (lower.equals("full_time") || lower.equals("contract") || lower.equals("intern") || lower.equals("part_time")) {
+            return lower.toUpperCase(Locale.ROOT);
+        }
+        if (lower.contains("intern") || lower.contains("인턴")) {
+            return "INTERN";
+        }
+        if (lower.contains("contract") || lower.contains("계약")) {
+            return "CONTRACT";
+        }
+        if (lower.contains("part") || lower.contains("시간제") || lower.contains("아르바이트") || lower.contains("알바")) {
+            return "PART_TIME";
+        }
+        if (lower.contains("full") || lower.contains("정규")) {
+            return "FULL_TIME";
+        }
+        return employmentType(postingText);
+    }
+
+    /**
+     * 인턴 공고는 시니어/미드급 경력을 요구하지 않는다. R1이 연차가 명시되지 않은 인턴 공고를 SENIOR/MID로
+     * 잘못 매기는 사례(이슈 D 검증: 딥그로브)가 있어, 고용형태가 INTERN이면 experienceLevel을 JUNIOR로 상한 보정한다.
+     */
+    private String capExperienceForEmploymentType(String experienceLevel, String employmentType) {
+        if ("INTERN".equals(employmentType)) {
+            return "JUNIOR";
+        }
+        return experienceLevel;
     }
 
     /**
@@ -365,23 +429,108 @@ public class BAnalysisGenerationService {
     /**
      * R1 모델이 requiredSkills/preferredSkills에 "결제 시스템 백엔드 API 설계 및 개발" 같은 업무 문장을
      * 스킬로 섞어 넣는 경우가 있어, 스킬처럼 보이지 않는 항목을 후처리로 걸러낸다.
-     * 모든 항목이 걸러지면 fallbackPostingText 기반 규칙 추출로 폴백해 빈 배열을 막는다(폴백 텍스트가 없으면 원본 유지).
+     * 모든 항목이 걸러졌을 때: fallbackPostingText 가 있으면(requiredSkills 경로) 규칙 추출로 폴백해 빈 배열을 막고,
+     * 없으면(preferredSkills 경로) 빈 배열을 반환한다(preferredSkills 는 비어도 유효하므로 잡음 원본을 되살리지 않는다).
      */
     private String filterSkillItems(String skillsJson, String fallbackPostingText) {
         List<String> skills = parseList(skillsJson);
         if (skills.isEmpty()) {
             return skillsJson;
         }
-        List<String> filtered = skills.stream().filter(this::looksLikeSkill).toList();
-        if (filtered.size() == skills.size()) {
+        // 통과 항목은 그대로 두고, 탈락 항목만 salvage(묶음에서 대표 스킬 복구)한다. LinkedHashSet 으로
+        // 순서 유지 + 중복 제거(정상 "AWS" 와 salvage 로 나온 "AWS" 가 겹쳐도 하나로 수렴).
+        LinkedHashSet<String> kept = new LinkedHashSet<>();
+        boolean changed = false;
+        for (String skill : skills) {
+            if (looksLikeSkill(skill)) {
+                kept.add(skill.trim());
+            } else {
+                changed = true;
+                kept.addAll(salvageSkillBundle(skill));
+            }
+        }
+        if (!changed) {
             return skillsJson;
         }
-        if (filtered.isEmpty()) {
-            return fallbackPostingText != null ? toJson(extractRequiredSkills(fallbackPostingText)) : skillsJson;
+        if (kept.isEmpty()) {
+            // requiredSkills 경로(fallback 텍스트 있음)는 규칙 추출로 폴백, preferredSkills 경로는 빈 배열.
+            return fallbackPostingText != null ? toJson(extractRequiredSkills(fallbackPostingText)) : toJson(List.of());
         }
-        log.debug("Filtered {} non-skill item(s) from LLM skills: {} -> {}",
-                skills.size() - filtered.size(), skills, filtered);
-        return toJson(filtered);
+        log.debug("Filtered/salvaged LLM skills: {} -> {}", skills, kept);
+        return toJson(new ArrayList<>(kept));
+    }
+
+    /**
+     * looksLikeSkill 에서 탈락한 항목이 여러 스킬을 한 문자열에 묶은 경우("PHP, Java, JSP, MariaDB 웹/서버 개발",
+     * "AWS (CodeDeploy, EC2, ...)")에서 깨끗한 대표 스킬만 복구한다.
+     * - top-level 구분자({@code , ; · ㆍ})로만 분할한다. 괄호 안 콤마는 분할하지 않는다(AWS (CodeDeploy, EC2) 보호).
+     * - 슬래시(/)는 분할하지 않는다(CI/CD·TCP/IP·웹/서버 보존).
+     * - 분할 후에도 탈락하고 '('를 포함하면 '(' 앞 대표 토큰만 남기되, **기술 토큰 계열일 때만** 복구한다.
+     *   looksLikeSkill 은 짧은 한국어 명사구에 관대해, "결제 시스템(백엔드 API) 설계 및 개발" 의 prefix "결제 시스템"
+     *   같은 업무 문장 조각이 살아나는 과복구를 막기 위함이다("AWS (…)" -> "AWS" 만 허용). 괄호 안 상세는 미복구.
+     * - 아무 것도 못 살리면 빈 리스트(잡음 항목 제거).
+     */
+    private List<String> salvageSkillBundle(String item) {
+        List<String> recovered = new ArrayList<>();
+        for (String part : splitTopLevelDelimiters(item)) {
+            String candidate = part.trim();
+            if (looksLikeSkill(candidate)) {
+                recovered.add(candidate);
+                continue;
+            }
+            // 괄호 앞 대표 토큰 salvage: 과복구 방지 위해 기술 토큰(KNOWN_SKILLS 또는 영문/기술 토큰 계열)만.
+            if (candidate.contains("(")) {
+                String lead = candidate.substring(0, candidate.indexOf('(')).trim();
+                if (looksLikeTechToken(lead) && looksLikeSkill(lead)) {
+                    recovered.add(lead);
+                }
+            }
+        }
+        return recovered;
+    }
+
+    /**
+     * 괄호 앞 대표 토큰 복구 대상인지 판정한다(과복구 방지). 1차는 KNOWN_SKILLS 정확 매칭(예측 가능 — 미등록 기술은
+     * KNOWN_SKILLS 에 추가하는 편이 안전). 2차 regex fallback 은 공백 없는 단일 토큰 중 기술 신호가 있는 경우만:
+     * 기술 기호(. + # / -)/숫자 포함(Node.js·CI/CD·C#) 또는 전부 대문자 약어(AWS·GCP·SQL).
+     * "Payment System"(공백 영문 구문)·"결제 시스템"(한국어)처럼 기술 신호 없는 업무명 조각은 배제된다.
+     */
+    private boolean looksLikeTechToken(String value) {
+        String trimmed = value == null ? "" : value.trim();
+        if (trimmed.isEmpty()) {
+            return false;
+        }
+        if (KNOWN_SKILLS.stream().anyMatch(skill -> skill.equalsIgnoreCase(trimmed))) {
+            return true;
+        }
+        if (WHITESPACE_PATTERN.matcher(trimmed).find()) {
+            return false;
+        }
+        return TECH_SIGNAL_PATTERN.matcher(trimmed).find()
+                || UPPER_ACRONYM_PATTERN.matcher(trimmed).matches();
+    }
+
+    /** 괄호 depth 0 인 위치의 top-level 구분자({@code , ; · ㆍ})로만 분할한다. */
+    private List<String> splitTopLevelDelimiters(String text) {
+        List<String> parts = new ArrayList<>();
+        StringBuilder current = new StringBuilder();
+        int depth = 0;
+        for (int i = 0; i < text.length(); i++) {
+            char c = text.charAt(i);
+            if (c == '(') {
+                depth++;
+            } else if (c == ')') {
+                depth = Math.max(0, depth - 1);
+            }
+            if (depth == 0 && TOP_LEVEL_SKILL_DELIMITERS.indexOf(c) >= 0) {
+                parts.add(current.toString());
+                current.setLength(0);
+            } else {
+                current.append(c);
+            }
+        }
+        parts.add(current.toString());
+        return parts;
     }
 
     private boolean looksLikeSkill(String value) {
@@ -390,6 +539,9 @@ public class BAnalysisGenerationService {
             return false;
         }
         if (trimmed.split("\\s+").length > SKILL_MAX_WORDS) {
+            return false;
+        }
+        if (NON_SKILL_PATTERN.matcher(trimmed).find()) {
             return false;
         }
         return !SKILL_SENTENCE_PATTERN.matcher(trimmed).find();
@@ -483,6 +635,10 @@ public class BAnalysisGenerationService {
     }
 
     private String jobPrompt(ApplicationCase applicationCase, String postingText, Classification classification) {
+        int budget = contentCharBudget();
+        int classificationBudget = Math.max(0, Math.min(CLASSIFICATION_CHAR_CAP, budget - MIN_POSTING_CHARS));
+        String classificationJson = truncate(toJson(classification.asMap()), classificationBudget);
+        String posting = truncate(postingText, clampPostingChars(budget - classificationJson.length()));
         return """
                 회사명: %s
                 직무명: %s
@@ -495,11 +651,17 @@ public class BAnalysisGenerationService {
                 """.formatted(
                 defaultText(applicationCase.getCompanyName(), "unknown"),
                 defaultText(applicationCase.getJobTitle(), "unknown"),
-                truncate(toJson(classification.asMap()), 4_000),
-                truncate(postingText, MAX_PROMPT_TEXT_LENGTH));
+                classificationJson,
+                posting);
     }
 
     private String companyPrompt(ApplicationCase applicationCase, String postingText, Classification classification) {
+        int budget = contentCharBudget();
+        int classificationBudget = Math.max(0, Math.min(CLASSIFICATION_CHAR_CAP, budget - MIN_POSTING_CHARS));
+        String companyInfo = truncate(
+                String.join("\n", classification.textsByLabel(BJobSentenceClassifier.COMPANY_INFO)),
+                classificationBudget);
+        String posting = truncate(postingText, clampPostingChars(budget - companyInfo.length()));
         return """
                 회사명: %s
                 직무명: %s
@@ -512,13 +674,28 @@ public class BAnalysisGenerationService {
                 """.formatted(
                 defaultText(applicationCase.getCompanyName(), "unknown"),
                 defaultText(applicationCase.getJobTitle(), "unknown"),
-                String.join("\n", classification.textsByLabel(BJobSentenceClassifier.COMPANY_INFO)),
-                truncate(postingText, MAX_PROMPT_TEXT_LENGTH));
+                companyInfo,
+                posting);
+    }
+
+    /**
+     * num_ctx(입력+출력 토큰 합) 예산에서 출력분(numPredict)과 고정 오버헤드를 뺀 뒤, 보조 신호+원문에 쓸 수 있는
+     * 문자 수로 환산한다. 이 예산 안에서 분류 신호를 먼저 캡하고 나머지를 원문에 배정한다(jobPrompt/companyPrompt).
+     */
+    private int contentCharBudget() {
+        BAnalysisProperties.LocalLlm local = properties.getLocalLlm();
+        int contentTokens = local.getNumCtx() - local.getNumPredict() - FIXED_PROMPT_OVERHEAD_TOKENS;
+        int chars = (int) (Math.max(0, contentTokens) * CHARS_PER_TOKEN);
+        return Math.max(MIN_POSTING_CHARS, chars);
+    }
+
+    private int clampPostingChars(int proposed) {
+        return Math.max(MIN_POSTING_CHARS, Math.min(MAX_PROMPT_TEXT_LENGTH, proposed));
     }
 
     private Map<String, Object> jobAnalysisSchema() {
         Map<String, Object> properties = new LinkedHashMap<>();
-        properties.put("employmentType", stringSchema());
+        properties.put("employmentType", Map.of("type", "string", "enum", List.of("FULL_TIME", "CONTRACT", "INTERN", "PART_TIME")));
         properties.put("experienceLevel", Map.of("type", "string", "enum", List.of("JUNIOR", "MID", "SENIOR")));
         properties.put("requiredSkills", stringArraySchema());
         properties.put("preferredSkills", stringArraySchema());

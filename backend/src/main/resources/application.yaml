@@ -135,6 +135,8 @@ careertuner:
       model: ${B_ANALYSIS_OLLAMA_MODEL:careertuner-b-jobposting-r1}
       connect-timeout: ${B_ANALYSIS_OLLAMA_CONNECT_TIMEOUT:5s}
       read-timeout: ${B_ANALYSIS_OLLAMA_READ_TIMEOUT:480s}
+      num-ctx: ${B_ANALYSIS_OLLAMA_NUM_CTX:8192}
+      num-predict: ${B_ANALYSIS_OLLAMA_NUM_PREDICT:2048}
   file:
     # 면접 음성/영상 등 업로드 파일 저장 위치. 큰 영상은 SPRING_SERVLET_MULTIPART_MAX_FILE_SIZE 도 함께 올린다.
     media-dir: ${MEDIA_UPLOAD_DIR:.uploads/media}

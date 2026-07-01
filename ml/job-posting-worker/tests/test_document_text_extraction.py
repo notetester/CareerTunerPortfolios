@@ -232,6 +232,154 @@ class DocumentTextExtractionTest(unittest.TestCase):
         self.assertIn("critical_section_content_insufficient", analysis["warnings"])
         self.assertEqual(analysis["metrics"]["criticalSectionUsefulLineCount"], 0)
 
+    def test_inline_garbled_critical_section_demotes(self):
+        module = load_script()
+        cases = [
+            "\n".join(
+                [
+                    "Company: Acme Payments",
+                    "Acme Payments operates reliable fintech payment platforms for high-volume merchants.",
+                    "Responsibilities: 티",
+                    "공 Y (을 ) AY",
+                    "우표눔를용라어를ㅋ크이극아",
+                    "Qualifications: Java Spring Boot SQL",
+                    "Benefits: remote option and flexible work",
+                ]
+            ),
+            "\n".join(
+                [
+                    "Company: Acme Payments",
+                    "Acme Payments operates reliable fintech payment platforms for high-volume merchants.",
+                    "What you will do: 티",
+                    "공 Y (을 ) AY",
+                    "우표눔를용라어를ㅋ크이극아",
+                    "Qualifications: Java Spring Boot SQL",
+                    "Benefits: remote option and flexible work",
+                ]
+            ),
+            "\n".join(
+                [
+                    "회사소개: 넥스트클라우드는 핀테크 결제 플랫폼을 운영하는 기업입니다.",
+                    "주요업무: 티",
+                    "공 Y (을 ) AY",
+                    "우표눔를용라어를ㅋ크이극아",
+                    "자격요건: Java와 Spring Boot 개발 경험",
+                    "우대사항: Kubernetes, Docker 운영 경험",
+                ]
+            ),
+        ]
+
+        for text in cases:
+            with self.subTest(text=text.splitlines()[0]):
+                text = text + "\n" + ("핀테크 결제 서비스를 안정적으로 제공하기 위해 노력합니다. " * 12)
+
+                analysis = module.analyze_quality(text)
+
+                self.assertEqual(analysis["qualityStatus"], "REVIEW_REQUIRED")
+                self.assertIn("critical_section_content_insufficient", analysis["warnings"])
+                self.assertTrue(analysis["metrics"]["criticalSectionExists"])
+                self.assertEqual(analysis["metrics"]["criticalSectionUsefulLineCount"], 0)
+
+    def test_inline_valid_critical_section_is_not_demoted(self):
+        module = load_script()
+        cases = [
+            "\n".join(
+                [
+                    "Company: Acme Payments",
+                    "Acme Payments operates reliable fintech payment platforms for high-volume merchants.",
+                    "Responsibilities: build APIs and operate services",
+                    "Qualifications: Java Spring Boot SQL",
+                    "Benefits: remote option and flexible work",
+                ]
+            ),
+            "\n".join(
+                [
+                    "Company: Acme Payments",
+                    "Acme Payments operates reliable fintech payment platforms for high-volume merchants.",
+                    "What you will do: build APIs and operate services",
+                    "Qualifications: Java Spring Boot SQL",
+                    "Benefits: remote option and flexible work",
+                ]
+            ),
+            "\n".join(
+                [
+                    "회사소개: 넥스트클라우드는 핀테크 결제 플랫폼을 운영하는 기업입니다.",
+                    "주요업무: API 개발 및 운영",
+                    "자격요건: Java와 Spring Boot 개발 경험",
+                    "우대사항: Kubernetes, Docker 운영 경험",
+                ]
+            ),
+        ]
+
+        for text in cases:
+            with self.subTest(text=text.splitlines()[0]):
+                text = text + "\n" + ("안정적인 서비스 운영 경험을 바탕으로 시스템을 개선합니다. " * 12)
+
+                analysis = module.analyze_quality(text)
+
+                self.assertEqual(analysis["qualityStatus"], "PASS")
+                self.assertNotIn("critical_section_content_insufficient", analysis["warnings"])
+                self.assertTrue(analysis["metrics"]["criticalSectionExists"])
+                self.assertGreaterEqual(analysis["metrics"]["criticalSectionUsefulLineCount"], 1)
+
+    def test_real_world_korean_duties_headers_are_recognized(self):
+        module = load_script()
+        # 두레팜(고용24)·카카오(자체공고) 실측 헤더: "직무내용", "합류하게 되면 이런 일을 하게 됩니다".
+        for header, body in (
+            ("직무내용", "데이터 수집 및 분석, AI 모델 개발과 운영을 담당합니다."),
+            ("합류하게 되면 이런 일을 하게 됩니다", "QA 자동화 설계 및 구축, 릴리즈 품질 관리를 수행합니다."),
+        ):
+            with self.subTest(header=header):
+                text = "\n".join([
+                    "회사소개",
+                    "핀테크 결제 플랫폼을 운영하는 기업입니다.",
+                    header,
+                    body,
+                    "이런동료를기다립니다",
+                    "Java와 Spring Boot 개발 경험이 있으신 분.",
+                ]) + "\n" + ("안정적인 서비스를 제공하기 위해 노력합니다. " * 12)
+                analysis = module.analyze_quality(text)
+                self.assertTrue(analysis["metrics"]["criticalSectionExists"])
+                self.assertGreaterEqual(analysis["metrics"]["criticalSectionUsefulLineCount"], 1)
+                self.assertNotIn("critical_section_content_insufficient", analysis["warnings"])
+
+    def test_strip_site_noise_removes_footer_and_keeps_body(self):
+        module = load_script()
+        text = "\n".join([
+            "출력일자:2026-06-17 11:50:46",
+            "주요업무",
+            "데이터 분석 및 AI 개발을 담당합니다.",
+            "Contact",
+            "•jobs@example.com",
+            "https://www.work24.go.kr/",
+            "©카카오모빌리티 Kakaomobility All rights reserved.",
+        ])
+        cleaned = module.strip_site_noise(text)
+        # 잡음 줄은 제거
+        for noise in ("출력일자", "Contact", "jobs@example.com", "work24.go.kr", "All rights reserved"):
+            self.assertNotIn(noise, cleaned)
+        # 본문은 보존
+        self.assertIn("데이터 분석 및 AI 개발을 담당합니다.", cleaned)
+        self.assertIn("주요업무", cleaned)
+
+    def test_position_name_header_is_not_treated_as_duties_section(self):
+        module = load_script()
+        # "모집직무"는 직무명 헤더라 critical duties 로 잡으면 안 된다(업무 본문 없이 직무명만으로 PASS 방지).
+        text = "\n".join([
+            "회사소개",
+            "핀테크 결제 플랫폼을 운영하는 기업입니다.",
+            "모집직무",
+            "AI 개발자, 데이터 분석가",
+            "자격요건",
+            "Python 경험이 있으신 분.",
+        ]) + "\n" + ("안정적인 서비스를 제공합니다. " * 40)
+
+        analysis = module.analyze_quality(text)
+
+        self.assertFalse(analysis["metrics"]["criticalSectionExists"])
+        # 경계/힌트로는 SECTION_KEYWORDS 에 남아 있어야 한다.
+        self.assertIn("모집직무", module.SECTION_KEYWORDS)
+
     def test_classifies_long_image_and_uses_existing_ocr_text(self):
         module = load_script()
         with tempfile.TemporaryDirectory() as tmp:
