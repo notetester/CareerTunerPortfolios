@@ -1,12 +1,12 @@
 import type { ReactNode } from "react";
-import { Link, useLocation } from "react-router";
+import { Link, useLocation, useNavigate } from "react-router";
 import {
   LayoutDashboard, Briefcase, BarChart3, Building2, Gauge, FileText,
   Users, CreditCard, MessageSquareWarning, Megaphone, CircleHelp,
   Mail, Search, Bell, ChevronRight, Bot, SlidersHorizontal,
   Target, TrendingUp, ListChecks, Activity,
   Scale, FileUser, ClipboardCheck, MessageSquare, Package, ScrollText,
-  ShieldCheck, History,
+  ShieldCheck, History, ExternalLink, LogOut,
   type LucideIcon,
 } from "lucide-react";
 import { useAuth } from "@/app/auth/AuthContext";
@@ -73,7 +73,12 @@ export default function AdminShell({
   children,
 }: AdminShellProps) {
   const location = useLocation();
-  const { user } = useAuth();
+  const navigate = useNavigate();
+  const { user, logout } = useAuth();
+  const handleLogout = async () => {
+    await logout();
+    navigate("/");
+  };
   const role = user?.role;
   const canUseAdmin = role === "ADMIN" || role === "SUPER_ADMIN";
   const canUseCurrentPage = canUseAdmin && (role === "SUPER_ADMIN" || !SUPER_ADMIN_ONLY_NAV_KEYS.has(active));
@@ -116,14 +121,23 @@ export default function AdminShell({
             <input type="text" placeholder="검색..." />
           </div>
           <div className="adm__topbar-right">
-            <button className="adm__topbar-bell" type="button">
-              <Bell />
-              <span className="adm__topbar-dot" />
-            </button>
+            <Link
+              to="/dashboard"
+              className="inline-flex items-center gap-1.5 rounded-md border border-slate-200 px-3 py-1.5 text-sm font-medium text-slate-600 hover:bg-slate-50 hover:text-slate-900"
+            >
+              <ExternalLink className="size-4" /> 사이트로 돌아가기
+            </Link>
             <div className="adm__profile">
               <div className="adm__avatar">A</div>
               <span className="adm__profile-name">관리자</span>
             </div>
+            <button
+              type="button"
+              onClick={handleLogout}
+              className="inline-flex items-center gap-1.5 rounded-md border border-slate-200 px-3 py-1.5 text-sm font-medium text-slate-600 hover:bg-slate-50 hover:text-slate-900"
+            >
+              <LogOut className="size-4" /> 로그아웃
+            </button>
           </div>
         </header>
 
