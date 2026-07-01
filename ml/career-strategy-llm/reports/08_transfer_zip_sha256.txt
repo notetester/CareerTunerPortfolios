@@ -1,4 +1,0 @@
-career-strategy-llm-transfer-mixed-3b.zip
-SHA256: FAA82CEF65E135DFB59A9F7DFE317173D04B167ACD8005194EC079BE7BB6ED7C
-
-Verify (PowerShell): Get-FileHash .\career-strategy-llm-transfer-mixed-3b.zip -Algorithm SHA256

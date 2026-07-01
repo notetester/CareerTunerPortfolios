@@ -74,6 +74,13 @@ pnpm-debug.log*
 # ----- Local agent files -----
 .agents/
 
+# ----- Submodule working-tree contents -----
+# The parent repo tracks only the gitlink pointer for these paths.
+# Files inside are owned by each submodule repository.
+docs/storyboard/*
+docs/ai-reports/*
+docs/ai-artifacts/*
+
 
 # 로컬 키 주입 스크립트 (키 포함 — 절대 커밋 금지)
 backend/run-local.bat
