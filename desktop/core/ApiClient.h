@@ -3,6 +3,7 @@
 #include <QNetworkAccessManager>
 #include <QNetworkRequest>
 #include <QJsonObject>
+#include <QJsonValue>
 #include <QString>
 #include <functional>
 
@@ -23,7 +24,7 @@ public:
     QString token() const { return m_token; }
 
     // ok = envelope.success, data = envelope.data, message = envelope.message
-    using JsonCallback = std::function<void(bool ok, const QJsonObject& data, const QString& message)>;
+    using JsonCallback = std::function<void(bool ok, const QJsonValue& data, const QString& message)>;
 
     void get(const QString& path, JsonCallback cb);
     void post(const QString& path, const QJsonObject& body, JsonCallback cb);

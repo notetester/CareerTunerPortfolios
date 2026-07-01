@@ -48,7 +48,7 @@ ApplicationWindow {
 
     NewJobDialog {
         id: newJobDialog
-        onJobCreated: (company, mode) => win.createJob(company, mode)
+        onJobCreated: (caseId, mode) => jobModel.createSession(caseId, mode)
     }
 
     // ── 로그인 게이트 ──
@@ -138,7 +138,9 @@ ApplicationWindow {
                     detailPage.jobId = jobId
                     detailPage.jobTitle = title
                     detailPage.jobMode = mode
+                    detailPage.questionList = []
                     stack.currentIndex = 5
+                    jobModel.loadQuestions(jobId)
                 }
                 onRequestNewJob: newJobDialog.open()
             }

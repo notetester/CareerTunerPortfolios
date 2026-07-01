@@ -2,6 +2,7 @@
 #include "ApiClient.h"
 #include <QJsonArray>
 #include <QJsonObject>
+#include <QVariantMap>
 
 static QString modeLabel(const QString& m)
 {
@@ -23,11 +24,11 @@ void JobModel::reload()
 {
     if (!m_api) return;
     m_api->get("/api/interview/sessions?page=0&size=20",
-        [this](bool ok, const QJsonObject& data, const QString&) {
+        [this](bool ok, const QJsonValue& data, const QString&) {
             beginResetModel();
             m_jobs.clear();
             if (ok) {
-                const QJsonArray arr = data.value("sessions").toArray();
+                const QJsonArray arr = data.toObject().value("sessions").toArray();
                 for (const QJsonValue& v : arr) {
                     const QJsonObject s = v.toObject();
                     const QString mode = modeLabel(s.value("mode").toString());
@@ -43,6 +44,56 @@ void JobModel::reload()
                 }
             }
             endResetModel();
+        });
+}
+
+void JobModel::loadCases()
+{
+    if (!m_api) return;
+    m_api->get("/api/application-cases?page=0&size=30",
+        [this](bool ok, const QJsonValue& data, const QString&) {
+            QVariantList out;
+            if (ok) {
+                for (const QJsonValue& v : data.toArray()) {
+                    const QJsonObject c = v.toObject();
+                    QVariantMap m;
+                    m["caseId"] = static_cast<qint64>(c.value("id").toInteger());
+                    m["label"]  = c.value("companyName").toString() + QStringLiteral(" · ") + c.value("jobTitle").toString();
+                    out.push_back(m);
+                }
+            }
+            emit casesReady(out);
+        });
+}
+
+void JobModel::createSession(int caseId, const QString& mode)
+{
+    if (!m_api) return;
+    QJsonObject body;
+    body["applicationCaseId"] = caseId;
+    body["mode"] = mode;
+    m_api->post("/api/interview/sessions", body,
+        [this](bool ok, const QJsonValue&, const QString&) {
+            if (ok) reload();   // 생성 성공 시 목록 새로고침
+        });
+}
+
+void JobModel::loadQuestions(int sessionId)
+{
+    if (!m_api) return;
+    m_api->get("/api/interview/sessions/" + QString::number(sessionId) + "/questions",
+        [this](bool ok, const QJsonValue& data, const QString&) {
+            QVariantList out;
+            if (ok) {
+                for (const QJsonValue& v : data.toArray()) {
+                    const QJsonObject q = v.toObject();
+                    QVariantMap m;
+                    m["question"] = q.value("question").toString();
+                    m["type"]     = q.value("questionType").toString();
+                    out.push_back(m);
+                }
+            }
+            emit questionsReady(out);
         });
 }
 

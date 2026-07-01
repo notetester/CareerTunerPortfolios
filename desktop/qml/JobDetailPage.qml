@@ -9,7 +9,13 @@ Item {
     property int jobId: 128
     property string jobTitle: "삼성전자 · SW 개발직군"
     property string jobMode: "직무 면접"
+    property var questionList: []
     signal back()
+
+    Connections {
+        target: jobModel
+        function onQuestionsReady(questions) { detail.questionList = questions }
+    }
 
     property var lanes: [
         { label: "1차",    nodes: [{n:"공고 분석", s:"done"}] },
@@ -80,17 +86,14 @@ Item {
             }
         }
 
-        Text { text: "단계별 결과"; color: "#8b949e"; font.pixelSize: 12; font.bold: true }
+        Text { text: "생성된 질문 (" + detail.questionList.length + "개)"; color: "#8b949e"; font.pixelSize: 12; font.bold: true }
 
         ListView {
             Layout.fillWidth: true
             Layout.fillHeight: true
             clip: true
             spacing: 11
-            model: [
-                { t: "공고 분석",     b: "핵심 자격요건 8개·우대 5개 추출. 키워드: Java/Spring/MySQL/대용량." },
-                { t: "예상질문 생성", b: "직무 기반 예상질문 12개 생성 (기술 7 · 경험 5)." }
-            ]
+            model: detail.questionList
             delegate: Rectangle {
                 required property var modelData
                 width: ListView.view.width
@@ -100,9 +103,9 @@ Item {
                     id: rcol
                     x: 16; y: 14; width: parent.width - 32
                     spacing: 5
-                    Text { text: "✅ " + modelData.t; color: "#e6edf3"; font.pixelSize: 14; font.bold: true }
+                    Text { text: modelData.type; color: "#2dd4bf"; font.pixelSize: 11; font.bold: true }
                     Text {
-                        text: modelData.b; color: "#8b949e"; font.pixelSize: 13
+                        text: modelData.question; color: "#e6edf3"; font.pixelSize: 13
                         wrapMode: Text.WordWrap; Layout.fillWidth: true
                     }
                 }

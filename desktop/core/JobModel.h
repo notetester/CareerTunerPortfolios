@@ -2,6 +2,7 @@
 #include <QAbstractListModel>
 #include <QVector>
 #include <QString>
+#include <QVariantList>
 
 class ApiClient;
 
@@ -25,7 +26,16 @@ public:
     explicit JobModel(QObject* parent = nullptr);
 
     void setApi(ApiClient* api) { m_api = api; }
-    Q_INVOKABLE void reload();   // 서버에서 면접 세션 목록을 로드해 모델을 채움
+    Q_INVOKABLE void reload();                                       // 면접 세션 목록 로드
+    Q_INVOKABLE void loadCases();                                    // 지원건 목록 → casesReady
+    Q_INVOKABLE void createSession(int caseId, const QString& mode); // 세션 생성 후 reload
+    Q_INVOKABLE void loadQuestions(int sessionId);                   // 질문 목록 → questionsReady
+
+signals:
+    void casesReady(const QVariantList& cases);
+    void questionsReady(const QVariantList& questions);
+
+public:
 
     int rowCount(const QModelIndex& parent = QModelIndex()) const override;
     QVariant data(const QModelIndex& index, int role) const override;
