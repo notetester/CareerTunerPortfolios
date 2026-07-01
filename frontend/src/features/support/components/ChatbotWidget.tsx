@@ -1,17 +1,20 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { useNavigate } from "react-router";
 import {
-  Sparkles, MessageCircle, Mic, MicOff, ArrowUp, Minus, X,
+  Sparkles, MessageCircle, Mic, MicOff, ArrowUp, X,
   KeyRound, CreditCard, FileText, FileSearch, Pause, Volume2,
   ArrowUpRight, Shield, SearchX, Headset, PenLine, WifiOff,
   RotateCw, Check, Keyboard, ArrowRight, Play, LogOut, History, Plus,
+  Minimize2, Maximize2,
 } from "lucide-react";
 import { useChatbot } from "../hooks/useChatbot";
 import type {
   ChatMessage, ChatEvidence, SiteLink, IntakeCaseCandidate, IntakeModeOption, ChatSession,
+  InterviewReportCard,
 } from "../types/chatbot";
 import { SUGGESTED_QUESTIONS } from "../types/chatbot";
 import { AutoPrepWorkView } from "@/features/autoprep/components/AutoPrepWorkView";
+import { OnboardingGuide } from "./OnboardingGuide";
 
 /** 오케스트레이터 정체성 글리프(U+2726). */
 const ORCH_GLYPH = "✦";
@@ -85,18 +88,36 @@ function relativeTime(ts: number): string {
 
 function ChatbotPanel({ chatbot }: ChatbotPanelProps) {
   const {
-    close, minimize, messages, sendMessage, botStatus,
+    close, messages, sendMessage, botStatus,
     voiceState, startVoice, cancelVoice, confirmVoice, setVoiceState,
     interimTranscript, retryConnection, toggleTts,
     orchestrator, runStarted, runParts, runRunning, runPlan, runCaseId,
     selectCase, selectMode, summarizePosts,
     showExitSheet, openExitSheet, closeExitSheet, exitOrchestrator,
     sessions, activeSessionId, openSession, newSession, loadSessions,
+    surface, expandToFloating, collapseToCorner, markInterviewHandoff,
   } = chatbot;
+  const floating = surface === "floating";
+
+  // 면접 인계: caseId 를 표식으로 남기고 D 면접 페이지로 이동(모드 선택 탭). caseId 없으면 그냥 진입.
+  const goInterview = (caseId: number | null) => {
+    markInterviewHandoff(caseId);
+    navigate(caseId != null ? `/interview?caseId=${caseId}&tab=modes` : "/interview");
+  };
+  // AutoPrepWorkView 등에서 온 경로가 면접이면 caseId 를 추출해 표식을 남긴 뒤 이동.
+  const navigateFromWork = (path: string) => {
+    if (path.startsWith("/interview")) {
+      const q = path.split("?")[1] ?? "";
+      const cid = new URLSearchParams(q).get("caseId");
+      markInterviewHandoff(cid ? Number(cid) : null);
+    }
+    navigate(path);
+  };
 
   const navigate = useNavigate();
   const [input, setInput] = useState("");
   const [showSessions, setShowSessions] = useState(false);
+  const [showGuide, setShowGuide] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   const handleOpenSessions = () => { loadSessions(); setShowSessions(true); };
@@ -138,21 +159,45 @@ function ChatbotPanel({ chatbot }: ChatbotPanelProps) {
       : "면접 준비 · 정보 확인 중";
   }
 
-  return (
-    <div className="fixed right-5 bottom-5 z-50 w-[360px] h-[560px] flex flex-col bg-card border border-border rounded-2xl overflow-hidden"
-      style={{
+  // 표면 크기 전환(morph): corner=우하단 340/360, floating=중앙 970×606 + 스크림.
+  // 앵커(우하단↔중앙)가 달라 CSS 크기 보간은 깨지므로 즉시 전환(부드러운 shared-element 은 2차).
+  const panelClass = floating
+    ? "ct-float-in fixed z-50 flex flex-col bg-card overflow-hidden"
+    : "fixed right-5 bottom-5 z-50 w-[360px] h-[560px] flex flex-col bg-card border border-border rounded-2xl overflow-hidden";
+  const panelStyle: React.CSSProperties = floating
+    ? {
+        left: "50%", top: "50%", transform: "translate(-50%,-50%)",
+        width: "min(970px, calc(100vw - 32px))",
+        height: "min(606px, calc(100vh - 32px))",
+        borderRadius: 20,
+        border: "1px solid rgba(94,106,210,0.2)",
+        boxShadow: "0 40px 90px rgba(22,23,26,0.4)",
+      }
+    : {
         boxShadow: orchestrator
           ? "0 16px 40px rgba(109,40,217,0.22), 0 4px 12px rgba(15,23,42,0.06)"
           : "0 12px 28px rgba(15,23,42,0.12), 0 4px 10px rgba(15,23,42,0.06)",
-      }}>
+      };
+
+  return (
+    <>
+      {/* 플로팅 스크림: 바깥 클릭 = 최소화(닫기 아님). 모달 아님(뒤 대시보드 보임). */}
+      {floating && (
+        <div className="ct-scrim-in fixed inset-0 z-40" style={{ background: "rgba(20,18,40,0.4)" }}
+          onClick={collapseToCorner} aria-hidden />
+      )}
+    <div className={panelClass} style={panelStyle}>
 
       {/* ── Header ── */}
       <WidgetHeader
         orchestrator={orchestrator}
         isDisconnected={isDisconnected}
         isVoiceListening={voiceState === "listening"}
+        floating={floating}
+        canExpand={orchestrator}
         onSessions={handleOpenSessions}
-        onMinimize={minimize}
+        onCollapse={collapseToCorner}
+        onExpand={expandToFloating}
         onClose={close}
       />
 
@@ -175,10 +220,16 @@ function ChatbotPanel({ chatbot }: ChatbotPanelProps) {
         <DisconnectedView onRetry={retryConnection} />
       ) : (
         <>
-          <div ref={scrollRef} className="flex-1 p-4 overflow-y-auto flex flex-col gap-3.5"
-            style={{ background: orchestrator ? "var(--orch-chat-bg)" : "var(--secondary)" }}>
+          <div ref={scrollRef}
+            className={`flex-1 p-4 overflow-y-auto flex flex-col gap-3.5 ${floating ? "items-stretch" : ""}`}
+            style={{
+              background: orchestrator ? "var(--orch-chat-bg)" : "var(--secondary)",
+              // 플로팅에선 넓은 폭에 말풍선이 늘어지지 않게 중앙 컬럼으로 제한.
+              ...(floating ? { maxWidth: 720, width: "100%", marginInline: "auto" } : {}),
+            }}>
             {messages.length === 0 && botStatus === "idle" ? (
-              <EmptyState onSelect={sendMessage} />
+              <EmptyState onSelect={sendMessage}
+                onStartGuide={() => { setShowGuide(true); expandToFloating(); }} />
             ) : (
               <>
                 {messages.map((m) =>
@@ -191,6 +242,13 @@ function ChatbotPanel({ chatbot }: ChatbotPanelProps) {
                       {m.id === lastBotId && m.intake && !m.intake.ready && !runStarted && (
                         <IntakeChips intake={m.intake} onSelectCase={selectCase} onSelectMode={selectMode} />
                       )}
+                      {m.interviewReport && (
+                        <InterviewResultCard
+                          data={m.interviewReport}
+                          onContinueCorrection={() => sendMessage("이 면접 결과로 자소서 첨삭 이어서 해줘")}
+                          onOpenCase={(cid) => navigateFromWork(`/applications/${cid}`)}
+                        />
+                      )}
                     </div>
                   )
                 )}
@@ -200,7 +258,7 @@ function ChatbotPanel({ chatbot }: ChatbotPanelProps) {
                       running={runRunning}
                       parts={runParts}
                       caseId={runCaseId}
-                      onNavigate={(p) => navigate(p)}
+                      onNavigate={navigateFromWork}
                     />
                   </div>
                 )}
@@ -234,7 +292,25 @@ function ChatbotPanel({ chatbot }: ChatbotPanelProps) {
           onClose={() => setShowSessions(false)}
         />
       )}
+
+      {/* ── 온보딩 가이드(대화로 준비 시작 → 서류·공고 첨부 → 목 적합도 → 면접 권유) ── */}
+      {showGuide && (
+        <OnboardingGuide
+          wide={floating}
+          onCollapse={collapseToCorner}
+          onExpand={expandToFloating}
+          onClose={() => { setShowGuide(false); collapseToCorner(); }}
+          onGotoInterview={(caseId) => {
+            // 가이드에서 수집한 caseId 를 실어 D 면접 페이지로 인계(표식 남기고 복귀 시 결과 재조회).
+            // ⚠️ D 확인 대상: InterviewPage 가 ?caseId 를 읽어 지원 건을 자동 선택해야 완결(현재 미소비).
+            setShowGuide(false);
+            collapseToCorner();
+            goInterview(caseId);
+          }}
+        />
+      )}
     </div>
+    </>
   );
 }
 
@@ -454,9 +530,10 @@ function SessionPanel({ sessions, activeSessionId, onOpen, onNew, onClose }: {
 
 /* ════════════════ Sub-components ════════════════ */
 
-function WidgetHeader({ orchestrator, isDisconnected, isVoiceListening, onSessions, onMinimize, onClose }: {
+function WidgetHeader({ orchestrator, isDisconnected, isVoiceListening, floating, canExpand, onSessions, onCollapse, onExpand, onClose }: {
   orchestrator?: boolean; isDisconnected: boolean; isVoiceListening: boolean;
-  onSessions: () => void; onMinimize: () => void; onClose: () => void;
+  floating?: boolean; canExpand?: boolean;
+  onSessions: () => void; onCollapse: () => void; onExpand: () => void; onClose: () => void;
 }) {
   return (
     <div className="flex items-center gap-2.5 px-4 py-3.5 border-b border-border transition-colors"
@@ -492,10 +569,23 @@ function WidgetHeader({ orchestrator, isDisconnected, isVoiceListening, onSessio
           className="w-[30px] h-[30px] rounded-lg flex items-center justify-center hover:bg-secondary transition-colors">
           <History size={16} />
         </button>
-        <button onClick={onMinimize} className="w-[30px] h-[30px] rounded-lg flex items-center justify-center hover:bg-secondary transition-colors">
-          <Minus size={17} />
-        </button>
-        <button onClick={onClose} className="w-[30px] h-[30px] rounded-lg flex items-center justify-center hover:bg-secondary transition-colors">
+        {floating ? (
+          // 플로팅: ⤡ 코너로 최소화(세션 유지). 닫기는 X.
+          <button onClick={onCollapse} aria-label="코너로 최소화"
+            className="w-[30px] h-[30px] rounded-lg flex items-center justify-center hover:bg-secondary transition-colors">
+            <Minimize2 size={16} />
+          </button>
+        ) : (
+          // 코너에서 오케 진행 중 → ⤢ 다시 크게(플로팅). (최소화 버튼은 닫기와 기능이 같아 제거)
+          canExpand && (
+            <button onClick={onExpand} aria-label="크게 펼치기"
+              className="w-[30px] h-[30px] rounded-lg flex items-center justify-center hover:bg-secondary transition-colors">
+              <Maximize2 size={15} />
+            </button>
+          )
+        )}
+        <button onClick={onClose} aria-label="닫기"
+          className="w-[30px] h-[30px] rounded-lg flex items-center justify-center hover:bg-secondary transition-colors">
           <X size={17} />
         </button>
       </div>
@@ -503,7 +593,7 @@ function WidgetHeader({ orchestrator, isDisconnected, isVoiceListening, onSessio
   );
 }
 
-function EmptyState({ onSelect }: { onSelect: (text: string) => void }) {
+function EmptyState({ onSelect, onStartGuide }: { onSelect: (text: string) => void; onStartGuide: () => void }) {
   return (
     <div className="flex flex-col h-full">
       <div className="flex flex-col items-center text-center mt-[18px] mb-5">
@@ -516,6 +606,22 @@ function EmptyState({ onSelect }: { onSelect: (text: string) => void }) {
           CareerTuner 이용 중 궁금한 점을 물어보세요. FAQ와 공지를 찾아 바로 알려드릴게요.
         </div>
       </div>
+
+      {/* 온보딩 가이드 진입 — 처음 오거나 준비를 시작하고 싶은 사람용(대화 한 번으로 서류→공고→적합도→면접). */}
+      <button onClick={onStartGuide}
+        className="flex items-center gap-3 w-full px-3.5 py-3 rounded-xl mb-4 text-left transition-transform hover:brightness-[1.03]"
+        style={{ background: "var(--orch-surface)", border: "1px solid var(--orch-point)" }}>
+        <span className="w-9 h-9 rounded-[10px] flex items-center justify-center text-white shrink-0 font-bold"
+          style={{ background: "var(--gradient-orchestrator)", fontSize: 17 }}>
+          {ORCH_GLYPH}
+        </span>
+        <span className="flex-1 min-w-0">
+          <span className="block text-[13px] font-extrabold" style={{ color: "var(--orch-violet)" }}>대화로 준비 시작하기</span>
+          <span className="block text-[11.5px] leading-[1.5] text-muted-foreground">서류·공고만 올리면 적합도부터 면접까지 이끌어드려요</span>
+        </span>
+        <ArrowRight size={16} className="shrink-0" style={{ color: "var(--orch-violet)" }} />
+      </button>
+
       <div className="text-[11.5px] font-bold text-muted-foreground mb-2 ml-0.5">자주 묻는 질문</div>
       <div className="flex flex-col gap-2">
         {SUGGESTED_QUESTIONS.map(({ icon, text }) => {
@@ -632,6 +738,66 @@ function SummaryChipButton({ chip, onSummarize }: {
         <Sparkles size={13} />
         {chip.label}
       </button>
+    </div>
+  );
+}
+
+/** 면접 복귀 결과 카드 — 완료 후 챗봇에 재조회한 리포트(실값). 순위/상위% 없음. A톤. */
+function InterviewResultCard({ data, onContinueCorrection, onOpenCase }: {
+  data: InterviewReportCard;
+  onContinueCorrection: () => void;
+  onOpenCase: (caseId: number) => void;
+}) {
+  return (
+    <div className="ml-[37px] rounded-2xl border overflow-hidden" style={{ borderColor: "var(--orch-point)" }}>
+      <div className="flex items-center gap-3 px-4 py-3.5" style={{ background: "var(--orch-surface)" }}>
+        <div className="w-11 h-11 rounded-full flex items-center justify-center text-white shrink-0 text-[15px] font-extrabold"
+          style={{ background: "var(--gradient-orchestrator)" }}>
+          {data.totalScore}
+        </div>
+        <div className="min-w-0">
+          <div className="text-[13px] font-extrabold">면접 결과</div>
+          <div className="text-[11px] text-muted-foreground">
+            질문 {data.questionCount}개{data.durationLabel ? ` · ${data.durationLabel}` : ""}
+          </div>
+        </div>
+      </div>
+
+      {data.categories.length > 0 && (
+        <div className="px-4 pt-3 flex flex-wrap gap-1.5">
+          {data.categories.map((c) => (
+            <span key={c.label} className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold"
+              style={{ background: "var(--orch-surface)", color: "var(--orch-violet)" }}>
+              {c.label} <b className="tabular-nums">{c.score}</b>
+            </span>
+          ))}
+        </div>
+      )}
+
+      {data.summaryFeedback.length > 0 && (
+        <div className="px-4 pt-3 flex flex-col gap-1.5">
+          {data.summaryFeedback.slice(0, 3).map((f, i) => (
+            <div key={i} className="flex gap-2 text-[12px] leading-[1.5] text-foreground">
+              <Check size={14} className="mt-0.5 shrink-0" style={{ color: "var(--orch-violet)" }} />
+              <span>{f}</span>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <div className="px-4 py-3.5 flex gap-2">
+        <button onClick={onContinueCorrection}
+          className="flex-1 h-10 rounded-lg text-white text-[12.5px] font-bold transition-transform hover:brightness-110"
+          style={{ background: "var(--gradient-orchestrator)" }}>
+          자소서 첨삭 이어가기
+        </button>
+        {data.caseId != null && (
+          <button onClick={() => onOpenCase(data.caseId as number)}
+            className="h-10 px-3 rounded-lg border border-border text-[12.5px] font-semibold text-foreground transition hover:bg-secondary">
+            지원 건
+          </button>
+        )}
+      </div>
     </div>
   );
 }

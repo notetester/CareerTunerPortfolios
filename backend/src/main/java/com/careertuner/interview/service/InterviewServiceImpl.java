@@ -474,6 +474,28 @@ public class InterviewServiceImpl implements InterviewService {
                 buildQuestionScores(sessionId));
 
         interviewMapper.updateSessionResult(sessionId, payload.totalScore(), writeReport(response), LocalDateTime.now());
+
+        // ────────────────────────────────────────────────────────────────────
+        // [F파트 추가 · ⚠️ D 확인 대상] 면접 리포트 "최초 완료" 알림 발행 (INTERVIEW_REPORT_READY)
+        //  - 위 캐시 분기(리포트 존재 시)에서 이미 return 되므로, 여기 도달 = 리포트 최초 생성·저장.
+        //  - getReport()는 GET 이지만 리포트를 lazy 생성한다 → 리포트를 다시 볼 때마다 호출될 수 있어
+        //    ended_at(=완료 시각)이 아직 null 일 때만 발행해 "중복 발행"을 막는다(가드).
+        //  - targetId = sessionId (caseId 로 결과 조회 API 가 없어, 챗봇은 sessionId 로 /report 직조회).
+        //    caseId 는 link 에 실어 세션 복원/딥링크에 쓴다.
+        //  - INTERVIEW_REPORT_READY 는 NotificationCategories 에 'interview' 로 이미 매핑됨(발행처는 여기가 처음).
+        //    발행 시 AFTER_COMMIT 리스너가 Web Push 까지 자동 전송한다.
+        //  ※ 이 메서드는 D 소유(InterviewServiceImpl) — 병합 전 D 와 이 삽입 지점 합의 필요.
+        if (session.getEndedAt() == null) {
+            notificationService.notify(Notification.builder()
+                    .userId(userId)
+                    .type("INTERVIEW_REPORT_READY")
+                    .targetType("INTERVIEW_SESSION")
+                    .targetId(sessionId)
+                    .title("면접 리포트가 준비됐어요")
+                    .message("방금 마친 면접 결과를 확인하고, 보완점은 자소서 첨삭으로 이어서 다듬어 보세요.")
+                    .link("/interview?tab=report&case=" + session.getApplicationCaseId())
+                    .build());
+        }
         return response;
     }
 

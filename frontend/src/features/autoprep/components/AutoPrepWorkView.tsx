@@ -57,7 +57,7 @@ export function AutoPrepWorkView({ running, parts, caseId, onNavigate }: Props) 
               </button>
             )}
             <button
-              onClick={() => onNavigate("/interview")}
+              onClick={() => onNavigate(caseId ? `/interview?caseId=${caseId}&tab=modes` : "/interview")}
               className="rounded-lg bg-primary px-3.5 py-2 text-xs font-semibold text-primary-foreground transition hover:brightness-110"
             >
               ▶ 면접 시작
@@ -178,7 +178,8 @@ function substepPct(status: PartUiStatus, i: number, count: number, segMs: numbe
 function actionFor(key: string, caseId: number | null): { label: string; path: string } | null {
   switch (key) {
     case "INTERVIEW":
-      return { label: "면접 시작", path: "/interview" };
+      // caseId 를 실어 챗봇이 인계 표식을 남기고, 면접 페이지가 지원 건을 선택할 수 있게 한다.
+      return { label: "면접 시작", path: caseId ? `/interview?caseId=${caseId}&tab=modes` : "/interview" };
     case "JOB":
     case "FIT":
       return caseId ? { label: "지원 건 열기", path: `/applications/${caseId}` } : null;

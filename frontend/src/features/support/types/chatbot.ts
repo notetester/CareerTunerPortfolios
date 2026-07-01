@@ -46,6 +46,19 @@ export interface ChatMessage {
   intake?: IntakeStepMeta;
   /** 추천 후기 압축 요약 칩 — agentPath 턴에서 검색된 글이 2개 이상일 때만 set. */
   summaryChip?: { label: string; postIds: number[] };
+  /** 면접 복귀 결과 카드 — 면접 완료 후 챗봇 복귀 시 재조회한 리포트(실값만). */
+  interviewReport?: InterviewReportCard;
+}
+
+/** 면접 결과 카드 데이터 — 백엔드 InterviewReportResponse 에서 필요한 필드만(순위/상위% 없음). */
+export interface InterviewReportCard {
+  sessionId: number;
+  caseId: number | null;
+  totalScore: number;
+  questionCount: number;
+  durationLabel: string | null;
+  categories: { label: string; score: number }[];
+  summaryFeedback: string[];
 }
 
 export type BotStatus = "idle" | "thinking" | "answered" | "not_found" | "disconnected";

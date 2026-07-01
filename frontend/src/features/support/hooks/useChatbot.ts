@@ -3,6 +3,7 @@ import { api } from "@/app/lib/api";
 import { getAccessToken } from "@/app/lib/tokenStore";
 import { useAutoPrepRun } from "@/features/autoprep/hooks/useAutoPrepRun";
 import type { AutoPrepRequest } from "@/features/autoprep/types/autoPrep";
+import { getInterviewReport, listInterviewSessions } from "@/features/interview/api/interviewApi";
 import type {
   ChatMessage,
   BotStatus,
@@ -11,7 +12,11 @@ import type {
   SiteLink,
   IntakeCaseCandidate,
   IntakeModeOption,
+  InterviewReportCard,
 } from "../types/chatbot";
+
+// 면접 인계 대기 표식(브라우저 저장) — 챗봇에서 면접 페이지로 caseId 를 넘기고, 복귀 시 결과를 재조회한다.
+const LS_AWAIT_INTERVIEW = "tunerbot:awaitInterview";
 
 let msgId = 0;
 const nextId = () => `msg-${++msgId}`;
@@ -69,6 +74,13 @@ export function useChatbot() {
   const [showExitSheet, setShowExitSheet] = useState(false);
   const runStartedRef = useRef(false);                       // 클로저 안전용(exit 판정)
   const run = useAutoPrepRun();
+
+  // ── 표면 크기(morph 크기 전환): corner(360×560) ↔ floating(970×606, 중앙+스크림) ──
+  // 코너 모드(FAQ/커뮤니티)는 기본값 corner 유지. 온보딩/오케 진입 때만 floating.
+  const [surface, setSurface] = useState<"corner" | "floating">("corner");
+  const orchRef = useRef(false); // 오케 진입 "전이"에서만 자동 확장(매 턴 강제 확장 방지)
+  const expandToFloating = useCallback(() => setSurface("floating"), []);
+  const collapseToCorner = useCallback(() => setSurface("corner"), []);
 
   const abortRef = useRef<AbortController>();
   // 서버 발급 대화 ID. 새 대화면 null → 첫 응답에서 받아 보관, 이후 턴마다 재사용.
@@ -135,6 +147,8 @@ export function useChatbot() {
     setRunStarted(false);
     setRunCaseId(null);
     setOrchestrator(true); // 인테이크(지원건) 세션 — 모드 배너 유지
+    orchRef.current = true;
+    expandToFloating(); // 세션 열기 = 오케 진입 → 플로팅
     setShowExitSheet(false);
     api<ChatHistoryResponse | null>(`/chatbot/conversations/${conversationId}/messages`)
       .then((data) => {
@@ -149,13 +163,75 @@ export function useChatbot() {
       .catch((err) => console.error("세션 로드 실패:", err));
   }, [run]);
 
+  // ── 면접 인계: caseId 를 표식으로 남긴다(면접 페이지로 navigate 는 ChatbotWidget 에서). ──
+  const markInterviewHandoff = useCallback((caseId: number | null) => {
+    if (caseId == null) return;
+    try {
+      localStorage.setItem(LS_AWAIT_INTERVIEW, JSON.stringify({ caseId, ts: Date.now() }));
+    } catch {
+      /* localStorage 불가 환경 무시 */
+    }
+  }, []);
+
+  // ── 복귀 결과: 면접 완료(리포트 생성)면 챗봇 말풍선에 결과 카드로 표시. ──
+  // Push(브라우저 알림)와 별개 — 챗봇이 열릴 때 caseId 로 최근 완료 세션을 찾아 /report 를 재조회한다.
+  const checkInterviewResult = useCallback(async () => {
+    if (!getAccessToken()) return;
+    let pending: { caseId: number; ts: number } | null = null;
+    try {
+      const raw = localStorage.getItem(LS_AWAIT_INTERVIEW);
+      if (raw) pending = JSON.parse(raw);
+    } catch {
+      pending = null;
+    }
+    if (!pending) return;
+    // 24시간 지나면 대기 해제(무한 재조회 방지).
+    if (Date.now() - pending.ts > 24 * 60 * 60 * 1000) {
+      localStorage.removeItem(LS_AWAIT_INTERVIEW);
+      return;
+    }
+    try {
+      // caseId 로 결과 조회 API 가 없어(sessionId 로만) → 세션 목록에서 해당 케이스의 최근 "완료" 세션을 찾는다.
+      const page = await listInterviewSessions(0, 20);
+      const done = page.sessions
+        .filter((s) => s.applicationCaseId === pending!.caseId && s.totalScore != null)
+        .sort((a, b) => b.id - a.id)[0];
+      if (!done) return; // 아직 완료 전 → 다음 오픈에 재확인(표식 유지)
+      const report = await getInterviewReport(done.id);
+      const card: InterviewReportCard = {
+        sessionId: done.id,
+        caseId: pending.caseId,
+        totalScore: report.totalScore,
+        questionCount: report.questionCount,
+        durationLabel: report.durationLabel,
+        categories: report.categories,
+        summaryFeedback: report.summaryFeedback,
+      };
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: nextId(), role: "bot",
+          text: `면접 잘 마치셨어요. **총점 ${report.totalScore}점**이에요. 영역별 결과를 아래에서 확인하고, 보완점은 자소서 첨삭으로 이어서 다듬어 보세요.`,
+          evidence: [], links: [], quickReplies: [], ttsState: "idle", ttsProgress: 0,
+          timestamp: Date.now(), interviewReport: card,
+        },
+      ]);
+      setBotStatus("answered");
+      localStorage.removeItem(LS_AWAIT_INTERVIEW);
+    } catch (e) {
+      console.error("면접 결과 재조회 실패:", e); // 조용히 — 다음 오픈에 재시도
+    }
+  }, []);
+
   const open = useCallback(() => {
     setIsOpen(true);
     restoreRecent();
     loadSessions();
-  }, [restoreRecent, loadSessions]);
-  const close = useCallback(() => setIsOpen(false), []);
-  const minimize = useCallback(() => setIsOpen(false), []);
+    void checkInterviewResult();
+  }, [restoreRecent, loadSessions, checkInterviewResult]);
+  // 닫기/최소화(버블로) 시 다음 오픈은 코너부터.
+  const close = useCallback(() => { setIsOpen(false); setSurface("corner"); }, []);
+  const minimize = useCallback(() => { setIsOpen(false); setSurface("corner"); }, []);
 
   const sendMessage = useCallback((text: string, opts?: { selectedCaseId?: number; selectedModeCode?: string }) => {
     const userMsg: ChatMessage = {
@@ -188,8 +264,11 @@ export function useChatbot() {
 
         // 모드 신호: ON 이면 유지, OFF 면 (실행 중이 아닐 때만) 일반 모드로 복귀.
         if (data.inOrchestration) {
+          if (!orchRef.current) expandToFloating(); // 진입 전이에서만 확장(사용자가 최소화했으면 유지)
+          orchRef.current = true;
           setOrchestrator(true);
         } else if (!runStartedRef.current) {
+          orchRef.current = false;
           setOrchestrator(false);
         }
 
@@ -298,13 +377,15 @@ export function useChatbot() {
     const wasRunning = runStartedRef.current;
     run.reset();
     runStartedRef.current = false;
+    orchRef.current = false;
     setRunStarted(false);
     setRunCaseId(null);
     setOrchestrator(false);
+    collapseToCorner(); // 오케 이탈 → 코너로
     if (!wasRunning) {
       sendMessage("그만"); // 인테이크 단계 → 서버 sticky 해제
     }
-  }, [run, sendMessage]);
+  }, [run, sendMessage, collapseToCorner]);
 
   const startVoice = useCallback(() => {
     setVoiceState("requesting");
@@ -351,11 +432,13 @@ export function useChatbot() {
     conversationIdRef.current = null; // 새 대화 → 서버가 새 ID 발급
     run.reset();
     runStartedRef.current = false;
+    orchRef.current = false;
     setRunStarted(false);
     setRunCaseId(null);
     setOrchestrator(false);
+    collapseToCorner();
     setShowExitSheet(false);
-  }, [run]);
+  }, [run, collapseToCorner]);
 
   return {
     isOpen, open, close, minimize, restoreRecent,
@@ -381,5 +464,11 @@ export function useChatbot() {
     openExitSheet: () => setShowExitSheet(true),
     closeExitSheet: () => setShowExitSheet(false),
     exitOrchestrator,
+    // 표면 크기 전환(morph)
+    surface,
+    expandToFloating,
+    collapseToCorner,
+    // 면접 인계/복귀
+    markInterviewHandoff,
   };
 }
