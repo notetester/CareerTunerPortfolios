@@ -119,6 +119,13 @@ careertuner:
     version: ${ANTHROPIC_VERSION:2023-06-01}
     max-tokens: ${ANTHROPIC_MAX_TOKENS:8192}
     timeout: ${ANTHROPIC_TIMEOUT:120s}
+  chat-llm:
+    # 커뮤니티/인테이크 챗봇 폴백(자체 Ollama qwen3 → Haiku → OpenAI → Mock) 전용 튜닝값.
+    # 키·baseUrl·Anthropic 모델명은 위 careertuner.anthropic / careertuner.openai 를 재사용하고, 여기선 챗봇 성격 값만 둔다.
+    temperature: ${CHAT_LLM_TEMPERATURE:0.0}
+    max-tokens: ${CHAT_LLM_MAX_TOKENS:4096}
+    # OpenAI 폴백 모델. 공용 careertuner.openai.model 기본값(gpt-5)은 추론 모델이라 챗봇 tool-calling 응답이 느림 → 비추론 모델로.
+    open-ai-model: ${CHAT_LLM_OPENAI_MODEL:gpt-4o-mini}
   uploads:
     job-posting-dir: ${JOB_POSTING_UPLOAD_DIR:.uploads/application-postings}
     max-file-size-bytes: ${JOB_POSTING_MAX_FILE_SIZE_BYTES:5242880}
