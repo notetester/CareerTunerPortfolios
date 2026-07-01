@@ -20,6 +20,7 @@ import {
   VoiceMetricsTracker,
 } from "../hooks/voiceAnalysis";
 import { computeVisualScore, VisualMetricsTracker, type VisualScoreDetail } from "../hooks/visualAnalysis";
+import { BrowserSttTracker } from "../hooks/speechToText";
 import type {
   InterviewQuestion,
   InterviewSession,
@@ -70,6 +71,7 @@ export function LocalAvatarTab({ session }: { session: InterviewSession | null }
   const webcamRef = useRef<MediaStream | null>(null);
   const voiceTrackerRef = useRef<VoiceMetricsTracker | null>(null);
   const visualTrackerRef = useRef<VisualMetricsTracker | null>(null);
+  const sttRef = useRef<BrowserSttTracker | null>(null);
   const recorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
   const questionsRef = useRef<string[]>([]);
@@ -108,6 +110,8 @@ export function LocalAvatarTab({ session }: { session: InterviewSession | null }
     voiceTrackerRef.current = null;
     visualTrackerRef.current?.dispose();
     visualTrackerRef.current = null;
+    sttRef.current?.dispose();
+    sttRef.current = null;
     if (typeof window !== "undefined" && "speechSynthesis" in window) {
       window.speechSynthesis.cancel();
     }
@@ -150,6 +154,11 @@ export function LocalAvatarTab({ session }: { session: InterviewSession | null }
       const voiceTracker = new VoiceMetricsTracker();
       voiceTracker.start(webcam);
       voiceTrackerRef.current = voiceTracker;
+
+      // serve STT 폴백용 브라우저 음성인식 병행 시작(미지원 브라우저면 조용히 no-op).
+      const stt = new BrowserSttTracker();
+      stt.start();
+      sttRef.current = stt;
 
       chunksRef.current = [];
       const recorder = new MediaRecorder(webcam);
@@ -237,7 +246,9 @@ export function LocalAvatarTab({ session }: { session: InterviewSession | null }
       setDownloadUrl(URL.createObjectURL(recordedBlob));
     }
 
-    // 음성 답변 전사 (자체 STT, faster-whisper). 실패해도 전달력 지표로 진행.
+    // 음성 답변 전사 (자체 STT, faster-whisper). 실패 시 브라우저 음성인식(Web Speech) 폴백.
+    const webSpeechText = sttRef.current?.stop() ?? "";
+    sttRef.current = null;
     let userTranscript = "";
     if (recordedBlob && recordedBlob.size > 0) {
       try {
@@ -246,7 +257,14 @@ export function LocalAvatarTab({ session }: { session: InterviewSession | null }
         const stt = await transcribeVoice(session.id, audioBase64, audioFormat);
         userTranscript = stt.text ?? "";
       } catch {
-        setNote((prev) => prev ?? "음성 전사(STT)에 실패해 전달력 지표로만 채점했습니다.");
+        // serve STT 미기동 → 브라우저 전사 폴백. 그마저 없으면 전달력 지표로만 채점.
+        userTranscript = webSpeechText;
+        setNote((prev) =>
+          prev ??
+          (userTranscript
+            ? "서버 STT 미기동 — 브라우저 음성인식으로 전사했습니다."
+            : "음성 전사(STT)에 실패해 전달력 지표로만 채점했습니다."),
+        );
       }
     }
 
