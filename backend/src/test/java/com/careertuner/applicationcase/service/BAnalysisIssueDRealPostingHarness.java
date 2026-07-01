@@ -229,6 +229,6 @@ class BAnalysisIssueDRealPostingHarness {
             return "";
         }
         String flat = s.replaceAll("\\s+", " ").trim();
-        return flat.length() > 300 ? flat.substring(0, 300) + "…" : flat;
+        return flat.length() > 1200 ? flat.substring(0, 1200) + "…" : flat;
     }
 }
