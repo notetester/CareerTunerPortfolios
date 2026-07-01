@@ -57,6 +57,7 @@ export interface MyBilling {
 export interface Payment {
   id: number;
   provider: string;
+  productType: string;
   productCode: string;
   orderId: string;
   amount: number;

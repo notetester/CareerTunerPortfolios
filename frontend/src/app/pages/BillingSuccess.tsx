@@ -54,7 +54,7 @@ export function BillingSuccessPage() {
     <div className="min-h-screen bg-slate-50 px-4 py-12">
       <Card className="mx-auto max-w-xl border border-slate-200 bg-white">
         <CardHeader>
-          <CardTitle className="flex items-center gap-2 text-xl">
+          <CardTitle className="flex items-center gap-2 text-xl text-[#16171a]">
             {loading ? <Loader2 className="size-5 animate-spin text-blue-600" /> : <CheckCircle2 className="size-5 text-green-600" />}
             결제 승인
           </CardTitle>
@@ -63,8 +63,11 @@ export function BillingSuccessPage() {
           {loading && <p className="text-sm text-slate-600">Toss 결제 승인 결과를 확인하고 있습니다.</p>}
 
           {!loading && error && (
-            <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700">
-              {error}
+            <div className="space-y-2 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+              <div className="font-semibold">{error}</div>
+              <p className="text-xs leading-relaxed text-red-600">
+                결제 승인 여부 확인 중 문제가 발생했습니다. 실제 결제 알림을 받았다면 같은 상품을 반복 결제하지 말고 결제 내역을 확인해 주세요.
+              </p>
             </div>
           )}
 
@@ -96,12 +99,16 @@ export function BillingSuccessPage() {
           )}
 
           <div className="flex gap-2">
-            <Button asChild className="flex-1">
+            <Button asChild className="flex-1 text-white">
               <Link to={isSubscription ? "/billing?tab=usage" : "/billing?tab=credits"}>
                 {isSubscription ? "사용권 확인" : "크레딧 충전"}
               </Link>
             </Button>
-            <Button asChild variant="outline" className="flex-1">
+            <Button
+              asChild
+              variant="outline"
+              className="flex-1 border-[#d6d6dc] bg-white text-[#16171a] hover:bg-[#f0f0f2] hover:text-[#16171a] dark:bg-white dark:text-[#16171a] dark:hover:bg-[#f0f0f2] dark:hover:text-[#16171a]"
+            >
               <Link to="/dashboard">대시보드</Link>
             </Button>
           </div>

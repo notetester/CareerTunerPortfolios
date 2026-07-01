@@ -10,6 +10,7 @@ import com.careertuner.ai.autoprep.dto.AutoPrepIntakeResponse.ModeOption;
 import com.careertuner.ai.autoprep.dto.AutoPrepRequest;
 import com.careertuner.applicationcase.dto.ApplicationCaseResponse;
 import com.careertuner.applicationcase.service.ApplicationCaseService;
+import com.careertuner.correction.ai.CorrectionModelWarmupService;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -38,9 +39,11 @@ public class AutoPrepIntakeService {
 
     private final AutoPrepPlanner planner;
     private final ApplicationCaseService applicationCaseService;
+    private final CorrectionModelWarmupService correctionModelWarmupService;
 
     public AutoPrepIntakeResponse intake(Long userId, AutoPrepRequest request) {
         PrepPlan plan = planner.plan(userId, request);
+        warmCorrectionModelWhenLikely(plan, request);
 
         // ① 지원 건 필요한데 없음
         boolean needsCase = plan.steps().stream().anyMatch(CASE_REQUIRED::contains);
@@ -110,6 +113,19 @@ public class AutoPrepIntakeService {
         } catch (RuntimeException ex) {
             log.warn("AutoPrep 인테이크 지원 건 목록 조회 실패: {}", ex.getMessage());
             return List.of();
+        }
+    }
+
+    private void warmCorrectionModelWhenLikely(PrepPlan plan, AutoPrepRequest request) {
+        if (plan == null || !plan.steps().contains("WRITE")) {
+            return;
+        }
+        boolean hasSource = request != null
+                && (notBlank(request.coverLetterText())
+                    || (request.attachmentFileIds() != null && !request.attachmentFileIds().isEmpty()));
+        boolean explicitWriteIntent = "CUSTOM_PREP".equals(plan.intent());
+        if (hasSource || explicitWriteIntent) {
+            correctionModelWarmupService.warmAsync("AUTO_PREP_WRITE");
         }
     }
 

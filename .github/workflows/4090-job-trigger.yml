@@ -3,8 +3,8 @@
 # ─────────────────────────────────────────────────────────────────────────────
 # 이 워크플로는 4090 연결 다중화 Layer 2(방식 A: hosted runner + Tailscale +
 # forced-command SSH)의 **초안**이다. 설계 근거는:
-#   docs/ops/4090_GITHUB_ACTIONS_TAILSCALE_POC.md
-#   docs/ops/4090_CONNECTIVITY_HARDENING_PLAN.md  §5
+#   docs/ai-artifacts/docs/ops/4090_GITHUB_ACTIONS_TAILSCALE_POC.md
+#   docs/ai-artifacts/docs/ops/4090_CONNECTIVITY_HARDENING_PLAN.md  §5
 #
 # ⚠ 중요(엄수):
 #   - **수동 dispatch 전용.** push/schedule 등 자동 트리거 없음.
@@ -65,7 +65,7 @@ jobs:
           [ -z "${H4090_KNOWN_HOSTS}" ]       && missing="${missing} H4090_KNOWN_HOSTS"
           if [ -n "${missing}" ]; then
             echo "::error::필수 secret 미설정 →${missing}"
-            echo "이 워크플로는 secret 이 모두 설정돼야 동작한다(설계: docs/ops/4090_GITHUB_ACTIONS_TAILSCALE_POC.md §5)."
+            echo "이 워크플로는 secret 이 모두 설정돼야 동작한다(설계: docs/ai-artifacts/docs/ops/4090_GITHUB_ACTIONS_TAILSCALE_POC.md §5)."
             exit 1
           fi
           echo "필수 secret 모두 설정됨(값은 출력하지 않음)."

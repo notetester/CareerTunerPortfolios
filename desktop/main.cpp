@@ -30,6 +30,7 @@ int main(int argc, char* argv[])
     AuthService auth(&api);
     SseClient   sse;
     JobModel    jobs;
+    jobs.setApi(&api);   // JobModel.reload() 가 서버를 호출할 수 있게
 
     // ── QML 화면에 코어 노출 ──
     QQmlApplicationEngine engine;

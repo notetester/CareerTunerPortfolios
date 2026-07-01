@@ -48,10 +48,22 @@ ApplicationWindow {
 
     NewJobDialog {
         id: newJobDialog
-        onJobCreated: (company, mode) => win.createJob(company, mode)
+        onJobCreated: (caseId, mode) => jobModel.createSession(caseId, mode)
+    }
+
+    // ── 로그인 게이트 ──
+    property bool loggedIn: false
+    Connections {
+        target: auth
+        function onLoggedIn(token) { win.loggedIn = true; jobModel.reload() }
+    }
+    LoginPage {
+        visible: !win.loggedIn
+        anchors.fill: parent
     }
 
     RowLayout {
+        visible: win.loggedIn
         anchors.fill: parent
         spacing: 0
 
@@ -126,14 +138,19 @@ ApplicationWindow {
                     detailPage.jobId = jobId
                     detailPage.jobTitle = title
                     detailPage.jobMode = mode
+                    detailPage.questionList = []
+                    detailPage.progress = ({})
+                    detailPage.resumeMsg = ""
                     stack.currentIndex = 5
+                    jobModel.loadQuestions(jobId)
+                    jobModel.loadProgress(jobId)
                 }
                 onRequestNewJob: newJobDialog.open()
             }
             PracticePage {}                        // 1 면접 연습
             ReportPage {}                          // 2 면접 리포트
-            Placeholder { label: "연결된 기기 (준비 중)" } // 3
-            Placeholder { label: "설정 (준비 중)" }        // 4
+            DevicesPage {}                         // 3 연결된 기기
+            SettingsPage {}                        // 4 설정
             JobDetailPage {                        // 5 작업 상세 (카드 클릭 진입)
                 id: detailPage
                 onBack: stack.currentIndex = 0

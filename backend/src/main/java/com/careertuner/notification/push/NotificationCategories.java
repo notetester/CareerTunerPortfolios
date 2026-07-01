@@ -34,6 +34,7 @@ public final class NotificationCategories {
             Map.entry("CREDIT_LOW", "billing"),
             Map.entry("PAYMENT_COMPLETE", "billing"),
             Map.entry("PAYMENT_SCHEDULED", "billing"),
+            Map.entry("SUBSCRIPTION_CANCELED", "billing"),
             Map.entry("CREDIT_RECHARGED", "billing"),
             Map.entry("NOTICE", "notice"),
             Map.entry("TICKET_ANSWERED", "notice"));

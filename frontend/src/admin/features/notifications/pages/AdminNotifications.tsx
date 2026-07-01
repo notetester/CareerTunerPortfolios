@@ -49,6 +49,7 @@ const TYPE_CAT: Record<string, string> = {
   CREDIT_LOW: "billing",
   PAYMENT_COMPLETE: "billing",
   PAYMENT_SCHEDULED: "billing",
+  SUBSCRIPTION_CANCELED: "billing",
   CREDIT_RECHARGED: "billing",
   NOTICE: "notice",
   TICKET_ANSWERED: "notice",

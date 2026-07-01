@@ -57,7 +57,7 @@ python scripts/eval_fit_model.py --cases eval/golden_fit_cases.jsonl \
 # 모델 없이 파이프라인 점검(드라이런)
 python scripts/eval_fit_model.py --cases eval/golden_fit_cases.jsonl --mock --out out/eval/mock.json
 ```
-결과(`out/eval/*.json`)는 gitignore 됨 — **커밋하지 않는다**. 요약 수치만 리포트(`reports/17_*`)에 옮긴다.
+결과(`out/eval/*.json`)는 gitignore 됨 — **커밋하지 않는다**. 요약 수치만 `docs/ai-reports/areas/c-career-strategy/reports/`의 장문 보고서에 옮긴다.
 
 ## 확장 TODO
 - 40~60건으로 확대 + **사람 검증**(특히 비IT는 직무/HR 관점 SME 리뷰).

@@ -1,0 +1,228 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.careertuner.billing.mapper.RefundRequestMapper">
+
+    <resultMap id="refundRequestResponseMap" type="com.careertuner.billing.dto.RefundRequestResponse">
+        <constructor>
+            <idArg name="id" column="id" javaType="java.lang.Long"/>
+            <arg name="paymentId" column="payment_id" javaType="java.lang.Long"/>
+            <arg name="userId" column="user_id" javaType="java.lang.Long"/>
+            <arg name="userEmail" column="user_email" javaType="java.lang.String"/>
+            <arg name="userName" column="user_name" javaType="java.lang.String"/>
+            <arg name="orderId" column="order_id" javaType="java.lang.String"/>
+            <arg name="productType" column="product_type" javaType="java.lang.String"/>
+            <arg name="productCode" column="product_code" javaType="java.lang.String"/>
+            <arg name="plan" column="plan" javaType="java.lang.String"/>
+            <arg name="paymentAmount" column="payment_amount" javaType="_int"/>
+            <arg name="paidAt" column="paid_at" javaType="java.time.LocalDateTime"/>
+            <arg name="paymentStatus" column="payment_status" javaType="java.lang.String"/>
+            <arg name="status" column="status" javaType="java.lang.String"/>
+            <arg name="reasonCode" column="reason_code" javaType="java.lang.String"/>
+            <arg name="reasonText" column="reason_text" javaType="java.lang.String"/>
+            <arg name="eligibilityResult" column="eligibility_result" javaType="java.lang.String"/>
+            <arg name="creditUsed" column="credit_used" javaType="_boolean"/>
+            <arg name="benefitUsed" column="benefit_used" javaType="_boolean"/>
+            <arg name="refundAmount" column="refund_amount" javaType="_int"/>
+            <arg name="decisionBasisJson" column="decision_basis_json" javaType="java.lang.String"/>
+            <arg name="reviewedBy" column="reviewed_by" javaType="java.lang.Long"/>
+            <arg name="reviewedReason" column="reviewed_reason" javaType="java.lang.String"/>
+            <arg name="requestedAt" column="requested_at" javaType="java.time.LocalDateTime"/>
+            <arg name="reviewedAt" column="reviewed_at" javaType="java.time.LocalDateTime"/>
+        </constructor>
+    </resultMap>
+
+    <select id="findOwnedPayment" resultType="com.careertuner.payment.domain.Payment">
+        SELECT *
+          FROM payment
+         WHERE id = #{paymentId}
+           AND user_id = #{userId}
+    </select>
+
+    <select id="existsCreditUsageAfter" resultType="boolean">
+        SELECT EXISTS(
+            SELECT 1
+              FROM credit_transaction
+             WHERE user_id = #{userId}
+               AND type = 'AI_USAGE'
+               AND amount &lt; 0
+               AND created_at &gt;= #{paidAt}
+        )
+    </select>
+
+    <select id="existsBenefitUsageAfter" resultType="boolean">
+        SELECT EXISTS(
+            SELECT 1
+              FROM benefit_transaction
+             WHERE user_id = #{userId}
+               AND transaction_type = 'CONSUME'
+               AND amount &lt; 0
+               AND created_at &gt;= #{paidAt}
+        )
+    </select>
+
+    <update id="deductUserCreditForRefund">
+        UPDATE users
+           SET credit = credit - #{creditAmount}
+         WHERE id = #{userId}
+           AND credit &gt;= #{creditAmount}
+    </update>
+
+    <select id="findUserCredit" resultType="java.lang.Integer">
+        SELECT credit
+          FROM users
+         WHERE id = #{userId}
+    </select>
+
+    <insert id="insertCreditTransaction" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO credit_transaction
+            (user_id, ai_usage_log_id, type, amount, balance_after, feature_type, reason)
+        VALUES
+            (#{userId}, #{aiUsageLogId}, #{type}, #{amount}, #{balanceAfter}, #{featureType}, #{reason})
+    </insert>
+
+    <select id="findSubscriptionForRefund" resultType="com.careertuner.billing.domain.UserSubscription">
+        SELECT *
+          FROM user_subscription
+         WHERE user_id = #{userId}
+           AND (
+                payment_id = #{paymentId}
+                OR (
+                    payment_id IS NULL
+                    AND plan_code = #{planCode}
+                    AND ABS(TIMESTAMPDIFF(SECOND, created_at, #{paidAt})) &lt;= 300
+                )
+           )
+         ORDER BY CASE WHEN payment_id = #{paymentId} THEN 0 ELSE 1 END,
+                  ABS(TIMESTAMPDIFF(SECOND, created_at, #{paidAt}))
+         LIMIT 1
+         FOR UPDATE
+    </select>
+
+    <update id="attachPaymentToSubscription">
+        UPDATE user_subscription
+           SET payment_id = #{paymentId}
+         WHERE id = #{subscriptionId}
+           AND payment_id IS NULL
+    </update>
+
+    <select id="findBenefitBalancesForRefund" resultType="com.careertuner.billing.domain.UserBenefitBalance">
+        SELECT *
+          FROM user_benefit_balance
+         WHERE user_id = #{userId}
+           AND period_start = #{periodStart}
+           AND period_end = #{periodEnd}
+         ORDER BY id
+         FOR UPDATE
+    </select>
+
+    <update id="revokeBenefitBalanceIfUnused">
+        UPDATE user_benefit_balance
+           SET remaining_quantity = 0
+         WHERE id = #{balanceId}
+           AND used_quantity = 0
+           AND remaining_quantity &gt; 0
+    </update>
+
+    <insert id="insertBenefitTransaction" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO benefit_transaction
+            (user_id, benefit_code, transaction_type, amount, balance_after,
+             ref_type, ref_id, ai_usage_log_id, reason)
+        VALUES
+            (#{userId}, #{benefitCode}, #{transactionType}, #{amount}, #{balanceAfter},
+             #{refType}, #{refId}, #{aiUsageLogId}, #{reason})
+    </insert>
+
+    <update id="markSubscriptionRefunded">
+        UPDATE user_subscription
+           SET status = 'REFUNDED', canceled_at = CURRENT_TIMESTAMP
+         WHERE id = #{subscriptionId}
+           AND status IN ('ACTIVE', 'CANCELED', 'INACTIVE')
+    </update>
+
+    <update id="resetUserPlanAfterSubscriptionRefund">
+        UPDATE users u
+           SET u.plan = 'FREE'
+         WHERE u.id = #{userId}
+           AND NOT EXISTS (
+                SELECT 1
+                  FROM user_subscription us
+                 WHERE us.user_id = u.id
+                   AND us.id &lt;&gt; #{refundedSubscriptionId}
+                   AND us.status IN ('ACTIVE', 'CANCELED')
+                   AND us.current_period_start &lt;= #{now}
+                   AND us.current_period_end &gt; #{now}
+           )
+    </update>
+
+    <insert id="insert" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO refund_request
+            (payment_id, user_id, status, reason_code, reason_text, eligibility_result,
+             credit_used, benefit_used, refund_amount, decision_basis_json)
+        VALUES
+            (#{paymentId}, #{userId}, #{status}, #{reasonCode}, #{reasonText}, #{eligibilityResult},
+             #{creditUsed}, #{benefitUsed}, #{refundAmount}, #{decisionBasisJson})
+    </insert>
+
+    <sql id="responseColumns">
+        rr.id, rr.payment_id, rr.user_id, rr.status, rr.reason_code, rr.reason_text,
+        rr.eligibility_result, rr.credit_used, rr.benefit_used, rr.refund_amount,
+        rr.decision_basis_json, rr.reviewed_by, rr.reviewed_reason, rr.requested_at,
+        rr.reviewed_at, p.order_id, p.product_type, p.product_code, p.plan,
+        p.amount AS payment_amount, p.paid_at, p.status AS payment_status,
+        u.email AS user_email, u.name AS user_name
+    </sql>
+
+    <select id="findResponseById" resultMap="refundRequestResponseMap">
+        SELECT <include refid="responseColumns"/>
+          FROM refund_request rr
+          JOIN payment p ON p.id = rr.payment_id
+          JOIN users u ON u.id = rr.user_id
+         WHERE rr.id = #{id}
+    </select>
+
+    <select id="findResponsesByUser" resultMap="refundRequestResponseMap">
+        SELECT <include refid="responseColumns"/>
+          FROM refund_request rr
+          JOIN payment p ON p.id = rr.payment_id
+          JOIN users u ON u.id = rr.user_id
+         WHERE rr.user_id = #{userId}
+         ORDER BY rr.id DESC
+    </select>
+
+    <select id="findAdminResponses" resultMap="refundRequestResponseMap">
+        SELECT <include refid="responseColumns"/>
+          FROM refund_request rr
+          JOIN payment p ON p.id = rr.payment_id
+          JOIN users u ON u.id = rr.user_id
+        <where>
+            <if test="status != null and status != ''">
+                rr.status = #{status}
+            </if>
+        </where>
+         ORDER BY CASE WHEN rr.status = 'REQUESTED' THEN 0 ELSE 1 END, rr.id DESC
+    </select>
+
+    <update id="approve">
+        UPDATE refund_request
+           SET status = 'APPROVED', reviewed_by = #{adminId}, reviewed_reason = #{reviewedReason},
+               reviewed_at = CURRENT_TIMESTAMP
+         WHERE id = #{id}
+           AND status = 'REQUESTED'
+    </update>
+
+    <update id="reject">
+        UPDATE refund_request
+           SET status = 'REJECTED', reviewed_by = #{adminId}, reviewed_reason = #{reviewedReason},
+               reviewed_at = CURRENT_TIMESTAMP
+         WHERE id = #{id}
+           AND status = 'REQUESTED'
+    </update>
+
+    <update id="markPaymentRefunded">
+        UPDATE payment
+           SET status = 'REFUNDED'
+         WHERE id = #{paymentId}
+           AND status = 'PAID'
+    </update>
+</mapper>

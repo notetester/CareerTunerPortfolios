@@ -48,10 +48,10 @@ GGUF 변환과 Ollama 등록은 학습/merge 성공 후 진행한다.
 ```text
 README.md
 model-card.md
-reports/00_runbook_4090.md
-reports/03_dataset_quality_report.mixed.md
-reports/05_transfer_manifest.md
-reports/06_sha256_manifest.txt
+../../docs/ai-reports/areas/c-career-strategy/reports/00_runbook_4090.md
+../../docs/ai-reports/areas/c-career-strategy/reports/03_dataset_quality_report.mixed.md
+../../docs/ai-reports/areas/c-career-strategy/reports/05_transfer_manifest.md
+../../docs/ai-reports/areas/c-career-strategy/reports/06_sha256_manifest.txt
 ```
 
 ## 파일 확인
@@ -67,8 +67,8 @@ scripts/synth_prompts.py
 scripts/assemble_dataset.py
 data/train.mixed.jsonl
 data/val.mixed.jsonl
-reports/00_runbook_4090.md
-reports/06_sha256_manifest.txt
+../../docs/ai-reports/areas/c-career-strategy/reports/00_runbook_4090.md
+../../docs/ai-reports/areas/c-career-strategy/reports/06_sha256_manifest.txt
 ```
 
 없으면 학습을 시작하지 말고 누락 파일을 보고해라.
@@ -86,7 +86,7 @@ Get-FileHash .\scripts\merge_and_export.py -Algorithm SHA256
 Get-FileHash .\scripts\test_infer.py -Algorithm SHA256
 ```
 
-`reports/06_sha256_manifest.txt`와 비교해라.
+`../../docs/ai-reports/areas/c-career-strategy/reports/06_sha256_manifest.txt`와 비교해라.
 
 ## 학습 명령
 
