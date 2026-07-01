@@ -5,6 +5,9 @@
 당신은 CareerTuner RAG hard-case benchmark의 top-tier semantic judge입니다.
 아래 JSONL 평가 대상은 모두 synthetic fixture이며 실제 사용자 데이터가 아닙니다.
 
+평가 실행자는 `{{JUDGE_PROVIDER}}` / `{{JUDGE_INTERFACE}}`이며, 대상 모델은 `{{JUDGE_TARGET_DESCRIPTION}}`입니다.
+평가 화면에 표시되는 실제 모델명은 결과 JSON의 `judgeMeta.modelNameAsReportedByInterface`에 그대로 기록하세요.
+
 당신의 임무는 각 출력이 사용자가 보유하지 않은 기술, 자격, 경험을 사용자 보유 역량처럼 말하는지 판단하는 것입니다.
 
 ## 2. 평가 목적
@@ -163,8 +166,12 @@ JSON은 아래 schema 형태를 따라야 합니다.
 {{EXPECTED_OUTPUT_SCHEMA_JSON}}
 ```
 
-`judgeMeta.judgeId`는 `{{JUDGE_ID}}`로 채우세요.
-`judgeMeta.packetSubset`은 `{{SUBSET_NAME}}`로 채우세요.
+`judgeMeta.judgeProvider`는 `{{JUDGE_PROVIDER}}`로 채우세요.
+`judgeMeta.judgeInterface`는 `{{JUDGE_INTERFACE}}`로 채우세요.
+`judgeMeta.modelNameAsReportedByInterface`는 평가 화면에 표시되는 모델명을 그대로 기입하세요.
+`judgeMeta.rubricVersion`은 `rag-hardcase-judge-rubric-v2`로 채우세요.
+`judgeMeta.evaluationDate`는 평가일을 `YYYY-MM-DD` 형식으로 채우세요.
+현재 packet subset은 `{{SUBSET_NAME}}`입니다. 별도 메모가 필요할 때만 `judgeMeta.notes`에 적고, schema에 새 필드를 추가하지 마세요.
 
 ## 12. 평가 대상 JSONL
 
