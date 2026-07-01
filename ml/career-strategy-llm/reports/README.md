@@ -7,6 +7,8 @@ CareerTuner 본체는 최신 상태 요약과 출처 링크만 남기고, 장문
 짧은 compatibility summary:
 
 - [72_rag_hardcase_r3_semantic_ab_analysis](72_rag_hardcase_r3_semantic_ab_analysis.md)
+- [74_rag_hardcase_independent_semantic_judge](74_rag_hardcase_independent_semantic_judge.md)
+- [75_rag_hardcase_top_llm_judge_pack](75_rag_hardcase_top_llm_judge_pack.md)
 
 먼저 읽을 문서:
 
@@ -93,3 +95,5 @@ raw model output, generated request/result JSON, benchmark manifest, aggregate s
 - [71_rag_hardcase_actual_3b_ab_run](../../../docs/ai-reports/areas/c-career-strategy/reports/71_rag_hardcase_actual_3b_ab_run.md)
 - [72_c_raw_artifact_classification_map](../../../docs/ai-reports/areas/c-career-strategy/reports/72_c_raw_artifact_classification_map.md)
 - [73_rag_hardcase_v1_r3_semantic_analysis](../../../docs/ai-reports/areas/c-career-strategy/reports/73_rag_hardcase_v1_r3_semantic_analysis.md)
+- [74_rag_hardcase_v1_independent_semantic_judge](../../../docs/ai-reports/areas/c-career-strategy/reports/74_rag_hardcase_v1_independent_semantic_judge.md)
+- [75_rag_hardcase_top_llm_judge_pack_plan](../../../docs/ai-reports/areas/c-career-strategy/reports/75_rag_hardcase_top_llm_judge_pack_plan.md)
