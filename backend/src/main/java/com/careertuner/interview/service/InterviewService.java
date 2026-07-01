@@ -29,6 +29,9 @@ public interface InterviewService {
     /** 기존 세션 복원(=복습) 시각 기록. */
     void markResumed(Long userId, Long sessionId);
 
+    /** 데스크탑에서 이 세션을 폰으로 디스패치 — 사용자에게 알림을 남긴다. */
+    void dispatchToPhone(Long userId, Long sessionId);
+
     List<InterviewQuestionResponse> generateQuestions(Long userId, Long sessionId, GenerateQuestionsRequest request);
 
     List<InterviewQuestionResponse> listQuestions(Long userId, Long sessionId);

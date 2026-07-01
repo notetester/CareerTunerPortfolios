@@ -69,6 +69,13 @@ public class InterviewController {
         return ApiResponse.ok();
     }
 
+    @PostMapping("/sessions/{sessionId}/dispatch")
+    public ApiResponse<Void> dispatchToPhone(@AuthenticationPrincipal AuthUser authUser,
+                                             @PathVariable Long sessionId) {
+        interviewService.dispatchToPhone(authUser.id(), sessionId);
+        return ApiResponse.ok();
+    }
+
     @PostMapping("/sessions")
     public ApiResponse<InterviewSessionResponse> createSession(@AuthenticationPrincipal AuthUser authUser,
                                                                @Valid @RequestBody CreateInterviewSessionRequest request) {

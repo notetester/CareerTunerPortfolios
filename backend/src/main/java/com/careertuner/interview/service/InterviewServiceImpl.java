@@ -35,6 +35,8 @@ import com.careertuner.interview.dto.SessionPageResponse;
 import com.careertuner.interview.dto.SessionReviewResponse;
 import com.careertuner.interview.dto.SubmitAnswerRequest;
 import com.careertuner.interview.mapper.InterviewMapper;
+import com.careertuner.notification.domain.Notification;
+import com.careertuner.notification.service.NotificationService;
 import lombok.RequiredArgsConstructor;
 import tools.jackson.core.JacksonException;
 import tools.jackson.databind.JsonNode;
@@ -72,6 +74,7 @@ public class InterviewServiceImpl implements InterviewService {
     private final InterviewAgentOrchestrator orchestrator;
     private final ObjectMapper objectMapper;
     private final InterviewBackgroundExecutor backgroundExecutor;
+    private final NotificationService notificationService;
 
     @Override
     @Transactional
@@ -112,6 +115,21 @@ public class InterviewServiceImpl implements InterviewService {
     @Transactional
     public void markResumed(Long userId, Long sessionId) {
         interviewMapper.touchSessionResumed(sessionId, userId);
+    }
+
+    @Override
+    @Transactional
+    public void dispatchToPhone(Long userId, Long sessionId) {
+        InterviewSession session = requireSession(userId, sessionId);
+        String modeLabel = MODE_LABELS.getOrDefault(session.getMode(), session.getMode());
+        notificationService.notify(Notification.builder()
+                .userId(userId)
+                .type("INTERVIEW_DISPATCH")
+                .targetType("INTERVIEW_SESSION")
+                .targetId(sessionId)
+                .title("데스크탑에서 면접 세션을 보냈어요")
+                .message(modeLabel + " 세션을 폰에서 이어받을 수 있어요.")
+                .build());
     }
 
     @Override
