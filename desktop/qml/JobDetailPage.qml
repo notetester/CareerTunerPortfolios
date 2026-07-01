@@ -10,11 +10,15 @@ Item {
     property string jobTitle: "삼성전자 · SW 개발직군"
     property string jobMode: "직무 면접"
     property var questionList: []
+    property var progress: ({})
+    property string resumeMsg: ""
     signal back()
 
     Connections {
         target: jobModel
         function onQuestionsReady(questions) { detail.questionList = questions }
+        function onProgressReady(p) { detail.progress = p }
+        function onResumed(sid) { detail.resumeMsg = "✓ 이어받기 기록됨 — 폰 CareerTuner 앱에서 최근 세션으로 이어받으세요." }
     }
 
     property var lanes: [
@@ -34,13 +38,26 @@ Item {
 
         RowLayout {
             Layout.fillWidth: true
+            spacing: 10
             ColumnLayout {
                 spacing: 2
                 Text { text: detail.jobTitle; color: "#e6edf3"; font.pixelSize: 22; font.bold: true }
-                Text { text: detail.jobMode + " · 지원 건 #" + detail.jobId; color: "#8b949e"; font.pixelSize: 13 }
+                Text {
+                    text: detail.jobMode + " · 지원 건 #" + detail.jobId
+                          + (detail.progress.total !== undefined ? "  ·  " + (detail.progress.answered || 0) + "/" + detail.progress.total + " 답변" : "")
+                    color: "#8b949e"; font.pixelSize: 13
+                }
             }
             Item { Layout.fillWidth: true }
+            Button { text: "📱 폰으로 이어받기"; onClicked: jobModel.markResumed(detail.jobId) }
             Button { text: "← 대시보드"; onClicked: detail.back() }
+        }
+
+        Text {
+            visible: detail.resumeMsg !== ""
+            text: detail.resumeMsg
+            color: "#2dd4bf"; font.pixelSize: 13
+            Layout.fillWidth: true; wrapMode: Text.WordWrap
         }
 
         Text { text: "AI 오케스트레이터 — 실행 그래프 (의존 관계)"; color: "#8b949e"; font.pixelSize: 12; font.bold: true }

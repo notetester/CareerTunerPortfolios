@@ -97,6 +97,31 @@ void JobModel::loadQuestions(int sessionId)
         });
 }
 
+void JobModel::loadProgress(int sessionId)
+{
+    if (!m_api) return;
+    m_api->get("/api/interview/sessions/" + QString::number(sessionId) + "/progress",
+        [this](bool ok, const QJsonValue& data, const QString&) {
+            QVariantMap m;
+            if (ok) {
+                const QJsonObject o = data.toObject();
+                m["total"]    = o.value("totalQuestions").toInt();
+                m["answered"] = o.value("answeredQuestions").toInt();
+                m["finished"] = o.value("finished").toBool();
+            }
+            emit progressReady(m);
+        });
+}
+
+void JobModel::markResumed(int sessionId)
+{
+    if (!m_api) return;
+    m_api->post("/api/interview/sessions/" + QString::number(sessionId) + "/resume", QJsonObject(),
+        [this, sessionId](bool ok, const QJsonValue&, const QString&) {
+            if (ok) { emit resumed(sessionId); reload(); }   // 이어받은 시각 기록 → 목록 최신 정렬 반영
+        });
+}
+
 int JobModel::rowCount(const QModelIndex& parent) const
 {
     if (parent.isValid()) return 0;

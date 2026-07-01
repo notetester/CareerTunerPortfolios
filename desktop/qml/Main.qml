@@ -139,8 +139,11 @@ ApplicationWindow {
                     detailPage.jobTitle = title
                     detailPage.jobMode = mode
                     detailPage.questionList = []
+                    detailPage.progress = ({})
+                    detailPage.resumeMsg = ""
                     stack.currentIndex = 5
                     jobModel.loadQuestions(jobId)
+                    jobModel.loadProgress(jobId)
                 }
                 onRequestNewJob: newJobDialog.open()
             }

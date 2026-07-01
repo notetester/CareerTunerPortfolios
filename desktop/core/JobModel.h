@@ -3,6 +3,7 @@
 #include <QVector>
 #include <QString>
 #include <QVariantList>
+#include <QVariantMap>
 
 class ApiClient;
 
@@ -30,10 +31,14 @@ public:
     Q_INVOKABLE void loadCases();                                    // 지원건 목록 → casesReady
     Q_INVOKABLE void createSession(int caseId, const QString& mode); // 세션 생성 후 reload
     Q_INVOKABLE void loadQuestions(int sessionId);                   // 질문 목록 → questionsReady
+    Q_INVOKABLE void loadProgress(int sessionId);                    // 진행률 → progressReady
+    Q_INVOKABLE void markResumed(int sessionId);                     // 이어받기 시각 기록 → resumed
 
 signals:
     void casesReady(const QVariantList& cases);
     void questionsReady(const QVariantList& questions);
+    void progressReady(const QVariantMap& progress);
+    void resumed(int sessionId);
 
 public:
 
