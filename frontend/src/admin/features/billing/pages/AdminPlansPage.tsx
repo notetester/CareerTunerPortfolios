@@ -24,6 +24,7 @@ import {
   type BillingPolicyChange,
   type BillingPolicyTargetType,
 } from "../api";
+import { RefundPolicySection } from "../components/RefundPolicySection";
 
 type SnapshotValue = string | number | boolean | null;
 type Snapshot = Record<string, SnapshotValue>;
@@ -290,6 +291,8 @@ export function AdminPlansPage() {
         {notice && <Alert tone="success">{notice}</Alert>}
 
         <SummaryStrip data={data} scheduledCount={scheduledCount} loading={loading} />
+
+        <RefundPolicySection />
 
         <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_440px]">
           <div className="space-y-5">

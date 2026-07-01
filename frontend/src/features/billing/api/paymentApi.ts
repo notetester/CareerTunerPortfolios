@@ -6,10 +6,12 @@ export type PaymentProductType = "CREDIT" | "SUBSCRIPTION";
 export function readyTossPayment(
   productCode: string,
   productType: PaymentProductType = "CREDIT",
+  refundPolicyId: number,
+  policyAcknowledgementKey: string,
 ): Promise<TossPaymentReadyResponse> {
   return api<TossPaymentReadyResponse>("/payments/toss/ready", {
     method: "POST",
-    body: JSON.stringify({ productType, productCode }),
+    body: JSON.stringify({ productType, productCode, refundPolicyId, policyAcknowledgementKey }),
   });
 }
 

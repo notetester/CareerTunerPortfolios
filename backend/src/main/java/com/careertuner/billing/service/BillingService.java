@@ -39,7 +39,8 @@ public interface BillingService {
 
     MyBillingResponse subscribe(Long userId, String planCode, String cycle);
 
-    MyBenefitsResponse activateSubscriptionAfterPayment(Long userId, String planCode, String policySnapshotJson);
+    MyBenefitsResponse activateSubscriptionAfterPayment(Long userId, Long paymentId, String planCode,
+                                                        String policySnapshotJson);
 
     int grantCreditsAfterPayment(Long userId, String productCode, int creditAmount);
 

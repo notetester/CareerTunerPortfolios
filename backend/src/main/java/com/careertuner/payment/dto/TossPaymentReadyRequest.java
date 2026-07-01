@@ -4,10 +4,16 @@ import jakarta.validation.constraints.NotBlank;
 
 public record TossPaymentReadyRequest(
         String productType,
-        @NotBlank String productCode
+        @NotBlank String productCode,
+        Long refundPolicyId,
+        String policyAcknowledgementKey
 ) {
     public TossPaymentReadyRequest(String productCode) {
-        this("CREDIT", productCode);
+        this("CREDIT", productCode, null, null);
+    }
+
+    public TossPaymentReadyRequest(String productType, String productCode) {
+        this(productType, productCode, null, null);
     }
 
     public TossPaymentReadyRequest {

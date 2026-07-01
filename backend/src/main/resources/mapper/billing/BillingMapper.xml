@@ -69,9 +69,9 @@
 
     <insert id="insertSubscription" useGeneratedKeys="true" keyProperty="id">
         INSERT INTO user_subscription
-            (user_id, plan_code, status, started_at, current_period_start, current_period_end, policy_snapshot_json)
+            (payment_id, user_id, plan_code, status, started_at, current_period_start, current_period_end, policy_snapshot_json)
         VALUES
-            (#{userId}, #{planCode}, #{status}, #{startedAt}, #{currentPeriodStart}, #{currentPeriodEnd}, #{policySnapshotJson})
+            (#{paymentId}, #{userId}, #{planCode}, #{status}, #{startedAt}, #{currentPeriodStart}, #{currentPeriodEnd}, #{policySnapshotJson})
     </insert>
 
     <update id="cancelActiveSubscription">
@@ -157,7 +157,11 @@
 
     <!-- ───── 결제 ───── -->
     <select id="findPaymentsByUserId" resultType="com.careertuner.payment.domain.Payment">
-        SELECT * FROM payment WHERE user_id = #{userId} ORDER BY id DESC
+        SELECT *
+          FROM payment
+         WHERE user_id = #{userId}
+           AND status IN ('PAID', 'CANCELED')
+         ORDER BY id DESC
     </select>
 
     <insert id="insertPayment" useGeneratedKeys="true" keyProperty="id">
