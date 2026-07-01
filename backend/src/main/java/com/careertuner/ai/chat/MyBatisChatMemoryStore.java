@@ -75,6 +75,23 @@ public class MyBatisChatMemoryStore implements ChatMemoryStore {
         return mapper.findOwnerUserId(conversationId);
     }
 
+    /** 이 대화에 바인딩된 지원 건 id(없으면 null). fork 가드 영속 권위 — boundCaseId 인메모리 증발 시 DB 보강. */
+    public Long findApplicationCaseId(Long conversationId) {
+        return conversationId == null ? null : mapper.findApplicationCaseId(conversationId);
+    }
+
+    /** 이 대화가 온보딩을 거부했는지(영속 권위). 깡통계정이어도 거부 후엔 온보딩 재진입을 막는다. */
+    public boolean isOnboardingDeclined(Long conversationId) {
+        return conversationId != null && mapper.findOnboardingDeclinedAt(conversationId) != null;
+    }
+
+    /** 이 대화의 온보딩 거부를 DB 에 영속(재시작 후에도 유지). */
+    public void markOnboardingDeclined(Long conversationId) {
+        if (conversationId != null) {
+            mapper.markOnboardingDeclined(conversationId);
+        }
+    }
+
     private Long toLong(Object memoryId) {
         if (memoryId instanceof Number n) {
             return n.longValue();

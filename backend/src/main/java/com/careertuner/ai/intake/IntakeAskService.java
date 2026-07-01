@@ -386,6 +386,14 @@ public class IntakeAskService {
         if (caseId == null || caseId.equals(trace.boundCaseId())) {
             return conversationId;
         }
+        // ★(A′) boundCaseId 인메모리 증발 보강: 재시작·READY세션·대화단절로 인메모리 가드가 비어도, fork 시
+        //   bindCase 가 이미 chatbot_conversation_memory.application_case_id 에 영속해 둔 값을 권위로 읽어
+        //   "이미 이 건에 바인딩된 대화"면 재fork 하지 않는다(매 턴 새 대화 분기 루프 차단). #1 과 같은 패턴
+        //   (DB 권위·인메모리 보조). boundCaseId 가 메모리에 있으면 위에서 끝나 DB 조회는 타지 않는다.
+        if (trace.boundCaseId() == null
+                && caseId.equals(memoryStore.findApplicationCaseId(conversationId))) {
+            return conversationId;
+        }
         // 진입 offset 이후 메시지 = 이 지원 건 인테이크 구간(진입 전 잡담/커뮤니티 메시지는 제외).
         List<ChatMessage> all = memoryStore.getMessages(conversationId);
         Integer offset = trace.entryOffset();

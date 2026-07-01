@@ -22,6 +22,7 @@ public class Notice {
     private String thumbnailUrl;
     private Long adminId;
     private int viewCount;
+    private LocalDateTime scheduledAt;
     private LocalDateTime publishedAt;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;

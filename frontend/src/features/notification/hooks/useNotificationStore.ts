@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import * as notificationApi from "../api/notificationApi";
 import { toast } from "../components/toast";
+import { typeMeta } from "../types/notification";
 import type { Notification, NotificationCategory } from "../types/notification";
 
 interface NotificationState {
@@ -54,11 +55,14 @@ export const useNotificationStore = create<NotificationState>((set, get) => ({
       const notifications = await notificationApi.getNotifications();
       const unreadCount = await notificationApi.getUnreadCount();
       const prevId = get().lastNotifiedId;
-      // 직전 폴링 이후 새로 도착한 미읽음 알림만 토스트로 띄운다.
+      // 직전 폴링 이후 새로 도착한 미읽음 알림 중, 즉시(urgent) 타입만 토스트로 띄운다.
+      // 몰아보기(urgent:false, 예: NEW_TICKET/NEW_USER)는 토스트 없이 뱃지 카운트에만 반영된다.
       const fresh = notifications
         .filter((n) => n.id > prevId && !n.isRead)
         .sort((a, b) => a.id - b.id);
-      fresh.forEach((n) => {
+      fresh
+        .filter((n) => typeMeta(n.type).urgent !== false)
+        .forEach((n) => {
         toast.notify({
           type: n.type,
           category: n.category,

@@ -83,6 +83,7 @@ export interface TypeMeta {
   variant: ToastVariant;
   cta: string;           // CTA 라벨 ("분석 보기" 등)
   actor?: boolean;       // true → 주체 아바타 + 타입 배지 렌더
+  urgent?: boolean;      // false → 몰아보기(토스트 안 띄우고 뱃지 카운트만). 미지정 = 즉시(true)로 간주.
 }
 
 export const TYPE_META: Record<NotificationType, TypeMeta> = {
@@ -123,8 +124,8 @@ export const TYPE_META: Record<NotificationType, TypeMeta> = {
   ACCOUNT_BLOCKED:           { cat: "notice",      icon: "ShieldAlert",        variant: "danger",  cta: "문의하기" },
   /* 관리자 */
   NEW_REPORT:                { cat: "admin",       icon: "Flag",               variant: "danger",  cta: "신고 확인" },
-  NEW_TICKET:                { cat: "admin",       icon: "Ticket",             variant: "info",    cta: "문의 확인" },
-  NEW_USER:                  { cat: "admin",       icon: "UserPlus",           variant: "info",    cta: "회원 보기",      actor: true },
+  NEW_TICKET:                { cat: "admin",       icon: "Ticket",             variant: "info",    cta: "문의 확인",      urgent: false },
+  NEW_USER:                  { cat: "admin",       icon: "UserPlus",           variant: "info",    cta: "회원 보기",      actor: true, urgent: false },
   LOW_CONFIDENCE_REPORT:     { cat: "admin",       icon: "ShieldAlert",        variant: "warning", cta: "리포트 점검" },
   TICKET_DRAFT_READY:        { cat: "admin",       icon: "FilePen",            variant: "info",    cta: "답변 초안 보기" },
 };

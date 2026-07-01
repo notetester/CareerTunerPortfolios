@@ -121,16 +121,9 @@ export function Footer() {
           ))}
         </div>
 
-        {/* Bottom bar */}
-        <div className="border-t border-border pt-8 flex flex-col md:flex-row items-center justify-between gap-4 text-xs">
+        {/* Bottom bar — 법적 링크는 위 "법적 고지" 컬럼에 있으므로 여기선 저작권 표기만(중복 제거) */}
+        <div className="border-t border-border pt-8 text-xs">
           <p className="text-muted-foreground">© 2026 CareerTuner. All rights reserved.</p>
-          <div className="flex items-center gap-4">
-            <Link to="/legal/terms" className="hover:text-foreground transition-colors">이용약관</Link>
-            <span className="text-slate-700">|</span>
-            <Link to="/legal/privacy" className="hover:text-foreground transition-colors font-medium text-muted-foreground">개인정보처리방침</Link>
-            <span className="text-slate-700">|</span>
-            <Link to="/legal/ai-data-consent" className="hover:text-foreground transition-colors">AI 데이터 이용 동의</Link>
-          </div>
         </div>
       </div>
     </footer>
