@@ -32,9 +32,9 @@ void ApiClient::handle(QNetworkReply* reply, JsonCallback cb)
         reply->deleteLater();
 
         const QJsonObject root = QJsonDocument::fromJson(raw).object();
-        // 공통 envelope: { success, code, message, data }
+        // 공통 envelope: { success, code, message, data } — data 는 object 또는 array
         const bool ok        = root.value("success").toBool();
-        const QJsonObject data = root.value("data").toObject();
+        const QJsonValue data = root.value("data");
         const QString message  = root.value("message").toString();
         if (cb) cb(ok, data, message);
     });

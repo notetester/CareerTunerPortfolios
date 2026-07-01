@@ -3,6 +3,7 @@
 #include <QNetworkAccessManager>
 #include <QNetworkRequest>
 #include <QJsonObject>
+#include <QJsonValue>
 #include <QString>
 #include <functional>
 
@@ -17,13 +18,13 @@ class ApiClient : public QObject
 public:
     explicit ApiClient(QObject* parent = nullptr);
 
-    void setBaseUrl(const QString& url) { m_baseUrl = url; }
+    Q_INVOKABLE void setBaseUrl(const QString& url) { m_baseUrl = url; }
     void setToken(const QString& token) { m_token = token; }
     QString baseUrl() const { return m_baseUrl; }
     QString token() const { return m_token; }
 
     // ok = envelope.success, data = envelope.data, message = envelope.message
-    using JsonCallback = std::function<void(bool ok, const QJsonObject& data, const QString& message)>;
+    using JsonCallback = std::function<void(bool ok, const QJsonValue& data, const QString& message)>;
 
     void get(const QString& path, JsonCallback cb);
     void post(const QString& path, const QJsonObject& body, JsonCallback cb);

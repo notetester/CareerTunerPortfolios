@@ -2,6 +2,7 @@ package com.careertuner.interview.service;
 
 import java.time.Duration;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -34,6 +35,8 @@ import com.careertuner.interview.dto.SessionPageResponse;
 import com.careertuner.interview.dto.SessionReviewResponse;
 import com.careertuner.interview.dto.SubmitAnswerRequest;
 import com.careertuner.interview.mapper.InterviewMapper;
+import com.careertuner.notification.domain.Notification;
+import com.careertuner.notification.service.NotificationService;
 import lombok.RequiredArgsConstructor;
 import tools.jackson.core.JacksonException;
 import tools.jackson.databind.JsonNode;
@@ -71,6 +74,7 @@ public class InterviewServiceImpl implements InterviewService {
     private final InterviewAgentOrchestrator orchestrator;
     private final ObjectMapper objectMapper;
     private final InterviewBackgroundExecutor backgroundExecutor;
+    private final NotificationService notificationService;
 
     @Override
     @Transactional
@@ -111,6 +115,21 @@ public class InterviewServiceImpl implements InterviewService {
     @Transactional
     public void markResumed(Long userId, Long sessionId) {
         interviewMapper.touchSessionResumed(sessionId, userId);
+    }
+
+    @Override
+    @Transactional
+    public void dispatchToPhone(Long userId, Long sessionId) {
+        InterviewSession session = requireSession(userId, sessionId);
+        String modeLabel = MODE_LABELS.getOrDefault(session.getMode(), session.getMode());
+        notificationService.notify(Notification.builder()
+                .userId(userId)
+                .type("INTERVIEW_DISPATCH")
+                .targetType("INTERVIEW_SESSION")
+                .targetId(sessionId)
+                .title("데스크탑에서 면접 세션을 보냈어요")
+                .message(modeLabel + " 세션을 폰에서 이어받을 수 있어요.")
+                .build());
     }
 
     @Override
@@ -181,14 +200,7 @@ public class InterviewServiceImpl implements InterviewService {
         List<InterviewQuestion> questions = interviewMapper.findQuestionsBySessionId(sessionId);
 
         // 질문별 최신 답변(가장 큰 id)을 매핑한다. 재작성으로 답변이 여러 개일 수 있어 마지막 것만 본다.
-        Map<Long, InterviewAnswer> latestByQuestion = new HashMap<>();
-        for (InterviewAnswer answer : interviewMapper.findAnswersBySessionId(sessionId)) {
-            InterviewAnswer current = latestByQuestion.get(answer.getQuestionId());
-            if (current == null || (answer.getId() != null && current.getId() != null
-                    && answer.getId() > current.getId())) {
-                latestByQuestion.put(answer.getQuestionId(), answer);
-            }
-        }
+        Map<Long, InterviewAnswer> latestByQuestion = latestAnswersByQuestion(sessionId);
 
         List<SessionReviewResponse.Item> items = questions.stream()
                 .map(q -> SessionReviewResponse.Item.of(q, latestByQuestion.get(q.getId())))
@@ -382,16 +394,51 @@ public class InterviewServiceImpl implements InterviewService {
                 .toList();
     }
 
+    /** 세션의 질문별 '최신' 답변(같은 질문 재작성이 여러 개면 가장 큰 id)을 맵으로 만든다. */
+    private Map<Long, InterviewAnswer> latestAnswersByQuestion(Long sessionId) {
+        Map<Long, InterviewAnswer> latestByQuestion = new HashMap<>();
+        for (InterviewAnswer answer : interviewMapper.findAnswersBySessionId(sessionId)) {
+            InterviewAnswer current = latestByQuestion.get(answer.getQuestionId());
+            if (current == null || (answer.getId() != null && current.getId() != null
+                    && answer.getId() > current.getId())) {
+                latestByQuestion.put(answer.getQuestionId(), answer);
+            }
+        }
+        return latestByQuestion;
+    }
+
+    /**
+     * 리포트에 실을 질문별 채점 목록을 만든다. 본질문(꼬리질문 제외) 순서대로 최신 답변의 점수/피드백을 붙인다.
+     * 음성/영상 면접도 텍스트와 동일하게 질문 단위 채점을 리포트 화면에서 볼 수 있게 하기 위함.
+     */
+    private List<InterviewReportResponse.QuestionScore> buildQuestionScores(Long sessionId) {
+        Map<Long, InterviewAnswer> latestByQuestion = latestAnswersByQuestion(sessionId);
+        List<InterviewReportResponse.QuestionScore> scores = new ArrayList<>();
+        int order = 1;
+        for (InterviewQuestion q : interviewMapper.findQuestionsBySessionId(sessionId)) {
+            if (q.getParentQuestionId() != null) {
+                continue; // 꼬리질문은 본질문 채점 목록에서 제외
+            }
+            InterviewAnswer a = latestByQuestion.get(q.getId());
+            scores.add(new InterviewReportResponse.QuestionScore(
+                    q.getId(), order++, q.getQuestion(),
+                    a == null ? null : a.getScore(),
+                    a == null ? null : a.getFeedback()));
+        }
+        return scores;
+    }
+
     @Override
     @Transactional
     public InterviewReportResponse getReport(Long userId, Long sessionId) {
         InterviewSession session = requireSession(userId, sessionId);
 
-        // 이미 생성된 리포트가 있으면 그대로 반환한다.
+        // 이미 생성된 리포트가 있으면 그대로 반환한다. 질문별 채점은 캐시 스냅샷에 없을 수 있으므로
+        // 항상 현재 답변 기준으로 새로 계산해 덧입힌다(텍스트/음성/영상 모두 같은 화면에서 질문 단위 점수 노출).
         if (session.getReport() != null && !session.getReport().isBlank()) {
             InterviewReportResponse cached = readReport(session.getReport());
             if (cached != null) {
-                return cached;
+                return cached.withQuestionScores(buildQuestionScores(sessionId));
             }
         }
 
@@ -423,7 +470,8 @@ public class InterviewServiceImpl implements InterviewService {
                 answers.size(),
                 durationLabel(session.getStartedAt()),
                 categories,
-                payload.summaryFeedback());
+                payload.summaryFeedback(),
+                buildQuestionScores(sessionId));
 
         interviewMapper.updateSessionResult(sessionId, payload.totalScore(), writeReport(response), LocalDateTime.now());
         return response;

@@ -12,9 +12,10 @@ void AuthService::login(const QString& email, const QString& password)
     body["password"] = password;
 
     m_api->post("/api/auth/login", body,
-        [this](bool ok, const QJsonObject& data, const QString& message) {
-            if (ok && data.contains("accessToken")) {
-                m_token = data.value("accessToken").toString();
+        [this](bool ok, const QJsonValue& data, const QString& message) {
+            const QJsonObject o = data.toObject();
+            if (ok && o.contains("accessToken")) {
+                m_token = o.value("accessToken").toString();
                 m_api->setToken(m_token);
                 emit loggedIn(m_token);
             } else {
