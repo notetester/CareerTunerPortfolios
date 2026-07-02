@@ -99,6 +99,7 @@ Last updated: 2026-07-02
 - [x] 완료 — A-only production 경로 안전성 베이스라인 v1(60케이스×2 run + judge, PR #212, [AIDocs report 80](../../docs/ai-reports/areas/c-career-strategy/reports/80_a_only_baseline_repeat2_judge.md)). **120케이스 확장은 보류** — 운영 FP/FN 신호 시 confusion_pair 집중으로 재개.
 - [x] 완료 — fallback provider 판단값 소유 통일(PR #211, [AIDocs report 78](../../docs/ai-reports/areas/c-career-strategy/reports/78_provider_judgment_ownership_unification.md)) — 전 provider 뉴로-심볼릭.
 - [x] 완료 — 관리자 gate review 처리 workflow(검토 완료/재분석 요청/대기 되돌리기 + 메모 연결, [AIDocs report 81](../../docs/ai-reports/areas/c-career-strategy/reports/81_gate_review_workflow.md)).
-- [ ] 미완료 — **(1순위)** R3 gate reason 로그 기반 false-positive 샘플 리뷰와 alias 후보 triage(운영 데이터 축적 후).
+- [x] 완료 — E2E production 경로 관통 실측(60케이스): 규칙엔진→OSS 뉴로-심볼릭→E1→R3 실경로. 보호되지 않은 노출 0(E1 흡수 3+회복 다수, R3 포착 1=EA-A-013 critical), 60/60 화면 보장([AIDocs report 83](../../docs/ai-reports/areas/c-career-strategy/reports/83_e2e_production_path_baseline.md)).
+- [ ] 미완료 — **(1순위)** 실공고 표기 다양성 기반 gate FP triage: 웹 수집 공고/스펙 패턴 → gate 투입 → SkillAliasNormalizer alias 후보 도출.
 - [x] 완료 — gold label 확정: disagreement13(TRUE 0/13, offline over-count 근원=모델 자기신고 metric 합산 규명) + A-only 11건([AIDocs report 82](../../docs/ai-reports/areas/c-career-strategy/reports/82_gold_labels_and_e1_r3_replay.md)).
 - [ ] 미완료 — model-card 다음 개정: R3 운영 데이터와 gate reason 분포 반영.
