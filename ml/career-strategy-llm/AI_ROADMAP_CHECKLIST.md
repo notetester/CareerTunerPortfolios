@@ -56,9 +56,11 @@ Last updated: 2026-07-02
 - [x] 완료 — RAG 용어 정정: 완료 실험은 evidence-bucket prompt augmentation 이며 true external retrieval RAG 는 미구현·미평가임을 상태 문서와 보고서 errata 로 고정했다([AIDocs report 77](../../docs/ai-reports/areas/c-career-strategy/reports/77_ai_direction_and_rag_terminology_review.md)).
 - [~] 보류 또는 조건부 유지 — B(evidence-bucket augmentation)는 production 후보에서 **연구 후보로 격하**한다. 다음 실측의 중심은 A(production 경로) 대량 베이스라인이다([AIDocs report 77](../../docs/ai-reports/areas/c-career-strategy/reports/77_ai_direction_and_rag_terminology_review.md) §8).
 - [x] 완료 — A-only baseline v1 실측(60케이스×2 run)과 rubric v2 judge 판정을 수행했다. "A true ≈ 0" 기각(진짜 보유단정 3/120관측), 전부 검출기 포착 — 계층 안전장치 필요성 정량 입증([AIDocs report 79](../../docs/ai-reports/areas/c-career-strategy/reports/79_a_only_baseline_v1_run.md)·[80](../../docs/ai-reports/areas/c-career-strategy/reports/80_a_only_baseline_repeat2_judge.md), PR #212).
-- [ ] 미완료 — judge 판정 11건(특히 UNCLEAR 1건)의 **human gold label 확정**은 사용자 검토 대기(패킷: CareerTunerAI `judge-results/a_only_baseline_v1_claude_judge_verdicts.json`).
+- [x] 완료 — gold label 확정(사용자 승인 하에 top-LLM 판정으로 human 대체): A-only 11건 최종화(TRUE 3건 확정, EA-A-012=보유단정 아님) + disagreement13 독립 판정 TRUE 0/13 → top-LLM consensus gold 확정([AIDocs report 82](../../docs/ai-reports/areas/c-career-strategy/reports/82_gold_labels_and_e1_r3_replay.md)).
 
 ## 4. Evidence gate / safety 상태
+
+- [x] 완료 — baseline TRUE 3건의 실제 출력 문장을 E1/R3 production 코드로 replay 하는 회귀 테스트 추가(`EvidenceGateBaselineReplayTest` 4건 — 검출 3 + 과탐 방지 앵커 1, [AIDocs report 82](../../docs/ai-reports/areas/c-career-strategy/reports/82_gold_labels_and_e1_r3_replay.md) §4).
 
 - [x] 완료 — R3 review-first gate 는 `PASSED`, `REVIEW_REQUIRED`, `REJECTED` 상태를 결정론으로 산출한다(PR #174, [reports/61](../../docs/ai-reports/areas/c-career-strategy/reports/61_rag_r3_review_first_gate_implementation.md)).
 - [x] 완료 — userEvidence 는 #175 이후 `profileSkills + profileCertificates` 로 고정하고, AI 파생 `matchedSkills` 는 보유 근거로 신뢰하지 않는다(PR #175, [reports/62](../../docs/ai-reports/areas/c-career-strategy/reports/62_rag_r3_evidence_gate_user_evidence_hotfix.md)).
@@ -98,5 +100,5 @@ Last updated: 2026-07-02
 - [x] 완료 — fallback provider 판단값 소유 통일(PR #211, [AIDocs report 78](../../docs/ai-reports/areas/c-career-strategy/reports/78_provider_judgment_ownership_unification.md)) — 전 provider 뉴로-심볼릭.
 - [x] 완료 — 관리자 gate review 처리 workflow(검토 완료/재분석 요청/대기 되돌리기 + 메모 연결, [AIDocs report 81](../../docs/ai-reports/areas/c-career-strategy/reports/81_gate_review_workflow.md)).
 - [ ] 미완료 — **(1순위)** R3 gate reason 로그 기반 false-positive 샘플 리뷰와 alias 후보 triage(운영 데이터 축적 후).
-- [ ] 미완료 — human gold label 확정(사용자): rag-hardcase disagreement13 + A-only judge 판정 11건.
+- [x] 완료 — gold label 확정: disagreement13(TRUE 0/13, offline over-count 근원=모델 자기신고 metric 합산 규명) + A-only 11건([AIDocs report 82](../../docs/ai-reports/areas/c-career-strategy/reports/82_gold_labels_and_e1_r3_replay.md)).
 - [ ] 미완료 — model-card 다음 개정: R3 운영 데이터와 gate reason 분포 반영.
