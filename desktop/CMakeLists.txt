@@ -21,6 +21,8 @@ qt_add_executable(CareerTunerDesktop
     core/NotificationPoller.h core/NotificationPoller.cpp
     core/AutoPrepRunner.h     core/AutoPrepRunner.cpp
     core/CollaborationClient.h core/CollaborationClient.cpp
+    core/CommunityClient.h    core/CommunityClient.cpp
+    core/CameraRecorder.h     core/CameraRecorder.cpp
 )
 
 # Theme.qml 은 싱글톤 — QML_SINGLETON_TYPE 지정 필요
@@ -40,6 +42,8 @@ qt_add_qml_module(CareerTunerDesktop
         qml/DevicesPage.qml
         qml/SettingsPage.qml
         qml/CollaborationPage.qml
+        qml/BoardPage.qml
+        qml/NotificationCenter.qml
         qml/PhonePanel.qml
         qml/InputBar.qml
         qml/NewJobDialog.qml
