@@ -46,6 +46,13 @@
         <result property="gateReviewerName" column="gate_reviewer_name"/>
     </resultMap>
 
+    <resultMap id="AdminGateStatsRowResultMap" type="com.careertuner.admin.fitanalysis.domain.AdminGateStatsRow">
+        <result property="gateStatus" column="gate_status"/>
+        <result property="reviewStatus" column="review_status"/>
+        <result property="maxSeverity" column="max_severity"/>
+        <result property="gateReasonsJson" column="gate_reasons_json"/>
+    </resultMap>
+
     <resultMap id="AdminFitAnalysisMemoResultMap" type="com.careertuner.admin.fitanalysis.domain.AdminFitAnalysisMemo">
         <id property="id" column="id"/>
         <result property="fitAnalysisId" column="fit_analysis_id"/>
@@ -139,6 +146,16 @@
         LEFT JOIN fit_analysis_gate_result gr ON gr.fit_analysis_id = fa.id
         LEFT JOIN users reviewer ON reviewer.id = gr.reviewed_by
         WHERE fa.id = #{id}
+    </select>
+
+    <!-- gate 통계: 전체 gate 행의 분포 관측용 최소 컬럼 조회(조인 없음, 집계는 서비스에서). -->
+    <select id="findAllGateRows" resultMap="AdminGateStatsRowResultMap">
+        SELECT
+            gr.gate_status,
+            gr.review_status,
+            gr.max_severity,
+            gr.gate_reasons_json
+        FROM fit_analysis_gate_result gr
     </select>
 
     <!-- gate review workflow: 운영자 처리 상태 갱신(REVIEW_REQUIRED gate 가 있는 분석만 대상). -->
