@@ -1,110 +1,97 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
+import CareerTuner
 
-// 연결된 기기: 같은 계정의 기기 목록 + 디스패치(폰으로 보내기/이어받기).
+// 연결된 기기 — 알림 수신 채널 현황 + 테스트 디스패치.
 Item {
-    id: devices
+    id: root
 
-    Connections {
-        target: jobModel
-        function onDispatched(sid) { devices.showDispatch("✓ 폰으로 알림을 보냈어요 — 폰 CareerTuner 앱 알림 벨에 30초 안에 뜹니다.") }
-    }
-
-    ColumnLayout {
+    Flickable {
         anchors.fill: parent
-        anchors.margins: 24
-        spacing: 16
+        contentHeight: content.implicitHeight + 60
+        clip: true
 
         ColumnLayout {
-            spacing: 2
-            Text { text: "연결된 기기"; color: "#e6edf3"; font.pixelSize: 22; font.bold: true }
-            Text { text: "같은 계정에 로그인된 기기끼리 작업을 주고받습니다."; color: "#8b949e"; font.pixelSize: 13 }
-        }
+            id: content
+            width: Math.min(parent.width - 48, 640)
+            anchors.horizontalCenter: parent.horizontalCenter
+            spacing: 10
 
-        // 기기 카드
-        RowLayout {
-            Layout.fillWidth: true
-            spacing: 16
-            Repeater {
-                model: [
-                    { icon: "🖥️", name: "정원일 데스크탑", meta: "Windows · CareerTuner Desktop v0.1", me: true },
-                    { icon: "📱", name: "갤럭시 S20", meta: "Android · CareerTuner App", me: false }
-                ]
-                delegate: Rectangle {
-                    required property var modelData
-                    Layout.fillWidth: true
-                    implicitHeight: 84
-                    color: "#161b22"
-                    border.color: modelData.me ? "#2dd4bf" : "#30363d"
-                    radius: 12
-                    RowLayout {
-                        anchors.fill: parent; anchors.margins: 16; spacing: 14
-                        Rectangle {
-                            width: 48; height: 48; radius: 11; color: "#222b38"
-                            Text { anchors.centerIn: parent; text: modelData.icon; font.pixelSize: 24 }
-                        }
-                        ColumnLayout {
-                            spacing: 2
-                            Text {
-                                text: modelData.name + (modelData.me ? "  (이 기기)" : "")
-                                color: "#e6edf3"; font.pixelSize: 15; font.bold: true
-                            }
-                            Text { text: modelData.meta; color: "#8b949e"; font.pixelSize: 12 }
-                        }
-                        Item { Layout.fillWidth: true }
-                        RowLayout {
-                            spacing: 6
-                            Rectangle { width: 7; height: 7; radius: 3.5; color: "#3fb950" }
-                            Text { text: "온라인"; color: "#3fb950"; font.pixelSize: 12; font.bold: true }
-                        }
-                    }
-                    MouseArea {
-                        anchors.fill: parent
-                        onClicked: {
-                            if (!modelData.me) {
-                                if (jobModel.current.id !== undefined) jobModel.dispatchToPhone(jobModel.current.id)
-                                else devices.showDispatch("진행 중인 작업이 없습니다.")
-                            }
-                        }
-                    }
-                }
-            }
-        }
+            Item { height: 10 }
 
-        Text { text: "디스패치"; color: "#8b949e"; font.pixelSize: 12; font.bold: true }
-        Rectangle {
-            Layout.fillWidth: true
-            implicitHeight: dispCol.implicitHeight + 36
-            color: "#161b22"; border.color: "#30363d"; radius: 12
-            ColumnLayout {
-                id: dispCol
-                x: 20; y: 18; width: parent.width - 40
-                spacing: 14
-                Text { text: "현재 진행 중인 작업을 다른 기기로 보내거나 이어받습니다."; color: "#8b949e"; font.pixelSize: 13 }
+            // 이 데스크탑
+            Rectangle {
+                Layout.fillWidth: true
+                radius: Theme.radius
+                color: Theme.surface; border.color: Theme.border
+                height: 66
                 RowLayout {
-                    spacing: 10
-                    Button {
-                        text: "📲 현재 작업을 폰으로 보내기"
-                        onClicked: {
-                            if (jobModel.current.id !== undefined) jobModel.dispatchToPhone(jobModel.current.id)
-                            else devices.showDispatch("진행 중인 작업이 없습니다. 대시보드에서 세션을 먼저 여세요.")
+                    anchors.fill: parent
+                    anchors.leftMargin: 16; anchors.rightMargin: 16
+                    spacing: 12
+                    Text { text: "🖥️"; font.pixelSize: 20 }
+                    ColumnLayout {
+                        Layout.fillWidth: true
+                        spacing: 3
+                        Text { text: "이 데스크탑"; color: Theme.text; font.pixelSize: 13; font.bold: true }
+                        Text {
+                            text: "현재 기기 · 알림 폴링 30초 · 트레이 상주"
+                            color: Theme.muted; font.pixelSize: 11
                         }
                     }
-                    Button {
-                        text: "🖥️ 폰에서 하던 세션 이어받기"
-                        onClicked: {
-                            if (jobModel.current.id !== undefined) { jobModel.markResumed(jobModel.current.id); devices.showDispatch("✓ '" + (jobModel.current.title || "") + "' 세션을 이어받았습니다.") }
-                            else devices.showDispatch("이어받을 세션이 없습니다.")
+                    Rectangle {
+                        height: 22; radius: 11
+                        width: onLbl.implicitWidth + 18
+                        color: Theme.raised; border.color: Theme.border
+                        Text { id: onLbl; anchors.centerIn: parent; text: "● 온라인"; color: Theme.good; font.pixelSize: 11 }
+                    }
+                }
+            }
+
+            // 폰/웹 (계정 공용 채널)
+            Rectangle {
+                Layout.fillWidth: true
+                radius: Theme.radius
+                color: Theme.surface; border.color: Theme.border
+                height: 66
+                RowLayout {
+                    anchors.fill: parent
+                    anchors.leftMargin: 16; anchors.rightMargin: 16
+                    spacing: 12
+                    Text { text: "📱"; font.pixelSize: 20 }
+                    ColumnLayout {
+                        Layout.fillWidth: true
+                        spacing: 3
+                        Text { text: "폰 · 웹 (CareerTuner 앱)"; color: Theme.text; font.pixelSize: 13; font.bold: true }
+                        Text {
+                            text: "인앱 알림(30초 폴링) + 웹 푸시 — 디스패치 수신 대상"
+                            color: Theme.muted; font.pixelSize: 11
+                        }
+                    }
+                    Rectangle {
+                        height: 28; radius: 8
+                        width: testLbl.implicitWidth + 20
+                        color: Theme.raised; border.color: Theme.border
+                        opacity: session.sessionId > 0 ? 1 : 0.4
+                        Text { id: testLbl; anchors.centerIn: parent; text: "테스트 알림"; color: Theme.text; font.pixelSize: 11 }
+                        MouseArea {
+                            anchors.fill: parent; cursorShape: Qt.PointingHandCursor
+                            enabled: session.sessionId > 0
+                            onClicked: jobModel.dispatchToPhone(session.sessionId)
                         }
                     }
                 }
-                Text { id: dispMsg; text: ""; color: "#2dd4bf"; font.pixelSize: 13; visible: text !== "" }
+            }
+
+            Text {
+                Layout.fillWidth: true
+                Layout.topMargin: 8
+                text: "디스패치 알림은 이 계정으로 로그인된 모든 기기(폰·웹·데스크탑)에 전송됩니다.\n테스트 알림은 현재 선택된 세션을 폰으로 보내는 것과 동일하게 동작합니다."
+                color: Theme.muted; font.pixelSize: 11
+                lineHeight: 1.5
+                wrapMode: Text.WordWrap
             }
         }
-
-        Item { Layout.fillHeight: true }
     }
-
-    function showDispatch(msg) { dispMsg.text = msg }
 }
