@@ -31,6 +31,7 @@ qt_add_qml_module(CareerTunerDesktop
     VERSION 1.0
     QML_FILES
         qml/Theme.qml
+        qml/Icon.qml
         qml/Main.qml
         qml/LoginPage.qml
         qml/SessionThread.qml

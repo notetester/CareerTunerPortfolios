@@ -104,11 +104,16 @@ Item {
                     id: askCol
                     x: 16; y: 14; width: parent.width - 32
                     spacing: 10
-                    Text {
+                    Row {
                         Layout.fillWidth: true
-                        text: "🤖 " + root.askMessage
-                        color: Theme.text; font.pixelSize: 13
-                        wrapMode: Text.WordWrap
+                        spacing: 7
+                        Icon { name: "spark"; size: 13; color: Theme.accentText; y: 2 }
+                        Text {
+                            width: parent.width - 20
+                            text: root.askMessage
+                            color: Theme.text; font.pixelSize: 13
+                            wrapMode: Text.WordWrap
+                        }
                     }
                     Flow {
                         Layout.fillWidth: true
@@ -208,14 +213,20 @@ Item {
                                         running: modelData.status === "RUNNING"
                                         visible: modelData.status === "RUNNING"
                                     }
+                                    Icon {
+                                        anchors.centerIn: parent
+                                        visible: modelData.status === "DONE" || modelData.status === "FAILED"
+                                        name: modelData.status === "DONE" ? "check" : "x"
+                                        size: 12
+                                        color: modelData.status === "DONE" ? Theme.good : Theme.danger
+                                    }
                                     Text {
                                         anchors.centerIn: parent
                                         visible: modelData.status !== "RUNNING"
-                                        text: modelData.status === "DONE" ? "✓"
-                                            : modelData.status === "FAILED" ? "✕"
-                                            : modelData.status === "SKIPPED" ? "–" : "•"
-                                        color: modelData.status === "DONE" ? Theme.good
-                                             : modelData.status === "FAILED" ? Theme.danger : Theme.muted
+                                                 && modelData.status !== "DONE"
+                                                 && modelData.status !== "FAILED"
+                                        text: modelData.status === "SKIPPED" ? "–" : "•"
+                                        color: Theme.muted
                                         font.pixelSize: 12
                                     }
                                 }
