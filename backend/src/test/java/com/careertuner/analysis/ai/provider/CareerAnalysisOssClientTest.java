@@ -10,18 +10,20 @@ import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
+import com.careertuner.ai.common.budget.AiTotalTimeBudget;
+
 class CareerAnalysisOssClientTest {
 
-    private static long deadlineAfter(Duration budget) {
-        return System.nanoTime() + budget.toNanos();
-    }
+    /** 기본 per-attempt 타임아웃(테스트 고정값 — 예산 절삭 대상). */
+    private static final Duration PER_ATTEMPT = Duration.ofSeconds(1);
 
     @Test
     @DisplayName("일시적 실패는 예산 안에서 재시도해 성공으로 회복한다")
     void withRetryWithinBudget_retriesTransientThenSucceeds() {
         AtomicInteger calls = new AtomicInteger();
-        String result = CareerAnalysisOssClient.withRetryWithinBudget(3, 0, deadlineAfter(Duration.ofSeconds(5)),
-                remaining -> {
+        String result = CareerAnalysisOssClient.withRetryWithinBudget(3, 0, PER_ATTEMPT,
+                AiTotalTimeBudget.start(Duration.ofSeconds(5)),
+                timeout -> {
                     if (calls.incrementAndGet() < 3) {
                         throw new CareerAnalysisOssClient.OssTransientException("transient");
                     }
@@ -35,8 +37,9 @@ class CareerAnalysisOssClientTest {
     @DisplayName("재시도를 모두 소진하면 마지막 일시적 예외를 던진다")
     void withRetryWithinBudget_throwsAfterExhausting() {
         AtomicInteger calls = new AtomicInteger();
-        assertThatThrownBy(() -> CareerAnalysisOssClient.withRetryWithinBudget(2, 0, deadlineAfter(Duration.ofSeconds(5)),
-                remaining -> {
+        assertThatThrownBy(() -> CareerAnalysisOssClient.withRetryWithinBudget(2, 0, PER_ATTEMPT,
+                AiTotalTimeBudget.start(Duration.ofSeconds(5)),
+                timeout -> {
                     calls.incrementAndGet();
                     throw new CareerAnalysisOssClient.OssTransientException("always");
                 })).isInstanceOf(CareerAnalysisOssClient.OssTransientException.class);
@@ -47,8 +50,9 @@ class CareerAnalysisOssClientTest {
     @DisplayName("일시적이 아닌 예외(4xx 등)는 재시도하지 않고 즉시 전파한다")
     void withRetryWithinBudget_doesNotRetryNonTransient() {
         AtomicInteger calls = new AtomicInteger();
-        assertThatThrownBy(() -> CareerAnalysisOssClient.withRetryWithinBudget(3, 0, deadlineAfter(Duration.ofSeconds(5)),
-                remaining -> {
+        assertThatThrownBy(() -> CareerAnalysisOssClient.withRetryWithinBudget(3, 0, PER_ATTEMPT,
+                AiTotalTimeBudget.start(Duration.ofSeconds(5)),
+                timeout -> {
                     calls.incrementAndGet();
                     throw new IllegalStateException("fatal");
                 })).isInstanceOf(IllegalStateException.class);
@@ -59,8 +63,9 @@ class CareerAnalysisOssClientTest {
     @DisplayName("성공하면 한 번만 호출한다")
     void withRetryWithinBudget_callsOnceOnSuccess() {
         AtomicInteger calls = new AtomicInteger();
-        String result = CareerAnalysisOssClient.withRetryWithinBudget(3, 0, deadlineAfter(Duration.ofSeconds(5)),
-                remaining -> {
+        String result = CareerAnalysisOssClient.withRetryWithinBudget(3, 0, PER_ATTEMPT,
+                AiTotalTimeBudget.start(Duration.ofSeconds(5)),
+                timeout -> {
                     calls.incrementAndGet();
                     return "ok";
                 });
@@ -73,8 +78,9 @@ class CareerAnalysisOssClientTest {
     void withRetryWithinBudget_stopsWhenBudgetExhausted() {
         AtomicInteger calls = new AtomicInteger();
         // 예산 60ms, 시도마다 ~50ms 소모 → 2번째 시도 전(또는 중) 예산 소진 → 3회 미만으로 중단.
-        assertThatThrownBy(() -> CareerAnalysisOssClient.withRetryWithinBudget(5, 0, deadlineAfter(Duration.ofMillis(60)),
-                remaining -> {
+        assertThatThrownBy(() -> CareerAnalysisOssClient.withRetryWithinBudget(5, 0, PER_ATTEMPT,
+                AiTotalTimeBudget.start(Duration.ofMillis(60)),
+                timeout -> {
                     calls.incrementAndGet();
                     try {
                         Thread.sleep(50);
@@ -87,13 +93,50 @@ class CareerAnalysisOssClientTest {
     }
 
     @Test
-    @DisplayName("attempt 콜백은 남은 예산을 받아 per-attempt 타임아웃 절삭에 쓸 수 있다")
-    void withRetryWithinBudget_passesRemainingBudget() {
+    @DisplayName("아주 작은 예산은 남은 시도가 있어도 소진 즉시 일시적 예외로 중단한다")
+    void withRetryWithinBudget_tinyBudgetStopsRetrying() {
+        AtomicInteger calls = new AtomicInteger();
+        // 예산 1ms — 첫 시도(~5ms 소모)만으로 소진 → 남은 시도와 무관하게 OssTransientException 으로 중단.
+        assertThatThrownBy(() -> CareerAnalysisOssClient.withRetryWithinBudget(5, 0, PER_ATTEMPT,
+                AiTotalTimeBudget.start(Duration.ofMillis(1)),
+                timeout -> {
+                    calls.incrementAndGet();
+                    try {
+                        Thread.sleep(5);
+                    } catch (InterruptedException ex) {
+                        Thread.currentThread().interrupt();
+                    }
+                    throw new CareerAnalysisOssClient.OssTransientException("slow transient");
+                })).isInstanceOf(CareerAnalysisOssClient.OssTransientException.class);
+        assertThat(calls.get()).isLessThan(5);
+    }
+
+    @Test
+    @DisplayName("예산 0(무제한)이면 예산 체크 없이 모든 재시도가 그대로 동작한다")
+    void withRetryWithinBudget_zeroBudgetIsUnlimited() {
+        AtomicInteger calls = new AtomicInteger();
+        String result = CareerAnalysisOssClient.withRetryWithinBudget(3, 0, PER_ATTEMPT,
+                AiTotalTimeBudget.start(Duration.ZERO),
+                timeout -> {
+                    if (calls.incrementAndGet() < 3) {
+                        throw new CareerAnalysisOssClient.OssTransientException("transient");
+                    }
+                    return "ok";
+                });
+        assertThat(result).isEqualTo("ok");
+        assertThat(calls.get()).isEqualTo(3);
+    }
+
+    @Test
+    @DisplayName("attempt 콜백은 남은 예산으로 절삭된 per-attempt 타임아웃을 받는다")
+    void withRetryWithinBudget_capsPerAttemptTimeout() {
         AtomicReference<Duration> seen = new AtomicReference<>();
-        CareerAnalysisOssClient.withRetryWithinBudget(1, 0, deadlineAfter(Duration.ofSeconds(2)), remaining -> {
-            seen.set(remaining);
-            return "ok";
-        });
+        // per-attempt 10초 > 예산 2초 → 남은 예산(≤2초)으로 절삭돼 전달된다.
+        CareerAnalysisOssClient.withRetryWithinBudget(1, 0, Duration.ofSeconds(10),
+                AiTotalTimeBudget.start(Duration.ofSeconds(2)), timeout -> {
+                    seen.set(timeout);
+                    return "ok";
+                });
         assertThat(seen.get()).isNotNull();
         assertThat(seen.get()).isLessThanOrEqualTo(Duration.ofSeconds(2));
         assertThat(seen.get()).isGreaterThan(Duration.ofMillis(500));

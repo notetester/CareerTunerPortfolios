@@ -6,6 +6,7 @@ import java.util.Map;
 
 import org.springframework.stereotype.Service;
 
+import com.careertuner.ai.common.budget.AiTotalTimeBudget;
 import com.careertuner.applicationcase.domain.ApplicationCase;
 import com.careertuner.correction.ai.SelfCorrectionOutputParser.InvalidOutputException;
 import com.careertuner.correction.ai.SelfLlmCorrectionProvider.SelfLlmCallException;
@@ -31,9 +32,10 @@ public class CorrectionAiClient {
 
         var self = properties.getSelf();
         warmupService.awaitIfInProgress(self.getTimeout());
-        long deadline = System.nanoTime() + positive(self.getTotalTimeBudget()).toNanos();
+        // 총 시간예산 — 0 또는 음수면 무제한(예산 OFF)
+        AiTotalTimeBudget budget = AiTotalTimeBudget.start(self.getTotalTimeBudget());
         try {
-            return invokeModel(command, self.getModel(), self.getPrimaryMaxAttempts(), deadline);
+            return invokeModel(command, self.getModel(), self.getPrimaryMaxAttempts(), budget);
         } catch (RuntimeException primaryFailure) {
             if (!properties.isFallbackEnabled()) {
                 throw primaryFailure;
@@ -41,9 +43,9 @@ public class CorrectionAiClient {
             log.warn("Primary correction model {} failed: {}", self.getModel(), primaryFailure.getMessage());
         }
 
-        if (hasText(self.getFallbackModel()) && remaining(deadline).toMillis() > 0) {
+        if (hasText(self.getFallbackModel()) && !budget.expired()) {
             try {
-                return invokeModel(command, self.getFallbackModel(), self.getFallbackMaxAttempts(), deadline);
+                return invokeModel(command, self.getFallbackModel(), self.getFallbackMaxAttempts(), budget);
             } catch (RuntimeException fallbackFailure) {
                 log.warn("Fallback correction model {} failed: {}",
                         self.getFallbackModel(), fallbackFailure.getMessage());
@@ -68,16 +70,17 @@ public class CorrectionAiClient {
             CorrectionCommand command,
             String model,
             int maxAttempts,
-            long deadline
+            AiTotalTimeBudget budget
     ) {
         RuntimeException last = null;
         int attempts = Math.max(1, maxAttempts);
         for (int attempt = 1; attempt <= attempts; attempt++) {
-            Duration remaining = remaining(deadline);
-            if (remaining.isZero() || remaining.isNegative()) {
+            if (budget.expired()) {
                 throw new SelfTimeBudgetExceededException();
             }
-            Duration timeout = min(positive(properties.getSelf().getTimeout()), remaining);
+            // per-attempt 타임아웃을 남은 예산으로 절삭 (무제한이면 설정값 그대로).
+            // positive(): 설정 오류(timeout ≤ 0)를 1ms 로 방어 — 리팩터링 전 동작과 동일.
+            Duration timeout = budget.cap(positive(properties.getSelf().getTimeout()));
             try {
                 return selfLlmProvider.correct(command, model, timeout);
             } catch (InvalidOutputException ex) {
@@ -89,15 +92,18 @@ public class CorrectionAiClient {
                 }
             }
             if (attempt < attempts) {
-                sleepWithinBudget(properties.getSelf().getRetryBackoff(), deadline);
+                sleep(budget.capBackoffMs(properties.getSelf().getRetryBackoff().toMillis()));
             }
         }
         throw last == null ? new IllegalStateException("Correction model failed.") : last;
     }
 
-    private void sleepWithinBudget(Duration backoff, long deadline) {
-        long millis = Math.min(Math.max(0, backoff.toMillis()), Math.max(0, remaining(deadline).toMillis()));
-        if (millis == 0) {
+    private static Duration positive(Duration value) {
+        return value == null || value.isZero() || value.isNegative() ? Duration.ofMillis(1) : value;
+    }
+
+    private void sleep(long millis) {
+        if (millis <= 0) {
             return;
         }
         try {
@@ -106,18 +112,6 @@ public class CorrectionAiClient {
             Thread.currentThread().interrupt();
             throw new IllegalStateException("Correction model retry was interrupted.", ex);
         }
-    }
-
-    private Duration remaining(long deadline) {
-        return Duration.ofNanos(Math.max(0, deadline - System.nanoTime()));
-    }
-
-    private Duration min(Duration left, Duration right) {
-        return left.compareTo(right) <= 0 ? left : right;
-    }
-
-    private Duration positive(Duration value) {
-        return value == null || value.isZero() || value.isNegative() ? Duration.ofMillis(1) : value;
     }
 
     private boolean hasText(String value) {
