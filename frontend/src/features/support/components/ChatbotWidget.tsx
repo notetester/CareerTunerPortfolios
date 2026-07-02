@@ -329,7 +329,8 @@ function ChatbotPanel({ chatbot }: ChatbotPanelProps) {
                   ) : (
                     <div key={m.id} className="flex flex-col gap-2.5">
                       <BotBubble message={m} onToggleTts={toggleTts} variant="widget"
-                        onQuickReply={sendMessage} onSummarize={summarizePosts} orchestrator={orchestrator} />
+                        onQuickReply={m.id === lastBotId ? sendMessage : undefined}
+                        onSummarize={summarizePosts} orchestrator={orchestrator} />
                       {m.id === lastBotId && m.intake && !m.intake.ready && !runStarted && (
                         <IntakeChips intake={m.intake} onSelectCase={selectCase} onSelectMode={selectMode}
                           onNewCase={() => setIntakeGuide({ msgId: m.id, steps: ["jd"] })} />

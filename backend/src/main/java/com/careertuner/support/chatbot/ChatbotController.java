@@ -624,18 +624,37 @@ public class ChatbotController {
         String t = TITLE_SITE_SUFFIX.matcher(title).replaceFirst("").trim();
         Matcher bracket = TITLE_BRACKET_COMPANY.matcher(t);
         if (bracket.matches()) {
-            return new TitleCandidates(
-                    cleanTitleCandidate(bracket.group(1)),
-                    cleanTitleCandidate(TITLE_D_DAY.matcher(bracket.group(2)).replaceFirst("")));
+            String company = cleanTitleCandidate(bracket.group(1));
+            String jobTitle = cleanTitleCandidate(TITLE_D_DAY.matcher(bracket.group(2)).replaceFirst(""));
+            return new TitleCandidates(company, stripCompanyDuplication(company, jobTitle));
         }
         Matcher chaeyong = TITLE_COMPANY_CHAEYONG.matcher(t);
         if (chaeyong.matches()) {
             String rest = chaeyong.group(2) == null ? "" : chaeyong.group(2);
-            return new TitleCandidates(
-                    cleanTitleCandidate(chaeyong.group(1)),
-                    cleanTitleCandidate(TITLE_D_DAY.matcher(rest).replaceFirst("")));
+            String company = cleanTitleCandidate(chaeyong.group(1));
+            String jobTitle = cleanTitleCandidate(TITLE_D_DAY.matcher(rest).replaceFirst(""));
+            return new TitleCandidates(company, stripCompanyDuplication(company, jobTitle));
         }
         return TitleCandidates.EMPTY;
+    }
+
+    /**
+     * 잡코리아형 "{회사} 채용 - {회사} {직무}"처럼 채용 사이트가 직무 문자열 앞에 회사명을 다시 붙이는
+     * 경우, 직무 후보에서 그 중복을 제거한다(배너·확인 문구가 "회사 · 회사 직무" 식으로 겹치는 것 방지).
+     * 회사명을 떼어내고 남는 게 없으면(완전 동일 문자열) 후보 자체를 버린다(null — 지어내지 않는다).
+     */
+    private static String stripCompanyDuplication(String company, String jobTitle) {
+        if (company == null || jobTitle == null) {
+            return jobTitle;
+        }
+        String stripped = jobTitle;
+        if (stripped.equals(company)) {
+            return null;
+        }
+        if (stripped.startsWith(company)) {
+            stripped = stripped.substring(company.length()).trim();
+        }
+        return cleanTitleCandidate(stripped);
     }
 
     /** 최신 공고의 첫 비공백 줄(=제목). 200자 초과(붙여넣기 본문 덩어리)면 제목이 아니라고 보고 버린다. 실패는 조용히 null. */
