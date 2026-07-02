@@ -1,6 +1,7 @@
 import { api } from "@/app/lib/api";
 import type { Notification, NotificationType } from "../types/notification";
 import { TYPE_TO_CATEGORY } from "../types/notification";
+import type { NotificationRulePreference } from "../types/preferences";
 
 interface BackendNotification {
   id: number;
@@ -75,6 +76,7 @@ export interface NotificationPreference {
   pushEnabled: boolean;
   emailEnabled: boolean;
   categories: Record<string, boolean>;
+  rules: Record<string, NotificationRulePreference>;
   quietHoursStart: string | null;
   quietHoursEnd: string | null;
   pushDeviceRegistered: boolean;
@@ -84,6 +86,7 @@ export interface NotificationPreferenceUpdate {
   pushEnabled?: boolean;
   emailEnabled?: boolean;
   categories?: Record<string, boolean>;
+  rules?: Record<string, NotificationRulePreference>;
   quietHoursStart?: string | null;
   quietHoursEnd?: string | null;
 }

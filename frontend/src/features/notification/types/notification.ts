@@ -29,6 +29,13 @@ export type UserNotificationType =
   | "NOTICE"
   | "TICKET_ANSWERED"
   | "ACCOUNT_BLOCKED"
+  | "FRIEND_REQUEST"
+  | "FRIEND_ACCEPTED"
+  | "ROOM_INVITE"
+  | "ROOM_MESSAGE"
+  | "ROOM_MENTION"
+  | "RECOMMENDED_JOB"
+  | "MARKETING_AD"
   | "CREDIT_LOW"
   // 결제/크레딧 (E 결제 흐름에서 발생, billing 카테고리)
   | "PAYMENT_COMPLETE"
@@ -53,8 +60,11 @@ export type NotificationCategory =
   | "interview"
   | "correction"
   | "community"
+  | "messenger"
+  | "recommendation"
   | "billing"
   | "notice"
+  | "marketing"
   | "admin";
 
 export interface Notification {
@@ -112,6 +122,15 @@ export const TYPE_META: Record<NotificationType, TypeMeta> = {
   POST_REMOVED:              { cat: "community",   icon: "Trash2",             variant: "danger",  cta: "가이드라인 보기" },
   POST_RESTORED:             { cat: "community",   icon: "RotateCcw",          variant: "success", cta: "게시글 보기" },
   POST_SUMMARY_READY:        { cat: "community",   icon: "Sparkles",           variant: "info",    cta: "요약 보기" },
+  /* 메신저 */
+  FRIEND_REQUEST:            { cat: "messenger",   icon: "UserPlus",           variant: "info",    cta: "친구 요청 보기", actor: true },
+  FRIEND_ACCEPTED:           { cat: "messenger",   icon: "UserPlus",           variant: "success", cta: "친구 목록 보기", actor: true },
+  ROOM_INVITE:               { cat: "messenger",   icon: "MessageCircle",      variant: "info",    cta: "채팅방 보기", actor: true },
+  ROOM_MESSAGE:              { cat: "messenger",   icon: "MessageCircle",      variant: "info",    cta: "메신저 열기", actor: true },
+  ROOM_MENTION:              { cat: "messenger",   icon: "MessageSquareReply", variant: "info",    cta: "언급 보기", actor: true },
+  /* 추천/마케팅 */
+  RECOMMENDED_JOB:           { cat: "recommendation", icon: "Briefcase",       variant: "info",    cta: "추천 공고 보기" },
+  MARKETING_AD:              { cat: "marketing",   icon: "Megaphone",          variant: "info",    cta: "혜택 보기", urgent: false },
   /* 결제 */
   CREDIT_LOW:                { cat: "billing",     icon: "AlertTriangle",      variant: "warning", cta: "크레딧 충전" },
   PAYMENT_COMPLETE:          { cat: "billing",     icon: "CreditCard",         variant: "success", cta: "결제 내역 보기" },
@@ -158,8 +177,11 @@ export const NOTIFICATION_CATEGORIES = [
   { value: "interview", label: "면접" },
   { value: "correction", label: "첨삭" },
   { value: "community", label: "커뮤니티" },
+  { value: "messenger", label: "메신저" },
+  { value: "recommendation", label: "추천 공고" },
   { value: "billing", label: "결제" },
   { value: "notice", label: "공지" },
+  { value: "marketing", label: "광고/혜택" },
   { value: "admin", label: "관리자" },
 ] as const;
 
@@ -190,6 +212,13 @@ export const TYPE_TO_CATEGORY: Record<NotificationType, NotificationCategory> = 
   POST_REMOVED: "community",
   POST_RESTORED: "community",
   POST_SUMMARY_READY: "community",
+  FRIEND_REQUEST: "messenger",
+  FRIEND_ACCEPTED: "messenger",
+  ROOM_INVITE: "messenger",
+  ROOM_MESSAGE: "messenger",
+  ROOM_MENTION: "messenger",
+  RECOMMENDED_JOB: "recommendation",
+  MARKETING_AD: "marketing",
   /* 결제 */
   CREDIT_LOW: "billing",
   PAYMENT_COMPLETE: "billing",

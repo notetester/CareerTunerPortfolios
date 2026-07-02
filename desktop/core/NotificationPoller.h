@@ -2,6 +2,8 @@
 #include <QObject>
 #include <QTimer>
 #include <QString>
+#include <QHash>
+#include <QJsonObject>
 
 class ApiClient;
 
@@ -27,11 +29,18 @@ signals:
     // 새 알림 도착 (폴링 간격 내 신규 + 미읽음)
     void notificationArrived(const QString& type, const QString& title,
                              const QString& message, const QString& link,
-                             qint64 targetId);
+                             qint64 targetId, bool desktopToast,
+                             bool desktopTaskbar);
 
 private:
+    void pollNotifications();
+    void updatePreferences(const QJsonObject& data);
+    bool channelEnabled(const QString& type, const QString& channel) const;
+
     ApiClient* m_api;
     QTimer m_timer;
     qint64 m_lastMaxId = -1;  // -1 = 아직 기준선 없음
     int m_unread = 0;
+    QHash<QString, bool> m_desktopToastByType;
+    QHash<QString, bool> m_desktopTaskbarByType;
 };

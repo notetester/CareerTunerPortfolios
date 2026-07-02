@@ -9,13 +9,14 @@
 
     <insert id="upsert">
         INSERT INTO notification_preference
-            (user_id, push_enabled, email_enabled, categories_json, quiet_hours_start, quiet_hours_end)
+            (user_id, push_enabled, email_enabled, categories_json, rules_json, quiet_hours_start, quiet_hours_end)
         VALUES
-            (#{userId}, #{pushEnabled}, #{emailEnabled}, #{categoriesJson}, #{quietHoursStart}, #{quietHoursEnd})
+            (#{userId}, #{pushEnabled}, #{emailEnabled}, #{categoriesJson}, #{rulesJson}, #{quietHoursStart}, #{quietHoursEnd})
         ON DUPLICATE KEY UPDATE
             push_enabled      = VALUES(push_enabled),
             email_enabled     = VALUES(email_enabled),
             categories_json   = VALUES(categories_json),
+            rules_json        = VALUES(rules_json),
             quiet_hours_start = VALUES(quiet_hours_start),
             quiet_hours_end   = VALUES(quiet_hours_end)
     </insert>

@@ -63,9 +63,11 @@ ApplicationWindow {
 
     Connections {
         target: notifications
-        function onNotificationArrived(type, title, message, link, targetId) {
-            win.showToast(title, message)
-            if (type === "DIRECT_MESSAGE" || type === "FRIEND_REQUEST" || type === "FRIEND_ACCEPTED")
+        function onNotificationArrived(type, title, message, link, targetId, desktopToast, desktopTaskbar) {
+            if (desktopToast)
+                win.showToast(title, message)
+            if (type === "ROOM_MESSAGE" || type === "ROOM_MENTION" || type === "ROOM_INVITE"
+                || type === "FRIEND_REQUEST" || type === "FRIEND_ACCEPTED")
                 collaboration.refresh()
         }
     }

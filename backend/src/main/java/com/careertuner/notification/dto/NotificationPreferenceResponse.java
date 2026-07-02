@@ -7,7 +7,19 @@ public record NotificationPreferenceResponse(
         boolean pushEnabled,
         boolean emailEnabled,
         Map<String, Boolean> categories,
+        Map<String, NotificationRulePreference> rules,
         String quietHoursStart,
         String quietHoursEnd,
         boolean pushDeviceRegistered
-) {}
+) {
+
+    public boolean ruleEnabled(String type) {
+        NotificationRulePreference rule = rules != null ? rules.get(type) : null;
+        return rule == null || rule.isEnabled();
+    }
+
+    public boolean channelEnabled(String type, String channel) {
+        NotificationRulePreference rule = rules != null ? rules.get(type) : null;
+        return rule == null || rule.channelEnabled(channel);
+    }
+}

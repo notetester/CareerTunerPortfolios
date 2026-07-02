@@ -26,6 +26,17 @@ void NotificationPoller::stop()
 
 void NotificationPoller::pollNow()
 {
+    m_api->get(QStringLiteral("/api/notifications/preferences"),
+        [this](bool ok, const QJsonValue& data, const QString&) {
+            if (ok) {
+                updatePreferences(data.toObject());
+            }
+            pollNotifications();
+        });
+}
+
+void NotificationPoller::pollNotifications()
+{
     m_api->get(QStringLiteral("/api/notifications?page=0&size=20"),
         [this](bool ok, const QJsonValue& data, const QString&) {
             if (!ok) return;
@@ -43,12 +54,20 @@ void NotificationPoller::pollNow()
                 if (id > maxId) maxId = id;
 
                 if (!baseline && id > m_lastMaxId && !n.value("read").toBool()) {
+                    const QString type = n.value("type").toString();
+                    const bool desktopToast = channelEnabled(type, QStringLiteral("desktopToast"));
+                    const bool desktopTaskbar = channelEnabled(type, QStringLiteral("desktopTaskbar"));
+                    if (!desktopToast && !desktopTaskbar) {
+                        continue;
+                    }
                     emit notificationArrived(
-                        n.value("type").toString(),
+                        type,
                         n.value("title").toString(),
                         n.value("message").toString(),
                         n.value("link").toString(),
-                        n.value("targetId").toInteger());
+                        n.value("targetId").toInteger(),
+                        desktopToast,
+                        desktopTaskbar);
                 }
             }
             m_lastMaxId = maxId;
@@ -57,6 +76,35 @@ void NotificationPoller::pollNow()
                 emit unreadChanged();
             }
         });
+}
+
+void NotificationPoller::updatePreferences(const QJsonObject& data)
+{
+    QHash<QString, bool> desktopToastByType;
+    QHash<QString, bool> desktopTaskbarByType;
+    const QJsonObject rules = data.value(QStringLiteral("rules")).toObject();
+    for (auto it = rules.begin(); it != rules.end(); ++it) {
+        const QString type = it.key();
+        const QJsonObject rule = it.value().toObject();
+        const bool enabled = rule.value(QStringLiteral("enabled")).toBool(true);
+        const QJsonObject channels = rule.value(QStringLiteral("channels")).toObject();
+        desktopToastByType.insert(
+            type,
+            enabled && channels.value(QStringLiteral("desktopToast")).toBool(true));
+        desktopTaskbarByType.insert(
+            type,
+            enabled && channels.value(QStringLiteral("desktopTaskbar")).toBool(true));
+    }
+    m_desktopToastByType = desktopToastByType;
+    m_desktopTaskbarByType = desktopTaskbarByType;
+}
+
+bool NotificationPoller::channelEnabled(const QString& type, const QString& channel) const
+{
+    if (channel == QStringLiteral("desktopTaskbar")) {
+        return m_desktopTaskbarByType.value(type, true);
+    }
+    return m_desktopToastByType.value(type, true);
 }
 
 void NotificationPoller::markAllRead()

@@ -1706,6 +1706,7 @@ CREATE TABLE IF NOT EXISTS notification_preference (
     push_enabled      TINYINT(1)  NOT NULL DEFAULT 1,
     email_enabled     TINYINT(1)  NOT NULL DEFAULT 1,
     categories_json   JSON        NULL,
+    rules_json        JSON        NULL,
     quiet_hours_start VARCHAR(5)  NULL,
     quiet_hours_end   VARCHAR(5)  NULL,
     created_at        DATETIME    NOT NULL DEFAULT CURRENT_TIMESTAMP,

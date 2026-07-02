@@ -217,6 +217,13 @@ const NOTI_ICON_MAP: Record<NotificationType, LucideIcon> = {
   POST_REMOVED: Trash2,
   POST_RESTORED: RotateCcw,
   POST_SUMMARY_READY: BookOpen,
+  FRIEND_REQUEST: UserPlus,
+  FRIEND_ACCEPTED: UserPlus,
+  ROOM_INVITE: MessageCircle,
+  ROOM_MESSAGE: MessageCircle,
+  ROOM_MENTION: MessageSquareReply,
+  RECOMMENDED_JOB: ClipboardList,
+  MARKETING_AD: Megaphone,
   NOTICE: Megaphone,
   TICKET_ANSWERED: MessageSquareReply,
   ACCOUNT_BLOCKED: ShieldAlert,
@@ -242,11 +249,14 @@ const CATEGORY_STYLE: Record<NotificationCategory, { bg: string; fg: string }> =
     },
     correction: { bg: "var(--cat-cert-bg)", fg: "var(--cat-cert-fg)" },
     community: { bg: "var(--cat-free-bg)", fg: "var(--cat-free-fg)" },
+    messenger: { bg: "var(--cat-interview-bg)", fg: "var(--cat-interview-fg)" },
+    recommendation: { bg: "var(--cat-job-bg)", fg: "var(--cat-job-fg)" },
     billing: { bg: "var(--cat-role-bg)", fg: "var(--cat-role-fg)" },
     notice: {
       bg: "var(--cat-portfolio-bg)",
       fg: "var(--cat-portfolio-fg)",
     },
+    marketing: { bg: "var(--cat-pass-bg)", fg: "var(--cat-pass-fg)" },
     admin: { bg: "var(--cat-pass-bg)", fg: "var(--cat-pass-fg)" },
   };
 

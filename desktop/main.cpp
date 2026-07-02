@@ -4,6 +4,7 @@
 #include <QSystemTrayIcon>
 #include <QMenu>
 #include <QQuickStyle>
+#include <QWindow>
 #include <QPainter>
 #include <QPixmap>
 #include <QIcon>
@@ -125,12 +126,18 @@ int main(int argc, char* argv[])
     tray.setContextMenu(&trayMenu);
     tray.show();
 
-    // 새 알림 → Windows 트레이 토스트 (설정에서 끌 수 있음)
+    // 새 알림 → Windows 트레이 토스트 / 작업표시줄 attention (설정에서 각각 끌 수 있음)
     QObject::connect(&poller, &NotificationPoller::notificationArrived, &tray,
-        [&tray, &settings](const QString&, const QString& title,
-                           const QString& message, const QString&, qint64) {
-            if (settings.trayNotify())
+        [&tray, &settings, &engine](const QString&, const QString& title,
+                           const QString& message, const QString&, qint64,
+                           bool desktopToast, bool desktopTaskbar) {
+            if (desktopToast && settings.trayNotify())
                 tray.showMessage(title, message, QSystemTrayIcon::Information, 6000);
+            if (desktopTaskbar && !engine.rootObjects().isEmpty()) {
+                if (auto* window = qobject_cast<QWindow*>(engine.rootObjects().first())) {
+                    window->alert(6000);
+                }
+            }
         });
 
     // 보관된 refresh 토큰으로 자동 로그인 시도 (실패 시 QML 이 로그인 화면 유지)
