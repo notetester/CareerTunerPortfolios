@@ -36,9 +36,49 @@ const ONB_ROUTE_PHASE: Record<string, ServerGuidePhase> = {
   "④온보딩:추출대기": "waiting",
 };
 
-/** ④ 공고 추출 대기 자동 폴링 — 넛지 간격/상한(상한 초과 시 가이드 닫고 챗 폴백). */
-const ONB_NUDGE_DELAY_MS = 3500;
-const ONB_NUDGE_MAX = 6;
+/** ④ 공고 추출 대기 자동 폴링 — 넛지 간격 백오프(총 ~2.7분: 백엔드 추출 커밋 실측 80~120초 커버).
+ *  배열 길이 = 넛지 상한. 소진 시 안내 1회 + 가이드 닫기 + exhausted 래치(플래핑 방지). */
+const ONB_NUDGE_DELAYS_MS = [3_500, 8_000, 15_000, 30_000, 45_000, 60_000];
+/** 넛지 예산 sessionStorage 키 — 위젯 닫았다 열기(패널 리마운트)로 ref 가 리셋돼도 예산이 이어진다.
+ *  conversationId 는 useChatbot 내부라 위젯에서 접근 불가(이번 수정 범위 밖) → 탭당 동시 온보딩
+ *  대기는 1건뿐이므로 고정 키 + TTL/waiting 이탈 정리로 케이스 간 이월을 막는다. */
+const ONB_NUDGE_STORE_KEY = "tunerbot:onbNudgeBudget:v1";
+const ONB_NUDGE_STORE_TTL_MS = 15 * 60_000;
+
+/** 넛지 예산(마운트 간 공유): count=보낸 수, exhausted=상한 래치, noticeSent=소진 안내 발송 여부. */
+interface OnbNudgeBudget { count: number; exhausted: boolean; noticeSent: boolean; ts: number }
+
+const freshOnbNudgeBudget = (): OnbNudgeBudget => ({ count: 0, exhausted: false, noticeSent: false, ts: Date.now() });
+
+function readOnbNudgeBudget(): OnbNudgeBudget {
+  try {
+    const raw = sessionStorage.getItem(ONB_NUDGE_STORE_KEY);
+    if (raw) {
+      const b = JSON.parse(raw) as OnbNudgeBudget;
+      // TTL 지난 예산은 이전 온보딩의 잔재로 보고 버린다(케이스 간 이월 방지).
+      if (typeof b?.count === "number" && Date.now() - b.ts <= ONB_NUDGE_STORE_TTL_MS) return b;
+    }
+  } catch {
+    /* storage 불가/파손 → 새 예산 */
+  }
+  return freshOnbNudgeBudget();
+}
+
+function writeOnbNudgeBudget(b: OnbNudgeBudget) {
+  try {
+    sessionStorage.setItem(ONB_NUDGE_STORE_KEY, JSON.stringify({ ...b, ts: Date.now() }));
+  } catch {
+    /* storage 불가 환경 — 마운트 내 ref 예산만으로 동작 */
+  }
+}
+
+function clearOnbNudgeBudget() {
+  try {
+    sessionStorage.removeItem(ONB_NUDGE_STORE_KEY);
+  } catch {
+    /* 무시 */
+  }
+}
 
 const ICON_MAP = { KeyRound, CreditCard, FileText } as const;
 
@@ -192,7 +232,11 @@ function ChatbotPanel({ chatbot }: ChatbotPanelProps) {
     lastBotMsg?.route ? ONB_ROUTE_PHASE[lastBotMsg.route] ?? null : null;
   const [onbGuideOpen, setOnbGuideOpen] = useState(false);
   const onbDismissedRef = useRef(false);
-  const onbNudgeCountRef = useRef(0);
+  // 넛지 예산 — sessionStorage 에서 지연 복원(위젯 닫았다 열기 리마운트 간 공유 → 재발사 방지).
+  const onbNudgeRef = useRef<OnbNudgeBudget | null>(null);
+  if (onbNudgeRef.current == null) onbNudgeRef.current = readOnbNudgeBudget();
+  // 넛지 소진 안내(로컬 1회 — 서버/LLM 무경유, 트랜스크립트 미기록). 다음 전송 시 걷힌다.
+  const [onbNotice, setOnbNotice] = useState<ChatMessage | null>(null);
   // "질문하기" 링크로 잠시 비켜준 상태 — onbPhase 가 그대로인 채 닫히므로, 이 가드가 없으면
   // 같은 렌더 사이클에서 아래 자동 재오픈 effect가 즉시 다시 열어버린다(클릭이 안 먹히는 것처럼 보임).
   // 새 봇 응답이 도착(lastBotMsg 갱신)해야 해제 — 그 전까진 재오픈을 억제해 실제로 채팅이 열려 있게 한다.
@@ -205,12 +249,30 @@ function ChatbotPanel({ chatbot }: ChatbotPanelProps) {
     onbAskingRef.current = false;
   }, [lastBotMsg?.id]);
 
+  // (A0) 넛지 예산·래치 정리: waiting "이탈" 신호(마지막 봇 route 가 실제로 있고 비-waiting)에서만.
+  // 리마운트/새로고침 직후(메시지 없음·복원 메시지는 route 미보존)의 phase=null 은 "신호 없음"이지
+  // 이탈이 아니다 — 여기서 지우면 storage 로 이어온 래치가 무효화돼 재발사가 샌다(잔재는 TTL 정리).
+  // ★ 아래 재오픈 effect(A)보다 먼저 등록해야 한다: 같은 커밋에서 A0(래치 해제)→A(재오픈 판정)
+  // 순서가 보장돼야 추출 FAILED→jd 복귀 때 가이드가 그 턴에 바로 다시 열린다.
+  useEffect(() => {
+    if (onbPhase === "waiting") return;
+    const budget = onbNudgeRef.current!;
+    if (lastBotMsg?.route != null && (budget.count > 0 || budget.exhausted || budget.noticeSent)) {
+      onbNudgeRef.current = freshOnbNudgeBudget();
+      clearOnbNudgeBudget();
+    }
+  }, [onbPhase, lastBotMsg?.route]);
+
   // 자동 오픈/재오픈: 온보딩 국면이 살아 있으면 가이드를 연다 — 첫 질문(직무) 도착뿐 아니라
   // 질문 우회(④질문확인)·회사/직무 보정으로 잠시 닫혔다가 수집 단계로 복귀한 경우 포함.
-  // X로 직접 닫은(폴백 선택) 사용자·"질문하기"로 잠시 나간 사용자에겐 다시 안 연다.
+  // X로 직접 닫은(폴백 선택) 사용자·"질문하기"로 잠시 나간 사용자·넛지 소진(exhausted)으로 닫힌
+  // 상태에는 다시 안 연다 — exhausted 를 안 보면 아래 넛지 effect(상한 도달 시 close)와 서로
+  // 뒤집는 무한 플래핑이 된다(고정점 부재). exhausted 는 waiting 이탈 시 자동 해제라 dismissed 와
+  // 달리 추출 FAILED→jd 복귀 재오픈을 막지 않는다.
   // 이미 열려 있으면 no-op(최소화 상태 존중).
   useEffect(() => {
-    if (onbPhase && !onbGuideOpen && !onbDismissedRef.current && !onbAskingRef.current && !runStarted) {
+    if (onbPhase && !onbGuideOpen && !onbDismissedRef.current && !onbAskingRef.current
+        && !onbNudgeRef.current?.exhausted && !runStarted) {
       setOnbGuideOpen(true);
       expandToFloating();
     }
@@ -224,17 +286,43 @@ function ChatbotPanel({ chatbot }: ChatbotPanelProps) {
   }, [onbGuideOpen, lastBotMsg?.route, onbPhase]);
 
   // 공고 추출 대기(EXTRACTING) 자동 폴링: 백엔드가 "아무 메시지나 보내달라"는 프로토콜이라 넛지를 대신 보낸다.
-  //    상한 초과 시 가이드를 닫고 챗 안내로 폴백(무한 폴링 방지).
+  //    간격은 백오프(ONB_NUDGE_DELAYS_MS) — 추출 커밋까지 실측 80~120초를 예산 안에서 커버.
+  //    소진 시 안내 1회 + 가이드 닫기 + exhausted 래치. 래치가 ref 인 이유: 위 재오픈 effect 와
+  //    서로 다른 커밋 사이클에서 돌아 동기(즉시) 가시성이 필요 — state 면 한 사이클 늦게 보여
+  //    그 사이 open/close 플랩 프레임이 화면에 샌다.
   useEffect(() => {
-    if (onbPhase !== "waiting") { onbNudgeCountRef.current = 0; return; }
+    const budget = onbNudgeRef.current!;
+    if (onbPhase !== "waiting") return; // 이탈 시 예산 정리는 위 A0 effect 소관
     if (!onbGuideOpen || botStatus !== "answered") return;
-    if (onbNudgeCountRef.current >= ONB_NUDGE_MAX) { setOnbGuideOpen(false); return; }
+    if (budget.count >= ONB_NUDGE_DELAYS_MS.length) {
+      budget.exhausted = true;
+      if (!budget.noticeSent) {
+        // 소진 안내는 예산 생애 1회 — noticeSent 를 storage 에도 남겨 리마운트 후 중복 발송을 막는다.
+        budget.noticeSent = true;
+        setOnbNotice({
+          id: "onb-nudge-notice", role: "bot",
+          text: "분석이 평소보다 오래 걸리고 있어요. 가이드는 잠시 닫아둘게요 — 준비되면 아무 메시지나 보내주시면 이어서 진행돼요.",
+          evidence: [], links: [], quickReplies: [], ttsState: "idle", ttsProgress: 0,
+          timestamp: Date.now(),
+        });
+      }
+      writeOnbNudgeBudget(budget);
+      setOnbGuideOpen(false);
+      return;
+    }
     const t = setTimeout(() => {
-      onbNudgeCountRef.current += 1;
+      budget.count += 1;
+      writeOnbNudgeBudget(budget);
       sendMessage("진행 상황 알려줘");
-    }, ONB_NUDGE_DELAY_MS);
+    }, ONB_NUDGE_DELAYS_MS[budget.count]);
     return () => clearTimeout(t);
   }, [onbGuideOpen, onbPhase, botStatus, sendMessage]);
+
+  // 소진 안내 걷기: 안내 후 대화가 재개되면(새 전송 → thinking) 치운다 — 로컬 버블이라 항상
+  // 마지막에 렌더되므로, 실제 메시지 뒤에 남으면 시간순이 왜곡된다.
+  useEffect(() => {
+    if (onbNotice && botStatus === "thinking") setOnbNotice(null);
+  }, [botStatus, onbNotice]);
 
   const handleSend = () => {
     const text = input.trim();
@@ -366,6 +454,11 @@ function ChatbotPanel({ chatbot }: ChatbotPanelProps) {
                       )}
                     </div>
                   )
+                )}
+                {/* ④ 넛지 소진 안내(로컬 1회) — 트랜스크립트 미기록, 다음 전송 시 걷힘. */}
+                {onbNotice && (
+                  <BotBubble message={onbNotice} onToggleTts={toggleTts} variant="widget"
+                    orchestrator={orchestrator} />
                 )}
                 </div>
                 {runStarted && (

@@ -728,8 +728,9 @@ function SummaryBoard({ g }: { g: G }) {
         <SummaryRow label="서류" value={docCount ? `${docCount}개 첨부` : "첨부 안 함"}
           filled={docCount > 0} icon={<FileText size={14} />} />
         <SummaryRow label="공고" value={jdVal} filled={jdFilled} icon={<Briefcase size={14} />} />
+        {/* 공고 행의 "링크 첨부"(JD)와 다른 필드 — 라벨을 명시해 오독을 막는다. */}
         {g.field.links.length > 0 && (
-          <SummaryRow label="링크" value={linkCount ? `${linkCount}개 입력` : "없음"}
+          <SummaryRow label="포트폴리오 링크" value={linkCount ? `${linkCount}개 입력` : "없음"}
             filled={linkCount > 0} icon={<Link2 size={14} />} />
         )}
       </div>
