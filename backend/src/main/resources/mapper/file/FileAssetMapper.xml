@@ -25,4 +25,11 @@
           AND ref_id = #{refId}
         ORDER BY id
     </select>
+
+    <update id="updateRef">
+        UPDATE file_asset
+           SET ref_type = #{refType},
+               ref_id = #{refId}
+         WHERE id = #{id}
+    </update>
 </mapper>
