@@ -11,6 +11,8 @@ out/
 !rag_poc/fixtures/*.jsonl
 # RAG 재도입 hard-case benchmark fixture(소형 synthetic)는 커밋
 !data/rag_hardcase_benchmark/*.jsonl
+# A-only baseline synthetic fixture(개인정보 없음, 재현용 소형 jsonl)는 커밋
+!data/evidence_attribution_baseline/*.jsonl
 reports/generated/
 *.gguf
 *.safetensors
