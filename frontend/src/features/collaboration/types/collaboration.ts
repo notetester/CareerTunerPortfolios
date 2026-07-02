@@ -1,0 +1,111 @@
+export type ConversationType = "DIRECT" | "GROUP" | "PUBLIC" | "PRIVATE";
+
+export type MessageKind = "CHAT" | "NOTE";
+
+export type AttachmentShareMode = "TEMPORARY" | "CLOUD" | "LOCAL";
+
+export type AttachmentAvailability = "AVAILABLE" | "EXPIRED" | "PLAN_INACTIVE" | "LOCAL_ONLY";
+
+export interface CollaborationUser {
+  id: number;
+  email: string;
+  name: string;
+  plan?: string | null;
+  relationStatus?: "NONE" | "REQUESTED" | "PENDING_INCOMING" | "FRIEND" | string | null;
+}
+
+export interface FriendResponse {
+  user: CollaborationUser;
+  friendsSince: string;
+}
+
+export interface FriendRequestResponse {
+  id: number;
+  requester: CollaborationUser;
+  receiver: CollaborationUser;
+  status: "PENDING" | "ACCEPTED" | "DECLINED" | string;
+  createdAt: string;
+  respondedAt: string | null;
+}
+
+export interface MessagePreviewResponse {
+  id: number;
+  kind: MessageKind;
+  content: string | null;
+  createdAt: string;
+}
+
+export interface ConversationSummaryResponse {
+  id: number;
+  type: ConversationType;
+  title: string | null;
+  description: string | null;
+  displayName: string;
+  locked: boolean;
+  memberCount: number;
+  joined: boolean;
+  peer: CollaborationUser | null;
+  latestMessage: MessagePreviewResponse | null;
+  unreadCount: number;
+  updatedAt: string;
+}
+
+export interface CreateConversationRequest {
+  type: Exclude<ConversationType, "DIRECT">;
+  title: string;
+  description?: string | null;
+  password?: string | null;
+  memberUserIds?: number[];
+}
+
+export interface SendMessageRequest {
+  kind: MessageKind;
+  content?: string | null;
+  attachmentFileIds?: number[];
+  attachmentShareMode?: AttachmentShareMode | null;
+  temporaryHours?: number | null;
+  sharedApplicationCaseIds?: number[];
+}
+
+export interface MessageResponse {
+  id: number;
+  conversationId: number;
+  sender: CollaborationUser;
+  mine: boolean;
+  kind: MessageKind;
+  content: string | null;
+  attachments: MessageAttachmentResponse[];
+  sharedPostings: SharedPostingResponse[];
+  createdAt: string;
+}
+
+export interface MessageAttachmentResponse {
+  fileId: number;
+  originalName: string;
+  contentType: string | null;
+  sizeBytes: number;
+  shareMode: AttachmentShareMode;
+  availability: AttachmentAvailability;
+  expiresAt: string | null;
+  downloadUrl: string | null;
+}
+
+export interface SharedPostingResponse {
+  applicationCaseId: number;
+  companyName: string;
+  jobTitle: string;
+  deadlineDate: string | null;
+  sourceType: string;
+}
+
+export interface FileAssetResponse {
+  id: number;
+  kind: string;
+  refType: string;
+  refId: number | null;
+  originalName: string;
+  contentType: string | null;
+  sizeBytes: number;
+  contentUrl: string;
+  createdAt: string;
+}

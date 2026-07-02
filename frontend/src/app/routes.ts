@@ -8,6 +8,7 @@ import { AIInterviewPage } from "./pages/AIInterview";
 import { CorrectionPage } from "./pages/Correction";
 import { AnalysisPage } from "./pages/Analysis";
 import { CommunityPage } from "./pages/Community";
+import { MessengerPage } from "./pages/Messenger";
 import { BillingPage } from "./pages/Billing";
 import { BillingFailPage } from "./pages/BillingFail";
 import { BillingSuccessPage } from "./pages/BillingSuccess";
@@ -54,6 +55,7 @@ export const router = createBrowserRouter([
       { path: "m/session/:id", Component: MobileSessionThreadPage },
       { path: "correction", Component: CorrectionPage },
       { path: "analysis", Component: AnalysisPage },
+      { path: "messenger", Component: MessengerPage },
       { path: "community", Component: CommunityPage },
       // 알림/딥링크용 글 상세 경로. 같은 CommunityPage가 :postId를 읽어 상세 뷰를 연다. (팀장 승인 2026-06-19)
       { path: "community/posts/:postId", Component: CommunityPage },
