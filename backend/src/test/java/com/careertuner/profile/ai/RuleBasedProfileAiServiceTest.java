@@ -10,9 +10,11 @@ import tools.jackson.databind.ObjectMapper;
 
 class RuleBasedProfileAiServiceTest {
 
+    private final ProfileScoreCalculator scoreCalculator = new ProfileScoreCalculator();
     private final RuleBasedProfileAiService service = new RuleBasedProfileAiService(
             new JobFamilyWeightPolicy(),
-            new ProfileScoreCalculator(),
+            scoreCalculator,
+            new ProfileQualityGuard(scoreCalculator),
             new ObjectMapper());
 
     @Test
@@ -34,5 +36,27 @@ class RuleBasedProfileAiServiceTest {
         assertThat(result.criteria()).hasSize(ScoreCriterion.values().length);
         assertThat(result.extractedSkills()).contains("마케팅", "SNS 운영", "GA4", "Excel");
         assertThat(result.usage().model()).isEqualTo("profile-rule-v2");
+    }
+
+    @Test
+    void penalizesMeaninglessFilledProfile() {
+        UserProfile profile = UserProfile.builder()
+                .desiredJob("간호사")
+                .desiredIndustry("병원")
+                .skills("[\"ㅋㅋㅋㅋㅋㅋ\",\"테스트\"]")
+                .career("[{\"company\":\"테스트\",\"tasks\":\"ㅋㅋㅋㅋㅋㅋ\",\"achievements\":\"없음\"}]")
+                .projects("[{\"title\":\"아무거나\",\"description\":\"ㅎㅎㅎㅎㅎ\"}]")
+                .resumeText("테스트 테스트 테스트")
+                .selfIntro("ㅋㅋㅋㅋㅋㅋ")
+                .build();
+
+        ProfileAiResult result = service.evaluate(profile, "PROFILE_COMPLETENESS");
+
+        assertThat(result.completenessScore()).isLessThan(60);
+        assertThat(result.gaps()).anyMatch(gap -> gap.contains("분석하기 어려운") || gap.contains("의미"));
+        assertThat(result.criteria())
+                .filteredOn(row -> row.criterion() == ScoreCriterion.EXPERIENCE_SPECIFICITY)
+                .singleElement()
+                .satisfies(row -> assertThat(row.rawScore()).isLessThan(70));
     }
 }

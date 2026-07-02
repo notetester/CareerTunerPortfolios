@@ -39,6 +39,7 @@ public class RuleBasedProfileAiService implements ProfileAiService {
 
     private final JobFamilyWeightPolicy weightPolicy;
     private final ProfileScoreCalculator scoreCalculator;
+    private final ProfileQualityGuard qualityGuard;
     private final ObjectMapper objectMapper;
 
     @Override
@@ -63,7 +64,7 @@ public class RuleBasedProfileAiService implements ProfileAiService {
                 .map(ProfileCriterionScore::improvement)
                 .toList();
 
-        return new ProfileAiResult(
+        ProfileAiResult result = new ProfileAiResult(
                 featureType,
                 summary(profile, jobFamily, score, skills, gaps),
                 skills,
@@ -76,6 +77,7 @@ public class RuleBasedProfileAiService implements ProfileAiService {
                 new CareerAnalysisAiUsage("profile-rule-v2", 0, 0, 0, true),
                 "SUCCESS",
                 null);
+        return qualityGuard.apply(profile, result);
     }
 
     public List<String> extractSkillNames(UserProfile profile) {

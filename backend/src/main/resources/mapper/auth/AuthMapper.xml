@@ -76,4 +76,18 @@
             #{userId}, #{actorUserId}, #{previousStatus}, #{newStatus}, #{reason}, #{memo}, #{blockedUntil}
         )
     </insert>
+
+    <select id="findActivePermissionCodes" resultType="string">
+        SELECT DISTINCT permission_code
+        FROM admin_user_permission
+        WHERE user_id = #{userId}
+          AND revoked_at IS NULL
+    </select>
+
+    <select id="findActivePermissionGroups" resultType="string">
+        SELECT DISTINCT group_code
+        FROM admin_user_group
+        WHERE user_id = #{userId}
+          AND revoked_at IS NULL
+    </select>
 </mapper>

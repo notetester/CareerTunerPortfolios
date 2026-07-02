@@ -30,14 +30,24 @@ public class SuperAdminService {
     private static final Set<String> ADMIN_ROLES = Set.of("USER", "ADMIN", "SUPER_ADMIN");
     private static final Map<String, List<String>> ROLE_PERMISSION_CODES = Map.of(
             "USER", List.of(),
-            "ADMIN", List.of("USER_READ", "PROFILE_READ", "CONSENT_READ", "AI_USAGE_READ", "SECURITY_LOG_READ", "USER_STATUS_WRITE"),
+            "ADMIN", List.of(
+                    "MEMBER_ADMIN", "AI_ADMIN", "BILLING_ADMIN", "CONTENT_ADMIN", "AUDIT_ADMIN",
+                    "USER_READ", "PROFILE_READ", "CONSENT_READ", "AI_USAGE_READ", "SECURITY_LOG_READ",
+                    "USER_STATUS_WRITE", "BLOCK_MANAGE", "EMAIL_AUDIT_READ", "ADMIN_AUDIT_READ",
+                    "BILLING_READ", "BILLING_WRITE", "CONTENT_MANAGE", "AI_OPERATION_MANAGE",
+                    "ANALYSIS_READ", "INTERVIEW_READ"),
             "SUPER_ADMIN", List.of("USER_READ", "PROFILE_READ", "CONSENT_READ", "AI_USAGE_READ", "SECURITY_LOG_READ",
-                    "USER_STATUS_WRITE", "POLICY_MANAGE", "ADMIN_PERMISSION_MANAGE")
+                    "USER_STATUS_WRITE", "BLOCK_MANAGE", "EMAIL_AUDIT_READ", "ADMIN_AUDIT_READ",
+                    "BILLING_READ", "BILLING_WRITE", "CONTENT_MANAGE", "AI_OPERATION_MANAGE",
+                    "ANALYSIS_READ", "INTERVIEW_READ", "MEMBER_ADMIN", "AI_ADMIN", "BILLING_ADMIN",
+                    "CONTENT_ADMIN", "AUDIT_ADMIN", "POLICY_ADMIN", "POLICY_MANAGE", "ADMIN_PERMISSION_MANAGE")
     );
     private static final Map<String, List<String>> ROLE_GROUP_CODES = Map.of(
             "USER", List.of(),
-            "ADMIN", List.of("ADMIN_OPERATOR", "SECURITY_OPERATOR"),
-            "SUPER_ADMIN", List.of("ADMIN_OPERATOR", "SECURITY_OPERATOR", "SUPER_ADMIN_GROUP")
+            "ADMIN", List.of("ADMIN_OPERATOR", "SECURITY_OPERATOR", "MEMBER_ADMIN", "AI_ADMIN",
+                    "BILLING_ADMIN", "CONTENT_ADMIN", "AUDIT_ADMIN"),
+            "SUPER_ADMIN", List.of("ADMIN_OPERATOR", "SECURITY_OPERATOR", "MEMBER_ADMIN", "AI_ADMIN",
+                    "BILLING_ADMIN", "CONTENT_ADMIN", "AUDIT_ADMIN", "POLICY_ADMIN", "SUPER_ADMIN_GROUP")
     );
     private static final Map<String, String> ACCOUNT_SORT_COLUMNS = Map.of(
             "id", "id",

@@ -11,6 +11,8 @@ export interface MeUser {
   emailVerified: boolean;
   plan: string;
   credit: number;
+  permissions?: string[];
+  permissionGroups?: string[];
 }
 
 export interface TokenResponse {

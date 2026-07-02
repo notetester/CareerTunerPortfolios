@@ -10,7 +10,7 @@ import { AdminHomePage } from "./features/home/pages/AdminHomePage";
 import AdminFitAnalysisPromptsPage from "./features/prompts/fit-analysis/pages/AdminFitAnalysisPrompts";
 import AdminAnalyticsPromptsPage from "./features/prompts/analytics/pages/AdminAnalyticsPrompts";
 import { AdminApplicationCasesPage } from "./features/application-cases/pages/AdminApplicationCasesPage";
-import { AdminUsersPage } from "./features/users/pages/AdminUsersPage";
+import { AdminBlockedUsersPage, AdminEmailAuditPage, AdminSecurityAuditPage, AdminUsersPage } from "./features/users/pages/AdminUsersPage";
 import { AdminProfilesPage } from "./features/profiles/pages/AdminProfilesPage";
 import { AdminConsentsPage } from "./features/consents/pages/AdminConsentsPage";
 import { AdminCompanyAnalysisPage } from "./features/company-analysis/pages/AdminCompanyAnalysisPage";
@@ -48,6 +48,9 @@ export const adminRoutes = [
   { path: "admin/prompts/fit-analysis", Component: AdminFitAnalysisPromptsPage },
   { path: "admin/prompts/analytics", Component: AdminAnalyticsPromptsPage },
   { path: "admin/users", Component: AdminUsersPage },
+  { path: "admin/users/blocked", Component: AdminBlockedUsersPage },
+  { path: "admin/audit/security", Component: AdminSecurityAuditPage },
+  { path: "admin/audit/email", Component: AdminEmailAuditPage },
   { path: "admin/profiles", Component: AdminProfilesPage },
   { path: "admin/consents", Component: AdminConsentsPage },
   { path: "admin/super", Component: AdminSuperAdminPage },
