@@ -3,7 +3,8 @@ import { useCallback, useRef, useState } from "react";
 import { runStream } from "@/features/autoprep/api/autoPrepApi";
 import type { AutoPrepRequest, PrepStepResult } from "@/features/autoprep/types/autoPrep";
 import {
-  createCaseFromFile, createCaseFromText, createCaseFromUrl, uploadDocument, type UploadedFile,
+  createCaseFromFile, createCaseFromText, createCaseFromUrl, getLatestExtractionStatus, retryExtraction,
+  uploadDocument, type UploadedFile,
 } from "../api/onboardingApi";
 import { getField, type GuideStep, type LinkKey } from "../onboarding/guideData";
 
@@ -114,9 +115,23 @@ export function useOnboardingGuide(initialStep: GuideStep = "role") {
    * ★ 공고 입력 → 지원 건 1회 생성(이미 있으면 그 id 그대로). 파일 > 붙여넣기 텍스트 > URL 순.
    * runReal(가이드 자체 실행)과 인테이크/온보딩 매핑(③④ 슬롯 회신)이 공유하는 케이스 생성 단일 경로.
    * 입력이 없으면 null, 생성 실패는 throw(호출부가 문맥에 맞게 처리).
+   *
+   * 재제출(caseId 이미 있음) 시: 추출이 FAILED 면 새 케이스를 또 만들지 않고 B 의 재시도 엔드포인트로
+   * 같은 케이스의 추출만 재큐잉한다("같은 파일 재제출 → 영원히 실패 반복" 방지). QUEUED/RUNNING(아직
+   * 진행 중)·SUCCEEDED 는 건드리지 않고 그대로 caseId 를 돌려준다 — 재시도는 FAILED 에서만 유효하다.
    */
   const ensureCase = useCallback(async (): Promise<number | null> => {
-    if (caseId != null) return caseId;
+    if (caseId != null) {
+      try {
+        const extraction = await getLatestExtractionStatus(caseId);
+        if (extraction?.status === "FAILED") {
+          await retryExtraction(caseId);
+        }
+      } catch {
+        // 상태 조회·재큐잉 실패해도 케이스 자체는 유효 — 기존 caseId 로 계속 진행(폴링이 최신 상태를 다시 봄).
+      }
+      return caseId;
+    }
     if (jd.file) {
       const sourceType = jd.file.type.startsWith("image/") ? "IMAGE" : "PDF";
       const res = await createCaseFromFile(jd.file, sourceType);

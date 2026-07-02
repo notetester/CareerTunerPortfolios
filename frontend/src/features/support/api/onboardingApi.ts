@@ -1,4 +1,4 @@
-import { api } from "@/app/lib/api";
+import { ApiError, api } from "@/app/lib/api";
 
 // 파일 업로드 계약(조사 확정): POST /api/file/upload, multipart(file + kind) → FileAssetResponse.
 // autoprep 의 uploadAttachment(kind=ATTACHMENT 고정)과 동일 엔드포인트지만, 서류 종류별 kind 를
@@ -56,4 +56,25 @@ export function createCaseFromFile(file: File, sourceType: "PDF" | "IMAGE") {
   fd.append("sourceType", sourceType);
   fd.append("favorite", "false");
   return api<CaseFromJobPostingResult>("/application-cases/from-job-posting/upload", { method: "POST", body: fd });
+}
+
+// ── 재제출 시 실패한 추출 재큐잉 ──
+// B 소유 엔드포인트 재사용(applications 기능의 applicationCasesApi.ts 와 동일 계약을 support 로컬로
+// 얇게 둔다 — 위 파일 업로드와 같은 이유: 기능 폴더 간 결합 없이 B 코드 무수정).
+
+/** 지원 건의 최신 공고 추출 상태(없으면 null). ensureCase 재제출 시 FAILED 여부 판정에 쓴다. */
+export function getLatestExtractionStatus(applicationCaseId: number): Promise<{ status: string } | null> {
+  return api<{ status: string } | null>(`/application-cases/${applicationCaseId}/job-posting/extraction`, {
+    method: "GET",
+  }).catch((err) => {
+    if (err instanceof ApiError && (err.status === 404 || err.code === "NOT_FOUND")) {
+      return null;
+    }
+    throw err;
+  });
+}
+
+/** 실패한 최신 추출을 재큐잉(B: 진행 중 작업이 있거나 최신이 FAILED 가 아니면 409 — 호출부가 무해하게 무시). */
+export function retryExtraction(applicationCaseId: number): Promise<void> {
+  return api<void>(`/application-cases/${applicationCaseId}/job-posting/extraction/retry`, { method: "POST" });
 }
