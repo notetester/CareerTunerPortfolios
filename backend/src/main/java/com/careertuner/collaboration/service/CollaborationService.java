@@ -47,5 +47,7 @@ public interface CollaborationService {
 
     MessageResponse sendMessage(Long userId, Long conversationId, SendMessageRequest request);
 
+    ConversationSummaryResponse setConversationMuted(Long userId, Long conversationId, boolean muted);
+
     FileService.Download downloadAttachment(Long userId, Long fileId);
 }

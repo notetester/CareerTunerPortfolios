@@ -8,6 +8,7 @@ import org.apache.ibatis.annotations.Param;
 import com.careertuner.collaboration.domain.CollaborationConversation;
 import com.careertuner.collaboration.domain.CollaborationMessage;
 import com.careertuner.collaboration.domain.CollaborationUserRow;
+import com.careertuner.collaboration.domain.ConversationMemberRow;
 import com.careertuner.collaboration.domain.ConversationSummaryRow;
 import com.careertuner.collaboration.domain.FriendRequest;
 import com.careertuner.collaboration.domain.FriendRequestRow;
@@ -78,6 +79,12 @@ public interface CollaborationMapper {
                                 @Param("userId") Long userId);
 
     List<Long> findConversationMemberIds(@Param("conversationId") Long conversationId);
+
+    List<ConversationMemberRow> findConversationMembersForNotify(@Param("conversationId") Long conversationId);
+
+    int updateConversationMemberMuted(@Param("conversationId") Long conversationId,
+                                      @Param("userId") Long userId,
+                                      @Param("muted") boolean muted);
 
     List<ConversationSummaryRow> findConversations(@Param("userId") Long userId);
 

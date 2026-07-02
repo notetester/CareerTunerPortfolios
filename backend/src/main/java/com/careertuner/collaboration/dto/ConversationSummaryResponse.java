@@ -11,6 +11,7 @@ public record ConversationSummaryResponse(
         boolean locked,
         int memberCount,
         boolean joined,
+        boolean muted,
         UserBriefResponse peer,
         MessagePreviewResponse latestMessage,
         int unreadCount,

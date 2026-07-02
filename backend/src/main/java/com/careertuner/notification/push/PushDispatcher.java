@@ -37,6 +37,10 @@ public class PushDispatcher {
             if (!pref.ruleEnabled(type)) {
                 return;
             }
+            // 발신자 관계(모르는 사람/친구/기업/운영자)별 수신 설정 — 관계 미상은 통과.
+            if (!pref.senderEnabled(type, notification.getSenderRelation())) {
+                return;
+            }
             String category = NotificationCategories.of(type);
             if (Boolean.FALSE.equals(pref.categories().get(category))) {
                 return;
@@ -45,12 +49,18 @@ public class PushDispatcher {
             if (isWithinQuietHours(pref.quietHoursStart(), pref.quietHoursEnd())) {
                 return;
             }
+            // 모바일 소리/진동 설정을 Android 알림 채널로 변환(이벤트별로 다르게 울릴 수 있다).
+            String androidChannelId = PushMessage.channelFor(
+                    pref.channelEnabled(type, "mobileSound"),
+                    pref.channelEnabled(type, "mobileVibration"));
+            PushMessage message = new PushMessage(
+                    notification.getTitle(), notification.getMessage(), notification.getLink(), androidChannelId);
             for (var subscription : pushSubscriptionMapper.findByUserId(notification.getUserId())) {
                 String channel = pushChannel(subscription.getKind());
                 if (!pref.channelEnabled(type, channel)) {
                     continue;
                 }
-                pushSender.send(subscription, notification.getTitle(), notification.getMessage(), notification.getLink());
+                pushSender.send(subscription, message);
             }
         } catch (RuntimeException ex) {
             // 푸시는 보조 채널 — 실패해도 in-app 알림에는 영향 주지 않는다.

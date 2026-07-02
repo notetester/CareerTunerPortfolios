@@ -13,6 +13,7 @@ import org.springframework.transaction.annotation.Transactional;
 import com.careertuner.collaboration.domain.CollaborationConversation;
 import com.careertuner.collaboration.domain.CollaborationMessage;
 import com.careertuner.collaboration.domain.CollaborationUserRow;
+import com.careertuner.collaboration.domain.ConversationMemberRow;
 import com.careertuner.collaboration.domain.ConversationSummaryRow;
 import com.careertuner.collaboration.domain.FriendRequest;
 import com.careertuner.collaboration.domain.FriendRequestRow;
@@ -39,6 +40,7 @@ import com.careertuner.file.domain.FileAsset;
 import com.careertuner.file.mapper.FileAssetMapper;
 import com.careertuner.file.service.FileService;
 import com.careertuner.notification.domain.Notification;
+import com.careertuner.notification.service.NotificationPreferenceService;
 import com.careertuner.notification.service.NotificationService;
 
 import lombok.RequiredArgsConstructor;
@@ -60,6 +62,7 @@ public class CollaborationServiceImpl implements CollaborationService {
 
     private final CollaborationMapper mapper;
     private final NotificationService notificationService;
+    private final NotificationPreferenceService notificationPreferenceService;
     private final FileAssetMapper fileAssetMapper;
     private final FileService fileService;
     private final PasswordEncoder passwordEncoder;
@@ -373,6 +376,14 @@ public class CollaborationServiceImpl implements CollaborationService {
     }
 
     @Override
+    @Transactional
+    public ConversationSummaryResponse setConversationMuted(Long userId, Long conversationId, boolean muted) {
+        requireConversationMember(userId, conversationId);
+        mapper.updateConversationMemberMuted(conversationId, userId, muted);
+        return requireConversationSummary(userId, conversationId);
+    }
+
+    @Override
     public FileService.Download downloadAttachment(Long userId, Long fileId) {
         MessageAttachmentRow attachment = mapper.findAttachmentForDownload(userId, fileId);
         if (attachment == null) {
@@ -537,16 +548,45 @@ public class CollaborationServiceImpl implements CollaborationService {
 
     private void notifyConversationMembers(Long senderId, Long conversationId, Long messageId,
                                            String kind, String content, int attachmentCount, int postingCount) {
-        String title = "NOTE".equals(kind) ? "새 쪽지가 도착했습니다." : "새 채팅 메시지가 도착했습니다.";
+        boolean note = "NOTE".equals(kind);
+        String type = note ? "NOTE_MESSAGE" : "ROOM_MESSAGE";
+        String title = note ? "새 쪽지가 도착했습니다." : "새 채팅 메시지가 도착했습니다.";
         String message = content.isBlank()
                 ? attachmentOrPostingPreview(attachmentCount, postingCount)
                 : content;
-        for (Long memberId : mapper.findConversationMemberIds(conversationId)) {
-            if (!memberId.equals(senderId)) {
-                notifyUser(memberId, senderId, "ROOM_MESSAGE", "COLLAB_CONVERSATION", conversationId,
-                        title, message);
+        String haystack = content.toLowerCase(Locale.ROOT);
+        for (ConversationMemberRow member : mapper.findConversationMembersForNotify(conversationId)) {
+            if (member.getUserId().equals(senderId)) {
+                continue;
             }
+            if (Boolean.TRUE.equals(member.getMuted())) {
+                // 알림 해제한 방 — 본인 이름이나 설정 키워드가 언급된 경우에만 ROOM_MENTION 으로 알린다.
+                if (!haystack.isBlank() && isMentioned(haystack, member)) {
+                    notifyUser(member.getUserId(), senderId, "ROOM_MENTION", "COLLAB_CONVERSATION", conversationId,
+                            "회원님이 언급되었습니다.", message);
+                }
+                continue;
+            }
+            notifyUser(member.getUserId(), senderId, type, "COLLAB_CONVERSATION", conversationId,
+                    title, message);
         }
+    }
+
+    private boolean isMentioned(String haystack, ConversationMemberRow member) {
+        String name = member.getName();
+        if (name != null && !name.isBlank() && haystack.contains(name.trim().toLowerCase(Locale.ROOT))) {
+            return true;
+        }
+        try {
+            for (String keyword : notificationPreferenceService.get(member.getUserId()).keywords()) {
+                if (haystack.contains(keyword.toLowerCase(Locale.ROOT))) {
+                    return true;
+                }
+            }
+        } catch (RuntimeException ex) {
+            // 키워드 조회 실패는 언급 아님으로 처리 — 메시지 전송 흐름을 막지 않는다.
+        }
+        return false;
     }
 
     private String attachmentOrPostingPreview(int attachmentCount, int postingCount) {
@@ -618,6 +658,7 @@ public class CollaborationServiceImpl implements CollaborationService {
                 Boolean.TRUE.equals(row.getLocked()),
                 row.getMemberCount() == null ? 0 : row.getMemberCount(),
                 Boolean.TRUE.equals(row.getJoined()),
+                Boolean.TRUE.equals(row.getMuted()),
                 peer,
                 latest,
                 row.getUnreadCount(),

@@ -19,6 +19,7 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import com.careertuner.collaboration.domain.CollaborationConversation;
 import com.careertuner.collaboration.domain.CollaborationMessage;
 import com.careertuner.collaboration.domain.CollaborationUserRow;
+import com.careertuner.collaboration.domain.ConversationMemberRow;
 import com.careertuner.collaboration.domain.ConversationSummaryRow;
 import com.careertuner.collaboration.domain.FriendRequest;
 import com.careertuner.collaboration.domain.FriendRequestRow;
@@ -33,17 +34,21 @@ import com.careertuner.file.domain.FileAsset;
 import com.careertuner.file.mapper.FileAssetMapper;
 import com.careertuner.file.service.FileService;
 import com.careertuner.notification.domain.Notification;
+import com.careertuner.notification.service.NotificationPreferenceService;
 import com.careertuner.notification.service.NotificationService;
 
 class CollaborationServiceImplTest {
 
     private final CollaborationMapper mapper = mock(CollaborationMapper.class);
     private final NotificationService notificationService = mock(NotificationService.class);
+    private final NotificationPreferenceService notificationPreferenceService =
+            mock(NotificationPreferenceService.class);
     private final FileAssetMapper fileAssetMapper = mock(FileAssetMapper.class);
     private final FileService fileService = mock(FileService.class);
     private final PasswordEncoder passwordEncoder = mock(PasswordEncoder.class);
     private final CollaborationServiceImpl service =
-            new CollaborationServiceImpl(mapper, notificationService, fileAssetMapper, fileService, passwordEncoder);
+            new CollaborationServiceImpl(mapper, notificationService, notificationPreferenceService,
+                    fileAssetMapper, fileService, passwordEncoder);
 
     @Test
     void sendFriendRequest_createsPendingRequestAndNotifiesReceiver() {
@@ -113,7 +118,9 @@ class CollaborationServiceImplTest {
                 .originalName("portfolio.pdf")
                 .sizeBytes(1200L)
                 .build());
-        when(mapper.findConversationMemberIds(5L)).thenReturn(List.of(1L, 2L));
+        when(mapper.findConversationMembersForNotify(5L)).thenReturn(List.of(
+                ConversationMemberRow.builder().userId(1L).name("나").muted(false).build(),
+                ConversationMemberRow.builder().userId(2L).name("민지").muted(false).build()));
         when(mapper.findMessageById(20L)).thenReturn(CollaborationMessage.builder()
                 .id(20L)
                 .conversationId(5L)
