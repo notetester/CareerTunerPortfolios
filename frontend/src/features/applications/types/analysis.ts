@@ -31,6 +31,11 @@ export interface CompanyAnalysis {
   sources: string | null;
   verifiedFacts: string | null;
   aiInferences: string | null;
+  /**
+   * 백엔드가 응답 직전 aiInferences의 kind=UNKNOWN 마커를 펼쳐 내려주는 virtual 필드.
+   * 프런트는 마커를 직접 파싱하지 않고 이 필드만 읽는다(읽기 전용, 검수 저장 대상 아님).
+   */
+  unknowns: string | null;
   sourceType: string | null;
   checkedAt: string | null;
   refreshRecommendedAt: string | null;
@@ -165,6 +170,14 @@ function hasStructuredRowValue<T extends Record<string, string>>(
   return keys.some((key) => row[key].trim().length > 0);
 }
 
+/**
+ * 구조화 편집 행에서 UI에 노출되지 않는 원본 키(factId, sourceKind, sourceRef, evidence,
+ * inferenceId, basedOn, confidence 등)를 JSON 문자열로 보관하는 숨은 키.
+ * StructuredRowsEditor가 행을 spread로 복사하므로 편집을 거쳐도 유지되며,
+ * serialize 시 원본 키를 재합성해 additive key 유실을 막는다.
+ */
+const HIDDEN_EXTRA_KEY = "__extra";
+
 function objectToStructuredRow<T extends Record<string, string>>(
   item: Record<string, unknown>,
   keys: readonly (keyof T & string)[],
@@ -173,6 +186,15 @@ function objectToStructuredRow<T extends Record<string, string>>(
   keys.forEach((key) => {
     row[key] = formatObjectValue(item[key]);
   });
+  const extras: Record<string, unknown> = {};
+  Object.keys(item).forEach((key) => {
+    if (!(keys as readonly string[]).includes(key)) {
+      extras[key] = item[key];
+    }
+  });
+  if (Object.keys(extras).length > 0) {
+    row[HIDDEN_EXTRA_KEY] = JSON.stringify(extras);
+  }
   return row as T;
 }
 
@@ -180,6 +202,7 @@ function parseStructuredRows<T extends Record<string, string>>(
   value: string | null | undefined,
   keys: readonly (keyof T & string)[],
   mapLegacyText: (text: string) => T,
+  skipObjectItem?: (item: Record<string, unknown>) => boolean,
 ): T[] {
   const trimmed = value?.trim();
   if (!trimmed) return [];
@@ -190,6 +213,7 @@ function parseStructuredRows<T extends Record<string, string>>(
   };
 
   const rowFromObject = (item: Record<string, unknown>): T | null => {
+    if (skipObjectItem?.(item)) return null;
     const row = objectToStructuredRow<T>(item, keys);
     if (hasStructuredRowValue(row, keys)) return row;
 
@@ -226,14 +250,25 @@ function serializeStructuredRows<T extends Record<string, string>>(
   keys: readonly (keyof T & string)[],
 ): string {
   const items = rows
+    .filter((row) => hasStructuredRowValue(row, keys))
     .map((row) => {
-      const item: Record<string, string> = {};
+      const item: Record<string, unknown> = {};
+      const extraRaw = row[HIDDEN_EXTRA_KEY];
+      if (extraRaw) {
+        try {
+          const extras = JSON.parse(extraRaw) as unknown;
+          if (isPlainObject(extras)) {
+            Object.assign(item, extras);
+          }
+        } catch {
+          // 손상된 숨은 키는 재합성하지 않는다(표시 필드만 저장).
+        }
+      }
       keys.forEach((key) => {
         item[key] = row[key].trim();
       });
-      return item as T;
-    })
-    .filter((row) => hasStructuredRowValue(row, keys));
+      return item;
+    });
 
   return JSON.stringify(items);
 }
@@ -265,10 +300,41 @@ export function parseVerifiedFactRows(value: string | null | undefined): Verifie
 }
 
 export function parseAiInferenceRows(value: string | null | undefined): AiInferenceRow[] {
-  return parseStructuredRows<AiInferenceRow>(value, AI_INFERENCE_ROW_KEYS, (text) => ({
-    inference: text,
-    basis: "",
-  }));
+  // kind=UNKNOWN 마커는 편집 가능한 일반 AI 추론으로 노출하지 않는다. 백엔드가 응답에서
+  // 마커를 분리해 virtual unknowns로 내려주고 검수 저장 시 재부착하므로(마커 소유권은 서버),
+  // 여기 필터는 구버전 응답·비정상 데이터에 대한 방어선이다.
+  return parseStructuredRows<AiInferenceRow>(
+    value,
+    AI_INFERENCE_ROW_KEYS,
+    (text) => ({ inference: text, basis: "" }),
+    (item) => item.kind === "UNKNOWN",
+  );
+}
+
+export interface UnknownItem {
+  topic: string;
+  reason: string;
+  neededSource?: string;
+}
+
+/** 백엔드 virtual unknowns 필드([{topic,reason,neededSource}]) 표시용 파서(읽기 전용). */
+export function parseUnknownItems(value: string | null | undefined): UnknownItem[] {
+  const trimmed = value?.trim();
+  if (!trimmed) return [];
+  try {
+    const parsed = JSON.parse(trimmed) as unknown;
+    if (!Array.isArray(parsed)) return [];
+    return parsed.flatMap((item): UnknownItem[] => {
+      if (!isPlainObject(item)) return [];
+      const topic = formatObjectValue(item.topic);
+      if (!topic) return [];
+      const reason = formatObjectValue(item.reason);
+      const neededSource = formatObjectValue(item.neededSource);
+      return [neededSource ? { topic, reason, neededSource } : { topic, reason }];
+    });
+  } catch {
+    return [];
+  }
 }
 
 export function serializeEvidenceRows(rows: EvidenceRow[]): string {

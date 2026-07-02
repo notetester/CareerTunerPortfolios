@@ -16,6 +16,7 @@ import {
   formatJsonArrayForTextarea,
   parseAiInferenceRows,
   parseJsonStringArray,
+  parseUnknownItems,
   parseVerifiedFactRows,
   serializeAiInferenceRows,
   serializeTextareaList,
@@ -183,6 +184,9 @@ export function CompanyAnalysisPanel({
     await onGenerate();
   };
 
+  // 백엔드 virtual unknowns(확인 불가 항목) — 읽기 전용 표시. 검수 저장 대상이 아니다.
+  const unknownItems = useMemo(() => parseUnknownItems(analysis?.unknowns), [analysis]);
+
   const sourceMetadata = analysis
     ? [
         { label: "출처 유형", value: analysis.sourceType },
@@ -331,6 +335,24 @@ export function CompanyAnalysisPanel({
               <AnalysisStructuredText title="검증된 사실" value={analysis.verifiedFacts} />
               <AnalysisStructuredText title="AI 추론" value={analysis.aiInferences} />
             </div>
+
+            {unknownItems.length > 0 && (
+              <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
+                <div className="text-sm font-semibold text-slate-900">확인 불가 항목</div>
+                <p className="mt-1 text-xs text-slate-500">
+                  현재 입력 자료만으로 확인되지 않아 AI가 채우지 않고 남긴 항목입니다.
+                </p>
+                <ul className="mt-2 space-y-1.5 text-sm leading-6 text-slate-600">
+                  {unknownItems.map((item, index) => (
+                    <li key={`${item.topic}-${index}`}>
+                      <span className="font-semibold text-slate-800">{item.topic}</span>
+                      {item.reason ? ` — ${item.reason}` : ""}
+                      {item.neededSource ? ` (필요 자료: ${item.neededSource})` : ""}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
 
             <div className="rounded-lg border border-slate-200 p-4">
               <div className="text-sm font-semibold text-slate-900">최근 이슈/준비 관점</div>

@@ -1189,7 +1189,7 @@ class ApplicationCaseServiceImplTest {
         AiUsageLogService usageLogService = mock(AiUsageLogService.class);
         ApplicationCaseAnalysisStatusService statusService = mock(ApplicationCaseAnalysisStatusService.class);
         ApplicationCaseAccessService accessService = new ApplicationCaseAccessService(applicationCaseMapper, jobPostingMapper);
-        CompanyAnalysisService service = new CompanyAnalysisService(accessService, companyAnalysisMapper, bAnalysisGenerationService, usageLogService, statusService, transactionTemplate(), analysisJsonValidator());
+        CompanyAnalysisService service = new CompanyAnalysisService(accessService, companyAnalysisMapper, bAnalysisGenerationService, usageLogService, statusService, transactionTemplate(), analysisJsonValidator(), companyAnalysisCanonicalizer());
 
         ApplicationCase applicationCase = applicationCase("DRAFT");
         JobPosting posting = jobPosting(null, null, "Backend platform job posting");
@@ -1201,6 +1201,7 @@ class ApplicationCaseServiceImplTest {
                 longIndustry,
                 "[]",
                 "Interview points",
+                "[]",
                 "[]",
                 "[]",
                 "[]",
@@ -1237,7 +1238,7 @@ class ApplicationCaseServiceImplTest {
         AiUsageLogService usageLogService = mock(AiUsageLogService.class);
         ApplicationCaseAnalysisStatusService statusService = mock(ApplicationCaseAnalysisStatusService.class);
         ApplicationCaseAccessService accessService = new ApplicationCaseAccessService(applicationCaseMapper, jobPostingMapper);
-        CompanyAnalysisService service = new CompanyAnalysisService(accessService, companyAnalysisMapper, bAnalysisGenerationService, usageLogService, statusService, transactionTemplate(), analysisJsonValidator());
+        CompanyAnalysisService service = new CompanyAnalysisService(accessService, companyAnalysisMapper, bAnalysisGenerationService, usageLogService, statusService, transactionTemplate(), analysisJsonValidator(), companyAnalysisCanonicalizer());
 
         ApplicationCase applicationCase = applicationCase("DRAFT");
         JobPosting posting = jobPosting(30L, 3, "Backend platform job posting");
@@ -1259,8 +1260,14 @@ class ApplicationCaseServiceImplTest {
         verify(companyAnalysisMapper).insertCompanyAnalysis(analysisCaptor.capture());
         assertThat(analysisCaptor.getValue().getJobPostingId()).isEqualTo(30L);
         assertThat(analysisCaptor.getValue().getJobPostingRevision()).isEqualTo(3);
-        assertThat(analysisCaptor.getValue().getVerifiedFacts()).isEqualTo("[{\"fact\":\"job posting mentions B2B platform\",\"source\":\"job posting\"}]");
-        assertThat(analysisCaptor.getValue().getAiInferences()).isEqualTo("[{\"inference\":\"platform operations may be discussed\",\"basis\":\"job posting mentions B2B platform\"}]");
+        // 저장 전 canonicalizer 가 factId/sourceKind/sourceRef·inferenceId 를 additive 보정한다(6단계).
+        assertThat(analysisCaptor.getValue().getVerifiedFacts()).isEqualTo(
+                "[{\"fact\":\"job posting mentions B2B platform\",\"source\":\"job posting\","
+                        + "\"evidence\":\"Backend platform job posting\",\"factId\":\"F1\","
+                        + "\"sourceKind\":\"JOB_POSTING\",\"sourceRef\":\"jobPosting:30#rev3\"}]");
+        assertThat(analysisCaptor.getValue().getAiInferences()).isEqualTo(
+                "[{\"inference\":\"platform operations may be discussed\","
+                        + "\"basis\":\"job posting mentions B2B platform\",\"confidence\":\"LOW\",\"inferenceId\":\"I1\"}]");
         assertThat(analysisCaptor.getValue().getSourceType()).isEqualTo("JOB_POSTING");
         assertThat(analysisCaptor.getValue().getCheckedAt()).isBetween(before, after);
         assertThat(analysisCaptor.getValue().getRefreshRecommendedAt()).isEqualTo(analysisCaptor.getValue().getCheckedAt().plusDays(30));
@@ -1279,7 +1286,7 @@ class ApplicationCaseServiceImplTest {
         AiUsageLogService usageLogService = mock(AiUsageLogService.class);
         ApplicationCaseAnalysisStatusService statusService = mock(ApplicationCaseAnalysisStatusService.class);
         ApplicationCaseAccessService accessService = new ApplicationCaseAccessService(applicationCaseMapper, jobPostingMapper);
-        CompanyAnalysisService service = new CompanyAnalysisService(accessService, companyAnalysisMapper, bAnalysisGenerationService, usageLogService, statusService, transactionTemplate(), analysisJsonValidator());
+        CompanyAnalysisService service = new CompanyAnalysisService(accessService, companyAnalysisMapper, bAnalysisGenerationService, usageLogService, statusService, transactionTemplate(), analysisJsonValidator(), companyAnalysisCanonicalizer());
 
         when(applicationCaseMapper.findApplicationCaseByIdAndUserId(10L, 1L)).thenReturn(applicationCase("CLOSED"));
 
@@ -1303,7 +1310,7 @@ class ApplicationCaseServiceImplTest {
         AiUsageLogService usageLogService = mock(AiUsageLogService.class);
         ApplicationCaseAnalysisStatusService statusService = mock(ApplicationCaseAnalysisStatusService.class);
         ApplicationCaseAccessService accessService = new ApplicationCaseAccessService(applicationCaseMapper, jobPostingMapper);
-        CompanyAnalysisService service = new CompanyAnalysisService(accessService, companyAnalysisMapper, bAnalysisGenerationService, usageLogService, statusService, transactionTemplate(), analysisJsonValidator());
+        CompanyAnalysisService service = new CompanyAnalysisService(accessService, companyAnalysisMapper, bAnalysisGenerationService, usageLogService, statusService, transactionTemplate(), analysisJsonValidator(), companyAnalysisCanonicalizer());
 
         when(applicationCaseMapper.findApplicationCaseByIdAndUserId(10L, 1L)).thenReturn(applicationCase("ANALYZING"));
 
@@ -2062,6 +2069,10 @@ class ApplicationCaseServiceImplTest {
         return new BAnalysisJsonValidator(new ObjectMapper());
     }
 
+    private static com.careertuner.companyanalysis.service.BCompanyAnalysisCanonicalizer companyAnalysisCanonicalizer() {
+        return new com.careertuner.companyanalysis.service.BCompanyAnalysisCanonicalizer(new ObjectMapper());
+    }
+
     private static ApplicationCase applicationCase(String status) {
         return ApplicationCase.builder()
                 .id(10L)
@@ -2122,8 +2133,10 @@ class ApplicationCaseServiceImplTest {
                 "[]",
                 "Interview points",
                 "[]",
-                "[{\"fact\":\"job posting mentions B2B platform\",\"source\":\"job posting\"}]",
+                "[{\"fact\":\"job posting mentions B2B platform\",\"source\":\"job posting\","
+                        + "\"evidence\":\"Backend platform job posting\"}]",
                 "[{\"inference\":\"platform operations may be discussed\",\"basis\":\"job posting mentions B2B platform\"}]",
+                "[]",
                 usage);
     }
 

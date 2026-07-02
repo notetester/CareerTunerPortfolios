@@ -56,7 +56,8 @@ public class BAnalysisGenerationService {
     // 보수적으로 1.4자/토큰을 가정한다(가정이 실제보다 작을수록 더 안전: 윈도에 여유가 생김).
     private static final double CHARS_PER_TOKEN = 1.4;
     // 공고 원문 외 고정 오버헤드(토큰): 시스템 프롬프트 + JSON 스키마(format) + 라벨/템플릿.
-    private static final int FIXED_PROMPT_OVERHEAD_TOKENS = 600;
+    // 6단계 canonical contract 로 시스템 프롬프트·스키마가 커져 600 → 1000 으로 상향(원문 예산 보호).
+    private static final int FIXED_PROMPT_OVERHEAD_TOKENS = 1_000;
     // 문장 분류 신호는 보조 힌트라 원문보다 작게 캡한다(기존 4000 → 컨텍스트 예산 보호).
     private static final int CLASSIFICATION_CHAR_CAP = 2_000;
     // 컨텍스트가 아무리 작아도 최소한 이만큼은 원문을 남긴다.
@@ -150,7 +151,8 @@ public class BAnalysisGenerationService {
         // 3) 2차 폴백: OpenAI.
         if (openAiResponsesClient.configured()) {
             try {
-                JobAnalysisPayload payload = openAiResponsesClient.analyzeJobPosting(applicationCase, postingText);
+                JobAnalysisPayload payload = withDedupedEvidence(
+                        openAiResponsesClient.analyzeJobPosting(applicationCase, postingText));
                 log.info("OpenAI job analysis succeeded");
                 return new GeneratedJobAnalysis(payload, null, null);
             } catch (RuntimeException ex) {
@@ -281,18 +283,18 @@ public class BAnalysisGenerationService {
                 + "요구 기술을 뒷받침할 근거가 무엇인지 설명할 수 있도록 준비하세요: " + joinPreview(extractRequiredSkills(postingText)) + ".";
         return new CompanyAnalysisPayload(
                 summary,
-                "기본 파이프라인에서는 외부 조사를 수행하지 않았습니다. 검수 단계에서 최신 기업 뉴스를 확인하세요.",
+                CompanyAnalysisPromptCatalog.RECENT_ISSUES_UNAVAILABLE_NOTICE,
                 industry(postingText),
                 toJson(List.of()),
                 interviewPoints,
                 toJson(List.of(Map.of(
                         "type", "JOB_POSTING",
-                        "label", "업로드한 공고문",
-                        "model", SELF_RULES_MODEL))),
+                        "label", "업로드한 공고문"))),
                 toJson(verifiedFacts(applicationCase, postingText)),
                 toJson(List.of(Map.of(
                         "inference", "면접 준비는 공고문의 담당 업무와 요구 기술 근거에 집중하는 것이 좋습니다.",
                         "basis", "추출된 공고문 섹션을 로컬 규칙으로 도출했습니다."))),
+                toJson(List.of()),
                 usage(SELF_RULES_MODEL, postingText.length(), summary.length() + interviewPoints.length()));
     }
 
@@ -311,7 +313,7 @@ public class BAnalysisGenerationService {
                 requiredText(root, "qualifications"),
                 normalizeDifficulty(text(root, "difficulty", "NORMAL")),
                 requiredText(root, "summary"),
-                objectArrayJson(root, "evidence", "field", "quote"),
+                dedupEvidenceJson(objectArrayJson(root, "evidence", "field", "quote")),
                 objectArrayJson(root, "ambiguousConditions", "condition", "assumption"),
                 usage(modelLabel, postingText.length(), content.length()));
         validateJobPayload(payload);
@@ -552,15 +554,27 @@ public class BAnalysisGenerationService {
                                                            String postingText,
                                                            String modelLabel) {
         JsonNode root = parseObject(content);
+        // 폴백 게이트 재설계(6단계): 기업 정보가 부족한 공고에서 summary 를 비우는 보수적 출력은
+        // 실패가 아니라 정상이다. 빈/짧은 summary 를 이유로 self-rules 로 폴백하지 않고,
+        // 빈 값만 확인불가 고지 문구로 대체해 부분 성공 필드(industry/interviewPoints 등)를 보존한다.
+        String companySummary = text(root, "companySummary", "");
+        if (isBlank(companySummary)) {
+            companySummary = CompanyAnalysisPromptCatalog.COMPANY_SUMMARY_UNAVAILABLE_NOTICE;
+        }
+        String recentIssues = text(root, "recentIssues", "");
+        if (isBlank(recentIssues)) {
+            recentIssues = CompanyAnalysisPromptCatalog.RECENT_ISSUES_UNAVAILABLE_NOTICE;
+        }
         CompanyAnalysisPayload payload = new CompanyAnalysisPayload(
-                requiredText(root, "companySummary"),
-                text(root, "recentIssues", "No external research was performed. Confirm recent issues during review."),
+                companySummary,
+                recentIssues,
                 text(root, "industry", industry(postingText)),
                 arrayJson(root, "competitors"),
                 requiredText(root, "interviewPoints"),
                 objectArrayJson(root, "sources", "type", "label"),
                 objectArrayJson(root, "verifiedFacts", "fact", "source"),
                 objectArrayJson(root, "aiInferences", "inference", "basis"),
+                optionalArrayJson(root, "unknowns"),
                 usage(modelLabel, postingText.length(), content.length()));
         validateCompanyPayload(payload, applicationCase);
         return payload;
@@ -623,9 +637,8 @@ public class BAnalysisGenerationService {
     }
 
     private void validateCompanyPayload(CompanyAnalysisPayload payload, ApplicationCase applicationCase) {
-        if (isBlank(payload.companySummary()) || payload.companySummary().length() < 20) {
-            throw new IllegalStateException("Local LLM company analysis summary is too short.");
-        }
+        // summary 길이 게이트는 6단계에서 제거 — 빈 값은 parseLocalCompanyPayload 가 확인불가 고지로
+        // 대체하며, 짧지만 보수적인 결과는 폴백 사유가 아니다(231 문서 5-6).
         if (isBlank(payload.interviewPoints())) {
             throw new IllegalStateException("Local LLM company analysis is missing interviewPoints.");
         }
@@ -710,7 +723,14 @@ public class BAnalysisGenerationService {
                 "duties", "qualifications", "difficulty", "summary", "evidence", "ambiguousConditions"));
     }
 
-    private Map<String, Object> companyAnalysisSchema() {
+    /**
+     * 기업분석 canonical contract 의 로컬/Claude 표현. 모델 JSON 실패율을 낮추기 위해 required 는
+     * 최소(fact/source/evidence, inference/basis)로 두고, factId·sourceKind·sourceRef·inferenceId·
+     * basedOn·confidence 는 properties 에만 열어 둔 뒤 저장 시 서버 canonicalizer 가 보정한다.
+     * OpenAI 경로({@code OpenAiResponsesClient#companyAnalysisSchema})는 strict=true 제약 때문에
+     * 같은 계약을 required + nullable 타입으로 표현한다. 두 경로의 필드 집합은 동일해야 한다.
+     */
+    Map<String, Object> companyAnalysisSchema() {
         Map<String, Object> properties = new LinkedHashMap<>();
         properties.put("companySummary", stringSchema());
         properties.put("recentIssues", stringSchema());
@@ -718,11 +738,30 @@ public class BAnalysisGenerationService {
         properties.put("competitors", stringArraySchema());
         properties.put("interviewPoints", stringSchema());
         properties.put("sources", objectArraySchema(Map.of("type", stringSchema(), "label", stringSchema()), List.of("type", "label")));
-        properties.put("verifiedFacts", objectArraySchema(Map.of("fact", stringSchema(), "source", stringSchema()), List.of("fact", "source")));
-        properties.put("aiInferences", objectArraySchema(Map.of("inference", stringSchema(), "basis", stringSchema()), List.of("inference", "basis")));
+        Map<String, Object> factProperties = new LinkedHashMap<>();
+        factProperties.put("fact", stringSchema());
+        factProperties.put("source", stringSchema());
+        factProperties.put("evidence", stringSchema());
+        factProperties.put("factId", stringSchema());
+        factProperties.put("sourceKind", Map.of("type", "string", "enum",
+                List.of("JOB_POSTING", "UPLOADED_COMPANY_DOC", "USER_MEMO")));
+        factProperties.put("sourceRef", stringSchema());
+        properties.put("verifiedFacts", objectArraySchema(factProperties, List.of("fact", "source", "evidence")));
+        Map<String, Object> inferenceProperties = new LinkedHashMap<>();
+        inferenceProperties.put("inference", stringSchema());
+        inferenceProperties.put("basis", stringSchema());
+        inferenceProperties.put("inferenceId", stringSchema());
+        inferenceProperties.put("basedOn", stringArraySchema());
+        inferenceProperties.put("confidence", Map.of("type", "string", "enum", List.of("HIGH", "MEDIUM", "LOW")));
+        properties.put("aiInferences", objectArraySchema(inferenceProperties, List.of("inference", "basis")));
+        Map<String, Object> unknownProperties = new LinkedHashMap<>();
+        unknownProperties.put("topic", stringSchema());
+        unknownProperties.put("reason", stringSchema());
+        unknownProperties.put("neededSource", stringSchema());
+        properties.put("unknowns", objectArraySchema(unknownProperties, List.of("topic", "reason")));
         return objectSchema(properties, List.of(
                 "companySummary", "recentIssues", "industry", "competitors", "interviewPoints",
-                "sources", "verifiedFacts", "aiInferences"));
+                "sources", "verifiedFacts", "aiInferences", "unknowns"));
     }
 
     private Map<String, Object> objectSchema(Map<String, Object> properties, List<String> required) {
@@ -828,6 +867,11 @@ public class BAnalysisGenerationService {
         return "NORMAL";
     }
 
+    /**
+     * 공고 원문 키워드로 접지되는 industry 만 반환한다. 키워드 근거가 없으면 빈 값(확인불가)을
+     * 반환한다 — self-rules 폴백이 무근거 "TECH" 기본값을 채워 grounding 을 악화시키던 문제의
+     * 6단계 수정(231 문서 5-6). 빈 값은 저장 시 null 컬럼으로 정리된다.
+     */
     private String industry(String text) {
         String lower = text.toLowerCase(Locale.ROOT);
         if (lower.contains("fintech") || lower.contains("payment") || lower.contains("bank") || lower.contains("금융")) {
@@ -842,7 +886,7 @@ public class BAnalysisGenerationService {
         if (lower.contains("education") || lower.contains("learning") || lower.contains("교육")) {
             return "EDTECH";
         }
-        return "TECH";
+        return "";
     }
 
     private List<Map<String, String>> evidence(List<String> requiredSkills, String postingText) {
@@ -859,16 +903,24 @@ public class BAnalysisGenerationService {
         List<Map<String, String>> rows = new ArrayList<>();
         String jobTitle = knownJobTitle(applicationCase.getJobTitle());
         if (jobTitle != null) {
-            rows.add(Map.of("fact", "직무명: " + jobTitle, "source", "application_case"));
+            rows.add(Map.of(
+                    "fact", "직무명: " + jobTitle,
+                    "source", "직무명",
+                    "evidence", jobTitle));
         }
         String companyName = knownCompanyName(applicationCase.getCompanyName());
         if (companyName != null) {
-            rows.add(Map.of("fact", "기업명: " + companyName, "source", "application_case"));
+            rows.add(Map.of(
+                    "fact", "기업명: " + companyName,
+                    "source", "회사명",
+                    "evidence", companyName));
         }
         // 회사·직무가 미상이어도 품질 신호로 쓰이는 추출 사실은 항상 남긴다(validateCompanyPayload 의존).
+        String postingEvidence = quoteFor(jobTitle == null ? "" : jobTitle, postingText);
         rows.add(Map.of(
                 "fact", "공고문이 추출되어 품질 게이트를 통과한 뒤 분석되었습니다.",
-                "source", quoteFor(jobTitle == null ? "" : jobTitle, postingText)));
+                "source", "채용공고",
+                "evidence", postingEvidence));
         return rows;
     }
 
@@ -939,6 +991,68 @@ public class BAnalysisGenerationService {
         } catch (JacksonException ex) {
             throw new IllegalStateException("Local LLM response array cannot be serialized: " + field, ex);
         }
+    }
+
+    /** 선택 배열 필드 — 없거나 배열이 아니면 빈 배열로 둔다(구 모델 출력과의 하위 호환). */
+    private String optionalArrayJson(JsonNode root, String field) {
+        JsonNode value = root.path(field);
+        if (!value.isArray()) {
+            return "[]";
+        }
+        try {
+            return objectMapper.writeValueAsString(value);
+        } catch (JacksonException ex) {
+            return "[]";
+        }
+    }
+
+    /**
+     * 02 포스타입 job 반복 루프 최소 대응(231 문서 5-9): 동일 field+quote evidence 를 후처리 dedup 한다.
+     */
+    private String dedupEvidenceJson(String evidenceJson) {
+        try {
+            JsonNode root = objectMapper.readTree(evidenceJson);
+            if (!root.isArray()) {
+                return evidenceJson;
+            }
+            LinkedHashSet<String> seen = new LinkedHashSet<>();
+            List<JsonNode> kept = new ArrayList<>();
+            boolean changed = false;
+            for (JsonNode item : root) {
+                String key = item.path("field").asText("") + "|" + item.path("quote").asText("");
+                if (seen.add(key)) {
+                    kept.add(item);
+                } else {
+                    changed = true;
+                }
+            }
+            if (!changed) {
+                return evidenceJson;
+            }
+            log.debug("Deduplicated {} repeated job evidence item(s)", root.size() - kept.size());
+            return objectMapper.writeValueAsString(kept);
+        } catch (JacksonException ex) {
+            return evidenceJson;
+        }
+    }
+
+    private JobAnalysisPayload withDedupedEvidence(JobAnalysisPayload payload) {
+        String deduped = dedupEvidenceJson(payload.evidence());
+        if (deduped.equals(payload.evidence())) {
+            return payload;
+        }
+        return new JobAnalysisPayload(
+                payload.employmentType(),
+                payload.experienceLevel(),
+                payload.requiredSkills(),
+                payload.preferredSkills(),
+                payload.duties(),
+                payload.qualifications(),
+                payload.difficulty(),
+                payload.summary(),
+                deduped,
+                payload.ambiguousConditions(),
+                payload.usage());
     }
 
     private String objectArrayJson(JsonNode root, String field, String... requiredKeys) {

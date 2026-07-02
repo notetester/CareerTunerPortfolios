@@ -40,6 +40,7 @@ const companyAnalysisRow: AdminCompanyAnalysisRow = {
   sources: null,
   verifiedFacts: "Verified facts",
   aiInferences: "AI inferences",
+  unknowns: "[{\"topic\":\"매출 규모\",\"reason\":\"공고문에 관련 정보가 없다\"}]",
   sourceType: "WEB",
   checkedAt: "2026-06-02T00:00:00Z",
   refreshRecommendedAt: "2026-06-09T00:00:00Z",

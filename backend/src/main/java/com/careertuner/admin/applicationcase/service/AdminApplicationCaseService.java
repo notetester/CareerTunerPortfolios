@@ -20,6 +20,7 @@ import com.careertuner.common.exception.ErrorCode;
 import com.careertuner.common.security.AuthUser;
 import com.careertuner.companyanalysis.dto.CompanyAnalysisResponse;
 import com.careertuner.companyanalysis.mapper.CompanyAnalysisMapper;
+import com.careertuner.companyanalysis.service.BCompanyAnalysisCanonicalizer;
 import com.careertuner.jobanalysis.dto.JobAnalysisResponse;
 import com.careertuner.jobanalysis.mapper.JobAnalysisMapper;
 import com.careertuner.jobposting.dto.JobPostingResponse;
@@ -40,6 +41,7 @@ public class AdminApplicationCaseService {
     private final JobAnalysisMapper jobAnalysisMapper;
     private final CompanyAnalysisMapper companyAnalysisMapper;
     private final AdminAiUsageMapper aiUsageMapper;
+    private final BCompanyAnalysisCanonicalizer companyAnalysisCanonicalizer;
 
     @Transactional(readOnly = true)
     public List<AdminApplicationCaseRow> applicationCases(AuthUser authUser, AdminApplicationCaseSearchCriteria criteria) {
@@ -64,7 +66,12 @@ public class AdminApplicationCaseService {
                 applicationCase,
                 jobPostingMapper.findJobPostingRevisionsByCaseId(id).stream().map(JobPostingResponse::from).toList(),
                 jobAnalysisMapper.findJobAnalysisHistoryByCaseId(id).stream().map(JobAnalysisResponse::from).toList(),
-                companyAnalysisMapper.findCompanyAnalysisHistoryByCaseId(id).stream().map(CompanyAnalysisResponse::from).toList(),
+                companyAnalysisMapper.findCompanyAnalysisHistoryByCaseId(id).stream()
+                        .map(analysis -> CompanyAnalysisResponse.from(
+                                analysis,
+                                companyAnalysisCanonicalizer.withoutUnknownMarkers(analysis.getAiInferences()),
+                                companyAnalysisCanonicalizer.extractUnknowns(analysis.getAiInferences())))
+                        .toList(),
                 aiUsageMapper.findBUsageLogsByCaseId(id, 100));
     }
 

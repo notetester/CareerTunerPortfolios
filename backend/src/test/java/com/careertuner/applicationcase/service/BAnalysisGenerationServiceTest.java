@@ -649,6 +649,125 @@ class BAnalysisGenerationServiceTest {
         assertThat(experienceLevel.get("enum")).isEqualTo(List.of("JUNIOR", "MID", "SENIOR"));
     }
 
+    // ── 6단계: 폴백 게이트 재설계 + canonical contract ──
+
+    @Test
+    void blankCompanySummaryDoesNotFallBackAndBecomesUnavailableNotice() {
+        // 03/04 패턴: 기업 정보가 부족한 공고에서 summary 를 비운 보수적 R1 출력은 실패가 아니다.
+        // self-rules 폴백 대신 확인불가 고지로 대체하고 부분 성공 필드(industry 등)를 보존한다.
+        BAnalysisProperties properties = new BAnalysisProperties();
+        properties.getLocalLlm().setEnabled(true);
+        properties.getLocalLlm().setModel("qwen-test");
+        BLocalLlmClient localLlmClient = mock(BLocalLlmClient.class);
+        when(localLlmClient.chat(anyString(), anyString(), any())).thenReturn("""
+                {
+                  "companySummary": "",
+                  "recentIssues": "",
+                  "industry": "IT 서비스",
+                  "competitors": [],
+                  "interviewPoints": "공고문 담당 업무 중심으로 준비",
+                  "sources": [{"type":"JOB_POSTING","label":"채용공고"}],
+                  "verifiedFacts": [{"fact":"백엔드 개발자를 채용한다","source":"채용공고","evidence":"Backend Engineer"}],
+                  "aiInferences": [],
+                  "unknowns": [{"topic":"매출 규모","reason":"공고문에 관련 정보가 없다"}]
+                }
+                """);
+        BAnalysisGenerationService service = service(properties, localLlmClient);
+
+        BAnalysisGenerationService.GeneratedCompanyAnalysis result =
+                service.generateCompanyAnalysis(applicationCase(), postingText());
+
+        assertThat(result.fellBack())
+                .as("blank summary must not fall back to self-rules (reason=%s)", result.fallbackReason())
+                .isFalse();
+        assertThat(result.payload().companySummary()).contains("확인되지 않습니다");
+        assertThat(result.payload().recentIssues()).contains("확인");
+        assertThat(result.payload().industry()).isEqualTo("IT 서비스");
+        assertThat(result.payload().unknowns()).contains("매출 규모");
+    }
+
+    @Test
+    void companySelfRulesFallbackDoesNotFillBaselessIndustry() {
+        // self-rules 폴백이 키워드 근거 없는 "TECH" 기본값을 채우지 않는다(6단계 폴백 게이트).
+        BAnalysisProperties properties = new BAnalysisProperties();
+        properties.getLocalLlm().setEnabled(true);
+        properties.getLocalLlm().setModel("qwen-test");
+        BLocalLlmClient localLlmClient = mock(BLocalLlmClient.class);
+        when(localLlmClient.chat(anyString(), anyString(), any())).thenReturn("{}");
+        BAnalysisGenerationService service = service(properties, localLlmClient);
+
+        BAnalysisGenerationService.GeneratedCompanyAnalysis result = service.generateCompanyAnalysis(
+                applicationCase(), "일반 사무직 채용 공고입니다. 문서 작성과 일정 관리를 담당합니다.");
+
+        assertThat(result.fellBack()).isTrue();
+        assertThat(result.payload().industry()).isEmpty();
+    }
+
+    @Test
+    void companyPayloadCarriesUnknownsFromModelOutput() {
+        BAnalysisProperties properties = new BAnalysisProperties();
+        properties.getLocalLlm().setEnabled(true);
+        properties.getLocalLlm().setModel("qwen-test");
+        BLocalLlmClient localLlmClient = mock(BLocalLlmClient.class);
+        when(localLlmClient.chat(anyString(), anyString(), any())).thenReturn("""
+                {
+                  "companySummary": "Acme 백엔드 채용 공고 기준 기업 요약입니다.",
+                  "recentIssues": "확인 불가",
+                  "industry": "",
+                  "competitors": [],
+                  "interviewPoints": "Spring Boot 경험 중심 준비",
+                  "sources": [{"type":"JOB_POSTING","label":"채용공고"}],
+                  "verifiedFacts": [{"fact":"Spring Boot API 를 다룬다","source":"채용공고","evidence":"build Spring Boot APIs"}],
+                  "aiInferences": [{"inference":"백엔드 중심 조직","basis":"요구 기술 구성","basedOn":["F1"],"confidence":"MEDIUM"}],
+                  "unknowns": [{"topic":"사원수","reason":"공고문에 없음","neededSource":"회사 소개서"}]
+                }
+                """);
+        BAnalysisGenerationService service = service(properties, localLlmClient);
+
+        BAnalysisGenerationService.GeneratedCompanyAnalysis result =
+                service.generateCompanyAnalysis(applicationCase(), postingText());
+
+        assertThat(result.fellBack()).isFalse();
+        assertThat(result.payload().unknowns()).contains("사원수").contains("회사 소개서");
+        assertThat(result.payload().verifiedFacts()).contains("evidence");
+        assertThat(result.payload().aiInferences()).contains("basedOn").contains("MEDIUM");
+    }
+
+    @Test
+    void duplicateJobEvidenceIsDeduplicated() {
+        // 02 반복 루프 최소 대응: 동일 field+quote evidence 는 후처리 dedup 된다.
+        BAnalysisProperties properties = new BAnalysisProperties();
+        properties.getLocalLlm().setEnabled(true);
+        properties.getLocalLlm().setModel("qwen-test");
+        BLocalLlmClient localLlmClient = mock(BLocalLlmClient.class);
+        when(localLlmClient.chat(anyString(), anyString(), any())).thenReturn("""
+                {
+                  "employmentType": "FULL_TIME",
+                  "experienceLevel": "MID",
+                  "requiredSkills": ["Java", "Spring Boot"],
+                  "preferredSkills": [],
+                  "duties": "Spring API 개발과 운영",
+                  "qualifications": "Java와 Spring Boot 경험",
+                  "difficulty": "NORMAL",
+                  "summary": "백엔드 개발자를 위한 공고 분석 요약입니다.",
+                  "evidence": [
+                    {"field":"requiredSkills","quote":"Java"},
+                    {"field":"requiredSkills","quote":"Java"},
+                    {"field":"requiredSkills","quote":"Spring Boot"},
+                    {"field":"requiredSkills","quote":"Java"}
+                  ],
+                  "ambiguousConditions": []
+                }
+                """);
+        BAnalysisGenerationService service = service(properties, localLlmClient);
+
+        BAnalysisGenerationService.GeneratedJobAnalysis result =
+                service.generateJobAnalysis(applicationCase(), postingText());
+
+        assertThat(result.fellBack()).isFalse();
+        assertThat(new ObjectMapper().readTree(result.payload().evidence())).hasSize(2);
+    }
+
     @Test
     void localLlmInvalidJsonFallsBackToSelfRules() {
         BAnalysisProperties properties = new BAnalysisProperties();

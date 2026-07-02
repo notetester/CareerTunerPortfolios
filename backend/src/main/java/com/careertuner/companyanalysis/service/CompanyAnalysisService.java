@@ -40,6 +40,7 @@ public class CompanyAnalysisService {
     private final ApplicationCaseAnalysisStatusService statusService;
     private final TransactionTemplate transactionTemplate;
     private final BAnalysisJsonValidator analysisJsonValidator;
+    private final BCompanyAnalysisCanonicalizer canonicalizer;
 
     public CompanyAnalysisResponse createCompanyAnalysis(Long userId, Long applicationCaseId) {
         ApplicationCase applicationCase = accessService.requireOwned(userId, applicationCaseId);
@@ -50,7 +51,15 @@ public class CompanyAnalysisService {
         statusService.markAnalyzing(userId, applicationCaseId, previousStatus);
         try {
             GeneratedCompanyAnalysis generated = bAnalysisGenerationService.generateCompanyAnalysis(applicationCase, sourceText);
-            var payload = generated.payload();
+            // 자동 파이프라인 경로와 동일한 canonicalizer 로 저장 전 정규화한다
+            // (evidence gate, ID/sourceKind/sourceRef 보정, unknowns 접기, sources 통일).
+            var payload = canonicalizer.canonicalizeForStorage(
+                    generated.payload(),
+                    jobPosting.getId(),
+                    jobPosting.getRevision(),
+                    sourceText,
+                    applicationCase.getCompanyName(),
+                    applicationCase.getJobTitle()).payload();
             LocalDateTime checkedAt = LocalDateTime.now();
             return transactionTemplate.execute(status -> {
                 CompanyAnalysis companyAnalysis = CompanyAnalysis.builder()
@@ -70,7 +79,7 @@ public class CompanyAnalysisService {
                         .refreshRecommendedAt(checkedAt.plusDays(30))
                         .build();
                 companyAnalysisMapper.insertCompanyAnalysis(companyAnalysis);
-                CompanyAnalysisResponse response = CompanyAnalysisResponse.from(companyAnalysisMapper.findLatestCompanyAnalysisByCaseId(applicationCaseId));
+                CompanyAnalysisResponse response = toResponse(companyAnalysisMapper.findLatestCompanyAnalysisByCaseId(applicationCaseId));
                 statusService.markReadyAfterAnalysis(userId, applicationCaseId, previousStatus);
                 if (generated.fellBack()) {
                     aiUsageLogService.recordFailure(
@@ -93,14 +102,14 @@ public class CompanyAnalysisService {
     @Transactional(readOnly = true)
     public CompanyAnalysisResponse getCompanyAnalysis(Long userId, Long applicationCaseId) {
         accessService.requireOwned(userId, applicationCaseId);
-        return CompanyAnalysisResponse.from(companyAnalysisMapper.findLatestCompanyAnalysisByCaseId(applicationCaseId));
+        return toResponse(companyAnalysisMapper.findLatestCompanyAnalysisByCaseId(applicationCaseId));
     }
 
     @Transactional(readOnly = true)
     public List<CompanyAnalysisResponse> getCompanyAnalysisHistory(Long userId, Long applicationCaseId) {
         accessService.requireOwned(userId, applicationCaseId);
         return companyAnalysisMapper.findCompanyAnalysisHistoryByCaseId(applicationCaseId).stream()
-                .map(CompanyAnalysisResponse::from)
+                .map(this::toResponse)
                 .toList();
     }
 
@@ -124,7 +133,7 @@ public class CompanyAnalysisService {
                 .interviewPoints(defaultString(request.interviewPoints(), existing.getInterviewPoints()))
                 .sources(defaultString(request.sources(), existing.getSources()))
                 .verifiedFacts(defaultValidatedJson(request.verifiedFacts(), existing.getVerifiedFacts(), analysisJsonValidator::validateVerifiedFacts))
-                .aiInferences(defaultValidatedJson(request.aiInferences(), existing.getAiInferences(), analysisJsonValidator::validateAiInferences))
+                .aiInferences(reviewedAiInferences(request.aiInferences(), existing.getAiInferences()))
                 .sourceType(existing.getSourceType())
                 .checkedAt(existing.getCheckedAt())
                 .refreshRecommendedAt(existing.getRefreshRecommendedAt())
@@ -132,7 +141,35 @@ public class CompanyAnalysisService {
                 .adminMemo(existing.getAdminMemo())
                 .build();
         companyAnalysisMapper.updateCompanyAnalysisReview(updated);
-        return CompanyAnalysisResponse.from(companyAnalysisMapper.findCompanyAnalysisByIdAndCaseId(analysisId, applicationCaseId));
+        return toResponse(companyAnalysisMapper.findCompanyAnalysisByIdAndCaseId(analysisId, applicationCaseId));
+    }
+
+    /**
+     * 응답 직전 unknowns 펼치기 — 저장된 aiInferences 의 {@code kind=UNKNOWN} 마커를 분리해
+     * virtual unknowns 로 내리고, aiInferences 에서는 제거한다. 프런트/하네스가 마커를
+     * 직접 파싱하지 않게 하는 단일 지점이다. 마커 없는 기존 레코드는 그대로 통과한다.
+     */
+    private CompanyAnalysisResponse toResponse(CompanyAnalysis analysis) {
+        if (analysis == null) {
+            return null;
+        }
+        return CompanyAnalysisResponse.from(
+                analysis,
+                canonicalizer.withoutUnknownMarkers(analysis.getAiInferences()),
+                canonicalizer.extractUnknowns(analysis.getAiInferences()));
+    }
+
+    /**
+     * 검수 저장용 aiInferences 병합 — 응답에서 마커가 제거된 채 편집되므로, 저장 시 기존 레코드의
+     * unknown 마커를 서버가 재부착한다. 프런트 additive key 보존 여부와 무관하게 마커가
+     * 유실되거나 일반 추론으로 오염되지 않는다(231 문서 5-7 릴리스 제약의 구조적 해소).
+     */
+    private String reviewedAiInferences(String requested, String existingJson) {
+        if (isBlank(requested)) {
+            return existingJson;
+        }
+        String validated = analysisJsonValidator.validateAiInferences(requested.trim());
+        return canonicalizer.mergeUnknownMarkers(validated, existingJson);
     }
 
     private static String blankToNull(String value) {

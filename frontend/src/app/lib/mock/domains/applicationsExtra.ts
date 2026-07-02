@@ -153,6 +153,7 @@ function buildCompanyAnalysis(applicationCaseId: number, analysisId: number): Co
     sources: JSON.stringify(["채용 공고", "기업 홈페이지"]),
     verifiedFacts: JSON.stringify([{ fact: "메신저 서비스 운영", source: "기업 홈페이지" }]),
     aiInferences: JSON.stringify([{ inference: "프론트엔드 인력 수요 증가", basis: "AI 서비스 확장" }]),
+    unknowns: null,
     sourceType: "TEXT",
     checkedAt: iso(3),
     refreshRecommendedAt: iso(-27),

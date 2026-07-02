@@ -27,6 +27,9 @@ import com.careertuner.common.exception.BusinessException;
 import com.careertuner.common.exception.ErrorCode;
 import com.careertuner.common.security.AuthUser;
 import com.careertuner.companyanalysis.mapper.CompanyAnalysisMapper;
+import com.careertuner.companyanalysis.service.BCompanyAnalysisCanonicalizer;
+
+import tools.jackson.databind.ObjectMapper;
 
 class AdminCompanyAnalysisServiceTest {
 
@@ -34,7 +37,8 @@ class AdminCompanyAnalysisServiceTest {
     void companyAnalysesNormalizesCriteriaBeforeMapperCall() {
         AdminCompanyAnalysisMapper mapper = mock(AdminCompanyAnalysisMapper.class);
         CompanyAnalysisMapper companyAnalysisMapper = mock(CompanyAnalysisMapper.class);
-        AdminCompanyAnalysisService service = new AdminCompanyAnalysisService(mapper, companyAnalysisMapper);
+        AdminCompanyAnalysisService service = new AdminCompanyAnalysisService(mapper, companyAnalysisMapper,
+                new BCompanyAnalysisCanonicalizer(new ObjectMapper()));
         when(mapper.findCompanyAnalyses(any())).thenReturn(List.of());
 
         service.companyAnalyses(admin(), AdminCompanyAnalysisSearchCriteria.builder()
@@ -72,7 +76,8 @@ class AdminCompanyAnalysisServiceTest {
     void companyAnalysesRejectsInvalidSourceType() {
         AdminCompanyAnalysisMapper mapper = mock(AdminCompanyAnalysisMapper.class);
         CompanyAnalysisMapper companyAnalysisMapper = mock(CompanyAnalysisMapper.class);
-        AdminCompanyAnalysisService service = new AdminCompanyAnalysisService(mapper, companyAnalysisMapper);
+        AdminCompanyAnalysisService service = new AdminCompanyAnalysisService(mapper, companyAnalysisMapper,
+                new BCompanyAnalysisCanonicalizer(new ObjectMapper()));
 
         assertThatThrownBy(() -> service.companyAnalyses(admin(), AdminCompanyAnalysisSearchCriteria.builder()
                 .sourceType("unknown")
@@ -88,7 +93,8 @@ class AdminCompanyAnalysisServiceTest {
     void updateMetadataRequiresAdminRole() {
         AdminCompanyAnalysisMapper mapper = mock(AdminCompanyAnalysisMapper.class);
         CompanyAnalysisMapper companyAnalysisMapper = mock(CompanyAnalysisMapper.class);
-        AdminCompanyAnalysisService service = new AdminCompanyAnalysisService(mapper, companyAnalysisMapper);
+        AdminCompanyAnalysisService service = new AdminCompanyAnalysisService(mapper, companyAnalysisMapper,
+                new BCompanyAnalysisCanonicalizer(new ObjectMapper()));
         AdminCompanyAnalysisMetadataRequest request = new AdminCompanyAnalysisMetadataRequest(
                 "WEB",
                 LocalDateTime.of(2026, 6, 10, 9, 0),
@@ -108,7 +114,8 @@ class AdminCompanyAnalysisServiceTest {
     void updateMetadataTrimsSourceTypeAndUpdatesMetadataFields() {
         AdminCompanyAnalysisMapper mapper = mock(AdminCompanyAnalysisMapper.class);
         CompanyAnalysisMapper companyAnalysisMapper = mock(CompanyAnalysisMapper.class);
-        AdminCompanyAnalysisService service = new AdminCompanyAnalysisService(mapper, companyAnalysisMapper);
+        AdminCompanyAnalysisService service = new AdminCompanyAnalysisService(mapper, companyAnalysisMapper,
+                new BCompanyAnalysisCanonicalizer(new ObjectMapper()));
         LocalDateTime checkedAt = LocalDateTime.of(2026, 6, 10, 9, 0);
         LocalDateTime refreshRecommendedAt = LocalDateTime.of(2026, 6, 17, 9, 0);
         AdminCompanyAnalysisMetadataRequest request = new AdminCompanyAnalysisMetadataRequest(
@@ -129,7 +136,8 @@ class AdminCompanyAnalysisServiceTest {
     void updateMetadataAllowsPartialRequestWithoutForcingBlankDates() {
         AdminCompanyAnalysisMapper mapper = mock(AdminCompanyAnalysisMapper.class);
         CompanyAnalysisMapper companyAnalysisMapper = mock(CompanyAnalysisMapper.class);
-        AdminCompanyAnalysisService service = new AdminCompanyAnalysisService(mapper, companyAnalysisMapper);
+        AdminCompanyAnalysisService service = new AdminCompanyAnalysisService(mapper, companyAnalysisMapper,
+                new BCompanyAnalysisCanonicalizer(new ObjectMapper()));
         AdminCompanyAnalysisMetadataRequest request = new AdminCompanyAnalysisMetadataRequest("WEB", null, null, false, false);
 
         when(mapper.updateMetadata(20L, "WEB", null, null, false, false)).thenReturn(1);
@@ -143,7 +151,8 @@ class AdminCompanyAnalysisServiceTest {
     void updateMetadataClearsDateMetadataWhenRequested() {
         AdminCompanyAnalysisMapper mapper = mock(AdminCompanyAnalysisMapper.class);
         CompanyAnalysisMapper companyAnalysisMapper = mock(CompanyAnalysisMapper.class);
-        AdminCompanyAnalysisService service = new AdminCompanyAnalysisService(mapper, companyAnalysisMapper);
+        AdminCompanyAnalysisService service = new AdminCompanyAnalysisService(mapper, companyAnalysisMapper,
+                new BCompanyAnalysisCanonicalizer(new ObjectMapper()));
         AdminCompanyAnalysisMetadataRequest request = new AdminCompanyAnalysisMetadataRequest("WEB", null, null, true, true);
 
         when(mapper.updateMetadata(20L, "WEB", null, null, true, true)).thenReturn(1);
@@ -157,7 +166,8 @@ class AdminCompanyAnalysisServiceTest {
     void updateMetadataRejectsBlankSourceType() {
         AdminCompanyAnalysisMapper mapper = mock(AdminCompanyAnalysisMapper.class);
         CompanyAnalysisMapper companyAnalysisMapper = mock(CompanyAnalysisMapper.class);
-        AdminCompanyAnalysisService service = new AdminCompanyAnalysisService(mapper, companyAnalysisMapper);
+        AdminCompanyAnalysisService service = new AdminCompanyAnalysisService(mapper, companyAnalysisMapper,
+                new BCompanyAnalysisCanonicalizer(new ObjectMapper()));
         AdminCompanyAnalysisMetadataRequest request = new AdminCompanyAnalysisMetadataRequest(" ", null, null, false, false);
 
         assertThatThrownBy(() -> service.updateMetadata(admin(), 20L, request))
@@ -172,7 +182,8 @@ class AdminCompanyAnalysisServiceTest {
     void updateMetadataRejectsInvalidSourceType() {
         AdminCompanyAnalysisMapper mapper = mock(AdminCompanyAnalysisMapper.class);
         CompanyAnalysisMapper companyAnalysisMapper = mock(CompanyAnalysisMapper.class);
-        AdminCompanyAnalysisService service = new AdminCompanyAnalysisService(mapper, companyAnalysisMapper);
+        AdminCompanyAnalysisService service = new AdminCompanyAnalysisService(mapper, companyAnalysisMapper,
+                new BCompanyAnalysisCanonicalizer(new ObjectMapper()));
         AdminCompanyAnalysisMetadataRequest request = new AdminCompanyAnalysisMetadataRequest("crawler", null, null, false, false);
 
         assertThatThrownBy(() -> service.updateMetadata(admin(), 20L, request))
@@ -196,7 +207,8 @@ class AdminCompanyAnalysisServiceTest {
     void updateMetadataThrowsNotFoundWhenNoAnalysisRowUpdated() {
         AdminCompanyAnalysisMapper mapper = mock(AdminCompanyAnalysisMapper.class);
         CompanyAnalysisMapper companyAnalysisMapper = mock(CompanyAnalysisMapper.class);
-        AdminCompanyAnalysisService service = new AdminCompanyAnalysisService(mapper, companyAnalysisMapper);
+        AdminCompanyAnalysisService service = new AdminCompanyAnalysisService(mapper, companyAnalysisMapper,
+                new BCompanyAnalysisCanonicalizer(new ObjectMapper()));
         AdminCompanyAnalysisMetadataRequest request = new AdminCompanyAnalysisMetadataRequest(
                 "WEB",
                 null,
