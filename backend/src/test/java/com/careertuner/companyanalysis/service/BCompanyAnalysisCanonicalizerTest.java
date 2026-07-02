@@ -177,6 +177,25 @@ class BCompanyAnalysisCanonicalizerTest {
     // ── ID·sourceKind·basedOn 보정 ──
 
     @Test
+    void repeatedVerifiedFactsAreRemovedBeforeGateScoring() {
+        CanonicalCompanyAnalysis result = canonicalize(payload(
+                facts("""
+                        [{"fact":"React TypeScript experience is required","source":"job posting","evidence":"React, TypeScript"},
+                         {"fact":"React TypeScript experience is required","source":"job posting","evidence":"React, TypeScript 기반"},
+                         {"fact":"tumblbug service operation is preferred","source":"job posting","evidence":"tumblbug"}]
+                        """),
+                "[]", "[]"));
+
+        JsonNode kept = readArray(result.payload().verifiedFacts());
+
+        assertThat(kept).hasSize(2);
+        assertThat(result.gateActions())
+                .anyMatch(action -> action.ref().equals("verifiedFacts[1]")
+                        && action.action() == GateOutcome.REMOVED
+                        && action.detail().contains("반복 중복 제거"));
+    }
+
+    @Test
     void missingAndDuplicateIdsAreReassigned() {
         CanonicalCompanyAnalysis result = canonicalize(payload(
                 facts("""
@@ -328,6 +347,28 @@ class BCompanyAnalysisCanonicalizerTest {
     }
 
     // ── 자유서술 guard + 확인불가 고지 ──
+
+    @Test
+    void repeatedAiInferencesAreRemovedWithSeparateActionDetail() {
+        CanonicalCompanyAnalysis result = canonicalize(payload(
+                facts("""
+                        [{"fact":"React TypeScript experience is required","source":"job posting","evidence":"React, TypeScript"}]
+                        """),
+                """
+                [{"inference":"frontend work is likely","basis":"React TypeScript"},
+                 {"inference":"frontend work is likely","basis":"React TypeScript"},
+                 {"inference":"service operation experience can help","basis":"tumblbug"}]
+                """,
+                "[]"));
+
+        JsonNode inferences = readArray(result.payload().aiInferences());
+
+        assertThat(inferences).hasSize(2);
+        assertThat(result.gateActions())
+                .anyMatch(action -> action.ref().equals("aiInferences[1]")
+                        && action.action() == GateOutcome.REMOVED
+                        && action.detail().contains("반복 중복 제거"));
+    }
 
     @Test
     void freeTextSentenceWithUnverifiableUrlIsRemoved() {

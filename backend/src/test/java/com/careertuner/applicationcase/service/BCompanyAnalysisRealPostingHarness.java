@@ -7,6 +7,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.time.Duration;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
@@ -60,6 +61,7 @@ class BCompanyAnalysisRealPostingHarness {
     private static final String ENV_TARGET = "B_REAL_COMPANY_TARGET";
     private static final String ENV_ALL = "B_REAL_COMPANY_ALL";
     private static final String ENV_FORCE = "B_REAL_COMPANY_FORCE";
+    private static final String ENV_READ_TIMEOUT_SECONDS = "B_REAL_COMPANY_READ_TIMEOUT_SECONDS";
 
     private record TargetCase(int index, String fileName, String companyName, String jobTitle) {
     }
@@ -177,6 +179,7 @@ class BCompanyAnalysisRealPostingHarness {
 
             BAnalysisProperties properties = new BAnalysisProperties();
             properties.getLocalLlm().setEnabled(true);
+            properties.getLocalLlm().setReadTimeout(readTimeout());
             // 모델은 application.yaml 기본값(careertuner-b-jobposting-r1)을 그대로 사용.
             properties.getLocalLlm().setMaxRetries(0); // 검증은 1회 호출만(폴백 관찰 목적).
 
@@ -503,6 +506,22 @@ class BCompanyAnalysisRealPostingHarness {
             case "1", "true", "y", "yes", "on" -> true;
             default -> false;
         };
+    }
+
+    private static Duration readTimeout() {
+        String raw = System.getenv(ENV_READ_TIMEOUT_SECONDS);
+        if (isBlank(raw)) {
+            return Duration.ofSeconds(480);
+        }
+        try {
+            long seconds = Long.parseLong(raw.trim());
+            if (seconds <= 0) {
+                throw new NumberFormatException("non-positive");
+            }
+            return Duration.ofSeconds(seconds);
+        } catch (NumberFormatException ex) {
+            throw new AssertionError(ENV_READ_TIMEOUT_SECONDS + " must be positive seconds: " + raw, ex);
+        }
     }
 
     private static boolean isBlank(String value) {

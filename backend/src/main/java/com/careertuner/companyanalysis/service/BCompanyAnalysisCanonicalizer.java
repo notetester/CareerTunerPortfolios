@@ -93,6 +93,7 @@ public class BCompanyAnalysisCanonicalizer {
     private static final Pattern SENTENCE_SPLIT = Pattern.compile("(?<=[.!?…])\\s+|(?<=다\\.)\\s*|\\n+");
     private static final Pattern FACT_ID_FORMAT = Pattern.compile("F\\d{1,4}");
     private static final Pattern INFERENCE_ID_FORMAT = Pattern.compile("I\\d{1,4}");
+    private static final String DUPLICATE_REMOVAL_DETAIL = "반복 중복 제거";
 
     private final ObjectMapper objectMapper;
 
@@ -241,6 +242,8 @@ public class BCompanyAnalysisCanonicalizer {
                                    List<ObjectNode> demoted,
                                    List<GateAction> actions) {
         int index = 0;
+        Set<String> seenFactTexts = new LinkedHashSet<>();
+        Set<String> seenFactEvidencePairs = new LinkedHashSet<>();
         for (JsonNode item : facts) {
             String ref = "verifiedFacts[" + index++ + "]";
             if (!item.isObject()) {
@@ -254,6 +257,14 @@ public class BCompanyAnalysisCanonicalizer {
                 continue;
             }
             String evidence = text(fact, "evidence");
+            String normalizedFact = normalizeForMatch(factText);
+            String normalizedEvidence = normalizeForMatch(evidence);
+            String factEvidenceKey = normalizedFact + "|" + normalizedEvidence;
+            if ((!isBlank(normalizedFact) && !seenFactTexts.add(normalizedFact))
+                    || !seenFactEvidencePairs.add(factEvidenceKey)) {
+                actions.add(new GateAction(ref, "verifiedFacts", GateOutcome.REMOVED, DUPLICATE_REMOVAL_DETAIL));
+                continue;
+            }
             if (isBlank(evidence)) {
                 // evidence 미제공(구 스키마·self-rules 포함): fact 자체가 원문에 접지되면 유지, 아니면 강등.
                 if (groundingRatio(factText, corpus) >= FACT_GROUNDING_THRESHOLD) {
@@ -388,6 +399,7 @@ public class BCompanyAnalysisCanonicalizer {
                                         ArrayNode unknownMarkers,
                                         List<GateAction> actions) {
         int index = 0;
+        Set<String> seenInferenceBasisPairs = new LinkedHashSet<>();
         for (JsonNode item : inferences) {
             String ref = "aiInferences[" + index++ + "]";
             if (!item.isObject()) {
@@ -402,6 +414,13 @@ public class BCompanyAnalysisCanonicalizer {
             }
             if (isBlank(text(inference, "inference"))) {
                 actions.add(new GateAction(ref, "aiInferences", GateOutcome.REMOVED, "inference 누락"));
+                continue;
+            }
+            String inferenceKey = normalizeForMatch(text(inference, "inference"));
+            String basisKey = normalizeForMatch(text(inference, "basis"));
+            String inferenceBasisKey = inferenceKey + "|" + basisKey;
+            if (!seenInferenceBasisPairs.add(inferenceBasisKey)) {
+                actions.add(new GateAction(ref, "aiInferences", GateOutcome.REMOVED, DUPLICATE_REMOVAL_DETAIL));
                 continue;
             }
             boolean brokenBasedOn = filterBasedOn(inference, factIds);

@@ -22,6 +22,9 @@ class BCompanyAnalysisSchemaContractTest {
     private static final Set<String> TOP_LEVEL_FIELDS = Set.of(
             "companySummary", "recentIssues", "industry", "competitors", "interviewPoints",
             "sources", "verifiedFacts", "aiInferences", "unknowns");
+    private static final Set<String> LOCAL_TOP_LEVEL_REQUIRED = Set.of(
+            "companySummary", "recentIssues", "industry", "competitors", "interviewPoints",
+            "sources", "verifiedFacts", "aiInferences");
     private static final Set<String> FACT_FIELDS =
             Set.of("fact", "source", "evidence", "factId", "sourceKind", "sourceRef");
     private static final Set<String> INFERENCE_FIELDS =
@@ -36,7 +39,18 @@ class BCompanyAnalysisSchemaContractTest {
     void topLevelFieldSetsMatchAcrossProviders() {
         assertThat(properties(localSchema).keySet()).isEqualTo(TOP_LEVEL_FIELDS);
         assertThat(properties(openAiSchema).keySet()).isEqualTo(TOP_LEVEL_FIELDS);
+        assertThat(Set.copyOf(required(localSchema))).isEqualTo(LOCAL_TOP_LEVEL_REQUIRED);
         assertThat(Set.copyOf(required(openAiSchema))).isEqualTo(TOP_LEVEL_FIELDS);
+    }
+
+    @Test
+    void localSchemaUsesArrayCapsWithoutChangingOpenAiStrictSchema() {
+        assertThat(arraySchema(localSchema, "verifiedFacts").get("maxItems")).isEqualTo(8);
+        assertThat(arraySchema(localSchema, "aiInferences").get("maxItems")).isEqualTo(4);
+        assertThat(arraySchema(localSchema, "unknowns").get("maxItems")).isEqualTo(5);
+        assertThat(arraySchema(openAiSchema, "verifiedFacts")).doesNotContainKey("maxItems");
+        assertThat(arraySchema(openAiSchema, "aiInferences")).doesNotContainKey("maxItems");
+        assertThat(arraySchema(openAiSchema, "unknowns")).doesNotContainKey("maxItems");
     }
 
     @Test
@@ -116,6 +130,11 @@ class BCompanyAnalysisSchemaContractTest {
     private static Map<String, Object> items(Map<String, Object> schema, String field) {
         Map<String, Object> array = (Map<String, Object>) properties(schema).get(field);
         return (Map<String, Object>) array.get("items");
+    }
+
+    @SuppressWarnings("unchecked")
+    private static Map<String, Object> arraySchema(Map<String, Object> schema, String field) {
+        return (Map<String, Object>) properties(schema).get(field);
     }
 
     private static Map<String, Object> itemProperties(Map<String, Object> schema, String field) {

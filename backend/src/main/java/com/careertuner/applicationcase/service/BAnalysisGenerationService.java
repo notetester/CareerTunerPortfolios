@@ -33,6 +33,9 @@ import tools.jackson.databind.ObjectMapper;
 public class BAnalysisGenerationService {
 
     public static final String SELF_RULES_MODEL = "self-rules-v1";
+    private static final int COMPANY_VERIFIED_FACTS_MAX_ITEMS = 8;
+    private static final int COMPANY_AI_INFERENCES_MAX_ITEMS = 4;
+    private static final int COMPANY_UNKNOWNS_MAX_ITEMS = 5;
 
     // 경력 연차는 연차 숫자가 경력 키워드와 "결합"된 경우만 인정한다(단순 "N년" 근접 매칭은 오탐이 많음).
     // "설립 10년차"·"서비스 운영 5년"·"5년 연속 성장"(연혁/기간), "operating for 5 yrs"(단위만 있는 영어 기간)는
@@ -746,22 +749,31 @@ public class BAnalysisGenerationService {
         factProperties.put("sourceKind", Map.of("type", "string", "enum",
                 List.of("JOB_POSTING", "UPLOADED_COMPANY_DOC", "USER_MEMO")));
         factProperties.put("sourceRef", stringSchema());
-        properties.put("verifiedFacts", objectArraySchema(factProperties, List.of("fact", "source", "evidence")));
+        properties.put("verifiedFacts", objectArraySchema(
+                factProperties,
+                List.of("fact", "source", "evidence"),
+                COMPANY_VERIFIED_FACTS_MAX_ITEMS));
         Map<String, Object> inferenceProperties = new LinkedHashMap<>();
         inferenceProperties.put("inference", stringSchema());
         inferenceProperties.put("basis", stringSchema());
         inferenceProperties.put("inferenceId", stringSchema());
         inferenceProperties.put("basedOn", stringArraySchema());
         inferenceProperties.put("confidence", Map.of("type", "string", "enum", List.of("HIGH", "MEDIUM", "LOW")));
-        properties.put("aiInferences", objectArraySchema(inferenceProperties, List.of("inference", "basis")));
+        properties.put("aiInferences", objectArraySchema(
+                inferenceProperties,
+                List.of("inference", "basis"),
+                COMPANY_AI_INFERENCES_MAX_ITEMS));
         Map<String, Object> unknownProperties = new LinkedHashMap<>();
         unknownProperties.put("topic", stringSchema());
         unknownProperties.put("reason", stringSchema());
         unknownProperties.put("neededSource", stringSchema());
-        properties.put("unknowns", objectArraySchema(unknownProperties, List.of("topic", "reason")));
+        properties.put("unknowns", objectArraySchema(
+                unknownProperties,
+                List.of("topic", "reason"),
+                COMPANY_UNKNOWNS_MAX_ITEMS));
         return objectSchema(properties, List.of(
                 "companySummary", "recentIssues", "industry", "competitors", "interviewPoints",
-                "sources", "verifiedFacts", "aiInferences", "unknowns"));
+                "sources", "verifiedFacts", "aiInferences"));
     }
 
     private Map<String, Object> objectSchema(Map<String, Object> properties, List<String> required) {
@@ -773,7 +785,17 @@ public class BAnalysisGenerationService {
     }
 
     private Map<String, Object> objectArraySchema(Map<String, Object> properties, List<String> required) {
-        return Map.of("type", "array", "items", objectSchema(properties, required));
+        return objectArraySchema(properties, required, null);
+    }
+
+    private Map<String, Object> objectArraySchema(Map<String, Object> properties, List<String> required, Integer maxItems) {
+        Map<String, Object> schema = new LinkedHashMap<>();
+        schema.put("type", "array");
+        schema.put("items", objectSchema(properties, required));
+        if (maxItems != null) {
+            schema.put("maxItems", maxItems);
+        }
+        return schema;
     }
 
     private Map<String, Object> stringSchema() {

@@ -5,7 +5,31 @@ import com.careertuner.admin.prompt.dto.AdminPromptView;
 public final class CompanyAnalysisPromptCatalog {
 
     public static final String FEATURE = "company-analysis";
-    public static final String VERSION = "b-v2";
+    public static final String VERSION = "b-v3";
+    public static final String SYSTEM_PROMPT = """
+            너는 채용 준비용 기업분석 도우미다. 입력된 회사명, 직무명, 채용공고만 사용한다.
+            웹 검색, 일반 지식, 추정 기업정보는 사용하지 않는다. JSON 객체만 출력한다.
+
+            필드 규칙:
+            - companySummary: 확인 가능한 기업/채용 맥락 요약. 부족하면 확인불가 문장으로 쓴다.
+            - recentIssues: 공고문에 근거가 없으면 확인불가 문장으로 쓴다.
+            - interviewPoints: 절대 비우지 않는다. 정보가 부족하면 "공고문 기준으로 확인 가능한 업무/자격을 중심으로 질문을 준비하고, 부족한 기업 정보는 면접에서 확인한다"처럼 쓴다.
+            - sources: {type,label} 객체 배열. 공고문-only에서는 type="JOB_POSTING"만 사용한다.
+            - verifiedFacts: 최대 8개. fact/source/evidence를 채운다. 같은 fact를 반복하지 않는다.
+            - aiInferences: 최대 4개. 입력 사실 기반 추론만 쓴다. 같은 inference를 반복하지 않는다.
+            - unknowns: 최대 5개. 입력만으로 확인 불가한 항목을 topic/reason/neededSource로 쓴다. 없으면 [].
+
+            근거 규칙:
+            - evidence에는 원문 구절을 그대로 인용한다.
+            - OCR로 깨진 URL, 회사명, 서비스명은 그럴듯하게 복원하지 않는다.
+            - 필수/우대/선호 같은 요구 강도 표현은 원문 그대로 보존한다.
+            - 공고문에 없는 사원수, 설립연도, 매출, 상장 여부, 최근 이슈를 만들지 않는다.
+            - 원문에 기업정보 블록이 있으면 verifiedFacts 후보로 우선 수집한다.
+
+            출력 키:
+            companySummary, recentIssues, industry, competitors, interviewPoints, sources,
+            verifiedFacts, aiInferences, unknowns
+            """;
     /**
      * 공고문-only 에서 기업 정보가 부족할 때 정상 결과로 인정하는 확인불가 고지 문구.
      * 폴백 게이트(빈 summary)와 저장 canonicalizer 가 공유한다.
@@ -14,7 +38,7 @@ public final class CompanyAnalysisPromptCatalog {
             "현재 입력 자료만으로 기업 요약에 필요한 회사 정보는 확인되지 않습니다.";
     public static final String RECENT_ISSUES_UNAVAILABLE_NOTICE =
             "공고문 외 최근 이슈를 확인할 수 있는 근거 자료가 없어 확인되지 않습니다. 검수 단계에서 별도 자료로 확인해 주세요.";
-    public static final String SYSTEM_PROMPT = """
+    public static final String LEGACY_B_V2_SYSTEM_PROMPT = """
             너는 채용 준비용 기업 분석 도우미다.
             B 담당 범위인 기업 분석만 수행한다. 지원자 적합도, 면접 질문, 첨삭 영역은 분석하지 않는다.
             외부 웹 검색을 하지 않는다.
@@ -49,8 +73,9 @@ public final class CompanyAnalysisPromptCatalog {
             """;
     public static final String SCHEMA_SUMMARY =
             "companySummary, recentIssues, industry, competitors[], interviewPoints, sources[]{type,label}, "
-            + "verifiedFacts[]{fact,source,evidence,factId,sourceKind,sourceRef}, "
-            + "aiInferences[]{inference,basis,inferenceId,basedOn,confidence}, unknowns[]{topic,reason,neededSource}";
+            + "verifiedFacts<=8[]{fact,source,evidence,factId,sourceKind,sourceRef}, "
+            + "aiInferences<=4[]{inference,basis,inferenceId,basedOn,confidence}, "
+            + "unknowns<=5[]{topic,reason,neededSource}";
 
     private CompanyAnalysisPromptCatalog() {
     }
