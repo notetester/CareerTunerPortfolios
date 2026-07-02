@@ -272,7 +272,8 @@ export function OnboardingGuide({ onClose, onGotoInterview, onNavigate, wide, on
       {/* ── Body ── (플로팅: 스텝 컬럼 + 준비 명세 보드 나란히) */}
       <div className="flex-1 flex min-h-0">
         <div className="flex-1 overflow-y-auto px-4 py-4 min-w-0" style={{ background: "var(--orch-chat-bg)" }}>
-          <div className={wide ? "mx-auto w-full max-w-[560px]" : ""}>
+          {/* analyzing(WorkView) 단계는 560 캡을 풀어 무대처럼 좌측 컬럼을 채운다(그리드가 2~3열로 펴짐). */}
+          <div className={wide ? (g.step === "analyzing" ? "w-full" : "mx-auto w-full max-w-[560px]") : ""}>
             {server?.phase === "waiting" ? (
               <ServerWaitingView text={server.bubbleText} />
             ) : (

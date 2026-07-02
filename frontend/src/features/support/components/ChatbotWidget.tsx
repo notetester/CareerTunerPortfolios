@@ -119,6 +119,9 @@ function ChatbotPanel({ chatbot }: ChatbotPanelProps) {
     surface, expandToFloating, collapseToCorner, markInterviewHandoff,
   } = chatbot;
   const floating = surface === "floating";
+  // 플로팅에서 오케 실행이 시작되면 WorkView를 채팅 항목이 아니라 "무대(stage)"로 —
+  // 컨테이너 720 캡을 풀어 6파트 그리드가 콘텐츠 폭을 채우고, 말풍선은 좁은 컬럼으로 위에 남는다.
+  const stage = floating && runStarted;
 
   // 면접 인계: caseId 를 표식으로 남기고 D 면접 페이지로 이동(모드 선택 탭). caseId 없으면 그냥 진입.
   const goInterview = (caseId: number | null) => {
@@ -331,14 +334,17 @@ function ChatbotPanel({ chatbot }: ChatbotPanelProps) {
             className={`flex-1 p-4 overflow-y-auto flex flex-col gap-3.5 ${floating ? "items-stretch" : ""}`}
             style={{
               background: orchestrator ? "var(--orch-chat-bg)" : "var(--secondary)",
-              // 플로팅에선 넓은 폭에 말풍선이 늘어지지 않게 중앙 컬럼으로 제한.
-              ...(floating ? { maxWidth: 720, width: "100%", marginInline: "auto" } : {}),
+              // 플로팅은 무대(WorkView)와 동일 폭 기준 — 중앙 720 캡을 없애고 콘텐츠가 폭을 쓰게(좌우 24px).
+              // 인테이크 말풍선/후보 카드·칩도 이 폭을 따른다. 실행 stage에선 말풍선만 아래 좁은 컬럼(720)으로 제한.
+              ...(floating ? { width: "100%", paddingInline: 24 } : {}),
             }}>
             {messages.length === 0 && botStatus === "idle" ? (
               <EmptyState onSelect={sendMessage}
                 onStartGuide={() => { setShowGuide(true); expandToFloating(); }} />
             ) : (
               <>
+                {/* stage(오케 실행)에선 말풍선을 좁은 중앙 컬럼으로 — 넓은 무대에서 늘어지지 않게. */}
+                <div className={stage ? "flex w-full max-w-[720px] mx-auto flex-col gap-3.5" : "contents"}>
                 {messages.map((m) =>
                   m.role === "user" ? (
                     <UserBubble key={m.id} text={m.text} dimmed={isDisconnected} />
@@ -361,8 +367,9 @@ function ChatbotPanel({ chatbot }: ChatbotPanelProps) {
                     </div>
                   )
                 )}
+                </div>
                 {runStarted && (
-                  <div className="ml-[37px]">
+                  <div className={stage ? "w-full" : "ml-[37px]"}>
                     <AutoPrepWorkView
                       running={runRunning}
                       parts={runParts}
@@ -677,7 +684,8 @@ function SessionPanel({ sessions, activeSessionId, onOpen, onNew, onClose }: {
         <div className="px-3 pb-3 overflow-y-auto flex flex-col gap-1.5">
           {sessions.length === 0 ? (
             <div className="text-[12px] leading-[1.6] text-muted-foreground text-center py-6">
-              아직 준비 중인 지원 건이 없어요.<br />“카카오 백엔드 면접 준비해줘”처럼 시작해 보세요.
+              {/* 이 목록은 지난 "대화(세션)" 이력이다 — 지원 건 존재 여부와 다르므로 문구를 구분한다. */}
+              아직 진행한 준비 세션이 없어요.<br />“카카오 백엔드 면접 준비해줘”처럼 시작하면 여기에 세션이 쌓여요.
             </div>
           ) : (
             sessions.map((s) => (
