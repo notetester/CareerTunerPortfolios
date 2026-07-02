@@ -10,6 +10,7 @@ import {
   COPY, DOC_SLOTS, LINK_FIELDS, ROLES, STEP_DOTS,
   type DocSlot, type GuideStep, type LinkKey,
 } from "../onboarding/guideData";
+import { AutoPrepWorkView } from "@/features/autoprep/components/AutoPrepWorkView";
 
 const ORCH_GLYPH = "✦";
 const CUSTOM_ROLE = "__custom__";
@@ -110,10 +111,12 @@ const SERVER_ORDER: GuideStep[] = ["role", "skills", "docs", "jd"];
 export type ServerGuidePhase = "role" | "skills" | "jd" | "waiting";
 
 /* ════════════════ 본체 ════════════════ */
-export function OnboardingGuide({ onClose, onGotoInterview, wide, onCollapse, onExpand, intake, onSlotFilled, server, onAskQuestion }: {
+export function OnboardingGuide({ onClose, onGotoInterview, onNavigate, wide, onCollapse, onExpand, intake, onSlotFilled, server, onAskQuestion }: {
   onClose: () => void;
   /** 면접 권유 CTA — 수집한 caseId 를 실어 D 면접 페이지로 인계(없으면 null). */
   onGotoInterview: (caseId: number | null) => void;
+  /** analyzing 단계에 임베드되는 WorkView 카드의 인라인 액션(지원 건 열기 등)용 라우팅. */
+  onNavigate: (path: string) => void;
   /** 플로팅(넓은 화면)이면 스텝+명세 보드 2단 레이아웃. */
   wide?: boolean;
   /** ⤡ 코너로 최소화(가이드 상태 유지). */
@@ -280,7 +283,20 @@ export function OnboardingGuide({ onClose, onGotoInterview, wide, onCollapse, on
                 {g.step === "jd" && (
                   <JdStep g={g} jdRef={fileRefs.jd} bubble={server?.bubbleText} serverMode={!!server} />
                 )}
-                {g.step === "analyzing" && <AnalyzingStep />}
+                {g.step === "analyzing" && (
+                  g.runParts.length === 0 ? (
+                    <AnalyzingStep />
+                  ) : (
+                    <AutoPrepWorkView
+                      running={g.runRunning}
+                      parts={g.runParts}
+                      caseId={g.caseId}
+                      company={null}
+                      showFooter={false}
+                      onNavigate={onNavigate}
+                    />
+                  )
+                )}
                 {g.step === "fit" && <FitStep g={g} />}
                 {g.step === "interview" && <InterviewStep g={g} onGoto={() => onGotoInterview(g.caseId)} onDone={closeAll} />}
               </>

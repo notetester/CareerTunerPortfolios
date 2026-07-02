@@ -367,6 +367,7 @@ function ChatbotPanel({ chatbot }: ChatbotPanelProps) {
                       running={runRunning}
                       parts={runParts}
                       caseId={runCaseId}
+                      company={runPlan?.slots.company ?? null}
                       onNavigate={navigateFromWork}
                     />
                   </div>
@@ -424,6 +425,7 @@ function ChatbotPanel({ chatbot }: ChatbotPanelProps) {
           // 다시 매핑되면 useEffect 가 새 인스턴스로 자동 재오픈한다(수집 내용은 서버 상태 기준).
           onAskQuestion={() => { onbAskingRef.current = true; setOnbGuideOpen(false); }}
           onGotoInterview={goInterview}
+          onNavigate={navigateFromWork}
         />
       )}
 
@@ -439,10 +441,11 @@ function ChatbotPanel({ chatbot }: ChatbotPanelProps) {
           onAskQuestion={() => { intakeAskingRef.current = true; setIntakeGuide(null); }}
           onSlotFilled={handleSlotFilled}
           onGotoInterview={goInterview}
+          onNavigate={navigateFromWork}
         />
       )}
 
-      {/* ── 온보딩 가이드(대화로 준비 시작 → 서류·공고 첨부 → 목 적합도 → 면접 권유) ── */}
+      {/* ── 온보딩 가이드(대화로 준비 시작 → 서류·공고 첨부 → 실제 오케 SSE(WorkView) → 면접 권유) ── */}
       {showGuide && (
         <OnboardingGuide
           wide={floating}
@@ -456,6 +459,7 @@ function ChatbotPanel({ chatbot }: ChatbotPanelProps) {
             collapseToCorner();
             goInterview(caseId);
           }}
+          onNavigate={navigateFromWork}
         />
       )}
     </div>

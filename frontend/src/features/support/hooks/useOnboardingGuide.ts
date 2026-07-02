@@ -1,6 +1,6 @@
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
-import { runStream } from "@/features/autoprep/api/autoPrepApi";
+import { useAutoPrepRun, type PartState } from "@/features/autoprep/hooks/useAutoPrepRun";
 import type { AutoPrepRequest, PrepStepResult } from "@/features/autoprep/types/autoPrep";
 import {
   createCaseFromFile, createCaseFromText, createCaseFromUrl, fetchGithubReadme, getLatestExtractionStatus,
@@ -80,7 +80,9 @@ export function useOnboardingGuide(initialStep: GuideStep = "role") {
   const [fit, setFit] = useState<GuideResult | null>(null);
   const [runError, setRunError] = useState<string | null>(null);
 
-  const abortRef = useRef<AbortController>();
+  // 실제 오케 SSE 실행 — useChatbot 이 쓰는 것과 동일한 공용 훅(파싱/누적 로직 단일 소스, 여긴 재사용만).
+  const run = useAutoPrepRun();
+  const hasCaseRef = useRef(false);
   const field = getField(role);
 
   const setRole = useCallback((r: string) => {
@@ -193,8 +195,10 @@ export function useOnboardingGuide(initialStep: GuideStep = "role") {
     return null;
   }, [caseId, jd]);
 
-  /** part-done 누적 → 실제 결과 카드 값 조립(없는 지표는 null/빈배열, 지어내지 않음). */
-  const finalize = useCallback((acc: Record<string, PrepStepResult>, hasCase: boolean) => {
+  /** part-done 누적(useAutoPrepRun 의 PartState[]) → 실제 결과 카드 값 조립(없는 지표는 null/빈배열, 지어내지 않음). */
+  const finalize = useCallback((parts: PartState[], hasCase: boolean) => {
+    const acc: Record<string, PrepStepResult> = {};
+    parts.forEach((p) => { if (p.result) acc[p.key] = p.result; });
     const fitRes = acc.FIT;
     const profRes = acc.PROFILE;
     const writeRes = acc.WRITE;
@@ -232,14 +236,14 @@ export function useOnboardingGuide(initialStep: GuideStep = "role") {
 
   /**
    * ★ 실제 실행: collect() 스냅샷 → 공고 케이스 생성 → AutoPrepRequest 조립 → 오케 SSE.
-   *   목값 없음. 결과 카드는 실제 part-done 으로만 채운다.
+   *   목값 없음. SSE 구독/누적은 useAutoPrepRun(run)이 전담 — 완료 감지는 아래 useEffect.
    */
   const runReal = useCallback(async () => {
+    // 재실행(뒤로→jd→다시 다음) 대비 클린 슬레이트 — run.start 전 잠깐의 await 구간에서
+    // 아래 완료 감지 effect 가 "이전 실행의 settled parts"를 이번 실행의 완료로 오인하지 않게 한다.
+    run.reset();
     setStep("analyzing");
     setRunError(null);
-    abortRef.current?.abort();
-    const controller = new AbortController();
-    abortRef.current = controller;
 
     // 1) 공고 → 지원 건(case). 생성 로직은 ensureCase 공유(인테이크 매핑과 단일 경로).
     let effectiveCaseId = caseId;
@@ -249,6 +253,7 @@ export function useOnboardingGuide(initialStep: GuideStep = "role") {
       // 케이스 생성 실패해도 자소서(WRITE)만으로 진행 — 오케는 caseId 없이도 돈다.
       setRunError(e instanceof Error ? e.message : "공고 지원 건 생성에 실패했어요.");
     }
+    hasCaseRef.current = effectiveCaseId != null;
 
     // 2) AutoPrepRequest 조립.
     //    - 자소서(ATTACHMENT) 만 attachmentFileIds 로 (이력서/포폴 제외 — 소비 핸들러 없음).
@@ -261,27 +266,26 @@ export function useOnboardingGuide(initialStep: GuideStep = "role") {
       // coverLetterText 는 자소서를 attachment 로 실으므로 비움. mode/query 는 가이드에서 미지정.
     };
 
-    // 3) 오케 SSE 실행 — 실제 part-done 누적.
-    const acc: Record<string, PrepStepResult> = {};
-    try {
-      await runStream(
-        req,
-        (evt) => {
-          if (evt.type === "part-done") acc[evt.result.key] = evt.result;
-          else if (evt.type === "error") setRunError(evt.message);
-        },
-        controller.signal,
-      );
-    } catch (e) {
-      if (controller.signal.aborted) return;
-      setRunError(e instanceof Error ? e.message : "준비 실행에 실패했어요.");
-    }
-    if (controller.signal.aborted) return;
-    finalize(acc, effectiveCaseId != null);
-  }, [caseId, ensureCase, docs, finalize]);
+    // 3) 오케 SSE 실행 — run.parts 누적은 useAutoPrepRun 내부, 완료는 아래 effect 가 감지해 finalize.
+    void run.start(req);
+  }, [caseId, ensureCase, docs, run]);
+
+  // ★ 실행 완료 감지: analyzing 단계에서 run 이 멈추고(running=false) 전 파트가 settle 되면 결과 조립.
+  //   run.parts 는 useAutoPrepRun 이 SSE 로 채우는 살아있는 상태라 클로저 문제 없이 항상 최신값을 본다.
+  //   "시작함" 판정은 parts 또는 error 둘 중 하나라도 채워졌는지로 — parts 만 보면 plan 도 못 받고
+  //   바로 실패한 경우(네트워크 즉시 오류) 영원히 analyzing 에 멈춘다.
+  useEffect(() => {
+    if (step !== "analyzing") return;
+    if (run.running) return;
+    const started = run.parts.length > 0 || run.error != null;
+    if (!started) return; // runReal 의 run.reset() 직후 ~ run.start 호출 전(await ensureCase 구간) — 아직 시작 전
+    const allSettled = run.parts.every((p) => p.status !== "pending" && p.status !== "running");
+    if (!allSettled) return;
+    finalize(run.parts, hasCaseRef.current);
+  }, [step, run.running, run.parts, run.error, finalize]);
 
   const reset = useCallback(() => {
-    abortRef.current?.abort();
+    run.reset();
     setStep("role");
     setRoleState(null);
     setCustomRole("");
@@ -295,7 +299,7 @@ export function useOnboardingGuide(initialStep: GuideStep = "role") {
     setCaseId(null);
     setFit(null);
     setRunError(null);
-  }, []);
+  }, [run]);
 
   /**
    * ★ 수집 스냅샷 — 받은 fileId·링크·케이스를 한 곳에.
@@ -334,7 +338,9 @@ export function useOnboardingGuide(initialStep: GuideStep = "role") {
     portfolioReadmeError,
     caseId,
     fit,
-    runError,
+    runError: runError ?? run.error,
+    runParts: run.parts,
+    runRunning: run.running,
     // actions
     setRole,
     toggleSkill,
