@@ -16,7 +16,7 @@ ApplicationWindow {
     // ── 앱 상태 ──
     property bool loggedIn: false
     property bool autoLoginPending: true
-    property string view: "home"      // home | thread | report | devices | settings
+    property string view: "home"      // home | thread | report | collaboration | devices | settings
     property bool phoneOpen: false
 
     function openSession(jobId, title, mode, caseId) {
@@ -65,7 +65,16 @@ ApplicationWindow {
         target: notifications
         function onNotificationArrived(type, title, message, link, targetId) {
             win.showToast(title, message)
+            if (type === "DIRECT_MESSAGE" || type === "FRIEND_REQUEST" || type === "FRIEND_ACCEPTED")
+                collaboration.refresh()
         }
+    }
+
+    Connections {
+        target: collaboration
+        function onErrorOccurred(message) { win.showToast("협업 오류", message) }
+        function onInfo(title, message) { win.showToast(title, message) }
+        function onAttachmentDownloaded(path) { win.showToast("첨부 저장됨", path) }
     }
 
     Connections {
@@ -261,6 +270,7 @@ ApplicationWindow {
                     spacing: 4
                     Repeater {
                         model: [
+                            { icon: "💬", key: "collaboration", tip: "친구와 대화" },
                             { icon: "🖥️", key: "devices",  tip: "연결된 기기" },
                             { icon: "📱", key: "phone",    tip: "폰 연동 패널" },
                             { icon: "⚙️", key: "settings", tip: "설정" }
@@ -309,7 +319,8 @@ ApplicationWindow {
                     spacing: 10
 
                     Text {
-                        text: win.view === "devices" ? "연결된 기기"
+                        text: win.view === "collaboration" ? "친구와 대화"
+                            : win.view === "devices" ? "연결된 기기"
                             : win.view === "settings" ? "설정"
                             : session.title
                         color: Theme.text; font.pixelSize: 14; font.bold: true
@@ -397,13 +408,15 @@ ApplicationWindow {
                 currentIndex: win.view === "home" ? 0
                             : win.view === "thread" ? 1
                             : win.view === "report" ? 2
-                            : win.view === "devices" ? 3 : 4
+                            : win.view === "collaboration" ? 3
+                            : win.view === "devices" ? 4 : 5
 
                 HomeView { id: homeView }                            // 0
                 SessionThread {}                                     // 1
                 ReportView {}                                        // 2
-                DevicesPage {}                                       // 3
-                SettingsPage {}                                      // 4
+                CollaborationPage {}                                 // 3
+                DevicesPage {}                                       // 4
+                SettingsPage {}                                      // 5
             }
 
             // 하단 입력바 (홈=인테이크 · 스레드=답변)

@@ -40,6 +40,7 @@ public:
 
     void get(const QString& path, JsonCallback cb);
     void post(const QString& path, const QJsonObject& body, JsonCallback cb);
+    void deleteResource(const QString& path, JsonCallback cb);
     // multipart/form-data POST — 음성 업로드 등
     void postMultipart(const QString& path,
                        const QList<QPair<QString, QString>>& fields,
