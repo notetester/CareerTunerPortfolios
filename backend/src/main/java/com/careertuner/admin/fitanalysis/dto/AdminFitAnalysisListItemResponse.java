@@ -30,7 +30,9 @@ public record AdminFitAnalysisListItemResponse(
         String gateStatus,
         boolean needsHumanReview,
         int gateReasonCount,
-        String gateMaxSeverity
+        String gateMaxSeverity,
+        // gate review workflow 처리 상태(PENDING/RESOLVED/REANALYSIS_REQUESTED). gate 없으면 null.
+        String gateReviewStatus
 ) {
 
     public static AdminFitAnalysisListItemResponse of(AdminFitAnalysisResult result,
@@ -59,6 +61,7 @@ public record AdminFitAnalysisListItemResponse(
                 result.getGateStatus(),
                 Boolean.TRUE.equals(result.getGateNeedsHumanReview()),
                 result.getGateReasonCount() == null ? 0 : result.getGateReasonCount(),
-                result.getGateMaxSeverity());
+                result.getGateMaxSeverity(),
+                result.getGateReviewStatus());
     }
 }

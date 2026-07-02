@@ -444,6 +444,7 @@ const fitAnalysisList: AdminFitAnalysisListItem[] = [
     needsHumanReview: false,
     gateReasonCount: 0,
     gateMaxSeverity: null,
+    gateReviewStatus: "PENDING",
   },
   {
     id: 5102,
@@ -469,6 +470,7 @@ const fitAnalysisList: AdminFitAnalysisListItem[] = [
     needsHumanReview: false,
     gateReasonCount: 0,
     gateMaxSeverity: null,
+    gateReviewStatus: "PENDING",
   },
   {
     id: 5103,
@@ -494,6 +496,7 @@ const fitAnalysisList: AdminFitAnalysisListItem[] = [
     needsHumanReview: true,
     gateReasonCount: 1,
     gateMaxSeverity: "warning",
+    gateReviewStatus: "PENDING",
   },
   {
     id: 5104,
@@ -519,6 +522,7 @@ const fitAnalysisList: AdminFitAnalysisListItem[] = [
     needsHumanReview: true,
     gateReasonCount: 1,
     gateMaxSeverity: "critical",
+    gateReviewStatus: "PENDING",
   },
 ];
 
@@ -607,6 +611,9 @@ function buildFitDetail(id: number): AdminFitAnalysisDetail {
     gateReasonCount: item.gateReasonCount,
     gateMaxSeverity: item.gateMaxSeverity,
     evidenceGateVersion: item.gateStatus ? "r3-review-first" : null,
+    gateReviewStatus: item.gateReviewStatus,
+    gateReviewedAt: null,
+    gateReviewerName: null,
     gateReasons:
       item.gateStatus === "REVIEW_REQUIRED"
         ? [

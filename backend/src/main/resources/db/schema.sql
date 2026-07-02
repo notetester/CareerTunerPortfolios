@@ -471,10 +471,14 @@ CREATE TABLE IF NOT EXISTS fit_analysis_gate_result (
     evidence_gate_version VARCHAR(40)  NOT NULL,
     rag_runtime_enabled   TINYINT(1)   NOT NULL DEFAULT 0,
     rewrite_applied       TINYINT(1)   NOT NULL DEFAULT 0,
+    review_status         VARCHAR(30)  NOT NULL DEFAULT 'PENDING', -- PENDING/RESOLVED/REANALYSIS_REQUESTED (운영자 gate review workflow)
+    reviewed_by           BIGINT       NULL,
+    reviewed_at           DATETIME     NULL,
     created_at            DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (id),
     UNIQUE KEY uk_fit_gate_result_analysis (fit_analysis_id),
     KEY idx_fit_gate_result_status (gate_status, created_at),
+    KEY idx_fit_gate_result_review (review_status, created_at),
     CONSTRAINT fk_fit_gate_result_analysis FOREIGN KEY (fit_analysis_id) REFERENCES fit_analysis (id) ON DELETE CASCADE
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci;
 
