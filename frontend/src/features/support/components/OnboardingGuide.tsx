@@ -161,23 +161,27 @@ export function OnboardingGuide({ onClose, onGotoInterview, wide, onCollapse, on
 
   /**
    * ④ 회신 — 자소서 fileId 를 함께 실어 호출부가 ready 병합을 예약할 수 있게 한다.
-   * jd 에 파일이 있으면 텍스트 프로토콜 대신 B 업로드로 지원 건을 먼저 만들고(ensureCase)
-   * caseId 를 실어 보낸다 — 백엔드 AWAIT_POSTING 이 입양해 같은 추출 폴링으로 합류.
+   * jd 에 파일/URL 이 있으면(붙여넣기 텍스트가 없을 때) 텍스트 프로토콜 대신 B 생성 API 로 지원 건을
+   * 먼저 만들고(ensureCase) caseId 를 실어 보낸다 — 백엔드 AWAIT_POSTING 이 입양해 같은 추출 폴링으로 합류.
    */
   const submitServer = async (step: "role" | "skills" | "jd", text: string) => {
     if (!server) return;
     const meta = { coverLetterFileIds: g.collect().coverLetterFileIds };
-    if (step === "jd" && g.jd.file) {
+    // ensureCase 우선순위(파일>텍스트>URL)와 정합: 텍스트가 있으면 기존 텍스트 프로토콜이 처리하므로
+    // 파일 또는 (텍스트 없이) URL 만 있을 때 케이스 선생성 경로를 탄다.
+    const viaCase = step === "jd" && (g.jd.file || (!text && g.jd.url.trim()));
+    if (viaCase) {
       setSubmitting(true);
       setSubmitError(null);
       try {
         const caseId = await g.ensureCase();
         if (caseId != null) {
-          server.onSubmit("jd", `공고 파일(${g.jd.file.name})을 올렸어요`, { ...meta, caseId });
+          const label = g.jd.file ? `공고 파일(${g.jd.file.name})을 올렸어요` : "공고 링크로 올렸어요";
+          server.onSubmit("jd", label, { ...meta, caseId });
           return;
         }
       } catch (e) {
-        setSubmitError(e instanceof Error ? e.message : "공고 파일 등록에 실패했어요. 잠시 후 다시 시도해 주세요.");
+        setSubmitError(e instanceof Error ? e.message : "공고 등록에 실패했어요. 잠시 후 다시 시도해 주세요.");
         return;
       } finally {
         setSubmitting(false);
@@ -259,7 +263,7 @@ export function OnboardingGuide({ onClose, onGotoInterview, wide, onCollapse, on
                 {g.step === "skills" && <SkillsStep g={g} bubble={server?.bubbleText} />}
                 {g.step === "docs" && <DocsStep g={g} fileRefs={fileRefs} />}
                 {g.step === "jd" && (
-                  <JdStep g={g} jdRef={fileRefs.jd} bubble={server?.bubbleText} noUrl={!!server} />
+                  <JdStep g={g} jdRef={fileRefs.jd} bubble={server?.bubbleText} serverMode={!!server} />
                 )}
                 {g.step === "analyzing" && <AnalyzingStep />}
                 {g.step === "fit" && <FitStep g={g} />}
@@ -435,23 +439,21 @@ function LinkFieldRow({ lkey, g }: { lkey: LinkKey; g: G }) {
 }
 
 /* ── STEP 4: 공고문 ── */
-function JdStep({ g, jdRef, bubble, noUrl }: {
+function JdStep({ g, jdRef, bubble, serverMode }: {
   g: G; jdRef: React.RefObject<HTMLInputElement>;
   bubble?: string;
-  /** ④ 온보딩 매핑 모드 — URL 자동 읽기 미지원이라 링크 입력만 숨긴다(파일·붙여넣기는 됨). */
-  noUrl?: boolean;
+  /** ④ 온보딩 매핑 모드 — 붙여넣기 영역을 크게(입력 방식 자체는 링크·파일·붙여넣기 모두 동일 지원). */
+  serverMode?: boolean;
 }) {
   return (
     <>
       <GuideBubble text={bubble ?? COPY.jd} />
-      {!noUrl && (
-        <div className="flex items-center gap-2 rounded-xl border border-border px-3 py-2.5 mb-2.5">
-          <Link2 size={15} className="shrink-0" style={{ color: "var(--orch-violet)" }} />
-          <input value={g.jd.url} onChange={(e) => g.setJdUrl(e.target.value)}
-            placeholder="공고 링크 붙여넣기 — wanted.co.kr, jobkorea.co.kr …"
-            className="flex-1 min-w-0 bg-transparent text-[12.5px] outline-none placeholder:text-muted-foreground" />
-        </div>
-      )}
+      <div className="flex items-center gap-2 rounded-xl border border-border px-3 py-2.5 mb-2.5">
+        <Link2 size={15} className="shrink-0" style={{ color: "var(--orch-violet)" }} />
+        <input value={g.jd.url} onChange={(e) => g.setJdUrl(e.target.value)}
+          placeholder="공고 링크 붙여넣기 — saramin.co.kr, jobkorea.co.kr …"
+          className="flex-1 min-w-0 bg-transparent text-[12.5px] outline-none placeholder:text-muted-foreground" />
+      </div>
       <div className="flex gap-2 mb-2.5">
         <button onClick={() => jdRef.current?.click()}
           className="inline-flex items-center gap-1.5 px-3 py-2 rounded-full border border-border bg-card text-[11.5px] font-semibold text-muted-foreground hover:text-foreground transition-colors">
@@ -461,8 +463,8 @@ function JdStep({ g, jdRef, bubble, noUrl }: {
           <ClipboardPaste size={13} /> 텍스트 붙여넣기 ↓
         </span>
       </div>
-      <textarea value={g.jd.text} onChange={(e) => g.setJdText(e.target.value)} rows={noUrl ? 6 : 4}
-        placeholder={noUrl ? "공고 전문을 그대로 붙여넣어 주세요 — 회사명·직무·자격요건이 담긴 원문이면 좋아요." : "공고 내용을 그대로 붙여넣어도 돼요."}
+      <textarea value={g.jd.text} onChange={(e) => g.setJdText(e.target.value)} rows={serverMode ? 6 : 4}
+        placeholder={serverMode ? "공고 전문을 그대로 붙여넣어 주세요 — 회사명·직무·자격요건이 담긴 원문이면 좋아요." : "공고 내용을 그대로 붙여넣어도 돼요."}
         className="w-full resize-none rounded-lg border border-border bg-background px-3 py-2 text-[12.5px] outline-none focus:border-primary placeholder:text-muted-foreground" />
       {g.jd.file && (
         <div className="mt-2 flex flex-wrap gap-1.5">
@@ -738,29 +740,26 @@ function GuideFooter({ g, onClose, order, intakeMode, serverMode, serverSubmitti
     : g.step === "fit" ? "면접 권유 보기"
     : "완료";
 
-  // intake 마지막 스텝(jd)은 공고 입력(파일/붙여넣기)이 있어야 지원 건을 만들 수 있다 — 빈손 제출 금지.
-  const jdReady = !!g.jd.file || g.jd.text.trim().length > 0 || g.caseId != null;
+  // intake 마지막 스텝(jd)은 공고 입력(파일/붙여넣기/URL)이 있어야 지원 건을 만들 수 있다 — 빈손 제출 금지.
+  const jdReady = !!g.jd.file || g.jd.text.trim().length > 0 || g.jd.url.trim().length > 0 || g.caseId != null;
   const roleReady = g.role != null && (g.role !== CUSTOM_ROLE || g.customRole.trim().length > 0);
   const nextEnabled = serverMode
     ? !busy && (
         g.step === "role" ? roleReady
         : g.step === "skills" ? g.skills.length > 0        // ④는 답을 그대로 프로필에 저장 — 빈 답 전송 금지
-        // 파일이 있으면 B 업로드 경로, 없으면 텍스트 프로토콜(백엔드 최소 공고 길이 20자와 동일 게이트).
-        : g.step === "jd" ? (!!g.jd.file || g.jd.text.trim().length >= 20)
+        // 파일/URL 은 B 생성 경로, 붙여넣기는 텍스트 프로토콜(백엔드 최소 공고 길이 20자와 동일 게이트).
+        : g.step === "jd" ? (!!g.jd.file || g.jd.url.trim().length > 0 || g.jd.text.trim().length >= 20)
         : true)
     : g.step === "role" ? roleReady
     : isLastIntake ? (jdReady && !submitting)
     : true; // 나머지는 스킵 가능(빈손 진행)
-
-  // URL 만 넣은 경우 — 링크 자동 읽기는 아직 미지원이라 정직하게 안내(버튼 비활성 이유).
-  const jdUrlOnly = isLastIntake && !jdReady && g.jd.url.trim().length > 0;
 
   // ④ 스텝별 좌측 안내(뒤로 버튼 대신) — 비활성 이유를 사람이 읽게.
   const serverHint =
     g.step === "role" ? "고르신 분야에 맞춰 다음 질문이 바뀌어요"
     : g.step === "skills" ? "1개 이상 골라주세요 — 면접 질문·자소서 방향에 쓰여요"
     : g.step === "docs" ? "없으면 바로 다음으로 넘어가도 돼요"
-    : "공고 파일(PDF·이미지)을 올리거나 본문(20자 이상)을 붙여넣어 주세요";
+    : "공고 링크·파일·본문 붙여넣기 중 하나면 돼요";
 
   // interview 스텝은 카드 안 CTA 로 진행 → footer 다음 버튼 숨김.
   if (g.step === "interview") {
@@ -776,11 +775,10 @@ function GuideFooter({ g, onClose, order, intakeMode, serverMode, serverSubmitti
 
   return (
     <div className="px-4 py-3 border-t border-border flex flex-col gap-2">
-      {/* intake 제출 오류/URL-만 안내 — 지어내지 않고 이유를 그대로. */}
-      {(submitError || jdUrlOnly) && (
-        <div className="text-[11px] leading-[1.5]"
-          style={{ color: submitError ? "var(--destructive)" : "var(--muted-foreground)" }}>
-          {submitError ?? "링크는 아직 자동으로 못 읽어요 — 공고 내용을 붙여넣거나 파일로 올려주세요."}
+      {/* intake/온보딩 제출 오류 — 지어내지 않고 이유를 그대로. */}
+      {submitError && (
+        <div className="text-[11px] leading-[1.5]" style={{ color: "var(--destructive)" }}>
+          {submitError}
         </div>
       )}
       <div className="flex items-center gap-2">

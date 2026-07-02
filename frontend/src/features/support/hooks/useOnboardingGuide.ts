@@ -3,7 +3,7 @@ import { useCallback, useRef, useState } from "react";
 import { runStream } from "@/features/autoprep/api/autoPrepApi";
 import type { AutoPrepRequest, PrepStepResult } from "@/features/autoprep/types/autoPrep";
 import {
-  createCaseFromFile, createCaseFromText, uploadDocument, type UploadedFile,
+  createCaseFromFile, createCaseFromText, createCaseFromUrl, uploadDocument, type UploadedFile,
 } from "../api/onboardingApi";
 import { getField, type GuideStep, type LinkKey } from "../onboarding/guideData";
 
@@ -111,8 +111,8 @@ export function useOnboardingGuide(initialStep: GuideStep = "role") {
   const go = useCallback((next: GuideStep) => setStep(next), []);
 
   /**
-   * ★ 공고 입력 → 지원 건 1회 생성(이미 있으면 그 id 그대로). 파일 우선, 없으면 붙여넣기 텍스트.
-   * runReal(가이드 자체 실행)과 인테이크 매핑(③ CASE 슬롯 회신)이 공유하는 케이스 생성 단일 경로.
+   * ★ 공고 입력 → 지원 건 1회 생성(이미 있으면 그 id 그대로). 파일 > 붙여넣기 텍스트 > URL 순.
+   * runReal(가이드 자체 실행)과 인테이크/온보딩 매핑(③④ 슬롯 회신)이 공유하는 케이스 생성 단일 경로.
    * 입력이 없으면 null, 생성 실패는 throw(호출부가 문맥에 맞게 처리).
    */
   const ensureCase = useCallback(async (): Promise<number | null> => {
@@ -128,7 +128,14 @@ export function useOnboardingGuide(initialStep: GuideStep = "role") {
       setCaseId(res.applicationCase.id);
       return res.applicationCase.id;
     }
-    // TODO(공고 URL): jd.url 은 서버 fetch/파싱 경로가 별도라 지금은 케이스 미생성(붙여넣기 권장).
+    if (jd.url.trim()) {
+      // 스킴 생략("saramin.co.kr/...")은 https 로 보정 — 백엔드가 http/https 만 받는다.
+      const raw = jd.url.trim();
+      const normalized = /^https?:\/\//i.test(raw) ? raw : `https://${raw}`;
+      const res = await createCaseFromUrl(normalized);
+      setCaseId(res.applicationCase.id);
+      return res.applicationCase.id;
+    }
     return null;
   }, [caseId, jd]);
 

@@ -41,6 +41,14 @@ export function createCaseFromText(originalText: string) {
   });
 }
 
+/** 공고 URL → 지원 건. 본문 fetch·추출은 백엔드가 서버측에서 수행(JobPostingTextExtractor.extractUrl — SSRF 가드 포함). */
+export function createCaseFromUrl(url: string) {
+  return api<CaseFromJobPostingResult>("/application-cases/from-job-posting", {
+    method: "POST",
+    body: JSON.stringify({ uploadedFileUrl: url, sourceType: "URL", favorite: false }),
+  });
+}
+
 /** 공고 파일(PDF/이미지) → 지원 건(비동기 OCR 추출 큐잉). */
 export function createCaseFromFile(file: File, sourceType: "PDF" | "IMAGE") {
   const fd = new FormData();
