@@ -92,6 +92,22 @@ public class ChatbotController {
     private static final List<String> EXIT_COMMANDS = List.of(
             "그만", "취소", "종료", "일반상담", "나가기", "중단", "그만할래");
 
+    /* ── (g) 이탈성 질문 가드 — ③/④ 답변 대기 중 FAQ성 질문이 답으로 삼켜지는 것 차단(구조점검 X항목) ── */
+
+    /**
+     * FAQ top-1 코사인이 이 값 이상이면 답변 대기 중이라도 질문으로 본다.
+     * 실측(bge-m3·FAQ 40건): 물음표 없는 질문 0.668~0.734("환불은 어떻게 받아" .734) vs
+     * 정상 답변 최고 0.609("기본 면접으로 할게" — 0.60 이었을 때 오탐 실측) → 0.65 가 분리선.
+     * 낮은 유사도 질문("포인트 어떻게 모아" .511)은 놓친다 — 결정적 가드의 수용 한계(오탐 차단 우선).
+     */
+    private static final double SIDE_QUESTION_FAQ_GATE = 0.65;
+    /** 확인 1턴 칩 문구 — quickReplies 로 그대로 노출되고, 클릭 시 이 텍스트가 다음 발화로 온다. */
+    private static final String SIDE_Q_YES = "네, 답해주세요";
+    private static final String SIDE_Q_NO = "아니요, 계속할게요";
+    /** ④에서 가드를 거는 수집 단계 — 발화가 슬롯/DB에 그대로 저장되는 단계만(오기록 차단이 목적). */
+    private static final Set<String> ONB_GUARDED_STEPS = Set.of(
+            "JOB", "SKILLS", "AWAIT_POSTING", "AWAIT_COMPANY", "AWAIT_JOBTITLE");
+
     /**
      * 이탈 키워드별 허용 접미사(조사·어미). 매칭은 키워드 정확일치 <b>또는</b> "키워드로 시작 + 나머지가 이 집합에
      * 정확히 포함"일 때만 — 단순 startsWith/contains 가 아니다. "그만두지않을래요"는 "그만"으로 시작하지만 접미사
@@ -133,6 +149,8 @@ public class ChatbotController {
     private final IntakeSlotTrace intakeSlotTrace;
     // (d″) 확인-회사/직무 후보 제시용 공고 제목 read(B.getJobPosting 호출만 — B 도메인 무수정).
     private final JobPostingService jobPostingService;
+    // (g) 이탈성 질문 확인 1턴의 보류 발화 저장(인메모리·1턴 소비).
+    private final SideQuestionStore sideQuestionStore;
 
     public ChatbotController(CommunityChatAgent agent,
                             QuickReplyAgent quickReplyAgent,
@@ -155,7 +173,8 @@ public class ChatbotController {
                             ProfileService profileService,
                             AutoPrepIntakeService autoPrepIntakeService,
                             IntakeSlotTrace intakeSlotTrace,
-                            JobPostingService jobPostingService) {
+                            JobPostingService jobPostingService,
+                            SideQuestionStore sideQuestionStore) {
         this.agent = agent;
         this.quickReplyAgent = quickReplyAgent;
         this.quickReplyParser = quickReplyParser;
@@ -178,6 +197,57 @@ public class ChatbotController {
         this.autoPrepIntakeService = autoPrepIntakeService;
         this.intakeSlotTrace = intakeSlotTrace;
         this.jobPostingService = jobPostingService;
+        this.sideQuestionStore = sideQuestionStore;
+    }
+
+    /* ── (g) 이탈성 질문 가드 헬퍼 ── */
+
+    /**
+     * 이탈성 질문 판정 — 결정적 2신호만(LLM 0): ① 물음표 종결 ② FAQ top-1 코사인 ≥ {@link #SIDE_QUESTION_FAQ_GATE}.
+     * 정상 답변("백엔드 개발자", "네이버")은 물음표 없음+FAQ 낮음이라 안 걸린다.
+     * 임베딩 장애 시 false — 가드가 정상 흐름을 막는 일은 없게(보수적).
+     */
+    private boolean looksLikeSideQuestion(String question) {
+        if (question == null || question.isBlank()) {
+            return false;
+        }
+        String t = question.trim();
+        if (t.endsWith("?") || t.endsWith("？")) {
+            return true;
+        }
+        try {
+            return chatbotService.topFaqSimilarity(t).orElse(0.0) >= SIDE_QUESTION_FAQ_GATE;
+        } catch (Exception e) {
+            log.debug("이탈성 질문 FAQ 스코어 계산 실패(가드 미발동): {}", e.getMessage());
+            return false;
+        }
+    }
+
+    /** 확인 응답 "네" 판정 — 칩 문구 정확일치, "답해" 포함, 또는 기존 긍정 화이트리스트(정확일치)만. */
+    private static boolean isSideQuestionYes(String question) {
+        if (question == null) {
+            return false;
+        }
+        String norm = question.trim().toLowerCase().replace(" ", "");
+        return norm.equals(SIDE_Q_YES.replace(" ", "")) || norm.contains("답해") || AFFIRMATIVE.contains(norm);
+    }
+
+    /** 확인 응답 "아니요" 판정 — 칩 문구 정확일치, "아니" 시작, 또는 "계속" 포함. */
+    private static boolean isSideQuestionNo(String question) {
+        if (question == null) {
+            return false;
+        }
+        String norm = question.trim().toLowerCase().replace(" ", "");
+        return norm.equals(SIDE_Q_NO.replace(" ", "")) || norm.startsWith("아니") || norm.contains("계속");
+    }
+
+    /** 우회 답변 뒤에 복귀 제안 한 줄 — 진행 상태는 그대로라 다음 답변이 대기 중이던 질문의 답으로 이어진다. */
+    private static ChatAskResponse withResumeHint(ChatAskResponse answer) {
+        return new ChatAskResponse(
+                answer.conversationId(),
+                answer.message() + "\n\n아까 하던 준비는 그대로예요 — 이어서 답해주시면 계속 진행돼요.",
+                answer.links(), answer.quickReplies(), answer.route(),
+                answer.intake(), answer.inOrchestration(), answer.summaryChip());
     }
 
     /**
@@ -189,6 +259,28 @@ public class ChatbotController {
                                            String selectedModeCode, Long selectedCaseId) {
         Long userId = authUser.id();   // 라우팅에서 authUser != null 보장. save((e))가 authUser 를 요구해 끝까지 내린다.
         String step = intakeSlotTrace.onboardingStep(conversationId);
+
+        // ── (g) 이탈성 질문 가드: 수집 단계에서 질문이 직무/회사명으로 오기록되는 것 차단.
+        //    직전 턴이 확인이었으면 그 응답부터 처리한다(그 턴은 재가드 없음 — 확인 루프 방지).
+        String deferred = sideQuestionStore.consume(conversationId);
+        if (deferred != null && isSideQuestionYes(question)) {
+            // ④ 상태(step·슬롯)는 안 건드림 — 한 턴만 ①(FAQ/에이전트)로 우회하고, 다음 답변이 원래 단계로 이어진다.
+            return withResumeHint(faqPath(conversationId, deferred, userId, "④우회①"));
+        }
+        if (deferred != null && isSideQuestionNo(question)) {
+            question = deferred; // 사용자가 "계속"을 골랐다 — 원 발화를 답변으로 저장하고 진행.
+        }
+        // step==null(진입 턴)은 수집 단계가 아님 + Set.of 는 contains(null) 에 NPE — null 가드 선행.
+        if (deferred == null && selectedCaseId == null && step != null
+                && ONB_GUARDED_STEPS.contains(step) && looksLikeSideQuestion(question)) {
+            sideQuestionStore.defer(conversationId, question);
+            responseLogService.record(conversationId, userId, question, "ONBOARDING", false, null, null, false);
+            return new ChatAskResponse(conversationId,
+                    "잠깐 — 질문이신 것 같아요. 준비를 잠시 멈추고 답해드릴까요?",
+                    List.of(), List.of(SIDE_Q_YES, SIDE_Q_NO),
+                    "④온보딩:질문확인", null, false, null);
+        }
+
         RouteMessage rm;
         if (step == null) {
             intakeSlotTrace.setOnboardingStep(conversationId, "JOB");
@@ -664,19 +756,38 @@ public class ChatbotController {
             }
         }
 
-        // sticky 모드(오케스트레이터 유지): 이미 ③ 에 머무는 대화는 라우팅·FAQ·NAV 를 전부 건너뛰고 ③ 직행한다.
-        // (이탈은 위에서 이미 처리됨 — 여기 도달하면 이탈 신호 아님.)
-        if (intakeModeStore.isActive(conversationId)) {
-            return ApiResponse.ok(enterIntake(conversationId, question, userId, "③(유지)",
-                    req.selectedCaseId(), req.selectedModeCode()));
-        }
-
         // 영속 세션 복원: 재시작/재방문으로 메모리 sticky 는 없지만 DB 에 PENDING 인테이크(지원건) 세션이면
-        // 되살려 ③ 로 잇는다(슬롯은 IntakeAskService 가 DB 에서 복원). READY/DONE 은 isPersistedIntakeSession=false.
-        if (req.conversationId() != null
+        // sticky 로 되살려 아래 블록이 (질문 가드 포함) 동일하게 처리한다. READY/DONE 은 isPersistedIntakeSession=false.
+        String intakeRoute = "③(유지)";
+        if (!intakeModeStore.isActive(conversationId)
+                && req.conversationId() != null
                 && intakeAskService.isPersistedIntakeSession(conversationId)) {
             intakeModeStore.enter(conversationId);
-            return ApiResponse.ok(enterIntake(conversationId, question, userId, "③(복원)",
+            intakeRoute = "③(복원)";
+        }
+
+        // sticky 모드(오케스트레이터 유지): 이미 ③ 에 머무는 대화는 라우팅·FAQ·NAV 를 전부 건너뛰고 ③ 직행한다.
+        // (이탈은 위에서 이미 처리됨 — 여기 도달하면 이탈 신호 아님.)
+        // ── (g) 이탈성 질문 가드: 대기 중 FAQ성 질문은 삼키지 않고 확인 1턴 → "네"면 한 턴만 ① 우회 후 복귀.
+        //    인테이크 상태(sticky·슬롯·nextAsk 프로토콜)는 어느 분기에서도 안 건드린다.
+        if (intakeModeStore.isActive(conversationId)) {
+            String effectiveQuestion = question;
+            String deferred = sideQuestionStore.consume(conversationId);
+            if (deferred != null && isSideQuestionYes(question)) {
+                return ApiResponse.ok(withResumeHint(faqPath(conversationId, deferred, userId, "③우회①")));
+            }
+            if (deferred != null && isSideQuestionNo(question)) {
+                effectiveQuestion = deferred; // 원 발화를 인테이크 답변으로 이어서 처리
+            } else if (deferred == null
+                    && req.selectedCaseId() == null && req.selectedModeCode() == null
+                    && looksLikeSideQuestion(question)) {
+                sideQuestionStore.defer(conversationId, question);
+                return ApiResponse.ok(new ChatAskResponse(conversationId,
+                        "잠깐 — 질문이신 것 같아요. 준비를 잠시 멈추고 답해드릴까요?",
+                        List.of(), List.of(SIDE_Q_YES, SIDE_Q_NO),
+                        "③질문확인", null, true, null));
+            }
+            return ApiResponse.ok(enterIntake(conversationId, effectiveQuestion, userId, intakeRoute,
                     req.selectedCaseId(), req.selectedModeCode()));
         }
 

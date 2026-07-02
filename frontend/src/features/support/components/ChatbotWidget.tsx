@@ -187,13 +187,15 @@ function ChatbotPanel({ chatbot }: ChatbotPanelProps) {
   const onbDismissedRef = useRef(false);
   const onbNudgeCountRef = useRef(0);
 
-  // 자동 오픈: 온보딩 첫 질문(직무) 도착 시. 닫았던(폴백 선택) 사용자에겐 다시 안 연다.
+  // 자동 오픈/재오픈: 온보딩 국면이 살아 있으면 가이드를 연다 — 첫 질문(직무) 도착뿐 아니라
+  // 질문 우회(④질문확인)·회사/직무 보정으로 잠시 닫혔다가 수집 단계로 복귀한 경우 포함.
+  // X로 직접 닫은(폴백 선택) 사용자에겐 다시 안 연다. 이미 열려 있으면 no-op(최소화 상태 존중).
   useEffect(() => {
-    if (onbPhase === "role" && !onbDismissedRef.current && !runStarted) {
+    if (onbPhase && !onbGuideOpen && !onbDismissedRef.current && !runStarted) {
       setOnbGuideOpen(true);
       expandToFloating();
     }
-  }, [onbPhase, runStarted, expandToFloating]);
+  }, [onbPhase, onbGuideOpen, runStarted, expandToFloating]);
 
   // 자동 닫힘: 가이드 밖 온보딩 단계(회사/직무 보정·모드선택·면접인계)로 넘어가면 챗으로 복귀.
   //    (모드 칩·실행 UI 는 기존 챗 렌더가 담당 — 가이드는 빈 슬롯 수집까지만.)
