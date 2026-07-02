@@ -31,9 +31,10 @@ export function AutoPrepWorkView({ running, parts, caseId, company = null, showF
   const helper = footerHelperText(band, running);
 
   return (
-    <div className="overflow-hidden rounded-2xl border border-border bg-card">
+    // @container: 그리드/상태줄이 뷰포트가 아니라 이 위젯 자체의 폭(코너 ~360 / 플로팅 ~970)을 따르게.
+    <div className="@container overflow-hidden rounded-2xl border border-border bg-card">
       <StatusBandView band={band} parts={parts} />
-      <div className="grid grid-cols-3 gap-2.5 p-3.5 pt-3">
+      <div className="grid grid-cols-1 gap-2.5 p-3.5 pt-3 @[420px]:grid-cols-2 @[600px]:grid-cols-3">
         {orderedParts.map((part) => (
           <PartCard key={part.key} part={part} allFailed={band.allFailed} caseId={caseId} onNavigate={onNavigate} />
         ))}
@@ -49,8 +50,10 @@ function StatusBandView({ band, parts }: { band: StatusBand; parts: PartState[] 
 
   return (
     <div className="px-3.5 pt-3.5" style={{ background: "var(--orch-chat-bg)" }}>
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0" role="status" aria-live="polite">
+      {/* 좁은 폭(코너)에서는 헤드라인 블록과 재시도 버튼을 세로로 쌓아 서로 짓누르지 않게 —
+          헤드라인 텍스트는 한 덩어리로 읽히고, 버튼은 폭 관계없이 한 줄(whitespace-nowrap)을 유지. */}
+      <div className="flex flex-col gap-2 @[420px]:flex-row @[420px]:items-start @[420px]:justify-between @[420px]:gap-3">
+        <div className="min-w-0 flex-1" role="status" aria-live="polite">
           <div className="flex items-center gap-1.5">
             {band.allDone && (
               <span
@@ -73,7 +76,7 @@ function StatusBandView({ band, parts }: { band: StatusBand; parts: PartState[] 
             type="button"
             // TODO(F): 백엔드 부분 재실행 API가 붙으면 실제 재시도 요청으로 연결(지금은 시각 리뷰용).
             onClick={() => {}}
-            className={`inline-flex h-8 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full px-3 text-[11.5px] font-bold transition-colors ${
+            className={`inline-flex h-8 shrink-0 items-center gap-1.5 self-start whitespace-nowrap rounded-full px-3 text-[11.5px] font-bold transition-colors ${
               band.retryControl === "retryAll" ? "text-white" : ""
             }`}
             style={
@@ -238,7 +241,7 @@ function TintButton({
     <button
       type="button"
       onClick={onClick}
-      className="inline-flex h-[30px] items-center gap-1 rounded-lg px-2.5 text-[11.5px] font-bold transition-colors hover:brightness-95"
+      className="inline-flex h-[30px] shrink-0 items-center gap-1 whitespace-nowrap rounded-lg px-2.5 text-[11.5px] font-bold transition-colors hover:brightness-95"
       style={{ background: "var(--orch-surface)", border: "1px solid rgba(94,106,210,0.3)", color: "var(--orch-violet)" }}
     >
       {!iconTrailing && icon}
@@ -253,7 +256,7 @@ function OutlineButton({ icon, label, onClick }: { icon: React.ReactNode; label:
     <button
       type="button"
       onClick={onClick}
-      className="inline-flex h-[30px] items-center gap-1 rounded-lg px-2.5 text-[11.5px] font-bold text-ink-2 transition-colors hover:bg-secondary"
+      className="inline-flex h-[30px] shrink-0 items-center gap-1 whitespace-nowrap rounded-lg px-2.5 text-[11.5px] font-bold text-ink-2 transition-colors hover:bg-secondary"
       style={{ background: "var(--card)", border: "1px solid var(--border-strong)" }}
     >
       {icon}
@@ -283,7 +286,7 @@ function FooterBar({
           <button
             type="button"
             onClick={() => onNavigate(`/applications/${caseId}`)}
-            className="inline-flex h-[34px] items-center gap-1 rounded-[10px] px-3 text-[12px] font-bold text-ink-2 transition-colors hover:bg-secondary"
+            className="inline-flex h-[34px] shrink-0 items-center gap-1 whitespace-nowrap rounded-[10px] px-3 text-[12px] font-bold text-ink-2 transition-colors hover:bg-secondary"
             style={{ background: "var(--card)", border: "1px solid var(--border-strong)" }}
           >
             지원 건 열기
@@ -294,7 +297,7 @@ function FooterBar({
           type="button"
           disabled={!band.interviewReady}
           onClick={() => onNavigate(caseId ? `/interview?caseId=${caseId}&tab=modes` : "/interview")}
-          className={`inline-flex h-[34px] items-center gap-1.5 rounded-[10px] px-3.5 text-[12px] font-bold transition-transform ${
+          className={`inline-flex h-[34px] shrink-0 items-center gap-1.5 whitespace-nowrap rounded-[10px] px-3.5 text-[12px] font-bold transition-transform ${
             band.interviewReady ? "text-white hover:brightness-110" : "cursor-default text-ink-4"
           }`}
           style={
