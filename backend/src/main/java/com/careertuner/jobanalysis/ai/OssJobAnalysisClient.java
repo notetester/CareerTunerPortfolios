@@ -11,6 +11,7 @@ import java.util.Map;
 
 import org.springframework.stereotype.Component;
 
+import com.careertuner.ai.common.budget.AiTotalTimeBudget;
 import com.careertuner.ai.common.gpu.GpuPermitGate;
 import com.careertuner.applicationcase.domain.ApplicationCase;
 import com.careertuner.applicationcase.service.OpenAiResponsesClient.JobAnalysisPayload;
@@ -84,8 +85,9 @@ public class OssJobAnalysisClient implements JobAnalysisAiService {
                 "response_format", Map.of("type", "json_object"));
         try {
             String requestBody = objectMapper.writeValueAsString(body);
+            // 단건 호출이라 총 시간예산은 요청 타임아웃 절삭이 전부다(예산 0 = 무제한 = 기존 동작).
             HttpRequest request = HttpRequest.newBuilder(URI.create(chatUrl()))
-                    .timeout(properties.getTimeout())
+                    .timeout(AiTotalTimeBudget.start(properties.getTotalTimeBudget()).cap(properties.getTimeout()))
                     .header("Content-Type", "application/json")
                     .POST(HttpRequest.BodyPublishers.ofString(requestBody, StandardCharsets.UTF_8))
                     .build();

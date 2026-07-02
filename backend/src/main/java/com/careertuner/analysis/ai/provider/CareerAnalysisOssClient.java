@@ -17,6 +17,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
+import com.careertuner.ai.common.budget.AiTotalTimeBudget;
 import com.careertuner.ai.common.gpu.GpuPermitGate;
 import com.careertuner.common.exception.BusinessException;
 import com.careertuner.common.exception.ErrorCode;
@@ -95,15 +96,16 @@ public class CareerAnalysisOssClient {
 
         int attempts = Math.max(1, oss.getMaxRetries() + 1);
         long backoffMs = Math.max(0, oss.getRetryBackoff().toMillis());
-        // 총 시간예산(deadline): 재시도·백오프를 포함한 전체 상한(E totalTimeBudget 패턴).
-        long deadlineNanos = System.nanoTime() + positive(oss.getTotalTimeBudget()).toNanos();
+        // 총 시간예산: 재시도·백오프를 포함한 전체 상한(E totalTimeBudget 패턴). 0/음수면 무제한(OFF).
+        AiTotalTimeBudget budget = AiTotalTimeBudget.start(oss.getTotalTimeBudget());
         try {
-            return withRetryWithinBudget(attempts, backoffMs, deadlineNanos,
-                    remaining -> sendOnce(oss, payload, min(oss.getTimeout(), remaining)));
+            return withRetryWithinBudget(attempts, backoffMs, oss.getTimeout(), budget,
+                    timeout -> sendOnce(oss, payload, timeout));
         } catch (OssTransientException ex) {
             // 일시적 실패가 재시도/예산까지 모두 소진 → 폴백 유도.
-            log.warn("C 자체모델 시도 소진(최대 {}회/예산 {}s) → OpenAI/Mock 폴백 유도: {}",
-                    attempts, positive(oss.getTotalTimeBudget()).toSeconds(), ex.getMessage());
+            log.warn("C 자체모델 시도 소진(최대 {}회/예산 {}) → OpenAI/Mock 폴백 유도: {}",
+                    attempts, budget.unlimited() ? "무제한" : oss.getTotalTimeBudget().toSeconds() + "s",
+                    ex.getMessage());
             throw new BusinessException(ErrorCode.INTERNAL_ERROR, ex.getMessage());
         }
     }
@@ -176,25 +178,25 @@ public class CareerAnalysisOssClient {
     }
 
     /**
-     * 일시적 실패({@link OssTransientException})만 최대 {@code attempts} 회까지, <b>총 시간예산(deadline) 안에서만</b>
+     * 일시적 실패({@link OssTransientException})만 최대 {@code attempts} 회까지, <b>총 시간예산 안에서만</b>
      * 재시도한다(선형 백오프 — 단, 남은 예산으로 절삭). 예산이 소진되면 남은 시도 여부와 무관하게 중단한다.
-     * attempt 콜백은 남은 예산(Duration)을 받아 per-attempt 타임아웃 절삭에 쓴다.
+     * 예산이 0/음수(무제한, {@link AiTotalTimeBudget#unlimited()})면 예산 체크 없이 기존 무예산 경로처럼 동작한다.
+     * attempt 콜백은 남은 예산으로 절삭된 per-attempt 타임아웃(Duration)을 받는다.
      * 그 외 예외(예: {@link BusinessException} 4xx)는 재시도 없이 즉시 전파한다.
      */
-    static <T> T withRetryWithinBudget(int attempts, long backoffMs, long deadlineNanos,
-                                       Function<Duration, T> attempt) {
+    static <T> T withRetryWithinBudget(int attempts, long backoffMs, Duration perAttemptTimeout,
+                                       AiTotalTimeBudget budget, Function<Duration, T> attempt) {
         OssTransientException last = null;
         for (int i = 0; i < attempts; i++) {
-            Duration remaining = remaining(deadlineNanos);
-            if (remaining.isZero() || remaining.isNegative()) {
+            if (budget.expired()) {
                 throw last != null ? last : new OssTransientException("C 자체모델 총 시간예산이 소진되었습니다.");
             }
             try {
-                return attempt.apply(remaining);
+                return attempt.apply(budget.cap(perAttemptTimeout));
             } catch (OssTransientException ex) {
                 last = ex;
                 if (i < attempts - 1 && backoffMs > 0) {
-                    long sleepMs = Math.min(backoffMs * (i + 1L), Math.max(0, remaining(deadlineNanos).toMillis()));
+                    long sleepMs = budget.capBackoffMs(backoffMs * (i + 1L));
                     if (sleepMs > 0) {
                         try {
                             Thread.sleep(sleepMs);
@@ -207,14 +209,6 @@ public class CareerAnalysisOssClient {
             }
         }
         throw last;
-    }
-
-    private static Duration remaining(long deadlineNanos) {
-        return Duration.ofNanos(deadlineNanos - System.nanoTime());
-    }
-
-    private static Duration min(Duration a, Duration b) {
-        return a.compareTo(b) <= 0 ? a : b;
     }
 
     private static Duration positive(Duration value) {

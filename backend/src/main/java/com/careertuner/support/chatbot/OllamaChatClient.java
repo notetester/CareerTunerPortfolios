@@ -47,7 +47,8 @@ public class OllamaChatClient {
                 .connectTimeout(Duration.ofSeconds(10))
                 .build();
         var requestFactory = new JdkClientHttpRequestFactory(jdkClient);
-        requestFactory.setReadTimeout(Duration.ofSeconds(60));
+        // 예산 ON 이면 read timeout 을 예산으로 절삭(단일 시도 대비)
+        requestFactory.setReadTimeout(capReadTimeout(Duration.ofSeconds(60), ollamaProps.getTotalTimeBudget()));
 
         this.restClient = RestClient.builder()
                 .baseUrl(ollamaProps.getBaseUrl())
@@ -103,6 +104,14 @@ public class OllamaChatClient {
         Map<String, Object> message = (Map<String, Object>) messageObj;
         Object content = message.get("content");
         return content == null ? "" : content.toString().strip();
+    }
+
+    /** 총 시간예산이 양수(ON)면 read timeout 을 예산 이하로 절삭한다. 0/음수/null 은 무제한(OFF, 기존 동작). */
+    private static Duration capReadTimeout(Duration readTimeout, Duration totalTimeBudget) {
+        if (totalTimeBudget == null || totalTimeBudget.isZero() || totalTimeBudget.isNegative()) {
+            return readTimeout;
+        }
+        return readTimeout.compareTo(totalTimeBudget) <= 0 ? readTimeout : totalTimeBudget;
     }
 
     private String loadSystemPrompt() {

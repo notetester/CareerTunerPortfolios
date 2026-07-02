@@ -1,6 +1,7 @@
 package com.careertuner.community.moderation.client;
 
 import java.net.http.HttpClient;
+import java.time.Duration;
 import java.util.List;
 import java.util.Map;
 
@@ -13,6 +14,7 @@ import org.springframework.web.client.HttpServerErrorException;
 import org.springframework.web.client.ResourceAccessException;
 import org.springframework.web.client.RestClient;
 
+import com.careertuner.ai.common.budget.AiTotalTimeBudget;
 import com.careertuner.ai.common.gpu.GpuPermitGate;
 import com.careertuner.community.moderation.config.OllamaProperties;
 import com.careertuner.community.moderation.dto.OllamaChatRequest;
@@ -46,16 +48,20 @@ public class OllamaClient {
     public OllamaClient(OllamaProperties props, GpuPermitGate gpuPermitGate) {
         this.props = props;
         this.gpuPermitGate = gpuPermitGate;
+        // 예산 OFF(기본) 경로가 쓰는 공용 클라이언트 — 기존 read timeout 그대로.
+        this.restClient = buildRestClient(props.getReadTimeout());
+    }
 
+    /** read timeout 만 달리하는 RestClient 생성 — 예산 ON 이면 시도마다 남은 예산으로 절삭해 새로 만든다. */
+    private RestClient buildRestClient(Duration readTimeout) {
         // JDK 21 HttpClient: connectTimeout 설정
         var jdkClient = HttpClient.newBuilder()
                 .connectTimeout(props.getConnectTimeout())
                 .build();
         // JdkClientHttpRequestFactory: RestClient가 내부적으로 사용할 HTTP 팩토리
         var requestFactory = new JdkClientHttpRequestFactory(jdkClient);
-        requestFactory.setReadTimeout(props.getReadTimeout());
-
-        this.restClient = RestClient.builder()
+        requestFactory.setReadTimeout(readTimeout);
+        return RestClient.builder()
                 .baseUrl(props.getBaseUrl())
                 .requestFactory(requestFactory)
                 .build();
@@ -87,12 +93,23 @@ public class OllamaClient {
 
         // 5xx(HttpServerErrorException)·접속/읽기 타임아웃(ResourceAccessException)에 한해
         // 지수 백오프로 최대 2회 추가 재시도(총 3회). 4xx는 즉시 전파한다.
+        // 총 시간예산(재시도·백오프 포함 전체 상한). 0/음수면 무제한(OFF, 기존 동작 그대로).
+        AiTotalTimeBudget budget = AiTotalTimeBudget.start(props.getTotalTimeBudget());
         RuntimeException lastException = null;
         for (int attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+            // 백오프 후 예산이 소진됐으면 새 시도를 시작하지 않는다(첫 시도는 항상 실행).
+            if (attempt > 0 && budget.expired()) {
+                log.warn("Ollama 총 시간예산 소진, 재시도 {} 시작 전 중단", attempt);
+                break;
+            }
+            // 예산 ON 이면 per-attempt read timeout 을 남은 예산으로 절삭(OFF 면 공용 클라이언트 그대로).
+            RestClient client = budget.unlimited()
+                    ? restClient
+                    : buildRestClient(budget.cap(props.getReadTimeout()));
             try {
                 OllamaChatResponse response;
                 try (GpuPermitGate.GpuPermit permit = gpuPermitGate.acquire("moderation")) {
-                    response = restClient.post()
+                    response = client.post()
                             .uri("/api/chat")
                             .contentType(MediaType.APPLICATION_JSON)
                             .body(request)
@@ -110,7 +127,12 @@ public class OllamaClient {
                 if (attempt >= MAX_RETRIES) {
                     break;
                 }
-                long backoff = BACKOFF_MILLIS[attempt];
+                // 예산 소진 시 남은 재시도를 포기하고 기존 실패 경로(lastException 전파)로 나간다.
+                if (budget.expired()) {
+                    log.warn("Ollama 총 시간예산 소진, 재시도 중단: {}", e.toString());
+                    break;
+                }
+                long backoff = budget.capBackoffMs(BACKOFF_MILLIS[attempt]);
                 log.warn("Ollama 호출 실패, 재시도 {}/{} ({}ms 후): {}",
                         attempt + 1, MAX_RETRIES, backoff, e.toString());
                 try {

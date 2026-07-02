@@ -51,7 +51,8 @@ public class TicketDraftAiClient {
                 .connectTimeout(Duration.ofSeconds(10))
                 .build();
         var requestFactory = new JdkClientHttpRequestFactory(jdkClient);
-        requestFactory.setReadTimeout(Duration.ofSeconds(60));
+        // 예산 ON 이면 read timeout 을 예산으로 절삭(단일 시도 대비)
+        requestFactory.setReadTimeout(capReadTimeout(Duration.ofSeconds(60), ollamaProps.getTotalTimeBudget()));
 
         this.restClient = RestClient.builder()
                 .baseUrl(ollamaProps.getBaseUrl())
@@ -160,6 +161,14 @@ public class TicketDraftAiClient {
             log.error("회원 요약 생성 실패", e);
             throw new BusinessException(ErrorCode.AI_UNAVAILABLE);
         }
+    }
+
+    /** 총 시간예산이 양수(ON)면 read timeout 을 예산 이하로 절삭한다. 0/음수/null 은 무제한(OFF, 기존 동작). */
+    private static Duration capReadTimeout(Duration readTimeout, Duration totalTimeBudget) {
+        if (totalTimeBudget == null || totalTimeBudget.isZero() || totalTimeBudget.isNegative()) {
+            return readTimeout;
+        }
+        return readTimeout.compareTo(totalTimeBudget) <= 0 ? readTimeout : totalTimeBudget;
     }
 
     private String loadSystemPrompt() {

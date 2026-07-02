@@ -135,6 +135,24 @@ class CorrectionAiClientTest {
         verify(fixture.openAi, never()).correct(any());
     }
 
+    @Test
+    @DisplayName("zero totalTimeBudget means unlimited, so every attempt still runs with the full timeout")
+    void correct_zeroBudgetRunsAllAttempts() {
+        Fixture fixture = fixture(true);
+        fixture.properties.getSelf().setTotalTimeBudget(Duration.ZERO);
+        Duration fullTimeout = fixture.properties.getSelf().getTimeout();
+        CorrectionPayload expected = payload("3b");
+        when(fixture.self.correct(eq(fixture.command), eq("8b"), any(Duration.class)))
+                .thenThrow(new InvalidOutputException("invalid"));
+        when(fixture.self.correct(eq(fixture.command), eq("3b"), any(Duration.class))).thenReturn(expected);
+
+        assertThat(fixture.client.correct(fixture.command)).isSameAs(expected);
+
+        verify(fixture.self, org.mockito.Mockito.times(2))
+                .correct(eq(fixture.command), eq("8b"), eq(fullTimeout));
+        verify(fixture.self).correct(eq(fixture.command), eq("3b"), eq(fullTimeout));
+    }
+
     private Fixture fixture(boolean selfEnabled) {
         CorrectionAiProperties properties = new CorrectionAiProperties();
         properties.getSelf().setModel("8b");
