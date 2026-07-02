@@ -37,6 +37,7 @@ desktop/
 │  ├─ VoiceRecorder          Qt Multimedia 마이크 녹음 (m4a)
 │  ├─ NotificationPoller     알림 30초 폴링 → 트레이 토스트
 │  ├─ AutoPrepRunner         autoprep 인테이크 + POST-SSE 실행 스트림 파싱
+│  ├─ CollaborationClient    친구 요청 · 1:1/그룹/공개/비공개 채팅 · 공고/첨부 공유
 │  └─ SseClient              GET-SSE + Last-Event-ID 자동 재연결 (예비)
 └─ qml/                      ── 화면(QML · CC Desktop 문법) ──
    ├─ Theme.qml              블랙+인디고 팔레트 싱글톤
@@ -47,6 +48,7 @@ desktop/
    ├─ ReportView.qml         리포트 + md/HTML 저장 + 세션 자료 일괄 내보내기
    ├─ PhonePanel.qml         접이식 폰 연동 패널 (디스패치)
    ├─ DevicesPage.qml        알림 수신 채널 현황
+   ├─ CollaborationPage.qml  친구 검색/요청 + 메신저 방 개설/참가 + 쪽지/공고/첨부 공유
    ├─ SettingsPage.qml       저장폴더·자동저장·자동로그인·서버주소·트레이알림
    ├─ LoginPage.qml          로그인 (+자동로그인 토글)
    └─ NewJobDialog.qml       새 면접 준비 위저드 (지원건 → 모드)
@@ -60,6 +62,7 @@ desktop/
 - [x] 음성 답변: 녹음(m4a) → `voice-transcribe` 전사 → `voice-score` 전달력 채점
 - [x] 리포트 실연동 + 로컬 저장 (md/HTML · 세션 자료 일괄 내보내기 · 완료 시 자동 저장)
 - [x] 알림 30초 폴링 → 트레이 토스트 (폰→데스크탑 역방향 연동)
+- [x] 데스크탑 메신저 패널: 친구 요청/수락, 1:1·그룹·공개·비공개 채팅방, 쪽지, 공고 공유, 첨부 공유 정책(임시/클라우드/로컬)
 - [x] autoprep 한 줄 인테이크 + POST-SSE 라이브 실행 스텝
 - [x] 폰 디스패치 (접이식 폰 패널) · agent-steps 타임라인
 - [ ] (서버측) Job 영속화 `prep_job`/`prep_job_event`/`user_device` — **팀 합의 후** (SSE 재접속·기기 타겟 발송의 전제)

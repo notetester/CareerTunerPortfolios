@@ -31,6 +31,10 @@ export interface ProfileAiResponse {
   criteria?: ProfileCriterionScore[];
   model?: string;
   status?: string;
+  aiScore?: number;
+  qualityPenalty?: number;
+  qualityWarnings?: string[];
+  qualityRecommendations?: string[];
 }
 
 export interface ProfileCompleteness {
@@ -43,6 +47,10 @@ export interface ProfileCompleteness {
   criteria?: ProfileCriterionScore[];
   model?: string;
   status?: string;
+  aiScore?: number;
+  qualityPenalty?: number;
+  qualityWarnings?: string[];
+  qualityRecommendations?: string[];
 }
 
 export interface ProfileCriterionScore {

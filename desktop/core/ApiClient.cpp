@@ -26,6 +26,11 @@ void ApiClient::post(const QString& path, const QJsonObject& body, JsonCallback 
     handle(m_nam.post(makeRequest(path), payload), std::move(cb));
 }
 
+void ApiClient::deleteResource(const QString& path, JsonCallback cb)
+{
+    handle(m_nam.deleteResource(makeRequest(path)), std::move(cb));
+}
+
 void ApiClient::postMultipart(const QString& path,
                               const QList<QPair<QString, QString>>& fields,
                               const QList<FilePart>& files,

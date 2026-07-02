@@ -1,8 +1,14 @@
 # C Career Strategy AI Roadmap Checklist
 
-Last updated: 2026-07-01
+Last updated: 2026-07-02
 기준 branch: dev
-기준 PR 범위: #174, #175, #180, #182, #183, #184, #186, #187, #188, #190, #191, #193, #198, #199, #200, #201 포함
+기준 PR 범위: #174, #175, #180, #182, #183, #184, #186, #187, #188, #190, #191, #193, #198, #199, #200, #201, #210, #211, #212 포함
+
+> **용어 정정 (2026-07-02):** 이 문서의 "RAG" 항목들이 가리키는 완료 실험은 true external retrieval RAG
+> (런타임 벡터검색·웹·카탈로그 조회 — **미구현·미평가**)가 아니라 **evidence-bucket prompt augmentation**
+> (이미 입력된 profile/job 재구조화 + 정적 합성 사실 주입)이다. `rag-hardcase` 는 legacy experiment name 으로
+> 유지하고, 신규 벤치마크는 `evidence-attribution-*` 계열로 명명한다.
+> 상세: [AIDocs report 77](../../docs/ai-reports/areas/c-career-strategy/reports/77_ai_direction_and_rag_terminology_review.md)
 
 상태 표기:
 - `[x] 완료`
@@ -47,9 +53,14 @@ Last updated: 2026-07-01
 - [~] 보류 또는 조건부 유지 — raw output/result JSON 은 CareerTunerAI artifact repo 에 저장한다.
 - [~] 보류 또는 조건부 유지 — 긴 실험 분석 문서는 CareerTunerAIDocs 에 저장한다.
 - [~] 보류 또는 조건부 유지 — top LLM consensus 에서 true unsupported possession claim 은 A=0, B=0 이지만, empty output / NOT_JUDGEABLE / B_WORSE / NOT_COMPARABLE / regression candidate 가 남아 RAG runtime 은 `KEEP_RAG_DISABLED` 를 유지한다.
-- [ ] 미완료 — human review candidate 검토 및 gold label 확정은 후속으로 남아 있다.
+- [x] 완료 — RAG 용어 정정: 완료 실험은 evidence-bucket prompt augmentation 이며 true external retrieval RAG 는 미구현·미평가임을 상태 문서와 보고서 errata 로 고정했다([AIDocs report 77](../../docs/ai-reports/areas/c-career-strategy/reports/77_ai_direction_and_rag_terminology_review.md)).
+- [~] 보류 또는 조건부 유지 — B(evidence-bucket augmentation)는 production 후보에서 **연구 후보로 격하**한다. 다음 실측의 중심은 A(production 경로) 대량 베이스라인이다([AIDocs report 77](../../docs/ai-reports/areas/c-career-strategy/reports/77_ai_direction_and_rag_terminology_review.md) §8).
+- [x] 완료 — A-only baseline v1 실측(60케이스×2 run)과 rubric v2 judge 판정을 수행했다. "A true ≈ 0" 기각(진짜 보유단정 3/120관측), 전부 검출기 포착 — 계층 안전장치 필요성 정량 입증([AIDocs report 79](../../docs/ai-reports/areas/c-career-strategy/reports/79_a_only_baseline_v1_run.md)·[80](../../docs/ai-reports/areas/c-career-strategy/reports/80_a_only_baseline_repeat2_judge.md), PR #212).
+- [x] 완료 — gold label 확정(사용자 승인 하에 top-LLM 판정으로 human 대체): A-only 11건 최종화(TRUE 3건 확정, EA-A-012=보유단정 아님) + disagreement13 독립 판정 TRUE 0/13 → top-LLM consensus gold 확정([AIDocs report 82](../../docs/ai-reports/areas/c-career-strategy/reports/82_gold_labels_and_e1_r3_replay.md)).
 
 ## 4. Evidence gate / safety 상태
+
+- [x] 완료 — baseline TRUE 3건의 실제 출력 문장을 E1/R3 production 코드로 replay 하는 회귀 테스트 추가(`EvidenceGateBaselineReplayTest` 4건 — 검출 3 + 과탐 방지 앵커 1, [AIDocs report 82](../../docs/ai-reports/areas/c-career-strategy/reports/82_gold_labels_and_e1_r3_replay.md) §4).
 
 - [x] 완료 — R3 review-first gate 는 `PASSED`, `REVIEW_REQUIRED`, `REJECTED` 상태를 결정론으로 산출한다(PR #174, [reports/61](../../docs/ai-reports/areas/c-career-strategy/reports/61_rag_r3_review_first_gate_implementation.md)).
 - [x] 완료 — userEvidence 는 #175 이후 `profileSkills + profileCertificates` 로 고정하고, AI 파생 `matchedSkills` 는 보유 근거로 신뢰하지 않는다(PR #175, [reports/62](../../docs/ai-reports/areas/c-career-strategy/reports/62_rag_r3_evidence_gate_user_evidence_hotfix.md)).
@@ -71,7 +82,7 @@ Last updated: 2026-07-01
 - [x] 완료 — 관리자 fit-analysis 목록/상세에서 gate status, reason count, severity, 상세 reason 을 확인할 수 있다(PR #175, [reports/62](../../docs/ai-reports/areas/c-career-strategy/reports/62_rag_r3_evidence_gate_user_evidence_hotfix.md)).
 - [x] 완료 — 관리자 홈과 대시보드의 검토 대기 카운트는 지원 건별 최신 fit_analysis 기준으로 통일되어 있다(PR #175, [reports/62](../../docs/ai-reports/areas/c-career-strategy/reports/62_rag_r3_evidence_gate_user_evidence_hotfix.md)).
 - [x] 완료 — `reviewRequiredOnly=true` 목록 필터는 서버 SQL 에서 `REVIEW_REQUIRED` 만 반환하도록 고정했다(PR #175, [reports/66](../../docs/ai-reports/areas/c-career-strategy/reports/66_r3_auto_verification_and_ai_checklist.md)).
-- [~] 보류 또는 조건부 유지 — 운영자가 gate reason 을 처리/해결 완료로 표시하는 별도 workflow 는 아직 도입하지 않았다.
+- [x] 완료 — 운영자 gate review 처리 workflow: PENDING/RESOLVED/REANALYSIS_REQUESTED 상태 + 처리자/시점 기록 + 선택 메모(GATE_REVIEW), 검토 대기 카운트는 PENDING 만 계수([AIDocs report 81](../../docs/ai-reports/areas/c-career-strategy/reports/81_gate_review_workflow.md)).
 - [ ] 미완료 — gate status 분포, false-positive rate, alias 추가 요청량을 보는 장기 운영 리포트는 추후 후보로 남아 있다.
 
 ## 7. Current next candidates
@@ -85,7 +96,11 @@ Last updated: 2026-07-01
 - [x] 완료 — RAG hard-case 실제 출력의 local/private independent semantic judge 검증 및 CareerTunerAI/CareerTunerAIDocs 산출물 저장([reports/74 summary](reports/74_rag_hardcase_independent_semantic_judge.md), [AIDocs report 74](../../docs/ai-reports/areas/c-career-strategy/reports/74_rag_hardcase_v1_independent_semantic_judge.md)).
 - [x] 완료 — RAG hard-case top LLM judge 평가팩 생성 및 CareerTunerAI/CareerTunerAIDocs 산출물 저장([reports/75 summary](reports/75_rag_hardcase_top_llm_judge_pack.md), [AIDocs report 75](../../docs/ai-reports/areas/c-career-strategy/reports/75_rag_hardcase_top_llm_judge_pack_plan.md)).
 - [x] 완료 — RAG hard-case top LLM judge 결과 3종 validation/aggregation 및 disagreement matrix 생성([reports/76 summary](reports/76_rag_hardcase_top_llm_judge_consensus.md), [AIDocs report 76](../../docs/ai-reports/areas/c-career-strategy/reports/76_rag_hardcase_top_llm_judge_consensus.md)).
-- [ ] 미완료 — 관리자 gate review 처리 workflow 설계: 검토 완료, 재분석 요청, memo/reason 연결.
-- [ ] 미완료 — R3 gate reason 로그를 기반으로 false-positive 샘플 리뷰와 alias 후보 triage.
-- [ ] 미완료 — top LLM human review candidate 검토와 gold label 확정.
+- [x] 완료 — A-only production 경로 안전성 베이스라인 v1(60케이스×2 run + judge, PR #212, [AIDocs report 80](../../docs/ai-reports/areas/c-career-strategy/reports/80_a_only_baseline_repeat2_judge.md)). **120케이스 확장은 보류** — 운영 FP/FN 신호 시 confusion_pair 집중으로 재개.
+- [x] 완료 — fallback provider 판단값 소유 통일(PR #211, [AIDocs report 78](../../docs/ai-reports/areas/c-career-strategy/reports/78_provider_judgment_ownership_unification.md)) — 전 provider 뉴로-심볼릭.
+- [x] 완료 — 관리자 gate review 처리 workflow(검토 완료/재분석 요청/대기 되돌리기 + 메모 연결, [AIDocs report 81](../../docs/ai-reports/areas/c-career-strategy/reports/81_gate_review_workflow.md)).
+- [x] 완료 — E2E production 경로 관통 실측(60케이스): 규칙엔진→OSS 뉴로-심볼릭→E1→R3 실경로. 보호되지 않은 노출 0(E1 흡수 3+회복 다수, R3 포착 1=EA-A-013 critical), 60/60 화면 보장([AIDocs report 83](../../docs/ai-reports/areas/c-career-strategy/reports/83_e2e_production_path_baseline.md)).
+- [x] 완료 — 실공고 표기 다양성 FP triage: 웹 수집 표기쌍 22종 → 한글 전사 별칭 17종 + confusion block 5종 추가(FN 가드 테스트 동반). 보류 표기쌍은 운영 gate reason 로그로 재평가([AIDocs report 84](../../docs/ai-reports/areas/c-career-strategy/reports/84_fp_triage_korean_aliases_and_gpu_proposal.md)).
+- [~] 보류 또는 조건부 유지 — GPU 동시성 옵션2(OLLAMA env)·옵션4(횡단 세마포어)는 팀장/ops 합의 대기 — 제안값·설계는 [AIDocs report 84](../../docs/ai-reports/areas/c-career-strategy/reports/84_fp_triage_korean_aliases_and_gpu_proposal.md) §3.
+- [x] 완료 — gold label 확정: disagreement13(TRUE 0/13, offline over-count 근원=모델 자기신고 metric 합산 규명) + A-only 11건([AIDocs report 82](../../docs/ai-reports/areas/c-career-strategy/reports/82_gold_labels_and_e1_r3_replay.md)).
 - [ ] 미완료 — model-card 다음 개정: R3 운영 데이터와 gate reason 분포 반영.

@@ -11,6 +11,7 @@ import java.util.Map;
 
 import org.springframework.stereotype.Component;
 
+import com.careertuner.ai.common.gpu.GpuPermitGate;
 import com.careertuner.applicationcase.domain.ApplicationCase;
 import com.careertuner.applicationcase.service.OpenAiResponsesClient.JobAnalysisPayload;
 import com.careertuner.applicationcase.service.OpenAiResponsesClient.Usage;
@@ -30,10 +31,13 @@ public class OssJobAnalysisClient implements JobAnalysisAiService {
     private final JobAnalysisAiProperties properties;
     private final ObjectMapper objectMapper;
     private final HttpClient httpClient;
+    private final GpuPermitGate gpuPermitGate;
 
-    public OssJobAnalysisClient(JobAnalysisAiProperties properties, ObjectMapper objectMapper) {
+    public OssJobAnalysisClient(JobAnalysisAiProperties properties, ObjectMapper objectMapper,
+                                GpuPermitGate gpuPermitGate) {
         this.properties = properties;
         this.objectMapper = objectMapper;
+        this.gpuPermitGate = gpuPermitGate;
         this.httpClient = HttpClient.newBuilder()
                 .connectTimeout(properties.getTimeout())
                 .build();
@@ -86,8 +90,11 @@ public class OssJobAnalysisClient implements JobAnalysisAiService {
                     .POST(HttpRequest.BodyPublishers.ofString(requestBody, StandardCharsets.UTF_8))
                     .build();
 
-            HttpResponse<String> response = httpClient.send(request,
-                    HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
+            HttpResponse<String> response;
+            try (GpuPermitGate.GpuPermit permit = gpuPermitGate.acquire("job-analysis")) {
+                response = httpClient.send(request,
+                        HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
+            }
 
             if (response.statusCode() < 200 || response.statusCode() >= 300) {
                 throw new BusinessException(ErrorCode.INTERNAL_ERROR,

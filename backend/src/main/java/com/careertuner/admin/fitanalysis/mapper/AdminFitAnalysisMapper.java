@@ -15,6 +15,11 @@ public interface AdminFitAnalysisMapper {
 
     AdminFitAnalysisResult findById(Long id);
 
+    /** gate review workflow: 처리 상태 갱신(반영 행 수 반환 — gate 결과 없는 분석이면 0). */
+    int updateGateReview(@Param("fitAnalysisId") Long fitAnalysisId,
+                         @Param("adminUserId") Long adminUserId,
+                         @Param("reviewStatus") String reviewStatus);
+
     List<AdminFitAnalysisMemo> findMemosByFitAnalysisId(Long fitAnalysisId);
 
     AdminFitAnalysisMemo findMemoByIdAndFitAnalysisId(@Param("id") Long id, @Param("fitAnalysisId") Long fitAnalysisId);

@@ -18,6 +18,7 @@ import java.util.concurrent.TimeoutException;
 
 import org.springframework.stereotype.Service;
 
+import com.careertuner.ai.common.gpu.GpuPermitGate;
 import com.careertuner.correction.dto.CorrectionWarmupResponse;
 
 import jakarta.annotation.PreDestroy;
@@ -37,6 +38,7 @@ public class CorrectionModelWarmupService {
 
     private final CorrectionAiProperties properties;
     private final ObjectMapper objectMapper;
+    private final GpuPermitGate gpuPermitGate;
     private final HttpClient httpClient;
     private final ExecutorService executor = Executors.newSingleThreadExecutor(r -> {
         Thread thread = new Thread(r, "correction-model-warmup");
@@ -48,9 +50,11 @@ public class CorrectionModelWarmupService {
     private Instant warmUntil = Instant.EPOCH;
     private Instant retryAfter = Instant.EPOCH;
 
-    public CorrectionModelWarmupService(CorrectionAiProperties properties, ObjectMapper objectMapper) {
+    public CorrectionModelWarmupService(
+            CorrectionAiProperties properties, ObjectMapper objectMapper, GpuPermitGate gpuPermitGate) {
         this.properties = properties;
         this.objectMapper = objectMapper;
+        this.gpuPermitGate = gpuPermitGate;
         this.httpClient = HttpClient.newBuilder()
                 .connectTimeout(properties.getSelf().getConnectTimeout())
                 .build();
@@ -74,8 +78,11 @@ public class CorrectionModelWarmupService {
                 return new CorrectionWarmupResponse(COOLDOWN, model);
             }
 
-            inFlight = CompletableFuture.runAsync(() -> loadModel(model), executor);
-            inFlight.whenComplete((ignored, failure) -> completeWarmup(model, reason, failure));
+            // whenComplete 를 inFlight 체인에 포함해야 awaitIfInProgress 가 completeWarmup(warmUntil 세팅)까지
+            // 대기한다. 분리하면 loadModel 완료~콜백 실행 사이에 warmAsync 가 끼어들어 중복 warmup 이 시작되는
+            // race 가 생긴다(전체 테스트 스위트에서 간헐 재현되던 실동작 버그).
+            inFlight = CompletableFuture.runAsync(() -> loadModel(model), executor)
+                    .whenComplete((ignored, failure) -> completeWarmup(model, reason, failure));
             log.info("Correction model warmup started model={} reason={}", model, safeReason(reason));
             return new CorrectionWarmupResponse(STARTED, model);
         }
@@ -117,8 +124,11 @@ public class CorrectionModelWarmupService {
             if (apiKey != null && !apiKey.isBlank()) {
                 request.header("Authorization", "Bearer " + apiKey);
             }
-            HttpResponse<Void> response = httpClient.send(
-                    request.build(), HttpResponse.BodyHandlers.discarding());
+            HttpResponse<Void> response;
+            try (GpuPermitGate.GpuPermit permit = gpuPermitGate.acquire("correction-warmup")) {
+                response = httpClient.send(
+                        request.build(), HttpResponse.BodyHandlers.discarding());
+            }
             if (response.statusCode() < 200 || response.statusCode() >= 300) {
                 throw new WarmupException("Ollama warmup failed (" + response.statusCode() + ").");
             }

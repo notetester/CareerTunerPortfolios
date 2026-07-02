@@ -126,7 +126,11 @@ public class ProfileServiceImpl implements ProfileService {
                 result.jobFamily().label(),
                 criteria(result.criteria()),
                 result.usage().model(),
-                result.status());
+                result.status(),
+                result.aiScore(),
+                result.qualityPenalty(),
+                result.qualityWarnings(),
+                result.qualityRecommendations());
     }
 
     private ProfileCompletenessResponse toCompletenessResponse(ProfileAiResult result) {
@@ -147,7 +151,11 @@ public class ProfileServiceImpl implements ProfileService {
                 result.jobFamily().label(),
                 criteria(result.criteria()),
                 result.usage().model(),
-                result.status());
+                result.status(),
+                result.aiScore(),
+                result.qualityPenalty(),
+                result.qualityWarnings(),
+                result.qualityRecommendations());
     }
 
     private List<ProfileCriterionScoreResponse> criteria(List<ProfileCriterionScore> criteria) {

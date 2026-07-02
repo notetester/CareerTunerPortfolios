@@ -9,6 +9,7 @@ import com.careertuner.admin.fitanalysis.domain.AdminFitAnalysisResult;
 import com.careertuner.admin.fitanalysis.dto.AdminFitAnalysisDetailResponse;
 import com.careertuner.admin.fitanalysis.dto.AdminFitAnalysisListItemResponse;
 import com.careertuner.admin.fitanalysis.dto.AdminFitAnalysisMemoRequest;
+import com.careertuner.admin.fitanalysis.dto.AdminGateReviewRequest;
 import com.careertuner.admin.fitanalysis.dto.AdminFitAnalysisMemoResponse;
 import com.careertuner.admin.fitanalysis.mapper.AdminFitAnalysisMapper;
 import com.careertuner.admin.fitanalysis.domain.AdminFitAnalysisMemo;
@@ -65,6 +66,32 @@ public class AdminFitAnalysisServiceImpl implements AdminFitAnalysisService {
                         .map(FitAnalysisLearningTaskResponse::from)
                         .toList(),
                 listMemos(id));
+    }
+
+    private static final java.util.Set<String> REVIEW_STATUSES =
+            java.util.Set.of("PENDING", "RESOLVED", "REANALYSIS_REQUESTED");
+
+    @Override
+    @Transactional
+    public AdminFitAnalysisDetailResponse reviewGate(Long fitAnalysisId, Long adminUserId, AdminGateReviewRequest request) {
+        String status = request.reviewStatus() == null ? "" : request.reviewStatus().trim().toUpperCase();
+        if (!REVIEW_STATUSES.contains(status)) {
+            throw new BusinessException(ErrorCode.INVALID_INPUT, "reviewStatus 는 PENDING/RESOLVED/REANALYSIS_REQUESTED 중 하나여야 합니다.");
+        }
+        int updated = adminFitAnalysisMapper.updateGateReview(fitAnalysisId, adminUserId, status);
+        if (updated == 0) {
+            throw new BusinessException(ErrorCode.NOT_FOUND, "gate 결과가 없는 분석입니다(R3 이전 분석은 검토 대상이 아닙니다).");
+        }
+        if (request.note() != null && !request.note().isBlank()) {
+            AdminFitAnalysisMemo memo = AdminFitAnalysisMemo.builder()
+                    .fitAnalysisId(fitAnalysisId)
+                    .adminUserId(adminUserId)
+                    .memoType("GATE_REVIEW")
+                    .content(request.note().trim())
+                    .build();
+            adminFitAnalysisMapper.insertMemo(memo);
+        }
+        return get(fitAnalysisId);
     }
 
     @Override

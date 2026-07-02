@@ -1,5 +1,7 @@
 package com.careertuner.auth.mapper;
 
+import java.util.List;
+
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 
@@ -44,4 +46,8 @@ public interface AuthMapper {
                                  @Param("reason") String reason,
                                  @Param("memo") String memo,
                                  @Param("blockedUntil") java.time.LocalDateTime blockedUntil);
+
+    List<String> findActivePermissionCodes(@Param("userId") Long userId);
+
+    List<String> findActivePermissionGroups(@Param("userId") Long userId);
 }

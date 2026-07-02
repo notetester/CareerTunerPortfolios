@@ -275,7 +275,7 @@ public class AuthServiceImpl implements AuthService {
         if (user == null) {
             throw new BusinessException(ErrorCode.NOT_FOUND, "사용자를 찾을 수 없습니다.");
         }
-        return MeResponse.from(user);
+        return buildMeResponse(user);
     }
 
     @Override
@@ -382,7 +382,17 @@ public class AuthServiceImpl implements AuthService {
                 .ipAddress(context != null ? truncate(context.ipAddress(), 45) : null)
                 .userAgent(context != null ? truncate(context.userAgent(), 500) : null)
                 .build());
-        return TokenResponse.of(accessToken, refreshToken, jwtTokenProvider.getAccessValiditySeconds(), user);
+        return new TokenResponse(accessToken, refreshToken, "Bearer",
+                jwtTokenProvider.getAccessValiditySeconds(), buildMeResponse(user));
+    }
+
+    private MeResponse buildMeResponse(User user) {
+        if (!"ADMIN".equals(user.getRole()) && !"SUPER_ADMIN".equals(user.getRole())) {
+            return MeResponse.from(user);
+        }
+        return MeResponse.from(user,
+                authMapper.findActivePermissionCodes(user.getId()),
+                authMapper.findActivePermissionGroups(user.getId()));
     }
 
     private User releaseExpiredBlockIfNeeded(User user) {

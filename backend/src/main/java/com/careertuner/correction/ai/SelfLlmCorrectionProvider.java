@@ -14,6 +14,7 @@ import java.util.Map;
 
 import org.springframework.stereotype.Service;
 
+import com.careertuner.ai.common.gpu.GpuPermitGate;
 import com.careertuner.common.exception.BusinessException;
 import com.careertuner.common.exception.ErrorCode;
 import com.careertuner.correction.ai.CorrectionAiClient.CorrectionCommand;
@@ -32,16 +33,19 @@ public class SelfLlmCorrectionProvider implements CorrectionAiProvider {
     private final CorrectionAiProperties properties;
     private final ObjectMapper objectMapper;
     private final SelfCorrectionOutputParser outputParser;
+    private final GpuPermitGate gpuPermitGate;
     private final HttpClient httpClient;
 
     public SelfLlmCorrectionProvider(
             CorrectionAiProperties properties,
             ObjectMapper objectMapper,
-            SelfCorrectionOutputParser outputParser
+            SelfCorrectionOutputParser outputParser,
+            GpuPermitGate gpuPermitGate
     ) {
         this.properties = properties;
         this.objectMapper = objectMapper;
         this.outputParser = outputParser;
+        this.gpuPermitGate = gpuPermitGate;
         this.httpClient = HttpClient.newBuilder()
                 .connectTimeout(properties.getSelf().getConnectTimeout())
                 .build();
@@ -153,8 +157,11 @@ public class SelfLlmCorrectionProvider implements CorrectionAiProvider {
             if (self.getApiKey() != null && !self.getApiKey().isBlank()) {
                 builder.header("Authorization", "Bearer " + self.getApiKey());
             }
-            HttpResponse<String> response = httpClient.send(
-                    builder.build(), HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
+            HttpResponse<String> response;
+            try (GpuPermitGate.GpuPermit permit = gpuPermitGate.acquire("correction")) {
+                response = httpClient.send(
+                        builder.build(), HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
+            }
             int status = response.statusCode();
             if (status >= 500) {
                 throw new SelfLlmCallException("Correction self LLM request failed (" + status + ").", true);

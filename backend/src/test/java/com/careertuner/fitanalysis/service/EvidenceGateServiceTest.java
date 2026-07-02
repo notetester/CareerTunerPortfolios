@@ -128,6 +128,50 @@ class EvidenceGateServiceTest {
         assertThat(catalog.items()).isEmpty();
     }
 
+    // ── 한글 전사 별칭(FP triage, reports/84): 정당 보유자의 표기 차이 FP 해소 + confusion FN 미도입 ──
+
+    @Test
+    void koreanTransliterationProfileResolvesLatinPostingFp() {
+        // 프로필 "스프링부트"(한글) vs 공고 "Spring Boot"(라틴) — 정당 보유인데 표기만 다름 → PASSED 여야 한다.
+        FitAnalysisAiResult ai = ai(75, List.of("Spring Boot"), List.of(),
+                "Spring Boot 역량을 보유하고 있습니다.");
+        EvidenceGateDecision decision = gate.evaluate(
+                command(List.of("Spring Boot"), List.of(), List.of("스프링부트"), List.of()), ai);
+
+        assertThat(decision.gateStatus()).isEqualTo(EvidenceGateDecision.STATUS_PASSED);
+    }
+
+    @Test
+    void koreanJavascriptDoesNotExemptJavaClaim() {
+        // FN 가드: 프로필 "자바스크립트"가 Java 요구 보유 주장을 면제하면 안 된다(자바↔자바스크립트 confusion).
+        FitAnalysisAiResult ai = ai(50, List.of(), List.of("Java"), "Java 역량을 보유하고 있습니다.");
+        EvidenceGateDecision decision = gate.evaluate(
+                command(List.of("Java"), List.of(), List.of("자바스크립트"), List.of()), ai);
+
+        assertThat(decision.gateStatus()).isEqualTo(EvidenceGateDecision.STATUS_REVIEW_REQUIRED);
+    }
+
+    @Test
+    void koreanReactDoesNotExemptReactNativeClaim() {
+        // FN 가드: 프로필 "리액트"가 React Native 매칭/보유 주장을 면제하면 안 된다.
+        FitAnalysisAiResult ai = ai(55, List.of("React Native"), List.of(), "전반적으로 적합합니다.");
+        EvidenceGateDecision decision = gate.evaluate(
+                command(List.of("React Native"), List.of(), List.of("리액트"), List.of()), ai);
+
+        assertThat(decision.gateStatus()).isEqualTo(EvidenceGateDecision.STATUS_REVIEW_REQUIRED);
+        assertThat(decision.maxSeverity()).isEqualTo(EvidenceGateDecision.SEVERITY_CRITICAL);
+    }
+
+    @Test
+    void koreanCertAbbreviationResolvesFp() {
+        // "정처기"(축약) 보유자가 "정보처리기사" 요구 공고에서 FP 로 잡히지 않아야 한다.
+        FitAnalysisAiResult ai = ai(70, List.of("정보처리기사"), List.of(), "정보처리기사를 보유하고 있습니다.");
+        EvidenceGateDecision decision = gate.evaluate(
+                command(List.of(), List.of("정보처리기사"), List.of("Java"), List.of("정처기")), ai);
+
+        assertThat(decision.gateStatus()).isEqualTo(EvidenceGateDecision.STATUS_PASSED);
+    }
+
     @Test
     void holdConstantsConfirmRagAndRewriteOff() {
         assertThat(EvidenceGateDecision.RAG_RUNTIME_ENABLED).isFalse();

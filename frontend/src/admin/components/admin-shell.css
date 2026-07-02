@@ -18,7 +18,15 @@
 .adm__logo-text { font-size: 14px; color: var(--foreground); }
 .adm__logo-text b { font-weight: 700; }
 
-.adm__nav { display: flex; flex-direction: column; gap: 2px; }
+.adm__nav { display: flex; flex-direction: column; gap: 14px; }
+.adm__nav-group { display: flex; flex-direction: column; gap: 2px; }
+.adm__nav-group-label {
+  padding: 4px 10px;
+  font-size: 11px;
+  font-weight: 800;
+  color: var(--muted-foreground);
+  letter-spacing: 0;
+}
 .adm__nav-item {
   display: flex; align-items: center; gap: 10px;
   padding: 9px 12px; border-radius: 8px;
