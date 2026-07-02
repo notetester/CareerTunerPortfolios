@@ -1,7 +1,7 @@
 import { useNavigate } from "react-router";
 import {
   User, PenTool, Users, CreditCard, Bell, Settings, LifeBuoy, ShieldCheck,
-  LogOut, X, Download, Share, Award,
+  LogOut, X, Download, Share, Award, LayoutDashboard, Briefcase, TrendingUp,
 } from "lucide-react";
 import { useAuth } from "../../auth/AuthContext";
 import { haptic } from "@/platform/haptics";
@@ -14,12 +14,15 @@ interface MoreItem {
   adminOnly?: boolean;
 }
 
+// 하단 탭이 홈/세션/면접/알림으로 재편되며 대시보드·지원 건·분석은 여기로 이동 (Claude 앱 문법).
 const MORE_ITEMS: MoreItem[] = [
+  { label: "대시보드", href: "/dashboard", icon: LayoutDashboard },
+  { label: "지원 건", href: "/applications", icon: Briefcase },
+  { label: "분석", href: "/analysis", icon: TrendingUp },
   { label: "내 프로필", href: "/profile", icon: User },
   { label: "AI 첨삭", href: "/correction", icon: PenTool },
   { label: "커뮤니티", href: "/community", icon: Users },
   { label: "결제/구독", href: "/billing", icon: CreditCard },
-  { label: "알림", href: "/notifications", icon: Bell },
   { label: "설정", href: "/settings", icon: Settings },
   { label: "고객센터", href: "/support", icon: LifeBuoy },
   { label: "관리자", href: "/admin", icon: ShieldCheck, adminOnly: true },
