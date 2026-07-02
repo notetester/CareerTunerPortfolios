@@ -43,6 +43,7 @@ import { profileRoutes } from "./domains/profile";
 import { correctionRoutes } from "./domains/correction";
 import { applicationsExtraRoutes } from "./domains/applicationsExtra";
 import { interviewExtraRoutes } from "./domains/interviewExtra";
+import { collaborationRoutes } from "./domains/collaboration";
 import { adminRoutes } from "./domains/admin";
 
 /** 등록된 핸들러가 없을 때 반환하는 sentinel. */
@@ -351,6 +352,7 @@ const routes: MockRoute[] = [
   ...supportRoutes,
   ...profileRoutes,
   ...correctionRoutes,
+  ...collaborationRoutes,
   ...adminRoutes,
 ];
 
