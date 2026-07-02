@@ -11,6 +11,7 @@ import { findConsentTerm, type ConsentTerm } from "../auth/consentTerms";
 import { getMyConsents, revokeAiConsent, saveMyConsents, type ConsentStatus } from "../auth/consentApi";
 import { useAuth } from "../auth/AuthContext";
 import { NotificationSettings } from "@/features/notification/components/NotificationSettings";
+import { ServerAddressSettings } from "@/features/settings/components/ServerAddressSettings";
 import { AppLockSettings } from "../components/AppLockSettings";
 
 const tabs = ["account", "privacy", "ai-consent", "notifications"] as const;
@@ -167,6 +168,8 @@ export function SettingsPage() {
                 </div>
               </CardContent>
             </Card>
+            {/* 앱/개발 전용 — 배포 웹에서는 컴포넌트가 스스로 숨는다(null 렌더). */}
+            <ServerAddressSettings />
           </TabsContent>
 
           <TabsContent value="privacy" className="mt-5 space-y-4">
