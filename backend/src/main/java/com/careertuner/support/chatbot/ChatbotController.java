@@ -680,6 +680,15 @@ public class ChatbotController {
                     req.selectedCaseId(), req.selectedModeCode()));
         }
 
+        // (d) 온보딩 "진행 중"(sticky)은 nav fast-path 보다 먼저 — 진행 중 답변("공고 링크로 올렸어요",
+        //     회사명 칩 텍스트 등)이 내비 키워드에 걸려 온보딩 밖으로 새는 것을 막는다
+        //     (실측: "공고 링크로 올렸어요" → NAV "지원 관리" 즉답이 턴·selectedCaseId 를 삼킴).
+        //     첫 진입(깡통 판정)은 기존 위치 유지 — 순수 내비 질문은 온보딩 시작 전엔 즉답이 맞다.
+        if (authUser != null && isOnboardingInProgress(conversationId)) {
+            return ApiResponse.ok(onboardingTurn(conversationId, authUser, question,
+                    req.selectedModeCode(), req.selectedCaseId()));
+        }
+
         // Fast-path: 순수 내비 질의는 LLM·검색 우회 즉답 (서버 신뢰 링크라 화이트리스트 검증 생략).
         Optional<ChatResponse> fast = fastPathService.tryFastPath(question);
         if (fast.isPresent()) {
@@ -690,15 +699,14 @@ public class ChatbotController {
                     conversationId, fr.message(), fr.links(), fr.quickReplies(), "NAV", null, false, null));
         }
 
-        // (a)(b)(d) 깡통계정 온보딩: 프로필 행 없음 + 지원 건 0건 = 순수 깡통 → 온보딩(직무→기술→공고).
+        // (a)(b)(d) 깡통계정 온보딩 "첫 진입": 프로필 행 없음 + 지원 건 0건 = 순수 깡통 → 온보딩(직무→기술→공고).
         //   여기까지 온 건 exit/sticky/DB복원/fastPath 가 아닌 신규 라우팅 턴 — 비-깡통은 false 로 통과해 아래 기존 흐름.
-        //   sticky(intakeModeStore=인테이크 case 흐름) 안 건드림. ★(d) 공고로 case 가 생기면 게이트는 false 가 되지만,
-        //   온보딩이 진행 중(DONE 종단 전)이면 sticky 로 onboardingTurn 을 유지해 비동기 추출 폴링·회사/직무 보정·
-        //   mode 선택을 이어간다. (f) 면접 인계로 DONE 되면 sticky 가 풀린다(인계 자체는 onboardingTurn 안에서 끝남).
+        //   sticky(intakeModeStore=인테이크 case 흐름) 안 건드림. ★진행 중(step 설정~DONE 전) sticky 는 위(fast-path 앞)
+        //   에서 처리 — 여기는 첫 진입 판정만 남는다. (f) 면접 인계로 DONE 되면 sticky 가 풀린다.
         //  ★ 거부 영속 차단: "그만"으로 온보딩을 거부한 대화는 깡통계정이어도(게이트 true) 재진입하지 않는다.
-        //    declined 조회(DB)는 온보딩 후보일 때만 타도록 OR 뒤(단축평가)에 둔다 — 일반 유저는 조회 0.
+        //    declined 조회(DB)는 온보딩 후보일 때만 타도록 AND 뒤(단축평가)에 둔다 — 일반 유저는 조회 0.
         if (authUser != null
-                && (isOnboardingInProgress(conversationId) || isBlankAccountForOnboarding(userId))
+                && isBlankAccountForOnboarding(userId)
                 && !isOnboardingDeclined(conversationId)) {
             return ApiResponse.ok(onboardingTurn(conversationId, authUser, question,
                     req.selectedModeCode(), req.selectedCaseId()));
