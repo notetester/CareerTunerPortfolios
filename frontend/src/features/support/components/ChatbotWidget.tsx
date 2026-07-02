@@ -394,7 +394,8 @@ function ChatbotPanel({ chatbot }: ChatbotPanelProps) {
             submitting: botStatus === "thinking",
             onSubmit: (step, text, meta) => {
               if (step === "jd") setPendingAttachments(meta.coverLetterFileIds);
-              sendMessage(text);
+              // 공고 파일 경로: 가이드가 만든 지원 건 id 를 실어 보내면 ④가 입양(텍스트 생성 생략).
+              sendMessage(text, meta.caseId != null ? { selectedCaseId: meta.caseId } : undefined);
             },
           }}
           onCollapse={collapseToCorner}

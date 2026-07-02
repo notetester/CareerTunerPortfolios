@@ -179,7 +179,7 @@ public class ChatbotController {
      * 매 턴 재판정(저장 전까지 깡통 유지)이라 step 으로 진행 단계를 이어간다. case 입력(d)·저장(e)·면접합류(f)는 다음 단계.
      */
     private ChatAskResponse onboardingTurn(Long conversationId, AuthUser authUser, String question,
-                                           String selectedModeCode) {
+                                           String selectedModeCode, Long selectedCaseId) {
         Long userId = authUser.id();   // 라우팅에서 authUser != null 보장. save((e))가 authUser 를 요구해 끝까지 내린다.
         String step = intakeSlotTrace.onboardingStep(conversationId);
         RouteMessage rm;
@@ -200,7 +200,10 @@ public class ChatbotController {
                     "받았어요 — 직무 \"" + got.job() + "\", 기술 \"" + got.skills()
                             + "\". 이제 지원할 공고 전문을 붙여넣어 주세요(회사명·직무·자격요건이 담긴 원문이면 좋아요).");
         } else if ("AWAIT_POSTING".equals(step)) {
-            rm = onboardingCreateCase(conversationId, userId, question);
+            // 파일 경로(d′): 프론트가 공고 파일을 B 업로드로 먼저 지원 건으로 만들고 id 만 알려준 턴.
+            rm = selectedCaseId != null
+                    ? onboardingAdoptCase(conversationId, userId, selectedCaseId)
+                    : onboardingCreateCase(conversationId, userId, question);
         } else if ("EXTRACTING".equals(step)) {
             rm = onboardingPollExtraction(conversationId, authUser);
         } else if ("AWAIT_COMPANY".equals(step)) {
@@ -242,6 +245,27 @@ public class ChatbotController {
             return new RouteMessage("④온보딩:공고생성실패",
                     "공고를 등록하는 중 문제가 생겼어요. 공고 전문을 다시 붙여넣어 주시겠어요?");
         }
+    }
+
+    /**
+     * (d′) AWAIT_POSTING 파일 경로: 프론트가 공고 파일(PDF/이미지)을 기존 B 업로드 엔드포인트
+     * (from-job-posting/upload)로 먼저 지원 건으로 만들고 selectedCaseId 로 알려준 경우 — 텍스트 생성 대신
+     * 그 건을 입양한다(소유 검증 후). 추출은 업로드 시 이미 큐잉됐으므로 기존 EXTRACTING 폴링에 그대로
+     * 합류한다. route 는 텍스트 경로(공고생성)와 동일하게 재사용 → 프론트 국면 매핑 무변경.
+     */
+    private RouteMessage onboardingAdoptCase(Long conversationId, Long userId, Long selectedCaseId) {
+        try {
+            applicationCaseService.get(userId, selectedCaseId); // 소유 검증 — 타인/미존재 건이면 throw
+        } catch (RuntimeException ex) {
+            log.warn("온보딩 파일 케이스 입양 실패(공고 재요청): {}", ex.getMessage());
+            // step 은 AWAIT_POSTING 유지 — 붙여넣기/재업로드로 재시도.
+            return new RouteMessage("④온보딩:공고요청",
+                    "공고 파일을 확인하지 못했어요. 공고 전문을 붙여넣거나 파일을 다시 올려주세요.");
+        }
+        intakeSlotTrace.setOnboardingCaseId(conversationId, selectedCaseId);
+        intakeSlotTrace.setOnboardingStep(conversationId, "EXTRACTING");
+        return new RouteMessage("④온보딩:공고생성",
+                "공고 파일 받았어요. 회사·직무 정보를 읽고 있어요(보통 몇 초). 준비되면 진행 상황을 알려드릴게요.");
     }
 
     /**
@@ -558,7 +582,8 @@ public class ChatbotController {
         if (authUser != null
                 && (isOnboardingInProgress(conversationId) || isBlankAccountForOnboarding(userId))
                 && !isOnboardingDeclined(conversationId)) {
-            return ApiResponse.ok(onboardingTurn(conversationId, authUser, question, req.selectedModeCode()));
+            return ApiResponse.ok(onboardingTurn(conversationId, authUser, question,
+                    req.selectedModeCode(), req.selectedCaseId()));
         }
 
         // 확인 대기(1턴) 소비: 이 턴은 라우팅을 돌리지 않는다. (오분류 안전판 A)
