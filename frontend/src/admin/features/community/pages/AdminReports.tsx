@@ -6,6 +6,7 @@ import {
 } from "lucide-react";
 import ModerationSettingsPanel from "../../moderation/pages/ModerationSettingsPanel";
 import AdminShell from "../../../components/AdminShell";
+import { useAdminPendingCounts } from "@/admin/hooks/useAdminPendingCounts";
 import { type Report } from "../data/reportsData";
 import * as adminReportApi from "../api/adminReportApi";
 import * as moderationApi from "../../moderation/api/moderationApi";
@@ -43,9 +44,26 @@ const CATEGORY_LABELS: Record<string, string> = {
 /* ── 메인 탭 ── */
 type MainTab = "reports" | "moderation" | "comment-moderation" | "settings";
 
+/** 탭 라벨 옆 미처리 건수 배지. 0이면 표시 안 함(숫자만). */
+function TabBadge({ count }: { count?: number }) {
+  if (!count) return null;
+  return (
+    <span
+      style={{
+        marginLeft: 6, fontSize: 11, fontWeight: 700, lineHeight: 1,
+        padding: "2px 6px", borderRadius: 9999,
+        background: "var(--accent-soft)", color: "var(--primary)",
+      }}
+    >
+      {count}
+    </span>
+  );
+}
+
 export default function AdminReports() {
   const [mainTab, setMainTab] = useState<MainTab>("reports");
   const [toast, setToast] = useState<string | null>(null);
+  const pending = useAdminPendingCounts();
 
   useEffect(() => {
     if (!toast) return;
@@ -68,12 +86,15 @@ export default function AdminReports() {
         <div className="av-seg">
           <button className={mainTab === "reports" ? "on" : ""} onClick={() => setMainTab("reports")}>
             <Flag style={{ width: 14, height: 14, marginRight: 4 }} /> 유저 신고
+            <TabBadge count={pending?.reports?.count} />
           </button>
           <button className={mainTab === "moderation" ? "on" : ""} onClick={() => setMainTab("moderation")}>
             <ShieldAlert style={{ width: 14, height: 14, marginRight: 4 }} /> 게시글 검열
+            <TabBadge count={pending?.hiddenPosts?.count} />
           </button>
           <button className={mainTab === "comment-moderation" ? "on" : ""} onClick={() => setMainTab("comment-moderation")}>
             <MessageCircle style={{ width: 14, height: 14, marginRight: 4 }} /> 댓글 검열
+            <TabBadge count={pending?.hiddenComments?.count} />
           </button>
           <button className={mainTab === "settings" ? "on" : ""} onClick={() => setMainTab("settings")}>
             <Settings2 style={{ width: 14, height: 14, marginRight: 4 }} /> AI 검열 설정

@@ -106,6 +106,7 @@ public class RefundPolicyService {
                 STATUS_PUBLISHED,
                 true,
                 NOTICE_CATEGORY,
+                null,
                 null));
         if (notice == null || notice.getId() == null) {
             throw new BusinessException(ErrorCode.INTERNAL_ERROR, "환불 정책 공지 생성에 실패했습니다.");
@@ -292,7 +293,8 @@ public class RefundPolicyService {
                     notice.getStatus(),
                     false,
                     notice.getCategory(),
-                    notice.getThumbnailUrl()));
+                    notice.getThumbnailUrl(),
+                    null));
         }
     }
 

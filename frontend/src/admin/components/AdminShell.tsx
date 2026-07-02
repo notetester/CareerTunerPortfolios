@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { Link, useLocation } from "react-router";
+import { Link, useLocation, useNavigate } from "react-router";
 import {
   Activity,
   BarChart3,
@@ -11,6 +11,7 @@ import {
   CircleHelp,
   ClipboardCheck,
   CreditCard,
+  ExternalLink,
   FileText,
   FileUser,
   Gauge,
@@ -18,6 +19,7 @@ import {
   LayoutDashboard,
   ListChecks,
   LockKeyhole,
+  LogOut,
   Mail,
   MailCheck,
   Megaphone,
@@ -26,6 +28,7 @@ import {
   Package,
   Scale,
   ScrollText,
+  Search,
   ShieldAlert,
   ShieldCheck,
   SlidersHorizontal,
@@ -35,6 +38,9 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { useAuth } from "@/app/auth/AuthContext";
+import { ThemeToggle } from "@/app/components/layout/ThemeToggle";
+import { NotificationBell } from "@/features/notification/components/NotificationBell";
+import { useAdminPendingCounts, topSeverity, sumCounts, type PendingSeverity } from "@/admin/hooks/useAdminPendingCounts";
 import "./admin-shell.css";
 
 type PermissionGroupCode =
@@ -163,6 +169,12 @@ const NAV_GROUPS: NavGroup[] = [
   },
 ];
 
+/** 미처리 큐 숫자 뱃지. count 0이면 렌더하지 않는다. 색은 severity(RED/YELLOW). */
+function PendingBadge({ count, severity }: { count: number; severity: PendingSeverity }) {
+  if (count <= 0) return null;
+  return <span className={`adm__nav-ct sev-${severity.toLowerCase()}`}>{count}</span>;
+}
+
 interface AdminShellProps {
   active: string;
   breadcrumb: string;
@@ -183,7 +195,13 @@ export default function AdminShell({
   children,
 }: AdminShellProps) {
   const location = useLocation();
-  const { user } = useAuth();
+  const navigate = useNavigate();
+  const pending = useAdminPendingCounts();
+  const { user, logout } = useAuth();
+  const handleLogout = async () => {
+    await logout();
+    navigate("/");
+  };
   const role = user?.role;
   const canUseAdmin = role === "ADMIN" || role === "SUPER_ADMIN";
   const grantedGroups = getGrantedGroups(user);
@@ -219,7 +237,19 @@ export default function AdminShell({
                   >
                     <item.icon />
                     <span className="adm__nav-label">{item.label}</span>
-                    {item.ct && <span className="adm__nav-ct">{item.ct}</span>}
+                    {item.key === "reports" ? (
+                      <PendingBadge
+                        count={sumCounts(pending?.reports, pending?.hiddenPosts, pending?.hiddenComments)}
+                        severity={topSeverity(pending?.reports, pending?.hiddenPosts, pending?.hiddenComments)}
+                      />
+                    ) : item.key === "inquiries" ? (
+                      <PendingBadge
+                        count={pending?.tickets?.count ?? 0}
+                        severity={pending?.tickets?.severity ?? "NONE"}
+                      />
+                    ) : (
+                      item.ct && <span className="adm__nav-ct">{item.ct}</span>
+                    )}
                   </Link>
                 );
               })}
@@ -229,6 +259,27 @@ export default function AdminShell({
       </aside>
 
       <div className="adm__main">
+        <header className="adm__topbar">
+          <div className="adm__search">
+            <Search />
+            <input type="text" placeholder="검색..." />
+          </div>
+          <div className="adm__topbar-right">
+            <Link to="/dashboard" className="adm__topbar-link">
+              <ExternalLink className="size-4" /> 사이트로 돌아가기
+            </Link>
+            <ThemeToggle />
+            <NotificationBell />
+            <div className="adm__profile">
+              <div className="adm__avatar">A</div>
+              <span className="adm__profile-name">관리자</span>
+            </div>
+            <button type="button" onClick={handleLogout} className="adm__topbar-link">
+              <LogOut className="size-4" /> 로그아웃
+            </button>
+          </div>
+        </header>
+
         <div className="adm__content">
           <div className="adm__page-head">
             <div className="adm__bread">

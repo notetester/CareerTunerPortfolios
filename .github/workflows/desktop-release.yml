@@ -21,6 +21,7 @@ jobs:
       - uses: actions/checkout@v4
 
       # 러너에 이미 있는 MSVC 컴파일러 + Qt 6.8.3(msvc) 설치
+      # qtmultimedia: 음성 녹음(VoiceRecorder)이 Qt Multimedia 를 요구 — 없으면 CMake find_package 실패
       - name: Install Qt 6.8.3
         uses: jurplel/install-qt-action@v4
         with:
@@ -28,6 +29,7 @@ jobs:
           host: windows
           target: desktop
           arch: win64_msvc2022_64
+          modules: qtmultimedia
           cache: true
 
       - name: Configure & build (Release)
@@ -51,7 +53,12 @@ jobs:
           name: "CareerTuner Desktop ${{ github.ref_name }}"
           files: desktop/CareerTunerDesktop-*.zip
           body: |
-            CareerTuner 데스크탑 앱 (Windows x64).
+            CareerTuner 데스크탑 앱 (Windows x64) — 면접 준비 컨트롤 센터.
 
             압축을 풀고 `CareerTunerDesktop.exe` 를 실행하세요. Qt 설치 불필요.
-            백엔드 기본 주소: `http://localhost:8080` (원격은 추후 설정 화면에서 변경).
+
+            **주요 기능**: 세션 리스트 + 대화 스레드(질문·답변·채점·꼬리질문), 음성 답변(녹음→전사→채점),
+            면접 리포트 로컬 저장, 폰 디스패치/이어받기, AI 자동 준비, 트레이 알림, 자동 로그인.
+
+            백엔드 기본 주소: 팀 공용 원격(Tailscale). 로컬 시연은 설정 화면에서 `http://localhost:8080` 으로 변경.
+            (Tailscale 네트워크에 연결돼 있어야 원격 백엔드에 접속됩니다.)

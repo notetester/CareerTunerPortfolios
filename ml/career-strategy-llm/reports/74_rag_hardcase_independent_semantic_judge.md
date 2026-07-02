@@ -1,5 +1,11 @@
 # RAG hard-case independent semantic judge summary
 
+> **용어 정정 (2026-07-02, errata):** 이 보고서에서 "RAG"로 지칭한 실험은 **true external retrieval RAG**
+> (런타임 벡터검색·웹·카탈로그 조회)가 아니라, 이미 입력된 profile/job 정보와 정적 합성 사실을
+> evidence bucket 으로 재구조화해 prompt 에 추가한 **evidence-bucket prompt augmentation** 실험이다.
+> true external retrieval RAG 는 아직 구현·평가되지 않았다. 수치·판단(`KEEP_RAG_DISABLED` 포함)은 유지된다.
+> 상세: [AIDocs report 77](../../../docs/ai-reports/areas/c-career-strategy/reports/77_ai_direction_and_rag_terminology_review.md)
+
 ## 1. 작업 목적
 
 #198의 offline R3-like evaluator 결과를 별도 local semantic judge로 독립 검증했다. 이번 작업은 production RAG runtime 연결이 아니며, backend prompt, model 설정, EvidenceGateService, SkillAliasNormalizer production 코드는 변경하지 않았다.

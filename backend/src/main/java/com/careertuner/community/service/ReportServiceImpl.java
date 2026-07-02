@@ -16,6 +16,7 @@ import com.careertuner.community.dto.CreateReportRequest;
 import com.careertuner.community.mapper.CommunityCommentMapper;
 import com.careertuner.community.mapper.CommunityPostMapper;
 import com.careertuner.community.mapper.ReportMapper;
+import com.careertuner.community.moderation.event.NewReportEvent;
 import com.careertuner.community.moderation.event.ReportClassifyRequiredEvent;
 
 import lombok.RequiredArgsConstructor;
@@ -60,6 +61,8 @@ public class ReportServiceImpl implements ReportService {
                 .status("PENDING")
                 .build());
         eventPublisher.publishEvent(new ReportClassifyRequiredEvent(request.targetId()));
+        // 관리자 알림(NEW_REPORT) — 커밋 후 AFTER_COMMIT 리스너에서 팬아웃(트랜잭션 분리)
+        eventPublisher.publishEvent(new NewReportEvent(request.targetId()));
         log.info("게시글 신고 postId={} reporterId={}", request.targetId(), userId);
     }
 

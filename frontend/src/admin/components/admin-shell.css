@@ -44,8 +44,69 @@
 }
 .adm__nav-item.is-active .adm__nav-ct { background: rgba(37,99,235,0.12); color: var(--accent); }
 
+/* 미처리 큐 뱃지: RED(급함)/YELLOW(주의). 색은 테마 토큰이라 다크모드 자동 대응 */
+.adm__nav-ct.sev-red,
+.adm__nav-item.is-active .adm__nav-ct.sev-red {
+  background: color-mix(in srgb, var(--destructive) 15%, transparent);
+  color: var(--destructive);
+}
+.adm__nav-ct.sev-yellow,
+.adm__nav-item.is-active .adm__nav-ct.sev-yellow {
+  background: var(--warning-50);
+  color: var(--warning);
+}
+
+/* 상단바 우측 링크/버튼(사이트로 돌아가기·로그아웃) — 테마 토큰으로 다크모드 대응 */
+.adm__topbar-link {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 6px 12px; border-radius: 6px;
+  border: 1px solid var(--border);
+  background: transparent;
+  font-size: 14px; font-weight: 500; color: var(--muted-foreground);
+  cursor: pointer; text-decoration: none;
+  transition: background 150ms, color 150ms;
+}
+.adm__topbar-link:hover { background: var(--muted); color: var(--foreground); }
+
 /* --- Main area --- */
 .adm__main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+
+/* --- Top bar --- */
+.adm__topbar {
+  display: flex; align-items: center; justify-content: space-between; gap: 16px;
+  height: 56px; padding: 0 24px;
+  border-bottom: 1px solid var(--border); background: var(--card);
+  position: sticky; top: 0; z-index: 10;
+}
+.adm__search {
+  display: flex; align-items: center; gap: 8px;
+  background: var(--input-background); border-radius: 8px;
+  padding: 0 12px; height: 36px; flex: 1; max-width: 360px;
+}
+.adm__search svg { width: 16px; height: 16px; color: var(--muted-foreground); flex-shrink: 0; }
+.adm__search input {
+  border: none; background: transparent; outline: none;
+  font-size: 13px; color: var(--foreground); width: 100%;
+}
+.adm__topbar-right { display: flex; align-items: center; gap: 12px; }
+.adm__topbar-bell {
+  position: relative; background: none; border: none; cursor: pointer;
+  color: var(--muted-foreground); padding: 6px;
+}
+.adm__topbar-bell svg { width: 20px; height: 20px; }
+.adm__topbar-dot {
+  position: absolute; top: 4px; right: 4px;
+  width: 8px; height: 8px; border-radius: 50%;
+  background: var(--destructive); border: 2px solid var(--card);
+}
+.adm__profile { display: flex; align-items: center; gap: 8px; }
+.adm__avatar {
+  width: 32px; height: 32px; border-radius: 50%;
+  background: var(--gradient-brand); color: #fff;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 13px; font-weight: 700;
+}
+.adm__profile-name { font-size: 13px; font-weight: 500; color: var(--foreground); }
 
 /* --- Page content --- */
 .adm__content { padding: 24px; flex: 1; }
@@ -69,5 +130,7 @@
   .adm__side { display: none; }
 }
 @media (max-width: 600px) {
+  .adm__search { display: none; }
+  .adm__profile-name { display: none; }
   .adm__content { padding: 16px; }
 }

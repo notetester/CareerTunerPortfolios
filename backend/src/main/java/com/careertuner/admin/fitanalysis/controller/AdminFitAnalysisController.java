@@ -19,6 +19,7 @@ import com.careertuner.admin.common.AdminAccess;
 import com.careertuner.admin.fitanalysis.dto.AdminFitAnalysisDetailResponse;
 import com.careertuner.admin.fitanalysis.dto.AdminFitAnalysisListItemResponse;
 import com.careertuner.admin.fitanalysis.dto.AdminFitAnalysisMemoRequest;
+import com.careertuner.admin.fitanalysis.dto.AdminGateReviewRequest;
 import com.careertuner.admin.fitanalysis.dto.AdminFitAnalysisMemoResponse;
 import com.careertuner.admin.fitanalysis.service.AdminFitAnalysisService;
 import com.careertuner.common.security.AuthUser;
@@ -46,6 +47,15 @@ public class AdminFitAnalysisController {
                                                            @PathVariable Long id) {
         requireAdmin(authUser);
         return ApiResponse.ok(adminFitAnalysisService.get(id));
+    }
+
+    /** gate review workflow: 검토 완료/재분석 요청/대기 되돌리기 처리(+선택 메모). */
+    @PatchMapping("/{id}/gate-review")
+    public ApiResponse<AdminFitAnalysisDetailResponse> reviewGate(@AuthenticationPrincipal AuthUser authUser,
+                                                                  @PathVariable Long id,
+                                                                  @Valid @RequestBody AdminGateReviewRequest request) {
+        requireAdmin(authUser);
+        return ApiResponse.ok(adminFitAnalysisService.reviewGate(id, authUser.id(), request));
     }
 
     @GetMapping("/{id}/memos")
