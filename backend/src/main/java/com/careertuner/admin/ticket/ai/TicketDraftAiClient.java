@@ -17,6 +17,7 @@ import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientException;
 
+import com.careertuner.ai.common.gpu.GpuPermitGate;
 import com.careertuner.common.exception.BusinessException;
 import com.careertuner.common.exception.ErrorCode;
 import com.careertuner.community.moderation.config.OllamaProperties;
@@ -37,11 +38,14 @@ public class TicketDraftAiClient {
     private final RestClient restClient;
     private final OllamaProperties ollamaProps;
     private final SupportTextFallbackGenerator fallback;
+    private final GpuPermitGate gpuPermitGate;
     private final String systemPrompt;
 
-    public TicketDraftAiClient(OllamaProperties ollamaProps, SupportTextFallbackGenerator fallback) {
+    public TicketDraftAiClient(OllamaProperties ollamaProps, SupportTextFallbackGenerator fallback,
+                               GpuPermitGate gpuPermitGate) {
         this.ollamaProps = ollamaProps;
         this.fallback = fallback;
+        this.gpuPermitGate = gpuPermitGate;
 
         var jdkClient = HttpClient.newBuilder()
                 .connectTimeout(Duration.ofSeconds(10))
@@ -78,13 +82,17 @@ public class TicketDraftAiClient {
 
         log.debug("티켓 답변 초안 생성 요청: model={}", ollamaProps.getModel());
 
-        @SuppressWarnings("unchecked")
-        Map<String, Object> response = restClient.post()
-                .uri("/api/chat")
-                .contentType(MediaType.APPLICATION_JSON)
-                .body(request)
-                .retrieve()
-                .body(Map.class);
+        Map<String, Object> response;
+        try (GpuPermitGate.GpuPermit permit = gpuPermitGate.acquire("admin-ticket")) {
+            @SuppressWarnings("unchecked")
+            Map<String, Object> ollamaResponse = restClient.post()
+                    .uri("/api/chat")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .body(request)
+                    .retrieve()
+                    .body(Map.class);
+            response = ollamaResponse;
+        }
 
         if (response == null || !response.containsKey("message")) {
             throw new IllegalStateException("Ollama chat 응답이 비어 있습니다");
@@ -125,13 +133,17 @@ public class TicketDraftAiClient {
         log.debug("회원 요약 생성 요청: model={}", ollamaProps.getModel());
 
         try {
-            @SuppressWarnings("unchecked")
-            Map<String, Object> response = restClient.post()
-                    .uri("/api/chat")
-                    .contentType(MediaType.APPLICATION_JSON)
-                    .body(request)
-                    .retrieve()
-                    .body(Map.class);
+            Map<String, Object> response;
+            try (GpuPermitGate.GpuPermit permit = gpuPermitGate.acquire("admin-ticket")) {
+                @SuppressWarnings("unchecked")
+                Map<String, Object> ollamaResponse = restClient.post()
+                        .uri("/api/chat")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .body(request)
+                        .retrieve()
+                        .body(Map.class);
+                response = ollamaResponse;
+            }
 
             if (response == null || !response.containsKey("message")) {
                 throw new IllegalStateException("Ollama chat 응답이 비어 있습니다");

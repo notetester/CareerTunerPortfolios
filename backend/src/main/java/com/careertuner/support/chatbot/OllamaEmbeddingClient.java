@@ -12,6 +12,7 @@ import org.springframework.http.client.JdkClientHttpRequestFactory;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
 
+import com.careertuner.ai.common.gpu.GpuPermitGate;
 import com.careertuner.community.moderation.config.OllamaProperties;
 
 /**
@@ -26,9 +27,12 @@ public class OllamaEmbeddingClient {
 
     private final RestClient restClient;
     private final ChatbotProperties chatbotProps;
+    private final GpuPermitGate gpuPermitGate;
 
-    public OllamaEmbeddingClient(OllamaProperties ollamaProps, ChatbotProperties chatbotProps) {
+    public OllamaEmbeddingClient(OllamaProperties ollamaProps, ChatbotProperties chatbotProps,
+                                 GpuPermitGate gpuPermitGate) {
         this.chatbotProps = chatbotProps;
+        this.gpuPermitGate = gpuPermitGate;
 
         var jdkClient = HttpClient.newBuilder()
                 .connectTimeout(Duration.ofSeconds(10))
@@ -57,13 +61,17 @@ public class OllamaEmbeddingClient {
         log.debug("Ollama 임베딩 요청: model={}, textLength={}",
                 chatbotProps.getEmbeddingModel(), text.length());
 
-        @SuppressWarnings("unchecked")
-        Map<String, Object> response = restClient.post()
-                .uri("/api/embed")
-                .contentType(MediaType.APPLICATION_JSON)
-                .body(request)
-                .retrieve()
-                .body(Map.class);
+        Map<String, Object> response;
+        try (GpuPermitGate.GpuPermit permit = gpuPermitGate.acquire("chatbot-embedding")) {
+            @SuppressWarnings("unchecked")
+            Map<String, Object> ollamaResponse = restClient.post()
+                    .uri("/api/embed")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .body(request)
+                    .retrieve()
+                    .body(Map.class);
+            response = ollamaResponse;
+        }
 
         if (response == null || !response.containsKey("embeddings")) {
             throw new IllegalStateException("Ollama 임베딩 응답이 비어 있습니다");

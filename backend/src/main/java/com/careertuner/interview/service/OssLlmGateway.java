@@ -12,6 +12,7 @@ import java.util.Map;
 
 import org.springframework.stereotype.Component;
 
+import com.careertuner.ai.common.gpu.GpuPermitGate;
 import com.careertuner.common.exception.BusinessException;
 import com.careertuner.common.exception.ErrorCode;
 
@@ -42,10 +43,13 @@ public class OssLlmGateway implements InterviewLlmGateway {
     private final InterviewEvalProperties properties;
     private final ObjectMapper objectMapper;
     private final HttpClient httpClient;
+    private final GpuPermitGate gpuPermitGate;
 
-    public OssLlmGateway(InterviewEvalProperties properties, ObjectMapper objectMapper) {
+    public OssLlmGateway(InterviewEvalProperties properties, ObjectMapper objectMapper,
+                         GpuPermitGate gpuPermitGate) {
         this.properties = properties;
         this.objectMapper = objectMapper;
+        this.gpuPermitGate = gpuPermitGate;
         this.httpClient = HttpClient.newBuilder()
                 .connectTimeout(properties.getTimeout())
                 .build();
@@ -93,8 +97,11 @@ public class OssLlmGateway implements InterviewLlmGateway {
             if (properties.getApiKey() != null && !properties.getApiKey().isBlank()) {
                 builder.header("Authorization", "Bearer " + properties.getApiKey());
             }
-            HttpResponse<String> response = httpClient.send(builder.build(),
-                    HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
+            HttpResponse<String> response;
+            try (GpuPermitGate.GpuPermit permit = gpuPermitGate.acquire("interview")) {
+                response = httpClient.send(builder.build(),
+                        HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
+            }
             if (response.statusCode() < 200 || response.statusCode() >= 300) {
                 throw new BusinessException(ErrorCode.INTERNAL_ERROR,
                         "자체 모델 요청 실패 (" + response.statusCode() + ")");

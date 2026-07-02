@@ -13,6 +13,7 @@ import org.springframework.web.client.HttpServerErrorException;
 import org.springframework.web.client.ResourceAccessException;
 import org.springframework.web.client.RestClient;
 
+import com.careertuner.ai.common.gpu.GpuPermitGate;
 import com.careertuner.community.moderation.config.OllamaProperties;
 import com.careertuner.community.moderation.dto.OllamaChatRequest;
 import com.careertuner.community.moderation.dto.OllamaChatRequest.Message;
@@ -40,9 +41,11 @@ public class OllamaClient {
 
     private final RestClient restClient;
     private final OllamaProperties props;
+    private final GpuPermitGate gpuPermitGate;
 
-    public OllamaClient(OllamaProperties props) {
+    public OllamaClient(OllamaProperties props, GpuPermitGate gpuPermitGate) {
         this.props = props;
+        this.gpuPermitGate = gpuPermitGate;
 
         // JDK 21 HttpClient: connectTimeout 설정
         var jdkClient = HttpClient.newBuilder()
@@ -87,12 +90,15 @@ public class OllamaClient {
         RuntimeException lastException = null;
         for (int attempt = 0; attempt <= MAX_RETRIES; attempt++) {
             try {
-                OllamaChatResponse response = restClient.post()
-                        .uri("/api/chat")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .body(request)
-                        .retrieve()
-                        .body(OllamaChatResponse.class);
+                OllamaChatResponse response;
+                try (GpuPermitGate.GpuPermit permit = gpuPermitGate.acquire("moderation")) {
+                    response = restClient.post()
+                            .uri("/api/chat")
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .body(request)
+                            .retrieve()
+                            .body(OllamaChatResponse.class);
+                }
 
                 if (response == null || response.message() == null) {
                     throw new IllegalStateException("Ollama 응답이 비어 있습니다 (message=null)");

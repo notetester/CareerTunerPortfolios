@@ -12,6 +12,7 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
+import com.careertuner.ai.common.gpu.GpuPermitGate;
 import com.careertuner.correction.ai.CorrectionAiClient.CorrectionCommand;
 import com.careertuner.correction.ai.CorrectionAiClient.CorrectionPayload;
 import com.sun.net.httpserver.HttpServer;
@@ -48,7 +49,7 @@ class SelfLlmCorrectionProviderTest {
         properties.getSelf().setBaseUrl("http://localhost:" + server.getAddress().getPort());
         ObjectMapper objectMapper = new ObjectMapper();
         SelfLlmCorrectionProvider provider = new SelfLlmCorrectionProvider(
-                properties, objectMapper, new SelfCorrectionOutputParser(objectMapper));
+                properties, objectMapper, new SelfCorrectionOutputParser(objectMapper), GpuPermitGate.disabled());
 
         CorrectionPayload payload = provider.correct(command(), "careertuner-e-correction:8b", Duration.ofSeconds(2));
 

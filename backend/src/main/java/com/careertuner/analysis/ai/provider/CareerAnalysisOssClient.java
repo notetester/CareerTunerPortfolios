@@ -17,6 +17,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
+import com.careertuner.ai.common.gpu.GpuPermitGate;
 import com.careertuner.common.exception.BusinessException;
 import com.careertuner.common.exception.ErrorCode;
 
@@ -48,10 +49,13 @@ public class CareerAnalysisOssClient {
     private final CareerAnalysisAiProviderProperties properties;
     private final ObjectMapper objectMapper;
     private final HttpClient httpClient;
+    private final GpuPermitGate gpuPermitGate;
 
-    public CareerAnalysisOssClient(CareerAnalysisAiProviderProperties properties, ObjectMapper objectMapper) {
+    public CareerAnalysisOssClient(CareerAnalysisAiProviderProperties properties, ObjectMapper objectMapper,
+                                   GpuPermitGate gpuPermitGate) {
         this.properties = properties;
         this.objectMapper = objectMapper;
+        this.gpuPermitGate = gpuPermitGate;
         this.httpClient = HttpClient.newBuilder()
                 .connectTimeout(properties.getOss().getTimeout())
                 .build();
@@ -114,8 +118,11 @@ public class CareerAnalysisOssClient {
             if (oss.getApiKey() != null && !oss.getApiKey().isBlank()) {
                 builder.header("Authorization", "Bearer " + oss.getApiKey());
             }
-            HttpResponse<String> response = httpClient.send(builder.build(),
-                    HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
+            HttpResponse<String> response;
+            try (GpuPermitGate.GpuPermit permit = gpuPermitGate.acquire("analysis")) {
+                response = httpClient.send(builder.build(),
+                        HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
+            }
             int status = response.statusCode();
             if (status >= 500) {
                 // 서버측 일시 오류(예: Ollama 500, 긴 출력 생성 실패) → 재시도 가치 있음.
