@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { CheckCircle2, RefreshCw, Search, ShieldAlert, Users } from "lucide-react";
+import { CheckCircle2, LockKeyhole, MailCheck, RefreshCw, Search, ShieldAlert, Users, type LucideIcon } from "lucide-react";
 import AdminShell from "../../../components/AdminShell";
 import {
   AlertDialog,
@@ -68,12 +68,28 @@ function summarizeJson(value: string | null | undefined, emptyText = "미입력"
   }
 }
 
-export function AdminUsersPage() {
+interface AdminUsersPageProps {
+  active?: string;
+  breadcrumb?: string;
+  title?: string;
+  icon?: LucideIcon;
+  desc?: string;
+  initialStatus?: string;
+}
+
+export function AdminUsersPage({
+  active = "members",
+  breadcrumb = "회원 관리",
+  title = "회원 관리",
+  icon: PageIcon = Users,
+  desc = "회원 상세 컨텍스트, 로그인/보안 이력, 인증 이력, 프로필 상태, AI 동의와 사용 이력을 함께 확인합니다.",
+  initialStatus = "",
+}: AdminUsersPageProps = {}) {
   const [rows, setRows] = useState<AdminUserRow[]>([]);
   const [detail, setDetail] = useState<AdminUserDetail | null>(null);
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [keyword, setKeyword] = useState("");
-  const [status, setStatus] = useState("");
+  const [status, setStatus] = useState(initialStatus);
   const [role, setRole] = useState("");
   const [nextStatus, setNextStatus] = useState<AdminUserStatus>("ACTIVE");
   const [reason, setReason] = useState("");
@@ -192,11 +208,11 @@ export function AdminUsersPage() {
 
   return (
     <AdminShell
-      active="members"
-      breadcrumb="회원 관리"
-      title="회원 관리"
-      icon={Users}
-      desc="회원 상세 컨텍스트, 로그인/보안 이력, 인증 이력, 프로필 상태, AI 동의와 사용 이력을 함께 확인합니다."
+      active={active}
+      breadcrumb={breadcrumb}
+      title={title}
+      icon={PageIcon}
+      desc={desc}
       actions={(
         <Button variant="outline" onClick={() => void loadRows()} disabled={loading}>
           <RefreshCw className={`size-4 ${loading ? "animate-spin" : ""}`} />
@@ -451,6 +467,43 @@ export function AdminUsersPage() {
         </section>
       </div>
     </AdminShell>
+  );
+}
+
+export function AdminBlockedUsersPage() {
+  return (
+    <AdminUsersPage
+      active="blocked-users"
+      breadcrumb="차단 관리"
+      title="차단 회원 관리"
+      icon={ShieldAlert}
+      desc="차단된 계정과 차단 만료 시각, 차단 사유, 상태 변경 이력을 전용 화면에서 확인하고 해제합니다."
+      initialStatus="BLOCKED"
+    />
+  );
+}
+
+export function AdminSecurityAuditPage() {
+  return (
+    <AdminUsersPage
+      active="security-audit"
+      breadcrumb="로그인/보안 감사"
+      title="로그인/보안 감사"
+      icon={LockKeyhole}
+      desc="로그인 성공/실패, 실패 사유, IP, 세션 정보를 사용자 단위로 확인하는 보안 감사 화면입니다."
+    />
+  );
+}
+
+export function AdminEmailAuditPage() {
+  return (
+    <AdminUsersPage
+      active="email-audit"
+      breadcrumb="이메일 감사"
+      title="이메일 인증/재설정 감사"
+      icon={MailCheck}
+      desc="이메일 인증과 비밀번호 재설정 토큰 발급, 사용, 만료 이력을 사용자 단위로 확인합니다."
+    />
   );
 }
 

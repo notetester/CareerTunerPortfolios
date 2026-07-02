@@ -47,7 +47,7 @@ public class OpenAiProfileAiService implements ProfileAiService {
                     schemaProvider.schema(),
                     ProfilePromptCatalog.SYSTEM_PROMPT,
                     ProfilePromptCatalog.userPrompt(featureType, jobFamily, weights, json(profile)));
-            return validator.validate(featureType, jobFamily, weights, response.payload(), response.usage());
+            return validator.validate(featureType, profile, jobFamily, weights, response.payload(), response.usage());
         } catch (RuntimeException exception) {
             ProfileAiResult fallback = ruleBasedService.evaluate(profile, featureType);
             return new ProfileAiResult(

@@ -17,8 +17,10 @@ import tools.jackson.databind.JsonNode;
 public class ProfileAiJsonValidator {
 
     private final ProfileScoreCalculator scoreCalculator;
+    private final ProfileQualityGuard qualityGuard;
 
     public ProfileAiResult validate(String featureType,
+                                    com.careertuner.profile.domain.UserProfile profile,
                                     JobFamily jobFamily,
                                     Map<ScoreCriterion, Integer> weights,
                                     JsonNode payload,
@@ -51,7 +53,7 @@ public class ProfileAiJsonValidator {
         }
 
         List<ProfileCriterionScore> criteria = scoreCalculator.applyWeights(weights, rawScores, evidence, improvement);
-        return new ProfileAiResult(
+        ProfileAiResult result = new ProfileAiResult(
                 featureType,
                 text(payload.path("summary")),
                 strings(payload.path("extractedSkills")),
@@ -64,6 +66,7 @@ public class ProfileAiJsonValidator {
                 usage,
                 "SUCCESS",
                 null);
+        return qualityGuard.apply(profile, result);
     }
 
     private ScoreCriterion parseCriterion(String value) {
