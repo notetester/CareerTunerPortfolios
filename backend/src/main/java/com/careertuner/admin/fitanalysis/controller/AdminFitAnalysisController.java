@@ -21,6 +21,7 @@ import com.careertuner.admin.fitanalysis.dto.AdminFitAnalysisListItemResponse;
 import com.careertuner.admin.fitanalysis.dto.AdminFitAnalysisMemoRequest;
 import com.careertuner.admin.fitanalysis.dto.AdminGateReviewRequest;
 import com.careertuner.admin.fitanalysis.dto.AdminFitAnalysisMemoResponse;
+import com.careertuner.admin.fitanalysis.dto.AdminGateStatsResponse;
 import com.careertuner.admin.fitanalysis.service.AdminFitAnalysisService;
 import com.careertuner.common.security.AuthUser;
 import com.careertuner.common.web.ApiResponse;
@@ -40,6 +41,13 @@ public class AdminFitAnalysisController {
             @RequestParam(name = "reviewRequiredOnly", required = false, defaultValue = "false") boolean reviewRequiredOnly) {
         requireAdmin(authUser);
         return ApiResponse.ok(adminFitAnalysisService.list(reviewRequiredOnly));
+    }
+
+    /** gate 통계: 운영 gate reason 분포 관측. 리터럴 경로라 아래 GET /{id} 와 충돌하지 않는다. */
+    @GetMapping("/gate-stats")
+    public ApiResponse<AdminGateStatsResponse> gateStats(@AuthenticationPrincipal AuthUser authUser) {
+        requireAdmin(authUser);
+        return ApiResponse.ok(adminFitAnalysisService.getGateStats());
     }
 
     @GetMapping("/{id}")

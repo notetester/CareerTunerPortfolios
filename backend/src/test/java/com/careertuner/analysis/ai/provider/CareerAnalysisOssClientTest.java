@@ -152,4 +152,33 @@ class CareerAnalysisOssClientTest {
         // JSON 이 없으면 원문을 그대로 돌려준다(상위에서 파싱 실패 처리).
         assertThat(CareerAnalysisOssClient.extractJsonSpan("no json here")).isEqualTo("no json here");
     }
+
+    @Test
+    @DisplayName("repairTruncatedJson: 닫힘 괄호가 잘린 truncation 을 수리한다(post-R3 재벤치마크 실측 형태)")
+    void repairTruncatedJson_repairsRealBenchmarkTruncation() {
+        // EA-A-059/055/057 PARSE_FAIL 실측 형태 — 루트 닫는 중괄호 1개 누락(내용은 합성 축약)
+        String truncated = """
+                {
+                  "gateResult": {
+                    "gateStatus": "REVIEW_REQUIRED",
+                    "reasons": [
+                      {"skillName": "WMS", "severity": "WARNING"}
+                    ]
+                  }""";
+        assertThat(CareerAnalysisOssClient.repairTruncatedJson(truncated))
+                .isEqualTo(truncated + "}");
+
+        // 배열 중간 절단 + trailing comma
+        assertThat(CareerAnalysisOssClient.repairTruncatedJson("{\"a\": [1, 2,"))
+                .isEqualTo("{\"a\": [1, 2]}");
+    }
+
+    @Test
+    @DisplayName("repairTruncatedJson: truncation 이 아닌 손상은 수리하지 않는다(null)")
+    void repairTruncatedJson_rejectsNonTruncationDamage() {
+        assertThat(CareerAnalysisOssClient.repairTruncatedJson("{\"a\": \"cut mid strin")).isNull(); // 문자열 중간 절단
+        assertThat(CareerAnalysisOssClient.repairTruncatedJson("{\"a\": 1]")).isNull();               // 괄호 불일치
+        assertThat(CareerAnalysisOssClient.repairTruncatedJson("{\"a\": 1}")).isNull();               // 이미 균형(다른 원인)
+        assertThat(CareerAnalysisOssClient.repairTruncatedJson("plain text")).isNull();
+    }
 }
