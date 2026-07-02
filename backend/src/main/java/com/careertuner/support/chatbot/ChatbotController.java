@@ -4,6 +4,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
+import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
@@ -56,6 +57,8 @@ import com.careertuner.applicationcase.service.ApplicationCaseService;
 import com.careertuner.common.security.AuthUser;
 import com.careertuner.common.web.ApiResponse;
 import com.careertuner.community.search.PostHit;
+import com.careertuner.jobposting.dto.JobPostingResponse;
+import com.careertuner.jobposting.service.JobPostingService;
 import com.careertuner.profile.domain.UserProfile;
 import com.careertuner.profile.dto.UserProfileRequest;
 import com.careertuner.profile.mapper.ProfileMapper;
@@ -128,6 +131,8 @@ public class ChatbotController {
     private final AutoPrepIntakeService autoPrepIntakeService;
     // (b) 온보딩 수집 슬롯(인메모리·대화키). 직무·기술을 모았다가 (e)에서 저장.
     private final IntakeSlotTrace intakeSlotTrace;
+    // (d″) 확인-회사/직무 후보 제시용 공고 제목 read(B.getJobPosting 호출만 — B 도메인 무수정).
+    private final JobPostingService jobPostingService;
 
     public ChatbotController(CommunityChatAgent agent,
                             QuickReplyAgent quickReplyAgent,
@@ -149,7 +154,8 @@ public class ChatbotController {
                             ApplicationCaseService applicationCaseService,
                             ProfileService profileService,
                             AutoPrepIntakeService autoPrepIntakeService,
-                            IntakeSlotTrace intakeSlotTrace) {
+                            IntakeSlotTrace intakeSlotTrace,
+                            JobPostingService jobPostingService) {
         this.agent = agent;
         this.quickReplyAgent = quickReplyAgent;
         this.quickReplyParser = quickReplyParser;
@@ -171,6 +177,7 @@ public class ChatbotController {
         this.profileService = profileService;
         this.autoPrepIntakeService = autoPrepIntakeService;
         this.intakeSlotTrace = intakeSlotTrace;
+        this.jobPostingService = jobPostingService;
     }
 
     /**
@@ -217,7 +224,7 @@ public class ChatbotController {
             rm = new RouteMessage("④온보딩:완료대기", "면접 준비가 시작됐어요. 잠시만 기다려 주세요.");
         }
         responseLogService.record(conversationId, userId, question, "ONBOARDING", false, null, null, false);
-        return new ChatAskResponse(conversationId, rm.message(), List.of(), List.of(),
+        return new ChatAskResponse(conversationId, rm.message(), List.of(), rm.quickReplies(),
                 rm.route(), rm.intake(), rm.inOrchestration(), null);
     }
 
@@ -325,6 +332,16 @@ public class ChatbotController {
                     "공고 정보를 다시 받아야 할 것 같아요. 공고 전문을 붙여넣어 주세요.");
         }
         String value = question.trim();
+        // (d″) "네/맞아요" 류 답변은 제목 후보 수락으로 해석 — 리터럴 "네"가 회사명으로 저장되는 것 방지.
+        //   후보를 다시 파싱해(무상태·결정적) 있으면 그 값으로 치환, 없으면 재질문.
+        if (isAffirmative(value)) {
+            TitleCandidates candidates = onboardingTitleCandidates(userId, caseId);
+            String suggested = company ? candidates.company() : candidates.jobTitle();
+            if (suggested == null) {
+                return new RouteMessage(company ? "④온보딩:확인-회사" : "④온보딩:확인-직무", reaskMessage);
+            }
+            value = suggested;
+        }
         try {
             applicationCaseService.update(userId, caseId, company
                     ? new UpdateApplicationCaseRequest(value, null, null, null, null, null, null, null, null, null)
@@ -345,11 +362,26 @@ public class ChatbotController {
     private RouteMessage onboardingResolveCase(Long conversationId, AuthUser authUser, ApplicationCaseResponse caseNow) {
         if (ONB_DEFAULT_COMPANY.equals(caseNow.companyName())) {
             intakeSlotTrace.setOnboardingStep(conversationId, "AWAIT_COMPANY");
+            // (d″) 추출 제목에서 회사 후보를 읽어 칩으로 제시 — 칩 클릭 = 그 텍스트가 답변으로 전송(프로토콜 동일).
+            String companyCandidate = onboardingTitleCandidates(authUser.id(), caseNow.id()).company();
+            if (companyCandidate != null) {
+                return new RouteMessage("④온보딩:확인-회사",
+                        "공고는 등록했는데 회사명을 자동으로 못 읽었어요. 제목을 보니 \"" + companyCandidate
+                                + "\" 같아요 — 맞으면 아래 버튼을 누르고, 아니면 정확한 회사명을 입력해 주세요.",
+                        List.of(companyCandidate));
+            }
             return new RouteMessage("④온보딩:확인-회사",
                     "공고는 등록했는데 회사명을 자동으로 못 읽었어요. 어느 회사 공고인가요?");
         }
         if (ONB_DEFAULT_JOBTITLE.equals(caseNow.jobTitle())) {
             intakeSlotTrace.setOnboardingStep(conversationId, "AWAIT_JOBTITLE");
+            String jobTitleCandidate = onboardingTitleCandidates(authUser.id(), caseNow.id()).jobTitle();
+            if (jobTitleCandidate != null) {
+                return new RouteMessage("④온보딩:확인-직무",
+                        "회사는 \"" + caseNow.companyName() + "\"로 확인됐어요. 공고 제목에는 \"" + jobTitleCandidate
+                                + "\"라고 돼 있어요 — 그대로 쓰려면 아래 버튼을, 아니면 직무명을 입력해 주세요. (예: 백엔드 개발자)",
+                        List.of(jobTitleCandidate));
+            }
             return new RouteMessage("④온보딩:확인-직무",
                     "회사는 \"" + caseNow.companyName() + "\"로 확인됐어요. 직무명도 알려주세요. (예: 백엔드 개발자)");
         }
@@ -359,6 +391,83 @@ public class ChatbotController {
         // (f) 회사·직무·프로필이 다 찼으니 마지막으로 면접 mode 를 받아 인테이크로 인계한다(같은 턴에 mode 칩 제시).
         intakeSlotTrace.setOnboardingStep(conversationId, "AWAIT_MODE");
         return onboardingModeStep(conversationId, authUser, null);
+    }
+
+    /* ── (d″) 확인-회사/직무 후보: 공고 "제목 줄" 규칙 파싱 ── */
+
+    /** 제목 꼬리의 사이트명(" | 잡코리아", " - 사람인" 등) 제거용. */
+    private static final Pattern TITLE_SITE_SUFFIX = Pattern.compile(
+            "\\s*[|\\-–]\\s*(잡코리아|사람인|인크루트|원티드|JobKorea|Saramin|Wanted)\\s*$", Pattern.CASE_INSENSITIVE);
+    /** 사람인형: "[{회사}] {공고제목}(D-n)". */
+    private static final Pattern TITLE_BRACKET_COMPANY = Pattern.compile("^\\[([^\\]]{2,40})\\]\\s*(.*)$");
+    /** 잡코리아형: "{회사} 채용 - {공고제목}" — "채용" 뒤 구분자(또는 끝)가 있어야 매칭("채용공고" 오탐 차단). */
+    private static final Pattern TITLE_COMPANY_CHAEYONG = Pattern.compile("^(.{2,40}?)\\s*채용(?:\\s*[-–:|]\\s*(.*))?$");
+    /** 제목 꼬리의 마감 배지 "(D-22)" 제거용. */
+    private static final Pattern TITLE_D_DAY = Pattern.compile("\\s*\\(D-\\d+\\)\\s*$");
+
+    /** 공고 제목에서 파싱한 회사/직무 후보(못 찾으면 null — 지어내지 않는다). 제안용 칩 — 확정은 항상 사용자. */
+    private record TitleCandidates(String company, String jobTitle) {
+        static final TitleCandidates EMPTY = new TitleCandidates(null, null);
+    }
+
+    /**
+     * 최신 공고 텍스트의 제목 줄에서 회사/직무 후보를 결정적으로 파싱한다(read-only·LLM 0).
+     * URL 추출 텍스트는 "제목\n\n본문한줄" 구조(JobPostingTextExtractor.extractUrl)라 첫 줄이 페이지 제목.
+     * 채용 사이트 제목 관례 2가지(사람인 대괄호형·잡코리아 "회사 채용 -"형)만 보고, 그 외는 후보 없음.
+     */
+    private TitleCandidates onboardingTitleCandidates(Long userId, Long caseId) {
+        String title = onboardingPostingTitle(userId, caseId);
+        if (title == null) {
+            return TitleCandidates.EMPTY;
+        }
+        String t = TITLE_SITE_SUFFIX.matcher(title).replaceFirst("").trim();
+        Matcher bracket = TITLE_BRACKET_COMPANY.matcher(t);
+        if (bracket.matches()) {
+            return new TitleCandidates(
+                    cleanTitleCandidate(bracket.group(1)),
+                    cleanTitleCandidate(TITLE_D_DAY.matcher(bracket.group(2)).replaceFirst("")));
+        }
+        Matcher chaeyong = TITLE_COMPANY_CHAEYONG.matcher(t);
+        if (chaeyong.matches()) {
+            String rest = chaeyong.group(2) == null ? "" : chaeyong.group(2);
+            return new TitleCandidates(
+                    cleanTitleCandidate(chaeyong.group(1)),
+                    cleanTitleCandidate(TITLE_D_DAY.matcher(rest).replaceFirst("")));
+        }
+        return TitleCandidates.EMPTY;
+    }
+
+    /** 최신 공고의 첫 비공백 줄(=제목). 200자 초과(붙여넣기 본문 덩어리)면 제목이 아니라고 보고 버린다. 실패는 조용히 null. */
+    private String onboardingPostingTitle(Long userId, Long caseId) {
+        try {
+            JobPostingResponse posting = jobPostingService.getJobPosting(userId, caseId);
+            String text = posting.extractedText() == null || posting.extractedText().isBlank()
+                    ? posting.originalText() : posting.extractedText();
+            if (text == null || text.isBlank()) {
+                return null;
+            }
+            for (String line : text.split("\\R")) {
+                String trimmed = line.trim();
+                if (!trimmed.isEmpty()) {
+                    return trimmed.length() > 200 ? null : trimmed;
+                }
+            }
+            return null;
+        } catch (RuntimeException ex) {
+            log.debug("온보딩 제목 후보 조회 실패(후보 없이 진행): {}", ex.getMessage());
+            return null;
+        }
+    }
+
+    private static String cleanTitleCandidate(String value) {
+        if (value == null) {
+            return null;
+        }
+        String cleaned = value.trim();
+        if (cleaned.length() > 60) {
+            cleaned = cleaned.substring(0, 60).trim();
+        }
+        return cleaned.isEmpty() ? null : cleaned;
     }
 
     /**
@@ -438,13 +547,22 @@ public class ChatbotController {
     }
 
     /**
-     * (d)(f) 온보딩 턴 결과: 라우트 태그 + 사용자 메시지 + (f) 인계용 IntakeStep·오케 배너 플래그.
-     * 대부분 분기는 2-arg(인테이크 메타 없음); mode 칩 제시·면접 인계 턴만 intake/inOrchestration 을 채운다.
+     * (d)(f) 온보딩 턴 결과: 라우트 태그 + 사용자 메시지 + (d″) 후보 칩(quickReplies) + (f) 인계용
+     * IntakeStep·오케 배너 플래그. 대부분 분기는 2-arg; 확인-회사/직무 턴은 후보 칩을, mode 칩 제시·면접
+     * 인계 턴은 intake/inOrchestration 을 채운다.
      */
-    private record RouteMessage(String route, String message,
+    private record RouteMessage(String route, String message, List<String> quickReplies,
                                ChatAskResponse.IntakeStep intake, boolean inOrchestration) {
         RouteMessage(String route, String message) {
-            this(route, message, null, false);
+            this(route, message, List.of(), null, false);
+        }
+
+        RouteMessage(String route, String message, List<String> quickReplies) {
+            this(route, message, quickReplies, null, false);
+        }
+
+        RouteMessage(String route, String message, ChatAskResponse.IntakeStep intake, boolean inOrchestration) {
+            this(route, message, List.of(), intake, inOrchestration);
         }
     }
 
