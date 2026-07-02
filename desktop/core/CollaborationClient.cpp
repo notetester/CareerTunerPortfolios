@@ -520,7 +520,7 @@ QVariantList CollaborationClient::toVariantList(
 QString CollaborationClient::readableFileName(const QString& pathOrName) const
 {
     QString name = QFileInfo(pathOrName).fileName();
-    if (name.isBlank()) name = QStringLiteral("attachment");
+    if (name.trimmed().isEmpty()) name = QStringLiteral("attachment");
     return name.replace(QRegularExpression(QStringLiteral("[\\\\/:*?\"<>|\\r\\n]")), QStringLiteral("_"));
 }
 
