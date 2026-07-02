@@ -55,8 +55,8 @@ function splitSkills(s?: string | null): string[] {
  *   프로필/케이스 반영은 향후 별도 작업(아래 collect()/TODO).
  * - 공고 → from-job-posting 로 "지원 건" 생성(applicationCaseId) → FIT/JOB 이 이 케이스를 분석.
  */
-export function useOnboardingGuide() {
-  const [step, setStep] = useState<GuideStep>("role");
+export function useOnboardingGuide(initialStep: GuideStep = "role") {
+  const [step, setStep] = useState<GuideStep>(initialStep);
   const [role, setRoleState] = useState<string | null>(null);
   const [customRole, setCustomRole] = useState("");
   const [skills, setSkills] = useState<string[]>([]);
@@ -110,6 +110,28 @@ export function useOnboardingGuide() {
 
   const go = useCallback((next: GuideStep) => setStep(next), []);
 
+  /**
+   * ★ 공고 입력 → 지원 건 1회 생성(이미 있으면 그 id 그대로). 파일 우선, 없으면 붙여넣기 텍스트.
+   * runReal(가이드 자체 실행)과 인테이크 매핑(③ CASE 슬롯 회신)이 공유하는 케이스 생성 단일 경로.
+   * 입력이 없으면 null, 생성 실패는 throw(호출부가 문맥에 맞게 처리).
+   */
+  const ensureCase = useCallback(async (): Promise<number | null> => {
+    if (caseId != null) return caseId;
+    if (jd.file) {
+      const sourceType = jd.file.type.startsWith("image/") ? "IMAGE" : "PDF";
+      const res = await createCaseFromFile(jd.file, sourceType);
+      setCaseId(res.applicationCase.id);
+      return res.applicationCase.id;
+    }
+    if (jd.text.trim()) {
+      const res = await createCaseFromText(jd.text.trim());
+      setCaseId(res.applicationCase.id);
+      return res.applicationCase.id;
+    }
+    // TODO(공고 URL): jd.url 은 서버 fetch/파싱 경로가 별도라 지금은 케이스 미생성(붙여넣기 권장).
+    return null;
+  }, [caseId, jd]);
+
   /** part-done 누적 → 실제 결과 카드 값 조립(없는 지표는 null/빈배열, 지어내지 않음). */
   const finalize = useCallback((acc: Record<string, PrepStepResult>, hasCase: boolean) => {
     const fitRes = acc.FIT;
@@ -158,20 +180,10 @@ export function useOnboardingGuide() {
     const controller = new AbortController();
     abortRef.current = controller;
 
-    // 1) 공고 → 지원 건(case). 파일 우선, 없으면 붙여넣기 텍스트. (URL 은 향후 fetch 경로 — TODO)
+    // 1) 공고 → 지원 건(case). 생성 로직은 ensureCase 공유(인테이크 매핑과 단일 경로).
     let effectiveCaseId = caseId;
     try {
-      if (!effectiveCaseId && jd.file) {
-        const sourceType = jd.file.type.startsWith("image/") ? "IMAGE" : "PDF";
-        const res = await createCaseFromFile(jd.file, sourceType);
-        effectiveCaseId = res.applicationCase.id;
-        setCaseId(effectiveCaseId);
-      } else if (!effectiveCaseId && jd.text.trim()) {
-        const res = await createCaseFromText(jd.text.trim());
-        effectiveCaseId = res.applicationCase.id;
-        setCaseId(effectiveCaseId);
-      }
-      // TODO(공고 URL): jd.url 은 서버 fetch/파싱 경로가 별도라 지금은 케이스 미생성(붙여넣기 권장).
+      effectiveCaseId = await ensureCase();
     } catch (e) {
       // 케이스 생성 실패해도 자소서(WRITE)만으로 진행 — 오케는 caseId 없이도 돈다.
       setRunError(e instanceof Error ? e.message : "공고 지원 건 생성에 실패했어요.");
@@ -205,7 +217,7 @@ export function useOnboardingGuide() {
     }
     if (controller.signal.aborted) return;
     finalize(acc, effectiveCaseId != null);
-  }, [caseId, jd, docs, finalize]);
+  }, [caseId, ensureCase, docs, finalize]);
 
   const reset = useCallback(() => {
     abortRef.current?.abort();
@@ -265,6 +277,7 @@ export function useOnboardingGuide() {
     addJdFile,
     removeJdFile,
     go,
+    ensureCase,
     runReal,
     reset,
     collect,

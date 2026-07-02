@@ -85,6 +85,12 @@ export function useChatbot() {
   const abortRef = useRef<AbortController>();
   // 서버 발급 대화 ID. 새 대화면 null → 첫 응답에서 받아 보관, 이후 턴마다 재사용.
   const conversationIdRef = useRef<number | null>(null);
+  // ③ 인테이크 가이드(스텝 UI)에서 올린 자소서 fileId — ready 시 run 요청에 프론트에서 병합한다.
+  //   (백엔드 인테이크는 attachmentFileIds 를 아직 안 받음(2단계) — run 엔드포인트는 이미 받는 필드라 프로토콜 유지.)
+  const pendingAttachmentIdsRef = useRef<number[]>([]);
+  const setPendingAttachments = useCallback((ids: number[]) => {
+    pendingAttachmentIdsRef.current = ids;
+  }, []);
   // 복원은 세션당 1회만 시도 (열 때마다 재호출 방지).
   const restoredRef = useRef(false);
 
@@ -313,7 +319,20 @@ export function useChatbot() {
           runStartedRef.current = true;
           setRunStarted(true);
           setRunCaseId(intake.autoPrepRequest.applicationCaseId ?? null);
-          run.start(intake.autoPrepRequest);
+          // 인테이크 가이드에서 받아 둔 자소서 fileId 를 실행 요청에 병합(WRITE 가 소비). 1회성 — 쓰고 비운다.
+          const extraAttachments = pendingAttachmentIdsRef.current;
+          pendingAttachmentIdsRef.current = [];
+          run.start(
+            extraAttachments.length
+              ? {
+                  ...intake.autoPrepRequest,
+                  attachmentFileIds: [
+                    ...(intake.autoPrepRequest.attachmentFileIds ?? []),
+                    ...extraAttachments,
+                  ],
+                }
+              : intake.autoPrepRequest,
+          );
         }
       })
       .catch((err) => {
@@ -375,6 +394,7 @@ export function useChatbot() {
   const exitOrchestrator = useCallback(() => {
     setShowExitSheet(false);
     const wasRunning = runStartedRef.current;
+    pendingAttachmentIdsRef.current = []; // 이탈 시 가이드 첨부 병합 예약 해제(다른 세션 오염 방지)
     run.reset();
     runStartedRef.current = false;
     orchRef.current = false;
@@ -430,6 +450,7 @@ export function useChatbot() {
     setMessages([]);
     setBotStatus("idle");
     conversationIdRef.current = null; // 새 대화 → 서버가 새 ID 발급
+    pendingAttachmentIdsRef.current = [];
     run.reset();
     runStartedRef.current = false;
     orchRef.current = false;
@@ -459,6 +480,7 @@ export function useChatbot() {
     runError: run.error,
     runCaseId,
     selectCase, selectMode,
+    setPendingAttachments,
     summarizePosts,
     showExitSheet,
     openExitSheet: () => setShowExitSheet(true),

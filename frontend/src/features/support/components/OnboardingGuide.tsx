@@ -1,4 +1,4 @@
-import { useRef } from "react";
+import { useRef, useState } from "react";
 import {
   X, ArrowRight, ArrowLeft, Check, PenLine, FileText, UserRound, Briefcase,
   Link2, FileUp, ClipboardPaste, ShieldCheck, Video, Loader2, Github, Lightbulb,
@@ -64,13 +64,13 @@ function Chip({ label, selected, onClick, dashed, icon }: {
   );
 }
 
-/** 진행 점(1..6). analyzing 은 fit 위치로. */
-function StepDots({ step }: { step: GuideStep }) {
+/** 진행 점(1..6). analyzing 은 fit 위치로. dots 로 인테이크 서브셋(빈 슬롯만큼)도 그린다. */
+function StepDots({ step, dots = STEP_DOTS }: { step: GuideStep; dots?: GuideStep[] }) {
   const active = step === "analyzing" ? "fit" : step;
-  const idx = STEP_DOTS.indexOf(active as GuideStep);
+  const idx = dots.indexOf(active as GuideStep);
   return (
     <div className="flex items-center gap-1.5">
-      {STEP_DOTS.map((s, i) => (
+      {dots.map((s, i) => (
         <span key={s} className="h-1.5 rounded-full transition-all"
           style={{
             width: i === idx ? 16 : 6,
@@ -104,7 +104,7 @@ function FileChip({ name, uploading, error, onRemove }: {
 }
 
 /* ════════════════ 본체 ════════════════ */
-export function OnboardingGuide({ onClose, onGotoInterview, wide, onCollapse, onExpand }: {
+export function OnboardingGuide({ onClose, onGotoInterview, wide, onCollapse, onExpand, intake, onSlotFilled }: {
   onClose: () => void;
   /** 면접 권유 CTA — 수집한 caseId 를 실어 D 면접 페이지로 인계(없으면 null). */
   onGotoInterview: (caseId: number | null) => void;
@@ -114,8 +114,38 @@ export function OnboardingGuide({ onClose, onGotoInterview, wide, onCollapse, on
   onCollapse?: () => void;
   /** ⤢ 코너에서 다시 플로팅으로. */
   onExpand?: () => void;
+  /**
+   * ③ 인테이크 CASE 되묻기 매핑 모드 — 지정한 스텝(빈 슬롯만큼)만 밟고, 마지막 스텝(jd)에서
+   * 지원 건을 만들어 onSlotFilled 로 돌려준다. 적합도/면접 스텝은 없음(이후 진행은 인테이크가 이어감).
+   */
+  intake?: { steps: GuideStep[] };
+  /** intake 모드에서 공고→지원 건 생성 완료 시 — 호출부가 기존 인테이크 프로토콜(selectedCaseId)로 회신한다. */
+  onSlotFilled?: (r: { caseId: number; coverLetterFileIds: number[] }) => void;
 }) {
-  const g = useOnboardingGuide();
+  const g = useOnboardingGuide(intake?.steps[0] ?? "role");
+  const order = intake?.steps ?? ORDER;
+
+  // intake 제출(케이스 생성) 진행/오류 — 가이드 자체 실행(runReal)과 분리된 상태.
+  const [submitting, setSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
+
+  const submitIntake = async () => {
+    if (!onSlotFilled || submitting) return;
+    setSubmitting(true);
+    setSubmitError(null);
+    try {
+      const caseId = await g.ensureCase();
+      if (caseId == null) {
+        setSubmitError("공고 파일이나 내용을 넣어야 지원 건을 만들 수 있어요.");
+        return;
+      }
+      onSlotFilled({ caseId, coverLetterFileIds: g.collect().coverLetterFileIds });
+    } catch (e) {
+      setSubmitError(e instanceof Error ? e.message : "지원 건 생성에 실패했어요. 잠시 후 다시 시도해 주세요.");
+    } finally {
+      setSubmitting(false);
+    }
+  };
 
   // 스텝별 파일 input (자소서/이력서/포폴 + 공고).
   const fileRefs = {
@@ -134,8 +164,10 @@ export function OnboardingGuide({ onClose, onGotoInterview, wide, onCollapse, on
         style={{ background: "var(--orch-header-tint)" }}>
         <GuideAvatar size={30} />
         <div className="flex-1 min-w-0">
-          <div className="text-[13px] font-extrabold leading-tight">대화로 준비 시작</div>
-          <div className="mt-1.5"><StepDots step={g.step} /></div>
+          <div className="text-[13px] font-extrabold leading-tight">
+            {intake ? "면접 준비 · 부족한 정보만 채워요" : "대화로 준비 시작"}
+          </div>
+          <div className="mt-1.5"><StepDots step={g.step} dots={intake ? order : STEP_DOTS} /></div>
         </div>
         {wide && onCollapse ? (
           <button onClick={onCollapse} aria-label="코너로 최소화"
@@ -170,8 +202,9 @@ export function OnboardingGuide({ onClose, onGotoInterview, wide, onCollapse, on
         {wide && <SummaryBoard g={g} />}
       </div>
 
-      {/* ── Footer: 뒤로 · 건너뛰기 · 다음 ── */}
-      <GuideFooter g={g} onClose={closeAll} />
+      {/* ── Footer: 뒤로 · 건너뛰기 · 다음 (intake 모드는 마지막 스텝에서 지원 건 생성 제출) ── */}
+      <GuideFooter g={g} onClose={closeAll} order={order} intakeMode={!!intake}
+        submitting={submitting} submitError={submitError} onSubmitIntake={() => void submitIntake()} />
     </div>
   );
 }
@@ -558,39 +591,57 @@ function SummaryBoard({ g }: { g: G }) {
 /* ════════════════ Footer 내비 ════════════════ */
 const ORDER: GuideStep[] = ["role", "skills", "docs", "jd", "fit", "interview"];
 
-function GuideFooter({ g, onClose }: { g: G; onClose: () => void }) {
+function GuideFooter({ g, onClose, order, intakeMode, submitting, submitError, onSubmitIntake }: {
+  g: G; onClose: () => void;
+  /** 진행 순서 — 기본 전체 흐름 또는 인테이크 서브셋(빈 슬롯만큼). */
+  order: GuideStep[];
+  /** ③ 인테이크 매핑 모드: 마지막 스텝(jd)에서 오케 실행 대신 지원 건 생성 제출. */
+  intakeMode?: boolean;
+  submitting?: boolean;
+  submitError?: string | null;
+  onSubmitIntake?: () => void;
+}) {
   // analyzing 은 자동 전이 — 하단 내비 숨김.
   if (g.step === "analyzing") return null;
 
-  const idx = ORDER.indexOf(g.step);
+  const idx = order.indexOf(g.step);
   const isFirst = idx <= 0;
   const canBack = !isFirst;
+  const isLastIntake = intakeMode && idx === order.length - 1;
 
   const back = () => {
     // fit 에서 뒤로는 jd 로(analyzing 건너뜀).
-    const prev = ORDER[Math.max(0, idx - 1)];
+    const prev = order[Math.max(0, idx - 1)];
     g.go(prev);
   };
 
   const advance = () => {
-    if (g.step === "jd") { void g.runReal(); return; } // 공고 → 케이스 생성 + 실제 오케 SSE
+    if (isLastIntake) { onSubmitIntake?.(); return; } // 공고 → 케이스 생성 → 인테이크 회신(오케 실행은 인테이크가)
+    if (!intakeMode && g.step === "jd") { void g.runReal(); return; } // 공고 → 케이스 생성 + 실제 오케 SSE
     if (g.step === "fit") { g.go("interview"); return; }
     if (g.step === "interview") { onClose(); return; }
-    g.go(ORDER[Math.min(ORDER.length - 1, idx + 1)]);
+    g.go(order[Math.min(order.length - 1, idx + 1)]);
   };
 
   // 다음 버튼 라벨/활성 조건.
   const nextLabel =
-    g.step === "role" ? "다음"
+    isLastIntake ? "이 공고로 준비 시작"
+    : g.step === "role" ? "다음"
     : g.step === "skills" ? "다음"
     : g.step === "docs" ? "다음"
     : g.step === "jd" ? "적합도 보기"
     : g.step === "fit" ? "면접 권유 보기"
     : "완료";
 
+  // intake 마지막 스텝(jd)은 공고 입력(파일/붙여넣기)이 있어야 지원 건을 만들 수 있다 — 빈손 제출 금지.
+  const jdReady = !!g.jd.file || g.jd.text.trim().length > 0 || g.caseId != null;
   const nextEnabled =
     g.step === "role" ? (g.role != null && (g.role !== CUSTOM_ROLE || g.customRole.trim().length > 0))
+    : isLastIntake ? (jdReady && !submitting)
     : true; // 나머지는 스킵 가능(빈손 진행)
+
+  // URL 만 넣은 경우 — 링크 자동 읽기는 아직 미지원이라 정직하게 안내(버튼 비활성 이유).
+  const jdUrlOnly = isLastIntake && !jdReady && g.jd.url.trim().length > 0;
 
   // interview 스텝은 카드 안 CTA 로 진행 → footer 다음 버튼 숨김.
   if (g.step === "interview") {
@@ -605,28 +656,40 @@ function GuideFooter({ g, onClose }: { g: G; onClose: () => void }) {
   }
 
   return (
-    <div className="px-4 py-3 border-t border-border flex items-center gap-2">
-      {canBack ? (
-        <button onClick={back}
-          className="inline-flex items-center gap-1 text-[12px] font-semibold text-muted-foreground hover:text-foreground transition-colors">
-          <ArrowLeft size={14} /> 뒤로
-        </button>
-      ) : (
-        <span className="text-[11px] text-muted-foreground">건너뛰기 가능 · 없으면 나중에</span>
+    <div className="px-4 py-3 border-t border-border flex flex-col gap-2">
+      {/* intake 제출 오류/URL-만 안내 — 지어내지 않고 이유를 그대로. */}
+      {(submitError || jdUrlOnly) && (
+        <div className="text-[11px] leading-[1.5]"
+          style={{ color: submitError ? "var(--destructive)" : "var(--muted-foreground)" }}>
+          {submitError ?? "링크는 아직 자동으로 못 읽어요 — 공고 내용을 붙여넣거나 파일로 올려주세요."}
+        </div>
       )}
-      <div className="ml-auto flex items-center gap-2">
-        {g.step !== "role" && g.step !== "fit" && (
-          <button onClick={advance}
-            className="text-[12px] font-semibold text-muted-foreground hover:text-foreground transition-colors">
-            건너뛰기
+      <div className="flex items-center gap-2">
+        {canBack ? (
+          <button onClick={back}
+            className="inline-flex items-center gap-1 text-[12px] font-semibold text-muted-foreground hover:text-foreground transition-colors">
+            <ArrowLeft size={14} /> 뒤로
           </button>
+        ) : (
+          <span className="text-[11px] text-muted-foreground">
+            {isLastIntake ? "공고만 넣으면 바로 시작할 수 있어요" : "건너뛰기 가능 · 없으면 나중에"}
+          </span>
         )}
-        <button onClick={advance} disabled={!nextEnabled}
-          className="inline-flex items-center gap-1 h-9 px-4 rounded-lg text-white text-[12.5px] font-bold transition-all disabled:opacity-40"
-          style={{ background: "var(--gradient-orchestrator)" }}>
-          {nextLabel}
-          <ArrowRight size={14} />
-        </button>
+        <div className="ml-auto flex items-center gap-2">
+          {g.step !== "role" && g.step !== "fit" && !isLastIntake && (
+            <button onClick={advance}
+              className="text-[12px] font-semibold text-muted-foreground hover:text-foreground transition-colors">
+              건너뛰기
+            </button>
+          )}
+          <button onClick={advance} disabled={!nextEnabled}
+            className="inline-flex items-center gap-1 h-9 px-4 rounded-lg text-white text-[12.5px] font-bold transition-all disabled:opacity-40"
+            style={{ background: "var(--gradient-orchestrator)" }}>
+            {submitting && <Loader2 size={14} className="animate-spin" />}
+            {nextLabel}
+            {!submitting && <ArrowRight size={14} />}
+          </button>
+        </div>
       </div>
     </div>
   );

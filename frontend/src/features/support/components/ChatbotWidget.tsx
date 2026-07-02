@@ -7,12 +7,14 @@ import {
   RotateCw, Check, Keyboard, ArrowRight, Play, LogOut, History, Plus,
   Minimize2, Maximize2,
 } from "lucide-react";
+import { getAccessToken } from "@/app/lib/tokenStore";
 import { useChatbot } from "../hooks/useChatbot";
 import type {
   ChatMessage, ChatEvidence, SiteLink, IntakeCaseCandidate, IntakeModeOption, ChatSession,
   InterviewReportCard,
 } from "../types/chatbot";
 import { SUGGESTED_QUESTIONS } from "../types/chatbot";
+import type { GuideStep } from "../onboarding/guideData";
 import { AutoPrepWorkView } from "@/features/autoprep/components/AutoPrepWorkView";
 import { OnboardingGuide } from "./OnboardingGuide";
 
@@ -92,7 +94,7 @@ function ChatbotPanel({ chatbot }: ChatbotPanelProps) {
     voiceState, startVoice, cancelVoice, confirmVoice, setVoiceState,
     interimTranscript, retryConnection, toggleTts,
     orchestrator, runStarted, runParts, runRunning, runPlan, runCaseId,
-    selectCase, selectMode, summarizePosts,
+    selectCase, selectMode, setPendingAttachments, summarizePosts,
     showExitSheet, openExitSheet, closeExitSheet, exitOrchestrator,
     sessions, activeSessionId, openSession, newSession, loadSessions,
     surface, expandToFloating, collapseToCorner, markInterviewHandoff,
@@ -118,6 +120,10 @@ function ChatbotPanel({ chatbot }: ChatbotPanelProps) {
   const [input, setInput] = useState("");
   const [showSessions, setShowSessions] = useState(false);
   const [showGuide, setShowGuide] = useState(false);
+  // ③→가이드 매핑: 인테이크 CASE 되묻기를 텍스트 대신 가이드 스텝 UI 로. msgId = 어느 되묻기 턴에 붙은 가이드인지.
+  const [intakeGuide, setIntakeGuide] = useState<{ msgId: string; steps: GuideStep[] } | null>(null);
+  // 닫은(=텍스트 폴백 선택) 되묻기 턴은 다시 자동 오픈하지 않는다.
+  const dismissedIntakeRef = useRef<Set<string>>(new Set());
   const scrollRef = useRef<HTMLDivElement>(null);
 
   const handleOpenSessions = () => { loadSessions(); setShowSessions(true); };
@@ -125,6 +131,33 @@ function ChatbotPanel({ chatbot }: ChatbotPanelProps) {
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
   }, [messages, botStatus, runParts]);
+
+  // ── ③→가이드 자동 매핑: CASE 되묻기인데 지원 건 후보가 0건(빈 계정 "면접 해줘")이면
+  //    텍스트 되묻기 대신 가이드 전체 흐름(직군→역량→서류→공고)으로 슬롯을 채운다.
+  //    후보가 있으면 기존 칩 유지(+"새 공고" 진입), 비로그인은 업로드/케이스 생성 불가 → 텍스트 폴백 유지.
+  useEffect(() => {
+    const last = [...messages].reverse().find((m) => m.role === "bot");
+    if (!last?.intake || last.intake.ready || runStarted) return;
+    if (last.intake.nextAsk !== "CASE" || last.intake.candidates.length > 0) return;
+    if (!getAccessToken()) return;
+    if (dismissedIntakeRef.current.has(last.id)) return;
+    setIntakeGuide((cur) =>
+      cur?.msgId === last.id ? cur : { msgId: last.id, steps: ["role", "skills", "docs", "jd"] });
+  }, [messages, runStarted]);
+
+  // 가이드가 지원 건을 만들었으면 기존 인테이크 프로토콜 그대로 회신(selectedCaseId — 백엔드 무수정).
+  // 가이드에서 받은 자소서 fileId 는 ready 시 run 요청에 병합되도록 예약.
+  const handleSlotFilled = ({ caseId, coverLetterFileIds }: { caseId: number; coverLetterFileIds: number[] }) => {
+    if (intakeGuide) dismissedIntakeRef.current.add(intakeGuide.msgId);
+    setIntakeGuide(null);
+    setPendingAttachments(coverLetterFileIds);
+    sendMessage("방금 올린 공고 지원 건으로 진행할게요", { selectedCaseId: caseId });
+  };
+
+  const closeIntakeGuide = () => {
+    if (intakeGuide) dismissedIntakeRef.current.add(intakeGuide.msgId);
+    setIntakeGuide(null); // 닫으면 기존 텍스트/칩 되묻기로 폴백(챗은 그대로 남아 있음)
+  };
 
   const handleSend = () => {
     const text = input.trim();
@@ -240,7 +273,8 @@ function ChatbotPanel({ chatbot }: ChatbotPanelProps) {
                       <BotBubble message={m} onToggleTts={toggleTts} variant="widget"
                         onQuickReply={sendMessage} onSummarize={summarizePosts} orchestrator={orchestrator} />
                       {m.id === lastBotId && m.intake && !m.intake.ready && !runStarted && (
-                        <IntakeChips intake={m.intake} onSelectCase={selectCase} onSelectMode={selectMode} />
+                        <IntakeChips intake={m.intake} onSelectCase={selectCase} onSelectMode={selectMode}
+                          onNewCase={() => setIntakeGuide({ msgId: m.id, steps: ["jd"] })} />
                       )}
                       {m.interviewReport && (
                         <InterviewResultCard
@@ -290,6 +324,20 @@ function ChatbotPanel({ chatbot }: ChatbotPanelProps) {
           onOpen={(id) => { openSession(id); setShowSessions(false); }}
           onNew={() => { newSession(); setShowSessions(false); }}
           onClose={() => setShowSessions(false)}
+        />
+      )}
+
+      {/* ── ③→가이드 매핑 오버레이: 인테이크 CASE 슬롯을 가이드 스텝(빈 슬롯만큼)으로 채운다.
+             제출 시 selectedCaseId 로 기존 프로토콜 회신, 닫으면 텍스트/칩 되묻기 폴백. ── */}
+      {intakeGuide && (
+        <OnboardingGuide
+          wide={floating}
+          intake={{ steps: intakeGuide.steps }}
+          onCollapse={collapseToCorner}
+          onExpand={expandToFloating}
+          onClose={closeIntakeGuide}
+          onSlotFilled={handleSlotFilled}
+          onGotoInterview={goInterview}
         />
       )}
 
@@ -348,10 +396,12 @@ function ModeBanner({ subtitle, onExit }: { subtitle: string; onExit: () => void
   );
 }
 
-function IntakeChips({ intake, onSelectCase, onSelectMode }: {
+function IntakeChips({ intake, onSelectCase, onSelectMode, onNewCase }: {
   intake: NonNullable<ChatMessage["intake"]>;
   onSelectCase: (c: IntakeCaseCandidate) => void;
   onSelectMode: (m: IntakeModeOption) => void;
+  /** 기존 지원 건 말고 새 공고로 — 가이드 공고 스텝(빈 슬롯만큼)을 연다. */
+  onNewCase?: () => void;
 }) {
   if (intake.nextAsk === "CASE" && intake.candidates.length > 0) {
     return (
@@ -359,6 +409,14 @@ function IntakeChips({ intake, onSelectCase, onSelectMode }: {
         {intake.candidates.map((c) => (
           <ApplicationChip key={c.id} candidate={c} onSelect={() => onSelectCase(c)} />
         ))}
+        {onNewCase && (
+          <button onClick={onNewCase}
+            className="inline-flex items-center gap-1.5 self-start px-3 py-2 rounded-full text-[12.5px] font-semibold transition-colors"
+            style={{ background: "var(--card)", border: "1px dashed var(--orch-point)", color: "var(--orch-violet)" }}>
+            <Plus size={13} />
+            새 공고로 시작
+          </button>
+        )}
       </div>
     );
   }
