@@ -13,6 +13,7 @@ import com.careertuner.collaboration.domain.FriendRequest;
 import com.careertuner.collaboration.domain.FriendRequestRow;
 import com.careertuner.collaboration.domain.FriendRow;
 import com.careertuner.collaboration.domain.MessageAttachmentRow;
+import com.careertuner.collaboration.domain.SharedPostingRow;
 
 @Mapper
 public interface CollaborationMapper {
@@ -51,10 +52,27 @@ public interface CollaborationMapper {
     Long findDirectConversation(@Param("userLowId") Long userLowId,
                                 @Param("userHighId") Long userHighId);
 
+    CollaborationConversation findConversationById(@Param("id") Long id);
+
     void insertConversation(CollaborationConversation conversation);
 
     void insertConversationMember(@Param("conversationId") Long conversationId,
                                   @Param("userId") Long userId);
+
+    void insertConversationMemberWithRole(@Param("conversationId") Long conversationId,
+                                          @Param("userId") Long userId,
+                                          @Param("role") String role,
+                                          @Param("invitedBy") Long invitedBy);
+
+    void insertConversationInvite(@Param("conversationId") Long conversationId,
+                                  @Param("inviterId") Long inviterId,
+                                  @Param("inviteeId") Long inviteeId);
+
+    int countPendingInvite(@Param("conversationId") Long conversationId,
+                           @Param("inviteeId") Long inviteeId);
+
+    void acceptInvite(@Param("conversationId") Long conversationId,
+                      @Param("inviteeId") Long inviteeId);
 
     int countConversationMember(@Param("conversationId") Long conversationId,
                                 @Param("userId") Long userId);
@@ -62,6 +80,13 @@ public interface CollaborationMapper {
     List<Long> findConversationMemberIds(@Param("conversationId") Long conversationId);
 
     List<ConversationSummaryRow> findConversations(@Param("userId") Long userId);
+
+    ConversationSummaryRow findConversationSummary(@Param("userId") Long userId,
+                                                  @Param("conversationId") Long conversationId);
+
+    List<ConversationSummaryRow> findDiscoverableConversations(@Param("userId") Long userId,
+                                                              @Param("keyword") String keyword,
+                                                              @Param("limit") int limit);
 
     void insertMessage(CollaborationMessage message);
 
@@ -73,9 +98,22 @@ public interface CollaborationMapper {
     void touchConversation(@Param("conversationId") Long conversationId);
 
     void insertMessageAttachment(@Param("messageId") Long messageId,
-                                 @Param("fileAssetId") Long fileAssetId);
+                                 @Param("fileAssetId") Long fileAssetId,
+                                 @Param("shareMode") String shareMode,
+                                 @Param("expiresAt") java.time.LocalDateTime expiresAt);
 
     List<MessageAttachmentRow> findAttachmentsByMessageId(@Param("messageId") Long messageId);
+
+    MessageAttachmentRow findAttachmentForDownload(@Param("userId") Long userId,
+                                                   @Param("fileId") Long fileId);
+
+    SharedPostingRow findOwnedApplicationCase(@Param("userId") Long userId,
+                                             @Param("applicationCaseId") Long applicationCaseId);
+
+    void insertMessagePosting(@Param("messageId") Long messageId,
+                              @Param("applicationCaseId") Long applicationCaseId);
+
+    List<SharedPostingRow> findPostingsByMessageId(@Param("messageId") Long messageId);
 
     Long findLatestMessageId(@Param("conversationId") Long conversationId);
 

@@ -14,12 +14,17 @@ import java.util.List;
 
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
+import org.springframework.security.crypto.password.PasswordEncoder;
 
+import com.careertuner.collaboration.domain.CollaborationConversation;
 import com.careertuner.collaboration.domain.CollaborationMessage;
 import com.careertuner.collaboration.domain.CollaborationUserRow;
+import com.careertuner.collaboration.domain.ConversationSummaryRow;
 import com.careertuner.collaboration.domain.FriendRequest;
 import com.careertuner.collaboration.domain.FriendRequestRow;
 import com.careertuner.collaboration.domain.MessageAttachmentRow;
+import com.careertuner.collaboration.dto.CreateConversationRequest;
+import com.careertuner.collaboration.dto.JoinConversationRequest;
 import com.careertuner.collaboration.dto.SendMessageRequest;
 import com.careertuner.collaboration.mapper.CollaborationMapper;
 import com.careertuner.common.exception.BusinessException;
@@ -36,8 +41,9 @@ class CollaborationServiceImplTest {
     private final NotificationService notificationService = mock(NotificationService.class);
     private final FileAssetMapper fileAssetMapper = mock(FileAssetMapper.class);
     private final FileService fileService = mock(FileService.class);
+    private final PasswordEncoder passwordEncoder = mock(PasswordEncoder.class);
     private final CollaborationServiceImpl service =
-            new CollaborationServiceImpl(mapper, notificationService, fileAssetMapper, fileService);
+            new CollaborationServiceImpl(mapper, notificationService, fileAssetMapper, fileService, passwordEncoder);
 
     @Test
     void sendFriendRequest_createsPendingRequestAndNotifiesReceiver() {
@@ -84,7 +90,8 @@ class CollaborationServiceImplTest {
     void sendMessage_requiresContentOrAttachment() {
         when(mapper.countConversationMember(5L, 1L)).thenReturn(1);
 
-        assertThatThrownBy(() -> service.sendMessage(1L, 5L, new SendMessageRequest("CHAT", "   ", List.of())))
+        assertThatThrownBy(() -> service.sendMessage(1L, 5L,
+                new SendMessageRequest("CHAT", "   ", List.of(), null, null, List.of())))
                 .isInstanceOf(BusinessException.class)
                 .satisfies(error -> assertThat(((BusinessException) error).getErrorCode())
                         .isEqualTo(ErrorCode.INVALID_INPUT));
@@ -121,18 +128,74 @@ class CollaborationServiceImplTest {
                 .messageId(20L)
                 .fileAssetId(9L)
                 .originalName("portfolio.pdf")
+                .shareMode("TEMPORARY")
                 .sizeBytes(1200L)
                 .build()));
+        when(mapper.findPostingsByMessageId(20L)).thenReturn(List.of());
 
         var response = service.sendMessage(1L, 5L,
-                new SendMessageRequest("NOTE", " 검토 부탁해 ", Arrays.asList(9L, 9L, null)));
+                new SendMessageRequest("NOTE", " 검토 부탁해 ", Arrays.asList(9L, 9L, null),
+                        "TEMPORARY", 24, List.of()));
 
         assertThat(response.kind()).isEqualTo("NOTE");
         assertThat(response.content()).isEqualTo("검토 부탁해");
         assertThat(response.attachments()).hasSize(1);
-        verify(mapper).insertMessageAttachment(20L, 9L);
+        verify(mapper).insertMessageAttachment(org.mockito.Mockito.eq(20L), org.mockito.Mockito.eq(9L),
+                org.mockito.Mockito.eq("TEMPORARY"), org.mockito.Mockito.any());
         verify(fileAssetMapper).updateRef(9L, "COLLAB_MESSAGE", 20L);
         verify(notificationService).notify(any(Notification.class));
+    }
+
+    @Test
+    void createConversation_hashesPrivatePasswordAndAddsFriends() {
+        when(passwordEncoder.encode("secret")).thenReturn("hashed");
+        when(mapper.countFriendship(1L, 2L)).thenReturn(1);
+        when(mapper.findActiveUserById(2L)).thenReturn(user(2L, "민지", "minji@example.com"));
+        doAnswer(invocation -> {
+            CollaborationConversation conversation = invocation.getArgument(0);
+            conversation.setId(30L);
+            return null;
+        }).when(mapper).insertConversation(any());
+        when(mapper.findConversationSummary(1L, 30L)).thenReturn(ConversationSummaryRow.builder()
+                .id(30L)
+                .type("PRIVATE")
+                .title("비공개 스터디")
+                .locked(true)
+                .joined(true)
+                .memberCount(2)
+                .build());
+
+        var response = service.createConversation(1L,
+                new CreateConversationRequest("PRIVATE", " 비공개 스터디 ", null, " secret ", List.of(2L)));
+
+        assertThat(response.type()).isEqualTo("PRIVATE");
+        assertThat(response.locked()).isTrue();
+        verify(mapper).insertConversationMemberWithRole(30L, 1L, "OWNER", 1L);
+        verify(mapper).insertConversationMemberWithRole(30L, 2L, "MEMBER", 1L);
+    }
+
+    @Test
+    void joinPrivateConversation_allowsInvitedUserWithoutPassword() {
+        when(mapper.findConversationById(40L)).thenReturn(CollaborationConversation.builder()
+                .id(40L)
+                .type("PRIVATE")
+                .title("비공개 방")
+                .build());
+        when(mapper.countPendingInvite(40L, 2L)).thenReturn(1);
+        when(mapper.findConversationSummary(2L, 40L)).thenReturn(ConversationSummaryRow.builder()
+                .id(40L)
+                .type("PRIVATE")
+                .title("비공개 방")
+                .locked(false)
+                .joined(true)
+                .memberCount(2)
+                .build());
+
+        var response = service.joinConversation(2L, 40L, new JoinConversationRequest(null));
+
+        assertThat(response.joined()).isTrue();
+        verify(mapper).insertConversationMemberWithRole(40L, 2L, "MEMBER", null);
+        verify(mapper).acceptInvite(40L, 2L);
     }
 
     private CollaborationUserRow user(Long id, String name, String email) {

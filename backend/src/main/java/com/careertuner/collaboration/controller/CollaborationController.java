@@ -21,10 +21,13 @@ import org.springframework.web.bind.annotation.RestController;
 
 import com.careertuner.collaboration.dto.CollaborationUserResponse;
 import com.careertuner.collaboration.dto.ConversationSummaryResponse;
+import com.careertuner.collaboration.dto.CreateConversationRequest;
 import com.careertuner.collaboration.dto.DirectConversationRequest;
 import com.careertuner.collaboration.dto.FriendRequestCreateRequest;
 import com.careertuner.collaboration.dto.FriendRequestResponse;
 import com.careertuner.collaboration.dto.FriendResponse;
+import com.careertuner.collaboration.dto.InviteMembersRequest;
+import com.careertuner.collaboration.dto.JoinConversationRequest;
 import com.careertuner.collaboration.dto.MessageResponse;
 import com.careertuner.collaboration.dto.SendMessageRequest;
 import com.careertuner.collaboration.service.CollaborationService;
@@ -99,11 +102,42 @@ public class CollaborationController {
         return ApiResponse.ok(collaborationService.listConversations(authUser.id()));
     }
 
+    @GetMapping("/conversations/discover")
+    public ApiResponse<List<ConversationSummaryResponse>> discoverConversations(
+            @RequestParam(defaultValue = "") String keyword,
+            @RequestParam(defaultValue = "30") @Min(1) @Max(50) int limit,
+            @AuthenticationPrincipal AuthUser authUser) {
+        return ApiResponse.ok(collaborationService.discoverConversations(authUser.id(), keyword, limit));
+    }
+
     @PostMapping("/conversations/direct")
     public ApiResponse<ConversationSummaryResponse> openDirectConversation(
             @Validated @RequestBody DirectConversationRequest request,
             @AuthenticationPrincipal AuthUser authUser) {
         return ApiResponse.ok(collaborationService.openDirectConversation(authUser.id(), request.targetUserId()));
+    }
+
+    @PostMapping("/conversations")
+    public ApiResponse<ConversationSummaryResponse> createConversation(
+            @Validated @RequestBody CreateConversationRequest request,
+            @AuthenticationPrincipal AuthUser authUser) {
+        return ApiResponse.ok(collaborationService.createConversation(authUser.id(), request));
+    }
+
+    @PostMapping("/conversations/{conversationId}/join")
+    public ApiResponse<ConversationSummaryResponse> joinConversation(
+            @PathVariable Long conversationId,
+            @Validated @RequestBody JoinConversationRequest request,
+            @AuthenticationPrincipal AuthUser authUser) {
+        return ApiResponse.ok(collaborationService.joinConversation(authUser.id(), conversationId, request));
+    }
+
+    @PostMapping("/conversations/{conversationId}/invites")
+    public ApiResponse<ConversationSummaryResponse> inviteMembers(
+            @PathVariable Long conversationId,
+            @Validated @RequestBody InviteMembersRequest request,
+            @AuthenticationPrincipal AuthUser authUser) {
+        return ApiResponse.ok(collaborationService.inviteMembers(authUser.id(), conversationId, request));
     }
 
     @GetMapping("/conversations/{conversationId}/messages")

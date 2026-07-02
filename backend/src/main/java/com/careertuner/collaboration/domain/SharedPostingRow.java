@@ -1,5 +1,6 @@
 package com.careertuner.collaboration.domain;
 
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 
 import lombok.AllArgsConstructor;
@@ -11,17 +12,14 @@ import lombok.NoArgsConstructor;
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-public class MessageAttachmentRow {
+public class SharedPostingRow {
 
     private Long id;
     private Long messageId;
-    private Long fileAssetId;
-    private String originalName;
-    private String contentType;
-    private Long sizeBytes;
-    private String shareMode;
-    private LocalDateTime expiresAt;
-    private Long ownerUserId;
-    private String ownerPlan;
+    private Long applicationCaseId;
+    private String companyName;
+    private String jobTitle;
+    private LocalDate deadlineDate;
+    private String sourceType;
     private LocalDateTime createdAt;
 }
