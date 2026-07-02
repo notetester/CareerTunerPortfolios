@@ -18,6 +18,9 @@ public class CollaborationConversation {
     private Long userLowId;
     private Long userHighId;
     private String title;
+    private String description;
+    private String passwordHash;
+    private Integer maxMembers;
     private Long createdBy;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;

@@ -7,6 +7,9 @@ import jakarta.validation.constraints.Size;
 public record SendMessageRequest(
         @Size(max = 20) String kind,
         @Size(max = 4000) String content,
-        List<Long> attachmentFileIds
+        List<Long> attachmentFileIds,
+        @Size(max = 20) String attachmentShareMode,
+        Integer temporaryHours,
+        List<Long> sharedApplicationCaseIds
 ) {
 }
