@@ -1,4 +1,6 @@
 import { useEffect, useState } from "react";
+import { ArrowUpRight, Check, CornerDownRight, FileText, MessageCircle, Mic, PenLine, Play, Sparkles, Target, User } from "lucide-react";
+import type { LucideIcon } from "lucide-react";
 
 import { PREP_PARTS } from "../types/autoPrep";
 import type { PartState, PartUiStatus } from "../hooks/useAutoPrepRun";
@@ -9,6 +11,16 @@ interface Props {
   caseId: number | null;
   onNavigate: (path: string) => void;
 }
+
+/** PREP_PARTS.icon 이름 → lucide 컴포넌트 (이모지 대체). */
+const STEP_ICONS: Record<string, LucideIcon> = {
+  "user": User,
+  "file-text": FileText,
+  "target": Target,
+  "pen-line": PenLine,
+  "mic": Mic,
+  "message-circle": MessageCircle,
+};
 
 /** 작업 과정 타임라인 — 전체 진행바 + 파트별 세부스텝 에너지바 + 완료 후 액션. 채팅 모달 안에 임베드된다. */
 export function AutoPrepWorkView({ running, parts, caseId, onNavigate }: Props) {
@@ -27,7 +39,7 @@ export function AutoPrepWorkView({ running, parts, caseId, onNavigate }: Props) 
     <div className="rounded-xl border border-border bg-card p-3">
       <div className="mb-2">
         <div className="mb-1 flex items-center justify-between text-[11px] text-muted-foreground">
-          <span>✦ 작업 과정</span>
+          <span className="flex items-center gap-1"><Sparkles className="size-3" /> 작업 과정</span>
           <span className="tabular-nums font-semibold">{settled}/{total}</span>
         </div>
         <div className="h-1.5 w-full overflow-hidden rounded-full bg-secondary">
@@ -58,9 +70,9 @@ export function AutoPrepWorkView({ running, parts, caseId, onNavigate }: Props) 
             )}
             <button
               onClick={() => onNavigate("/interview")}
-              className="rounded-lg bg-primary px-3.5 py-2 text-xs font-semibold text-primary-foreground transition hover:brightness-110"
+              className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-3.5 py-2 text-xs font-semibold text-primary-foreground transition hover:brightness-110"
             >
-              ▶ 면접 시작
+              <Play className="h-3 w-3" /> 면접 시작
             </button>
           </div>
         </div>
@@ -91,8 +103,8 @@ function PartGroup({
         <span className="text-[9px] text-muted-foreground">·{meta.part}</span>
         <span className="ml-auto text-[10px] font-semibold">
           {part.status === "running" && <span className="text-primary">진행</span>}
-          {part.status === "done" && <span className="text-primary">✓ 완료</span>}
-          {part.status === "skipped" && <span className="text-muted-foreground">⤼ 건너뜀</span>}
+          {part.status === "done" && <span className="flex items-center gap-0.5 text-primary"><Check className="size-3" /> 완료</span>}
+          {part.status === "skipped" && <span className="flex items-center gap-0.5 text-muted-foreground"><CornerDownRight className="size-3" /> 건너뜀</span>}
           {part.status === "failed" && <span className="text-destructive">실패</span>}
         </span>
       </div>
@@ -106,7 +118,7 @@ function PartGroup({
           <div key={i} className="flex gap-2.5 py-1">
             <div className="flex flex-col items-center">
               <div className="grid h-6 w-6 flex-none place-items-center rounded-full bg-primary/10 text-xs text-primary">
-                {active ? <Spinner /> : pct >= 100 ? "✓" : meta.icon}
+                {active ? <Spinner /> : pct >= 100 ? <Check className="size-3" /> : (() => { const I = STEP_ICONS[meta.icon]; return I ? <I className="size-3" /> : meta.icon; })()}
               </div>
               {!isLast && <div className="mt-1 w-px flex-1 bg-border" />}
             </div>
@@ -132,9 +144,9 @@ function PartGroup({
           {action && (
             <button
               onClick={() => onNavigate(action.path)}
-              className="rounded-md border border-border px-2 py-0.5 text-[10px] font-semibold text-foreground transition hover:bg-secondary"
+              className="inline-flex items-center gap-1 rounded-md border border-border px-2 py-0.5 text-[10px] font-semibold text-foreground transition hover:bg-secondary"
             >
-              {action.label} ↗
+              {action.label} <ArrowUpRight className="h-3 w-3" />
             </button>
           )}
         </div>

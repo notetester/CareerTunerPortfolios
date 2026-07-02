@@ -76,9 +76,13 @@ Item {
                 Text { text: "녹음 중 — 답변을 말하세요"; color: Theme.muted; font.pixelSize: 11 }
                 Item { Layout.fillWidth: true }
                 Rectangle {
-                    width: stopLbl.implicitWidth + 20; height: 26; radius: 7
+                    width: stopRow.implicitWidth + 20; height: 26; radius: 7
                     color: Theme.raised; border.color: Theme.border
-                    Text { id: stopLbl; anchors.centerIn: parent; text: "■ 정지"; color: Theme.text; font.pixelSize: 11 }
+                    Row {
+                        id: stopRow; anchors.centerIn: parent; spacing: 6
+                        Rectangle { width: 6; height: 6; radius: 1; color: Theme.text; anchors.verticalCenter: parent.verticalCenter }
+                        Text { text: "정지"; color: Theme.text; font.pixelSize: 11; anchors.verticalCenter: parent.verticalCenter }
+                    }
                     MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: recorder.stop() }
                 }
             }
@@ -97,7 +101,7 @@ Item {
                 placeholderText: root.mode === "intake"
                     ? "한 줄로 요청하세요 — 예) 이 공고로 압박 면접 5문항 만들어줘"
                     : (session.currentQid >= 0
-                        ? "답변을 입력하세요 — 🎙 버튼으로 음성 답변도 가능 (Enter 전송 · Shift+Enter 줄바꿈)"
+                        ? "답변을 입력하세요 — 마이크 버튼으로 음성 답변도 가능 (Enter 전송 · Shift+Enter 줄바꿈)"
                         : "대기 중인 질문이 없습니다 — 꼬리질문을 받거나 리포트를 확인하세요")
                 placeholderTextColor: Theme.muted
                 color: Theme.text
@@ -123,14 +127,22 @@ Item {
                 // 마이크 (답변 모드)
                 Rectangle {
                     visible: root.mode === "answer"
-                    width: micLbl.implicitWidth + 18; height: 26; radius: 7
+                    width: micRow.implicitWidth + 18; height: 26; radius: 7
                     color: recorder.recording ? Theme.accentSoft : "transparent"
                     border.color: recorder.recording ? Theme.accent : Theme.border
-                    Text {
-                        id: micLbl; anchors.centerIn: parent
-                        text: "🎙 음성 답변"
-                        color: recorder.recording ? Theme.accent : Theme.muted
-                        font.pixelSize: 11
+                    Row {
+                        id: micRow; anchors.centerIn: parent; spacing: 6
+                        Icon {
+                            name: "mic"; size: 12
+                            color: recorder.recording ? Theme.accent : Theme.muted
+                            anchors.verticalCenter: parent.verticalCenter
+                        }
+                        Text {
+                            text: "음성 답변"
+                            color: recorder.recording ? Theme.accent : Theme.muted
+                            font.pixelSize: 11
+                            anchors.verticalCenter: parent.verticalCenter
+                        }
                     }
                     MouseArea {
                         anchors.fill: parent; cursorShape: Qt.PointingHandCursor
@@ -142,19 +154,27 @@ Item {
                 // 컨텍스트 칩
                 Rectangle {
                     height: 22; radius: 11
-                    width: ctxLbl.implicitWidth + 18
+                    width: ctxRow.implicitWidth + 18
                     color: root.mode === "intake" ? Theme.accentSoft : Theme.raised
                     border.color: root.mode === "intake" ? "transparent" : Theme.border
-                    Text {
-                        id: ctxLbl
-                        anchors.centerIn: parent
-                        text: root.mode === "intake"
-                              ? "⚡ AI 자동 준비 (인테이크)"
-                              : (session.currentQid >= 0
-                                  ? session.mode + " · 답변 대기"
-                                  : "질문 없음")
-                        color: root.mode === "intake" ? Theme.accent : Theme.muted
-                        font.pixelSize: 10
+                    Row {
+                        id: ctxRow; anchors.centerIn: parent; spacing: 5
+                        Icon {
+                            visible: root.mode === "intake"
+                            name: "zap"; size: 10; color: Theme.accent
+                            anchors.verticalCenter: parent.verticalCenter
+                        }
+                        Text {
+                            id: ctxLbl
+                            text: root.mode === "intake"
+                                  ? "AI 자동 준비 (인테이크)"
+                                  : (session.currentQid >= 0
+                                      ? session.mode + " · 답변 대기"
+                                      : "질문 없음")
+                            color: root.mode === "intake" ? Theme.accent : Theme.muted
+                            font.pixelSize: 10
+                            anchors.verticalCenter: parent.verticalCenter
+                        }
                     }
                 }
 

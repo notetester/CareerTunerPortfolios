@@ -185,12 +185,16 @@ Item {
                     RowLayout {
                         spacing: 8
                         Rectangle {
-                            width: mdLbl.implicitWidth + 24; height: 32; radius: 8
+                            width: mdRow.implicitWidth + 24; height: 32; radius: 8
                             gradient: Gradient {
                                 GradientStop { position: 0.0; color: Theme.accent2 }
                                 GradientStop { position: 1.0; color: Theme.accent }
                             }
-                            Text { id: mdLbl; anchors.centerIn: parent; text: "💾 리포트 저장 (.md)"; color: "white"; font.pixelSize: 12; font.bold: true }
+                            Row {
+                                id: mdRow; anchors.centerIn: parent; spacing: 6
+                                Icon { name: "download"; size: 12; color: "white"; anchors.verticalCenter: parent.verticalCenter }
+                                Text { text: "리포트 저장 (.md)"; color: "white"; font.pixelSize: 12; font.bold: true; anchors.verticalCenter: parent.verticalCenter }
+                            }
                             MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: session.exportReport("md") }
                         }
                         Rectangle {
@@ -200,9 +204,13 @@ Item {
                             MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: session.exportReport("html") }
                         }
                         Rectangle {
-                            width: allLbl.implicitWidth + 24; height: 32; radius: 8
+                            width: allRow.implicitWidth + 24; height: 32; radius: 8
                             color: Theme.raised; border.color: Theme.border
-                            Text { id: allLbl; anchors.centerIn: parent; text: "📦 세션 자료 전부 내보내기"; color: Theme.text; font.pixelSize: 12 }
+                            Row {
+                                id: allRow; anchors.centerIn: parent; spacing: 6
+                                Icon { name: "box"; size: 12; color: Theme.text; anchors.verticalCenter: parent.verticalCenter }
+                                Text { text: "세션 자료 전부 내보내기"; color: Theme.text; font.pixelSize: 12; anchors.verticalCenter: parent.verticalCenter }
+                            }
                             MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: session.exportAll() }
                         }
                         Rectangle {

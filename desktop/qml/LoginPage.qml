@@ -61,9 +61,9 @@ Item {
                     width: 16; height: 16; radius: 4
                     color: appSettings.autoLogin ? Theme.accent : "transparent"
                     border.color: appSettings.autoLogin ? Theme.accent : Theme.border
-                    Text {
+                    Icon {
                         anchors.centerIn: parent; visible: appSettings.autoLogin
-                        text: "✓"; color: "white"; font.pixelSize: 10; font.bold: true
+                        name: "check"; size: 10; color: "white"; strokeWidth: 3
                     }
                     MouseArea { anchors.fill: parent; onClicked: appSettings.autoLogin = !appSettings.autoLogin }
                 }
@@ -95,7 +95,7 @@ Item {
 
         Connections {
             target: auth
-            function onLoginFailed(message) { errMsg.text = "✕ " + message }
+            function onLoginFailed(message) { errMsg.text = message }
         }
     }
 }

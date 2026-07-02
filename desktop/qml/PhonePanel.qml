@@ -32,12 +32,16 @@ Rectangle {
             Layout.fillWidth: true
             Layout.topMargin: 14
             spacing: 8
-            Text { text: "📱 폰 연동"; color: Theme.text; font.pixelSize: 13; font.bold: true }
+            Row {
+                spacing: 6
+                Icon { name: "smartphone"; size: 13; color: Theme.text; anchors.verticalCenter: parent.verticalCenter }
+                Text { text: "폰 연동"; color: Theme.text; font.pixelSize: 13; font.bold: true; anchors.verticalCenter: parent.verticalCenter }
+            }
             Item { Layout.fillWidth: true }
             Rectangle {
                 width: 24; height: 24; radius: 6
                 color: closeHover.containsMouse ? Theme.hover : "transparent"
-                Text { anchors.centerIn: parent; text: "✕"; color: Theme.muted; font.pixelSize: 11 }
+                Icon { anchors.centerIn: parent; name: "x"; size: 12; color: Theme.muted }
                 MouseArea {
                     id: closeHover
                     anchors.fill: parent; hoverEnabled: true
@@ -92,13 +96,18 @@ Rectangle {
                     Layout.fillWidth: true
                     radius: 8
                     color: Theme.accentSoft
-                    implicitHeight: notiTxt.implicitHeight + 16
-                    Text {
-                        id: notiTxt
+                    implicitHeight: notiRow.implicitHeight + 16
+                    Row {
+                        id: notiRow
                         x: 9; y: 8; width: parent.width - 18
-                        text: "🔔 알림 발송됨 — 폰에서 탭하면 이 세션으로 이어집니다"
-                        color: Theme.text; font.pixelSize: 10
-                        wrapMode: Text.WordWrap
+                        spacing: 6
+                        Icon { name: "bell"; size: 11; color: Theme.text; y: 1 }
+                        Text {
+                            width: parent.width - 17
+                            text: "알림 발송됨 — 폰에서 탭하면 이 세션으로 이어집니다"
+                            color: Theme.text; font.pixelSize: 10
+                            wrapMode: Text.WordWrap
+                        }
                     }
                 }
             }
@@ -113,7 +122,11 @@ Rectangle {
                 GradientStop { position: 0.0; color: Theme.accent2 }
                 GradientStop { position: 1.0; color: Theme.accent }
             }
-            Text { anchors.centerIn: parent; text: "📲 이 세션 폰으로 보내기"; color: "white"; font.pixelSize: 12; font.bold: true }
+            Row {
+                anchors.centerIn: parent; spacing: 7
+                Icon { name: "smartphone"; size: 13; color: "white"; anchors.verticalCenter: parent.verticalCenter }
+                Text { text: "이 세션 폰으로 보내기"; color: "white"; font.pixelSize: 12; font.bold: true; anchors.verticalCenter: parent.verticalCenter }
+            }
             MouseArea {
                 anchors.fill: parent
                 cursorShape: Qt.PointingHandCursor

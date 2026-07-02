@@ -11,7 +11,7 @@ import {
   TrendingUp, Users, BarChart3, Zap, Shield, Clock, Star,
   ChevronRight, Play, Building2, Briefcase, BookOpen, PenTool,
   Award, Bot, Mic, Video, Brain, AlertCircle, ThumbsUp, Search,
-  Plus, Calendar, Loader2, Flame, RefreshCw, Settings2,
+  Plus, Calendar, Loader2, Flame, RefreshCw, Settings2, Check, Circle,
 } from "lucide-react";
 import { getDashboardSummary, refreshDashboardSummary } from "@/features/dashboard/api/dashboardApi";
 import type { DashboardActivity, DashboardSummary, DashboardTodo } from "@/features/dashboard/types/dashboardSummary";
@@ -409,7 +409,7 @@ function MemberHome({ summary, loading, error, fallbackName, onRetry, onSummaryR
                           step.done ? "bg-secondary text-muted-foreground" : "bg-card text-slate-400 border border-slate-200"
                         }`}
                       >
-                        {step.done ? "✓" : "○"} {step.label}
+                        {step.done ? <Check className="size-3" /> : <Circle className="size-2.5" />} {step.label}
                       </span>
                     ))}
                   </div>
