@@ -2,7 +2,7 @@
 
 Last updated: 2026-07-02
 기준 branch: dev
-기준 PR 범위: #174, #175, #180, #182, #183, #184, #186, #187, #188, #190, #191, #193, #198, #199, #200, #201 포함
+기준 PR 범위: #174, #175, #180, #182, #183, #184, #186, #187, #188, #190, #191, #193, #198, #199, #200, #201, #210, #211, #212 포함
 
 > **용어 정정 (2026-07-02):** 이 문서의 "RAG" 항목들이 가리키는 완료 실험은 true external retrieval RAG
 > (런타임 벡터검색·웹·카탈로그 조회 — **미구현·미평가**)가 아니라 **evidence-bucket prompt augmentation**
@@ -55,7 +55,8 @@ Last updated: 2026-07-02
 - [~] 보류 또는 조건부 유지 — top LLM consensus 에서 true unsupported possession claim 은 A=0, B=0 이지만, empty output / NOT_JUDGEABLE / B_WORSE / NOT_COMPARABLE / regression candidate 가 남아 RAG runtime 은 `KEEP_RAG_DISABLED` 를 유지한다.
 - [x] 완료 — RAG 용어 정정: 완료 실험은 evidence-bucket prompt augmentation 이며 true external retrieval RAG 는 미구현·미평가임을 상태 문서와 보고서 errata 로 고정했다([AIDocs report 77](../../docs/ai-reports/areas/c-career-strategy/reports/77_ai_direction_and_rag_terminology_review.md)).
 - [~] 보류 또는 조건부 유지 — B(evidence-bucket augmentation)는 production 후보에서 **연구 후보로 격하**한다. 다음 실측의 중심은 A(production 경로) 대량 베이스라인이다([AIDocs report 77](../../docs/ai-reports/areas/c-career-strategy/reports/77_ai_direction_and_rag_terminology_review.md) §8).
-- [ ] 미완료 — human review candidate 검토 및 gold label 확정은 후속으로 남아 있다(A-only 베이스라인 작업에 포함 예정).
+- [x] 완료 — A-only baseline v1 실측(60케이스×2 run)과 rubric v2 judge 판정을 수행했다. "A true ≈ 0" 기각(진짜 보유단정 3/120관측), 전부 검출기 포착 — 계층 안전장치 필요성 정량 입증([AIDocs report 79](../../docs/ai-reports/areas/c-career-strategy/reports/79_a_only_baseline_v1_run.md)·[80](../../docs/ai-reports/areas/c-career-strategy/reports/80_a_only_baseline_repeat2_judge.md), PR #212).
+- [ ] 미완료 — judge 판정 11건(특히 UNCLEAR 1건)의 **human gold label 확정**은 사용자 검토 대기(패킷: CareerTunerAI `judge-results/a_only_baseline_v1_claude_judge_verdicts.json`).
 
 ## 4. Evidence gate / safety 상태
 
@@ -93,9 +94,9 @@ Last updated: 2026-07-02
 - [x] 완료 — RAG hard-case 실제 출력의 local/private independent semantic judge 검증 및 CareerTunerAI/CareerTunerAIDocs 산출물 저장([reports/74 summary](reports/74_rag_hardcase_independent_semantic_judge.md), [AIDocs report 74](../../docs/ai-reports/areas/c-career-strategy/reports/74_rag_hardcase_v1_independent_semantic_judge.md)).
 - [x] 완료 — RAG hard-case top LLM judge 평가팩 생성 및 CareerTunerAI/CareerTunerAIDocs 산출물 저장([reports/75 summary](reports/75_rag_hardcase_top_llm_judge_pack.md), [AIDocs report 75](../../docs/ai-reports/areas/c-career-strategy/reports/75_rag_hardcase_top_llm_judge_pack_plan.md)).
 - [x] 완료 — RAG hard-case top LLM judge 결과 3종 validation/aggregation 및 disagreement matrix 생성([reports/76 summary](reports/76_rag_hardcase_top_llm_judge_consensus.md), [AIDocs report 76](../../docs/ai-reports/areas/c-career-strategy/reports/76_rag_hardcase_top_llm_judge_consensus.md)).
-- [ ] 미완료 — **A-only production 경로 대량 안전성 베이스라인**(다음 실측 중심): 무버킷 3B LoRA + E1 + R3 관통, `evidence-attribution-*` 픽스처 60→120케이스(혼동 계열·자격증·회사 스택·APPLY/COMPLEMENT/HOLD 분포), rubric v2 라벨, 기존 judge 체인 재사용([AIDocs report 77](../../docs/ai-reports/areas/c-career-strategy/reports/77_ai_direction_and_rag_terminology_review.md) §8).
-- [ ] 미완료 — fallback provider 판단값 소유 통일: Anthropic/OpenAI 경로도 규칙엔진 skeleton + 설명 전용 생성으로 전환(현재는 fallback LLM 이 fitScore/applyDecision 을 직접 생성 — 뉴로-심볼릭 원칙과 비대칭, [AIDocs report 77](../../docs/ai-reports/areas/c-career-strategy/reports/77_ai_direction_and_rag_terminology_review.md) §7).
-- [ ] 미완료 — 관리자 gate review 처리 workflow 설계: 검토 완료, 재분석 요청, memo/reason 연결.
-- [ ] 미완료 — R3 gate reason 로그를 기반으로 false-positive 샘플 리뷰와 alias 후보 triage.
-- [ ] 미완료 — top LLM human review candidate 검토와 gold label 확정.
+- [x] 완료 — A-only production 경로 안전성 베이스라인 v1(60케이스×2 run + judge, PR #212, [AIDocs report 80](../../docs/ai-reports/areas/c-career-strategy/reports/80_a_only_baseline_repeat2_judge.md)). **120케이스 확장은 보류** — 운영 FP/FN 신호 시 confusion_pair 집중으로 재개.
+- [x] 완료 — fallback provider 판단값 소유 통일(PR #211, [AIDocs report 78](../../docs/ai-reports/areas/c-career-strategy/reports/78_provider_judgment_ownership_unification.md)) — 전 provider 뉴로-심볼릭.
+- [ ] 미완료 — **(1순위)** 관리자 gate review 처리 workflow: 검토 완료, 재분석 요청, memo/reason 연결 — 운영 전환의 핵심([AIDocs report 80](../../docs/ai-reports/areas/c-career-strategy/reports/80_a_only_baseline_repeat2_judge.md) §4).
+- [ ] 미완료 — **(2순위)** R3 gate reason 로그 기반 false-positive 샘플 리뷰와 alias 후보 triage.
+- [ ] 미완료 — human gold label 확정(사용자): rag-hardcase disagreement13 + A-only judge 판정 11건.
 - [ ] 미완료 — model-card 다음 개정: R3 운영 데이터와 gate reason 분포 반영.

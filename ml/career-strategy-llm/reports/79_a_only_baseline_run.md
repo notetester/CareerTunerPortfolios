@@ -1,7 +1,7 @@
 # A-only production 경로 baseline v1 실측 summary
 
 > 상세: [AIDocs report 79](../../../docs/ai-reports/areas/c-career-strategy/reports/79_a_only_baseline_v1_run.md)
-> (AIDocs commit `d42fb38`). 방향 근거: [AIDocs report 77](../../../docs/ai-reports/areas/c-career-strategy/reports/77_ai_direction_and_rag_terminology_review.md) §8
+> (AIDocs commit `635f18a`). 방향 근거: [AIDocs report 77](../../../docs/ai-reports/areas/c-career-strategy/reports/77_ai_direction_and_rag_terminology_review.md) §8
 > — 다음 실측의 중심은 B(evidence-bucket)가 아니라 A(production 경로)다. 명명은 `evidence-attribution-*` 계열.
 
 ## 실행
