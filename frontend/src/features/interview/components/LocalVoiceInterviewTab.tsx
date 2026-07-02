@@ -15,6 +15,9 @@ import {
 } from "../api/interviewApi";
 import { blobToBase64, computeVoiceScore, countFillers, VoiceMetricsTracker } from "../hooks/voiceAnalysis";
 import { BrowserSttTracker } from "../hooks/speechToText";
+import { createNegotiatedRecorder, isTtsSupported, mediaUnsupportedReason } from "../hooks/mediaSupport";
+import { useDeviceCapabilities } from "../hooks/deviceCapabilities";
+import { DeviceHandoffCard, type HandoffReason } from "./DeviceHandoffCard";
 import type {
   InterviewQuestion,
   InterviewSession,
@@ -32,6 +35,8 @@ interface Recording {
   questionId: number;
   question: string;
   blob: Blob;
+  /** 녹음 시 협상된 업로드 포맷(webm|mp4) — blob.type 스니핑 대신 이 값을 쓴다. */
+  format: string;
   /** 녹음 중 수집한 온디바이스 음향 지표 트래커 — serve 미기동 시 전달력 폴백 채점에 쓴다. */
   tracker: VoiceMetricsTracker | null;
   /** 녹음 중 브라우저 음성인식(Web Speech)으로 받아둔 전사 — serve STT 미기동 시 전사 폴백. */
@@ -78,12 +83,24 @@ export function LocalVoiceInterviewTab({ session }: { session: InterviewSession 
   const recordingsRef = useRef<Recording[]>([]);
   const trackerRef = useRef<VoiceMetricsTracker | null>(null);
   const sttRef = useRef<BrowserSttTracker | null>(null);
+  /** 현재 녹음의 협상된 업로드 포맷 — Recording 으로 이관해 채점 요청에 쓴다. */
+  const formatRef = useRef<string>("webm");
 
   const supported =
     typeof navigator !== "undefined" &&
     !!navigator.mediaDevices &&
     typeof window !== "undefined" &&
     "MediaRecorder" in window;
+
+  // TTS 미지원(Android WebView 등)이면 질문 읽기를 건너뛰고 텍스트 강조로 진행한다.
+  const ttsAvailable = isTtsSupported();
+  const deviceCaps = useDeviceCapabilities();
+  // 이 기기에서 진행 불가한 원인 — 있으면 "폰으로 이어하기" 안내 카드를 띄운다.
+  const handoffReason: HandoffReason | null = !supported
+    ? (mediaUnsupportedReason() ?? "unsupported")
+    : deviceCaps.hasMicrophone === false
+      ? "no-microphone"
+      : null;
 
   useEffect(() => {
     if (!session) return;
@@ -147,7 +164,9 @@ export function LocalVoiceInterviewTab({ session }: { session: InterviewSession 
       const stt = new BrowserSttTracker();
       stt.start();
       sttRef.current = stt;
-      const recorder = new MediaRecorder(mic);
+      // 기기별 지원 mimeType 협상(webm/opus → mp4/aac) — WebView 등 webm 미지원 기기 대응.
+      const { recorder, format } = createNegotiatedRecorder(mic, "audio");
+      formatRef.current = format;
       recorder.ondataavailable = (e) => {
         if (e.data.size > 0) chunksRef.current.push(e.data);
       };
@@ -177,7 +196,11 @@ export function LocalVoiceInterviewTab({ session }: { session: InterviewSession 
       setSpeaking(false);
       void startRecording(); // 다 읽으면 자동 녹음
     };
-    utter.onerror = () => setSpeaking(false);
+    utter.onerror = () => {
+      // TTS 실패(WebView 등)해도 탭을 막지 않는다 — 질문은 화면 텍스트로 대신하고 바로 녹음.
+      setSpeaking(false);
+      void startRecording();
+    };
     window.speechSynthesis.cancel();
     window.speechSynthesis.speak(utter);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -217,7 +240,14 @@ export function LocalVoiceInterviewTab({ session }: { session: InterviewSession 
 
     const q = questions[questionIdx];
     if (blob && blob.size > 0 && q) {
-      recordingsRef.current.push({ questionId: q.id, question: q.question, blob, tracker, webSpeechText });
+      recordingsRef.current.push({
+        questionId: q.id,
+        question: q.question,
+        blob,
+        format: formatRef.current,
+        tracker,
+        webSpeechText,
+      });
     } else {
       tracker?.dispose();
     }
@@ -241,7 +271,7 @@ export function LocalVoiceInterviewTab({ session }: { session: InterviewSession 
     for (let i = 0; i < recs.length; i++) {
       const rec = recs[i];
       const audioBase64 = await blobToBase64(rec.blob).catch(() => "");
-      const audioFormat = (rec.blob.type || "audio/webm").includes("webm") ? "webm" : "wav";
+      const audioFormat = rec.format; // 녹음 시 협상한 포맷 (blob.type 스니핑 대체)
 
       // 1) 전사: serve STT(faster-whisper) 우선, 실패 시 브라우저 음성인식(Web Speech) 폴백.
       let transcript = "";
@@ -389,13 +419,9 @@ export function LocalVoiceInterviewTab({ session }: { session: InterviewSession 
             </p>
           )}
 
-          {!supported && (
-            <p className="rounded-lg bg-amber-50 p-3 text-sm text-amber-700">
-              이 브라우저는 녹음을 지원하지 않습니다. 최신 Chrome/Edge 에서 이용해 주세요.
-            </p>
-          )}
+          {handoffReason && <DeviceHandoffCard sessionId={session.id} reason={handoffReason} />}
 
-          {!started && (
+          {!started && !handoffReason && (
             <label className="flex items-start gap-2 rounded-lg bg-slate-50 p-3 text-xs text-slate-600">
               <input
                 type="checkbox"
@@ -413,6 +439,9 @@ export function LocalVoiceInterviewTab({ session }: { session: InterviewSession 
             <div className="space-y-1">
               <div className="flex items-center justify-between text-xs text-slate-500">
                 <span>질문 {questionIdx + 1} / {total}</span>
+                {!ttsAvailable && (
+                  <span className="text-emerald-600">음성 안내 미지원 — 질문을 읽고 답변하세요</span>
+                )}
                 {speaking && (
                   <span className="flex items-center gap-1 text-emerald-600">
                     <Volume2 className="size-3 animate-pulse" /> 질문 읽는 중…
@@ -425,7 +454,14 @@ export function LocalVoiceInterviewTab({ session }: { session: InterviewSession 
                 )}
               </div>
               <Progress value={(questionIdx / total) * 100} className="h-1.5" />
-              <p className="rounded-lg bg-slate-50 p-3 text-sm font-medium text-slate-700">
+              {/* TTS 미지원 기기에서는 질문을 강조 표시해 텍스트로 대신한다. */}
+              <p
+                className={
+                  ttsAvailable
+                    ? "rounded-lg bg-slate-50 p-3 text-sm font-medium text-slate-700"
+                    : "rounded-lg border-l-4 border-emerald-400 bg-emerald-50 p-3 text-base font-semibold text-slate-800"
+                }
+              >
                 Q{questionIdx + 1}. {questions[questionIdx]?.question}
               </p>
             </div>
@@ -446,7 +482,7 @@ export function LocalVoiceInterviewTab({ session }: { session: InterviewSession 
             </div>
           )}
 
-          {supported && (
+          {supported && !handoffReason && (
             <div className="flex flex-wrap items-center gap-2">
               {!started && (
                 <Button
