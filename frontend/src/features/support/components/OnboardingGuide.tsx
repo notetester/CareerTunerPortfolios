@@ -110,7 +110,7 @@ const SERVER_ORDER: GuideStep[] = ["role", "skills", "docs", "jd"];
 export type ServerGuidePhase = "role" | "skills" | "jd" | "waiting";
 
 /* ════════════════ 본체 ════════════════ */
-export function OnboardingGuide({ onClose, onGotoInterview, wide, onCollapse, onExpand, intake, onSlotFilled, server }: {
+export function OnboardingGuide({ onClose, onGotoInterview, wide, onCollapse, onExpand, intake, onSlotFilled, server, onAskQuestion }: {
   onClose: () => void;
   /** 면접 권유 CTA — 수집한 caseId 를 실어 D 면접 페이지로 인계(없으면 null). */
   onGotoInterview: (caseId: number | null) => void;
@@ -120,6 +120,12 @@ export function OnboardingGuide({ onClose, onGotoInterview, wide, onCollapse, on
   onCollapse?: () => void;
   /** ⤢ 코너에서 다시 플로팅으로. */
   onExpand?: () => void;
+  /**
+   * 가이드 오버레이가 입력창을 가려서 질문을 못 치는 역설 해소용 — "질문이 있으신가요?" 링크를
+   * 노출하고, 누르면 이 콜백으로 오버레이를 잠시 비운다(호출부가 담당). onClose 와 달리 "포기"가
+   * 아니라 "잠시 비켜줌"이라 g.reset() 은 안 부른다 — 국면이 되돌아오면 새 인스턴스로 다시 뜬다.
+   */
+  onAskQuestion?: () => void;
   /**
    * ③ 인테이크 CASE 되묻기 매핑 모드 — 지정한 스텝(빈 슬롯만큼)만 밟고, 마지막 스텝(jd)에서
    * 지원 건을 만들어 onSlotFilled 로 돌려준다. 적합도/면접 스텝은 없음(이후 진행은 인테이크가 이어감).
@@ -250,6 +256,15 @@ export function OnboardingGuide({ onClose, onGotoInterview, wide, onCollapse, on
           <X size={16} />
         </button>
       </div>
+
+      {/* ── 질문 접근줄: 입력창이 오버레이에 가려 있어도 궁금한 게 있으면 채팅으로 잠깐 나갈 수 있게. ── */}
+      {onAskQuestion && (
+        <button onClick={onAskQuestion}
+          className="w-full px-4 py-1.5 text-[11px] text-left text-muted-foreground hover:text-foreground transition-colors border-b border-border shrink-0"
+          style={{ background: "var(--secondary)" }}>
+          질문이 있으신가요? <span className="font-semibold" style={{ color: "var(--orch-violet)" }}>여기서 물어보기</span>
+        </button>
+      )}
 
       {/* ── Body ── (플로팅: 스텝 컬럼 + 준비 명세 보드 나란히) */}
       <div className="flex-1 flex min-h-0">

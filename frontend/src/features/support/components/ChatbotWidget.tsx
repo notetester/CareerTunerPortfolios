@@ -143,6 +143,9 @@ function ChatbotPanel({ chatbot }: ChatbotPanelProps) {
   const [intakeGuide, setIntakeGuide] = useState<{ msgId: string; steps: GuideStep[] } | null>(null);
   // 닫은(=텍스트 폴백 선택) 되묻기 턴은 다시 자동 오픈하지 않는다.
   const dismissedIntakeRef = useRef<Set<string>>(new Set());
+  // "질문하기"로 잠시 비켜준 상태 — 같은 봇 메시지(msgId 불변)인 동안은 아래 자동 오픈 effect가
+  // 즉시 재오픈하지 않게 억제한다(④ onbAskingRef 와 동일한 레이스 방지 패턴).
+  const intakeAskingRef = useRef(false);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   const handleOpenSessions = () => { loadSessions(); setShowSessions(true); };
@@ -160,6 +163,7 @@ function ChatbotPanel({ chatbot }: ChatbotPanelProps) {
     if (last.intake.nextAsk !== "CASE" || last.intake.candidates.length > 0) return;
     if (!getAccessToken()) return;
     if (dismissedIntakeRef.current.has(last.id)) return;
+    if (intakeAskingRef.current) return;
     setIntakeGuide((cur) =>
       cur?.msgId === last.id ? cur : { msgId: last.id, steps: ["role", "skills", "docs", "jd"] });
   }, [messages, runStarted]);
@@ -186,12 +190,24 @@ function ChatbotPanel({ chatbot }: ChatbotPanelProps) {
   const [onbGuideOpen, setOnbGuideOpen] = useState(false);
   const onbDismissedRef = useRef(false);
   const onbNudgeCountRef = useRef(0);
+  // "질문하기" 링크로 잠시 비켜준 상태 — onbPhase 가 그대로인 채 닫히므로, 이 가드가 없으면
+  // 같은 렌더 사이클에서 아래 자동 재오픈 effect가 즉시 다시 열어버린다(클릭이 안 먹히는 것처럼 보임).
+  // 새 봇 응답이 도착(lastBotMsg 갱신)해야 해제 — 그 전까진 재오픈을 억제해 실제로 채팅이 열려 있게 한다.
+  const onbAskingRef = useRef(false);
+
+  // "질문하기"로 나간 상태 해제(③④ 공통) — 새 봇 메시지가 도착하면(질문에 답이 왔든, 실제 진행
+  // 답변 응답이든) 다음부터 두 오버레이 모두 정상적으로 자동 오픈 판정을 받는다.
+  useEffect(() => {
+    intakeAskingRef.current = false;
+    onbAskingRef.current = false;
+  }, [lastBotMsg?.id]);
 
   // 자동 오픈/재오픈: 온보딩 국면이 살아 있으면 가이드를 연다 — 첫 질문(직무) 도착뿐 아니라
   // 질문 우회(④질문확인)·회사/직무 보정으로 잠시 닫혔다가 수집 단계로 복귀한 경우 포함.
-  // X로 직접 닫은(폴백 선택) 사용자에겐 다시 안 연다. 이미 열려 있으면 no-op(최소화 상태 존중).
+  // X로 직접 닫은(폴백 선택) 사용자·"질문하기"로 잠시 나간 사용자에겐 다시 안 연다.
+  // 이미 열려 있으면 no-op(최소화 상태 존중).
   useEffect(() => {
-    if (onbPhase && !onbGuideOpen && !onbDismissedRef.current && !runStarted) {
+    if (onbPhase && !onbGuideOpen && !onbDismissedRef.current && !onbAskingRef.current && !runStarted) {
       setOnbGuideOpen(true);
       expandToFloating();
     }
@@ -404,6 +420,9 @@ function ChatbotPanel({ chatbot }: ChatbotPanelProps) {
           onCollapse={collapseToCorner}
           onExpand={expandToFloating}
           onClose={() => { onbDismissedRef.current = true; setOnbGuideOpen(false); }}
+          // 포기(X)와 달리 dismissedRef 를 안 건드린다 — 국면이 살아있는 채로 다음 봇 응답이
+          // 다시 매핑되면 useEffect 가 새 인스턴스로 자동 재오픈한다(수집 내용은 서버 상태 기준).
+          onAskQuestion={() => { onbAskingRef.current = true; setOnbGuideOpen(false); }}
           onGotoInterview={goInterview}
         />
       )}
@@ -417,6 +436,7 @@ function ChatbotPanel({ chatbot }: ChatbotPanelProps) {
           onCollapse={collapseToCorner}
           onExpand={expandToFloating}
           onClose={closeIntakeGuide}
+          onAskQuestion={() => { intakeAskingRef.current = true; setIntakeGuide(null); }}
           onSlotFilled={handleSlotFilled}
           onGotoInterview={goInterview}
         />
