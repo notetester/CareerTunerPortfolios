@@ -20,10 +20,34 @@ JobModel::JobModel(QObject* parent) : QAbstractListModel(parent)
     // 실데이터는 로그인 후 reload() 로 채운다.
 }
 
+QString JobModel::caseLabel(qint64 caseId) const
+{
+    return m_caseLabels.value(caseId,
+        QStringLiteral("지원건 #%1").arg(caseId));
+}
+
 void JobModel::reload()
 {
     if (!m_api) return;
-    m_api->get("/api/interview/sessions?page=0&size=20",
+    // 1) 케이스 라벨 맵 (회사 · 직무) → 2) 세션 목록
+    m_api->get("/api/application-cases?page=0&size=50",
+        [this](bool ok, const QJsonValue& data, const QString&) {
+            if (ok) {
+                m_caseLabels.clear();
+                for (const QJsonValue& v : data.toArray()) {
+                    const QJsonObject c = v.toObject();
+                    m_caseLabels.insert(c.value("id").toInteger(),
+                        c.value("companyName").toString()
+                        + QStringLiteral(" · ") + c.value("jobTitle").toString());
+                }
+            }
+            loadSessions();
+        });
+}
+
+void JobModel::loadSessions()
+{
+    m_api->get("/api/interview/sessions?page=0&size=30",
         [this](bool ok, const QJsonValue& data, const QString&) {
             beginResetModel();
             m_jobs.clear();
@@ -31,15 +55,16 @@ void JobModel::reload()
                 const QJsonArray arr = data.toObject().value("sessions").toArray();
                 for (const QJsonValue& v : arr) {
                     const QJsonObject s = v.toObject();
-                    const QString mode = modeLabel(s.value("mode").toString());
+                    const QString code = s.value("mode").toString();
                     const bool ended = !s.value("endedAt").isNull();
                     Job j;
                     j.id       = s.value("id").toInteger();
-                    j.mode     = mode;
-                    j.title    = mode + QStringLiteral("  ·  지원건 #") + QString::number(s.value("applicationCaseId").toInteger());
+                    j.caseId   = s.value("applicationCaseId").toInteger();
+                    j.modeCode = code;
+                    j.mode     = modeLabel(code);
+                    j.title    = caseLabel(j.caseId);
                     j.status   = ended ? QStringLiteral("DONE") : QStringLiteral("RUNNING");
-                    j.progress = ended ? 100
-                               : ((!s.value("avgScore").isNull() || !s.value("avgVoiceScore").isNull()) ? 60 : 20);
+                    j.progress = ended ? 100 : 0; // 정확한 진행률은 progress API — 목록에선 이진 표시
                     m_jobs.push_back(j);
                 }
             }
@@ -48,6 +73,7 @@ void JobModel::reload()
                 const Job& j = m_jobs.first();
                 m_current = QVariantMap{
                     {"id", static_cast<qint64>(j.id)},
+                    {"caseId", static_cast<qint64>(j.caseId)},
                     {"title", j.title}, {"mode", j.mode},
                     {"status", j.status}, {"progress", j.progress}
                 };
@@ -84,27 +110,12 @@ void JobModel::createSession(int caseId, const QString& mode)
     body["applicationCaseId"] = caseId;
     body["mode"] = mode;
     m_api->post("/api/interview/sessions", body,
-        [this](bool ok, const QJsonValue&, const QString&) {
-            if (ok) reload();   // 생성 성공 시 목록 새로고침
-        });
-}
-
-void JobModel::loadQuestions(int sessionId)
-{
-    if (!m_api) return;
-    m_api->get("/api/interview/sessions/" + QString::number(sessionId) + "/questions",
-        [this](bool ok, const QJsonValue& data, const QString&) {
-            QVariantList out;
-            if (ok) {
-                for (const QJsonValue& v : data.toArray()) {
-                    const QJsonObject q = v.toObject();
-                    QVariantMap m;
-                    m["question"] = q.value("question").toString();
-                    m["type"]     = q.value("questionType").toString();
-                    out.push_back(m);
-                }
-            }
-            emit questionsReady(out);
+        [this, caseId, mode](bool ok, const QJsonValue& data, const QString&) {
+            if (!ok) return;
+            const QJsonObject s = data.toObject();
+            const int sid = static_cast<int>(s.value("id").toInteger());
+            emit sessionCreated(sid, caseId, modeLabel(mode), caseLabel(caseId));
+            reload();   // 사이드바 목록 갱신
         });
 }
 
@@ -156,8 +167,10 @@ QVariant JobModel::data(const QModelIndex& index, int role) const
     const Job& j = m_jobs.at(index.row());
     switch (role) {
         case IdRole:       return j.id;
+        case CaseRole:     return j.caseId;
         case TitleRole:    return j.title;
         case ModeRole:     return j.mode;
+        case ModeCodeRole: return j.modeCode;
         case StatusRole:   return j.status;
         case ProgressRole: return j.progress;
         default:           return QVariant();
@@ -168,8 +181,10 @@ QHash<int, QByteArray> JobModel::roleNames() const
 {
     return {
         {IdRole,       "jobId"},
+        {CaseRole,     "caseId"},
         {TitleRole,    "title"},
         {ModeRole,     "mode"},
+        {ModeCodeRole, "modeCode"},
         {StatusRole,   "status"},
         {ProgressRole, "progress"},
     };
@@ -180,27 +195,4 @@ int JobModel::indexOf(qint64 id) const
     for (int i = 0; i < m_jobs.size(); ++i)
         if (m_jobs[i].id == id) return i;
     return -1;
-}
-
-void JobModel::upsert(qint64 id, const QString& title, const QString& mode,
-                      const QString& status, int progress)
-{
-    const int i = indexOf(id);
-    if (i < 0) {
-        beginInsertRows(QModelIndex(), 0, 0);
-        m_jobs.prepend({id, title, mode, status, progress});
-        endInsertRows();
-    } else {
-        m_jobs[i] = {id, title, mode, status, progress};
-        emit dataChanged(index(i), index(i));
-    }
-}
-
-void JobModel::setProgress(qint64 id, int progress, const QString& status)
-{
-    const int i = indexOf(id);
-    if (i < 0) return;
-    m_jobs[i].progress = progress;
-    m_jobs[i].status   = status;
-    emit dataChanged(index(i), index(i));
 }
