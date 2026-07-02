@@ -29,6 +29,7 @@ import com.careertuner.community.mapper.CommunityCommentMapper;
 import com.careertuner.community.mapper.CommunityPostMapper;
 import com.careertuner.community.mapper.ReactionMapper;
 import com.careertuner.community.moderation.event.CommentModerationRequiredEvent;
+import com.careertuner.notification.service.NotificationService;
 
 /**
  * 멘션/삭제 감사 수정(M1·M2·L2·L4) 회귀 테스트.
@@ -41,9 +42,11 @@ class CommunityCommentServiceImplTest {
     private final CommunityPostMapper postMapper = mock(CommunityPostMapper.class);
     private final ReactionMapper reactionMapper = mock(ReactionMapper.class);
     private final ApplicationEventPublisher eventPublisher = mock(ApplicationEventPublisher.class);
+    private final NotificationService notificationService = mock(NotificationService.class);
 
     private final CommunityCommentServiceImpl service =
-            new CommunityCommentServiceImpl(commentMapper, postMapper, reactionMapper, eventPublisher);
+            new CommunityCommentServiceImpl(commentMapper, postMapper, reactionMapper, eventPublisher,
+                    notificationService);
 
     private static final long POST_ID = 1L;
     private static final long POST_AUTHOR = 99L;

@@ -32,6 +32,7 @@ import com.careertuner.companyanalysis.dto.CompanyAnalysisReviewRequest;
 import com.careertuner.companyanalysis.dto.CompanyAnalysisResponse;
 import com.careertuner.companyanalysis.mapper.CompanyAnalysisMapper;
 import com.careertuner.jobposting.mapper.JobPostingMapper;
+import com.careertuner.notification.service.NotificationService;
 
 import tools.jackson.databind.ObjectMapper;
 
@@ -169,7 +170,8 @@ class CompanyAnalysisServiceReviewValidationTest {
                 mock(AiUsageLogService.class),
                 mock(ApplicationCaseAnalysisStatusService.class),
                 mock(TransactionTemplate.class),
-                new BAnalysisJsonValidator(new ObjectMapper()));
+                new BAnalysisJsonValidator(new ObjectMapper()),
+                mock(NotificationService.class));
     }
 
     private static ApplicationCase applicationCase() {

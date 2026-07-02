@@ -16,6 +16,8 @@ import com.careertuner.community.dto.ToggleReactionRequest;
 import com.careertuner.community.mapper.CommunityCommentMapper;
 import com.careertuner.community.mapper.CommunityPostMapper;
 import com.careertuner.community.mapper.ReactionMapper;
+import com.careertuner.notification.domain.Notification;
+import com.careertuner.notification.service.NotificationService;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -29,6 +31,7 @@ public class ReactionServiceImpl implements ReactionService {
     private final ReactionMapper reactionMapper;
     private final CommunityPostMapper postMapper;
     private final CommunityCommentMapper commentMapper;
+    private final NotificationService notificationService;
 
     @Override
     @Transactional
@@ -66,8 +69,39 @@ public class ReactionServiceImpl implements ReactionService {
         }
         if (type == ReactionType.LIKE) postMapper.incrementLikeCount(postId);
         else postMapper.incrementBookmarkCount(postId);
+        // 좋아요 '신규 등록'에만 알림 발행(취소·동시 등록 흡수 경로는 위에서 이미 return).
+        // self-like 는 위에서 차단되므로 본인 알림은 발생하지 않는다.
+        if (type == ReactionType.LIKE) {
+            notifyPostLiked(post, userId);
+        }
         log.info("게시글 리액션 등록 postId={} userId={} type={}", postId, userId, type);
         return true;
+    }
+
+    /**
+     * 게시글 좋아요 알림 — 발행 실패가 리액션 처리를 깨지 않도록 best-effort.
+     * 링크는 검열 알림(PostModerationService)과 동일한 게시글 상세 패턴을 쓴다.
+     */
+    private void notifyPostLiked(CommunityPost post, Long actorId) {
+        try {
+            notificationService.notify(Notification.builder()
+                    .userId(post.getUserId())
+                    .actorId(actorId)
+                    .type("LIKE")
+                    .targetType("POST")
+                    .targetId(post.getId())
+                    .title("게시글에 좋아요가 달렸습니다.")
+                    .message("'" + truncate(post.getTitle(), 30) + "' 게시글에 좋아요를 남겼습니다.")
+                    .link("/community/posts/" + post.getId())
+                    .build());
+        } catch (Exception e) {
+            log.error("좋아요 알림 발행 실패: postId={} actorId={}", post.getId(), actorId, e);
+        }
+    }
+
+    private static String truncate(String text, int maxLen) {
+        if (text == null) return "";
+        return text.length() <= maxLen ? text : text.substring(0, maxLen) + "…";
     }
 
     private boolean toggleCommentReaction(Long commentId, ReactionType type, Long userId) {

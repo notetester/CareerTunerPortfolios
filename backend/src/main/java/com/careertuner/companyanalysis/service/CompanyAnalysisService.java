@@ -23,6 +23,8 @@ import com.careertuner.companyanalysis.dto.CompanyAnalysisReviewRequest;
 import com.careertuner.companyanalysis.dto.CompanyAnalysisResponse;
 import com.careertuner.companyanalysis.mapper.CompanyAnalysisMapper;
 import com.careertuner.jobposting.domain.JobPosting;
+import com.careertuner.notification.domain.Notification;
+import com.careertuner.notification.service.NotificationService;
 
 import lombok.RequiredArgsConstructor;
 
@@ -40,6 +42,7 @@ public class CompanyAnalysisService {
     private final ApplicationCaseAnalysisStatusService statusService;
     private final TransactionTemplate transactionTemplate;
     private final BAnalysisJsonValidator analysisJsonValidator;
+    private final NotificationService notificationService;
 
     public CompanyAnalysisResponse createCompanyAnalysis(Long userId, Long applicationCaseId) {
         ApplicationCase applicationCase = accessService.requireOwned(userId, applicationCaseId);
@@ -81,6 +84,17 @@ public class CompanyAnalysisService {
                             generated.fallbackReason());
                 }
                 aiUsageLogService.recordLocalSuccess(userId, applicationCaseId, FEATURE_COMPANY_RESEARCH, payload.usage());
+                // 기업 분석 저장이 성공하면 사용자에게 완료 알림을 남긴다.
+                notificationService.notify(Notification.builder()
+                        .userId(userId)
+                        .type("COMPANY_ANALYSIS_COMPLETE")
+                        .targetType("APPLICATION_CASE")
+                        .targetId(applicationCaseId)
+                        .title("기업 분석이 완료되었습니다")
+                        .message("%s · %s 기업 분석 결과가 준비되었습니다.".formatted(
+                                applicationCase.getCompanyName(), applicationCase.getJobTitle()))
+                        .link("/applications/" + applicationCaseId + "/company-analysis")
+                        .build());
                 return response;
             });
         } catch (RuntimeException ex) {

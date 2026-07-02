@@ -66,6 +66,7 @@ import com.careertuner.jobposting.service.JobPostingFileStorage;
 import com.careertuner.jobposting.service.JobPostingService;
 import com.careertuner.jobposting.service.JobPostingTextExtractor;
 import com.careertuner.notification.mapper.NotificationMapper;
+import com.careertuner.notification.service.NotificationService;
 import tools.jackson.databind.ObjectMapper;
 
 class ApplicationCaseServiceImplTest {
@@ -986,7 +987,7 @@ class ApplicationCaseServiceImplTest {
         AiUsageLogService usageLogService = mock(AiUsageLogService.class);
         ApplicationCaseAnalysisStatusService statusService = mock(ApplicationCaseAnalysisStatusService.class);
         ApplicationCaseAccessService accessService = new ApplicationCaseAccessService(applicationCaseMapper, jobPostingMapper);
-        JobAnalysisService service = new JobAnalysisService(accessService, jobAnalysisMapper, bAnalysisGenerationService, usageLogService, statusService, transactionTemplate(), analysisJsonValidator());
+        JobAnalysisService service = new JobAnalysisService(accessService, jobAnalysisMapper, bAnalysisGenerationService, usageLogService, statusService, transactionTemplate(), analysisJsonValidator(), mock(NotificationService.class));
 
         ApplicationCase applicationCase = applicationCase("DRAFT");
         JobPosting posting = jobPosting(30L, 2, "Java Spring REST API");
@@ -1021,7 +1022,7 @@ class ApplicationCaseServiceImplTest {
         AiUsageLogService usageLogService = mock(AiUsageLogService.class);
         ApplicationCaseAnalysisStatusService statusService = mock(ApplicationCaseAnalysisStatusService.class);
         ApplicationCaseAccessService accessService = new ApplicationCaseAccessService(applicationCaseMapper, jobPostingMapper);
-        JobAnalysisService service = new JobAnalysisService(accessService, jobAnalysisMapper, bAnalysisGenerationService, usageLogService, statusService, transactionTemplate(), analysisJsonValidator());
+        JobAnalysisService service = new JobAnalysisService(accessService, jobAnalysisMapper, bAnalysisGenerationService, usageLogService, statusService, transactionTemplate(), analysisJsonValidator(), mock(NotificationService.class));
 
         ApplicationCase applicationCase = applicationCase("DRAFT");
         JobPosting posting = jobPosting(30L, 2, "Java Spring REST API");
@@ -1051,7 +1052,7 @@ class ApplicationCaseServiceImplTest {
         AiUsageLogService usageLogService = mock(AiUsageLogService.class);
         ApplicationCaseAnalysisStatusService statusService = mock(ApplicationCaseAnalysisStatusService.class);
         ApplicationCaseAccessService accessService = new ApplicationCaseAccessService(applicationCaseMapper, jobPostingMapper);
-        JobAnalysisService service = new JobAnalysisService(accessService, jobAnalysisMapper, bAnalysisGenerationService, usageLogService, statusService, transactionTemplate(), analysisJsonValidator());
+        JobAnalysisService service = new JobAnalysisService(accessService, jobAnalysisMapper, bAnalysisGenerationService, usageLogService, statusService, transactionTemplate(), analysisJsonValidator(), mock(NotificationService.class));
 
         when(applicationCaseMapper.findApplicationCaseByIdAndUserId(10L, 1L)).thenReturn(applicationCase("APPLIED"));
 
@@ -1075,7 +1076,7 @@ class ApplicationCaseServiceImplTest {
         AiUsageLogService usageLogService = mock(AiUsageLogService.class);
         ApplicationCaseAnalysisStatusService statusService = mock(ApplicationCaseAnalysisStatusService.class);
         ApplicationCaseAccessService accessService = new ApplicationCaseAccessService(applicationCaseMapper, jobPostingMapper);
-        JobAnalysisService service = new JobAnalysisService(accessService, jobAnalysisMapper, bAnalysisGenerationService, usageLogService, statusService, transactionTemplate(), analysisJsonValidator());
+        JobAnalysisService service = new JobAnalysisService(accessService, jobAnalysisMapper, bAnalysisGenerationService, usageLogService, statusService, transactionTemplate(), analysisJsonValidator(), mock(NotificationService.class));
 
         when(applicationCaseMapper.findApplicationCaseByIdAndUserId(10L, 1L)).thenReturn(applicationCase("ANALYZING"));
 
@@ -1099,7 +1100,7 @@ class ApplicationCaseServiceImplTest {
         AiUsageLogService usageLogService = mock(AiUsageLogService.class);
         ApplicationCaseAnalysisStatusService statusService = mock(ApplicationCaseAnalysisStatusService.class);
         ApplicationCaseAccessService accessService = new ApplicationCaseAccessService(applicationCaseMapper, jobPostingMapper);
-        JobAnalysisService service = new JobAnalysisService(accessService, jobAnalysisMapper, bAnalysisGenerationService, usageLogService, statusService, transactionTemplate(), analysisJsonValidator());
+        JobAnalysisService service = new JobAnalysisService(accessService, jobAnalysisMapper, bAnalysisGenerationService, usageLogService, statusService, transactionTemplate(), analysisJsonValidator(), mock(NotificationService.class));
 
         ApplicationCase applicationCase = applicationCase("DRAFT");
         JobPosting posting = jobPosting(30L, 2, "Java Spring REST API");
@@ -1131,7 +1132,7 @@ class ApplicationCaseServiceImplTest {
         AiUsageLogService usageLogService = mock(AiUsageLogService.class);
         ApplicationCaseAnalysisStatusService statusService = mock(ApplicationCaseAnalysisStatusService.class);
         ApplicationCaseAccessService accessService = new ApplicationCaseAccessService(applicationCaseMapper, jobPostingMapper);
-        JobAnalysisService service = new JobAnalysisService(accessService, jobAnalysisMapper, bAnalysisGenerationService, usageLogService, statusService, transactionTemplate(), analysisJsonValidator());
+        JobAnalysisService service = new JobAnalysisService(accessService, jobAnalysisMapper, bAnalysisGenerationService, usageLogService, statusService, transactionTemplate(), analysisJsonValidator(), mock(NotificationService.class));
         ApplicationCase applicationCase = applicationCase("READY");
         JobPosting posting = jobPosting(30L, 2, "Java Spring REST API");
         RuntimeException failure = new RuntimeException("OpenAI down");
@@ -1158,7 +1159,7 @@ class ApplicationCaseServiceImplTest {
         AiUsageLogService usageLogService = mock(AiUsageLogService.class);
         ApplicationCaseAnalysisStatusService statusService = mock(ApplicationCaseAnalysisStatusService.class);
         ApplicationCaseAccessService accessService = new ApplicationCaseAccessService(applicationCaseMapper, jobPostingMapper);
-        JobAnalysisService service = new JobAnalysisService(accessService, jobAnalysisMapper, bAnalysisGenerationService, usageLogService, statusService, transactionTemplate(), analysisJsonValidator());
+        JobAnalysisService service = new JobAnalysisService(accessService, jobAnalysisMapper, bAnalysisGenerationService, usageLogService, statusService, transactionTemplate(), analysisJsonValidator(), mock(NotificationService.class));
         ApplicationCase applicationCase = applicationCase("DRAFT");
         JobPosting posting = jobPosting(30L, 2, "Java Spring REST API");
         Usage usage = new Usage("gpt-test", 100, 50, 150);
@@ -1189,7 +1190,7 @@ class ApplicationCaseServiceImplTest {
         AiUsageLogService usageLogService = mock(AiUsageLogService.class);
         ApplicationCaseAnalysisStatusService statusService = mock(ApplicationCaseAnalysisStatusService.class);
         ApplicationCaseAccessService accessService = new ApplicationCaseAccessService(applicationCaseMapper, jobPostingMapper);
-        CompanyAnalysisService service = new CompanyAnalysisService(accessService, companyAnalysisMapper, bAnalysisGenerationService, usageLogService, statusService, transactionTemplate(), analysisJsonValidator());
+        CompanyAnalysisService service = new CompanyAnalysisService(accessService, companyAnalysisMapper, bAnalysisGenerationService, usageLogService, statusService, transactionTemplate(), analysisJsonValidator(), mock(NotificationService.class));
 
         ApplicationCase applicationCase = applicationCase("DRAFT");
         JobPosting posting = jobPosting(null, null, "Backend platform job posting");
@@ -1237,7 +1238,7 @@ class ApplicationCaseServiceImplTest {
         AiUsageLogService usageLogService = mock(AiUsageLogService.class);
         ApplicationCaseAnalysisStatusService statusService = mock(ApplicationCaseAnalysisStatusService.class);
         ApplicationCaseAccessService accessService = new ApplicationCaseAccessService(applicationCaseMapper, jobPostingMapper);
-        CompanyAnalysisService service = new CompanyAnalysisService(accessService, companyAnalysisMapper, bAnalysisGenerationService, usageLogService, statusService, transactionTemplate(), analysisJsonValidator());
+        CompanyAnalysisService service = new CompanyAnalysisService(accessService, companyAnalysisMapper, bAnalysisGenerationService, usageLogService, statusService, transactionTemplate(), analysisJsonValidator(), mock(NotificationService.class));
 
         ApplicationCase applicationCase = applicationCase("DRAFT");
         JobPosting posting = jobPosting(30L, 3, "Backend platform job posting");
@@ -1279,7 +1280,7 @@ class ApplicationCaseServiceImplTest {
         AiUsageLogService usageLogService = mock(AiUsageLogService.class);
         ApplicationCaseAnalysisStatusService statusService = mock(ApplicationCaseAnalysisStatusService.class);
         ApplicationCaseAccessService accessService = new ApplicationCaseAccessService(applicationCaseMapper, jobPostingMapper);
-        CompanyAnalysisService service = new CompanyAnalysisService(accessService, companyAnalysisMapper, bAnalysisGenerationService, usageLogService, statusService, transactionTemplate(), analysisJsonValidator());
+        CompanyAnalysisService service = new CompanyAnalysisService(accessService, companyAnalysisMapper, bAnalysisGenerationService, usageLogService, statusService, transactionTemplate(), analysisJsonValidator(), mock(NotificationService.class));
 
         when(applicationCaseMapper.findApplicationCaseByIdAndUserId(10L, 1L)).thenReturn(applicationCase("CLOSED"));
 
@@ -1303,7 +1304,7 @@ class ApplicationCaseServiceImplTest {
         AiUsageLogService usageLogService = mock(AiUsageLogService.class);
         ApplicationCaseAnalysisStatusService statusService = mock(ApplicationCaseAnalysisStatusService.class);
         ApplicationCaseAccessService accessService = new ApplicationCaseAccessService(applicationCaseMapper, jobPostingMapper);
-        CompanyAnalysisService service = new CompanyAnalysisService(accessService, companyAnalysisMapper, bAnalysisGenerationService, usageLogService, statusService, transactionTemplate(), analysisJsonValidator());
+        CompanyAnalysisService service = new CompanyAnalysisService(accessService, companyAnalysisMapper, bAnalysisGenerationService, usageLogService, statusService, transactionTemplate(), analysisJsonValidator(), mock(NotificationService.class));
 
         when(applicationCaseMapper.findApplicationCaseByIdAndUserId(10L, 1L)).thenReturn(applicationCase("ANALYZING"));
 
