@@ -62,6 +62,11 @@ export function deleteInterviewSession(sessionId: number): Promise<void> {
 }
 
 /** 세션 복원(=복습) 시각 기록. */
+/** 이 세션을 다른 기기(데스크탑·웹·폰)로 보내기 — 알림 + 딥링크 발송. 데스크탑 폴러가 토스트로 받는다. */
+export function dispatchSessionToDevices(sessionId: number): Promise<void> {
+  return api<void>(`/interview/sessions/${sessionId}/dispatch`, { method: "POST" });
+}
+
 export function markSessionResumed(sessionId: number): Promise<void> {
   if (isDataMockActive()) return Promise.resolve();
   return api<void>(`/interview/sessions/${sessionId}/resume`, { method: "POST" });

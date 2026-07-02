@@ -27,6 +27,8 @@ import { ResetPasswordPage } from "./pages/ResetPassword";
 import { ReleaseDormantPage } from "./pages/ReleaseDormant";
 import { adminRoutes } from "../admin/routes";
 import NotificationPage from "@/features/notification/pages/NotificationPage";
+import { MobileSessionsPage } from "@/features/interview/pages/MobileSessionsPage";
+import { MobileSessionThreadPage } from "@/features/interview/pages/MobileSessionThreadPage";
 
 const basename = import.meta.env.BASE_URL === "/"
   ? "/"
@@ -47,6 +49,9 @@ export const router = createBrowserRouter([
       { path: "applications/:id/:section", Component: ApplicationDetailPage },
       { path: "applications/:id", Component: ApplicationDetailPage },
       { path: "interview", Component: AIInterviewPage },
+      // 모바일 세션 스레드(Claude 앱 문법) — 하단 탭 "세션" + 디스패치 딥링크 진입 (interview 소유, D)
+      { path: "m/sessions", Component: MobileSessionsPage },
+      { path: "m/session/:id", Component: MobileSessionThreadPage },
       { path: "correction", Component: CorrectionPage },
       { path: "analysis", Component: AnalysisPage },
       { path: "community", Component: CommunityPage },
