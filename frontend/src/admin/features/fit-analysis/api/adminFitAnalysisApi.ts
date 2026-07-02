@@ -1,5 +1,6 @@
 import { api } from "@/app/lib/api";
 import type {
+  AdminGateReviewRequest,
   AdminFitAnalysisDetail,
   AdminFitAnalysisListItem,
   AdminFitAnalysisMemo,
@@ -13,6 +14,13 @@ export function getAdminFitAnalyses(reviewRequiredOnly = false) {
 
 export function getAdminFitAnalysis(id: number) {
   return api<AdminFitAnalysisDetail>(`/admin/fit-analyses/${id}`);
+}
+
+export function patchAdminGateReview(id: number, request: AdminGateReviewRequest) {
+  return api<AdminFitAnalysisDetail>(`/admin/fit-analyses/${id}/gate-review`, {
+    method: "PATCH",
+    body: JSON.stringify(request),
+  });
 }
 
 export function getAdminFitAnalysisMemos(id: number) {

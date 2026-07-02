@@ -80,7 +80,7 @@ Last updated: 2026-07-02
 - [x] 완료 — 관리자 fit-analysis 목록/상세에서 gate status, reason count, severity, 상세 reason 을 확인할 수 있다(PR #175, [reports/62](../../docs/ai-reports/areas/c-career-strategy/reports/62_rag_r3_evidence_gate_user_evidence_hotfix.md)).
 - [x] 완료 — 관리자 홈과 대시보드의 검토 대기 카운트는 지원 건별 최신 fit_analysis 기준으로 통일되어 있다(PR #175, [reports/62](../../docs/ai-reports/areas/c-career-strategy/reports/62_rag_r3_evidence_gate_user_evidence_hotfix.md)).
 - [x] 완료 — `reviewRequiredOnly=true` 목록 필터는 서버 SQL 에서 `REVIEW_REQUIRED` 만 반환하도록 고정했다(PR #175, [reports/66](../../docs/ai-reports/areas/c-career-strategy/reports/66_r3_auto_verification_and_ai_checklist.md)).
-- [~] 보류 또는 조건부 유지 — 운영자가 gate reason 을 처리/해결 완료로 표시하는 별도 workflow 는 아직 도입하지 않았다.
+- [x] 완료 — 운영자 gate review 처리 workflow: PENDING/RESOLVED/REANALYSIS_REQUESTED 상태 + 처리자/시점 기록 + 선택 메모(GATE_REVIEW), 검토 대기 카운트는 PENDING 만 계수([AIDocs report 81](../../docs/ai-reports/areas/c-career-strategy/reports/81_gate_review_workflow.md)).
 - [ ] 미완료 — gate status 분포, false-positive rate, alias 추가 요청량을 보는 장기 운영 리포트는 추후 후보로 남아 있다.
 
 ## 7. Current next candidates
@@ -96,7 +96,7 @@ Last updated: 2026-07-02
 - [x] 완료 — RAG hard-case top LLM judge 결과 3종 validation/aggregation 및 disagreement matrix 생성([reports/76 summary](reports/76_rag_hardcase_top_llm_judge_consensus.md), [AIDocs report 76](../../docs/ai-reports/areas/c-career-strategy/reports/76_rag_hardcase_top_llm_judge_consensus.md)).
 - [x] 완료 — A-only production 경로 안전성 베이스라인 v1(60케이스×2 run + judge, PR #212, [AIDocs report 80](../../docs/ai-reports/areas/c-career-strategy/reports/80_a_only_baseline_repeat2_judge.md)). **120케이스 확장은 보류** — 운영 FP/FN 신호 시 confusion_pair 집중으로 재개.
 - [x] 완료 — fallback provider 판단값 소유 통일(PR #211, [AIDocs report 78](../../docs/ai-reports/areas/c-career-strategy/reports/78_provider_judgment_ownership_unification.md)) — 전 provider 뉴로-심볼릭.
-- [ ] 미완료 — **(1순위)** 관리자 gate review 처리 workflow: 검토 완료, 재분석 요청, memo/reason 연결 — 운영 전환의 핵심([AIDocs report 80](../../docs/ai-reports/areas/c-career-strategy/reports/80_a_only_baseline_repeat2_judge.md) §4).
-- [ ] 미완료 — **(2순위)** R3 gate reason 로그 기반 false-positive 샘플 리뷰와 alias 후보 triage.
+- [x] 완료 — 관리자 gate review 처리 workflow(검토 완료/재분석 요청/대기 되돌리기 + 메모 연결, [AIDocs report 81](../../docs/ai-reports/areas/c-career-strategy/reports/81_gate_review_workflow.md)).
+- [ ] 미완료 — **(1순위)** R3 gate reason 로그 기반 false-positive 샘플 리뷰와 alias 후보 triage(운영 데이터 축적 후).
 - [ ] 미완료 — human gold label 확정(사용자): rag-hardcase disagreement13 + A-only judge 판정 11건.
 - [ ] 미완료 — model-card 다음 개정: R3 운영 데이터와 gate reason 분포 반영.
