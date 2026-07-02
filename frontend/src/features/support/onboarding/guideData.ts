@@ -67,6 +67,19 @@ export const LINK_FIELDS: Record<LinkKey, LinkField> = {
   },
 };
 
+/** GitHub URL에서 "owner/repo" 만 뽑아 칩 라벨로 쓴다(파싱 실패 시 입력값 그대로). */
+export function githubRepoLabel(url: string): string {
+  const m = url.match(/github\.com\/([^/\s]+\/[^/\s]+?)(?:\.git)?(?:[/?#].*)?$/i);
+  return m ? m[1] : url;
+}
+
+/** GitHub README 불러오기 실패 카피(백엔드 errorCode → 사용자 문구). */
+export const GITHUB_README_ERROR_COPY: Record<string, string> = {
+  NOT_FOUND: "저장소를 찾지 못했어요. 공개 저장소인지, 주소가 맞는지 확인해주세요",
+  RATE_LIMITED: "잠시 후 다시 시도해주세요",
+};
+export const GITHUB_README_ERROR_FALLBACK = "README를 불러오지 못했어요. 잠시 후 다시 시도해주세요";
+
 export interface JobField {
   /** 핵심 역량 선택지(직군 적응형). */
   skills: string[];

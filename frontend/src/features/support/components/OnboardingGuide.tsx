@@ -443,12 +443,36 @@ function LinkFieldRow({ lkey, g }: { lkey: LinkKey; g: G }) {
         <textarea value={value} onChange={(e) => g.setLink(lkey, e.target.value)} rows={2}
           placeholder={meta.placeholder}
           className="w-full resize-none rounded-lg border border-border bg-background px-3 py-2 text-[12.5px] outline-none focus:border-primary placeholder:text-muted-foreground" />
+      ) : lkey === "github" ? (
+        <div className="flex items-center gap-1.5">
+          <input value={value} onChange={(e) => g.setLink(lkey, e.target.value)}
+            placeholder={meta.placeholder}
+            className="flex-1 min-w-0 rounded-lg border border-border bg-background px-3 py-2 text-[12.5px] outline-none focus:border-primary placeholder:text-muted-foreground" />
+          <button onClick={() => void g.fetchPortfolioReadme()}
+            disabled={!value.trim() || g.portfolioReadmeLoading}
+            className="shrink-0 inline-flex items-center gap-1 px-3 py-2 rounded-lg text-[11.5px] font-bold transition-colors disabled:opacity-40"
+            style={{ background: "var(--orch-surface)", border: "1px solid var(--orch-point)", color: "var(--orch-violet)" }}>
+            {g.portfolioReadmeLoading && <Loader2 size={12} className="animate-spin" />}
+            불러오기
+          </button>
+        </div>
       ) : (
         <input value={value} onChange={(e) => g.setLink(lkey, e.target.value)}
           placeholder={meta.placeholder}
           className="w-full rounded-lg border border-border bg-background px-3 py-2 text-[12.5px] outline-none focus:border-primary placeholder:text-muted-foreground" />
       )}
       <div className="mt-1 text-[10.5px] leading-[1.45] text-muted-foreground">{meta.hint}</div>
+      {lkey === "github" && g.portfolioReadme && (
+        <div className="mt-1.5">
+          <FileChip name={`${g.portfolioReadme.repoLabel} · ${g.portfolioReadme.text.length}자`}
+            uploading={false} onRemove={g.removePortfolioReadme} />
+        </div>
+      )}
+      {lkey === "github" && g.portfolioReadmeError && (
+        <div className="mt-1.5 text-[10.5px] leading-[1.45]" style={{ color: "var(--destructive)" }}>
+          {g.portfolioReadmeError}
+        </div>
+      )}
     </div>
   );
 }

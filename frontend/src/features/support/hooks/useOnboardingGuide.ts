@@ -3,10 +3,19 @@ import { useCallback, useRef, useState } from "react";
 import { runStream } from "@/features/autoprep/api/autoPrepApi";
 import type { AutoPrepRequest, PrepStepResult } from "@/features/autoprep/types/autoPrep";
 import {
-  createCaseFromFile, createCaseFromText, createCaseFromUrl, getLatestExtractionStatus, retryExtraction,
-  uploadDocument, type UploadedFile,
+  createCaseFromFile, createCaseFromText, createCaseFromUrl, fetchGithubReadme, getLatestExtractionStatus,
+  retryExtraction, uploadDocument, type UploadedFile,
 } from "../api/onboardingApi";
-import { getField, type GuideStep, type LinkKey } from "../onboarding/guideData";
+import {
+  getField, githubRepoLabel, GITHUB_README_ERROR_COPY, GITHUB_README_ERROR_FALLBACK,
+  type GuideStep, type LinkKey,
+} from "../onboarding/guideData";
+
+/** 불러온 GitHub README — 칩 표시(레포명+글자수)와 collect() 스냅샷에 함께 쓴다. */
+export interface PortfolioReadme {
+  repoLabel: string;
+  text: string;
+}
 
 /** 업로드 진행 중인 서류 항목(낙관적 칩 — AutoPrepLauncher 패턴 차용). */
 export interface DocItem {
@@ -64,6 +73,9 @@ export function useOnboardingGuide(initialStep: GuideStep = "role") {
   const [docs, setDocs] = useState<DocItem[]>([]);
   const [jd, setJd] = useState<JdState>({ url: "", text: "" });
   const [links, setLinks] = useState<Partial<Record<LinkKey, string>>>({});
+  const [portfolioReadme, setPortfolioReadme] = useState<PortfolioReadme | null>(null);
+  const [portfolioReadmeLoading, setPortfolioReadmeLoading] = useState(false);
+  const [portfolioReadmeError, setPortfolioReadmeError] = useState<string | null>(null);
   const [caseId, setCaseId] = useState<number | null>(null);
   const [fit, setFit] = useState<GuideResult | null>(null);
   const [runError, setRunError] = useState<string | null>(null);
@@ -82,6 +94,33 @@ export function useOnboardingGuide(initialStep: GuideStep = "role") {
 
   const setLink = useCallback((key: LinkKey, value: string) => {
     setLinks((prev) => ({ ...prev, [key]: value }));
+  }, []);
+
+  // ── GitHub 링크 → README 원문 불러오기(가이드 포폴 스텝) ──
+  const fetchPortfolioReadme = useCallback(async () => {
+    const url = (links.github ?? "").trim();
+    if (!url) return;
+    setPortfolioReadmeLoading(true);
+    setPortfolioReadmeError(null);
+    try {
+      const res = await fetchGithubReadme(url);
+      if (res.ok && res.text) {
+        setPortfolioReadme({ repoLabel: githubRepoLabel(url), text: res.text });
+      } else {
+        setPortfolioReadme(null);
+        setPortfolioReadmeError(GITHUB_README_ERROR_COPY[res.errorCode ?? ""] ?? GITHUB_README_ERROR_FALLBACK);
+      }
+    } catch (e) {
+      setPortfolioReadme(null);
+      setPortfolioReadmeError(e instanceof Error ? e.message : GITHUB_README_ERROR_FALLBACK);
+    } finally {
+      setPortfolioReadmeLoading(false);
+    }
+  }, [links.github]);
+
+  const removePortfolioReadme = useCallback(() => {
+    setPortfolioReadme(null);
+    setPortfolioReadmeError(null);
   }, []);
 
   // ── 서류 업로드: 자소서/이력서/포폴 → /file/upload → fileId 보관 ──
@@ -250,6 +289,9 @@ export function useOnboardingGuide(initialStep: GuideStep = "role") {
     setDocs([]);
     setJd({ url: "", text: "" });
     setLinks({});
+    setPortfolioReadme(null);
+    setPortfolioReadmeLoading(false);
+    setPortfolioReadmeError(null);
     setCaseId(null);
     setFit(null);
     setRunError(null);
@@ -267,13 +309,15 @@ export function useOnboardingGuide(initialStep: GuideStep = "role") {
       // TODO(A파트 배선): resume/portfolio fileId 를 프로필/케이스에 참조로 연결(적합도엔 미투입).
       resumeFileIds: docs.filter((d) => d.kind === "RESUME" && d.id != null).map((d) => d.id as number),
       portfolioFileIds: docs.filter((d) => d.kind === "PORTFOLIO" && d.id != null).map((d) => d.id as number),
+      // TODO(A파트 배선): 프로필/분석 반영은 향후 배선.
+      portfolioReadmeText: portfolioReadme?.text ?? null,
       applicationCaseId: caseId,
       jdHasFile: !!jd.file,
       jdUrl: jd.url.trim() || null,
       jdText: jd.text.trim() || null,
       links,
     };
-  }, [role, customRole, skills, docs, caseId, jd, links]);
+  }, [role, customRole, skills, docs, caseId, jd, links, portfolioReadme]);
 
   return {
     step,
@@ -285,6 +329,9 @@ export function useOnboardingGuide(initialStep: GuideStep = "role") {
     docs,
     jd,
     links,
+    portfolioReadme,
+    portfolioReadmeLoading,
+    portfolioReadmeError,
     caseId,
     fit,
     runError,
@@ -292,6 +339,8 @@ export function useOnboardingGuide(initialStep: GuideStep = "role") {
     setRole,
     toggleSkill,
     setLink,
+    fetchPortfolioReadme,
+    removePortfolioReadme,
     addDoc,
     removeDoc,
     setJdUrl,
