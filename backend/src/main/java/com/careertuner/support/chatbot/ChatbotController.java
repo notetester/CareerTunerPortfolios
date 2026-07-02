@@ -729,10 +729,54 @@ public class ChatbotController {
         // 유효 칩 선택 → caseId+mode 로 autoPrepRequest 조립(=enterIntake 와 동일 구조). query=null(전체 준비·LLM 0).
         AutoPrepRequest autoPrepRequest = new AutoPrepRequest(null, caseId, code, null, null);
         intakeSlotTrace.setOnboardingStep(conversationId, "DONE");   // 종단 → 다음 턴부터 sticky 풀림
+        // (구조점검 △ 수리B) 종단 직전 — 슬롯이 지워지기 전에 수집 요약을 대화 메모리에 남긴다.
+        injectOnboardingSummaryIntoMemory(conversationId, userId, caseId);
         return new RouteMessage("④온보딩:면접인계",
                 "면접 준비를 시작할게요!",
                 new ChatAskResponse.IntakeStep(true, null, autoPrepRequest, List.of(), List.of()),
                 true);
+    }
+
+    /**
+     * (구조점검 △ 수리B) ④ 완료(DONE) 직전 — 수집한 직무·기술·공고를 대화 메모리에 한 줄 요약으로 남긴다.
+     * ④는 전용 인메모리 슬롯(IntakeSlotTrace)만 쓰고 LangChain4j 메모리를 안 거쳐서, sticky 가 풀린 뒤
+     * 잡담·커뮤니티 에이전트가 "아까 무슨 직무라고 했는지" 전혀 기억 못 하는 비대칭이 있었다(구조점검
+     * §2-6). AiMessage 로 붙여 다음 턴부터 에이전트 컨텍스트 창(20)에 자연스럽게 포함되게 한다.
+     * 회사/직무는 B.getApplicationCase read 만(무수정) — DEFAULT("확인 필요") 값이면 생략(지어내지 않음).
+     * 실패해도 온보딩 완료 자체는 막지 않는다(요약은 부가 정보 — 조용히 skip).
+     */
+    private void injectOnboardingSummaryIntoMemory(Long conversationId, Long userId, Long caseId) {
+        try {
+            IntakeSlotTrace.OnboardingCollected got = intakeSlotTrace.onboarding(conversationId);
+            boolean hasJob = got.job() != null && !got.job().isBlank();
+            boolean hasSkills = got.skills() != null && !got.skills().isBlank();
+            if (!hasJob && !hasSkills) {
+                return;
+            }
+            ApplicationCaseResponse c = applicationCaseService.get(userId, caseId);
+            StringBuilder sb = new StringBuilder("(온보딩 수집:");
+            if (hasJob) {
+                sb.append(" ").append(got.job().trim()).append(" 지망,");
+            }
+            if (hasSkills) {
+                sb.append(" 기술 ").append(got.skills().trim()).append(",");
+            }
+            if (c.companyName() != null && !ONB_DEFAULT_COMPANY.equals(c.companyName())) {
+                sb.append(" 공고 ").append(c.companyName());
+                if (c.jobTitle() != null && !ONB_DEFAULT_JOBTITLE.equals(c.jobTitle())) {
+                    sb.append(" ").append(c.jobTitle());
+                }
+                sb.append(",");
+            }
+            sb.setLength(sb.length() - 1); // 마지막 쉼표 제거
+            sb.append(")");
+
+            List<ChatMessage> messages = new ArrayList<>(memoryStore.getMessages(conversationId));
+            messages.add(AiMessage.from(sb.toString()));
+            memoryStore.updateMessages(conversationId, messages);
+        } catch (RuntimeException ex) {
+            log.warn("온보딩 요약 메모리 주입 실패(온보딩 완료는 정상 진행): {}", ex.getMessage());
+        }
     }
 
     /**
