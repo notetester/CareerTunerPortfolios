@@ -59,6 +59,15 @@ public class FileService {
         return new Download(asset, storageService.read(asset.getStorageKey()));
     }
 
+    /** 호출 측에서 도메인 접근 권한을 이미 확인한 파일을 내려받는다. */
+    public Download downloadAfterAccessCheck(Long fileId) {
+        FileAsset asset = fileAssetMapper.findById(fileId);
+        if (asset == null) {
+            throw new BusinessException(ErrorCode.NOT_FOUND, "파일을 찾을 수 없습니다.");
+        }
+        return new Download(asset, storageService.read(asset.getStorageKey()));
+    }
+
     private String normalizeKind(String kind) {
         String upper = kind == null ? "" : kind.trim().toUpperCase(Locale.ROOT);
         if (!ALLOWED_KINDS.contains(upper)) {

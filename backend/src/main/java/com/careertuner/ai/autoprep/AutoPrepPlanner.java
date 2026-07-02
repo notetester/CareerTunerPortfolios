@@ -138,8 +138,9 @@ public class AutoPrepPlanner {
             // 회사를 콕 집었는데 매칭 실패 → 최근 건으로 엉뚱하게 폴백하지 말고 null(되묻기 유도).
             return null;
         }
-        // 회사가 모호하면 가장 최근 지원 건을 기본값으로.
-        return cases.get(0);
+        // 회사가 모호(미언급)할 때: 지원 건이 딱 1건이면 자명하니 그것으로, 2건 이상이면 멋대로 최근 건을
+        // 고르지 않고 null 을 돌려 호출부가 "어느 지원 건?" 되묻기(CASE-ask)를 타게 한다 — 회사 고정·오확정 차단.
+        return cases.size() == 1 ? cases.get(0) : null;
     }
 
     private Map<String, Object> intentSchema() {

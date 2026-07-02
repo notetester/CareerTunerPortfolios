@@ -171,6 +171,11 @@ public class CommunityCommentServiceImpl implements CommunityCommentService {
             if (!target.getPostId().equals(postId)) {
                 throw new BusinessException(ErrorCode.INVALID_INPUT, "다른 게시글의 댓글에는 답글을 달 수 없습니다.");
             }
+            // 삭제(DELETED)/숨김(HIDDEN) 부모에 답글을 허용하면 tombstone 골격이 다시 노출돼 죽은 댓글이 "부활"한다.
+            // 수정 경로(updateContentIfPublished)와 동일하게 PUBLISHED 부모에만 답글을 허용한다.
+            if (!CommentStatus.PUBLISHED.name().equals(target.getStatus())) {
+                throw new BusinessException(ErrorCode.CONFLICT, "삭제되었거나 숨겨진 댓글에는 답글을 달 수 없습니다.");
+            }
             effectiveParentId = target.getParentId() != null ? target.getParentId() : target.getId();
             // 대댓글에 단 답글이면 대상 사용자를 멘션으로 기록.
             // 단 루트 직속 답글이거나 자기 자신에게 다는 답글이면 멘션 불필요.

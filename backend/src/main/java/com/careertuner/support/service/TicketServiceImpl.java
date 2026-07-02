@@ -2,6 +2,7 @@ package com.careertuner.support.service;
 
 import java.util.List;
 
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -13,6 +14,7 @@ import com.careertuner.support.dto.CreateTicketRequest;
 import com.careertuner.support.dto.TicketMessageView;
 import com.careertuner.support.dto.TicketResponse;
 import com.careertuner.support.dto.TicketThreadResponse;
+import com.careertuner.support.event.NewTicketEvent;
 import com.careertuner.support.mapper.TicketMapper;
 import com.careertuner.support.mapper.TicketMessageMapper;
 
@@ -25,6 +27,7 @@ public class TicketServiceImpl implements TicketService {
 
     private final TicketMapper ticketMapper;
     private final TicketMessageMapper messageMapper;
+    private final ApplicationEventPublisher eventPublisher;
 
     @Override
     @Transactional
@@ -46,6 +49,9 @@ public class TicketServiceImpl implements TicketService {
                 .internal(false)
                 .build();
         messageMapper.insert(message);
+
+        // 관리자 알림(NEW_TICKET) — 커밋 후 AFTER_COMMIT 리스너에서 팬아웃(트랜잭션 분리)
+        eventPublisher.publishEvent(new NewTicketEvent(ticket.getId(), ticket.getSubject()));
 
         return toResponse(ticket);
     }

@@ -53,6 +53,11 @@ dependencies {
     // langchain4j-bom 은 spring 스타터 버전을 관리하지 않으므로(별도 버전체계) 버전을 직접 명시한다.
     implementation 'dev.langchain4j:langchain4j-spring-boot4-starter:1.17.0-beta27'        // @AiService 스캐닝
     implementation 'dev.langchain4j:langchain4j-ollama-spring-boot4-starter:1.17.0-beta27' // OllamaChatModel 오토컨피그
+    // 챗봇 LLM 폴백 provider (Ollama 다운 시 Haiku→OpenAI). 스타터가 아닌 순수 라이브러리 모듈이라
+    // 버전은 core/ollama 와 동일한 1.17.0(정식). 빈은 ChatModelFallbackConfig 에서 직접 .builder() 로 만든다
+    // (스타터를 쓰면 자동구성 ChatModel 빈이 중복 등록돼 @Primary 해소가 복잡해짐).
+    implementation 'dev.langchain4j:langchain4j-anthropic:1.17.0'
+    implementation 'dev.langchain4j:langchain4j-open-ai:1.17.0'
 
     // Dev tooling
     compileOnly 'org.projectlombok:lombok'

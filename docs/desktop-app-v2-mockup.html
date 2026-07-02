@@ -1,0 +1,794 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CareerTuner Desktop v2 — CC 스타일 목업</title>
+<style>
+/* ============================================================
+   CareerTuner Desktop v2 목업 — Claude Code Desktop 문법
+   톤앤매너: 블랙 + 인디고 (Linear × Vercel, 기존 QML 팔레트 계승)
+   ============================================================ */
+:root {
+  --bg:      #08090c;
+  --surface: #0e1014;
+  --raised:  #15181d;
+  --hover:   #1b1f26;
+  --border:  #23272f;
+  --text:    #eceef2;
+  --muted:   #8a919e;
+  --accent:  #5e6ad2;
+  --accent2: #7d88de;
+  --accent-soft: rgba(94,106,210,.16);
+  --good:    #4cc38a;
+  --warn:    #d6a24c;
+  --info:    #58a6ff;
+}
+* { margin:0; padding:0; box-sizing:border-box; }
+body {
+  font-family: "Segoe UI", "Malgun Gothic", system-ui, sans-serif;
+  background:#040405; color:var(--text); font-size:13.5px;
+  letter-spacing:-.011em;
+  display:flex; align-items:center; justify-content:center;
+  min-height:100vh; padding:18px;
+}
+/* ── 가짜 윈도우 프레임 ── */
+.window {
+  width:1280px; height:820px; background:var(--bg);
+  border:1px solid var(--border); border-radius:12px;
+  display:flex; flex-direction:column; overflow:hidden;
+  box-shadow:0 0 0 1px rgba(255,255,255,.03), 0 24px 90px rgba(0,0,0,.75),
+             0 0 120px rgba(94,106,210,.05);
+}
+.titlebar {
+  height:36px; display:flex; align-items:center; flex-shrink:0;
+  border-bottom:1px solid var(--border); background:var(--surface);
+  padding:0 4px 0 14px; gap:10px; user-select:none;
+}
+.titlebar .app { font-size:12px; color:var(--muted); }
+.titlebar .spacer { flex:1; }
+.winbtn { width:40px; height:32px; display:flex; align-items:center; justify-content:center;
+  color:var(--muted); font-size:12px; border-radius:6px; }
+.winbtn:hover { background:var(--hover); }
+.winbtn.close:hover { background:#b3403a; color:#fff; }
+.body { flex:1; display:flex; min-height:0; }
+
+/* ── 사이드바: 세션 리스트 ── */
+.sidebar {
+  width:256px; flex-shrink:0; background:var(--surface);
+  border-right:1px solid var(--border);
+  display:flex; flex-direction:column; padding:10px;
+}
+.btn-new {
+  display:flex; align-items:center; gap:8px; padding:9px 12px;
+  background:linear-gradient(180deg, var(--accent2), var(--accent));
+  color:#fff; border:none; border-radius:9px;
+  font-size:13.5px; font-weight:600; cursor:pointer; width:100%;
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.15), 0 4px 16px rgba(94,106,210,.18);
+}
+.btn-new:hover { filter:brightness(1.08); }
+.search {
+  margin-top:8px; background:var(--bg); border:1px solid var(--border);
+  border-radius:8px; padding:7px 10px; color:var(--muted); font-size:12.5px;
+}
+.sec-label { font-size:11px; color:var(--muted); letter-spacing:.06em;
+  margin:14px 6px 6px; text-transform:uppercase; }
+.sess-list { flex:1; overflow-y:auto; display:flex; flex-direction:column; gap:2px; }
+.sess {
+  padding:8px 10px; border-radius:8px; cursor:pointer; position:relative;
+}
+.sess:hover { background:var(--hover); }
+.sess.active { background:var(--accent-soft); }
+.sess .t { font-size:13px; font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.sess .m { display:flex; gap:6px; align-items:center; margin-top:3px; font-size:11.5px; color:var(--muted); }
+.dot { width:7px; height:7px; border-radius:50%; flex-shrink:0; }
+.dot.run { background:var(--warn); }
+.dot.done { background:var(--good); }
+.chip {
+  display:inline-flex; align-items:center; gap:4px;
+  font-size:11px; padding:2px 8px; border-radius:20px;
+  border:1px solid var(--border); color:var(--muted); background:var(--raised);
+  white-space:nowrap;
+}
+.chip.accent { color:var(--accent); border-color:var(--accent-soft); background:var(--accent-soft); }
+.chip.good { color:var(--good); }
+.chip.warn { color:var(--warn); }
+.sidebar-foot { border-top:1px solid var(--border); margin-top:8px; padding-top:8px; }
+.user-row { display:flex; align-items:center; gap:9px; padding:6px; border-radius:8px; }
+.user-row:hover { background:var(--hover); }
+.avatar { width:28px; height:28px; border-radius:50%; background:var(--raised);
+  display:flex; align-items:center; justify-content:center; font-size:12px; font-weight:700;
+  border:1px solid var(--border); flex-shrink:0; }
+.user-row .n { font-size:12.5px; font-weight:600; }
+.user-row .p { font-size:11px; color:var(--muted); }
+.foot-icons { display:flex; gap:4px; margin-top:6px; }
+.icon-btn {
+  flex:1; padding:7px 0; text-align:center; border-radius:8px; cursor:pointer;
+  color:var(--muted); font-size:15px; border:1px solid transparent;
+}
+.icon-btn:hover { background:var(--hover); color:var(--text); }
+.icon-btn.on { background:var(--accent-soft); color:var(--accent); }
+
+/* ── 메인 영역 ── */
+.main { flex:1; display:flex; flex-direction:column; min-width:0; }
+.topbar {
+  height:52px; flex-shrink:0; display:flex; align-items:center; gap:10px;
+  padding:0 18px; border-bottom:1px solid var(--border);
+}
+.topbar .title { font-size:14.5px; font-weight:700; }
+.topbar .spacer { flex:1; }
+.tbtn {
+  display:inline-flex; align-items:center; gap:6px;
+  padding:6px 12px; border-radius:8px; font-size:12.5px; cursor:pointer;
+  border:1px solid var(--border); background:var(--raised); color:var(--text);
+}
+.tbtn:hover { background:var(--hover); }
+.tbtn.primary {
+  background:linear-gradient(180deg, var(--accent2), var(--accent));
+  border-color:transparent; color:#fff;
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.15), 0 3px 12px rgba(94,106,210,.16);
+}
+
+.screen { flex:1; overflow-y:auto; display:none; }
+.screen.on { display:block; }
+
+/* ── 홈(새 작업) ── */
+#scr-home .hero {
+  max-width:660px; margin:120px auto 0; text-align:center; padding:0 24px;
+}
+#scr-home h1 {
+  font-size:26px; font-weight:700; letter-spacing:-.02em;
+  background:linear-gradient(180deg, #fff 30%, #a9aec2);
+  -webkit-background-clip:text; background-clip:text;
+  -webkit-text-fill-color:transparent; color:transparent;
+}
+#scr-home .sub { color:var(--muted); margin-top:10px; font-size:14px; line-height:1.6; }
+.sugg { display:flex; gap:8px; justify-content:center; flex-wrap:wrap; margin-top:26px; }
+.sugg .chip { padding:8px 14px; font-size:12.5px; cursor:pointer; }
+.sugg .chip:hover { border-color:var(--accent); color:var(--text); }
+
+/* ── 세션 스레드 ── */
+.thread { max-width:760px; margin:0 auto; padding:22px 24px 30px; }
+.sysline {
+  display:flex; align-items:center; gap:8px; color:var(--muted);
+  font-size:12px; margin:14px 0 10px; justify-content:center;
+}
+.sysline::before, .sysline::after { content:""; flex:1; height:1px; background:var(--border); }
+/* agent-step 행 (CC 도구호출 행 문법) */
+.steps { border:1px solid var(--border); border-radius:10px; background:var(--surface); overflow:hidden; margin:10px 0; }
+.step {
+  display:flex; align-items:center; gap:10px; padding:8px 14px;
+  font-size:12.5px; color:var(--muted); border-bottom:1px solid var(--border); cursor:pointer;
+}
+.step:last-child { border-bottom:none; }
+.step:hover { background:var(--hover); }
+.step .ok { color:var(--good); font-size:13px; width:16px; text-align:center; }
+.step .nm { color:var(--text); font-weight:600; }
+.step .dt { margin-left:auto; font-size:11px; }
+.step .spin { width:13px; height:13px; border:2px solid var(--border);
+  border-top-color:var(--accent); border-radius:50%; animation:rot .8s linear infinite; }
+@keyframes rot { to { transform:rotate(360deg); } }
+.step .chev { color:var(--muted); font-size:10px; width:10px; transition:transform .15s; }
+.step.open .chev { transform:rotate(90deg); }
+.step-detail { display:none; padding:9px 14px 11px 40px; font-size:12px; color:var(--muted);
+  border-bottom:1px solid var(--border); background:var(--bg); line-height:1.75; }
+.step.open + .step-detail { display:block; }
+
+.msg { display:flex; gap:12px; margin:18px 0; }
+.msg .who {
+  width:30px; height:30px; border-radius:8px; flex-shrink:0;
+  display:flex; align-items:center; justify-content:center; font-size:13px;
+  background:var(--raised); border:1px solid var(--border);
+}
+.msg.ai .who { background:var(--accent-soft); border-color:transparent; }
+.msg .bubble { flex:1; min-width:0; }
+.msg .name { font-size:11.5px; color:var(--muted); margin-bottom:5px; display:flex; gap:8px; align-items:center; }
+.msg .txt { line-height:1.65; font-size:13.5px; }
+.msg.me .bubble .txt {
+  background:var(--surface); border:1px solid var(--border);
+  padding:11px 14px; border-radius:10px;
+}
+/* 채점 카드 */
+.score-card {
+  border:1px solid var(--border); border-radius:12px; background:var(--surface);
+  margin:10px 0 4px; overflow:hidden;
+}
+.score-head { display:flex; align-items:center; gap:12px; padding:12px 16px; border-bottom:1px solid var(--border); }
+.score-big {
+  width:46px; height:46px; border-radius:50%; flex-shrink:0;
+  display:flex; align-items:center; justify-content:center;
+  font-size:16px; font-weight:800; color:var(--accent);
+  background:
+    radial-gradient(closest-side, var(--surface) 74%, transparent 75% 100%),
+    conic-gradient(var(--accent) calc(var(--v)*1%), var(--raised) 0);
+}
+.score-axes { display:flex; gap:8px; flex-wrap:wrap; }
+.score-body { padding:12px 16px; font-size:12.5px; line-height:1.7; }
+.score-body b.g { color:var(--good); } .score-body b.w { color:var(--warn); }
+.score-actions { display:flex; gap:8px; padding:0 16px 12px; }
+
+/* ── 하단 입력바 ── */
+.inputbar-wrap { flex-shrink:0; padding:10px 24px 16px; }
+.inputbar {
+  max-width:760px; margin:0 auto; background:var(--surface);
+  border:1px solid var(--border); border-radius:14px; padding:10px 12px;
+}
+.inputbar:focus-within { border-color:var(--accent); box-shadow:0 0 0 3px var(--accent-soft); }
+.inputbar textarea {
+  width:100%; background:transparent; border:none; outline:none; resize:none;
+  color:var(--text); font:inherit; font-size:13.5px; line-height:1.5; height:44px;
+}
+.inputbar textarea::placeholder { color:var(--muted); }
+.input-foot { display:flex; align-items:center; gap:8px; margin-top:6px; }
+.mini {
+  display:inline-flex; align-items:center; gap:5px; font-size:11.5px; color:var(--muted);
+  padding:4px 9px; border-radius:7px; cursor:pointer; border:1px solid transparent;
+}
+.mini:hover { background:var(--hover); color:var(--text); }
+.mini.rec { color:#e46962; }
+.send {
+  margin-left:auto; width:32px; height:32px; border-radius:9px; border:none;
+  background:linear-gradient(180deg, var(--accent2), var(--accent));
+  color:#fff; font-size:14px; cursor:pointer;
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.18);
+}
+.send:disabled { opacity:.35; cursor:default; }
+/* 녹음 상태 */
+.recbar { display:none; align-items:center; gap:10px; padding:4px 2px; }
+.recbar.on { display:flex; }
+.eq { display:flex; gap:2px; align-items:center; height:22px; }
+.eq i { width:3px; background:var(--accent); border-radius:2px; animation:eq 1s ease-in-out infinite; }
+.eq i:nth-child(2) { animation-delay:.15s; } .eq i:nth-child(3) { animation-delay:.3s; }
+.eq i:nth-child(4) { animation-delay:.45s; } .eq i:nth-child(5) { animation-delay:.6s; }
+@keyframes eq { 0%,100%{height:6px} 50%{height:20px} }
+.rec-time { font-variant-numeric:tabular-nums; color:#e46962; font-weight:700; font-size:12.5px; }
+
+/* ── 우측 폰 패널 (접이식) ── */
+.phone-panel {
+  width:0; flex-shrink:0; border-left:1px solid transparent; background:var(--surface);
+  overflow:hidden; transition:width .25s ease; display:flex; flex-direction:column;
+}
+.phone-panel.open { width:296px; border-left-color:var(--border); }
+.pp-inner { width:296px; padding:14px; display:flex; flex-direction:column; gap:12px; flex:1; }
+.pp-head { display:flex; align-items:center; gap:8px; font-size:13px; font-weight:700; }
+.pp-head .x { margin-left:auto; cursor:pointer; color:var(--muted); padding:2px 8px; border-radius:6px; }
+.pp-head .x:hover { background:var(--hover); }
+.phone {
+  width:210px; margin:0 auto; border:2px solid var(--border); border-radius:26px;
+  background:var(--bg); padding:12px 12px 16px; position:relative;
+}
+.phone::before { content:""; display:block; width:56px; height:5px; border-radius:3px;
+  background:var(--border); margin:0 auto 10px; }
+.phone .ps { font-size:11px; color:var(--muted); }
+.phone .pq { font-size:12px; line-height:1.55; margin-top:8px;
+  background:var(--surface); border:1px solid var(--border); border-radius:9px; padding:9px; }
+.phone .noti {
+  margin-top:8px; font-size:11px; border-radius:9px; padding:8px 9px; display:none;
+  background:var(--accent-soft); border:1px solid var(--accent); color:var(--text);
+}
+.pp-status { font-size:11.5px; color:var(--muted); line-height:1.7; }
+
+/* ── 리포트 화면 ── */
+.report { max-width:760px; margin:0 auto; padding:24px; }
+.rep-head { display:flex; gap:20px; align-items:center; }
+.donut {
+  width:110px; height:110px; border-radius:50%; flex-shrink:0;
+  display:flex; align-items:center; justify-content:center; flex-direction:column;
+  background:
+    radial-gradient(closest-side, var(--bg) 76%, transparent 77% 100%),
+    conic-gradient(var(--accent) calc(var(--v)*1%), var(--raised) 0);
+}
+.donut b { font-size:26px; } .donut span { font-size:11px; color:var(--muted); }
+table.rep { width:100%; border-collapse:collapse; margin-top:20px; font-size:12.5px; }
+table.rep th { text-align:left; color:var(--muted); font-weight:600; font-size:11.5px;
+  padding:8px 10px; border-bottom:1px solid var(--border); }
+table.rep td { padding:10px; border-bottom:1px solid var(--border); }
+.save-strip {
+  margin-top:20px; display:flex; gap:8px; align-items:center; flex-wrap:wrap;
+  border:1px dashed var(--border); border-radius:12px; padding:14px;
+}
+.save-strip .path { font-size:11.5px; color:var(--muted); width:100%; margin-top:4px; }
+
+/* ── 기기 / 설정 ── */
+.plain { max-width:640px; margin:0 auto; padding:26px 24px; }
+.card { border:1px solid var(--border); border-radius:12px; background:var(--surface);
+  padding:14px 16px; margin-bottom:10px; display:flex; align-items:center; gap:12px; }
+.card .grow { flex:1; }
+.card .t { font-weight:700; font-size:13.5px; }
+.card .d { color:var(--muted); font-size:12px; margin-top:3px; }
+.toggle { width:38px; height:21px; border-radius:20px; background:var(--raised);
+  border:1px solid var(--border); position:relative; cursor:pointer; flex-shrink:0; }
+.toggle::after { content:""; position:absolute; top:2px; left:2px; width:15px; height:15px;
+  border-radius:50%; background:var(--muted); transition:.15s; }
+.toggle.on { background:var(--accent); border-color:var(--accent); }
+.toggle.on::after { left:19px; background:#fff; }
+
+/* ── 토스트 ── */
+.toasts { position:fixed; right:26px; bottom:26px; display:flex; flex-direction:column;
+  gap:8px; z-index:99; }
+.toast {
+  background:var(--surface); border:1px solid var(--border); border-left:3px solid var(--accent);
+  border-radius:10px; padding:11px 14px; min-width:280px; max-width:380px;
+  box-shadow:0 8px 30px rgba(0,0,0,.5); font-size:12.5px; line-height:1.55;
+  animation:tin .25s ease;
+}
+.toast b { display:block; margin-bottom:2px; }
+.toast .src { color:var(--muted); font-size:11px; margin-top:4px; }
+@keyframes tin { from { transform:translateY(10px); opacity:0; } }
+
+/* ── API 매핑 오버레이 ── */
+body.show-api [data-api] { position:relative; outline:1px dashed var(--accent); outline-offset:2px; }
+body.show-api [data-api]::after {
+  content:attr(data-api); position:absolute; top:-9px; left:8px; z-index:5;
+  background:var(--accent); color:#fff; font-size:9.5px; font-weight:700;
+  padding:1px 7px; border-radius:6px; white-space:nowrap; font-family:Consolas,monospace;
+}
+/* 데모 플로팅 버튼 */
+.fabs { position:fixed; left:26px; bottom:26px; display:flex; gap:8px; z-index:99; }
+.fab {
+  background:var(--surface); border:1px solid var(--border); color:var(--text);
+  border-radius:20px; padding:8px 16px; font-size:12px; cursor:pointer;
+  box-shadow:0 6px 20px rgba(0,0,0,.4);
+}
+.fab:hover { border-color:var(--accent); }
+</style>
+</head>
+<body>
+
+<div class="window">
+  <!-- 타이틀바 -->
+  <div class="titlebar">
+    <span style="width:20px;height:20px;border-radius:6px;background:var(--accent);display:flex;align-items:center;justify-content:center;color:#fff;font-size:11px;font-weight:800;">C</span>
+    <span class="app">CareerTuner — 면접 준비 컨트롤 센터</span>
+    <span class="spacer"></span>
+    <span class="chip" id="tray-chip" title="트레이 상주 + 알림 폴링" data-api="GET /api/notifications (30s poll)">🔔 알림 연결됨</span>
+    <span class="winbtn">─</span><span class="winbtn">▢</span><span class="winbtn close">✕</span>
+  </div>
+
+  <div class="body">
+    <!-- ═══ 사이드바 = 세션 리스트 ═══ -->
+    <div class="sidebar">
+      <button class="btn-new" onclick="go('home')" data-api="POST /api/interview/sessions">＋ 새 면접 준비</button>
+      <div class="search">🔍 세션 검색…</div>
+      <div class="sec-label">진행 중</div>
+      <div class="sess-list" data-api="GET /api/interview/sessions">
+        <div class="sess active" id="sess-main" onclick="go('thread', this)">
+          <div class="t">삼성전자 · SW개발 압박면접</div>
+          <div class="m"><span class="dot run"></span>3/5 진행 중 · 방금</div>
+        </div>
+        <div class="sess" onclick="go('thread', this)">
+          <div class="t">LG CNS · 클라우드 인성면접</div>
+          <div class="m"><span class="dot run"></span>1/5 · 3일 전 · 📱 폰에서 진행</div>
+        </div>
+        <div class="sec-label">완료</div>
+        <div class="sess" onclick="go('report', this)">
+          <div class="t">네이버 · 백엔드 인턴 직무면접</div>
+          <div class="m"><span class="dot done"></span>82점 · 어제 · 💾 저장됨</div>
+        </div>
+        <div class="sess" onclick="go('report', this)">
+          <div class="t">카카오 · 서버개발 기본면접</div>
+          <div class="m"><span class="dot done"></span>76점 · 2일 전</div>
+        </div>
+        <div class="sess" onclick="go('report', this)">
+          <div class="t">우아한형제들 · 백엔드 직무</div>
+          <div class="m"><span class="dot done"></span>88점 · 지난주 · 💾 저장됨</div>
+        </div>
+      </div>
+      <div class="sidebar-foot">
+        <div class="user-row" data-api="GET /api/auth/me">
+          <div class="avatar">정</div>
+          <div><div class="n">정원일</div><div class="p">PRO 플랜 · 자동 로그인</div></div>
+        </div>
+        <div class="foot-icons">
+          <div class="icon-btn" onclick="go('devices')" title="연결된 기기">🖥️</div>
+          <div class="icon-btn" id="pp-toggle" onclick="togglePhone()" title="폰 연동 패널">📱</div>
+          <div class="icon-btn" onclick="go('settings')" title="설정">⚙️</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ═══ 메인 ═══ -->
+    <div class="main">
+      <!-- 상단바 (스레드에서만 내용 표시) -->
+      <div class="topbar" id="topbar">
+        <span class="title" id="tb-title">삼성전자 · SW개발 압박면접</span>
+        <span class="chip warn" id="tb-status">● 3/5 진행 중</span>
+        <span class="chip">압박 면접</span>
+        <span class="spacer"></span>
+        <span class="tbtn" onclick="dispatchPhone()" data-api="POST /sessions/{id}/dispatch">📲 폰으로 보내기</span>
+        <span class="tbtn" onclick="exportAll()" data-api="GET /api/file/{id}/content">💾 자료 저장</span>
+        <span class="tbtn primary" onclick="go('report')" data-api="GET /sessions/{id}/report">리포트</span>
+      </div>
+
+      <!-- ── 홈: autoprep 인테이크 ── -->
+      <div class="screen" id="scr-home">
+        <div class="hero">
+          <h1>오늘은 어떤 면접을 준비할까요?</h1>
+          <div class="sub">한 줄로 요청하면 공고 분석부터 예상 질문 생성까지 알아서 준비합니다.<br>아래에 바로 입력하거나, 최근 세션을 이어서 진행하세요.</div>
+          <div class="sugg">
+            <span class="chip" onclick="fillIntake('삼성전자 SW개발 공고로 압박 면접 5문항 만들어줘')">삼성전자 공고로 압박 면접</span>
+            <span class="chip" onclick="fillIntake('어제 네이버 세션 복습 테스트 시켜줘')">어제 세션 복습</span>
+            <span class="chip" onclick="fillIntake('지원건 등록부터 적합도 분석까지 한 번에')">공고 등록부터 한 번에</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── 세션 스레드 (핵심 화면) ── -->
+      <div class="screen on" id="scr-thread">
+        <div class="thread" id="thread">
+          <div class="sysline">세션 생성 · 지원건 #12 삼성전자 SW개발 · 압박 면접 모드</div>
+
+          <!-- agent-steps = CC 도구호출 행 -->
+          <div class="steps" data-api="GET /sessions/{id}/agent-steps">
+            <div class="step" onclick="this.classList.toggle('open')"><span class="chev">▸</span><span class="ok">✓</span><span class="nm">공고·지원건 분석</span><span>회사분석 v3 · 직무분석 v2 로드</span><span class="dt">1.2s</span></div>
+            <div class="step-detail">지원건 #12 삼성전자 SW개발 — 회사분석 리비전 v3, 직무분석 v2에서 키워드 12개 추출 (동시성 · 트러블슈팅 · 협업 …)</div>
+            <div class="step" onclick="this.classList.toggle('open')"><span class="chev">▸</span><span class="ok">✓</span><span class="nm">예상 질문 5개 생성</span><span>압박 유형 · 직무 키워드 반영</span><span class="dt">4.8s</span></div>
+            <div class="step-detail">Q1 기술 문제 해결 · Q2 협업 갈등 · Q3 MyBatis/JPA · Q4 트래픽 설계 · Q5 성장 계획 — 각 질문에 압박 꼬리질문 후보 2개씩 준비됨</div>
+            <div class="step" onclick="this.classList.toggle('open')"><span class="chev">▸</span><span class="ok">✓</span><span class="nm">세션 준비 완료</span><span>음성 채점 파이프라인 대기</span><span class="dt">0.3s</span></div>
+            <div class="step-detail">STT(전사)·전달력 채점 serve 연결 확인 — 미기동 시 온디바이스 폴백 자동 전환</div>
+          </div>
+
+          <!-- Q1 -->
+          <div class="msg ai">
+            <div class="who">🤖</div>
+            <div class="bubble">
+              <div class="name">AI 면접관 <span class="chip">Q1 / 5</span></div>
+              <div class="txt">본인이 경험한 <b>가장 어려웠던 기술적 문제</b>와 해결 과정을 구체적으로 설명해 주세요. 그 과정에서 본인의 역할은 무엇이었습니까?</div>
+            </div>
+          </div>
+
+          <!-- 내 답변 -->
+          <div class="msg me">
+            <div class="who">정</div>
+            <div class="bubble">
+              <div class="name">내 답변 <span class="chip">🎙 음성 · 1:24</span></div>
+              <div class="txt" data-api="POST /sessions/{id}/answers">중고거래 프로젝트에서 이미지 업로드가 동시 요청 시 간헐적으로 유실되는 문제가 있었습니다. 로그를 추적해 스레드 안전하지 않은 임시 파일명이 원인임을 찾았고, UUID 기반 파일명과 트랜잭션 정리로 해결했습니다…</div>
+            </div>
+          </div>
+
+          <!-- 채점 카드 -->
+          <div class="score-card" data-api="POST voice-score → 채점">
+            <div class="score-head">
+              <div class="score-big" style="--v:82">82</div>
+              <div>
+                <div style="font-weight:700; margin-bottom:6px;">답변 평가 — Q1</div>
+                <div class="score-axes">
+                  <span class="chip">구체성 78</span><span class="chip">논리 85</span>
+                  <span class="chip">직무적합 84</span><span class="chip accent">전달력 80 🎙</span>
+                </div>
+              </div>
+            </div>
+            <div class="score-body">
+              <b class="g">강점</b> — 문제→원인→해결 구조가 명확하고, 본인 역할이 드러남.<br>
+              <b class="w">보완</b> — 해결책의 트레이드오프 언급 없음. 성과를 수치로 제시하면 설득력 상승.
+            </div>
+            <div class="score-actions">
+              <span class="tbtn" data-api="GET model-answer">모범답안 보기</span>
+              <span class="tbtn" data-api="POST follow-ups">꼬리질문 받기</span>
+            </div>
+          </div>
+
+          <!-- 꼬리질문 -->
+          <div class="msg ai">
+            <div class="who">🤖</div>
+            <div class="bubble">
+              <div class="name">AI 면접관 <span class="chip accent">꼬리질문 Q1-1</span></div>
+              <div class="txt">UUID 파일명 방식을 선택하면서 포기한 것은 무엇입니까? 다른 대안과 비교했을 때의 <b>트레이드오프</b>를 설명해 주세요.</div>
+            </div>
+          </div>
+
+          <div id="thread-tail"></div>
+        </div>
+      </div>
+
+      <!-- ── 리포트 ── -->
+      <div class="screen" id="scr-report">
+        <div class="report">
+          <div class="rep-head">
+            <div class="donut" style="--v:82"><b>82</b><span>종합 점수</span></div>
+            <div>
+              <div style="font-size:16px;font-weight:800;">네이버 · 백엔드 인턴 직무면접 리포트</div>
+              <div style="color:var(--muted); font-size:12.5px; margin-top:6px; line-height:1.7;">
+                5문항 · 꼬리질문 3회 · 음성 답변 2건<br>
+                강점: 문제 해결 구조화 · 보완: 수치 기반 성과 제시
+              </div>
+              <div style="display:flex; gap:6px; margin-top:10px;">
+                <span class="chip good">논리 88</span><span class="chip">구체성 79</span>
+                <span class="chip">직무적합 84</span><span class="chip">전달력 77</span>
+              </div>
+            </div>
+          </div>
+          <table class="rep" data-api="GET /sessions/{id}/review">
+            <tr><th style="width:44px;">점수</th><th>질문</th><th style="width:200px;">한줄평</th></tr>
+            <tr><td><b style="color:var(--good)">88</b></td><td>가장 어려웠던 기술적 문제와 해결 과정</td><td>구조 명확, 역할 분명</td></tr>
+            <tr><td><b>81</b></td><td>협업 중 갈등을 조율한 경험</td><td>상황 묘사 좋음, 결과 약함</td></tr>
+            <tr><td><b>84</b></td><td>MyBatis와 JPA의 차이, 선택 이유</td><td>기술 이해 탄탄</td></tr>
+            <tr><td><b style="color:var(--warn)">72</b></td><td>트래픽 급증 시 대응 설계</td><td>추상적 — 수치·근거 부족</td></tr>
+            <tr><td><b>85</b></td><td>입사 후 성장 계획</td><td>직무 연결 구체적</td></tr>
+          </table>
+          <div class="save-strip" data-api="QFile 로컬 저장 + GET file/{id}/content">
+            <span class="tbtn primary" onclick="saveReport()">💾 리포트 저장 (.md)</span>
+            <span class="tbtn" onclick="saveReport('html')">HTML로 저장</span>
+            <span class="tbtn" onclick="exportAll()">📦 세션 자료 전부 내보내기</span>
+            <span class="chip good">자동 저장 켜짐</span>
+            <div class="path">저장 위치: <b>D:\CareerTuner\네이버-백엔드인턴-138\</b> — 리포트.md · 음성답변 2건(.webm) · 회사분석.md · 직무분석.md · 공고원문.pdf</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── 기기 ── -->
+      <div class="screen" id="scr-devices">
+        <div class="plain">
+          <h2 style="font-size:17px; margin-bottom:16px;">연결된 기기</h2>
+          <div class="card" data-api="user_device (서버 레지스트리)">
+            <div class="avatar">🖥️</div>
+            <div class="grow"><div class="t">이 데스크탑 (ict10)</div><div class="d">Windows 11 · 현재 기기 · 알림 폴링 30초</div></div>
+            <span class="chip good">● 온라인</span>
+          </div>
+          <div class="card">
+            <div class="avatar">📱</div>
+            <div class="grow"><div class="t">갤럭시 S20 5G</div><div class="d">CareerTuner 앱 · 마지막 수신 2분 전 · 딥링크 지원</div></div>
+            <span class="chip good">● 온라인</span>
+            <span class="tbtn" onclick="testNoti()">테스트 알림</span>
+          </div>
+          <div class="card">
+            <div class="avatar">🌐</div>
+            <div class="grow"><div class="t">Chrome (elevenPC)</div><div class="d">웹 푸시 구독 · 마지막 접속 어제</div></div>
+            <span class="chip">오프라인</span>
+          </div>
+          <div style="color:var(--muted); font-size:12px; line-height:1.7; margin-top:14px;">
+            디스패치는 선택한 기기로만 발송됩니다. 기기를 지정하지 않으면 모든 기기에 알림이 갑니다.
+          </div>
+        </div>
+      </div>
+
+      <!-- ── 설정 ── -->
+      <div class="screen" id="scr-settings">
+        <div class="plain">
+          <h2 style="font-size:17px; margin-bottom:16px;">설정</h2>
+          <div class="sec-label" style="margin-left:0;">로컬 저장</div>
+          <div class="card" data-api="QSettings 영속화">
+            <div class="grow"><div class="t">저장 폴더</div><div class="d">D:\CareerTuner\ — 세션별 하위 폴더로 정리</div></div>
+            <span class="tbtn">변경…</span>
+          </div>
+          <div class="card">
+            <div class="grow"><div class="t">완료 시 자동 저장</div><div class="d">채점·리포트가 완성되면 리포트와 녹음 파일을 자동으로 저장</div></div>
+            <div class="toggle on" onclick="this.classList.toggle('on')"></div>
+          </div>
+          <div class="sec-label" style="margin-left:0;">계정·연결</div>
+          <div class="card" data-api="POST /api/auth/refresh + QSettings 토큰">
+            <div class="grow"><div class="t">자동 로그인</div><div class="d">토큰을 안전하게 보관하고 시작 시 자동 갱신</div></div>
+            <div class="toggle on" onclick="this.classList.toggle('on')"></div>
+          </div>
+          <div class="card">
+            <div class="grow"><div class="t">서버 주소</div><div class="d">http://localhost:8080 (기본) · 원격 프로필 전환 가능</div></div>
+            <span class="tbtn">편집</span>
+          </div>
+          <div class="sec-label" style="margin-left:0;">알림·화면</div>
+          <div class="card">
+            <div class="grow"><div class="t">트레이 알림</div><div class="d">폰 답변 도착·채점 완료를 Windows 토스트로 표시</div></div>
+            <div class="toggle on" onclick="this.classList.toggle('on')"></div>
+          </div>
+          <div class="card">
+            <div class="grow"><div class="t">테마</div><div class="d">블랙 + 인디고 다크 (기본 고정)</div></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── 하단 입력바 ── -->
+      <div class="inputbar-wrap" id="inputbar-wrap">
+        <div class="inputbar" data-api="POST answers · POST /auto-prep/intake">
+          <div class="recbar" id="recbar">
+            <span class="eq"><i></i><i></i><i></i><i></i><i></i></span>
+            <span class="rec-time" id="rec-time">0:00</span>
+            <span style="color:var(--muted); font-size:12px;">녹음 중 — 답변을 말하세요</span>
+            <span class="tbtn" style="margin-left:auto;" onclick="stopRec()">■ 정지</span>
+          </div>
+          <textarea id="input" placeholder="꼬리질문에 답변하세요 — 🎙 버튼으로 음성 답변도 가능"></textarea>
+          <div class="input-foot">
+            <span class="mini" id="mic" onclick="startRec()" data-api="QMediaCaptureSession → voice-transcribe">🎙 음성 답변</span>
+            <span class="mini">📎 파일</span>
+            <span class="chip" id="ctx-chip">압박 면접 · Q1-1 대기</span>
+            <button class="send" id="send-btn" onclick="sendAnswer()">↑</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ═══ 우측 폰 패널 (접이식) ═══ -->
+    <div class="phone-panel" id="phone-panel">
+      <div class="pp-inner">
+        <div class="pp-head">📱 폰 연동 <span class="chip good">갤럭시 S20 · 온라인</span><span class="x" onclick="togglePhone()">✕</span></div>
+        <div class="phone" id="phone">
+          <div class="ps">CareerTuner · 면접 진행 중</div>
+          <div class="pq"><b>Q1-1.</b> UUID 파일명 방식의 트레이드오프를 설명해 주세요.</div>
+          <div class="noti" id="phone-noti">🔔 데스크탑에서 세션이 도착했습니다<br><b>탭하여 바로 이어하기 →</b></div>
+        </div>
+        <span class="tbtn primary" style="justify-content:center;" onclick="dispatchPhone()" data-api="POST dispatch → 알림+딥링크">📲 이 세션 폰으로 보내기</span>
+        <div class="pp-status" id="pp-status">
+          마지막 디스패치: 오후 2:41 · <b style="color:var(--good)">수신 확인 ✓</b><br>
+          폰 진행 위치: Q1-1 (자동 동기화)<br>
+          이어받기: 폰에서 열면 이 화면에 실시간 반영
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- 토스트 -->
+<div class="toasts" id="toasts"></div>
+
+<!-- 데모 컨트롤 -->
+<div class="fabs">
+  <button class="fab" onclick="autoDemo()">🎬 자동 시연</button>
+  <button class="fab" onclick="document.body.classList.toggle('show-api')">🔧 API 매핑</button>
+</div>
+
+<script>
+/* ───────────── 화면 전환 ───────────── */
+const screens = { home:'scr-home', thread:'scr-thread', report:'scr-report', devices:'scr-devices', settings:'scr-settings' };
+let curScreen = 'thread';
+function go(name, sessEl) {
+  curScreen = name;
+  document.querySelectorAll('.screen').forEach(s => s.classList.remove('on'));
+  document.getElementById(screens[name]).classList.add('on');
+  document.getElementById('inputbar-wrap').style.display = (name==='home'||name==='thread') ? '' : 'none';
+  document.getElementById('topbar').style.visibility = (name==='home') ? 'hidden' : 'visible';
+  const input = document.getElementById('input');
+  // 입력바 컨텍스트 전환: 홈=autoprep 인테이크 모드 ↔ 스레드=답변 모드
+  if (name==='home') {
+    input.placeholder = '한 줄로 요청하세요 — 예) 이 공고로 압박 면접 5문항 만들어줘';
+    document.getElementById('ctx-chip').textContent = '⚡ AI 자동 준비 (인테이크)';
+    document.getElementById('ctx-chip').classList.add('accent');
+    document.getElementById('mic').style.display = 'none';
+  }
+  if (name==='thread') {
+    input.placeholder = '꼬리질문에 답변하세요 — 🎙 버튼으로 음성 답변도 가능';
+    document.getElementById('ctx-chip').textContent = '압박 면접 · Q1-1 대기';
+    document.getElementById('ctx-chip').classList.remove('accent');
+    document.getElementById('mic').style.display = '';
+  }
+  if (sessEl) {
+    document.querySelectorAll('.sess').forEach(s=>s.classList.remove('active'));
+    sessEl.classList.add('active');
+    document.getElementById('tb-title').textContent = sessEl.querySelector('.t').textContent;
+    const done = sessEl.querySelector('.dot').classList.contains('done');
+    const st = document.getElementById('tb-status');
+    st.textContent = done ? '● 완료' : '● 진행 중';
+    st.className = done ? 'chip good' : 'chip warn';
+  }
+}
+function fillIntake(t){ const i=document.getElementById('input'); i.value=t; i.focus(); }
+
+/* ───────────── 토스트 ───────────── */
+function toast(title, body, src) {
+  const t = document.createElement('div'); t.className='toast';
+  t.innerHTML = `<b>${title}</b>${body}${src?`<div class="src">${src}</div>`:''}`;
+  document.getElementById('toasts').appendChild(t);
+  setTimeout(()=>t.remove(), 4200);
+}
+
+/* ───────────── 답변 제출 / 인테이크 데모 ───────────── */
+let scoring = false;
+function sendAnswer() {
+  const input = document.getElementById('input');
+  // 홈 화면이면 = autoprep 인테이크 동작
+  if (curScreen === 'home') { runIntake(input.value.trim()); input.value=''; return; }
+  if (scoring) return;               // 채점 중 이중 제출 방지
+  scoring = true;
+  document.getElementById('send-btn').disabled = true;
+  const text = input.value.trim() || '파일명 충돌 확률은 사실상 0이 되지만, 원본 파일명 추적이 어려워져 별도 매핑 테이블이 필요했습니다. 대안이던 타임스탬프 방식은 동시성에 취약해 배제했습니다.';
+  input.value = '';
+  const tail = document.getElementById('thread-tail');
+  tail.insertAdjacentHTML('beforebegin', `
+    <div class="msg me"><div class="who">정</div><div class="bubble">
+      <div class="name">내 답변</div>
+      <div class="txt" style="background:var(--surface);border:1px solid var(--border);padding:11px 14px;border-radius:10px;">${text}</div>
+    </div></div>
+    <div class="steps" id="scoring-row"><div class="step"><span class="spin"></span><span class="nm">답변 채점 중</span><span>내용 · 논리 · 직무적합 평가</span></div></div>`);
+  tail.scrollIntoView({behavior:'smooth'});
+  setTimeout(() => {
+    document.getElementById('scoring-row').outerHTML = `
+      <div class="score-card">
+        <div class="score-head">
+          <div class="score-big" style="--v:87">87</div>
+          <div><div style="font-weight:700;margin-bottom:6px;">답변 평가 — Q1-1</div>
+          <div class="score-axes"><span class="chip">구체성 88</span><span class="chip">논리 90</span><span class="chip">직무적합 84</span></div></div>
+        </div>
+        <div class="score-body"><b class="g">강점</b> — 트레이드오프를 대안 비교로 설명. 압박 질문 대응 우수.<br><b class="w">보완</b> — 매핑 테이블 운영 비용을 한 줄 더 언급하면 완벽.</div>
+      </div>
+      <div class="msg ai"><div class="who">🤖</div><div class="bubble">
+        <div class="name">AI 면접관 <span class="chip">Q2 / 5</span></div>
+        <div class="txt">좋습니다. 다음 질문입니다. <b>협업 중 의견 충돌</b>이 있었던 경험과, 그때 본인이 취한 행동을 말씀해 주세요.</div>
+      </div></div>`;
+    document.getElementById('tb-status').textContent = '● 4/5 진행 중';
+    toast('채점 완료 — 87점', 'Q1-1 답변 평가가 끝났습니다.', '자동 저장됨 → D:\\CareerTuner\\삼성전자-압박면접-142\\');
+    document.getElementById('thread-tail').scrollIntoView({behavior:'smooth'});
+    scoring = false;
+    document.getElementById('send-btn').disabled = false;
+  }, 1600);
+}
+
+/* 홈 인테이크: 한 줄 요청 → 새 세션 스레드 생성 시연 */
+function runIntake(text) {
+  go('thread', document.getElementById('sess-main'));
+  const tail = document.getElementById('thread-tail');
+  tail.insertAdjacentHTML('beforebegin', `
+    <div class="sysline">새 요청 — "${text || '삼성전자 SW개발 공고로 압박 면접 5문항 만들어줘'}"</div>
+    <div class="steps" id="intake-steps">
+      <div class="step"><span class="spin"></span><span class="nm">요청 해석</span><span>지원건·모드 자동 판별</span></div>
+    </div>`);
+  const stepsEl = document.getElementById('intake-steps');
+  stepsEl.removeAttribute('id'); // 반복 인테이크 시 id 중복 방지
+  tail.scrollIntoView({behavior:'smooth'});
+  setTimeout(()=>{
+    stepsEl.innerHTML = `
+      <div class="step"><span class="ok">✓</span><span class="nm">요청 해석</span><span>지원건 #12 · 압박 면접 · 5문항</span><span class="dt">0.9s</span></div>
+      <div class="step"><span class="ok">✓</span><span class="nm">질문 생성 시작</span><span>공고 키워드 반영 중 — 실시간 진행(SSE)</span><span class="dt">진행 중</span></div>`;
+    toast('작업 시작됨', '질문 생성이 끝나면 알림으로 알려드립니다.', 'POST /auto-prep/intake → run/stream (SSE)');
+  }, 1400);
+}
+
+/* ───────────── 음성 녹음 데모 ───────────── */
+let recTimer=null, recSec=0;
+function startRec() {
+  if (recTimer) return; // 녹음 중 재진입 방지
+  document.getElementById('recbar').classList.add('on');
+  document.getElementById('mic').classList.add('rec');
+  recSec=0;
+  recTimer=setInterval(()=>{ recSec++;
+    document.getElementById('rec-time').textContent = `${Math.floor(recSec/60)}:${String(recSec%60).padStart(2,'0')}`;
+  },1000);
+}
+function stopRec() {
+  clearInterval(recTimer); recTimer = null;
+  document.getElementById('recbar').classList.remove('on');
+  document.getElementById('mic').classList.remove('rec');
+  const input = document.getElementById('input');
+  input.value = '전사 중…';
+  setTimeout(()=>{ input.value = '파일명 충돌 확률은 사실상 0이 되지만, 원본 파일명 추적이 어려워져 별도 매핑 테이블이 필요했습니다.';
+    toast('음성 전사 완료', '전달력 채점은 답변 제출 시 함께 진행됩니다.');
+  }, 1200);
+}
+
+/* ───────────── 폰 패널 · 디스패치 ───────────── */
+function togglePhone() {
+  document.getElementById('phone-panel').classList.toggle('open');
+  document.getElementById('pp-toggle').classList.toggle('on');
+}
+function dispatchPhone() {
+  if (!document.getElementById('phone-panel').classList.contains('open')) togglePhone();
+  toast('폰으로 보냈습니다', '갤럭시 S20에 알림을 발송했습니다.', 'POST /sessions/142/dispatch');
+  setTimeout(()=>{
+    document.getElementById('phone-noti').style.display='block';
+    document.getElementById('pp-status').innerHTML =
+      `마지막 디스패치: 방금 · <b style="color:var(--good)">수신 확인 ✓</b><br>폰 알림 탭 → 세션 딥링크로 바로 진입<br>진행 위치 Q1-1부터 이어짐 (currentQuestion 동기화)`;
+  }, 1500);
+}
+function testNoti(){ toast('테스트 알림 발송', '갤럭시 S20 · 수신 확인까지 표시됩니다.'); }
+
+/* ───────────── 저장 데모 ───────────── */
+function saveReport(fmt){ toast('리포트 저장됨', `네이버-백엔드인턴-138\\리포트.${fmt||'md'}`, 'D:\\CareerTuner\\네이버-백엔드인턴-138\\'); }
+function exportAll(){ toast('세션 자료 내보내기 완료', '리포트.md · 음성답변 2건 · 회사분석.md · 직무분석.md · 공고원문.pdf', 'D:\\CareerTuner\\삼성전자-압박면접-142\\'); }
+
+/* ───────────── 자동 시연 ───────────── */
+let demoRunning = false;
+function autoDemo(){
+  if (demoRunning) return; // 시연 중 재진입 방지
+  demoRunning = true;
+  setTimeout(()=>{ demoRunning = false; }, 13000);
+  go('thread', document.getElementById('sess-main'));
+  toast('자동 시연 시작', '답변 제출 → 채점 → 디스패치 → 저장 순서로 시연합니다.');
+  setTimeout(()=>{ startRec(); }, 1200);
+  setTimeout(()=>{ stopRec(); }, 3800);
+  setTimeout(()=>{ sendAnswer(); }, 5600);
+  setTimeout(()=>{ dispatchPhone(); }, 8600);
+  setTimeout(()=>{ go('report'); }, 11500);
+  setTimeout(()=>{ exportAll(); }, 12500);
+}
+
+/* 초기 상태: 스레드 화면 */
+go('thread', document.getElementById('sess-main'));
+</script>
+</body>
+</html>

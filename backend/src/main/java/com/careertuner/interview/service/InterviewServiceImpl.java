@@ -129,6 +129,7 @@ public class InterviewServiceImpl implements InterviewService {
                 .targetId(sessionId)
                 .title("데스크탑에서 면접 세션을 보냈어요")
                 .message(modeLabel + " 세션을 폰에서 이어받을 수 있어요.")
+                .link("/interview?session=" + sessionId) // 알림 탭 → 세션 딥링크 직행
                 .build());
     }
 

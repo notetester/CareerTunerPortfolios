@@ -39,7 +39,7 @@ export function syncStatusBarTheme(): void {
     const dark = isDarkTheme();
     // Capacitor Style: LIGHT=밝은 배경(어두운 글자), DARK=어두운 배경(밝은 글자).
     void sb.setStyle({ style: dark ? "DARK" : "LIGHT" });
-    void sb.setBackgroundColor({ color: dark ? "#0f172a" : "#ffffff" });
+    void sb.setBackgroundColor({ color: dark ? "#050506" : "#ffffff" }); // 다크 = Linear Modern 딥블랙(데스크탑 v2와 통일)
   } catch {
     /* 상태바는 보조라 실패해도 무시 */
   }

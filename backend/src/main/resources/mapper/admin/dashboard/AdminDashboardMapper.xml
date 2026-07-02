@@ -36,6 +36,7 @@
         FROM fit_analysis fa
         INNER JOIN fit_analysis_gate_result gr ON gr.fit_analysis_id = fa.id
         WHERE gr.gate_status = 'REVIEW_REQUIRED'
+          AND gr.review_status = 'PENDING'
           AND fa.id = (
               SELECT MAX(latest_fa.id)
               FROM fit_analysis latest_fa

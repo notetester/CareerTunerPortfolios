@@ -24,6 +24,8 @@ export interface AdminFitAnalysisListItem {
   needsHumanReview: boolean;
   gateReasonCount: number;
   gateMaxSeverity: string | null;
+  /** gate review workflow 처리 상태(PENDING/RESOLVED/REANALYSIS_REQUESTED). gate 없으면 null. */
+  gateReviewStatus: string | null;
 }
 
 export interface AdminFitAnalysisMemo {
@@ -88,8 +90,17 @@ export interface AdminFitAnalysisDetail {
   evidenceGateVersion: string | null;
   /** 실제 gate reason 목록(축약). 상세에서 왜 검토 필요인지 판단용. */
   gateReasons?: AdminFitAnalysisGateReason[] | null;
+  /** gate review workflow 처리 상태와 이력. */
+  gateReviewStatus: string | null;
+  gateReviewedAt: string | null;
+  gateReviewerName: string | null;
   learningTasks: AdminFitAnalysisLearningTask[];
   memos: AdminFitAnalysisMemo[];
+}
+
+export interface AdminGateReviewRequest {
+  reviewStatus: string;
+  note?: string;
 }
 
 export interface AdminFitAnalysisGateReason {

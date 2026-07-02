@@ -55,6 +55,7 @@ public class FineTunedProfileAiService implements ProfileAiService {
             JsonNode payload = requestModelServer(profile, featureType, jobFamily);
             return validator.validate(
                     featureType,
+                    profile,
                     jobFamily,
                     weightPolicy.weightsFor(jobFamily),
                     payload,

@@ -11,6 +11,10 @@ public record ProfileCompletenessResponse(
         String jobFamilyLabel,
         List<ProfileCriterionScoreResponse> criteria,
         String model,
-        String status
+        String status,
+        int aiScore,
+        int qualityPenalty,
+        List<String> qualityWarnings,
+        List<String> qualityRecommendations
 ) {
 }

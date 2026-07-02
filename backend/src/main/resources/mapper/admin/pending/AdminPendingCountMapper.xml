@@ -1,0 +1,60 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.careertuner.admin.pending.mapper.AdminPendingCountMapper">
+
+    <!-- 미처리 신고 수: 게시글 신고 + 댓글 신고 PENDING 합 -->
+    <select id="countPendingReports" resultType="int">
+        SELECT (SELECT COUNT(*) FROM post_report    WHERE status = 'PENDING')
+             + (SELECT COUNT(*) FROM comment_report WHERE status = 'PENDING')
+    </select>
+
+    <!-- 미응답 티켓 수 -->
+    <select id="countReceivedTickets" resultType="int">
+        SELECT COUNT(*) FROM support_ticket WHERE status = 'RECEIVED'
+    </select>
+
+    <!-- 자동숨김 댓글 수 -->
+    <select id="countHiddenComments" resultType="int">
+        SELECT COUNT(*) FROM community_comment WHERE status = 'HIDDEN'
+    </select>
+
+    <!-- 방치 N일 이상 미처리 신고 존재 여부(게시글/댓글 어느 쪽이든) -->
+    <select id="existsStaleReport" resultType="boolean">
+        SELECT EXISTS (
+            SELECT 1 FROM post_report
+             WHERE status = 'PENDING'
+               AND created_at &lt; (NOW() - INTERVAL #{days} DAY)
+            UNION ALL
+            SELECT 1 FROM comment_report
+             WHERE status = 'PENDING'
+               AND created_at &lt; (NOW() - INTERVAL #{days} DAY)
+        )
+    </select>
+
+    <!-- 고신뢰 toxic 미처리 신고 존재 여부.
+         심각도는 죽은 post_report.ai_confidence 대신 post_ai_result.result_json(REPORT) 를 조인해서 본다. -->
+    <select id="existsHighConfidenceToxicReport" resultType="boolean">
+        SELECT EXISTS (
+            SELECT 1
+              FROM post_report pr
+              JOIN post_ai_result ar
+                ON ar.post_id = pr.post_id
+               AND ar.task_type = 'REPORT'
+               AND ar.status = 'COMPLETED'
+             WHERE pr.status = 'PENDING'
+               AND JSON_EXTRACT(ar.result_json, '$.toxic') = TRUE
+               AND CAST(JSON_EXTRACT(ar.result_json, '$.confidence') AS DECIMAL(5,4)) &gt;= #{threshold}
+        )
+    </select>
+
+    <!-- 방치 N일 이상 미응답 티켓 존재 여부 -->
+    <select id="existsStaleReceivedTicket" resultType="boolean">
+        SELECT EXISTS (
+            SELECT 1 FROM support_ticket
+             WHERE status = 'RECEIVED'
+               AND created_at &lt; (NOW() - INTERVAL #{days} DAY)
+        )
+    </select>
+
+</mapper>
