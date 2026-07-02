@@ -9,6 +9,8 @@ import org.springframework.http.client.JdkClientHttpRequestFactory;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
 
+import com.careertuner.ai.common.gpu.GpuPermitGate;
+
 import lombok.extern.slf4j.Slf4j;
 
 @Component
@@ -16,9 +18,11 @@ import lombok.extern.slf4j.Slf4j;
 public class BLocalLlmClient {
 
     private final BAnalysisProperties properties;
+    private final GpuPermitGate gpuPermitGate;
 
-    public BLocalLlmClient(BAnalysisProperties properties) {
+    public BLocalLlmClient(BAnalysisProperties properties, GpuPermitGate gpuPermitGate) {
         this.properties = properties;
+        this.gpuPermitGate = gpuPermitGate;
     }
 
     public String chat(String systemPrompt, String userPrompt, Map<String, Object> jsonSchema) {
@@ -44,12 +48,15 @@ public class BLocalLlmClient {
                         new Message("user", userPrompt)));
 
         log.debug("B analysis local LLM request: model={}, promptLength={}", local.getModel(), userPrompt.length());
-        OllamaChatResponse response = restClient.post()
-                .uri("/api/chat")
-                .contentType(MediaType.APPLICATION_JSON)
-                .body(request)
-                .retrieve()
-                .body(OllamaChatResponse.class);
+        OllamaChatResponse response;
+        try (GpuPermitGate.GpuPermit permit = gpuPermitGate.acquire("b-analysis")) {
+            response = restClient.post()
+                    .uri("/api/chat")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .body(request)
+                    .retrieve()
+                    .body(OllamaChatResponse.class);
+        }
         if (response == null || response.message() == null || response.message().content() == null) {
             throw new IllegalStateException("Ollama response is empty.");
         }

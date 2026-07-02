@@ -16,6 +16,7 @@ import org.springframework.http.client.JdkClientHttpRequestFactory;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
 
+import com.careertuner.ai.common.gpu.GpuPermitGate;
 import com.careertuner.community.moderation.config.OllamaProperties;
 import com.careertuner.support.chatbot.SupportTextFallbackGenerator;
 
@@ -34,11 +35,14 @@ public class FaqDraftAiClient {
     private final RestClient restClient;
     private final OllamaProperties ollamaProps;
     private final SupportTextFallbackGenerator fallback;
+    private final GpuPermitGate gpuPermitGate;
     private final String systemPrompt;
 
-    public FaqDraftAiClient(OllamaProperties ollamaProps, SupportTextFallbackGenerator fallback) {
+    public FaqDraftAiClient(OllamaProperties ollamaProps, SupportTextFallbackGenerator fallback,
+                            GpuPermitGate gpuPermitGate) {
         this.ollamaProps = ollamaProps;
         this.fallback = fallback;
+        this.gpuPermitGate = gpuPermitGate;
 
         var jdkClient = HttpClient.newBuilder()
                 .connectTimeout(Duration.ofSeconds(10))
@@ -75,13 +79,17 @@ public class FaqDraftAiClient {
 
         log.debug("FAQ 초안 생성 요청: model={}", ollamaProps.getModel());
 
-        @SuppressWarnings("unchecked")
-        Map<String, Object> response = restClient.post()
-                .uri("/api/chat")
-                .contentType(MediaType.APPLICATION_JSON)
-                .body(request)
-                .retrieve()
-                .body(Map.class);
+        Map<String, Object> response;
+        try (GpuPermitGate.GpuPermit permit = gpuPermitGate.acquire("admin-faq")) {
+            @SuppressWarnings("unchecked")
+            Map<String, Object> ollamaResponse = restClient.post()
+                    .uri("/api/chat")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .body(request)
+                    .retrieve()
+                    .body(Map.class);
+            response = ollamaResponse;
+        }
 
         if (response == null || !response.containsKey("message")) {
             throw new IllegalStateException("Ollama chat 응답이 비어 있습니다");

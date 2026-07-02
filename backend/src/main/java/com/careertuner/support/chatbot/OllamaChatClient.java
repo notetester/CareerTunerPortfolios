@@ -16,6 +16,7 @@ import org.springframework.http.client.JdkClientHttpRequestFactory;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
 
+import com.careertuner.ai.common.gpu.GpuPermitGate;
 import com.careertuner.community.moderation.config.OllamaProperties;
 
 /**
@@ -33,12 +34,14 @@ public class OllamaChatClient {
     private final RestClient restClient;
     private final ChatbotProperties chatbotProps;
     private final SupportTextFallbackGenerator fallback;
+    private final GpuPermitGate gpuPermitGate;
     private final String systemPrompt;
 
     public OllamaChatClient(OllamaProperties ollamaProps, ChatbotProperties chatbotProps,
-                            SupportTextFallbackGenerator fallback) {
+                            SupportTextFallbackGenerator fallback, GpuPermitGate gpuPermitGate) {
         this.chatbotProps = chatbotProps;
         this.fallback = fallback;
+        this.gpuPermitGate = gpuPermitGate;
 
         var jdkClient = HttpClient.newBuilder()
                 .connectTimeout(Duration.ofSeconds(10))
@@ -76,13 +79,17 @@ public class OllamaChatClient {
 
         log.debug("챗봇 답변 생성 요청: model={}", chatbotProps.getChatModel());
 
-        @SuppressWarnings("unchecked")
-        Map<String, Object> response = restClient.post()
-                .uri("/api/chat")
-                .contentType(MediaType.APPLICATION_JSON)
-                .body(request)
-                .retrieve()
-                .body(Map.class);
+        Map<String, Object> response;
+        try (GpuPermitGate.GpuPermit permit = gpuPermitGate.acquire("chatbot")) {
+            @SuppressWarnings("unchecked")
+            Map<String, Object> ollamaResponse = restClient.post()
+                    .uri("/api/chat")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .body(request)
+                    .retrieve()
+                    .body(Map.class);
+            response = ollamaResponse;
+        }
 
         if (response == null || !response.containsKey("message")) {
             throw new IllegalStateException("Ollama chat 응답이 비어 있습니다");

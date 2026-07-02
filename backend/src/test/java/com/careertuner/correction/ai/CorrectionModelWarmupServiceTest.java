@@ -12,6 +12,7 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
+import com.careertuner.ai.common.gpu.GpuPermitGate;
 import com.careertuner.correction.dto.CorrectionWarmupResponse;
 import com.sun.net.httpserver.HttpServer;
 
@@ -45,7 +46,7 @@ class CorrectionModelWarmupServiceTest {
         server.start();
 
         CorrectionAiProperties properties = properties("http://localhost:" + server.getAddress().getPort() + "/v1");
-        service = new CorrectionModelWarmupService(properties, new ObjectMapper());
+        service = new CorrectionModelWarmupService(properties, new ObjectMapper(), GpuPermitGate.disabled());
 
         CorrectionWarmupResponse first = service.warmAsync("TEST");
         service.awaitIfInProgress(Duration.ofSeconds(2));
@@ -75,7 +76,7 @@ class CorrectionModelWarmupServiceTest {
         // 다음 warmAsync 가 끼어들면 중복 warmup(STARTED)이 시작됐다(스위트 부하에서 간헐 재현).
         // 수정 후에는 await 복귀 즉시 ALREADY_WARM 이 보장되어야 한다 — 반복으로 race 창을 두드린다.
         for (int i = 0; i < 20; i++) {
-            CorrectionModelWarmupService iteration = new CorrectionModelWarmupService(properties, new ObjectMapper());
+            CorrectionModelWarmupService iteration = new CorrectionModelWarmupService(properties, new ObjectMapper(), GpuPermitGate.disabled());
             try {
                 assertThat(iteration.warmAsync("TEST").status()).isEqualTo("STARTED");
                 iteration.awaitIfInProgress(Duration.ofSeconds(2));
@@ -92,7 +93,7 @@ class CorrectionModelWarmupServiceTest {
     @DisplayName("skips warmup when the self provider is disabled")
     void warmAsync_skipsWhenSelfProviderDisabled() {
         CorrectionAiProperties properties = new CorrectionAiProperties();
-        service = new CorrectionModelWarmupService(properties, new ObjectMapper());
+        service = new CorrectionModelWarmupService(properties, new ObjectMapper(), GpuPermitGate.disabled());
 
         assertThat(service.warmAsync("TEST").status()).isEqualTo("SKIPPED");
     }
