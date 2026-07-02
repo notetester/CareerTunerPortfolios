@@ -36,7 +36,8 @@ dist-ssr/
 .vite/
 
 # ----- Capacitor (mobile, phase 3) -----
-frontend/android/
+# Android is now a first-class native project because permissions, push,
+# deep links, signing, icons, and manifest customizations are managed in repo.
 frontend/ios/
 
 # ----- Env / secrets -----

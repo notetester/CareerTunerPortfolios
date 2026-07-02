@@ -26,7 +26,7 @@ import {
 } from "./domains/interview";
 import {
   communityPostPage, demoHotPosts, findCommunityPost, demoComments, demoPublishedGuideline,
-  demoFaqs, demoNotices, notificationPage, demoNotificationPreference,
+  demoFaqs, demoNotices,
   demoAdminReports, moderationPage, demoModerationStats, demoModerationSetting,
   demoAdminNotices, demoAdminFaqs, demoAdminGuidelines, demoAdminTickets, adminTicketDetail,
   demoAdminNotifications,
@@ -313,14 +313,6 @@ const coreRoutes: MockRoute[] = [
   { method: "GET", pattern: /^\/support\/notices\/(\d+)$/, handler: () => ({ ...demoNotices[0], content: "공지 본문 데모 콘텐츠입니다." }) },
   { method: "GET", pattern: /^\/support\/tickets$/, handler: () => [] },
   { method: "POST", pattern: /^\/support\/tickets$/, handler: ({ body }) => ({ id: 7099, status: "RECEIVED", priority: "NORMAL", createdAt: new Date().toISOString(), ...(body as object) }) },
-
-  // ── F: 알림 ──
-  { method: "GET", pattern: /^\/notifications$/, handler: () => notificationPage() },
-  { method: "GET", pattern: /^\/notifications\/unread-count$/, handler: ok(3) },
-  { method: "GET", pattern: /^\/notifications\/preferences$/, handler: ok(demoNotificationPreference) },
-  { method: "PUT", pattern: /^\/notifications\/preferences$/, handler: ok(demoNotificationPreference) },
-  { method: "PATCH", pattern: /^\/notifications\/(\d+)\/read$/, handler: ok(null) },
-  { method: "POST", pattern: /^\/notifications\/read-all$/, handler: ok(null) },
 
   // ── F(관리자): 신고 / AI 검열 ──
   { method: "GET", pattern: /^\/admin\/community\/reports$/, handler: ok(demoAdminReports) },

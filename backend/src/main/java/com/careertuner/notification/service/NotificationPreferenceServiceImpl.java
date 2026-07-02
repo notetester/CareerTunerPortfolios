@@ -9,6 +9,7 @@ import org.springframework.transaction.annotation.Transactional;
 import com.careertuner.notification.domain.NotificationPreference;
 import com.careertuner.notification.dto.NotificationPreferenceResponse;
 import com.careertuner.notification.dto.NotificationPreferenceUpdateRequest;
+import com.careertuner.notification.dto.NotificationRulePreference;
 import com.careertuner.notification.mapper.NotificationPreferenceMapper;
 import com.careertuner.notification.mapper.PushSubscriptionMapper;
 import com.careertuner.notification.push.NotificationCategories;
@@ -29,12 +30,14 @@ public class NotificationPreferenceServiceImpl implements NotificationPreference
     @Override
     public NotificationPreferenceResponse get(Long userId) {
         NotificationPreference pref = preferenceMapper.findByUserId(userId);
-        Map<String, Boolean> stored = parse(pref != null ? pref.getCategoriesJson() : null);
+        Map<String, Boolean> stored = parseCategories(pref != null ? pref.getCategoriesJson() : null);
+        Map<String, NotificationRulePreference> storedRules = parseRules(pref != null ? pref.getRulesJson() : null);
 
         Map<String, Boolean> categories = new LinkedHashMap<>();
         for (String c : NotificationCategories.USER_CATEGORIES) {
             categories.put(c, stored.getOrDefault(c, Boolean.TRUE));
         }
+        Map<String, NotificationRulePreference> rules = mergeRuleDefaults(storedRules);
 
         boolean pushEnabled = pref == null || pref.isPushEnabled();
         boolean emailEnabled = pref == null || pref.isEmailEnabled();
@@ -42,7 +45,7 @@ public class NotificationPreferenceServiceImpl implements NotificationPreference
         String qe = pref != null ? pref.getQuietHoursEnd() : null;
         boolean registered = pushSubscriptionMapper.countByUserId(userId) > 0;
 
-        return new NotificationPreferenceResponse(pushEnabled, emailEnabled, categories, qs, qe, registered);
+        return new NotificationPreferenceResponse(pushEnabled, emailEnabled, categories, rules, qs, qe, registered);
     }
 
     @Override
@@ -64,11 +67,22 @@ public class NotificationPreferenceServiceImpl implements NotificationPreference
             }
         }
 
+        Map<String, NotificationRulePreference> rules = new LinkedHashMap<>(current.rules());
+        if (request.rules() != null) {
+            for (String type : NotificationCategories.USER_RULE_TYPES) {
+                NotificationRulePreference requested = request.rules().get(type);
+                if (requested != null) {
+                    rules.put(type, rules.getOrDefault(type, NotificationRulePreference.enabledAll()).merge(requested));
+                }
+            }
+        }
+
         preferenceMapper.upsert(NotificationPreference.builder()
                 .userId(userId)
                 .pushEnabled(pushEnabled)
                 .emailEnabled(emailEnabled)
                 .categoriesJson(toJson(categories))
+                .rulesJson(toJson(rules))
                 .quietHoursStart(qs)
                 .quietHoursEnd(qe)
                 .build());
@@ -76,7 +90,7 @@ public class NotificationPreferenceServiceImpl implements NotificationPreference
         return get(userId);
     }
 
-    private Map<String, Boolean> parse(String json) {
+    private Map<String, Boolean> parseCategories(String json) {
         if (json == null || json.isBlank()) {
             return Map.of();
         }
@@ -88,7 +102,27 @@ public class NotificationPreferenceServiceImpl implements NotificationPreference
         }
     }
 
-    private String toJson(Map<String, Boolean> categories) {
-        return objectMapper.writeValueAsString(categories);
+    private Map<String, NotificationRulePreference> parseRules(String json) {
+        if (json == null || json.isBlank()) {
+            return Map.of();
+        }
+        try {
+            return objectMapper.readValue(json, new TypeReference<Map<String, NotificationRulePreference>>() {
+            });
+        } catch (RuntimeException ex) {
+            return Map.of();
+        }
+    }
+
+    private Map<String, NotificationRulePreference> mergeRuleDefaults(Map<String, NotificationRulePreference> stored) {
+        Map<String, NotificationRulePreference> rules = new LinkedHashMap<>();
+        for (String type : NotificationCategories.USER_RULE_TYPES) {
+            rules.put(type, NotificationRulePreference.enabledAll().merge(stored.get(type)));
+        }
+        return rules;
+    }
+
+    private String toJson(Object value) {
+        return objectMapper.writeValueAsString(value);
     }
 }

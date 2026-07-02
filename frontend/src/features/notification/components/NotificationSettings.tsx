@@ -7,21 +7,44 @@ import {
   getNotificationPreferences, updateNotificationPreferences,
   type NotificationPreference,
 } from "../api/notificationApi";
+import {
+  DEFAULT_NOTIFICATION_CHANNELS,
+  NOTIFICATION_CHANNELS,
+  NOTIFICATION_RULE_GROUPS,
+  normalizeNotificationRules,
+  type NotificationChannelKey,
+  type NotificationRulePreference,
+} from "../types/preferences";
+import type { NotificationType } from "../types/notification";
 import { disablePush, enablePush, isPushSupported, pushPermission } from "@/platform/push";
 
 const CATEGORY_LABELS: Record<string, string> = {
-  ai_analysis: "AI 분석 (공고·기업·적합도·장기분석)",
-  interview: "면접 (질문·리포트)",
+  ai_analysis: "AI 분석",
+  interview: "면접",
   correction: "첨삭",
-  community: "커뮤니티 (댓글·좋아요·검열)",
+  community: "커뮤니티",
+  messenger: "메신저",
+  recommendation: "추천 공고",
   billing: "결제·크레딧",
-  notice: "공지·문의 답변",
+  notice: "공지·문의",
+  marketing: "광고·혜택",
 };
-const CATEGORY_ORDER = ["ai_analysis", "interview", "correction", "community", "billing", "notice"];
+const CATEGORY_ORDER = [
+  "ai_analysis",
+  "interview",
+  "correction",
+  "community",
+  "messenger",
+  "recommendation",
+  "billing",
+  "notice",
+  "marketing",
+];
 
 export function NotificationSettings() {
   const [pref, setPref] = useState<NotificationPreference | null>(null);
   const [categories, setCategories] = useState<Record<string, boolean>>({});
+  const [rules, setRules] = useState<Record<string, NotificationRulePreference>>({});
   const [quietStart, setQuietStart] = useState("");
   const [quietEnd, setQuietEnd] = useState("");
   const [loading, setLoading] = useState(true);
@@ -37,6 +60,7 @@ export function NotificationSettings() {
   const apply = (p: NotificationPreference) => {
     setPref(p);
     setCategories(p.categories);
+    setRules(normalizeNotificationRules(p.rules));
     setQuietStart(p.quietHoursStart ?? "");
     setQuietEnd(p.quietHoursEnd ?? "");
   };
@@ -56,7 +80,7 @@ export function NotificationSettings() {
         if (result === "denied") { toast("브라우저/기기에서 알림 권한이 거부되어 있습니다.", "err"); return; }
         if (result === "unsupported") { toast("이 환경은 푸시를 지원하지 않습니다.", "err"); return; }
         apply(await updateNotificationPreferences({ pushEnabled: true }));
-        toast(result === "subscribed" ? "이 기기로 푸시 알림을 받습니다." : "알림 권한을 허용했습니다. (서버 발송키 설정 시 단말 푸시가 활성화됩니다)", "ok");
+        toast(result === "subscribed" ? "이 기기로 푸시 알림을 받습니다." : "알림 권한을 허용했습니다.", "ok");
       } else {
         await disablePush();
         apply(await updateNotificationPreferences({ pushEnabled: false }));
@@ -69,11 +93,36 @@ export function NotificationSettings() {
     }
   };
 
+  const ensureRule = (type: NotificationType): NotificationRulePreference => (
+    rules[type] ?? { enabled: true, channels: { ...DEFAULT_NOTIFICATION_CHANNELS } }
+  );
+
+  const toggleRule = (type: NotificationType, next: boolean) => {
+    setRules((current) => {
+      const rule = current[type] ?? { enabled: true, channels: { ...DEFAULT_NOTIFICATION_CHANNELS } };
+      return { ...current, [type]: { ...rule, enabled: next } };
+    });
+  };
+
+  const toggleChannel = (type: NotificationType, channel: NotificationChannelKey, next: boolean) => {
+    setRules((current) => {
+      const rule = current[type] ?? { enabled: true, channels: { ...DEFAULT_NOTIFICATION_CHANNELS } };
+      return {
+        ...current,
+        [type]: {
+          ...rule,
+          channels: { ...DEFAULT_NOTIFICATION_CHANNELS, ...rule.channels, [channel]: next },
+        },
+      };
+    });
+  };
+
   const save = async () => {
     setSaving(true);
     try {
       apply(await updateNotificationPreferences({
         categories,
+        rules,
         quietHoursStart: quietStart || null,
         quietHoursEnd: quietEnd || null,
       }));
@@ -89,7 +138,7 @@ export function NotificationSettings() {
     return (
       <Card className="border border-border bg-card">
         <CardContent className="flex items-center gap-2 p-6 text-sm text-muted-foreground">
-          <Loader2 className="size-4 animate-spin" /> 알림 설정을 불러오는 중…
+          <Loader2 className="size-4 animate-spin" /> 알림 설정을 불러오는 중...
         </CardContent>
       </Card>
     );
@@ -103,19 +152,18 @@ export function NotificationSettings() {
         </div>
       )}
 
-      {/* 푸시(폰 연동) */}
       <Card className="border border-border bg-card">
         <CardHeader>
           <CardTitle className="flex items-center gap-2 text-base">
             <Smartphone className="size-4 text-blue-600" />
-            푸시 알림 (이 기기)
+            푸시 알림
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-3">
-          <label className="flex items-center justify-between rounded-xl border border-border p-4">
+          <label className="flex items-center justify-between rounded-lg border border-border p-4">
             <div className="min-w-0">
               <div className="flex items-center gap-2 text-sm font-semibold text-foreground">
-                <BellRing className="size-4 text-blue-600" /> 푸시 알림 받기
+                <BellRing className="size-4 text-blue-600" /> 이 기기에서 푸시 받기
               </div>
               <div className="mt-0.5 text-xs text-muted-foreground">
                 {!isPushSupported() ? "이 환경은 푸시를 지원하지 않습니다." :
@@ -132,17 +180,16 @@ export function NotificationSettings() {
         </CardContent>
       </Card>
 
-      {/* 종류별 수신 */}
       <Card className="border border-border bg-card">
         <CardHeader>
           <CardTitle className="flex items-center gap-2 text-base">
             <Bell className="size-4 text-amber-600" />
-            알림 종류별 수신
+            카테고리 수신
           </CardTitle>
         </CardHeader>
-        <CardContent className="grid gap-3 md:grid-cols-2">
+        <CardContent className="grid gap-3 md:grid-cols-3">
           {CATEGORY_ORDER.map((cat) => (
-            <label key={cat} className="flex items-center justify-between rounded-xl border border-border bg-muted p-4">
+            <label key={cat} className="flex items-center justify-between rounded-lg border border-border bg-muted p-4">
               <span className="text-sm font-semibold text-foreground">{CATEGORY_LABELS[cat] ?? cat}</span>
               <Checkbox
                 checked={categories[cat] ?? true}
@@ -153,10 +200,62 @@ export function NotificationSettings() {
         </CardContent>
       </Card>
 
-      {/* 방해 금지 시간 */}
       <Card className="border border-border bg-card">
         <CardHeader>
-          <CardTitle className="text-base">방해 금지 시간(선택)</CardTitle>
+          <CardTitle className="text-base">세부 알림 채널</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-5">
+          {NOTIFICATION_RULE_GROUPS.map((group) => (
+            <section key={group.key} className="space-y-2">
+              <div className="text-sm font-semibold text-foreground">{group.label}</div>
+              <div className="overflow-x-auto rounded-lg border border-border">
+                <table className="w-full min-w-[900px] border-collapse text-sm">
+                  <thead className="bg-muted text-xs text-muted-foreground">
+                    <tr>
+                      <th className="w-48 px-3 py-2 text-left font-semibold">알림</th>
+                      <th className="w-16 px-2 py-2 text-center font-semibold">수신</th>
+                      {NOTIFICATION_CHANNELS.map((channel) => (
+                        <th key={channel.key} className="px-2 py-2 text-center font-semibold">{channel.label}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {group.types.map((item) => {
+                      const rule = ensureRule(item.type);
+                      return (
+                        <tr key={item.type} className="border-t border-border">
+                          <td className="px-3 py-2 font-medium text-foreground">{item.label}</td>
+                          <td className="px-2 py-2 text-center">
+                            <Checkbox
+                              aria-label={`${item.label} 수신`}
+                              checked={rule.enabled}
+                              onCheckedChange={(v) => toggleRule(item.type, v === true)}
+                            />
+                          </td>
+                          {NOTIFICATION_CHANNELS.map((channel) => (
+                            <td key={channel.key} className="px-2 py-2 text-center">
+                              <Checkbox
+                                aria-label={`${item.label} ${channel.label}`}
+                                checked={rule.channels[channel.key]}
+                                disabled={!rule.enabled}
+                                onCheckedChange={(v) => toggleChannel(item.type, channel.key, v === true)}
+                              />
+                            </td>
+                          ))}
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </section>
+          ))}
+        </CardContent>
+      </Card>
+
+      <Card className="border border-border bg-card">
+        <CardHeader>
+          <CardTitle className="text-base">방해 금지 시간</CardTitle>
         </CardHeader>
         <CardContent className="flex flex-wrap items-end gap-3">
           <div>
