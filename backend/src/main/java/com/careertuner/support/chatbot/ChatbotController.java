@@ -108,6 +108,23 @@ public class ChatbotController {
     private static final Set<String> ONB_GUARDED_STEPS = Set.of(
             "JOB", "SKILLS", "AWAIT_POSTING", "AWAIT_COMPANY", "AWAIT_JOBTITLE");
 
+    /* ── (g′) 재시작 화이트리스트 — ④ 수집 대기 중 "면접 해줘"/"다시"류가 데이터로 오기록되는 것 차단 ── */
+
+    /** 재시작 의도 키워드(공백 제거 후 정확일치 기준). isExitCommand 와 동일한 정확일치+접미사 패턴. */
+    private static final List<String> RESTART_COMMANDS = List.of(
+            "면접해줘", "면접준비해줘", "다시시작", "처음부터", "다시");
+
+    /** 키워드별 허용 접미사(조사·어미) — EXIT_SUFFIXES 와 동일 매칭 원칙(정확일치 또는 키워드+허용접미사만). */
+    private static final Map<String, Set<String>> RESTART_SUFFIXES = Map.of(
+            "면접해줘", Set.of(),
+            "면접준비해줘", Set.of(),
+            "다시시작", Set.of("할래요", "할게요", "해줘", "해주세요", "요"),
+            "처음부터", Set.of("할래요", "할게요", "해줘", "해주세요", "다시할래요", "다시할게요", "요"),
+            "다시", Set.of("시작할래요", "시작할게요", "시작해줘", "시작해주세요", "할래요", "할게요", "해줘", "해주세요"));
+
+    private static final String RESTART_YES = "네, 처음부터";
+    private static final String RESTART_NO = "아니요, 이어서";
+
     /**
      * 이탈 키워드별 허용 접미사(조사·어미). 매칭은 키워드 정확일치 <b>또는</b> "키워드로 시작 + 나머지가 이 집합에
      * 정확히 포함"일 때만 — 단순 startsWith/contains 가 아니다. "그만두지않을래요"는 "그만"으로 시작하지만 접미사
@@ -151,6 +168,8 @@ public class ChatbotController {
     private final JobPostingService jobPostingService;
     // (g) 이탈성 질문 확인 1턴의 보류 발화 저장(인메모리·1턴 소비).
     private final SideQuestionStore sideQuestionStore;
+    // (g′) ④ 재시작 확인 1턴의 대기 플래그 저장(인메모리·1턴 소비).
+    private final OnboardingRestartStore onboardingRestartStore;
 
     public ChatbotController(CommunityChatAgent agent,
                             QuickReplyAgent quickReplyAgent,
@@ -174,7 +193,8 @@ public class ChatbotController {
                             AutoPrepIntakeService autoPrepIntakeService,
                             IntakeSlotTrace intakeSlotTrace,
                             JobPostingService jobPostingService,
-                            SideQuestionStore sideQuestionStore) {
+                            SideQuestionStore sideQuestionStore,
+                            OnboardingRestartStore onboardingRestartStore) {
         this.agent = agent;
         this.quickReplyAgent = quickReplyAgent;
         this.quickReplyParser = quickReplyParser;
@@ -198,6 +218,7 @@ public class ChatbotController {
         this.intakeSlotTrace = intakeSlotTrace;
         this.jobPostingService = jobPostingService;
         this.sideQuestionStore = sideQuestionStore;
+        this.onboardingRestartStore = onboardingRestartStore;
     }
 
     /* ── (g) 이탈성 질문 가드 헬퍼 ── */
@@ -250,6 +271,77 @@ public class ChatbotController {
                 answer.intake(), answer.inOrchestration(), answer.summaryChip());
     }
 
+    /* ── (g′) 재시작 화이트리스트 헬퍼 ── */
+
+    /**
+     * 재시작 의도 판정 — isExitCommand 와 동일 원칙(정확일치 또는 키워드+허용접미사만, LLM 0).
+     * "면접 해줘"를 정확히 다시 치는 경우가 실측 재현 시나리오라 최우선 키워드로 둔다.
+     */
+    static boolean isRestartIntent(String question) {
+        if (question == null) {
+            return false;
+        }
+        String norm = question.trim().toLowerCase().replace(" ", "");
+        for (String kw : RESTART_COMMANDS) {
+            if (norm.equals(kw)) {
+                return true;
+            }
+            if (norm.startsWith(kw) && norm.length() > kw.length()
+                    && RESTART_SUFFIXES.getOrDefault(kw, Set.of()).contains(norm.substring(kw.length()))) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /** 재시작 확인 "네" 판정 — 칩 문구 정확일치, "처음부터" 포함, 또는 기존 긍정 화이트리스트. */
+    private static boolean isRestartConfirmYes(String question) {
+        if (question == null) {
+            return false;
+        }
+        String norm = question.trim().toLowerCase().replace(" ", "");
+        return norm.equals(RESTART_YES.replace(" ", "")) || norm.contains("처음부터") || AFFIRMATIVE.contains(norm);
+    }
+
+    /** 재시작 확인 "아니요" 판정 — 칩 문구 정확일치, "아니" 시작, 또는 "이어서"/"계속" 포함. */
+    private static boolean isRestartConfirmNo(String question) {
+        if (question == null) {
+            return false;
+        }
+        String norm = question.trim().toLowerCase().replace(" ", "");
+        return norm.equals(RESTART_NO.replace(" ", "")) || norm.startsWith("아니")
+                || norm.contains("이어서") || norm.contains("계속");
+    }
+
+    /** (g′) 확인 헬퍼 공통 응답 조립 — RouteMessage → ChatAskResponse + 로그 적재(온보딩 턴 tail 과 동일 규약). */
+    private ChatAskResponse toOnboardingResponse(Long conversationId, Long userId, String question, RouteMessage rm) {
+        responseLogService.record(conversationId, userId, question, "ONBOARDING", false, null, null, false);
+        return new ChatAskResponse(conversationId, rm.message(), List.of(), rm.quickReplies(),
+                rm.route(), rm.intake(), rm.inOrchestration(), null);
+    }
+
+    /**
+     * "아니요, 이어서" 응답 — 방금 발화(재시작 의도로 오인된 문장)는 버리고 현재 단계 질문을 다시 보여준다.
+     * EXTRACTING/AWAIT_MODE 는 부수효과 없는 기존 조회 메서드를 그대로 재사용(재확인 = 재조회와 동일 의미).
+     */
+    private RouteMessage redisplayCurrentStep(Long conversationId, AuthUser authUser, String step) {
+        return switch (step) {
+            case "JOB" -> new RouteMessage("④온보딩:직무",
+                    "알겠어요, 계속할게요. 어떤 직무로 지원하세요? (예: 프론트엔드 개발자, 백엔드 개발자)");
+            case "SKILLS" -> new RouteMessage("④온보딩:기술",
+                    "알겠어요, 계속할게요. 주로 다루는 기술을 콤마(,)로 구분해서 알려주세요.");
+            case "AWAIT_POSTING" -> new RouteMessage("④온보딩:공고요청",
+                    "알겠어요, 계속할게요. 지원할 공고 전문을 붙여넣어 주세요(회사명·직무·자격요건이 담긴 원문이면 좋아요).");
+            case "AWAIT_COMPANY" -> new RouteMessage("④온보딩:확인-회사",
+                    "알겠어요, 계속할게요. 어느 회사 공고인가요?");
+            case "AWAIT_JOBTITLE" -> new RouteMessage("④온보딩:확인-직무",
+                    "알겠어요, 계속할게요. 직무명을 입력해 주세요. (예: 백엔드 개발자)");
+            case "EXTRACTING" -> onboardingPollExtraction(conversationId, authUser);
+            case "AWAIT_MODE" -> onboardingModeStep(conversationId, authUser, null);
+            default -> new RouteMessage("④온보딩:재개", "알겠어요, 계속할게요.");
+        };
+    }
+
     /**
      * (b) 깡통 온보딩 수집: 직무→기술 순차 질문, 유저 답을 *그대로* 슬롯에 누적(가공 0). 슬롯=인메모리(LLM 40창 미사용·휘발).
      * 결정성(§6-1,2): 챗봇은 질문만 친절(예시·범위), 답 해석/부풀림 금지·스킬추출 AI 미사용. 저장(ProfileService.save)은 (e).
@@ -259,6 +351,25 @@ public class ChatbotController {
                                            String selectedModeCode, Long selectedCaseId) {
         Long userId = authUser.id();   // 라우팅에서 authUser != null 보장. save((e))가 authUser 를 요구해 끝까지 내린다.
         String step = intakeSlotTrace.onboardingStep(conversationId);
+
+        // ── (g′) 재시작 화이트리스트: 기존 이탈성 질문 가드보다 먼저 판정한다("면접 해줘"/"다시"류가
+        //    데이터로 오기록되는 것 차단 — 물음표/FAQ 가드는 우연히 안 걸릴 수 있어 앞단에 별도로 둔다).
+        if (onboardingRestartStore.consume(conversationId)) {
+            if (isRestartConfirmYes(question)) {
+                intakeSlotTrace.clearOnboarding(conversationId); // step·job·skills·caseId 전부 리셋.
+                return onboardingTurn(conversationId, authUser, "", selectedModeCode, null); // step==null 진입 경로 재사용.
+            }
+            if (isRestartConfirmNo(question)) {
+                return toOnboardingResponse(conversationId, userId, question,
+                        redisplayCurrentStep(conversationId, authUser, step));
+            }
+            // yes/no 도 아니면(확인을 무시하고 다른 말을 함) → 소비만 하고 그 발화를 정상 흐름으로 처리.
+        } else if (step != null && selectedCaseId == null && isRestartIntent(question)) {
+            onboardingRestartStore.defer(conversationId);
+            return new ChatAskResponse(conversationId,
+                    "처음부터 다시 시작할까요? 지금까지 입력한 내용은 사라져요.",
+                    List.of(), List.of(RESTART_YES, RESTART_NO), "④온보딩:재시작확인", null, false, null);
+        }
 
         // ── (g) 이탈성 질문 가드: 수집 단계에서 질문이 직무/회사명으로 오기록되는 것 차단.
         //    직전 턴이 확인이었으면 그 응답부터 처리한다(그 턴은 재가드 없음 — 확인 루프 방지).
@@ -315,9 +426,7 @@ public class ChatbotController {
             // DONE 등 종단 — 라우터의 sticky 가 여기 도달 전에 풀리는 게 정상(방어용).
             rm = new RouteMessage("④온보딩:완료대기", "면접 준비가 시작됐어요. 잠시만 기다려 주세요.");
         }
-        responseLogService.record(conversationId, userId, question, "ONBOARDING", false, null, null, false);
-        return new ChatAskResponse(conversationId, rm.message(), List.of(), rm.quickReplies(),
-                rm.route(), rm.intake(), rm.inOrchestration(), null);
+        return toOnboardingResponse(conversationId, userId, question, rm);
     }
 
     /**
@@ -692,6 +801,34 @@ public class ChatbotController {
     }
 
     /**
+     * (g″) declined(온보딩 그만) + 여전히 깡통계정인 대화에서 재시작 의도 발화를 확인 1턴으로 구제한다.
+     * "네"면 declined 를 해제하고 step==null 진입 경로로 바로 온보딩을 시작, "아니요"면 declined 유지 안내.
+     * 재시작 의도도 확인 대기도 아니면 null — 호출부가 기존 라우팅(FAQ/에이전트 등)으로 그대로 흘려보낸다.
+     */
+    private ApiResponse<ChatAskResponse> tryOnboardingRestartFromDeclined(
+            Long conversationId, Long userId, AuthUser authUser, String question) {
+        if (onboardingRestartStore.consume(conversationId)) {
+            if (isRestartConfirmYes(question)) {
+                memoryStore.clearOnboardingDeclined(conversationId);
+                return ApiResponse.ok(onboardingTurn(conversationId, authUser, "", null, null));
+            }
+            if (isRestartConfirmNo(question)) {
+                return ApiResponse.ok(new ChatAskResponse(conversationId,
+                        "알겠어요, 필요하면 언제든 다시 말씀해 주세요.",
+                        List.of(), List.of(), "④온보딩:재시작거부", null, false, null));
+            }
+            return null; // 확인 대기였는데 yes/no 아님 → 소비만 하고 일반 라우팅으로.
+        }
+        if (isRestartIntent(question)) {
+            onboardingRestartStore.defer(conversationId);
+            return ApiResponse.ok(new ChatAskResponse(conversationId,
+                    "그만두셨었는데, 다시 시작할까요?",
+                    List.of(), List.of(RESTART_YES, RESTART_NO), "④온보딩:재시작확인(거부복귀)", null, false, null));
+        }
+        return null;
+    }
+
+    /**
      * 사용자 질문 → 통합 라우팅 → ① 커뮤니티 FAQ/에이전트 또는 ③ 인테이크 입구.
      * POST /api/chatbot/ask  body: { question, conversationId? }
      *
@@ -798,6 +935,16 @@ public class ChatbotController {
         if (authUser != null && isOnboardingInProgress(conversationId)) {
             return ApiResponse.ok(onboardingTurn(conversationId, authUser, question,
                     req.selectedModeCode(), req.selectedCaseId()));
+        }
+
+        // (g″) declined 재시작 구제책: "그만"으로 거부한 대화(여전히 깡통)에서도 재시작 의도 발화면
+        //    확인 1턴으로 declined 를 해제한다. 대상 아니면 null 을 돌려 아래 정상 라우팅으로 통과시킨다.
+        if (authUser != null && isOnboardingDeclined(conversationId) && isBlankAccountForOnboarding(userId)) {
+            ApiResponse<ChatAskResponse> restart =
+                    tryOnboardingRestartFromDeclined(conversationId, userId, authUser, question);
+            if (restart != null) {
+                return restart;
+            }
         }
 
         // Fast-path: 순수 내비 질의는 LLM·검색 우회 즉답 (서버 신뢰 링크라 화이트리스트 검증 생략).
