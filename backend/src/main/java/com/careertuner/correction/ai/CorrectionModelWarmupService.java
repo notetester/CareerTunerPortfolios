@@ -74,8 +74,11 @@ public class CorrectionModelWarmupService {
                 return new CorrectionWarmupResponse(COOLDOWN, model);
             }
 
-            inFlight = CompletableFuture.runAsync(() -> loadModel(model), executor);
-            inFlight.whenComplete((ignored, failure) -> completeWarmup(model, reason, failure));
+            // whenComplete 를 inFlight 체인에 포함해야 awaitIfInProgress 가 completeWarmup(warmUntil 세팅)까지
+            // 대기한다. 분리하면 loadModel 완료~콜백 실행 사이에 warmAsync 가 끼어들어 중복 warmup 이 시작되는
+            // race 가 생긴다(전체 테스트 스위트에서 간헐 재현되던 실동작 버그).
+            inFlight = CompletableFuture.runAsync(() -> loadModel(model), executor)
+                    .whenComplete((ignored, failure) -> completeWarmup(model, reason, failure));
             log.info("Correction model warmup started model={} reason={}", model, safeReason(reason));
             return new CorrectionWarmupResponse(STARTED, model);
         }
