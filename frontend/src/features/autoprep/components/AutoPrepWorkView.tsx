@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Check, CornerDownRight, FileText, MessageCircle, Mic, PenLine, Sparkles, Target, User } from "lucide-react";
+import { ArrowUpRight, Check, CornerDownRight, FileText, MessageCircle, Mic, PenLine, Play, Sparkles, Target, User } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
 import { PREP_PARTS } from "../types/autoPrep";
@@ -70,9 +70,9 @@ export function AutoPrepWorkView({ running, parts, caseId, onNavigate }: Props) 
             )}
             <button
               onClick={() => onNavigate("/interview")}
-              className="rounded-lg bg-primary px-3.5 py-2 text-xs font-semibold text-primary-foreground transition hover:brightness-110"
+              className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-3.5 py-2 text-xs font-semibold text-primary-foreground transition hover:brightness-110"
             >
-              ▶ 면접 시작
+              <Play className="h-3 w-3" /> 면접 시작
             </button>
           </div>
         </div>
@@ -144,9 +144,9 @@ function PartGroup({
           {action && (
             <button
               onClick={() => onNavigate(action.path)}
-              className="rounded-md border border-border px-2 py-0.5 text-[10px] font-semibold text-foreground transition hover:bg-secondary"
+              className="inline-flex items-center gap-1 rounded-md border border-border px-2 py-0.5 text-[10px] font-semibold text-foreground transition hover:bg-secondary"
             >
-              {action.label} ↗
+              {action.label} <ArrowUpRight className="h-3 w-3" />
             </button>
           )}
         </div>
