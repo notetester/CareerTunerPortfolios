@@ -289,6 +289,7 @@ export function useChatbot() {
           evidence: [], links: data.links ?? [], quickReplies: data.quickReplies ?? [],
           ttsState: "idle", ttsProgress: 0,
           timestamp: Date.now(),
+          route: data.route,
           intake: intake
             ? {
                 ready: intake.ready,

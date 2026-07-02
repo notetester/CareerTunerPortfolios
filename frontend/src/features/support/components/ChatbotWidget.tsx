@@ -16,10 +16,29 @@ import type {
 import { SUGGESTED_QUESTIONS } from "../types/chatbot";
 import type { GuideStep } from "../onboarding/guideData";
 import { AutoPrepWorkView } from "@/features/autoprep/components/AutoPrepWorkView";
-import { OnboardingGuide } from "./OnboardingGuide";
+import { OnboardingGuide, type ServerGuidePhase } from "./OnboardingGuide";
 
 /** 오케스트레이터 정체성 글리프(U+2726). */
 const ORCH_GLYPH = "✦";
+
+/**
+ * ④ 깡통 온보딩(백엔드 텍스트 프로토콜) 라우트 → 가이드 국면 매핑.
+ * 라우트 문자열은 ChatbotController.onboardingTurn 의 코드 리터럴(결정적 스텝 식별자).
+ * 여기 없는 온보딩 라우트(확인-회사/확인-직무/모드선택/면접인계)는 가이드를 닫고 기존 챗 UI 폴백.
+ */
+const ONB_ROUTE_PHASE: Record<string, ServerGuidePhase> = {
+  "④온보딩:직무": "role",
+  "④온보딩:기술": "skills",
+  "④온보딩:공고요청": "jd",
+  "④온보딩:공고생성실패": "jd",
+  "④온보딩:추출실패": "jd",
+  "④온보딩:공고생성": "waiting",
+  "④온보딩:추출대기": "waiting",
+};
+
+/** ④ 공고 추출 대기 자동 폴링 — 넛지 간격/상한(상한 초과 시 가이드 닫고 챗 폴백). */
+const ONB_NUDGE_DELAY_MS = 3500;
+const ONB_NUDGE_MAX = 6;
 
 const ICON_MAP = { KeyRound, CreditCard, FileText } as const;
 
@@ -158,6 +177,43 @@ function ChatbotPanel({ chatbot }: ChatbotPanelProps) {
     if (intakeGuide) dismissedIntakeRef.current.add(intakeGuide.msgId);
     setIntakeGuide(null); // 닫으면 기존 텍스트/칩 되묻기로 폴백(챗은 그대로 남아 있음)
   };
+
+  // ── ④→가이드 매핑: 깡통 계정의 텍스트 온보딩(직무→기술→공고)을 가이드 스텝 UI 로.
+  //    국면은 마지막 봇 라우트에서 파생(서버 = 단일 소스). 닫으면 기존 텍스트 흐름 폴백.
+  const lastBotMsg = [...messages].reverse().find((m) => m.role === "bot");
+  const onbPhase: ServerGuidePhase | null =
+    lastBotMsg?.route ? ONB_ROUTE_PHASE[lastBotMsg.route] ?? null : null;
+  const [onbGuideOpen, setOnbGuideOpen] = useState(false);
+  const onbDismissedRef = useRef(false);
+  const onbNudgeCountRef = useRef(0);
+
+  // 자동 오픈: 온보딩 첫 질문(직무) 도착 시. 닫았던(폴백 선택) 사용자에겐 다시 안 연다.
+  useEffect(() => {
+    if (onbPhase === "role" && !onbDismissedRef.current && !runStarted) {
+      setOnbGuideOpen(true);
+      expandToFloating();
+    }
+  }, [onbPhase, runStarted, expandToFloating]);
+
+  // 자동 닫힘: 가이드 밖 온보딩 단계(회사/직무 보정·모드선택·면접인계)로 넘어가면 챗으로 복귀.
+  //    (모드 칩·실행 UI 는 기존 챗 렌더가 담당 — 가이드는 빈 슬롯 수집까지만.)
+  useEffect(() => {
+    if (!onbGuideOpen) return;
+    if (lastBotMsg?.route?.startsWith("④온보딩") && onbPhase === null) setOnbGuideOpen(false);
+  }, [onbGuideOpen, lastBotMsg?.route, onbPhase]);
+
+  // 공고 추출 대기(EXTRACTING) 자동 폴링: 백엔드가 "아무 메시지나 보내달라"는 프로토콜이라 넛지를 대신 보낸다.
+  //    상한 초과 시 가이드를 닫고 챗 안내로 폴백(무한 폴링 방지).
+  useEffect(() => {
+    if (onbPhase !== "waiting") { onbNudgeCountRef.current = 0; return; }
+    if (!onbGuideOpen || botStatus !== "answered") return;
+    if (onbNudgeCountRef.current >= ONB_NUDGE_MAX) { setOnbGuideOpen(false); return; }
+    const t = setTimeout(() => {
+      onbNudgeCountRef.current += 1;
+      sendMessage("진행 상황 알려줘");
+    }, ONB_NUDGE_DELAY_MS);
+    return () => clearTimeout(t);
+  }, [onbGuideOpen, onbPhase, botStatus, sendMessage]);
 
   const handleSend = () => {
     const text = input.trim();
@@ -324,6 +380,27 @@ function ChatbotPanel({ chatbot }: ChatbotPanelProps) {
           onOpen={(id) => { openSession(id); setShowSessions(false); }}
           onNew={() => { newSession(); setShowSessions(false); }}
           onClose={() => setShowSessions(false)}
+        />
+      )}
+
+      {/* ── ④→가이드 매핑 오버레이: 깡통 온보딩 텍스트 질문을 가이드 스텝으로. 회신은 기존
+             텍스트 프로토콜 그대로(직무 텍스트→기술 CSV→공고 본문). 자소서 fileId 는 ready 병합 예약. ── */}
+      {onbGuideOpen && onbPhase && (
+        <OnboardingGuide
+          wide={floating}
+          server={{
+            phase: onbPhase,
+            bubbleText: lastBotMsg?.text,
+            submitting: botStatus === "thinking",
+            onSubmit: (step, text, meta) => {
+              if (step === "jd") setPendingAttachments(meta.coverLetterFileIds);
+              sendMessage(text);
+            },
+          }}
+          onCollapse={collapseToCorner}
+          onExpand={expandToFloating}
+          onClose={() => { onbDismissedRef.current = true; setOnbGuideOpen(false); }}
+          onGotoInterview={goInterview}
         />
       )}
 

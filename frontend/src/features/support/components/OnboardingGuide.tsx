@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   X, ArrowRight, ArrowLeft, Check, PenLine, FileText, UserRound, Briefcase,
   Link2, FileUp, ClipboardPaste, ShieldCheck, Video, Loader2, Github, Lightbulb,
@@ -103,8 +103,14 @@ function FileChip({ name, uploading, error, onRemove }: {
   );
 }
 
+/** ④ 온보딩 매핑 모드에서 서버가 이끄는 스텝 순서(docs 는 로컬 스텝 — ④ 프로토콜 밖, 파일은 ready 병합). */
+const SERVER_ORDER: GuideStep[] = ["role", "skills", "docs", "jd"];
+
+/** ④ 온보딩 매핑 모드의 서버 국면 — 라우트("④온보딩:직무" 등)에서 호출부가 파생해 내려준다. */
+export type ServerGuidePhase = "role" | "skills" | "jd" | "waiting";
+
 /* ════════════════ 본체 ════════════════ */
-export function OnboardingGuide({ onClose, onGotoInterview, wide, onCollapse, onExpand, intake, onSlotFilled }: {
+export function OnboardingGuide({ onClose, onGotoInterview, wide, onCollapse, onExpand, intake, onSlotFilled, server }: {
   onClose: () => void;
   /** 면접 권유 CTA — 수집한 caseId 를 실어 D 면접 페이지로 인계(없으면 null). */
   onGotoInterview: (caseId: number | null) => void;
@@ -121,9 +127,40 @@ export function OnboardingGuide({ onClose, onGotoInterview, wide, onCollapse, on
   intake?: { steps: GuideStep[] };
   /** intake 모드에서 공고→지원 건 생성 완료 시 — 호출부가 기존 인테이크 프로토콜(selectedCaseId)로 회신한다. */
   onSlotFilled?: (r: { caseId: number; coverLetterFileIds: number[] }) => void;
+  /**
+   * ④ 깡통 온보딩(백엔드 텍스트 프로토콜) 매핑 모드 — 표시 스텝을 서버 국면(라우트)이 이끈다.
+   * role/skills/jd 제출은 onSubmit 으로 기존 텍스트 답변 형식 그대로 회신하고(직무 텍스트→기술 CSV→공고 본문),
+   * docs 는 로컬 스텝(자소서 fileId 는 ready 시 run 요청에 병합). waiting 은 공고 추출 대기 화면.
+   */
+  server?: {
+    phase: ServerGuidePhase;
+    /** 현재 국면의 봇 문장(백엔드 카피 그대로 표시 — 카피 이원화 방지). */
+    bubbleText?: string;
+    /** 회신 전송 중(봇 thinking) — 버튼 비활성+스피너. */
+    submitting: boolean;
+    onSubmit: (step: "role" | "skills" | "jd", text: string, meta: { coverLetterFileIds: number[] }) => void;
+  };
 }) {
-  const g = useOnboardingGuide(intake?.steps[0] ?? "role");
-  const order = intake?.steps ?? ORDER;
+  const g = useOnboardingGuide(server ? "role" : intake?.steps[0] ?? "role");
+  const order = server ? SERVER_ORDER : intake?.steps ?? ORDER;
+
+  // ── ④ 서버 국면 → 로컬 스텝 동기화. jd 국면 "첫" 진입은 docs(로컬)부터 밟는다.
+  //    g.step 은 의도적으로 deps 제외 — 사용자의 docs→jd 로컬 이동을 국면 재실행으로 되돌리지 않기 위해.
+  useEffect(() => {
+    if (!server) return;
+    if (server.phase === "role" || server.phase === "skills") {
+      g.go(server.phase);
+    } else if (server.phase === "jd" && g.step !== "docs" && g.step !== "jd") {
+      g.go("docs");
+    }
+    // waiting 은 스텝 이동 없음 — 대기 화면이 본문을 대체한다.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [server?.phase]);
+
+  /** ④ 회신 — 자소서 fileId 를 함께 실어 호출부가 ready 병합을 예약할 수 있게 한다. */
+  const submitServer = (step: "role" | "skills" | "jd", text: string) => {
+    server?.onSubmit(step, text, { coverLetterFileIds: g.collect().coverLetterFileIds });
+  };
 
   // intake 제출(케이스 생성) 진행/오류 — 가이드 자체 실행(runReal)과 분리된 상태.
   const [submitting, setSubmitting] = useState(false);
@@ -165,9 +202,9 @@ export function OnboardingGuide({ onClose, onGotoInterview, wide, onCollapse, on
         <GuideAvatar size={30} />
         <div className="flex-1 min-w-0">
           <div className="text-[13px] font-extrabold leading-tight">
-            {intake ? "면접 준비 · 부족한 정보만 채워요" : "대화로 준비 시작"}
+            {intake || server ? "면접 준비 · 부족한 정보만 채워요" : "대화로 준비 시작"}
           </div>
-          <div className="mt-1.5"><StepDots step={g.step} dots={intake ? order : STEP_DOTS} /></div>
+          <div className="mt-1.5"><StepDots step={g.step} dots={intake || server ? order : STEP_DOTS} /></div>
         </div>
         {wide && onCollapse ? (
           <button onClick={onCollapse} aria-label="코너로 최소화"
@@ -190,21 +227,43 @@ export function OnboardingGuide({ onClose, onGotoInterview, wide, onCollapse, on
       <div className="flex-1 flex min-h-0">
         <div className="flex-1 overflow-y-auto px-4 py-4 min-w-0" style={{ background: "var(--orch-chat-bg)" }}>
           <div className={wide ? "mx-auto w-full max-w-[560px]" : ""}>
-            {g.step === "role" && <RoleStep g={g} />}
-            {g.step === "skills" && <SkillsStep g={g} />}
-            {g.step === "docs" && <DocsStep g={g} fileRefs={fileRefs} />}
-            {g.step === "jd" && <JdStep g={g} jdRef={fileRefs.jd} />}
-            {g.step === "analyzing" && <AnalyzingStep />}
-            {g.step === "fit" && <FitStep g={g} />}
-            {g.step === "interview" && <InterviewStep g={g} onGoto={() => onGotoInterview(g.caseId)} onDone={closeAll} />}
+            {server?.phase === "waiting" ? (
+              <ServerWaitingView text={server.bubbleText} />
+            ) : (
+              <>
+                {g.step === "role" && <RoleStep g={g} bubble={server?.bubbleText} />}
+                {g.step === "skills" && <SkillsStep g={g} bubble={server?.bubbleText} />}
+                {g.step === "docs" && <DocsStep g={g} fileRefs={fileRefs} />}
+                {g.step === "jd" && (
+                  <JdStep g={g} jdRef={fileRefs.jd} bubble={server?.bubbleText} pasteOnly={!!server} />
+                )}
+                {g.step === "analyzing" && <AnalyzingStep />}
+                {g.step === "fit" && <FitStep g={g} />}
+                {g.step === "interview" && <InterviewStep g={g} onGoto={() => onGotoInterview(g.caseId)} onDone={closeAll} />}
+              </>
+            )}
           </div>
         </div>
         {wide && <SummaryBoard g={g} />}
       </div>
 
-      {/* ── Footer: 뒤로 · 건너뛰기 · 다음 (intake 모드는 마지막 스텝에서 지원 건 생성 제출) ── */}
-      <GuideFooter g={g} onClose={closeAll} order={order} intakeMode={!!intake}
-        submitting={submitting} submitError={submitError} onSubmitIntake={() => void submitIntake()} />
+      {/* ── Footer: 뒤로 · 건너뛰기 · 다음 (intake=지원 건 생성 제출 / server=④ 텍스트 회신) ── */}
+      {server?.phase === "waiting" ? null : (
+        <GuideFooter g={g} onClose={closeAll} order={order} intakeMode={!!intake}
+          serverMode={!!server} serverSubmitting={server?.submitting} onServerSubmit={submitServer}
+          submitting={submitting} submitError={submitError} onSubmitIntake={() => void submitIntake()} />
+      )}
+    </div>
+  );
+}
+
+/* ── ④ 공고 추출 대기 화면(서버 국면 waiting) — 봇 문장을 그대로 보여주고 폴링은 호출부가 돈다. ── */
+function ServerWaitingView({ text }: { text?: string }) {
+  return (
+    <div className="flex flex-col items-center justify-center text-center py-10">
+      <Loader2 size={32} className="animate-spin mb-4" style={{ color: "var(--orch-violet)" }} />
+      <div className="text-[12.5px] leading-[1.6] text-foreground max-w-[320px]"
+        dangerouslySetInnerHTML={rich(text ?? "공고에서 회사·직무를 읽고 있어요. 몇 초면 돼요.")} />
     </div>
   );
 }
@@ -218,11 +277,11 @@ type FileRefs = {
 };
 
 /* ── STEP 1: 직군 ── */
-function RoleStep({ g }: { g: G }) {
+function RoleStep({ g, bubble }: { g: G; bubble?: string }) {
   const custom = g.role === CUSTOM_ROLE;
   return (
     <>
-      <GuideBubble text={COPY.role} />
+      <GuideBubble text={bubble ?? COPY.role} />
       <div className="text-[10.5px] font-extrabold text-muted-foreground mb-2 tracking-wide">직군 · 분야</div>
       <div className="flex flex-wrap gap-1.5">
         {ROLES.map((r) => (
@@ -242,11 +301,11 @@ function RoleStep({ g }: { g: G }) {
 }
 
 /* ── STEP 2: 핵심 역량(직군 적응형) ── */
-function SkillsStep({ g }: { g: G }) {
+function SkillsStep({ g, bubble }: { g: G; bubble?: string }) {
   const roleLabel = g.role === CUSTOM_ROLE ? g.customRole || "선택하신 직군" : g.role ?? "선택하신 직군";
   return (
     <>
-      <GuideBubble text={COPY.skills(roleLabel)} />
+      <GuideBubble text={bubble ?? COPY.skills(roleLabel)} />
       <div className="flex flex-wrap gap-1.5">
         {g.field.skills.map((s) => (
           <Chip key={s} label={s} selected={g.skills.includes(s)} onClick={() => g.toggleSkill(s)} />
@@ -352,27 +411,36 @@ function LinkFieldRow({ lkey, g }: { lkey: LinkKey; g: G }) {
 }
 
 /* ── STEP 4: 공고문 ── */
-function JdStep({ g, jdRef }: { g: G; jdRef: React.RefObject<HTMLInputElement> }) {
+function JdStep({ g, jdRef, bubble, pasteOnly }: {
+  g: G; jdRef: React.RefObject<HTMLInputElement>;
+  bubble?: string;
+  /** ④ 온보딩 매핑 모드 — 텍스트 프로토콜이라 URL/파일 입력을 숨기고 붙여넣기만 받는다. */
+  pasteOnly?: boolean;
+}) {
   return (
     <>
-      <GuideBubble text={COPY.jd} />
-      <div className="flex items-center gap-2 rounded-xl border border-border px-3 py-2.5 mb-2.5">
-        <Link2 size={15} className="shrink-0" style={{ color: "var(--orch-violet)" }} />
-        <input value={g.jd.url} onChange={(e) => g.setJdUrl(e.target.value)}
-          placeholder="공고 링크 붙여넣기 — wanted.co.kr, jobkorea.co.kr …"
-          className="flex-1 min-w-0 bg-transparent text-[12.5px] outline-none placeholder:text-muted-foreground" />
-      </div>
-      <div className="flex gap-2 mb-2.5">
-        <button onClick={() => jdRef.current?.click()}
-          className="inline-flex items-center gap-1.5 px-3 py-2 rounded-full border border-border bg-card text-[11.5px] font-semibold text-muted-foreground hover:text-foreground transition-colors">
-          <FileUp size={13} /> 파일 업로드
-        </button>
-        <span className="inline-flex items-center gap-1.5 px-3 py-2 rounded-full border border-border bg-card text-[11.5px] font-semibold text-muted-foreground">
-          <ClipboardPaste size={13} /> 텍스트 붙여넣기 ↓
-        </span>
-      </div>
-      <textarea value={g.jd.text} onChange={(e) => g.setJdText(e.target.value)} rows={4}
-        placeholder="공고 내용을 그대로 붙여넣어도 돼요."
+      <GuideBubble text={bubble ?? COPY.jd} />
+      {!pasteOnly && (
+        <>
+          <div className="flex items-center gap-2 rounded-xl border border-border px-3 py-2.5 mb-2.5">
+            <Link2 size={15} className="shrink-0" style={{ color: "var(--orch-violet)" }} />
+            <input value={g.jd.url} onChange={(e) => g.setJdUrl(e.target.value)}
+              placeholder="공고 링크 붙여넣기 — wanted.co.kr, jobkorea.co.kr …"
+              className="flex-1 min-w-0 bg-transparent text-[12.5px] outline-none placeholder:text-muted-foreground" />
+          </div>
+          <div className="flex gap-2 mb-2.5">
+            <button onClick={() => jdRef.current?.click()}
+              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-full border border-border bg-card text-[11.5px] font-semibold text-muted-foreground hover:text-foreground transition-colors">
+              <FileUp size={13} /> 파일 업로드
+            </button>
+            <span className="inline-flex items-center gap-1.5 px-3 py-2 rounded-full border border-border bg-card text-[11.5px] font-semibold text-muted-foreground">
+              <ClipboardPaste size={13} /> 텍스트 붙여넣기 ↓
+            </span>
+          </div>
+        </>
+      )}
+      <textarea value={g.jd.text} onChange={(e) => g.setJdText(e.target.value)} rows={pasteOnly ? 7 : 4}
+        placeholder={pasteOnly ? "공고 전문을 그대로 붙여넣어 주세요 — 회사명·직무·자격요건이 담긴 원문이면 좋아요." : "공고 내용을 그대로 붙여넣어도 돼요."}
         className="w-full resize-none rounded-lg border border-border bg-background px-3 py-2 text-[12.5px] outline-none focus:border-primary placeholder:text-muted-foreground" />
       {g.jd.file && (
         <div className="mt-2 flex flex-wrap gap-1.5">
@@ -591,12 +659,17 @@ function SummaryBoard({ g }: { g: G }) {
 /* ════════════════ Footer 내비 ════════════════ */
 const ORDER: GuideStep[] = ["role", "skills", "docs", "jd", "fit", "interview"];
 
-function GuideFooter({ g, onClose, order, intakeMode, submitting, submitError, onSubmitIntake }: {
+function GuideFooter({ g, onClose, order, intakeMode, serverMode, serverSubmitting, onServerSubmit,
+  submitting, submitError, onSubmitIntake }: {
   g: G; onClose: () => void;
-  /** 진행 순서 — 기본 전체 흐름 또는 인테이크 서브셋(빈 슬롯만큼). */
+  /** 진행 순서 — 기본 전체 흐름 또는 인테이크/온보딩 서브셋(빈 슬롯만큼). */
   order: GuideStep[];
   /** ③ 인테이크 매핑 모드: 마지막 스텝(jd)에서 오케 실행 대신 지원 건 생성 제출. */
   intakeMode?: boolean;
+  /** ④ 온보딩 매핑 모드: role/skills/jd 를 서버 텍스트 프로토콜로 회신(뒤로 없음 — 서버 상태가 전진만 한다). */
+  serverMode?: boolean;
+  serverSubmitting?: boolean;
+  onServerSubmit?: (step: "role" | "skills" | "jd", text: string) => void;
   submitting?: boolean;
   submitError?: string | null;
   onSubmitIntake?: () => void;
@@ -606,8 +679,9 @@ function GuideFooter({ g, onClose, order, intakeMode, submitting, submitError, o
 
   const idx = order.indexOf(g.step);
   const isFirst = idx <= 0;
-  const canBack = !isFirst;
+  const canBack = !isFirst && !serverMode; // ④는 서버 단계가 전진만 하므로 뒤로 없음
   const isLastIntake = intakeMode && idx === order.length - 1;
+  const busy = !!submitting || !!serverSubmitting;
 
   const back = () => {
     // fit 에서 뒤로는 jd 로(analyzing 건너뜀).
@@ -616,6 +690,14 @@ function GuideFooter({ g, onClose, order, intakeMode, submitting, submitError, o
   };
 
   const advance = () => {
+    if (serverMode) {
+      if (g.step === "docs") { g.go("jd"); return; } // docs 는 로컬 스텝 — 서버 회신 없음
+      const roleText = g.role === CUSTOM_ROLE ? g.customRole.trim() : g.role ?? "";
+      if (g.step === "role") { onServerSubmit?.("role", roleText); return; }
+      if (g.step === "skills") { onServerSubmit?.("skills", g.skills.join(", ")); return; }
+      if (g.step === "jd") { onServerSubmit?.("jd", g.jd.text.trim()); return; }
+      return;
+    }
     if (isLastIntake) { onSubmitIntake?.(); return; } // 공고 → 케이스 생성 → 인테이크 회신(오케 실행은 인테이크가)
     if (!intakeMode && g.step === "jd") { void g.runReal(); return; } // 공고 → 케이스 생성 + 실제 오케 SSE
     if (g.step === "fit") { g.go("interview"); return; }
@@ -625,7 +707,7 @@ function GuideFooter({ g, onClose, order, intakeMode, submitting, submitError, o
 
   // 다음 버튼 라벨/활성 조건.
   const nextLabel =
-    isLastIntake ? "이 공고로 준비 시작"
+    isLastIntake || (serverMode && g.step === "jd") ? "이 공고로 준비 시작"
     : g.step === "role" ? "다음"
     : g.step === "skills" ? "다음"
     : g.step === "docs" ? "다음"
@@ -635,13 +717,26 @@ function GuideFooter({ g, onClose, order, intakeMode, submitting, submitError, o
 
   // intake 마지막 스텝(jd)은 공고 입력(파일/붙여넣기)이 있어야 지원 건을 만들 수 있다 — 빈손 제출 금지.
   const jdReady = !!g.jd.file || g.jd.text.trim().length > 0 || g.caseId != null;
-  const nextEnabled =
-    g.step === "role" ? (g.role != null && (g.role !== CUSTOM_ROLE || g.customRole.trim().length > 0))
+  const roleReady = g.role != null && (g.role !== CUSTOM_ROLE || g.customRole.trim().length > 0);
+  const nextEnabled = serverMode
+    ? !busy && (
+        g.step === "role" ? roleReady
+        : g.step === "skills" ? g.skills.length > 0        // ④는 답을 그대로 프로필에 저장 — 빈 답 전송 금지
+        : g.step === "jd" ? g.jd.text.trim().length >= 20  // 백엔드 최소 공고 길이(20자)와 동일 게이트
+        : true)
+    : g.step === "role" ? roleReady
     : isLastIntake ? (jdReady && !submitting)
     : true; // 나머지는 스킵 가능(빈손 진행)
 
   // URL 만 넣은 경우 — 링크 자동 읽기는 아직 미지원이라 정직하게 안내(버튼 비활성 이유).
   const jdUrlOnly = isLastIntake && !jdReady && g.jd.url.trim().length > 0;
+
+  // ④ 스텝별 좌측 안내(뒤로 버튼 대신) — 비활성 이유를 사람이 읽게.
+  const serverHint =
+    g.step === "role" ? "고르신 분야에 맞춰 다음 질문이 바뀌어요"
+    : g.step === "skills" ? "1개 이상 골라주세요 — 면접 질문·자소서 방향에 쓰여요"
+    : g.step === "docs" ? "없으면 바로 다음으로 넘어가도 돼요"
+    : "공고 본문(20자 이상)을 붙여넣으면 지원 건이 만들어져요";
 
   // interview 스텝은 카드 안 CTA 로 진행 → footer 다음 버튼 숨김.
   if (g.step === "interview") {
@@ -672,11 +767,13 @@ function GuideFooter({ g, onClose, order, intakeMode, submitting, submitError, o
           </button>
         ) : (
           <span className="text-[11px] text-muted-foreground">
-            {isLastIntake ? "공고만 넣으면 바로 시작할 수 있어요" : "건너뛰기 가능 · 없으면 나중에"}
+            {serverMode ? serverHint
+              : isLastIntake ? "공고만 넣으면 바로 시작할 수 있어요"
+              : "건너뛰기 가능 · 없으면 나중에"}
           </span>
         )}
         <div className="ml-auto flex items-center gap-2">
-          {g.step !== "role" && g.step !== "fit" && !isLastIntake && (
+          {g.step !== "role" && g.step !== "fit" && !isLastIntake && !serverMode && (
             <button onClick={advance}
               className="text-[12px] font-semibold text-muted-foreground hover:text-foreground transition-colors">
               건너뛰기
@@ -685,9 +782,9 @@ function GuideFooter({ g, onClose, order, intakeMode, submitting, submitError, o
           <button onClick={advance} disabled={!nextEnabled}
             className="inline-flex items-center gap-1 h-9 px-4 rounded-lg text-white text-[12.5px] font-bold transition-all disabled:opacity-40"
             style={{ background: "var(--gradient-orchestrator)" }}>
-            {submitting && <Loader2 size={14} className="animate-spin" />}
+            {busy && <Loader2 size={14} className="animate-spin" />}
             {nextLabel}
-            {!submitting && <ArrowRight size={14} />}
+            {!busy && <ArrowRight size={14} />}
           </button>
         </div>
       </div>
