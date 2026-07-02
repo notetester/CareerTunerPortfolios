@@ -1033,6 +1033,18 @@ public class ChatbotController {
                     req.selectedModeCode(), req.selectedCaseId()));
         }
 
+        // (c) 국면 밖 확인 안전망: 여기까지 왔는데 칩/버튼 선택(selectedCaseId·selectedModeCode)이 실려 있으면
+        //     이 대화는 더는 진행 중인 인테이크가 아니다(복원했더니 이미 READY/DONE 이거나 만료 — sticky 미활성,
+        //     온보딩도 아님). qwen3/FAQ 로 흘러 오답·범용 에러가 나기 전에, 정직하게 안내하고 재시작
+        //     화이트리스트("면접 준비해줘")로 유도한다. (활성/복원-PENDING 인테이크였다면 위 sticky 블록에서 이미 처리됨.)
+        if (req.conversationId() != null
+                && (req.selectedCaseId() != null || req.selectedModeCode() != null)) {
+            return ApiResponse.ok(new ChatAskResponse(
+                    conversationId,
+                    "이 준비는 이미 진행됐거나 대화가 만료됐어요. 이어서 하려면 “면접 준비해줘”라고 말씀해 주세요.",
+                    List.of(), List.of("면접 준비해줘"), "③(만료)", null, false, null));
+        }
+
         // 확인 대기(1턴) 소비: 이 턴은 라우팅을 돌리지 않는다. (오분류 안전판 A)
         if (routeConfirmStore.consumePending(conversationId)) {
             if (isAffirmative(question)) {
