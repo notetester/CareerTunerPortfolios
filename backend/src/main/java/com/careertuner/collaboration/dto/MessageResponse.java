@@ -11,6 +11,7 @@ public record MessageResponse(
         String kind,
         String content,
         List<MessageAttachmentResponse> attachments,
+        List<SharedPostingResponse> sharedPostings,
         LocalDateTime createdAt
 ) {
 }

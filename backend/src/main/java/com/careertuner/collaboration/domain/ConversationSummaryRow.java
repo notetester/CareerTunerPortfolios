@@ -14,6 +14,12 @@ import lombok.NoArgsConstructor;
 public class ConversationSummaryRow {
 
     private Long id;
+    private String type;
+    private String title;
+    private String description;
+    private Boolean locked;
+    private Integer memberCount;
+    private Boolean joined;
     private Long peerUserId;
     private String peerName;
     private String peerEmail;
