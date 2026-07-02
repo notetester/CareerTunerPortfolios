@@ -78,3 +78,18 @@ export function getLatestExtractionStatus(applicationCaseId: number): Promise<{ 
 export function retryExtraction(applicationCaseId: number): Promise<void> {
   return api<void>(`/application-cases/${applicationCaseId}/job-posting/extraction/retry`, { method: "POST" });
 }
+
+// ── 가이드 포폴 스텝: GitHub 링크 → README 원문 ──
+// 실패도 HTTP 200 + ok:false 로 내려온다(백엔드 계약) — throw 대신 결과값으로 성공/실패를 구분한다.
+export interface GithubReadmeResult {
+  ok: boolean;
+  text?: string;
+  errorCode?: string;
+}
+
+export function fetchGithubReadme(repoUrl: string) {
+  return api<GithubReadmeResult>("/support/portfolio/github-readme", {
+    method: "POST",
+    body: JSON.stringify({ repoUrl }),
+  });
+}
