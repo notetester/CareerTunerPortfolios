@@ -6,11 +6,12 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
+import java.time.Duration;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.function.Supplier;
+import java.util.function.Function;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -90,20 +91,24 @@ public class CareerAnalysisOssClient {
 
         int attempts = Math.max(1, oss.getMaxRetries() + 1);
         long backoffMs = Math.max(0, oss.getRetryBackoff().toMillis());
+        // 총 시간예산(deadline): 재시도·백오프를 포함한 전체 상한(E totalTimeBudget 패턴).
+        long deadlineNanos = System.nanoTime() + positive(oss.getTotalTimeBudget()).toNanos();
         try {
-            return withRetry(attempts, backoffMs, () -> sendOnce(oss, payload));
+            return withRetryWithinBudget(attempts, backoffMs, deadlineNanos,
+                    remaining -> sendOnce(oss, payload, min(oss.getTimeout(), remaining)));
         } catch (OssTransientException ex) {
-            // 일시적 실패가 재시도까지 모두 소진 → 폴백 유도.
-            log.warn("C 자체모델 {}회 시도 모두 실패 → OpenAI/Mock 폴백 유도: {}", attempts, ex.getMessage());
+            // 일시적 실패가 재시도/예산까지 모두 소진 → 폴백 유도.
+            log.warn("C 자체모델 시도 소진(최대 {}회/예산 {}s) → OpenAI/Mock 폴백 유도: {}",
+                    attempts, positive(oss.getTotalTimeBudget()).toSeconds(), ex.getMessage());
             throw new BusinessException(ErrorCode.INTERNAL_ERROR, ex.getMessage());
         }
     }
 
     /** 단일 시도. 일시적 실패(5xx/네트워크/JSON 깨짐/빈응답)는 {@link OssTransientException}(재시도 대상)로, 4xx/중단은 {@link BusinessException}(즉시 폴백)로 던진다. */
-    private JsonNode sendOnce(CareerAnalysisAiProviderProperties.Oss oss, String payload) {
+    private JsonNode sendOnce(CareerAnalysisAiProviderProperties.Oss oss, String payload, Duration timeout) {
         try {
             HttpRequest.Builder builder = HttpRequest.newBuilder(URI.create(chatUrl()))
-                    .timeout(oss.getTimeout())
+                    .timeout(positive(timeout))
                     .header("Content-Type", "application/json")
                     .POST(HttpRequest.BodyPublishers.ofString(payload, StandardCharsets.UTF_8));
             if (oss.getApiKey() != null && !oss.getApiKey().isBlank()) {
@@ -164,27 +169,49 @@ public class CareerAnalysisOssClient {
     }
 
     /**
-     * 일시적 실패({@link OssTransientException})만 최대 {@code attempts} 회까지 재시도(선형 백오프).
+     * 일시적 실패({@link OssTransientException})만 최대 {@code attempts} 회까지, <b>총 시간예산(deadline) 안에서만</b>
+     * 재시도한다(선형 백오프 — 단, 남은 예산으로 절삭). 예산이 소진되면 남은 시도 여부와 무관하게 중단한다.
+     * attempt 콜백은 남은 예산(Duration)을 받아 per-attempt 타임아웃 절삭에 쓴다.
      * 그 외 예외(예: {@link BusinessException} 4xx)는 재시도 없이 즉시 전파한다.
      */
-    static <T> T withRetry(int attempts, long backoffMs, Supplier<T> attempt) {
+    static <T> T withRetryWithinBudget(int attempts, long backoffMs, long deadlineNanos,
+                                       Function<Duration, T> attempt) {
         OssTransientException last = null;
         for (int i = 0; i < attempts; i++) {
+            Duration remaining = remaining(deadlineNanos);
+            if (remaining.isZero() || remaining.isNegative()) {
+                throw last != null ? last : new OssTransientException("C 자체모델 총 시간예산이 소진되었습니다.");
+            }
             try {
-                return attempt.get();
+                return attempt.apply(remaining);
             } catch (OssTransientException ex) {
                 last = ex;
                 if (i < attempts - 1 && backoffMs > 0) {
-                    try {
-                        Thread.sleep(backoffMs * (i + 1L));
-                    } catch (InterruptedException ie) {
-                        Thread.currentThread().interrupt();
-                        throw ex;
+                    long sleepMs = Math.min(backoffMs * (i + 1L), Math.max(0, remaining(deadlineNanos).toMillis()));
+                    if (sleepMs > 0) {
+                        try {
+                            Thread.sleep(sleepMs);
+                        } catch (InterruptedException ie) {
+                            Thread.currentThread().interrupt();
+                            throw ex;
+                        }
                     }
                 }
             }
         }
         throw last;
+    }
+
+    private static Duration remaining(long deadlineNanos) {
+        return Duration.ofNanos(deadlineNanos - System.nanoTime());
+    }
+
+    private static Duration min(Duration a, Duration b) {
+        return a.compareTo(b) <= 0 ? a : b;
+    }
+
+    private static Duration positive(Duration value) {
+        return value == null || value.isZero() || value.isNegative() ? Duration.ofMillis(1) : value;
     }
 
     /** 소형 모델이 JSON 앞뒤에 붙이는 잡설을 제거 — 첫 {/[ 부터 마지막 }/] 까지만 취한다(D 패턴 동일). */
