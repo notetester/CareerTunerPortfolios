@@ -1,4 +1,5 @@
 import { api } from "@/app/lib/api";
+import { apiBase } from "@/app/lib/apiBase";
 import { getAccessToken } from "@/app/lib/tokenStore";
 import type {
   AttachmentShareMode,
@@ -12,8 +13,6 @@ import type {
   MessageResponse,
   SendMessageRequest,
 } from "../types/collaboration";
-
-const API_BASE = ((import.meta.env.VITE_API_BASE_URL as string | undefined)?.replace(/\/+$/, "")) || "/api";
 
 function query(params: Record<string, string | number | undefined | null>): string {
   const search = new URLSearchParams();
@@ -103,6 +102,14 @@ export function inviteConversationMembers(conversationId: number, userIds: numbe
   });
 }
 
+/** 대화방 알림 해제/재개. 해제한 방은 내 이름·키워드 언급 시에만 알림이 온다. */
+export function muteConversation(conversationId: number, muted: boolean): Promise<ConversationSummaryResponse> {
+  return api<ConversationSummaryResponse>(`/collaboration/conversations/${conversationId}/mute`, {
+    method: "PATCH",
+    body: JSON.stringify({ muted }),
+  });
+}
+
 export function listMessages(conversationId: number, limit = 100): Promise<MessageResponse[]> {
   return api<MessageResponse[]>(
     `/collaboration/conversations/${conversationId}/messages${query({ limit })}`,
@@ -131,7 +138,7 @@ export function uploadCollaborationFile(file: File): Promise<FileAssetResponse> 
 
 export async function downloadCollaborationAttachment(file: MessageAttachmentResponse): Promise<void> {
   const token = getAccessToken();
-  const response = await fetch(`${API_BASE}/collaboration/files/${file.fileId}/content`, {
+  const response = await fetch(`${apiBase()}/collaboration/files/${file.fileId}/content`, {
     headers: token ? { Authorization: `Bearer ${token}` } : undefined,
   });
 

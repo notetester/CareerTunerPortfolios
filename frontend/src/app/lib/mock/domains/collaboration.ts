@@ -148,6 +148,7 @@ let conversations: ConversationSummaryResponse[] = [
     locked: false,
     memberCount: 18,
     joined: true,
+    muted: false,
     peer: null,
     latestMessage: null,
     unreadCount: 1,
@@ -162,6 +163,7 @@ let conversations: ConversationSummaryResponse[] = [
     locked: false,
     memberCount: 2,
     joined: true,
+    muted: false,
     peer: users[2],
     latestMessage: null,
     unreadCount: 0,
@@ -176,6 +178,7 @@ let conversations: ConversationSummaryResponse[] = [
     locked: true,
     memberCount: 6,
     joined: true,
+    muted: true,
     peer: null,
     latestMessage: null,
     unreadCount: 0,
@@ -190,6 +193,7 @@ let conversations: ConversationSummaryResponse[] = [
     locked: false,
     memberCount: 24,
     joined: false,
+    muted: false,
     peer: null,
     latestMessage: null,
     unreadCount: 0,
@@ -357,6 +361,7 @@ export const collaborationRoutes: MockRoute[] = [
         locked: false,
         memberCount: 2,
         joined: true,
+        muted: false,
         peer,
         latestMessage: null,
         unreadCount: 0,
@@ -388,6 +393,7 @@ export const collaborationRoutes: MockRoute[] = [
         locked: type === "PRIVATE",
         memberCount: 1 + (request?.memberUserIds?.length ?? 0),
         joined: true,
+        muted: false,
         peer: null,
         latestMessage: null,
         unreadCount: 0,
@@ -414,6 +420,16 @@ export const collaborationRoutes: MockRoute[] = [
       const conversation = requireConversation(Number(params[0]));
       const request = body as { userIds?: number[] };
       conversation.memberCount += request?.userIds?.length ?? 0;
+      return withLatest(conversation);
+    },
+  },
+  {
+    method: "PATCH",
+    pattern: /^\/collaboration\/conversations\/(\d+)\/mute$/,
+    handler: ({ params, body }) => {
+      const conversation = requireConversation(Number(params[0]));
+      const request = body as { muted?: boolean };
+      conversation.muted = request?.muted === true;
       return withLatest(conversation);
     },
   },

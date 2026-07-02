@@ -3,6 +3,7 @@ import type { ChangeEvent, ReactNode } from "react";
 import type { LucideIcon } from "lucide-react";
 import {
   Bell,
+  BellOff,
   Briefcase,
   Check,
   Download,
@@ -41,6 +42,7 @@ import {
   listIncomingFriendRequests,
   listMessages,
   listOutgoingFriendRequests,
+  muteConversation,
   openDirectConversation,
   searchUsers,
   sendFriendRequest,
@@ -67,11 +69,15 @@ const ROOM_TYPES: Array<{ value: Exclude<ConversationType, "DIRECT">; label: str
   { value: "PRIVATE", label: "비공개방", icon: Lock },
 ];
 
-const SHARE_MODES: Array<{ value: AttachmentShareMode; description: string }> = [
+/** 웹/모바일에서 선택 가능한 공유 방식. LOCAL(PC 공유 폴더)은 데스크톱 앱 전용이라 옵션을 렌더하지 않는다. */
+type WebShareMode = Exclude<AttachmentShareMode, "LOCAL">;
+
+const SHARE_MODES: Array<{ value: WebShareMode; description: string }> = [
   { value: "TEMPORARY", description: "서버에 임시 보관 후 만료" },
   { value: "CLOUD", description: "유료 플랜 저장소 파일 공유" },
-  { value: "LOCAL", description: "PC 공유 폴더 기반, 웹/모바일은 준비 중" },
 ];
+
+const MUTE_HELP = "알림 해제 방은 내 이름·키워드 언급 시에만 알림";
 
 const AVAILABILITY_LABEL: Record<AttachmentAvailability, string> = {
   AVAILABLE: "다운로드 가능",
@@ -183,7 +189,9 @@ function AttachmentButton({
   file: MessageAttachmentResponse;
   onDownload: (file: MessageAttachmentResponse) => void;
 }) {
-  const available = file.availability === "AVAILABLE";
+  // LOCAL 공유 첨부는 데스크톱 앱에서만 받을 수 있어 웹/모바일에서는 항상 비활성 표시한다.
+  const desktopOnly = file.shareMode === "LOCAL";
+  const available = !desktopOnly && file.availability === "AVAILABLE";
 
   return (
     <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-border bg-background/80 px-3 py-2">
@@ -193,7 +201,7 @@ function AttachmentButton({
           <span className="truncate">{file.originalName}</span>
         </div>
         <div className="mt-0.5 text-xs text-muted-foreground">
-          {SHARE_MODE_LABEL[file.shareMode]} · {formatBytes(file.sizeBytes)}
+          {desktopOnly ? "데스크톱 전용 파일" : SHARE_MODE_LABEL[file.shareMode]} · {formatBytes(file.sizeBytes)}
           {file.expiresAt ? ` · ${formatDateTime(file.expiresAt)} 만료` : ""}
         </div>
       </div>
@@ -203,10 +211,10 @@ function AttachmentButton({
         variant="outline"
         disabled={!available}
         onClick={() => onDownload(file)}
-        title={AVAILABILITY_LABEL[file.availability]}
+        title={desktopOnly ? "데스크톱 앱에서만 받을 수 있는 파일입니다." : AVAILABILITY_LABEL[file.availability]}
       >
         <Download className="size-4" />
-        {available ? "받기" : AVAILABILITY_LABEL[file.availability]}
+        {available ? "받기" : desktopOnly ? "데스크톱 전용" : AVAILABILITY_LABEL[file.availability]}
       </Button>
     </div>
   );
@@ -234,7 +242,7 @@ export function MessengerPage() {
 
   const [messageKind, setMessageKind] = useState<MessageKind>("CHAT");
   const [messageText, setMessageText] = useState("");
-  const [shareMode, setShareMode] = useState<AttachmentShareMode>("TEMPORARY");
+  const [shareMode, setShareMode] = useState<WebShareMode>("TEMPORARY");
   const [temporaryHours, setTemporaryHours] = useState(72);
   const [pendingFiles, setPendingFiles] = useState<FileAssetResponse[]>([]);
   const [selectedApplicationIds, setSelectedApplicationIds] = useState<number[]>([]);
@@ -394,26 +402,22 @@ export function MessengerPage() {
     upsertConversation(await inviteConversationMembers(activeConversation.id, [userId]));
   }, "친구를 초대했습니다.");
 
+  const toggleMute = (conversation: ConversationSummaryResponse) => execute(async () => {
+    const updated = await muteConversation(conversation.id, !conversation.muted);
+    setConversations((current) => current.map((item) => (
+      item.id === updated.id ? { ...item, muted: updated.muted } : item
+    )));
+  }, conversation.muted ? "채팅방 알림을 다시 켰습니다." : `채팅방 알림을 해제했습니다. ${MUTE_HELP}.`);
+
   const handleFiles = (event: ChangeEvent<HTMLInputElement>) => {
     const selected = Array.from(event.currentTarget.files ?? []);
     event.currentTarget.value = "";
     if (selected.length === 0) return;
 
     void execute(async () => {
-      if (shareMode === "LOCAL") {
-        throw new Error("로컬 파일 공유는 데스크톱 로컬 공유 폴더 연동이 준비된 뒤 사용할 수 있습니다.");
-      }
       const uploaded = await Promise.all(selected.map((file) => uploadCollaborationFile(file)));
       setPendingFiles((current) => [...current, ...uploaded]);
     }, `${selected.length}개 파일을 첨부했습니다.`);
-  };
-
-  const changeShareMode = (mode: AttachmentShareMode) => {
-    setShareMode(mode);
-    if (mode === "LOCAL") {
-      setPendingFiles([]);
-      setNotice("로컬 공유는 공유 폴더/세션 감지까지 붙은 뒤 활성화됩니다. 지금은 임시 또는 클라우드 공유를 사용해 주세요.");
-    }
   };
 
   const sendCurrentMessage = () => execute(async () => {
@@ -506,7 +510,12 @@ export function MessengerPage() {
                     )}
                   >
                     <div className="flex min-w-0 items-center justify-between gap-2">
-                      <div className="min-w-0 truncate text-sm font-semibold text-foreground">{conversation.displayName}</div>
+                      <div className="flex min-w-0 items-center gap-1.5">
+                        <div className="min-w-0 truncate text-sm font-semibold text-foreground">{conversation.displayName}</div>
+                        {conversation.muted && (
+                          <BellOff className="size-3.5 shrink-0 text-muted-foreground" aria-label="알림 해제됨" />
+                        )}
+                      </div>
                       <Badge variant="outline">{conversationTypeLabel(conversation.type)}</Badge>
                     </div>
                     <div className="line-clamp-2 text-xs text-muted-foreground">
@@ -747,6 +756,17 @@ export function MessengerPage() {
               <div className="flex items-center gap-2">
                 <Badge variant="outline">{conversationTypeLabel(activeConversation.type)}</Badge>
                 {activeConversation.locked && <Lock className="size-4 text-muted-foreground" />}
+                <Button
+                  type="button"
+                  size="icon"
+                  variant={activeConversation.muted ? "default" : "outline"}
+                  onClick={() => toggleMute(activeConversation)}
+                  disabled={busy}
+                  aria-label={activeConversation.muted ? "채팅방 알림 켜기" : "채팅방 알림 해제"}
+                  title={MUTE_HELP}
+                >
+                  {activeConversation.muted ? <BellOff className="size-4" /> : <Bell className="size-4" />}
+                </Button>
               </div>
             )}
           >
@@ -758,6 +778,15 @@ export function MessengerPage() {
                       <span>{activeConversation.memberCount}명</span>
                       <span>·</span>
                       <span>{formatDateTime(activeConversation.updatedAt)}</span>
+                      {activeConversation.muted && (
+                        <>
+                          <span>·</span>
+                          <span className="inline-flex items-center gap-1" title={MUTE_HELP}>
+                            <BellOff className="size-3.5" />
+                            알림 해제됨
+                          </span>
+                        </>
+                      )}
                       {activeConversation.description && (
                         <>
                           <span>·</span>
@@ -845,7 +874,7 @@ export function MessengerPage() {
                             <button
                               key={mode.value}
                               type="button"
-                              onClick={() => changeShareMode(mode.value)}
+                              onClick={() => setShareMode(mode.value)}
                               className={cn(
                                 "rounded-md border px-3 py-2 text-left text-xs",
                                 shareMode === mode.value
@@ -871,21 +900,13 @@ export function MessengerPage() {
                           </div>
                         )}
                         <div className="flex flex-wrap items-center gap-2">
-                          <label
-                            className={cn(
-                              "inline-flex h-9 cursor-pointer items-center justify-center gap-2 rounded-md border px-3 text-sm font-medium",
-                              shareMode === "LOCAL"
-                                ? "cursor-not-allowed opacity-50"
-                                : "border-border bg-background hover:bg-accent",
-                            )}
-                          >
+                          <label className="inline-flex h-9 cursor-pointer items-center justify-center gap-2 rounded-md border border-border bg-background px-3 text-sm font-medium hover:bg-accent">
                             <Paperclip className="size-4" />
                             파일 첨부
                             <input
                               type="file"
                               multiple
                               className="hidden"
-                              disabled={shareMode === "LOCAL"}
                               onChange={handleFiles}
                             />
                           </label>

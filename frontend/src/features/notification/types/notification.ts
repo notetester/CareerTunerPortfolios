@@ -15,7 +15,7 @@ export type AINotificationType =
   | "LOW_CONFIDENCE_REPORT"
   | "TICKET_DRAFT_READY";
 
-/* ── 비-AI 알림 — 사용자 (10개) ── */
+/* ── 비-AI 알림 — 사용자 ── */
 export type UserNotificationType =
   | "COMMENT"
   | "COMMENT_REPLY"
@@ -33,15 +33,22 @@ export type UserNotificationType =
   | "FRIEND_ACCEPTED"
   | "ROOM_INVITE"
   | "ROOM_MESSAGE"
+  | "NOTE_MESSAGE"
   | "ROOM_MENTION"
+  | "INTERVIEW_DISPATCH"
   | "RECOMMENDED_JOB"
+  | "RECOMMENDED_POST"
   | "MARKETING_AD"
   | "CREDIT_LOW"
   // 결제/크레딧 (E 결제 흐름에서 발생, billing 카테고리)
   | "PAYMENT_COMPLETE"
   | "PAYMENT_SCHEDULED"
   | "SUBSCRIPTION_CANCELED"
-  | "CREDIT_RECHARGED";
+  | "CREDIT_RECHARGED"
+  | "REFUND_RESULT";
+
+/* ── 발신자 관계 (댓글·답글·쪽지·채팅 알림의 세부 필터 차원) ── */
+export type SenderRelation = "stranger" | "friend" | "company" | "operator";
 
 /* ── 비-AI 알림 — 관리자 (3개) ── */
 export type AdminNotificationType =
@@ -77,6 +84,7 @@ export interface Notification {
   link?: string;
   targetType?: string;
   targetId?: number;
+  senderRelation?: SenderRelation;
   actorName?: string;
   actorId?: number;
   isRead: boolean;
@@ -127,9 +135,13 @@ export const TYPE_META: Record<NotificationType, TypeMeta> = {
   FRIEND_ACCEPTED:           { cat: "messenger",   icon: "UserPlus",           variant: "success", cta: "친구 목록 보기", actor: true },
   ROOM_INVITE:               { cat: "messenger",   icon: "MessageCircle",      variant: "info",    cta: "채팅방 보기", actor: true },
   ROOM_MESSAGE:              { cat: "messenger",   icon: "MessageCircle",      variant: "info",    cta: "메신저 열기", actor: true },
+  NOTE_MESSAGE:              { cat: "messenger",   icon: "Mail",               variant: "info",    cta: "쪽지 보기", actor: true },
   ROOM_MENTION:              { cat: "messenger",   icon: "MessageSquareReply", variant: "info",    cta: "언급 보기", actor: true },
+  /* 면접 세션 전달(데스크톱→폰 이어하기) */
+  INTERVIEW_DISPATCH:        { cat: "interview",   icon: "Smartphone",         variant: "info",    cta: "세션 이어하기" },
   /* 추천/마케팅 */
   RECOMMENDED_JOB:           { cat: "recommendation", icon: "Briefcase",       variant: "info",    cta: "추천 공고 보기" },
+  RECOMMENDED_POST:          { cat: "recommendation", icon: "FileText",        variant: "info",    cta: "추천 글 보기" },
   MARKETING_AD:              { cat: "marketing",   icon: "Megaphone",          variant: "info",    cta: "혜택 보기", urgent: false },
   /* 결제 */
   CREDIT_LOW:                { cat: "billing",     icon: "AlertTriangle",      variant: "warning", cta: "크레딧 충전" },
@@ -137,6 +149,7 @@ export const TYPE_META: Record<NotificationType, TypeMeta> = {
   PAYMENT_SCHEDULED:         { cat: "billing",     icon: "CreditCard",         variant: "info",    cta: "결제 예정 보기" },
   SUBSCRIPTION_CANCELED:     { cat: "billing",     icon: "CalendarX",          variant: "info",    cta: "구독 상태 보기" },
   CREDIT_RECHARGED:          { cat: "billing",     icon: "CreditCard",         variant: "success", cta: "크레딧 보기" },
+  REFUND_RESULT:             { cat: "billing",     icon: "CreditCard",         variant: "info",    cta: "환불 결과 보기" },
   /* 공지 */
   NOTICE:                    { cat: "notice",      icon: "Megaphone",          variant: "warning", cta: "공지 보기" },
   TICKET_ANSWERED:           { cat: "notice",      icon: "MessageSquareReply", variant: "info",    cta: "문의 답변 보기", actor: true },
@@ -216,8 +229,11 @@ export const TYPE_TO_CATEGORY: Record<NotificationType, NotificationCategory> = 
   FRIEND_ACCEPTED: "messenger",
   ROOM_INVITE: "messenger",
   ROOM_MESSAGE: "messenger",
+  NOTE_MESSAGE: "messenger",
   ROOM_MENTION: "messenger",
+  INTERVIEW_DISPATCH: "interview",
   RECOMMENDED_JOB: "recommendation",
+  RECOMMENDED_POST: "recommendation",
   MARKETING_AD: "marketing",
   /* 결제 */
   CREDIT_LOW: "billing",
@@ -225,6 +241,7 @@ export const TYPE_TO_CATEGORY: Record<NotificationType, NotificationCategory> = 
   PAYMENT_SCHEDULED: "billing",
   SUBSCRIPTION_CANCELED: "billing",
   CREDIT_RECHARGED: "billing",
+  REFUND_RESULT: "billing",
   /* 공지/문의 */
   NOTICE: "notice",
   TICKET_ANSWERED: "notice",
