@@ -12,6 +12,13 @@ public final class FitAnalysisPromptCatalog {
     private FitAnalysisPromptCatalog() {
     }
 
+    /**
+     * @deprecated <b>legacy 판단값 생성형 계약</b> — LLM 에게 fitScore/matched/missing/applyDecision 까지
+     * 생성시키던 초기 프롬프트다. provider 판단값 소유 통일(뉴로-심볼릭 전면화) 이후 fitanalysis provider 는
+     * {@link #FIT_EXPLAIN_SYSTEM_PROMPT}(설명 전용)만 사용한다. 새 코드에서 이 프롬프트로 판단값을
+     * 생성시키지 말 것(점수/판단은 서버 규칙엔진 소유). 기록·비교 목적으로만 보존한다.
+     */
+    @Deprecated
     public static final String SYSTEM_PROMPT = """
             너는 채용 공고 요구 조건과 지원자 스펙을 비교하는 커리어 적합도 분석가다.
             반드시 한국어로, 주어진 JSON 스키마에 맞는 결과만 생성한다.
@@ -51,8 +58,10 @@ public final class FitAnalysisPromptCatalog {
             + "\"strategyActions\": [\"...\"], \"learningTaskReasons\": [{\"skill\": \"...\", \"why\": \"...\"}]}";
 
     /**
-     * 사용자 프롬프트 본문 생성. 실 LLM 구현체에서 공고/프로필 입력을 채워 호출한다.
+     * @deprecated legacy 판단값 생성형 계약의 사용자 프롬프트({@link #SYSTEM_PROMPT} 짝). 뉴로-심볼릭 전면화
+     * 이후 fitanalysis provider 는 {@link #fitExplainUserPrompt} 만 사용한다. 기록·비교 목적으로만 보존한다.
      */
+    @Deprecated
     public static String userPrompt(String companyName,
                                     String jobTitle,
                                     String requiredSkills,
