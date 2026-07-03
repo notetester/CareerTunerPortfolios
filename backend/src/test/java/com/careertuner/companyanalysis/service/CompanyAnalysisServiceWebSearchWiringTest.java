@@ -256,6 +256,27 @@ class CompanyAnalysisServiceWebSearchWiringTest {
         assertThat(properties.getMaxResultsPerAnalysis()).isEqualTo(12);
     }
 
+    /**
+     * 리뷰 반영: 상한이 0/음수로 오설정돼도 flag ON 웹검색이 조용히 꺼지지 않는다(최소 1 클램프).
+     * 비활성화는 상한이 아니라 enabled=false 로만 한다.
+     */
+    @Test
+    void zeroOrNegativeCostCapsAreClampedSoWebSearchStaysActive() {
+        CompanyWebSearchProperties properties = enabled(true);
+        properties.setMaxSearchCallsPerAnalysis(0);
+        properties.setMaxResultsPerAnalysis(-5);
+        CompanyAnalysisService service = service(properties);
+        when(webSearchClient.search(any(NaverSearchCategory.class), any(String.class))).thenReturn(List.of(
+                result("가온테크", "https://news.example.com/1", "가온테크 관련")));
+
+        List<CompanyWebEvidence> evidence = service.collectWebEvidence(applicationCase("가온테크"));
+
+        // 클램프 덕에 최소 1회 검색·1건 결과 → 웹검색이 무효화되지 않는다.
+        verify(webSearchClient, times(1)).search(any(NaverSearchCategory.class), any(String.class));
+        assertThat(evidence).hasSize(1);
+        assertThat(evidence.get(0).url()).isEqualTo("https://news.example.com/1");
+    }
+
     // ── query_key 회사 단위 정규화 ──
 
     private String cacheKey(String companyName) {

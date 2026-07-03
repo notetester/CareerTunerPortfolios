@@ -25,9 +25,15 @@ public class CompanyWebSearchProperties {
 
     private boolean enabled = false;
 
-    /** 분석 1건당 검색 호출 상한(235 §7 3~5회 + 네이버 카테고리 4개 구조). */
+    /**
+     * 분석 1건당 검색 호출 상한(235 §7 3~5회 + 네이버 카테고리 4개 구조).
+     * 0/음수로 오설정돼도 서비스가 최소 1 로 클램프한다 — 웹검색 비활성화는 {@link #enabled}=false 로만 한다.
+     */
     private int maxSearchCallsPerAnalysis = 4;
 
-    /** 분석 1건당 입력/저장 결과 상한(정규화 URL 중복 제거 후 기준). */
+    /**
+     * 분석 1건당 입력/저장 결과 상한(정규화 URL 중복 제거 후 기준).
+     * 0/음수로 오설정돼도 서비스가 최소 1 로 클램프한다.
+     */
     private int maxResultsPerAnalysis = 12;
 }

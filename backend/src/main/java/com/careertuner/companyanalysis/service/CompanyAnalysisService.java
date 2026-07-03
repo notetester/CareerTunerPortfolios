@@ -251,8 +251,10 @@ public class CompanyAnalysisService {
      * 분석 1건당 검색 호출·결과 수 상한(비용 상한 · D-4c, {@link CompanyWebSearchProperties})에서 조기 중단한다.
      */
     private List<CompanyWebSearchResult> runSearch(CompanyIdentity identity) {
-        int maxSearchCalls = companyWebSearchProperties.getMaxSearchCallsPerAnalysis();
-        int maxResults = companyWebSearchProperties.getMaxResultsPerAnalysis();
+        // env 오설정(0/음수)으로 flag ON 인데 웹검색이 조용히 꺼지는 오진을 막는다 — 최소 1 로 클램프한다.
+        // 웹검색 비활성화는 상한이 아니라 enabled=false 로만 한다.
+        int maxSearchCalls = Math.max(1, companyWebSearchProperties.getMaxSearchCallsPerAnalysis());
+        int maxResults = Math.max(1, companyWebSearchProperties.getMaxResultsPerAnalysis());
         LinkedHashMap<String, CompanyWebSearchResult> byUrl = new LinkedHashMap<>();
         int calls = 0;
         for (String query : companySourceResolver.buildQueries(identity)) {
