@@ -733,6 +733,63 @@ class BAnalysisGenerationServiceTest {
         assertThat(result.payload().summary()).isEqualTo(summary);
     }
 
+    // ── 이슈 D 후속 A-4: OCR 깨진 토큰(자모 깨짐) 필터 ──
+
+    @Test
+    void a4DropsBrokenJamoTokensFromSkills() {
+        // 백패커·금융21 패턴: OCR 로 자모가 깨진 스킬 토큰("방ㄹ금논")은 제거하고 정상 스킬은 유지한다.
+        assertSkillsFiltered(
+                new String[]{"Java", "방ㄹ금논", "VMware", "ㄹ금논"},
+                "Java 와 VMware 기반 서버 운영 채용",
+                new String[]{"Java", "VMware"},
+                new String[]{"방ㄹ금논", "ㄹ금논"});
+    }
+
+    @Test
+    void a4StripsBrokenJamoFromDutiesButKeepsGroundedWords() {
+        // 자유서술에 낀 호환 자모 낱자는 인라인 제거하되, 같은 줄의 근거 단어는 보존한다(세그먼트 통째 삭제 아님).
+        String duties = "AWS 클라우드 인프라를 설계하고 구축하며 운영ㄹ 하고 장애 대응 및 신뢰성 관리를 담당합니다.";
+        BAnalysisGenerationService.GeneratedJobAnalysis result = runJobText(
+                duties,
+                "클라우드 엔지니어 경력. AWS 경험.",
+                "클라우드 엔지니어를 채용하는 공고입니다. 인프라를 운영합니다.",
+                List.of("AWS"),
+                "AWS 클라우드 인프라 설계 구축 운영. 장애 대응. 신뢰성 관리. 클라우드 엔지니어 경력.");
+
+        assertThat(result.fellBack()).isFalse();
+        assertThat(result.payload().duties())
+                .doesNotContainPattern("[ㄱ-ㅎㅏ-ㅣ]")
+                .contains("AWS 클라우드 인프라")
+                .contains("신뢰성 관리를 담당합니다");
+    }
+
+    @Test
+    void a4StripsBrokenJamoFromQualifications() {
+        // qualifications 의 자모 깨짐도 제거하되 근거 단어는 보존한다.
+        BAnalysisGenerationService.GeneratedJobAnalysis result = runJobText(
+                "AWS 인프라를 설계하고 구축하며 운영하고 신뢰성을 관리하는 업무를 폭넓게 담당합니다.",
+                "AWS 실무 경험ㄹ 보유. 컴퓨터공학 전공.",
+                "클라우드 엔지니어를 채용하는 공고입니다. 인프라를 운영합니다.",
+                List.of("AWS"),
+                "AWS 인프라 설계 구축 운영 신뢰성 관리. 실무 경험. 컴퓨터공학 전공.");
+
+        assertThat(result.fellBack()).isFalse();
+        assertThat(result.payload().qualifications())
+                .doesNotContainPattern("[ㄱ-ㅎㅏ-ㅣ]")
+                .contains("AWS 실무 경험")
+                .contains("컴퓨터공학 전공");
+    }
+
+    @Test
+    void a4CleanSkillsUnaffectedByJamoFilter() {
+        // 과제거 방지: 정상 한/영 스킬은 자모 필터에 걸리지 않는다.
+        assertSkillsFiltered(
+                new String[]{"Java", "Spring Boot", "마케팅기획", "TypeScript", "Kubernetes"},
+                "Java Spring Boot 마케팅기획 TypeScript Kubernetes 경험자 우대",
+                new String[]{"Java", "Spring Boot", "마케팅기획", "TypeScript", "Kubernetes"},
+                new String[]{});
+    }
+
     // ── 헬퍼 메서드 ──
 
     /**

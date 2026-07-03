@@ -366,6 +366,12 @@ public class BAnalysisGenerationService {
      */
     private JobText postProcessJobText(String duties, String qualifications, String summary,
                                        Classification classification) {
+        // A-4: OCR 깨짐(호환 자모)을 자유서술에서 먼저 제거한다. 주변 근거 단어는 보존하도록 낱자만 인라인 제거한다
+        //      (세그먼트 통째 삭제 시 같은 줄의 근거 내용까지 유실될 수 있어 근거성 회귀 위험).
+        duties = stripBrokenJamo(duties);
+        qualifications = stripBrokenJamo(qualifications);
+        summary = stripBrokenJamo(summary);
+
         List<String> segments = splitJobTextSegments(duties);
         String newQualifications = qualifications;
         boolean changed = false;
@@ -433,6 +439,22 @@ public class BAnalysisGenerationService {
 
     private static String compactWhitespace(String text) {
         return WHITESPACE_PATTERN.matcher(text).replaceAll("");
+    }
+
+    /**
+     * OCR 깨짐 신호인 호환 자모 낱자를 인라인 제거한다(정상 조합형 한글엔 없음). 낱자만 지워 주변 근거 단어를
+     * 보존하고, 제거로 생긴 공백 잡음만 정리한다(줄바꿈 보존). 낱자가 없거나 제거 후 공백뿐이면 원본을 유지한다.
+     */
+    private String stripBrokenJamo(String text) {
+        if (text == null || !BROKEN_JAMO_PATTERN.matcher(text).find()) {
+            return text;
+        }
+        String stripped = BROKEN_JAMO_PATTERN.matcher(text).replaceAll("");
+        stripped = stripped.replaceAll("[ \\t]{2,}", " ");
+        stripped = stripped.replaceAll(" +(\\R)", "$1");
+        stripped = stripped.replaceAll("(\\R) +", "$1");
+        stripped = stripped.trim();
+        return stripped.isBlank() ? text : stripped;
     }
 
     /** duties 총 길이가 임계 미만이면 과소추출로 본다(주요업무 보강 대상). */
@@ -762,6 +784,10 @@ public class BAnalysisGenerationService {
             return false;
         }
         if (trimmed.split("\\s+").length > SKILL_MAX_WORDS) {
+            return false;
+        }
+        // A-4: OCR 깨짐(호환 자모 낱자)이 섞인 토큰은 스킬이 아니다(백패커·금융21). NON_SKILL_PATTERN 계열 확장.
+        if (BROKEN_JAMO_PATTERN.matcher(trimmed).find()) {
             return false;
         }
         if (NON_SKILL_PATTERN.matcher(trimmed).find()) {
