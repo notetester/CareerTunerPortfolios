@@ -81,9 +81,11 @@ public class CompanyAnalysisService {
         String previousStatus = applicationCase.getStatus();
         statusService.markAnalyzing(userId, applicationCaseId, previousStatus);
         try {
-            GeneratedCompanyAnalysis generated = bAnalysisGenerationService.generateCompanyAnalysis(applicationCase, sourceText);
-            // flag ON 이면 회사 식별 → (캐시 or 검색) → WEB evidence 를 모은다. flag OFF 면 빈 목록.
+            // flag ON 이면 회사 식별 → (캐시 or 검색) → WEB evidence 를 한 번만 모은다. flag OFF 면 빈 목록.
+            // 같은 목록을 R1 생성 입력(공고+웹)과 저장 gate(2소스) 양쪽에 넘긴다.
             List<CompanyWebEvidence> webEvidence = collectWebEvidence(applicationCase);
+            GeneratedCompanyAnalysis generated =
+                    bAnalysisGenerationService.generateCompanyAnalysis(applicationCase, sourceText, webEvidence);
             // 자동 파이프라인 경로와 동일한 canonicalizer 로 저장 전 정규화한다
             // (evidence gate 2소스[공고+WEB], ID/sourceKind/sourceRef 보정, unknowns 접기, sources 통일).
             // webEvidence 가 빈 목록이면 7-param 은 기존 공고-only 6-param 과 동일 결과다(D-2 계약).

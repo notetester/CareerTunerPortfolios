@@ -1215,7 +1215,7 @@ class ApplicationCaseServiceImplTest {
 
         when(applicationCaseMapper.findApplicationCaseByIdAndUserId(10L, 1L)).thenReturn(applicationCase);
         when(jobPostingMapper.findLatestJobPostingByCaseId(10L)).thenReturn(posting);
-        when(bAnalysisGenerationService.generateCompanyAnalysis(applicationCase, "Backend platform job posting"))
+        when(bAnalysisGenerationService.generateCompanyAnalysis(eq(applicationCase), eq("Backend platform job posting"), any()))
                 .thenReturn(new GeneratedCompanyAnalysis(payload, null, null));
         when(companyAnalysisMapper.findLatestCompanyAnalysisByCaseId(10L)).thenReturn(CompanyAnalysis.builder()
                 .id(20L)
@@ -1253,7 +1253,7 @@ class ApplicationCaseServiceImplTest {
 
         when(applicationCaseMapper.findApplicationCaseByIdAndUserId(10L, 1L)).thenReturn(applicationCase);
         when(jobPostingMapper.findLatestJobPostingByCaseId(10L)).thenReturn(posting);
-        when(bAnalysisGenerationService.generateCompanyAnalysis(applicationCase, "Backend platform job posting"))
+        when(bAnalysisGenerationService.generateCompanyAnalysis(eq(applicationCase), eq("Backend platform job posting"), any()))
                 .thenReturn(new GeneratedCompanyAnalysis(payload, null, null));
         when(companyAnalysisMapper.findLatestCompanyAnalysisByCaseId(10L)).thenReturn(companyAnalysis());
 
@@ -1301,7 +1301,7 @@ class ApplicationCaseServiceImplTest {
                 .hasMessageContaining("현재 상태에서는 분석을 다시 실행할 수 없습니다.");
 
         verify(statusService, never()).markAnalyzing(1L, 10L, "CLOSED");
-        verify(bAnalysisGenerationService, never()).generateCompanyAnalysis(any(ApplicationCase.class), any());
+        verify(bAnalysisGenerationService, never()).generateCompanyAnalysis(any(ApplicationCase.class), any(), any());
         verify(companyAnalysisMapper, never()).insertCompanyAnalysis(any(CompanyAnalysis.class));
         verify(usageLogService, never()).recordSuccess(eq(1L), eq(10L), eq("COMPANY_RESEARCH"), any());
         verify(usageLogService, never()).recordFailure(eq(1L), eq(10L), eq("COMPANY_RESEARCH"), any());
@@ -1325,7 +1325,7 @@ class ApplicationCaseServiceImplTest {
                 .hasMessage("이미 분석이 진행 중입니다. 잠시 후 결과를 확인해 주세요.");
 
         verify(statusService, never()).markAnalyzing(1L, 10L, "ANALYZING");
-        verify(bAnalysisGenerationService, never()).generateCompanyAnalysis(any(ApplicationCase.class), any());
+        verify(bAnalysisGenerationService, never()).generateCompanyAnalysis(any(ApplicationCase.class), any(), any());
         verify(companyAnalysisMapper, never()).insertCompanyAnalysis(any(CompanyAnalysis.class));
         verify(usageLogService, never()).recordSuccess(eq(1L), eq(10L), eq("COMPANY_RESEARCH"), any());
         verify(usageLogService, never()).recordFailure(eq(1L), eq(10L), eq("COMPANY_RESEARCH"), any());
