@@ -103,9 +103,11 @@ public class ChatbotController {
     /** 확인 1턴 칩 문구 — quickReplies 로 그대로 노출되고, 클릭 시 이 텍스트가 다음 발화로 온다. */
     private static final String SIDE_Q_YES = "네, 답해주세요";
     private static final String SIDE_Q_NO = "아니요, 계속할게요";
-    /** ④에서 가드를 거는 수집 단계 — 발화가 슬롯/DB에 그대로 저장되는 단계만(오기록 차단이 목적). */
+    /** ④에서 가드를 거는 수집 단계. 원래 "발화가 저장되는 단계만"이었으나, EXTRACTING·AWAIT_MODE 도
+     *  대기/선택 중 질문("얼마나 걸려요?")이 폴/모드 입력으로 삼켜지는 표면이라 포함(F-15 — 두 단계는
+     *  발화 오기록이 없는 단계라 가드 추가의 부작용 없음). */
     private static final Set<String> ONB_GUARDED_STEPS = Set.of(
-            "JOB", "SKILLS", "AWAIT_POSTING", "AWAIT_COMPANY", "AWAIT_JOBTITLE");
+            "JOB", "SKILLS", "AWAIT_POSTING", "AWAIT_COMPANY", "AWAIT_JOBTITLE", "EXTRACTING", "AWAIT_MODE");
 
     /* ── (g′) 재시작 화이트리스트 — ④ 수집 대기 중 "면접 해줘"/"다시"류가 데이터로 오기록되는 것 차단 ── */
 
@@ -241,6 +243,26 @@ public class ChatbotController {
             log.debug("이탈성 질문 FAQ 스코어 계산 실패(가드 미발동): {}", e.getMessage());
             return false;
         }
+    }
+
+    /** EXTRACTING 폴 발화 화이트리스트(정규화 정확일치) — 프론트 자동 넛지·"지금 확인" 버튼이 보내는 문구. */
+    private static final Set<String> PROGRESS_POLL_UTTERANCES = Set.of(
+            "진행상황알려줘", "진행상황", "지금확인", "상태확인", "진행상황보여줘");
+
+    /** EXTRACTING 대기 중 폴 발화인지 — 질문 가드(F-15)에서 제외해 자동 폴링 루프가 끊기지 않게 한다. */
+    private static boolean isProgressPollUtterance(String question) {
+        if (question == null) {
+            return false;
+        }
+        return PROGRESS_POLL_UTTERANCES.contains(question.trim().toLowerCase().replace(" ", ""));
+    }
+
+    /** (F-14) 수집 단계(JOB/SKILLS)에서 데이터로 쓸 수 없는 답 — 긍정 단답 화이트리스트·1자 이하·빈 입력. */
+    private static boolean isUnusableCollectAnswer(String question) {
+        if (question == null || question.trim().length() <= 1) {
+            return true;
+        }
+        return isAffirmative(question);
     }
 
     /** 확인 응답 "네" 판정 — 칩 문구 정확일치, "답해" 포함, 또는 기존 긍정 화이트리스트(정확일치)만. */
@@ -383,8 +405,13 @@ public class ChatbotController {
             question = deferred; // 사용자가 "계속"을 골랐다 — 원 발화를 답변으로 저장하고 진행.
         }
         // step==null(진입 턴)은 수집 단계가 아님 + Set.of 는 contains(null) 에 NPE — null 가드 선행.
-        if (deferred == null && selectedCaseId == null && step != null
-                && ONB_GUARDED_STEPS.contains(step) && looksLikeSideQuestion(question)) {
+        // 칩/버튼 선택(selectedCaseId·selectedModeCode)은 질문일 수 없어 가드 제외 — AWAIT_MODE 가드 추가(F-15)로
+        // 모드 버튼 문구가 FAQ 유사도 오탐에 걸리는 것을 원천 차단. EXTRACTING 의 폴 발화("진행 상황 알려줘")도
+        // 질문이 아니라 프로토콜 넛지라 제외 — 여기 걸리면 자동 폴링 루프가 질문확인으로 끊긴다.
+        if (deferred == null && selectedCaseId == null && selectedModeCode == null && step != null
+                && ONB_GUARDED_STEPS.contains(step)
+                && !("EXTRACTING".equals(step) && isProgressPollUtterance(question))
+                && looksLikeSideQuestion(question)) {
             sideQuestionStore.defer(conversationId, question);
             responseLogService.record(conversationId, userId, question, "ONBOARDING", false, null, null, false);
             return new ChatAskResponse(conversationId,
@@ -399,17 +426,28 @@ public class ChatbotController {
             rm = new RouteMessage("④온보딩:직무",
                     "취업 준비, 막막하시죠? 같이 채워볼게요. 먼저 — 어떤 직무로 지원하세요? (예: 프론트엔드 개발자, 백엔드 개발자)");
         } else if ("JOB".equals(step)) {
-            intakeSlotTrace.recordOnboardingJob(conversationId, question);   // 유저 답 그대로(가공 0)
-            intakeSlotTrace.setOnboardingStep(conversationId, "SKILLS");
-            rm = new RouteMessage("④온보딩:기술",
-                    "좋아요. 주로 다루는 기술을 콤마(,)로 구분해서 알려주세요. 3~4개면 충분해요. (예: React, TypeScript, Spring)");
+            // (F-14) 긍정 단답("네","ㅇㅇ")·1자 답변은 직무로 오기록하지 않고 코드 고정 문구로 재질문.
+            if (isUnusableCollectAnswer(question)) {
+                rm = new RouteMessage("④온보딩:직무",
+                        "직무명으로 이해하지 못했어요. 지원하려는 직무를 알려주세요. (예: 백엔드 개발자)");
+            } else {
+                intakeSlotTrace.recordOnboardingJob(conversationId, question);   // 유저 답 그대로(가공 0)
+                intakeSlotTrace.setOnboardingStep(conversationId, "SKILLS");
+                rm = new RouteMessage("④온보딩:기술",
+                        "좋아요. 주로 다루는 기술을 콤마(,)로 구분해서 알려주세요. 3~4개면 충분해요. (예: React, TypeScript, Spring)");
+            }
         } else if ("SKILLS".equals(step)) {
-            intakeSlotTrace.recordOnboardingSkills(conversationId, question); // 그대로
-            intakeSlotTrace.setOnboardingStep(conversationId, "AWAIT_POSTING");
-            IntakeSlotTrace.OnboardingCollected got = intakeSlotTrace.onboarding(conversationId);
-            rm = new RouteMessage("④온보딩:공고요청",
-                    "받았어요 — 직무 \"" + got.job() + "\", 기술 \"" + got.skills()
-                            + "\". 이제 지원할 공고 전문을 붙여넣어 주세요(회사명·직무·자격요건이 담긴 원문이면 좋아요).");
+            if (isUnusableCollectAnswer(question)) {
+                rm = new RouteMessage("④온보딩:기술",
+                        "기술명으로 이해하지 못했어요. 주로 다루는 기술을 콤마(,)로 구분해서 알려주세요. (예: React, TypeScript)");
+            } else {
+                intakeSlotTrace.recordOnboardingSkills(conversationId, question); // 그대로
+                intakeSlotTrace.setOnboardingStep(conversationId, "AWAIT_POSTING");
+                IntakeSlotTrace.OnboardingCollected got = intakeSlotTrace.onboarding(conversationId);
+                rm = new RouteMessage("④온보딩:공고요청",
+                        "받았어요 — 직무 \"" + got.job() + "\", 기술 \"" + got.skills()
+                                + "\". 이제 지원할 공고 전문을 붙여넣어 주세요(회사명·직무·자격요건이 담긴 원문이면 좋아요).");
+            }
         } else if ("AWAIT_POSTING".equals(step)) {
             // 파일 경로(d′): 프론트가 공고 파일을 B 업로드로 먼저 지원 건으로 만들고 id 만 알려준 턴.
             rm = selectedCaseId != null
