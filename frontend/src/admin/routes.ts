@@ -35,6 +35,7 @@ import AdminTerms from "./features/terms/pages/AdminTerms";
 import { AdminActionLogsPage } from "./features/action-logs/pages/AdminActionLogsPage";
 import { AdminPoliciesPage } from "./features/policies/pages/AdminPoliciesPage";
 import { AdminSuperAdminPage } from "./features/super-admin/pages/AdminSuperAdminPage";
+import { AdminSecurityOpsPage } from "./features/security-ops/pages/AdminSecurityOpsPage";
 
 export const adminRoutes = [
   { path: "admin", Component: AdminDashboardPage },
@@ -49,6 +50,7 @@ export const adminRoutes = [
   { path: "admin/prompts/analytics", Component: AdminAnalyticsPromptsPage },
   { path: "admin/users", Component: AdminUsersPage },
   { path: "admin/users/blocked", Component: AdminBlockedUsersPage },
+  { path: "admin/security", Component: AdminSecurityOpsPage },
   { path: "admin/audit/security", Component: AdminSecurityAuditPage },
   { path: "admin/audit/email", Component: AdminEmailAuditPage },
   { path: "admin/profiles", Component: AdminProfilesPage },
