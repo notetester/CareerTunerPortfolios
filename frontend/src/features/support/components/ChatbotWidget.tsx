@@ -14,7 +14,7 @@ import { SUGGESTED_QUESTIONS } from "../types/chatbot";
 import { AutoPrepWorkView } from "@/features/autoprep/components/AutoPrepWorkView";
 
 /** 오케스트레이터 정체성 글리프(U+2726). */
-const ORCH_GLYPH = "✦";
+// 오케스트레이터 글리프 — Sparkles 아이콘으로 렌더 (이모지 미사용)
 
 const ICON_MAP = { KeyRound, CreditCard, FileText } as const;
 
@@ -243,8 +243,8 @@ function ChatbotPanel({ chatbot }: ChatbotPanelProps) {
 function OrchestratorAvatar({ size = 28, iconScale = 0.52 }: { size?: number; iconScale?: number }) {
   return (
     <div className="rounded-full flex items-center justify-center text-white shrink-0 font-bold"
-      style={{ width: size, height: size, background: "var(--gradient-orchestrator)", fontSize: size * iconScale }}>
-      {ORCH_GLYPH}
+      style={{ width: size, height: size, background: "var(--gradient-orchestrator)" }}>
+      <Sparkles style={{ width: size * iconScale, height: size * iconScale }} />
     </div>
   );
 }
@@ -256,7 +256,7 @@ function ModeBanner({ subtitle, onExit }: { subtitle: string; onExit: () => void
       style={{ background: "var(--gradient-orchestrator)" }}>
       <div className="w-[26px] h-[26px] rounded-[8px] flex items-center justify-center text-white shrink-0 font-bold text-[14px]"
         style={{ background: "rgba(255,255,255,0.16)" }}>
-        {ORCH_GLYPH}
+        <Sparkles className="size-3.5" />
       </div>
       <div className="leading-tight min-w-0 flex-1">
         <div className="text-[12.5px] font-extrabold">AI 오케스트레이터</div>

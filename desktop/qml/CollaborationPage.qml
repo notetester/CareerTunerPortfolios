@@ -665,11 +665,15 @@ Item {
                                     radius: 7
                                     color: Theme.raised
                                     border.color: Theme.border
+                                    Icon {
+                                        x: 8; anchors.verticalCenter: parent.verticalCenter
+                                        name: "paperclip"; size: 10; color: Theme.muted
+                                    }
                                     Text {
                                         id: pendingName
-                                        x: 8; anchors.verticalCenter: parent.verticalCenter
-                                        width: parent.width - 30
-                                        text: "📎 " + file["name"]
+                                        x: 22; anchors.verticalCenter: parent.verticalCenter
+                                        width: parent.width - 44
+                                        text: file["name"]
                                         color: Theme.text; font.pixelSize: 10
                                         elide: Text.ElideRight
                                     }
@@ -759,7 +763,7 @@ Item {
                             Rectangle {
                                 width: 38; height: 34; radius: 8
                                 color: Theme.raised; border.color: Theme.border
-                                Text { anchors.centerIn: parent; text: "📎"; font.pixelSize: 14 }
+                                Icon { anchors.centerIn: parent; name: "paperclip"; size: 15; color: Theme.muted }
                                 MouseArea {
                                     anchors.fill: parent
                                     enabled: collaboration.currentConversationId > 0

@@ -30,7 +30,7 @@ Item {
                     anchors.fill: parent
                     anchors.leftMargin: 16; anchors.rightMargin: 16
                     spacing: 12
-                    Text { text: "🖥️"; font.pixelSize: 20 }
+                    Icon { name: "monitor"; size: 20; color: Theme.muted; Layout.preferredWidth: 20; Layout.preferredHeight: 20 }
                     ColumnLayout {
                         Layout.fillWidth: true
                         spacing: 3
@@ -62,7 +62,7 @@ Item {
                     anchors.fill: parent
                     anchors.leftMargin: 16; anchors.rightMargin: 16
                     spacing: 12
-                    Text { text: "📱"; font.pixelSize: 20 }
+                    Icon { name: "smartphone"; size: 20; color: Theme.muted; Layout.preferredWidth: 20; Layout.preferredHeight: 20 }
                     ColumnLayout {
                         Layout.fillWidth: true
                         spacing: 3

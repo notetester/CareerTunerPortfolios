@@ -67,15 +67,17 @@ Item {
                                     anchors.fill: parent
                                     anchors.leftMargin: 14; anchors.rightMargin: 14
                                     spacing: 9
-                                    Text {
-                                        text: "▸"
-                                        color: Theme.muted; font.pixelSize: 9
+                                    Icon {
+                                        name: "chevron"; size: 9; color: Theme.muted
+                                        Layout.preferredWidth: 9; Layout.preferredHeight: 9
                                         rotation: stepItem.expanded ? 90 : 0
                                         Behavior on rotation { NumberAnimation { duration: 120 } }
                                     }
-                                    Text {
-                                        text: stepItem.modelData.status === "DONE" || stepItem.modelData.status === "SUCCESS" ? "✓" : "•"
-                                        color: Theme.good; font.pixelSize: 12
+                                    Item {
+                                        Layout.preferredWidth: 12; Layout.preferredHeight: 12
+                                        property bool ok: stepItem.modelData.status === "DONE" || stepItem.modelData.status === "SUCCESS"
+                                        Icon { visible: parent.ok; anchors.centerIn: parent; name: "check"; size: 12; color: Theme.good }
+                                        Text { visible: !parent.ok; anchors.centerIn: parent; text: "•"; color: Theme.good; font.pixelSize: 12 }
                                     }
                                     Text {
                                         text: stepItem.modelData.action !== "" ? stepItem.modelData.action : stepItem.modelData.agent
@@ -200,7 +202,7 @@ Item {
                     Layout.alignment: Qt.AlignTop
                     width: 30; height: 30; radius: 8
                     color: Theme.accentSoft
-                    Text { anchors.centerIn: parent; text: "🤖"; font.pixelSize: 13 }
+                    Icon { anchors.centerIn: parent; name: "spark"; size: 13; color: Theme.accentText }
                 }
                 ColumnLayout {
                     Layout.fillWidth: true
@@ -262,7 +264,12 @@ Item {
                     RowLayout {
                         spacing: 8
                         Text { text: "내 답변"; color: Theme.muted; font.pixelSize: 11 }
-                        Text { visible: data_.hasAudio === true; text: "🎙 음성"; color: Theme.muted; font.pixelSize: 10 }
+                        Row {
+                            visible: data_.hasAudio === true
+                            spacing: 5
+                            Icon { name: "mic"; size: 10; color: Theme.muted; anchors.verticalCenter: parent.verticalCenter }
+                            Text { text: "음성"; color: Theme.muted; font.pixelSize: 10; anchors.verticalCenter: parent.verticalCenter }
+                        }
                     }
                     Rectangle {
                         Layout.fillWidth: true
@@ -330,12 +337,17 @@ Item {
                                 Rectangle {
                                     visible: scoreRoot.data_.voiceScore >= 0
                                     height: 20; radius: 10
-                                    width: vsLbl.implicitWidth + 16
+                                    width: vsRow.implicitWidth + 16
                                     color: Theme.accentSoft
-                                    Text {
-                                        id: vsLbl; anchors.centerIn: parent
-                                        text: "전달력 " + scoreRoot.data_.voiceScore + " 🎙"
-                                        color: Theme.accent; font.pixelSize: 10
+                                    Row {
+                                        id: vsRow; anchors.centerIn: parent
+                                        spacing: 5
+                                        Icon { name: "mic"; size: 10; color: Theme.accent; anchors.verticalCenter: parent.verticalCenter }
+                                        Text {
+                                            text: "전달력 " + scoreRoot.data_.voiceScore
+                                            color: Theme.accent; font.pixelSize: 10
+                                            anchors.verticalCenter: parent.verticalCenter
+                                        }
                                     }
                                 }
                             }
@@ -367,7 +379,11 @@ Item {
                         ColumnLayout {
                             x: 12; y: 10; width: parent.width - 24
                             spacing: 6
-                            Text { text: "✨ 개선 답변 제안"; color: Theme.good; font.pixelSize: 11; font.bold: true }
+                            Row {
+                                spacing: 6
+                                Icon { name: "zap"; size: 11; color: Theme.good; anchors.verticalCenter: parent.verticalCenter }
+                                Text { text: "개선 답변 제안"; color: Theme.good; font.pixelSize: 11; font.bold: true; anchors.verticalCenter: parent.verticalCenter }
+                            }
                             Text {
                                 id: impText
                                 Layout.fillWidth: true
@@ -389,7 +405,11 @@ Item {
                         ColumnLayout {
                             x: 12; y: 10; width: parent.width - 24
                             spacing: 6
-                            Text { text: "📘 모범답안"; color: Theme.info; font.pixelSize: 11; font.bold: true }
+                            Row {
+                                spacing: 6
+                                Icon { name: "file"; size: 11; color: Theme.info; anchors.verticalCenter: parent.verticalCenter }
+                                Text { text: "모범답안"; color: Theme.info; font.pixelSize: 11; font.bold: true; anchors.verticalCenter: parent.verticalCenter }
+                            }
                             Text {
                                 id: modelText
                                 Layout.fillWidth: true

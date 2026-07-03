@@ -86,7 +86,7 @@ ApplicationWindow {
         function onVoiceScored(score) { win.showToast("전달력 채점 — " + score + "점", "음성 전달력 평가가 반영되었습니다") }
         function onExported(path, what) { win.showToast(what + " 저장됨", path) }
         function onErrorOccurred(message) { win.showToast("오류", message) }
-        function onSessionFinished() { win.showToast("세션 완료 🎉", "모든 질문에 답변했습니다 — 리포트를 확인하세요") }
+        function onSessionFinished() { win.showToast("세션 완료", "모든 질문에 답변했습니다 — 리포트를 확인하세요") }
     }
 
     Connections {
@@ -123,6 +123,24 @@ ApplicationWindow {
     }
 
     NewJobDialog { id: newJobDialog }
+
+    // ── 앰비언트 라이트 (상단 인디고 워시 — Linear Modern 레이어드 배경) ──
+    Canvas {
+        anchors.fill: parent
+        z: 0
+        opacity: 0.8
+        onPaint: {
+            const ctx = getContext("2d")
+            ctx.clearRect(0, 0, width, height)
+            const g = ctx.createRadialGradient(width / 2, -80, 0, width / 2, -80, 420)
+            g.addColorStop(0, "rgba(94,106,210,0.10)")
+            g.addColorStop(1, "rgba(94,106,210,0)")
+            ctx.fillStyle = g
+            ctx.fillRect(0, 0, width, height)
+        }
+        onWidthChanged: requestPaint()
+        onHeightChanged: requestPaint()
+    }
 
     // ── 자동 로그인 스플래시 ──
     Rectangle {
@@ -179,13 +197,18 @@ ApplicationWindow {
                     // 안읽음 카운트 칩
                     Rectangle {
                         visible: notifications.unread > 0
-                        width: badgeText.implicitWidth + 12; height: 18; radius: 9
+                        width: badgeRow.implicitWidth + 16; height: 18; radius: 9
                         color: Theme.accentSoft
-                        Text {
-                            id: badgeText
+                        Row {
+                            id: badgeRow
                             anchors.centerIn: parent
-                            text: notifications.unread > 99 ? "99+" : notifications.unread
-                            color: Theme.accent; font.pixelSize: 10; font.bold: true
+                            spacing: 4
+                            Icon { name: "bell"; size: 10; color: Theme.accentText; anchors.verticalCenter: parent.verticalCenter }
+                            Text {
+                                text: notifications.unread > 99 ? "99+" : notifications.unread
+                                color: Theme.accentText; font.pixelSize: 10; font.bold: true
+                                anchors.verticalCenter: parent.verticalCenter
+                            }
                         }
                     }
                     // 알림 벨 — 클릭 시 알림 센터 팝업 (빨간 점 = 안읽음 존재)
@@ -232,18 +255,28 @@ ApplicationWindow {
                     Layout.fillWidth: true
                     height: 34; radius: 8
                     color: win.view === "home" ? Theme.accentSoft : "transparent"
-                    Text {
+                    Row {
                         x: 12; anchors.verticalCenter: parent.verticalCenter
-                        text: "⚡ AI 자동 준비"
-                        color: win.view === "home" ? Theme.text : Theme.muted
-                        font.pixelSize: 13
+                        spacing: 7
+                        Icon {
+                            name: "zap"; size: 13
+                            color: win.view === "home" ? Theme.accentText : Theme.muted
+                            anchors.verticalCenter: parent.verticalCenter
+                        }
+                        Text {
+                            text: "AI 자동 준비"
+                            color: win.view === "home" ? Theme.text : Theme.muted
+                            font.pixelSize: 13
+                            anchors.verticalCenter: parent.verticalCenter
+                        }
                     }
                     MouseArea { anchors.fill: parent; onClicked: win.view = "home" }
                 }
 
                 Text {
-                    text: "세션"
-                    color: Theme.muted; font.pixelSize: 10; font.bold: true
+                    text: "SESSIONS"
+                    color: Theme.muted; font.pixelSize: 9; font.bold: true
+                    font.family: Theme.monoFont; font.letterSpacing: 1.6
                     Layout.leftMargin: 6; Layout.topMargin: 4
                 }
 
@@ -331,11 +364,11 @@ ApplicationWindow {
                     spacing: 4
                     Repeater {
                         model: [
-                            { icon: "💬", key: "collaboration", tip: "친구와 대화" },
-                            { icon: "📋", key: "board",    tip: "커뮤니티 게시판" },
-                            { icon: "🖥️", key: "devices",  tip: "연결된 기기" },
-                            { icon: "📱", key: "phone",    tip: "폰 연동 패널" },
-                            { icon: "⚙️", key: "settings", tip: "설정" }
+                            { icon: "message",    key: "collaboration", tip: "친구와 대화" },
+                            { icon: "list",       key: "board",    tip: "커뮤니티 게시판" },
+                            { icon: "monitor",    key: "devices",  tip: "연결된 기기" },
+                            { icon: "smartphone", key: "phone",    tip: "폰 연동 패널" },
+                            { icon: "gear",       key: "settings", tip: "설정" }
                         ]
                         delegate: Rectangle {
                             required property var modelData
@@ -343,7 +376,12 @@ ApplicationWindow {
                             height: 32; radius: 8
                             color: (modelData.key === "phone" && win.phoneOpen)
                                    || win.view === modelData.key ? Theme.accentSoft : "transparent"
-                            Text { anchors.centerIn: parent; text: modelData.icon; font.pixelSize: 14 }
+                            Icon {
+                                anchors.centerIn: parent
+                                name: modelData.icon; size: 15
+                                color: (modelData.key === "phone" && win.phoneOpen)
+                                       || win.view === modelData.key ? Theme.accentText : Theme.muted
+                            }
                             MouseArea {
                                 anchors.fill: parent
                                 cursorShape: Qt.PointingHandCursor
@@ -420,18 +458,30 @@ ApplicationWindow {
                         visible: win.view === "thread" || win.view === "report"
                         spacing: 8
                         Rectangle {
-                            width: dispatchLbl.implicitWidth + 22; height: 30; radius: 8
+                            width: dispatchRow.implicitWidth + 24; height: 30; radius: 8
                             color: Theme.raised; border.color: Theme.border
-                            Text { id: dispatchLbl; anchors.centerIn: parent; text: "📲 폰으로 보내기"; color: Theme.text; font.pixelSize: 12 }
+                            Row {
+                                id: dispatchRow
+                                anchors.centerIn: parent
+                                spacing: 6
+                                Icon { name: "smartphone"; size: 13; color: Theme.muted; anchors.verticalCenter: parent.verticalCenter }
+                                Text { text: "폰으로 보내기"; color: Theme.text; font.pixelSize: 12; anchors.verticalCenter: parent.verticalCenter }
+                            }
                             MouseArea {
                                 anchors.fill: parent; cursorShape: Qt.PointingHandCursor
                                 onClicked: { jobModel.dispatchToPhone(session.sessionId); win.phoneOpen = true }
                             }
                         }
                         Rectangle {
-                            width: saveLbl.implicitWidth + 22; height: 30; radius: 8
+                            width: saveRow.implicitWidth + 24; height: 30; radius: 8
                             color: Theme.raised; border.color: Theme.border
-                            Text { id: saveLbl; anchors.centerIn: parent; text: "💾 자료 저장"; color: Theme.text; font.pixelSize: 12 }
+                            Row {
+                                id: saveRow
+                                anchors.centerIn: parent
+                                spacing: 6
+                                Icon { name: "download"; size: 13; color: Theme.muted; anchors.verticalCenter: parent.verticalCenter }
+                                Text { text: "자료 저장"; color: Theme.text; font.pixelSize: 12; anchors.verticalCenter: parent.verticalCenter }
+                            }
                             MouseArea {
                                 anchors.fill: parent; cursorShape: Qt.PointingHandCursor
                                 onClicked: session.exportAll()

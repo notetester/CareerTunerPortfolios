@@ -114,3 +114,22 @@ export interface AdminFitAnalysisMemoRequest {
   memoType: string;
   content: string;
 }
+
+/** gate 통계의 빈출 claim 항목(최대 10건). */
+export interface AdminGateStatsTopClaim {
+  claim: string;
+  count: number;
+}
+
+/** review-first evidence gate(R3) 운영 통계 요약. */
+export interface AdminGateStats {
+  total: number;
+  byGateStatus: Record<string, number>;
+  byReviewStatus: Record<string, number>;
+  byMaxSeverity: Record<string, number>;
+  byReasonType: Record<string, number>;
+  byReasonSeverity: Record<string, number>;
+  /** 파싱 불가 reasons JSON 건수. 0보다 크면 데이터 정합성 확인 필요. */
+  brokenReasonsJsonCount: number;
+  topClaims: AdminGateStatsTopClaim[];
+}

@@ -31,6 +31,11 @@ public class BAnalysisProperties {
         private int numCtx = 8192;
         private int maxRetries = 1;
         private double groundingThreshold = 0.6;
+        /**
+         * 로컬 LLM <b>시도 1건</b>의 read timeout 상한(총 시간예산). 0 또는 음수 = 무제한(OFF, 기본).
+         * 재시도(maxRetries)는 서비스 계층에서 수행되므로 총 상한 = (maxRetries+1) x 이 값.
+         */
+        private Duration totalTimeBudget = Duration.ZERO;
 
         public String chatUrl() {
             return baseUrl.replaceAll("/+$", "") + "/api/chat";

@@ -1,6 +1,7 @@
 import { api } from "@/app/lib/api";
 import type {
   AdminGateReviewRequest,
+  AdminGateStats,
   AdminFitAnalysisDetail,
   AdminFitAnalysisListItem,
   AdminFitAnalysisMemo,
@@ -10,6 +11,10 @@ import type {
 export function getAdminFitAnalyses(reviewRequiredOnly = false) {
   const query = reviewRequiredOnly ? "?reviewRequiredOnly=true" : "";
   return api<AdminFitAnalysisListItem[]>(`/admin/fit-analyses${query}`);
+}
+
+export function getAdminGateStats() {
+  return api<AdminGateStats>("/admin/fit-analyses/gate-stats");
 }
 
 export function getAdminFitAnalysis(id: number) {

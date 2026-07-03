@@ -7,6 +7,8 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+import java.util.ArrayDeque;
+import java.util.Deque;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -17,6 +19,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
+import com.careertuner.ai.common.budget.AiTotalTimeBudget;
 import com.careertuner.ai.common.gpu.GpuPermitGate;
 import com.careertuner.common.exception.BusinessException;
 import com.careertuner.common.exception.ErrorCode;
@@ -95,15 +98,16 @@ public class CareerAnalysisOssClient {
 
         int attempts = Math.max(1, oss.getMaxRetries() + 1);
         long backoffMs = Math.max(0, oss.getRetryBackoff().toMillis());
-        // 총 시간예산(deadline): 재시도·백오프를 포함한 전체 상한(E totalTimeBudget 패턴).
-        long deadlineNanos = System.nanoTime() + positive(oss.getTotalTimeBudget()).toNanos();
+        // 총 시간예산: 재시도·백오프를 포함한 전체 상한(E totalTimeBudget 패턴). 0/음수면 무제한(OFF).
+        AiTotalTimeBudget budget = AiTotalTimeBudget.start(oss.getTotalTimeBudget());
         try {
-            return withRetryWithinBudget(attempts, backoffMs, deadlineNanos,
-                    remaining -> sendOnce(oss, payload, min(oss.getTimeout(), remaining)));
+            return withRetryWithinBudget(attempts, backoffMs, oss.getTimeout(), budget,
+                    timeout -> sendOnce(oss, payload, timeout));
         } catch (OssTransientException ex) {
             // 일시적 실패가 재시도/예산까지 모두 소진 → 폴백 유도.
-            log.warn("C 자체모델 시도 소진(최대 {}회/예산 {}s) → OpenAI/Mock 폴백 유도: {}",
-                    attempts, positive(oss.getTotalTimeBudget()).toSeconds(), ex.getMessage());
+            log.warn("C 자체모델 시도 소진(최대 {}회/예산 {}) → OpenAI/Mock 폴백 유도: {}",
+                    attempts, budget.unlimited() ? "무제한" : oss.getTotalTimeBudget().toSeconds() + "s",
+                    ex.getMessage());
             throw new BusinessException(ErrorCode.INTERNAL_ERROR, ex.getMessage());
         }
     }
@@ -159,8 +163,77 @@ public class CareerAnalysisOssClient {
             warnIfForbiddenKeys(node);
             return node;
         } catch (JacksonException ex) {
+            // post-R3 재벤치마크 실측: 3B PARSE_FAIL 은 전부 "닫는 괄호가 잘린 truncation"이었다
+            // (decision_hold 류 긴 설명에서 발생). 닫힘 괄호 보충만으로 복구 가능한 손상은 여기서
+            // 수리해 재시도/폴백 없이 살린다 — 판단값은 규칙엔진 소유라 설명 JSON 수리가 안전하다.
+            String repaired = repairTruncatedJson(text);
+            if (repaired != null) {
+                try {
+                    JsonNode node = objectMapper.readTree(repaired);
+                    log.info("C 자체모델 truncated JSON 수리 성공(닫힘 괄호 {}자 보충).",
+                            repaired.length() - text.length());
+                    warnIfForbiddenKeys(node);
+                    return node;
+                } catch (JacksonException ignored) {
+                    // 수리 실패 — 아래 기존 경로(재시도 대상)로.
+                }
+            }
             throw new OssTransientException("C 자체모델 응답이 JSON 형식이 아닙니다.");
         }
+    }
+
+    /**
+     * truncation 손상 한정 JSON 수리 — 문자열/이스케이프 상태를 추적하며 {@code {}/[]} 스택을 세고,
+     * 끝에서 열린 괄호만 남았으면 닫힘 괄호를 보충한다. 괄호 불일치(스택 오염)나 문자열 중간 절단
+     * (닫히지 않은 따옴표)은 수리 대상이 아니므로 null 을 돌려 기존 실패 경로를 유지한다.
+     */
+    static String repairTruncatedJson(String text) {
+        Deque<Character> stack = new ArrayDeque<>();
+        boolean inString = false;
+        boolean escaped = false;
+        for (int i = 0; i < text.length(); i++) {
+            char c = text.charAt(i);
+            if (escaped) {
+                escaped = false;
+                continue;
+            }
+            if (inString) {
+                if (c == '\\') {
+                    escaped = true;
+                } else if (c == '"') {
+                    inString = false;
+                }
+                continue;
+            }
+            switch (c) {
+                case '"' -> inString = true;
+                case '{' -> stack.push('}');
+                case '[' -> stack.push(']');
+                case '}', ']' -> {
+                    if (stack.isEmpty() || stack.peek() != c) {
+                        return null; // 괄호 불일치 — truncation 이 아닌 구조 손상
+                    }
+                    stack.pop();
+                }
+                default -> { }
+            }
+        }
+        if (inString || stack.isEmpty()) {
+            return null; // 문자열 중간 절단이거나 이미 균형(다른 원인의 파싱 실패)
+        }
+        StringBuilder repaired = new StringBuilder(text);
+        // 잘린 꼬리의 ,(trailing comma) 는 닫힘 보충 전에 제거
+        int end = repaired.length();
+        while (end > 0 && Character.isWhitespace(repaired.charAt(end - 1))) {
+            end--;
+        }
+        if (end > 0 && repaired.charAt(end - 1) == ',') {
+            repaired.delete(end - 1, repaired.length());
+        }
+        while (!stack.isEmpty()) {
+            repaired.append(stack.pop());
+        }
+        return repaired.toString();
     }
 
     /** 모델 출력에 금지키(점수/판단)가 섞였는지 관측 로깅 — 화이트리스트 병합이 무시하지만 실패 분류/감사에 쓴다. */
@@ -176,25 +249,25 @@ public class CareerAnalysisOssClient {
     }
 
     /**
-     * 일시적 실패({@link OssTransientException})만 최대 {@code attempts} 회까지, <b>총 시간예산(deadline) 안에서만</b>
+     * 일시적 실패({@link OssTransientException})만 최대 {@code attempts} 회까지, <b>총 시간예산 안에서만</b>
      * 재시도한다(선형 백오프 — 단, 남은 예산으로 절삭). 예산이 소진되면 남은 시도 여부와 무관하게 중단한다.
-     * attempt 콜백은 남은 예산(Duration)을 받아 per-attempt 타임아웃 절삭에 쓴다.
+     * 예산이 0/음수(무제한, {@link AiTotalTimeBudget#unlimited()})면 예산 체크 없이 기존 무예산 경로처럼 동작한다.
+     * attempt 콜백은 남은 예산으로 절삭된 per-attempt 타임아웃(Duration)을 받는다.
      * 그 외 예외(예: {@link BusinessException} 4xx)는 재시도 없이 즉시 전파한다.
      */
-    static <T> T withRetryWithinBudget(int attempts, long backoffMs, long deadlineNanos,
-                                       Function<Duration, T> attempt) {
+    static <T> T withRetryWithinBudget(int attempts, long backoffMs, Duration perAttemptTimeout,
+                                       AiTotalTimeBudget budget, Function<Duration, T> attempt) {
         OssTransientException last = null;
         for (int i = 0; i < attempts; i++) {
-            Duration remaining = remaining(deadlineNanos);
-            if (remaining.isZero() || remaining.isNegative()) {
+            if (budget.expired()) {
                 throw last != null ? last : new OssTransientException("C 자체모델 총 시간예산이 소진되었습니다.");
             }
             try {
-                return attempt.apply(remaining);
+                return attempt.apply(budget.cap(perAttemptTimeout));
             } catch (OssTransientException ex) {
                 last = ex;
                 if (i < attempts - 1 && backoffMs > 0) {
-                    long sleepMs = Math.min(backoffMs * (i + 1L), Math.max(0, remaining(deadlineNanos).toMillis()));
+                    long sleepMs = budget.capBackoffMs(backoffMs * (i + 1L));
                     if (sleepMs > 0) {
                         try {
                             Thread.sleep(sleepMs);
@@ -207,14 +280,6 @@ public class CareerAnalysisOssClient {
             }
         }
         throw last;
-    }
-
-    private static Duration remaining(long deadlineNanos) {
-        return Duration.ofNanos(deadlineNanos - System.nanoTime());
-    }
-
-    private static Duration min(Duration a, Duration b) {
-        return a.compareTo(b) <= 0 ? a : b;
     }
 
     private static Duration positive(Duration value) {
