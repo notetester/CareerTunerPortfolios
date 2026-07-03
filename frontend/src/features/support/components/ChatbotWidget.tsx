@@ -16,6 +16,7 @@ import type {
 import { SUGGESTED_QUESTIONS } from "../types/chatbot";
 import type { GuideStep } from "../onboarding/guideData";
 import { AutoPrepWorkView } from "@/features/autoprep/components/AutoPrepWorkView";
+import { displayCompany, displayJobTitle, displayCaseText } from "@/features/autoprep/lib/caseLabels";
 import { OnboardingGuide, type ServerGuidePhase } from "./OnboardingGuide";
 
 /** 오케스트레이터 정체성 글리프(U+2726). */
@@ -754,7 +755,10 @@ function IntakeChips({ intake, onSelectCase, onSelectMode, onNewCase }: {
 }
 
 function ApplicationChip({ candidate, onSelect }: { candidate: IntakeCaseCandidate; onSelect: () => void }) {
-  const initial = candidate.companyName?.trim().charAt(0) || "?";
+  // placeholder 원문("기업명 확인 필요")은 표시 계층에서 "미확인"으로(F-02) — 진행 차단은 백엔드 게이트 소관.
+  const company = displayCompany(candidate.companyName);
+  const jobTitle = displayJobTitle(candidate.jobTitle);
+  const initial = company.charAt(0) || "?";
   return (
     <button onClick={onSelect} role="button"
       className="group flex items-center gap-2.5 w-full min-h-[56px] px-3 py-2.5 rounded-[13px] bg-card text-left transition-all hover:shadow-[0_4px_12px_rgba(109,40,217,0.10)]"
@@ -764,8 +768,8 @@ function ApplicationChip({ candidate, onSelect }: { candidate: IntakeCaseCandida
         {initial}
       </span>
       <span className="flex-1 min-w-0">
-        <span className="block text-[13.5px] font-bold text-foreground truncate">{candidate.companyName}</span>
-        <span className="block text-[11.5px] font-semibold text-muted-foreground truncate">{candidate.jobTitle}</span>
+        <span className="block text-[13.5px] font-bold text-foreground truncate">{company}</span>
+        <span className="block text-[11.5px] font-semibold text-muted-foreground truncate">{jobTitle}</span>
       </span>
       <ArrowRight size={15} className="shrink-0 text-muted-foreground transition-colors"
         style={{ color: "var(--orch-point)" }} />
@@ -824,7 +828,9 @@ function ExitSheet({ onConfirm, onCancel }: { onConfirm: () => void; onCancel: (
 function SessionRow({ session, active, onClick }: {
   session: ChatSession; active: boolean; onClick: () => void;
 }) {
-  const initial = session.title?.trim().charAt(0) || "?";
+  // 세션 제목은 백엔드가 "{회사} {직무}"로 조합 — placeholder 원문이 섞여 있으면 표시만 치환(F-02).
+  const title = displayCaseText(session.title);
+  const initial = title.trim().charAt(0) || "?";
   const badge = session.mode ? MODE_BADGE[session.mode] : null;
   const when = relativeTime(session.updatedAt);
   // 호버 배경/보더가 토큰·rgba라 Tailwind hover 유틸로 못 빼고, active 행은 호버를 막아야 해
@@ -846,7 +852,7 @@ function SessionRow({ session, active, onClick }: {
         {initial}
       </span>
       <span className="flex-1 min-w-0">
-        <span className="block text-[13px] font-bold text-foreground truncate">{session.title}</span>
+        <span className="block text-[13px] font-bold text-foreground truncate">{title}</span>
         <span className="flex items-center gap-1.5 mt-0.5">
           {badge && (
             <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-[10.5px] font-bold leading-none"

@@ -2,6 +2,7 @@ import { useState, useCallback, useRef } from "react";
 import { api } from "@/app/lib/api";
 import { getAccessToken } from "@/app/lib/tokenStore";
 import { useAutoPrepRun } from "@/features/autoprep/hooks/useAutoPrepRun";
+import { displayCompany, displayJobTitle } from "@/features/autoprep/lib/caseLabels";
 import type { AutoPrepRequest } from "@/features/autoprep/types/autoPrep";
 import { getInterviewReport, listInterviewSessions } from "@/features/interview/api/interviewApi";
 import type {
@@ -419,7 +420,9 @@ export function useChatbot() {
   /* ── 칩 선택 → 자연어 메시지로 변환해 전송(③ 슬롯 접지: chooseCase/chooseMode). ── */
   const selectCase = useCallback((c: IntakeCaseCandidate) => {
     // caseId 를 함께 실어 결정적 바인딩(qwen3 미경유). 텍스트는 대화 맥락·히스토리 자연스러움용으로 유지.
-    sendMessage(`${c.companyName} ${c.jobTitle} 지원 건으로 진행할게요`, { selectedCaseId: c.id });
+    // placeholder 원문은 발화 라벨로도 안 내보낸다(F-02·F-17 재유입 표면) — 바인딩은 caseId 가 권위라 안전.
+    sendMessage(`${displayCompany(c.companyName)} ${displayJobTitle(c.jobTitle)} 지원 건으로 진행할게요`,
+      { selectedCaseId: c.id });
   }, [sendMessage]);
 
   const selectMode = useCallback((m: IntakeModeOption) => {

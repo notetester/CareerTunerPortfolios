@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 
 import { intake } from "../api/autoPrepApi";
 import { useAutoPrepRun } from "../hooks/useAutoPrepRun";
+import { displayCompany, displayJobTitle } from "../lib/caseLabels";
 import type { AutoPrepRequest, PrepCaseCandidate, PrepModeOption } from "../types/autoPrep";
 import { AutoPrepWorkView } from "./AutoPrepWorkView";
 import { isAppContext } from "@/platform/capacitor";
@@ -94,7 +95,8 @@ export function AutoPrepChatModal({ open, initialRequest, onClose, onNavigate }:
   function pickCase(c: PrepCaseCandidate) {
     if (answered) return;
     setAnswered(true);
-    setMessages((m) => [...m, { role: "me", text: `${c.companyName} ${c.jobTitle}` }]);
+    // placeholder 원문은 발화 라벨로 안 내보낸다(F-02) — 슬롯 바인딩은 applicationCaseId 가 권위.
+    setMessages((m) => [...m, { role: "me", text: `${displayCompany(c.companyName)} ${displayJobTitle(c.jobTitle)}` }]);
     const next = { ...slots, applicationCaseId: c.id };
     setSlots(next);
     void step(next);
@@ -163,8 +165,8 @@ export function AutoPrepChatModal({ open, initialRequest, onClose, onNavigate }:
                         disabled={answered || i !== lastIdx}
                         className="rounded-lg border border-border bg-card px-2.5 py-1.5 text-left text-xs transition hover:border-primary disabled:opacity-50"
                       >
-                        <div className="font-bold text-foreground">{c.companyName}</div>
-                        <div className="text-muted-foreground">{c.jobTitle}</div>
+                        <div className="font-bold text-foreground">{displayCompany(c.companyName)}</div>
+                        <div className="text-muted-foreground">{displayJobTitle(c.jobTitle)}</div>
                       </button>
                     ))}
                   </div>
