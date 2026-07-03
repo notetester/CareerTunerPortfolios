@@ -2,6 +2,12 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { CheckCircle2, LockKeyhole, MailCheck, RefreshCw, Search, ShieldAlert, Users, type LucideIcon } from "lucide-react";
 import AdminShell from "../../../components/AdminShell";
 import {
+  AdminListFooter,
+  AdminListToolbar,
+  useAdminListTools,
+  type AdminListColumn,
+} from "../../../components/AdminListTools";
+import {
   AlertDialog,
   AlertDialogAction,
   AlertDialogCancel,
@@ -32,6 +38,22 @@ const statusTone: Record<AdminUserStatus, string> = {
   BLOCKED: "bg-red-100 text-red-700",
   DELETED: "bg-slate-200 text-slate-700",
 };
+
+const USER_LIST_COLUMNS: AdminListColumn<AdminUserRow>[] = [
+  { id: "id", label: "ID", getText: (row) => row.id, sortable: true },
+  { id: "name", label: "이름", getText: (row) => row.name, sortable: true },
+  { id: "email", label: "이메일", getText: (row) => row.email, sortable: true },
+  { id: "role", label: "권한", getText: (row) => row.role, sortable: true },
+  { id: "status", label: "상태", getText: (row) => statusLabel(row.status), sortable: true },
+  { id: "plan", label: "요금제", getText: (row) => row.plan, sortable: true },
+  { id: "credit", label: "크레딧", getText: (row) => row.credit, sortable: true },
+  { id: "lastLoginAt", label: "최근 로그인", getText: (row) => formatDateTime(row.lastLoginAt), sortable: true },
+  { id: "blockedUntil", label: "차단 만료", getText: (row) => formatDateTime(row.blockedUntil), sortable: true },
+  { id: "loginSuccessCount", label: "로그인 성공", getText: (row) => row.loginSuccessCount, sortable: true },
+  { id: "loginFailCount", label: "로그인 실패", getText: (row) => row.loginFailCount, sortable: true },
+  { id: "failedLoginCount", label: "연속 실패", getText: (row) => row.failedLoginCount, sortable: true },
+  { id: "createdAt", label: "가입일", getText: (row) => formatDateTime(row.createdAt), sortable: true },
+];
 
 function formatDateTime(value: string | null | undefined): string {
   if (!value) return "-";
@@ -107,6 +129,13 @@ export function AdminUsersPage({
     if (selectedId === null) return null;
     return rows.find((row) => row.id === selectedId) ?? null;
   }, [rows, selectedId]);
+  const list = useAdminListTools(rows, {
+    columns: USER_LIST_COLUMNS,
+    getRowId: (row) => row.id,
+    defaultPageSize: 20,
+    defaultSortId: "createdAt",
+    defaultSortDir: "desc",
+  });
 
   const loadRows = async () => {
     setLoading(true);
@@ -259,35 +288,70 @@ export function AdminUsersPage({
             </div>
           )}
 
-          <div className="space-y-2">
-            {rows.map((row) => (
+          <Card className="overflow-hidden border-slate-200 bg-card">
+            <div className="flex items-center gap-2 border-b border-border px-4 py-3">
               <button
-                key={row.id}
                 type="button"
-                className={`w-full rounded-lg border bg-card p-3 text-left transition-colors ${
+                onClick={list.toggleVisibleRows}
+                className="h-8 rounded-md border border-border bg-card px-2.5 text-xs font-semibold text-muted-foreground hover:bg-accent"
+              >
+                {list.allVisibleSelected ? "페이지 해제" : "페이지 선택"}
+              </button>
+              <span className="ml-auto text-xs text-muted-foreground">
+                <b className="text-foreground">{list.filteredRows.length}</b>건
+              </span>
+            </div>
+            <AdminListToolbar state={list} fileName="admin_users" />
+          </Card>
+
+          <div className="space-y-2">
+            {list.visibleRows.map((row) => (
+              <div
+                key={row.id}
+                className={`flex items-stretch rounded-lg border bg-card transition-colors ${
                   selected?.id === row.id ? "border-blue-300 ring-2 ring-blue-100" : "border-slate-200 hover:border-blue-200"
                 }`}
-                onClick={() => {
-                  selectedIdRef.current = row.id;
-                  setSelectedId(row.id);
-                  if (row.id !== selectedId) setDetail(null);
-                }}
               >
-                <div className="flex items-start justify-between gap-2">
-                  <div className="min-w-0">
-                    <div className="truncate text-sm font-bold text-slate-950">{row.name}</div>
-                    <div className="truncate text-xs text-slate-500">{row.email}</div>
+                <label className="flex w-10 shrink-0 items-center justify-center" onClick={(event) => event.stopPropagation()}>
+                  <input
+                    type="checkbox"
+                    aria-label="회원 선택"
+                    checked={list.isSelected(row)}
+                    onChange={() => list.toggleRow(row)}
+                    className="h-[15px] w-[15px]"
+                  />
+                </label>
+                <button
+                  type="button"
+                  className="min-w-0 flex-1 p-3 text-left"
+                  onClick={() => {
+                    selectedIdRef.current = row.id;
+                    setSelectedId(row.id);
+                    if (row.id !== selectedId) setDetail(null);
+                  }}
+                >
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <div className="truncate text-sm font-bold text-slate-950">{row.name}</div>
+                      <div className="truncate text-xs text-slate-500">{row.email}</div>
+                    </div>
+                    <Badge className={statusTone[row.status]}>{row.status}</Badge>
                   </div>
-                  <Badge className={statusTone[row.status]}>{row.status}</Badge>
-                </div>
-                <div className="mt-2 grid grid-cols-3 gap-2 text-[11px] text-slate-500">
-                  <span>성공 {row.loginSuccessCount}</span>
-                  <span>실패 {row.loginFailCount}</span>
-                  <span>연속 {row.failedLoginCount}</span>
-                </div>
-              </button>
+                  <div className="mt-2 grid grid-cols-3 gap-2 text-[11px] text-slate-500">
+                    <span>성공 {row.loginSuccessCount}</span>
+                    <span>실패 {row.loginFailCount}</span>
+                    <span>연속 {row.failedLoginCount}</span>
+                  </div>
+                </button>
+              </div>
             ))}
+            {list.visibleRows.length === 0 && (
+              <Card className="border-slate-200 bg-card">
+                <CardContent className="p-8 text-center text-sm text-slate-500">현재 조건에 맞는 회원이 없습니다.</CardContent>
+              </Card>
+            )}
           </div>
+          <AdminListFooter state={list} />
         </section>
 
         <section className="min-w-0 space-y-4">
