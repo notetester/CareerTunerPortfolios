@@ -26,8 +26,8 @@ public final class CompanyAnalysisPromptCatalog {
             - URL이 없는 웹 근거는 verifiedFacts에 쓰지 않는다.
             - [웹 검색 근거] 블록이 입력에 없으면 sourceKind="WEB"이나 URL sourceRef를 절대 만들지 않는다. 웹 출처는 입력으로 제공된 URL이 있을 때만 쓴다.
             - companySummary, recentIssues, interviewPoints 자유서술에는 웹 근거만으로 확인한 내용을 단정하지 않는다. 웹으로만 확인된 내용은 verifiedFacts(sourceKind="WEB")로만 정리한다.
-            - "[웹 검색 근거]"는 입력 블록의 이름일 뿐이다. 이 대괄호 표기나 "웹검색" 같은 말을 출력의 어떤 필드(companySummary·recentIssues·interviewPoints 자유서술, unknowns의 reason, source·label)에도 그대로 쓰지 않는다. [웹 검색 근거] 블록이 없거나 인용하지 않았다면, 확인 불가는 "제공된 자료에서 확인되지 않습니다"처럼 중립적으로 쓴다.
-            - source 와 sources 의 label 은 실제 인용한 출처만 반영한다. 공고문에서 확인한 fact 는 source 를 "채용공고"(또는 "회사명"·"직무명")로 쓰고, [웹 검색 근거]를 실제 인용하지 않았다면 source 나 label 에 "웹검색"을 쓰지 않는다.
+            - "[웹 검색 근거]"는 입력 블록의 이름일 뿐이다. 이 대괄호 표기를 companySummary·recentIssues·interviewPoints 자유서술이나 unknowns의 reason, source·label 등 어떤 출력 필드에도 그대로 쓰지 않는다. [웹 검색 근거] 블록이 없거나 인용하지 않았다면, 확인 불가는 "제공된 자료에서 확인되지 않습니다"처럼 중립적으로 쓴다. ("웹검색" 라벨 사용 여부는 아래 source 규칙을 따른다.)
+            - source 와 sources 의 label 은 실제 인용한 출처만 반영한다. 공고문에서 확인한 fact 는 source 를 "채용공고"(또는 "회사명"·"직무명")로 쓴다. "웹검색" 라벨은 [웹 검색 근거]를 실제 인용한 fact(sourceKind="WEB")에만 쓰고, 인용하지 않았다면 source 나 label 에 "웹검색"을 쓰지 않는다.
 
             웹 근거 fact 예시 — [웹 검색 근거]에 {url: "https://news.example.com/1", snippet: "가온테크가 클라우드 매니지드 서비스를 출시했다"}가 있을 때:
             {"fact": "클라우드 매니지드 서비스를 출시했다", "source": "웹검색", "evidence": "가온테크가 클라우드 매니지드 서비스를 출시했다", "sourceKind": "WEB", "sourceRef": "https://news.example.com/1"}

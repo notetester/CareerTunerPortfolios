@@ -58,7 +58,7 @@ class CompanyAnalysisPromptCatalogTest {
     void systemPromptForbidsLeakingWebTokenIntoOutputFields() {
         assertThat(CompanyAnalysisPromptCatalog.SYSTEM_PROMPT)
                 .contains("\"[웹 검색 근거]\"는 입력 블록의 이름일 뿐이다")
-                .contains("출력의 어떤 필드")
+                .contains("어떤 출력 필드")
                 .contains("\"제공된 자료에서 확인되지 않습니다\"처럼 중립적으로 쓴다");
     }
 
@@ -68,6 +68,26 @@ class CompanyAnalysisPromptCatalogTest {
         assertThat(CompanyAnalysisPromptCatalog.SYSTEM_PROMPT)
                 .contains("실제 인용한 출처만 반영한다")
                 .contains("source 나 label 에 \"웹검색\"을 쓰지 않는다");
+    }
+
+    /**
+     * 리뷰 반영: 무조건 토큰 가드는 대괄호 토큰만 겨냥하고, "웹검색" 라벨 금지는 조건부(웹 미인용 시)여야
+     * WEB fact 예시(source="웹검색")와 모순되지 않는다. 무조건 가드 문장에 "웹검색"이 blanket 금지어로
+     * 들어가면 예시와 충돌하므로, 그 문장에는 "웹검색"이 없어야 한다.
+     */
+    @Test
+    void webSearchLabelProhibitionIsConditionalNotAbsolute() {
+        String prompt = CompanyAnalysisPromptCatalog.SYSTEM_PROMPT;
+        // WEB fact 예시는 실제 web 인용이므로 source="웹검색"을 정당하게 쓴다.
+        assertThat(prompt).contains("\"source\": \"웹검색\"");
+        // "웹검색" 금지는 조건부(웹 근거 미인용 시)로만 존재한다.
+        assertThat(prompt).contains("인용하지 않았다면 source 나 label 에 \"웹검색\"을 쓰지 않는다");
+        // 무조건 토큰 가드 문장(대괄호 토큰 대상)에는 "웹검색"이 blanket 금지어로 들어있지 않다.
+        int guardStart = prompt.indexOf("\"[웹 검색 근거]\"는 입력 블록의 이름일 뿐이다");
+        int guardEnd = prompt.indexOf("중립적으로 쓴다", guardStart);
+        assertThat(guardStart).isGreaterThanOrEqualTo(0);
+        assertThat(guardEnd).isGreaterThan(guardStart);
+        assertThat(prompt.substring(guardStart, guardEnd)).doesNotContain("\"웹검색\"");
     }
 
     /** unknowns few-shot 의 reason 이 "웹 근거 어디에도" 대신 입력 자료 중립 표현을 쓴다(누출 재발 방지). */
