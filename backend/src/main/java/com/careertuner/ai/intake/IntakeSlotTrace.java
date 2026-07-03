@@ -52,6 +52,8 @@ public class IntakeSlotTrace {
         volatile String onboardingSkills;
         /** (d) 온보딩에서 생성한 지원 건 id(공고 추출 폴링·보정 update 대상). 미생성이면 null. */
         volatile Long onboardingCaseId;
+        /** (d) EXTRACTING 진입 시각(ms) — 상한 초과 시 AWAIT_POSTING 리셋 게이트(F-13)용. 비대기면 null. */
+        volatile Long onboardingExtractingSince;
     }
 
     private SlotState currentState() {
@@ -211,6 +213,23 @@ public class IntakeSlotTrace {
         slotsByConversation.computeIfAbsent(conversationId, key -> new SlotState()).onboardingCaseId = caseId;
     }
 
+    /** (d) EXTRACTING 진입 시각(ms). 대기 중이 아니면 null — F-13 상한 게이트용. */
+    public Long onboardingExtractingSince(Long conversationId) {
+        if (conversationId == null) {
+            return null;
+        }
+        SlotState state = slotsByConversation.get(conversationId);
+        return state == null ? null : state.onboardingExtractingSince;
+    }
+
+    /** (d) EXTRACTING 진입/이탈 기록(진입=현재시각, 이탈=null) — F-13 상한 게이트용. */
+    public void setOnboardingExtractingSince(Long conversationId, Long sinceMillis) {
+        if (conversationId == null) {
+            return;
+        }
+        slotsByConversation.computeIfAbsent(conversationId, key -> new SlotState()).onboardingExtractingSince = sinceMillis;
+    }
+
     /**
      * 온보딩 인메모리 상태 정리(프로세스 내 즉시 정리용 — "그만" 탈출 시).
      * step/job/skills/caseId 만 비운다(영속 거부 권위는 DB onboarding_declined_at).
@@ -226,6 +245,7 @@ public class IntakeSlotTrace {
             state.onboardingJob = null;
             state.onboardingSkills = null;
             state.onboardingCaseId = null;
+            state.onboardingExtractingSince = null;
         }
     }
 

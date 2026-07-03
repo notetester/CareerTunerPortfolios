@@ -444,8 +444,10 @@ public class ChatbotController {
                     new CreateApplicationCaseFromJobPostingRequest(question, null, null, "TEXT", null));
             intakeSlotTrace.setOnboardingCaseId(conversationId, created.applicationCase().id());
             intakeSlotTrace.setOnboardingStep(conversationId, "EXTRACTING");
+            intakeSlotTrace.setOnboardingExtractingSince(conversationId, System.currentTimeMillis());
+            // 고정 소요 약속("보통 몇 초") 금지 — 소요는 소스별 편차가 커서 경과 표시(프론트)로 대체.
             return new RouteMessage("④온보딩:공고생성",
-                    "공고 받았어요. 회사·직무 정보를 읽고 있어요(보통 몇 초). 준비되면 아무 메시지나 보내주시면 진행 상황을 알려드릴게요.");
+                    "공고 받았어요. 회사·직무 정보를 읽고 있어요. 준비되면 아무 메시지나 보내주시면 진행 상황을 알려드릴게요.");
         } catch (RuntimeException ex) {
             log.warn("온보딩 case 생성 실패(공고 재요청): {}", ex.getMessage());
             // step 은 AWAIT_POSTING 유지 — 재시도.
@@ -471,8 +473,9 @@ public class ChatbotController {
         }
         intakeSlotTrace.setOnboardingCaseId(conversationId, selectedCaseId);
         intakeSlotTrace.setOnboardingStep(conversationId, "EXTRACTING");
+        intakeSlotTrace.setOnboardingExtractingSince(conversationId, System.currentTimeMillis());
         return new RouteMessage("④온보딩:공고생성",
-                "공고 파일 받았어요. 회사·직무 정보를 읽고 있어요(보통 몇 초). 준비되면 진행 상황을 알려드릴게요.");
+                "공고 파일 받았어요. 회사·직무 정보를 읽고 있어요. 준비되면 진행 상황을 알려드릴게요.");
     }
 
     /**
@@ -480,11 +483,19 @@ public class ChatbotController {
      * SUCCEEDED → case 재조회로 파싱 결과 확인(PASS=자동 채움 / REVIEW_REQUIRED=DEFAULT 유지 → 유저 확정).
      * 미완(QUEUED/RUNNING)=대기, FAILED=공고 재요청. 추출 상태/품질은 B 도메인이 판정 — 챗봇은 결과만 읽는다.
      */
+    /** (d) F-13: EXTRACTING 대기 상한(ms). 실측 근거(2026-07-03, 추출 트랜잭션 분리 후): TEXT 추출은
+     *  큐잉→SUCCEEDED 타 커넥션 가시화까지 1.9~4.4초(워커 주기 5초 포함, case 70·71). PDF/이미지 OCR·URL
+     *  페치는 더 걸릴 수 있으나, 프론트 자동 폴링 총예산(~161.5초)을 다 쓰고도 남는 300초를 넘기면 정상
+     *  완료보다 유실(silent catch·row 부재·워커 정지) 확률이 높다 — 워커 stale 타임아웃(30분)보다 훨씬
+     *  앞에서 사용자를 재요청 경로로 구출한다. */
+    private static final long ONB_EXTRACTING_LIMIT_MS = 300_000L;
+
     private RouteMessage onboardingPollExtraction(Long conversationId, AuthUser authUser) {
         Long userId = authUser.id();
         Long caseId = intakeSlotTrace.onboardingCaseId(conversationId);
         if (caseId == null) {
             intakeSlotTrace.setOnboardingStep(conversationId, "AWAIT_POSTING");
+            intakeSlotTrace.setOnboardingExtractingSince(conversationId, null);
             return new RouteMessage("④온보딩:공고요청",
                     "공고 정보를 다시 받아야 할 것 같아요. 공고 전문을 붙여넣어 주세요.");
         }
@@ -497,16 +508,28 @@ public class ChatbotController {
         String status = ext == null ? null : ext.status();
         if ("FAILED".equals(status)) {
             intakeSlotTrace.setOnboardingStep(conversationId, "AWAIT_POSTING");
+            intakeSlotTrace.setOnboardingExtractingSince(conversationId, null);
             return new RouteMessage("④온보딩:추출실패",
                     "공고 분석에 실패했어요. 공고 전문을 다시 붙여넣어 주시겠어요?");
         }
         if (!"SUCCEEDED".equals(status)) {
-            // null/QUEUED/RUNNING — 아직 진행 중. step 유지.
+            // F-13 게이트: 결과가 아직도 안 보이면(null/QUEUED/RUNNING — silent catch·row 부재 포함)
+            // 상한까지만 기다리고 AWAIT_POSTING 으로 리셋해 재요청을 안내한다(영원 대기 차단).
+            Long since = intakeSlotTrace.onboardingExtractingSince(conversationId);
+            if (since != null && System.currentTimeMillis() - since > ONB_EXTRACTING_LIMIT_MS) {
+                intakeSlotTrace.setOnboardingStep(conversationId, "AWAIT_POSTING");
+                intakeSlotTrace.setOnboardingExtractingSince(conversationId, null);
+                return new RouteMessage("④온보딩:추출유실",
+                        "공고 분석이 평소보다 많이 늦어지고 있어요. 이 공고는 여기서 접을게요 — 공고 전문을 다시 붙여넣어 주시겠어요?");
+            }
             return new RouteMessage("④온보딩:추출대기",
                     "아직 공고를 분석 중이에요. 잠시 후 다시 메시지를 보내주세요.");
         }
         try {
-            return onboardingResolveCase(conversationId, authUser, applicationCaseService.get(userId, caseId));
+            RouteMessage resolved = onboardingResolveCase(conversationId, authUser, applicationCaseService.get(userId, caseId));
+            // 이탈 성공 시에만 클리어 — case 재조회가 반복 실패해도(아래 catch) 상한 게이트가 계속 커버한다.
+            intakeSlotTrace.setOnboardingExtractingSince(conversationId, null);
+            return resolved;
         } catch (RuntimeException ex) {
             log.warn("온보딩 case 재조회 실패(대기 유지): {}", ex.getMessage());
             return new RouteMessage("④온보딩:추출대기",

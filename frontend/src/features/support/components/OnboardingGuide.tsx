@@ -145,6 +145,10 @@ export function OnboardingGuide({ onClose, onGotoInterview, onNavigate, wide, on
     phase: ServerGuidePhase;
     /** 현재 국면의 봇 문장(백엔드 카피 그대로 표시 — 카피 이원화 방지). */
     bubbleText?: string;
+    /** waiting 대기 시작 시각(ms) — 경과 표시(F-22 정직화)용. 호출부(위젯)가 추적해 내려준다. */
+    waitingSince?: number | null;
+    /** 다음 자동 확인 예정 시각(ms) — "다음 자동 확인 N초 후" 표기. null=예약 없음(소진 등). */
+    nextPollAt?: number | null;
     /** 회신 전송 중(봇 thinking) — 버튼 비활성+스피너. */
     submitting: boolean;
     /** caseId: 공고 "파일" 경로 — 가이드가 B 업로드로 지원 건을 먼저 만들고 id 를 실어 보낸다(④가 입양). */
@@ -275,7 +279,8 @@ export function OnboardingGuide({ onClose, onGotoInterview, onNavigate, wide, on
           {/* analyzing(WorkView) 단계는 560 캡을 풀어 무대처럼 좌측 컬럼을 채운다(그리드가 2~3열로 펴짐). */}
           <div className={wide ? (g.step === "analyzing" ? "w-full" : "mx-auto w-full max-w-[560px]") : ""}>
             {server?.phase === "waiting" ? (
-              <ServerWaitingView text={server.bubbleText} />
+              <ServerWaitingView text={server.bubbleText}
+                waitingSince={server.waitingSince} nextPollAt={server.nextPollAt} />
             ) : (
               <>
                 {g.step === "role" && <RoleStep g={g} bubble={server?.bubbleText} />}
@@ -318,13 +323,32 @@ export function OnboardingGuide({ onClose, onGotoInterview, onNavigate, wide, on
   );
 }
 
-/* ── ④ 공고 추출 대기 화면(서버 국면 waiting) — 봇 문장을 그대로 보여주고 폴링은 호출부가 돈다. ── */
-function ServerWaitingView({ text }: { text?: string }) {
+/* ── ④ 공고 추출 대기 화면(서버 국면 waiting) — 봇 문장 그대로 + 경과/다음 확인 표시(F-22 정직화).
+      고정 소요 약속("몇 초면 돼요") 금지 — 소요 편차가 커서 경과를 보여주는 방식으로 정직하게. ── */
+function ServerWaitingView({ text, waitingSince, nextPollAt }: {
+  text?: string; waitingSince?: number | null; nextPollAt?: number | null;
+}) {
+  // 1초 틱 — 경과·카운트다운 갱신용(대기 화면이 떠 있는 동안만 돈다).
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const t = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(t);
+  }, []);
+  const elapsedSec = waitingSince ? Math.max(0, Math.floor((now - waitingSince) / 1000)) : null;
+  const nextInSec = nextPollAt ? Math.max(0, Math.ceil((nextPollAt - now) / 1000)) : null;
+  const mm = elapsedSec != null ? Math.floor(elapsedSec / 60) : 0;
+  const ss = elapsedSec != null ? elapsedSec % 60 : 0;
   return (
     <div className="flex flex-col items-center justify-center text-center py-10">
       <Loader2 size={32} className="animate-spin mb-4" style={{ color: "var(--orch-violet)" }} />
       <div className="text-[12.5px] leading-[1.6] text-foreground max-w-[320px]"
-        dangerouslySetInnerHTML={rich(text ?? "공고에서 회사·직무를 읽고 있어요. 몇 초면 돼요.")} />
+        dangerouslySetInnerHTML={rich(text ?? "공고에서 회사·직무 정보를 읽고 있어요.")} />
+      {elapsedSec != null && (
+        <div className="mt-3 text-[11.5px] text-muted-foreground tabular-nums">
+          경과 {mm > 0 ? `${mm}분 ${ss}초` : `${ss}초`}
+          {nextInSec != null && ` · 다음 자동 확인 ${nextInSec}초 후`}
+        </div>
+      )}
     </div>
   );
 }

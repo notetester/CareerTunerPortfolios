@@ -5,7 +5,7 @@ import {
   KeyRound, CreditCard, FileText, FileSearch, Pause, Volume2,
   ArrowUpRight, Shield, SearchX, Headset, PenLine, WifiOff,
   RotateCw, Check, Keyboard, ArrowRight, Play, LogOut, History, Plus,
-  Minimize2, Maximize2,
+  Minimize2, Maximize2, Loader2,
 } from "lucide-react";
 import { getAccessToken } from "@/app/lib/tokenStore";
 import { useChatbot } from "../hooks/useChatbot";
@@ -32,6 +32,7 @@ const ONB_ROUTE_PHASE: Record<string, ServerGuidePhase> = {
   "④온보딩:공고요청": "jd",
   "④온보딩:공고생성실패": "jd",
   "④온보딩:추출실패": "jd",
+  "④온보딩:추출유실": "jd",
   "④온보딩:공고생성": "waiting",
   "④온보딩:추출대기": "waiting",
 };
@@ -237,6 +238,25 @@ function ChatbotPanel({ chatbot }: ChatbotPanelProps) {
   if (onbNudgeRef.current == null) onbNudgeRef.current = readOnbNudgeBudget();
   // 넛지 소진 안내(로컬 1회 — 서버/LLM 무경유, 트랜스크립트 미기록). 다음 전송 시 걷힌다.
   const [onbNotice, setOnbNotice] = useState<ChatMessage | null>(null);
+  // 소진 래치의 렌더용 미러 — 래치 자체는 ref(effect 간 동기 가시성)지만, 탈출 UI("지금 확인" 버튼)는
+  // 렌더가 봐야 하므로 state 로 비춘다. 갱신 지점: 소진 시 true, A0 예산 정리 시 false.
+  const [onbExhausted, setOnbExhausted] = useState(() => onbNudgeRef.current?.exhausted ?? false);
+  // waiting 화면 정직화(F-22): 대기 시작 시각 + 다음 자동 확인 예정 시각 — 가이드 대기 화면에 내려보낸다.
+  const [onbWaitingSince, setOnbWaitingSince] = useState<number | null>(null);
+  const [onbNextPollAt, setOnbNextPollAt] = useState<number | null>(null);
+  // 수동 "지금 확인": 즉시 폴 1회 — 넛지 예산 미소모, 소진 래치와 독립(소진 후에도 사용 가능).
+  const onbManualCheck = () => sendMessage("진행 상황 알려줘");
+
+  // waiting 진입/이탈 추적 — 진입 첫 턴에만 시각을 잡고, 국면을 벗어나면 초기화.
+  useEffect(() => {
+    if (onbPhase === "waiting") {
+      setOnbWaitingSince((cur) => cur ?? Date.now());
+    } else if (onbPhase !== null) {
+      // null 은 새로고침 직후 "신호 없음"일 수 있어 유지(A0 와 같은 원칙) — 실제 다른 국면에서만 리셋.
+      setOnbWaitingSince(null);
+      setOnbNextPollAt(null);
+    }
+  }, [onbPhase]);
   // "질문하기" 링크로 잠시 비켜준 상태 — onbPhase 가 그대로인 채 닫히므로, 이 가드가 없으면
   // 같은 렌더 사이클에서 아래 자동 재오픈 effect가 즉시 다시 열어버린다(클릭이 안 먹히는 것처럼 보임).
   // 새 봇 응답이 도착(lastBotMsg 갱신)해야 해제 — 그 전까진 재오픈을 억제해 실제로 채팅이 열려 있게 한다.
@@ -260,6 +280,7 @@ function ChatbotPanel({ chatbot }: ChatbotPanelProps) {
     if (lastBotMsg?.route != null && (budget.count > 0 || budget.exhausted || budget.noticeSent)) {
       onbNudgeRef.current = freshOnbNudgeBudget();
       clearOnbNudgeBudget();
+      setOnbExhausted(false);
     }
   }, [onbPhase, lastBotMsg?.route]);
 
@@ -296,12 +317,14 @@ function ChatbotPanel({ chatbot }: ChatbotPanelProps) {
     if (!onbGuideOpen || botStatus !== "answered") return;
     if (budget.count >= ONB_NUDGE_DELAYS_MS.length) {
       budget.exhausted = true;
+      setOnbExhausted(true);
+      setOnbNextPollAt(null);
       if (!budget.noticeSent) {
         // 소진 안내는 예산 생애 1회 — noticeSent 를 storage 에도 남겨 리마운트 후 중복 발송을 막는다.
         budget.noticeSent = true;
         setOnbNotice({
           id: "onb-nudge-notice", role: "bot",
-          text: "분석이 평소보다 오래 걸리고 있어요. 가이드는 잠시 닫아둘게요 — 준비되면 아무 메시지나 보내주시면 이어서 진행돼요.",
+          text: "분석이 평소보다 오래 걸리고 있어요. 가이드는 잠시 닫아둘게요 — 아래 \"지금 확인\" 버튼이나 아무 메시지로 이어서 진행할 수 있어요.",
           evidence: [], links: [], quickReplies: [], ttsState: "idle", ttsProgress: 0,
           timestamp: Date.now(),
         });
@@ -310,11 +333,13 @@ function ChatbotPanel({ chatbot }: ChatbotPanelProps) {
       setOnbGuideOpen(false);
       return;
     }
+    const delay = ONB_NUDGE_DELAYS_MS[budget.count];
+    setOnbNextPollAt(Date.now() + delay); // waiting 화면의 "다음 자동 확인 N초 후" 표기용
     const t = setTimeout(() => {
       budget.count += 1;
       writeOnbNudgeBudget(budget);
       sendMessage("진행 상황 알려줘");
-    }, ONB_NUDGE_DELAYS_MS[budget.count]);
+    }, delay);
     return () => clearTimeout(t);
   }, [onbGuideOpen, onbPhase, botStatus, sendMessage]);
 
@@ -468,6 +493,11 @@ function ChatbotPanel({ chatbot }: ChatbotPanelProps) {
                   <BotBubble message={onbNotice} onToggleTts={toggleTts} variant="widget"
                     orchestrator={orchestrator} />
                 )}
+                {/* ④ 넛지 소진 탈출 UI(F-22) — 안내 버블과 달리 waiting 인 동안 잔존한다. "지금 확인"은
+                    즉시 폴 1회(예산 미소모·래치 독립) — 소진 뒤에도 사용자가 스스로 확인할 길을 남긴다. */}
+                {onbPhase === "waiting" && onbExhausted && (
+                  <OnbStuckNotice onCheck={onbManualCheck} disabled={botStatus === "thinking"} />
+                )}
                 </div>
                 {runStarted && (
                   <div className={stage ? "w-full" : "ml-[37px]"}>
@@ -529,6 +559,8 @@ function ChatbotPanel({ chatbot }: ChatbotPanelProps) {
           server={{
             phase: onbPhase,
             bubbleText: lastBotMsg?.text,
+            waitingSince: onbWaitingSince,
+            nextPollAt: onbNextPollAt,
             submitting: botStatus === "thinking",
             onSubmit: (step, text, meta) => {
               if (step === "jd") setPendingAttachments(meta.coverLetterFileIds);
@@ -608,6 +640,28 @@ function InterviewGoChip({ onGo }: { onGo: () => void }) {
 }
 
 /** run 실패 안내(F-09) — WorkView 가 null 렌더(plan 전 사망)일 때는 이 카드가 유일한 실패 표면. */
+/** ④ 공고 추출 대기 소진 탈출 배너(F-22) — RunErrorNotice 패턴. waiting 국면 + 소진 래치 동안 잔존. */
+function OnbStuckNotice({ onCheck, disabled }: { onCheck: () => void; disabled: boolean }) {
+  return (
+    <div className="mt-2.5 rounded-[13px] px-3.5 py-3 flex flex-col gap-2 bg-card"
+      style={{ border: "1px solid rgba(94,106,210,0.35)" }} role="status">
+      <div className="flex items-center gap-1.5 text-[12.5px] font-bold text-foreground">
+        <Loader2 size={14} className="shrink-0" style={{ color: "var(--orch-violet, #5e6ad2)" }} />
+        공고 분석이 평소보다 오래 걸리고 있어요
+      </div>
+      <div className="text-[12px] leading-[1.55] text-muted-foreground">
+        자동 확인은 멈췄지만 분석은 계속 진행 중일 수 있어요. 지금 바로 확인하거나, 아무 메시지를 보내도 이어져요.
+      </div>
+      <button type="button" onClick={onCheck} disabled={disabled}
+        className="inline-flex h-8 items-center gap-1.5 self-start whitespace-nowrap rounded-full px-3 text-[11.5px] font-bold text-white transition-transform hover:brightness-110 disabled:opacity-50"
+        style={{ background: "var(--gradient-orchestrator)" }}>
+        <RotateCw size={13} />
+        지금 확인
+      </button>
+    </div>
+  );
+}
+
 function RunErrorNotice({ message, showRetry, onRetry }: {
   message: string; showRetry: boolean; onRetry: () => void;
 }) {
