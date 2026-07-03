@@ -44,6 +44,7 @@ import com.careertuner.ai.chat.QuickReplyAgent;
 import com.careertuner.ai.chat.SearchTrace;
 import com.careertuner.ai.chat.SummaryAgent;
 import com.careertuner.ai.autoprep.AutoPrepIntakeService;
+import com.careertuner.ai.autoprep.CaseSlotValidator;
 import com.careertuner.ai.autoprep.dto.AutoPrepIntakeResponse;
 import com.careertuner.ai.autoprep.dto.AutoPrepRequest;
 import com.careertuner.ai.intake.IntakeAskService;
@@ -76,9 +77,7 @@ public class ChatbotController {
     /** 환각 링크 차단: 실제 커뮤니티 글 경로만 통과 (모델이 만든 임의 url 제거). */
     private static final Pattern LINK_WHITELIST = Pattern.compile("^/community/posts/\\d+$");
 
-    /** (d) 공고 추출 규칙기반 파싱 실패 시 case 에 남는 기본값(B 도메인 ApplicationCaseServiceImpl 와 동일 문구). */
-    private static final String ONB_DEFAULT_COMPANY = "기업명 확인 필요";
-    private static final String ONB_DEFAULT_JOBTITLE = "직무명 확인 필요";
+    // (d) 공고 추출 파싱 실패 placeholder 판정은 ③과 공유하는 CaseSlotValidator 로 통일(버그1 비대칭 제거).
 
     /**
      * 확인 응답에서 "시작" 쪽으로 본다(그 외는 안전하게 ① 로). 정규화된 입력과 <b>정확일치</b>로만 판정한다
@@ -561,7 +560,7 @@ public class ChatbotController {
      * (e) 이 "둘 다 채워짐" 지점이 case 가 확정된 유일한 곳 → 여기서 *딱 한 번* 프로필을 저장한다("늦게 save").
      */
     private RouteMessage onboardingResolveCase(Long conversationId, AuthUser authUser, ApplicationCaseResponse caseNow) {
-        if (ONB_DEFAULT_COMPANY.equals(caseNow.companyName())) {
+        if (CaseSlotValidator.isUnresolved(caseNow.companyName())) {
             intakeSlotTrace.setOnboardingStep(conversationId, "AWAIT_COMPANY");
             // (d″) 추출 제목에서 회사 후보를 읽어 칩으로 제시 — 칩 클릭 = 그 텍스트가 답변으로 전송(프로토콜 동일).
             String companyCandidate = onboardingTitleCandidates(authUser.id(), caseNow.id()).company();
@@ -574,7 +573,7 @@ public class ChatbotController {
             return new RouteMessage("④온보딩:확인-회사",
                     "공고는 등록했는데 회사명을 자동으로 못 읽었어요. 어느 회사 공고인가요?");
         }
-        if (ONB_DEFAULT_JOBTITLE.equals(caseNow.jobTitle())) {
+        if (CaseSlotValidator.isUnresolved(caseNow.jobTitle())) {
             intakeSlotTrace.setOnboardingStep(conversationId, "AWAIT_JOBTITLE");
             String jobTitleCandidate = onboardingTitleCandidates(authUser.id(), caseNow.id()).jobTitle();
             if (jobTitleCandidate != null) {
@@ -761,9 +760,9 @@ public class ChatbotController {
             if (hasSkills) {
                 sb.append(" 기술 ").append(got.skills().trim()).append(",");
             }
-            if (c.companyName() != null && !ONB_DEFAULT_COMPANY.equals(c.companyName())) {
+            if (!CaseSlotValidator.isUnresolved(c.companyName())) {
                 sb.append(" 공고 ").append(c.companyName());
-                if (c.jobTitle() != null && !ONB_DEFAULT_JOBTITLE.equals(c.jobTitle())) {
+                if (!CaseSlotValidator.isUnresolved(c.jobTitle())) {
                     sb.append(" ").append(c.jobTitle());
                 }
                 sb.append(",");
