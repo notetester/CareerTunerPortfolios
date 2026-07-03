@@ -969,6 +969,7 @@ public class ChatbotController {
                 return ApiResponse.ok(onboardingTurn(conversationId, authUser, "", null, null));
             }
             if (isRestartConfirmNo(question)) {
+                responseLogService.record(conversationId, userId, question, "ONBOARDING", false, null, null, false);
                 return ApiResponse.ok(new ChatAskResponse(conversationId,
                         "알겠어요, 필요하면 언제든 다시 말씀해 주세요.",
                         List.of(), List.of(), "④온보딩:재시작거부", null, false, null));
@@ -977,6 +978,7 @@ public class ChatbotController {
         }
         if (isRestartIntent(question)) {
             onboardingRestartStore.defer(conversationId);
+            responseLogService.record(conversationId, userId, question, "ONBOARDING", false, null, null, false);
             return ApiResponse.ok(new ChatAskResponse(conversationId,
                     "그만두셨었는데, 다시 시작할까요?",
                     List.of(), List.of(RESTART_YES, RESTART_NO), "④온보딩:재시작확인(거부복귀)", null, false, null));
@@ -1015,6 +1017,7 @@ public class ChatbotController {
             Long owner = memoryStore.findOwnerUserId(conversationId);
             if (owner != null && !owner.equals(userId)) {
                 if (userId == null) {
+                    responseLogService.record(conversationId, null, question, "AUTH", false, null, null, false);
                     return ApiResponse.ok(new ChatAskResponse(
                             conversationId,
                             "로그인하면 이전 대화를 이어갈 수 있어요. 로그인 후 다시 시도해 주세요.",
@@ -1033,6 +1036,7 @@ public class ChatbotController {
                 memoryStore.markOnboardingDeclined(conversationId);
                 intakeSlotTrace.clearOnboarding(conversationId);
                 intakeModeStore.exit(conversationId); // 혹시 같이 떠 있던 sticky 도 보수적 정리
+                responseLogService.record(conversationId, userId, question, "EXIT", false, null, null, false);
                 return ApiResponse.ok(new ChatAskResponse(
                         conversationId,
                         "온보딩을 건너뛸게요. 언제든 다시 시작할 수 있어요. 궁금한 거 있으면 편하게 물어봐 주세요.",
@@ -1042,6 +1046,7 @@ public class ChatbotController {
                     || intakeAskService.hasOpenIntakeSlot(conversationId)) {
                 intakeModeStore.exit(conversationId);
                 intakeAskService.closeIntakeSession(conversationId);
+                responseLogService.record(conversationId, userId, question, "EXIT", false, null, null, false);
                 return ApiResponse.ok(new ChatAskResponse(
                         conversationId,
                         "일반 상담 모드로 돌아왔어요. 무엇이든 물어보세요.",
@@ -1075,6 +1080,7 @@ public class ChatbotController {
                     && req.selectedCaseId() == null && req.selectedModeCode() == null
                     && looksLikeSideQuestion(question)) {
                 sideQuestionStore.defer(conversationId, question);
+                responseLogService.record(conversationId, userId, question, "INTAKE", false, null, null, false);
                 return ApiResponse.ok(new ChatAskResponse(conversationId,
                         "잠깐 — 질문이신 것 같아요. 준비를 잠시 멈추고 답해드릴까요?",
                         List.of(), List.of(SIDE_Q_YES, SIDE_Q_NO),
@@ -1132,6 +1138,7 @@ public class ChatbotController {
         //     화이트리스트("면접 준비해줘")로 유도한다. (활성/복원-PENDING 인테이크였다면 위 sticky 블록에서 이미 처리됨.)
         if (req.conversationId() != null
                 && (req.selectedCaseId() != null || req.selectedModeCode() != null)) {
+            responseLogService.record(conversationId, userId, question, "INTAKE", false, null, null, false);
             return ApiResponse.ok(new ChatAskResponse(
                     conversationId,
                     "이 준비는 이미 진행됐거나 대화가 만료됐어요. 이어서 하려면 “면접 준비해줘”라고 말씀해 주세요.",
@@ -1156,6 +1163,7 @@ public class ChatbotController {
             }
             case INTAKE_CONFIRM -> {
                 routeConfirmStore.markPending(conversationId);
+                responseLogService.record(conversationId, userId, question, "INTAKE", false, null, null, false);
                 return ApiResponse.ok(new ChatAskResponse(
                         conversationId,
                         "면접 준비를 도와드릴까요?",
@@ -1254,6 +1262,9 @@ public class ChatbotController {
         } else {
             intakeModeStore.enter(effectiveId);
         }
+        // (F-21) ③ 인테이크 턴 적재 — fork 후엔 새 대화 id 기준(세션 조회와 정합). 4개 진입 경로
+        // (③/③유지/③복원/③확인후)가 전부 이 한 곳을 지나므로 여기 1회로 전수 커버.
+        responseLogService.record(effectiveId, userId, question, "INTAKE", false, null, null, false);
         return new ChatAskResponse(
                 effectiveId,
                 r.message(),

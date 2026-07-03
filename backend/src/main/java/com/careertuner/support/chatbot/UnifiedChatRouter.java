@@ -89,6 +89,18 @@ public class UnifiedChatRouter {
 
     /** 첫 턴 라우팅 판정. 임베딩/Ollama 장애 시 안전하게 FAQ 로 보낸다. */
     public Decision decide(String question) {
+        Decision d = decideInternal(question);
+        // (F-21) 라우팅 점수 관측 — 사고 시 "왜 이 경로였나" 재구성용(debug 레벨 — 운영 기본 레벨에선 침묵).
+        log.debug("라우팅 판정: target={} faq={} intake={} community={} speechAct={}({}used)",
+                d.target(),
+                String.format("%.3f", d.faqScore()),
+                String.format("%.3f", d.intakeScore()),
+                String.format("%.3f", d.communityScore()),
+                d.speechAct(), d.usedSpeechAct() ? "" : "un");
+        return d;
+    }
+
+    private Decision decideInternal(String question) {
         double faqScore;
         double intakeScore;
         double communityScore;
