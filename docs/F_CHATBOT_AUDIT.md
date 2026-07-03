@@ -230,6 +230,7 @@ phase 원천 [사실]: ④ = `IntakeSlotTrace.onboardingStep` ∈ {null, JOB, SK
 | F-19 | `app/pages/Support.tsx:15` | 제거 예정 ChatbotFullScreen이 `/support/chat` 라우트로 잔존(인테이크·칩·가이드 0) | 그 화면에선 ④가 생짜 텍스트로 노출 | B | 라우트 제거 or 위젯 열기로 리다이렉트 |
 | F-20 | `OnboardingGuide:568-573`, `useAutoPrepRun:45` | fetch 예외 원문 노출(영문 가능) | "Failed to fetch" 류 노출 [가설] | C | 사용자 문구로 매핑 |
 | F-21 | record 호출 5곳뿐(`:318,388,1017,1234,1371`) | ③ 인테이크·FALLBACK·확인턴 미로깅 + 라우터 점수 로그 없음 | 사고 시 재구성 불가(이번 감사도 이 공백에 걸림) | C | ③/FALLBACK에 record 추가, decide에 점수 debug 로그 |
+| F-22 | B `ApplicationCaseExtractionWorker.completeSucceeded` 단일 트랜잭션 × F `ChatbotWidget` 넛지 백오프 + `OnboardingGuide.ServerWaitingView:322-330` | 추출 SUCCEEDED 가 LLM 파이프라인 커밋까지 타 커넥션 불가시(READ COMMITTED) → 넛지 예산 전반부가 전부 커밋 전 창에 소진, 30→45s 침묵 구간에서 사용자 이탈. 대기 화면은 자체 해제 조건 없는 무한 스피너 + "몇 초면 돼요" 과약속 | **07-03 실측(case 80, 로컬 DB)**: 추출 1초 완료(13:20:51 문장) → 파이프라인 커밋 ≈13:22:44+ → 넛지 4발(+3.5/8/15/30s) 전부 "추출대기" → 사용자 위젯 닫음 → 재진입 redisplay(13:22:58, +127s)에서야 AWAIT_COMPANY 전이. 4커밋(53e9c7f7~f573c227) diff 비개입 — **신규 회귀 아님** | **A** | 근본=B 트랜잭션 분리(`F_B인계_공고추출_트랜잭션분리.md`) · F 즉시: waiting 화면에 경과·다음확인 표시+문구 정직화, 넛지 소진≈F-13 상한과 통합해 탈출 UI(1-1 RunErrorNotice 패턴) — CL5 와 한 배치 |
 
 ## 5. 원인 클러스터 & 수정 배치
 
@@ -239,7 +240,7 @@ phase 원천 [사실]: ④ = `IntakeSlotTrace.onboardingStep` ∈ {null, JOB, SK
 | **CL2 ① 무상태 구간의 환각·낙하** | F-03, F-04, F-05 | ①에는 "직전 대화 맥락" 개념이 라우터에 없음 + LLM이 기능 경계를 모름 |
 | **CL3 ④ 영속·복원 부재** | F-06, F-07 | ④가 LangChain 메모리를 우회(전용 인메모리 슬롯만) — 설계상 MVP 제외였던 것이 데모 재진입과 충돌 |
 | **CL4 실행(SSE) 실패 경로** | F-08(D), F-09~F-12 | 성공 경로만 있는 계약 — 에러 터미널 이벤트·재시도·워치독 전무 |
-| **CL5 EXTRACTING 좀비(잔여)** | F-13 | silent catch + stale 판정 부재(어제 수정은 프론트 예산·플래핑만) |
+| **CL5 EXTRACTING 좀비(잔여)** | F-13, F-22 | silent catch + stale 판정 부재(어제 수정은 프론트 예산·플래핑만) + B 커밋 불가시 창이 넛지 예산 전반부를 무효화(07-03 실측) |
 | **CL6 수집 입력 위생** | F-14, F-15 | 수집 단계 입력 클래스별 필터 불균일 |
 | **CL7 노출·관측 잡감** | F-16~F-21 | 개별 |
 
