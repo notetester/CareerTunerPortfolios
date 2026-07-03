@@ -34,6 +34,8 @@ export function AutoPrepChatModal({ open, initialRequest, onClose, onNavigate }:
   const [thinking, setThinking] = useState(false);
   const [answered, setAnswered] = useState(false);
   const started = useRef(false);
+  // 마지막 실행 요청 — 재시도 = 전체 재실행(부분 재실행 API 없음). 모달 닫으면 함께 초기화.
+  const lastRunReqRef = useRef<AutoPrepRequest | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -43,6 +45,7 @@ export function AutoPrepChatModal({ open, initialRequest, onClose, onNavigate }:
     }
     if (!open) {
       started.current = false;
+      lastRunReqRef.current = null;
       setMessages([]);
       setSlots({});
       setPhase("intake");
@@ -73,6 +76,7 @@ export function AutoPrepChatModal({ open, initialRequest, onClose, onNavigate }:
       if (res.ready) {
         setMessages((m) => [...m, { role: "ai", text: res.message }]);
         setPhase("running");
+        lastRunReqRef.current = req;
         void run.start(req);
       } else if (res.nextAsk === "CASE") {
         setMessages((m) => [...m, { role: "ai", text: res.message, chips: { kind: "case", candidates: res.candidates } }]);
@@ -197,6 +201,7 @@ export function AutoPrepChatModal({ open, initialRequest, onClose, onNavigate }:
               running={run.running}
               parts={run.parts}
               caseId={caseId}
+              onRetry={() => { if (lastRunReqRef.current) void run.start(lastRunReqRef.current); }}
               onNavigate={(p) => {
                 onClose();
                 onNavigate(p);

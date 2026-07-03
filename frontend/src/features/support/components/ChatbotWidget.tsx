@@ -152,7 +152,7 @@ function ChatbotPanel({ chatbot }: ChatbotPanelProps) {
     close, messages, sendMessage, botStatus,
     voiceState, startVoice, cancelVoice, confirmVoice, setVoiceState,
     interimTranscript, retryConnection, toggleTts,
-    orchestrator, runStarted, runParts, runRunning, runPlan, runCaseId,
+    orchestrator, runStarted, runParts, runRunning, runPlan, runCaseId, runError, retryRun,
     selectCase, selectMode, setPendingAttachments, summarizePosts,
     showExitSheet, openExitSheet, closeExitSheet, exitOrchestrator,
     sessions, activeSessionId, openSession, newSession, loadSessions,
@@ -468,8 +468,18 @@ function ChatbotPanel({ chatbot }: ChatbotPanelProps) {
                       parts={runParts}
                       caseId={runCaseId}
                       company={runPlan?.slots.company ?? null}
+                      onRetry={retryRun}
                       onNavigate={navigateFromWork}
                     />
+                    {/* run 실패 가시화(F-09): parts 가 비면 WorkView 가 null 렌더라 이 배너가 유일한 표면 —
+                        그때만 자체 재시도 버튼을 붙인다(파트가 있으면 WorkView 의 재시도 컨트롤이 담당). */}
+                    {runError && !runRunning && (
+                      <RunErrorNotice
+                        message={runError}
+                        showRetry={runParts.length === 0}
+                        onRetry={retryRun}
+                      />
+                    )}
                   </div>
                 )}
                 {botStatus === "thinking" && <TypingIndicator orchestrator={orchestrator} />}
@@ -568,6 +578,30 @@ function ChatbotPanel({ chatbot }: ChatbotPanelProps) {
 }
 
 /* ════════════════ Orchestrator components ════════════════ */
+
+/** run 실패 안내(F-09) — WorkView 가 null 렌더(plan 전 사망)일 때는 이 카드가 유일한 실패 표면. */
+function RunErrorNotice({ message, showRetry, onRetry }: {
+  message: string; showRetry: boolean; onRetry: () => void;
+}) {
+  return (
+    <div className="mt-2.5 rounded-[13px] px-3.5 py-3 flex flex-col gap-2 bg-card"
+      style={{ border: "1px solid rgba(207,34,46,0.25)" }} role="alert">
+      <div className="flex items-center gap-1.5 text-[12.5px] font-bold text-foreground">
+        <WifiOff size={14} className="shrink-0" style={{ color: "var(--destructive)" }} />
+        면접 준비 실행이 중단됐어요
+      </div>
+      <div className="text-[12px] leading-[1.55] text-muted-foreground">{message}</div>
+      {showRetry && (
+        <button type="button" onClick={onRetry}
+          className="inline-flex h-8 items-center gap-1.5 self-start whitespace-nowrap rounded-full px-3 text-[11.5px] font-bold text-white transition-transform hover:brightness-110"
+          style={{ background: "var(--gradient-orchestrator)" }}>
+          <RotateCw size={13} />
+          다시 시도
+        </button>
+      )}
+    </div>
+  );
+}
 
 function OrchestratorAvatar({ size = 28, iconScale = 0.52 }: { size?: number; iconScale?: number }) {
   return (

@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import {
   X, ArrowRight, ArrowLeft, Check, PenLine, FileText, UserRound, Briefcase,
   Link2, FileUp, ClipboardPaste, ShieldCheck, Video, Loader2, Github, Lightbulb,
-  Minimize2, Maximize2, ClipboardList, CheckCircle2,
+  Minimize2, Maximize2, ClipboardList, CheckCircle2, RotateCcw,
 } from "lucide-react";
 
 import { useOnboardingGuide } from "../hooks/useOnboardingGuide";
@@ -294,6 +294,7 @@ export function OnboardingGuide({ onClose, onGotoInterview, onNavigate, wide, on
                       caseId={g.caseId}
                       company={null}
                       showFooter={false}
+                      onRetry={() => void g.runReal()}
                       onNavigate={onNavigate}
                     />
                   )
@@ -564,13 +565,19 @@ function FitStep({ g }: { g: G }) {
   const hasScore = fit.fitScore != null; // FIT 이 실제로 돈 경우에만 점수 표시(지어내지 않음)
   const hasChips = fit.strengths.length > 0 || fit.gaps.length > 0;
 
-  // 실행 오류 → 정직하게 표시.
+  // 실행 오류 → 정직하게 표시 + 재시도 어포던스(림보 탈출의 수렴 지점 — 에러 안내 후 여기서 다시 돈다).
   if (g.runError && !hasScore && !hasChips && !fit.written) {
     return (
       <>
         <GuideBubble text={COPY.fitEmpty} />
-        <div className="rounded-xl border border-border px-4 py-3 text-[12px] text-muted-foreground">
-          {g.runError}
+        <div className="rounded-xl border border-border px-4 py-3 flex flex-col gap-2.5">
+          <div className="text-[12px] leading-[1.55] text-muted-foreground">{g.runError}</div>
+          <button type="button" onClick={() => void g.runReal()}
+            className="inline-flex h-8 items-center gap-1.5 self-start whitespace-nowrap rounded-full px-3 text-[11.5px] font-bold text-white transition-transform hover:brightness-110"
+            style={{ background: "var(--gradient-orchestrator)" }}>
+            <RotateCcw size={13} />
+            다시 분석하기
+          </button>
         </div>
       </>
     );

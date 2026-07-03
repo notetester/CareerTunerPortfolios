@@ -151,7 +151,8 @@ export function actionFor(key: string, caseId: number | null): PartAction | null
 export interface StatusBand {
   headline: string;
   subtext: string;
-  /** ③ "안 된 것만 다시 시도" / ④ "모두 다시 시도" — 노출 여부만, 클릭 동작은 아직 미연결. */
+  /** 재시도 컨트롤 노출 종별 — 동작은 WorkView 의 onRetry(마지막 요청 전체 재실행)로 연결.
+   *  부분 재실행 API 부재로 failedOnly 도 전체 재실행이며 라벨은 "다시 시도"(WorkView 참조). */
   retryControl: "failedOnly" | "retryAll" | null;
   showProgressBar: boolean;
   allFailed: boolean;

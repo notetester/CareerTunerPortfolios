@@ -16,11 +16,14 @@ interface Props {
   company?: string | null;
   /** 하단 고정 CTA(지원 건 열기/면접 시작) 노출 여부 — 다른 화면이 자체 CTA/다음 스텝을 갖고 있으면 false. */
   showFooter?: boolean;
+  /** 재시도 = 마지막 실행 요청 전체 재실행(부분 재실행 API 없음 — 붙으면 failedOnly 분기 추가).
+   *  미전달이면 재시도 버튼 자체를 숨긴다(죽은 버튼 노출 방지). */
+  onRetry?: () => void;
   onNavigate: (path: string) => void;
 }
 
 /** AI 오케스트레이터 진행/결과 화면 — 6파트 병렬 실행을 "면접 봐도 되는지"에 답하는 형태로 보여준다. */
-export function AutoPrepWorkView({ running, parts, caseId, company = null, showFooter = true, onNavigate }: Props) {
+export function AutoPrepWorkView({ running, parts, caseId, company = null, showFooter = true, onRetry, onNavigate }: Props) {
   if (parts.length === 0) {
     return null;
   }
@@ -33,10 +36,10 @@ export function AutoPrepWorkView({ running, parts, caseId, company = null, showF
   return (
     // @container: 그리드/상태줄이 뷰포트가 아니라 이 위젯 자체의 폭(코너 ~360 / 플로팅 ~970)을 따르게.
     <div className="@container overflow-hidden rounded-2xl border border-border bg-card">
-      <StatusBandView band={band} parts={parts} />
+      <StatusBandView band={band} parts={parts} onRetry={onRetry} />
       <div className="grid grid-cols-1 gap-2.5 p-3.5 pt-3 @[420px]:grid-cols-2 @[600px]:grid-cols-3">
         {orderedParts.map((part) => (
-          <PartCard key={part.key} part={part} allFailed={band.allFailed} caseId={caseId} onNavigate={onNavigate} />
+          <PartCard key={part.key} part={part} allFailed={band.allFailed} caseId={caseId} onRetry={onRetry} onNavigate={onNavigate} />
         ))}
       </div>
       {showFooter && <FooterBar band={band} helper={helper} caseId={caseId} onNavigate={onNavigate} />}
@@ -44,7 +47,7 @@ export function AutoPrepWorkView({ running, parts, caseId, company = null, showF
   );
 }
 
-function StatusBandView({ band, parts }: { band: StatusBand; parts: PartState[] }) {
+function StatusBandView({ band, parts, onRetry }: { band: StatusBand; parts: PartState[]; onRetry?: () => void }) {
   const settled = parts.filter((p) => p.status !== "pending" && p.status !== "running").length;
   const pct = parts.length ? Math.round((settled / parts.length) * 100) : 0;
 
@@ -71,11 +74,12 @@ function StatusBandView({ band, parts }: { band: StatusBand; parts: PartState[] 
           )}
         </div>
 
-        {band.retryControl && (
+        {band.retryControl && onRetry && (
           <button
             type="button"
-            // TODO(F): 백엔드 부분 재실행 API가 붙으면 실제 재시도 요청으로 연결(지금은 시각 리뷰용).
-            onClick={() => {}}
+            // 재시도 = 마지막 요청 전체 재실행. 부분 재실행 API 부재 → failedOnly 도 전체 재실행이라
+            // "안 된 것만" 라벨은 거짓이 되므로 "다시 시도"로 표기(API 생기면 라벨·동작 분기 복원).
+            onClick={onRetry}
             className={`inline-flex h-8 shrink-0 items-center gap-1.5 self-start whitespace-nowrap rounded-full px-3 text-[11.5px] font-bold transition-colors ${
               band.retryControl === "retryAll" ? "text-white" : ""
             }`}
@@ -86,7 +90,7 @@ function StatusBandView({ band, parts }: { band: StatusBand; parts: PartState[] 
             }
           >
             <RotateCcw size={13} />
-            {band.retryControl === "retryAll" ? "모두 다시 시도" : "안 된 것만 다시 시도"}
+            {band.retryControl === "retryAll" ? "모두 다시 시도" : "다시 시도"}
           </button>
         )}
       </div>
@@ -105,9 +109,9 @@ function StatusBandView({ band, parts }: { band: StatusBand; parts: PartState[] 
 }
 
 function PartCard({
-  part, allFailed, caseId, onNavigate,
+  part, allFailed, caseId, onRetry, onNavigate,
 }: {
-  part: PartState; allFailed: boolean; caseId: number | null; onNavigate: (path: string) => void;
+  part: PartState; allFailed: boolean; caseId: number | null; onRetry?: () => void; onNavigate: (path: string) => void;
 }) {
   const meta = PART_META[part.key as PartKey];
   if (!meta) return null;
@@ -170,9 +174,12 @@ function PartCard({
           <StatusPill text="실패" tone="danger" />
         </TitleRow>
         <div className="flex-1 pt-2 text-[12px] leading-[1.55] text-ink-2">{failedReason(false)}</div>
-        <div className="pt-1.5">
-          <OutlineButton icon={<RotateCcw size={12} />} label="다시 시도" onClick={() => {}} />
-        </div>
+        {onRetry && (
+          <div className="pt-1.5">
+            {/* 파트 단위 재실행 API 가 없어 전체 재실행(이 파트 포함)으로 연결 — 라벨은 거짓이 아니게 유지. */}
+            <OutlineButton icon={<RotateCcw size={12} />} label="다시 시도" onClick={onRetry} />
+          </div>
+        )}
       </div>
     );
   }

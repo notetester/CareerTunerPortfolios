@@ -88,6 +88,8 @@ export function useChatbot() {
   // ③ 인테이크 가이드(스텝 UI)에서 올린 자소서 fileId — ready 시 run 요청에 프론트에서 병합한다.
   //   (백엔드 인테이크는 attachmentFileIds 를 아직 안 받음(2단계) — run 엔드포인트는 이미 받는 필드라 프로토콜 유지.)
   const pendingAttachmentIdsRef = useRef<number[]>([]);
+  // 마지막 run 요청(첨부 병합 후 최종본) — 재시도 = 이 요청 전체 재실행. 세션 전환/이탈 시 비운다.
+  const lastRunRequestRef = useRef<AutoPrepRequest | null>(null);
   const setPendingAttachments = useCallback((ids: number[]) => {
     pendingAttachmentIdsRef.current = ids;
   }, []);
@@ -149,6 +151,7 @@ export function useChatbot() {
     conversationIdRef.current = conversationId;
     setActiveSessionId(id);
     run.reset();
+    lastRunRequestRef.current = null; // 다른 세션의 요청으로 재시도하지 않게
     runStartedRef.current = false;
     setRunStarted(false);
     setRunCaseId(null);
@@ -323,17 +326,17 @@ export function useChatbot() {
           // 인테이크 가이드에서 받아 둔 자소서 fileId 를 실행 요청에 병합(WRITE 가 소비). 1회성 — 쓰고 비운다.
           const extraAttachments = pendingAttachmentIdsRef.current;
           pendingAttachmentIdsRef.current = [];
-          run.start(
-            extraAttachments.length
-              ? {
-                  ...intake.autoPrepRequest,
-                  attachmentFileIds: [
-                    ...(intake.autoPrepRequest.attachmentFileIds ?? []),
-                    ...extraAttachments,
-                  ],
-                }
-              : intake.autoPrepRequest,
-          );
+          const runRequest = extraAttachments.length
+            ? {
+                ...intake.autoPrepRequest,
+                attachmentFileIds: [
+                  ...(intake.autoPrepRequest.attachmentFileIds ?? []),
+                  ...extraAttachments,
+                ],
+              }
+            : intake.autoPrepRequest;
+          lastRunRequestRef.current = runRequest; // 재시도용 보관(첨부 병합 최종본)
+          run.start(runRequest);
         }
       })
       .catch((err) => {
@@ -391,11 +394,19 @@ export function useChatbot() {
     sendMessage(`${m.label}으로 할게요`, { selectedModeCode: m.code });
   }, [sendMessage]);
 
+  /* ── run 재시도: 마지막 실행 요청 전체 재실행(부분 재실행 API 없음 — 인테이크 슬롯 재질문 없이 즉시). ── */
+  const retryRun = useCallback(() => {
+    const req = lastRunRequestRef.current;
+    if (!req) return; // 실행 이력이 없으면 no-op(재시도 어포던스는 runStarted 이후에만 노출됨)
+    void run.start(req);
+  }, [run]);
+
   /* ── 모드 이탈: 실행 전이면 백엔드 모드 해제("그만"), 실행 중/후면 로컬 정리만. ── */
   const exitOrchestrator = useCallback(() => {
     setShowExitSheet(false);
     const wasRunning = runStartedRef.current;
     pendingAttachmentIdsRef.current = []; // 이탈 시 가이드 첨부 병합 예약 해제(다른 세션 오염 방지)
+    lastRunRequestRef.current = null; // 이탈 후 재시도는 무의미(세션 문맥 이탈) — 오발사 방지
     run.reset();
     runStartedRef.current = false;
     orchRef.current = false;
@@ -452,6 +463,7 @@ export function useChatbot() {
     setBotStatus("idle");
     conversationIdRef.current = null; // 새 대화 → 서버가 새 ID 발급
     pendingAttachmentIdsRef.current = [];
+    lastRunRequestRef.current = null;
     run.reset();
     runStartedRef.current = false;
     orchRef.current = false;
@@ -480,6 +492,7 @@ export function useChatbot() {
     runPlan: run.plan,
     runError: run.error,
     runCaseId,
+    retryRun,
     selectCase, selectMode,
     setPendingAttachments,
     summarizePosts,
