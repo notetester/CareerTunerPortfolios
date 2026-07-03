@@ -102,6 +102,15 @@ public class BAnalysisGenerationService {
             "수행|담당|개발|운영|구축|관리|설계|지원|분석|기획|제작|유지보수|대응|추진|수립");
     // 요건 재배치·문장화 대상 세그먼트 길이 상한(이보다 길면 문장으로 보고 건드리지 않음).
     private static final int JOB_SEGMENT_MAX_LENGTH = 40;
+    // A-2: duties 총 길이가 이보다 짧으면 과소추출로 보고 주요업무(RESPONSIBILITY) 문장으로 보강한다.
+    private static final int DUTIES_UNDEREXTRACT_THRESHOLD = 60;
+    // A-2/A-4: 정상 조합형 한글엔 나타나지 않는 호환 자모 낱자 = OCR 손상 신호. 보강·필터에서 배제한다.
+    private static final Pattern BROKEN_JAMO_PATTERN = Pattern.compile("[ㄱ-ㅎㅏ-ㅣ]");
+    // A-2: 과소추출 보강으로 붙이는 주요업무 문장의 최대 개수·길이 범위(과보강 방지).
+    private static final int DUTIES_SUPPLEMENT_MAX = 3;
+    private static final int SUPPLEMENT_SENTENCE_MIN_LENGTH = 8;
+    private static final int SUPPLEMENT_SENTENCE_MAX_LENGTH = 120;
+    private static final Pattern LEADING_LIST_MARKER_PATTERN = Pattern.compile("^[-*•ㆍ·\\s]+");
     private static final List<String> KNOWN_SKILLS = List.of(
             "Java", "Spring", "Spring Boot", "MyBatis", "JPA", "SQL", "MySQL", "PostgreSQL",
             "Redis", "Kafka", "RabbitMQ", "Docker", "Kubernetes", "AWS", "Azure", "GCP",
@@ -350,25 +359,108 @@ public class BAnalysisGenerationService {
      * <p>A-1 필드 오배치 보정: duty 로 잘못 배치된 경력·자격 '요건'을 qualifications 로 재배치한다
      * (가온테크 "경력5년"·금융21 "건축분야기능사" 등). 재배치가 duties 를 통째로 비우면 근거 유실·검증 실패
      * 위험이 있어(전부 요건인 경우) 재배치하지 않는다(보수적).
+     *
+     * <p>A-2 키워드 나열 문장화 + 과소추출 보강: duties 가 짧아 과소추출로 판단되면 분류기의 주요업무
+     * (RESPONSIBILITY) 문장으로 보강하고(포스타입), 세그먼트가 키워드 나열이면 문장으로 렌더한다
+     * (가온테크·금융21). 보강 문장은 원문 근거(분류 문장)만 쓰고 OCR 깨짐(호환 자모)은 배제한다.
      */
     private JobText postProcessJobText(String duties, String qualifications, String summary,
                                        Classification classification) {
+        List<String> segments = splitJobTextSegments(duties);
+        String newQualifications = qualifications;
+        boolean changed = false;
+
+        // A-1: duty 로 오배치된 요건을 qualifications 로 재배치(전부 요건이면 생략).
         List<String> relocated = new ArrayList<>();
-        List<String> remainingDuties = new ArrayList<>();
-        for (String segment : splitJobTextSegments(duties)) {
+        List<String> remaining = new ArrayList<>();
+        for (String segment : segments) {
             if (isMisplacedQualification(segment)) {
                 relocated.add(segment);
             } else {
-                remainingDuties.add(segment);
+                remaining.add(segment);
             }
         }
-        String newDuties = duties;
-        String newQualifications = qualifications;
-        if (!relocated.isEmpty() && !remainingDuties.isEmpty()) {
-            newDuties = String.join("\n", remainingDuties);
+        if (!relocated.isEmpty() && !remaining.isEmpty()) {
+            segments = remaining;
             newQualifications = appendMissing(qualifications, relocated);
+            changed = true;
         }
+
+        // A-2 과소추출 보강: duties 가 얇으면 주요업무 분류 문장으로 채운다(원문 근거·중복/깨짐 제외).
+        if (isDutiesUnderExtracted(segments)) {
+            List<String> supplement = supplementFromResponsibilities(segments, classification);
+            if (!supplement.isEmpty()) {
+                segments.addAll(supplement);
+                changed = true;
+            }
+        }
+
+        // A-2 문장화: 세그먼트가 키워드 나열이면 문장으로, 그 외엔 무변경 시 원본 유지.
+        String newDuties;
+        if (isKeywordList(segments)) {
+            newDuties = String.join(", ", segments) + " 등의 업무를 담당합니다.";
+            changed = true;
+        } else if (changed) {
+            newDuties = String.join("\n", segments);
+        } else {
+            newDuties = duties;
+        }
+
         return new JobText(newDuties, newQualifications, summary);
+    }
+
+    /** duties 총 길이가 임계 미만이면 과소추출로 본다(주요업무 보강 대상). */
+    private boolean isDutiesUnderExtracted(List<String> segments) {
+        int total = segments.stream().mapToInt(String::length).sum();
+        return total < DUTIES_UNDEREXTRACT_THRESHOLD;
+    }
+
+    /**
+     * 분류기의 주요업무(RESPONSIBILITY) 문장 중 아직 duties 에 반영되지 않은 것을 최대 N개 보강한다.
+     * 원문에서 분류된 문장이라 근거가 있고(환각 아님), OCR 깨짐(호환 자모)·과도한 길이·기존 중복은 제외한다.
+     */
+    private List<String> supplementFromResponsibilities(List<String> existing, Classification classification) {
+        List<String> added = new ArrayList<>();
+        if (classification == null) {
+            return added;
+        }
+        for (String sentence : classification.textsByLabel(BJobSentenceClassifier.RESPONSIBILITY)) {
+            if (added.size() >= DUTIES_SUPPLEMENT_MAX) {
+                break;
+            }
+            String candidate = LEADING_LIST_MARKER_PATTERN.matcher(sentence.trim()).replaceAll("").trim();
+            if (candidate.length() < SUPPLEMENT_SENTENCE_MIN_LENGTH
+                    || candidate.length() > SUPPLEMENT_SENTENCE_MAX_LENGTH
+                    || BROKEN_JAMO_PATTERN.matcher(candidate).find()
+                    || isCovered(existing, candidate) || isCovered(added, candidate)) {
+                continue;
+            }
+            added.add(candidate);
+        }
+        return added;
+    }
+
+    /** 후보 문장이 기존 세그먼트 중 하나에 포함(부분 문자열)되면 이미 반영된 것으로 본다. */
+    private boolean isCovered(List<String> segments, String candidate) {
+        for (String segment : segments) {
+            if (segment.contains(candidate) || candidate.contains(segment)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /** 세그먼트가 전부 짧은 비문(키워드 나열)이면 문장화 대상으로 본다(2개 이상). */
+    private boolean isKeywordList(List<String> segments) {
+        if (segments.size() < 2) {
+            return false;
+        }
+        for (String segment : segments) {
+            if (isSentenceLike(segment) || segment.length() > JOB_SEGMENT_MAX_LENGTH) {
+                return false;
+            }
+        }
+        return true;
     }
 
     /** 자유서술을 줄바꿈·불릿 단위 세그먼트로 분해한다(콤마로는 자르지 않아 산문 문장 훼손 방지). */

@@ -614,6 +614,90 @@ class BAnalysisGenerationServiceTest {
         assertThat(result.payload().duties()).isEqualTo(duties);
     }
 
+    // ── 이슈 D 후속 A-2: 키워드 나열 문장화 + duties 과소추출 보강 ──
+
+    @Test
+    void a2RendersKeywordListDutiesAsSentence() {
+        // 가온테크·금융21 패턴: 문장이 아닌 키워드 나열 duties 를 문장으로 렌더한다(토큰은 보존).
+        BAnalysisGenerationService.GeneratedJobAnalysis result = runJobText(
+                "IT기술지원\nSE 백업전문가\n서버 유지보수",
+                "Linux 운영 경험",
+                "시스템 관리자를 채용하는 공고입니다. 서버 운영을 담당합니다.",
+                List.of("Linux"),
+                "IT기술지원 SE 백업전문가 서버 유지보수 Linux 운영");
+
+        assertThat(result.fellBack()).isFalse();
+        assertThat(result.payload().duties())
+                .endsWith("등의 업무를 담당합니다.")
+                .contains("IT기술지원")
+                .contains("SE 백업전문가")
+                .contains("서버 유지보수")
+                .doesNotContain("\n");
+    }
+
+    @Test
+    void a2SupplementsUnderExtractedDutiesFromResponsibilities() {
+        // 포스타입 패턴: duties 가 얇으면 분류기의 주요업무 문장으로 보강한다(원문 근거).
+        String posting = """
+                주요 업무
+                - 사용자 문제를 정의하고 해결합니다
+                - 모니터링 시스템을 구축합니다
+                - 개발 자동화를 담당합니다
+                자격요건: React, TypeScript 경험
+                """;
+        BAnalysisGenerationService.GeneratedJobAnalysis result = runJobText(
+                "프론트엔드 개발",
+                "React, TypeScript 경험",
+                "프론트엔드 엔지니어를 채용하는 공고입니다. 플랫폼을 개발합니다.",
+                List.of("React", "TypeScript"),
+                posting);
+
+        assertThat(result.fellBack()).isFalse();
+        assertThat(result.payload().duties())
+                .contains("프론트엔드 개발")
+                .contains("모니터링 시스템을 구축합니다")
+                .contains("개발 자동화를 담당합니다");
+    }
+
+    @Test
+    void a2DoesNotSupplementUnderExtractedDutiesWithBrokenOcr() {
+        // 과소추출이라도 OCR 깨짐(호환 자모) 주요업무 문장은 보강에 쓰지 않는다(백패커 누출 방지).
+        String posting = """
+                주요 업무
+                - 8공Izl 몰르ㄹ 비7럼 응Ho로 룹궁 담당합니다
+                - AWS 인프라를 운영합니다
+                자격요건: AWS 경험
+                """;
+        BAnalysisGenerationService.GeneratedJobAnalysis result = runJobText(
+                "클라우드 개발",
+                "AWS 경험",
+                "클라우드 엔지니어를 채용하는 공고입니다. 인프라를 운영합니다.",
+                List.of("AWS"),
+                posting);
+
+        assertThat(result.fellBack()).isFalse();
+        assertThat(result.payload().duties())
+                .contains("AWS 인프라를 운영합니다")
+                .doesNotContain("몰르")
+                .doesNotContain("룹궁");
+    }
+
+    @Test
+    void a2LeavesWellExtractedProseDutiesUntouched() {
+        // 충분히 추출된 산문 duties(임계 이상)는 과소추출이 아니라 보강·문장화 대상이 아니다(무변경).
+        String duties = "웹과 앱 환경 구분없이 콘텐츠를 생산하고 소비할 수 있는 플랫폼을 구축하고, "
+                + "성능 모니터링 시스템을 만들며 개발 프로세스 자동화를 담당합니다.";
+        BAnalysisGenerationService.GeneratedJobAnalysis result = runJobText(
+                duties,
+                "컴퓨터공학 관련 전공 학사 이상",
+                "프론트엔드 엔지니어를 채용하는 공고입니다. 플랫폼을 개발합니다.",
+                List.of("React"),
+                "웹과 앱 플랫폼을 구축하고 운영. React 경험 필수. 컴퓨터공학 전공.");
+
+        assertThat(result.fellBack()).isFalse();
+        assertThat(result.payload().duties()).isEqualTo(duties);
+    }
+
     // ── 헬퍼 메서드 ──
 
     /**
