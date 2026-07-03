@@ -270,7 +270,11 @@ public class CompanyAnalysisService {
                     if (url == null || url.isBlank()) {
                         continue; // WEB 출처는 URL 필수(D-2) — evidence 로 못 쓰므로 캐시에서 제외.
                     }
-                    byUrl.putIfAbsent(normalizeUrl(url), result); // 정규화 URL 기준 dedup, 먼저 수집분 우선.
+                    // 정규화 URL 기준 dedup(먼저 수집분 우선). 한 호출이 여러 건을 반환해도 결과 상한을 초과
+                    // 저장하지 않도록, 새 결과가 추가돼 상한에 도달하면 즉시 중단한다(호출 전 검사만으론 부족 — 리뷰 반영).
+                    if (byUrl.putIfAbsent(normalizeUrl(url), result) == null && byUrl.size() >= maxResults) {
+                        return List.copyOf(byUrl.values());
+                    }
                 }
             }
         }

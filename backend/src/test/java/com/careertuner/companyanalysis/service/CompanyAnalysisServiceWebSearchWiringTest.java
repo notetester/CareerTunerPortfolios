@@ -248,6 +248,27 @@ class CompanyAnalysisServiceWebSearchWiringTest {
         verify(webSearchClient, times(1)).search(any(NaverSearchCategory.class), any(String.class));
     }
 
+    /** ★ 한 호출이 상한을 넘는 건수를 반환해도 결과 상한을 초과 저장하지 않는다(리뷰 반영). */
+    @Test
+    void resultCapLimitsStoredResultsWhenSingleCallOverflows() {
+        CompanyWebSearchProperties properties = enabled(true);
+        properties.setMaxResultsPerAnalysis(1);
+        CompanyAnalysisService service = service(properties);
+        // 첫 호출이 고유 URL 2건 반환 — 상한 1 이므로 1건만 저장돼야 한다.
+        when(webSearchClient.search(any(NaverSearchCategory.class), any(String.class))).thenReturn(List.of(
+                result("가온테크 1", "https://news.example.com/1", "가온테크 관련 1"),
+                result("가온테크 2", "https://news.example.com/2", "가온테크 관련 2")));
+
+        List<CompanyWebEvidence> evidence = service.collectWebEvidence(applicationCase("가온테크"));
+
+        CompanyWebSearchResult[] cached = objectMapper.readValue(
+                cacheMapper.store.get("가온테크").getResults(), CompanyWebSearchResult[].class);
+        assertThat(cached).hasSize(1);        // 캐시 저장 1건(초과 저장 없음)
+        assertThat(evidence).hasSize(1);      // evidence 도 1건
+        assertThat(evidence.get(0).url()).isEqualTo("https://news.example.com/1"); // 먼저 수집분 우선
+        verify(webSearchClient, times(1)).search(any(NaverSearchCategory.class), any(String.class));
+    }
+
     @Test
     void defaultCostCapsAreFourCallsAndTwelveResults() {
         CompanyWebSearchProperties properties = new CompanyWebSearchProperties();
