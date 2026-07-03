@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { Megaphone, Save } from "lucide-react";
+import AdminShell from "@/admin/components/AdminShell";
 import { Badge } from "@/app/components/ui/badge";
 import { Button } from "@/app/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/app/components/ui/card";
@@ -60,12 +61,14 @@ export function AdminAdsPage() {
   };
 
   return (
+    <AdminShell
+      active="ads"
+      breadcrumb="콘텐츠"
+      title="광고 캠페인 관리"
+      icon={Megaphone}
+      desc="웹, 모바일 앱, 데스크톱 앱 광고를 한 곳에서 관리합니다. 유료 플랜은 기본적으로 광고가 노출되지 않습니다."
+    >
     <div className="space-y-5">
-      <div>
-        <h1 className="flex items-center gap-2 text-2xl font-black text-slate-950"><Megaphone className="size-6" />광고 캠페인 관리</h1>
-        <p className="mt-1 text-sm text-slate-500">웹, 모바일 앱, 데스크톱 앱 광고를 한 곳에서 관리합니다. 유료 플랜은 기본적으로 광고가 노출되지 않습니다.</p>
-      </div>
-
       <Card>
         <CardHeader><CardTitle>{editingId ? "광고 수정" : "광고 추가"}</CardTitle></CardHeader>
         <CardContent className="grid gap-4 md:grid-cols-2">
@@ -112,6 +115,7 @@ export function AdminAdsPage() {
         ))}
       </div>
     </div>
+    </AdminShell>
   );
 }
 
