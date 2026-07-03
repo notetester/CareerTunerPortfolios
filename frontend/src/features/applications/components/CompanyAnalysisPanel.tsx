@@ -26,6 +26,7 @@ import { formatKoreaDateTime } from "../utils/dateFormat";
 import { AnalysisFailureNotice } from "./AnalysisFailureNotice";
 import { AnalysisStructuredText } from "./AnalysisStructuredText";
 import { StructuredRowsEditor, type StructuredRowsEditorField } from "./StructuredRowsEditor";
+import { VerifiedFactsList } from "./VerifiedFactsList";
 
 interface CompanyAnalysisPanelProps {
   analysis: CompanyAnalysis | null;
@@ -332,7 +333,10 @@ export function CompanyAnalysisPanel({
             )}
 
             <div className="grid gap-3 md:grid-cols-2">
-              <AnalysisStructuredText title="검증된 사실" value={analysis.verifiedFacts} />
+              <div className="rounded-lg border border-slate-200 bg-card p-4">
+                <div className="text-sm font-semibold text-slate-900">검증된 사실</div>
+                <VerifiedFactsList value={analysis.verifiedFacts} />
+              </div>
               <AnalysisStructuredText title="AI 추론" value={analysis.aiInferences} />
             </div>
 

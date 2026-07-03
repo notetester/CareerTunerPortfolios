@@ -299,6 +299,60 @@ export function parseVerifiedFactRows(value: string | null | undefined): Verifie
   }));
 }
 
+/**
+ * verifiedFacts 표시 전용 뷰(읽기 전용 · D-4d). {@link parseVerifiedFactRows} 와 동일한 행 집합을 쓰되,
+ * UI에 노출되지 않아 {@link HIDDEN_EXTRA_KEY} 에 보관되던 sourceKind/sourceRef 를 타입 있는 형태로 노출한다.
+ * 검수 편집(StructuredRowsEditor)·serialize 경로와 무관하다(기존 파서 시그니처·동작 불변, additive).
+ */
+export interface VerifiedFactView {
+  fact: string;
+  source: string;
+  sourceKind: string | null;
+  sourceRef: string | null;
+}
+
+function readHiddenExtra(row: Record<string, string>): Record<string, unknown> {
+  const raw = row[HIDDEN_EXTRA_KEY];
+  if (!raw) return {};
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    return isPlainObject(parsed) ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+function readExtraString(extra: Record<string, unknown>, key: string): string | null {
+  const value = extra[key];
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
+}
+
+export function parseVerifiedFactViews(value: string | null | undefined): VerifiedFactView[] {
+  return parseVerifiedFactRows(value).map((row) => {
+    const extra = readHiddenExtra(row);
+    return {
+      fact: row.fact,
+      source: row.source,
+      sourceKind: readExtraString(extra, "sourceKind"),
+      sourceRef: readExtraString(extra, "sourceRef"),
+    };
+  });
+}
+
+/** WEB 근거 fact 여부(sourceKind === "WEB"). */
+export function isWebFact(view: VerifiedFactView): boolean {
+  return view.sourceKind === "WEB";
+}
+
+/** sourceRef 가 http/https URL 이면 그 URL, 아니면 null(링크 대신 텍스트로 표시하는 안전 가드). */
+export function webFactLinkUrl(view: VerifiedFactView): string | null {
+  const ref = view.sourceRef;
+  if (!ref) return null;
+  return /^https?:\/\//i.test(ref) ? ref : null;
+}
+
 export function parseAiInferenceRows(value: string | null | undefined): AiInferenceRow[] {
   // kind=UNKNOWN 마커는 편집 가능한 일반 AI 추론으로 노출하지 않는다. 백엔드가 응답에서
   // 마커를 분리해 virtual unknowns로 내려주고 검수 저장 시 재부착하므로(마커 소유권은 서버),
