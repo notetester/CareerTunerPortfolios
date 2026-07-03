@@ -14,6 +14,7 @@ import type {
 } from "../types/analysis";
 import {
   formatJsonArrayForTextarea,
+  isCompanyAnalysisRefreshDue,
   parseAiInferenceRows,
   parseJsonStringArray,
   parseUnknownItems,
@@ -173,6 +174,9 @@ export function CompanyAnalysisPanel({
     analysis.jobPostingRevision !== latestJobPostingRevision,
   );
 
+  // 재조회 권장 시점(refreshRecommendedAt) 경과 여부(신선도 · D-5). null/파싱 불가면 false.
+  const isRefreshDue = isCompanyAnalysisRefreshDue(analysis?.refreshRecommendedAt);
+
   const handleGenerate = async () => {
     if (
       isDirty &&
@@ -230,6 +234,11 @@ export function CompanyAnalysisPanel({
               {isStale && (
                 <span className="rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-xs font-semibold text-amber-700">
                   이전 공고 rev 기준
+                </span>
+              )}
+              {isRefreshDue && (
+                <span className="rounded-full border border-sky-200 bg-sky-50 px-2 py-0.5 text-xs font-semibold text-sky-700">
+                  재조회 권장
                 </span>
               )}
             </CardTitle>
@@ -302,6 +311,25 @@ export function CompanyAnalysisPanel({
             >
               {generating ? <Loader2 className="size-4 animate-spin" /> : <PlayCircle className="size-4" />}
               최신 공고로 재분석
+            </Button>
+          </div>
+        )}
+
+        {isRefreshDue && (
+          <div className="flex flex-col gap-3 rounded-lg border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-800 sm:flex-row sm:items-center sm:justify-between">
+            <span>
+              이 분석의 재조회 권장 시점이 지났습니다. 최신 정보로 다시 분석하는 것을 권장합니다.
+            </span>
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              className="border-sky-300 bg-card text-sky-800 hover:bg-sky-100"
+              disabled={loading || generating || reviewSaving}
+              onClick={() => void handleGenerate()}
+            >
+              {generating ? <Loader2 className="size-4 animate-spin" /> : <PlayCircle className="size-4" />}
+              지금 다시 분석
             </Button>
           </div>
         )}

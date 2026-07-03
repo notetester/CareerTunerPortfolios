@@ -353,6 +353,16 @@ export function webFactLinkUrl(view: VerifiedFactView): string | null {
   return /^https?:\/\//i.test(ref) ? ref : null;
 }
 
+/**
+ * 기업분석 재조회 권장 시점(refreshRecommendedAt) 경과 여부(사용자 신선도 표시 · D-5).
+ * null/공백/파싱 불가면 false(표시 안 함). 관리자 isRefreshNeeded 와 동일한 날짜 비교(<= now).
+ */
+export function isCompanyAnalysisRefreshDue(refreshRecommendedAt: string | null | undefined): boolean {
+  if (!refreshRecommendedAt) return false;
+  const time = new Date(refreshRecommendedAt).getTime();
+  return !Number.isNaN(time) && time <= Date.now();
+}
+
 export function parseAiInferenceRows(value: string | null | undefined): AiInferenceRow[] {
   // kind=UNKNOWN 마커는 편집 가능한 일반 AI 추론으로 노출하지 않는다. 백엔드가 응답에서
   // 마커를 분리해 virtual unknowns로 내려주고 검수 저장 시 재부착하므로(마커 소유권은 서버),
