@@ -30,6 +30,8 @@ export interface IntakeStepMeta {
   nextAsk: "CASE" | "MODE" | null;
   candidates: IntakeCaseCandidate[];
   modes: IntakeModeOption[];
+  /** ready 턴의 지원 건 id(autoPrepRequest.applicationCaseId) — "면접 보러 가기" 딥링크용. */
+  caseId?: number | null;
 }
 
 export interface ChatMessage {

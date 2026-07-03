@@ -330,6 +330,8 @@ export function useChatbot() {
                 nextAsk: intake.nextAsk,
                 candidates: intake.candidates ?? [],
                 modes: intake.modes ?? [],
+                // ready 턴이면 "면접 보러 가기" 칩 딥링크용 caseId 를 메시지에 함께 보관.
+                caseId: intake.autoPrepRequest?.applicationCaseId ?? null,
               }
             : undefined,
           summaryChip: data.summaryChip ?? undefined,

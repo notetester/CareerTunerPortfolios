@@ -445,6 +445,14 @@ function ChatbotPanel({ chatbot }: ChatbotPanelProps) {
                         <IntakeChips intake={m.intake} onSelectCase={selectCase} onSelectMode={selectMode}
                           onNewCase={() => setIntakeGuide({ msgId: m.id, steps: ["jd"] })} />
                       )}
+                      {/* 인테이크 완료(ready) 턴 — 면접 페이지 딥링크 칩(버그2 수술). 완료 직후는 sticky 가
+                          풀려 "네" 같은 약신호가 FALLBACK 되묻기로 낙하하는 표면이었다 — 다음 행동을
+                          칩으로 못박아 허공 타이핑 이유를 없앤다. run 실패(F-12)·WorkView 공백에도 유효. */}
+                      {m.id === lastBotId && m.intake?.ready && (
+                        <div className="ml-[37px]">
+                          <InterviewGoChip onGo={() => goInterview(m.intake?.caseId ?? runCaseId)} />
+                        </div>
+                      )}
                       {m.interviewReport && (
                         <InterviewResultCard
                           data={m.interviewReport}
@@ -578,6 +586,26 @@ function ChatbotPanel({ chatbot }: ChatbotPanelProps) {
 }
 
 /* ════════════════ Orchestrator components ════════════════ */
+
+/** 인테이크 완료 턴의 면접 페이지 인계 칩 — /interview?caseId=&tab=modes 는 기존 F 표면(goInterview·
+ *  WorkView footer·actionFor)과 동일 계약. ?caseId 자동 선택은 D 페이지 소비 대기(감사 §6 D 인계). */
+function InterviewGoChip({ onGo }: { onGo: () => void }) {
+  return (
+    <div className="flex flex-wrap gap-1.5">
+      <button
+        onClick={onGo}
+        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[12.5px] font-bold transition-colors"
+        style={{
+          border: "1.5px solid var(--orch-violet)",
+          background: "var(--orch-surface)",
+          color: "var(--orch-violet)",
+        }}>
+        <ArrowUpRight size={13} />
+        면접 보러 가기
+      </button>
+    </div>
+  );
+}
 
 /** run 실패 안내(F-09) — WorkView 가 null 렌더(plan 전 사망)일 때는 이 카드가 유일한 실패 표면. */
 function RunErrorNotice({ message, showRetry, onRetry }: {
