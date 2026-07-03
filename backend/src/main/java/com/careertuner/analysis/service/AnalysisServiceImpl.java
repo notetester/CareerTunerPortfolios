@@ -43,6 +43,8 @@ import com.careertuner.analysis.dto.InterviewTrendResponse;
 import com.careertuner.analysis.dto.JobReadinessResponse;
 import com.careertuner.analysis.dto.SkillGapResponse;
 import com.careertuner.analysis.mapper.AnalysisMapper;
+import com.careertuner.notification.domain.Notification;
+import com.careertuner.notification.service.NotificationService;
 import lombok.RequiredArgsConstructor;
 import tools.jackson.core.type.TypeReference;
 import tools.jackson.databind.ObjectMapper;
@@ -61,6 +63,7 @@ public class AnalysisServiceImpl implements AnalysisService {
     private final AnalysisMapper analysisMapper;
     private final CareerTrendAiService careerTrendAiService;
     private final CareerAnalysisRunService careerAnalysisRunService;
+    private final NotificationService notificationService;
     private final ObjectMapper objectMapper;
 
     @Override
@@ -156,6 +159,19 @@ public class AnalysisServiceImpl implements AnalysisService {
                 ai.errorMessage(),
                 ai.retryable(),
                 creditUsed);
+
+        // 캐시 재사용이 아닌 실제 AI 실행이 성공한 경우에만 완료 알림을 남긴다.
+        if ("SUCCESS".equals(ai.status())) {
+            notificationService.notify(Notification.builder()
+                    .userId(userId)
+                    .type("CAREER_TREND_COMPLETE")
+                    .targetType("CAREER_ANALYSIS_RUN")
+                    .targetId(run.id())
+                    .title("커리어 트렌드 분석이 완료되었습니다")
+                    .message("장기 취업 경향 요약과 다음 지원 방향 추천이 준비되었습니다.")
+                    .link("/analysis")
+                    .build());
+        }
 
         return new AnalysisSummaryResponse(
                 stats, skillGaps, jobReadiness, scoreHistory, applications,

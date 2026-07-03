@@ -3,6 +3,7 @@ import { useLocation, useNavigate } from "react-router";
 import { Home, MessageSquare, Mic, Bell, Grid3x3 } from "lucide-react";
 import { haptic } from "@/platform/haptics";
 import { homePath } from "@/platform/capacitor";
+import { useNotificationStore } from "@/features/notification/hooks/useNotificationStore";
 import { MobileMoreSheet } from "./MobileMoreSheet";
 
 /**
@@ -20,6 +21,8 @@ export function MobileBottomNav() {
   const location = useLocation();
   const navigate = useNavigate();
   const [moreOpen, setMoreOpen] = useState(false);
+  // 헤더 NotificationBell 과 같은 스토어를 구독한다(폴링/갱신은 NotificationBell 이 담당).
+  const unreadCount = useNotificationStore((state) => state.unreadCount);
 
   const resolve = (href: string) => (href === "__home__" ? homePath() : href);
   const isActive = (href: string) => {
@@ -42,6 +45,7 @@ export function MobileBottomNav() {
         <div className="mx-auto grid max-w-lg grid-cols-5">
           {TABS.map((tab) => {
             const active = isActive(tab.href);
+            const showUnread = tab.href === "/notifications" && unreadCount > 0;
             return (
               <button
                 key={tab.href}
@@ -50,9 +54,19 @@ export function MobileBottomNav() {
                   active ? "text-[#5E6AD2] dark:text-[#7d88de]" : "text-slate-500 dark:text-[#8A8F98]"
                 }`}
               >
-                <tab.icon
-                  className={`size-5 transition-transform ${active ? "-translate-y-px" : ""}`}
-                />
+                <span className="relative">
+                  <tab.icon
+                    className={`size-5 transition-transform ${active ? "-translate-y-px" : ""}`}
+                  />
+                  {showUnread && (
+                    <span
+                      className="absolute -right-2 -top-1 flex h-3.5 min-w-3.5 items-center justify-center rounded-full bg-red-500 px-0.5 text-[9px] font-bold leading-none text-white"
+                      aria-label={`미읽음 알림 ${unreadCount}개`}
+                    >
+                      {unreadCount > 9 ? "9+" : unreadCount}
+                    </span>
+                  )}
+                </span>
                 {tab.label}
               </button>
             );

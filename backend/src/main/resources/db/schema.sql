@@ -724,6 +724,7 @@ CREATE TABLE IF NOT EXISTS collaboration_conversation_invite (
     conversation_id BIGINT      NOT NULL,
     inviter_id      BIGINT      NULL,
     invitee_id      BIGINT      NOT NULL,
+    anonymous       TINYINT(1)  NOT NULL DEFAULT 0 COMMENT '익명 초대 여부',
     status          VARCHAR(20) NOT NULL DEFAULT 'PENDING',
     pending_marker  TINYINT GENERATED ALWAYS AS (
         CASE WHEN status = 'PENDING' THEN 1 ELSE NULL END
@@ -1685,6 +1686,7 @@ CREATE TABLE IF NOT EXISTS notification (
     type        VARCHAR(40)  NOT NULL,
     target_type VARCHAR(20)  NULL,
     target_id   BIGINT       NULL,
+    sender_relation VARCHAR(12) NULL COMMENT '발신자 관계. stranger/friend/company/operator (관계 기반 알림에만)',
     title       VARCHAR(255) NOT NULL,
     message     TEXT         NULL,
     link        VARCHAR(512) NULL,
@@ -1707,6 +1709,7 @@ CREATE TABLE IF NOT EXISTS notification_preference (
     email_enabled     TINYINT(1)  NOT NULL DEFAULT 1,
     categories_json   JSON        NULL,
     rules_json        JSON        NULL,
+    keywords_json     JSON        NULL,
     quiet_hours_start VARCHAR(5)  NULL,
     quiet_hours_end   VARCHAR(5)  NULL,
     created_at        DATETIME    NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -1733,6 +1736,60 @@ CREATE TABLE IF NOT EXISTS push_subscription (
     CONSTRAINT fk_push_subscription_user FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
     ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci;
 
+
+-- 12. 개인 차단/허용 정책 (docs/PERSONAL_BLOCK_POLICY.md)
+CREATE TABLE IF NOT EXISTS user_block (
+    id              BIGINT       NOT NULL AUTO_INCREMENT,
+    user_id         BIGINT       NOT NULL COMMENT '차단을 설정한 사용자',
+    blocked_user_id BIGINT       NOT NULL COMMENT '차단 대상 계정',
+    flags_json      JSON         NULL COMMENT '표면별 명시 설정. null 항목은 blockedAccount 관계 정책을 따름',
+    block_ip        TINYINT(1)   NOT NULL DEFAULT 0 COMMENT '이 계정의 접속 IP 도 차단(user_ip_block 파생)',
+    memo            VARCHAR(200) NULL COMMENT '개인 메모(차단 사유 등)',
+    created_at      DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at      DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    PRIMARY KEY (id),
+    UNIQUE KEY uq_user_block_pair (user_id, blocked_user_id),
+    KEY idx_user_block_blocked (blocked_user_id),
+    CONSTRAINT fk_user_block_user    FOREIGN KEY (user_id)         REFERENCES users (id) ON DELETE CASCADE,
+    CONSTRAINT fk_user_block_blocked FOREIGN KEY (blocked_user_id) REFERENCES users (id) ON DELETE CASCADE
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci COMMENT = '개인 계정 차단(표면별 세부 설정 포함)';
+
+CREATE TABLE IF NOT EXISTS user_ip_block (
+    id             BIGINT       NOT NULL AUTO_INCREMENT,
+    user_id        BIGINT       NOT NULL COMMENT '차단을 설정한 사용자',
+    ip_hash        VARCHAR(64)  NOT NULL COMMENT 'SHA-256(서버솔트+IP). 원본 IP 비저장',
+    source_user_id BIGINT       NULL COMMENT '어느 계정 차단에서 파생됐는지',
+    label          VARCHAR(100) NULL COMMENT '목록 표기용 라벨',
+    created_at     DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (id),
+    UNIQUE KEY uq_user_ip_block (user_id, ip_hash),
+    CONSTRAINT fk_user_ip_block_user   FOREIGN KEY (user_id)        REFERENCES users (id) ON DELETE CASCADE,
+    CONSTRAINT fk_user_ip_block_source FOREIGN KEY (source_user_id) REFERENCES users (id) ON DELETE SET NULL
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci COMMENT = '개인 IP 차단(해시만 저장)';
+
+CREATE TABLE IF NOT EXISTS conversation_block (
+    id              BIGINT      NOT NULL AUTO_INCREMENT,
+    user_id         BIGINT      NOT NULL,
+    conversation_id BIGINT      NOT NULL,
+    flags_json      JSON        NULL COMMENT 'inviteFromRoom/memberCreatedRoomInvite/memberJoinedRoomInvite(+익명 변형)',
+    created_at      DATETIME    NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at      DATETIME    NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    PRIMARY KEY (id),
+    UNIQUE KEY uq_conversation_block (user_id, conversation_id),
+    CONSTRAINT fk_conversation_block_user FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE,
+    CONSTRAINT fk_conversation_block_conv FOREIGN KEY (conversation_id) REFERENCES collaboration_conversation (id) ON DELETE CASCADE
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci COMMENT = '개인 채팅방 차단';
+
+CREATE TABLE IF NOT EXISTS user_privacy_policy (
+    id          BIGINT   NOT NULL AUTO_INCREMENT,
+    user_id     BIGINT   NOT NULL,
+    policy_json JSON     NULL,
+    created_at  DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at  DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    PRIMARY KEY (id),
+    UNIQUE KEY uq_user_privacy_policy_user (user_id),
+    CONSTRAINT fk_user_privacy_policy_user FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci COMMENT = '개인 차단/허용 관계별 정책';
 
 SET FOREIGN_KEY_CHECKS = 1;
 

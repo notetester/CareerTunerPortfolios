@@ -73,6 +73,19 @@ git tag demo-apk-<설명> && git push origin demo-apk-<설명>
 # 또는: Actions 탭 → "Release Android demo APK" → Run workflow
 ```
 
+### 2.4 푸시·딥링크 테스트
+
+- **푸시(FCM)**: §2.2 의 **실제 `google-services.json`** 이 있어야 기기 토큰이 발급된다(example 파일로는 등록 불가).
+  앱에서 설정 → 알림 → 푸시를 켜면 FCM 토큰이 백엔드에 등록되고, 발송 시 알림 채널
+  (`ct_alerts`/`ct_alerts_sound`/`ct_alerts_vibrate`/`ct_alerts_silent`)이 수신자의 소리/진동 설정을 반영한다.
+  알림을 탭하면 FCM `data.url` 경로로 앱 내 이동한다.
+- **딥링크**: 에뮬레이터/실기기에 adb 로 VIEW 인텐트를 보내 확인한다. 커스텀 스킴·App Link 둘 다 같은 앱 내 경로로 이동해야 한다.
+
+```bash
+adb shell am start -a android.intent.action.VIEW -d "careertuner://applications"
+adb shell am start -a android.intent.action.VIEW -d "https://careertuner.kr/community"
+```
+
 ## 3. iOS — **macOS + Xcode 필수** (Windows 빌드 불가)
 
 iOS 빌드/실행은 Apple 정책상 macOS에서만 가능하다. 이 저장소에는 의존성(`@capacitor/ios`)과

@@ -1,6 +1,7 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
+import QtMultimedia
 import CareerTuner
 
 // 하단 입력바 — CC Desktop 의 프롬프트 입력창 포지션.
@@ -10,10 +11,28 @@ Item {
     property string mode: "answer"
     signal submitted(string text)
 
+    // 영상 답변 상태 — 패널 열림 / 녹화 완료된 임시 mp4 경로
+    property bool videoPanelOpen: false
+    property string recordedVideoPath: ""
+
     implicitHeight: bar.implicitHeight + 26
 
     function fill(text) { input.text = text; input.forceActiveFocus() }
     function clear() { input.text = "" }
+
+    function closeVideoPanel() {
+        cameraRecorder.stopPreview()
+        root.recordedVideoPath = ""
+        consentBox.checked = false
+        root.videoPanelOpen = false
+    }
+
+    onVideoPanelOpenChanged: {
+        if (videoPanelOpen) {
+            cameraRecorder.videoSink = videoOut.videoSink
+            cameraRecorder.startPreview()
+        }
+    }
 
     Connections {
         target: session
@@ -25,6 +44,11 @@ Item {
         target: recorder
         function onRecorded(filePath) { session.transcribeAudio(filePath) }
         function onErrorOccurred(message) { win.showToast("녹음 오류", message) }
+    }
+    Connections {
+        target: cameraRecorder
+        function onRecorded(filePath) { root.recordedVideoPath = filePath }
+        function onErrorOccurred(message) { win.showToast("카메라 오류", message) }
     }
 
     Rectangle {
@@ -43,6 +67,156 @@ Item {
             x: 12; y: 10
             width: parent.width - 24
             spacing: 6
+
+            // ── 영상 답변 패널: 카메라 프리뷰 + 녹화 + 동의 전송 ──
+            ColumnLayout {
+                visible: root.videoPanelOpen
+                Layout.fillWidth: true
+                spacing: 8
+
+                RowLayout {
+                    Layout.fillWidth: true
+                    spacing: 8
+                    Text { text: "🎥 영상 답변"; color: Theme.text; font.pixelSize: 12; font.bold: true }
+                    Text {
+                        text: root.recordedVideoPath !== ""
+                              ? "녹화 완료 — 전송 전 동의를 확인하세요"
+                              : (cameraRecorder.recording ? "녹화 중" : "최대 3분 · 채점 후 영상은 즉시 폐기됩니다")
+                        color: Theme.muted; font.pixelSize: 11
+                    }
+                    Item { Layout.fillWidth: true }
+                    Rectangle {
+                        width: 22; height: 22; radius: 6
+                        color: vClose.containsMouse ? Theme.hover : "transparent"
+                        Text { anchors.centerIn: parent; text: "✕"; color: Theme.muted; font.pixelSize: 11 }
+                        MouseArea {
+                            id: vClose
+                            anchors.fill: parent; hoverEnabled: true
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: root.closeVideoPanel()
+                        }
+                    }
+                }
+
+                // 프리뷰
+                Rectangle {
+                    Layout.fillWidth: true
+                    Layout.preferredHeight: 210
+                    radius: Theme.radius
+                    color: "black"
+                    border.color: cameraRecorder.recording ? Theme.danger : Theme.border
+                    clip: true
+
+                    VideoOutput {
+                        id: videoOut
+                        anchors.fill: parent
+                        fillMode: VideoOutput.PreserveAspectFit
+                    }
+                    // 남은 시간 배지 (녹화 중)
+                    Rectangle {
+                        visible: cameraRecorder.recording
+                        x: 10; y: 10
+                        width: remainLbl.implicitWidth + 18; height: 24; radius: 12
+                        color: Qt.rgba(0, 0, 0, 0.55)
+                        Text {
+                            id: remainLbl
+                            anchors.centerIn: parent
+                            text: {
+                                const left = Math.max(0, cameraRecorder.maxSeconds - cameraRecorder.seconds)
+                                return "● 남은 " + Math.floor(left / 60) + ":" + String(left % 60).padStart(2, "0")
+                            }
+                            color: Theme.danger; font.pixelSize: 11; font.bold: true
+                        }
+                    }
+                }
+
+                // 컨트롤: 녹화 시작/중지 ↔ (완료 후) 동의 + 전송/다시 녹화
+                RowLayout {
+                    Layout.fillWidth: true
+                    spacing: 8
+
+                    // 녹화 시작/중지
+                    Rectangle {
+                        visible: root.recordedVideoPath === ""
+                        width: recLbl.implicitWidth + 22; height: 28; radius: 8
+                        color: cameraRecorder.recording ? Theme.accentSoft : Theme.raised
+                        border.color: cameraRecorder.recording ? Theme.accent : Theme.border
+                        Text {
+                            id: recLbl; anchors.centerIn: parent
+                            text: cameraRecorder.recording ? "■ 녹화 중지" : "● 녹화 시작"
+                            color: cameraRecorder.recording ? Theme.accent : Theme.text
+                            font.pixelSize: 11
+                        }
+                        MouseArea {
+                            anchors.fill: parent; cursorShape: Qt.PointingHandCursor
+                            onClicked: cameraRecorder.recording ? cameraRecorder.stop() : cameraRecorder.start()
+                        }
+                    }
+
+                    // 동의 체크 (녹화 완료 후)
+                    RowLayout {
+                        visible: root.recordedVideoPath !== ""
+                        spacing: 7
+                        Rectangle {
+                            id: consentBox
+                            property bool checked: false
+                            width: 16; height: 16; radius: 4
+                            color: checked ? Theme.accent : Theme.raised
+                            border.color: checked ? Theme.accent : Theme.border
+                            Text {
+                                anchors.centerIn: parent; visible: consentBox.checked
+                                text: "✓"; color: "white"; font.pixelSize: 10; font.bold: true
+                            }
+                            MouseArea {
+                                anchors.fill: parent; cursorShape: Qt.PointingHandCursor
+                                onClicked: consentBox.checked = !consentBox.checked
+                            }
+                        }
+                        Text {
+                            text: "영상은 채점 후 즉시 폐기됩니다 — 전송에 동의합니다"
+                            color: Theme.muted; font.pixelSize: 11
+                            MouseArea {
+                                anchors.fill: parent; cursorShape: Qt.PointingHandCursor
+                                onClicked: consentBox.checked = !consentBox.checked
+                            }
+                        }
+                    }
+
+                    Item { Layout.fillWidth: true }
+
+                    // 다시 녹화
+                    Rectangle {
+                        visible: root.recordedVideoPath !== ""
+                        width: retryLbl.implicitWidth + 20; height: 28; radius: 8
+                        color: Theme.raised; border.color: Theme.border
+                        Text { id: retryLbl; anchors.centerIn: parent; text: "다시 녹화"; color: Theme.text; font.pixelSize: 11 }
+                        MouseArea {
+                            anchors.fill: parent; cursorShape: Qt.PointingHandCursor
+                            onClicked: { root.recordedVideoPath = ""; consentBox.checked = false }
+                        }
+                    }
+
+                    // 전송
+                    Rectangle {
+                        visible: root.recordedVideoPath !== ""
+                        width: sendVideoLbl.implicitWidth + 22; height: 28; radius: 8
+                        opacity: consentBox.checked && !session.scoring ? 1 : 0.4
+                        gradient: Gradient {
+                            GradientStop { position: 0.0; color: Theme.accent2 }
+                            GradientStop { position: 1.0; color: Theme.accent }
+                        }
+                        Text { id: sendVideoLbl; anchors.centerIn: parent; text: "↑ 영상 전송"; color: "white"; font.pixelSize: 11; font.bold: true }
+                        MouseArea {
+                            anchors.fill: parent; cursorShape: Qt.PointingHandCursor
+                            enabled: consentBox.checked && !session.scoring
+                            onClicked: {
+                                session.submitVideoAnswer(root.recordedVideoPath, consentBox.checked)
+                                root.closeVideoPanel()
+                            }
+                        }
+                    }
+                }
+            }
 
             // 녹음 중 상태줄
             RowLayout {
@@ -148,6 +322,34 @@ Item {
                         anchors.fill: parent; cursorShape: Qt.PointingHandCursor
                         enabled: session.currentQid >= 0
                         onClicked: recorder.recording ? recorder.stop() : recorder.start()
+                    }
+                }
+
+                // 영상 답변 (답변 모드) — 카메라 없으면 폰 이어하기 안내로 대체
+                Rectangle {
+                    visible: root.mode === "answer"
+                    width: camLbl.implicitWidth + 18; height: 26; radius: 7
+                    color: root.videoPanelOpen ? Theme.accentSoft : "transparent"
+                    border.color: root.videoPanelOpen ? Theme.accent : Theme.border
+                    Text {
+                        id: camLbl; anchors.centerIn: parent
+                        text: cameraRecorder.cameraAvailable ? "🎥 영상 답변" : "📲 카메라 없음 — 폰으로"
+                        color: root.videoPanelOpen ? Theme.accent : Theme.muted
+                        font.pixelSize: 11
+                    }
+                    MouseArea {
+                        anchors.fill: parent; cursorShape: Qt.PointingHandCursor
+                        enabled: session.currentQid >= 0
+                        onClicked: {
+                            if (!cameraRecorder.cameraAvailable) {
+                                // 카메라 없는 PC — 세션을 폰으로 보내 영상 면접을 이어한다
+                                jobModel.dispatchToPhone(session.sessionId)
+                                win.showToast("폰으로 이어하기", "폰 알림(최대 30초 내)을 탭하면 이 세션이 폰에서 이어집니다")
+                                return
+                            }
+                            if (root.videoPanelOpen) root.closeVideoPanel()
+                            else root.videoPanelOpen = true
+                        }
                     }
                 }
 

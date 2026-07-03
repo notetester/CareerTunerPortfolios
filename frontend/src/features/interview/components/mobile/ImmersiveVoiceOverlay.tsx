@@ -7,6 +7,7 @@ import {
   VoiceMetricsTracker,
 } from "../../hooks/voiceAnalysis";
 import { BrowserSttTracker } from "../../hooks/speechToText";
+import { createNegotiatedRecorder } from "../../hooks/mediaSupport";
 import { scoreVoiceServer, transcribeVoice } from "../../api/interviewApi";
 
 /**
@@ -48,6 +49,8 @@ export function ImmersiveVoiceOverlay({
   const sttRef = useRef<BrowserSttTracker | null>(null);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const closedRef = useRef(false);
+  /** 녹음 시 협상된 업로드 포맷(webm|mp4) — blob.type 스니핑 대신 이 값을 쓴다. */
+  const formatRef = useRef<string>("webm");
 
   const cleanup = () => {
     if (timerRef.current) clearInterval(timerRef.current);
@@ -76,7 +79,9 @@ export function ImmersiveVoiceOverlay({
         const stt = new BrowserSttTracker();
         stt.start();
         sttRef.current = stt;
-        const recorder = new MediaRecorder(mic);
+        // 기기별 지원 mimeType 협상(webm/opus → mp4/aac) — WebView 등 webm 미지원 기기 대응.
+        const { recorder, format } = createNegotiatedRecorder(mic, "audio");
+        formatRef.current = format;
         recorder.ondataavailable = (e) => {
           if (e.data.size > 0) chunksRef.current.push(e.data);
         };
@@ -134,7 +139,7 @@ export function ImmersiveVoiceOverlay({
     }
 
     const audioBase64 = await blobToBase64(blob).catch(() => "");
-    const audioFormat = (blob.type || "audio/webm").includes("webm") ? "webm" : "wav";
+    const audioFormat = formatRef.current; // 녹음 시 협상한 포맷 (blob.type 스니핑 대체)
 
     // 1) 전사: serve STT 우선, 실패 시 브라우저 STT 폴백
     let transcript = "";

@@ -200,10 +200,11 @@
     </insert>
 
     <insert id="insertConversationInvite">
-        INSERT INTO collaboration_conversation_invite (conversation_id, inviter_id, invitee_id, status)
-        VALUES (#{conversationId}, #{inviterId}, #{inviteeId}, 'PENDING')
+        INSERT INTO collaboration_conversation_invite (conversation_id, inviter_id, invitee_id, anonymous, status)
+        VALUES (#{conversationId}, #{inviterId}, #{inviteeId}, #{anonymous}, 'PENDING')
         ON DUPLICATE KEY UPDATE
             inviter_id = VALUES(inviter_id),
+            anonymous = VALUES(anonymous),
             status = 'PENDING',
             responded_at = NULL
     </insert>
@@ -240,6 +241,25 @@
            AND status = 'ACTIVE'
     </select>
 
+    <!-- 알림 fan-out 용 멤버 조회 — 음소거 여부와 이름(언급 감지)을 함께 가져온다 -->
+    <select id="findConversationMembersForNotify"
+            resultType="com.careertuner.collaboration.domain.ConversationMemberRow">
+        SELECT cm.user_id AS userId,
+               u.name     AS name,
+               cm.muted   AS muted
+          FROM collaboration_conversation_member cm
+          JOIN users u ON u.id = cm.user_id
+         WHERE cm.conversation_id = #{conversationId}
+           AND cm.status = 'ACTIVE'
+    </select>
+
+    <update id="updateConversationMemberMuted">
+        UPDATE collaboration_conversation_member
+           SET muted = #{muted}
+         WHERE conversation_id = #{conversationId}
+           AND user_id = #{userId}
+    </update>
+
     <sql id="conversationSummaryColumns">
         c.id,
         c.type,
@@ -253,6 +273,7 @@
                AND cm_count.status = 'ACTIVE'
         ) AS member_count,
         CASE WHEN me.user_id IS NULL THEN 0 ELSE 1 END AS joined,
+        COALESCE(me.muted, 0) AS muted,
         peer.user_id AS peer_user_id,
         peer_user.name AS peer_name,
         peer_user.email AS peer_email,

@@ -11,6 +11,8 @@ import com.careertuner.common.exception.BusinessException;
 import com.careertuner.common.exception.ErrorCode;
 import com.careertuner.common.security.AuthUser;
 import com.careertuner.consent.service.ConsentService;
+import com.careertuner.notification.domain.Notification;
+import com.careertuner.notification.service.NotificationService;
 import com.careertuner.profile.ai.ProfileAiResult;
 import com.careertuner.profile.ai.ProfileAiService;
 import com.careertuner.profile.ai.ProfileCriterionScore;
@@ -30,10 +32,17 @@ import tools.jackson.databind.ObjectMapper;
 @RequiredArgsConstructor
 public class ProfileServiceImpl implements ProfileService {
 
+    /** 프로필 AI 분석 기능별 알림 문구 라벨. */
+    private static final java.util.Map<String, String> PROFILE_FEATURE_LABELS = java.util.Map.of(
+            "PROFILE_SUMMARY", "프로필 요약 분석",
+            "PROFILE_SKILL_EXTRACT", "보유 역량 추출",
+            "PROFILE_COMPLETENESS", "프로필 완성도 진단");
+
     private final ProfileMapper profileMapper;
     private final ApplicationCaseMapper applicationCaseMapper;
     private final ConsentService consentService;
     private final ProfileAiService profileAiService;
+    private final NotificationService notificationService;
     private final ObjectMapper objectMapper;
 
     @Override
@@ -105,6 +114,20 @@ public class ProfileServiceImpl implements ProfileService {
         requireAiConsent(userId);
         ProfileAiResult result = profileAiService.evaluate(findOrEmpty(userId), featureType);
         recordAi(userId, result);
+        // 스펙(프로필) 분석이 성공하면 사용자에게 완료 알림을 남긴다.
+        if ("SUCCESS".equals(result.status())) {
+            notificationService.notify(Notification.builder()
+                    .userId(userId)
+                    .type("PROFILE_ANALYZED")
+                    .targetType("USER_PROFILE")
+                    .targetId(userId)
+                    .title("스펙 분석이 완료되었습니다")
+                    .message("%s 완료 · 완성도 %d점".formatted(
+                            PROFILE_FEATURE_LABELS.getOrDefault(featureType, "프로필 분석"),
+                            result.completenessScore()))
+                    .link("/profile")
+                    .build());
+        }
         return result;
     }
 

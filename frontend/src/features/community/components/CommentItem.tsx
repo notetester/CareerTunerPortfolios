@@ -1,6 +1,9 @@
 import { useState } from "react";
 import { Avatar, AvatarFallback } from "@/app/components/ui/avatar";
-import { Heart, MessageCircle, Lock, Trash2, MessageSquareX, Pencil } from "lucide-react";
+import { Heart, MessageCircle, Lock, Trash2, MessageSquareX, Pencil, UserX } from "lucide-react";
+// 개인 차단 진입점 — 익명 댓글도 서버가 작성자 id 를 알아 차단이 동작한다(익명성 유지).
+import { blockUser } from "@/features/privacy/api/privacyApi";
+import { showBlockManageToast } from "@/features/privacy/components/blockToast";
 import { useCommunityStore } from "../hooks/useCommunityStore";
 import { useLoginDialog } from "../hooks/useLoginDialog";
 import { ConfirmDialog } from "@/app/components/ui/confirm-dialog";
@@ -23,7 +26,7 @@ interface CommentItemProps {
 const MAX_INDENT_DEPTH = 5;
 
 export function CommentItem({ comment: c, childrenMap, depth, onReply }: CommentItemProps) {
-  const { toggleReaction } = useCommunityStore();
+  const { toggleReaction, fetchComments } = useCommunityStore();
   const { showLoginDialog, requireAuth, onLoginConfirm, onLoginCancel } = useLoginDialog();
   const [liked, setLiked] = useState(c.liked ?? false);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
@@ -38,6 +41,8 @@ export function CommentItem({ comment: c, childrenMap, depth, onReply }: Comment
   // 서버 tombstone(c.isDeleted) 또는 이번 세션 낙관적 자삭(deleted) 둘 다 삭제 표시.
   // → 재조회·타 사용자·관리자 숨김에도 placeholder가 유지된다.
   const isDeleted = deleted || !!c.isDeleted;
+  // 뷰어가 차단한 작성자의 댓글 — 톰스톤만 렌더하고 답글 트리는 유지(조용한 차단, "한 번 보기" 없음).
+  const isBlocked = !!c.blocked;
 
   const handleDeleteComment = async () => {
     try {
@@ -89,19 +94,35 @@ export function CommentItem({ comment: c, childrenMap, depth, onReply }: Comment
     setReplyOpen(false);
   };
 
+  // 작성자 차단 — 조용한 차단. 차단 후 목록을 다시 받아 이 작성자의 댓글이 톰스톤으로 바뀐다.
+  const handleBlockAuthor = () => {
+    requireAuth(async () => {
+      try {
+        await blockUser({ targetUserId: c.author.id });
+        showBlockManageToast(
+          c.author.isAnonymous ? "이 작성자를 차단했습니다." : `${c.author.name}님을 차단했습니다.`,
+          c.author.isAnonymous ? "익명 작성자의 신원은 표시되지 않으며 익명성은 유지됩니다." : undefined,
+        );
+        await fetchComments(c.postId);
+      } catch {
+        toast.error("차단 처리에 실패했습니다.");
+      }
+    });
+  };
+
   // 삭제됐어도 자식 답글은 보존해야 하므로, 본문만 "삭제된 댓글"로 대체하고 트리는 유지
   return (
     <>
       <div className={`ct-cmt ${c.isAuthor ? "is-op" : ""}`}>
         <Avatar className="w-8 h-8 shrink-0">
           <AvatarFallback className="text-xs bg-muted">
-            {isDeleted ? "-" : c.author.name[0]}
+            {isDeleted || isBlocked ? "-" : c.author.name[0]}
           </AvatarFallback>
         </Avatar>
         <div className="ct-cmt__body">
-          {isDeleted ? (
+          {isDeleted || isBlocked ? (
             <div className="ct-cmt__text" style={{ color: "var(--muted-foreground)", fontStyle: "italic" }}>
-              삭제된 댓글입니다.
+              {isDeleted ? "삭제된 댓글입니다." : "차단한 사용자의 댓글입니다."}
             </div>
           ) : (
             <>
@@ -150,6 +171,16 @@ export function CommentItem({ comment: c, childrenMap, depth, onReply }: Comment
                 {c.mine && (
                   <button className="ct-cmt__act ct-cmt__act--del" onClick={() => setShowDeleteDialog(true)}>
                     <Trash2 /> 삭제
+                  </button>
+                )}
+                {/* 작성자 메뉴 — 익명 댓글은 "작성자 차단"(서버가 id 를 알므로 동작, 익명성 유지) */}
+                {!c.mine && !!c.author.id && (
+                  <button
+                    className="ct-cmt__act ct-cmt__act--del"
+                    onClick={handleBlockAuthor}
+                    title="차단 사실은 상대에게 알려지지 않습니다."
+                  >
+                    <UserX /> {c.author.isAnonymous ? "작성자 차단" : "차단"}
                   </button>
                 )}
               </div>

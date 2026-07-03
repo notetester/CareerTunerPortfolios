@@ -44,6 +44,8 @@ export interface ConversationSummaryResponse {
   locked: boolean;
   memberCount: number;
   joined: boolean;
+  /** 내가 이 방 알림을 해제했는지 (해제 시 이름·키워드 언급만 알림) */
+  muted: boolean;
   peer: CollaborationUser | null;
   latestMessage: MessagePreviewResponse | null;
   unreadCount: number;
@@ -77,6 +79,8 @@ export interface MessageResponse {
   attachments: MessageAttachmentResponse[];
   sharedPostings: SharedPostingResponse[];
   createdAt: string;
+  /** 개인 차단 정책 톰스톤 — true 면 content 가 대체 문구("차단한 사용자의 메시지입니다.") */
+  blocked?: boolean;
 }
 
 export interface MessageAttachmentResponse {

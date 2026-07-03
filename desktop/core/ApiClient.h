@@ -2,12 +2,15 @@
 #include <QObject>
 #include <QNetworkAccessManager>
 #include <QNetworkRequest>
+#include <QJsonDocument>
 #include <QJsonObject>
 #include <QJsonValue>
 #include <QString>
 #include <QList>
 #include <QPair>
 #include <functional>
+
+#include "SettingsStore.h"
 
 class QNetworkReply;
 
@@ -40,6 +43,12 @@ public:
 
     void get(const QString& path, JsonCallback cb);
     void post(const QString& path, const QJsonObject& body, JsonCallback cb);
+    // PATCH — 부분 갱신 (알림 읽음 처리·대화방 음소거 등). Qt 에 전용 API 가 없어 sendCustomRequest 사용.
+    void patch(const QString& path, const QJsonObject& body, JsonCallback cb)
+    {
+        const QByteArray payload = QJsonDocument(body).toJson(QJsonDocument::Compact);
+        handle(m_nam.sendCustomRequest(makeRequest(path), QByteArrayLiteral("PATCH"), payload), std::move(cb));
+    }
     void deleteResource(const QString& path, JsonCallback cb);
     // multipart/form-data POST — 음성 업로드 등
     void postMultipart(const QString& path,
@@ -54,7 +63,8 @@ private:
     void handle(QNetworkReply* reply, JsonCallback cb);
 
     QNetworkAccessManager m_nam;
-    // 기본은 팀 공용 원격 백엔드(Tailscale). 실제 기동 시 SettingsStore 값으로 덮어쓴다.
-    QString m_baseUrl = "https://careertuner-dev.example.invalid";
+    // 기본은 팀 공용 원격 백엔드(Tailscale) — 상수는 SettingsStore 한 곳에서 관리.
+    // 실제 기동 시 SettingsStore 에 저장된 값으로 덮어쓴다.
+    QString m_baseUrl = SettingsStore::defaultBaseUrl();
     QString m_token;
 };

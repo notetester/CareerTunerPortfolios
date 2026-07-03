@@ -23,10 +23,13 @@ npm run dev      # http://localhost:5173
 
 | 명령 | 설명 |
 | --- | --- |
-| `npm run dev` | 개발 서버 (HMR) |
+| `npm run dev` | 개발 서버 (HMR) — 로컬 백엔드(:8080) 프록시 |
 | `npm run dev:mock` | **백엔드 없이** mock 데모 모드로 개발 서버 실행 |
-| `npm run build` | 프로덕션 빌드 (`dist/`) |
+| `npm run dev:tailscale` / `dev:aws` | 환경 모드로 개발 서버 실행 (`.env.<모드>` 로드) |
+| `npm run build` | 프로덕션 빌드 (`dist/`) — API 는 상대경로 `/api` |
 | `npm run build:mock` | mock 데모 모드 프로덕션 빌드 (웹 데모/APK 용) |
+| `npm run build:tailscale` / `build:aws` / `build:domain` | 환경 모드 빌드 — `VITE_API_BASE_URL` 이 빌드에 박힌다 |
+| `npm run app:tailscale` | tailscale 모드 빌드 + `cap sync android` (실백엔드 APK 준비) |
 | `npm run preview` | 빌드 결과 미리보기 |
 | `npm run typecheck` | 타입 검사 (`tsc --noEmit`) |
 | `npm run gen:icons` | PWA/앱 아이콘 생성 (`public/icons/*`) |
@@ -36,6 +39,17 @@ npm run dev      # http://localhost:5173
 
 모바일 앱(PWA/Android/iOS) 빌드 상세는 [MOBILE_BUILD.md](MOBILE_BUILD.md),
 데모·릴리즈 절차는 [../docs/RELEASE.md](../docs/RELEASE.md) 참고.
+
+## 환경 프로파일 / API 베이스
+
+환경(localhost/tailscale/aws/domain)별 호스트는 `.env.<모드>` 파일로 커밋돼 있고
+(`VITE_API_BASE_URL` + dev 프록시용 `VITE_PROXY_TARGET`), 정식 정의는
+[`../config/environments.json`](../config/environments.json) ·
+[`../docs/ENVIRONMENTS.md`](../docs/ENVIRONMENTS.md)를 따른다.
+
+API 베이스는 `src/app/lib/apiBase.ts` 의 `apiBase()` 가 단일 소스다 —
+**런타임 오버라이드(네이티브 앱/dev 전용) → `VITE_API_BASE_URL` → 상대경로 `/api`** 순.
+네이티브 앱은 설정 → 계정 설정 → "서버 주소" 카드에서 재빌드 없이 백엔드 환경을 전환할 수 있다.
 
 ## 구조
 

@@ -42,6 +42,8 @@ export interface CommunityPost {
   interviewReview?: InterviewReviewMetadata;
   liked?: boolean;
   bookmarked?: boolean;
+  /** 서버가 뷰어 기준으로 차단 처리한 글 — 톰스톤("차단한 사용자의 게시글입니다")만 렌더한다(조용한 차단). */
+  blocked?: boolean;
 }
 
 export interface InterviewReviewMetadata {
@@ -69,6 +71,8 @@ export interface CommunityComment {
   liked?: boolean;
   /** 서버가 내려주는 tombstone 플래그. 삭제/숨김이지만 살아있는 답글이 있어 골격만 유지하는 노드. */
   isDeleted?: boolean;
+  /** 서버가 뷰어 기준으로 차단 처리한 댓글 — 톰스톤만 렌더하고 답글 트리는 유지한다(조용한 차단). */
+  blocked?: boolean;
 }
 
 export type ReactionType = "LIKE" | "BOOKMARK";

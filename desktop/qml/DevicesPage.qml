@@ -36,7 +36,10 @@ Item {
                         spacing: 3
                         Text { text: "이 데스크탑"; color: Theme.text; font.pixelSize: 13; font.bold: true }
                         Text {
-                            text: "현재 기기 · 알림 폴링 30초 · 트레이 상주"
+                            // 실제 기기 감지(CameraRecorder) — 카메라 없는 PC 는 영상 면접을 폰으로 이어한다
+                            text: "현재 기기 · 알림 폴링 30초 · 트레이 상주 · "
+                                  + (cameraRecorder.cameraAvailable ? "🎥 카메라 있음" : "🎥 카메라 없음(영상 면접은 폰으로 이어하기)")
+                                  + " · " + (cameraRecorder.microphoneAvailable ? "🎙 마이크 있음" : "🎙 마이크 없음")
                             color: Theme.muted; font.pixelSize: 11
                         }
                     }

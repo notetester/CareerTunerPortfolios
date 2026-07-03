@@ -19,6 +19,8 @@
 #include "core/NotificationPoller.h"
 #include "core/AutoPrepRunner.h"
 #include "core/CollaborationClient.h"
+#include "core/CommunityClient.h"
+#include "core/CameraRecorder.h"
 
 // 앱 아이콘: 리소스 파일 없이 런타임에 그림 (인디고 라운드 + C)
 static QIcon makeAppIcon()
@@ -65,9 +67,11 @@ int main(int argc, char* argv[])
     jobs.setApi(&api);
     InterviewSession  session(&api, &settings);
     VoiceRecorder     recorder;
+    CameraRecorder    cameraRecorder;
     NotificationPoller poller(&api);
     AutoPrepRunner    autoprep(&api);
     CollaborationClient collaboration(&api);
+    CommunityClient   community(&api);
 
     // 설정에서 서버 주소를 바꾸면 즉시 반영
     QObject::connect(&settings, &SettingsStore::changed, &api,
@@ -82,6 +86,8 @@ int main(int argc, char* argv[])
         [&poller]() { poller.stop(); });
     QObject::connect(&auth, &AuthService::loggedOut, &collaboration,
         [&collaboration]() { collaboration.clear(); });
+    QObject::connect(&auth, &AuthService::loggedOut, &community,
+        [&community]() { community.clear(); });
 
     // ── QML 화면에 코어 노출 ──
     QQmlApplicationEngine engine;
@@ -93,9 +99,11 @@ int main(int argc, char* argv[])
     ctx->setContextProperty("jobModel", &jobs);
     ctx->setContextProperty("session", &session);
     ctx->setContextProperty("recorder", &recorder);
+    ctx->setContextProperty("cameraRecorder", &cameraRecorder);
     ctx->setContextProperty("notifications", &poller);
     ctx->setContextProperty("autoprep", &autoprep);
     ctx->setContextProperty("collaboration", &collaboration);
+    ctx->setContextProperty("community", &community);
 
     engine.loadFromModule("CareerTuner", "Main");
     if (engine.rootObjects().isEmpty())

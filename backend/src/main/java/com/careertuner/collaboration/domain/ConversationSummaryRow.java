@@ -20,6 +20,7 @@ public class ConversationSummaryRow {
     private Boolean locked;
     private Integer memberCount;
     private Boolean joined;
+    private Boolean muted;
     private Long peerUserId;
     private String peerName;
     private String peerEmail;

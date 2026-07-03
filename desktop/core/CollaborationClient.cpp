@@ -31,6 +31,7 @@ void CollaborationClient::clear()
     m_currentConversationId = -1;
     m_currentPeerName.clear();
     m_currentConversationType.clear();
+    m_currentConversationMuted = false;
     emit searchResultsChanged();
     emit friendsChanged();
     emit requestsChanged();
@@ -138,13 +139,36 @@ void CollaborationClient::openConversation(qint64 userId, const QString& peerNam
         });
 }
 
-void CollaborationClient::openConversationById(qint64 conversationId, const QString& peerName, const QString& type)
+void CollaborationClient::openConversationById(qint64 conversationId, const QString& peerName,
+                                               const QString& type, bool muted)
 {
     m_currentConversationId = conversationId;
     m_currentPeerName = peerName;
     m_currentConversationType = type;
+    m_currentConversationMuted = muted;
     emit currentConversationChanged();
     loadMessages(conversationId);
+}
+
+void CollaborationClient::setConversationMuted(qint64 conversationId, bool muted)
+{
+    if (conversationId <= 0) return;
+    QJsonObject body;
+    body["muted"] = muted;
+    m_api->patch(QStringLiteral("/api/collaboration/conversations/%1/mute").arg(conversationId), body,
+        [this, conversationId](bool ok, const QJsonValue& data, const QString& message) {
+            if (!ok) {
+                emit errorOccurred(message.isEmpty() ? QStringLiteral("음소거 설정을 변경하지 못했습니다") : message);
+                return;
+            }
+            // 응답은 ConversationSummaryResponse — 현재 열린 방이면 헤더 토글에 즉시 반영
+            const QJsonObject conversation = data.toObject();
+            if (conversationId == m_currentConversationId) {
+                m_currentConversationMuted = conversation.value("muted").toBool();
+                emit currentConversationChanged();
+            }
+            loadConversations();
+        });
 }
 
 void CollaborationClient::discoverRooms(const QString& keyword)
@@ -407,6 +431,7 @@ void CollaborationClient::openConversationFromObject(const QJsonObject& conversa
 {
     m_currentConversationId = conversation.value("id").toInteger();
     m_currentConversationType = conversation.value("type").toString();
+    m_currentConversationMuted = conversation.value("muted").toBool();
     const QJsonObject peer = conversation.value("peer").toObject();
     const QString displayName = conversation.value("displayName").toString(
         peer.value("name").toString(fallbackName));
@@ -444,6 +469,7 @@ QVariantMap CollaborationClient::conversationMap(const QJsonObject& conversation
         {"locked", conversation.value("locked").toBool()},
         {"memberCount", conversation.value("memberCount").toInt()},
         {"joined", conversation.value("joined").toBool()},
+        {"muted", conversation.value("muted").toBool()},
         {"peer", userMap(peer)},
         {"peerName", displayName},
         {"latestPreview", preview},

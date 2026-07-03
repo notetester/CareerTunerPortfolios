@@ -22,6 +22,9 @@ import {
   VoiceMetricsTracker,
 } from "../hooks/voiceAnalysis";
 import { computeVisualScore, VisualMetricsTracker, type VisualScoreDetail } from "../hooks/visualAnalysis";
+import { createNegotiatedRecorder, mediaUnsupportedReason } from "../hooks/mediaSupport";
+import { useDeviceCapabilities } from "../hooks/deviceCapabilities";
+import { DeviceHandoffCard, type HandoffReason } from "./DeviceHandoffCard";
 import type {
   InterviewQuestion,
   InterviewSession,
@@ -77,12 +80,24 @@ export function AvatarTab({ session }: { session: InterviewSession | null }) {
   const chunksRef = useRef<Blob[]>([]);
   const questionsRef = useRef<string[]>([]);
   const finishingRef = useRef(false);
+  /** 녹화 시 협상된 업로드 포맷(webm|mp4) — blob.type 스니핑 대신 이 값을 쓴다. */
+  const recordFormatRef = useRef<string>("webm");
 
   const supported =
     typeof navigator !== "undefined" &&
     !!navigator.mediaDevices &&
     typeof window !== "undefined" &&
     "MediaRecorder" in window;
+
+  const deviceCaps = useDeviceCapabilities();
+  // 이 기기에서 진행 불가한 원인 — 있으면 "폰으로 이어하기" 안내 카드를 띄운다.
+  const handoffReason: HandoffReason | null = !supported
+    ? (mediaUnsupportedReason() ?? "unsupported")
+    : deviceCaps.hasCamera === false
+      ? "no-camera"
+      : deviceCaps.hasMicrophone === false
+        ? "no-microphone"
+        : null;
 
   // 준비된 질문(게이트) + 키 보유 여부 로드.
   useEffect(() => {
@@ -157,7 +172,9 @@ export function AvatarTab({ session }: { session: InterviewSession | null }) {
       voiceTrackerRef.current = voiceTracker;
 
       chunksRef.current = [];
-      const recorder = new MediaRecorder(webcam);
+      // 기기별 지원 mimeType 협상(webm → mp4) — WebView 등 webm 미지원 기기 대응.
+      const { recorder, format } = createNegotiatedRecorder(webcam, "video");
+      recordFormatRef.current = format;
       recorder.ondataavailable = (e) => {
         if (e.data.size > 0) chunksRef.current.push(e.data);
       };
@@ -258,7 +275,7 @@ export function AvatarTab({ session }: { session: InterviewSession | null }) {
     if (recordedBlob && recordedBlob.size > 0) {
       try {
         const audioBase64 = await blobToBase64(recordedBlob);
-        const audioFormat = (recordedBlob.type || "audio/webm").includes("webm") ? "webm" : "wav";
+        const audioFormat = recordFormatRef.current; // 녹화 시 협상한 포맷 (blob.type 스니핑 대체)
         const stt = await transcribeVoice(session.id, audioBase64, audioFormat);
         userTranscript = stt.text ?? "";
       } catch {
@@ -286,7 +303,7 @@ export function AvatarTab({ session }: { session: InterviewSession | null }) {
     if (consent && capabilities?.nonverbal && recordedBlob && recordedBlob.size > 0) {
       try {
         const videoBase64 = await blobToBase64(recordedBlob);
-        const videoFormat = (recordedBlob.type || "video/webm").includes("webm") ? "webm" : "mp4";
+        const videoFormat = recordFormatRef.current; // 녹화 시 협상한 포맷 (blob.type 스니핑 대체)
         const server = await scoreAvatarServer(session.id, {
           videoBase64,
           videoFormat,
@@ -418,11 +435,7 @@ export function AvatarTab({ session }: { session: InterviewSession | null }) {
             </p>
           )}
 
-          {!supported && (
-            <p className="rounded-lg bg-amber-50 p-3 text-sm text-amber-700">
-              이 브라우저는 웹캠 녹화를 지원하지 않습니다. 최신 Chrome/Edge 에서 이용해 주세요.
-            </p>
-          )}
+          {handoffReason && <DeviceHandoffCard sessionId={session.id} reason={handoffReason} />}
 
           {/* 화면: 아바타(메인) + 내 웹캠(서브) */}
           {(status === "connecting" || status === "live" || status === "analyzing") && (
@@ -473,7 +486,7 @@ export function AvatarTab({ session }: { session: InterviewSession | null }) {
             </div>
           )}
 
-          {supported && capabilities?.nonverbal && (status === "idle" || status === "scored") && (
+          {supported && !handoffReason && capabilities?.nonverbal && (status === "idle" || status === "scored") && (
             <label className="flex items-start gap-2 rounded-lg border border-slate-200 bg-slate-50 p-3 text-xs text-slate-600">
               <input
                 type="checkbox"
@@ -489,7 +502,7 @@ export function AvatarTab({ session }: { session: InterviewSession | null }) {
             </label>
           )}
 
-          {supported && (
+          {supported && !handoffReason && (
             <div className="flex flex-wrap items-center gap-2">
               {(status === "idle" || status === "scored" || status === "error") && (
                 <Button
@@ -527,7 +540,7 @@ export function AvatarTab({ session }: { session: InterviewSession | null }) {
               )}
               {status === "scored" && downloadUrl && (
                 <Button asChild variant="outline" className="gap-1.5">
-                  <a href={downloadUrl} download="avatar-interview.webm">
+                  <a href={downloadUrl} download={`avatar-interview.${recordFormatRef.current}`}>
                     <Download className="size-4" /> 내 답변 영상 다운로드
                   </a>
                 </Button>

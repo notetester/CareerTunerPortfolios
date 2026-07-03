@@ -20,6 +20,8 @@ interface BackendPost {
   interviewReview?: InterviewReviewMetadata;
   liked?: boolean;
   bookmarked?: boolean;
+  /** 뷰어가 차단한 작성자의 글이면 true — 톰스톤 렌더용(조용한 차단). */
+  blocked?: boolean;
 }
 
 interface PostPageData {

@@ -1,0 +1,29 @@
+# ─────────────────────────────────────────────────────────────────────────────
+#  tailscale 프로파일 — 팀 DB(AWS) + 공유 4090 Ollama(Tailscale). 현재 팀 표준 개발 환경.
+#
+#  실행:
+#    SPRING_PROFILES_ACTIVE=tailscale ./gradlew bootRun
+#    또는 .\gradlew.bat bootRun --args='--spring.profiles.active=tailscale'
+#
+#  DB 는 base(application.yaml) 기본값(localhost/team1_db)을 그대로 쓴다 — 재정의하지 않는다.
+#  프로파일 전체 목록·컴포넌트별 전환 방법: docs/ENVIRONMENTS.md, config/environments.json
+# ─────────────────────────────────────────────────────────────────────────────
+
+# 공유 4090 Ollama(Tailscale IP). 4090 이 꺼져 있으면 부팅 시 OllamaEndpointFallbackConfig 가
+# 프로브 후 fallback-base-urls(기본 로컬 Ollama)로 자동 교체한다.
+ai:
+  ollama:
+    base-url: ${AI_OLLAMA_BASE_URL:http://localhost:11434}
+    fallback-base-urls: ${AI_OLLAMA_FALLBACK_BASE_URLS:http://localhost:11434}
+
+langchain4j:
+  ollama:
+    chat-model:
+      base-url: ${AI_OLLAMA_BASE_URL:http://localhost:11434}
+
+# 프런트를 tailscale serve(HTTPS)로 노출해 원격/모바일에서 접속하는 경우의 예시.
+# (마이크/카메라는 HTTPS 필수 — frontend/vite.config.ts 의 allowedHosts 주석 참고)
+# careertuner:
+#   app:
+#     frontend-url: ${APP_FRONTEND_URL:https://careertuner-dev.example.invalid}
+#     api-base-url: ${APP_API_BASE_URL:https://careertuner-dev.example.invalid}

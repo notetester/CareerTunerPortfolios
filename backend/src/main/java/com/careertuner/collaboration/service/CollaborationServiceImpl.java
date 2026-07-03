@@ -4,7 +4,9 @@ import java.time.LocalDateTime;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Objects;
 import java.util.Set;
+import java.util.stream.Collectors;
 
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
@@ -13,6 +15,7 @@ import org.springframework.transaction.annotation.Transactional;
 import com.careertuner.collaboration.domain.CollaborationConversation;
 import com.careertuner.collaboration.domain.CollaborationMessage;
 import com.careertuner.collaboration.domain.CollaborationUserRow;
+import com.careertuner.collaboration.domain.ConversationMemberRow;
 import com.careertuner.collaboration.domain.ConversationSummaryRow;
 import com.careertuner.collaboration.domain.FriendRequest;
 import com.careertuner.collaboration.domain.FriendRequestRow;
@@ -39,7 +42,11 @@ import com.careertuner.file.domain.FileAsset;
 import com.careertuner.file.mapper.FileAssetMapper;
 import com.careertuner.file.service.FileService;
 import com.careertuner.notification.domain.Notification;
+import com.careertuner.notification.service.NotificationPreferenceService;
 import com.careertuner.notification.service.NotificationService;
+import com.careertuner.privacy.dto.ConversationBlockResponse;
+import com.careertuner.privacy.service.PrivacyPolicyService;
+import com.careertuner.privacy.service.PrivacySurfaces;
 
 import lombok.RequiredArgsConstructor;
 
@@ -58,11 +65,17 @@ public class CollaborationServiceImpl implements CollaborationService {
     private static final Set<String> ROOM_TYPES = Set.of("GROUP", "PUBLIC", "PRIVATE");
     private static final Set<String> ATTACHMENT_SHARE_MODES = Set.of("TEMPORARY", "CLOUD", "LOCAL");
 
+    /** 차단 사실을 특정할 수 없는 일반 거부 문구 (silent deny — docs/PERSONAL_BLOCK_POLICY.md §4). */
+    private static final String GENERIC_DENY_DM = "지금은 이 사용자와 대화를 시작할 수 없습니다.";
+    private static final String BLOCKED_MESSAGE_TOMBSTONE = "차단한 사용자의 메시지입니다.";
+
     private final CollaborationMapper mapper;
     private final NotificationService notificationService;
+    private final NotificationPreferenceService notificationPreferenceService;
     private final FileAssetMapper fileAssetMapper;
     private final FileService fileService;
     private final PasswordEncoder passwordEncoder;
+    private final PrivacyPolicyService privacyPolicyService;
 
     @Override
     public List<CollaborationUserResponse> searchUsers(Long userId, String keyword, int limit) {
@@ -72,9 +85,40 @@ public class CollaborationServiceImpl implements CollaborationService {
         }
         int cappedLimit = Math.max(1, Math.min(limit, MAX_SEARCH_LIMIT));
         return mapper.searchUsers(userId, q, cappedLimit).stream()
-                .map(row -> new CollaborationUserResponse(
-                        row.getId(), row.getName(), row.getEmail(), row.getRelationStatus()))
+                .map(row -> toSearchResult(userId, row))
+                .filter(Objects::nonNull)
                 .toList();
+    }
+
+    /**
+     * 검색 결과의 개인 정책 반영 (docs/PERSONAL_BLOCK_POLICY.md §5 profile.*).
+     *  - 내가 차단한 계정: 제외하지 않고 relationStatus=BLOCKED 로 표기(차단 관리에서 검색 필요).
+     *  - 상대 정책이 나를 검색에서 숨김(profile.searchMe): 결과에서 조용히 제외.
+     *  - 상대 정책이 내 프로필 조회를 차단(profile.viewMe): 이메일 마스킹(공개 프로필 페이지 부재로 현재 유일한 노출 지점).
+     */
+    private CollaborationUserResponse toSearchResult(Long viewerId, CollaborationUserRow row) {
+        String relationStatus = row.getRelationStatus();
+        if (PrivacySurfaces.BLOCKED_ACCOUNT.equals(privacyPolicyService.relationOf(viewerId, row.getId()))) {
+            relationStatus = "BLOCKED";
+        } else if (!privacyPolicyService.allows(row.getId(), viewerId, PrivacySurfaces.PROFILE_SEARCH_ME)) {
+            return null; // 상대가 검색 노출을 차단 — 조용히 제외(silent deny)
+        }
+        String email = privacyPolicyService.allows(row.getId(), viewerId, PrivacySurfaces.PROFILE_VIEW_ME)
+                ? row.getEmail()
+                : maskEmail(row.getEmail());
+        return new CollaborationUserResponse(row.getId(), row.getName(), email, relationStatus);
+    }
+
+    /** 프로필 조회 차단 시 이메일 마스킹 — 첫 글자와 도메인만 남긴다. */
+    private String maskEmail(String email) {
+        if (email == null || email.isBlank()) {
+            return email;
+        }
+        int at = email.indexOf('@');
+        if (at <= 1) {
+            return at < 0 ? "***" : "***" + email.substring(at);
+        }
+        return email.charAt(0) + "***" + email.substring(at);
     }
 
     @Override
@@ -105,6 +149,10 @@ public class CollaborationServiceImpl implements CollaborationService {
             throw new BusinessException(ErrorCode.INVALID_INPUT, "본인에게 친구 요청을 보낼 수 없습니다.");
         }
         CollaborationUserRow target = requireActiveUser(targetUserId);
+        // 상대 정책이 내 친구 요청을 차단(friendRequest) — 차단 사실 비특정 일반 문구(silent deny)
+        if (!privacyPolicyService.allows(targetUserId, userId, PrivacySurfaces.FRIEND_REQUEST)) {
+            throw new BusinessException(ErrorCode.FORBIDDEN, "지금은 이 사용자에게 요청을 보낼 수 없습니다.");
+        }
         if (mapper.countFriendship(userId, targetUserId) > 0) {
             throw new BusinessException(ErrorCode.CONFLICT, "이미 친구로 등록된 사용자입니다.");
         }
@@ -181,6 +229,14 @@ public class CollaborationServiceImpl implements CollaborationService {
         if (mapper.countFriendship(userId, targetUserId) == 0) {
             throw new BusinessException(ErrorCode.FORBIDDEN, "친구로 등록된 사용자와만 대화할 수 있습니다.");
         }
+        // ① 뷰어가 상대의 dm 을 차단한 경우 — 본인 설정이므로 차단 사실을 명시해도 된다
+        if (!privacyPolicyService.allows(userId, targetUserId, PrivacySurfaces.DM)) {
+            throw new BusinessException(ErrorCode.FORBIDDEN, "차단한 사용자와는 대화를 시작할 수 없습니다.");
+        }
+        // ② 상대 정책이 뷰어의 dm 을 차단한 경우 — 차단 사실 비특정 일반 문구(silent deny)
+        if (!privacyPolicyService.allows(targetUserId, userId, PrivacySurfaces.DM)) {
+            throw new BusinessException(ErrorCode.FORBIDDEN, GENERIC_DENY_DM);
+        }
 
         Long low = Math.min(userId, targetUserId);
         Long high = Math.max(userId, targetUserId);
@@ -229,6 +285,11 @@ public class CollaborationServiceImpl implements CollaborationService {
             }
             requireActiveUser(memberId);
             requireFriendship(userId, memberId);
+            // 초대 대상의 개인 정책(invite.*)이 차단이면 그 대상만 조용히 스킵(silent deny — 예외 금지)
+            if (!privacyPolicyService.allowsInvite(memberId, userId, conversation.getId(),
+                    type, true, false)) {
+                continue;
+            }
             mapper.insertConversationMemberWithRole(conversation.getId(), memberId, "MEMBER", userId);
             notifyRoomInvite(memberId, userId, conversation.getId(), title);
         }
@@ -273,13 +334,21 @@ public class CollaborationServiceImpl implements CollaborationService {
             throw new BusinessException(ErrorCode.INVALID_INPUT, "1:1 대화방에는 멤버를 초대할 수 없습니다.");
         }
         requireConversationMember(userId, conversationId);
+        boolean anonymous = Boolean.TRUE.equals(request.anonymous());
+        boolean inviterIsCreator = userId.equals(conversation.getCreatedBy());
         for (Long inviteeId : normalizeUserIds(request.userIds())) {
             if (inviteeId.equals(userId)) {
                 continue;
             }
             requireActiveUser(inviteeId);
             requireFriendship(userId, inviteeId);
-            mapper.insertConversationInvite(conversationId, userId, inviteeId);
+            // 초대 대상의 개인 정책(invite.{TYPE}.{creator|member}.anonymous + 채팅방 차단 파생 규칙)이
+            // 차단이면 그 대상만 조용히 스킵(silent deny — 예외 금지)
+            if (!privacyPolicyService.allowsInvite(inviteeId, userId, conversationId,
+                    conversation.getType(), inviterIsCreator, anonymous)) {
+                continue;
+            }
+            mapper.insertConversationInvite(conversationId, userId, inviteeId, anonymous);
             mapper.insertConversationMemberWithRole(conversationId, inviteeId, "MEMBER", userId);
             mapper.acceptInvite(conversationId, inviteeId);
             notifyRoomInvite(inviteeId, userId, conversationId, conversation.getTitle());
@@ -289,7 +358,9 @@ public class CollaborationServiceImpl implements CollaborationService {
 
     @Override
     public List<ConversationSummaryResponse> listConversations(Long userId) {
+        Set<Long> blockedRooms = blockedConversationIds(userId);
         return mapper.findConversations(userId).stream()
+                .filter(row -> !blockedRooms.contains(row.getId()))
                 .map(this::toConversationResponse)
                 .toList();
     }
@@ -298,9 +369,24 @@ public class CollaborationServiceImpl implements CollaborationService {
     public List<ConversationSummaryResponse> discoverConversations(Long userId, String keyword, int limit) {
         String q = keyword == null ? "" : keyword.trim();
         int cappedLimit = Math.max(1, Math.min(limit, MAX_ROOM_SEARCH_LIMIT));
+        Set<Long> blockedRooms = blockedConversationIds(userId);
         return mapper.findDiscoverableConversations(userId, q, cappedLimit).stream()
+                .filter(row -> !blockedRooms.contains(row.getId()))
                 .map(this::toConversationResponse)
                 .toList();
+    }
+
+    /** 뷰어가 차단한 채팅방 id 집합 — 목록/발견에서 숨김(정책 조회 실패는 필터 없음으로 폴백). */
+    private Set<Long> blockedConversationIds(Long userId) {
+        try {
+            return privacyPolicyService.listConversationBlocks(userId).stream()
+                    .map(ConversationBlockResponse::conversationId)
+                    .filter(Objects::nonNull)
+                    .collect(Collectors.toSet());
+        } catch (RuntimeException ex) {
+            // 차단 목록 조회 실패가 방 목록 자체를 죽이면 안 된다
+            return Set.of();
+        }
     }
 
     @Override
@@ -308,8 +394,17 @@ public class CollaborationServiceImpl implements CollaborationService {
     public List<MessageResponse> listMessages(Long userId, Long conversationId, int limit) {
         requireConversationMember(userId, conversationId);
         int cappedLimit = Math.max(1, Math.min(limit, MAX_MESSAGE_LIMIT));
-        List<MessageResponse> responses = mapper.findMessages(conversationId, cappedLimit).stream()
-                .map(message -> toMessageResponse(message, userId))
+        List<CollaborationMessage> messages = mapper.findMessages(conversationId, cappedLimit);
+        // 뷰어 기준 content.roomMessage 차단 발신자 벌크 판정 → 해당 메시지는 톰스톤 처리
+        Set<Long> senderIds = messages.stream()
+                .map(CollaborationMessage::getSenderId)
+                .collect(Collectors.toSet());
+        Set<Long> blockedSenders =
+                privacyPolicyService.blockedAuthorsAmong(userId, senderIds, PrivacySurfaces.CONTENT_ROOM_MESSAGE);
+        List<MessageResponse> responses = messages.stream()
+                .map(message -> blockedSenders.contains(message.getSenderId())
+                        ? toBlockedMessageResponse(message, userId)
+                        : toMessageResponse(message, userId))
                 .toList();
         Long latestId = mapper.findLatestMessageId(conversationId);
         if (latestId != null) {
@@ -328,6 +423,22 @@ public class CollaborationServiceImpl implements CollaborationService {
         List<Long> postingIds = normalizeIds(request.sharedApplicationCaseIds(), 20);
         if (content.isBlank() && attachmentIds.isEmpty() && postingIds.isEmpty()) {
             throw new BusinessException(ErrorCode.INVALID_INPUT, "메시지 내용, 첨부 파일, 공유 공고 중 하나가 필요합니다.");
+        }
+
+        // DIRECT 방은 상대(peer) 정책 기준으로 수신 표면 검사 — 그룹 방은 전송 허용(노출 필터가 처리)
+        CollaborationConversation conversation = mapper.findConversationById(conversationId);
+        if (conversation != null && "DIRECT".equals(conversation.getType())) {
+            Long peerId = userId.equals(conversation.getUserLowId())
+                    ? conversation.getUserHighId()
+                    : conversation.getUserLowId();
+            requirePeerAllows(peerId, userId,
+                    "NOTE".equals(kind) ? PrivacySurfaces.NOTE : PrivacySurfaces.DM);
+            if (!attachmentIds.isEmpty()) {
+                requirePeerAllows(peerId, userId, PrivacySurfaces.FILE_SHARE);
+            }
+            if (!postingIds.isEmpty()) {
+                requirePeerAllows(peerId, userId, PrivacySurfaces.POSTING_SHARE);
+            }
         }
 
         String shareMode = normalizeShareMode(request.attachmentShareMode());
@@ -370,6 +481,14 @@ public class CollaborationServiceImpl implements CollaborationService {
         notifyConversationMembers(userId, conversationId, message.getId(), kind, content,
                 attachmentIds.size(), postingIds.size());
         return toMessageResponse(mapper.findMessageById(message.getId()), userId);
+    }
+
+    @Override
+    @Transactional
+    public ConversationSummaryResponse setConversationMuted(Long userId, Long conversationId, boolean muted) {
+        requireConversationMember(userId, conversationId);
+        mapper.updateConversationMemberMuted(conversationId, userId, muted);
+        return requireConversationSummary(userId, conversationId);
     }
 
     @Override
@@ -434,6 +553,13 @@ public class CollaborationServiceImpl implements CollaborationService {
     private void requireFriendship(Long userId, Long friendUserId) {
         if (mapper.countFriendship(userId, friendUserId) == 0) {
             throw new BusinessException(ErrorCode.FORBIDDEN, "친구로 등록된 사용자만 초대할 수 있습니다.");
+        }
+    }
+
+    /** 상대(peer) 정책의 수신 표면 검사 — 차단 사실 비특정 일반 문구로 거부(silent deny). */
+    private void requirePeerAllows(Long peerId, Long senderId, String surface) {
+        if (!privacyPolicyService.allows(peerId, senderId, surface)) {
+            throw new BusinessException(ErrorCode.FORBIDDEN, GENERIC_DENY_DM);
         }
     }
 
@@ -537,16 +663,45 @@ public class CollaborationServiceImpl implements CollaborationService {
 
     private void notifyConversationMembers(Long senderId, Long conversationId, Long messageId,
                                            String kind, String content, int attachmentCount, int postingCount) {
-        String title = "NOTE".equals(kind) ? "새 쪽지가 도착했습니다." : "새 채팅 메시지가 도착했습니다.";
+        boolean note = "NOTE".equals(kind);
+        String type = note ? "NOTE_MESSAGE" : "ROOM_MESSAGE";
+        String title = note ? "새 쪽지가 도착했습니다." : "새 채팅 메시지가 도착했습니다.";
         String message = content.isBlank()
                 ? attachmentOrPostingPreview(attachmentCount, postingCount)
                 : content;
-        for (Long memberId : mapper.findConversationMemberIds(conversationId)) {
-            if (!memberId.equals(senderId)) {
-                notifyUser(memberId, senderId, "ROOM_MESSAGE", "COLLAB_CONVERSATION", conversationId,
-                        title, message);
+        String haystack = content.toLowerCase(Locale.ROOT);
+        for (ConversationMemberRow member : mapper.findConversationMembersForNotify(conversationId)) {
+            if (member.getUserId().equals(senderId)) {
+                continue;
             }
+            if (Boolean.TRUE.equals(member.getMuted())) {
+                // 알림 해제한 방 — 본인 이름이나 설정 키워드가 언급된 경우에만 ROOM_MENTION 으로 알린다.
+                if (!haystack.isBlank() && isMentioned(haystack, member)) {
+                    notifyUser(member.getUserId(), senderId, "ROOM_MENTION", "COLLAB_CONVERSATION", conversationId,
+                            "회원님이 언급되었습니다.", message);
+                }
+                continue;
+            }
+            notifyUser(member.getUserId(), senderId, type, "COLLAB_CONVERSATION", conversationId,
+                    title, message);
         }
+    }
+
+    private boolean isMentioned(String haystack, ConversationMemberRow member) {
+        String name = member.getName();
+        if (name != null && !name.isBlank() && haystack.contains(name.trim().toLowerCase(Locale.ROOT))) {
+            return true;
+        }
+        try {
+            for (String keyword : notificationPreferenceService.get(member.getUserId()).keywords()) {
+                if (haystack.contains(keyword.toLowerCase(Locale.ROOT))) {
+                    return true;
+                }
+            }
+        } catch (RuntimeException ex) {
+            // 키워드 조회 실패는 언급 아님으로 처리 — 메시지 전송 흐름을 막지 않는다.
+        }
+        return false;
     }
 
     private String attachmentOrPostingPreview(int attachmentCount, int postingCount) {
@@ -618,6 +773,7 @@ public class CollaborationServiceImpl implements CollaborationService {
                 Boolean.TRUE.equals(row.getLocked()),
                 row.getMemberCount() == null ? 0 : row.getMemberCount(),
                 Boolean.TRUE.equals(row.getJoined()),
+                Boolean.TRUE.equals(row.getMuted()),
                 peer,
                 latest,
                 row.getUnreadCount(),
@@ -640,7 +796,26 @@ public class CollaborationServiceImpl implements CollaborationService {
                 message.getContent(),
                 attachments,
                 postings,
-                message.getCreatedAt());
+                message.getCreatedAt(),
+                false);
+    }
+
+    /**
+     * 차단 발신자 메시지 톰스톤 — 본문은 안내 문구로 교체, 첨부/공고는 비운다.
+     * (첨부·공고 조회 자체를 생략해 차단 콘텐츠가 응답에 실리지 않게 한다.)
+     */
+    private MessageResponse toBlockedMessageResponse(CollaborationMessage message, Long viewerId) {
+        return new MessageResponse(
+                message.getId(),
+                message.getConversationId(),
+                new UserBriefResponse(message.getSenderId(), message.getSenderName(), message.getSenderEmail()),
+                viewerId.equals(message.getSenderId()),
+                message.getKind(),
+                BLOCKED_MESSAGE_TOMBSTONE,
+                List.of(),
+                List.of(),
+                message.getCreatedAt(),
+                true);
     }
 
     private MessageAttachmentResponse toAttachmentResponse(MessageAttachmentRow row) {

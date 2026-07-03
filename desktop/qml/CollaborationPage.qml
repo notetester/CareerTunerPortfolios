@@ -432,6 +432,7 @@ Item {
                                         RowLayout {
                                             Layout.fillWidth: true
                                             Text { text: convo["peerName"]; color: Theme.text; font.pixelSize: 12; font.bold: true; elide: Text.ElideRight; Layout.fillWidth: true }
+                                            Text { visible: convo["muted"] === true; text: "🔕"; font.pixelSize: 10 }
                                             Text { text: roomTypeLabel(convo["type"]); color: Theme.muted; font.pixelSize: 9 }
                                             Rectangle {
                                                 visible: Number(convo["unreadCount"]) > 0
@@ -452,7 +453,9 @@ Item {
                                     anchors.fill: parent
                                     hoverEnabled: true
                                     cursorShape: Qt.PointingHandCursor
-                                    onClicked: collaboration.openConversationById(convo["id"], convo["peerName"], convo["type"])
+                                    onClicked: collaboration.openConversationById(
+                                                   convo["id"], convo["peerName"], convo["type"],
+                                                   convo["muted"] === true)
                                 }
                             }
                         }
@@ -495,6 +498,27 @@ Item {
                                 text: collaboration.currentConversationId > 0 ? roomTypeLabel(collaboration.currentConversationType) + " · 채팅 · 쪽지 · 파일 · 공고" : "친구 목록이나 대화방을 선택하면 thread가 열립니다"
                                 color: Theme.muted; font.pixelSize: 10
                             }
+                        }
+                        // 음소거 토글 — 음소거 방은 키워드/이름 언급 시에만 알림이 온다
+                        Rectangle {
+                            visible: collaboration.currentConversationId > 0
+                            width: 30; height: 30; radius: 8
+                            color: collaboration.currentConversationMuted ? Theme.accentSoft : Theme.raised
+                            border.color: collaboration.currentConversationMuted ? Theme.accent : Theme.border
+                            Text { anchors.centerIn: parent; text: collaboration.currentConversationMuted ? "🔕" : "🔔"; font.pixelSize: 13 }
+                            MouseArea {
+                                id: muteHover
+                                anchors.fill: parent
+                                hoverEnabled: true
+                                cursorShape: Qt.PointingHandCursor
+                                onClicked: collaboration.setConversationMuted(
+                                               collaboration.currentConversationId,
+                                               !collaboration.currentConversationMuted)
+                            }
+                            ToolTip.visible: muteHover.containsMouse
+                            ToolTip.text: collaboration.currentConversationMuted
+                                          ? "음소거 해제"
+                                          : "음소거 — 키워드/이름 언급 시에만 알림"
                         }
                         Rectangle {
                             visible: collaboration.currentConversationId > 0
@@ -665,9 +689,10 @@ Item {
                                 spacing: 4
                                 Repeater {
                                     model: [
-                                        { label: "임시", mode: "TEMPORARY" },
-                                        { label: "클라우드", mode: "CLOUD" },
-                                        { label: "로컬", mode: "LOCAL" }
+                                        { label: "임시", mode: "TEMPORARY", hint: "" },
+                                        { label: "클라우드", mode: "CLOUD", hint: "" },
+                                        // LOCAL 은 데스크톱 전용 공유 모드 — 웹/모바일 선택지에는 없다
+                                        { label: "로컬", mode: "LOCAL", hint: "데스크톱 전용 (웹/모바일에는 안 보임)" }
                                     ]
                                     delegate: Rectangle {
                                         required property var modelData
@@ -677,9 +702,22 @@ Item {
                                         color: root.selectedShareMode === modelData.mode ? Theme.accent : Theme.raised
                                         border.color: root.selectedShareMode === modelData.mode ? Theme.accent : Theme.border
                                         Text { anchors.centerIn: parent; text: modelData.label; color: root.selectedShareMode === modelData.mode ? "white" : Theme.text; font.pixelSize: 10; font.bold: true }
-                                        MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: root.selectedShareMode = modelData.mode }
+                                        MouseArea {
+                                            id: shareModeHover
+                                            anchors.fill: parent
+                                            hoverEnabled: true
+                                            cursorShape: Qt.PointingHandCursor
+                                            onClicked: root.selectedShareMode = modelData.mode
+                                        }
+                                        ToolTip.visible: shareModeHover.containsMouse && modelData.hint.length > 0
+                                        ToolTip.text: modelData.hint
                                     }
                                 }
+                            }
+                            Text {
+                                visible: root.selectedShareMode === "LOCAL"
+                                text: "웹/모바일에는 안 보임"
+                                color: Theme.muted; font.pixelSize: 9
                             }
                             TextField {
                                 id: temporaryHoursInput

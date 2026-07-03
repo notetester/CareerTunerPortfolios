@@ -13,8 +13,8 @@ class SettingsStore;
 //
 // thread 프로퍼티 (QVariantList of QVariantMap) 아이템 종류:
 //   {kind:"question", qid, text, qtype, followUp}
-//   {kind:"answer",   text, hasAudio}
-//   {kind:"score",    qid, score, feedback, improvedAnswer, modelAnswer, voiceScore}
+//   {kind:"answer",   text, hasAudio, hasVideo}
+//   {kind:"score",    qid, score, feedback, improvedAnswer, modelAnswer, voiceScore[, visualScore]}
 //   {kind:"scoring"}                        — 채점 중 스피너 행
 // QML 은 이 리스트를 그대로 그린다 (CC Desktop 의 대화 타임라인 문법).
 class InterviewSession : public QObject
@@ -58,6 +58,11 @@ public:
     // ── 음성 ──
     Q_INVOKABLE void transcribeAudio(const QString& filePath); // base64 → voice-transcribe
 
+    // ── 영상 답변 (카메라 면접) ──
+    // 녹화 mp4 를 base64 로 avatar-score 에 전송 — 음성+비언어(시선/표정) late fusion 채점.
+    // consented(동의 플래그)가 false 면 전송하지 않는다. 원본 영상은 전송 직후 로컬에서도 폐기.
+    Q_INVOKABLE void submitVideoAnswer(const QString& filePath, bool consented);
+
     // ── 리포트/내보내기 ──
     Q_INVOKABLE void loadReport();
     Q_INVOKABLE void exportReport(const QString& format);  // "md" | "html"
@@ -73,6 +78,7 @@ signals:
     void answerScored(int score);                 // 토스트용
     void transcribed(const QString& text);        // 입력창 채우기
     void voiceScored(int score);                  // 전달력 점수 도착
+    void videoScored(int score);                  // 영상 답변 결합 점수 도착
     void exported(const QString& path, const QString& what);
     void errorOccurred(const QString& message);
     void sessionFinished();                       // 마지막 답변 완료
