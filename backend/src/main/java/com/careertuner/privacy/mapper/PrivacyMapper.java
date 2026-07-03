@@ -6,6 +6,7 @@ import java.util.Set;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 
+import com.careertuner.privacy.domain.ContentAuthorRow;
 import com.careertuner.privacy.domain.ConversationBlock;
 import com.careertuner.privacy.domain.UserBlock;
 import com.careertuner.privacy.domain.UserIpBlock;
@@ -35,6 +36,11 @@ public interface PrivacyMapper {
 
     /** 뷰어가 차단한 계정 중 authorIds 에 포함된 것 — 콘텐츠 목록 필터용 벌크 조회. */
     List<UserBlock> findBlocksAmong(@Param("userId") Long userId, @Param("targetIds") Set<Long> targetIds);
+
+    /* ── 콘텐츠 id → 작성자 조회 (익명 글/댓글 차단용 — 삭제 콘텐츠는 제외) ── */
+    ContentAuthorRow findPostAuthor(@Param("postId") Long postId);
+
+    ContentAuthorRow findCommentAuthor(@Param("commentId") Long commentId);
 
     /* ── IP 차단 ── */
     List<UserIpBlock> findIpBlocksByUser(@Param("userId") Long userId);

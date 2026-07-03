@@ -27,6 +27,37 @@ export interface PrivacyMockUser {
 const knownUsers = new Map<number, PrivacyMockUser>();
 const knownConversations = new Map<number, { id: number; title: string; type: string }>();
 
+/* ── 콘텐츠 id → 작성자 디렉터리 (by-content 차단용) ──
+ * 실서버에서는 community_post/community_comment 에서 작성자를 찾는다.
+ * 목에서는 community.ts 의 시드 게시글/댓글과 동기화된 "서버만 아는 작성자 id"를 흉내낸다.
+ * (익명 작성자의 id 는 클라이언트 어디에도 노출되지 않는 가상의 값) */
+
+/** 데모 페르소나 "김데모" — community mock 의 DEMO_AUTHOR(id 9001)와 동일. */
+const DEMO_VIEWER_ID = 9001;
+
+interface MockContentAuthor {
+  userId: number;
+  anonymous: boolean;
+  name?: string;
+  email?: string;
+}
+
+const contentAuthors = new Map<string, MockContentAuthor>([
+  // 게시글 (community.ts POSTS 와 동기화)
+  ["POST:5101", { userId: 9301, anonymous: true }], // 취준생A
+  ["POST:5102", { userId: 9302, anonymous: true }], // 합격수기
+  ["POST:5103", { userId: DEMO_VIEWER_ID, anonymous: false, name: "김데모" }], // 본인 글 — INVALID_INPUT 시연
+  ["POST:5104", { userId: 9304, anonymous: true }], // 코테장인
+  ["POST:5105", { userId: 9305, anonymous: true }], // 긴장한지원자
+  // 댓글 (community.ts COMMENTS 와 동기화)
+  ["COMMENT:6011", { userId: 9306, anonymous: true }], // 준비생B
+  ["COMMENT:6012", { userId: DEMO_VIEWER_ID, anonymous: false, name: "김데모" }],
+  ["COMMENT:6013", { userId: 9301, anonymous: true }], // 취준생A (OP)
+  ["COMMENT:6021", { userId: 9307, anonymous: true }], // 취준3년차
+  ["COMMENT:6022", { userId: DEMO_VIEWER_ID, anonymous: false, name: "김데모" }],
+  ["COMMENT:6031", { userId: 9308, anonymous: true }], // 현직프론트
+]);
+
 /** collaboration/f-area mock 이 모듈 초기화 시 호출해 사용자 정보를 등록한다(업서트). */
 export function registerPrivacyMockUsers(users: PrivacyMockUser[]): void {
   for (const user of users) knownUsers.set(user.id, user);
@@ -48,6 +79,7 @@ let userBlocks: UserBlockResponse[] = [
     blockedUserId: 9203,
     blockedUserName: "최하린",
     blockedUserEmail: "harin.choi@example.com",
+    masked: false,
     flags: {},
     blockIp: true,
     memo: "스팸성 친구 요청 반복",
@@ -155,6 +187,42 @@ export const privacyRoutes: MockRoute[] = [
         blockedUserId: targetUserId,
         blockedUserName: known?.name ?? `사용자 #${targetUserId}`,
         blockedUserEmail: known?.email ?? null,
+        masked: false,
+        flags: {},
+        blockIp: request?.blockIp === true,
+        memo: request?.memo ?? null,
+        createdAt: new Date().toISOString(),
+      };
+      userBlocks = [created, ...userBlocks];
+      if (created.blockIp) deriveIpBlock(created);
+      return created;
+    },
+  },
+  // 콘텐츠 id 기반 차단 — 익명 글/댓글용. 백엔드 blockUserByContent 의 의미론(익명이면 masked_label) 미러.
+  {
+    method: "POST",
+    pattern: /^\/privacy\/blocks\/users\/by-content$/,
+    handler: ({ body }) => {
+      const request = body as { contentType?: string; contentId?: number; blockIp?: boolean; memo?: string };
+      const contentType = request?.contentType === "POST" || request?.contentType === "COMMENT" ? request.contentType : null;
+      const contentId = Number(request?.contentId);
+      if (!contentType || !contentId) throw new Error("차단할 콘텐츠를 찾을 수 없습니다.");
+      const author = contentAuthors.get(`${contentType}:${contentId}`);
+      if (!author) throw new Error("차단할 콘텐츠를 찾을 수 없습니다.");
+      if (author.userId === DEMO_VIEWER_ID) throw new Error("본인이 작성한 콘텐츠의 작성자는 차단할 수 없습니다.");
+      const existing = userBlocks.find((item) => item.blockedUserId === author.userId);
+      if (existing) return existing;
+      // 익명 콘텐츠면 차단 목록에 실명 대신 표시할 라벨을 저장한다(익명성 유지).
+      const maskedLabel = author.anonymous
+        ? `익명 작성자 (${contentType === "POST" ? "게시글" : "댓글"} #${contentId})`
+        : null;
+      const known = knownUsers.get(author.userId);
+      const created: UserBlockResponse = {
+        id: nextId(userBlocks, 4000),
+        blockedUserId: author.userId,
+        blockedUserName: maskedLabel ?? author.name ?? known?.name ?? `사용자 #${author.userId}`,
+        blockedUserEmail: maskedLabel ? null : author.email ?? known?.email ?? null,
+        masked: maskedLabel !== null,
         flags: {},
         blockIp: request?.blockIp === true,
         memo: request?.memo ?? null,

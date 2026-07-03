@@ -6,8 +6,8 @@ import {
   Users, Calendar, Gauge, Trash2, Pencil, UserX, Lock,
 } from "lucide-react";
 import { Sparkles } from "lucide-react";
-// 개인 차단 진입점 — 익명 글도 서버가 작성자 id 를 알아 차단이 동작한다(익명성 유지).
-import { blockUser } from "@/features/privacy/api/privacyApi";
+// 개인 차단 진입점 — 익명 글은 작성자 id 가 클라이언트에 없어 게시글 id 로 차단한다(익명성 유지).
+import { blockUser, blockUserByContent } from "@/features/privacy/api/privacyApi";
 import { showBlockManageToast } from "@/features/privacy/components/blockToast";
 import { CategoryBadge } from "./CategoryBadge";
 import { ReactionButtons } from "./ReactionButtons";
@@ -130,18 +130,22 @@ export function PostDetailView({ postId, onBack, onEdit }: PostDetailViewProps) 
   }, [postId, fetchPostDetail, fetchComments]);
 
   // 작성자 차단 — 조용한 차단(상대에게 알리지 않음). 차단 직후 글/댓글을 다시 받아 톰스톤을 반영한다.
+  // 익명 글은 작성자 id 가 없어 게시글 id 로 차단한다(서버가 작성자를 찾고, 목록에는 익명 라벨만 남는다).
   const handleBlockAuthor = async () => {
-    if (!d?.author.id) return;
+    if (!d || (!d.author.id && !d.author.isAnonymous)) return;
     try {
-      await blockUser({ targetUserId: d.author.id });
-      showBlockManageToast(
-        d.author.isAnonymous ? "이 작성자를 차단했습니다." : `${d.author.name}님을 차단했습니다.`,
-        d.author.isAnonymous ? "익명 작성자의 신원은 표시되지 않으며 익명성은 유지됩니다." : undefined,
-      );
+      if (d.author.isAnonymous || !d.author.id) {
+        await blockUserByContent({ contentType: "POST", contentId: postId });
+        showBlockManageToast("이 작성자를 차단했습니다.", "작성자가 누구인지는 표시되지 않습니다.");
+      } else {
+        await blockUser({ targetUserId: d.author.id });
+        showBlockManageToast(`${d.author.name}님을 차단했습니다.`);
+      }
       // 상세·댓글·목록 모두 다시 받아 이 작성자의 콘텐츠가 톰스톤으로 바뀌도록 한다.
       await Promise.all([fetchPostDetail(postId), fetchComments(postId), fetchPosts()]);
-    } catch {
-      toast.error("차단 처리에 실패했습니다.");
+    } catch (err) {
+      // 본인 콘텐츠/운영자 차단 등 서버 검증 메시지는 그대로 보여준다.
+      toast.error(err instanceof Error && err.message ? err.message : "차단 처리에 실패했습니다.");
     }
   };
 
@@ -223,13 +227,17 @@ export function PostDetailView({ postId, onBack, onEdit }: PostDetailViewProps) 
             </button>
           </div>
         )}
-        {/* 작성자 메뉴 — 익명 글은 "이 작성자 차단"(서버가 id 를 알므로 동작, 익명성 유지) */}
-        {d && !!d.author.id && (!user || user.id !== d.author.id) && (
+        {/* 작성자 메뉴 — 익명 글도 노출: 게시글 id 로 차단(서버가 작성자를 알므로 동작, 익명성 유지) */}
+        {d && (d.author.isAnonymous || (!!d.author.id && (!user || user.id !== d.author.id))) && (
           <button
             className="av-btn"
             style={{ color: "var(--av-red, #dc2626)" }}
             onClick={() => requireAuth(() => void handleBlockAuthor())}
-            title="차단 사실은 상대에게 알려지지 않습니다."
+            title={
+              d.author.isAnonymous
+                ? "작성자가 누구인지는 표시되지 않습니다. 차단 사실은 상대에게 알려지지 않습니다."
+                : "차단 사실은 상대에게 알려지지 않습니다."
+            }
           >
             <UserX /> {d.author.isAnonymous ? "이 작성자 차단" : "이 사용자 차단"}
           </button>

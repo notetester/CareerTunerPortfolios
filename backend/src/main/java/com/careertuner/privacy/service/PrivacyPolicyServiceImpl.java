@@ -12,6 +12,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import com.careertuner.common.exception.BusinessException;
 import com.careertuner.common.exception.ErrorCode;
+import com.careertuner.privacy.domain.ContentAuthorRow;
 import com.careertuner.privacy.domain.ConversationBlock;
 import com.careertuner.privacy.domain.UserBlock;
 import com.careertuner.privacy.domain.UserIpBlock;
@@ -22,6 +23,7 @@ import com.careertuner.privacy.dto.ConversationBlockResponse;
 import com.careertuner.privacy.dto.IpBlockResponse;
 import com.careertuner.privacy.dto.PrivacyPolicyResponse;
 import com.careertuner.privacy.dto.PrivacyPolicyUpdateRequest;
+import com.careertuner.privacy.dto.UserBlockByContentRequest;
 import com.careertuner.privacy.dto.UserBlockRequest;
 import com.careertuner.privacy.dto.UserBlockResponse;
 import com.careertuner.privacy.dto.UserBlockUpdateRequest;
@@ -292,29 +294,55 @@ public class PrivacyPolicyServiceImpl implements PrivacyPolicyService {
     @Override
     @Transactional
     public UserBlockResponse blockUser(Long userId, UserBlockRequest request) {
-        if (userId.equals(request.targetUserId())) {
+        return createBlock(userId, request.targetUserId(), request.blockIp(), request.memo(), null);
+    }
+
+    @Override
+    @Transactional
+    public UserBlockResponse blockUserByContent(Long userId, UserBlockByContentRequest request) {
+        boolean isPost = "POST".equals(request.contentType());
+        ContentAuthorRow author = isPost
+                ? mapper.findPostAuthor(request.contentId())
+                : mapper.findCommentAuthor(request.contentId());
+        if (author == null || author.getUserId() == null) {
+            throw new BusinessException(ErrorCode.NOT_FOUND, "차단할 콘텐츠를 찾을 수 없습니다.");
+        }
+        if (userId.equals(author.getUserId())) {
+            throw new BusinessException(ErrorCode.INVALID_INPUT, "본인이 작성한 콘텐츠의 작성자는 차단할 수 없습니다.");
+        }
+        // 익명 콘텐츠면 차단 목록에 실명 대신 표시할 라벨을 저장한다(비익명은 기존과 동일하게 마스킹 없음).
+        String maskedLabel = author.isAnonymous()
+                ? "익명 작성자 (" + (isPost ? "게시글" : "댓글") + " #" + request.contentId() + ")"
+                : null;
+        return createBlock(userId, author.getUserId(), request.blockIp(), request.memo(), maskedLabel);
+    }
+
+    /** 계정 차단 생성 공통 — 대상 검증(본인/미존재/운영자) 후 신규 생성, 이미 차단이면 기존 항목 반환. */
+    private UserBlockResponse createBlock(Long userId, Long targetUserId, Boolean blockIp, String memo, String maskedLabel) {
+        if (userId.equals(targetUserId)) {
             throw new BusinessException(ErrorCode.INVALID_INPUT, "본인은 차단할 수 없습니다.");
         }
-        String targetRole = mapper.findUserRole(request.targetUserId());
+        String targetRole = mapper.findUserRole(targetUserId);
         if (targetRole == null) {
             throw new BusinessException(ErrorCode.NOT_FOUND, "차단할 사용자를 찾을 수 없습니다.");
         }
         if ("ADMIN".equals(targetRole) || "SUPER_ADMIN".equals(targetRole)) {
             throw new BusinessException(ErrorCode.INVALID_INPUT, "운영자 계정은 차단할 수 없습니다.");
         }
-        UserBlock existing = mapper.findBlock(userId, request.targetUserId());
+        UserBlock existing = mapper.findBlock(userId, targetUserId);
         if (existing != null) {
             return toBlockResponse(existing);
         }
         UserBlock block = UserBlock.builder()
                 .userId(userId)
-                .blockedUserId(request.targetUserId())
-                .blockIp(Boolean.TRUE.equals(request.blockIp()))
-                .memo(request.memo())
+                .blockedUserId(targetUserId)
+                .blockIp(Boolean.TRUE.equals(blockIp))
+                .memo(memo)
+                .maskedLabel(maskedLabel)
                 .build();
         mapper.insertBlock(block);
         if (block.isBlockIp()) {
-            deriveIpBlock(userId, request.targetUserId());
+            deriveIpBlock(userId, targetUserId);
         }
         return toBlockResponse(mapper.findBlockById(block.getId()));
     }
@@ -362,7 +390,8 @@ public class PrivacyPolicyServiceImpl implements PrivacyPolicyService {
                         b.getId(),
                         b.getLabel() != null ? b.getLabel() : "차단 IP #" + b.getId(),
                         b.getSourceUserId(),
-                        b.getSourceUserName(),
+                        // 파생 원본이 익명 콘텐츠 기반 차단이면 실명 대신 masked_label 표시(익명성 유지)
+                        b.getSourceMaskedLabel() != null ? b.getSourceMaskedLabel() : b.getSourceUserName(),
                         countMatchedAccounts(b),
                         b.getCreatedAt()))
                 .toList();
@@ -476,11 +505,14 @@ public class PrivacyPolicyServiceImpl implements PrivacyPolicyService {
     }
 
     private UserBlockResponse toBlockResponse(UserBlock block) {
+        // 익명 콘텐츠 기반 차단 — 실명/이메일 대신 masked_label 을 노출해 익명성을 지킨다.
+        boolean masked = block.getMaskedLabel() != null && !block.getMaskedLabel().isBlank();
         return new UserBlockResponse(
                 block.getId(),
                 block.getBlockedUserId(),
-                block.getBlockedUserName(),
-                block.getBlockedUserEmail(),
+                masked ? block.getMaskedLabel() : block.getBlockedUserName(),
+                masked ? null : block.getBlockedUserEmail(),
+                masked,
                 parseFlags(block.getFlagsJson()),
                 block.isBlockIp(),
                 block.getMemo(),

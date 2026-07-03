@@ -16,7 +16,7 @@
 
     <!-- ── 계정 차단 ── -->
     <sql id="userBlockColumns">
-        b.id, b.user_id, b.blocked_user_id, b.flags_json, b.block_ip, b.memo, b.created_at, b.updated_at,
+        b.id, b.user_id, b.blocked_user_id, b.flags_json, b.block_ip, b.memo, b.masked_label, b.created_at, b.updated_at,
         u.name  AS blocked_user_name,
         u.email AS blocked_user_email
     </sql>
@@ -45,15 +45,16 @@
     </select>
 
     <insert id="insertBlock" useGeneratedKeys="true" keyProperty="id">
-        INSERT INTO user_block (user_id, blocked_user_id, flags_json, block_ip, memo)
-        VALUES (#{userId}, #{blockedUserId}, #{flagsJson}, #{blockIp}, #{memo})
+        INSERT INTO user_block (user_id, blocked_user_id, flags_json, block_ip, memo, masked_label)
+        VALUES (#{userId}, #{blockedUserId}, #{flagsJson}, #{blockIp}, #{memo}, #{maskedLabel})
     </insert>
 
     <update id="updateBlock">
         UPDATE user_block
-           SET flags_json = #{flagsJson},
-               block_ip   = #{blockIp},
-               memo       = #{memo}
+           SET flags_json   = #{flagsJson},
+               block_ip     = #{blockIp},
+               memo         = #{memo},
+               masked_label = #{maskedLabel}
          WHERE id = #{id}
     </update>
 
@@ -62,18 +63,39 @@
     </delete>
 
     <select id="findBlocksAmong" resultType="com.careertuner.privacy.domain.UserBlock">
-        SELECT b.id, b.user_id, b.blocked_user_id, b.flags_json, b.block_ip, b.memo, b.created_at, b.updated_at
+        SELECT b.id, b.user_id, b.blocked_user_id, b.flags_json, b.block_ip, b.memo, b.masked_label, b.created_at, b.updated_at
           FROM user_block b
          WHERE b.user_id = #{userId}
            AND b.blocked_user_id IN
         <foreach collection="targetIds" item="targetId" open="(" separator="," close=")">#{targetId}</foreach>
     </select>
 
+    <!-- ── 콘텐츠 id → 작성자 (익명 글/댓글 차단용 — 삭제 콘텐츠 제외) ── -->
+    <select id="findPostAuthor" resultType="com.careertuner.privacy.domain.ContentAuthorRow">
+        SELECT p.user_id, p.is_anonymous AS anonymous
+          FROM community_post p
+         WHERE p.id = #{postId}
+           AND p.status != 'DELETED'
+    </select>
+
+    <select id="findCommentAuthor" resultType="com.careertuner.privacy.domain.ContentAuthorRow">
+        SELECT c.user_id, c.is_anonymous AS anonymous
+          FROM community_comment c
+         WHERE c.id = #{commentId}
+           AND c.status != 'DELETED'
+    </select>
+
     <!-- ── IP 차단 ── -->
+    <!-- 파생 원본이 익명 콘텐츠 기반 차단이면 masked_label 을 함께 내려 이름 대신 표시한다(익명성 유지) -->
     <select id="findIpBlocksByUser" resultType="com.careertuner.privacy.domain.UserIpBlock">
-        SELECT b.*, s.name AS source_user_name
+        SELECT b.*,
+               s.name AS source_user_name,
+               ub.masked_label AS source_masked_label
           FROM user_ip_block b
           LEFT JOIN users s ON s.id = b.source_user_id
+          LEFT JOIN user_block ub
+            ON ub.user_id = b.user_id
+           AND ub.blocked_user_id = b.source_user_id
          WHERE b.user_id = #{userId}
          ORDER BY b.created_at DESC
     </select>
