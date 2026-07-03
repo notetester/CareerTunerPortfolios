@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  롤링 파일 로그 (데모 주간 포렌식용).
+  - 콘솔 출력은 Spring Boot 기본 그대로(console-appender 포함) — 기존 개발 습관 무영향.
+  - 파일: backend 작업 디렉터리 기준 logs/careertuner.log, 일자+크기 롤링.
+  - 정책: 파일당 최대 50MB, 보존 7일, 전체 상한 1GB(초과 시 오래된 것부터 삭제), 롤은 gzip 압축.
+  - 로거 레벨은 application.yaml 의 logging.level.* 이 그대로 우선 적용된다(여기선 루트만 INFO).
+-->
+<configuration>
+    <include resource="org/springframework/boot/logging/logback/defaults.xml"/>
+    <include resource="org/springframework/boot/logging/logback/console-appender.xml"/>
+
+    <property name="LOG_DIR" value="${LOG_DIR:-logs}"/>
+
+    <appender name="FILE" class="ch.qos.logback.core.rolling.RollingFileAppender">
+        <file>${LOG_DIR}/careertuner.log</file>
+        <encoder>
+            <pattern>${FILE_LOG_PATTERN}</pattern>
+            <charset>UTF-8</charset>
+        </encoder>
+        <rollingPolicy class="ch.qos.logback.core.rolling.SizeAndTimeBasedRollingPolicy">
+            <fileNamePattern>${LOG_DIR}/careertuner-%d{yyyy-MM-dd}.%i.log.gz</fileNamePattern>
+            <maxFileSize>50MB</maxFileSize>
+            <maxHistory>7</maxHistory>
+            <totalSizeCap>1GB</totalSizeCap>
+        </rollingPolicy>
+    </appender>
+
+    <root level="INFO">
+        <appender-ref ref="CONSOLE"/>
+        <appender-ref ref="FILE"/>
+    </root>
+</configuration>
