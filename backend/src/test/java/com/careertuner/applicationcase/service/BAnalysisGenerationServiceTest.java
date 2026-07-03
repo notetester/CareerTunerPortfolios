@@ -698,6 +698,41 @@ class BAnalysisGenerationServiceTest {
         assertThat(result.payload().duties()).isEqualTo(duties);
     }
 
+    // ── 이슈 D 후속 A-3: duties==summary 중복 제거 ──
+
+    @Test
+    void a3CondensesSummaryWhenIdenticalToDuties() {
+        // 동국제약 패턴: duties 와 summary 가 동일하면 summary 를 첫 문장으로 응축해 구분한다.
+        String text = "제약/바이오/헬스케어업계에서 신입 및 경력직원을 채용합니다. "
+                + "주요 업무로는 마케팅 전략 수립과 브랜드 포지셔닝 강화가 포함됩니다. "
+                + "IT 부문에서는 ERP 시스템 고도화를 수행합니다.";
+        BAnalysisGenerationService.GeneratedJobAnalysis result = runJobText(
+                text, "학사 이상 학력. SQL 활용 능력.", text,
+                List.of("SQL"),
+                "제약/바이오/헬스케어 채용. 마케팅 전략 수립. ERP 고도화. SQL 활용.");
+
+        assertThat(result.fellBack()).isFalse();
+        // duties 는 상세 원본 유지, summary 는 첫 문장으로 응축되어 서로 달라진다.
+        assertThat(result.payload().duties()).isEqualTo(text);
+        assertThat(result.payload().summary()).isNotEqualTo(result.payload().duties());
+        assertThat(result.payload().summary()).isEqualTo("제약/바이오/헬스케어업계에서 신입 및 경력직원을 채용합니다.");
+    }
+
+    @Test
+    void a3LeavesDistinctSummaryUntouched() {
+        // duties 와 summary 가 다르면 응축하지 않는다(무변경).
+        String duties = "웹과 앱 환경 구분없이 콘텐츠를 생산하고 소비할 수 있는 플랫폼을 구축하고, "
+                + "성능 모니터링 시스템을 만들며 개발 프로세스 자동화를 담당하고 운영을 개선합니다.";
+        String summary = "프론트엔드 엔지니어를 채용하는 공고입니다. 플랫폼 개발과 운영을 맡습니다.";
+        BAnalysisGenerationService.GeneratedJobAnalysis result = runJobText(
+                duties, "컴퓨터공학 전공 학사 이상", summary,
+                List.of("React"),
+                "웹과 앱 플랫폼 구축. React 경험. 컴퓨터공학 전공.");
+
+        assertThat(result.fellBack()).isFalse();
+        assertThat(result.payload().summary()).isEqualTo(summary);
+    }
+
     // ── 헬퍼 메서드 ──
 
     /**

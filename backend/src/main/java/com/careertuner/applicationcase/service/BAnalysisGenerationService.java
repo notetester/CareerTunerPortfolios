@@ -406,7 +406,33 @@ public class BAnalysisGenerationService {
             newDuties = duties;
         }
 
-        return new JobText(newDuties, newQualifications, summary);
+        // A-3: duties==summary 중복이면 summary 를 첫 문장으로 응축해 두 필드를 구분한다(동국제약).
+        // 응축본은 원문의 부분집합이라 근거성이 유지되며, 길이 하한(검증 통과) 아래로는 응축하지 않는다.
+        String newSummary = dedupSummaryFromDuties(newDuties, summary);
+
+        return new JobText(newDuties, newQualifications, newSummary);
+    }
+
+    /**
+     * duties 와 summary 가 사실상 동일하면(동국제약) summary 를 첫 문장으로 응축해 중복을 제거한다.
+     * 응축이 불가능하거나(단문) 검증 하한(20자) 미만이면 원본 summary 를 그대로 둔다.
+     */
+    private String dedupSummaryFromDuties(String duties, String summary) {
+        if (isBlank(duties) || isBlank(summary)) {
+            return summary;
+        }
+        if (!compactWhitespace(duties).equals(compactWhitespace(summary))) {
+            return summary;
+        }
+        String condensed = firstSentences(summary, 1);
+        if (condensed.length() >= 20 && !compactWhitespace(condensed).equals(compactWhitespace(duties))) {
+            return condensed;
+        }
+        return summary;
+    }
+
+    private static String compactWhitespace(String text) {
+        return WHITESPACE_PATTERN.matcher(text).replaceAll("");
     }
 
     /** duties 총 길이가 임계 미만이면 과소추출로 본다(주요업무 보강 대상). */
