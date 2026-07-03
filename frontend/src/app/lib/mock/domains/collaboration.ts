@@ -93,16 +93,25 @@ const attachment = (
   originalName: string,
   shareMode: AttachmentShareMode,
   availability: MessageAttachmentResponse["availability"] = "AVAILABLE",
-): MessageAttachmentResponse => ({
-  fileId,
-  originalName,
-  contentType: "application/pdf",
-  sizeBytes: 384_000,
-  shareMode,
-  availability,
-  expiresAt: shareMode === "TEMPORARY" ? new Date(Date.now() + 72 * 60 * 60 * 1000).toISOString() : null,
-  downloadUrl: availability === "AVAILABLE" ? `/api/collaboration/files/${fileId}/content` : null,
-});
+  // LOCAL 공유일 때만 의미 — 소유자 데스크톱이 온라인이면 다운로드 가능(서버 게이트 미러)
+  ownerDesktopOnline?: boolean,
+): MessageAttachmentResponse => {
+  const resolvedAvailability = shareMode === "LOCAL" ? "LOCAL_ONLY" : availability;
+  const downloadable = shareMode === "LOCAL"
+    ? ownerDesktopOnline === true
+    : resolvedAvailability === "AVAILABLE";
+  return {
+    fileId,
+    originalName,
+    contentType: "application/pdf",
+    sizeBytes: 384_000,
+    shareMode,
+    availability: resolvedAvailability,
+    expiresAt: shareMode === "TEMPORARY" ? new Date(Date.now() + 72 * 60 * 60 * 1000).toISOString() : null,
+    downloadUrl: downloadable ? `/api/collaboration/files/${fileId}/content` : null,
+    ownerDesktopOnline: shareMode === "LOCAL" ? ownerDesktopOnline === true : null,
+  };
+};
 
 let messagesByConversation: Record<number, MessageResponse[]> = {
   7001: [
@@ -141,6 +150,18 @@ let messagesByConversation: Record<number, MessageResponse[]> = {
       sharedPostings: [],
       createdAt: new Date(Date.now() - 45 * 60 * 1000).toISOString(),
     },
+    {
+      // LOCAL 공유 — 소유자 데스크톱 온라인: 웹에서도 바로 받을 수 있는 상태
+      id: 9911,
+      conversationId: 7002,
+      sender: users[2],
+      mine: false,
+      kind: "CHAT",
+      content: "포트폴리오 원본은 제 PC 공유 폴더에서 바로 받아가세요. 지금 데스크톱 켜져 있어요.",
+      attachments: [attachment(7703, "portfolio-master.psd", "LOCAL", "LOCAL_ONLY", true)],
+      sharedPostings: [],
+      createdAt: new Date(Date.now() - 30 * 60 * 1000).toISOString(),
+    },
   ],
   7003: [
     {
@@ -153,6 +174,18 @@ let messagesByConversation: Record<number, MessageResponse[]> = {
       attachments: [attachment(7702, "system-design-study.pdf", "CLOUD")],
       sharedPostings: [],
       createdAt: new Date(Date.now() - 90 * 60 * 1000).toISOString(),
+    },
+    {
+      // LOCAL 공유 — 소유자 데스크톱 오프라인: 온라인이 될 때까지 다운로드 비활성
+      id: 9921,
+      conversationId: 7003,
+      sender: users[1],
+      mine: false,
+      kind: "CHAT",
+      content: "대용량 실습 데이터는 제 데스크톱에서 로컬 공유로 걸어뒀어요. 퇴근하면 꺼질 수 있어요.",
+      attachments: [attachment(7704, "system-design-dataset.zip", "LOCAL", "LOCAL_ONLY", false)],
+      sharedPostings: [],
+      createdAt: new Date(Date.now() - 80 * 60 * 1000).toISOString(),
     },
   ],
 };

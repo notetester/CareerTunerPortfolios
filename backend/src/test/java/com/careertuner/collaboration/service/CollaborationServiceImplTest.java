@@ -12,6 +12,7 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import java.time.LocalDateTime;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Set;
@@ -26,6 +27,7 @@ import com.careertuner.collaboration.domain.CollaborationMessage;
 import com.careertuner.collaboration.domain.CollaborationUserRow;
 import com.careertuner.collaboration.domain.ConversationMemberRow;
 import com.careertuner.collaboration.domain.ConversationSummaryRow;
+import com.careertuner.collaboration.domain.DesktopPresenceRow;
 import com.careertuner.collaboration.domain.FriendRequest;
 import com.careertuner.collaboration.domain.FriendRequestRow;
 import com.careertuner.collaboration.domain.MessageAttachmentRow;
@@ -312,6 +314,100 @@ class CollaborationServiceImplTest {
         // 차단 메시지는 첨부/공고 조회 자체를 생략한다
         verify(mapper, never()).findAttachmentsByMessageId(21L);
         verify(mapper, never()).findPostingsByMessageId(21L);
+    }
+
+    // ══════════════ LOCAL 파일 공유 — 데스크톱 presence 게이트 ══════════════
+
+    // ── 소유자 데스크톱 온라인(heartbeat 90초 이내) → 다운로드 허용 ──
+    @Test
+    void downloadAttachment_allowsLocalShare_whenOwnerDesktopOnline() {
+        when(mapper.findAttachmentForDownload(1L, 9L)).thenReturn(MessageAttachmentRow.builder()
+                .fileAssetId(9L)
+                .shareMode("LOCAL")
+                .ownerUserId(2L)
+                .build());
+        when(mapper.findDesktopLastSeenAt(2L)).thenReturn(LocalDateTime.now().minusSeconds(10));
+        FileService.Download download = new FileService.Download(
+                FileAsset.builder().id(9L).originalName("dataset.zip").build(), new byte[] {1});
+        when(fileService.downloadAfterAccessCheck(9L)).thenReturn(download);
+
+        assertThat(service.downloadAttachment(1L, 9L)).isSameAs(download);
+        verify(fileService).downloadAfterAccessCheck(9L);
+    }
+
+    // ── 소유자 데스크톱 오프라인(heartbeat 없음/오래됨) → CONFLICT, 파일 서빙 안 함 ──
+    @Test
+    void downloadAttachment_conflicts_whenLocalOwnerDesktopOffline() {
+        when(mapper.findAttachmentForDownload(1L, 9L)).thenReturn(MessageAttachmentRow.builder()
+                .fileAssetId(9L)
+                .shareMode("LOCAL")
+                .ownerUserId(2L)
+                .build());
+        when(mapper.findDesktopLastSeenAt(2L)).thenReturn(LocalDateTime.now().minusSeconds(300));
+
+        assertThatThrownBy(() -> service.downloadAttachment(1L, 9L))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("파일 소유자의 데스크톱이 온라인이 아닙니다 — 온라인이 되면 다운로드할 수 있습니다.")
+                .satisfies(error -> assertThat(((BusinessException) error).getErrorCode())
+                        .isEqualTo(ErrorCode.CONFLICT));
+        verify(fileService, never()).downloadAfterAccessCheck(any());
+    }
+
+    // ── heartbeat 기록이 아예 없는 소유자도 오프라인으로 본다 ──
+    @Test
+    void downloadAttachment_conflicts_whenLocalOwnerHasNoHeartbeat() {
+        when(mapper.findAttachmentForDownload(1L, 9L)).thenReturn(MessageAttachmentRow.builder()
+                .fileAssetId(9L)
+                .shareMode("LOCAL")
+                .ownerUserId(2L)
+                .build());
+        when(mapper.findDesktopLastSeenAt(2L)).thenReturn(null);
+
+        assertThatThrownBy(() -> service.downloadAttachment(1L, 9L))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(error -> assertThat(((BusinessException) error).getErrorCode())
+                        .isEqualTo(ErrorCode.CONFLICT));
+        verify(fileService, never()).downloadAfterAccessCheck(any());
+    }
+
+    // ── 첨부 목록 — LOCAL 소유자 presence 를 1쿼리 벌크 조회해 ownerDesktopOnline 을 세팅 ──
+    @Test
+    void listMessages_marksLocalAttachmentOwnerPresence_inSingleBulkQuery() {
+        when(mapper.countConversationMember(5L, 1L)).thenReturn(1);
+        when(mapper.findMessages(eq(5L), anyInt())).thenReturn(List.of(
+                CollaborationMessage.builder()
+                        .id(21L).conversationId(5L).senderId(2L)
+                        .senderName("민지").senderEmail("minji@example.com")
+                        .kind("CHAT").content("로컬 공유 파일이에요").build()));
+        when(mapper.findAttachmentsByMessageId(21L)).thenReturn(List.of(
+                MessageAttachmentRow.builder()
+                        .id(100L).messageId(21L).fileAssetId(9L)
+                        .originalName("online.zip").shareMode("LOCAL").ownerUserId(2L).sizeBytes(10L).build(),
+                MessageAttachmentRow.builder()
+                        .id(101L).messageId(21L).fileAssetId(10L)
+                        .originalName("offline.zip").shareMode("LOCAL").ownerUserId(3L).sizeBytes(10L).build()));
+        when(mapper.findPostingsByMessageId(21L)).thenReturn(List.of());
+        when(mapper.findLatestMessageId(5L)).thenReturn(21L);
+        when(mapper.findDesktopPresenceByUserIds(any())).thenReturn(List.of(
+                DesktopPresenceRow.builder().userId(2L).lastSeenAt(LocalDateTime.now()).build()));
+
+        var responses = service.listMessages(1L, 5L, 50);
+
+        var attachments = responses.get(0).attachments();
+        assertThat(attachments).hasSize(2);
+        assertThat(attachments.get(0).ownerDesktopOnline()).isTrue();
+        assertThat(attachments.get(0).downloadUrl()).isEqualTo("/api/collaboration/files/9/content");
+        assertThat(attachments.get(1).ownerDesktopOnline()).isFalse();
+        assertThat(attachments.get(1).downloadUrl()).isNull();
+        // presence 는 소유자 집합으로 1번만 벌크 조회한다
+        verify(mapper).findDesktopPresenceByUserIds(any());
+    }
+
+    // ── 데스크톱 heartbeat upsert ──
+    @Test
+    void touchDesktopPresence_upsertsHeartbeat() {
+        service.touchDesktopPresence(1L);
+        verify(mapper).upsertDesktopPresence(1L);
     }
 
     private CollaborationUserRow user(Long id, String name, String email) {

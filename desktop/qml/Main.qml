@@ -216,7 +216,7 @@ ApplicationWindow {
                         id: bellButton
                         width: 26; height: 22; radius: 7
                         color: bellHover.containsMouse || notificationCenter.opened ? Theme.hover : "transparent"
-                        Text { anchors.centerIn: parent; text: "🔔"; font.pixelSize: 11 }
+                        Icon { anchors.centerIn: parent; name: "bell"; size: 12; color: Theme.text }
                         Rectangle {
                             visible: notifications.unread > 0
                             width: 7; height: 7; radius: 3.5

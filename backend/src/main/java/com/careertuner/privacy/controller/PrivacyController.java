@@ -21,6 +21,7 @@ import com.careertuner.privacy.dto.ConversationBlockResponse;
 import com.careertuner.privacy.dto.IpBlockResponse;
 import com.careertuner.privacy.dto.PrivacyPolicyResponse;
 import com.careertuner.privacy.dto.PrivacyPolicyUpdateRequest;
+import com.careertuner.privacy.dto.UserBlockByContentRequest;
 import com.careertuner.privacy.dto.UserBlockRequest;
 import com.careertuner.privacy.dto.UserBlockResponse;
 import com.careertuner.privacy.dto.UserBlockUpdateRequest;
@@ -59,6 +60,14 @@ public class PrivacyController {
             @Validated @RequestBody UserBlockRequest request,
             @AuthenticationPrincipal AuthUser authUser) {
         return ApiResponse.ok(privacyPolicyService.blockUser(authUser.id(), request));
+    }
+
+    /** 콘텐츠 id 기반 차단 — 익명 글/댓글 작성자용(클라이언트는 작성자 id 를 모름, 익명성 유지). */
+    @PostMapping("/blocks/users/by-content")
+    public ApiResponse<UserBlockResponse> blockUserByContent(
+            @Validated @RequestBody UserBlockByContentRequest request,
+            @AuthenticationPrincipal AuthUser authUser) {
+        return ApiResponse.ok(privacyPolicyService.blockUserByContent(authUser.id(), request));
     }
 
     @PutMapping("/blocks/users/{blockId}")

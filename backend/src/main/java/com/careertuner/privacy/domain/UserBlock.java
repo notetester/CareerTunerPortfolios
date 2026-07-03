@@ -20,6 +20,8 @@ public class UserBlock {
     private String flagsJson;
     private boolean blockIp;
     private String memo;
+    /** 익명 콘텐츠 기반 차단의 표시 라벨 — non-null 이면 응답에서 이름/이메일을 이 라벨로 마스킹한다. */
+    private String maskedLabel;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
 

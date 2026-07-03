@@ -1,5 +1,6 @@
 package com.careertuner.collaboration.mapper;
 
+import java.util.Collection;
 import java.util.List;
 
 import org.apache.ibatis.annotations.Mapper;
@@ -10,6 +11,7 @@ import com.careertuner.collaboration.domain.CollaborationMessage;
 import com.careertuner.collaboration.domain.CollaborationUserRow;
 import com.careertuner.collaboration.domain.ConversationMemberRow;
 import com.careertuner.collaboration.domain.ConversationSummaryRow;
+import com.careertuner.collaboration.domain.DesktopPresenceRow;
 import com.careertuner.collaboration.domain.FriendRequest;
 import com.careertuner.collaboration.domain.FriendRequestRow;
 import com.careertuner.collaboration.domain.FriendRow;
@@ -131,4 +133,15 @@ public interface CollaborationMapper {
 
     int countAttachmentAccess(@Param("userId") Long userId,
                               @Param("fileId") Long fileId);
+
+    // ── 데스크톱 presence (LOCAL 파일 공유 게이트) ──
+
+    /** 데스크톱 앱 heartbeat upsert — 폴링 틱마다 last_seen_at 을 갱신한다. */
+    void upsertDesktopPresence(@Param("userId") Long userId);
+
+    /** 단일 사용자의 마지막 heartbeat 시각 (없으면 null). */
+    java.time.LocalDateTime findDesktopLastSeenAt(@Param("userId") Long userId);
+
+    /** 첨부 목록 표시용 — 소유자 여러 명의 presence 를 1쿼리로 벌크 조회한다. */
+    List<DesktopPresenceRow> findDesktopPresenceByUserIds(@Param("userIds") Collection<Long> userIds);
 }

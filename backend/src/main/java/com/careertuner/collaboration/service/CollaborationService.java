@@ -50,4 +50,7 @@ public interface CollaborationService {
     ConversationSummaryResponse setConversationMuted(Long userId, Long conversationId, boolean muted);
 
     FileService.Download downloadAttachment(Long userId, Long fileId);
+
+    /** 데스크톱 앱 heartbeat — LOCAL 파일 공유 다운로드 게이트의 presence 를 갱신한다. */
+    void touchDesktopPresence(Long userId);
 }

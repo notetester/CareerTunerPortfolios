@@ -1,8 +1,8 @@
 import { useState } from "react";
 import { Avatar, AvatarFallback } from "@/app/components/ui/avatar";
 import { Heart, MessageCircle, Lock, Trash2, MessageSquareX, Pencil, UserX } from "lucide-react";
-// 개인 차단 진입점 — 익명 댓글도 서버가 작성자 id 를 알아 차단이 동작한다(익명성 유지).
-import { blockUser } from "@/features/privacy/api/privacyApi";
+// 개인 차단 진입점 — 익명 댓글은 작성자 id 가 클라이언트에 없어 콘텐츠 id 로 차단한다(익명성 유지).
+import { blockUser, blockUserByContent } from "@/features/privacy/api/privacyApi";
 import { showBlockManageToast } from "@/features/privacy/components/blockToast";
 import { useCommunityStore } from "../hooks/useCommunityStore";
 import { useLoginDialog } from "../hooks/useLoginDialog";
@@ -95,17 +95,21 @@ export function CommentItem({ comment: c, childrenMap, depth, onReply }: Comment
   };
 
   // 작성자 차단 — 조용한 차단. 차단 후 목록을 다시 받아 이 작성자의 댓글이 톰스톤으로 바뀐다.
+  // 익명 댓글은 작성자 id 가 없어 댓글 id 로 차단한다(서버가 작성자를 찾고, 목록에는 익명 라벨만 남는다).
   const handleBlockAuthor = () => {
     requireAuth(async () => {
       try {
-        await blockUser({ targetUserId: c.author.id });
-        showBlockManageToast(
-          c.author.isAnonymous ? "이 작성자를 차단했습니다." : `${c.author.name}님을 차단했습니다.`,
-          c.author.isAnonymous ? "익명 작성자의 신원은 표시되지 않으며 익명성은 유지됩니다." : undefined,
-        );
+        if (c.author.isAnonymous || !c.author.id) {
+          await blockUserByContent({ contentType: "COMMENT", contentId: c.id });
+          showBlockManageToast("이 작성자를 차단했습니다.", "작성자가 누구인지는 표시되지 않습니다.");
+        } else {
+          await blockUser({ targetUserId: c.author.id });
+          showBlockManageToast(`${c.author.name}님을 차단했습니다.`);
+        }
         await fetchComments(c.postId);
-      } catch {
-        toast.error("차단 처리에 실패했습니다.");
+      } catch (err) {
+        // 본인 콘텐츠/운영자 차단 등 서버 검증 메시지는 그대로 보여준다.
+        toast.error(err instanceof Error && err.message ? err.message : "차단 처리에 실패했습니다.");
       }
     });
   };
@@ -173,14 +177,18 @@ export function CommentItem({ comment: c, childrenMap, depth, onReply }: Comment
                     <Trash2 /> 삭제
                   </button>
                 )}
-                {/* 작성자 메뉴 — 익명 댓글은 "작성자 차단"(서버가 id 를 알므로 동작, 익명성 유지) */}
-                {!c.mine && !!c.author.id && (
+                {/* 작성자 메뉴 — 익명 댓글도 노출: 댓글 id 로 차단(서버가 작성자를 알므로 동작, 익명성 유지) */}
+                {!c.mine && (!!c.author.id || c.author.isAnonymous) && (
                   <button
                     className="ct-cmt__act ct-cmt__act--del"
                     onClick={handleBlockAuthor}
-                    title="차단 사실은 상대에게 알려지지 않습니다."
+                    title={
+                      c.author.isAnonymous
+                        ? "작성자가 누구인지는 표시되지 않습니다. 차단 사실은 상대에게 알려지지 않습니다."
+                        : "차단 사실은 상대에게 알려지지 않습니다."
+                    }
                   >
-                    <UserX /> {c.author.isAnonymous ? "작성자 차단" : "차단"}
+                    <UserX /> {c.author.isAnonymous ? "이 작성자 차단" : "차단"}
                   </button>
                 )}
               </div>

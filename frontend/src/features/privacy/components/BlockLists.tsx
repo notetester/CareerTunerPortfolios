@@ -4,7 +4,7 @@
 //  - IP: 라벨/파생 계정/일치 계정 수만 표기(원본 IP 비노출), 해제만 가능.
 //  - 채팅방: 파생 초대 차단 플래그 토글(각 익명 변형 포함 — 연속 초대 테러 방지), 해제.
 import { useCallback, useEffect, useState } from "react";
-import { Ban, Globe, MessageSquare, Search, ShieldOff, UserX } from "lucide-react";
+import { Ban, Globe, MessageSquare, Search, ShieldOff, UserX, VenetianMask } from "lucide-react";
 import { Badge } from "@/app/components/ui/badge";
 import { Button } from "@/app/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/app/components/ui/card";
@@ -220,14 +220,16 @@ export function BlockLists({
                   >
                     <div className="min-w-0">
                       <div className="flex items-center gap-2">
-                        <span className="truncate text-sm font-semibold text-slate-800">
+                        {/* 익명 콘텐츠 기반 차단 — 실명/이메일 대신 회색 익명 아이콘 + 마스킹 라벨만 표시 */}
+                        {block.masked && <VenetianMask className="size-4 shrink-0 text-slate-400" aria-label="익명 작성자" />}
+                        <span className={`truncate text-sm font-semibold ${block.masked ? "text-slate-500" : "text-slate-800"}`}>
                           {block.blockedUserName ?? `사용자 #${block.blockedUserId}`}
                         </span>
                         {block.blockIp && <Badge className="bg-orange-100 text-orange-700">IP 차단</Badge>}
                         {Object.keys(block.flags).length > 0 && <Badge className="bg-slate-100 text-slate-600">부분 완화</Badge>}
                       </div>
                       <div className="truncate text-xs text-slate-400">
-                        {block.blockedUserEmail ?? ""} · {formatDate(block.createdAt)} 차단
+                        {block.masked ? "작성자가 누구인지는 표시되지 않습니다" : block.blockedUserEmail ?? ""} · {formatDate(block.createdAt)} 차단
                         {block.memo ? ` · ${block.memo}` : ""}
                       </div>
                     </div>

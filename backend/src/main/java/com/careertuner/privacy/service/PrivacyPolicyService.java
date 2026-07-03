@@ -8,6 +8,7 @@ import com.careertuner.privacy.dto.ConversationBlockResponse;
 import com.careertuner.privacy.dto.IpBlockResponse;
 import com.careertuner.privacy.dto.PrivacyPolicyResponse;
 import com.careertuner.privacy.dto.PrivacyPolicyUpdateRequest;
+import com.careertuner.privacy.dto.UserBlockByContentRequest;
 import com.careertuner.privacy.dto.UserBlockRequest;
 import com.careertuner.privacy.dto.UserBlockResponse;
 import com.careertuner.privacy.dto.UserBlockUpdateRequest;
@@ -57,6 +58,12 @@ public interface PrivacyPolicyService {
     List<UserBlockResponse> listUserBlocks(Long userId);
 
     UserBlockResponse blockUser(Long userId, UserBlockRequest request);
+
+    /**
+     * 콘텐츠 id(게시글/댓글)로 작성자를 찾아 차단 — 익명 콘텐츠용.
+     * 익명이면 masked_label 을 저장해 차단 목록에서 실명 대신 라벨이 표시된다(익명성 유지).
+     */
+    UserBlockResponse blockUserByContent(Long userId, UserBlockByContentRequest request);
 
     UserBlockResponse updateUserBlock(Long userId, Long blockId, UserBlockUpdateRequest request);
 

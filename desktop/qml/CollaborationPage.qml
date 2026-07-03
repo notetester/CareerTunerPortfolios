@@ -432,7 +432,11 @@ Item {
                                         RowLayout {
                                             Layout.fillWidth: true
                                             Text { text: convo["peerName"]; color: Theme.text; font.pixelSize: 12; font.bold: true; elide: Text.ElideRight; Layout.fillWidth: true }
-                                            Text { visible: convo["muted"] === true; text: "🔕"; font.pixelSize: 10 }
+                                            Icon {
+                                                visible: convo["muted"] === true
+                                                name: "bell-off"; size: 10; color: Theme.muted
+                                                Layout.preferredWidth: 10; Layout.preferredHeight: 10
+                                            }
                                             Text { text: roomTypeLabel(convo["type"]); color: Theme.muted; font.pixelSize: 9 }
                                             Rectangle {
                                                 visible: Number(convo["unreadCount"]) > 0
@@ -505,7 +509,12 @@ Item {
                             width: 30; height: 30; radius: 8
                             color: collaboration.currentConversationMuted ? Theme.accentSoft : Theme.raised
                             border.color: collaboration.currentConversationMuted ? Theme.accent : Theme.border
-                            Text { anchors.centerIn: parent; text: collaboration.currentConversationMuted ? "🔕" : "🔔"; font.pixelSize: 13 }
+                            Icon {
+                                anchors.centerIn: parent
+                                name: collaboration.currentConversationMuted ? "bell-off" : "bell"
+                                size: 14
+                                color: collaboration.currentConversationMuted ? Theme.accent : Theme.text
+                            }
                             MouseArea {
                                 id: muteHover
                                 anchors.fill: parent

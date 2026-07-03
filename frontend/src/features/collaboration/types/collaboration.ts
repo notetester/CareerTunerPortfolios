@@ -92,6 +92,8 @@ export interface MessageAttachmentResponse {
   availability: AttachmentAvailability;
   expiresAt: string | null;
   downloadUrl: string | null;
+  /** LOCAL 공유일 때만 세팅 — 파일 소유자의 데스크톱이 온라인이면 다운로드 가능. */
+  ownerDesktopOnline?: boolean | null;
 }
 
 export interface SharedPostingResponse {

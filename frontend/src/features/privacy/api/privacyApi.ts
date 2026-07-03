@@ -6,6 +6,7 @@ import type {
   IpBlockResponse,
   PrivacyPolicyResponse,
   PrivacyPolicyUpdateRequest,
+  UserBlockByContentRequest,
   UserBlockRequest,
   UserBlockResponse,
   UserBlockUpdateRequest,
@@ -33,6 +34,17 @@ export function listUserBlocks(): Promise<UserBlockResponse[]> {
 
 export function blockUser(request: UserBlockRequest): Promise<UserBlockResponse> {
   return api<UserBlockResponse>("/privacy/blocks/users", {
+    method: "POST",
+    body: JSON.stringify(request),
+  });
+}
+
+/**
+ * 콘텐츠 id(게시글/댓글)로 작성자 차단 — 익명 콘텐츠용(작성자 id 가 클라이언트에 없음).
+ * 익명 콘텐츠면 응답의 blockedUserName 이 "익명 작성자 (게시글 #id)" 라벨로 마스킹된다.
+ */
+export function blockUserByContent(request: UserBlockByContentRequest): Promise<UserBlockResponse> {
+  return api<UserBlockResponse>("/privacy/blocks/users/by-content", {
     method: "POST",
     body: JSON.stringify(request),
   });

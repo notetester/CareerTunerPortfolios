@@ -167,6 +167,13 @@ public class CollaborationController {
                 collaborationService.setConversationMuted(authUser.id(), conversationId, request.muted()));
     }
 
+    /** 데스크톱 앱 heartbeat — LOCAL 파일 공유 다운로드 게이트의 presence 를 갱신한다(30초 폴링 틱마다 호출). */
+    @PostMapping("/desktop-presence")
+    public ApiResponse<Void> touchDesktopPresence(@AuthenticationPrincipal AuthUser authUser) {
+        collaborationService.touchDesktopPresence(authUser.id());
+        return ApiResponse.ok();
+    }
+
     @GetMapping("/files/{fileId}/content")
     public ResponseEntity<byte[]> attachment(@PathVariable Long fileId,
                                              @AuthenticationPrincipal AuthUser authUser) {

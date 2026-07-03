@@ -25,37 +25,37 @@ Popup {
 
     onOpened: notifications.pollNow()   // 열 때 최신 상태로 갱신
 
-    // type → 아이콘 (웹 TYPE_META 아이콘의 데스크톱 이모지 대응)
+    // type → Icon.qml 아이콘 이름 (웹 TYPE_META 아이콘의 데스크톱 스트로크 대응)
     function typeIcon(type) {
         switch (type) {
-        case "NOTE_MESSAGE": return "📩"
+        case "NOTE_MESSAGE": return "mail"
         case "ROOM_MESSAGE":
         case "ROOM_MENTION":
-        case "ROOM_INVITE": return "💬"
+        case "ROOM_INVITE": return "message"
         case "FRIEND_REQUEST":
-        case "FRIEND_ACCEPTED": return "👥"
-        case "INTERVIEW_DISPATCH": return "📲"
+        case "FRIEND_ACCEPTED": return "users"
+        case "INTERVIEW_DISPATCH": return "smartphone"
         case "QUESTIONS_GENERATED":
-        case "INTERVIEW_REPORT_READY": return "🎤"
+        case "INTERVIEW_REPORT_READY": return "mic"
         case "COMMENT":
-        case "COMMENT_REPLY": return "💭"
-        case "LIKE": return "❤️"
-        case "CORRECTION_COMPLETE": return "✏️"
+        case "COMMENT_REPLY": return "message"
+        case "LIKE": return "heart"
+        case "CORRECTION_COMPLETE": return "pencil"
         case "RECOMMENDED_JOB":
-        case "RECOMMENDED_POST": return "📌"
+        case "RECOMMENDED_POST": return "pin"
         case "NOTICE":
-        case "MARKETING_AD": return "📢"
+        case "MARKETING_AD": return "megaphone"
         case "CREDIT_LOW":
         case "CREDIT_RECHARGED":
         case "PAYMENT_COMPLETE":
         case "PAYMENT_SCHEDULED":
         case "SUBSCRIPTION_CANCELED":
-        case "REFUND_RESULT": return "💳"
+        case "REFUND_RESULT": return "box"
         default:
-            // AI 분석 계열(…_ANALYZED / …_ANALYSIS_… / 추출·트렌드)은 ✨, 나머지는 기본 벨
+            // AI 분석 계열(…_ANALYZED / …_ANALYSIS_… / 추출·트렌드)은 spark, 나머지는 기본 벨
             return (String(type).indexOf("ANALY") >= 0
                     || String(type).indexOf("EXTRACTION") >= 0
-                    || String(type).indexOf("TREND") >= 0) ? "✨" : "🔔"
+                    || String(type).indexOf("TREND") >= 0) ? "spark" : "bell"
         }
     }
 
@@ -163,7 +163,7 @@ Popup {
                             Layout.alignment: Qt.AlignTop
                             width: 30; height: 30; radius: 15
                             color: Theme.raised; border.color: Theme.border
-                            Text { anchors.centerIn: parent; text: root.typeIcon(String(noteItem.note.type)); font.pixelSize: 13 }
+                            Icon { anchors.centerIn: parent; name: root.typeIcon(String(noteItem.note.type)); size: 14; color: Theme.accentText }
                         }
 
                         ColumnLayout {
@@ -191,10 +191,15 @@ Popup {
                                 wrapMode: Text.WordWrap; maximumLineCount: 2; elide: Text.ElideRight
                                 Layout.fillWidth: true
                             }
-                            Text {
+                            Row {
                                 visible: String(noteItem.note.actorName || "").length > 0
-                                text: "👤 " + noteItem.note.actorName
-                                color: Theme.muted; font.pixelSize: 9
+                                spacing: 4
+                                Icon { name: "user"; size: 9; color: Theme.muted; anchors.verticalCenter: parent.verticalCenter }
+                                Text {
+                                    text: noteItem.note.actorName
+                                    color: Theme.muted; font.pixelSize: 9
+                                    anchors.verticalCenter: parent.verticalCenter
+                                }
                             }
                         }
                     }

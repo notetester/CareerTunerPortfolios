@@ -1745,6 +1745,7 @@ CREATE TABLE IF NOT EXISTS user_block (
     flags_json      JSON         NULL COMMENT '표면별 명시 설정. null 항목은 blockedAccount 관계 정책을 따름',
     block_ip        TINYINT(1)   NOT NULL DEFAULT 0 COMMENT '이 계정의 접속 IP 도 차단(user_ip_block 파생)',
     memo            VARCHAR(200) NULL COMMENT '개인 메모(차단 사유 등)',
+    masked_label    VARCHAR(100) NULL COMMENT '익명 콘텐츠 기반 차단의 표시 라벨(비노출 익명성 유지)',
     created_at      DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at      DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     PRIMARY KEY (id),
@@ -1790,6 +1791,14 @@ CREATE TABLE IF NOT EXISTS user_privacy_policy (
     UNIQUE KEY uq_user_privacy_policy_user (user_id),
     CONSTRAINT fk_user_privacy_policy_user FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci COMMENT = '개인 차단/허용 관계별 정책';
+
+-- 데스크톱 앱 heartbeat — LOCAL 파일 공유는 소유자 데스크톱이 온라인일 때만 전송한다.
+CREATE TABLE IF NOT EXISTS user_desktop_presence (
+    user_id      BIGINT   NOT NULL,
+    last_seen_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (user_id),
+    CONSTRAINT fk_user_desktop_presence_user FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci COMMENT = '데스크톱 앱 접속 heartbeat(LOCAL 파일 공유 게이트)';
 
 SET FOREIGN_KEY_CHECKS = 1;
 

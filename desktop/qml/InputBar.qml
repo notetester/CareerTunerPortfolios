@@ -77,7 +77,11 @@ Item {
                 RowLayout {
                     Layout.fillWidth: true
                     spacing: 8
-                    Text { text: "🎥 영상 답변"; color: Theme.text; font.pixelSize: 12; font.bold: true }
+                    Row {
+                        spacing: 6
+                        Icon { name: "video"; size: 13; color: Theme.text; anchors.verticalCenter: parent.verticalCenter }
+                        Text { text: "영상 답변"; color: Theme.text; font.pixelSize: 12; font.bold: true; anchors.verticalCenter: parent.verticalCenter }
+                    }
                     Text {
                         text: root.recordedVideoPath !== ""
                               ? "녹화 완료 — 전송 전 동의를 확인하세요"
@@ -328,14 +332,23 @@ Item {
                 // 영상 답변 (답변 모드) — 카메라 없으면 폰 이어하기 안내로 대체
                 Rectangle {
                     visible: root.mode === "answer"
-                    width: camLbl.implicitWidth + 18; height: 26; radius: 7
+                    width: camRow.implicitWidth + 18; height: 26; radius: 7
                     color: root.videoPanelOpen ? Theme.accentSoft : "transparent"
                     border.color: root.videoPanelOpen ? Theme.accent : Theme.border
-                    Text {
-                        id: camLbl; anchors.centerIn: parent
-                        text: cameraRecorder.cameraAvailable ? "🎥 영상 답변" : "📲 카메라 없음 — 폰으로"
-                        color: root.videoPanelOpen ? Theme.accent : Theme.muted
-                        font.pixelSize: 11
+                    Row {
+                        id: camRow; anchors.centerIn: parent; spacing: 6
+                        Icon {
+                            name: cameraRecorder.cameraAvailable ? "video" : "smartphone"
+                            size: 12
+                            color: root.videoPanelOpen ? Theme.accent : Theme.muted
+                            anchors.verticalCenter: parent.verticalCenter
+                        }
+                        Text {
+                            text: cameraRecorder.cameraAvailable ? "영상 답변" : "카메라 없음 — 폰으로"
+                            color: root.videoPanelOpen ? Theme.accent : Theme.muted
+                            font.pixelSize: 11
+                            anchors.verticalCenter: parent.verticalCenter
+                        }
                     }
                     MouseArea {
                         anchors.fill: parent; cursorShape: Qt.PointingHandCursor

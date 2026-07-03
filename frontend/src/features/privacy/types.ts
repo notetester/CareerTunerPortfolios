@@ -152,12 +152,16 @@ export interface PrivacyPolicyUpdateRequest {
   relations: Record<string, Record<string, string>>;
 }
 
-/** 계정 차단 항목. flags 는 명시 설정만(비어 있으면 blockedAccount 정책=기본 차단을 따름). */
+/**
+ * 계정 차단 항목. flags 는 명시 설정만(비어 있으면 blockedAccount 정책=기본 차단을 따름).
+ * masked=true(익명 콘텐츠 기반 차단)면 blockedUserName 은 masked_label, blockedUserEmail 은 null 로 마스킹된다.
+ */
 export interface UserBlockResponse {
   id: number;
   blockedUserId: number;
   blockedUserName: string | null;
   blockedUserEmail: string | null;
+  masked: boolean;
   flags: Record<string, string>;
   blockIp: boolean;
   memo: string | null;
@@ -166,6 +170,17 @@ export interface UserBlockResponse {
 
 export interface UserBlockRequest {
   targetUserId: number;
+  blockIp?: boolean;
+  memo?: string;
+}
+
+/**
+ * 콘텐츠 id 기반 차단 요청 — 익명 글/댓글용. 클라이언트는 작성자 id 를 모르고
+ * 서버가 콘텐츠에서 작성자를 찾는다(차단 목록에는 익명 라벨만 표시돼 익명성 유지).
+ */
+export interface UserBlockByContentRequest {
+  contentType: "POST" | "COMMENT";
+  contentId: number;
   blockIp?: boolean;
   memo?: string;
 }
