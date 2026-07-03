@@ -116,15 +116,15 @@ public class CompanyWebSearchClient {
         JsonNode items = root.path("items");
         if (items.isArray()) {
             for (JsonNode item : items) {
-                String link = item.path("link").asText("");
+                String link = item.path("link").asString("");
                 if (link.isBlank()) {
                     continue;
                 }
                 results.add(new CompanyWebSearchResult(
                         category,
-                        cleanText(item.path("title").asText("")),
+                        cleanText(item.path("title").asString("")),
                         link,
-                        cleanText(item.path("description").asText("")),
+                        cleanText(item.path("description").asString("")),
                         fetchedAt));
             }
         }
@@ -142,7 +142,7 @@ public class CompanyWebSearchClient {
     private String errorCode(String body) {
         try {
             JsonNode root = objectMapper.readTree(body);
-            String code = root.path("errorCode").asText("");
+            String code = root.path("errorCode").asString("");
             return code.isBlank() ? "unknown" : code;
         } catch (JacksonException ex) {
             return "unknown";
