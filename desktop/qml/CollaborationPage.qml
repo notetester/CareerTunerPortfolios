@@ -7,6 +7,8 @@ import CareerTuner
 Item {
     id: root
     property string selectedKind: "CHAT"
+    property string selectedRoomType: "GROUP"
+    property string selectedShareMode: "TEMPORARY"
 
     function firstLetter(name) {
         const value = String(name || "?")
@@ -25,6 +27,26 @@ Item {
         if (n > 1024 * 1024) return (n / 1024 / 1024).toFixed(1) + " MB"
         if (n > 1024) return Math.round(n / 1024) + " KB"
         return n + " B"
+    }
+
+    function roomTypeLabel(type) {
+        if (type === "PUBLIC") return "공개"
+        if (type === "PRIVATE") return "비공개"
+        if (type === "DIRECT") return "1:1"
+        return "그룹"
+    }
+
+    function shareModeLabel(mode) {
+        if (mode === "CLOUD") return "클라우드"
+        if (mode === "LOCAL") return "로컬"
+        return "임시"
+    }
+
+    function availabilityLabel(value) {
+        if (value === "EXPIRED") return "만료"
+        if (value === "PLAN_INACTIVE") return "플랜 중지"
+        if (value === "LOCAL_ONLY") return "로컬"
+        return "저장"
     }
 
     Component.onCompleted: collaboration.refresh()
@@ -203,6 +225,12 @@ Item {
                                         Text { text: user["name"]; color: Theme.text; font.pixelSize: 12; font.bold: true; elide: Text.ElideRight; Layout.fillWidth: true }
                                         Text { text: user["email"]; color: Theme.muted; font.pixelSize: 10; elide: Text.ElideRight; Layout.fillWidth: true }
                                     }
+                                    Rectangle {
+                                        visible: collaboration.currentConversationId > 0 && collaboration.currentConversationType !== "DIRECT"
+                                        width: 42; height: 24; radius: 7
+                                        color: Theme.accent
+                                        Text { anchors.centerIn: parent; text: "초대"; color: "white"; font.pixelSize: 10; font.bold: true }
+                                    }
                                     Text { text: "›"; color: Theme.muted; font.pixelSize: 18 }
                                 }
                                 MouseArea {
@@ -210,7 +238,15 @@ Item {
                                     anchors.fill: parent
                                     hoverEnabled: true
                                     cursorShape: Qt.PointingHandCursor
-                                    onClicked: collaboration.openConversation(user["id"], user["name"])
+                                    onClicked: function(mouse) {
+                                        if (collaboration.currentConversationId > 0
+                                                && collaboration.currentConversationType !== "DIRECT"
+                                                && mouse.x > width - 80) {
+                                            collaboration.inviteFriendToCurrentRoom(user["id"])
+                                        } else {
+                                            collaboration.openConversation(user["id"], user["name"])
+                                        }
+                                    }
                                 }
                             }
                         }
@@ -230,6 +266,141 @@ Item {
                 anchors.margins: 12
                 spacing: 8
                 Text { text: "대화방"; color: Theme.text; font.pixelSize: 14; font.bold: true }
+
+                Row {
+                    spacing: 4
+                    Repeater {
+                        model: [
+                            { label: "그룹", type: "GROUP" },
+                            { label: "공개", type: "PUBLIC" },
+                            { label: "비공개", type: "PRIVATE" }
+                        ]
+                        delegate: Rectangle {
+                            required property var modelData
+                            width: 54; height: 28; radius: 7
+                            color: root.selectedRoomType === modelData.type ? Theme.accent : Theme.surface
+                            border.color: root.selectedRoomType === modelData.type ? Theme.accent : Theme.border
+                            Text { anchors.centerIn: parent; text: modelData.label; color: root.selectedRoomType === modelData.type ? "white" : Theme.text; font.pixelSize: 10; font.bold: true }
+                            MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: root.selectedRoomType = modelData.type }
+                        }
+                    }
+                }
+
+                TextField {
+                    id: roomTitleInput
+                    Layout.fillWidth: true
+                    height: 32
+                    placeholderText: "새 채팅방 이름"
+                    color: Theme.text
+                    placeholderTextColor: Theme.muted
+                    background: Rectangle { radius: 8; color: Theme.surface; border.color: Theme.border }
+                }
+
+                RowLayout {
+                    Layout.fillWidth: true
+                    spacing: 6
+                    TextField {
+                        id: roomPasswordInput
+                        Layout.fillWidth: true
+                        height: 30
+                        visible: root.selectedRoomType === "PRIVATE"
+                        echoMode: TextInput.Password
+                        placeholderText: "비밀번호"
+                        color: Theme.text
+                        placeholderTextColor: Theme.muted
+                        background: Rectangle { radius: 8; color: Theme.surface; border.color: Theme.border }
+                    }
+                    Rectangle {
+                        width: 58; height: 30; radius: 8
+                        color: Theme.accent
+                        Text { anchors.centerIn: parent; text: "개설"; color: "white"; font.pixelSize: 11; font.bold: true }
+                        MouseArea {
+                            anchors.fill: parent
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: {
+                                collaboration.createRoom(root.selectedRoomType, roomTitleInput.text, roomPasswordInput.text)
+                                roomTitleInput.clear()
+                                roomPasswordInput.clear()
+                            }
+                        }
+                    }
+                }
+
+                TextField {
+                    id: roomSearchInput
+                    Layout.fillWidth: true
+                    height: 30
+                    placeholderText: "공개/비공개 방 찾기"
+                    color: Theme.text
+                    placeholderTextColor: Theme.muted
+                    background: Rectangle { radius: 8; color: Theme.surface; border.color: Theme.border }
+                    onTextChanged: roomSearchDelay.restart()
+                    onAccepted: collaboration.discoverRooms(text)
+                }
+
+                Timer {
+                    id: roomSearchDelay
+                    interval: 350
+                    repeat: false
+                    onTriggered: collaboration.discoverRooms(roomSearchInput.text)
+                }
+
+                ScrollView {
+                    Layout.fillWidth: true
+                    Layout.preferredHeight: Math.min(150, Math.max(48, discoverCol.implicitHeight + 8))
+                    clip: true
+                    ColumnLayout {
+                        id: discoverCol
+                        width: parent.width
+                        spacing: 6
+                        Repeater {
+                            model: collaboration.discoverableRooms
+                            delegate: Rectangle {
+                                property var room: modelData
+                                Layout.fillWidth: true
+                                height: 46
+                                radius: 8
+                                color: Theme.surface
+                                border.color: Theme.border
+                                RowLayout {
+                                    anchors.fill: parent
+                                    anchors.leftMargin: 10; anchors.rightMargin: 8
+                                    spacing: 6
+                                    Text { text: room["locked"] ? "잠금" : roomTypeLabel(room["type"]); color: Theme.muted; font.pixelSize: 10; font.bold: true }
+                                    ColumnLayout {
+                                        Layout.fillWidth: true
+                                        spacing: 1
+                                        Text { text: room["displayName"]; color: Theme.text; font.pixelSize: 11; font.bold: true; elide: Text.ElideRight; Layout.fillWidth: true }
+                                        Text { text: room["memberCount"] + "명"; color: Theme.muted; font.pixelSize: 9 }
+                                    }
+                                    Rectangle {
+                                        width: 42; height: 24; radius: 7
+                                        color: Theme.accent
+                                        Text { anchors.centerIn: parent; text: "참가"; color: "white"; font.pixelSize: 10; font.bold: true }
+                                        MouseArea {
+                                            anchors.fill: parent
+                                            cursorShape: Qt.PointingHandCursor
+                                            onClicked: collaboration.joinRoom(room["id"], room["locked"] ? roomJoinPassword.text : "")
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                TextField {
+                    id: roomJoinPassword
+                    Layout.fillWidth: true
+                    height: 28
+                    echoMode: TextInput.Password
+                    placeholderText: "비공개 방 참가 비밀번호"
+                    color: Theme.text
+                    placeholderTextColor: Theme.muted
+                    background: Rectangle { radius: 8; color: Theme.surface; border.color: Theme.border }
+                }
+
+                Text { text: "참여 중"; color: Theme.muted; font.pixelSize: 10; font.bold: true; Layout.leftMargin: 4 }
                 ScrollView {
                     Layout.fillWidth: true
                     Layout.fillHeight: true
@@ -261,6 +432,7 @@ Item {
                                         RowLayout {
                                             Layout.fillWidth: true
                                             Text { text: convo["peerName"]; color: Theme.text; font.pixelSize: 12; font.bold: true; elide: Text.ElideRight; Layout.fillWidth: true }
+                                            Text { text: roomTypeLabel(convo["type"]); color: Theme.muted; font.pixelSize: 9 }
                                             Rectangle {
                                                 visible: Number(convo["unreadCount"]) > 0
                                                 width: unreadText.implicitWidth + 12; height: 18; radius: 9
@@ -280,7 +452,7 @@ Item {
                                     anchors.fill: parent
                                     hoverEnabled: true
                                     cursorShape: Qt.PointingHandCursor
-                                    onClicked: collaboration.openConversationById(convo["id"], convo["peerName"])
+                                    onClicked: collaboration.openConversationById(convo["id"], convo["peerName"], convo["type"])
                                 }
                             }
                         }
@@ -320,7 +492,7 @@ Item {
                                 color: Theme.text; font.pixelSize: 13; font.bold: true
                             }
                             Text {
-                                text: collaboration.currentConversationId > 0 ? "채팅 · 쪽지 · 첨부" : "친구 목록이나 대화방을 선택하면 thread가 열립니다"
+                                text: collaboration.currentConversationId > 0 ? roomTypeLabel(collaboration.currentConversationType) + " · 채팅 · 쪽지 · 파일 · 공고" : "친구 목록이나 대화방을 선택하면 thread가 열립니다"
                                 color: Theme.muted; font.pixelSize: 10
                             }
                         }
@@ -401,19 +573,41 @@ Item {
                                                 anchors.fill: parent
                                                 anchors.leftMargin: 8; anchors.rightMargin: 6
                                                 spacing: 6
-                                                Text { text: "📎"; font.pixelSize: 12 }
+                                                Text { text: "첨부"; color: Theme.muted; font.pixelSize: 9; font.bold: true }
                                                 Text { text: file["originalName"]; color: Theme.text; font.pixelSize: 10; elide: Text.ElideRight; Layout.fillWidth: true }
+                                                Text { text: shareModeLabel(file["shareMode"]); color: Theme.muted; font.pixelSize: 9 }
                                                 Text { text: sizeText(file["sizeBytes"]); color: Theme.muted; font.pixelSize: 9 }
                                                 Rectangle {
                                                     width: 38; height: 22; radius: 6
-                                                    color: Theme.hover; border.color: Theme.border
-                                                    Text { anchors.centerIn: parent; text: "저장"; color: Theme.text; font.pixelSize: 9 }
+                                                    color: file["availability"] === "AVAILABLE" ? Theme.hover : Theme.surface
+                                                    border.color: Theme.border
+                                                    opacity: file["availability"] === "AVAILABLE" ? 1 : 0.65
+                                                    Text { anchors.centerIn: parent; text: availabilityLabel(file["availability"]); color: Theme.text; font.pixelSize: 9 }
                                                     MouseArea {
                                                         anchors.fill: parent
+                                                        enabled: file["availability"] === "AVAILABLE"
                                                         cursorShape: Qt.PointingHandCursor
                                                         onClicked: collaboration.downloadAttachment(file["fileId"], file["originalName"])
                                                     }
                                                 }
+                                            }
+                                        }
+                                    }
+                                    Repeater {
+                                        model: msg["sharedPostings"]
+                                        delegate: Rectangle {
+                                            property var posting: modelData
+                                            Layout.fillWidth: true
+                                            height: 42
+                                            radius: 7
+                                            color: Theme.raised
+                                            border.color: Theme.border
+                                            ColumnLayout {
+                                                anchors.fill: parent
+                                                anchors.leftMargin: 8; anchors.rightMargin: 8
+                                                spacing: 1
+                                                Text { text: "공고 #" + posting["applicationCaseId"] + " · " + posting["companyName"]; color: Theme.muted; font.pixelSize: 9; elide: Text.ElideRight; Layout.fillWidth: true }
+                                                Text { text: posting["jobTitle"]; color: Theme.text; font.pixelSize: 11; font.bold: true; elide: Text.ElideRight; Layout.fillWidth: true }
                                             }
                                         }
                                     }
@@ -447,17 +641,65 @@ Item {
                                     radius: 7
                                     color: Theme.raised
                                     border.color: Theme.border
+                                    Icon {
+                                        x: 8; anchors.verticalCenter: parent.verticalCenter
+                                        name: "paperclip"; size: 10; color: Theme.muted
+                                    }
                                     Text {
                                         id: pendingName
-                                        x: 8; anchors.verticalCenter: parent.verticalCenter
-                                        width: parent.width - 30
-                                        text: "📎 " + file["name"]
+                                        x: 22; anchors.verticalCenter: parent.verticalCenter
+                                        width: parent.width - 44
+                                        text: file["name"]
                                         color: Theme.text; font.pixelSize: 10
                                         elide: Text.ElideRight
                                     }
                                     Text { x: parent.width - 20; anchors.verticalCenter: parent.verticalCenter; text: "×"; color: Theme.muted; font.pixelSize: 13 }
                                     MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: collaboration.removePendingAttachment(index) }
                                 }
+                            }
+                        }
+                        RowLayout {
+                            Layout.fillWidth: true
+                            spacing: 6
+                            Row {
+                                spacing: 4
+                                Repeater {
+                                    model: [
+                                        { label: "임시", mode: "TEMPORARY" },
+                                        { label: "클라우드", mode: "CLOUD" },
+                                        { label: "로컬", mode: "LOCAL" }
+                                    ]
+                                    delegate: Rectangle {
+                                        required property var modelData
+                                        width: modelData.mode === "CLOUD" ? 62 : 48
+                                        height: 28
+                                        radius: 7
+                                        color: root.selectedShareMode === modelData.mode ? Theme.accent : Theme.raised
+                                        border.color: root.selectedShareMode === modelData.mode ? Theme.accent : Theme.border
+                                        Text { anchors.centerIn: parent; text: modelData.label; color: root.selectedShareMode === modelData.mode ? "white" : Theme.text; font.pixelSize: 10; font.bold: true }
+                                        MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: root.selectedShareMode = modelData.mode }
+                                    }
+                                }
+                            }
+                            TextField {
+                                id: temporaryHoursInput
+                                visible: root.selectedShareMode === "TEMPORARY"
+                                width: 72
+                                height: 28
+                                text: "72"
+                                validator: IntValidator { bottom: 1; top: 720 }
+                                color: Theme.text
+                                horizontalAlignment: TextInput.AlignHCenter
+                                background: Rectangle { radius: 7; color: Theme.raised; border.color: Theme.border }
+                            }
+                            TextField {
+                                id: postingIdsInput
+                                Layout.fillWidth: true
+                                height: 28
+                                placeholderText: "공유할 공고 ID"
+                                color: Theme.text
+                                placeholderTextColor: Theme.muted
+                                background: Rectangle { radius: 7; color: Theme.raised; border.color: Theme.border }
                             }
                         }
                         RowLayout {
@@ -483,7 +725,7 @@ Item {
                             Rectangle {
                                 width: 38; height: 34; radius: 8
                                 color: Theme.raised; border.color: Theme.border
-                                Text { anchors.centerIn: parent; text: "📎"; font.pixelSize: 14 }
+                                Icon { anchors.centerIn: parent; name: "paperclip"; size: 15; color: Theme.muted }
                                 MouseArea {
                                     anchors.fill: parent
                                     enabled: collaboration.currentConversationId > 0
@@ -512,8 +754,15 @@ Item {
                                     enabled: collaboration.currentConversationId > 0
                                     cursorShape: Qt.PointingHandCursor
                                     onClicked: {
-                                        collaboration.sendMessage(root.selectedKind, messageInput.text)
+                                        collaboration.sendMessage(
+                                            root.selectedKind,
+                                            messageInput.text,
+                                            root.selectedShareMode,
+                                            Number(temporaryHoursInput.text || 72),
+                                            postingIdsInput.text
+                                        )
                                         messageInput.clear()
+                                        postingIdsInput.clear()
                                     }
                                 }
                             }

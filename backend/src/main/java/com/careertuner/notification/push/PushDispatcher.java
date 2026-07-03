@@ -33,7 +33,11 @@ public class PushDispatcher {
             if (!pref.pushEnabled()) {
                 return;
             }
-            String category = NotificationCategories.of(notification.getType());
+            String type = notification.getType();
+            if (!pref.ruleEnabled(type)) {
+                return;
+            }
+            String category = NotificationCategories.of(type);
             if (Boolean.FALSE.equals(pref.categories().get(category))) {
                 return;
             }
@@ -42,6 +46,10 @@ public class PushDispatcher {
                 return;
             }
             for (var subscription : pushSubscriptionMapper.findByUserId(notification.getUserId())) {
+                String channel = pushChannel(subscription.getKind());
+                if (!pref.channelEnabled(type, channel)) {
+                    continue;
+                }
                 pushSender.send(subscription, notification.getTitle(), notification.getMessage(), notification.getLink());
             }
         } catch (RuntimeException ex) {
@@ -50,6 +58,10 @@ public class PushDispatcher {
     }
 
     private static final ZoneId KST = ZoneId.of("Asia/Seoul");
+
+    private static String pushChannel(String kind) {
+        return "WEB".equalsIgnoreCase(kind) ? "webPush" : "mobilePush";
+    }
 
     /** 지금(KST)이 사용자의 방해금지 시간대 안인지 판정. */
     static boolean isWithinQuietHours(String start, String end) {

@@ -11,6 +11,8 @@ import java.util.Map;
 
 import org.springframework.stereotype.Component;
 
+import com.careertuner.ai.common.budget.AiTotalTimeBudget;
+import com.careertuner.ai.common.gpu.GpuPermitGate;
 import com.careertuner.applicationcase.domain.ApplicationCase;
 import com.careertuner.applicationcase.service.OpenAiResponsesClient.JobAnalysisPayload;
 import com.careertuner.applicationcase.service.OpenAiResponsesClient.Usage;
@@ -30,10 +32,13 @@ public class OssJobAnalysisClient implements JobAnalysisAiService {
     private final JobAnalysisAiProperties properties;
     private final ObjectMapper objectMapper;
     private final HttpClient httpClient;
+    private final GpuPermitGate gpuPermitGate;
 
-    public OssJobAnalysisClient(JobAnalysisAiProperties properties, ObjectMapper objectMapper) {
+    public OssJobAnalysisClient(JobAnalysisAiProperties properties, ObjectMapper objectMapper,
+                                GpuPermitGate gpuPermitGate) {
         this.properties = properties;
         this.objectMapper = objectMapper;
+        this.gpuPermitGate = gpuPermitGate;
         this.httpClient = HttpClient.newBuilder()
                 .connectTimeout(properties.getTimeout())
                 .build();
@@ -80,14 +85,18 @@ public class OssJobAnalysisClient implements JobAnalysisAiService {
                 "response_format", Map.of("type", "json_object"));
         try {
             String requestBody = objectMapper.writeValueAsString(body);
+            // 단건 호출이라 총 시간예산은 요청 타임아웃 절삭이 전부다(예산 0 = 무제한 = 기존 동작).
             HttpRequest request = HttpRequest.newBuilder(URI.create(chatUrl()))
-                    .timeout(properties.getTimeout())
+                    .timeout(AiTotalTimeBudget.start(properties.getTotalTimeBudget()).cap(properties.getTimeout()))
                     .header("Content-Type", "application/json")
                     .POST(HttpRequest.BodyPublishers.ofString(requestBody, StandardCharsets.UTF_8))
                     .build();
 
-            HttpResponse<String> response = httpClient.send(request,
-                    HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
+            HttpResponse<String> response;
+            try (GpuPermitGate.GpuPermit permit = gpuPermitGate.acquire("job-analysis")) {
+                response = httpClient.send(request,
+                        HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
+            }
 
             if (response.statusCode() < 200 || response.statusCode() >= 300) {
                 throw new BusinessException(ErrorCode.INTERNAL_ERROR,

@@ -144,7 +144,18 @@ export function notificationPage(page = 0, size = 20) {
 
 export const demoNotificationPreference = {
   pushEnabled: true, emailEnabled: false,
-  categories: { community: true, ai: true, support: true, notice: true, payment: false },
+  categories: {
+    ai_analysis: true,
+    interview: true,
+    correction: true,
+    community: true,
+    messenger: true,
+    recommendation: true,
+    billing: false,
+    notice: true,
+    marketing: false,
+  },
+  rules: {},
   quietHoursStart: "22:00", quietHoursEnd: "08:00", pushDeviceRegistered: true,
 };
 

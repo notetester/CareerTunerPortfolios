@@ -9,6 +9,7 @@ public record NotificationPreferenceUpdateRequest(
         Boolean pushEnabled,
         Boolean emailEnabled,
         Map<String, Boolean> categories,
+        Map<String, NotificationRulePreference> rules,
         @Pattern(regexp = "^([01]\\d|2[0-3]):[0-5]\\d$", message = "HH:mm 형식이어야 합니다")
         String quietHoursStart,
         @Pattern(regexp = "^([01]\\d|2[0-3]):[0-5]\\d$", message = "HH:mm 형식이어야 합니다")

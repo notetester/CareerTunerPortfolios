@@ -10,8 +10,8 @@ dist-apk/
 .vite/
 *.local
 
-# Capacitor (added in phase 3)
-android/
+# Capacitor
+# android/ is committed as a first-class native project.
 ios/
 
 # Logs

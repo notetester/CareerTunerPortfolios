@@ -16,6 +16,7 @@ import org.springframework.http.client.JdkClientHttpRequestFactory;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
 
+import com.careertuner.ai.common.gpu.GpuPermitGate;
 import com.careertuner.community.moderation.config.OllamaProperties;
 import com.careertuner.support.chatbot.SupportTextFallbackGenerator;
 
@@ -34,17 +35,21 @@ public class FaqDraftAiClient {
     private final RestClient restClient;
     private final OllamaProperties ollamaProps;
     private final SupportTextFallbackGenerator fallback;
+    private final GpuPermitGate gpuPermitGate;
     private final String systemPrompt;
 
-    public FaqDraftAiClient(OllamaProperties ollamaProps, SupportTextFallbackGenerator fallback) {
+    public FaqDraftAiClient(OllamaProperties ollamaProps, SupportTextFallbackGenerator fallback,
+                            GpuPermitGate gpuPermitGate) {
         this.ollamaProps = ollamaProps;
         this.fallback = fallback;
+        this.gpuPermitGate = gpuPermitGate;
 
         var jdkClient = HttpClient.newBuilder()
                 .connectTimeout(Duration.ofSeconds(10))
                 .build();
         var requestFactory = new JdkClientHttpRequestFactory(jdkClient);
-        requestFactory.setReadTimeout(Duration.ofSeconds(60));
+        // 예산 ON 이면 read timeout 을 예산으로 절삭(단일 시도 대비)
+        requestFactory.setReadTimeout(capReadTimeout(Duration.ofSeconds(60), ollamaProps.getTotalTimeBudget()));
 
         this.restClient = RestClient.builder()
                 .baseUrl(ollamaProps.getBaseUrl())
@@ -75,13 +80,17 @@ public class FaqDraftAiClient {
 
         log.debug("FAQ 초안 생성 요청: model={}", ollamaProps.getModel());
 
-        @SuppressWarnings("unchecked")
-        Map<String, Object> response = restClient.post()
-                .uri("/api/chat")
-                .contentType(MediaType.APPLICATION_JSON)
-                .body(request)
-                .retrieve()
-                .body(Map.class);
+        Map<String, Object> response;
+        try (GpuPermitGate.GpuPermit permit = gpuPermitGate.acquire("admin-faq")) {
+            @SuppressWarnings("unchecked")
+            Map<String, Object> ollamaResponse = restClient.post()
+                    .uri("/api/chat")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .body(request)
+                    .retrieve()
+                    .body(Map.class);
+            response = ollamaResponse;
+        }
 
         if (response == null || !response.containsKey("message")) {
             throw new IllegalStateException("Ollama chat 응답이 비어 있습니다");
@@ -95,6 +104,14 @@ public class FaqDraftAiClient {
         Map<String, Object> message = (Map<String, Object>) messageObj;
         Object content = message.get("content");
         return content == null ? "" : content.toString().strip();
+    }
+
+    /** 총 시간예산이 양수(ON)면 read timeout 을 예산 이하로 절삭한다. 0/음수/null 은 무제한(OFF, 기존 동작). */
+    private static Duration capReadTimeout(Duration readTimeout, Duration totalTimeBudget) {
+        if (totalTimeBudget == null || totalTimeBudget.isZero() || totalTimeBudget.isNegative()) {
+            return readTimeout;
+        }
+        return readTimeout.compareTo(totalTimeBudget) <= 0 ? readTimeout : totalTimeBudget;
     }
 
     private String loadSystemPrompt() {

@@ -26,7 +26,7 @@ import {
 } from "./domains/interview";
 import {
   communityPostPage, demoHotPosts, findCommunityPost, demoComments, demoPublishedGuideline,
-  demoFaqs, demoNotices, notificationPage, demoNotificationPreference,
+  demoFaqs, demoNotices,
   demoAdminReports, moderationPage, demoModerationStats, demoModerationSetting,
   demoAdminNotices, demoAdminFaqs, demoAdminGuidelines, demoAdminTickets, adminTicketDetail,
   demoAdminNotifications,
@@ -43,6 +43,7 @@ import { profileRoutes } from "./domains/profile";
 import { correctionRoutes } from "./domains/correction";
 import { applicationsExtraRoutes } from "./domains/applicationsExtra";
 import { interviewExtraRoutes } from "./domains/interviewExtra";
+import { collaborationRoutes } from "./domains/collaboration";
 import { adminRoutes } from "./domains/admin";
 
 /** 등록된 핸들러가 없을 때 반환하는 sentinel. */
@@ -313,14 +314,6 @@ const coreRoutes: MockRoute[] = [
   { method: "GET", pattern: /^\/support\/tickets$/, handler: () => [] },
   { method: "POST", pattern: /^\/support\/tickets$/, handler: ({ body }) => ({ id: 7099, status: "RECEIVED", priority: "NORMAL", createdAt: new Date().toISOString(), ...(body as object) }) },
 
-  // ── F: 알림 ──
-  { method: "GET", pattern: /^\/notifications$/, handler: () => notificationPage() },
-  { method: "GET", pattern: /^\/notifications\/unread-count$/, handler: ok(3) },
-  { method: "GET", pattern: /^\/notifications\/preferences$/, handler: ok(demoNotificationPreference) },
-  { method: "PUT", pattern: /^\/notifications\/preferences$/, handler: ok(demoNotificationPreference) },
-  { method: "PATCH", pattern: /^\/notifications\/(\d+)\/read$/, handler: ok(null) },
-  { method: "POST", pattern: /^\/notifications\/read-all$/, handler: ok(null) },
-
   // ── F(관리자): 신고 / AI 검열 ──
   { method: "GET", pattern: /^\/admin\/community\/reports$/, handler: ok(demoAdminReports) },
   { method: "GET", pattern: /^\/admin\/community\/reports\/(\d+)$/, handler: ({ params }) => ({ ...(demoAdminReports.find((r) => r.id === Number(params[0])) ?? demoAdminReports[0]), reasons: ["욕설/비방", "허위사실"], aiOpinion: { label: "ABUSE", confidence: 0.91 } }) },
@@ -351,6 +344,7 @@ const routes: MockRoute[] = [
   ...supportRoutes,
   ...profileRoutes,
   ...correctionRoutes,
+  ...collaborationRoutes,
   ...adminRoutes,
 ];
 

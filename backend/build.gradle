@@ -71,6 +71,8 @@ dependencies {
     testImplementation 'org.springframework.boot:spring-boot-starter-validation-test'
     testImplementation 'org.springframework.boot:spring-boot-starter-webmvc-test'
     testImplementation 'org.mybatis.spring.boot:mybatis-spring-boot-starter-test:4.0.1'
+    // 관리자 SQL DB-fixture 통합테스트용 임베디드 DB(테스트 한정 — 운영 datasource 무영향)
+    testRuntimeOnly 'com.h2database:h2'
     testCompileOnly 'org.projectlombok:lombok'
     testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
     testAnnotationProcessor 'org.projectlombok:lombok'

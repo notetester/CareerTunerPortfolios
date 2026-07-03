@@ -8,7 +8,9 @@
 #include <QJsonObject>
 #include <QMimeDatabase>
 #include <QRegularExpression>
+#include <QSet>
 #include <QStandardPaths>
+#include <QStringList>
 #include <QUrl>
 
 CollaborationClient::CollaborationClient(ApiClient* api, QObject* parent)
@@ -23,14 +25,17 @@ void CollaborationClient::clear()
     m_incomingRequests.clear();
     m_outgoingRequests.clear();
     m_conversations.clear();
+    m_discoverableRooms.clear();
     m_messages.clear();
     m_pendingAttachments.clear();
     m_currentConversationId = -1;
     m_currentPeerName.clear();
+    m_currentConversationType.clear();
     emit searchResultsChanged();
     emit friendsChanged();
     emit requestsChanged();
     emit conversationsChanged();
+    emit discoverableRoomsChanged();
     emit messagesChanged();
     emit pendingAttachmentsChanged();
     emit currentConversationChanged();
@@ -41,6 +46,7 @@ void CollaborationClient::refresh()
     loadFriends();
     loadRequests();
     loadConversations();
+    discoverRooms(QString());
 }
 
 void CollaborationClient::searchUsers(const QString& keyword)
@@ -127,22 +133,87 @@ void CollaborationClient::openConversation(qint64 userId, const QString& peerNam
                 emit errorOccurred(message.isEmpty() ? QStringLiteral("대화방을 열지 못했습니다") : message);
                 return;
             }
-            const QJsonObject conversation = data.toObject();
-            m_currentConversationId = conversation.value("id").toInteger();
-            const QJsonObject peer = conversation.value("peer").toObject();
-            m_currentPeerName = peer.value("name").toString(peerName);
-            emit currentConversationChanged();
-            loadMessages(m_currentConversationId);
+            openConversationFromObject(data.toObject(), peerName);
             loadConversations();
         });
 }
 
-void CollaborationClient::openConversationById(qint64 conversationId, const QString& peerName)
+void CollaborationClient::openConversationById(qint64 conversationId, const QString& peerName, const QString& type)
 {
     m_currentConversationId = conversationId;
     m_currentPeerName = peerName;
+    m_currentConversationType = type;
     emit currentConversationChanged();
     loadMessages(conversationId);
+}
+
+void CollaborationClient::discoverRooms(const QString& keyword)
+{
+    const QString q = keyword.trimmed();
+    m_api->get(QStringLiteral("/api/collaboration/conversations/discover?keyword=%1&limit=30")
+                   .arg(QString::fromUtf8(QUrl::toPercentEncoding(q))),
+        [this](bool ok, const QJsonValue& data, const QString&) {
+            if (!ok) return;
+            m_discoverableRooms = toVariantList(data.toArray(), &CollaborationClient::conversationMap);
+            emit discoverableRoomsChanged();
+        });
+}
+
+void CollaborationClient::createRoom(const QString& type, const QString& title, const QString& password)
+{
+    QJsonObject body;
+    body["type"] = type;
+    body["title"] = title;
+    if (!password.trimmed().isEmpty())
+        body["password"] = password;
+    body["memberUserIds"] = QJsonArray();
+
+    m_api->post(QStringLiteral("/api/collaboration/conversations"), body,
+        [this, title](bool ok, const QJsonValue& data, const QString& message) {
+            if (!ok) {
+                emit errorOccurred(message.isEmpty() ? QStringLiteral("채팅방을 만들지 못했습니다") : message);
+                return;
+            }
+            openConversationFromObject(data.toObject(), title);
+            loadConversations();
+            discoverRooms(QString());
+        });
+}
+
+void CollaborationClient::joinRoom(qint64 conversationId, const QString& password)
+{
+    QJsonObject body;
+    if (!password.trimmed().isEmpty())
+        body["password"] = password;
+
+    m_api->post(QStringLiteral("/api/collaboration/conversations/%1/join").arg(conversationId), body,
+        [this](bool ok, const QJsonValue& data, const QString& message) {
+            if (!ok) {
+                emit errorOccurred(message.isEmpty() ? QStringLiteral("채팅방에 참가하지 못했습니다") : message);
+                return;
+            }
+            openConversationFromObject(data.toObject(), QStringLiteral("채팅방"));
+            loadConversations();
+            discoverRooms(QString());
+        });
+}
+
+void CollaborationClient::inviteFriendToCurrentRoom(qint64 userId)
+{
+    if (m_currentConversationId <= 0 || m_currentConversationType == QStringLiteral("DIRECT")) return;
+    QJsonObject body;
+    QJsonArray ids;
+    ids.append(userId);
+    body["userIds"] = ids;
+
+    m_api->post(QStringLiteral("/api/collaboration/conversations/%1/invites").arg(m_currentConversationId), body,
+        [this](bool ok, const QJsonValue&, const QString& message) {
+            if (!ok) {
+                emit errorOccurred(message.isEmpty() ? QStringLiteral("초대하지 못했습니다") : message);
+                return;
+            }
+            emit info(QStringLiteral("채팅방 초대"), QStringLiteral("초대를 보냈습니다"));
+        });
 }
 
 void CollaborationClient::loadMessages(qint64 conversationId)
@@ -163,17 +234,24 @@ void CollaborationClient::loadMessages(qint64 conversationId)
         });
 }
 
-void CollaborationClient::sendMessage(const QString& kind, const QString& content)
+void CollaborationClient::sendMessage(const QString& kind,
+                                      const QString& content,
+                                      const QString& shareMode,
+                                      int temporaryHours,
+                                      const QString& postingIdsText)
 {
     if (m_currentConversationId <= 0) return;
     QJsonObject body;
     body["kind"] = kind;
     body["content"] = content;
+    body["attachmentShareMode"] = shareMode.isEmpty() ? QStringLiteral("TEMPORARY") : shareMode;
+    body["temporaryHours"] = temporaryHours > 0 ? temporaryHours : 72;
     QJsonArray attachmentIds;
     for (const QVariant& item : m_pendingAttachments) {
         attachmentIds.append(item.toMap().value("id").toLongLong());
     }
     body["attachmentFileIds"] = attachmentIds;
+    body["sharedApplicationCaseIds"] = parseIdList(postingIdsText);
 
     m_api->post(QStringLiteral("/api/collaboration/conversations/%1/messages").arg(m_currentConversationId), body,
         [this](bool ok, const QJsonValue&, const QString& message) {
@@ -325,6 +403,18 @@ void CollaborationClient::loadConversations()
         });
 }
 
+void CollaborationClient::openConversationFromObject(const QJsonObject& conversation, const QString& fallbackName)
+{
+    m_currentConversationId = conversation.value("id").toInteger();
+    m_currentConversationType = conversation.value("type").toString();
+    const QJsonObject peer = conversation.value("peer").toObject();
+    const QString displayName = conversation.value("displayName").toString(
+        peer.value("name").toString(fallbackName));
+    m_currentPeerName = displayName.isEmpty() ? fallbackName : displayName;
+    emit currentConversationChanged();
+    loadMessages(m_currentConversationId);
+}
+
 QVariantMap CollaborationClient::userMap(const QJsonObject& user) const
 {
     return QVariantMap{
@@ -339,6 +429,7 @@ QVariantMap CollaborationClient::conversationMap(const QJsonObject& conversation
 {
     const QJsonObject peer = conversation.value("peer").toObject();
     const QJsonObject latest = conversation.value("latestMessage").toObject();
+    const QString displayName = conversation.value("displayName").toString(peer.value("name").toString());
     QString preview = latest.value("content").toString();
     if (preview.isEmpty() && !latest.isEmpty())
         preview = latest.value("kind").toString() == QStringLiteral("NOTE")
@@ -346,8 +437,15 @@ QVariantMap CollaborationClient::conversationMap(const QJsonObject& conversation
             : QStringLiteral("첨부 파일");
     return QVariantMap{
         {"id", conversation.value("id").toInteger()},
+        {"type", conversation.value("type").toString()},
+        {"title", conversation.value("title").toString()},
+        {"description", conversation.value("description").toString()},
+        {"displayName", displayName},
+        {"locked", conversation.value("locked").toBool()},
+        {"memberCount", conversation.value("memberCount").toInt()},
+        {"joined", conversation.value("joined").toBool()},
         {"peer", userMap(peer)},
-        {"peerName", peer.value("name").toString()},
+        {"peerName", displayName},
         {"latestPreview", preview},
         {"unreadCount", conversation.value("unreadCount").toInt()},
         {"updatedAt", conversation.value("updatedAt").toString()}
@@ -364,7 +462,21 @@ QVariantMap CollaborationClient::messageMap(const QJsonObject& message) const
             {"originalName", file.value("originalName").toString(QStringLiteral("file"))},
             {"contentType", file.value("contentType").toString()},
             {"sizeBytes", file.value("sizeBytes").toInteger()},
+            {"shareMode", file.value("shareMode").toString()},
+            {"availability", file.value("availability").toString()},
+            {"expiresAt", file.value("expiresAt").toString()},
             {"downloadUrl", file.value("downloadUrl").toString()}
+        });
+    }
+    QVariantList postings;
+    for (const QJsonValue& value : message.value("sharedPostings").toArray()) {
+        const QJsonObject posting = value.toObject();
+        postings.push_back(QVariantMap{
+            {"applicationCaseId", posting.value("applicationCaseId").toInteger()},
+            {"companyName", posting.value("companyName").toString()},
+            {"jobTitle", posting.value("jobTitle").toString()},
+            {"deadlineDate", posting.value("deadlineDate").toString()},
+            {"sourceType", posting.value("sourceType").toString()}
         });
     }
     return QVariantMap{
@@ -374,8 +486,25 @@ QVariantMap CollaborationClient::messageMap(const QJsonObject& message) const
         {"content", message.value("content").toString()},
         {"createdAt", message.value("createdAt").toString()},
         {"sender", userMap(message.value("sender").toObject())},
-        {"attachments", attachments}
+        {"attachments", attachments},
+        {"sharedPostings", postings}
     };
+}
+
+QJsonArray CollaborationClient::parseIdList(const QString& text) const
+{
+    QJsonArray out;
+    const QStringList parts = text.split(QRegularExpression(QStringLiteral("[,\\s]+")), Qt::SkipEmptyParts);
+    QSet<qint64> seen;
+    for (const QString& part : parts) {
+        bool ok = false;
+        const qint64 id = part.toLongLong(&ok);
+        if (ok && id > 0 && !seen.contains(id)) {
+            seen.insert(id);
+            out.append(id);
+        }
+    }
+    return out;
 }
 
 QVariantList CollaborationClient::toVariantList(
@@ -391,7 +520,7 @@ QVariantList CollaborationClient::toVariantList(
 QString CollaborationClient::readableFileName(const QString& pathOrName) const
 {
     QString name = QFileInfo(pathOrName).fileName();
-    if (name.isBlank()) name = QStringLiteral("attachment");
+    if (name.trimmed().isEmpty()) name = QStringLiteral("attachment");
     return name.replace(QRegularExpression(QStringLiteral("[\\\\/:*?\"<>|\\r\\n]")), QStringLiteral("_"));
 }
 

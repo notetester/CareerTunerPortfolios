@@ -22,4 +22,10 @@ public class OllamaProperties {
     private String model = "gemma4";
     private Duration connectTimeout = Duration.ofSeconds(3);
     private Duration readTimeout = Duration.ofSeconds(30);
+
+    /**
+     * Ollama 호출 1건(재시도·백오프 포함)의 총 시간예산. 0 또는 음수 = 무제한(OFF, 기본).
+     * 이 설정은 ai.ollama 를 쓰는 5개 클라이언트(moderation/chatbot/embedding/admin-ticket/admin-faq)에 공통 적용.
+     */
+    private Duration totalTimeBudget = Duration.ZERO;
 }

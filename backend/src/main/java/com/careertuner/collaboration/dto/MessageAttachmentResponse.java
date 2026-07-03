@@ -5,6 +5,9 @@ public record MessageAttachmentResponse(
         String originalName,
         String contentType,
         Long sizeBytes,
+        String shareMode,
+        String availability,
+        java.time.LocalDateTime expiresAt,
         String downloadUrl
 ) {
 }

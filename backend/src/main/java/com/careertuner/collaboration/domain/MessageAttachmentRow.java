@@ -19,5 +19,9 @@ public class MessageAttachmentRow {
     private String originalName;
     private String contentType;
     private Long sizeBytes;
+    private String shareMode;
+    private LocalDateTime expiresAt;
+    private Long ownerUserId;
+    private String ownerPlan;
     private LocalDateTime createdAt;
 }
