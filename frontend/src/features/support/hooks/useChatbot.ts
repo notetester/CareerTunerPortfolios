@@ -55,7 +55,15 @@ interface ChatHistoryResponse {
     message: string;
     quickReplies: string[];
     intake: IntakeStepResp | null;
+    /** 서버 확정 수집값(사용자 답 원문) — 가이드 재마운트 하이드레이션용(표시). 미수집 필드 null. */
+    collected?: { job: string | null; skills: string | null } | null;
   } | null;
+}
+
+/** ④ 재진입 하이드레이션용 수집값(가이드 패널에 내려보냄). */
+export interface OnbCollected {
+  job: string | null;
+  skills: string | null;
 }
 
 /* ── 세션 목록 API 응답 (GET /chatbot/conversations) ── */
@@ -103,6 +111,8 @@ export function useChatbot() {
   }, []);
   // 복원은 세션당 1회만 시도 (열 때마다 재호출 방지).
   const restoredRef = useRef(false);
+  // ④ 재진입 하이드레이션 — 복원 resume 에 실려 온 확정 수집값(가이드 패널이 소비, 표시용).
+  const [onbCollected, setOnbCollected] = useState<OnbCollected | null>(null);
 
   const restoreRecent = useCallback(() => {
     if (restoredRef.current) return;
@@ -132,6 +142,9 @@ export function useChatbot() {
         //   답하는 대신 무엇을 이어가면 되는지 본다. ready 실행(run) 경로는 복원에서 절대 안 탄다.
         if (data.resume) {
           const r = data.resume;
+          if (r.collected && (r.collected.job || r.collected.skills)) {
+            setOnbCollected({ job: r.collected.job, skills: r.collected.skills });
+          }
           restored.push({
             id: nextId(), role: "bot", text: r.message,
             evidence: [], links: [], quickReplies: r.quickReplies ?? [],
@@ -532,6 +545,7 @@ export function useChatbot() {
     selectCase, selectMode,
     setPendingAttachments,
     summarizePosts,
+    onbCollected,
     showExitSheet,
     openExitSheet: () => setShowExitSheet(true),
     closeExitSheet: () => setShowExitSheet(false),

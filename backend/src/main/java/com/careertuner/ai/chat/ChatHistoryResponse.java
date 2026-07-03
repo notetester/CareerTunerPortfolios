@@ -29,7 +29,13 @@ public record ChatHistoryResponse(
     /**
      * ④ 재진입 재개 프롬프트 — 복원 직후 봇 메시지로 이어붙일 현재 스텝 안내.
      * route 는 프론트 가이드 매핑(ONB_ROUTE_PHASE) 키, intake 는 AWAIT_MODE 재표시의 모드 칩용.
+     * collected 는 서버가 확정 보관 중인 수집값 — 가이드 패널이 재마운트 후 빈 보드로 보이지 않게
+     * 하이드레이션한다(표시용 — 진행 판정은 여전히 서버 step 이 권위).
      */
     public record ResumePrompt(String route, String message, List<String> quickReplies,
-                               ChatAskResponse.IntakeStep intake) {}
+                               ChatAskResponse.IntakeStep intake, Collected collected) {
+
+        /** ④ 수집 확정값(사용자 답 원문). 미수집 필드는 null. */
+        public record Collected(String job, String skills) {}
+    }
 }

@@ -155,7 +155,7 @@ function ChatbotPanel({ chatbot }: ChatbotPanelProps) {
     voiceState, startVoice, cancelVoice, confirmVoice, setVoiceState,
     interimTranscript, retryConnection, toggleTts,
     orchestrator, runStarted, runParts, runRunning, runPlan, runCaseId, runError, retryRun,
-    selectCase, selectMode, setPendingAttachments, summarizePosts,
+    selectCase, selectMode, setPendingAttachments, summarizePosts, onbCollected,
     showExitSheet, openExitSheet, closeExitSheet, exitOrchestrator,
     sessions, activeSessionId, openSession, newSession, loadSessions,
     surface, expandToFloating, collapseToCorner, markInterviewHandoff,
@@ -562,6 +562,7 @@ function ChatbotPanel({ chatbot }: ChatbotPanelProps) {
             bubbleText: lastBotMsg?.text,
             waitingSince: onbWaitingSince,
             nextPollAt: onbNextPollAt,
+            collected: onbCollected,
             submitting: botStatus === "thinking",
             onSubmit: (step, text, meta) => {
               if (step === "jd") setPendingAttachments(meta.coverLetterFileIds);

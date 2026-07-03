@@ -342,6 +342,35 @@ public class ChatbotController {
     }
 
     /**
+     * ④ 재진입(새로고침 복원) 전용 스텝 안내 — 수집 현황 1줄 요약을 앞세워 "어디까지 됐는지"를 보여준다.
+     * 재시작-아니오 복귀(redisplayCurrentStep)와 카피를 분리(그쪽은 "알겠어요, 계속할게요" 유지).
+     * EXTRACTING/AWAIT_MODE 는 기존 조회 경로 재사용(부수효과 시멘틱 무변경 — 자리 비운 사이 끝난
+     * 추출을 다음 질문으로 바로 이어주는 기존 동작 유지).
+     */
+    private RouteMessage resumeStepPrompt(Long conversationId, AuthUser authUser, String step) {
+        IntakeSlotTrace.OnboardingCollected got = intakeSlotTrace.onboarding(conversationId);
+        String job = got.job() == null || got.job().isBlank() ? null : got.job().trim();
+        String skills = got.skills() == null || got.skills().isBlank() ? null : got.skills().trim();
+        return switch (step) {
+            case "JOB" -> new RouteMessage("④온보딩:직무",
+                    "다시 오셨네요 — 이어서 진행할게요. 어떤 직무로 지원하세요? (예: 프론트엔드 개발자, 백엔드 개발자)");
+            case "SKILLS" -> new RouteMessage("④온보딩:기술",
+                    (job != null ? "직무 \"" + job + "\"까지 확인됐어요 — 이어서, " : "이어서 진행할게요 — ")
+                            + "주로 다루는 기술을 콤마(,)로 구분해서 알려주세요.");
+            case "AWAIT_POSTING" -> new RouteMessage("④온보딩:공고요청",
+                    (job != null && skills != null
+                            ? "직무 \"" + job + "\", 기술 \"" + skills + "\"까지 확인됐어요 — 이어서 "
+                            : "이어서 진행할게요 — ")
+                            + "지원할 공고 전문을 붙여넣어 주세요(회사명·직무·자격요건이 담긴 원문이면 좋아요).");
+            case "AWAIT_COMPANY" -> new RouteMessage("④온보딩:확인-회사",
+                    "공고까지 등록됐어요 — 회사명만 확인하면 돼요. 어느 회사 공고인가요?");
+            case "AWAIT_JOBTITLE" -> new RouteMessage("④온보딩:확인-직무",
+                    "회사까지 확인됐어요 — 직무명을 알려주세요. (예: 백엔드 개발자)");
+            default -> redisplayCurrentStep(conversationId, authUser, step);
+        };
+    }
+
+    /**
      * "아니요, 이어서" 응답 — 방금 발화(재시작 의도로 오인된 문장)는 버리고 현재 단계 질문을 다시 보여준다.
      * EXTRACTING/AWAIT_MODE 는 부수효과 없는 기존 조회 메서드를 그대로 재사용(재확인 = 재조회와 동일 의미).
      */
@@ -1356,11 +1385,14 @@ public class ChatbotController {
         if (isOnboardingInProgress(conversationId)) {
             try {
                 String step = intakeSlotTrace.onboardingStep(conversationId);
-                // 기존 재표시 경로 재사용(재시작 "아니요" 복귀와 동일 의미). EXTRACTING 은 추출 상태를
-                // 재조회하므로 자리 비운 사이 끝난 추출을 다음 질문으로 바로 이어준다.
-                RouteMessage rm = redisplayCurrentStep(conversationId, authUser, step);
+                // 재진입 전용 카피(수집 현황 요약) — EXTRACTING/AWAIT_MODE 는 내부에서 기존 조회 경로
+                // 재사용이라 자리 비운 사이 끝난 추출을 다음 질문으로 바로 이어주는 시멘틱은 그대로다.
+                RouteMessage rm = resumeStepPrompt(conversationId, authUser, step);
+                // 확정 수집값 동봉 — 가이드 재마운트가 빈 명세 보드로 보이지 않게 하이드레이션(표시용).
+                IntakeSlotTrace.OnboardingCollected got = intakeSlotTrace.onboarding(conversationId);
                 resume = new ChatHistoryResponse.ResumePrompt(
-                        rm.route(), rm.message(), rm.quickReplies(), rm.intake());
+                        rm.route(), rm.message(), rm.quickReplies(), rm.intake(),
+                        new ChatHistoryResponse.ResumePrompt.Collected(got.job(), got.skills()));
             } catch (RuntimeException ex) {
                 log.warn("온보딩 재개 프롬프트 조립 실패(복원 자체는 진행): {}", ex.getMessage());
             }

@@ -7,7 +7,7 @@ import {
   retryExtraction, uploadDocument, type UploadedFile,
 } from "../api/onboardingApi";
 import {
-  getField, githubRepoLabel, GITHUB_README_ERROR_COPY, GITHUB_README_ERROR_FALLBACK,
+  getField, githubRepoLabel, GITHUB_README_ERROR_COPY, GITHUB_README_ERROR_FALLBACK, ROLES,
   type GuideStep, type LinkKey,
 } from "../onboarding/guideData";
 
@@ -88,6 +88,31 @@ export function useOnboardingGuide(initialStep: GuideStep = "role") {
   const setRole = useCallback((r: string) => {
     setRoleState(r);
     setSkills([]);
+  }, []);
+
+  /**
+   * ④ 재진입 하이드레이션 — 서버가 확정 보관 중인 수집값(직무·기술 원문)을 빈 필드에만 1회 주입한다.
+   * 재마운트 직후 호출돼 명세 보드가 "전부 초기화"로 보이는 것을 막는다(표시용 — 진행 판정은 서버 step).
+   * 직무가 직군 칩(ROLES)과 정확일치하면 칩 선택으로, 아니면 직접 입력으로 복원. 기술은 가이드 제출
+   * 포맷(콤마 join)을 역파싱. 세션 내 사용자 입력이 이미 있으면 절대 덮지 않는다(functional update 가드).
+   */
+  const hydrate = useCallback((collected: { job?: string | null; skills?: string | null }) => {
+    const job = collected.job?.trim();
+    if (job) {
+      if (ROLES.includes(job)) {
+        setRoleState((prev) => prev ?? job);
+      } else {
+        setRoleState((prev) => prev ?? "__custom__");
+        setCustomRole((prev) => (prev ? prev : job));
+      }
+    }
+    const skillsText = collected.skills?.trim();
+    if (skillsText) {
+      const parsed = skillsText.split(",").map((s) => s.trim()).filter(Boolean);
+      if (parsed.length > 0) {
+        setSkills((prev) => (prev.length > 0 ? prev : parsed));
+      }
+    }
   }, []);
 
   const toggleSkill = useCallback((s: string) => {
@@ -343,6 +368,7 @@ export function useOnboardingGuide(initialStep: GuideStep = "role") {
     runRunning: run.running,
     // actions
     setRole,
+    hydrate,
     toggleSkill,
     setLink,
     fetchPortfolioReadme,

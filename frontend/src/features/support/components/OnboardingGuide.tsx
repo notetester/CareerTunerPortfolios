@@ -149,6 +149,8 @@ export function OnboardingGuide({ onClose, onGotoInterview, onNavigate, wide, on
     waitingSince?: number | null;
     /** 다음 자동 확인 예정 시각(ms) — "다음 자동 확인 N초 후" 표기. null=예약 없음(소진 등). */
     nextPollAt?: number | null;
+    /** ④ 재진입 하이드레이션 — 서버 확정 수집값(직무·기술 원문). 재마운트 시 빈 보드 방지(표시용). */
+    collected?: { job: string | null; skills: string | null } | null;
     /** 회신 전송 중(봇 thinking) — 버튼 비활성+스피너. */
     submitting: boolean;
     /** caseId: 공고 "파일" 경로 — 가이드가 B 업로드로 지원 건을 먼저 만들고 id 를 실어 보낸다(④가 입양). */
@@ -159,18 +161,33 @@ export function OnboardingGuide({ onClose, onGotoInterview, onNavigate, wide, on
   const g = useOnboardingGuide(server ? "role" : intake?.steps[0] ?? "role");
   const order = server ? SERVER_ORDER : intake?.steps ?? ORDER;
 
-  // ── ④ 서버 국면 → 로컬 스텝 동기화. jd 국면 "첫" 진입은 docs(로컬)부터 밟는다.
+  // 마운트 시점 국면 — 재진입(가이드가 jd 국면에서 새로 열림: 새로고침 resume·추출실패/유실 재오픈)과
+  // 첫 통과(role→skills→…에서 전이)를 구분한다. 재진입은 서류(docs) 우회 없이 공고(jd) 직행.
+  const mountPhaseRef = useRef(server?.phase);
+
+  // ── ④ 서버 국면 → 로컬 스텝 동기화. jd 국면 "첫" 진입은 docs(로컬)부터 밟되, 재진입 마운트는 jd 직행.
   //    g.step 은 의도적으로 deps 제외 — 사용자의 docs→jd 로컬 이동을 국면 재실행으로 되돌리지 않기 위해.
   useEffect(() => {
     if (!server) return;
     if (server.phase === "role" || server.phase === "skills") {
       g.go(server.phase);
     } else if (server.phase === "jd" && g.step !== "docs" && g.step !== "jd") {
-      g.go("docs");
+      g.go(mountPhaseRef.current === "jd" ? "jd" : "docs");
     }
     // waiting 은 스텝 이동 없음 — 대기 화면이 본문을 대체한다.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [server?.phase]);
+
+  // ── ④ 재진입 하이드레이션: 서버 확정 수집값(직무·기술)을 마운트 후 1회, 빈 필드에만 주입.
+  //    가이드 재인스턴스가 "전부 초기화"로 보이던 표면(§8-②) 해소 — 진행 판정은 여전히 서버 step 권위.
+  const hydratedRef = useRef(false);
+  useEffect(() => {
+    const c = server?.collected;
+    if (!c || hydratedRef.current) return;
+    hydratedRef.current = true;
+    g.hydrate({ job: c.job, skills: c.skills });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [server?.collected]);
 
   /**
    * ④ 회신 — 자소서 fileId 를 함께 실어 호출부가 ready 병합을 예약할 수 있게 한다.
