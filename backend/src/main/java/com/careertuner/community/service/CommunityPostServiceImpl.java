@@ -23,6 +23,7 @@ import com.careertuner.community.dto.PostDetailResponse;
 import com.careertuner.community.dto.PostListResponse;
 import com.careertuner.community.dto.PostPageResponse;
 import com.careertuner.community.dto.UpdatePostRequest;
+import com.careertuner.community.event.PostPublishedEvent;
 import com.careertuner.community.mapper.CommunityPostMapper;
 import com.careertuner.community.mapper.CommunityTagMapper;
 import com.careertuner.community.mapper.ReactionMapper;
@@ -159,6 +160,8 @@ public class CommunityPostServiceImpl implements CommunityPostService {
         if (PostCategory.INTERVIEW_REVIEW == request.category()) {
             eventPublisher.publishEvent(new InterviewExtractRequiredEvent(post.getId()));
         }
+        // 새 글 발행 → 커밋 후 관심 사용자 추천 알림(RECOMMENDED_POST). 수정 시에는 발행하지 않는다.
+        eventPublisher.publishEvent(new PostPublishedEvent(post.getId()));
         return post.getId();
     }
 
