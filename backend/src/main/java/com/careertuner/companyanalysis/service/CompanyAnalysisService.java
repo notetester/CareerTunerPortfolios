@@ -207,21 +207,26 @@ public class CompanyAnalysisService {
         if (identity.companyName().isBlank()) {
             return List.of();
         }
-        List<CompanyWebSearchResult> results = resolveSearchResults(identity);
+        String queryKey = companyCacheKey(identity);
+        if (queryKey.isBlank()) {
+            // 법인표기·기호만 남아 정규화 후 회사 식별 불가 — 검색/캐시 하지 않는다(put 빈 key 예외 방지).
+            return List.of();
+        }
+        List<CompanyWebSearchResult> results = resolveSearchResults(identity, queryKey);
         // evidence 는 캐시하지 않는다 — HIT/MISS 공통으로 collector 를 매번 재실행한다.
         return companyEvidenceCollector.collect(identity, results);
     }
 
     /** 캐시 HIT 면 저장된 검색결과 역직렬화(검색 미호출), MISS 면 검색·정제 후 빈결과라도 캐시에 저장. */
-    private List<CompanyWebSearchResult> resolveSearchResults(CompanyIdentity identity) {
-        String queryKey = companyCacheKey(identity);
+    private List<CompanyWebSearchResult> resolveSearchResults(CompanyIdentity identity, String queryKey) {
         Optional<CompanySearchCache> cached = companySearchCacheService.get(queryKey);
         if (cached.isPresent()) {
             return deserializeResults(cached.get().getResults());
         }
         List<CompanyWebSearchResult> results = runSearch(identity);
         // 빈 배열이어도 put 한다 → 같은 회사 재조회 시 HIT(TTL 내 재검색 없음).
-        companySearchCacheService.put(queryKey, serializeResults(results), LocalDateTime.now());
+        // fetchedAt=null 로 넘겨 CompanySearchCacheService 의 주입 Clock(TTL 판정과 동일 시각원)이 채우게 한다.
+        companySearchCacheService.put(queryKey, serializeResults(results), null);
         return results;
     }
 
@@ -254,11 +259,12 @@ public class CompanyAnalysisService {
     }
 
     /**
-     * 회사 단위 cache key(234 §7). 회사명만 trim·lowercase·공백정규화 해 동일 입력=동일 key 로 만든다.
+     * 회사 단위 cache key(234 §7). D-1 {@link CompanySourceResolver#normalizeCompanyName} 을 공유해
+     * 법인표기((주)·㈜·주식회사)·기호·공백 차이를 흡수한다 — "(주) 가온테크"·"㈜가온테크"·"가온테크"가 같은 key.
      * 동명 판별용 업종/지역 힌트는 검색 query 에는 쓰지만 cache key 에는 포함하지 않는다.
      */
-    static String companyCacheKey(CompanyIdentity identity) {
-        return identity.companyName().trim().replaceAll("\\s+", " ").toLowerCase(Locale.ROOT);
+    String companyCacheKey(CompanyIdentity identity) {
+        return companySourceResolver.normalizeCompanyName(identity.companyName());
     }
 
     private CompanyIdentity toCompanyIdentity(ApplicationCase applicationCase) {

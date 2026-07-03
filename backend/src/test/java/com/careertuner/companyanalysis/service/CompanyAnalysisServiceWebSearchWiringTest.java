@@ -165,6 +165,8 @@ class CompanyAnalysisServiceWebSearchWiringTest {
         CompanySearchCache cached = cacheMapper.store.get("가온테크");
         assertThat(cached).isNotNull();
         assertThat(cached.getResults()).isEqualTo("[]");
+        // put(..., null) → CompanySearchCacheService 의 주입 Clock 이 fetchedAt 을 채운다(직접 now() 미사용).
+        assertThat(cached.getFetchedAt()).isNotNull();
 
         clearInvocations(webSearchClient);
         List<CompanyWebEvidence> second = service.collectWebEvidence(applicationCase("가온테크"));
@@ -175,21 +177,35 @@ class CompanyAnalysisServiceWebSearchWiringTest {
 
     // ── query_key 회사 단위 정규화 ──
 
+    private String cacheKey(String companyName) {
+        return service(enabled(false)).companyCacheKey(new CompanyIdentity(companyName, "", ""));
+    }
+
     @Test
     void companyCacheKeyNormalizesRepresentationDifferences() {
-        String base = CompanyAnalysisService.companyCacheKey(new CompanyIdentity("Gaon Tech", "", ""));
+        String base = cacheKey("Gaon Tech");
 
-        assertThat(CompanyAnalysisService.companyCacheKey(new CompanyIdentity("  Gaon   Tech  ", "", "")))
-                .isEqualTo(base);
-        assertThat(CompanyAnalysisService.companyCacheKey(new CompanyIdentity("GAON TECH", "", "")))
-                .isEqualTo(base);
+        assertThat(cacheKey("  Gaon   Tech  ")).isEqualTo(base);
+        assertThat(cacheKey("GAON TECH")).isEqualTo(base);
+    }
+
+    /** 법인표기 차이를 같은 회사로 묶는다(D-1 normalizeCompanyName 공유 — 리뷰 반영). */
+    @Test
+    void companyCacheKeyMergesCorporateMarkerVariants() {
+        String base = cacheKey("가온테크");
+
+        assertThat(cacheKey("(주) 가온테크")).isEqualTo(base);
+        assertThat(cacheKey("㈜가온테크")).isEqualTo(base);
+        assertThat(cacheKey("주식회사 가온테크")).isEqualTo(base);
     }
 
     /** 234 §7: 업종/지역 힌트는 검색 query 에만 쓰고 cache key 에는 포함하지 않는다. */
     @Test
     void companyCacheKeyIgnoresIndustryAndRegionHints() {
-        assertThat(CompanyAnalysisService.companyCacheKey(new CompanyIdentity("가온테크", "IT 서비스", "서울")))
-                .isEqualTo(CompanyAnalysisService.companyCacheKey(new CompanyIdentity("가온테크", "", "")));
+        CompanyAnalysisService service = service(enabled(false));
+
+        assertThat(service.companyCacheKey(new CompanyIdentity("가온테크", "IT 서비스", "서울")))
+                .isEqualTo(service.companyCacheKey(new CompanyIdentity("가온테크", "", "")));
     }
 
     /** put 은 in-memory 저장하고 createdAt 은 최초 생성 시각을 보존하는 최소 fake(계약 재현). */

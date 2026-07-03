@@ -103,8 +103,12 @@ public class CompanySourceResolver {
         return foundUnrelated;
     }
 
-    /** 법인 표기 제거 후 {@link #normalizeText}. "(주)가온 테크" → "가온테크". */
-    String normalizeCompanyName(String name) {
+    /**
+     * 법인 표기 제거 후 {@link #normalizeText}. "(주)가온 테크" → "가온테크".
+     * 회사 단위 canonical 식별자로도 재사용된다(D-4b 검색 캐시 key) — 법인표기·기호·공백 차이를 흡수해
+     * "(주) 가온테크"·"㈜가온테크"·"가온테크"를 같은 회사로 묶는다.
+     */
+    public String normalizeCompanyName(String name) {
         if (name == null) {
             return "";
         }
