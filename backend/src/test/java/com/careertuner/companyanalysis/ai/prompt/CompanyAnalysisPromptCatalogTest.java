@@ -50,6 +50,34 @@ class CompanyAnalysisPromptCatalogTest {
                 .contains("자유서술에는 웹 근거만으로 확인한 내용을 단정하지 않는다");
     }
 
+    /**
+     * D-6a 리뷰 반영(누출 방지): 공고-only 에서 R1 이 프롬프트 토큰 "[웹 검색 근거]"·"웹검색"을
+     * 사용자 노출 필드(자유서술·unknowns reason·source/label)로 복제하던 문제를 막는 지시가 있어야 한다.
+     */
+    @Test
+    void systemPromptForbidsLeakingWebTokenIntoOutputFields() {
+        assertThat(CompanyAnalysisPromptCatalog.SYSTEM_PROMPT)
+                .contains("\"[웹 검색 근거]\"는 입력 블록의 이름일 뿐이다")
+                .contains("출력의 어떤 필드")
+                .contains("\"제공된 자료에서 확인되지 않습니다\"처럼 중립적으로 쓴다");
+    }
+
+    /** JOB_POSTING fact 의 source·label 이 "웹검색"으로 새지 않도록 하는 지시가 있어야 한다. */
+    @Test
+    void systemPromptTiesSourceLabelToActualOrigin() {
+        assertThat(CompanyAnalysisPromptCatalog.SYSTEM_PROMPT)
+                .contains("실제 인용한 출처만 반영한다")
+                .contains("source 나 label 에 \"웹검색\"을 쓰지 않는다");
+    }
+
+    /** unknowns few-shot 의 reason 이 "웹 근거 어디에도" 대신 입력 자료 중립 표현을 쓴다(누출 재발 방지). */
+    @Test
+    void unknownsFewShotUsesNeutralReasonPhrasing() {
+        assertThat(CompanyAnalysisPromptCatalog.SYSTEM_PROMPT)
+                .contains("\"reason\": \"제공된 입력 자료에서 인원 규모를 확인할 수 없다\"")
+                .contains("\"reason\": \"제공된 입력 자료에 재무 관련 근거가 없다\"");
+    }
+
     // ── B-1 흡수: unknowns 유도 + few-shot ──
 
     @Test
@@ -78,7 +106,7 @@ class CompanyAnalysisPromptCatalogTest {
 
     @Test
     void versionBumpedForContractChange() {
-        assertThat(CompanyAnalysisPromptCatalog.VERSION).isEqualTo("b-v4");
+        assertThat(CompanyAnalysisPromptCatalog.VERSION).isEqualTo("b-v5");
     }
 
     @Test
@@ -86,7 +114,7 @@ class CompanyAnalysisPromptCatalogTest {
         AdminPromptView view = CompanyAnalysisPromptCatalog.view();
 
         assertThat(view.feature()).isEqualTo("company-analysis");
-        assertThat(view.version()).isEqualTo("b-v4");
+        assertThat(view.version()).isEqualTo("b-v5");
         assertThat(view.systemPrompt()).isEqualTo(CompanyAnalysisPromptCatalog.SYSTEM_PROMPT);
         assertThat(view.schemaSummary()).isEqualTo(CompanyAnalysisPromptCatalog.SCHEMA_SUMMARY);
     }
