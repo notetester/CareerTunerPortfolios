@@ -1,0 +1,244 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.careertuner.privacy.mapper.PrivacyMapper">
+
+    <!-- ── 관계 정책 문서 ── -->
+    <select id="findPolicy" resultType="com.careertuner.privacy.domain.UserPrivacyPolicy">
+        SELECT * FROM user_privacy_policy WHERE user_id = #{userId}
+    </select>
+
+    <insert id="upsertPolicy">
+        INSERT INTO user_privacy_policy (user_id, policy_json)
+        VALUES (#{userId}, #{policyJson})
+        ON DUPLICATE KEY UPDATE policy_json = VALUES(policy_json)
+    </insert>
+
+    <!-- ── 계정 차단 ── -->
+    <sql id="userBlockColumns">
+        b.id, b.user_id, b.blocked_user_id, b.flags_json, b.block_ip, b.memo, b.created_at, b.updated_at,
+        u.name  AS blocked_user_name,
+        u.email AS blocked_user_email
+    </sql>
+
+    <select id="findBlocksByUser" resultType="com.careertuner.privacy.domain.UserBlock">
+        SELECT <include refid="userBlockColumns"/>
+          FROM user_block b
+          JOIN users u ON u.id = b.blocked_user_id
+         WHERE b.user_id = #{userId}
+         ORDER BY b.created_at DESC
+    </select>
+
+    <select id="findBlock" resultType="com.careertuner.privacy.domain.UserBlock">
+        SELECT <include refid="userBlockColumns"/>
+          FROM user_block b
+          JOIN users u ON u.id = b.blocked_user_id
+         WHERE b.user_id = #{userId}
+           AND b.blocked_user_id = #{blockedUserId}
+    </select>
+
+    <select id="findBlockById" resultType="com.careertuner.privacy.domain.UserBlock">
+        SELECT <include refid="userBlockColumns"/>
+          FROM user_block b
+          JOIN users u ON u.id = b.blocked_user_id
+         WHERE b.id = #{id}
+    </select>
+
+    <insert id="insertBlock" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO user_block (user_id, blocked_user_id, flags_json, block_ip, memo)
+        VALUES (#{userId}, #{blockedUserId}, #{flagsJson}, #{blockIp}, #{memo})
+    </insert>
+
+    <update id="updateBlock">
+        UPDATE user_block
+           SET flags_json = #{flagsJson},
+               block_ip   = #{blockIp},
+               memo       = #{memo}
+         WHERE id = #{id}
+    </update>
+
+    <delete id="deleteBlock">
+        DELETE FROM user_block WHERE id = #{id}
+    </delete>
+
+    <select id="findBlocksAmong" resultType="com.careertuner.privacy.domain.UserBlock">
+        SELECT b.id, b.user_id, b.blocked_user_id, b.flags_json, b.block_ip, b.memo, b.created_at, b.updated_at
+          FROM user_block b
+         WHERE b.user_id = #{userId}
+           AND b.blocked_user_id IN
+        <foreach collection="targetIds" item="targetId" open="(" separator="," close=")">#{targetId}</foreach>
+    </select>
+
+    <!-- ── IP 차단 ── -->
+    <select id="findIpBlocksByUser" resultType="com.careertuner.privacy.domain.UserIpBlock">
+        SELECT b.*, s.name AS source_user_name
+          FROM user_ip_block b
+          LEFT JOIN users s ON s.id = b.source_user_id
+         WHERE b.user_id = #{userId}
+         ORDER BY b.created_at DESC
+    </select>
+
+    <insert id="insertIpBlock" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO user_ip_block (user_id, ip_hash, source_user_id, label)
+        VALUES (#{userId}, #{ipHash}, #{sourceUserId}, #{label})
+        ON DUPLICATE KEY UPDATE label = VALUES(label)
+    </insert>
+
+    <delete id="deleteIpBlock">
+        DELETE FROM user_ip_block WHERE id = #{id} AND user_id = #{userId}
+    </delete>
+
+    <delete id="deleteIpBlocksBySource">
+        DELETE FROM user_ip_block WHERE user_id = #{userId} AND source_user_id = #{sourceUserId}
+    </delete>
+
+    <!-- 최근 성공 로그인 IP 의 해시. 원본 IP 는 반환하지 않는다. -->
+    <select id="findLatestLoginIpHash" resultType="string">
+        SELECT SHA2(CONCAT(#{salt}, h.ip_address), 256)
+          FROM user_login_history h
+         WHERE h.user_id = #{userId}
+           AND h.success = 1
+           AND h.ip_address IS NOT NULL
+         ORDER BY h.id DESC
+         LIMIT 1
+    </select>
+
+    <select id="countIpBlockMatch" resultType="int">
+        SELECT COUNT(*)
+          FROM user_ip_block b
+         WHERE b.user_id = #{viewerId}
+           AND b.ip_hash = (
+               SELECT SHA2(CONCAT(#{salt}, h.ip_address), 256)
+                 FROM user_login_history h
+                WHERE h.user_id = #{actorId}
+                  AND h.success = 1
+                  AND h.ip_address IS NOT NULL
+                ORDER BY h.id DESC
+                LIMIT 1
+           )
+    </select>
+
+    <!-- targetIds 중 최근 로그인 IP 가 뷰어의 차단 해시와 일치하는 계정 -->
+    <select id="findIpBlockedAmong" resultType="long">
+        SELECT lh.user_id
+          FROM (
+              SELECT h.user_id,
+                     SUBSTRING_INDEX(GROUP_CONCAT(h.ip_address ORDER BY h.id DESC SEPARATOR ','), ',', 1) AS latest_ip
+                FROM user_login_history h
+               WHERE h.success = 1
+                 AND h.ip_address IS NOT NULL
+                 AND h.user_id IN
+              <foreach collection="targetIds" item="targetId" open="(" separator="," close=")">#{targetId}</foreach>
+               GROUP BY h.user_id
+          ) lh
+          JOIN user_ip_block b
+            ON b.user_id = #{viewerId}
+           AND b.ip_hash = SHA2(CONCAT(#{salt}, lh.latest_ip), 256)
+    </select>
+
+    <select id="countAccountsMatchingIpHash" resultType="int">
+        SELECT COUNT(DISTINCT lh.user_id)
+          FROM (
+              SELECT h.user_id,
+                     SUBSTRING_INDEX(GROUP_CONCAT(h.ip_address ORDER BY h.id DESC SEPARATOR ','), ',', 1) AS latest_ip
+                FROM user_login_history h
+               WHERE h.success = 1
+                 AND h.ip_address IS NOT NULL
+               GROUP BY h.user_id
+          ) lh
+         WHERE SHA2(CONCAT(#{salt}, lh.latest_ip), 256) = #{ipHash}
+    </select>
+
+    <!-- ── 채팅방 차단 ── -->
+    <sql id="conversationBlockColumns">
+        cb.id, cb.user_id, cb.conversation_id, cb.flags_json, cb.created_at, cb.updated_at,
+        c.title AS conversation_title,
+        c.type  AS conversation_type
+    </sql>
+
+    <select id="findConversationBlocksByUser" resultType="com.careertuner.privacy.domain.ConversationBlock">
+        SELECT <include refid="conversationBlockColumns"/>
+          FROM conversation_block cb
+          JOIN collaboration_conversation c ON c.id = cb.conversation_id
+         WHERE cb.user_id = #{userId}
+         ORDER BY cb.created_at DESC
+    </select>
+
+    <select id="findConversationBlock" resultType="com.careertuner.privacy.domain.ConversationBlock">
+        SELECT <include refid="conversationBlockColumns"/>
+          FROM conversation_block cb
+          JOIN collaboration_conversation c ON c.id = cb.conversation_id
+         WHERE cb.user_id = #{userId}
+           AND cb.conversation_id = #{conversationId}
+    </select>
+
+    <select id="findConversationBlockById" resultType="com.careertuner.privacy.domain.ConversationBlock">
+        SELECT <include refid="conversationBlockColumns"/>
+          FROM conversation_block cb
+          JOIN collaboration_conversation c ON c.id = cb.conversation_id
+         WHERE cb.id = #{id}
+    </select>
+
+    <insert id="insertConversationBlock" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO conversation_block (user_id, conversation_id, flags_json)
+        VALUES (#{userId}, #{conversationId}, #{flagsJson})
+        ON DUPLICATE KEY UPDATE flags_json = VALUES(flags_json)
+    </insert>
+
+    <update id="updateConversationBlock">
+        UPDATE conversation_block
+           SET flags_json = #{flagsJson}
+         WHERE id = #{id}
+    </update>
+
+    <delete id="deleteConversationBlock">
+        DELETE FROM conversation_block WHERE id = #{id}
+    </delete>
+
+    <select id="findConversationBlocksWhereMember" resultType="com.careertuner.privacy.domain.ConversationBlock">
+        SELECT <include refid="conversationBlockColumns"/>
+          FROM conversation_block cb
+          JOIN collaboration_conversation c ON c.id = cb.conversation_id
+          JOIN collaboration_conversation_member m
+            ON m.conversation_id = cb.conversation_id
+           AND m.user_id = #{memberId}
+           AND m.status = 'ACTIVE'
+         WHERE cb.user_id = #{userId}
+    </select>
+
+    <select id="findConversationBlocksWhereCreator" resultType="com.careertuner.privacy.domain.ConversationBlock">
+        SELECT <include refid="conversationBlockColumns"/>
+          FROM conversation_block cb
+          JOIN collaboration_conversation c ON c.id = cb.conversation_id
+         WHERE cb.user_id = #{userId}
+           AND c.created_by = #{creatorId}
+    </select>
+
+    <!-- ── 관계 판정 보조 ── -->
+    <select id="findUserRole" resultType="string">
+        SELECT role FROM users WHERE id = #{userId}
+    </select>
+
+    <select id="countFriendship" resultType="int">
+        SELECT COUNT(*)
+          FROM collaboration_friendship
+         WHERE user_id = #{userId}
+           AND friend_user_id = #{otherUserId}
+    </select>
+
+    <select id="findFriendsAmong" resultType="long">
+        SELECT friend_user_id
+          FROM collaboration_friendship
+         WHERE user_id = #{userId}
+           AND friend_user_id IN
+        <foreach collection="targetIds" item="targetId" open="(" separator="," close=")">#{targetId}</foreach>
+    </select>
+
+    <select id="findRolesAmong" resultType="com.careertuner.privacy.domain.UserRoleRow">
+        SELECT id, role
+          FROM users
+         WHERE id IN
+        <foreach collection="targetIds" item="targetId" open="(" separator="," close=")">#{targetId}</foreach>
+    </select>
+
+</mapper>

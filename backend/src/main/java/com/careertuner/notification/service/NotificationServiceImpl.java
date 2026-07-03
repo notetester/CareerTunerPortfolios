@@ -14,6 +14,7 @@ import com.careertuner.notification.dto.NotificationResponse;
 import com.careertuner.notification.event.NotificationPushEvent;
 import com.careertuner.notification.mapper.NotificationMapper;
 import com.careertuner.notification.push.NotificationCategories;
+import com.careertuner.privacy.service.PrivacyPolicyService;
 
 import lombok.RequiredArgsConstructor;
 
@@ -25,10 +26,16 @@ public class NotificationServiceImpl implements NotificationService {
     private final NotificationMapper notificationMapper;
     private final ApplicationEventPublisher eventPublisher;
     private final SenderRelationResolver senderRelationResolver;
+    private final PrivacyPolicyService privacyPolicyService;
 
     @Override
     @Transactional
     public void notify(Notification notification) {
+        // 개인 차단 정책 — 차단한 계정/IP 발신자의 알림은 생성 자체를 하지 않는다(조용한 실패).
+        if (notification.getActorId() != null
+                && privacyPolicyService.isBlockedSender(notification.getUserId(), notification.getActorId())) {
+            return;
+        }
         // 관계 기반 알림(댓글·답글·쪽지·채팅 등)은 생성 시점의 발신자 관계를 기록해
         // 푸시 필터(PushDispatcher)와 클라이언트 토스트 필터가 같은 값을 쓴다.
         if (notification.getSenderRelation() == null
