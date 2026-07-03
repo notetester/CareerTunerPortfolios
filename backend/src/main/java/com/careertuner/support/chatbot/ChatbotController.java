@@ -356,7 +356,7 @@ public class ChatbotController {
                     "다시 오셨네요 — 이어서 진행할게요. 어떤 직무로 지원하세요? (예: 프론트엔드 개발자, 백엔드 개발자)");
             case "SKILLS" -> new RouteMessage("④온보딩:기술",
                     (job != null ? "직무 \"" + job + "\"까지 확인됐어요 — 이어서, " : "이어서 진행할게요 — ")
-                            + "주로 다루는 기술을 콤마(,)로 구분해서 알려주세요.");
+                            + "핵심 역량을 알려주세요. 항목을 골라도 되고, 콤마(,)로 직접 적어도 돼요.");
             case "AWAIT_POSTING" -> new RouteMessage("④온보딩:공고요청",
                     (job != null && skills != null
                             ? "직무 \"" + job + "\", 기술 \"" + skills + "\"까지 확인됐어요 — 이어서 "
@@ -379,7 +379,7 @@ public class ChatbotController {
             case "JOB" -> new RouteMessage("④온보딩:직무",
                     "알겠어요, 계속할게요. 어떤 직무로 지원하세요? (예: 프론트엔드 개발자, 백엔드 개발자)");
             case "SKILLS" -> new RouteMessage("④온보딩:기술",
-                    "알겠어요, 계속할게요. 주로 다루는 기술을 콤마(,)로 구분해서 알려주세요.");
+                    "알겠어요, 계속할게요. 핵심 역량을 알려주세요 — 항목을 골라도 되고, 콤마(,)로 직접 적어도 돼요.");
             case "AWAIT_POSTING" -> new RouteMessage("④온보딩:공고요청",
                     "알겠어요, 계속할게요. 지원할 공고 전문을 붙여넣어 주세요(회사명·직무·자격요건이 담긴 원문이면 좋아요).");
             case "AWAIT_COMPANY" -> new RouteMessage("④온보딩:확인-회사",
@@ -462,13 +462,15 @@ public class ChatbotController {
             } else {
                 intakeSlotTrace.recordOnboardingJob(conversationId, question);   // 유저 답 그대로(가공 0)
                 intakeSlotTrace.setOnboardingStep(conversationId, "SKILLS");
+                // 카피-어포던스 정합(§8-③): 가이드 UI 는 역량 "칩 선택형"이라 "콤마로 입력하라"고만 하면
+                // 지시와 화면이 어긋난다 — 고르기/직접 입력 둘 다 유효함을 알리는 중립 문구로.
                 rm = new RouteMessage("④온보딩:기술",
-                        "좋아요. 주로 다루는 기술을 콤마(,)로 구분해서 알려주세요. 3~4개면 충분해요. (예: React, TypeScript, Spring)");
+                        "좋아요. 이번엔 핵심 역량이에요 — 항목을 골라도 되고, 콤마(,)로 직접 적어도 돼요. 3~4개면 충분해요. (예: React, Spring 또는 문제 해결)");
             }
         } else if ("SKILLS".equals(step)) {
             if (isUnusableCollectAnswer(question)) {
                 rm = new RouteMessage("④온보딩:기술",
-                        "기술명으로 이해하지 못했어요. 주로 다루는 기술을 콤마(,)로 구분해서 알려주세요. (예: React, TypeScript)");
+                        "역량으로 이해하지 못했어요. 항목을 골라도 되고, 콤마(,)로 직접 적어도 돼요. (예: React, Spring 또는 문제 해결)");
             } else {
                 intakeSlotTrace.recordOnboardingSkills(conversationId, question); // 그대로
                 intakeSlotTrace.setOnboardingStep(conversationId, "AWAIT_POSTING");
