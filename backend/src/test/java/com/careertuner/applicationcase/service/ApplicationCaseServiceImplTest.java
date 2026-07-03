@@ -52,6 +52,11 @@ import com.careertuner.companyanalysis.domain.CompanyAnalysis;
 import com.careertuner.companyanalysis.dto.CompanyAnalysisResponse;
 import com.careertuner.companyanalysis.mapper.CompanyAnalysisMapper;
 import com.careertuner.companyanalysis.service.CompanyAnalysisService;
+import com.careertuner.companyanalysis.service.CompanySearchCacheService;
+import com.careertuner.companyanalysis.websearch.CompanyEvidenceCollector;
+import com.careertuner.companyanalysis.websearch.CompanySourceResolver;
+import com.careertuner.companyanalysis.websearch.CompanyWebSearchClient;
+import com.careertuner.companyanalysis.websearch.CompanyWebSearchProperties;
 import com.careertuner.common.exception.BusinessException;
 import com.careertuner.common.exception.ErrorCode;
 import com.careertuner.jobanalysis.domain.JobAnalysis;
@@ -1190,7 +1195,7 @@ class ApplicationCaseServiceImplTest {
         AiUsageLogService usageLogService = mock(AiUsageLogService.class);
         ApplicationCaseAnalysisStatusService statusService = mock(ApplicationCaseAnalysisStatusService.class);
         ApplicationCaseAccessService accessService = new ApplicationCaseAccessService(applicationCaseMapper, jobPostingMapper);
-        CompanyAnalysisService service = new CompanyAnalysisService(accessService, companyAnalysisMapper, bAnalysisGenerationService, usageLogService, statusService, transactionTemplate(), analysisJsonValidator(), companyAnalysisCanonicalizer(), mock(NotificationService.class));
+        CompanyAnalysisService service = new CompanyAnalysisService(accessService, companyAnalysisMapper, bAnalysisGenerationService, usageLogService, statusService, transactionTemplate(), analysisJsonValidator(), companyAnalysisCanonicalizer(), mock(NotificationService.class), new CompanyWebSearchProperties(), mock(CompanySourceResolver.class), mock(CompanyWebSearchClient.class), mock(CompanyEvidenceCollector.class), mock(CompanySearchCacheService.class), new ObjectMapper());
 
         ApplicationCase applicationCase = applicationCase("DRAFT");
         JobPosting posting = jobPosting(null, null, "Backend platform job posting");
@@ -1239,7 +1244,7 @@ class ApplicationCaseServiceImplTest {
         AiUsageLogService usageLogService = mock(AiUsageLogService.class);
         ApplicationCaseAnalysisStatusService statusService = mock(ApplicationCaseAnalysisStatusService.class);
         ApplicationCaseAccessService accessService = new ApplicationCaseAccessService(applicationCaseMapper, jobPostingMapper);
-        CompanyAnalysisService service = new CompanyAnalysisService(accessService, companyAnalysisMapper, bAnalysisGenerationService, usageLogService, statusService, transactionTemplate(), analysisJsonValidator(), companyAnalysisCanonicalizer(), mock(NotificationService.class));
+        CompanyAnalysisService service = new CompanyAnalysisService(accessService, companyAnalysisMapper, bAnalysisGenerationService, usageLogService, statusService, transactionTemplate(), analysisJsonValidator(), companyAnalysisCanonicalizer(), mock(NotificationService.class), new CompanyWebSearchProperties(), mock(CompanySourceResolver.class), mock(CompanyWebSearchClient.class), mock(CompanyEvidenceCollector.class), mock(CompanySearchCacheService.class), new ObjectMapper());
 
         ApplicationCase applicationCase = applicationCase("DRAFT");
         JobPosting posting = jobPosting(30L, 3, "Backend platform job posting");
@@ -1287,7 +1292,7 @@ class ApplicationCaseServiceImplTest {
         AiUsageLogService usageLogService = mock(AiUsageLogService.class);
         ApplicationCaseAnalysisStatusService statusService = mock(ApplicationCaseAnalysisStatusService.class);
         ApplicationCaseAccessService accessService = new ApplicationCaseAccessService(applicationCaseMapper, jobPostingMapper);
-        CompanyAnalysisService service = new CompanyAnalysisService(accessService, companyAnalysisMapper, bAnalysisGenerationService, usageLogService, statusService, transactionTemplate(), analysisJsonValidator(), companyAnalysisCanonicalizer(), mock(NotificationService.class));
+        CompanyAnalysisService service = new CompanyAnalysisService(accessService, companyAnalysisMapper, bAnalysisGenerationService, usageLogService, statusService, transactionTemplate(), analysisJsonValidator(), companyAnalysisCanonicalizer(), mock(NotificationService.class), new CompanyWebSearchProperties(), mock(CompanySourceResolver.class), mock(CompanyWebSearchClient.class), mock(CompanyEvidenceCollector.class), mock(CompanySearchCacheService.class), new ObjectMapper());
 
         when(applicationCaseMapper.findApplicationCaseByIdAndUserId(10L, 1L)).thenReturn(applicationCase("CLOSED"));
 
@@ -1311,7 +1316,7 @@ class ApplicationCaseServiceImplTest {
         AiUsageLogService usageLogService = mock(AiUsageLogService.class);
         ApplicationCaseAnalysisStatusService statusService = mock(ApplicationCaseAnalysisStatusService.class);
         ApplicationCaseAccessService accessService = new ApplicationCaseAccessService(applicationCaseMapper, jobPostingMapper);
-        CompanyAnalysisService service = new CompanyAnalysisService(accessService, companyAnalysisMapper, bAnalysisGenerationService, usageLogService, statusService, transactionTemplate(), analysisJsonValidator(), companyAnalysisCanonicalizer(), mock(NotificationService.class));
+        CompanyAnalysisService service = new CompanyAnalysisService(accessService, companyAnalysisMapper, bAnalysisGenerationService, usageLogService, statusService, transactionTemplate(), analysisJsonValidator(), companyAnalysisCanonicalizer(), mock(NotificationService.class), new CompanyWebSearchProperties(), mock(CompanySourceResolver.class), mock(CompanyWebSearchClient.class), mock(CompanyEvidenceCollector.class), mock(CompanySearchCacheService.class), new ObjectMapper());
 
         when(applicationCaseMapper.findApplicationCaseByIdAndUserId(10L, 1L)).thenReturn(applicationCase("ANALYZING"));
 
