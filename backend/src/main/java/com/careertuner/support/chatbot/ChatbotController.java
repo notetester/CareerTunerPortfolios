@@ -1255,6 +1255,11 @@ public class ChatbotController {
     /**
      * 로그인 유저의 가장 최근 대화를 복원한다(이어보기/이어가기).
      * GET /api/chatbot/conversations/recent  (인증 필요 — SecurityConfig permitAll 미포함)
+     *
+     * <p><b>④ 재진입 재개(F-06):</b> ④턴은 설계상 LLM 메모리 미기록(완료 시 요약 1줄만)이라 진행 중
+     * 새로고침 후 messages 가 비어 프론트가 대화를 버리고 새 대화를 발급 — 인메모리 step 이 고아가 됐다.
+     * 온보딩 진행 중이면 현재 스텝 재표시를 resume 으로 동봉해 프론트가 같은 대화에 이어붙이게 한다.
+     * (재표시 없이 id 만 입양하면 사용자가 "보이지 않는 질문"에 답하게 돼 JOB/SKILLS 오기록이 남 — 필수 짝.)</p>
      */
     @GetMapping("/chatbot/conversations/recent")
     public ApiResponse<ChatHistoryResponse> recentConversation(@AuthenticationPrincipal AuthUser authUser) {
@@ -1269,7 +1274,20 @@ public class ChatbotController {
                 .map(this::toHistoryMessage)
                 .filter(m -> m != null)
                 .collect(Collectors.toList());
-        return ApiResponse.ok(new ChatHistoryResponse(conversationId, messages));
+        ChatHistoryResponse.ResumePrompt resume = null;
+        if (isOnboardingInProgress(conversationId)) {
+            try {
+                String step = intakeSlotTrace.onboardingStep(conversationId);
+                // 기존 재표시 경로 재사용(재시작 "아니요" 복귀와 동일 의미). EXTRACTING 은 추출 상태를
+                // 재조회하므로 자리 비운 사이 끝난 추출을 다음 질문으로 바로 이어준다.
+                RouteMessage rm = redisplayCurrentStep(conversationId, authUser, step);
+                resume = new ChatHistoryResponse.ResumePrompt(
+                        rm.route(), rm.message(), rm.quickReplies(), rm.intake());
+            } catch (RuntimeException ex) {
+                log.warn("온보딩 재개 프롬프트 조립 실패(복원 자체는 진행): {}", ex.getMessage());
+            }
+        }
+        return ApiResponse.ok(new ChatHistoryResponse(conversationId, messages, resume));
     }
 
     /**

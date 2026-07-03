@@ -48,6 +48,13 @@ interface ChatbotApiResponse {
 interface ChatHistoryResponse {
   conversationId: number;
   messages: { role: "user" | "bot"; text: string }[];
+  /** ④ 온보딩 진행 중 복원 시 현재 스텝 재표시(route 로 가이드 자동 매핑) — 아니면 null/undefined. */
+  resume?: {
+    route: string;
+    message: string;
+    quickReplies: string[];
+    intake: IntakeStepResp | null;
+  } | null;
 }
 
 /* ── 세션 목록 API 응답 (GET /chatbot/conversations) ── */
@@ -102,23 +109,47 @@ export function useChatbot() {
     restoredRef.current = true;
     api<ChatHistoryResponse | null>("/chatbot/conversations/recent")
       .then((data) => {
-        if (!data || !data.messages?.length) return; // 이전 대화 없음
+        if (!data) return; // 이전 대화 없음
+        if (conversationIdRef.current != null) return; // 복원 응답 전에 유저가 대화를 시작함 — 덮지 않음
+        // ★F-06: 대화 id 는 messages 유무와 무관하게 입양한다 — ④ 온보딩 턴은 설계상 메모리 미기록이라
+        //   진행 중 새로고침이 messages=[] 로 오는데, 여기서 버리면 다음 전송이 새 대화를 발급해
+        //   서버 인메모리 step 이 고아가 된다(입양하면 다음 턴이 ④진행중 게이트로 그대로 이어진다).
         conversationIdRef.current = data.conversationId;
-        setMessages((prev) =>
-          prev.length > 0
-            ? prev
-            : data.messages.map((m) => ({
-                id: nextId(),
-                role: m.role,
-                text: m.text,
-                evidence: [],
-                links: [],
-                quickReplies: [],
-                ttsState: "idle" as const,
-                ttsProgress: 0,
-                timestamp: Date.now(),
-              })),
-        );
+        const restored: ChatMessage[] = (data.messages ?? []).map((m) => ({
+          id: nextId(),
+          role: m.role,
+          text: m.text,
+          evidence: [],
+          links: [],
+          quickReplies: [],
+          ttsState: "idle" as const,
+          ttsProgress: 0,
+          timestamp: Date.now(),
+        }));
+        // ④ 재개 프롬프트 — 현재 스텝 재표시를 봇 메시지로 이어붙인다. route 가 실리므로 위젯의
+        //   가이드 자동 오픈(ONB_ROUTE_PHASE)이 그대로 반응하고, 사용자는 "보이지 않는 질문"에
+        //   답하는 대신 무엇을 이어가면 되는지 본다. ready 실행(run) 경로는 복원에서 절대 안 탄다.
+        if (data.resume) {
+          const r = data.resume;
+          restored.push({
+            id: nextId(), role: "bot", text: r.message,
+            evidence: [], links: [], quickReplies: r.quickReplies ?? [],
+            ttsState: "idle", ttsProgress: 0, timestamp: Date.now(),
+            route: r.route,
+            intake: r.intake
+              ? {
+                  ready: r.intake.ready,
+                  nextAsk: r.intake.nextAsk,
+                  candidates: r.intake.candidates ?? [],
+                  modes: r.intake.modes ?? [],
+                }
+              : undefined,
+          });
+        }
+        if (restored.length === 0) return; // 보여줄 것도 이어갈 스텝도 없음(id 입양만 하고 끝)
+        setMessages((prev) => (prev.length > 0 ? prev : restored));
+        // 넛지/칩 활성 조건(botStatus) 정합 — 진행 중 상태(thinking 등)는 덮지 않는다.
+        setBotStatus((s) => (s === "idle" ? "answered" : s));
       })
       .catch((err) => {
         console.error("이전 대화 복원 실패:", err);
