@@ -67,7 +67,8 @@ public interface CollaborationMapper {
 
     void insertConversationInvite(@Param("conversationId") Long conversationId,
                                   @Param("inviterId") Long inviterId,
-                                  @Param("inviteeId") Long inviteeId);
+                                  @Param("inviteeId") Long inviteeId,
+                                  @Param("anonymous") boolean anonymous);
 
     int countPendingInvite(@Param("conversationId") Long conversationId,
                            @Param("inviteeId") Long inviteeId);

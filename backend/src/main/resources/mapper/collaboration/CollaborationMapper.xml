@@ -200,10 +200,11 @@
     </insert>
 
     <insert id="insertConversationInvite">
-        INSERT INTO collaboration_conversation_invite (conversation_id, inviter_id, invitee_id, status)
-        VALUES (#{conversationId}, #{inviterId}, #{inviteeId}, 'PENDING')
+        INSERT INTO collaboration_conversation_invite (conversation_id, inviter_id, invitee_id, anonymous, status)
+        VALUES (#{conversationId}, #{inviterId}, #{inviteeId}, #{anonymous}, 'PENDING')
         ON DUPLICATE KEY UPDATE
             inviter_id = VALUES(inviter_id),
+            anonymous = VALUES(anonymous),
             status = 'PENDING',
             responded_at = NULL
     </insert>

@@ -3,6 +3,9 @@ package com.careertuner.collaboration.service;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyBoolean;
+import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
@@ -11,7 +14,9 @@ import static org.mockito.Mockito.when;
 
 import java.util.Arrays;
 import java.util.List;
+import java.util.Set;
 
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -25,6 +30,7 @@ import com.careertuner.collaboration.domain.FriendRequest;
 import com.careertuner.collaboration.domain.FriendRequestRow;
 import com.careertuner.collaboration.domain.MessageAttachmentRow;
 import com.careertuner.collaboration.dto.CreateConversationRequest;
+import com.careertuner.collaboration.dto.InviteMembersRequest;
 import com.careertuner.collaboration.dto.JoinConversationRequest;
 import com.careertuner.collaboration.dto.SendMessageRequest;
 import com.careertuner.collaboration.mapper.CollaborationMapper;
@@ -36,6 +42,8 @@ import com.careertuner.file.service.FileService;
 import com.careertuner.notification.domain.Notification;
 import com.careertuner.notification.service.NotificationPreferenceService;
 import com.careertuner.notification.service.NotificationService;
+import com.careertuner.privacy.service.PrivacyPolicyService;
+import com.careertuner.privacy.service.PrivacySurfaces;
 
 class CollaborationServiceImplTest {
 
@@ -46,9 +54,24 @@ class CollaborationServiceImplTest {
     private final FileAssetMapper fileAssetMapper = mock(FileAssetMapper.class);
     private final FileService fileService = mock(FileService.class);
     private final PasswordEncoder passwordEncoder = mock(PasswordEncoder.class);
+    private final PrivacyPolicyService privacyPolicyService = mock(PrivacyPolicyService.class);
     private final CollaborationServiceImpl service =
             new CollaborationServiceImpl(mapper, notificationService, notificationPreferenceService,
-                    fileAssetMapper, fileService, passwordEncoder);
+                    fileAssetMapper, fileService, passwordEncoder, privacyPolicyService);
+
+    /**
+     * 개인 차단 정책 기본 스텁 — 전부 허용.
+     * Mockito 기본값(false/빈 컬렉션)으로 두면 allows()=false 가 되어 기존 테스트가 전부 차단돼 깨진다.
+     */
+    @BeforeEach
+    void allowAllPrivacyByDefault() {
+        when(privacyPolicyService.allows(any(), any(), any())).thenReturn(true);
+        when(privacyPolicyService.allowsInvite(any(), any(), any(), any(), anyBoolean(), anyBoolean()))
+                .thenReturn(true);
+        when(privacyPolicyService.isConversationBlocked(any(), any())).thenReturn(false);
+        when(privacyPolicyService.blockedAuthorsAmong(any(), any(), any())).thenReturn(Set.of());
+        when(privacyPolicyService.listConversationBlocks(any())).thenReturn(List.of());
+    }
 
     @Test
     void sendFriendRequest_createsPendingRequestAndNotifiesReceiver() {
@@ -203,6 +226,92 @@ class CollaborationServiceImplTest {
         assertThat(response.joined()).isTrue();
         verify(mapper).insertConversationMemberWithRole(40L, 2L, "MEMBER", null);
         verify(mapper).acceptInvite(40L, 2L);
+    }
+
+    // ══════════════ 개인 차단 정책 집행 지점 (docs/PERSONAL_BLOCK_POLICY.md §5) ══════════════
+
+    // ── 상대 정책이 뷰어의 dm 을 차단 → 일반 문구(FORBIDDEN)로 조용히 거부, 방 생성 없음 ──
+    @Test
+    void openDirectConversation_deniedSilently_whenTargetPolicyBlocksDm() {
+        when(mapper.findActiveUserById(2L)).thenReturn(user(2L, "민지", "minji@example.com"));
+        when(mapper.countFriendship(1L, 2L)).thenReturn(1);
+        when(privacyPolicyService.allows(2L, 1L, PrivacySurfaces.DM)).thenReturn(false);
+
+        assertThatThrownBy(() -> service.openDirectConversation(1L, 2L))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("지금은 이 사용자와 대화를 시작할 수 없습니다.") // 차단 사실 비특정 문구
+                .satisfies(error -> assertThat(((BusinessException) error).getErrorCode())
+                        .isEqualTo(ErrorCode.FORBIDDEN));
+        verify(mapper, never()).insertConversation(any());
+    }
+
+    // ── 초대 대상 한 명의 정책이 차단 → 그 대상만 조용히 스킵(예외 없음), 나머지는 초대 ──
+    @Test
+    void inviteMembers_skipsBlockedInviteeSilently() {
+        when(mapper.findConversationById(30L)).thenReturn(CollaborationConversation.builder()
+                .id(30L)
+                .type("GROUP")
+                .title("스터디")
+                .createdBy(1L)
+                .build());
+        when(mapper.countConversationMember(30L, 1L)).thenReturn(1);
+        when(mapper.findActiveUserById(2L)).thenReturn(user(2L, "민지", "minji@example.com"));
+        when(mapper.findActiveUserById(3L)).thenReturn(user(3L, "철수", "chulsoo@example.com"));
+        when(mapper.countFriendship(1L, 2L)).thenReturn(1);
+        when(mapper.countFriendship(1L, 3L)).thenReturn(1);
+        when(privacyPolicyService.allowsInvite(eq(2L), eq(1L), eq(30L), eq("GROUP"), anyBoolean(), anyBoolean()))
+                .thenReturn(false); // 2번 사용자만 초대 차단
+        when(mapper.findConversationSummary(1L, 30L)).thenReturn(ConversationSummaryRow.builder()
+                .id(30L)
+                .type("GROUP")
+                .title("스터디")
+                .joined(true)
+                .memberCount(2)
+                .build());
+
+        var response = service.inviteMembers(1L, 30L, new InviteMembersRequest(List.of(2L, 3L), false));
+
+        assertThat(response.id()).isEqualTo(30L);
+        verify(mapper, never()).insertConversationInvite(eq(30L), eq(1L), eq(2L), anyBoolean());
+        verify(mapper, never()).insertConversationMemberWithRole(30L, 2L, "MEMBER", 1L);
+        verify(mapper).insertConversationInvite(30L, 1L, 3L, false);
+        verify(mapper).insertConversationMemberWithRole(30L, 3L, "MEMBER", 1L);
+    }
+
+    // ── 차단 발신자 메시지는 톰스톤 처리(본문 교체·첨부/공고 비움·blocked=true), 첨부 조회 생략 ──
+    @Test
+    void listMessages_tombstonesBlockedSenderMessages() {
+        when(mapper.countConversationMember(5L, 1L)).thenReturn(1);
+        when(mapper.findMessages(eq(5L), anyInt())).thenReturn(List.of(
+                CollaborationMessage.builder()
+                        .id(21L).conversationId(5L).senderId(2L)
+                        .senderName("민지").senderEmail("minji@example.com")
+                        .kind("CHAT").content("차단 전 메시지").build(),
+                CollaborationMessage.builder()
+                        .id(22L).conversationId(5L).senderId(3L)
+                        .senderName("철수").senderEmail("chulsoo@example.com")
+                        .kind("CHAT").content("정상 메시지").build()));
+        when(privacyPolicyService.blockedAuthorsAmong(eq(1L), eq(Set.of(2L, 3L)),
+                eq(PrivacySurfaces.CONTENT_ROOM_MESSAGE))).thenReturn(Set.of(2L));
+        when(mapper.findLatestMessageId(5L)).thenReturn(22L);
+        when(mapper.findAttachmentsByMessageId(22L)).thenReturn(List.of());
+        when(mapper.findPostingsByMessageId(22L)).thenReturn(List.of());
+
+        var responses = service.listMessages(1L, 5L, 50);
+
+        assertThat(responses).hasSize(2);
+        var blocked = responses.get(0);
+        assertThat(blocked.id()).isEqualTo(21L);
+        assertThat(blocked.blocked()).isTrue();
+        assertThat(blocked.content()).isEqualTo("차단한 사용자의 메시지입니다.");
+        assertThat(blocked.attachments()).isEmpty();
+        assertThat(blocked.sharedPostings()).isEmpty();
+        var normal = responses.get(1);
+        assertThat(normal.blocked()).isFalse();
+        assertThat(normal.content()).isEqualTo("정상 메시지");
+        // 차단 메시지는 첨부/공고 조회 자체를 생략한다
+        verify(mapper, never()).findAttachmentsByMessageId(21L);
+        verify(mapper, never()).findPostingsByMessageId(21L);
     }
 
     private CollaborationUserRow user(Long id, String name, String email) {

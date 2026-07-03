@@ -1,5 +1,12 @@
 import type { MockRoute } from "../registry";
 import { demoApplicationCases, demoUser } from "../data";
+// 개인 차단 정책 mock — 차단한 방 숨김·차단 사용자 메시지 톰스톤 처리에 사용 (additive).
+import {
+  mockConversationBlocked,
+  mockPrivacyAllows,
+  registerPrivacyMockConversations,
+  registerPrivacyMockUsers,
+} from "./privacy";
 import type {
   AttachmentShareMode,
   CollaborationUser,
@@ -30,6 +37,18 @@ const users: CollaborationUser[] = [
   { id: 9204, name: "정도윤", email: "doyoon.jung@example.com", plan: "PRO", relationStatus: "REQUESTED" },
   { id: 9205, name: "강유나", email: "yuna.kang@example.com", plan: "FREE", relationStatus: "PENDING_INCOMING" },
 ];
+
+// 차단 mock 디렉터리에 사용자 등록(이름/이메일 표시·관계 평가용).
+registerPrivacyMockUsers(
+  users
+    .filter((user) => user.id !== currentUser.id)
+    .map((user) => ({
+      id: user.id,
+      name: user.name,
+      email: user.email,
+      relation: user.relationStatus === "FRIEND" ? ("friend" as const) : ("stranger" as const),
+    })),
+);
 
 let friends: FriendResponse[] = [
   { user: users[1], friendsSince: new Date(Date.now() - 12 * 86_400_000).toISOString() },
@@ -201,6 +220,11 @@ let conversations: ConversationSummaryResponse[] = [
   },
 ];
 
+// 차단 mock 디렉터리에 채팅방 등록(차단 목록의 방 제목/유형 표시용).
+registerPrivacyMockConversations(
+  conversations.map((conversation) => ({ id: conversation.id, title: conversation.displayName, type: conversation.type })),
+);
+
 function latestMessage(conversationId: number): MessagePreviewResponse | null {
   const messages = messagesByConversation[conversationId] ?? [];
   const latest = messages[messages.length - 1];
@@ -224,6 +248,8 @@ function withLatest(conversation: ConversationSummaryResponse): ConversationSumm
 function visibleConversations(): ConversationSummaryResponse[] {
   return conversations
     .filter((conversation) => conversation.joined)
+    // 차단한 채팅방은 목록에서 숨긴다(방 숨김 + 관련 초대 차단 — 개인 차단 정책).
+    .filter((conversation) => !mockConversationBlocked(conversation.id))
     .map(withLatest)
     .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
 }
@@ -251,6 +277,12 @@ function requireConversation(id: number): ConversationSummaryResponse {
 
 function normalizeMessageKind(kind: unknown): MessageKind {
   return kind === "NOTE" ? "NOTE" : "CHAT";
+}
+
+/** 차단한 사용자의 메시지는 뷰어 기준 톰스톤 처리(blocked=true, 본문·첨부 제거 — 서버측 처리 미러). */
+function withViewerBlocked(message: MessageResponse): MessageResponse & { blocked?: boolean } {
+  if (message.mine || mockPrivacyAllows(message.sender.id, "content.roomMessage")) return message;
+  return { ...message, blocked: true, content: null, attachments: [], sharedPostings: [] };
 }
 
 function normalizeShareMode(mode: unknown): AttachmentShareMode {
@@ -369,6 +401,7 @@ export const collaborationRoutes: MockRoute[] = [
       };
       conversations = [created, ...conversations];
       messagesByConversation[created.id] = [];
+      registerPrivacyMockConversations([{ id: created.id, title: created.displayName, type: created.type }]);
       return created;
     },
   },
@@ -401,6 +434,7 @@ export const collaborationRoutes: MockRoute[] = [
       };
       conversations = [created, ...conversations];
       messagesByConversation[created.id] = [];
+      registerPrivacyMockConversations([{ id: created.id, title: created.displayName, type: created.type }]);
       return created;
     },
   },
@@ -438,7 +472,7 @@ export const collaborationRoutes: MockRoute[] = [
     pattern: /^\/collaboration\/conversations\/(\d+)\/messages$/,
     handler: ({ params, query }) => {
       const limit = Number(query.get("limit") ?? 120) || 120;
-      return (messagesByConversation[Number(params[0])] ?? []).slice(-limit);
+      return (messagesByConversation[Number(params[0])] ?? []).slice(-limit).map(withViewerBlocked);
     },
   },
   {

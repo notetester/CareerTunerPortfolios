@@ -12,6 +12,8 @@ public record MessageResponse(
         String content,
         List<MessageAttachmentResponse> attachments,
         List<SharedPostingResponse> sharedPostings,
-        LocalDateTime createdAt
+        LocalDateTime createdAt,
+        /** 뷰어가 차단한 발신자의 메시지(content.roomMessage) 톰스톤 여부. 기본 false. */
+        boolean blocked
 ) {
 }

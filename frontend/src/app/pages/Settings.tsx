@@ -11,10 +11,11 @@ import { findConsentTerm, type ConsentTerm } from "../auth/consentTerms";
 import { getMyConsents, revokeAiConsent, saveMyConsents, type ConsentStatus } from "../auth/consentApi";
 import { useAuth } from "../auth/AuthContext";
 import { NotificationSettings } from "@/features/notification/components/NotificationSettings";
+import { PrivacySettings } from "@/features/privacy/components/PrivacySettings";
 import { ServerAddressSettings } from "@/features/settings/components/ServerAddressSettings";
 import { AppLockSettings } from "../components/AppLockSettings";
 
-const tabs = ["account", "privacy", "ai-consent", "notifications"] as const;
+const tabs = ["account", "privacy", "ai-consent", "notifications", "blocks"] as const;
 type SettingsTab = (typeof tabs)[number];
 
 export function SettingsPage() {
@@ -103,7 +104,7 @@ export function SettingsPage() {
               <UserCog className="size-6 text-blue-600" />
               설정
             </h1>
-            <p className="mt-1 text-sm text-slate-500">계정, 개인정보, AI 데이터 사용 동의, 알림을 관리합니다.</p>
+            <p className="mt-1 text-sm text-slate-500">계정, 개인정보, AI 데이터 사용 동의, 알림, 차단을 관리합니다.</p>
           </div>
           <Button variant="outline" onClick={() => void load()} disabled={loading}>
             <RefreshCw className={`size-4 ${loading ? "animate-spin" : ""}`} />
@@ -120,6 +121,7 @@ export function SettingsPage() {
             <TabsTrigger value="privacy">개인정보 관리</TabsTrigger>
             <TabsTrigger value="ai-consent">AI 데이터 동의</TabsTrigger>
             <TabsTrigger value="notifications">알림 설정</TabsTrigger>
+            <TabsTrigger value="blocks">차단 관리</TabsTrigger>
           </TabsList>
 
           <TabsContent value="account" className="mt-5 space-y-4">
@@ -224,6 +226,10 @@ export function SettingsPage() {
 
           <TabsContent value="notifications" className="mt-5">
             <NotificationSettings />
+          </TabsContent>
+
+          <TabsContent value="blocks" className="mt-5">
+            <PrivacySettings />
           </TabsContent>
         </Tabs>
       </div>

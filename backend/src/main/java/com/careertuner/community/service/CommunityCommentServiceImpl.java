@@ -26,6 +26,8 @@ import com.careertuner.community.mapper.ReactionMapper;
 import com.careertuner.community.moderation.event.CommentModerationRequiredEvent;
 import com.careertuner.notification.domain.Notification;
 import com.careertuner.notification.service.NotificationService;
+import com.careertuner.privacy.service.PrivacyPolicyService;
+import com.careertuner.privacy.service.PrivacySurfaces;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -36,11 +38,15 @@ import lombok.extern.slf4j.Slf4j;
 @Transactional(readOnly = true)
 public class CommunityCommentServiceImpl implements CommunityCommentService {
 
+    /** 차단 작성자 댓글 톰스톤 문구 (docs/PERSONAL_BLOCK_POLICY.md §4 — silent deny). */
+    private static final String BLOCKED_COMMENT_TOMBSTONE = "차단한 사용자의 댓글입니다.";
+
     private final CommunityCommentMapper commentMapper;
     private final CommunityPostMapper postMapper;
     private final ReactionMapper reactionMapper;
     private final ApplicationEventPublisher eventPublisher;
     private final NotificationService notificationService;
+    private final PrivacyPolicyService privacyPolicyService;
 
     @Override
     public List<CommentResponse> getComments(Long postId, Long currentUserId) {
@@ -64,6 +70,9 @@ public class CommunityCommentServiceImpl implements CommunityCommentService {
         // 표시 대상 = PUBLISHED 전체 + (살아있는 자손을 가진 삭제/숨김 노드)
         Set<Long> renderable = computeRenderable(comments);
 
+        // 뷰어 기준 content.comment/reply(.anonymous) 차단 작성자 벌크 판정(비로그인 뷰어는 필터 없음)
+        BlockedCommentAuthors blockedAuthors = resolveBlockedAuthors(comments, currentUserId);
+
         List<CommentResponse> result = new ArrayList<>(comments.size());
         for (CommunityComment c : comments) {
             if (!renderable.contains(c.getId())) {
@@ -71,6 +80,11 @@ public class CommunityCommentServiceImpl implements CommunityCommentService {
             }
             if (!CommentStatus.PUBLISHED.name().equals(c.getStatus())) {
                 result.add(tombstone(c)); // 삭제/숨김이지만 자손이 살아있음 → 골격 유지용 tombstone
+                continue;
+            }
+            if (blockedAuthors.contains(c)) {
+                // 차단 작성자 댓글/답글 — 삭제 톰스톤과 동일 문법으로 비식별 처리(blocked=true)
+                result.add(blockedTombstone(c));
                 continue;
             }
             // 멘션 표시명은 저장된 mention_user_id 를 현재 익명번호로 동적 변환(번호 밀림에 안전).
@@ -145,7 +159,68 @@ public class CommunityCommentServiceImpl implements CommunityCommentService {
                 false,
                 c.getCreatedAt(),
                 false,
+                true,
+                false);
+    }
+
+    /**
+     * 차단 작성자 댓글의 tombstone — 삭제 톰스톤과 동일 문법(작성자·멘션 비식별, 골격 유지)이되
+     * 본문 자리에 안내 문구를 넣고 blocked=true 로 구분한다(isDeleted 와 별개).
+     */
+    private CommentResponse blockedTombstone(CommunityComment c) {
+        return new CommentResponse(
+                c.getId(),
+                c.getPostId(),
+                c.getParentId(),
+                null,
+                new PostListResponse.AuthorDto(null, "", true),
+                BLOCKED_COMMENT_TOMBSTONE,
+                0,
+                false,
+                false,
+                c.getCreatedAt(),
+                false,
+                false,
                 true);
+    }
+
+    /**
+     * 뷰어 기준 차단 작성자 집합 — 표면 키가 (루트/답글 × 익명 여부) 4가지로 갈리므로
+     * 작성자 id 를 그룹별로 나눠 blockedAuthorsAmong 벌크 판정한다.
+     */
+    private BlockedCommentAuthors resolveBlockedAuthors(List<CommunityComment> comments, Long viewerId) {
+        if (viewerId == null || comments.isEmpty()) {
+            return BlockedCommentAuthors.EMPTY;
+        }
+        Map<String, Set<Long>> authorsBySurface = new HashMap<>();
+        for (CommunityComment c : comments) {
+            if (!CommentStatus.PUBLISHED.name().equals(c.getStatus())) {
+                continue; // 삭제/숨김 노드는 이미 비식별 tombstone — 판정 불필요
+            }
+            authorsBySurface.computeIfAbsent(surfaceOf(c), k -> new HashSet<>()).add(c.getUserId());
+        }
+        Map<String, Set<Long>> blockedBySurface = new HashMap<>();
+        for (Map.Entry<String, Set<Long>> entry : authorsBySurface.entrySet()) {
+            blockedBySurface.put(entry.getKey(),
+                    privacyPolicyService.blockedAuthorsAmong(viewerId, entry.getValue(), entry.getKey()));
+        }
+        return new BlockedCommentAuthors(blockedBySurface);
+    }
+
+    /** 댓글의 콘텐츠 표면 키 — 답글(parentId!=null)은 content.reply, 루트는 content.comment (+.anonymous). */
+    private static String surfaceOf(CommunityComment c) {
+        String base = c.getParentId() != null ? PrivacySurfaces.CONTENT_REPLY : PrivacySurfaces.CONTENT_COMMENT;
+        return c.isAnonymous() ? base + ".anonymous" : base;
+    }
+
+    /** 표면 키별 차단 작성자 집합 홀더. */
+    private record BlockedCommentAuthors(Map<String, Set<Long>> blockedBySurface) {
+        static final BlockedCommentAuthors EMPTY = new BlockedCommentAuthors(Map.of());
+
+        boolean contains(CommunityComment c) {
+            Set<Long> blocked = blockedBySurface.get(surfaceOf(c));
+            return blocked != null && blocked.contains(c.getUserId());
+        }
     }
 
     private String displayName(CommunityComment c, Map<Long, String> anonLabels) {
@@ -334,6 +409,7 @@ public class CommunityCommentServiceImpl implements CommunityCommentService {
                 currentUserId != null && currentUserId.equals(c.getUserId()),
                 c.getCreatedAt(),
                 liked,
-                isDeleted);
+                isDeleted,
+                false);
     }
 }

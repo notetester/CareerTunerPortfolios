@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import type { ChangeEvent, ReactNode } from "react";
 import type { LucideIcon } from "lucide-react";
 import {
+  Ban,
   Bell,
   BellOff,
   Briefcase,
@@ -18,6 +19,7 @@ import {
   Search,
   Send,
   UserPlus,
+  UserX,
   Users,
   X,
 } from "lucide-react";
@@ -62,6 +64,10 @@ import type {
   MessageKind,
   MessageResponse,
 } from "../types/collaboration";
+// 개인 차단 진입점 — 코어(/api/privacy)는 사용만 하고 수정하지 않는다 (docs/PERSONAL_BLOCK_POLICY.md §4).
+import { blockConversation, blockUser } from "@/features/privacy/api/privacyApi";
+import { showBlockManageToast } from "@/features/privacy/components/blockToast";
+import type { BlockedMarker } from "@/features/privacy/types";
 
 const ROOM_TYPES: Array<{ value: Exclude<ConversationType, "DIRECT">; label: string; icon: LucideIcon }> = [
   { value: "GROUP", label: "친구 단체방", icon: Users },
@@ -459,6 +465,23 @@ export function MessengerPage() {
     await downloadCollaborationAttachment(file);
   });
 
+  /** 사용자 차단 — 조용한 차단(상대에게 알리지 않음). 차단 직후 메시지 목록을 다시 받아 톰스톤을 반영한다. */
+  const blockUserQuietly = (target: CollaborationUser) => execute(async () => {
+    await blockUser({ targetUserId: target.id });
+    showBlockManageToast(`${userLabel(target)}님을 차단했습니다.`);
+    await Promise.all([refreshConversations(), loadMessages(activeConversationId)]);
+  });
+
+  /** 채팅방 차단 — 방 숨김 + 그 방 관련 초대 차단(연속 초대 테러 방지 파생 규칙 포함). */
+  const blockRoomQuietly = (conversation: ConversationSummaryResponse) => execute(async () => {
+    await blockConversation({ conversationId: conversation.id });
+    showBlockManageToast(
+      `'${conversation.displayName}' 채팅방을 차단했습니다.`,
+      "방이 목록에서 숨겨지고 이 방 관련 초대가 차단됩니다.",
+    );
+    await refreshConversations();
+  });
+
   return (
     <main className="min-h-[calc(100vh-8rem)] bg-muted/30 pb-28">
       <div className="mx-auto w-full max-w-[1500px] px-3 py-4 sm:px-6 lg:px-8">
@@ -613,25 +636,41 @@ export function MessengerPage() {
                         user={user}
                         meta={<div className="mt-1 text-xs text-muted-foreground">{user.relationStatus ?? "NONE"}</div>}
                         action={
-                          user.relationStatus === "FRIEND" ? (
-                            <Button type="button" size="sm" variant="outline" onClick={() => openDirect(user.id)} disabled={busy}>
-                              <MessageSquare className="size-4" />
-                              DM
-                            </Button>
-                          ) : user.relationStatus === "REQUESTED" ? (
-                            <Button type="button" size="sm" variant="outline" disabled>
-                              요청됨
-                            </Button>
-                          ) : user.relationStatus === "PENDING_INCOMING" ? (
-                            <Button type="button" size="sm" variant="outline" disabled>
-                              받은 요청
-                            </Button>
-                          ) : (
-                            <Button type="button" size="sm" onClick={() => requestFriend(user.id)} disabled={busy}>
-                              <UserPlus className="size-4" />
-                              요청
-                            </Button>
-                          )
+                          <div className="flex items-center gap-1">
+                            {user.relationStatus === "FRIEND" ? (
+                              <Button type="button" size="sm" variant="outline" onClick={() => openDirect(user.id)} disabled={busy}>
+                                <MessageSquare className="size-4" />
+                                DM
+                              </Button>
+                            ) : user.relationStatus === "REQUESTED" ? (
+                              <Button type="button" size="sm" variant="outline" disabled>
+                                요청됨
+                              </Button>
+                            ) : user.relationStatus === "PENDING_INCOMING" ? (
+                              <Button type="button" size="sm" variant="outline" disabled>
+                                받은 요청
+                              </Button>
+                            ) : (
+                              <Button type="button" size="sm" onClick={() => requestFriend(user.id)} disabled={busy}>
+                                <UserPlus className="size-4" />
+                                요청
+                              </Button>
+                            )}
+                            {user.relationStatus !== "SELF" && (
+                              <Button
+                                type="button"
+                                size="icon"
+                                variant="outline"
+                                className="text-destructive"
+                                onClick={() => blockUserQuietly(user)}
+                                disabled={busy}
+                                aria-label="이 사용자 차단"
+                                title="이 사용자 차단"
+                              >
+                                <UserX className="size-4" />
+                              </Button>
+                            )}
+                          </div>
                         }
                       />
                     ))}
@@ -685,6 +724,18 @@ export function MessengerPage() {
                               <UserPlus className="size-4" />
                             </Button>
                           )}
+                          <Button
+                            type="button"
+                            size="icon"
+                            variant="outline"
+                            className="text-destructive"
+                            onClick={() => blockUserQuietly(friend.user)}
+                            disabled={busy}
+                            aria-label="이 사용자 차단"
+                            title="이 사용자 차단"
+                          >
+                            <UserX className="size-4" />
+                          </Button>
                         </div>
                       }
                     />
@@ -767,6 +818,32 @@ export function MessengerPage() {
                 >
                   {activeConversation.muted ? <BellOff className="size-4" /> : <Bell className="size-4" />}
                 </Button>
+                {activeConversation.type === "DIRECT" && activeConversation.peer && (
+                  <Button
+                    type="button"
+                    size="icon"
+                    variant="outline"
+                    className="text-destructive"
+                    onClick={() => blockUserQuietly(activeConversation.peer!)}
+                    disabled={busy}
+                    aria-label="대화 상대 차단"
+                    title="대화 상대 차단"
+                  >
+                    <UserX className="size-4" />
+                  </Button>
+                )}
+                <Button
+                  type="button"
+                  size="icon"
+                  variant="outline"
+                  className="text-destructive"
+                  onClick={() => blockRoomQuietly(activeConversation)}
+                  disabled={busy}
+                  aria-label="이 채팅방 차단"
+                  title="이 채팅방 차단 — 방 숨김 + 관련 초대 차단"
+                >
+                  <Ban className="size-4" />
+                </Button>
               </div>
             )}
           >
@@ -801,7 +878,19 @@ export function MessengerPage() {
                       <div className="flex h-48 items-center justify-center rounded-md border border-dashed border-border bg-background text-sm text-muted-foreground">
                         첫 메시지를 보내보세요.
                       </div>
-                    ) : messages.map((message) => (
+                    ) : messages.map((message) => {
+                      // 서버가 뷰어 기준으로 차단 처리한 메시지 — 톰스톤만 렌더("한 번 보기" 없음, 조용한 차단).
+                      const tombstoned = (message as MessageResponse & BlockedMarker).blocked === true;
+                      if (tombstoned) {
+                        return (
+                          <div key={message.id} className="flex justify-start">
+                            <div className="max-w-[min(92%,720px)] rounded-lg border border-dashed border-border bg-muted/40 px-3 py-2">
+                              <p className="text-sm italic text-muted-foreground">차단한 사용자의 메시지입니다.</p>
+                            </div>
+                          </div>
+                        );
+                      }
+                      return (
                       <div key={message.id} className={cn("flex", message.mine ? "justify-end" : "justify-start")}>
                         <div
                           className={cn(
@@ -841,7 +930,8 @@ export function MessengerPage() {
                           )}
                         </div>
                       </div>
-                    ))}
+                      );
+                    })}
                   </div>
 
                   <div className="space-y-3 border-t border-border p-4">
