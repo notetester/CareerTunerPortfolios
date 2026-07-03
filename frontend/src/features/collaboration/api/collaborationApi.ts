@@ -143,7 +143,16 @@ export async function downloadCollaborationAttachment(file: MessageAttachmentRes
   });
 
   if (!response.ok) {
-    throw new Error(`다운로드에 실패했습니다 (${response.status})`);
+    // 서버 envelope 의 message 를 우선 노출 — LOCAL 공유는 소유자 데스크톱이
+    // 목록 조회와 클릭 사이에 오프라인이 되면 CONFLICT 안내 문구가 내려온다.
+    let message = `다운로드에 실패했습니다 (${response.status})`;
+    try {
+      const body = (await response.json()) as { message?: string };
+      if (body?.message) message = body.message;
+    } catch {
+      // envelope 이 아닌 응답 — 기본 문구 유지
+    }
+    throw new Error(message);
   }
 
   const blob = await response.blob();

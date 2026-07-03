@@ -28,6 +28,10 @@ void NotificationPoller::stop()
 
 void NotificationPoller::pollNow()
 {
+    // LOCAL 파일 공유 게이트용 데스크톱 presence heartbeat — 폴링 틱마다 best-effort 로
+    // 남긴다(실패 무시). 폴러는 로그인 시 start(), 로그아웃 시 stop() 되므로 로그인 상태에서만 돈다.
+    m_api->post(QStringLiteral("/api/collaboration/desktop-presence"), QJsonObject(),
+        [](bool, const QJsonValue&, const QString&) {});
     m_api->get(QStringLiteral("/api/notifications/preferences"),
         [this](bool ok, const QJsonValue& data, const QString&) {
             if (ok) {

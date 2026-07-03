@@ -195,9 +195,14 @@ function AttachmentButton({
   file: MessageAttachmentResponse;
   onDownload: (file: MessageAttachmentResponse) => void;
 }) {
-  // LOCAL 공유 첨부는 데스크톱 앱에서만 받을 수 있어 웹/모바일에서는 항상 비활성 표시한다.
-  const desktopOnly = file.shareMode === "LOCAL";
-  const available = !desktopOnly && file.availability === "AVAILABLE";
+  // LOCAL 공유 첨부는 소유자 데스크톱이 온라인일 때만 서버가 실제 전송을 허용한다.
+  // (업로드 옵션은 데스크톱 전용으로 유지 — 웹/모바일은 다운로드만.)
+  const isLocal = file.shareMode === "LOCAL";
+  const ownerOnline = file.ownerDesktopOnline === true;
+  const available = isLocal ? ownerOnline : file.availability === "AVAILABLE";
+  const localHint = ownerOnline
+    ? "소유자 데스크톱이 온라인이에요 — 지금 받을 수 있어요"
+    : "소유자 데스크톱이 온라인일 때 받을 수 있어요";
 
   return (
     <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-border bg-background/80 px-3 py-2">
@@ -207,7 +212,9 @@ function AttachmentButton({
           <span className="truncate">{file.originalName}</span>
         </div>
         <div className="mt-0.5 text-xs text-muted-foreground">
-          {desktopOnly ? "데스크톱 전용 파일" : SHARE_MODE_LABEL[file.shareMode]} · {formatBytes(file.sizeBytes)}
+          {isLocal
+            ? `${SHARE_MODE_LABEL.LOCAL} · ${ownerOnline ? "소유자 온라인" : "소유자 오프라인"}`
+            : SHARE_MODE_LABEL[file.shareMode]} · {formatBytes(file.sizeBytes)}
           {file.expiresAt ? ` · ${formatDateTime(file.expiresAt)} 만료` : ""}
         </div>
       </div>
@@ -217,10 +224,10 @@ function AttachmentButton({
         variant="outline"
         disabled={!available}
         onClick={() => onDownload(file)}
-        title={desktopOnly ? "데스크톱 앱에서만 받을 수 있는 파일입니다." : AVAILABILITY_LABEL[file.availability]}
+        title={isLocal ? localHint : AVAILABILITY_LABEL[file.availability]}
       >
         <Download className="size-4" />
-        {available ? "받기" : desktopOnly ? "데스크톱 전용" : AVAILABILITY_LABEL[file.availability]}
+        {available ? "받기" : isLocal ? "소유자 오프라인" : AVAILABILITY_LABEL[file.availability]}
       </Button>
     </div>
   );

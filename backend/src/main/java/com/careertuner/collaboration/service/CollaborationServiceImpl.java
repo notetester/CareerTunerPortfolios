@@ -1,9 +1,11 @@
 package com.careertuner.collaboration.service;
 
 import java.time.LocalDateTime;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.stream.Collectors;
@@ -17,6 +19,7 @@ import com.careertuner.collaboration.domain.CollaborationMessage;
 import com.careertuner.collaboration.domain.CollaborationUserRow;
 import com.careertuner.collaboration.domain.ConversationMemberRow;
 import com.careertuner.collaboration.domain.ConversationSummaryRow;
+import com.careertuner.collaboration.domain.DesktopPresenceRow;
 import com.careertuner.collaboration.domain.FriendRequest;
 import com.careertuner.collaboration.domain.FriendRequestRow;
 import com.careertuner.collaboration.domain.FriendRow;
@@ -64,6 +67,8 @@ public class CollaborationServiceImpl implements CollaborationService {
     private static final Set<String> MESSAGE_KINDS = Set.of("CHAT", "NOTE");
     private static final Set<String> ROOM_TYPES = Set.of("GROUP", "PUBLIC", "PRIVATE");
     private static final Set<String> ATTACHMENT_SHARE_MODES = Set.of("TEMPORARY", "CLOUD", "LOCAL");
+    /** 데스크톱 heartbeat(30초 폴링) 유예 포함 온라인 판정 창 — 이 시간 안에 heartbeat 가 있으면 온라인. */
+    private static final int DESKTOP_ONLINE_WINDOW_SECONDS = 90;
 
     /** 차단 사실을 특정할 수 없는 일반 거부 문구 (silent deny — docs/PERSONAL_BLOCK_POLICY.md §4). */
     private static final String GENERIC_DENY_DM = "지금은 이 사용자와 대화를 시작할 수 없습니다.";
@@ -401,10 +406,22 @@ public class CollaborationServiceImpl implements CollaborationService {
                 .collect(Collectors.toSet());
         Set<Long> blockedSenders =
                 privacyPolicyService.blockedAuthorsAmong(userId, senderIds, PrivacySurfaces.CONTENT_ROOM_MESSAGE);
+        // 노출될(비차단) 메시지의 첨부를 먼저 모아 LOCAL 소유자 presence 를 1쿼리로 벌크 조회한다.
+        Map<Long, List<MessageAttachmentRow>> attachmentRowsByMessage = new LinkedHashMap<>();
+        for (CollaborationMessage message : messages) {
+            if (!blockedSenders.contains(message.getSenderId())) {
+                attachmentRowsByMessage.put(message.getId(), mapper.findAttachmentsByMessageId(message.getId()));
+            }
+        }
+        Map<Long, LocalDateTime> presenceByOwner = desktopPresenceOf(attachmentRowsByMessage.values().stream()
+                .flatMap(List::stream)
+                .toList());
         List<MessageResponse> responses = messages.stream()
                 .map(message -> blockedSenders.contains(message.getSenderId())
                         ? toBlockedMessageResponse(message, userId)
-                        : toMessageResponse(message, userId))
+                        : toMessageResponse(message, userId,
+                                attachmentRowsByMessage.getOrDefault(message.getId(), List.of()),
+                                presenceByOwner))
                 .toList();
         Long latestId = mapper.findLatestMessageId(conversationId);
         if (latestId != null) {
@@ -506,10 +523,19 @@ public class CollaborationServiceImpl implements CollaborationService {
         if ("CLOUD".equals(shareMode) && !isPaidPlan(attachment.getOwnerPlan())) {
             throw new BusinessException(ErrorCode.FORBIDDEN, "파일 소유자의 유료 플랜이 비활성화되어 다운로드할 수 없습니다.");
         }
-        if ("LOCAL".equals(shareMode)) {
-            throw new BusinessException(ErrorCode.CONFLICT, "로컬 파일 공유는 파일 소유자의 데스크톱 세션 연결이 필요합니다.");
+        if ("LOCAL".equals(shareMode)
+                && !isDesktopOnline(mapper.findDesktopLastSeenAt(attachment.getOwnerUserId()))) {
+            // LOCAL 공유는 소유자 데스크톱이 온라인(heartbeat 90초 이내)일 때만 전송한다
+            throw new BusinessException(ErrorCode.CONFLICT,
+                    "파일 소유자의 데스크톱이 온라인이 아닙니다 — 온라인이 되면 다운로드할 수 있습니다.");
         }
         return fileService.downloadAfterAccessCheck(fileId);
+    }
+
+    @Override
+    @Transactional
+    public void touchDesktopPresence(Long userId) {
+        mapper.upsertDesktopPresence(userId);
     }
 
     private CollaborationUserRow requireActiveUser(Long userId) {
@@ -781,8 +807,15 @@ public class CollaborationServiceImpl implements CollaborationService {
     }
 
     private MessageResponse toMessageResponse(CollaborationMessage message, Long viewerId) {
-        List<MessageAttachmentResponse> attachments = mapper.findAttachmentsByMessageId(message.getId()).stream()
-                .map(this::toAttachmentResponse)
+        List<MessageAttachmentRow> attachmentRows = mapper.findAttachmentsByMessageId(message.getId());
+        return toMessageResponse(message, viewerId, attachmentRows, desktopPresenceOf(attachmentRows));
+    }
+
+    private MessageResponse toMessageResponse(CollaborationMessage message, Long viewerId,
+                                              List<MessageAttachmentRow> attachmentRows,
+                                              Map<Long, LocalDateTime> presenceByOwner) {
+        List<MessageAttachmentResponse> attachments = attachmentRows.stream()
+                .map(row -> toAttachmentResponse(row, presenceByOwner))
                 .toList();
         List<SharedPostingResponse> postings = mapper.findPostingsByMessageId(message.getId()).stream()
                 .map(this::toPostingResponse)
@@ -818,10 +851,17 @@ public class CollaborationServiceImpl implements CollaborationService {
                 true);
     }
 
-    private MessageAttachmentResponse toAttachmentResponse(MessageAttachmentRow row) {
+    private MessageAttachmentResponse toAttachmentResponse(MessageAttachmentRow row,
+                                                           Map<Long, LocalDateTime> presenceByOwner) {
         String shareMode = row.getShareMode() == null ? "TEMPORARY" : row.getShareMode();
         String availability = attachmentAvailability(row);
-        String downloadUrl = "AVAILABLE".equals(availability)
+        // LOCAL 공유일 때만 소유자 데스크톱 온라인 여부를 세팅 — UI 가 상태 기반으로 다운로드를 안내한다
+        Boolean ownerDesktopOnline = "LOCAL".equals(shareMode)
+                ? isDesktopOnline(presenceByOwner.get(row.getOwnerUserId()))
+                : null;
+        boolean downloadable = "AVAILABLE".equals(availability)
+                || ("LOCAL_ONLY".equals(availability) && Boolean.TRUE.equals(ownerDesktopOnline));
+        String downloadUrl = downloadable
                 ? "/api/collaboration/files/" + row.getFileAssetId() + "/content"
                 : null;
         return new MessageAttachmentResponse(
@@ -832,7 +872,30 @@ public class CollaborationServiceImpl implements CollaborationService {
                 shareMode,
                 availability,
                 row.getExpiresAt(),
-                downloadUrl);
+                downloadUrl,
+                ownerDesktopOnline);
+    }
+
+    /** 첨부 목록의 LOCAL 소유자 presence 벌크 조회 — 소유자가 없으면 쿼리 없이 빈 맵. */
+    private Map<Long, LocalDateTime> desktopPresenceOf(List<MessageAttachmentRow> rows) {
+        Set<Long> ownerIds = rows.stream()
+                .filter(row -> "LOCAL".equals(row.getShareMode()))
+                .map(MessageAttachmentRow::getOwnerUserId)
+                .filter(Objects::nonNull)
+                .collect(Collectors.toSet());
+        if (ownerIds.isEmpty()) {
+            return Map.of();
+        }
+        return mapper.findDesktopPresenceByUserIds(ownerIds).stream()
+                .filter(presence -> presence.getLastSeenAt() != null)
+                .collect(Collectors.toMap(DesktopPresenceRow::getUserId, DesktopPresenceRow::getLastSeenAt,
+                        (first, second) -> second));
+    }
+
+    /** heartbeat 가 판정 창(90초) 이내면 데스크톱 온라인으로 본다. */
+    private boolean isDesktopOnline(LocalDateTime lastSeenAt) {
+        return lastSeenAt != null
+                && lastSeenAt.isAfter(LocalDateTime.now().minusSeconds(DESKTOP_ONLINE_WINDOW_SECONDS));
     }
 
     private String attachmentAvailability(MessageAttachmentRow row) {

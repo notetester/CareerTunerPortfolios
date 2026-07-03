@@ -491,7 +491,9 @@ QVariantMap CollaborationClient::messageMap(const QJsonObject& message) const
             {"shareMode", file.value("shareMode").toString()},
             {"availability", file.value("availability").toString()},
             {"expiresAt", file.value("expiresAt").toString()},
-            {"downloadUrl", file.value("downloadUrl").toString()}
+            {"downloadUrl", file.value("downloadUrl").toString()},
+            // LOCAL 공유일 때만 서버가 세팅 — 소유자 데스크톱 온라인 여부(미세팅 시 false)
+            {"ownerDesktopOnline", file.value("ownerDesktopOnline").toBool(false)}
         });
     }
     QVariantList postings;
