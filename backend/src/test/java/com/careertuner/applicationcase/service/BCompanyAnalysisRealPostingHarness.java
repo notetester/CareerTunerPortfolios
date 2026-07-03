@@ -20,6 +20,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 import org.mockito.Mockito;
 
+import com.careertuner.ai.common.gpu.GpuPermitGate;
 import com.careertuner.applicationcase.domain.ApplicationCase;
 import com.careertuner.companyanalysis.service.BCompanyAnalysisCanonicalizer;
 import com.careertuner.companyanalysis.service.BCompanyAnalysisCanonicalizer.CanonicalCompanyAnalysis;
@@ -183,7 +184,7 @@ class BCompanyAnalysisRealPostingHarness {
             // 모델은 application.yaml 기본값(careertuner-b-jobposting-r1)을 그대로 사용.
             properties.getLocalLlm().setMaxRetries(0); // 검증은 1회 호출만(폴백 관찰 목적).
 
-            BLocalLlmClient realClient = new BLocalLlmClient(properties);
+            BLocalLlmClient realClient = new BLocalLlmClient(properties, GpuPermitGate.disabled());
             BLocalLlmClient spy = Mockito.spy(realClient);
             final String[] rawHolder = new String[1];
             doAnswer(invocation -> {
