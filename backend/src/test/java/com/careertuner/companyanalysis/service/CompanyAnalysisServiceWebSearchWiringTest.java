@@ -1,10 +1,12 @@
 package com.careertuner.companyanalysis.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.clearInvocations;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
@@ -31,6 +33,7 @@ import com.careertuner.companyanalysis.websearch.CompanyIdentity;
 import com.careertuner.companyanalysis.websearch.CompanySourceResolver;
 import com.careertuner.companyanalysis.websearch.CompanyWebEvidence;
 import com.careertuner.companyanalysis.websearch.CompanyWebSearchClient;
+import com.careertuner.companyanalysis.websearch.CompanyWebSearchException;
 import com.careertuner.companyanalysis.websearch.CompanyWebSearchProperties;
 import com.careertuner.companyanalysis.websearch.CompanyWebSearchResult;
 import com.careertuner.companyanalysis.websearch.NaverSearchCategory;
@@ -39,8 +42,9 @@ import com.careertuner.notification.service.NotificationService;
 import tools.jackson.databind.ObjectMapper;
 
 /**
- * D-4b 웹검색 배선 검증(비R1·비네트워크). flag OFF 불변, MISS 검색·정제·캐시 put, HIT 검색 미호출,
- * 빈결과도 put→재조회 HIT, query_key 회사 단위 정규화를 collectWebEvidence/companyCacheKey 직접 호출로 고정한다.
+ * 웹검색 배선 검증(비R1·비네트워크 · D-4b/D-4c). flag OFF 불변, MISS 검색·정제·캐시 put, HIT 검색 미호출,
+ * 빈결과도 put→재조회 HIT, query_key 회사 단위 정규화, 그리고 D-4c 의 검색 실패 degrade(공고-only 후퇴·
+ * 실패 시 put 미호출)·비용 상한(검색 호출/결과 수)을 collectWebEvidence 직접 호출로 고정한다.
  * 웹검색 client 는 mock(실호출 없음), 캐시는 in-memory mapper 로 put 지속을 재현한다.
  */
 class CompanyAnalysisServiceWebSearchWiringTest {
@@ -173,6 +177,83 @@ class CompanyAnalysisServiceWebSearchWiringTest {
 
         assertThat(second).isEmpty();
         verify(webSearchClient, never()).search(any(), any()); // 빈결과도 HIT → 재검색 없음
+    }
+
+    // ── D-4c degrade: 검색 실패 → 공고-only 후퇴, 실패는 캐시에 굳히지 않음 ──
+
+    @Test
+    void searchFailureDegradesToJobPostingOnlyWithoutThrowing() {
+        CompanyAnalysisService service = service(enabled(true));
+        when(webSearchClient.search(any(NaverSearchCategory.class), any(String.class)))
+                .thenThrow(new CompanyWebSearchException("네이버 검색 요청이 실패했습니다. status=500, errorCode=unknown (category=NEWS)"));
+
+        assertThatCode(() -> {
+            List<CompanyWebEvidence> evidence = service.collectWebEvidence(applicationCase("가온테크"));
+            assertThat(evidence).isEmpty(); // 공고-only 후퇴(빈 목록) — 분석은 계속된다.
+        }).doesNotThrowAnyException();
+    }
+
+    /** ★ 검색 예외 시 실패를 "[]" 로 캐시에 굳히지 않는다(put 미호출) — 7일 HIT 방지. */
+    @Test
+    void searchFailureDoesNotWriteEmptyResultToCache() {
+        CompanyAnalysisService service = service(enabled(true));
+        when(webSearchClient.search(any(NaverSearchCategory.class), any(String.class)))
+                .thenThrow(new CompanyWebSearchException("네이버 검색 API와 통신하지 못했습니다. (category=NEWS)"));
+
+        service.collectWebEvidence(applicationCase("가온테크"));
+
+        assertThat(cacheMapper.store).isEmpty(); // put 이 실행되지 않아 캐시가 비어 있다.
+    }
+
+    /** 정상 검색이 0건이면 기존 D-4b 계약대로 "[]" put 을 유지한다(실패 degrade 와 구분). */
+    @Test
+    void emptySuccessfulSearchStillCachesEmptyUnlikeFailureDegrade() {
+        CompanyAnalysisService service = service(enabled(true));
+        when(webSearchClient.search(any(NaverSearchCategory.class), any(String.class))).thenReturn(List.of());
+
+        service.collectWebEvidence(applicationCase("가온테크"));
+
+        assertThat(cacheMapper.store.get("가온테크")).isNotNull();
+        assertThat(cacheMapper.store.get("가온테크").getResults()).isEqualTo("[]");
+    }
+
+    // ── D-4c 비용 상한: 검색 호출 수·결과 수 상한을 프로퍼티로 조정 ──
+
+    @Test
+    void searchCallCapLimitsInvocationsPerAnalysis() {
+        CompanyWebSearchProperties properties = enabled(true);
+        properties.setMaxSearchCallsPerAnalysis(2);
+        CompanyAnalysisService service = service(properties);
+        // 카테고리마다 고유 URL 1건 → 결과 상한엔 안 걸리고 호출 상한만 작동.
+        when(webSearchClient.search(any(NaverSearchCategory.class), any(String.class)))
+                .thenAnswer(invocation -> List.of(result("가온테크",
+                        "https://news.example.com/" + System.nanoTime(), "가온테크 관련")));
+
+        service.collectWebEvidence(applicationCase("가온테크"));
+
+        verify(webSearchClient, times(2)).search(any(NaverSearchCategory.class), any(String.class));
+    }
+
+    @Test
+    void resultCapStopsEarlyWhenEnoughResultsCollected() {
+        CompanyWebSearchProperties properties = enabled(true);
+        properties.setMaxResultsPerAnalysis(1);
+        CompanyAnalysisService service = service(properties);
+        // 첫 호출에서 결과 상한(1) 도달 → 다음 카테고리 조회 전에 조기 중단.
+        when(webSearchClient.search(any(NaverSearchCategory.class), any(String.class))).thenReturn(List.of(
+                result("가온테크", "https://news.example.com/1", "가온테크 관련")));
+
+        service.collectWebEvidence(applicationCase("가온테크"));
+
+        verify(webSearchClient, times(1)).search(any(NaverSearchCategory.class), any(String.class));
+    }
+
+    @Test
+    void defaultCostCapsAreFourCallsAndTwelveResults() {
+        CompanyWebSearchProperties properties = new CompanyWebSearchProperties();
+
+        assertThat(properties.getMaxSearchCallsPerAnalysis()).isEqualTo(4);
+        assertThat(properties.getMaxResultsPerAnalysis()).isEqualTo(12);
     }
 
     // ── query_key 회사 단위 정규화 ──

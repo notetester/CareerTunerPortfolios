@@ -31,6 +31,7 @@ import com.careertuner.companyanalysis.websearch.CompanyIdentity;
 import com.careertuner.companyanalysis.websearch.CompanySourceResolver;
 import com.careertuner.companyanalysis.websearch.CompanyWebEvidence;
 import com.careertuner.companyanalysis.websearch.CompanyWebSearchClient;
+import com.careertuner.companyanalysis.websearch.CompanyWebSearchException;
 import com.careertuner.companyanalysis.websearch.CompanyWebSearchProperties;
 import com.careertuner.companyanalysis.websearch.CompanyWebSearchResult;
 import com.careertuner.companyanalysis.websearch.NaverSearchCategory;
@@ -39,19 +40,19 @@ import com.careertuner.notification.domain.Notification;
 import com.careertuner.notification.service.NotificationService;
 
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import tools.jackson.core.JacksonException;
 import tools.jackson.databind.ObjectMapper;
 
 @Service
 @RequiredArgsConstructor
+@Slf4j
 public class CompanyAnalysisService {
 
     private static final String FEATURE_COMPANY_RESEARCH = "COMPANY_RESEARCH";
     private static final int COMPANY_INDUSTRY_MAX_LENGTH = 100;
 
-    // 웹검색 MISS 경로의 무한검색 방지 가드(비용 상한 아님 — 그건 D-4c). 조기중단용.
-    private static final int MAX_SEARCH_CALLS = 8;
-    private static final int MAX_CACHED_RESULTS = 12;
+    // 검색 호출·결과 상한은 CompanyWebSearchProperties(비용 상한 · D-4c)로 조정한다.
     private static final NaverSearchCategory[] SEARCH_CATEGORIES = NaverSearchCategory.values();
 
     private final ApplicationCaseAccessService accessService;
@@ -192,7 +193,7 @@ public class CompanyAnalysisService {
         return toResponse(companyAnalysisMapper.findCompanyAnalysisByIdAndCaseId(analysisId, applicationCaseId));
     }
 
-    // ── D-4b 웹검색 배선 (flag ON 경로) ──
+    // ── 웹검색 배선 (flag ON 경로 · D-4b/D-4c) ──
 
     /**
      * 공고+WEB 2소스용 WEB evidence 수집. flag OFF(기본) 또는 회사명 부재면 빈 목록을 반환해
@@ -200,6 +201,12 @@ public class CompanyAnalysisService {
      *
      * <p>flag ON: 회사 식별 → 캐시 조회(HIT 면 검색 미호출) → MISS 면 검색·정제 후 캐시 저장 →
      * (HIT/MISS 공통) 정제된 검색결과를 {@link CompanyEvidenceCollector} 로 매번 재실행해 evidence 생성.
+     *
+     * <p><b>degrade(D-4c):</b> flag ON 인데 웹검색이 실패({@link CompanyWebSearchException})하면 분석 전체를
+     * 실패시키지 않고 공고-only(빈 목록)로 후퇴한다. 이후 {@code generateCompanyAnalysis} 의 기존 폴백 체인이
+     * 그대로 동작한다. 실패는 캐시에 굳히지 않는다 — put 은 {@link #resolveSearchResults} 의 검색 성공 뒤에만
+     * 실행되므로 예외 시 put 이 호출되지 않는다("[]" 로 7일 HIT 되는 것을 방지). 관측성 오염 방지를 위해
+     * recordFailure 는 남기지 않고 WARN 로그만 남긴다(예외 메시지는 D-1 규약상 시크릿·응답 body 미포함).
      */
     List<CompanyWebEvidence> collectWebEvidence(ApplicationCase applicationCase) {
         if (!companyWebSearchProperties.isEnabled()) {
@@ -214,7 +221,13 @@ public class CompanyAnalysisService {
             // 법인표기·기호만 남아 정규화 후 회사 식별 불가 — 검색/캐시 하지 않는다(put 빈 key 예외 방지).
             return List.of();
         }
-        List<CompanyWebSearchResult> results = resolveSearchResults(identity, queryKey);
+        List<CompanyWebSearchResult> results;
+        try {
+            results = resolveSearchResults(identity, queryKey);
+        } catch (CompanyWebSearchException ex) {
+            log.warn("기업분석 웹검색 실패 — 공고-only 로 degrade 합니다: {}", ex.getMessage());
+            return List.of();
+        }
         // evidence 는 캐시하지 않는다 — HIT/MISS 공통으로 collector 를 매번 재실행한다.
         return companyEvidenceCollector.collect(identity, results);
     }
@@ -235,14 +248,16 @@ public class CompanyAnalysisService {
     /**
      * 검색 실행(MISS). 회사명+힌트 쿼리(구체→폴백)를 카테고리별로 조회하고
      * 동명 불일치 제거 → URL blank/null 제외 → 정규화 URL 중복 제거 를 적용한 결과만 반환한다.
-     * 무한검색 방지를 위해 호출 수·결과 수 상한에서 조기 중단한다(비용 상한은 D-4c).
+     * 분석 1건당 검색 호출·결과 수 상한(비용 상한 · D-4c, {@link CompanyWebSearchProperties})에서 조기 중단한다.
      */
     private List<CompanyWebSearchResult> runSearch(CompanyIdentity identity) {
+        int maxSearchCalls = companyWebSearchProperties.getMaxSearchCallsPerAnalysis();
+        int maxResults = companyWebSearchProperties.getMaxResultsPerAnalysis();
         LinkedHashMap<String, CompanyWebSearchResult> byUrl = new LinkedHashMap<>();
         int calls = 0;
         for (String query : companySourceResolver.buildQueries(identity)) {
             for (NaverSearchCategory category : SEARCH_CATEGORIES) {
-                if (calls >= MAX_SEARCH_CALLS || byUrl.size() >= MAX_CACHED_RESULTS) {
+                if (calls >= maxSearchCalls || byUrl.size() >= maxResults) {
                     return List.copyOf(byUrl.values());
                 }
                 calls++;
