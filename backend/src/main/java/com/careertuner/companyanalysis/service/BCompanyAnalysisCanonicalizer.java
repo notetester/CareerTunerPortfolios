@@ -12,6 +12,7 @@ import org.springframework.stereotype.Service;
 
 import com.careertuner.applicationcase.service.OpenAiResponsesClient.CompanyAnalysisPayload;
 import com.careertuner.companyanalysis.ai.prompt.CompanyAnalysisPromptCatalog;
+import com.careertuner.companyanalysis.websearch.CompanyWebEvidence;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -32,6 +33,10 @@ import tools.jackson.databind.node.ObjectNode;
  * <ul>
  *   <li>verifiedFacts evidence gate — evidence 가 입력 원문에 정규화 매칭되는지 확인하고,
  *       실패한 fact 는 제거하거나 {@code aiInferences confidence=LOW} 로 강등한다.</li>
+ *   <li>2소스 확장(235 §3 · D-2) — WEB 근거({@code CompanyWebEvidence})가 주어지면 공고 corpus
+ *       매칭 실패 fact 를 WEB 스니펫과 추가 대조해 SUPPORTED 경로를 넓히고, WEB 통과 fact 는
+ *       {@code sourceKind=WEB} + URL sourceRef 를 보존한다. WEB 근거가 없으면 종전과 동일하며
+ *       기존 강등/제거 판정은 완화하지 않는다. 자유서술 guard 는 공고 corpus 기준 유지(D-3 이후 확장).</li>
  *   <li>누락/중복 factId·inferenceId 보정, sourceKind 허용값 제한, sourceRef 보정.</li>
  *   <li>basedOn 이 존재하지 않는 factId 를 참조하면 제거하고, 근거 없는 추론은 LOW 로 강등.</li>
  *   <li>unknowns 를 저장 직전 {@code aiInferences kind=UNKNOWN} 마커로 접고(DB 무변경),
@@ -56,6 +61,7 @@ public class BCompanyAnalysisCanonicalizer {
 
     public static final String KIND_UNKNOWN = "UNKNOWN";
     public static final String SOURCE_KIND_JOB_POSTING = "JOB_POSTING";
+    public static final String SOURCE_KIND_WEB = "WEB";
 
     /** gate 처리 결과 — 하네스 계측과 로그용. */
     public enum GateOutcome { PASSED, DEMOTED, REMOVED }
@@ -67,7 +73,7 @@ public class BCompanyAnalysisCanonicalizer {
     }
 
     private static final Set<String> ALLOWED_SOURCE_KINDS =
-            Set.of("JOB_POSTING", "UPLOADED_COMPANY_DOC", "USER_MEMO");
+            Set.of("JOB_POSTING", "UPLOADED_COMPANY_DOC", "USER_MEMO", "WEB");
     private static final Set<String> CONFIDENCE_VALUES = Set.of("HIGH", "MEDIUM", "LOW");
 
     // evidence 정규화 매칭 파라미터. 너무 엄격하면 OCR spacing 으로 정상 fact 를 과제거하고,
@@ -100,6 +106,8 @@ public class BCompanyAnalysisCanonicalizer {
     /**
      * 모델 출력 payload 를 저장 직전 한 번 정규화한다. unknowns 는 aiInferences 의
      * {@code kind=UNKNOWN} 마커로 접혀 반환 payload 의 {@code unknowns} 는 빈 배열이 된다.
+     *
+     * <p>기존 단일소스(공고) 진입점 — WEB 근거 없이 호출하면 종전 동작과 완전히 동일하다.
      */
     public CanonicalCompanyAnalysis canonicalizeForStorage(CompanyAnalysisPayload payload,
                                                            Long jobPostingId,
@@ -107,6 +115,24 @@ public class BCompanyAnalysisCanonicalizer {
                                                            String postingText,
                                                            String companyName,
                                                            String jobTitle) {
+        return canonicalizeForStorage(payload, jobPostingId, jobPostingRevision,
+                postingText, companyName, jobTitle, List.of());
+    }
+
+    /**
+     * 2소스 확장 진입점(235 §3 · D-2). verifiedFacts 대조에 WEB 근거를 <b>추가</b>한다 —
+     * 공고 corpus 또는 WEB 근거 어느 쪽으로든 SUPPORTED 면 통과하고, WEB 으로 통과한 fact 는
+     * {@code sourceKind=WEB} + URL sourceRef 를 보존한다. WEB 근거가 빈 목록이면 기존
+     * 단일소스 경로와 동일하게 동작하며, 기존 DEMOTE/REMOVE 판정은 완화하지 않는다.
+     * 자유서술 guard({@link #guardFreeText})는 공고 corpus 기준을 유지한다(WEB 확장은 D-3 이후).
+     */
+    public CanonicalCompanyAnalysis canonicalizeForStorage(CompanyAnalysisPayload payload,
+                                                           Long jobPostingId,
+                                                           Integer jobPostingRevision,
+                                                           String postingText,
+                                                           String companyName,
+                                                           String jobTitle,
+                                                           List<CompanyWebEvidence> webEvidence) {
         List<GateAction> actions = new ArrayList<>();
         // 회사명/직무명은 기업분석의 1급 입력이라 원문 매칭 코퍼스에 포함한다(프롬프트 계약의 source 후보와 동일).
         String rawCorpus = String.join("\n", nullToEmpty(postingText), nullToEmpty(companyName), nullToEmpty(jobTitle));
@@ -119,7 +145,7 @@ public class BCompanyAnalysisCanonicalizer {
         ArrayNode keptFacts = objectMapper.createArrayNode();
         List<ObjectNode> demoted = new ArrayList<>();
         if (facts != null) {
-            gateVerifiedFacts(facts, corpus, keptFacts, demoted, actions);
+            gateVerifiedFacts(facts, corpus, buildWebCorpus(webEvidence), keptFacts, demoted, actions);
         }
         assignSequentialIds(keptFacts, "factId", "F", FACT_ID_FORMAT);
         Set<String> factIds = collectIds(keptFacts, "factId");
@@ -238,6 +264,7 @@ public class BCompanyAnalysisCanonicalizer {
 
     private void gateVerifiedFacts(ArrayNode facts,
                                    String corpus,
+                                   List<WebCorpusEntry> webCorpus,
                                    ArrayNode kept,
                                    List<ObjectNode> demoted,
                                    List<GateAction> actions) {
@@ -269,23 +296,50 @@ public class BCompanyAnalysisCanonicalizer {
                 // evidence 미제공(구 스키마·self-rules 포함): fact 자체가 원문에 접지되면 유지, 아니면 강등.
                 if (groundingRatio(factText, corpus) >= FACT_GROUNDING_THRESHOLD) {
                     actions.add(new GateAction(ref, "verifiedFacts", GateOutcome.PASSED, "evidence 없음 — fact 원문 접지 확인"));
+                    clearUnverifiedWebClaim(fact);
+                    kept.add(fact);
+                    continue;
+                }
+                // 2소스 확장(D-2): 공고 접지 실패 시 WEB 근거 접지를 추가로 본다. 실패 판정은 기존 그대로.
+                WebMatch webMatch = matchWebGrounding(factText, webCorpus);
+                if (webMatch.supported()) {
+                    actions.add(new GateAction(ref, "verifiedFacts", GateOutcome.PASSED,
+                            "evidence 없음 — WEB 근거 접지 확인: " + webMatch.url()));
+                    markWebSupported(fact, webMatch.url());
                     kept.add(fact);
                 } else {
-                    actions.add(new GateAction(ref, "verifiedFacts", GateOutcome.DEMOTED, "evidence 없음 + fact 원문 미접지"));
+                    actions.add(new GateAction(ref, "verifiedFacts", GateOutcome.DEMOTED,
+                            appendWebRefMissing("evidence 없음 + fact 원문 미접지", webMatch)));
                     demoted.add(demoteFactToInference(factText,
                             "공고문 등 입력 원문에서 근거 인용을 확인하지 못해 검증된 사실에서 강등되었습니다."));
                 }
                 continue;
             }
             if (!evidenceMatches(evidence, corpus)) {
+                // 2소스 확장(D-2): 공고 corpus 매칭 실패 시 WEB 근거 매칭을 추가로 본다.
+                WebMatch webMatch = matchWebEvidence(evidence, webCorpus);
+                if (webMatch.supported()) {
+                    String webDistortion = strengthDistortion(factText, evidence);
+                    if (webDistortion != null) {
+                        actions.add(new GateAction(ref, "verifiedFacts", GateOutcome.DEMOTED, webDistortion));
+                        demoted.add(demoteFactToInference(factText,
+                                "원문의 요건 강도 표현과 다르게 서술되어 검증된 사실에서 강등되었습니다. 원문 근거: " + truncate(evidence, 120)));
+                    } else {
+                        actions.add(new GateAction(ref, "verifiedFacts", GateOutcome.PASSED,
+                                "WEB 근거 매칭: " + webMatch.url()));
+                        markWebSupported(fact, webMatch.url());
+                        kept.add(fact);
+                    }
+                    continue;
+                }
                 if (groundingRatio(factText, corpus) >= FACT_GROUNDING_THRESHOLD) {
                     actions.add(new GateAction(ref, "verifiedFacts", GateOutcome.DEMOTED,
-                            "evidence 원문 매칭 실패: " + truncate(evidence, 80)));
+                            appendWebRefMissing("evidence 원문 매칭 실패: " + truncate(evidence, 80), webMatch)));
                     demoted.add(demoteFactToInference(factText,
                             "제시된 근거 인용이 입력 원문과 일치하지 않아 검증된 사실에서 강등되었습니다."));
                 } else {
                     actions.add(new GateAction(ref, "verifiedFacts", GateOutcome.REMOVED,
-                            "evidence·fact 모두 원문 미확인: " + truncate(evidence, 80)));
+                            appendWebRefMissing("evidence·fact 모두 원문 미확인: " + truncate(evidence, 80), webMatch)));
                 }
                 continue;
             }
@@ -297,8 +351,99 @@ public class BCompanyAnalysisCanonicalizer {
                 continue;
             }
             actions.add(new GateAction(ref, "verifiedFacts", GateOutcome.PASSED, null));
+            clearUnverifiedWebClaim(fact);
             kept.add(fact);
         }
+    }
+
+    // ── WEB 근거 corpus (2소스 확장 · D-2) ──
+
+    /** WEB 근거 corpus 항목 — 정규화된 대조 텍스트와 sourceRef 용 URL. */
+    private record WebCorpusEntry(String url, String normalizedText) {
+        boolean hasUrl() {
+            return url != null && !url.isBlank();
+        }
+    }
+
+    /**
+     * WEB 대조 결과. {@code url != null} 이면 SUPPORTED. {@code blankUrlMatch} 는 텍스트는 매칭됐지만
+     * URL 이 없는 근거뿐인 상태 — SUPPORTED 로 치지 않고 기존 강등/제거 판정에 사유만 남긴다
+     * (WEB fact 의 sourceRef 는 URL 이어야 한다는 계약).
+     */
+    private record WebMatch(String url, boolean blankUrlMatch) {
+        static final WebMatch NONE = new WebMatch(null, false);
+
+        boolean supported() {
+            return url != null;
+        }
+    }
+
+    private List<WebCorpusEntry> buildWebCorpus(List<CompanyWebEvidence> webEvidence) {
+        if (webEvidence == null || webEvidence.isEmpty()) {
+            return List.of();
+        }
+        List<WebCorpusEntry> entries = new ArrayList<>();
+        for (CompanyWebEvidence evidence : webEvidence) {
+            if (evidence == null) {
+                continue;
+            }
+            String normalized = normalizeForMatch(
+                    nullToEmpty(evidence.title()) + "\n" + nullToEmpty(evidence.snippet()));
+            if (normalized.isEmpty()) {
+                continue;
+            }
+            entries.add(new WebCorpusEntry(evidence.url(), normalized));
+        }
+        return entries;
+    }
+
+    /** evidence 인용이 어떤 WEB 근거 텍스트에 매칭되는지 — 판정 기준은 공고 corpus 와 동일한 {@link #evidenceMatches}. */
+    private WebMatch matchWebEvidence(String evidence, List<WebCorpusEntry> webCorpus) {
+        boolean blankUrlMatch = false;
+        for (WebCorpusEntry entry : webCorpus) {
+            if (evidenceMatches(evidence, entry.normalizedText())) {
+                if (entry.hasUrl()) {
+                    return new WebMatch(entry.url(), false);
+                }
+                blankUrlMatch = true;
+            }
+        }
+        return blankUrlMatch ? new WebMatch(null, true) : WebMatch.NONE;
+    }
+
+    /** fact 텍스트가 어떤 WEB 근거에 접지되는지 — 판정 기준은 공고 corpus 와 동일한 {@link #groundingRatio}. */
+    private WebMatch matchWebGrounding(String factText, List<WebCorpusEntry> webCorpus) {
+        boolean blankUrlMatch = false;
+        for (WebCorpusEntry entry : webCorpus) {
+            if (groundingRatio(factText, entry.normalizedText()) >= FACT_GROUNDING_THRESHOLD) {
+                if (entry.hasUrl()) {
+                    return new WebMatch(entry.url(), false);
+                }
+                blankUrlMatch = true;
+            }
+        }
+        return blankUrlMatch ? new WebMatch(null, true) : WebMatch.NONE;
+    }
+
+    /** WEB 근거로 SUPPORTED 확정 — gate 가 sourceKind=WEB 과 URL sourceRef 를 직접 기록한다. */
+    private static void markWebSupported(ObjectNode fact, String url) {
+        fact.put("sourceKind", SOURCE_KIND_WEB);
+        fact.put("sourceRef", url);
+    }
+
+    /**
+     * 공고 corpus 로 통과한 fact 의 모델 주장 {@code sourceKind=WEB} 은 걷어낸다.
+     * 불변식: 저장되는 sourceKind=WEB ⟺ gate 가 검증한 URL sourceRef. (걷어낸 fact 는
+     * {@link #canonicalizeFactSource} 기본값 JOB_POSTING 을 받아 종전 동작과 동일해진다.)
+     */
+    private static void clearUnverifiedWebClaim(ObjectNode fact) {
+        if (SOURCE_KIND_WEB.equals(text(fact, "sourceKind"))) {
+            fact.remove("sourceKind");
+        }
+    }
+
+    private static String appendWebRefMissing(String detail, WebMatch webMatch) {
+        return webMatch.blankUrlMatch() ? detail + " (WEB sourceRef 누락)" : detail;
     }
 
     private ObjectNode demoteFactToInference(String factText, String basis) {
@@ -380,6 +525,15 @@ public class BCompanyAnalysisCanonicalizer {
 
     private void canonicalizeFactSource(ObjectNode fact, String sourceRef) {
         String sourceKind = text(fact, "sourceKind");
+        if (SOURCE_KIND_WEB.equals(sourceKind)) {
+            // gate 가 WEB SUPPORTED 로 확정하며 URL sourceRef 를 직접 기록한 fact —
+            // jobPosting sourceRef 로 덮지 않는다(URL 보존, 235 §3). 모델이 주장만 한 WEB 표기는
+            // gate 의 clearUnverifiedWebClaim 에서 이미 걷혀 이 분기에 오지 않는다.
+            if (isBlank(text(fact, "source"))) {
+                fact.put("source", "웹검색");
+            }
+            return;
+        }
         if (!ALLOWED_SOURCE_KINDS.contains(sourceKind)) {
             // 공고문-only 1차안 기본값. sourceKind 부재 레코드도 JOB_POSTING 으로 간주한다.
             fact.put("sourceKind", SOURCE_KIND_JOB_POSTING);
