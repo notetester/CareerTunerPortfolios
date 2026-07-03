@@ -39,13 +39,13 @@ public class DefaultPushSender implements PushSender {
     }
 
     @Override
-    public void send(PushSubscription subscription, String title, String body, String link) {
+    public void send(PushSubscription subscription, PushMessage message) {
         String kind = subscription.getKind() == null ? "" : subscription.getKind().toUpperCase();
         if ("WEB".equals(kind)) {
             VapidWebPushClient client = webPushClient.getIfAvailable();
             if (client != null) {
                 try {
-                    client.send(subscription, buildPayload(title, body, link));
+                    client.send(subscription, buildPayload(message));
                     return;
                 } catch (Exception ex) {
                     log.debug("[push] web push 발송 실패(무시): {}", ex.getMessage());
@@ -56,7 +56,7 @@ public class DefaultPushSender implements PushSender {
             FcmPushClient client = fcmPushClient.getIfAvailable();
             if (client != null && client.isReady()) {
                 try {
-                    client.send(subscription, title, body, link);
+                    client.send(subscription, message);
                     return;
                 } catch (Exception ex) {
                     log.debug("[push] FCM 발송 실패(무시): {}", ex.getMessage());
@@ -65,14 +65,14 @@ public class DefaultPushSender implements PushSender {
             }
         }
         // 발송기 미설정(키/서비스계정 없음) → 로깅 폴백(설정 시 자동 활성).
-        loggingPushSender.send(subscription, title, body, link);
+        loggingPushSender.send(subscription, message);
     }
 
-    private String buildPayload(String title, String body, String link) {
+    private String buildPayload(PushMessage message) {
         Map<String, Object> payload = new LinkedHashMap<>();
-        payload.put("title", title);
-        payload.put("body", body == null ? "" : body);
-        payload.put("url", link == null || link.isBlank() ? "/" : link);
+        payload.put("title", message.title());
+        payload.put("body", message.safeBody());
+        payload.put("url", message.safeLink());
         return objectMapper.writeValueAsString(payload);
     }
 }

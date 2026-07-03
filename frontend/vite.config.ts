@@ -1,4 +1,4 @@
-import { defineConfig } from 'vite'
+import { defineConfig, loadEnv } from 'vite'
 import path from 'path'
 import tailwindcss from '@tailwindcss/vite'
 import react from '@vitejs/plugin-react'
@@ -18,7 +18,13 @@ function figmaAssetResolver() {
   }
 }
 
-export default defineConfig({
+export default defineConfig(({ mode }) => {
+  // 환경 모드(.env.localhost/.env.tailscale/.env.aws/.env.domain)의 dev 프록시 대상.
+  // 미지정 시 기존과 동일하게 로컬 백엔드(:8080). 상세: ../docs/ENVIRONMENTS.md
+  const env = loadEnv(mode, __dirname, '')
+  const proxyTarget = env.VITE_PROXY_TARGET || 'http://localhost:8080'
+
+  return {
   base: publicBase,
   plugins: [
     figmaAssetResolver(),
@@ -79,9 +85,9 @@ export default defineConfig({
     allowedHosts: ['.ts.net'],
     proxy: {
       // Forward API calls to the Spring Boot backend during development.
-      // Browser hits localhost:5173/api/*, Vite proxies to localhost:8080/api/*.
+      // Browser hits localhost:5173/api/*, Vite proxies to VITE_PROXY_TARGET (기본 localhost:8080).
       '/api': {
-        target: 'http://localhost:8080',
+        target: proxyTarget,
         changeOrigin: true,
         // tailnet HTTPS(https://<machine>.ts.net) 로 접속하면 브라우저가 Origin 을 붙여 보내,
         // 백엔드 CORS 필터가 403(Invalid CORS request)로 막는다. /api 는 프록시로 same-origin
@@ -95,8 +101,25 @@ export default defineConfig({
 
   build: {
     sourcemap: false,
+    chunkSizeWarningLimit: 1100,
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          if (!id.includes('node_modules')) {
+            if (id.includes('/src/admin/')) return 'admin'
+            if (id.includes('/src/features/community/')) return 'community'
+            if (id.includes('/src/features/collaboration/')) return 'collaboration'
+            return undefined
+          }
+          if (id.includes('/lucide-react/') || id.includes('/@radix-ui/') || id.includes('/sonner/')) return 'ui-vendor'
+          if (id.includes('/recharts/') || id.includes('/d3-')) return 'charts-vendor'
+          return 'vendor'
+        },
+      },
+    },
   },
 
   // File types to support raw imports. Never add .css, .tsx, or .ts files to this.
   assetsInclude: ['**/*.svg', '**/*.csv'],
+  }
 })

@@ -21,6 +21,7 @@ class CollaborationClient : public QObject
     Q_PROPERTY(qint64 currentConversationId READ currentConversationId NOTIFY currentConversationChanged)
     Q_PROPERTY(QString currentPeerName READ currentPeerName NOTIFY currentConversationChanged)
     Q_PROPERTY(QString currentConversationType READ currentConversationType NOTIFY currentConversationChanged)
+    Q_PROPERTY(bool currentConversationMuted READ currentConversationMuted NOTIFY currentConversationChanged)
     Q_PROPERTY(bool loading READ loading NOTIFY loadingChanged)
 public:
     explicit CollaborationClient(ApiClient* api, QObject* parent = nullptr);
@@ -36,6 +37,7 @@ public:
     qint64 currentConversationId() const { return m_currentConversationId; }
     QString currentPeerName() const { return m_currentPeerName; }
     QString currentConversationType() const { return m_currentConversationType; }
+    bool currentConversationMuted() const { return m_currentConversationMuted; }
     bool loading() const { return m_loading; }
 
     Q_INVOKABLE void clear();
@@ -46,7 +48,10 @@ public:
     Q_INVOKABLE void declineRequest(qint64 requestId);
     Q_INVOKABLE void removeFriend(qint64 userId);
     Q_INVOKABLE void openConversation(qint64 userId, const QString& peerName);
-    Q_INVOKABLE void openConversationById(qint64 conversationId, const QString& peerName, const QString& type = QString());
+    Q_INVOKABLE void openConversationById(qint64 conversationId, const QString& peerName,
+                                          const QString& type = QString(), bool muted = false);
+    // 대화방 음소거 on/off — 음소거 방은 키워드/이름 언급(ROOM_MENTION) 시에만 알림이 온다
+    Q_INVOKABLE void setConversationMuted(qint64 conversationId, bool muted);
     Q_INVOKABLE void discoverRooms(const QString& keyword);
     Q_INVOKABLE void createRoom(const QString& type, const QString& title, const QString& password);
     Q_INVOKABLE void joinRoom(qint64 conversationId, const QString& password);
@@ -102,5 +107,6 @@ private:
     qint64 m_currentConversationId = -1;
     QString m_currentPeerName;
     QString m_currentConversationType;
+    bool m_currentConversationMuted = false;
     bool m_loading = false;
 };

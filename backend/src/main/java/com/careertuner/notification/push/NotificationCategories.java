@@ -38,17 +38,33 @@ public final class NotificationCategories {
             "FRIEND_ACCEPTED",
             "ROOM_INVITE",
             "ROOM_MESSAGE",
+            "NOTE_MESSAGE",
             "ROOM_MENTION",
+            "INTERVIEW_DISPATCH",
             "RECOMMENDED_JOB",
+            "RECOMMENDED_POST",
             "CREDIT_LOW",
             "PAYMENT_COMPLETE",
             "PAYMENT_SCHEDULED",
             "SUBSCRIPTION_CANCELED",
             "CREDIT_RECHARGED",
+            "REFUND_RESULT",
             "NOTICE",
             "TICKET_ANSWERED",
             "ACCOUNT_BLOCKED",
             "MARKETING_AD");
+
+    /**
+     * 발신자 관계(모르는 사람/친구/기업/운영자)별 세부 on/off 를 지원하는 알림 type.
+     * 이 목록의 알림은 생성 시 sender_relation 이 기록되고, 설정의 rules[type].senders 로 걸러진다.
+     */
+    public static final List<String> RELATION_AWARE_TYPES = List.of(
+            "COMMENT",
+            "COMMENT_REPLY",
+            "ROOM_MESSAGE",
+            "NOTE_MESSAGE",
+            "ROOM_MENTION",
+            "ROOM_INVITE");
 
     private static final Map<String, String> TYPE_TO_CATEGORY = Map.ofEntries(
             Map.entry("PROFILE_ANALYZED", "ai_analysis"),
@@ -76,13 +92,17 @@ public final class NotificationCategories {
             Map.entry("FRIEND_ACCEPTED", "messenger"),
             Map.entry("ROOM_INVITE", "messenger"),
             Map.entry("ROOM_MESSAGE", "messenger"),
+            Map.entry("NOTE_MESSAGE", "messenger"),
             Map.entry("ROOM_MENTION", "messenger"),
+            Map.entry("INTERVIEW_DISPATCH", "interview"),
             Map.entry("RECOMMENDED_JOB", "recommendation"),
+            Map.entry("RECOMMENDED_POST", "recommendation"),
             Map.entry("CREDIT_LOW", "billing"),
             Map.entry("PAYMENT_COMPLETE", "billing"),
             Map.entry("PAYMENT_SCHEDULED", "billing"),
             Map.entry("SUBSCRIPTION_CANCELED", "billing"),
             Map.entry("CREDIT_RECHARGED", "billing"),
+            Map.entry("REFUND_RESULT", "billing"),
             Map.entry("NOTICE", "notice"),
             Map.entry("TICKET_ANSWERED", "notice"),
             Map.entry("ACCOUNT_BLOCKED", "notice"),

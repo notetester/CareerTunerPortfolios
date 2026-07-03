@@ -183,6 +183,17 @@ public class InterviewServiceImpl implements InterviewService {
             }
         });
 
+        // 예상 질문 생성이 성공하면 사용자에게 완료 알림을 남긴다.
+        notificationService.notify(Notification.builder()
+                .userId(userId)
+                .type("QUESTIONS_GENERATED")
+                .targetType("INTERVIEW_SESSION")
+                .targetId(sessionId)
+                .title("면접 예상 질문이 준비되었습니다")
+                .message("%s 예상 질문 %d개가 생성되었습니다.".formatted(modeLabel, inserted.size()))
+                .link("/interview?session=" + sessionId)
+                .build());
+
         return listQuestions(userId, sessionId);
     }
 
@@ -475,6 +486,19 @@ public class InterviewServiceImpl implements InterviewService {
                 buildQuestionScores(sessionId));
 
         interviewMapper.updateSessionResult(sessionId, payload.totalScore(), writeReport(response), LocalDateTime.now());
+
+        // 리포트가 새로 생성된 경우에만 완료 알림을 남긴다(캐시 반환 시에는 발행하지 않는다).
+        String modeLabel = MODE_LABELS.getOrDefault(session.getMode(), session.getMode());
+        notificationService.notify(Notification.builder()
+                .userId(userId)
+                .type("INTERVIEW_REPORT_READY")
+                .targetType("INTERVIEW_SESSION")
+                .targetId(sessionId)
+                .title("면접 리포트가 준비되었습니다")
+                .message("%s 리포트 · 종합 %d점".formatted(modeLabel, payload.totalScore()))
+                .link("/interview?session=" + sessionId)
+                .build());
+
         return response;
     }
 

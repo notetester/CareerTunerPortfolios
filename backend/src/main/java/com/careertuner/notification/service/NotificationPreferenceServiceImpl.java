@@ -1,6 +1,8 @@
 package com.careertuner.notification.service;
 
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
+import java.util.List;
 import java.util.Map;
 
 import org.springframework.stereotype.Service;
@@ -38,6 +40,7 @@ public class NotificationPreferenceServiceImpl implements NotificationPreference
             categories.put(c, stored.getOrDefault(c, Boolean.TRUE));
         }
         Map<String, NotificationRulePreference> rules = mergeRuleDefaults(storedRules);
+        List<String> keywords = parseKeywords(pref != null ? pref.getKeywordsJson() : null);
 
         boolean pushEnabled = pref == null || pref.isPushEnabled();
         boolean emailEnabled = pref == null || pref.isEmailEnabled();
@@ -45,7 +48,7 @@ public class NotificationPreferenceServiceImpl implements NotificationPreference
         String qe = pref != null ? pref.getQuietHoursEnd() : null;
         boolean registered = pushSubscriptionMapper.countByUserId(userId) > 0;
 
-        return new NotificationPreferenceResponse(pushEnabled, emailEnabled, categories, rules, qs, qe, registered);
+        return new NotificationPreferenceResponse(pushEnabled, emailEnabled, categories, rules, keywords, qs, qe, registered);
     }
 
     @Override
@@ -77,12 +80,17 @@ public class NotificationPreferenceServiceImpl implements NotificationPreference
             }
         }
 
+        List<String> keywords = request.keywords() != null
+                ? normalizeKeywords(request.keywords())
+                : current.keywords();
+
         preferenceMapper.upsert(NotificationPreference.builder()
                 .userId(userId)
                 .pushEnabled(pushEnabled)
                 .emailEnabled(emailEnabled)
                 .categoriesJson(toJson(categories))
                 .rulesJson(toJson(rules))
+                .keywordsJson(toJson(keywords))
                 .quietHoursStart(qs)
                 .quietHoursEnd(qe)
                 .build());
@@ -100,6 +108,43 @@ public class NotificationPreferenceServiceImpl implements NotificationPreference
         } catch (RuntimeException ex) {
             return Map.of();
         }
+    }
+
+    private static final int MAX_KEYWORDS = 20;
+    private static final int MAX_KEYWORD_LENGTH = 30;
+
+    private List<String> parseKeywords(String json) {
+        if (json == null || json.isBlank()) {
+            return List.of();
+        }
+        try {
+            return normalizeKeywords(objectMapper.readValue(json, new TypeReference<List<String>>() {
+            }));
+        } catch (RuntimeException ex) {
+            return List.of();
+        }
+    }
+
+    /** 공백 정리·중복 제거·개수/길이 상한. 언급 감지에 그대로 쓰이므로 저장 시점에 정규화한다. */
+    private List<String> normalizeKeywords(List<String> raw) {
+        if (raw == null || raw.isEmpty()) {
+            return List.of();
+        }
+        LinkedHashSet<String> normalized = new LinkedHashSet<>();
+        for (String keyword : raw) {
+            if (keyword == null) {
+                continue;
+            }
+            String trimmed = keyword.trim();
+            if (trimmed.isEmpty() || trimmed.length() > MAX_KEYWORD_LENGTH) {
+                continue;
+            }
+            normalized.add(trimmed);
+            if (normalized.size() >= MAX_KEYWORDS) {
+                break;
+            }
+        }
+        return List.copyOf(normalized);
     }
 
     private Map<String, NotificationRulePreference> parseRules(String json) {

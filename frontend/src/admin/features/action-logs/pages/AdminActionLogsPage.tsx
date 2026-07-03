@@ -1,10 +1,16 @@
 import { useEffect, useState } from "react";
-import { History, RefreshCw, Search } from "lucide-react";
+import { History, RefreshCw } from "lucide-react";
 import AdminShell from "../../../components/AdminShell";
+import {
+  AdminListFooter,
+  AdminListToolbar,
+  AdminSortableHeader,
+  useAdminListTools,
+  type AdminListColumn,
+} from "../../../components/AdminListTools";
 import { Badge } from "@/app/components/ui/badge";
 import { Button } from "@/app/components/ui/button";
 import { Card, CardContent } from "@/app/components/ui/card";
-import { Input } from "@/app/components/ui/input";
 import { getAdminActionLogs } from "../api";
 import type { AdminActionLogRow } from "../types";
 
@@ -14,17 +20,32 @@ function formatDateTime(value: string): string {
   return new Intl.DateTimeFormat("ko-KR", { dateStyle: "medium", timeStyle: "short" }).format(date);
 }
 
+const ACTION_LOG_COLUMNS: AdminListColumn<AdminActionLogRow>[] = [
+  { id: "createdAt", label: "시각", getText: (row) => formatDateTime(row.createdAt), sortable: true },
+  { id: "actor", label: "관리자", getText: (row) => row.actorEmail ?? `#${row.actorUserId ?? "-"}`, sortable: true },
+  { id: "target", label: "대상", getText: (row) => row.targetEmail ?? (row.targetUserId ? `#${row.targetUserId}` : "-"), sortable: true },
+  { id: "action", label: "액션", getText: (row) => row.actionType, sortable: true },
+  { id: "type", label: "타입", getText: (row) => row.targetType, sortable: true },
+  { id: "reason", label: "사유", getText: (row) => row.reason ?? "-", sortable: true },
+  { id: "ip", label: "IP", getText: (row) => row.ipAddress ?? "-", sortable: true },
+];
+
 export function AdminActionLogsPage() {
   const [rows, setRows] = useState<AdminActionLogRow[]>([]);
-  const [keyword, setKeyword] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const list = useAdminListTools(rows, {
+    columns: ACTION_LOG_COLUMNS,
+    getRowId: (row) => row.id,
+    defaultSortId: "createdAt",
+    defaultSortDir: "desc",
+  });
 
   const load = async () => {
     setLoading(true);
     setError(null);
     try {
-      setRows(await getAdminActionLogs({ keyword, limit: 150 }));
+      setRows(await getAdminActionLogs({ limit: 500 }));
     } catch (requestError) {
       setError(requestError instanceof Error ? requestError.message : "액션 로그를 불러오지 못했습니다.");
     } finally {
@@ -47,28 +68,22 @@ export function AdminActionLogsPage() {
     >
       <Card className="border-slate-200 bg-card">
         <CardContent className="space-y-4 p-4">
-          <div className="flex flex-col gap-2 md:flex-row">
-            <div className="relative flex-1">
-              <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-slate-400" />
-              <Input value={keyword} onChange={(event) => setKeyword(event.target.value)} placeholder="관리자/대상 이메일, 액션, 사유 검색" className="pl-9" />
-            </div>
-            <Button className="bg-blue-600 text-white hover:bg-blue-700" onClick={() => void load()}>검색</Button>
-          </div>
+          <AdminListToolbar state={list} fileName="admin_action_logs" />
           {error && <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>}
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[900px] text-left text-sm">
+            <table className="av-table min-w-[900px]">
               <thead className="border-b bg-slate-50 text-xs uppercase text-slate-500">
                 <tr>
-                  <th className="px-3 py-3">시각</th>
-                  <th className="px-3 py-3">관리자</th>
-                  <th className="px-3 py-3">대상</th>
-                  <th className="px-3 py-3">액션</th>
-                  <th className="px-3 py-3">타입</th>
-                  <th className="px-3 py-3">사유</th>
+                  <AdminSortableHeader state={list} columnId="createdAt">시각</AdminSortableHeader>
+                  <AdminSortableHeader state={list} columnId="actor">관리자</AdminSortableHeader>
+                  <AdminSortableHeader state={list} columnId="target">대상</AdminSortableHeader>
+                  <AdminSortableHeader state={list} columnId="action">액션</AdminSortableHeader>
+                  <AdminSortableHeader state={list} columnId="type">타입</AdminSortableHeader>
+                  <AdminSortableHeader state={list} columnId="reason">사유</AdminSortableHeader>
                 </tr>
               </thead>
               <tbody>
-                {rows.map((row) => (
+                {list.visibleRows.map((row) => (
                   <tr key={row.id} className="border-b last:border-0">
                     <td className="px-3 py-3 text-slate-500">{formatDateTime(row.createdAt)}</td>
                     <td className="px-3 py-3">{row.actorEmail ?? `#${row.actorUserId ?? "-"}`}</td>
@@ -78,12 +93,13 @@ export function AdminActionLogsPage() {
                     <td className="px-3 py-3 text-slate-600">{row.reason ?? "-"}</td>
                   </tr>
                 ))}
-                {!rows.length && (
+                {!list.visibleRows.length && (
                   <tr><td colSpan={6} className="px-3 py-8 text-center text-slate-500">기록된 관리자 액션이 없습니다.</td></tr>
                 )}
               </tbody>
             </table>
           </div>
+          <AdminListFooter state={list} />
         </CardContent>
       </Card>
     </AdminShell>

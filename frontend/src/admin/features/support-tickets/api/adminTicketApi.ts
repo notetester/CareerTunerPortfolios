@@ -10,6 +10,7 @@ function toStatus(s: string): InquiryStatus {
   switch (s) {
     case "pending":  return "pending";
     case "progress": return "progress";
+    case "hold":     return "hold";
     case "answered": return "answered";
     case "closed":   return "closed";
     default:         return "pending";

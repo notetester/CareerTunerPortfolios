@@ -18,6 +18,7 @@ import { SettingsPage } from "./pages/Settings";
 import { ServiceInfoPage } from "./pages/ServiceInfo";
 import { SupportPage } from "./pages/Support";
 import { CompanyPage } from "./pages/Company";
+import { EnterprisePage } from "./pages/Enterprise";
 import { LegalPage } from "./pages/Legal";
 import { LoginPage } from "./pages/Login";
 import { AuthCallbackPage } from "./pages/AuthCallback";
@@ -79,6 +80,7 @@ export const router = createBrowserRouter([
       { path: "company/blog", Component: CompanyPage },
       { path: "company/press", Component: CompanyPage },
       { path: "company/social", Component: CompanyPage },
+      { path: "enterprise", Component: EnterprisePage },
       { path: "legal/terms", Component: LegalPage },
       { path: "legal/privacy", Component: LegalPage },
       { path: "legal/ai-data-consent", Component: LegalPage },

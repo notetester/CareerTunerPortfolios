@@ -3,6 +3,7 @@ import * as notificationApi from "../api/notificationApi";
 import { toast } from "../components/toast";
 import {
   isNotificationChannelEnabled,
+  isNotificationSenderEnabled,
   normalizeNotificationRules,
 } from "../types/preferences";
 import { typeMeta } from "../types/notification";
@@ -82,6 +83,7 @@ export const useNotificationStore = create<NotificationState>((set, get) => ({
       fresh
         .filter((n) => typeMeta(n.type).urgent !== false)
         .filter((n) => isNotificationChannelEnabled(preference, n.type, "webToast"))
+        .filter((n) => isNotificationSenderEnabled(preference, n.type, n.senderRelation))
         .forEach((n) => {
         toast.notify({
           type: n.type,

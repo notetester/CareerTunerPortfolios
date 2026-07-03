@@ -40,10 +40,19 @@ export interface ConversationSummaryResponse {
   type: ConversationType;
   title: string | null;
   description: string | null;
+  profileImageUrl?: string | null;
   displayName: string;
   locked: boolean;
   memberCount: number;
   joined: boolean;
+  /** 내가 이 방 알림을 해제했는지 (해제 시 이름·키워드 언급만 알림) */
+  muted: boolean;
+  role?: "OWNER" | "MANAGER" | "MEMBER" | string | null;
+  joinPolicy?: string | null;
+  invitePolicy?: string | null;
+  anonymousAllowed?: boolean;
+  anonymousOnly?: boolean;
+  roomProfileRequired?: boolean;
   peer: CollaborationUser | null;
   latestMessage: MessagePreviewResponse | null;
   unreadCount: number;
@@ -54,8 +63,54 @@ export interface CreateConversationRequest {
   type: Exclude<ConversationType, "DIRECT">;
   title: string;
   description?: string | null;
+  profileImageUrl?: string | null;
   password?: string | null;
+  maxMembers?: number | null;
+  joinPolicy?: string | null;
+  invitePolicy?: string | null;
+  anonymousAllowed?: boolean;
+  anonymousOnly?: boolean;
+  roomProfileRequired?: boolean;
   memberUserIds?: number[];
+}
+
+export interface ConversationSettings {
+  id: number;
+  type: ConversationType;
+  title: string | null;
+  description: string | null;
+  profileImageUrl?: string | null;
+  locked: boolean;
+  maxMembers: number;
+  joinPolicy: string;
+  invitePolicy: string;
+  anonymousAllowed: boolean;
+  anonymousOnly: boolean;
+  roomProfileRequired: boolean;
+  settings?: Record<string, unknown>;
+}
+
+export interface ConversationMember {
+  userId: number;
+  name: string;
+  email?: string | null;
+  role: string;
+  muted: boolean;
+  displayName?: string | null;
+  avatarUrl?: string | null;
+  anonymous: boolean;
+  permissions: string[];
+  joinedAt: string;
+}
+
+export interface ChatProfile {
+  id: number;
+  nickname: string;
+  avatarUrl?: string | null;
+  description?: string | null;
+  defaultProfile: boolean;
+  createdAt: string;
+  updatedAt?: string;
 }
 
 export interface SendMessageRequest {
@@ -77,6 +132,8 @@ export interface MessageResponse {
   attachments: MessageAttachmentResponse[];
   sharedPostings: SharedPostingResponse[];
   createdAt: string;
+  /** 개인 차단 정책 톰스톤 — true 면 content 가 대체 문구("차단한 사용자의 메시지입니다.") */
+  blocked?: boolean;
 }
 
 export interface MessageAttachmentResponse {
@@ -88,6 +145,8 @@ export interface MessageAttachmentResponse {
   availability: AttachmentAvailability;
   expiresAt: string | null;
   downloadUrl: string | null;
+  /** LOCAL 공유일 때만 세팅 — 파일 소유자의 데스크톱이 온라인이면 다운로드 가능. */
+  ownerDesktopOnline?: boolean | null;
 }
 
 export interface SharedPostingResponse {

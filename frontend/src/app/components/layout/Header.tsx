@@ -23,6 +23,7 @@ import {
   CreditCard,
   Settings,
   Briefcase,
+  Building2,
   PenTool,
   BookOpen,
   Target,
@@ -120,6 +121,15 @@ const navItems = [
       { label: "내 채팅방", href: "/messenger" },
       { label: "공개방 찾기", href: "/messenger?tab=discover" },
       { label: "친구 관리", href: "/messenger?tab=friends" },
+    ],
+  },
+  {
+    label: "기업",
+    href: "/enterprise",
+    icon: Building2,
+    children: [
+      { label: "기업 계정 신청", href: "/enterprise" },
+      { label: "채용공고 등록", href: "/enterprise?tab=jobs" },
     ],
   },
   {

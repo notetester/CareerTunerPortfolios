@@ -1,5 +1,12 @@
 import type { MockRoute } from "../registry";
 import { demoApplicationCases, demoUser } from "../data";
+// 개인 차단 정책 mock — 차단한 방 숨김·차단 사용자 메시지 톰스톤 처리에 사용 (additive).
+import {
+  mockConversationBlocked,
+  mockPrivacyAllows,
+  registerPrivacyMockConversations,
+  registerPrivacyMockUsers,
+} from "./privacy";
 import type {
   AttachmentShareMode,
   CollaborationUser,
@@ -30,6 +37,18 @@ const users: CollaborationUser[] = [
   { id: 9204, name: "정도윤", email: "doyoon.jung@example.com", plan: "PRO", relationStatus: "REQUESTED" },
   { id: 9205, name: "강유나", email: "yuna.kang@example.com", plan: "FREE", relationStatus: "PENDING_INCOMING" },
 ];
+
+// 차단 mock 디렉터리에 사용자 등록(이름/이메일 표시·관계 평가용).
+registerPrivacyMockUsers(
+  users
+    .filter((user) => user.id !== currentUser.id)
+    .map((user) => ({
+      id: user.id,
+      name: user.name,
+      email: user.email,
+      relation: user.relationStatus === "FRIEND" ? ("friend" as const) : ("stranger" as const),
+    })),
+);
 
 let friends: FriendResponse[] = [
   { user: users[1], friendsSince: new Date(Date.now() - 12 * 86_400_000).toISOString() },
@@ -74,16 +93,25 @@ const attachment = (
   originalName: string,
   shareMode: AttachmentShareMode,
   availability: MessageAttachmentResponse["availability"] = "AVAILABLE",
-): MessageAttachmentResponse => ({
-  fileId,
-  originalName,
-  contentType: "application/pdf",
-  sizeBytes: 384_000,
-  shareMode,
-  availability,
-  expiresAt: shareMode === "TEMPORARY" ? new Date(Date.now() + 72 * 60 * 60 * 1000).toISOString() : null,
-  downloadUrl: availability === "AVAILABLE" ? `/api/collaboration/files/${fileId}/content` : null,
-});
+  // LOCAL 공유일 때만 의미 — 소유자 데스크톱이 온라인이면 다운로드 가능(서버 게이트 미러)
+  ownerDesktopOnline?: boolean,
+): MessageAttachmentResponse => {
+  const resolvedAvailability = shareMode === "LOCAL" ? "LOCAL_ONLY" : availability;
+  const downloadable = shareMode === "LOCAL"
+    ? ownerDesktopOnline === true
+    : resolvedAvailability === "AVAILABLE";
+  return {
+    fileId,
+    originalName,
+    contentType: "application/pdf",
+    sizeBytes: 384_000,
+    shareMode,
+    availability: resolvedAvailability,
+    expiresAt: shareMode === "TEMPORARY" ? new Date(Date.now() + 72 * 60 * 60 * 1000).toISOString() : null,
+    downloadUrl: downloadable ? `/api/collaboration/files/${fileId}/content` : null,
+    ownerDesktopOnline: shareMode === "LOCAL" ? ownerDesktopOnline === true : null,
+  };
+};
 
 let messagesByConversation: Record<number, MessageResponse[]> = {
   7001: [
@@ -122,6 +150,18 @@ let messagesByConversation: Record<number, MessageResponse[]> = {
       sharedPostings: [],
       createdAt: new Date(Date.now() - 45 * 60 * 1000).toISOString(),
     },
+    {
+      // LOCAL 공유 — 소유자 데스크톱 온라인: 웹에서도 바로 받을 수 있는 상태
+      id: 9911,
+      conversationId: 7002,
+      sender: users[2],
+      mine: false,
+      kind: "CHAT",
+      content: "포트폴리오 원본은 제 PC 공유 폴더에서 바로 받아가세요. 지금 데스크톱 켜져 있어요.",
+      attachments: [attachment(7703, "portfolio-master.psd", "LOCAL", "LOCAL_ONLY", true)],
+      sharedPostings: [],
+      createdAt: new Date(Date.now() - 30 * 60 * 1000).toISOString(),
+    },
   ],
   7003: [
     {
@@ -134,6 +174,18 @@ let messagesByConversation: Record<number, MessageResponse[]> = {
       attachments: [attachment(7702, "system-design-study.pdf", "CLOUD")],
       sharedPostings: [],
       createdAt: new Date(Date.now() - 90 * 60 * 1000).toISOString(),
+    },
+    {
+      // LOCAL 공유 — 소유자 데스크톱 오프라인: 온라인이 될 때까지 다운로드 비활성
+      id: 9921,
+      conversationId: 7003,
+      sender: users[1],
+      mine: false,
+      kind: "CHAT",
+      content: "대용량 실습 데이터는 제 데스크톱에서 로컬 공유로 걸어뒀어요. 퇴근하면 꺼질 수 있어요.",
+      attachments: [attachment(7704, "system-design-dataset.zip", "LOCAL", "LOCAL_ONLY", false)],
+      sharedPostings: [],
+      createdAt: new Date(Date.now() - 80 * 60 * 1000).toISOString(),
     },
   ],
 };
@@ -148,6 +200,7 @@ let conversations: ConversationSummaryResponse[] = [
     locked: false,
     memberCount: 18,
     joined: true,
+    muted: false,
     peer: null,
     latestMessage: null,
     unreadCount: 1,
@@ -162,6 +215,7 @@ let conversations: ConversationSummaryResponse[] = [
     locked: false,
     memberCount: 2,
     joined: true,
+    muted: false,
     peer: users[2],
     latestMessage: null,
     unreadCount: 0,
@@ -176,6 +230,7 @@ let conversations: ConversationSummaryResponse[] = [
     locked: true,
     memberCount: 6,
     joined: true,
+    muted: true,
     peer: null,
     latestMessage: null,
     unreadCount: 0,
@@ -190,12 +245,18 @@ let conversations: ConversationSummaryResponse[] = [
     locked: false,
     memberCount: 24,
     joined: false,
+    muted: false,
     peer: null,
     latestMessage: null,
     unreadCount: 0,
     updatedAt: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(),
   },
 ];
+
+// 차단 mock 디렉터리에 채팅방 등록(차단 목록의 방 제목/유형 표시용).
+registerPrivacyMockConversations(
+  conversations.map((conversation) => ({ id: conversation.id, title: conversation.displayName, type: conversation.type })),
+);
 
 function latestMessage(conversationId: number): MessagePreviewResponse | null {
   const messages = messagesByConversation[conversationId] ?? [];
@@ -220,6 +281,8 @@ function withLatest(conversation: ConversationSummaryResponse): ConversationSumm
 function visibleConversations(): ConversationSummaryResponse[] {
   return conversations
     .filter((conversation) => conversation.joined)
+    // 차단한 채팅방은 목록에서 숨긴다(방 숨김 + 관련 초대 차단 — 개인 차단 정책).
+    .filter((conversation) => !mockConversationBlocked(conversation.id))
     .map(withLatest)
     .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
 }
@@ -247,6 +310,12 @@ function requireConversation(id: number): ConversationSummaryResponse {
 
 function normalizeMessageKind(kind: unknown): MessageKind {
   return kind === "NOTE" ? "NOTE" : "CHAT";
+}
+
+/** 차단한 사용자의 메시지는 뷰어 기준 톰스톤 처리(blocked=true, 본문·첨부 제거 — 서버측 처리 미러). */
+function withViewerBlocked(message: MessageResponse): MessageResponse & { blocked?: boolean } {
+  if (message.mine || mockPrivacyAllows(message.sender.id, "content.roomMessage")) return message;
+  return { ...message, blocked: true, content: null, attachments: [], sharedPostings: [] };
 }
 
 function normalizeShareMode(mode: unknown): AttachmentShareMode {
@@ -357,6 +426,7 @@ export const collaborationRoutes: MockRoute[] = [
         locked: false,
         memberCount: 2,
         joined: true,
+        muted: false,
         peer,
         latestMessage: null,
         unreadCount: 0,
@@ -364,6 +434,7 @@ export const collaborationRoutes: MockRoute[] = [
       };
       conversations = [created, ...conversations];
       messagesByConversation[created.id] = [];
+      registerPrivacyMockConversations([{ id: created.id, title: created.displayName, type: created.type }]);
       return created;
     },
   },
@@ -388,6 +459,7 @@ export const collaborationRoutes: MockRoute[] = [
         locked: type === "PRIVATE",
         memberCount: 1 + (request?.memberUserIds?.length ?? 0),
         joined: true,
+        muted: false,
         peer: null,
         latestMessage: null,
         unreadCount: 0,
@@ -395,6 +467,7 @@ export const collaborationRoutes: MockRoute[] = [
       };
       conversations = [created, ...conversations];
       messagesByConversation[created.id] = [];
+      registerPrivacyMockConversations([{ id: created.id, title: created.displayName, type: created.type }]);
       return created;
     },
   },
@@ -418,11 +491,21 @@ export const collaborationRoutes: MockRoute[] = [
     },
   },
   {
+    method: "PATCH",
+    pattern: /^\/collaboration\/conversations\/(\d+)\/mute$/,
+    handler: ({ params, body }) => {
+      const conversation = requireConversation(Number(params[0]));
+      const request = body as { muted?: boolean };
+      conversation.muted = request?.muted === true;
+      return withLatest(conversation);
+    },
+  },
+  {
     method: "GET",
     pattern: /^\/collaboration\/conversations\/(\d+)\/messages$/,
     handler: ({ params, query }) => {
       const limit = Number(query.get("limit") ?? 120) || 120;
-      return (messagesByConversation[Number(params[0])] ?? []).slice(-limit);
+      return (messagesByConversation[Number(params[0])] ?? []).slice(-limit).map(withViewerBlocked);
     },
   },
   {

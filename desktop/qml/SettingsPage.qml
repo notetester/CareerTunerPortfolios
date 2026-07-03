@@ -104,29 +104,113 @@ Item {
 
             SettingCard {
                 title: "서버 주소"
-                desc: "기본: 팀 공용 원격 백엔드 — 로컬 시연 시 http://localhost:8080"
-                RowLayout {
-                    spacing: 8
-                    TextField {
-                        id: urlField
-                        text: appSettings.baseUrl
-                        color: Theme.text
+                desc: "프리셋(로컬/Tailscale)은 선택 즉시 저장 — AWS·도메인/커스텀은 직접 입력 후 적용"
+                ColumnLayout {
+                    spacing: 6
+
+                    // 프리셋 콤보박스 — 로컬 / Tailscale(팀 공용) / AWS·도메인(직접 입력) / 커스텀
+                    ComboBox {
+                        id: serverPreset
+                        implicitWidth: 296
+                        implicitHeight: 30
+                        model: [
+                            "로컬 (http://localhost:8080)",
+                            "Tailscale (팀 공용)",
+                            "AWS·도메인 (직접 입력)",
+                            "커스텀"
+                        ]
+
+                        // 저장된 주소가 프리셋과 일치하면 해당 항목, 아니면 커스텀으로 시작
+                        Component.onCompleted: {
+                            if (appSettings.baseUrl === appSettings.localServerUrl) currentIndex = 0
+                            else if (appSettings.baseUrl === appSettings.tailscaleServerUrl) currentIndex = 1
+                            else currentIndex = 3
+                        }
+                        onActivated: (index) => {
+                            if (index === 0 || index === 1) {
+                                const url = index === 0 ? appSettings.localServerUrl : appSettings.tailscaleServerUrl
+                                appSettings.baseUrl = url
+                                urlField.text = url
+                                win.showToast("서버 주소 변경됨", url)
+                            } else {
+                                urlField.forceActiveFocus()
+                            }
+                        }
+
                         font.pixelSize: 11
-                        implicitWidth: 230
                         background: Rectangle {
-                            color: Theme.bg; radius: 7
-                            border.color: urlField.activeFocus ? Theme.accent : Theme.border
+                            radius: 7; color: Theme.raised
+                            border.color: serverPreset.activeFocus ? Theme.accent : Theme.border
+                        }
+                        contentItem: Text {
+                            leftPadding: 10; rightPadding: 24
+                            text: serverPreset.displayText
+                            color: Theme.text; font.pixelSize: 11
+                            verticalAlignment: Text.AlignVCenter
+                            elide: Text.ElideRight
+                        }
+                        indicator: Text {
+                            x: serverPreset.width - 18
+                            anchors.verticalCenter: parent.verticalCenter
+                            text: "▾"; color: Theme.muted; font.pixelSize: 10
+                        }
+                        delegate: ItemDelegate {
+                            required property var modelData
+                            required property int index
+                            width: serverPreset.width
+                            height: 28
+                            highlighted: serverPreset.highlightedIndex === index
+                            contentItem: Text {
+                                text: modelData
+                                color: Theme.text; font.pixelSize: 11
+                                verticalAlignment: Text.AlignVCenter
+                                elide: Text.ElideRight
+                            }
+                            background: Rectangle { color: highlighted ? Theme.hover : "transparent"; radius: 6 }
+                        }
+                        popup: Popup {
+                            y: serverPreset.height + 4
+                            width: serverPreset.width
+                            padding: 4
+                            implicitHeight: contentItem.implicitHeight + 8
+                            contentItem: ListView {
+                                clip: true
+                                implicitHeight: contentHeight
+                                model: serverPreset.popup.visible ? serverPreset.delegateModel : null
+                                currentIndex: serverPreset.highlightedIndex
+                            }
+                            background: Rectangle { color: Theme.surface; border.color: Theme.border; radius: 8 }
                         }
                     }
-                    Rectangle {
-                        width: applyLbl.implicitWidth + 18; height: 30; radius: 8
-                        color: Theme.raised; border.color: Theme.border
-                        Text { id: applyLbl; anchors.centerIn: parent; text: "적용"; color: Theme.text; font.pixelSize: 12 }
-                        MouseArea {
-                            anchors.fill: parent; cursorShape: Qt.PointingHandCursor
-                            onClicked: {
-                                appSettings.baseUrl = urlField.text.trim()
-                                win.showToast("서버 주소 변경됨", appSettings.baseUrl)
+
+                    RowLayout {
+                        spacing: 8
+                        TextField {
+                            id: urlField
+                            text: appSettings.baseUrl
+                            color: Theme.text
+                            font.pixelSize: 11
+                            implicitWidth: 230
+                            // 직접 입력은 AWS·도메인/커스텀 프리셋에서만 활성
+                            enabled: serverPreset.currentIndex >= 2
+                            opacity: enabled ? 1 : 0.5
+                            background: Rectangle {
+                                color: Theme.bg; radius: 7
+                                border.color: urlField.activeFocus ? Theme.accent : Theme.border
+                            }
+                        }
+                        Rectangle {
+                            width: applyLbl.implicitWidth + 18; height: 30; radius: 8
+                            color: Theme.raised; border.color: Theme.border
+                            opacity: serverPreset.currentIndex >= 2 ? 1 : 0.5
+                            Text { id: applyLbl; anchors.centerIn: parent; text: "적용"; color: Theme.text; font.pixelSize: 12 }
+                            MouseArea {
+                                anchors.fill: parent; cursorShape: Qt.PointingHandCursor
+                                enabled: serverPreset.currentIndex >= 2
+                                onClicked: {
+                                    appSettings.baseUrl = urlField.text.trim()
+                                    win.showToast("서버 주소 변경됨", appSettings.baseUrl)
+                                }
                             }
                         }
                     }

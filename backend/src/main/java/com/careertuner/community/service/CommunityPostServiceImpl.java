@@ -3,7 +3,9 @@ package com.careertuner.community.service;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.Collections;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
@@ -21,12 +23,15 @@ import com.careertuner.community.dto.PostDetailResponse;
 import com.careertuner.community.dto.PostListResponse;
 import com.careertuner.community.dto.PostPageResponse;
 import com.careertuner.community.dto.UpdatePostRequest;
+import com.careertuner.community.event.PostPublishedEvent;
 import com.careertuner.community.mapper.CommunityPostMapper;
 import com.careertuner.community.mapper.CommunityTagMapper;
 import com.careertuner.community.mapper.ReactionMapper;
 import com.careertuner.community.moderation.event.InterviewExtractRequiredEvent;
 import com.careertuner.community.moderation.event.PostModerationRequiredEvent;
 import com.careertuner.community.moderation.event.PostTagRequiredEvent;
+import com.careertuner.privacy.service.PrivacyPolicyService;
+import com.careertuner.privacy.service.PrivacySurfaces;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -38,23 +43,49 @@ import tools.jackson.databind.ObjectMapper;
 @Transactional(readOnly = true)
 public class CommunityPostServiceImpl implements CommunityPostService {
 
+    /** 차단 작성자 게시글 톰스톤 문구 (docs/PERSONAL_BLOCK_POLICY.md §4 — silent deny). */
+    private static final String BLOCKED_POST_TOMBSTONE = "차단한 사용자의 게시글입니다.";
+
     private final CommunityPostMapper postMapper;
     private final CommunityTagMapper tagMapper;
     private final ReactionMapper reactionMapper;
     private final ObjectMapper objectMapper;
     private final ApplicationEventPublisher eventPublisher;
+    private final PrivacyPolicyService privacyPolicyService;
 
     @Override
-    public PostPageResponse getPosts(String category, String keyword, String sort, int page, int size) {
+    public PostPageResponse getPosts(String category, String keyword, String sort, int page, int size, Long viewerId) {
         int offset = page * size;
         String status = PostStatus.PUBLISHED.name();
         String kw = (keyword == null || keyword.isBlank()) ? null : keyword.trim();
-        List<CommunityPost> posts = postMapper.findAll(category, status, sort, kw, offset, size);
+        List<CommunityPost> posts = filterBlockedAuthors(postMapper.findAll(category, status, sort, kw, offset, size), viewerId);
         int total = postMapper.countAll(category, status, kw);
         return new PostPageResponse(
                 posts.stream().map(this::toListResponse).toList(),
                 total, page, size
         );
+    }
+
+    /**
+     * 뷰어 기준 content.post(.anonymous) 차단 작성자 글을 목록에서 제거한다.
+     * 익명 여부에 따라 표면 키가 갈리므로 작성자 id 를 두 그룹으로 나눠 벌크 판정(비로그인 뷰어는 필터 없음).
+     */
+    private List<CommunityPost> filterBlockedAuthors(List<CommunityPost> posts, Long viewerId) {
+        if (viewerId == null || posts.isEmpty()) {
+            return posts;
+        }
+        Set<Long> anonymousAuthors = new HashSet<>();
+        Set<Long> namedAuthors = new HashSet<>();
+        for (CommunityPost post : posts) {
+            (post.isAnonymous() ? anonymousAuthors : namedAuthors).add(post.getUserId());
+        }
+        Set<Long> blockedAnonymous = privacyPolicyService.blockedAuthorsAmong(
+                viewerId, anonymousAuthors, PrivacySurfaces.CONTENT_POST + ".anonymous");
+        Set<Long> blockedNamed = privacyPolicyService.blockedAuthorsAmong(
+                viewerId, namedAuthors, PrivacySurfaces.CONTENT_POST);
+        return posts.stream()
+                .filter(post -> !(post.isAnonymous() ? blockedAnonymous : blockedNamed).contains(post.getUserId()))
+                .toList();
     }
 
     @Override
@@ -63,6 +94,15 @@ public class CommunityPostServiceImpl implements CommunityPostService {
         CommunityPost post = postMapper.findById(postId);
         if (post == null || !PostStatus.PUBLISHED.name().equals(post.getStatus())) {
             throw new BusinessException(ErrorCode.NOT_FOUND, "게시글을 찾을 수 없습니다.");
+        }
+
+        // 뷰어가 차단한 작성자의 글 — 본문 대신 톰스톤(blocked=true) 반환, 조회수도 올리지 않는다
+        String surface = post.isAnonymous()
+                ? PrivacySurfaces.CONTENT_POST + ".anonymous"
+                : PrivacySurfaces.CONTENT_POST;
+        if (currentUserId != null
+                && !privacyPolicyService.allows(currentUserId, post.getUserId(), surface)) {
+            return toBlockedDetailResponse(post);
         }
 
         // 본인 글이 아닐 때만 조회수 증가
@@ -93,6 +133,9 @@ public class CommunityPostServiceImpl implements CommunityPostService {
     @Override
     @Transactional
     public Long createPost(CreatePostRequest request, Long userId) {
+        if (PostCategory.RECOMMENDED_JOB == request.category()) {
+            throw new BusinessException(ErrorCode.FORBIDDEN, "채용공고는 승인된 기업 공고 등록 화면에서만 작성할 수 있습니다.");
+        }
         CommunityPost post = CommunityPost.builder()
                 .userId(userId)
                 .category(request.category().name())
@@ -120,6 +163,8 @@ public class CommunityPostServiceImpl implements CommunityPostService {
         if (PostCategory.INTERVIEW_REVIEW == request.category()) {
             eventPublisher.publishEvent(new InterviewExtractRequiredEvent(post.getId()));
         }
+        // 새 글 발행 → 커밋 후 관심 사용자 추천 알림(RECOMMENDED_POST). 수정 시에는 발행하지 않는다.
+        eventPublisher.publishEvent(new PostPublishedEvent(post.getId()));
         return post.getId();
     }
 
@@ -265,7 +310,41 @@ public class CommunityPostServiceImpl implements CommunityPostService {
                 post.getJobTitle(),
                 reviewDto,
                 liked,
-                bookmarked
+                bookmarked,
+                false
+        );
+    }
+
+    /** 차단 작성자 게시글 톰스톤 — 본문·태그·면접후기는 비우고 안내 문구만 내려간다. */
+    private PostDetailResponse toBlockedDetailResponse(CommunityPost post) {
+        PostCategory cat = PostCategory.valueOf(post.getCategory());
+        return new PostDetailResponse(
+                post.getId(),
+                post.getCategory(),
+                cat.getLabel(),
+                post.getTitle(),
+                BLOCKED_POST_TOMBSTONE,
+                Collections.emptyList(),
+                new PostListResponse.AuthorDto(
+                        post.isAnonymous() ? null : post.getUserId(),
+                        post.isAnonymous() ? "익명" : post.getUserName(),
+                        post.isAnonymous()
+                ),
+                new PostListResponse.StatsDto(
+                        post.getViewCount(),
+                        post.getCommentCount(),
+                        post.getLikeCount(),
+                        post.getBookmarkCount()
+                ),
+                post.getStatus(),
+                post.getCreatedAt(),
+                post.getUpdatedAt(),
+                post.getCompanyName(),
+                post.getJobTitle(),
+                null,
+                false,
+                false,
+                true
         );
     }
 

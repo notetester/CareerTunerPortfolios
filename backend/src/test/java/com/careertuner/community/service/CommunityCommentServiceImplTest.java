@@ -12,7 +12,9 @@ import static org.mockito.Mockito.when;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Set;
 
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.springframework.context.ApplicationEventPublisher;
@@ -29,6 +31,9 @@ import com.careertuner.community.mapper.CommunityCommentMapper;
 import com.careertuner.community.mapper.CommunityPostMapper;
 import com.careertuner.community.mapper.ReactionMapper;
 import com.careertuner.community.moderation.event.CommentModerationRequiredEvent;
+import com.careertuner.notification.service.NotificationService;
+import com.careertuner.privacy.service.PrivacyPolicyService;
+import com.careertuner.privacy.service.PrivacySurfaces;
 
 /**
  * 멘션/삭제 감사 수정(M1·M2·L2·L4) 회귀 테스트.
@@ -41,9 +46,18 @@ class CommunityCommentServiceImplTest {
     private final CommunityPostMapper postMapper = mock(CommunityPostMapper.class);
     private final ReactionMapper reactionMapper = mock(ReactionMapper.class);
     private final ApplicationEventPublisher eventPublisher = mock(ApplicationEventPublisher.class);
+    private final NotificationService notificationService = mock(NotificationService.class);
+    private final PrivacyPolicyService privacyPolicyService = mock(PrivacyPolicyService.class);
 
     private final CommunityCommentServiceImpl service =
-            new CommunityCommentServiceImpl(commentMapper, postMapper, reactionMapper, eventPublisher);
+            new CommunityCommentServiceImpl(commentMapper, postMapper, reactionMapper, eventPublisher,
+                    notificationService, privacyPolicyService);
+
+    /** 개인 차단 정책 기본 스텁 — 차단 없음(기존 테스트가 차단 필터의 영향을 받지 않게 명시). */
+    @BeforeEach
+    void noBlockedAuthorsByDefault() {
+        when(privacyPolicyService.blockedAuthorsAmong(any(), any(), any())).thenReturn(Set.of());
+    }
 
     private static final long POST_ID = 1L;
     private static final long POST_AUTHOR = 99L;
@@ -321,6 +335,47 @@ class CommunityCommentServiceImplTest {
 
         // 숨김 노드도 익명 앵커(findAllByPostId)로 살아있어 멘션이 올바른 사람을 가리킨다.
         assertThat(byId(rs, 3).mentionLabel()).isEqualTo("익명2");
+    }
+
+    // ══════════════ 개인 차단 정책 — 차단 작성자 댓글 tombstone (docs/PERSONAL_BLOCK_POLICY.md §5) ══════════════
+
+    // ── 뷰어가 차단한 작성자의 루트 댓글(익명) → blocked tombstone, 답글 표면은 content.reply 로 판정 ──
+    @Test
+    void blockedAuthorComment_isTombstonedForViewer() {
+        givenPost();
+        when(commentMapper.findAllByPostId(POST_ID)).thenReturn(List.of(
+                cmt(1, null, null, 10, true, CommentStatus.PUBLISHED.name(), "A", 0),   // 차단 작성자(익명 루트)
+                cmt(2, 1L, null, 20, true, CommentStatus.PUBLISHED.name(), "B", 1)      // 정상 답글
+        ));
+        when(privacyPolicyService.blockedAuthorsAmong(eq(5L), eq(Set.of(10L)),
+                eq(PrivacySurfaces.CONTENT_COMMENT + ".anonymous"))).thenReturn(Set.of(10L));
+
+        List<CommentResponse> rs = service.getComments(POST_ID, 5L);
+
+        CommentResponse blocked = byId(rs, 1);
+        assertThat(blocked.blocked()).isTrue();
+        assertThat(blocked.isDeleted()).isFalse();
+        assertThat(blocked.content()).isEqualTo("차단한 사용자의 댓글입니다.");
+        assertThat(blocked.author().id()).isNull(); // 작성자 비식별(삭제 톰스톤과 동일 문법)
+        CommentResponse normal = byId(rs, 2);
+        assertThat(normal.blocked()).isFalse();
+        assertThat(normal.content()).isEqualTo("c2");
+        // 답글은 content.reply(.anonymous) 표면으로 별도 벌크 판정된다
+        verify(privacyPolicyService).blockedAuthorsAmong(eq(5L), eq(Set.of(20L)),
+                eq(PrivacySurfaces.CONTENT_REPLY + ".anonymous"));
+    }
+
+    // ── 비로그인 뷰어는 차단 필터 자체가 없다 ──
+    @Test
+    void anonymousViewer_skipsBlockFilter() {
+        givenPost();
+        when(commentMapper.findAllByPostId(POST_ID)).thenReturn(List.of(
+                cmt(1, null, null, 10, true, CommentStatus.PUBLISHED.name(), "A", 0)));
+
+        List<CommentResponse> rs = service.getComments(POST_ID, null);
+
+        assertThat(byId(rs, 1).blocked()).isFalse();
+        verify(privacyPolicyService, never()).blockedAuthorsAmong(any(), any(), any());
     }
 
     // ── 시나리오 7: 검열 HIDDEN 후에도 뒷 사용자 익명 번호 불변(앵커 보존) ──

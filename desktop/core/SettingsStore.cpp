@@ -11,8 +11,8 @@ SettingsStore::SettingsStore(QObject* parent)
 
 QString SettingsStore::baseUrl() const
 {
-    // 기본은 팀 공용 원격 백엔드(Tailscale) — 기존 앱 기본값 유지
-    return m_s.value("server/baseUrl", QStringLiteral("https://careertuner-dev.example.invalid")).toString();
+    // 기본은 팀 공용 원격 백엔드(Tailscale) — 기본값 상수는 defaultBaseUrl() 한 곳에서 관리
+    return m_s.value("server/baseUrl", defaultBaseUrl()).toString();
 }
 void SettingsStore::setBaseUrl(const QString& v)
 {

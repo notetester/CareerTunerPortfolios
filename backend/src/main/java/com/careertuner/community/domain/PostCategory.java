@@ -6,6 +6,7 @@ import lombok.Getter;
 public enum PostCategory {
 
     JOB_REVIEW("취업후기"),
+    RECOMMENDED_JOB("채용공고"),
     INTERVIEW_REVIEW("면접후기"),
     JOB_QUESTION("직무질문"),
     SUCCESS_STRATEGY("합격전략"),

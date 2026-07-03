@@ -376,6 +376,87 @@ void InterviewSession::transcribeAudio(const QString& filePath)
         });
 }
 
+// ─────────────────────────── 영상 답변 (카메라 면접) ───────────────────────────
+
+void InterviewSession::submitVideoAnswer(const QString& filePath, bool consented)
+{
+    if (m_sessionId < 0 || m_scoring) return;
+    if (!consented) {
+        emit errorOccurred(QStringLiteral("영상 전송 동의가 필요합니다 — 동의 체크 후 다시 시도하세요"));
+        return;
+    }
+
+    QFile f(filePath);
+    if (!f.open(QIODevice::ReadOnly)) {
+        emit errorOccurred(QStringLiteral("녹화 영상 파일을 열 수 없습니다"));
+        return;
+    }
+    const QByteArray video = f.readAll();
+    f.close();
+    QFile::remove(filePath); // 메모리 사본만 전송 — 원본 영상은 로컬에서도 즉시 폐기
+
+    const qint64 qid = m_currentQid;
+    const int    sid = m_sessionId;
+
+    // 낙관적으로 답변 + 채점중 행을 먼저 그림 (텍스트 답변과 같은 문법)
+    m_thread.push_back(QVariantMap{
+        {"kind", "answer"},
+        {"text", QStringLiteral("영상 답변 — 음성·비언어(시선/표정) 전달력 평가를 요청했습니다.")},
+        {"hasAudio", false}, {"hasVideo", true}});
+    m_thread.push_back(QVariantMap{{"kind", "scoring"}});
+    emit threadChanged();
+
+    m_scoring = true;
+    emit busyChanged();
+
+    QJsonObject body;
+    body["videoBase64"] = QString::fromLatin1(video.toBase64());
+    body["videoFormat"] = QStringLiteral("mp4");
+
+    m_api->post(QStringLiteral("/api/interview/sessions/%1/avatar-score").arg(sid), body,
+        [this, sid, qid](bool ok, const QJsonValue& data, const QString& msg) {
+            if (sid != m_sessionId) return;
+            // 채점중 행 제거
+            if (!m_thread.isEmpty()
+                && m_thread.last().toMap().value("kind") == QStringLiteral("scoring"))
+                m_thread.removeLast();
+
+            m_scoring = false;
+            emit busyChanged();
+
+            if (!ok) {
+                emit threadChanged();
+                emit errorOccurred(msg.isEmpty()
+                    ? QStringLiteral("영상 채점 실패 — 추론 서버(serve) 상태를 확인하세요") : msg);
+                return;
+            }
+
+            // {voice:{score,...}, visual:{score,...}|null, combined} — late fusion 결과
+            const QJsonObject o = data.toObject();
+            const int combined    = o.value("combined").toInt(-1);
+            const int voiceScore  = o.value("voice").toObject().value("score").toInt(-1);
+            const int visualScore = o.value("visual").isObject()
+                                  ? o.value("visual").toObject().value("score").toInt(-1) : -1;
+
+            QString feedback = QStringLiteral("영상 답변 전달력 평가 — 음성과 비언어(시선·표정)를 결합한 점수입니다.");
+            if (visualScore < 0)
+                feedback += QStringLiteral(" 영상 피처 추출에 실패해 음성 점수만 반영되었습니다.");
+            feedback += QStringLiteral(" 원본 영상은 채점 후 즉시 폐기되었습니다.");
+
+            m_thread.push_back(QVariantMap{
+                {"kind", "score"},
+                {"qid", qid},
+                {"score", combined},
+                {"feedback", feedback},
+                {"improvedAnswer", ""},
+                {"modelAnswer", ""},
+                {"voiceScore", voiceScore},
+                {"visualScore", visualScore}});
+            emit threadChanged();
+            emit videoScored(combined);
+        });
+}
+
 // ─────────────────────────── 리포트/내보내기 ───────────────────────────
 
 void InterviewSession::loadReport()

@@ -21,6 +21,9 @@ import {
 } from "../hooks/voiceAnalysis";
 import { computeVisualScore, VisualMetricsTracker, type VisualScoreDetail } from "../hooks/visualAnalysis";
 import { BrowserSttTracker } from "../hooks/speechToText";
+import { createNegotiatedRecorder, isTtsSupported, mediaUnsupportedReason } from "../hooks/mediaSupport";
+import { useDeviceCapabilities } from "../hooks/deviceCapabilities";
+import { DeviceHandoffCard, type HandoffReason } from "./DeviceHandoffCard";
 import type {
   InterviewQuestion,
   InterviewSession,
@@ -76,13 +79,26 @@ export function LocalAvatarTab({ session }: { session: InterviewSession | null }
   const chunksRef = useRef<Blob[]>([]);
   const questionsRef = useRef<string[]>([]);
   const finishingRef = useRef(false);
+  /** 녹화 시 협상된 업로드 포맷(webm|mp4) — blob.type 스니핑 대신 이 값을 쓴다. */
+  const recordFormatRef = useRef<string>("webm");
 
+  // TTS(speechSynthesis)는 필수가 아니다 — 미지원(WebView 등)이면 질문을 텍스트 강조로 진행한다.
   const supported =
     typeof navigator !== "undefined" &&
     !!navigator.mediaDevices &&
     typeof window !== "undefined" &&
-    "MediaRecorder" in window &&
-    "speechSynthesis" in window;
+    "MediaRecorder" in window;
+
+  const ttsAvailable = isTtsSupported();
+  const deviceCaps = useDeviceCapabilities();
+  // 이 기기에서 진행 불가한 원인 — 있으면 "폰으로 이어하기" 안내 카드를 띄운다.
+  const handoffReason: HandoffReason | null = !supported
+    ? (mediaUnsupportedReason() ?? "unsupported")
+    : deviceCaps.hasCamera === false
+      ? "no-camera"
+      : deviceCaps.hasMicrophone === false
+        ? "no-microphone"
+        : null;
 
   // 준비된 질문(게이트) + capabilities 로드.
   useEffect(() => {
@@ -161,7 +177,9 @@ export function LocalAvatarTab({ session }: { session: InterviewSession | null }
       sttRef.current = stt;
 
       chunksRef.current = [];
-      const recorder = new MediaRecorder(webcam);
+      // 기기별 지원 mimeType 협상(webm → mp4) — WebView 등 webm 미지원 기기 대응.
+      const { recorder, format } = createNegotiatedRecorder(webcam, "video");
+      recordFormatRef.current = format;
       recorder.ondataavailable = (e) => {
         if (e.data.size > 0) chunksRef.current.push(e.data);
       };
@@ -186,12 +204,17 @@ export function LocalAvatarTab({ session }: { session: InterviewSession | null }
     }
   };
 
-  /** 브라우저 TTS로 다음 질문을 읽어준다. 첫 호출이면 인사 + 1번 질문. */
+  /** 다음 질문 진행 — TTS 지원 시 읽어주고, 미지원(WebView 등)이면 텍스트 강조로 바로 답변받는다. */
   const askNext = () => {
-    if (typeof window === "undefined" || !("speechSynthesis" in window)) return;
     const nextIdx = questionIdx + 1;
     if (nextIdx >= questionsRef.current.length) {
       void finishInterview();
+      return;
+    }
+    setQuestionIdx(nextIdx);
+    if (!isTtsSupported()) {
+      // TTS 미지원 — 질문은 화면 텍스트 강조로 대신하고 바로 답변 단계(반응 지연 측정 시작).
+      voiceTrackerRef.current?.markAiSpeechEnd();
       return;
     }
     const text =
@@ -208,10 +231,17 @@ export function LocalAvatarTab({ session }: { session: InterviewSession | null }
         // 질문이 끝났다 → 답변 반응 지연 측정 시작.
         voiceTrackerRef.current?.markAiSpeechEnd();
       };
+      u.onerror = () => {
+        // TTS 실패해도 면접을 막지 않는다 — 질문은 화면 텍스트로 확인하고 답변 진행.
+        setAvatarTalking(false);
+        voiceTrackerRef.current?.markAiSpeechEnd();
+      };
       window.speechSynthesis.speak(u);
-      setQuestionIdx(nextIdx);
     } catch {
-      setNote("질문 음성 합성에 실패했습니다. 다시 시도해 주세요.");
+      // 합성 실패 시에도 질문은 이미 화면에 떠 있으므로 텍스트로 진행한다.
+      setAvatarTalking(false);
+      voiceTrackerRef.current?.markAiSpeechEnd();
+      setNote((prev) => prev ?? "질문 음성 합성에 실패해 질문을 화면 텍스트로 표시합니다.");
     }
   };
 
@@ -253,7 +283,7 @@ export function LocalAvatarTab({ session }: { session: InterviewSession | null }
     if (recordedBlob && recordedBlob.size > 0) {
       try {
         const audioBase64 = await blobToBase64(recordedBlob);
-        const audioFormat = (recordedBlob.type || "audio/webm").includes("webm") ? "webm" : "wav";
+        const audioFormat = recordFormatRef.current; // 녹화 시 협상한 포맷 (blob.type 스니핑 대체)
         const stt = await transcribeVoice(session.id, audioBase64, audioFormat);
         userTranscript = stt.text ?? "";
       } catch {
@@ -288,7 +318,7 @@ export function LocalAvatarTab({ session }: { session: InterviewSession | null }
     if (consent && capabilities?.nonverbal && recordedBlob && recordedBlob.size > 0) {
       try {
         const videoBase64 = await blobToBase64(recordedBlob);
-        const videoFormat = (recordedBlob.type || "video/webm").includes("webm") ? "webm" : "mp4";
+        const videoFormat = recordFormatRef.current; // 녹화 시 협상한 포맷 (blob.type 스니핑 대체)
         const server = await scoreAvatarServer(session.id, {
           videoBase64,
           videoFormat,
@@ -411,11 +441,7 @@ export function LocalAvatarTab({ session }: { session: InterviewSession | null }
             웹캠으로 녹화·분석합니다. 외부 API 없이 무료.
           </p>
 
-          {!supported && (
-            <p className="rounded-lg bg-amber-50 p-3 text-sm text-amber-700">
-              이 브라우저는 웹캠 녹화 또는 음성 합성을 지원하지 않습니다. 최신 Chrome/Edge 에서 이용해 주세요.
-            </p>
-          )}
+          {handoffReason && <DeviceHandoffCard sessionId={session.id} reason={handoffReason} />}
 
           {/* 화면: 면접관 placeholder(메인) + 내 웹캠(서브) */}
           {(status === "connecting" || status === "live" || status === "analyzing") && (
@@ -467,18 +493,26 @@ export function LocalAvatarTab({ session }: { session: InterviewSession | null }
                 <span>
                   질문 {Math.max(questionIdx + 1, 0)} / {questions.length}
                   {avatarTalking && " · 면접관이 말하는 중…"}
+                  {!ttsAvailable && " · 음성 안내 미지원 — 질문을 읽고 답변하세요"}
                 </span>
               </div>
               <Progress value={((questionIdx + 1) / questions.length) * 100} className="h-1.5" />
+              {/* TTS 미지원 기기에서는 질문을 강조 표시해 텍스트로 대신한다. */}
               {questionIdx >= 0 && (
-                <p className="rounded-lg bg-slate-50 p-3 text-sm font-medium text-slate-700">
+                <p
+                  className={
+                    ttsAvailable
+                      ? "rounded-lg bg-slate-50 p-3 text-sm font-medium text-slate-700"
+                      : "rounded-lg border-l-4 border-purple-400 bg-purple-50 p-3 text-base font-semibold text-slate-800"
+                  }
+                >
                   Q{questionIdx + 1}. {questions[questionIdx]}
                 </p>
               )}
             </div>
           )}
 
-          {supported && capabilities?.nonverbal && (status === "idle" || status === "scored") && (
+          {supported && !handoffReason && capabilities?.nonverbal && (status === "idle" || status === "scored") && (
             <label className="flex items-start gap-2 rounded-lg border border-slate-200 bg-slate-50 p-3 text-xs text-slate-600">
               <input
                 type="checkbox"
@@ -494,7 +528,7 @@ export function LocalAvatarTab({ session }: { session: InterviewSession | null }
             </label>
           )}
 
-          {supported && (
+          {supported && !handoffReason && (
             <div className="flex flex-wrap items-center gap-2">
               {(status === "idle" || status === "scored" || status === "error") && (
                 <Button
@@ -532,7 +566,7 @@ export function LocalAvatarTab({ session }: { session: InterviewSession | null }
               )}
               {status === "scored" && downloadUrl && (
                 <Button asChild variant="outline" className="gap-1.5">
-                  <a href={downloadUrl} download="local-avatar-interview.webm">
+                  <a href={downloadUrl} download={`local-avatar-interview.${recordFormatRef.current}`}>
                     <Download className="size-4" /> 내 답변 영상 다운로드
                   </a>
                 </Button>

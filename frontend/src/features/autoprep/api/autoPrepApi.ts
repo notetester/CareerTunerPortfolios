@@ -1,4 +1,5 @@
 import { api } from "@/app/lib/api";
+import { apiBase } from "@/app/lib/apiBase";
 import { getAccessToken } from "@/app/lib/tokenStore";
 import type {
   AutoPrepIntakeResponse,
@@ -8,7 +9,7 @@ import type {
 } from "../types/autoPrep";
 
 // SSE 는 ApiResponse envelope 를 안 타므로 api() 래퍼를 못 쓴다 → fetch 직접 + 토큰 수동 첨부.
-const BASE = ((import.meta.env.VITE_API_BASE_URL as string | undefined)?.replace(/\/+$/, "")) || "/api";
+// 베이스 URL 은 apiBase() 단일 소스를 사용한다(런타임 오버라이드 반영).
 
 /** 인테이크: 한 줄 요청 해석 + 슬롯 확인(미리보기). ready=true 면 그대로 run. */
 export function intake(req: AutoPrepRequest) {
@@ -33,7 +34,7 @@ export async function runStream(
   signal?: AbortSignal,
 ): Promise<void> {
   const token = getAccessToken();
-  const res = await fetch(`${BASE}/auto-prep/run/stream`, {
+  const res = await fetch(`${apiBase()}/auto-prep/run/stream`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",

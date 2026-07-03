@@ -1,5 +1,5 @@
 import { api } from "@/app/lib/api";
-import type { Notification, NotificationType } from "../types/notification";
+import type { Notification, NotificationType, SenderRelation } from "../types/notification";
 import { TYPE_TO_CATEGORY } from "../types/notification";
 import type { NotificationRulePreference } from "../types/preferences";
 
@@ -8,6 +8,7 @@ interface BackendNotification {
   type: string;
   targetType?: string;
   targetId?: number;
+  senderRelation?: string;
   title: string;
   message?: string;
   link?: string;
@@ -39,6 +40,7 @@ function toNotification(n: BackendNotification): Notification {
     link: n.link,
     targetType: n.targetType,
     targetId: n.targetId,
+    senderRelation: n.senderRelation as SenderRelation | undefined,
     actorId: n.actor?.id,
     actorName: n.actor?.name,
     isRead: n.read,
@@ -77,6 +79,8 @@ export interface NotificationPreference {
   emailEnabled: boolean;
   categories: Record<string, boolean>;
   rules: Record<string, NotificationRulePreference>;
+  /** 알림 해제 채팅방에서도 언급으로 간주할 키워드 목록 */
+  keywords: string[];
   quietHoursStart: string | null;
   quietHoursEnd: string | null;
   pushDeviceRegistered: boolean;
@@ -87,6 +91,7 @@ export interface NotificationPreferenceUpdate {
   emailEnabled?: boolean;
   categories?: Record<string, boolean>;
   rules?: Record<string, NotificationRulePreference>;
+  keywords?: string[];
   quietHoursStart?: string | null;
   quietHoursEnd?: string | null;
 }

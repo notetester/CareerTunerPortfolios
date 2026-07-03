@@ -1,8 +1,12 @@
 import { api } from "@/app/lib/api";
+import { apiBase } from "@/app/lib/apiBase";
 import { getAccessToken } from "@/app/lib/tokenStore";
 import type {
   AttachmentShareMode,
+  ChatProfile,
   CollaborationUser,
+  ConversationMember,
+  ConversationSettings,
   ConversationSummaryResponse,
   CreateConversationRequest,
   FileAssetResponse,
@@ -12,8 +16,6 @@ import type {
   MessageResponse,
   SendMessageRequest,
 } from "../types/collaboration";
-
-const API_BASE = ((import.meta.env.VITE_API_BASE_URL as string | undefined)?.replace(/\/+$/, "")) || "/api";
 
 function query(params: Record<string, string | number | undefined | null>): string {
   const search = new URLSearchParams();
@@ -96,11 +98,87 @@ export function joinConversation(conversationId: number, password?: string): Pro
   });
 }
 
+export function joinConversationWithProfile(conversationId: number, request: {
+  password?: string | null;
+  anonymous?: boolean;
+  chatProfileId?: number | null;
+  displayName?: string | null;
+  avatarUrl?: string | null;
+}): Promise<ConversationSummaryResponse> {
+  return api<ConversationSummaryResponse>(`/collaboration/conversations/${conversationId}/join`, {
+    method: "POST",
+    body: JSON.stringify(request),
+  });
+}
+
 export function inviteConversationMembers(conversationId: number, userIds: number[]): Promise<ConversationSummaryResponse> {
   return api<ConversationSummaryResponse>(`/collaboration/conversations/${conversationId}/invites`, {
     method: "POST",
     body: JSON.stringify({ userIds }),
   });
+}
+
+/** 대화방 알림 해제/재개. 해제한 방은 내 이름·키워드 언급 시에만 알림이 온다. */
+export function muteConversation(conversationId: number, muted: boolean): Promise<ConversationSummaryResponse> {
+  return api<ConversationSummaryResponse>(`/collaboration/conversations/${conversationId}/mute`, {
+    method: "PATCH",
+    body: JSON.stringify({ muted }),
+  });
+}
+
+export function getConversationSettings(conversationId: number): Promise<ConversationSettings> {
+  return api<ConversationSettings>(`/collaboration/conversations/${conversationId}/settings`, { method: "GET" });
+}
+
+export function updateConversationSettings(conversationId: number, request: Partial<ConversationSettings> & {
+  password?: string | null;
+  clearPassword?: boolean;
+}): Promise<ConversationSettings> {
+  return api<ConversationSettings>(`/collaboration/conversations/${conversationId}/settings`, {
+    method: "PATCH",
+    body: JSON.stringify(request),
+  });
+}
+
+export function listConversationMembers(conversationId: number): Promise<ConversationMember[]> {
+  return api<ConversationMember[]>(`/collaboration/conversations/${conversationId}/members`, { method: "GET" });
+}
+
+export function updateConversationMember(conversationId: number, userId: number, request: {
+  role?: string;
+  permissions?: string[];
+  displayName?: string | null;
+  avatarUrl?: string | null;
+  anonymous?: boolean;
+}): Promise<ConversationMember> {
+  return api<ConversationMember>(`/collaboration/conversations/${conversationId}/members/${userId}`, {
+    method: "PATCH",
+    body: JSON.stringify(request),
+  });
+}
+
+export function kickConversationMember(conversationId: number, userId: number, request: {
+  reason?: string;
+  ban?: boolean;
+  bannedUntil?: string | null;
+} = {}): Promise<void> {
+  return api<void>(`/collaboration/conversations/${conversationId}/members/${userId}/kick`, {
+    method: "POST",
+    body: JSON.stringify(request),
+  });
+}
+
+export function listChatProfiles(): Promise<ChatProfile[]> {
+  return api<ChatProfile[]>("/collaboration/chat-profiles", { method: "GET" });
+}
+
+export function createChatProfile(request: {
+  nickname: string;
+  avatarUrl?: string | null;
+  description?: string | null;
+  defaultProfile?: boolean;
+}): Promise<ChatProfile> {
+  return api<ChatProfile>("/collaboration/chat-profiles", { method: "POST", body: JSON.stringify(request) });
 }
 
 export function listMessages(conversationId: number, limit = 100): Promise<MessageResponse[]> {
@@ -131,12 +209,21 @@ export function uploadCollaborationFile(file: File): Promise<FileAssetResponse> 
 
 export async function downloadCollaborationAttachment(file: MessageAttachmentResponse): Promise<void> {
   const token = getAccessToken();
-  const response = await fetch(`${API_BASE}/collaboration/files/${file.fileId}/content`, {
+  const response = await fetch(`${apiBase()}/collaboration/files/${file.fileId}/content`, {
     headers: token ? { Authorization: `Bearer ${token}` } : undefined,
   });
 
   if (!response.ok) {
-    throw new Error(`다운로드에 실패했습니다 (${response.status})`);
+    // 서버 envelope 의 message 를 우선 노출 — LOCAL 공유는 소유자 데스크톱이
+    // 목록 조회와 클릭 사이에 오프라인이 되면 CONFLICT 안내 문구가 내려온다.
+    let message = `다운로드에 실패했습니다 (${response.status})`;
+    try {
+      const body = (await response.json()) as { message?: string };
+      if (body?.message) message = body.message;
+    } catch {
+      // envelope 이 아닌 응답 — 기본 문구 유지
+    }
+    throw new Error(message);
   }
 
   const blob = await response.blob();

@@ -20,6 +20,7 @@ public class NotificationPreference {
     private boolean emailEnabled;
     private String categoriesJson;
     private String rulesJson;
+    private String keywordsJson;
     private String quietHoursStart;
     private String quietHoursEnd;
     private LocalDateTime createdAt;

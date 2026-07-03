@@ -25,6 +25,7 @@ import com.careertuner.profile.ai.ProfileAiResult;
 import com.careertuner.profile.ai.ProfileAiService;
 import com.careertuner.profile.ai.ProfileCriterionScore;
 import com.careertuner.profile.ai.ScoreCriterion;
+import com.careertuner.notification.service.NotificationService;
 import com.careertuner.profile.domain.UserProfile;
 import com.careertuner.profile.dto.ProfileAiResponse;
 import com.careertuner.profile.mapper.ProfileMapper;
@@ -47,6 +48,7 @@ class ProfileServiceImplTest {
                 usageMapper,
                 consentService,
                 aiService,
+                mock(NotificationService.class),
                 new ObjectMapper());
 
         assertThatThrownBy(() -> service.summarize(USER))
@@ -74,6 +76,7 @@ class ProfileServiceImplTest {
                 usageMapper,
                 consentService,
                 aiService,
+                mock(NotificationService.class),
                 new ObjectMapper());
 
         ProfileAiResponse response = service.summarize(USER);

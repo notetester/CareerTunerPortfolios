@@ -10,6 +10,7 @@
         <result property="type"         column="type"/>
         <result property="targetType"   column="target_type"/>
         <result property="targetId"     column="target_id"/>
+        <result property="senderRelation" column="sender_relation"/>
         <result property="title"        column="title"/>
         <result property="message"      column="message"/>
         <result property="link"         column="link"/>
@@ -86,10 +87,22 @@
     </update>
 
     <insert id="insert" useGeneratedKeys="true" keyProperty="id">
-        INSERT INTO notification (user_id, actor_id, type, target_type, target_id,
+        INSERT INTO notification (user_id, actor_id, type, target_type, target_id, sender_relation,
                                   title, message, link)
-        VALUES (#{userId}, #{actorId}, #{type}, #{targetType}, #{targetId},
+        VALUES (#{userId}, #{actorId}, #{type}, #{targetType}, #{targetId}, #{senderRelation},
                 #{title}, #{message}, #{link})
     </insert>
+
+    <!-- 발신자 관계 판정용 최소 조회(도메인 간 서비스 의존 없이 알림 도메인 안에서 해결) -->
+    <select id="findUserRole" resultType="string">
+        SELECT role FROM users WHERE id = #{userId}
+    </select>
+
+    <select id="countFriendship" resultType="int">
+        SELECT COUNT(*)
+          FROM collaboration_friendship
+         WHERE user_id = #{userId}
+           AND friend_user_id = #{otherUserId}
+    </select>
 
 </mapper>
