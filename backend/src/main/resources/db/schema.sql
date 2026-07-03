@@ -392,6 +392,18 @@ CREATE TABLE IF NOT EXISTS company_analysis (
     CONSTRAINT fk_company_analysis_posting FOREIGN KEY (job_posting_id) REFERENCES job_posting (id) ON DELETE SET NULL
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci;
 
+-- 기업분석 웹검색 결과 캐시(235 §4·§6). 같은 회사 재검색 방지(비용↓)와 신선도 판정 근거.
+-- query_key = 정규화된 회사 식별 쿼리, results = 스니펫+URL 목록(JSON), fetched_at = 수집 시각(TTL 기준).
+CREATE TABLE IF NOT EXISTS company_search_cache (
+    id         BIGINT NOT NULL AUTO_INCREMENT,
+    query_key  VARCHAR(255) NOT NULL,
+    results    JSON NULL,
+    fetched_at DATETIME NOT NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (id),
+    UNIQUE KEY uk_company_search_cache_query (query_key)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci;
+
 CREATE TABLE IF NOT EXISTS application_case_status_history (
     id                  BIGINT NOT NULL AUTO_INCREMENT,
     application_case_id BIGINT NOT NULL,

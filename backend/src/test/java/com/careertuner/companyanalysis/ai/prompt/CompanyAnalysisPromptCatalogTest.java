@@ -7,7 +7,7 @@ import org.junit.jupiter.api.Test;
 import com.careertuner.admin.prompt.dto.AdminPromptView;
 
 /**
- * b-v4 프롬프트 계약 구조 테스트(235 §10 D-3 · B-1/B-2 흡수) — 비R1.
+ * b-v5 프롬프트 계약 구조 테스트(235 §10 D-3 · B-1/B-2 흡수, D-6a 누출 보정) — 비R1.
  * WEB 근거 입력·sourceKind=WEB/URL 지시·WEB 미입력 가드·unknowns 유도 few-shot·
  * evidence 원문 인용 GOOD/BAD few-shot·버전 bump·레거시 보존을 고정한다.
  * 실효(unknowns 실생성·SUPPORTED 강등 감소)는 D-6 실R1 재검증에서 확인한다.
