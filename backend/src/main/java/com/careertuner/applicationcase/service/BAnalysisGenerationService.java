@@ -89,6 +89,19 @@ public class BAnalysisGenerationService {
     private static final Pattern TECH_SIGNAL_PATTERN = Pattern.compile("[0-9.+#/\\-]");
     private static final Pattern UPPER_ACRONYM_PATTERN = Pattern.compile("[A-Z][A-Z0-9]+");
     private static final Pattern WHITESPACE_PATTERN = Pattern.compile("\\s");
+    // ── 공고분석 자유서술(duties/qualifications/summary) 후처리(이슈 D 후속, 233 문서 3절) ──
+    // grounding gate 는 스킬만 검사하므로 자유서술의 오배치·나열·중복·OCR 깨짐은 못 잡는다. 근거 있는 내용은
+    // 삭제하지 않고 '이동/응축'만 하며, OCR 깨짐 같은 무의미 토큰만 제거해 근거성 회귀(SUPPORTED 소실)를 피한다.
+    // 자유서술은 줄바꿈·불릿 단위로만 세그먼트 분해한다(콤마로는 자르지 않아 산문 문장 훼손 방지).
+    private static final Pattern JOB_TEXT_BULLET_PATTERN = Pattern.compile("[•ㆍ·▪◦‣]");
+    // A-1: duty 로 오배치되기 쉬운 경력·자격 '요건' 신호(요건 명사·연차). 아래 업무 동사와 겹치지 않을 때만 요건으로 본다.
+    private static final Pattern QUALIFICATION_SIGNAL_PATTERN = Pattern.compile(
+            "경력\\s*\\d+\\s*년|\\d+\\s*년\\s*이상|자격증|기능사|기사\\s*자격|건설기술인|학사|석사|박사|학위|전공자?|졸업");
+    // duty(담당업무) 신호 동사 — 요건 신호와 겹쳐도 실제 수행 업무면 duty 로 유지("서버 유지보수 수행").
+    private static final Pattern RESPONSIBILITY_VERB_PATTERN = Pattern.compile(
+            "수행|담당|개발|운영|구축|관리|설계|지원|분석|기획|제작|유지보수|대응|추진|수립");
+    // 요건 재배치·문장화 대상 세그먼트 길이 상한(이보다 길면 문장으로 보고 건드리지 않음).
+    private static final int JOB_SEGMENT_MAX_LENGTH = 40;
     private static final List<String> KNOWN_SKILLS = List.of(
             "Java", "Spring", "Spring Boot", "MyBatis", "JPA", "SQL", "MySQL", "PostgreSQL",
             "Redis", "Kafka", "RabbitMQ", "Docker", "Kubernetes", "AWS", "Azure", "GCP",
@@ -123,7 +136,7 @@ public class BAnalysisGenerationService {
                             jobPrompt(applicationCase, postingText, classification),
                             jobAnalysisSchema());
                     JobAnalysisPayload payload = parseLocalJobPayload(content, postingText,
-                            properties.getLocalLlm().getModel());
+                            properties.getLocalLlm().getModel(), classification);
                     validateGrounding(payload, postingText);
                     log.info("Local LLM job analysis succeeded (attempt={}/{})", attempt, maxAttempts);
                     return new GeneratedJobAnalysis(payload, null, null);
@@ -141,7 +154,8 @@ public class BAnalysisGenerationService {
                         JobAnalysisPromptCatalog.SYSTEM_PROMPT,
                         jobPrompt(applicationCase, postingText, classification),
                         jobAnalysisSchema());
-                JobAnalysisPayload payload = parseLocalJobPayload(content, postingText, anthropicClient.model());
+                JobAnalysisPayload payload = parseLocalJobPayload(content, postingText, anthropicClient.model(),
+                        classification);
                 validateGrounding(payload, postingText);
                 log.info("Claude job analysis succeeded");
                 return new GeneratedJobAnalysis(payload, null, null);
@@ -301,26 +315,112 @@ public class BAnalysisGenerationService {
                 usage(SELF_RULES_MODEL, postingText.length(), summary.length() + interviewPoints.length()));
     }
 
-    private JobAnalysisPayload parseLocalJobPayload(String content, String postingText, String modelLabel) {
+    private JobAnalysisPayload parseLocalJobPayload(String content, String postingText, String modelLabel,
+                                                    Classification classification) {
         JsonNode root = parseObject(content);
         String employmentType = normalizeEmploymentType(text(root, "employmentType", employmentType(postingText)), postingText);
         String experienceLevel = capExperienceForEmploymentType(
                 reconcileExperienceLevel(text(root, "experienceLevel", experienceLevel(postingText)), postingText),
                 employmentType);
+        JobText jobText = postProcessJobText(
+                requiredText(root, "duties"),
+                requiredText(root, "qualifications"),
+                requiredText(root, "summary"),
+                classification);
         JobAnalysisPayload payload = new JobAnalysisPayload(
                 employmentType,
                 experienceLevel,
                 filterSkillItems(arrayJson(root, "requiredSkills"), postingText),
                 filterSkillItems(arrayJson(root, "preferredSkills"), null),
-                requiredText(root, "duties"),
-                requiredText(root, "qualifications"),
+                jobText.duties(),
+                jobText.qualifications(),
                 normalizeDifficulty(text(root, "difficulty", "NORMAL")),
-                requiredText(root, "summary"),
+                jobText.summary(),
                 dedupEvidenceJson(objectArrayJson(root, "evidence", "field", "quote")),
                 objectArrayJson(root, "ambiguousConditions", "condition", "assumption"),
                 usage(modelLabel, postingText.length(), content.length()));
         validateJobPayload(payload);
         return payload;
+    }
+
+    /**
+     * 공고분석 자유서술(duties/qualifications/summary) 후처리(이슈 D 후속, 233 문서 3절).
+     * grounding gate 가 못 잡는 품질 결함을 보정하되 근거 있는 내용은 삭제하지 않고 '이동/응축'만 한다.
+     *
+     * <p>A-1 필드 오배치 보정: duty 로 잘못 배치된 경력·자격 '요건'을 qualifications 로 재배치한다
+     * (가온테크 "경력5년"·금융21 "건축분야기능사" 등). 재배치가 duties 를 통째로 비우면 근거 유실·검증 실패
+     * 위험이 있어(전부 요건인 경우) 재배치하지 않는다(보수적).
+     */
+    private JobText postProcessJobText(String duties, String qualifications, String summary,
+                                       Classification classification) {
+        List<String> relocated = new ArrayList<>();
+        List<String> remainingDuties = new ArrayList<>();
+        for (String segment : splitJobTextSegments(duties)) {
+            if (isMisplacedQualification(segment)) {
+                relocated.add(segment);
+            } else {
+                remainingDuties.add(segment);
+            }
+        }
+        String newDuties = duties;
+        String newQualifications = qualifications;
+        if (!relocated.isEmpty() && !remainingDuties.isEmpty()) {
+            newDuties = String.join("\n", remainingDuties);
+            newQualifications = appendMissing(qualifications, relocated);
+        }
+        return new JobText(newDuties, newQualifications, summary);
+    }
+
+    /** 자유서술을 줄바꿈·불릿 단위 세그먼트로 분해한다(콤마로는 자르지 않아 산문 문장 훼손 방지). */
+    private List<String> splitJobTextSegments(String text) {
+        List<String> segments = new ArrayList<>();
+        for (String line : text.split("\\R")) {
+            for (String part : JOB_TEXT_BULLET_PATTERN.split(line)) {
+                String trimmed = part.trim();
+                if (!trimmed.isEmpty()) {
+                    segments.add(trimmed);
+                }
+            }
+        }
+        return segments;
+    }
+
+    /**
+     * duty 세그먼트가 실제로는 경력·자격 '요건'인지 판정한다(오배치). 짧은 비문(非문장) 세그먼트 중
+     * 요건 신호가 있고 업무 수행 동사가 없을 때만 요건으로 본다("경력5년"·"건축분야기능사"). 길이 상한을
+     * 넘거나 문장형이거나 "서버 유지보수 수행"처럼 업무 동사가 있으면 duty 로 유지한다.
+     */
+    private boolean isMisplacedQualification(String segment) {
+        if (segment.length() > JOB_SEGMENT_MAX_LENGTH || isSentenceLike(segment)) {
+            return false;
+        }
+        return QUALIFICATION_SIGNAL_PATTERN.matcher(segment).find()
+                && !RESPONSIBILITY_VERB_PATTERN.matcher(segment).find();
+    }
+
+    /** 종결어미/문장부호로 끝나면 문장으로 본다(문장은 세그먼트 이동·문장화 대상에서 제외). */
+    private boolean isSentenceLike(String segment) {
+        String trimmed = segment.trim();
+        if (trimmed.isEmpty()) {
+            return false;
+        }
+        char last = trimmed.charAt(trimmed.length() - 1);
+        return last == '.' || last == '!' || last == '?'
+                || trimmed.endsWith("다") || trimmed.endsWith("요") || trimmed.endsWith("음");
+    }
+
+    /** qualifications 원문에 없는 재배치 항목만 줄바꿈으로 덧붙인다(중복 방지). */
+    private String appendMissing(String base, List<String> additions) {
+        StringBuilder sb = new StringBuilder(base == null ? "" : base);
+        for (String addition : additions) {
+            if (!sb.toString().contains(addition)) {
+                if (sb.length() > 0) {
+                    sb.append("\n");
+                }
+                sb.append(addition);
+            }
+        }
+        return sb.toString();
     }
 
     /**
@@ -1239,6 +1339,10 @@ public class BAnalysisGenerationService {
 
     private static boolean isBlank(String value) {
         return value == null || value.isBlank();
+    }
+
+    /** 공고분석 자유서술 후처리 결과 홀더(duties/qualifications/summary). */
+    private record JobText(String duties, String qualifications, String summary) {
     }
 
     public record GeneratedJobAnalysis(

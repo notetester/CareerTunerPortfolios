@@ -9,6 +9,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -545,7 +546,105 @@ class BAnalysisGenerationServiceTest {
                 .isGreaterThan(2_000);
     }
 
+    // ── 이슈 D 후속 A-1: 필드 오배치 보정 (경력·자격 → duty 오배치 분리·재배치) ──
+
+    @Test
+    void a1RelocatesMisplacedRequirementsFromDutiesToQualifications() {
+        // 가온테크·금융21 패턴: duties 에 "경력5년"·"건축분야기능사"(요건)가 오배치됨. 실제 업무는 유지.
+        BAnalysisGenerationService.GeneratedJobAnalysis result = runJobText(
+                "서버 유지보수 수행\n경력5년\n건축분야기능사",
+                "Window Server, Linux, VMware 운영 경험",
+                "시스템 관리자를 채용하는 공고입니다. 서버 운영과 유지보수를 담당합니다.",
+                List.of("Linux", "VMware"),
+                "서버 유지보수 수행. 경력5년 이상. 건축분야기능사 우대. Window Server, Linux, VMware 운영.");
+
+        assertThat(result.fellBack()).isFalse();
+        assertThat(result.payload().duties())
+                .contains("서버 유지보수 수행")
+                .doesNotContain("경력5년")
+                .doesNotContain("건축분야기능사");
+        assertThat(result.payload().qualifications())
+                .contains("경력5년")
+                .contains("건축분야기능사");
+    }
+
+    @Test
+    void a1KeepsRequirementSignalWhenResponsibilityVerbPresent() {
+        // "5년 이상 서버 운영 경험 보유"는 요건 신호(5년 이상)가 있어도 업무 동사(운영)가 있어 duty 로 유지.
+        BAnalysisGenerationService.GeneratedJobAnalysis result = runJobText(
+                "5년 이상 서버 운영 경험 보유\nKubernetes 클러스터 구축",
+                "클라우드 엔지니어 경력",
+                "클라우드 엔지니어를 채용합니다. 서버 운영과 Kubernetes 를 담당합니다.",
+                List.of("Kubernetes"),
+                "5년 이상 서버 운영 경험 보유. Kubernetes 클러스터 구축. 클라우드 엔지니어 경력.");
+
+        assertThat(result.fellBack()).isFalse();
+        assertThat(result.payload().duties()).contains("5년 이상 서버 운영 경험 보유");
+    }
+
+    @Test
+    void a1DoesNotEmptyDutiesWhenAllSegmentsAreRequirements() {
+        // duties 가 전부 요건이면(재배치 후 남는 duty 없음) 재배치하지 않아 duties 를 비우지 않는다(검증 실패 방지).
+        BAnalysisGenerationService.GeneratedJobAnalysis result = runJobText(
+                "경력5년\n기능사 자격증",
+                "Linux 운영 경험",
+                "시스템 관리자를 채용하는 공고입니다. 서버 운영을 담당합니다.",
+                List.of("Linux"),
+                "경력5년 이상. 기능사 자격증 필수. Linux 운영 경험.");
+
+        assertThat(result.fellBack()).isFalse();
+        assertThat(result.payload().duties())
+                .contains("경력5년")
+                .contains("기능사 자격증");
+    }
+
+    @Test
+    void a1LeavesProseDutiesUntouched() {
+        // 산문 문단(동국제약류)은 세그먼트가 1개(길이>상한)라 오배치 판정에서 제외 → 그대로 유지.
+        String duties = "제약/바이오/헬스케어업계에서 신입 및 경력직원을 채용합니다. "
+                + "주요 업무로는 마케팅 전략 수립과 브랜드 포지셔닝 강화가 포함됩니다.";
+        BAnalysisGenerationService.GeneratedJobAnalysis result = runJobText(
+                duties,
+                "학사 이상 학력. SQL 활용 능력.",
+                "제약/바이오 업계에서 신입 및 경력직원을 채용하는 공고입니다.",
+                List.of("SQL"),
+                "제약/바이오/헬스케어업계 신입 및 경력 채용. 마케팅 전략 수립. 학사 이상. SQL 활용.");
+
+        assertThat(result.fellBack()).isFalse();
+        assertThat(result.payload().duties()).isEqualTo(duties);
+    }
+
     // ── 헬퍼 메서드 ──
+
+    /**
+     * duties/qualifications/summary 를 직접 지정해 R1 raw JSON 을 주입한다(자유서술 후처리 검증용).
+     * JSON 이스케이프(따옴표·줄바꿈)는 ObjectMapper 직렬화로 안전하게 처리한다.
+     */
+    private static BAnalysisGenerationService.GeneratedJobAnalysis runJobText(
+            String duties, String qualifications, String summary,
+            List<String> requiredSkills, String postingText) {
+        Map<String, Object> json = new LinkedHashMap<>();
+        json.put("employmentType", "FULL_TIME");
+        json.put("experienceLevel", "MID");
+        json.put("requiredSkills", requiredSkills);
+        json.put("preferredSkills", List.of());
+        json.put("duties", duties);
+        json.put("qualifications", qualifications);
+        json.put("difficulty", "NORMAL");
+        json.put("summary", summary);
+        json.put("evidence", List.of(Map.of(
+                "field", "requiredSkills",
+                "quote", requiredSkills.isEmpty() ? "" : requiredSkills.get(0))));
+        json.put("ambiguousConditions", List.of());
+        String raw = new ObjectMapper().writeValueAsString(json);
+
+        BAnalysisProperties properties = new BAnalysisProperties();
+        properties.getLocalLlm().setEnabled(true);
+        properties.getLocalLlm().setModel("qwen-test");
+        BLocalLlmClient localLlmClient = mock(BLocalLlmClient.class);
+        when(localLlmClient.chat(anyString(), anyString(), any())).thenReturn(raw);
+        return service(properties, localLlmClient).generateJobAnalysis(applicationCase(), postingText);
+    }
 
     private void assertExperienceLevel(String modelReturns, String postingText, String expected) {
         BAnalysisProperties properties = new BAnalysisProperties();
