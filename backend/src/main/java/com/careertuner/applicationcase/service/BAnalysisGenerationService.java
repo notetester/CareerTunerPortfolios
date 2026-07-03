@@ -94,9 +94,11 @@ public class BAnalysisGenerationService {
     // 삭제하지 않고 '이동/응축'만 하며, OCR 깨짐 같은 무의미 토큰만 제거해 근거성 회귀(SUPPORTED 소실)를 피한다.
     // 자유서술은 줄바꿈·불릿 단위로만 세그먼트 분해한다(콤마로는 자르지 않아 산문 문장 훼손 방지).
     private static final Pattern JOB_TEXT_BULLET_PATTERN = Pattern.compile("[•ㆍ·▪◦‣]");
-    // A-1: duty 로 오배치되기 쉬운 경력·자격 '요건' 신호(요건 명사·연차). 아래 업무 동사와 겹치지 않을 때만 요건으로 본다.
+    // A-1: duty 로 오배치되기 쉬운 경력·자격·임금 '요건/조건' 신호(요건 명사·연차·금액). 아래 업무 동사와
+    // 겹치지 않을 때만 요건으로 본다. 금액("3000000원 이상")은 임금조건이라 duty 가 아니다(하네스 가온테크).
     private static final Pattern QUALIFICATION_SIGNAL_PATTERN = Pattern.compile(
-            "경력\\s*\\d+\\s*년|\\d+\\s*년\\s*이상|자격증|기능사|기사\\s*자격|건설기술인|학사|석사|박사|학위|전공자?|졸업");
+            "경력\\s*\\d+\\s*년|\\d+\\s*년\\s*이상|자격증|기능사|기사\\s*자격|건설기술인|학사|석사|박사|학위|전공자?|졸업"
+            + "|\\d[\\d,]*\\s*원");
     // duty(담당업무) 신호 동사 — 요건 신호와 겹쳐도 실제 수행 업무면 duty 로 유지("서버 유지보수 수행").
     private static final Pattern RESPONSIBILITY_VERB_PATTERN = Pattern.compile(
             "수행|담당|개발|운영|구축|관리|설계|지원|분석|기획|제작|유지보수|대응|추진|수립");
@@ -111,6 +113,13 @@ public class BAnalysisGenerationService {
     private static final int SUPPLEMENT_SENTENCE_MIN_LENGTH = 8;
     private static final int SUPPLEMENT_SENTENCE_MAX_LENGTH = 120;
     private static final Pattern LEADING_LIST_MARKER_PATTERN = Pattern.compile("^[-*•ㆍ·\\s]+");
+    // A-1 보정(하네스 2026-07-03 가온테크): 콤마 단일라인 분해 시 산문 제외 신호. 활용형 동사(하고/하며/…)·
+    // 목적격 조사(을/를+공백)·종결형(합니다 등)이 있으면 산문으로 보고 콤마 분할하지 않는다.
+    // "유지보수·관리·운영" 같은 명사형 키워드는 이 신호에 걸리지 않아 나열형 분해가 가능하다.
+    private static final Pattern PROSE_COMMA_GUARD_PATTERN = Pattern.compile(
+            "하고|하며|하여|하는|하거나|되고|되며|되는|합니다|입니다|됩니다|[을를]\\s");
+    // A-3: 나열형 duties==summary 중복 시 summary 를 앞쪽 세그먼트 몇 개로 응축할지(부분집합 응축).
+    private static final int DUTIES_SUMMARY_CONDENSE_SEGMENTS = 3;
     private static final List<String> KNOWN_SKILLS = List.of(
             "Java", "Spring", "Spring Boot", "MyBatis", "JPA", "SQL", "MySQL", "PostgreSQL",
             "Redis", "Kafka", "RabbitMQ", "Docker", "Kubernetes", "AWS", "Azure", "GCP",
@@ -412,27 +421,45 @@ public class BAnalysisGenerationService {
             newDuties = duties;
         }
 
-        // A-3: duties==summary 중복이면 summary 를 첫 문장으로 응축해 두 필드를 구분한다(동국제약).
-        // 응축본은 원문의 부분집합이라 근거성이 유지되며, 길이 하한(검증 통과) 아래로는 응축하지 않는다.
-        String newSummary = dedupSummaryFromDuties(newDuties, summary);
+        // A-3: duties==summary 중복이면 summary 를 응축해 두 필드를 구분한다(동국제약·가온테크).
+        // duties 가 위에서 변형됐을 수 있으므로 raw/변형본 양쪽과 대조한다. 응축본은 출력의 부분집합이라
+        // 근거성이 유지되며, 길이 하한(검증 통과) 아래로는 응축하지 않는다.
+        String newSummary = dedupSummaryFromDuties(duties, newDuties, segments, summary);
 
         return new JobText(newDuties, newQualifications, newSummary);
     }
 
     /**
-     * duties 와 summary 가 사실상 동일하면(동국제약) summary 를 첫 문장으로 응축해 중복을 제거한다.
-     * 응축이 불가능하거나(단문) 검증 하한(20자) 미만이면 원본 summary 를 그대로 둔다.
+     * duties 와 summary 가 사실상 동일하면 summary 를 응축해 중복을 제거한다.
+     * <ul>
+     * <li>산문형(동국제약): 첫 문장으로 응축한다(부분집합). 실제로 짧아졌을 때만 채택한다.</li>
+     * <li>키워드 나열형(가온테크 — 문장부호가 없어 첫 문장 응축 불가): duty 세그먼트 앞쪽
+     *     {@value #DUTIES_SUMMARY_CONDENSE_SEGMENTS}개만으로 응축한다(부분집합).</li>
+     * </ul>
+     * duties 가 후처리로 변형됐을 수 있어 중복 판정은 raw/변형본 양쪽과 대조한다.
+     * 응축본이 검증 하한(20자) 미만이거나 duties 와 여전히 동일해지면 원본 summary 를 유지한다.
      */
-    private String dedupSummaryFromDuties(String duties, String summary) {
-        if (isBlank(duties) || isBlank(summary)) {
+    private String dedupSummaryFromDuties(String rawDuties, String newDuties, List<String> dutySegments,
+                                          String summary) {
+        if (isBlank(rawDuties) || isBlank(summary)) {
             return summary;
         }
-        if (!compactWhitespace(duties).equals(compactWhitespace(summary))) {
+        String compactSummary = compactWhitespace(summary);
+        if (!compactSummary.equals(compactWhitespace(rawDuties))
+                && !compactSummary.equals(compactWhitespace(newDuties))) {
             return summary;
         }
         String condensed = firstSentences(summary, 1);
-        if (condensed.length() >= 20 && !compactWhitespace(condensed).equals(compactWhitespace(duties))) {
+        if (condensed.length() >= 20 && condensed.length() < summary.length()
+                && !compactWhitespace(condensed).equals(compactWhitespace(newDuties))) {
             return condensed;
+        }
+        if (dutySegments.size() > DUTIES_SUMMARY_CONDENSE_SEGMENTS) {
+            String subset = String.join(", ", dutySegments.subList(0, DUTIES_SUMMARY_CONDENSE_SEGMENTS))
+                    + " 등의 업무를 담당합니다.";
+            if (subset.length() >= 20 && !compactWhitespace(subset).equals(compactWhitespace(newDuties))) {
+                return subset;
+            }
         }
         return summary;
     }
@@ -511,18 +538,63 @@ public class BAnalysisGenerationService {
         return true;
     }
 
-    /** 자유서술을 줄바꿈·불릿 단위 세그먼트로 분해한다(콤마로는 자르지 않아 산문 문장 훼손 방지). */
+    /**
+     * 자유서술을 줄바꿈·불릿 단위 세그먼트로 분해하고, 키워드 나열형일 때만 top-level 콤마로 추가 분해한다
+     * (A-1 보정 — 하네스 2026-07-03 가온테크: R1 이 나열을 줄바꿈 대신 콤마 단일라인으로 출력).
+     * 산문 문장은 콤마로 자르지 않는다({@link #splitKeywordCommaList} 가드).
+     */
     private List<String> splitJobTextSegments(String text) {
         List<String> segments = new ArrayList<>();
         for (String line : text.split("\\R")) {
             for (String part : JOB_TEXT_BULLET_PATTERN.split(line)) {
                 String trimmed = part.trim();
                 if (!trimmed.isEmpty()) {
-                    segments.add(trimmed);
+                    segments.addAll(splitKeywordCommaList(trimmed));
                 }
             }
         }
         return segments;
+    }
+
+    /**
+     * 키워드 나열형 세그먼트만 top-level ASCII 콤마로 분해한다(가온테크형 콤마 단일라인). 산문 훼손 방지 가드:
+     * <ul>
+     * <li>문장형({@link #isSentenceLike})·활용형 동사/목적격 조사({@link #PROSE_COMMA_GUARD_PATTERN})가 있으면
+     *     산문으로 보고 분할하지 않는다.</li>
+     * <li>괄호/브래킷({@code () [] {}}) depth 내부의 콤마는 분할하지 않는다("구축(설계, 운영)" 보존).</li>
+     * <li>분할 결과가 전부 키워드형(짧은 비문, {@link #isKeywordList})일 때만 채택한다 — 하나라도 산문형이면
+     *     원본을 그대로 둔다(과분해 방지). ASCII 콤마 외 문자(/·전각 콤마 등)로는 넓히지 않는다(TCP/IP 등 보존).</li>
+     * </ul>
+     */
+    private List<String> splitKeywordCommaList(String segment) {
+        if (segment.indexOf(',') < 0
+                || isSentenceLike(segment)
+                || PROSE_COMMA_GUARD_PATTERN.matcher(segment).find()) {
+            return List.of(segment);
+        }
+        List<String> parts = new ArrayList<>();
+        StringBuilder current = new StringBuilder();
+        int depth = 0;
+        for (int i = 0; i < segment.length(); i++) {
+            char c = segment.charAt(i);
+            if (c == '(' || c == '[' || c == '{') {
+                depth++;
+            } else if (c == ')' || c == ']' || c == '}') {
+                depth = Math.max(0, depth - 1);
+            }
+            if (depth == 0 && c == ',') {
+                parts.add(current.toString().trim());
+                current.setLength(0);
+            } else {
+                current.append(c);
+            }
+        }
+        parts.add(current.toString().trim());
+        parts.removeIf(String::isEmpty);
+        if (parts.size() < 2 || !isKeywordList(parts)) {
+            return List.of(segment);
+        }
+        return parts;
     }
 
     /**

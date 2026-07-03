@@ -733,6 +733,75 @@ class BAnalysisGenerationServiceTest {
         assertThat(result.payload().summary()).isEqualTo(summary);
     }
 
+    // ── A-1 보정(하네스 2026-07-03 가온테크): 콤마 단일라인 나열 분해 ──
+
+    @Test
+    void a1CommaSingleLineDutiesRelocatedSentencifiedAndSummaryCondensed() {
+        // 가온테크형: R1 이 키워드 나열을 줄바꿈 대신 top-level 콤마 단일라인으로 출력 + summary==duties.
+        // 기대: 경력5년·3000000원(요건/임금)은 qualifications 로 이동, 남은 나열은 문장화,
+        //       summary 는 duties 전체 복붙이 아닌 앞쪽 세그먼트 응축형(부분집합).
+        String duties = "시스템관리자, 전산운영직, 기술지원/SE/백업전문가, IT기술지원, 장비기술지원, "
+                + "Linux, VMware, Window Server, 유지보수, 경력5년, 3000000원 이상";
+        BAnalysisGenerationService.GeneratedJobAnalysis result = runJobText(
+                duties,
+                "경력 5년 이상 우대",
+                duties,
+                List.of("Linux", "VMware"),
+                "모집직종 IT기술지원 전문가, 시스템관리자, 전산운영직. Linux VMware Window Server 유지보수. "
+                        + "경력조건 경력5년, 임금 3000000원 이상.");
+
+        assertThat(result.fellBack()).isFalse();
+        // duty 오배치 요건/임금 재배치 + 나열 문장화
+        assertThat(result.payload().duties())
+                .doesNotContain("경력5년")
+                .doesNotContain("3000000원")
+                .endsWith("등의 업무를 담당합니다.")
+                .contains("시스템관리자")
+                .contains("Window Server")
+                .contains("유지보수");
+        assertThat(result.payload().qualifications())
+                .contains("경력5년")
+                .contains("3000000원 이상");
+        // summary 는 duties 와 단순 != 가 아니라 짧은 응축형(앞쪽 세그먼트 부분집합)이어야 한다.
+        assertThat(result.payload().summary())
+                .isEqualTo("시스템관리자, 전산운영직, 기술지원/SE/백업전문가 등의 업무를 담당합니다.");
+        assertThat(result.payload().summary().length()).isLessThan(result.payload().duties().length());
+    }
+
+    @Test
+    void a1CommaSplitProtectsBracketedCommas() {
+        // 가드 1: 괄호 안 콤마는 분할하지 않는다 — "구축(설계, 운영)" 이 통째로 보존돼야 한다.
+        BAnalysisGenerationService.GeneratedJobAnalysis result = runJobText(
+                "클라우드 인프라 구축(설계, 운영), Linux 서버 가상화 환경 유지보수, 데이터센터 네트워크 모니터링, 경력5년",
+                "클라우드 관련 경험",
+                "클라우드 엔지니어를 채용하는 공고입니다. 인프라 구축을 담당합니다.",
+                List.of("Linux"),
+                "Linux 가상화 기술 스택\n클라우드 자격증 우대\n경력5년 이상");
+
+        assertThat(result.fellBack()).isFalse();
+        assertThat(result.payload().duties())
+                .contains("구축(설계, 운영)")
+                .contains("Linux 서버 가상화 환경 유지보수")
+                .doesNotContain("경력5년");
+        assertThat(result.payload().qualifications()).contains("경력5년");
+    }
+
+    @Test
+    void a1CommaSplitLeavesProseWithCommasUntouched() {
+        // 가드 2: 활용형 동사·목적격 조사가 있는 산문은 콤마가 있어도 분할·문장화하지 않는다(과분해 방지).
+        String duties = "결제 시스템 백엔드 구조를 설계하고 구현하며, 대규모 트래픽 환경에서 처리 효율을 "
+                + "지속적으로 개선하고 서비스 안정성 확보를 총괄";
+        BAnalysisGenerationService.GeneratedJobAnalysis result = runJobText(
+                duties,
+                "Java 백엔드 경험 필수",
+                "결제 시스템 백엔드 개발자를 채용하는 공고입니다. 안정성을 담당합니다.",
+                List.of("Java"),
+                "결제 시스템 백엔드 개발. Java 경험 필수.");
+
+        assertThat(result.fellBack()).isFalse();
+        assertThat(result.payload().duties()).isEqualTo(duties);
+    }
+
     // ── 이슈 D 후속 A-4: OCR 깨진 토큰(자모 깨짐) 필터 ──
 
     @Test
