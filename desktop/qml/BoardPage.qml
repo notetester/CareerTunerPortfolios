@@ -64,9 +64,13 @@ Item {
                         MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: root.reload() }
                     }
                     Rectangle {
-                        width: writeLbl.implicitWidth + 20; height: 30; radius: 8
+                        width: writeRow.implicitWidth + 20; height: 30; radius: 8
                         color: Theme.accent
-                        Text { id: writeLbl; anchors.centerIn: parent; text: "✎ 글쓰기"; color: "white"; font.pixelSize: 11; font.bold: true }
+                        Row {
+                            id: writeRow; anchors.centerIn: parent; spacing: 5
+                            Icon { name: "pencil"; size: 11; color: "white"; anchors.verticalCenter: parent.verticalCenter }
+                            Text { text: "글쓰기"; color: "white"; font.pixelSize: 11; font.bold: true; anchors.verticalCenter: parent.verticalCenter }
+                        }
                         MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: writeDialog.open() }
                     }
                 }
@@ -169,9 +173,21 @@ Item {
                                 Text { text: post["authorName"]; color: Theme.muted; font.pixelSize: 9; font.bold: true }
                                 Text { text: root.dateText(post["createdAt"]); color: Theme.muted; font.pixelSize: 9 }
                                 Item { Layout.fillWidth: true }
-                                Text { text: "👁 " + post["viewCount"]; color: Theme.muted; font.pixelSize: 9 }
-                                Text { text: "💬 " + post["commentCount"]; color: Theme.muted; font.pixelSize: 9 }
-                                Text { text: "♥ " + post["likeCount"]; color: post["liked"] ? Theme.danger : Theme.muted; font.pixelSize: 9 }
+                                Row {
+                                    spacing: 3
+                                    Icon { name: "eye"; size: 10; color: Theme.muted; anchors.verticalCenter: parent.verticalCenter }
+                                    Text { text: post["viewCount"]; color: Theme.muted; font.pixelSize: 9; anchors.verticalCenter: parent.verticalCenter }
+                                }
+                                Row {
+                                    spacing: 3
+                                    Icon { name: "message"; size: 10; color: Theme.muted; anchors.verticalCenter: parent.verticalCenter }
+                                    Text { text: post["commentCount"]; color: Theme.muted; font.pixelSize: 9; anchors.verticalCenter: parent.verticalCenter }
+                                }
+                                Row {
+                                    spacing: 3
+                                    Icon { name: "heart"; size: 10; color: post["liked"] ? Theme.danger : Theme.muted; anchors.verticalCenter: parent.verticalCenter }
+                                    Text { text: post["likeCount"]; color: post["liked"] ? Theme.danger : Theme.muted; font.pixelSize: 9; anchors.verticalCenter: parent.verticalCenter }
+                                }
                             }
                         }
                         MouseArea {
@@ -223,7 +239,11 @@ Item {
                 visible: !root.hasPost()
                 anchors.centerIn: parent
                 spacing: 8
-                Text { text: "📋"; font.pixelSize: 34; Layout.alignment: Qt.AlignHCenter }
+                Icon {
+                    name: "list"; size: 32; color: Theme.muted
+                    Layout.alignment: Qt.AlignHCenter
+                    Layout.preferredWidth: 32; Layout.preferredHeight: 32
+                }
                 Text {
                     text: community.loading ? "불러오는 중…" : "왼쪽 목록에서 글을 선택하세요"
                     color: Theme.muted; font.pixelSize: 13
@@ -270,15 +290,22 @@ Item {
                             Item { Layout.fillWidth: true }
                             // 좋아요 토글
                             Rectangle {
-                                width: likeLbl.implicitWidth + 22; height: 28; radius: 8
+                                width: likeRow.implicitWidth + 22; height: 28; radius: 8
                                 color: community.currentPost["liked"] ? Theme.accentSoft : Theme.raised
                                 border.color: community.currentPost["liked"] ? Theme.accent : Theme.border
-                                Text {
-                                    id: likeLbl
-                                    anchors.centerIn: parent
-                                    text: (community.currentPost["liked"] ? "♥ " : "♡ ") + (community.currentPost["likeCount"] || 0)
-                                    color: community.currentPost["liked"] ? Theme.accent2 : Theme.text
-                                    font.pixelSize: 12; font.bold: true
+                                Row {
+                                    id: likeRow; anchors.centerIn: parent; spacing: 5
+                                    Icon {
+                                        name: "heart"; size: 12
+                                        color: community.currentPost["liked"] ? Theme.accent2 : Theme.text
+                                        anchors.verticalCenter: parent.verticalCenter
+                                    }
+                                    Text {
+                                        text: community.currentPost["likeCount"] || 0
+                                        color: community.currentPost["liked"] ? Theme.accent2 : Theme.text
+                                        font.pixelSize: 12; font.bold: true
+                                        anchors.verticalCenter: parent.verticalCenter
+                                    }
                                 }
                                 MouseArea {
                                     anchors.fill: parent
@@ -399,7 +426,12 @@ Item {
                                         }
                                         Text { text: root.dateText(cmt["createdAt"]); color: Theme.muted; font.pixelSize: 9 }
                                         Item { Layout.fillWidth: true }
-                                        Text { visible: Number(cmt["likeCount"]) > 0; text: "♥ " + cmt["likeCount"]; color: Theme.muted; font.pixelSize: 9 }
+                                        Row {
+                                            visible: Number(cmt["likeCount"]) > 0
+                                            spacing: 3
+                                            Icon { name: "heart"; size: 9; color: Theme.muted; anchors.verticalCenter: parent.verticalCenter }
+                                            Text { text: cmt["likeCount"]; color: Theme.muted; font.pixelSize: 9; anchors.verticalCenter: parent.verticalCenter }
+                                        }
                                         // 답글 대상 지정
                                         Rectangle {
                                             visible: !cmt["isDeleted"]
