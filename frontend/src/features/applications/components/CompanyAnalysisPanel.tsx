@@ -228,7 +228,7 @@ export function CompanyAnalysisPanel({
       <CardHeader className="gap-3">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
           <div>
-            <CardTitle className="flex items-center gap-2 text-lg font-bold text-slate-900">
+            <CardTitle className="flex flex-wrap items-center gap-2 text-lg font-bold text-slate-900">
               <Building2 className="size-5 text-blue-600" />
               기업 분석
               {isStale && (
