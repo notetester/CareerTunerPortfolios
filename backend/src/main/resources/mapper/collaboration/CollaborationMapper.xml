@@ -180,9 +180,12 @@
 
     <insert id="insertConversation" useGeneratedKeys="true" keyProperty="id">
         INSERT INTO collaboration_conversation
-            (type, user_low_id, user_high_id, title, description, password_hash, max_members, created_by)
+            (type, user_low_id, user_high_id, title, description, profile_image_url, password_hash, max_members,
+             join_policy, invite_policy, anonymous_allowed, anonymous_only, room_profile_required, settings_json, created_by)
         VALUES
-            (#{type}, #{userLowId}, #{userHighId}, #{title}, #{description}, #{passwordHash}, #{maxMembers}, #{createdBy})
+            (#{type}, #{userLowId}, #{userHighId}, #{title}, #{description}, #{profileImageUrl}, #{passwordHash}, #{maxMembers},
+             #{joinPolicy}, #{invitePolicy}, #{anonymousAllowed}, #{anonymousOnly}, #{roomProfileRequired},
+             CASE WHEN #{settingsJson} IS NULL THEN NULL ELSE CAST(#{settingsJson} AS JSON) END, #{createdBy})
     </insert>
 
     <insert id="insertConversationMember">
@@ -198,6 +201,16 @@
             role = IF(role = 'OWNER', role, VALUES(role)),
             invited_by = COALESCE(invited_by, VALUES(invited_by))
     </insert>
+
+    <update id="updateConversationMemberProfile">
+        UPDATE collaboration_conversation_member
+           SET display_name = #{displayName},
+               avatar_url = #{avatarUrl},
+               anonymous = #{anonymous},
+               room_profile_json = CASE WHEN #{roomProfileJson} IS NULL THEN NULL ELSE CAST(#{roomProfileJson} AS JSON) END
+         WHERE conversation_id = #{conversationId}
+           AND user_id = #{userId}
+    </update>
 
     <insert id="insertConversationInvite">
         INSERT INTO collaboration_conversation_invite (conversation_id, inviter_id, invitee_id, anonymous, status)
@@ -234,6 +247,21 @@
            AND status = 'ACTIVE'
     </select>
 
+    <select id="countConversationBan" resultType="int">
+        SELECT COUNT(*)
+          FROM collaboration_conversation_ban
+         WHERE conversation_id = #{conversationId}
+           AND user_id = #{userId}
+           AND (banned_until IS NULL OR banned_until &gt; NOW())
+    </select>
+
+    <select id="countActiveConversationMembers" resultType="int">
+        SELECT COUNT(*)
+          FROM collaboration_conversation_member
+         WHERE conversation_id = #{conversationId}
+           AND status = 'ACTIVE'
+    </select>
+
     <select id="findConversationMemberIds" resultType="long">
         SELECT user_id
           FROM collaboration_conversation_member
@@ -253,6 +281,49 @@
            AND cm.status = 'ACTIVE'
     </select>
 
+    <select id="findConversationMembers" resultType="com.careertuner.collaboration.domain.ConversationMemberDetailRow">
+        SELECT cm.conversation_id,
+               cm.user_id,
+               cm.role,
+               cm.status,
+               cm.muted,
+               cm.display_name,
+               cm.avatar_url,
+               cm.anonymous,
+               cm.permissions_json,
+               cm.room_profile_json,
+               cm.joined_at,
+               u.name AS user_name,
+               u.email AS user_email
+          FROM collaboration_conversation_member cm
+          JOIN users u ON u.id = cm.user_id
+         WHERE cm.conversation_id = #{conversationId}
+           AND cm.status = 'ACTIVE'
+         ORDER BY FIELD(cm.role, 'OWNER', 'MANAGER', 'MEMBER'), cm.joined_at ASC
+    </select>
+
+    <select id="findConversationMember" resultType="com.careertuner.collaboration.domain.ConversationMemberDetailRow">
+        SELECT cm.conversation_id,
+               cm.user_id,
+               cm.role,
+               cm.status,
+               cm.muted,
+               cm.display_name,
+               cm.avatar_url,
+               cm.anonymous,
+               cm.permissions_json,
+               cm.room_profile_json,
+               cm.joined_at,
+               u.name AS user_name,
+               u.email AS user_email
+          FROM collaboration_conversation_member cm
+          JOIN users u ON u.id = cm.user_id
+         WHERE cm.conversation_id = #{conversationId}
+           AND cm.user_id = #{userId}
+           AND cm.status = 'ACTIVE'
+         LIMIT 1
+    </select>
+
     <update id="updateConversationMemberMuted">
         UPDATE collaboration_conversation_member
            SET muted = #{muted}
@@ -260,11 +331,60 @@
            AND user_id = #{userId}
     </update>
 
+    <update id="updateConversationSettings">
+        UPDATE collaboration_conversation
+           SET title = #{title},
+               description = #{description},
+               profile_image_url = #{profileImageUrl},
+               password_hash = #{passwordHash},
+               max_members = #{maxMembers},
+               join_policy = #{joinPolicy},
+               invite_policy = #{invitePolicy},
+               anonymous_allowed = #{anonymousAllowed},
+               anonymous_only = #{anonymousOnly},
+               room_profile_required = #{roomProfileRequired},
+               settings_json = CASE WHEN #{settingsJson} IS NULL THEN NULL ELSE CAST(#{settingsJson} AS JSON) END
+         WHERE id = #{id}
+    </update>
+
+    <update id="updateConversationMemberRole">
+        UPDATE collaboration_conversation_member
+           SET role = #{role},
+               permissions_json = CASE WHEN #{permissionsJson} IS NULL THEN NULL ELSE CAST(#{permissionsJson} AS JSON) END,
+               display_name = COALESCE(#{displayName}, display_name),
+               avatar_url = COALESCE(#{avatarUrl}, avatar_url),
+               anonymous = COALESCE(#{anonymous}, anonymous)
+         WHERE conversation_id = #{conversationId}
+           AND user_id = #{userId}
+           AND role &lt;&gt; 'OWNER'
+    </update>
+
+    <update id="removeConversationMember">
+        UPDATE collaboration_conversation_member
+           SET status = 'REMOVED',
+               removed_by = #{removedBy},
+               left_at = NOW()
+         WHERE conversation_id = #{conversationId}
+           AND user_id = #{userId}
+           AND role &lt;&gt; 'OWNER'
+    </update>
+
+    <insert id="upsertConversationBan">
+        INSERT INTO collaboration_conversation_ban (conversation_id, user_id, banned_by, reason, banned_until)
+        VALUES (#{conversationId}, #{userId}, #{bannedBy}, #{reason}, #{bannedUntil})
+        ON DUPLICATE KEY UPDATE
+            banned_by = VALUES(banned_by),
+            reason = VALUES(reason),
+            banned_until = VALUES(banned_until),
+            created_at = NOW()
+    </insert>
+
     <sql id="conversationSummaryColumns">
         c.id,
         c.type,
         c.title,
         c.description,
+        c.profile_image_url,
         CASE WHEN c.type = 'PRIVATE' OR c.password_hash IS NOT NULL THEN 1 ELSE 0 END AS locked,
         (
             SELECT COUNT(*)
@@ -274,6 +394,12 @@
         ) AS member_count,
         CASE WHEN me.user_id IS NULL THEN 0 ELSE 1 END AS joined,
         COALESCE(me.muted, 0) AS muted,
+        me.role AS role,
+        c.join_policy,
+        c.invite_policy,
+        c.anonymous_allowed,
+        c.anonymous_only,
+        c.room_profile_required,
         peer.user_id AS peer_user_id,
         peer_user.name AS peer_name,
         peer_user.email AS peer_email,
@@ -523,4 +649,46 @@
          WHERE user_id IN
         <foreach collection="userIds" item="id" open="(" separator="," close=")">#{id}</foreach>
     </select>
+
+    <select id="findChatProfiles" resultType="com.careertuner.collaboration.domain.UserChatProfile">
+        SELECT id, user_id, nickname, avatar_url, description, is_default AS default_profile, created_at, updated_at
+          FROM user_chat_profile
+         WHERE user_id = #{userId}
+         ORDER BY is_default DESC, updated_at DESC, id DESC
+    </select>
+
+    <select id="findChatProfile" resultType="com.careertuner.collaboration.domain.UserChatProfile">
+        SELECT id, user_id, nickname, avatar_url, description, is_default AS default_profile, created_at, updated_at
+          FROM user_chat_profile
+         WHERE id = #{id}
+           AND user_id = #{userId}
+         LIMIT 1
+    </select>
+
+    <update id="clearDefaultChatProfile">
+        UPDATE user_chat_profile
+           SET is_default = 0
+         WHERE user_id = #{userId}
+    </update>
+
+    <insert id="insertChatProfile" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO user_chat_profile (user_id, nickname, avatar_url, description, is_default)
+        VALUES (#{userId}, #{nickname}, #{avatarUrl}, #{description}, #{defaultProfile})
+    </insert>
+
+    <update id="updateChatProfile">
+        UPDATE user_chat_profile
+           SET nickname = #{nickname},
+               avatar_url = #{avatarUrl},
+               description = #{description},
+               is_default = #{defaultProfile}
+         WHERE id = #{id}
+           AND user_id = #{userId}
+    </update>
+
+    <delete id="deleteChatProfile">
+        DELETE FROM user_chat_profile
+         WHERE id = #{id}
+           AND user_id = #{userId}
+    </delete>
 </mapper>

@@ -406,8 +406,10 @@ public class ChatbotController {
                         .values().stream().toList();
         try {
             profileService.save(authUser, new UserProfileRequest(
-                    desiredJob, null, null, null, null, skills,
-                    null, null, null, null, null, null));
+                    null, null, desiredJob, null,
+                    null, null, null, skills, null, null, null,
+                    null, null, null, null, null,
+                    null, null, null));
         } catch (RuntimeException ex) {
             log.warn("온보딩 프로필 저장 실패(case 는 생성됨, CASE_READY 진행): {}", ex.getMessage());
         }

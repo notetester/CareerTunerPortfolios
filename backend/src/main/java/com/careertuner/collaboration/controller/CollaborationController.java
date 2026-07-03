@@ -21,8 +21,15 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.careertuner.collaboration.dto.CollaborationUserResponse;
+import com.careertuner.collaboration.dto.ChatProfileRequest;
+import com.careertuner.collaboration.dto.ChatProfileResponse;
 import com.careertuner.collaboration.dto.ConversationMuteRequest;
+import com.careertuner.collaboration.dto.ConversationMemberActionRequest;
+import com.careertuner.collaboration.dto.ConversationMemberResponse;
+import com.careertuner.collaboration.dto.ConversationMemberUpdateRequest;
 import com.careertuner.collaboration.dto.ConversationSummaryResponse;
+import com.careertuner.collaboration.dto.ConversationSettingsRequest;
+import com.careertuner.collaboration.dto.ConversationSettingsResponse;
 import com.careertuner.collaboration.dto.CreateConversationRequest;
 import com.careertuner.collaboration.dto.DirectConversationRequest;
 import com.careertuner.collaboration.dto.FriendRequestCreateRequest;
@@ -165,6 +172,76 @@ public class CollaborationController {
             @AuthenticationPrincipal AuthUser authUser) {
         return ApiResponse.ok(
                 collaborationService.setConversationMuted(authUser.id(), conversationId, request.muted()));
+    }
+
+    @GetMapping("/conversations/{conversationId}/settings")
+    public ApiResponse<ConversationSettingsResponse> settings(
+            @PathVariable Long conversationId,
+            @AuthenticationPrincipal AuthUser authUser) {
+        return ApiResponse.ok(collaborationService.getConversationSettings(authUser.id(), conversationId));
+    }
+
+    @PatchMapping("/conversations/{conversationId}/settings")
+    public ApiResponse<ConversationSettingsResponse> updateSettings(
+            @PathVariable Long conversationId,
+            @Validated @RequestBody ConversationSettingsRequest request,
+            @AuthenticationPrincipal AuthUser authUser) {
+        return ApiResponse.ok(collaborationService.updateConversationSettings(authUser.id(), conversationId, request));
+    }
+
+    @GetMapping("/conversations/{conversationId}/members")
+    public ApiResponse<List<ConversationMemberResponse>> members(
+            @PathVariable Long conversationId,
+            @AuthenticationPrincipal AuthUser authUser) {
+        return ApiResponse.ok(collaborationService.listConversationMembers(authUser.id(), conversationId));
+    }
+
+    @PatchMapping("/conversations/{conversationId}/members/{targetUserId}")
+    public ApiResponse<ConversationMemberResponse> updateMember(
+            @PathVariable Long conversationId,
+            @PathVariable Long targetUserId,
+            @RequestBody ConversationMemberUpdateRequest request,
+            @AuthenticationPrincipal AuthUser authUser) {
+        return ApiResponse.ok(collaborationService.updateConversationMember(
+                authUser.id(), conversationId, targetUserId, request));
+    }
+
+    @PostMapping("/conversations/{conversationId}/members/{targetUserId}/kick")
+    public ApiResponse<Void> kickMember(
+            @PathVariable Long conversationId,
+            @PathVariable Long targetUserId,
+            @RequestBody(required = false) ConversationMemberActionRequest request,
+            @AuthenticationPrincipal AuthUser authUser) {
+        collaborationService.kickConversationMember(authUser.id(), conversationId, targetUserId, request);
+        return ApiResponse.ok();
+    }
+
+    @GetMapping("/chat-profiles")
+    public ApiResponse<List<ChatProfileResponse>> chatProfiles(@AuthenticationPrincipal AuthUser authUser) {
+        return ApiResponse.ok(collaborationService.listChatProfiles(authUser.id()));
+    }
+
+    @PostMapping("/chat-profiles")
+    public ApiResponse<ChatProfileResponse> createChatProfile(
+            @RequestBody ChatProfileRequest request,
+            @AuthenticationPrincipal AuthUser authUser) {
+        return ApiResponse.ok(collaborationService.createChatProfile(authUser.id(), request));
+    }
+
+    @PatchMapping("/chat-profiles/{profileId}")
+    public ApiResponse<ChatProfileResponse> updateChatProfile(
+            @PathVariable Long profileId,
+            @RequestBody ChatProfileRequest request,
+            @AuthenticationPrincipal AuthUser authUser) {
+        return ApiResponse.ok(collaborationService.updateChatProfile(authUser.id(), profileId, request));
+    }
+
+    @DeleteMapping("/chat-profiles/{profileId}")
+    public ApiResponse<Void> deleteChatProfile(
+            @PathVariable Long profileId,
+            @AuthenticationPrincipal AuthUser authUser) {
+        collaborationService.deleteChatProfile(authUser.id(), profileId);
+        return ApiResponse.ok();
     }
 
     /** 데스크톱 앱 heartbeat — LOCAL 파일 공유 다운로드 게이트의 presence 를 갱신한다(30초 폴링 틱마다 호출). */
