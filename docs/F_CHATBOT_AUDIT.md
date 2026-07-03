@@ -2,6 +2,7 @@
 
 작성: 2026-07-03 · 코드 변경 0줄 · 대상 커밋: HEON-JEONG-SUK 최신(pull d34a7313 이후 + 넛지 패치 워킹트리)
 태깅: **[사실]** = 코드에서 확정 · **[가설]** = 런타임 확인 필요(확인 방법 병기)
+실측 갱신: 2026-07-03 — §7의 1·4·5 DB/코드 실측 완료, §2 체크리스트 실행 결과 반영(각 판정에 [확정]/[기각] 병기)
 
 ---
 
@@ -105,12 +106,24 @@
   ④ 면접인계에서 step=DONE(`:731`) — 직후 유저가 "네"/“고마워” 등 약신호를 치면 동일하게 FALLBACK 되묻기(환불 예시)가
   실행 화면 옆에 뜬다.
 
-**런타임 확정 체크리스트 (10분)**
+**런타임 확정 체크리스트 (10분) — 2026-07-03 실행 결과**
 1. `chatbot_response_log` 해당 대화 조회 — "네" **직전** 턴 `response_path='AGENT'` 확인(=① 에이전트 턴이었음).
+   → **원 대화 DB 미식별**: 보고된 원문("면접을 시작할게요! 아래에 질문이 나올 테니")이 122개 대화 메모리 전수에서 0건
+   (변형 "면접을 시작/면접 시작/질문을 드릴/첫 번째 질문/준비되셨" 포함 0건). 대화 삭제 또는 문구 부정확 전달로 추정.
 2. "네" 턴은 **행이 없음**을 확인 — FALLBACK 분기는 `record()` 미호출[사실 `:1076-1087`]. 행 부재가 곧 FALLBACK 경유 방증.
-3. `chatbot_conversation_memory.messages_json` 마지막 AiMessage 에 "면접을 시작할게요…" 원문 존재 확인
-   (메모리에 쓰는 건 에이전트뿐 → 존재하면 ① 생성 확정).
+   → **[확정]** 재현 대화 9000163에서 **양성 대조 성립**: 인접 AGENT 턴은 행 존재(id 9001683), 직후 "네" 턴은 행 부재.
+   전 DB(1,597행)에서 긍정 단답("네"/"응"/"좋아"류) 질문행은 ONBOARDING 1건뿐(정의된 소비) — AGENT/FAQ/NAV 0건.
+   `FALLBACK`이라는 response_path 값 자체가 전 로그에 부재(F-21 뒷받침).
+3. `chatbot_conversation_memory.messages_json` 마지막 AiMessage 에 "면접을 시작할게요…" 원문 존재 확인.
+   → **원문은 [기각]**(전수 0건). 단 **동형 환각 실물 [확정]**: conv 14(익명, 06-23) 마지막 AI가
+   "CareerTuner에서는 …**모의면접 서비스**를 제공하고 있어요. 원하는 직무/회사 선택해 주세요 … 맞춤형으로 모의면접을
+   도와드릴게요" — 존재하지 않는 인챗 면접 약속. 메모리가 정확히 그 약속에서 끝남(후속 턴이 메모리·로그에 안 남는
+   FALLBACK 낙하 구조와 정합). conv 14는 response_log 행 0(당시 로깅 공백)이라 부재 논증엔 미사용.
 4. 재현: 같은 대화에 아무 잡담 → 에이전트 응답 후 "네" 전송 → route `되묻기` 반환 확인(curl 1회).
+   → **[확정]** conv 9000163: ①에이전트 응답 후 "네" → HTTP 200, `route:"되묻기"`, 고정 문구 + 환불 예시 하드코딩 그대로, 0.33s.
+
+**종합 판정: 버그2 = ① 에이전트 환각 약속 + "네" FALLBACK 낙하 — 메커니즘 [확정]** (재현 + 동형 실물 + 로그/메모리 정합 3중).
+F-03·F-04 영향도 A 유지. 보고된 발화의 원 대화 특정만 불가(판정에 영향 없음).
 
 ---
 
@@ -212,7 +225,7 @@ phase 원천 [사실]: ④ = `IntakeSlotTrace.onboardingStep` ∈ {null, JOB, SK
 | F-14 | `:400-406` | JOB/SKILLS에 AFFIRMATIVE·무의미 답 필터 없음 | 직무="네"로 프로필 저장 | B | 긍정 화이트리스트/1자 답변은 재질문(AWAIT_COMPANY의 `:538` 패턴 재사용) |
 | F-15 | `:108-109` GUARDED_STEPS | EXTRACTING·AWAIT_MODE 미포함 → 질문 삼킴 | 대기 중 "얼마나 걸려요?" → "잠시 후 다시 보내주세요" | B | 두 단계를 GUARDED에 추가(오기록 없음 단계라 부작용 없음 — 검토 후) |
 | F-16 | `SummaryAgent` system | 주입 방어 조항 없음(글 본문 통짜 입력) | 악성 글로 요약 출력 탈취 | B | community-chat과 동일한 주입 방어 문단 추가 |
-| F-17 | fork(`IntakeAskService:400-425`)+메모리 | ③ tool-call/result 원문이 ① 컨텍스트로 유입(내부 id·placeholder) | 에이전트가 "id=65…" 같은 내부 표현 에코 [가설] | C | fork 복사 시 tool 메시지 제외(텍스트만) 검토 |
+| F-17 | fork(`IntakeAskService:400-425`)+메모리 | ③ tool-call/result 원문이 ① 컨텍스트로 유입(내부 id·placeholder) | 유입 **[확정]**(TOOL_EXECUTION_RESULT 37건·placeholder 원문 9개 대화) · AI 발화의 내부 id 에코는 **[기각]**(전수 0건) · 단 칩 클릭→유저 발화로 placeholder 재유입 실물 있음(9000157, F-02 표면) | C | fork 복사 시 tool 메시지 제외(텍스트만) 검토 |
 | F-18 | `useChatbot:411-434` | 음성 입력이 목업(SpeechRecognition 미구현, interimTranscript 무갱신) | 마이크 → "확인…"만 뜨고 무한 대기 | B | 데모에서 마이크 버튼 숨김 or disabled 툴팁 |
 | F-19 | `app/pages/Support.tsx:15` | 제거 예정 ChatbotFullScreen이 `/support/chat` 라우트로 잔존(인테이크·칩·가이드 0) | 그 화면에선 ④가 생짜 텍스트로 노출 | B | 라우트 제거 or 위젯 열기로 리다이렉트 |
 | F-20 | `OnboardingGuide:568-573`, `useAutoPrepRun:45` | fetch 예외 원문 노출(영문 가능) | "Failed to fetch" 류 노출 [가설] | C | 사용자 문구로 매핑 |
@@ -261,18 +274,26 @@ phase 원천 [사실]: ④ = `IntakeSlotTrace.onboardingStep` ∈ {null, JOB, SK
 - placeholder 문자열 `"기업명 확인 필요"/"직무명 확인 필요"`가 3곳에 독립 정의(`ApplicationCaseExtractionWorker:40-41`,
   `ApplicationCaseServiceImpl:54-55`, `ChatbotController:80-81`). 문구 변경 시 ④ 게이트·요약 스킵이 조용히 깨진다 —
   공용 상수(또는 case에 "메타 확정 여부" 플래그 컬럼) 제안.
+- **근본 권고: 추출 실패를 매직 스트링이 아니라 null/상태값으로 표현.** `company_name/job_title`에 표시용 placeholder를
+  데이터로 저장하는 구조가 원인 — 실패 시 컬럼은 null(또는 별도 `meta_confirmed` 상태값)로 두고, "기업명 확인 필요" 같은
+  안내 문구는 표시 계층이 조립하도록. 그러면 소비자(F 챗봇·칩·세션 title·LLM 컨텍스트)가 문자열 비교 없이 상태로 분기할 수
+  있고, 3중 정의·조용한 게이트 무력화·LLM 유입(F-17 실측: placeholder 원문이 대화 메모리 9건에 잔류) 문제가 함께 소멸한다.
 - 추출 트랜잭션 분리 요청은 기존 문서 참조: `docs/F_B인계_공고추출_트랜잭션분리.md`.
 - 품질 게이트가 SPA 셸 텍스트(삼성커리어스 메뉴/네비)를 PASS(89점)시켜 placeholder 케이스를 양산 — 게이트 강화 검토.
 
-## 7. 확인 필요 (가정 없이 판단 불가)
+## 7. 확인 필요 (가정 없이 판단 불가) — 2026-07-03 실측 판정 반영
 
-1. **버그2 실물 대화 확정** — §2 체크리스트 1~3(response_log·memory JSON). 코드상 ① 에이전트 외 표면이 없다는
-   증명은 했으나, 실제 그 대화의 직전 턴이 AGENT였는지는 DB를 봐야 확정.
+1. **버그2 실물 대화 확정** — **[확정(메커니즘)/미식별(원 대화)]** §2 체크리스트 실행 결과 참조: 재현·양성 대조·동형 실물로
+   메커니즘 확정, 보고된 원문 대화만 DB 미존재(삭제 또는 문구 부정확 전달 추정). F-03/F-04 영향도 A 유지.
 2. `completeWithError` 시 브라우저 fetch reader 동작(throw vs 정상 종료) — F-20/F-11의 정확한 증상 분기.
-   DevTools 네트워크 탭에서 스트림 강제 종료로 10분 내 확인 가능.
+   DevTools 네트워크 탭에서 스트림 강제 종료로 10분 내 확인 가능. **[미확정 — Batch 1의 1-1 구현 검증에서 처리]**
 3. qwen3 `<think>` 실누출 여부 — yaml 이중 차단 설정은 있으나(`:221-222`) LangChain 버전 조합 실측 미확인.
-4. fork 메모리의 tool-call/result 실제 포함 여부(F-17) — `chatbot_conversation_memory.messages_json`에서
-   `TOOL_EXECUTION_RESULT` 타입 존재 확인 1쿼리.
-5. `/api/chatbot/summarize-posts`의 SecurityConfig 인증 요구 여부(permitAll이면 비로그인 LLM 호출 표면) —
-   SecurityConfig는 공통 영역이라 이번 스코프에서 미열람.
-6. `AutoPrepIntakeService`의 팀 소유 판정 — `docs/FEATURE_OWNERSHIP.md` 기준 확인 후 F-01 수정 주체 확정.
+   **[미확정 — 약한 양성 신호: 07-03 실측 호출 2회(①에이전트·되묻기) 누출 없음]**
+4. fork 메모리의 tool-call/result 실제 포함 여부(F-17) — **[확정]** `TOOL_EXECUTION_RESULT` 37건(9개 대화에 placeholder
+   원문 포함: 24, 9000093, 9000139, 9000150, 9000155, 9000157, 9000158, 9000159). AI 발화의 내부 id 에코는 전수 0건 [기각].
+   부수 실측: 버그1 ready 문장 실물 추가 2건(9000129 "…/ 1개 단계 기준", 9000158 "…/ 기본 면접 기준") + placeholder가
+   칩 클릭→유저 발화로 재유입된 실물(9000157 idx28) — F-01/F-02 실트래픽 증거 보강.
+5. `/api/chatbot/summarize-posts`의 SecurityConfig 인증 요구 여부 — **[확정]** `SecurityConfig.java:69`에서
+   `/api/chatbot/ask`·`/api/chatbot/summarize-posts` POST 둘 다 `permitAll()`(주석 "비로그인도 사용" — 의도된 공개).
+   비로그인 LLM 호출 표면 존재 확정 — 레이트리밋 부재 여부는 별도 과제(공통 영역).
+6. `AutoPrepIntakeService`의 팀 소유 판정 — `docs/FEATURE_OWNERSHIP.md` 기준 확인 후 F-01 수정 주체 확정. **[대기 중 — 세션 규칙상 이 파일 수정 금지 유지]**
