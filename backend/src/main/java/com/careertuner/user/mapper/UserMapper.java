@@ -14,6 +14,8 @@ public interface UserMapper {
 
     int countByEmail(String email);
 
+    int countByLoginId(@Param("loginId") String loginId, @Param("excludeUserId") Long excludeUserId);
+
     /** id 는 useGeneratedKeys 로 user 객체에 채워진다. */
     void insert(User user);
 
@@ -34,4 +36,12 @@ public interface UserMapper {
     void markEmailVerified(Long id);
 
     void updatePassword(@Param("id") Long id, @Param("password") String password);
+
+    void updateAccountBasics(@Param("id") Long id,
+                             @Param("loginId") String loginId,
+                             @Param("phoneNumber") String phoneNumber);
+
+    void updateEnterpriseAccount(@Param("id") Long id,
+                                 @Param("accountType") String accountType,
+                                 @Param("enterpriseTrusted") boolean enterpriseTrusted);
 }

@@ -20,7 +20,12 @@ public class User {
     private boolean passwordEnabled;  // 비밀번호 로그인 가능 여부
     private String name;
     private boolean emailVerified;
+    private String loginId;
+    private String phoneNumber;
+    private boolean phoneVerified;
     private String userType;          // JOB_SEEKER/CAREER_CHANGER/EXPERIENCED
+    private String accountType;       // PERSONAL/EMPLOYER
+    private boolean enterpriseTrusted;
     private String role;              // USER/ADMIN
     private String status;            // ACTIVE/DORMANT/BLOCKED/DELETED
     private String plan;              // FREE/BASIC/PRO/PREMIUM

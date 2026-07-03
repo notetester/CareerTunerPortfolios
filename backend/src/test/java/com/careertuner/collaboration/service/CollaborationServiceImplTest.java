@@ -25,6 +25,7 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import com.careertuner.collaboration.domain.CollaborationConversation;
 import com.careertuner.collaboration.domain.CollaborationMessage;
 import com.careertuner.collaboration.domain.CollaborationUserRow;
+import com.careertuner.collaboration.domain.ConversationMemberDetailRow;
 import com.careertuner.collaboration.domain.ConversationMemberRow;
 import com.careertuner.collaboration.domain.ConversationSummaryRow;
 import com.careertuner.collaboration.domain.DesktopPresenceRow;
@@ -47,6 +48,8 @@ import com.careertuner.notification.service.NotificationService;
 import com.careertuner.privacy.service.PrivacyPolicyService;
 import com.careertuner.privacy.service.PrivacySurfaces;
 
+import tools.jackson.databind.ObjectMapper;
+
 class CollaborationServiceImplTest {
 
     private final CollaborationMapper mapper = mock(CollaborationMapper.class);
@@ -59,7 +62,7 @@ class CollaborationServiceImplTest {
     private final PrivacyPolicyService privacyPolicyService = mock(PrivacyPolicyService.class);
     private final CollaborationServiceImpl service =
             new CollaborationServiceImpl(mapper, notificationService, notificationPreferenceService,
-                    fileAssetMapper, fileService, passwordEncoder, privacyPolicyService);
+                    fileAssetMapper, fileService, passwordEncoder, privacyPolicyService, new ObjectMapper());
 
     /**
      * 개인 차단 정책 기본 스텁 — 전부 허용.
@@ -198,7 +201,8 @@ class CollaborationServiceImplTest {
                 .build());
 
         var response = service.createConversation(1L,
-                new CreateConversationRequest("PRIVATE", " 비공개 스터디 ", null, " secret ", List.of(2L)));
+                new CreateConversationRequest("PRIVATE", " 비공개 스터디 ", null, null, " secret ",
+                        null, null, null, null, null, null, List.of(2L)));
 
         assertThat(response.type()).isEqualTo("PRIVATE");
         assertThat(response.locked()).isTrue();
@@ -223,7 +227,7 @@ class CollaborationServiceImplTest {
                 .memberCount(2)
                 .build());
 
-        var response = service.joinConversation(2L, 40L, new JoinConversationRequest(null));
+        var response = service.joinConversation(2L, 40L, new JoinConversationRequest(null, null, null, null, null));
 
         assertThat(response.joined()).isTrue();
         verify(mapper).insertConversationMemberWithRole(40L, 2L, "MEMBER", null);
@@ -257,6 +261,11 @@ class CollaborationServiceImplTest {
                 .createdBy(1L)
                 .build());
         when(mapper.countConversationMember(30L, 1L)).thenReturn(1);
+        when(mapper.findConversationMember(30L, 1L)).thenReturn(ConversationMemberDetailRow.builder()
+                .conversationId(30L)
+                .userId(1L)
+                .role("OWNER")
+                .build());
         when(mapper.findActiveUserById(2L)).thenReturn(user(2L, "민지", "minji@example.com"));
         when(mapper.findActiveUserById(3L)).thenReturn(user(3L, "철수", "chulsoo@example.com"));
         when(mapper.countFriendship(1L, 2L)).thenReturn(1);

@@ -20,6 +20,7 @@ qt_add_executable(CareerTunerDesktop
     core/VoiceRecorder.h      core/VoiceRecorder.cpp
     core/NotificationPoller.h core/NotificationPoller.cpp
     core/AutoPrepRunner.h     core/AutoPrepRunner.cpp
+    core/AdClient.h           core/AdClient.cpp
     core/CollaborationClient.h core/CollaborationClient.cpp
     core/CommunityClient.h    core/CommunityClient.cpp
     core/CameraRecorder.h     core/CameraRecorder.cpp

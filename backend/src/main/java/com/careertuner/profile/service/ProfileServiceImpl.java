@@ -54,6 +54,11 @@ public class ProfileServiceImpl implements ProfileService {
     @Transactional
     public UserProfileResponse save(AuthUser authUser, UserProfileRequest request) {
         Long userId = requireUser(authUser);
+        String loginId = normalizeLoginId(request.loginId());
+        if (loginId != null && profileMapper.countLoginId(loginId, userId) > 0) {
+            throw new BusinessException(ErrorCode.CONFLICT, "이미 사용 중인 아이디입니다.");
+        }
+        profileMapper.updateAccountBasics(userId, loginId, normalizePhone(request.phoneNumber()));
         UserProfile profile = UserProfile.builder()
                 .userId(userId)
                 .desiredJob(blankToNull(request.desiredJob()))
@@ -65,6 +70,11 @@ public class ProfileServiceImpl implements ProfileService {
                 .certificates(json(request.certificates()))
                 .languages(json(request.languages()))
                 .portfolioLinks(json(request.portfolioLinks()))
+                .jobPreferences(json(request.jobPreferences()))
+                .personalInfo(json(request.personalInfo()))
+                .activities(json(request.activities()))
+                .accountLinks(json(request.accountLinks()))
+                .chatProfiles(json(request.chatProfiles()))
                 .resumeText(blankToNull(request.resumeText()))
                 .selfIntro(blankToNull(request.selfIntro()))
                 .preferences(json(request.preferences()))
@@ -215,9 +225,13 @@ public class ProfileServiceImpl implements ProfileService {
     }
 
     private UserProfileResponse toResponse(UserProfile p) {
-        return new UserProfileResponse(p.getId(), p.getUserId(), p.getDesiredJob(), p.getDesiredIndustry(),
+        return new UserProfileResponse(p.getId(), p.getUserId(),
+                p.getLoginId(), p.getPhoneNumber(), p.isPhoneVerified(),
+                p.getDesiredJob(), p.getDesiredIndustry(),
                 object(p.getEducation()), object(p.getCareer()), object(p.getProjects()), object(p.getSkills()),
                 object(p.getCertificates()), object(p.getLanguages()), object(p.getPortfolioLinks()),
+                object(p.getJobPreferences()), object(p.getPersonalInfo()), object(p.getActivities()),
+                object(p.getAccountLinks()), object(p.getChatProfiles()),
                 p.getResumeText(), p.getSelfIntro(), object(p.getPreferences()), p.getUpdatedAt());
     }
 
@@ -245,6 +259,29 @@ public class ProfileServiceImpl implements ProfileService {
 
     private String blankToNull(String value) {
         return value == null || value.isBlank() ? null : value.trim();
+    }
+
+    private String normalizeLoginId(String value) {
+        String loginId = blankToNull(value);
+        if (loginId == null) {
+            return null;
+        }
+        if (!loginId.matches("^[A-Za-z0-9._-]{4,60}$")) {
+            throw new BusinessException(ErrorCode.INVALID_INPUT, "아이디는 영문, 숫자, 점, 밑줄, 하이픈 조합 4~60자로 입력해 주세요.");
+        }
+        return loginId.toLowerCase(java.util.Locale.ROOT);
+    }
+
+    private String normalizePhone(String value) {
+        String phone = blankToNull(value);
+        if (phone == null) {
+            return null;
+        }
+        String normalized = phone.replaceAll("[^0-9+]", "");
+        if (normalized.length() < 9 || normalized.length() > 20) {
+            throw new BusinessException(ErrorCode.INVALID_INPUT, "전화번호 형식이 올바르지 않습니다.");
+        }
+        return normalized;
     }
 
     private String truncate(String value, int maxLength) {

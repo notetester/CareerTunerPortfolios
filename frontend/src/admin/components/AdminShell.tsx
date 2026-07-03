@@ -116,6 +116,7 @@ const NAV_GROUPS: NavGroup[] = [
       { key: "members", label: "회원 관리", icon: Users, href: "/admin/users", permissionGroups: ["MEMBER_ADMIN"] },
       { key: "blocked-users", label: "차단 관리", icon: ShieldAlert, href: "/admin/users/blocked", permissionGroups: ["MEMBER_ADMIN", "AUDIT_ADMIN"] },
       { key: "security-ops", label: "보안 운영 센터", icon: ShieldCheck, href: "/admin/security", permissionGroups: ["AUDIT_ADMIN", "POLICY_ADMIN"] },
+      { key: "enterprise", label: "기업 신청", icon: Building2, href: "/admin/enterprise", permissionGroups: ["MEMBER_ADMIN", "CONTENT_ADMIN"] },
       { key: "profiles", label: "프로필 관리", icon: FileUser, href: "/admin/profiles", permissionGroups: ["MEMBER_ADMIN"] },
       { key: "consents", label: "동의 관리", icon: ClipboardCheck, href: "/admin/consents", permissionGroups: ["MEMBER_ADMIN"] },
       { key: "security-audit", label: "로그인/보안 감사", icon: LockKeyhole, href: "/admin/audit/security", permissionGroups: ["AUDIT_ADMIN"] },
@@ -150,6 +151,7 @@ const NAV_GROUPS: NavGroup[] = [
     label: "콘텐츠/고객지원",
     items: [
       { key: "reports", label: "신고·검수 관리", icon: MessageSquareWarning, href: "/admin/community", permissionGroups: ["CONTENT_ADMIN"] },
+      { key: "ads", label: "광고 관리", icon: Megaphone, href: "/admin/ads", permissionGroups: ["CONTENT_ADMIN"] },
       { key: "notices", label: "공지사항", icon: Megaphone, href: "/admin/notices", permissionGroups: ["CONTENT_ADMIN"] },
       { key: "faq", label: "FAQ 관리", icon: CircleHelp, href: "/admin/faq", permissionGroups: ["CONTENT_ADMIN"] },
       { key: "ai-support", label: "AI 상담 운영", icon: Bot, href: "/admin/ai-support", permissionGroups: ["CONTENT_ADMIN", "AI_ADMIN"] },
