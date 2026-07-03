@@ -365,6 +365,8 @@ public class ChatbotController {
             // yes/no 도 아니면(확인을 무시하고 다른 말을 함) → 소비만 하고 그 발화를 정상 흐름으로 처리.
         } else if (step != null && selectedCaseId == null && isRestartIntent(question)) {
             onboardingRestartStore.defer(conversationId);
+            // 재시작확인도 response_log 에 남긴다(F-21 계열 — 이 분기만 기존에 미기록이라 사고 시 재구성 공백).
+            responseLogService.record(conversationId, userId, question, "ONBOARDING", false, null, null, false);
             return new ChatAskResponse(conversationId,
                     "처음부터 다시 시작할까요? 지금까지 입력한 내용은 사라져요.",
                     List.of(), List.of(RESTART_YES, RESTART_NO), "④온보딩:재시작확인", null, false, null);
@@ -1096,11 +1098,27 @@ public class ChatbotController {
                         null));
             }
             case FALLBACK -> {
-                // 약신호(FAQ도 의도도 불명확) → 에이전트로 보내지 않고 정중한 되묻기로 끊는다.
+                // 약신호(FAQ도 의도도 불명확) → 에이전트로 보내지 않고 정중한 되묻기로 끊는다(라우팅 무변경 — 문구·로깅만).
+                // 맥락 인지(F-04): 대화 중(직전 턴 존재)인데 첫 방문용 하드코딩 예시("환불 어떻게 해요")를 다시 들이밀면
+                // 진행하던 흐름과 동떨어진 소리로 읽힌다(실측 9000163: 에이전트 턴 → "네" → 예시 되묻기).
+                String fallbackMessage;
+                if (intakeAskService.hasOpenIntakeSlot(conversationId)) {
+                    // 활성 플로우 신호(닫히지 않은 인테이크 세션) — 플로우 복귀 1줄.
+                    fallbackMessage = "질문을 정확히 이해하지 못했어요. 진행하던 면접 준비를 이어가려면 "
+                            + "\"면접 준비해줘\"라고 말씀해 주세요.";
+                } else if (req.conversationId() != null) {
+                    // 대화 중 — 예시 없는 되묻기(직전 맥락과 무관한 예시 삽입 금지).
+                    fallbackMessage = "질문을 정확히 이해하지 못했어요. 조금 더 구체적으로 말씀해 주시겠어요?";
+                } else {
+                    // 첫 턴/무맥락 — 기존 예시 유지(무엇을 할 수 있는지 첫 안내로 유효).
+                    fallbackMessage = "질문을 정확히 이해하지 못했어요. 좀 더 구체적으로 말씀해 주시겠어요? "
+                            + "(예: \"환불 어떻게 해요\" 같은 이용 문의, 또는 \"네이버 백엔드 면접 준비해줘\" 같은 작업 요청)";
+                }
+                responseLogService.record(conversationId, userId, question,
+                        "FALLBACK", false, null, null, false);
                 return ApiResponse.ok(new ChatAskResponse(
                         conversationId,
-                        "질문을 정확히 이해하지 못했어요. 좀 더 구체적으로 말씀해 주시겠어요? "
-                                + "(예: \"환불 어떻게 해요\" 같은 이용 문의, 또는 \"네이버 백엔드 면접 준비해줘\" 같은 작업 요청)",
+                        fallbackMessage,
                         List.of(),
                         List.of(),
                         "되묻기",
