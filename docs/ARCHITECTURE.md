@@ -91,6 +91,13 @@ serviceinfo · support · company · legal · ai · admin
 기업 분석은 웹 검색, 외부 API, 수동 출처를 사용할 수 있으므로 출처 URL, 확인 시점, 재조회 시점,
 확인된 사실과 AI 추론의 구분을 저장할 수 있어야 한다.
 
+기업 분석의 웹 근거 수집은 **외부 검색 API(네이버 검색)** 를 새 시스템 경계로 둔다. 이 경로는
+`careertuner.company-websearch.enabled` 플래그로 게이트하며 **기본 비활성(OFF)** 이다. OFF 상태에서는
+검색 호출·검색 캐시 사용·WEB evidence 생성을 하지 않고 기존 공고 기반 분석 경로를 유지한다. ON 상태에서는
+회사 식별 → 검색 → evidence gate **2소스 대조(공고 원문 + 웹 스니펫)** → 저장 순서로 동작하고,
+검색 캐시(`company_search_cache`, TTL 7일)와 분석 1건당 검색·결과 상한으로 호출을 통제한다.
+검색 키(`NAVER_SEARCH_CLIENT_ID`/`NAVER_SEARCH_CLIENT_SECRET`)는 env 로만 주입하고 커밋하지 않는다.
+
 ### 4.1 Spring Bean / AI Provider 계약
 
 A/B/C/D/E/F 어느 영역이든 같은 인터페이스에 구현체가 여러 개 있으면 **선택 지점은 한 곳**이어야 한다.

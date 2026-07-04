@@ -60,6 +60,7 @@ DB_PASSWORD=... JWT_SECRET=... OAUTH_KAKAO_CLIENT_SECRET=... java -jar app.jar
 | 로컬 LLM | `AI_OLLAMA_BASE_URL` `AI_OLLAMA_MODEL` `AI_OLLAMA_CONNECT_TIMEOUT` `AI_OLLAMA_READ_TIMEOUT` | `http://localhost:11434` / `gemma4` / `3s` / `30s` |
 | 로컬 LLM 폴백 | `AI_OLLAMA_FALLBACK_BASE_URLS`(콤마 구분) `AI_OLLAMA_FALLBACK_ENABLED` | `http://localhost:11434` / `true` — 4090 미응답 시 부팅에서 자동 전환 |
 | E 첨삭 LLM | `CAREERTUNER_CORRECTION_AI_PROVIDER` `CAREERTUNER_CORRECTION_AI_SELF_BASE_URL` `CAREERTUNER_CORRECTION_AI_SELF_MODEL` `CAREERTUNER_CORRECTION_AI_SELF_FALLBACK_MODEL` | `openai` / 빈값 / `careertuner-e-correction:8b` / `careertuner-e-correction-3b:latest` |
+| B 기업 웹검색 | `NAVER_SEARCH_CLIENT_ID` `NAVER_SEARCH_CLIENT_SECRET` `CAREERTUNER_COMPANY_WEBSEARCH_ENABLED` `CAREERTUNER_COMPANY_WEBSEARCH_MAX_SEARCH_CALLS_PER_ANALYSIS` `CAREERTUNER_COMPANY_WEBSEARCH_MAX_RESULTS_PER_ANALYSIS` | 빈값 / 빈값 / `false` / `4` / `12` |
 
 > 메일은 `MAIL_DEV_MODE=true`(또는 SMTP username 미설정)면 **실제 발송 대신 인증 링크를 로그로 출력**한다.
 > OAuth 키는 아직 미발급이라 placeholder다 — 키 수령 후 위 env(또는 yaml 기본값)만 교체하면 동작한다.
