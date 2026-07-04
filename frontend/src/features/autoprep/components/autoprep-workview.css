@@ -1,0 +1,11 @@
+/* WorkView 진행 중 카드의 인디터미넌트 미니 진행바 — % 라벨 없이 시각 신호로만. */
+@keyframes wv-indeterminate {
+  0% { transform: translateX(-110%); }
+  100% { transform: translateX(340%); }
+}
+.wv-indeterminate {
+  animation: wv-indeterminate 1.6s ease-in-out infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .wv-indeterminate { animation: none; }
+}
