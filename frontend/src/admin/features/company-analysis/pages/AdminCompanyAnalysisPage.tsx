@@ -17,6 +17,7 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/app/compo
 import { Input } from "@/app/components/ui/input";
 import { Textarea } from "@/app/components/ui/textarea";
 import { parseJsonArrayOrText, parseJsonStringArray } from "@/features/applications/types/analysis";
+import { VerifiedFactsList } from "@/features/applications/components/VerifiedFactsList";
 import {
   getAdminCompanyAnalyses,
   getAdminCompanyAnalysisSummary,
@@ -749,7 +750,10 @@ function CompanyAnalysisDetail({
 
       <div className="grid gap-3">
         <TextBlock title="최근 이슈" value={row.recentIssues} />
-        <TextBlock title="검증된 사실" value={row.verifiedFacts} />
+        <div className="min-w-0 rounded-lg border border-slate-200 bg-slate-50 p-3">
+          <div className="text-xs font-semibold text-slate-500">검증된 사실</div>
+          <VerifiedFactsList value={row.verifiedFacts} />
+        </div>
         <TextBlock title="AI 추론" value={row.aiInferences} />
         <TextBlock title="면접 포인트" value={row.interviewPoints} />
       </div>

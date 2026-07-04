@@ -6,7 +6,7 @@ import argparse
 
 import torch
 from datasets import load_dataset
-from peft import LoraConfig
+from peft import AutoPeftModelForCausalLM, LoraConfig
 from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig
 from trl import SFTConfig, SFTTrainer
 
@@ -16,6 +16,11 @@ DEFAULT_BASE = "Qwen/Qwen2.5-3B-Instruct"
 def build_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
     parser.add_argument("--base-model", default=DEFAULT_BASE)
+    parser.add_argument(
+        "--resume-adapter",
+        default=None,
+        help="Continue training an existing LoRA adapter instead of creating a new one.",
+    )
     parser.add_argument("--train", required=True)
     parser.add_argument("--eval", default=None)
     parser.add_argument("--output", default="out/correction-lora-smoke-3b")
@@ -31,7 +36,7 @@ def build_args() -> argparse.Namespace:
 def main() -> None:
     args = build_args()
 
-    tokenizer = AutoTokenizer.from_pretrained(args.base_model)
+    tokenizer = AutoTokenizer.from_pretrained(args.resume_adapter or args.base_model)
     if tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.eos_token
 
@@ -44,26 +49,35 @@ def main() -> None:
             bnb_4bit_use_double_quant=True,
         )
 
-    model = AutoModelForCausalLM.from_pretrained(
-        args.base_model,
-        quantization_config=quant,
-        torch_dtype=torch.bfloat16,
-        device_map="auto",
-    )
+    if args.resume_adapter:
+        model = AutoPeftModelForCausalLM.from_pretrained(
+            args.resume_adapter,
+            is_trainable=True,
+            quantization_config=quant,
+            torch_dtype=torch.bfloat16,
+            device_map="auto",
+        )
+        lora = None
+    else:
+        model = AutoModelForCausalLM.from_pretrained(
+            args.base_model,
+            quantization_config=quant,
+            torch_dtype=torch.bfloat16,
+            device_map="auto",
+        )
+        lora = LoraConfig(
+            r=16,
+            lora_alpha=32,
+            lora_dropout=0.05,
+            bias="none",
+            task_type="CAUSAL_LM",
+            target_modules=["q_proj", "k_proj", "v_proj", "o_proj", "gate_proj", "up_proj", "down_proj"],
+        )
 
     data_files = {"train": args.train}
     if args.eval:
         data_files["eval"] = args.eval
     dataset = load_dataset("json", data_files=data_files)
-
-    lora = LoraConfig(
-        r=16,
-        lora_alpha=32,
-        lora_dropout=0.05,
-        bias="none",
-        task_type="CAUSAL_LM",
-        target_modules=["q_proj", "k_proj", "v_proj", "o_proj", "gate_proj", "up_proj", "down_proj"],
-    )
 
     sft_config = SFTConfig(
         output_dir=args.output,

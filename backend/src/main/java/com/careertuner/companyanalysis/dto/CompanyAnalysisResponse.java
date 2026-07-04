@@ -17,6 +17,7 @@ public record CompanyAnalysisResponse(
         String sources,
         String verifiedFacts,
         String aiInferences,
+        String unknowns,
         String sourceType,
         LocalDateTime checkedAt,
         LocalDateTime refreshRecommendedAt,
@@ -24,7 +25,12 @@ public record CompanyAnalysisResponse(
         String adminMemo,
         LocalDateTime createdAt
 ) {
-    public static CompanyAnalysisResponse from(CompanyAnalysis analysis) {
+    /**
+     * unknowns 는 DB 컬럼 없이 저장된 aiInferences 의 {@code kind=UNKNOWN} 마커를 응답 직전
+     * 펼친 virtual 필드다. 호출부(서비스)가 마커 분리를 수행해 aiInferences(마커 제거본)와
+     * unknowns 를 함께 넘긴다 — 프런트/하네스가 마커를 직접 파싱하지 않게 하기 위함이다.
+     */
+    public static CompanyAnalysisResponse from(CompanyAnalysis analysis, String aiInferences, String unknowns) {
         if (analysis == null) {
             return null;
         }
@@ -40,7 +46,8 @@ public record CompanyAnalysisResponse(
                 analysis.getInterviewPoints(),
                 analysis.getSources(),
                 analysis.getVerifiedFacts(),
-                analysis.getAiInferences(),
+                aiInferences,
+                unknowns,
                 analysis.getSourceType(),
                 analysis.getCheckedAt(),
                 analysis.getRefreshRecommendedAt(),

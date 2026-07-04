@@ -21,6 +21,7 @@ import com.careertuner.correction.ai.CorrectionAiClient.CorrectionCommand;
 import com.careertuner.correction.ai.CorrectionAiClient.CorrectionPayload;
 import com.careertuner.correction.ai.CorrectionAiClient.Usage;
 import com.careertuner.correction.ai.CorrectionAiProperties.Self;
+import com.careertuner.correction.ai.SelfCorrectionOutputParser.InvalidOutputException;
 import com.careertuner.correction.ai.prompt.CorrectionPromptCatalog;
 
 import tools.jackson.core.JacksonException;
@@ -67,6 +68,10 @@ public class SelfLlmCorrectionProvider implements CorrectionAiProvider {
                 ? SelfCorrectionInput.minimal(command)
                 : command.selfInput();
         SelfCorrectionOutput output = outputParser.parse(content, input.taskType());
+        if (!output.preservedMeaning()) {
+            throw new InvalidOutputException(
+                    "Correction self LLM output validation failed: preserved_meaning must be true.");
+        }
         return new CorrectionPayload(
                 output.correctedText(),
                 output.summary(),

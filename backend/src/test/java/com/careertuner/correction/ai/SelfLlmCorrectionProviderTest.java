@@ -1,11 +1,13 @@
 package com.careertuner.correction.ai;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+import java.util.List;
 import java.util.concurrent.atomic.AtomicReference;
 
 import org.junit.jupiter.api.AfterEach;
@@ -37,7 +39,7 @@ class SelfLlmCorrectionProviderTest {
         server = HttpServer.create(new InetSocketAddress(0), 0);
         server.createContext("/v1/chat/completions", exchange -> {
             requestBody.set(new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8));
-            byte[] response = responseJson().getBytes(StandardCharsets.UTF_8);
+            byte[] response = responseJson(true).getBytes(StandardCharsets.UTF_8);
             exchange.getResponseHeaders().add("Content-Type", "application/json");
             exchange.sendResponseHeaders(200, response.length);
             exchange.getResponseBody().write(response);
@@ -67,18 +69,46 @@ class SelfLlmCorrectionProviderTest {
                 "strict");
     }
 
+    @Test
+    @DisplayName("rejects 8B and 3B outputs when preserved_meaning is false")
+    void correct_rejectsSelfModelOutputWhenMeaningIsNotPreserved() throws IOException {
+        server = HttpServer.create(new InetSocketAddress(0), 0);
+        server.createContext("/v1/chat/completions", exchange -> {
+            byte[] response = responseJson(false).getBytes(StandardCharsets.UTF_8);
+            exchange.getResponseHeaders().add("Content-Type", "application/json");
+            exchange.sendResponseHeaders(200, response.length);
+            exchange.getResponseBody().write(response);
+            exchange.close();
+        });
+        server.start();
+
+        CorrectionAiProperties properties = new CorrectionAiProperties();
+        properties.getSelf().setBaseUrl("http://localhost:" + server.getAddress().getPort());
+        ObjectMapper objectMapper = new ObjectMapper();
+        SelfLlmCorrectionProvider provider = new SelfLlmCorrectionProvider(
+                properties, objectMapper, new SelfCorrectionOutputParser(objectMapper), GpuPermitGate.disabled());
+
+        for (String model : List.of(
+                "careertuner-e-correction:8b",
+                "careertuner-e-correction-3b:latest")) {
+            assertThatThrownBy(() -> provider.correct(command(), model, Duration.ofSeconds(2)))
+                    .isInstanceOf(SelfCorrectionOutputParser.InvalidOutputException.class)
+                    .hasMessageContaining("preserved_meaning must be true");
+        }
+    }
+
     private CorrectionCommand command() {
         return new CorrectionCommand("SELF_INTRO", "DIRECT_INPUT", null, null, null, "원문", null);
     }
 
-    private String responseJson() {
+    private String responseJson(boolean preservedMeaning) {
         String content = """
                 <think></think>
                 {"status":"ok","task_type":"SELF_INTRO_CORRECTION","corrected_text":"개선된 문장","summary":"요약",\
                 "changes":[{"before":"원문","after":"개선된 문장","reason":"표현을 구체화했다","evidence_source":"original_text"}],\
-                "risk_flags":["근거 확인 필요"],"preserved_meaning":true,"added_facts":[],\
+                "risk_flags":["근거 확인 필요"],"preserved_meaning":%s,"added_facts":[],\
                 "recommended_keywords":["문서 정리"],"confidence":0.8}
-                """.replace("\n", "");
+                """.formatted(preservedMeaning).replace("\n", "");
         return """
                 {"model":"careertuner-e-correction:8b","choices":[{"message":{"content":%s}}],
                  "usage":{"prompt_tokens":10,"completion_tokens":20,"total_tokens":30}}

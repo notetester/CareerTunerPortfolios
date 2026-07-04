@@ -89,3 +89,152 @@ cd C:\Users\careertuner\Desktop\CareerTuner\ml\correction-llm
 - `added_facts`가 근거 없이 채워지지 않음
 - `risk_flags`가 필요한 상황에서 빠지지 않음
 - 중국어/일본어 토큰 누출 없음
+
+## Unified v2 장문 재학습
+
+`unified-v2`는 3B 단일 모델이 자기소개서, 면접 답변, 이력서, 포트폴리오 설명을 모두 처리하도록
+기존 단문 데이터와 장문 합성 데이터를 함께 학습하는 계약이다. 생성 원본과 평가 결과는 본체에
+커밋하지 않고 `docs/ai-artifacts/benchmarks/e-correction-unified-v2/runs/<run-id>/`에 둔다.
+
+처음 사용하는 클론에서는 artifact 서브모듈을 받는다.
+
+```powershell
+git submodule update --init docs/ai-artifacts
+```
+
+### 1. 생성 요청 dry-run
+
+```powershell
+python scripts/generate_unified_data.py `
+  --per-task 20 `
+  --output ../../docs/ai-artifacts/benchmarks/e-correction-unified-v2/runs/2026-07-04-pilot/requests/raw.generated.jsonl `
+  --summary-out ../../docs/ai-artifacts/benchmarks/e-correction-unified-v2/runs/2026-07-04-pilot/results/generation.json `
+  --dry-run
+```
+
+실제 생성에는 `OPENAI_API_KEY`가 필요하다. 출력 파일이 이미 있으면 덮어쓰지 않으며,
+중단 후 계속할 때만 `--resume`을 사용한다.
+
+장문 4건 묶음 생성이 반복 실패하면 raw 파일을 유형별로 분리하고 `--task`로 독립 실행한다.
+
+```powershell
+$runRoot = "../../docs/ai-artifacts/benchmarks/e-correction-unified-v2/runs/2026-07-04-pilot"
+
+python scripts/split_raw_by_task.py `
+  --input "$runRoot/requests/raw.generated.jsonl" `
+  --output-dir "$runRoot/requests/by-task"
+
+python scripts/generate_unified_data.py `
+  --per-task 20 `
+  --task SELF_INTRO_CORRECTION `
+  --output "$runRoot/requests/by-task/raw.self-intro.jsonl" `
+  --summary-out "$runRoot/results/generation.self-intro.json" `
+  --resume
+```
+
+각 유형 파일을 독립 프로세스로 실행할 수 있으며 완료 후 `merge_datasets.py`로 하나의 raw 파일로 합친다.
+
+### 2. 파일럿 생성 및 검증
+
+```powershell
+python scripts/generate_unified_data.py `
+  --per-task 20 `
+  --output ../../docs/ai-artifacts/benchmarks/e-correction-unified-v2/runs/2026-07-04-pilot/requests/raw.generated.jsonl `
+  --summary-out ../../docs/ai-artifacts/benchmarks/e-correction-unified-v2/runs/2026-07-04-pilot/results/generation.json `
+  --resume
+
+python scripts/validate_dataset.py `
+  --input ../../docs/ai-artifacts/benchmarks/e-correction-unified-v2/runs/2026-07-04-pilot/requests/raw.generated.jsonl `
+  --contract unified-v2 `
+  --summary-out ../../docs/ai-artifacts/benchmarks/e-correction-unified-v2/runs/2026-07-04-pilot/results/validate.json
+```
+
+파일럿의 길이 분포와 표본을 검수한 뒤 `--per-task 300`으로 확장한다.
+
+### 3. 신규 데이터 변환과 기존 messages 병합
+
+```powershell
+$runRoot = "../../docs/ai-artifacts/benchmarks/e-correction-unified-v2/runs/2026-07-04-pilot"
+
+python scripts/build_messages.py `
+  --input "$runRoot/requests/raw.generated.jsonl" `
+  --messages-out "$runRoot/requests/long.messages.jsonl" `
+  --clean-out "$runRoot/requests/raw.generated.clean.jsonl" `
+  --hardcases-out "$runRoot/requests/raw.generated.hardcases.jsonl"
+
+python scripts/split_data.py `
+  --input "$runRoot/requests/long.messages.jsonl" `
+  --train "$runRoot/requests/long.train.messages.jsonl" `
+  --val "$runRoot/requests/long.val.messages.jsonl" `
+  --val-ratio 0.15
+
+python scripts/merge_messages.py `
+  --input data/train.seed360.hardfailfix.messages.jsonl `
+          "$runRoot/requests/long.train.messages.jsonl" `
+  --output "$runRoot/requests/unified-v2.train.messages.jsonl"
+
+python scripts/merge_messages.py `
+  --input data/val.seed360.mixed40.messages.jsonl `
+          "$runRoot/requests/long.val.messages.jsonl" `
+  --output "$runRoot/requests/unified-v2.val.messages.jsonl"
+```
+
+신규 장문 데이터만 `task_type + length_bucket` 기준으로 나눈 뒤 기존 확정 train 320건과 val 40건에
+각각 병합한다. `merge_messages.py`는 첫 번째 기준 파일 내부의 중복 원문을 보존하고 이후 추가 파일에
+대해서만 중복을 제거한다. 기존 raw와 신규 raw를 먼저 합치면 하드케이스와 중복 원문 때문에 기준
+데이터가 줄어들 수 있다.
+
+### 4. 4090 학습 및 평가
+
+```powershell
+$runRoot = "../../docs/ai-artifacts/benchmarks/e-correction-unified-v2/runs/2026-07-04-pilot"
+
+python scripts/finetune_lora.py `
+  --base-model Qwen/Qwen2.5-3B-Instruct `
+  --train "$runRoot/requests/unified-v2.train.messages.jsonl" `
+  --eval "$runRoot/requests/unified-v2.val.messages.jsonl" `
+  --output out/correction-unified-v2-3b `
+  --epochs 2 `
+  --batch-size 1 `
+  --grad-accum 8 `
+  --lr 1e-4 `
+  --max-seq-len 3000
+
+python scripts/test_infer.py `
+  --model out/correction-unified-v2-3b `
+  --raw "$runRoot/requests/raw.generated.jsonl" `
+  --max-new 3072 `
+  --contract unified-v2 `
+  --preserved-meaning-mode strict
+```
+
+현재 Windows RTX 4090 환경에서는 3051-token 배치가 4bit CUDA 커널에서 장시간 정체됐다.
+`3000` 상한은 작업 유형별 8-step smoke train과 2 epoch 본 학습에서 검증한 값이다.
+현재 train 데이터 387건 중 3000 tokens 초과 13건만 끝부분이 잘린다.
+
+통합 학습 후 장문 계약 통과율이 낮으면 현재 어댑터를 시작점으로 신규 장문 데이터만 짧게
+추가 학습한다.
+
+```powershell
+python scripts/finetune_lora.py `
+  --resume-adapter out/correction-unified-v2-3b `
+  --train "$runRoot/requests/long.train.messages.jsonl" `
+  --eval "$runRoot/requests/long.val.messages.jsonl" `
+  --output out/correction-unified-v2-3b-longstage `
+  --epochs 2 `
+  --batch-size 1 `
+  --grad-accum 8 `
+  --lr 5e-5 `
+  --max-seq-len 3000
+```
+
+### 5. LoRA 병합
+
+```powershell
+python scripts/merge_and_export.py `
+  --adapter out/correction-unified-v2-3b `
+  --out out/correction-unified-v2-3b-merged
+```
+
+출력 디렉터리를 `llama.cpp/convert_hf_to_gguf.py`로 변환하고, 기존 모델을 덮어쓰지 않는
+버전 태그(`careertuner-e-correction-3b:unified-v2`)로 Ollama에 등록한다.
