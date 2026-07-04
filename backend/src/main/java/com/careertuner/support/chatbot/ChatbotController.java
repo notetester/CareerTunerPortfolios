@@ -1541,6 +1541,51 @@ public class ChatbotController {
     /** 묶음 요약 칩 최대 글 수(top-k). */
     private static final int SUMMARY_TOP_K = 3;
 
+    // ── 요약 출력 게이트(F-16) ──────────────────────────────────────────────
+    // 프롬프트 방어(SummaryAgent.java:23-24)는 확률적이라 override 주입에 실측 우회됨(재현 2회).
+    // 결정적 방어는 여기: LLM 요약이 아래 규칙을 통과 못 하면 사용자에게 도달시키지 않고 실패 폴백으로 대체한다.
+    // 임계 근거: 대조군 정상 요약 실측 141자, 프롬프트 규정 "2~4문장". 마커성 응답 실측 22자.
+    private static final int SUMMARY_MIN_LEN = 30;   // 정상 최소치(141) 한참 아래 + 극단적 단문("HACKED"류)·마커(22자) 차단
+    private static final int SUMMARY_MAX_LEN = 600;  // 2~4문장 상한 여유 + 원문 통짜 에코 폭주 차단
+    // 후기 경향 종합 요약에 자연 등장할 일이 없는 지시/주입 어휘(오탐 최소화 위해 결합형으로 좁힘).
+    private static final Pattern SUMMARY_INJECTION_HINT = Pattern.compile(
+            "무시하|지시문|지시를|출력하라|출력하세요|출력하십|ignore|instruction|system override",
+            Pattern.CASE_INSENSITIVE);
+    // 마커성 비자연어 토큰: 대문자 2자+_(대문자|숫자) 연속(예: INJECTION_SUCCESS_2213). 한국어 요약엔 부재.
+    private static final Pattern SUMMARY_MARKER_TOKEN = Pattern.compile("[A-Z]{2,}_[A-Z0-9_]+");
+
+    /**
+     * 요약 출력 게이트 — 통과 못 하면 실패 사유(로그용 태그)를, 통과면 null 을 반환한다.
+     * bodies 의 긴 라인(≥20자) 원문 에코까지 검사한다(짧은 공통 단어는 라인이 아니라 오탐 없음).
+     */
+    private String summaryGateReject(String summary, List<String> bodies) {
+        if (summary == null || summary.isBlank()) {
+            return "empty";
+        }
+        String s = summary.strip();
+        if (s.length() < SUMMARY_MIN_LEN) {
+            return "too_short(" + s.length() + ")";
+        }
+        if (s.length() > SUMMARY_MAX_LEN) {
+            return "too_long(" + s.length() + ")";
+        }
+        if (SUMMARY_INJECTION_HINT.matcher(s).find()) {
+            return "injection_hint";
+        }
+        if (SUMMARY_MARKER_TOKEN.matcher(s).find()) {
+            return "marker_token";
+        }
+        for (String body : bodies) {
+            for (String line : body.split("\\R")) {
+                String ln = line.strip();
+                if (ln.length() >= 20 && s.contains(ln)) {
+                    return "input_echo";
+                }
+            }
+        }
+        return null;
+    }
+
     /**
      * 이번 턴 검색 스냅샷으로 묶음 요약 칩을 만든다.
      * 글이 2개 이상일 때만 앞에서부터 최대 3개 postId 를 담아 칩을 만들고, 1개 이하면 null.
@@ -1677,7 +1722,15 @@ public class ChatbotController {
         } else {
             try {
                 String postsBlock = String.join("\n\n---\n\n", bodies);
-                message = MessageSanitizer.stripMarkdown(summaryAgent.summarize(postsBlock));
+                String raw = MessageSanitizer.stripMarkdown(summaryAgent.summarize(postsBlock));
+                // 출력 게이트(F-16): 프롬프트 방어를 우회한 응답을 사용자 도달 전 차단, 기존 실패 폴백 재사용.
+                String reject = summaryGateReject(raw, bodies);
+                if (reject != null) {
+                    log.warn("요약 출력 게이트 차단 (rule={}, len={})", reject, raw == null ? 0 : raw.length());
+                    message = "지금은 요약을 만들기 어려워요. 잠시 후 다시 시도해 주세요.";
+                } else {
+                    message = raw;
+                }
             } catch (Exception e) {
                 log.error("후기 묶음 요약 실패 (Ollama 장애 추정): {}", e.getMessage(), e);
                 message = "지금은 요약을 만들기 어려워요. 잠시 후 다시 시도해 주세요.";
