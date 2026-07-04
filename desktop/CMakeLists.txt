@@ -9,6 +9,10 @@ set(CMAKE_AUTOMOC ON)
 find_package(Qt6 6.5 REQUIRED COMPONENTS Quick QuickControls2 Network Widgets Multimedia)
 qt_standard_project_setup(REQUIRES 6.5)
 
+if (COMMAND qt_policy)
+    qt_policy(SET QTP0004 NEW)
+endif()
+
 qt_add_executable(CareerTunerDesktop
     main.cpp
     core/ApiClient.h          core/ApiClient.cpp
@@ -20,6 +24,7 @@ qt_add_executable(CareerTunerDesktop
     core/VoiceRecorder.h      core/VoiceRecorder.cpp
     core/NotificationPoller.h core/NotificationPoller.cpp
     core/AutoPrepRunner.h     core/AutoPrepRunner.cpp
+    core/AdClient.h           core/AdClient.cpp
     core/CollaborationClient.h core/CollaborationClient.cpp
     core/CommunityClient.h    core/CommunityClient.cpp
     core/CameraRecorder.h     core/CameraRecorder.cpp

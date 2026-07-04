@@ -11,6 +11,7 @@ import { ApplicationExtractionMonitor } from "@/features/applications/components
 import { MobileBottomNav } from "./MobileBottomNav";
 import { OfflineBanner } from "./OfflineBanner";
 import { RefundPolicyToastGate } from "@/features/billing/components/RefundPolicyToastGate";
+import { AdSlot } from "@/features/ads/components/AdSlot";
 
 export function Root() {
   const location = useLocation();
@@ -41,6 +42,7 @@ export function Root() {
       <OfflineBanner />
       <RefundPolicyToastGate enabled={isAuthenticated && !isAdmin} />
       {!isAdmin && <Header />}
+      {!isAdmin && <AdSlot />}
       {/* 하단 탭에 콘텐츠가 가리지 않도록 모바일에서 하단 패딩(탭 높이 + safe-area) 확보 */}
       <main className={`flex-1 ${showMobileNav ? "pb-[calc(56px+env(safe-area-inset-bottom))] xl:pb-0" : ""}`}>
         <Outlet />

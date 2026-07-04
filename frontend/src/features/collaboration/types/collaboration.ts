@@ -40,12 +40,19 @@ export interface ConversationSummaryResponse {
   type: ConversationType;
   title: string | null;
   description: string | null;
+  profileImageUrl?: string | null;
   displayName: string;
   locked: boolean;
   memberCount: number;
   joined: boolean;
   /** 내가 이 방 알림을 해제했는지 (해제 시 이름·키워드 언급만 알림) */
   muted: boolean;
+  role?: "OWNER" | "MANAGER" | "MEMBER" | string | null;
+  joinPolicy?: string | null;
+  invitePolicy?: string | null;
+  anonymousAllowed?: boolean;
+  anonymousOnly?: boolean;
+  roomProfileRequired?: boolean;
   peer: CollaborationUser | null;
   latestMessage: MessagePreviewResponse | null;
   unreadCount: number;
@@ -56,8 +63,54 @@ export interface CreateConversationRequest {
   type: Exclude<ConversationType, "DIRECT">;
   title: string;
   description?: string | null;
+  profileImageUrl?: string | null;
   password?: string | null;
+  maxMembers?: number | null;
+  joinPolicy?: string | null;
+  invitePolicy?: string | null;
+  anonymousAllowed?: boolean;
+  anonymousOnly?: boolean;
+  roomProfileRequired?: boolean;
   memberUserIds?: number[];
+}
+
+export interface ConversationSettings {
+  id: number;
+  type: ConversationType;
+  title: string | null;
+  description: string | null;
+  profileImageUrl?: string | null;
+  locked: boolean;
+  maxMembers: number;
+  joinPolicy: string;
+  invitePolicy: string;
+  anonymousAllowed: boolean;
+  anonymousOnly: boolean;
+  roomProfileRequired: boolean;
+  settings?: Record<string, unknown>;
+}
+
+export interface ConversationMember {
+  userId: number;
+  name: string;
+  email?: string | null;
+  role: string;
+  muted: boolean;
+  displayName?: string | null;
+  avatarUrl?: string | null;
+  anonymous: boolean;
+  permissions: string[];
+  joinedAt: string;
+}
+
+export interface ChatProfile {
+  id: number;
+  nickname: string;
+  avatarUrl?: string | null;
+  description?: string | null;
+  defaultProfile: boolean;
+  createdAt: string;
+  updatedAt?: string;
 }
 
 export interface SendMessageRequest {

@@ -24,9 +24,18 @@ public class UserProfile {
     private String certificates;
     private String languages;
     private String portfolioLinks;
+    private String jobPreferences;
+    private String personalInfo;
+    private String activities;
+    private String accountLinks;
+    private String chatProfiles;
     private String resumeText;
     private String selfIntro;
     private String preferences;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
+
+    private String loginId;
+    private String phoneNumber;
+    private boolean phoneVerified;
 }

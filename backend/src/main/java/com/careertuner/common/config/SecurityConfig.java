@@ -56,6 +56,9 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.GET,
                                 "/api/community/posts", "/api/community/posts/**",
                                 "/api/community/guidelines/published").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/api/enterprise/jobs/public").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/api/ads").permitAll()
+                        .requestMatchers(HttpMethod.POST, "/api/ads/*/events").permitAll()
                         // 법적 문서(약관/개인정보/마케팅) 공개 조회
                         .requestMatchers(HttpMethod.GET, "/api/legal/**").permitAll()
                         // 고객센터 FAQ/공지사항 조회 공개

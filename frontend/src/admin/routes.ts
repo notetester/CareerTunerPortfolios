@@ -36,6 +36,8 @@ import { AdminActionLogsPage } from "./features/action-logs/pages/AdminActionLog
 import { AdminPoliciesPage } from "./features/policies/pages/AdminPoliciesPage";
 import { AdminSuperAdminPage } from "./features/super-admin/pages/AdminSuperAdminPage";
 import { AdminSecurityOpsPage } from "./features/security-ops/pages/AdminSecurityOpsPage";
+import { AdminEnterprisePage } from "./features/enterprise/pages/AdminEnterprisePage";
+import { AdminAdsPage } from "./features/ads/pages/AdminAdsPage";
 
 export const adminRoutes = [
   { path: "admin", Component: AdminDashboardPage },
@@ -51,6 +53,7 @@ export const adminRoutes = [
   { path: "admin/users", Component: AdminUsersPage },
   { path: "admin/users/blocked", Component: AdminBlockedUsersPage },
   { path: "admin/security", Component: AdminSecurityOpsPage },
+  { path: "admin/enterprise", Component: AdminEnterprisePage },
   { path: "admin/audit/security", Component: AdminSecurityAuditPage },
   { path: "admin/audit/email", Component: AdminEmailAuditPage },
   { path: "admin/profiles", Component: AdminProfilesPage },
@@ -68,6 +71,7 @@ export const adminRoutes = [
   { path: "admin/interview/knowledge", Component: AdminInterviewKnowledgePage },
   { path: "admin/community", Component: AdminReports },
   { path: "admin/notices", Component: AdminNotices },
+  { path: "admin/ads", Component: AdminAdsPage },
   { path: "admin/notices/new", Component: NoticeCompose },
   { path: "admin/faq", Component: AdminFaq },
   { path: "admin/faq/new", Component: FaqCompose },

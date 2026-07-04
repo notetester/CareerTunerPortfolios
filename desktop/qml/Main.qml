@@ -515,6 +515,61 @@ ApplicationWindow {
             }
 
             // 화면 스택
+            Rectangle {
+                Layout.fillWidth: true
+                height: desktopAds.visible && win.loggedIn ? (desktopAds.body.length > 0 ? 62 : 46) : 0
+                visible: height > 0
+                color: Theme.surface
+                border.color: Theme.border
+                clip: true
+
+                RowLayout {
+                    anchors.fill: parent
+                    anchors.leftMargin: 18
+                    anchors.rightMargin: 18
+                    spacing: 12
+                    Rectangle {
+                        width: 8
+                        Layout.fillHeight: true
+                        color: Theme.warn
+                        opacity: 0.85
+                    }
+                    ColumnLayout {
+                        Layout.fillWidth: true
+                        spacing: 2
+                        Text {
+                            Layout.fillWidth: true
+                            text: desktopAds.title
+                            color: Theme.text
+                            font.bold: true
+                            font.pixelSize: 12
+                            elide: Text.ElideRight
+                        }
+                        Text {
+                            Layout.fillWidth: true
+                            visible: desktopAds.body.length > 0
+                            text: desktopAds.body
+                            color: Theme.muted
+                            font.pixelSize: 11
+                            elide: Text.ElideRight
+                        }
+                    }
+                    Text {
+                        visible: desktopAds.targetUrl.length > 0
+                        text: "자세히"
+                        color: Theme.accentText
+                        font.pixelSize: 11
+                        font.bold: true
+                    }
+                }
+
+                MouseArea {
+                    anchors.fill: parent
+                    cursorShape: desktopAds.targetUrl.length > 0 ? Qt.PointingHandCursor : Qt.ArrowCursor
+                    onClicked: desktopAds.openTarget()
+                }
+            }
+
             StackLayout {
                 Layout.fillWidth: true
                 Layout.fillHeight: true
