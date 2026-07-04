@@ -1,6 +1,6 @@
 // 데모/테스트용 Android APK 원클릭 빌드.
 //   사용: npm run demo:apk          (frontend/ 에서 실행)
-//   동작: 웹을 mock(데모) 모드로 빌드 → Capacitor android 플랫폼 준비/동기화
+//   동작: 웹을 mock(데모) 모드로 빌드 → 커밋된 Capacitor android 플랫폼 동기화
 //         → 디버그 APK 조립 → frontend/dist-apk/CareerTuner-demo.apk 로 복사.
 //
 // 목적: 웹 GitHub Pages 데모(https://notetester.github.io/CareerTunerDemo/)와 "같은 mock 빌드"를
@@ -8,12 +8,11 @@
 //       로 동작하므로, 사이드로드 후 모든 데모 화면을 데이터가 있는 것처럼 클릭하며 시연·테스트할 수 있다.
 //       (로그인은 아무 이메일/비밀번호나 입력하면 데모 계정으로 통과)
 //
-// 범위: 기존 build:mock / mobile:sync / mobile:apk 스크립트와 android-release.yml(CI)은 건드리지 않는
-//       additive 명령이다. 이 한 줄짜리 명령이 add → sync → assemble 까지 묶어 한 번에 처리한다.
+// 범위: 이 한 줄짜리 명령이 build → sync → assemble 까지 묶어 한 번에 처리한다.
 //
 // 옵션:
 //   --skip-web   웹 재빌드 생략(dist 가 이미 최신일 때)
-//   --clean      android/ 네이티브 프로젝트를 지우고 새로 생성
+//   --clean      Gradle 빌드 산출물만 청소(android/ 플랫폼 파일은 유지)
 //   --open       APK 조립 대신 Android Studio 로 프로젝트 열기(SDK 자동 설치 경로)
 import { spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, copyFileSync, readFileSync, rmSync } from "node:fs";
@@ -74,17 +73,23 @@ if (flags.has("--skip-web")) {
 }
 
 // ── 2) Capacitor Android 플랫폼 준비 ──────────────────────────────────────
-// android/ 는 .gitignore 대상 → 없으면 생성, 있으면 최신 dist+플러그인 동기화.
-section("2/4 · Capacitor Android 플랫폼 준비");
-if (flags.has("--clean") && existsSync(androidDir)) {
-  console.log("🧹 --clean: 기존 android/ 제거");
-  rmSync(androidDir, { recursive: true, force: true });
+// android/ 는 커밋된 네이티브 프로젝트다. 권한/딥링크/서명/아이콘을 보존해야 하므로 자동 생성하지 않는다.
+section("2/4 · Capacitor Android 플랫폼 동기화");
+if (!existsSync(androidDir) || !existsSync(resolve(androidDir, "settings.gradle"))) {
+  console.error(
+    "\n✗ frontend/android 네이티브 프로젝트가 없습니다.\n" +
+      "   이제 Android 플랫폼은 자동 생성 대상이 아니라 repo에 커밋되는 대상입니다.\n" +
+      "   최신 dev를 받았는지 확인한 뒤 다시 실행하세요.\n",
+  );
+  process.exit(1);
 }
-if (!existsSync(androidDir)) {
-  run("npx cap add android"); // 스캐폴딩 + 초기 sync
-} else {
-  run("npx cap sync android"); // 최신 dist + 플러그인 반영
+if (flags.has("--clean")) {
+  console.log("🧹 --clean: Gradle 산출물 청소");
+  rmSync(resolve(androidDir, ".gradle"), { recursive: true, force: true });
+  rmSync(resolve(androidDir, "build"), { recursive: true, force: true });
+  rmSync(resolve(androidDir, "app", "build"), { recursive: true, force: true });
 }
+run("npx cap sync android"); // 최신 dist + 플러그인 반영
 
 // --open: SDK 없이도 Android Studio 에서 빌드/설치하도록 프로젝트만 열고 종료.
 if (flags.has("--open")) {

@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { Sparkles, X } from "lucide-react";
 
 import { intake } from "../api/autoPrepApi";
 import { useAutoPrepRun } from "../hooks/useAutoPrepRun";
@@ -135,10 +136,10 @@ export function AutoPrepChatModal({ open, initialRequest, onClose, onNavigate }:
       >
         <div className="flex items-center justify-between border-b border-border px-4 py-3">
           <div className="flex items-center gap-2 text-sm font-semibold text-foreground">
-            <span aria-hidden>✦</span> AI 오케스트레이터
+            <Sparkles className="size-4 text-primary" aria-hidden /> AI 오케스트레이터
           </div>
           <button onClick={onClose} className="text-lg text-muted-foreground transition-colors hover:text-foreground" aria-label="닫기">
-            ✕
+            <X className="size-5" />
           </button>
         </div>
 
@@ -146,7 +147,7 @@ export function AutoPrepChatModal({ open, initialRequest, onClose, onNavigate }:
           {messages.map((msg, i) => (
             <div key={i} className={`flex gap-2 ${msg.role === "me" ? "justify-end" : ""}`}>
               {msg.role === "ai" && (
-                <div className="grid h-7 w-7 flex-none place-items-center rounded-full bg-primary/10 text-sm">✦</div>
+                <div className="grid h-7 w-7 flex-none place-items-center rounded-full bg-primary/10 text-primary"><Sparkles className="size-3.5" /></div>
               )}
               <div
                 className={`max-w-[80%] rounded-2xl px-3 py-2 text-[13.5px] leading-relaxed ${
@@ -191,7 +192,7 @@ export function AutoPrepChatModal({ open, initialRequest, onClose, onNavigate }:
 
           {thinking && (
             <div className="flex gap-2">
-              <div className="grid h-7 w-7 flex-none place-items-center rounded-full bg-primary/10 text-sm">✦</div>
+              <div className="grid h-7 w-7 flex-none place-items-center rounded-full bg-primary/10 text-primary"><Sparkles className="size-3.5" /></div>
               <div className="rounded-2xl rounded-bl-sm border border-border bg-card px-4 py-3">
                 <Dots />
               </div>

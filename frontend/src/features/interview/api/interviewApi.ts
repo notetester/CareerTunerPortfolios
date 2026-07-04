@@ -1,4 +1,5 @@
 import { api } from "@/app/lib/api";
+import { apiBase } from "@/app/lib/apiBase";
 import { getAccessToken } from "@/app/lib/tokenStore";
 import { isDataMockActive } from "../tutorial/tutorialStore";
 import {
@@ -62,6 +63,11 @@ export function deleteInterviewSession(sessionId: number): Promise<void> {
 }
 
 /** 세션 복원(=복습) 시각 기록. */
+/** 이 세션을 다른 기기(데스크탑·웹·폰)로 보내기 — 알림 + 딥링크 발송. 데스크탑 폴러가 토스트로 받는다. */
+export function dispatchSessionToDevices(sessionId: number): Promise<void> {
+  return api<void>(`/interview/sessions/${sessionId}/dispatch`, { method: "POST" });
+}
+
 export function markSessionResumed(sessionId: number): Promise<void> {
   if (isDataMockActive()) return Promise.resolve();
   return api<void>(`/interview/sessions/${sessionId}/resume`, { method: "POST" });
@@ -309,18 +315,15 @@ export function uploadFile(
   return api<FileAsset>("/file/upload", { method: "POST", body: form });
 }
 
-// api.ts 의 BASE 결정 규칙과 동일하게 맞춘다(공통 모듈을 수정하지 않기 위해 중복).
-const FILE_BASE =
-  (import.meta.env.VITE_API_BASE_URL as string | undefined)?.replace(/\/+$/, "") || "/api";
-
 /**
  * 업로드 파일을 인증 헤더와 함께 받아 재생 가능한 object URL 로 변환한다.
  * (다운로드 엔드포인트는 바이너리라 ApiResponse envelope 가 아니므로 별도 fetch.)
+ * 베이스 URL 은 apiBase() 단일 소스를 사용한다(런타임 오버라이드 반영).
  * 사용 후 URL.revokeObjectURL 로 해제할 것.
  */
 export async function fetchFileObjectUrl(fileId: number): Promise<string> {
   const token = getAccessToken();
-  const res = await fetch(`${FILE_BASE}/file/${fileId}/content`, {
+  const res = await fetch(`${apiBase()}/file/${fileId}/content`, {
     headers: token ? { Authorization: `Bearer ${token}` } : {},
   });
   if (!res.ok) {

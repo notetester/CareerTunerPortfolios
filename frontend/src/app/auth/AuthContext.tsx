@@ -8,9 +8,16 @@ export interface MeUser {
   name: string;
   role: string;
   userType: string;
+  accountType?: string | null;
+  enterpriseTrusted?: boolean;
   emailVerified: boolean;
+  loginId?: string | null;
+  phoneNumber?: string | null;
+  phoneVerified?: boolean;
   plan: string;
   credit: number;
+  permissions?: string[];
+  permissionGroups?: string[];
 }
 
 export interface TokenResponse {

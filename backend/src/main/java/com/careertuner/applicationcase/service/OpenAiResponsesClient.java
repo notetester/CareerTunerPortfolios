@@ -101,6 +101,7 @@ public class OpenAiResponsesClient {
                 arrayJson(payload, "sources"),
                 json(payload, "verifiedFacts", "[]"),
                 json(payload, "aiInferences", "[]"),
+                json(payload, "unknowns", "[]"),
                 usage);
     }
 
@@ -377,19 +378,28 @@ public class OpenAiResponsesClient {
                 "duties", "qualifications", "difficulty", "summary", "evidence", "ambiguousConditions"));
     }
 
-    private Map<String, Object> companyAnalysisSchema() {
+    /**
+     * 기업분석 canonical contract 의 OpenAI 표현. strict=true 에서는 properties 의 모든 키가
+     * required 여야 하므로, 서버 canonicalizer 가 보정하는 optional 키(factId·sourceKind·sourceRef·
+     * inferenceId·basedOn·confidence·neededSource)는 required + nullable 타입으로 표현한다
+     * (기존 {@link #nullableStringSchema()} 패턴). 로컬/Claude 경로
+     * ({@code BAnalysisGenerationService#companyAnalysisSchema})와 필드 집합이 동일해야 하며,
+     * sources 도 string[] 이 아니라 {type,label} 객체 배열로 통일한다.
+     */
+    Map<String, Object> companyAnalysisSchema() {
         Map<String, Object> properties = new LinkedHashMap<>();
         properties.put("companySummary", stringSchema());
         properties.put("recentIssues", stringSchema());
         properties.put("industry", stringSchema());
         properties.put("competitors", stringArraySchema());
         properties.put("interviewPoints", stringSchema());
-        properties.put("sources", stringArraySchema());
+        properties.put("sources", sourcesArraySchema());
         properties.put("verifiedFacts", verifiedFactsArraySchema());
         properties.put("aiInferences", aiInferencesArraySchema());
+        properties.put("unknowns", unknownsArraySchema());
         return objectSchema(properties, List.of(
                 "companySummary", "recentIssues", "industry", "competitors", "interviewPoints", "sources",
-                "verifiedFacts", "aiInferences"));
+                "verifiedFacts", "aiInferences", "unknowns"));
     }
 
     private Map<String, Object> jobPostingMetadataSchema() {
@@ -418,6 +428,11 @@ public class OpenAiResponsesClient {
         return Map.of("type", List.of("string", "null"));
     }
 
+    /** 배열형 optional(basedOn 등)의 OpenAI strict 허용 nullable 표현. */
+    private Map<String, Object> nullableStringArraySchema() {
+        return Map.of("type", List.of("array", "null"), "items", Map.of("type", "string"));
+    }
+
     private Map<String, Object> stringArraySchema() {
         return Map.of("type", "array", "items", Map.of("type", "string"));
     }
@@ -436,18 +451,43 @@ public class OpenAiResponsesClient {
         return Map.of("type", "array", "items", objectSchema(itemProperties, List.of("condition", "assumption")));
     }
 
+    private Map<String, Object> sourcesArraySchema() {
+        Map<String, Object> itemProperties = new LinkedHashMap<>();
+        itemProperties.put("type", stringSchema());
+        itemProperties.put("label", stringSchema());
+        return Map.of("type", "array", "items", objectSchema(itemProperties, List.of("type", "label")));
+    }
+
     private Map<String, Object> verifiedFactsArraySchema() {
         Map<String, Object> itemProperties = new LinkedHashMap<>();
         itemProperties.put("fact", stringSchema());
         itemProperties.put("source", stringSchema());
-        return Map.of("type", "array", "items", objectSchema(itemProperties, List.of("fact", "source")));
+        itemProperties.put("evidence", stringSchema());
+        itemProperties.put("factId", nullableStringSchema());
+        itemProperties.put("sourceKind", nullableStringSchema());
+        itemProperties.put("sourceRef", nullableStringSchema());
+        return Map.of("type", "array", "items", objectSchema(itemProperties,
+                List.of("fact", "source", "evidence", "factId", "sourceKind", "sourceRef")));
     }
 
     private Map<String, Object> aiInferencesArraySchema() {
         Map<String, Object> itemProperties = new LinkedHashMap<>();
         itemProperties.put("inference", stringSchema());
         itemProperties.put("basis", stringSchema());
-        return Map.of("type", "array", "items", objectSchema(itemProperties, List.of("inference", "basis")));
+        itemProperties.put("inferenceId", nullableStringSchema());
+        itemProperties.put("basedOn", nullableStringArraySchema());
+        itemProperties.put("confidence", nullableStringSchema());
+        return Map.of("type", "array", "items", objectSchema(itemProperties,
+                List.of("inference", "basis", "inferenceId", "basedOn", "confidence")));
+    }
+
+    private Map<String, Object> unknownsArraySchema() {
+        Map<String, Object> itemProperties = new LinkedHashMap<>();
+        itemProperties.put("topic", stringSchema());
+        itemProperties.put("reason", stringSchema());
+        itemProperties.put("neededSource", nullableStringSchema());
+        return Map.of("type", "array", "items", objectSchema(itemProperties,
+                List.of("topic", "reason", "neededSource")));
     }
 
     private String errorMessage(String body) {
@@ -511,6 +551,7 @@ public class OpenAiResponsesClient {
             String sources,
             String verifiedFacts,
             String aiInferences,
+            String unknowns,
             Usage usage
     ) {
     }

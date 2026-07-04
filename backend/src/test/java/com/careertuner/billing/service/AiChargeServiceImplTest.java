@@ -22,6 +22,7 @@ import com.careertuner.common.exception.ErrorCode;
 import com.careertuner.credit.dto.CreditDeductionResult;
 import com.careertuner.credit.mapper.CreditMapper;
 import com.careertuner.credit.service.CreditService;
+import com.careertuner.notification.service.NotificationService;
 
 class AiChargeServiceImplTest {
 
@@ -30,12 +31,14 @@ class AiChargeServiceImplTest {
     private final AiBenefitUsageService benefitUsageService = org.mockito.Mockito.mock(AiBenefitUsageService.class);
     private final CreditService creditService = org.mockito.Mockito.mock(CreditService.class);
     private final CreditMapper creditMapper = org.mockito.Mockito.mock(CreditMapper.class);
+    private final NotificationService notificationService = org.mockito.Mockito.mock(NotificationService.class);
     private final AiChargeServiceImpl service = new AiChargeServiceImpl(
             billingPolicyService,
             refundPolicyService,
             benefitUsageService,
             creditService,
-            creditMapper);
+            creditMapper,
+            notificationService);
 
     @Test
     void ticketConsumptionDoesNotDeductCredit() {

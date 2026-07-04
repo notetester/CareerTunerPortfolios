@@ -334,7 +334,7 @@ export function ModeSelectTab({
                 onClick={() => setReviewOpen(false)}
                 className="rounded-lg px-2 py-1 text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-600"
               >
-                ✕
+                <X className="size-4" />
               </button>
             </div>
 

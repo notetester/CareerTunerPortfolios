@@ -9,6 +9,7 @@
 //  - PUT  /notifications/preferences    -> NotificationPreference(echo)
 // 데모 사용자 김데모의 활동(적합도 분석·모의면접·커뮤니티·공지)과 일관된 알림을 제공한다.
 import type { NotificationPreference } from "@/features/notification/api/notificationApi";
+import { defaultNotificationRules } from "@/features/notification/types/preferences";
 import type { MockRoute, MockContext } from "../registry";
 import { iso, pageOf } from "../registry";
 
@@ -77,6 +78,18 @@ const demoNotifications: BackendNotification[] = [
   },
   {
     id: 9004,
+    type: "ROOM_MESSAGE",
+    targetType: "CHAT_ROOM",
+    targetId: 77,
+    title: "새 채팅이 도착했어요",
+    message: "스터디 채팅방에 새 메시지가 올라왔습니다.",
+    link: "/collaboration",
+    read: false,
+    createdAt: iso(2),
+    actor: { id: 84, name: "스터디장", avatarUrl: undefined },
+  },
+  {
+    id: 9005,
     type: "COMPANY_ANALYSIS_COMPLETE",
     targetType: "APPLICATION_CASE",
     targetId: 101,
@@ -87,7 +100,7 @@ const demoNotifications: BackendNotification[] = [
     createdAt: iso(3),
   },
   {
-    id: 9005,
+    id: 9006,
     type: "NOTICE",
     title: "[공지] 6월 정기 점검 안내",
     message: "6월 22일 02:00~04:00 서비스 점검이 예정되어 있어요. 이용에 참고해 주세요.",
@@ -108,9 +121,14 @@ const demoPreference: NotificationPreference = {
     interview: true,
     correction: true,
     community: true,
+    messenger: true,
+    recommendation: true,
     billing: true,
     notice: true,
+    marketing: false,
   },
+  rules: defaultNotificationRules(),
+  keywords: ["백엔드", "리액트"],
   quietHoursStart: "23:00",
   quietHoursEnd: "08:00",
   pushDeviceRegistered: true,
@@ -120,6 +138,8 @@ interface PreferenceUpdateBody {
   pushEnabled?: boolean;
   emailEnabled?: boolean;
   categories?: Record<string, boolean>;
+  rules?: NotificationPreference["rules"];
+  keywords?: string[];
   quietHoursStart?: string | null;
   quietHoursEnd?: string | null;
 }
@@ -179,6 +199,8 @@ export const notificationRoutes: MockRoute[] = [
       if (update.pushEnabled !== undefined) demoPreference.pushEnabled = update.pushEnabled;
       if (update.emailEnabled !== undefined) demoPreference.emailEnabled = update.emailEnabled;
       if (update.categories !== undefined) demoPreference.categories = update.categories;
+      if (update.rules !== undefined) demoPreference.rules = update.rules;
+      if (update.keywords !== undefined) demoPreference.keywords = update.keywords;
       if (update.quietHoursStart !== undefined) demoPreference.quietHoursStart = update.quietHoursStart;
       if (update.quietHoursEnd !== undefined) demoPreference.quietHoursEnd = update.quietHoursEnd;
       return demoPreference;

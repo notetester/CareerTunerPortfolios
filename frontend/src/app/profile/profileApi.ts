@@ -3,6 +3,9 @@ import { api } from "../lib/api";
 export interface UserProfile {
   id?: number;
   userId?: number;
+  loginId?: string | null;
+  phoneNumber?: string | null;
+  phoneVerified?: boolean;
   desiredJob?: string | null;
   desiredIndustry?: string | null;
   education?: unknown;
@@ -15,6 +18,11 @@ export interface UserProfile {
   resumeText?: string | null;
   selfIntro?: string | null;
   preferences?: unknown;
+  jobPreferences?: unknown;
+  personalInfo?: unknown;
+  activities?: unknown;
+  accountLinks?: unknown;
+  chatProfiles?: unknown;
   updatedAt?: string;
 }
 
@@ -31,6 +39,10 @@ export interface ProfileAiResponse {
   criteria?: ProfileCriterionScore[];
   model?: string;
   status?: string;
+  aiScore?: number;
+  qualityPenalty?: number;
+  qualityWarnings?: string[];
+  qualityRecommendations?: string[];
 }
 
 export interface ProfileCompleteness {
@@ -43,6 +55,10 @@ export interface ProfileCompleteness {
   criteria?: ProfileCriterionScore[];
   model?: string;
   status?: string;
+  aiScore?: number;
+  qualityPenalty?: number;
+  qualityWarnings?: string[];
+  qualityRecommendations?: string[];
 }
 
 export interface ProfileCriterionScore {

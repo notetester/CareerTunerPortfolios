@@ -71,6 +71,39 @@ public final class SkillAliasNormalizer {
         alias(map, "react", "react");
 
         alias(map, "vue.js", "vue");
+        // 한글 전사 별칭(FP triage, reports/84) — 실제 공고/이력서에서 흔한 한글 표기가 라틴 canonical 과
+        // 매칭되도록 한다. 전부 완전 표면형이라 substring FN 위험 없음(자바/리액트/스프링 계열은 아래 block 참조).
+        alias(map, "스프링부트", "spring boot");
+        alias(map, "스프링 부트", "spring boot");
+        alias(map, "리액트", "react");
+        alias(map, "리액트 네이티브", "react native");
+        alias(map, "react native", "react native");
+        alias(map, "파이썬", "python");
+        alias(map, "python", "python");
+        alias(map, "자바스크립트", "javascript");
+        alias(map, "타입스크립트", "typescript");
+        alias(map, "노드", "nodejs");
+        alias(map, "도커", "docker");
+        alias(map, "docker", "docker");
+        alias(map, "쿠버네티스", "kubernetes");
+        alias(map, "코틀린", "kotlin");
+        alias(map, "kotlin", "kotlin");
+        alias(map, "장고", "django");
+        alias(map, "django", "django");
+        alias(map, "포토샵", "photoshop");
+        alias(map, "포토샵 cc", "photoshop");
+        alias(map, "photoshop cc", "photoshop");
+        alias(map, "photoshop", "photoshop");
+        alias(map, "일러스트레이터", "illustrator");
+        alias(map, "illustrator", "illustrator");
+        alias(map, "엑셀", "excel");
+        alias(map, "excel", "excel");
+        alias(map, "정처기", "정보처리기사");
+        alias(map, "정보처리기사", "정보처리기사");
+        alias(map, "컴활 1급", "컴퓨터활용능력 1급");
+        alias(map, "컴퓨터활용능력 1급", "컴퓨터활용능력 1급");
+        alias(map, "컴활 2급", "컴퓨터활용능력 2급");
+        alias(map, "컴퓨터활용능력 2급", "컴퓨터활용능력 2급");
         alias(map, "vuejs", "vue");
         alias(map, "vue", "vue");
         return Collections.unmodifiableMap(map);
@@ -95,6 +128,12 @@ public final class SkillAliasNormalizer {
         block(map, "react", "react native");
         block(map, "spring", "spring boot");
         block(map, "sql", "mysql", "mssql", "postgresql", "postgres");
+        // 한글 전사 표면형에도 동일한 상위표현 차단(자바→자바스크립트 등 confusion pair FN 방지).
+        block(map, "자바", "자바스크립트");
+        block(map, "리액트", "리액트 네이티브");
+        block(map, "스프링", "스프링부트", "스프링 부트");
+        block(map, "노드", "노드제이에스");
+        block(map, "일러스트", "일러스트레이터");
 
         Map<String, List<String>> out = new LinkedHashMap<>();
         for (Map.Entry<String, List<String>> entry : map.entrySet()) {

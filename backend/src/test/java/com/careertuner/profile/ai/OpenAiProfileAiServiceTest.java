@@ -56,11 +56,12 @@ class OpenAiProfileAiServiceTest {
 
     private OpenAiProfileAiService service(CareerAnalysisOpenAiClient client,
                                            RuleBasedProfileAiService ruleBasedService) {
+        ProfileScoreCalculator scoreCalculator = new ProfileScoreCalculator();
         return new OpenAiProfileAiService(
                 client,
                 ruleBasedService,
                 new JobFamilyWeightPolicy(),
-                new ProfileAiJsonValidator(new ProfileScoreCalculator()),
+                new ProfileAiJsonValidator(scoreCalculator, new ProfileQualityGuard(scoreCalculator)),
                 new ProfileAiSchemaProvider(),
                 objectMapper);
     }

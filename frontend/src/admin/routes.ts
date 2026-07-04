@@ -10,7 +10,7 @@ import { AdminHomePage } from "./features/home/pages/AdminHomePage";
 import AdminFitAnalysisPromptsPage from "./features/prompts/fit-analysis/pages/AdminFitAnalysisPrompts";
 import AdminAnalyticsPromptsPage from "./features/prompts/analytics/pages/AdminAnalyticsPrompts";
 import { AdminApplicationCasesPage } from "./features/application-cases/pages/AdminApplicationCasesPage";
-import { AdminUsersPage } from "./features/users/pages/AdminUsersPage";
+import { AdminBlockedUsersPage, AdminEmailAuditPage, AdminSecurityAuditPage, AdminUsersPage } from "./features/users/pages/AdminUsersPage";
 import { AdminProfilesPage } from "./features/profiles/pages/AdminProfilesPage";
 import { AdminConsentsPage } from "./features/consents/pages/AdminConsentsPage";
 import { AdminCompanyAnalysisPage } from "./features/company-analysis/pages/AdminCompanyAnalysisPage";
@@ -35,6 +35,9 @@ import AdminTerms from "./features/terms/pages/AdminTerms";
 import { AdminActionLogsPage } from "./features/action-logs/pages/AdminActionLogsPage";
 import { AdminPoliciesPage } from "./features/policies/pages/AdminPoliciesPage";
 import { AdminSuperAdminPage } from "./features/super-admin/pages/AdminSuperAdminPage";
+import { AdminSecurityOpsPage } from "./features/security-ops/pages/AdminSecurityOpsPage";
+import { AdminEnterprisePage } from "./features/enterprise/pages/AdminEnterprisePage";
+import { AdminAdsPage } from "./features/ads/pages/AdminAdsPage";
 
 export const adminRoutes = [
   { path: "admin", Component: AdminDashboardPage },
@@ -48,6 +51,11 @@ export const adminRoutes = [
   { path: "admin/prompts/fit-analysis", Component: AdminFitAnalysisPromptsPage },
   { path: "admin/prompts/analytics", Component: AdminAnalyticsPromptsPage },
   { path: "admin/users", Component: AdminUsersPage },
+  { path: "admin/users/blocked", Component: AdminBlockedUsersPage },
+  { path: "admin/security", Component: AdminSecurityOpsPage },
+  { path: "admin/enterprise", Component: AdminEnterprisePage },
+  { path: "admin/audit/security", Component: AdminSecurityAuditPage },
+  { path: "admin/audit/email", Component: AdminEmailAuditPage },
   { path: "admin/profiles", Component: AdminProfilesPage },
   { path: "admin/consents", Component: AdminConsentsPage },
   { path: "admin/super", Component: AdminSuperAdminPage },
@@ -63,6 +71,7 @@ export const adminRoutes = [
   { path: "admin/interview/knowledge", Component: AdminInterviewKnowledgePage },
   { path: "admin/community", Component: AdminReports },
   { path: "admin/notices", Component: AdminNotices },
+  { path: "admin/ads", Component: AdminAdsPage },
   { path: "admin/notices/new", Component: NoticeCompose },
   { path: "admin/faq", Component: AdminFaq },
   { path: "admin/faq/new", Component: FaqCompose },

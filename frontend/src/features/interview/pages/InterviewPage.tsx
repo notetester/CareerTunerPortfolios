@@ -4,6 +4,8 @@ import { MessageSquare } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/app/components/ui/tabs";
 import { Badge } from "@/app/components/ui/badge";
 import { useAuth } from "@/app/auth/AuthContext";
+import { isNativeApp } from "@/platform/capacitor";
+import { toast } from "@/features/notification/components/toast";
 import { useApplicationCases } from "@/features/applications/hooks/useApplicationCases";
 import { ModeSelectTab } from "../components/ModeSelectTab";
 import { AutoSetupPanel } from "../components/AutoSetupPanel";
@@ -18,7 +20,8 @@ import { useTutorialStore } from "../tutorial/tutorialStore";
 import { dummySession } from "../tutorial/dummyData";
 import { TutorialOverlay } from "../tutorial/TutorialOverlay";
 import { TUT_STEPS } from "../tutorial/tutSteps";
-import { markSessionResumed } from "../api/interviewApi";
+import { getInterviewProgress, listInterviewSessions, markSessionResumed } from "../api/interviewApi";
+import { dispatchToPhone } from "../api/deviceHandoffApi";
 import { getInterviewModeLabel } from "../types/interview";
 import type { InterviewMode, InterviewSession } from "../types/interview";
 
@@ -52,8 +55,12 @@ export function InterviewPage() {
   const [activeSession, setActiveSession] = useState<InterviewSession | null>(null);
   // 현재 활성 세션이 새로 시작한 것인지(new), 과거 기록을 복원(복습)한 것인지(resumed).
   const [sessionOrigin, setSessionOrigin] = useState<"new" | "resumed" | null>(null);
+  // 디스패치 딥링크로 이어받았을 때 다음 답변 위치 안내.
+  const [resumeHint, setResumeHint] = useState<string | null>(null);
   // 홈 AI 오케스트레이터 검색창에서 넘어온 요청(자동 셋업 진입).
   const [autoPrompt] = useState(() => sessionStorage.getItem("interview.autoPrompt") ?? "");
+  // "폰으로 보내기"(기기 핸드오프) 전송 중 여부 — 중복 클릭 방지.
+  const [sendingToPhone, setSendingToPhone] = useState(false);
 
   const cases = useApplicationCases(isAuthenticated);
 
@@ -64,6 +71,20 @@ export function InterviewPage() {
   const autoMode = searchParams.get("auto") === "1" && autoPrompt.length > 0;
 
   const goTab = (tab: string) => setSearchParams(tab === "modes" ? {} : { tab });
+
+  /** 진행 중 세션을 폰으로 보내기 — INTERVIEW_DISPATCH 알림, 폰에서 탭하면 딥링크로 이어진다. */
+  const sendToPhone = async () => {
+    if (!activeSession || sendingToPhone) return;
+    setSendingToPhone(true);
+    try {
+      await dispatchToPhone(activeSession.id);
+      toast.success("폰 알림(최대 30초 내)을 탭하면 이 세션이 폰에서 이어집니다");
+    } catch {
+      toast.error("폰으로 보내기에 실패했습니다. 네트워크 연결을 확인해 주세요.");
+    } finally {
+      setSendingToPhone(false);
+    }
+  };
 
   const wantTutorial = searchParams.get("tutorial") === "1";
   const wantDemo = searchParams.get("demo") === "1";
@@ -85,6 +106,46 @@ export function InterviewPage() {
     if (wantTutorial) startTutorial();
     else if (wantDemo) startDemo();
   }, [wantTutorial, wantDemo, mode, startTutorial, startDemo]);
+
+  // 디스패치 알림 딥링크(?session={id}) → 세션 활성화 + 진행 위치 복원.
+  // 데스크탑 "폰으로 보내기" 알림을 탭하면 이 경로로 들어온다.
+  useEffect(() => {
+    const sidRaw = searchParams.get("session");
+    if (!sidRaw || !isAuthenticated) return;
+    const sid = Number(sidRaw);
+    if (!Number.isFinite(sid)) return;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const page = await listInterviewSessions(0, 100);
+        const found = page.sessions.find((s) => s.id === sid);
+        if (!found || cancelled) return;
+        setActiveSession(found);
+        setSessionOrigin("resumed");
+        setSelectedCaseId(found.applicationCaseId);
+        setSelectedMode(found.mode);
+        void markSessionResumed(sid); // 이어받은 시각 기록(실패해도 흐름 진행)
+        try {
+          const progress = await getInterviewProgress(sid);
+          if (!cancelled && !progress.finished && progress.currentQuestion) {
+            setResumeHint(
+              `다음 답변 Q${progress.answeredQuestions + 1}/${progress.totalQuestions} — ${progress.currentQuestion.question}`,
+            );
+          }
+        } catch {
+          // 진행률 조회 실패는 무시 — 세션 활성화 자체는 유지
+        }
+        // session 파라미터 제거(뒤로가기 재실행 방지) 후 질문 탭으로
+        if (!cancelled) setSearchParams({ tab: "questions" }, { replace: true });
+      } catch {
+        // 세션 목록 조회 실패 — 수동 이어받기 경로(최근 기록)로 대체 가능하므로 조용히 무시
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams, isAuthenticated]);
 
   // 튜토리얼: 현재 step 에 tab 이 지정돼 있으면 그 탭으로 자동 전환한다.
   useEffect(() => {
@@ -167,6 +228,22 @@ export function InterviewPage() {
             </span>
             {sessionOrigin === "resumed" && <Badge className="bg-indigo-100 text-indigo-700">복습 중</Badge>}
             {sessionOrigin === "new" && <Badge className="bg-green-100 text-green-700">새 세션</Badge>}
+            {resumeHint && (
+              <span className="w-full truncate text-xs text-indigo-600 sm:w-auto sm:max-w-[420px]">
+                {resumeHint}
+              </span>
+            )}
+            {/* 기기 핸드오프 보조 버튼 — 데스크톱 웹(lg 이상 + 비네이티브)에서만 노출. */}
+            {!mockActive && activeSession && !isNativeApp() && (
+              <button
+                onClick={() => void sendToPhone()}
+                disabled={sendingToPhone}
+                title="이 세션을 폰 알림으로 보내 폰에서 이어합니다"
+                className="ml-auto hidden shrink-0 items-center gap-1 rounded-lg border border-slate-200 px-2.5 py-1 text-xs font-semibold text-slate-600 transition-colors hover:border-indigo-200 hover:bg-indigo-50 hover:text-indigo-600 disabled:opacity-50 lg:inline-flex"
+              >
+                📲 {sendingToPhone ? "보내는 중…" : "폰으로 보내기"}
+              </button>
+            )}
           </div>
         )}
 

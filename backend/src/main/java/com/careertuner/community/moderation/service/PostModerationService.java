@@ -30,7 +30,7 @@ import com.careertuner.community.domain.PostStatus;
 import com.careertuner.community.mapper.CommunityCommentMapper;
 import com.careertuner.community.mapper.CommunityPostMapper;
 import com.careertuner.community.mapper.CommunityTagMapper;
-import com.careertuner.community.moderation.client.OllamaClient;
+import com.careertuner.community.moderation.client.ModerationLlmGateway;
 import com.careertuner.community.moderation.config.OllamaProperties;
 import com.careertuner.community.moderation.domain.AiTaskType;
 import com.careertuner.community.moderation.domain.Strictness;
@@ -116,7 +116,7 @@ public class PostModerationService {
             "required", List.of("toxic", "category", "confidence")
     );
 
-    private final OllamaClient ollamaClient;
+    private final ModerationLlmGateway moderationLlmGateway;
     private final OllamaProperties ollamaProperties;
     private final PostAiResultMapper aiResultMapper;
     private final CommentAiResultMapper commentAiResultMapper;
@@ -152,7 +152,7 @@ public class PostModerationService {
     private final Map<Strictness, String> strictnessTexts;
 
     public PostModerationService(
-            OllamaClient ollamaClient,
+            ModerationLlmGateway moderationLlmGateway,
             OllamaProperties ollamaProperties,
             PostAiResultMapper aiResultMapper,
             CommentAiResultMapper commentAiResultMapper,
@@ -171,7 +171,7 @@ public class PostModerationService {
             @Value("classpath:prompts/interview-extract-system.txt") Resource extractPromptResource,
             @Value("${ai.tagging.confidence-threshold:0.7}") double tagConfidenceThreshold
     ) {
-        this.ollamaClient = ollamaClient;
+        this.moderationLlmGateway = moderationLlmGateway;
         this.ollamaProperties = ollamaProperties;
         this.aiResultMapper = aiResultMapper;
         this.commentAiResultMapper = commentAiResultMapper;
@@ -240,7 +240,7 @@ public class PostModerationService {
         }
 
         String prompt = buildSystemPrompt();
-        String json = ollamaClient.chat(prompt, text, MODERATION_SCHEMA);
+        String json = moderationLlmGateway.chat(prompt, text, MODERATION_SCHEMA);
         return parseResult(json);
     }
 
@@ -420,7 +420,7 @@ public class PostModerationService {
             if (text.length() > MAX_TEXT_LENGTH) {
                 text = text.substring(0, MAX_TEXT_LENGTH);
             }
-            String json = ollamaClient.chat(taggingSystemPrompt, text, TAGGING_SCHEMA);
+            String json = moderationLlmGateway.chat(taggingSystemPrompt, text, TAGGING_SCHEMA);
             TagResult result = objectMapper.readValue(json, TagResult.class);
 
             // 카테고리명과 동일한 태그 제거
@@ -515,7 +515,7 @@ public class PostModerationService {
             }
 
             // Ollama 호출
-            String json = ollamaClient.chat(extractSystemPrompt, userText, EXTRACT_SCHEMA);
+            String json = moderationLlmGateway.chat(extractSystemPrompt, userText, EXTRACT_SCHEMA);
             // gemma가 백틱/인사말을 섞어 반환하는 경우를 대비해 첫 { ~ 마지막 }만 잘라낸다.
             InterviewExtractionResult result = sanitizeExtractionResult(
                     objectMapper.readValue(extractJsonObject(json), InterviewExtractionResult.class));

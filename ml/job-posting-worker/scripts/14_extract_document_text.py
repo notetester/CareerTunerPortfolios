@@ -34,6 +34,7 @@ SECTION_KEYWORDS = [
     "Position",
     "Responsibilities",
     "Duties",
+    "What you will do",
     "Qualifications",
     "Requirements",
     "Skills",
@@ -66,6 +67,12 @@ SECTION_KEYWORDS = [
     "입사지원",
     "이력서",
     "포지션",
+    "직무내용",
+    "모집직무",
+    "합류하게 되면 이런 일을 하게 됩니다",
+    "이런동료를기다립니다",
+    "이런 분이라면 더욱좋습니다",
+    "이런 분을 찾습니다",
 ]
 
 NOISE_KEYWORDS = [
@@ -158,6 +165,37 @@ def normalize_text(text: str) -> str:
         if normalized:
             lines.append(normalized)
     return "\n".join(lines).strip()
+
+
+# \uc0ac\uc774\ud2b8/\ud478\ud130 \uc7a1\uc74c \uc81c\uac70\uc6a9(\ubd84\uc11d\uc5d0 \ub4e4\uc5b4\uac08 OCR \ud14d\uc2a4\ud2b8\ub9cc \uc815\ub9ac. \uba85\ubc31\ud55c \uc7a1\uc74c \uc904\ub9cc \ubcf4\uc218\uc801\uc73c\ub85c \uc81c\uac70).
+_NOISE_URL = re.compile(r"https?://\S+|www\.\S+|[\w.+-]+@[\w-]+\.[\w.-]+|\b[\w-]+\.(?:go\.kr|or\.kr|co\.kr|com|net|kr)\b", re.I)
+_NOISE_COPYRIGHT = re.compile(r"all rights reserved|\u00a9|\u24d2|\(c\)\s*\uce74\uce74\uc624|\(c\)\s*\d", re.I)
+_NOISE_PRINTDATE = re.compile(r"^\ucd9c\ub825\uc77c\uc790\s*[:\uff1a]", re.I)
+_NOISE_FOOTER_EXACT = {
+    "contact", "\uacf5\uc720\ud558\uae30", "\uc2a4\ud06c\ub7a9", "\uc778\uc1c4\ud558\uae30", "\ucd94\ucc9c\uacf5\uace0", "\uc9c0\ub3c4", "\uad00\uc2ec\uae30\uc5c5", "\uc571\ub2e4\uc6b4\ub85c\ub4dc", "\ubaa9\ub85d",
+}
+
+
+def _line_meaningful_chars(text: str) -> int:
+    return sum(1 for ch in text if ch.isalnum() or 0xAC00 <= ord(ch) <= 0xD7A3)
+
+
+def strip_site_noise(text: str) -> str:
+    """OCR \uacb0\uacfc\uc5d0\uc11c \uc0ac\uc774\ud2b8/\ud478\ud130 \uc7a1\uc74c \uc904(\uc800\uc791\uad8c\u00b7\ucd9c\ub825\uc77c\uc790\u00b7standalone URL/email\u00b7footer \ud0a4\uc6cc\ub4dc)\uc744 \ubcf4\uc218\uc801\uc73c\ub85c \uc81c\uac70\ud55c\ub2e4.
+    \ubcf8\ubb38 \uc190\uc2e4\uc744 \ub9c9\uae30 \uc704\ud574, URL/email \uc740 \uadf8 \uc904\uc5d0\uc11c \uc81c\uac70 \ud6c4 \uc758\ubbf8 \uae00\uc790\uac00 \uac70\uc758 \uc5c6\uc744 \ub54c\ub9cc \uc904 \uc804\uccb4\ub97c \ubc84\ub9b0\ub2e4."""
+    kept = []
+    for line in text.split("\n"):
+        stripped = line.strip()
+        if not stripped:
+            continue
+        if _NOISE_COPYRIGHT.search(stripped) or _NOISE_PRINTDATE.match(stripped):
+            continue
+        if re.sub(r"\s+", "", stripped).lower() in _NOISE_FOOTER_EXACT:
+            continue
+        if _NOISE_URL.search(stripped) and _line_meaningful_chars(_NOISE_URL.sub("", stripped)) <= 3:
+            continue
+        kept.append(line)
+    return "\n".join(kept)
 
 
 def optional_pdf_text(path: Path) -> tuple[str, str | None]:
@@ -319,7 +357,7 @@ def paddle_ocr_text(input_path: Path, lang: str) -> str:
         lines = result
     else:
         lines = collect_ocr_text(result)
-    return normalize_text("\n".join(unique_preserving_order(lines)))
+    return strip_site_noise(normalize_text("\n".join(unique_preserving_order(lines))))
 
 
 def _run_paddle_ocr(ocr: Any, input_path: Path) -> Any:
@@ -406,7 +444,7 @@ def ppstructure_text(input_path: Path, lang: str) -> str:
             content = _ppstructure_block_content(block)
             if content:
                 lines.append(content)
-    return normalize_text("\n".join(lines))
+    return strip_site_noise(normalize_text("\n".join(lines)))
 
 
 def _ppstructure_block_content(block: Any) -> str:
@@ -500,6 +538,7 @@ def quality_status(score: int, metrics: dict[str, Any]) -> str:
 # 핵심 업무 섹션(담당업무/주요업무/responsibilities) 헤더로 인식할 키워드.
 CRITICAL_SECTION_HEADERS = [
     "담당업무", "주요업무", "업무내용", "함께할업무", "함께할 업무",
+    "직무내용", "합류하게 되면 이런 일을 하게 됩니다",
     "responsibilities", "duties", "what you will do",
 ]
 # 업무 본문에 실제 업무/기술 내용이 있는지 판별하는 토큰(하나라도 있으면 useful line).
@@ -514,6 +553,7 @@ _ISOLATED_JAMO = re.compile(r"[㄰-㆏]")
 
 # 헤더 줄 앞뒤에 흔히 붙는 불릿/구두점(예: "자격요건:", "·우대사항", "주요업무 -").
 _HEADER_TRIM_CHARS = " \t·•◦▪‣▶▷●○■□*-–—:：.|"
+_INLINE_HEADER_SEPARATORS = (":", "：", "-", "–", "—")
 
 
 def _normalize_header_token(value: str) -> str:
@@ -527,6 +567,28 @@ def _is_header_like_line(line: str) -> bool:
     if not norm or len(norm) > 16:
         return False
     return any(_normalize_header_token(keyword) == norm for keyword in SECTION_KEYWORDS)
+
+
+def _split_inline_section_header(line: str) -> list[str]:
+    """Split "Responsibilities: body" into logical header/body lines for quality metrics only."""
+    stripped = line.strip()
+    if not stripped:
+        return []
+    section_norms = {_normalize_header_token(keyword) for keyword in SECTION_KEYWORDS}
+    for separator in _INLINE_HEADER_SEPARATORS:
+        separator_index = stripped.find(separator)
+        if separator_index <= 0:
+            continue
+        prefix = stripped[:separator_index]
+        prefix_norm = _normalize_header_token(prefix)
+        if not prefix_norm or len(prefix_norm) > 16 or prefix_norm not in section_norms:
+            continue
+        body = stripped[separator_index + len(separator):].strip()
+        logical_lines = [prefix.strip()]
+        if body:
+            logical_lines.append(body)
+        return logical_lines
+    return [stripped]
 
 
 def _is_useful_work_line(line: str) -> bool:
@@ -559,7 +621,8 @@ def _is_suspect_line(line: str) -> bool:
 
 def critical_section_metrics(normalized_text: str) -> dict[str, Any]:
     """핵심 업무 섹션 헤더~다음 헤더 사이 본문의 품질 지표를 측정한다."""
-    lines = [line.strip() for line in normalized_text.splitlines() if line.strip()]
+    physical_lines = [line.strip() for line in normalized_text.splitlines() if line.strip()]
+    lines = [logical for line in physical_lines for logical in _split_inline_section_header(line)]
     header_norms = {_normalize_header_token(keyword) for keyword in CRITICAL_SECTION_HEADERS}
     body: list[str] | None = None
     for index, line in enumerate(lines):
@@ -650,11 +713,11 @@ def extract_text_for_strategy(
         next_warnings = list(warnings)
         if warning:
             next_warnings.append(warning)
-        return text, "PDF_TEXT", next_warnings
+        return strip_site_noise(text), "PDF_TEXT", next_warnings
     if suffix in PDF_SUFFIXES | IMAGE_SUFFIXES:
         text = existing_ocr_text(input_path, existing_ocr_dir)
         if text:
-            return normalize_text(text), "EXISTING_OCR", warnings
+            return strip_site_noise(normalize_text(text)), "EXISTING_OCR", warnings
         next_warnings = list(warnings)
         # 1순위: 레이아웃 인식 OCR(PPStructureV3) — 표·2단 공고의 읽기 순서를 복원한다.
         if options.enable_ppstructure:

@@ -74,6 +74,13 @@ public class CareerAnalysisAiProviderProperties {
         private int maxRetries = 2;
         /** 재시도 간 백오프 기준(선형 증가: 1·2·3배). */
         private Duration retryBackoff = Duration.ofMillis(400);
+        /**
+         * 한 번의 설명 생성 호출(재시도·백오프 포함)의 총 시간예산. E(CorrectionAiClient)의 totalTimeBudget
+         * 패턴 미러 — 공유 4090에 다모델 동시 부하 시 재시도가 GPU 점유를 무한정 끌지 않게 상한을 둔다.
+         * (기존: 요청당 60초 × 최대 3시도 + 백오프 ≈ 181초까지 가능했음 → 90초로 상한.)
+         * 기본 90초, <b>0 또는 음수 = 무제한(예산 OFF, 기존 무예산 경로)</b>.
+         */
+        private Duration totalTimeBudget = Duration.ofSeconds(90);
         /** 설명이 '부족 역량을 보유로 서술'(grounding 위반)하면 재호출 횟수. 소진 시 폴백. */
         private int groundingRetries = 1;
 

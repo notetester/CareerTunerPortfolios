@@ -52,6 +52,11 @@ import com.careertuner.companyanalysis.domain.CompanyAnalysis;
 import com.careertuner.companyanalysis.dto.CompanyAnalysisResponse;
 import com.careertuner.companyanalysis.mapper.CompanyAnalysisMapper;
 import com.careertuner.companyanalysis.service.CompanyAnalysisService;
+import com.careertuner.companyanalysis.service.CompanySearchCacheService;
+import com.careertuner.companyanalysis.websearch.CompanyEvidenceCollector;
+import com.careertuner.companyanalysis.websearch.CompanySourceResolver;
+import com.careertuner.companyanalysis.websearch.CompanyWebSearchClient;
+import com.careertuner.companyanalysis.websearch.CompanyWebSearchProperties;
 import com.careertuner.common.exception.BusinessException;
 import com.careertuner.common.exception.ErrorCode;
 import com.careertuner.jobanalysis.domain.JobAnalysis;
@@ -66,6 +71,7 @@ import com.careertuner.jobposting.service.JobPostingFileStorage;
 import com.careertuner.jobposting.service.JobPostingService;
 import com.careertuner.jobposting.service.JobPostingTextExtractor;
 import com.careertuner.notification.mapper.NotificationMapper;
+import com.careertuner.notification.service.NotificationService;
 import tools.jackson.databind.ObjectMapper;
 
 class ApplicationCaseServiceImplTest {
@@ -986,7 +992,7 @@ class ApplicationCaseServiceImplTest {
         AiUsageLogService usageLogService = mock(AiUsageLogService.class);
         ApplicationCaseAnalysisStatusService statusService = mock(ApplicationCaseAnalysisStatusService.class);
         ApplicationCaseAccessService accessService = new ApplicationCaseAccessService(applicationCaseMapper, jobPostingMapper);
-        JobAnalysisService service = new JobAnalysisService(accessService, jobAnalysisMapper, bAnalysisGenerationService, usageLogService, statusService, transactionTemplate(), analysisJsonValidator());
+        JobAnalysisService service = new JobAnalysisService(accessService, jobAnalysisMapper, bAnalysisGenerationService, usageLogService, statusService, transactionTemplate(), analysisJsonValidator(), mock(NotificationService.class));
 
         ApplicationCase applicationCase = applicationCase("DRAFT");
         JobPosting posting = jobPosting(30L, 2, "Java Spring REST API");
@@ -1021,7 +1027,7 @@ class ApplicationCaseServiceImplTest {
         AiUsageLogService usageLogService = mock(AiUsageLogService.class);
         ApplicationCaseAnalysisStatusService statusService = mock(ApplicationCaseAnalysisStatusService.class);
         ApplicationCaseAccessService accessService = new ApplicationCaseAccessService(applicationCaseMapper, jobPostingMapper);
-        JobAnalysisService service = new JobAnalysisService(accessService, jobAnalysisMapper, bAnalysisGenerationService, usageLogService, statusService, transactionTemplate(), analysisJsonValidator());
+        JobAnalysisService service = new JobAnalysisService(accessService, jobAnalysisMapper, bAnalysisGenerationService, usageLogService, statusService, transactionTemplate(), analysisJsonValidator(), mock(NotificationService.class));
 
         ApplicationCase applicationCase = applicationCase("DRAFT");
         JobPosting posting = jobPosting(30L, 2, "Java Spring REST API");
@@ -1051,7 +1057,7 @@ class ApplicationCaseServiceImplTest {
         AiUsageLogService usageLogService = mock(AiUsageLogService.class);
         ApplicationCaseAnalysisStatusService statusService = mock(ApplicationCaseAnalysisStatusService.class);
         ApplicationCaseAccessService accessService = new ApplicationCaseAccessService(applicationCaseMapper, jobPostingMapper);
-        JobAnalysisService service = new JobAnalysisService(accessService, jobAnalysisMapper, bAnalysisGenerationService, usageLogService, statusService, transactionTemplate(), analysisJsonValidator());
+        JobAnalysisService service = new JobAnalysisService(accessService, jobAnalysisMapper, bAnalysisGenerationService, usageLogService, statusService, transactionTemplate(), analysisJsonValidator(), mock(NotificationService.class));
 
         when(applicationCaseMapper.findApplicationCaseByIdAndUserId(10L, 1L)).thenReturn(applicationCase("APPLIED"));
 
@@ -1075,7 +1081,7 @@ class ApplicationCaseServiceImplTest {
         AiUsageLogService usageLogService = mock(AiUsageLogService.class);
         ApplicationCaseAnalysisStatusService statusService = mock(ApplicationCaseAnalysisStatusService.class);
         ApplicationCaseAccessService accessService = new ApplicationCaseAccessService(applicationCaseMapper, jobPostingMapper);
-        JobAnalysisService service = new JobAnalysisService(accessService, jobAnalysisMapper, bAnalysisGenerationService, usageLogService, statusService, transactionTemplate(), analysisJsonValidator());
+        JobAnalysisService service = new JobAnalysisService(accessService, jobAnalysisMapper, bAnalysisGenerationService, usageLogService, statusService, transactionTemplate(), analysisJsonValidator(), mock(NotificationService.class));
 
         when(applicationCaseMapper.findApplicationCaseByIdAndUserId(10L, 1L)).thenReturn(applicationCase("ANALYZING"));
 
@@ -1099,7 +1105,7 @@ class ApplicationCaseServiceImplTest {
         AiUsageLogService usageLogService = mock(AiUsageLogService.class);
         ApplicationCaseAnalysisStatusService statusService = mock(ApplicationCaseAnalysisStatusService.class);
         ApplicationCaseAccessService accessService = new ApplicationCaseAccessService(applicationCaseMapper, jobPostingMapper);
-        JobAnalysisService service = new JobAnalysisService(accessService, jobAnalysisMapper, bAnalysisGenerationService, usageLogService, statusService, transactionTemplate(), analysisJsonValidator());
+        JobAnalysisService service = new JobAnalysisService(accessService, jobAnalysisMapper, bAnalysisGenerationService, usageLogService, statusService, transactionTemplate(), analysisJsonValidator(), mock(NotificationService.class));
 
         ApplicationCase applicationCase = applicationCase("DRAFT");
         JobPosting posting = jobPosting(30L, 2, "Java Spring REST API");
@@ -1131,7 +1137,7 @@ class ApplicationCaseServiceImplTest {
         AiUsageLogService usageLogService = mock(AiUsageLogService.class);
         ApplicationCaseAnalysisStatusService statusService = mock(ApplicationCaseAnalysisStatusService.class);
         ApplicationCaseAccessService accessService = new ApplicationCaseAccessService(applicationCaseMapper, jobPostingMapper);
-        JobAnalysisService service = new JobAnalysisService(accessService, jobAnalysisMapper, bAnalysisGenerationService, usageLogService, statusService, transactionTemplate(), analysisJsonValidator());
+        JobAnalysisService service = new JobAnalysisService(accessService, jobAnalysisMapper, bAnalysisGenerationService, usageLogService, statusService, transactionTemplate(), analysisJsonValidator(), mock(NotificationService.class));
         ApplicationCase applicationCase = applicationCase("READY");
         JobPosting posting = jobPosting(30L, 2, "Java Spring REST API");
         RuntimeException failure = new RuntimeException("OpenAI down");
@@ -1158,7 +1164,7 @@ class ApplicationCaseServiceImplTest {
         AiUsageLogService usageLogService = mock(AiUsageLogService.class);
         ApplicationCaseAnalysisStatusService statusService = mock(ApplicationCaseAnalysisStatusService.class);
         ApplicationCaseAccessService accessService = new ApplicationCaseAccessService(applicationCaseMapper, jobPostingMapper);
-        JobAnalysisService service = new JobAnalysisService(accessService, jobAnalysisMapper, bAnalysisGenerationService, usageLogService, statusService, transactionTemplate(), analysisJsonValidator());
+        JobAnalysisService service = new JobAnalysisService(accessService, jobAnalysisMapper, bAnalysisGenerationService, usageLogService, statusService, transactionTemplate(), analysisJsonValidator(), mock(NotificationService.class));
         ApplicationCase applicationCase = applicationCase("DRAFT");
         JobPosting posting = jobPosting(30L, 2, "Java Spring REST API");
         Usage usage = new Usage("gpt-test", 100, 50, 150);
@@ -1189,7 +1195,7 @@ class ApplicationCaseServiceImplTest {
         AiUsageLogService usageLogService = mock(AiUsageLogService.class);
         ApplicationCaseAnalysisStatusService statusService = mock(ApplicationCaseAnalysisStatusService.class);
         ApplicationCaseAccessService accessService = new ApplicationCaseAccessService(applicationCaseMapper, jobPostingMapper);
-        CompanyAnalysisService service = new CompanyAnalysisService(accessService, companyAnalysisMapper, bAnalysisGenerationService, usageLogService, statusService, transactionTemplate(), analysisJsonValidator());
+        CompanyAnalysisService service = new CompanyAnalysisService(accessService, companyAnalysisMapper, bAnalysisGenerationService, usageLogService, statusService, transactionTemplate(), analysisJsonValidator(), companyAnalysisCanonicalizer(), mock(NotificationService.class), new CompanyWebSearchProperties(), mock(CompanySourceResolver.class), mock(CompanyWebSearchClient.class), mock(CompanyEvidenceCollector.class), mock(CompanySearchCacheService.class), new ObjectMapper());
 
         ApplicationCase applicationCase = applicationCase("DRAFT");
         JobPosting posting = jobPosting(null, null, "Backend platform job posting");
@@ -1204,11 +1210,12 @@ class ApplicationCaseServiceImplTest {
                 "[]",
                 "[]",
                 "[]",
+                "[]",
                 usage);
 
         when(applicationCaseMapper.findApplicationCaseByIdAndUserId(10L, 1L)).thenReturn(applicationCase);
         when(jobPostingMapper.findLatestJobPostingByCaseId(10L)).thenReturn(posting);
-        when(bAnalysisGenerationService.generateCompanyAnalysis(applicationCase, "Backend platform job posting"))
+        when(bAnalysisGenerationService.generateCompanyAnalysis(eq(applicationCase), eq("Backend platform job posting"), any()))
                 .thenReturn(new GeneratedCompanyAnalysis(payload, null, null));
         when(companyAnalysisMapper.findLatestCompanyAnalysisByCaseId(10L)).thenReturn(CompanyAnalysis.builder()
                 .id(20L)
@@ -1237,7 +1244,7 @@ class ApplicationCaseServiceImplTest {
         AiUsageLogService usageLogService = mock(AiUsageLogService.class);
         ApplicationCaseAnalysisStatusService statusService = mock(ApplicationCaseAnalysisStatusService.class);
         ApplicationCaseAccessService accessService = new ApplicationCaseAccessService(applicationCaseMapper, jobPostingMapper);
-        CompanyAnalysisService service = new CompanyAnalysisService(accessService, companyAnalysisMapper, bAnalysisGenerationService, usageLogService, statusService, transactionTemplate(), analysisJsonValidator());
+        CompanyAnalysisService service = new CompanyAnalysisService(accessService, companyAnalysisMapper, bAnalysisGenerationService, usageLogService, statusService, transactionTemplate(), analysisJsonValidator(), companyAnalysisCanonicalizer(), mock(NotificationService.class), new CompanyWebSearchProperties(), mock(CompanySourceResolver.class), mock(CompanyWebSearchClient.class), mock(CompanyEvidenceCollector.class), mock(CompanySearchCacheService.class), new ObjectMapper());
 
         ApplicationCase applicationCase = applicationCase("DRAFT");
         JobPosting posting = jobPosting(30L, 3, "Backend platform job posting");
@@ -1246,7 +1253,7 @@ class ApplicationCaseServiceImplTest {
 
         when(applicationCaseMapper.findApplicationCaseByIdAndUserId(10L, 1L)).thenReturn(applicationCase);
         when(jobPostingMapper.findLatestJobPostingByCaseId(10L)).thenReturn(posting);
-        when(bAnalysisGenerationService.generateCompanyAnalysis(applicationCase, "Backend platform job posting"))
+        when(bAnalysisGenerationService.generateCompanyAnalysis(eq(applicationCase), eq("Backend platform job posting"), any()))
                 .thenReturn(new GeneratedCompanyAnalysis(payload, null, null));
         when(companyAnalysisMapper.findLatestCompanyAnalysisByCaseId(10L)).thenReturn(companyAnalysis());
 
@@ -1259,8 +1266,14 @@ class ApplicationCaseServiceImplTest {
         verify(companyAnalysisMapper).insertCompanyAnalysis(analysisCaptor.capture());
         assertThat(analysisCaptor.getValue().getJobPostingId()).isEqualTo(30L);
         assertThat(analysisCaptor.getValue().getJobPostingRevision()).isEqualTo(3);
-        assertThat(analysisCaptor.getValue().getVerifiedFacts()).isEqualTo("[{\"fact\":\"job posting mentions B2B platform\",\"source\":\"job posting\"}]");
-        assertThat(analysisCaptor.getValue().getAiInferences()).isEqualTo("[{\"inference\":\"platform operations may be discussed\",\"basis\":\"job posting mentions B2B platform\"}]");
+        // 저장 전 canonicalizer 가 factId/sourceKind/sourceRef·inferenceId 를 additive 보정한다(6단계).
+        assertThat(analysisCaptor.getValue().getVerifiedFacts()).isEqualTo(
+                "[{\"fact\":\"job posting mentions B2B platform\",\"source\":\"job posting\","
+                        + "\"evidence\":\"Backend platform job posting\",\"factId\":\"F1\","
+                        + "\"sourceKind\":\"JOB_POSTING\",\"sourceRef\":\"jobPosting:30#rev3\"}]");
+        assertThat(analysisCaptor.getValue().getAiInferences()).isEqualTo(
+                "[{\"inference\":\"platform operations may be discussed\","
+                        + "\"basis\":\"job posting mentions B2B platform\",\"confidence\":\"LOW\",\"inferenceId\":\"I1\"}]");
         assertThat(analysisCaptor.getValue().getSourceType()).isEqualTo("JOB_POSTING");
         assertThat(analysisCaptor.getValue().getCheckedAt()).isBetween(before, after);
         assertThat(analysisCaptor.getValue().getRefreshRecommendedAt()).isEqualTo(analysisCaptor.getValue().getCheckedAt().plusDays(30));
@@ -1279,7 +1292,7 @@ class ApplicationCaseServiceImplTest {
         AiUsageLogService usageLogService = mock(AiUsageLogService.class);
         ApplicationCaseAnalysisStatusService statusService = mock(ApplicationCaseAnalysisStatusService.class);
         ApplicationCaseAccessService accessService = new ApplicationCaseAccessService(applicationCaseMapper, jobPostingMapper);
-        CompanyAnalysisService service = new CompanyAnalysisService(accessService, companyAnalysisMapper, bAnalysisGenerationService, usageLogService, statusService, transactionTemplate(), analysisJsonValidator());
+        CompanyAnalysisService service = new CompanyAnalysisService(accessService, companyAnalysisMapper, bAnalysisGenerationService, usageLogService, statusService, transactionTemplate(), analysisJsonValidator(), companyAnalysisCanonicalizer(), mock(NotificationService.class), new CompanyWebSearchProperties(), mock(CompanySourceResolver.class), mock(CompanyWebSearchClient.class), mock(CompanyEvidenceCollector.class), mock(CompanySearchCacheService.class), new ObjectMapper());
 
         when(applicationCaseMapper.findApplicationCaseByIdAndUserId(10L, 1L)).thenReturn(applicationCase("CLOSED"));
 
@@ -1288,7 +1301,7 @@ class ApplicationCaseServiceImplTest {
                 .hasMessageContaining("현재 상태에서는 분석을 다시 실행할 수 없습니다.");
 
         verify(statusService, never()).markAnalyzing(1L, 10L, "CLOSED");
-        verify(bAnalysisGenerationService, never()).generateCompanyAnalysis(any(ApplicationCase.class), any());
+        verify(bAnalysisGenerationService, never()).generateCompanyAnalysis(any(ApplicationCase.class), any(), any());
         verify(companyAnalysisMapper, never()).insertCompanyAnalysis(any(CompanyAnalysis.class));
         verify(usageLogService, never()).recordSuccess(eq(1L), eq(10L), eq("COMPANY_RESEARCH"), any());
         verify(usageLogService, never()).recordFailure(eq(1L), eq(10L), eq("COMPANY_RESEARCH"), any());
@@ -1303,7 +1316,7 @@ class ApplicationCaseServiceImplTest {
         AiUsageLogService usageLogService = mock(AiUsageLogService.class);
         ApplicationCaseAnalysisStatusService statusService = mock(ApplicationCaseAnalysisStatusService.class);
         ApplicationCaseAccessService accessService = new ApplicationCaseAccessService(applicationCaseMapper, jobPostingMapper);
-        CompanyAnalysisService service = new CompanyAnalysisService(accessService, companyAnalysisMapper, bAnalysisGenerationService, usageLogService, statusService, transactionTemplate(), analysisJsonValidator());
+        CompanyAnalysisService service = new CompanyAnalysisService(accessService, companyAnalysisMapper, bAnalysisGenerationService, usageLogService, statusService, transactionTemplate(), analysisJsonValidator(), companyAnalysisCanonicalizer(), mock(NotificationService.class), new CompanyWebSearchProperties(), mock(CompanySourceResolver.class), mock(CompanyWebSearchClient.class), mock(CompanyEvidenceCollector.class), mock(CompanySearchCacheService.class), new ObjectMapper());
 
         when(applicationCaseMapper.findApplicationCaseByIdAndUserId(10L, 1L)).thenReturn(applicationCase("ANALYZING"));
 
@@ -1312,7 +1325,7 @@ class ApplicationCaseServiceImplTest {
                 .hasMessage("이미 분석이 진행 중입니다. 잠시 후 결과를 확인해 주세요.");
 
         verify(statusService, never()).markAnalyzing(1L, 10L, "ANALYZING");
-        verify(bAnalysisGenerationService, never()).generateCompanyAnalysis(any(ApplicationCase.class), any());
+        verify(bAnalysisGenerationService, never()).generateCompanyAnalysis(any(ApplicationCase.class), any(), any());
         verify(companyAnalysisMapper, never()).insertCompanyAnalysis(any(CompanyAnalysis.class));
         verify(usageLogService, never()).recordSuccess(eq(1L), eq(10L), eq("COMPANY_RESEARCH"), any());
         verify(usageLogService, never()).recordFailure(eq(1L), eq(10L), eq("COMPANY_RESEARCH"), any());
@@ -2062,6 +2075,10 @@ class ApplicationCaseServiceImplTest {
         return new BAnalysisJsonValidator(new ObjectMapper());
     }
 
+    private static com.careertuner.companyanalysis.service.BCompanyAnalysisCanonicalizer companyAnalysisCanonicalizer() {
+        return new com.careertuner.companyanalysis.service.BCompanyAnalysisCanonicalizer(new ObjectMapper());
+    }
+
     private static ApplicationCase applicationCase(String status) {
         return ApplicationCase.builder()
                 .id(10L)
@@ -2122,8 +2139,10 @@ class ApplicationCaseServiceImplTest {
                 "[]",
                 "Interview points",
                 "[]",
-                "[{\"fact\":\"job posting mentions B2B platform\",\"source\":\"job posting\"}]",
+                "[{\"fact\":\"job posting mentions B2B platform\",\"source\":\"job posting\","
+                        + "\"evidence\":\"Backend platform job posting\"}]",
                 "[{\"inference\":\"platform operations may be discussed\",\"basis\":\"job posting mentions B2B platform\"}]",
+                "[]",
                 usage);
     }
 

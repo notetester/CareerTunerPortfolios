@@ -16,10 +16,10 @@ import lombok.extern.slf4j.Slf4j;
 public class LoggingPushSender implements PushSender {
 
     @Override
-    public void send(PushSubscription subscription, String title, String body, String link) {
+    public void send(PushSubscription subscription, PushMessage message) {
         String token = subscription.getToken();
         String masked = token == null ? "?" : token.substring(0, Math.min(12, token.length())) + "…";
-        log.info("[push] 발송기 미설정 — {} 기기({})로 보낼 알림: '{}' / link={}",
-                subscription.getKind(), masked, title, link);
+        log.info("[push] 발송기 미설정 — {} 기기({})로 보낼 알림: '{}' / link={} / channel={}",
+                subscription.getKind(), masked, message.title(), message.link(), message.androidChannelId());
     }
 }

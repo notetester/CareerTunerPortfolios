@@ -1,5 +1,7 @@
 package com.careertuner.auth.dto;
 
+import java.util.List;
+
 import com.careertuner.user.domain.User;
 
 public record MeResponse(
@@ -8,12 +10,30 @@ public record MeResponse(
         String name,
         String role,
         String userType,
+        String accountType,
+        boolean enterpriseTrusted,
         boolean emailVerified,
+        String loginId,
+        String phoneNumber,
+        boolean phoneVerified,
         String plan,
-        int credit) {
+        int credit,
+        List<String> permissions,
+        List<String> permissionGroups) {
 
     public static MeResponse from(User u) {
         return new MeResponse(u.getId(), u.getEmail(), u.getName(), u.getRole(),
-                u.getUserType(), u.isEmailVerified(), u.getPlan(), u.getCredit());
+                u.getUserType(), u.getAccountType(), u.isEnterpriseTrusted(),
+                u.isEmailVerified(), u.getLoginId(), u.getPhoneNumber(), u.isPhoneVerified(),
+                u.getPlan(), u.getCredit(), List.of(), List.of());
+    }
+
+    public static MeResponse from(User u, List<String> permissions, List<String> permissionGroups) {
+        return new MeResponse(u.getId(), u.getEmail(), u.getName(), u.getRole(),
+                u.getUserType(), u.getAccountType(), u.isEnterpriseTrusted(),
+                u.isEmailVerified(), u.getLoginId(), u.getPhoneNumber(), u.isPhoneVerified(),
+                u.getPlan(), u.getCredit(),
+                permissions == null ? List.of() : List.copyOf(permissions),
+                permissionGroups == null ? List.of() : List.copyOf(permissionGroups));
     }
 }

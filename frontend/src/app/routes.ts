@@ -8,6 +8,7 @@ import { AIInterviewPage } from "./pages/AIInterview";
 import { CorrectionPage } from "./pages/Correction";
 import { AnalysisPage } from "./pages/Analysis";
 import { CommunityPage } from "./pages/Community";
+import { MessengerPage } from "./pages/Messenger";
 import { BillingPage } from "./pages/Billing";
 import { BillingFailPage } from "./pages/BillingFail";
 import { BillingSuccessPage } from "./pages/BillingSuccess";
@@ -17,6 +18,7 @@ import { SettingsPage } from "./pages/Settings";
 import { ServiceInfoPage } from "./pages/ServiceInfo";
 import { SupportPage } from "./pages/Support";
 import { CompanyPage } from "./pages/Company";
+import { EnterprisePage } from "./pages/Enterprise";
 import { LegalPage } from "./pages/Legal";
 import { LoginPage } from "./pages/Login";
 import { AuthCallbackPage } from "./pages/AuthCallback";
@@ -27,6 +29,8 @@ import { ResetPasswordPage } from "./pages/ResetPassword";
 import { ReleaseDormantPage } from "./pages/ReleaseDormant";
 import { adminRoutes } from "../admin/routes";
 import NotificationPage from "@/features/notification/pages/NotificationPage";
+import { MobileSessionsPage } from "@/features/interview/pages/MobileSessionsPage";
+import { MobileSessionThreadPage } from "@/features/interview/pages/MobileSessionThreadPage";
 
 const basename = import.meta.env.BASE_URL === "/"
   ? "/"
@@ -47,8 +51,12 @@ export const router = createBrowserRouter([
       { path: "applications/:id/:section", Component: ApplicationDetailPage },
       { path: "applications/:id", Component: ApplicationDetailPage },
       { path: "interview", Component: AIInterviewPage },
+      // 모바일 세션 스레드(Claude 앱 문법) — 하단 탭 "세션" + 디스패치 딥링크 진입 (interview 소유, D)
+      { path: "m/sessions", Component: MobileSessionsPage },
+      { path: "m/session/:id", Component: MobileSessionThreadPage },
       { path: "correction", Component: CorrectionPage },
       { path: "analysis", Component: AnalysisPage },
+      { path: "messenger", Component: MessengerPage },
       { path: "community", Component: CommunityPage },
       // 알림/딥링크용 글 상세 경로. 같은 CommunityPage가 :postId를 읽어 상세 뷰를 연다. (팀장 승인 2026-06-19)
       { path: "community/posts/:postId", Component: CommunityPage },
@@ -72,6 +80,7 @@ export const router = createBrowserRouter([
       { path: "company/blog", Component: CompanyPage },
       { path: "company/press", Component: CompanyPage },
       { path: "company/social", Component: CompanyPage },
+      { path: "enterprise", Component: EnterprisePage },
       { path: "legal/terms", Component: LegalPage },
       { path: "legal/privacy", Component: LegalPage },
       { path: "legal/ai-data-consent", Component: LegalPage },

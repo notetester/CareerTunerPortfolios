@@ -25,8 +25,8 @@ import {
   realtimeSession, fileAsset,
 } from "./domains/interview";
 import {
-  communityPostPage, demoHotPosts, findCommunityPost, demoComments, demoPublishedGuideline,
-  demoFaqs, demoNotices, notificationPage, demoNotificationPreference,
+  communityPostPage, demoHotPosts, findCommunityPost, communityCommentsFor, demoPublishedGuideline,
+  demoFaqs, demoNotices,
   demoAdminReports, moderationPage, demoModerationStats, demoModerationSetting,
   demoAdminNotices, demoAdminFaqs, demoAdminGuidelines, demoAdminTickets, adminTicketDetail,
   demoAdminNotifications,
@@ -43,6 +43,8 @@ import { profileRoutes } from "./domains/profile";
 import { correctionRoutes } from "./domains/correction";
 import { applicationsExtraRoutes } from "./domains/applicationsExtra";
 import { interviewExtraRoutes } from "./domains/interviewExtra";
+import { collaborationRoutes } from "./domains/collaboration";
+import { privacyRoutes } from "./domains/privacy";
 import { adminRoutes } from "./domains/admin";
 
 /** 등록된 핸들러가 없을 때 반환하는 sentinel. */
@@ -299,7 +301,7 @@ const coreRoutes: MockRoute[] = [
   { method: "GET", pattern: /^\/community\/posts$/, handler: () => communityPostPage() },
   { method: "GET", pattern: /^\/community\/posts\/hot$/, handler: ok(demoHotPosts) },
   { method: "GET", pattern: /^\/community\/posts\/(\d+)$/, handler: ({ params }) => findCommunityPost(Number(params[0])) },
-  { method: "GET", pattern: /^\/community\/posts\/(\d+)\/comments$/, handler: ok(demoComments) },
+  { method: "GET", pattern: /^\/community\/posts\/(\d+)\/comments$/, handler: ({ params }) => communityCommentsFor(Number(params[0])) },
   { method: "GET", pattern: /^\/community\/posts\/(\d+)\/ai-tags$/, handler: ({ params }) => ({ postId: Number(params[0]), taskType: "태그추천", status: "DONE", resultJson: JSON.stringify({ tags: ["면접", "백엔드", "시스템설계"], confidence: 0.86, applied: true }) }) },
   { method: "POST", pattern: /^\/community\/posts$/, handler: () => ({ postId: 999 }) },
   { method: "POST", pattern: /^\/community\/reactions$/, handler: () => ({ active: true }) },
@@ -312,14 +314,6 @@ const coreRoutes: MockRoute[] = [
   { method: "GET", pattern: /^\/support\/notices\/(\d+)$/, handler: () => ({ ...demoNotices[0], content: "공지 본문 데모 콘텐츠입니다." }) },
   { method: "GET", pattern: /^\/support\/tickets$/, handler: () => [] },
   { method: "POST", pattern: /^\/support\/tickets$/, handler: ({ body }) => ({ id: 7099, status: "RECEIVED", priority: "NORMAL", createdAt: new Date().toISOString(), ...(body as object) }) },
-
-  // ── F: 알림 ──
-  { method: "GET", pattern: /^\/notifications$/, handler: () => notificationPage() },
-  { method: "GET", pattern: /^\/notifications\/unread-count$/, handler: ok(3) },
-  { method: "GET", pattern: /^\/notifications\/preferences$/, handler: ok(demoNotificationPreference) },
-  { method: "PUT", pattern: /^\/notifications\/preferences$/, handler: ok(demoNotificationPreference) },
-  { method: "PATCH", pattern: /^\/notifications\/(\d+)\/read$/, handler: ok(null) },
-  { method: "POST", pattern: /^\/notifications\/read-all$/, handler: ok(null) },
 
   // ── F(관리자): 신고 / AI 검열 ──
   { method: "GET", pattern: /^\/admin\/community\/reports$/, handler: ok(demoAdminReports) },
@@ -351,6 +345,8 @@ const routes: MockRoute[] = [
   ...supportRoutes,
   ...profileRoutes,
   ...correctionRoutes,
+  ...collaborationRoutes,
+  ...privacyRoutes,
   ...adminRoutes,
 ];
 

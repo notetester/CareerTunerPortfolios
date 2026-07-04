@@ -1,0 +1,1043 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CareerTuner Mobile v2 — Linear Modern 목업</title>
+<style>
+/* ============================================================
+   CareerTuner Mobile v2 — Linear Modern
+   Deep space near-blacks + ambient indigo light. No emojis.
+   ============================================================ */
+:root {
+  --bg-deep:     #020203;
+  --bg-base:     #050506;
+  --bg-elev:     #0a0a0c;
+  --surface:     rgba(255,255,255,0.05);
+  --surface-hov: rgba(255,255,255,0.08);
+  --fg:          #EDEDEF;
+  --fg-muted:    #8A8F98;
+  --fg-subtle:   rgba(255,255,255,0.60);
+  --accent:      #5E6AD2;
+  --accent-b:    #6872D9;
+  --accent-glow: rgba(94,106,210,0.3);
+  --accent-soft: rgba(94,106,210,0.14);
+  --border:      rgba(255,255,255,0.06);
+  --border-hov:  rgba(255,255,255,0.10);
+  --border-acc:  rgba(94,106,210,0.30);
+  --good:        #4cc38a;
+  --warn:        #d6a24c;
+  --danger:      #e46962;
+  --ease:        cubic-bezier(0.16, 1, 0.3, 1);
+  --noise: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2'/%3E%3C/filter%3E%3Crect width='120' height='120' filter='url(%23n)' opacity='0.4'/%3E%3C/svg%3E");
+}
+* { margin:0; padding:0; box-sizing:border-box; }
+body {
+  font-family:"Inter","Geist Sans","Segoe UI","Malgun Gothic",system-ui,sans-serif;
+  background:var(--bg-deep); color:var(--fg); font-size:14px;
+  min-height:100vh; display:flex; align-items:center; justify-content:center;
+  gap:40px; padding:24px; letter-spacing:-0.011em;
+  -webkit-font-smoothing:antialiased;
+}
+/* 페이지 배경 앰비언트 */
+body::before {
+  content:""; position:fixed; inset:0; pointer-events:none;
+  background:
+    radial-gradient(600px 400px at 30% 10%, rgba(94,106,210,0.07), transparent 70%),
+    radial-gradient(500px 400px at 80% 90%, rgba(94,106,210,0.04), transparent 70%);
+}
+
+/* SVG 아이콘 공통 */
+.i { width:18px; height:18px; stroke:currentColor; fill:none; stroke-width:1.8;
+     stroke-linecap:round; stroke-linejoin:round; flex-shrink:0; display:block; }
+.i.sm { width:15px; height:15px; }
+.i.lg { width:22px; height:22px; }
+
+/* 모노 라벨 (Linear 시그니처) */
+.label {
+  font-family:"JetBrains Mono","Consolas",monospace;
+  font-size:9.5px; font-weight:600; letter-spacing:0.14em; text-transform:uppercase;
+  color:var(--fg-muted);
+}
+
+/* ══ 폰 프레임 ══ */
+.phone {
+  width:390px; height:820px; flex-shrink:0; position:relative; overflow:hidden;
+  background:var(--bg-base); border-radius:44px;
+  border:1px solid rgba(255,255,255,0.08);
+  box-shadow:
+    0 0 0 1px rgba(255,255,255,0.04),
+    0 30px 90px rgba(0,0,0,0.85),
+    0 0 120px rgba(94,106,210,0.08),
+    inset 0 1px 0 rgba(255,255,255,0.06);
+  display:flex; flex-direction:column;
+}
+/* 레이어드 배경: 그라데이션 + 노이즈 + 그리드 */
+.phone::before {
+  content:""; position:absolute; inset:0; pointer-events:none; z-index:0;
+  background:
+    radial-gradient(320px 260px at 50% -60px, rgba(94,106,210,0.13), transparent 70%),
+    linear-gradient(180deg, #07070a 0%, var(--bg-base) 40%);
+}
+.phone::after {
+  content:""; position:absolute; inset:0; pointer-events:none; z-index:0;
+  background-image:var(--noise); opacity:0.03; mix-blend-mode:overlay;
+}
+/* 앰비언트 블롭 */
+.blob {
+  position:absolute; width:280px; height:280px; border-radius:50%;
+  background:radial-gradient(circle, rgba(94,106,210,0.16), transparent 65%);
+  filter:blur(40px); pointer-events:none; z-index:0;
+  animation:float 9s ease-in-out infinite;
+}
+.blob.b1 { top:-120px; left:50%; margin-left:-140px; }
+.blob.b2 { bottom:-140px; left:-120px; animation-delay:-4s; opacity:.6; }
+@keyframes float {
+  0%,100% { transform:translateY(0) rotate(0deg); }
+  50%     { transform:translateY(-18px) rotate(1deg); }
+}
+
+.statusbar {
+  height:44px; flex-shrink:0; display:flex; align-items:center;
+  justify-content:space-between; padding:0 28px; z-index:30; position:relative;
+  font-family:"JetBrains Mono",monospace; font-size:12px; font-weight:600;
+  color:var(--fg-subtle);
+}
+.notch { position:absolute; top:12px; left:50%; transform:translateX(-50%);
+  width:108px; height:26px; background:#000; border-radius:14px; z-index:31;
+  box-shadow:inset 0 0 0 1px rgba(255,255,255,0.03); }
+.viewport { flex:1; position:relative; overflow:hidden; display:flex; flex-direction:column; z-index:1; }
+
+/* ══ 화면 공통 ══ */
+.screen { position:absolute; inset:0; display:none; flex-direction:column; overflow:hidden; }
+.screen.on { display:flex; }
+.scroll { flex:1; overflow-y:auto; }
+.scroll::-webkit-scrollbar { display:none; }
+
+.appbar {
+  height:52px; flex-shrink:0; display:flex; align-items:center; gap:10px;
+  padding:0 16px; border-bottom:1px solid var(--border); position:relative; z-index:2;
+}
+.appbar .t { font-size:15px; font-weight:600; letter-spacing:-0.02em; flex:1;
+  white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.iconbtn {
+  width:34px; height:34px; border-radius:9px; display:flex; align-items:center; justify-content:center;
+  color:var(--fg-muted); flex-shrink:0; cursor:pointer;
+  transition:background .2s var(--ease), color .2s var(--ease);
+}
+.iconbtn:hover { background:var(--surface-hov); color:var(--fg); }
+
+.chip {
+  display:inline-flex; align-items:center; gap:5px; font-size:11px; font-weight:500;
+  padding:3px 10px; border-radius:9999px; border:1px solid var(--border);
+  color:var(--fg-muted); background:var(--surface); white-space:nowrap;
+}
+.chip.accent { color:#aab2ef; border-color:var(--border-acc); background:var(--accent-soft); }
+.chip.good { color:var(--good); }
+.chip.warn { color:var(--warn); }
+.chip .i { width:11px; height:11px; }
+.dot { width:6px; height:6px; border-radius:50%; flex-shrink:0; }
+.dot.run { background:var(--warn); box-shadow:0 0 8px rgba(214,162,76,.5); }
+.dot.done { background:var(--good); }
+
+/* ══ 하단 탭바 ══ */
+.tabbar {
+  flex-shrink:0; display:flex; border-top:1px solid var(--border);
+  background:rgba(5,5,6,0.92); backdrop-filter:blur(16px);
+  padding:6px 8px 18px; z-index:20; position:relative;
+}
+.tab {
+  flex:1; display:flex; flex-direction:column; align-items:center; gap:4px;
+  padding:7px 0 4px; border-radius:10px; cursor:pointer; color:var(--fg-muted);
+  font-size:9.5px; font-weight:500; position:relative;
+  transition:color .2s var(--ease);
+}
+.tab .i { transition:transform .2s var(--ease); }
+.tab.on { color:var(--accent-b); }
+.tab.on .i { transform:translateY(-1px); }
+.tab .badge {
+  position:absolute; top:2px; right:calc(50% - 19px);
+  min-width:15px; height:15px; border-radius:8px; background:var(--accent);
+  color:#fff; font-size:9px; font-weight:700;
+  display:flex; align-items:center; justify-content:center; padding:0 4px;
+  box-shadow:0 0 10px var(--accent-glow);
+}
+
+/* ══ 버튼 ══ */
+.btn {
+  display:flex; align-items:center; justify-content:center; gap:7px;
+  padding:12px; border-radius:10px; font-size:13.5px; font-weight:600;
+  border:1px solid var(--border); background:var(--surface); color:var(--fg); cursor:pointer;
+  transition:all .2s var(--ease);
+}
+.btn:hover { background:var(--surface-hov); border-color:var(--border-hov); transform:translateY(-1px); }
+.btn.primary {
+  background:linear-gradient(180deg, var(--accent-b), var(--accent));
+  border-color:transparent; color:#fff;
+  box-shadow:0 0 0 1px rgba(94,106,210,0.5), 0 4px 12px rgba(94,106,210,0.3),
+             inset 0 1px 0 rgba(255,255,255,0.2);
+}
+.btn.primary:hover { filter:brightness(1.06); }
+.btn.ghost { background:transparent; }
+.btn.sm { padding:8px 13px; font-size:12px; border-radius:8px; }
+
+/* ══ 홈 ══ */
+#scr-home .hero { padding:36px 24px 8px; position:relative; }
+#scr-home h1 {
+  font-size:24px; font-weight:600; letter-spacing:-0.03em; line-height:1.3;
+  background:linear-gradient(180deg, #fff 20%, rgba(255,255,255,0.55));
+  -webkit-background-clip:text; background-clip:text; -webkit-text-fill-color:transparent;
+}
+#scr-home .sub { color:var(--fg-muted); font-size:13px; margin-top:9px; line-height:1.6; }
+.sugg { display:flex; gap:8px; padding:16px 24px 4px; flex-wrap:wrap; }
+.sugg .chip {
+  padding:8px 14px; font-size:12px; cursor:pointer;
+  transition:all .2s var(--ease);
+}
+.sugg .chip:hover { border-color:var(--border-acc); color:var(--fg); transform:translateY(-1px); }
+.home-sec { padding:20px 24px 8px; }
+.sess-item {
+  margin:0 14px 4px; padding:13px 14px; border-radius:12px; cursor:pointer;
+  display:flex; flex-direction:column; gap:5px;
+  border:1px solid transparent;
+  transition:all .2s var(--ease);
+}
+.sess-item:hover { background:var(--surface); border-color:var(--border); }
+.sess-item .t { font-size:13.5px; font-weight:600; letter-spacing:-0.01em; }
+.sess-item .m { display:flex; gap:7px; align-items:center; font-size:11.5px; color:var(--fg-muted); }
+.sess-item .m .i { width:12px; height:12px; }
+
+/* ══ 입력 독 ══ */
+.inputdock { flex-shrink:0; padding:8px 12px 10px; position:relative; z-index:5; }
+.inputbar {
+  background:var(--bg-elev); border:1px solid var(--border); border-radius:16px;
+  padding:12px 12px 10px;
+  box-shadow:0 0 0 1px rgba(255,255,255,0.02), 0 8px 32px rgba(0,0,0,0.4),
+             inset 0 1px 0 rgba(255,255,255,0.04);
+  transition:border-color .2s var(--ease), box-shadow .2s var(--ease);
+}
+.inputbar:hover { border-color:var(--border-hov); }
+.inputbar.focus, .inputbar:focus-within {
+  border-color:var(--border-acc);
+  box-shadow:0 0 0 3px rgba(94,106,210,0.12), 0 8px 32px rgba(0,0,0,0.4);
+}
+.inputbar .ph { color:var(--fg-muted); font-size:13.5px; padding:2px 4px 10px; }
+.input-foot { display:flex; align-items:center; gap:4px; }
+.mini {
+  width:32px; height:32px; border-radius:8px; display:flex; align-items:center; justify-content:center;
+  color:var(--fg-muted); cursor:pointer; transition:all .2s var(--ease);
+}
+.mini:hover { background:var(--surface-hov); color:var(--fg); }
+.sendbtn {
+  margin-left:auto; width:34px; height:34px; border-radius:9px; border:none; cursor:pointer;
+  background:linear-gradient(180deg,var(--accent-b),var(--accent)); color:#fff;
+  display:flex; align-items:center; justify-content:center;
+  box-shadow:0 0 0 1px rgba(94,106,210,0.5), 0 3px 10px rgba(94,106,210,0.3),
+             inset 0 1px 0 rgba(255,255,255,0.2);
+  transition:filter .2s var(--ease);
+}
+.sendbtn:hover { filter:brightness(1.08); }
+
+/* ══ 스레드 ══ */
+.thread { padding:14px 16px 8px; }
+.sysline { display:flex; align-items:center; gap:10px; color:var(--fg-muted); margin:6px 0 12px; }
+.sysline::before,.sysline::after { content:""; flex:1; height:1px; background:var(--border); }
+.sysline span { font-size:10.5px; }
+.steps {
+  border:1px solid var(--border); border-radius:12px; background:var(--surface);
+  overflow:hidden; margin-bottom:14px;
+  box-shadow:inset 0 1px 0 rgba(255,255,255,0.04);
+}
+.step { display:flex; align-items:center; gap:9px; padding:10px 13px; font-size:11.5px; color:var(--fg-muted); }
+.step + .step { border-top:1px solid var(--border); }
+.step .ok { color:var(--good); }
+.step .nm { color:var(--fg); font-weight:600; font-size:12px; }
+.step .dt { margin-left:auto; font-family:"JetBrains Mono",monospace; font-size:9.5px; }
+.msg { display:flex; gap:11px; margin:16px 0; }
+.msg .who {
+  width:28px; height:28px; border-radius:8px; flex-shrink:0; font-size:11.5px; font-weight:700;
+  display:flex; align-items:center; justify-content:center;
+  background:var(--surface); border:1px solid var(--border); color:var(--fg-subtle);
+}
+.msg.ai .who { background:var(--accent-soft); border-color:var(--border-acc); color:var(--accent-b); }
+.msg .bub { flex:1; min-width:0; }
+.msg .name { font-size:10.5px; color:var(--fg-muted); margin-bottom:5px; display:flex; gap:6px; align-items:center; }
+.msg .txt { font-size:13.5px; line-height:1.6; color:var(--fg); }
+.msg.me .txt {
+  background:var(--surface); border:1px solid var(--border); border-radius:12px;
+  padding:11px 13px; font-size:13px;
+  box-shadow:inset 0 1px 0 rgba(255,255,255,0.04);
+}
+.score-card {
+  border:1px solid var(--border); border-radius:14px; background:var(--surface);
+  margin:12px 0; overflow:hidden; position:relative;
+  box-shadow:0 0 0 1px rgba(255,255,255,0.02), 0 2px 20px rgba(0,0,0,0.35),
+             inset 0 1px 0 rgba(255,255,255,0.05);
+}
+.score-head { display:flex; gap:13px; align-items:center; padding:13px 15px; border-bottom:1px solid var(--border); }
+.score-ring {
+  width:42px; height:42px; border-radius:50%; flex-shrink:0;
+  border:2.5px solid var(--accent);
+  display:flex; align-items:center; justify-content:center;
+  font-family:"JetBrains Mono",monospace; font-weight:700; font-size:14px; color:var(--accent-b);
+  box-shadow:0 0 18px rgba(94,106,210,0.2);
+}
+.score-body { padding:12px 15px; font-size:12.5px; line-height:1.65; }
+.score-body b.g { color:var(--good); font-weight:600; } .score-body b.w { color:var(--warn); font-weight:600; }
+.score-actions { display:flex; gap:6px; padding:0 13px 13px; flex-wrap:wrap; }
+
+/* ══ 몰입형 ══ */
+.immersive {
+  position:absolute; inset:0; z-index:40; display:none; flex-direction:column;
+  background:
+    radial-gradient(400px 300px at 50% 30%, rgba(94,106,210,0.08), transparent 70%),
+    var(--bg-deep);
+}
+.immersive.on { display:flex; }
+.imm-top { display:flex; align-items:center; gap:8px; padding:52px 18px 12px; }
+.imm-top .qn { margin-left:2px; }
+.imm-exit { margin-left:auto; }
+.imm-question {
+  padding:12px 26px; font-size:17px; font-weight:600; line-height:1.55; letter-spacing:-0.02em;
+  background:linear-gradient(180deg, #fff 30%, rgba(255,255,255,0.6));
+  -webkit-background-clip:text; background-clip:text; -webkit-text-fill-color:transparent;
+}
+.imm-center { flex:1; display:flex; align-items:center; justify-content:center; flex-direction:column; gap:20px; }
+.wave { display:flex; gap:5px; align-items:center; height:90px; }
+.wave i {
+  width:4px; border-radius:3px; height:14px;
+  background:linear-gradient(180deg, var(--accent-b), var(--accent));
+  box-shadow:0 0 12px rgba(94,106,210,0.4);
+  animation:wv 1.1s var(--ease) infinite;
+}
+.wave i:nth-child(2n) { animation-delay:.15s; } .wave i:nth-child(3n) { animation-delay:.3s; }
+.wave i:nth-child(5n) { animation-delay:.45s; }
+@keyframes wv { 0%,100%{height:12px; opacity:.65} 50%{height:62px; opacity:1} }
+.imm-timer {
+  font-family:"JetBrains Mono",monospace; font-size:26px; font-weight:700;
+  font-variant-numeric:tabular-nums; color:var(--fg);
+}
+.imm-hint { color:var(--fg-muted); font-size:12.5px; }
+.imm-controls { display:flex; gap:24px; align-items:center; justify-content:center; padding:20px 0 48px; }
+.imm-btn {
+  width:56px; height:56px; border-radius:50%; border:1px solid var(--border);
+  background:var(--surface); color:var(--fg); cursor:pointer;
+  display:flex; align-items:center; justify-content:center;
+  transition:all .2s var(--ease);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,0.06);
+}
+.imm-btn:hover { background:var(--surface-hov); transform:translateY(-2px); }
+.imm-btn.stop {
+  width:72px; height:72px; background:var(--danger); border-color:transparent; color:#fff;
+  box-shadow:0 0 0 1px rgba(228,105,98,0.4), 0 6px 24px rgba(228,105,98,0.3),
+             inset 0 1px 0 rgba(255,255,255,0.2);
+}
+/* 화상 프리뷰 */
+.cam-preview {
+  position:absolute; inset:0;
+  background:
+    radial-gradient(ellipse 210px 270px at 50% 42%, rgba(94,106,210,0.15), transparent 70%),
+    linear-gradient(180deg, #0c0e13 0%, #060709 100%);
+}
+.cam-sil {
+  position:absolute; top:42%; left:50%; transform:translate(-50%,-50%);
+  width:150px; height:150px; color:rgba(255,255,255,0.14);
+}
+.cam-grid { position:absolute; inset:0; opacity:.5;
+  background-image:linear-gradient(rgba(255,255,255,.02) 1px, transparent 1px),
+                   linear-gradient(90deg, rgba(255,255,255,.02) 1px, transparent 1px);
+  background-size:56px 56px; }
+.imm-overlay { position:relative; z-index:2; display:flex; flex-direction:column; height:100%; }
+.imm-q-band {
+  margin:0 16px; padding:14px 17px; border-radius:14px;
+  background:rgba(5,5,6,0.78); backdrop-filter:blur(12px);
+  border:1px solid rgba(255,255,255,0.08);
+  font-size:14.5px; font-weight:600; line-height:1.55; letter-spacing:-0.01em;
+  box-shadow:0 8px 32px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.06);
+}
+.pose-chips { position:absolute; top:118px; right:16px; z-index:3; display:flex; flex-direction:column; gap:6px; }
+.pose-chips .chip { backdrop-filter:blur(8px); background:rgba(5,5,6,0.7); }
+.rec-dot { width:7px; height:7px; border-radius:50%; background:var(--danger);
+  box-shadow:0 0 8px rgba(228,105,98,.6); animation:blink 1.4s ease-in-out infinite; }
+@keyframes blink { 0%,100%{opacity:1} 50%{opacity:.35} }
+
+/* ══ 바텀시트 ══ */
+.sheet-back { position:absolute; inset:0; z-index:50; background:rgba(0,0,0,0.6);
+  backdrop-filter:blur(2px); display:none; }
+.sheet-back.on { display:block; }
+.sheet {
+  position:absolute; left:0; right:0; bottom:0; z-index:51;
+  background:var(--bg-elev); border-radius:20px 20px 0 0;
+  border-top:1px solid var(--border-hov);
+  padding:10px 20px 30px; transform:translateY(105%);
+  transition:transform .3s var(--ease);
+  box-shadow:0 -20px 60px rgba(0,0,0,0.6), inset 0 1px 0 rgba(255,255,255,0.06);
+}
+.sheet.on { transform:translateY(0); }
+.sheet .handle { width:38px; height:4px; border-radius:3px; background:rgba(255,255,255,0.14); margin:5px auto 18px; }
+.perm-icon {
+  width:52px; height:52px; border-radius:14px; background:var(--accent-soft);
+  border:1px solid var(--border-acc); color:var(--accent-b);
+  display:flex; align-items:center; justify-content:center; margin:0 auto 14px;
+  box-shadow:0 0 30px rgba(94,106,210,0.15);
+}
+.sheet h3 { text-align:center; font-size:16.5px; font-weight:600; letter-spacing:-0.02em; margin-bottom:8px; }
+.sheet .desc { color:var(--fg-muted); font-size:12.5px; line-height:1.65; text-align:center; margin-bottom:16px; }
+.perm-rows { display:flex; flex-direction:column; gap:8px; margin-bottom:18px; }
+.perm-row {
+  display:flex; gap:12px; align-items:flex-start; padding:12px 14px;
+  border:1px solid var(--border); border-radius:12px; background:var(--surface);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,0.03);
+}
+.perm-row .i { margin-top:1px; color:var(--fg-muted); }
+.perm-row .pt { font-size:12.5px; font-weight:600; }
+.perm-row .pd { font-size:11.5px; color:var(--fg-muted); margin-top:3px; line-height:1.55; }
+
+/* ══ 알림 ══ */
+.noti-item {
+  display:flex; gap:13px; padding:15px 18px; border-bottom:1px solid var(--border);
+  cursor:pointer; transition:background .2s var(--ease);
+}
+.noti-item:hover { background:var(--surface); }
+.noti-item .ni {
+  width:36px; height:36px; border-radius:10px; background:var(--surface);
+  border:1px solid var(--border); color:var(--fg-muted);
+  display:flex; align-items:center; justify-content:center; flex-shrink:0;
+}
+.noti-item.unread .ni { background:var(--accent-soft); border-color:var(--border-acc); color:var(--accent-b); }
+.noti-item .nt { font-size:13px; font-weight:600; display:flex; align-items:center; gap:7px; }
+.noti-item.unread .nt::after { content:""; width:6px; height:6px; border-radius:50%;
+  background:var(--accent); box-shadow:0 0 8px var(--accent-glow); }
+.noti-item .nm2 { font-size:12px; color:var(--fg-muted); margin-top:3px; line-height:1.55; }
+.noti-item .ntime { font-family:"JetBrains Mono",monospace; font-size:9.5px; color:var(--fg-muted); margin-top:6px; letter-spacing:.04em; }
+
+/* ══ 리포트 ══ */
+.report { padding:18px; }
+.rep-head { display:flex; gap:18px; align-items:center; margin-bottom:18px; }
+.donut {
+  width:88px; height:88px; border-radius:50%; flex-shrink:0;
+  border:4px solid var(--accent);
+  display:flex; flex-direction:column; align-items:center; justify-content:center;
+  box-shadow:0 0 40px rgba(94,106,210,0.18), inset 0 0 20px rgba(94,106,210,0.06);
+}
+.donut b { font-family:"JetBrains Mono",monospace; font-size:23px; }
+.rep-row { display:flex; gap:12px; padding:12px 2px; border-bottom:1px solid var(--border); font-size:12.5px; align-items:baseline; }
+.rep-row .sc { font-family:"JetBrains Mono",monospace; font-weight:700; width:26px; }
+
+/* ══ 더보기/설정 ══ */
+.more-grid { display:grid; grid-template-columns:repeat(4,1fr); gap:6px; margin-bottom:16px; }
+.more-cell {
+  display:flex; flex-direction:column; align-items:center; gap:8px; padding:14px 4px 12px;
+  border-radius:12px; cursor:pointer; font-size:10.5px; color:var(--fg-muted);
+  border:1px solid transparent; transition:all .2s var(--ease);
+}
+.more-cell:hover { background:var(--surface); border-color:var(--border); color:var(--fg); }
+.more-cell .i { width:19px; height:19px; }
+.set-sec { padding:18px 18px 8px; }
+.set-row {
+  display:flex; align-items:center; gap:13px; padding:13px 18px;
+  border-bottom:1px solid var(--border); font-size:13.5px; cursor:pointer;
+  transition:background .2s var(--ease);
+}
+.set-row:hover { background:var(--surface); }
+.set-row .i { color:var(--fg-muted); }
+.set-row .sr { margin-left:auto; color:var(--fg-muted); font-size:12px; display:flex; align-items:center; gap:4px; }
+.toggle { width:38px; height:21px; border-radius:12px; background:var(--surface);
+  border:1px solid var(--border); position:relative; cursor:pointer; margin-left:auto; flex-shrink:0;
+  transition:all .2s var(--ease); }
+.toggle::after { content:""; position:absolute; top:2px; left:2px; width:15px; height:15px; border-radius:50%;
+  background:var(--fg-muted); transition:all .2s var(--ease); }
+.toggle.on { background:var(--accent); border-color:var(--accent);
+  box-shadow:0 0 12px rgba(94,106,210,0.25); }
+.toggle.on::after { left:19px; background:#fff; }
+
+/* ══ 카메라 촬영 ══ */
+.capture-frame {
+  margin:16px 18px; border-radius:16px; overflow:hidden; position:relative; height:300px;
+  background:linear-gradient(165deg,#0d0f14,#07080b); border:1px solid var(--border);
+  display:flex; align-items:center; justify-content:center;
+  box-shadow:inset 0 1px 0 rgba(255,255,255,0.04), 0 8px 32px rgba(0,0,0,0.4);
+}
+.capture-frame .doc {
+  width:190px; height:238px; background:#e9e7e1; border-radius:5px; transform:rotate(-2deg);
+  box-shadow:0 14px 40px rgba(0,0,0,0.6); padding:18px 15px;
+}
+.doc .l { height:6px; background:#cac6bc; border-radius:3px; margin-bottom:8px; }
+.doc .l.h { height:9px; width:78%; background:#8d8a81; margin-bottom:11px; }
+.doc .l.s { width:58%; }
+.capture-corner { position:absolute; width:24px; height:24px; border:2px solid var(--accent);
+  filter:drop-shadow(0 0 6px rgba(94,106,210,.5)); }
+.cc-tl { top:16px; left:16px; border-right:none; border-bottom:none; border-radius:5px 0 0 0; }
+.cc-tr { top:16px; right:16px; border-left:none; border-bottom:none; border-radius:0 5px 0 0; }
+.cc-bl { bottom:16px; left:16px; border-right:none; border-top:none; border-radius:0 0 0 5px; }
+.cc-br { bottom:16px; right:16px; border-left:none; border-top:none; border-radius:0 0 5px 0; }
+
+/* ══ 토스트 ══ */
+.toasts { position:absolute; left:14px; right:14px; top:54px; z-index:70; display:flex; flex-direction:column; gap:6px; }
+.toast {
+  background:rgba(10,10,12,0.94); border:1px solid var(--border-hov);
+  border-radius:12px; padding:12px 14px; font-size:12px; line-height:1.55;
+  box-shadow:0 0 0 1px rgba(255,255,255,0.03), 0 12px 40px rgba(0,0,0,0.6),
+             0 0 40px rgba(94,106,210,0.06);
+  backdrop-filter:blur(12px);
+  animation:tin .3s var(--ease); position:relative; overflow:hidden;
+}
+.toast::before { content:""; position:absolute; left:0; top:8px; bottom:8px; width:2.5px;
+  border-radius:2px; background:var(--accent); box-shadow:0 0 10px var(--accent-glow); }
+.toast b { display:block; font-size:12.5px; padding-left:9px; }
+.toast div, .toast span { padding-left:9px; }
+.toast .src { font-family:"JetBrains Mono",monospace; font-size:9.5px; color:var(--fg-muted);
+  margin-top:4px; display:block; letter-spacing:.02em; }
+@keyframes tin { from { transform:translateY(-10px); opacity:0; } }
+
+/* ══ 데모 패널 ══ */
+.demo-panel { width:250px; display:flex; flex-direction:column; gap:7px; position:relative; z-index:1; }
+.demo-panel h2 { font-size:15px; font-weight:600; letter-spacing:-0.02em; }
+.demo-panel .d { color:var(--fg-muted); font-size:11.5px; line-height:1.65; margin-bottom:10px; }
+.jump {
+  text-align:left; padding:11px 14px; border-radius:10px; font-size:12.5px; font-weight:500;
+  cursor:pointer; border:1px solid var(--border); background:var(--surface); color:var(--fg);
+  display:flex; align-items:center; gap:10px;
+  transition:all .2s var(--ease);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,0.03);
+}
+.jump:hover { border-color:var(--border-acc); background:var(--surface-hov); transform:translateY(-1px); }
+.jump .i { color:var(--fg-muted); width:16px; height:16px; }
+.jump small { display:block; color:var(--fg-muted); font-size:10px; margin-top:2px; font-weight:400; }
+
+/* API 매핑 */
+body.show-api [data-api] { outline:1px dashed var(--accent); outline-offset:1px; position:relative; }
+body.show-api [data-api]::after {
+  content:attr(data-api); position:absolute; top:-8px; left:6px; z-index:60;
+  background:var(--accent); color:#fff; font-size:8.5px; font-weight:700;
+  padding:1px 6px; border-radius:5px; white-space:nowrap;
+  font-family:"JetBrains Mono",Consolas,monospace;
+}
+@media (prefers-reduced-motion: reduce) {
+  .blob, .wave i, .rec-dot { animation:none; }
+  * { transition-duration:0.01ms !important; }
+}
+</style>
+</head>
+<body>
+
+<!-- ══ SVG 스프라이트 (Lucide 스타일) ══ -->
+<svg width="0" height="0" style="position:absolute">
+  <symbol id="i-home" viewBox="0 0 24 24"><path d="M3 10.5 12 3l9 7.5"/><path d="M5 9.5V21h14V9.5"/><path d="M9 21v-6h6v6"/></symbol>
+  <symbol id="i-msg" viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></symbol>
+  <symbol id="i-mic" viewBox="0 0 24 24"><rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 10v1a7 7 0 0 0 14 0v-1"/><path d="M12 18v4"/></symbol>
+  <symbol id="i-bell" viewBox="0 0 24 24"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/></symbol>
+  <symbol id="i-menu" viewBox="0 0 24 24"><path d="M4 6h16"/><path d="M4 12h16"/><path d="M4 18h16"/></symbol>
+  <symbol id="i-grid" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></symbol>
+  <symbol id="i-camera" viewBox="0 0 24 24"><path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3z"/><circle cx="12" cy="13" r="3.5"/></symbol>
+  <symbol id="i-clip" viewBox="0 0 24 24"><path d="m21.4 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l8.57-8.57A4 4 0 1 1 18 8.84l-8.59 8.57a2 2 0 0 1-2.83-2.83l8.49-8.48"/></symbol>
+  <symbol id="i-monitor" viewBox="0 0 24 24"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8"/><path d="M12 17v4"/></symbol>
+  <symbol id="i-up" viewBox="0 0 24 24"><path d="M12 19V5"/><path d="m5 12 7-7 7 7"/></symbol>
+  <symbol id="i-left" viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></symbol>
+  <symbol id="i-right" viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></symbol>
+  <symbol id="i-x" viewBox="0 0 24 24"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></symbol>
+  <symbol id="i-check" viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></symbol>
+  <symbol id="i-moon" viewBox="0 0 24 24"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/></symbol>
+  <symbol id="i-file" viewBox="0 0 24 24"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7z"/><path d="M14 2v5h5"/><path d="M9 13h6"/><path d="M9 17h6"/></symbol>
+  <symbol id="i-chart" viewBox="0 0 24 24"><path d="M3 3v18h18"/><path d="m7 14 4-4 3 3 5-6"/></symbol>
+  <symbol id="i-pen" viewBox="0 0 24 24"><path d="M17 3a2.85 2.85 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></symbol>
+  <symbol id="i-users" viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></symbol>
+  <symbol id="i-card" viewBox="0 0 24 24"><rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20"/></symbol>
+  <symbol id="i-gear" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1Z"/></symbol>
+  <symbol id="i-headset" viewBox="0 0 24 24"><path d="M3 14v-3a9 9 0 0 1 18 0v3"/><path d="M21 19a2 2 0 0 1-2 2h-1a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h3zM3 19a2 2 0 0 0 2 2h1a2 2 0 0 0 2-2v-3a2 2 0 0 0-2-2H3z"/></symbol>
+  <symbol id="i-lock" viewBox="0 0 24 24"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></symbol>
+  <symbol id="i-shield" viewBox="0 0 24 24"><path d="M20 13c0 5-3.5 7.5-8 9-4.5-1.5-8-4-8-9V6l8-3 8 3z"/></symbol>
+  <symbol id="i-user" viewBox="0 0 24 24"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></symbol>
+  <symbol id="i-out" viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><path d="m16 17 5-5-5-5"/><path d="M21 12H9"/></symbol>
+  <symbol id="i-share" viewBox="0 0 24 24"><path d="M7 17 17 7"/><path d="M8 7h9v9"/></symbol>
+  <symbol id="i-vol" viewBox="0 0 24 24"><path d="M11 5 6 9H2v6h4l5 4z"/><path d="M15.5 8.5a5 5 0 0 1 0 7"/><path d="M18.5 5.5a9.5 9.5 0 0 1 0 13"/></symbol>
+  <symbol id="i-skip" viewBox="0 0 24 24"><path d="m5 4 10 8-10 8z"/><path d="M19 5v14"/></symbol>
+  <symbol id="i-stop" viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="2" fill="currentColor" stroke="none"/></symbol>
+  <symbol id="i-flip" viewBox="0 0 24 24"><path d="M3 12a9 9 0 0 1 15-6.7L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-15 6.7L3 16"/><path d="M3 21v-5h5"/></symbol>
+  <symbol id="i-img" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-4-4L5 22"/></symbol>
+  <symbol id="i-trash" viewBox="0 0 24 24"><path d="M3 6h18"/><path d="M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/></symbol>
+  <symbol id="i-hand" viewBox="0 0 24 24"><path d="M18 11V6a2 2 0 0 0-4 0v5"/><path d="M14 10V4a2 2 0 0 0-4 0v6"/><path d="M10 10.5V6a2 2 0 0 0-4 0v8"/><path d="M18 8a2 2 0 1 1 4 0v6a8 8 0 0 1-8 8h-2c-2.8 0-4.5-.86-5.99-2.34l-3.6-3.6a2 2 0 0 1 2.83-2.82L7 15"/></symbol>
+  <symbol id="i-spark" viewBox="0 0 24 24"><path d="M12 3v3"/><path d="M12 18v3"/><path d="M5.6 5.6l2.1 2.1"/><path d="M16.3 16.3l2.1 2.1"/><path d="M3 12h3"/><path d="M18 12h3"/><path d="M5.6 18.4l2.1-2.1"/><path d="M16.3 7.7l2.1-2.1"/></symbol>
+  <symbol id="i-zap" viewBox="0 0 24 24"><path d="M13 2 3 14h9l-1 8 10-12h-9z"/></symbol>
+  <symbol id="i-megaphone" viewBox="0 0 24 24"><path d="m3 11 18-5v12L3 13z"/><path d="M11.6 16.8a3 3 0 1 1-5.8-1.6"/></symbol>
+  <symbol id="i-rotate" viewBox="0 0 24 24"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></symbol>
+  <symbol id="i-person" viewBox="0 0 24 24"><circle cx="12" cy="8" r="4.5" fill="currentColor" stroke="none"/><path d="M4 22c0-4.4 3.6-8 8-8s8 3.6 8 8" fill="currentColor" stroke="none"/></symbol>
+</svg>
+
+<!-- ══ 폰 ══ -->
+<div class="phone">
+  <div class="blob b1"></div><div class="blob b2"></div>
+  <div class="notch"></div>
+  <div class="statusbar"><span>10:52</span><span>LTE 100%</span></div>
+
+  <div class="viewport">
+
+    <!-- ── 홈 ── -->
+    <div class="screen on" id="scr-home">
+      <div class="appbar" style="border-bottom:none;">
+        <span style="width:24px;height:24px;border-radius:7px;background:linear-gradient(180deg,var(--accent-b),var(--accent));display:flex;align-items:center;justify-content:center;color:#fff;font-weight:700;font-size:12px;box-shadow:0 0 14px var(--accent-glow);">C</span>
+        <span class="t">CareerTuner</span>
+        <span class="chip accent" data-api="GET /billing/benefits/me">PRO</span>
+        <span class="iconbtn" onclick="toast('테마','목업은 다크 고정 — 실구현은 라이트 토글 지원')"><svg class="i"><use href="#i-moon"/></svg></span>
+      </div>
+      <div class="scroll">
+        <div class="hero">
+          <h1>원일님,<br>오늘은 어떤 면접을 준비할까요?</h1>
+          <div class="sub">한 줄로 요청하면 공고 분석부터 예상 질문까지 알아서 준비합니다.</div>
+        </div>
+        <div class="sugg" data-api="POST /auto-prep/intake">
+          <span class="chip" onclick="go('thread')">이 공고로 압박 면접 5문항</span>
+          <span class="chip" onclick="go('thread')">어제 세션 복습</span>
+          <span class="chip" onclick="openCapture()"><svg class="i"><use href="#i-camera"/></svg>공고 찍어서 등록</span>
+        </div>
+        <div class="home-sec"><span class="label">Recent Sessions</span></div>
+        <div data-api="GET /interview/sessions">
+          <div class="sess-item" onclick="go('thread')">
+            <div class="t">삼성전자 · SW개발 압박면접</div>
+            <div class="m"><span class="dot run"></span>3/5 진행 중 · 방금 · <svg class="i"><use href="#i-monitor"/></svg>데스크탑에서 보냄</div>
+          </div>
+          <div class="sess-item" onclick="go('report')">
+            <div class="t">네이버 · 백엔드 인턴 직무면접</div>
+            <div class="m"><span class="dot done"></span>82점 · 어제</div>
+          </div>
+          <div class="sess-item" onclick="go('report')">
+            <div class="t">카카오페이 · 프론트엔드 기본면접</div>
+            <div class="m"><span class="dot done"></span>76점 · 2일 전</div>
+          </div>
+        </div>
+      </div>
+      <div class="inputdock">
+        <div class="inputbar" onclick="this.classList.add('focus')">
+          <div class="ph">한 줄로 요청하세요 — 예) 압박 면접 준비해줘</div>
+          <div class="input-foot">
+            <span class="mini" onclick="event.stopPropagation();openCapture()" data-api="@capacitor/camera"><svg class="i"><use href="#i-camera"/></svg></span>
+            <span class="mini"><svg class="i"><use href="#i-clip"/></svg></span>
+            <span class="chip accent" style="font-size:10px;"><svg class="i"><use href="#i-zap"/></svg>AI 자동 준비</span>
+            <button class="sendbtn" onclick="event.stopPropagation();go('thread')"><svg class="i"><use href="#i-up"/></svg></button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── 세션 스레드 ── -->
+    <div class="screen" id="scr-thread">
+      <div class="appbar">
+        <span class="iconbtn" onclick="go('home')"><svg class="i"><use href="#i-left"/></svg></span>
+        <span class="t">삼성전자 · SW개발 압박면접</span>
+        <span class="chip warn" id="th-status">3/5</span>
+        <span class="iconbtn" onclick="toast('데스크탑으로 보냈습니다','PC 트레이 알림으로 도착합니다 (30초 내)','POST /sessions/{id}/dispatch')" data-api="POST dispatch → 데스크탑 폴러 수신"><svg class="i"><use href="#i-monitor"/></svg></span>
+      </div>
+      <div class="scroll">
+        <div class="thread">
+          <div class="sysline"><span>압박 면접 · 지원건 #12 · 데스크탑에서 이어받음</span></div>
+          <div class="steps" data-api="GET /sessions/{id}/agent-steps">
+            <div class="step"><svg class="i sm ok"><use href="#i-check"/></svg><span class="nm">공고·지원건 분석</span><span class="dt">1.2s</span></div>
+            <div class="step"><svg class="i sm ok"><use href="#i-check"/></svg><span class="nm">예상 질문 5개 생성</span><span class="dt">4.8s</span></div>
+          </div>
+          <div class="msg ai">
+            <div class="who"><svg class="i sm"><use href="#i-spark"/></svg></div>
+            <div class="bub">
+              <div class="name">AI 면접관 <span class="chip">Q1/5</span></div>
+              <div class="txt">본인이 경험한 <b>가장 어려웠던 기술적 문제</b>와 해결 과정을 설명해 주세요.</div>
+            </div>
+          </div>
+          <div class="msg me">
+            <div class="who">정</div>
+            <div class="bub">
+              <div class="name">내 답변 <span class="chip"><svg class="i"><use href="#i-mic"/></svg>음성 1:24</span></div>
+              <div class="txt" data-api="POST questions/{id}/answers">이미지 업로드가 동시 요청 시 유실되는 문제를 UUID 파일명과 트랜잭션 정리로 해결했습니다…</div>
+            </div>
+          </div>
+          <div class="score-card">
+            <div class="score-head">
+              <div class="score-ring">82</div>
+              <div>
+                <div style="font-size:13px;font-weight:600;margin-bottom:6px;">답변 평가</div>
+                <div style="display:flex;gap:5px;flex-wrap:wrap;">
+                  <span class="chip">논리 85</span><span class="chip accent"><svg class="i"><use href="#i-mic"/></svg>전달력 80</span>
+                </div>
+              </div>
+            </div>
+            <div class="score-body"><b class="g">강점</b> 문제→해결 구조 명확. <b class="w">보완</b> 트레이드오프 언급 없음.</div>
+            <div class="score-actions">
+              <span class="btn sm ghost">모범답안</span>
+              <span class="btn sm ghost" onclick="appendFollowUp()">꼬리질문 받기</span>
+            </div>
+          </div>
+          <div id="th-tail"></div>
+        </div>
+      </div>
+      <div class="inputdock">
+        <div class="inputbar">
+          <div class="ph">답변을 입력하거나 마이크로 말하세요</div>
+          <div class="input-foot">
+            <span class="mini" onclick="askPerm('voice')" data-api="getUserMedia(audio) → voice-transcribe"><svg class="i"><use href="#i-mic"/></svg></span>
+            <span class="mini" onclick="askPerm('avatar')" data-api="getUserMedia(video) → avatar-score"><svg class="i"><use href="#i-camera"/></svg></span>
+            <span class="chip" style="font-size:10px;">Q1-1 대기</span>
+            <button class="sendbtn" onclick="sendAnswer()"><svg class="i"><use href="#i-up"/></svg></button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── 알림 ── -->
+    <div class="screen" id="scr-noti">
+      <div class="appbar">
+        <span class="t">알림</span>
+        <span class="chip" onclick="toast('모두 읽음 처리됨','')" data-api="POST /notifications/read-all" style="cursor:pointer;">모두 읽음</span>
+      </div>
+      <div class="scroll" data-api="GET /notifications (30s poll)">
+        <div class="noti-item unread" onclick="go('thread'); toast('세션으로 이동','Q2부터 이어집니다 — 진행 위치 복원','딥링크 /interview?session=142')">
+          <div class="ni"><svg class="i"><use href="#i-monitor"/></svg></div>
+          <div>
+            <div class="nt">데스크탑에서 면접 세션을 보냈어요</div>
+            <div class="nm2">압박 면접 세션을 폰에서 이어받을 수 있어요. 탭하면 바로 이어집니다.</div>
+            <div class="ntime">JUST NOW · INTERVIEW_DISPATCH</div>
+          </div>
+        </div>
+        <div class="noti-item unread">
+          <div class="ni"><svg class="i"><use href="#i-chart"/></svg></div>
+          <div>
+            <div class="nt">채점 완료 — 87점</div>
+            <div class="nm2">Q1-1 답변 평가가 끝났습니다. 리포트에서 확인하세요.</div>
+            <div class="ntime">10 MIN AGO</div>
+          </div>
+        </div>
+        <div class="noti-item">
+          <div class="ni"><svg class="i"><use href="#i-users"/></svg></div>
+          <div>
+            <div class="nt">커뮤니티 댓글</div>
+            <div class="nm2">"압박면접 후기" 글에 새 댓글이 달렸습니다.</div>
+            <div class="ntime">YESTERDAY</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── 리포트 ── -->
+    <div class="screen" id="scr-report">
+      <div class="appbar">
+        <span class="iconbtn" onclick="go('home')"><svg class="i"><use href="#i-left"/></svg></span>
+        <span class="t">네이버 · 백엔드 인턴 리포트</span>
+        <span class="iconbtn" onclick="toast('공유','OS 공유 시트로 리포트 PDF 내보내기')" data-api="Web Share API"><svg class="i"><use href="#i-share"/></svg></span>
+      </div>
+      <div class="scroll">
+        <div class="report" data-api="GET /sessions/{id}/report">
+          <div class="rep-head">
+            <div class="donut"><b>82</b><span class="label" style="font-size:8px;">Total</span></div>
+            <div>
+              <div style="display:flex;gap:5px;flex-wrap:wrap;margin-bottom:9px;">
+                <span class="chip good">논리 88</span><span class="chip">구체성 79</span>
+                <span class="chip">직무적합 84</span><span class="chip">전달력 77</span>
+              </div>
+              <div style="font-size:12px;color:var(--fg-muted);line-height:1.6;">5문항 · 음성 2건<br>직전 76점 → +6점 상승</div>
+            </div>
+          </div>
+          <div class="label" style="margin-bottom:6px;">Question Scores</div>
+          <div class="rep-row"><span class="sc" style="color:var(--good)">88</span><span>가장 어려웠던 기술적 문제와 해결</span></div>
+          <div class="rep-row"><span class="sc">81</span><span>협업 중 갈등을 조율한 경험</span></div>
+          <div class="rep-row"><span class="sc">84</span><span>MyBatis와 JPA의 차이, 선택 이유</span></div>
+          <div class="rep-row"><span class="sc" style="color:var(--warn)">72</span><span>트래픽 급증 시 대응 설계</span></div>
+          <div class="rep-row"><span class="sc">85</span><span>입사 후 성장 계획</span></div>
+          <div style="display:flex;gap:8px;margin-top:18px;">
+            <span class="btn primary sm" style="flex:1.2;" onclick="toast('데스크탑으로 보냈습니다','PC에서 자료 일괄 저장을 이어서 할 수 있어요')"><svg class="i sm"><use href="#i-monitor"/></svg>데스크탑으로</span>
+            <span class="btn sm" style="flex:1;" onclick="go('thread')">복습 이어하기</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── 더보기 ── -->
+    <div class="screen" id="scr-more">
+      <div class="appbar"><span class="t">더보기</span></div>
+      <div class="scroll">
+        <div style="display:flex;gap:13px;align-items:center;padding:18px;">
+          <div style="width:46px;height:46px;border-radius:50%;background:var(--surface);border:1px solid var(--border);display:flex;align-items:center;justify-content:center;font-weight:700;">정</div>
+          <div style="flex:1;">
+            <div style="font-weight:600;">정원일</div>
+            <div style="font-size:11.5px;color:var(--fg-muted);">jungwonil11@gmail.com · PRO</div>
+          </div>
+          <span class="chip accent">크레딧 320</span>
+        </div>
+        <div style="padding:0 14px;">
+          <div class="more-grid">
+            <div class="more-cell"><svg class="i"><use href="#i-user"/></svg>내 프로필</div>
+            <div class="more-cell"><svg class="i"><use href="#i-file"/></svg>지원 건</div>
+            <div class="more-cell"><svg class="i"><use href="#i-chart"/></svg>분석</div>
+            <div class="more-cell"><svg class="i"><use href="#i-pen"/></svg>AI 첨삭</div>
+            <div class="more-cell"><svg class="i"><use href="#i-users"/></svg>커뮤니티</div>
+            <div class="more-cell" onclick="go('settings')"><svg class="i"><use href="#i-card"/></svg>결제/구독</div>
+            <div class="more-cell" onclick="go('settings')"><svg class="i"><use href="#i-gear"/></svg>설정</div>
+            <div class="more-cell"><svg class="i"><use href="#i-headset"/></svg>고객센터</div>
+          </div>
+        </div>
+        <div class="home-sec"><span class="label">Connected Devices</span></div>
+        <div class="set-row" data-api="디스패치 대상">
+          <svg class="i"><use href="#i-monitor"/></svg>
+          <span>내 데스크탑 <span style="color:var(--fg-muted);font-size:11px;">— CareerTuner Desktop</span></span>
+          <span class="sr" style="color:var(--good);">● 온라인</span>
+        </div>
+        <div class="set-row">
+          <svg class="i"><use href="#i-grid"/></svg><span>Chrome (웹)</span><span class="sr">2시간 전</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── 설정 + 정책 ── -->
+    <div class="screen" id="scr-settings">
+      <div class="appbar">
+        <span class="iconbtn" onclick="go('more')"><svg class="i"><use href="#i-left"/></svg></span>
+        <span class="t">설정</span>
+      </div>
+      <div class="scroll">
+        <div class="set-sec"><span class="label">Subscription</span></div>
+        <div class="set-row" data-api="GET /billing/plans"><svg class="i"><use href="#i-card"/></svg><span>PRO 플랜 <span style="color:var(--fg-muted);font-size:11px;">월 9,900원</span></span><span class="sr">관리 <svg class="i sm"><use href="#i-right"/></svg></span></div>
+        <div class="set-row" data-api="RefundRequestDialog"><svg class="i"><use href="#i-rotate"/></svg><span>환불 신청</span><span class="sr">7일 이내 미사용 <svg class="i sm"><use href="#i-right"/></svg></span></div>
+        <div class="set-sec"><span class="label">Notifications</span></div>
+        <div class="set-row"><svg class="i"><use href="#i-bell"/></svg><span>푸시 알림</span><div class="toggle on" onclick="this.classList.toggle('on')"></div></div>
+        <div class="set-row"><svg class="i"><use href="#i-megaphone"/></svg><span>마케팅 정보 수신 <span style="color:var(--fg-muted);font-size:11px;">(선택)</span></span><div class="toggle" onclick="this.classList.toggle('on'); toast('마케팅 수신 동의 변경','user_consent에 이력 저장 (MARKETING)')"></div></div>
+        <div class="set-sec"><span class="label">Security</span></div>
+        <div class="set-row"><svg class="i"><use href="#i-lock"/></svg><span>앱 잠금 (PIN·생체)</span><div class="toggle on" onclick="this.classList.toggle('on')"></div></div>
+        <div class="set-sec"><span class="label">Legal</span></div>
+        <div class="set-row" data-api="/legal/terms"><svg class="i"><use href="#i-file"/></svg><span>이용약관</span><span class="sr"><svg class="i sm"><use href="#i-right"/></svg></span></div>
+        <div class="set-row" data-api="/legal/privacy"><svg class="i"><use href="#i-shield"/></svg><span>개인정보처리방침</span><span class="sr"><svg class="i sm"><use href="#i-right"/></svg></span></div>
+        <div class="set-row" data-api="/legal/ai-data-consent"><svg class="i"><use href="#i-spark"/></svg><span>AI 데이터 이용 동의</span><span class="sr">동의함 <svg class="i sm"><use href="#i-right"/></svg></span></div>
+        <div class="set-row"><svg class="i"><use href="#i-mic"/></svg><span>마이크·카메라 데이터 처리</span><span class="sr"><svg class="i sm"><use href="#i-right"/></svg></span></div>
+        <div class="set-row"><svg class="i" style="color:var(--danger);"><use href="#i-out"/></svg><span style="color:var(--danger);">회원 탈퇴</span><span class="sr"><svg class="i sm"><use href="#i-right"/></svg></span></div>
+        <div style="padding:16px 18px 20px; color:var(--fg-muted); font-size:10.5px; line-height:1.7;">
+          녹음·녹화 원본은 채점 후 즉시 폐기되며 점수와 텍스트만 저장됩니다.<br>
+          제3자 제공: OpenAI(음성 면접관) · Toss Payments(결제)
+        </div>
+      </div>
+    </div>
+
+    <!-- ── 카메라 촬영 ── -->
+    <div class="screen" id="scr-capture">
+      <div class="appbar">
+        <span class="iconbtn" onclick="go('home')"><svg class="i"><use href="#i-x"/></svg></span>
+        <span class="t">공고 촬영 등록</span>
+      </div>
+      <div class="scroll">
+        <div class="capture-frame" data-api="@capacitor/camera Camera.getPhoto">
+          <div class="capture-corner cc-tl"></div><div class="capture-corner cc-tr"></div>
+          <div class="capture-corner cc-bl"></div><div class="capture-corner cc-br"></div>
+          <div class="doc">
+            <div class="l h"></div>
+            <div class="l s"></div><div class="l"></div><div class="l"></div>
+            <div class="l s"></div><div class="l"></div><div class="l s"></div>
+          </div>
+        </div>
+        <div style="padding:0 24px; color:var(--fg-muted); font-size:12px; text-align:center; line-height:1.65;">
+          채용공고·이력서를 촬영하면 텍스트를 추출해<br>지원 건으로 바로 등록합니다
+        </div>
+        <div style="display:flex; gap:10px; padding:18px 22px;">
+          <span class="btn" style="flex:1;" onclick="toast('갤러리','기존 사진에서 선택')"><svg class="i"><use href="#i-img"/></svg>갤러리</span>
+          <span class="btn primary" style="flex:2;" onclick="toast('촬영 → 업로드','텍스트 추출 후 지원 건으로 등록됩니다','POST /file/upload → extraction job')"><svg class="i"><use href="#i-camera"/></svg>촬영</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- ══ 몰입형: 음성 면접 ══ -->
+    <div class="immersive" id="imm-voice">
+      <div class="imm-top">
+        <span class="chip accent">압박 면접</span>
+        <span class="label qn">Q2 / 5</span>
+        <span class="iconbtn imm-exit" onclick="closeImm()"><svg class="i"><use href="#i-x"/></svg></span>
+      </div>
+      <div class="imm-question">협업 중 의견 충돌이 있었던 경험과, 그때 본인이 취한 행동을 말씀해 주세요.</div>
+      <div class="imm-center">
+        <div class="wave"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+        <div class="imm-timer" id="vtimer">0:00</div>
+        <div class="imm-hint">듣고 있어요 — 답변이 끝나면 정지를 누르세요</div>
+      </div>
+      <div class="imm-controls">
+        <button class="imm-btn" onclick="toast('질문 다시 듣기','TTS로 질문을 다시 읽어줍니다')"><svg class="i"><use href="#i-vol"/></svg></button>
+        <button class="imm-btn stop" onclick="closeImm(); toast('전사 중','답변이 텍스트로 변환된 뒤 채점됩니다','voice-transcribe → voice-score')"><svg class="i lg"><use href="#i-stop"/></svg></button>
+        <button class="imm-btn" onclick="toast('건너뛰기','이 질문을 건너뜁니다')"><svg class="i"><use href="#i-skip"/></svg></button>
+      </div>
+    </div>
+
+    <!-- ══ 몰입형: 화상 면접 ══ -->
+    <div class="immersive" id="imm-avatar">
+      <div class="cam-preview"></div><div class="cam-grid"></div>
+      <svg class="cam-sil" viewBox="0 0 24 24"><use href="#i-person"/></svg>
+      <div class="pose-chips">
+        <span class="chip good">시선 안정</span>
+        <span class="chip good">자세 안정</span>
+        <span class="chip warn">말 속도 빠름</span>
+      </div>
+      <div class="imm-overlay">
+        <div class="imm-top">
+          <span class="chip accent">아바타 화상</span>
+          <span class="label qn">Q1 / 5</span>
+          <span class="chip" style="gap:6px;"><span class="rec-dot"></span>REC</span>
+          <span class="iconbtn imm-exit" onclick="closeImm()"><svg class="i"><use href="#i-x"/></svg></span>
+        </div>
+        <div style="flex:1;"></div>
+        <div class="imm-q-band" data-api="MediaPipe 온디바이스 + avatar-score">가장 어려웠던 기술적 문제와 해결 과정을 설명해 주세요.</div>
+        <div class="imm-controls">
+          <button class="imm-btn" onclick="toast('카메라 전환','전/후면 전환')"><svg class="i"><use href="#i-flip"/></svg></button>
+          <button class="imm-btn stop" onclick="closeImm(); toast('분석 중','표정·자세·음성을 분석합니다 — 원본은 폐기','MediaPipe + avatar-score')"><svg class="i lg"><use href="#i-stop"/></svg></button>
+          <button class="imm-btn" onclick="toast('마이크 음소거','')"><svg class="i"><use href="#i-mic"/></svg></button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ══ 권한 프리프롬프트 ══ -->
+    <div class="sheet-back" id="perm-back" onclick="closePerm()"></div>
+    <div class="sheet" id="perm-sheet">
+      <div class="handle"></div>
+      <div class="perm-icon" id="perm-icon"><svg class="i lg"><use href="#i-mic"/></svg></div>
+      <h3 id="perm-title">마이크 사용 안내</h3>
+      <div class="desc" id="perm-desc">음성 면접 답변을 녹음해 텍스트로 바꾸고 전달력을 채점합니다.</div>
+      <div class="perm-rows">
+        <div class="perm-row">
+          <svg class="i"><use href="#i-trash"/></svg>
+          <div><div class="pt">원본은 즉시 폐기</div><div class="pd">채점 후 녹음·녹화 원본은 저장하지 않아요. 점수와 텍스트만 남습니다.</div></div>
+        </div>
+        <div class="perm-row">
+          <svg class="i"><use href="#i-hand"/></svg>
+          <div><div class="pt">언제든 거부 가능</div><div class="pd">거부해도 텍스트 답변으로 면접을 계속할 수 있어요.</div></div>
+        </div>
+      </div>
+      <div style="display:flex; gap:8px;">
+        <span class="btn ghost" style="flex:1;" onclick="closePerm()">나중에</span>
+        <span class="btn primary" style="flex:2;" id="perm-ok">허용하고 시작</span>
+      </div>
+    </div>
+
+    <!-- 토스트 -->
+    <div class="toasts" id="toasts"></div>
+
+    <!-- ── 하단 탭바 ── -->
+    <div class="tabbar" id="tabbar">
+      <div class="tab on" data-s="home" onclick="go('home')"><svg class="i"><use href="#i-home"/></svg>홈</div>
+      <div class="tab" data-s="thread" onclick="go('thread')"><svg class="i"><use href="#i-msg"/></svg>세션</div>
+      <div class="tab" onclick="askPerm('voice')"><svg class="i"><use href="#i-mic"/></svg>면접</div>
+      <div class="tab" data-s="noti" onclick="go('noti')"><svg class="i"><use href="#i-bell"/></svg>알림<span class="badge">2</span></div>
+      <div class="tab" data-s="more" onclick="go('more')"><svg class="i"><use href="#i-grid"/></svg>더보기</div>
+    </div>
+  </div>
+</div>
+
+<!-- ══ 데모 패널 ══ -->
+<div class="demo-panel">
+  <h2>Mobile v2 목업</h2>
+  <div class="d">Linear Modern · 딥블랙 + 인디고 앰비언트(#5E6AD2) · 이모지 제로, 스트로크 아이콘 · 데스크탑 v2와 스레드 통일.</div>
+  <button class="jump" onclick="go('home')"><svg class="i"><use href="#i-home"/></svg><span>홈<small>Claude식 입력 독 + 최근 세션</small></span></button>
+  <button class="jump" onclick="go('thread')"><svg class="i"><use href="#i-msg"/></svg><span>세션 스레드<small>질문→답변→채점 (데스크탑과 동형)</small></span></button>
+  <button class="jump" onclick="askPerm('voice')"><svg class="i"><use href="#i-mic"/></svg><span>몰입형 음성 면접<small>권한 프리프롬프트 → 풀스크린</small></span></button>
+  <button class="jump" onclick="askPerm('avatar')"><svg class="i"><use href="#i-camera"/></svg><span>몰입형 화상 면접<small>카메라 프리뷰 + 실시간 자세 칩</small></span></button>
+  <button class="jump" onclick="go('noti')"><svg class="i"><use href="#i-bell"/></svg><span>알림<small>디스패치 수신 → 탭 → 세션 직행</small></span></button>
+  <button class="jump" onclick="go('report')"><svg class="i"><use href="#i-chart"/></svg><span>리포트<small>데스크탑으로 보내기 (역방향)</small></span></button>
+  <button class="jump" onclick="openCapture()"><svg class="i"><use href="#i-camera"/></svg><span>공고 촬영 등록<small>@capacitor/camera 신규</small></span></button>
+  <button class="jump" onclick="go('settings')"><svg class="i"><use href="#i-gear"/></svg><span>설정 · 정책<small>구독/환불/동의/약관 — 심사 대응</small></span></button>
+  <button class="jump" onclick="document.body.classList.toggle('show-api')"><svg class="i"><use href="#i-zap"/></svg><span>API 매핑 토글<small>각 요소가 붙는 실제 API 표시</small></span></button>
+</div>
+
+<script>
+/* ── 화면 전환 ── */
+function go(name) {
+  document.querySelectorAll('.screen').forEach(s => s.classList.remove('on'));
+  document.getElementById('scr-' + name).classList.add('on');
+  document.querySelectorAll('.tab').forEach(t => t.classList.toggle('on', t.dataset.s === name));
+  closeImm(); closePerm();
+}
+
+/* ── 토스트 ── */
+function toast(title, body, src) {
+  const t = document.createElement('div');
+  t.className = 'toast';
+  t.innerHTML = `<b>${title}</b>${body ? `<span>${body}</span>` : ''}${src ? `<span class="src">${src}</span>` : ''}`;
+  document.getElementById('toasts').appendChild(t);
+  setTimeout(() => t.remove(), 3800);
+}
+
+/* ── 권한 프리프롬프트 → 몰입형 ── */
+let permTarget = 'voice';
+const granted = { voice:false, avatar:false };
+function askPerm(kind) {
+  permTarget = kind;
+  if (granted[kind]) { openImm(kind); return; }
+  document.getElementById('perm-icon').innerHTML =
+    `<svg class="i lg"><use href="#i-${kind === 'voice' ? 'mic' : 'camera'}"/></svg>`;
+  document.getElementById('perm-title').textContent = kind === 'voice' ? '마이크 사용 안내' : '카메라·마이크 사용 안내';
+  document.getElementById('perm-desc').textContent = kind === 'voice'
+    ? '음성 면접 답변을 녹음해 텍스트로 바꾸고 전달력을 채점합니다.'
+    : '화상 면접에서 표정·자세·음성을 분석해 비언어 피드백을 드립니다.';
+  document.getElementById('perm-back').classList.add('on');
+  document.getElementById('perm-sheet').classList.add('on');
+}
+function closePerm() {
+  document.getElementById('perm-back').classList.remove('on');
+  document.getElementById('perm-sheet').classList.remove('on');
+}
+document.getElementById('perm-ok').onclick = () => {
+  granted[permTarget] = true;
+  closePerm();
+  toast('권한 허용됨', 'OS 권한 다이얼로그는 이 다음에 뜹니다 (실구현)');
+  setTimeout(() => openImm(permTarget), 420);
+};
+
+/* ── 몰입형 ── */
+let vtimerInt = null, vsec = 0;
+function openImm(kind) {
+  document.getElementById(kind === 'voice' ? 'imm-voice' : 'imm-avatar').classList.add('on');
+  if (kind === 'voice') {
+    vsec = 0;
+    clearInterval(vtimerInt);
+    document.getElementById('vtimer').textContent = '0:00';
+    vtimerInt = setInterval(() => {
+      vsec++;
+      document.getElementById('vtimer').textContent = Math.floor(vsec/60) + ':' + String(vsec%60).padStart(2,'0');
+    }, 1000);
+  }
+}
+function closeImm() {
+  document.querySelectorAll('.immersive').forEach(el => el.classList.remove('on'));
+  clearInterval(vtimerInt);
+}
+
+/* ── 스레드 데모 ── */
+let answered = false;
+function sendAnswer() {
+  if (answered) return;
+  answered = true;
+  const tail = document.getElementById('th-tail');
+  tail.innerHTML = `
+    <div class="msg me"><div class="who">정</div><div class="bub">
+      <div class="name">내 답변</div>
+      <div class="txt">파일명 충돌은 없어지지만 원본 추적을 위해 매핑 테이블이 필요했습니다.</div>
+    </div></div>
+    <div class="steps" id="scoring-tmp"><div class="step"><span class="nm">답변 채점 중</span></div></div>`;
+  tail.scrollIntoView({behavior:'smooth', block:'end'});
+  setTimeout(() => {
+    document.getElementById('scoring-tmp')?.remove();
+    tail.insertAdjacentHTML('beforeend', `
+      <div class="score-card">
+        <div class="score-head"><div class="score-ring">87</div>
+          <div><div style="font-size:13px;font-weight:600;margin-bottom:6px;">답변 평가 — Q1-1</div>
+          <div style="display:flex;gap:5px;"><span class="chip">논리 90</span><span class="chip">구체성 88</span></div></div>
+        </div>
+        <div class="score-body"><b class="g">강점</b> 트레이드오프를 대안 비교로 설명. 압박 대응 우수.</div>
+      </div>`);
+    document.getElementById('th-status').textContent = '4/5';
+    toast('채점 완료 — 87점', '피드백이 스레드에 추가되었습니다');
+    tail.scrollIntoView({behavior:'smooth', block:'end'});
+  }, 1500);
+}
+function appendFollowUp() {
+  const tail = document.getElementById('th-tail');
+  tail.insertAdjacentHTML('beforeend', `
+    <div class="msg ai"><div class="who"><svg class="i sm"><use href="#i-spark"/></svg></div><div class="bub">
+      <div class="name">AI 면접관 <span class="chip accent">꼬리질문 Q1-1</span></div>
+      <div class="txt">UUID 방식을 선택하며 포기한 것은 무엇입니까? <b>트레이드오프</b>를 설명해 주세요.</div>
+    </div></div>`);
+  tail.scrollIntoView({behavior:'smooth', block:'end'});
+}
+
+/* ── 카메라 ── */
+function openCapture() { go('capture'); }
+</script>
+</body>
+</html>

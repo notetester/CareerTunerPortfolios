@@ -1,0 +1,236 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.careertuner.enterprise.mapper.EnterpriseMapper">
+
+    <sql id="applicationColumns">
+        a.*,
+        u.email AS user_email,
+        u.name  AS user_name
+    </sql>
+
+    <select id="findLatestApplicationByUserId"
+            resultType="com.careertuner.enterprise.domain.EnterpriseAccountApplication">
+        SELECT <include refid="applicationColumns"/>
+          FROM enterprise_account_application a
+          JOIN users u ON u.id = a.user_id
+         WHERE a.user_id = #{userId}
+         ORDER BY a.created_at DESC, a.id DESC
+         LIMIT 1
+    </select>
+
+    <select id="findApplicationById"
+            resultType="com.careertuner.enterprise.domain.EnterpriseAccountApplication">
+        SELECT <include refid="applicationColumns"/>
+          FROM enterprise_account_application a
+          JOIN users u ON u.id = a.user_id
+         WHERE a.id = #{id}
+    </select>
+
+    <select id="findApplications"
+            resultType="com.careertuner.enterprise.domain.EnterpriseAccountApplication">
+        SELECT <include refid="applicationColumns"/>
+          FROM enterprise_account_application a
+          JOIN users u ON u.id = a.user_id
+         WHERE 1 = 1
+        <if test="status != null">
+           AND a.status = UPPER(#{status})
+        </if>
+        <if test="keyword != null">
+           AND (
+               a.company_name LIKE CONCAT('%', #{keyword}, '%')
+               OR a.business_number LIKE CONCAT('%', #{keyword}, '%')
+               OR u.email LIKE CONCAT('%', #{keyword}, '%')
+               OR u.name LIKE CONCAT('%', #{keyword}, '%')
+           )
+        </if>
+         ORDER BY a.created_at DESC, a.id DESC
+         LIMIT #{limit}
+    </select>
+
+    <insert id="insertApplication" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO enterprise_account_application (
+            user_id, company_name, business_number, representative_name, contact_name,
+            contact_email, contact_phone, website_url, industry, employee_count,
+            evidence_file_url, requested_policy_json, status
+        )
+        VALUES (
+            #{userId}, #{companyName}, #{businessNumber}, #{representativeName}, #{contactName},
+            #{contactEmail}, #{contactPhone}, #{websiteUrl}, #{industry}, #{employeeCount},
+            #{evidenceFileUrl}, CAST(#{requestedPolicyJson} AS JSON), #{status}
+        )
+    </insert>
+
+    <update id="reviewApplication">
+        UPDATE enterprise_account_application
+           SET status = #{status},
+               review_memo = #{reviewMemo},
+               reviewed_by = #{reviewedBy},
+               reviewed_at = NOW()
+         WHERE id = #{id}
+    </update>
+
+    <select id="findPolicyByUserId" resultType="com.careertuner.enterprise.domain.EnterpriseJobPolicy">
+        SELECT *
+          FROM enterprise_job_policy
+         WHERE user_id = #{userId}
+    </select>
+
+    <insert id="upsertPolicy">
+        INSERT INTO enterprise_job_policy (
+            user_id, trusted, create_requires_review, edit_requires_review,
+            max_active_posts, updated_by, update_reason
+        )
+        VALUES (
+            #{userId}, #{trusted}, #{createRequiresReview}, #{editRequiresReview},
+            #{maxActivePosts}, #{updatedBy}, #{updateReason}
+        )
+        ON DUPLICATE KEY UPDATE
+            trusted = VALUES(trusted),
+            create_requires_review = VALUES(create_requires_review),
+            edit_requires_review = VALUES(edit_requires_review),
+            max_active_posts = VALUES(max_active_posts),
+            updated_by = VALUES(updated_by),
+            update_reason = VALUES(update_reason),
+            updated_at = NOW()
+    </insert>
+
+    <select id="countActiveJobsByUserId" resultType="int">
+        SELECT COUNT(*)
+          FROM enterprise_job_posting
+         WHERE company_user_id = #{userId}
+           AND status IN ('PENDING_REVIEW', 'PUBLISHED')
+    </select>
+
+    <sql id="jobColumns">
+        j.*,
+        u.email AS owner_email,
+        u.name  AS owner_name
+    </sql>
+
+    <insert id="insertJob" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO enterprise_job_posting (
+            company_user_id, company_name, title, position_title, job_category, specialties_json,
+            duties, qualifications, preferred, benefits, employment_type, experience_level,
+            education_level, salary_type, salary_min, salary_max, salary_text, work_location,
+            work_schedule, headcount, application_start_at, application_end_at, apply_url,
+            contact_email, contact_phone, visibility, status, review_status, review_memo
+        )
+        VALUES (
+            #{companyUserId}, #{companyName}, #{title}, #{positionTitle}, #{jobCategory}, CAST(#{specialtiesJson} AS JSON),
+            #{duties}, #{qualifications}, #{preferred}, #{benefits}, #{employmentType}, #{experienceLevel},
+            #{educationLevel}, #{salaryType}, #{salaryMin}, #{salaryMax}, #{salaryText}, #{workLocation},
+            #{workSchedule}, #{headcount}, #{applicationStartAt}, #{applicationEndAt}, #{applyUrl},
+            #{contactEmail}, #{contactPhone}, #{visibility}, #{status}, #{reviewStatus}, #{reviewMemo}
+        )
+    </insert>
+
+    <update id="updateJob">
+        UPDATE enterprise_job_posting
+           SET company_name = #{companyName},
+               title = #{title},
+               position_title = #{positionTitle},
+               job_category = #{jobCategory},
+               specialties_json = CAST(#{specialtiesJson} AS JSON),
+               duties = #{duties},
+               qualifications = #{qualifications},
+               preferred = #{preferred},
+               benefits = #{benefits},
+               employment_type = #{employmentType},
+               experience_level = #{experienceLevel},
+               education_level = #{educationLevel},
+               salary_type = #{salaryType},
+               salary_min = #{salaryMin},
+               salary_max = #{salaryMax},
+               salary_text = #{salaryText},
+               work_location = #{workLocation},
+               work_schedule = #{workSchedule},
+               headcount = #{headcount},
+               application_start_at = #{applicationStartAt},
+               application_end_at = #{applicationEndAt},
+               apply_url = #{applyUrl},
+               contact_email = #{contactEmail},
+               contact_phone = #{contactPhone},
+               visibility = #{visibility},
+               status = #{status},
+               review_status = #{reviewStatus},
+               review_memo = #{reviewMemo},
+               pending_revision_json = CASE
+                   WHEN #{pendingRevisionJson} IS NULL THEN NULL
+                   ELSE CAST(#{pendingRevisionJson} AS JSON)
+               END,
+               approved_by = COALESCE(#{approvedBy}, approved_by),
+               approved_at = CASE WHEN #{approvedBy} IS NULL THEN approved_at ELSE NOW() END,
+               reviewed_by = COALESCE(#{reviewedBy}, reviewed_by),
+               reviewed_at = CASE WHEN #{reviewedBy} IS NULL THEN reviewed_at ELSE NOW() END
+         WHERE id = #{id}
+    </update>
+
+    <update id="updateJobPendingRevision">
+        UPDATE enterprise_job_posting
+           SET pending_revision_json = CAST(#{pendingRevisionJson} AS JSON),
+               review_status = #{reviewStatus},
+               review_memo = #{reviewMemo}
+         WHERE id = #{id}
+    </update>
+
+    <update id="updateCommunityPostId">
+        UPDATE enterprise_job_posting
+           SET community_post_id = #{communityPostId}
+         WHERE id = #{id}
+    </update>
+
+    <select id="findJobById" resultType="com.careertuner.enterprise.domain.EnterpriseJobPosting">
+        SELECT <include refid="jobColumns"/>
+          FROM enterprise_job_posting j
+          JOIN users u ON u.id = j.company_user_id
+         WHERE j.id = #{id}
+    </select>
+
+    <select id="findJobsByOwner" resultType="com.careertuner.enterprise.domain.EnterpriseJobPosting">
+        SELECT <include refid="jobColumns"/>
+          FROM enterprise_job_posting j
+          JOIN users u ON u.id = j.company_user_id
+         WHERE j.company_user_id = #{userId}
+         ORDER BY j.created_at DESC, j.id DESC
+    </select>
+
+    <select id="findPublicJobs" resultType="com.careertuner.enterprise.domain.EnterpriseJobPosting">
+        SELECT <include refid="jobColumns"/>
+          FROM enterprise_job_posting j
+          JOIN users u ON u.id = j.company_user_id
+         WHERE j.status = 'PUBLISHED'
+           AND j.visibility = 'PUBLIC'
+        <if test="keyword != null">
+           AND (
+               j.company_name LIKE CONCAT('%', #{keyword}, '%')
+               OR j.title LIKE CONCAT('%', #{keyword}, '%')
+               OR j.position_title LIKE CONCAT('%', #{keyword}, '%')
+               OR j.job_category LIKE CONCAT('%', #{keyword}, '%')
+               OR j.work_location LIKE CONCAT('%', #{keyword}, '%')
+           )
+        </if>
+         ORDER BY COALESCE(j.application_end_at, '2999-12-31') ASC, j.created_at DESC
+         LIMIT #{limit}
+    </select>
+
+    <select id="findAdminJobs" resultType="com.careertuner.enterprise.domain.EnterpriseJobPosting">
+        SELECT <include refid="jobColumns"/>
+          FROM enterprise_job_posting j
+          JOIN users u ON u.id = j.company_user_id
+         WHERE 1 = 1
+        <if test="status != null">
+           AND (j.status = UPPER(#{status}) OR j.review_status = UPPER(#{status}))
+        </if>
+        <if test="keyword != null">
+           AND (
+               j.company_name LIKE CONCAT('%', #{keyword}, '%')
+               OR j.title LIKE CONCAT('%', #{keyword}, '%')
+               OR j.position_title LIKE CONCAT('%', #{keyword}, '%')
+               OR u.email LIKE CONCAT('%', #{keyword}, '%')
+           )
+        </if>
+         ORDER BY j.updated_at DESC, j.id DESC
+         LIMIT #{limit}
+    </select>
+</mapper>

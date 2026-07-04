@@ -20,6 +20,8 @@ interface BackendPost {
   interviewReview?: InterviewReviewMetadata;
   liked?: boolean;
   bookmarked?: boolean;
+  /** 뷰어가 차단한 작성자의 글이면 true — 톰스톤 렌더용(조용한 차단). */
+  blocked?: boolean;
 }
 
 interface PostPageData {
@@ -144,6 +146,13 @@ export async function updatePost(id: number, data: {
 
 export async function deletePost(id: number) {
   return api<void>(`/community/posts/${id}`, { method: "DELETE" });
+}
+
+export async function adminUpdatePostStatus(id: number, status: "PUBLISHED" | "HIDDEN" | "DELETED", reason?: string) {
+  return api<void>(`/admin/community/posts/${id}/status`, {
+    method: "PATCH",
+    body: JSON.stringify({ status, reason }),
+  });
 }
 
 /* ── AI 태그 ── */

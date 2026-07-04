@@ -20,7 +20,7 @@ import { displayCompany, displayJobTitle, displayCaseText } from "@/features/aut
 import { OnboardingGuide, type ServerGuidePhase } from "./OnboardingGuide";
 
 /** 오케스트레이터 정체성 글리프(U+2726). */
-const ORCH_GLYPH = "✦";
+// 오케스트레이터 글리프 — Sparkles 아이콘으로 렌더 (이모지 미사용)
 
 /**
  * ④ 깡통 온보딩(백엔드 텍스트 프로토콜) 라우트 → 가이드 국면 매핑.
@@ -690,8 +690,8 @@ function RunErrorNotice({ message, showRetry, onRetry }: {
 function OrchestratorAvatar({ size = 28, iconScale = 0.52 }: { size?: number; iconScale?: number }) {
   return (
     <div className="rounded-full flex items-center justify-center text-white shrink-0 font-bold"
-      style={{ width: size, height: size, background: "var(--gradient-orchestrator)", fontSize: size * iconScale }}>
-      {ORCH_GLYPH}
+      style={{ width: size, height: size, background: "var(--gradient-orchestrator)" }}>
+      <Sparkles style={{ width: size * iconScale, height: size * iconScale }} />
     </div>
   );
 }
@@ -703,7 +703,7 @@ function ModeBanner({ subtitle, onExit }: { subtitle: string; onExit: () => void
       style={{ background: "var(--gradient-orchestrator)" }}>
       <div className="w-[26px] h-[26px] rounded-[8px] flex items-center justify-center text-white shrink-0 font-bold text-[14px]"
         style={{ background: "rgba(255,255,255,0.16)" }}>
-        {ORCH_GLYPH}
+        <Sparkles className="size-3.5" />
       </div>
       <div className="leading-tight min-w-0 flex-1">
         <div className="text-[12.5px] font-extrabold">AI 오케스트레이터</div>
@@ -998,9 +998,9 @@ function EmptyState({ onSelect, onStartGuide }: { onSelect: (text: string) => vo
       <button onClick={onStartGuide}
         className="flex items-center gap-3 w-full px-3.5 py-3 rounded-xl mb-4 text-left transition-transform hover:brightness-[1.03]"
         style={{ background: "var(--orch-surface)", border: "1px solid var(--orch-point)" }}>
-        <span className="w-9 h-9 rounded-[10px] flex items-center justify-center text-white shrink-0 font-bold"
-          style={{ background: "var(--gradient-orchestrator)", fontSize: 17 }}>
-          {ORCH_GLYPH}
+        <span className="w-9 h-9 rounded-[10px] flex items-center justify-center text-white shrink-0"
+          style={{ background: "var(--gradient-orchestrator)" }}>
+          <Sparkles size={18} />
         </span>
         <span className="flex-1 min-w-0">
           <span className="block text-[13px] font-extrabold" style={{ color: "var(--orch-violet)" }}>대화로 준비 시작하기</span>

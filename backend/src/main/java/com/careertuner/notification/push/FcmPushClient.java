@@ -11,6 +11,7 @@ import com.google.auth.oauth2.GoogleCredentials;
 import com.google.firebase.FirebaseApp;
 import com.google.firebase.FirebaseOptions;
 import com.google.firebase.messaging.AndroidConfig;
+import com.google.firebase.messaging.AndroidNotification;
 import com.google.firebase.messaging.FirebaseMessaging;
 import com.google.firebase.messaging.Message;
 import com.google.firebase.messaging.WebpushConfig;
@@ -62,18 +63,24 @@ public class FcmPushClient {
     }
 
     /** 단일 디바이스 토큰으로 알림을 발송한다. 실패 시 예외를 던지며 호출부가 best-effort 처리한다. */
-    public void send(PushSubscription subscription, String title, String body, String link) throws Exception {
-        String url = (link == null || link.isBlank()) ? "/" : link;
+    public void send(PushSubscription subscription, PushMessage push) throws Exception {
+        String url = push.safeLink();
+        // 채널 id 로 소리/진동을 제어 — 앱이 시작 시 ct_alerts* 채널 4종을 만들어 둔다(사용자 설정 반영).
+        String channelId = push.androidChannelId() == null ? PushMessage.CHANNEL_DEFAULT : push.androidChannelId();
         Message message = Message.builder()
                 .setToken(subscription.getToken())
                 .setNotification(com.google.firebase.messaging.Notification.builder()
-                        .setTitle(title)
-                        .setBody(body == null ? "" : body)
+                        .setTitle(push.title())
+                        .setBody(push.safeBody())
                         .build())
                 .putData("url", url)
                 // 클릭 시 이동 경로 — 네이티브/웹뷰 양쪽에서 활용.
                 .setAndroidConfig(AndroidConfig.builder()
                         .putData("url", url)
+                        .setNotification(AndroidNotification.builder()
+                                .setChannelId(channelId)
+                                .setClickAction(url)
+                                .build())
                         .build())
                 .setWebpushConfig(WebpushConfig.builder()
                         .setFcmOptions(WebpushFcmOptions.withLink(url))

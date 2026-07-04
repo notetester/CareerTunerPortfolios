@@ -13,6 +13,12 @@ spring:
   #  - 지금: 커밋된 기본값(개발용)으로 즉시 동작 → 비공개 repo 라 팀원이 클론 후 바로 실행.
   #  - 배포(AWS 등): 동일 이름의 환경변수만 설정하면 코드/파일 변경 없이 교체된다.
   #      예)  DB_PASSWORD=... OAUTH_KAKAO_CLIENT_SECRET=... JWT_SECRET=... java -jar app.jar
+  #
+  #  환경 프로파일(local/tailscale/aws/domain) — 호스트 기본값 묶음을 이름으로 전환:
+  #      SPRING_PROFILES_ACTIVE=local ./gradlew bootRun
+  #      또는 .\gradlew.bat bootRun --args='--spring.profiles.active=local'
+  #  프로파일 파일은 application-<이름>.yaml 이며 호스트 관련 키만 오버라이드한다.
+  #  환경변수 override 는 프로파일보다 항상 우선한다. 상세: docs/ENVIRONMENTS.md
   # ───────────────────────────────────────────────────────────────────────
 
   # 팀 DB(AWS) — 활성. 로컬 테스트 시 아래 localhost 블록으로 임시 교체.
@@ -119,6 +125,13 @@ careertuner:
     version: ${ANTHROPIC_VERSION:2023-06-01}
     max-tokens: ${ANTHROPIC_MAX_TOKENS:8192}
     timeout: ${ANTHROPIC_TIMEOUT:120s}
+  chat-llm:
+    # 커뮤니티/인테이크 챗봇 폴백(자체 Ollama qwen3 → Haiku → OpenAI → Mock) 전용 튜닝값.
+    # 키·baseUrl·Anthropic 모델명은 위 careertuner.anthropic / careertuner.openai 를 재사용하고, 여기선 챗봇 성격 값만 둔다.
+    temperature: ${CHAT_LLM_TEMPERATURE:0.0}
+    max-tokens: ${CHAT_LLM_MAX_TOKENS:4096}
+    # OpenAI 폴백 모델. 공용 careertuner.openai.model 기본값(gpt-5)은 추론 모델이라 챗봇 tool-calling 응답이 느림 → 비추론 모델로.
+    open-ai-model: ${CHAT_LLM_OPENAI_MODEL:gpt-4o-mini}
   uploads:
     job-posting-dir: ${JOB_POSTING_UPLOAD_DIR:.uploads/application-postings}
     max-file-size-bytes: ${JOB_POSTING_MAX_FILE_SIZE_BYTES:5242880}
@@ -135,6 +148,8 @@ careertuner:
       model: ${B_ANALYSIS_OLLAMA_MODEL:careertuner-b-jobposting-r1}
       connect-timeout: ${B_ANALYSIS_OLLAMA_CONNECT_TIMEOUT:5s}
       read-timeout: ${B_ANALYSIS_OLLAMA_READ_TIMEOUT:480s}
+      num-ctx: ${B_ANALYSIS_OLLAMA_NUM_CTX:8192}
+      num-predict: ${B_ANALYSIS_OLLAMA_NUM_PREDICT:2048}
   file:
     # 면접 음성/영상 등 업로드 파일 저장 위치. 큰 영상은 SPRING_SERVLET_MULTIPART_MAX_FILE_SIZE 도 함께 올린다.
     media-dir: ${MEDIA_UPLOAD_DIR:.uploads/media}
@@ -178,7 +193,7 @@ careertuner:
   oauth:
     # ⚠️ 아직 키 미발급 → 기본값은 placeholder. 키 수령 후 env 또는 이 값만 교체.
     kakao:
-      client-id: ${OAUTH_KAKAO_CLIENT_ID:YOUR_OAUTH_KAKAO_CLIENT_ID}
+      client-id: ${OAUTH_KAKAO_CLIENT_ID:CHANGEME}
       client-secret: ${OAUTH_KAKAO_CLIENT_SECRET:}
       redirect-uri: ${OAUTH_KAKAO_REDIRECT_URI:http://localhost:8080/api/auth/oauth/kakao/callback}
     naver:
@@ -191,6 +206,9 @@ careertuner:
       redirect-uri: ${OAUTH_GOOGLE_REDIRECT_URI:http://localhost:8080/api/auth/oauth/google/callback}
 
 # ─── Ollama (로컬 LLM) ───
+# 4090(기본값)이 꺼져 있으면 부팅 시 자동으로 폴백 후보(AI_OLLAMA_FALLBACK_BASE_URLS,
+# 기본 http://localhost:11434)를 프로브해 살아있는 쪽으로 교체한다 — ai/common/ollama 참고.
+# 끄기: AI_OLLAMA_FALLBACK_ENABLED=false
 ai:
   ollama:
     base-url: ${AI_OLLAMA_BASE_URL:http://localhost:11434}

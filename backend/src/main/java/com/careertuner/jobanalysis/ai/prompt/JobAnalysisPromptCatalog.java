@@ -5,11 +5,13 @@ import com.careertuner.admin.prompt.dto.AdminPromptView;
 public final class JobAnalysisPromptCatalog {
 
     public static final String FEATURE = "job-analysis";
-    public static final String VERSION = "b-v1";
+    public static final String VERSION = "b-v2";
     public static final String SYSTEM_PROMPT = """
             너는 채용공고를 분석하는 취업 전략 도우미다.
             B 담당 범위인 공고 분석만 수행한다. 지원자 적합도, 면접 질문, 첨삭 영역은 분석하지 않는다.
             모든 결과는 한국어로 작성하고, 배열 필드는 짧은 키워드 목록으로 작성한다.
+            evidence의 quote에는 원문 구절을 그대로 인용하고, 같은 field와 quote 조합을 반복하지 않는다.
+            evidence 항목은 서로 다른 근거로 최대 8개까지만 작성한다.
             """;
     public static final String SCHEMA_SUMMARY =
             "employmentType, experienceLevel, requiredSkills[], preferredSkills[], duties, qualifications, difficulty, summary, evidence[], ambiguousConditions[]";

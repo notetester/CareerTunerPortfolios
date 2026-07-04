@@ -19,6 +19,8 @@ import com.careertuner.correction.dto.CorrectionCreateRequest;
 import com.careertuner.correction.dto.CorrectionResponse;
 import com.careertuner.correction.dto.CorrectionResultPayload;
 import com.careertuner.correction.mapper.CorrectionMapper;
+import com.careertuner.notification.domain.Notification;
+import com.careertuner.notification.service.NotificationService;
 import lombok.RequiredArgsConstructor;
 import tools.jackson.core.JacksonException;
 import tools.jackson.databind.ObjectMapper;
@@ -36,12 +38,20 @@ public class CorrectionService {
     private static final String TYPE_RESUME = "RESUME";
     private static final String TYPE_PORTFOLIO = "PORTFOLIO";
 
+    /** 첨삭 유형별 알림 문구 라벨. */
+    private static final Map<String, String> CORRECTION_TYPE_LABELS = Map.of(
+            TYPE_SELF_INTRO, "자기소개서",
+            TYPE_INTERVIEW_ANSWER, "면접 답변",
+            TYPE_RESUME, "이력서",
+            TYPE_PORTFOLIO, "포트폴리오");
+
     private final CorrectionMapper correctionMapper;
     private final CorrectionAiClient aiClient;
     private final CorrectionAiUsageLogService usageLogService;
     private final ApplicationCaseAccessService applicationCaseAccessService;
     private final CorrectionContextService contextService;
     private final TransactionTemplate transactionTemplate;
+    private final NotificationService notificationService;
     private final ObjectMapper objectMapper;
 
     public CorrectionResponse create(Long userId, CorrectionCreateRequest request) {
@@ -92,6 +102,17 @@ public class CorrectionService {
                     .aiUsageLogId(aiUsageLogId)
                     .build();
             correctionMapper.insert(correction);
+            // 첨삭이 성공하면 사용자에게 완료 알림을 남긴다.
+            notificationService.notify(Notification.builder()
+                    .userId(userId)
+                    .type("CORRECTION_COMPLETE")
+                    .targetType("CORRECTION")
+                    .targetId(correction.getId())
+                    .title("첨삭이 완료되었습니다")
+                    .message("%s 첨삭 결과가 준비되었습니다.".formatted(
+                            CORRECTION_TYPE_LABELS.getOrDefault(correctionType, "첨삭")))
+                    .link("/correction")
+                    .build());
             return CorrectionResponse.from(correction, resultPayload(payload));
         });
     }

@@ -1,0 +1,694 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.careertuner.collaboration.mapper.CollaborationMapper">
+
+    <select id="findActiveUserById" resultType="com.careertuner.collaboration.domain.CollaborationUserRow">
+        SELECT id, name, email, plan
+          FROM users
+         WHERE id = #{id}
+           AND status = 'ACTIVE'
+    </select>
+
+    <select id="searchUsers" resultType="com.careertuner.collaboration.domain.CollaborationUserRow">
+        SELECT u.id,
+               u.name,
+               u.email,
+               u.plan,
+               CASE
+                   WHEN EXISTS (
+                       SELECT 1
+                         FROM collaboration_friendship f
+                        WHERE f.user_id = #{viewerId}
+                          AND f.friend_user_id = u.id
+                   ) THEN 'FRIEND'
+                   WHEN EXISTS (
+                       SELECT 1
+                         FROM collaboration_friend_request r
+                        WHERE r.requester_id = #{viewerId}
+                          AND r.receiver_id = u.id
+                          AND r.status = 'PENDING'
+                   ) THEN 'REQUESTED'
+                   WHEN EXISTS (
+                       SELECT 1
+                         FROM collaboration_friend_request r
+                        WHERE r.requester_id = u.id
+                          AND r.receiver_id = #{viewerId}
+                          AND r.status = 'PENDING'
+                   ) THEN 'PENDING_INCOMING'
+                   ELSE 'NONE'
+               END AS relation_status
+          FROM users u
+         WHERE u.id &lt;&gt; #{viewerId}
+           AND u.status = 'ACTIVE'
+           AND (
+               LOWER(u.name) LIKE CONCAT('%', LOWER(#{keyword}), '%')
+               OR LOWER(u.email) LIKE CONCAT('%', LOWER(#{keyword}), '%')
+           )
+         ORDER BY u.name ASC, u.id ASC
+         LIMIT #{limit}
+    </select>
+
+    <select id="countFriendship" resultType="int">
+        SELECT COUNT(*)
+          FROM collaboration_friendship
+         WHERE user_id = #{userId}
+           AND friend_user_id = #{friendUserId}
+    </select>
+
+    <select id="findFriends" resultType="com.careertuner.collaboration.domain.FriendRow">
+        SELECT f.friend_user_id AS user_id,
+               u.name,
+               u.email,
+               f.created_at
+          FROM collaboration_friendship f
+          JOIN users u ON u.id = f.friend_user_id
+         WHERE f.user_id = #{userId}
+           AND u.status = 'ACTIVE'
+         ORDER BY u.name ASC, f.created_at DESC
+    </select>
+
+    <delete id="deleteFriendshipBoth">
+        DELETE FROM collaboration_friendship
+         WHERE (user_id = #{userId} AND friend_user_id = #{friendUserId})
+            OR (user_id = #{friendUserId} AND friend_user_id = #{userId})
+    </delete>
+
+    <select id="findPendingRequest" resultType="com.careertuner.collaboration.domain.FriendRequest">
+        SELECT *
+          FROM collaboration_friend_request
+         WHERE requester_id = #{requesterId}
+           AND receiver_id = #{receiverId}
+           AND status = 'PENDING'
+         ORDER BY id DESC
+         LIMIT 1
+    </select>
+
+    <select id="findRequestById" resultType="com.careertuner.collaboration.domain.FriendRequest">
+        SELECT *
+          FROM collaboration_friend_request
+         WHERE id = #{id}
+    </select>
+
+    <select id="findRequestRowById" resultType="com.careertuner.collaboration.domain.FriendRequestRow">
+        SELECT r.id,
+               r.status,
+               r.created_at,
+               r.responded_at,
+               rq.id AS requester_id,
+               rq.name AS requester_name,
+               rq.email AS requester_email,
+               rc.id AS receiver_id,
+               rc.name AS receiver_name,
+               rc.email AS receiver_email
+          FROM collaboration_friend_request r
+          JOIN users rq ON rq.id = r.requester_id
+          JOIN users rc ON rc.id = r.receiver_id
+         WHERE r.id = #{id}
+    </select>
+
+    <select id="findIncomingRequests" resultType="com.careertuner.collaboration.domain.FriendRequestRow">
+        SELECT r.id,
+               r.status,
+               r.created_at,
+               r.responded_at,
+               rq.id AS requester_id,
+               rq.name AS requester_name,
+               rq.email AS requester_email,
+               rc.id AS receiver_id,
+               rc.name AS receiver_name,
+               rc.email AS receiver_email
+          FROM collaboration_friend_request r
+          JOIN users rq ON rq.id = r.requester_id
+          JOIN users rc ON rc.id = r.receiver_id
+         WHERE r.receiver_id = #{userId}
+           AND r.status = 'PENDING'
+         ORDER BY r.created_at DESC, r.id DESC
+    </select>
+
+    <select id="findOutgoingRequests" resultType="com.careertuner.collaboration.domain.FriendRequestRow">
+        SELECT r.id,
+               r.status,
+               r.created_at,
+               r.responded_at,
+               rq.id AS requester_id,
+               rq.name AS requester_name,
+               rq.email AS requester_email,
+               rc.id AS receiver_id,
+               rc.name AS receiver_name,
+               rc.email AS receiver_email
+          FROM collaboration_friend_request r
+          JOIN users rq ON rq.id = r.requester_id
+          JOIN users rc ON rc.id = r.receiver_id
+         WHERE r.requester_id = #{userId}
+           AND r.status = 'PENDING'
+         ORDER BY r.created_at DESC, r.id DESC
+    </select>
+
+    <insert id="insertFriendRequest" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO collaboration_friend_request (requester_id, receiver_id, status)
+        VALUES (#{requesterId}, #{receiverId}, #{status})
+    </insert>
+
+    <update id="updateFriendRequestStatus">
+        UPDATE collaboration_friend_request
+           SET status = #{status},
+               responded_at = NOW()
+         WHERE id = #{id}
+           AND status = 'PENDING'
+    </update>
+
+    <insert id="insertFriendship">
+        INSERT IGNORE INTO collaboration_friendship (user_id, friend_user_id, created_by)
+        VALUES (#{userId}, #{friendUserId}, #{createdBy})
+    </insert>
+
+    <select id="findDirectConversation" resultType="long">
+        SELECT id
+          FROM collaboration_conversation
+         WHERE type = 'DIRECT'
+           AND user_low_id = #{userLowId}
+           AND user_high_id = #{userHighId}
+         LIMIT 1
+    </select>
+
+    <select id="findConversationById" resultType="com.careertuner.collaboration.domain.CollaborationConversation">
+        SELECT *
+          FROM collaboration_conversation
+         WHERE id = #{id}
+    </select>
+
+    <insert id="insertConversation" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO collaboration_conversation
+            (type, user_low_id, user_high_id, title, description, profile_image_url, password_hash, max_members,
+             join_policy, invite_policy, anonymous_allowed, anonymous_only, room_profile_required, settings_json, created_by)
+        VALUES
+            (#{type}, #{userLowId}, #{userHighId}, #{title}, #{description}, #{profileImageUrl}, #{passwordHash}, #{maxMembers},
+             #{joinPolicy}, #{invitePolicy}, #{anonymousAllowed}, #{anonymousOnly}, #{roomProfileRequired},
+             CASE WHEN #{settingsJson} IS NULL THEN NULL ELSE CAST(#{settingsJson} AS JSON) END, #{createdBy})
+    </insert>
+
+    <insert id="insertConversationMember">
+        INSERT IGNORE INTO collaboration_conversation_member (conversation_id, user_id, role, status)
+        VALUES (#{conversationId}, #{userId}, 'MEMBER', 'ACTIVE')
+    </insert>
+
+    <insert id="insertConversationMemberWithRole">
+        INSERT INTO collaboration_conversation_member (conversation_id, user_id, role, status, invited_by)
+        VALUES (#{conversationId}, #{userId}, #{role}, 'ACTIVE', #{invitedBy})
+        ON DUPLICATE KEY UPDATE
+            status = 'ACTIVE',
+            role = IF(role = 'OWNER', role, VALUES(role)),
+            invited_by = COALESCE(invited_by, VALUES(invited_by))
+    </insert>
+
+    <update id="updateConversationMemberProfile">
+        UPDATE collaboration_conversation_member
+           SET display_name = #{displayName},
+               avatar_url = #{avatarUrl},
+               anonymous = #{anonymous},
+               room_profile_json = CASE WHEN #{roomProfileJson} IS NULL THEN NULL ELSE CAST(#{roomProfileJson} AS JSON) END
+         WHERE conversation_id = #{conversationId}
+           AND user_id = #{userId}
+    </update>
+
+    <insert id="insertConversationInvite">
+        INSERT INTO collaboration_conversation_invite (conversation_id, inviter_id, invitee_id, anonymous, status)
+        VALUES (#{conversationId}, #{inviterId}, #{inviteeId}, #{anonymous}, 'PENDING')
+        ON DUPLICATE KEY UPDATE
+            inviter_id = VALUES(inviter_id),
+            anonymous = VALUES(anonymous),
+            status = 'PENDING',
+            responded_at = NULL
+    </insert>
+
+    <select id="countPendingInvite" resultType="int">
+        SELECT COUNT(*)
+          FROM collaboration_conversation_invite
+         WHERE conversation_id = #{conversationId}
+           AND invitee_id = #{inviteeId}
+           AND status = 'PENDING'
+    </select>
+
+    <update id="acceptInvite">
+        UPDATE collaboration_conversation_invite
+           SET status = 'ACCEPTED',
+               responded_at = NOW()
+         WHERE conversation_id = #{conversationId}
+           AND invitee_id = #{inviteeId}
+           AND status = 'PENDING'
+    </update>
+
+    <select id="countConversationMember" resultType="int">
+        SELECT COUNT(*)
+          FROM collaboration_conversation_member
+         WHERE conversation_id = #{conversationId}
+           AND user_id = #{userId}
+           AND status = 'ACTIVE'
+    </select>
+
+    <select id="countConversationBan" resultType="int">
+        SELECT COUNT(*)
+          FROM collaboration_conversation_ban
+         WHERE conversation_id = #{conversationId}
+           AND user_id = #{userId}
+           AND (banned_until IS NULL OR banned_until &gt; NOW())
+    </select>
+
+    <select id="countActiveConversationMembers" resultType="int">
+        SELECT COUNT(*)
+          FROM collaboration_conversation_member
+         WHERE conversation_id = #{conversationId}
+           AND status = 'ACTIVE'
+    </select>
+
+    <select id="findConversationMemberIds" resultType="long">
+        SELECT user_id
+          FROM collaboration_conversation_member
+         WHERE conversation_id = #{conversationId}
+           AND status = 'ACTIVE'
+    </select>
+
+    <!-- 알림 fan-out 용 멤버 조회 — 음소거 여부와 이름(언급 감지)을 함께 가져온다 -->
+    <select id="findConversationMembersForNotify"
+            resultType="com.careertuner.collaboration.domain.ConversationMemberRow">
+        SELECT cm.user_id AS userId,
+               u.name     AS name,
+               cm.muted   AS muted
+          FROM collaboration_conversation_member cm
+          JOIN users u ON u.id = cm.user_id
+         WHERE cm.conversation_id = #{conversationId}
+           AND cm.status = 'ACTIVE'
+    </select>
+
+    <select id="findConversationMembers" resultType="com.careertuner.collaboration.domain.ConversationMemberDetailRow">
+        SELECT cm.conversation_id,
+               cm.user_id,
+               cm.role,
+               cm.status,
+               cm.muted,
+               cm.display_name,
+               cm.avatar_url,
+               cm.anonymous,
+               cm.permissions_json,
+               cm.room_profile_json,
+               cm.joined_at,
+               u.name AS user_name,
+               u.email AS user_email
+          FROM collaboration_conversation_member cm
+          JOIN users u ON u.id = cm.user_id
+         WHERE cm.conversation_id = #{conversationId}
+           AND cm.status = 'ACTIVE'
+         ORDER BY FIELD(cm.role, 'OWNER', 'MANAGER', 'MEMBER'), cm.joined_at ASC
+    </select>
+
+    <select id="findConversationMember" resultType="com.careertuner.collaboration.domain.ConversationMemberDetailRow">
+        SELECT cm.conversation_id,
+               cm.user_id,
+               cm.role,
+               cm.status,
+               cm.muted,
+               cm.display_name,
+               cm.avatar_url,
+               cm.anonymous,
+               cm.permissions_json,
+               cm.room_profile_json,
+               cm.joined_at,
+               u.name AS user_name,
+               u.email AS user_email
+          FROM collaboration_conversation_member cm
+          JOIN users u ON u.id = cm.user_id
+         WHERE cm.conversation_id = #{conversationId}
+           AND cm.user_id = #{userId}
+           AND cm.status = 'ACTIVE'
+         LIMIT 1
+    </select>
+
+    <update id="updateConversationMemberMuted">
+        UPDATE collaboration_conversation_member
+           SET muted = #{muted}
+         WHERE conversation_id = #{conversationId}
+           AND user_id = #{userId}
+    </update>
+
+    <update id="updateConversationSettings">
+        UPDATE collaboration_conversation
+           SET title = #{title},
+               description = #{description},
+               profile_image_url = #{profileImageUrl},
+               password_hash = #{passwordHash},
+               max_members = #{maxMembers},
+               join_policy = #{joinPolicy},
+               invite_policy = #{invitePolicy},
+               anonymous_allowed = #{anonymousAllowed},
+               anonymous_only = #{anonymousOnly},
+               room_profile_required = #{roomProfileRequired},
+               settings_json = CASE WHEN #{settingsJson} IS NULL THEN NULL ELSE CAST(#{settingsJson} AS JSON) END
+         WHERE id = #{id}
+    </update>
+
+    <update id="updateConversationMemberRole">
+        UPDATE collaboration_conversation_member
+           SET role = #{role},
+               permissions_json = CASE WHEN #{permissionsJson} IS NULL THEN NULL ELSE CAST(#{permissionsJson} AS JSON) END,
+               display_name = COALESCE(#{displayName}, display_name),
+               avatar_url = COALESCE(#{avatarUrl}, avatar_url),
+               anonymous = COALESCE(#{anonymous}, anonymous)
+         WHERE conversation_id = #{conversationId}
+           AND user_id = #{userId}
+           AND role &lt;&gt; 'OWNER'
+    </update>
+
+    <update id="removeConversationMember">
+        UPDATE collaboration_conversation_member
+           SET status = 'REMOVED',
+               removed_by = #{removedBy},
+               left_at = NOW()
+         WHERE conversation_id = #{conversationId}
+           AND user_id = #{userId}
+           AND role &lt;&gt; 'OWNER'
+    </update>
+
+    <insert id="upsertConversationBan">
+        INSERT INTO collaboration_conversation_ban (conversation_id, user_id, banned_by, reason, banned_until)
+        VALUES (#{conversationId}, #{userId}, #{bannedBy}, #{reason}, #{bannedUntil})
+        ON DUPLICATE KEY UPDATE
+            banned_by = VALUES(banned_by),
+            reason = VALUES(reason),
+            banned_until = VALUES(banned_until),
+            created_at = NOW()
+    </insert>
+
+    <sql id="conversationSummaryColumns">
+        c.id,
+        c.type,
+        c.title,
+        c.description,
+        c.profile_image_url,
+        CASE WHEN c.type = 'PRIVATE' OR c.password_hash IS NOT NULL THEN 1 ELSE 0 END AS locked,
+        (
+            SELECT COUNT(*)
+              FROM collaboration_conversation_member cm_count
+             WHERE cm_count.conversation_id = c.id
+               AND cm_count.status = 'ACTIVE'
+        ) AS member_count,
+        CASE WHEN me.user_id IS NULL THEN 0 ELSE 1 END AS joined,
+        COALESCE(me.muted, 0) AS muted,
+        me.role AS role,
+        c.join_policy,
+        c.invite_policy,
+        c.anonymous_allowed,
+        c.anonymous_only,
+        c.room_profile_required,
+        peer.user_id AS peer_user_id,
+        peer_user.name AS peer_name,
+        peer_user.email AS peer_email,
+        c.updated_at,
+        lm.id AS latest_message_id,
+        lm.kind AS latest_kind,
+        lm.content AS latest_content,
+        lm.created_at AS latest_created_at,
+        CASE
+            WHEN me.user_id IS NULL THEN 0
+            ELSE (
+                SELECT COUNT(*)
+                  FROM collaboration_message unread
+                 WHERE unread.conversation_id = c.id
+                   AND unread.sender_id &lt;&gt; #{userId}
+                   AND unread.deleted_at IS NULL
+                   AND unread.id &gt; COALESCE(me.last_read_message_id, 0)
+            )
+        END AS unread_count
+    </sql>
+
+    <sql id="conversationSummaryJoins">
+        LEFT JOIN collaboration_conversation_member me
+          ON me.conversation_id = c.id
+         AND me.user_id = #{userId}
+         AND me.status = 'ACTIVE'
+        LEFT JOIN collaboration_conversation_member peer
+          ON c.type = 'DIRECT'
+         AND peer.conversation_id = c.id
+         AND peer.user_id &lt;&gt; #{userId}
+         AND peer.status = 'ACTIVE'
+        LEFT JOIN users peer_user ON peer_user.id = peer.user_id
+        LEFT JOIN collaboration_message lm
+          ON lm.id = (
+              SELECT MAX(m.id)
+                FROM collaboration_message m
+               WHERE m.conversation_id = c.id
+                 AND m.deleted_at IS NULL
+          )
+    </sql>
+
+    <select id="findConversations" resultType="com.careertuner.collaboration.domain.ConversationSummaryRow">
+        SELECT
+        <include refid="conversationSummaryColumns"/>
+          FROM collaboration_conversation c
+        <include refid="conversationSummaryJoins"/>
+         WHERE me.user_id = #{userId}
+         ORDER BY COALESCE(lm.created_at, c.updated_at) DESC, c.id DESC
+    </select>
+
+    <select id="findConversationSummary" resultType="com.careertuner.collaboration.domain.ConversationSummaryRow">
+        SELECT
+        <include refid="conversationSummaryColumns"/>
+          FROM collaboration_conversation c
+        <include refid="conversationSummaryJoins"/>
+         WHERE c.id = #{conversationId}
+         LIMIT 1
+    </select>
+
+    <select id="findDiscoverableConversations" resultType="com.careertuner.collaboration.domain.ConversationSummaryRow">
+        SELECT
+        <include refid="conversationSummaryColumns"/>
+          FROM collaboration_conversation c
+        <include refid="conversationSummaryJoins"/>
+         WHERE c.type IN ('PUBLIC', 'PRIVATE')
+           AND me.user_id IS NULL
+        <if test="keyword != null and keyword != ''">
+           AND (
+               LOWER(c.title) LIKE CONCAT('%', LOWER(#{keyword}), '%')
+               OR LOWER(COALESCE(c.description, '')) LIKE CONCAT('%', LOWER(#{keyword}), '%')
+           )
+        </if>
+         ORDER BY c.updated_at DESC, c.id DESC
+         LIMIT #{limit}
+    </select>
+
+    <insert id="insertMessage" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO collaboration_message (conversation_id, sender_id, kind, content)
+        VALUES (#{conversationId}, #{senderId}, #{kind}, #{content})
+    </insert>
+
+    <select id="findMessageById" resultType="com.careertuner.collaboration.domain.CollaborationMessage">
+        SELECT m.*,
+               u.name AS sender_name,
+               u.email AS sender_email
+          FROM collaboration_message m
+          JOIN users u ON u.id = m.sender_id
+         WHERE m.id = #{id}
+    </select>
+
+    <select id="findMessages" resultType="com.careertuner.collaboration.domain.CollaborationMessage">
+        SELECT *
+          FROM (
+              SELECT m.*,
+                     u.name AS sender_name,
+                     u.email AS sender_email
+                FROM collaboration_message m
+                JOIN users u ON u.id = m.sender_id
+               WHERE m.conversation_id = #{conversationId}
+                 AND m.deleted_at IS NULL
+               ORDER BY m.id DESC
+               LIMIT #{limit}
+          ) recent
+         ORDER BY id ASC
+    </select>
+
+    <update id="touchConversation">
+        UPDATE collaboration_conversation
+           SET updated_at = NOW()
+         WHERE id = #{conversationId}
+    </update>
+
+    <insert id="insertMessageAttachment">
+        INSERT IGNORE INTO collaboration_message_attachment
+            (message_id, file_asset_id, share_mode, expires_at)
+        VALUES
+            (#{messageId}, #{fileAssetId}, #{shareMode}, #{expiresAt})
+    </insert>
+
+    <select id="findAttachmentsByMessageId" resultType="com.careertuner.collaboration.domain.MessageAttachmentRow">
+        SELECT a.id,
+               a.message_id,
+               a.file_asset_id,
+               f.original_name,
+               f.content_type,
+               f.size_bytes,
+               a.share_mode,
+               a.expires_at,
+               f.owner_user_id,
+               owner.plan AS owner_plan,
+               a.created_at
+          FROM collaboration_message_attachment a
+          JOIN file_asset f ON f.id = a.file_asset_id
+          JOIN users owner ON owner.id = f.owner_user_id
+         WHERE a.message_id = #{messageId}
+         ORDER BY a.id ASC
+    </select>
+
+    <select id="findAttachmentForDownload" resultType="com.careertuner.collaboration.domain.MessageAttachmentRow">
+        SELECT a.id,
+               a.message_id,
+               a.file_asset_id,
+               f.original_name,
+               f.content_type,
+               f.size_bytes,
+               a.share_mode,
+               a.expires_at,
+               f.owner_user_id,
+               owner.plan AS owner_plan,
+               a.created_at
+          FROM collaboration_message_attachment a
+          JOIN collaboration_message m ON m.id = a.message_id
+          JOIN collaboration_conversation_member cm
+            ON cm.conversation_id = m.conversation_id
+           AND cm.user_id = #{userId}
+           AND cm.status = 'ACTIVE'
+          JOIN file_asset f ON f.id = a.file_asset_id
+          JOIN users owner ON owner.id = f.owner_user_id
+         WHERE a.file_asset_id = #{fileId}
+           AND m.deleted_at IS NULL
+         LIMIT 1
+    </select>
+
+    <select id="findOwnedApplicationCase" resultType="com.careertuner.collaboration.domain.SharedPostingRow">
+        SELECT NULL AS id,
+               NULL AS message_id,
+               id AS application_case_id,
+               company_name,
+               job_title,
+               deadline_date,
+               source_type,
+               created_at
+          FROM application_case
+         WHERE id = #{applicationCaseId}
+           AND user_id = #{userId}
+           AND deleted_at IS NULL
+         LIMIT 1
+    </select>
+
+    <insert id="insertMessagePosting">
+        INSERT IGNORE INTO collaboration_message_posting (message_id, application_case_id)
+        VALUES (#{messageId}, #{applicationCaseId})
+    </insert>
+
+    <select id="findPostingsByMessageId" resultType="com.careertuner.collaboration.domain.SharedPostingRow">
+        SELECT p.id,
+               p.message_id,
+               p.application_case_id,
+               ac.company_name,
+               ac.job_title,
+               ac.deadline_date,
+               ac.source_type,
+               p.created_at
+          FROM collaboration_message_posting p
+          JOIN application_case ac ON ac.id = p.application_case_id
+         WHERE p.message_id = #{messageId}
+           AND ac.deleted_at IS NULL
+         ORDER BY p.id ASC
+    </select>
+
+    <select id="findLatestMessageId" resultType="long">
+        SELECT MAX(id)
+          FROM collaboration_message
+         WHERE conversation_id = #{conversationId}
+           AND deleted_at IS NULL
+    </select>
+
+    <update id="markRead">
+        UPDATE collaboration_conversation_member
+           SET last_read_message_id = GREATEST(COALESCE(last_read_message_id, 0), #{messageId}),
+               last_read_at = NOW()
+         WHERE conversation_id = #{conversationId}
+           AND user_id = #{userId}
+           AND status = 'ACTIVE'
+    </update>
+
+    <select id="countAttachmentAccess" resultType="int">
+        SELECT COUNT(*)
+          FROM collaboration_message_attachment a
+          JOIN collaboration_message m ON m.id = a.message_id
+          JOIN collaboration_conversation_member cm
+            ON cm.conversation_id = m.conversation_id
+           AND cm.user_id = #{userId}
+           AND cm.status = 'ACTIVE'
+         WHERE a.file_asset_id = #{fileId}
+           AND m.deleted_at IS NULL
+    </select>
+
+    <!-- ── 데스크톱 presence heartbeat (LOCAL 파일 공유 게이트) ── -->
+
+    <insert id="upsertDesktopPresence">
+        INSERT INTO user_desktop_presence (user_id, last_seen_at)
+        VALUES (#{userId}, NOW())
+        ON DUPLICATE KEY UPDATE last_seen_at = NOW()
+    </insert>
+
+    <select id="findDesktopLastSeenAt" resultType="java.time.LocalDateTime">
+        SELECT last_seen_at
+          FROM user_desktop_presence
+         WHERE user_id = #{userId}
+    </select>
+
+    <select id="findDesktopPresenceByUserIds"
+            resultType="com.careertuner.collaboration.domain.DesktopPresenceRow">
+        SELECT user_id, last_seen_at
+          FROM user_desktop_presence
+         WHERE user_id IN
+        <foreach collection="userIds" item="id" open="(" separator="," close=")">#{id}</foreach>
+    </select>
+
+    <select id="findChatProfiles" resultType="com.careertuner.collaboration.domain.UserChatProfile">
+        SELECT id, user_id, nickname, avatar_url, description, is_default AS default_profile, created_at, updated_at
+          FROM user_chat_profile
+         WHERE user_id = #{userId}
+         ORDER BY is_default DESC, updated_at DESC, id DESC
+    </select>
+
+    <select id="findChatProfile" resultType="com.careertuner.collaboration.domain.UserChatProfile">
+        SELECT id, user_id, nickname, avatar_url, description, is_default AS default_profile, created_at, updated_at
+          FROM user_chat_profile
+         WHERE id = #{id}
+           AND user_id = #{userId}
+         LIMIT 1
+    </select>
+
+    <update id="clearDefaultChatProfile">
+        UPDATE user_chat_profile
+           SET is_default = 0
+         WHERE user_id = #{userId}
+    </update>
+
+    <insert id="insertChatProfile" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO user_chat_profile (user_id, nickname, avatar_url, description, is_default)
+        VALUES (#{userId}, #{nickname}, #{avatarUrl}, #{description}, #{defaultProfile})
+    </insert>
+
+    <update id="updateChatProfile">
+        UPDATE user_chat_profile
+           SET nickname = #{nickname},
+               avatar_url = #{avatarUrl},
+               description = #{description},
+               is_default = #{defaultProfile}
+         WHERE id = #{id}
+           AND user_id = #{userId}
+    </update>
+
+    <delete id="deleteChatProfile">
+        DELETE FROM user_chat_profile
+         WHERE id = #{id}
+           AND user_id = #{userId}
+    </delete>
+</mapper>

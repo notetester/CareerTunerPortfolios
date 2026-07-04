@@ -4,6 +4,9 @@
 
 /* ─────────────────────────── 커뮤니티 ─────────────────────────── */
 
+// 개인 차단 정책 mock — 뷰어(데모 사용자) 기준 blocked 톰스톤 플래그 계산에 사용 (additive).
+import { mockPrivacyAllows, registerPrivacyMockUsers } from "./privacy";
+
 const A = (id: number, name: string, anon = true) => ({ id, name, isAnonymous: anon });
 const S = (v: number, c: number, l: number, b: number) => ({ viewCount: v, commentCount: c, likeCount: l, bookmarkCount: b });
 
@@ -76,12 +79,19 @@ export const demoHotPosts = [
   { title: "신입 프론트 포트폴리오 피드백 부탁드려요", comments: 19, views: 880 },
 ];
 
+/** 뷰어가 차단한 작성자의 글이면 blocked=true 톰스톤 플래그를 붙인다(조용한 차단 — 서버측 처리 미러). */
+function withBlockedPost<T extends { author: { id: number; isAnonymous: boolean } }>(post: T): T & { blocked?: boolean } {
+  const surface = post.author.isAnonymous ? "content.post.anonymous" : "content.post";
+  return mockPrivacyAllows(post.author.id, surface) ? post : { ...post, blocked: true };
+}
+
 export function communityPostPage() {
-  return { posts: demoCommunityPosts, total: demoCommunityPosts.length, page: 0, size: 20 };
+  const posts = demoCommunityPosts.map(withBlockedPost);
+  return { posts, total: posts.length, page: 0, size: 20 };
 }
 
 export function findCommunityPost(id: number) {
-  return demoCommunityPosts.find((p) => p.id === id) ?? demoCommunityPosts[0];
+  return withBlockedPost(demoCommunityPosts.find((p) => p.id === id) ?? demoCommunityPosts[0]);
 }
 
 export const demoComments = [
@@ -92,6 +102,20 @@ export const demoComments = [
     content: "후기 감사합니다! 2차 준비에 큰 도움 됐어요.", likeCount: 4,
     isAnonymous: true, status: "PUBLISHED", createdAt: "2026-06-18T12:40:00", liked: true },
 ];
+
+/** 뷰어가 차단한 작성자의 댓글이면 blocked=true 톰스톤 처리(본문 골격 유지 — 답글 트리 보존). */
+export function communityCommentsFor(_postId: number) {
+  return demoComments.map((c) => {
+    const surface = c.author.isAnonymous ? "content.comment.anonymous" : "content.comment";
+    return mockPrivacyAllows(c.author.id, surface) ? c : { ...c, blocked: true };
+  });
+}
+
+// 커뮤니티 작성자(익명 포함 — 서버는 작성자 id 를 알고 있어 차단 대상 지정이 가능)를 차단 디렉터리에 등록.
+registerPrivacyMockUsers([
+  ...demoCommunityPosts.map((p) => ({ id: p.author.id, name: p.author.name, relation: "stranger" as const })),
+  ...demoComments.map((c) => ({ id: c.author.id, name: c.author.name, relation: "stranger" as const })),
+]);
 
 export const demoPublishedGuideline = {
   id: 3, versionLabel: "v1.2", publishedAt: "2026-06-10T09:00:00",
@@ -144,7 +168,18 @@ export function notificationPage(page = 0, size = 20) {
 
 export const demoNotificationPreference = {
   pushEnabled: true, emailEnabled: false,
-  categories: { community: true, ai: true, support: true, notice: true, payment: false },
+  categories: {
+    ai_analysis: true,
+    interview: true,
+    correction: true,
+    community: true,
+    messenger: true,
+    recommendation: true,
+    billing: false,
+    notice: true,
+    marketing: false,
+  },
+  rules: {},
   quietHoursStart: "22:00", quietHoursEnd: "08:00", pushDeviceRegistered: true,
 };
 

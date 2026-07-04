@@ -22,6 +22,7 @@ import com.careertuner.analysis.domain.AnalysisFitPointSource;
 import com.careertuner.analysis.domain.AnalysisSource;
 import com.careertuner.analysis.dto.CareerAnalysisRunResponse;
 import com.careertuner.analysis.mapper.AnalysisMapper;
+import com.careertuner.notification.service.NotificationService;
 import tools.jackson.databind.ObjectMapper;
 
 class AnalysisServiceImplTest {
@@ -31,8 +32,10 @@ class AnalysisServiceImplTest {
         AnalysisMapper mapper = mock(AnalysisMapper.class);
         CareerTrendAiService aiService = mock(CareerTrendAiService.class);
         CareerAnalysisRunService runService = mock(CareerAnalysisRunService.class);
+        NotificationService notificationService = mock(NotificationService.class);
         ObjectMapper objectMapper = mock(ObjectMapper.class);
-        AnalysisServiceImpl service = new AnalysisServiceImpl(mapper, aiService, runService, objectMapper);
+        AnalysisServiceImpl service =
+                new AnalysisServiceImpl(mapper, aiService, runService, notificationService, objectMapper);
 
         AnalysisSource source = AnalysisSource.builder()
                 .applicationCaseId(1L)

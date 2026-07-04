@@ -1,5 +1,6 @@
 export type CommunityCategory =
   | "job-review"
+  | "recommended-job"
   | "interview-review"
   | "job-question"
   | "success-strategy"
@@ -42,6 +43,8 @@ export interface CommunityPost {
   interviewReview?: InterviewReviewMetadata;
   liked?: boolean;
   bookmarked?: boolean;
+  /** 서버가 뷰어 기준으로 차단 처리한 글 — 톰스톤("차단한 사용자의 게시글입니다")만 렌더한다(조용한 차단). */
+  blocked?: boolean;
 }
 
 export interface InterviewReviewMetadata {
@@ -69,6 +72,8 @@ export interface CommunityComment {
   liked?: boolean;
   /** 서버가 내려주는 tombstone 플래그. 삭제/숨김이지만 살아있는 답글이 있어 골격만 유지하는 노드. */
   isDeleted?: boolean;
+  /** 서버가 뷰어 기준으로 차단 처리한 댓글 — 톰스톤만 렌더하고 답글 트리는 유지한다(조용한 차단). */
+  blocked?: boolean;
 }
 
 export type ReactionType = "LIKE" | "BOOKMARK";
@@ -84,6 +89,7 @@ export interface CategoryInfo {
 export const CATEGORIES: CategoryInfo[] = [
   { value: "all", label: "전체", slug: "job-review", colorClass: "" },
   { value: "job", label: "취업후기", slug: "job-review", colorClass: "cat-job" },
+  { value: "recruit", label: "채용공고", slug: "recommended-job", colorClass: "cat-recruit" },
   { value: "interview", label: "면접후기", slug: "interview-review", colorClass: "cat-interview" },
   { value: "role", label: "직무질문", slug: "job-question", colorClass: "cat-role" },
   { value: "pass", label: "합격전략", slug: "success-strategy", colorClass: "cat-pass" },
@@ -94,6 +100,7 @@ export const CATEGORIES: CategoryInfo[] = [
 
 export const CATEGORY_META: Record<string, { variant: string; value: string }> = {
   "취업후기": { variant: "cat-job", value: "job" },
+  "채용공고": { variant: "cat-recruit", value: "recruit" },
   "면접후기": { variant: "cat-interview", value: "interview" },
   "직무질문": { variant: "cat-role", value: "role" },
   "합격전략": { variant: "cat-pass", value: "pass" },
