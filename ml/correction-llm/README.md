@@ -2,7 +2,7 @@
 
 CareerTuner E 영역(자기소개서, 면접 답변, 이력서 문장, 포트폴리오 설명 첨삭)의 자체 LoRA/QLoRA 학습 파이프라인이다.
 
-목표는 먼저 `Qwen/Qwen2.5-3B-Instruct`로 작은 seed 데이터가 RTX 4090에서 끝까지 학습되는지 검증하고, 이후 `Qwen3-4B` 또는 `Qwen3-8B`로 품질 비교를 진행하는 것이다.
+목표는 `Qwen/Qwen2.5-3B-Instruct` 단일 모델로 네 첨삭 유형의 장문 보존과 구조화 출력 계약을 만족하는 것이다.
 
 ## 폴더
 
@@ -238,3 +238,27 @@ python scripts/merge_and_export.py `
 
 출력 디렉터리를 `llama.cpp/convert_hf_to_gguf.py`로 변환하고, 기존 모델을 덮어쓰지 않는
 버전 태그(`careertuner-e-correction-3b:unified-v2`)로 Ollama에 등록한다.
+
+### 6. P1 repair 커리큘럼과 배포 게이트
+
+P1은 장문 train과 계약 실패 repair 표본을 섞고, 자기소개서·면접 장문을 한 번 더 노출한다.
+repair 정답은 `preserved_meaning=true`, `added_facts=[]`, `changes` 3개 이상인 표본만 사용한다.
+같은 raw 파일을 학습·검증 원천으로 지정해도 ID가 겹치지 않게 분리된다.
+
+```powershell
+python scripts/build_p1_curriculum.py `
+  --repair-train-raw "$runRoot/requests/raw.generated.clean.jsonl" `
+  --repair-val-raw "$runRoot/requests/raw.generated.clean.jsonl" `
+  --long-train-messages "$runRoot/requests/long.train.messages.jsonl" `
+  --long-val-messages "$runRoot/requests/long.val.messages.jsonl" `
+  --train-out "$runRoot/requests/p1-v3.train.messages.jsonl" `
+  --val-out "$runRoot/requests/p1-v3.val.messages.jsonl" `
+  --summary-out "$runRoot/results/p1-v3-curriculum.json" `
+  --repair-train-per-task 16 `
+  --repair-val-per-task 3
+```
+
+repair 표본은 기존 long train/val ID와 같은 split에 배치한다. 생성 요약의
+`train_val_id_overlap_count`가 0이 아니면 학습하지 않는다. 후보는 운영 `latest`를 덮어쓰지 않는
+태그로 등록한 뒤 직접 추론, repair 추론, Ollama strict
+schema 추론을 모두 통과해야 한다. 하나라도 실패하면 `latest` 교체와 기존 8B 삭제를 진행하지 않는다.

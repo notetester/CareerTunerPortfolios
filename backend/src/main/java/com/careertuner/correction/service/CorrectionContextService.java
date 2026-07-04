@@ -55,10 +55,8 @@ public class CorrectionContextService {
                 targetRole,
                 jobContext,
                 profileFacts(profile, originalText),
-                Map.of(
-                        "tone", "professional",
-                        "max_chars", Math.min(4000, Math.max(650, originalText.length() + 300)),
-                        "preserve_facts_only", true));
+                SelfCorrectionInput.defaultConstraints(
+                        SelfCorrectionInput.taskType(correctionType), originalText));
     }
 
     private Map<String, Object> jobContext(

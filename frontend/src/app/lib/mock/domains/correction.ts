@@ -49,7 +49,7 @@ export const correctionRoutes: MockRoute[] = [
     handler: () => {
       const status = warmed ? "ALREADY_WARM" : "STARTED";
       warmed = true;
-      return { status, model: "careertuner-e-correction:8b" };
+      return { status, model: "careertuner-e-correction-3b:latest" };
     },
   },
   {

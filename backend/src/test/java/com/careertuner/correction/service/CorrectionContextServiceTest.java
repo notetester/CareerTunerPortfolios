@@ -50,6 +50,11 @@ class CorrectionContextServiceTest {
         assertThat(input.userProfileFacts())
                 .anyMatch(value -> value.contains("프로젝트") && value.contains("게시판"))
                 .anyMatch(value -> value.contains("보유 기술") && value.contains("Java"));
+        assertThat(input.constraints())
+                .containsEntry("min_chars", 2)
+                .containsEntry("target_chars", 2)
+                .containsEntry("preserve_paragraphs", true)
+                .containsEntry("preserve_facts_only", true);
         assertThat(input.toRequestMap()).containsKeys("id", "task_type", "input");
     }
 

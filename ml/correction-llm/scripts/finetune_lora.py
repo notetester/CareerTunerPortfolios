@@ -88,7 +88,7 @@ def main() -> None:
         max_length=args.max_seq_len,
         logging_steps=5,
         save_strategy="epoch",
-        eval_strategy="epoch" if args.eval else "no",
+        eval_strategy="no",
         bf16=True,
         report_to="none",
         packing=False,
@@ -107,6 +107,9 @@ def main() -> None:
     trainer.save_model(args.output)
     tokenizer.save_pretrained(args.output)
     print(f"LoRA adapter saved: {args.output}")
+    if args.eval:
+        metrics = trainer.evaluate()
+        print(f"Final evaluation: {metrics}")
 
 
 if __name__ == "__main__":
