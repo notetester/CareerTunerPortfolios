@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { Building2, CheckCircle2, XCircle } from "lucide-react";
+import AdminShell from "@/admin/components/AdminShell";
 import { Badge } from "@/app/components/ui/badge";
 import { Button } from "@/app/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/app/components/ui/card";
@@ -48,12 +49,14 @@ export function AdminEnterprisePage() {
   };
 
   return (
+    <AdminShell
+      active="enterprise"
+      breadcrumb="회원 / 콘텐츠"
+      title="기업 신청·공고 검수"
+      icon={Building2}
+      desc="기업 계정 전환과 기업 직접 등록 공고를 운영 정책에 맞게 승인합니다."
+    >
     <div className="space-y-5">
-      <div>
-        <h1 className="flex items-center gap-2 text-2xl font-black text-slate-950"><Building2 className="size-6" />기업 신청·공고 검수</h1>
-        <p className="mt-1 text-sm text-slate-500">기업 계정 전환과 기업 직접 등록 공고를 운영 정책에 맞게 승인합니다.</p>
-      </div>
-
       <Card>
         <CardHeader><CardTitle>기업 계정 신청</CardTitle></CardHeader>
         <CardContent className="space-y-3">
@@ -95,5 +98,6 @@ export function AdminEnterprisePage() {
         </CardContent>
       </Card>
     </div>
+    </AdminShell>
   );
 }
