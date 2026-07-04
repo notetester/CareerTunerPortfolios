@@ -15,6 +15,7 @@ import com.careertuner.common.exception.BusinessException;
 import com.careertuner.common.exception.ErrorCode;
 import com.careertuner.common.security.AuthUser;
 import com.careertuner.companyanalysis.mapper.CompanyAnalysisMapper;
+import com.careertuner.companyanalysis.service.BCompanyAnalysisCanonicalizer;
 
 import lombok.RequiredArgsConstructor;
 
@@ -26,11 +27,18 @@ public class AdminCompanyAnalysisService {
 
     private final AdminCompanyAnalysisMapper mapper;
     private final CompanyAnalysisMapper companyAnalysisMapper;
+    private final BCompanyAnalysisCanonicalizer canonicalizer;
 
     @Transactional(readOnly = true)
     public List<AdminCompanyAnalysisRow> companyAnalyses(AuthUser authUser, AdminCompanyAnalysisSearchCriteria criteria) {
         requireAdmin(authUser);
-        return mapper.findCompanyAnalyses(normalizeCriteria(criteria));
+        List<AdminCompanyAnalysisRow> rows = mapper.findCompanyAnalyses(normalizeCriteria(criteria));
+        // 사용자 응답과 동일하게 unknowns 를 virtual 필드로 펼치고 aiInferences 에서 마커를 제거한다.
+        for (AdminCompanyAnalysisRow row : rows) {
+            row.setUnknowns(canonicalizer.extractUnknowns(row.getAiInferences()));
+            row.setAiInferences(canonicalizer.withoutUnknownMarkers(row.getAiInferences()));
+        }
+        return rows;
     }
 
     @Transactional(readOnly = true)

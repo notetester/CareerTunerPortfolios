@@ -52,6 +52,7 @@ const companyAnalyses: Record<number, CompanyAnalysis> = {
     sources: JSON.stringify(["채용 공고", "기업 홈페이지"]),
     verifiedFacts: JSON.stringify([{ fact: "메신저 서비스 운영", source: "기업 홈페이지" }]),
     aiInferences: JSON.stringify([{ inference: "프론트엔드 인력 수요 증가", basis: "AI 서비스 확장" }]),
+    unknowns: JSON.stringify([{ topic: "매출 규모", reason: "공고문에 관련 정보가 없다", neededSource: "IR 자료" }]),
     sourceType: "TEXT", checkedAt: iso(3), refreshRecommendedAt: iso(-27), confirmedAt: iso(2), adminMemo: null, createdAt: iso(3) },
   102: { id: 4102, applicationCaseId: 102, jobPostingId: 1102, jobPostingRevision: 1,
     companySummary: "네이버는 검색·커머스·클라우드를 운영하는 국내 최대 IT 기업입니다.",
@@ -61,6 +62,7 @@ const companyAnalyses: Record<number, CompanyAnalysis> = {
     sources: JSON.stringify(["채용 공고", "기업 뉴스룸"]),
     verifiedFacts: JSON.stringify([{ fact: "검색 서비스 운영", source: "기업 뉴스룸" }]),
     aiInferences: JSON.stringify([{ inference: "성능 중심 프론트엔드 역량 중시", basis: "대용량 트래픽 서비스" }]),
+    unknowns: null,
     sourceType: "TEXT", checkedAt: iso(2), refreshRecommendedAt: iso(-28), confirmedAt: iso(1), adminMemo: null, createdAt: iso(2) },
 };
 
