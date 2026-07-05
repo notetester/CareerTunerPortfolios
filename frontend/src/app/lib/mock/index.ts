@@ -46,6 +46,8 @@ import { interviewExtraRoutes } from "./domains/interviewExtra";
 import { collaborationRoutes } from "./domains/collaboration";
 import { privacyRoutes } from "./domains/privacy";
 import { companyRoutes } from "./domains/company";
+import { adsRoutes } from "./domains/ads";
+import { nicknameProfileRoutes } from "./domains/nicknameProfile";
 import { adminRoutes } from "./domains/admin";
 
 /** 등록된 핸들러가 없을 때 반환하는 sentinel. */
@@ -349,6 +351,8 @@ const routes: MockRoute[] = [
   ...collaborationRoutes,
   ...privacyRoutes,
   ...companyRoutes,
+  ...adsRoutes,
+  ...nicknameProfileRoutes,
   ...adminRoutes,
 ];
 

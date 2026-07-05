@@ -40,6 +40,8 @@ import { AdminCompanyApplicationsPage } from "./features/company/pages/AdminComp
 import { AdminJobPostingReviewPage } from "./features/company/pages/AdminJobPostingReviewPage";
 // W4: 관리자 알림 수신 설정(카테고리 opt-out)
 import AdminNotificationPreferences from "./features/notification-preferences/pages/AdminNotificationPreferences";
+// W7: 광고 관리
+import AdminAdsPage from "./features/ads/pages/AdminAdsPage";
 
 export const adminRoutes = [
   { path: "admin", Component: AdminDashboardPage },
@@ -56,6 +58,7 @@ export const adminRoutes = [
   { path: "admin/company/applications", Component: AdminCompanyApplicationsPage },
   { path: "admin/company/job-postings", Component: AdminJobPostingReviewPage },
   { path: "admin/notification-settings", Component: AdminNotificationPreferences },
+  { path: "admin/ads", Component: AdminAdsPage },
   { path: "admin/users", Component: AdminUsersPage },
   { path: "admin/users/blocked", Component: AdminBlockedUsersPage },
   { path: "admin/audit/security", Component: AdminSecurityAuditPage },

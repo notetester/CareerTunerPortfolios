@@ -154,6 +154,7 @@ const NAV_GROUPS: NavGroup[] = [
       { key: "reports", label: "신고·검수 관리", icon: MessageSquareWarning, href: "/admin/community", permissionGroups: ["CONTENT_ADMIN"] },
       // W1: 기업 채용공고 등록/수정 검토 큐
       { key: "job-posting-review", label: "공고 검토", icon: Briefcase, href: "/admin/company/job-postings", permissionGroups: ["CONTENT_ADMIN"] },
+      { key: "ads", label: "광고 관리", icon: Megaphone, href: "/admin/ads", permissionGroups: ["CONTENT_ADMIN"] },
       { key: "notices", label: "공지사항", icon: Megaphone, href: "/admin/notices", permissionGroups: ["CONTENT_ADMIN"] },
       { key: "faq", label: "FAQ 관리", icon: CircleHelp, href: "/admin/faq", permissionGroups: ["CONTENT_ADMIN"] },
       { key: "ai-support", label: "AI 상담 운영", icon: Bot, href: "/admin/ai-support", permissionGroups: ["CONTENT_ADMIN", "AI_ADMIN"] },

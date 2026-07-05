@@ -30,6 +30,7 @@ import { adminRoutes } from "../admin/routes";
 import NotificationPage from "@/features/notification/pages/NotificationPage";
 import { CommunityActivityPage } from "@/features/community/pages/CommunityActivityPage";
 import { CommunityUserActivityPage } from "@/features/community/pages/CommunityUserActivityPage";
+import { ProfileDetailPage } from "@/features/profile/pages/ProfileDetailPage";
 // W1: 기업 서비스 허브(신청/내 공고 관리) + 공개 채용공고 게시판
 import { CompanyHubPage } from "@/features/company/pages/CompanyHubPage";
 import { JobBoardPage } from "@/features/jobboard/pages/JobBoardPage";
@@ -68,6 +69,8 @@ export const router = createBrowserRouter([
       // 커뮤니티 활동 — 내 활동(6탭+반응 유지 설정), 타인 프로필 활동(공개범위 적용)
       { path: "community/activity", Component: CommunityActivityPage },
       { path: "community/users/:userId/activity", Component: CommunityUserActivityPage },
+      // 내 정보 관리 — 닉네임 프로필·이력서 스펙·계정 확충
+      { path: "profile/detail", Component: ProfileDetailPage },
       { path: "billing", Component: BillingPage },
       { path: "billing/success", Component: BillingSuccessPage },
       { path: "billing/fail", Component: BillingFailPage },
