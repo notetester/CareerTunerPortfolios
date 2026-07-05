@@ -184,8 +184,18 @@ revision으로 저장한다. `job_posting`은 `(application_case_id, revision)` 
 | POST | `/api/corrections` | 자기소개서·면접 답변·이력서·포트폴리오 설명 첨삭 생성 | Bearer |
 | GET | `/api/corrections` | 내 첨삭 이력 조회 | Bearer |
 | GET | `/api/corrections/{id}` | 내 첨삭 결과 상세 조회 | Bearer |
+| GET | `/api/admin/corrections` | 관리자 첨삭 성공 이력 검색·페이지 조회 | Bearer(ADMIN) |
+| GET | `/api/admin/corrections/summary` | 관리자 첨삭 성공·실패·메모 현황 집계 | Bearer(ADMIN) |
+| GET | `/api/admin/corrections/ai-failures` | 첨삭 AI 실패 로그 조회 | Bearer(ADMIN) |
+| GET | `/api/admin/corrections/{id}` | 첨삭 원문·결과·AI 사용량 상세 조회 | Bearer(ADMIN) |
+| PUT | `/api/admin/corrections/{id}/memo` | 첨삭 운영 메모 저장·삭제 | Bearer(ADMIN) |
+| GET | `/api/admin/credits` | 크레딧 변동 원장 검색·페이지 조회 | Bearer(ADMIN) |
+| GET | `/api/admin/credits/summary` | 크레딧 지급·차감·잔액 현황 집계 | Bearer(ADMIN) |
+| POST | `/api/admin/credits/adjust` | 관리자 크레딧 증감과 원장·감사 로그 기록 | Bearer(ADMIN) |
 
 E 자체 모델은 3B 단일 모델과 strict JSON Schema를 사용한다. 첫 응답이 JSON 키, 원문 분량, 문단 보존, `changes` 3개 이상 계약을 어기면 같은 3B에 실패 사유와 이전 출력을 전달해 한 번 repair한다. 첨삭 화면 진입 또는 AutoPrep에서 WRITE 사용이 예견되면 이 3B 모델만 비동기로 워밍하며, 워밍은 크레딧·사용권·AI 사용 로그를 차감하지 않는다. 자체 모델 실패 또는 시간 예산 소진 시 Anthropic을 호출하고, Anthropic도 실패하거나 미설정이면 OpenAI로 전환한다. 운영 연결 시 `CAREERTUNER_CORRECTION_AI_PROVIDER=self`, `CAREERTUNER_CORRECTION_AI_SELF_BASE_URL=http://localhost:11434/v1`을 설정한다. Anthropic에는 `ANTHROPIC_API_KEY`, OpenAI 최종 폴백에는 `OPENAI_API_KEY`가 필요하다.
+
+기존 DB에는 `db/patches/20260705_e_correction_admin_memo.sql`을 먼저 적용해야 첨삭 운영 메모 API를 사용할 수 있다. 첨삭 실패는 성공 결과 테이블이 아니라 `ai_usage_log`에 기록되므로 관리자 화면도 성공 이력과 실패 로그를 별도 데이터 소스로 조회한다.
 
 ## C 분석·대시보드 API
 

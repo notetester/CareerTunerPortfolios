@@ -1426,6 +1426,7 @@ CREATE TABLE IF NOT EXISTS correction_request (
     result_json         JSON NULL,
     status              VARCHAR(20) NOT NULL DEFAULT 'SUCCESS',
     ai_usage_log_id     BIGINT NULL,
+    admin_memo          VARCHAR(2000) NULL,
     created_at          DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (id),
     KEY idx_correction_request_user (user_id),
