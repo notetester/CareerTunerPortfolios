@@ -54,18 +54,26 @@ import tools.jackson.databind.ObjectMapper;
  * generate 는 3인자({@code (ac, posting, webEvidence)}), canonicalize 는 7인자
  * ({@code (payload, id, rev, posting, companyName, jobTitle, webEvidence)})로 호출한다.
  *
- * <p><b>검증용 hard fail 원칙:</b> 프로덕션의 조용한 degrade 와 달리 이 하네스는 빈 evidence 로 조용히 통과하지
- * 않는다. 검색 예외({@link com.careertuner.companyanalysis.websearch.CompanyWebSearchException})는 삼키지 않고
- * 그대로 실패로 드러내며, target 별 WEB evidence 가 비어 있으면 리포트에 {@code INVALID_WEB_EVIDENCE} 로 명시하고
- * 실행 종료 시 그런 target 이 하나라도 있으면 {@link AssertionError} 로 실패시킨다(단건 실행이면 그 자리에서 중단).
+ * <p>검색 루프 뒤에 프로덕션 {@code resolveSearchResults} 와 동일하게 코퍼스 레벨 정체성 게이트
+ * ({@link CompanySourceResolver#retainIdentifiableResults})를 caller 층에서 태워 접두충돌 경쟁사를 제거하고
+ * anchor 근거가 없으면 빈 목록으로 degrade 한다. 이 게이트된 결과만 evidence collector·R1·저장 gate 로 넘긴다
+ * (이슈A 동명 접두충돌 수정 효과를 검증하기 위함).
+ *
+ * <p><b>hard fail / empty evidence 원칙:</b> 하드 실패는 오직 검색·collector 가 예외를 던질 때만이다 —
+ * 검색 예외({@link com.careertuner.companyanalysis.websearch.CompanyWebSearchException})는 삼키지 않고 그대로
+ * 드러낸다. 반면 WEB evidence 가 비는 것은 더 이상 하드페일 사유가 아니다. 게이트가 오염을 전부 걸러낸
+ * {@code IDENTITY_GATE_DEGRADED}(검색 非0·게이트 후 0)와 {@code NO_WEB_RESULTS}(검색 0건)는 <b>실패로 세지 않고</b>,
+ * 그 경우에도 공고-only(webEvidence=[])로 R1 생성·채점 출력을 계속한다. 목적: degrade 된 결과의 자유서술
+ * (recentIssues·competitors·interviewPoints·aiInferences)에 타사 오염이 남지 않았는지 채점할 수 있게 하기 위함.
  *
  * <p>NAVER 키는 env {@code NAVER_SEARCH_CLIENT_ID}/{@code NAVER_SEARCH_CLIENT_SECRET} 에서 직접 읽어
  * {@link NaverSearchProperties} 에 세팅한다(생성자 relaxed binding 없음). 키가 없거나 configured()==false 면
  * 즉시 중단한다. <b>Client Secret·키는 어떤 출력에도 절대 싣지 않는다.</b>
  *
  * <p>자동 채점은 하지 않는다. reviewer 가 원문·검색근거 대조로 채우는 빈 수기 채점표만 포함하되, 채점에 필요한
- * 검색 query/category·수집 URL·webEvidence 항목(title/snippet/url/fetchedAt)·canonical verifiedFacts 의
- * sourceKind/sourceRef·companyR1 fellBack 여부·rawFact/canonicalFact 수·INVALID_WEB_EVIDENCE 여부를 남긴다.
+ * 검색 query/category·raw/gated 수집 URL·게이트 제거 URL·webEvidence 항목(title/snippet/url/fetchedAt)·canonical
+ * verifiedFacts 의 sourceKind/sourceRef·companyR1 fellBack 여부·rawFact/canonicalFact 수·empty evidence 상태
+ * (IDENTITY_GATE_DEGRADED / NO_WEB_RESULTS) 를 남긴다.
  *
  * <p>일반 테스트/CI 에는 영향이 없도록 환경변수 {@code B_REAL_COMPANY_WEB=true} 일 때만 실행된다.
  * 실행(1건): {@code $env:B_REAL_COMPANY_WEB="true"; $env:B_REAL_COMPANY_WEB_TARGET="1"; .\gradlew.bat test --tests *BCompanyAnalysisWebRealPostingHarness}
@@ -161,15 +169,17 @@ class BCompanyAnalysisWebRealPostingHarness {
         report.append("# 기업분석 웹검색 실측 검증 결과 (재설계 D-6)\n\n");
         report.append("- 실행 시각: ").append(LocalDateTime.now().format(DateTimeFormatter.ISO_LOCAL_DATE_TIME)).append("\n");
         report.append("- 모델: ").append(modelName).append(", temperature 0, maxRetries 0\n");
-        report.append("- WEB evidence = 실제 NAVER 검색(runSearch 재현) → CompanyEvidenceCollector 결과. R1 생성·저장 gate 양쪽 입력.\n");
+        report.append("- WEB evidence = 실제 NAVER 검색(runSearch 재현) → 정체성 게이트(retainIdentifiableResults) → CompanyEvidenceCollector 결과. R1 생성·저장 gate 양쪽 입력.\n");
+        report.append("- raw 검색결과 = runSearch 재현 dedup 후 / gated = 정체성 게이트(접두충돌 경쟁사 제거 + anchor 게이트) 통과분\n");
         report.append("- raw = 모델 원문 JSON(chat spy) / final = parseLocalCompanyPayload 통과 후 payload\n");
         report.append("- canonical final = 저장 직전 canonicalizer(evidence gate 2소스[공고+WEB], unknowns 접기, source 보정) 통과 후 payload\n");
-        report.append("- INVALID_WEB_EVIDENCE = 해당 target 의 WEB evidence 가 비어 채점 표본이 되지 못함(실행 종료 시 hard fail).\n");
+        report.append("- IDENTITY_GATE_DEGRADED = 검색은 됐으나 정체성 게이트가 전부 걸러 WEB evidence 0건(실패 아님 — 공고-only 로 채점 계속).\n");
+        report.append("- NO_WEB_RESULTS = 검색 0건(실패 아님 — 공고-only 로 채점 계속). 위 두 상태는 자유서술 타사 오염 검증 표본이다.\n");
         report.append("- fellBack=true 인 company 는 self-rules-v1 폴백 결과이며 R1 채점 표본이 아니다.\n\n");
 
         compare.append("# 기업분석 웹검색 비교표 (D-6)\n\n");
         compare.append("- 기준: 동일 10건 OCR 세트 + 실제 NAVER WEB evidence, D-6 canonicalizer(2소스) 적용 후 계측\n\n");
-        compare.append("| case | companyR1 | webEvidence | verifiedFacts raw→canonical | aiInferences raw→storage | virtual unknowns | gate PASSED | gate DEMOTED | gate REMOVED | INVALID_WEB |\n");
+        compare.append("| case | companyR1 | webEvidence | verifiedFacts raw→canonical | aiInferences raw→storage | virtual unknowns | gate PASSED | gate DEMOTED | gate REMOVED | webStatus |\n");
         compare.append("|---|---|---:|---:|---:|---:|---:|---:|---:|---|\n");
 
         report.append("## 케이스 매핑 (case index ↔ 원본 공고 ↔ 회사명/직무명)\n\n");
@@ -206,12 +216,10 @@ class BCompanyAnalysisWebRealPostingHarness {
             Files.writeString(outFile, report.toString(), StandardCharsets.UTF_8);
             throw new AssertionError("No target postings selected. Set B_REAL_COMPANY_WEB_TARGET=1, 1-3, 1,4,10, substring, or B_REAL_COMPANY_WEB_ALL=true.");
         }
-        boolean singleTarget = targets.size() == 1;
         writeAggregate(outFile, reportHeader, caseDir, compareFile, compareHeader, compareDir);
 
         boolean force = truthy(System.getenv(ENV_FORCE));
         List<String> missingFiles = new ArrayList<>();
-        List<String> invalidWebEvidence = new ArrayList<>();
         for (TargetCase target : targets) {
             Path caseFile = caseDir.resolve("%02d.md".formatted(target.index()));
             Path compareRowFile = compareDir.resolve("%02d.md".formatted(target.index()));
@@ -234,13 +242,26 @@ class BCompanyAnalysisWebRealPostingHarness {
             }
             String posting = Files.readString(file, StandardCharsets.UTF_8);
 
-            // --- 1) 실제 NAVER 검색 → WEB evidence (runSearch 계약 재현) ---
+            // --- 1) 실제 NAVER 검색 → 정체성 게이트 → WEB evidence (프로덕션 resolveSearchResults 재현) ---
             // 회사명이 1급 입력 — industry/region 힌트는 공고에 없어 비운다(프로덕션 toCompanyIdentity 와 동일).
             CompanyIdentity identity = new CompanyIdentity(target.companyName(), "", "");
             // CompanyWebSearchException 은 삼키지 않는다 — 그대로 실패로 드러난다(검증용 hard fail).
             SearchOutcome searchOutcome = runSearch(identity, sourceResolver, webSearchClient, webSearchProperties);
-            List<CompanyWebEvidence> webEvidence = evidenceCollector.collect(identity, searchOutcome.results());
-            boolean invalid = webEvidence.isEmpty();
+            List<CompanyWebSearchResult> rawResults = searchOutcome.results();
+            // 코퍼스 레벨 정체성 게이트(D-6 이슈A · 동명 접두충돌): 접두충돌 경쟁사 제거 + anchor 게이트.
+            // 프로덕션 resolveSearchResults 가 runSearch 뒤·캐시 put 전에 적용하는 것과 동일하게 caller 층에서 태운다.
+            List<CompanyWebSearchResult> gatedResults = sourceResolver.retainIdentifiableResults(identity, rawResults);
+            List<CompanyWebEvidence> webEvidence = evidenceCollector.collect(identity, gatedResults);
+            // 게이트로 제거된 URL(raw − gated, 정규화 링크 기준) — 이슈A 효과 trace 용.
+            List<String> removedLinks = removedLinks(rawResults, gatedResults);
+
+            // empty-evidence 사유 분류: 하드페일이 아니라 채점을 계속할 정상 degrade/무검색 상태다.
+            //  - rawResults 非empty & gatedResults empty → IDENTITY_GATE_DEGRADED (이슈A 가 오염을 전부 걸러냄; 실패 아님)
+            //  - rawResults empty(검색 0건)          → NO_WEB_RESULTS (실패 아님)
+            String emptyStatus = null;
+            if (webEvidence.isEmpty()) {
+                emptyStatus = rawResults.isEmpty() ? "NO_WEB_RESULTS" : "IDENTITY_GATE_DEGRADED";
+            }
 
             report.append("## ").append(header).append("\n\n");
             report.append("- 회사명: ").append(target.companyName())
@@ -248,33 +269,43 @@ class BCompanyAnalysisWebRealPostingHarness {
             report.append("### 웹검색 trace\n\n");
             report.append("- 시도 카테고리: ").append(categoryNames()).append("\n");
             report.append("- 시도 쿼리(구체→폴백): ").append(oneLine(String.join(" | ", searchOutcome.queries()))).append("\n");
-            report.append("- dedup 후 검색결과 수: ").append(searchOutcome.results().size())
+            report.append("- raw 검색결과 수: ").append(rawResults.size())
+                    .append(" / gated 후 수: ").append(gatedResults.size())
                     .append(" / WEB evidence 수: ").append(webEvidence.size()).append("\n");
-            report.append("- 수집 URL 목록:\n");
-            if (searchOutcome.results().isEmpty()) {
+            if (emptyStatus != null) {
+                report.append("- empty evidence 상태: ").append(emptyStatus)
+                        .append(" (실패 아님 — R1·채점 계속)\n");
+            }
+            report.append("- gated 후 수집 URL 목록:\n");
+            if (gatedResults.isEmpty()) {
                 report.append("  - (없음)\n");
             } else {
-                for (CompanyWebSearchResult r : searchOutcome.results()) {
+                for (CompanyWebSearchResult r : gatedResults) {
                     report.append("  - [").append(r.category()).append("] ").append(oneLine(r.link())).append("\n");
+                }
+            }
+            report.append("- 게이트 제거된 URL 목록(raw − gated):\n");
+            if (removedLinks.isEmpty()) {
+                report.append("  - (없음)\n");
+            } else {
+                for (String link : removedLinks) {
+                    report.append("  - ").append(oneLine(link)).append("\n");
                 }
             }
             report.append("\n");
 
-            if (invalid) {
-                // WEB evidence 무효 = 채점 표본 아님. 조용한 PASS 금지 — 명시하고 hard fail 로 이어진다.
-                invalidWebEvidence.add(target.fileName());
-                report.append("### INVALID_WEB_EVIDENCE\n\n");
-                report.append("- WEB evidence 가 비어 R1 생성/채점을 진행하지 않는다(검증 실패 대상).\n\n");
-                compare.append("| %02d | - | 0 | - | - | - | - | - | - | INVALID |\n".formatted(target.index()));
-                System.out.println("RESULT|" + target.fileName() + "|INVALID_WEB_EVIDENCE");
-                writeCaseFragments(caseFile, report.substring(reportStart), compareRowFile, compare.substring(compareStart));
-                writeAggregate(outFile, reportHeader, caseDir, compareFile, compareHeader, compareDir);
-                if (singleTarget) {
-                    // 단건 실행이면 그 자리에서 중단한다.
-                    throw new AssertionError("WEB evidence 무효(INVALID_WEB_EVIDENCE): " + target.fileName()
-                            + " — 검색결과 " + searchOutcome.results().size() + "건에서 evidence 0건.");
+            if (emptyStatus != null) {
+                // WEB evidence 는 비었지만 중단하지 않는다 — 게이트가 오염을 걷어낸 정상 degrade(또는 무검색)이므로
+                // 공고-only 로 R1·채점을 계속 진행해 자유서술에 타사 오염이 없는지 검증한다(webEvidence=[] → 3인자 공고-only).
+                report.append("### ").append(emptyStatus).append("\n\n");
+                if ("IDENTITY_GATE_DEGRADED".equals(emptyStatus)) {
+                    report.append("- 정체성 게이트가 검색결과 ").append(rawResults.size())
+                            .append("건을 전부 걸러내 WEB evidence 0건(이슈A 정상 degrade — 실패 아님).\n");
+                } else {
+                    report.append("- 검색결과 0건(NO_WEB_RESULTS — 실패 아님).\n");
                 }
-                continue;
+                report.append("- 공고-only 로 R1 생성·채점을 계속한다(자유서술 타사 오염 검증).\n\n");
+                System.out.println("RESULT|" + target.fileName() + "|" + emptyStatus);
             }
 
             report.append("### WEB evidence (canonical WEB fact 의 sourceRef 원천)\n\n");
@@ -352,7 +383,9 @@ class BCompanyAnalysisWebRealPostingHarness {
             long demotedCount = countGateActions(canonicalCompany, GateOutcome.DEMOTED);
             long removedCount = countGateActions(canonicalCompany, GateOutcome.REMOVED);
 
-            compare.append("| %02d | %s | %d | %d→%d | %d→%d | %d | %d | %d | %d | no |\n".formatted(
+            // 마지막 컬럼: empty evidence 정상 degrade/무검색은 그 상태 라벨을, 아니면 "no".
+            String webStatusLabel = emptyStatus == null ? "no" : emptyStatus;
+            compare.append("| %02d | %s | %d | %d→%d | %d→%d | %d | %d | %d | %d | %s |\n".formatted(
                     target.index(),
                     companyR1 ? "Y" : "N",
                     webEvidence.size(),
@@ -363,11 +396,13 @@ class BCompanyAnalysisWebRealPostingHarness {
                     virtualUnknownCount,
                     passedCount,
                     demotedCount,
-                    removedCount));
+                    removedCount,
+                    webStatusLabel));
 
             System.out.println("RESULT|" + target.fileName()
                     + "|companyFellBack=" + (companyResult == null ? "ERROR" : companyResult.fellBack())
                     + "|webEvidence=" + webEvidence.size()
+                    + (emptyStatus == null ? "" : "|" + emptyStatus)
                     + "|companyMs=" + companyMs
                     + "|companyRaw=" + companyRawSaved);
 
@@ -448,11 +483,9 @@ class BCompanyAnalysisWebRealPostingHarness {
         if (!missingFiles.isEmpty()) {
             throw new AssertionError("OCR 세트에서 누락된 공고 파일 " + missingFiles.size() + "건: " + missingFiles);
         }
-        if (!invalidWebEvidence.isEmpty()) {
-            // 조용한 PASS 금지 — WEB evidence 무효 target 이 하나라도 있으면 실패로 끝낸다.
-            throw new AssertionError("WEB evidence 무효(INVALID_WEB_EVIDENCE) target " + invalidWebEvidence.size()
-                    + "건: " + invalidWebEvidence);
-        }
+        // empty evidence(IDENTITY_GATE_DEGRADED / NO_WEB_RESULTS)는 더 이상 하드페일 사유가 아니다 —
+        // 게이트가 오염을 걷어낸 정상 degrade(또는 무검색)이므로 공고-only 로 R1·채점을 계속했다.
+        // 하드 실패는 오직 검색/collector 가 예외를 던질 때만(CompanyWebSearchException 하드페일 계약 유지).
     }
 
     /**
@@ -491,6 +524,30 @@ class BCompanyAnalysisWebRealPostingHarness {
             }
         }
         return new SearchOutcome(List.copyOf(byUrl.values()), queries);
+    }
+
+    /** 정체성 게이트로 제거된 링크(raw − gated) 목록 — 정규화 링크 기준 차집합, 원본 표기 유지. */
+    private static List<String> removedLinks(List<CompanyWebSearchResult> rawResults,
+                                             List<CompanyWebSearchResult> gatedResults) {
+        Set<String> retained = new LinkedHashSet<>();
+        for (CompanyWebSearchResult r : gatedResults) {
+            if (r.link() != null && !r.link().isBlank()) {
+                retained.add(normalizeUrl(r.link()));
+            }
+        }
+        List<String> removed = new ArrayList<>();
+        Set<String> seen = new LinkedHashSet<>();
+        for (CompanyWebSearchResult r : rawResults) {
+            String link = r.link();
+            if (link == null || link.isBlank()) {
+                continue;
+            }
+            String normalized = normalizeUrl(link);
+            if (!retained.contains(normalized) && seen.add(normalized)) {
+                removed.add(link);
+            }
+        }
+        return removed;
     }
 
     /** 프로덕션 runSearch 의 normalizeUrl 과 동일(trim · 후행 / 제거 · lowercase). */
