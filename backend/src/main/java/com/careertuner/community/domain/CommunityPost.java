@@ -28,7 +28,11 @@ public class CommunityPost {
     private int viewCount;
     private int commentCount;
     private int likeCount;
+    private int dislikeCount;
+    private int recommendCount;
+    private int disrecommendCount;
     private int bookmarkCount;
+    private int scrapCount;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
 

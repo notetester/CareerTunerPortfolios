@@ -22,6 +22,9 @@ public class CommunityComment {
     private boolean anonymous;
     private String status;
     private int likeCount;
+    private int dislikeCount;
+    private int recommendCount;
+    private int disrecommendCount;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
 

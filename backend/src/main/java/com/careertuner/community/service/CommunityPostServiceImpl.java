@@ -23,9 +23,14 @@ import com.careertuner.community.dto.PostDetailResponse;
 import com.careertuner.community.dto.PostListResponse;
 import com.careertuner.community.dto.PostPageResponse;
 import com.careertuner.community.dto.UpdatePostRequest;
+import com.careertuner.community.domain.PostReaction;
+import com.careertuner.community.domain.ReactionType;
+import com.careertuner.community.event.PostEditedEvent;
 import com.careertuner.community.event.PostPublishedEvent;
 import com.careertuner.community.mapper.CommunityPostMapper;
+import com.careertuner.community.mapper.CommunitySubscriptionMapper;
 import com.careertuner.community.mapper.CommunityTagMapper;
+import com.careertuner.community.mapper.PostScrapMapper;
 import com.careertuner.community.mapper.ReactionMapper;
 import com.careertuner.community.moderation.event.InterviewExtractRequiredEvent;
 import com.careertuner.community.moderation.event.PostModerationRequiredEvent;
@@ -49,6 +54,8 @@ public class CommunityPostServiceImpl implements CommunityPostService {
     private final CommunityPostMapper postMapper;
     private final CommunityTagMapper tagMapper;
     private final ReactionMapper reactionMapper;
+    private final PostScrapMapper scrapMapper;
+    private final CommunitySubscriptionMapper subscriptionMapper;
     private final ObjectMapper objectMapper;
     private final ApplicationEventPublisher eventPublisher;
     private final PrivacyPolicyService privacyPolicyService;
@@ -115,14 +122,35 @@ public class CommunityPostServiceImpl implements CommunityPostService {
             review = postMapper.findInterviewReviewByPostId(postId);
         }
 
-        boolean liked = false;
-        boolean bookmarked = false;
-        if (currentUserId != null) {
-            liked = reactionMapper.findPostReaction(currentUserId, postId, "LIKE") != null;
-            bookmarked = reactionMapper.findPostReaction(currentUserId, postId, "BOOKMARK") != null;
-        }
+        ViewerState viewer = resolveViewerState(postId, currentUserId);
+        return toDetailResponse(post, review, viewer);
+    }
 
-        return toDetailResponse(post, review, liked, bookmarked);
+    /** 뷰어의 리액션/스크랩/구독 상태 — 리액션은 벌크 1쿼리로 판정한다. */
+    private ViewerState resolveViewerState(Long postId, Long currentUserId) {
+        if (currentUserId == null) {
+            return ViewerState.EMPTY;
+        }
+        boolean liked = false, disliked = false, recommended = false, disrecommended = false, bookmarked = false;
+        for (PostReaction r : reactionMapper.findPostReactionsByUser(currentUserId, postId)) {
+            ReactionType type = ReactionType.valueOf(r.getReactionType());
+            switch (type) {
+                case LIKE -> liked = true;
+                case DISLIKE -> disliked = true;
+                case RECOMMEND -> recommended = true;
+                case DISRECOMMEND -> disrecommended = true;
+                case BOOKMARK -> bookmarked = true;
+            }
+        }
+        boolean scrapped = scrapMapper.findByUserAndPost(currentUserId, postId) != null;
+        boolean subscribed = subscriptionMapper.existsPostSubscription(currentUserId, postId);
+        return new ViewerState(liked, disliked, recommended, disrecommended, bookmarked, scrapped, subscribed);
+    }
+
+    /** 뷰어 상태 홀더 — 비로그인 뷰어는 전부 false. */
+    private record ViewerState(boolean liked, boolean disliked, boolean recommended,
+                               boolean disrecommended, boolean bookmarked, boolean scrapped, boolean subscribed) {
+        static final ViewerState EMPTY = new ViewerState(false, false, false, false, false, false, false);
     }
 
     @Transactional
@@ -198,6 +226,8 @@ public class CommunityPostServiceImpl implements CommunityPostService {
         if (PostCategory.INTERVIEW_REVIEW.name().equals(post.getCategory())) {
             eventPublisher.publishEvent(new InterviewExtractRequiredEvent(postId));
         }
+        // 수정 커밋 후 → reactionRetention=release 사용자의 이 글 리액션 해지(AFTER_COMMIT 리스너)
+        eventPublisher.publishEvent(new PostEditedEvent(postId));
     }
 
     @Override
@@ -252,12 +282,7 @@ public class CommunityPostServiceImpl implements CommunityPostService {
                         post.isAnonymous() ? "익명" : post.getUserName(),
                         post.isAnonymous()
                 ),
-                new PostListResponse.StatsDto(
-                        post.getViewCount(),
-                        post.getCommentCount(),
-                        post.getLikeCount(),
-                        post.getBookmarkCount()
-                ),
+                toStatsDto(post),
                 post.getStatus(),
                 post.getCreatedAt(),
                 post.getCompanyName(),
@@ -265,8 +290,21 @@ public class CommunityPostServiceImpl implements CommunityPostService {
         );
     }
 
+    private static PostListResponse.StatsDto toStatsDto(CommunityPost post) {
+        return new PostListResponse.StatsDto(
+                post.getViewCount(),
+                post.getCommentCount(),
+                post.getLikeCount(),
+                post.getDislikeCount(),
+                post.getRecommendCount(),
+                post.getDisrecommendCount(),
+                post.getBookmarkCount(),
+                post.getScrapCount()
+        );
+    }
+
     private PostDetailResponse toDetailResponse(CommunityPost post, CommunityInterviewReview review,
-                                                boolean liked, boolean bookmarked) {
+                                                ViewerState viewer) {
         PostCategory cat = PostCategory.valueOf(post.getCategory());
         PostDetailResponse.InterviewReviewDto reviewDto = null;
 
@@ -294,20 +332,20 @@ public class CommunityPostServiceImpl implements CommunityPostService {
                         post.isAnonymous() ? "익명" : post.getUserName(),
                         post.isAnonymous()
                 ),
-                new PostListResponse.StatsDto(
-                        post.getViewCount(),
-                        post.getCommentCount(),
-                        post.getLikeCount(),
-                        post.getBookmarkCount()
-                ),
+                toStatsDto(post),
                 post.getStatus(),
                 post.getCreatedAt(),
                 post.getUpdatedAt(),
                 post.getCompanyName(),
                 post.getJobTitle(),
                 reviewDto,
-                liked,
-                bookmarked,
+                viewer.liked(),
+                viewer.disliked(),
+                viewer.recommended(),
+                viewer.disrecommended(),
+                viewer.bookmarked(),
+                viewer.scrapped(),
+                viewer.subscribed(),
                 false
         );
     }
@@ -327,18 +365,18 @@ public class CommunityPostServiceImpl implements CommunityPostService {
                         post.isAnonymous() ? "익명" : post.getUserName(),
                         post.isAnonymous()
                 ),
-                new PostListResponse.StatsDto(
-                        post.getViewCount(),
-                        post.getCommentCount(),
-                        post.getLikeCount(),
-                        post.getBookmarkCount()
-                ),
+                toStatsDto(post),
                 post.getStatus(),
                 post.getCreatedAt(),
                 post.getUpdatedAt(),
                 post.getCompanyName(),
                 post.getJobTitle(),
                 null,
+                false,
+                false,
+                false,
+                false,
+                false,
                 false,
                 false,
                 true

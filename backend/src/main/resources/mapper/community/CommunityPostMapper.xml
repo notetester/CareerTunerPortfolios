@@ -99,7 +99,7 @@
          WHERE id = #{id}
     </update>
 
-    <!-- 인기글 조회 (가중치 점수: 좋아요*3 + 조회수 + 댓글*2, 최근 7일) -->
+    <!-- 인기글 조회 (가중치 점수: 추천*5(가중 최대) + 좋아요*3 + 댓글*2 + 조회수, 최근 7일) -->
     <select id="findHotPosts" resultType="com.careertuner.community.domain.CommunityPost">
         SELECT cp.*,
                u.name AS user_name
@@ -107,7 +107,7 @@
           JOIN users u ON cp.user_id = u.id
          WHERE cp.status = #{status}
            AND cp.created_at >= #{since}
-         ORDER BY (cp.like_count * 3 + cp.view_count + cp.comment_count * 2) DESC
+         ORDER BY (cp.recommend_count * 5 + cp.like_count * 3 + cp.comment_count * 2 + cp.view_count) DESC
          LIMIT #{limit}
     </select>
 

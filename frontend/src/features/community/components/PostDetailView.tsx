@@ -260,7 +260,16 @@ export function PostDetailView({ postId, onBack, onEdit }: PostDetailViewProps) 
             <AvatarFallback className="bg-muted text-sm">{(d.author?.name ?? "익")[0]}</AvatarFallback>
           </Avatar>
           <div className="ct-detail__who">
-            <div className="ct-detail__name">
+            {/* 비익명 작성자 이름 클릭 → 프로필 활동 탭(공개범위·차단은 서버가 검사) */}
+            <div
+              className={`ct-detail__name ${!d.author?.isAnonymous && d.author?.id ? "ct-author-link" : ""}`}
+              onClick={() => {
+                if (!d.author?.isAnonymous && d.author?.id) {
+                  navigate(`/community/users/${d.author.id}/activity`);
+                }
+              }}
+              title={!d.author?.isAnonymous && d.author?.id ? "작성자의 활동 보기" : undefined}
+            >
               {d.author?.name ?? "익명"}
             </div>
             <div className="ct-detail__sub">
@@ -330,15 +339,8 @@ export function PostDetailView({ postId, onBack, onEdit }: PostDetailViewProps) 
         </div>
       )}
 
-      {/* Action bar */}
-      <ReactionButtons
-        key={`${d.id}-${d.liked}-${d.bookmarked}`}
-        postId={d.id}
-        likeCount={d.stats.likeCount}
-        bookmarkCount={d.stats.bookmarkCount}
-        initialLiked={d.liked ?? false}
-        initialBookmarked={d.bookmarked ?? false}
-      />
+      {/* Action bar — 추천/비추천 · 좋아요/싫어요 · 즐겨찾기 · 스크랩 · 구독 + 익명 반응 옵션 */}
+      <ReactionButtons post={d} />
 
       {/* Comments */}
       <CommentSection postId={d.id} comments={comments} />

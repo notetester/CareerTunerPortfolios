@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from "react";
 import { useSearchParams, useParams, useNavigate } from "react-router";
-import { PenLine, Lock, BookOpen } from "lucide-react";
+import { PenLine, Lock, BookOpen, UserRound } from "lucide-react";
 import { PostList } from "../components/PostList";
 import { Pager } from "../components/Pager";
 import { PostFilters, type SortKey } from "../components/PostFilters";
@@ -184,6 +184,11 @@ export function CommunityHomePage() {
           <p>익명으로 취업·이직·면접 이야기를 나눠보세요</p>
         </div>
         <div style={{ display: "flex", gap: 8 }}>
+          <button className="av-btn" style={{ height: 34, padding: "0 14px" }} onClick={() => {
+            requireAuth(() => navigate("/community/activity"));
+          }}>
+            <UserRound /> 내 활동
+          </button>
           <button className="av-btn" style={{ height: 34, padding: "0 14px" }} onClick={() => {
             setViewMode("guidelines");
             window.history.pushState({ view: "guidelines" }, "");

@@ -1,6 +1,10 @@
 import { useState } from "react";
+import { useNavigate } from "react-router";
 import { Avatar, AvatarFallback } from "@/app/components/ui/avatar";
-import { Heart, MessageCircle, Lock, Trash2, MessageSquareX, Pencil, UserX } from "lucide-react";
+import {
+  Heart, HeartCrack, ThumbsUp, ThumbsDown, Bell, BellRing,
+  MessageCircle, Lock, Trash2, MessageSquareX, Pencil, UserX,
+} from "lucide-react";
 // 개인 차단 진입점 — 익명 댓글은 작성자 id 가 클라이언트에 없어 콘텐츠 id 로 차단한다(익명성 유지).
 import { blockUser, blockUserByContent } from "@/features/privacy/api/privacyApi";
 import { showBlockManageToast } from "@/features/privacy/components/blockToast";
@@ -26,9 +30,9 @@ interface CommentItemProps {
 const MAX_INDENT_DEPTH = 5;
 
 export function CommentItem({ comment: c, childrenMap, depth, onReply }: CommentItemProps) {
-  const { toggleReaction, fetchComments } = useCommunityStore();
+  const { toggleReaction, toggleCommentSubscription, fetchComments } = useCommunityStore();
   const { showLoginDialog, requireAuth, onLoginConfirm, onLoginCancel } = useLoginDialog();
-  const [liked, setLiked] = useState(c.liked ?? false);
+  const navigate = useNavigate();
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [deleted, setDeleted] = useState(false);
   const [replyOpen, setReplyOpen] = useState(false);
@@ -72,14 +76,25 @@ export function CommentItem({ comment: c, childrenMap, depth, onReply }: Comment
     }
   };
 
-  const handleLike = () => {
+  // 리액션 상태·카운트는 store 가 서버 응답(토글 후 카운트)으로 comments 배열을 갱신해 props 로 내려온다.
+  const handleReaction = (type: "LIKE" | "DISLIKE" | "RECOMMEND" | "DISRECOMMEND") => {
     requireAuth(async () => {
-      setLiked((v) => !v);
       try {
-        await toggleReaction("COMMENT", c.id, "LIKE");
+        await toggleReaction("COMMENT", c.id, type);
+      } catch (err) {
+        toast.error(err instanceof Error && err.message ? err.message : "리액션 처리에 실패했습니다.");
+      }
+    });
+  };
+
+  // 댓글 구독 — 새 답글이 달리면 알림(작성자가 아니어도 가능, 토글)
+  const handleSubscribe = () => {
+    requireAuth(async () => {
+      try {
+        const active = await toggleCommentSubscription(c.id);
+        toast.success(active ? "이 댓글을 구독합니다. 새 답글이 달리면 알려드릴게요." : "댓글 구독을 해지했습니다.");
       } catch {
-        setLiked((v) => !v);
-        toast.error("좋아요 처리에 실패했습니다.");
+        toast.error("구독 처리에 실패했습니다.");
       }
     });
   };
@@ -131,7 +146,18 @@ export function CommentItem({ comment: c, childrenMap, depth, onReply }: Comment
           ) : (
             <>
               <div className="ct-cmt__top">
-                <span className="ct-cmt__name">{c.author.name}</span>
+                {/* 비익명 작성자 이름 클릭 → 프로필 활동 탭 */}
+                <span
+                  className={`ct-cmt__name ${!c.author.isAnonymous && c.author.id ? "ct-author-link" : ""}`}
+                  onClick={() => {
+                    if (!c.author.isAnonymous && c.author.id) {
+                      navigate(`/community/users/${c.author.id}/activity`);
+                    }
+                  }}
+                  title={!c.author.isAnonymous && c.author.id ? "작성자의 활동 보기" : undefined}
+                >
+                  {c.author.name}
+                </span>
                 {c.isAuthor && <span className="ct-cmt__op">작성자</span>}
                 <span className="ct-cmt__time">{relTime(c.createdAt)}</span>
               </div>
@@ -158,11 +184,43 @@ export function CommentItem({ comment: c, childrenMap, depth, onReply }: Comment
                 </div>
               )}
               <div className="ct-cmt__foot">
+                {/* 추천 축(트렌드용) */}
                 <button
-                  className={`ct-cmt__act ${liked ? "is-on" : ""}`}
-                  onClick={handleLike}
+                  className={`ct-cmt__act ${c.recommended ? "is-on--blue" : ""}`}
+                  onClick={() => handleReaction("RECOMMEND")}
+                  title="추천"
+                >
+                  <ThumbsUp /> {c.recommendCount ?? 0}
+                </button>
+                <button
+                  className={`ct-cmt__act ${c.disrecommended ? "is-on--muted" : ""}`}
+                  onClick={() => handleReaction("DISRECOMMEND")}
+                  title="비추천"
+                >
+                  <ThumbsDown /> {c.disrecommendCount ?? 0}
+                </button>
+                {/* 개인화 축 */}
+                <button
+                  className={`ct-cmt__act ${c.liked ? "is-on" : ""}`}
+                  onClick={() => handleReaction("LIKE")}
+                  title="좋아요"
                 >
                   <Heart /> {c.likeCount}
+                </button>
+                <button
+                  className={`ct-cmt__act ${c.disliked ? "is-on--muted" : ""}`}
+                  onClick={() => handleReaction("DISLIKE")}
+                  title="싫어요"
+                >
+                  <HeartCrack /> {c.dislikeCount ?? 0}
+                </button>
+                {/* 댓글 구독 — 새 답글 알림 */}
+                <button
+                  className={`ct-cmt__act ${c.subscribed ? "is-on--blue" : ""}`}
+                  onClick={handleSubscribe}
+                  title="구독 — 새 답글이 달리면 알림을 받습니다"
+                >
+                  {c.subscribed ? <BellRing /> : <Bell />}
                 </button>
                 <button className="ct-cmt__act" onClick={handleReplyClick}>
                   <MessageCircle /> 답글

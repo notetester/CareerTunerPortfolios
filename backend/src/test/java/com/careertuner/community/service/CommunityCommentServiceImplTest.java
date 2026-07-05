@@ -29,6 +29,7 @@ import com.careertuner.community.dto.CommentResponse;
 import com.careertuner.community.dto.CreateCommentRequest;
 import com.careertuner.community.mapper.CommunityCommentMapper;
 import com.careertuner.community.mapper.CommunityPostMapper;
+import com.careertuner.community.mapper.CommunitySubscriptionMapper;
 import com.careertuner.community.mapper.ReactionMapper;
 import com.careertuner.community.moderation.event.CommentModerationRequiredEvent;
 import com.careertuner.notification.service.NotificationService;
@@ -45,13 +46,14 @@ class CommunityCommentServiceImplTest {
     private final CommunityCommentMapper commentMapper = mock(CommunityCommentMapper.class);
     private final CommunityPostMapper postMapper = mock(CommunityPostMapper.class);
     private final ReactionMapper reactionMapper = mock(ReactionMapper.class);
+    private final CommunitySubscriptionMapper subscriptionMapper = mock(CommunitySubscriptionMapper.class);
     private final ApplicationEventPublisher eventPublisher = mock(ApplicationEventPublisher.class);
     private final NotificationService notificationService = mock(NotificationService.class);
     private final PrivacyPolicyService privacyPolicyService = mock(PrivacyPolicyService.class);
 
     private final CommunityCommentServiceImpl service =
-            new CommunityCommentServiceImpl(commentMapper, postMapper, reactionMapper, eventPublisher,
-                    notificationService, privacyPolicyService);
+            new CommunityCommentServiceImpl(commentMapper, postMapper, reactionMapper, subscriptionMapper,
+                    eventPublisher, notificationService, privacyPolicyService);
 
     /** 개인 차단 정책 기본 스텁 — 차단 없음(기존 테스트가 차단 필터의 영향을 받지 않게 명시). */
     @BeforeEach

@@ -1,6 +1,9 @@
 import { create } from "zustand";
 import * as communityApi from "../api/communityApi";
-import type { CommunityPost, CommunityComment, CommunityCategory } from "../types/community";
+import type {
+  CommunityPost, CommunityComment, CommunityCategory,
+  ReactionType, TargetType, ToggleReactionResult,
+} from "../types/community";
 
 interface CommunityState {
   /* 목록 */
@@ -57,10 +60,30 @@ interface CommunityState {
     };
   }) => Promise<void>;
   toggleReaction: (
-    targetType: "POST" | "COMMENT",
+    targetType: TargetType,
     targetId: number,
-    reactionType: "LIKE" | "BOOKMARK",
-  ) => Promise<boolean>;
+    reactionType: ReactionType,
+  ) => Promise<ToggleReactionResult>;
+  toggleScrap: (postId: number) => Promise<boolean>;
+  togglePostSubscription: (postId: number) => Promise<boolean>;
+  toggleCommentSubscription: (commentId: number) => Promise<boolean>;
+
+  /* 익명 반응 모드 — 리액션 바의 "익명으로" 드롭다운이 제어하고, 글/댓글 리액션·스크랩이 공유한다 */
+  reactAnonymously: boolean;
+  setReactAnonymously: (v: boolean) => void;
+}
+
+/** 토글 결과의 활성 상태로 뷰어 플래그를 재계산 — 같은 축 반대 리액션은 교체되므로 함께 끈다. */
+function viewerFlagsAfterToggle(type: ReactionType, active: boolean) {
+  const flags: Partial<Pick<CommunityPost, "liked" | "disliked" | "recommended" | "disrecommended" | "bookmarked">> = {};
+  switch (type) {
+    case "LIKE": flags.liked = active; if (active) flags.disliked = false; break;
+    case "DISLIKE": flags.disliked = active; if (active) flags.liked = false; break;
+    case "RECOMMEND": flags.recommended = active; if (active) flags.disrecommended = false; break;
+    case "DISRECOMMEND": flags.disrecommended = active; if (active) flags.recommended = false; break;
+    case "BOOKMARK": flags.bookmarked = active; break;
+  }
+  return flags;
 }
 
 export const useCommunityStore = create<CommunityState>((set, get) => ({
@@ -150,16 +173,26 @@ export const useCommunityStore = create<CommunityState>((set, get) => ({
   },
 
   toggleReaction: async (targetType, targetId, reactionType) => {
-    const active = await communityApi.toggleReaction(targetType, targetId, reactionType);
+    const anonymous = get().reactAnonymously;
+    const result = await communityApi.toggleReaction(targetType, targetId, reactionType, anonymous);
     const { currentPost, comments } = get();
-    const delta = active ? 1 : -1;
+    const flags = viewerFlagsAfterToggle(result.reactionType, result.active);
 
+    // 같은 축 교체가 있어 델타 계산 대신 서버가 내려준 토글 후 카운트로 갱신한다(응답 기반 계약).
     if (targetType === "POST" && currentPost && currentPost.id === targetId) {
-      const key = reactionType === "LIKE" ? "likeCount" : "bookmarkCount";
       set({
         currentPost: {
           ...currentPost,
-          stats: { ...currentPost.stats, [key]: Math.max(0, currentPost.stats[key] + delta) },
+          ...flags,
+          stats: {
+            ...currentPost.stats,
+            likeCount: result.counts.likeCount,
+            dislikeCount: result.counts.dislikeCount,
+            recommendCount: result.counts.recommendCount,
+            disrecommendCount: result.counts.disrecommendCount,
+            bookmarkCount: result.counts.bookmarkCount,
+            scrapCount: result.counts.scrapCount,
+          },
         },
       });
     }
@@ -167,11 +200,55 @@ export const useCommunityStore = create<CommunityState>((set, get) => ({
       set({
         comments: comments.map((c) =>
           c.id === targetId
-            ? { ...c, likeCount: Math.max(0, c.likeCount + delta) }
+            ? {
+                ...c,
+                ...flags,
+                likeCount: result.counts.likeCount,
+                dislikeCount: result.counts.dislikeCount,
+                recommendCount: result.counts.recommendCount,
+                disrecommendCount: result.counts.disrecommendCount,
+              }
             : c,
         ),
       });
     }
+    return result;
+  },
+
+  toggleScrap: async (postId) => {
+    const anonymous = get().reactAnonymously;
+    const { active, scrapCount } = await communityApi.toggleScrap(postId, anonymous);
+    const { currentPost } = get();
+    if (currentPost && currentPost.id === postId) {
+      set({
+        currentPost: {
+          ...currentPost,
+          scrapped: active,
+          stats: { ...currentPost.stats, scrapCount },
+        },
+      });
+    }
     return active;
   },
+
+  togglePostSubscription: async (postId) => {
+    const active = await communityApi.togglePostSubscription(postId);
+    const { currentPost } = get();
+    if (currentPost && currentPost.id === postId) {
+      set({ currentPost: { ...currentPost, subscribed: active } });
+    }
+    return active;
+  },
+
+  toggleCommentSubscription: async (commentId) => {
+    const active = await communityApi.toggleCommentSubscription(commentId);
+    const { comments } = get();
+    set({
+      comments: comments.map((c) => (c.id === commentId ? { ...c, subscribed: active } : c)),
+    });
+    return active;
+  },
+
+  reactAnonymously: false,
+  setReactAnonymously: (v) => set({ reactAnonymously: v }),
 }));

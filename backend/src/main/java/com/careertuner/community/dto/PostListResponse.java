@@ -20,5 +20,6 @@ public record PostListResponse(
 
     public record AuthorDto(Long id, String name, boolean isAnonymous) {}
 
-    public record StatsDto(int viewCount, int commentCount, int likeCount, int bookmarkCount) {}
+    public record StatsDto(int viewCount, int commentCount, int likeCount, int dislikeCount,
+                           int recommendCount, int disrecommendCount, int bookmarkCount, int scrapCount) {}
 }
