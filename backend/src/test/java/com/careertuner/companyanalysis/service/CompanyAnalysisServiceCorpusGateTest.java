@@ -99,12 +99,17 @@ class CompanyAnalysisServiceCorpusGateTest {
         List<CompanyWebEvidence> evidence = service.collectWebEvidence(applicationCase("가온테크"));
 
         assertThat(evidence).isEmpty();
+        // 추가 A: 게이트를 put 전에 적용 — 오염 corpus 가 캐시에 굳지 않는다(빈 목록만 저장).
+        CompanySearchCache cached = cacheMapper.store.get("가온테크");
+        assertThat(cached).isNotNull();
+        assertThat(cached.getResults()).isEqualTo("[]");
     }
 
-    // ── keep: 대상 양성 근거가 하나라도 있으면 전체 유지(riding-along 허용) ──
+    // ── keep: 브랜드(riding) 유지, 접두충돌 경쟁사(rival) 제거, 남은 anchor 있으면 유지 ──
 
     /**
      * "위버스컴퍼니": 최소 1건이 대상명 포함(+브랜드 "위버스"만 있는 결과 혼재) → degrade 안 함, 전체 유지.
+     * 브랜드 토큰 "위버스"는 대상명의 접두라 anchor(rival 아님)이므로 riding 유지.
      */
     @Test
     void keepsCorpusWhenAtLeastOneResultIdentifiesTargetAmongBrandOnly() {
@@ -116,6 +121,85 @@ class CompanyAnalysisServiceCorpusGateTest {
         List<CompanyWebEvidence> evidence = service.collectWebEvidence(applicationCase("위버스컴퍼니"));
 
         assertThat(evidence).hasSize(2);
+    }
+
+    /**
+     * (P1-a) "위버스컴퍼니" 순수 브랜드-only: 어느 결과에도 "위버스컴퍼니" 문자열이 없고 "위버스"만 있음.
+     * 브랜드 토큰이 대상명의 접두 → prefix anchor 로 keep(degrade 아님).
+     */
+    @Test
+    void brandOnlyPrefixTokenKeepsCorpusWithoutDegrade() {
+        CompanyAnalysisService service = service(enabled());
+        when(webSearchClient.search(any(NaverSearchCategory.class), any(String.class))).thenReturn(List.of(
+                result("위버스 앱 신규 기능 공개", "https://news.example.com/1", "위버스 플랫폼이 기능을 추가했다"),
+                result("위버스 콘서트 스트리밍 오픈", "https://news.example.com/2", "위버스에서 라이브가 열린다")));
+
+        List<CompanyWebEvidence> evidence = service.collectWebEvidence(applicationCase("위버스컴퍼니"));
+
+        assertThat(evidence).hasSize(2); // 브랜드-only 라도 접두 anchor → 유지
+    }
+
+    /**
+     * (P1-b) "백패커" + 공통 접두 없는 다른 브랜드(텀블벅·전자오락수호대) 다수: 백패커 언급 1건이 anchor,
+     * 다른 브랜드는 접두 공유가 없어 rival 아님 → 전부 유지(degrade 아님, 텀블벅 등 제거 안 됨).
+     */
+    @Test
+    void backpackrKeepsUnrelatedBrandsWithoutRemoval() {
+        CompanyAnalysisService service = service(enabled());
+        when(webSearchClient.search(any(NaverSearchCategory.class), any(String.class))).thenReturn(List.of(
+                result("백패커 아이디어스 거래액 성장", "https://news.example.com/1", "백패커가 운영하는 아이디어스"),
+                result("텀블벅 신규 프로젝트 오픈", "https://news.example.com/2", "텀블벅 크라우드펀딩 소식"),
+                result("전자오락수호대 업데이트", "https://news.example.com/3", "전자오락수호대 신규 콘텐츠")));
+
+        List<CompanyWebEvidence> evidence = service.collectWebEvidence(applicationCase("백패커"));
+
+        assertThat(evidence).hasSize(3);
+        assertThat(evidence).extracting(CompanyWebEvidence::url)
+                .contains("https://news.example.com/2", "https://news.example.com/3"); // 브랜드 유지
+    }
+
+    /**
+     * (P2) "가온테크" 혼합 corpus: "가온테크" 1건 + 접두충돌 경쟁사("가온전선"·"가온칩스", marker 없음) 다수.
+     * 접두 공유 후 발산하는 경쟁사는 rival 로 제거, "가온테크"만 남아 anchor → keep(degrade 아님).
+     * 남은 evidence 에 가온전선·가온칩스 미포함(riding-along 금지)을 assert 한다.
+     */
+    @Test
+    void mixedCorpusRemovesConfusableRivalsButKeepsTarget() {
+        CompanyAnalysisService service = service(enabled());
+        when(webSearchClient.search(any(NaverSearchCategory.class), any(String.class))).thenReturn(List.of(
+                result("가온테크 신입 개발자 채용", "https://news.example.com/1", "가온테크가 채용을 시작했다"),
+                result("가온전선 대형 수주", "https://news.example.com/2", "가온전선이 수주를 따냈다"),
+                result("가온칩스 주가 급등", "https://news.example.com/3", "가온칩스 반도체 소식")));
+
+        List<CompanyWebEvidence> evidence = service.collectWebEvidence(applicationCase("가온테크"));
+
+        assertThat(evidence).hasSize(1);
+        assertThat(evidence.get(0).url()).isEqualTo("https://news.example.com/1");
+        assertThat(evidence).extracting(CompanyWebEvidence::url)
+                .doesNotContain("https://news.example.com/2", "https://news.example.com/3"); // 경쟁사 제거
+        // 추가 A: 캐시에도 정제 결과만 저장 — 가온전선/가온칩스 미포함(오염 corpus 가 굳지 않음).
+        CompanySearchCache cached = cacheMapper.store.get("가온테크");
+        assertThat(cached).isNotNull();
+        assertThat(cached.getResults()).contains("news.example.com/1");
+        assertThat(cached.getResults()).doesNotContain("news.example.com/2", "news.example.com/3");
+    }
+
+    /**
+     * (추가 A) 혼합 corpus MISS 후 재조회(HIT)도 정제 결과만 반환 — 캐시가 clean 함을 재확인.
+     */
+    @Test
+    void secondCallHitReturnsCleanedCorpusWithoutRivals() {
+        CompanyAnalysisService service = service(enabled());
+        when(webSearchClient.search(any(NaverSearchCategory.class), any(String.class))).thenReturn(List.of(
+                result("가온테크 신입 개발자 채용", "https://news.example.com/1", "가온테크가 채용을 시작했다"),
+                result("가온전선 대형 수주", "https://news.example.com/2", "가온전선이 수주를 따냈다"),
+                result("가온칩스 주가 급등", "https://news.example.com/3", "가온칩스 반도체 소식")));
+
+        service.collectWebEvidence(applicationCase("가온테크")); // MISS → 정제 후 put
+        List<CompanyWebEvidence> second = service.collectWebEvidence(applicationCase("가온테크")); // HIT
+
+        assertThat(second).hasSize(1);
+        assertThat(second.get(0).url()).isEqualTo("https://news.example.com/1");
     }
 
     /** "딥그로브" 회사명이 최소 1건에 등장 → 유지. */

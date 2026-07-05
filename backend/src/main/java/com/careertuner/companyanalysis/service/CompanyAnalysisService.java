@@ -228,30 +228,40 @@ public class CompanyAnalysisService {
             log.warn("기업분석 웹검색 실패 — 공고-only 로 degrade 합니다: {}", ex.getMessage());
             return List.of();
         }
-        // 코퍼스 레벨 정체성 게이트(D-6 이슈A · 동명 접두충돌): 수집 결과 중 대상 회사를 양성 식별하는
-        // 결과가 하나도 없으면(접두공유 대기업·무관 결과만 채워진 경우) 웹 근거를 공고-only 로 degrade 한다
-        // — 오염이 R1 입력·저장 gate 양쪽에 들어가기 전에 차단. 양성 근거가 하나라도 있으면 기존 동작 그대로
-        // 전체 corpus 를 유지한다(per-fact 방어는 evidence gate 담당). 시크릿·응답 body 는 로그에 남기지 않는다.
-        if (!companySourceResolver.hasPositiveIdentityMatch(identity, results)) {
-            log.warn("기업분석 웹검색 코퍼스에 대상 회사 양성 근거가 없어 공고-only 로 degrade 합니다 (수집 {}건).",
-                    results.size());
-            return List.of();
-        }
-        // evidence 는 캐시하지 않는다 — HIT/MISS 공통으로 collector 를 매번 재실행한다.
+        // 코퍼스 레벨 정체성 게이트(D-6 이슈A · 동명 접두충돌)는 MISS 경로에서 캐시 put 전에 이미 적용됐고
+        // (retainIdentifiableResults · 접두충돌 경쟁사 제거 + anchor 게이트), HIT 경로는 정제된 캐시를 그대로
+        // 돌려주므로 여기 results 는 항상 clean 하다. evidence 는 캐시하지 않고 HIT/MISS 공통으로 collector 를
+        // 매번 재실행한다.
         return companyEvidenceCollector.collect(identity, results);
     }
 
-    /** 캐시 HIT 면 저장된 검색결과 역직렬화(검색 미호출), MISS 면 검색·정제 후 빈결과라도 캐시에 저장. */
+    /**
+     * 캐시 HIT 면 저장된 검색결과 역직렬화(검색 미호출), MISS 면 검색·정제·정체성 게이트 후 캐시에 저장.
+     *
+     * <p><b>정체성 게이트를 put 전에 적용(D-6 이슈A · 2차 보정 추가 A):</b> {@code runSearch} 의 per-call
+     * 필터 뒤에 코퍼스 레벨 스크리닝({@link CompanySourceResolver#retainIdentifiableResults})을 한 번 더 돌려
+     * 접두충돌 경쟁사("가온전선"·"가온칩스")를 제거하고 anchor 가 없으면 빈 목록으로 degrade 한 <b>결과만</b>
+     * 캐시에 저장한다. 이렇게 하면 오염 corpus 가 회사 cache key 에 TTL 동안 굳어 재조회를 억제하는 문제를
+     * 막는다. 빈 목록 저장은 기존 D-4b "빈 배열도 put" 계약과 정합(같은 회사 재조회 시 HIT). 게이트는
+     * flag ON·MISS 경로에서만 동작한다 — HIT 는 이미 정제된 캐시를 반환한다.
+     */
     private List<CompanyWebSearchResult> resolveSearchResults(CompanyIdentity identity, String queryKey) {
         Optional<CompanySearchCache> cached = companySearchCacheService.get(queryKey);
         if (cached.isPresent()) {
             return deserializeResults(cached.get().getResults());
         }
-        List<CompanyWebSearchResult> results = runSearch(identity);
+        List<CompanyWebSearchResult> searched = runSearch(identity);
+        // 접두충돌 경쟁사 제거 + anchor 게이트를 put 전에 적용 — 캐시에는 정제·게이트된 결과만 저장한다.
+        List<CompanyWebSearchResult> gated = companySourceResolver.retainIdentifiableResults(identity, searched);
+        if (gated.isEmpty() && !searched.isEmpty()) {
+            // 관측성: 검색은 됐으나 대상 양성 근거가 없어 공고-only 로 degrade(시크릿·응답 body 미포함).
+            log.warn("기업분석 웹검색 코퍼스에 대상 회사 양성 근거가 없어 공고-only 로 degrade 합니다 (수집 {}건).",
+                    searched.size());
+        }
         // 빈 배열이어도 put 한다 → 같은 회사 재조회 시 HIT(TTL 내 재검색 없음).
         // fetchedAt=null 로 넘겨 CompanySearchCacheService 의 주입 Clock(TTL 판정과 동일 시각원)이 채우게 한다.
-        companySearchCacheService.put(queryKey, serializeResults(results), null);
-        return results;
+        companySearchCacheService.put(queryKey, serializeResults(gated), null);
+        return gated;
     }
 
     /**

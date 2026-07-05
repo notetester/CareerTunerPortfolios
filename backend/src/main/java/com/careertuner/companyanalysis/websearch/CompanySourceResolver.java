@@ -1,5 +1,6 @@
 package com.careertuner.companyanalysis.websearch;
 
+import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
@@ -87,10 +88,20 @@ public class CompanySourceResolver {
         return results.stream().anyMatch(result -> identifiesCompany(identity, result));
     }
 
+    /** anchor/rival 판정에 쓰는 토큰·접두 공유의 최소 길이(2). 1글자 잡음 토큰 오양성 방지. */
+    private static final int MIN_TOKEN_LENGTH = 2;
+
     /**
-     * 결과 1건이 대상 회사를 양성 식별하는가(D-6 이슈A). filterObviousMismatches 와 같은 정규화
-     * 로직을 재사용한다 — 정규화한 대상 회사명이 제목/설명/링크(haystack)에 등장하거나, 제목의
-     * 법인 표기 상호가 대상과 포함관계이면 양성. 회사명 미식별이면 항상 false.
+     * 결과 1건이 대상 회사를 양성 식별(anchor)하는가(D-6 이슈A · 2차 P1). filterObviousMismatches 와 같은
+     * 정규화 로직을 재사용한다. anchor 조건(하나라도 만족):
+     * <ul>
+     *   <li>정규화한 대상 회사명이 제목/설명/링크(haystack)에 그대로 등장, 또는</li>
+     *   <li>제목의 법인 표기 상호가 대상과 포함관계, 또는</li>
+     *   <li>제목 토큰 T(len≥2) 와 대상명 N 이 <b>접두 관계</b>(T 가 N 의 접두이거나 N 이 T 의 접두).</li>
+     * </ul>
+     * 접두 관계 조건이 브랜드-only 결과("위버스컴퍼니"의 "위버스")를 잡는다. 반드시 접두로만 판정한다
+     * — 부분문자열은 허용하지 않아 "컴퍼니"·"테크" 같은 접미 토큰이 오양성되지 않게 한다.
+     * 회사명 미식별(빈 이름)이면 항상 false.
      */
     public boolean identifiesCompany(CompanyIdentity identity, CompanyWebSearchResult result) {
         String normalizedName = normalizeCompanyName(identity.companyName());
@@ -102,7 +113,102 @@ public class CompanySourceResolver {
         if (haystack.contains(normalizedName)) {
             return true;
         }
-        return titleCorporateNameMatchesTarget(result.title(), normalizedName);
+        if (titleCorporateNameMatchesTarget(result.title(), normalizedName)) {
+            return true;
+        }
+        for (String token : titleTokens(result.title())) {
+            if (isPrefixRelated(token, normalizedName)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * 코퍼스 레벨 정체성 스크리닝(D-6 이슈A · 2차 보정 · 단일 소스). 두 단계:
+     * <ol>
+     *   <li>접두충돌 경쟁사(confusableRival) 제거 — 비-anchor 결과 중 접두 공유 후 발산하는 것만
+     *       뺀다(대상명이 함께 나오는 anchor·접두 공유 없는 다른 브랜드는 유지).</li>
+     *   <li>남은 결과 중 anchor 가 하나도 없으면 빈 목록으로 degrade — 공고-only 후퇴.</li>
+     * </ol>
+     * 서비스는 이 결과만 캐시·evidence 로 넘겨 오염이 캐시·R1 입력 어디에도 굳지 않게 한다.
+     * 회사명 미식별·빈 코퍼스면 빈 목록.
+     */
+    public List<CompanyWebSearchResult> retainIdentifiableResults(
+            CompanyIdentity identity, List<CompanyWebSearchResult> results) {
+        if (results == null || results.isEmpty()) {
+            return List.of();
+        }
+        String normalizedName = normalizeCompanyName(identity.companyName());
+        if (normalizedName.isBlank()) {
+            return List.of();
+        }
+        List<CompanyWebSearchResult> screened = results.stream()
+                .filter(result -> !isConfusableRival(identity, result))
+                .toList();
+        if (!hasPositiveIdentityMatch(identity, screened)) {
+            return List.of();
+        }
+        return screened;
+    }
+
+    /**
+     * 결과 1건이 접두충돌 경쟁사(confusableRival)인가(D-6 이슈A · 2차 P2). anchor 가 아니면서, 제목 토큰
+     * T(len≥2) 중 하나가 대상명 N 과 <b>공통 접두를 {@value #MIN_TOKEN_LENGTH}자 이상 공유하지만
+     * 접두 관계는 아닌</b>(발산) 경우 true. "가온테크" 대상에서 "가온전선"·"가온칩스"를 잡되, 공통 접두가
+     * 없는 다른 브랜드("텀블벅")는 rival 이 아니라 유지한다(riding 정당).
+     *
+     * <p>anchor(대상명이 함께 나오거나 접두 관계)인 결과는 절대 rival 이 아니다 — 서비스는 rival 만
+     * 제거하므로 대상 근거가 있는 결과는 보존된다.
+     */
+    public boolean isConfusableRival(CompanyIdentity identity, CompanyWebSearchResult result) {
+        String normalizedName = normalizeCompanyName(identity.companyName());
+        if (normalizedName.isBlank() || result == null) {
+            return false;
+        }
+        if (identifiesCompany(identity, result)) {
+            return false;
+        }
+        for (String token : titleTokens(result.title())) {
+            if (commonPrefixLength(token, normalizedName) >= MIN_TOKEN_LENGTH
+                    && !isPrefixRelated(token, normalizedName)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /** 제목을 공백·문장부호로 분리해 정규화한 토큰(len≥2) 목록. */
+    private List<String> titleTokens(String title) {
+        if (title == null || title.isBlank()) {
+            return List.of();
+        }
+        List<String> tokens = new ArrayList<>();
+        for (String raw : title.split("[^\\p{L}\\p{N}]+")) {
+            String token = normalizeText(raw);
+            if (token.length() >= MIN_TOKEN_LENGTH) {
+                tokens.add(token);
+            }
+        }
+        return tokens;
+    }
+
+    /** 한쪽이 다른 쪽의 접두이면(양방향) true. 두 값 모두 len≥2 일 때만 유효. */
+    private boolean isPrefixRelated(String a, String b) {
+        if (a.length() < MIN_TOKEN_LENGTH || b.length() < MIN_TOKEN_LENGTH) {
+            return false;
+        }
+        return a.startsWith(b) || b.startsWith(a);
+    }
+
+    /** 두 문자열이 앞에서부터 공유하는 글자 수. */
+    private int commonPrefixLength(String a, String b) {
+        int limit = Math.min(a.length(), b.length());
+        int i = 0;
+        while (i < limit && a.charAt(i) == b.charAt(i)) {
+            i++;
+        }
+        return i;
     }
 
     /** 제목의 법인 표기 상호 중 하나라도 대상 회사명과 포함관계(양방향)이면 true. */

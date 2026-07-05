@@ -204,6 +204,76 @@ class CompanySourceResolverTest {
         assertThat(resolver.hasPositiveIdentityMatch(identity, List.of())).isFalse();
     }
 
+    // ── 토큰 접두 관계 anchor 확장(D-6 이슈A 2차 · P1) ──
+
+    /** 브랜드 토큰(위버스)이 대상명(위버스컴퍼니)의 접두면 anchor — 대상명 문자열이 없어도 양성. */
+    @Test
+    void prefixTokenBrandOnlyIsAnchor() {
+        CompanyIdentity identity = new CompanyIdentity("위버스컴퍼니", "", "");
+
+        assertThat(resolver.identifiesCompany(identity, result("위버스 앱 신규 기능", "위버스 플랫폼 업데이트")))
+                .isTrue();
+    }
+
+    /** 대상명(가온테크)이 제목 토큰(가온테크놀로지)의 접두면 anchor — 더 긴 상호도 양성. */
+    @Test
+    void targetPrefixOfTitleTokenIsAnchor() {
+        CompanyIdentity identity = new CompanyIdentity("가온테크", "", "");
+
+        assertThat(resolver.identifiesCompany(identity, result("가온테크놀로지 신제품 공개", "가온테크놀로지가 공개했다")))
+                .isTrue();
+    }
+
+    /** 접미 토큰만 겹치는 경우(접두 아님)는 anchor 아님 — "컴퍼니"·"테크" 오양성 방지. */
+    @Test
+    void suffixTokenOverlapIsNotAnchor() {
+        // 대상 "위버스컴퍼니", 제목 토큰 "컴퍼니"는 접미일 뿐 접두 아님 → anchor 아님.
+        CompanyIdentity identity = new CompanyIdentity("위버스컴퍼니", "", "");
+
+        assertThat(resolver.identifiesCompany(identity, result("컴퍼니 웨딩홀 예약", "컴퍼니 웨딩홀 안내")))
+                .isFalse();
+    }
+
+    // ── confusableRival 판정(접두 공유 후 발산 · P2) ──
+
+    /** 접두를 공유하나 발산하는 토큰(가온전선)은 rival. */
+    @Test
+    void prefixSharingDivergentTokenIsRival() {
+        CompanyIdentity identity = new CompanyIdentity("가온테크", "", "");
+
+        assertThat(resolver.isConfusableRival(identity, result("가온전선 실적 발표", "가온전선이 실적을 냈다")))
+                .isTrue();
+    }
+
+    /** 공통 접두가 없는 다른 브랜드(텀블벅)는 rival 아님 — riding 정당. */
+    @Test
+    void unrelatedBrandWithoutCommonPrefixIsNotRival() {
+        CompanyIdentity identity = new CompanyIdentity("백패커", "", "");
+
+        assertThat(resolver.isConfusableRival(identity, result("텀블벅 서비스 점검", "텀블벅 점검 안내")))
+                .isFalse();
+    }
+
+    /** anchor 인 결과는 rival 이 아니다(대상명이 함께 나오면 절대 제거 금지). */
+    @Test
+    void anchorResultIsNeverRival() {
+        CompanyIdentity identity = new CompanyIdentity("가온테크", "", "");
+        // 대상명과 접두공유 경쟁사가 한 제목에 함께 등장 — anchor 이므로 rival 아님.
+        CompanyWebSearchResult mixed = result("가온테크·가온전선 비교 기사", "가온테크와 가온전선을 비교한다");
+
+        assertThat(resolver.identifiesCompany(identity, mixed)).isTrue();
+        assertThat(resolver.isConfusableRival(identity, mixed)).isFalse();
+    }
+
+    /** 접두 관계(접두)인 토큰은 rival 아님(가온테크놀로지). */
+    @Test
+    void prefixRelatedTokenIsNotRival() {
+        CompanyIdentity identity = new CompanyIdentity("가온테크", "", "");
+
+        assertThat(resolver.isConfusableRival(identity, result("가온테크놀로지 신제품", "신제품 공개")))
+                .isFalse();
+    }
+
     // ── 이름 정규화 ──
 
     @Test
