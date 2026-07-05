@@ -11,6 +11,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
 import com.careertuner.ai.autoprep.AutoPrepIntakeService;
+import com.careertuner.ai.autoprep.CaseSlotValidator;
 import com.careertuner.ai.autoprep.dto.AutoPrepIntakeResponse;
 import com.careertuner.ai.autoprep.dto.AutoPrepIntakeResponse.ModeOption;
 import com.careertuner.ai.autoprep.dto.AutoPrepRequest;
@@ -396,7 +397,15 @@ public class IntakeAskService {
         }
         try {
             List<ApplicationCaseResponse> cases = applicationCaseService.list(userId, null, false);
-            return cases == null ? List.of() : cases;
+            if (cases == null) {
+                return List.of();
+            }
+            // (C3) 회사·직무 둘 다 미확인인 placeholder 건은 후보 칩·텍스트 재매칭 대상에서 제외한다 —
+            // ③에선 어차피 선택 불가(①′ 게이트 차단)라 추출실패 잔재가 노이즈·오선택 유도만 만든다.
+            return cases.stream()
+                    .filter(c -> !(CaseSlotValidator.isUnresolved(c.companyName())
+                            && CaseSlotValidator.isUnresolved(c.jobTitle())))
+                    .toList();
         } catch (RuntimeException ex) {
             log.warn("지원 건 후보 조회 실패(빈 목록으로 진행): {}", ex.getMessage());
             return List.of();

@@ -510,12 +510,14 @@ public class ChatbotController {
                     "공고 전문이 조금 짧아요. 회사명·직무·자격요건이 담긴 공고 내용을 붙여넣어 주세요.");
         }
         try {
+            Long previousCaseId = intakeSlotTrace.onboardingCaseId(conversationId);
             var created = applicationCaseService.createFromJobPosting(
                     userId,
                     new CreateApplicationCaseFromJobPostingRequest(question, null, null, "TEXT", null));
             intakeSlotTrace.setOnboardingCaseId(conversationId, created.applicationCase().id());
             intakeSlotTrace.setOnboardingStep(conversationId, "EXTRACTING");
             intakeSlotTrace.setOnboardingExtractingSince(conversationId, System.currentTimeMillis());
+            cleanupReplacedPlaceholder(userId, previousCaseId, created.applicationCase().id());
             // 고정 소요 약속("보통 몇 초") 금지 — 소요는 소스별 편차가 커서 경과 표시(프론트)로 대체.
             return new RouteMessage("④온보딩:공고생성",
                     "공고 받았어요. 회사·직무 정보를 읽고 있어요. 준비되면 아무 메시지나 보내주시면 진행 상황을 알려드릴게요.");
@@ -542,11 +544,37 @@ public class ChatbotController {
             return new RouteMessage("④온보딩:공고요청",
                     "공고 파일을 확인하지 못했어요. 공고 전문을 붙여넣거나 파일을 다시 올려주세요.");
         }
+        Long previousCaseId = intakeSlotTrace.onboardingCaseId(conversationId);
         intakeSlotTrace.setOnboardingCaseId(conversationId, selectedCaseId);
         intakeSlotTrace.setOnboardingStep(conversationId, "EXTRACTING");
         intakeSlotTrace.setOnboardingExtractingSince(conversationId, System.currentTimeMillis());
+        cleanupReplacedPlaceholder(userId, previousCaseId, selectedCaseId);
         return new RouteMessage("④온보딩:공고생성",
                 "공고 파일 받았어요. 회사·직무 정보를 읽고 있어요. 준비되면 진행 상황을 알려드릴게요.");
+    }
+
+    /**
+     * (d) C3: 공고 재제출로 새 지원 건이 생기면, 이 대화가 직전에 만들었다가 추출 실패로 placeholder 로 남은
+     * 건을 정리한다 — 재시도마다 고아 DRAFT 가 누적되는 문제 차단(실측: user 60 에 86·87·88 3건, 계정 전반 10건+).
+     * 보수적 조건: 이 대화의 onboardingCaseId 였던 건 + status DRAFT + 회사·직무 둘 다 미확인일 때만,
+     * 대체 건 생성이 성공한 뒤에만 지운다. 온보딩 이탈로 남는 마지막 1건은 보존한다(지원 건 상세에서 이어갈 여지).
+     * best-effort — 정리 실패가 온보딩 흐름을 깨지 않는다.
+     */
+    private void cleanupReplacedPlaceholder(Long userId, Long previousCaseId, Long newCaseId) {
+        if (previousCaseId == null || previousCaseId.equals(newCaseId)) {
+            return;
+        }
+        try {
+            ApplicationCaseResponse prev = applicationCaseService.get(userId, previousCaseId);
+            if ("DRAFT".equals(prev.status())
+                    && CaseSlotValidator.isUnresolved(prev.companyName())
+                    && CaseSlotValidator.isUnresolved(prev.jobTitle())) {
+                applicationCaseService.delete(userId, previousCaseId);
+                log.info("온보딩 재제출 정리: 추출실패 placeholder case {} 삭제(대체 case {})", previousCaseId, newCaseId);
+            }
+        } catch (RuntimeException ex) {
+            log.warn("온보딩 placeholder 정리 실패(무시): {}", ex.getMessage());
+        }
     }
 
     /**
