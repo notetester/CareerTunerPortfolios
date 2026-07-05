@@ -66,6 +66,10 @@ public class CommunityPostServiceImpl implements CommunityPostService {
     private final NicknameProfileService nicknameProfileService;
     private final PersonalizedFeedService personalizedFeedService;
 
+    /** 신고 누적 자동 블러 임계(이 수 이상 신고되면 비작성자에게 블러). */
+    @org.springframework.beans.factory.annotation.Value("${community.report.blur-threshold:3}")
+    private int reportBlurThreshold;
+
     /** 개인화 피드 정렬 키 — 이 값이면 PersonalizedFeedService(7:3 혼합)로 위임한다. */
     private static final String SORT_PERSONALIZED = "personalized";
 
@@ -85,7 +89,7 @@ public class CommunityPostServiceImpl implements CommunityPostService {
         // 비익명 작성자 표시명을 닉네임 프로필로 벌크 해석(N+1 방지). 익명 글은 해석 대상에서 제외.
         Map<DisplayNameQuery, DisplayNameResponse> resolved = resolveAuthorNames(posts);
         return new PostPageResponse(
-                posts.stream().map(post -> toListResponse(post, resolved)).toList(),
+                posts.stream().map(post -> toListResponse(post, resolved, viewerId)).toList(),
                 total, page, size
         );
     }
@@ -102,7 +106,7 @@ public class CommunityPostServiceImpl implements CommunityPostService {
         List<CommunityPost> posts = filterBlockedAuthors(feed.posts(), viewerId);
         Map<DisplayNameQuery, DisplayNameResponse> resolved = resolveAuthorNames(posts);
         return new PostPageResponse(
-                posts.stream().map(post -> toListResponse(post, resolved)).toList(),
+                posts.stream().map(post -> toListResponse(post, resolved, viewerId)).toList(),
                 feed.total(), page, size
         );
     }
@@ -338,8 +342,12 @@ public class CommunityPostServiceImpl implements CommunityPostService {
     }
 
     private PostListResponse toListResponse(CommunityPost post,
-                                            Map<DisplayNameQuery, DisplayNameResponse> resolved) {
+                                            Map<DisplayNameQuery, DisplayNameResponse> resolved,
+                                            Long viewerId) {
         PostCategory cat = PostCategory.valueOf(post.getCategory());
+        int reportCount = post.getReportCount() == null ? 0 : post.getReportCount();
+        // 신고 누적 자동 블러 — 임계 이상이면 비작성자에게 가린다(작성자·프론트 클릭 시 해제).
+        boolean blurred = reportCount >= reportBlurThreshold && !post.getUserId().equals(viewerId);
         return new PostListResponse(
                 post.getId(),
                 post.getCategory(),
@@ -352,7 +360,9 @@ public class CommunityPostServiceImpl implements CommunityPostService {
                 post.getStatus(),
                 post.getCreatedAt(),
                 post.getCompanyName(),
-                post.getJobTitle()
+                post.getJobTitle(),
+                blurred,
+                reportCount
         );
     }
 

@@ -14,6 +14,9 @@ public interface ReportMapper {
 
     void insertPostReport(PostReport report);
 
+    /** 게시글 누적 신고 수 +1(자동 블러 판정용). */
+    void incrementPostReportCount(@Param("postId") Long postId);
+
     CommentReport findCommentReport(@Param("reporterId") Long reporterId,
                                     @Param("commentId") Long commentId);
 
