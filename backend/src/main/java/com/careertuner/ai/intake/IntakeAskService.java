@@ -232,9 +232,11 @@ public class IntakeAskService {
     private void reconcileTextCaseAnswer(Long userId, String message, Long selectedCaseId) {
         Long claimed = trace.snapshot().caseId();
         Long bound = trace.boundCaseId();
-        if (selectedCaseId != null || (claimed == null && bound == null)) {
-            return;  // 칩 확정 턴 / 신규 대화에서 qwen3 침묵(b3 가드가 CASE-ask 처리)
+        if (selectedCaseId != null) {
+            return;  // 칩 확정 턴 — 이미 결정적 바인딩
         }
+        // (C1 리콜) 신규 대화에서 qwen3 침묵 턴도 매칭을 태운다 — 트라이얼 실측: "네이버 백엔드 면접 볼래"
+        // 같은 명확 지목이 qwen3 미시도로 재질문에 빠짐(N3·4·5·7). 매칭 0건이면 아래서 no-op → 기존 b3 흐름 그대로.
         boolean switchClaimed = claimed != null && !claimed.equals(bound);
         // 바인딩 대화에서 qwen3 가 전환을 안 박은 턴(추측 거부 후 포기·침묵 — 실측 chooseCase(4) 거부→포기)도
         // 발화가 다른 건을 유일 지목하면 전환으로 본다. 매칭 0/2건+ 인 무고 턴(MODE 답변 등)은 아래서 no-op.
@@ -264,20 +266,71 @@ public class IntakeAskService {
             return List.of();
         }
         List<ApplicationCaseResponse> exact = new ArrayList<>();
-        List<ApplicationCaseResponse> partial = new ArrayList<>();
+        List<ApplicationCaseResponse> full = new ArrayList<>();      // 발화가 회사명 전체를 포함
+        List<ApplicationCaseResponse> partial = new ArrayList<>();   // 발화가 회사명의 일부(축약 입력)
+        int longestFull = 0;
         for (ApplicationCaseResponse c : cases) {
             String company = normalizeForMatch(c.companyName());
-            if (company.isBlank()) {
-                continue;
+            if (company.isBlank() || isNegatedMention(m, company)) {
+                continue;   // (C1-b) "신한캐피탈 말고 ~" — 부정된 언급은 매칭 대상에서 제외(트라이얼 S9 오확정)
             }
             if (company.equals(m)) {
                 exact.add(c);
             }
-            if (m.contains(company) || company.contains(m)) {
+            if (m.contains(company)) {
+                full.add(c);
+                longestFull = Math.max(longestFull, company.length());
+            } else if (company.contains(m)) {
                 partial.add(c);
             }
         }
-        return exact.size() == 1 ? exact : partial;
+        if (exact.size() == 1) {
+            return exact;
+        }
+        // (C1-b) 최장 완전언급 우선: "토스페이먼츠로"는 토스(부분 포함)가 아니라 토스페이먼츠 지목이다.
+        // 같은 최장 길이가 여럿(중복 케이스 등)이면 그대로 반환 → 호출부가 모호 처리(재질문/유지).
+        if (!full.isEmpty()) {
+            final int longest = longestFull;
+            return full.stream()
+                    .filter(c -> normalizeForMatch(c.companyName()).length() == longest)
+                    .toList();
+        }
+        return partial;
+    }
+
+    /** 부정 마커 — 이 뒤에 오는 회사명이 아니라 "이 앞의 회사명을 배제한다"는 신호. */
+    private static final String[] NEGATION_MARKERS = {"말고", "빼고", "제외", "아니라", "아니고", "아닌"};
+
+    /**
+     * 발화 속 회사명 언급이 전부 부정 문맥("~말고/빼고/아니라")인지. 언급이 여러 번이면 긍정 언급이
+     * 하나라도 있을 때 매칭을 살린다. 조사 1~2자("은말고" 등)는 건너뛰고 마커를 본다.
+     */
+    private static boolean isNegatedMention(String m, String company) {
+        int idx = m.indexOf(company);
+        if (idx < 0) {
+            return false;   // 언급 자체가 없으면 부정 아님(축약 매칭은 그대로 살린다)
+        }
+        boolean sawPositive = false;
+        while (idx >= 0) {
+            String tail = m.substring(Math.min(idx + company.length(), m.length()));
+            if (!startsWithNegation(tail)) {
+                sawPositive = true;
+            }
+            idx = m.indexOf(company, idx + 1);
+        }
+        return !sawPositive;
+    }
+
+    private static boolean startsWithNegation(String tail) {
+        for (int skip = 0; skip <= 2 && skip < tail.length(); skip++) {
+            String rest = tail.substring(skip);
+            for (String marker : NEGATION_MARKERS) {
+                if (rest.startsWith(marker)) {
+                    return true;
+                }
+            }
+        }
+        return false;
     }
 
     /** 공백·법인 표기((주)/㈜/주식회사) 제거 + 소문자화 — "현대자동차 (주)" 와 "현대자동차" 를 같게 본다. */
