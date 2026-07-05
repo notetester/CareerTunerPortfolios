@@ -143,3 +143,7 @@ export function importPolicyFeedText(
     body: JSON.stringify({ rawText, sourceName: opts.sourceName, action: opts.action ?? "BLOCK", category: opts.category ?? "SECURITY" }),
   });
 }
+
+export function processWafSync(): Promise<number> {
+  return api<number>("/admin/security/waf-sync/process", { method: "POST" });
+}

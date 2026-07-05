@@ -51,6 +51,17 @@ public class AdminSecurityOpsService {
     private final AdminSecurityOpsMapper mapper;
     private final AdminActionLogService actionLogService;
     private final BlockRuleCacheService blockRuleCacheService;
+    private final com.careertuner.admin.securityops.waf.WafSyncScheduler wafSyncScheduler;
+
+    /** WAF 동기화 큐를 즉시 1배치 처리(수동 드레인). @return 처리 건수 */
+    @Transactional
+    public int processWafSyncNow(AuthUser authUser) {
+        AdminAccess.requireAdmin(authUser);
+        int processed = wafSyncScheduler.drainOnce();
+        actionLogService.record(authUser, null, "SECURITY_WAF_SYNC_PROCESSED", "SECURITY_BLOCK_RULE",
+                null, jsonObject("processed", String.valueOf(processed)), "WAF 큐 수동 처리");
+        return processed;
+    }
 
     /** 규칙 변경 후 런타임 차단 캐시를 즉시 재적재한다(트랜잭션 내 read-your-writes → 커밋될 상태 반영). best-effort. */
     private void invalidateBlockCache() {
