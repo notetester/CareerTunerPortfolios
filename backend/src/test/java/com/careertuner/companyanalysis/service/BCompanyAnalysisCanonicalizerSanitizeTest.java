@@ -10,6 +10,7 @@ import org.junit.jupiter.api.Test;
 import com.careertuner.applicationcase.service.OpenAiResponsesClient.CompanyAnalysisPayload;
 import com.careertuner.applicationcase.service.OpenAiResponsesClient.Usage;
 import com.careertuner.companyanalysis.service.BCompanyAnalysisCanonicalizer.CanonicalCompanyAnalysis;
+import com.careertuner.companyanalysis.service.BCompanyAnalysisCanonicalizer.GateOutcome;
 import com.careertuner.companyanalysis.websearch.CompanyWebEvidence;
 
 import tools.jackson.databind.JsonNode;
@@ -219,6 +220,51 @@ class BCompanyAnalysisCanonicalizerSanitizeTest {
         CanonicalCompanyAnalysis token = canonicalize(payloadBuilder().verifiedFacts(tokenFacts).build());
 
         assertThat(token.gateActions()).isEqualTo(clean.gateActions());
+    }
+
+    // ── ★ P2: sanitize 후 중복이 다시 생기지 않는다(라벨 유무만 다른 항목은 중복 제거) ──
+
+    @Test
+    void verifiedFactsDuplicateOnlyByLabelAreDedupedNotStoredTwice() {
+        CompanyAnalysisPayload payload = payloadBuilder()
+                .verifiedFacts("""
+                        [{"fact":"React와 TypeScript 경험을 요구한다","source":"채용공고",
+                          "evidence":"React, TypeScript 기반 프론트엔드 개발 경험 3년 이상 필수"},
+                         {"fact":"%s React와 TypeScript 경험을 요구한다","source":"채용공고",
+                          "evidence":"%s React, TypeScript 기반 프론트엔드 개발 경험 3년 이상 필수"}]
+                        """.formatted(LABEL, LABEL))
+                .build();
+
+        CanonicalCompanyAnalysis result = canonicalize(payload);
+
+        // 라벨만 다른 두 fact 는 sanitize 후 같은 텍스트가 되므로 하나만 저장되어야 한다.
+        JsonNode kept = readArray(result.payload().verifiedFacts());
+        assertThat(kept).hasSize(1);
+        assertThat(kept.get(0).path("fact").asString("")).doesNotContain("근거]");
+        assertThat(result.gateActions())
+                .anyMatch(action -> "verifiedFacts[1]".equals(action.ref())
+                        && action.action() == GateOutcome.REMOVED
+                        && action.detail().contains("반복 중복 제거"));
+    }
+
+    @Test
+    void aiInferencesDuplicateOnlyByLabelAreDedupedNotStoredTwice() {
+        CompanyAnalysisPayload payload = payloadBuilder()
+                .aiInferences("""
+                        [{"inference":"인프라 중심 조직일 가능성이 높다","basis":"서버 가상화 업무 비중"},
+                         {"inference":"%s 인프라 중심 조직일 가능성이 높다","basis":"%s 서버 가상화 업무 비중"}]
+                        """.formatted(LABEL, LABEL))
+                .build();
+
+        CanonicalCompanyAnalysis result = canonicalize(payload);
+
+        JsonNode inferences = readArray(result.payload().aiInferences());
+        assertThat(inferences).hasSize(1);
+        assertThat(inferences.get(0).path("inference").asString("")).doesNotContain("근거]");
+        assertThat(result.gateActions())
+                .anyMatch(action -> "aiInferences[1]".equals(action.ref())
+                        && action.action() == GateOutcome.REMOVED
+                        && action.detail().contains("반복 중복 제거"));
     }
 
     // ── 헬퍼 ──

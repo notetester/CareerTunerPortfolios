@@ -176,22 +176,10 @@ public class BCompanyAnalysisCanonicalizer {
         }
         keptInferences.addAll(unknownMarkers);
 
-        // D-6 이슈B: gate·ID·구조 필드 확정 이후, 저장 직전 텍스트 필드에서만 대괄호 입력블록 라벨을 제거한다.
-        // 구조 필드(sourceRef/sourceKind/factId/inferenceId/basedOn/confidence)는 건드리지 않으며 gate 판정도 불변이다.
-        for (JsonNode node : keptFacts) {
-            ObjectNode fact = (ObjectNode) node;
-            sanitizeTextField(fact, "fact");
-            sanitizeTextField(fact, "evidence");
-            sanitizeTextField(fact, "source");
-        }
-        for (JsonNode node : keptInferences) {
-            ObjectNode inference = (ObjectNode) node;
-            sanitizeTextField(inference, "inference");
-            sanitizeTextField(inference, "basis");
-            // 접힌 UNKNOWN 마커의 표시 텍스트 필드도 정리한다(topic/neededSource 는 마커에만 존재).
-            sanitizeTextField(inference, "topic");
-            sanitizeTextField(inference, "neededSource");
-        }
+        // D-6 이슈B: verifiedFacts/aiInferences/UNKNOWN 마커의 텍스트 필드 라벨 제거는 저장 payload 를 만들기 전
+        // 각 처리 지점(gateVerifiedFacts·canonicalizeInferences·foldUnknowns)에서 dedup key 산출·gate 판정보다 먼저
+        // 이뤄진다. 그래서 라벨 유무만 다른 중복이 저장에 남지 않고 DUPLICATE_REMOVAL_DETAIL 불변식이 유지된다.
+        // 구조 필드(sourceRef/sourceKind/factId/inferenceId/basedOn/confidence)는 sanitize 대상이 아니다.
 
         String companySummary = stripInputBlockLabels(guardFreeText("companySummary", payload.companySummary(), corpus, actions));
         if (isBlank(companySummary)) {
@@ -301,6 +289,11 @@ public class BCompanyAnalysisCanonicalizer {
                 continue;
             }
             ObjectNode fact = (ObjectNode) item.deepCopy();
+            // D-6 이슈B: 대괄호 입력블록 라벨을 dedup key 산출·gate 판정보다 먼저 제거한다 —
+            // 라벨 유무만 다른 fact 가 중복 제거를 우회해 저장에 남는 것을 막는다. 구조 필드는 건드리지 않는다.
+            sanitizeTextField(fact, "fact");
+            sanitizeTextField(fact, "evidence");
+            sanitizeTextField(fact, "source");
             String factText = text(fact, "fact");
             if (isBlank(factText)) {
                 actions.add(new GateAction(ref, "verifiedFacts", GateOutcome.REMOVED, "fact 누락"));
@@ -584,6 +577,11 @@ public class BCompanyAnalysisCanonicalizer {
                 continue;
             }
             ObjectNode inference = (ObjectNode) item.deepCopy();
+            // D-6 이슈B: dedup key 산출 전에 라벨을 제거한다(모델이 마커로 출력한 경우까지 포함).
+            sanitizeTextField(inference, "inference");
+            sanitizeTextField(inference, "basis");
+            sanitizeTextField(inference, "topic");
+            sanitizeTextField(inference, "neededSource");
             if (isUnknownMarker(inference)) {
                 // 모델이 마커 형태로 직접 출력한 경우 — 일반 추론으로 오염시키지 않고 마커로 유지.
                 unknownMarkers.add(inference);
@@ -657,6 +655,11 @@ public class BCompanyAnalysisCanonicalizer {
             if (!isBlank(neededSource)) {
                 marker.put("neededSource", neededSource);
             }
+            // D-6 이슈B: topic 에서 파생된 inference 문장을 포함해 마커 표시 텍스트 필드의 라벨을 제거한다.
+            sanitizeTextField(marker, "inference");
+            sanitizeTextField(marker, "basis");
+            sanitizeTextField(marker, "topic");
+            sanitizeTextField(marker, "neededSource");
             unknownMarkers.add(marker);
         }
     }
