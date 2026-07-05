@@ -228,6 +228,15 @@ public class CompanyAnalysisService {
             log.warn("기업분석 웹검색 실패 — 공고-only 로 degrade 합니다: {}", ex.getMessage());
             return List.of();
         }
+        // 코퍼스 레벨 정체성 게이트(D-6 이슈A · 동명 접두충돌): 수집 결과 중 대상 회사를 양성 식별하는
+        // 결과가 하나도 없으면(접두공유 대기업·무관 결과만 채워진 경우) 웹 근거를 공고-only 로 degrade 한다
+        // — 오염이 R1 입력·저장 gate 양쪽에 들어가기 전에 차단. 양성 근거가 하나라도 있으면 기존 동작 그대로
+        // 전체 corpus 를 유지한다(per-fact 방어는 evidence gate 담당). 시크릿·응답 body 는 로그에 남기지 않는다.
+        if (!companySourceResolver.hasPositiveIdentityMatch(identity, results)) {
+            log.warn("기업분석 웹검색 코퍼스에 대상 회사 양성 근거가 없어 공고-only 로 degrade 합니다 (수집 {}건).",
+                    results.size());
+            return List.of();
+        }
         // evidence 는 캐시하지 않는다 — HIT/MISS 공통으로 collector 를 매번 재실행한다.
         return companyEvidenceCollector.collect(identity, results);
     }

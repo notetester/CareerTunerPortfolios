@@ -126,6 +126,84 @@ class CompanySourceResolverTest {
                 .hasSize(1);
     }
 
+    // ── 양성 정체성 판정(코퍼스 게이트용 · D-6 이슈A) ──
+
+    /** 정규화한 대상 회사명이 제목에 등장하면 양성. */
+    @Test
+    void positiveMatchWhenNameAppearsInTitle() {
+        CompanyIdentity identity = new CompanyIdentity("가온테크", "", "");
+
+        assertThat(resolver.identifiesCompany(identity, result("가온테크 채용 소식", "신입 개발자 채용")))
+                .isTrue();
+    }
+
+    /** 설명(스니펫)에만 등장해도 양성 — 짧은 제목·브랜드 중심 결과 보호. */
+    @Test
+    void positiveMatchWhenNameAppearsInDescriptionOnly() {
+        CompanyIdentity identity = new CompanyIdentity("가온테크", "", "");
+
+        assertThat(resolver.identifiesCompany(identity, result("업계 동향", "가온테크 등 중견 IT 기업 채용 증가")))
+                .isTrue();
+    }
+
+    /** 제목의 법인 표기 상호가 대상과 포함관계면 양성. */
+    @Test
+    void positiveMatchWhenTitleCorporateNameContainsTarget() {
+        CompanyIdentity identity = new CompanyIdentity("가온테크", "", "");
+
+        assertThat(resolver.identifiesCompany(identity, result("(주)가온테크 상장 추진", "코스닥 상장을 준비한다")))
+                .isTrue();
+    }
+
+    /** 접두만 공유하는 대기업(가온전선)만 있는 결과는 양성 아님. */
+    @Test
+    void noPositiveMatchWhenOnlyPrefixSharingCompanyPresent() {
+        CompanyIdentity identity = new CompanyIdentity("가온테크", "", "");
+
+        assertThat(resolver.identifiesCompany(identity, result("가온전선 실적 발표", "가온전선이 분기 실적을 냈다")))
+                .isFalse();
+    }
+
+    /** 코퍼스에 대상명이 하나도 없으면(전부 접두공유·무관) 양성 근거 없음. */
+    @Test
+    void corpusHasNoPositiveMatchWhenAllPrefixSharingOrUnrelated() {
+        CompanyIdentity identity = new CompanyIdentity("가온테크", "", "");
+        List<CompanyWebSearchResult> results = List.of(
+                result("가온전선 신규 수주", "가온전선이 대형 수주를 따냈다"),
+                result("가온칩스 주가 상승", "가온칩스 반도체 팹리스 소식"),
+                result("업계 채용 동향", "올해 IT 기업 채용이 늘었다"));
+
+        assertThat(resolver.hasPositiveIdentityMatch(identity, results)).isFalse();
+    }
+
+    /** 코퍼스에 대상명이 한 건이라도 있으면 양성(다른 접두공유 결과 혼재해도). */
+    @Test
+    void corpusHasPositiveMatchWhenAtLeastOneResultIdentifiesTarget() {
+        CompanyIdentity identity = new CompanyIdentity("가온테크", "", "");
+        List<CompanyWebSearchResult> results = List.of(
+                result("가온전선 신규 수주", "가온전선이 대형 수주를 따냈다"),
+                result("가온테크 개발자 채용", "가온테크가 신입을 뽑는다"));
+
+        assertThat(resolver.hasPositiveIdentityMatch(identity, results)).isTrue();
+    }
+
+    /** 회사명이 없으면(식별 불가) 양성 판정 불가 → false(게이트가 판단을 서비스에 맡기지 않도록). */
+    @Test
+    void corpusHasNoPositiveMatchWhenCompanyNameBlank() {
+        CompanyIdentity identity = new CompanyIdentity("  ", "IT", "서울");
+
+        assertThat(resolver.hasPositiveIdentityMatch(identity, List.of(result("아무 기사", "스니펫"))))
+                .isFalse();
+    }
+
+    /** 빈 코퍼스는 양성 없음. */
+    @Test
+    void corpusHasNoPositiveMatchWhenResultsEmpty() {
+        CompanyIdentity identity = new CompanyIdentity("가온테크", "", "");
+
+        assertThat(resolver.hasPositiveIdentityMatch(identity, List.of())).isFalse();
+    }
+
     // ── 이름 정규화 ──
 
     @Test

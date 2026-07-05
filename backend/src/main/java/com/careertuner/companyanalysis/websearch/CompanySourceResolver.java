@@ -72,6 +72,56 @@ public class CompanySourceResolver {
     }
 
     /**
+     * 코퍼스 레벨 양성 정체성 판정(D-6 이슈A). 수집된 검색결과 중 대상 회사를 <b>양성 식별</b>하는
+     * 결과가 하나라도 있으면 true. 하나도 없으면 false — 서비스는 이때 웹 근거를 공고-only 로 degrade 한다.
+     *
+     * <p>동명 접두충돌("가온테크" → "가온전선"·"가온칩스") 대응. filterObviousMismatches 의 keep 편향
+     * (음성 전용 · 다른 회사 증명 시에만 제거)만으로는 marker 없는 실제 뉴스 제목을 못 걸러 오염이
+     * corpus 전체를 지배하므로, 대상에 대한 <b>양성 근거를 코퍼스 단위로 한 번 요구</b>한다.
+     * 회사명 미식별(빈 이름)이면 판정 불가로 false 를 반환한다.
+     */
+    public boolean hasPositiveIdentityMatch(CompanyIdentity identity, List<CompanyWebSearchResult> results) {
+        if (results == null || results.isEmpty()) {
+            return false;
+        }
+        return results.stream().anyMatch(result -> identifiesCompany(identity, result));
+    }
+
+    /**
+     * 결과 1건이 대상 회사를 양성 식별하는가(D-6 이슈A). filterObviousMismatches 와 같은 정규화
+     * 로직을 재사용한다 — 정규화한 대상 회사명이 제목/설명/링크(haystack)에 등장하거나, 제목의
+     * 법인 표기 상호가 대상과 포함관계이면 양성. 회사명 미식별이면 항상 false.
+     */
+    public boolean identifiesCompany(CompanyIdentity identity, CompanyWebSearchResult result) {
+        String normalizedName = normalizeCompanyName(identity.companyName());
+        if (normalizedName.isBlank() || result == null) {
+            return false;
+        }
+        String haystack = normalizeText(
+                result.title() + " " + result.description() + " " + result.link());
+        if (haystack.contains(normalizedName)) {
+            return true;
+        }
+        return titleCorporateNameMatchesTarget(result.title(), normalizedName);
+    }
+
+    /** 제목의 법인 표기 상호 중 하나라도 대상 회사명과 포함관계(양방향)이면 true. */
+    private boolean titleCorporateNameMatchesTarget(String title, String normalizedName) {
+        Matcher matcher = EXPLICIT_CORPORATE_MENTION.matcher(title == null ? "" : title);
+        while (matcher.find()) {
+            String captured = matcher.group(1) != null ? matcher.group(1) : matcher.group(2);
+            String candidate = normalizeText(captured);
+            if (candidate.isBlank()) {
+                continue;
+            }
+            if (candidate.contains(normalizedName) || normalizedName.contains(candidate)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
      * 명백한 불일치 판정(중간 강도 — keep 편향). 회사명 미등장은 "판별 불가"라 유지하고,
      * 제목이 법인 표기로 다른 회사를 명시하면서 대상 회사명이 어디에도 없을 때만 true.
      */
