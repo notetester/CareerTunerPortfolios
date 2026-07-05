@@ -48,6 +48,8 @@ class ApplicationCaseAutoPipelineServiceTest {
                 objectMapper,
                 mock(BAnthropicClient.class),
                 mock(OpenAiResponsesClient.class));
+        com.careertuner.companyanalysis.service.CompanyAnalysisService companyAnalysisService =
+                mock(com.careertuner.companyanalysis.service.CompanyAnalysisService.class);
         ApplicationCaseAutoPipelineService service = new ApplicationCaseAutoPipelineService(
                 applicationCaseMapper,
                 jobAnalysisMapper,
@@ -57,7 +59,8 @@ class ApplicationCaseAutoPipelineServiceTest {
                 new MockFitAnalysisAiService(),
                 objectMapper,
                 bAnalysisGenerationService,
-                new com.careertuner.companyanalysis.service.BCompanyAnalysisCanonicalizer(objectMapper));
+                new com.careertuner.companyanalysis.service.BCompanyAnalysisCanonicalizer(objectMapper),
+                companyAnalysisService);
         String postingText = """
                 Acme is hiring a Backend Engineer.
                 Responsibilities: build Spring APIs, operate MySQL services, and improve Docker deployment.
@@ -99,6 +102,8 @@ class ApplicationCaseAutoPipelineServiceTest {
         assertThat(companyCaptor.getValue().getCompanySummary()).contains("외부 기업 정보나 OpenAI 폴백은 사용하지 않았습니다");
         assertThat(companyCaptor.getValue().getCompanySummary())
                 .doesNotContain("information was summarized", "No external company API");
+        // 자동 파이프라인이 사용자 직접 경로와 동일한 웹검색(collectWebEvidence)을 호출하는지 잠근다(웹검색 배선).
+        verify(companyAnalysisService).collectWebEvidence(any(ApplicationCase.class));
 
         ArgumentCaptor<FitAnalysisResult> fitCaptor = ArgumentCaptor.forClass(FitAnalysisResult.class);
         verify(fitAnalysisMapper).insertFitAnalysis(fitCaptor.capture());
