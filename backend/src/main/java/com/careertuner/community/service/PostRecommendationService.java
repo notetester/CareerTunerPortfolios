@@ -31,7 +31,8 @@ import tools.jackson.databind.ObjectMapper;
  * <p>운영 원칙:
  * <ul>
  *   <li>수신자 상한 {@value #MAX_RECIPIENTS}명, 글 작성자 제외.</li>
- *   <li>actorId 는 넣지 않는다 — 추천은 시스템 발신이다.</li>
+ *   <li>actorId = 글 작성자 — 차단 억제 판정용으로만 넣는다(P-03≡N-13). 발신 주체는 여전히 시스템이며,
+ *       응답에는 노출되지 않는다(NotificationServiceImpl 이 RECOMMENDED_* actor 를 마스킹 — 익명 글 신원 보호).</li>
  *   <li>개인 차단·알림 설정 필터는 알림 코어(NotificationService/PushDispatcher)가 처리한다.</li>
  *   <li>클래스 트랜잭션을 걸지 않는다 — notify()가 알림별 자체 트랜잭션으로 처리해
  *       대량 팬아웃 시 커넥션 장기 점유·전체 롤백을 피한다(AdminCampaignServiceImpl 패턴).</li>
@@ -112,6 +113,8 @@ public class PostRecommendationService {
         try {
             notificationService.notify(Notification.builder()
                     .userId(userId)
+                    // 수신자가 작성자를 차단했으면 notify() 의 isBlockedSender 가 발행 자체를 억제한다.
+                    .actorId(post.getUserId())
                     .type("RECOMMENDED_POST")
                     .targetType("POST")
                     .targetId(post.getId())

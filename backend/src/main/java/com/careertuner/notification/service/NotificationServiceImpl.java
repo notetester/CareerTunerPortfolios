@@ -1,6 +1,7 @@
 package com.careertuner.notification.service;
 
 import java.util.List;
+import java.util.Set;
 
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
@@ -17,11 +18,19 @@ import com.careertuner.notification.push.NotificationCategories;
 import com.careertuner.privacy.service.PrivacyPolicyService;
 
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 @Transactional(readOnly = true)
 public class NotificationServiceImpl implements NotificationService {
+
+    /**
+     * actorId 를 차단 억제 판정용으로만 쓰는 시스템 발신 type — 응답에 actor 를 노출하지 않는다.
+     * 추천 원글이 익명 글이면 actor 노출이 곧 익명 작성자 신원 누출이다(P-03≡N-13).
+     */
+    private static final Set<String> ACTOR_HIDDEN_TYPES = Set.of("RECOMMENDED_POST", "RECOMMENDED_JOB");
 
     private final NotificationMapper notificationMapper;
     private final ApplicationEventPublisher eventPublisher;
@@ -31,6 +40,14 @@ public class NotificationServiceImpl implements NotificationService {
     @Override
     @Transactional
     public void notify(Notification notification) {
+        // 관계성 type 은 actorId 필수(N-14) — 없으면 차단 억제(isBlockedSender)를 평가할 수 없어
+        // 차단 우회 구멍이 된다. 수신 표면이므로 fail-closed: 생성하지 않고 에러 로그만 남긴다(호출 흐름은 유지).
+        if (notification.getActorId() == null
+                && NotificationCategories.RELATION_AWARE_TYPES.contains(notification.getType())) {
+            log.error("관계성 알림에 actorId 누락 — 차단 평가 불가로 미발행(fail-closed): type={}, userId={}, targetId={}",
+                    notification.getType(), notification.getUserId(), notification.getTargetId());
+            return;
+        }
         // 개인 차단 정책 — 차단한 계정/IP 발신자의 알림은 생성 자체를 하지 않는다(조용한 실패).
         if (notification.getActorId() != null
                 && privacyPolicyService.isBlockedSender(notification.getUserId(), notification.getActorId())) {
@@ -84,7 +101,8 @@ public class NotificationServiceImpl implements NotificationService {
 
     private NotificationResponse toResponse(Notification n) {
         NotificationResponse.ActorDto actor = null;
-        if (n.getActorId() != null) {
+        // 억제 판정용 actorId(ACTOR_HIDDEN_TYPES)는 응답에 내리지 않는다 — 익명 작성자 신원 보호.
+        if (n.getActorId() != null && !ACTOR_HIDDEN_TYPES.contains(n.getType())) {
             actor = new NotificationResponse.ActorDto(
                     n.getActorId(),
                     n.getActorName(),

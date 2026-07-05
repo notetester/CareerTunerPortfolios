@@ -129,7 +129,14 @@ public class AutoPrepIntakeService {
     private List<ApplicationCaseResponse> safeList(Long userId) {
         try {
             List<ApplicationCaseResponse> cases = applicationCaseService.list(userId, null, false);
-            return cases == null ? List.of() : cases;
+            if (cases == null) {
+                return List.of();
+            }
+            // (C3) 회사·직무 둘 다 미확인 placeholder 건은 후보에서 제외 — ③ 진입 후보 칩 노이즈 차단.
+            return cases.stream()
+                    .filter(c -> !(CaseSlotValidator.isUnresolved(c.companyName())
+                            && CaseSlotValidator.isUnresolved(c.jobTitle())))
+                    .toList();
         } catch (RuntimeException ex) {
             log.warn("AutoPrep 인테이크 지원 건 목록 조회 실패: {}", ex.getMessage());
             return List.of();

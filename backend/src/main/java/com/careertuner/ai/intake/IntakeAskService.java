@@ -11,6 +11,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
 import com.careertuner.ai.autoprep.AutoPrepIntakeService;
+import com.careertuner.ai.autoprep.CaseSlotValidator;
 import com.careertuner.ai.autoprep.dto.AutoPrepIntakeResponse;
 import com.careertuner.ai.autoprep.dto.AutoPrepIntakeResponse.ModeOption;
 import com.careertuner.ai.autoprep.dto.AutoPrepRequest;
@@ -152,6 +153,18 @@ public class IntakeAskService {
             String botText = (decidedMessage != null && !decidedMessage.isBlank())
                     ? decidedMessage : answer;
 
+            // ★(C1·통보) 이 턴에 지원 건이 새로/변경 확정됐으면 어느 건인지 코드가 명시 통보한다.
+            //   qwen3 최종 문장이 확정 사실을 자주 생략해(실측: "면접 모드는?"만 출력) 오확정을 사용자가
+            //   알아챌 방법이 없었다. ready 턴은 describe(plan)에 회사·직무가 이미 들어가므로 중복 제외.
+            //   (boundCaseId 는 아래 fork 의 migrateToFork 전이라 아직 이전 턴 기준값이다.)
+            if (!ready && slots.caseId() != null && !slots.caseId().equals(trace.boundCaseId())) {
+                String confirmedTitle = caseTitle(slots.caseId());
+                if (confirmedTitle != null) {
+                    botText = "지원 건을 \"" + confirmedTitle + "\" 로 정했어요. "
+                            + (botText == null ? "" : botText);
+                }
+            }
+
             // ★ 지원건 세션 fork: 이 턴에 지원 건이 새로 확정됐으면 새 conversationId 로 진입~confirm 구간을 옮긴다.
             Long effectiveConversationId =
                     maybeForkOnCaseConfirmed(conversationId, userId, slots.caseId());
@@ -205,24 +218,37 @@ public class IntakeAskService {
      * 텍스트로 case 를 답한 턴에서 qwen3 의 chooseCase 결과를 코드 매칭으로 교정한다(A-1 회귀 차단).
      * <ul>
      *   <li>칩 선택(selectedCaseId!=null)이면 이미 결정적으로 바인딩됐으니 건드리지 않는다.</li>
-     *   <li>이미 지원 건에 바인딩(fork)된 대화면 이건 case 선택 턴이 아니다(예: MODE 답변) — 스킵.</li>
      *   <li>qwen3 가 이 턴에 caseId 를 안 박았으면(침묵) 기존 b3 가드(caseAutoDefaulted)가 처리 — 스킵.</li>
+     *   <li>바인딩(fork)된 대화에서 qwen3 가 <b>같은</b> 건을 재확정한 턴(예: MODE 답변에 헛 chooseCase)은
+     *       전환이 아니다 — 스킵(기존 보호 유지).</li>
+     *   <li>바인딩된 대화에서 qwen3 가 <b>다른</b> 건을 박은 턴 = 케이스 전환 시도 — 여기도 재매칭을 태운다.
+     *       (C1 잔여 구멍: 종전엔 bound 무조건 스킵이라 "토스로 바꿔줘"→chooseCase(2) 오확정이 무검증 통과 —
+     *       9000231·9000234 실측.)</li>
      * </ul>
      * 위를 통과하면 qwen3 가 박은 id 를 버리고, 사용자 텍스트와 후보 companyName 을 매칭한다.
-     * 정확히 1건이면 그 id 로 덮어 확정, 0건/2건 이상이면 caseId 를 비워 다운스트림 CASE-ask 로 되돌린다(거짓 진행 차단).
+     * 정확히 1건이면 그 id 로 덮어 확정. 0건/2건 이상이면 — 신규 대화는 caseId 를 비워 CASE-ask 재노출,
+     * 바인딩된 대화는 근거 불명 전환을 취소하고 기존 건으로 되돌린다(세션 퇴행 방지).
      */
     private void reconcileTextCaseAnswer(Long userId, String message, Long selectedCaseId) {
-        if (selectedCaseId != null || trace.boundCaseId() != null || trace.snapshot().caseId() == null) {
-            return;
+        Long claimed = trace.snapshot().caseId();
+        Long bound = trace.boundCaseId();
+        if (selectedCaseId != null) {
+            return;  // 칩 확정 턴 — 이미 결정적 바인딩
         }
+        // (C1 리콜) 신규 대화에서 qwen3 침묵 턴도 매칭을 태운다 — 트라이얼 실측: "네이버 백엔드 면접 볼래"
+        // 같은 명확 지목이 qwen3 미시도로 재질문에 빠짐(N3·4·5·7). 매칭 0건이면 아래서 no-op → 기존 b3 흐름 그대로.
+        boolean switchClaimed = claimed != null && !claimed.equals(bound);
+        // 바인딩 대화에서 qwen3 가 전환을 안 박은 턴(추측 거부 후 포기·침묵 — 실측 chooseCase(4) 거부→포기)도
+        // 발화가 다른 건을 유일 지목하면 전환으로 본다. 매칭 0/2건+ 인 무고 턴(MODE 답변 등)은 아래서 no-op.
         List<ApplicationCaseResponse> owned = safeListCases(userId);
         List<ApplicationCaseResponse> matched = matchCasesByText(message, owned);
         if (matched.size() == 1) {
             trace.recordFetchedCases(owned);            // chooseCase 화이트리스트·세션 title 백업용
             trace.confirmCase(matched.get(0).id());     // qwen3 의 (대개 틀린) id 를 코드 매칭 결과로 덮는다.
-        } else {
-            trace.confirmCase(null);                    // 모호/불일치 → 비워서 CASE-ask 재노출.
+        } else if (switchClaimed) {
+            trace.confirmCase(bound);                   // 신규(null)=CASE-ask 재노출 / 바인딩=근거불명 전환 취소.
         }
+        // matched!=1 && !switchClaimed(claimed==bound 무고 턴): 건드리지 않는다 — 기존 확정 유지.
     }
 
     /**
@@ -240,20 +266,71 @@ public class IntakeAskService {
             return List.of();
         }
         List<ApplicationCaseResponse> exact = new ArrayList<>();
-        List<ApplicationCaseResponse> partial = new ArrayList<>();
+        List<ApplicationCaseResponse> full = new ArrayList<>();      // 발화가 회사명 전체를 포함
+        List<ApplicationCaseResponse> partial = new ArrayList<>();   // 발화가 회사명의 일부(축약 입력)
+        int longestFull = 0;
         for (ApplicationCaseResponse c : cases) {
             String company = normalizeForMatch(c.companyName());
-            if (company.isBlank()) {
-                continue;
+            if (company.isBlank() || isNegatedMention(m, company)) {
+                continue;   // (C1-b) "신한캐피탈 말고 ~" — 부정된 언급은 매칭 대상에서 제외(트라이얼 S9 오확정)
             }
             if (company.equals(m)) {
                 exact.add(c);
             }
-            if (m.contains(company) || company.contains(m)) {
+            if (m.contains(company)) {
+                full.add(c);
+                longestFull = Math.max(longestFull, company.length());
+            } else if (company.contains(m)) {
                 partial.add(c);
             }
         }
-        return exact.size() == 1 ? exact : partial;
+        if (exact.size() == 1) {
+            return exact;
+        }
+        // (C1-b) 최장 완전언급 우선: "토스페이먼츠로"는 토스(부분 포함)가 아니라 토스페이먼츠 지목이다.
+        // 같은 최장 길이가 여럿(중복 케이스 등)이면 그대로 반환 → 호출부가 모호 처리(재질문/유지).
+        if (!full.isEmpty()) {
+            final int longest = longestFull;
+            return full.stream()
+                    .filter(c -> normalizeForMatch(c.companyName()).length() == longest)
+                    .toList();
+        }
+        return partial;
+    }
+
+    /** 부정 마커 — 이 뒤에 오는 회사명이 아니라 "이 앞의 회사명을 배제한다"는 신호. */
+    private static final String[] NEGATION_MARKERS = {"말고", "빼고", "제외", "아니라", "아니고", "아닌"};
+
+    /**
+     * 발화 속 회사명 언급이 전부 부정 문맥("~말고/빼고/아니라")인지. 언급이 여러 번이면 긍정 언급이
+     * 하나라도 있을 때 매칭을 살린다. 조사 1~2자("은말고" 등)는 건너뛰고 마커를 본다.
+     */
+    private static boolean isNegatedMention(String m, String company) {
+        int idx = m.indexOf(company);
+        if (idx < 0) {
+            return false;   // 언급 자체가 없으면 부정 아님(축약 매칭은 그대로 살린다)
+        }
+        boolean sawPositive = false;
+        while (idx >= 0) {
+            String tail = m.substring(Math.min(idx + company.length(), m.length()));
+            if (!startsWithNegation(tail)) {
+                sawPositive = true;
+            }
+            idx = m.indexOf(company, idx + 1);
+        }
+        return !sawPositive;
+    }
+
+    private static boolean startsWithNegation(String tail) {
+        for (int skip = 0; skip <= 2 && skip < tail.length(); skip++) {
+            String rest = tail.substring(skip);
+            for (String marker : NEGATION_MARKERS) {
+                if (rest.startsWith(marker)) {
+                    return true;
+                }
+            }
+        }
+        return false;
     }
 
     /** 공백·법인 표기((주)/㈜/주식회사) 제거 + 소문자화 — "현대자동차 (주)" 와 "현대자동차" 를 같게 본다. */
@@ -373,7 +450,15 @@ public class IntakeAskService {
         }
         try {
             List<ApplicationCaseResponse> cases = applicationCaseService.list(userId, null, false);
-            return cases == null ? List.of() : cases;
+            if (cases == null) {
+                return List.of();
+            }
+            // (C3) 회사·직무 둘 다 미확인인 placeholder 건은 후보 칩·텍스트 재매칭 대상에서 제외한다 —
+            // ③에선 어차피 선택 불가(①′ 게이트 차단)라 추출실패 잔재가 노이즈·오선택 유도만 만든다.
+            return cases.stream()
+                    .filter(c -> !(CaseSlotValidator.isUnresolved(c.companyName())
+                            && CaseSlotValidator.isUnresolved(c.jobTitle())))
+                    .toList();
         } catch (RuntimeException ex) {
             log.warn("지원 건 후보 조회 실패(빈 목록으로 진행): {}", ex.getMessage());
             return List.of();
