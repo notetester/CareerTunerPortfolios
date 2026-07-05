@@ -58,6 +58,12 @@ public class AdminSecurityOpsController {
         return ApiResponse.ok(service.blockCacheStatus(authUser));
     }
 
+    /** WAF 동기화 큐를 즉시 처리(수동 드레인). 처리 건수를 반환. */
+    @PostMapping("/waf-sync/process")
+    public ApiResponse<Integer> processWafSync(@AuthenticationPrincipal AuthUser authUser) {
+        return ApiResponse.ok(service.processWafSyncNow(authUser));
+    }
+
     @GetMapping("/block-rules")
     public ApiResponse<List<SecurityBlockRuleRow>> blockRules(
             @AuthenticationPrincipal AuthUser authUser,

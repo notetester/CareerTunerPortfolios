@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.careertuner.admin.securityops.waf.WafSyncMapper">
+
+    <select id="findPendingWafSyncTargets"
+            resultType="com.careertuner.admin.securityops.waf.WafSyncModels$WafSyncTarget">
+        SELECT e.id            AS sync_event_id,
+               e.block_rule_id AS block_rule_id,
+               e.operation_type AS operation_type,
+               e.provider_code AS provider_code,
+               r.rule_type     AS rule_type,
+               r.rule_value    AS rule_value
+          FROM admin_security_waf_sync_event e
+          LEFT JOIN admin_security_block_rule r ON r.id = e.block_rule_id
+         WHERE e.status IN ('QUEUED', 'PENDING')
+         ORDER BY e.requested_at ASC
+         LIMIT #{limit}
+    </select>
+
+    <select id="findEnabledWafProvider"
+            resultType="com.careertuner.admin.securityops.waf.WafSyncMapper$WafProviderRow">
+        SELECT id, provider_code, provider_type, mode, enabled, endpoint_url, config_json
+          FROM admin_security_provider_config
+         WHERE provider_type = 'WAF' AND enabled = 1
+         ORDER BY id ASC
+         LIMIT 1
+    </select>
+
+    <update id="updateWafEventResult">
+        UPDATE admin_security_waf_sync_event
+           SET status = #{status},
+               response_payload_json = #{responseJson},
+               error_message = #{errorMessage},
+               processed_at = NOW()
+         WHERE id = #{id}
+    </update>
+
+</mapper>
