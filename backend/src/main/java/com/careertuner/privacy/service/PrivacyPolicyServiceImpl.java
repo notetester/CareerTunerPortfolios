@@ -41,11 +41,25 @@ public class PrivacyPolicyServiceImpl implements PrivacyPolicyService {
     private static final Logger log = LoggerFactory.getLogger(PrivacyPolicyServiceImpl.class);
 
     /**
-     * 평가 실패 시 닫는(fail-closed) 수신 표면 — dm/note/friendRequest 는 원치 않는 접촉이
-     * 콘텐츠 소실보다 피해가 크다. 콘텐츠 노출(content.*)은 반대로 열어(fail-open) 소실을 막는다.
+     * 평가 실패 시 닫는(fail-closed) 수신 표면 — 차단한 상대의 접촉(dm/note/friendRequest)과
+     * 콘텐츠 전달(fileShare/postingShare)·초대(invite.*)가 수신자에게 도달하는 표면은
+     * 원치 않는 접촉이 콘텐츠 소실보다 피해가 크다. 열람측(content.*, profile.*)은
+     * 반대로 열어(fail-open) 콘텐츠 소실을 막는다. invite 는 점 표기 상세 키
+     * (invite.GROUP.creator.anonymous 등)로 들어오므로 prefix 로 판정한다.
      */
-    private static final Set<String> FAIL_CLOSED_SURFACES =
-            Set.of(PrivacySurfaces.DM, PrivacySurfaces.NOTE, PrivacySurfaces.FRIEND_REQUEST);
+    private static final Set<String> FAIL_CLOSED_SURFACES = Set.of(
+            PrivacySurfaces.DM, PrivacySurfaces.NOTE, PrivacySurfaces.FRIEND_REQUEST,
+            PrivacySurfaces.FILE_SHARE, PrivacySurfaces.POSTING_SHARE);
+
+    /** 수신 표면 여부 — 평가 실패 시 fail-closed 로 닫을 표면인지. */
+    private static boolean isFailClosedSurface(String surface) {
+        if (surface == null) {
+            return false;
+        }
+        return FAIL_CLOSED_SURFACES.contains(surface)
+                || PrivacySurfaces.INVITE.equals(surface)
+                || surface.startsWith(PrivacySurfaces.INVITE + ".");
+    }
 
     private final PrivacyMapper mapper;
     private final ObjectMapper objectMapper;
@@ -82,9 +96,10 @@ public class PrivacyPolicyServiceImpl implements PrivacyPolicyService {
             }
             return decideByRelationPolicy(viewerId, relation, surface);
         } catch (RuntimeException ex) {
-            // 평가 실패 fail 방향은 표면별 분기 — 콘텐츠 노출(content.*)은 열어 소실을 막고,
-            // 수신 표면(dm/note/friendRequest)은 닫아 차단 우회(원치 않는 접촉)를 막는다.
-            boolean open = !FAIL_CLOSED_SURFACES.contains(surface);
+            // 평가 실패 fail 방향은 표면별 분기 — 열람측(content.*/profile.*)은 열어 소실을 막고,
+            // 수신 표면(dm/note/friendRequest/fileShare/postingShare/invite.*)은 닫아
+            // 차단 우회(원치 않는 접촉·전달)를 막는다.
+            boolean open = !isFailClosedSurface(surface);
             log.warn("개인정책 평가 실패(fail-{}): surface={}, viewerId={}, actorId={}",
                     open ? "open" : "closed", surface, viewerId, actorId, ex);
             return open;
