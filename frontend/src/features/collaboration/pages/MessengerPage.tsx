@@ -18,6 +18,7 @@ import {
   RefreshCw,
   Search,
   Send,
+  Settings2,
   UserPlus,
   UserX,
   Users,
@@ -64,6 +65,7 @@ import type {
   MessageKind,
   MessageResponse,
 } from "../types/collaboration";
+import { RoomSettingsSheet } from "../components/RoomSettingsSheet";
 // 개인 차단 진입점 — 코어(/api/privacy)는 사용만 하고 수정하지 않는다 (docs/PERSONAL_BLOCK_POLICY.md §4).
 import { blockConversation, blockUser } from "@/features/privacy/api/privacyApi";
 import { showBlockManageToast } from "@/features/privacy/components/blockToast";
@@ -244,6 +246,7 @@ export function MessengerPage() {
   const [userResults, setUserResults] = useState<CollaborationUser[]>([]);
 
   const [activeConversationId, setActiveConversationId] = useState<number | null>(null);
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const [roomSearch, setRoomSearch] = useState("");
   const [userKeyword, setUserKeyword] = useState("");
   const [joinPasswords, setJoinPasswords] = useState<Record<number, string>>({});
@@ -814,6 +817,19 @@ export function MessengerPage() {
               <div className="flex items-center gap-2">
                 <Badge variant="outline">{conversationTypeLabel(activeConversation.type)}</Badge>
                 {activeConversation.locked && <Lock className="size-4 text-muted-foreground" />}
+                {activeConversation.type !== "DIRECT" && activeConversation.canManageRoom && (
+                  <Button
+                    type="button"
+                    size="icon"
+                    variant="outline"
+                    onClick={() => setSettingsOpen(true)}
+                    disabled={busy}
+                    aria-label="방 설정"
+                    title="방 설정 — 개설자 또는 방 관리자만"
+                  >
+                    <Settings2 className="size-4" />
+                  </Button>
+                )}
                 <Button
                   type="button"
                   size="icon"
@@ -1064,6 +1080,17 @@ export function MessengerPage() {
           </Panel>
         </div>
       </div>
+
+      {settingsOpen && activeConversation && activeConversation.type !== "DIRECT" && (
+        <RoomSettingsSheet
+          conversationId={activeConversation.id}
+          onClose={() => setSettingsOpen(false)}
+          onChanged={() => {
+            // 방 설정 변경(제목/공개/공지/멤버 등)을 헤더·목록에 반영한다.
+            void refreshConversations();
+          }}
+        />
+      )}
     </main>
   );
 }

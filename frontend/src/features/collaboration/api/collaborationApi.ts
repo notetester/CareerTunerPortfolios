@@ -4,6 +4,9 @@ import { getAccessToken } from "@/app/lib/tokenStore";
 import type {
   AttachmentShareMode,
   CollaborationUser,
+  ConversationPermissionUpdateRequest,
+  ConversationSettingsResponse,
+  ConversationSettingsUpdateRequest,
   ConversationSummaryResponse,
   CreateConversationRequest,
   FileAssetResponse,
@@ -122,6 +125,77 @@ export function sendMessage(conversationId: number, request: SendMessageRequest)
     method: "POST",
     body: JSON.stringify(request),
   });
+}
+
+// ── 방 설정 / 관리자 위임 (W5) — OWNER 및 위임받은 MANAGER 만 ──
+
+export function getConversationSettings(conversationId: number): Promise<ConversationSettingsResponse> {
+  return api<ConversationSettingsResponse>(
+    `/collaboration/conversations/${conversationId}/settings`,
+    { method: "GET" },
+  );
+}
+
+export function updateConversationSettings(
+  conversationId: number,
+  request: ConversationSettingsUpdateRequest,
+): Promise<ConversationSettingsResponse> {
+  return api<ConversationSettingsResponse>(
+    `/collaboration/conversations/${conversationId}/settings`,
+    { method: "PATCH", body: JSON.stringify(request) },
+  );
+}
+
+export function updateMemberPermission(
+  conversationId: number,
+  targetUserId: number,
+  request: ConversationPermissionUpdateRequest,
+): Promise<ConversationSettingsResponse> {
+  return api<ConversationSettingsResponse>(
+    `/collaboration/conversations/${conversationId}/members/${targetUserId}/permission`,
+    { method: "PATCH", body: JSON.stringify(request) },
+  );
+}
+
+export function kickConversationMember(
+  conversationId: number,
+  targetUserId: number,
+): Promise<ConversationSettingsResponse> {
+  return api<ConversationSettingsResponse>(
+    `/collaboration/conversations/${conversationId}/members/${targetUserId}/kick`,
+    { method: "POST" },
+  );
+}
+
+export function banConversationMember(
+  conversationId: number,
+  targetUserId: number,
+  reason?: string,
+): Promise<ConversationSettingsResponse> {
+  return api<ConversationSettingsResponse>(
+    `/collaboration/conversations/${conversationId}/members/${targetUserId}/ban`,
+    { method: "POST", body: JSON.stringify({ reason: reason || null }) },
+  );
+}
+
+export function unbanConversationMember(
+  conversationId: number,
+  targetUserId: number,
+): Promise<ConversationSettingsResponse> {
+  return api<ConversationSettingsResponse>(
+    `/collaboration/conversations/${conversationId}/bans/${targetUserId}`,
+    { method: "DELETE" },
+  );
+}
+
+export function setInviteAllowList(
+  conversationId: number,
+  userIds: number[],
+): Promise<ConversationSettingsResponse> {
+  return api<ConversationSettingsResponse>(
+    `/collaboration/conversations/${conversationId}/invite-allowlist`,
+    { method: "PUT", body: JSON.stringify({ userIds }) },
+  );
 }
 
 export function uploadCollaborationFile(file: File): Promise<FileAssetResponse> {

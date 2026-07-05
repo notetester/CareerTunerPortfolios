@@ -199,6 +199,17 @@
             invited_by = COALESCE(invited_by, VALUES(invited_by))
     </insert>
 
+    <insert id="insertConversationMemberWithAnonymous">
+        INSERT INTO collaboration_conversation_member
+            (conversation_id, user_id, role, status, invited_by, anonymous)
+        VALUES (#{conversationId}, #{userId}, #{role}, 'ACTIVE', #{invitedBy}, #{anonymous})
+        ON DUPLICATE KEY UPDATE
+            status = 'ACTIVE',
+            role = IF(role = 'OWNER', role, VALUES(role)),
+            invited_by = COALESCE(invited_by, VALUES(invited_by)),
+            anonymous = VALUES(anonymous)
+    </insert>
+
     <insert id="insertConversationInvite">
         INSERT INTO collaboration_conversation_invite (conversation_id, inviter_id, invitee_id, anonymous, status)
         VALUES (#{conversationId}, #{inviterId}, #{inviteeId}, #{anonymous}, 'PENDING')
@@ -265,6 +276,9 @@
         c.type,
         c.title,
         c.description,
+        c.image_file_id,
+        c.notice,
+        me.role AS my_role,
         CASE WHEN c.type = 'PRIVATE' OR c.password_hash IS NOT NULL THEN 1 ELSE 0 END AS locked,
         (
             SELECT COUNT(*)
@@ -522,5 +536,248 @@
           FROM user_desktop_presence
          WHERE user_id IN
         <foreach collection="userIds" item="id" open="(" separator="," close=")">#{id}</foreach>
+    </select>
+
+    <!-- ══════════════ 방 설정 / 관리자 위임 (W5) ══════════════ -->
+
+    <select id="findMemberRole" resultType="string">
+        SELECT role
+          FROM collaboration_conversation_member
+         WHERE conversation_id = #{conversationId}
+           AND user_id = #{userId}
+           AND status = 'ACTIVE'
+    </select>
+
+    <!-- null 이 아닌 필드만 반영하는 부분 수정. type/password 는 별도 statement 로 처리한다. -->
+    <update id="updateConversationSettings">
+        UPDATE collaboration_conversation
+        <set>
+            <if test="title != null">title = #{title},</if>
+            <if test="description != null">description = #{description},</if>
+            <if test="notice != null">notice = #{notice},</if>
+            <if test="type != null">type = #{type},</if>
+            <if test="maxMembers != null">max_members = #{maxMembers},</if>
+            <if test="invitePolicy != null">invite_policy = #{invitePolicy},</if>
+            <if test="allowAnonymous != null">allow_anonymous = #{allowAnonymous},</if>
+            <if test="anonymousOnly != null">anonymous_only = #{anonymousOnly},</if>
+        </set>
+         WHERE id = #{id}
+    </update>
+
+    <update id="updateConversationImage">
+        UPDATE collaboration_conversation
+           SET image_file_id = #{imageFileId}
+         WHERE id = #{conversationId}
+    </update>
+
+    <update id="updateConversationPassword">
+        UPDATE collaboration_conversation
+           SET password_hash = #{passwordHash}
+         WHERE id = #{conversationId}
+    </update>
+
+    <update id="updateMemberRole">
+        UPDATE collaboration_conversation_member
+           SET role = #{role}
+         WHERE conversation_id = #{conversationId}
+           AND user_id = #{userId}
+    </update>
+
+    <update id="updateMemberStatus">
+        UPDATE collaboration_conversation_member
+           SET status = #{status},
+               left_at = CASE WHEN #{status} = 'ACTIVE' THEN NULL ELSE NOW() END
+         WHERE conversation_id = #{conversationId}
+           AND user_id = #{userId}
+    </update>
+
+    <select id="findPermission" resultType="com.careertuner.collaboration.domain.ConversationPermissionRow">
+        SELECT conversation_id, user_id, can_kick, can_ban, can_set_password,
+               can_invite, can_edit_room, can_manage_members, granted_by
+          FROM collaboration_conversation_permission
+         WHERE conversation_id = #{conversationId}
+           AND user_id = #{userId}
+    </select>
+
+    <insert id="upsertPermission">
+        INSERT INTO collaboration_conversation_permission
+            (conversation_id, user_id, can_kick, can_ban, can_set_password,
+             can_invite, can_edit_room, can_manage_members, granted_by)
+        VALUES
+            (#{conversationId}, #{userId}, #{canKick}, #{canBan}, #{canSetPassword},
+             #{canInvite}, #{canEditRoom}, #{canManageMembers}, #{grantedBy})
+        ON DUPLICATE KEY UPDATE
+            can_kick = VALUES(can_kick),
+            can_ban = VALUES(can_ban),
+            can_set_password = VALUES(can_set_password),
+            can_invite = VALUES(can_invite),
+            can_edit_room = VALUES(can_edit_room),
+            can_manage_members = VALUES(can_manage_members),
+            granted_by = VALUES(granted_by)
+    </insert>
+
+    <delete id="deletePermission">
+        DELETE FROM collaboration_conversation_permission
+         WHERE conversation_id = #{conversationId}
+           AND user_id = #{userId}
+    </delete>
+
+    <sql id="memberDetailColumns">
+        cm.user_id,
+        u.name,
+        u.email,
+        cm.role,
+        cm.status,
+        cm.anonymous,
+        cm.room_nickname,
+        cm.room_profile_file_id,
+        cm.joined_at,
+        p.can_kick,
+        p.can_ban,
+        p.can_set_password,
+        p.can_invite,
+        p.can_edit_room,
+        p.can_manage_members,
+        CASE WHEN b.user_id IS NULL THEN 0 ELSE 1 END AS banned
+    </sql>
+
+    <sql id="memberDetailJoins">
+        JOIN users u ON u.id = cm.user_id
+        LEFT JOIN collaboration_conversation_permission p
+          ON p.conversation_id = cm.conversation_id
+         AND p.user_id = cm.user_id
+        LEFT JOIN collaboration_conversation_ban b
+          ON b.conversation_id = cm.conversation_id
+         AND b.user_id = cm.user_id
+    </sql>
+
+    <select id="findMemberDetails" resultType="com.careertuner.collaboration.domain.ConversationMemberDetailRow">
+        SELECT
+        <include refid="memberDetailColumns"/>
+          FROM collaboration_conversation_member cm
+        <include refid="memberDetailJoins"/>
+         WHERE cm.conversation_id = #{conversationId}
+           AND cm.status = 'ACTIVE'
+         ORDER BY FIELD(cm.role, 'OWNER', 'MANAGER', 'MEMBER'), cm.joined_at ASC, cm.user_id ASC
+    </select>
+
+    <select id="findMemberDetail" resultType="com.careertuner.collaboration.domain.ConversationMemberDetailRow">
+        SELECT
+        <include refid="memberDetailColumns"/>
+          FROM collaboration_conversation_member cm
+        <include refid="memberDetailJoins"/>
+         WHERE cm.conversation_id = #{conversationId}
+           AND cm.user_id = #{userId}
+         LIMIT 1
+    </select>
+
+    <select id="countBan" resultType="int">
+        SELECT COUNT(*)
+          FROM collaboration_conversation_ban
+         WHERE conversation_id = #{conversationId}
+           AND user_id = #{userId}
+    </select>
+
+    <insert id="insertBan">
+        INSERT INTO collaboration_conversation_ban (conversation_id, user_id, banned_by, reason)
+        VALUES (#{conversationId}, #{userId}, #{bannedBy}, #{reason})
+        ON DUPLICATE KEY UPDATE
+            banned_by = VALUES(banned_by),
+            reason = VALUES(reason)
+    </insert>
+
+    <delete id="deleteBan">
+        DELETE FROM collaboration_conversation_ban
+         WHERE conversation_id = #{conversationId}
+           AND user_id = #{userId}
+    </delete>
+
+    <select id="findBans" resultType="com.careertuner.collaboration.domain.ConversationBanRow">
+        SELECT b.user_id,
+               u.name,
+               u.email,
+               b.banned_by,
+               b.reason,
+               b.created_at
+          FROM collaboration_conversation_ban b
+          JOIN users u ON u.id = b.user_id
+         WHERE b.conversation_id = #{conversationId}
+         ORDER BY b.created_at DESC, b.id DESC
+    </select>
+
+    <select id="countInviteAllow" resultType="int">
+        SELECT COUNT(*)
+          FROM collaboration_conversation_invite_allow
+         WHERE conversation_id = #{conversationId}
+           AND user_id = #{userId}
+    </select>
+
+    <select id="findInviteAllowUserIds" resultType="long">
+        SELECT user_id
+          FROM collaboration_conversation_invite_allow
+         WHERE conversation_id = #{conversationId}
+         ORDER BY user_id ASC
+    </select>
+
+    <delete id="deleteInviteAllowAll">
+        DELETE FROM collaboration_conversation_invite_allow
+         WHERE conversation_id = #{conversationId}
+    </delete>
+
+    <insert id="insertInviteAllow">
+        INSERT IGNORE INTO collaboration_conversation_invite_allow (conversation_id, user_id, granted_by)
+        VALUES (#{conversationId}, #{userId}, #{grantedBy})
+    </insert>
+
+    <insert id="insertAudit">
+        INSERT INTO collaboration_conversation_audit
+            (conversation_id, actor_id, target_user_id, action, detail)
+        VALUES (#{conversationId}, #{actorId}, #{targetUserId}, #{action}, #{detail})
+    </insert>
+
+    <select id="findAudits" resultType="com.careertuner.collaboration.domain.ConversationAuditRow">
+        SELECT a.id,
+               a.conversation_id,
+               a.actor_id,
+               actor.name AS actor_name,
+               a.target_user_id,
+               target.name AS target_name,
+               a.action,
+               a.detail,
+               a.created_at
+          FROM collaboration_conversation_audit a
+          LEFT JOIN users actor ON actor.id = a.actor_id
+          LEFT JOIN users target ON target.id = a.target_user_id
+         WHERE a.conversation_id = #{conversationId}
+         ORDER BY a.id DESC
+         LIMIT #{limit}
+    </select>
+
+    <!-- 관리자 방 목록 — 멤버수/밴수를 서브쿼리로 채운다(운영 오버사이트용) -->
+    <select id="findRoomsForAdmin" resultType="com.careertuner.collaboration.domain.ConversationSummaryRow">
+        SELECT c.id,
+               c.type,
+               c.title,
+               c.description,
+               c.image_file_id,
+               c.notice,
+               CASE WHEN c.type = 'PRIVATE' OR c.password_hash IS NOT NULL THEN 1 ELSE 0 END AS locked,
+               (
+                   SELECT COUNT(*)
+                     FROM collaboration_conversation_member cm
+                    WHERE cm.conversation_id = c.id
+                      AND cm.status = 'ACTIVE'
+               ) AS member_count,
+               c.updated_at
+          FROM collaboration_conversation c
+         WHERE c.type IN ('GROUP', 'PUBLIC', 'PRIVATE')
+        <if test="keyword != null and keyword != ''">
+           AND (
+               LOWER(COALESCE(c.title, '')) LIKE CONCAT('%', LOWER(#{keyword}), '%')
+               OR LOWER(COALESCE(c.description, '')) LIKE CONCAT('%', LOWER(#{keyword}), '%')
+           )
+        </if>
+         ORDER BY c.updated_at DESC, c.id DESC
+         LIMIT #{limit}
     </select>
 </mapper>
