@@ -41,6 +41,14 @@ public class UnifiedChatRouter {
     public record Decision(Target target, double faqScore, double intakeScore,
                            double communityScore, boolean usedSpeechAct, String speechAct) {}
 
+    /**
+     * DIRECT 안전판(구조점검 △ 수리) — i-c 마진이 boundary 를 이 값만큼만 넘는 "얇은" 구간이면
+     * 확실한 DIRECT 로 보지 않고 화행분류 1회를 더 태운다. 실측(2026-07-02): 진짜 인테이크 명령형
+     * i-c 마진 0.158~0.403(카카오 백엔드 면접 준비해줘=0.158, 면접 준비해줘=0.403) vs 질문형 오분류
+     * 사례 0.101("면접 준비 어떻게 해?") — 0.05 면 후자만 잡고 전자는 그대로 통과한다.
+     */
+    private static final double DIRECT_MARGIN_SLACK = 0.05;
+
     /** ③ "행위 의도" 시드. intakeScore = 사용자 발화와 이 시드들의 max 코사인. */
     private static final List<String> INTAKE_SEEDS = List.of(
             "면접 준비해줘",
@@ -81,6 +89,18 @@ public class UnifiedChatRouter {
 
     /** 첫 턴 라우팅 판정. 임베딩/Ollama 장애 시 안전하게 FAQ 로 보낸다. */
     public Decision decide(String question) {
+        Decision d = decideInternal(question);
+        // (F-21) 라우팅 점수 관측 — 사고 시 "왜 이 경로였나" 재구성용(debug 레벨 — 운영 기본 레벨에선 침묵).
+        log.debug("라우팅 판정: target={} faq={} intake={} community={} speechAct={}({}used)",
+                d.target(),
+                String.format("%.3f", d.faqScore()),
+                String.format("%.3f", d.intakeScore()),
+                String.format("%.3f", d.communityScore()),
+                d.speechAct(), d.usedSpeechAct() ? "" : "un");
+        return d;
+    }
+
+    private Decision decideInternal(String question) {
         double faqScore;
         double intakeScore;
         double communityScore;
@@ -106,7 +126,18 @@ public class UnifiedChatRouter {
 
         // 2) 확실한 행위 의도(인테이크): intake 가 community·faq 를 모두 boundary 이상 앞섬 → ③ 직행.
         //    (조회 의도 community 가 가까우면 여기서 걸러져 ③로 안 샌다 — 회귀 핵심.)
+        //    ★(구조점검 △ 수리) i-c 마진이 boundary~+DIRECT_MARGIN_SLACK 로 얇으면 확실한 DIRECT 로 보지
+        //    않고 화행분류 1회를 더 태운다(실측: "면접 준비 어떻게 해?" i-c=0.101, boundary=0.10 — 마진
+        //    0.001로 안전판 없이 그냥 새던 회귀). 마진이 두꺼우면(>=+0.05) 기존대로 화행분류 없이 즉시 DIRECT.
         if (intakeScore - communityScore >= b && intakeScore - faqScore >= b) {
+            if (intakeScore - communityScore < b + DIRECT_MARGIN_SLACK) {
+                String act = speechActClassifier.classify(question);
+                if (!SpeechActClassifier.COMMAND.equals(act)) {
+                    // 질문형("…어떻게 해?") → 바로 진입 말고 확인 1턴으로 강등(branch 4 와 동일 안전판 패턴).
+                    return new Decision(Target.INTAKE_CONFIRM, faqScore, intakeScore, communityScore, true, act);
+                }
+                return new Decision(Target.INTAKE_DIRECT, faqScore, intakeScore, communityScore, true, act);
+            }
             return new Decision(Target.INTAKE_DIRECT, faqScore, intakeScore, communityScore, false, null);
         }
 

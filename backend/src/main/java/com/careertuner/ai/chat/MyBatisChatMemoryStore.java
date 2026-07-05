@@ -92,6 +92,13 @@ public class MyBatisChatMemoryStore implements ChatMemoryStore {
         }
     }
 
+    /** 온보딩 거부 해제(재시작 확인 "네" 응답 시) — 같은 대화에서 마음을 바꾼 유저의 재진입을 허용한다. */
+    public void clearOnboardingDeclined(Long conversationId) {
+        if (conversationId != null) {
+            mapper.clearOnboardingDeclined(conversationId);
+        }
+    }
+
     private Long toLong(Object memoryId) {
         if (memoryId instanceof Number n) {
             return n.longValue();
