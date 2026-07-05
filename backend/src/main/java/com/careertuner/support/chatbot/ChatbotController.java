@@ -1352,6 +1352,9 @@ public class ChatbotController {
      */
     private ChatAskResponse agentPath(Long conversationId, String question, Long userId, String route) {
         searchTrace.clear();
+        // 툴(searchCommunityPosts/getPostContent)에 뷰어 전파 — 에이전트는 요청 스레드 동기 실행이라
+        // ThreadLocal 로 안전(SearchTrace 와 동일 근거). 모델 파라미터로 받으면 LLM 이 지어낼 수 있어 여기서만 주입.
+        communityTools.setViewerId(userId);
         try {
             ChatbotService.FaqMiss miss = null;
             try {
@@ -1398,6 +1401,7 @@ public class ChatbotController {
                     false,
                     null);
         } finally {
+            communityTools.clearViewerId(); // 스레드풀 재사용 오염 방지 — setViewerId 와 반드시 짝
             searchTrace.clear();
         }
     }
@@ -1728,7 +1732,8 @@ public class ChatbotController {
      * 남은 본문을 이어 요약 에이전트에 넘긴다. 응답은 묶음 요약 평문(summaryChip=null, links/quickReplies=[]).
      */
     @PostMapping("/chatbot/summarize-posts")
-    public ApiResponse<ChatAskResponse> summarizePosts(@RequestBody ChatSummarizeRequest req) {
+    public ApiResponse<ChatAskResponse> summarizePosts(@RequestBody ChatSummarizeRequest req,
+                                                       @AuthenticationPrincipal AuthUser authUser) {
         if (req == null || req.postIds() == null || req.postIds().isEmpty()) {
             return ApiResponse.error("BAD_REQUEST", "요약할 글을 선택해 주세요.");
         }
@@ -1740,10 +1745,16 @@ public class ChatbotController {
                 .limit(SUMMARY_TOP_K)
                 .collect(Collectors.toList());
 
-        // 각 글 본문 수집 — 비공개/삭제("찾을 수 없"으로 시작)는 제외.
+        // 수집 단계 일괄 차단 필터(P-02) — 뷰어가 차단한 작성자의 글은 요약 소스에서 제외(비로그인 무필터).
+        // 여기서 한 번만 벌크 판정하므로 아래 getPostContent 는 뷰어 미주입(무필터) 그대로 쓴다.
+        ids = communityTools.visiblePostIds(ids, authUser != null ? authUser.id() : null);
+
+        // 각 글 본문 수집 — 비공개/삭제("찾을 수 없")·차단 톰스톤은 요약 소스에서 제외.
         List<String> bodies = ids.stream()
                 .map(communityTools::getPostContent)
-                .filter(c -> c != null && !c.startsWith("해당 글을 찾을 수 없"))
+                .filter(c -> c != null
+                        && !c.startsWith("해당 글을 찾을 수 없")
+                        && !c.startsWith("차단한 사용자의 게시글"))
                 .collect(Collectors.toList());
 
         String message;
