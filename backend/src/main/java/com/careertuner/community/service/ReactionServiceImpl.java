@@ -53,15 +53,23 @@ public class ReactionServiceImpl implements ReactionService {
         }
         PostReaction existing = reactionMapper.findPostReaction(userId, postId, type.name());
         if (existing != null) {
-            reactionMapper.deletePostReaction(userId, postId, type.name());
+            int deleted = reactionMapper.deletePostReaction(userId, postId, type.name());
+            if (deleted <= 0) {
+                // 동시 취소 충돌: 이미 다른 트랜잭션이 동일 리액션을 삭제함(이미 목표 상태) → 카운트 재감소 없이 흡수.
+                log.info("게시글 리액션 동시 취소 충돌 흡수 postId={} userId={} type={}", postId, userId, type);
+                return false;
+            }
             if (type == ReactionType.LIKE) postMapper.decrementLikeCount(postId);
             else postMapper.decrementBookmarkCount(postId);
             log.info("게시글 리액션 취소 postId={} userId={} type={}", postId, userId, type);
             return false;
         }
         try {
-            reactionMapper.insertPostReaction(PostReaction.builder()
+            int inserted = reactionMapper.insertPostReaction(PostReaction.builder()
                     .userId(userId).postId(postId).reactionType(type.name()).build());
+            if (inserted <= 0) {
+                throw new BusinessException(ErrorCode.CONFLICT, "게시글 리액션 등록에 실패했습니다.");
+            }
         } catch (DuplicateKeyException e) {
             // 동시 토글 충돌: 이미 다른 트랜잭션이 동일 리액션을 등록함. 카운트 재증가 없이 흡수.
             log.info("게시글 리액션 동시 등록 충돌 흡수 postId={} userId={} type={}", postId, userId, type);
@@ -118,14 +126,22 @@ public class ReactionServiceImpl implements ReactionService {
         }
         CommentReaction existing = reactionMapper.findCommentReaction(userId, commentId, type.name());
         if (existing != null) {
-            reactionMapper.deleteCommentReaction(userId, commentId, type.name());
+            int deleted = reactionMapper.deleteCommentReaction(userId, commentId, type.name());
+            if (deleted <= 0) {
+                // 동시 취소 충돌: 이미 다른 트랜잭션이 동일 리액션을 삭제함(이미 목표 상태) → 카운트 재감소 없이 흡수.
+                log.info("댓글 리액션 동시 취소 충돌 흡수 commentId={} userId={}", commentId, userId);
+                return false;
+            }
             commentMapper.decrementLikeCount(commentId);
             log.info("댓글 리액션 취소 commentId={} userId={}", commentId, userId);
             return false;
         }
         try {
-            reactionMapper.insertCommentReaction(CommentReaction.builder()
+            int inserted = reactionMapper.insertCommentReaction(CommentReaction.builder()
                     .userId(userId).commentId(commentId).reactionType(type.name()).build());
+            if (inserted <= 0) {
+                throw new BusinessException(ErrorCode.CONFLICT, "댓글 리액션 등록에 실패했습니다.");
+            }
         } catch (DuplicateKeyException e) {
             // 동시 토글 충돌: 이미 다른 트랜잭션이 동일 리액션을 등록함. 카운트 재증가 없이 흡수.
             log.info("댓글 리액션 동시 등록 충돌 흡수 commentId={} userId={}", commentId, userId);
