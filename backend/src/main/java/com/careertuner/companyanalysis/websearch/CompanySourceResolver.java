@@ -178,19 +178,38 @@ public class CompanySourceResolver {
         return false;
     }
 
-    /** 제목을 공백·문장부호로 분리해 정규화한 토큰(len≥2) 목록. */
+    /**
+     * 한글 제목 토큰 끝에 자주 붙는 단일 조사(1자). 브랜드 토큰("위버스가"·"가온전선이")에서 이 1자를 떼
+     * 접두 anchor·rival 판정을 실제 상호 형태로 비교하기 위함. 2자 조사("에서"·"으로")는 실제 상호와의
+     * 충돌 위험이 커 제외한다(안전 우선). anchor·rival 비교 전용이라 저장·URL·캐시엔 영향 없다.
+     */
+    private static final String COMMON_JOSA = "은는이가을를의에도로와과나만";
+
+    /**
+     * 제목을 공백·문장부호로 분리해 정규화한 토큰(len≥2) 목록. 각 토큰이 len≥3 이고 마지막 1자가 흔한
+     * 단일 조사({@link #COMMON_JOSA})면 그 1자를 떼 실제 상호 형태로 비교한다("위버스가"→"위버스",
+     * "가온전선이"→"가온전선"). len<3 토큰은 떼지 않는다(2자 토큰 훼손 방지).
+     */
     private List<String> titleTokens(String title) {
         if (title == null || title.isBlank()) {
             return List.of();
         }
         List<String> tokens = new ArrayList<>();
         for (String raw : title.split("[^\\p{L}\\p{N}]+")) {
-            String token = normalizeText(raw);
+            String token = stripTrailingParticle(normalizeText(raw));
             if (token.length() >= MIN_TOKEN_LENGTH) {
                 tokens.add(token);
             }
         }
         return tokens;
+    }
+
+    /** len≥3 이고 마지막 1자가 흔한 단일 조사면 그 1자를 뗀다. 그 외에는 원본 그대로. */
+    private String stripTrailingParticle(String token) {
+        if (token.length() >= 3 && COMMON_JOSA.indexOf(token.charAt(token.length() - 1)) >= 0) {
+            return token.substring(0, token.length() - 1);
+        }
+        return token;
     }
 
     /** 한쪽이 다른 쪽의 접두이면(양방향) true. 두 값 모두 len≥2 일 때만 유효. */

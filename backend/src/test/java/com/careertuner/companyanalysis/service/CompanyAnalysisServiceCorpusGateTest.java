@@ -140,6 +140,45 @@ class CompanyAnalysisServiceCorpusGateTest {
     }
 
     /**
+     * (3차 P1 hard case) "위버스컴퍼니" 조사형 브랜드-only: 제목/본문/링크 어디에도 "위버스컴퍼니" 문자열이
+     * 없고 조사가 붙은 "위버스가"/"위버스는"만 있음. 실제 네이버 제목은 조사형이 더 흔하다 —
+     * titleTokens 의 조사 정규화가 "위버스가"→"위버스"→접두 anchor 로 keep(degrade·rival 제거 아님).
+     */
+    @Test
+    void particleFormBrandOnlyStillKeepsCorpusWithoutDegrade() {
+        CompanyAnalysisService service = service(enabled());
+        when(webSearchClient.search(any(NaverSearchCategory.class), any(String.class))).thenReturn(List.of(
+                result("위버스가 신규 기능 공개", "https://news.example.com/1", "새 기능이 추가됐다"),
+                result("위버스는 콘서트 스트리밍 오픈", "https://news.example.com/2", "라이브가 열린다")));
+
+        List<CompanyWebEvidence> evidence = service.collectWebEvidence(applicationCase("위버스컴퍼니"));
+
+        assertThat(evidence).hasSize(2); // 조사형이라도 접두 anchor → 유지(오제거 없음)
+    }
+
+    /**
+     * (3차 rival 유지) "가온테크" 대상, 조사형 경쟁사 "가온전선이": 조사 정규화가 rival 탐지를 약화시키지
+     * 않는다 — "가온전선이"→"가온전선"→가온테크와 접두 공유 후 발산 → rival 제거(evidence·캐시 미포함).
+     */
+    @Test
+    void particleFormRivalIsStillRemoved() {
+        CompanyAnalysisService service = service(enabled());
+        when(webSearchClient.search(any(NaverSearchCategory.class), any(String.class))).thenReturn(List.of(
+                result("가온테크 신입 채용", "https://news.example.com/1", "가온테크가 채용을 연다"),
+                result("가온전선이 대형 수주", "https://news.example.com/2", "가온전선이 수주를 따냈다")));
+
+        List<CompanyWebEvidence> evidence = service.collectWebEvidence(applicationCase("가온테크"));
+
+        assertThat(evidence).hasSize(1);
+        assertThat(evidence.get(0).url()).isEqualTo("https://news.example.com/1");
+        assertThat(evidence).extracting(CompanyWebEvidence::url)
+                .doesNotContain("https://news.example.com/2"); // 조사형 경쟁사도 제거
+        CompanySearchCache cached = cacheMapper.store.get("가온테크");
+        assertThat(cached).isNotNull();
+        assertThat(cached.getResults()).doesNotContain("news.example.com/2"); // 캐시에도 미포함
+    }
+
+    /**
      * (P1-b) "백패커" + 공통 접두 없는 다른 브랜드(텀블벅·전자오락수호대) 다수: 백패커 언급 1건이 anchor,
      * 다른 브랜드는 접두 공유가 없어 rival 아님 → 전부 유지(degrade 아님, 텀블벅 등 제거 안 됨).
      */

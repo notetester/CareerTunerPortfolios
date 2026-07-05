@@ -274,6 +274,42 @@ class CompanySourceResolverTest {
                 .isFalse();
     }
 
+    // ── 조사 정규화: 브랜드 토큰에 붙은 흔한 단일 조사를 떼고 판정(D-6 이슈A 3차) ──
+
+    /** "위버스가"(조사 '가')는 '가'를 떼면 "위버스" → 위버스컴퍼니의 접두 anchor. */
+    @Test
+    void particleSuffixTokenIsNormalizedForPrefixAnchor() {
+        CompanyIdentity identity = new CompanyIdentity("위버스컴퍼니", "", "");
+
+        assertThat(resolver.identifiesCompany(identity, result("위버스가 신규 기능 공개", "새 기능 안내")))
+                .isTrue();
+        assertThat(resolver.identifiesCompany(identity, result("위버스는 콘서트 오픈", "라이브 안내")))
+                .isTrue();
+    }
+
+    /** 조사 정규화가 rival 탐지를 약화시키지 않는다 — "가온전선이"→"가온전선"→가온테크 rival 유지. */
+    @Test
+    void particleNormalizationKeepsRivalDetection() {
+        CompanyIdentity identity = new CompanyIdentity("가온테크", "", "");
+
+        assertThat(resolver.isConfusableRival(identity, result("가온전선이 대형 수주", "가온전선이 수주를 따냈다")))
+                .isTrue();
+    }
+
+    /**
+     * len<3 토큰은 조사를 떼지 않는다(2자 토큰 훼손 방지). "이가"(2자, '가'로 끝남)를 "이"로 떼면
+     * len<2 로 탈락해 판정에서 사라진다 — 떼지 않아야 브랜드 토큰이 보존된다.
+     * 대상 "이가네" 제목에 브랜드 토큰 "이가"가 있으면(이가네의 접두) anchor 로 keep 돼야 한다.
+     */
+    @Test
+    void shortTokensAreNotStrippedOfTrailingParticle() {
+        CompanyIdentity identity = new CompanyIdentity("이가네", "", "");
+
+        // '가'를 떼면 "이"(len1)로 탈락 → anchor 못 잡음. 떼지 않으면 "이가"가 "이가네"의 접두 → anchor.
+        assertThat(resolver.identifiesCompany(identity, result("이가 신메뉴 출시", "신메뉴 안내")))
+                .isTrue();
+    }
+
     // ── 이름 정규화 ──
 
     @Test
