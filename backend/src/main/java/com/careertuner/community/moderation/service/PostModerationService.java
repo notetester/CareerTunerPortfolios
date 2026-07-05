@@ -31,7 +31,6 @@ import com.careertuner.community.mapper.CommunityCommentMapper;
 import com.careertuner.community.mapper.CommunityPostMapper;
 import com.careertuner.community.mapper.CommunityTagMapper;
 import com.careertuner.community.moderation.client.ModerationLlmGateway;
-import com.careertuner.community.moderation.config.OllamaProperties;
 import com.careertuner.community.moderation.domain.AiTaskType;
 import com.careertuner.community.moderation.domain.Strictness;
 import com.careertuner.community.moderation.dto.InterviewExtractionResult;
@@ -117,7 +116,6 @@ public class PostModerationService {
     );
 
     private final ModerationLlmGateway moderationLlmGateway;
-    private final OllamaProperties ollamaProperties;
     private final PostAiResultMapper aiResultMapper;
     private final CommentAiResultMapper commentAiResultMapper;
     private final CommunityPostMapper postMapper;
@@ -153,7 +151,6 @@ public class PostModerationService {
 
     public PostModerationService(
             ModerationLlmGateway moderationLlmGateway,
-            OllamaProperties ollamaProperties,
             PostAiResultMapper aiResultMapper,
             CommentAiResultMapper commentAiResultMapper,
             CommunityPostMapper postMapper,
@@ -172,7 +169,6 @@ public class PostModerationService {
             @Value("${ai.tagging.confidence-threshold:0.7}") double tagConfidenceThreshold
     ) {
         this.moderationLlmGateway = moderationLlmGateway;
-        this.ollamaProperties = ollamaProperties;
         this.aiResultMapper = aiResultMapper;
         this.commentAiResultMapper = commentAiResultMapper;
         this.postMapper = postMapper;
@@ -234,14 +230,41 @@ public class PostModerationService {
      * 항상 "현재 설정"으로 판정한다.
      */
     public ModerationResult judge(String title, String content) {
+        return judgeWithProvider(title, content).result();
+    }
+
+    /**
+     * 판정 + 실제 응답한 provider 정보. 파이프라인(moderate/moderateComment/classify)이
+     * 결과 저장 모델 기록과 mock placeholder 의 UNMODERATED 분리에 쓴다.
+     */
+    private Judgment judgeWithProvider(String title, String content) {
         String text = "제목: " + title + "\n본문: " + content;
         if (text.length() > MAX_TEXT_LENGTH) {
             text = text.substring(0, MAX_TEXT_LENGTH);
         }
 
         String prompt = buildSystemPrompt();
-        String json = moderationLlmGateway.chat(prompt, text, MODERATION_SCHEMA);
-        return parseResult(json);
+        ModerationLlmGateway.LlmReply reply = moderationLlmGateway.chat(prompt, text, MODERATION_SCHEMA);
+        return new Judgment(parseResult(reply.json()), reply.model(), reply.mock());
+    }
+
+    /** 판정 결과 + 실제 응답한 모델명 + mock(미판정 placeholder) 여부. */
+    private record Judgment(ModerationResult result, String model, boolean mock) {
+
+        /**
+         * 판정 불성립 — mock placeholder 이거나 confidence 누락(0.0 확신과 구분되는 null).
+         * COMPLETED 로 확정하면 재시도(NOT EXISTS status='COMPLETED') 대상에서 빠져
+         * 영구 미검열이 되므로, 호출부는 UNMODERATED 로 기록해야 한다.
+         */
+        boolean inconclusive() {
+            return mock || result.confidence() == null;
+        }
+
+        String inconclusiveReason() {
+            return mock
+                    ? "모든 LLM provider 실패 — mock placeholder(판정 아님)"
+                    : "판정 confidence 누락 — 재검열 필요";
+        }
     }
 
     /**
@@ -264,13 +287,24 @@ public class PostModerationService {
             Strictness currentStrictness = settingService.getStrictness();
             double currentThreshold = settingService.getHideThreshold();
 
-            // 4. 판정
-            ModerationResult result = judge(post.getTitle(), post.getContent());
+            // 4. 판정 — 실제 응답한 provider(model)를 함께 받는다
+            Judgment judgment = judgeWithProvider(post.getTitle(), post.getContent());
+            ModerationResult result = judgment.result();
 
-            // 5. 결과 저장 (COMPLETED) — applied 스냅샷 병합
+            // 4-1. 판정 불성립(mock placeholder / confidence 누락) — COMPLETED 가 아닌
+            //      UNMODERATED 로 기록해 재시도 스케줄러가 provider 복구 후 다시 집게 한다.
+            if (judgment.inconclusive()) {
+                aiResultMapper.markUnmoderated(postId, AiTaskType.MODERATION,
+                        judgment.inconclusiveReason(), judgment.model());
+                log.warn("검열 미확정(UNMODERATED): postId={}, model={}, {}",
+                        postId, judgment.model(), judgment.inconclusiveReason());
+                return;
+            }
+
+            // 5. 결과 저장 (COMPLETED) — applied 스냅샷 병합 + 실제 응답 모델 기록
             String resultJson = buildResultJson(result, currentStrictness, currentThreshold);
             aiResultMapper.complete(postId, AiTaskType.MODERATION,
-                    resultJson, ollamaProperties.getModel());
+                    resultJson, judgment.model());
 
             // 6. 숨김 처리 (toxic + 캐시된 threshold 기준)
             if (result.toxic() && result.confidence() >= currentThreshold) {
@@ -330,13 +364,23 @@ public class PostModerationService {
             Strictness currentStrictness = settingService.getStrictness();
             double currentThreshold = settingService.getHideThreshold();
 
-            // 4. 판정 — 댓글은 제목이 없으므로 본문만. judge()가 8000자 제한·프롬프트를 책임진다.
-            ModerationResult result = judge("", comment.getContent());
+            // 4. 판정 — 댓글은 제목이 없으므로 본문만. judgeWithProvider()가 8000자 제한·프롬프트를 책임진다.
+            Judgment judgment = judgeWithProvider("", comment.getContent());
+            ModerationResult result = judgment.result();
 
-            // 5. 결과 저장 (COMPLETED) — applied 스냅샷 병합
+            // 4-1. 판정 불성립 — 게시글 moderate()와 동일하게 UNMODERATED 로 재시도 대상에 남긴다.
+            if (judgment.inconclusive()) {
+                commentAiResultMapper.markUnmoderated(commentId, AiTaskType.MODERATION,
+                        judgment.inconclusiveReason(), judgment.model());
+                log.warn("댓글 검열 미확정(UNMODERATED): commentId={}, model={}, {}",
+                        commentId, judgment.model(), judgment.inconclusiveReason());
+                return;
+            }
+
+            // 5. 결과 저장 (COMPLETED) — applied 스냅샷 병합 + 실제 응답 모델 기록
             String resultJson = buildResultJson(result, currentStrictness, currentThreshold);
             commentAiResultMapper.complete(commentId, AiTaskType.MODERATION,
-                    resultJson, ollamaProperties.getModel());
+                    resultJson, judgment.model());
 
             // 6. 조건부 숨김 (toxic + 캐시된 threshold). affected-rows>0 일 때만 count 감소·알림.
             if (result.toxic() && result.confidence() >= currentThreshold) {
@@ -381,11 +425,21 @@ public class PostModerationService {
             Strictness currentStrictness = settingService.getStrictness();
             double currentThreshold = settingService.getHideThreshold();
 
-            ModerationResult result = judge(post.getTitle(), post.getContent());
+            Judgment judgment = judgeWithProvider(post.getTitle(), post.getContent());
+            ModerationResult result = judgment.result();
+
+            // 판정 불성립 — 신고 참고용 분류도 가짜 COMPLETED 를 남기지 않는다.
+            if (judgment.inconclusive()) {
+                aiResultMapper.markUnmoderated(postId, AiTaskType.REPORT,
+                        judgment.inconclusiveReason(), judgment.model());
+                log.warn("신고 분류 미확정(UNMODERATED): postId={}, model={}, {}",
+                        postId, judgment.model(), judgment.inconclusiveReason());
+                return;
+            }
 
             String resultJson = buildResultJson(result, currentStrictness, currentThreshold);
             aiResultMapper.complete(postId, AiTaskType.REPORT,
-                    resultJson, ollamaProperties.getModel());
+                    resultJson, judgment.model());
 
             log.info("신고 분류 완료: postId={}, toxic={}, category={}, confidence={}",
                     postId, result.toxic(), result.category(), result.confidence());
@@ -420,8 +474,18 @@ public class PostModerationService {
             if (text.length() > MAX_TEXT_LENGTH) {
                 text = text.substring(0, MAX_TEXT_LENGTH);
             }
-            String json = moderationLlmGateway.chat(taggingSystemPrompt, text, TAGGING_SCHEMA);
-            TagResult result = objectMapper.readValue(json, TagResult.class);
+            ModerationLlmGateway.LlmReply reply = moderationLlmGateway.chat(taggingSystemPrompt, text, TAGGING_SCHEMA);
+
+            // 판정 불성립(mock placeholder) — 빈 태그를 COMPLETED 로 확정하면 재시도 대상에서
+            // 빠져 영구 무태그가 되므로 UNMODERATED 로 남긴다.
+            if (reply.mock()) {
+                aiResultMapper.markUnmoderated(postId, AiTaskType.TAG,
+                        "모든 LLM provider 실패 — mock placeholder(빈 태그)", reply.model());
+                log.warn("태깅 미확정(UNMODERATED): postId={}, model={}", postId, reply.model());
+                return;
+            }
+
+            TagResult result = objectMapper.readValue(reply.json(), TagResult.class);
 
             // 카테고리명과 동일한 태그 제거
             List<String> filteredTags = result.tags() == null ? List.of() : result.tags().stream()
@@ -444,7 +508,7 @@ public class PostModerationService {
             resultMap.put("threshold", tagConfidenceThreshold);
             String resultJson = objectMapper.writeValueAsString(resultMap);
             aiResultMapper.complete(postId, AiTaskType.TAG,
-                    resultJson, ollamaProperties.getModel());
+                    resultJson, reply.model());
 
             log.info("태깅 완료: postId={}, tags={}, confidence={}, applied={}",
                     postId, result.tags(), result.confidence(), applied);
@@ -515,10 +579,20 @@ public class PostModerationService {
             }
 
             // Ollama 호출
-            String json = moderationLlmGateway.chat(extractSystemPrompt, userText, EXTRACT_SCHEMA);
+            ModerationLlmGateway.LlmReply reply = moderationLlmGateway.chat(extractSystemPrompt, userText, EXTRACT_SCHEMA);
+
+            // 판정 불성립(mock placeholder) — 빈 추출을 COMPLETED 로 확정하지 않고
+            // UNMODERATED 로 남겨 provider 복구 후 재추출되게 한다(기존 RAG 지식도 안 건드림).
+            if (reply.mock()) {
+                aiResultMapper.markUnmoderated(postId, AiTaskType.INTERVIEW_EXTRACT,
+                        "모든 LLM provider 실패 — mock placeholder(빈 추출)", reply.model());
+                log.warn("면접 질문 추출 미확정(UNMODERATED): postId={}, model={}", postId, reply.model());
+                return;
+            }
+
             // gemma가 백틱/인사말을 섞어 반환하는 경우를 대비해 첫 { ~ 마지막 }만 잘라낸다.
             InterviewExtractionResult result = sanitizeExtractionResult(
-                    objectMapper.readValue(extractJsonObject(json), InterviewExtractionResult.class));
+                    objectMapper.readValue(extractJsonObject(reply.json()), InterviewExtractionResult.class));
 
             // AI가 메타데이터(회사명/직무/결과)를 출력에 echo하지 않는 경우가 잦으므로,
             // null이면 review 행의 확정 값으로 채운다. (AI 출력에 의존하지 않음)
@@ -556,9 +630,9 @@ public class PostModerationService {
                 }
             }
 
-            // 결과 저장
+            // 결과 저장 — 실제 응답 모델 기록
             aiResultMapper.complete(postId, AiTaskType.INTERVIEW_EXTRACT,
-                    sanitizedJson, ollamaProperties.getModel());
+                    sanitizedJson, reply.model());
 
             log.info("면접 질문 추출 완료: postId={}, 추출 질문 수={}",
                     postId, result.questions() == null ? 0 : result.questions().size());

@@ -65,8 +65,10 @@ public class NewReportNotifyListener {
             if (ar != null && ar.getStatus() == AiResultStatus.COMPLETED
                     && ar.getResultJson() != null) {
                 ModerationResult r = objectMapper.readValue(ar.getResultJson(), ModerationResult.class);
-                return "게시글 신고가 접수되었습니다. (AI 판정 신뢰도 "
-                        + Math.round(r.confidence() * 100) + "%)";
+                if (r.confidence() != null) { // confidence 는 nullable — 누락이면 기본 메시지
+                    return "게시글 신고가 접수되었습니다. (AI 판정 신뢰도 "
+                            + Math.round(r.confidence() * 100) + "%)";
+                }
             }
         } catch (Exception ignore) {
             // 신뢰도 부가정보 실패는 무시하고 기본 메시지 사용
