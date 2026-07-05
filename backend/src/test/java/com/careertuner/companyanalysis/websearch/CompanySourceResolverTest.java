@@ -126,6 +126,21 @@ class CompanySourceResolverTest {
                 .hasSize(1);
     }
 
+    /**
+     * null title 방어(#238 셀프리뷰 하드닝) — title 이 null 이고 대상명이 desc/link 에도 없을 때
+     * matcher(null) NPE 없이 판별 불가로 유지한다(keep 편향). Naver 경로는 non-null 이나 캐시
+     * 역직렬화·미래 클라이언트를 대비한 방어.
+     */
+    @Test
+    void nullTitleIsHandledWithoutNpeAndKept() {
+        List<CompanyWebSearchResult> results = List.of(
+                new CompanyWebSearchResult(
+                        NaverSearchCategory.NEWS, null, "https://news.example.com/1", "회사명 없는 스니펫", Instant.now()));
+
+        assertThat(resolver.filterObviousMismatches(new CompanyIdentity("가온테크", "IT", "서울"), results))
+                .hasSize(1);
+    }
+
     // ── 양성 정체성 판정(코퍼스 게이트용 · D-6 이슈A) ──
 
     /** 정규화한 대상 회사명이 제목에 등장하면 양성. */
