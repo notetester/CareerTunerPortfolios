@@ -70,6 +70,12 @@ public class CommunityPostServiceImpl implements CommunityPostService {
     @org.springframework.beans.factory.annotation.Value("${community.report.blur-threshold:3}")
     private int reportBlurThreshold;
 
+    /** 작성 rate-limit — 윈도(초) 안에 이 건수 이상이면 429(0이면 비활성). */
+    @org.springframework.beans.factory.annotation.Value("${community.post.rate-limit.max:10}")
+    private int postRateLimitMax;
+    @org.springframework.beans.factory.annotation.Value("${community.post.rate-limit.window-seconds:60}")
+    private long postRateLimitWindowSeconds;
+
     /** 개인화 피드 정렬 키 — 이 값이면 PersonalizedFeedService(7:3 혼합)로 위임한다. */
     private static final String SORT_PERSONALIZED = "personalized";
 
@@ -224,6 +230,15 @@ public class CommunityPostServiceImpl implements CommunityPostService {
     public Long createPost(CreatePostRequest request, Long userId) {
         if (PostCategory.RECOMMENDED_JOB == request.category()) {
             throw new BusinessException(ErrorCode.FORBIDDEN, "채용공고는 승인된 기업 공고 등록 화면에서만 작성할 수 있습니다.");
+        }
+        // 작성 rate-limit(도배 방지) — 최근 window 초 안에 max 건 이상이면 429.
+        if (postRateLimitMax > 0) {
+            int recent = postMapper.countRecentPostsByUser(userId,
+                    LocalDateTime.now().minusSeconds(postRateLimitWindowSeconds));
+            if (recent >= postRateLimitMax) {
+                throw new BusinessException(ErrorCode.RATE_LIMITED,
+                        "짧은 시간에 너무 많은 글을 작성했습니다. 잠시 후 다시 시도해 주세요.");
+            }
         }
         CommunityPost post = CommunityPost.builder()
                 .userId(userId)
