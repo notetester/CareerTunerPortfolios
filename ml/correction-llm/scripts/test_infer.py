@@ -6,6 +6,7 @@ import argparse
 import json
 import os
 import re
+import sys
 from pathlib import Path
 
 from build_messages import SYSTEM_PROMPT
@@ -162,6 +163,8 @@ def check_output(
 
 
 def main() -> None:
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(encoding="utf-8", errors="backslashreplace")
     parser = argparse.ArgumentParser()
     parser.add_argument("--model", default=os.path.join("out", "correction-lora-smoke-3b"))
     parser.add_argument("--raw", default=os.path.join("data", "hardcases.seed.2.jsonl"))

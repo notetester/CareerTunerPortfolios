@@ -24,6 +24,12 @@ TASK_CODES = {
     "RESUME_EXPRESSION_IMPROVEMENT": "resume",
     "PORTFOLIO_DESCRIPTION_IMPROVEMENT": "portfolio",
 }
+PREFERRED_INPUT_RANGES = {
+    "SELF_INTRO_CORRECTION": (750, 1100),
+    "INTERVIEW_ANSWER_CORRECTION": (350, 550),
+    "RESUME_EXPRESSION_IMPROVEMENT": (220, 400),
+    "PORTFOLIO_DESCRIPTION_IMPROVEMENT": (450, 750),
+}
 
 SYSTEM_PROMPT = """당신은 한국어 취업 첨삭 SFT 데이터 설계자다.
 실제 인물이나 개인정보를 사용하지 않고 완전히 가상의 사례만 작성한다.
@@ -37,8 +43,10 @@ def build_user_prompt(tasks: list[str], batch_index: int, feedback: list[str] | 
     rules = []
     for task in tasks:
         rule = TASK_RULES[task]
+        preferred_min, preferred_max = PREFERRED_INPUT_RANGES[task]
         rules.append(
             f"- {task}: original_text {rule.input_min}..{rule.input_max}자, "
+            f"권장 {preferred_min}..{preferred_max}자, "
             f"corrected_text/original_text {rule.output_ratio_min:.2f}..{rule.output_ratio_max:.2f}, "
             f"preserve_paragraphs={str(rule.preserve_paragraphs).lower()}"
         )
@@ -54,6 +62,7 @@ def build_user_prompt(tasks: list[str], batch_index: int, feedback: list[str] | 
 {chr(10).join(rules)}
 
 공통 계약:
+- original_text 길이는 공백 포함 한국어 문자 수로 계산하며, 최솟값이 아니라 유형별 권장 구간을 맞춘다.
 - 서로 다른 직무, 산업, 경력 수준, 문제 상황과 문체를 사용한다.
 - original_text는 실제 지원자가 쓴 것처럼 구체적이고 자연스러운 한국어로 작성한다.
 - 자기소개서와 포트폴리오는 최소 2개 문단으로 작성한다.
@@ -72,6 +81,21 @@ def response_schema(tasks: list[str]) -> dict[str, Any]:
     string = {"type": "string", "minLength": 1}
     string_array = {"type": "array", "items": string}
     task_enum = {"type": "string", "enum": tasks}
+    original_text_schema = string
+    corrected_text_schema = string
+    if len(tasks) == 1:
+        preferred_min, preferred_max = PREFERRED_INPUT_RANGES[tasks[0]]
+        task_rule = TASK_RULES[tasks[0]]
+        original_text_schema = {
+            "type": "string",
+            "minLength": preferred_min,
+            "maxLength": preferred_max,
+        }
+        corrected_text_schema = {
+            "type": "string",
+            "minLength": math.ceil(preferred_min * task_rule.output_ratio_min),
+            "maxLength": math.floor(preferred_max * task_rule.output_ratio_max),
+        }
     change = _object_schema(
         {
             "before": string,
@@ -95,7 +119,7 @@ def response_schema(tasks: list[str]) -> dict[str, Any]:
     )
     input_schema = _object_schema(
         {
-            "original_text": string,
+            "original_text": original_text_schema,
             "target_role": string,
             "job_context": _object_schema(
                 {
@@ -112,7 +136,7 @@ def response_schema(tasks: list[str]) -> dict[str, Any]:
         {
             "status": {"type": "string", "const": "ok"},
             "task_type": task_enum,
-            "corrected_text": string,
+            "corrected_text": corrected_text_schema,
             "summary": string,
             "changes": {"type": "array", "minItems": 3, "items": change},
             "risk_flags": string_array,
