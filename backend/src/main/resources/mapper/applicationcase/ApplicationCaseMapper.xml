@@ -121,6 +121,21 @@
         WHERE id = #{id} AND user_id = #{userId} AND deleted_at IS NOT NULL
     </update>
 
+    <!--
+      삭제함(deleted_at 이 30일 이내인 것만 노출)에서도 숨긴다. 하드삭제가 아니라
+      soft delete 를 유지한 채 deleted_at 을 트래시 조회 창(30일) 밖(31일 전)으로 보내
+      삭제함 목록에서만 사라지게 한다. 현재 삭제함에 보이는(deleted_at 이 30일 이내) 건에만
+      적용하므로, 이미 창 밖으로 밀려 보이지 않는 건은 0행 → 서비스에서 404 로 처리된다.
+      행은 남으므로 DB 로 복구할 수 있다.
+    -->
+    <update id="hideApplicationCaseFromTrash">
+        UPDATE application_case
+        SET deleted_at = DATE_SUB(CURRENT_TIMESTAMP, INTERVAL 31 DAY)
+        WHERE id = #{id} AND user_id = #{userId}
+          AND deleted_at IS NOT NULL
+          AND deleted_at &gt;= DATE_SUB(CURRENT_TIMESTAMP, INTERVAL 30 DAY)
+    </update>
+
     <insert id="insertStatusHistory">
         INSERT INTO application_case_status_history
             (application_case_id, changed_by_user_id, previous_status, new_status, memo)

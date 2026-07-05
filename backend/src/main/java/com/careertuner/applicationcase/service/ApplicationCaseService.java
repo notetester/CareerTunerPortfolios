@@ -42,6 +42,8 @@ public interface ApplicationCaseService {
 
     void restore(Long userId, Long id);
 
+    void hideFromTrash(Long userId, Long id);
+
     JobPostingResponse saveJobPosting(Long userId, Long applicationCaseId, JobPostingRequest request);
 
     JobPostingResponse uploadJobPostingFile(Long userId, Long applicationCaseId, MultipartFile file, String sourceType);

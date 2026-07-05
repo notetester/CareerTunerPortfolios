@@ -113,6 +113,13 @@ public class ApplicationCaseController {
         return ApiResponse.ok();
     }
 
+    @DeleteMapping("/{id}/trash")
+    public ApiResponse<Void> hideFromTrash(@AuthenticationPrincipal AuthUser authUser,
+                                           @PathVariable Long id) {
+        applicationCaseService.hideFromTrash(authUser.id(), id);
+        return ApiResponse.ok();
+    }
+
     @PostMapping("/{id}/job-posting")
     public ApiResponse<JobPostingResponse> saveJobPosting(@AuthenticationPrincipal AuthUser authUser,
                                                           @PathVariable Long id,

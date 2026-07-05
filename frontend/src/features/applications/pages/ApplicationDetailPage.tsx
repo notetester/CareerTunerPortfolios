@@ -379,6 +379,9 @@ export function ApplicationDetailPage() {
                     >
                       <div className="truncate font-semibold">{item.companyName}</div>
                       <div className="truncate text-xs text-slate-500">{item.jobTitle}</div>
+                      <div className="mt-1.5">
+                        <ApplicationStatusBadge status={item.status} />
+                      </div>
                     </Link>
                   ))
                 )}
