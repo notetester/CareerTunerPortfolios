@@ -11,6 +11,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+import com.careertuner.admin.permission.annotation.RequireAdminPermission;
 import com.careertuner.admin.policy.dto.AdminPolicyRunResult;
 import com.careertuner.admin.policy.dto.AdminPolicyUpdateRequest;
 import com.careertuner.admin.policy.dto.AdminSystemPolicyRow;
@@ -21,9 +22,11 @@ import com.careertuner.common.web.ApiResponse;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 
+/** 운영 정책 콘솔. 세부 권한: 운영 정책 관리(POLICY_MANAGE) 또는 대표 권한(POLICY_ADMIN). */
 @RestController
 @RequestMapping("/api/admin/policies")
 @RequiredArgsConstructor
+@RequireAdminPermission({"POLICY_MANAGE", "POLICY_ADMIN"})
 public class AdminPolicyController {
 
     private final AdminPolicyService service;

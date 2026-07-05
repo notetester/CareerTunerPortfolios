@@ -41,6 +41,7 @@ import { useAuth } from "@/app/auth/AuthContext";
 import { ThemeToggle } from "@/app/components/layout/ThemeToggle";
 import { NotificationBell } from "@/features/notification/components/NotificationBell";
 import { useAdminPendingCounts, topSeverity, sumCounts, type PendingSeverity } from "@/admin/hooks/useAdminPendingCounts";
+import { useAdminPermissions } from "@/admin/hooks/useAdminPermissions";
 import "./admin-shell.css";
 
 type PermissionGroupCode =
@@ -117,6 +118,8 @@ const NAV_GROUPS: NavGroup[] = [
       { key: "blocked-users", label: "차단 관리", icon: ShieldAlert, href: "/admin/users/blocked", permissionGroups: ["MEMBER_ADMIN", "AUDIT_ADMIN"] },
       { key: "profiles", label: "프로필 관리", icon: FileUser, href: "/admin/profiles", permissionGroups: ["MEMBER_ADMIN"] },
       { key: "consents", label: "동의 관리", icon: ClipboardCheck, href: "/admin/consents", permissionGroups: ["MEMBER_ADMIN"] },
+      // W1: 기업 계정 전환 신청 승인/반려
+      { key: "company-applications", label: "기업 신청 관리", icon: Building2, href: "/admin/company/applications", permissionGroups: ["MEMBER_ADMIN"] },
       { key: "security-audit", label: "로그인/보안 감사", icon: LockKeyhole, href: "/admin/audit/security", permissionGroups: ["AUDIT_ADMIN"] },
       { key: "email-audit", label: "이메일 감사", icon: MailCheck, href: "/admin/audit/email", permissionGroups: ["AUDIT_ADMIN"] },
     ],
@@ -149,12 +152,16 @@ const NAV_GROUPS: NavGroup[] = [
     label: "콘텐츠/고객지원",
     items: [
       { key: "reports", label: "신고·검수 관리", icon: MessageSquareWarning, href: "/admin/community", permissionGroups: ["CONTENT_ADMIN"] },
+      // W1: 기업 채용공고 등록/수정 검토 큐
+      { key: "job-posting-review", label: "공고 검토", icon: Briefcase, href: "/admin/company/job-postings", permissionGroups: ["CONTENT_ADMIN"] },
       { key: "notices", label: "공지사항", icon: Megaphone, href: "/admin/notices", permissionGroups: ["CONTENT_ADMIN"] },
       { key: "faq", label: "FAQ 관리", icon: CircleHelp, href: "/admin/faq", permissionGroups: ["CONTENT_ADMIN"] },
       { key: "ai-support", label: "AI 상담 운영", icon: Bot, href: "/admin/ai-support", permissionGroups: ["CONTENT_ADMIN", "AI_ADMIN"] },
       { key: "inquiries", label: "문의 관리", icon: Mail, href: "/admin/inquiries", permissionGroups: ["CONTENT_ADMIN"] },
       { key: "terms", label: "약관 관리", icon: Scale, href: "/admin/terms", permissionGroups: ["CONTENT_ADMIN", "POLICY_ADMIN"] },
       { key: "notifications", label: "알림 모니터링", icon: Bell, href: "/admin/notifications", permissionGroups: ["CONTENT_ADMIN"] },
+      // 본인 수신 설정이므로 세부 권한 없이 모든 관리자에게 노출한다.
+      { key: "admin-notification-settings", label: "관리자 알림 설정", icon: MailCheck, href: "/admin/notification-settings" },
     ],
   },
   {
@@ -204,7 +211,9 @@ export default function AdminShell({
   };
   const role = user?.role;
   const canUseAdmin = role === "ADMIN" || role === "SUPER_ADMIN";
-  const grantedGroups = getGrantedGroups(user);
+  // 실효 권한(me/permissions) 기반 메뉴 노출 — 로딩/실패 시에는 종전 role 기본 노출로 폴백.
+  const mePermissions = useAdminPermissions(canUseAdmin);
+  const grantedGroups = getGrantedGroups(user, mePermissions?.permissions ?? null);
   const canUseCurrentPage = canUseAdmin && canAccessNavKey(active, role, grantedGroups);
   const visibleGroups = canUseAdmin
     ? NAV_GROUPS.map((group) => ({
@@ -311,9 +320,22 @@ export default function AdminShell({
   );
 }
 
-function getGrantedGroups(user: unknown): Set<PermissionGroupCode> {
+function getGrantedGroups(user: unknown, fetchedPermissions: string[] | null): Set<PermissionGroupCode> {
   if (!isRecord(user)) return new Set();
   const role = typeof user.role === "string" ? user.role : "USER";
+
+  // 1순위: GET /api/admin/me/permissions 로 조회한 실효 권한(로딩 완료 시).
+  //   SUPER_ADMIN 은 canAccessNavItem 에서 전체 통과라 여기 결과와 무관하다.
+  //   ADMIN 인데 실효 권한이 비어 있으면 권한 필요한 메뉴는 모두 숨긴다(빈 Set).
+  if (fetchedPermissions !== null) {
+    return new Set(
+      fetchedPermissions
+        .flatMap((code) => PERMISSION_CODE_TO_GROUPS[code] ?? [])
+        .filter(isPermissionGroupCode),
+    );
+  }
+
+  // 2순위: 로그인 응답에 실려 온 명시 권한(있다면).
   const explicitGroups = [
     ...readStringArray(user.permissionGroups),
     ...readStringArray(user.groupCodes),
@@ -325,6 +347,7 @@ function getGrantedGroups(user: unknown): Set<PermissionGroupCode> {
     return new Set(explicitGroups);
   }
 
+  // 3순위(로딩 중/조회 실패 폴백): role 기본 노출 — 서버 인터셉터가 최종 방어선.
   return new Set(DEFAULT_GROUPS_BY_ROLE[role] ?? []);
 }
 

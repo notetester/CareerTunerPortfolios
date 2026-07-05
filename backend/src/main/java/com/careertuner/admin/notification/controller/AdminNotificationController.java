@@ -16,14 +16,17 @@ import com.careertuner.admin.notification.dto.AdminNotificationResponse;
 import com.careertuner.admin.notification.dto.AdminNotificationStatsResponse;
 import com.careertuner.admin.notification.service.AdminCampaignService;
 import com.careertuner.admin.notification.service.AdminNotificationService;
+import com.careertuner.admin.permission.annotation.RequireAdminPermission;
 import com.careertuner.common.security.AuthUser;
 import com.careertuner.common.web.ApiResponse;
 
 import lombok.RequiredArgsConstructor;
 
+/** 알림 모니터링/캠페인 발송 콘솔. 세부 권한: 콘텐츠/고객지원 관리(CONTENT_MANAGE) 또는 대표 권한(CONTENT_ADMIN). */
 @RestController
 @RequestMapping("/api/admin/notifications")
 @RequiredArgsConstructor
+@RequireAdminPermission({"CONTENT_MANAGE", "CONTENT_ADMIN"})
 public class AdminNotificationController {
 
     private final AdminNotificationService notificationService;
