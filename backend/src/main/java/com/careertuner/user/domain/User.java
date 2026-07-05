@@ -16,6 +16,9 @@ public class User {
 
     private Long id;
     private String email;
+    private String loginId;           // 로그인 아이디(문자열, 선택 설정·전역 UNIQUE·설정 후 변경 불가)
+    private String phone;             // 전화번호(선택, 전역 UNIQUE)
+    private boolean phoneVerified;    // 전화번호 인증 여부(인증은 선택적·스텁)
     private String password;          // BCrypt 해시. 소셜 전용 계정은 null
     private boolean passwordEnabled;  // 비밀번호 로그인 가능 여부
     private String name;
