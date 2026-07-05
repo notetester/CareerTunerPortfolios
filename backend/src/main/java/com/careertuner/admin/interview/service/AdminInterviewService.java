@@ -35,15 +35,16 @@ public class AdminInterviewService {
     private final InterviewMediaService mediaService;
 
     @Transactional(readOnly = true)
-    public AdminInterviewSessionPage sessions(AuthUser authUser, String keyword, String mode, int page, int size) {
+    public AdminInterviewSessionPage sessions(AuthUser authUser, String keyword, String mode, Boolean hasReport,
+                                              int page, int size) {
         requireAdmin(authUser);
         String kw = blankToNull(keyword);
         String md = normalizeMode(mode);
         int p = Math.max(page, 1);
         int s = size <= 0 ? 20 : Math.min(size, 100);
         int offset = (p - 1) * s;
-        List<AdminInterviewSessionRow> items = adminInterviewMapper.findSessions(kw, md, offset, s);
-        long total = adminInterviewMapper.countSessions(kw, md);
+        List<AdminInterviewSessionRow> items = adminInterviewMapper.findSessions(kw, md, hasReport, offset, s);
+        long total = adminInterviewMapper.countSessions(kw, md, hasReport);
         return new AdminInterviewSessionPage(items, total, p, s);
     }
 

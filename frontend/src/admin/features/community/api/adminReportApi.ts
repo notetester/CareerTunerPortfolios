@@ -8,11 +8,21 @@ import type {
 function toActionLabel(action: string | null): string | undefined {
   if (!action || action === "NONE") return undefined;
   switch (action) {
-    case "HIDDEN":  return "숨김 처리됨";
-    case "DELETED": return "삭제됨";
-    default:        return action;
+    case "HIDDEN":           return "숨김 처리됨";
+    case "DELETED":          return "삭제됨";
+    case "BLOCK_AUTHOR":     return "작성자 차단됨";
+    case "DELETE_AND_BLOCK": return "삭제·작성자 차단됨";
+    default:                 return action;
   }
 }
+
+/** 신고 처리 액션(백엔드 AdminReportServiceImpl.takeAction 스위치와 1:1). */
+export type AdminReportAction =
+  | "HIDDEN"
+  | "DELETED"
+  | "DISMISSED"
+  | "BLOCK_AUTHOR"
+  | "DELETE_AND_BLOCK";
 
 function listToReport(b: AdminReportListResponse): Report {
   return {
@@ -66,11 +76,18 @@ export function getReportDetail(id: number): Promise<Report> {
 
 export function takeAction(
   id: number,
-  action: "HIDDEN" | "DELETED" | "DISMISSED",
+  action: AdminReportAction,
 ): Promise<Report> {
   return api<AdminReportDetailResponse>(`/admin/community/reports/${id}/action`, {
     method: "POST",
     body: JSON.stringify({ action }),
+  }).then(detailToReport);
+}
+
+/** 종결(기각/취소) 신고 재활성화 — PENDING 복원. */
+export function reactivate(id: number): Promise<Report> {
+  return api<AdminReportDetailResponse>(`/admin/community/reports/${id}/reactivate`, {
+    method: "POST",
   }).then(detailToReport);
 }
 

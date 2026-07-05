@@ -2,7 +2,9 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import type { ChangeEvent, ReactNode } from "react";
 import type { LucideIcon } from "lucide-react";
 import {
+  Ban,
   Bell,
+  BellOff,
   Briefcase,
   Check,
   Download,
@@ -16,7 +18,9 @@ import {
   RefreshCw,
   Search,
   Send,
+  Settings2,
   UserPlus,
+  UserX,
   Users,
   X,
 } from "lucide-react";
@@ -41,6 +45,7 @@ import {
   listIncomingFriendRequests,
   listMessages,
   listOutgoingFriendRequests,
+  muteConversation,
   openDirectConversation,
   searchUsers,
   sendFriendRequest,
@@ -60,6 +65,11 @@ import type {
   MessageKind,
   MessageResponse,
 } from "../types/collaboration";
+import { RoomSettingsSheet } from "../components/RoomSettingsSheet";
+// 개인 차단 진입점 — 코어(/api/privacy)는 사용만 하고 수정하지 않는다 (docs/PERSONAL_BLOCK_POLICY.md §4).
+import { blockConversation, blockUser } from "@/features/privacy/api/privacyApi";
+import { showBlockManageToast } from "@/features/privacy/components/blockToast";
+import type { BlockedMarker } from "@/features/privacy/types";
 
 const ROOM_TYPES: Array<{ value: Exclude<ConversationType, "DIRECT">; label: string; icon: LucideIcon }> = [
   { value: "GROUP", label: "친구 단체방", icon: Users },
@@ -67,11 +77,15 @@ const ROOM_TYPES: Array<{ value: Exclude<ConversationType, "DIRECT">; label: str
   { value: "PRIVATE", label: "비공개방", icon: Lock },
 ];
 
-const SHARE_MODES: Array<{ value: AttachmentShareMode; description: string }> = [
+/** 웹/모바일에서 선택 가능한 공유 방식. LOCAL(PC 공유 폴더)은 데스크톱 앱 전용이라 옵션을 렌더하지 않는다. */
+type WebShareMode = Exclude<AttachmentShareMode, "LOCAL">;
+
+const SHARE_MODES: Array<{ value: WebShareMode; description: string }> = [
   { value: "TEMPORARY", description: "서버에 임시 보관 후 만료" },
   { value: "CLOUD", description: "유료 플랜 저장소 파일 공유" },
-  { value: "LOCAL", description: "PC 공유 폴더 기반, 웹/모바일은 준비 중" },
 ];
+
+const MUTE_HELP = "알림 해제 방은 내 이름·키워드 언급 시에만 알림";
 
 const AVAILABILITY_LABEL: Record<AttachmentAvailability, string> = {
   AVAILABLE: "다운로드 가능",
@@ -183,7 +197,14 @@ function AttachmentButton({
   file: MessageAttachmentResponse;
   onDownload: (file: MessageAttachmentResponse) => void;
 }) {
-  const available = file.availability === "AVAILABLE";
+  // LOCAL 공유 첨부는 소유자 데스크톱이 온라인일 때만 서버가 실제 전송을 허용한다.
+  // (업로드 옵션은 데스크톱 전용으로 유지 — 웹/모바일은 다운로드만.)
+  const isLocal = file.shareMode === "LOCAL";
+  const ownerOnline = file.ownerDesktopOnline === true;
+  const available = isLocal ? ownerOnline : file.availability === "AVAILABLE";
+  const localHint = ownerOnline
+    ? "소유자 데스크톱이 온라인이에요 — 지금 받을 수 있어요"
+    : "소유자 데스크톱이 온라인일 때 받을 수 있어요";
 
   return (
     <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-border bg-background/80 px-3 py-2">
@@ -193,7 +214,9 @@ function AttachmentButton({
           <span className="truncate">{file.originalName}</span>
         </div>
         <div className="mt-0.5 text-xs text-muted-foreground">
-          {SHARE_MODE_LABEL[file.shareMode]} · {formatBytes(file.sizeBytes)}
+          {isLocal
+            ? `${SHARE_MODE_LABEL.LOCAL} · ${ownerOnline ? "소유자 온라인" : "소유자 오프라인"}`
+            : SHARE_MODE_LABEL[file.shareMode]} · {formatBytes(file.sizeBytes)}
           {file.expiresAt ? ` · ${formatDateTime(file.expiresAt)} 만료` : ""}
         </div>
       </div>
@@ -203,10 +226,10 @@ function AttachmentButton({
         variant="outline"
         disabled={!available}
         onClick={() => onDownload(file)}
-        title={AVAILABILITY_LABEL[file.availability]}
+        title={isLocal ? localHint : AVAILABILITY_LABEL[file.availability]}
       >
         <Download className="size-4" />
-        {available ? "받기" : AVAILABILITY_LABEL[file.availability]}
+        {available ? "받기" : isLocal ? "소유자 오프라인" : AVAILABILITY_LABEL[file.availability]}
       </Button>
     </div>
   );
@@ -223,6 +246,7 @@ export function MessengerPage() {
   const [userResults, setUserResults] = useState<CollaborationUser[]>([]);
 
   const [activeConversationId, setActiveConversationId] = useState<number | null>(null);
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const [roomSearch, setRoomSearch] = useState("");
   const [userKeyword, setUserKeyword] = useState("");
   const [joinPasswords, setJoinPasswords] = useState<Record<number, string>>({});
@@ -234,7 +258,7 @@ export function MessengerPage() {
 
   const [messageKind, setMessageKind] = useState<MessageKind>("CHAT");
   const [messageText, setMessageText] = useState("");
-  const [shareMode, setShareMode] = useState<AttachmentShareMode>("TEMPORARY");
+  const [shareMode, setShareMode] = useState<WebShareMode>("TEMPORARY");
   const [temporaryHours, setTemporaryHours] = useState(72);
   const [pendingFiles, setPendingFiles] = useState<FileAssetResponse[]>([]);
   const [selectedApplicationIds, setSelectedApplicationIds] = useState<number[]>([]);
@@ -394,26 +418,22 @@ export function MessengerPage() {
     upsertConversation(await inviteConversationMembers(activeConversation.id, [userId]));
   }, "친구를 초대했습니다.");
 
+  const toggleMute = (conversation: ConversationSummaryResponse) => execute(async () => {
+    const updated = await muteConversation(conversation.id, !conversation.muted);
+    setConversations((current) => current.map((item) => (
+      item.id === updated.id ? { ...item, muted: updated.muted } : item
+    )));
+  }, conversation.muted ? "채팅방 알림을 다시 켰습니다." : `채팅방 알림을 해제했습니다. ${MUTE_HELP}.`);
+
   const handleFiles = (event: ChangeEvent<HTMLInputElement>) => {
     const selected = Array.from(event.currentTarget.files ?? []);
     event.currentTarget.value = "";
     if (selected.length === 0) return;
 
     void execute(async () => {
-      if (shareMode === "LOCAL") {
-        throw new Error("로컬 파일 공유는 데스크톱 로컬 공유 폴더 연동이 준비된 뒤 사용할 수 있습니다.");
-      }
       const uploaded = await Promise.all(selected.map((file) => uploadCollaborationFile(file)));
       setPendingFiles((current) => [...current, ...uploaded]);
     }, `${selected.length}개 파일을 첨부했습니다.`);
-  };
-
-  const changeShareMode = (mode: AttachmentShareMode) => {
-    setShareMode(mode);
-    if (mode === "LOCAL") {
-      setPendingFiles([]);
-      setNotice("로컬 공유는 공유 폴더/세션 감지까지 붙은 뒤 활성화됩니다. 지금은 임시 또는 클라우드 공유를 사용해 주세요.");
-    }
   };
 
   const sendCurrentMessage = () => execute(async () => {
@@ -453,6 +473,23 @@ export function MessengerPage() {
 
   const downloadAttachment = (file: MessageAttachmentResponse) => execute(async () => {
     await downloadCollaborationAttachment(file);
+  });
+
+  /** 사용자 차단 — 조용한 차단(상대에게 알리지 않음). 차단 직후 메시지 목록을 다시 받아 톰스톤을 반영한다. */
+  const blockUserQuietly = (target: CollaborationUser) => execute(async () => {
+    await blockUser({ targetUserId: target.id });
+    showBlockManageToast(`${userLabel(target)}님을 차단했습니다.`);
+    await Promise.all([refreshConversations(), loadMessages(activeConversationId)]);
+  });
+
+  /** 채팅방 차단 — 방 숨김 + 그 방 관련 초대 차단(연속 초대 테러 방지 파생 규칙 포함). */
+  const blockRoomQuietly = (conversation: ConversationSummaryResponse) => execute(async () => {
+    await blockConversation({ conversationId: conversation.id });
+    showBlockManageToast(
+      `'${conversation.displayName}' 채팅방을 차단했습니다.`,
+      "방이 목록에서 숨겨지고 이 방 관련 초대가 차단됩니다.",
+    );
+    await refreshConversations();
   });
 
   return (
@@ -506,7 +543,12 @@ export function MessengerPage() {
                     )}
                   >
                     <div className="flex min-w-0 items-center justify-between gap-2">
-                      <div className="min-w-0 truncate text-sm font-semibold text-foreground">{conversation.displayName}</div>
+                      <div className="flex min-w-0 items-center gap-1.5">
+                        <div className="min-w-0 truncate text-sm font-semibold text-foreground">{conversation.displayName}</div>
+                        {conversation.muted && (
+                          <BellOff className="size-3.5 shrink-0 text-muted-foreground" aria-label="알림 해제됨" />
+                        )}
+                      </div>
                       <Badge variant="outline">{conversationTypeLabel(conversation.type)}</Badge>
                     </div>
                     <div className="line-clamp-2 text-xs text-muted-foreground">
@@ -604,25 +646,41 @@ export function MessengerPage() {
                         user={user}
                         meta={<div className="mt-1 text-xs text-muted-foreground">{user.relationStatus ?? "NONE"}</div>}
                         action={
-                          user.relationStatus === "FRIEND" ? (
-                            <Button type="button" size="sm" variant="outline" onClick={() => openDirect(user.id)} disabled={busy}>
-                              <MessageSquare className="size-4" />
-                              DM
-                            </Button>
-                          ) : user.relationStatus === "REQUESTED" ? (
-                            <Button type="button" size="sm" variant="outline" disabled>
-                              요청됨
-                            </Button>
-                          ) : user.relationStatus === "PENDING_INCOMING" ? (
-                            <Button type="button" size="sm" variant="outline" disabled>
-                              받은 요청
-                            </Button>
-                          ) : (
-                            <Button type="button" size="sm" onClick={() => requestFriend(user.id)} disabled={busy}>
-                              <UserPlus className="size-4" />
-                              요청
-                            </Button>
-                          )
+                          <div className="flex items-center gap-1">
+                            {user.relationStatus === "FRIEND" ? (
+                              <Button type="button" size="sm" variant="outline" onClick={() => openDirect(user.id)} disabled={busy}>
+                                <MessageSquare className="size-4" />
+                                DM
+                              </Button>
+                            ) : user.relationStatus === "REQUESTED" ? (
+                              <Button type="button" size="sm" variant="outline" disabled>
+                                요청됨
+                              </Button>
+                            ) : user.relationStatus === "PENDING_INCOMING" ? (
+                              <Button type="button" size="sm" variant="outline" disabled>
+                                받은 요청
+                              </Button>
+                            ) : (
+                              <Button type="button" size="sm" onClick={() => requestFriend(user.id)} disabled={busy}>
+                                <UserPlus className="size-4" />
+                                요청
+                              </Button>
+                            )}
+                            {user.relationStatus !== "SELF" && (
+                              <Button
+                                type="button"
+                                size="icon"
+                                variant="outline"
+                                className="text-destructive"
+                                onClick={() => blockUserQuietly(user)}
+                                disabled={busy}
+                                aria-label="이 사용자 차단"
+                                title="이 사용자 차단"
+                              >
+                                <UserX className="size-4" />
+                              </Button>
+                            )}
+                          </div>
                         }
                       />
                     ))}
@@ -676,6 +734,18 @@ export function MessengerPage() {
                               <UserPlus className="size-4" />
                             </Button>
                           )}
+                          <Button
+                            type="button"
+                            size="icon"
+                            variant="outline"
+                            className="text-destructive"
+                            onClick={() => blockUserQuietly(friend.user)}
+                            disabled={busy}
+                            aria-label="이 사용자 차단"
+                            title="이 사용자 차단"
+                          >
+                            <UserX className="size-4" />
+                          </Button>
                         </div>
                       }
                     />
@@ -747,6 +817,56 @@ export function MessengerPage() {
               <div className="flex items-center gap-2">
                 <Badge variant="outline">{conversationTypeLabel(activeConversation.type)}</Badge>
                 {activeConversation.locked && <Lock className="size-4 text-muted-foreground" />}
+                {activeConversation.type !== "DIRECT" && activeConversation.canManageRoom && (
+                  <Button
+                    type="button"
+                    size="icon"
+                    variant="outline"
+                    onClick={() => setSettingsOpen(true)}
+                    disabled={busy}
+                    aria-label="방 설정"
+                    title="방 설정 — 개설자 또는 방 관리자만"
+                  >
+                    <Settings2 className="size-4" />
+                  </Button>
+                )}
+                <Button
+                  type="button"
+                  size="icon"
+                  variant={activeConversation.muted ? "default" : "outline"}
+                  onClick={() => toggleMute(activeConversation)}
+                  disabled={busy}
+                  aria-label={activeConversation.muted ? "채팅방 알림 켜기" : "채팅방 알림 해제"}
+                  title={MUTE_HELP}
+                >
+                  {activeConversation.muted ? <BellOff className="size-4" /> : <Bell className="size-4" />}
+                </Button>
+                {activeConversation.type === "DIRECT" && activeConversation.peer && (
+                  <Button
+                    type="button"
+                    size="icon"
+                    variant="outline"
+                    className="text-destructive"
+                    onClick={() => blockUserQuietly(activeConversation.peer!)}
+                    disabled={busy}
+                    aria-label="대화 상대 차단"
+                    title="대화 상대 차단"
+                  >
+                    <UserX className="size-4" />
+                  </Button>
+                )}
+                <Button
+                  type="button"
+                  size="icon"
+                  variant="outline"
+                  className="text-destructive"
+                  onClick={() => blockRoomQuietly(activeConversation)}
+                  disabled={busy}
+                  aria-label="이 채팅방 차단"
+                  title="이 채팅방 차단 — 방 숨김 + 관련 초대 차단"
+                >
+                  <Ban className="size-4" />
+                </Button>
               </div>
             )}
           >
@@ -758,6 +878,15 @@ export function MessengerPage() {
                       <span>{activeConversation.memberCount}명</span>
                       <span>·</span>
                       <span>{formatDateTime(activeConversation.updatedAt)}</span>
+                      {activeConversation.muted && (
+                        <>
+                          <span>·</span>
+                          <span className="inline-flex items-center gap-1" title={MUTE_HELP}>
+                            <BellOff className="size-3.5" />
+                            알림 해제됨
+                          </span>
+                        </>
+                      )}
                       {activeConversation.description && (
                         <>
                           <span>·</span>
@@ -772,7 +901,19 @@ export function MessengerPage() {
                       <div className="flex h-48 items-center justify-center rounded-md border border-dashed border-border bg-background text-sm text-muted-foreground">
                         첫 메시지를 보내보세요.
                       </div>
-                    ) : messages.map((message) => (
+                    ) : messages.map((message) => {
+                      // 서버가 뷰어 기준으로 차단 처리한 메시지 — 톰스톤만 렌더("한 번 보기" 없음, 조용한 차단).
+                      const tombstoned = (message as MessageResponse & BlockedMarker).blocked === true;
+                      if (tombstoned) {
+                        return (
+                          <div key={message.id} className="flex justify-start">
+                            <div className="max-w-[min(92%,720px)] rounded-lg border border-dashed border-border bg-muted/40 px-3 py-2">
+                              <p className="text-sm italic text-muted-foreground">차단한 사용자의 메시지입니다.</p>
+                            </div>
+                          </div>
+                        );
+                      }
+                      return (
                       <div key={message.id} className={cn("flex", message.mine ? "justify-end" : "justify-start")}>
                         <div
                           className={cn(
@@ -812,7 +953,8 @@ export function MessengerPage() {
                           )}
                         </div>
                       </div>
-                    ))}
+                      );
+                    })}
                   </div>
 
                   <div className="space-y-3 border-t border-border p-4">
@@ -845,7 +987,7 @@ export function MessengerPage() {
                             <button
                               key={mode.value}
                               type="button"
-                              onClick={() => changeShareMode(mode.value)}
+                              onClick={() => setShareMode(mode.value)}
                               className={cn(
                                 "rounded-md border px-3 py-2 text-left text-xs",
                                 shareMode === mode.value
@@ -871,21 +1013,13 @@ export function MessengerPage() {
                           </div>
                         )}
                         <div className="flex flex-wrap items-center gap-2">
-                          <label
-                            className={cn(
-                              "inline-flex h-9 cursor-pointer items-center justify-center gap-2 rounded-md border px-3 text-sm font-medium",
-                              shareMode === "LOCAL"
-                                ? "cursor-not-allowed opacity-50"
-                                : "border-border bg-background hover:bg-accent",
-                            )}
-                          >
+                          <label className="inline-flex h-9 cursor-pointer items-center justify-center gap-2 rounded-md border border-border bg-background px-3 text-sm font-medium hover:bg-accent">
                             <Paperclip className="size-4" />
                             파일 첨부
                             <input
                               type="file"
                               multiple
                               className="hidden"
-                              disabled={shareMode === "LOCAL"}
                               onChange={handleFiles}
                             />
                           </label>
@@ -946,6 +1080,17 @@ export function MessengerPage() {
           </Panel>
         </div>
       </div>
+
+      {settingsOpen && activeConversation && activeConversation.type !== "DIRECT" && (
+        <RoomSettingsSheet
+          conversationId={activeConversation.id}
+          onClose={() => setSettingsOpen(false)}
+          onChanged={() => {
+            // 방 설정 변경(제목/공개/공지/멤버 등)을 헤더·목록에 반영한다.
+            void refreshConversations();
+          }}
+        />
+      )}
     </main>
   );
 }

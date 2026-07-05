@@ -12,6 +12,7 @@ import org.springframework.stereotype.Service;
 
 import com.careertuner.applicationcase.service.OpenAiResponsesClient.CompanyAnalysisPayload;
 import com.careertuner.companyanalysis.ai.prompt.CompanyAnalysisPromptCatalog;
+import com.careertuner.companyanalysis.websearch.CompanyWebEvidence;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -32,6 +33,10 @@ import tools.jackson.databind.node.ObjectNode;
  * <ul>
  *   <li>verifiedFacts evidence gate — evidence 가 입력 원문에 정규화 매칭되는지 확인하고,
  *       실패한 fact 는 제거하거나 {@code aiInferences confidence=LOW} 로 강등한다.</li>
+ *   <li>2소스 확장(235 §3 · D-2) — WEB 근거({@code CompanyWebEvidence})가 주어지면 공고 corpus
+ *       매칭 실패 fact 를 WEB 스니펫과 추가 대조해 SUPPORTED 경로를 넓히고, WEB 통과 fact 는
+ *       {@code sourceKind=WEB} + URL sourceRef 를 보존한다. WEB 근거가 없으면 종전과 동일하며
+ *       기존 강등/제거 판정은 완화하지 않는다. 자유서술 guard 는 공고 corpus 기준 유지(D-3 이후 확장).</li>
  *   <li>누락/중복 factId·inferenceId 보정, sourceKind 허용값 제한, sourceRef 보정.</li>
  *   <li>basedOn 이 존재하지 않는 factId 를 참조하면 제거하고, 근거 없는 추론은 LOW 로 강등.</li>
  *   <li>unknowns 를 저장 직전 {@code aiInferences kind=UNKNOWN} 마커로 접고(DB 무변경),
@@ -56,6 +61,7 @@ public class BCompanyAnalysisCanonicalizer {
 
     public static final String KIND_UNKNOWN = "UNKNOWN";
     public static final String SOURCE_KIND_JOB_POSTING = "JOB_POSTING";
+    public static final String SOURCE_KIND_WEB = "WEB";
 
     /** gate 처리 결과 — 하네스 계측과 로그용. */
     public enum GateOutcome { PASSED, DEMOTED, REMOVED }
@@ -67,7 +73,7 @@ public class BCompanyAnalysisCanonicalizer {
     }
 
     private static final Set<String> ALLOWED_SOURCE_KINDS =
-            Set.of("JOB_POSTING", "UPLOADED_COMPANY_DOC", "USER_MEMO");
+            Set.of("JOB_POSTING", "UPLOADED_COMPANY_DOC", "USER_MEMO", "WEB");
     private static final Set<String> CONFIDENCE_VALUES = Set.of("HIGH", "MEDIUM", "LOW");
 
     // evidence 정규화 매칭 파라미터. 너무 엄격하면 OCR spacing 으로 정상 fact 를 과제거하고,
@@ -94,12 +100,34 @@ public class BCompanyAnalysisCanonicalizer {
     private static final Pattern FACT_ID_FORMAT = Pattern.compile("F\\d{1,4}");
     private static final Pattern INFERENCE_ID_FORMAT = Pattern.compile("I\\d{1,4}");
     private static final String DUPLICATE_REMOVAL_DETAIL = "반복 중복 제거";
+    // D-6 이슈B: 저장 자유서술·텍스트 필드에 누출된 입력블록 라벨([웹 검색 근거]) 결정적 제거용.
+    // 대괄호 안 '웹/검색/근거' 사이 공백을 관대하게 매칭한다 — 대괄호 없는 정상 source 라벨("웹검색")은
+    // 대괄호가 없어 이 패턴에 걸리지 않으므로 보존된다.
+    //
+    // D-6 nit(조사 잔재): 라벨에 공백 없이 바로 붙어 있던 조사(예: "[웹 검색 근거]의", "…]에서는")는
+    // 라벨을 지우면 조사만 홀로 남아 문장이 어색해진다(case09 "없으며, 의 스니펫"). 그래서 라벨 바로 뒤에
+    // '글루된' 조사가 오고 그 뒤에 경계(공백·문장부호·끝)가 있을 때만 조사도 함께 제거한다. 조사 다음이
+    // 또 다른 글자면(예: "]의무") 내용어이므로 lookahead 로 보존한다. 긴 조사를 먼저 시도하도록 정렬한다.
+    private static final Pattern INPUT_BLOCK_LABEL = Pattern.compile(
+            "\\[\\s*웹\\s*검색\\s*근거\\s*\\]"
+            + "(?:(?:에서는|에게서|으로는|이라는|이라고|에서|에게|으로|이라|라는|라고|처럼|보다"
+            + "|부터|까지|마다|조차|밖에|의|은|는|이|가|을|를|에|로|도|만|과|와)"
+            + "(?=[\\s,.;:·…\\]\\)}\"'’”]|$))?");
+    // 라벨 제거로 생긴 연속 공백/탭만 정리(개행은 보존). 문법 정리는 best-effort.
+    private static final Pattern COLLAPSE_SPACES = Pattern.compile("[ \\t\\x0B\\f]{2,}");
+    // D-6 nit(문장 잔재): guardFreeText 로 앞 문장이 제거되면 뒤 문장의 선두 접속부사가 선행 문장을 잃고
+    // 매달린다(case08 "그러나 …"). 앞 문장이 실제로 제거됐을 때만 이 선두 접속부사를 정리한다.
+    private static final Pattern DANGLING_CONJUNCTION = Pattern.compile(
+            "^(?:그러나|그렇지만|하지만|그런데|그러므로|따라서|그래서|그리고|또한|아울러|게다가"
+            + "|한편|반면에|반면|다만|즉|오히려)[,\\s]+");
 
     private final ObjectMapper objectMapper;
 
     /**
      * 모델 출력 payload 를 저장 직전 한 번 정규화한다. unknowns 는 aiInferences 의
      * {@code kind=UNKNOWN} 마커로 접혀 반환 payload 의 {@code unknowns} 는 빈 배열이 된다.
+     *
+     * <p>기존 단일소스(공고) 진입점 — WEB 근거 없이 호출하면 종전 동작과 완전히 동일하다.
      */
     public CanonicalCompanyAnalysis canonicalizeForStorage(CompanyAnalysisPayload payload,
                                                            Long jobPostingId,
@@ -107,6 +135,24 @@ public class BCompanyAnalysisCanonicalizer {
                                                            String postingText,
                                                            String companyName,
                                                            String jobTitle) {
+        return canonicalizeForStorage(payload, jobPostingId, jobPostingRevision,
+                postingText, companyName, jobTitle, List.of());
+    }
+
+    /**
+     * 2소스 확장 진입점(235 §3 · D-2). verifiedFacts 대조에 WEB 근거를 <b>추가</b>한다 —
+     * 공고 corpus 또는 WEB 근거 어느 쪽으로든 SUPPORTED 면 통과하고, WEB 으로 통과한 fact 는
+     * {@code sourceKind=WEB} + URL sourceRef 를 보존한다. WEB 근거가 빈 목록이면 기존
+     * 단일소스 경로와 동일하게 동작하며, 기존 DEMOTE/REMOVE 판정은 완화하지 않는다.
+     * 자유서술 guard({@link #guardFreeText})는 공고 corpus 기준을 유지한다(WEB 확장은 D-3 이후).
+     */
+    public CanonicalCompanyAnalysis canonicalizeForStorage(CompanyAnalysisPayload payload,
+                                                           Long jobPostingId,
+                                                           Integer jobPostingRevision,
+                                                           String postingText,
+                                                           String companyName,
+                                                           String jobTitle,
+                                                           List<CompanyWebEvidence> webEvidence) {
         List<GateAction> actions = new ArrayList<>();
         // 회사명/직무명은 기업분석의 1급 입력이라 원문 매칭 코퍼스에 포함한다(프롬프트 계약의 source 후보와 동일).
         String rawCorpus = String.join("\n", nullToEmpty(postingText), nullToEmpty(companyName), nullToEmpty(jobTitle));
@@ -119,7 +165,7 @@ public class BCompanyAnalysisCanonicalizer {
         ArrayNode keptFacts = objectMapper.createArrayNode();
         List<ObjectNode> demoted = new ArrayList<>();
         if (facts != null) {
-            gateVerifiedFacts(facts, corpus, keptFacts, demoted, actions);
+            gateVerifiedFacts(facts, corpus, buildWebCorpus(webEvidence), keptFacts, demoted, actions);
         }
         assignSequentialIds(keptFacts, "factId", "F", FACT_ID_FORMAT);
         Set<String> factIds = collectIds(keptFacts, "factId");
@@ -144,21 +190,26 @@ public class BCompanyAnalysisCanonicalizer {
         }
         keptInferences.addAll(unknownMarkers);
 
-        String companySummary = guardFreeText("companySummary", payload.companySummary(), corpus, actions);
+        // D-6 이슈B: verifiedFacts/aiInferences/UNKNOWN 마커의 텍스트 필드 라벨 제거는 저장 payload 를 만들기 전
+        // 각 처리 지점(gateVerifiedFacts·canonicalizeInferences·foldUnknowns)에서 dedup key 산출·gate 판정보다 먼저
+        // 이뤄진다. 그래서 라벨 유무만 다른 중복이 저장에 남지 않고 DUPLICATE_REMOVAL_DETAIL 불변식이 유지된다.
+        // 구조 필드(sourceRef/sourceKind/factId/inferenceId/basedOn/confidence)는 sanitize 대상이 아니다.
+
+        String companySummary = stripInputBlockLabels(guardFreeText("companySummary", payload.companySummary(), corpus, actions));
         if (isBlank(companySummary)) {
             companySummary = CompanyAnalysisPromptCatalog.COMPANY_SUMMARY_UNAVAILABLE_NOTICE;
         }
-        String recentIssues = guardFreeText("recentIssues", payload.recentIssues(), corpus, actions);
+        String recentIssues = stripInputBlockLabels(guardFreeText("recentIssues", payload.recentIssues(), corpus, actions));
         if (isBlank(recentIssues)) {
             recentIssues = CompanyAnalysisPromptCatalog.RECENT_ISSUES_UNAVAILABLE_NOTICE;
         }
-        String interviewPoints = guardFreeText("interviewPoints", payload.interviewPoints(), corpus, actions);
+        String interviewPoints = stripInputBlockLabels(guardFreeText("interviewPoints", payload.interviewPoints(), corpus, actions));
 
         CompanyAnalysisPayload canonical = new CompanyAnalysisPayload(
                 companySummary,
                 recentIssues,
                 payload.industry(),
-                payload.competitors(),
+                sanitizeCompetitors(payload.competitors()),
                 interviewPoints,
                 canonicalizeSources(payload.sources()),
                 writeJson(keptFacts, payload.verifiedFacts()),
@@ -238,6 +289,7 @@ public class BCompanyAnalysisCanonicalizer {
 
     private void gateVerifiedFacts(ArrayNode facts,
                                    String corpus,
+                                   List<WebCorpusEntry> webCorpus,
                                    ArrayNode kept,
                                    List<ObjectNode> demoted,
                                    List<GateAction> actions) {
@@ -251,6 +303,11 @@ public class BCompanyAnalysisCanonicalizer {
                 continue;
             }
             ObjectNode fact = (ObjectNode) item.deepCopy();
+            // D-6 이슈B: 대괄호 입력블록 라벨을 dedup key 산출·gate 판정보다 먼저 제거한다 —
+            // 라벨 유무만 다른 fact 가 중복 제거를 우회해 저장에 남는 것을 막는다. 구조 필드는 건드리지 않는다.
+            sanitizeTextField(fact, "fact");
+            sanitizeTextField(fact, "evidence");
+            sanitizeTextField(fact, "source");
             String factText = text(fact, "fact");
             if (isBlank(factText)) {
                 actions.add(new GateAction(ref, "verifiedFacts", GateOutcome.REMOVED, "fact 누락"));
@@ -269,23 +326,50 @@ public class BCompanyAnalysisCanonicalizer {
                 // evidence 미제공(구 스키마·self-rules 포함): fact 자체가 원문에 접지되면 유지, 아니면 강등.
                 if (groundingRatio(factText, corpus) >= FACT_GROUNDING_THRESHOLD) {
                     actions.add(new GateAction(ref, "verifiedFacts", GateOutcome.PASSED, "evidence 없음 — fact 원문 접지 확인"));
+                    clearUnverifiedWebClaim(fact);
+                    kept.add(fact);
+                    continue;
+                }
+                // 2소스 확장(D-2): 공고 접지 실패 시 WEB 근거 접지를 추가로 본다. 실패 판정은 기존 그대로.
+                WebMatch webMatch = matchWebGrounding(factText, webCorpus);
+                if (webMatch.supported()) {
+                    actions.add(new GateAction(ref, "verifiedFacts", GateOutcome.PASSED,
+                            "evidence 없음 — WEB 근거 접지 확인: " + webMatch.url()));
+                    markWebSupported(fact, webMatch.url());
                     kept.add(fact);
                 } else {
-                    actions.add(new GateAction(ref, "verifiedFacts", GateOutcome.DEMOTED, "evidence 없음 + fact 원문 미접지"));
+                    actions.add(new GateAction(ref, "verifiedFacts", GateOutcome.DEMOTED,
+                            appendWebRefMissing("evidence 없음 + fact 원문 미접지", webMatch)));
                     demoted.add(demoteFactToInference(factText,
                             "공고문 등 입력 원문에서 근거 인용을 확인하지 못해 검증된 사실에서 강등되었습니다."));
                 }
                 continue;
             }
             if (!evidenceMatches(evidence, corpus)) {
+                // 2소스 확장(D-2): 공고 corpus 매칭 실패 시 WEB 근거 매칭을 추가로 본다.
+                WebMatch webMatch = matchWebEvidence(evidence, webCorpus);
+                if (webMatch.supported()) {
+                    String webDistortion = strengthDistortion(factText, evidence);
+                    if (webDistortion != null) {
+                        actions.add(new GateAction(ref, "verifiedFacts", GateOutcome.DEMOTED, webDistortion));
+                        demoted.add(demoteFactToInference(factText,
+                                "원문의 요건 강도 표현과 다르게 서술되어 검증된 사실에서 강등되었습니다. 원문 근거: " + truncate(evidence, 120)));
+                    } else {
+                        actions.add(new GateAction(ref, "verifiedFacts", GateOutcome.PASSED,
+                                "WEB 근거 매칭: " + webMatch.url()));
+                        markWebSupported(fact, webMatch.url());
+                        kept.add(fact);
+                    }
+                    continue;
+                }
                 if (groundingRatio(factText, corpus) >= FACT_GROUNDING_THRESHOLD) {
                     actions.add(new GateAction(ref, "verifiedFacts", GateOutcome.DEMOTED,
-                            "evidence 원문 매칭 실패: " + truncate(evidence, 80)));
+                            appendWebRefMissing("evidence 원문 매칭 실패: " + truncate(evidence, 80), webMatch)));
                     demoted.add(demoteFactToInference(factText,
                             "제시된 근거 인용이 입력 원문과 일치하지 않아 검증된 사실에서 강등되었습니다."));
                 } else {
                     actions.add(new GateAction(ref, "verifiedFacts", GateOutcome.REMOVED,
-                            "evidence·fact 모두 원문 미확인: " + truncate(evidence, 80)));
+                            appendWebRefMissing("evidence·fact 모두 원문 미확인: " + truncate(evidence, 80), webMatch)));
                 }
                 continue;
             }
@@ -297,8 +381,99 @@ public class BCompanyAnalysisCanonicalizer {
                 continue;
             }
             actions.add(new GateAction(ref, "verifiedFacts", GateOutcome.PASSED, null));
+            clearUnverifiedWebClaim(fact);
             kept.add(fact);
         }
+    }
+
+    // ── WEB 근거 corpus (2소스 확장 · D-2) ──
+
+    /** WEB 근거 corpus 항목 — 정규화된 대조 텍스트와 sourceRef 용 URL. */
+    private record WebCorpusEntry(String url, String normalizedText) {
+        boolean hasUrl() {
+            return url != null && !url.isBlank();
+        }
+    }
+
+    /**
+     * WEB 대조 결과. {@code url != null} 이면 SUPPORTED. {@code blankUrlMatch} 는 텍스트는 매칭됐지만
+     * URL 이 없는 근거뿐인 상태 — SUPPORTED 로 치지 않고 기존 강등/제거 판정에 사유만 남긴다
+     * (WEB fact 의 sourceRef 는 URL 이어야 한다는 계약).
+     */
+    private record WebMatch(String url, boolean blankUrlMatch) {
+        static final WebMatch NONE = new WebMatch(null, false);
+
+        boolean supported() {
+            return url != null;
+        }
+    }
+
+    private List<WebCorpusEntry> buildWebCorpus(List<CompanyWebEvidence> webEvidence) {
+        if (webEvidence == null || webEvidence.isEmpty()) {
+            return List.of();
+        }
+        List<WebCorpusEntry> entries = new ArrayList<>();
+        for (CompanyWebEvidence evidence : webEvidence) {
+            if (evidence == null) {
+                continue;
+            }
+            String normalized = normalizeForMatch(
+                    nullToEmpty(evidence.title()) + "\n" + nullToEmpty(evidence.snippet()));
+            if (normalized.isEmpty()) {
+                continue;
+            }
+            entries.add(new WebCorpusEntry(evidence.url(), normalized));
+        }
+        return entries;
+    }
+
+    /** evidence 인용이 어떤 WEB 근거 텍스트에 매칭되는지 — 판정 기준은 공고 corpus 와 동일한 {@link #evidenceMatches}. */
+    private WebMatch matchWebEvidence(String evidence, List<WebCorpusEntry> webCorpus) {
+        boolean blankUrlMatch = false;
+        for (WebCorpusEntry entry : webCorpus) {
+            if (evidenceMatches(evidence, entry.normalizedText())) {
+                if (entry.hasUrl()) {
+                    return new WebMatch(entry.url(), false);
+                }
+                blankUrlMatch = true;
+            }
+        }
+        return blankUrlMatch ? new WebMatch(null, true) : WebMatch.NONE;
+    }
+
+    /** fact 텍스트가 어떤 WEB 근거에 접지되는지 — 판정 기준은 공고 corpus 와 동일한 {@link #groundingRatio}. */
+    private WebMatch matchWebGrounding(String factText, List<WebCorpusEntry> webCorpus) {
+        boolean blankUrlMatch = false;
+        for (WebCorpusEntry entry : webCorpus) {
+            if (groundingRatio(factText, entry.normalizedText()) >= FACT_GROUNDING_THRESHOLD) {
+                if (entry.hasUrl()) {
+                    return new WebMatch(entry.url(), false);
+                }
+                blankUrlMatch = true;
+            }
+        }
+        return blankUrlMatch ? new WebMatch(null, true) : WebMatch.NONE;
+    }
+
+    /** WEB 근거로 SUPPORTED 확정 — gate 가 sourceKind=WEB 과 URL sourceRef 를 직접 기록한다. */
+    private static void markWebSupported(ObjectNode fact, String url) {
+        fact.put("sourceKind", SOURCE_KIND_WEB);
+        fact.put("sourceRef", url);
+    }
+
+    /**
+     * 공고 corpus 로 통과한 fact 의 모델 주장 {@code sourceKind=WEB} 은 걷어낸다.
+     * 불변식: 저장되는 sourceKind=WEB ⟺ gate 가 검증한 URL sourceRef. (걷어낸 fact 는
+     * {@link #canonicalizeFactSource} 기본값 JOB_POSTING 을 받아 종전 동작과 동일해진다.)
+     */
+    private static void clearUnverifiedWebClaim(ObjectNode fact) {
+        if (SOURCE_KIND_WEB.equals(text(fact, "sourceKind"))) {
+            fact.remove("sourceKind");
+        }
+    }
+
+    private static String appendWebRefMissing(String detail, WebMatch webMatch) {
+        return webMatch.blankUrlMatch() ? detail + " (WEB sourceRef 누락)" : detail;
     }
 
     private ObjectNode demoteFactToInference(String factText, String basis) {
@@ -380,6 +555,15 @@ public class BCompanyAnalysisCanonicalizer {
 
     private void canonicalizeFactSource(ObjectNode fact, String sourceRef) {
         String sourceKind = text(fact, "sourceKind");
+        if (SOURCE_KIND_WEB.equals(sourceKind)) {
+            // gate 가 WEB SUPPORTED 로 확정하며 URL sourceRef 를 직접 기록한 fact —
+            // jobPosting sourceRef 로 덮지 않는다(URL 보존, 235 §3). 모델이 주장만 한 WEB 표기는
+            // gate 의 clearUnverifiedWebClaim 에서 이미 걷혀 이 분기에 오지 않는다.
+            if (isBlank(text(fact, "source"))) {
+                fact.put("source", "웹검색");
+            }
+            return;
+        }
         if (!ALLOWED_SOURCE_KINDS.contains(sourceKind)) {
             // 공고문-only 1차안 기본값. sourceKind 부재 레코드도 JOB_POSTING 으로 간주한다.
             fact.put("sourceKind", SOURCE_KIND_JOB_POSTING);
@@ -407,6 +591,11 @@ public class BCompanyAnalysisCanonicalizer {
                 continue;
             }
             ObjectNode inference = (ObjectNode) item.deepCopy();
+            // D-6 이슈B: dedup key 산출 전에 라벨을 제거한다(모델이 마커로 출력한 경우까지 포함).
+            sanitizeTextField(inference, "inference");
+            sanitizeTextField(inference, "basis");
+            sanitizeTextField(inference, "topic");
+            sanitizeTextField(inference, "neededSource");
             if (isUnknownMarker(inference)) {
                 // 모델이 마커 형태로 직접 출력한 경우 — 일반 추론으로 오염시키지 않고 마커로 유지.
                 unknownMarkers.add(inference);
@@ -480,6 +669,11 @@ public class BCompanyAnalysisCanonicalizer {
             if (!isBlank(neededSource)) {
                 marker.put("neededSource", neededSource);
             }
+            // D-6 이슈B: topic 에서 파생된 inference 문장을 포함해 마커 표시 텍스트 필드의 라벨을 제거한다.
+            sanitizeTextField(marker, "inference");
+            sanitizeTextField(marker, "basis");
+            sanitizeTextField(marker, "topic");
+            sanitizeTextField(marker, "neededSource");
             unknownMarkers.add(marker);
         }
     }
@@ -547,15 +741,25 @@ public class BCompanyAnalysisCanonicalizer {
         }
         List<String> keptSentences = new ArrayList<>();
         boolean changed = false;
+        boolean previousRemoved = false;
         for (String sentence : SENTENCE_SPLIT.split(value)) {
             if (sentence.isBlank()) {
                 continue;
             }
             String violation = mechanicalViolation(sentence, normalizedCorpus);
             if (violation == null) {
-                keptSentences.add(sentence.trim());
+                String trimmed = sentence.trim();
+                if (previousRemoved) {
+                    // 앞 문장이 제거되어 선행 문맥을 잃은 선두 접속부사만 걷어낸다(D-6 nit·case08).
+                    trimmed = stripDanglingConjunction(trimmed);
+                }
+                if (!trimmed.isBlank()) {
+                    keptSentences.add(trimmed);
+                }
+                previousRemoved = false;
             } else {
                 changed = true;
+                previousRemoved = true;
                 actions.add(new GateAction(field, field, GateOutcome.REMOVED,
                         violation + " — 문장 제거: " + truncate(sentence.trim(), 100)));
             }
@@ -564,6 +768,12 @@ public class BCompanyAnalysisCanonicalizer {
             return value;
         }
         return String.join(" ", keptSentences);
+    }
+
+    /** 앞 문장 제거로 선행 문맥을 잃은 선두 접속부사만 제거한다. 접속부사가 없으면 원문 그대로 반환한다. */
+    private static String stripDanglingConjunction(String sentence) {
+        Matcher matcher = DANGLING_CONJUNCTION.matcher(sentence);
+        return matcher.find() ? sentence.substring(matcher.end()).trim() : sentence;
     }
 
     private String mechanicalViolation(String sentence, String normalizedCorpus) {
@@ -612,6 +822,73 @@ public class BCompanyAnalysisCanonicalizer {
             }
         }
         return writeJson(out, sourcesJson);
+    }
+
+    // ── 입력블록 라벨 sanitize (D-6 이슈B) ──
+
+    /**
+     * 대괄호 입력블록 라벨(예: {@code [웹 검색 근거]} 및 공백 변형 {@code [웹검색 근거]}·{@code [웹 검색근거]}·
+     * {@code [웹검색근거]})을 결정적으로 제거한다. <b>대괄호가 필수</b>라 정상 source 라벨 {@code "웹검색"}
+     * (대괄호 없음)은 절대 제거되지 않는다. 라벨에 공백 없이 바로 붙은 조사(예: {@code ]의}·{@code ]에서는})는
+     * 라벨과 함께 제거해 조사만 홀로 남는 잔재를 막되(D-6 nit·case09), 조사 뒤가 또 다른 글자면(예: {@code ]의무})
+     * 내용어이므로 보존한다. 제거로 생긴 연속 공백만 정리하고(개행 보존), 그 외 문법 정리는 하지 않는다
+     * (best-effort). 라벨이 없으면 원본을 그대로 반환한다.
+     */
+    static String stripInputBlockLabels(String value) {
+        if (value == null || value.indexOf('[') < 0) {
+            return value;
+        }
+        String stripped = INPUT_BLOCK_LABEL.matcher(value).replaceAll("");
+        if (stripped.equals(value)) {
+            return value;
+        }
+        return COLLAPSE_SPACES.matcher(stripped).replaceAll(" ").trim();
+    }
+
+    /**
+     * ObjectNode 의 문자열 텍스트 필드 하나만 in-place sanitize 한다(값이 변한 경우에만 교체).
+     * 구조 필드(sourceRef/sourceKind/factId/inferenceId/basedOn 등)는 호출부에서 대상에 넣지 않는다.
+     */
+    private void sanitizeTextField(ObjectNode node, String field) {
+        JsonNode child = node.get(field);
+        if (child == null || !child.isString()) {
+            return;
+        }
+        String original = child.asString("");
+        String sanitized = stripInputBlockLabels(original);
+        if (!sanitized.equals(original)) {
+            node.put(field, sanitized);
+        }
+    }
+
+    /**
+     * competitors(문자열 배열) 각 원소에서 입력블록 라벨을 제거한다. 배열이 아니면 문자열 자체에서 라벨만
+     * 제거한다(라벨은 값 내부 리터럴이라 통째 제거해도 JSON 구조를 깨지 않는다). 변화가 없으면 원본을 반환한다.
+     */
+    String sanitizeCompetitors(String competitorsJson) {
+        if (isBlank(competitorsJson)) {
+            return competitorsJson;
+        }
+        ArrayNode array = parseArray(competitorsJson);
+        if (array == null) {
+            return stripInputBlockLabels(competitorsJson);
+        }
+        boolean changed = false;
+        ArrayNode out = objectMapper.createArrayNode();
+        for (JsonNode item : array) {
+            if (item.isString()) {
+                String original = item.asString("");
+                String sanitized = stripInputBlockLabels(original);
+                if (!sanitized.equals(original)) {
+                    changed = true;
+                }
+                out.add(sanitized);
+            } else {
+                // 문자열이 아닌 원소(비표준 provider 출력)는 구조 보존을 위해 그대로 둔다.
+                out.add(item);
+            }
+        }
+        return changed ? writeJson(out, competitorsJson) : competitorsJson;
     }
 
     // ── 공용 헬퍼 ──

@@ -14,6 +14,7 @@ import type {
 } from "../types/analysis";
 import {
   formatJsonArrayForTextarea,
+  isCompanyAnalysisRefreshDue,
   parseAiInferenceRows,
   parseJsonStringArray,
   parseUnknownItems,
@@ -26,6 +27,7 @@ import { formatKoreaDateTime } from "../utils/dateFormat";
 import { AnalysisFailureNotice } from "./AnalysisFailureNotice";
 import { AnalysisStructuredText } from "./AnalysisStructuredText";
 import { StructuredRowsEditor, type StructuredRowsEditorField } from "./StructuredRowsEditor";
+import { VerifiedFactsList } from "./VerifiedFactsList";
 
 interface CompanyAnalysisPanelProps {
   analysis: CompanyAnalysis | null;
@@ -172,6 +174,9 @@ export function CompanyAnalysisPanel({
     analysis.jobPostingRevision !== latestJobPostingRevision,
   );
 
+  // 재조회 권장 시점(refreshRecommendedAt) 경과 여부(신선도 · D-5). null/파싱 불가면 false.
+  const isRefreshDue = isCompanyAnalysisRefreshDue(analysis?.refreshRecommendedAt);
+
   const handleGenerate = async () => {
     if (
       isDirty &&
@@ -223,12 +228,17 @@ export function CompanyAnalysisPanel({
       <CardHeader className="gap-3">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
           <div>
-            <CardTitle className="flex items-center gap-2 text-lg font-bold text-slate-900">
+            <CardTitle className="flex flex-wrap items-center gap-2 text-lg font-bold text-slate-900">
               <Building2 className="size-5 text-blue-600" />
               기업 분석
               {isStale && (
                 <span className="rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-xs font-semibold text-amber-700">
                   이전 공고 rev 기준
+                </span>
+              )}
+              {isRefreshDue && (
+                <span className="rounded-full border border-sky-200 bg-sky-50 px-2 py-0.5 text-xs font-semibold text-sky-700">
+                  재조회 권장
                 </span>
               )}
             </CardTitle>
@@ -305,6 +315,25 @@ export function CompanyAnalysisPanel({
           </div>
         )}
 
+        {isRefreshDue && (
+          <div className="flex flex-col gap-3 rounded-lg border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-800 sm:flex-row sm:items-center sm:justify-between">
+            <span>
+              이 분석의 재조회 권장 시점이 지났습니다. 최신 정보로 다시 분석하는 것을 권장합니다.
+            </span>
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              className="border-sky-300 bg-card text-sky-800 hover:bg-sky-100"
+              disabled={loading || generating || reviewSaving}
+              onClick={() => void handleGenerate()}
+            >
+              {generating ? <Loader2 className="size-4 animate-spin" /> : <PlayCircle className="size-4" />}
+              지금 다시 분석
+            </Button>
+          </div>
+        )}
+
         {loading ? (
           <div className="h-64 animate-pulse rounded-lg bg-slate-100" />
         ) : analysis ? (
@@ -332,7 +361,10 @@ export function CompanyAnalysisPanel({
             )}
 
             <div className="grid gap-3 md:grid-cols-2">
-              <AnalysisStructuredText title="검증된 사실" value={analysis.verifiedFacts} />
+              <div className="rounded-lg border border-slate-200 bg-card p-4">
+                <div className="text-sm font-semibold text-slate-900">검증된 사실</div>
+                <VerifiedFactsList value={analysis.verifiedFacts} />
+              </div>
               <AnalysisStructuredText title="AI 추론" value={analysis.aiInferences} />
             </div>
 

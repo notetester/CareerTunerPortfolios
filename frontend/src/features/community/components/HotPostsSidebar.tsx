@@ -19,7 +19,7 @@ export function HotPostsSidebar() {
         <div className="av-list">
           {hotPosts.map((post, i) => (
             <a
-              key={post.id}
+              key={post.id ?? i} // 구버전 백엔드 응답에는 id가 없어 undefined일 수 있다
               href={`/community/posts/${post.id}`}
               onClick={(e) => { e.preventDefault(); navigate(`/community/posts/${post.id}`); }}
             >

@@ -5,6 +5,13 @@ import { Badge } from "@/app/components/ui/badge";
 import { Button } from "@/app/components/ui/button";
 import { Card, CardContent } from "@/app/components/ui/card";
 import {
+  AdminListFooter,
+  AdminListToolbar,
+  AdminSortableHeader,
+  useAdminListTools,
+  type AdminListColumn,
+} from "@/admin/components/AdminListTools";
+import {
   Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
 } from "@/app/components/ui/dialog";
 import { Textarea } from "@/app/components/ui/textarea";
@@ -26,6 +33,21 @@ const STATUS_FILTERS = [
 const won = (n: number) => `${n.toLocaleString("ko-KR")}원`;
 const fmt = (v: string | null) => (v ? new Intl.DateTimeFormat("ko-KR", { dateStyle: "medium", timeStyle: "short" }).format(new Date(v)) : "-");
 
+/** 결제 상품 표기 — 구독/크레딧/기타 상품코드 순으로 사람이 읽는 라벨. */
+function productLabel(row: AdminPaymentRow): string {
+  if (row.plan) return `${row.plan} 구독`;
+  if (row.creditAmount) return `크레딧 ${row.creditAmount}개`;
+  return row.productCode;
+}
+
+const PAYMENT_COLUMNS: AdminListColumn<AdminPaymentRow>[] = [
+  { id: "user", label: "회원", getText: (row) => `${row.userName ?? "-"} ${row.userEmail ?? ""}`.trim(), sortable: true },
+  { id: "product", label: "상품", getText: (row) => productLabel(row), sortable: true },
+  { id: "amount", label: "금액", getText: (row) => row.amount, sortable: true },
+  { id: "status", label: "상태", getText: (row) => row.status, sortable: true },
+  { id: "paidAt", label: "결제일", getText: (row) => fmt(row.paidAt ?? row.createdAt), sortValue: (row) => row.paidAt ?? row.createdAt, sortable: true },
+];
+
 export function AdminPaymentsPage() {
   const [rows, setRows] = useState<AdminPaymentRow[]>([]);
   const [summary, setSummary] = useState<AdminPaymentSummary | null>(null);
@@ -39,6 +61,13 @@ export function AdminPaymentsPage() {
   const [reviewTarget, setReviewTarget] = useState<{ row: RefundRequestRow; approve: boolean } | null>(null);
   const [reviewReason, setReviewReason] = useState("");
   const [reviewError, setReviewError] = useState<string | null>(null);
+
+  const list = useAdminListTools(rows, {
+    columns: PAYMENT_COLUMNS,
+    getRowId: (row) => row.id,
+    defaultSortId: "paidAt",
+    defaultSortDir: "desc",
+  });
 
   const load = async (nextStatus = status) => {
     setLoading(true);
@@ -143,19 +172,22 @@ export function AdminPaymentsPage() {
 
       <Card className="border-slate-200 bg-card">
         <CardContent className="p-0">
+          <div className="p-4">
+            <AdminListToolbar state={list} fileName="admin_payments" />
+          </div>
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-slate-200 text-left text-xs font-semibold text-slate-500">
-                  <th className="px-4 py-3">회원</th>
-                  <th className="px-4 py-3">상품</th>
-                  <th className="px-4 py-3">금액</th>
-                  <th className="px-4 py-3">상태</th>
-                  <th className="px-4 py-3">결제일</th>
+                  <AdminSortableHeader state={list} columnId="user" className="px-4 py-3">회원</AdminSortableHeader>
+                  <AdminSortableHeader state={list} columnId="product" className="px-4 py-3">상품</AdminSortableHeader>
+                  <AdminSortableHeader state={list} columnId="amount" className="px-4 py-3">금액</AdminSortableHeader>
+                  <AdminSortableHeader state={list} columnId="status" className="px-4 py-3">상태</AdminSortableHeader>
+                  <AdminSortableHeader state={list} columnId="paidAt" className="px-4 py-3">결제일</AdminSortableHeader>
                 </tr>
               </thead>
               <tbody>
-                {rows.map((r) => (
+                {list.visibleRows.map((r) => (
                   <tr key={r.id} className="border-b border-slate-100">
                     <td className="px-4 py-3">
                       <div className="font-semibold text-slate-800">{r.userName ?? "-"}</div>
@@ -173,11 +205,14 @@ export function AdminPaymentsPage() {
                     <td className="px-4 py-3 text-xs text-slate-500">{fmt(r.paidAt ?? r.createdAt)}</td>
                   </tr>
                 ))}
-                {rows.length === 0 && !loading && (
+                {list.visibleRows.length === 0 && !loading && (
                   <tr><td colSpan={5} className="px-4 py-10 text-center text-sm text-slate-400">결제 내역이 없습니다.</td></tr>
                 )}
               </tbody>
             </table>
+          </div>
+          <div className="p-4">
+            <AdminListFooter state={list} />
           </div>
         </CardContent>
       </Card>

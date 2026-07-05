@@ -16,7 +16,7 @@ ApplicationWindow {
     // ── 앱 상태 ──
     property bool loggedIn: false
     property bool autoLoginPending: true
-    property string view: "home"      // home | thread | report | collaboration | devices | settings
+    property string view: "home"      // home | thread | report | collaboration | board | devices | settings
     property bool phoneOpen: false
 
     function openSession(jobId, title, mode, caseId) {
@@ -25,6 +25,34 @@ ApplicationWindow {
     }
 
     function showToast(title, body) { toasts.push(title, body) }
+
+    // 알림 link → 데스크톱 화면 라우팅.
+    // '/collaboration' → 협업 뷰, '/interview?session=ID' → 해당 세션 스레드.
+    // 그 외(웹 전용 화면)는 데스크톱에 대응 화면이 생기면 여기에 분기를 추가한다.
+    function routeNotificationLink(link) {
+        const url = String(link || "")
+        if (url.length === 0) return
+        if (url.indexOf("/collaboration") === 0) {
+            win.view = "collaboration"
+            collaboration.refresh()
+            return
+        }
+        if (url.indexOf("/community") === 0) {
+            // '/community/posts/{id}' (추천 글 알림 등) 이면 해당 글 상세까지 연다
+            win.view = "board"
+            const pm = url.match(/\/community\/posts\/(\d+)/)
+            if (pm) community.openPost(Number(pm[1]))
+            return
+        }
+        if (url.indexOf("/interview") === 0) {
+            const m = url.match(/[?&]session=(\d+)/)
+            if (m) {
+                // 사이드바 목록에 아직 없는 세션일 수 있어 임시 라벨로 열고, 스레드가 실제 내용을 채운다
+                win.openSession(Number(m[1]), "면접 세션 #" + m[1], "이어하기", 0)
+            }
+            return
+        }
+    }
 
     Connections {
         target: auth
@@ -77,6 +105,12 @@ ApplicationWindow {
         function onErrorOccurred(message) { win.showToast("협업 오류", message) }
         function onInfo(title, message) { win.showToast(title, message) }
         function onAttachmentDownloaded(path) { win.showToast("첨부 저장됨", path) }
+    }
+
+    Connections {
+        target: community
+        function onErrorOccurred(message) { win.showToast("게시판 오류", message) }
+        function onInfo(title, message) { win.showToast(title, message) }
     }
 
     Connections {
@@ -160,7 +194,7 @@ ApplicationWindow {
                     }
                     Text { text: "CareerTuner"; color: Theme.text; font.bold: true; font.pixelSize: 14 }
                     Item { Layout.fillWidth: true }
-                    // 알림 뱃지
+                    // 안읽음 카운트 칩
                     Rectangle {
                         visible: notifications.unread > 0
                         width: badgeRow.implicitWidth + 16; height: 18; radius: 9
@@ -171,12 +205,37 @@ ApplicationWindow {
                             spacing: 4
                             Icon { name: "bell"; size: 10; color: Theme.accentText; anchors.verticalCenter: parent.verticalCenter }
                             Text {
-                                text: notifications.unread
+                                text: notifications.unread > 99 ? "99+" : notifications.unread
                                 color: Theme.accentText; font.pixelSize: 10; font.bold: true
                                 anchors.verticalCenter: parent.verticalCenter
                             }
                         }
-                        MouseArea { anchors.fill: parent; onClicked: notifications.markAllRead() }
+                    }
+                    // 알림 벨 — 클릭 시 알림 센터 팝업 (빨간 점 = 안읽음 존재)
+                    Rectangle {
+                        id: bellButton
+                        width: 26; height: 22; radius: 7
+                        color: bellHover.containsMouse || notificationCenter.opened ? Theme.hover : "transparent"
+                        Icon { anchors.centerIn: parent; name: "bell"; size: 12; color: Theme.text }
+                        Rectangle {
+                            visible: notifications.unread > 0
+                            width: 7; height: 7; radius: 3.5
+                            x: parent.width - 8; y: 1
+                            color: Theme.danger
+                        }
+                        MouseArea {
+                            id: bellHover
+                            anchors.fill: parent
+                            hoverEnabled: true
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: notificationCenter.opened ? notificationCenter.close() : notificationCenter.open()
+                        }
+                        NotificationCenter {
+                            id: notificationCenter
+                            x: -100
+                            y: parent.height + 8
+                            onLinkActivated: (link) => win.routeNotificationLink(link)
+                        }
                     }
                 }
 
@@ -306,6 +365,7 @@ ApplicationWindow {
                     Repeater {
                         model: [
                             { icon: "message",    key: "collaboration", tip: "친구와 대화" },
+                            { icon: "list",       key: "board",    tip: "커뮤니티 게시판" },
                             { icon: "monitor",    key: "devices",  tip: "연결된 기기" },
                             { icon: "smartphone", key: "phone",    tip: "폰 연동 패널" },
                             { icon: "gear",       key: "settings", tip: "설정" }
@@ -360,6 +420,7 @@ ApplicationWindow {
 
                     Text {
                         text: win.view === "collaboration" ? "친구와 대화"
+                            : win.view === "board" ? "커뮤니티 게시판"
                             : win.view === "devices" ? "연결된 기기"
                             : win.view === "settings" ? "설정"
                             : session.title
@@ -454,6 +515,61 @@ ApplicationWindow {
             }
 
             // 화면 스택
+            Rectangle {
+                Layout.fillWidth: true
+                height: desktopAds.visible && win.loggedIn ? (desktopAds.body.length > 0 ? 62 : 46) : 0
+                visible: height > 0
+                color: Theme.surface
+                border.color: Theme.border
+                clip: true
+
+                RowLayout {
+                    anchors.fill: parent
+                    anchors.leftMargin: 18
+                    anchors.rightMargin: 18
+                    spacing: 12
+                    Rectangle {
+                        width: 8
+                        Layout.fillHeight: true
+                        color: Theme.warn
+                        opacity: 0.85
+                    }
+                    ColumnLayout {
+                        Layout.fillWidth: true
+                        spacing: 2
+                        Text {
+                            Layout.fillWidth: true
+                            text: desktopAds.title
+                            color: Theme.text
+                            font.bold: true
+                            font.pixelSize: 12
+                            elide: Text.ElideRight
+                        }
+                        Text {
+                            Layout.fillWidth: true
+                            visible: desktopAds.body.length > 0
+                            text: desktopAds.body
+                            color: Theme.muted
+                            font.pixelSize: 11
+                            elide: Text.ElideRight
+                        }
+                    }
+                    Text {
+                        visible: desktopAds.targetUrl.length > 0
+                        text: "자세히"
+                        color: Theme.accentText
+                        font.pixelSize: 11
+                        font.bold: true
+                    }
+                }
+
+                MouseArea {
+                    anchors.fill: parent
+                    cursorShape: desktopAds.targetUrl.length > 0 ? Qt.PointingHandCursor : Qt.ArrowCursor
+                    onClicked: desktopAds.openTarget()
+                }
+            }
+
             StackLayout {
                 Layout.fillWidth: true
                 Layout.fillHeight: true
@@ -461,14 +577,16 @@ ApplicationWindow {
                             : win.view === "thread" ? 1
                             : win.view === "report" ? 2
                             : win.view === "collaboration" ? 3
-                            : win.view === "devices" ? 4 : 5
+                            : win.view === "board" ? 4
+                            : win.view === "devices" ? 5 : 6
 
                 HomeView { id: homeView }                            // 0
                 SessionThread {}                                     // 1
                 ReportView {}                                        // 2
                 CollaborationPage {}                                 // 3
-                DevicesPage {}                                       // 4
-                SettingsPage {}                                      // 5
+                BoardPage {}                                         // 4
+                DevicesPage {}                                       // 5
+                SettingsPage {}                                      // 6
             }
 
             // 하단 입력바 (홈=인테이크 · 스레드=답변)

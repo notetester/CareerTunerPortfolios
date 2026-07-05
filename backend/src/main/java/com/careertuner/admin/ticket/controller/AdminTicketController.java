@@ -18,6 +18,7 @@ import com.careertuner.admin.ticket.dto.AdminTicketListResponse;
 import com.careertuner.admin.ticket.dto.AdminTicketReplyRequest;
 import com.careertuner.admin.ticket.dto.AdminTicketSummaryResponse;
 import com.careertuner.admin.ticket.dto.AdminTicketUpdateRequest;
+import com.careertuner.admin.permission.annotation.RequireAdminPermission;
 import com.careertuner.admin.ticket.service.AdminTicketService;
 import com.careertuner.common.security.AuthUser;
 import com.careertuner.common.web.ApiResponse;
@@ -25,9 +26,11 @@ import com.careertuner.common.web.ApiResponse;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 
+/** 문의(티켓) 콘솔. 세부 권한: 콘텐츠/고객지원 관리(CONTENT_MANAGE) 또는 대표 권한(CONTENT_ADMIN). */
 @RestController
 @RequestMapping("/api/admin/tickets")
 @RequiredArgsConstructor
+@RequireAdminPermission({"CONTENT_MANAGE", "CONTENT_ADMIN"})
 public class AdminTicketController {
 
     private final AdminTicketService ticketService;

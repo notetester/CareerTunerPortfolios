@@ -31,7 +31,12 @@ import com.careertuner.companyanalysis.domain.CompanyAnalysis;
 import com.careertuner.companyanalysis.dto.CompanyAnalysisReviewRequest;
 import com.careertuner.companyanalysis.dto.CompanyAnalysisResponse;
 import com.careertuner.companyanalysis.mapper.CompanyAnalysisMapper;
+import com.careertuner.companyanalysis.websearch.CompanyEvidenceCollector;
+import com.careertuner.companyanalysis.websearch.CompanySourceResolver;
+import com.careertuner.companyanalysis.websearch.CompanyWebSearchClient;
+import com.careertuner.companyanalysis.websearch.CompanyWebSearchProperties;
 import com.careertuner.jobposting.mapper.JobPostingMapper;
+import com.careertuner.notification.service.NotificationService;
 
 import tools.jackson.databind.ObjectMapper;
 
@@ -202,7 +207,14 @@ class CompanyAnalysisServiceReviewValidationTest {
                 mock(ApplicationCaseAnalysisStatusService.class),
                 mock(TransactionTemplate.class),
                 new BAnalysisJsonValidator(new ObjectMapper()),
-                new BCompanyAnalysisCanonicalizer(new ObjectMapper()));
+                new BCompanyAnalysisCanonicalizer(new ObjectMapper()),
+                mock(NotificationService.class),
+                new CompanyWebSearchProperties(),
+                mock(CompanySourceResolver.class),
+                mock(CompanyWebSearchClient.class),
+                mock(CompanyEvidenceCollector.class),
+                mock(CompanySearchCacheService.class),
+                new ObjectMapper());
     }
 
     private static ApplicationCase applicationCase() {

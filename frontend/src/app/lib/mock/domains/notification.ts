@@ -128,6 +128,7 @@ const demoPreference: NotificationPreference = {
     marketing: false,
   },
   rules: defaultNotificationRules(),
+  keywords: ["백엔드", "리액트"],
   quietHoursStart: "23:00",
   quietHoursEnd: "08:00",
   pushDeviceRegistered: true,
@@ -138,6 +139,7 @@ interface PreferenceUpdateBody {
   emailEnabled?: boolean;
   categories?: Record<string, boolean>;
   rules?: NotificationPreference["rules"];
+  keywords?: string[];
   quietHoursStart?: string | null;
   quietHoursEnd?: string | null;
 }
@@ -198,6 +200,7 @@ export const notificationRoutes: MockRoute[] = [
       if (update.emailEnabled !== undefined) demoPreference.emailEnabled = update.emailEnabled;
       if (update.categories !== undefined) demoPreference.categories = update.categories;
       if (update.rules !== undefined) demoPreference.rules = update.rules;
+      if (update.keywords !== undefined) demoPreference.keywords = update.keywords;
       if (update.quietHoursStart !== undefined) demoPreference.quietHoursStart = update.quietHoursStart;
       if (update.quietHoursEnd !== undefined) demoPreference.quietHoursEnd = update.quietHoursEnd;
       return demoPreference;

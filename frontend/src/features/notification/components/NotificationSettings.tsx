@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { Fragment, useEffect, useState } from "react";
 import { Bell, BellRing, Loader2, Save, Smartphone } from "lucide-react";
 import { Button } from "@/app/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/app/components/ui/card";
@@ -9,13 +9,16 @@ import {
 } from "../api/notificationApi";
 import {
   DEFAULT_NOTIFICATION_CHANNELS,
+  DEFAULT_NOTIFICATION_SENDERS,
   NOTIFICATION_CHANNELS,
   NOTIFICATION_RULE_GROUPS,
+  NOTIFICATION_SENDERS,
+  RELATION_AWARE_TYPES,
   normalizeNotificationRules,
   type NotificationChannelKey,
   type NotificationRulePreference,
 } from "../types/preferences";
-import type { NotificationType } from "../types/notification";
+import type { NotificationType, SenderRelation } from "../types/notification";
 import { disablePush, enablePush, isPushSupported, pushPermission } from "@/platform/push";
 
 const CATEGORY_LABELS: Record<string, string> = {
@@ -45,6 +48,8 @@ export function NotificationSettings() {
   const [pref, setPref] = useState<NotificationPreference | null>(null);
   const [categories, setCategories] = useState<Record<string, boolean>>({});
   const [rules, setRules] = useState<Record<string, NotificationRulePreference>>({});
+  const [keywords, setKeywords] = useState<string[]>([]);
+  const [keywordInput, setKeywordInput] = useState("");
   const [quietStart, setQuietStart] = useState("");
   const [quietEnd, setQuietEnd] = useState("");
   const [loading, setLoading] = useState(true);
@@ -61,6 +66,7 @@ export function NotificationSettings() {
     setPref(p);
     setCategories(p.categories);
     setRules(normalizeNotificationRules(p.rules));
+    setKeywords(p.keywords ?? []);
     setQuietStart(p.quietHoursStart ?? "");
     setQuietEnd(p.quietHoursEnd ?? "");
   };
@@ -117,12 +123,36 @@ export function NotificationSettings() {
     });
   };
 
+  const toggleSender = (type: NotificationType, sender: SenderRelation, next: boolean) => {
+    setRules((current) => {
+      const rule = current[type] ?? { enabled: true, channels: { ...DEFAULT_NOTIFICATION_CHANNELS } };
+      return {
+        ...current,
+        [type]: {
+          ...rule,
+          senders: { ...DEFAULT_NOTIFICATION_SENDERS, ...rule.senders, [sender]: next },
+        },
+      };
+    });
+  };
+
+  const addKeyword = () => {
+    const value = keywordInput.trim();
+    if (!value) return;
+    if (value.length > 30) { toast("키워드는 30자 이하로 입력해 주세요.", "err"); return; }
+    if (keywords.includes(value)) { setKeywordInput(""); return; }
+    if (keywords.length >= 20) { toast("키워드는 최대 20개까지 등록할 수 있습니다.", "err"); return; }
+    setKeywords((k) => [...k, value]);
+    setKeywordInput("");
+  };
+
   const save = async () => {
     setSaving(true);
     try {
       apply(await updateNotificationPreferences({
         categories,
         rules,
+        keywords,
         quietHoursStart: quietStart || null,
         quietHoursEnd: quietEnd || null,
       }));
@@ -222,27 +252,50 @@ export function NotificationSettings() {
                   <tbody>
                     {group.types.map((item) => {
                       const rule = ensureRule(item.type);
+                      const relationAware = RELATION_AWARE_TYPES.includes(item.type);
                       return (
-                        <tr key={item.type} className="border-t border-border">
-                          <td className="px-3 py-2 font-medium text-foreground">{item.label}</td>
-                          <td className="px-2 py-2 text-center">
-                            <Checkbox
-                              aria-label={`${item.label} 수신`}
-                              checked={rule.enabled}
-                              onCheckedChange={(v) => toggleRule(item.type, v === true)}
-                            />
-                          </td>
-                          {NOTIFICATION_CHANNELS.map((channel) => (
-                            <td key={channel.key} className="px-2 py-2 text-center">
+                        <Fragment key={item.type}>
+                          <tr className="border-t border-border">
+                            <td className="px-3 py-2 font-medium text-foreground">{item.label}</td>
+                            <td className="px-2 py-2 text-center">
                               <Checkbox
-                                aria-label={`${item.label} ${channel.label}`}
-                                checked={rule.channels[channel.key]}
-                                disabled={!rule.enabled}
-                                onCheckedChange={(v) => toggleChannel(item.type, channel.key, v === true)}
+                                aria-label={`${item.label} 수신`}
+                                checked={rule.enabled}
+                                onCheckedChange={(v) => toggleRule(item.type, v === true)}
                               />
                             </td>
-                          ))}
-                        </tr>
+                            {NOTIFICATION_CHANNELS.map((channel) => (
+                              <td key={channel.key} className="px-2 py-2 text-center">
+                                <Checkbox
+                                  aria-label={`${item.label} ${channel.label}`}
+                                  checked={rule.channels[channel.key]}
+                                  disabled={!rule.enabled}
+                                  onCheckedChange={(v) => toggleChannel(item.type, channel.key, v === true)}
+                                />
+                              </td>
+                            ))}
+                          </tr>
+                          {relationAware && (
+                            <tr className="border-t border-dashed border-border bg-muted/40">
+                              <td className="px-3 py-1.5 pl-6 text-xs text-muted-foreground">보낸 사람별 수신</td>
+                              <td colSpan={NOTIFICATION_CHANNELS.length + 1} className="px-2 py-1.5">
+                                <div className="flex flex-wrap items-center gap-4">
+                                  {NOTIFICATION_SENDERS.map((sender) => (
+                                    <label key={sender.key} className="flex items-center gap-1.5 text-xs text-foreground">
+                                      <Checkbox
+                                        aria-label={`${item.label} - ${sender.label}`}
+                                        checked={rule.senders?.[sender.key] !== false}
+                                        disabled={!rule.enabled}
+                                        onCheckedChange={(v) => toggleSender(item.type, sender.key, v === true)}
+                                      />
+                                      {sender.label}
+                                    </label>
+                                  ))}
+                                </div>
+                              </td>
+                            </tr>
+                          )}
+                        </Fragment>
                       );
                     })}
                   </tbody>
@@ -250,6 +303,47 @@ export function NotificationSettings() {
               </div>
             </section>
           ))}
+        </CardContent>
+      </Card>
+
+      <Card className="border border-border bg-card">
+        <CardHeader>
+          <CardTitle className="text-base">언급 키워드</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <p className="text-xs text-muted-foreground">
+            알림을 해제한 채팅방이라도 아래 키워드나 내 이름이 언급되면 &lsquo;키워드·이름 언급&rsquo; 알림을 받습니다. (최대 20개)
+          </p>
+          <div className="flex flex-wrap items-center gap-2">
+            {keywords.map((keyword) => (
+              <span key={keyword} className="inline-flex items-center gap-1 rounded-full border border-border bg-muted px-3 py-1 text-xs text-foreground">
+                {keyword}
+                <button
+                  type="button"
+                  aria-label={`${keyword} 삭제`}
+                  className="text-muted-foreground hover:text-foreground"
+                  onClick={() => setKeywords((k) => k.filter((v) => v !== keyword))}
+                >
+                  ×
+                </button>
+              </span>
+            ))}
+            {keywords.length === 0 && (
+              <span className="text-xs text-muted-foreground">등록된 키워드가 없습니다.</span>
+            )}
+          </div>
+          <div className="flex items-center gap-2">
+            <input
+              type="text"
+              value={keywordInput}
+              maxLength={30}
+              placeholder="예: 백엔드, 리액트, 내 닉네임"
+              onChange={(e) => setKeywordInput(e.target.value)}
+              onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addKeyword(); } }}
+              className="h-10 w-64 rounded-lg border border-border px-3 text-sm"
+            />
+            <Button type="button" variant="outline" onClick={addKeyword}>추가</Button>
+          </div>
         </CardContent>
       </Card>
 

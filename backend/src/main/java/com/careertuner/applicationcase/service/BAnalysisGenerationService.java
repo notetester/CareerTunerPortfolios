@@ -18,6 +18,7 @@ import com.careertuner.applicationcase.service.OpenAiResponsesClient.CompanyAnal
 import com.careertuner.applicationcase.service.OpenAiResponsesClient.JobAnalysisPayload;
 import com.careertuner.applicationcase.service.OpenAiResponsesClient.Usage;
 import com.careertuner.companyanalysis.ai.prompt.CompanyAnalysisPromptCatalog;
+import com.careertuner.companyanalysis.websearch.CompanyWebEvidence;
 import com.careertuner.jobanalysis.ai.prompt.JobAnalysisPromptCatalog;
 
 import lombok.RequiredArgsConstructor;
@@ -36,6 +37,9 @@ public class BAnalysisGenerationService {
     private static final int COMPANY_VERIFIED_FACTS_MAX_ITEMS = 8;
     private static final int COMPANY_AI_INFERENCES_MAX_ITEMS = 4;
     private static final int COMPANY_UNKNOWNS_MAX_ITEMS = 5;
+    // [웹 검색 근거] 블록 상한(무한 프롬프트 방지) — 항목 수·스니펫 길이 캡.
+    private static final int WEB_EVIDENCE_BLOCK_MAX_ITEMS = 6;
+    private static final int WEB_EVIDENCE_SNIPPET_MAX_CHARS = 200;
 
     // 경력 연차는 연차 숫자가 경력 키워드와 "결합"된 경우만 인정한다(단순 "N년" 근접 매칭은 오탐이 많음).
     // "설립 10년차"·"서비스 운영 5년"·"5년 연속 성장"(연혁/기간), "operating for 5 yrs"(단위만 있는 영어 기간)는
@@ -210,11 +214,22 @@ public class BAnalysisGenerationService {
                 properties.getLocalLlm().getModel());
     }
 
-    /**
-     * 회사 분석 폴백 체인: 자체모델(Ollama) → Claude(Haiku) → OpenAI → self-rules-v1(최종 안전망).
-     */
+    /** 웹 근거 없는 기존 진입점(auto pipeline 등). 빈 목록으로 overload 에 위임해 현행 동작을 유지한다. */
     public GeneratedCompanyAnalysis generateCompanyAnalysis(ApplicationCase applicationCase, String postingText) {
+        return generateCompanyAnalysis(applicationCase, postingText, List.of());
+    }
+
+    /**
+     * 회사 분석 폴백 체인(공고+WEB 2소스 · 235 §1·§3): 자체모델(Ollama) → Claude(Haiku) → OpenAI → self-rules-v1.
+     * webEvidence 중 URL 보유분이 있으면 local/Claude R1 user 입력에 {@code [웹 검색 근거]} 블록({url,snippet})을
+     * 붙이고 company schema sourceKind enum 에 WEB 를 additive 로 연다. 빈 목록/URL 없음이면 현행과 완전히 동일하다.
+     * hosted(OpenAI) 폴백의 웹 입력은 D-4c 범위 — 이번 배치는 공고문만 넘긴다.
+     */
+    public GeneratedCompanyAnalysis generateCompanyAnalysis(ApplicationCase applicationCase, String postingText,
+                                                            List<CompanyWebEvidence> webEvidence) {
         Classification classification = sentenceClassifier.classify(postingText);
+        List<CompanyWebEvidence> usableWeb = usableWebEvidence(webEvidence);
+        boolean includeWeb = !usableWeb.isEmpty();
         String lastError = null;
 
         // 1) 자체모델(Ollama).
@@ -222,8 +237,8 @@ public class BAnalysisGenerationService {
             try {
                 String content = localLlmClient.chat(
                         CompanyAnalysisPromptCatalog.SYSTEM_PROMPT,
-                        companyPrompt(applicationCase, postingText, classification),
-                        companyAnalysisSchema());
+                        companyPrompt(applicationCase, postingText, classification, usableWeb),
+                        companyAnalysisSchema(includeWeb));
                 CompanyAnalysisPayload payload = parseLocalCompanyPayload(content, applicationCase, postingText,
                         properties.getLocalLlm().getModel());
                 return new GeneratedCompanyAnalysis(payload, null, null);
@@ -238,8 +253,8 @@ public class BAnalysisGenerationService {
             try {
                 String content = anthropicClient.chat(
                         CompanyAnalysisPromptCatalog.SYSTEM_PROMPT,
-                        companyPrompt(applicationCase, postingText, classification),
-                        companyAnalysisSchema());
+                        companyPrompt(applicationCase, postingText, classification, usableWeb),
+                        companyAnalysisSchema(includeWeb));
                 CompanyAnalysisPayload payload = parseLocalCompanyPayload(content, applicationCase, postingText,
                         anthropicClient.model());
                 log.info("Claude company analysis succeeded");
@@ -250,7 +265,7 @@ public class BAnalysisGenerationService {
             }
         }
 
-        // 3) 2차 폴백: OpenAI.
+        // 3) 2차 폴백: OpenAI(hosted). ★웹 입력 미적용 — hosted 웹 배선은 D-4c 범위(공고문만 넘긴다).
         if (openAiResponsesClient.configured()) {
             try {
                 CompanyAnalysisPayload payload = openAiResponsesClient.analyzeCompany(applicationCase, postingText);
@@ -988,7 +1003,17 @@ public class BAnalysisGenerationService {
     }
 
     private String companyPrompt(ApplicationCase applicationCase, String postingText, Classification classification) {
-        int budget = contentCharBudget();
+        return companyPromptBody(applicationCase, postingText, classification, 0);
+    }
+
+    /**
+     * 회사 프롬프트 본문. {@code reservedChars} 는 뒤에 붙일 {@code [웹 검색 근거]} 블록이 차지할 길이로,
+     * 그만큼 입력 예산에서 먼저 차감해 공고 본문을 자른다 — 웹 블록이 num_ctx 예산 밖에서 더해지지 않도록 한다
+     * (리뷰 반영). 공고 본문은 최소 {@code MIN_POSTING_CHARS} 를 보장한다.
+     */
+    private String companyPromptBody(ApplicationCase applicationCase, String postingText, Classification classification,
+                                     int reservedChars) {
+        int budget = Math.max(MIN_POSTING_CHARS, contentCharBudget() - Math.max(0, reservedChars));
         int classificationBudget = Math.max(0, Math.min(CLASSIFICATION_CHAR_CAP, budget - MIN_POSTING_CHARS));
         String companyInfo = truncate(
                 String.join("\n", classification.textsByLabel(BJobSentenceClassifier.COMPANY_INFO)),
@@ -1008,6 +1033,50 @@ public class BAnalysisGenerationService {
                 defaultText(applicationCase.getJobTitle(), "unknown"),
                 companyInfo,
                 posting);
+    }
+
+    /**
+     * WEB 입력 배선(local/Claude 한정 · 235 §1). usableWeb(URL 보유분)가 있으면 {@code [웹 검색 근거]} 블록을
+     * 먼저 만들어 그 길이를 공고 본문 예산에서 차감한 뒤 붙인다(웹 블록이 num_ctx 예산을 초과하지 않도록 — 리뷰 반영).
+     * 빈 목록이면 base 를 그대로 반환한다(=현행 프롬프트 완전 불변). b-v5 프롬프트가 이 블록 형식을 기대한다.
+     * URL blank/null evidence 는 상위 usableWebEvidence 에서 이미 제외됐다.
+     */
+    private String companyPrompt(ApplicationCase applicationCase, String postingText, Classification classification,
+                                 List<CompanyWebEvidence> usableWeb) {
+        String block = webEvidenceBlock(usableWeb);
+        if (block.isEmpty()) {
+            return companyPromptBody(applicationCase, postingText, classification, 0);
+        }
+        return companyPromptBody(applicationCase, postingText, classification, block.length()) + block;
+    }
+
+    /** {@code [웹 검색 근거]} 블록 문자열({url,snippet} 목록). usableWeb 가 비면 "" 를 반환한다(블록 없음). */
+    private String webEvidenceBlock(List<CompanyWebEvidence> usableWeb) {
+        if (usableWeb.isEmpty()) {
+            return "";
+        }
+        StringBuilder block = new StringBuilder("\n[웹 검색 근거]\n");
+        int count = 0;
+        for (CompanyWebEvidence evidence : usableWeb) {
+            if (count++ >= WEB_EVIDENCE_BLOCK_MAX_ITEMS) {
+                break;
+            }
+            String snippet = firstNonBlank(evidence.snippet(), evidence.title()).replaceAll("\\s+", " ").trim();
+            block.append("- {url: ").append(evidence.url().trim())
+                    .append(", snippet: ").append(truncate(snippet, WEB_EVIDENCE_SNIPPET_MAX_CHARS))
+                    .append("}\n");
+        }
+        return block.toString();
+    }
+
+    /** URL 보유 evidence 만 남긴다(D-2: WEB 출처는 URL 필수 — 블록/enum 게이트 기준). */
+    private List<CompanyWebEvidence> usableWebEvidence(List<CompanyWebEvidence> webEvidence) {
+        if (webEvidence == null || webEvidence.isEmpty()) {
+            return List.of();
+        }
+        return webEvidence.stream()
+                .filter(evidence -> evidence != null && evidence.url() != null && !evidence.url().isBlank())
+                .toList();
     }
 
     /**
@@ -1050,6 +1119,14 @@ public class BAnalysisGenerationService {
      * 같은 계약을 required + nullable 타입으로 표현한다. 두 경로의 필드 집합은 동일해야 한다.
      */
     Map<String, Object> companyAnalysisSchema() {
+        return companyAnalysisSchema(false);
+    }
+
+    /**
+     * WEB evidence(URL 보유) 존재 경로에서만 {@code includeWebSourceKind=true} 로 sourceKind enum 에 WEB 를
+     * additive 추가한다. no-arg 는 {@code false} 위임이라 "WEB empty = schema 완전 불변"이 오버로드로 고정된다.
+     */
+    Map<String, Object> companyAnalysisSchema(boolean includeWebSourceKind) {
         Map<String, Object> properties = new LinkedHashMap<>();
         properties.put("companySummary", stringSchema());
         properties.put("recentIssues", stringSchema());
@@ -1062,8 +1139,10 @@ public class BAnalysisGenerationService {
         factProperties.put("source", stringSchema());
         factProperties.put("evidence", stringSchema());
         factProperties.put("factId", stringSchema());
-        factProperties.put("sourceKind", Map.of("type", "string", "enum",
-                List.of("JOB_POSTING", "UPLOADED_COMPANY_DOC", "USER_MEMO")));
+        List<String> sourceKinds = includeWebSourceKind
+                ? List.of("JOB_POSTING", "UPLOADED_COMPANY_DOC", "USER_MEMO", "WEB")
+                : List.of("JOB_POSTING", "UPLOADED_COMPANY_DOC", "USER_MEMO");
+        factProperties.put("sourceKind", Map.of("type", "string", "enum", sourceKinds));
         factProperties.put("sourceRef", stringSchema());
         properties.put("verifiedFacts", objectArraySchema(
                 factProperties,

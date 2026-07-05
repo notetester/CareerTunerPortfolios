@@ -25,7 +25,7 @@ import {
   realtimeSession, fileAsset,
 } from "./domains/interview";
 import {
-  communityPostPage, demoHotPosts, findCommunityPost, demoComments, demoPublishedGuideline,
+  communityPostPage, demoHotPosts, findCommunityPost, communityCommentsFor, demoPublishedGuideline,
   demoFaqs, demoNotices,
   demoAdminReports, moderationPage, demoModerationStats, demoModerationSetting,
   demoAdminNotices, demoAdminFaqs, demoAdminGuidelines, demoAdminTickets, adminTicketDetail,
@@ -44,6 +44,10 @@ import { correctionRoutes } from "./domains/correction";
 import { applicationsExtraRoutes } from "./domains/applicationsExtra";
 import { interviewExtraRoutes } from "./domains/interviewExtra";
 import { collaborationRoutes } from "./domains/collaboration";
+import { privacyRoutes } from "./domains/privacy";
+import { companyRoutes } from "./domains/company";
+import { adsRoutes } from "./domains/ads";
+import { nicknameProfileRoutes } from "./domains/nicknameProfile";
 import { adminRoutes } from "./domains/admin";
 
 /** 등록된 핸들러가 없을 때 반환하는 sentinel. */
@@ -300,7 +304,7 @@ const coreRoutes: MockRoute[] = [
   { method: "GET", pattern: /^\/community\/posts$/, handler: () => communityPostPage() },
   { method: "GET", pattern: /^\/community\/posts\/hot$/, handler: ok(demoHotPosts) },
   { method: "GET", pattern: /^\/community\/posts\/(\d+)$/, handler: ({ params }) => findCommunityPost(Number(params[0])) },
-  { method: "GET", pattern: /^\/community\/posts\/(\d+)\/comments$/, handler: ok(demoComments) },
+  { method: "GET", pattern: /^\/community\/posts\/(\d+)\/comments$/, handler: ({ params }) => communityCommentsFor(Number(params[0])) },
   { method: "GET", pattern: /^\/community\/posts\/(\d+)\/ai-tags$/, handler: ({ params }) => ({ postId: Number(params[0]), taskType: "태그추천", status: "DONE", resultJson: JSON.stringify({ tags: ["면접", "백엔드", "시스템설계"], confidence: 0.86, applied: true }) }) },
   { method: "POST", pattern: /^\/community\/posts$/, handler: () => ({ postId: 999 }) },
   { method: "POST", pattern: /^\/community\/reactions$/, handler: () => ({ active: true }) },
@@ -345,6 +349,10 @@ const routes: MockRoute[] = [
   ...profileRoutes,
   ...correctionRoutes,
   ...collaborationRoutes,
+  ...privacyRoutes,
+  ...companyRoutes,
+  ...adsRoutes,
+  ...nicknameProfileRoutes,
   ...adminRoutes,
 ];
 

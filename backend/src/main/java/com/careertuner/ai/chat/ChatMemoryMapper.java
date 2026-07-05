@@ -50,4 +50,7 @@ public interface ChatMemoryMapper {
 
     /** 이 대화의 온보딩 거부를 영속(현재 시각 기록). 재시작 후에도 재권유 안 함. */
     void markOnboardingDeclined(@Param("conversationId") Long conversationId);
+
+    /** 온보딩 거부 해제(재시작 확인 "네" 응답 시) — declined_at 을 NULL 로 되돌려 재진입을 허용한다. */
+    void clearOnboardingDeclined(@Param("conversationId") Long conversationId);
 }

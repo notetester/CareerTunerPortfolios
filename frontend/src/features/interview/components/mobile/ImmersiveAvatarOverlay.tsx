@@ -8,6 +8,7 @@ import {
 } from "../../hooks/voiceAnalysis";
 import { computeVisualScore, VisualMetricsTracker } from "../../hooks/visualAnalysis";
 import { BrowserSttTracker } from "../../hooks/speechToText";
+import { createNegotiatedRecorder } from "../../hooks/mediaSupport";
 import { scoreAvatarServer, transcribeVoice } from "../../api/interviewApi";
 
 /**
@@ -53,6 +54,8 @@ export function ImmersiveAvatarOverlay({
   const sttRef = useRef<BrowserSttTracker | null>(null);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const closedRef = useRef(false);
+  /** 녹화 시 협상된 업로드 포맷(webm|mp4) — blob.type 스니핑 대신 이 값을 쓴다. */
+  const formatRef = useRef<string>("webm");
 
   const stopAll = () => {
     if (timerRef.current) clearInterval(timerRef.current);
@@ -88,7 +91,9 @@ export function ImmersiveAvatarOverlay({
       sttRef.current = stt;
 
       chunksRef.current = [];
-      const recorder = new MediaRecorder(stream);
+      // 기기별 지원 mimeType 협상(webm → mp4) — WebView 등 webm 미지원 기기 대응.
+      const { recorder, format } = createNegotiatedRecorder(stream, "video");
+      formatRef.current = format;
       recorder.ondataavailable = (e) => {
         if (e.data.size > 0) chunksRef.current.push(e.data);
       };
@@ -167,7 +172,7 @@ export function ImmersiveAvatarOverlay({
     // 1) 전사
     let transcript = webSpeechText;
     let videoBase64 = "";
-    const videoFormat = (blob?.type || "video/webm").includes("webm") ? "webm" : "mp4";
+    const videoFormat = formatRef.current; // 녹화 시 협상한 포맷 (blob.type 스니핑 대체)
     if (blob && blob.size > 0) {
       videoBase64 = await blobToBase64(blob).catch(() => "");
       if (videoBase64) {

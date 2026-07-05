@@ -3,7 +3,9 @@ package com.careertuner.community.search;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Comparator;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 import org.slf4j.Logger;
@@ -12,6 +14,8 @@ import org.springframework.stereotype.Service;
 
 import com.careertuner.community.domain.PostCategory;
 import com.careertuner.community.mapper.CommunityPostMapper;
+import com.careertuner.privacy.service.PrivacyPolicyService;
+import com.careertuner.privacy.service.PrivacySurfaces;
 import com.careertuner.support.chatbot.CosineSimilarity;
 import com.careertuner.support.chatbot.OllamaEmbeddingClient;
 
@@ -33,23 +37,27 @@ public class CommunityPostSearchService {
     private final CommunityPostMapper postMapper;
     private final CommunitySearchProperties props;
     private final ObjectMapper objectMapper;
+    private final PrivacyPolicyService privacyPolicyService;
 
     public CommunityPostSearchService(OllamaEmbeddingClient embeddingClient,
                                       CommunityPostMapper postMapper,
                                       CommunitySearchProperties props,
-                                      ObjectMapper objectMapper) {
+                                      ObjectMapper objectMapper,
+                                      PrivacyPolicyService privacyPolicyService) {
         this.embeddingClient = embeddingClient;
         this.postMapper = postMapper;
         this.props = props;
         this.objectMapper = objectMapper;
+        this.privacyPolicyService = privacyPolicyService;
     }
 
     /**
      * @param query    검색 키워드/관심사 (자연어)
      * @param category PostCategory 이름(7종) 또는 null/빈문자열(필터 없음)
+     * @param viewerId 뷰어(로그인 사용자 id). null(비로그인)이면 개인 차단 필터 없음
      * @return 유사도 상위 topK 글 (없으면 빈 리스트)
      */
-    public List<PostHit> search(String query, String category) {
+    public List<PostHit> search(String query, String category, Long viewerId) {
         if (query == null || query.isBlank()) {
             return List.of();
         }
@@ -66,6 +74,8 @@ public class CommunityPostSearchService {
         if (candidates.size() < props.getMinCandidates()) {
             candidates = postMapper.findSearchCandidates(null, null, props.getCandidateLimit());
         }
+        // 뷰어가 차단한 작성자 후보 제거(P-02) — 코사인 전에 걸러 topK 를 허용 글로만 채운다.
+        candidates = filterBlockedAuthors(candidates, viewerId);
         if (candidates.isEmpty()) {
             log.info("커뮤니티 검색 후보 없음: query='{}'", query);
             return List.of();
@@ -94,6 +104,28 @@ public class CommunityPostSearchService {
         log.info("커뮤니티 검색: query='{}', category={}, 후보 {}건 → 결과 {}건",
                 query, normalizedCategory, candidates.size(), hits.size());
         return hits;
+    }
+
+    /**
+     * 뷰어 기준 content.post(.anonymous) 차단 작성자의 후보를 제거한다(비로그인 뷰어는 필터 없음).
+     * 익명 여부로 표면 키가 갈리므로 작성자를 두 그룹으로 나눠 blockedAuthorsAmong 벌크 판정(쿼리 수 고정).
+     */
+    private List<PostCandidate> filterBlockedAuthors(List<PostCandidate> candidates, Long viewerId) {
+        if (viewerId == null || candidates.isEmpty()) {
+            return candidates;
+        }
+        Set<Long> anonymousAuthors = new HashSet<>();
+        Set<Long> namedAuthors = new HashSet<>();
+        for (PostCandidate c : candidates) {
+            (c.isAnonymous() ? anonymousAuthors : namedAuthors).add(c.getUserId());
+        }
+        Set<Long> blockedAnonymous = privacyPolicyService.blockedAuthorsAmong(
+                viewerId, anonymousAuthors, PrivacySurfaces.CONTENT_POST + ".anonymous");
+        Set<Long> blockedNamed = privacyPolicyService.blockedAuthorsAmong(
+                viewerId, namedAuthors, PrivacySurfaces.CONTENT_POST);
+        return candidates.stream()
+                .filter(c -> !(c.isAnonymous() ? blockedAnonymous : blockedNamed).contains(c.getUserId()))
+                .collect(Collectors.toList());
     }
 
     private List<PostHit> topHits(List<Scored> scored, double threshold) {

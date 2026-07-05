@@ -1,6 +1,13 @@
 import { useState } from "react";
+import { useNavigate } from "react-router";
 import { Avatar, AvatarFallback } from "@/app/components/ui/avatar";
-import { Heart, MessageCircle, Lock, Trash2, MessageSquareX, Pencil } from "lucide-react";
+import {
+  Heart, HeartCrack, ThumbsUp, ThumbsDown, Bell, BellRing,
+  MessageCircle, Lock, Trash2, MessageSquareX, Pencil, UserX,
+} from "lucide-react";
+// 개인 차단 진입점 — 익명 댓글은 작성자 id 가 클라이언트에 없어 콘텐츠 id 로 차단한다(익명성 유지).
+import { blockUser, blockUserByContent } from "@/features/privacy/api/privacyApi";
+import { showBlockManageToast } from "@/features/privacy/components/blockToast";
 import { useCommunityStore } from "../hooks/useCommunityStore";
 import { useLoginDialog } from "../hooks/useLoginDialog";
 import { ConfirmDialog } from "@/app/components/ui/confirm-dialog";
@@ -23,9 +30,9 @@ interface CommentItemProps {
 const MAX_INDENT_DEPTH = 5;
 
 export function CommentItem({ comment: c, childrenMap, depth, onReply }: CommentItemProps) {
-  const { toggleReaction } = useCommunityStore();
+  const { toggleReaction, toggleCommentSubscription, fetchComments } = useCommunityStore();
   const { showLoginDialog, requireAuth, onLoginConfirm, onLoginCancel } = useLoginDialog();
-  const [liked, setLiked] = useState(c.liked ?? false);
+  const navigate = useNavigate();
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [deleted, setDeleted] = useState(false);
   const [replyOpen, setReplyOpen] = useState(false);
@@ -38,6 +45,8 @@ export function CommentItem({ comment: c, childrenMap, depth, onReply }: Comment
   // 서버 tombstone(c.isDeleted) 또는 이번 세션 낙관적 자삭(deleted) 둘 다 삭제 표시.
   // → 재조회·타 사용자·관리자 숨김에도 placeholder가 유지된다.
   const isDeleted = deleted || !!c.isDeleted;
+  // 뷰어가 차단한 작성자의 댓글 — 톰스톤만 렌더하고 답글 트리는 유지(조용한 차단, "한 번 보기" 없음).
+  const isBlocked = !!c.blocked;
 
   const handleDeleteComment = async () => {
     try {
@@ -67,14 +76,25 @@ export function CommentItem({ comment: c, childrenMap, depth, onReply }: Comment
     }
   };
 
-  const handleLike = () => {
+  // 리액션 상태·카운트는 store 가 서버 응답(토글 후 카운트)으로 comments 배열을 갱신해 props 로 내려온다.
+  const handleReaction = (type: "LIKE" | "DISLIKE" | "RECOMMEND" | "DISRECOMMEND") => {
     requireAuth(async () => {
-      setLiked((v) => !v);
       try {
-        await toggleReaction("COMMENT", c.id, "LIKE");
+        await toggleReaction("COMMENT", c.id, type);
+      } catch (err) {
+        toast.error(err instanceof Error && err.message ? err.message : "리액션 처리에 실패했습니다.");
+      }
+    });
+  };
+
+  // 댓글 구독 — 새 답글이 달리면 알림(작성자가 아니어도 가능, 토글)
+  const handleSubscribe = () => {
+    requireAuth(async () => {
+      try {
+        const active = await toggleCommentSubscription(c.id);
+        toast.success(active ? "이 댓글을 구독합니다. 새 답글이 달리면 알려드릴게요." : "댓글 구독을 해지했습니다.");
       } catch {
-        setLiked((v) => !v);
-        toast.error("좋아요 처리에 실패했습니다.");
+        toast.error("구독 처리에 실패했습니다.");
       }
     });
   };
@@ -89,24 +109,55 @@ export function CommentItem({ comment: c, childrenMap, depth, onReply }: Comment
     setReplyOpen(false);
   };
 
+  // 작성자 차단 — 조용한 차단. 차단 후 목록을 다시 받아 이 작성자의 댓글이 톰스톤으로 바뀐다.
+  // 익명 댓글은 작성자 id 가 없어 댓글 id 로 차단한다(서버가 작성자를 찾고, 목록에는 익명 라벨만 남는다).
+  const handleBlockAuthor = () => {
+    requireAuth(async () => {
+      try {
+        if (c.author.isAnonymous || !c.author.id) {
+          await blockUserByContent({ contentType: "COMMENT", contentId: c.id });
+          showBlockManageToast("이 작성자를 차단했습니다.", "작성자가 누구인지는 표시되지 않습니다.");
+        } else {
+          await blockUser({ targetUserId: c.author.id });
+          showBlockManageToast(`${c.author.name}님을 차단했습니다.`);
+        }
+        await fetchComments(c.postId);
+      } catch (err) {
+        // 본인 콘텐츠/운영자 차단 등 서버 검증 메시지는 그대로 보여준다.
+        toast.error(err instanceof Error && err.message ? err.message : "차단 처리에 실패했습니다.");
+      }
+    });
+  };
+
   // 삭제됐어도 자식 답글은 보존해야 하므로, 본문만 "삭제된 댓글"로 대체하고 트리는 유지
   return (
     <>
       <div className={`ct-cmt ${c.isAuthor ? "is-op" : ""}`}>
         <Avatar className="w-8 h-8 shrink-0">
           <AvatarFallback className="text-xs bg-muted">
-            {isDeleted ? "-" : c.author.name[0]}
+            {isDeleted || isBlocked ? "-" : c.author.name[0]}
           </AvatarFallback>
         </Avatar>
         <div className="ct-cmt__body">
-          {isDeleted ? (
+          {isDeleted || isBlocked ? (
             <div className="ct-cmt__text" style={{ color: "var(--muted-foreground)", fontStyle: "italic" }}>
-              삭제된 댓글입니다.
+              {isDeleted ? "삭제된 댓글입니다." : "차단한 사용자의 댓글입니다."}
             </div>
           ) : (
             <>
               <div className="ct-cmt__top">
-                <span className="ct-cmt__name">{c.author.name}</span>
+                {/* 비익명 작성자 이름 클릭 → 프로필 활동 탭 */}
+                <span
+                  className={`ct-cmt__name ${!c.author.isAnonymous && c.author.id ? "ct-author-link" : ""}`}
+                  onClick={() => {
+                    if (!c.author.isAnonymous && c.author.id) {
+                      navigate(`/community/users/${c.author.id}/activity`);
+                    }
+                  }}
+                  title={!c.author.isAnonymous && c.author.id ? "작성자의 활동 보기" : undefined}
+                >
+                  {c.author.name}
+                </span>
                 {c.isAuthor && <span className="ct-cmt__op">작성자</span>}
                 <span className="ct-cmt__time">{relTime(c.createdAt)}</span>
               </div>
@@ -133,11 +184,43 @@ export function CommentItem({ comment: c, childrenMap, depth, onReply }: Comment
                 </div>
               )}
               <div className="ct-cmt__foot">
+                {/* 추천 축(트렌드용) */}
                 <button
-                  className={`ct-cmt__act ${liked ? "is-on" : ""}`}
-                  onClick={handleLike}
+                  className={`ct-cmt__act ${c.recommended ? "is-on--blue" : ""}`}
+                  onClick={() => handleReaction("RECOMMEND")}
+                  title="추천"
+                >
+                  <ThumbsUp /> {c.recommendCount ?? 0}
+                </button>
+                <button
+                  className={`ct-cmt__act ${c.disrecommended ? "is-on--muted" : ""}`}
+                  onClick={() => handleReaction("DISRECOMMEND")}
+                  title="비추천"
+                >
+                  <ThumbsDown /> {c.disrecommendCount ?? 0}
+                </button>
+                {/* 개인화 축 */}
+                <button
+                  className={`ct-cmt__act ${c.liked ? "is-on" : ""}`}
+                  onClick={() => handleReaction("LIKE")}
+                  title="좋아요"
                 >
                   <Heart /> {c.likeCount}
+                </button>
+                <button
+                  className={`ct-cmt__act ${c.disliked ? "is-on--muted" : ""}`}
+                  onClick={() => handleReaction("DISLIKE")}
+                  title="싫어요"
+                >
+                  <HeartCrack /> {c.dislikeCount ?? 0}
+                </button>
+                {/* 댓글 구독 — 새 답글 알림 */}
+                <button
+                  className={`ct-cmt__act ${c.subscribed ? "is-on--blue" : ""}`}
+                  onClick={handleSubscribe}
+                  title="구독 — 새 답글이 달리면 알림을 받습니다"
+                >
+                  {c.subscribed ? <BellRing /> : <Bell />}
                 </button>
                 <button className="ct-cmt__act" onClick={handleReplyClick}>
                   <MessageCircle /> 답글
@@ -150,6 +233,20 @@ export function CommentItem({ comment: c, childrenMap, depth, onReply }: Comment
                 {c.mine && (
                   <button className="ct-cmt__act ct-cmt__act--del" onClick={() => setShowDeleteDialog(true)}>
                     <Trash2 /> 삭제
+                  </button>
+                )}
+                {/* 작성자 메뉴 — 익명 댓글도 노출: 댓글 id 로 차단(서버가 작성자를 알므로 동작, 익명성 유지) */}
+                {!c.mine && (!!c.author.id || c.author.isAnonymous) && (
+                  <button
+                    className="ct-cmt__act ct-cmt__act--del"
+                    onClick={handleBlockAuthor}
+                    title={
+                      c.author.isAnonymous
+                        ? "작성자가 누구인지는 표시되지 않습니다. 차단 사실은 상대에게 알려지지 않습니다."
+                        : "차단 사실은 상대에게 알려지지 않습니다."
+                    }
+                  >
+                    <UserX /> {c.author.isAnonymous ? "이 작성자 차단" : "차단"}
                   </button>
                 )}
               </div>

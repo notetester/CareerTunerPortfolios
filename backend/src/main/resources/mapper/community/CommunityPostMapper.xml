@@ -3,9 +3,31 @@
         "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
 <mapper namespace="com.careertuner.community.mapper.CommunityPostMapper">
 
-    <!-- 게시글 목록 조회 (정렬 옵션 지원) -->
+    <!--
+      뷰어 개별 계정 차단 필터 (P-14≡CC-17) — findAll/countAll 이 동일 조건을 공유해 total 이 목록과 일치한다.
+      user_block 의 명시 flags(점 표기 상속: content.post(.anonymous) → content.post)가 allow 면 통과,
+      그 외(명시 block 또는 미설정=blockedAccount 기본 block)는 제외. 뷰어 전역 관계정책(blockedAccount 완화)과
+      IP 파생/관계정책 차단은 SQL 로 어려워 자바 2차 필터(filterBlockedAuthors)가 담당한다(절충안).
+    -->
+    <sql id="viewerBlockFilter">
+        <if test="viewerId != null">
+           AND NOT EXISTS (
+               SELECT 1 FROM user_block ub
+                WHERE ub.user_id = #{viewerId}
+                  AND ub.blocked_user_id = cp.user_id
+                  AND COALESCE(
+                        CASE WHEN cp.is_anonymous = 1
+                             THEN JSON_UNQUOTE(JSON_EXTRACT(ub.flags_json, '$."content.post.anonymous"')) END,
+                        JSON_UNQUOTE(JSON_EXTRACT(ub.flags_json, '$."content.post"')),
+                        'block') = 'block'
+           )
+        </if>
+    </sql>
+
+    <!-- 게시글 목록 조회 (정렬 옵션 지원, is_anonymous 는 자동매핑 불가라 별칭 필수) -->
     <select id="findAll" resultType="com.careertuner.community.domain.CommunityPost">
         SELECT cp.*,
+               cp.is_anonymous AS anonymous,
                u.name AS user_name
           FROM community_post cp
           JOIN users u ON cp.user_id = u.id
@@ -20,6 +42,7 @@
                 OR cp.job_title LIKE CONCAT('%', #{keyword}, '%')
                 OR cp.tags_json LIKE CONCAT('%', #{keyword}, '%'))
         </if>
+        <include refid="viewerBlockFilter"/>
         <choose>
             <when test="sort == 'popular'">
                 ORDER BY cp.like_count DESC, cp.created_at DESC
@@ -37,7 +60,7 @@
          LIMIT #{limit} OFFSET #{offset}
     </select>
 
-    <!-- 게시글 총 개수 -->
+    <!-- 게시글 총 개수 (findAll 과 동일한 뷰어 차단 조건 — 페이지네이션 total 정합) -->
     <select id="countAll" resultType="int">
         SELECT COUNT(*)
           FROM community_post cp
@@ -52,11 +75,90 @@
                 OR cp.job_title LIKE CONCAT('%', #{keyword}, '%')
                 OR cp.tags_json LIKE CONCAT('%', #{keyword}, '%'))
         </if>
+        <include refid="viewerBlockFilter"/>
     </select>
 
-    <!-- 게시글 상세 조회 -->
+    <!--
+      개인화 피드 후보: 뷰어의 희망 직무/스킬 토큰 부분일치(제목·태그·회사명·직무명) 또는
+      최근 반응 카테고리에 걸리는 PUBLISHED 글. 본인 글 제외.
+      토큰·카테고리가 둘 다 비면(신호 부족) 결과 0건 → 서비스가 신선/인기 폴백으로 흐른다.
+      랭크/인터리브는 서비스(Java)에서 하므로 여기서는 최신순으로 넉넉히 뽑기만 한다.
+    -->
+    <select id="findPersonalizedCandidates" resultType="com.careertuner.community.domain.CommunityPost">
+        SELECT cp.*,
+               u.name AS user_name
+          FROM community_post cp
+          JOIN users u ON cp.user_id = u.id
+         WHERE cp.status = 'PUBLISHED'
+           AND cp.user_id != #{userId}
+        <if test="category != null">
+           AND cp.category = #{category}
+        </if>
+           AND (
+               <trim prefixOverrides="OR ">
+               <if test="tokens != null and !tokens.isEmpty()">
+                   <foreach collection="tokens" item="tok" open="(" close=")" separator=" OR ">
+                          LOWER(cp.title)        LIKE CONCAT('%', #{tok}, '%')
+                       OR LOWER(cp.tags_json)    LIKE CONCAT('%', #{tok}, '%')
+                       OR LOWER(cp.company_name) LIKE CONCAT('%', #{tok}, '%')
+                       OR LOWER(cp.job_title)    LIKE CONCAT('%', #{tok}, '%')
+                   </foreach>
+               </if>
+               <if test="categories != null and !categories.isEmpty()">
+                   OR cp.category IN
+                   <foreach collection="categories" item="cat" open="(" close=")" separator=",">
+                       #{cat}
+                   </foreach>
+               </if>
+               <!-- 토큰·카테고리 모두 없으면 매칭 없음(신호 부족) → 폴백 유도 -->
+               <if test="(tokens == null or tokens.isEmpty()) and (categories == null or categories.isEmpty())">
+                   1 = 0
+               </if>
+               </trim>
+           )
+         ORDER BY cp.created_at DESC
+         LIMIT #{limit}
+    </select>
+
+    <!--
+      신선·인기 후보: 최근성 + like_count 정렬. excludeIds 로 개인화 후보와 겹치는 글을 미리 배제.
+      (서비스에서도 Set 으로 최종 중복 제거하지만, 여기서 배제하면 30% 풀의 다양성이 는다.)
+    -->
+    <select id="findFreshPopular" resultType="com.careertuner.community.domain.CommunityPost">
+        SELECT cp.*,
+               u.name AS user_name
+          FROM community_post cp
+          JOIN users u ON cp.user_id = u.id
+         WHERE cp.status = 'PUBLISHED'
+        <if test="category != null">
+           AND cp.category = #{category}
+        </if>
+        <if test="excludeIds != null and !excludeIds.isEmpty()">
+           AND cp.id NOT IN
+           <foreach collection="excludeIds" item="pid" open="(" close=")" separator=",">
+               #{pid}
+           </foreach>
+        </if>
+         ORDER BY cp.created_at DESC, cp.like_count DESC
+         LIMIT #{limit}
+    </select>
+
+    <!-- 뷰어의 최근 반응 카테고리 (개인화 신호: 관심 카테고리) — 최근 반응 우선, 카테고리 중복 제거 -->
+    <select id="findRecentReactedCategories" resultType="java.lang.String">
+        SELECT cp.category
+          FROM post_reaction pr
+          JOIN community_post cp ON cp.id = pr.post_id
+         WHERE pr.user_id = #{userId}
+           AND cp.status = 'PUBLISHED'
+         GROUP BY cp.category
+         ORDER BY MAX(pr.created_at) DESC
+         LIMIT #{limit}
+    </select>
+
+    <!-- 게시글 상세 조회 (is_anonymous 는 자동매핑 불가라 별칭 필수 — 익명 표면 분기·작성자 마스킹 근거) -->
     <select id="findById" resultType="com.careertuner.community.domain.CommunityPost">
         SELECT cp.*,
+               cp.is_anonymous AS anonymous,
                u.name AS user_name
           FROM community_post cp
           JOIN users u ON cp.user_id = u.id
@@ -66,22 +168,25 @@
     <!-- 게시글 작성 -->
     <insert id="insert" useGeneratedKeys="true" keyProperty="id">
         INSERT INTO community_post (user_id, category, title, content, company_name, job_title,
-                                    interview_type, difficulty, status, tags_json, is_anonymous)
+                                    interview_type, difficulty, status, tags_json, is_anonymous,
+                                    nickname_profile_id)
         VALUES (#{userId}, #{category}, #{title}, #{content}, #{companyName}, #{jobTitle},
-                #{interviewType}, #{difficulty}, #{status}, #{tagsJson}, #{anonymous})
+                #{interviewType}, #{difficulty}, #{status}, #{tagsJson}, #{anonymous},
+                #{nicknameProfileId})
     </insert>
 
     <!-- 게시글 수정 -->
     <update id="update">
         UPDATE community_post
-           SET title          = #{title},
-               content        = #{content},
-               company_name   = #{companyName},
-               job_title      = #{jobTitle},
-               interview_type = #{interviewType},
-               difficulty     = #{difficulty},
-               tags_json      = #{tagsJson},
-               is_anonymous   = #{anonymous}
+           SET title              = #{title},
+               content            = #{content},
+               company_name       = #{companyName},
+               job_title          = #{jobTitle},
+               interview_type     = #{interviewType},
+               difficulty         = #{difficulty},
+               tags_json          = #{tagsJson},
+               is_anonymous       = #{anonymous},
+               nickname_profile_id = #{nicknameProfileId}
          WHERE id = #{id}
     </update>
 
@@ -99,15 +204,16 @@
          WHERE id = #{id}
     </update>
 
-    <!-- 인기글 조회 (가중치 점수: 좋아요*3 + 조회수 + 댓글*2, 최근 7일) -->
+    <!-- 인기글 조회 (가중치 점수: 추천*5(가중 최대) + 좋아요*3 + 댓글*2 + 조회수, 최근 7일. is_anonymous 별칭은 뷰어 차단 필터 근거) -->
     <select id="findHotPosts" resultType="com.careertuner.community.domain.CommunityPost">
         SELECT cp.*,
+               cp.is_anonymous AS anonymous,
                u.name AS user_name
           FROM community_post cp
           JOIN users u ON cp.user_id = u.id
          WHERE cp.status = #{status}
            AND cp.created_at >= #{since}
-         ORDER BY (cp.like_count * 3 + cp.view_count + cp.comment_count * 2) DESC
+         ORDER BY (cp.recommend_count * 5 + cp.like_count * 3 + cp.comment_count * 2 + cp.view_count) DESC
          LIMIT #{limit}
     </select>
 
@@ -284,9 +390,9 @@
         ON DUPLICATE KEY UPDATE embedding = VALUES(embedding)
     </insert>
 
-    <!-- 2단계 검색 1단계: SQL 후보 좁히기 (느슨하게) -->
+    <!-- 2단계 검색 1단계: SQL 후보 좁히기 (느슨하게). user_id/익명은 뷰어 차단 필터 판정용 -->
     <select id="findSearchCandidates" resultType="com.careertuner.community.search.PostCandidate">
-        SELECT cp.id, cp.title, cp.content, e.embedding
+        SELECT cp.id, cp.user_id, cp.is_anonymous AS anonymous, cp.title, cp.content, e.embedding
           FROM community_post cp
           JOIN community_post_embedding e ON e.post_id = cp.id
          WHERE cp.status = 'PUBLISHED'

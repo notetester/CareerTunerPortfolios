@@ -12,7 +12,10 @@ import static org.mockito.Mockito.when;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.springframework.context.ApplicationEventPublisher;
@@ -27,8 +30,13 @@ import com.careertuner.community.dto.CommentResponse;
 import com.careertuner.community.dto.CreateCommentRequest;
 import com.careertuner.community.mapper.CommunityCommentMapper;
 import com.careertuner.community.mapper.CommunityPostMapper;
+import com.careertuner.community.mapper.CommunitySubscriptionMapper;
 import com.careertuner.community.mapper.ReactionMapper;
 import com.careertuner.community.moderation.event.CommentModerationRequiredEvent;
+import com.careertuner.nickname.service.NicknameProfileService;
+import com.careertuner.notification.service.NotificationService;
+import com.careertuner.privacy.service.PrivacyPolicyService;
+import com.careertuner.privacy.service.PrivacySurfaces;
 
 /**
  * 멘션/삭제 감사 수정(M1·M2·L2·L4) 회귀 테스트.
@@ -40,10 +48,25 @@ class CommunityCommentServiceImplTest {
     private final CommunityCommentMapper commentMapper = mock(CommunityCommentMapper.class);
     private final CommunityPostMapper postMapper = mock(CommunityPostMapper.class);
     private final ReactionMapper reactionMapper = mock(ReactionMapper.class);
+    private final CommunitySubscriptionMapper subscriptionMapper = mock(CommunitySubscriptionMapper.class);
     private final ApplicationEventPublisher eventPublisher = mock(ApplicationEventPublisher.class);
+    private final NotificationService notificationService = mock(NotificationService.class);
+    private final PrivacyPolicyService privacyPolicyService = mock(PrivacyPolicyService.class);
+    private final NicknameProfileService nicknameProfileService = mock(NicknameProfileService.class);
 
     private final CommunityCommentServiceImpl service =
-            new CommunityCommentServiceImpl(commentMapper, postMapper, reactionMapper, eventPublisher);
+            new CommunityCommentServiceImpl(commentMapper, postMapper, reactionMapper, subscriptionMapper,
+                    eventPublisher, notificationService, privacyPolicyService, nicknameProfileService);
+
+    /**
+     * 개인 차단 정책 기본 스텁 — 차단 없음(기존 테스트가 차단 필터의 영향을 받지 않게 명시).
+     * 표시명 해석은 빈 맵으로 스텁 → 각 작성자는 저장된 userName 으로 폴백(기존 단언 유지).
+     */
+    @BeforeEach
+    void noBlockedAuthorsByDefault() {
+        when(privacyPolicyService.blockedAuthorsAmong(any(), any(), any())).thenReturn(Set.of());
+        when(nicknameProfileService.bulkResolveDisplayNames(any())).thenReturn(Map.of());
+    }
 
     private static final long POST_ID = 1L;
     private static final long POST_AUTHOR = 99L;
@@ -174,17 +197,17 @@ class CommunityCommentServiceImplTest {
         // (A) 루트에 답글 → 멘션 없음
         when(commentMapper.findById(5L)).thenReturn(
                 cmt(5, null, null, 10, true, CommentStatus.PUBLISHED.name(), "A", 0));
-        service.createComment(POST_ID, new CreateCommentRequest("x", 5L, true), 20L);
+        service.createComment(POST_ID, new CreateCommentRequest("x", 5L, true, null), 20L);
 
         // (B) 다른 사람의 대댓글에 답글 → 대상 멘션, parentId는 루트로 평면화
         when(commentMapper.findById(6L)).thenReturn(
                 cmt(6, 5L, null, 10, true, CommentStatus.PUBLISHED.name(), "A", 1));
-        service.createComment(POST_ID, new CreateCommentRequest("y", 6L, true), 20L);
+        service.createComment(POST_ID, new CreateCommentRequest("y", 6L, true, null), 20L);
 
         // (C) 자기 자신의 대댓글에 답글 → 멘션 없음(자기멘션 제외)
         when(commentMapper.findById(7L)).thenReturn(
                 cmt(7, 5L, null, 20, true, CommentStatus.PUBLISHED.name(), "B", 2));
-        service.createComment(POST_ID, new CreateCommentRequest("z", 7L, true), 20L);
+        service.createComment(POST_ID, new CreateCommentRequest("z", 7L, true, null), 20L);
 
         verify(commentMapper, org.mockito.Mockito.times(3)).insert(cap.capture());
         List<CommunityComment> inserted = cap.getAllValues();
@@ -208,7 +231,7 @@ class CommunityCommentServiceImplTest {
         when(commentMapper.findById(5L)).thenReturn(
                 cmt(5, null, null, 10, true, CommentStatus.PUBLISHED.name(), "A", 0));
 
-        service.createComment(POST_ID, new CreateCommentRequest("x", 5L, true), 20L);
+        service.createComment(POST_ID, new CreateCommentRequest("x", 5L, true, null), 20L);
 
         verify(commentMapper).insert(any(CommunityComment.class));
         verify(postMapper).incrementCommentCount(POST_ID);
@@ -222,7 +245,7 @@ class CommunityCommentServiceImplTest {
                 cmt(5, null, null, 10, true, CommentStatus.DELETED.name(), "A", 0));
 
         assertThatThrownBy(() ->
-                service.createComment(POST_ID, new CreateCommentRequest("x", 5L, true), 20L))
+                service.createComment(POST_ID, new CreateCommentRequest("x", 5L, true, null), 20L))
                 .isInstanceOf(BusinessException.class)
                 .extracting("errorCode").isEqualTo(ErrorCode.CONFLICT);
 
@@ -238,7 +261,7 @@ class CommunityCommentServiceImplTest {
                 cmt(5, null, null, 10, true, CommentStatus.HIDDEN.name(), "A", 0));
 
         assertThatThrownBy(() ->
-                service.createComment(POST_ID, new CreateCommentRequest("x", 5L, true), 20L))
+                service.createComment(POST_ID, new CreateCommentRequest("x", 5L, true, null), 20L))
                 .isInstanceOf(BusinessException.class)
                 .extracting("errorCode").isEqualTo(ErrorCode.CONFLICT);
 
@@ -251,7 +274,7 @@ class CommunityCommentServiceImplTest {
     void topLevelComment_isUnaffectedByParentGuard() {
         givenPost();
 
-        service.createComment(POST_ID, new CreateCommentRequest("hello", null, true), 10L);
+        service.createComment(POST_ID, new CreateCommentRequest("hello", null, true, null), 10L);
 
         verify(commentMapper).insert(any(CommunityComment.class));
         verify(postMapper).incrementCommentCount(POST_ID);
@@ -267,7 +290,7 @@ class CommunityCommentServiceImplTest {
         ArgumentCaptor<CommentModerationRequiredEvent> ev =
                 ArgumentCaptor.forClass(CommentModerationRequiredEvent.class);
 
-        service.createComment(POST_ID, new CreateCommentRequest("hello", null, true), 10L);
+        service.createComment(POST_ID, new CreateCommentRequest("hello", null, true, null), 10L);
 
         // 검열은 AFTER_COMMIT 비동기 리스너가 받는다 — 작성 트랜잭션에서 이벤트만 발행.
         verify(eventPublisher).publishEvent(ev.capture());
@@ -321,6 +344,47 @@ class CommunityCommentServiceImplTest {
 
         // 숨김 노드도 익명 앵커(findAllByPostId)로 살아있어 멘션이 올바른 사람을 가리킨다.
         assertThat(byId(rs, 3).mentionLabel()).isEqualTo("익명2");
+    }
+
+    // ══════════════ 개인 차단 정책 — 차단 작성자 댓글 tombstone (docs/PERSONAL_BLOCK_POLICY.md §5) ══════════════
+
+    // ── 뷰어가 차단한 작성자의 루트 댓글(익명) → blocked tombstone, 답글 표면은 content.reply 로 판정 ──
+    @Test
+    void blockedAuthorComment_isTombstonedForViewer() {
+        givenPost();
+        when(commentMapper.findAllByPostId(POST_ID)).thenReturn(List.of(
+                cmt(1, null, null, 10, true, CommentStatus.PUBLISHED.name(), "A", 0),   // 차단 작성자(익명 루트)
+                cmt(2, 1L, null, 20, true, CommentStatus.PUBLISHED.name(), "B", 1)      // 정상 답글
+        ));
+        when(privacyPolicyService.blockedAuthorsAmong(eq(5L), eq(Set.of(10L)),
+                eq(PrivacySurfaces.CONTENT_COMMENT + ".anonymous"))).thenReturn(Set.of(10L));
+
+        List<CommentResponse> rs = service.getComments(POST_ID, 5L);
+
+        CommentResponse blocked = byId(rs, 1);
+        assertThat(blocked.blocked()).isTrue();
+        assertThat(blocked.isDeleted()).isFalse();
+        assertThat(blocked.content()).isEqualTo("차단한 사용자의 댓글입니다.");
+        assertThat(blocked.author().id()).isNull(); // 작성자 비식별(삭제 톰스톤과 동일 문법)
+        CommentResponse normal = byId(rs, 2);
+        assertThat(normal.blocked()).isFalse();
+        assertThat(normal.content()).isEqualTo("c2");
+        // 답글은 content.reply(.anonymous) 표면으로 별도 벌크 판정된다
+        verify(privacyPolicyService).blockedAuthorsAmong(eq(5L), eq(Set.of(20L)),
+                eq(PrivacySurfaces.CONTENT_REPLY + ".anonymous"));
+    }
+
+    // ── 비로그인 뷰어는 차단 필터 자체가 없다 ──
+    @Test
+    void anonymousViewer_skipsBlockFilter() {
+        givenPost();
+        when(commentMapper.findAllByPostId(POST_ID)).thenReturn(List.of(
+                cmt(1, null, null, 10, true, CommentStatus.PUBLISHED.name(), "A", 0)));
+
+        List<CommentResponse> rs = service.getComments(POST_ID, null);
+
+        assertThat(byId(rs, 1).blocked()).isFalse();
+        verify(privacyPolicyService, never()).blockedAuthorsAmong(any(), any(), any());
     }
 
     // ── 시나리오 7: 검열 HIDDEN 후에도 뒷 사용자 익명 번호 불변(앵커 보존) ──

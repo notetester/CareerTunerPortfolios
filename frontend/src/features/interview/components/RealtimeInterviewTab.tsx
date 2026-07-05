@@ -17,6 +17,9 @@ import {
   countFillers,
   VoiceMetricsTracker,
 } from "../hooks/voiceAnalysis";
+import { createNegotiatedRecorder, mediaUnsupportedReason } from "../hooks/mediaSupport";
+import { useDeviceCapabilities } from "../hooks/deviceCapabilities";
+import { DeviceHandoffCard, type HandoffReason } from "./DeviceHandoffCard";
 import type {
   InterviewQuestion,
   InterviewSession,
@@ -59,12 +62,22 @@ export function RealtimeInterviewTab({ session }: { session: InterviewSession | 
   const trackerRef = useRef<VoiceMetricsTracker | null>(null);
   const recorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
+  /** 녹음 시 협상된 업로드 포맷(webm|mp4) — blob.type 스니핑 대신 이 값을 쓴다. */
+  const recordFormatRef = useRef<string>("webm");
 
   const supported =
     typeof window !== "undefined" &&
     "RTCPeerConnection" in window &&
     typeof navigator !== "undefined" &&
     !!navigator.mediaDevices;
+
+  const deviceCaps = useDeviceCapabilities();
+  // 이 기기에서 진행 불가한 원인 — 있으면 "폰으로 이어하기" 안내 카드를 띄운다.
+  const handoffReason: HandoffReason | null = !supported
+    ? (mediaUnsupportedReason() ?? "unsupported")
+    : deviceCaps.hasMicrophone === false
+      ? "no-microphone"
+      : null;
 
   // 준비된 질문(게이트) + 키 보유 여부 로드.
   useEffect(() => {
@@ -151,13 +164,18 @@ export function RealtimeInterviewTab({ session }: { session: InterviewSession | 
       tracker.start(mic);
       trackerRef.current = tracker;
 
+      // 녹음은 정밀 분석(전송 동의)용 — MediaRecorder 미지원 기기에서는 건너뛰고 지표 채점만 한다.
       chunksRef.current = [];
-      const recorder = new MediaRecorder(mic);
-      recorder.ondataavailable = (e) => {
-        if (e.data.size > 0) chunksRef.current.push(e.data);
-      };
-      recorder.start();
-      recorderRef.current = recorder;
+      if (typeof MediaRecorder !== "undefined") {
+        // 기기별 지원 mimeType 협상(webm/opus → mp4/aac) — WebView 등 webm 미지원 기기 대응.
+        const { recorder, format } = createNegotiatedRecorder(mic, "audio");
+        recordFormatRef.current = format;
+        recorder.ondataavailable = (e) => {
+          if (e.data.size > 0) chunksRef.current.push(e.data);
+        };
+        recorder.start();
+        recorderRef.current = recorder;
+      }
 
       // 이벤트 채널(트랜스크립트/세션 제어).
       const dc = pc.createDataChannel("oai-events");
@@ -244,7 +262,7 @@ export function RealtimeInterviewTab({ session }: { session: InterviewSession | 
     if (consent && capabilities?.nonverbal && hasAudio) {
       try {
         const audioBase64 = await blobToBase64(recordedBlob);
-        const audioFormat = (recordedBlob.type || "audio/webm").includes("webm") ? "webm" : "wav";
+        const audioFormat = recordFormatRef.current; // 녹음 시 협상한 포맷 (blob.type 스니핑 대체)
         const server = await scoreVoiceServer(session.id, {
           audioBase64,
           audioFormat,
@@ -365,13 +383,9 @@ export function RealtimeInterviewTab({ session }: { session: InterviewSession | 
             )
           )}
 
-          {!supported && (
-            <p className="rounded-lg bg-amber-50 p-3 text-sm text-amber-700">
-              이 브라우저는 실시간 음성(WebRTC)을 지원하지 않습니다. 최신 Chrome/Edge 에서 이용해 주세요.
-            </p>
-          )}
+          {handoffReason && <DeviceHandoffCard sessionId={session.id} reason={handoffReason} />}
 
-          {supported && (
+          {supported && !handoffReason && (
             <div className="flex flex-wrap items-center gap-2">
               {(status === "idle" || status === "scored" || status === "error") && (
                 <Button

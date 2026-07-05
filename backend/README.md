@@ -26,6 +26,20 @@ Spring Boot **4.1.0** / Java **21** / **MyBatis** / **MySQL 8** REST API 서버.
 - 서버 `http://localhost:8080` · 헬스 `GET /api/health` · Swagger `http://localhost:8080/swagger-ui.html`
 - HikariCP `initialization-fail-timeout: -1` 로 **MySQL 없이도 부팅**된다(헬스 체크 가능).
 
+### 환경 프로파일 (local / tailscale / aws / domain)
+
+호스트 기본값 묶음(DB·Ollama·API 주소)을 이름으로 전환한다 — `application-<이름>.yaml` 이 호스트 관련 키만 오버라이드한다.
+
+```bash
+SPRING_PROFILES_ACTIVE=local ./gradlew bootRun                        # 전부 내 PC (DB/Ollama localhost)
+.\gradlew.bat bootRun --args='--spring.profiles.active=tailscale'     # 팀 DB + 공유 4090 Ollama
+```
+
+- 프로파일 없이 실행하면 기존 기본값 그대로다. 환경변수 override(`DB_HOST` 등)는 프로파일보다 항상 우선한다.
+- 공유 4090 Ollama 가 꺼져 있으면 부팅 시 자동으로 폴백 후보(`AI_OLLAMA_FALLBACK_BASE_URLS`,
+  기본 `http://localhost:11434`)로 전환된다. 끄기: `AI_OLLAMA_FALLBACK_ENABLED=false`.
+- 프로파일 정의·컴포넌트별 전환 방법: [`../docs/ENVIRONMENTS.md`](../docs/ENVIRONMENTS.md), [`../config/environments.json`](../config/environments.json)
+
 ## 설정/시크릿 (환경변수 override)
 
 모든 민감값은 `application.yaml` 에 `${ENV:기본값}` 형태다. **지금은 커밋된 기본값으로 즉시 동작**하고,
@@ -44,7 +58,9 @@ DB_PASSWORD=... JWT_SECRET=... OAUTH_KAKAO_CLIENT_SECRET=... java -jar app.jar
 | 앱 | `APP_FRONTEND_URL` `APP_API_BASE_URL` | `http://localhost:5173` / `http://localhost:8080` |
 | 업로드 | `SPRING_SERVLET_MULTIPART_MAX_FILE_SIZE` `SPRING_SERVLET_MULTIPART_MAX_REQUEST_SIZE` `JOB_POSTING_MAX_FILE_SIZE_BYTES` | `10MB` / `12MB` / `10485760` |
 | 로컬 LLM | `AI_OLLAMA_BASE_URL` `AI_OLLAMA_MODEL` `AI_OLLAMA_CONNECT_TIMEOUT` `AI_OLLAMA_READ_TIMEOUT` | `http://localhost:11434` / `gemma4` / `3s` / `30s` |
+| 로컬 LLM 폴백 | `AI_OLLAMA_FALLBACK_BASE_URLS`(콤마 구분) `AI_OLLAMA_FALLBACK_ENABLED` | `http://localhost:11434` / `true` — 4090 미응답 시 부팅에서 자동 전환 |
 | E 첨삭 LLM | `CAREERTUNER_CORRECTION_AI_PROVIDER` `CAREERTUNER_CORRECTION_AI_SELF_BASE_URL` `CAREERTUNER_CORRECTION_AI_SELF_MODEL` `CAREERTUNER_CORRECTION_AI_SELF_FALLBACK_MODEL` | `openai` / 빈값 / `careertuner-e-correction:8b` / `careertuner-e-correction-3b:latest` |
+| B 기업 웹검색 | `NAVER_SEARCH_CLIENT_ID` `NAVER_SEARCH_CLIENT_SECRET` `CAREERTUNER_COMPANY_WEBSEARCH_ENABLED` `CAREERTUNER_COMPANY_WEBSEARCH_MAX_SEARCH_CALLS_PER_ANALYSIS` `CAREERTUNER_COMPANY_WEBSEARCH_MAX_RESULTS_PER_ANALYSIS` | 빈값 / 빈값 / `false` / `4` / `12` |
 
 > 메일은 `MAIL_DEV_MODE=true`(또는 SMTP username 미설정)면 **실제 발송 대신 인증 링크를 로그로 출력**한다.
 > OAuth 키는 아직 미발급이라 placeholder다 — 키 수령 후 위 env(또는 yaml 기본값)만 교체하면 동작한다.

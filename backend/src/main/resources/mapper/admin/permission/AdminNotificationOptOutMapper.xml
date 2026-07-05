@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.careertuner.admin.permission.mapper.AdminNotificationOptOutMapper">
+
+    <select id="findCategoriesJson" resultType="string">
+        SELECT categories_json
+          FROM notification_preference
+         WHERE user_id = #{userId}
+    </select>
+
+    <!-- categories_json 의 admin 하위 키 upsert.
+         키에 점(.)이 있어 JSON 경로는 반드시 큰따옴표로 감싼다: $."admin.NEW_REPORT"
+         행이 없으면 새로 만들고(나머지 컬럼은 DEFAULT), 있으면 해당 키만 JSON_SET 한다. -->
+    <insert id="upsertAdminCategory">
+        INSERT INTO notification_preference (user_id, categories_json)
+        VALUES (#{userId}, JSON_OBJECT(#{categoryKey}, IF(#{enabled}, TRUE, FALSE)))
+        ON DUPLICATE KEY UPDATE
+            categories_json = JSON_SET(
+                COALESCE(categories_json, JSON_OBJECT()),
+                CONCAT('$."', #{categoryKey}, '"'),
+                IF(#{enabled}, TRUE, FALSE))
+    </insert>
+
+</mapper>

@@ -1,10 +1,17 @@
 import { useState, useEffect } from "react";
 import {
-  Megaphone, Plus, Pin, PinOff, Search, ChevronLeft, ChevronRight,
+  Megaphone, Plus, Pin, PinOff,
   Trash2, ArrowDownCircle, ArrowUpCircle, ArrowLeft, Eye, Check, CalendarClock, Pencil,
   Bold, Italic, Strikethrough, List, ListOrdered, Quote, Link2, ImageIcon, Table,
 } from "lucide-react";
 import AdminShell from "../../../components/AdminShell";
+import {
+  AdminListFooter,
+  AdminListToolbar,
+  AdminSortableHeader,
+  useAdminListTools,
+  type AdminListColumn,
+} from "../../../components/AdminListTools";
 import { type Notice, type NoticeStatus } from "../data/noticesData";
 import * as adminNoticeApi from "../api/adminNoticeApi";
 import { ConfirmDialog } from "@/app/components/ui/confirm-dialog";
@@ -20,6 +27,14 @@ const STATUS_LABEL: Record<NoticeStatus, string> = {
 const STATUS_CLS: Record<NoticeStatus, string> = {
   published: "ok", draft: "off", scheduled: "blue",
 };
+
+const NOTICE_COLUMNS: AdminListColumn<Notice>[] = [
+  { id: "id", label: "번호", getText: (row) => row.id, sortable: true },
+  { id: "title", label: "제목", getText: (row) => row.title, sortable: true },
+  { id: "status", label: "상태", getText: (row) => STATUS_LABEL[row.status], sortable: true },
+  { id: "views", label: "조회", getText: (row) => row.views, sortable: true },
+  { id: "date", label: "게시일", getText: (row) => row.date, sortable: true },
+];
 
 type DialogState =
   | { type: "delete"; notice: Notice }
@@ -218,6 +233,21 @@ export default function AdminNotices() {
     setDialog(null);
   };
 
+  const filtered = items.filter((n) => {
+    if (filter === "전체") return true;
+    if (filter === "게시중") return n.status === "published";
+    if (filter === "예약") return n.status === "scheduled";
+    return n.status === "draft";
+  });
+
+  // 훅은 조건부 early-return(작성 뷰) 위에서 호출해 호출 순서를 고정한다.
+  const list = useAdminListTools(filtered, {
+    columns: NOTICE_COLUMNS,
+    getRowId: (row) => row.id,
+    defaultSortId: "id",
+    defaultSortDir: "desc",
+  });
+
   if (view === "compose") {
     return <NoticeComposeView
       editing={editing}
@@ -225,13 +255,6 @@ export default function AdminNotices() {
       onSaved={() => { setView("list"); setEditing(null); loadItems(); }}
     />;
   }
-
-  const filtered = items.filter((n) => {
-    if (filter === "전체") return true;
-    if (filter === "게시중") return n.status === "published";
-    if (filter === "예약") return n.status === "scheduled";
-    return n.status === "draft";
-  });
 
   return (
     <AdminShell
@@ -251,12 +274,21 @@ export default function AdminNotices() {
           </div>
         </div>
 
+        <AdminListToolbar state={list} fileName="admin_notices" />
+
         <table className="av-table">
           <thead>
-            <tr><th>번호</th><th>제목</th><th>상태</th><th className="r">조회</th><th className="r">게시일</th><th className="r">조치</th></tr>
+            <tr>
+              <AdminSortableHeader state={list} columnId="id">번호</AdminSortableHeader>
+              <AdminSortableHeader state={list} columnId="title">제목</AdminSortableHeader>
+              <AdminSortableHeader state={list} columnId="status">상태</AdminSortableHeader>
+              <AdminSortableHeader state={list} columnId="views" className="r">조회</AdminSortableHeader>
+              <AdminSortableHeader state={list} columnId="date" className="r">게시일</AdminSortableHeader>
+              <th className="r">조치</th>
+            </tr>
           </thead>
           <tbody>
-            {filtered.map((n) => (
+            {list.visibleRows.map((n) => (
               <tr key={n.id}>
                 <td className="av-id num">{n.id}</td>
                 <td>
@@ -289,16 +321,13 @@ export default function AdminNotices() {
                 </td>
               </tr>
             ))}
+            {list.visibleRows.length === 0 && (
+              <tr><td colSpan={6} style={{ textAlign: "center", padding: "2rem" }}>현재 조건에 맞는 공지가 없습니다.</td></tr>
+            )}
           </tbody>
         </table>
 
-        <div className="av-foot">
-          <span className="num">1–{filtered.length} / {items.length}건</span>
-          <div className="av-pager">
-            <button disabled aria-label="이전"><ChevronLeft /></button>
-            <button aria-label="다음"><ChevronRight /></button>
-          </div>
-        </div>
+        <AdminListFooter state={list} />
       </section>
 
       {dialog && (() => {

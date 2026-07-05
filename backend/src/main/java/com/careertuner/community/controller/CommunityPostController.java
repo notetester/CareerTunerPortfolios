@@ -41,8 +41,9 @@ public class CommunityPostController {
     private final PostAiResultMapper aiResultMapper;
 
     @GetMapping("/hot")
-    public ApiResponse<List<HotPostResponse>> getHotPosts() {
-        return ApiResponse.ok(postService.getHotPosts());
+    public ApiResponse<List<HotPostResponse>> getHotPosts(@AuthenticationPrincipal AuthUser authUser) {
+        // 로그인 뷰어만 개인 차단 필터 대상 — 비로그인은 필터 없음
+        return ApiResponse.ok(postService.getHotPosts(authUser != null ? authUser.id() : null));
     }
 
     @GetMapping
@@ -51,9 +52,12 @@ public class CommunityPostController {
             @RequestParam(required = false) String keyword,
             @RequestParam(defaultValue = "latest") String sort,
             @RequestParam(defaultValue = "0") @Min(0) int page,
-            @RequestParam(defaultValue = "20") @Min(1) @Max(100) int size
+            @RequestParam(defaultValue = "20") @Min(1) @Max(100) int size,
+            @AuthenticationPrincipal AuthUser authUser
     ) {
-        return ApiResponse.ok(postService.getPosts(category, keyword, sort, page, size));
+        // 로그인 뷰어만 개인 차단 필터 대상 — 비로그인은 필터 없음
+        Long viewerId = authUser != null ? authUser.id() : null;
+        return ApiResponse.ok(postService.getPosts(category, keyword, sort, page, size, viewerId));
     }
 
     @GetMapping("/{postId}")

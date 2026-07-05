@@ -15,7 +15,7 @@ export type AINotificationType =
   | "LOW_CONFIDENCE_REPORT"
   | "TICKET_DRAFT_READY";
 
-/* ── 비-AI 알림 — 사용자 (10개) ── */
+/* ── 비-AI 알림 — 사용자 ── */
 export type UserNotificationType =
   | "COMMENT"
   | "COMMENT_REPLY"
@@ -23,6 +23,29 @@ export type UserNotificationType =
   | "COMMENT_RESTORED"
   | "COMMENT_REMOVED"
   | "LIKE"
+  | "LIKE_ANON"
+  | "POST_DISLIKE"
+  | "POST_DISLIKE_ANON"
+  | "POST_RECOMMEND"
+  | "POST_RECOMMEND_ANON"
+  | "POST_DISRECOMMEND"
+  | "POST_DISRECOMMEND_ANON"
+  | "COMMENT_LIKE"
+  | "COMMENT_LIKE_ANON"
+  | "COMMENT_DISLIKE"
+  | "COMMENT_DISLIKE_ANON"
+  | "COMMENT_RECOMMEND"
+  | "COMMENT_RECOMMEND_ANON"
+  | "COMMENT_DISRECOMMEND"
+  | "COMMENT_DISRECOMMEND_ANON"
+  | "POST_BOOKMARK"
+  | "POST_BOOKMARK_ANON"
+  | "POST_SCRAP"
+  | "POST_SCRAP_ANON"
+  | "POST_WATCH_COMMENT"
+  | "COMMENT_WATCH_REPLY"
+  | "COMPANY_APPLY_RESULT"
+  | "JOB_POSTING_REVIEW_RESULT"
   | "POST_HIDDEN"
   | "POST_REMOVED"
   | "POST_RESTORED"
@@ -33,21 +56,30 @@ export type UserNotificationType =
   | "FRIEND_ACCEPTED"
   | "ROOM_INVITE"
   | "ROOM_MESSAGE"
+  | "NOTE_MESSAGE"
   | "ROOM_MENTION"
+  | "INTERVIEW_DISPATCH"
   | "RECOMMENDED_JOB"
+  | "RECOMMENDED_POST"
   | "MARKETING_AD"
   | "CREDIT_LOW"
   // 결제/크레딧 (E 결제 흐름에서 발생, billing 카테고리)
   | "PAYMENT_COMPLETE"
   | "PAYMENT_SCHEDULED"
   | "SUBSCRIPTION_CANCELED"
-  | "CREDIT_RECHARGED";
+  | "CREDIT_RECHARGED"
+  | "REFUND_RESULT";
+
+/* ── 발신자 관계 (댓글·답글·쪽지·채팅 알림의 세부 필터 차원) ── */
+export type SenderRelation = "stranger" | "friend" | "company" | "operator";
 
 /* ── 비-AI 알림 — 관리자 (3개) ── */
 export type AdminNotificationType =
   | "NEW_REPORT"
   | "NEW_TICKET"
-  | "NEW_USER";
+  | "NEW_USER"
+  | "NEW_COMPANY_APPLICATION"
+  | "NEW_JOB_POSTING_REVIEW";
 
 export type NotificationType =
   | AINotificationType
@@ -77,6 +109,7 @@ export interface Notification {
   link?: string;
   targetType?: string;
   targetId?: number;
+  senderRelation?: SenderRelation;
   actorName?: string;
   actorId?: number;
   isRead: boolean;
@@ -118,6 +151,29 @@ export const TYPE_META: Record<NotificationType, TypeMeta> = {
   COMMENT_RESTORED:          { cat: "community",   icon: "RotateCcw",          variant: "success", cta: "댓글 보기" },
   COMMENT_REMOVED:           { cat: "community",   icon: "Trash2",             variant: "danger",  cta: "댓글 보기" },
   LIKE:                      { cat: "community",   icon: "Heart",              variant: "info",    cta: "게시글 보기",    actor: true },
+  LIKE_ANON:                 { cat: "community",   icon: "Heart",              variant: "info",    cta: "게시글 보기" },
+  POST_DISLIKE:              { cat: "community",   icon: "HeartOff",           variant: "info",    cta: "게시글 보기",    actor: true, urgent: false },
+  POST_DISLIKE_ANON:         { cat: "community",   icon: "HeartOff",           variant: "info",    cta: "게시글 보기",    urgent: false },
+  POST_RECOMMEND:            { cat: "community",   icon: "ThumbsUp",           variant: "info",    cta: "게시글 보기",    actor: true },
+  POST_RECOMMEND_ANON:       { cat: "community",   icon: "ThumbsUp",           variant: "info",    cta: "게시글 보기" },
+  POST_DISRECOMMEND:         { cat: "community",   icon: "ThumbsDown",         variant: "info",    cta: "게시글 보기",    actor: true, urgent: false },
+  POST_DISRECOMMEND_ANON:    { cat: "community",   icon: "ThumbsDown",         variant: "info",    cta: "게시글 보기",    urgent: false },
+  COMMENT_LIKE:              { cat: "community",   icon: "Heart",              variant: "info",    cta: "댓글 보기",      actor: true },
+  COMMENT_LIKE_ANON:         { cat: "community",   icon: "Heart",              variant: "info",    cta: "댓글 보기" },
+  COMMENT_DISLIKE:           { cat: "community",   icon: "HeartOff",           variant: "info",    cta: "댓글 보기",      actor: true, urgent: false },
+  COMMENT_DISLIKE_ANON:      { cat: "community",   icon: "HeartOff",           variant: "info",    cta: "댓글 보기",      urgent: false },
+  COMMENT_RECOMMEND:         { cat: "community",   icon: "ThumbsUp",           variant: "info",    cta: "댓글 보기",      actor: true },
+  COMMENT_RECOMMEND_ANON:    { cat: "community",   icon: "ThumbsUp",           variant: "info",    cta: "댓글 보기" },
+  COMMENT_DISRECOMMEND:      { cat: "community",   icon: "ThumbsDown",         variant: "info",    cta: "댓글 보기",      actor: true, urgent: false },
+  COMMENT_DISRECOMMEND_ANON: { cat: "community",   icon: "ThumbsDown",         variant: "info",    cta: "댓글 보기",      urgent: false },
+  POST_BOOKMARK:             { cat: "community",   icon: "Star",               variant: "info",    cta: "게시글 보기",    actor: true },
+  POST_BOOKMARK_ANON:        { cat: "community",   icon: "Star",               variant: "info",    cta: "게시글 보기" },
+  POST_SCRAP:                { cat: "community",   icon: "Clipboard",          variant: "info",    cta: "게시글 보기",    actor: true },
+  POST_SCRAP_ANON:           { cat: "community",   icon: "Clipboard",          variant: "info",    cta: "게시글 보기" },
+  POST_WATCH_COMMENT:        { cat: "community",   icon: "BellRing",           variant: "info",    cta: "새 댓글 보기" },
+  COMMENT_WATCH_REPLY:       { cat: "community",   icon: "BellRing",           variant: "info",    cta: "새 답글 보기" },
+  COMPANY_APPLY_RESULT:      { cat: "notice",      icon: "Building2",          variant: "info",    cta: "신청 결과 보기" },
+  JOB_POSTING_REVIEW_RESULT: { cat: "notice",      icon: "Briefcase",          variant: "info",    cta: "공고 검토 결과" },
   POST_HIDDEN:               { cat: "community",   icon: "EyeOff",             variant: "warning", cta: "가이드라인 보기" },
   POST_REMOVED:              { cat: "community",   icon: "Trash2",             variant: "danger",  cta: "가이드라인 보기" },
   POST_RESTORED:             { cat: "community",   icon: "RotateCcw",          variant: "success", cta: "게시글 보기" },
@@ -127,9 +183,13 @@ export const TYPE_META: Record<NotificationType, TypeMeta> = {
   FRIEND_ACCEPTED:           { cat: "messenger",   icon: "UserPlus",           variant: "success", cta: "친구 목록 보기", actor: true },
   ROOM_INVITE:               { cat: "messenger",   icon: "MessageCircle",      variant: "info",    cta: "채팅방 보기", actor: true },
   ROOM_MESSAGE:              { cat: "messenger",   icon: "MessageCircle",      variant: "info",    cta: "메신저 열기", actor: true },
+  NOTE_MESSAGE:              { cat: "messenger",   icon: "Mail",               variant: "info",    cta: "쪽지 보기", actor: true },
   ROOM_MENTION:              { cat: "messenger",   icon: "MessageSquareReply", variant: "info",    cta: "언급 보기", actor: true },
+  /* 면접 세션 전달(데스크톱→폰 이어하기) */
+  INTERVIEW_DISPATCH:        { cat: "interview",   icon: "Smartphone",         variant: "info",    cta: "세션 이어하기" },
   /* 추천/마케팅 */
   RECOMMENDED_JOB:           { cat: "recommendation", icon: "Briefcase",       variant: "info",    cta: "추천 공고 보기" },
+  RECOMMENDED_POST:          { cat: "recommendation", icon: "FileText",        variant: "info",    cta: "추천 글 보기" },
   MARKETING_AD:              { cat: "marketing",   icon: "Megaphone",          variant: "info",    cta: "혜택 보기", urgent: false },
   /* 결제 */
   CREDIT_LOW:                { cat: "billing",     icon: "AlertTriangle",      variant: "warning", cta: "크레딧 충전" },
@@ -137,6 +197,7 @@ export const TYPE_META: Record<NotificationType, TypeMeta> = {
   PAYMENT_SCHEDULED:         { cat: "billing",     icon: "CreditCard",         variant: "info",    cta: "결제 예정 보기" },
   SUBSCRIPTION_CANCELED:     { cat: "billing",     icon: "CalendarX",          variant: "info",    cta: "구독 상태 보기" },
   CREDIT_RECHARGED:          { cat: "billing",     icon: "CreditCard",         variant: "success", cta: "크레딧 보기" },
+  REFUND_RESULT:             { cat: "billing",     icon: "CreditCard",         variant: "info",    cta: "환불 결과 보기" },
   /* 공지 */
   NOTICE:                    { cat: "notice",      icon: "Megaphone",          variant: "warning", cta: "공지 보기" },
   TICKET_ANSWERED:           { cat: "notice",      icon: "MessageSquareReply", variant: "info",    cta: "문의 답변 보기", actor: true },
@@ -144,6 +205,8 @@ export const TYPE_META: Record<NotificationType, TypeMeta> = {
   /* 관리자 */
   NEW_REPORT:                { cat: "admin",       icon: "Flag",               variant: "danger",  cta: "신고 확인" },
   NEW_TICKET:                { cat: "admin",       icon: "Ticket",             variant: "info",    cta: "문의 확인",      urgent: false },
+  NEW_COMPANY_APPLICATION:   { cat: "admin",       icon: "Building2",          variant: "info",    cta: "기업 신청 확인" },
+  NEW_JOB_POSTING_REVIEW:    { cat: "admin",       icon: "Briefcase",          variant: "info",    cta: "공고 검토" },
   NEW_USER:                  { cat: "admin",       icon: "UserPlus",           variant: "info",    cta: "회원 보기",      actor: true, urgent: false },
   LOW_CONFIDENCE_REPORT:     { cat: "admin",       icon: "ShieldAlert",        variant: "warning", cta: "리포트 점검" },
   TICKET_DRAFT_READY:        { cat: "admin",       icon: "FilePen",            variant: "info",    cta: "답변 초안 보기" },
@@ -208,6 +271,29 @@ export const TYPE_TO_CATEGORY: Record<NotificationType, NotificationCategory> = 
   COMMENT_RESTORED: "community",
   COMMENT_REMOVED: "community",
   LIKE: "community",
+  LIKE_ANON: "community",
+  POST_DISLIKE: "community",
+  POST_DISLIKE_ANON: "community",
+  POST_RECOMMEND: "community",
+  POST_RECOMMEND_ANON: "community",
+  POST_DISRECOMMEND: "community",
+  POST_DISRECOMMEND_ANON: "community",
+  COMMENT_LIKE: "community",
+  COMMENT_LIKE_ANON: "community",
+  COMMENT_DISLIKE: "community",
+  COMMENT_DISLIKE_ANON: "community",
+  COMMENT_RECOMMEND: "community",
+  COMMENT_RECOMMEND_ANON: "community",
+  COMMENT_DISRECOMMEND: "community",
+  COMMENT_DISRECOMMEND_ANON: "community",
+  POST_BOOKMARK: "community",
+  POST_BOOKMARK_ANON: "community",
+  POST_SCRAP: "community",
+  POST_SCRAP_ANON: "community",
+  POST_WATCH_COMMENT: "community",
+  COMMENT_WATCH_REPLY: "community",
+  COMPANY_APPLY_RESULT: "notice",
+  JOB_POSTING_REVIEW_RESULT: "notice",
   POST_HIDDEN: "community",
   POST_REMOVED: "community",
   POST_RESTORED: "community",
@@ -216,8 +302,11 @@ export const TYPE_TO_CATEGORY: Record<NotificationType, NotificationCategory> = 
   FRIEND_ACCEPTED: "messenger",
   ROOM_INVITE: "messenger",
   ROOM_MESSAGE: "messenger",
+  NOTE_MESSAGE: "messenger",
   ROOM_MENTION: "messenger",
+  INTERVIEW_DISPATCH: "interview",
   RECOMMENDED_JOB: "recommendation",
+  RECOMMENDED_POST: "recommendation",
   MARKETING_AD: "marketing",
   /* 결제 */
   CREDIT_LOW: "billing",
@@ -225,6 +314,7 @@ export const TYPE_TO_CATEGORY: Record<NotificationType, NotificationCategory> = 
   PAYMENT_SCHEDULED: "billing",
   SUBSCRIPTION_CANCELED: "billing",
   CREDIT_RECHARGED: "billing",
+  REFUND_RESULT: "billing",
   /* 공지/문의 */
   NOTICE: "notice",
   TICKET_ANSWERED: "notice",
@@ -233,6 +323,8 @@ export const TYPE_TO_CATEGORY: Record<NotificationType, NotificationCategory> = 
   NEW_REPORT: "admin",
   NEW_TICKET: "admin",
   NEW_USER: "admin",
+  NEW_COMPANY_APPLICATION: "admin",
+  NEW_JOB_POSTING_REVIEW: "admin",
   LOW_CONFIDENCE_REPORT: "admin",
   TICKET_DRAFT_READY: "admin",
 };

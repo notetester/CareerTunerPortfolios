@@ -18,7 +18,10 @@
 #include "core/VoiceRecorder.h"
 #include "core/NotificationPoller.h"
 #include "core/AutoPrepRunner.h"
+#include "core/AdClient.h"
 #include "core/CollaborationClient.h"
+#include "core/CommunityClient.h"
+#include "core/CameraRecorder.h"
 
 // 앱 아이콘: 리소스 파일 없이 런타임에 그림 (인디고 라운드 + C)
 static QIcon makeAppIcon()
@@ -65,23 +68,34 @@ int main(int argc, char* argv[])
     jobs.setApi(&api);
     InterviewSession  session(&api, &settings);
     VoiceRecorder     recorder;
+    CameraRecorder    cameraRecorder;
     NotificationPoller poller(&api);
     AutoPrepRunner    autoprep(&api);
+    AdClient          ads(&api);
     CollaborationClient collaboration(&api);
+    CommunityClient   community(&api);
 
     // 설정에서 서버 주소를 바꾸면 즉시 반영
     QObject::connect(&settings, &SettingsStore::changed, &api,
         [&api, &settings]() { api.setBaseUrl(settings.baseUrl()); });
+    QObject::connect(&settings, &SettingsStore::changed, &ads,
+        [&ads]() { ads.refresh(); });
 
     // 로그인 성공 → 알림 폴링 시작, 로그아웃 → 중지
     QObject::connect(&auth, &AuthService::loggedIn, &poller,
         [&poller](const QString&) { poller.start(); });
     QObject::connect(&auth, &AuthService::loggedIn, &collaboration,
         [&collaboration](const QString&) { collaboration.refresh(); });
+    QObject::connect(&auth, &AuthService::loggedIn, &ads,
+        [&ads](const QString&) { ads.refresh(); });
     QObject::connect(&auth, &AuthService::loggedOut, &poller,
         [&poller]() { poller.stop(); });
     QObject::connect(&auth, &AuthService::loggedOut, &collaboration,
         [&collaboration]() { collaboration.clear(); });
+    QObject::connect(&auth, &AuthService::loggedOut, &community,
+        [&community]() { community.clear(); });
+    QObject::connect(&auth, &AuthService::loggedOut, &ads,
+        [&ads]() { ads.clear(); });
 
     // ── QML 화면에 코어 노출 ──
     QQmlApplicationEngine engine;
@@ -93,9 +107,12 @@ int main(int argc, char* argv[])
     ctx->setContextProperty("jobModel", &jobs);
     ctx->setContextProperty("session", &session);
     ctx->setContextProperty("recorder", &recorder);
+    ctx->setContextProperty("cameraRecorder", &cameraRecorder);
     ctx->setContextProperty("notifications", &poller);
     ctx->setContextProperty("autoprep", &autoprep);
+    ctx->setContextProperty("desktopAds", &ads);
     ctx->setContextProperty("collaboration", &collaboration);
+    ctx->setContextProperty("community", &community);
 
     engine.loadFromModule("CareerTuner", "Main");
     if (engine.rootObjects().isEmpty())

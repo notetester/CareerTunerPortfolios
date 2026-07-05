@@ -13,6 +13,9 @@ SET FOREIGN_KEY_CHECKS = 0;
 CREATE TABLE IF NOT EXISTS users (
     id               BIGINT       NOT NULL AUTO_INCREMENT,
     email            VARCHAR(255) NOT NULL COMMENT '로그인 식별자로 사용하는 회원 이메일',
+    login_id         VARCHAR(50)  NULL COMMENT '로그인 아이디(문자열, 선택·전역 UNIQUE·설정 후 변경 불가 정책)',
+    phone            VARCHAR(40)  NULL COMMENT '전화번호(선택, 전역 UNIQUE)',
+    phone_verified   TINYINT(1)   NOT NULL DEFAULT 0 COMMENT '전화번호 인증 여부(선택·스텁)',
     password         VARCHAR(255) NULL COMMENT 'BCrypt로 암호화한 비밀번호 해시. 소셜 전용 계정은 NULL 가능',
     password_enabled TINYINT(1)   NOT NULL DEFAULT 1 COMMENT '비밀번호 로그인 사용 여부. 소셜 전용 계정은 0',
     name             VARCHAR(100) NOT NULL,
@@ -35,6 +38,8 @@ CREATE TABLE IF NOT EXISTS users (
     updated_at       DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     PRIMARY KEY (id),
     UNIQUE KEY uk_users_email (email),
+    UNIQUE KEY uk_users_login_id (login_id),
+    UNIQUE KEY uk_users_phone (phone),
     KEY idx_users_status (status),
     KEY idx_users_status_changed_by (status_changed_by),
     CONSTRAINT fk_users_status_changed_by FOREIGN KEY (status_changed_by) REFERENCES users (id) ON DELETE SET NULL
@@ -69,6 +74,24 @@ CREATE TABLE IF NOT EXISTS email_verification (
     KEY idx_email_verification_email (email),
     CONSTRAINT fk_email_verification_user FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci;
+
+-- 전화번호 SMS OTP 인증 코드. 로그인 사용자가 전화번호 소유를 검증할 때 사용.
+-- 실 제공자 키가 있으면 실 발송, 없으면 Mock 제공자가 코드만 로깅하고 devCode 로 반환한다.
+CREATE TABLE IF NOT EXISTS sms_otp_code (
+    id            BIGINT       NOT NULL AUTO_INCREMENT,
+    user_id       BIGINT       NOT NULL COMMENT '인증을 요청한 회원',
+    phone         VARCHAR(40)  NOT NULL COMMENT '인증 대상 전화번호',
+    code          VARCHAR(10)  NOT NULL COMMENT '발송한 6자리 OTP 코드',
+    attempt_count INT          NOT NULL DEFAULT 0 COMMENT '검증 시도 횟수',
+    max_attempts  INT          NOT NULL DEFAULT 5 COMMENT '허용 최대 검증 시도 횟수',
+    expires_at    DATETIME     NOT NULL COMMENT '코드 만료 시각',
+    verified_at   DATETIME     NULL COMMENT '검증 성공 시각. NULL이면 미검증',
+    created_at    DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (id),
+    KEY idx_sms_otp_user_phone (user_id, phone),
+    KEY idx_sms_otp_expires (expires_at),
+    CONSTRAINT fk_sms_otp_user FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci COMMENT = '전화번호 SMS OTP 인증 코드';
 
 -- JWT refresh token (회전/폐기 관리용)
 CREATE TABLE IF NOT EXISTS refresh_token (
@@ -292,6 +315,18 @@ CREATE TABLE IF NOT EXISTS company_analysis (
     KEY idx_company_analysis_posting (job_posting_id),
     CONSTRAINT fk_company_analysis_case FOREIGN KEY (application_case_id) REFERENCES application_case (id) ON DELETE CASCADE,
     CONSTRAINT fk_company_analysis_posting FOREIGN KEY (job_posting_id) REFERENCES job_posting (id) ON DELETE SET NULL
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci;
+
+-- 기업분석 웹검색 결과 캐시(235 §4·§6). 같은 회사 재검색 방지(비용↓)와 신선도 판정 근거.
+-- query_key = 정규화된 회사 식별 쿼리, results = 스니펫+URL 목록(JSON), fetched_at = 수집 시각(TTL 기준).
+CREATE TABLE IF NOT EXISTS company_search_cache (
+    id         BIGINT NOT NULL AUTO_INCREMENT,
+    query_key  VARCHAR(255) NOT NULL,
+    results    JSON NULL,
+    fetched_at DATETIME NOT NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (id),
+    UNIQUE KEY uk_company_search_cache_query (query_key)
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci;
 
 CREATE TABLE IF NOT EXISTS application_case_status_history (
@@ -683,6 +718,11 @@ CREATE TABLE IF NOT EXISTS collaboration_conversation (
     user_high_id  BIGINT       NULL,
     title         VARCHAR(120) NULL,
     description   VARCHAR(500) NULL,
+    image_file_id   BIGINT        NULL COMMENT '방 프로필 사진(file_asset)',
+    notice          VARCHAR(1000) NULL COMMENT '방 공지',
+    invite_policy   VARCHAR(20)  NOT NULL DEFAULT 'ALL_MEMBERS' COMMENT '초대 권한. OWNER_ONLY/MANAGERS/SPECIFIC_MEMBERS/ALL_MEMBERS',
+    allow_anonymous TINYINT(1)   NOT NULL DEFAULT 0 COMMENT '익명 참가 허용',
+    anonymous_only  TINYINT(1)   NOT NULL DEFAULT 0 COMMENT '익명만 참가 가능',
     password_hash VARCHAR(255) NULL,
     max_members   INT          NOT NULL DEFAULT 100,
     created_by    BIGINT       NULL,
@@ -693,6 +733,8 @@ CREATE TABLE IF NOT EXISTS collaboration_conversation (
     KEY idx_collab_conversation_type_updated (type, updated_at DESC),
     KEY idx_collab_conversation_created_by (created_by, updated_at DESC),
     CONSTRAINT chk_collab_conversation_type CHECK (type IN ('DIRECT', 'GROUP', 'PUBLIC', 'PRIVATE')),
+    CONSTRAINT chk_collab_conversation_invite_policy CHECK (invite_policy IN ('OWNER_ONLY', 'MANAGERS', 'SPECIFIC_MEMBERS', 'ALL_MEMBERS')),
+    CONSTRAINT fk_collab_conversation_image FOREIGN KEY (image_file_id) REFERENCES file_asset (id) ON DELETE SET NULL,
     CONSTRAINT fk_collab_conversation_low FOREIGN KEY (user_low_id) REFERENCES users (id) ON DELETE CASCADE,
     CONSTRAINT fk_collab_conversation_high FOREIGN KEY (user_high_id) REFERENCES users (id) ON DELETE CASCADE,
     CONSTRAINT fk_collab_conversation_created_by FOREIGN KEY (created_by) REFERENCES users (id) ON DELETE SET NULL
@@ -706,6 +748,9 @@ CREATE TABLE IF NOT EXISTS collaboration_conversation_member (
     invited_by           BIGINT      NULL,
     last_read_message_id BIGINT      NULL,
     muted                TINYINT(1)  NOT NULL DEFAULT 0,
+    anonymous            TINYINT(1)  NOT NULL DEFAULT 0 COMMENT '이 방에 익명으로 참가',
+    room_nickname        VARCHAR(60) NULL COMMENT '방 전용 닉네임(익명/방전용 프로필)',
+    room_profile_file_id BIGINT      NULL COMMENT '방 전용 프로필 사진(file_asset)',
     joined_at            DATETIME    NOT NULL DEFAULT CURRENT_TIMESTAMP,
     last_read_at         DATETIME    NULL,
     left_at              DATETIME    NULL,
@@ -716,14 +761,77 @@ CREATE TABLE IF NOT EXISTS collaboration_conversation_member (
     CONSTRAINT chk_collab_conversation_member_status CHECK (status IN ('ACTIVE', 'LEFT', 'REMOVED')),
     CONSTRAINT fk_collab_conversation_member_conversation FOREIGN KEY (conversation_id) REFERENCES collaboration_conversation (id) ON DELETE CASCADE,
     CONSTRAINT fk_collab_conversation_member_user FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE,
-    CONSTRAINT fk_collab_conversation_member_inviter FOREIGN KEY (invited_by) REFERENCES users (id) ON DELETE SET NULL
+    CONSTRAINT fk_collab_conversation_member_inviter FOREIGN KEY (invited_by) REFERENCES users (id) ON DELETE SET NULL,
+    CONSTRAINT fk_collab_conv_member_room_profile FOREIGN KEY (room_profile_file_id) REFERENCES file_asset (id) ON DELETE SET NULL
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci COMMENT = '대화방 참여자와 읽음 상태';
+
+-- 방 관리자 세부 권한·재입장불가 강퇴·초대 허용 멤버·방 활동 로그 (patches/20260705b_conversation_settings.sql)
+CREATE TABLE IF NOT EXISTS collaboration_conversation_permission (
+    conversation_id     BIGINT     NOT NULL,
+    user_id             BIGINT     NOT NULL,
+    can_kick            TINYINT(1) NOT NULL DEFAULT 0,
+    can_ban             TINYINT(1) NOT NULL DEFAULT 0,
+    can_set_password    TINYINT(1) NOT NULL DEFAULT 0,
+    can_invite          TINYINT(1) NOT NULL DEFAULT 0,
+    can_edit_room       TINYINT(1) NOT NULL DEFAULT 0,
+    can_manage_members  TINYINT(1) NOT NULL DEFAULT 0,
+    granted_by          BIGINT     NULL,
+    created_at          DATETIME   NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at          DATETIME   NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    PRIMARY KEY (conversation_id, user_id),
+    KEY idx_collab_conv_permission_user (user_id),
+    CONSTRAINT fk_collab_conv_permission_conversation FOREIGN KEY (conversation_id) REFERENCES collaboration_conversation (id) ON DELETE CASCADE,
+    CONSTRAINT fk_collab_conv_permission_user FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE,
+    CONSTRAINT fk_collab_conv_permission_granted_by FOREIGN KEY (granted_by) REFERENCES users (id) ON DELETE SET NULL
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci COMMENT = '방 관리자(MANAGER) 세부 권한 플래그';
+
+CREATE TABLE IF NOT EXISTS collaboration_conversation_ban (
+    id              BIGINT       NOT NULL AUTO_INCREMENT,
+    conversation_id BIGINT       NOT NULL,
+    user_id         BIGINT       NOT NULL,
+    banned_by       BIGINT       NULL,
+    reason          VARCHAR(500) NULL,
+    created_at      DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (id),
+    UNIQUE KEY uq_collab_conv_ban (conversation_id, user_id),
+    KEY idx_collab_conv_ban_user (user_id),
+    CONSTRAINT fk_collab_conv_ban_conversation FOREIGN KEY (conversation_id) REFERENCES collaboration_conversation (id) ON DELETE CASCADE,
+    CONSTRAINT fk_collab_conv_ban_user FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE,
+    CONSTRAINT fk_collab_conv_ban_banned_by FOREIGN KEY (banned_by) REFERENCES users (id) ON DELETE SET NULL
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci COMMENT = '재입장불가 강퇴(ban) 명단';
+
+CREATE TABLE IF NOT EXISTS collaboration_conversation_invite_allow (
+    conversation_id BIGINT   NOT NULL,
+    user_id         BIGINT   NOT NULL,
+    granted_by      BIGINT   NULL,
+    created_at      DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (conversation_id, user_id),
+    CONSTRAINT fk_collab_conv_invite_allow_conversation FOREIGN KEY (conversation_id) REFERENCES collaboration_conversation (id) ON DELETE CASCADE,
+    CONSTRAINT fk_collab_conv_invite_allow_user FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE,
+    CONSTRAINT fk_collab_conv_invite_allow_granted_by FOREIGN KEY (granted_by) REFERENCES users (id) ON DELETE SET NULL
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci COMMENT = 'SPECIFIC_MEMBERS 초대 허용 멤버';
+
+CREATE TABLE IF NOT EXISTS collaboration_conversation_audit (
+    id              BIGINT       NOT NULL AUTO_INCREMENT,
+    conversation_id BIGINT       NOT NULL,
+    actor_id        BIGINT       NULL,
+    target_user_id  BIGINT       NULL,
+    action          VARCHAR(50)  NOT NULL,
+    detail          VARCHAR(1000) NULL,
+    created_at      DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (id),
+    KEY idx_collab_conv_audit_conversation (conversation_id, id DESC),
+    CONSTRAINT fk_collab_conv_audit_conversation FOREIGN KEY (conversation_id) REFERENCES collaboration_conversation (id) ON DELETE CASCADE,
+    CONSTRAINT fk_collab_conv_audit_actor FOREIGN KEY (actor_id) REFERENCES users (id) ON DELETE SET NULL,
+    CONSTRAINT fk_collab_conv_audit_target FOREIGN KEY (target_user_id) REFERENCES users (id) ON DELETE SET NULL
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci COMMENT = '방 활동 로그';
 
 CREATE TABLE IF NOT EXISTS collaboration_conversation_invite (
     id              BIGINT      NOT NULL AUTO_INCREMENT,
     conversation_id BIGINT      NOT NULL,
     inviter_id      BIGINT      NULL,
     invitee_id      BIGINT      NOT NULL,
+    anonymous       TINYINT(1)  NOT NULL DEFAULT 0 COMMENT '익명 초대 여부',
     status          VARCHAR(20) NOT NULL DEFAULT 'PENDING',
     pending_marker  TINYINT GENERATED ALWAYS AS (
         CASE WHEN status = 'PENDING' THEN 1 ELSE NULL END
@@ -1299,10 +1407,15 @@ CREATE TABLE IF NOT EXISTS community_post (
     status         VARCHAR(20)  NOT NULL DEFAULT 'PUBLISHED',
     tags_json      JSON         NULL,
     is_anonymous   TINYINT(1)   NOT NULL DEFAULT 1,
+    nickname_profile_id BIGINT   NULL COMMENT '작성 시 선택한 표시용 닉네임 프로필(user_nickname_profile.id). NULL=계정 기본/계정명 표시',
     view_count     INT          NOT NULL DEFAULT 0,
     comment_count  INT          NOT NULL DEFAULT 0,
     like_count     INT          NOT NULL DEFAULT 0,
+    dislike_count      INT      NOT NULL DEFAULT 0 COMMENT '싫어요 수(개인화용 축)',
+    recommend_count    INT      NOT NULL DEFAULT 0 COMMENT '추천 수(트렌드·인기글용 축)',
+    disrecommend_count INT      NOT NULL DEFAULT 0 COMMENT '비추천 수',
     bookmark_count INT          NOT NULL DEFAULT 0,
+    scrap_count    INT          NOT NULL DEFAULT 0 COMMENT '스크랩 수(post_scrap 집계 캐시)',
     created_at     DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at     DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     PRIMARY KEY (id),
@@ -1374,8 +1487,12 @@ CREATE TABLE IF NOT EXISTS community_comment (
     parent_id    BIGINT       NULL,
     content      MEDIUMTEXT   NOT NULL,
     is_anonymous TINYINT(1)   NOT NULL DEFAULT 1,
+    nickname_profile_id BIGINT NULL COMMENT '작성 시 선택한 표시용 닉네임 프로필(user_nickname_profile.id). NULL=계정 기본/계정명 표시',
     status       VARCHAR(20)  NOT NULL DEFAULT 'PUBLISHED',
     like_count   INT          NOT NULL DEFAULT 0,
+    dislike_count      INT    NOT NULL DEFAULT 0 COMMENT '싫어요 수',
+    recommend_count    INT    NOT NULL DEFAULT 0 COMMENT '추천 수',
+    disrecommend_count INT    NOT NULL DEFAULT 0 COMMENT '비추천 수',
     created_at   DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at   DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     PRIMARY KEY (id),
@@ -1392,22 +1509,26 @@ CREATE TABLE IF NOT EXISTS post_reaction (
     user_id        BIGINT       NOT NULL,
     post_id        BIGINT       NOT NULL,
     reaction_type  VARCHAR(20)  NOT NULL,
+    axis           VARCHAR(20)  NOT NULL DEFAULT 'PREFERENCE' COMMENT '리액션 축(RECOMMEND_AXIS/PREFERENCE/BOOKMARK)',
+    is_anonymous   TINYINT(1)   NOT NULL DEFAULT 0 COMMENT '익명 리액션 — 타인 시점 목록 제외, 집계 포함',
     created_at     DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (id),
-    UNIQUE KEY uk_post_reaction (user_id, post_id, reaction_type),
+    UNIQUE KEY uk_post_reaction_axis (user_id, post_id, axis),
     KEY idx_pr_post (post_id),
     CONSTRAINT fk_pr_user FOREIGN KEY (user_id) REFERENCES users (id)          ON DELETE CASCADE,
     CONSTRAINT fk_pr_post FOREIGN KEY (post_id) REFERENCES community_post (id) ON DELETE CASCADE
     ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci;
--- 댓글 좋아요 반응
+-- 댓글 반응(같은 축에서 반대 클릭 시 교체, 재클릭 시 취소)
 CREATE TABLE IF NOT EXISTS comment_reaction (
     id             BIGINT       NOT NULL AUTO_INCREMENT,
     user_id        BIGINT       NOT NULL,
     comment_id     BIGINT       NOT NULL,
     reaction_type  VARCHAR(20)  NOT NULL,
+    axis           VARCHAR(20)  NOT NULL DEFAULT 'PREFERENCE' COMMENT '리액션 축(RECOMMEND_AXIS/PREFERENCE)',
+    is_anonymous   TINYINT(1)   NOT NULL DEFAULT 0 COMMENT '익명 리액션 — 타인 시점 목록 제외, 집계 포함',
     created_at     DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (id),
-    UNIQUE KEY uk_comment_reaction (user_id, comment_id, reaction_type),
+    UNIQUE KEY uk_comment_reaction_axis (user_id, comment_id, axis),
     KEY idx_cr_comment (comment_id),
     CONSTRAINT fk_cr_user    FOREIGN KEY (user_id)    REFERENCES users (id)              ON DELETE CASCADE,
     CONSTRAINT fk_cr_comment FOREIGN KEY (comment_id) REFERENCES community_comment (id)  ON DELETE CASCADE
@@ -1685,6 +1806,7 @@ CREATE TABLE IF NOT EXISTS notification (
     type        VARCHAR(40)  NOT NULL,
     target_type VARCHAR(20)  NULL,
     target_id   BIGINT       NULL,
+    sender_relation VARCHAR(12) NULL COMMENT '발신자 관계. stranger/friend/company/operator (관계 기반 알림에만)',
     title       VARCHAR(255) NOT NULL,
     message     TEXT         NULL,
     link        VARCHAR(512) NULL,
@@ -1707,6 +1829,7 @@ CREATE TABLE IF NOT EXISTS notification_preference (
     email_enabled     TINYINT(1)  NOT NULL DEFAULT 1,
     categories_json   JSON        NULL,
     rules_json        JSON        NULL,
+    keywords_json     JSON        NULL,
     quiet_hours_start VARCHAR(5)  NULL,
     quiet_hours_end   VARCHAR(5)  NULL,
     created_at        DATETIME    NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -1733,6 +1856,293 @@ CREATE TABLE IF NOT EXISTS push_subscription (
     CONSTRAINT fk_push_subscription_user FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
     ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci;
 
+
+-- 12. 개인 차단/허용 정책 (docs/PERSONAL_BLOCK_POLICY.md)
+CREATE TABLE IF NOT EXISTS user_block (
+    id              BIGINT       NOT NULL AUTO_INCREMENT,
+    user_id         BIGINT       NOT NULL COMMENT '차단을 설정한 사용자',
+    blocked_user_id BIGINT       NOT NULL COMMENT '차단 대상 계정',
+    flags_json      JSON         NULL COMMENT '표면별 명시 설정. null 항목은 blockedAccount 관계 정책을 따름',
+    block_ip        TINYINT(1)   NOT NULL DEFAULT 0 COMMENT '이 계정의 접속 IP 도 차단(user_ip_block 파생)',
+    memo            VARCHAR(200) NULL COMMENT '개인 메모(차단 사유 등)',
+    masked_label    VARCHAR(100) NULL COMMENT '익명 콘텐츠 기반 차단의 표시 라벨(비노출 익명성 유지)',
+    created_at      DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at      DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    PRIMARY KEY (id),
+    UNIQUE KEY uq_user_block_pair (user_id, blocked_user_id),
+    KEY idx_user_block_blocked (blocked_user_id),
+    CONSTRAINT fk_user_block_user    FOREIGN KEY (user_id)         REFERENCES users (id) ON DELETE CASCADE,
+    CONSTRAINT fk_user_block_blocked FOREIGN KEY (blocked_user_id) REFERENCES users (id) ON DELETE CASCADE
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci COMMENT = '개인 계정 차단(표면별 세부 설정 포함)';
+
+CREATE TABLE IF NOT EXISTS user_ip_block (
+    id             BIGINT       NOT NULL AUTO_INCREMENT,
+    user_id        BIGINT       NOT NULL COMMENT '차단을 설정한 사용자',
+    ip_hash        VARCHAR(64)  NOT NULL COMMENT 'SHA-256(서버솔트+IP). 원본 IP 비저장',
+    source_user_id BIGINT       NULL COMMENT '어느 계정 차단에서 파생됐는지',
+    label          VARCHAR(100) NULL COMMENT '목록 표기용 라벨',
+    created_at     DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (id),
+    UNIQUE KEY uq_user_ip_block (user_id, ip_hash),
+    CONSTRAINT fk_user_ip_block_user   FOREIGN KEY (user_id)        REFERENCES users (id) ON DELETE CASCADE,
+    CONSTRAINT fk_user_ip_block_source FOREIGN KEY (source_user_id) REFERENCES users (id) ON DELETE SET NULL
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci COMMENT = '개인 IP 차단(해시만 저장)';
+
+CREATE TABLE IF NOT EXISTS conversation_block (
+    id              BIGINT      NOT NULL AUTO_INCREMENT,
+    user_id         BIGINT      NOT NULL,
+    conversation_id BIGINT      NOT NULL,
+    flags_json      JSON        NULL COMMENT 'inviteFromRoom/memberCreatedRoomInvite/memberJoinedRoomInvite(+익명 변형)',
+    created_at      DATETIME    NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at      DATETIME    NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    PRIMARY KEY (id),
+    UNIQUE KEY uq_conversation_block (user_id, conversation_id),
+    CONSTRAINT fk_conversation_block_user FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE,
+    CONSTRAINT fk_conversation_block_conv FOREIGN KEY (conversation_id) REFERENCES collaboration_conversation (id) ON DELETE CASCADE
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci COMMENT = '개인 채팅방 차단';
+
+CREATE TABLE IF NOT EXISTS user_privacy_policy (
+    id          BIGINT   NOT NULL AUTO_INCREMENT,
+    user_id     BIGINT   NOT NULL,
+    policy_json JSON     NULL,
+    created_at  DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at  DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    PRIMARY KEY (id),
+    UNIQUE KEY uq_user_privacy_policy_user (user_id),
+    CONSTRAINT fk_user_privacy_policy_user FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci COMMENT = '개인 차단/허용 관계별 정책';
+
+-- 데스크톱 앱 heartbeat — LOCAL 파일 공유는 소유자 데스크톱이 온라인일 때만 전송한다.
+CREATE TABLE IF NOT EXISTS user_desktop_presence (
+    user_id      BIGINT   NOT NULL,
+    last_seen_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (user_id),
+    CONSTRAINT fk_user_desktop_presence_user FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci COMMENT = '데스크톱 앱 접속 heartbeat(LOCAL 파일 공유 게이트)';
+
+-- 13. 기업 계정 파이프라인 + 채용공고 게시판 (patches/20260705_company_jobboard.sql)
+CREATE TABLE IF NOT EXISTS company_application (
+    id              BIGINT        NOT NULL AUTO_INCREMENT,
+    user_id         BIGINT        NOT NULL COMMENT '신청자(현재 role=USER) id',
+    company_name    VARCHAR(100)  NOT NULL COMMENT '기업명',
+    business_number VARCHAR(50)   NULL COMMENT '사업자등록번호(선택)',
+    contact         VARCHAR(100)  NOT NULL COMMENT '담당자 연락처(이름/전화/이메일 자유 기재)',
+    description     VARCHAR(1000) NULL COMMENT '신청 설명(선택)',
+    status          VARCHAR(20)   NOT NULL DEFAULT 'PENDING' COMMENT '신청 상태. PENDING/APPROVED/REJECTED',
+    reject_reason   VARCHAR(500)  NULL COMMENT '반려 사유(반려 시 필수)',
+    reviewed_by     BIGINT        NULL COMMENT '처리한 관리자 id',
+    reviewed_at     DATETIME      NULL COMMENT '처리 시각',
+    created_at      DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at      DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    PRIMARY KEY (id),
+    KEY idx_company_application_user (user_id, status),
+    KEY idx_company_application_status (status, created_at),
+    CONSTRAINT chk_company_application_status CHECK (status IN ('PENDING', 'APPROVED', 'REJECTED')),
+    CONSTRAINT fk_company_application_user FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE,
+    CONSTRAINT fk_company_application_reviewer FOREIGN KEY (reviewed_by) REFERENCES users (id) ON DELETE SET NULL
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci COMMENT = '기업 계정 전환 신청';
+
+CREATE TABLE IF NOT EXISTS user_role_change_history (
+    id            BIGINT       NOT NULL AUTO_INCREMENT,
+    user_id       BIGINT       NOT NULL COMMENT '대상 회원 id',
+    previous_role VARCHAR(20)  NOT NULL COMMENT '변경 전 role',
+    new_role      VARCHAR(20)  NOT NULL COMMENT '변경 후 role',
+    reason        VARCHAR(500) NULL COMMENT '변경 사유',
+    changed_by    BIGINT       NULL COMMENT '변경 주체(관리자) id. 시스템 변경이면 NULL',
+    created_at    DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (id),
+    KEY idx_user_role_change_user (user_id, created_at),
+    CONSTRAINT fk_user_role_change_user FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE,
+    CONSTRAINT fk_user_role_change_actor FOREIGN KEY (changed_by) REFERENCES users (id) ON DELETE SET NULL
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci COMMENT = '회원 role 변경 감사 이력';
+
+CREATE TABLE IF NOT EXISTS company_profile (
+    id              BIGINT       NOT NULL AUTO_INCREMENT,
+    user_id         BIGINT       NOT NULL COMMENT '기업 계정(users.role=COMPANY) id',
+    company_name    VARCHAR(100) NOT NULL COMMENT '기업명',
+    business_number VARCHAR(50)  NULL COMMENT '사업자등록번호',
+    trust_grade     VARCHAR(20)  NOT NULL DEFAULT 'BASIC' COMMENT '신뢰등급. BASIC/VERIFIED/PARTNER — 공고 승인 정책 입력값',
+    created_at      DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at      DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    PRIMARY KEY (id),
+    UNIQUE KEY uk_company_profile_user (user_id),
+    CONSTRAINT chk_company_profile_grade CHECK (trust_grade IN ('BASIC', 'VERIFIED', 'PARTNER')),
+    CONSTRAINT fk_company_profile_user FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci COMMENT = '승인된 기업 프로필(신뢰등급 포함)';
+
+CREATE TABLE IF NOT EXISTS company_job_posting (
+    id               BIGINT       NOT NULL AUTO_INCREMENT,
+    company_user_id  BIGINT       NOT NULL COMMENT '작성 기업 계정 id',
+    title            VARCHAR(255) NOT NULL COMMENT '공고 제목',
+    job_role         VARCHAR(100) NOT NULL COMMENT '직무명',
+    employment_type  VARCHAR(30)  NOT NULL DEFAULT 'FULL_TIME' COMMENT '고용형태. FULL_TIME/CONTRACT/INTERN/PART_TIME/FREELANCE',
+    career_level     VARCHAR(30)  NOT NULL DEFAULT 'ANY' COMMENT '경력조건. NEW/EXPERIENCED/ANY',
+    career_years_min INT          NULL COMMENT '경력 하한(년). 경력직일 때만 사용',
+    career_years_max INT          NULL COMMENT '경력 상한(년)',
+    education_level  VARCHAR(30)  NOT NULL DEFAULT 'ANY' COMMENT '학력. ANY/HIGH_SCHOOL/COLLEGE/BACHELOR/MASTER/DOCTOR',
+    salary_text      VARCHAR(100) NULL COMMENT '급여 표기(예: 4,000~5,500만원)',
+    salary_negotiable TINYINT(1)  NOT NULL DEFAULT 0 COMMENT '급여 협의 가능 플래그',
+    work_location    VARCHAR(255) NULL COMMENT '근무지역',
+    work_hours       VARCHAR(100) NULL COMMENT '근무시간(예: 주 5일 10:00~19:00)',
+    deadline_date    DATE         NULL COMMENT '마감일. 상시 채용이면 NULL 허용',
+    always_open      TINYINT(1)   NOT NULL DEFAULT 0 COMMENT '상시 채용 플래그',
+    main_tasks       TEXT         NULL COMMENT '주요업무',
+    requirements     TEXT         NULL COMMENT '자격요건',
+    preferred        TEXT         NULL COMMENT '우대사항',
+    benefits         TEXT         NULL COMMENT '복리후생',
+    hiring_process   TEXT         NULL COMMENT '전형절차',
+    headcount        VARCHAR(50)  NULL COMMENT '채용인원(예: 2명, 00명)',
+    tags_json        JSON         NULL COMMENT '태그 배열(검색·추천 매칭용)',
+    status           VARCHAR(30)  NOT NULL DEFAULT 'DRAFT' COMMENT '상태. DRAFT/PENDING_REVIEW/PUBLISHED/REJECTED/CLOSED',
+    reject_reason    VARCHAR(500) NULL COMMENT '반려 사유(신규 등록 반려 시)',
+    view_count       INT          NOT NULL DEFAULT 0 COMMENT '상세 조회수',
+    published_at     DATETIME     NULL COMMENT '최초 게시 시각',
+    closed_at        DATETIME     NULL COMMENT '마감 처리 시각',
+    reviewed_by      BIGINT       NULL COMMENT '검토한 관리자 id',
+    reviewed_at      DATETIME     NULL COMMENT '검토 시각',
+    created_at       DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at       DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    PRIMARY KEY (id),
+    KEY idx_company_job_posting_company (company_user_id, status),
+    KEY idx_company_job_posting_board (status, published_at),
+    CONSTRAINT chk_company_job_posting_status CHECK (status IN ('DRAFT', 'PENDING_REVIEW', 'PUBLISHED', 'REJECTED', 'CLOSED')),
+    CONSTRAINT fk_company_job_posting_company FOREIGN KEY (company_user_id) REFERENCES users (id) ON DELETE CASCADE,
+    CONSTRAINT fk_company_job_posting_reviewer FOREIGN KEY (reviewed_by) REFERENCES users (id) ON DELETE SET NULL
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci COMMENT = '기업 채용공고 게시판(지원 건 내부 job_posting 과 별개 도메인)';
+
+CREATE TABLE IF NOT EXISTS company_job_posting_revision (
+    id             BIGINT       NOT NULL AUTO_INCREMENT,
+    job_posting_id BIGINT       NOT NULL COMMENT '대상 공고 id',
+    payload_json   JSON         NOT NULL COMMENT '변경본 전체 필드 JSON(승인 시 본문에 반영)',
+    status         VARCHAR(20)  NOT NULL DEFAULT 'PENDING' COMMENT '검토 상태. PENDING/APPROVED/REJECTED',
+    reject_reason  VARCHAR(500) NULL COMMENT '반려 사유',
+    reviewed_by    BIGINT       NULL COMMENT '검토한 관리자 id',
+    reviewed_at    DATETIME     NULL COMMENT '검토 시각',
+    created_at     DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at     DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    PRIMARY KEY (id),
+    KEY idx_job_posting_revision_posting (job_posting_id, status),
+    CONSTRAINT chk_job_posting_revision_status CHECK (status IN ('PENDING', 'APPROVED', 'REJECTED')),
+    CONSTRAINT fk_job_posting_revision_posting FOREIGN KEY (job_posting_id) REFERENCES company_job_posting (id) ON DELETE CASCADE,
+    CONSTRAINT fk_job_posting_revision_reviewer FOREIGN KEY (reviewed_by) REFERENCES users (id) ON DELETE SET NULL
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci COMMENT = '게시 중 공고의 수정 검토용 변경본';
+
+-- 14. 커뮤니티 스크랩(스냅샷)·구독 (patches/20260705_reactions.sql)
+CREATE TABLE IF NOT EXISTS post_scrap (
+    id                    BIGINT       NOT NULL AUTO_INCREMENT,
+    user_id               BIGINT       NOT NULL,
+    post_id               BIGINT       NULL COMMENT '원본 글 링크. 원본이 하드삭제되면 NULL(스냅샷은 유지)',
+    snapshot_title        VARCHAR(255) NOT NULL COMMENT '스크랩 시점 제목',
+    snapshot_content      MEDIUMTEXT   NOT NULL COMMENT '스크랩 시점 본문',
+    snapshot_author_label VARCHAR(100) NOT NULL COMMENT '스크랩 시점 작성자 표시명(익명 글이면 "익명")',
+    snapshot_category     VARCHAR(30)  NOT NULL COMMENT '스크랩 시점 카테고리',
+    is_anonymous          TINYINT(1)   NOT NULL DEFAULT 0 COMMENT '익명 스크랩 — 타인 시점 목록 제외, 집계 포함',
+    scrapped_at           DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (id),
+    KEY idx_post_scrap_user (user_id, scrapped_at DESC),
+    KEY idx_post_scrap_post (post_id),
+    CONSTRAINT fk_post_scrap_user FOREIGN KEY (user_id) REFERENCES users (id)          ON DELETE CASCADE,
+    CONSTRAINT fk_post_scrap_post FOREIGN KEY (post_id) REFERENCES community_post (id) ON DELETE SET NULL
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci COMMENT = '게시글 스크랩(스냅샷 보존 — 원본 수정/삭제와 무관)';
+
+CREATE TABLE IF NOT EXISTS post_subscription (
+    id         BIGINT   NOT NULL AUTO_INCREMENT,
+    user_id    BIGINT   NOT NULL,
+    post_id    BIGINT   NOT NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (id),
+    UNIQUE KEY uk_post_subscription (user_id, post_id),
+    KEY idx_post_subscription_post (post_id),
+    CONSTRAINT fk_post_subscription_user FOREIGN KEY (user_id) REFERENCES users (id)          ON DELETE CASCADE,
+    CONSTRAINT fk_post_subscription_post FOREIGN KEY (post_id) REFERENCES community_post (id) ON DELETE CASCADE
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci COMMENT = '게시글 구독(새 댓글 알림)';
+
+CREATE TABLE IF NOT EXISTS comment_subscription (
+    id         BIGINT   NOT NULL AUTO_INCREMENT,
+    user_id    BIGINT   NOT NULL,
+    comment_id BIGINT   NOT NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (id),
+    UNIQUE KEY uk_comment_subscription (user_id, comment_id),
+    KEY idx_comment_subscription_comment (comment_id),
+    CONSTRAINT fk_comment_subscription_user    FOREIGN KEY (user_id)    REFERENCES users (id)             ON DELETE CASCADE,
+    CONSTRAINT fk_comment_subscription_comment FOREIGN KEY (comment_id) REFERENCES community_comment (id) ON DELETE CASCADE
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci COMMENT = '댓글 구독(새 답글 알림)';
+
+-- 15. 복수 닉네임 프로필·방 전용 프로필·이력서 상세 (patches/20260705b_profiles.sql)
+CREATE TABLE IF NOT EXISTS user_nickname_profile (
+    id             BIGINT       NOT NULL AUTO_INCREMENT,
+    user_id        BIGINT       NOT NULL COMMENT '소유 계정(제재/신고/차단 귀속 단위)',
+    nickname       VARCHAR(30)  NOT NULL COMMENT '표시용 닉네임. 전역 UNIQUE',
+    avatar_file_id BIGINT       NULL COMMENT '아바타 파일(선택)',
+    bio            VARCHAR(200) NULL COMMENT '한 줄 소개',
+    is_default     TINYINT(1)   NOT NULL DEFAULT 0 COMMENT '기본 프로필 여부(계정당 1개)',
+    status         VARCHAR(20)  NOT NULL DEFAULT 'ACTIVE' COMMENT 'ACTIVE/HIDDEN',
+    created_at     DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at     DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    PRIMARY KEY (id),
+    UNIQUE KEY uk_user_nickname_profile_nickname (nickname),
+    KEY idx_user_nickname_profile_user (user_id, is_default DESC, created_at),
+    CONSTRAINT chk_user_nickname_profile_status CHECK (status IN ('ACTIVE', 'HIDDEN')),
+    CONSTRAINT fk_user_nickname_profile_user FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci COMMENT = '복수 닉네임 프로필(표시 계층 — 제재/신고/차단은 계정 단위)';
+
+CREATE TABLE IF NOT EXISTS conversation_member_profile (
+    conversation_id     BIGINT   NOT NULL,
+    user_id             BIGINT   NOT NULL,
+    nickname_profile_id BIGINT   NULL COMMENT '이 방에서 쓸 닉네임 프로필. NULL 이면 익명 참가',
+    anonymous           TINYINT(1) NOT NULL DEFAULT 0 COMMENT '익명 참가 여부',
+    updated_at          DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    PRIMARY KEY (conversation_id, user_id),
+    KEY idx_conversation_member_profile_profile (nickname_profile_id),
+    CONSTRAINT fk_conversation_member_profile_conversation FOREIGN KEY (conversation_id) REFERENCES collaboration_conversation (id) ON DELETE CASCADE,
+    CONSTRAINT fk_conversation_member_profile_user FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE,
+    CONSTRAINT fk_conversation_member_profile_nickname FOREIGN KEY (nickname_profile_id) REFERENCES user_nickname_profile (id) ON DELETE SET NULL
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci COMMENT = '채팅방 전용 닉네임 프로필 매핑(NULL=익명)';
+
+CREATE TABLE IF NOT EXISTS user_resume_detail (
+    user_id            BIGINT   NOT NULL,
+    education_json     JSON     NULL COMMENT '[{school, major, gpa, gpaScale, graduationStatus, startDate, endDate}]',
+    career_json        JSON     NULL COMMENT '[{company, role, employmentType, startDate, endDate, description}]',
+    certificate_json   JSON     NULL COMMENT '[{name, issuer, acquiredAt}]',
+    language_json      JSON     NULL COMMENT '[{test, score, acquiredAt}]',
+    award_json         JSON     NULL COMMENT '[{title, host, awardedAt, description}]',
+    activity_json      JSON     NULL COMMENT '[{title, organization, role, startDate, endDate, description}]',
+    skill_json         JSON     NULL COMMENT '["React","Spring",...]',
+    portfolio_json     JSON     NULL COMMENT '[{label, url}]',
+    desired_condition_json JSON NULL COMMENT '{jobCategoryLarge, jobCategoryMedium, employmentType, region, salaryMin, salaryMax, remote}',
+    created_at         DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at         DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    PRIMARY KEY (user_id),
+    CONSTRAINT fk_user_resume_detail_user FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci COMMENT = '이력서 상세 스펙(사람인/잡코리아식 — 분석 정확도용)';
+
+-- 16. 광고 (patches/20260705b_ads.sql)
+CREATE TABLE IF NOT EXISTS advertisement (
+    id              BIGINT        NOT NULL AUTO_INCREMENT,
+    title           VARCHAR(200)  NOT NULL COMMENT '광고 제목(관리자 식별·대체 텍스트)',
+    image_file_id   BIGINT        NULL COMMENT '광고 이미지 file_asset id(선택)',
+    link_url        VARCHAR(1000) NULL COMMENT '클릭 시 이동 URL',
+    placement       VARCHAR(30)   NOT NULL COMMENT '노출 위치. HOME_BANNER/FEED_INLINE/SIDEBAR/INTERSTITIAL',
+    target_platform VARCHAR(20)   NOT NULL DEFAULT 'ALL' COMMENT '타겟 플랫폼. WEB/APP/DESKTOP/ALL',
+    start_at        DATETIME      NULL COMMENT '게재 시작. NULL=제한 없음',
+    end_at          DATETIME      NULL COMMENT '게재 종료. NULL=제한 없음',
+    active          TINYINT(1)    NOT NULL DEFAULT 1 COMMENT '활성 여부',
+    priority        INT           NOT NULL DEFAULT 0 COMMENT '우선순위(높을수록 먼저)',
+    weight          INT           NOT NULL DEFAULT 1 COMMENT '동일 우선순위 가중 랜덤 비중',
+    impression_count BIGINT       NOT NULL DEFAULT 0 COMMENT '노출 누적',
+    click_count     BIGINT        NOT NULL DEFAULT 0 COMMENT '클릭 누적',
+    created_by      BIGINT        NULL COMMENT '등록 관리자 id',
+    created_at      DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at      DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    PRIMARY KEY (id),
+    KEY idx_advertisement_serve (placement, active, start_at, end_at),
+    KEY idx_advertisement_platform (target_platform),
+    CONSTRAINT chk_advertisement_placement CHECK (placement IN ('HOME_BANNER', 'FEED_INLINE', 'SIDEBAR', 'INTERSTITIAL')),
+    CONSTRAINT chk_advertisement_platform CHECK (target_platform IN ('WEB', 'APP', 'DESKTOP', 'ALL')),
+    CONSTRAINT fk_advertisement_image FOREIGN KEY (image_file_id) REFERENCES file_asset (id) ON DELETE SET NULL,
+    CONSTRAINT fk_advertisement_creator FOREIGN KEY (created_by) REFERENCES users (id) ON DELETE SET NULL
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci COMMENT = '광고(배치·플랫폼·기간·집계)';
 
 SET FOREIGN_KEY_CHECKS = 1;
 
