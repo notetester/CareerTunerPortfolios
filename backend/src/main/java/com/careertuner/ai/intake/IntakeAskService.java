@@ -152,6 +152,18 @@ public class IntakeAskService {
             String botText = (decidedMessage != null && !decidedMessage.isBlank())
                     ? decidedMessage : answer;
 
+            // ★(C1·통보) 이 턴에 지원 건이 새로/변경 확정됐으면 어느 건인지 코드가 명시 통보한다.
+            //   qwen3 최종 문장이 확정 사실을 자주 생략해(실측: "면접 모드는?"만 출력) 오확정을 사용자가
+            //   알아챌 방법이 없었다. ready 턴은 describe(plan)에 회사·직무가 이미 들어가므로 중복 제외.
+            //   (boundCaseId 는 아래 fork 의 migrateToFork 전이라 아직 이전 턴 기준값이다.)
+            if (!ready && slots.caseId() != null && !slots.caseId().equals(trace.boundCaseId())) {
+                String confirmedTitle = caseTitle(slots.caseId());
+                if (confirmedTitle != null) {
+                    botText = "지원 건을 \"" + confirmedTitle + "\" 로 정했어요. "
+                            + (botText == null ? "" : botText);
+                }
+            }
+
             // ★ 지원건 세션 fork: 이 턴에 지원 건이 새로 확정됐으면 새 conversationId 로 진입~confirm 구간을 옮긴다.
             Long effectiveConversationId =
                     maybeForkOnCaseConfirmed(conversationId, userId, slots.caseId());
@@ -205,24 +217,35 @@ public class IntakeAskService {
      * 텍스트로 case 를 답한 턴에서 qwen3 의 chooseCase 결과를 코드 매칭으로 교정한다(A-1 회귀 차단).
      * <ul>
      *   <li>칩 선택(selectedCaseId!=null)이면 이미 결정적으로 바인딩됐으니 건드리지 않는다.</li>
-     *   <li>이미 지원 건에 바인딩(fork)된 대화면 이건 case 선택 턴이 아니다(예: MODE 답변) — 스킵.</li>
      *   <li>qwen3 가 이 턴에 caseId 를 안 박았으면(침묵) 기존 b3 가드(caseAutoDefaulted)가 처리 — 스킵.</li>
+     *   <li>바인딩(fork)된 대화에서 qwen3 가 <b>같은</b> 건을 재확정한 턴(예: MODE 답변에 헛 chooseCase)은
+     *       전환이 아니다 — 스킵(기존 보호 유지).</li>
+     *   <li>바인딩된 대화에서 qwen3 가 <b>다른</b> 건을 박은 턴 = 케이스 전환 시도 — 여기도 재매칭을 태운다.
+     *       (C1 잔여 구멍: 종전엔 bound 무조건 스킵이라 "토스로 바꿔줘"→chooseCase(2) 오확정이 무검증 통과 —
+     *       9000231·9000234 실측.)</li>
      * </ul>
      * 위를 통과하면 qwen3 가 박은 id 를 버리고, 사용자 텍스트와 후보 companyName 을 매칭한다.
-     * 정확히 1건이면 그 id 로 덮어 확정, 0건/2건 이상이면 caseId 를 비워 다운스트림 CASE-ask 로 되돌린다(거짓 진행 차단).
+     * 정확히 1건이면 그 id 로 덮어 확정. 0건/2건 이상이면 — 신규 대화는 caseId 를 비워 CASE-ask 재노출,
+     * 바인딩된 대화는 근거 불명 전환을 취소하고 기존 건으로 되돌린다(세션 퇴행 방지).
      */
     private void reconcileTextCaseAnswer(Long userId, String message, Long selectedCaseId) {
-        if (selectedCaseId != null || trace.boundCaseId() != null || trace.snapshot().caseId() == null) {
-            return;
+        Long claimed = trace.snapshot().caseId();
+        Long bound = trace.boundCaseId();
+        if (selectedCaseId != null || (claimed == null && bound == null)) {
+            return;  // 칩 확정 턴 / 신규 대화에서 qwen3 침묵(b3 가드가 CASE-ask 처리)
         }
+        boolean switchClaimed = claimed != null && !claimed.equals(bound);
+        // 바인딩 대화에서 qwen3 가 전환을 안 박은 턴(추측 거부 후 포기·침묵 — 실측 chooseCase(4) 거부→포기)도
+        // 발화가 다른 건을 유일 지목하면 전환으로 본다. 매칭 0/2건+ 인 무고 턴(MODE 답변 등)은 아래서 no-op.
         List<ApplicationCaseResponse> owned = safeListCases(userId);
         List<ApplicationCaseResponse> matched = matchCasesByText(message, owned);
         if (matched.size() == 1) {
             trace.recordFetchedCases(owned);            // chooseCase 화이트리스트·세션 title 백업용
             trace.confirmCase(matched.get(0).id());     // qwen3 의 (대개 틀린) id 를 코드 매칭 결과로 덮는다.
-        } else {
-            trace.confirmCase(null);                    // 모호/불일치 → 비워서 CASE-ask 재노출.
+        } else if (switchClaimed) {
+            trace.confirmCase(bound);                   // 신규(null)=CASE-ask 재노출 / 바인딩=근거불명 전환 취소.
         }
+        // matched!=1 && !switchClaimed(claimed==bound 무고 턴): 건드리지 않는다 — 기존 확정 유지.
     }
 
     /**
