@@ -157,8 +157,15 @@ public class ApplicationCaseExtractionWorker {
                 null);
     }
 
+    /** 선커밋(짧은 트랜잭션) 결과 — LLM 파이프라인은 커밋 뒤 트랜잭션 밖에서 이 값으로 실행한다. */
+    private record PipelineHandoff(Long jobPostingId, Integer jobPostingRevision, String postingText) {
+    }
+
     private void completeSucceeded(ApplicationCaseExtraction extraction, ExtractionResult result) {
-        transactionTemplate.execute(status -> {
+        // 짧은 트랜잭션: SUCCEEDED 마킹 + case 메타 + 알림까지 선커밋 → 타 커넥션(챗봇 폴링·목록 조회)에
+        // 즉시 가시화. LLM 파이프라인(직무·기업분석 등 80~120초)은 커밋 뒤 트랜잭션 밖에서 실행 —
+        // 트랜잭션이 LLM 시간 동안 열려 있어 SUCCEEDED 가 ~2분 불가시하던 문제(실측 case 65·66) 해소.
+        PipelineHandoff handoff = transactionTemplate.execute(status -> {
             if (extractionMapper.findRunningExtractionForUpdate(extraction.getId()) == null) {
                 return null;
             }
@@ -213,15 +220,22 @@ public class ApplicationCaseExtractionWorker {
                         FEATURE_JOB_POSTING_METADATA,
                         result.metadata().usage());
             }
-            autoPipelineService.runAfterExtractionPass(
-                    extraction.getUserId(),
-                    extraction.getApplicationCaseId(),
-                    completedJobPostingId,
-                    completedJobPostingRevision,
-                    completedPostingText);
             notificationService.notify(successNotification(extraction));
-            return null;
+            return new PipelineHandoff(completedJobPostingId, completedJobPostingRevision, completedPostingText);
         });
+        if (handoff == null) {
+            // 소유권 상실(stale)·마킹 경합·review-required — 기존과 동일하게 파이프라인 미실행.
+            return;
+        }
+        // 파이프라인 실패 처리는 runAfterExtractionPass 내부 catch(상태 복원 + FAILED usage log) 그대로 —
+        // 분리 전에도 내부 catch 여서 전체 롤백이 아니었고(부분 산출물 커밋), 분리 후에도 같은 의미론이다.
+        // 무트랜잭션 실행이라 내부의 ANALYZING→READY 전이가 이제 단계별로 실시간 노출된다.
+        autoPipelineService.runAfterExtractionPass(
+                extraction.getUserId(),
+                extraction.getApplicationCaseId(),
+                handoff.jobPostingId(),
+                handoff.jobPostingRevision(),
+                handoff.postingText());
     }
 
     private void completeFailed(ApplicationCaseExtraction extraction, RuntimeException ex) {

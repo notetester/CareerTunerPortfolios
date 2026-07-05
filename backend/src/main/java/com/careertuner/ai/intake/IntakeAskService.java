@@ -85,7 +85,22 @@ public class IntakeAskService {
             // 첫 인테이크 턴이면 "진입 직전 memory 메시지 수"를 fork 구간 시작점으로 1회 기록(B-0 확정).
             trace.recordEntryOffsetIfAbsent(() -> memoryStore.getMessages(conversationId).size());
 
-            String answer = MessageSanitizer.stripMarkdown(agent.chat(conversationId, message));
+            // 칩/버튼(selectedCaseId·selectedModeCode) 선택은 아래 applyExplicitSelections 가 코드로 결정적 바인딩하므로
+            // qwen3 없이도 확정 가능하다. 복원 세션은 메모리 윈도우가 무거워(tool-call/result 누적) qwen3 가 tool 루프
+            // 상한(IntakeAgentConfig.MAX_TOOL_CALLS=3)을 넘겨 던지는데, 그때 명시 선택 턴까지 범용 에러로 죽는 게 이 버그다.
+            // → 명시 선택이 있으면 LLM 실패를 흡수하고 결정적 경로로 계속한다. 텍스트 자유발화(선택 없음)는 이해가 필요해
+            //   되살릴 수 없으므로 그대로 재던져 기존 폴백(catch)을 탄다.
+            boolean explicitSelection = selectedCaseId != null || selectedModeCode != null;
+            String answer = null;
+            try {
+                answer = MessageSanitizer.stripMarkdown(agent.chat(conversationId, message));
+            } catch (RuntimeException agentEx) {
+                if (!explicitSelection) {
+                    throw agentEx;
+                }
+                log.warn("인테이크 에이전트 실패 — 명시 선택(caseId={}, mode={})은 결정적으로 진행: {}",
+                        selectedCaseId, selectedModeCode, agentEx.getMessage());
+            }
 
             // ★(OptionA) 칩/버튼 선택 결정적 바인딩 — agent.chat "뒤". qwen3 가 같은 턴에 chooseCase(임의 id)/chooseMode 를
             //   호출해 trace 를 잘못 박아도(실측: 칩 클릭 텍스트에 qwen3 가 chooseCase(1)=엉뚱한 건 호출), F 가 마지막에
