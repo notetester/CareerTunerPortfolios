@@ -45,6 +45,7 @@ import AdminNotificationPreferences from "./features/notification-preferences/pa
 import AdminAdsPage from "./features/ads/pages/AdminAdsPage";
 // dev: 보안 운영 센터(합체 유지)
 import { AdminSecurityOpsPage } from "./features/security-ops/pages/AdminSecurityOpsPage";
+import { AdminActivityLogsPage } from "./features/activity-logs/pages/AdminActivityLogsPage";
 
 export const adminRoutes = [
   { path: "admin", Component: AdminDashboardPage },
@@ -67,6 +68,7 @@ export const adminRoutes = [
   { path: "admin/security", Component: AdminSecurityOpsPage },
   { path: "admin/audit/security", Component: AdminSecurityAuditPage },
   { path: "admin/audit/email", Component: AdminEmailAuditPage },
+  { path: "admin/audit/activity", Component: AdminActivityLogsPage },
   { path: "admin/profiles", Component: AdminProfilesPage },
   { path: "admin/consents", Component: AdminConsentsPage },
   { path: "admin/super", Component: AdminSuperAdminPage },

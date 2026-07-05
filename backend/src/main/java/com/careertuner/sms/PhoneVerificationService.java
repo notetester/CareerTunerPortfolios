@@ -33,6 +33,7 @@ public class PhoneVerificationService {
     private final SmsProviderRouter providerRouter;
     private final SmsOtpMapper smsOtpMapper;
     private final UserMapper userMapper;
+    private final com.careertuner.activitylog.service.SecurityHistoryService securityHistoryService;
 
     /** 전화번호 인증 코드를 발송한다. Mock 이면 devCode 를 함께 반환한다. */
     @Transactional
@@ -66,6 +67,8 @@ public class PhoneVerificationService {
         if (!sendResult.success()) {
             throw new BusinessException(ErrorCode.INTERNAL_ERROR, "인증 문자 발송에 실패했습니다.");
         }
+
+        securityHistoryService.record("PHONE_VERIFY", "ISSUE", userId, true, phone, null);
 
         // 실 발송이면 devCode 미포함, Mock(데모)이면 코드 노출.
         String devCode = sendResult.realSending() ? null : code;
@@ -123,6 +126,7 @@ public class PhoneVerificationService {
             throw new BusinessException(ErrorCode.CONFLICT, "이미 다른 계정에서 사용 중인 전화번호입니다.");
         }
         smsOtpMapper.markVerified(otp.getId());
+        securityHistoryService.record("PHONE_VERIFY", "COMPLETE", userId, true, phone, null);
         return new OtpVerifyResult(true, phone);
     }
 

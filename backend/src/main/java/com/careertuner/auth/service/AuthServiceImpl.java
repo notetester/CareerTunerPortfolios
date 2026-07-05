@@ -51,6 +51,7 @@ public class AuthServiceImpl implements AuthService {
     private final EmailService emailService;
     private final SocialOAuthService socialOAuthService;
     private final CareerTunerProperties props;
+    private final com.careertuner.activitylog.service.SecurityHistoryService securityHistoryService;
 
     @Override
     @Transactional
@@ -182,6 +183,7 @@ public class AuthServiceImpl implements AuthService {
         if (ev.getUserId() != null) {
             userMapper.markEmailVerified(ev.getUserId());
         }
+        securityHistoryService.record("EMAIL_VERIFY", "COMPLETE", ev.getUserId(), true, null, null);
         return true;
     }
 
@@ -208,6 +210,7 @@ public class AuthServiceImpl implements AuthService {
         recordLoginHistory(user.getId(), "PASSWORD_RESET", "LOCAL", "EMAIL", email, true, null, context);
         EmailVerification verification = issueEmailVerification(user, "RESET_PW", 1);
         emailService.sendPasswordResetEmail(user.getEmail(), verification.getToken());
+        securityHistoryService.record("RESET_PASSWORD", "REQUEST", user.getId(), true, email, null);
     }
 
     @Override
@@ -226,6 +229,7 @@ public class AuthServiceImpl implements AuthService {
         userMapper.updatePassword(user.getId(), passwordEncoder.encode(request.newPassword()));
         authMapper.revokeAllForUser(user.getId());
         recordLoginHistory(user.getId(), "PASSWORD_RESET", "LOCAL", "EMAIL", user.getEmail(), true, null, context);
+        securityHistoryService.record("RESET_PASSWORD", "COMPLETE", user.getId(), true, user.getEmail(), null);
     }
 
     @Override

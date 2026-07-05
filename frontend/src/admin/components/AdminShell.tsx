@@ -124,6 +124,7 @@ const NAV_GROUPS: NavGroup[] = [
       { key: "company-applications", label: "기업 신청 관리", icon: Building2, href: "/admin/company/applications", permissionGroups: ["MEMBER_ADMIN"] },
       { key: "security-audit", label: "로그인/보안 감사", icon: LockKeyhole, href: "/admin/audit/security", permissionGroups: ["AUDIT_ADMIN"] },
       { key: "email-audit", label: "이메일 감사", icon: MailCheck, href: "/admin/audit/email", permissionGroups: ["AUDIT_ADMIN"] },
+      { key: "activity-logs", label: "활동 로그(전수)", icon: Activity, href: "/admin/audit/activity", permissionGroups: ["AUDIT_ADMIN"] },
     ],
   },
   {
