@@ -13,6 +13,11 @@ export type PostStatus = "PUBLISHED" | "HIDDEN" | "DELETED" | "PENDING";
 export interface PublicAuthor {
   id: number;
   name: string;
+  /**
+   * 표시명 산출에 사용한 닉네임 프로필 id(옵션).
+   * 비익명 작성자만 값이 있고(없으면 계정 기본 프로필/계정명으로 표시), 익명이면 null.
+   */
+  nicknameProfileId?: number | null;
   isAnonymous: boolean;
 }
 

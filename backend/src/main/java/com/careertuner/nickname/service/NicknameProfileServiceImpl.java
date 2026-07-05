@@ -1,6 +1,11 @@
 package com.careertuner.nickname.service;
 
+import java.util.Collection;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
@@ -8,10 +13,12 @@ import org.springframework.transaction.annotation.Transactional;
 
 import com.careertuner.common.exception.BusinessException;
 import com.careertuner.common.exception.ErrorCode;
+import com.careertuner.nickname.domain.AccountNameRow;
 import com.careertuner.nickname.domain.ConversationMemberProfile;
 import com.careertuner.nickname.domain.NicknameProfile;
 import com.careertuner.nickname.dto.ConversationProfileRequest;
 import com.careertuner.nickname.dto.ConversationProfileResponse;
+import com.careertuner.nickname.dto.DisplayNameQuery;
 import com.careertuner.nickname.dto.DisplayNameResponse;
 import com.careertuner.nickname.dto.NicknameProfileRequest;
 import com.careertuner.nickname.dto.NicknameProfileResponse;
@@ -192,6 +199,78 @@ public class NicknameProfileServiceImpl implements NicknameProfileService {
                     defaultProfile.getAvatarFileId(), false);
         }
         String accountName = mapper.findAccountName(accountId);
+        return new DisplayNameResponse(accountId, null,
+                accountName != null ? accountName : "회원", null, false);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public Map<DisplayNameQuery, DisplayNameResponse> bulkResolveDisplayNames(Collection<DisplayNameQuery> queries) {
+        if (queries == null || queries.isEmpty()) {
+            return Map.of();
+        }
+        // 중복 키 제거 — 같은 (계정,프로필) 을 여러 콘텐츠가 참조할 수 있다.
+        Set<DisplayNameQuery> distinct = new HashSet<>(queries);
+        Set<Long> accountIds = new HashSet<>();
+        Set<Long> profileIds = new HashSet<>();
+        for (DisplayNameQuery q : distinct) {
+            if (q.accountId() != null) {
+                accountIds.add(q.accountId());
+            }
+            if (q.profileId() != null) {
+                profileIds.add(q.profileId());
+            }
+        }
+
+        // 1) 지정 프로필 벌크 조회(ACTIVE) — 소유 계정 검증은 아래 해석 단계에서 한다.
+        Map<Long, NicknameProfile> profilesById = new HashMap<>();
+        if (!profileIds.isEmpty()) {
+            for (NicknameProfile p : mapper.findActiveByIds(profileIds)) {
+                profilesById.put(p.getId(), p);
+            }
+        }
+        // 2) 계정별 기본 프로필 벌크 조회(폴백 1순위).
+        Map<Long, NicknameProfile> defaultsByAccount = new HashMap<>();
+        if (!accountIds.isEmpty()) {
+            for (NicknameProfile p : mapper.findDefaultsByUserIds(accountIds)) {
+                defaultsByAccount.putIfAbsent(p.getUserId(), p);
+            }
+        }
+        // 3) 계정명 벌크 조회(폴백 2순위).
+        Map<Long, String> accountNames = new HashMap<>();
+        if (!accountIds.isEmpty()) {
+            for (AccountNameRow row : mapper.findAccountNames(accountIds)) {
+                accountNames.put(row.getUserId(), row.getName());
+            }
+        }
+
+        Map<DisplayNameQuery, DisplayNameResponse> result = new HashMap<>(distinct.size());
+        for (DisplayNameQuery q : distinct) {
+            result.put(q, resolveFromMaps(q, profilesById, defaultsByAccount, accountNames));
+        }
+        return result;
+    }
+
+    /** 벌크 조회 결과 맵만으로 단건 규칙(resolveDisplayName)과 동일하게 해석한다(추가 쿼리 없음). */
+    private DisplayNameResponse resolveFromMaps(DisplayNameQuery q,
+                                                Map<Long, NicknameProfile> profilesById,
+                                                Map<Long, NicknameProfile> defaultsByAccount,
+                                                Map<Long, String> accountNames) {
+        Long accountId = q.accountId();
+        if (q.profileId() != null) {
+            NicknameProfile profile = profilesById.get(q.profileId());
+            // 지정 프로필이 그 계정 소유 ACTIVE 일 때만 그 표시 계층 사용(귀속은 계정 단위).
+            if (profile != null && profile.getUserId().equals(accountId) && "ACTIVE".equals(profile.getStatus())) {
+                return new DisplayNameResponse(accountId, profile.getId(), profile.getNickname(),
+                        profile.getAvatarFileId(), false);
+            }
+        }
+        NicknameProfile defaultProfile = defaultsByAccount.get(accountId);
+        if (defaultProfile != null) {
+            return new DisplayNameResponse(accountId, defaultProfile.getId(), defaultProfile.getNickname(),
+                    defaultProfile.getAvatarFileId(), false);
+        }
+        String accountName = accountNames.get(accountId);
         return new DisplayNameResponse(accountId, null,
                 accountName != null ? accountName : "회원", null, false);
     }

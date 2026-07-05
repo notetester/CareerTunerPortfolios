@@ -81,4 +81,8 @@
     <update id="updatePassword">
         UPDATE users SET password = #{password}, password_enabled = 1 WHERE id = #{id}
     </update>
+
+    <update id="markPhoneVerified">
+        UPDATE users SET phone = #{phone}, phone_verified = 1 WHERE id = #{id}
+    </update>
 </mapper>

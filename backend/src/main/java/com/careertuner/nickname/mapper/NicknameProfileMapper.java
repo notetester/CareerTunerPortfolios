@@ -1,10 +1,12 @@
 package com.careertuner.nickname.mapper;
 
+import java.util.Collection;
 import java.util.List;
 
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 
+import com.careertuner.nickname.domain.AccountNameRow;
 import com.careertuner.nickname.domain.ConversationMemberProfile;
 import com.careertuner.nickname.domain.NicknameProfile;
 
@@ -22,6 +24,15 @@ public interface NicknameProfileMapper {
 
     /** 계정의 기본(is_default=1) 프로필. 없으면 null. */
     NicknameProfile findDefaultByUserId(Long userId);
+
+    /** 표시명 벌크 해석용 — ACTIVE 프로필을 id 집합으로 한 번에 조회(N+1 방지). */
+    List<NicknameProfile> findActiveByIds(@Param("ids") Collection<Long> ids);
+
+    /** 표시명 벌크 해석용 — 계정별 기본(우선) 프로필을 한 번에 조회. 계정당 1행. */
+    List<NicknameProfile> findDefaultsByUserIds(@Param("userIds") Collection<Long> userIds);
+
+    /** 표시명 벌크 해석용 — 계정명(users.name) 폴백을 한 번에 조회. */
+    List<AccountNameRow> findAccountNames(@Param("userIds") Collection<Long> userIds);
 
     int countByUserId(Long userId);
 

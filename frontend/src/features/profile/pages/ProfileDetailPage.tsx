@@ -3,6 +3,7 @@ import { FileText, IdCard, UserCircle2 } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/app/components/ui/tabs";
 import { AccountInfoCard } from "../components/AccountInfoCard";
 import { NicknameProfileManager } from "../components/NicknameProfileManager";
+import { PhoneVerificationCard } from "../components/PhoneVerificationCard";
 import { ResumeDetailForm } from "../components/ResumeDetailForm";
 
 /**
@@ -43,8 +44,9 @@ export function ProfileDetailPage() {
             </TabsTrigger>
           </TabsList>
 
-          <TabsContent value="account" className="mt-5">
+          <TabsContent value="account" className="mt-5 space-y-5">
             <AccountInfoCard />
+            <PhoneVerificationCard />
           </TabsContent>
           <TabsContent value="nicknames" className="mt-5">
             <NicknameProfileManager />

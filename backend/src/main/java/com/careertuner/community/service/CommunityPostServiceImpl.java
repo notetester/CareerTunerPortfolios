@@ -5,6 +5,7 @@ import java.time.LocalDateTime;
 import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 import org.springframework.context.ApplicationEventPublisher;
@@ -35,6 +36,9 @@ import com.careertuner.community.mapper.ReactionMapper;
 import com.careertuner.community.moderation.event.InterviewExtractRequiredEvent;
 import com.careertuner.community.moderation.event.PostModerationRequiredEvent;
 import com.careertuner.community.moderation.event.PostTagRequiredEvent;
+import com.careertuner.nickname.dto.DisplayNameQuery;
+import com.careertuner.nickname.dto.DisplayNameResponse;
+import com.careertuner.nickname.service.NicknameProfileService;
 import com.careertuner.privacy.service.PrivacyPolicyService;
 import com.careertuner.privacy.service.PrivacySurfaces;
 
@@ -59,18 +63,69 @@ public class CommunityPostServiceImpl implements CommunityPostService {
     private final ObjectMapper objectMapper;
     private final ApplicationEventPublisher eventPublisher;
     private final PrivacyPolicyService privacyPolicyService;
+    private final NicknameProfileService nicknameProfileService;
+    private final PersonalizedFeedService personalizedFeedService;
+
+    /** 개인화 피드 정렬 키 — 이 값이면 PersonalizedFeedService(7:3 혼합)로 위임한다. */
+    private static final String SORT_PERSONALIZED = "personalized";
 
     @Override
     public PostPageResponse getPosts(String category, String keyword, String sort, int page, int size, Long viewerId) {
+        // 개인화 정렬 — 검색어가 없을 때만 7:3 혼합 피드로 위임(키워드 검색은 기존 LIKE 경로 유지).
+        if (SORT_PERSONALIZED.equals(sort) && (keyword == null || keyword.isBlank())) {
+            return personalizedFeed(category, page, size, viewerId);
+        }
         int offset = page * size;
         String status = PostStatus.PUBLISHED.name();
         String kw = (keyword == null || keyword.isBlank()) ? null : keyword.trim();
         List<CommunityPost> posts = filterBlockedAuthors(postMapper.findAll(category, status, sort, kw, offset, size), viewerId);
         int total = postMapper.countAll(category, status, kw);
+        // 비익명 작성자 표시명을 닉네임 프로필로 벌크 해석(N+1 방지). 익명 글은 해석 대상에서 제외.
+        Map<DisplayNameQuery, DisplayNameResponse> resolved = resolveAuthorNames(posts);
         return new PostPageResponse(
-                posts.stream().map(this::toListResponse).toList(),
+                posts.stream().map(post -> toListResponse(post, resolved)).toList(),
                 total, page, size
         );
+    }
+
+    /**
+     * 개인화 7:3 혼합 피드. PersonalizedFeedService 가 만든 블렌디드 순서를 그대로 유지한 채
+     * (재정렬하지 않음) 차단 작성자 필터 → 표시명 벌크 해석만 얹어 응답한다.
+     * 카테고리 필터는 서비스 계층 정규화(null/blank → null)를 따른다.
+     */
+    private PostPageResponse personalizedFeed(String category, int page, int size, Long viewerId) {
+        String cat = (category == null || category.isBlank()) ? null : category;
+        PersonalizedFeedService.FeedPage feed = personalizedFeedService.blendedFeed(viewerId, cat, page, size);
+        // 차단 작성자 제거는 순서를 보존한다(stream filter). 총계는 피드 total 을 그대로 사용.
+        List<CommunityPost> posts = filterBlockedAuthors(feed.posts(), viewerId);
+        Map<DisplayNameQuery, DisplayNameResponse> resolved = resolveAuthorNames(posts);
+        return new PostPageResponse(
+                posts.stream().map(post -> toListResponse(post, resolved)).toList(),
+                feed.total(), page, size
+        );
+    }
+
+    /** 목록의 비익명 작성자 (userId, nicknameProfileId) 를 모아 표시명을 한 번에 해석한다. */
+    private Map<DisplayNameQuery, DisplayNameResponse> resolveAuthorNames(List<CommunityPost> posts) {
+        Set<DisplayNameQuery> queries = new HashSet<>();
+        for (CommunityPost post : posts) {
+            if (!post.isAnonymous()) {
+                queries.add(new DisplayNameQuery(post.getUserId(), post.getNicknameProfileId()));
+            }
+        }
+        return nicknameProfileService.bulkResolveDisplayNames(queries);
+    }
+
+    /** 비익명 작성자 표시명·프로필 id 를 담은 AuthorDto 생성. 익명은 마스킹 유지(닉네임 프로필로 덮지 않는다). */
+    private PostListResponse.AuthorDto authorDto(CommunityPost post,
+                                                 Map<DisplayNameQuery, DisplayNameResponse> resolved) {
+        if (post.isAnonymous()) {
+            return new PostListResponse.AuthorDto(null, "익명", null, true);
+        }
+        DisplayNameResponse dn = resolved.get(new DisplayNameQuery(post.getUserId(), post.getNicknameProfileId()));
+        String name = dn != null ? dn.displayName() : post.getUserName();
+        Long profileId = dn != null ? dn.nicknameProfileId() : post.getNicknameProfileId();
+        return new PostListResponse.AuthorDto(post.getUserId(), name, profileId, false);
     }
 
     /**
@@ -176,6 +231,7 @@ public class CommunityPostServiceImpl implements CommunityPostService {
                 .status(PostStatus.PUBLISHED.name())
                 .tagsJson(toJson(request.tags()))
                 .anonymous(request.anonymous())
+                .nicknameProfileId(normalizeProfileId(userId, request.anonymous(), request.nicknameProfileId()))
                 .build();
 
         postMapper.insert(post);
@@ -215,6 +271,7 @@ public class CommunityPostServiceImpl implements CommunityPostService {
         post.setDifficulty(request.difficulty());
         post.setTagsJson(toJson(request.tags()));
         post.setAnonymous(request.anonymous());
+        post.setNicknameProfileId(normalizeProfileId(userId, request.anonymous(), request.nicknameProfileId()));
         postMapper.update(post);
         applyUserTags(postId, request.tags());
 
@@ -271,7 +328,8 @@ public class CommunityPostServiceImpl implements CommunityPostService {
         postMapper.upsertInterviewReview(review);
     }
 
-    private PostListResponse toListResponse(CommunityPost post) {
+    private PostListResponse toListResponse(CommunityPost post,
+                                            Map<DisplayNameQuery, DisplayNameResponse> resolved) {
         PostCategory cat = PostCategory.valueOf(post.getCategory());
         return new PostListResponse(
                 post.getId(),
@@ -280,17 +338,25 @@ public class CommunityPostServiceImpl implements CommunityPostService {
                 post.getTitle(),
                 post.getContent(),
                 parseJsonArray(post.getTagsJson()),
-                new PostListResponse.AuthorDto(
-                        post.isAnonymous() ? null : post.getUserId(),
-                        post.isAnonymous() ? "익명" : post.getUserName(),
-                        post.isAnonymous()
-                ),
+                authorDto(post, resolved),
                 toStatsDto(post),
                 post.getStatus(),
                 post.getCreatedAt(),
                 post.getCompanyName(),
                 post.getJobTitle()
         );
+    }
+
+    /** 단건(상세) 작성자 표시명 해석 — 목록의 authorDto 와 동일 규칙을 단일 키로 처리. */
+    private PostListResponse.AuthorDto authorDto(CommunityPost post) {
+        if (post.isAnonymous()) {
+            return new PostListResponse.AuthorDto(null, "익명", null, true);
+        }
+        DisplayNameResponse dn =
+                nicknameProfileService.resolveDisplayName(post.getUserId(), post.getNicknameProfileId());
+        String name = dn != null ? dn.displayName() : post.getUserName();
+        Long profileId = dn != null ? dn.nicknameProfileId() : post.getNicknameProfileId();
+        return new PostListResponse.AuthorDto(post.getUserId(), name, profileId, false);
     }
 
     private static PostListResponse.StatsDto toStatsDto(CommunityPost post) {
@@ -330,11 +396,7 @@ public class CommunityPostServiceImpl implements CommunityPostService {
                 post.getTitle(),
                 post.getContent(),
                 parseJsonArray(post.getTagsJson()),
-                new PostListResponse.AuthorDto(
-                        post.isAnonymous() ? null : post.getUserId(),
-                        post.isAnonymous() ? "익명" : post.getUserName(),
-                        post.isAnonymous()
-                ),
+                authorDto(post),
                 toStatsDto(post),
                 post.getStatus(),
                 post.getCreatedAt(),
@@ -363,11 +425,7 @@ public class CommunityPostServiceImpl implements CommunityPostService {
                 post.getTitle(),
                 BLOCKED_POST_TOMBSTONE,
                 Collections.emptyList(),
-                new PostListResponse.AuthorDto(
-                        post.isAnonymous() ? null : post.getUserId(),
-                        post.isAnonymous() ? "익명" : post.getUserName(),
-                        post.isAnonymous()
-                ),
+                authorDto(post),
                 toStatsDto(post),
                 post.getStatus(),
                 post.getCreatedAt(),
@@ -413,6 +471,19 @@ public class CommunityPostServiceImpl implements CommunityPostService {
                 tagMapper.incrementUsageCount(tagId);
             }
         }
+    }
+
+    /**
+     * 저장할 닉네임 프로필 id 를 정규화한다.
+     * 익명 작성이거나 profileId 가 없으면 null. 지정한 프로필이 작성자 소유 ACTIVE 가 아니면
+     * (해석 결과가 다른 프로필/계정명으로 폴백) 저장하지 않고 null 로 둔다(위조 profileId 저장 방지).
+     */
+    private Long normalizeProfileId(Long userId, boolean anonymous, Long profileId) {
+        if (anonymous || profileId == null) {
+            return null;
+        }
+        DisplayNameResponse dn = nicknameProfileService.resolveDisplayName(userId, profileId);
+        return dn != null && profileId.equals(dn.nicknameProfileId()) ? profileId : null;
     }
 
     private String toJson(List<String> list) {

@@ -15,6 +15,7 @@ import static org.mockito.Mockito.when;
 import java.time.LocalDateTime;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 import org.junit.jupiter.api.BeforeEach;
@@ -41,6 +42,7 @@ import com.careertuner.collaboration.dto.InviteMembersRequest;
 import com.careertuner.collaboration.dto.JoinConversationRequest;
 import com.careertuner.collaboration.dto.SendMessageRequest;
 import com.careertuner.collaboration.mapper.CollaborationMapper;
+import com.careertuner.nickname.service.NicknameProfileService;
 import com.careertuner.common.exception.BusinessException;
 import com.careertuner.common.exception.ErrorCode;
 import com.careertuner.file.domain.FileAsset;
@@ -62,9 +64,10 @@ class CollaborationServiceImplTest {
     private final FileService fileService = mock(FileService.class);
     private final PasswordEncoder passwordEncoder = mock(PasswordEncoder.class);
     private final PrivacyPolicyService privacyPolicyService = mock(PrivacyPolicyService.class);
+    private final NicknameProfileService nicknameProfileService = mock(NicknameProfileService.class);
     private final CollaborationServiceImpl service =
             new CollaborationServiceImpl(mapper, notificationService, notificationPreferenceService,
-                    fileAssetMapper, fileService, passwordEncoder, privacyPolicyService);
+                    fileAssetMapper, fileService, passwordEncoder, privacyPolicyService, nicknameProfileService);
 
     /**
      * 개인 차단 정책 기본 스텁 — 전부 허용.
@@ -78,6 +81,8 @@ class CollaborationServiceImplTest {
         when(privacyPolicyService.isConversationBlocked(any(), any())).thenReturn(false);
         when(privacyPolicyService.blockedAuthorsAmong(any(), any(), any())).thenReturn(Set.of());
         when(privacyPolicyService.listConversationBlocks(any())).thenReturn(List.of());
+        // 표시명 해석은 빈 맵으로 스텁 → 발신자는 저장된 senderName 으로 폴백(기존 단언 유지).
+        when(nicknameProfileService.bulkResolveDisplayNames(any())).thenReturn(Map.of());
     }
 
     @Test

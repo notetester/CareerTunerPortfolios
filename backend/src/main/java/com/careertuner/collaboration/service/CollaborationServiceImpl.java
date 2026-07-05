@@ -1,6 +1,7 @@
 package com.careertuner.collaboration.service;
 
 import java.time.LocalDateTime;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -57,6 +58,9 @@ import com.careertuner.common.exception.ErrorCode;
 import com.careertuner.file.domain.FileAsset;
 import com.careertuner.file.mapper.FileAssetMapper;
 import com.careertuner.file.service.FileService;
+import com.careertuner.nickname.dto.DisplayNameQuery;
+import com.careertuner.nickname.dto.DisplayNameResponse;
+import com.careertuner.nickname.service.NicknameProfileService;
 import com.careertuner.notification.domain.Notification;
 import com.careertuner.notification.service.NotificationPreferenceService;
 import com.careertuner.notification.service.NotificationService;
@@ -102,6 +106,7 @@ public class CollaborationServiceImpl implements CollaborationService {
     private final FileService fileService;
     private final PasswordEncoder passwordEncoder;
     private final PrivacyPolicyService privacyPolicyService;
+    private final NicknameProfileService nicknameProfileService;
 
     @Override
     public List<CollaborationUserResponse> searchUsers(Long userId, String keyword, int limit) {
@@ -456,12 +461,14 @@ public class CollaborationServiceImpl implements CollaborationService {
         Map<Long, LocalDateTime> presenceByOwner = desktopPresenceOf(attachmentRowsByMessage.values().stream()
                 .flatMap(List::stream)
                 .toList());
+        // 비익명 발신자 표시명을 방 전용 닉네임 프로필/기본 프로필로 벌크 해석(N+1 방지).
+        Map<DisplayNameQuery, DisplayNameResponse> resolvedSenders = resolveSenderNames(messages);
         List<MessageResponse> responses = messages.stream()
                 .map(message -> blockedSenders.contains(message.getSenderId())
-                        ? toBlockedMessageResponse(message, userId)
+                        ? toBlockedMessageResponse(message, userId, resolvedSenders)
                         : toMessageResponse(message, userId,
                                 attachmentRowsByMessage.getOrDefault(message.getId(), List.of()),
-                                presenceByOwner))
+                                presenceByOwner, resolvedSenders))
                 .toList();
         Long latestId = mapper.findLatestMessageId(conversationId);
         if (latestId != null) {
@@ -1044,12 +1051,14 @@ public class CollaborationServiceImpl implements CollaborationService {
 
     private MessageResponse toMessageResponse(CollaborationMessage message, Long viewerId) {
         List<MessageAttachmentRow> attachmentRows = mapper.findAttachmentsByMessageId(message.getId());
-        return toMessageResponse(message, viewerId, attachmentRows, desktopPresenceOf(attachmentRows));
+        return toMessageResponse(message, viewerId, attachmentRows, desktopPresenceOf(attachmentRows),
+                resolveSenderNames(List.of(message)));
     }
 
     private MessageResponse toMessageResponse(CollaborationMessage message, Long viewerId,
                                               List<MessageAttachmentRow> attachmentRows,
-                                              Map<Long, LocalDateTime> presenceByOwner) {
+                                              Map<Long, LocalDateTime> presenceByOwner,
+                                              Map<DisplayNameQuery, DisplayNameResponse> resolvedSenders) {
         List<MessageAttachmentResponse> attachments = attachmentRows.stream()
                 .map(row -> toAttachmentResponse(row, presenceByOwner))
                 .toList();
@@ -1059,7 +1068,7 @@ public class CollaborationServiceImpl implements CollaborationService {
         return new MessageResponse(
                 message.getId(),
                 message.getConversationId(),
-                new UserBriefResponse(message.getSenderId(), message.getSenderName(), message.getSenderEmail()),
+                senderBrief(message, resolvedSenders),
                 viewerId.equals(message.getSenderId()),
                 message.getKind(),
                 message.getContent(),
@@ -1073,11 +1082,12 @@ public class CollaborationServiceImpl implements CollaborationService {
      * 차단 발신자 메시지 톰스톤 — 본문은 안내 문구로 교체, 첨부/공고는 비운다.
      * (첨부·공고 조회 자체를 생략해 차단 콘텐츠가 응답에 실리지 않게 한다.)
      */
-    private MessageResponse toBlockedMessageResponse(CollaborationMessage message, Long viewerId) {
+    private MessageResponse toBlockedMessageResponse(CollaborationMessage message, Long viewerId,
+                                                     Map<DisplayNameQuery, DisplayNameResponse> resolvedSenders) {
         return new MessageResponse(
                 message.getId(),
                 message.getConversationId(),
-                new UserBriefResponse(message.getSenderId(), message.getSenderName(), message.getSenderEmail()),
+                senderBrief(message, resolvedSenders),
                 viewerId.equals(message.getSenderId()),
                 message.getKind(),
                 BLOCKED_MESSAGE_TOMBSTONE,
@@ -1085,6 +1095,36 @@ public class CollaborationServiceImpl implements CollaborationService {
                 List.of(),
                 message.getCreatedAt(),
                 true);
+    }
+
+    /**
+     * 발신자 표시 정보(UserBriefResponse) 해석.
+     *  - 방 익명 참가(cm.anonymous=1): 방 전용 닉네임(room_nickname) → 없으면 "익명".
+     *    익명성 보호를 위해 계정 id·이메일은 노출하지 않는다(id=null, email=null).
+     *  - 그 외: 방 전용 닉네임 프로필(conversation_member_profile) 우선 → 기본 프로필 → users.name.
+     */
+    private UserBriefResponse senderBrief(CollaborationMessage message,
+                                          Map<DisplayNameQuery, DisplayNameResponse> resolvedSenders) {
+        if (Boolean.TRUE.equals(message.getSenderAnonymous())) {
+            String label = hasText(message.getSenderRoomNickname())
+                    ? message.getSenderRoomNickname() : ANONYMOUS_LABEL;
+            return new UserBriefResponse(null, label, null);
+        }
+        DisplayNameResponse dn = resolvedSenders.get(
+                new DisplayNameQuery(message.getSenderId(), message.getSenderNicknameProfileId()));
+        String name = dn != null ? dn.displayName() : message.getSenderName();
+        return new UserBriefResponse(message.getSenderId(), name, message.getSenderEmail());
+    }
+
+    /** 목록의 비익명 발신자 (senderId, roomNicknameProfileId) 를 모아 표시명을 한 번에 해석한다. */
+    private Map<DisplayNameQuery, DisplayNameResponse> resolveSenderNames(List<CollaborationMessage> messages) {
+        Set<DisplayNameQuery> queries = new HashSet<>();
+        for (CollaborationMessage m : messages) {
+            if (!Boolean.TRUE.equals(m.getSenderAnonymous())) {
+                queries.add(new DisplayNameQuery(m.getSenderId(), m.getSenderNicknameProfileId()));
+            }
+        }
+        return nicknameProfileService.bulkResolveDisplayNames(queries);
     }
 
     private MessageAttachmentResponse toAttachmentResponse(MessageAttachmentRow row,

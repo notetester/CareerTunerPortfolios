@@ -52,10 +52,12 @@ export function CommunityHomePage() {
   const PER = 8;
 
   const { posts, loading, error, fetchPosts, categoryCounts, fetchCategoryCounts } = useCommunityStore();
-  const { showLoginDialog, requireAuth, onLoginConfirm, onLoginCancel } = useLoginDialog();
+  const { showLoginDialog, requireAuth, onLoginConfirm, onLoginCancel, isAuthenticated } = useLoginDialog();
 
   // 검색(keyword)은 서버에서 필터된 posts 로 들어오므로 여기선 정렬만(클라 keyword 필터 제거 — 최신 100건 한정 누락 해소).
+  // 개인화("맞춤")는 서버가 7:3 혼합 순서를 이미 만들어 내려주므로 클라 재정렬을 하지 않는다(서버 순서 보존).
   const filteredPosts = useMemo(() => {
+    if (sort === "personalized") return posts;
     return posts
       .slice()
       .sort((a, b) => {
@@ -64,6 +66,11 @@ export function CommunityHomePage() {
         return (b.stats[key] ?? 0) - (a.stats[key] ?? 0);
       });
   }, [posts, sort]);
+
+  // 비로그인 상태에서 개인화가 선택돼 있으면 최신 정렬로 폴백(옵션 자체는 숨김).
+  useEffect(() => {
+    if (!isAuthenticated && sort === "personalized") setSort("recent");
+  }, [isAuthenticated, sort]);
 
   const totalPages = Math.max(1, Math.ceil(filteredPosts.length / PER));
   const cur = Math.min(page, totalPages);
@@ -76,12 +83,15 @@ export function CommunityHomePage() {
     const cat = CATEGORIES.find((c) => c.value === selectedCategory);
     const slug = selectedCategory === "all" ? undefined : cat?.slug;
     const kw = tag.trim();
-    // 검색어 입력은 디바운스(300ms)로 서버 조회, 카테고리 변경·검색어 클리어는 즉시.
+    // 개인화("맞춤")만 서버 정렬을 태운다(7:3 혼합). 나머지 정렬은 클라에서 처리하므로 서버엔 미전달(undefined).
+    // 개인화는 검색어와 함께 쓰지 않는다 — 키워드가 있으면 서버가 기존 LIKE 검색 경로로 폴백한다.
+    const serverSort = sort === "personalized" && !kw ? "personalized" : undefined;
+    // 검색어 입력은 디바운스(300ms)로 서버 조회, 카테고리 변경·검색어 클리어·정렬 전환은 즉시.
     const t = setTimeout(() => {
-      fetchPosts(slug, undefined, kw || undefined);
+      fetchPosts(slug, serverSort, kw || undefined);
     }, kw ? 300 : 0);
     return () => clearTimeout(t);
-  }, [selectedCategory, tag, fetchPosts]);
+  }, [selectedCategory, tag, sort, fetchPosts]);
 
   // 탭 뱃지용 카테고리별 글 수 (목록과 동일 소스에서 집계)
   useEffect(() => {
@@ -227,6 +237,7 @@ export function CommunityHomePage() {
           <PostFilters
             sort={sort} tag={tag}
             onSortChange={setSort} onTagChange={setTag}
+            showPersonalized={isAuthenticated}
           />
           {loading ? (
             <p className="av-empty">불러오는 중...</p>

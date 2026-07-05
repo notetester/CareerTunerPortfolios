@@ -369,12 +369,22 @@
         VALUES (#{conversationId}, #{senderId}, #{kind}, #{content})
     </insert>
 
+    <!-- 발신자 표시명 해석용 방 전용 프로필/익명 정보를 함께 조회한다.
+         cm  : 방 멤버 자체의 익명/room_nickname (collaboration 도메인 native 모델)
+         cmp : 방 전용 닉네임 프로필 매핑 (nickname 도메인, nickname_profile_id) — 표시명은 서비스가 벌크 해석 -->
     <select id="findMessageById" resultType="com.careertuner.collaboration.domain.CollaborationMessage">
         SELECT m.*,
                u.name AS sender_name,
-               u.email AS sender_email
+               u.email AS sender_email,
+               cm.anonymous AS sender_anonymous,
+               cm.room_nickname AS sender_room_nickname,
+               cmp.nickname_profile_id AS sender_nickname_profile_id
           FROM collaboration_message m
           JOIN users u ON u.id = m.sender_id
+          LEFT JOIN collaboration_conversation_member cm
+                 ON cm.conversation_id = m.conversation_id AND cm.user_id = m.sender_id
+          LEFT JOIN conversation_member_profile cmp
+                 ON cmp.conversation_id = m.conversation_id AND cmp.user_id = m.sender_id
          WHERE m.id = #{id}
     </select>
 
@@ -383,9 +393,16 @@
           FROM (
               SELECT m.*,
                      u.name AS sender_name,
-                     u.email AS sender_email
+                     u.email AS sender_email,
+                     cm.anonymous AS sender_anonymous,
+                     cm.room_nickname AS sender_room_nickname,
+                     cmp.nickname_profile_id AS sender_nickname_profile_id
                 FROM collaboration_message m
                 JOIN users u ON u.id = m.sender_id
+                LEFT JOIN collaboration_conversation_member cm
+                       ON cm.conversation_id = m.conversation_id AND cm.user_id = m.sender_id
+                LEFT JOIN conversation_member_profile cmp
+                       ON cmp.conversation_id = m.conversation_id AND cmp.user_id = m.sender_id
                WHERE m.conversation_id = #{conversationId}
                  AND m.deleted_at IS NULL
                ORDER BY m.id DESC

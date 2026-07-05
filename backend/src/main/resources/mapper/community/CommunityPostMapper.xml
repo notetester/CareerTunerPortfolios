@@ -54,6 +54,83 @@
         </if>
     </select>
 
+    <!--
+      개인화 피드 후보: 뷰어의 희망 직무/스킬 토큰 부분일치(제목·태그·회사명·직무명) 또는
+      최근 반응 카테고리에 걸리는 PUBLISHED 글. 본인 글 제외.
+      토큰·카테고리가 둘 다 비면(신호 부족) 결과 0건 → 서비스가 신선/인기 폴백으로 흐른다.
+      랭크/인터리브는 서비스(Java)에서 하므로 여기서는 최신순으로 넉넉히 뽑기만 한다.
+    -->
+    <select id="findPersonalizedCandidates" resultType="com.careertuner.community.domain.CommunityPost">
+        SELECT cp.*,
+               u.name AS user_name
+          FROM community_post cp
+          JOIN users u ON cp.user_id = u.id
+         WHERE cp.status = 'PUBLISHED'
+           AND cp.user_id != #{userId}
+        <if test="category != null">
+           AND cp.category = #{category}
+        </if>
+           AND (
+               <trim prefixOverrides="OR ">
+               <if test="tokens != null and !tokens.isEmpty()">
+                   <foreach collection="tokens" item="tok" open="(" close=")" separator=" OR ">
+                          LOWER(cp.title)        LIKE CONCAT('%', #{tok}, '%')
+                       OR LOWER(cp.tags_json)    LIKE CONCAT('%', #{tok}, '%')
+                       OR LOWER(cp.company_name) LIKE CONCAT('%', #{tok}, '%')
+                       OR LOWER(cp.job_title)    LIKE CONCAT('%', #{tok}, '%')
+                   </foreach>
+               </if>
+               <if test="categories != null and !categories.isEmpty()">
+                   OR cp.category IN
+                   <foreach collection="categories" item="cat" open="(" close=")" separator=",">
+                       #{cat}
+                   </foreach>
+               </if>
+               <!-- 토큰·카테고리 모두 없으면 매칭 없음(신호 부족) → 폴백 유도 -->
+               <if test="(tokens == null or tokens.isEmpty()) and (categories == null or categories.isEmpty())">
+                   1 = 0
+               </if>
+               </trim>
+           )
+         ORDER BY cp.created_at DESC
+         LIMIT #{limit}
+    </select>
+
+    <!--
+      신선·인기 후보: 최근성 + like_count 정렬. excludeIds 로 개인화 후보와 겹치는 글을 미리 배제.
+      (서비스에서도 Set 으로 최종 중복 제거하지만, 여기서 배제하면 30% 풀의 다양성이 는다.)
+    -->
+    <select id="findFreshPopular" resultType="com.careertuner.community.domain.CommunityPost">
+        SELECT cp.*,
+               u.name AS user_name
+          FROM community_post cp
+          JOIN users u ON cp.user_id = u.id
+         WHERE cp.status = 'PUBLISHED'
+        <if test="category != null">
+           AND cp.category = #{category}
+        </if>
+        <if test="excludeIds != null and !excludeIds.isEmpty()">
+           AND cp.id NOT IN
+           <foreach collection="excludeIds" item="pid" open="(" close=")" separator=",">
+               #{pid}
+           </foreach>
+        </if>
+         ORDER BY cp.created_at DESC, cp.like_count DESC
+         LIMIT #{limit}
+    </select>
+
+    <!-- 뷰어의 최근 반응 카테고리 (개인화 신호: 관심 카테고리) — 최근 반응 우선, 카테고리 중복 제거 -->
+    <select id="findRecentReactedCategories" resultType="java.lang.String">
+        SELECT cp.category
+          FROM post_reaction pr
+          JOIN community_post cp ON cp.id = pr.post_id
+         WHERE pr.user_id = #{userId}
+           AND cp.status = 'PUBLISHED'
+         GROUP BY cp.category
+         ORDER BY MAX(pr.created_at) DESC
+         LIMIT #{limit}
+    </select>
+
     <!-- 게시글 상세 조회 -->
     <select id="findById" resultType="com.careertuner.community.domain.CommunityPost">
         SELECT cp.*,
@@ -66,22 +143,25 @@
     <!-- 게시글 작성 -->
     <insert id="insert" useGeneratedKeys="true" keyProperty="id">
         INSERT INTO community_post (user_id, category, title, content, company_name, job_title,
-                                    interview_type, difficulty, status, tags_json, is_anonymous)
+                                    interview_type, difficulty, status, tags_json, is_anonymous,
+                                    nickname_profile_id)
         VALUES (#{userId}, #{category}, #{title}, #{content}, #{companyName}, #{jobTitle},
-                #{interviewType}, #{difficulty}, #{status}, #{tagsJson}, #{anonymous})
+                #{interviewType}, #{difficulty}, #{status}, #{tagsJson}, #{anonymous},
+                #{nicknameProfileId})
     </insert>
 
     <!-- 게시글 수정 -->
     <update id="update">
         UPDATE community_post
-           SET title          = #{title},
-               content        = #{content},
-               company_name   = #{companyName},
-               job_title      = #{jobTitle},
-               interview_type = #{interviewType},
-               difficulty     = #{difficulty},
-               tags_json      = #{tagsJson},
-               is_anonymous   = #{anonymous}
+           SET title              = #{title},
+               content            = #{content},
+               company_name       = #{companyName},
+               job_title          = #{jobTitle},
+               interview_type     = #{interviewType},
+               difficulty         = #{difficulty},
+               tags_json          = #{tagsJson},
+               is_anonymous       = #{anonymous},
+               nickname_profile_id = #{nicknameProfileId}
          WHERE id = #{id}
     </update>
 

@@ -1,9 +1,12 @@
 package com.careertuner.nickname.service;
 
+import java.util.Collection;
 import java.util.List;
+import java.util.Map;
 
 import com.careertuner.nickname.dto.ConversationProfileRequest;
 import com.careertuner.nickname.dto.ConversationProfileResponse;
+import com.careertuner.nickname.dto.DisplayNameQuery;
 import com.careertuner.nickname.dto.DisplayNameResponse;
 import com.careertuner.nickname.dto.NicknameProfileRequest;
 import com.careertuner.nickname.dto.NicknameProfileResponse;
@@ -39,4 +42,13 @@ public interface NicknameProfileService {
      * profileId 가 null 이면 계정 기본 프로필/계정명으로 폴백한다.
      */
     DisplayNameResponse resolveDisplayName(Long accountId, Long profileId);
+
+    /**
+     * 여러 (계정, 프로필) 키의 표시명을 한 번에 해석한다(커뮤니티 목록·채팅 메시지 목록의 N+1 방지).
+     *
+     * <p>각 키의 해석 규칙은 {@link #resolveDisplayName(Long, Long)} 과 동일:
+     * 지정 프로필이 그 계정 소유 ACTIVE 이면 그 프로필, 아니면 계정 기본 프로필, 그래도 없으면 계정명.
+     * 반환 Map 의 키는 입력 {@link DisplayNameQuery} 그대로이며, 입력에 없던 키는 포함되지 않는다.</p>
+     */
+    Map<DisplayNameQuery, DisplayNameResponse> bulkResolveDisplayNames(Collection<DisplayNameQuery> queries);
 }

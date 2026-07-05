@@ -7,6 +7,12 @@ import { Card, CardContent } from "@/app/components/ui/card";
 import { Input } from "@/app/components/ui/input";
 import { Switch } from "@/app/components/ui/switch";
 import {
+  AdminListFooter,
+  AdminListToolbar,
+  useAdminListTools,
+  type AdminListColumn,
+} from "@/admin/components/AdminListTools";
+import {
   createAd,
   deleteAd,
   listAds,
@@ -62,6 +68,20 @@ function formatDateTime(value: string | null): string {
   return Number.isNaN(date.getTime()) ? value : date.toLocaleString("ko-KR");
 }
 
+const AD_COLUMNS: AdminListColumn<AdminAd>[] = [
+  { id: "title", label: "제목", getText: (row) => row.title, sortable: true },
+  { id: "placement", label: "배치", getText: (row) => PLACEMENT_LABELS[row.placement], sortable: true },
+  { id: "targetPlatform", label: "플랫폼", getText: (row) => PLATFORM_LABELS[row.targetPlatform], sortable: true },
+  { id: "active", label: "활성", getText: (row) => (row.active ? "활성" : "비활성"), sortable: true },
+  { id: "priority", label: "우선순위", getText: (row) => row.priority, sortable: true },
+  { id: "weight", label: "가중치", getText: (row) => row.weight, sortable: true },
+  { id: "impressionCount", label: "노출", getText: (row) => row.impressionCount, sortable: true },
+  { id: "clickCount", label: "클릭", getText: (row) => row.clickCount, sortable: true },
+  { id: "ctr", label: "CTR", getText: (row) => `${row.ctr}%`, sortable: true },
+  { id: "startAt", label: "게재 시작", getText: (row) => formatDateTime(row.startAt), sortValue: (row) => row.startAt, sortable: true },
+  { id: "endAt", label: "게재 종료", getText: (row) => formatDateTime(row.endAt), sortValue: (row) => row.endAt, sortable: true },
+];
+
 /** 광고 관리 콘솔 — 배치/기간/플랫폼/활성/우선순위 편집 + 노출·클릭 통계. */
 export function AdminAdsPage() {
   const [rows, setRows] = useState<AdminAd[]>([]);
@@ -110,6 +130,13 @@ export function AdminAdsPage() {
       { impressions: 0, clicks: 0 },
     );
   }, [rows]);
+
+  const list = useAdminListTools(rows, {
+    columns: AD_COLUMNS,
+    getRowId: (row) => row.id,
+    defaultSortId: "priority",
+    defaultSortDir: "desc",
+  });
 
   const openCreate = () => {
     setEditing(null);
@@ -426,7 +453,8 @@ export function AdminAdsPage() {
           <div className="py-10 text-center text-sm text-slate-500">등록된 광고가 없습니다.</div>
         ) : (
           <div className="space-y-3">
-            {rows.map((ad) => (
+            <AdminListToolbar state={list} fileName="admin_ads" />
+            {list.visibleRows.map((ad) => (
               <Card key={ad.id}>
                 <CardContent className="flex items-center gap-4 p-4">
                   {ad.imageUrl ? (
@@ -478,6 +506,10 @@ export function AdminAdsPage() {
                 </CardContent>
               </Card>
             ))}
+            {list.visibleRows.length === 0 && (
+              <div className="py-10 text-center text-sm text-slate-400">검색 조건에 맞는 광고가 없습니다.</div>
+            )}
+            <AdminListFooter state={list} />
           </div>
         )}
       </div>

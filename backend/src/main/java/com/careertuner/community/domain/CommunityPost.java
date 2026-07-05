@@ -25,6 +25,8 @@ public class CommunityPost {
     private String status;
     private String tagsJson;
     private boolean anonymous;
+    /** 작성 시 선택한 표시용 닉네임 프로필(user_nickname_profile.id). NULL 이면 계정 기본 프로필/계정명으로 폴백. */
+    private Long nicknameProfileId;
     private int viewCount;
     private int commentCount;
     private int likeCount;

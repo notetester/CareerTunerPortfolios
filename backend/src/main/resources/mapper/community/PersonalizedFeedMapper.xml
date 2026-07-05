@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.careertuner.community.mapper.PersonalizedFeedMapper">
+
+    <!-- 뷰어 개인화 신호: 희망 직무 + 스킬 JSON (단건). 프로필 없으면 결과 없음(null). -->
+    <select id="findViewerProfile" resultType="com.careertuner.community.domain.RecommendationCandidate">
+        SELECT p.user_id     AS userId,
+               p.desired_job AS desiredJob,
+               p.skills      AS skillsJson
+          FROM user_profile p
+         WHERE p.user_id = #{userId}
+         LIMIT 1
+    </select>
+
+</mapper>

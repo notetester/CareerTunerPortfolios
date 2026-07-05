@@ -75,6 +75,24 @@ CREATE TABLE IF NOT EXISTS email_verification (
     CONSTRAINT fk_email_verification_user FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci;
 
+-- 전화번호 SMS OTP 인증 코드. 로그인 사용자가 전화번호 소유를 검증할 때 사용.
+-- 실 제공자 키가 있으면 실 발송, 없으면 Mock 제공자가 코드만 로깅하고 devCode 로 반환한다.
+CREATE TABLE IF NOT EXISTS sms_otp_code (
+    id            BIGINT       NOT NULL AUTO_INCREMENT,
+    user_id       BIGINT       NOT NULL COMMENT '인증을 요청한 회원',
+    phone         VARCHAR(40)  NOT NULL COMMENT '인증 대상 전화번호',
+    code          VARCHAR(10)  NOT NULL COMMENT '발송한 6자리 OTP 코드',
+    attempt_count INT          NOT NULL DEFAULT 0 COMMENT '검증 시도 횟수',
+    max_attempts  INT          NOT NULL DEFAULT 5 COMMENT '허용 최대 검증 시도 횟수',
+    expires_at    DATETIME     NOT NULL COMMENT '코드 만료 시각',
+    verified_at   DATETIME     NULL COMMENT '검증 성공 시각. NULL이면 미검증',
+    created_at    DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (id),
+    KEY idx_sms_otp_user_phone (user_id, phone),
+    KEY idx_sms_otp_expires (expires_at),
+    CONSTRAINT fk_sms_otp_user FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci COMMENT = '전화번호 SMS OTP 인증 코드';
+
 -- JWT refresh token (회전/폐기 관리용)
 CREATE TABLE IF NOT EXISTS refresh_token (
     id          BIGINT       NOT NULL AUTO_INCREMENT,
@@ -1389,6 +1407,7 @@ CREATE TABLE IF NOT EXISTS community_post (
     status         VARCHAR(20)  NOT NULL DEFAULT 'PUBLISHED',
     tags_json      JSON         NULL,
     is_anonymous   TINYINT(1)   NOT NULL DEFAULT 1,
+    nickname_profile_id BIGINT   NULL COMMENT '작성 시 선택한 표시용 닉네임 프로필(user_nickname_profile.id). NULL=계정 기본/계정명 표시',
     view_count     INT          NOT NULL DEFAULT 0,
     comment_count  INT          NOT NULL DEFAULT 0,
     like_count     INT          NOT NULL DEFAULT 0,
@@ -1468,6 +1487,7 @@ CREATE TABLE IF NOT EXISTS community_comment (
     parent_id    BIGINT       NULL,
     content      MEDIUMTEXT   NOT NULL,
     is_anonymous TINYINT(1)   NOT NULL DEFAULT 1,
+    nickname_profile_id BIGINT NULL COMMENT '작성 시 선택한 표시용 닉네임 프로필(user_nickname_profile.id). NULL=계정 기본/계정명 표시',
     status       VARCHAR(20)  NOT NULL DEFAULT 'PUBLISHED',
     like_count   INT          NOT NULL DEFAULT 0,
     dislike_count      INT    NOT NULL DEFAULT 0 COMMENT '싫어요 수',

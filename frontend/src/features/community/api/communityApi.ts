@@ -15,7 +15,7 @@ interface BackendPost {
   title: string;
   content: string;
   tags: string[];
-  author: { id: number; name: string; isAnonymous: boolean };
+  author: { id: number; name: string; nicknameProfileId?: number | null; isAnonymous: boolean };
   stats: {
     viewCount: number; commentCount: number;
     likeCount: number; dislikeCount?: number;
@@ -93,7 +93,9 @@ export async function getPosts(
   const params = new URLSearchParams({ sort, page: String(page), size: String(size) });
   if (category) params.set("category", categoryToEnum(category));
   if (keyword && keyword.trim()) params.set("keyword", keyword.trim());
-  const data = await api<PostPageData>(`/community/posts?${params}`, {}, { auth: false });
+  // 로그인 사용자면 토큰을 붙여 서버가 뷰어 컨텍스트를 갖게 한다(개인화 sort='personalized'와
+  // 차단 작성자 필터가 뷰어 없이는 동작하지 않는다). 엔드포인트는 permitAll 이라 비로그인은 헤더만 생략된다.
+  const data = await api<PostPageData>(`/community/posts?${params}`, {}, { auth: true });
   return data.posts.map(mapPost);
 }
 
@@ -114,6 +116,8 @@ export async function createPost(data: {
   content: string;
   tags: string[];
   anonymous?: boolean;
+  /** 비익명 작성 시 표시할 닉네임 프로필 id(선택). 없으면 계정 기본 프로필/계정명으로 표시. */
+  nicknameProfileId?: number | null;
   interviewReview?: {
     companyName: string;
     jobRole: string;
@@ -131,6 +135,7 @@ export async function createPost(data: {
       title: data.title,
       content: data.content,
       anonymous: data.anonymous ?? true,
+      nicknameProfileId: data.nicknameProfileId ?? null,
       tags: data.tags,
       interviewReview: data.interviewReview,
     }),
@@ -142,6 +147,8 @@ export async function updatePost(id: number, data: {
   content: string;
   tags: string[];
   anonymous?: boolean;
+  /** 비익명 작성 시 표시할 닉네임 프로필 id(선택). 없으면 계정 기본 프로필/계정명으로 표시. */
+  nicknameProfileId?: number | null;
   interviewReview?: {
     companyName: string;
     jobRole: string;
@@ -158,6 +165,7 @@ export async function updatePost(id: number, data: {
       title: data.title,
       content: data.content,
       anonymous: data.anonymous ?? true,
+      nicknameProfileId: data.nicknameProfileId ?? null,
       tags: data.tags,
       interviewReview: data.interviewReview,
     }),
@@ -211,10 +219,16 @@ export async function createComment(
   content: string,
   parentId?: number,
   anonymous = true,
+  nicknameProfileId?: number | null,
 ) {
   return api<CommunityComment>(`/community/posts/${postId}/comments`, {
     method: "POST",
-    body: JSON.stringify({ content, parentId: parentId ?? null, anonymous }),
+    body: JSON.stringify({
+      content,
+      parentId: parentId ?? null,
+      anonymous,
+      nicknameProfileId: nicknameProfileId ?? null,
+    }),
   });
 }
 

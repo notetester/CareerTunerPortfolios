@@ -6,6 +6,13 @@ import { Button } from "@/app/components/ui/button";
 import { Card, CardContent } from "@/app/components/ui/card";
 import { Textarea } from "@/app/components/ui/textarea";
 import {
+  AdminListFooter,
+  AdminListToolbar,
+  AdminSortableHeader,
+  useAdminListTools,
+  type AdminListColumn,
+} from "@/admin/components/AdminListTools";
+import {
   APPLICATION_STATUS_LABELS,
   type CompanyApplication,
   type CompanyApplicationStatus,
@@ -35,6 +42,15 @@ function formatDateTime(value: string | null | undefined): string {
   return Number.isNaN(date.getTime()) ? value : date.toLocaleString("ko-KR");
 }
 
+const APPLICATION_COLUMNS: AdminListColumn<CompanyApplication>[] = [
+  { id: "companyName", label: "기업명", getText: (row) => row.companyName, sortable: true },
+  { id: "applicant", label: "신청자", getText: (row) => `${row.applicantName ?? "-"} ${row.applicantEmail ?? ""}`.trim(), sortable: true },
+  { id: "businessNumber", label: "사업자번호", getText: (row) => row.businessNumber ?? "-", sortable: true },
+  { id: "contact", label: "연락처", getText: (row) => row.contact, sortable: true },
+  { id: "createdAt", label: "신청일", getText: (row) => formatDateTime(row.createdAt), sortValue: (row) => row.createdAt, sortable: true },
+  { id: "status", label: "상태", getText: (row) => APPLICATION_STATUS_LABELS[row.status], sortable: true },
+];
+
 /** 기업 계정 신청 승인/반려 콘솔 — 승인 시 신청자 role 이 COMPANY 로 전환된다. */
 export function AdminCompanyApplicationsPage() {
   const [statusFilter, setStatusFilter] = useState("PENDING");
@@ -58,6 +74,13 @@ export function AdminCompanyApplicationsPage() {
       setLoading(false);
     }
   }, [statusFilter]);
+
+  const list = useAdminListTools(rows, {
+    columns: APPLICATION_COLUMNS,
+    getRowId: (row) => row.id,
+    defaultSortId: "createdAt",
+    defaultSortDir: "desc",
+  });
 
   useEffect(() => {
     void load();
@@ -134,7 +157,8 @@ export function AdminCompanyApplicationsPage() {
 
         {/* 신청 그리드(간단 목록) */}
         <Card className="border-slate-200 bg-card">
-          <CardContent className="pt-6">
+          <CardContent className="space-y-4 pt-6">
+            <AdminListToolbar state={list} fileName="admin_company_applications" />
             {loading ? (
               <p className="py-10 text-center text-sm text-slate-500">불러오는 중...</p>
             ) : rows.length === 0 ? (
@@ -144,17 +168,17 @@ export function AdminCompanyApplicationsPage() {
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="border-b border-slate-200 text-left text-xs text-slate-500">
-                      <th className="px-2 py-2">기업명</th>
-                      <th className="px-2 py-2">신청자</th>
-                      <th className="px-2 py-2">사업자번호</th>
-                      <th className="px-2 py-2">연락처</th>
-                      <th className="px-2 py-2">신청일</th>
-                      <th className="px-2 py-2">상태</th>
+                      <AdminSortableHeader state={list} columnId="companyName">기업명</AdminSortableHeader>
+                      <AdminSortableHeader state={list} columnId="applicant">신청자</AdminSortableHeader>
+                      <AdminSortableHeader state={list} columnId="businessNumber">사업자번호</AdminSortableHeader>
+                      <AdminSortableHeader state={list} columnId="contact">연락처</AdminSortableHeader>
+                      <AdminSortableHeader state={list} columnId="createdAt">신청일</AdminSortableHeader>
+                      <AdminSortableHeader state={list} columnId="status">상태</AdminSortableHeader>
                       <th className="px-2 py-2 text-right">처리</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {rows.map((application) => (
+                    {list.visibleRows.map((application) => (
                       <tr key={application.id} className="border-b border-slate-100 align-top">
                         <td className="px-2 py-3">
                           <div className="font-medium text-slate-900">{application.companyName}</div>
@@ -193,10 +217,16 @@ export function AdminCompanyApplicationsPage() {
                         </td>
                       </tr>
                     ))}
+                    {list.visibleRows.length === 0 && (
+                      <tr>
+                        <td colSpan={7} className="px-2 py-8 text-center text-sm text-slate-400">검색 조건에 맞는 신청이 없습니다.</td>
+                      </tr>
+                    )}
                   </tbody>
                 </table>
               </div>
             )}
+            <AdminListFooter state={list} />
           </CardContent>
         </Card>
       </div>

@@ -19,6 +19,42 @@ public interface CommunityPostMapper {
                                 @Param("offset") int offset,
                                 @Param("limit") int limit);
 
+    /**
+     * 개인화 피드 후보 — 뷰어의 희망 직무/스킬 토큰(제목·태그·회사·직무 부분일치)이나
+     * 최근 반응 카테고리에 매칭되는 PUBLISHED 글을 최신순으로 넉넉히 뽑는다.
+     * 본인 글은 제외한다. 실제 7:3 랭크/인터리브는 서비스(Java)에서 수행하므로 여기서는 후보만 좁힌다.
+     *
+     * @param userId     뷰어 id (본인 글 제외용)
+     * @param category   카테고리 필터 (없으면 전체)
+     * @param tokens     희망 직무·스킬에서 뽑은 소문자 토큰 (없거나 비면 토큰 매칭 생략)
+     * @param categories 최근 반응 카테고리 목록 (없거나 비면 카테고리 매칭 생략)
+     * @param limit      후보 상한
+     */
+    List<CommunityPost> findPersonalizedCandidates(@Param("userId") Long userId,
+                                                   @Param("category") String category,
+                                                   @Param("tokens") List<String> tokens,
+                                                   @Param("categories") List<String> categories,
+                                                   @Param("limit") int limit);
+
+    /**
+     * 신선·인기 후보 — 최근성과 like_count 로 정렬한 PUBLISHED 글.
+     * excludeIds 로 이미 개인화 후보에 담긴 글을 배제해 중복을 줄인다(서비스에서도 Set 으로 최종 중복 제거).
+     *
+     * @param category   카테고리 필터 (없으면 전체)
+     * @param excludeIds 제외할 postId 목록 (없거나 비면 배제 없음)
+     * @param limit      후보 상한
+     */
+    List<CommunityPost> findFreshPopular(@Param("category") String category,
+                                         @Param("excludeIds") List<Long> excludeIds,
+                                         @Param("limit") int limit);
+
+    /**
+     * 뷰어가 최근 반응(post_reaction)한 글들의 카테고리 목록 — 개인화 신호(관심 카테고리)용.
+     * 최근 반응 우선으로 limit 건까지, 중복 카테고리는 SQL DISTINCT 후 서비스에서 순서 유지.
+     */
+    List<String> findRecentReactedCategories(@Param("userId") Long userId,
+                                             @Param("limit") int limit);
+
     int countAll(@Param("category") String category,
                  @Param("status") String status,
                  @Param("keyword") String keyword);

@@ -6,6 +6,13 @@ import { Button } from "@/app/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/app/components/ui/card";
 import { Textarea } from "@/app/components/ui/textarea";
 import {
+  AdminListFooter,
+  AdminListToolbar,
+  AdminSortableHeader,
+  useAdminListTools,
+  type AdminListColumn,
+} from "@/admin/components/AdminListTools";
+import {
   CAREER_LEVEL_LABELS,
   EDUCATION_LEVEL_LABELS,
   EMPLOYMENT_TYPE_LABELS,
@@ -49,6 +56,19 @@ function sameValue(a: unknown, b: unknown): boolean {
   return (a ?? null) === (b ?? null);
 }
 
+/** 검토 큐 행 고유키 — 신규/수정 검토가 같은 공고를 가리킬 수 있어 유형+공고+리비전으로 식별한다. */
+function reviewRowId(row: JobPostingReviewRow): string {
+  return `${row.reviewType}-${row.postingId}-${row.revisionId ?? 0}`;
+}
+
+const REVIEW_QUEUE_COLUMNS: AdminListColumn<JobPostingReviewRow>[] = [
+  { id: "reviewType", label: "유형", getText: (row) => (row.reviewType === "CREATE" ? "신규 등록" : "수정 검토"), sortable: true },
+  { id: "title", label: "공고", getText: (row) => `${row.title} ${row.jobRole}`, sortable: true },
+  { id: "companyName", label: "기업", getText: (row) => row.companyName ?? "-", sortable: true },
+  { id: "trustGrade", label: "신뢰등급", getText: (row) => (row.trustGrade ? TRUST_GRADE_LABELS[row.trustGrade] : "-"), sortable: true },
+  { id: "submittedAt", label: "제출 시각", getText: (row) => formatDateTime(row.submittedAt), sortValue: (row) => row.submittedAt, sortable: true },
+];
+
 /** 채용공고 검토 큐 — 신규 등록 검토와 게시 중 수정(diff) 검토를 함께 처리한다. */
 export function AdminJobPostingReviewPage() {
   const [queue, setQueue] = useState<JobPostingReviewRow[]>([]);
@@ -74,6 +94,13 @@ export function AdminJobPostingReviewPage() {
       setLoading(false);
     }
   }, []);
+
+  const list = useAdminListTools(queue, {
+    columns: REVIEW_QUEUE_COLUMNS,
+    getRowId: reviewRowId,
+    defaultSortId: "submittedAt",
+    defaultSortDir: "desc",
+  });
 
   useEffect(() => {
     void load();
@@ -171,7 +198,8 @@ export function AdminJobPostingReviewPage() {
         {message && <div className="rounded-lg border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-700">{message}</div>}
 
         <Card className="border-slate-200 bg-card">
-          <CardContent className="pt-6">
+          <CardContent className="space-y-4 pt-6">
+            <AdminListToolbar state={list} fileName="admin_job_posting_review" />
             {loading ? (
               <p className="py-10 text-center text-sm text-slate-500">불러오는 중...</p>
             ) : queue.length === 0 ? (
@@ -181,17 +209,17 @@ export function AdminJobPostingReviewPage() {
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="border-b border-slate-200 text-left text-xs text-slate-500">
-                      <th className="px-2 py-2">유형</th>
-                      <th className="px-2 py-2">공고</th>
-                      <th className="px-2 py-2">기업</th>
-                      <th className="px-2 py-2">신뢰등급</th>
-                      <th className="px-2 py-2">제출 시각</th>
+                      <AdminSortableHeader state={list} columnId="reviewType">유형</AdminSortableHeader>
+                      <AdminSortableHeader state={list} columnId="title">공고</AdminSortableHeader>
+                      <AdminSortableHeader state={list} columnId="companyName">기업</AdminSortableHeader>
+                      <AdminSortableHeader state={list} columnId="trustGrade">신뢰등급</AdminSortableHeader>
+                      <AdminSortableHeader state={list} columnId="submittedAt">제출 시각</AdminSortableHeader>
                       <th className="px-2 py-2 text-right">검토</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {queue.map((row) => (
-                      <tr key={`${row.reviewType}-${row.postingId}-${row.revisionId ?? 0}`} className="border-b border-slate-100">
+                    {list.visibleRows.map((row) => (
+                      <tr key={reviewRowId(row)} className="border-b border-slate-100">
                         <td className="px-2 py-3">
                           {row.reviewType === "CREATE" ? (
                             <Badge className="bg-blue-100 text-blue-700">신규 등록</Badge>
@@ -215,10 +243,16 @@ export function AdminJobPostingReviewPage() {
                         </td>
                       </tr>
                     ))}
+                    {list.visibleRows.length === 0 && (
+                      <tr>
+                        <td colSpan={6} className="px-2 py-8 text-center text-sm text-slate-400">검색 조건에 맞는 공고가 없습니다.</td>
+                      </tr>
+                    )}
                   </tbody>
                 </table>
               </div>
             )}
+            <AdminListFooter state={list} />
           </CardContent>
         </Card>
       </div>

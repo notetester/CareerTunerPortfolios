@@ -85,6 +85,12 @@ const account: AccountInfo = {
   linkedProviders: ["KAKAO"],
 };
 
+/* ── 전화번호 SMS OTP(데모: 항상 Mock 제공자로 devCode 반환) ── */
+
+let mockOtp: { phone: string; code: string; attempts: number } | null = null;
+const genOtpCode = () => String(Math.floor(Math.random() * 1_000_000)).padStart(6, "0");
+const normalizeDigits = (raw: string) => (raw ?? "").replace(/[^0-9]/g, "");
+
 /* ── 이력서 상세 ── */
 
 let resumeDetail: ResumeDetail = {
@@ -217,6 +223,41 @@ export const nicknameProfileRoutes: MockRoute[] = [
         ? `${digits.slice(0, 3)}-${digits.slice(3, 7)}-${digits.slice(7)}`
         : (req?.phone ?? null);
       return account;
+    },
+  },
+
+  // ── 전화번호 SMS OTP(데모: 실 키 없이 발송→입력→검증 완결) ──
+  { method: "GET", pattern: /^\/auth\/phone\/status$/, handler: () => ({ phone: account.phone, phoneVerified: account.phoneVerified }) },
+  {
+    method: "POST",
+    pattern: /^\/auth\/phone\/request-otp$/,
+    handler: ({ body }) => {
+      const req = body as { phone?: string };
+      const phone = normalizeDigits(req?.phone ?? "");
+      const code = genOtpCode();
+      mockOtp = { phone, code, attempts: 0 };
+      // 데모는 항상 Mock 제공자 → devCode 노출.
+      return { sent: true, provider: "mock", realSending: false, devCode: code, validitySeconds: 300, cooldownSeconds: 60 };
+    },
+  },
+  {
+    method: "POST",
+    pattern: /^\/auth\/phone\/verify-otp$/,
+    handler: ({ body }) => {
+      const req = body as { phone?: string; code?: string };
+      const phone = normalizeDigits(req?.phone ?? "");
+      const code = (req?.code ?? "").trim();
+      if (!mockOtp || mockOtp.phone !== phone) {
+        throw new Error("유효한 인증번호가 없습니다. 인증번호를 다시 요청해 주세요.");
+      }
+      mockOtp.attempts += 1;
+      if (mockOtp.code !== code) {
+        throw new Error("인증번호가 일치하지 않습니다.");
+      }
+      account.phone = phone;
+      account.phoneVerified = true;
+      mockOtp = null;
+      return { verified: true, phone };
     },
   },
 
