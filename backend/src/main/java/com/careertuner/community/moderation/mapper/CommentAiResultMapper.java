@@ -29,6 +29,12 @@ public interface CommentAiResultMapper {
              @Param("taskType") AiTaskType taskType,
              @Param("errorMessage") String errorMessage);
 
+    /** 판정 불성립 기록 — PostAiResultMapper.markUnmoderated 복제(대상만 commentId). */
+    int markUnmoderated(@Param("commentId") Long commentId,
+                        @Param("taskType") AiTaskType taskType,
+                        @Param("reason") String reason,
+                        @Param("model") String model);
+
     CommentAiResult findByCommentIdAndTaskType(@Param("commentId") Long commentId,
                                                @Param("taskType") AiTaskType taskType);
 

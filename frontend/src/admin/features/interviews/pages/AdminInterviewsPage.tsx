@@ -21,8 +21,8 @@ import {
   INTERVIEW_MODES,
   getInterviewModeLabel,
   getScoreColor,
-  type InterviewReport,
 } from "@/features/interview/types/interview";
+import { parseReport } from "../report";
 import {
   getAdminInterviewAiFailures,
   getAdminInterviewSessionDetail,
@@ -52,21 +52,6 @@ function pageList(current: number, total: number): (number | "...")[] {
   if (current < total - 2) out.push("...");
   out.push(total);
   return out;
-}
-
-function parseReport(raw: string | null): InterviewReport | null {
-  if (!raw) return null;
-  try {
-    const parsed = JSON.parse(raw) as Partial<InterviewReport>;
-    // 이 화면이 기대하는 구조(categories/summaryFeedback 배열)가 아니면 무시한다.
-    // (구버전/시드 리포트는 {summary, strengths, weaknesses} 등 다른 형식일 수 있음)
-    if (!Array.isArray(parsed?.categories) || !Array.isArray(parsed?.summaryFeedback)) {
-      return null;
-    }
-    return parsed as InterviewReport;
-  } catch {
-    return null;
-  }
 }
 
 export function AdminInterviewsPage() {

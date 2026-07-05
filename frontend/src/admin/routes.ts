@@ -16,6 +16,7 @@ import { AdminConsentsPage } from "./features/consents/pages/AdminConsentsPage";
 import { AdminCompanyAnalysisPage } from "./features/company-analysis/pages/AdminCompanyAnalysisPage";
 import { AdminAiUsagePage } from "./features/job-analysis/pages/AdminAiUsagePage";
 import { AdminInterviewsPage } from "./features/interviews/pages/AdminInterviewsPage";
+import { AdminInterviewReportsPage } from "./features/interview-reports/pages/AdminInterviewReportsPage";
 import { AdminInterviewKnowledgePage } from "./features/interview-knowledge/pages/AdminInterviewKnowledgePage";
 import { AdminJobAnalysisPage } from "./features/job-analysis/pages/AdminJobAnalysisPage";
 import { AdminPromptsPage } from "./features/prompts/pages/AdminPromptsPage";
@@ -78,6 +79,7 @@ export const adminRoutes = [
   { path: "admin/job-analysis", Component: AdminJobAnalysisPage },
   { path: "admin/company-analysis", Component: AdminCompanyAnalysisPage },
   { path: "admin/interviews", Component: AdminInterviewsPage },
+  { path: "admin/interview/reports", Component: AdminInterviewReportsPage },
   { path: "admin/interview/knowledge", Component: AdminInterviewKnowledgePage },
   { path: "admin/community", Component: AdminReports },
   { path: "admin/notices", Component: AdminNotices },

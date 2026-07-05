@@ -64,7 +64,12 @@ public class ReactionServiceImpl implements ReactionService {
         PostReaction existing = reactionMapper.findPostReactionByAxis(userId, postId, type.axis().name());
         if (existing != null && type.name().equals(existing.getReactionType())) {
             // 같은 것 재클릭 → 취소(토글). 취소 시 알림은 발행하지 않는다(기존 패턴).
-            reactionMapper.deletePostReaction(userId, postId, type.name());
+            // dev(#238): affected-rows 검증 — 동시 취소 충돌이면 카운트 재감소 없이 흡수.
+            int deleted = reactionMapper.deletePostReaction(userId, postId, type.name());
+            if (deleted <= 0) {
+                log.info("게시글 리액션 동시 취소 충돌 흡수 postId={} userId={} type={}", postId, userId, type);
+                return postResponse(postId, type, false);
+            }
             reactionMapper.adjustPostReactionCount(postId, type.name(), -1);
             log.info("게시글 리액션 취소 postId={} userId={} type={}", postId, userId, type);
             return postResponse(postId, type, false);
@@ -75,11 +80,15 @@ public class ReactionServiceImpl implements ReactionService {
             reactionMapper.adjustPostReactionCount(postId, existing.getReactionType(), -1);
         }
         try {
-            reactionMapper.insertPostReaction(PostReaction.builder()
+            int inserted = reactionMapper.insertPostReaction(PostReaction.builder()
                     .userId(userId).postId(postId)
                     .reactionType(type.name()).axis(type.axis().name())
                     .anonymous(anonymous)
                     .build());
+            if (inserted <= 0) {
+                // dev(#238): affected-rows 검증 — 등록 실패 시 충돌로 처리.
+                throw new BusinessException(ErrorCode.CONFLICT, "게시글 리액션 등록에 실패했습니다.");
+            }
         } catch (DuplicateKeyException e) {
             // 동시 토글 충돌: 이미 다른 트랜잭션이 같은 축 리액션을 등록함. 카운트 재증가 없이 흡수.
             log.info("게시글 리액션 동시 등록 충돌 흡수 postId={} userId={} type={}", postId, userId, type);
@@ -109,7 +118,12 @@ public class ReactionServiceImpl implements ReactionService {
 
         CommentReaction existing = reactionMapper.findCommentReactionByAxis(userId, commentId, type.axis().name());
         if (existing != null && type.name().equals(existing.getReactionType())) {
-            reactionMapper.deleteCommentReaction(userId, commentId, type.name());
+            // dev(#238): affected-rows 검증 — 동시 취소 충돌이면 카운트 재감소 없이 흡수.
+            int deleted = reactionMapper.deleteCommentReaction(userId, commentId, type.name());
+            if (deleted <= 0) {
+                log.info("댓글 리액션 동시 취소 충돌 흡수 commentId={} userId={} type={}", commentId, userId, type);
+                return commentResponse(commentId, type, false);
+            }
             reactionMapper.adjustCommentReactionCount(commentId, type.name(), -1);
             log.info("댓글 리액션 취소 commentId={} userId={} type={}", commentId, userId, type);
             return commentResponse(commentId, type, false);

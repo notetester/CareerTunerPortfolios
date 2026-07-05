@@ -13,12 +13,15 @@ export function getAdminInterviewSummary(): Promise<AdminInterviewSummary> {
 export function getAdminInterviewSessions(params: {
   keyword?: string;
   mode?: string;
+  /** true 면 리포트 생성된 세션만 (리포트 운영 화면). */
+  hasReport?: boolean;
   page?: number;
   size?: number;
 } = {}): Promise<AdminInterviewSessionPage> {
   const search = new URLSearchParams();
   if (params.keyword) search.set("keyword", params.keyword);
   if (params.mode) search.set("mode", params.mode);
+  if (params.hasReport != null) search.set("hasReport", String(params.hasReport));
   search.set("page", String(params.page ?? 1));
   search.set("size", String(params.size ?? 20));
   return api<AdminInterviewSessionPage>(`/admin/interview/sessions?${search.toString()}`, { method: "GET" });

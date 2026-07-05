@@ -19,6 +19,8 @@ export interface AdminInterviewSessionRow {
   createdAt: string;
   questionCount: number;
   answeredCount: number;
+  /** interview_session.report 존재 여부 — 리포트 운영 화면 필터/뱃지용. */
+  hasReport: boolean | null;
   adminMemo: string | null;
 }
 

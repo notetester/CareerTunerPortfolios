@@ -78,8 +78,10 @@ public class CommunityPostServiceImpl implements CommunityPostService {
         int offset = page * size;
         String status = PostStatus.PUBLISHED.name();
         String kw = (keyword == null || keyword.isBlank()) ? null : keyword.trim();
-        List<CommunityPost> posts = filterBlockedAuthors(postMapper.findAll(category, status, sort, kw, offset, size), viewerId);
-        int total = postMapper.countAll(category, status, kw);
+        // 개별 계정 차단은 SQL(viewerBlockFilter)이 목록·count 동일 조건으로 제거해 total 이 일치하고
+        // 페이지가 비지 않는다(P-14≡CC-17). 자바 필터는 SQL 로 못 거르는 잔여(IP 파생·관계정책)만 2차로 정리한다.
+        List<CommunityPost> posts = filterBlockedAuthors(postMapper.findAll(category, status, sort, kw, offset, size, viewerId), viewerId);
+        int total = postMapper.countAll(category, status, kw, viewerId);
         // 비익명 작성자 표시명을 닉네임 프로필로 벌크 해석(N+1 방지). 익명 글은 해석 대상에서 제외.
         Map<DisplayNameQuery, DisplayNameResponse> resolved = resolveAuthorNames(posts);
         return new PostPageResponse(
@@ -290,11 +292,18 @@ public class CommunityPostServiceImpl implements CommunityPostService {
         eventPublisher.publishEvent(new PostEditedEvent(postId));
     }
 
+    /** 인기글 후보 여유분 — 뷰어 차단 작성자 제거 후에도 노출 5건을 채우기 위한 조회 상한. */
+    private static final int HOT_POST_FETCH_SIZE = 20;
+    private static final int HOT_POST_DISPLAY_SIZE = 5;
+
     @Override
-    public List<HotPostResponse> getHotPosts() {
+    public List<HotPostResponse> getHotPosts(Long viewerId) {
         LocalDateTime since = LocalDateTime.now().minusDays(7);
-        List<CommunityPost> posts = postMapper.findHotPosts(PostStatus.PUBLISHED.name(), since, 5);
+        // 뷰어 필터(P-13≡CC-18): 여유분을 뽑아 차단 작성자를 제거한 뒤 5건으로 자른다(비로그인은 무필터).
+        List<CommunityPost> posts = filterBlockedAuthors(
+                postMapper.findHotPosts(PostStatus.PUBLISHED.name(), since, HOT_POST_FETCH_SIZE), viewerId);
         return posts.stream()
+                .limit(HOT_POST_DISPLAY_SIZE)
                 .map(p -> new HotPostResponse(p.getId(), p.getTitle(), p.getCommentCount(), p.getViewCount()))
                 .toList();
     }

@@ -26,11 +26,12 @@ public interface ReactionMapper {
     List<PostReaction> findPostReactionsByUser(@Param("userId") Long userId,
                                                @Param("postId") Long postId);
 
-    void insertPostReaction(PostReaction reaction);
+    // dev(#238~240): affected-rows 검증을 위해 insert 반환형을 int 로.
+    int insertPostReaction(PostReaction reaction);
 
-    void deletePostReaction(@Param("userId") Long userId,
-                            @Param("postId") Long postId,
-                            @Param("reactionType") String reactionType);
+    int deletePostReaction(@Param("userId") Long userId,
+                           @Param("postId") Long postId,
+                           @Param("reactionType") String reactionType);
 
     /** 게시글 리액션 카운트 캐시 증감(delta=+1/-1, 음수 방지). type 은 enum name 만 들어온다. */
     void adjustPostReactionCount(@Param("postId") Long postId,
@@ -61,11 +62,12 @@ public interface ReactionMapper {
     List<CommentReaction> findCommentReactionsByUserForPost(@Param("userId") Long userId,
                                                             @Param("postId") Long postId);
 
-    void insertCommentReaction(CommentReaction reaction);
+    // dev(#238~240): affected-rows 검증을 위해 insert/delete 반환형을 int 로.
+    int insertCommentReaction(CommentReaction reaction);
 
-    void deleteCommentReaction(@Param("userId") Long userId,
-                               @Param("commentId") Long commentId,
-                               @Param("reactionType") String reactionType);
+    int deleteCommentReaction(@Param("userId") Long userId,
+                              @Param("commentId") Long commentId,
+                              @Param("reactionType") String reactionType);
 
     /** 댓글 리액션 카운트 캐시 증감(delta=+1/-1, 음수 방지). */
     void adjustCommentReactionCount(@Param("commentId") Long commentId,

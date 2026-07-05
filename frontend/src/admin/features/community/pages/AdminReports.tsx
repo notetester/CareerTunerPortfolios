@@ -432,6 +432,11 @@ function ReportsPanel({ flash }: { flash: (msg: string) => void }) {
                         분석 실패{detail.aiOpinion.errorMessage ? `: ${detail.aiOpinion.errorMessage}` : ""}
                       </span>
                     )}
+                    {detail.aiOpinion?.status === "UNMODERATED" && (
+                      <span className="av-muted" style={{ fontSize: "12px", wordBreak: "break-word" }}>
+                        판정 불성립 — 재검열 대기{detail.aiOpinion.errorMessage ? ` (${detail.aiOpinion.errorMessage})` : ""}
+                      </span>
+                    )}
                     {detail.aiOpinion?.status === "COMPLETED" && (
                       <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
                         <div className="av-rate">

@@ -12,12 +12,14 @@ import com.careertuner.community.domain.CommunityPost;
 @Mapper
 public interface CommunityPostMapper {
 
+    // viewerId(nullable): 뷰어가 개별 차단한 작성자 글 제외 — findAll/countAll 동일 조건(페이지 total 정합)
     List<CommunityPost> findAll(@Param("category") String category,
                                 @Param("status") String status,
                                 @Param("sort") String sort,
                                 @Param("keyword") String keyword,
                                 @Param("offset") int offset,
-                                @Param("limit") int limit);
+                                @Param("limit") int limit,
+                                @Param("viewerId") Long viewerId);
 
     /**
      * 개인화 피드 후보 — 뷰어의 희망 직무/스킬 토큰(제목·태그·회사·직무 부분일치)이나
@@ -57,7 +59,8 @@ public interface CommunityPostMapper {
 
     int countAll(@Param("category") String category,
                  @Param("status") String status,
-                 @Param("keyword") String keyword);
+                 @Param("keyword") String keyword,
+                 @Param("viewerId") Long viewerId);
 
     CommunityPost findById(Long id);
 

@@ -34,9 +34,10 @@ public class AdminInterviewController {
             @AuthenticationPrincipal AuthUser authUser,
             @RequestParam(required = false) String keyword,
             @RequestParam(required = false) String mode,
+            @RequestParam(required = false) Boolean hasReport,
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "20") int size) {
-        return ApiResponse.ok(service.sessions(authUser, keyword, mode, page, size));
+        return ApiResponse.ok(service.sessions(authUser, keyword, mode, hasReport, page, size));
     }
 
     @GetMapping("/summary")
