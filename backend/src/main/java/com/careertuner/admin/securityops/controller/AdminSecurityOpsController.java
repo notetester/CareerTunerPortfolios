@@ -44,6 +44,20 @@ public class AdminSecurityOpsController {
         return ApiResponse.ok(service.summary(authUser));
     }
 
+    /** 런타임 차단 캐시를 DB 와 수동 재동기화. */
+    @PostMapping("/block-cache/sync")
+    public ApiResponse<AdminSecurityOpsService.BlockCacheStatus> syncBlockCache(
+            @AuthenticationPrincipal AuthUser authUser) {
+        return ApiResponse.ok(service.syncBlockCache(authUser));
+    }
+
+    /** 현재 차단 캐시 상태(출처·규칙 수·적재 시각). */
+    @GetMapping("/block-cache/status")
+    public ApiResponse<AdminSecurityOpsService.BlockCacheStatus> blockCacheStatus(
+            @AuthenticationPrincipal AuthUser authUser) {
+        return ApiResponse.ok(service.blockCacheStatus(authUser));
+    }
+
     @GetMapping("/block-rules")
     public ApiResponse<List<SecurityBlockRuleRow>> blockRules(
             @AuthenticationPrincipal AuthUser authUser,

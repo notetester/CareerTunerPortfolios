@@ -120,3 +120,37 @@ export interface WafSyncEvent {
   requestedAt: string;
   processedAt: string | null;
 }
+
+export interface BlockCacheStatus {
+  source: string | null;
+  ruleCount: number;
+  loadedAt: string | null;
+}
+
+export interface IpBlockBatch {
+  id: number;
+  batchCode: string;
+  batchName: string;
+  sourceType: string;
+  sourceName: string | null;
+  ruleAction: string;
+  defaultPriority: number;
+  active: boolean;
+  totalRuleCount: number;
+  activeRuleCount: number;
+  memo: string | null;
+  createdBy: number | null;
+  updatedBy: number | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface PolicyFeedImportResult {
+  batchId: number;
+  batchCode: string;
+  total: number;
+  created: number;
+  skipped: number;
+  failed: number;
+  messages: string[];
+}

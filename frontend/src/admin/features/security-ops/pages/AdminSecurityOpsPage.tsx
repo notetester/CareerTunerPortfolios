@@ -19,6 +19,7 @@ import {
   type AdminListColumn,
 } from "../../../components/AdminListTools";
 import * as securityApi from "../api";
+import { BlockEnginePanel } from "../components/BlockEnginePanel";
 import type {
   SecurityAppeal,
   SecurityAppealPolicy,
@@ -30,7 +31,7 @@ import type {
   WafSyncEvent,
 } from "../types";
 
-type TabKey = "blocks" | "reviews" | "providers" | "providerHealth" | "appeals" | "waf";
+type TabKey = "blocks" | "engine" | "reviews" | "providers" | "providerHealth" | "appeals" | "waf";
 
 const BLOCK_COLUMNS: AdminListColumn<SecurityBlockRule>[] = [
   { id: "type", label: "유형", getText: (row) => row.ruleType, sortable: true },
@@ -189,6 +190,7 @@ export function AdminSecurityOpsPage() {
       <div className="mt-5 flex flex-wrap gap-2">
         {([
           ["blocks", "차단 규칙"],
+          ["engine", "차단 엔진"],
           ["reviews", "위험 검토"],
           ["providers", "Provider 설정"],
           ["providerHealth", "헬스체크 이력"],
@@ -287,6 +289,7 @@ export function AdminSecurityOpsPage() {
             }}
           />
         )}
+        {tab === "engine" && <BlockEnginePanel flash={flash} />}
         {tab === "waf" && <WafEventsPanel rows={wafEvents} />}
       </div>
 
