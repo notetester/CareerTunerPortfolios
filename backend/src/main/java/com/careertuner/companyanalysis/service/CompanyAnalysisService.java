@@ -208,7 +208,7 @@ public class CompanyAnalysisService {
      * 실행되므로 예외 시 put 이 호출되지 않는다("[]" 로 7일 HIT 되는 것을 방지). 관측성 오염 방지를 위해
      * recordFailure 는 남기지 않고 WARN 로그만 남긴다(예외 메시지는 D-1 규약상 시크릿·응답 body 미포함).
      */
-    List<CompanyWebEvidence> collectWebEvidence(ApplicationCase applicationCase) {
+    public List<CompanyWebEvidence> collectWebEvidence(ApplicationCase applicationCase) {
         if (!companyWebSearchProperties.isEnabled()) {
             return List.of();
         }

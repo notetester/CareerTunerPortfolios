@@ -24,6 +24,8 @@ import com.careertuner.applicationcase.service.OpenAiResponsesClient.Usage;
 import com.careertuner.companyanalysis.domain.CompanyAnalysis;
 import com.careertuner.companyanalysis.mapper.CompanyAnalysisMapper;
 import com.careertuner.companyanalysis.service.BCompanyAnalysisCanonicalizer;
+import com.careertuner.companyanalysis.service.CompanyAnalysisService;
+import com.careertuner.companyanalysis.websearch.CompanyWebEvidence;
 import com.careertuner.fitanalysis.ai.FitAnalysisAiCommand;
 import com.careertuner.fitanalysis.ai.FitAnalysisAiResult;
 import com.careertuner.fitanalysis.ai.FitAnalysisConfidence;
@@ -76,6 +78,7 @@ public class ApplicationCaseAutoPipelineService {
     private final ObjectMapper objectMapper;
     private final BAnalysisGenerationService bAnalysisGenerationService;
     private final BCompanyAnalysisCanonicalizer companyAnalysisCanonicalizer;
+    private final CompanyAnalysisService companyAnalysisService;
 
     @Value("${careertuner.application-case.auto-pipeline.enabled:true}")
     private boolean enabled = true;
@@ -102,8 +105,12 @@ public class ApplicationCaseAutoPipelineService {
         try {
             GeneratedJobAnalysis generatedJob = bAnalysisGenerationService.generateJobAnalysis(applicationCase, postingText);
             JobAnalysis jobAnalysis = createJobAnalysis(applicationCase, jobPostingId, jobPostingRevision, generatedJob);
-            GeneratedCompanyAnalysis generatedCompany = bAnalysisGenerationService.generateCompanyAnalysis(applicationCase, postingText);
-            createCompanyAnalysis(applicationCase, jobPostingId, jobPostingRevision, generatedCompany, postingText);
+            // flag ON 이면 사용자 직접 경로(CompanyAnalysisService)와 동일한 웹검색 로직으로 WEB evidence 를 모아
+            // R1 생성(공고+웹)과 저장 gate(2소스)에 넘긴다. flag OFF·키 미설정·검색 실패면 빈 목록 → 공고-only(D-4c).
+            List<CompanyWebEvidence> companyWebEvidence = companyAnalysisService.collectWebEvidence(applicationCase);
+            GeneratedCompanyAnalysis generatedCompany =
+                    bAnalysisGenerationService.generateCompanyAnalysis(applicationCase, postingText, companyWebEvidence);
+            createCompanyAnalysis(applicationCase, jobPostingId, jobPostingRevision, generatedCompany, postingText, companyWebEvidence);
             createFitAnalysis(userId, applicationCaseId);
             createInterviewPrep(applicationCase, jobAnalysis);
             if (statusStarted) {
@@ -155,16 +162,19 @@ public class ApplicationCaseAutoPipelineService {
                                        Long jobPostingId,
                                        Integer jobPostingRevision,
                                        GeneratedCompanyAnalysis generated,
-                                       String postingText) {
+                                       String postingText,
+                                       List<CompanyWebEvidence> webEvidence) {
         // 사용자 직접 생성 경로(CompanyAnalysisService)와 동일한 canonicalizer 를 공유한다
-        // (evidence gate, ID/sourceKind/sourceRef 보정, unknowns 접기, sources 통일).
+        // (evidence gate 2소스[공고+WEB], ID/sourceKind/sourceRef 보정, unknowns 접기, sources 통일).
+        // webEvidence 가 빈 목록이면 7-param 은 기존 공고-only 6-param 과 동일 결과다(D-2 계약).
         CompanyAnalysisPayload payload = companyAnalysisCanonicalizer.canonicalizeForStorage(
                 generated.payload(),
                 jobPostingId,
                 jobPostingRevision,
                 postingText,
                 applicationCase.getCompanyName(),
-                applicationCase.getJobTitle()).payload();
+                applicationCase.getJobTitle(),
+                webEvidence).payload();
         LocalDateTime checkedAt = LocalDateTime.now();
         CompanyAnalysis companyAnalysis = CompanyAnalysis.builder()
                 .applicationCaseId(applicationCase.getId())

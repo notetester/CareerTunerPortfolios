@@ -175,6 +175,12 @@ careertuner:
       read-timeout: ${B_ANALYSIS_OLLAMA_READ_TIMEOUT:480s}
       num-ctx: ${B_ANALYSIS_OLLAMA_NUM_CTX:8192}
       num-predict: ${B_ANALYSIS_OLLAMA_NUM_PREDICT:2048}
+  # 기업분석 웹검색 활성 스위치(235 §11 팀장 승인 2026-07-03 · PR #238 · 후속 폴리시 #242).
+  # 기본 ON — env(CAREERTUNER_COMPANY_WEBSEARCH_ENABLED)로 환경별 override 가능.
+  # 네이버 키(NAVER_SEARCH_CLIENT_ID/_SECRET) 미설정·검색 실패 시 안전하게 공고-only 로 degrade(D-4c).
+  # 분석 1건당 비용 상한(검색 4회/결과 12건)은 코드 기본값 사용.
+  company-websearch:
+    enabled: ${CAREERTUNER_COMPANY_WEBSEARCH_ENABLED:true}
   file:
     # 면접 음성/영상 등 업로드 파일 저장 위치. 큰 영상은 SPRING_SERVLET_MULTIPART_MAX_FILE_SIZE 도 함께 올린다.
     media-dir: ${MEDIA_UPLOAD_DIR:.uploads/media}

@@ -261,7 +261,9 @@ public class CompanySourceResolver {
 
     /** 제목의 법인 표기 상호가 전부 대상 회사명과 무관(상호 포함 관계 없음)할 때만 true. */
     private boolean titleNamesUnrelatedCompany(String title, String normalizedName) {
-        Matcher matcher = EXPLICIT_CORPORATE_MENTION.matcher(title);
+        // title null 방어(형제 titleCorporateNameMatchesTarget 과 정합) — Naver 경로는 non-null 이나
+        // 캐시 역직렬화·테스트·미래 클라이언트의 null title 로 matcher(null) NPE 가 나지 않게 한다.
+        Matcher matcher = EXPLICIT_CORPORATE_MENTION.matcher(title == null ? "" : title);
         boolean foundUnrelated = false;
         while (matcher.find()) {
             String captured = matcher.group(1) != null ? matcher.group(1) : matcher.group(2);
