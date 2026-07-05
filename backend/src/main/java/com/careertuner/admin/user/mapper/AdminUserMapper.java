@@ -2,6 +2,7 @@ package com.careertuner.admin.user.mapper;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Map;
 
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
@@ -22,6 +23,22 @@ public interface AdminUserMapper {
                                  @Param("status") String status,
                                  @Param("role") String role,
                                  @Param("limit") int limit);
+
+    // ── 공통 그리드 계약(AdminListQuery.toParams() 기반 5종 세트) ──
+
+    /** 검색 조건 총건수. */
+    long countUsers(Map<String, Object> params);
+
+    /** 검색 + 정렬 + LIMIT/OFFSET 페이징 목록. */
+    List<AdminUserRow> searchUsers(Map<String, Object> params);
+
+    /** 내보내기용 전량 조회(exportLimit 상한). */
+    List<AdminUserRow> findUsersForExport(Map<String, Object> params);
+
+    /** 선택 내보내기용 id 목록 조회. */
+    List<AdminUserRow> findUsersByIds(@Param("ids") List<Long> ids,
+                                      @Param("sortBy") String sortBy,
+                                      @Param("sortDir") String sortDir);
 
     AdminUserRow findUser(Long id);
 

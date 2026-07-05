@@ -32,6 +32,12 @@ export const BASE_SURFACES = [
   "profile.viewMe",
   "profile.visibleToMe",
   "profile.searchMe",
+  "activity.posts",
+  "activity.comments",
+  "activity.replies",
+  "activity.likes",
+  "activity.bookmarks",
+  "activity.scraps",
 ] as const;
 
 export type BaseSurface = (typeof BASE_SURFACES)[number];
@@ -51,6 +57,12 @@ export const SURFACE_LABELS: Record<string, string> = {
   "profile.viewMe": "내 프로필 조회",
   "profile.visibleToMe": "상대 프로필이 나에게 노출",
   "profile.searchMe": "검색 결과에 내 계정 노출",
+  "activity.posts": "내가 쓴 글 목록",
+  "activity.comments": "내가 쓴 댓글 목록",
+  "activity.replies": "내가 쓴 답글 목록",
+  "activity.likes": "내 좋아요 목록",
+  "activity.bookmarks": "내 즐겨찾기 목록",
+  "activity.scraps": "내 스크랩 목록",
 };
 
 /* ── 매트릭스 카테고리 (아코디언 4개) ── */
@@ -69,6 +81,11 @@ export const SURFACE_CATEGORIES: SurfaceCategory[] = [
     surfaces: ["content.post", "content.comment", "content.reply", "content.roomMessage", "content.allAnonymousRoomMessages"],
   },
   { key: "profile", label: "프로필", surfaces: ["profile.viewMe", "profile.visibleToMe", "profile.searchMe"] },
+  {
+    key: "activity",
+    label: "활동 목록 공개",
+    surfaces: ["activity.posts", "activity.comments", "activity.replies", "activity.likes", "activity.bookmarks", "activity.scraps"],
+  },
 ];
 
 /* ── 상세(하위) 표면 키 — 베이스 행의 "펼치기"로 노출 ── */

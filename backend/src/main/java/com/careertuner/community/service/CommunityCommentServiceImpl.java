@@ -20,10 +20,15 @@ import com.careertuner.community.domain.PostStatus;
 import com.careertuner.community.dto.CommentResponse;
 import com.careertuner.community.dto.CreateCommentRequest;
 import com.careertuner.community.dto.PostListResponse;
+import com.careertuner.community.domain.CommentReaction;
 import com.careertuner.community.mapper.CommunityCommentMapper;
 import com.careertuner.community.mapper.CommunityPostMapper;
+import com.careertuner.community.mapper.CommunitySubscriptionMapper;
 import com.careertuner.community.mapper.ReactionMapper;
 import com.careertuner.community.moderation.event.CommentModerationRequiredEvent;
+import com.careertuner.nickname.dto.DisplayNameQuery;
+import com.careertuner.nickname.dto.DisplayNameResponse;
+import com.careertuner.nickname.service.NicknameProfileService;
 import com.careertuner.notification.domain.Notification;
 import com.careertuner.notification.service.NotificationService;
 import com.careertuner.privacy.service.PrivacyPolicyService;
@@ -44,9 +49,11 @@ public class CommunityCommentServiceImpl implements CommunityCommentService {
     private final CommunityCommentMapper commentMapper;
     private final CommunityPostMapper postMapper;
     private final ReactionMapper reactionMapper;
+    private final CommunitySubscriptionMapper subscriptionMapper;
     private final ApplicationEventPublisher eventPublisher;
     private final NotificationService notificationService;
     private final PrivacyPolicyService privacyPolicyService;
+    private final NicknameProfileService nicknameProfileService;
 
     @Override
     public List<CommentResponse> getComments(Long postId, Long currentUserId) {
@@ -60,11 +67,16 @@ public class CommunityCommentServiceImpl implements CommunityCommentService {
         List<CommunityComment> comments = commentMapper.findAllByPostId(postId);
 
         Map<Long, String> anonLabels = buildAnonLabels(comments);
-        // 멘션 대상이 비익명이면 익명라벨이 없으므로 실명으로 폴백(작성자 표시 경로와 동일하게 비대칭 제거).
+        // 비익명 작성자 표시명을 닉네임 프로필로 벌크 해석(N+1 방지). 익명 댓글은 익명번호 라벨을 유지한다.
+        Map<DisplayNameQuery, DisplayNameResponse> resolvedNames = resolveCommentAuthorNames(comments);
+        // 멘션 대상이 비익명이면 익명라벨이 없으므로 표시명(닉네임 프로필 반영)으로 폴백(작성자 표시 경로와 동일하게 비대칭 제거).
         // 멘션 대상은 반드시 이 글에 댓글을 단 사용자이므로 전체 목록에서 이름을 찾을 수 있다.
+        // 같은 작성자라도 댓글별로 다른 프로필을 쓸 수 있으나, 멘션은 "사용자" 참조라 그 사용자의 마지막(=최신) 표시명을 쓴다.
         Map<Long, String> userNames = new HashMap<>();
         for (CommunityComment c : comments) {
-            userNames.putIfAbsent(c.getUserId(), c.getUserName());
+            if (!c.isAnonymous()) {
+                userNames.put(c.getUserId(), resolvedName(c, resolvedNames));
+            }
         }
 
         // 표시 대상 = PUBLISHED 전체 + (살아있는 자손을 가진 삭제/숨김 노드)
@@ -72,6 +84,16 @@ public class CommunityCommentServiceImpl implements CommunityCommentService {
 
         // 뷰어 기준 content.comment/reply(.anonymous) 차단 작성자 벌크 판정(비로그인 뷰어는 필터 없음)
         BlockedCommentAuthors blockedAuthors = resolveBlockedAuthors(comments, currentUserId);
+
+        // 뷰어 리액션/구독 상태 벌크 조회(N+1 방지)
+        Map<Long, Set<String>> viewerReactions = new HashMap<>();
+        Set<Long> subscribedCommentIds = new HashSet<>();
+        if (currentUserId != null) {
+            for (CommentReaction r : reactionMapper.findCommentReactionsByUserForPost(currentUserId, postId)) {
+                viewerReactions.computeIfAbsent(r.getCommentId(), k -> new HashSet<>()).add(r.getReactionType());
+            }
+            subscribedCommentIds.addAll(subscriptionMapper.findSubscribedCommentIds(currentUserId, postId));
+        }
 
         List<CommentResponse> result = new ArrayList<>(comments.size());
         for (CommunityComment c : comments) {
@@ -96,10 +118,24 @@ public class CommunityCommentServiceImpl implements CommunityCommentService {
                     mentionLabel = userNames.get(c.getMentionUserId());
                 }
             }
+            Set<String> reactions = viewerReactions.getOrDefault(c.getId(), Set.of());
+            ViewerFlags flags = new ViewerFlags(
+                    reactions.contains("LIKE"),
+                    reactions.contains("DISLIKE"),
+                    reactions.contains("RECOMMEND"),
+                    reactions.contains("DISRECOMMEND"),
+                    subscribedCommentIds.contains(c.getId()));
             result.add(toResponse(c, post.getUserId(), currentUserId,
-                    displayName(c, anonLabels), mentionLabel, false));
+                    displayName(c, anonLabels, resolvedNames), resolvedProfileId(c, resolvedNames),
+                    mentionLabel, false, flags));
         }
         return result;
+    }
+
+    /** 뷰어의 댓글별 리액션/구독 상태 홀더. */
+    private record ViewerFlags(boolean liked, boolean disliked, boolean recommended,
+                               boolean disrecommended, boolean subscribed) {
+        static final ViewerFlags EMPTY = new ViewerFlags(false, false, false, false, false);
     }
 
     /**
@@ -152,13 +188,13 @@ public class CommunityCommentServiceImpl implements CommunityCommentService {
                 c.getPostId(),
                 c.getParentId(),
                 null,
-                new PostListResponse.AuthorDto(null, "", true),
+                new PostListResponse.AuthorDto(null, "", null, true),
                 null,
-                0,
+                0, 0, 0, 0,
                 false,
                 false,
                 c.getCreatedAt(),
-                false,
+                false, false, false, false, false,
                 true,
                 false);
     }
@@ -173,13 +209,13 @@ public class CommunityCommentServiceImpl implements CommunityCommentService {
                 c.getPostId(),
                 c.getParentId(),
                 null,
-                new PostListResponse.AuthorDto(null, "", true),
+                new PostListResponse.AuthorDto(null, "", null, true),
                 BLOCKED_COMMENT_TOMBSTONE,
-                0,
+                0, 0, 0, 0,
                 false,
                 false,
                 c.getCreatedAt(),
-                false,
+                false, false, false, false, false,
                 false,
                 true);
     }
@@ -223,8 +259,34 @@ public class CommunityCommentServiceImpl implements CommunityCommentService {
         }
     }
 
-    private String displayName(CommunityComment c, Map<Long, String> anonLabels) {
-        return c.isAnonymous() ? anonLabels.getOrDefault(c.getUserId(), "익명") : c.getUserName();
+    private String displayName(CommunityComment c, Map<Long, String> anonLabels,
+                               Map<DisplayNameQuery, DisplayNameResponse> resolvedNames) {
+        return c.isAnonymous()
+                ? anonLabels.getOrDefault(c.getUserId(), "익명")
+                : resolvedName(c, resolvedNames);
+    }
+
+    /** 목록의 비익명 작성자 (userId, nicknameProfileId) 를 모아 표시명을 한 번에 해석한다. */
+    private Map<DisplayNameQuery, DisplayNameResponse> resolveCommentAuthorNames(List<CommunityComment> comments) {
+        Set<DisplayNameQuery> queries = new HashSet<>();
+        for (CommunityComment c : comments) {
+            if (!c.isAnonymous()) {
+                queries.add(new DisplayNameQuery(c.getUserId(), c.getNicknameProfileId()));
+            }
+        }
+        return nicknameProfileService.bulkResolveDisplayNames(queries);
+    }
+
+    /** 벌크 해석 결과에서 이 댓글의 비익명 표시명을 꺼낸다(미해석 시 users.name 폴백). */
+    private String resolvedName(CommunityComment c, Map<DisplayNameQuery, DisplayNameResponse> resolvedNames) {
+        DisplayNameResponse dn = resolvedNames.get(new DisplayNameQuery(c.getUserId(), c.getNicknameProfileId()));
+        return dn != null ? dn.displayName() : c.getUserName();
+    }
+
+    /** 비익명 댓글의 표시용 프로필 id(해석 성공 시) — AuthorDto 에 실어 보낸다. */
+    private Long resolvedProfileId(CommunityComment c, Map<DisplayNameQuery, DisplayNameResponse> resolvedNames) {
+        DisplayNameResponse dn = resolvedNames.get(new DisplayNameQuery(c.getUserId(), c.getNicknameProfileId()));
+        return dn != null ? dn.nicknameProfileId() : c.getNicknameProfileId();
     }
 
     @Override
@@ -265,13 +327,15 @@ public class CommunityCommentServiceImpl implements CommunityCommentService {
             }
         }
 
+        boolean anonymous = request.anonymous() == null || request.anonymous();
         CommunityComment comment = CommunityComment.builder()
                 .postId(postId)
                 .userId(userId)
                 .parentId(effectiveParentId)
                 .mentionUserId(mentionUserId)
                 .content(request.content())
-                .anonymous(request.anonymous() == null || request.anonymous())
+                .anonymous(anonymous)
+                .nicknameProfileId(normalizeProfileId(userId, anonymous, request.nicknameProfileId()))
                 .status(CommentStatus.PUBLISHED.name())
                 .build();
         commentMapper.insert(comment);
@@ -281,17 +345,22 @@ public class CommunityCommentServiceImpl implements CommunityCommentService {
         // toxic 판정 시에만 HIDDEN 으로 조건부 flip 된다(pending 윈도우엔 정상 표시).
         eventPublisher.publishEvent(new CommentModerationRequiredEvent(comment.getId()));
 
-        // 댓글/답글 알림 — 발행 실패가 댓글 작성을 깨지 않도록 best-effort.
+        // 댓글/답글 알림 + 구독자 팬아웃 — 발행 실패가 댓글 작성을 깨지 않도록 best-effort.
         try {
-            notifyCommentCreated(post, comment, replyTargetUserId);
+            notifyCommentCreated(post, comment, replyTargetUserId, request.parentId());
         } catch (Exception e) {
             log.error("댓글 알림 발행 실패: commentId={}", comment.getId(), e);
         }
 
         log.info("댓글 작성 postId={} commentId={}", postId, comment.getId());
-        // 작성 직후 응답은 프론트가 곧바로 목록을 재조회하므로 라벨은 단순값으로 둔다.
+        // 작성 직후 응답 표시명 — 비익명은 선택 프로필로 해석(익명은 "익명"). 익명번호 라벨은 목록 재조회에서 부여된다.
+        DisplayNameResponse dn = comment.isAnonymous() ? null
+                : nicknameProfileService.resolveDisplayName(userId, comment.getNicknameProfileId());
+        String authorName = comment.isAnonymous() ? "익명"
+                : (dn != null ? dn.displayName() : comment.getUserName());
+        Long authorProfileId = dn != null ? dn.nicknameProfileId() : comment.getNicknameProfileId();
         return toResponse(comment, post.getUserId(), userId,
-                comment.isAnonymous() ? "익명" : comment.getUserName(), null, false);
+                authorName, authorProfileId, null, false, ViewerFlags.EMPTY);
     }
 
     @Override
@@ -317,8 +386,13 @@ public class CommunityCommentServiceImpl implements CommunityCommentService {
         Long postAuthorId = post != null ? post.getUserId() : null;
         // 응답 라벨은 단순값(익명 등). FE 는 낙관적으로 본문만 갱신한다(편집 흐름은 목록 재조회 안 함 —
         // 작성의 pending 윈도우와 동형: 편집 본문이 재검열로 HIDDEN 되면 다음 재조회/타 클라에서 반영).
+        DisplayNameResponse dn = fresh.isAnonymous() ? null
+                : nicknameProfileService.resolveDisplayName(userId, fresh.getNicknameProfileId());
+        String authorName = fresh.isAnonymous() ? "익명"
+                : (dn != null ? dn.displayName() : fresh.getUserName());
+        Long authorProfileId = dn != null ? dn.nicknameProfileId() : fresh.getNicknameProfileId();
         return toResponse(fresh, postAuthorId, userId,
-                fresh.isAnonymous() ? "익명" : fresh.getUserName(), null, false);
+                authorName, authorProfileId, null, false, ViewerFlags.EMPTY);
     }
 
     @Override
@@ -342,21 +416,29 @@ public class CommunityCommentServiceImpl implements CommunityCommentService {
     }
 
     /**
-     * 댓글 작성 알림 발행.
+     * 댓글 작성 알림 발행 + 구독자 팬아웃.
      *  - 루트 댓글: 게시글 작성자에게 COMMENT.
      *  - 답글(parentId 있음): 실제 답글 대상(멘션 대상, 없으면 클릭한 부모 댓글 작성자)에게 COMMENT_REPLY.
      *    답글 대상과 게시글 작성자가 다르면 게시글 작성자에게도 COMMENT 발행(중복 수신자면 한 번만).
-     *  - 본인에게는 발행하지 않는다. senderRelation 은 notify()가 actorId 로 자동 판정한다.
+     *  - 글 구독자: POST_WATCH_COMMENT. 답글이면 클릭 대상·루트 댓글 구독자: COMMENT_WATCH_REPLY.
+     *    작성자 본인 제외, 기존 COMMENT/COMMENT_REPLY 수신자와 중복이면 1회만(구독 알림 스킵).
+     *  - 본인에게는 발행하지 않는다. senderRelation·개인 차단·수신 설정 필터는 notify()가 처리한다.
      * 링크/타깃은 검열 알림(PostModerationService)과 동일 패턴: /community/posts/{postId}, COMMENT/commentId.
      */
-    private void notifyCommentCreated(CommunityPost post, CommunityComment comment, Long replyTargetUserId) {
+    private void notifyCommentCreated(CommunityPost post, CommunityComment comment,
+                                      Long replyTargetUserId, Long clickedCommentId) {
         Long actorId = comment.getUserId();
         String preview = truncate(comment.getContent(), 80);
         String link = "/community/posts/" + post.getId();
 
+        // 이미 알림을 받은(또는 받을) 수신자 — 구독 팬아웃에서 제외해 1인 1회 계약을 지킨다
+        Set<Long> notified = new HashSet<>();
+        notified.add(actorId);
+
         Long replyRecipientId = null;
         if (comment.getParentId() != null && replyTargetUserId != null && !replyTargetUserId.equals(actorId)) {
             replyRecipientId = replyTargetUserId;
+            notified.add(replyRecipientId);
             notificationService.notify(Notification.builder()
                     .userId(replyRecipientId)
                     .actorId(actorId)
@@ -372,6 +454,7 @@ public class CommunityCommentServiceImpl implements CommunityCommentService {
         // 게시글 작성자 COMMENT 알림 — 본인 댓글이거나 이미 답글 알림을 받은 수신자면 스킵.
         Long postAuthorId = post.getUserId();
         if (!postAuthorId.equals(actorId) && !postAuthorId.equals(replyRecipientId)) {
+            notified.add(postAuthorId);
             notificationService.notify(Notification.builder()
                     .userId(postAuthorId)
                     .actorId(actorId)
@@ -383,6 +466,43 @@ public class CommunityCommentServiceImpl implements CommunityCommentService {
                     .link(link)
                     .build());
         }
+
+        // 댓글 구독자 팬아웃 — 답글이면 클릭 대상 댓글 + 루트 댓글 구독자(중복 제거)
+        if (comment.getParentId() != null) {
+            List<Long> watchTargets = new ArrayList<>();
+            if (clickedCommentId != null) watchTargets.add(clickedCommentId);
+            if (!comment.getParentId().equals(clickedCommentId)) watchTargets.add(comment.getParentId());
+            if (!watchTargets.isEmpty()) {
+                for (Long subscriberId : subscriptionMapper.findCommentSubscriberIds(watchTargets)) {
+                    if (!notified.add(subscriberId)) continue;
+                    notificationService.notify(Notification.builder()
+                            .userId(subscriberId)
+                            .actorId(actorId)
+                            .type("COMMENT_WATCH_REPLY")
+                            .targetType("COMMENT")
+                            .targetId(comment.getId())
+                            .title("구독한 댓글에 새 답글이 달렸습니다.")
+                            .message(preview)
+                            .link(link)
+                            .build());
+                }
+            }
+        }
+
+        // 글 구독자 팬아웃 — 작성자 본인·이미 알림받은 수신자 제외
+        for (Long subscriberId : subscriptionMapper.findPostSubscriberIds(post.getId())) {
+            if (!notified.add(subscriberId)) continue;
+            notificationService.notify(Notification.builder()
+                    .userId(subscriberId)
+                    .actorId(actorId)
+                    .type("POST_WATCH_COMMENT")
+                    .targetType("COMMENT")
+                    .targetId(comment.getId())
+                    .title("구독한 게시글에 새 댓글이 달렸습니다.")
+                    .message(preview)
+                    .link(link)
+                    .build());
+        }
     }
 
     private static String truncate(String text, int maxLen) {
@@ -390,10 +510,21 @@ public class CommunityCommentServiceImpl implements CommunityCommentService {
         return text.length() <= maxLen ? text : text.substring(0, maxLen) + "…";
     }
 
+    /**
+     * 저장할 닉네임 프로필 id 를 정규화한다(게시글과 동일 규칙).
+     * 익명이거나 profileId 가 없으면 null. 지정 프로필이 작성자 소유 ACTIVE 가 아니면 null(위조 방지).
+     */
+    private Long normalizeProfileId(Long userId, boolean anonymous, Long profileId) {
+        if (anonymous || profileId == null) {
+            return null;
+        }
+        DisplayNameResponse dn = nicknameProfileService.resolveDisplayName(userId, profileId);
+        return dn != null && profileId.equals(dn.nicknameProfileId()) ? profileId : null;
+    }
+
     private CommentResponse toResponse(CommunityComment c, Long postAuthorId, Long currentUserId,
-                                       String authorName, String mentionLabel, boolean isDeleted) {
-        boolean liked = currentUserId != null
-                && reactionMapper.findCommentReaction(currentUserId, c.getId(), "LIKE") != null;
+                                       String authorName, Long nicknameProfileId, String mentionLabel,
+                                       boolean isDeleted, ViewerFlags flags) {
         return new CommentResponse(
                 c.getId(),
                 c.getPostId(),
@@ -402,13 +533,21 @@ public class CommunityCommentServiceImpl implements CommunityCommentService {
                 new PostListResponse.AuthorDto(
                         c.isAnonymous() ? null : c.getUserId(),
                         authorName,
+                        c.isAnonymous() ? null : nicknameProfileId,
                         c.isAnonymous()),
                 c.getContent(),
                 c.getLikeCount(),
+                c.getDislikeCount(),
+                c.getRecommendCount(),
+                c.getDisrecommendCount(),
                 c.getUserId().equals(postAuthorId),
                 currentUserId != null && currentUserId.equals(c.getUserId()),
                 c.getCreatedAt(),
-                liked,
+                flags.liked(),
+                flags.disliked(),
+                flags.recommended(),
+                flags.disrecommended(),
+                flags.subscribed(),
                 isDeleted,
                 false);
     }

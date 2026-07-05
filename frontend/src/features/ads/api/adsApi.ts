@@ -1,62 +1,25 @@
 import { api } from "@/app/lib/api";
+import type { Ad, AdClick, AdPlacement, AdPlatform } from "../types/ads";
 
-export interface AdCampaign {
-  id: number;
-  title: string;
-  body?: string | null;
-  surface: "WEB" | "MOBILE" | "DESKTOP" | "ALL" | string;
-  placement: string;
-  creativeType: "BANNER" | "CARD" | "TEXT" | string;
-  imageUrl?: string | null;
-  targetUrl?: string | null;
-  visibleToPlans: string[];
-  startsAt?: string | null;
-  endsAt?: string | null;
-  priority: number;
-  active: boolean;
-  createdAt?: string;
-  updatedAt?: string;
+/**
+ * 배치·플랫폼 매치 광고 조회. 유료플랜 사용자에게는 백엔드가 빈 배열을 반환한다.
+ * (비로그인 공개는 SecurityConfig permitAll 배선이 필요 — 현재는 로그인 사용자 대상.)
+ */
+export function fetchAds(
+  placement: AdPlacement,
+  platform: AdPlatform = "WEB",
+  limit = 1,
+): Promise<Ad[]> {
+  const query = new URLSearchParams({ placement, platform, limit: String(limit) });
+  return api<Ad[]>(`/ads?${query.toString()}`, { method: "GET" });
 }
 
-export interface AdCampaignRequest {
-  title: string;
-  body?: string | null;
-  surface: string;
-  placement?: string | null;
-  creativeType?: string | null;
-  imageUrl?: string | null;
-  targetUrl?: string | null;
-  visibleToPlans?: string[];
-  startsAt?: string | null;
-  endsAt?: string | null;
-  priority?: number;
-  active?: boolean;
+/** 노출 집계 +1 (가시성 도달 시 1회 발사, best-effort). */
+export function recordAdImpression(adId: number): Promise<void> {
+  return api<void>(`/ads/${adId}/impression`, { method: "POST" }).catch(() => undefined);
 }
 
-export function getAds(surface: "WEB" | "MOBILE" | "DESKTOP" = "WEB") {
-  return api<AdCampaign[]>(`/ads?surface=${surface}`, { method: "GET" });
-}
-
-export function recordAdEvent(id: number, surface: string, eventType: "IMPRESSION" | "CLICK") {
-  return api<void>(`/ads/${id}/events`, {
-    method: "POST",
-    body: JSON.stringify({ surface, eventType }),
-  }, { auth: false });
-}
-
-export function listAdminAds(params: { surface?: string; active?: boolean; keyword?: string } = {}) {
-  const search = new URLSearchParams();
-  if (params.surface) search.set("surface", params.surface);
-  if (params.active !== undefined) search.set("active", String(params.active));
-  if (params.keyword) search.set("keyword", params.keyword);
-  const query = search.toString();
-  return api<AdCampaign[]>(`/admin/ads${query ? `?${query}` : ""}`, { method: "GET" });
-}
-
-export function createAdminAd(payload: AdCampaignRequest) {
-  return api<AdCampaign>("/admin/ads", { method: "POST", body: JSON.stringify(payload) });
-}
-
-export function updateAdminAd(id: number, payload: AdCampaignRequest) {
-  return api<AdCampaign>(`/admin/ads/${id}`, { method: "PATCH", body: JSON.stringify(payload) });
+/** 클릭 집계 +1 후 이동 URL 을 받는다. */
+export function recordAdClick(adId: number): Promise<AdClick> {
+  return api<AdClick>(`/ads/${adId}/click`, { method: "POST" });
 }

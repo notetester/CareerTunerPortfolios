@@ -9,7 +9,6 @@ import {
   Check,
   Download,
   FileText,
-  KeyRound,
   Globe2,
   Inbox,
   Lock,
@@ -19,6 +18,7 @@ import {
   RefreshCw,
   Search,
   Send,
+  Settings2,
   UserPlus,
   UserX,
   Users,
@@ -34,17 +34,12 @@ import type { ApplicationCase } from "@/features/applications/types/applicationC
 import {
   SHARE_MODE_LABEL,
   acceptFriendRequest,
-  createChatProfile,
   createConversation,
   declineFriendRequest,
   discoverConversations,
   downloadCollaborationAttachment,
-  getConversationSettings,
   inviteConversationMembers,
-  kickConversationMember,
   joinConversation,
-  listChatProfiles,
-  listConversationMembers,
   listConversations,
   listFriends,
   listIncomingFriendRequests,
@@ -55,17 +50,13 @@ import {
   searchUsers,
   sendFriendRequest,
   sendMessage,
-  updateConversationSettings,
   uploadCollaborationFile,
 } from "../api/collaborationApi";
 import type {
   AttachmentAvailability,
   AttachmentShareMode,
-  ChatProfile,
   CollaborationUser,
-  ConversationMember,
   ConversationSummaryResponse,
-  ConversationSettings,
   ConversationType,
   FileAssetResponse,
   FriendRequestResponse,
@@ -74,6 +65,7 @@ import type {
   MessageKind,
   MessageResponse,
 } from "../types/collaboration";
+import { RoomSettingsSheet } from "../components/RoomSettingsSheet";
 // 개인 차단 진입점 — 코어(/api/privacy)는 사용만 하고 수정하지 않는다 (docs/PERSONAL_BLOCK_POLICY.md §4).
 import { blockConversation, blockUser } from "@/features/privacy/api/privacyApi";
 import { showBlockManageToast } from "@/features/privacy/components/blockToast";
@@ -252,10 +244,9 @@ export function MessengerPage() {
   const [messages, setMessages] = useState<MessageResponse[]>([]);
   const [applicationCases, setApplicationCases] = useState<ApplicationCase[]>([]);
   const [userResults, setUserResults] = useState<CollaborationUser[]>([]);
-  const [roomMembers, setRoomMembers] = useState<ConversationMember[]>([]);
-  const [chatProfiles, setChatProfiles] = useState<ChatProfile[]>([]);
 
   const [activeConversationId, setActiveConversationId] = useState<number | null>(null);
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const [roomSearch, setRoomSearch] = useState("");
   const [userKeyword, setUserKeyword] = useState("");
   const [joinPasswords, setJoinPasswords] = useState<Record<number, string>>({});
@@ -263,13 +254,7 @@ export function MessengerPage() {
   const [createTitle, setCreateTitle] = useState("");
   const [createDescription, setCreateDescription] = useState("");
   const [createPassword, setCreatePassword] = useState("");
-  const [createMaxMembers, setCreateMaxMembers] = useState(100);
-  const [createInvitePolicy, setCreateInvitePolicy] = useState("OWNER_AND_MANAGERS");
-  const [createAnonymousAllowed, setCreateAnonymousAllowed] = useState(false);
   const [createInviteIds, setCreateInviteIds] = useState<number[]>([]);
-  const [settingsDraft, setSettingsDraft] = useState<ConversationSettings | null>(null);
-  const [settingsPassword, setSettingsPassword] = useState("");
-  const [chatProfileDraft, setChatProfileDraft] = useState("");
 
   const [messageKind, setMessageKind] = useState<MessageKind>("CHAT");
   const [messageText, setMessageText] = useState("");
@@ -287,7 +272,6 @@ export function MessengerPage() {
     () => conversations.find((conversation) => conversation.id === activeConversationId) ?? null,
     [activeConversationId, conversations],
   );
-  const canManageActiveRoom = activeConversation?.role === "OWNER" || activeConversation?.role === "MANAGER";
 
   const upsertConversation = useCallback((conversation: ConversationSummaryResponse) => {
     setConversations((current) => [
@@ -366,26 +350,6 @@ export function MessengerPage() {
     void loadMessages(activeConversationId);
   }, [activeConversationId, loadMessages]);
 
-  useEffect(() => {
-    let ignore = false;
-    if (!activeConversationId) {
-      setSettingsDraft(null);
-      setRoomMembers([]);
-      return;
-    }
-    Promise.all([
-      getConversationSettings(activeConversationId).catch(() => null),
-      listConversationMembers(activeConversationId).catch(() => []),
-      listChatProfiles().catch(() => []),
-    ]).then(([settings, members, profiles]) => {
-      if (ignore) return;
-      setSettingsDraft(settings);
-      setRoomMembers(members);
-      setChatProfiles(profiles);
-    });
-    return () => { ignore = true; };
-  }, [activeConversationId]);
-
   async function execute(action: () => Promise<void>, success?: string) {
     setBusy(true);
     setError(null);
@@ -413,20 +377,12 @@ export function MessengerPage() {
       title: createTitle.trim(),
       description: createDescription.trim() || null,
       password: createType === "PRIVATE" ? createPassword.trim() || null : null,
-      maxMembers: createMaxMembers,
-      invitePolicy: createInvitePolicy,
-      anonymousAllowed: createAnonymousAllowed,
-      anonymousOnly: false,
-      roomProfileRequired: false,
       memberUserIds: createInviteIds,
     });
     upsertConversation(conversation);
     setCreateTitle("");
     setCreateDescription("");
     setCreatePassword("");
-    setCreateMaxMembers(100);
-    setCreateInvitePolicy("OWNER_AND_MANAGERS");
-    setCreateAnonymousAllowed(false);
     setCreateInviteIds([]);
     await refreshDiscoverRooms();
   }, "채팅방을 만들었습니다.");
@@ -468,35 +424,6 @@ export function MessengerPage() {
       item.id === updated.id ? { ...item, muted: updated.muted } : item
     )));
   }, conversation.muted ? "채팅방 알림을 다시 켰습니다." : `채팅방 알림을 해제했습니다. ${MUTE_HELP}.`);
-
-  const saveRoomSettings = () => execute(async () => {
-    if (!activeConversationId || !settingsDraft) return;
-    const updated = await updateConversationSettings(activeConversationId, {
-      ...settingsDraft,
-      password: settingsPassword.trim() || null,
-      clearPassword: false,
-    });
-    setSettingsDraft(updated);
-    setSettingsPassword("");
-    await refreshConversations();
-  }, "채팅방 설정을 저장했습니다.");
-
-  const removeRoomMember = (member: ConversationMember, ban: boolean) => execute(async () => {
-    if (!activeConversationId) return;
-    await kickConversationMember(activeConversationId, member.userId, {
-      ban,
-      reason: ban ? "운영자 재입장 금지 강퇴" : "운영자 강퇴",
-    });
-    setRoomMembers(await listConversationMembers(activeConversationId));
-  }, ban ? "멤버를 재입장 불가로 강퇴했습니다." : "멤버를 강퇴했습니다.");
-
-  const saveChatProfile = () => execute(async () => {
-    const nickname = chatProfileDraft.trim();
-    if (!nickname) throw new Error("채팅 닉네임을 입력해 주세요.");
-    await createChatProfile({ nickname, defaultProfile: chatProfiles.length === 0 });
-    setChatProfileDraft("");
-    setChatProfiles(await listChatProfiles());
-  }, "채팅 프로필을 추가했습니다.");
 
   const handleFiles = (event: ChangeEvent<HTMLInputElement>) => {
     const selected = Array.from(event.currentTarget.files ?? []);
@@ -664,29 +591,6 @@ export function MessengerPage() {
                     placeholder="비밀번호(초대만 허용하려면 비워두기)"
                   />
                 )}
-                <div className="grid grid-cols-2 gap-2">
-                  <Input
-                    type="number"
-                    min={2}
-                    max={500}
-                    value={createMaxMembers}
-                    onChange={(event) => setCreateMaxMembers(Number(event.target.value) || 100)}
-                    placeholder="인원 제한"
-                  />
-                  <select
-                    className="h-10 rounded-md border border-input bg-background px-3 text-sm"
-                    value={createInvitePolicy}
-                    onChange={(event) => setCreateInvitePolicy(event.target.value)}
-                  >
-                    <option value="OWNER_AND_MANAGERS">방장/관리자 초대</option>
-                    <option value="OWNER_ONLY">방장만 초대</option>
-                    <option value="ALL_MEMBERS">전원 초대</option>
-                  </select>
-                </div>
-                <label className="flex items-center gap-2 rounded-md border border-border bg-background px-3 py-2 text-sm">
-                  <input type="checkbox" checked={createAnonymousAllowed} onChange={(event) => setCreateAnonymousAllowed(event.target.checked)} />
-                  익명 참가 허용
-                </label>
                 {friends.length > 0 && (
                   <div className="space-y-2">
                     <div className="text-xs font-semibold text-muted-foreground">처음 초대할 친구</div>
@@ -913,6 +817,19 @@ export function MessengerPage() {
               <div className="flex items-center gap-2">
                 <Badge variant="outline">{conversationTypeLabel(activeConversation.type)}</Badge>
                 {activeConversation.locked && <Lock className="size-4 text-muted-foreground" />}
+                {activeConversation.type !== "DIRECT" && activeConversation.canManageRoom && (
+                  <Button
+                    type="button"
+                    size="icon"
+                    variant="outline"
+                    onClick={() => setSettingsOpen(true)}
+                    disabled={busy}
+                    aria-label="방 설정"
+                    title="방 설정 — 개설자 또는 방 관리자만"
+                  >
+                    <Settings2 className="size-4" />
+                  </Button>
+                )}
                 <Button
                   type="button"
                   size="icon"
@@ -961,12 +878,6 @@ export function MessengerPage() {
                       <span>{activeConversation.memberCount}명</span>
                       <span>·</span>
                       <span>{formatDateTime(activeConversation.updatedAt)}</span>
-                      {activeConversation.role && (
-                        <>
-                          <span>·</span>
-                          <span>{activeConversation.role}</span>
-                        </>
-                      )}
                       {activeConversation.muted && (
                         <>
                           <span>·</span>
@@ -983,57 +894,6 @@ export function MessengerPage() {
                         </>
                       )}
                     </div>
-                    {activeConversation.type !== "DIRECT" && settingsDraft && (
-                      <div className="mt-3 grid gap-3 rounded-md border border-border bg-background p-3 text-sm">
-                        {canManageActiveRoom && (
-                          <div className="grid gap-2 md:grid-cols-3">
-                            <Input value={settingsDraft.title ?? ""} onChange={(event) => setSettingsDraft((p) => p ? { ...p, title: event.target.value } : p)} placeholder="방 이름" />
-                            <Input type="number" min={2} max={500} value={settingsDraft.maxMembers} onChange={(event) => setSettingsDraft((p) => p ? { ...p, maxMembers: Number(event.target.value) || p.maxMembers } : p)} />
-                            <Input type="password" value={settingsPassword} onChange={(event) => setSettingsPassword(event.target.value)} placeholder="새 비밀번호" />
-                            <select className="h-10 rounded-md border border-input bg-background px-3 text-sm" value={settingsDraft.invitePolicy} onChange={(event) => setSettingsDraft((p) => p ? { ...p, invitePolicy: event.target.value } : p)}>
-                              <option value="OWNER_AND_MANAGERS">방장/관리자 초대</option>
-                              <option value="OWNER_ONLY">방장만 초대</option>
-                              <option value="ALL_MEMBERS">전원 초대</option>
-                            </select>
-                            <label className="flex items-center gap-2 rounded-md border px-3">
-                              <input type="checkbox" checked={settingsDraft.anonymousAllowed} onChange={(event) => setSettingsDraft((p) => p ? { ...p, anonymousAllowed: event.target.checked, anonymousOnly: event.target.checked ? p.anonymousOnly : false } : p)} />
-                              익명 허용
-                            </label>
-                            <label className="flex items-center gap-2 rounded-md border px-3">
-                              <input type="checkbox" checked={settingsDraft.anonymousOnly} onChange={(event) => setSettingsDraft((p) => p ? { ...p, anonymousOnly: event.target.checked, anonymousAllowed: event.target.checked || p.anonymousAllowed } : p)} />
-                              익명만 참가
-                            </label>
-                            <div className="md:col-span-3 flex justify-end">
-                              <Button type="button" size="sm" onClick={saveRoomSettings} disabled={busy}><KeyRound className="size-4" />설정 저장</Button>
-                            </div>
-                          </div>
-                        )}
-                        <div className="grid gap-2 md:grid-cols-[1fr_auto]">
-                          <Input value={chatProfileDraft} onChange={(event) => setChatProfileDraft(event.target.value)} placeholder="채팅용 닉네임 프로필 추가" />
-                          <Button type="button" variant="outline" onClick={saveChatProfile} disabled={busy}>프로필 추가</Button>
-                        </div>
-                        {chatProfiles.length > 0 && (
-                          <div className="flex flex-wrap gap-2 text-xs text-muted-foreground">
-                            {chatProfiles.map((profile) => <span key={profile.id} className="rounded border px-2 py-1">{profile.nickname}{profile.defaultProfile ? " · 기본" : ""}</span>)}
-                          </div>
-                        )}
-                        {canManageActiveRoom && roomMembers.length > 0 && (
-                          <div className="grid gap-2">
-                            {roomMembers.map((member) => (
-                              <div key={member.userId} className="flex flex-wrap items-center justify-between gap-2 rounded-md border px-3 py-2">
-                                <span>{member.name} <span className="text-xs text-muted-foreground">{member.role}{member.anonymous ? " · 익명" : ""}</span></span>
-                                {member.role !== "OWNER" && (
-                                  <div className="flex gap-1">
-                                    <Button type="button" size="sm" variant="outline" onClick={() => removeRoomMember(member, false)} disabled={busy}>강퇴</Button>
-                                    <Button type="button" size="sm" variant="outline" className="text-destructive" onClick={() => removeRoomMember(member, true)} disabled={busy}>재입장 금지</Button>
-                                  </div>
-                                )}
-                              </div>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                    )}
                   </div>
 
                   <div className="max-h-[520px] flex-1 space-y-3 overflow-y-auto bg-muted/20 p-4">
@@ -1220,6 +1080,17 @@ export function MessengerPage() {
           </Panel>
         </div>
       </div>
+
+      {settingsOpen && activeConversation && activeConversation.type !== "DIRECT" && (
+        <RoomSettingsSheet
+          conversationId={activeConversation.id}
+          onClose={() => setSettingsOpen(false)}
+          onChanged={() => {
+            // 방 설정 변경(제목/공개/공지/멤버 등)을 헤더·목록에 반영한다.
+            void refreshConversations();
+          }}
+        />
+      )}
     </main>
   );
 }

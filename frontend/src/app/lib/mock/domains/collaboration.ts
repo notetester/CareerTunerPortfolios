@@ -10,14 +10,21 @@ import {
 import type {
   AttachmentShareMode,
   CollaborationUser,
+  ConversationAudit,
+  ConversationBan,
+  ConversationMemberDetail,
+  ConversationPermission,
+  ConversationSettingsResponse,
   ConversationSummaryResponse,
   ConversationType,
   FriendRequestResponse,
   FriendResponse,
+  InvitePolicy,
   MessageAttachmentResponse,
   MessageKind,
   MessagePreviewResponse,
   MessageResponse,
+  RoomRole,
   SharedPostingResponse,
 } from "@/features/collaboration/types/collaboration";
 
@@ -197,10 +204,15 @@ let conversations: ConversationSummaryResponse[] = [
     title: "프론트엔드 취준 자료방",
     description: "프론트엔드 공고, 면접 질문, 포트폴리오 자료 공유",
     displayName: "프론트엔드 취준 자료방",
+    imageFileId: null,
+    notice: "매주 수요일 모의 면접 진행합니다. 자료는 자유롭게 공유해 주세요.",
     locked: false,
     memberCount: 18,
     joined: true,
     muted: false,
+    // 내가 개설한 방 — 방 설정 전권
+    myRole: "OWNER",
+    canManageRoom: true,
     peer: null,
     latestMessage: null,
     unreadCount: 1,
@@ -212,10 +224,14 @@ let conversations: ConversationSummaryResponse[] = [
     title: null,
     description: null,
     displayName: "이서준",
+    imageFileId: null,
+    notice: null,
     locked: false,
     memberCount: 2,
     joined: true,
     muted: false,
+    myRole: "MEMBER",
+    canManageRoom: false,
     peer: users[2],
     latestMessage: null,
     unreadCount: 0,
@@ -227,10 +243,15 @@ let conversations: ConversationSummaryResponse[] = [
     title: "시스템 설계 스터디",
     description: "초대 또는 비밀번호로 참가하는 비공개 스터디",
     displayName: "시스템 설계 스터디",
+    imageFileId: null,
+    notice: null,
     locked: true,
     memberCount: 6,
     joined: true,
     muted: true,
+    // 위임받은 방 관리자 — 세부 권한만
+    myRole: "MANAGER",
+    canManageRoom: true,
     peer: null,
     latestMessage: null,
     unreadCount: 0,
@@ -242,10 +263,14 @@ let conversations: ConversationSummaryResponse[] = [
     title: "신입 백엔드 면접 공유",
     description: "Java, Spring, DB 면접 복기와 예상 질문",
     displayName: "신입 백엔드 면접 공유",
+    imageFileId: null,
+    notice: null,
     locked: false,
     memberCount: 24,
     joined: false,
     muted: false,
+    myRole: null,
+    canManageRoom: false,
     peer: null,
     latestMessage: null,
     unreadCount: 0,
@@ -320,6 +345,182 @@ function withViewerBlocked(message: MessageResponse): MessageResponse & { blocke
 
 function normalizeShareMode(mode: unknown): AttachmentShareMode {
   return mode === "CLOUD" || mode === "LOCAL" ? mode : "TEMPORARY";
+}
+
+// ── 방 설정 / 관리자 위임 (W5) mock ──
+
+function ownerPermission(): ConversationPermission {
+  return {
+    owner: true,
+    canKick: true,
+    canBan: true,
+    canSetPassword: true,
+    canInvite: true,
+    canEditRoom: true,
+    canManageMembers: true,
+  };
+}
+
+function memberPermission(overrides: Partial<ConversationPermission> = {}): ConversationPermission {
+  return {
+    owner: false,
+    canKick: false,
+    canBan: false,
+    canSetPassword: false,
+    canInvite: false,
+    canEditRoom: false,
+    canManageMembers: false,
+    ...overrides,
+  };
+}
+
+function member(
+  user: CollaborationUser,
+  role: RoomRole,
+  permission: ConversationPermission,
+  extra: Partial<ConversationMemberDetail> = {},
+): ConversationMemberDetail {
+  return {
+    userId: user.id,
+    displayName: user.name,
+    email: user.email,
+    role,
+    anonymous: false,
+    roomProfileFileId: null,
+    joinedAt: new Date(Date.now() - 20 * 86_400_000).toISOString(),
+    permission,
+    banned: false,
+    ...extra,
+  };
+}
+
+// 방별 설정 상태 — 7001(OWNER), 7003(위임 MANAGER) 시연.
+const settingsByConversation: Record<number, ConversationSettingsResponse> = {
+  7001: {
+    conversationId: 7001,
+    type: "PUBLIC",
+    title: "프론트엔드 취준 자료방",
+    description: "프론트엔드 공고, 면접 질문, 포트폴리오 자료 공유",
+    imageFileId: null,
+    notice: "매주 수요일 모의 면접 진행합니다. 자료는 자유롭게 공유해 주세요.",
+    locked: false,
+    hasPassword: false,
+    maxMembers: 500,
+    invitePolicy: "ALL_MEMBERS",
+    allowAnonymous: false,
+    anonymousOnly: false,
+    myPermission: ownerPermission(),
+    members: [
+      member(currentUser, "OWNER", ownerPermission()),
+      member(users[1], "MANAGER", memberPermission({ canInvite: true, canKick: true })),
+      member(users[2], "MEMBER", memberPermission()),
+    ],
+    bans: [
+      {
+        userId: 9203,
+        displayName: "최하린",
+        reason: "반복 스팸",
+        bannedBy: currentUser.id,
+        bannedAt: new Date(Date.now() - 3 * 86_400_000).toISOString(),
+      },
+    ],
+    inviteAllowUserIds: [],
+    recentAudits: [
+      {
+        id: 5001,
+        actorId: currentUser.id,
+        actorName: currentUser.name,
+        targetUserId: 9201,
+        targetName: "박민지",
+        action: "MANAGER_GRANTED",
+        detail: "초대, 강퇴",
+        createdAt: new Date(Date.now() - 2 * 86_400_000).toISOString(),
+      },
+      {
+        id: 5002,
+        actorId: currentUser.id,
+        actorName: currentUser.name,
+        targetUserId: 9203,
+        targetName: "최하린",
+        action: "MEMBER_BANNED",
+        detail: "반복 스팸",
+        createdAt: new Date(Date.now() - 3 * 86_400_000).toISOString(),
+      },
+    ],
+  },
+  7003: {
+    conversationId: 7003,
+    type: "PRIVATE",
+    title: "시스템 설계 스터디",
+    description: "초대 또는 비밀번호로 참가하는 비공개 스터디",
+    imageFileId: null,
+    notice: null,
+    locked: true,
+    hasPassword: true,
+    maxMembers: 100,
+    invitePolicy: "MANAGERS",
+    allowAnonymous: true,
+    anonymousOnly: false,
+    // 위임받은 MANAGER 관점 — 방 편집·초대만 가능, 위임(멤버관리)은 불가
+    myPermission: memberPermission({ canEditRoom: true, canInvite: true, canKick: true }),
+    members: [
+      member(users[1], "OWNER", ownerPermission()),
+      member(currentUser, "MANAGER", memberPermission({ canEditRoom: true, canInvite: true, canKick: true })),
+      member(users[2], "MEMBER", memberPermission(), { anonymous: true, displayName: "익명", email: null }),
+    ],
+    bans: [],
+    inviteAllowUserIds: [],
+    recentAudits: [
+      {
+        id: 5101,
+        actorId: 9201,
+        actorName: "박민지",
+        targetUserId: currentUser.id,
+        targetName: currentUser.name,
+        action: "MANAGER_GRANTED",
+        detail: "방편집, 초대, 강퇴",
+        createdAt: new Date(Date.now() - 5 * 86_400_000).toISOString(),
+      },
+    ],
+  },
+};
+
+function requireSettings(conversationId: number): ConversationSettingsResponse {
+  const settings = settingsByConversation[conversationId];
+  if (!settings) throw new Error("방 설정을 열 권한이 없습니다.");
+  return settings;
+}
+
+function nextAuditId(): number {
+  const all = Object.values(settingsByConversation).flatMap((s) => s.recentAudits);
+  return Math.max(6000, ...all.map((a) => a.id)) + 1;
+}
+
+function pushAudit(settings: ConversationSettingsResponse, action: string, targetUserId: number | null, detail: string | null) {
+  settings.recentAudits.unshift({
+    id: nextAuditId(),
+    actorId: currentUser.id,
+    actorName: currentUser.name,
+    targetUserId,
+    targetName: targetUserId ? (settings.members.find((m) => m.userId === targetUserId)?.displayName ?? null) : null,
+    action,
+    detail,
+    createdAt: new Date().toISOString(),
+  });
+}
+
+/** 방 요약(conversations)과 설정 상태를 함께 반영해 목록/설정 시트 일관성을 유지한다. */
+function syncSummaryFromSettings(settings: ConversationSettingsResponse) {
+  const conversation = conversations.find((c) => c.id === settings.conversationId);
+  if (!conversation) return;
+  conversation.title = settings.title;
+  conversation.displayName = settings.title ?? conversation.displayName;
+  conversation.description = settings.description;
+  conversation.notice = settings.notice;
+  conversation.imageFileId = settings.imageFileId;
+  conversation.locked = settings.locked;
+  conversation.type = settings.type;
+  conversation.memberCount = settings.members.length;
 }
 
 export const collaborationRoutes: MockRoute[] = [
@@ -423,10 +624,14 @@ export const collaborationRoutes: MockRoute[] = [
         title: null,
         description: null,
         displayName: peer.name,
+        imageFileId: null,
+        notice: null,
         locked: false,
         memberCount: 2,
         joined: true,
         muted: false,
+        myRole: "MEMBER",
+        canManageRoom: false,
         peer,
         latestMessage: null,
         unreadCount: 0,
@@ -456,10 +661,15 @@ export const collaborationRoutes: MockRoute[] = [
         title: request?.title || "새 채팅방",
         description: request?.description || null,
         displayName: request?.title || "새 채팅방",
+        imageFileId: null,
+        notice: null,
         locked: type === "PRIVATE",
         memberCount: 1 + (request?.memberUserIds?.length ?? 0),
         joined: true,
         muted: false,
+        // 새로 만든 방은 내가 개설자(OWNER)
+        myRole: "OWNER",
+        canManageRoom: true,
         peer: null,
         latestMessage: null,
         unreadCount: 0,
@@ -538,6 +748,159 @@ export const collaborationRoutes: MockRoute[] = [
       messagesByConversation[conversationId] = [...existing, created];
       conversation.updatedAt = created.createdAt;
       return created;
+    },
+  },
+
+  // ── 방 설정 / 관리자 위임 (W5) ──
+  {
+    method: "GET",
+    pattern: /^\/collaboration\/conversations\/(\d+)\/settings$/,
+    handler: ({ params }) => requireSettings(Number(params[0])),
+  },
+  {
+    method: "PATCH",
+    pattern: /^\/collaboration\/conversations\/(\d+)\/settings$/,
+    handler: ({ params, body }) => {
+      const settings = requireSettings(Number(params[0]));
+      const request = body as {
+        title?: string | null;
+        description?: string | null;
+        notice?: string | null;
+        imageFileId?: number | null;
+        type?: ConversationType | null;
+        passwordAction?: "SET" | "CLEAR" | null;
+        maxMembers?: number | null;
+        invitePolicy?: InvitePolicy | null;
+        allowAnonymous?: boolean | null;
+        anonymousOnly?: boolean | null;
+      };
+      if (request.title != null) settings.title = request.title;
+      if (request.description !== undefined && request.description !== null) settings.description = request.description;
+      if (request.notice !== undefined && request.notice !== null) settings.notice = request.notice;
+      if (request.imageFileId != null) settings.imageFileId = request.imageFileId > 0 ? request.imageFileId : null;
+      if (request.type === "PUBLIC" || request.type === "PRIVATE") {
+        settings.type = request.type;
+        settings.locked = request.type === "PRIVATE" || settings.hasPassword;
+      }
+      if (request.passwordAction === "SET") {
+        settings.hasPassword = true;
+        settings.locked = true;
+      } else if (request.passwordAction === "CLEAR") {
+        settings.hasPassword = false;
+        settings.locked = settings.type === "PRIVATE";
+      }
+      if (typeof request.maxMembers === "number") settings.maxMembers = request.maxMembers;
+      if (request.invitePolicy) settings.invitePolicy = request.invitePolicy;
+      if (request.allowAnonymous != null) settings.allowAnonymous = request.allowAnonymous;
+      if (request.anonymousOnly != null) {
+        settings.anonymousOnly = request.anonymousOnly;
+        if (request.anonymousOnly) settings.allowAnonymous = true;
+      }
+      pushAudit(settings, "ROOM_UPDATED", null, "방 정보 수정");
+      syncSummaryFromSettings(settings);
+      return settings;
+    },
+  },
+  {
+    method: "PATCH",
+    pattern: /^\/collaboration\/conversations\/(\d+)\/members\/(\d+)\/permission$/,
+    handler: ({ params, body }) => {
+      const settings = requireSettings(Number(params[0]));
+      const targetId = Number(params[1]);
+      const request = body as {
+        manager?: boolean;
+        canKick?: boolean;
+        canBan?: boolean;
+        canSetPassword?: boolean;
+        canInvite?: boolean;
+        canEditRoom?: boolean;
+        canManageMembers?: boolean;
+      };
+      const target = settings.members.find((m) => m.userId === targetId);
+      if (!target) throw new Error("대화방 멤버를 찾을 수 없습니다.");
+      if (target.role === "OWNER") throw new Error("개설자의 권한은 변경할 수 없습니다.");
+      if (request.manager) {
+        target.role = "MANAGER";
+        target.permission = {
+          owner: false,
+          canKick: request.canKick === true,
+          canBan: request.canBan === true,
+          canSetPassword: request.canSetPassword === true,
+          canInvite: request.canInvite === true,
+          canEditRoom: request.canEditRoom === true,
+          canManageMembers: request.canManageMembers === true,
+        };
+        pushAudit(settings, "MANAGER_GRANTED", targetId, "권한 위임");
+      } else {
+        target.role = "MEMBER";
+        target.permission = memberPermission();
+        pushAudit(settings, "MANAGER_REVOKED", targetId, null);
+      }
+      return settings;
+    },
+  },
+  {
+    method: "POST",
+    pattern: /^\/collaboration\/conversations\/(\d+)\/members\/(\d+)\/kick$/,
+    handler: ({ params }) => {
+      const settings = requireSettings(Number(params[0]));
+      const targetId = Number(params[1]);
+      const target = settings.members.find((m) => m.userId === targetId);
+      if (!target) throw new Error("대화방 멤버를 찾을 수 없습니다.");
+      if (target.role === "OWNER") throw new Error("개설자는 강퇴할 수 없습니다.");
+      settings.members = settings.members.filter((m) => m.userId !== targetId);
+      pushAudit(settings, "MEMBER_KICKED", targetId, null);
+      syncSummaryFromSettings(settings);
+      return settings;
+    },
+  },
+  {
+    method: "POST",
+    pattern: /^\/collaboration\/conversations\/(\d+)\/members\/(\d+)\/ban$/,
+    handler: ({ params, body }) => {
+      const settings = requireSettings(Number(params[0]));
+      const targetId = Number(params[1]);
+      const request = body as { reason?: string | null };
+      const target = settings.members.find((m) => m.userId === targetId);
+      if (!target) throw new Error("대화방 멤버를 찾을 수 없습니다.");
+      if (target.role === "OWNER") throw new Error("개설자는 차단할 수 없습니다.");
+      settings.members = settings.members.filter((m) => m.userId !== targetId);
+      settings.bans = [
+        {
+          userId: targetId,
+          displayName: target.displayName,
+          reason: request.reason || null,
+          bannedBy: currentUser.id,
+          bannedAt: new Date().toISOString(),
+        },
+        ...settings.bans,
+      ];
+      pushAudit(settings, "MEMBER_BANNED", targetId, request.reason || null);
+      syncSummaryFromSettings(settings);
+      return settings;
+    },
+  },
+  {
+    method: "DELETE",
+    pattern: /^\/collaboration\/conversations\/(\d+)\/bans\/(\d+)$/,
+    handler: ({ params }) => {
+      const settings = requireSettings(Number(params[0]));
+      const targetId = Number(params[1]);
+      settings.bans = settings.bans.filter((b) => b.userId !== targetId);
+      pushAudit(settings, "MEMBER_UNBANNED", targetId, null);
+      return settings;
+    },
+  },
+  {
+    method: "PUT",
+    pattern: /^\/collaboration\/conversations\/(\d+)\/invite-allowlist$/,
+    handler: ({ params, body }) => {
+      const settings = requireSettings(Number(params[0]));
+      const request = body as { userIds?: number[] };
+      const memberIds = new Set(settings.members.map((m) => m.userId));
+      settings.inviteAllowUserIds = (request.userIds ?? []).filter((id) => memberIds.has(id));
+      pushAudit(settings, "INVITE_ALLOW_UPDATED", null, null);
+      return settings;
     },
   },
 ];

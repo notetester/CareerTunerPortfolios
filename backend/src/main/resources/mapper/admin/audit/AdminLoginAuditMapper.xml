@@ -1,0 +1,103 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.careertuner.admin.audit.mapper.AdminLoginAuditMapper">
+
+<!-- 로그인 감사 그리드 — 공통 그리드 계약.
+     keyword OR-LIKE 컬럼은 3개(회원 이메일/입력 식별자/IP)로 제한한다(성능 가드).
+     ${} 보간은 서비스에서 ASC/DESC 로 강제된 sortDir 에만 허용. -->
+
+    <sql id="loginAuditColumns">
+        h.id, h.user_id, u.email AS user_email, u.name AS user_name,
+        h.event_type, h.auth_provider, h.login_method, h.login_identifier,
+        h.success, h.fail_reason, h.ip_address, h.user_agent, h.request_uri, h.created_at
+    </sql>
+
+    <sql id="loginAuditSearchBase">
+        <where>
+            <if test="keyword != null">
+                <choose>
+                    <when test="searchType == 'email'">
+                        AND u.email LIKE CONCAT('%', #{keyword}, '%')
+                    </when>
+                    <when test="searchType == 'identifier'">
+                        AND h.login_identifier LIKE CONCAT('%', #{keyword}, '%')
+                    </when>
+                    <when test="searchType == 'ip'">
+                        AND h.ip_address LIKE CONCAT('%', #{keyword}, '%')
+                    </when>
+                    <otherwise>
+                        AND (u.email LIKE CONCAT('%', #{keyword}, '%')
+                             OR h.login_identifier LIKE CONCAT('%', #{keyword}, '%')
+                             OR h.ip_address LIKE CONCAT('%', #{keyword}, '%'))
+                    </otherwise>
+                </choose>
+            </if>
+            <if test="eventType != null">
+                AND h.event_type = #{eventType}
+            </if>
+            <if test="authProvider != null">
+                AND h.auth_provider = #{authProvider}
+            </if>
+            <!-- result 필터: SUCCESS/FAIL 화이트리스트 값만 서비스에서 통과된다 -->
+            <if test="result != null and result == 'SUCCESS'">
+                AND h.success = 1
+            </if>
+            <if test="result != null and result == 'FAIL'">
+                AND h.success = 0
+            </if>
+            <if test="dateFrom != null">
+                AND h.created_at &gt;= #{dateFrom}
+            </if>
+            <if test="dateToExclusive != null">
+                AND h.created_at &lt; #{dateToExclusive}
+            </if>
+        </where>
+    </sql>
+
+    <sql id="loginAuditOrderBy">
+        ORDER BY
+        <choose>
+            <when test="sortBy == 'eventType'">h.event_type ${sortDir}</when>
+            <when test="sortBy == 'authProvider'">h.auth_provider ${sortDir}</when>
+            <when test="sortBy == 'ipAddress'">h.ip_address ${sortDir}</when>
+            <when test="sortBy == 'userEmail'">u.email ${sortDir}</when>
+            <otherwise>h.created_at ${sortDir}</otherwise>
+        </choose>
+        , h.id ${sortDir}
+    </sql>
+
+    <select id="countLogins" resultType="long">
+        SELECT COUNT(*)
+        FROM user_login_history h
+        LEFT JOIN users u ON u.id = h.user_id
+        <include refid="loginAuditSearchBase" />
+    </select>
+
+    <select id="searchLogins" resultType="com.careertuner.admin.audit.dto.AdminLoginAuditRow">
+        SELECT <include refid="loginAuditColumns" />
+        FROM user_login_history h
+        LEFT JOIN users u ON u.id = h.user_id
+        <include refid="loginAuditSearchBase" />
+        <include refid="loginAuditOrderBy" />
+        LIMIT #{size} OFFSET #{offset}
+    </select>
+
+    <select id="findLoginsForExport" resultType="com.careertuner.admin.audit.dto.AdminLoginAuditRow">
+        SELECT <include refid="loginAuditColumns" />
+        FROM user_login_history h
+        LEFT JOIN users u ON u.id = h.user_id
+        <include refid="loginAuditSearchBase" />
+        <include refid="loginAuditOrderBy" />
+        LIMIT #{exportLimit}
+    </select>
+
+    <select id="findLoginsByIds" resultType="com.careertuner.admin.audit.dto.AdminLoginAuditRow">
+        SELECT <include refid="loginAuditColumns" />
+        FROM user_login_history h
+        LEFT JOIN users u ON u.id = h.user_id
+        WHERE h.id IN
+        <foreach collection="ids" item="id" open="(" separator="," close=")">#{id}</foreach>
+        <include refid="loginAuditOrderBy" />
+    </select>
+</mapper>

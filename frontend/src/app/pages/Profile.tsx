@@ -52,22 +52,9 @@ interface PreferencesForm {
   workType: string;
   salary: string;
   employmentType: string;
-  preferredRegionsText: string;
-  workTypesText: string;
-  employmentTypesText: string;
-  desiredSalaryMin: string;
-  desiredSalaryMax: string;
-  availableStartDate: string;
 }
 
 interface ProfileForm {
-  loginId: string;
-  phoneNumber: string;
-  nickname: string;
-  militaryStatus: string;
-  veteranStatus: string;
-  disabilityStatus: string;
-  chatNicknamesText: string;
   desiredJob: string;
   desiredIndustry: string;
   skillsText: string;
@@ -105,27 +92,9 @@ const aiToolCopy: Record<AiToolType, { title: string; description: string; actio
 const createEducation = (): EducationEntry => ({ school: "", major: "", startDate: "", endDate: "", status: "" });
 const createCareer = (): CareerEntry => ({ company: "", role: "", startDate: "", endDate: "", tasks: "", achievements: "" });
 const createExperience = (): ExperienceEntry => ({ title: "", type: "", role: "", startDate: "", endDate: "", description: "", result: "" });
-const createPreferences = (): PreferencesForm => ({
-  region: "",
-  workType: "",
-  salary: "",
-  employmentType: "",
-  preferredRegionsText: "",
-  workTypesText: "",
-  employmentTypesText: "",
-  desiredSalaryMin: "",
-  desiredSalaryMax: "",
-  availableStartDate: "",
-});
+const createPreferences = (): PreferencesForm => ({ region: "", workType: "", salary: "", employmentType: "" });
 
 const emptyForm: ProfileForm = {
-  loginId: "",
-  phoneNumber: "",
-  nickname: "",
-  militaryStatus: "",
-  veteranStatus: "",
-  disabilityStatus: "",
-  chatNicknamesText: "",
   desiredJob: "",
   desiredIndustry: "",
   skillsText: "",
@@ -431,59 +400,12 @@ export function ProfilePage() {
           <section className="space-y-5">
             <Tabs value={activeTab} onValueChange={setActiveTab}>
               <TabsList className="h-auto w-full justify-start overflow-x-auto border border-slate-200 bg-card p-1">
-                <TabsTrigger value="account">계정</TabsTrigger>
                 <TabsTrigger value="basic">기본</TabsTrigger>
                 <TabsTrigger value="resume">이력서</TabsTrigger>
                 <TabsTrigger value="skills">직무 역량</TabsTrigger>
                 <TabsTrigger value="history">학력/경력/활동</TabsTrigger>
                 <TabsTrigger value="ai">AI 결과</TabsTrigger>
               </TabsList>
-
-              <TabsContent value="account" className="mt-5">
-                <Card className="border-slate-200 bg-card">
-                  <CardHeader>
-                    <CardTitle className="text-base">계정/연락처</CardTitle>
-                  </CardHeader>
-                  <CardContent className="grid gap-4 md:grid-cols-2">
-                    <Field label="아이디">
-                      <Input maxLength={40} value={form.loginId} onChange={(event) => update("loginId", event.target.value)} placeholder="로그인/식별용 아이디" />
-                    </Field>
-                    <Field label="전화번호">
-                      <Input maxLength={30} value={form.phoneNumber} onChange={(event) => update("phoneNumber", event.target.value)} placeholder="예: 010-1234-5678" />
-                    </Field>
-                    <Field label="기본 닉네임">
-                      <Input maxLength={40} value={form.nickname} onChange={(event) => update("nickname", event.target.value)} placeholder="커뮤니티와 채팅에서 사용할 대표 닉네임" />
-                    </Field>
-                    <Field label="병역">
-                      <select value={form.militaryStatus} onChange={(event) => update("militaryStatus", event.target.value)} className="h-10 w-full rounded-md border border-slate-200 bg-card px-3 text-sm">
-                        <option value="">선택 안 함</option>
-                        <option value="해당 없음">해당 없음</option>
-                        <option value="군필">군필</option>
-                        <option value="미필">미필</option>
-                        <option value="면제">면제</option>
-                        <option value="복무 중">복무 중</option>
-                      </select>
-                    </Field>
-                    <Field label="보훈 여부">
-                      <select value={form.veteranStatus} onChange={(event) => update("veteranStatus", event.target.value)} className="h-10 w-full rounded-md border border-slate-200 bg-card px-3 text-sm">
-                        <option value="">선택 안 함</option>
-                        <option value="대상 아님">대상 아님</option>
-                        <option value="대상">대상</option>
-                      </select>
-                    </Field>
-                    <Field label="장애 여부">
-                      <select value={form.disabilityStatus} onChange={(event) => update("disabilityStatus", event.target.value)} className="h-10 w-full rounded-md border border-slate-200 bg-card px-3 text-sm">
-                        <option value="">선택 안 함</option>
-                        <option value="해당 없음">해당 없음</option>
-                        <option value="해당">해당</option>
-                      </select>
-                    </Field>
-                    <Field label="채팅용 닉네임 프로필" className="md:col-span-2">
-                      <Textarea value={form.chatNicknamesText} onChange={(event) => update("chatNicknamesText", event.target.value)} placeholder="채팅방에서 선택할 닉네임을 한 줄에 하나씩 입력" rows={4} />
-                    </Field>
-                  </CardContent>
-                </Card>
-              </TabsContent>
 
               <TabsContent value="basic" className="mt-5">
                 <Card className="border-slate-200 bg-card">
@@ -509,26 +431,6 @@ export function ProfilePage() {
                     <Field label="희망 연봉">
                       <Input maxLength={80} value={form.preferences.salary} onChange={(event) => updatePreferences("salary", event.target.value)} placeholder="예: 회사 내규, 3,200만원 이상" />
                     </Field>
-                    <Field label="상세 희망 지역">
-                      <Textarea value={form.preferences.preferredRegionsText} onChange={(event) => updatePreferences("preferredRegionsText", event.target.value)} placeholder="서울 강남권, 경기 남부, 원격 가능 등 한 줄에 하나씩 입력" rows={4} />
-                    </Field>
-                    <Field label="상세 근무 형태">
-                      <Textarea value={form.preferences.workTypesText} onChange={(event) => updatePreferences("workTypesText", event.target.value)} placeholder="재택 병행, 탄력근무, 교대 불가 등 한 줄에 하나씩 입력" rows={4} />
-                    </Field>
-                    <Field label="상세 고용 형태">
-                      <Textarea value={form.preferences.employmentTypesText} onChange={(event) => updatePreferences("employmentTypesText", event.target.value)} placeholder="정규직, 전환형 인턴, 계약직 가능 조건 등" rows={4} />
-                    </Field>
-                    <div className="grid gap-4 md:grid-cols-3">
-                      <Field label="희망 연봉 하한">
-                        <Input maxLength={20} value={form.preferences.desiredSalaryMin} onChange={(event) => updatePreferences("desiredSalaryMin", event.target.value)} placeholder="예: 3200" />
-                      </Field>
-                      <Field label="희망 연봉 상한">
-                        <Input maxLength={20} value={form.preferences.desiredSalaryMax} onChange={(event) => updatePreferences("desiredSalaryMax", event.target.value)} placeholder="예: 4500" />
-                      </Field>
-                      <Field label="입사 가능일">
-                        <Input type="date" value={form.preferences.availableStartDate} onChange={(event) => updatePreferences("availableStartDate", event.target.value)} />
-                      </Field>
-                    </div>
                     <Field label="포트폴리오/활동 링크" className="md:col-span-2">
                       <Textarea value={form.portfolioLinksText} onChange={(event) => update("portfolioLinksText", event.target.value)} placeholder="노션, 블로그, 작업물, 활동 기록 링크를 한 줄에 하나씩 입력" rows={4} />
                     </Field>
@@ -1260,16 +1162,7 @@ function currentMonth(): string {
 }
 
 function toForm(profile: UserProfile): ProfileForm {
-  const personalInfo = parseObject(profile.personalInfo);
-  const jobPreferences = parseObject(profile.jobPreferences);
   return {
-    loginId: profile.loginId ?? "",
-    phoneNumber: profile.phoneNumber ?? "",
-    nickname: getString(personalInfo, "nickname"),
-    militaryStatus: getString(personalInfo, "militaryStatus"),
-    veteranStatus: getString(personalInfo, "veteranStatus"),
-    disabilityStatus: getString(personalInfo, "disabilityStatus"),
-    chatNicknamesText: chatProfilesToLines(profile.chatProfiles),
     desiredJob: profile.desiredJob ?? "",
     desiredIndustry: profile.desiredIndustry ?? "",
     skillsText: arrayToLines(profile.skills),
@@ -1279,30 +1172,14 @@ function toForm(profile: UserProfile): ProfileForm {
     education: parseEntries(profile.education, createEducation),
     career: parseEntries(profile.career, createCareer),
     experiences: parseEntries(profile.projects, createExperience),
-    preferences: parsePreferences(profile.preferences, jobPreferences),
+    preferences: parsePreferences(profile.preferences),
     resumeText: profile.resumeText ?? "",
     selfIntro: profile.selfIntro ?? "",
   };
 }
 
 function toRequest(form: ProfileForm): UserProfile {
-  const personalInfo = stripEmptyObject({
-    nickname: form.nickname,
-    militaryStatus: form.militaryStatus,
-    veteranStatus: form.veteranStatus,
-    disabilityStatus: form.disabilityStatus,
-  });
-  const jobPreferences = stripEmptyObject({
-    preferredRegions: linesToArray(form.preferences.preferredRegionsText),
-    workTypes: linesToArray(form.preferences.workTypesText),
-    employmentTypes: linesToArray(form.preferences.employmentTypesText),
-    desiredSalaryMin: form.preferences.desiredSalaryMin,
-    desiredSalaryMax: form.preferences.desiredSalaryMax,
-    availableStartDate: form.preferences.availableStartDate,
-  });
   return {
-    loginId: blankToNull(form.loginId),
-    phoneNumber: blankToNull(form.phoneNumber),
     desiredJob: blankToNull(form.desiredJob),
     desiredIndustry: blankToNull(form.desiredIndustry),
     skills: linesToArray(form.skillsText),
@@ -1312,15 +1189,7 @@ function toRequest(form: ProfileForm): UserProfile {
     education: stripEmpty(form.education),
     career: stripEmpty(form.career),
     projects: stripEmpty(form.experiences),
-    preferences: stripEmptyObject({
-      region: form.preferences.region,
-      workType: form.preferences.workType,
-      salary: form.preferences.salary,
-      employmentType: form.preferences.employmentType,
-    }),
-    jobPreferences,
-    personalInfo,
-    chatProfiles: linesToArray(form.chatNicknamesText).map((nickname, index) => ({ nickname, defaultProfile: index === 0 })),
+    preferences: stripEmptyObject(form.preferences),
     resumeText: blankToNull(form.resumeText),
     selfIntro: blankToNull(form.selfIntro),
   };
@@ -1355,7 +1224,7 @@ function parseEntries<T extends object>(value: unknown, createEmpty: () => T): T
   return entries.length ? entries : [createEmpty()];
 }
 
-function parsePreferences(value: unknown, jobPreferenceValue?: Record<string, unknown>): PreferencesForm {
+function parsePreferences(value: unknown): PreferencesForm {
   const parsed = normalizeUnknown(value);
   const next = createPreferences();
   if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
@@ -1365,13 +1234,6 @@ function parsePreferences(value: unknown, jobPreferenceValue?: Record<string, un
     next.salary = String(source.salary ?? "");
     next.employmentType = String(source.employmentType ?? "");
   }
-  const jobPreferences = jobPreferenceValue ?? parseObject(undefined);
-  next.preferredRegionsText = arrayToLines(jobPreferences.preferredRegions);
-  next.workTypesText = arrayToLines(jobPreferences.workTypes);
-  next.employmentTypesText = arrayToLines(jobPreferences.employmentTypes);
-  next.desiredSalaryMin = getString(jobPreferences, "desiredSalaryMin");
-  next.desiredSalaryMax = getString(jobPreferences, "desiredSalaryMax");
-  next.availableStartDate = getString(jobPreferences, "availableStartDate");
   return next;
 }
 
@@ -1382,33 +1244,6 @@ function normalizeUnknown(value: unknown): unknown {
   } catch {
     return value;
   }
-}
-
-function parseObject(value: unknown): Record<string, unknown> {
-  const parsed = normalizeUnknown(value);
-  if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) return parsed as Record<string, unknown>;
-  return {};
-}
-
-function getString(source: Record<string, unknown>, key: string): string {
-  const value = source[key];
-  return value == null ? "" : String(value);
-}
-
-function chatProfilesToLines(value: unknown): string {
-  const parsed = normalizeUnknown(value);
-  if (!Array.isArray(parsed)) return "";
-  return parsed
-    .map((item) => {
-      if (typeof item === "string") return item;
-      if (item && typeof item === "object") {
-        const source = item as Record<string, unknown>;
-        return String(source.nickname ?? source.displayName ?? "");
-      }
-      return "";
-    })
-    .filter(Boolean)
-    .join("\n");
 }
 
 function stripEmpty<T extends object>(items: T[]): T[] {
@@ -1427,12 +1262,7 @@ function stripEmpty<T extends object>(items: T[]): T[] {
 function stripEmptyObject<T extends object>(value: T): Partial<T> | null {
   const next: Partial<T> = {};
   for (const key of Object.keys(value) as Array<keyof T>) {
-    const raw = value[key];
-    if (Array.isArray(raw)) {
-      if (raw.length) next[key] = raw as T[keyof T];
-      continue;
-    }
-    const trimmed = String(raw ?? "").trim();
+    const trimmed = String(value[key] ?? "").trim();
     if (trimmed) next[key] = trimmed as T[keyof T];
   }
   return Object.keys(next).length ? next : null;
@@ -1460,12 +1290,6 @@ function validateProfile(form: ProfileForm): string | null {
   }
   if (form.desiredJob.trim().length > 80 || form.desiredIndustry.trim().length > 80) {
     return "희망 직무와 산업은 80자 이하로 입력해 주세요.";
-  }
-  if (form.loginId.trim() && !/^[A-Za-z0-9._-]{4,40}$/.test(form.loginId.trim())) {
-    return "아이디는 영문, 숫자, 점, 밑줄, 하이픈만 사용해 4~40자로 입력해 주세요.";
-  }
-  if (form.phoneNumber.trim() && form.phoneNumber.trim().length < 8) {
-    return "전화번호를 입력할 때는 최소 8자 이상으로 입력해 주세요.";
   }
   if (form.resumeText.length > 20000 || form.selfIntro.length > 10000) {
     return "이력서 원문은 20,000자 이하, 자기소개는 10,000자 이하로 입력해 주세요.";

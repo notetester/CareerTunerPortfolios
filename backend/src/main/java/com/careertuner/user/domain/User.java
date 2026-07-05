@@ -16,16 +16,14 @@ public class User {
 
     private Long id;
     private String email;
+    private String loginId;           // 로그인 아이디(문자열, 선택 설정·전역 UNIQUE·설정 후 변경 불가)
+    private String phone;             // 전화번호(선택, 전역 UNIQUE)
+    private boolean phoneVerified;    // 전화번호 인증 여부(인증은 선택적·스텁)
     private String password;          // BCrypt 해시. 소셜 전용 계정은 null
     private boolean passwordEnabled;  // 비밀번호 로그인 가능 여부
     private String name;
     private boolean emailVerified;
-    private String loginId;
-    private String phoneNumber;
-    private boolean phoneVerified;
     private String userType;          // JOB_SEEKER/CAREER_CHANGER/EXPERIENCED
-    private String accountType;       // PERSONAL/EMPLOYER
-    private boolean enterpriseTrusted;
     private String role;              // USER/ADMIN
     private String status;            // ACTIVE/DORMANT/BLOCKED/DELETED
     private String plan;              // FREE/BASIC/PRO/PREMIUM

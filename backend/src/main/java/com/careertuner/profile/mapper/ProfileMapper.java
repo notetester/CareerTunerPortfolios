@@ -14,12 +14,6 @@ public interface ProfileMapper {
 
     void upsert(UserProfile profile);
 
-    int countLoginId(@Param("loginId") String loginId, @Param("excludeUserId") Long excludeUserId);
-
-    void updateAccountBasics(@Param("userId") Long userId,
-                             @Param("loginId") String loginId,
-                             @Param("phoneNumber") String phoneNumber);
-
     List<UserProfile> findAdminProfiles(@Param("keyword") String keyword,
                                         @Param("limit") int limit);
 }

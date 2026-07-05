@@ -13,6 +13,13 @@ export interface AdminListColumn<T> {
   id: string;
   label: string;
   getText: (row: T) => string | number | null | undefined;
+  /**
+   * 정렬 비교에만 쓰는 원시 값(선택). 지정하면 정렬은 getText 의 표시 문자열 대신 이 값으로 한다.
+   * 예: 날짜 컬럼은 getText 가 ko-KR 로 지역화된 문자열("2026. 7. 6. 오후 1:00")을 반환하는데,
+   * 이 문자열은 Date.parse 로 파싱되지 않아 문자열 정렬로 떨어져 오전/오후가 뒤섞인다.
+   * sortValue 로 원시 ISO/epoch 값을 주면 시간순 정렬이 올바르게 된다.
+   */
+  sortValue?: (row: T) => string | number | null | undefined;
   sortable?: boolean;
   exportable?: boolean;
 }
@@ -85,8 +92,9 @@ export function useAdminListTools<T>(items: T[], options: AdminListOptions<T>): 
     if (!sortId) return filteredRows;
     const column = options.columns.find((candidate) => candidate.id === sortId);
     if (!column) return filteredRows;
+    const sortAccessor = column.sortValue ?? column.getText;
     return [...filteredRows].sort((left, right) => {
-      const result = compareAdminListValues(column.getText(left), column.getText(right));
+      const result = compareAdminListValues(sortAccessor(left), sortAccessor(right));
       return sortDir === "asc" ? result : -result;
     });
   }, [filteredRows, options.columns, sortDir, sortId]);

@@ -1,0 +1,203 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.careertuner.community.mapper.CommunityActivityMapper">
+
+    <select id="findUserName" resultType="string">
+        SELECT name FROM users WHERE id = #{userId}
+    </select>
+
+    <!-- ── 작성 글 (타인 시점은 익명 작성 제외) ── -->
+    <select id="findPosts" resultType="com.careertuner.community.domain.ActivityItem">
+        SELECT 'POST'              AS itemType,
+               cp.id               AS postId,
+               NULL                AS commentId,
+               NULL                AS scrapId,
+               cp.title            AS title,
+               LEFT(cp.content, 120) AS preview,
+               NULL                AS reactionType,
+               cp.is_anonymous     AS anonymous,
+               cp.created_at       AS createdAt
+          FROM community_post cp
+         WHERE cp.user_id = #{ownerId}
+           AND cp.status = 'PUBLISHED'
+        <if test="!includeAnonymous">
+           AND cp.is_anonymous = 0
+        </if>
+         ORDER BY cp.created_at DESC, cp.id DESC
+         LIMIT #{limit} OFFSET #{offset}
+    </select>
+
+    <select id="countPosts" resultType="int">
+        SELECT COUNT(*)
+          FROM community_post cp
+         WHERE cp.user_id = #{ownerId}
+           AND cp.status = 'PUBLISHED'
+        <if test="!includeAnonymous">
+           AND cp.is_anonymous = 0
+        </if>
+    </select>
+
+    <!-- ── 작성 댓글/답글 ── -->
+    <select id="findComments" resultType="com.careertuner.community.domain.ActivityItem">
+        SELECT <choose><when test="replies">'REPLY'</when><otherwise>'COMMENT'</otherwise></choose> AS itemType,
+               cc.post_id          AS postId,
+               cc.id               AS commentId,
+               NULL                AS scrapId,
+               cp.title            AS title,
+               LEFT(cc.content, 120) AS preview,
+               NULL                AS reactionType,
+               cc.is_anonymous     AS anonymous,
+               cc.created_at       AS createdAt
+          FROM community_comment cc
+          JOIN community_post cp ON cp.id = cc.post_id AND cp.status = 'PUBLISHED'
+         WHERE cc.user_id = #{ownerId}
+           AND cc.status = 'PUBLISHED'
+           AND cc.parent_id IS <choose><when test="replies">NOT NULL</when><otherwise>NULL</otherwise></choose>
+        <if test="!includeAnonymous">
+           AND cc.is_anonymous = 0
+        </if>
+         ORDER BY cc.created_at DESC, cc.id DESC
+         LIMIT #{limit} OFFSET #{offset}
+    </select>
+
+    <select id="countComments" resultType="int">
+        SELECT COUNT(*)
+          FROM community_comment cc
+          JOIN community_post cp ON cp.id = cc.post_id AND cp.status = 'PUBLISHED'
+         WHERE cc.user_id = #{ownerId}
+           AND cc.status = 'PUBLISHED'
+           AND cc.parent_id IS <choose><when test="replies">NOT NULL</when><otherwise>NULL</otherwise></choose>
+        <if test="!includeAnonymous">
+           AND cc.is_anonymous = 0
+        </if>
+    </select>
+
+    <!-- ── 좋아요한 글·댓글 (리액션 시각순, 타인 시점은 익명 리액션 제외) ── -->
+    <select id="findLikedItems" resultType="com.careertuner.community.domain.ActivityItem">
+        SELECT * FROM (
+            SELECT 'POST'            AS itemType,
+                   pr.post_id        AS postId,
+                   NULL              AS commentId,
+                   NULL              AS scrapId,
+                   cp.title          AS title,
+                   LEFT(cp.content, 120) AS preview,
+                   pr.reaction_type  AS reactionType,
+                   pr.is_anonymous   AS anonymous,
+                   pr.created_at     AS createdAt
+              FROM post_reaction pr
+              JOIN community_post cp ON cp.id = pr.post_id AND cp.status = 'PUBLISHED'
+             WHERE pr.user_id = #{ownerId}
+               AND pr.reaction_type = 'LIKE'
+            <if test="!includeAnonymous">
+               AND pr.is_anonymous = 0
+            </if>
+            UNION ALL
+            SELECT 'COMMENT'         AS itemType,
+                   cc.post_id        AS postId,
+                   cc.id             AS commentId,
+                   NULL              AS scrapId,
+                   cp2.title         AS title,
+                   LEFT(cc.content, 120) AS preview,
+                   cr.reaction_type  AS reactionType,
+                   cr.is_anonymous   AS anonymous,
+                   cr.created_at     AS createdAt
+              FROM comment_reaction cr
+              JOIN community_comment cc ON cc.id = cr.comment_id AND cc.status = 'PUBLISHED'
+              JOIN community_post cp2 ON cp2.id = cc.post_id AND cp2.status = 'PUBLISHED'
+             WHERE cr.user_id = #{ownerId}
+               AND cr.reaction_type = 'LIKE'
+            <if test="!includeAnonymous">
+               AND cr.is_anonymous = 0
+            </if>
+        ) liked
+         ORDER BY liked.createdAt DESC
+         LIMIT #{limit} OFFSET #{offset}
+    </select>
+
+    <select id="countLikedItems" resultType="int">
+        SELECT (
+            SELECT COUNT(*)
+              FROM post_reaction pr
+              JOIN community_post cp ON cp.id = pr.post_id AND cp.status = 'PUBLISHED'
+             WHERE pr.user_id = #{ownerId}
+               AND pr.reaction_type = 'LIKE'
+            <if test="!includeAnonymous">
+               AND pr.is_anonymous = 0
+            </if>
+        ) + (
+            SELECT COUNT(*)
+              FROM comment_reaction cr
+              JOIN community_comment cc ON cc.id = cr.comment_id AND cc.status = 'PUBLISHED'
+              JOIN community_post cp2 ON cp2.id = cc.post_id AND cp2.status = 'PUBLISHED'
+             WHERE cr.user_id = #{ownerId}
+               AND cr.reaction_type = 'LIKE'
+            <if test="!includeAnonymous">
+               AND cr.is_anonymous = 0
+            </if>
+        )
+    </select>
+
+    <!-- ── 즐겨찾기(BOOKMARK)한 글 — 링크형: 원본 삭제 시 목록에서도 사라진다 ── -->
+    <select id="findBookmarkedPosts" resultType="com.careertuner.community.domain.ActivityItem">
+        SELECT 'POST'            AS itemType,
+               pr.post_id        AS postId,
+               NULL              AS commentId,
+               NULL              AS scrapId,
+               cp.title          AS title,
+               LEFT(cp.content, 120) AS preview,
+               pr.reaction_type  AS reactionType,
+               pr.is_anonymous   AS anonymous,
+               pr.created_at     AS createdAt
+          FROM post_reaction pr
+          JOIN community_post cp ON cp.id = pr.post_id AND cp.status = 'PUBLISHED'
+         WHERE pr.user_id = #{ownerId}
+           AND pr.reaction_type = 'BOOKMARK'
+        <if test="!includeAnonymous">
+           AND pr.is_anonymous = 0
+        </if>
+         ORDER BY pr.created_at DESC, pr.id DESC
+         LIMIT #{limit} OFFSET #{offset}
+    </select>
+
+    <select id="countBookmarkedPosts" resultType="int">
+        SELECT COUNT(*)
+          FROM post_reaction pr
+          JOIN community_post cp ON cp.id = pr.post_id AND cp.status = 'PUBLISHED'
+         WHERE pr.user_id = #{ownerId}
+           AND pr.reaction_type = 'BOOKMARK'
+        <if test="!includeAnonymous">
+           AND pr.is_anonymous = 0
+        </if>
+    </select>
+
+    <!-- ── 스크랩 (스냅샷 — 원본 삭제와 무관하게 표시) ── -->
+    <select id="findScraps" resultType="com.careertuner.community.domain.ActivityItem">
+        SELECT 'SCRAP'             AS itemType,
+               ps.post_id          AS postId,
+               NULL                AS commentId,
+               ps.id               AS scrapId,
+               ps.snapshot_title   AS title,
+               LEFT(ps.snapshot_content, 120) AS preview,
+               NULL                AS reactionType,
+               ps.is_anonymous     AS anonymous,
+               ps.scrapped_at      AS createdAt
+          FROM post_scrap ps
+         WHERE ps.user_id = #{ownerId}
+        <if test="!includeAnonymous">
+           AND ps.is_anonymous = 0
+        </if>
+         ORDER BY ps.scrapped_at DESC, ps.id DESC
+         LIMIT #{limit} OFFSET #{offset}
+    </select>
+
+    <select id="countScraps" resultType="int">
+        SELECT COUNT(*)
+          FROM post_scrap ps
+         WHERE ps.user_id = #{ownerId}
+        <if test="!includeAnonymous">
+           AND ps.is_anonymous = 0
+        </if>
+    </select>
+
+</mapper>

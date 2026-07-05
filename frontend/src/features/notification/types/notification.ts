@@ -23,6 +23,29 @@ export type UserNotificationType =
   | "COMMENT_RESTORED"
   | "COMMENT_REMOVED"
   | "LIKE"
+  | "LIKE_ANON"
+  | "POST_DISLIKE"
+  | "POST_DISLIKE_ANON"
+  | "POST_RECOMMEND"
+  | "POST_RECOMMEND_ANON"
+  | "POST_DISRECOMMEND"
+  | "POST_DISRECOMMEND_ANON"
+  | "COMMENT_LIKE"
+  | "COMMENT_LIKE_ANON"
+  | "COMMENT_DISLIKE"
+  | "COMMENT_DISLIKE_ANON"
+  | "COMMENT_RECOMMEND"
+  | "COMMENT_RECOMMEND_ANON"
+  | "COMMENT_DISRECOMMEND"
+  | "COMMENT_DISRECOMMEND_ANON"
+  | "POST_BOOKMARK"
+  | "POST_BOOKMARK_ANON"
+  | "POST_SCRAP"
+  | "POST_SCRAP_ANON"
+  | "POST_WATCH_COMMENT"
+  | "COMMENT_WATCH_REPLY"
+  | "COMPANY_APPLY_RESULT"
+  | "JOB_POSTING_REVIEW_RESULT"
   | "POST_HIDDEN"
   | "POST_REMOVED"
   | "POST_RESTORED"
@@ -54,7 +77,9 @@ export type SenderRelation = "stranger" | "friend" | "company" | "operator";
 export type AdminNotificationType =
   | "NEW_REPORT"
   | "NEW_TICKET"
-  | "NEW_USER";
+  | "NEW_USER"
+  | "NEW_COMPANY_APPLICATION"
+  | "NEW_JOB_POSTING_REVIEW";
 
 export type NotificationType =
   | AINotificationType
@@ -126,6 +151,29 @@ export const TYPE_META: Record<NotificationType, TypeMeta> = {
   COMMENT_RESTORED:          { cat: "community",   icon: "RotateCcw",          variant: "success", cta: "댓글 보기" },
   COMMENT_REMOVED:           { cat: "community",   icon: "Trash2",             variant: "danger",  cta: "댓글 보기" },
   LIKE:                      { cat: "community",   icon: "Heart",              variant: "info",    cta: "게시글 보기",    actor: true },
+  LIKE_ANON:                 { cat: "community",   icon: "Heart",              variant: "info",    cta: "게시글 보기" },
+  POST_DISLIKE:              { cat: "community",   icon: "HeartOff",           variant: "info",    cta: "게시글 보기",    actor: true, urgent: false },
+  POST_DISLIKE_ANON:         { cat: "community",   icon: "HeartOff",           variant: "info",    cta: "게시글 보기",    urgent: false },
+  POST_RECOMMEND:            { cat: "community",   icon: "ThumbsUp",           variant: "info",    cta: "게시글 보기",    actor: true },
+  POST_RECOMMEND_ANON:       { cat: "community",   icon: "ThumbsUp",           variant: "info",    cta: "게시글 보기" },
+  POST_DISRECOMMEND:         { cat: "community",   icon: "ThumbsDown",         variant: "info",    cta: "게시글 보기",    actor: true, urgent: false },
+  POST_DISRECOMMEND_ANON:    { cat: "community",   icon: "ThumbsDown",         variant: "info",    cta: "게시글 보기",    urgent: false },
+  COMMENT_LIKE:              { cat: "community",   icon: "Heart",              variant: "info",    cta: "댓글 보기",      actor: true },
+  COMMENT_LIKE_ANON:         { cat: "community",   icon: "Heart",              variant: "info",    cta: "댓글 보기" },
+  COMMENT_DISLIKE:           { cat: "community",   icon: "HeartOff",           variant: "info",    cta: "댓글 보기",      actor: true, urgent: false },
+  COMMENT_DISLIKE_ANON:      { cat: "community",   icon: "HeartOff",           variant: "info",    cta: "댓글 보기",      urgent: false },
+  COMMENT_RECOMMEND:         { cat: "community",   icon: "ThumbsUp",           variant: "info",    cta: "댓글 보기",      actor: true },
+  COMMENT_RECOMMEND_ANON:    { cat: "community",   icon: "ThumbsUp",           variant: "info",    cta: "댓글 보기" },
+  COMMENT_DISRECOMMEND:      { cat: "community",   icon: "ThumbsDown",         variant: "info",    cta: "댓글 보기",      actor: true, urgent: false },
+  COMMENT_DISRECOMMEND_ANON: { cat: "community",   icon: "ThumbsDown",         variant: "info",    cta: "댓글 보기",      urgent: false },
+  POST_BOOKMARK:             { cat: "community",   icon: "Star",               variant: "info",    cta: "게시글 보기",    actor: true },
+  POST_BOOKMARK_ANON:        { cat: "community",   icon: "Star",               variant: "info",    cta: "게시글 보기" },
+  POST_SCRAP:                { cat: "community",   icon: "Clipboard",          variant: "info",    cta: "게시글 보기",    actor: true },
+  POST_SCRAP_ANON:           { cat: "community",   icon: "Clipboard",          variant: "info",    cta: "게시글 보기" },
+  POST_WATCH_COMMENT:        { cat: "community",   icon: "BellRing",           variant: "info",    cta: "새 댓글 보기" },
+  COMMENT_WATCH_REPLY:       { cat: "community",   icon: "BellRing",           variant: "info",    cta: "새 답글 보기" },
+  COMPANY_APPLY_RESULT:      { cat: "notice",      icon: "Building2",          variant: "info",    cta: "신청 결과 보기" },
+  JOB_POSTING_REVIEW_RESULT: { cat: "notice",      icon: "Briefcase",          variant: "info",    cta: "공고 검토 결과" },
   POST_HIDDEN:               { cat: "community",   icon: "EyeOff",             variant: "warning", cta: "가이드라인 보기" },
   POST_REMOVED:              { cat: "community",   icon: "Trash2",             variant: "danger",  cta: "가이드라인 보기" },
   POST_RESTORED:             { cat: "community",   icon: "RotateCcw",          variant: "success", cta: "게시글 보기" },
@@ -157,6 +205,8 @@ export const TYPE_META: Record<NotificationType, TypeMeta> = {
   /* 관리자 */
   NEW_REPORT:                { cat: "admin",       icon: "Flag",               variant: "danger",  cta: "신고 확인" },
   NEW_TICKET:                { cat: "admin",       icon: "Ticket",             variant: "info",    cta: "문의 확인",      urgent: false },
+  NEW_COMPANY_APPLICATION:   { cat: "admin",       icon: "Building2",          variant: "info",    cta: "기업 신청 확인" },
+  NEW_JOB_POSTING_REVIEW:    { cat: "admin",       icon: "Briefcase",          variant: "info",    cta: "공고 검토" },
   NEW_USER:                  { cat: "admin",       icon: "UserPlus",           variant: "info",    cta: "회원 보기",      actor: true, urgent: false },
   LOW_CONFIDENCE_REPORT:     { cat: "admin",       icon: "ShieldAlert",        variant: "warning", cta: "리포트 점검" },
   TICKET_DRAFT_READY:        { cat: "admin",       icon: "FilePen",            variant: "info",    cta: "답변 초안 보기" },
@@ -221,6 +271,29 @@ export const TYPE_TO_CATEGORY: Record<NotificationType, NotificationCategory> = 
   COMMENT_RESTORED: "community",
   COMMENT_REMOVED: "community",
   LIKE: "community",
+  LIKE_ANON: "community",
+  POST_DISLIKE: "community",
+  POST_DISLIKE_ANON: "community",
+  POST_RECOMMEND: "community",
+  POST_RECOMMEND_ANON: "community",
+  POST_DISRECOMMEND: "community",
+  POST_DISRECOMMEND_ANON: "community",
+  COMMENT_LIKE: "community",
+  COMMENT_LIKE_ANON: "community",
+  COMMENT_DISLIKE: "community",
+  COMMENT_DISLIKE_ANON: "community",
+  COMMENT_RECOMMEND: "community",
+  COMMENT_RECOMMEND_ANON: "community",
+  COMMENT_DISRECOMMEND: "community",
+  COMMENT_DISRECOMMEND_ANON: "community",
+  POST_BOOKMARK: "community",
+  POST_BOOKMARK_ANON: "community",
+  POST_SCRAP: "community",
+  POST_SCRAP_ANON: "community",
+  POST_WATCH_COMMENT: "community",
+  COMMENT_WATCH_REPLY: "community",
+  COMPANY_APPLY_RESULT: "notice",
+  JOB_POSTING_REVIEW_RESULT: "notice",
   POST_HIDDEN: "community",
   POST_REMOVED: "community",
   POST_RESTORED: "community",
@@ -250,6 +323,8 @@ export const TYPE_TO_CATEGORY: Record<NotificationType, NotificationCategory> = 
   NEW_REPORT: "admin",
   NEW_TICKET: "admin",
   NEW_USER: "admin",
+  NEW_COMPANY_APPLICATION: "admin",
+  NEW_JOB_POSTING_REVIEW: "admin",
   LOW_CONFIDENCE_REPORT: "admin",
   TICKET_DRAFT_READY: "admin",
 };
