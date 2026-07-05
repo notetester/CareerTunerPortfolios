@@ -14,7 +14,7 @@ CREATE TABLE IF NOT EXISTS users (
     id               BIGINT       NOT NULL AUTO_INCREMENT,
     email            VARCHAR(255) NOT NULL COMMENT '로그인 식별자로 사용하는 회원 이메일',
     login_id         VARCHAR(50)  NULL COMMENT '로그인 아이디(문자열, 선택·전역 UNIQUE·설정 후 변경 불가 정책)',
-    phone            VARCHAR(20)  NULL COMMENT '전화번호(선택, 전역 UNIQUE)',
+    phone            VARCHAR(40)  NULL COMMENT '전화번호(선택, 전역 UNIQUE)',
     phone_verified   TINYINT(1)   NOT NULL DEFAULT 0 COMMENT '전화번호 인증 여부(선택·스텁)',
     password         VARCHAR(255) NULL COMMENT 'BCrypt로 암호화한 비밀번호 해시. 소셜 전용 계정은 NULL 가능',
     password_enabled TINYINT(1)   NOT NULL DEFAULT 1 COMMENT '비밀번호 로그인 사용 여부. 소셜 전용 계정은 0',
@@ -297,6 +297,18 @@ CREATE TABLE IF NOT EXISTS company_analysis (
     KEY idx_company_analysis_posting (job_posting_id),
     CONSTRAINT fk_company_analysis_case FOREIGN KEY (application_case_id) REFERENCES application_case (id) ON DELETE CASCADE,
     CONSTRAINT fk_company_analysis_posting FOREIGN KEY (job_posting_id) REFERENCES job_posting (id) ON DELETE SET NULL
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci;
+
+-- 기업분석 웹검색 결과 캐시(235 §4·§6). 같은 회사 재검색 방지(비용↓)와 신선도 판정 근거.
+-- query_key = 정규화된 회사 식별 쿼리, results = 스니펫+URL 목록(JSON), fetched_at = 수집 시각(TTL 기준).
+CREATE TABLE IF NOT EXISTS company_search_cache (
+    id         BIGINT NOT NULL AUTO_INCREMENT,
+    query_key  VARCHAR(255) NOT NULL,
+    results    JSON NULL,
+    fetched_at DATETIME NOT NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (id),
+    UNIQUE KEY uk_company_search_cache_query (query_key)
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci;
 
 CREATE TABLE IF NOT EXISTS application_case_status_history (

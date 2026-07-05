@@ -1,0 +1,325 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.careertuner.admin.securityops.mapper.AdminSecurityOpsMapper">
+
+    <select id="summary" resultType="com.careertuner.admin.securityops.dto.SecurityOpsSummaryResponse">
+        SELECT
+            (SELECT COUNT(*) FROM admin_security_block_rule WHERE active = 1) AS active_block_rules,
+            (SELECT COUNT(*) FROM admin_security_waf_sync_event WHERE status = 'QUEUED') AS pending_waf_events,
+            (SELECT COUNT(*) FROM admin_security_review WHERE status IN ('OPEN', 'ESCALATED')) AS open_reviews,
+            (SELECT COUNT(*) FROM admin_security_appeal WHERE status = 'OPEN') AS open_appeals,
+            (SELECT COUNT(*) FROM admin_security_provider_config WHERE enabled = 1) AS enabled_providers
+    </select>
+
+    <select id="findBlockRules" resultType="com.careertuner.admin.securityops.dto.SecurityBlockRuleRow">
+        SELECT id, rule_type, rule_value, scope, action_type, category, reason, memo,
+               active, waf_sync_enabled, waf_sync_status, waf_rule_id, last_synced_at,
+               expires_at, created_by, updated_by, created_at, updated_at
+        FROM admin_security_block_rule
+        WHERE 1 = 1
+        <if test="keyword != null">
+            AND (
+                rule_value LIKE CONCAT('%', #{keyword}, '%')
+                OR reason LIKE CONCAT('%', #{keyword}, '%')
+                OR memo LIKE CONCAT('%', #{keyword}, '%')
+                OR waf_rule_id LIKE CONCAT('%', #{keyword}, '%')
+            )
+        </if>
+        <if test="ruleType != null">
+            AND rule_type = #{ruleType}
+        </if>
+        <if test="active != null">
+            AND active = #{active}
+        </if>
+        ORDER BY active DESC, updated_at DESC, id DESC
+        LIMIT #{limit}
+    </select>
+
+    <select id="findBlockRuleById" resultType="com.careertuner.admin.securityops.dto.SecurityBlockRuleRow">
+        SELECT id, rule_type, rule_value, scope, action_type, category, reason, memo,
+               active, waf_sync_enabled, waf_sync_status, waf_rule_id, last_synced_at,
+               expires_at, created_by, updated_by, created_at, updated_at
+        FROM admin_security_block_rule
+        WHERE id = #{id}
+    </select>
+
+    <select id="findLatestBlockRule" resultType="com.careertuner.admin.securityops.dto.SecurityBlockRuleRow">
+        SELECT id, rule_type, rule_value, scope, action_type, category, reason, memo,
+               active, waf_sync_enabled, waf_sync_status, waf_rule_id, last_synced_at,
+               expires_at, created_by, updated_by, created_at, updated_at
+        FROM admin_security_block_rule
+        WHERE rule_type = #{ruleType}
+          AND rule_value = #{ruleValue}
+        ORDER BY id DESC
+        LIMIT 1
+    </select>
+
+    <insert id="insertBlockRule">
+        INSERT INTO admin_security_block_rule (
+            rule_type, rule_value, scope, action_type, category, reason, memo,
+            active, waf_sync_enabled, waf_sync_status, expires_at, created_by, updated_by
+        )
+        VALUES (
+            #{ruleType}, #{ruleValue}, #{scope}, #{actionType}, #{category}, #{reason}, #{memo},
+            #{active}, #{wafSyncEnabled}, #{wafSyncStatus}, #{expiresAt}, #{actorId}, #{actorId}
+        )
+    </insert>
+
+    <update id="updateBlockRule">
+        UPDATE admin_security_block_rule
+        SET rule_type = #{ruleType},
+            rule_value = #{ruleValue},
+            scope = #{scope},
+            action_type = #{actionType},
+            category = #{category},
+            reason = #{reason},
+            memo = #{memo},
+            active = #{active},
+            waf_sync_enabled = #{wafSyncEnabled},
+            waf_sync_status = #{wafSyncStatus},
+            expires_at = #{expiresAt},
+            updated_by = #{actorId}
+        WHERE id = #{id}
+    </update>
+
+    <update id="updateBlockRuleWafStatus">
+        UPDATE admin_security_block_rule
+        SET waf_sync_status = #{status},
+            waf_rule_id = COALESCE(#{wafRuleId}, waf_rule_id),
+            last_synced_at = #{lastSyncedAt},
+            updated_by = #{actorId}
+        WHERE id = #{id}
+    </update>
+
+    <insert id="insertWafEvent">
+        INSERT INTO admin_security_waf_sync_event (
+            block_rule_id, provider_code, operation_type, status,
+            request_payload_json, response_payload_json, error_message,
+            requested_by, processed_at
+        )
+        VALUES (
+            #{blockRuleId}, #{providerCode}, #{operationType}, #{status},
+            CAST(COALESCE(#{requestPayloadJson}, 'null') AS JSON),
+            CAST(COALESCE(#{responsePayloadJson}, 'null') AS JSON),
+            #{errorMessage}, #{actorId}, #{processedAt}
+        )
+    </insert>
+
+    <select id="findWafEvents" resultType="com.careertuner.admin.securityops.dto.WafSyncEventRow">
+        SELECT id, block_rule_id, provider_code, operation_type, status,
+               JSON_UNQUOTE(JSON_EXTRACT(request_payload_json, '$')) AS request_payload_json,
+               JSON_UNQUOTE(JSON_EXTRACT(response_payload_json, '$')) AS response_payload_json,
+               error_message, requested_by, requested_at, processed_at
+        FROM admin_security_waf_sync_event
+        WHERE 1 = 1
+        <if test="keyword != null">
+            AND (
+                provider_code LIKE CONCAT('%', #{keyword}, '%')
+                OR operation_type LIKE CONCAT('%', #{keyword}, '%')
+                OR error_message LIKE CONCAT('%', #{keyword}, '%')
+            )
+        </if>
+        <if test="status != null">
+            AND status = #{status}
+        </if>
+        ORDER BY requested_at DESC, id DESC
+        LIMIT #{limit}
+    </select>
+
+    <select id="findProviders" resultType="com.careertuner.admin.securityops.dto.SecurityProviderConfigRow">
+        SELECT id, provider_code, display_name, provider_type, mode, enabled, endpoint_url,
+               JSON_UNQUOTE(JSON_EXTRACT(config_json, '$')) AS config_json,
+               health_status, last_checked_at, updated_by, created_at, updated_at
+        FROM admin_security_provider_config
+        WHERE 1 = 1
+        <if test="keyword != null">
+            AND (
+                provider_code LIKE CONCAT('%', #{keyword}, '%')
+                OR display_name LIKE CONCAT('%', #{keyword}, '%')
+                OR endpoint_url LIKE CONCAT('%', #{keyword}, '%')
+            )
+        </if>
+        <if test="providerType != null">
+            AND provider_type = #{providerType}
+        </if>
+        ORDER BY provider_type ASC, provider_code ASC
+    </select>
+
+    <select id="findProviderByCode" resultType="com.careertuner.admin.securityops.dto.SecurityProviderConfigRow">
+        SELECT id, provider_code, display_name, provider_type, mode, enabled, endpoint_url,
+               JSON_UNQUOTE(JSON_EXTRACT(config_json, '$')) AS config_json,
+               health_status, last_checked_at, updated_by, created_at, updated_at
+        FROM admin_security_provider_config
+        WHERE provider_code = #{providerCode}
+    </select>
+
+    <update id="updateProvider">
+        UPDATE admin_security_provider_config
+        SET display_name = #{displayName},
+            provider_type = #{providerType},
+            mode = #{mode},
+            enabled = #{enabled},
+            endpoint_url = #{endpointUrl},
+            config_json = CAST(#{configJson} AS JSON),
+            updated_by = #{actorId}
+        WHERE provider_code = #{providerCode}
+    </update>
+
+    <update id="updateProviderHealth">
+        UPDATE admin_security_provider_config
+        SET health_status = #{healthStatus},
+            last_checked_at = NOW(),
+            updated_by = #{actorId}
+        WHERE provider_code = #{providerCode}
+    </update>
+
+    <insert id="insertProviderHealthHistory">
+        INSERT INTO admin_security_provider_health_history (
+            provider_config_id, provider_code, provider_type, check_source,
+            status_before, status_after, detail_message, actor_user_id
+        )
+        VALUES (
+            #{providerConfigId}, #{providerCode}, #{providerType}, #{checkSource},
+            #{statusBefore}, #{statusAfter}, #{detailMessage}, #{actorId}
+        )
+    </insert>
+
+    <select id="findProviderHealthHistory" resultType="com.careertuner.admin.securityops.dto.SecurityProviderHealthHistoryRow">
+        SELECT h.id, h.provider_config_id, h.provider_code, h.provider_type,
+               h.check_source, h.status_before, h.status_after, h.detail_message,
+               h.actor_user_id, u.email AS actor_email, h.checked_at
+        FROM admin_security_provider_health_history h
+        LEFT JOIN users u ON u.id = h.actor_user_id
+        WHERE 1 = 1
+        <if test="keyword != null">
+            AND (
+                h.provider_code LIKE CONCAT('%', #{keyword}, '%')
+                OR h.provider_type LIKE CONCAT('%', #{keyword}, '%')
+                OR h.check_source LIKE CONCAT('%', #{keyword}, '%')
+                OR h.detail_message LIKE CONCAT('%', #{keyword}, '%')
+                OR u.email LIKE CONCAT('%', #{keyword}, '%')
+            )
+        </if>
+        <if test="statusAfter != null">
+            AND h.status_after = #{statusAfter}
+        </if>
+        ORDER BY h.checked_at DESC, h.id DESC
+        LIMIT #{limit}
+    </select>
+
+    <select id="findReviews" resultType="com.careertuner.admin.securityops.dto.SecurityReviewRow">
+        SELECT id, review_type, subject_type, subject_value, risk_score, risk_level, status,
+               decision_action, reason,
+               JSON_UNQUOTE(JSON_EXTRACT(evidence_json, '$')) AS evidence_json,
+               created_by, assigned_to, decided_by, decided_at, created_at, updated_at
+        FROM admin_security_review
+        WHERE 1 = 1
+        <if test="keyword != null">
+            AND (
+                subject_value LIKE CONCAT('%', #{keyword}, '%')
+                OR reason LIKE CONCAT('%', #{keyword}, '%')
+                OR decision_action LIKE CONCAT('%', #{keyword}, '%')
+            )
+        </if>
+        <if test="status != null">
+            AND status = #{status}
+        </if>
+        <if test="reviewType != null">
+            AND review_type = #{reviewType}
+        </if>
+        ORDER BY FIELD(risk_level, 'CRITICAL', 'HIGH', 'MEDIUM', 'LOW'), created_at DESC, id DESC
+        LIMIT #{limit}
+    </select>
+
+    <select id="findReviewById" resultType="com.careertuner.admin.securityops.dto.SecurityReviewRow">
+        SELECT id, review_type, subject_type, subject_value, risk_score, risk_level, status,
+               decision_action, reason,
+               JSON_UNQUOTE(JSON_EXTRACT(evidence_json, '$')) AS evidence_json,
+               created_by, assigned_to, decided_by, decided_at, created_at, updated_at
+        FROM admin_security_review
+        WHERE id = #{id}
+    </select>
+
+    <insert id="insertReview">
+        INSERT INTO admin_security_review (
+            review_type, subject_type, subject_value, risk_score, risk_level, status,
+            decision_action, reason, evidence_json, assigned_to, created_by
+        )
+        VALUES (
+            #{reviewType}, #{subjectType}, #{subjectValue}, #{riskScore}, #{riskLevel}, #{status},
+            #{decisionAction}, #{reason}, CAST(#{evidenceJson} AS JSON), #{assignedTo}, #{actorId}
+        )
+    </insert>
+
+    <update id="updateReview">
+        UPDATE admin_security_review
+        SET status = #{status},
+            decision_action = #{decisionAction},
+            reason = #{reason},
+            assigned_to = #{assignedTo},
+            decided_by = #{actorId},
+            decided_at = #{decidedAt}
+        WHERE id = #{id}
+    </update>
+
+    <select id="findAppealPolicy" resultType="com.careertuner.admin.securityops.dto.SecurityAppealPolicyRow">
+        SELECT id, policy_code, display_name, enabled, allow_multiple_open, max_open_per_subject,
+               submitter_daily_limit, token_ttl_hours,
+               JSON_UNQUOTE(JSON_EXTRACT(config_json, '$')) AS config_json,
+               updated_by, created_at, updated_at
+        FROM admin_security_appeal_policy
+        WHERE policy_code = 'SECURITY_APPEAL_DEFAULT'
+    </select>
+
+    <update id="updateAppealPolicy">
+        UPDATE admin_security_appeal_policy
+        SET display_name = #{displayName},
+            enabled = #{enabled},
+            allow_multiple_open = #{allowMultipleOpen},
+            max_open_per_subject = #{maxOpenPerSubject},
+            submitter_daily_limit = #{submitterDailyLimit},
+            token_ttl_hours = #{tokenTtlHours},
+            config_json = CAST(#{configJson} AS JSON),
+            updated_by = #{actorId}
+        WHERE policy_code = 'SECURITY_APPEAL_DEFAULT'
+    </update>
+
+    <select id="findAppeals" resultType="com.careertuner.admin.securityops.dto.SecurityAppealRow">
+        SELECT id, public_request_id, subject_type, subject_value, block_rule_id,
+               submitter_email, status, reason, decision_reason, reviewed_by,
+               reviewed_at, created_at, updated_at
+        FROM admin_security_appeal
+        WHERE 1 = 1
+        <if test="keyword != null">
+            AND (
+                public_request_id LIKE CONCAT('%', #{keyword}, '%')
+                OR subject_value LIKE CONCAT('%', #{keyword}, '%')
+                OR submitter_email LIKE CONCAT('%', #{keyword}, '%')
+                OR reason LIKE CONCAT('%', #{keyword}, '%')
+            )
+        </if>
+        <if test="status != null">
+            AND status = #{status}
+        </if>
+        ORDER BY created_at DESC, id DESC
+        LIMIT #{limit}
+    </select>
+
+    <select id="findAppealById" resultType="com.careertuner.admin.securityops.dto.SecurityAppealRow">
+        SELECT id, public_request_id, subject_type, subject_value, block_rule_id,
+               submitter_email, status, reason, decision_reason, reviewed_by,
+               reviewed_at, created_at, updated_at
+        FROM admin_security_appeal
+        WHERE id = #{id}
+    </select>
+
+    <update id="updateAppeal">
+        UPDATE admin_security_appeal
+        SET status = #{status},
+            decision_reason = #{decisionReason},
+            reviewed_by = #{actorId},
+            reviewed_at = #{reviewedAt}
+        WHERE id = #{id}
+    </update>
+</mapper>

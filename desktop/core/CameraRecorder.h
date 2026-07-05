@@ -4,10 +4,10 @@
 #include <QMediaCaptureSession>
 #include <QMediaRecorder>
 #include <QMediaDevices>
+#include <QAudioDevice>
 #include <QAudioInput>
 #include <QCamera>
-
-class QVideoSink;
+#include <QVideoSink>
 
 // 웹캠 영상+음성 녹화기 (Qt Multimedia) — 카메라 면접(영상 답변)용.
 // startPreview() → QML VideoOutput 프리뷰 → start() → 임시 mp4 녹화(최대 3분)

@@ -71,13 +71,3 @@ export type PrepEvent =
   | { type: "part-done"; result: PrepStepResult }
   | { type: "done"; message: string }
   | { type: "error"; message: string };
-
-/** 6파트 표시 메타(키 → 한글 라벨/아이콘 이름(lucide)/담당/예상 소요 ms). estMs 는 에너지바 점근 속도용. */
-export const PREP_PARTS: Record<string, { label: string; icon: string; part: string; estMs: number }> = {
-  PROFILE: { label: "프로필·역량 정리", icon: "user", part: "A", estMs: 9000 },
-  JOB: { label: "공고 분석", icon: "file-text", part: "B", estMs: 15000 },
-  FIT: { label: "적합도 분석", icon: "target", part: "C", estMs: 15000 },
-  WRITE: { label: "자소서 교정", icon: "pen-line", part: "E", estMs: 12000 },
-  INTERVIEW: { label: "예상 면접 질문", icon: "mic", part: "D", estMs: 18000 },
-  COMMUNITY: { label: "커뮤니티 큐레이션", icon: "message-circle", part: "F", estMs: 4000 },
-};

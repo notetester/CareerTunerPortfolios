@@ -101,6 +101,22 @@ export default defineConfig(({ mode }) => {
 
   build: {
     sourcemap: false,
+    chunkSizeWarningLimit: 1100,
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          if (!id.includes('node_modules')) {
+            if (id.includes('/src/admin/')) return 'admin'
+            if (id.includes('/src/features/community/')) return 'community'
+            if (id.includes('/src/features/collaboration/')) return 'collaboration'
+            return undefined
+          }
+          if (id.includes('/lucide-react/') || id.includes('/@radix-ui/') || id.includes('/sonner/')) return 'ui-vendor'
+          if (id.includes('/recharts/') || id.includes('/d3-')) return 'charts-vendor'
+          return 'vendor'
+        },
+      },
+    },
   },
 
   // File types to support raw imports. Never add .css, .tsx, or .ts files to this.

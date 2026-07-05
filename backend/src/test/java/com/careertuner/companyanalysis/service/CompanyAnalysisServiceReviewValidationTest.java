@@ -31,6 +31,10 @@ import com.careertuner.companyanalysis.domain.CompanyAnalysis;
 import com.careertuner.companyanalysis.dto.CompanyAnalysisReviewRequest;
 import com.careertuner.companyanalysis.dto.CompanyAnalysisResponse;
 import com.careertuner.companyanalysis.mapper.CompanyAnalysisMapper;
+import com.careertuner.companyanalysis.websearch.CompanyEvidenceCollector;
+import com.careertuner.companyanalysis.websearch.CompanySourceResolver;
+import com.careertuner.companyanalysis.websearch.CompanyWebSearchClient;
+import com.careertuner.companyanalysis.websearch.CompanyWebSearchProperties;
 import com.careertuner.jobposting.mapper.JobPostingMapper;
 import com.careertuner.notification.service.NotificationService;
 
@@ -135,6 +139,38 @@ class CompanyAnalysisServiceReviewValidationTest {
     }
 
     @Test
+    void reviewCompanyAnalysisReattachesUnknownMarkersOwnedByServer() {
+        // 응답에서 kind=UNKNOWN 마커가 분리된 채 편집되므로, 검수 저장 시 서버가 기존 마커를
+        // 재부착해야 unknown 이 일반 추론으로 오염되거나 유실되지 않는다(6단계 1차안).
+        ApplicationCaseMapper applicationCaseMapper = mock(ApplicationCaseMapper.class);
+        JobPostingMapper jobPostingMapper = mock(JobPostingMapper.class);
+        CompanyAnalysisMapper companyAnalysisMapper = mock(CompanyAnalysisMapper.class);
+        CompanyAnalysisService service = companyAnalysisService(applicationCaseMapper, jobPostingMapper, companyAnalysisMapper);
+        String existingAiInferences = "[{\"inference\":\"기존 추론\",\"basis\":\"기존 근거\"},"
+                + "{\"inference\":\"매출 규모는 현재 입력 자료로 확인되지 않습니다.\",\"basis\":\"공고문에 관련 정보가 없다\","
+                + "\"kind\":\"UNKNOWN\",\"topic\":\"매출 규모\"}]";
+        String editedAiInferences = "[{\"inference\":\"사용자 수정 추론\",\"basis\":\"사용자 근거\"}]";
+
+        when(applicationCaseMapper.findApplicationCaseByIdAndUserId(10L, 1L)).thenReturn(applicationCase());
+        when(companyAnalysisMapper.findCompanyAnalysisByIdAndCaseId(20L, 10L))
+                .thenReturn(existingAnalysisWithAiInferences(existingAiInferences));
+
+        CompanyAnalysisReviewRequest request = new CompanyAnalysisReviewRequest(
+                null, null, null, null, null, null,
+                null, editedAiInferences, null);
+
+        CompanyAnalysisResponse response = service.reviewCompanyAnalysis(1L, 10L, 20L, request);
+
+        ArgumentCaptor<CompanyAnalysis> analysisCaptor = ArgumentCaptor.forClass(CompanyAnalysis.class);
+        verify(companyAnalysisMapper).updateCompanyAnalysisReview(analysisCaptor.capture());
+        String stored = analysisCaptor.getValue().getAiInferences();
+        assertThat(stored).contains("사용자 수정 추론").contains("\"kind\":\"UNKNOWN\"").contains("매출 규모");
+        // 응답에서는 마커가 다시 분리돼 virtual unknowns 로 내려간다.
+        assertThat(response.aiInferences()).doesNotContain("UNKNOWN");
+        assertThat(response.unknowns()).contains("매출 규모");
+    }
+
+    @Test
     void companyReviewRequestDoesNotExposeSourceMetadataFields() {
         Set<String> componentNames = Arrays.stream(CompanyAnalysisReviewRequest.class.getRecordComponents())
                 .map(component -> component.getName())
@@ -171,7 +207,14 @@ class CompanyAnalysisServiceReviewValidationTest {
                 mock(ApplicationCaseAnalysisStatusService.class),
                 mock(TransactionTemplate.class),
                 new BAnalysisJsonValidator(new ObjectMapper()),
-                mock(NotificationService.class));
+                new BCompanyAnalysisCanonicalizer(new ObjectMapper()),
+                mock(NotificationService.class),
+                new CompanyWebSearchProperties(),
+                mock(CompanySourceResolver.class),
+                mock(CompanyWebSearchClient.class),
+                mock(CompanyEvidenceCollector.class),
+                mock(CompanySearchCacheService.class),
+                new ObjectMapper());
     }
 
     private static ApplicationCase applicationCase() {

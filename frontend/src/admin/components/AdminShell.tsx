@@ -116,6 +116,7 @@ const NAV_GROUPS: NavGroup[] = [
     items: [
       { key: "members", label: "회원 관리", icon: Users, href: "/admin/users", permissionGroups: ["MEMBER_ADMIN"] },
       { key: "blocked-users", label: "차단 관리", icon: ShieldAlert, href: "/admin/users/blocked", permissionGroups: ["MEMBER_ADMIN", "AUDIT_ADMIN"] },
+      { key: "security-ops", label: "보안 운영 센터", icon: ShieldCheck, href: "/admin/security", permissionGroups: ["AUDIT_ADMIN", "POLICY_ADMIN"] },
       { key: "profiles", label: "프로필 관리", icon: FileUser, href: "/admin/profiles", permissionGroups: ["MEMBER_ADMIN"] },
       { key: "consents", label: "동의 관리", icon: ClipboardCheck, href: "/admin/consents", permissionGroups: ["MEMBER_ADMIN"] },
       // W1: 기업 계정 전환 신청 승인/반려

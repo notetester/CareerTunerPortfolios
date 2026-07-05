@@ -23,6 +23,7 @@ import com.careertuner.applicationcase.service.OpenAiResponsesClient.JobAnalysis
 import com.careertuner.applicationcase.service.OpenAiResponsesClient.Usage;
 import com.careertuner.companyanalysis.domain.CompanyAnalysis;
 import com.careertuner.companyanalysis.mapper.CompanyAnalysisMapper;
+import com.careertuner.companyanalysis.service.BCompanyAnalysisCanonicalizer;
 import com.careertuner.fitanalysis.ai.FitAnalysisAiCommand;
 import com.careertuner.fitanalysis.ai.FitAnalysisAiResult;
 import com.careertuner.fitanalysis.ai.FitAnalysisConfidence;
@@ -74,6 +75,7 @@ public class ApplicationCaseAutoPipelineService {
     private final MockFitAnalysisAiService mockFitAnalysisAiService;
     private final ObjectMapper objectMapper;
     private final BAnalysisGenerationService bAnalysisGenerationService;
+    private final BCompanyAnalysisCanonicalizer companyAnalysisCanonicalizer;
 
     @Value("${careertuner.application-case.auto-pipeline.enabled:true}")
     private boolean enabled = true;
@@ -101,7 +103,7 @@ public class ApplicationCaseAutoPipelineService {
             GeneratedJobAnalysis generatedJob = bAnalysisGenerationService.generateJobAnalysis(applicationCase, postingText);
             JobAnalysis jobAnalysis = createJobAnalysis(applicationCase, jobPostingId, jobPostingRevision, generatedJob);
             GeneratedCompanyAnalysis generatedCompany = bAnalysisGenerationService.generateCompanyAnalysis(applicationCase, postingText);
-            createCompanyAnalysis(applicationCase, jobPostingId, jobPostingRevision, generatedCompany);
+            createCompanyAnalysis(applicationCase, jobPostingId, jobPostingRevision, generatedCompany, postingText);
             createFitAnalysis(userId, applicationCaseId);
             createInterviewPrep(applicationCase, jobAnalysis);
             if (statusStarted) {
@@ -152,8 +154,17 @@ public class ApplicationCaseAutoPipelineService {
     private void createCompanyAnalysis(ApplicationCase applicationCase,
                                        Long jobPostingId,
                                        Integer jobPostingRevision,
-                                       GeneratedCompanyAnalysis generated) {
-        CompanyAnalysisPayload payload = generated.payload();
+                                       GeneratedCompanyAnalysis generated,
+                                       String postingText) {
+        // 사용자 직접 생성 경로(CompanyAnalysisService)와 동일한 canonicalizer 를 공유한다
+        // (evidence gate, ID/sourceKind/sourceRef 보정, unknowns 접기, sources 통일).
+        CompanyAnalysisPayload payload = companyAnalysisCanonicalizer.canonicalizeForStorage(
+                generated.payload(),
+                jobPostingId,
+                jobPostingRevision,
+                postingText,
+                applicationCase.getCompanyName(),
+                applicationCase.getJobTitle()).payload();
         LocalDateTime checkedAt = LocalDateTime.now();
         CompanyAnalysis companyAnalysis = CompanyAnalysis.builder()
                 .applicationCaseId(applicationCase.getId())

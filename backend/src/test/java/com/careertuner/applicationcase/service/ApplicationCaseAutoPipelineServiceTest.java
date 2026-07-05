@@ -56,7 +56,8 @@ class ApplicationCaseAutoPipelineServiceTest {
                 interviewMapper,
                 new MockFitAnalysisAiService(),
                 objectMapper,
-                bAnalysisGenerationService);
+                bAnalysisGenerationService,
+                new com.careertuner.companyanalysis.service.BCompanyAnalysisCanonicalizer(objectMapper));
         String postingText = """
                 Acme is hiring a Backend Engineer.
                 Responsibilities: build Spring APIs, operate MySQL services, and improve Docker deployment.

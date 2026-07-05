@@ -161,6 +161,9 @@ public class CommunityPostServiceImpl implements CommunityPostService {
     @Override
     @Transactional
     public Long createPost(CreatePostRequest request, Long userId) {
+        if (PostCategory.RECOMMENDED_JOB == request.category()) {
+            throw new BusinessException(ErrorCode.FORBIDDEN, "채용공고는 승인된 기업 공고 등록 화면에서만 작성할 수 있습니다.");
+        }
         CommunityPost post = CommunityPost.builder()
                 .userId(userId)
                 .category(request.category().name())

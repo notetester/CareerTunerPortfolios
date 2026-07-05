@@ -168,6 +168,13 @@ export async function deletePost(id: number) {
   return api<void>(`/community/posts/${id}`, { method: "DELETE" });
 }
 
+export async function adminUpdatePostStatus(id: number, status: "PUBLISHED" | "HIDDEN" | "DELETED", reason?: string) {
+  return api<void>(`/admin/community/posts/${id}/status`, {
+    method: "PATCH",
+    body: JSON.stringify({ status, reason }),
+  });
+}
+
 /* ── AI 태그 ── */
 
 export interface AiTagResult {

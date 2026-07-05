@@ -25,6 +25,11 @@ public class AdminCompanyAnalysisRow {
     private String sources;
     private String verifiedFacts;
     private String aiInferences;
+    /**
+     * virtual 필드 — DB 컬럼이 아니라, 저장된 aiInferences 의 {@code kind=UNKNOWN} 마커를
+     * 응답 직전 펼친 값이다. 함께 aiInferences 에서는 마커가 제거된다.
+     */
+    private String unknowns;
     private String sourceType;
     private LocalDateTime checkedAt;
     private LocalDateTime refreshRecommendedAt;

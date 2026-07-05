@@ -49,12 +49,29 @@ public class AutoPrepIntakeService {
         boolean needsCase = plan.steps().stream().anyMatch(CASE_REQUIRED::contains);
         if (needsCase && plan.slots().applicationCaseId() == null) {
             List<ApplicationCaseResponse> candidates = safeList(userId);
+            String parsedCompany = CaseSlotValidator.resolvedOrNull(plan.slots().company());
             String message = candidates.isEmpty()
                     ? "이 준비에는 지원 건이 필요해요. 채용공고로 지원 건을 먼저 만들어 주세요."
-                    : (notBlank(plan.slots().company())
-                        ? "\"" + plan.slots().company().trim() + "\" 지원 건을 못 찾았어요. 어느 지원 건으로 준비할까요?"
+                    : (parsedCompany != null
+                        ? "\"" + parsedCompany + "\" 지원 건을 못 찾았어요. 어느 지원 건으로 준비할까요?"
                         : "어느 지원 건으로 준비할까요?");
             return new AutoPrepIntakeResponse(plan, false, message, "CASE", candidates, List.of());
+        }
+
+        // ①′ 지원 건은 있는데 회사명/직무명이 미확인(placeholder·blank) — ④ 온보딩 게이트와 같은
+        //    검증기(CaseSlotValidator)로 판정한다. ③에는 지원 건 필드를 고칠 경로가 없으므로 코드 고정
+        //    문구로 차단·안내한다(LLM 미경유). 확정은 지원 건 상세(수정) 또는 ④ 보정 흐름에서.
+        if (needsCase && plan.slots().applicationCaseId() != null) {
+            boolean companyUnresolved = CaseSlotValidator.isUnresolved(plan.slots().company());
+            boolean jobTitleUnresolved = CaseSlotValidator.isUnresolved(plan.slots().jobTitle());
+            if (companyUnresolved || jobTitleUnresolved) {
+                String missing = companyUnresolved && jobTitleUnresolved ? "회사명·직무명"
+                        : companyUnresolved ? "회사명" : "직무명";
+                return new AutoPrepIntakeResponse(plan, false,
+                        "이 지원 건은 " + missing + "이 아직 확정되지 않았어요. 지원 건 상세에서 "
+                                + missing + "을 확인·수정한 뒤 다시 요청해 주세요.",
+                        null, List.of(), List.of());
+            }
         }
 
         // ② 면접인데 모드 미지정
@@ -72,14 +89,17 @@ public class AutoPrepIntakeService {
     private String describe(PrepPlan plan) {
         PrepSlots slots = plan.slots();
         StringBuilder sb = new StringBuilder();
-        if (notBlank(slots.company())) {
-            sb.append(slots.company().trim());
+        // 보간 방어: 미확인 슬롯 값(placeholder·blank)은 사용자 문장에 절대 삽입하지 않는다(버그1).
+        String company = CaseSlotValidator.resolvedOrNull(slots.company());
+        String jobTitle = CaseSlotValidator.resolvedOrNull(slots.jobTitle());
+        if (company != null) {
+            sb.append(company);
         }
-        if (notBlank(slots.jobTitle())) {
+        if (jobTitle != null) {
             if (sb.length() > 0) {
                 sb.append(' ');
             }
-            sb.append(slots.jobTitle().trim());
+            sb.append(jobTitle);
         }
         if (sb.length() == 0) {
             sb.append("선택한 내용");

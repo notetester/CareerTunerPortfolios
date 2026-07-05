@@ -8,8 +8,15 @@ import {
   Send as SendIcon,
 } from "lucide-react";
 import AdminShell from "../../../components/AdminShell";
+import {
+  AdminListFooter,
+  AdminListToolbar,
+  useAdminListTools,
+  type AdminListColumn,
+} from "../../../components/AdminListTools";
 import { type Inquiry, type InquiryStatus, type InquiryMessage, TEMPLATES, ASSIGNEES, INQUIRIES } from "../data/inquiriesData";
 import * as adminTicketApi from "../api/adminTicketApi";
+import { ConfirmDialog } from "@/app/components/ui/confirm-dialog";
 import "./admin-inquiries.css";
 
 type ListFilter = "미답변" | "처리중" | "완료" | "전체";
@@ -25,12 +32,25 @@ const STATUS_META: Record<InquiryStatus, { label: string; cls: string }> = {
   closed:   { label: "종료",     cls: "inq-st--closed" },
 };
 
+const INQUIRY_LIST_COLUMNS: AdminListColumn<Inquiry>[] = [
+  { id: "id", label: "ID", getText: (row) => row.id, sortable: true },
+  { id: "category", label: "분류", getText: (row) => row.cat, sortable: true },
+  { id: "title", label: "문의", getText: (row) => row.title, sortable: true },
+  { id: "member", label: "회원", getText: (row) => row.member, sortable: true },
+  { id: "status", label: "상태", getText: (row) => STATUS_META[row.status]?.label ?? row.status, sortable: true },
+  { id: "assignee", label: "담당자", getText: (row) => row.assignee, sortable: true },
+  { id: "priority", label: "긴급", getText: (row) => (row.priority ? "긴급" : ""), sortable: true },
+  { id: "plan", label: "요금제", getText: (row) => row.plan, sortable: true },
+  { id: "date", label: "접수", getText: (row) => row.date, sortable: true },
+];
+
 
 export default function AdminInquiriesAI() {
   const [items, setItems] = useState<Inquiry[]>([]);
   const [filter, setFilter] = useState<ListFilter>("미답변");
   const [selected, setSelected] = useState<Inquiry | null>(null);
   const [toast, setToast] = useState<{ msg: string; tone: string } | null>(null);
+  const [bulkStatus, setBulkStatus] = useState<InquiryStatus | null>(null);
 
   // AI states
   const [aiSummary, setAiSummary] = useState<AiSummaryState>("none");
@@ -154,6 +174,29 @@ export default function AdminInquiriesAI() {
     }
   };
 
+  const handleBulkStatusChange = async () => {
+    if (!bulkStatus) return;
+    const targets = list.selectedRows.filter((item) => item.status !== bulkStatus);
+    if (targets.length === 0) {
+      flash("상태를 변경할 문의가 없습니다.", "slate");
+      setBulkStatus(null);
+      return;
+    }
+    try {
+      const updatedRows = await Promise.all(targets.map((item) => adminTicketApi.updateTicket(item.id, { status: bulkStatus })));
+      setItems((prev) => prev.map((item) => updatedRows.find((updated) => updated.id === item.id) ?? item));
+      if (selected) {
+        const updatedSelected = updatedRows.find((item) => item.id === selected.id);
+        if (updatedSelected) setSelected(updatedSelected);
+      }
+      list.clearSelection();
+      flash(`${targets.length}건의 상태를 변경했습니다.`, "green");
+    } catch {
+      flash("일괄 상태 변경에 실패했습니다.", "red");
+    }
+    setBulkStatus(null);
+  };
+
   // 내부 메모 저장: BE 는 is_internal 메시지로 저장(reply internal=true) → 상태변경·회원알림 없음. 상세는 최신 내부메모를 보여줌.
   const saveMemo = async () => {
     if (!selected || !memo.trim()) return;
@@ -168,11 +211,18 @@ export default function AdminInquiriesAI() {
   };
 
   // Filtered list
-  const filtered = items.filter((i) => {
+  const statusFiltered = items.filter((i) => {
     if (filter === "미답변") return i.status === "pending";
     if (filter === "처리중") return i.status === "progress";
     if (filter === "완료") return i.status === "answered";
     return true;
+  });
+  const list = useAdminListTools(statusFiltered, {
+    columns: INQUIRY_LIST_COLUMNS,
+    getRowId: (row) => row.id,
+    defaultPageSize: 20,
+    defaultSortId: "date",
+    defaultSortDir: "desc",
   });
 
   const pendingCount = items.filter((i) => i.status === "pending").length;
@@ -216,7 +266,7 @@ export default function AdminInquiriesAI() {
       </div>
 
       {/* ── Grid: list + thread ── */}
-      <div className="grid gap-5 items-start" style={{ gridTemplateColumns: "340px 1fr" }}>
+      <div className="grid gap-5 items-start" style={{ gridTemplateColumns: "420px 1fr" }}>
 
         {/* ── Inquiry List Panel ── */}
         <div className="bg-card border border-border rounded-xl shadow-sm overflow-hidden">
@@ -224,7 +274,7 @@ export default function AdminInquiriesAI() {
           <div className="flex items-center gap-2 px-4 py-3 border-b border-border">
             <div className="inline-flex rounded-[10px] p-0.5" style={{ background: "var(--muted)" }}>
               {(["미답변", "처리중", "완료", "전체"] as ListFilter[]).map((f) => (
-                <button key={f} onClick={() => setFilter(f)}
+                <button key={f} onClick={() => { setFilter(f); list.clearSelection(); }}
                   className={`text-xs px-2.5 py-1 rounded-[7px] transition-colors ${
                     filter === f
                       ? "bg-card text-foreground font-semibold shadow-[0_1px_2px_rgba(15,23,42,0.06)]"
@@ -234,36 +284,77 @@ export default function AdminInquiriesAI() {
                 </button>
               ))}
             </div>
+            <button
+              type="button"
+              onClick={list.toggleVisibleRows}
+              className="h-7 px-2 rounded-md border border-border bg-card text-[11.5px] font-semibold text-muted-foreground hover:bg-accent"
+            >
+              {list.allVisibleSelected ? "페이지 해제" : "페이지 선택"}
+            </button>
             <span className="ml-auto text-[12.5px] text-[var(--muted-foreground)]">
-              <b className="text-foreground">{filtered.length}</b>건
+              <b className="text-foreground">{list.filteredRows.length}</b>건
             </span>
           </div>
 
+          <AdminListToolbar
+            state={list}
+            fileName="admin_inquiries"
+            extraActions={(
+              <>
+                <button type="button" onClick={() => setBulkStatus("progress")}>
+                  <CornerDownRight /> 처리중
+                </button>
+                <button type="button" onClick={() => setBulkStatus("answered")}>
+                  <CheckCircle2 /> 답변완료
+                </button>
+                <button type="button" onClick={() => setBulkStatus("closed")}>
+                  <CornerDownLeft /> 종료
+                </button>
+              </>
+            )}
+          />
+
           {/* items */}
           <div className="flex flex-col">
-            {filtered.map((inq) => (
-              <button key={inq.id} onClick={() => selectInquiry(inq)}
-                className={`text-left px-4 py-3 border-b border-border last:border-b-0 transition-colors ${
+            {list.visibleRows.map((inq) => (
+              <div key={inq.id}
+                className={`flex items-stretch border-b border-border last:border-b-0 transition-colors ${
                   selected?.id === inq.id ? "bg-accent" : "hover:bg-accent"
                 }`}>
-                <div className="flex items-center gap-1.5 mb-1">
-                  <span className="text-[11px] font-bold px-2 py-0.5 rounded-full" style={{ background: "var(--muted)", color: "var(--muted-foreground)" }}>{inq.cat}</span>
-                  {inq.priority && (
-                    <span className="text-[10.5px] font-extrabold px-1.5 py-0.5 rounded-full inline-flex items-center gap-0.5 inq-urgent">
-                      <Flame size={10} />긴급
+                <label className="flex w-10 shrink-0 items-center justify-center" onClick={(event) => event.stopPropagation()}>
+                  <input
+                    type="checkbox"
+                    aria-label="문의 선택"
+                    checked={list.isSelected(inq)}
+                    onChange={() => list.toggleRow(inq)}
+                    className="h-[15px] w-[15px]"
+                  />
+                </label>
+                <button type="button" onClick={() => selectInquiry(inq)} className="min-w-0 flex-1 px-2.5 py-3 text-left">
+                  <div className="flex items-center gap-1.5 mb-1">
+                    <span className="text-[11px] font-bold px-2 py-0.5 rounded-full" style={{ background: "var(--muted)", color: "var(--muted-foreground)" }}>{inq.cat}</span>
+                    {inq.priority && (
+                      <span className="text-[10.5px] font-extrabold px-1.5 py-0.5 rounded-full inline-flex items-center gap-0.5 inq-urgent">
+                        <Flame size={10} />긴급
+                      </span>
+                    )}
+                    <span className={`ml-auto text-[11px] font-bold px-2 py-0.5 rounded-full ${STATUS_META[inq.status].cls}`}>
+                      {STATUS_META[inq.status].label}
                     </span>
-                  )}
-                  <span className={`ml-auto text-[11px] font-bold px-2 py-0.5 rounded-full ${STATUS_META[inq.status].cls}`}>
-                    {STATUS_META[inq.status].label}
-                  </span>
-                </div>
-                <div className="text-[13.5px] font-semibold truncate">{inq.title}</div>
-                <div className="text-[11.5px] text-[var(--muted-foreground)] mt-0.5 flex gap-2">
-                  <span>{inq.member}</span><span>·</span><span>{inq.date.slice(-5)}</span>
-                </div>
-              </button>
+                  </div>
+                  <div className="truncate text-[13.5px] font-semibold">{inq.title}</div>
+                  <div className="mt-0.5 flex gap-2 text-[11.5px] text-[var(--muted-foreground)]">
+                    <span>{inq.member}</span><span>·</span><span>{inq.date.slice(-5)}</span>
+                  </div>
+                </button>
+              </div>
             ))}
+            {list.visibleRows.length === 0 && (
+              <div className="px-4 py-10 text-center text-sm text-muted-foreground">현재 조건에 맞는 문의가 없습니다.</div>
+            )}
           </div>
+
+          <AdminListFooter state={list} />
         </div>
 
         {/* ── Thread Panel ── */}
@@ -299,6 +390,7 @@ export default function AdminInquiriesAI() {
               >
                 <option value="pending">미답변</option>
                 <option value="progress">처리중</option>
+                <option value="hold">보류</option>
                 <option value="answered">답변완료</option>
                 <option value="closed">종료</option>
               </select>
@@ -444,6 +536,22 @@ export default function AdminInquiriesAI() {
       </div>
 
       {toast && <div className={`inq-toast inq-toast--${toast.tone}`}>{toast.msg}</div>}
+      {bulkStatus && (
+        <ConfirmDialog
+          variant={bulkStatus === "closed" ? "warning" : "success"}
+          icon={bulkStatus === "answered" ? <CheckCircle2 /> : <CornerDownRight />}
+          title={`선택한 문의 ${list.selectedCount}건을 ${STATUS_META[bulkStatus].label}(으)로 변경할까요?`}
+          description="선택한 문의의 운영 상태가 일괄 변경됩니다. 이미 같은 상태인 문의는 제외됩니다."
+          meta={[
+            { label: "선택", value: `${list.selectedCount}건` },
+            { label: "변경 상태", value: STATUS_META[bulkStatus].label },
+          ]}
+          confirmLabel="상태 변경"
+          cancelLabel="취소"
+          onConfirm={handleBulkStatusChange}
+          onCancel={() => setBulkStatus(null)}
+        />
+      )}
     </AdminShell>
   );
 }

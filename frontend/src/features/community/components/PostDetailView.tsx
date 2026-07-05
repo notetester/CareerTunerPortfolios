@@ -162,6 +162,17 @@ export function PostDetailView({ postId, onBack, onEdit }: PostDetailViewProps) 
     }
   };
 
+  const adminSetStatus = async (status: "PUBLISHED" | "HIDDEN" | "DELETED") => {
+    try {
+      await communityApi.adminUpdatePostStatus(postId, status, "게시판 운영자 모드 즉시 조치");
+      toast.success(status === "PUBLISHED" ? "게시글을 복원했습니다." : status === "HIDDEN" ? "게시글을 숨겼습니다." : "게시글을 삭제 처리했습니다.");
+      await Promise.all([fetchPostDetail(postId), fetchPosts()]);
+      if (status === "DELETED") onBack();
+    } catch {
+      toast.error("운영자 조치에 실패했습니다.");
+    }
+  };
+
   if (detailLoading) {
     return (
       <div className="ct-page ct-detail">
@@ -213,20 +224,29 @@ export function PostDetailView({ postId, onBack, onEdit }: PostDetailViewProps) 
         <button className="ct-detail__back" onClick={onBack}>
           <ArrowLeft /> 커뮤니티 목록
         </button>
-        {user && d && user.id === d.author.id && (
-          <div style={{ display: "flex", gap: 8 }}>
-            <button className="av-btn" onClick={onEdit}>
-              <Pencil /> 수정
-            </button>
-            <button
-              className="av-btn"
-              style={{ color: "var(--av-red, #dc2626)" }}
-              onClick={() => setShowDeleteDialog(true)}
-            >
-              <Trash2 /> 삭제
-            </button>
-          </div>
-        )}
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}>
+          {user && d && user.id === d.author.id && (
+            <>
+              <button className="av-btn" onClick={onEdit}>
+                <Pencil /> 수정
+              </button>
+              <button
+                className="av-btn"
+                style={{ color: "var(--av-red, #dc2626)" }}
+                onClick={() => setShowDeleteDialog(true)}
+              >
+                <Trash2 /> 삭제
+              </button>
+            </>
+          )}
+          {user && (user.role === "ADMIN" || user.role === "SUPER_ADMIN") && (
+            <>
+              <button className="av-btn" onClick={() => void adminSetStatus("HIDDEN")}>숨김</button>
+              <button className="av-btn" onClick={() => void adminSetStatus("PUBLISHED")}>복원</button>
+              <button className="av-btn" style={{ color: "var(--av-red, #dc2626)" }} onClick={() => void adminSetStatus("DELETED")}>운영 삭제</button>
+            </>
+          )}
+        </div>
         {/* 작성자 메뉴 — 익명 글도 노출: 게시글 id 로 차단(서버가 작성자를 알므로 동작, 익명성 유지) */}
         {d && (d.author.isAnonymous || (!!d.author.id && (!user || user.id !== d.author.id))) && (
           <button
