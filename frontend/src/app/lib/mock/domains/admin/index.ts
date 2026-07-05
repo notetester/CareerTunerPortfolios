@@ -7,6 +7,8 @@ import { adminBillingRoutes } from "./billing";
 import { adminAnalysisOpsRoutes } from "./analysisOps";
 import { adminInterviewOpsRoutes } from "./interviewOps";
 import { adminPromptsRoutes } from "./prompts";
+import { adminCorrectionRoutes } from "./corrections";
+import { adminCreditRoutes } from "./credits";
 
 export const adminRoutes: MockRoute[] = [
   ...adminCoreRoutes,
@@ -16,4 +18,6 @@ export const adminRoutes: MockRoute[] = [
   ...adminAnalysisOpsRoutes,
   ...adminInterviewOpsRoutes,
   ...adminPromptsRoutes,
+  ...adminCorrectionRoutes,
+  ...adminCreditRoutes,
 ];

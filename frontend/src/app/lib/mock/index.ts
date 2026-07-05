@@ -57,12 +57,46 @@ let demoJobPostingFallbackSetting = {
   source: "DEFAULT",
 };
 
+const demoAdminUser = {
+  ...demoUser,
+  id: 9101,
+  email: "admin@careertuner.dev",
+  name: "한관리",
+  role: "ADMIN",
+  permissionGroups: ["MEMBER_ADMIN", "AI_ADMIN", "BILLING_ADMIN", "CONTENT_ADMIN", "AUDIT_ADMIN"],
+};
+let mockSessionUser = demoUser;
+const MOCK_ROLE_KEY = "careertuner.mock.role";
+
+function setMockSession(user: typeof demoUser) {
+  mockSessionUser = user;
+  if (typeof localStorage !== "undefined") {
+    if (user.role === "ADMIN") localStorage.setItem(MOCK_ROLE_KEY, "ADMIN");
+    else localStorage.removeItem(MOCK_ROLE_KEY);
+  }
+}
+
+function getMockSession() {
+  if (typeof localStorage !== "undefined" && localStorage.getItem(MOCK_ROLE_KEY) === "ADMIN") {
+    return demoAdminUser;
+  }
+  return mockSessionUser;
+}
+
 const coreRoutes: MockRoute[] = [
   // ── 인증(공통 게이트) ──
-  { method: "POST", pattern: /^\/auth\/login$/, handler: ok(demoTokenResponse) },
+  {
+    method: "POST",
+    pattern: /^\/auth\/login$/,
+    handler: ({ body }) => {
+      const email = String((body as { email?: unknown })?.email ?? "").toLowerCase();
+      setMockSession(email.startsWith("admin@") ? demoAdminUser : demoUser);
+      return { ...demoTokenResponse, user: getMockSession() };
+    },
+  },
   { method: "POST", pattern: /^\/auth\/register$/, handler: ok(demoTokenResponse) },
-  { method: "GET", pattern: /^\/auth\/me$/, handler: ok(demoUser) },
-  { method: "POST", pattern: /^\/auth\/logout$/, handler: ok(null) },
+  { method: "GET", pattern: /^\/auth\/me$/, handler: () => getMockSession() },
+  { method: "POST", pattern: /^\/auth\/logout$/, handler: () => { setMockSession(demoUser); return null; } },
 
   {
     method: "GET",

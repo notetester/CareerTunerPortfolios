@@ -38,6 +38,8 @@ import { AdminSuperAdminPage } from "./features/super-admin/pages/AdminSuperAdmi
 import { AdminSecurityOpsPage } from "./features/security-ops/pages/AdminSecurityOpsPage";
 import { AdminEnterprisePage } from "./features/enterprise/pages/AdminEnterprisePage";
 import { AdminAdsPage } from "./features/ads/pages/AdminAdsPage";
+import { AdminCorrectionsPage } from "./features/corrections/pages/AdminCorrectionsPage";
+import { AdminCreditsPage } from "./features/credits/pages/AdminCreditsPage";
 
 export const adminRoutes = [
   { path: "admin", Component: AdminDashboardPage },
@@ -62,12 +64,14 @@ export const adminRoutes = [
   { path: "admin/policies", Component: AdminPoliciesPage },
   { path: "admin/action-logs", Component: AdminActionLogsPage },
   { path: "admin/payments", Component: AdminPaymentsPage },
+  { path: "admin/credits", Component: AdminCreditsPage },
   { path: "admin/application-cases", Component: AdminApplicationCasesPage },
   { path: "admin/ai-usage", Component: AdminAiUsagePage },
   { path: "admin/ai-settings", Component: AdminAiSettingsPage },
   { path: "admin/job-analysis", Component: AdminJobAnalysisPage },
   { path: "admin/company-analysis", Component: AdminCompanyAnalysisPage },
   { path: "admin/interviews", Component: AdminInterviewsPage },
+  { path: "admin/corrections", Component: AdminCorrectionsPage },
   { path: "admin/interview/knowledge", Component: AdminInterviewKnowledgePage },
   { path: "admin/community", Component: AdminReports },
   { path: "admin/notices", Component: AdminNotices },
