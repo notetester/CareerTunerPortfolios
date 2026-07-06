@@ -37,6 +37,7 @@ import { JobBoardPage } from "@/features/jobboard/pages/JobBoardPage";
 import { JobDetailPage } from "@/features/jobboard/pages/JobDetailPage";
 import { MobileSessionsPage } from "@/features/interview/pages/MobileSessionsPage";
 import { MobileSessionThreadPage } from "@/features/interview/pages/MobileSessionThreadPage";
+import { MicRemotePage } from "@/features/interview/pages/MicRemotePage";
 
 const basename = import.meta.env.BASE_URL === "/"
   ? "/"
@@ -60,6 +61,8 @@ export const router = createBrowserRouter([
       // 모바일 세션 스레드(Claude 앱 문법) — 하단 탭 "세션" + 디스패치 딥링크 진입 (interview 소유, D)
       { path: "m/sessions", Component: MobileSessionsPage },
       { path: "m/session/:id", Component: MobileSessionThreadPage },
+      // 폰 마이크 핸드오프 송신 페이지 — 데스크탑 음성면접의 원격 마이크 (interview 소유, D)
+      { path: "mic-remote", Component: MicRemotePage },
       { path: "correction", Component: CorrectionPage },
       { path: "analysis", Component: AnalysisPage },
       { path: "messenger", Component: MessengerPage },

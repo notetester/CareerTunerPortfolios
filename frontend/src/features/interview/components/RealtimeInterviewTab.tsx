@@ -20,6 +20,7 @@ import {
 import { createNegotiatedRecorder, mediaUnsupportedReason } from "../hooks/mediaSupport";
 import { useDeviceCapabilities } from "../hooks/deviceCapabilities";
 import { DeviceHandoffCard, type HandoffReason } from "./DeviceHandoffCard";
+import { RemoteMicConnectCard } from "./RemoteMicConnectCard";
 import type {
   InterviewQuestion,
   InterviewSession,
@@ -53,6 +54,8 @@ export function RealtimeInterviewTab({ session }: { session: InterviewSession | 
   const [saveNote, setSaveNote] = useState<string | null>(null);
   // 원본 음성을 자체 추론 서버로 보내 정밀 분석할지 동의 (ADR-006). 해제 시 브라우저 지표만 사용.
   const [consent, setConsent] = useState(true);
+  // 폰 마이크 핸드오프(WebRTC) — 마이크 없는 기기에서 폰의 마이크를 원격 입력으로 쓴다.
+  const [remoteMic, setRemoteMic] = useState<MediaStream | null>(null);
 
   const pcRef = useRef<RTCPeerConnection | null>(null);
   const micRef = useRef<MediaStream | null>(null);
@@ -156,7 +159,8 @@ export function RealtimeInterviewTab({ session }: { session: InterviewSession | 
       };
 
       // 마이크 송신 + 온디바이스 분석(지표 샘플링 · 감정 분석용 녹음).
-      const mic = await navigator.mediaDevices.getUserMedia({ audio: true });
+      // 폰 마이크가 연결돼 있으면 그 원격 스트림을 쓴다 — clone 이라 종료(cleanup)해도 원본 연결은 유지된다.
+      const mic = remoteMic ? remoteMic.clone() : await navigator.mediaDevices.getUserMedia({ audio: true });
       micRef.current = mic;
       mic.getTracks().forEach((t) => pc.addTrack(t, mic));
 
@@ -383,9 +387,13 @@ export function RealtimeInterviewTab({ session }: { session: InterviewSession | 
             )
           )}
 
-          {handoffReason && <DeviceHandoffCard sessionId={session.id} reason={handoffReason} />}
+          {/* 마이크 없음: ① 폰을 원격 마이크로 연결(면접은 이 화면에서), ② 세션 자체를 폰으로 이어하기 */}
+          {handoffReason === "no-microphone" && (
+            <RemoteMicConnectCard sessionId={session.id} onStream={setRemoteMic} />
+          )}
+          {handoffReason && !remoteMic && <DeviceHandoffCard sessionId={session.id} reason={handoffReason} />}
 
-          {supported && !handoffReason && (
+          {supported && (!handoffReason || (handoffReason === "no-microphone" && remoteMic)) && (
             <div className="flex flex-wrap items-center gap-2">
               {(status === "idle" || status === "scored" || status === "error") && (
                 <Button
