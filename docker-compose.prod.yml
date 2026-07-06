@@ -17,6 +17,10 @@ services:
     # (--env-file 은 compose 의 ${VAR} 치환용일 뿐 컨테이너 주입이 아니다.)
     env_file:
       - /home/careertuner/careertuner/.env
+    # 호스트에서 도는 비언어 음성/영상 분석 서버(uvicorn :8500, systemd)를 컨테이너가
+    # host.docker.internal 로 부를 수 있게 한다. (CAREERTUNER_INTERVIEW_NONVERBAL_SERVE_URL)
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
 
   job-posting-worker:
     build: !reset null
