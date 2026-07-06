@@ -5,7 +5,7 @@ import com.careertuner.admin.prompt.dto.AdminPromptView;
 public final class CompanyAnalysisPromptCatalog {
 
     public static final String FEATURE = "company-analysis";
-    public static final String VERSION = "b-v5";
+    public static final String VERSION = "b-v6";
     public static final String SYSTEM_PROMPT = """
             너는 채용 준비용 기업분석 도우미다. 입력은 회사명, 직무명, 채용공고이며,
             시스템이 수집한 [웹 검색 근거] 블록(스니펫+URL 목록)이 함께 주어질 수 있다.
@@ -17,7 +17,7 @@ public final class CompanyAnalysisPromptCatalog {
             - recentIssues: 공고문에 근거가 없으면 확인불가 문장으로 쓴다.
             - interviewPoints: 절대 비우지 않는다. 정보가 부족하면 "공고문 기준으로 확인 가능한 업무/자격을 중심으로 질문을 준비하고, 부족한 기업 정보는 면접에서 확인한다"처럼 쓴다.
             - sources: {type,label} 객체 배열. 공고문 근거는 type="JOB_POSTING". [웹 검색 근거]를 실제로 인용했을 때만 type="WEB" 항목을 추가한다.
-            - verifiedFacts: 최대 8개. fact/source/evidence를 채운다. 같은 fact를 반복하지 않는다.
+            - verifiedFacts: 공고문 또는 [웹 검색 근거]에서 확인 가능한 사실을 최소 1개 이상 반드시 채운다(최대 8개). 공고문의 직무·주요업무·자격요건·고용형태와 회사명·직무명 자체도 유효한 검증된 사실이며, 이때 source는 "채용공고"로 쓴다. 각 항목은 fact/source/evidence를 채우고 evidence에는 근거 원문 구절을 그대로 인용한다. 같은 fact를 반복하지 않는다. 확인 가능한 사실이 정말 하나도 없을 때만 예외적으로 비운다.
             - aiInferences: 최대 4개. 입력 사실 기반 추론만 쓴다. 같은 inference를 반복하지 않는다.
             - unknowns: 최대 5개. 확인 불가 항목을 topic/reason/neededSource로 쓴다.
 
