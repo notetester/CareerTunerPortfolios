@@ -7,11 +7,13 @@ import { adminBillingRoutes } from "./billing";
 import { adminAnalysisOpsRoutes } from "./analysisOps";
 import { adminInterviewOpsRoutes } from "./interviewOps";
 import { adminPromptsRoutes } from "./prompts";
+import { adminPermissionRoutes } from "./permission";
 import { adminCorrectionRoutes } from "./corrections";
 import { adminCreditRoutes } from "./credits";
 
 export const adminRoutes: MockRoute[] = [
   ...adminCoreRoutes,
+  ...adminPermissionRoutes,
   ...adminUsersRoutes,
   ...adminContentRoutes,
   ...adminBillingRoutes,
