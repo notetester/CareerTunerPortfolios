@@ -1,4 +1,5 @@
 import { api } from "@/app/lib/api";
+import { runWithAiCharge } from "@/features/billing/api/aiChargePreviewApi";
 import type { FitAnalysisDetail, FitAnalysisHistoryEntry, FitAnalysisLearningTask } from "../types/fitAnalysis";
 
 export function getFitAnalyses() {
@@ -18,7 +19,8 @@ export function getFitAnalysisHistory(applicationCaseId: number) {
  * 적합도 분석 생성/재생성(C 담당 AI 12~15). 백엔드는 현재 mock, API 키 주입 시 실 분석으로 전환된다.
  */
 export function generateFitAnalysis(applicationCaseId: number) {
-  return api<FitAnalysisDetail>(`/fit-analyses/application-cases/${applicationCaseId}`, { method: "POST" });
+  return runWithAiCharge("FIT_ANALYSIS", (headers) =>
+    api<FitAnalysisDetail>(`/fit-analyses/application-cases/${applicationCaseId}`, { method: "POST", headers }));
 }
 
 export function updateFitAnalysisLearningTask(fitAnalysisId: number, taskId: number, completed: boolean) {

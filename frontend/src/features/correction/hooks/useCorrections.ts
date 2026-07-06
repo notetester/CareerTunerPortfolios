@@ -10,7 +10,6 @@ import type {
   CorrectionSubmitRequest,
   CorrectionType,
 } from "../types/correction";
-import { CORRECTION_CREDIT_COST } from "../types/correction";
 
 const HISTORY_LIMIT = 20;
 
@@ -80,13 +79,12 @@ export function useCorrections(correctionType: CorrectionType, applicationCaseId
     try {
       const acknowledged = await notifyAndAcknowledgeAiCharge(
         `CORRECTION_${request.correctionType}`,
-        CORRECTION_CREDIT_COST,
       );
       const result = await createCorrection({
         ...request,
         policyAcknowledgementKey: acknowledged.policyAcknowledgementKey,
       });
-      toastAiChargeCompleted(acknowledged.preview);
+      toastAiChargeCompleted(acknowledged.preview, result);
       if (requestId === submitRequestId.current && requestScope === scopeKeyRef.current) {
         setSelected(result);
         setHistory((current) => [result, ...current.filter((item) => item.id !== result.id)].slice(0, HISTORY_LIMIT));

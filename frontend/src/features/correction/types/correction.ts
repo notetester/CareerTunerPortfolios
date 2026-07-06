@@ -1,4 +1,6 @@
 export const CORRECTION_TABS = ["answer", "cover", "resume", "portfolio"] as const;
+export const CORRECTION_MIN_CREDIT_COST = 2;
+export const CORRECTION_MAX_CREDIT_COST = 5;
 
 export type CorrectionTab = (typeof CORRECTION_TABS)[number];
 
@@ -14,8 +16,6 @@ export const CORRECTION_TYPE_BY_TAB: Record<CorrectionTab, CorrectionType> = {
   resume: "RESUME",
   portfolio: "PORTFOLIO",
 };
-
-export const CORRECTION_CREDIT_COST = 2;
 
 export interface CorrectionCreateRequest {
   correctionType: CorrectionType;
@@ -43,6 +43,10 @@ export interface CorrectionResponse {
   suggestions: string[];
   status: string;
   aiUsageLogId: number | null;
+  chargeType?: "TICKET" | "CREDIT" | "SKIPPED" | null;
+  chargedCredit?: number;
+  totalTokens?: number;
+  remainingCredit?: number;
   createdAt: string | null;
 }
 

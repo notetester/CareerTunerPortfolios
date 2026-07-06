@@ -255,6 +255,9 @@ const featureBenefitPolicies: AiFeatureBenefitPolicy[] = [
     chargeUnit: "APPLICATION_CASE",
     includedInTicket: true,
     defaultCreditCost: 3,
+    minCreditCost: 1,
+    maxCreditCost: 5,
+    creditUnitTokens: 1000,
     active: true,
   },
   {
@@ -263,6 +266,9 @@ const featureBenefitPolicies: AiFeatureBenefitPolicy[] = [
     chargeUnit: "DOCUMENT",
     includedInTicket: true,
     defaultCreditCost: 2,
+    minCreditCost: 2,
+    maxCreditCost: 5,
+    creditUnitTokens: 1000,
     active: true,
   },
 ];
