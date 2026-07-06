@@ -41,6 +41,14 @@
            AND credit >= #{creditUsed}
     </update>
 
+    <!-- 리워드/보너스 등으로 users.credit 값을 적립한다. INT 오버플로 방지 가드 포함. -->
+    <update id="addUserCredit">
+        UPDATE users
+           SET credit = credit + #{amount}
+         WHERE id = #{userId}
+           AND credit &lt;= 2147483647 - #{amount}
+    </update>
+
     <!-- 차감 전후 잔액 확인용 사용자 크레딧을 조회한다. -->
     <select id="findUserCredit" resultType="int">
         SELECT credit

@@ -56,6 +56,10 @@ import { AdminEmailAuditLogPage } from "./features/email-audit/pages/AdminEmailA
 import { AdminLoginRiskPolicyPage } from "./features/login-risk/pages/AdminLoginRiskPolicyPage";
 // 챗봇 거버넌스(트립투게더 이식): 일일 쿼터 정책 토글 + 대화 세션 목록/삭제
 import { AdminChatbotGovernancePage } from "./features/chatbot-governance/pages/AdminChatbotGovernancePage";
+// 리워드/레벨 이코노미: 적립 규칙 on/off·레벨 정책·쿠폰·리워드 이력
+import { AdminRewardsPage } from "./features/reward/pages/AdminRewardsPage";
+// 관리자/직원 등급·급여 관리(최고 관리자 전용): 조직 등급 + 기본급 + Excel 업로드/내보내기
+import { AdminStaffGradePage } from "./features/staff-grade/pages/AdminStaffGradePage";
 
 export const adminRoutes = [
   { path: "admin", Component: AdminDashboardPage },
@@ -89,6 +93,8 @@ export const adminRoutes = [
   { path: "admin/action-logs", Component: AdminActionLogsPage },
   { path: "admin/payments", Component: AdminPaymentsPage },
   { path: "admin/credits", Component: AdminCreditsPage },
+  { path: "admin/rewards", Component: AdminRewardsPage },
+  { path: "admin/staff-grades", Component: AdminStaffGradePage },
   { path: "admin/application-cases", Component: AdminApplicationCasesPage },
   { path: "admin/ai-usage", Component: AdminAiUsagePage },
   { path: "admin/chatbot-governance", Component: AdminChatbotGovernancePage },
