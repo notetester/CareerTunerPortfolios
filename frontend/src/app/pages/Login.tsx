@@ -91,7 +91,11 @@ export function LoginPage() {
           marketingAgreed,
         });
       }
-      navigate("/dashboard", { replace: true });
+      // ?returnTo=/... 가 있으면 로그인 후 그 화면으로 복귀(내부 경로만 허용 — open redirect 방지).
+      // 폰 마이크 핸드오프(/mic-remote) 등 딥링크 진입에서 로그인 후 원래 화면으로 돌아오게 한다.
+      const returnTo = new URLSearchParams(window.location.search).get("returnTo");
+      const dest = returnTo && returnTo.startsWith("/") && !returnTo.startsWith("//") ? returnTo : "/dashboard";
+      navigate(dest, { replace: true });
     } catch (err) {
       const message = toAuthErrorMessage(err);
       setError(message);

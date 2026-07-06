@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useSearchParams } from "react-router";
+import { useAuth } from "@/app/auth/AuthContext";
 import { Loader2, Mic, MicOff, PhoneOff, Smartphone } from "lucide-react";
 import { Button } from "@/app/components/ui/button";
 import {
@@ -18,6 +19,7 @@ type Phase = "idle" | "joining" | "connecting" | "connected" | "ended" | "error"
  * (1차: 같은 와이파이, STUN only. 오디오는 P2P — 서버를 거치지 않는다.)
  */
 export function MicRemotePage() {
+  const { isAuthenticated } = useAuth();
   const [searchParams] = useSearchParams();
   const [code, setCode] = useState(searchParams.get("code") ?? "");
   const [phase, setPhase] = useState<Phase>("idle");
@@ -116,6 +118,36 @@ export function MicRemotePage() {
     if (codeRef.current) void closeMicHandoff(codeRef.current).catch(() => undefined);
     setPhase("ended");
   };
+
+  // QR로 열었는데 이 폰 브라우저에 로그인 세션이 없으면 API(같은계정 검증)가 막힌다 → 로그인 유도.
+  if (!isAuthenticated) {
+    const returnTo = `/mic-remote${code ? `?code=${code}` : ""}`;
+    return (
+      <div className="mx-auto flex min-h-[70vh] max-w-md flex-col items-center justify-center px-4 py-10">
+        <div className="w-full rounded-2xl border border-slate-200 bg-card p-6 text-center shadow-sm">
+          <div className="mx-auto flex size-12 items-center justify-center rounded-xl bg-indigo-50 text-indigo-600">
+            <Smartphone className="size-6" />
+          </div>
+          <h1 className="mt-3 text-lg font-black text-slate-900">로그인이 필요합니다</h1>
+          <p className="mt-1 text-sm leading-6 text-slate-500">
+            데스크탑과 <b>같은 계정</b>으로 로그인해야 마이크를 연결할 수 있어요.
+          </p>
+          {code && (
+            <p className="mt-2 rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-500">
+              연결 코드 <b className="font-mono tracking-widest text-slate-700">{code}</b> 는
+              기억해 뒀습니다. 로그인 후 이 화면으로 돌아오면 자동으로 채워져요.
+            </p>
+          )}
+          <a
+            href={`/login?returnTo=${encodeURIComponent(returnTo)}`}
+            className="mt-4 inline-flex w-full items-center justify-center rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-indigo-700"
+          >
+            로그인하러 가기
+          </a>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="mx-auto flex min-h-[70vh] max-w-md flex-col items-center justify-center px-4 py-10">
