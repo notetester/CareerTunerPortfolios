@@ -85,6 +85,26 @@ class AiChargePreviewServiceTest {
         assertThat(result.sufficient()).isFalse();
     }
 
+    @Test
+    void previewsMinimumFirstAndRequiresEnoughCreditForMaximum() {
+        givenBase(4);
+        AiFeatureBenefitPolicy policy = featurePolicy(false, 2);
+        policy.setMinCreditCost(2);
+        policy.setMaxCreditCost(5);
+        policy.setCreditUnitTokens(1_000);
+        when(policyService.activeFeatureBenefitPolicy(1L, "CORRECTION_SELF_INTRO"))
+                .thenReturn(policy);
+
+        var result = service.preview(1L, request());
+
+        assertThat(result.chargeAmount()).isEqualTo(2);
+        assertThat(result.minimumCreditCost()).isEqualTo(2);
+        assertThat(result.maximumCreditCost()).isEqualTo(5);
+        assertThat(result.creditUnitTokens()).isEqualTo(1_000);
+        assertThat(result.usageBased()).isTrue();
+        assertThat(result.sufficient()).isFalse();
+    }
+
     private void givenBase(int credit) {
         when(creditMapper.findUserCredit(1L)).thenReturn(credit);
         when(refundPolicyService.currentPolicy()).thenReturn(refundPolicy());
@@ -100,6 +120,9 @@ class AiChargePreviewServiceTest {
         policy.setBenefitCode("CORRECTION_SELF_INTRO");
         policy.setIncludedInTicket(included);
         policy.setDefaultCreditCost(cost);
+        policy.setMinCreditCost(cost);
+        policy.setMaxCreditCost(cost);
+        policy.setCreditUnitTokens(1_000);
         return policy;
     }
 

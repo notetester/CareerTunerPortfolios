@@ -51,12 +51,10 @@ public class AiChargePreviewService {
         int currentCredit = currentCredit(userId);
 
         AiFeatureBenefitPolicy featurePolicy = billingPolicyService.activeFeatureBenefitPolicy(userId, featureType);
-        int defaultCreditCost = request.creditCost() != null
-                ? request.creditCost()
-                : featurePolicy == null ? 0 : featurePolicy.getDefaultCreditCost();
+        CreditRange directRange = creditRange(request.creditCost(), featurePolicy, null);
 
         if (featurePolicy == null || !featurePolicy.isIncludedInTicket()) {
-            return creditOrFree(featureType, null, defaultCreditCost, currentCredit, actionKey, refundPolicy);
+            return creditOrFree(featureType, null, directRange, currentCredit, actionKey, refundPolicy);
         }
 
         MyBenefitsResponse benefits = billingService.myBenefits(userId);
@@ -67,7 +65,7 @@ public class AiChargePreviewService {
         int remainingTicket = balance == null ? 0 : balance.remainingQuantity();
         if (remainingTicket > 0) {
             return response(
-                    featureType, CHARGE_TICKET, featurePolicy.getBenefitCode(), 1,
+                    featureType, CHARGE_TICKET, featurePolicy.getBenefitCode(), 1, CreditRange.free(),
                     remainingTicket, currentCredit, true,
                     RefundPolicyService.TRIGGER_BENEFIT_USE, actionKey, refundPolicy);
         }
@@ -76,34 +74,30 @@ public class AiChargePreviewService {
                 userId, featurePolicy.getBenefitCode());
         if (!allowsCreditFallback(benefitPolicy)) {
             return response(
-                    featureType, CHARGE_BLOCKED, featurePolicy.getBenefitCode(), 0,
+                    featureType, CHARGE_BLOCKED, featurePolicy.getBenefitCode(), 0, CreditRange.free(),
                     0, currentCredit, false,
                     RefundPolicyService.TRIGGER_BENEFIT_USE, actionKey, refundPolicy);
         }
-        int creditCost = request.creditCost() != null
-                ? request.creditCost()
-                : benefitPolicy != null && benefitPolicy.getCreditCost() > 0
-                        ? benefitPolicy.getCreditCost()
-                        : defaultCreditCost;
+        CreditRange fallbackRange = creditRange(request.creditCost(), featurePolicy, benefitPolicy);
         return creditOrFree(
-                featureType, featurePolicy.getBenefitCode(), creditCost, currentCredit, actionKey, refundPolicy);
+                featureType, featurePolicy.getBenefitCode(), fallbackRange, currentCredit, actionKey, refundPolicy);
     }
 
     private AiChargePreviewResponse creditOrFree(
             String featureType,
             String benefitCode,
-            int creditCost,
+            CreditRange range,
             int currentCredit,
             String actionKey,
             RefundPolicy refundPolicy) {
-        if (creditCost <= 0) {
+        if (range.maximum() <= 0) {
             return response(
-                    featureType, CHARGE_FREE, benefitCode, 0, 0, currentCredit, true,
+                    featureType, CHARGE_FREE, benefitCode, 0, CreditRange.free(), 0, currentCredit, true,
                     null, actionKey, refundPolicy);
         }
         return response(
-                featureType, CHARGE_CREDIT, benefitCode, creditCost, 0, currentCredit,
-                currentCredit >= creditCost,
+                featureType, CHARGE_CREDIT, benefitCode, range.minimum(), range, 0, currentCredit,
+                currentCredit >= range.maximum(),
                 RefundPolicyService.TRIGGER_CREDIT_USE, actionKey, refundPolicy);
     }
 
@@ -112,6 +106,7 @@ public class AiChargePreviewService {
             String chargeType,
             String benefitCode,
             int chargeAmount,
+            CreditRange range,
             int remainingTicket,
             int currentCredit,
             boolean sufficient,
@@ -123,6 +118,10 @@ public class AiChargePreviewService {
                 chargeType,
                 benefitCode,
                 chargeAmount,
+                range.minimum(),
+                range.maximum(),
+                range.unitTokens(),
+                range.usageBased(),
                 remainingTicket,
                 currentCredit,
                 sufficient,
@@ -133,6 +132,23 @@ public class AiChargePreviewService {
                 refundPolicy.getTitle(),
                 refundPolicy.getSummary(),
                 refundPolicy.getRulesJson());
+    }
+
+    private CreditRange creditRange(Integer requestedCost,
+                                    AiFeatureBenefitPolicy featurePolicy,
+                                    SubscriptionBenefitPolicy benefitPolicy) {
+        if (requestedCost != null) {
+            return CreditRange.fixed(requestedCost);
+        }
+        if (featurePolicy != null && featurePolicy.getMaxCreditCost() > 0) {
+            int minimum = Math.max(0, featurePolicy.getMinCreditCost());
+            int maximum = Math.max(minimum, featurePolicy.getMaxCreditCost());
+            return new CreditRange(minimum, maximum, Math.max(0, featurePolicy.getCreditUnitTokens()));
+        }
+        if (benefitPolicy != null && benefitPolicy.getCreditCost() > 0) {
+            return CreditRange.fixed(benefitPolicy.getCreditCost());
+        }
+        return CreditRange.fixed(featurePolicy == null ? 0 : featurePolicy.getDefaultCreditCost());
     }
 
     private int currentCredit(Long userId) {
@@ -154,5 +170,20 @@ public class AiChargePreviewService {
             throw new BusinessException(ErrorCode.INVALID_INPUT, "차감 정책 확인키가 올바르지 않습니다.");
         }
         return key;
+    }
+
+    private record CreditRange(int minimum, int maximum, int unitTokens) {
+        static CreditRange fixed(int cost) {
+            int normalized = Math.max(0, cost);
+            return new CreditRange(normalized, normalized, 0);
+        }
+
+        static CreditRange free() {
+            return fixed(0);
+        }
+
+        boolean usageBased() {
+            return maximum > minimum && unitTokens > 0;
+        }
     }
 }

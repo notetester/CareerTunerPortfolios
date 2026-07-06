@@ -252,15 +252,21 @@ export const billingRoutes: MockRoute[] = [
     pattern: /^\/billing\/charge-preview$/,
     handler: ({ body }: MockContext) => {
       const request = body as AiChargePreviewBody | undefined;
-      const chargeAmount = Math.max(0, request?.creditCost ?? 0);
+      const minimumCreditCost = Math.max(0, request?.creditCost ?? 2);
+      const maximumCreditCost = request?.creditCost == null ? 5 : minimumCreditCost;
+      const chargeAmount = minimumCreditCost;
       return {
         featureType: request?.featureType ?? "CORRECTION_SELF_INTRO",
         chargeType: chargeAmount > 0 ? "CREDIT" : "FREE",
         benefitCode: null,
         chargeAmount,
+        minimumCreditCost,
+        maximumCreditCost,
+        creditUnitTokens: request?.creditCost == null ? 1000 : 0,
+        usageBased: maximumCreditCost > minimumCreditCost,
         remainingTicket: 0,
         currentCredit: myBilling.creditBalance,
-        sufficient: myBilling.creditBalance >= chargeAmount,
+        sufficient: myBilling.creditBalance >= maximumCreditCost,
         triggerType: chargeAmount > 0 ? "CREDIT_USE" : null,
         actionKey: request?.actionKey ?? "AI_USAGE:mock",
         refundPolicyId: currentRefundPolicy.id,

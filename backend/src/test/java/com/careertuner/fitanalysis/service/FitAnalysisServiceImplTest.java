@@ -34,7 +34,8 @@ class FitAnalysisServiceImplTest {
     void generatePersistsHistoryAndNormalizedConditionMatches() {
         FitAnalysisMapper mapper = mock(FitAnalysisMapper.class);
         ObjectMapper objectMapper = new ObjectMapper();
-        FitAnalysisServiceImpl service = new FitAnalysisServiceImpl(mapper, new MockFitAnalysisAiService(), new EvidenceGateService(), mock(NotificationService.class), objectMapper);
+        var usageLogService = mock(com.careertuner.applicationcase.service.AiUsageLogService.class);
+        FitAnalysisServiceImpl service = new FitAnalysisServiceImpl(mapper, new MockFitAnalysisAiService(), new EvidenceGateService(), mock(NotificationService.class), objectMapper, usageLogService);
         FitAnalysisGenerationSource source = source();
         FitAnalysisResult previous = FitAnalysisResult.builder()
                 .id(10L).applicationCaseId(20L).fitScore(60)
@@ -55,8 +56,8 @@ class FitAnalysisServiceImplTest {
 
         verify(mapper).insertHistory(eq(11L), eq(20L), eq(60), anyInt(), anyString());
         verify(mapper, atLeastOnce()).insertConditionMatch(eq(11L), any(), anyString(), anyInt());
-        verify(mapper).insertAiUsageLog(eq(1L), eq(20L), eq("FIT_ANALYSIS"), eq("SUCCESS"), anyString(),
-                anyInt(), anyInt(), anyInt(), eq(2), eq(null));
+        verify(usageLogService).recordSuccessValues(eq(1L), eq(20L), eq("FIT_ANALYSIS"), anyString(),
+                anyInt(), anyInt(), anyInt(), eq(2));
     }
 
     @Test
@@ -64,7 +65,8 @@ class FitAnalysisServiceImplTest {
         FitAnalysisMapper mapper = mock(FitAnalysisMapper.class);
         FitAnalysisServiceImpl service = new FitAnalysisServiceImpl(
                 mapper, new MockFitAnalysisAiService(), new EvidenceGateService(),
-                mock(NotificationService.class), new ObjectMapper());
+                mock(NotificationService.class), new ObjectMapper(),
+                mock(com.careertuner.applicationcase.service.AiUsageLogService.class));
         when(mapper.findGenerationSource(1L, 20L)).thenReturn(source());
         doAnswer(invocation -> {
             FitAnalysisResult row = invocation.getArgument(0);
@@ -98,7 +100,7 @@ class FitAnalysisServiceImplTest {
     @Test
     void scoreBreakdownNeverExceedsEachMaximumAndSumsToFitScore() {
         FitAnalysisMapper mapper = mock(FitAnalysisMapper.class);
-        FitAnalysisServiceImpl service = new FitAnalysisServiceImpl(mapper, mock(MockFitAnalysisAiService.class), new EvidenceGateService(), mock(NotificationService.class), new ObjectMapper());
+        FitAnalysisServiceImpl service = new FitAnalysisServiceImpl(mapper, mock(MockFitAnalysisAiService.class), new EvidenceGateService(), mock(NotificationService.class), new ObjectMapper(), mock(com.careertuner.applicationcase.service.AiUsageLogService.class));
         FitAnalysisResult result = FitAnalysisResult.builder()
                 .id(11L).applicationCaseId(20L).fitScore(100)
                 .conditionMatrix("[]").gapRecommendations("[]").strategyActions("[]")
