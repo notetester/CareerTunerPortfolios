@@ -386,6 +386,9 @@ public class BillingPolicyService {
         data.put("chargeUnit", policy.getChargeUnit());
         data.put("includedInTicket", policy.isIncludedInTicket());
         data.put("defaultCreditCost", policy.getDefaultCreditCost());
+        data.put("minCreditCost", policy.getMinCreditCost());
+        data.put("maxCreditCost", policy.getMaxCreditCost());
+        data.put("creditUnitTokens", policy.getCreditUnitTokens());
         data.put("active", policy.isActive());
         return data;
     }

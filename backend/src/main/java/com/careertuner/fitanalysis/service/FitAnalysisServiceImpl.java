@@ -9,6 +9,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import com.careertuner.common.exception.BusinessException;
 import com.careertuner.common.exception.ErrorCode;
+import com.careertuner.applicationcase.service.AiUsageLogService;
 import com.careertuner.fitanalysis.ai.FitAnalysisAiCommand;
 import com.careertuner.fitanalysis.ai.FitAnalysisAiResult;
 import com.careertuner.fitanalysis.ai.FitAnalysisAiService;
@@ -45,6 +46,7 @@ public class FitAnalysisServiceImpl implements FitAnalysisService {
     private final EvidenceGateService evidenceGateService;
     private final NotificationService notificationService;
     private final ObjectMapper objectMapper;
+    private final AiUsageLogService aiUsageLogService;
 
     @Override
     @Transactional(readOnly = true)
@@ -140,17 +142,21 @@ public class FitAnalysisServiceImpl implements FitAnalysisService {
 
         int tokenUsage = ai.usage().mock() && "SUCCESS".equals(ai.status()) ? estimateTokens(command) : ai.usage().totalTokens();
         int creditUsed = "SUCCESS".equals(ai.status()) ? MOCK_CREDIT : 0;
-        fitAnalysisMapper.insertAiUsageLog(
-                userId,
-                applicationCaseId,
-                FEATURE_TYPE,
-                ai.status(),
-                ai.usage().model(),
-                ai.usage().inputTokens(),
-                ai.usage().outputTokens(),
-                tokenUsage,
-                creditUsed,
-                ai.errorMessage());
+        if ("SUCCESS".equals(ai.status())) {
+            aiUsageLogService.recordSuccessValues(
+                    userId,
+                    applicationCaseId,
+                    FEATURE_TYPE,
+                    ai.usage().model(),
+                    ai.usage().inputTokens(),
+                    ai.usage().outputTokens(),
+                    tokenUsage,
+                    creditUsed);
+        } else {
+            fitAnalysisMapper.insertAiUsageLog(userId, applicationCaseId, FEATURE_TYPE, ai.status(),
+                    ai.usage().model(), ai.usage().inputTokens(), ai.usage().outputTokens(),
+                    tokenUsage, 0, ai.errorMessage());
+        }
 
         // 적합도 분석이 성공하면 사용자에게 완료 알림을 남긴다.
         if ("SUCCESS".equals(ai.status())) {

@@ -90,6 +90,11 @@ DB_PASSWORD=... JWT_SECRET=... OAUTH_KAKAO_CLIENT_SECRET=... java -jar app.jar
 구독 상품과 사용권 정책은 DB 기준으로 내려가며, 다른 파트의 AI 기능은 `AiBenefitUsageService.consumeByFeature(...)`를 호출해
 기능 코드(`feature_type`)에 매핑된 사용권을 성공 후 1장 차감한다.
 
+사용량 기반 크레딧 기능은 `ai_feature_benefit_policy`의 `min_credit_cost`, `max_credit_cost`,
+`credit_unit_tokens`로 실행 전 최소·최대 금액을 고지하고, 성공 후 실제 `token_usage`를 범위 안에서 정산한다.
+기존 DB에는 `db/patches/20260706e_ai_usage_credit_range.sql`과
+`db/patches/20260706f_ai_ticket_credit_fallback.sql`을 순서대로 적용한다.
+
 | Method | Path | 설명 | 인증 |
 | --- | --- | --- | --- |
 | GET | `/api/billing/plans` | 활성 구독 플랜과 월별 사용권 정책 조회 | - |

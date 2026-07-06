@@ -22,6 +22,9 @@ export interface AiFeatureBenefitPolicy {
   chargeUnit: string;
   includedInTicket: boolean;
   defaultCreditCost: number;
+  minCreditCost: number;
+  maxCreditCost: number;
+  creditUnitTokens: number;
   active: boolean;
 }
 

@@ -1,7 +1,7 @@
 import type { MockRoute } from "../registry";
 import { iso } from "../registry";
 import type { CorrectionCreateRequest, CorrectionResponse } from "@/features/correction/types/correction";
-import { CORRECTION_CREDIT_COST } from "@/features/correction/types/correction";
+import { CORRECTION_MIN_CREDIT_COST } from "@/features/correction/types/correction";
 import { chargeMockAiUsage } from "./billing";
 
 let nextId = 304;
@@ -77,7 +77,7 @@ export const correctionRoutes: MockRoute[] = [
         aiUsageLogId: 900 + nextId,
         createdAt: new Date().toISOString(),
       };
-      chargeMockAiUsage(`CORRECTION_${request.correctionType}`, CORRECTION_CREDIT_COST);
+      chargeMockAiUsage(`CORRECTION_${request.correctionType}`, CORRECTION_MIN_CREDIT_COST);
       corrections.unshift(result);
       return result;
     },
