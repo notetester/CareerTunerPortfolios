@@ -171,6 +171,8 @@ public class ChatbotController {
     private final SideQuestionStore sideQuestionStore;
     // (g′) ④ 재시작 확인 1턴의 대기 플래그 저장(인메모리·1턴 소비).
     private final OnboardingRestartStore onboardingRestartStore;
+    // 챗봇 일일 사용 쿼터 정책(관리자 편집). OFF면 무제약, ON이면 로그인 사용자 하루 한도 집행.
+    private final com.careertuner.support.chatbot.quota.ChatbotQuotaPolicyService chatbotQuotaPolicyService;
 
     public ChatbotController(CommunityChatAgent agent,
                             QuickReplyAgent quickReplyAgent,
@@ -195,7 +197,8 @@ public class ChatbotController {
                             IntakeSlotTrace intakeSlotTrace,
                             JobPostingService jobPostingService,
                             SideQuestionStore sideQuestionStore,
-                            OnboardingRestartStore onboardingRestartStore) {
+                            OnboardingRestartStore onboardingRestartStore,
+                            com.careertuner.support.chatbot.quota.ChatbotQuotaPolicyService chatbotQuotaPolicyService) {
         this.agent = agent;
         this.quickReplyAgent = quickReplyAgent;
         this.quickReplyParser = quickReplyParser;
@@ -220,6 +223,7 @@ public class ChatbotController {
         this.jobPostingService = jobPostingService;
         this.sideQuestionStore = sideQuestionStore;
         this.onboardingRestartStore = onboardingRestartStore;
+        this.chatbotQuotaPolicyService = chatbotQuotaPolicyService;
     }
 
     /* ── (g) 이탈성 질문 가드 헬퍼 ── */
@@ -1031,6 +1035,13 @@ public class ChatbotController {
 
         // 로그인 시 user_id 기록 → 나중에 "이전 대화 복원" 대상이 된다. 비로그인은 null(익명).
         Long userId = authUser != null ? authUser.id() : null;
+
+        // 챗봇 일일 사용 쿼터 — OFF(기본)면 무제약, ON이면 로그인 사용자의 오늘 사용량이 한도 이상일 때 429.
+        //  (익명은 per-user 집계 불가라 미적용. OFF일 땐 usedToday 조회 자체를 건너뛴다.)
+        if (userId != null && chatbotQuotaPolicyService.isEnabled()) {
+            chatbotQuotaPolicyService.assertWithinDailyLimit(responseLogService.countToday(userId));
+        }
+
         Long conversationId = req.conversationId() != null
                 ? req.conversationId()
                 : memoryStore.createConversation(userId);
