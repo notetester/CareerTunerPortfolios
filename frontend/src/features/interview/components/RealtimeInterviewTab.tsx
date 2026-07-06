@@ -21,6 +21,7 @@ import { createNegotiatedRecorder, mediaUnsupportedReason } from "../hooks/media
 import { useDeviceCapabilities } from "../hooks/deviceCapabilities";
 import { DeviceHandoffCard, type HandoffReason } from "./DeviceHandoffCard";
 import { RemoteMicConnectCard } from "./RemoteMicConnectCard";
+import { MicLevelMeter } from "./MicLevelMeter";
 import type {
   InterviewQuestion,
   InterviewSession,
@@ -56,6 +57,8 @@ export function RealtimeInterviewTab({ session }: { session: InterviewSession | 
   const [consent, setConsent] = useState(true);
   // 폰 마이크 핸드오프(WebRTC) — 마이크 없는 기기에서 폰의 마이크를 원격 입력으로 쓴다.
   const [remoteMic, setRemoteMic] = useState<MediaStream | null>(null);
+  // 면접 중 마이크 레벨 시각화용 — micRef 와 같은 스트림 (ref 는 리렌더를 못 일으켜 state 로 별도 보관)
+  const [micStream, setMicStream] = useState<MediaStream | null>(null);
 
   const pcRef = useRef<RTCPeerConnection | null>(null);
   const micRef = useRef<MediaStream | null>(null);
@@ -108,6 +111,7 @@ export function RealtimeInterviewTab({ session }: { session: InterviewSession | 
     pcRef.current = null;
     micRef.current?.getTracks().forEach((t) => t.stop());
     micRef.current = null;
+    setMicStream(null);
   };
 
   const pushLine = useCallback((line: TranscriptLine) => {
@@ -125,9 +129,10 @@ export function RealtimeInterviewTab({ session }: { session: InterviewSession | 
       return;
     }
     const type = ev.type as string;
-    if (type === "response.audio_transcript.delta") {
+    // GA Realtime API는 response.output_audio_transcript.*, 구 beta는 response.audio_transcript.* — 둘 다 처리.
+    if (type === "response.output_audio_transcript.delta" || type === "response.audio_transcript.delta") {
       aiDraftRef.current += (ev.delta as string) ?? "";
-    } else if (type === "response.audio_transcript.done") {
+    } else if (type === "response.output_audio_transcript.done" || type === "response.audio_transcript.done") {
       const text = aiDraftRef.current.trim();
       aiDraftRef.current = "";
       if (text) pushLine({ role: "ai", text });
@@ -162,6 +167,7 @@ export function RealtimeInterviewTab({ session }: { session: InterviewSession | 
       // 폰 마이크가 연결돼 있으면 그 원격 스트림을 쓴다 — clone 이라 종료(cleanup)해도 원본 연결은 유지된다.
       const mic = remoteMic ? remoteMic.clone() : await navigator.mediaDevices.getUserMedia({ audio: true });
       micRef.current = mic;
+      setMicStream(mic);
       mic.getTracks().forEach((t) => pc.addTrack(t, mic));
 
       const tracker = new VoiceMetricsTracker();
@@ -185,11 +191,14 @@ export function RealtimeInterviewTab({ session }: { session: InterviewSession | 
       const dc = pc.createDataChannel("oai-events");
       dc.onmessage = (e) => handleEvent(e.data);
       dc.onopen = () => {
-        // 사용자 음성도 텍스트로 받도록 활성화.
+        // 사용자 음성도 텍스트로 받도록 활성화 (GA 스키마 — 구 input_audio_transcription 형식은 reject됨).
         dc.send(
           JSON.stringify({
             type: "session.update",
-            session: { input_audio_transcription: { model: "whisper-1" } },
+            session: {
+              type: "realtime",
+              audio: { input: { transcription: { model: "whisper-1" } } },
+            },
           }),
         );
         // 면접관이 먼저 인사하며 면접을 시작하도록 유도.
@@ -419,6 +428,19 @@ export function RealtimeInterviewTab({ session }: { session: InterviewSession | 
                   <PhoneOff className="size-4" /> 면접 종료
                 </Button>
               )}
+            </div>
+          )}
+
+          {/* 실제 마이크 입력 레벨 — 내 목소리가 들어가고 있는지 즉시 확인 */}
+          {status === "live" && (
+            <div className="flex items-center gap-3 rounded-lg bg-rose-50 px-3 py-2.5">
+              <Mic className="size-4 shrink-0 text-rose-600" />
+              <MicLevelMeter
+                stream={micStream}
+                bars={24}
+                className="h-5 flex-1 justify-center gap-[3px] text-rose-500"
+              />
+              <span className="shrink-0 text-xs font-semibold text-rose-700">내 목소리 인식 중</span>
             </div>
           )}
 

@@ -10,6 +10,7 @@ import {
   postMicHandoffAnswer,
   waitIceGatheringComplete,
 } from "../api/micHandoffApi";
+import { MicLevelMeter } from "../components/MicLevelMeter";
 
 type Phase = "idle" | "joining" | "connecting" | "connected" | "ended" | "error";
 
@@ -25,6 +26,8 @@ export function MicRemotePage() {
   const [phase, setPhase] = useState<Phase>("idle");
   const [error, setError] = useState<string | null>(null);
   const [muted, setMuted] = useState(false);
+  // 전송 중 마이크 레벨 시각화용 — micRef 와 같은 스트림 (ref 는 리렌더를 못 일으켜 state 로 별도 보관)
+  const [micStream, setMicStream] = useState<MediaStream | null>(null);
 
   const pcRef = useRef<RTCPeerConnection | null>(null);
   const micRef = useRef<MediaStream | null>(null);
@@ -70,6 +73,7 @@ export function MicRemotePage() {
         fetchIceServers(),
       ]);
       micRef.current = mic;
+      setMicStream(mic);
 
       const pc = new RTCPeerConnection({ iceServers });
       pcRef.current = pc;
@@ -102,6 +106,7 @@ export function MicRemotePage() {
       setPhase("error");
       pcRef.current?.close();
       micRef.current?.getTracks().forEach((t) => t.stop());
+      setMicStream(null);
     }
   };
 
@@ -115,6 +120,7 @@ export function MicRemotePage() {
     void wakeLockRef.current?.release().catch(() => undefined);
     pcRef.current?.close();
     micRef.current?.getTracks().forEach((t) => t.stop());
+    setMicStream(null);
     if (codeRef.current) void closeMicHandoff(codeRef.current).catch(() => undefined);
     setPhase("ended");
   };
@@ -197,6 +203,12 @@ export function MicRemotePage() {
             <p className="text-sm font-semibold text-slate-700">
               {muted ? "음소거됨" : "마이크 전송 중 — 데스크탑에서 면접을 진행하세요"}
             </p>
+            {/* 실제 마이크 입력 레벨 — 이 폰이 내 목소리를 받고 있는지 즉시 확인 (음소거면 평평) */}
+            <MicLevelMeter
+              stream={micStream}
+              bars={20}
+              className={`mx-auto h-6 justify-center gap-[3px] ${muted ? "text-slate-300" : "text-rose-500"}`}
+            />
             <p className="text-xs text-slate-400">면접이 끝날 때까지 이 화면을 켜 두세요.</p>
             <div className="flex justify-center gap-2">
               <Button onClick={toggleMute} variant="outline" className="gap-1.5">
