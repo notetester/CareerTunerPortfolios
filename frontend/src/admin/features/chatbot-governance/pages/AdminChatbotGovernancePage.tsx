@@ -141,9 +141,9 @@ export function AdminChatbotGovernancePage() {
                  onChange={(e) => setUserFilter(e.target.value)} />
           <span className="text-xs text-slate-400">{rows.length}건</span>
         </div>
-        <div className="overflow-x-auto">
+        <div className="max-h-[60vh] overflow-auto">
           <table className="w-full min-w-[640px] text-sm">
-            <thead>
+            <thead className="sticky top-0 z-10 bg-white">
               <tr className="border-b border-slate-200 text-left text-xs text-slate-500">
                 <th className="px-3 py-2">세션 ID</th>
                 <th className="px-3 py-2">사용자</th>
