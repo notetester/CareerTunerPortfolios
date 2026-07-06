@@ -15,7 +15,10 @@ public record PostListResponse(
         String status,
         LocalDateTime createdAt,
         String companyName,
-        String jobRole
+        String jobRole,
+        /** 신고 누적으로 가려진 글(비작성자에게 블러). reportCount 가 임계 이상이면 true. */
+        boolean blurred,
+        int reportCount
 ) {
 
     /**

@@ -1,4 +1,5 @@
-import { MessageCircle, Heart, UserX } from "lucide-react";
+import { useState } from "react";
+import { EyeOff, MessageCircle, Heart, UserX } from "lucide-react";
 // 개인 차단 진입점 — 익명 글은 작성자 id 가 클라이언트에 없어 게시글 id 로 차단한다(익명성 유지).
 import { blockUser, blockUserByContent } from "@/features/privacy/api/privacyApi";
 import { showBlockManageToast } from "@/features/privacy/components/blockToast";
@@ -16,6 +17,8 @@ interface PostCardProps {
 export function PostCard({ post, onClick }: PostCardProps) {
   const { user } = useAuth();
   const { fetchPosts } = useCommunityStore();
+  const [revealed, setRevealed] = useState(false);
+  const isBlurred = !!post.blurred && !revealed;
 
   // 차단한 작성자의 글 — 톰스톤만 렌더하고 "한 번 보기" 없이 유지한다(조용한 차단, 클릭 진입 없음).
   if (post.blocked) {
@@ -60,8 +63,35 @@ export function PostCard({ post, onClick }: PostCardProps) {
           {post.categoryLabel}
           {post.isHot && <span className="cv-post__hot">인기</span>}
         </div>
-        <h3 className="cv-post__t">{post.title}</h3>
-        <div className="cv-post__x">{post.content}</div>
+        {isBlurred ? (
+          <div
+            className="cv-post__blur"
+            onClick={(e) => { e.stopPropagation(); setRevealed(true); }}
+            style={{ position: "relative", cursor: "pointer", borderRadius: 8, overflow: "hidden" }}
+          >
+            <div style={{ filter: "blur(6px)", pointerEvents: "none", userSelect: "none" }}>
+              <h3 className="cv-post__t">{post.title}</h3>
+              <div className="cv-post__x">{post.content}</div>
+            </div>
+            <div
+              style={{
+                position: "absolute", inset: 0, display: "flex", flexDirection: "column",
+                alignItems: "center", justifyContent: "center", gap: 4, textAlign: "center",
+                background: "color-mix(in srgb, var(--background) 55%, transparent)",
+                color: "var(--muted-foreground)", fontSize: 13, fontWeight: 600,
+              }}
+            >
+              <EyeOff size={18} />
+              신고 누적으로 가려진 글입니다{post.reportCount ? ` (신고 ${post.reportCount}회)` : ""}
+              <span style={{ fontWeight: 400, fontSize: 12 }}>클릭하면 표시합니다</span>
+            </div>
+          </div>
+        ) : (
+          <>
+            <h3 className="cv-post__t">{post.title}</h3>
+            <div className="cv-post__x">{post.content}</div>
+          </>
+        )}
         {post.tags?.length > 0 && (
           <div className="cv-post__tags">
             {post.tags.slice(0, 5).map((tag) => (

@@ -1413,6 +1413,7 @@ CREATE TABLE IF NOT EXISTS community_post (
     comment_count  INT          NOT NULL DEFAULT 0,
     like_count     INT          NOT NULL DEFAULT 0,
     dislike_count      INT      NOT NULL DEFAULT 0 COMMENT '싫어요 수(개인화용 축)',
+    report_count       INT      NOT NULL DEFAULT 0 COMMENT '누적 신고 수(임계 이상 시 비작성자에게 자동 블러)',
     recommend_count    INT      NOT NULL DEFAULT 0 COMMENT '추천 수(트렌드·인기글용 축)',
     disrecommend_count INT      NOT NULL DEFAULT 0 COMMENT '비추천 수',
     bookmark_count INT          NOT NULL DEFAULT 0,

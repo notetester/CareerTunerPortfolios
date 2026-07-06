@@ -4,6 +4,7 @@ import type {
   AdminPermissionAuditRow,
   AdminPermissionGroupRow,
   AdminPermissionPolicyRow,
+  AdminPermissionRequest,
 } from "./types";
 
 export interface SuperSortParams {
@@ -84,5 +85,41 @@ export function revokeSuperGroup(userId: number, code: string, reason: string): 
   return api<AdminAccountRow>(`/admin/super/admins/${userId}/groups/revoke`, {
     method: "PATCH",
     body: JSON.stringify({ code, reason }),
+  });
+}
+
+export function getPermissionRequests(status = "PENDING"): Promise<AdminPermissionRequest[]> {
+  return api<AdminPermissionRequest[]>(`/admin/super/permission-requests?status=${status}&limit=200`);
+}
+
+export function requestPermissions(userId: number, permissionCodes: string[], description?: string): Promise<void> {
+  return api<void>("/admin/super/permission-requests", {
+    method: "POST",
+    body: JSON.stringify({ userId, permissionCodes, description }),
+  });
+}
+
+export function approvePermissionRequest(id: number): Promise<void> {
+  return api<void>(`/admin/super/permission-requests/${id}/approve`, { method: "POST" });
+}
+
+export function rejectPermissionRequest(id: number, reason?: string): Promise<void> {
+  return api<void>(`/admin/super/permission-requests/${id}/reject`, {
+    method: "POST",
+    body: JSON.stringify({ reason }),
+  });
+}
+
+export function bulkGrantPermissions(userIds: number[], permissionCodes: string[], reason?: string): Promise<number> {
+  return api<number>("/admin/super/bulk/grant-permissions", {
+    method: "POST",
+    body: JSON.stringify({ userIds, permissionCodes, reason }),
+  });
+}
+
+export function bulkRevokeAdmins(userIds: number[], reason?: string): Promise<number> {
+  return api<number>("/admin/super/bulk/revoke-admins", {
+    method: "POST",
+    body: JSON.stringify({ userIds, reason }),
   });
 }

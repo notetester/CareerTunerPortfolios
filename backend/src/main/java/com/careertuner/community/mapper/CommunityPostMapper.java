@@ -62,6 +62,9 @@ public interface CommunityPostMapper {
                  @Param("keyword") String keyword,
                  @Param("viewerId") Long viewerId);
 
+    /** 작성 rate-limit — since 이후 사용자가 올린 글 수(삭제 제외). */
+    int countRecentPostsByUser(@Param("userId") Long userId, @Param("since") LocalDateTime since);
+
     CommunityPost findById(Long id);
 
     void insert(CommunityPost post);
