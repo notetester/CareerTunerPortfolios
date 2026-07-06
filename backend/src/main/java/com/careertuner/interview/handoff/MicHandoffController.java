@@ -29,6 +29,13 @@ import lombok.RequiredArgsConstructor;
 public class MicHandoffController {
 
     private final MicHandoffService service;
+    private final TurnCredentialService turnCredentialService;
+
+    @GetMapping("/ice")
+    public ApiResponse<java.util.List<TurnCredentialService.IceServer>> ice(
+            @AuthenticationPrincipal AuthUser authUser) {
+        return ApiResponse.ok(turnCredentialService.iceServers(authUser.id()));
+    }
 
     public record CreateRequest(@NotNull Long sessionId) {
     }

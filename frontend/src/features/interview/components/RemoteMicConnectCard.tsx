@@ -2,9 +2,9 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Loader2, Smartphone, Unplug, Wifi } from "lucide-react";
 import { Button } from "@/app/components/ui/button";
 import {
-  MIC_HANDOFF_ICE,
   closeMicHandoff,
   createMicHandoff,
+  fetchIceServers,
   getMicHandoffState,
   postMicHandoffOffer,
   waitIceGatheringComplete,
@@ -58,11 +58,14 @@ export function RemoteMicConnectCard({
     setError(null);
     stopPollRef.current = false;
     try {
-      const { code: newCode } = await createMicHandoff(sessionId);
+      const [{ code: newCode }, iceServers] = await Promise.all([
+        createMicHandoff(sessionId),
+        fetchIceServers(),
+      ]);
       codeRef.current = newCode;
       setCode(newCode);
 
-      const pc = new RTCPeerConnection(MIC_HANDOFF_ICE);
+      const pc = new RTCPeerConnection({ iceServers });
       pcRef.current = pc;
       pc.addTransceiver("audio", { direction: "recvonly" });
       pc.ontrack = (e) => {
@@ -72,7 +75,7 @@ export function RemoteMicConnectCard({
       pc.onconnectionstatechange = () => {
         if (pc.connectionState === "connected") setPhase("connected");
         if (pc.connectionState === "failed") {
-          setError("P2P 연결에 실패했습니다. 폰과 이 기기가 같은 와이파이인지 확인해 주세요.");
+          setError("연결에 실패했습니다. 네트워크 상태를 확인하고 다시 시도해 주세요.");
           setPhase("error");
           teardown(true);
         }
@@ -128,8 +131,8 @@ export function RemoteMicConnectCard({
         )}
       </div>
       <p className="mt-1 text-xs leading-5 text-indigo-700/80">
-        면접은 이 화면에서 진행하고, 답변 음성만 폰 마이크로 받습니다. 폰과 이 기기가{" "}
-        <b>같은 와이파이</b>에 있어야 합니다.
+        면접은 이 화면에서 진행하고, 답변 음성만 폰 마이크로 받습니다. 폰이 다른 네트워크(LTE 등)여도
+        연결됩니다.
       </p>
 
       {phase === "idle" && (
