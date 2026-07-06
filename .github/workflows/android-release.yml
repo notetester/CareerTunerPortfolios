@@ -12,12 +12,21 @@ on:
     tags:
       - 'v*'
       - 'demo-*'
+      - 'live-*'   # live-* 태그 = 실서버(https://careertuner.kro.kr) 연동 APK
   workflow_dispatch:
     inputs:
       tag:
-        description: '릴리즈 태그 (비우면 demo-r<실행번호> 자동 생성)'
+        description: '릴리즈 태그 (비우면 <모드>-r<실행번호> 자동 생성)'
         required: false
         default: ''
+      mode:
+        description: 'mock=자체 데모(백엔드 불필요) | live=실서버(careertuner.kro.kr) 연동'
+        required: false
+        default: 'mock'
+        type: choice
+        options:
+          - mock
+          - live
 
 permissions:
   contents: write
@@ -59,8 +68,24 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Build web (mock/demo mode)
-        run: npm run build:mock
+      - name: Resolve build mode (mock | live)
+        id: mode
+        run: |
+          MODE="${{ inputs.mode }}"
+          if [ "${{ github.ref_type }}" = "tag" ]; then
+            case "${{ github.ref_name }}" in live-*) MODE=live ;; esac
+          fi
+          MODE="${MODE:-mock}"
+          echo "mode=$MODE" >> "$GITHUB_OUTPUT"
+          echo "빌드 모드: $MODE"
+
+      - name: Build web (mock=자체데모 / live=실서버 연동)
+        run: |
+          if [ "${{ steps.mode.outputs.mode }}" = "live" ]; then
+            npm run build:aws     # VITE_API_BASE_URL=https://careertuner.kro.kr/api (frontend/.env.aws)
+          else
+            npm run build:mock
+          fi
 
       - name: Add Android platform (regenerated each run; android/ is gitignored)
         run: npx cap add android
@@ -77,35 +102,37 @@ jobs:
       - name: Resolve release tag and stage artifacts
         id: meta
         run: |
+          MODE="${{ steps.mode.outputs.mode }}"
           if [ "${{ github.ref_type }}" = "tag" ]; then
             TAG="${{ github.ref_name }}"
           elif [ -n "${{ inputs.tag }}" ]; then
             TAG="${{ inputs.tag }}"
           else
-            TAG="demo-r${{ github.run_number }}"
+            TAG="$MODE-r${{ github.run_number }}"
           fi
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
-          cp android/app/build/outputs/apk/debug/app-debug.apk "CareerTuner-demo-$TAG.apk"
-          (cd dist && zip -qr "../CareerTuner-web-demo-$TAG.zip" .)
+          cp android/app/build/outputs/apk/debug/app-debug.apk "CareerTuner-$MODE-$TAG.apk"
+          (cd dist && zip -qr "../CareerTuner-web-$MODE-$TAG.zip" .)
           ls -la CareerTuner-*
 
       - name: Create GitHub Release with artifacts
         uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ steps.meta.outputs.tag }}
-          name: CareerTuner 데모 ${{ steps.meta.outputs.tag }}
+          name: CareerTuner ${{ steps.mode.outputs.mode }} ${{ steps.meta.outputs.tag }}
           prerelease: true
           files: |
-            frontend/CareerTuner-demo-*.apk
-            frontend/CareerTuner-web-demo-*.zip
+            frontend/CareerTuner-*.apk
+            frontend/CareerTuner-web-*.zip
           body: |
-            ## CareerTuner mock 데모 빌드 (백엔드 불필요)
+            ## CareerTuner ${{ steps.mode.outputs.mode }} 빌드
 
             | 파일 | 용도 |
             | --- | --- |
-            | `CareerTuner-demo-*.apk` | Android 데모 앱 — BlueStacks 창에 드래그&드롭으로 설치 |
-            | `CareerTuner-web-demo-*.zip` | 같은 빌드의 웹 번들(정적 호스팅용) |
+            | `CareerTuner-*.apk` | Android 앱 — 폰/BlueStacks 사이드로드 설치 |
+            | `CareerTuner-web-*.zip` | 같은 빌드의 웹 번들(정적 호스팅용) |
 
-            - 로그인: 아무 이메일/비밀번호나 입력하면 데모 계정("김데모")으로 진입합니다.
-            - 데이터: mock 모드(`VITE_USE_MOCK=true`) — 사용자 앱 전 도메인 + 관리자 콘솔(/admin)까지 데모 데이터가 채워져 백엔드 없이 모든 화면이 동작합니다.
+            **모드 안내**
+            - `mock`: 백엔드 불필요 자체 데모 — 아무 이메일/비밀번호로 데모 계정("김데모") 진입.
+            - `live`: 실서버(https://careertuner.kro.kr) 연동 — 실제 계정으로 로그인, 웹과 데이터 공유.
             - 디버그 서명이므로 사이드로드 전용입니다(스토어 배포 불가).
