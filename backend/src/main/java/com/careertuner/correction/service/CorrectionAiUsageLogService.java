@@ -17,10 +17,10 @@ public class CorrectionAiUsageLogService {
         this.applicationCaseMapper = applicationCaseMapper;
     }
 
-    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    @Transactional
     public Long recordSuccess(Long userId, Long applicationCaseId, String featureType, CorrectionAiClient.Usage usage) {
         if (usage == null) {
-            return null;
+            throw new IllegalArgumentException("usage is required");
         }
         AiUsageLog log = AiUsageLog.builder()
                 .userId(userId)
@@ -31,7 +31,7 @@ public class CorrectionAiUsageLogService {
                 .inputTokens(usage.inputTokens())
                 .outputTokens(usage.outputTokens())
                 .tokenUsage(usage.totalTokens())
-                .creditUsed(creditUsed(usage.totalTokens()))
+                .creditUsed(0)
                 .build();
         applicationCaseMapper.insertAiUsageLog(log);
         return log.getId();
@@ -49,13 +49,6 @@ public class CorrectionAiUsageLogService {
                 .build();
         applicationCaseMapper.insertAiUsageLog(log);
         return log.getId();
-    }
-
-    private int creditUsed(int totalTokens) {
-        if (totalTokens <= 0) {
-            return 0;
-        }
-        return Math.max(1, (int) Math.ceil(totalTokens / 1000.0));
     }
 
     private String truncate(String value, int maxLength) {

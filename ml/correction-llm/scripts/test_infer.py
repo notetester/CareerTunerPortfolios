@@ -6,9 +6,11 @@ import argparse
 import json
 import os
 import re
+import sys
 from pathlib import Path
 
 from build_messages import SYSTEM_PROMPT
+from dataset_contract import validate_sample
 
 REQUIRED_KEYS = {
     "status",
@@ -72,7 +74,12 @@ def run(tokenizer, model, sample: dict, max_new: int) -> str:
     return tokenizer.decode(output[0][inputs["input_ids"].shape[1] :], skip_special_tokens=True)
 
 
-def check_output(text: str, sample: dict, preserved_meaning_mode: str) -> tuple[list[str], list[str]]:
+def check_output(
+    text: str,
+    sample: dict,
+    preserved_meaning_mode: str,
+    unified_contract: bool = False,
+) -> tuple[list[str], list[str]]:
     problems: list[str] = []
     warnings: list[str] = []
     try:
@@ -139,15 +146,37 @@ def check_output(text: str, sample: dict, preserved_meaning_mode: str) -> tuple[
 
     if CJ_ONLY.search(text):
         problems.append("CJK_LEAK")
+    if unified_contract:
+        candidate = {
+            "id": sample.get("id"),
+            "task_type": sample.get("task_type"),
+            "input": sample.get("input"),
+            "output": parsed,
+        }
+        contract_errors, contract_warnings, _ = validate_sample(
+            candidate,
+            unified_contract=True,
+        )
+        problems.extend(f"contract:{message}" for message in contract_errors)
+        warnings.extend(f"contract:{message}" for message in contract_warnings)
     return problems, warnings
 
 
 def main() -> None:
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(encoding="utf-8", errors="backslashreplace")
     parser = argparse.ArgumentParser()
     parser.add_argument("--model", default=os.path.join("out", "correction-lora-smoke-3b"))
     parser.add_argument("--raw", default=os.path.join("data", "hardcases.seed.2.jsonl"))
-    parser.add_argument("--max-new", type=int, default=768)
+    parser.add_argument("--max-new", type=int, default=3072)
     parser.add_argument("--report-out", default=None, help="Optional JSONL path for per-sample evaluation results.")
+    parser.add_argument(
+        "--sample-id",
+        action="append",
+        default=None,
+        help="Run only the selected sample ID. Repeat for multiple samples.",
+    )
+    parser.add_argument("--contract", choices=["legacy", "unified-v2"], default="legacy")
     parser.add_argument(
         "--preserved-meaning-mode",
         choices=["strict", "soft", "type-only"],
@@ -158,6 +187,13 @@ def main() -> None:
 
     tokenizer, model = load_model(args.model)
     samples = read_jsonl(Path(args.raw))
+    if args.sample_id:
+        requested_ids = set(args.sample_id)
+        samples = [sample for sample in samples if sample.get("id") in requested_ids]
+        found_ids = {sample.get("id") for sample in samples}
+        missing_ids = requested_ids - found_ids
+        if missing_ids:
+            parser.error(f"sample IDs not found: {', '.join(sorted(missing_ids))}")
     passed = 0
     report_rows: list[dict] = []
     for sample in samples:
@@ -165,7 +201,12 @@ def main() -> None:
         print(f"{sample['id']} {sample['task_type']}")
         output = run(tokenizer, model, sample, args.max_new)
         print(output)
-        problems, warnings = check_output(output, sample, args.preserved_meaning_mode)
+        problems, warnings = check_output(
+            output,
+            sample,
+            args.preserved_meaning_mode,
+            unified_contract=args.contract == "unified-v2",
+        )
         suffix = ""
         if warnings:
             suffix = " WARN: " + ", ".join(warnings)

@@ -34,7 +34,7 @@ class CorrectionModelWarmupServiceTest {
     }
 
     @Test
-    @DisplayName("loads only the 8B model and keeps repeated warmup requests idempotent")
+    @DisplayName("loads only the configured 3B model and keeps repeated warmup requests idempotent")
     void warmAsync_loadsPrimaryModelOnce() throws IOException {
         AtomicReference<String> requestBody = new AtomicReference<>();
         server = HttpServer.create(new InetSocketAddress(0), 0);
@@ -55,10 +55,9 @@ class CorrectionModelWarmupServiceTest {
         assertThat(first.status()).isEqualTo("STARTED");
         assertThat(second.status()).isEqualTo("ALREADY_WARM");
         assertThat(requestBody.get()).contains(
-                "careertuner-e-correction:8b",
+                "careertuner-e-correction-3b:latest",
                 "\"prompt\":\"\"",
                 "\"keep_alive\":\"600s\"");
-        assertThat(requestBody.get()).doesNotContain("careertuner-e-correction-3b");
     }
 
     @Test

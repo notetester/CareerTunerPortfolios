@@ -1,0 +1,144 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.careertuner.admin.correction.mapper.AdminCorrectionMapper">
+
+    <sql id="CorrectionFilters">
+        <if test="criteria.keyword != null">
+            AND (
+                u.email LIKE CONCAT('%', #{criteria.keyword}, '%')
+                OR u.name LIKE CONCAT('%', #{criteria.keyword}, '%')
+                OR ac.company_name LIKE CONCAT('%', #{criteria.keyword}, '%')
+                OR ac.job_title LIKE CONCAT('%', #{criteria.keyword}, '%')
+            )
+        </if>
+        <if test="criteria.correctionType != null">
+            AND cr.correction_type = #{criteria.correctionType}
+        </if>
+        <if test="criteria.status != null">
+            AND cr.status = #{criteria.status}
+        </if>
+        <if test="criteria.memoState == 'HAS_MEMO'">
+            AND cr.admin_memo IS NOT NULL AND TRIM(cr.admin_memo) &lt;&gt; ''
+        </if>
+        <if test="criteria.memoState == 'NO_MEMO'">
+            AND (cr.admin_memo IS NULL OR TRIM(cr.admin_memo) = '')
+        </if>
+    </sql>
+
+    <select id="findCorrections" resultType="com.careertuner.admin.correction.dto.AdminCorrectionRow">
+        SELECT cr.id,
+               cr.user_id,
+               u.email AS user_email,
+               u.name AS user_name,
+               cr.application_case_id,
+               ac.company_name,
+               ac.job_title,
+               cr.correction_type,
+               cr.source_type,
+               cr.status,
+               aul.model,
+               aul.token_usage AS total_tokens,
+               aul.credit_used,
+               CASE WHEN cr.admin_memo IS NOT NULL AND TRIM(cr.admin_memo) &lt;&gt; '' THEN TRUE ELSE FALSE END AS has_memo,
+               cr.created_at
+          FROM correction_request cr
+          JOIN users u ON u.id = cr.user_id
+          LEFT JOIN application_case ac ON ac.id = cr.application_case_id
+          LEFT JOIN ai_usage_log aul ON aul.id = cr.ai_usage_log_id
+         WHERE 1 = 1
+        <include refid="CorrectionFilters"/>
+         ORDER BY cr.id DESC
+         LIMIT #{criteria.size} OFFSET #{criteria.offset}
+    </select>
+
+    <select id="countCorrections" resultType="long">
+        SELECT COUNT(*)
+          FROM correction_request cr
+          JOIN users u ON u.id = cr.user_id
+          LEFT JOIN application_case ac ON ac.id = cr.application_case_id
+         WHERE 1 = 1
+        <include refid="CorrectionFilters"/>
+    </select>
+
+    <select id="findSummary" resultType="com.careertuner.admin.correction.dto.AdminCorrectionSummary">
+        SELECT (SELECT COUNT(*) FROM correction_request) AS total_requests,
+               (SELECT COUNT(*) FROM correction_request WHERE status = 'SUCCESS') AS success_count,
+               (SELECT COUNT(*)
+                  FROM ai_usage_log
+                 WHERE status = 'FAILED'
+                   AND feature_type IN (
+                       'CORRECTION_SELF_INTRO', 'CORRECTION_INTERVIEW_ANSWER',
+                       'CORRECTION_RESUME', 'CORRECTION_PORTFOLIO'
+                   )) AS failure_count,
+               (SELECT COUNT(*)
+                  FROM correction_request
+                 WHERE admin_memo IS NOT NULL AND TRIM(admin_memo) &lt;&gt; '') AS memo_count,
+               (SELECT COUNT(*)
+                  FROM correction_request
+                 WHERE created_at &gt;= CURRENT_DATE) AS today_count
+    </select>
+
+    <select id="findCorrection" resultType="com.careertuner.admin.correction.dto.AdminCorrectionDetail">
+        SELECT cr.id,
+               cr.user_id,
+               u.email AS user_email,
+               u.name AS user_name,
+               cr.application_case_id,
+               ac.company_name,
+               ac.job_title,
+               cr.correction_type,
+               cr.source_type,
+               cr.source_ref_id,
+               cr.original_text,
+               cr.improved_text,
+               cr.result_json,
+               cr.status,
+               cr.ai_usage_log_id,
+               aul.model,
+               aul.input_tokens,
+               aul.output_tokens,
+               aul.token_usage AS total_tokens,
+               aul.credit_used,
+               cr.admin_memo,
+               cr.created_at
+          FROM correction_request cr
+          JOIN users u ON u.id = cr.user_id
+          LEFT JOIN application_case ac ON ac.id = cr.application_case_id
+          LEFT JOIN ai_usage_log aul ON aul.id = cr.ai_usage_log_id
+         WHERE cr.id = #{id}
+    </select>
+
+    <select id="findAiFailures" resultType="com.careertuner.admin.correction.dto.AdminCorrectionFailureRow">
+        SELECT aul.id,
+               aul.user_id,
+               u.email AS user_email,
+               u.name AS user_name,
+               aul.application_case_id,
+               ac.company_name,
+               ac.job_title,
+               aul.feature_type,
+               aul.model,
+               aul.input_tokens,
+               aul.output_tokens,
+               aul.token_usage AS total_tokens,
+               aul.error_message,
+               aul.created_at
+          FROM ai_usage_log aul
+          JOIN users u ON u.id = aul.user_id
+          LEFT JOIN application_case ac ON ac.id = aul.application_case_id
+         WHERE aul.status = 'FAILED'
+           AND aul.feature_type IN (
+               'CORRECTION_SELF_INTRO', 'CORRECTION_INTERVIEW_ANSWER',
+               'CORRECTION_RESUME', 'CORRECTION_PORTFOLIO'
+           )
+         ORDER BY aul.id DESC
+         LIMIT #{limit}
+    </select>
+
+    <update id="updateAdminMemo">
+        UPDATE correction_request
+           SET admin_memo = #{adminMemo}
+         WHERE id = #{id}
+    </update>
+</mapper>
