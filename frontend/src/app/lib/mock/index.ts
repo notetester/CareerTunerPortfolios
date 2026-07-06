@@ -36,6 +36,7 @@ import type { MockRoute } from "./registry";
 import { ok } from "./registry";
 // 도메인별 mock 라우트(공통 인프라, additive). 새 도메인은 ./domains/<name>.ts 에 작성 후 여기에 spread 한다.
 import { billingRoutes } from "./domains/billing";
+import { chatbotRoutes } from "./domains/chatbot";
 import { communityRoutes } from "./domains/community";
 import { notificationRoutes } from "./domains/notification";
 import { supportRoutes } from "./domains/support";
@@ -340,6 +341,7 @@ const routes: MockRoute[] = [
   ...applicationsExtraRoutes,
   ...interviewExtraRoutes,
   ...billingRoutes,
+  ...chatbotRoutes,
   ...communityRoutes,
   ...notificationRoutes,
   ...supportRoutes,
