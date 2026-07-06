@@ -115,12 +115,17 @@ export function toastAiChargeCompleted(preview: AiChargePreview, actual?: Actual
 
 function chargeNotice(preview: AiChargePreview) {
   const charge = preview.chargeType === "TICKET"
-    ? `사용권 1회가 차감됩니다. 차감 전 잔여 ${preview.remainingTicket}회`
+    ? preview.maximumCreditCost > 0
+      ? `사용권 1회가 우선 차감됩니다. 차감 전 잔여 ${preview.remainingTicket}회 · 사용권 소진 시 최소 ${preview.minimumCreditCost}크레딧, 실제 사용량에 따라 최대 ${preview.maximumCreditCost}크레딧이 차감됩니다.`
+      : `사용권 1회가 우선 차감됩니다. 차감 전 잔여 ${preview.remainingTicket}회`
     : preview.chargeType === "CREDIT"
       ? preview.usageBased
         ? `최소 ${preview.minimumCreditCost}크레딧이 차감되며 실제 사용량에 따라 최대 ${preview.maximumCreditCost}크레딧까지 사용될 수 있습니다. 현재 보유 ${preview.currentCredit}크레딧`
         : `${preview.chargeAmount}크레딧이 차감됩니다. 현재 보유 ${preview.currentCredit}크레딧`
       : "무료 이용으로 차감되지 않습니다.";
+  const variableChargeNotice = preview.chargeType === "TICKET" || preview.chargeType === "CREDIT"
+    ? " · 사용권이 우선 사용되며, 기능별 실제 사용량에 따라 차감되는 크레딧은 달라질 수 있습니다."
+    : "";
   const summary = preview.refundPolicySummary?.trim() || preview.refundPolicyTitle;
-  return `${charge} · 환불정책 v${preview.refundPolicyVersion}: ${summary}`;
+  return `${charge}${variableChargeNotice} · 환불정책 v${preview.refundPolicyVersion}: ${summary}`;
 }
