@@ -50,6 +50,8 @@ import { AdminActivityLogsPage } from "./features/activity-logs/pages/AdminActiv
 import { AdminRuntimeSettingsPage } from "./features/runtime-settings/pages/AdminRuntimeSettingsPage";
 import { AdminCorrectionsPage } from "./features/corrections/pages/AdminCorrectionsPage";
 import { AdminCreditsPage } from "./features/credits/pages/AdminCreditsPage";
+// 이메일 발급 전역 감사(트립투게더 이식): 전체 계정 인증/재설정 토큰 발급 이력 검색
+import { AdminEmailAuditLogPage } from "./features/email-audit/pages/AdminEmailAuditLogPage";
 
 export const adminRoutes = [
   { path: "admin", Component: AdminDashboardPage },
@@ -73,6 +75,7 @@ export const adminRoutes = [
   { path: "admin/audit/security", Component: AdminSecurityAuditPage },
   { path: "admin/audit/email", Component: AdminEmailAuditPage },
   { path: "admin/audit/activity", Component: AdminActivityLogsPage },
+  { path: "admin/audit/email-log", Component: AdminEmailAuditLogPage },
   { path: "admin/profiles", Component: AdminProfilesPage },
   { path: "admin/consents", Component: AdminConsentsPage },
   { path: "admin/super", Component: AdminSuperAdminPage },
