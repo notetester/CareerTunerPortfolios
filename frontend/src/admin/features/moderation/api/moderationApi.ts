@@ -70,6 +70,14 @@ export interface ModerationSettingData {
   hideThreshold: number;
   sanctionThreshold: number;
   blockDays: number;
+  // 작성 rate-limit(도배 방지) + 신고 누적 블러 임계
+  reportBlurThreshold: number;
+  postRateWindowSeconds: number;
+  postRateMax: number;
+  commentRateWindowSeconds: number;
+  commentRateMax: number;
+  inquiryRateWindowSeconds: number;
+  inquiryRateMax: number;
   updatedAt: string;
 }
 
@@ -82,6 +90,13 @@ export function updateModerationSettings(data: {
   hideThreshold?: number;
   sanctionThreshold?: number;
   blockDays?: number;
+  reportBlurThreshold?: number;
+  postRateWindowSeconds?: number;
+  postRateMax?: number;
+  commentRateWindowSeconds?: number;
+  commentRateMax?: number;
+  inquiryRateWindowSeconds?: number;
+  inquiryRateMax?: number;
 }): Promise<ModerationSettingData> {
   return api<ModerationSettingData>("/admin/ai/moderation/settings", {
     method: "PATCH",

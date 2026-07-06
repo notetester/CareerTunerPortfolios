@@ -95,4 +95,13 @@
          WHERE id = #{id}
     </update>
 
+    <!-- 작성 rate-limit — since 이후 사용자가 단 댓글 수(삭제 제외) -->
+    <select id="countRecentCommentsByUser" resultType="int">
+        SELECT COUNT(*)
+          FROM community_comment
+         WHERE user_id = #{userId}
+           AND created_at &gt;= #{since}
+           AND status &lt;&gt; 'DELETED'
+    </select>
+
 </mapper>

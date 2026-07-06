@@ -1,5 +1,6 @@
 package com.careertuner.community.service;
 
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -54,6 +55,8 @@ public class CommunityCommentServiceImpl implements CommunityCommentService {
     private final NotificationService notificationService;
     private final PrivacyPolicyService privacyPolicyService;
     private final NicknameProfileService nicknameProfileService;
+    /** 댓글 작성 rate-limit(도배 방지) 정책값 — 검열/중재 정책 콘솔에서 런타임 편집. */
+    private final com.careertuner.community.moderation.service.ModerationSettingService moderationSettingService;
 
     @Override
     public List<CommentResponse> getComments(Long postId, Long currentUserId) {
@@ -295,6 +298,17 @@ public class CommunityCommentServiceImpl implements CommunityCommentService {
         CommunityPost post = postMapper.findById(postId);
         if (post == null || !PostStatus.PUBLISHED.name().equals(post.getStatus())) {
             throw new BusinessException(ErrorCode.NOT_FOUND, "게시글을 찾을 수 없습니다.");
+        }
+
+        // 작성 rate-limit(도배 방지) — 최근 window 초 안에 max 건 이상이면 429. (콘솔 편집값)
+        int commentRateMax = moderationSettingService.getCommentRateMax();
+        if (commentRateMax > 0) {
+            int recent = commentMapper.countRecentCommentsByUser(userId,
+                    LocalDateTime.now().minusSeconds(moderationSettingService.getCommentRateWindowSeconds()));
+            if (recent >= commentRateMax) {
+                throw new BusinessException(ErrorCode.RATE_LIMITED,
+                        "짧은 시간에 너무 많은 댓글을 작성했습니다. 잠시 후 다시 시도해 주세요.");
+            }
         }
 
         // 디시인사이드식 2단계: 답글의 답글도 깊어지지 않고 최상위 댓글 그룹에 붙인다.

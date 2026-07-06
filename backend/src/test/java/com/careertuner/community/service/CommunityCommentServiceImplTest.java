@@ -53,10 +53,13 @@ class CommunityCommentServiceImplTest {
     private final NotificationService notificationService = mock(NotificationService.class);
     private final PrivacyPolicyService privacyPolicyService = mock(PrivacyPolicyService.class);
     private final NicknameProfileService nicknameProfileService = mock(NicknameProfileService.class);
+    private final com.careertuner.community.moderation.service.ModerationSettingService moderationSettingService =
+            mock(com.careertuner.community.moderation.service.ModerationSettingService.class);
 
     private final CommunityCommentServiceImpl service =
             new CommunityCommentServiceImpl(commentMapper, postMapper, reactionMapper, subscriptionMapper,
-                    eventPublisher, notificationService, privacyPolicyService, nicknameProfileService);
+                    eventPublisher, notificationService, privacyPolicyService, nicknameProfileService,
+                    moderationSettingService);
 
     /**
      * 개인 차단 정책 기본 스텁 — 차단 없음(기존 테스트가 차단 필터의 영향을 받지 않게 명시).
