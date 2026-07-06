@@ -1,4 +1,4 @@
-// 데모/목: 프로필·설정·계정·동의·챗봇 도메인 라우트.
+// 데모/목: 프로필·설정·계정·동의 도메인 라우트.
 // 페르소나는 프론트엔드 개발자 지망 "김데모"(userId 9001, demo@careertuner.dev, PRO/50크레딧)로
 // data.ts 의 demoUser 와 일치시킨다. 지원 건 id(101 카카오·102 네이버·103 토스·104 라인)도 동일하게 맞춘다.
 //
@@ -11,7 +11,7 @@
 //   GET  /consents/me                -> ConsentStatus
 //   POST /consents/me                -> ConsentStatus (요청 동의값 반영)
 //   POST /consents/ai/revoke         -> ConsentStatus (AI_DATA 철회)
-//   POST /chatbot/ask                -> { answer, links, matchedFaqIds, topSimilarity }  (useChatbot 내부 응답 shape)
+//   (챗봇 /chatbot/* 는 ./chatbot.ts 담당)
 //
 // /auth/me 는 코어 레지스트리에서 이미 처리한다(중복 등록하지 않음).
 // 알림 링크의 /analysis/profile, /analysis/job 는 프런트 라우트 경로일 뿐 api() 호출 엔드포인트가 아니므로 제외.
@@ -23,7 +23,6 @@ import type {
   ProfileCompleteness,
 } from "@/app/profile/profileApi";
 import type { ConsentStatus, ConsentView } from "@/app/auth/consentApi";
-import type { SiteLink } from "@/features/support/types/chatbot";
 
 const USER_ID = 9001;
 
@@ -247,90 +246,7 @@ function revokeAiConsent(): ConsentStatus {
   return consentStatus;
 }
 
-// ── 챗봇 응답. useChatbot 내부의 ChatbotApiResponse 형태를 그대로 맞춘다(비공개 인터페이스라 로컬 미러). ──
-interface ChatbotAskResponse {
-  answer: string;
-  links: SiteLink[];
-  matchedFaqIds: number[];
-  topSimilarity: number;
-}
-
-// 질문 키워드별 데모 답변. 매칭 실패는 빈 결과(useChatbot 가 not_found 처리).
-function answerChatbot(body: unknown): ChatbotAskResponse {
-  const question = String((body as { question?: string } | null)?.question ?? "");
-  const q = question.toLowerCase();
-
-  const has = (...keys: string[]) => keys.some((k) => question.includes(k) || q.includes(k.toLowerCase()));
-
-  if (has("환불", "돈", "결제 취소", "취소")) {
-    return {
-      answer:
-        "결제 후 7일 이내, 크레딧을 사용하지 않은 경우 전액 환불이 가능합니다. " +
-        "마이페이지 > 결제/구독에서 환불 신청을 하시거나 고객센터로 문의해 주세요.",
-      links: [
-        { url: "/billing", label: "결제/구독 관리" },
-        { url: "/support/faq", label: "환불 정책 FAQ" },
-      ],
-      matchedFaqIds: [12, 14],
-      topSimilarity: 0.91,
-    };
-  }
-  if (has("면접", "모의면접", "인터뷰")) {
-    return {
-      answer:
-        "모의면접은 지원 건을 선택한 뒤 면접 모드(기본/직무/인성/압박 등)를 고르면 시작됩니다. " +
-        "AI가 질문을 생성하고, 답변을 입력하면 꼬리질문과 평가 리포트를 제공합니다.",
-      links: [
-        { url: "/interview", label: "모의면접 시작하기" },
-        { url: "/support/faq", label: "모의면접 가이드" },
-      ],
-      matchedFaqIds: [21, 22],
-      topSimilarity: 0.88,
-    };
-  }
-  if (has("탈퇴", "회원탈퇴", "계정 삭제")) {
-    return {
-      answer:
-        "회원 탈퇴는 설정 > 계정 설정에서 진행할 수 있습니다. 탈퇴 시 프로필·분석 기록이 모두 삭제되며 복구되지 않습니다. " +
-        "남은 크레딧이 있다면 탈퇴 전에 환불 여부를 먼저 확인해 주세요.",
-      links: [
-        { url: "/settings?tab=account", label: "계정 설정" },
-        { url: "/support/faq", label: "탈퇴 안내 FAQ" },
-      ],
-      matchedFaqIds: [31],
-      topSimilarity: 0.86,
-    };
-  }
-  if (has("무료", "공짜", "어디까지")) {
-    return {
-      answer:
-        "무료 플랜에서도 지원 건 등록, 기본 공고 분석, 일부 적합도 분석을 체험할 수 있습니다. " +
-        "심화 분석과 모의면접 횟수는 PRO 플랜에서 크레딧으로 이용할 수 있습니다.",
-      links: [
-        { url: "/pricing", label: "요금제 보기" },
-        { url: "/support/faq", label: "플랜 비교 FAQ" },
-      ],
-      matchedFaqIds: [5, 6],
-      topSimilarity: 0.84,
-    };
-  }
-  if (has("시작", "처음", "어떻게")) {
-    return {
-      answer:
-        "처음이시라면 먼저 프로필/이력서를 작성한 뒤, 지원할 채용공고를 등록해 지원 건을 만드세요. " +
-        "그다음 공고 분석 → 적합도 분석 → 모의면접 순서로 진행하면 됩니다.",
-      links: [
-        { url: "/profile", label: "프로필 작성" },
-        { url: "/dashboard", label: "대시보드로 시작하기" },
-      ],
-      matchedFaqIds: [1, 2],
-      topSimilarity: 0.9,
-    };
-  }
-
-  // 매칭 실패: matchedFaqIds 비움 + topSimilarity 0 → not_found 상태.
-  return { answer: "", links: [], matchedFaqIds: [], topSimilarity: 0 };
-}
+// (챗봇 mock 은 ./chatbot.ts 로 이관 — 구 shape(answer/matchedFaqIds)가 현 useChatbot 계약과 어긋나 있었다.)
 
 export const profileRoutes: MockRoute[] = [
   // 프로필 조회/저장
@@ -346,7 +262,4 @@ export const profileRoutes: MockRoute[] = [
   { method: "GET", pattern: /^\/consents\/me$/, handler: () => consentStatus },
   { method: "POST", pattern: /^\/consents\/me$/, handler: ({ body }) => applyConsents(body) },
   { method: "POST", pattern: /^\/consents\/ai\/revoke$/, handler: () => revokeAiConsent() },
-
-  // 챗봇 질의응답
-  { method: "POST", pattern: /^\/chatbot\/ask$/, handler: ({ body }) => answerChatbot(body) },
 ];

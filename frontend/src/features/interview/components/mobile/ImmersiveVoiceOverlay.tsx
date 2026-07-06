@@ -9,6 +9,7 @@ import {
 import { BrowserSttTracker } from "../../hooks/speechToText";
 import { createNegotiatedRecorder } from "../../hooks/mediaSupport";
 import { scoreVoiceServer, transcribeVoice } from "../../api/interviewApi";
+import { MicLevelMeter } from "../MicLevelMeter";
 
 /**
  * 몰입형 음성 답변 (모바일 풀스크린) — Claude 앱식 최소 UI.
@@ -41,6 +42,8 @@ export function ImmersiveVoiceOverlay({
   const [phase, setPhase] = useState<Phase>("recording");
   const [seconds, setSeconds] = useState(0);
   const [error, setError] = useState<string | null>(null);
+  // 웨이브폼 시각화용 마이크 스트림 — 실제 음량에 따라 움직인다 (ref 는 리렌더를 못 일으켜 state 로 별도 보관)
+  const [micStream, setMicStream] = useState<MediaStream | null>(null);
 
   const micRef = useRef<MediaStream | null>(null);
   const recorderRef = useRef<MediaRecorder | null>(null);
@@ -71,6 +74,7 @@ export function ImmersiveVoiceOverlay({
           return;
         }
         micRef.current = mic;
+        setMicStream(mic);
         chunksRef.current = [];
         const tracker = new VoiceMetricsTracker();
         tracker.start(mic);
@@ -223,15 +227,14 @@ export function ImmersiveVoiceOverlay({
           </>
         ) : (
           <>
-            <div className="flex h-[90px] items-center gap-[5px]">
-              {Array.from({ length: 13 }).map((_, i) => (
-                <i
-                  key={i}
-                  className="ct-wavebar w-1 rounded-[3px] bg-gradient-to-b from-[#7d88de] to-[#5E6AD2] shadow-[0_0_12px_rgba(94,106,210,0.4)]"
-                  style={{ animationDelay: `${(i % 5) * 0.12}s` }}
-                />
-              ))}
-            </div>
+            {/* 실제 마이크 음량을 따라가는 웨이브폼 — 목소리가 들어가고 있음을 그대로 보여준다 */}
+            <MicLevelMeter
+              stream={micStream}
+              bars={13}
+              minRatio={0.13}
+              className="h-[90px] gap-[5px]"
+              barClassName="w-1 rounded-[3px] bg-gradient-to-b from-[#7d88de] to-[#5E6AD2] shadow-[0_0_12px_rgba(94,106,210,0.4)]"
+            />
             <div className="font-mono text-[26px] font-bold tabular-nums text-[#EDEDEF]">
               {mm}:{ss}
             </div>
@@ -263,12 +266,6 @@ export function ImmersiveVoiceOverlay({
         </button>
         <div className="size-14" aria-hidden />
       </div>
-
-      <style>{`
-        @keyframes ctwv { 0%,100%{height:12px; opacity:.65} 50%{height:62px; opacity:1} }
-        .ct-wavebar { height:12px; animation: ctwv 1.1s cubic-bezier(0.16,1,0.3,1) infinite; }
-        @media (prefers-reduced-motion: reduce) { .ct-wavebar { animation:none; height:32px; } }
-      `}</style>
     </div>
   );
 }

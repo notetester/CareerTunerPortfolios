@@ -97,7 +97,7 @@ export function AutoPrepLauncher({ onRun, busy }: Props) {
             if (e.key === "Enter") submit();
           }}
           placeholder="네이버 백엔드 신입 통째로 준비해줘"
-          className="flex-1 rounded-lg border border-border bg-background px-3 py-2.5 text-sm text-foreground outline-none placeholder:text-muted-foreground focus:border-primary"
+          className="min-w-0 flex-1 rounded-lg border border-border bg-background px-3 py-2.5 text-sm text-foreground outline-none placeholder:text-muted-foreground focus:border-primary"
         />
         <button
           type="button"

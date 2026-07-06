@@ -68,6 +68,8 @@ export function LocalAvatarTab({ session }: { session: InterviewSession | null }
   const [contentItems, setContentItems] = useState<SessionReviewItem[]>([]);
   const [downloadUrl, setDownloadUrl] = useState<string | null>(null);
   const [consent, setConsent] = useState(true); // 정밀 분석(원본 영상 서버 전송) 동의
+  // 체험판: 질문 1개만 짧게 진행 (시연·맛보기용). 채점·저장 흐름은 동일.
+  const [trial, setTrial] = useState(false);
 
   const videoBoxRef = useRef<HTMLDivElement | null>(null);
   const selfVideoRef = useRef<HTMLVideoElement | null>(null);
@@ -153,11 +155,11 @@ export function LocalAvatarTab({ session }: { session: InterviewSession | null }
       setDownloadUrl(null);
     }
     try {
-      // 1) 준비된 본질문 목록을 텍스트 배열로 로드 (베이직: 전체 질문, 최대 6).
+      // 1) 준비된 본질문 목록을 텍스트 배열로 로드 (베이직: 전체 질문, 최대 6 · 체험판: 1).
       const qs = await listSessionQuestions(session.id);
       const mainQuestions = qs
         .filter((q) => q.parentQuestionId == null)
-        .slice(0, 6)
+        .slice(0, trial ? 1 : 6)
         .map((q) => q.question);
       questionsRef.current = mainQuestions;
       setQuestions(mainQuestions);
@@ -437,9 +439,24 @@ export function LocalAvatarTab({ session }: { session: InterviewSession | null }
         </CardHeader>
         <CardContent className="space-y-4">
           <p className="text-sm text-slate-500">
-            면접관이 준비된 질문 {preparedQuestions ? Math.min(preparedQuestions.length, 6) : 6}개를 읽어주면
-            웹캠으로 녹화·분석합니다. 외부 API 없이 무료.
+            면접관이 준비된 질문 {trial ? 1 : preparedQuestions ? Math.min(preparedQuestions.length, 6) : 6}개를
+            읽어주면 웹캠으로 녹화·분석합니다. 외부 API 없이 무료.
           </p>
+
+          {(status === "idle" || status === "scored" || status === "error") && (
+            <label className="flex items-start gap-2 rounded-lg border border-slate-200 bg-slate-50 p-3 text-xs text-slate-600">
+              <input
+                type="checkbox"
+                checked={trial}
+                onChange={(e) => setTrial(e.target.checked)}
+                className="mt-0.5 size-3.5"
+              />
+              <span>
+                <b className="text-slate-700">체험판(1문제만)</b> — 준비된 첫 질문 하나만 짧게 진행합니다.
+                채점·저장은 동일하게 동작합니다.
+              </span>
+            </label>
+          )}
 
           {handoffReason && <DeviceHandoffCard sessionId={session.id} reason={handoffReason} />}
 
