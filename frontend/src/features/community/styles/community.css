@@ -432,17 +432,6 @@
 .dv-prose blockquote { margin: 16px 0; padding: 11px 14px; border-left: 2px solid var(--av-blue); background: var(--av-blue-soft);
   border-radius: 0 7px 7px 0; font-size: 13.5px; color: var(--av-ink-2); line-height: 1.65; }
 .dv-prose blockquote strong, .dv-prose blockquote b { color: var(--av-ink); font-weight: 650; }
-/* 표준 마크다운(GFM) 전환으로 새로 렌더되는 요소들 — 디자인 토큰 기준 기본 스타일 */
-.dv-prose h1 { font-size: 17.5px; font-weight: 750; letter-spacing: -0.02em; color: var(--av-ink); margin: 30px 0 12px; }
-.dv-prose em, .dv-prose i { font-style: italic; }
-.dv-prose del { text-decoration: line-through; color: var(--av-ink-3); }
-.dv-prose a { color: var(--av-blue); text-decoration: underline; text-underline-offset: 2px; overflow-wrap: anywhere; }
-.dv-prose a:hover { opacity: 0.82; }
-.dv-prose img { max-width: 100%; height: auto; border-radius: 10px; margin: 12px 0; }
-.dv-prose hr { border: none; border-top: 1px solid var(--av-line-soft); margin: 22px 0; }
-.dv-prose table { display: block; width: 100%; overflow-x: auto; border-collapse: collapse; margin: 16px 0; font-size: 13.5px; }
-.dv-prose th, .dv-prose td { border: 1px solid var(--av-line-soft); padding: 7px 10px; text-align: left; }
-.dv-prose th { background: var(--av-track); color: var(--av-ink); font-weight: 650; white-space: nowrap; }
 .dv-tags { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 26px; }
 .dv-tag { font-size: 11.5px; font-weight: 550; color: var(--av-ink-2); background: var(--av-line-soft);
   border-radius: 99px; padding: 4px 10px; white-space: nowrap; }

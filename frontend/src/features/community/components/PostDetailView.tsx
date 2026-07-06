@@ -2,16 +2,16 @@ import { useState, useEffect } from "react";
 import { useNavigate } from "react-router";
 import { Avatar, AvatarFallback } from "@/app/components/ui/avatar";
 import {
-  ArrowLeft, Eye, Clock, Star,
-  Users, Calendar, Gauge, Trash2, Pencil, UserX, Lock,
+  ArrowLeft, Link2, Ellipsis, Pencil, Trash2, UserX, EyeOff, RotateCcw, Lock, Sparkles,
+  Bell, BellRing, Flag,
 } from "lucide-react";
-import { Sparkles } from "lucide-react";
 // 개인 차단 진입점 — 익명 글은 작성자 id 가 클라이언트에 없어 게시글 id 로 차단한다(익명성 유지).
 import { blockUser, blockUserByContent } from "@/features/privacy/api/privacyApi";
 import { showBlockManageToast } from "@/features/privacy/components/blockToast";
-import { CategoryBadge } from "./CategoryBadge";
 import { ReactionButtons } from "./ReactionButtons";
 import { CommentSection } from "./CommentSection";
+import { ReportDialog } from "./ReportDialog";
+import { RxMenu, RxMenuItem } from "./RxMenu";
 import { useCommunityStore } from "../hooks/useCommunityStore";
 import { useLoginDialog } from "../hooks/useLoginDialog";
 import { ConfirmDialog } from "@/app/components/ui/confirm-dialog";
@@ -27,88 +27,14 @@ interface PostDetailViewProps {
   onEdit?: () => void;
 }
 
-function DifficultyStars({ level }: { level: number }) {
+function DifficultyDots({ level }: { level: number }) {
   return (
-    <span className="ct-stars">
+    <span className="dv-dots" aria-label={`난이도 ${level}/5`}>
       {[1, 2, 3, 4, 5].map((n) => (
-        <span key={n} className={n <= level ? "on" : "off"}>
-          <Star />
-        </span>
+        <i key={n} className={n <= level ? "" : "off"} />
       ))}
     </span>
   );
-}
-
-function renderInline(text: string): React.ReactNode {
-  const parts: React.ReactNode[] = [];
-  const regex = /(\*\*(.+?)\*\*|`(.+?)`)/g;
-  let lastIndex = 0;
-  let match;
-  let k = 0;
-  while ((match = regex.exec(text)) !== null) {
-    if (match.index > lastIndex) parts.push(text.slice(lastIndex, match.index));
-    if (match[2]) parts.push(<strong key={k}>{match[2]}</strong>);
-    else parts.push(<code key={k}>{match[3]}</code>);
-    lastIndex = regex.lastIndex;
-    k++;
-  }
-  if (lastIndex < text.length) parts.push(text.slice(lastIndex));
-  return parts.length === 1 ? parts[0] : <>{parts}</>;
-}
-
-function renderMarkdown(md: string) {
-  const lines = md.split("\n");
-  const blocks: React.ReactNode[] = [];
-  let i = 0;
-  while (i < lines.length) {
-    const line = lines[i];
-    if (line.trim() === "") { i++; continue; }
-    if (line.trim().startsWith("```")) {
-      const code: string[] = []; i++;
-      while (i < lines.length && !lines[i].trim().startsWith("```")) { code.push(lines[i]); i++; }
-      i++;
-      blocks.push(<pre key={`pre-${i}`}><code>{code.join("\n")}</code></pre>);
-      continue;
-    }
-    if (line.startsWith("### ")) {
-      blocks.push(<h3 key={i}>{renderInline(line.slice(4))}</h3>);
-      i++; continue;
-    }
-    if (line.startsWith("## ")) {
-      blocks.push(<h2 key={i}>{renderInline(line.slice(3))}</h2>);
-      i++; continue;
-    }
-    if (line.startsWith("> ")) {
-      const q = [line.slice(2)]; i++;
-      while (i < lines.length && lines[i].startsWith("> ")) { q.push(lines[i].slice(2)); i++; }
-      blocks.push(<blockquote key={`q-${i}`}>{renderInline(q.join(" "))}</blockquote>);
-      continue;
-    }
-    if (/^[-*] /.test(line)) {
-      const items: string[] = [];
-      while (i < lines.length && /^[-*] /.test(lines[i])) { items.push(lines[i].replace(/^[-*] /, "")); i++; }
-      blocks.push(
-        <ul key={`ul-${i}`}>
-          {items.map((it, x) => <li key={x}>{renderInline(it)}</li>)}
-        </ul>
-      );
-      continue;
-    }
-    if (/^\d+\. /.test(line)) {
-      const items: string[] = [];
-      while (i < lines.length && /^\d+\. /.test(lines[i])) { items.push(lines[i].replace(/^\d+\. /, "")); i++; }
-      blocks.push(
-        <ol key={`ol-${i}`}>
-          {items.map((it, x) => <li key={x}>{renderInline(it)}</li>)}
-        </ol>
-      );
-      continue;
-    }
-    const para = [line]; i++;
-    while (i < lines.length && lines[i].trim() !== "" && !/^(#|>|[-*] |\d+\. |```)/.test(lines[i])) { para.push(lines[i]); i++; }
-    blocks.push(<p key={`p-${i}`}>{renderInline(para.join(" "))}</p>);
-  }
-  return blocks;
 }
 
 const RESULT_LABELS: Record<string, string> = {
@@ -116,11 +42,13 @@ const RESULT_LABELS: Record<string, string> = {
 };
 
 export function PostDetailView({ postId, onBack, onEdit }: PostDetailViewProps) {
-  const { currentPost: d, comments, detailLoading, error, fetchPostDetail, fetchComments, fetchPosts } = useCommunityStore();
+  const { currentPost: d, comments, detailLoading, error, fetchPostDetail, fetchComments, fetchPosts, togglePostSubscription } = useCommunityStore();
   const { user } = useAuth();
   const { showLoginDialog, requireAuth, onLoginConfirm, onLoginCancel } = useLoginDialog();
   const navigate = useNavigate();
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+  const [showReport, setShowReport] = useState(false);
+  const [subBusy, setSubBusy] = useState(false);
   const [aiTags, setAiTags] = useState<ParsedAiTags | null>(null);
 
   useEffect(() => {
@@ -129,8 +57,38 @@ export function PostDetailView({ postId, onBack, onEdit }: PostDetailViewProps) 
     communityApi.getAiTags(postId).then(setAiTags);
   }, [postId, fetchPostDetail, fetchComments]);
 
+  // 공유 — 백엔드 없이 클라이언트에서 처리. Web Share 지원 시 시스템 시트, 아니면 링크 복사.
+  const handleShare = async () => {
+    const url = `${window.location.origin}/community/posts/${postId}`;
+    try {
+      if (navigator.share) {
+        await navigator.share({ title: d?.title ?? "커뮤니티 글", url });
+      } else {
+        await navigator.clipboard.writeText(url);
+        toast.success("링크를 복사했어요.");
+      }
+    } catch {
+      /* 사용자가 공유를 취소함 — 무시 */
+    }
+  };
+
+  // 이 글 알림(watch) — 글 구독 토글(새 댓글 알림). 작성자 팔로우가 아니라 이 글 스레드 알림.
+  const handleWatch = () => {
+    requireAuth(async () => {
+      if (subBusy) return;
+      setSubBusy(true);
+      try {
+        const active = await togglePostSubscription(postId);
+        toast.success(active ? "이 글을 구독합니다. 새 댓글이 달리면 알려드릴게요." : "글 구독을 해지했습니다.");
+      } catch {
+        toast.error("구독 처리에 실패했습니다.");
+      } finally {
+        setSubBusy(false);
+      }
+    });
+  };
+
   // 작성자 차단 — 조용한 차단(상대에게 알리지 않음). 차단 직후 글/댓글을 다시 받아 톰스톤을 반영한다.
-  // 익명 글은 작성자 id 가 없어 게시글 id 로 차단한다(서버가 작성자를 찾고, 목록에는 익명 라벨만 남는다).
   const handleBlockAuthor = async () => {
     if (!d || (!d.author.id && !d.author.isAnonymous)) return;
     try {
@@ -141,10 +99,8 @@ export function PostDetailView({ postId, onBack, onEdit }: PostDetailViewProps) 
         await blockUser({ targetUserId: d.author.id });
         showBlockManageToast(`${d.author.name}님을 차단했습니다.`);
       }
-      // 상세·댓글·목록 모두 다시 받아 이 작성자의 콘텐츠가 톰스톤으로 바뀌도록 한다.
       await Promise.all([fetchPostDetail(postId), fetchComments(postId), fetchPosts()]);
     } catch (err) {
-      // 본인 콘텐츠/운영자 차단 등 서버 검증 메시지는 그대로 보여준다.
       toast.error(err instanceof Error && err.message ? err.message : "차단 처리에 실패했습니다.");
     }
   };
@@ -175,26 +131,22 @@ export function PostDetailView({ postId, onBack, onEdit }: PostDetailViewProps) 
 
   if (detailLoading) {
     return (
-      <div className="ct-page ct-detail">
-        <button className="ct-detail__back" onClick={onBack}>
-          <ArrowLeft /> 커뮤니티 목록
-        </button>
-        <p style={{ textAlign: "center", color: "var(--muted-foreground)", padding: "48px 0" }}>
-          불러오는 중...
-        </p>
+      <div className="cv-page">
+        <div className="dv-wrap">
+          <button className="dv-back" onClick={onBack}><ArrowLeft /> 커뮤니티로 돌아가기</button>
+          <p className="av-empty">불러오는 중...</p>
+        </div>
       </div>
     );
   }
 
   if (!d) {
     return (
-      <div className="ct-page ct-detail">
-        <button className="ct-detail__back" onClick={onBack}>
-          <ArrowLeft /> 커뮤니티 목록
-        </button>
-        <p style={{ textAlign: "center", color: "var(--muted-foreground)", padding: "48px 0" }}>
-          {error ?? "게시글을 불러올 수 없습니다."}
-        </p>
+      <div className="cv-page">
+        <div className="dv-wrap">
+          <button className="dv-back" onClick={onBack}><ArrowLeft /> 커뮤니티로 돌아가기</button>
+          <p className="av-empty">{error ?? "게시글을 불러올 수 없습니다."}</p>
+        </div>
       </div>
     );
   }
@@ -202,13 +154,11 @@ export function PostDetailView({ postId, onBack, onEdit }: PostDetailViewProps) 
   // 차단한 작성자의 글 — 톰스톤만 렌더하고 "한 번 보기" 없이 유지한다(조용한 차단).
   if (d.blocked) {
     return (
-      <div className="ct-page ct-detail">
-        <button className="ct-detail__back" onClick={onBack}>
-          <ArrowLeft /> 커뮤니티 목록
-        </button>
-        <p style={{ textAlign: "center", color: "var(--muted-foreground)", padding: "48px 0", fontStyle: "italic" }}>
-          차단한 사용자의 게시글입니다.
-        </p>
+      <div className="cv-page">
+        <div className="dv-wrap">
+          <button className="dv-back" onClick={onBack}><ArrowLeft /> 커뮤니티로 돌아가기</button>
+          <p className="av-empty" style={{ fontStyle: "italic" }}>차단한 사용자의 게시글입니다.</p>
+        </div>
       </div>
     );
   }
@@ -216,154 +166,158 @@ export function PostDetailView({ postId, onBack, onEdit }: PostDetailViewProps) 
   const iv = d.interviewReview;
   const isInterview = !!iv;
   const resultLabel = iv?.resultStatus ? RESULT_LABELS[iv.resultStatus] : d.result;
+  const resultColor = iv?.resultStatus === "PASSED" ? "var(--av-green)"
+    : iv?.resultStatus === "FAILED" ? "var(--av-red)"
+    : "var(--av-ink-3)";
+
+  const canNameLink = !d.author?.isAnonymous && !!d.author?.id;
+  const isOwner = !!user && user.id === d.author.id;
+  const isAdmin = !!user && (user.role === "ADMIN" || user.role === "SUPER_ADMIN");
+  // 익명 글도 노출: 게시글 id 로 차단(서버가 작성자를 알므로 동작, 익명성 유지)
+  const canBlock = d.author.isAnonymous || (!!d.author.id && (!user || user.id !== d.author.id));
+
+  const metaCells: { k: string; v: React.ReactNode }[] = [];
+  if (iv) {
+    if (iv.interviewType) metaCells.push({ k: "면접 유형", v: iv.interviewType });
+    if (iv.interviewDate) metaCells.push({ k: "면접일", v: <span className="num">{iv.interviewDate}</span> });
+    if (iv.difficulty) metaCells.push({ k: "체감 난이도", v: <DifficultyDots level={iv.difficulty} /> });
+  }
 
   return (
-    <div className="ct-page ct-detail">
-      {/* Back */}
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-        <button className="ct-detail__back" onClick={onBack}>
-          <ArrowLeft /> 커뮤니티 목록
-        </button>
-        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}>
-          {user && d && user.id === d.author.id && (
-            <>
-              <button className="av-btn" onClick={onEdit}>
-                <Pencil /> 수정
-              </button>
-              <button
-                className="av-btn"
-                style={{ color: "var(--av-red, #dc2626)" }}
-                onClick={() => setShowDeleteDialog(true)}
-              >
-                <Trash2 /> 삭제
-              </button>
-            </>
-          )}
-          {user && (user.role === "ADMIN" || user.role === "SUPER_ADMIN") && (
-            <>
-              <button className="av-btn" onClick={() => void adminSetStatus("HIDDEN")}>숨김</button>
-              <button className="av-btn" onClick={() => void adminSetStatus("PUBLISHED")}>복원</button>
-              <button className="av-btn" style={{ color: "var(--av-red, #dc2626)" }} onClick={() => void adminSetStatus("DELETED")}>운영 삭제</button>
-            </>
-          )}
-        </div>
-        {/* 작성자 메뉴 — 익명 글도 노출: 게시글 id 로 차단(서버가 작성자를 알므로 동작, 익명성 유지) */}
-        {d && (d.author.isAnonymous || (!!d.author.id && (!user || user.id !== d.author.id))) && (
-          <button
-            className="av-btn"
-            style={{ color: "var(--av-red, #dc2626)" }}
-            onClick={() => requireAuth(() => void handleBlockAuthor())}
-            title={
-              d.author.isAnonymous
-                ? "작성자가 누구인지는 표시되지 않습니다. 차단 사실은 상대에게 알려지지 않습니다."
-                : "차단 사실은 상대에게 알려지지 않습니다."
-            }
-          >
-            <UserX /> {d.author.isAnonymous ? "이 작성자 차단" : "이 사용자 차단"}
-          </button>
-        )}
-      </div>
+    <div className="cv-page">
+      <div className="dv-wrap" data-screen-label="커뮤니티 상세">
+        <button className="dv-back" onClick={onBack}><ArrowLeft /> 커뮤니티로 돌아가기</button>
 
-      {/* Head */}
-      <div className="ct-detail__head">
-        <div className="ct-detail__tags">
-          <CategoryBadge label={d.categoryLabel} />
-          {resultLabel && (
-            <span className="ct-badge ct-badge--success">{resultLabel}</span>
-          )}
-        </div>
-        <h1 className="ct-detail__title">{d.title}</h1>
-
-        <div className="ct-detail__byline">
-          <Avatar className="w-10 h-10">
-            {/* 익명/차단 톰스톤 글은 작성자 정보가 비어 있을 수 있다 */}
-            <AvatarFallback className="bg-muted text-sm">{(d.author?.name ?? "익")[0]}</AvatarFallback>
-          </Avatar>
-          <div className="ct-detail__who">
-            {/* 비익명 작성자 이름 클릭 → 프로필 활동 탭(공개범위·차단은 서버가 검사) */}
-            <div
-              className={`ct-detail__name ${!d.author?.isAnonymous && d.author?.id ? "ct-author-link" : ""}`}
-              onClick={() => {
-                if (!d.author?.isAnonymous && d.author?.id) {
-                  navigate(`/community/users/${d.author.id}/activity`);
-                }
-              }}
-              title={!d.author?.isAnonymous && d.author?.id ? "작성자의 활동 보기" : undefined}
-            >
-              {d.author?.name ?? "익명"}
-            </div>
-            <div className="ct-detail__sub">
-              <span><Clock />{relTime(d.createdAt)}</span>
-              <span><Eye />조회 {d.stats.viewCount.toLocaleString()}</span>
-            </div>
+        <header>
+          <div className="dv-eyebrow">
+            {d.categoryLabel}{d.isHot && <span className="hot">인기</span>}
           </div>
-        </div>
-      </div>
-
-      <hr style={{ border: "none", borderTop: "1px solid var(--border)", margin: "20px 0" }} />
-
-      {/* Interview meta card — 메타에 회사/직무가 없으면 게시글 필드로 폴백(부분 응답 크래시 방지) */}
-      {isInterview && iv && (
-        <div className="ct-imeta">
-          <div className="ct-imeta__top">
-            <Avatar className="w-10 h-10">
-              <AvatarFallback className="text-sm font-bold">{(iv.companyName ?? d.companyName ?? "-")[0]}</AvatarFallback>
+          <h1 className="dv-title">{d.title}</h1>
+          <div className="dv-byline">
+            <Avatar className="w-9 h-9 shrink-0">
+              <AvatarFallback className="bg-muted text-sm">{(d.author?.name ?? "익")[0]}</AvatarFallback>
             </Avatar>
-            <div>
-              <div className="ct-imeta__co">{iv.companyName ?? d.companyName ?? "-"}</div>
-              <div className="ct-imeta__pos">{iv.jobRole ?? d.jobRole ?? ""}</div>
+            <div className="dv-byline__who">
+              <div
+                className={"dv-byline__n" + (canNameLink ? " link" : "")}
+                onClick={() => { if (canNameLink) navigate(`/community/users/${d.author.id}/activity`); }}
+                title={canNameLink ? "작성자의 활동 보기" : undefined}
+              >
+                {d.author?.name ?? "익명"}
+              </div>
+              <div className="dv-byline__s num">
+                {relTime(d.createdAt)} · 조회 {d.stats.viewCount.toLocaleString()} · 추천 {(d.stats.recommendCount ?? 0).toLocaleString()}
+              </div>
+            </div>
+            <div className="dv-byline__r">
+              {/* 이 글 알림(watch) — 글 구독(새 댓글 알림) */}
+              <button
+                className={"av-btn" + (d.subscribed ? " av-btn--ink" : "")}
+                style={{ height: 30, width: 30, padding: 0, justifyContent: "center" }}
+                onClick={handleWatch}
+                disabled={subBusy}
+                aria-pressed={!!d.subscribed}
+                aria-label={d.subscribed ? "이 글 알림 켜짐" : "이 글 알림 받기"}
+                data-tip={d.subscribed ? "새 댓글 알림 받는 중" : "이 글의 새 댓글 알림 받기"}
+              >
+                {d.subscribed ? <BellRing /> : <Bell />}
+              </button>
+              {/* 2차 액션 통합 메뉴 — 공유·신고·수정/삭제·운영·차단 */}
+              <RxMenu
+                align="right"
+                width={260}
+                label="게시글 메뉴"
+                triggerClassName="av-btn"
+                triggerStyle={{ height: 30, width: 30, padding: 0, justifyContent: "center" }}
+                triggerContent={<Ellipsis />}
+              >
+                {(close) => (
+                  <>
+                    <RxMenuItem icon={<Link2 />} label="공유" desc="링크 복사 또는 공유하기" onClick={() => { close(); void handleShare(); }} />
+                    {!isOwner && (
+                      <RxMenuItem icon={<Flag />} label="신고" desc="커뮤니티 가이드라인 위반을 알려요" onClick={() => { close(); requireAuth(() => setShowReport(true)); }} />
+                    )}
+                    {isOwner && (
+                      <>
+                        <RxMenuItem icon={<Pencil />} label="수정" onClick={() => { close(); onEdit?.(); }} />
+                        <RxMenuItem icon={<Trash2 />} label="삭제" danger onClick={() => { close(); setShowDeleteDialog(true); }} />
+                      </>
+                    )}
+                    {isAdmin && (
+                      <>
+                        <RxMenuItem icon={<EyeOff />} label="숨김 처리" desc="운영자 조치 — 목록에서 숨겨요" onClick={() => { close(); void adminSetStatus("HIDDEN"); }} />
+                        <RxMenuItem icon={<RotateCcw />} label="복원" onClick={() => { close(); void adminSetStatus("PUBLISHED"); }} />
+                        <RxMenuItem icon={<Trash2 />} label="운영 삭제" danger onClick={() => { close(); void adminSetStatus("DELETED"); }} />
+                      </>
+                    )}
+                    {canBlock && (
+                      <RxMenuItem
+                        icon={<UserX />}
+                        label={d.author.isAnonymous ? "이 작성자 차단" : "이 사용자 차단"}
+                        danger
+                        desc="이 작성자의 글·댓글을 숨겨요 — 상대에게 알리지 않아요"
+                        onClick={() => { close(); requireAuth(() => void handleBlockAuthor()); }}
+                      />
+                    )}
+                  </>
+                )}
+              </RxMenu>
             </div>
           </div>
-          <div className="ct-imeta__grid">
-            {[
-              { icon: Users, label: "면접 유형", value: iv.interviewType },
-              { icon: Calendar, label: "면접일", value: iv.interviewDate },
-              { icon: Gauge, label: "체감 난이도", value: null, stars: iv.difficulty },
-            ].map((cell, idx) => (
-              <div key={idx} className="ct-imeta__cell">
-                <div className="ct-imeta__k">
-                  <cell.icon />{cell.label}
-                </div>
-                <div className="ct-imeta__v">
-                  {cell.stars ? <DifficultyStars level={cell.stars} /> : cell.value ?? "-"}
-                </div>
+        </header>
+
+        {/* 면접 메타 스트립 — 메타에 회사/직무가 없으면 게시글 필드로 폴백 */}
+        {isInterview && iv && (
+          <section className="av-panel dv-meta" aria-label="면접 정보">
+            <div className="dv-meta__co">
+              <span className="dv-meta__logo">{(iv.companyName ?? d.companyName ?? "-")[0]}</span>
+              <div style={{ minWidth: 0 }}>
+                <div className="dv-meta__name">{iv.companyName ?? d.companyName ?? "-"}</div>
+                {(iv.jobRole ?? d.jobRole) && <div className="dv-meta__pos">{iv.jobRole ?? d.jobRole}</div>}
               </div>
-            ))}
+              {resultLabel && (
+                <span className="dv-meta__result" style={{ fontSize: 12, fontWeight: 700, color: resultColor }}>{resultLabel}</span>
+              )}
+            </div>
+            {metaCells.length > 0 && (
+              <div className="dv-meta__grid">
+                {metaCells.map((cell) => (
+                  <div className="dv-meta__cell" key={cell.k}>
+                    <div className="dv-meta__k">{cell.k}</div>
+                    <div className="dv-meta__v">{cell.v}</div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </section>
+        )}
+
+        {/* 본문 — 마크다운 렌더 없이 평문(줄바꿈 보존) */}
+        <article className="dv-prose" style={{ whiteSpace: "pre-wrap" }}>{d.content}</article>
+
+        {/* 태그 */}
+        {d.tags?.length > 0 && (
+          <div className="dv-tags">
+            {d.tags.map((tag) => <span key={tag} className="dv-tag">#{tag}</span>)}
           </div>
-        </div>
-      )}
+        )}
 
-      {/* Tags */}
-      {d.tags?.length > 0 && (
-        <div className="ct-detail__taglist">
-          {d.tags.map((tag) => (
-            <span key={tag} className="ct-detail__tag">{tag}</span>
-          ))}
-        </div>
-      )}
+        {/* AI 추천 태그 (자동 적용 안 된 경우) */}
+        {aiTags && !aiTags.applied && aiTags.tags.length > 0 && (
+          <>
+            <div className="dv-aihint"><Sparkles /> AI 추천 태그</div>
+            <div className="dv-tags">
+              {aiTags.tags.map((tag) => <span key={tag} className="dv-tag dv-tag--ai">#{tag}</span>)}
+            </div>
+          </>
+        )}
 
-      {/* Body */}
-      <div className="ct-prose">{renderMarkdown(d.content)}</div>
+        {/* 반응 바 */}
+        <ReactionButtons post={d} />
 
-      {/* AI 추천 태그 (자동 적용 안 된 경우) */}
-      {aiTags && !aiTags.applied && aiTags.tags.length > 0 && (
-        <div className="ct-ai-suggest">
-          <div className="ct-ai-suggest__h">
-            <Sparkles /> AI 추천 태그
-          </div>
-          <div className="ct-ai-suggest__tags">
-            {aiTags.tags.map((tag) => (
-              <span key={tag} className="ct-detail__tag ct-detail__tag--ai">{tag}</span>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* Action bar — 추천/비추천 · 좋아요/싫어요 · 즐겨찾기 · 스크랩 · 구독 + 익명 반응 옵션 */}
-      <ReactionButtons post={d} />
-
-      {/* Comments */}
-      <CommentSection postId={d.id} comments={comments} />
+        {/* 댓글 */}
+        <CommentSection postId={d.id} comments={comments} />
+      </div>
 
       {/* 로그인 유도 다이얼로그 (작성자 차단은 로그인 필요) */}
       {showLoginDialog && (
@@ -379,7 +333,17 @@ export function PostDetailView({ postId, onBack, onEdit }: PostDetailViewProps) 
         />
       )}
 
-      {/* Delete dialog */}
+      {/* 신고 다이얼로그 (상단 ⋯ 메뉴에서 진입) */}
+      {showReport && (
+        <ReportDialog
+          targetType="POST"
+          targetId={d.id}
+          target="게시글"
+          onClose={() => setShowReport(false)}
+        />
+      )}
+
+      {/* 삭제 확인 */}
       {showDeleteDialog && (
         <ConfirmDialog
           variant="danger"
