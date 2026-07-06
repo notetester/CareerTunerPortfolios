@@ -61,7 +61,8 @@ class ApplicationCaseAutoPipelineServiceTest {
                 bAnalysisGenerationService,
                 new com.careertuner.companyanalysis.service.BCompanyAnalysisCanonicalizer(objectMapper),
                 companyAnalysisService,
-                runtimeSettingServiceReturningFallback());
+                runtimeSettingServiceReturningFallback(),
+                mock(com.careertuner.reward.service.RewardService.class));
         String postingText = """
                 Acme is hiring a Backend Engineer.
                 Responsibilities: build Spring APIs, operate MySQL services, and improve Docker deployment.

@@ -81,6 +81,8 @@ public class ApplicationCaseAutoPipelineService {
     private final CompanyAnalysisService companyAnalysisService;
     /** 런타임 설정 오버라이드용(application-case.auto-pipeline.enabled). 미설정 시 @Value 기본값을 쓴다. */
     private final com.careertuner.runtimesetting.service.RuntimeSettingService runtimeSettingService;
+    /** 활동 리워드 적립(지원 건 분석 완료 시 APPLICATION_CASE_READY). 규칙 off 면 미적립. */
+    private final com.careertuner.reward.service.RewardService rewardService;
 
     @Value("${careertuner.application-case.auto-pipeline.enabled:true}")
     private boolean enabled = true;
@@ -125,6 +127,8 @@ public class ApplicationCaseAutoPipelineService {
             createInterviewPrep(applicationCase, jobAnalysis);
             if (statusStarted) {
                 applicationCaseMapper.markReadyAfterAnalysis(applicationCaseId, userId, previousStatus);
+                // 지원 건 분석 완료 리워드(규칙 on 일 때만). 예외를 흡수해 파이프라인 상태에 영향 없게 한다.
+                grantRewardSafely(userId, "APPLICATION_CASE_READY", "APPLICATION_CASE", applicationCaseId);
             }
         } catch (RuntimeException ex) {
             if (statusStarted) {
@@ -132,6 +136,15 @@ public class ApplicationCaseAutoPipelineService {
             }
             recordFailure(userId, applicationCaseId, FEATURE_PIPELINE, safeMessage(ex));
             log.warn("Self AI application-case pipeline failed. applicationCaseId={}", applicationCaseId, ex);
+        }
+    }
+
+    /** 리워드 적립은 본 파이프라인 실패로 이어지지 않도록 예외를 흡수한다. */
+    private void grantRewardSafely(Long userId, String eventCode, String refType, Long refId) {
+        try {
+            rewardService.grant(userId, eventCode, refType, refId);
+        } catch (RuntimeException e) {
+            log.warn("리워드 적립 실패 event={} userId={} : {}", eventCode, userId, e.getMessage());
         }
     }
 

@@ -26,6 +26,7 @@ import com.careertuner.common.config.CareerTunerProperties;
 import com.careertuner.common.exception.BusinessException;
 import com.careertuner.common.exception.ErrorCode;
 import com.careertuner.common.security.JwtTokenProvider;
+import com.careertuner.reward.service.RewardService;
 import com.careertuner.user.domain.User;
 import com.careertuner.user.mapper.UserMapper;
 
@@ -55,6 +56,17 @@ public class AuthServiceImpl implements AuthService {
      * 기본값은 기존 상수(5회/10분)와 동일 — 도입 시 동작 무변경.
      */
     private final com.careertuner.loginrisk.service.LoginRiskPolicyService loginRiskPolicyService;
+    /** 활동 리워드 적립(하루 첫 로그인 시 DAILY_LOGIN, 일일 캡 1회). 규칙 off 면 미적립. */
+    private final RewardService rewardService;
+
+    /** 리워드 적립은 로그인 처리 실패로 이어지지 않도록 예외를 흡수한다. */
+    private void grantDailyLoginRewardSafely(Long userId) {
+        try {
+            rewardService.grant(userId, "DAILY_LOGIN", "LOGIN", null);
+        } catch (RuntimeException e) {
+            log.warn("일일 로그인 리워드 적립 실패 userId={} : {}", userId, e.getMessage());
+        }
+    }
 
     @Override
     @Transactional
@@ -84,6 +96,7 @@ public class AuthServiceImpl implements AuthService {
         // 회원가입 직후 자동 로그인 정책이므로 로그인 성공과 동일하게 접속 정보를 남긴다.
         userMapper.touchLastLoginAndResetFailures(user.getId());
         recordLoginHistory(user.getId(), "LOGIN", "LOCAL", "EMAIL", email, true, null, context);
+        grantDailyLoginRewardSafely(user.getId());
         return issueTokens(user, context);
     }
 
@@ -128,6 +141,8 @@ public class AuthServiceImpl implements AuthService {
 
         userMapper.touchLastLoginAndResetFailures(user.getId());
         recordLoginHistory(user.getId(), "LOGIN", "LOCAL", "EMAIL", email, true, null, context);
+        // 하루 첫 로그인 리워드(일일 캡 1회, 규칙 on 일 때만). 실패해도 로그인은 정상 처리.
+        grantDailyLoginRewardSafely(user.getId());
         return issueTokens(user, context);
     }
 

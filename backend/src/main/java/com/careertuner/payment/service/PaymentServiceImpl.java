@@ -48,7 +48,19 @@ public class PaymentServiceImpl implements PaymentService {
     private final PaymentMapper paymentMapper;
     private final TossPaymentClient tossPaymentClient;
     private final TossPaymentProperties tossPaymentProperties;
+    /** 활동 리워드 적립(크레딧 구매 확정 시 CREDIT_PURCHASE 페이백). 규칙 off 면 미적립. */
+    private final com.careertuner.reward.service.RewardService rewardService;
     private final SecureRandom secureRandom = new SecureRandom();
+
+    /** 리워드 적립은 결제 확정 실패로 이어지지 않도록 예외를 흡수한다. */
+    private void grantRewardSafely(Long userId, String eventCode, String refType, Long refId) {
+        try {
+            rewardService.grant(userId, eventCode, refType, refId);
+        } catch (RuntimeException e) {
+            org.slf4j.LoggerFactory.getLogger(PaymentServiceImpl.class)
+                    .warn("리워드 적립 실패 event={} userId={} : {}", eventCode, userId, e.getMessage());
+        }
+    }
 
     @Override
     @Transactional
@@ -169,6 +181,8 @@ public class PaymentServiceImpl implements PaymentService {
                     payment.getUserId(),
                     payment.getProductCode(),
                     requireCreditAmount(payment));
+            // 크레딧 구매 페이백 리워드(규칙 on 일 때만). 실패해도 결제 확정은 유지.
+            grantRewardSafely(payment.getUserId(), "CREDIT_PURCHASE", "PAYMENT", payment.getId());
         }
 
         return confirmedResponse(payment, request.paymentKey(), balance);
