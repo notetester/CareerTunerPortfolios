@@ -327,7 +327,7 @@ export function RealtimeInterviewTab({ session }: { session: InterviewSession | 
     // 답변 "내용" 채점: 트랜스크립트를 질문별로 채점해 저장하고, 결과를 조회해 이 화면에 바로 표시한다.
     if (transcript.some((l) => l.role === "user")) {
       try {
-        const scored = await scoreVoiceTranscript(session.id, transcript);
+        const scored = await scoreVoiceTranscript(session.id, transcript, trial ? 1 : undefined);
         if (scored > 0) {
           const review = await getSessionReview(session.id);
           const answered = review.items.filter((it) => it.score != null && !!it.answerText?.trim());

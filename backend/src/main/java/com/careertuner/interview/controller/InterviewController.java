@@ -151,6 +151,7 @@ public class InterviewController {
     public ApiResponse<Integer> scoreVoiceTranscript(@AuthenticationPrincipal AuthUser authUser,
                                                      @PathVariable Long sessionId,
                                                      @Valid @RequestBody ScoreVoiceTranscriptRequest request) {
-        return ApiResponse.ok(interviewService.scoreVoiceTranscript(authUser.id(), sessionId, request.transcript()));
+        return ApiResponse.ok(interviewService.scoreVoiceTranscript(authUser.id(), sessionId,
+                request.transcript(), request.questionLimit()));
     }
 }
