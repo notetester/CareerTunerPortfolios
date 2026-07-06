@@ -62,7 +62,30 @@ export function waitIceGatheringComplete(pc: RTCPeerConnection, timeoutMs = 3000
   });
 }
 
-/** 1차 스코프: 공용 STUN만 사용(같은 와이파이 전제). TURN 은 2차에서 추가. */
-export const MIC_HANDOFF_ICE: RTCConfiguration = {
-  iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
-};
+/** 공용 STUN 폴백 (백엔드 ICE 조회 실패 시). */
+const STUN_FALLBACK: RTCIceServer[] = [{ urls: "stun:stun.l.google.com:19302" }];
+
+interface IceServerDto {
+  urls: string[];
+  username: string | null;
+  credential: string | null;
+}
+
+/**
+ * 백엔드에서 ICE 서버(STUN + 단기자격 TURN)를 받아온다.
+ * TURN 이 포함되면 P2P 실패 시 서버 릴레이로 붙어 다른 망(LTE 등)에서도 연결된다.
+ * 실패하면 STUN 만으로 폴백(같은 망에서는 여전히 동작).
+ */
+export async function fetchIceServers(): Promise<RTCIceServer[]> {
+  try {
+    const dto = await api<IceServerDto[]>("/interview/mic-handoff/ice");
+    const servers = dto.map((s) =>
+      s.username && s.credential
+        ? { urls: s.urls, username: s.username, credential: s.credential }
+        : { urls: s.urls },
+    );
+    return servers.length > 0 ? servers : STUN_FALLBACK;
+  } catch {
+    return STUN_FALLBACK;
+  }
+}

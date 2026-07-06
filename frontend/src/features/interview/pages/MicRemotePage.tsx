@@ -3,8 +3,8 @@ import { useSearchParams } from "react-router";
 import { Loader2, Mic, MicOff, PhoneOff, Smartphone } from "lucide-react";
 import { Button } from "@/app/components/ui/button";
 import {
-  MIC_HANDOFF_ICE,
   closeMicHandoff,
+  fetchIceServers,
   getMicHandoffState,
   postMicHandoffAnswer,
   waitIceGatheringComplete,
@@ -61,17 +61,20 @@ export function MicRemotePage() {
 
       // ② 마이크 획득 → answer 생성/게시.
       setPhase("connecting");
-      const mic = await navigator.mediaDevices.getUserMedia({
-        audio: { echoCancellation: true, noiseSuppression: true },
-      });
+      const [mic, iceServers] = await Promise.all([
+        navigator.mediaDevices.getUserMedia({
+          audio: { echoCancellation: true, noiseSuppression: true },
+        }),
+        fetchIceServers(),
+      ]);
       micRef.current = mic;
 
-      const pc = new RTCPeerConnection(MIC_HANDOFF_ICE);
+      const pc = new RTCPeerConnection({ iceServers });
       pcRef.current = pc;
       pc.onconnectionstatechange = () => {
         if (pc.connectionState === "connected") setPhase("connected");
         if (pc.connectionState === "failed") {
-          setError("P2P 연결에 실패했습니다. 데스크탑과 같은 와이파이인지 확인해 주세요.");
+          setError("연결에 실패했습니다. 네트워크 상태를 확인하고 다시 시도해 주세요.");
           setPhase("error");
         }
         if (pc.connectionState === "disconnected") setPhase("ended");
@@ -122,8 +125,8 @@ export function MicRemotePage() {
         </div>
         <h1 className="mt-3 text-lg font-black text-slate-900">폰 마이크로 연결</h1>
         <p className="mt-1 text-sm leading-6 text-slate-500">
-          데스크탑에서 진행 중인 음성 모의면접에 이 폰의 마이크를 연결합니다. 두 기기가 같은
-          와이파이에 있어야 해요.
+          데스크탑에서 진행 중인 음성 모의면접에 이 폰의 마이크를 연결합니다. 다른 네트워크(LTE 등)여도
+          연결됩니다.
         </p>
 
         {(phase === "idle" || phase === "error") && (
