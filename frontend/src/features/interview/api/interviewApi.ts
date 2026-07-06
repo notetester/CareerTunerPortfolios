@@ -173,10 +173,14 @@ export function getAgentSteps(sessionId: number): Promise<InterviewAgentStep[]> 
   return api<InterviewAgentStep[]>(`/interview/sessions/${sessionId}/agent-steps`, { method: "GET" });
 }
 
-/** 실시간 음성 면접관 세션 발급 (ephemeral key). 프런트는 이 키로 OpenAI Realtime 에 직접 WebRTC 연결. */
-export function createRealtimeSession(sessionId: number): Promise<RealtimeSession> {
+/**
+ * 실시간 음성 면접관 세션 발급 (ephemeral key). 프런트는 이 키로 OpenAI Realtime 에 직접 WebRTC 연결.
+ * questionLimit(1~6)을 주면 그 수만큼만 질문한다 — 체험판(시연)은 1.
+ */
+export function createRealtimeSession(sessionId: number, questionLimit?: number): Promise<RealtimeSession> {
   // 튜토리얼: 실제 WebRTC 연결이라 여기서 막지 않고 탭에서 더미 흐름 처리(단계 C).
-  return api<RealtimeSession>(`/interview/sessions/${sessionId}/realtime`, { method: "POST" });
+  const query = questionLimit ? `?questionLimit=${questionLimit}` : "";
+  return api<RealtimeSession>(`/interview/sessions/${sessionId}/realtime${query}`, { method: "POST" });
 }
 
 /** 세션 종료 → AI 종합 리포트 생성/조회. */

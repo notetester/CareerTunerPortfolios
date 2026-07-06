@@ -130,8 +130,9 @@ public class InterviewController {
 
     @PostMapping("/sessions/{sessionId}/realtime")
     public ApiResponse<RealtimeSessionResponse> createRealtimeSession(@AuthenticationPrincipal AuthUser authUser,
-                                                                      @PathVariable Long sessionId) {
-        return ApiResponse.ok(realtimeService.createSession(authUser.id(), sessionId));
+                                                                      @PathVariable Long sessionId,
+                                                                      @RequestParam(required = false) @Min(1) @Max(6) Integer questionLimit) {
+        return ApiResponse.ok(realtimeService.createSession(authUser.id(), sessionId, questionLimit));
     }
 
     @GetMapping("/sessions/{sessionId}/report")
