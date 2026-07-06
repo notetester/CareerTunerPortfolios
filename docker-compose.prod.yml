@@ -12,6 +12,11 @@ services:
     build: !reset null
     image: ghcr.io/notetester/careertuner-backend:latest
     pull_policy: always
+    # .env 전체를 컨테이너에 주입한다. base compose 의 environment: 목록에 없는 키
+    # (CORS/ANTHROPIC/HEYGEN/INTERVIEW_EVAL/AI_OLLAMA 등)도 이 지시로 함께 들어간다.
+    # (--env-file 은 compose 의 ${VAR} 치환용일 뿐 컨테이너 주입이 아니다.)
+    env_file:
+      - /home/careertuner/careertuner/.env
 
   job-posting-worker:
     build: !reset null
