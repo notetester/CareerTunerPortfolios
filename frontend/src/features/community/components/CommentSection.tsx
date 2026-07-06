@@ -57,12 +57,13 @@ export function CommentSection({ postId, comments }: CommentSectionProps) {
 
   return (
     <>
-      <div className="ct-comments">
-        <h3 className="ct-comments__h">
-          댓글 <b>{comments.filter((c) => !c.isDeleted).length}</b>
-        </h3>
+      <section aria-label="댓글">
+        <div className="dv-ch">
+          <h3>댓글</h3>
+          <span className="n num">{comments.filter((c) => !c.isDeleted).length}</span>
+        </div>
 
-        <div className="ct-clist">
+        <div>
           {roots.map((c) => (
             <CommentItem
               key={c.id}
@@ -75,7 +76,7 @@ export function CommentSection({ postId, comments }: CommentSectionProps) {
         </div>
 
         <CommentForm onSubmit={handleSubmit} />
-      </div>
+      </section>
 
       {showLoginDialog && (
         <ConfirmDialog

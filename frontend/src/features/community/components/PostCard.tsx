@@ -5,6 +5,7 @@ import { blockUser, blockUserByContent } from "@/features/privacy/api/privacyApi
 import { showBlockManageToast } from "@/features/privacy/components/blockToast";
 import { toast } from "@/features/notification/components/toast";
 import { useAuth } from "@/app/auth/AuthContext";
+import { ConfirmDialog } from "@/app/components/ui/confirm-dialog";
 import { useCommunityStore } from "../hooks/useCommunityStore";
 import { relTime } from "@/features/notification/types/notification";
 import type { CommunityPost } from "../types/community";
@@ -18,6 +19,8 @@ export function PostCard({ post, onClick }: PostCardProps) {
   const { user } = useAuth();
   const { fetchPosts } = useCommunityStore();
   const [revealed, setRevealed] = useState(false);
+  // 실수 클릭 방지 — 차단은 확인 다이얼로그를 거친다.
+  const [confirmBlock, setConfirmBlock] = useState(false);
   const isBlurred = !!post.blurred && !revealed;
 
   // 차단한 작성자의 글 — 톰스톤만 렌더하고 "한 번 보기" 없이 유지한다(조용한 차단, 클릭 진입 없음).
@@ -38,8 +41,9 @@ export function PostCard({ post, onClick }: PostCardProps) {
   const canBlockAuthor =
     !!user && (post.author.isAnonymous || (!!post.author.id && user.id !== post.author.id));
 
-  const handleBlockAuthor = async (event: React.MouseEvent) => {
-    event.stopPropagation(); // 카드 클릭(상세 진입)과 분리
+  // 확인 다이얼로그에서 "차단하기"를 눌렀을 때만 실제 차단을 실행한다.
+  const doBlock = async () => {
+    setConfirmBlock(false);
     try {
       if (post.author.isAnonymous || !post.author.id) {
         await blockUserByContent({ contentType: "POST", contentId: post.id });
@@ -92,19 +96,12 @@ export function PostCard({ post, onClick }: PostCardProps) {
             <div className="cv-post__x">{post.content}</div>
           </>
         )}
-        {post.tags?.length > 0 && (
-          <div className="cv-post__tags">
-            {post.tags.slice(0, 5).map((tag) => (
-              <span key={tag} className="cv-post__tag">#{tag}</span>
-            ))}
-          </div>
-        )}
         <div className="cv-post__meta num">
           {post.author.name} · {relTime(post.createdAt)} · 조회 {post.stats.viewCount.toLocaleString()}
           {canBlockAuthor && (
             <button
               type="button"
-              onClick={(event) => void handleBlockAuthor(event)}
+              onClick={(event) => { event.stopPropagation(); setConfirmBlock(true); }}
               title={
                 post.author.isAnonymous
                   ? "이 작성자 차단 — 작성자가 누구인지는 표시되지 않습니다."
@@ -132,6 +129,26 @@ export function PostCard({ post, onClick }: PostCardProps) {
         <span><MessageCircle />{post.stats.commentCount}</span>
         <span><Heart />{post.stats.likeCount}</span>
       </div>
+
+      {confirmBlock && (
+        // 다이얼로그 클릭이 카드(onClick=상세 진입)로 버블되지 않게 감싼다.
+        <div onClick={(e) => e.stopPropagation()}>
+          <ConfirmDialog
+            variant="warning"
+            icon={<UserX />}
+            title={post.author.isAnonymous ? "이 작성자를 차단할까요?" : `${post.author.name}님을 차단할까요?`}
+            description={
+              post.author.isAnonymous
+                ? "이 작성자의 글이 목록에서 숨겨집니다. 작성자가 누구인지는 표시되지 않으며, 차단 사실은 상대에게 알려지지 않아요. 차단 관리에서 언제든 해제할 수 있어요."
+                : "이 사용자의 글이 목록에서 숨겨집니다. 차단 사실은 상대에게 알려지지 않으며, 차단 관리에서 언제든 해제할 수 있어요."
+            }
+            confirmLabel="차단하기"
+            cancelLabel="취소"
+            onConfirm={() => void doBlock()}
+            onCancel={() => setConfirmBlock(false)}
+          />
+        </div>
+      )}
     </article>
   );
 }
