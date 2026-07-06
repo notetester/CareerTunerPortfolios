@@ -61,6 +61,9 @@ export interface CommunityPost {
   subscribed?: boolean;
   /** 서버가 뷰어 기준으로 차단 처리한 글 — 톰스톤("차단한 사용자의 게시글입니다")만 렌더한다(조용한 차단). */
   blocked?: boolean;
+  /** 신고 누적으로 가려진 글(비작성자에게 블러). 클릭 시 해제. */
+  blurred?: boolean;
+  reportCount?: number;
 }
 
 export interface InterviewReviewMetadata {

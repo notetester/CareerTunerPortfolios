@@ -60,6 +60,8 @@ public class ReportServiceImpl implements ReportService {
                 .detail(request.detail())
                 .status("PENDING")
                 .build());
+        // 누적 신고 수 +1 — 임계 이상이면 목록에서 비작성자에게 자동 블러된다.
+        reportMapper.incrementPostReportCount(request.targetId());
         eventPublisher.publishEvent(new ReportClassifyRequiredEvent(request.targetId()));
         // 관리자 알림(NEW_REPORT) — 커밋 후 AFTER_COMMIT 리스너에서 팬아웃(트랜잭션 분리)
         eventPublisher.publishEvent(new NewReportEvent(request.targetId()));

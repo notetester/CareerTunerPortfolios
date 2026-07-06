@@ -31,6 +31,7 @@ public class CommunityPost {
     private int commentCount;
     private int likeCount;
     private int dislikeCount;
+    private Integer reportCount;
     private int recommendCount;
     private int disrecommendCount;
     private int bookmarkCount;
