@@ -502,13 +502,25 @@ export function ApplicationDetailPage() {
                         <div className="font-semibold text-slate-900">예상 질문 / 모의 면접</div>
                         <div className="mt-1 text-xs text-slate-500">면접 화면에서 이 지원 건을 선택해 시작</div>
                       </button>
-                      <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
-                        <PenLine className="mb-2 size-4" />
-                        <div className="font-semibold">첨삭</div>
-                        <div className="mt-1 text-xs">
-                          첨삭 API 준비 중. 구현 전까지 실행 기능은 비활성화됩니다.
+                      {applicationCase.archived ? (
+                        <div
+                          className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900 opacity-60"
+                          aria-disabled="true"
+                        >
+                          <PenLine className="mb-2 size-4" />
+                          <div className="font-semibold">자기소개서 첨삭</div>
+                          <div className="mt-1 text-xs">보관된 지원 건은 복원한 뒤 첨삭할 수 있습니다.</div>
                         </div>
-                      </div>
+                      ) : (
+                        <Link
+                          to={`/correction?tab=cover&caseId=${id}`}
+                          className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900 transition-colors hover:border-amber-300 hover:bg-amber-100"
+                        >
+                          <PenLine className="mb-2 size-4" />
+                          <div className="font-semibold">자기소개서 첨삭</div>
+                          <div className="mt-1 text-xs">이 지원 건의 공고와 직무 맥락을 반영해 첨삭합니다.</div>
+                        </Link>
+                      )}
                     </CardContent>
                   </Card>
                 </div>

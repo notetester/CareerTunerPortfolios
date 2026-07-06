@@ -138,8 +138,23 @@ public class SelfCorrectionOutputParser {
     }
 
     static class InvalidOutputException extends RuntimeException {
+        private final String previousOutput;
+
         InvalidOutputException(String message) {
+            this(message, "");
+        }
+
+        InvalidOutputException(String message, String previousOutput) {
             super(message);
+            this.previousOutput = previousOutput == null ? "" : previousOutput;
+        }
+
+        InvalidOutputException withPreviousOutput(String output) {
+            return new InvalidOutputException(getMessage(), output);
+        }
+
+        String previousOutput() {
+            return previousOutput;
         }
     }
 }
