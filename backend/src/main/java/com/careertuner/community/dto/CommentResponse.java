@@ -22,5 +22,7 @@ public record CommentResponse(
         boolean disrecommended,
         boolean subscribed, // 뷰어의 이 댓글 구독 여부(새 답글 알림)
         boolean isDeleted,  // 삭제/숨김 tombstone 여부. true면 본문·작성자·멘션은 비식별 처리되어 내려간다.
-        boolean blocked     // 뷰어가 차단한 작성자의 댓글(content.comment/reply) tombstone 여부. 기본 false.
+        boolean blocked,    // 뷰어가 차단한 작성자의 댓글(content.comment/reply) tombstone 여부. 기본 false.
+        boolean blurred,    // 신고 누적 임계 이상 → 비작성자에게 블러(프론트 클릭 시 해제). 게시글 blur 와 동형.
+        int reportCount     // 누적 신고 수(블러 판정 근거)
 ) {}

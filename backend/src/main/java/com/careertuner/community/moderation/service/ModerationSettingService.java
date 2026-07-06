@@ -39,7 +39,7 @@ public class ModerationSettingService {
     private volatile int commentRateWindowSeconds = 60;
     private volatile int commentRateMax = 20;
     private volatile int inquiryRateWindowSeconds = 600;
-    private volatile int inquiryRateMax = 5;
+    private volatile int inquiryRateMax = 0; // 0 = 무제약(문의는 도입 전 무제한이 기본 동작)
 
     public ModerationSettingService(ModerationSettingMapper settingMapper) {
         this.settingMapper = settingMapper;

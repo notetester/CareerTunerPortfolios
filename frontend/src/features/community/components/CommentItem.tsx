@@ -47,6 +47,9 @@ export function CommentItem({ comment: c, childrenMap, depth, onReply }: Comment
   const isDeleted = deleted || !!c.isDeleted;
   // 뷰어가 차단한 작성자의 댓글 — 톰스톤만 렌더하고 답글 트리는 유지(조용한 차단, "한 번 보기" 없음).
   const isBlocked = !!c.blocked;
+  // 신고 누적 자동 블러 — 비작성자에게 가리되 클릭하면 해제(게시글 blur 와 동형).
+  const [revealed, setRevealed] = useState(false);
+  const isBlurred = !!c.blurred && !revealed;
 
   const handleDeleteComment = async () => {
     try {
@@ -176,6 +179,21 @@ export function CommentItem({ comment: c, childrenMap, depth, onReply }: Comment
                     <button className="ct-cmt__act" onClick={() => { setEditing(false); setEditText(contentOverride ?? c.content); }}>취소</button>
                     <button className="ct-cmt__act" disabled={saving || !editText.trim()} onClick={handleEditSave}>저장</button>
                   </div>
+                </div>
+              ) : isBlurred ? (
+                <div
+                  className="ct-cmt__text"
+                  style={{ position: "relative", cursor: "pointer" }}
+                  onClick={() => setRevealed(true)}
+                  title="클릭하면 내용을 봅니다"
+                >
+                  <div style={{ filter: "blur(5px)", pointerEvents: "none", userSelect: "none" }}>
+                    {c.mentionLabel && <span className="ct-cmt__mention">@{c.mentionLabel}</span>}
+                    {c.mentionLabel ? " " : ""}{contentOverride ?? c.content}
+                  </div>
+                  <span style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12, color: "var(--muted-foreground)" }}>
+                    신고 누적으로 가려진 댓글{c.reportCount ? ` (신고 ${c.reportCount}회)` : ""} · 클릭하여 보기
+                  </span>
                 </div>
               ) : (
                 <div className="ct-cmt__text">
