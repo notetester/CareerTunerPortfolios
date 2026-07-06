@@ -62,7 +62,11 @@ public class InterviewRealtimeService {
                 .build();
     }
 
-    public RealtimeSessionResponse createSession(Long userId, Long sessionId) {
+    /**
+     * @param questionLimit 진행할 본질문 수 제한 (1~6, null=기본 6).
+     *                      체험판/시연은 1로 내려 짧게 진행한다.
+     */
+    public RealtimeSessionResponse createSession(Long userId, Long sessionId, Integer questionLimit) {
         if (!openAiProperties.configured()) {
             throw new BusinessException(ErrorCode.INTERNAL_ERROR, "OpenAI API 키가 설정되어 있지 않습니다.");
         }
@@ -73,7 +77,8 @@ public class InterviewRealtimeService {
         ApplicationCase applicationCase = accessService.requireOwned(userId, session.getApplicationCaseId());
         List<InterviewQuestion> questions = interviewMapper.findQuestionsBySessionId(sessionId);
 
-        String instructions = buildInstructions(applicationCase, session.getMode(), questions);
+        int limit = questionLimit == null ? 6 : questionLimit;
+        String instructions = buildInstructions(applicationCase, session.getMode(), questions, limit);
         JsonNode root = requestEphemeralSession(instructions);
 
         String value = root.path("value").asText("");
@@ -85,7 +90,9 @@ public class InterviewRealtimeService {
                 realtimeProperties.getVoice(), realtimeUrl());
     }
 
-    private String buildInstructions(ApplicationCase applicationCase, String mode, List<InterviewQuestion> questions) {
+    private String buildInstructions(ApplicationCase applicationCase, String mode, List<InterviewQuestion> questions,
+                                     int limit) {
+        boolean trial = limit == 1;
         String modeLabel = MODE_LABELS.getOrDefault(mode, mode);
         StringBuilder sb = new StringBuilder();
         sb.append("너는 한국어로 진행하는 전문 면접관이다.\n");
@@ -94,13 +101,19 @@ public class InterviewRealtimeService {
         sb.append("면접 유형: ").append(modeLabel).append("\n\n");
         sb.append("진행 규칙:\n");
         sb.append("- 한 번에 질문 하나만 한다. 지원자가 답하면 짧게 반응하고 다음 질문으로 넘어간다.\n");
-        sb.append("- 답변이 부실하면 한 번 정도 꼬리 질문으로 파고든다.\n");
         sb.append("- 면접관답게 간결하고 또박또박 말한다. 정답을 대신 말해주지 않는다.\n");
-        sb.append("- 인사 → 자기소개 요청 → 아래 질문들 → 마무리 순으로 자연스럽게 진행한다.\n");
-        // 준비된 본 질문(꼬리 질문 제외) 최대 6개로 진행한다 (ADR-002).
+        if (trial) {
+            // 체험판(시연): 자기소개 생략, 준비 질문 1개만 하고 바로 마무리해 총 시간을 짧게 유지한다.
+            sb.append("- 이번 면접은 짧은 체험판이다. 인사 후 자기소개 요청 없이 바로 아래 질문을 하나만 하고, ")
+                    .append("답변을 받으면 꼬리 질문 없이 정중히 마무리한다.\n");
+        } else {
+            sb.append("- 답변이 부실하면 한 번 정도 꼬리 질문으로 파고든다.\n");
+            sb.append("- 인사 → 자기소개 요청 → 아래 질문들 → 마무리 순으로 자연스럽게 진행한다.\n");
+        }
+        // 준비된 본 질문(꼬리 질문 제외) 최대 6개로 진행한다 (ADR-002). 체험판은 1개.
         List<InterviewQuestion> mainQuestions = questions.stream()
                 .filter(q -> q.getParentQuestionId() == null)
-                .limit(6)
+                .limit(limit)
                 .toList();
         if (!mainQuestions.isEmpty()) {
             sb.append("\n준비된 질문 목록(이 순서대로 모두 질문하고, 표현은 자연스럽게 변형 가능):\n");

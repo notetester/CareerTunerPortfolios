@@ -61,6 +61,8 @@ export function RealtimeInterviewTab({ session }: { session: InterviewSession | 
   const [contentScore, setContentScore] = useState<number | null>(null);
   // 원본 음성을 자체 추론 서버로 보내 정밀 분석할지 동의 (ADR-006). 해제 시 브라우저 지표만 사용.
   const [consent, setConsent] = useState(true);
+  // 체험판: 준비 질문 1개만 짧게 진행 (시연·맛보기용). 채점·저장 흐름은 풀버전과 동일.
+  const [trial, setTrial] = useState(false);
   // 폰 마이크 핸드오프(WebRTC) — 마이크 없는 기기에서 폰의 마이크를 원격 입력으로 쓴다.
   const [remoteMic, setRemoteMic] = useState<MediaStream | null>(null);
   // 면접 중 마이크 레벨 시각화용 — micRef 와 같은 스트림 (ref 는 리렌더를 못 일으켜 state 로 별도 보관)
@@ -161,7 +163,7 @@ export function RealtimeInterviewTab({ session }: { session: InterviewSession | 
     linesRef.current = [];
     setLines([]);
     try {
-      const rt = await createRealtimeSession(session.id);
+      const rt = await createRealtimeSession(session.id, trial ? 1 : undefined);
 
       const pc = new RTCPeerConnection();
       pcRef.current = pc;
@@ -209,11 +211,15 @@ export function RealtimeInterviewTab({ session }: { session: InterviewSession | 
             },
           }),
         );
-        // 면접관이 먼저 인사하며 면접을 시작하도록 유도.
+        // 면접관이 먼저 인사하며 면접을 시작하도록 유도. 체험판은 자기소개 없이 바로 질문 1개로.
         dc.send(
           JSON.stringify({
             type: "response.create",
-            response: { instructions: "지원자에게 한국어로 짧게 인사하고 자기소개를 요청하며 면접을 시작하라." },
+            response: {
+              instructions: trial
+                ? "지원자에게 한국어로 짧게 인사하고, 자기소개 요청 없이 준비된 질문을 바로 시작하라."
+                : "지원자에게 한국어로 짧게 인사하고 자기소개를 요청하며 면접을 시작하라.",
+            },
           }),
         );
       };
@@ -387,9 +393,25 @@ export function RealtimeInterviewTab({ session }: { session: InterviewSession | 
         </CardHeader>
         <CardContent className="space-y-4">
           <p className="text-sm text-slate-500">
-            AI 면접관이 준비된 질문{questions ? ` ${Math.min(questions.length, 6)}개` : ""}로 음성 면접을
+            AI 면접관이 준비된 질문
+            {questions ? ` ${trial ? 1 : Math.min(questions.length, 6)}개` : ""}로 음성 면접을
             진행합니다. 종료하면 답변 트랜스크립트와 음성 분석 점수(말 속도·군말·톤·자신감)가 저장됩니다.
           </p>
+
+          {(status === "idle" || status === "scored" || status === "error") && (
+            <label className="flex items-start gap-2 rounded-lg border border-slate-200 bg-slate-50 p-3 text-xs text-slate-600">
+              <input
+                type="checkbox"
+                checked={trial}
+                onChange={(e) => setTrial(e.target.checked)}
+                className="mt-0.5"
+              />
+              <span>
+                <b className="text-slate-700">체험판(1문제만)</b> — 자기소개 없이 준비된 첫 질문 하나만
+                짧게 진행합니다. 채점·저장은 동일하게 동작합니다.
+              </span>
+            </label>
+          )}
 
           {capabilities?.nonverbal ? (
             <label className="flex items-start gap-2 rounded-lg bg-slate-50 p-3 text-xs text-slate-600">
