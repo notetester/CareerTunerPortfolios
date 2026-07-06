@@ -287,13 +287,17 @@ export function useChatbot() {
   const close = useCallback(() => { setIsOpen(false); setSurface("corner"); }, []);
   const minimize = useCallback(() => { setIsOpen(false); setSurface("corner"); }, []);
 
-  const sendMessage = useCallback((text: string, opts?: { selectedCaseId?: number; selectedModeCode?: string }) => {
-    const userMsg: ChatMessage = {
-      id: nextId(), role: "user", text,
-      evidence: [], links: [], quickReplies: [], ttsState: "idle", ttsProgress: 0,
-      timestamp: Date.now(),
-    };
-    setMessages((prev) => [...prev, userMsg]);
+  const sendMessage = useCallback((text: string, opts?: { selectedCaseId?: number; selectedModeCode?: string; silent?: boolean }) => {
+    // silent: 유저 말풍선을 남기지 않는다(가이드 X/여기서-물어보기의 서버 이탈 — UI 제스처지 사용자 발화가 아님).
+    //   응답 처리(봇 말풍선·orchestrator·onbPhase 파생)는 그대로 재사용한다.
+    if (!opts?.silent) {
+      const userMsg: ChatMessage = {
+        id: nextId(), role: "user", text,
+        evidence: [], links: [], quickReplies: [], ttsState: "idle", ttsProgress: 0,
+        timestamp: Date.now(),
+      };
+      setMessages((prev) => [...prev, userMsg]);
+    }
     setBotStatus("thinking");
 
     abortRef.current?.abort();
@@ -392,6 +396,13 @@ export function useChatbot() {
         setBotStatus("disconnected");
       });
   }, [run]);
+
+  /* ── ④ 온보딩 완전 이탈(버그2): "그만"(silent)을 서버로 보내 markOnboardingDeclined+clearOnboarding 을 태운다.
+     응답 route="온보딩이탈"→onbPhase=null 로 가이드가 닫힌다(서버-먼저·UI-나중 — 낙관적 close 없음이라
+     서버 실패 시 가이드 유지 = 상태 불일치 차단). 유저 말풍선은 남기지 않고 봇 안내만 남긴다. ── */
+  const leaveOnboarding = useCallback(() => {
+    sendMessage("그만", { silent: true });
+  }, [sendMessage]);
 
   /* ── 추천 후기 압축 요약 칩 → 묶음 요약 요청(POST /chatbot/summarize-posts). ── */
   const summarizePosts = useCallback((postIds: number[]) => {
@@ -525,7 +536,7 @@ export function useChatbot() {
 
   return {
     isOpen, open, close, minimize, restoreRecent,
-    messages, sendMessage,
+    messages, sendMessage, leaveOnboarding,
     botStatus, setBotStatus,
     voiceState, startVoice, cancelVoice, confirmVoice, setVoiceState,
     interimTranscript,
