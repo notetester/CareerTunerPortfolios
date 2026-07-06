@@ -435,7 +435,11 @@ public class ChatbotController {
             return withResumeHint(faqPath(conversationId, deferred, userId, "④우회①"));
         }
         if (deferred != null && isSideQuestionNo(question)) {
-            question = deferred; // 사용자가 "계속"을 골랐다 — 원 발화를 답변으로 저장하고 진행.
+            // (버그3) "아니요, 계속할게요" = 방금 발화는 답이 아니라는 뜻 → stash 발화를 폐기하고 현재 단계를
+            //   재질문한다(재시작-아니오와 동일 의미론). deferred 는 위 consume 으로 이미 정리됨. 전엔
+            //   question=deferred 로 재주입해 오프토픽이 필드값(직무/기술)으로 박히던 결함을 제거한다.
+            return toOnboardingResponse(conversationId, userId, question,
+                    redisplayCurrentStep(conversationId, authUser, step));
         }
         // step==null(진입 턴)은 수집 단계가 아님 + Set.of 는 contains(null) 에 NPE — null 가드 선행.
         // 칩/버튼 선택(selectedCaseId·selectedModeCode)은 질문일 수 없어 가드 제외 — AWAIT_MODE 가드 추가(F-15)로
@@ -1114,7 +1118,9 @@ public class ChatbotController {
                 return ApiResponse.ok(withResumeHint(faqPath(conversationId, deferred, userId, "③우회①")));
             }
             if (deferred != null && isSideQuestionNo(question)) {
-                effectiveQuestion = deferred; // 원 발화를 인테이크 답변으로 이어서 처리
+                // (버그3 대칭) "아니요, 계속할게요" — 오프토픽 발화를 슬롯에 넣지 않고 현재 인테이크 단계를
+                //   재질문한다(④ redisplayCurrentStep 와 동일 의미론). deferred 는 위 consume 으로 이미 정리됨.
+                return ApiResponse.ok(reaskIntakeStep(conversationId, userId, question, "③(재질문)"));
             } else if (deferred == null
                     && req.selectedCaseId() == null && req.selectedModeCode() == null
                     && looksLikeSideQuestion(question)) {
@@ -1315,6 +1321,22 @@ public class ChatbotController {
                         toCandidates(r.candidates()), toModes(r.modes())),
                 true,
                 null);
+    }
+
+    /**
+     * (버그3 대칭) ③ 인터럽트 게이트 "아니요, 계속할게요" — 오프토픽 발화를 폐기하고 현재 인테이크 단계를
+     * 재질문한다. reaskCurrentStep 는 qwen3 없이 결정적으로 현재 nextAsk+칩을 재산출한다. sticky 유지.
+     */
+    private ChatAskResponse reaskIntakeStep(Long conversationId, Long userId, String question, String route) {
+        IntakeAskResponse r = intakeAskService.reaskCurrentStep(userId, conversationId);
+        intakeModeStore.enter(conversationId); // 재질문이라 sticky 유지(이미 active — 방어적 재확정).
+        responseLogService.record(conversationId, userId, question, "INTAKE", false, null, null, false);
+        return new ChatAskResponse(
+                conversationId, r.message(), List.of(), List.of(), route,
+                new ChatAskResponse.IntakeStep(
+                        r.ready(), r.nextAsk(), r.autoPrepRequest(),
+                        toCandidates(r.candidates()), toModes(r.modes())),
+                true, null);
     }
 
     /** 지원 건 후보 → 칩 렌더용 최소 필드로 축약. */
