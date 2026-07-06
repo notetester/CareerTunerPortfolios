@@ -36,6 +36,9 @@ class AiChargePreviewServiceTest {
 
         assertThat(result.chargeType()).isEqualTo("TICKET");
         assertThat(result.chargeAmount()).isEqualTo(1);
+        assertThat(result.minimumCreditCost()).isEqualTo(2);
+        assertThat(result.maximumCreditCost()).isEqualTo(2);
+        assertThat(result.creditUnitTokens()).isEqualTo(1_000);
         assertThat(result.triggerType()).isEqualTo("BENEFIT_USE");
         assertThat(result.remainingTicket()).isEqualTo(3);
     }
