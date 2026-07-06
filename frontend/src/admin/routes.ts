@@ -50,6 +50,8 @@ import { AdminActivityLogsPage } from "./features/activity-logs/pages/AdminActiv
 import { AdminRuntimeSettingsPage } from "./features/runtime-settings/pages/AdminRuntimeSettingsPage";
 // 이메일 발급 전역 감사(트립투게더 이식): 전체 계정 인증/재설정 토큰 발급 이력 검색
 import { AdminEmailAuditLogPage } from "./features/email-audit/pages/AdminEmailAuditLogPage";
+// 로그인 위험도 잠금 정책(트립투게더 이식): 브루트포스 자동 잠금 토글 + 임계 편집
+import { AdminLoginRiskPolicyPage } from "./features/login-risk/pages/AdminLoginRiskPolicyPage";
 
 export const adminRoutes = [
   { path: "admin", Component: AdminDashboardPage },
@@ -70,6 +72,7 @@ export const adminRoutes = [
   { path: "admin/users", Component: AdminUsersPage },
   { path: "admin/users/blocked", Component: AdminBlockedUsersPage },
   { path: "admin/security", Component: AdminSecurityOpsPage },
+  { path: "admin/security/login-risk", Component: AdminLoginRiskPolicyPage },
   { path: "admin/audit/security", Component: AdminSecurityAuditPage },
   { path: "admin/audit/email", Component: AdminEmailAuditPage },
   { path: "admin/audit/activity", Component: AdminActivityLogsPage },

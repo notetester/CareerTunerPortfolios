@@ -41,8 +41,6 @@ public class AuthServiceImpl implements AuthService {
     private static final String STATUS_DORMANT = "DORMANT";
     private static final String STATUS_BLOCKED = "BLOCKED";
     private static final String STATUS_DELETED = "DELETED";
-    private static final int MAX_FAILED_LOGIN_COUNT = 5;
-    private static final int FAILED_LOGIN_LOCK_MINUTES = 10;
 
     private final UserMapper userMapper;
     private final AuthMapper authMapper;
@@ -52,6 +50,11 @@ public class AuthServiceImpl implements AuthService {
     private final SocialOAuthService socialOAuthService;
     private final CareerTunerProperties props;
     private final com.careertuner.activitylog.service.SecurityHistoryService securityHistoryService;
+    /**
+     * 로그인 실패 자동 잠금 정책(관리자 편집). OFF 면 무제약, ON 이면 정책값으로 잠근다.
+     * 기본값은 기존 상수(5회/10분)와 동일 — 도입 시 동작 무변경.
+     */
+    private final com.careertuner.loginrisk.service.LoginRiskPolicyService loginRiskPolicyService;
 
     @Override
     @Transactional
@@ -107,13 +110,18 @@ public class AuthServiceImpl implements AuthService {
         if (!passwordEncoder.matches(request.password(), user.getPassword())) {
             userMapper.increaseFailedLogin(user.getId());
             recordLoginHistory(user.getId(), "LOGIN", "LOCAL", "EMAIL", email, false, "WRONG_PASSWORD", context);
-            if (user.getFailedLoginCount() + 1 >= MAX_FAILED_LOGIN_COUNT) {
-                LocalDateTime blockedUntil = LocalDateTime.now().plusMinutes(FAILED_LOGIN_LOCK_MINUTES);
-                String reason = "로그인 실패 " + MAX_FAILED_LOGIN_COUNT + "회 초과";
-                userMapper.lockForFailedLogin(user.getId(), blockedUntil, reason);
-                authMapper.revokeAllForUser(user.getId());
-                authMapper.insertUserStatusHistory(user.getId(), null, user.getStatus(), STATUS_BLOCKED,
-                        reason, "자동 계정 잠금", blockedUntil);
+            // 자동 잠금 정책 — OFF 면 무제약(집계만), ON 이면 임계 초과 시 잠금.
+            if (loginRiskPolicyService.isLockoutEnabled()) {
+                int maxCount = loginRiskPolicyService.getMaxFailedCount();
+                if (user.getFailedLoginCount() + 1 >= maxCount) {
+                    LocalDateTime blockedUntil = LocalDateTime.now()
+                            .plusMinutes(loginRiskPolicyService.getLockMinutes());
+                    String reason = "로그인 실패 " + maxCount + "회 초과";
+                    userMapper.lockForFailedLogin(user.getId(), blockedUntil, reason);
+                    authMapper.revokeAllForUser(user.getId());
+                    authMapper.insertUserStatusHistory(user.getId(), null, user.getStatus(), STATUS_BLOCKED,
+                            reason, "자동 계정 잠금", blockedUntil);
+                }
             }
             throw invalidLogin();
         }
