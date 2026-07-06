@@ -179,6 +179,7 @@ const NAV_GROUPS: NavGroup[] = [
     items: [
       { key: "super-admin", label: "권한 관리", icon: ShieldCheck, href: "/admin/super", permissionGroups: ["POLICY_ADMIN"], superOnly: true },
       { key: "policies", label: "운영 정책 관리", icon: SlidersHorizontal, href: "/admin/policies", permissionGroups: ["POLICY_ADMIN"], superOnly: true },
+      { key: "runtime-settings", label: "런타임 설정", icon: SlidersHorizontal, href: "/admin/runtime-settings", permissionGroups: ["POLICY_ADMIN"], superOnly: true },
       { key: "action-logs", label: "관리자 활동 로그", icon: History, href: "/admin/action-logs", permissionGroups: ["AUDIT_ADMIN", "POLICY_ADMIN"] },
       { key: "logs", label: "시스템 로그", icon: ScrollText, href: "/admin/logs", permissionGroups: ["AUDIT_ADMIN"] },
     ],

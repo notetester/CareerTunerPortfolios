@@ -46,8 +46,8 @@ import AdminAdsPage from "./features/ads/pages/AdminAdsPage";
 // dev: 보안 운영 센터(합체 유지)
 import { AdminSecurityOpsPage } from "./features/security-ops/pages/AdminSecurityOpsPage";
 import { AdminActivityLogsPage } from "./features/activity-logs/pages/AdminActivityLogsPage";
-import { AdminCorrectionsPage } from "./features/corrections/pages/AdminCorrectionsPage";
-import { AdminCreditsPage } from "./features/credits/pages/AdminCreditsPage";
+// 런타임 설정 콘솔(트립투게더 이식): 코드가 실시간 참조하는 key-value 설정 + 변경 이력
+import { AdminRuntimeSettingsPage } from "./features/runtime-settings/pages/AdminRuntimeSettingsPage";
 
 export const adminRoutes = [
   { path: "admin", Component: AdminDashboardPage },
@@ -75,9 +75,9 @@ export const adminRoutes = [
   { path: "admin/consents", Component: AdminConsentsPage },
   { path: "admin/super", Component: AdminSuperAdminPage },
   { path: "admin/policies", Component: AdminPoliciesPage },
+  { path: "admin/runtime-settings", Component: AdminRuntimeSettingsPage },
   { path: "admin/action-logs", Component: AdminActionLogsPage },
   { path: "admin/payments", Component: AdminPaymentsPage },
-  { path: "admin/credits", Component: AdminCreditsPage },
   { path: "admin/application-cases", Component: AdminApplicationCasesPage },
   { path: "admin/ai-usage", Component: AdminAiUsagePage },
   { path: "admin/ai-settings", Component: AdminAiSettingsPage },
@@ -85,7 +85,6 @@ export const adminRoutes = [
   { path: "admin/company-analysis", Component: AdminCompanyAnalysisPage },
   { path: "admin/interviews", Component: AdminInterviewsPage },
   { path: "admin/interview/reports", Component: AdminInterviewReportsPage },
-  { path: "admin/corrections", Component: AdminCorrectionsPage },
   { path: "admin/interview/knowledge", Component: AdminInterviewKnowledgePage },
   { path: "admin/community", Component: AdminReports },
   { path: "admin/notices", Component: AdminNotices },

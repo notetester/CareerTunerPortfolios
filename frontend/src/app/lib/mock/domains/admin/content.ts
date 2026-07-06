@@ -274,6 +274,13 @@ const moderationSettings: ModerationSettingData = {
   hideThreshold: 0.7,
   sanctionThreshold: 3,
   blockDays: 7,
+  reportBlurThreshold: 3,
+  postRateWindowSeconds: 60,
+  postRateMax: 10,
+  commentRateWindowSeconds: 60,
+  commentRateMax: 20,
+  inquiryRateWindowSeconds: 600,
+  inquiryRateMax: 5,
   updatedAt: iso(4),
 };
 
