@@ -199,7 +199,8 @@ public class CommunityCommentServiceImpl implements CommunityCommentService {
                 c.getCreatedAt(),
                 false, false, false, false, false,
                 true,
-                false);
+                false,
+                false, 0);
     }
 
     /**
@@ -220,7 +221,8 @@ public class CommunityCommentServiceImpl implements CommunityCommentService {
                 c.getCreatedAt(),
                 false, false, false, false, false,
                 false,
-                true);
+                true,
+                false, 0);
     }
 
     /**
@@ -563,6 +565,10 @@ public class CommunityCommentServiceImpl implements CommunityCommentService {
                 flags.disrecommended(),
                 flags.subscribed(),
                 isDeleted,
-                false);
+                false,
+                // 신고 누적 자동 블러 — 임계 이상이면 비작성자에게 가린다(작성자·프론트 클릭 시 해제). (콘솔 편집값, 게시글과 동일 임계)
+                c.getReportCount() >= moderationSettingService.getReportBlurThreshold()
+                        && !c.getUserId().equals(currentUserId),
+                c.getReportCount());
     }
 }

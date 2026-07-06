@@ -3,36 +3,25 @@
         "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
 <mapper namespace="com.careertuner.community.moderation.mapper.ModerationSettingMapper">
 
-    <!-- 코어: 항상 존재하는 컬럼만(엄격도·숨김 임계·사용자 제재) -->
+    <!-- 단일 정책 행 전체(엄격도·숨김·제재 + rate-limit 3쌍 + 신고 블러 임계). 컬럼은 patches/20260706b 로 team1_db 에 적용됨. -->
     <select id="findById" resultType="com.careertuner.community.moderation.domain.ModerationSetting">
-        SELECT id, strictness, hide_threshold, sanction_threshold, block_days, updated_at
-          FROM ai_moderation_setting
-         WHERE id = #{id}
-    </select>
-
-    <!-- rate-limit 3쌍 + 신고 블러 임계(patches/20260706b). 미적용 DB 에선 실패 → 서비스가 기본값으로 강등 -->
-    <select id="findRateLimits" resultType="com.careertuner.community.moderation.domain.ModerationSetting">
-        SELECT id,
+        SELECT id, strictness, hide_threshold, sanction_threshold, block_days,
                report_blur_threshold,
                post_rate_window_seconds, post_rate_max,
                comment_rate_window_seconds, comment_rate_max,
-               inquiry_rate_window_seconds, inquiry_rate_max
+               inquiry_rate_window_seconds, inquiry_rate_max,
+               updated_at
           FROM ai_moderation_setting
          WHERE id = #{id}
     </select>
 
-    <update id="updateCore" parameterType="com.careertuner.community.moderation.domain.ModerationSetting">
+    <update id="update" parameterType="com.careertuner.community.moderation.domain.ModerationSetting">
         UPDATE ai_moderation_setting
            SET strictness = #{strictness},
                hide_threshold = #{hideThreshold},
                sanction_threshold = #{sanctionThreshold},
-               block_days = #{blockDays}
-         WHERE id = #{id}
-    </update>
-
-    <update id="updateRateLimits" parameterType="com.careertuner.community.moderation.domain.ModerationSetting">
-        UPDATE ai_moderation_setting
-           SET report_blur_threshold = #{reportBlurThreshold},
+               block_days = #{blockDays},
+               report_blur_threshold = #{reportBlurThreshold},
                post_rate_window_seconds = #{postRateWindowSeconds},
                post_rate_max = #{postRateMax},
                comment_rate_window_seconds = #{commentRateWindowSeconds},

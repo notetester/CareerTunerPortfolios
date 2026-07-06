@@ -101,6 +101,10 @@ export interface CommunityComment {
   isDeleted?: boolean;
   /** 서버가 뷰어 기준으로 차단 처리한 댓글 — 톰스톤만 렌더하고 답글 트리는 유지한다(조용한 차단). */
   blocked?: boolean;
+  /** 신고 누적 임계 이상 → 비작성자에게 블러(클릭 시 해제). 게시글 blur 와 동형. */
+  blurred?: boolean;
+  /** 누적 신고 수(블러 근거 표시용). */
+  reportCount?: number;
 }
 
 /** 리액션 축: RECOMMEND/DISRECOMMEND(추천 축 — 트렌드·인기글용), LIKE/DISLIKE(개인화용), BOOKMARK(즐겨찾기) */

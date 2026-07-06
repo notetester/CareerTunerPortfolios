@@ -38,4 +38,8 @@
         VALUES (#{reporterId}, #{commentId}, #{reason}, #{detail}, #{status})
     </insert>
 
+    <update id="incrementCommentReportCount">
+        UPDATE community_comment SET report_count = report_count + 1 WHERE id = #{commentId}
+    </update>
+
 </mapper>

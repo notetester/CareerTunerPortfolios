@@ -39,7 +39,7 @@ public class ModerationSettingService {
     private volatile int commentRateWindowSeconds = 60;
     private volatile int commentRateMax = 20;
     private volatile int inquiryRateWindowSeconds = 600;
-    private volatile int inquiryRateMax = 5;
+    private volatile int inquiryRateMax = 0; // 0 = 무제약(문의는 도입 전 무제한이 기본 동작)
 
     public ModerationSettingService(ModerationSettingMapper settingMapper) {
         this.settingMapper = settingMapper;
@@ -47,21 +47,13 @@ public class ModerationSettingService {
 
     @PostConstruct
     void init() {
-        // 코어(엄격도·숨김·제재)는 항상 존재하는 컬럼이라 실패하면 곧 진짜 오류다.
-        ModerationSetting core = settingMapper.findById(SETTING_ID);
-        if (core != null) {
-            applyCoreToCache(core);
+        // 단일 행 전체 로드. 컬럼은 patches/20260706b 로 DB 에 적용돼 있어야 한다(미적용이면 여기서 실패해
+        // 스키마 문제를 드러낸다 — 조용한 강등으로 숨기지 않는다). 행이 없을 때만 코드 기본값을 쓴다.
+        ModerationSetting s = settingMapper.findById(SETTING_ID);
+        if (s != null) {
+            applyToCache(s);
         } else {
-            log.warn("검열/중재 코어 설정 미존재, 코드 기본값 사용");
-        }
-        // rate-limit·신고 블러(patches/20260706b) 컬럼은 미적용 DB 에서 실패할 수 있어 분리 로드 후 강등한다.
-        try {
-            ModerationSetting rl = settingMapper.findRateLimits(SETTING_ID);
-            if (rl != null) {
-                applyRateToCache(rl);
-            }
-        } catch (Exception e) {
-            log.warn("rate-limit/신고 블러 설정 로드 실패 — 코드 기본값 사용(20260706b 패치 미적용 가능): {}", e.getMessage());
+            log.warn("검열/중재 설정 행(id={}) 미존재 — 코드 기본값 사용", SETTING_ID);
         }
         log.info("검열/중재 설정 로드: strictness={}, hideThreshold={}, sanction={}/{}일, "
                         + "reportBlur={}, postRL={}s/{}건, commentRL={}s/{}건, inquiryRL={}s/{}건",
@@ -70,14 +62,11 @@ public class ModerationSettingService {
                 commentRateWindowSeconds, commentRateMax, inquiryRateWindowSeconds, inquiryRateMax);
     }
 
-    private void applyCoreToCache(ModerationSetting s) {
+    private void applyToCache(ModerationSetting s) {
         this.strictness = s.getStrictness();
         this.hideThreshold = s.getHideThreshold();
         this.sanctionThreshold = s.getSanctionThreshold();
         this.blockDays = s.getBlockDays();
-    }
-
-    private void applyRateToCache(ModerationSetting s) {
         this.reportBlurThreshold = s.getReportBlurThreshold();
         this.postRateWindowSeconds = s.getPostRateWindowSeconds();
         this.postRateMax = s.getPostRateMax();
@@ -131,70 +120,35 @@ public class ModerationSettingService {
         return inquiryRateMax;
     }
 
-    /**
-     * 현재 설정 전체 스냅샷(코어는 DB, rate-limit 은 DB→실패 시 캐시). updated_at 포함.
-     * rate-limit 컬럼 미적용 DB 에서도 콘솔이 열리도록 강등한다.
-     */
+    /** 현재 설정 전체(단일 행). 행이 없을 때만 캐시 스냅샷으로 응답한다. updated_at 포함. */
     public ModerationSetting getCurrent() {
-        ModerationSetting core = settingMapper.findById(SETTING_ID);
-        ModerationSetting out = (core != null) ? core : snapshotCore();
-        try {
-            ModerationSetting rl = settingMapper.findRateLimits(SETTING_ID);
-            if (rl != null) {
-                copyRateFields(rl, out);
-                return out;
-            }
-        } catch (Exception e) {
-            log.warn("rate-limit/신고 블러 조회 실패 — 캐시값으로 응답(20260706b 패치 미적용 가능): {}", e.getMessage());
-        }
-        // 캐시값으로 채운다(콘솔이 현재 적용값을 보게).
-        out.setReportBlurThreshold(reportBlurThreshold);
-        out.setPostRateWindowSeconds(postRateWindowSeconds);
-        out.setPostRateMax(postRateMax);
-        out.setCommentRateWindowSeconds(commentRateWindowSeconds);
-        out.setCommentRateMax(commentRateMax);
-        out.setInquiryRateWindowSeconds(inquiryRateWindowSeconds);
-        out.setInquiryRateMax(inquiryRateMax);
-        return out;
+        ModerationSetting s = settingMapper.findById(SETTING_ID);
+        return s != null ? s : snapshot();
     }
 
-    private static void copyRateFields(ModerationSetting from, ModerationSetting to) {
-        to.setReportBlurThreshold(from.getReportBlurThreshold());
-        to.setPostRateWindowSeconds(from.getPostRateWindowSeconds());
-        to.setPostRateMax(from.getPostRateMax());
-        to.setCommentRateWindowSeconds(from.getCommentRateWindowSeconds());
-        to.setCommentRateMax(from.getCommentRateMax());
-        to.setInquiryRateWindowSeconds(from.getInquiryRateWindowSeconds());
-        to.setInquiryRateMax(from.getInquiryRateMax());
-    }
-
-    /** 코어 캐시 값으로 구성한 스냅샷(코어 행이 없을 때의 폴백). */
-    private ModerationSetting snapshotCore() {
+    /** 캐시 값으로 구성한 스냅샷(행이 없을 때의 폴백). */
+    private ModerationSetting snapshot() {
         ModerationSetting s = new ModerationSetting();
         s.setId(SETTING_ID);
         s.setStrictness(strictness);
         s.setHideThreshold(hideThreshold);
         s.setSanctionThreshold(sanctionThreshold);
         s.setBlockDays(blockDays);
+        s.setReportBlurThreshold(reportBlurThreshold);
+        s.setPostRateWindowSeconds(postRateWindowSeconds);
+        s.setPostRateMax(postRateMax);
+        s.setCommentRateWindowSeconds(commentRateWindowSeconds);
+        s.setCommentRateMax(commentRateMax);
+        s.setInquiryRateWindowSeconds(inquiryRateWindowSeconds);
+        s.setInquiryRateMax(inquiryRateMax);
         return s;
     }
 
-    /**
-     * 정책 저장 + 캐시 즉시 갱신. 코어는 항상 저장하고, rate-limit 컬럼은 분리 저장해
-     * 미적용 DB 에서도 코어 저장이 막히지 않게 한다(패치 적용 후 rate-limit 도 영속).
-     */
+    /** 정책 저장(단일 UPDATE) + 캐시 즉시 갱신. */
     public void update(ModerationSetting next) {
         next.setId(SETTING_ID);
-        settingMapper.updateCore(next);
-        applyCoreToCache(next);
-        try {
-            settingMapper.updateRateLimits(next);
-            applyRateToCache(next);
-        } catch (Exception e) {
-            // 캐시에는 반영해 러닝 인스턴스에서 즉시 적용되게 하되, 영속은 패치 적용 후로 미룬다.
-            applyRateToCache(next);
-            log.warn("rate-limit/신고 블러 저장 실패 — 코어만 영속됨(20260706b 패치 미적용 가능): {}", e.getMessage());
-        }
+        settingMapper.update(next);
+        applyToCache(next);
         log.info("검열/중재 설정 변경: strictness={}, hideThreshold={}, sanction={}/{}일, "
                         + "reportBlur={}, postRL={}s/{}건, commentRL={}s/{}건, inquiryRL={}s/{}건",
                 strictness, hideThreshold, sanctionThreshold, blockDays,

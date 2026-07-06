@@ -58,7 +58,7 @@ SET @c := (SELECT IF(COUNT(*) = 0,
 PREPARE s FROM @c; EXECUTE s; DEALLOCATE PREPARE s;
 
 SET @c := (SELECT IF(COUNT(*) = 0,
-    'ALTER TABLE ai_moderation_setting ADD COLUMN inquiry_rate_max INT NOT NULL DEFAULT 5 AFTER inquiry_rate_window_seconds',
+    'ALTER TABLE ai_moderation_setting ADD COLUMN inquiry_rate_max INT NOT NULL DEFAULT 0 AFTER inquiry_rate_window_seconds',
     'SELECT 1') FROM information_schema.columns
     WHERE table_schema = DATABASE() AND table_name = 'ai_moderation_setting' AND column_name = 'inquiry_rate_max');
 PREPARE s FROM @c; EXECUTE s; DEALLOCATE PREPARE s;
