@@ -80,6 +80,9 @@ jobs:
     needs: build-push
     runs-on: ubuntu-latest
     steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
       - name: Verify deploy secrets are configured
         env:
           EC2_HOST: ${{ secrets.EC2_HOST }}
