@@ -316,10 +316,10 @@ export function AnalysisPage() {
                     onClick={handleRefresh}
                     disabled={refreshing}
                     className="border-blue-300 bg-card/70 text-blue-700 hover:bg-card"
-                    title="AI를 다시 실행해 최신 데이터로 요약을 재생성합니다. 크레딧 1이 차감됩니다."
+                    title="AI 실행 전 사용권 우선 차감과 최소·최대 크레딧 범위를 안내합니다."
                   >
                     <RefreshCw className={`size-3.5 ${refreshing ? "animate-spin" : ""}`} />
-                    {refreshing ? "재분석 중..." : "재분석 (크레딧 1)"}
+                    {refreshing ? "재분석 중..." : "재분석 (실행 전 비용 안내)"}
                   </Button>
                 </div>
                 {summary?.analysisRun && (

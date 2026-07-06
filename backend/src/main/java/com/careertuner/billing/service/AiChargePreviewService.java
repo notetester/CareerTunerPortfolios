@@ -65,7 +65,7 @@ public class AiChargePreviewService {
         int remainingTicket = balance == null ? 0 : balance.remainingQuantity();
         if (remainingTicket > 0) {
             return response(
-                    featureType, CHARGE_TICKET, featurePolicy.getBenefitCode(), 1, CreditRange.free(),
+                    featureType, CHARGE_TICKET, featurePolicy.getBenefitCode(), 1, directRange,
                     remainingTicket, currentCredit, true,
                     RefundPolicyService.TRIGGER_BENEFIT_USE, actionKey, refundPolicy);
         }
