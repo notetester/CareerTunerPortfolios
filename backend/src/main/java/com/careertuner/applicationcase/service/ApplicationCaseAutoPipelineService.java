@@ -79,16 +79,26 @@ public class ApplicationCaseAutoPipelineService {
     private final BAnalysisGenerationService bAnalysisGenerationService;
     private final BCompanyAnalysisCanonicalizer companyAnalysisCanonicalizer;
     private final CompanyAnalysisService companyAnalysisService;
+    /** 런타임 설정 오버라이드용(application-case.auto-pipeline.enabled). 미설정 시 @Value 기본값을 쓴다. */
+    private final com.careertuner.runtimesetting.service.RuntimeSettingService runtimeSettingService;
 
     @Value("${careertuner.application-case.auto-pipeline.enabled:true}")
     private boolean enabled = true;
+
+    /**
+     * 자동 파이프라인 활성 여부 — 런타임 설정 콘솔의 key {@code application-case.auto-pipeline.enabled} 를
+     * 우선 참조하고, 없으면 @Value 기본값을 쓴다(운영 중 재배포 없이 on/off). runtime_setting 실소비처.
+     */
+    private boolean autoPipelineEnabled() {
+        return runtimeSettingService.getBoolean("application-case.auto-pipeline.enabled", enabled);
+    }
 
     public void runAfterExtractionPass(Long userId,
                                        Long applicationCaseId,
                                        Long jobPostingId,
                                        Integer jobPostingRevision,
                                        String postingText) {
-        if (!enabled || isBlank(postingText)) {
+        if (!autoPipelineEnabled() || isBlank(postingText)) {
             return;
         }
 

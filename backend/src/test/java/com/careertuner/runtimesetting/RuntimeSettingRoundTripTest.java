@@ -38,4 +38,22 @@ class RuntimeSettingRoundTripTest {
         // 없는 키는 fallback 경로
         assertThat(service.getValue("test.roundtrip.absent", "FB")).isEqualTo("FB");
     }
+
+    /** 실소비처(ApplicationCaseAutoPipelineService.autoPipelineEnabled) 가 읽는 것과 동일한 getBoolean 경로 검증. */
+    @Test
+    void getBoolean_readsDbFlag_forAutoPipelineConsumer() {
+        service.saveRuntimeSetting(RuntimeSetting.builder()
+                .settingKey("application-case.auto-pipeline.enabled")
+                .settingGroup("FEATURE")
+                .displayName("자동 파이프라인 사용")
+                .settingValue("false")
+                .valueType("BOOLEAN")
+                .secret(false).editable(true).active(true)
+                .build(), null);
+
+        // 관리자가 콘솔에서 false 로 저장 → 소비처가 읽는 getBoolean 이 DB값(false)을 반영(코드 기본값 true 아님)
+        assertThat(service.getBoolean("application-case.auto-pipeline.enabled", true)).isFalse();
+        // 키가 없으면 코드 기본값(fallback) 사용
+        assertThat(service.getBoolean("application-case.auto-pipeline.absent", true)).isTrue();
+    }
 }

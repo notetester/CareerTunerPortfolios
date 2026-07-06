@@ -92,9 +92,9 @@ export function AdminEmailAuditLogPage() {
         <span className="text-xs text-slate-400">{rows.length}건</span>
       </div>
 
-      <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white">
+      <div className="max-h-[65vh] overflow-auto rounded-xl border border-slate-200 bg-white">
         <table className="w-full min-w-[820px] text-sm">
-          <thead>
+          <thead className="sticky top-0 z-10 bg-white">
             <tr className="border-b border-slate-200 text-left text-xs text-slate-500">
               <th className="px-3 py-2">이메일</th>
               <th className="px-3 py-2">목적</th>
