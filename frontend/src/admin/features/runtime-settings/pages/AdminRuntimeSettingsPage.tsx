@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useState } from "react";
-import { RotateCw, SlidersHorizontal } from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { Download, RotateCw, SlidersHorizontal, Upload } from "lucide-react";
 
 import AdminShell from "../../../components/AdminShell";
 import {
@@ -9,6 +9,13 @@ import {
   type RuntimeSetting,
   type RuntimeSettingHistory,
 } from "../api";
+import {
+  exportSettings,
+  getSettingsSections,
+  importSettings,
+  type SettingsExport,
+  type SettingsImportResult,
+} from "../settingsIoApi";
 
 const VALUE_TYPES = ["STRING", "NUMBER", "BOOLEAN", "URL", "SECRET"];
 
@@ -98,6 +105,8 @@ export function AdminRuntimeSettingsPage() {
       )}
     >
       {msg && <div className="mb-3 rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-700">{msg}</div>}
+
+      <SettingsBackupSection flash={flash} onImported={() => void load()} />
 
       <div className="mb-4 flex flex-wrap items-center gap-2">
         <input
@@ -194,6 +203,115 @@ export function AdminRuntimeSettingsPage() {
         </section>
       )}
     </AdminShell>
+  );
+}
+
+const SECTION_LABELS: Record<string, string> = {
+  runtimeSettings: "런타임 설정",
+  moderation: "콘텐츠 중재 정책",
+};
+
+function SettingsBackupSection({ flash, onImported }: { flash: (m: string) => void; onImported: () => void }) {
+  const [sections, setSections] = useState<string[]>([]);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [busy, setBusy] = useState(false);
+  const [result, setResult] = useState<SettingsImportResult | null>(null);
+  const fileRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    getSettingsSections()
+      .then((s) => { setSections(s); setSelected(new Set(s)); })
+      .catch(() => setSections([]));
+  }, []);
+
+  const toggle = (s: string) => {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(s)) next.delete(s); else next.add(s);
+      return next;
+    });
+  };
+
+  const doExport = async () => {
+    setBusy(true);
+    try {
+      const data = await exportSettings([...selected]);
+      const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `careertuner-settings-${data.exportedAt?.slice(0, 10) ?? "export"}.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+      flash("설정을 JSON 파일로 내보냈어요.");
+    } catch {
+      flash("내보내기 실패 — 잠시 후 다시 시도해 주세요.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const onFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setBusy(true);
+    setResult(null);
+    try {
+      const text = await file.text();
+      const payload = JSON.parse(text) as SettingsExport;
+      const r = await importSettings(payload);
+      setResult(r);
+      flash(`가져오기 완료 — 적용 ${r.totalApplied}건 / 스킵 ${r.totalSkipped}건`);
+      onImported();
+    } catch {
+      flash("가져오기 실패 — JSON 형식 또는 서버 오류를 확인해 주세요.");
+    } finally {
+      setBusy(false);
+      if (fileRef.current) fileRef.current.value = "";
+    }
+  };
+
+  return (
+    <section className="mb-4 rounded-xl border border-slate-200 bg-white p-4">
+      <div className="flex items-center justify-between">
+        <div>
+          <h3 className="text-sm font-semibold text-slate-800">설정 백업 / 복원</h3>
+          <p className="text-xs text-slate-500">런타임 설정·중재 정책을 JSON으로 내보내고 되돌립니다(환경 이관·복구용). 없는 항목은 건너뛰고 결과를 리포팅해요.</p>
+        </div>
+      </div>
+
+      <div className="mt-3 flex flex-wrap items-center gap-3">
+        {sections.map((s) => (
+          <label key={s} className="flex items-center gap-1 text-sm text-slate-600">
+            <input type="checkbox" checked={selected.has(s)} onChange={() => toggle(s)} />
+            {SECTION_LABELS[s] ?? s}
+          </label>
+        ))}
+        <button type="button" className="av-btn" disabled={busy || selected.size === 0} onClick={() => void doExport()}>
+          <Download size={14} /> 내보내기
+        </button>
+        <button type="button" className="av-btn" disabled={busy} onClick={() => fileRef.current?.click()}>
+          <Upload size={14} /> 가져오기(JSON)
+        </button>
+        <input ref={fileRef} type="file" accept="application/json,.json" hidden onChange={onFile} />
+      </div>
+
+      {result && (
+        <div className="mt-3 rounded-lg bg-slate-50 p-3 text-xs">
+          <div className="font-semibold text-slate-700">
+            적용 {result.totalApplied}건 · 스킵 {result.totalSkipped}건
+          </div>
+          <ul className="mt-1 space-y-0.5 text-slate-500">
+            {result.sections.map((sec) => (
+              <li key={sec.section}>
+                <span className="font-mono">{SECTION_LABELS[sec.section] ?? sec.section}</span> — 적용 {sec.applied} / 스킵 {sec.skipped}
+                {sec.messages.length > 0 && <span className="text-amber-600"> ({sec.messages.join("; ")})</span>}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+    </section>
   );
 }
 
