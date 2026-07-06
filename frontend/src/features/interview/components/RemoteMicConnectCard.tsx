@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Loader2, Smartphone, Unplug, Wifi } from "lucide-react";
+import { QRCodeSVG } from "qrcode.react";
 import { Button } from "@/app/components/ui/button";
 import {
   closeMicHandoff,
@@ -142,31 +143,41 @@ export function RemoteMicConnectCard({
       )}
 
       {(phase === "pairing" || phase === "waiting" || phase === "connecting") && (
-        <div className="mt-3 space-y-2">
+        <div className="mt-3">
           {code ? (
-            <>
-              <div className="flex items-center gap-3">
-                <span className="rounded-lg bg-card px-4 py-2 font-mono text-2xl font-black tracking-[0.3em] text-indigo-700 shadow-sm">
-                  {code}
-                </span>
-                <span className="flex items-center gap-1.5 text-xs text-indigo-600">
-                  <Loader2 className="size-3.5 animate-spin" />
-                  {phase === "connecting" ? "폰과 연결 중…" : "폰 접속 대기 중…"}
-                </span>
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
+              {/* QR — 폰 카메라로 스캔하면 코드가 채워진 채 바로 열린다 */}
+              <div className="flex shrink-0 flex-col items-center gap-2 rounded-xl bg-card p-3 shadow-sm">
+                <QRCodeSVG value={remoteUrl} size={132} marginSize={1} />
+                <span className="text-[11px] font-semibold text-slate-500">폰 카메라로 스캔</span>
               </div>
-              <p className="text-xs text-indigo-700/80">
-                폰 브라우저(또는 앱)에서 <b>{remoteUrl.replace(/^https?:\/\//, "")}</b> 를 열고 이
-                코드를 입력하세요. 같은 계정 로그인이 필요합니다.
-              </p>
-            </>
+              <div className="min-w-0 space-y-2">
+                <p className="text-sm font-semibold text-indigo-800">
+                  ① 폰 카메라(또는 QR 앱)로 위 코드를 스캔하세요.
+                </p>
+                <p className="text-xs leading-5 text-indigo-700/80">
+                  스캔이 안 되면, 폰 브라우저에서 <b>{remoteUrl.replace(/^https?:\/\//, "")}</b> 로
+                  직접 접속해도 됩니다. (같은 계정 로그인 필요)
+                </p>
+                <div className="flex items-center gap-2">
+                  <span className="rounded-lg bg-indigo-100 px-3 py-1 font-mono text-lg font-black tracking-[0.25em] text-indigo-700">
+                    {code}
+                  </span>
+                  <span className="flex items-center gap-1.5 text-xs text-indigo-600">
+                    <Loader2 className="size-3.5 animate-spin" />
+                    {phase === "connecting" ? "폰과 연결 중…" : "폰 접속 대기 중…"}
+                  </span>
+                </div>
+                <Button onClick={disconnect} size="sm" variant="outline" className="gap-1">
+                  취소
+                </Button>
+              </div>
+            </div>
           ) : (
             <span className="flex items-center gap-1.5 text-xs text-indigo-600">
               <Loader2 className="size-3.5 animate-spin" /> 연결 코드 발급 중…
             </span>
           )}
-          <Button onClick={disconnect} size="sm" variant="outline" className="gap-1">
-            취소
-          </Button>
         </div>
       )}
 
