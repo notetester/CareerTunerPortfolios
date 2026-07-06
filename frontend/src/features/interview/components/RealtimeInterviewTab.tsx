@@ -6,6 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/app/components/ui/ca
 import {
   createRealtimeSession,
   getMediaCapabilities,
+  getSessionReview,
   listSessionQuestions,
   saveMediaResult,
   scoreVoiceServer,
@@ -26,10 +27,12 @@ import type {
   InterviewQuestion,
   InterviewSession,
   MediaCapabilities,
+  SessionReviewItem,
   TranscriptLine,
   VoiceMetrics,
   VoiceScoreDetail,
 } from "../types/interview";
+import { getScoreColor } from "../types/interview";
 import { VoiceScorePanel } from "./VoiceScorePanel";
 import { useTutorialStore } from "../tutorial/tutorialStore";
 import { TutorialMediaPreview } from "../tutorial/TutorialMediaPreview";
@@ -53,6 +56,9 @@ export function RealtimeInterviewTab({ session }: { session: InterviewSession | 
   const [scoreDetail, setScoreDetail] = useState<VoiceScoreDetail | null>(null);
   const [metrics, setMetrics] = useState<VoiceMetrics | null>(null);
   const [saveNote, setSaveNote] = useState<string | null>(null);
+  // 답변 "내용" 채점 결과 — 종료 후 질문별 점수/피드백을 이 화면에서 바로 보여준다 (AvatarTab 과 동일 패턴).
+  const [contentItems, setContentItems] = useState<SessionReviewItem[]>([]);
+  const [contentScore, setContentScore] = useState<number | null>(null);
   // 원본 음성을 자체 추론 서버로 보내 정밀 분석할지 동의 (ADR-006). 해제 시 브라우저 지표만 사용.
   const [consent, setConsent] = useState(true);
   // 폰 마이크 핸드오프(WebRTC) — 마이크 없는 기기에서 폰의 마이크를 원격 입력으로 쓴다.
@@ -150,6 +156,8 @@ export function RealtimeInterviewTab({ session }: { session: InterviewSession | 
     setSaveNote(null);
     setScoreDetail(null);
     setMetrics(null);
+    setContentItems([]);
+    setContentScore(null);
     linesRef.current = [];
     setLines([]);
     try {
@@ -310,17 +318,26 @@ export function RealtimeInterviewTab({ session }: { session: InterviewSession | 
         err instanceof Error ? `결과 저장 실패: ${err.message}` : "결과 저장에 실패했습니다.",
       );
     }
-    // 답변 "내용" 채점: 트랜스크립트를 질문별로 채점해 저장한다(전달력 점수와 별개, interview_answer 경로 공유).
+    // 답변 "내용" 채점: 트랜스크립트를 질문별로 채점해 저장하고, 결과를 조회해 이 화면에 바로 표시한다.
     if (transcript.some((l) => l.role === "user")) {
       try {
         const scored = await scoreVoiceTranscript(session.id, transcript);
         if (scored > 0) {
-          setSaveNote((prev) =>
-            `${prev ?? ""} 답변 ${scored}문항의 내용도 채점했습니다(리포트·복기에서 확인).`.trim(),
-          );
+          const review = await getSessionReview(session.id);
+          const answered = review.items.filter((it) => it.score != null && !!it.answerText?.trim());
+          if (answered.length > 0) {
+            setContentItems(answered);
+            setContentScore(
+              Math.round(answered.reduce((s, it) => s + (it.score ?? 0), 0) / answered.length),
+            );
+          }
+          setSaveNote((prev) => `${prev ?? ""} 답변 ${scored}문항의 내용도 채점했습니다.`.trim());
         }
       } catch {
         // 내용 채점 실패는 음성(전달력) 점수 저장을 막지 않는다.
+        setSaveNote((prev) =>
+          `${prev ?? ""} 답변 내용 채점에 실패했습니다 — 음성 점수만 저장되었습니다.`.trim(),
+        );
       }
     }
     setStatus("scored");
@@ -454,6 +471,37 @@ export function RealtimeInterviewTab({ session }: { session: InterviewSession | 
 
       {scoreDetail && metrics && (
         <VoiceScorePanel detail={scoreDetail} metrics={metrics} title="음성 모의면접 점수" />
+      )}
+
+      {/* 질문별 답변 내용 점수 (트랜스크립트 → 질문 매핑 채점) */}
+      {status === "scored" && contentScore != null && (
+        <Card className="border border-slate-200 bg-card">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-base">
+              답변 내용 점수
+              <span className={`ml-auto text-2xl font-black ${getScoreColor(contentScore)}`}>
+                {contentScore}
+                <span className="text-sm font-bold text-slate-400">/100</span>
+              </span>
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {contentItems.map((it) => (
+              <div key={it.questionId} className="rounded-lg border border-slate-100 bg-slate-50 p-3">
+                <div className="mb-1 flex items-baseline justify-between gap-2 text-sm">
+                  <span className="font-semibold text-slate-700">{it.question}</span>
+                  {it.score != null && (
+                    <span className={`shrink-0 font-bold ${getScoreColor(it.score)}`}>{it.score}</span>
+                  )}
+                </div>
+                {it.answerText && (
+                  <p className="mb-1 whitespace-pre-line text-xs text-slate-500">{it.answerText}</p>
+                )}
+                {it.feedback && <p className="text-[11px] text-slate-400">{it.feedback}</p>}
+              </div>
+            ))}
+          </CardContent>
+        </Card>
       )}
 
       {lines.length > 0 && (
