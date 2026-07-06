@@ -339,10 +339,11 @@ export function LocalAvatarTab({ session }: { session: InterviewSession | null }
     }
 
     // 답변 "내용" 채점: 트랜스크립트 → 질문별 haiku 채점 → 저장된 점수 조회해 표시.
+    // 체험판(1문제)이면 채점도 1문항으로 제한(미진행 질문 억지 매칭 방지).
     let contentAvg: number | null = null;
     if (transcript.some((l) => l.role === "user")) {
       try {
-        const scored = await scoreVoiceTranscript(session.id, transcript);
+        const scored = await scoreVoiceTranscript(session.id, transcript, trial ? 1 : undefined);
         if (scored > 0) {
           const review = await getSessionReview(session.id);
           const answered = review.items.filter((it) => it.score != null && !!it.answerText?.trim());

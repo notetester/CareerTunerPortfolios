@@ -74,14 +74,22 @@ export function markSessionResumed(sessionId: number): Promise<void> {
   return api<void>(`/interview/sessions/${sessionId}/resume`, { method: "POST" });
 }
 
-/** 음성 모의면접 트랜스크립트 → 질문별 내용 채점(interview_answer 저장). 채점한 문항 수 반환. */
-export function scoreVoiceTranscript(sessionId: number, transcript: TranscriptLine[]): Promise<number> {
+/**
+ * 음성 모의면접 트랜스크립트 → 질문별 내용 채점(interview_answer 저장). 채점한 문항 수 반환.
+ * questionLimit(1~6)을 주면 앞에서 그 수만큼만 채점 대상 — 체험판(1문제)은 1을 넘겨
+ * 미진행 질문에 억지 매칭·저장되는 것을 막는다.
+ */
+export function scoreVoiceTranscript(
+  sessionId: number,
+  transcript: TranscriptLine[],
+  questionLimit?: number,
+): Promise<number> {
   if (isDataMockActive()) return Promise.resolve(transcript.some((l) => l.role === "user") ? 3 : 0);
   return runWithAiCharge("INTERVIEW_VOICE_SCORING", (headers) =>
     api<number>(`/interview/sessions/${sessionId}/score-voice`, {
       method: "POST",
       headers,
-      body: JSON.stringify({ transcript }),
+      body: JSON.stringify({ transcript, questionLimit }),
     }));
 }
 
