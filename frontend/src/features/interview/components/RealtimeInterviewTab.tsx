@@ -129,9 +129,10 @@ export function RealtimeInterviewTab({ session }: { session: InterviewSession | 
       return;
     }
     const type = ev.type as string;
-    if (type === "response.audio_transcript.delta") {
+    // GA Realtime API는 response.output_audio_transcript.*, 구 beta는 response.audio_transcript.* — 둘 다 처리.
+    if (type === "response.output_audio_transcript.delta" || type === "response.audio_transcript.delta") {
       aiDraftRef.current += (ev.delta as string) ?? "";
-    } else if (type === "response.audio_transcript.done") {
+    } else if (type === "response.output_audio_transcript.done" || type === "response.audio_transcript.done") {
       const text = aiDraftRef.current.trim();
       aiDraftRef.current = "";
       if (text) pushLine({ role: "ai", text });
@@ -190,11 +191,14 @@ export function RealtimeInterviewTab({ session }: { session: InterviewSession | 
       const dc = pc.createDataChannel("oai-events");
       dc.onmessage = (e) => handleEvent(e.data);
       dc.onopen = () => {
-        // 사용자 음성도 텍스트로 받도록 활성화.
+        // 사용자 음성도 텍스트로 받도록 활성화 (GA 스키마 — 구 input_audio_transcription 형식은 reject됨).
         dc.send(
           JSON.stringify({
             type: "session.update",
-            session: { input_audio_transcription: { model: "whisper-1" } },
+            session: {
+              type: "realtime",
+              audio: { input: { transcription: { model: "whisper-1" } } },
+            },
           }),
         );
         // 면접관이 먼저 인사하며 면접을 시작하도록 유도.
