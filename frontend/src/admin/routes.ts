@@ -54,6 +54,8 @@ import { AdminCreditsPage } from "./features/credits/pages/AdminCreditsPage";
 import { AdminEmailAuditLogPage } from "./features/email-audit/pages/AdminEmailAuditLogPage";
 // 로그인 위험도 잠금 정책(트립투게더 이식): 브루트포스 자동 잠금 토글 + 임계 편집
 import { AdminLoginRiskPolicyPage } from "./features/login-risk/pages/AdminLoginRiskPolicyPage";
+// 챗봇 거버넌스(트립투게더 이식): 일일 쿼터 정책 토글 + 대화 세션 목록/삭제
+import { AdminChatbotGovernancePage } from "./features/chatbot-governance/pages/AdminChatbotGovernancePage";
 
 export const adminRoutes = [
   { path: "admin", Component: AdminDashboardPage },
@@ -89,6 +91,7 @@ export const adminRoutes = [
   { path: "admin/credits", Component: AdminCreditsPage },
   { path: "admin/application-cases", Component: AdminApplicationCasesPage },
   { path: "admin/ai-usage", Component: AdminAiUsagePage },
+  { path: "admin/chatbot-governance", Component: AdminChatbotGovernancePage },
   { path: "admin/ai-settings", Component: AdminAiSettingsPage },
   { path: "admin/job-analysis", Component: AdminJobAnalysisPage },
   { path: "admin/company-analysis", Component: AdminCompanyAnalysisPage },

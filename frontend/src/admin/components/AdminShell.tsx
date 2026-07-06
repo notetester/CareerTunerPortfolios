@@ -169,6 +169,7 @@ const NAV_GROUPS: NavGroup[] = [
       { key: "notices", label: "공지사항", icon: Megaphone, href: "/admin/notices", permissionGroups: ["CONTENT_ADMIN"] },
       { key: "faq", label: "FAQ 관리", icon: CircleHelp, href: "/admin/faq", permissionGroups: ["CONTENT_ADMIN"] },
       { key: "ai-support", label: "AI 상담 운영", icon: Bot, href: "/admin/ai-support", permissionGroups: ["CONTENT_ADMIN", "AI_ADMIN"] },
+      { key: "chatbot-governance", label: "챗봇 거버넌스", icon: Bot, href: "/admin/chatbot-governance", permissionGroups: ["AI_ADMIN"] },
       { key: "inquiries", label: "문의 관리", icon: Mail, href: "/admin/inquiries", permissionGroups: ["CONTENT_ADMIN"] },
       { key: "terms", label: "약관 관리", icon: Scale, href: "/admin/terms", permissionGroups: ["CONTENT_ADMIN", "POLICY_ADMIN"] },
       { key: "notifications", label: "알림 모니터링", icon: Bell, href: "/admin/notifications", permissionGroups: ["CONTENT_ADMIN"] },
