@@ -48,6 +48,8 @@ import { AdminSecurityOpsPage } from "./features/security-ops/pages/AdminSecurit
 import { AdminActivityLogsPage } from "./features/activity-logs/pages/AdminActivityLogsPage";
 // 런타임 설정 콘솔(트립투게더 이식): 코드가 실시간 참조하는 key-value 설정 + 변경 이력
 import { AdminRuntimeSettingsPage } from "./features/runtime-settings/pages/AdminRuntimeSettingsPage";
+import { AdminCorrectionsPage } from "./features/corrections/pages/AdminCorrectionsPage";
+import { AdminCreditsPage } from "./features/credits/pages/AdminCreditsPage";
 // 이메일 발급 전역 감사(트립투게더 이식): 전체 계정 인증/재설정 토큰 발급 이력 검색
 import { AdminEmailAuditLogPage } from "./features/email-audit/pages/AdminEmailAuditLogPage";
 
@@ -81,6 +83,7 @@ export const adminRoutes = [
   { path: "admin/runtime-settings", Component: AdminRuntimeSettingsPage },
   { path: "admin/action-logs", Component: AdminActionLogsPage },
   { path: "admin/payments", Component: AdminPaymentsPage },
+  { path: "admin/credits", Component: AdminCreditsPage },
   { path: "admin/application-cases", Component: AdminApplicationCasesPage },
   { path: "admin/ai-usage", Component: AdminAiUsagePage },
   { path: "admin/ai-settings", Component: AdminAiSettingsPage },
@@ -88,6 +91,7 @@ export const adminRoutes = [
   { path: "admin/company-analysis", Component: AdminCompanyAnalysisPage },
   { path: "admin/interviews", Component: AdminInterviewsPage },
   { path: "admin/interview/reports", Component: AdminInterviewReportsPage },
+  { path: "admin/corrections", Component: AdminCorrectionsPage },
   { path: "admin/interview/knowledge", Component: AdminInterviewKnowledgePage },
   { path: "admin/community", Component: AdminReports },
   { path: "admin/notices", Component: AdminNotices },

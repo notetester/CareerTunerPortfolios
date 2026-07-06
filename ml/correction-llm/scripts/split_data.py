@@ -8,6 +8,8 @@ import random
 from collections import defaultdict
 from pathlib import Path
 
+from dataset_contract import length_bucket
+
 
 def read_jsonl(path: Path) -> list[dict]:
     with path.open("r", encoding="utf-8") as f:
@@ -21,14 +23,17 @@ def write_jsonl(path: Path, rows: list[dict]) -> None:
             f.write(json.dumps(row, ensure_ascii=False, separators=(",", ":")) + "\n")
 
 
-def task_type(row: dict) -> str:
-    user_content = row["messages"][1]["content"]
-    return json.loads(user_content)["task_type"]
-
-
 def sample_id(row: dict) -> str:
     user_content = row["messages"][1]["content"]
     return json.loads(user_content)["id"]
+
+
+def stratum(row: dict) -> str:
+    user_content = row["messages"][1]["content"]
+    payload = json.loads(user_content)
+    task = payload["task_type"]
+    original = payload.get("input", {}).get("original_text", "")
+    return f"{task}:{length_bucket(task, len(original))}"
 
 
 def main() -> None:
@@ -43,7 +48,7 @@ def main() -> None:
     rows = read_jsonl(Path(args.input))
     grouped: dict[str, list[dict]] = defaultdict(list)
     for row in rows:
-        grouped[task_type(row)].append(row)
+        grouped[stratum(row)].append(row)
 
     rng = random.Random(args.seed)
     train: list[dict] = []
@@ -64,6 +69,7 @@ def main() -> None:
         "input_count": len(rows),
         "train_count": len(train),
         "val_count": len(val),
+        "strata": {key: len(value) for key, value in sorted(grouped.items())},
         "val_ids": [sample_id(row) for row in val],
     }
     print(json.dumps(summary, ensure_ascii=False, indent=2))
