@@ -1,8 +1,7 @@
-package com.careertuner.community.moderation.dto;
+package com.careertuner.admin.settings.dto;
 
-import java.time.LocalDateTime;
-
-public record ModerationSettingResponse(
+/** 콘텐츠 중재 정책(단일행)의 export 형태. */
+public record ModerationExport(
         String strictness,
         double hideThreshold,
         int sanctionThreshold,
@@ -13,6 +12,5 @@ public record ModerationSettingResponse(
         int commentRateWindowSeconds,
         int commentRateMax,
         int inquiryRateWindowSeconds,
-        int inquiryRateMax,
-        LocalDateTime updatedAt
+        int inquiryRateMax
 ) {}

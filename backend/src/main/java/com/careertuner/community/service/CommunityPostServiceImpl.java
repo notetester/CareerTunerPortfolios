@@ -65,16 +65,11 @@ public class CommunityPostServiceImpl implements CommunityPostService {
     private final PrivacyPolicyService privacyPolicyService;
     private final NicknameProfileService nicknameProfileService;
     private final PersonalizedFeedService personalizedFeedService;
-
-    /** 신고 누적 자동 블러 임계(이 수 이상 신고되면 비작성자에게 블러). */
-    @org.springframework.beans.factory.annotation.Value("${community.report.blur-threshold:3}")
-    private int reportBlurThreshold;
-
-    /** 작성 rate-limit — 윈도(초) 안에 이 건수 이상이면 429(0이면 비활성). */
-    @org.springframework.beans.factory.annotation.Value("${community.post.rate-limit.max:10}")
-    private int postRateLimitMax;
-    @org.springframework.beans.factory.annotation.Value("${community.post.rate-limit.window-seconds:60}")
-    private long postRateLimitWindowSeconds;
+    /**
+     * 신고 누적 블러 임계·작성 rate-limit 값은 검열/중재 정책 콘솔에서 런타임 편집한다.
+     * (이전 community.report.blur-threshold / community.post.rate-limit.* @Value 하드코딩을 대체)
+     */
+    private final com.careertuner.community.moderation.service.ModerationSettingService moderationSettingService;
 
     /** 개인화 피드 정렬 키 — 이 값이면 PersonalizedFeedService(7:3 혼합)로 위임한다. */
     private static final String SORT_PERSONALIZED = "personalized";
@@ -231,11 +226,12 @@ public class CommunityPostServiceImpl implements CommunityPostService {
         if (PostCategory.RECOMMENDED_JOB == request.category()) {
             throw new BusinessException(ErrorCode.FORBIDDEN, "채용공고는 승인된 기업 공고 등록 화면에서만 작성할 수 있습니다.");
         }
-        // 작성 rate-limit(도배 방지) — 최근 window 초 안에 max 건 이상이면 429.
-        if (postRateLimitMax > 0) {
+        // 작성 rate-limit(도배 방지) — 최근 window 초 안에 max 건 이상이면 429. (콘솔 편집값)
+        int postRateMax = moderationSettingService.getPostRateMax();
+        if (postRateMax > 0) {
             int recent = postMapper.countRecentPostsByUser(userId,
-                    LocalDateTime.now().minusSeconds(postRateLimitWindowSeconds));
-            if (recent >= postRateLimitMax) {
+                    LocalDateTime.now().minusSeconds(moderationSettingService.getPostRateWindowSeconds()));
+            if (recent >= postRateMax) {
                 throw new BusinessException(ErrorCode.RATE_LIMITED,
                         "짧은 시간에 너무 많은 글을 작성했습니다. 잠시 후 다시 시도해 주세요.");
             }
@@ -361,8 +357,9 @@ public class CommunityPostServiceImpl implements CommunityPostService {
                                             Long viewerId) {
         PostCategory cat = PostCategory.valueOf(post.getCategory());
         int reportCount = post.getReportCount() == null ? 0 : post.getReportCount();
-        // 신고 누적 자동 블러 — 임계 이상이면 비작성자에게 가린다(작성자·프론트 클릭 시 해제).
-        boolean blurred = reportCount >= reportBlurThreshold && !post.getUserId().equals(viewerId);
+        // 신고 누적 자동 블러 — 임계 이상이면 비작성자에게 가린다(작성자·프론트 클릭 시 해제). (콘솔 편집값)
+        boolean blurred = reportCount >= moderationSettingService.getReportBlurThreshold()
+                && !post.getUserId().equals(viewerId);
         return new PostListResponse(
                 post.getId(),
                 post.getCategory(),

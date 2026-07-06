@@ -1,0 +1,81 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.careertuner.runtimesetting.mapper.RuntimeSettingMapper">
+
+    <sql id="cols">
+        id, setting_key, setting_group, display_name, setting_value, fallback_value, value_type,
+        secret, editable, active, description, updated_by, created_at, updated_at
+    </sql>
+
+    <select id="findActiveSettingByKey" resultType="com.careertuner.runtimesetting.domain.RuntimeSetting">
+        SELECT <include refid="cols"/> FROM application_runtime_setting
+         WHERE setting_key = #{settingKey} AND active = 1
+    </select>
+
+    <select id="findByKey" resultType="com.careertuner.runtimesetting.domain.RuntimeSetting">
+        SELECT <include refid="cols"/> FROM application_runtime_setting WHERE setting_key = #{settingKey}
+    </select>
+
+    <select id="findById" resultType="com.careertuner.runtimesetting.domain.RuntimeSetting">
+        SELECT <include refid="cols"/> FROM application_runtime_setting WHERE id = #{id}
+    </select>
+
+    <select id="findSettings" resultType="com.careertuner.runtimesetting.domain.RuntimeSetting">
+        SELECT <include refid="cols"/> FROM application_runtime_setting
+        <where>
+            <if test="!includeInactive">AND active = 1</if>
+            <if test="settingGroup != null">AND setting_group = #{settingGroup}</if>
+            <if test="keyword != null">
+                AND (setting_key LIKE CONCAT('%', #{keyword}, '%')
+                     OR display_name LIKE CONCAT('%', #{keyword}, '%')
+                     OR description LIKE CONCAT('%', #{keyword}, '%'))
+            </if>
+        </where>
+        ORDER BY setting_group, setting_key
+    </select>
+
+    <insert id="insertSetting" useGeneratedKeys="true" keyProperty="id"
+            parameterType="com.careertuner.runtimesetting.domain.RuntimeSetting">
+        INSERT INTO application_runtime_setting
+            (setting_key, setting_group, display_name, setting_value, fallback_value, value_type,
+             secret, editable, active, description, updated_by)
+        VALUES
+            (#{settingKey}, #{settingGroup}, #{displayName}, #{settingValue}, #{fallbackValue}, #{valueType},
+             #{secret}, #{editable}, #{active}, #{description}, #{updatedBy})
+    </insert>
+
+    <update id="updateSetting" parameterType="com.careertuner.runtimesetting.domain.RuntimeSetting">
+        UPDATE application_runtime_setting
+           SET setting_group = #{settingGroup}, display_name = #{displayName},
+               setting_value = #{settingValue}, fallback_value = #{fallbackValue}, value_type = #{valueType},
+               secret = #{secret}, editable = #{editable}, active = #{active},
+               description = #{description}, updated_by = #{updatedBy}
+         WHERE setting_key = #{settingKey}
+    </update>
+
+    <select id="nextVersionNo" resultType="int">
+        SELECT COALESCE(MAX(version_no), 0) + 1 FROM application_runtime_setting_history WHERE setting_key = #{settingKey}
+    </select>
+
+    <insert id="insertHistory">
+        INSERT INTO application_runtime_setting_history
+            (setting_id, setting_key, version_no, change_type, actor_user_id, before_value, after_value,
+             before_fallback, after_fallback, before_snapshot, after_snapshot)
+        VALUES
+            (#{settingId}, #{settingKey}, #{versionNo}, #{changeType}, #{actorUserId}, #{beforeValue}, #{afterValue},
+             #{beforeFallback}, #{afterFallback}, #{beforeSnapshot}, #{afterSnapshot})
+    </insert>
+
+    <select id="findHistory" resultType="com.careertuner.runtimesetting.domain.RuntimeSettingHistory">
+        SELECT id, setting_id, setting_key, version_no, change_type, actor_user_id,
+               before_value, after_value, before_fallback, after_fallback, created_at
+          FROM application_runtime_setting_history
+        <where>
+            <if test="settingKey != null">AND setting_key = #{settingKey}</if>
+        </where>
+         ORDER BY id DESC
+         LIMIT #{limit}
+    </select>
+
+</mapper>

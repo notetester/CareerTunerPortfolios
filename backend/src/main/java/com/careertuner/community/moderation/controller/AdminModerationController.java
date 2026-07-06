@@ -213,14 +213,7 @@ public class AdminModerationController {
     /** 검열 설정 조회 */
     @GetMapping("/moderation/settings")
     public ApiResponse<ModerationSettingResponse> getSettings() {
-        ModerationSetting setting = settingService.getCurrent();
-        return ApiResponse.ok(new ModerationSettingResponse(
-                setting.getStrictness().name(),
-                setting.getHideThreshold(),
-                setting.getSanctionThreshold(),
-                setting.getBlockDays(),
-                setting.getUpdatedAt()
-        ));
+        return ApiResponse.ok(toResponse(settingService.getCurrent()));
     }
 
     /** 검열 설정 변경 */
@@ -232,6 +225,13 @@ public class AdminModerationController {
         double threshold = settingService.getHideThreshold();
         int sanctionThreshold = settingService.getSanctionThreshold();
         int blockDays = settingService.getBlockDays();
+        int reportBlurThreshold = settingService.getReportBlurThreshold();
+        int postRateWindowSeconds = settingService.getPostRateWindowSeconds();
+        int postRateMax = settingService.getPostRateMax();
+        int commentRateWindowSeconds = settingService.getCommentRateWindowSeconds();
+        int commentRateMax = settingService.getCommentRateMax();
+        int inquiryRateWindowSeconds = settingService.getInquiryRateWindowSeconds();
+        int inquiryRateMax = settingService.getInquiryRateMax();
 
         if (request.strictness() != null) {
             try {
@@ -262,16 +262,65 @@ public class AdminModerationController {
                         "blockDays는 1 ~ 3650 범위여야 합니다: " + blockDays);
             }
         }
+        if (request.reportBlurThreshold() != null) {
+            reportBlurThreshold = requireRange("reportBlurThreshold", request.reportBlurThreshold(), 1, 1000);
+        }
+        if (request.postRateWindowSeconds() != null) {
+            postRateWindowSeconds = requireRange("postRateWindowSeconds", request.postRateWindowSeconds(), 1, 86400);
+        }
+        if (request.postRateMax() != null) {
+            postRateMax = requireRange("postRateMax", request.postRateMax(), 0, 100000);
+        }
+        if (request.commentRateWindowSeconds() != null) {
+            commentRateWindowSeconds = requireRange("commentRateWindowSeconds", request.commentRateWindowSeconds(), 1, 86400);
+        }
+        if (request.commentRateMax() != null) {
+            commentRateMax = requireRange("commentRateMax", request.commentRateMax(), 0, 100000);
+        }
+        if (request.inquiryRateWindowSeconds() != null) {
+            inquiryRateWindowSeconds = requireRange("inquiryRateWindowSeconds", request.inquiryRateWindowSeconds(), 1, 86400);
+        }
+        if (request.inquiryRateMax() != null) {
+            inquiryRateMax = requireRange("inquiryRateMax", request.inquiryRateMax(), 0, 100000);
+        }
 
-        settingService.update(strictness, threshold, sanctionThreshold, blockDays);
+        ModerationSetting next = new ModerationSetting();
+        next.setStrictness(strictness);
+        next.setHideThreshold(threshold);
+        next.setSanctionThreshold(sanctionThreshold);
+        next.setBlockDays(blockDays);
+        next.setReportBlurThreshold(reportBlurThreshold);
+        next.setPostRateWindowSeconds(postRateWindowSeconds);
+        next.setPostRateMax(postRateMax);
+        next.setCommentRateWindowSeconds(commentRateWindowSeconds);
+        next.setCommentRateMax(commentRateMax);
+        next.setInquiryRateWindowSeconds(inquiryRateWindowSeconds);
+        next.setInquiryRateMax(inquiryRateMax);
+        settingService.update(next);
 
-        ModerationSetting updated = settingService.getCurrent();
-        return ApiResponse.ok(new ModerationSettingResponse(
-                updated.getStrictness().name(),
-                updated.getHideThreshold(),
-                updated.getSanctionThreshold(),
-                updated.getBlockDays(),
-                updated.getUpdatedAt()
-        ));
+        return ApiResponse.ok(toResponse(settingService.getCurrent()));
+    }
+
+    private static int requireRange(String field, int value, int min, int max) {
+        if (value < min || value > max) {
+            throw new IllegalArgumentException(field + "는 " + min + " ~ " + max + " 범위여야 합니다: " + value);
+        }
+        return value;
+    }
+
+    private static ModerationSettingResponse toResponse(ModerationSetting s) {
+        return new ModerationSettingResponse(
+                s.getStrictness().name(),
+                s.getHideThreshold(),
+                s.getSanctionThreshold(),
+                s.getBlockDays(),
+                s.getReportBlurThreshold(),
+                s.getPostRateWindowSeconds(),
+                s.getPostRateMax(),
+                s.getCommentRateWindowSeconds(),
+                s.getCommentRateMax(),
+                s.getInquiryRateWindowSeconds(),
+                s.getInquiryRateMax(),
+                s.getUpdatedAt());
     }
 }
