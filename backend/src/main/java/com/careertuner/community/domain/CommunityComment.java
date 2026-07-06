@@ -27,6 +27,7 @@ public class CommunityComment {
     private int dislikeCount;
     private int recommendCount;
     private int disrecommendCount;
+    private int reportCount;   // 누적 신고 수(임계 이상 시 비작성자에게 블러)
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
 
