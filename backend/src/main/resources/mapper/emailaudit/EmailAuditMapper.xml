@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.careertuner.admin.emailaudit.mapper.EmailAuditMapper">
+
+    <!-- 토큰 값은 노출하지 않는다(감사 유출 시 재사용 방지). status 는 CASE 로 파생. -->
+    <select id="findRecent" resultType="com.careertuner.admin.emailaudit.dto.EmailAuditRow">
+        SELECT id,
+               user_id AS userId,
+               email,
+               purpose,
+               CASE WHEN used = 1 THEN 'USED'
+                    WHEN expired_at &lt; NOW() THEN 'EXPIRED'
+                    ELSE 'PENDING' END AS status,
+               used,
+               expired_at AS expiredAt,
+               used_at    AS usedAt,
+               created_at AS createdAt
+          FROM email_verification
+        <where>
+            <if test="email != null">AND email LIKE CONCAT('%', #{email}, '%')</if>
+            <if test="purpose != null">AND purpose = #{purpose}</if>
+            <if test="status == 'USED'">AND used = 1</if>
+            <if test="status == 'EXPIRED'">AND used = 0 AND expired_at &lt; NOW()</if>
+            <if test="status == 'PENDING'">AND used = 0 AND expired_at &gt;= NOW()</if>
+        </where>
+         ORDER BY id DESC
+         LIMIT #{limit}
+    </select>
+
+</mapper>
