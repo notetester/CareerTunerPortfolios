@@ -36,8 +36,15 @@ export function Root() {
 
   return (
     <div className="min-h-screen flex flex-col bg-slate-50">
-      {/* 라우트 이동 시 스크롤을 맨 위로 복원. 푸터(하단) 링크로 이동해도 새 페이지가 바닥에 걸리지 않게 한다. */}
-      <ScrollRestoration />
+      {/* 라우트 이동 시 스크롤을 맨 위로 복원. 푸터(하단) 링크로 이동해도 새 페이지가 바닥에 걸리지 않게 한다.
+          ⚠ 첫 로드(딥링크·새로고침)의 location.key 는 URL 과 무관하게 전부 "default" 라, 기본 키 그대로면
+          다른 페이지에서 저장된 스크롤이 새 URL 에 복원돼 짧은 페이지가 빈 화면처럼 보인다(카톡 공유·폰 핸드오프
+          딥링크에서 재현). 첫 로드만 URL 별 키로 분리해 오염을 막고, 앱 내 이동은 기본 동작(push=톱, back=복원) 유지. */}
+      <ScrollRestoration
+        getKey={(location) =>
+          location.key === "default" ? `${location.pathname}${location.search}` : location.key
+        }
+      />
       <ApplicationExtractionMonitor />
       <OfflineBanner />
       <RefundPolicyToastGate enabled={isAuthenticated && !isAdmin} />
