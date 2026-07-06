@@ -3,10 +3,10 @@ import { apiBase } from "@/app/lib/apiBase";
 import { getAccessToken } from "@/app/lib/tokenStore";
 import type {
   AttachmentShareMode,
-  ChatProfile,
   CollaborationUser,
-  ConversationMember,
-  ConversationSettings,
+  ConversationPermissionUpdateRequest,
+  ConversationSettingsResponse,
+  ConversationSettingsUpdateRequest,
   ConversationSummaryResponse,
   CreateConversationRequest,
   FileAssetResponse,
@@ -98,19 +98,6 @@ export function joinConversation(conversationId: number, password?: string): Pro
   });
 }
 
-export function joinConversationWithProfile(conversationId: number, request: {
-  password?: string | null;
-  anonymous?: boolean;
-  chatProfileId?: number | null;
-  displayName?: string | null;
-  avatarUrl?: string | null;
-}): Promise<ConversationSummaryResponse> {
-  return api<ConversationSummaryResponse>(`/collaboration/conversations/${conversationId}/join`, {
-    method: "POST",
-    body: JSON.stringify(request),
-  });
-}
-
 export function inviteConversationMembers(conversationId: number, userIds: number[]): Promise<ConversationSummaryResponse> {
   return api<ConversationSummaryResponse>(`/collaboration/conversations/${conversationId}/invites`, {
     method: "POST",
@@ -126,61 +113,6 @@ export function muteConversation(conversationId: number, muted: boolean): Promis
   });
 }
 
-export function getConversationSettings(conversationId: number): Promise<ConversationSettings> {
-  return api<ConversationSettings>(`/collaboration/conversations/${conversationId}/settings`, { method: "GET" });
-}
-
-export function updateConversationSettings(conversationId: number, request: Partial<ConversationSettings> & {
-  password?: string | null;
-  clearPassword?: boolean;
-}): Promise<ConversationSettings> {
-  return api<ConversationSettings>(`/collaboration/conversations/${conversationId}/settings`, {
-    method: "PATCH",
-    body: JSON.stringify(request),
-  });
-}
-
-export function listConversationMembers(conversationId: number): Promise<ConversationMember[]> {
-  return api<ConversationMember[]>(`/collaboration/conversations/${conversationId}/members`, { method: "GET" });
-}
-
-export function updateConversationMember(conversationId: number, userId: number, request: {
-  role?: string;
-  permissions?: string[];
-  displayName?: string | null;
-  avatarUrl?: string | null;
-  anonymous?: boolean;
-}): Promise<ConversationMember> {
-  return api<ConversationMember>(`/collaboration/conversations/${conversationId}/members/${userId}`, {
-    method: "PATCH",
-    body: JSON.stringify(request),
-  });
-}
-
-export function kickConversationMember(conversationId: number, userId: number, request: {
-  reason?: string;
-  ban?: boolean;
-  bannedUntil?: string | null;
-} = {}): Promise<void> {
-  return api<void>(`/collaboration/conversations/${conversationId}/members/${userId}/kick`, {
-    method: "POST",
-    body: JSON.stringify(request),
-  });
-}
-
-export function listChatProfiles(): Promise<ChatProfile[]> {
-  return api<ChatProfile[]>("/collaboration/chat-profiles", { method: "GET" });
-}
-
-export function createChatProfile(request: {
-  nickname: string;
-  avatarUrl?: string | null;
-  description?: string | null;
-  defaultProfile?: boolean;
-}): Promise<ChatProfile> {
-  return api<ChatProfile>("/collaboration/chat-profiles", { method: "POST", body: JSON.stringify(request) });
-}
-
 export function listMessages(conversationId: number, limit = 100): Promise<MessageResponse[]> {
   return api<MessageResponse[]>(
     `/collaboration/conversations/${conversationId}/messages${query({ limit })}`,
@@ -193,6 +125,77 @@ export function sendMessage(conversationId: number, request: SendMessageRequest)
     method: "POST",
     body: JSON.stringify(request),
   });
+}
+
+// ── 방 설정 / 관리자 위임 (W5) — OWNER 및 위임받은 MANAGER 만 ──
+
+export function getConversationSettings(conversationId: number): Promise<ConversationSettingsResponse> {
+  return api<ConversationSettingsResponse>(
+    `/collaboration/conversations/${conversationId}/settings`,
+    { method: "GET" },
+  );
+}
+
+export function updateConversationSettings(
+  conversationId: number,
+  request: ConversationSettingsUpdateRequest,
+): Promise<ConversationSettingsResponse> {
+  return api<ConversationSettingsResponse>(
+    `/collaboration/conversations/${conversationId}/settings`,
+    { method: "PATCH", body: JSON.stringify(request) },
+  );
+}
+
+export function updateMemberPermission(
+  conversationId: number,
+  targetUserId: number,
+  request: ConversationPermissionUpdateRequest,
+): Promise<ConversationSettingsResponse> {
+  return api<ConversationSettingsResponse>(
+    `/collaboration/conversations/${conversationId}/members/${targetUserId}/permission`,
+    { method: "PATCH", body: JSON.stringify(request) },
+  );
+}
+
+export function kickConversationMember(
+  conversationId: number,
+  targetUserId: number,
+): Promise<ConversationSettingsResponse> {
+  return api<ConversationSettingsResponse>(
+    `/collaboration/conversations/${conversationId}/members/${targetUserId}/kick`,
+    { method: "POST" },
+  );
+}
+
+export function banConversationMember(
+  conversationId: number,
+  targetUserId: number,
+  reason?: string,
+): Promise<ConversationSettingsResponse> {
+  return api<ConversationSettingsResponse>(
+    `/collaboration/conversations/${conversationId}/members/${targetUserId}/ban`,
+    { method: "POST", body: JSON.stringify({ reason: reason || null }) },
+  );
+}
+
+export function unbanConversationMember(
+  conversationId: number,
+  targetUserId: number,
+): Promise<ConversationSettingsResponse> {
+  return api<ConversationSettingsResponse>(
+    `/collaboration/conversations/${conversationId}/bans/${targetUserId}`,
+    { method: "DELETE" },
+  );
+}
+
+export function setInviteAllowList(
+  conversationId: number,
+  userIds: number[],
+): Promise<ConversationSettingsResponse> {
+  return api<ConversationSettingsResponse>(
+    `/collaboration/conversations/${conversationId}/invite-allowlist`,
+    { method: "PUT", body: JSON.stringify({ userIds }) },
+  );
 }
 
 export function uploadCollaborationFile(file: File): Promise<FileAssetResponse> {

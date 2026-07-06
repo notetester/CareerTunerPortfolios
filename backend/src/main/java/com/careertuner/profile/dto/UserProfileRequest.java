@@ -1,8 +1,6 @@
 package com.careertuner.profile.dto;
 
 public record UserProfileRequest(
-        String loginId,
-        String phoneNumber,
         String desiredJob,
         String desiredIndustry,
         Object education,
@@ -12,11 +10,6 @@ public record UserProfileRequest(
         Object certificates,
         Object languages,
         Object portfolioLinks,
-        Object jobPreferences,
-        Object personalInfo,
-        Object activities,
-        Object accountLinks,
-        Object chatProfiles,
         String resumeText,
         String selfIntro,
         Object preferences

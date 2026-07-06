@@ -1,0 +1,90 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.careertuner.ads.mapper.AdvertisementMapper">
+
+    <sql id="adColumns">
+        id, title, image_file_id, link_url, placement, target_platform,
+        start_at, end_at, active, priority, weight,
+        impression_count, click_count, created_by, created_at, updated_at
+    </sql>
+
+    <!-- ── 공개 노출 ── -->
+    <!-- 활성 + 기간(start<=now<end, NULL=제한없음) + 플랫폼(ALL 또는 요청 플랫폼) 매치.
+         priority 높은 순 → 서비스에서 최고 priority 그룹만 남겨 weight 가중 랜덤. -->
+    <select id="findServable" resultType="com.careertuner.ads.domain.Advertisement">
+        SELECT <include refid="adColumns"/>
+          FROM advertisement
+         WHERE active = 1
+           AND placement = #{placement}
+           AND (start_at IS NULL OR start_at &lt;= #{now})
+           AND (end_at IS NULL OR end_at &gt; #{now})
+           AND (target_platform = 'ALL' OR target_platform = #{platform})
+         ORDER BY priority DESC, id DESC
+    </select>
+
+    <select id="findById" resultType="com.careertuner.ads.domain.Advertisement">
+        SELECT <include refid="adColumns"/>
+          FROM advertisement
+         WHERE id = #{id}
+    </select>
+
+    <update id="increaseImpression">
+        UPDATE advertisement SET impression_count = impression_count + 1 WHERE id = #{id}
+    </update>
+
+    <update id="increaseClick">
+        UPDATE advertisement SET click_count = click_count + 1 WHERE id = #{id}
+    </update>
+
+    <select id="findUserPlan" resultType="string">
+        SELECT plan FROM users WHERE id = #{userId}
+    </select>
+
+    <!-- ── 관리자 ── -->
+
+    <insert id="insert" useGeneratedKeys="true" keyProperty="id"
+            parameterType="com.careertuner.ads.domain.Advertisement">
+        INSERT INTO advertisement
+            (title, image_file_id, link_url, placement, target_platform,
+             start_at, end_at, active, priority, weight, created_by)
+        VALUES
+            (#{title}, #{imageFileId}, #{linkUrl}, #{placement}, #{targetPlatform},
+             #{startAt}, #{endAt}, #{active}, #{priority}, #{weight}, #{createdBy})
+    </insert>
+
+    <update id="update" parameterType="com.careertuner.ads.domain.Advertisement">
+        UPDATE advertisement
+           SET title           = #{title},
+               image_file_id   = #{imageFileId},
+               link_url        = #{linkUrl},
+               placement       = #{placement},
+               target_platform = #{targetPlatform},
+               start_at        = #{startAt},
+               end_at          = #{endAt},
+               active          = #{active},
+               priority        = #{priority},
+               weight          = #{weight}
+         WHERE id = #{id}
+    </update>
+
+    <update id="updateActive">
+        UPDATE advertisement SET active = #{active} WHERE id = #{id}
+    </update>
+
+    <delete id="delete">
+        DELETE FROM advertisement WHERE id = #{id}
+    </delete>
+
+    <select id="findForAdmin" resultType="com.careertuner.ads.domain.Advertisement">
+        SELECT <include refid="adColumns"/>
+          FROM advertisement
+        <where>
+            <if test="placement != null">AND placement = #{placement}</if>
+            <if test="platform != null">AND target_platform = #{platform}</if>
+            <if test="activeOnly">AND active = 1</if>
+        </where>
+         ORDER BY id DESC
+    </select>
+
+</mapper>

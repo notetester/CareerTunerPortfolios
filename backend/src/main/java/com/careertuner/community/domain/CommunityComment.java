@@ -20,8 +20,14 @@ public class CommunityComment {
     private Long mentionUserId;   // 답글이 가리키는 대상 사용자(불변 참조). 표시명은 읽을 때 동적 렌더.
     private String content;
     private boolean anonymous;
+    /** 작성 시 선택한 표시용 닉네임 프로필(user_nickname_profile.id). NULL 이면 계정 기본 프로필/계정명으로 폴백. */
+    private Long nicknameProfileId;
     private String status;
     private int likeCount;
+    private int dislikeCount;
+    private int recommendCount;
+    private int disrecommendCount;
+    private int reportCount;   // 누적 신고 수(임계 이상 시 비작성자에게 블러)
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
 

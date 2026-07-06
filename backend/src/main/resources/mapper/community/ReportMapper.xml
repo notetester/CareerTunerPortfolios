@@ -18,6 +18,11 @@
         VALUES (#{reporterId}, #{postId}, #{reason}, #{detail}, #{status})
     </insert>
 
+    <!-- 게시글 누적 신고 수 +1(자동 블러 판정) -->
+    <update id="incrementPostReportCount">
+        UPDATE community_post SET report_count = report_count + 1 WHERE id = #{postId}
+    </update>
+
     <!-- 댓글 신고 중복 조회 -->
     <select id="findCommentReport" resultType="com.careertuner.community.domain.CommentReport">
         SELECT *
@@ -32,5 +37,9 @@
         INSERT INTO comment_report (reporter_id, comment_id, reason, detail, status)
         VALUES (#{reporterId}, #{commentId}, #{reason}, #{detail}, #{status})
     </insert>
+
+    <update id="incrementCommentReportCount">
+        UPDATE community_comment SET report_count = report_count + 1 WHERE id = #{commentId}
+    </update>
 
 </mapper>

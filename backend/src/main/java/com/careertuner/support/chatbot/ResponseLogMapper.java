@@ -20,4 +20,7 @@ public interface ResponseLogMapper {
                 @Param("topSimilarity") Double topSimilarity,
                 @Param("matchedFaqId") Long matchedFaqId,
                 @Param("handoff") boolean handoff);
+
+    /** 쿼터 집계 — 특정 사용자가 since 이후 보낸 질문 수(하루 사용량 산정용). */
+    int countByUserSince(@Param("userId") Long userId, @Param("since") java.time.LocalDateTime since);
 }

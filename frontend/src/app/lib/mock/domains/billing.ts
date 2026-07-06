@@ -13,6 +13,7 @@ import type {
   BillingCycle,
 } from "@/features/billing/api/billingApi";
 import type { CurrentRefundPolicy } from "@/features/billing/api/refundPolicyApi";
+import type { AiChargePreview } from "@/features/billing/api/aiChargePreviewApi";
 import type { RefundEligibility, RefundReasonCode, RefundRequestRow } from "@/features/billing/api/refundRequestApi";
 
 // ── 공개 정보: 요금제 목록 ──
@@ -205,6 +206,35 @@ interface PurchaseBody {
   productCode?: string;
 }
 
+interface AiChargePreviewBody {
+  featureType?: string;
+  creditCost?: number;
+  actionKey?: string;
+}
+
+export function chargeMockAiUsage(featureType: string, amount: number) {
+  if (amount <= 0) return;
+  if (myBilling.creditBalance < amount) {
+    throw new Error("크레딧이 부족합니다.");
+  }
+  myBilling.creditBalance -= amount;
+  const usageRow = usage.find((row) => row.featureType === featureType);
+  if (usageRow) {
+    usageRow.used += 1;
+    usageRow.creditUsed += amount;
+  } else {
+    usage.unshift({ featureType, used: 1, creditUsed: amount });
+  }
+  creditTransactions.unshift({
+    id: 6000 + creditTransactions.length + 1,
+    type: "AI_USAGE",
+    amount: -amount,
+    balanceAfter: myBilling.creditBalance,
+    reason: "AI 첨삭 사용",
+    createdAt: new Date().toISOString(),
+  });
+}
+
 export const billingRoutes: MockRoute[] = [
   // ── 공개: 요금제 / 크레딧 상품 ──
   { method: "GET", pattern: /^\/billing\/plans$/, handler: () => plans },
@@ -217,6 +247,36 @@ export const billingRoutes: MockRoute[] = [
   { method: "GET", pattern: /^\/billing\/credit-transactions$/, handler: () => [...creditTransactions] },
   { method: "GET", pattern: /^\/billing\/refund-policy\/current$/, handler: () => ({ ...currentRefundPolicy }) },
   { method: "POST", pattern: /^\/billing\/refund-policy\/acknowledgements$/, handler: () => ({ ...currentRefundPolicy }) },
+  {
+    method: "POST",
+    pattern: /^\/billing\/charge-preview$/,
+    handler: ({ body }: MockContext) => {
+      const request = body as AiChargePreviewBody | undefined;
+      const minimumCreditCost = Math.max(0, request?.creditCost ?? 2);
+      const maximumCreditCost = request?.creditCost == null ? 5 : minimumCreditCost;
+      const chargeAmount = minimumCreditCost;
+      return {
+        featureType: request?.featureType ?? "CORRECTION_SELF_INTRO",
+        chargeType: chargeAmount > 0 ? "CREDIT" : "FREE",
+        benefitCode: null,
+        chargeAmount,
+        minimumCreditCost,
+        maximumCreditCost,
+        creditUnitTokens: request?.creditCost == null ? 1000 : 0,
+        usageBased: maximumCreditCost > minimumCreditCost,
+        remainingTicket: 0,
+        currentCredit: myBilling.creditBalance,
+        sufficient: myBilling.creditBalance >= maximumCreditCost,
+        triggerType: chargeAmount > 0 ? "CREDIT_USE" : null,
+        actionKey: request?.actionKey ?? "AI_USAGE:mock",
+        refundPolicyId: currentRefundPolicy.id,
+        refundPolicyVersion: currentRefundPolicy.version,
+        refundPolicyTitle: currentRefundPolicy.title,
+        refundPolicySummary: currentRefundPolicy.summary,
+        refundPolicyRulesJson: currentRefundPolicy.rulesJson,
+      } satisfies AiChargePreview;
+    },
+  },
   {
     method: "POST",
     pattern: /^\/billing\/refunds\/preview$/,

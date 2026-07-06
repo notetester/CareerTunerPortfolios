@@ -1,4 +1,5 @@
 import { api } from "@/app/lib/api";
+import { runWithAiCharge } from "@/features/billing/api/aiChargePreviewApi";
 import { apiBase } from "@/app/lib/apiBase";
 import { getAccessToken } from "@/app/lib/tokenStore";
 import { isDataMockActive } from "../tutorial/tutorialStore";
@@ -84,10 +85,12 @@ export function scoreVoiceTranscript(
   questionLimit?: number,
 ): Promise<number> {
   if (isDataMockActive()) return Promise.resolve(transcript.some((l) => l.role === "user") ? 3 : 0);
-  return api<number>(`/interview/sessions/${sessionId}/score-voice`, {
-    method: "POST",
-    body: JSON.stringify({ transcript, questionLimit }),
-  });
+  return runWithAiCharge("INTERVIEW_VOICE_SCORING", (headers) =>
+    api<number>(`/interview/sessions/${sessionId}/score-voice`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ transcript, questionLimit }),
+    }));
 }
 
 
@@ -108,10 +111,12 @@ export function generateExpectedQuestions(
   request: GenerateQuestionsRequest,
 ): Promise<InterviewQuestion[]> {
   if (isDataMockActive()) return mockDelay(dummyQuestions, 900);
-  return api<InterviewQuestion[]>(`/interview/sessions/${sessionId}/generate-questions`, {
-    method: "POST",
-    body: JSON.stringify(request),
-  });
+  return runWithAiCharge("INTERVIEW_QUESTION_GEN", (headers) =>
+    api<InterviewQuestion[]>(`/interview/sessions/${sessionId}/generate-questions`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify(request),
+    }));
 }
 
 /** 세션의 질문 목록 조회. */
@@ -126,10 +131,12 @@ export function submitAnswer(
   request: SubmitAnswerRequest,
 ): Promise<InterviewAnswer> {
   if (isDataMockActive()) return mockDelay(dummyAnswer(questionId), 500);
-  return api<InterviewAnswer>(`/interview/questions/${questionId}/answers`, {
-    method: "POST",
-    body: JSON.stringify(request),
-  });
+  return runWithAiCharge("INTERVIEW_ANSWER_EVAL", (headers) =>
+    api<InterviewAnswer>(`/interview/questions/${questionId}/answers`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify(request),
+    }));
 }
 
 /** 질문에 대한 모범답안 생성(학습용). 답변 제출 전에도 호출 가능. */
@@ -146,10 +153,12 @@ export function generateFollowUps(
   request: GenerateFollowUpsRequest = {},
 ): Promise<InterviewQuestion[]> {
   if (isDataMockActive()) return mockDelay([...dummyQuestions, dummyFollowUp], 800);
-  return api<InterviewQuestion[]>(`/interview/questions/${questionId}/follow-ups`, {
-    method: "POST",
-    body: JSON.stringify(request),
-  });
+  return runWithAiCharge("INTERVIEW_FOLLOWUP_GEN", (headers) =>
+    api<InterviewQuestion[]>(`/interview/questions/${questionId}/follow-ups`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify(request),
+    }));
 }
 
 /** 세션 진행 상태(다음 질문/종료 여부) 조회. */

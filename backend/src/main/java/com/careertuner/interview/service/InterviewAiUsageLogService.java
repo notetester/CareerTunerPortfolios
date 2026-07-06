@@ -4,6 +4,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
+import com.careertuner.applicationcase.service.AiUsageLogService;
 import com.careertuner.interview.domain.InterviewAiUsageLog;
 import com.careertuner.interview.mapper.InterviewMapper;
 
@@ -12,9 +13,12 @@ import com.careertuner.interview.mapper.InterviewMapper;
 public class InterviewAiUsageLogService {
 
     private final InterviewMapper interviewMapper;
+    private final AiUsageLogService commonUsageLogService;
 
-    public InterviewAiUsageLogService(InterviewMapper interviewMapper) {
+    public InterviewAiUsageLogService(InterviewMapper interviewMapper,
+                                      AiUsageLogService commonUsageLogService) {
         this.interviewMapper = interviewMapper;
+        this.commonUsageLogService = commonUsageLogService;
     }
 
     @Transactional(propagation = Propagation.REQUIRES_NEW)
@@ -23,17 +27,9 @@ public class InterviewAiUsageLogService {
         if (usage == null) {
             return;
         }
-        interviewMapper.insertAiUsageLog(InterviewAiUsageLog.builder()
-                .userId(userId)
-                .applicationCaseId(applicationCaseId)
-                .featureType(featureType)
-                .status("SUCCESS")
-                .model(usage.model())
-                .inputTokens(usage.inputTokens())
-                .outputTokens(usage.outputTokens())
-                .tokenUsage(usage.totalTokens())
-                .creditUsed(creditUsed(usage.totalTokens()))
-                .build());
+        commonUsageLogService.recordSuccessValues(userId, applicationCaseId, featureType,
+                usage.model(), usage.inputTokens(), usage.outputTokens(), usage.totalTokens(),
+                creditUsed(usage.totalTokens()));
     }
 
     @Transactional(propagation = Propagation.REQUIRES_NEW)

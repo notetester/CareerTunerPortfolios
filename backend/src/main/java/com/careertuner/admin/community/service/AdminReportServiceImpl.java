@@ -1,5 +1,6 @@
 package com.careertuner.admin.community.service;
 
+import java.time.LocalDateTime;
 import java.util.List;
 
 import org.slf4j.Logger;
@@ -13,6 +14,9 @@ import com.careertuner.admin.community.dto.AdminReportDetailResponse;
 import com.careertuner.admin.community.dto.AdminReportListResponse;
 import com.careertuner.admin.community.dto.AiOpinion;
 import com.careertuner.admin.community.mapper.AdminReportMapper;
+import com.careertuner.admin.user.dto.AdminUserRow;
+import com.careertuner.admin.user.mapper.AdminUserMapper;
+import com.careertuner.auth.mapper.AuthMapper;
 import com.careertuner.common.exception.BusinessException;
 import com.careertuner.common.exception.ErrorCode;
 import com.careertuner.common.security.AuthUser;
@@ -25,7 +29,10 @@ import com.careertuner.community.moderation.domain.AiTaskType;
 import com.careertuner.community.moderation.domain.PostAiResult;
 import com.careertuner.community.moderation.dto.ModerationResult;
 import com.careertuner.community.moderation.mapper.PostAiResultMapper;
+import com.careertuner.community.moderation.service.ModerationSettingService;
 import com.careertuner.community.moderation.service.PostModerationService;
+import com.careertuner.notification.domain.Notification;
+import com.careertuner.notification.service.NotificationService;
 
 import lombok.RequiredArgsConstructor;
 import tools.jackson.databind.ObjectMapper;
@@ -37,12 +44,22 @@ public class AdminReportServiceImpl implements AdminReportService {
 
     private static final Logger log = LoggerFactory.getLogger(AdminReportServiceImpl.class);
 
+    private static final String ACTIVE = "ACTIVE";
+    private static final String BLOCKED = "BLOCKED";
+
     private final AdminReportMapper reportMapper;
     private final PostAiResultMapper aiResultMapper;
     private final PostModerationService moderationService;
     private final CommunityCommentMapper commentMapper;
     private final CommunityPostMapper postMapper;
     private final ObjectMapper objectMapper;
+    // 작성자 차단(BLOCK_AUTHOR): UserSanctionService 와 동일한 A 도메인 인프라를 재사용한다
+    // (상태 변경 + 이력 + 세션 해지 + ACCOUNT_BLOCKED 알림). 임계 기반 sanctionIfNeeded 와 달리
+    // 관리자 판단의 즉시 차단이므로 actor 에 처리 관리자를 기록한다.
+    private final AdminUserMapper userMapper;
+    private final AuthMapper authMapper;
+    private final NotificationService notificationService;
+    private final ModerationSettingService settingService;
 
     @Override
     public List<AdminReportListResponse> getReports(AuthUser authUser, String status) {
@@ -97,6 +114,11 @@ public class AdminReportServiceImpl implements AdminReportService {
         requireAdmin(authUser);
         boolean isComment = id >= 1_000_000L;
         Long targetId = isComment ? id - 1_000_000L : id;
+        Long adminId = authUser.id();
+        String type = isComment ? "comment" : "post";
+
+        // 처리 결과 알림 대상(처리 직전 PENDING 신고자)을 상태 갱신 전에 확보한다.
+        List<Long> reporterIds = reportMapper.findPendingReporterIds(targetId, type);
 
         String action = request.action().toUpperCase();
         if (!isComment) {
@@ -104,36 +126,85 @@ public class AdminReportServiceImpl implements AdminReportService {
                 case "HIDDEN" -> {
                     // 정책: DELETED는 종착(불가역) 상태 — DELETED 게시글은 HIDDEN으로 역행 불가.
                     guardPostNotDeleted(targetId);
-                    reportMapper.updatePostReportStatus(targetId, "CONFIRMED", "HIDDEN");
+                    reportMapper.updatePostReportStatus(targetId, "CONFIRMED", "HIDDEN", adminId);
                     reportMapper.updatePostStatus(targetId, "HIDDEN");
                 }
                 case "DELETED" -> {
                     // 정책: DELETED는 종착 상태 — 이미 DELETED면 재처리 거부(멱등성/감사 일관성).
                     guardPostNotDeleted(targetId);
-                    reportMapper.updatePostReportStatus(targetId, "CONFIRMED", "DELETED");
+                    reportMapper.updatePostReportStatus(targetId, "CONFIRMED", "DELETED", adminId);
                     reportMapper.updatePostStatus(targetId, "DELETED");
                 }
-                case "DISMISSED" -> reportMapper.updatePostReportStatus(targetId, "DISMISSED", "NONE");
+                case "BLOCK_AUTHOR" -> {
+                    // 콘텐츠는 유지하고 작성자 계정만 차단.
+                    CommunityPost post = requirePost(targetId);
+                    blockAuthor(authUser, post.getUserId());
+                    reportMapper.updatePostReportStatus(targetId, "CONFIRMED", "BLOCK_AUTHOR", adminId);
+                }
+                case "DELETE_AND_BLOCK" -> {
+                    guardPostNotDeleted(targetId);
+                    CommunityPost post = requirePost(targetId);
+                    blockAuthor(authUser, post.getUserId());
+                    reportMapper.updatePostReportStatus(targetId, "CONFIRMED", "DELETE_AND_BLOCK", adminId);
+                    reportMapper.updatePostStatus(targetId, "DELETED");
+                }
+                case "DISMISSED" -> reportMapper.updatePostReportStatus(targetId, "DISMISSED", "NONE", adminId);
                 default -> throw new BusinessException(ErrorCode.INVALID_INPUT, "알 수 없는 조치입니다.");
             }
         } else {
             switch (action) {
                 case "HIDDEN" -> {
-                    reportMapper.updateCommentReportStatus(targetId, "CONFIRMED", "HIDDEN");
+                    reportMapper.updateCommentReportStatus(targetId, "CONFIRMED", "HIDDEN", adminId);
                     hideCommentWithCount(targetId);
                 }
                 case "DELETED" -> {
-                    reportMapper.updateCommentReportStatus(targetId, "CONFIRMED", "DELETED");
+                    reportMapper.updateCommentReportStatus(targetId, "CONFIRMED", "DELETED", adminId);
+                    deleteCommentWithCount(targetId);
+                }
+                case "BLOCK_AUTHOR" -> {
+                    CommunityComment comment = requireComment(targetId);
+                    blockAuthor(authUser, comment.getUserId());
+                    reportMapper.updateCommentReportStatus(targetId, "CONFIRMED", "BLOCK_AUTHOR", adminId);
+                }
+                case "DELETE_AND_BLOCK" -> {
+                    CommunityComment comment = requireComment(targetId);
+                    blockAuthor(authUser, comment.getUserId());
+                    reportMapper.updateCommentReportStatus(targetId, "CONFIRMED", "DELETE_AND_BLOCK", adminId);
                     deleteCommentWithCount(targetId);
                 }
                 case "RESTORE", "PUBLISHED" -> {
-                    reportMapper.updateCommentReportStatus(targetId, "DISMISSED", "NONE");
+                    reportMapper.updateCommentReportStatus(targetId, "DISMISSED", "NONE", adminId);
                     restoreCommentWithCount(targetId);
                 }
-                case "DISMISSED" -> reportMapper.updateCommentReportStatus(targetId, "DISMISSED", "NONE");
+                case "DISMISSED" -> reportMapper.updateCommentReportStatus(targetId, "DISMISSED", "NONE", adminId);
                 default -> throw new BusinessException(ErrorCode.INVALID_INPUT, "알 수 없는 조치입니다.");
             }
         }
+
+        // 신고자 결과 알림 — best-effort(알림 실패가 처리 자체를 되돌리면 안 된다).
+        notifyReporters(reporterIds, isComment, targetId, action);
+
+        return getReportDetail(authUser, id);
+    }
+
+    @Override
+    @Transactional
+    public AdminReportDetailResponse reactivate(AuthUser authUser, Long id) {
+        requireAdmin(authUser);
+        boolean isComment = id >= 1_000_000L;
+        Long targetId = isComment ? id - 1_000_000L : id;
+        String type = isComment ? "comment" : "post";
+
+        if (reportMapper.findById(targetId, type) == null) {
+            throw new BusinessException(ErrorCode.NOT_FOUND, "신고를 찾을 수 없습니다.");
+        }
+        int updated = isComment
+                ? reportMapper.reactivateCommentReports(targetId)
+                : reportMapper.reactivatePostReports(targetId);
+        if (updated == 0) {
+            throw new BusinessException(ErrorCode.CONFLICT, "재활성화할 종결(기각/취소) 신고가 없습니다.");
+        }
+        log.info("신고 재활성화: type={}, targetId={}, rows={}, adminId={}", type, targetId, updated, authUser.id());
         return getReportDetail(authUser, id);
     }
 
@@ -192,6 +263,94 @@ public class AdminReportServiceImpl implements AdminReportService {
     }
 
     /**
+     * 작성자 계정 차단 — UserSanctionService 의 차단 시퀀스를 관리자 즉시 조치 형태로 재사용.
+     * 가드: 본인 금지, 관리자 계열(보호 role) 금지, ACTIVE 가 아니면(이미 차단/휴면/탈퇴) 재차단 금지.
+     */
+    private void blockAuthor(AuthUser authUser, Long authorId) {
+        if (authorId == null) {
+            throw new BusinessException(ErrorCode.NOT_FOUND, "작성자 정보를 찾을 수 없습니다.");
+        }
+        if (authorId.equals(authUser.id())) {
+            throw new BusinessException(ErrorCode.INVALID_INPUT, "본인 계정은 차단할 수 없습니다.");
+        }
+        AdminUserRow author = userMapper.findUser(authorId);
+        if (author == null) {
+            throw new BusinessException(ErrorCode.NOT_FOUND, "작성자 계정을 찾을 수 없습니다.");
+        }
+        if ("ADMIN".equals(author.getRole()) || "SUPER_ADMIN".equals(author.getRole())) {
+            throw new BusinessException(ErrorCode.FORBIDDEN, "관리자 계정은 신고 콘솔에서 차단할 수 없습니다.");
+        }
+        if (!ACTIVE.equals(author.getStatus())) {
+            // 이미 차단/휴면/탈퇴 상태 — 재차단 대신 건너뛴다(수동 조치 보존, DELETE_AND_BLOCK 의 삭제는 계속 진행).
+            log.info("작성자 차단 생략(이미 비활성): authorId={}, status={}", authorId, author.getStatus());
+            return;
+        }
+
+        int blockDays = settingService.getBlockDays();
+        // blockedUntil 은 DB NOW()(serverTimezone=Asia/Seoul)와 비교되므로 KST 벽시계로 저장한다(UserSanctionService 와 동일).
+        LocalDateTime blockedUntil = LocalDateTime.now(java.time.ZoneId.of("Asia/Seoul")).plusDays(blockDays);
+        String reason = "신고 처리(작성자 차단) — 관리자 조치";
+
+        userMapper.updateStatus(authorId, BLOCKED, reason, blockedUntil, authUser.id());
+        userMapper.insertStatusHistory(authorId, authUser.id(), ACTIVE, BLOCKED, reason, null, blockedUntil);
+        authMapper.revokeAllForUser(authorId);
+
+        // 차단 통보 — 기존 등록 타입(ACCOUNT_BLOCKED) 재사용. 실패해도 차단 자체는 유지(best-effort).
+        try {
+            notificationService.notify(Notification.builder()
+                    .userId(authorId)
+                    .type("ACCOUNT_BLOCKED")
+                    .targetType("USER")
+                    .targetId(authorId)
+                    .title("커뮤니티 활동이 제한되었습니다")
+                    .message("신고 처리 결과에 따라 " + blockDays + "일간 이용이 제한됩니다.")
+                    .link("/support/contact")
+                    .build());
+        } catch (Exception ex) {
+            log.warn("작성자 차단 알림 발송 실패: authorId={}", authorId, ex);
+        }
+
+        log.warn("신고 처리 작성자 차단: authorId={}, adminId={}, blockedUntil={}", authorId, authUser.id(), blockedUntil);
+    }
+
+    /** 신고자에게 처리 결과 알림. 기존 등록 타입(NOTICE 계열) 사용 — 새 타입 등록 금지 규칙 준수. */
+    private void notifyReporters(List<Long> reporterIds, boolean isComment, Long targetId, String action) {
+        if (reporterIds == null || reporterIds.isEmpty()) {
+            return;
+        }
+        boolean dismissed = "DISMISSED".equals(action);
+        String actionLabel = switch (action) {
+            case "HIDDEN" -> "숨김 처리";
+            case "DELETED" -> "삭제";
+            case "BLOCK_AUTHOR" -> "작성자 차단";
+            case "DELETE_AND_BLOCK" -> "삭제 및 작성자 차단";
+            case "RESTORE", "PUBLISHED" -> "복원(기각)";
+            default -> null;
+        };
+        String title = dismissed ? "신고가 반려되었습니다" : "신고가 처리되었습니다";
+        String message = dismissed
+                ? "접수하신 신고를 검토했으나 조치 없이 종결되었습니다."
+                : "접수하신 신고가 처리되었습니다." + (actionLabel != null ? " (조치: " + actionLabel + ")" : "");
+
+        for (Long reporterId : reporterIds) {
+            try {
+                notificationService.notify(Notification.builder()
+                        .userId(reporterId)
+                        .type("NOTICE")
+                        .targetType(isComment ? "COMMENT" : "POST")
+                        .targetId(targetId)
+                        .title(title)
+                        .message(message)
+                        .link("/community")
+                        .build());
+            } catch (Exception ex) {
+                // 알림 실패가 신고 처리를 되돌리면 안 된다 — 개별 실패는 기록만.
+                log.warn("신고 결과 알림 발송 실패: reporterId={}, targetId={}", reporterId, targetId, ex);
+            }
+        }
+    }
+
+    /**
      * 관리자 댓글 숨김 + comment_count 대칭 조정.
      * PUBLISHED 경계를 통과할 때(affected-rows>0)만 -1 → AI 검열과의 경합 시 이중감소 없음.
      */
@@ -236,6 +395,22 @@ public class AdminReportServiceImpl implements AdminReportService {
         if ("DELETED".equals(post.getStatus())) {
             throw new BusinessException(ErrorCode.CONFLICT, "이미 삭제된 게시글은 상태를 변경할 수 없습니다.");
         }
+    }
+
+    private CommunityPost requirePost(Long postId) {
+        CommunityPost post = postMapper.findById(postId);
+        if (post == null) {
+            throw new BusinessException(ErrorCode.NOT_FOUND, "게시글을 찾을 수 없습니다.");
+        }
+        return post;
+    }
+
+    private CommunityComment requireComment(Long commentId) {
+        CommunityComment comment = commentMapper.findById(commentId);
+        if (comment == null) {
+            throw new BusinessException(ErrorCode.NOT_FOUND, "댓글을 찾을 수 없습니다.");
+        }
+        return comment;
     }
 
     private void requireAdmin(AuthUser authUser) {

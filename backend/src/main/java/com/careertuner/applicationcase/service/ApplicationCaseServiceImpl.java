@@ -220,6 +220,15 @@ public class ApplicationCaseServiceImpl implements ApplicationCaseService {
 
     @Override
     @Transactional
+    public void hideFromTrash(Long userId, Long id) {
+        int hidden = applicationCaseMapper.hideApplicationCaseFromTrash(id, userId);
+        if (hidden == 0) {
+            throw new BusinessException(ErrorCode.NOT_FOUND, "삭제함에서 지원 건을 찾을 수 없습니다.");
+        }
+    }
+
+    @Override
+    @Transactional
     public JobPostingResponse saveJobPosting(Long userId, Long applicationCaseId, JobPostingRequest request) {
         String sourceType = normalizeOption(request.sourceType(), DEFAULT_SOURCE_TYPE, SOURCE_TYPES, "sourceType");
         if (needsBackgroundExtraction(sourceType, request)) {

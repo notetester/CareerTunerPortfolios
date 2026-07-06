@@ -23,13 +23,16 @@ import com.careertuner.admin.securityops.dto.SecurityProviderHealthHistoryRow;
 import com.careertuner.admin.securityops.dto.SecurityReviewRequest;
 import com.careertuner.admin.securityops.dto.SecurityReviewRow;
 import com.careertuner.admin.securityops.dto.WafSyncEventRow;
+import com.careertuner.admin.securityops.engine.BlockRuleCacheService;
 import com.careertuner.admin.securityops.mapper.AdminSecurityOpsMapper;
 import com.careertuner.common.exception.BusinessException;
 import com.careertuner.common.exception.ErrorCode;
 import com.careertuner.common.security.AuthUser;
 
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class AdminSecurityOpsService {
@@ -47,6 +50,49 @@ public class AdminSecurityOpsService {
 
     private final AdminSecurityOpsMapper mapper;
     private final AdminActionLogService actionLogService;
+    private final BlockRuleCacheService blockRuleCacheService;
+    private final com.careertuner.admin.securityops.waf.WafSyncScheduler wafSyncScheduler;
+
+    /** WAF 동기화 큐를 즉시 1배치 처리(수동 드레인). @return 처리 건수 */
+    @Transactional
+    public int processWafSyncNow(AuthUser authUser) {
+        AdminAccess.requireAdmin(authUser);
+        int processed = wafSyncScheduler.drainOnce();
+        actionLogService.record(authUser, null, "SECURITY_WAF_SYNC_PROCESSED", "SECURITY_BLOCK_RULE",
+                null, jsonObject("processed", String.valueOf(processed)), "WAF 큐 수동 처리");
+        return processed;
+    }
+
+    /** 규칙 변경 후 런타임 차단 캐시를 즉시 재적재한다(트랜잭션 내 read-your-writes → 커밋될 상태 반영). best-effort. */
+    private void invalidateBlockCache() {
+        try {
+            blockRuleCacheService.invalidateAndRefresh();
+        } catch (Exception e) {
+            log.warn("[BlockCache] 규칙 변경 후 캐시 갱신 실패(다음 변경/수동 동기화 시 복구): {}", e.getMessage());
+        }
+    }
+
+    /** 관리자가 수동으로 차단 캐시를 DB 와 재동기화. */
+    @Transactional
+    public BlockCacheStatus syncBlockCache(AuthUser authUser) {
+        AdminAccess.requireAdmin(authUser);
+        BlockRuleCacheService.BlockRuleCacheSnapshot snapshot = blockRuleCacheService.invalidateAndRefresh();
+        actionLogService.record(authUser, null, "SECURITY_BLOCK_CACHE_SYNCED", "SECURITY_BLOCK_RULE",
+                null, jsonObject("ruleCount", String.valueOf(snapshot.size())), "수동 캐시 동기화");
+        return new BlockCacheStatus(snapshot.getSource(), snapshot.size(), snapshot.getLoadedAt());
+    }
+
+    /** 현재 차단 캐시 상태 조회. */
+    @Transactional(readOnly = true)
+    public BlockCacheStatus blockCacheStatus(AuthUser authUser) {
+        AdminAccess.requireAdmin(authUser);
+        BlockRuleCacheService.BlockRuleCacheSnapshot snapshot = blockRuleCacheService.getSnapshot();
+        return new BlockCacheStatus(snapshot.getSource(), snapshot.size(), snapshot.getLoadedAt());
+    }
+
+    /** 차단 캐시 상태 응답. */
+    public record BlockCacheStatus(String source, int ruleCount, java.time.LocalDateTime loadedAt) {
+    }
 
     @Transactional(readOnly = true)
     public SecurityOpsSummaryResponse summary(AuthUser authUser) {
@@ -70,6 +116,7 @@ public class AdminSecurityOpsService {
         SecurityBlockRuleRow created = mapper.findLatestBlockRule(normalized.ruleType(), normalized.ruleValue());
         actionLogService.record(authUser, null, "SECURITY_BLOCK_RULE_CREATED", "SECURITY_BLOCK_RULE",
                 null, blockRuleSnapshot(created), normalized.reason());
+        invalidateBlockCache();
         if (created != null && created.wafSyncEnabled()) {
             queueWafSync(authUser, created.id(), "UPSERT");
             return mapper.findBlockRuleById(created.id());
@@ -91,6 +138,7 @@ public class AdminSecurityOpsService {
         SecurityBlockRuleRow after = requireBlockRule(id);
         actionLogService.record(authUser, null, "SECURITY_BLOCK_RULE_UPDATED", "SECURITY_BLOCK_RULE",
                 blockRuleSnapshot(before), blockRuleSnapshot(after), normalized.reason());
+        invalidateBlockCache();
         return after;
     }
 

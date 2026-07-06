@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from "react";
 import {
   MessageSquareWarning, Search, ChevronLeft, ChevronRight,
   EyeOff, Trash2, X as XIcon, RotateCcw, Eye, ShieldAlert, Flag, Settings2, RefreshCw,
-  MessageCircle,
+  MessageCircle, UserX, ShieldX,
 } from "lucide-react";
 import ModerationSettingsPanel from "../../moderation/pages/ModerationSettingsPanel";
 import AdminShell from "../../../components/AdminShell";
@@ -25,12 +25,22 @@ import "./admin-reports.css";
 
 /* ── 유저 신고 관련 타입/상수 ── */
 type ReportFilterKey = "대기" | "처리됨" | "전체";
-type ReportActionType = "HIDDEN" | "DELETED" | "DISMISSED";
+type ReportActionType = adminReportApi.AdminReportAction;
 
 const REPORT_ACTION_DIALOG: Record<ReportActionType, { variant: "warning" | "danger"; title: string; desc: string; label: string }> = {
   HIDDEN:    { variant: "warning", title: "이 콘텐츠를 숨길까요?", desc: "숨김 처리하면 사용자에게 더 이상 보이지 않습니다. 관리자는 여전히 확인할 수 있어요.", label: "숨김 처리" },
   DELETED:   { variant: "danger",  title: "이 콘텐츠를 삭제할까요?", desc: "삭제하면 게시글(또는 댓글)과 관련 데이터가 영구 제거되며 되돌릴 수 없어요.", label: "삭제" },
   DISMISSED: { variant: "warning", title: "이 신고를 기각할까요?", desc: "기각하면 신고가 처리 완료로 전환됩니다. 콘텐츠는 그대로 유지돼요.", label: "기각" },
+  BLOCK_AUTHOR: {
+    variant: "danger", title: "작성자를 차단할까요?",
+    desc: "콘텐츠는 그대로 두고 작성자 계정을 일정 기간 차단합니다. 작성자에게 차단 알림이 전송되고 활성 세션이 종료돼요.",
+    label: "작성자 차단",
+  },
+  DELETE_AND_BLOCK: {
+    variant: "danger", title: "콘텐츠 삭제 + 작성자 차단할까요?",
+    desc: "콘텐츠를 삭제하고 작성자 계정도 일정 기간 차단합니다. 두 조치가 한 번에 적용되며 삭제는 되돌릴 수 없어요.",
+    label: "삭제+차단",
+  },
 };
 
 const REPORT_LIST_COLUMNS: AdminListColumn<Report>[] = [
@@ -143,6 +153,8 @@ function ReportsPanel({ flash }: { flash: (msg: string) => void }) {
   const [items, setItems] = useState<Report[]>([]);
   const [filter, setFilter] = useState<ReportFilterKey>("대기");
   const [dialog, setDialog] = useState<{ report: Report; action: ReportActionType } | null>(null);
+  // 합체: 취소 신고 재활성화(내 것) + 일괄 처리 다이얼로그(dev)
+  const [reactivateTarget, setReactivateTarget] = useState<Report | null>(null);
   const [bulkDialog, setBulkDialog] = useState<ReportActionType | null>(null);
   const [detail, setDetail] = useState<Report | null>(null);
   const [reclassifying, setReclassifying] = useState(false);
@@ -180,10 +192,24 @@ function ReportsPanel({ flash }: { flash: (msg: string) => void }) {
       setItems((prev) => prev.map((r) => (r.id === updated.id ? updated : r)));
       if (detail && detail.id === dialog.report.id) setDetail(updated);
       flash("처리되었습니다.");
-    } catch {
-      flash("처리에 실패했습니다.");
+    } catch (e) {
+      // 차단 가드(본인/관리자/이미 차단 등) 메시지는 그대로 노출한다.
+      flash(e instanceof Error && e.message ? e.message : "처리에 실패했습니다.");
     }
     setDialog(null);
+  };
+
+  const handleReactivate = async () => {
+    if (!reactivateTarget) return;
+    try {
+      const updated = await adminReportApi.reactivate(reactivateTarget.id);
+      setItems((prev) => prev.map((r) => (r.id === updated.id ? updated : r)));
+      if (detail && detail.id === reactivateTarget.id) setDetail(updated);
+      flash("신고가 다시 대기 상태로 전환되었습니다.");
+    } catch (e) {
+      flash(e instanceof Error && e.message ? e.message : "재활성화에 실패했습니다.");
+    }
+    setReactivateTarget(null);
   };
 
   const statusFiltered = items.filter((r) => {
@@ -292,11 +318,17 @@ function ReportsPanel({ flash }: { flash: (msg: string) => void }) {
                   </td>
                   <td className="r av-muted num">{r.time}</td>
                   <td className="r">
-                    {r.status === "pending" && (
+                    {r.status === "pending" ? (
                       <div className="rv-actions" onClick={(e) => e.stopPropagation()}>
                         <button className="av-btn" title="숨김" onClick={() => setDialog({ report: r, action: "HIDDEN" })}><EyeOff /></button>
                         <button className="av-btn" title="삭제" onClick={() => setDialog({ report: r, action: "DELETED" })}><Trash2 /></button>
+                        <button className="av-btn" title="작성자 차단" onClick={() => setDialog({ report: r, action: "BLOCK_AUTHOR" })}><UserX /></button>
+                        <button className="av-btn" title="삭제+차단" onClick={() => setDialog({ report: r, action: "DELETE_AND_BLOCK" })}><ShieldX /></button>
                         <button className="av-btn" title="기각" onClick={() => setDialog({ report: r, action: "DISMISSED" })}><XIcon /></button>
+                      </div>
+                    ) : (
+                      <div className="rv-actions" onClick={(e) => e.stopPropagation()}>
+                        <button className="av-btn" title="재활성화(대기 복원)" onClick={() => setReactivateTarget(r)}><RotateCcw /></button>
                       </div>
                     )}
                   </td>
@@ -400,6 +432,11 @@ function ReportsPanel({ flash }: { flash: (msg: string) => void }) {
                         분석 실패{detail.aiOpinion.errorMessage ? `: ${detail.aiOpinion.errorMessage}` : ""}
                       </span>
                     )}
+                    {detail.aiOpinion?.status === "UNMODERATED" && (
+                      <span className="av-muted" style={{ fontSize: "12px", wordBreak: "break-word" }}>
+                        판정 불성립 — 재검열 대기{detail.aiOpinion.errorMessage ? ` (${detail.aiOpinion.errorMessage})` : ""}
+                      </span>
+                    )}
                     {detail.aiOpinion?.status === "COMPLETED" && (
                       <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
                         <div className="av-rate">
@@ -442,11 +479,17 @@ function ReportsPanel({ flash }: { flash: (msg: string) => void }) {
               )}
 
               {/* 액션 버튼 */}
-              {detail.status === "pending" && (
-                <div style={{ display: "flex", gap: "6px", padding: "0 16px 14px" }}>
+              {detail.status === "pending" ? (
+                <div style={{ display: "flex", flexWrap: "wrap", gap: "6px", padding: "0 16px 14px" }}>
                   <button className="av-btn" onClick={() => setDialog({ report: detail, action: "HIDDEN" })}><EyeOff /> 숨김</button>
                   <button className="av-btn" onClick={() => setDialog({ report: detail, action: "DELETED" })}><Trash2 /> 삭제</button>
+                  <button className="av-btn" onClick={() => setDialog({ report: detail, action: "BLOCK_AUTHOR" })}><UserX /> 작성자 차단</button>
+                  <button className="av-btn" onClick={() => setDialog({ report: detail, action: "DELETE_AND_BLOCK" })}><ShieldX /> 삭제+차단</button>
                   <button className="av-btn" onClick={() => setDialog({ report: detail, action: "DISMISSED" })}><XIcon /> 기각</button>
+                </div>
+              ) : (
+                <div style={{ display: "flex", gap: "6px", padding: "0 16px 14px" }}>
+                  <button className="av-btn" onClick={() => setReactivateTarget(detail)}><RotateCcw /> 재활성화</button>
                 </div>
               )}
             </section>
@@ -456,14 +499,20 @@ function ReportsPanel({ flash }: { flash: (msg: string) => void }) {
 
       {dialog && (() => {
         const cfg = REPORT_ACTION_DIALOG[dialog.action];
+        const icon = dialog.action === "DELETED" ? <Trash2 />
+          : dialog.action === "HIDDEN" ? <EyeOff />
+          : dialog.action === "BLOCK_AUTHOR" ? <UserX />
+          : dialog.action === "DELETE_AND_BLOCK" ? <ShieldX />
+          : <XIcon />;
         return (
           <ConfirmDialog
             variant={cfg.variant}
-            icon={dialog.action === "DELETED" ? <Trash2 /> : dialog.action === "HIDDEN" ? <EyeOff /> : <XIcon />}
+            icon={icon}
             title={cfg.title}
             description={cfg.desc}
             meta={[
               { label: "대상", value: dialog.report.title },
+              { label: "작성자", value: dialog.report.author },
               { label: "신고 사유", value: dialog.report.reason },
               { label: "누적 신고", value: `${dialog.report.cnt}건` },
             ]}
@@ -475,6 +524,22 @@ function ReportsPanel({ flash }: { flash: (msg: string) => void }) {
         );
       })()}
 
+      {reactivateTarget && (
+        <ConfirmDialog
+          variant="warning"
+          icon={<RotateCcw />}
+          title="이 신고를 다시 대기 상태로 되돌릴까요?"
+          description="기각(또는 신고자 취소)된 신고가 다시 검토 대기 큐로 돌아옵니다. 이미 콘텐츠 조치가 완료된 신고는 되돌릴 수 없어요."
+          meta={[
+            { label: "대상", value: reactivateTarget.title },
+            { label: "누적 신고", value: `${reactivateTarget.cnt}건` },
+          ]}
+          confirmLabel="재활성화"
+          cancelLabel="취소"
+          onConfirm={handleReactivate}
+          onCancel={() => setReactivateTarget(null)}
+        />
+      )}
       {bulkDialog && (() => {
         const cfg = REPORT_ACTION_DIALOG[bulkDialog];
         return (

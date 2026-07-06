@@ -1,0 +1,70 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.careertuner.reward.mapper.CouponMapper">
+
+    <sql id="CouponColumns">
+        id, code, name, discount_type, discount_value, min_purchase,
+        valid_from, valid_until, max_issue, issued_count, enabled, created_at, updated_at
+    </sql>
+
+    <select id="findCouponByCode" resultType="com.careertuner.reward.domain.Coupon">
+        SELECT <include refid="CouponColumns"/>
+          FROM coupon
+         WHERE code = #{code}
+    </select>
+
+    <select id="findCouponById" resultType="com.careertuner.reward.domain.Coupon">
+        SELECT <include refid="CouponColumns"/>
+          FROM coupon
+         WHERE id = #{id}
+    </select>
+
+    <!-- 발급 상한을 넘지 않을 때만 발급 카운트를 증가시킨다. -->
+    <update id="incrementIssued">
+        UPDATE coupon
+           SET issued_count = issued_count + 1
+         WHERE id = #{couponId}
+           AND (max_issue IS NULL OR issued_count &lt; max_issue)
+    </update>
+
+    <insert id="insertUserCoupon" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO user_coupon
+            (coupon_id, user_id, code, status, order_ref)
+        VALUES
+            (#{couponId}, #{userId}, #{code}, #{status}, #{orderRef})
+    </insert>
+
+    <select id="findActiveUserCoupon" resultType="com.careertuner.reward.domain.UserCoupon">
+        SELECT id, coupon_id, user_id, code, status, issued_at, used_at, order_ref, created_at
+          FROM user_coupon
+         WHERE user_id = #{userId}
+           AND code = #{code}
+           AND status = 'ISSUED'
+         ORDER BY issued_at ASC
+         LIMIT 1
+    </select>
+
+    <update id="markUserCouponUsed">
+        UPDATE user_coupon
+           SET status = 'USED', used_at = NOW(), order_ref = #{orderRef}
+         WHERE id = #{id}
+           AND status = 'ISSUED'
+    </update>
+
+    <select id="findUserCouponsByUser" resultType="com.careertuner.reward.domain.UserCoupon">
+        SELECT id, coupon_id, user_id, code, status, issued_at, used_at, order_ref, created_at
+          FROM user_coupon
+         WHERE user_id = #{userId}
+         ORDER BY issued_at DESC, id DESC
+    </select>
+
+    <select id="findUserCouponItems" resultType="com.careertuner.reward.dto.CouponItem">
+        SELECT uc.id, uc.code, c.name, c.discount_type, c.discount_value, c.min_purchase,
+               uc.status, uc.issued_at, uc.used_at
+          FROM user_coupon uc
+          JOIN coupon c ON c.id = uc.coupon_id
+         WHERE uc.user_id = #{userId}
+         ORDER BY uc.issued_at DESC, uc.id DESC
+    </select>
+</mapper>

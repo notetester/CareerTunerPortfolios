@@ -4,26 +4,21 @@
 <mapper namespace="com.careertuner.profile.mapper.ProfileMapper">
 
     <select id="findByUserId" resultType="com.careertuner.profile.domain.UserProfile">
-        SELECT p.*,
-               u.login_id,
-               u.phone_number,
-               u.phone_verified
-        FROM user_profile p
-        JOIN users u ON u.id = p.user_id
-        WHERE p.user_id = #{userId}
+        SELECT *
+        FROM user_profile
+        WHERE user_id = #{userId}
     </select>
 
     <insert id="upsert">
         INSERT INTO user_profile (
             user_id, desired_job, desired_industry, education, career, projects, skills,
-            certificates, languages, portfolio_links, job_preferences, personal_info,
-            activities, account_links, chat_profiles, resume_text, self_intro, preferences
+            certificates, languages, portfolio_links, resume_text, self_intro, preferences
         )
         VALUES (
             #{userId}, #{desiredJob}, #{desiredIndustry}, #{education}, #{career},
             #{projects}, #{skills}, #{certificates},
-            #{languages}, #{portfolioLinks}, #{jobPreferences}, #{personalInfo},
-            #{activities}, #{accountLinks}, #{chatProfiles}, #{resumeText}, #{selfIntro}, #{preferences}
+            #{languages}, #{portfolioLinks}, #{resumeText}, #{selfIntro},
+            #{preferences}
         )
         ON DUPLICATE KEY UPDATE
             desired_job = VALUES(desired_job),
@@ -35,43 +30,14 @@
             certificates = VALUES(certificates),
             languages = VALUES(languages),
             portfolio_links = VALUES(portfolio_links),
-            job_preferences = VALUES(job_preferences),
-            personal_info = VALUES(personal_info),
-            activities = VALUES(activities),
-            account_links = VALUES(account_links),
-            chat_profiles = VALUES(chat_profiles),
             resume_text = VALUES(resume_text),
             self_intro = VALUES(self_intro),
             preferences = VALUES(preferences),
             updated_at = NOW()
     </insert>
 
-    <select id="countLoginId" resultType="int">
-        SELECT COUNT(*)
-          FROM users
-         WHERE login_id = #{loginId}
-        <if test="excludeUserId != null">
-           AND id &lt;&gt; #{excludeUserId}
-        </if>
-    </select>
-
-    <update id="updateAccountBasics">
-        UPDATE users
-           SET login_id = #{loginId},
-               phone_number = #{phoneNumber},
-               phone_verified = CASE
-                   WHEN #{phoneNumber} IS NULL OR #{phoneNumber} = '' THEN 0
-                   WHEN phone_number = #{phoneNumber} THEN phone_verified
-                   ELSE 0
-               END
-         WHERE id = #{userId}
-    </update>
-
     <select id="findAdminProfiles" resultType="com.careertuner.profile.domain.UserProfile">
-        SELECT p.*,
-               u.login_id,
-               u.phone_number,
-               u.phone_verified
+        SELECT p.*
         FROM user_profile p
         INNER JOIN users u ON u.id = p.user_id
         <where>

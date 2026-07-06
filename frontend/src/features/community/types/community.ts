@@ -13,6 +13,11 @@ export type PostStatus = "PUBLISHED" | "HIDDEN" | "DELETED" | "PENDING";
 export interface PublicAuthor {
   id: number;
   name: string;
+  /**
+   * 표시명 산출에 사용한 닉네임 프로필 id(옵션).
+   * 비익명 작성자만 값이 있고(없으면 계정 기본 프로필/계정명으로 표시), 익명이면 null.
+   */
+  nicknameProfileId?: number | null;
   isAnonymous: boolean;
 }
 
@@ -21,6 +26,11 @@ export interface PostStats {
   commentCount: number;
   likeCount: number;
   bookmarkCount: number;
+  /** 리액션 확장 축 — 구 데이터/목 호환을 위해 옵션(없으면 0 취급) */
+  dislikeCount?: number;
+  recommendCount?: number;
+  disrecommendCount?: number;
+  scrapCount?: number;
 }
 
 export interface CommunityPost {
@@ -43,8 +53,17 @@ export interface CommunityPost {
   interviewReview?: InterviewReviewMetadata;
   liked?: boolean;
   bookmarked?: boolean;
+  disliked?: boolean;
+  recommended?: boolean;
+  disrecommended?: boolean;
+  scrapped?: boolean;
+  /** 뷰어의 글 구독 여부(새 댓글 알림) */
+  subscribed?: boolean;
   /** 서버가 뷰어 기준으로 차단 처리한 글 — 톰스톤("차단한 사용자의 게시글입니다")만 렌더한다(조용한 차단). */
   blocked?: boolean;
+  /** 신고 누적으로 가려진 글(비작성자에게 블러). 클릭 시 해제. */
+  blurred?: boolean;
+  reportCount?: number;
 }
 
 export interface InterviewReviewMetadata {
@@ -66,18 +85,129 @@ export interface CommunityComment {
   author: PublicAuthor;
   content: string;
   likeCount: number;
+  dislikeCount?: number;
+  recommendCount?: number;
+  disrecommendCount?: number;
   isAuthor: boolean;   // 게시글 작성자(OP) 댓글 여부 — "작성자" 배지용
   mine?: boolean;      // 본인 댓글 여부 — 수정/삭제 버튼 게이팅용
   createdAt: string;
   liked?: boolean;
+  disliked?: boolean;
+  recommended?: boolean;
+  disrecommended?: boolean;
+  /** 뷰어의 댓글 구독 여부(새 답글 알림) */
+  subscribed?: boolean;
   /** 서버가 내려주는 tombstone 플래그. 삭제/숨김이지만 살아있는 답글이 있어 골격만 유지하는 노드. */
   isDeleted?: boolean;
   /** 서버가 뷰어 기준으로 차단 처리한 댓글 — 톰스톤만 렌더하고 답글 트리는 유지한다(조용한 차단). */
   blocked?: boolean;
+  /** 신고 누적 임계 이상 → 비작성자에게 블러(클릭 시 해제). 게시글 blur 와 동형. */
+  blurred?: boolean;
+  /** 누적 신고 수(블러 근거 표시용). */
+  reportCount?: number;
 }
 
-export type ReactionType = "LIKE" | "BOOKMARK";
+/** 리액션 축: RECOMMEND/DISRECOMMEND(추천 축 — 트렌드·인기글용), LIKE/DISLIKE(개인화용), BOOKMARK(즐겨찾기) */
+export type ReactionType = "LIKE" | "DISLIKE" | "RECOMMEND" | "DISRECOMMEND" | "BOOKMARK";
 export type TargetType = "POST" | "COMMENT";
+
+/** 리액션 토글 응답 — 같은 축 교체가 있어 서버가 토글 후 카운트 전체를 내려준다. */
+export interface ReactionCounts {
+  likeCount: number;
+  dislikeCount: number;
+  recommendCount: number;
+  disrecommendCount: number;
+  bookmarkCount: number;
+  scrapCount: number;
+}
+
+export interface ToggleReactionResult {
+  active: boolean;
+  reactionType: ReactionType;
+  counts: ReactionCounts;
+}
+
+/** 게시글 반응자 목록 항목 — 익명 리액션은 본인 것만 내려온다(타인 시점 제외, 집계 포함). */
+export interface PostReactor {
+  reactionType: ReactionType;
+  userId: number | null;
+  name: string;
+  anonymous: boolean;
+  mine: boolean;
+  createdAt: string;
+}
+
+/* ── 스크랩 (스냅샷 보존형 — 즐겨찾기와 별개) ── */
+
+export interface ScrapItem {
+  id: number;
+  postId: number | null;
+  title: string;
+  content: string;
+  authorLabel: string;
+  category: string;
+  anonymous: boolean;
+  scrappedAt: string;
+  /** 원본 글이 아직 열람 가능한지 — false 면 "원본이 삭제된 글" 배지 */
+  originAvailable: boolean;
+}
+
+export interface ScrapPage {
+  items: ScrapItem[];
+  total: number;
+  page: number;
+  size: number;
+}
+
+/* ── 활동 목록 ── */
+
+export type ActivityTabKey = "posts" | "comments" | "replies" | "likes" | "bookmarks" | "scraps";
+
+export const ACTIVITY_TAB_LABELS: Record<ActivityTabKey, string> = {
+  posts: "작성 글",
+  comments: "작성 댓글",
+  replies: "작성 답글",
+  likes: "좋아요",
+  bookmarks: "즐겨찾기",
+  scraps: "스크랩",
+};
+
+export interface ActivityItem {
+  itemType: "POST" | "COMMENT" | "REPLY" | "SCRAP";
+  postId: number | null;
+  commentId: number | null;
+  scrapId: number | null;
+  title: string;
+  preview: string;
+  reactionType: string | null;
+  anonymous: boolean;
+  createdAt: string;
+}
+
+export interface ActivityPage {
+  tab: ActivityTabKey;
+  /** 타인 프로필에서 이 탭이 공개인지 — false 면 잠금 표시 */
+  allowed: boolean;
+  items: ActivityItem[];
+  total: number;
+  page: number;
+  size: number;
+}
+
+export interface ActivityTabs {
+  userId: number;
+  name: string;
+  tabs: Record<ActivityTabKey, boolean>;
+}
+
+/* ── 리액션 유지/해지 설정 (게시글 수정 시) ── */
+
+export type RetentionValue = "keep" | "release";
+
+export type ReactionRetentionSettings = Record<
+  "like" | "dislike" | "recommend" | "disrecommend" | "bookmark",
+  RetentionValue
+>;
 
 export interface CategoryInfo {
   value: string;

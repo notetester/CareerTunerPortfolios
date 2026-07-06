@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ArrowUpDown, RefreshCw, Search, ShieldCheck } from "lucide-react";
 import AdminShell from "../../../components/AdminShell";
+import { PermissionRequestsPanel } from "../components/PermissionRequestsPanel";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -574,6 +575,9 @@ export function AdminSuperAdminPage() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+      <div className="mt-6">
+        <PermissionRequestsPanel />
+      </div>
     </AdminShell>
   );
 }

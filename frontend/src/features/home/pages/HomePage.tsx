@@ -176,7 +176,7 @@ function dashboardActivityMeta(type: DashboardActivity["type"]) {
 
 // C 영역 홈 페이지 안내(가이드 투어) 스텝. data-tour 앵커를 가리킨다.
 const HOME_TOUR_STEPS: TourStep[] = [
-  { selector: "[data-tour='home-ai-summary']", title: "AI 대시보드 요약", body: "최근 지원 건들을 종합한 적합도·다음 액션 요약입니다. 오른쪽 '재생성'을 누르면 최신 데이터로 AI가 다시 만들어요(크레딧 1 차감)." },
+  { selector: "[data-tour='home-ai-summary']", title: "AI 대시보드 요약", body: "최근 지원 건들을 종합한 적합도·다음 액션 요약입니다. 재생성 실행 전 사용권 우선 차감과 최소·최대 크레딧 범위를 안내합니다." },
   { selector: "[data-tour='home-readiness']", title: "준비도 점수", body: "지원 건 분석·학습·면접 진척을 합산한 전체 준비도입니다. 분석 가능한 지원 건이 없으면 0%로 표시돼요." },
   { selector: "[data-tour='home-fit-cards']", title: "진행 중 지원 건", body: "회사·직무와 적합도 점수가 보입니다. 카드를 누르면 지원 건 상세로 이동해 공고-스펙 적합도를 확인해요." },
   { selector: "[data-tour='home-todos']", title: "오늘의 우선순위", body: "적합도·부족 역량 분석에서 파생된 할 일입니다. 체크하면 완료 처리되고, 아래 입력창으로 직접 추가할 수 있어요." },
@@ -319,11 +319,11 @@ function MemberHome({ summary, loading, error, fallbackName, onRetry, onSummaryR
                         type="button"
                         onClick={handleRefreshSummary}
                         disabled={refreshing}
-                        title="AI를 다시 실행해 최신 데이터로 요약을 재생성합니다. 크레딧 1이 차감됩니다."
+                        title="AI 실행 전 사용권 우선 차감과 최소·최대 크레딧 범위를 안내합니다."
                         className="flex shrink-0 items-center gap-1 rounded-md border border-blue-200 bg-card/70 px-2 py-1 text-xs font-semibold text-blue-700 transition-colors hover:bg-card disabled:opacity-60"
                       >
                         <RefreshCw className={`size-3 ${refreshing ? "animate-spin" : ""}`} />
-                        {refreshing ? "재생성 중" : "재생성 (크레딧 1)"}
+                        {refreshing ? "재생성 중" : "재생성 (실행 전 비용 안내)"}
                       </button>
                     </div>
                     {refreshError && <div className="mt-1.5 text-xs text-red-600">{refreshError}</div>}

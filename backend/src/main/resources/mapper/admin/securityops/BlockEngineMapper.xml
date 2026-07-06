@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.careertuner.admin.securityops.engine.BlockEngineMapper">
+
+    <!--
+      캐시 로드: 규칙 활성 + 미만료 + (배치 없음 또는 배치 활성)을 직접 필터해 항상 최신 유효 규칙만 반환.
+      map-underscore-to-camel-case 로 rule_type→ruleType 등 자동 매핑. IP성 규칙만(요청 차단 대상).
+    -->
+    <select id="findActiveBlockRulesForCache"
+            resultType="com.careertuner.admin.securityops.engine.ActiveBlockRule">
+        SELECT r.id, r.rule_type, r.rule_value, r.action_type, r.scope, r.priority, r.reason, r.category
+          FROM admin_security_block_rule r
+          LEFT JOIN admin_ip_block_batch b ON b.id = r.batch_id
+         WHERE r.active = 1
+           AND (r.expires_at IS NULL OR r.expires_at > NOW())
+           AND (r.batch_id IS NULL OR b.active = 1)
+           AND r.rule_type IN ('IP', 'SINGLE_IP', 'CIDR', 'IP_RANGE', 'RANGE', 'COUNTRY', 'ASN')
+         ORDER BY r.priority DESC, r.id ASC
+    </select>
+
+    <insert id="insertBlockAccessLog"
+            parameterType="com.careertuner.admin.securityops.engine.BlockAccessLogEntry">
+        INSERT INTO admin_block_access_log
+            (request_id, user_id, request_uri, http_method, block_kind, block_match_type,
+             block_target_key, block_rule_id, block_reason, client_ip, country_code, asn,
+             cache_source, user_agent)
+        VALUES
+            (#{requestId}, #{userId}, #{requestUri}, #{httpMethod}, #{blockKind}, #{blockMatchType},
+             #{blockTargetKey}, #{blockRuleId}, #{blockReason}, #{clientIp}, #{countryCode}, #{asn},
+             #{cacheSource}, #{userAgent})
+    </insert>
+
+    <!-- 관리자 표시용 유효상태 동기화: 활성·미만료·배치활성 종합값으로 is_effective_active 재계산 -->
+    <update id="recomputeEffectiveActive">
+        UPDATE admin_security_block_rule r
+          LEFT JOIN admin_ip_block_batch b ON b.id = r.batch_id
+           SET r.is_effective_active =
+               CASE WHEN r.active = 1
+                     AND (r.expires_at IS NULL OR r.expires_at > NOW())
+                     AND (r.batch_id IS NULL OR b.active = 1)
+                    THEN 1 ELSE 0 END
+    </update>
+
+</mapper>

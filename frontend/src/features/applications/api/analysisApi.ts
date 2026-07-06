@@ -1,4 +1,5 @@
 import { api } from "@/app/lib/api";
+import { runWithAiCharge } from "@/features/billing/api/aiChargePreviewApi";
 import type {
   CompanyAnalysis,
   CompanyAnalysisReviewRequest,
@@ -33,9 +34,11 @@ export async function getJobAnalysis(applicationCaseId: number): Promise<JobAnal
 }
 
 export function createJobAnalysis(applicationCaseId: number): Promise<JobAnalysis> {
-  return api<JobAnalysis>(`/application-cases/${applicationCaseId}/job-analysis`, {
-    method: "POST",
-  });
+  return runWithAiCharge("JOB_ANALYSIS", (headers) =>
+    api<JobAnalysis>(`/application-cases/${applicationCaseId}/job-analysis`, {
+      method: "POST",
+      headers,
+    }));
 }
 
 export function getJobAnalysisHistory(applicationCaseId: number): Promise<JobAnalysis[]> {
@@ -62,9 +65,11 @@ export async function getCompanyAnalysis(applicationCaseId: number): Promise<Com
 }
 
 export function createCompanyAnalysis(applicationCaseId: number): Promise<CompanyAnalysis> {
-  return api<CompanyAnalysis>(`/application-cases/${applicationCaseId}/company-analysis`, {
-    method: "POST",
-  });
+  return runWithAiCharge("COMPANY_RESEARCH", (headers) =>
+    api<CompanyAnalysis>(`/application-cases/${applicationCaseId}/company-analysis`, {
+      method: "POST",
+      headers,
+    }));
 }
 
 export function getCompanyAnalysisHistory(applicationCaseId: number): Promise<CompanyAnalysis[]> {

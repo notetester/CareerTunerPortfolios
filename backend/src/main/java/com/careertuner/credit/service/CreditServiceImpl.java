@@ -89,6 +89,28 @@ public class CreditServiceImpl implements CreditService {
         return CreditDeductionResult.deducted(aiUsageLogId, usageLog.getUserId(), creditUsed, balanceAfter);
     }
 
+    @Override
+    @Transactional
+    public int grantCredit(Long userId, int amount, String type, String featureType, String reason) {
+        if (amount <= 0) {
+            throw new BusinessException(ErrorCode.INVALID_INPUT, "적립 크레딧은 1 이상이어야 합니다.");
+        }
+        int updated = creditMapper.addUserCredit(userId, amount);
+        if (updated == 0) {
+            throw new BusinessException(ErrorCode.NOT_FOUND, "사용자를 찾을 수 없거나 크레딧 최대치를 초과했습니다.");
+        }
+        int balanceAfter = requireCurrentCredit(userId);
+        creditMapper.insertCreditTransaction(CreditTransaction.builder()
+                .userId(userId)
+                .type(type)
+                .amount(amount)
+                .balanceAfter(balanceAfter)
+                .featureType(featureType)
+                .reason(reason)
+                .build());
+        return balanceAfter;
+    }
+
     private int requireCurrentCredit(Long userId) {
         Integer credit = creditMapper.findUserCredit(userId);
         if (credit == null) {

@@ -4,6 +4,7 @@ import java.util.List;
 
 import org.springframework.stereotype.Component;
 
+import com.careertuner.ai.autoprep.CaseSlotValidator;
 import com.careertuner.applicationcase.dto.ApplicationCaseResponse;
 import com.careertuner.applicationcase.service.ApplicationCaseService;
 
@@ -35,6 +36,14 @@ public class IntakeTools {
             return "로그인이 필요해요. 먼저 로그인해 주세요.";
         }
         List<ApplicationCaseResponse> cases = applicationCaseService.list(userId, null, false);
+        if (cases != null) {
+            // (C3) 회사·직무 둘 다 미확인 placeholder 건은 LLM 노출·화이트리스트에서 제외 —
+            // 선택 불가 잔재를 목록에 보여주면 qwen3 혼란과 오선택(T005류)만 유발한다.
+            cases = cases.stream()
+                    .filter(c -> !(CaseSlotValidator.isUnresolved(c.companyName())
+                            && CaseSlotValidator.isUnresolved(c.jobTitle())))
+                    .toList();
+        }
         trace.recordFetchedCases(cases);
         if (cases == null || cases.isEmpty()) {
             return "등록된 지원 건이 없습니다. 먼저 지원 건을 만들어 주세요.";

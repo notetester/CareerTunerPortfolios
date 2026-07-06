@@ -8,6 +8,9 @@ public record AiFeatureBenefitPolicyResponse(
         String chargeUnit,
         boolean includedInTicket,
         int defaultCreditCost,
+        int minCreditCost,
+        int maxCreditCost,
+        int creditUnitTokens,
         boolean active
 ) {
     public static AiFeatureBenefitPolicyResponse from(AiFeatureBenefitPolicy policy) {
@@ -17,6 +20,9 @@ public record AiFeatureBenefitPolicyResponse(
                 policy.getChargeUnit(),
                 policy.isIncludedInTicket(),
                 policy.getDefaultCreditCost(),
+                policy.getMinCreditCost(),
+                policy.getMaxCreditCost(),
+                policy.getCreditUnitTokens(),
                 policy.isActive());
     }
 }

@@ -163,3 +163,7 @@ export function deleteApplicationCase(id: number): Promise<void> {
 export function restoreApplicationCase(id: number): Promise<void> {
   return api<void>(`/application-cases/${id}/restore`, { method: "PATCH" });
 }
+
+export function hideApplicationCaseFromTrash(id: number): Promise<void> {
+  return api<void>(`/application-cases/${id}/trash`, { method: "DELETE" });
+}

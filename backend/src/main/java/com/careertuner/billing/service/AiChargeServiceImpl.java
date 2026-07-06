@@ -134,6 +134,10 @@ public class AiChargeServiceImpl implements AiChargeService {
         if (command.creditCost() != null) {
             return command.creditCost();
         }
+        Integer usageCost = usageBasedCreditCost(command, featurePolicy);
+        if (usageCost != null) {
+            return usageCost;
+        }
         return featurePolicy == null ? 0 : featurePolicy.getDefaultCreditCost();
     }
 
@@ -143,10 +147,25 @@ public class AiChargeServiceImpl implements AiChargeService {
         if (command.creditCost() != null) {
             return command.creditCost();
         }
+        Integer usageCost = usageBasedCreditCost(command, featurePolicy);
+        if (usageCost != null) {
+            return usageCost;
+        }
         if (benefitPolicy != null && benefitPolicy.getCreditCost() > 0) {
             return benefitPolicy.getCreditCost();
         }
         return featurePolicy == null ? 0 : featurePolicy.getDefaultCreditCost();
+    }
+
+    private Integer usageBasedCreditCost(AiChargeCommand command, AiFeatureBenefitPolicy policy) {
+        if (policy == null || command.tokenUsage() == null || command.tokenUsage() <= 0
+                || policy.getCreditUnitTokens() <= 0 || policy.getMaxCreditCost() <= 0) {
+            return null;
+        }
+        int minimum = Math.max(0, policy.getMinCreditCost());
+        int maximum = Math.max(minimum, policy.getMaxCreditCost());
+        int calculated = (int) Math.ceil(command.tokenUsage() / (double) policy.getCreditUnitTokens());
+        return Math.max(minimum, Math.min(maximum, calculated));
     }
 
     private SubscriptionBenefitPolicy currentBenefitPolicy(Long userId, String benefitCode) {
@@ -176,6 +195,9 @@ public class AiChargeServiceImpl implements AiChargeService {
         }
         if (command.creditCost() != null && command.creditCost() < 0) {
             throw new BusinessException(ErrorCode.INVALID_INPUT, "차감 크레딧은 0 이상이어야 합니다.");
+        }
+        if (command.tokenUsage() != null && command.tokenUsage() < 0) {
+            throw new BusinessException(ErrorCode.INVALID_INPUT, "AI 토큰 사용량은 0 이상이어야 합니다.");
         }
     }
 

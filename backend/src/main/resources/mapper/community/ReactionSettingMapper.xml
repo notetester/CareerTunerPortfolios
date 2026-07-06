@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.careertuner.community.mapper.ReactionSettingMapper">
+
+    <!-- reactionRetention 객체 원문 조회 (없으면 null) -->
+    <select id="findReactionRetentionJson" resultType="string">
+        SELECT JSON_EXTRACT(policy_json, '$.reactionRetention')
+          FROM user_privacy_policy
+         WHERE user_id = #{userId}
+    </select>
+
+    <!-- reactionRetention 키만 upsert — relations 등 다른 최상위 키는 보존(JSON_SET) -->
+    <insert id="upsertReactionRetentionJson">
+        INSERT INTO user_privacy_policy (user_id, policy_json)
+        VALUES (#{userId}, JSON_OBJECT('reactionRetention', CAST(#{json} AS JSON)))
+        ON DUPLICATE KEY UPDATE
+            policy_json = JSON_SET(COALESCE(policy_json, JSON_OBJECT()),
+                                   '$.reactionRetention', CAST(#{json} AS JSON))
+    </insert>
+
+</mapper>

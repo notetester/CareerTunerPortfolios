@@ -129,6 +129,26 @@ class AiChargeServiceImplTest {
         verify(benefitUsageService, never()).consumeByFeature(anyLong(), anyString(), anyString(), anyLong(), any(), any());
     }
 
+    @Test
+    void usageBasedPolicyClampsTokenCostBetweenMinimumAndMaximum() {
+        AiChargeCommand command = new AiChargeCommand(
+                1L, "CORRECTION_SELF_INTRO", "CORRECTION", 100L, 10L,
+                null, 4_656, "correction", "test-action");
+        AiFeatureBenefitPolicy policy = featurePolicy(false, 2);
+        policy.setMinCreditCost(2);
+        policy.setMaxCreditCost(5);
+        policy.setCreditUnitTokens(1_000);
+        when(billingPolicyService.activeFeatureBenefitPolicy(1L, "CORRECTION_SELF_INTRO"))
+                .thenReturn(policy);
+        when(creditService.deductByAiUsageLog(10L, 5))
+                .thenReturn(CreditDeductionResult.deducted(10L, 1L, 5, 5));
+
+        AiChargeResult result = service.charge(command);
+
+        assertThat(result.chargedCredit()).isEqualTo(5);
+        assertThat(result.remainingCredit()).isEqualTo(5);
+    }
+
     private static AiChargeCommand command(Long aiUsageLogId, Integer creditCost) {
         return new AiChargeCommand(
                 1L,
@@ -137,6 +157,7 @@ class AiChargeServiceImplTest {
                 100L,
                 aiUsageLogId,
                 creditCost,
+                null,
                 "analysis",
                 "test-action");
     }

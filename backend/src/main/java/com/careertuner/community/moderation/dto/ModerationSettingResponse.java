@@ -7,5 +7,12 @@ public record ModerationSettingResponse(
         double hideThreshold,
         int sanctionThreshold,
         int blockDays,
+        int reportBlurThreshold,
+        int postRateWindowSeconds,
+        int postRateMax,
+        int commentRateWindowSeconds,
+        int commentRateMax,
+        int inquiryRateWindowSeconds,
+        int inquiryRateMax,
         LocalDateTime updatedAt
 ) {}

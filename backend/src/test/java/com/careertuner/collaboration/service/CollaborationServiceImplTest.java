@@ -15,6 +15,7 @@ import static org.mockito.Mockito.when;
 import java.time.LocalDateTime;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 import org.junit.jupiter.api.BeforeEach;
@@ -27,16 +28,21 @@ import com.careertuner.collaboration.domain.CollaborationMessage;
 import com.careertuner.collaboration.domain.CollaborationUserRow;
 import com.careertuner.collaboration.domain.ConversationMemberDetailRow;
 import com.careertuner.collaboration.domain.ConversationMemberRow;
+import com.careertuner.collaboration.domain.ConversationPermissionRow;
 import com.careertuner.collaboration.domain.ConversationSummaryRow;
 import com.careertuner.collaboration.domain.DesktopPresenceRow;
 import com.careertuner.collaboration.domain.FriendRequest;
 import com.careertuner.collaboration.domain.FriendRequestRow;
 import com.careertuner.collaboration.domain.MessageAttachmentRow;
+import com.careertuner.collaboration.dto.ConversationBanRequest;
+import com.careertuner.collaboration.dto.ConversationPermissionUpdateRequest;
+import com.careertuner.collaboration.dto.ConversationSettingsUpdateRequest;
 import com.careertuner.collaboration.dto.CreateConversationRequest;
 import com.careertuner.collaboration.dto.InviteMembersRequest;
 import com.careertuner.collaboration.dto.JoinConversationRequest;
 import com.careertuner.collaboration.dto.SendMessageRequest;
 import com.careertuner.collaboration.mapper.CollaborationMapper;
+import com.careertuner.nickname.service.NicknameProfileService;
 import com.careertuner.common.exception.BusinessException;
 import com.careertuner.common.exception.ErrorCode;
 import com.careertuner.file.domain.FileAsset;
@@ -48,8 +54,6 @@ import com.careertuner.notification.service.NotificationService;
 import com.careertuner.privacy.service.PrivacyPolicyService;
 import com.careertuner.privacy.service.PrivacySurfaces;
 
-import tools.jackson.databind.ObjectMapper;
-
 class CollaborationServiceImplTest {
 
     private final CollaborationMapper mapper = mock(CollaborationMapper.class);
@@ -60,9 +64,10 @@ class CollaborationServiceImplTest {
     private final FileService fileService = mock(FileService.class);
     private final PasswordEncoder passwordEncoder = mock(PasswordEncoder.class);
     private final PrivacyPolicyService privacyPolicyService = mock(PrivacyPolicyService.class);
+    private final NicknameProfileService nicknameProfileService = mock(NicknameProfileService.class);
     private final CollaborationServiceImpl service =
             new CollaborationServiceImpl(mapper, notificationService, notificationPreferenceService,
-                    fileAssetMapper, fileService, passwordEncoder, privacyPolicyService, new ObjectMapper());
+                    fileAssetMapper, fileService, passwordEncoder, privacyPolicyService, nicknameProfileService);
 
     /**
      * 개인 차단 정책 기본 스텁 — 전부 허용.
@@ -76,6 +81,8 @@ class CollaborationServiceImplTest {
         when(privacyPolicyService.isConversationBlocked(any(), any())).thenReturn(false);
         when(privacyPolicyService.blockedAuthorsAmong(any(), any(), any())).thenReturn(Set.of());
         when(privacyPolicyService.listConversationBlocks(any())).thenReturn(List.of());
+        // 표시명 해석은 빈 맵으로 스텁 → 발신자는 저장된 senderName 으로 폴백(기존 단언 유지).
+        when(nicknameProfileService.bulkResolveDisplayNames(any())).thenReturn(Map.of());
     }
 
     @Test
@@ -201,8 +208,7 @@ class CollaborationServiceImplTest {
                 .build());
 
         var response = service.createConversation(1L,
-                new CreateConversationRequest("PRIVATE", " 비공개 스터디 ", null, null, " secret ",
-                        null, null, null, null, null, null, List.of(2L)));
+                new CreateConversationRequest("PRIVATE", " 비공개 스터디 ", null, " secret ", List.of(2L)));
 
         assertThat(response.type()).isEqualTo("PRIVATE");
         assertThat(response.locked()).isTrue();
@@ -227,7 +233,7 @@ class CollaborationServiceImplTest {
                 .memberCount(2)
                 .build());
 
-        var response = service.joinConversation(2L, 40L, new JoinConversationRequest(null, null, null, null, null));
+        var response = service.joinConversation(2L, 40L, new JoinConversationRequest(null));
 
         assertThat(response.joined()).isTrue();
         verify(mapper).insertConversationMemberWithRole(40L, 2L, "MEMBER", null);
@@ -261,11 +267,6 @@ class CollaborationServiceImplTest {
                 .createdBy(1L)
                 .build());
         when(mapper.countConversationMember(30L, 1L)).thenReturn(1);
-        when(mapper.findConversationMember(30L, 1L)).thenReturn(ConversationMemberDetailRow.builder()
-                .conversationId(30L)
-                .userId(1L)
-                .role("OWNER")
-                .build());
         when(mapper.findActiveUserById(2L)).thenReturn(user(2L, "민지", "minji@example.com"));
         when(mapper.findActiveUserById(3L)).thenReturn(user(3L, "철수", "chulsoo@example.com"));
         when(mapper.countFriendship(1L, 2L)).thenReturn(1);
@@ -284,9 +285,10 @@ class CollaborationServiceImplTest {
 
         assertThat(response.id()).isEqualTo(30L);
         verify(mapper, never()).insertConversationInvite(eq(30L), eq(1L), eq(2L), anyBoolean());
-        verify(mapper, never()).insertConversationMemberWithRole(30L, 2L, "MEMBER", 1L);
+        verify(mapper, never())
+                .insertConversationMemberWithAnonymous(eq(30L), eq(2L), eq("MEMBER"), eq(1L), anyBoolean());
         verify(mapper).insertConversationInvite(30L, 1L, 3L, false);
-        verify(mapper).insertConversationMemberWithRole(30L, 3L, "MEMBER", 1L);
+        verify(mapper).insertConversationMemberWithAnonymous(30L, 3L, "MEMBER", 1L, false);
     }
 
     // ── 차단 발신자 메시지는 톰스톤 처리(본문 교체·첨부/공고 비움·blocked=true), 첨부 조회 생략 ──
@@ -417,6 +419,138 @@ class CollaborationServiceImplTest {
     void touchDesktopPresence_upsertsHeartbeat() {
         service.touchDesktopPresence(1L);
         verify(mapper).upsertDesktopPresence(1L);
+    }
+
+    // ══════════════ 방 설정 / 관리자 위임 (W5) ══════════════
+
+    // ── 일반 멤버(MEMBER)는 방 설정 시트에 진입 불가 (FORBIDDEN) ──
+    @Test
+    void getConversationSettings_forbidsPlainMember() {
+        when(mapper.findConversationById(30L)).thenReturn(CollaborationConversation.builder()
+                .id(30L).type("GROUP").title("스터디").build());
+        when(mapper.findMemberRole(30L, 9L)).thenReturn("MEMBER");
+
+        assertThatThrownBy(() -> service.getConversationSettings(9L, 30L))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(error -> assertThat(((BusinessException) error).getErrorCode())
+                        .isEqualTo(ErrorCode.FORBIDDEN));
+    }
+
+    // ── OWNER 는 방 메타를 수정할 수 있고 감사 로그를 남긴다 ──
+    @Test
+    void updateConversationSettings_ownerUpdatesTitleAndNotice() {
+        when(mapper.findConversationById(30L)).thenReturn(CollaborationConversation.builder()
+                .id(30L).type("GROUP").title("옛 제목").invitePolicy("ALL_MEMBERS").build());
+        when(mapper.findMemberRole(30L, 1L)).thenReturn("OWNER");
+        when(mapper.findMemberDetails(30L)).thenReturn(List.of());
+        when(mapper.findBans(30L)).thenReturn(List.of());
+        when(mapper.findInviteAllowUserIds(30L)).thenReturn(List.of());
+        when(mapper.findAudits(eq(30L), anyInt())).thenReturn(List.of());
+
+        var response = service.updateConversationSettings(1L, 30L,
+                new ConversationSettingsUpdateRequest("새 제목", null, "새 공지", null, null,
+                        null, null, null, "MANAGERS", null, null));
+
+        assertThat(response.conversationId()).isEqualTo(30L);
+        ArgumentCaptor<CollaborationConversation> patchCaptor =
+                ArgumentCaptor.forClass(CollaborationConversation.class);
+        verify(mapper).updateConversationSettings(patchCaptor.capture());
+        assertThat(patchCaptor.getValue().getTitle()).isEqualTo("새 제목");
+        assertThat(patchCaptor.getValue().getNotice()).isEqualTo("새 공지");
+        assertThat(patchCaptor.getValue().getInvitePolicy()).isEqualTo("MANAGERS");
+        verify(mapper).insertAudit(eq(30L), eq(1L), eq(null), eq("ROOM_UPDATED"), any());
+    }
+
+    // ── 방 관리자 지정은 OWNER 만 가능. MANAGER 가 위임 시 FORBIDDEN ──
+    @Test
+    void updateMemberPermission_forbidsManagerFromDelegating() {
+        when(mapper.findConversationById(30L)).thenReturn(CollaborationConversation.builder()
+                .id(30L).type("GROUP").title("스터디").build());
+        when(mapper.findMemberRole(30L, 5L)).thenReturn("MANAGER");
+        when(mapper.findPermission(30L, 5L)).thenReturn(ConversationPermissionRow.builder()
+                .conversationId(30L).userId(5L).canManageMembers(true).build());
+
+        assertThatThrownBy(() -> service.updateMemberPermission(5L, 30L, 7L,
+                new ConversationPermissionUpdateRequest(true, true, false, false, false, false, false)))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(error -> assertThat(((BusinessException) error).getErrorCode())
+                        .isEqualTo(ErrorCode.FORBIDDEN));
+        verify(mapper, never()).updateMemberRole(eq(30L), eq(7L), any());
+    }
+
+    // ── OWNER 가 멤버를 MANAGER 로 승격하고 세부 권한을 부여 ──
+    @Test
+    void updateMemberPermission_ownerGrantsManagerWithFlags() {
+        when(mapper.findConversationById(30L)).thenReturn(CollaborationConversation.builder()
+                .id(30L).type("GROUP").title("스터디").build());
+        when(mapper.findMemberRole(30L, 1L)).thenReturn("OWNER");
+        when(mapper.findMemberDetail(30L, 7L)).thenReturn(ConversationMemberDetailRow.builder()
+                .userId(7L).role("MEMBER").status("ACTIVE").build());
+        when(mapper.findMemberDetails(30L)).thenReturn(List.of());
+        when(mapper.findBans(30L)).thenReturn(List.of());
+        when(mapper.findInviteAllowUserIds(30L)).thenReturn(List.of());
+        when(mapper.findAudits(eq(30L), anyInt())).thenReturn(List.of());
+
+        service.updateMemberPermission(1L, 30L, 7L,
+                new ConversationPermissionUpdateRequest(true, true, false, false, true, false, false));
+
+        verify(mapper).updateMemberRole(30L, 7L, "MANAGER");
+        ArgumentCaptor<ConversationPermissionRow> permCaptor =
+                ArgumentCaptor.forClass(ConversationPermissionRow.class);
+        verify(mapper).upsertPermission(permCaptor.capture());
+        assertThat(permCaptor.getValue().getCanKick()).isTrue();
+        assertThat(permCaptor.getValue().getCanInvite()).isTrue();
+        assertThat(permCaptor.getValue().getCanBan()).isFalse();
+    }
+
+    // ── ban 된 유저는 재입장(join) 불가 (FORBIDDEN) ──
+    @Test
+    void joinConversation_deniesBannedUser() {
+        when(mapper.findConversationById(30L)).thenReturn(CollaborationConversation.builder()
+                .id(30L).type("PUBLIC").title("공개방").build());
+        when(mapper.countConversationMember(30L, 2L)).thenReturn(0);
+        when(mapper.countBan(30L, 2L)).thenReturn(1);
+
+        assertThatThrownBy(() -> service.joinConversation(2L, 30L, new JoinConversationRequest(null)))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(error -> assertThat(((BusinessException) error).getErrorCode())
+                        .isEqualTo(ErrorCode.FORBIDDEN));
+        verify(mapper, never()).insertConversationMemberWithRole(eq(30L), eq(2L), any(), any());
+    }
+
+    // ── OWNER_ONLY 정책에서 일반 멤버 초대 시 FORBIDDEN ──
+    @Test
+    void inviteMembers_deniesWhenPolicyOwnerOnlyAndCallerIsMember() {
+        when(mapper.findConversationById(30L)).thenReturn(CollaborationConversation.builder()
+                .id(30L).type("GROUP").title("스터디").createdBy(1L).invitePolicy("OWNER_ONLY").build());
+        when(mapper.countConversationMember(30L, 5L)).thenReturn(1);
+        when(mapper.findMemberRole(30L, 5L)).thenReturn("MEMBER");
+
+        assertThatThrownBy(() -> service.inviteMembers(5L, 30L, new InviteMembersRequest(List.of(7L), false)))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(error -> assertThat(((BusinessException) error).getErrorCode())
+                        .isEqualTo(ErrorCode.FORBIDDEN));
+        verify(mapper, never()).insertConversationInvite(any(), any(), any(), anyBoolean());
+    }
+
+    // ── 재입장불가 강퇴(ban): 명단 등록 + 멤버 제거 + 감사 로그 ──
+    @Test
+    void banMember_ownerBansMemberAndRecordsAudit() {
+        when(mapper.findConversationById(30L)).thenReturn(CollaborationConversation.builder()
+                .id(30L).type("GROUP").title("스터디").build());
+        when(mapper.findMemberRole(30L, 1L)).thenReturn("OWNER");
+        when(mapper.findMemberDetail(30L, 8L)).thenReturn(ConversationMemberDetailRow.builder()
+                .userId(8L).role("MEMBER").status("ACTIVE").build());
+        when(mapper.findMemberDetails(30L)).thenReturn(List.of());
+        when(mapper.findBans(30L)).thenReturn(List.of());
+        when(mapper.findInviteAllowUserIds(30L)).thenReturn(List.of());
+        when(mapper.findAudits(eq(30L), anyInt())).thenReturn(List.of());
+
+        service.banMember(1L, 30L, 8L, new ConversationBanRequest("스팸"));
+
+        verify(mapper).insertBan(30L, 8L, 1L, "스팸");
+        verify(mapper).updateMemberStatus(30L, 8L, "REMOVED");
+        verify(mapper).insertAudit(30L, 1L, 8L, "MEMBER_BANNED", "스팸");
     }
 
     private CollaborationUserRow user(Long id, String name, String email) {
