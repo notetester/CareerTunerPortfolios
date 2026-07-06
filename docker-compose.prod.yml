@@ -1,0 +1,24 @@
+# 배포(EC2)용 override — 로컬 빌드 대신 GHCR 이미지를 pull 해서 띄운다.
+#   사용: docker compose -f docker-compose.yml -f docker-compose.prod.yml --env-file .env pull
+#         docker compose -f docker-compose.yml -f docker-compose.prod.yml --env-file .env up -d
+#   로컬 개발은 base(docker-compose.yml)만 쓰면 기존처럼 build 로 동작한다(이 파일 무시).
+#
+# ⚠️ 인프라(공통 영역) 산출물 — dev 반영 전 팀 합의 필요.
+# 전제: EC2 에 미리 `docker login ghcr.io`(read:packages PAT) 가 돼 있어야 private 이미지를 pull 한다.
+#       `!reset` 은 compose v2.24+ 기능 — EC2 는 docker-compose-plugin 최신을 설치한다(DEPLOY.md §1).
+
+services:
+  backend:
+    build: !reset null
+    image: ghcr.io/notetester/careertuner-backend:latest
+    pull_policy: always
+    # .env 전체를 컨테이너에 주입한다. base compose 의 environment: 목록에 없는 키
+    # (CORS/ANTHROPIC/HEYGEN/INTERVIEW_EVAL/AI_OLLAMA 등)도 이 지시로 함께 들어간다.
+    # (--env-file 은 compose 의 ${VAR} 치환용일 뿐 컨테이너 주입이 아니다.)
+    env_file:
+      - /home/careertuner/careertuner/.env
+
+  job-posting-worker:
+    build: !reset null
+    image: ghcr.io/notetester/careertuner-job-posting-worker:latest
+    pull_policy: always
