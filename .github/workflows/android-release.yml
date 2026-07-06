@@ -87,8 +87,8 @@ jobs:
             npm run build:mock
           fi
 
-      - name: Add Android platform (regenerated each run; android/ is gitignored)
-        run: npx cap add android
+      - name: Add Android platform (repo에 android/ 가 커밋돼 있으면 그대로 사용)
+        run: test -d android || npx cap add android
 
       - name: Sync web assets + plugins
         run: npx cap sync android
