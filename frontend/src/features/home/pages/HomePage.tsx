@@ -433,7 +433,7 @@ function MemberHome({ summary, loading, error, fallbackName, onRetry, onSummaryR
 
         <section className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
           {statCards.map((card) => (
-            <Card key={card.label} className="border border-slate-200 bg-card shadow-sm">
+            <Card key={card.label} className="min-w-0 border border-slate-200 bg-card shadow-sm">
               <CardContent className="p-4 sm:p-5">
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
@@ -451,7 +451,7 @@ function MemberHome({ summary, loading, error, fallbackName, onRetry, onSummaryR
         </section>
 
         <section className="grid lg:grid-cols-[1.45fr_0.85fr] gap-5">
-          <div className="space-y-5">
+          <div className="min-w-0 space-y-5">
             <Card className="border border-slate-200 bg-card shadow-sm">
               <CardHeader className="pb-3">
                 <div className="flex items-center justify-between gap-3">
@@ -536,7 +536,7 @@ function MemberHome({ summary, loading, error, fallbackName, onRetry, onSummaryR
             </Card>
           </div>
 
-          <div className="space-y-5">
+          <div className="min-w-0 space-y-5">
             <Card className="border border-border bg-card shadow-sm">
               <CardHeader className="pb-3">
                 <CardTitle className="text-base flex items-center gap-2 text-foreground">
