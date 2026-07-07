@@ -183,8 +183,8 @@ export function DashboardPage() {
             </p>
             {summary?.aiSummary && (
               <div className="mt-3 rounded-lg bg-blue-50 px-3 py-2 text-sm text-blue-800">
-                <div className="flex items-start justify-between gap-3">
-                  <p>
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between sm:gap-3">
+                  <p className="min-w-0">
                     <strong className="font-semibold">AI 요약</strong> <AiResultBadge status={summary.analysisRun.status} /> · {summary.aiSummary}
                   </p>
                   <button
@@ -192,7 +192,7 @@ export function DashboardPage() {
                     onClick={handleRefreshSummary}
                     disabled={refreshing}
                     title="AI 실행 전 사용권 우선 차감과 최소·최대 크레딧 범위를 안내합니다."
-                    className="flex shrink-0 items-center gap-1 rounded-md border border-blue-200 bg-card/70 px-2 py-1 text-xs font-semibold text-blue-700 transition-colors hover:bg-card disabled:opacity-60"
+                    className="flex shrink-0 self-start items-center gap-1 rounded-md border border-blue-200 bg-card/70 px-2 py-1 text-xs font-semibold text-blue-700 transition-colors hover:bg-card disabled:opacity-60"
                   >
                     <RefreshCw className={`size-3 ${refreshing ? "animate-spin" : ""}`} />
                     {refreshing ? "재생성 중" : "재생성 (실행 전 비용 안내)"}
@@ -239,12 +239,12 @@ export function DashboardPage() {
           <>
             <div data-tour="dash-stats" className="grid grid-cols-2 md:grid-cols-4 gap-4">
               {statCards.map((s) => (
-                <Card key={s.label} className="border border-slate-200 bg-card hover:shadow-md transition-shadow">
+                <Card key={s.label} className="min-w-0 border border-slate-200 bg-card hover:shadow-md transition-shadow">
                   <CardContent className="p-5">
                     <div className="flex items-start justify-between gap-3">
-                      <div>
+                      <div className="min-w-0">
                         <div className="text-sm text-slate-500 mb-1">{s.label}</div>
-                        <div className="text-3xl font-black text-slate-900">{s.value}</div>
+                        <div className="text-3xl font-black text-slate-900 break-words">{s.value}</div>
                         <div className="text-xs text-slate-400 mt-1">{s.sub}</div>
                       </div>
                       <div className={`size-10 rounded-xl bg-accent-soft ${s.color} flex items-center justify-center`}>
@@ -257,7 +257,7 @@ export function DashboardPage() {
             </div>
 
             <div className="grid lg:grid-cols-3 gap-6">
-              <div className="lg:col-span-2 space-y-4">
+              <div className="min-w-0 lg:col-span-2 space-y-4">
                 <div className="flex items-center justify-between">
                   <h2 className="font-bold text-slate-900 text-lg">내 지원 건</h2>
                   <Link to="/applications" className="text-sm text-blue-600 hover:text-blue-700 flex items-center gap-1">
@@ -303,7 +303,7 @@ export function DashboardPage() {
                                     <Progress value={app.fitScore ?? 0} className="h-1.5 flex-1 max-w-24" />
                                     <span className="text-xs font-semibold text-blue-600">{app.fitScore != null ? `${app.fitScore}점` : "미분석"}</span>
                                   </div>
-                                  <div className="flex gap-1">
+                                  <div className="flex flex-wrap gap-1">
                                     {app.tags.map((tag) => (
                                       <span key={tag} className="text-[10px] bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded">{tag}</span>
                                     ))}
@@ -356,7 +356,7 @@ export function DashboardPage() {
                 </div>
               </div>
 
-              <div className="space-y-5">
+              <div className="min-w-0 space-y-5">
                 {(promisingApplication || urgentGap) && (
                   <Card data-tour="dash-priority" className="border border-blue-200 bg-muted">
                     <CardHeader className="pb-3">

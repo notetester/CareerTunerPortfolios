@@ -296,7 +296,7 @@ function MemberHome({ summary, loading, error, fallbackName, onRetry, onSummaryR
         </div>
         <AutoPrepPanel />
         <section className="grid lg:grid-cols-[1.5fr_0.9fr] gap-5">
-          <div className="rounded-2xl border border-slate-200 bg-card p-5 sm:p-7 shadow-sm">
+          <div className="min-w-0 rounded-2xl border border-slate-200 bg-card p-5 sm:p-7 shadow-sm">
             <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-5">
               <div className="min-w-0">
                 <div className="flex flex-wrap items-center gap-2 text-sm text-slate-500">
@@ -311,8 +311,8 @@ function MemberHome({ summary, loading, error, fallbackName, onRetry, onSummaryR
                 </p>
                 {summary?.aiSummary && (
                   <div data-tour="home-ai-summary" className="mt-3 max-w-3xl rounded-xl bg-blue-50 px-4 py-3">
-                    <div className="flex items-start justify-between gap-3">
-                      <p className="text-sm leading-6 text-blue-800">
+                    <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between sm:gap-3">
+                      <p className="min-w-0 text-sm leading-6 text-blue-800">
                         <strong className="font-semibold">AI 요약</strong> <AiResultBadge status={summary.analysisRun.status} /> · {summary.aiSummary}
                       </p>
                       <button
@@ -320,7 +320,7 @@ function MemberHome({ summary, loading, error, fallbackName, onRetry, onSummaryR
                         onClick={handleRefreshSummary}
                         disabled={refreshing}
                         title="AI 실행 전 사용권 우선 차감과 최소·최대 크레딧 범위를 안내합니다."
-                        className="flex shrink-0 items-center gap-1 rounded-md border border-blue-200 bg-card/70 px-2 py-1 text-xs font-semibold text-blue-700 transition-colors hover:bg-card disabled:opacity-60"
+                        className="flex shrink-0 self-start items-center gap-1 rounded-md border border-blue-200 bg-card/70 px-2 py-1 text-xs font-semibold text-blue-700 transition-colors hover:bg-card disabled:opacity-60"
                       >
                         <RefreshCw className={`size-3 ${refreshing ? "animate-spin" : ""}`} />
                         {refreshing ? "재생성 중" : "재생성 (실행 전 비용 안내)"}
@@ -418,7 +418,7 @@ function MemberHome({ summary, loading, error, fallbackName, onRetry, onSummaryR
             })()}
           </div>
 
-          <Card data-tour="home-todos" className="border border-slate-200 bg-card shadow-sm">
+          <Card data-tour="home-todos" className="min-w-0 border border-slate-200 bg-card shadow-sm">
             <CardHeader className="pb-3">
               <CardTitle className="text-base flex items-center gap-2">
                 <Flame className="size-4 text-muted-foreground" />
@@ -433,7 +433,7 @@ function MemberHome({ summary, loading, error, fallbackName, onRetry, onSummaryR
 
         <section className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
           {statCards.map((card) => (
-            <Card key={card.label} className="border border-slate-200 bg-card shadow-sm">
+            <Card key={card.label} className="min-w-0 border border-slate-200 bg-card shadow-sm">
               <CardContent className="p-4 sm:p-5">
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
@@ -451,7 +451,7 @@ function MemberHome({ summary, loading, error, fallbackName, onRetry, onSummaryR
         </section>
 
         <section className="grid lg:grid-cols-[1.45fr_0.85fr] gap-5">
-          <div className="space-y-5">
+          <div className="min-w-0 space-y-5">
             <Card className="border border-slate-200 bg-card shadow-sm">
               <CardHeader className="pb-3">
                 <div className="flex items-center justify-between gap-3">
@@ -536,7 +536,7 @@ function MemberHome({ summary, loading, error, fallbackName, onRetry, onSummaryR
             </Card>
           </div>
 
-          <div className="space-y-5">
+          <div className="min-w-0 space-y-5">
             <Card className="border border-border bg-card shadow-sm">
               <CardHeader className="pb-3">
                 <CardTitle className="text-base flex items-center gap-2 text-foreground">
