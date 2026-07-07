@@ -41,12 +41,25 @@ public class CareerAnalysisAiProviderProperties {
     private Oss oss = new Oss();
 
     /**
-     * 폴백 체인 전체(OSS→Claude→OpenAI)의 총 시간예산. OSS 의 {@code oss.total-time-budget}(90s)은
-     * GPU tier 만 묶으므로, 이 값은 <b>사용자 대기 상한</b>을 캐스케이드 전체에 건다. 초과하면 아직
-     * 시작하지 않은 외부 tier 를 건너뛰고 즉시 결정론 Mock 안전망을 반환한다(화면 무깨짐 유지).
-     * 각 tier 의 per-timeout 합(최악 ~720s)을 방지한다. <b>0/음수 = 무제한(끔)</b>. 기본 120s.
+     * 폴백 체인 전체(OSS→Claude→OpenAI)의 총 시간예산. 이제 <b>각 tier 의 첫 시도는 절대 못 자르는
+     * (per-tier 타임아웃 우선), 재시도 증폭만 억제하는 보조 상한</b>이다. 각 tier 의 첫 시도는
+     * {@link #claudeTimeout}/{@link #openaiTimeout} 이 보장하고, 이 값은 클라이언트 내부 재시도가
+     * 남은 예산을 넘기지 않게만 막는다. 기본 120s, <b>0/음수 = 무제한(재시도만 각 클라이언트
+     * MAX_ATTEMPTS 까지)</b>.
      */
     private Duration chainTotalTimeBudget = Duration.ofSeconds(120);
+
+    /**
+     * Claude tier 의 "최소 보장" per-attempt 타임아웃 — 체인 total-time-budget 이 소진돼도 이 tier 의
+     * 첫 시도는 이 시간을 보장받는다(우선). 기본 30s.
+     */
+    private Duration claudeTimeout = Duration.ofSeconds(30);
+
+    /**
+     * OpenAI tier 의 "최소 보장" per-attempt 타임아웃 — 체인 total-time-budget 이 소진돼도 이 tier 의
+     * 첫 시도는 이 시간을 보장받는다(우선). 기본 30s.
+     */
+    private Duration openaiTimeout = Duration.ofSeconds(30);
 
     public boolean isOss() {
         return "oss".equalsIgnoreCase(provider);

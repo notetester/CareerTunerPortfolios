@@ -1,6 +1,9 @@
 package com.careertuner.fitanalysis.ai;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -19,6 +22,10 @@ import com.careertuner.common.exception.ErrorCode;
 
 /**
  * C 적합도 AI 폴백 디스패처(OSS→Claude→OpenAI→Mock) 검증.
+ *
+ * <p>하이브리드 폴백-타임아웃: 설정된 각 tier 는 예산 소진으로 건너뛰지 않고 항상 최소 한 번 시도되며,
+ * 외부 tier 는 per-attempt 타임아웃(Duration) + 체인 데드라인(long) 오버로드로 호출된다. Mock 은
+ * OpenAI tier 내부 폴백으로만 도달한다(별도 Mock tier 없음).
  */
 class FallbackFitAnalysisAiServiceTest {
 
@@ -38,7 +45,6 @@ class FallbackFitAnalysisAiServiceTest {
         OssFitAnalysisAiService oss = mock(OssFitAnalysisAiService.class);
         AnthropicFitAnalysisAiService anthropic = mock(AnthropicFitAnalysisAiService.class);
         OpenAiFitAnalysisAiService openAi = mock(OpenAiFitAnalysisAiService.class);
-        MockFitAnalysisAiService mockSvc = mock(MockFitAnalysisAiService.class);
         CareerAnalysisOssClient client = mock(CareerAnalysisOssClient.class);
         CareerAnalysisAiProviderProperties props = new CareerAnalysisAiProviderProperties();
         props.setProvider("oss");
@@ -46,12 +52,12 @@ class FallbackFitAnalysisAiServiceTest {
         when(oss.generate(command)).thenReturn(tagged("oss-result", "careertuner-c-career-strategy-3b"));
 
         FallbackFitAnalysisAiService service =
-                new FallbackFitAnalysisAiService(oss, anthropic, openAi, mockSvc, client, props);
+                new FallbackFitAnalysisAiService(oss, anthropic, openAi, client, props);
         FitAnalysisAiResult result = service.generate(command);
 
         assertThat(result.strategy()).isEqualTo("oss-result");
-        verify(anthropic, never()).generate(command);
-        verify(openAi, never()).generate(command);
+        verify(anthropic, never()).generate(eq(command), any(), anyLong());
+        verify(openAi, never()).generate(eq(command), any(), anyLong());
     }
 
     @Test
@@ -59,21 +65,20 @@ class FallbackFitAnalysisAiServiceTest {
         OssFitAnalysisAiService oss = mock(OssFitAnalysisAiService.class);
         AnthropicFitAnalysisAiService anthropic = mock(AnthropicFitAnalysisAiService.class);
         OpenAiFitAnalysisAiService openAi = mock(OpenAiFitAnalysisAiService.class);
-        MockFitAnalysisAiService mockSvc = mock(MockFitAnalysisAiService.class);
         CareerAnalysisOssClient client = mock(CareerAnalysisOssClient.class);
         CareerAnalysisAiProviderProperties props = new CareerAnalysisAiProviderProperties();
         props.setProvider("oss");
         when(client.available()).thenReturn(true);
         when(oss.generate(command)).thenThrow(new BusinessException(ErrorCode.INTERNAL_ERROR, "자체모델 실패"));
         when(anthropic.configured()).thenReturn(true);
-        when(anthropic.generate(command)).thenReturn(tagged("claude-result", "claude-haiku"));
+        when(anthropic.generate(eq(command), any(), anyLong())).thenReturn(tagged("claude-result", "claude-haiku"));
 
         FallbackFitAnalysisAiService service =
-                new FallbackFitAnalysisAiService(oss, anthropic, openAi, mockSvc, client, props);
+                new FallbackFitAnalysisAiService(oss, anthropic, openAi, client, props);
         FitAnalysisAiResult result = service.generate(command);
 
         assertThat(result.strategy()).isEqualTo("claude-result");
-        verify(openAi, never()).generate(command);
+        verify(openAi, never()).generate(eq(command), any(), anyLong());
     }
 
     @Test
@@ -81,19 +86,18 @@ class FallbackFitAnalysisAiServiceTest {
         OssFitAnalysisAiService oss = mock(OssFitAnalysisAiService.class);
         AnthropicFitAnalysisAiService anthropic = mock(AnthropicFitAnalysisAiService.class);
         OpenAiFitAnalysisAiService openAi = mock(OpenAiFitAnalysisAiService.class);
-        MockFitAnalysisAiService mockSvc = mock(MockFitAnalysisAiService.class);
         CareerAnalysisOssClient client = mock(CareerAnalysisOssClient.class);
         CareerAnalysisAiProviderProperties props = new CareerAnalysisAiProviderProperties(); // 기본 provider=openai
         when(anthropic.configured()).thenReturn(true);
-        when(anthropic.generate(command)).thenReturn(tagged("claude-result", "claude-haiku"));
+        when(anthropic.generate(eq(command), any(), anyLong())).thenReturn(tagged("claude-result", "claude-haiku"));
 
         FallbackFitAnalysisAiService service =
-                new FallbackFitAnalysisAiService(oss, anthropic, openAi, mockSvc, client, props);
+                new FallbackFitAnalysisAiService(oss, anthropic, openAi, client, props);
         FitAnalysisAiResult result = service.generate(command);
 
         assertThat(result.strategy()).isEqualTo("claude-result");
         verify(oss, never()).generate(command);
-        verify(openAi, never()).generate(command);
+        verify(openAi, never()).generate(eq(command), any(), anyLong());
     }
 
     @Test
@@ -101,15 +105,15 @@ class FallbackFitAnalysisAiServiceTest {
         OssFitAnalysisAiService oss = mock(OssFitAnalysisAiService.class);
         AnthropicFitAnalysisAiService anthropic = mock(AnthropicFitAnalysisAiService.class);
         OpenAiFitAnalysisAiService openAi = mock(OpenAiFitAnalysisAiService.class);
-        MockFitAnalysisAiService mockSvc = mock(MockFitAnalysisAiService.class);
         CareerAnalysisOssClient client = mock(CareerAnalysisOssClient.class);
         CareerAnalysisAiProviderProperties props = new CareerAnalysisAiProviderProperties();
         when(anthropic.configured()).thenReturn(true);
-        when(anthropic.generate(command)).thenThrow(new BusinessException(ErrorCode.INTERNAL_ERROR, "Claude 실패"));
-        when(openAi.generate(command)).thenReturn(tagged("openai-result", "gpt-5"));
+        when(anthropic.generate(eq(command), any(), anyLong()))
+                .thenThrow(new BusinessException(ErrorCode.INTERNAL_ERROR, "Claude 실패"));
+        when(openAi.generate(eq(command), any(), anyLong())).thenReturn(tagged("openai-result", "gpt-5"));
 
         FallbackFitAnalysisAiService service =
-                new FallbackFitAnalysisAiService(oss, anthropic, openAi, mockSvc, client, props);
+                new FallbackFitAnalysisAiService(oss, anthropic, openAi, client, props);
         FitAnalysisAiResult result = service.generate(command);
 
         assertThat(result.strategy()).isEqualTo("openai-result");
@@ -120,14 +124,13 @@ class FallbackFitAnalysisAiServiceTest {
         OssFitAnalysisAiService oss = mock(OssFitAnalysisAiService.class);
         AnthropicFitAnalysisAiService anthropic = mock(AnthropicFitAnalysisAiService.class);
         OpenAiFitAnalysisAiService openAi = mock(OpenAiFitAnalysisAiService.class);
-        MockFitAnalysisAiService mockSvc = mock(MockFitAnalysisAiService.class);
         CareerAnalysisOssClient client = mock(CareerAnalysisOssClient.class);
         CareerAnalysisAiProviderProperties props = new CareerAnalysisAiProviderProperties(); // 기본 provider=openai
         when(anthropic.configured()).thenReturn(false); // Claude 키 없음 → 건너뜀
-        when(openAi.generate(command)).thenReturn(tagged("openai-result", "gpt-5"));
+        when(openAi.generate(eq(command), any(), anyLong())).thenReturn(tagged("openai-result", "gpt-5"));
 
         FallbackFitAnalysisAiService service =
-                new FallbackFitAnalysisAiService(oss, anthropic, openAi, mockSvc, client, props);
+                new FallbackFitAnalysisAiService(oss, anthropic, openAi, client, props);
         FitAnalysisAiResult result = service.generate(command);
 
         assertThat(result.strategy()).isEqualTo("openai-result");
@@ -139,16 +142,15 @@ class FallbackFitAnalysisAiServiceTest {
         OssFitAnalysisAiService oss = mock(OssFitAnalysisAiService.class);
         AnthropicFitAnalysisAiService anthropic = mock(AnthropicFitAnalysisAiService.class);
         OpenAiFitAnalysisAiService openAi = mock(OpenAiFitAnalysisAiService.class);
-        MockFitAnalysisAiService mockSvc = mock(MockFitAnalysisAiService.class);
         CareerAnalysisOssClient client = mock(CareerAnalysisOssClient.class);
         CareerAnalysisAiProviderProperties props = new CareerAnalysisAiProviderProperties();
         props.setProvider("oss");
         when(client.available()).thenReturn(false); // base-url 미설정 → OSS 시도 안 함
         when(anthropic.configured()).thenReturn(false);
-        when(openAi.generate(command)).thenReturn(tagged("openai-result", "gpt-5"));
+        when(openAi.generate(eq(command), any(), anyLong())).thenReturn(tagged("openai-result", "gpt-5"));
 
         FallbackFitAnalysisAiService service =
-                new FallbackFitAnalysisAiService(oss, anthropic, openAi, mockSvc, client, props);
+                new FallbackFitAnalysisAiService(oss, anthropic, openAi, client, props);
         FitAnalysisAiResult result = service.generate(command);
 
         assertThat(result.strategy()).isEqualTo("openai-result");
@@ -156,31 +158,30 @@ class FallbackFitAnalysisAiServiceTest {
     }
 
     @Test
-    void chainBudgetExhaustedSkipsExternalTiersAndReturnsMock() throws Exception {
+    void everyTierAttemptedBeforeMock() {
         OssFitAnalysisAiService oss = mock(OssFitAnalysisAiService.class);
         AnthropicFitAnalysisAiService anthropic = mock(AnthropicFitAnalysisAiService.class);
         OpenAiFitAnalysisAiService openAi = mock(OpenAiFitAnalysisAiService.class);
-        MockFitAnalysisAiService mockSvc = mock(MockFitAnalysisAiService.class);
         CareerAnalysisOssClient client = mock(CareerAnalysisOssClient.class);
         CareerAnalysisAiProviderProperties props = new CareerAnalysisAiProviderProperties();
         props.setProvider("oss");
-        props.setChainTotalTimeBudget(Duration.ofMillis(1)); // 아주 작은 체인 예산
         when(client.available()).thenReturn(true);
-        // OSS 가 예산을 넘겨 소요한 뒤 실패 → 이후 Claude/OpenAI 는 예산 소진으로 건너뛰고 Mock 반환
+        // OSS 실패 → Claude 실패 → OpenAI 성공: 예산 소진으로 tier 를 건너뛰지 않고 각 tier 를 모두 시도한다.
+        when(oss.generate(command)).thenThrow(new BusinessException(ErrorCode.INTERNAL_ERROR, "자체모델 실패"));
         when(anthropic.configured()).thenReturn(true);
-        when(oss.generate(command)).thenAnswer(inv -> {
-            Thread.sleep(20);
-            throw new BusinessException(ErrorCode.INTERNAL_ERROR, "자체모델 실패");
-        });
-        when(mockSvc.generate(command)).thenReturn(tagged("mock-result", "mock"));
+        when(anthropic.generate(eq(command), any(), anyLong()))
+                .thenThrow(new BusinessException(ErrorCode.INTERNAL_ERROR, "Claude 실패"));
+        when(openAi.generate(eq(command), any(), anyLong())).thenReturn(tagged("openai-result", "gpt-5"));
 
         FallbackFitAnalysisAiService service =
-                new FallbackFitAnalysisAiService(oss, anthropic, openAi, mockSvc, client, props);
+                new FallbackFitAnalysisAiService(oss, anthropic, openAi, client, props);
         FitAnalysisAiResult result = service.generate(command);
 
-        assertThat(result.strategy()).isEqualTo("mock-result");
-        verify(anthropic, never()).generate(command); // 체인 예산 소진 → 외부 tier 미시작
-        verify(openAi, never()).generate(command);
+        assertThat(result.strategy()).isEqualTo("openai-result");
+        // 세 tier 가 각각 실제로 시도됐는지 검증(외부 tier 는 per-attempt 타임아웃 + 체인 데드라인 인자와 함께).
+        verify(oss).generate(command);
+        verify(anthropic).generate(eq(command), any(Duration.class), anyLong());
+        verify(openAi).generate(eq(command), any(Duration.class), anyLong());
     }
 
     @Test

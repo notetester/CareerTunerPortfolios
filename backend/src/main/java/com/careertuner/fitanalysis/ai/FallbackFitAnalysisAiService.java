@@ -17,10 +17,13 @@ import com.careertuner.analysis.ai.provider.CareerAnalysisOssClient;
  * OpenAI({@link OpenAiFitAnalysisAiService}, 키 없으면 내부 Mock 폴백) 순으로 전환한다. 따라서 어느 provider 가
  * 죽거나 응답이 깨져도 화면은 깨지지 않는다(OpenAI 단계의 내부 Mock 이 최종 안전망).
  *
- * <p><b>체인 총 시간예산</b>({@code chain-total-time-budget}, 기본 120s): OSS 의 예산(90s)은 GPU tier 만
- * 묶으므로, 이 디스패처가 캐스케이드 전체의 사용자 대기 상한을 건다. 앞 tier 들이 예산을 소진하면 아직
- * 시작하지 않은 외부 tier(Claude/OpenAI)를 건너뛰고 즉시 {@link MockFitAnalysisAiService} 결정론
- * 안전망을 반환한다 — per-timeout 합(최악 ~720s) 대신 유계 응답을 보장한다. 예산 0/음수면 무제한(끔).
+ * <p><b>하이브리드 폴백-타임아웃</b>: 설정된 각 tier 는 <b>항상 최소 한 번은 시도</b>된다(예산 소진으로
+ * 건너뛰지 않음). 각 tier 의 첫 시도는 그 tier 의 "최소 보장" per-attempt 타임아웃
+ * ({@link CareerAnalysisAiProviderProperties#getClaudeTimeout()}/{@code getOpenaiTimeout()})으로 유계되고,
+ * 이 값이 체인 total 보다 우선한다. 체인 총 시간예산
+ * ({@link CareerAnalysisAiProviderProperties#getChainTotalTimeBudget()}, 기본 120s)은 각 클라이언트 내부
+ * <b>재시도 증폭만 억제하는 보조 상한</b>이다(첫 시도는 절대 못 자름). Mock 은 세 tier 가 다 시도된 뒤
+ * OpenAI tier 내부 폴백으로만 도달한다(진짜 최후 안전망) — 별도 Mock tier 로는 진입하지 않는다.
  *
  * <p>기본값 provider=openai → 자체모델 비활성. Anthropic 키가 비어 있으면 Claude 단계도 건너뛰어 기존 동작과 동일하다.
  */
@@ -33,30 +36,27 @@ public class FallbackFitAnalysisAiService implements FitAnalysisAiService {
     private final OssFitAnalysisAiService ossService;
     private final AnthropicFitAnalysisAiService anthropicService;
     private final OpenAiFitAnalysisAiService openAiService;
-    private final MockFitAnalysisAiService mockService;
     private final CareerAnalysisOssClient ossClient;
     private final CareerAnalysisAiProviderProperties properties;
 
     public FallbackFitAnalysisAiService(OssFitAnalysisAiService ossService,
                                         AnthropicFitAnalysisAiService anthropicService,
                                         OpenAiFitAnalysisAiService openAiService,
-                                        MockFitAnalysisAiService mockService,
                                         CareerAnalysisOssClient ossClient,
                                         CareerAnalysisAiProviderProperties properties) {
         this.ossService = ossService;
         this.anthropicService = anthropicService;
         this.openAiService = openAiService;
-        this.mockService = mockService;
         this.ossClient = ossClient;
         this.properties = properties;
     }
 
     @Override
     public FitAnalysisAiResult generate(FitAnalysisAiCommand command) {
-        // 캐스케이드 전체의 사용자 대기 상한. 소진 시 남은 외부 tier 를 건너뛰고 즉시 Mock 안전망.
-        AiTotalTimeBudget chain = AiTotalTimeBudget.start(properties.getChainTotalTimeBudget());
+        // 체인 데드라인 — 각 tier 의 첫 시도는 못 자르고(per-tier 타임아웃 우선), 클라이언트 내부 재시도만 유계한다.
+        long deadline = AiTotalTimeBudget.deadlineNanos(properties.getChainTotalTimeBudget());
 
-        // 1) 자체모델(OSS) — provider=oss + base-url 설정 시. 실패하면 아래로 폴백.
+        // 1) 자체모델(OSS) — provider=oss + base-url 설정 시. 실패하면 아래로 폴백(OSS 는 자체 oss.total-time-budget 보유).
         if (properties.isOss() && ossClient.available()) {
             try {
                 return ossService.generate(command);
@@ -65,20 +65,16 @@ public class FallbackFitAnalysisAiService implements FitAnalysisAiService {
             }
         }
         // 2) 1차 폴백: Claude(Haiku) — 공통 키라 가장 안정적. 키 없으면 건너뛰고, 실패하면 OpenAI 로.
-        //    체인 예산이 남았을 때만 시작(외부 tier 는 초 단위라 예산 소진 시 즉시 Mock 으로).
-        if (!chain.expired() && anthropicService.configured()) {
+        //    첫 시도는 claudeTimeout 이 보장(체인 예산 소진 무관), 재시도만 체인 데드라인이 억제.
+        if (anthropicService.configured()) {
             try {
-                return anthropicService.generate(command);
+                return anthropicService.generate(command, properties.getClaudeTimeout(), deadline);
             } catch (RuntimeException ex) {
                 log.warn("C 적합도 Claude 실패 → OpenAI 폴백: {}", ex.getMessage());
             }
         }
-        // 3) OpenAI 단계(키 없거나 실패하면 내부 Mock 으로 폴백 — 최종 안전망).
-        if (!chain.expired()) {
-            return openAiService.generate(command);
-        }
-        // 4) 체인 예산 소진 → 느린 외부 tier 를 건너뛰고 결정론 Mock 즉시 반환(화면 무깨짐).
-        log.warn("C 적합도 체인 시간예산 {} 소진 → Mock 안전망 즉시 반환", properties.getChainTotalTimeBudget());
-        return mockService.generate(command);
+        // 3) OpenAI 단계 — 항상 시도(최종 안전망). 키 없거나 실패하면 내부 Mock 으로 폴백(절대 예외 없음).
+        //    첫 시도는 openaiTimeout 이 보장, 재시도만 체인 데드라인이 억제.
+        return openAiService.generate(command, properties.getOpenaiTimeout(), deadline);
     }
 }

@@ -15,11 +15,8 @@ import org.springframework.http.MediaType;
 import org.springframework.http.client.JdkClientHttpRequestFactory;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
-import org.springframework.web.client.RestClientException;
 
 import com.careertuner.ai.common.gpu.GpuPermitGate;
-import com.careertuner.common.exception.BusinessException;
-import com.careertuner.common.exception.ErrorCode;
 import com.careertuner.community.moderation.config.OllamaProperties;
 import com.careertuner.support.chatbot.SupportTextFallbackGenerator;
 
@@ -121,6 +118,17 @@ public class TicketDraftAiClient {
      * 초안 생성과 동일한 Ollama /api/chat 호출 인프라를 재사용하되 요약 프롬프트를 쓴다.
      */
     public String summarizeMember(String memberContext) {
+        // generateDraft 와 동일하게 폴백 체인(Ollama→Claude→목업)을 태운다 — 이전에는 단일 Ollama
+        // 직접 호출이라 응답이 비거나(IllegalStateException) RestClient 오류 시 예외가 화면까지 전파됐다.
+        // SupportTextFallbackGenerator 는 primary 의 RuntimeException 을 잡아 다음 tier 로 넘기고
+        // 최종 목업 문자열로 끝내므로(never-throw) 관리자 화면이 깨지지 않는다.
+        return fallback.generate(SUMMARY_SYSTEM_PROMPT, memberContext,
+                () -> callSummaryOllama(memberContext),
+                "회원 요약을 일시적으로 생성할 수 없습니다. 잠시 후 다시 시도해 주세요.");
+    }
+
+    /** 회원 요약용 Ollama 호출 — 실패(빈 응답/형식 오류/RestClient 오류)는 예외로 던져 폴백 제너레이터가 다음 tier 로 넘긴다. */
+    private String callSummaryOllama(String memberContext) {
         Map<String, Object> request = Map.of(
                 "model", ollamaProps.getModel(),
                 "stream", false,
@@ -133,34 +141,29 @@ public class TicketDraftAiClient {
 
         log.debug("회원 요약 생성 요청: model={}", ollamaProps.getModel());
 
-        try {
-            Map<String, Object> response;
-            try (GpuPermitGate.GpuPermit permit = gpuPermitGate.acquire("admin-ticket")) {
-                @SuppressWarnings("unchecked")
-                Map<String, Object> ollamaResponse = restClient.post()
-                        .uri("/api/chat")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .body(request)
-                        .retrieve()
-                        .body(Map.class);
-                response = ollamaResponse;
-            }
-
-            if (response == null || !response.containsKey("message")) {
-                throw new IllegalStateException("Ollama chat 응답이 비어 있습니다");
-            }
-            Object messageObj = response.get("message");
-            if (!(messageObj instanceof Map)) {
-                throw new IllegalStateException("Ollama chat 응답의 message 형식이 올바르지 않습니다");
-            }
+        Map<String, Object> response;
+        try (GpuPermitGate.GpuPermit permit = gpuPermitGate.acquire("admin-ticket")) {
             @SuppressWarnings("unchecked")
-            Map<String, Object> message = (Map<String, Object>) messageObj;
-            Object content = message.get("content");
-            return content == null ? "" : content.toString().strip();
-        } catch (RestClientException | ClassCastException e) {
-            log.error("회원 요약 생성 실패", e);
-            throw new BusinessException(ErrorCode.AI_UNAVAILABLE);
+            Map<String, Object> ollamaResponse = restClient.post()
+                    .uri("/api/chat")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .body(request)
+                    .retrieve()
+                    .body(Map.class);
+            response = ollamaResponse;
         }
+
+        if (response == null || !response.containsKey("message")) {
+            throw new IllegalStateException("Ollama chat 응답이 비어 있습니다");
+        }
+        Object messageObj = response.get("message");
+        if (!(messageObj instanceof Map)) {
+            throw new IllegalStateException("Ollama chat 응답의 message 형식이 올바르지 않습니다");
+        }
+        @SuppressWarnings("unchecked")
+        Map<String, Object> message = (Map<String, Object>) messageObj;
+        Object content = message.get("content");
+        return content == null ? "" : content.toString().strip();
     }
 
     /** 총 시간예산이 양수(ON)면 read timeout 을 예산 이하로 절삭한다. 0/음수/null 은 무제한(OFF, 기존 동작). */

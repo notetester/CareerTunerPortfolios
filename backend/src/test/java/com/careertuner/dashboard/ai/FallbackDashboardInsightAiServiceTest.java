@@ -1,6 +1,9 @@
 package com.careertuner.dashboard.ai;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -28,14 +31,14 @@ class FallbackDashboardInsightAiServiceTest {
         AnthropicDashboardInsightAiService anthropic = mock(AnthropicDashboardInsightAiService.class);
         OpenAiDashboardInsightAiService openAi = mock(OpenAiDashboardInsightAiService.class);
         when(anthropic.configured()).thenReturn(true);
-        when(anthropic.summarize(command)).thenReturn(tagged("claude-haiku"));
+        when(anthropic.summarize(eq(command), any(), anyLong())).thenReturn(tagged("claude-haiku"));
 
         FallbackDashboardInsightAiService service = new FallbackDashboardInsightAiService(
-                anthropic, openAi, mock(MockDashboardInsightAiService.class), new CareerAnalysisAiProviderProperties());
+                anthropic, openAi, new CareerAnalysisAiProviderProperties());
         DashboardInsightAiResult result = service.summarize(command);
 
         assertThat(result.usage().model()).isEqualTo("claude-haiku");
-        verify(openAi, never()).summarize(command);
+        verify(openAi, never()).summarize(eq(command), any(), anyLong());
     }
 
     @Test
@@ -43,14 +46,14 @@ class FallbackDashboardInsightAiServiceTest {
         AnthropicDashboardInsightAiService anthropic = mock(AnthropicDashboardInsightAiService.class);
         OpenAiDashboardInsightAiService openAi = mock(OpenAiDashboardInsightAiService.class);
         when(anthropic.configured()).thenReturn(false);
-        when(openAi.summarize(command)).thenReturn(tagged("gpt-5"));
+        when(openAi.summarize(eq(command), any(), anyLong())).thenReturn(tagged("gpt-5"));
 
         FallbackDashboardInsightAiService service = new FallbackDashboardInsightAiService(
-                anthropic, openAi, mock(MockDashboardInsightAiService.class), new CareerAnalysisAiProviderProperties());
+                anthropic, openAi, new CareerAnalysisAiProviderProperties());
         DashboardInsightAiResult result = service.summarize(command);
 
         assertThat(result.usage().model()).isEqualTo("gpt-5");
-        verify(anthropic, never()).summarize(command);
+        verify(anthropic, never()).summarize(eq(command), any(), anyLong());
     }
 
     @Test
@@ -58,11 +61,11 @@ class FallbackDashboardInsightAiServiceTest {
         AnthropicDashboardInsightAiService anthropic = mock(AnthropicDashboardInsightAiService.class);
         OpenAiDashboardInsightAiService openAi = mock(OpenAiDashboardInsightAiService.class);
         when(anthropic.configured()).thenReturn(true);
-        when(anthropic.summarize(command)).thenThrow(new IllegalStateException("claude down"));
-        when(openAi.summarize(command)).thenReturn(tagged("gpt-5"));
+        when(anthropic.summarize(eq(command), any(), anyLong())).thenThrow(new IllegalStateException("claude down"));
+        when(openAi.summarize(eq(command), any(), anyLong())).thenReturn(tagged("gpt-5"));
 
         FallbackDashboardInsightAiService service = new FallbackDashboardInsightAiService(
-                anthropic, openAi, mock(MockDashboardInsightAiService.class), new CareerAnalysisAiProviderProperties());
+                anthropic, openAi, new CareerAnalysisAiProviderProperties());
         DashboardInsightAiResult result = service.summarize(command);
 
         assertThat(result.usage().model()).isEqualTo("gpt-5");
