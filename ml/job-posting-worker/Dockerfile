@@ -1,3 +1,4 @@
+# syntax=docker/dockerfile:1
 FROM python:3.13-slim
 
 ENV PYTHONDONTWRITEBYTECODE=1
@@ -8,8 +9,9 @@ WORKDIR /app
 COPY requirements.txt .
 COPY requirements-ocr.txt .
 ARG INSTALL_OCR=false
-RUN pip install --no-cache-dir -r requirements.txt \
-    && if [ "$INSTALL_OCR" = "true" ]; then pip install --no-cache-dir -r requirements-ocr.txt; fi \
+RUN --mount=type=cache,target=/root/.cache/pip \
+    pip install -r requirements.txt \
+    && if [ "$INSTALL_OCR" = "true" ]; then pip install -r requirements-ocr.txt; fi \
     && useradd --create-home appuser
 
 COPY scripts ./scripts
