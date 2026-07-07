@@ -5,8 +5,8 @@ import {
   AccordionContent,
 } from "@/app/components/ui/accordion";
 import type { Faq } from "../types/support";
-// 커뮤니티 TipTap 자산 재사용(공통 승격 안 함): HTML 감지 + sanitize
-import { isHtmlContent, sanitizePostHtml } from "@/features/community/lib/postContent";
+// 공통 리치텍스트 유틸: HTML 감지 + sanitize
+import { isHtmlContent, sanitizePostHtml } from "@/app/lib/postContent";
 import "./faq-answer.css";
 
 interface FaqAccordionProps {

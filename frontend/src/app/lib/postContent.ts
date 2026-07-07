@@ -1,8 +1,8 @@
 /**
- * 커뮤니티 글 본문(HTML) 처리 유틸.
- * TipTap 에디터가 뱉는 HTML을 XSS 안전하게 정화하고, 기존 평문 글(118건)과 공존시킨다.
+ * 리치텍스트(HTML) 공통 처리 유틸 — 커뮤니티 글 / FAQ 답변 / 공지 본문이 공유한다.
+ * TipTap 에디터가 뱉는 HTML을 XSS 안전하게 정화하고, 기존 비-HTML 본문과 공존시킨다.
  * - 저장 전/렌더 전 모두 sanitize (defense-in-depth)
- * - content에 HTML 태그가 없으면 기존 평문으로 간주 → 호출부에서 pre-wrap 렌더
+ * - content에 HTML 태그가 없으면 기존 본문으로 간주 → 호출부에서 평문/마크다운 등으로 폴백 렌더
  */
 import DOMPurify from "dompurify";
 

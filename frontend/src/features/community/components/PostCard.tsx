@@ -8,7 +8,7 @@ import { useAuth } from "@/app/auth/AuthContext";
 import { ConfirmDialog } from "@/app/components/ui/confirm-dialog";
 import { useCommunityStore } from "../hooks/useCommunityStore";
 import { relTime } from "@/features/notification/types/notification";
-import { toPlainPreview } from "../lib/postContent";
+import { toPlainPreview } from "@/app/lib/postContent";
 import type { CommunityPost } from "../types/community";
 
 interface PostCardProps {

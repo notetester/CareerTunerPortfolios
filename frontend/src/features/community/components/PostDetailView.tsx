@@ -12,7 +12,7 @@ import { ReactionButtons } from "./ReactionButtons";
 import { CommentSection } from "./CommentSection";
 import { ReportDialog } from "./ReportDialog";
 import { RxMenu, RxMenuItem } from "./RxMenu";
-import { sanitizePostHtml, isHtmlContent } from "../lib/postContent";
+import { sanitizePostHtml, isHtmlContent } from "@/app/lib/postContent";
 import { useCommunityStore } from "../hooks/useCommunityStore";
 import { useLoginDialog } from "../hooks/useLoginDialog";
 import { ConfirmDialog } from "@/app/components/ui/confirm-dialog";

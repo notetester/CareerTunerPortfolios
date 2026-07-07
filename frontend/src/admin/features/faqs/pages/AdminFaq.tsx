@@ -15,7 +15,7 @@ import { FAQ_CATEGORIES, type Faq, type FaqCategory } from "../data/faqData";
 import * as adminFaqApi from "../api/adminFaqApi";
 import { ConfirmDialog } from "@/app/components/ui/confirm-dialog";
 import FaqAnswerEditor from "../components/FaqAnswerEditor";
-import { sanitizePostHtml } from "@/features/community/lib/postContent";
+import { sanitizePostHtml } from "@/app/lib/postContent";
 import "./admin-faq.css";
 import "./faq-compose.css";
 

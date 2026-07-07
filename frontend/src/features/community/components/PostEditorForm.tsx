@@ -9,7 +9,7 @@ import StarterKit from "@tiptap/starter-kit";
 import { CATEGORIES, type CommunityCategory } from "../types/community";
 import { useCommunityStore } from "../hooks/useCommunityStore";
 import { toast } from "@/features/notification/components/toast";
-import { sanitizePostHtml, isHtmlContent, plainToHtml } from "../lib/postContent";
+import { sanitizePostHtml, isHtmlContent, plainToHtml } from "@/app/lib/postContent";
 
 // 백엔드 CreatePostRequest/UpdatePostRequest 의 @Size(max=20000) 와 정합
 const MAX_HTML = 20000;
