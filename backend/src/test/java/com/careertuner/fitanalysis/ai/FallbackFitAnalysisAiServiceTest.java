@@ -14,6 +14,7 @@ import java.util.List;
 
 import org.junit.jupiter.api.Test;
 
+import com.careertuner.ai.common.settings.AiRuntimeSettings;
 import com.careertuner.analysis.ai.provider.CareerAnalysisAiProviderProperties;
 import com.careertuner.analysis.ai.provider.CareerAnalysisAiUsage;
 import com.careertuner.analysis.ai.provider.CareerAnalysisOssClient;
@@ -40,6 +41,15 @@ class FallbackFitAnalysisAiServiceTest {
                 new CareerAnalysisAiUsage(usageModel, 0, 0, 0, false), "SUCCESS", null, false);
     }
 
+    /** 시간 정책은 DB-first 설정에서 읽으므로 기본값(체인 120s / Claude 30s / OpenAI 30s)을 돌려주는 mock 을 주입한다. */
+    private static AiRuntimeSettings defaultSettings() {
+        AiRuntimeSettings settings = mock(AiRuntimeSettings.class);
+        when(settings.analysisChainTotalTimeBudget()).thenReturn(Duration.ofSeconds(120));
+        when(settings.analysisClaudeTimeout()).thenReturn(Duration.ofSeconds(30));
+        when(settings.analysisOpenaiTimeout()).thenReturn(Duration.ofSeconds(30));
+        return settings;
+    }
+
     @Test
     void usesOssWhenProviderOssAndAvailable() {
         OssFitAnalysisAiService oss = mock(OssFitAnalysisAiService.class);
@@ -52,7 +62,7 @@ class FallbackFitAnalysisAiServiceTest {
         when(oss.generate(command)).thenReturn(tagged("oss-result", "careertuner-c-career-strategy-3b"));
 
         FallbackFitAnalysisAiService service =
-                new FallbackFitAnalysisAiService(oss, anthropic, openAi, client, props);
+                new FallbackFitAnalysisAiService(oss, anthropic, openAi, client, props, defaultSettings());
         FitAnalysisAiResult result = service.generate(command);
 
         assertThat(result.strategy()).isEqualTo("oss-result");
@@ -74,7 +84,7 @@ class FallbackFitAnalysisAiServiceTest {
         when(anthropic.generate(eq(command), any(), anyLong())).thenReturn(tagged("claude-result", "claude-haiku"));
 
         FallbackFitAnalysisAiService service =
-                new FallbackFitAnalysisAiService(oss, anthropic, openAi, client, props);
+                new FallbackFitAnalysisAiService(oss, anthropic, openAi, client, props, defaultSettings());
         FitAnalysisAiResult result = service.generate(command);
 
         assertThat(result.strategy()).isEqualTo("claude-result");
@@ -92,7 +102,7 @@ class FallbackFitAnalysisAiServiceTest {
         when(anthropic.generate(eq(command), any(), anyLong())).thenReturn(tagged("claude-result", "claude-haiku"));
 
         FallbackFitAnalysisAiService service =
-                new FallbackFitAnalysisAiService(oss, anthropic, openAi, client, props);
+                new FallbackFitAnalysisAiService(oss, anthropic, openAi, client, props, defaultSettings());
         FitAnalysisAiResult result = service.generate(command);
 
         assertThat(result.strategy()).isEqualTo("claude-result");
@@ -113,7 +123,7 @@ class FallbackFitAnalysisAiServiceTest {
         when(openAi.generate(eq(command), any(), anyLong())).thenReturn(tagged("openai-result", "gpt-5"));
 
         FallbackFitAnalysisAiService service =
-                new FallbackFitAnalysisAiService(oss, anthropic, openAi, client, props);
+                new FallbackFitAnalysisAiService(oss, anthropic, openAi, client, props, defaultSettings());
         FitAnalysisAiResult result = service.generate(command);
 
         assertThat(result.strategy()).isEqualTo("openai-result");
@@ -130,7 +140,7 @@ class FallbackFitAnalysisAiServiceTest {
         when(openAi.generate(eq(command), any(), anyLong())).thenReturn(tagged("openai-result", "gpt-5"));
 
         FallbackFitAnalysisAiService service =
-                new FallbackFitAnalysisAiService(oss, anthropic, openAi, client, props);
+                new FallbackFitAnalysisAiService(oss, anthropic, openAi, client, props, defaultSettings());
         FitAnalysisAiResult result = service.generate(command);
 
         assertThat(result.strategy()).isEqualTo("openai-result");
@@ -150,7 +160,7 @@ class FallbackFitAnalysisAiServiceTest {
         when(openAi.generate(eq(command), any(), anyLong())).thenReturn(tagged("openai-result", "gpt-5"));
 
         FallbackFitAnalysisAiService service =
-                new FallbackFitAnalysisAiService(oss, anthropic, openAi, client, props);
+                new FallbackFitAnalysisAiService(oss, anthropic, openAi, client, props, defaultSettings());
         FitAnalysisAiResult result = service.generate(command);
 
         assertThat(result.strategy()).isEqualTo("openai-result");
@@ -174,7 +184,7 @@ class FallbackFitAnalysisAiServiceTest {
         when(openAi.generate(eq(command), any(), anyLong())).thenReturn(tagged("openai-result", "gpt-5"));
 
         FallbackFitAnalysisAiService service =
-                new FallbackFitAnalysisAiService(oss, anthropic, openAi, client, props);
+                new FallbackFitAnalysisAiService(oss, anthropic, openAi, client, props, defaultSettings());
         FitAnalysisAiResult result = service.generate(command);
 
         assertThat(result.strategy()).isEqualTo("openai-result");

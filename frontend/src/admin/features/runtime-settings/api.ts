@@ -26,6 +26,7 @@ export interface RuntimeSettingHistory {
   actorUserId: number | null;
   beforeValue: string | null;
   afterValue: string | null;
+  reason: string | null;
   createdAt: string;
 }
 
@@ -40,6 +41,7 @@ export interface RuntimeSettingSave {
   editable?: boolean;
   active?: boolean;
   description?: string | null;
+  reason?: string;
 }
 
 export function getRuntimeSettings(group = "", keyword = "", includeInactive = false): Promise<RuntimeSetting[]> {

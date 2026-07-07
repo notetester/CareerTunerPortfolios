@@ -6,6 +6,7 @@ import org.springframework.context.annotation.Primary;
 import org.springframework.stereotype.Service;
 
 import com.careertuner.ai.common.budget.AiTotalTimeBudget;
+import com.careertuner.ai.common.settings.AiRuntimeSettings;
 import com.careertuner.analysis.ai.provider.CareerAnalysisAiProviderProperties;
 import com.careertuner.analysis.ai.provider.CareerAnalysisOssClient;
 
@@ -38,23 +39,28 @@ public class FallbackFitAnalysisAiService implements FitAnalysisAiService {
     private final OpenAiFitAnalysisAiService openAiService;
     private final CareerAnalysisOssClient ossClient;
     private final CareerAnalysisAiProviderProperties properties;
+    // 시간 정책(체인 예산·per-tier 타임아웃)은 DB-first 런타임 설정에서 읽는다(정적 프로퍼티 fallback).
+    private final AiRuntimeSettings aiRuntimeSettings;
 
     public FallbackFitAnalysisAiService(OssFitAnalysisAiService ossService,
                                         AnthropicFitAnalysisAiService anthropicService,
                                         OpenAiFitAnalysisAiService openAiService,
                                         CareerAnalysisOssClient ossClient,
-                                        CareerAnalysisAiProviderProperties properties) {
+                                        CareerAnalysisAiProviderProperties properties,
+                                        AiRuntimeSettings aiRuntimeSettings) {
         this.ossService = ossService;
         this.anthropicService = anthropicService;
         this.openAiService = openAiService;
         this.ossClient = ossClient;
         this.properties = properties;
+        this.aiRuntimeSettings = aiRuntimeSettings;
     }
 
     @Override
     public FitAnalysisAiResult generate(FitAnalysisAiCommand command) {
         // 체인 데드라인 — 각 tier 의 첫 시도는 못 자르고(per-tier 타임아웃 우선), 클라이언트 내부 재시도만 유계한다.
-        long deadline = AiTotalTimeBudget.deadlineNanos(properties.getChainTotalTimeBudget());
+        // 시간예산·per-tier 타임아웃은 DB-first 런타임 설정에서 읽는다(정적 프로퍼티 fallback).
+        long deadline = AiTotalTimeBudget.deadlineNanos(aiRuntimeSettings.analysisChainTotalTimeBudget());
 
         // 1) 자체모델(OSS) — provider=oss + base-url 설정 시. 실패하면 아래로 폴백(OSS 는 자체 oss.total-time-budget 보유).
         if (properties.isOss() && ossClient.available()) {
@@ -68,13 +74,13 @@ public class FallbackFitAnalysisAiService implements FitAnalysisAiService {
         //    첫 시도는 claudeTimeout 이 보장(체인 예산 소진 무관), 재시도만 체인 데드라인이 억제.
         if (anthropicService.configured()) {
             try {
-                return anthropicService.generate(command, properties.getClaudeTimeout(), deadline);
+                return anthropicService.generate(command, aiRuntimeSettings.analysisClaudeTimeout(), deadline);
             } catch (RuntimeException ex) {
                 log.warn("C 적합도 Claude 실패 → OpenAI 폴백: {}", ex.getMessage());
             }
         }
         // 3) OpenAI 단계 — 항상 시도(최종 안전망). 키 없거나 실패하면 내부 Mock 으로 폴백(절대 예외 없음).
         //    첫 시도는 openaiTimeout 이 보장, 재시도만 체인 데드라인이 억제.
-        return openAiService.generate(command, properties.getOpenaiTimeout(), deadline);
+        return openAiService.generate(command, aiRuntimeSettings.analysisOpenaiTimeout(), deadline);
     }
 }

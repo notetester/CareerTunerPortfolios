@@ -43,6 +43,7 @@ export function AdminRuntimeSettingsPage() {
   const [loading, setLoading] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
   const [draft, setDraft] = useState({ ...EMPTY });
+  const [reason, setReason] = useState("");
   const [history, setHistory] = useState<RuntimeSettingHistory[]>([]);
   const [historyKey, setHistoryKey] = useState<string | null>(null);
 
@@ -65,13 +66,23 @@ export function AdminRuntimeSettingsPage() {
   };
 
   const saveValue = async (row: RuntimeSetting, value: string) => {
-    await saveRuntimeSetting({ ...row, settingValue: value });
+    if (!reason.trim()) {
+      flash("변경 사유를 입력해 주세요.");
+      return;
+    }
+    await saveRuntimeSetting({ ...row, settingValue: value, reason: reason.trim() });
     flash(`'${row.settingKey}' 저장됨`);
+    setReason("");
     await load();
   };
 
   const toggleActive = async (row: RuntimeSetting) => {
-    await saveRuntimeSetting({ ...row, active: !row.active });
+    if (!reason.trim()) {
+      flash("변경 사유를 입력해 주세요.");
+      return;
+    }
+    await saveRuntimeSetting({ ...row, active: !row.active, reason: reason.trim() });
+    setReason("");
     await load();
   };
 
@@ -80,9 +91,14 @@ export function AdminRuntimeSettingsPage() {
       flash("설정 키를 입력해 주세요.");
       return;
     }
-    await saveRuntimeSetting(draft);
+    if (!reason.trim()) {
+      flash("변경 사유를 입력해 주세요.");
+      return;
+    }
+    await saveRuntimeSetting({ ...draft, reason: reason.trim() });
     flash(`'${draft.settingKey}' 생성됨`);
     setDraft({ ...EMPTY });
+    setReason("");
     await load();
   };
 
@@ -119,6 +135,18 @@ export function AdminRuntimeSettingsPage() {
           <input type="checkbox" checked={includeInactive} onChange={(e) => setIncludeInactive(e.target.checked)} />
           비활성 포함
         </label>
+      </div>
+
+      <div className="mb-4">
+        <label className="mb-1 block text-xs font-semibold text-slate-600">
+          변경 사유 <span className="text-rose-500">*</span>
+        </label>
+        <input
+          className="av-input w-full"
+          placeholder="저장·활성 토글·생성 전에 변경 사유를 입력하세요(이력에 기록됩니다)"
+          value={reason}
+          onChange={(e) => setReason(e.target.value)}
+        />
       </div>
 
       <div className="max-h-[60vh] overflow-auto rounded-xl border border-slate-200 bg-white">
@@ -184,10 +212,11 @@ export function AdminRuntimeSettingsPage() {
                   <th className="px-3 py-2">유형</th>
                   <th className="px-3 py-2">이전값 → 이후값</th>
                   <th className="px-3 py-2">처리자</th>
+                  <th className="px-3 py-2">사유</th>
                 </tr>
               </thead>
               <tbody>
-                {history.length === 0 && <tr><td colSpan={5} className="px-3 py-4 text-center text-slate-400">이력이 없습니다.</td></tr>}
+                {history.length === 0 && <tr><td colSpan={6} className="px-3 py-4 text-center text-slate-400">이력이 없습니다.</td></tr>}
                 {history.map((h) => (
                   <tr key={h.id} className="border-b border-slate-100">
                     <td className="px-3 py-2 text-xs text-slate-500">{fmt(h.createdAt)}</td>
@@ -195,6 +224,7 @@ export function AdminRuntimeSettingsPage() {
                     <td className="px-3 py-2 text-xs">{h.changeType}</td>
                     <td className="px-3 py-2 font-mono text-xs">{h.beforeValue ?? "∅"} → {h.afterValue ?? "∅"}</td>
                     <td className="px-3 py-2 font-mono text-xs">{h.actorUserId ?? "-"}</td>
+                    <td className="px-3 py-2 text-xs text-slate-600">{h.reason ?? "-"}</td>
                   </tr>
                 ))}
               </tbody>

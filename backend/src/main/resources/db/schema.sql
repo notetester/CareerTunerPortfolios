@@ -2225,6 +2225,7 @@ CREATE TABLE IF NOT EXISTS application_runtime_setting_history (
     setting_key         VARCHAR(160) NOT NULL,
     version_no          INT          NOT NULL DEFAULT 1,
     change_type         VARCHAR(30)  NOT NULL COMMENT 'CREATE/UPDATE/IMPORT/RESET',
+    reason              VARCHAR(500) NULL COMMENT '변경 사유(감사)',
     actor_user_id       BIGINT       NULL,
     before_value        TEXT         NULL,
     after_value         TEXT         NULL,
