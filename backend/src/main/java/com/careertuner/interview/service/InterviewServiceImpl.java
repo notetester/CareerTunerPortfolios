@@ -222,12 +222,15 @@ public class InterviewServiceImpl implements InterviewService {
 
     @Override
     @Transactional
-    public int scoreVoiceTranscript(Long userId, Long sessionId, JsonNode transcript) {
+    public int scoreVoiceTranscript(Long userId, Long sessionId, JsonNode transcript, Integer questionLimit) {
         InterviewSession session = requireSession(userId, sessionId);
         ApplicationCase applicationCase = accessService.requireOwned(userId, session.getApplicationCaseId());
         // 음성 면접은 준비된 본질문으로만 진행하므로 꼬리질문은 제외하고 채점 대상으로 삼는다.
+        // 체험판(questionLimit=1)은 실제 진행한 질문만 넘긴다 — 전체를 넘기면 LLM 이 미진행 질문에도
+        // 트랜스크립트 내용을 억지 매칭해 저장하는 문제가 있다.
         List<InterviewQuestion> questions = interviewMapper.findQuestionsBySessionId(sessionId).stream()
                 .filter(q -> q.getParentQuestionId() == null)
+                .limit(questionLimit == null ? Long.MAX_VALUE : questionLimit)
                 .toList();
         if (questions.isEmpty()) {
             throw new BusinessException(ErrorCode.INVALID_INPUT, "채점할 준비된 질문이 없습니다.");

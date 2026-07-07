@@ -1,0 +1,168 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.careertuner.nickname.mapper.NicknameProfileMapper">
+
+    <resultMap id="nicknameProfileMap" type="com.careertuner.nickname.domain.NicknameProfile">
+        <id property="id" column="id"/>
+        <result property="userId" column="user_id"/>
+        <result property="nickname" column="nickname"/>
+        <result property="avatarFileId" column="avatar_file_id"/>
+        <result property="bio" column="bio"/>
+        <result property="isDefault" column="is_default"/>
+        <result property="status" column="status"/>
+        <result property="createdAt" column="created_at"/>
+        <result property="updatedAt" column="updated_at"/>
+    </resultMap>
+
+    <!-- ── 닉네임 프로필 ── -->
+
+    <insert id="insert" useGeneratedKeys="true" keyProperty="id"
+            parameterType="com.careertuner.nickname.domain.NicknameProfile">
+        INSERT INTO user_nickname_profile (user_id, nickname, avatar_file_id, bio, is_default, status)
+        VALUES (#{userId}, #{nickname}, #{avatarFileId}, #{bio}, #{isDefault}, #{status})
+    </insert>
+
+    <select id="findById" resultMap="nicknameProfileMap">
+        SELECT * FROM user_nickname_profile WHERE id = #{id}
+    </select>
+
+    <select id="findByUserId" resultMap="nicknameProfileMap">
+        SELECT *
+          FROM user_nickname_profile
+         WHERE user_id = #{userId}
+           AND status = 'ACTIVE'
+         ORDER BY is_default DESC, created_at ASC, id ASC
+    </select>
+
+    <select id="findDefaultByUserId" resultMap="nicknameProfileMap">
+        SELECT *
+          FROM user_nickname_profile
+         WHERE user_id = #{userId}
+           AND status = 'ACTIVE'
+         ORDER BY is_default DESC, created_at ASC, id ASC
+         LIMIT 1
+    </select>
+
+    <!-- 표시명 벌크 해석: ACTIVE 프로필을 id 집합으로 조회(N+1 방지) -->
+    <select id="findActiveByIds" resultMap="nicknameProfileMap">
+        SELECT *
+          FROM user_nickname_profile
+         WHERE status = 'ACTIVE'
+           AND id IN
+        <foreach collection="ids" item="id" open="(" separator="," close=")">
+            #{id}
+        </foreach>
+    </select>
+
+    <!-- 표시명 벌크 해석: 계정별 기본(우선) ACTIVE 프로필 1행씩.
+         window function 대신 상관 서브쿼리로 계정당 최상위 1행만 선택(is_default DESC, created_at ASC, id ASC). -->
+    <select id="findDefaultsByUserIds" resultMap="nicknameProfileMap">
+        SELECT p.*
+          FROM user_nickname_profile p
+         WHERE p.status = 'ACTIVE'
+           AND p.user_id IN
+        <foreach collection="userIds" item="uid" open="(" separator="," close=")">
+            #{uid}
+        </foreach>
+           AND p.id = (
+               SELECT s.id
+                 FROM user_nickname_profile s
+                WHERE s.user_id = p.user_id
+                  AND s.status = 'ACTIVE'
+                ORDER BY s.is_default DESC, s.created_at ASC, s.id ASC
+                LIMIT 1
+           )
+    </select>
+
+    <!-- 표시명 벌크 해석: 계정명(users.name) 폴백 -->
+    <select id="findAccountNames" resultType="com.careertuner.nickname.domain.AccountNameRow">
+        SELECT id AS userId, name AS name
+          FROM users
+         WHERE id IN
+        <foreach collection="userIds" item="uid" open="(" separator="," close=")">
+            #{uid}
+        </foreach>
+    </select>
+
+    <select id="countByUserId" resultType="int">
+        SELECT COUNT(*) FROM user_nickname_profile WHERE user_id = #{userId} AND status = 'ACTIVE'
+    </select>
+
+    <select id="countByNicknameExcluding" resultType="int">
+        SELECT COUNT(*)
+          FROM user_nickname_profile
+         WHERE nickname = #{nickname}
+        <if test="excludeId != null">
+           AND id != #{excludeId}
+        </if>
+    </select>
+
+    <update id="update" parameterType="com.careertuner.nickname.domain.NicknameProfile">
+        UPDATE user_nickname_profile
+           SET nickname = #{nickname},
+               avatar_file_id = #{avatarFileId},
+               bio = #{bio}
+         WHERE id = #{id}
+           AND user_id = #{userId}
+    </update>
+
+    <update id="hide">
+        UPDATE user_nickname_profile
+           SET status = 'HIDDEN'
+         WHERE id = #{id}
+           AND user_id = #{userId}
+           AND status = 'ACTIVE'
+    </update>
+
+    <update id="clearDefault">
+        UPDATE user_nickname_profile SET is_default = 0 WHERE user_id = #{userId}
+    </update>
+
+    <update id="markDefault">
+        UPDATE user_nickname_profile
+           SET is_default = 1
+         WHERE id = #{id}
+           AND user_id = #{userId}
+           AND status = 'ACTIVE'
+    </update>
+
+    <!-- ── 채팅방 전용 프로필 매핑 ── -->
+
+    <resultMap id="conversationProfileMap" type="com.careertuner.nickname.domain.ConversationMemberProfile">
+        <result property="conversationId" column="conversation_id"/>
+        <result property="userId" column="user_id"/>
+        <result property="nicknameProfileId" column="nickname_profile_id"/>
+        <result property="anonymous" column="anonymous"/>
+        <result property="updatedAt" column="updated_at"/>
+    </resultMap>
+
+    <select id="findConversationProfile" resultMap="conversationProfileMap">
+        SELECT conversation_id, user_id, nickname_profile_id, anonymous, updated_at
+          FROM conversation_member_profile
+         WHERE conversation_id = #{conversationId}
+           AND user_id = #{userId}
+    </select>
+
+    <insert id="upsertConversationProfile" parameterType="com.careertuner.nickname.domain.ConversationMemberProfile">
+        INSERT INTO conversation_member_profile (conversation_id, user_id, nickname_profile_id, anonymous)
+        VALUES (#{conversationId}, #{userId}, #{nicknameProfileId}, #{anonymous})
+        ON DUPLICATE KEY UPDATE
+            nickname_profile_id = VALUES(nickname_profile_id),
+            anonymous = VALUES(anonymous),
+            updated_at = NOW()
+    </insert>
+
+    <select id="isActiveMember" resultType="int">
+        SELECT COUNT(*)
+          FROM collaboration_conversation_member
+         WHERE conversation_id = #{conversationId}
+           AND user_id = #{userId}
+           AND status = 'ACTIVE'
+    </select>
+
+    <select id="findAccountName" resultType="string">
+        SELECT name FROM users WHERE id = #{userId}
+    </select>
+
+</mapper>

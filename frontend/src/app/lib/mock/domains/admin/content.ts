@@ -274,6 +274,13 @@ const moderationSettings: ModerationSettingData = {
   hideThreshold: 0.7,
   sanctionThreshold: 3,
   blockDays: 7,
+  reportBlurThreshold: 3,
+  postRateWindowSeconds: 60,
+  postRateMax: 10,
+  commentRateWindowSeconds: 60,
+  commentRateMax: 20,
+  inquiryRateWindowSeconds: 600,
+  inquiryRateMax: 5,
   updatedAt: iso(4),
 };
 
@@ -551,7 +558,7 @@ const notifications: AdminNotificationRow[] = [
 // 요청 본문 타입(부분)
 // ──────────────────────────────────────────────────────────────
 interface ReportActionBody {
-  action?: "HIDDEN" | "DELETED" | "DISMISSED";
+  action?: "HIDDEN" | "DELETED" | "DISMISSED" | "BLOCK_AUTHOR" | "DELETE_AND_BLOCK";
 }
 interface TicketPatchBody {
   status?: string;
@@ -600,6 +607,18 @@ export const adminContentRoutes: MockRoute[] = [
       const action = (body as ReportActionBody | undefined)?.action;
       report.status = "resolved";
       report.action = action === "DISMISSED" ? "NONE" : action ?? "HIDDEN";
+      return report;
+    },
+  },
+  {
+    // 종결(기각/취소) 신고 재활성화 — 대기(PENDING) 복원. 백엔드 /reactivate 계약과 동일.
+    method: "POST",
+    pattern: /^\/admin\/community\/reports\/(\d+)\/reactivate$/,
+    handler: ({ params }: MockContext) => {
+      const id = Number(params[0]);
+      const report = reportDetails.find((r) => r.id === id) ?? reportDetails[0];
+      report.status = "pending";
+      report.action = null;
       return report;
     },
   },

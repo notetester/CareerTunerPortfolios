@@ -8,6 +8,7 @@ import java.nio.file.Path;
 
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import org.springframework.mock.web.MockMultipartFile;
 
 import com.careertuner.common.exception.BusinessException;
 import com.careertuner.jobposting.service.JobPostingFileStorage.StoredJobPostingFile;
@@ -16,6 +17,41 @@ class JobPostingFileStorageTest {
 
     @TempDir
     Path tempDir;
+
+    @Test
+    void defaultMaxFileSizeIsTenMegabytes() {
+        assertThat(new JobPostingUploadProperties().getMaxFileSizeBytes()).isEqualTo(10L * 1024 * 1024);
+    }
+
+    @Test
+    void storeAcceptsPdfLargerThanFiveMegabytesUnderTenMegabyteLimit() {
+        JobPostingUploadProperties properties = new JobPostingUploadProperties();
+        properties.setJobPostingDir(tempDir.toString());
+        JobPostingFileStorage storage = new JobPostingFileStorage(properties);
+        byte[] sevenMb = new byte[7 * 1024 * 1024];
+        MockMultipartFile file = new MockMultipartFile(
+                "file", "posting.pdf", "application/pdf", sevenMb);
+
+        StoredJobPostingFile stored = storage.store(10L, file, "PDF");
+
+        assertThat(stored.sourceType()).isEqualTo("PDF");
+        assertThat(stored.contentType()).isEqualTo("application/pdf");
+        assertThat(stored.bytes()).hasSize(sevenMb.length);
+    }
+
+    @Test
+    void storeRejectsPdfLargerThanTenMegabytes() {
+        JobPostingUploadProperties properties = new JobPostingUploadProperties();
+        properties.setJobPostingDir(tempDir.toString());
+        JobPostingFileStorage storage = new JobPostingFileStorage(properties);
+        byte[] overLimit = new byte[10 * 1024 * 1024 + 1];
+        MockMultipartFile file = new MockMultipartFile(
+                "file", "posting.pdf", "application/pdf", overLimit);
+
+        assertThatThrownBy(() -> storage.store(10L, file, "PDF"))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("10MB");
+    }
 
     @Test
     void loadStoredJobPostingFileReadsLocalReferenceUnderUploadRoot() throws Exception {

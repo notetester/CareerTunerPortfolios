@@ -100,6 +100,26 @@ public class BCompanyAnalysisCanonicalizer {
     private static final Pattern FACT_ID_FORMAT = Pattern.compile("F\\d{1,4}");
     private static final Pattern INFERENCE_ID_FORMAT = Pattern.compile("I\\d{1,4}");
     private static final String DUPLICATE_REMOVAL_DETAIL = "반복 중복 제거";
+    // D-6 이슈B: 저장 자유서술·텍스트 필드에 누출된 입력블록 라벨([웹 검색 근거]) 결정적 제거용.
+    // 대괄호 안 '웹/검색/근거' 사이 공백을 관대하게 매칭한다 — 대괄호 없는 정상 source 라벨("웹검색")은
+    // 대괄호가 없어 이 패턴에 걸리지 않으므로 보존된다.
+    //
+    // D-6 nit(조사 잔재): 라벨에 공백 없이 바로 붙어 있던 조사(예: "[웹 검색 근거]의", "…]에서는")는
+    // 라벨을 지우면 조사만 홀로 남아 문장이 어색해진다(case09 "없으며, 의 스니펫"). 그래서 라벨 바로 뒤에
+    // '글루된' 조사가 오고 그 뒤에 경계(공백·문장부호·끝)가 있을 때만 조사도 함께 제거한다. 조사 다음이
+    // 또 다른 글자면(예: "]의무") 내용어이므로 lookahead 로 보존한다. 긴 조사를 먼저 시도하도록 정렬한다.
+    private static final Pattern INPUT_BLOCK_LABEL = Pattern.compile(
+            "\\[\\s*웹\\s*검색\\s*근거\\s*\\]"
+            + "(?:(?:에서는|에게서|으로는|이라는|이라고|에서|에게|으로|이라|라는|라고|처럼|보다"
+            + "|부터|까지|마다|조차|밖에|의|은|는|이|가|을|를|에|로|도|만|과|와)"
+            + "(?=[\\s,.;:·…\\]\\)}\"'’”]|$))?");
+    // 라벨 제거로 생긴 연속 공백/탭만 정리(개행은 보존). 문법 정리는 best-effort.
+    private static final Pattern COLLAPSE_SPACES = Pattern.compile("[ \\t\\x0B\\f]{2,}");
+    // D-6 nit(문장 잔재): guardFreeText 로 앞 문장이 제거되면 뒤 문장의 선두 접속부사가 선행 문장을 잃고
+    // 매달린다(case08 "그러나 …"). 앞 문장이 실제로 제거됐을 때만 이 선두 접속부사를 정리한다.
+    private static final Pattern DANGLING_CONJUNCTION = Pattern.compile(
+            "^(?:그러나|그렇지만|하지만|그런데|그러므로|따라서|그래서|그리고|또한|아울러|게다가"
+            + "|한편|반면에|반면|다만|즉|오히려)[,\\s]+");
 
     private final ObjectMapper objectMapper;
 
@@ -170,21 +190,26 @@ public class BCompanyAnalysisCanonicalizer {
         }
         keptInferences.addAll(unknownMarkers);
 
-        String companySummary = guardFreeText("companySummary", payload.companySummary(), corpus, actions);
+        // D-6 이슈B: verifiedFacts/aiInferences/UNKNOWN 마커의 텍스트 필드 라벨 제거는 저장 payload 를 만들기 전
+        // 각 처리 지점(gateVerifiedFacts·canonicalizeInferences·foldUnknowns)에서 dedup key 산출·gate 판정보다 먼저
+        // 이뤄진다. 그래서 라벨 유무만 다른 중복이 저장에 남지 않고 DUPLICATE_REMOVAL_DETAIL 불변식이 유지된다.
+        // 구조 필드(sourceRef/sourceKind/factId/inferenceId/basedOn/confidence)는 sanitize 대상이 아니다.
+
+        String companySummary = stripInputBlockLabels(guardFreeText("companySummary", payload.companySummary(), corpus, actions));
         if (isBlank(companySummary)) {
             companySummary = CompanyAnalysisPromptCatalog.COMPANY_SUMMARY_UNAVAILABLE_NOTICE;
         }
-        String recentIssues = guardFreeText("recentIssues", payload.recentIssues(), corpus, actions);
+        String recentIssues = stripInputBlockLabels(guardFreeText("recentIssues", payload.recentIssues(), corpus, actions));
         if (isBlank(recentIssues)) {
             recentIssues = CompanyAnalysisPromptCatalog.RECENT_ISSUES_UNAVAILABLE_NOTICE;
         }
-        String interviewPoints = guardFreeText("interviewPoints", payload.interviewPoints(), corpus, actions);
+        String interviewPoints = stripInputBlockLabels(guardFreeText("interviewPoints", payload.interviewPoints(), corpus, actions));
 
         CompanyAnalysisPayload canonical = new CompanyAnalysisPayload(
                 companySummary,
                 recentIssues,
                 payload.industry(),
-                payload.competitors(),
+                sanitizeCompetitors(payload.competitors()),
                 interviewPoints,
                 canonicalizeSources(payload.sources()),
                 writeJson(keptFacts, payload.verifiedFacts()),
@@ -278,6 +303,11 @@ public class BCompanyAnalysisCanonicalizer {
                 continue;
             }
             ObjectNode fact = (ObjectNode) item.deepCopy();
+            // D-6 이슈B: 대괄호 입력블록 라벨을 dedup key 산출·gate 판정보다 먼저 제거한다 —
+            // 라벨 유무만 다른 fact 가 중복 제거를 우회해 저장에 남는 것을 막는다. 구조 필드는 건드리지 않는다.
+            sanitizeTextField(fact, "fact");
+            sanitizeTextField(fact, "evidence");
+            sanitizeTextField(fact, "source");
             String factText = text(fact, "fact");
             if (isBlank(factText)) {
                 actions.add(new GateAction(ref, "verifiedFacts", GateOutcome.REMOVED, "fact 누락"));
@@ -561,6 +591,11 @@ public class BCompanyAnalysisCanonicalizer {
                 continue;
             }
             ObjectNode inference = (ObjectNode) item.deepCopy();
+            // D-6 이슈B: dedup key 산출 전에 라벨을 제거한다(모델이 마커로 출력한 경우까지 포함).
+            sanitizeTextField(inference, "inference");
+            sanitizeTextField(inference, "basis");
+            sanitizeTextField(inference, "topic");
+            sanitizeTextField(inference, "neededSource");
             if (isUnknownMarker(inference)) {
                 // 모델이 마커 형태로 직접 출력한 경우 — 일반 추론으로 오염시키지 않고 마커로 유지.
                 unknownMarkers.add(inference);
@@ -634,6 +669,11 @@ public class BCompanyAnalysisCanonicalizer {
             if (!isBlank(neededSource)) {
                 marker.put("neededSource", neededSource);
             }
+            // D-6 이슈B: topic 에서 파생된 inference 문장을 포함해 마커 표시 텍스트 필드의 라벨을 제거한다.
+            sanitizeTextField(marker, "inference");
+            sanitizeTextField(marker, "basis");
+            sanitizeTextField(marker, "topic");
+            sanitizeTextField(marker, "neededSource");
             unknownMarkers.add(marker);
         }
     }
@@ -701,15 +741,25 @@ public class BCompanyAnalysisCanonicalizer {
         }
         List<String> keptSentences = new ArrayList<>();
         boolean changed = false;
+        boolean previousRemoved = false;
         for (String sentence : SENTENCE_SPLIT.split(value)) {
             if (sentence.isBlank()) {
                 continue;
             }
             String violation = mechanicalViolation(sentence, normalizedCorpus);
             if (violation == null) {
-                keptSentences.add(sentence.trim());
+                String trimmed = sentence.trim();
+                if (previousRemoved) {
+                    // 앞 문장이 제거되어 선행 문맥을 잃은 선두 접속부사만 걷어낸다(D-6 nit·case08).
+                    trimmed = stripDanglingConjunction(trimmed);
+                }
+                if (!trimmed.isBlank()) {
+                    keptSentences.add(trimmed);
+                }
+                previousRemoved = false;
             } else {
                 changed = true;
+                previousRemoved = true;
                 actions.add(new GateAction(field, field, GateOutcome.REMOVED,
                         violation + " — 문장 제거: " + truncate(sentence.trim(), 100)));
             }
@@ -718,6 +768,12 @@ public class BCompanyAnalysisCanonicalizer {
             return value;
         }
         return String.join(" ", keptSentences);
+    }
+
+    /** 앞 문장 제거로 선행 문맥을 잃은 선두 접속부사만 제거한다. 접속부사가 없으면 원문 그대로 반환한다. */
+    private static String stripDanglingConjunction(String sentence) {
+        Matcher matcher = DANGLING_CONJUNCTION.matcher(sentence);
+        return matcher.find() ? sentence.substring(matcher.end()).trim() : sentence;
     }
 
     private String mechanicalViolation(String sentence, String normalizedCorpus) {
@@ -766,6 +822,73 @@ public class BCompanyAnalysisCanonicalizer {
             }
         }
         return writeJson(out, sourcesJson);
+    }
+
+    // ── 입력블록 라벨 sanitize (D-6 이슈B) ──
+
+    /**
+     * 대괄호 입력블록 라벨(예: {@code [웹 검색 근거]} 및 공백 변형 {@code [웹검색 근거]}·{@code [웹 검색근거]}·
+     * {@code [웹검색근거]})을 결정적으로 제거한다. <b>대괄호가 필수</b>라 정상 source 라벨 {@code "웹검색"}
+     * (대괄호 없음)은 절대 제거되지 않는다. 라벨에 공백 없이 바로 붙은 조사(예: {@code ]의}·{@code ]에서는})는
+     * 라벨과 함께 제거해 조사만 홀로 남는 잔재를 막되(D-6 nit·case09), 조사 뒤가 또 다른 글자면(예: {@code ]의무})
+     * 내용어이므로 보존한다. 제거로 생긴 연속 공백만 정리하고(개행 보존), 그 외 문법 정리는 하지 않는다
+     * (best-effort). 라벨이 없으면 원본을 그대로 반환한다.
+     */
+    static String stripInputBlockLabels(String value) {
+        if (value == null || value.indexOf('[') < 0) {
+            return value;
+        }
+        String stripped = INPUT_BLOCK_LABEL.matcher(value).replaceAll("");
+        if (stripped.equals(value)) {
+            return value;
+        }
+        return COLLAPSE_SPACES.matcher(stripped).replaceAll(" ").trim();
+    }
+
+    /**
+     * ObjectNode 의 문자열 텍스트 필드 하나만 in-place sanitize 한다(값이 변한 경우에만 교체).
+     * 구조 필드(sourceRef/sourceKind/factId/inferenceId/basedOn 등)는 호출부에서 대상에 넣지 않는다.
+     */
+    private void sanitizeTextField(ObjectNode node, String field) {
+        JsonNode child = node.get(field);
+        if (child == null || !child.isString()) {
+            return;
+        }
+        String original = child.asString("");
+        String sanitized = stripInputBlockLabels(original);
+        if (!sanitized.equals(original)) {
+            node.put(field, sanitized);
+        }
+    }
+
+    /**
+     * competitors(문자열 배열) 각 원소에서 입력블록 라벨을 제거한다. 배열이 아니면 문자열 자체에서 라벨만
+     * 제거한다(라벨은 값 내부 리터럴이라 통째 제거해도 JSON 구조를 깨지 않는다). 변화가 없으면 원본을 반환한다.
+     */
+    String sanitizeCompetitors(String competitorsJson) {
+        if (isBlank(competitorsJson)) {
+            return competitorsJson;
+        }
+        ArrayNode array = parseArray(competitorsJson);
+        if (array == null) {
+            return stripInputBlockLabels(competitorsJson);
+        }
+        boolean changed = false;
+        ArrayNode out = objectMapper.createArrayNode();
+        for (JsonNode item : array) {
+            if (item.isString()) {
+                String original = item.asString("");
+                String sanitized = stripInputBlockLabels(original);
+                if (!sanitized.equals(original)) {
+                    changed = true;
+                }
+                out.add(sanitized);
+            } else {
+                // 문자열이 아닌 원소(비표준 provider 출력)는 구조 보존을 위해 그대로 둔다.
+                out.add(item);
+            }
+        }
+        return changed ? writeJson(out, competitorsJson) : competitorsJson;
     }
 
     // ── 공용 헬퍼 ──

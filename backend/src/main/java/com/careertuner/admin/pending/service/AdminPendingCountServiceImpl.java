@@ -33,7 +33,7 @@ public class AdminPendingCountServiceImpl implements AdminPendingCountService {
 
         // 자동숨김: hidden_at 부재 + 이미 선차단된 검토 큐 → never RED (YELLOW/NONE)
         // 게시글/댓글을 분리해 콘텐츠 관리 탭별 배지에 쓴다(사이드바는 프론트에서 합산).
-        int hiddenPostCount = communityPostMapper.countAll(null, "HIDDEN", null);
+        int hiddenPostCount = communityPostMapper.countAll(null, "HIDDEN", null, null); // 관리자 집계 — 뷰어 차단 필터 없음
         int hiddenCommentCount = pendingMapper.countHiddenComments();
 
         // 티켓: 방치 3일↑(24h SLA 초과) 시 RED

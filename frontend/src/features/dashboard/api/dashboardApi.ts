@@ -1,4 +1,5 @@
 import { api } from "@/app/lib/api";
+import { runWithAiCharge } from "@/features/billing/api/aiChargePreviewApi";
 import type { DashboardSummary, DashboardTodo } from "../types/dashboardSummary";
 
 export function getDashboardSummary() {
@@ -7,7 +8,8 @@ export function getDashboardSummary() {
 
 /** 사용자가 명시적으로 요청한 대시보드 요약 재생성. AI를 강제 실행하며 크레딧이 차감된다. */
 export function refreshDashboardSummary() {
-  return api<DashboardSummary>("/dashboard/summary/refresh", { method: "POST" });
+  return runWithAiCharge("DASHBOARD_SUMMARY", (headers) =>
+    api<DashboardSummary>("/dashboard/summary/refresh", { method: "POST", headers }));
 }
 
 // ----- 오늘의 할 일 (완료 처리/추가/삭제 — 디자인 분석 §6.4). 모든 호출이 갱신된 전체 목록을 반환한다. -----

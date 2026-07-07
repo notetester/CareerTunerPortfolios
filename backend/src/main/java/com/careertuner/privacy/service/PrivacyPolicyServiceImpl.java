@@ -6,6 +6,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -35,6 +37,29 @@ import tools.jackson.databind.ObjectMapper;
 @Service
 @Transactional(readOnly = true)
 public class PrivacyPolicyServiceImpl implements PrivacyPolicyService {
+
+    private static final Logger log = LoggerFactory.getLogger(PrivacyPolicyServiceImpl.class);
+
+    /**
+     * 평가 실패 시 닫는(fail-closed) 수신 표면 — 차단한 상대의 접촉(dm/note/friendRequest)과
+     * 콘텐츠 전달(fileShare/postingShare)·초대(invite.*)가 수신자에게 도달하는 표면은
+     * 원치 않는 접촉이 콘텐츠 소실보다 피해가 크다. 열람측(content.*, profile.*)은
+     * 반대로 열어(fail-open) 콘텐츠 소실을 막는다. invite 는 점 표기 상세 키
+     * (invite.GROUP.creator.anonymous 등)로 들어오므로 prefix 로 판정한다.
+     */
+    private static final Set<String> FAIL_CLOSED_SURFACES = Set.of(
+            PrivacySurfaces.DM, PrivacySurfaces.NOTE, PrivacySurfaces.FRIEND_REQUEST,
+            PrivacySurfaces.FILE_SHARE, PrivacySurfaces.POSTING_SHARE);
+
+    /** 수신 표면 여부 — 평가 실패 시 fail-closed 로 닫을 표면인지. */
+    private static boolean isFailClosedSurface(String surface) {
+        if (surface == null) {
+            return false;
+        }
+        return FAIL_CLOSED_SURFACES.contains(surface)
+                || PrivacySurfaces.INVITE.equals(surface)
+                || surface.startsWith(PrivacySurfaces.INVITE + ".");
+    }
 
     private final PrivacyMapper mapper;
     private final ObjectMapper objectMapper;
@@ -71,8 +96,13 @@ public class PrivacyPolicyServiceImpl implements PrivacyPolicyService {
             }
             return decideByRelationPolicy(viewerId, relation, surface);
         } catch (RuntimeException ex) {
-            // 정책 평가 실패가 기능을 죽이면 안 된다 — 차단 관계 미상으로 보고 허용
-            return true;
+            // 평가 실패 fail 방향은 표면별 분기 — 열람측(content.*/profile.*)은 열어 소실을 막고,
+            // 수신 표면(dm/note/friendRequest/fileShare/postingShare/invite.*)은 닫아
+            // 차단 우회(원치 않는 접촉·전달)를 막는다.
+            boolean open = !isFailClosedSurface(surface);
+            log.warn("개인정책 평가 실패(fail-{}): surface={}, viewerId={}, actorId={}",
+                    open ? "open" : "closed", surface, viewerId, actorId, ex);
+            return open;
         }
     }
 
@@ -102,6 +132,8 @@ public class PrivacyPolicyServiceImpl implements PrivacyPolicyService {
             }
         } catch (RuntimeException ex) {
             // 파생 규칙 평가 실패는 관계 정책으로 폴백
+            log.warn("채팅방 차단 파생 규칙 평가 실패 — 관계 정책 폴백: inviteeId={}, inviterId={}, conversationId={}",
+                    inviteeId, inviterId, conversationId, ex);
         }
         String type = roomType == null ? "GROUP" : roomType;
         return allows(inviteeId, inviterId, PrivacySurfaces.inviteSurface(type, inviterIsCreator, anonymous));
@@ -115,6 +147,9 @@ public class PrivacyPolicyServiceImpl implements PrivacyPolicyService {
         try {
             return mapper.findConversationBlock(viewerId, conversationId) != null;
         } catch (RuntimeException ex) {
+            // 열람측 억제 조회 실패 — 숨기지 않는다(fail-open, 콘텐츠 소실 방지)
+            log.warn("대화방 차단 조회 실패(fail-open): viewerId={}, conversationId={}",
+                    viewerId, conversationId, ex);
             return false;
         }
     }
@@ -179,15 +214,28 @@ public class PrivacyPolicyServiceImpl implements PrivacyPolicyService {
                 }
             }
         } catch (RuntimeException ex) {
-            // 필터 실패 시 숨기지 않는다(콘텐츠 소실 방지)
+            // 필터 실패 시 숨기지 않는다(fail-open, 콘텐츠 소실 방지)
+            log.warn("차단 작성자 필터 실패(fail-open): surface={}, viewerId={}, authorIds={}건",
+                    surface, viewerId, authorIds.size(), ex);
         }
         return hidden;
     }
 
     @Override
     public boolean isBlockedSender(Long recipientId, Long actorId) {
-        String relation = relationOf(recipientId, actorId);
-        return PrivacySurfaces.isBlockedRelation(relation);
+        if (recipientId == null || actorId == null || recipientId.equals(actorId)) {
+            return false; // relationOf 의 본인/미상 FRIEND 취급과 동일 결과
+        }
+        try {
+            return PrivacySurfaces.isBlockedRelation(
+                    relationOfInternal(recipientId, actorId, mapper.findBlock(recipientId, actorId)));
+        } catch (RuntimeException ex) {
+            // 수신 표면(알림/쪽지 억제) — 평가 실패 시 차단으로 간주해 원치 않는 접촉을 막는다(fail-closed).
+            // relationOf 경유(STRANGER 폴백=fail-open)와 달리 발신 억제는 닫는 쪽이 안전하다.
+            log.warn("차단 발신자 평가 실패(fail-closed): recipientId={}, actorId={}",
+                    recipientId, actorId, ex);
+            return true;
+        }
     }
 
     @Override
@@ -198,6 +246,9 @@ public class PrivacyPolicyServiceImpl implements PrivacyPolicyService {
         try {
             return relationOfInternal(viewerId, actorId, mapper.findBlock(viewerId, actorId));
         } catch (RuntimeException ex) {
+            // 표시/필터용 관계 조회 — 실패 시 무관계로 두어 표시가 죽지 않게 한다(fail-open)
+            log.warn("관계 평가 실패(fail-open→stranger): viewerId={}, actorId={}",
+                    viewerId, actorId, ex);
             return PrivacySurfaces.STRANGER;
         }
     }
@@ -472,6 +523,9 @@ public class PrivacyPolicyServiceImpl implements PrivacyPolicyService {
         try {
             return mapper.countAccountsMatchingIpHash(block.getIpHash(), ipSalt);
         } catch (RuntimeException ex) {
+            // 목록 표시용 카운트 — 실패해도 목록 자체는 살린다
+            log.warn("IP 차단 일치 계정 수 조회 실패 — 0 처리: ipBlockId={}, userId={}",
+                    block.getId(), block.getUserId(), ex);
             return 0;
         }
     }
@@ -537,6 +591,8 @@ public class PrivacyPolicyServiceImpl implements PrivacyPolicyService {
             return objectMapper.readValue(json, new TypeReference<LinkedHashMap<String, String>>() {
             });
         } catch (RuntimeException ex) {
+            // 저장된 flags 파손 — 명시 설정 없음으로 취급(관계 기본값으로 폴백)
+            log.warn("차단 flags JSON 파싱 실패 — 빈 값 처리: json={}", truncateForLog(json), ex);
             return new LinkedHashMap<>();
         }
     }
@@ -553,11 +609,21 @@ public class PrivacyPolicyServiceImpl implements PrivacyPolicyService {
             Map<String, Map<String, String>> relations = doc.get("relations");
             return relations != null ? new LinkedHashMap<>(relations) : new LinkedHashMap<>();
         } catch (RuntimeException ex) {
+            // 저장된 정책 파손 — 명시 설정 없음으로 취급(관계 기본값으로 폴백)
+            log.warn("개인정책 JSON 파싱 실패 — 기본값 폴백: userId={}", policy.getUserId(), ex);
             return new LinkedHashMap<>();
         }
     }
 
     private String toJson(Object value) {
         return objectMapper.writeValueAsString(value);
+    }
+
+    /** 파손 JSON 로그용 절삭 — 로그 폭주 방지. */
+    private static String truncateForLog(String value) {
+        if (value == null) {
+            return null;
+        }
+        return value.length() <= 200 ? value : value.substring(0, 200) + "…";
     }
 }

@@ -101,7 +101,7 @@ Last updated: 2026-07-02
 - [x] 완료 — 관리자 gate review 처리 workflow(검토 완료/재분석 요청/대기 되돌리기 + 메모 연결, [AIDocs report 81](../../docs/ai-reports/areas/c-career-strategy/reports/81_gate_review_workflow.md)).
 - [x] 완료 — E2E production 경로 관통 실측(60케이스): 규칙엔진→OSS 뉴로-심볼릭→E1→R3 실경로. 보호되지 않은 노출 0(E1 흡수 3+회복 다수, R3 포착 1=EA-A-013 critical), 60/60 화면 보장([AIDocs report 83](../../docs/ai-reports/areas/c-career-strategy/reports/83_e2e_production_path_baseline.md)).
 - [x] 완료 — 실공고 표기 다양성 FP triage: 웹 수집 표기쌍 22종 → 한글 전사 별칭 17종 + confusion block 5종 추가(FN 가드 테스트 동반). 보류 표기쌍은 운영 gate reason 로그로 재평가([AIDocs report 84](../../docs/ai-reports/areas/c-career-strategy/reports/84_fp_triage_korean_aliases_and_gpu_proposal.md)).
-- [x] 완료 — GPU 옵션2: 4090 Ollama 에 `MAX_LOADED_MODELS=3`·`NUM_PARALLEL=2` 적용·검증(2026-07-02, 사용자 승인 후 재시작). **값 비확정** — 최적값 탐색 계획·rollback 은 CareerTunerAI `docs/ops/4090_OLLAMA_CONCURRENCY_TUNING.md`.
+- [x] 완료 — GPU 옵션2: 4090 Ollama `NUM_PARALLEL=2`/`MAX_LOADED_MODELS=8` **확정**(2026-07-06). NP: baseline/np2/np4 부하 테스트(오류율 0)로 무제약(auto NP1) 기각·np2 채택. MLM: 멀티모델 실측으로 3→8 상향(3-cap 이 다도메인 축출 유발, VRAM ~21GB 가 실질 상한·NP=2 서 ~5모델 상주). llama-server 워커 누수 함정 발견·정리. 결과 CareerTunerAI `benchmarks/gpu-concurrency-loadtest/`(loadtest + mlm-multimodel-probe), 문서 `docs/ops/4090_OLLAMA_CONCURRENCY_TUNING.md`.
 - [x] 완료 — GPU 옵션4: 백엔드 GPU permit gate(`ai/common/gpu`, fair 세마포어) 전 도메인 12지점 연결, **기본 OFF** + 도메인별 override(PR #222). 설계는 CareerTunerAI `docs/ops/4090_GPU_BACKEND_PERMIT_GATE.md`.
 - [x] 완료 — 총 시간예산 전 도메인 확장: 공용 `AiTotalTimeBudget`(0/음수=무제한 OFF) — C·E 토글 교정 + D/B/F/관리자 knob 신설(기본 0=OFF, PR #226). 셀프 적대적 리뷰로 moderation per-attempt 절삭 부재·E positive() 가드 회귀 2건 수정.
 - [x] 완료 — 관리자 SQL DB-fixture 통합테스트(임베디드 H2 `@MybatisTest` 6건, PR #221) — model-card known limitation 해소, '최신'=MAX(id) 전제 fixture 규칙 문서화.
@@ -109,4 +109,6 @@ Last updated: 2026-07-02
 - [x] 완료 — gold label 확정: disagreement13(TRUE 0/13, offline over-count 근원=모델 자기신고 metric 합산 규명) + A-only 11건([AIDocs report 82](../../docs/ai-reports/areas/c-career-strategy/reports/82_gold_labels_and_e1_r3_replay.md)).
 - [x] 완료 — model-card 개정(2026-07-02): post-R3 재벤치마크 결과·해소된 limitation 반영.
 - [ ] 미완료 — model-card 다음 개정: R3 **운영** 데이터(실사용 gate reason 분포·FP/FN 신호) 축적 후 반영.
-- [ ] 미완료 — GPU 옵션2 §6 최적값 탐색 부하 테스트(서버·백엔드 상한 4조합, golden60 동시 2·4 재생) — 결과로 옵션2 값 확정 또는 rollback, 옵션4 permits 확정.
+- [x] 완료 — GPU 옵션2 §6 서버축 부하 테스트(baseline/np2/np4 × 동시성 2·4, A-only 120요청/조합) + MLM 축 멀티모델 실측: NP=2/MLM=8 확정. 결과 `benchmarks/gpu-concurrency-loadtest/`(README + mlm-multimodel-probe).
+- [ ] 미완료 — 옵션4 백엔드축 부하 측정(gpu-gate ON permits 스윕) 및 permits 확정 — 기능 정합성은 로컬 스텁 통합테스트로 검증됨(#229), 실부하 최적 permits 는 미측정.
+- [ ] 미완료(다도메인 확장 시) — **interview-3b(D) 양자화**: 현재 6.18GB f16 이라 5모델 동시 상주 시 VRAM 아웃라이어(6번째 축출 유발). Q4 로 재빌드(≈2GB)하면 6모델 여지 — 동시 상주 수의 실제 레버는 MLM 이 아닌 모델 크기/VRAM. D interview OSS 실활성 전제.

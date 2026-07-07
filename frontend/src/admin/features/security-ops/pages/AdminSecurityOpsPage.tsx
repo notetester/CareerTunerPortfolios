@@ -19,6 +19,7 @@ import {
   type AdminListColumn,
 } from "../../../components/AdminListTools";
 import * as securityApi from "../api";
+import { BlockEnginePanel } from "../components/BlockEnginePanel";
 import type {
   SecurityAppeal,
   SecurityAppealPolicy,
@@ -30,7 +31,7 @@ import type {
   WafSyncEvent,
 } from "../types";
 
-type TabKey = "blocks" | "reviews" | "providers" | "providerHealth" | "appeals" | "waf";
+type TabKey = "blocks" | "engine" | "reviews" | "providers" | "providerHealth" | "appeals" | "waf";
 
 const BLOCK_COLUMNS: AdminListColumn<SecurityBlockRule>[] = [
   { id: "type", label: "유형", getText: (row) => row.ruleType, sortable: true },
@@ -189,6 +190,7 @@ export function AdminSecurityOpsPage() {
       <div className="mt-5 flex flex-wrap gap-2">
         {([
           ["blocks", "차단 규칙"],
+          ["engine", "차단 엔진"],
           ["reviews", "위험 검토"],
           ["providers", "Provider 설정"],
           ["providerHealth", "헬스체크 이력"],
@@ -287,7 +289,28 @@ export function AdminSecurityOpsPage() {
             }}
           />
         )}
-        {tab === "waf" && <WafEventsPanel rows={wafEvents} />}
+        {tab === "engine" && <BlockEnginePanel flash={flash} />}
+        {tab === "waf" && (
+          <div className="space-y-3">
+            <div className="flex items-center justify-between gap-2">
+              <p className="text-xs text-slate-500">
+                대기(QUEUED/PENDING) 이벤트는 스케줄러가 주기적으로 처리합니다. 활성 WAF Provider(endpoint)가 있으면 실제 HTTP 동기화, 없으면 Mock으로 즉시 SYNCED 처리합니다.
+              </p>
+              <button
+                type="button"
+                className="av-btn bg-slate-900 text-white whitespace-nowrap"
+                onClick={async () => {
+                  const n = await securityApi.processWafSync();
+                  flash(`WAF 큐를 처리했습니다. (${n}건)`);
+                  await load();
+                }}
+              >
+                지금 처리
+              </button>
+            </div>
+            <WafEventsPanel rows={wafEvents} />
+          </div>
+        )}
       </div>
 
       {toast && <div className="rpt-toast">{toast}</div>}

@@ -13,6 +13,10 @@ export interface AiChargePreview {
   chargeType: AiChargePreviewType;
   benefitCode: string | null;
   chargeAmount: number;
+  minimumCreditCost: number;
+  maximumCreditCost: number;
+  creditUnitTokens: number;
+  usageBased: boolean;
   remainingTicket: number;
   currentCredit: number;
   sufficient: boolean;
@@ -55,7 +59,8 @@ export async function notifyAndAcknowledgeAiCharge(
     throw new Error("사용 가능한 사용권이 없습니다.");
   }
   if (preview.chargeType === "CREDIT" && !preview.sufficient) {
-    toast.error(`크레딧이 부족합니다. 필요 ${preview.chargeAmount}, 보유 ${preview.currentCredit}`, { duration: 7000 });
+    const required = preview.usageBased ? preview.maximumCreditCost : preview.chargeAmount;
+    toast.error(`크레딧이 부족합니다. 최대 결제 가능액 ${required}크레딧 확보 필요 · 보유 ${preview.currentCredit}`, { duration: 7000 });
     throw new Error("크레딧이 부족합니다.");
   }
 
@@ -70,20 +75,57 @@ export async function notifyAndAcknowledgeAiCharge(
   return { preview, policyAcknowledgementKey: preview.actionKey };
 }
 
-export function toastAiChargeCompleted(preview: AiChargePreview) {
-  if (preview.chargeType === "TICKET") {
+export interface ActualAiCharge {
+  chargeType?: string | null;
+  chargedCredit?: number;
+  totalTokens?: number;
+  remainingCredit?: number;
+}
+
+export const aiChargeAcknowledgementHeaders = (featureType: string, policyAcknowledgementKey: string) => ({
+  "X-AI-Charge-Acknowledgement": policyAcknowledgementKey,
+  "X-AI-Charge-Feature": featureType,
+});
+
+export async function runWithAiCharge<T>(
+  featureType: string,
+  operation: (headers: Record<string, string>) => Promise<T>,
+): Promise<T> {
+  const acknowledged = await notifyAndAcknowledgeAiCharge(featureType);
+  const result = await operation(aiChargeAcknowledgementHeaders(featureType, acknowledged.policyAcknowledgementKey));
+  toastAiChargeCompleted(acknowledged.preview);
+  return result;
+}
+
+export function toastAiChargeCompleted(preview: AiChargePreview, actual?: ActualAiCharge) {
+  const actualType = actual?.chargeType ?? preview.chargeType;
+  if (actualType === "TICKET") {
     toast.success("사용권 1회 차감이 완료되었습니다.");
-  } else if (preview.chargeType === "CREDIT") {
-    toast.success(`${preview.chargeAmount}크레딧 차감이 완료되었습니다.`);
+  } else if (actualType === "CREDIT") {
+    if (preview.usageBased && actual?.chargedCredit == null) {
+      toast.success("실제 사용량 기준 크레딧 정산이 완료되었습니다.");
+      return;
+    }
+    const charged = actual?.chargedCredit ?? preview.chargeAmount;
+    const tokens = actual?.totalTokens ?? 0;
+    const usage = tokens > 0 ? `${tokens.toLocaleString("ko-KR")}토큰 사용 · ` : "";
+    toast.success(`${usage}${charged}크레딧 차감이 완료되었습니다.`);
   }
 }
 
 function chargeNotice(preview: AiChargePreview) {
   const charge = preview.chargeType === "TICKET"
-    ? `사용권 1회가 차감됩니다. 차감 전 잔여 ${preview.remainingTicket}회`
+    ? preview.maximumCreditCost > 0
+      ? `사용권 1회가 우선 차감됩니다. 차감 전 잔여 ${preview.remainingTicket}회 · 사용권 소진 시 최소 ${preview.minimumCreditCost}크레딧, 실제 사용량에 따라 최대 ${preview.maximumCreditCost}크레딧이 차감됩니다.`
+      : `사용권 1회가 우선 차감됩니다. 차감 전 잔여 ${preview.remainingTicket}회`
     : preview.chargeType === "CREDIT"
-      ? `${preview.chargeAmount}크레딧이 차감됩니다. 현재 보유 ${preview.currentCredit}크레딧`
+      ? preview.usageBased
+        ? `최소 ${preview.minimumCreditCost}크레딧이 차감되며 실제 사용량에 따라 최대 ${preview.maximumCreditCost}크레딧까지 사용될 수 있습니다. 현재 보유 ${preview.currentCredit}크레딧`
+        : `${preview.chargeAmount}크레딧이 차감됩니다. 현재 보유 ${preview.currentCredit}크레딧`
       : "무료 이용으로 차감되지 않습니다.";
+  const variableChargeNotice = preview.chargeType === "TICKET" || preview.chargeType === "CREDIT"
+    ? " · 사용권이 우선 사용되며, 기능별 실제 사용량에 따라 차감되는 크레딧은 달라질 수 있습니다."
+    : "";
   const summary = preview.refundPolicySummary?.trim() || preview.refundPolicyTitle;
-  return `${charge} · 환불정책 v${preview.refundPolicyVersion}: ${summary}`;
+  return `${charge}${variableChargeNotice} · 환불정책 v${preview.refundPolicyVersion}: ${summary}`;
 }

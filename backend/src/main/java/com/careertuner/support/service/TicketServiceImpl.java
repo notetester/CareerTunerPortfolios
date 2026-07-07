@@ -1,5 +1,6 @@
 package com.careertuner.support.service;
 
+import java.time.LocalDateTime;
 import java.util.List;
 
 import org.springframework.context.ApplicationEventPublisher;
@@ -8,6 +9,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import com.careertuner.common.exception.BusinessException;
 import com.careertuner.common.exception.ErrorCode;
+import com.careertuner.community.moderation.service.ModerationSettingService;
 import com.careertuner.support.domain.SupportTicket;
 import com.careertuner.support.domain.TicketMessage;
 import com.careertuner.support.dto.CreateTicketRequest;
@@ -28,10 +30,23 @@ public class TicketServiceImpl implements TicketService {
     private final TicketMapper ticketMapper;
     private final TicketMessageMapper messageMapper;
     private final ApplicationEventPublisher eventPublisher;
+    /** 문의 작성 rate-limit(도배 방지) 정책값 — 검열/중재 정책 콘솔에서 런타임 편집. */
+    private final ModerationSettingService moderationSettingService;
 
     @Override
     @Transactional
     public TicketResponse createTicket(CreateTicketRequest request, Long userId) {
+        // 문의 작성 rate-limit(도배 방지) — 최근 window 초 안에 max 건 이상이면 429. (콘솔 편집값, 0=무제약)
+        int inquiryRateMax = moderationSettingService.getInquiryRateMax();
+        if (inquiryRateMax > 0 && userId != null) {
+            int recent = ticketMapper.countRecentByUser(userId,
+                    LocalDateTime.now().minusSeconds(moderationSettingService.getInquiryRateWindowSeconds()));
+            if (recent >= inquiryRateMax) {
+                throw new BusinessException(ErrorCode.RATE_LIMITED,
+                        "짧은 시간에 너무 많은 문의를 남겼습니다. 잠시 후 다시 시도해 주세요.");
+            }
+        }
+
         SupportTicket ticket = SupportTicket.builder()
                 .userId(userId)
                 .subject(request.subject())

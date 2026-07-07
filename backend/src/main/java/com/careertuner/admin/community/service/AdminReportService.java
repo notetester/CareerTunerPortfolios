@@ -15,5 +15,8 @@ public interface AdminReportService {
 
     AdminReportDetailResponse takeAction(AuthUser authUser, Long id, AdminReportActionRequest request);
 
+    /** 종결(기각/취소) 신고를 PENDING 으로 재활성화한다. */
+    AdminReportDetailResponse reactivate(AuthUser authUser, Long id);
+
     AdminReportDetailResponse reclassify(AuthUser authUser, Long id);
 }

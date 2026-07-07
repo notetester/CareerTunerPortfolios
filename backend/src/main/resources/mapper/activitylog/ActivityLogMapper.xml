@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.careertuner.activitylog.mapper.ActivityLogMapper">
+
+    <insert id="insertActivityLog" parameterType="com.careertuner.activitylog.domain.UserActivityLog">
+        INSERT INTO user_activity_log
+            (request_id, flow_trace_id, user_id, session_id, request_uri, http_method, activity_domain,
+             activity_type, activity_code, activity_provider, auth_event_type, target_type, target_id,
+             handler_name, query_string, referer, ip_address, user_agent, response_status, response_time_ms,
+             success, detail_summary)
+        VALUES
+            (#{requestId}, #{flowTraceId}, #{userId}, #{sessionId}, #{requestUri}, #{httpMethod}, #{activityDomain},
+             #{activityType}, #{activityCode}, #{activityProvider}, #{authEventType}, #{targetType}, #{targetId},
+             #{handlerName}, #{queryString}, #{referer}, #{ipAddress}, #{userAgent}, #{responseStatus}, #{responseTimeMs},
+             #{success}, #{detailSummary})
+    </insert>
+
+    <sql id="activityFilter">
+        <where>
+            <if test="domain != null">AND activity_domain = #{domain}</if>
+            <if test="activityType != null">AND activity_type = #{activityType}</if>
+            <if test="success != null">AND success = #{success}</if>
+            <if test="userId != null">AND user_id = #{userId}</if>
+            <if test="from != null">AND created_at &gt;= #{from}</if>
+            <if test="to != null">AND created_at &lt;= #{to}</if>
+            <if test="keyword != null">
+                AND (request_uri LIKE CONCAT('%', #{keyword}, '%')
+                     OR activity_code LIKE CONCAT('%', #{keyword}, '%')
+                     OR handler_name LIKE CONCAT('%', #{keyword}, '%')
+                     OR ip_address LIKE CONCAT('%', #{keyword}, '%')
+                     OR request_id = #{keyword}
+                     OR flow_trace_id = #{keyword})
+            </if>
+        </where>
+    </sql>
+
+    <select id="findActivityLogs" resultType="com.careertuner.activitylog.domain.UserActivityLog">
+        SELECT id, request_id, flow_trace_id, user_id, session_id, request_uri, http_method, activity_domain,
+               activity_type, activity_code, activity_provider, auth_event_type, target_type, target_id,
+               handler_name, query_string, referer, ip_address, user_agent, response_status, response_time_ms,
+               success, detail_summary, created_at
+          FROM user_activity_log
+        <include refid="activityFilter"/>
+         ORDER BY id DESC
+         LIMIT #{limit} OFFSET #{offset}
+    </select>
+
+    <select id="countActivityLogs" resultType="int">
+        SELECT COUNT(*) FROM user_activity_log
+        <include refid="activityFilter"/>
+    </select>
+
+</mapper>

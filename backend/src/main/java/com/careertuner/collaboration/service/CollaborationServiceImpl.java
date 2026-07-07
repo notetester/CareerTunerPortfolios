@@ -1,6 +1,7 @@
 package com.careertuner.collaboration.service;
 
 import java.time.LocalDateTime;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -17,8 +18,11 @@ import org.springframework.transaction.annotation.Transactional;
 import com.careertuner.collaboration.domain.CollaborationConversation;
 import com.careertuner.collaboration.domain.CollaborationMessage;
 import com.careertuner.collaboration.domain.CollaborationUserRow;
+import com.careertuner.collaboration.domain.ConversationAuditRow;
+import com.careertuner.collaboration.domain.ConversationBanRow;
 import com.careertuner.collaboration.domain.ConversationMemberDetailRow;
 import com.careertuner.collaboration.domain.ConversationMemberRow;
+import com.careertuner.collaboration.domain.ConversationPermissionRow;
 import com.careertuner.collaboration.domain.ConversationSummaryRow;
 import com.careertuner.collaboration.domain.DesktopPresenceRow;
 import com.careertuner.collaboration.domain.FriendRequest;
@@ -26,16 +30,17 @@ import com.careertuner.collaboration.domain.FriendRequestRow;
 import com.careertuner.collaboration.domain.FriendRow;
 import com.careertuner.collaboration.domain.MessageAttachmentRow;
 import com.careertuner.collaboration.domain.SharedPostingRow;
-import com.careertuner.collaboration.domain.UserChatProfile;
 import com.careertuner.collaboration.dto.CollaborationUserResponse;
-import com.careertuner.collaboration.dto.ChatProfileRequest;
-import com.careertuner.collaboration.dto.ChatProfileResponse;
-import com.careertuner.collaboration.dto.ConversationMemberActionRequest;
-import com.careertuner.collaboration.dto.ConversationMemberResponse;
-import com.careertuner.collaboration.dto.ConversationMemberUpdateRequest;
-import com.careertuner.collaboration.dto.ConversationSummaryResponse;
-import com.careertuner.collaboration.dto.ConversationSettingsRequest;
+import com.careertuner.collaboration.dto.ConversationAuditResponse;
+import com.careertuner.collaboration.dto.ConversationBanRequest;
+import com.careertuner.collaboration.dto.ConversationBanResponse;
+import com.careertuner.collaboration.dto.ConversationInviteAllowRequest;
+import com.careertuner.collaboration.dto.ConversationMemberDetailResponse;
+import com.careertuner.collaboration.dto.ConversationPermissionResponse;
+import com.careertuner.collaboration.dto.ConversationPermissionUpdateRequest;
 import com.careertuner.collaboration.dto.ConversationSettingsResponse;
+import com.careertuner.collaboration.dto.ConversationSettingsUpdateRequest;
+import com.careertuner.collaboration.dto.ConversationSummaryResponse;
 import com.careertuner.collaboration.dto.CreateConversationRequest;
 import com.careertuner.collaboration.dto.FriendRequestResponse;
 import com.careertuner.collaboration.dto.FriendResponse;
@@ -53,6 +58,9 @@ import com.careertuner.common.exception.ErrorCode;
 import com.careertuner.file.domain.FileAsset;
 import com.careertuner.file.mapper.FileAssetMapper;
 import com.careertuner.file.service.FileService;
+import com.careertuner.nickname.dto.DisplayNameQuery;
+import com.careertuner.nickname.dto.DisplayNameResponse;
+import com.careertuner.nickname.service.NicknameProfileService;
 import com.careertuner.notification.domain.Notification;
 import com.careertuner.notification.service.NotificationPreferenceService;
 import com.careertuner.notification.service.NotificationService;
@@ -61,8 +69,6 @@ import com.careertuner.privacy.service.PrivacyPolicyService;
 import com.careertuner.privacy.service.PrivacySurfaces;
 
 import lombok.RequiredArgsConstructor;
-import tools.jackson.core.JacksonException;
-import tools.jackson.databind.ObjectMapper;
 
 @Service
 @RequiredArgsConstructor
@@ -78,6 +84,14 @@ public class CollaborationServiceImpl implements CollaborationService {
     private static final Set<String> MESSAGE_KINDS = Set.of("CHAT", "NOTE");
     private static final Set<String> ROOM_TYPES = Set.of("GROUP", "PUBLIC", "PRIVATE");
     private static final Set<String> ATTACHMENT_SHARE_MODES = Set.of("TEMPORARY", "CLOUD", "LOCAL");
+    /** 초대 권한 정책 값. */
+    private static final Set<String> INVITE_POLICIES =
+            Set.of("OWNER_ONLY", "MANAGERS", "SPECIFIC_MEMBERS", "ALL_MEMBERS");
+    /** 공개/비공개 전환이 가능한 유형(GROUP·DIRECT 는 전환 불가). */
+    private static final Set<String> TOGGLEABLE_TYPES = Set.of("PUBLIC", "PRIVATE");
+    private static final int MAX_AUDIT_LIMIT = 50;
+    /** 익명 참가자에게 노출하는 방 전용 표시명 기본값(방 전용 닉네임이 없을 때). */
+    private static final String ANONYMOUS_LABEL = "익명";
     /** 데스크톱 heartbeat(30초 폴링) 유예 포함 온라인 판정 창 — 이 시간 안에 heartbeat 가 있으면 온라인. */
     private static final int DESKTOP_ONLINE_WINDOW_SECONDS = 90;
 
@@ -92,7 +106,7 @@ public class CollaborationServiceImpl implements CollaborationService {
     private final FileService fileService;
     private final PasswordEncoder passwordEncoder;
     private final PrivacyPolicyService privacyPolicyService;
-    private final ObjectMapper objectMapper;
+    private final NicknameProfileService nicknameProfileService;
 
     @Override
     public List<CollaborationUserResponse> searchUsers(Long userId, String keyword, int limit) {
@@ -265,11 +279,6 @@ public class CollaborationServiceImpl implements CollaborationService {
                     .userHighId(high)
                     .createdBy(userId)
                     .maxMembers(2)
-                    .joinPolicy("INVITE_ONLY")
-                    .invitePolicy("OWNER_AND_MANAGERS")
-                    .anonymousAllowed(false)
-                    .anonymousOnly(false)
-                    .roomProfileRequired(false)
                     .build();
             mapper.insertConversation(conversation);
             conversationId = conversation.getId();
@@ -289,22 +298,13 @@ public class CollaborationServiceImpl implements CollaborationService {
         if ("PRIVATE".equals(type) && hasText(request.password())) {
             passwordHash = passwordEncoder.encode(request.password().trim());
         }
-        boolean anonymousOnly = Boolean.TRUE.equals(request.anonymousOnly());
-        boolean anonymousAllowed = anonymousOnly || Boolean.TRUE.equals(request.anonymousAllowed());
 
         CollaborationConversation conversation = CollaborationConversation.builder()
                 .type(type)
                 .title(title)
                 .description(description)
-                .profileImageUrl(trimToNull(request.profileImageUrl()))
                 .passwordHash(passwordHash)
-                .maxMembers(normalizeMaxMembers(request.maxMembers(), "PUBLIC".equals(type) ? 500 : 100))
-                .joinPolicy(normalizeJoinPolicy(request.joinPolicy(), type))
-                .invitePolicy(normalizeInvitePolicy(request.invitePolicy()))
-                .anonymousAllowed(anonymousAllowed)
-                .anonymousOnly(anonymousOnly)
-                .roomProfileRequired(Boolean.TRUE.equals(request.roomProfileRequired()))
-                .settingsJson(null)
+                .maxMembers("PUBLIC".equals(type) ? 500 : 100)
                 .createdBy(userId)
                 .build();
         mapper.insertConversation(conversation);
@@ -335,40 +335,23 @@ public class CollaborationServiceImpl implements CollaborationService {
         if ("DIRECT".equals(conversation.getType())) {
             throw new BusinessException(ErrorCode.INVALID_INPUT, "1:1 대화방에는 직접 참가할 수 없습니다.");
         }
-        if (mapper.countConversationBan(conversationId, userId) > 0) {
-            throw new BusinessException(ErrorCode.FORBIDDEN, "이 채팅방에 다시 참가할 수 없습니다.");
-        }
         if (mapper.countConversationMember(conversationId, userId) > 0) {
             return requireConversationSummary(userId, conversationId);
         }
-        if (mapper.countActiveConversationMembers(conversationId) >= currentMaxMembers(conversation)) {
-            throw new BusinessException(ErrorCode.CONFLICT, "채팅방 인원 제한에 도달했습니다.");
+        // 재입장불가 강퇴(ban) 명단이면 참가 차단
+        if (mapper.countBan(conversationId, userId) > 0) {
+            throw new BusinessException(ErrorCode.FORBIDDEN, "이 채팅방에서 참가가 제한된 사용자입니다.");
         }
-        boolean anonymous = Boolean.TRUE.equals(request == null ? null : request.anonymous());
-        if (Boolean.TRUE.equals(conversation.getAnonymousOnly()) && !anonymous) {
-            throw new BusinessException(ErrorCode.FORBIDDEN, "이 채팅방은 익명 프로필로만 참가할 수 있습니다.");
-        }
-        if (anonymous && !Boolean.TRUE.equals(conversation.getAnonymousAllowed())) {
-            throw new BusinessException(ErrorCode.FORBIDDEN, "이 채팅방은 익명 참가를 허용하지 않습니다.");
-        }
-        if (Boolean.TRUE.equals(conversation.getRoomProfileRequired())
-                && !anonymous && !hasText(request == null ? null : request.displayName())
-                && (request == null || request.chatProfileId() == null)) {
-            throw new BusinessException(ErrorCode.INVALID_INPUT, "채팅방 전용 프로필을 선택하거나 표시 이름을 입력해 주세요.");
+        // 익명만 참가 가능한 방인데 실명 참가(직접 join)로 들어오면 거부 — 익명 참가는 초대 수락 경로로만
+        if (Boolean.TRUE.equals(conversation.getAnonymousOnly())) {
+            throw new BusinessException(ErrorCode.FORBIDDEN, "익명 초대를 통해서만 참가할 수 있는 채팅방입니다.");
         }
 
         boolean invited = mapper.countPendingInvite(conversationId, userId) > 0;
-        String joinPolicy = normalizeJoinPolicy(conversation.getJoinPolicy(), conversation.getType());
-        boolean allowed = switch (joinPolicy) {
-            case "OPEN" -> true;
-            case "INVITE_ONLY" -> invited;
-            case "PASSWORD" -> passwordMatches(request == null ? null : request.password(), conversation);
-            case "INVITE_OR_PASSWORD", "DEFAULT" -> switch (conversation.getType()) {
-                case "PUBLIC" -> true;
-                case "PRIVATE" -> invited || passwordMatches(request == null ? null : request.password(), conversation);
-                case "GROUP" -> invited;
-                default -> false;
-            };
+        boolean allowed = switch (conversation.getType()) {
+            case "PUBLIC" -> true;
+            case "PRIVATE" -> invited || passwordMatches(request == null ? null : request.password(), conversation);
+            case "GROUP" -> invited;
             default -> false;
         };
         if (!allowed) {
@@ -376,10 +359,10 @@ public class CollaborationServiceImpl implements CollaborationService {
         }
 
         mapper.insertConversationMemberWithRole(conversationId, userId, "MEMBER", null);
-        applyJoinProfile(conversationId, userId, request, anonymous);
         if (invited) {
             mapper.acceptInvite(conversationId, userId);
         }
+        writeAudit(conversationId, userId, userId, "MEMBER_JOINED", null);
         return requireConversationSummary(userId, conversationId);
     }
 
@@ -390,8 +373,12 @@ public class CollaborationServiceImpl implements CollaborationService {
         if ("DIRECT".equals(conversation.getType())) {
             throw new BusinessException(ErrorCode.INVALID_INPUT, "1:1 대화방에는 멤버를 초대할 수 없습니다.");
         }
+        requireConversationMember(userId, conversationId);
+        // 초대 권한 정책 검사 — 정책과 호출자 role/권한/허용목록에 따라 초대 가능 여부 판정
         requireInvitePermission(userId, conversation);
-        boolean anonymous = Boolean.TRUE.equals(request.anonymous());
+        // 익명만 참가 가능한 방은 초대도 익명으로 강제(방 설정과 정합)
+        boolean anonymous = Boolean.TRUE.equals(conversation.getAnonymousOnly())
+                || Boolean.TRUE.equals(request.anonymous());
         boolean inviterIsCreator = userId.equals(conversation.getCreatedBy());
         for (Long inviteeId : normalizeUserIds(request.userIds())) {
             if (inviteeId.equals(userId)) {
@@ -399,6 +386,10 @@ public class CollaborationServiceImpl implements CollaborationService {
             }
             requireActiveUser(inviteeId);
             requireFriendship(userId, inviteeId);
+            // 재입장불가 강퇴(ban) 명단은 재초대 불가 — 그 대상만 조용히 스킵
+            if (mapper.countBan(conversationId, inviteeId) > 0) {
+                continue;
+            }
             // 초대 대상의 개인 정책(invite.{TYPE}.{creator|member}.anonymous + 채팅방 차단 파생 규칙)이
             // 차단이면 그 대상만 조용히 스킵(silent deny — 예외 금지)
             if (!privacyPolicyService.allowsInvite(inviteeId, userId, conversationId,
@@ -406,8 +397,10 @@ public class CollaborationServiceImpl implements CollaborationService {
                 continue;
             }
             mapper.insertConversationInvite(conversationId, userId, inviteeId, anonymous);
-            mapper.insertConversationMemberWithRole(conversationId, inviteeId, "MEMBER", userId);
+            mapper.insertConversationMemberWithAnonymous(conversationId, inviteeId, "MEMBER", userId, anonymous);
             mapper.acceptInvite(conversationId, inviteeId);
+            writeAudit(conversationId, userId, inviteeId,
+                    anonymous ? "MEMBER_INVITED_ANONYMOUS" : "MEMBER_INVITED", null);
             notifyRoomInvite(inviteeId, userId, conversationId, conversation.getTitle());
         }
         return requireConversationSummary(userId, conversationId);
@@ -468,12 +461,14 @@ public class CollaborationServiceImpl implements CollaborationService {
         Map<Long, LocalDateTime> presenceByOwner = desktopPresenceOf(attachmentRowsByMessage.values().stream()
                 .flatMap(List::stream)
                 .toList());
+        // 비익명 발신자 표시명을 방 전용 닉네임 프로필/기본 프로필로 벌크 해석(N+1 방지).
+        Map<DisplayNameQuery, DisplayNameResponse> resolvedSenders = resolveSenderNames(messages);
         List<MessageResponse> responses = messages.stream()
                 .map(message -> blockedSenders.contains(message.getSenderId())
-                        ? toBlockedMessageResponse(message, userId)
+                        ? toBlockedMessageResponse(message, userId, resolvedSenders)
                         : toMessageResponse(message, userId,
                                 attachmentRowsByMessage.getOrDefault(message.getId(), List.of()),
-                                presenceByOwner))
+                                presenceByOwner, resolvedSenders))
                 .toList();
         Long latestId = mapper.findLatestMessageId(conversationId);
         if (latestId != null) {
@@ -561,130 +556,6 @@ public class CollaborationServiceImpl implements CollaborationService {
     }
 
     @Override
-    public ConversationSettingsResponse getConversationSettings(Long userId, Long conversationId) {
-        requireConversationMember(userId, conversationId);
-        return toSettingsResponse(requireConversation(conversationId));
-    }
-
-    @Override
-    @Transactional
-    public ConversationSettingsResponse updateConversationSettings(Long userId, Long conversationId,
-                                                                   ConversationSettingsRequest request) {
-        CollaborationConversation conversation = requireConversation(conversationId);
-        requireRoomPermission(userId, conversationId, "SETTINGS");
-        boolean changingPassword = request.password() != null || Boolean.TRUE.equals(request.clearPassword());
-        if (changingPassword) {
-            requireRoomPermission(userId, conversationId, "PASSWORD");
-        }
-        conversation.setTitle(normalizeRequiredText(request.title(), "대화방 이름을 입력해 주세요."));
-        conversation.setDescription(trimToNull(request.description()));
-        conversation.setProfileImageUrl(trimToNull(request.profileImageUrl()));
-        if (Boolean.TRUE.equals(request.clearPassword())) {
-            conversation.setPasswordHash(null);
-        } else if (hasText(request.password())) {
-            conversation.setPasswordHash(passwordEncoder.encode(request.password().trim()));
-        }
-        conversation.setMaxMembers(normalizeMaxMembers(request.maxMembers(), currentMaxMembers(conversation)));
-        conversation.setJoinPolicy(normalizeJoinPolicy(request.joinPolicy(), conversation.getType()));
-        conversation.setInvitePolicy(normalizeInvitePolicy(request.invitePolicy()));
-        boolean anonymousOnly = Boolean.TRUE.equals(request.anonymousOnly());
-        conversation.setAnonymousOnly(anonymousOnly);
-        conversation.setAnonymousAllowed(anonymousOnly || Boolean.TRUE.equals(request.anonymousAllowed()));
-        conversation.setRoomProfileRequired(Boolean.TRUE.equals(request.roomProfileRequired()));
-        conversation.setSettingsJson(request.settings() == null ? null : toJson(request.settings()));
-        mapper.updateConversationSettings(conversation);
-        mapper.touchConversation(conversationId);
-        return toSettingsResponse(requireConversation(conversationId));
-    }
-
-    @Override
-    public List<ConversationMemberResponse> listConversationMembers(Long userId, Long conversationId) {
-        requireConversationMember(userId, conversationId);
-        return mapper.findConversationMembers(conversationId).stream()
-                .map(this::toMemberResponse)
-                .toList();
-    }
-
-    @Override
-    @Transactional
-    public ConversationMemberResponse updateConversationMember(Long userId, Long conversationId, Long targetUserId,
-                                                               ConversationMemberUpdateRequest request) {
-        requireRoomPermission(userId, conversationId, "MANAGE_MEMBERS");
-        ConversationMemberDetailRow target = requireMemberRow(conversationId, targetUserId);
-        if ("OWNER".equals(target.getRole())) {
-            throw new BusinessException(ErrorCode.FORBIDDEN, "방 개설자의 권한은 변경할 수 없습니다.");
-        }
-        String role = normalizeMemberRole(request.role());
-        String permissionsJson = toJson(normalizePermissions(request.permissions(), role));
-        mapper.updateConversationMemberRole(conversationId, targetUserId, role, permissionsJson,
-                trimToNull(request.displayName()), trimToNull(request.avatarUrl()), request.anonymous());
-        return toMemberResponse(requireMemberRow(conversationId, targetUserId));
-    }
-
-    @Override
-    @Transactional
-    public void kickConversationMember(Long userId, Long conversationId, Long targetUserId,
-                                       ConversationMemberActionRequest request) {
-        requireRoomPermission(userId, conversationId, "KICK");
-        ConversationMemberDetailRow target = requireMemberRow(conversationId, targetUserId);
-        if ("OWNER".equals(target.getRole())) {
-            throw new BusinessException(ErrorCode.FORBIDDEN, "방 개설자는 강퇴할 수 없습니다.");
-        }
-        mapper.removeConversationMember(conversationId, targetUserId, userId);
-        if (request != null && Boolean.TRUE.equals(request.ban())) {
-            mapper.upsertConversationBan(conversationId, targetUserId, userId, trimToNull(request.reason()),
-                    request.bannedUntil());
-        }
-        mapper.touchConversation(conversationId);
-    }
-
-    @Override
-    public List<ChatProfileResponse> listChatProfiles(Long userId) {
-        return mapper.findChatProfiles(userId).stream().map(this::toChatProfileResponse).toList();
-    }
-
-    @Override
-    @Transactional
-    public ChatProfileResponse createChatProfile(Long userId, ChatProfileRequest request) {
-        UserChatProfile profile = UserChatProfile.builder()
-                .userId(userId)
-                .nickname(normalizeRequiredText(request.nickname(), "닉네임을 입력해 주세요."))
-                .avatarUrl(trimToNull(request.avatarUrl()))
-                .description(trimToNull(request.description()))
-                .defaultProfile(Boolean.TRUE.equals(request.defaultProfile()))
-                .build();
-        if (profile.isDefaultProfile()) {
-            mapper.clearDefaultChatProfile(userId);
-        }
-        mapper.insertChatProfile(profile);
-        return toChatProfileResponse(mapper.findChatProfile(profile.getId(), userId));
-    }
-
-    @Override
-    @Transactional
-    public ChatProfileResponse updateChatProfile(Long userId, Long profileId, ChatProfileRequest request) {
-        UserChatProfile profile = mapper.findChatProfile(profileId, userId);
-        if (profile == null) {
-            throw new BusinessException(ErrorCode.NOT_FOUND, "채팅 프로필을 찾을 수 없습니다.");
-        }
-        profile.setNickname(normalizeRequiredText(request.nickname(), "닉네임을 입력해 주세요."));
-        profile.setAvatarUrl(trimToNull(request.avatarUrl()));
-        profile.setDescription(trimToNull(request.description()));
-        profile.setDefaultProfile(Boolean.TRUE.equals(request.defaultProfile()));
-        if (profile.isDefaultProfile()) {
-            mapper.clearDefaultChatProfile(userId);
-        }
-        mapper.updateChatProfile(profile);
-        return toChatProfileResponse(mapper.findChatProfile(profileId, userId));
-    }
-
-    @Override
-    @Transactional
-    public void deleteChatProfile(Long userId, Long profileId) {
-        mapper.deleteChatProfile(profileId, userId);
-    }
-
-    @Override
     public FileService.Download downloadAttachment(Long userId, Long fileId) {
         MessageAttachmentRow attachment = mapper.findAttachmentForDownload(userId, fileId);
         if (attachment == null) {
@@ -712,6 +583,194 @@ public class CollaborationServiceImpl implements CollaborationService {
     @Transactional
     public void touchDesktopPresence(Long userId) {
         mapper.upsertDesktopPresence(userId);
+    }
+
+    // ══════════════ 방 설정 / 관리자 위임 (W5) ══════════════
+
+    @Override
+    public ConversationSettingsResponse getConversationSettings(Long userId, Long conversationId) {
+        CollaborationConversation conversation = requireManageableRoom(conversationId);
+        RoomAuthority authority = requireSettingsAuthority(userId, conversation);
+        return buildSettingsResponse(conversation, authority);
+    }
+
+    @Override
+    @Transactional
+    public ConversationSettingsResponse updateConversationSettings(Long userId, Long conversationId,
+                                                                   ConversationSettingsUpdateRequest request) {
+        CollaborationConversation conversation = requireManageableRoom(conversationId);
+        RoomAuthority authority = requireSettingsAuthority(userId, conversation);
+        if (!authority.canEditRoom()) {
+            throw new BusinessException(ErrorCode.FORBIDDEN, "방 정보를 수정할 권한이 없습니다.");
+        }
+
+        CollaborationConversation patch = CollaborationConversation.builder()
+                .id(conversationId)
+                .title(trimToNull(request.title()))
+                .description(request.description() == null ? null : trimToNull(request.description()))
+                .notice(request.notice() == null ? null : trimToNull(request.notice()))
+                .maxMembers(request.maxMembers())
+                .build();
+
+        // 공개/비공개 전환 (PUBLIC↔PRIVATE 만 허용)
+        String newType = null;
+        if (request.type() != null) {
+            newType = request.type().trim().toUpperCase(Locale.ROOT);
+            if (!TOGGLEABLE_TYPES.contains(newType) || !TOGGLEABLE_TYPES.contains(conversation.getType())) {
+                throw new BusinessException(ErrorCode.INVALID_INPUT, "공개/비공개 전환만 가능한 채팅방입니다.");
+            }
+            patch.setType(newType);
+        }
+
+        // 초대 정책
+        if (request.invitePolicy() != null) {
+            String policy = request.invitePolicy().trim().toUpperCase(Locale.ROOT);
+            if (!INVITE_POLICIES.contains(policy)) {
+                throw new BusinessException(ErrorCode.INVALID_INPUT, "지원하지 않는 초대 정책입니다.");
+            }
+            patch.setInvitePolicy(policy);
+        }
+        patch.setAllowAnonymous(request.allowAnonymous());
+        patch.setAnonymousOnly(request.anonymousOnly());
+        // anonymousOnly 를 켜면 allowAnonymous 도 함께 켜 정합을 맞춘다
+        if (Boolean.TRUE.equals(request.anonymousOnly())) {
+            patch.setAllowAnonymous(Boolean.TRUE);
+        }
+
+        mapper.updateConversationSettings(patch);
+
+        // 비밀번호 처리 — 정원/이미지와 달리 별도 권한(canSetPassword) 필요
+        applyPasswordAction(userId, conversationId, conversation, request, authority, newType);
+
+        // 방 프로필 사진 (0/음수면 제거)
+        if (request.imageFileId() != null) {
+            Long imageFileId = request.imageFileId() > 0 ? request.imageFileId() : null;
+            if (imageFileId != null) {
+                requireOwnedFile(userId, imageFileId);
+                fileAssetMapper.updateRef(imageFileId, "COLLAB_ROOM_IMAGE", conversationId);
+            }
+            mapper.updateConversationImage(conversationId, imageFileId);
+        }
+
+        // 공개→비공개 전환인데 비밀번호가 없으면 초대 전용 비공개방으로 남는다(허용).
+        writeAudit(conversationId, userId, null, "ROOM_UPDATED", settingsAuditDetail(request, newType));
+
+        CollaborationConversation updated = requireConversation(conversationId);
+        return buildSettingsResponse(updated, requireSettingsAuthority(userId, updated));
+    }
+
+    @Override
+    @Transactional
+    public ConversationSettingsResponse updateMemberPermission(Long userId, Long conversationId, Long targetUserId,
+                                                               ConversationPermissionUpdateRequest request) {
+        CollaborationConversation conversation = requireManageableRoom(conversationId);
+        RoomAuthority authority = requireSettingsAuthority(userId, conversation);
+        if (!authority.canManageMembers()) {
+            throw new BusinessException(ErrorCode.FORBIDDEN, "멤버 권한을 관리할 권한이 없습니다.");
+        }
+        // 위임은 OWNER 만 — MANAGER 는 다른 MANAGER 를 지정/해제할 수 없다(권한 상승 방지)
+        if (!authority.owner()) {
+            throw new BusinessException(ErrorCode.FORBIDDEN, "방 관리자 지정은 개설자만 할 수 있습니다.");
+        }
+        ConversationMemberDetailRow target = requireActiveMember(conversationId, targetUserId);
+        if ("OWNER".equals(target.getRole())) {
+            throw new BusinessException(ErrorCode.INVALID_INPUT, "개설자의 권한은 변경할 수 없습니다.");
+        }
+
+        boolean manager = Boolean.TRUE.equals(request.manager());
+        if (manager) {
+            mapper.updateMemberRole(conversationId, targetUserId, "MANAGER");
+            ConversationPermissionRow permission = ConversationPermissionRow.builder()
+                    .conversationId(conversationId)
+                    .userId(targetUserId)
+                    .canKick(Boolean.TRUE.equals(request.canKick()))
+                    .canBan(Boolean.TRUE.equals(request.canBan()))
+                    .canSetPassword(Boolean.TRUE.equals(request.canSetPassword()))
+                    .canInvite(Boolean.TRUE.equals(request.canInvite()))
+                    .canEditRoom(Boolean.TRUE.equals(request.canEditRoom()))
+                    .canManageMembers(Boolean.TRUE.equals(request.canManageMembers()))
+                    .grantedBy(userId)
+                    .build();
+            mapper.upsertPermission(permission);
+            writeAudit(conversationId, userId, targetUserId, "MANAGER_GRANTED", permissionAuditDetail(permission));
+        } else {
+            mapper.updateMemberRole(conversationId, targetUserId, "MEMBER");
+            mapper.deletePermission(conversationId, targetUserId);
+            writeAudit(conversationId, userId, targetUserId, "MANAGER_REVOKED", null);
+        }
+        notifyUser(targetUserId, userId, "ROOM_MENTION", "COLLAB_CONVERSATION", conversationId,
+                manager ? "방 관리자로 지정되었습니다." : "방 관리자 권한이 해제되었습니다.",
+                conversation.getTitle() == null ? "채팅방" : conversation.getTitle());
+
+        CollaborationConversation refreshed = requireConversation(conversationId);
+        return buildSettingsResponse(refreshed, requireSettingsAuthority(userId, refreshed));
+    }
+
+    @Override
+    @Transactional
+    public ConversationSettingsResponse kickMember(Long userId, Long conversationId, Long targetUserId) {
+        CollaborationConversation conversation = requireManageableRoom(conversationId);
+        RoomAuthority authority = requireSettingsAuthority(userId, conversation);
+        if (!authority.canKick()) {
+            throw new BusinessException(ErrorCode.FORBIDDEN, "멤버를 강퇴할 권한이 없습니다.");
+        }
+        ConversationMemberDetailRow target = requireModerableTarget(conversationId, userId, targetUserId, authority);
+        mapper.updateMemberStatus(conversationId, targetUserId, "REMOVED");
+        writeAudit(conversationId, userId, targetUserId, "MEMBER_KICKED", null);
+        CollaborationConversation refreshed = requireConversation(conversationId);
+        return buildSettingsResponse(refreshed, requireSettingsAuthority(userId, refreshed));
+    }
+
+    @Override
+    @Transactional
+    public ConversationSettingsResponse banMember(Long userId, Long conversationId, Long targetUserId,
+                                                  ConversationBanRequest request) {
+        CollaborationConversation conversation = requireManageableRoom(conversationId);
+        RoomAuthority authority = requireSettingsAuthority(userId, conversation);
+        if (!authority.canBan()) {
+            throw new BusinessException(ErrorCode.FORBIDDEN, "멤버를 차단(밴)할 권한이 없습니다.");
+        }
+        requireModerableTarget(conversationId, userId, targetUserId, authority);
+        String reason = request == null ? null : trimToNull(request.reason());
+        mapper.insertBan(conversationId, targetUserId, userId, reason);
+        mapper.updateMemberStatus(conversationId, targetUserId, "REMOVED");
+        writeAudit(conversationId, userId, targetUserId, "MEMBER_BANNED", reason);
+        CollaborationConversation refreshed = requireConversation(conversationId);
+        return buildSettingsResponse(refreshed, requireSettingsAuthority(userId, refreshed));
+    }
+
+    @Override
+    @Transactional
+    public ConversationSettingsResponse unbanMember(Long userId, Long conversationId, Long targetUserId) {
+        CollaborationConversation conversation = requireManageableRoom(conversationId);
+        RoomAuthority authority = requireSettingsAuthority(userId, conversation);
+        if (!authority.canBan()) {
+            throw new BusinessException(ErrorCode.FORBIDDEN, "차단(밴)을 해제할 권한이 없습니다.");
+        }
+        if (mapper.deleteBan(conversationId, targetUserId) > 0) {
+            writeAudit(conversationId, userId, targetUserId, "MEMBER_UNBANNED", null);
+        }
+        return buildSettingsResponse(conversation, authority);
+    }
+
+    @Override
+    @Transactional
+    public ConversationSettingsResponse setInviteAllowList(Long userId, Long conversationId,
+                                                           ConversationInviteAllowRequest request) {
+        CollaborationConversation conversation = requireManageableRoom(conversationId);
+        RoomAuthority authority = requireSettingsAuthority(userId, conversation);
+        if (!authority.canEditRoom()) {
+            throw new BusinessException(ErrorCode.FORBIDDEN, "초대 허용 목록을 수정할 권한이 없습니다.");
+        }
+        mapper.deleteInviteAllowAll(conversationId);
+        for (Long memberId : normalizeUserIds(request == null ? null : request.userIds())) {
+            // 실제 방 멤버만 허용 목록에 넣는다(존재하지 않는 멤버는 조용히 스킵)
+            if (mapper.countConversationMember(conversationId, memberId) > 0) {
+                mapper.insertInviteAllow(conversationId, memberId, userId);
+            }
+        }
+        writeAudit(conversationId, userId, null, "INVITE_ALLOW_UPDATED", null);
+        return buildSettingsResponse(conversation, authority);
     }
 
     private CollaborationUserRow requireActiveUser(Long userId) {
@@ -750,46 +809,6 @@ public class CollaborationServiceImpl implements CollaborationService {
         if (mapper.countConversationMember(conversationId, userId) == 0) {
             throw new BusinessException(ErrorCode.FORBIDDEN, "대화방에 접근할 권한이 없습니다.");
         }
-    }
-
-    private ConversationMemberDetailRow requireMemberRow(Long conversationId, Long userId) {
-        ConversationMemberDetailRow row = mapper.findConversationMember(conversationId, userId);
-        if (row == null) {
-            throw new BusinessException(ErrorCode.NOT_FOUND, "대화방 멤버를 찾을 수 없습니다.");
-        }
-        return row;
-    }
-
-    private void requireInvitePermission(Long userId, CollaborationConversation conversation) {
-        String policy = normalizeInvitePolicy(conversation.getInvitePolicy());
-        ConversationMemberDetailRow member = requireMemberRow(conversation.getId(), userId);
-        if ("ALL_MEMBERS".equals(policy)) {
-            return;
-        }
-        if ("OWNER_ONLY".equals(policy) && "OWNER".equals(member.getRole())) {
-            return;
-        }
-        if ("OWNER_AND_MANAGERS".equals(policy)
-                && ("OWNER".equals(member.getRole()) || hasPermission(member, "INVITE"))) {
-            return;
-        }
-        throw new BusinessException(ErrorCode.FORBIDDEN, "초대 권한이 없습니다.");
-    }
-
-    private void requireRoomPermission(Long userId, Long conversationId, String permission) {
-        ConversationMemberDetailRow member = requireMemberRow(conversationId, userId);
-        if ("OWNER".equals(member.getRole()) || hasPermission(member, permission)) {
-            return;
-        }
-        throw new BusinessException(ErrorCode.FORBIDDEN, "채팅방 관리 권한이 없습니다.");
-    }
-
-    private boolean hasPermission(ConversationMemberDetailRow member, String permission) {
-        if (!"MANAGER".equals(member.getRole())) {
-            return false;
-        }
-        String json = member.getPermissionsJson();
-        return json != null && (json.contains("\"ALL\"") || json.contains("\"" + permission + "\""));
     }
 
     private void requireFriendship(Long userId, Long friendUserId) {
@@ -838,63 +857,6 @@ public class CollaborationServiceImpl implements CollaborationService {
             throw new BusinessException(ErrorCode.INVALID_INPUT, "지원하지 않는 대화방 유형입니다.");
         }
         return type;
-    }
-
-    private int normalizeMaxMembers(Integer raw, int fallback) {
-        int value = raw == null ? fallback : raw;
-        return Math.max(2, Math.min(value, 500));
-    }
-
-    private int currentMaxMembers(CollaborationConversation conversation) {
-        return normalizeMaxMembers(conversation.getMaxMembers(), defaultMaxMembers(conversation.getType()));
-    }
-
-    private int defaultMaxMembers(String roomType) {
-        return "PUBLIC".equals(roomType) ? 500 : 100;
-    }
-
-    private String normalizeJoinPolicy(String rawPolicy, String roomType) {
-        String policy = rawPolicy == null || rawPolicy.isBlank()
-                ? ("PUBLIC".equals(roomType) ? "OPEN" : "INVITE_OR_PASSWORD")
-                : rawPolicy.trim().toUpperCase(Locale.ROOT);
-        if (!Set.of("DEFAULT", "OPEN", "INVITE_ONLY", "INVITE_OR_PASSWORD", "PASSWORD").contains(policy)) {
-            throw new BusinessException(ErrorCode.INVALID_INPUT, "지원하지 않는 참가 정책입니다.");
-        }
-        return policy;
-    }
-
-    private String normalizeInvitePolicy(String rawPolicy) {
-        String policy = rawPolicy == null || rawPolicy.isBlank()
-                ? "OWNER_AND_MANAGERS"
-                : rawPolicy.trim().toUpperCase(Locale.ROOT);
-        if (!Set.of("OWNER_ONLY", "OWNER_AND_MANAGERS", "ALL_MEMBERS").contains(policy)) {
-            throw new BusinessException(ErrorCode.INVALID_INPUT, "지원하지 않는 초대 정책입니다.");
-        }
-        return policy;
-    }
-
-    private String normalizeMemberRole(String rawRole) {
-        String role = rawRole == null || rawRole.isBlank() ? "MEMBER" : rawRole.trim().toUpperCase(Locale.ROOT);
-        if (!Set.of("MANAGER", "MEMBER").contains(role)) {
-            throw new BusinessException(ErrorCode.INVALID_INPUT, "멤버 역할은 MANAGER 또는 MEMBER만 지정할 수 있습니다.");
-        }
-        return role;
-    }
-
-    private List<String> normalizePermissions(List<String> permissions, String role) {
-        if (!"MANAGER".equals(role)) {
-            return List.of();
-        }
-        Set<String> allowed = Set.of("ALL", "INVITE", "KICK", "PASSWORD", "SETTINGS", "MANAGE_MEMBERS");
-        if (permissions == null || permissions.isEmpty()) {
-            return List.of("INVITE");
-        }
-        return permissions.stream()
-                .filter(Objects::nonNull)
-                .map(p -> p.trim().toUpperCase(Locale.ROOT))
-                .filter(allowed::contains)
-                .distinct()
-                .toList();
     }
 
     private String normalizeShareMode(String rawMode) {
@@ -954,89 +916,6 @@ public class CollaborationServiceImpl implements CollaborationService {
 
     private boolean hasText(String value) {
         return value != null && !value.trim().isEmpty();
-    }
-
-    private void applyJoinProfile(Long conversationId, Long userId, JoinConversationRequest request, boolean anonymous) {
-        if (request == null) {
-            return;
-        }
-        String displayName = trimToNull(request.displayName());
-        String avatarUrl = trimToNull(request.avatarUrl());
-        if (request.chatProfileId() != null) {
-            UserChatProfile profile = mapper.findChatProfile(request.chatProfileId(), userId);
-            if (profile == null) {
-                throw new BusinessException(ErrorCode.NOT_FOUND, "채팅 프로필을 찾을 수 없습니다.");
-            }
-            displayName = profile.getNickname();
-            avatarUrl = profile.getAvatarUrl();
-        }
-        mapper.updateConversationMemberProfile(conversationId, userId, displayName, avatarUrl, anonymous,
-                toJson(Map.of(
-                        "displayName", displayName == null ? "" : displayName,
-                        "avatarUrl", avatarUrl == null ? "" : avatarUrl,
-                        "anonymous", anonymous)));
-    }
-
-    private ConversationSettingsResponse toSettingsResponse(CollaborationConversation c) {
-        return new ConversationSettingsResponse(c.getId(), c.getType(), c.getTitle(), c.getDescription(),
-                c.getProfileImageUrl(), hasText(c.getPasswordHash()),
-                c.getMaxMembers() == null ? 100 : c.getMaxMembers(),
-                c.getJoinPolicy(), c.getInvitePolicy(), Boolean.TRUE.equals(c.getAnonymousAllowed()),
-                Boolean.TRUE.equals(c.getAnonymousOnly()), Boolean.TRUE.equals(c.getRoomProfileRequired()),
-                objectMap(c.getSettingsJson()));
-    }
-
-    private ConversationMemberResponse toMemberResponse(ConversationMemberDetailRow row) {
-        return new ConversationMemberResponse(row.getUserId(),
-                Boolean.TRUE.equals(row.getAnonymous()) && hasText(row.getDisplayName())
-                        ? row.getDisplayName() : row.getUserName(),
-                Boolean.TRUE.equals(row.getAnonymous()) ? null : row.getUserEmail(),
-                row.getRole(), Boolean.TRUE.equals(row.getMuted()), row.getDisplayName(), row.getAvatarUrl(),
-                Boolean.TRUE.equals(row.getAnonymous()), permissions(row.getPermissionsJson()), row.getJoinedAt());
-    }
-
-    private ChatProfileResponse toChatProfileResponse(UserChatProfile profile) {
-        return new ChatProfileResponse(profile.getId(), profile.getNickname(), profile.getAvatarUrl(),
-                profile.getDescription(), profile.isDefaultProfile(), profile.getCreatedAt(), profile.getUpdatedAt());
-    }
-
-    private List<String> permissions(String json) {
-        if (json == null || json.isBlank()) {
-            return List.of();
-        }
-        try {
-            Object value = objectMapper.readValue(json, Object.class);
-            if (value instanceof List<?> list) {
-                return list.stream().map(String::valueOf).toList();
-            }
-        } catch (Exception ignored) {
-            return List.of();
-        }
-        return List.of();
-    }
-
-    @SuppressWarnings("unchecked")
-    private Map<String, Object> objectMap(String json) {
-        if (json == null || json.isBlank()) {
-            return Map.of();
-        }
-        try {
-            Object value = objectMapper.readValue(json, Object.class);
-            if (value instanceof Map<?, ?> map) {
-                return (Map<String, Object>) map;
-            }
-        } catch (Exception ignored) {
-            return Map.of();
-        }
-        return Map.of();
-    }
-
-    private String toJson(Object value) {
-        try {
-            return objectMapper.writeValueAsString(value);
-        } catch (JacksonException e) {
-            throw new BusinessException(ErrorCode.INVALID_INPUT, "채팅방 설정 JSON을 저장할 수 없습니다.");
-        }
     }
 
     private boolean isPaidPlan(String plan) {
@@ -1146,23 +1025,24 @@ public class CollaborationServiceImpl implements CollaborationService {
         String displayName = "DIRECT".equals(row.getType())
                 ? (row.getPeerName() == null ? "1:1 대화" : row.getPeerName())
                 : row.getTitle();
+        // 방 설정 진입 버튼 노출 힌트 — OWNER/MANAGER 면 노출하고, 실제 권한은 시트 조회에서 재검사한다.
+        String myRole = row.getMyRole();
+        boolean canManageRoom = !"DIRECT".equals(row.getType())
+                && ("OWNER".equals(myRole) || "MANAGER".equals(myRole));
         return new ConversationSummaryResponse(
                 row.getId(),
                 row.getType(),
                 row.getTitle(),
                 row.getDescription(),
-                row.getProfileImageUrl(),
                 displayName,
+                row.getImageFileId(),
+                row.getNotice(),
                 Boolean.TRUE.equals(row.getLocked()),
                 row.getMemberCount() == null ? 0 : row.getMemberCount(),
                 Boolean.TRUE.equals(row.getJoined()),
                 Boolean.TRUE.equals(row.getMuted()),
-                row.getRole(),
-                row.getJoinPolicy(),
-                row.getInvitePolicy(),
-                Boolean.TRUE.equals(row.getAnonymousAllowed()),
-                Boolean.TRUE.equals(row.getAnonymousOnly()),
-                Boolean.TRUE.equals(row.getRoomProfileRequired()),
+                myRole,
+                canManageRoom,
                 peer,
                 latest,
                 row.getUnreadCount(),
@@ -1171,12 +1051,14 @@ public class CollaborationServiceImpl implements CollaborationService {
 
     private MessageResponse toMessageResponse(CollaborationMessage message, Long viewerId) {
         List<MessageAttachmentRow> attachmentRows = mapper.findAttachmentsByMessageId(message.getId());
-        return toMessageResponse(message, viewerId, attachmentRows, desktopPresenceOf(attachmentRows));
+        return toMessageResponse(message, viewerId, attachmentRows, desktopPresenceOf(attachmentRows),
+                resolveSenderNames(List.of(message)));
     }
 
     private MessageResponse toMessageResponse(CollaborationMessage message, Long viewerId,
                                               List<MessageAttachmentRow> attachmentRows,
-                                              Map<Long, LocalDateTime> presenceByOwner) {
+                                              Map<Long, LocalDateTime> presenceByOwner,
+                                              Map<DisplayNameQuery, DisplayNameResponse> resolvedSenders) {
         List<MessageAttachmentResponse> attachments = attachmentRows.stream()
                 .map(row -> toAttachmentResponse(row, presenceByOwner))
                 .toList();
@@ -1186,7 +1068,7 @@ public class CollaborationServiceImpl implements CollaborationService {
         return new MessageResponse(
                 message.getId(),
                 message.getConversationId(),
-                new UserBriefResponse(message.getSenderId(), message.getSenderName(), message.getSenderEmail()),
+                senderBrief(message, resolvedSenders),
                 viewerId.equals(message.getSenderId()),
                 message.getKind(),
                 message.getContent(),
@@ -1200,11 +1082,12 @@ public class CollaborationServiceImpl implements CollaborationService {
      * 차단 발신자 메시지 톰스톤 — 본문은 안내 문구로 교체, 첨부/공고는 비운다.
      * (첨부·공고 조회 자체를 생략해 차단 콘텐츠가 응답에 실리지 않게 한다.)
      */
-    private MessageResponse toBlockedMessageResponse(CollaborationMessage message, Long viewerId) {
+    private MessageResponse toBlockedMessageResponse(CollaborationMessage message, Long viewerId,
+                                                     Map<DisplayNameQuery, DisplayNameResponse> resolvedSenders) {
         return new MessageResponse(
                 message.getId(),
                 message.getConversationId(),
-                new UserBriefResponse(message.getSenderId(), message.getSenderName(), message.getSenderEmail()),
+                senderBrief(message, resolvedSenders),
                 viewerId.equals(message.getSenderId()),
                 message.getKind(),
                 BLOCKED_MESSAGE_TOMBSTONE,
@@ -1212,6 +1095,36 @@ public class CollaborationServiceImpl implements CollaborationService {
                 List.of(),
                 message.getCreatedAt(),
                 true);
+    }
+
+    /**
+     * 발신자 표시 정보(UserBriefResponse) 해석.
+     *  - 방 익명 참가(cm.anonymous=1): 방 전용 닉네임(room_nickname) → 없으면 "익명".
+     *    익명성 보호를 위해 계정 id·이메일은 노출하지 않는다(id=null, email=null).
+     *  - 그 외: 방 전용 닉네임 프로필(conversation_member_profile) 우선 → 기본 프로필 → users.name.
+     */
+    private UserBriefResponse senderBrief(CollaborationMessage message,
+                                          Map<DisplayNameQuery, DisplayNameResponse> resolvedSenders) {
+        if (Boolean.TRUE.equals(message.getSenderAnonymous())) {
+            String label = hasText(message.getSenderRoomNickname())
+                    ? message.getSenderRoomNickname() : ANONYMOUS_LABEL;
+            return new UserBriefResponse(null, label, null);
+        }
+        DisplayNameResponse dn = resolvedSenders.get(
+                new DisplayNameQuery(message.getSenderId(), message.getSenderNicknameProfileId()));
+        String name = dn != null ? dn.displayName() : message.getSenderName();
+        return new UserBriefResponse(message.getSenderId(), name, message.getSenderEmail());
+    }
+
+    /** 목록의 비익명 발신자 (senderId, roomNicknameProfileId) 를 모아 표시명을 한 번에 해석한다. */
+    private Map<DisplayNameQuery, DisplayNameResponse> resolveSenderNames(List<CollaborationMessage> messages) {
+        Set<DisplayNameQuery> queries = new HashSet<>();
+        for (CollaborationMessage m : messages) {
+            if (!Boolean.TRUE.equals(m.getSenderAnonymous())) {
+                queries.add(new DisplayNameQuery(m.getSenderId(), m.getSenderNicknameProfileId()));
+            }
+        }
+        return nicknameProfileService.bulkResolveDisplayNames(queries);
     }
 
     private MessageAttachmentResponse toAttachmentResponse(MessageAttachmentRow row,
@@ -1284,5 +1197,307 @@ public class CollaborationServiceImpl implements CollaborationService {
                 row.getJobTitle(),
                 row.getDeadlineDate(),
                 row.getSourceType());
+    }
+
+    // ══════════════ 방 설정 / 관리자 위임 — 권한·감사·응답 조립 헬퍼 ══════════════
+
+    /** OWNER 는 전권, MANAGER 는 위임 플래그, 그 외는 시트 진입 불가. */
+    private record RoomAuthority(boolean owner, boolean canKick, boolean canBan, boolean canSetPassword,
+                                 boolean canInvite, boolean canEditRoom, boolean canManageMembers) {
+        static RoomAuthority ownerAll() {
+            return new RoomAuthority(true, true, true, true, true, true, true);
+        }
+
+        boolean canEnterSettings() {
+            return owner || canKick || canBan || canSetPassword || canInvite || canEditRoom || canManageMembers;
+        }
+    }
+
+    private CollaborationConversation requireManageableRoom(Long conversationId) {
+        CollaborationConversation conversation = requireConversation(conversationId);
+        if ("DIRECT".equals(conversation.getType())) {
+            throw new BusinessException(ErrorCode.INVALID_INPUT, "1:1 대화방은 설정을 관리할 수 없습니다.");
+        }
+        return conversation;
+    }
+
+    /**
+     * 방 설정 시트 진입 권한 — OWNER 는 전권, MANAGER 는 위임 플래그 중 하나라도 있어야 진입 가능.
+     * OWNER 자동 판정은 role 기준으로만(개설자 createdBy 와 별개로 role='OWNER' 을 신뢰).
+     */
+    private RoomAuthority requireSettingsAuthority(Long userId, CollaborationConversation conversation) {
+        String role = mapper.findMemberRole(conversation.getId(), userId);
+        if (role == null) {
+            throw new BusinessException(ErrorCode.FORBIDDEN, "대화방에 접근할 권한이 없습니다.");
+        }
+        if ("OWNER".equals(role)) {
+            return RoomAuthority.ownerAll();
+        }
+        if ("MANAGER".equals(role)) {
+            ConversationPermissionRow permission = mapper.findPermission(conversation.getId(), userId);
+            RoomAuthority authority = permission == null
+                    ? new RoomAuthority(false, false, false, false, false, false, false)
+                    : new RoomAuthority(false,
+                            Boolean.TRUE.equals(permission.getCanKick()),
+                            Boolean.TRUE.equals(permission.getCanBan()),
+                            Boolean.TRUE.equals(permission.getCanSetPassword()),
+                            Boolean.TRUE.equals(permission.getCanInvite()),
+                            Boolean.TRUE.equals(permission.getCanEditRoom()),
+                            Boolean.TRUE.equals(permission.getCanManageMembers()));
+            if (!authority.canEnterSettings()) {
+                throw new BusinessException(ErrorCode.FORBIDDEN, "방 설정을 열 권한이 없습니다.");
+            }
+            return authority;
+        }
+        throw new BusinessException(ErrorCode.FORBIDDEN, "방 설정은 개설자 또는 방 관리자만 열 수 있습니다.");
+    }
+
+    /** 초대 권한 정책 집행 — 정책별로 호출자의 role/권한/허용목록을 검사한다. */
+    private void requireInvitePermission(Long userId, CollaborationConversation conversation) {
+        String policy = conversation.getInvitePolicy() == null ? "ALL_MEMBERS" : conversation.getInvitePolicy();
+        String role = mapper.findMemberRole(conversation.getId(), userId);
+        boolean owner = "OWNER".equals(role);
+        boolean manager = "MANAGER".equals(role);
+        boolean allowed = switch (policy) {
+            case "OWNER_ONLY" -> owner;
+            case "MANAGERS" -> owner || (manager && managerHasInvite(conversation.getId(), userId));
+            case "SPECIFIC_MEMBERS" ->
+                    owner || mapper.countInviteAllow(conversation.getId(), userId) > 0;
+            default -> true; // ALL_MEMBERS
+        };
+        if (!allowed) {
+            throw new BusinessException(ErrorCode.FORBIDDEN, "이 채팅방에 멤버를 초대할 권한이 없습니다.");
+        }
+    }
+
+    private boolean managerHasInvite(Long conversationId, Long userId) {
+        ConversationPermissionRow permission = mapper.findPermission(conversationId, userId);
+        return permission != null && Boolean.TRUE.equals(permission.getCanInvite());
+    }
+
+    /** 강퇴/밴 대상 검사 — 존재하는 활성 멤버여야 하고, OWNER 는 대상이 될 수 없다. */
+    private ConversationMemberDetailRow requireModerableTarget(Long conversationId, Long actorId,
+                                                               Long targetUserId, RoomAuthority authority) {
+        if (targetUserId.equals(actorId)) {
+            throw new BusinessException(ErrorCode.INVALID_INPUT, "자기 자신은 처리할 수 없습니다.");
+        }
+        ConversationMemberDetailRow target = requireActiveMember(conversationId, targetUserId);
+        if ("OWNER".equals(target.getRole())) {
+            throw new BusinessException(ErrorCode.FORBIDDEN, "개설자는 강퇴하거나 차단할 수 없습니다.");
+        }
+        // MANAGER 대상은 OWNER 만 처리 가능(관리자끼리 상호 강퇴 방지)
+        if ("MANAGER".equals(target.getRole()) && !authority.owner()) {
+            throw new BusinessException(ErrorCode.FORBIDDEN, "다른 방 관리자는 개설자만 처리할 수 있습니다.");
+        }
+        return target;
+    }
+
+    private ConversationMemberDetailRow requireActiveMember(Long conversationId, Long targetUserId) {
+        ConversationMemberDetailRow target = mapper.findMemberDetail(conversationId, targetUserId);
+        if (target == null || !"ACTIVE".equals(target.getStatus())) {
+            throw new BusinessException(ErrorCode.NOT_FOUND, "대화방 멤버를 찾을 수 없습니다.");
+        }
+        return target;
+    }
+
+    private void requireOwnedFile(Long userId, Long fileId) {
+        FileAsset asset = fileAssetMapper.findById(fileId);
+        if (asset == null) {
+            throw new BusinessException(ErrorCode.NOT_FOUND, "방 프로필 이미지를 찾을 수 없습니다.");
+        }
+        if (!userId.equals(asset.getOwnerUserId())) {
+            throw new BusinessException(ErrorCode.FORBIDDEN, "본인이 업로드한 파일만 방 프로필로 지정할 수 있습니다.");
+        }
+    }
+
+    /** 비밀번호 설정/변경/해제 처리 — canSetPassword 권한 필요, PRIVATE 방에만 유효. */
+    private void applyPasswordAction(Long userId, Long conversationId, CollaborationConversation conversation,
+                                     ConversationSettingsUpdateRequest request, RoomAuthority authority,
+                                     String newType) {
+        String action = request.passwordAction() == null
+                ? null : request.passwordAction().trim().toUpperCase(Locale.ROOT);
+        // 공개→비공개 전환 시 비밀번호를 넘기면 자동 SET 으로 취급한다.
+        boolean privateAfter = "PRIVATE".equals(newType)
+                || (newType == null && "PRIVATE".equals(conversation.getType()));
+        if (action == null && hasText(request.password()) && privateAfter) {
+            action = "SET";
+        }
+        if (action == null) {
+            return;
+        }
+        if (!authority.canSetPassword()) {
+            throw new BusinessException(ErrorCode.FORBIDDEN, "비밀번호를 변경할 권한이 없습니다.");
+        }
+        switch (action) {
+            case "SET" -> {
+                if (!hasText(request.password())) {
+                    throw new BusinessException(ErrorCode.INVALID_INPUT, "설정할 비밀번호를 입력해 주세요.");
+                }
+                mapper.updateConversationPassword(conversationId, passwordEncoder.encode(request.password().trim()));
+                writeAudit(conversationId, userId, null, "PASSWORD_SET", null);
+            }
+            case "CLEAR" -> {
+                mapper.updateConversationPassword(conversationId, null);
+                writeAudit(conversationId, userId, null, "PASSWORD_CLEARED", null);
+            }
+            default -> throw new BusinessException(ErrorCode.INVALID_INPUT, "지원하지 않는 비밀번호 처리입니다.");
+        }
+    }
+
+    private ConversationSettingsResponse buildSettingsResponse(CollaborationConversation conversation,
+                                                               RoomAuthority authority) {
+        Long conversationId = conversation.getId();
+        List<ConversationMemberDetailResponse> members = mapper.findMemberDetails(conversationId).stream()
+                .map(this::toMemberDetailResponse)
+                .toList();
+        List<ConversationBanResponse> bans = mapper.findBans(conversationId).stream()
+                .map(this::toBanResponse)
+                .toList();
+        List<Long> inviteAllow = mapper.findInviteAllowUserIds(conversationId);
+        List<ConversationAuditResponse> audits = mapper.findAudits(conversationId, MAX_AUDIT_LIMIT).stream()
+                .map(this::toAuditResponse)
+                .toList();
+        return new ConversationSettingsResponse(
+                conversationId,
+                conversation.getType(),
+                conversation.getTitle(),
+                conversation.getDescription(),
+                conversation.getImageFileId(),
+                conversation.getNotice(),
+                "PRIVATE".equals(conversation.getType()) || conversation.getPasswordHash() != null,
+                conversation.getPasswordHash() != null,
+                conversation.getMaxMembers() == null ? 0 : conversation.getMaxMembers(),
+                conversation.getInvitePolicy() == null ? "ALL_MEMBERS" : conversation.getInvitePolicy(),
+                Boolean.TRUE.equals(conversation.getAllowAnonymous()),
+                Boolean.TRUE.equals(conversation.getAnonymousOnly()),
+                toPermissionResponse(authority),
+                members,
+                bans,
+                inviteAllow,
+                audits);
+    }
+
+    private ConversationPermissionResponse toPermissionResponse(RoomAuthority authority) {
+        return new ConversationPermissionResponse(
+                authority.owner(),
+                authority.canKick(),
+                authority.canBan(),
+                authority.canSetPassword(),
+                authority.canInvite(),
+                authority.canEditRoom(),
+                authority.canManageMembers());
+    }
+
+    private ConversationMemberDetailResponse toMemberDetailResponse(ConversationMemberDetailRow row) {
+        boolean owner = "OWNER".equals(row.getRole());
+        boolean anonymous = Boolean.TRUE.equals(row.getAnonymous());
+        // 익명 멤버는 실명·이메일 대신 방 전용 닉네임(없으면 익명 라벨)만 노출한다.
+        String displayName = anonymous
+                ? (hasText(row.getRoomNickname()) ? row.getRoomNickname() : ANONYMOUS_LABEL)
+                : (hasText(row.getName()) ? row.getName() : row.getEmail());
+        ConversationPermissionResponse permission = new ConversationPermissionResponse(
+                owner,
+                owner || Boolean.TRUE.equals(row.getCanKick()),
+                owner || Boolean.TRUE.equals(row.getCanBan()),
+                owner || Boolean.TRUE.equals(row.getCanSetPassword()),
+                owner || Boolean.TRUE.equals(row.getCanInvite()),
+                owner || Boolean.TRUE.equals(row.getCanEditRoom()),
+                owner || Boolean.TRUE.equals(row.getCanManageMembers()));
+        return new ConversationMemberDetailResponse(
+                row.getUserId(),
+                displayName,
+                anonymous ? null : row.getEmail(),
+                row.getRole(),
+                anonymous,
+                row.getRoomProfileFileId(),
+                row.getJoinedAt(),
+                permission,
+                Boolean.TRUE.equals(row.getBanned()));
+    }
+
+    private ConversationBanResponse toBanResponse(ConversationBanRow row) {
+        return new ConversationBanResponse(
+                row.getUserId(),
+                hasText(row.getName()) ? row.getName() : row.getEmail(),
+                row.getReason(),
+                row.getBannedBy(),
+                row.getCreatedAt());
+    }
+
+    private ConversationAuditResponse toAuditResponse(ConversationAuditRow row) {
+        return new ConversationAuditResponse(
+                row.getId(),
+                row.getActorId(),
+                row.getActorName(),
+                row.getTargetUserId(),
+                row.getTargetName(),
+                row.getAction(),
+                row.getDetail(),
+                row.getCreatedAt());
+    }
+
+    /** 방 활동 로그 기록 — best-effort. 로그 실패가 본 작업을 막지 않는다. */
+    private void writeAudit(Long conversationId, Long actorId, Long targetUserId, String action, String detail) {
+        try {
+            mapper.insertAudit(conversationId, actorId, targetUserId, action, detail);
+        } catch (RuntimeException ex) {
+            // 감사 로그 기록 실패는 무시 — 본 흐름에 영향 주지 않는다.
+        }
+    }
+
+    private String permissionAuditDetail(ConversationPermissionRow permission) {
+        StringBuilder builder = new StringBuilder();
+        appendFlag(builder, "강퇴", permission.getCanKick());
+        appendFlag(builder, "차단", permission.getCanBan());
+        appendFlag(builder, "비밀번호", permission.getCanSetPassword());
+        appendFlag(builder, "초대", permission.getCanInvite());
+        appendFlag(builder, "방편집", permission.getCanEditRoom());
+        appendFlag(builder, "멤버관리", permission.getCanManageMembers());
+        return builder.length() == 0 ? "권한 없음" : builder.toString();
+    }
+
+    private void appendFlag(StringBuilder builder, String label, Boolean value) {
+        if (Boolean.TRUE.equals(value)) {
+            if (builder.length() > 0) {
+                builder.append(", ");
+            }
+            builder.append(label);
+        }
+    }
+
+    private String settingsAuditDetail(ConversationSettingsUpdateRequest request, String newType) {
+        StringBuilder builder = new StringBuilder();
+        if (request.title() != null) {
+            appendChange(builder, "제목");
+        }
+        if (request.description() != null) {
+            appendChange(builder, "설명");
+        }
+        if (request.notice() != null) {
+            appendChange(builder, "공지");
+        }
+        if (request.imageFileId() != null) {
+            appendChange(builder, "프로필 사진");
+        }
+        if (newType != null) {
+            appendChange(builder, "공개 설정(" + newType + ")");
+        }
+        if (request.maxMembers() != null) {
+            appendChange(builder, "정원");
+        }
+        if (request.invitePolicy() != null) {
+            appendChange(builder, "초대 정책");
+        }
+        if (request.allowAnonymous() != null || request.anonymousOnly() != null) {
+            appendChange(builder, "익명 정책");
+        }
+        return builder.length() == 0 ? null : builder.toString();
+    }
+
+    private void appendChange(StringBuilder builder, String label) {
+        if (builder.length() > 0) {
+            builder.append(", ");
+        }
+        builder.append(label);
     }
 }

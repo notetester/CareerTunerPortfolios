@@ -1,0 +1,66 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.careertuner.reward.mapper.RewardMapper">
+
+    <select id="findEnabledRuleByEvent" resultType="com.careertuner.reward.domain.RewardRule">
+        SELECT id, event_code, name, point_amount, credit_amount, daily_cap,
+               enabled, description, sort_order, updated_by, created_at, updated_at
+          FROM reward_rule
+         WHERE event_code = #{eventCode}
+           AND enabled = 1
+    </select>
+
+    <select id="countTodayGrantsByEvent" resultType="int">
+        SELECT COUNT(*)
+          FROM user_reward_history
+         WHERE user_id = #{userId}
+           AND event_code = #{eventCode}
+           AND created_at >= CURDATE()
+           AND created_at &lt; CURDATE() + INTERVAL 1 DAY
+    </select>
+
+    <select id="findActiveLevelsOrdered" resultType="com.careertuner.reward.domain.UserLevelPolicy">
+        SELECT id, level, level_name, min_point, levelup_credit, levelup_coupon_code,
+               benefit_note, active, created_at, updated_at
+          FROM user_level_policy
+         WHERE active = 1
+         ORDER BY min_point ASC, level ASC
+    </select>
+
+    <select id="findAccount" resultType="com.careertuner.reward.domain.UserRewardAccount">
+        SELECT id AS user_id, activity_point, user_level, credit
+          FROM users
+         WHERE id = #{userId}
+    </select>
+
+    <update id="addActivityPoint">
+        UPDATE users
+           SET activity_point = activity_point + #{delta}
+         WHERE id = #{userId}
+    </update>
+
+    <update id="updateUserLevel">
+        UPDATE users
+           SET user_level = #{level}
+         WHERE id = #{userId}
+    </update>
+
+    <insert id="insertHistory" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO user_reward_history
+            (user_id, event_code, point_delta, credit_delta, level_before, level_after,
+             ref_type, ref_id, reason)
+        VALUES
+            (#{userId}, #{eventCode}, #{pointDelta}, #{creditDelta}, #{levelBefore}, #{levelAfter},
+             #{refType}, #{refId}, #{reason})
+    </insert>
+
+    <select id="findRecentHistoryByUser" resultType="com.careertuner.reward.domain.UserRewardHistory">
+        SELECT id, user_id, event_code, point_delta, credit_delta, level_before, level_after,
+               ref_type, ref_id, reason, created_at
+          FROM user_reward_history
+         WHERE user_id = #{userId}
+         ORDER BY created_at DESC, id DESC
+         LIMIT #{limit}
+    </select>
+</mapper>

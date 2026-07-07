@@ -60,3 +60,19 @@ export interface AdminPermissionAuditRow {
   reason: string | null;
   createdAt: string;
 }
+
+export interface AdminPermissionRequest {
+  id: number;
+  userId: number;
+  userName: string | null;
+  userEmail: string | null;
+  permissionCode: string;
+  permissionName: string | null;
+  description: string | null;
+  status: string;
+  requestedBy: number | null;
+  requestedByName: string | null;
+  decidedBy: number | null;
+  decidedAt: string | null;
+  createdAt: string;
+}

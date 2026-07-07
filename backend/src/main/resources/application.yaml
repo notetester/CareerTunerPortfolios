@@ -84,6 +84,31 @@ careertuner:
     sender-name: ${MAIL_SENDER_NAME:CareerTuner}
     # SMTP(username) 미설정 시 실제 발송 대신 인증 링크를 로그로 출력하는 개발 모드.
     dev-mode: ${MAIL_DEV_MODE:true}
+  sms:
+    # 전화번호 SMS OTP 인증. provider 기본 mock — 키가 없으면 Mock 제공자가 코드를 로깅하고
+    # 응답 devCode 로 노출해 발송→입력→검증 전 과정을 키 없이도 데모할 수 있다.
+    # 실 제공자(aligo/twilio/naver-sens) 키를 채우고 SMS_PROVIDER 로 지정하면 즉시 실 발송된다.
+    provider: ${SMS_PROVIDER:mock}
+    otp-validity-seconds: ${SMS_OTP_VALIDITY_SECONDS:300}
+    max-attempts: ${SMS_MAX_ATTEMPTS:5}
+    cooldown-seconds: ${SMS_COOLDOWN_SECONDS:60}
+    sender-phone: ${SMS_SENDER_PHONE:}
+    aligo:
+      api-key: ${SMS_ALIGO_API_KEY:}
+      user-id: ${SMS_ALIGO_USER_ID:}
+      sender: ${SMS_ALIGO_SENDER:}
+      base-url: ${SMS_ALIGO_BASE_URL:https://apis.aligo.in}
+    twilio:
+      account-sid: ${SMS_TWILIO_ACCOUNT_SID:}
+      auth-token: ${SMS_TWILIO_AUTH_TOKEN:}
+      from: ${SMS_TWILIO_FROM:}
+      base-url: ${SMS_TWILIO_BASE_URL:https://api.twilio.com/2010-04-01}
+    naver-sens:
+      access-key: ${SMS_NAVER_ACCESS_KEY:}
+      secret-key: ${SMS_NAVER_SECRET_KEY:}
+      service-id: ${SMS_NAVER_SERVICE_ID:}
+      from: ${SMS_NAVER_FROM:}
+      base-url: ${SMS_NAVER_BASE_URL:https://sens.apigw.ntruss.com}
   openai:
     api-key: ${OPENAI_API_KEY:}
     model: ${OPENAI_MODEL:gpt-5}
@@ -134,7 +159,7 @@ careertuner:
     open-ai-model: ${CHAT_LLM_OPENAI_MODEL:gpt-4o-mini}
   uploads:
     job-posting-dir: ${JOB_POSTING_UPLOAD_DIR:.uploads/application-postings}
-    max-file-size-bytes: ${JOB_POSTING_MAX_FILE_SIZE_BYTES:5242880}
+    max-file-size-bytes: ${JOB_POSTING_MAX_FILE_SIZE_BYTES:10485760}
   extraction:
     ai-worker:
       enabled: ${JOB_POSTING_AI_WORKER_ENABLED:false}
@@ -150,6 +175,12 @@ careertuner:
       read-timeout: ${B_ANALYSIS_OLLAMA_READ_TIMEOUT:480s}
       num-ctx: ${B_ANALYSIS_OLLAMA_NUM_CTX:8192}
       num-predict: ${B_ANALYSIS_OLLAMA_NUM_PREDICT:2048}
+  # 기업분석 웹검색 활성 스위치(235 §11 팀장 승인 2026-07-03 · PR #238 · 후속 폴리시 #242).
+  # 기본 ON — env(CAREERTUNER_COMPANY_WEBSEARCH_ENABLED)로 환경별 override 가능.
+  # 네이버 키(NAVER_SEARCH_CLIENT_ID/_SECRET) 미설정·검색 실패 시 안전하게 공고-only 로 degrade(D-4c).
+  # 분석 1건당 비용 상한(검색 4회/결과 12건)은 코드 기본값 사용.
+  company-websearch:
+    enabled: ${CAREERTUNER_COMPANY_WEBSEARCH_ENABLED:true}
   file:
     # 면접 음성/영상 등 업로드 파일 저장 위치. 큰 영상은 SPRING_SERVLET_MULTIPART_MAX_FILE_SIZE 도 함께 올린다.
     media-dir: ${MEDIA_UPLOAD_DIR:.uploads/media}
@@ -245,6 +276,13 @@ langchain4j:
       #   컨트롤러에 파싱 폴백을 둔다. 이러면 툴 호출이 정상 동작한다.
       log-requests: true
       log-responses: true
+
+# ─── 커뮤니티 개인화 피드(7:3 혼합) ───
+# personalized-ratio 만 조정하면 개인화:신선/인기 비율이 바뀐다(0.7 → 7:3). 범위를 벗어나면 서비스가 0.7 로 보정.
+community:
+  feed:
+    personalized-ratio: ${COMMUNITY_FEED_PERSONALIZED_RATIO:0.7}
+    candidate-limit: ${COMMUNITY_FEED_CANDIDATE_LIMIT:300}
 
 logging:
   level:

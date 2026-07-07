@@ -15,21 +15,20 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.careertuner.collaboration.dto.CollaborationUserResponse;
-import com.careertuner.collaboration.dto.ChatProfileRequest;
-import com.careertuner.collaboration.dto.ChatProfileResponse;
+import com.careertuner.collaboration.dto.ConversationBanRequest;
+import com.careertuner.collaboration.dto.ConversationInviteAllowRequest;
 import com.careertuner.collaboration.dto.ConversationMuteRequest;
-import com.careertuner.collaboration.dto.ConversationMemberActionRequest;
-import com.careertuner.collaboration.dto.ConversationMemberResponse;
-import com.careertuner.collaboration.dto.ConversationMemberUpdateRequest;
-import com.careertuner.collaboration.dto.ConversationSummaryResponse;
-import com.careertuner.collaboration.dto.ConversationSettingsRequest;
+import com.careertuner.collaboration.dto.ConversationPermissionUpdateRequest;
 import com.careertuner.collaboration.dto.ConversationSettingsResponse;
+import com.careertuner.collaboration.dto.ConversationSettingsUpdateRequest;
+import com.careertuner.collaboration.dto.ConversationSummaryResponse;
 import com.careertuner.collaboration.dto.CreateConversationRequest;
 import com.careertuner.collaboration.dto.DirectConversationRequest;
 import com.careertuner.collaboration.dto.FriendRequestCreateRequest;
@@ -174,81 +173,75 @@ public class CollaborationController {
                 collaborationService.setConversationMuted(authUser.id(), conversationId, request.muted()));
     }
 
+    /** 데스크톱 앱 heartbeat — LOCAL 파일 공유 다운로드 게이트의 presence 를 갱신한다(30초 폴링 틱마다 호출). */
+    @PostMapping("/desktop-presence")
+    public ApiResponse<Void> touchDesktopPresence(@AuthenticationPrincipal AuthUser authUser) {
+        collaborationService.touchDesktopPresence(authUser.id());
+        return ApiResponse.ok();
+    }
+
+    // ── 방 설정 / 관리자 위임 (W5) — OWNER 및 위임받은 MANAGER 만 ──
+
     @GetMapping("/conversations/{conversationId}/settings")
-    public ApiResponse<ConversationSettingsResponse> settings(
+    public ApiResponse<ConversationSettingsResponse> conversationSettings(
             @PathVariable Long conversationId,
             @AuthenticationPrincipal AuthUser authUser) {
         return ApiResponse.ok(collaborationService.getConversationSettings(authUser.id(), conversationId));
     }
 
     @PatchMapping("/conversations/{conversationId}/settings")
-    public ApiResponse<ConversationSettingsResponse> updateSettings(
+    public ApiResponse<ConversationSettingsResponse> updateConversationSettings(
             @PathVariable Long conversationId,
-            @Validated @RequestBody ConversationSettingsRequest request,
+            @Validated @RequestBody ConversationSettingsUpdateRequest request,
             @AuthenticationPrincipal AuthUser authUser) {
-        return ApiResponse.ok(collaborationService.updateConversationSettings(authUser.id(), conversationId, request));
+        return ApiResponse.ok(
+                collaborationService.updateConversationSettings(authUser.id(), conversationId, request));
     }
 
-    @GetMapping("/conversations/{conversationId}/members")
-    public ApiResponse<List<ConversationMemberResponse>> members(
-            @PathVariable Long conversationId,
-            @AuthenticationPrincipal AuthUser authUser) {
-        return ApiResponse.ok(collaborationService.listConversationMembers(authUser.id(), conversationId));
-    }
-
-    @PatchMapping("/conversations/{conversationId}/members/{targetUserId}")
-    public ApiResponse<ConversationMemberResponse> updateMember(
+    @PatchMapping("/conversations/{conversationId}/members/{targetUserId}/permission")
+    public ApiResponse<ConversationSettingsResponse> updateMemberPermission(
             @PathVariable Long conversationId,
             @PathVariable Long targetUserId,
-            @RequestBody ConversationMemberUpdateRequest request,
+            @Validated @RequestBody ConversationPermissionUpdateRequest request,
             @AuthenticationPrincipal AuthUser authUser) {
-        return ApiResponse.ok(collaborationService.updateConversationMember(
+        return ApiResponse.ok(collaborationService.updateMemberPermission(
                 authUser.id(), conversationId, targetUserId, request));
     }
 
+    /** 일반 강퇴(재입장 가능). */
     @PostMapping("/conversations/{conversationId}/members/{targetUserId}/kick")
-    public ApiResponse<Void> kickMember(
+    public ApiResponse<ConversationSettingsResponse> kickMember(
             @PathVariable Long conversationId,
             @PathVariable Long targetUserId,
-            @RequestBody(required = false) ConversationMemberActionRequest request,
             @AuthenticationPrincipal AuthUser authUser) {
-        collaborationService.kickConversationMember(authUser.id(), conversationId, targetUserId, request);
-        return ApiResponse.ok();
+        return ApiResponse.ok(collaborationService.kickMember(authUser.id(), conversationId, targetUserId));
     }
 
-    @GetMapping("/chat-profiles")
-    public ApiResponse<List<ChatProfileResponse>> chatProfiles(@AuthenticationPrincipal AuthUser authUser) {
-        return ApiResponse.ok(collaborationService.listChatProfiles(authUser.id()));
-    }
-
-    @PostMapping("/chat-profiles")
-    public ApiResponse<ChatProfileResponse> createChatProfile(
-            @RequestBody ChatProfileRequest request,
+    /** 재입장불가 강퇴(ban). */
+    @PostMapping("/conversations/{conversationId}/members/{targetUserId}/ban")
+    public ApiResponse<ConversationSettingsResponse> banMember(
+            @PathVariable Long conversationId,
+            @PathVariable Long targetUserId,
+            @Validated @RequestBody ConversationBanRequest request,
             @AuthenticationPrincipal AuthUser authUser) {
-        return ApiResponse.ok(collaborationService.createChatProfile(authUser.id(), request));
+        return ApiResponse.ok(collaborationService.banMember(authUser.id(), conversationId, targetUserId, request));
     }
 
-    @PatchMapping("/chat-profiles/{profileId}")
-    public ApiResponse<ChatProfileResponse> updateChatProfile(
-            @PathVariable Long profileId,
-            @RequestBody ChatProfileRequest request,
+    @DeleteMapping("/conversations/{conversationId}/bans/{targetUserId}")
+    public ApiResponse<ConversationSettingsResponse> unbanMember(
+            @PathVariable Long conversationId,
+            @PathVariable Long targetUserId,
             @AuthenticationPrincipal AuthUser authUser) {
-        return ApiResponse.ok(collaborationService.updateChatProfile(authUser.id(), profileId, request));
+        return ApiResponse.ok(collaborationService.unbanMember(authUser.id(), conversationId, targetUserId));
     }
 
-    @DeleteMapping("/chat-profiles/{profileId}")
-    public ApiResponse<Void> deleteChatProfile(
-            @PathVariable Long profileId,
+    /** SPECIFIC_MEMBERS 초대 정책의 허용 멤버 목록 설정(전체 교체). */
+    @PutMapping("/conversations/{conversationId}/invite-allowlist")
+    public ApiResponse<ConversationSettingsResponse> setInviteAllowList(
+            @PathVariable Long conversationId,
+            @Validated @RequestBody ConversationInviteAllowRequest request,
             @AuthenticationPrincipal AuthUser authUser) {
-        collaborationService.deleteChatProfile(authUser.id(), profileId);
-        return ApiResponse.ok();
-    }
-
-    /** 데스크톱 앱 heartbeat — LOCAL 파일 공유 다운로드 게이트의 presence 를 갱신한다(30초 폴링 틱마다 호출). */
-    @PostMapping("/desktop-presence")
-    public ApiResponse<Void> touchDesktopPresence(@AuthenticationPrincipal AuthUser authUser) {
-        collaborationService.touchDesktopPresence(authUser.id());
-        return ApiResponse.ok();
+        return ApiResponse.ok(collaborationService.setInviteAllowList(authUser.id(), conversationId, request));
     }
 
     @GetMapping("/files/{fileId}/content")

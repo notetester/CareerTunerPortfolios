@@ -44,6 +44,13 @@ public final class PrivacySurfaces {
     public static final String PROFILE_VIEW_ME = "profile.viewMe";
     public static final String PROFILE_VISIBLE_TO_ME = "profile.visibleToMe";
     public static final String PROFILE_SEARCH_ME = "profile.searchMe";
+    /* 내 활동 목록 공개 — 상대(관계별)가 내 프로필에서 볼 수 있는 항목 */
+    public static final String ACTIVITY_POSTS = "activity.posts";
+    public static final String ACTIVITY_COMMENTS = "activity.comments";
+    public static final String ACTIVITY_REPLIES = "activity.replies";
+    public static final String ACTIVITY_LIKES = "activity.likes";
+    public static final String ACTIVITY_BOOKMARKS = "activity.bookmarks";
+    public static final String ACTIVITY_SCRAPS = "activity.scraps";
 
     /** UI 매트릭스의 기본 행(베이스 키). 상세 키는 이 아래로 상속된다. */
     public static final List<String> BASE_SURFACES = List.of(
@@ -51,7 +58,9 @@ public final class PrivacySurfaces {
             INVITE,
             CONTENT_POST, CONTENT_COMMENT, CONTENT_REPLY, CONTENT_ROOM_MESSAGE,
             CONTENT_ALL_ANONYMOUS_ROOM_MESSAGES,
-            PROFILE_VIEW_ME, PROFILE_VISIBLE_TO_ME, PROFILE_SEARCH_ME);
+            PROFILE_VIEW_ME, PROFILE_VISIBLE_TO_ME, PROFILE_SEARCH_ME,
+            ACTIVITY_POSTS, ACTIVITY_COMMENTS, ACTIVITY_REPLIES,
+            ACTIVITY_LIKES, ACTIVITY_BOOKMARKS, ACTIVITY_SCRAPS);
 
     /** 저장을 허용하는 표면 키 전체(상세 포함) 검증 패턴. */
     public static final Pattern SURFACE_KEY = Pattern.compile(
@@ -59,7 +68,8 @@ public final class PrivacySurfaces {
                     + "|invite(\\.(GROUP|PUBLIC|PRIVATE)(\\.(creator|member)(\\.anonymous)?)?)?"
                     + "|content\\.(post|comment|reply|roomMessage)(\\.anonymous)?"
                     + "|content\\.allAnonymousRoomMessages"
-                    + "|profile\\.(viewMe|visibleToMe|searchMe))$");
+                    + "|profile\\.(viewMe|visibleToMe|searchMe)"
+                    + "|activity\\.(posts|comments|replies|likes|bookmarks|scraps))$");
 
     /* 채팅방 차단 파생 플래그 (conversation_block.flags_json) */
     public static final String ROOM_INVITE_FROM_ROOM = "inviteFromRoom";

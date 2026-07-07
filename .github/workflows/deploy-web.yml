@@ -1,0 +1,107 @@
+name: Deploy web frontend to EC2
+
+# dev 에 프런트 변경이 push 되면 웹(careertuner.kro.kr) 정적 산출물을 갱신한다:
+#   ① 러너에서 dist 빌드(기본 모드 — nginx 가 같은 도메인에서 서빙하므로 상대경로 /api)
+#   ② dist 를 EC2 스테이징으로 전송 → nginx root 를 탐지해 원자적으로 교체
+#
+# 그동안 웹 dist 는 수동 업로드였다(백엔드만 CD). 이 워크플로우가 웹까지 CD 로 맞춘다.
+# ⚠️ 인프라(공통 영역) 산출물 — dev 반영 전 팀 합의 필요.
+# 배포 secret 은 deploy-backend 와 동일한 EC2_HOST/EC2_USER/EC2_SSH_KEY 를 재사용한다.
+
+on:
+  push:
+    branches: [dev]
+    paths:
+      - 'frontend/**'
+      - '.github/workflows/deploy-web.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-web
+  cancel-in-progress: true   # 정적 산출물 교체라 최신 실행만 의미 있음
+
+jobs:
+  build-deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Set up Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Build web dist (기본 모드 — 상대경로 /api)
+        working-directory: frontend
+        run: npm run build
+
+      - name: Check dist for obvious secrets
+        run: |
+          echo "Scanning frontend/dist before publishing..."
+          if grep -RInE "YOUR_DB_PASSWORD|dbuser|jdbc:mysql|DB_PASSWORD|JWT_SECRET|OPENAI_API_KEY|client_secret|client-secret|54\.[0-9]+\.[0-9]+\.[0-9]+" frontend/dist; then
+            echo "::error::Potential secret found in dist. Stop deployment."
+            exit 1
+          fi
+          test -f frontend/dist/index.html
+
+      - name: Verify deploy secrets are configured
+        env:
+          EC2_HOST: ${{ secrets.EC2_HOST }}
+          EC2_USER: ${{ secrets.EC2_USER }}
+          EC2_SSH_KEY: ${{ secrets.EC2_SSH_KEY }}
+        run: |
+          missing=""
+          [ -z "$EC2_HOST" ]    && missing="$missing EC2_HOST"
+          [ -z "$EC2_USER" ]    && missing="$missing EC2_USER"
+          [ -z "$EC2_SSH_KEY" ] && missing="$missing EC2_SSH_KEY"
+          if [ -n "$missing" ]; then
+            echo "::error::배포 secret 미설정 →$missing"
+            exit 1
+          fi
+          echo "배포 secret 확인됨(값 미출력)."
+
+      - name: Copy dist to EC2 staging
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USER }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          source: "frontend/dist"
+          target: "~/careertuner/web-staging"
+          strip_components: 2   # frontend/dist/ 접두어 제거 → 스테이징에 dist 내용물만
+          rm: true              # 이전 스테이징 잔여(구 해시 에셋) 제거
+
+      - name: Swap into nginx root
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USER }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          script: |
+            set -e
+            STAGING="$HOME/careertuner/web-staging"
+            test -f "$STAGING/index.html" || { echo "::error::스테이징에 index.html 없음"; exit 1; }
+            # nginx root 탐지 — sites-enabled 의 첫 root 지시자. 오탐 방지로 기존 index.html 존재까지 확인.
+            ROOT=$(grep -RhoP '^\s*root\s+\K[^;]+' /etc/nginx/sites-enabled/ 2>/dev/null | head -1 | xargs)
+            if [ -z "$ROOT" ] || [ ! -f "$ROOT/index.html" ]; then
+              echo "::error::nginx root 미확인(ROOT='$ROOT') — /etc/nginx/sites-enabled 수동 확인 필요"
+              exit 1
+            fi
+            # 롤백용 백업(최근 3개 유지)
+            sudo tar -czf "$HOME/careertuner/web-backup-$(date +%Y%m%d%H%M%S).tar.gz" -C "$ROOT" .
+            ls -t "$HOME"/careertuner/web-backup-*.tar.gz 2>/dev/null | tail -n +4 | xargs -r rm -f
+            # 원자적 교체에 준하는 rsync --delete (해시 에셋이라 실질 충돌 없음)
+            sudo rsync -a --delete "$STAGING"/ "$ROOT"/
+            echo "deployed to $ROOT"
+            # 헬스체크 — index 서빙 확인(실패해도 백업 tar 로 수동 롤백 가능)
+            curl -fsS -o /dev/null http://localhost/ && echo "web OK"

@@ -23,6 +23,90 @@
         ) login_stats ON login_stats.user_id = u.id
     </sql>
 
+<!-- ═══════════ 공통 그리드 계약(검색/카운트/내보내기/선택조회) ═══════════
+     ORDER BY 는 <choose> 화이트리스트 매핑만 사용하고, ${} 보간은
+     서비스에서 ASC/DESC 로 강제된 sortDir 에만 허용한다(리뷰 체크리스트). -->
+
+    <sql id="userSearchBase">
+        <where>
+            <if test="keyword != null">
+                <choose>
+                    <when test="searchType == 'email'">
+                        AND u.email LIKE CONCAT('%', #{keyword}, '%')
+                    </when>
+                    <when test="searchType == 'name'">
+                        AND u.name LIKE CONCAT('%', #{keyword}, '%')
+                    </when>
+                    <otherwise>
+                        AND (u.email LIKE CONCAT('%', #{keyword}, '%')
+                             OR u.name LIKE CONCAT('%', #{keyword}, '%'))
+                    </otherwise>
+                </choose>
+            </if>
+            <if test="status != null">
+                AND u.status = #{status}
+            </if>
+            <if test="role != null">
+                AND u.role = #{role}
+            </if>
+            <if test="dateFrom != null">
+                AND u.created_at &gt;= #{dateFrom}
+            </if>
+            <if test="dateToExclusive != null">
+                AND u.created_at &lt; #{dateToExclusive}
+            </if>
+        </where>
+    </sql>
+
+    <sql id="userOrderBy">
+        ORDER BY
+        <choose>
+            <when test="sortBy == 'email'">u.email ${sortDir}</when>
+            <when test="sortBy == 'name'">u.name ${sortDir}</when>
+            <when test="sortBy == 'status'">u.status ${sortDir}</when>
+            <when test="sortBy == 'role'">u.role ${sortDir}</when>
+            <when test="sortBy == 'plan'">u.plan ${sortDir}</when>
+            <when test="sortBy == 'credit'">u.credit ${sortDir}</when>
+            <when test="sortBy == 'lastLoginAt'">u.last_login_at ${sortDir}</when>
+            <when test="sortBy == 'loginFailCount'">login_fail_count ${sortDir}</when>
+            <otherwise>u.created_at ${sortDir}</otherwise>
+        </choose>
+        , u.id DESC
+    </sql>
+
+    <select id="countUsers" resultType="long">
+        SELECT COUNT(*)
+        FROM users u
+        <include refid="userSearchBase" />
+    </select>
+
+    <select id="searchUsers" resultType="com.careertuner.admin.user.dto.AdminUserRow">
+        SELECT <include refid="userColumns" />
+        FROM users u
+        <include refid="loginStatsJoin" />
+        <include refid="userSearchBase" />
+        <include refid="userOrderBy" />
+        LIMIT #{size} OFFSET #{offset}
+    </select>
+
+    <select id="findUsersForExport" resultType="com.careertuner.admin.user.dto.AdminUserRow">
+        SELECT <include refid="userColumns" />
+        FROM users u
+        <include refid="loginStatsJoin" />
+        <include refid="userSearchBase" />
+        <include refid="userOrderBy" />
+        LIMIT #{exportLimit}
+    </select>
+
+    <select id="findUsersByIds" resultType="com.careertuner.admin.user.dto.AdminUserRow">
+        SELECT <include refid="userColumns" />
+        FROM users u
+        <include refid="loginStatsJoin" />
+        WHERE u.id IN
+        <foreach collection="ids" item="id" open="(" separator="," close=")">#{id}</foreach>
+        <include refid="userOrderBy" />
+    </select>
+
     <select id="findUsers" resultType="com.careertuner.admin.user.dto.AdminUserRow">
         SELECT <include refid="userColumns" />
         FROM users u

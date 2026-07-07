@@ -20,5 +20,6 @@ public interface CommunityPostService {
 
     void deletePost(Long postId, Long userId);
 
-    List<HotPostResponse> getHotPosts();
+    /** viewerId(nullable): 뷰어가 차단한 작성자의 인기글 제외 — 비로그인은 무필터. */
+    List<HotPostResponse> getHotPosts(Long viewerId);
 }

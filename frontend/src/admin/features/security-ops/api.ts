@@ -1,5 +1,8 @@
 import { api } from "@/app/lib/api";
 import type {
+  BlockCacheStatus,
+  IpBlockBatch,
+  PolicyFeedImportResult,
   SecurityAppeal,
   SecurityAppealPolicy,
   SecurityBlockRule,
@@ -99,4 +102,48 @@ export function decideAppeal(id: number, payload: { status: string; decisionReas
     method: "PATCH",
     body: JSON.stringify(payload),
   });
+}
+
+export function getBlockCacheStatus(): Promise<BlockCacheStatus> {
+  return api<BlockCacheStatus>("/admin/security/block-cache/status");
+}
+
+export function syncBlockCache(): Promise<BlockCacheStatus> {
+  return api<BlockCacheStatus>("/admin/security/block-cache/sync", { method: "POST" });
+}
+
+export function getBlockBatches(): Promise<IpBlockBatch[]> {
+  return api<IpBlockBatch[]>("/admin/security/block-batches?limit=200");
+}
+
+export function toggleBlockBatch(id: number, active: boolean, strategy = "BATCH_ONLY"): Promise<IpBlockBatch> {
+  return api<IpBlockBatch>(`/admin/security/block-batches/${id}/toggle?active=${active}&strategy=${strategy}`, {
+    method: "POST",
+  });
+}
+
+export function uploadPolicyFeed(
+  file: File,
+  opts: { sourceName?: string; action?: string; category?: string } = {},
+): Promise<PolicyFeedImportResult> {
+  const form = new FormData();
+  form.append("file", file);
+  if (opts.sourceName) form.append("sourceName", opts.sourceName);
+  if (opts.action) form.append("action", opts.action);
+  if (opts.category) form.append("category", opts.category);
+  return api<PolicyFeedImportResult>("/admin/security/policy-feed/upload", { method: "POST", body: form });
+}
+
+export function importPolicyFeedText(
+  rawText: string,
+  opts: { sourceName?: string; action?: string; category?: string } = {},
+): Promise<PolicyFeedImportResult> {
+  return api<PolicyFeedImportResult>("/admin/security/policy-feed/import", {
+    method: "POST",
+    body: JSON.stringify({ rawText, sourceName: opts.sourceName, action: opts.action ?? "BLOCK", category: opts.category ?? "SECURITY" }),
+  });
+}
+
+export function processWafSync(): Promise<number> {
+  return api<number>("/admin/security/waf-sync/process", { method: "POST" });
 }

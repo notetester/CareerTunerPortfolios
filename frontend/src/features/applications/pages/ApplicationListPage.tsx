@@ -26,7 +26,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/app/components/ui/select";
-import { restoreApplicationCase, updateApplicationCase } from "../api/applicationCasesApi";
+import { hideApplicationCaseFromTrash, restoreApplicationCase, updateApplicationCase } from "../api/applicationCasesApi";
 import { ApplicationStatusBadge } from "../components/ApplicationStatusBadge";
 import { LoginRequiredState } from "../components/LoginRequiredState";
 import { useApplicationCases } from "../hooks/useApplicationCases";
@@ -102,6 +102,7 @@ function ApplicationCard({
   mode,
   onToggleFavorite,
   onRestore,
+  onHideFromTrash,
   onRetryExtraction,
 }: {
   applicationCase: ApplicationCase;
@@ -111,18 +112,14 @@ function ApplicationCard({
   mode: ListMode;
   onToggleFavorite(applicationCase: ApplicationCase): void;
   onRestore(applicationCase: ApplicationCase): void;
+  onHideFromTrash(applicationCase: ApplicationCase): void;
   onRetryExtraction(applicationCase: ApplicationCase): void;
 }) {
   const isTrash = mode === "trash";
   const title = (
-    <div className="flex items-center gap-3">
-      <div className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-foreground text-sm font-bold text-background">
-        {applicationCase.companyName.slice(0, 1)}
-      </div>
-      <div className="min-w-0">
-        <div className="truncate text-sm font-bold text-slate-900">{applicationCase.companyName}</div>
-        <div className="truncate text-xs text-slate-500">{applicationCase.jobTitle}</div>
-      </div>
+    <div className="min-w-0">
+      <div className="truncate text-sm font-bold text-slate-900">{applicationCase.companyName}</div>
+      <div className="truncate text-xs text-slate-500">{applicationCase.jobTitle}</div>
     </div>
   );
 
@@ -138,17 +135,29 @@ function ApplicationCard({
             </Link>
           )}
           {isTrash ? (
-            <Button
-              type="button"
-              size="sm"
-              variant="outline"
-              className="shrink-0"
-              disabled={busy}
-              onClick={() => onRestore(applicationCase)}
-            >
-              <ArchiveRestore className="size-4" />
-              복원
-            </Button>
+            <div className="flex shrink-0 gap-2">
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                disabled={busy}
+                onClick={() => onRestore(applicationCase)}
+              >
+                <ArchiveRestore className="size-4" />
+                복원
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                className="border-red-200 text-red-700 hover:bg-red-50 hover:text-red-800"
+                disabled={busy}
+                onClick={() => onHideFromTrash(applicationCase)}
+              >
+                <Trash2 className="size-4" />
+                완전 삭제
+              </Button>
+            </div>
           ) : (
             <button
               type="button"
@@ -317,6 +326,23 @@ export function ApplicationListPage({ mode = "active" }: { mode?: ListMode }) {
       setApplicationCases((items) => items.filter((item) => item.id !== applicationCase.id));
     } catch (err) {
       setActionError(err instanceof Error ? err.message : "지원 건을 복원하지 못했습니다.");
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  const handleHideFromTrash = async (applicationCase: ApplicationCase) => {
+    const ok = window.confirm(
+      `'${applicationCase.companyName}' 지원 건을 삭제함에서 완전히 지웁니다.\n삭제함 목록에서도 더 이상 보이지 않습니다. 계속할까요?`,
+    );
+    if (!ok) return;
+    setBusyId(applicationCase.id);
+    setActionError(null);
+    try {
+      await hideApplicationCaseFromTrash(applicationCase.id);
+      setApplicationCases((items) => items.filter((item) => item.id !== applicationCase.id));
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : "지원 건을 완전히 삭제하지 못했습니다.");
     } finally {
       setBusyId(null);
     }
@@ -547,6 +573,7 @@ export function ApplicationListPage({ mode = "active" }: { mode?: ListMode }) {
                 mode={mode}
                 onToggleFavorite={(item) => void handleToggleFavorite(item)}
                 onRestore={(item) => void handleRestore(item)}
+                onHideFromTrash={(item) => void handleHideFromTrash(item)}
                 onRetryExtraction={(item) => void retryExtraction(item.id)}
               />
             ))}

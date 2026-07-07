@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.careertuner.sms.SmsOtpMapper">
+
+    <insert id="insert" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO sms_otp_code (user_id, phone, code, attempt_count, max_attempts, expires_at)
+        VALUES (#{userId}, #{phone}, #{code}, #{attemptCount}, #{maxAttempts}, #{expiresAt})
+    </insert>
+
+    <!-- 미검증·미만료 중 가장 최근 발급된 코드 1건 -->
+    <select id="findLatestActive" resultType="com.careertuner.sms.SmsOtpCode">
+        SELECT *
+        FROM sms_otp_code
+        WHERE user_id = #{userId}
+          AND phone = #{phone}
+          AND verified_at IS NULL
+          AND expires_at &gt; NOW()
+        ORDER BY id DESC
+        LIMIT 1
+    </select>
+
+    <select id="findLastIssuedAt" resultType="java.time.LocalDateTime">
+        SELECT created_at
+        FROM sms_otp_code
+        WHERE user_id = #{userId}
+          AND phone = #{phone}
+        ORDER BY id DESC
+        LIMIT 1
+    </select>
+
+    <update id="increaseAttempt">
+        UPDATE sms_otp_code
+        SET attempt_count = attempt_count + 1
+        WHERE id = #{id}
+    </update>
+
+    <update id="markVerified">
+        UPDATE sms_otp_code
+        SET verified_at = NOW()
+        WHERE id = #{id}
+    </update>
+</mapper>

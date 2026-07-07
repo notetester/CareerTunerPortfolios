@@ -19,6 +19,7 @@ import { createNegotiatedRecorder, isTtsSupported, mediaUnsupportedReason } from
 import { useDeviceCapabilities } from "../hooks/deviceCapabilities";
 import { DeviceHandoffCard, type HandoffReason } from "./DeviceHandoffCard";
 import { RemoteMicConnectCard } from "./RemoteMicConnectCard";
+import { MicLevelMeter } from "./MicLevelMeter";
 import type {
   InterviewQuestion,
   InterviewSession,
@@ -77,6 +78,8 @@ export function LocalVoiceInterviewTab({ session }: { session: InterviewSession 
   const [scoreProgress, setScoreProgress] = useState(0);
   const [consent, setConsent] = useState(true);
   const [speaking, setSpeaking] = useState(false);
+  // 녹음 중 마이크 레벨 시각화용 — micRef 와 같은 스트림 (ref 는 리렌더를 못 일으켜 state 로 별도 보관)
+  const [micStream, setMicStream] = useState<MediaStream | null>(null);
 
   const recorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
@@ -123,6 +126,7 @@ export function LocalVoiceInterviewTab({ session }: { session: InterviewSession 
     recorderRef.current = null;
     micRef.current?.getTracks().forEach((t) => t.stop());
     micRef.current = null;
+    setMicStream(null);
     // finishAnswer 가 Recording 으로 이관하지 못한 트래커만 정리(중단 등). 이관된 것은 trackerRef=null 이라 무해.
     trackerRef.current?.dispose();
     trackerRef.current = null;
@@ -162,6 +166,7 @@ export function LocalVoiceInterviewTab({ session }: { session: InterviewSession 
         ? remoteMic.clone()
         : await navigator.mediaDevices.getUserMedia({ audio: true });
       micRef.current = mic;
+      setMicStream(mic);
       chunksRef.current = [];
       // 온디바이스 음향 지표 수집 시작(serve 미기동 시 전달력 폴백용). 녹음 시작 = 질문 TTS 직후 → 반응 지연 측정.
       const tracker = new VoiceMetricsTracker();
@@ -481,8 +486,12 @@ export function LocalVoiceInterviewTab({ session }: { session: InterviewSession 
           )}
 
           {status === "recording" && (
-            <div className="flex items-center justify-center gap-2 rounded-lg bg-rose-50 py-3 text-base font-bold text-rose-700">
-              <Mic className="size-5 animate-pulse" /> 지금 답변하세요
+            <div className="flex flex-wrap items-center justify-center gap-x-4 gap-y-2 rounded-lg bg-rose-50 py-3">
+              <span className="flex items-center gap-2 text-base font-bold text-rose-700">
+                <Mic className="size-5" /> 지금 답변하세요
+              </span>
+              {/* 실제 마이크 입력 레벨 — 내 목소리가 들어가고 있는지 즉시 확인 */}
+              <MicLevelMeter stream={micStream} bars={14} className="h-6 gap-[3px] text-rose-500" />
             </div>
           )}
 

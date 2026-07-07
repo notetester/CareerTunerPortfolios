@@ -1,0 +1,61 @@
+-- 활동 전수 로깅 + 보안 이력 감사. TripTogether USER_ACTIVITY_LOG / USER_SECURITY_HISTORY 이식.
+-- 활동 로그는 인터셉터가 정적 리소스를 제외한 모든 /api 요청을 자동 기록(게스트 포함).
+-- 보안 이력은 아이디찾기/비번재설정/이메일인증 등 민감 계정 이벤트를 단계·행위자별로 기록.
+
+CREATE TABLE IF NOT EXISTS user_activity_log (
+    id               BIGINT       NOT NULL AUTO_INCREMENT,
+    request_id       VARCHAR(36)  NOT NULL COMMENT '단일 HTTP 요청 식별자(UUID)',
+    flow_trace_id    VARCHAR(36)  NULL COMMENT '여러 요청에 걸친 활동 흐름 식별자',
+    user_id          BIGINT       NULL COMMENT '로그인 사용자(비회원 NULL)',
+    session_id       VARCHAR(100) NULL,
+    request_uri      VARCHAR(512) NOT NULL,
+    http_method      VARCHAR(10)  NOT NULL,
+    activity_domain  VARCHAR(30)  NOT NULL DEFAULT 'GENERAL' COMMENT 'GENERAL/AUTH/ADMIN/COMMUNITY/PROFILE/SUPPORT/INTERVIEW 등',
+    activity_type    VARCHAR(30)  NOT NULL COMMENT 'API/AJAX/PAGE_VIEW/ACTION',
+    activity_code    VARCHAR(60)  NULL COMMENT '구체 활동 코드',
+    activity_provider VARCHAR(20) NULL COMMENT 'LOCAL/KAKAO/NAVER/GOOGLE',
+    auth_event_type  VARCHAR(20)  NULL COMMENT 'LOGIN/LOGOUT/LINK/UNLINK',
+    target_type      VARCHAR(30)  NULL,
+    target_id        VARCHAR(100) NULL,
+    handler_name     VARCHAR(200) NULL,
+    query_string     VARCHAR(1000) NULL,
+    referer          VARCHAR(512) NULL,
+    ip_address       VARCHAR(64)  NULL,
+    user_agent       VARCHAR(512) NULL,
+    response_status  INT          NULL,
+    response_time_ms INT          NULL,
+    success          TINYINT(1)   NULL,
+    detail_summary   VARCHAR(500) NULL,
+    created_at       DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (id),
+    KEY idx_user_activity_log_time (created_at),
+    KEY idx_user_activity_log_user (user_id, created_at),
+    KEY idx_user_activity_log_domain (activity_domain, created_at),
+    KEY idx_user_activity_log_request (request_id),
+    KEY idx_user_activity_log_flow (flow_trace_id),
+    CONSTRAINT fk_user_activity_log_user FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE SET NULL
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci;
+
+CREATE TABLE IF NOT EXISTS user_security_history (
+    id               BIGINT       NOT NULL AUTO_INCREMENT,
+    user_id          BIGINT       NULL COMMENT '대상 사용자(식별 가능 시)',
+    actor_user_id    BIGINT       NULL COMMENT '실행 사용자(본인 변경 등)',
+    event_type       VARCHAR(50)  NOT NULL COMMENT 'FIND_ID/FIND_PASSWORD/RESET_PASSWORD/PASSWORD_CHANGE/EMAIL_VERIFY 등',
+    event_stage      VARCHAR(20)  NULL COMMENT 'REQUEST/ISSUE/VERIFY/COMPLETE',
+    input_identifier VARCHAR(255) NULL COMMENT '입력값(이메일/아이디)',
+    target_email     VARCHAR(255) NULL,
+    success          TINYINT(1)   NOT NULL,
+    fail_reason      VARCHAR(255) NULL,
+    detail_message   VARCHAR(500) NULL,
+    request_id       VARCHAR(36)  NULL COMMENT 'user_activity_log.request_id 와 상관',
+    flow_trace_id    VARCHAR(36)  NULL,
+    ip_address       VARCHAR(64)  NULL,
+    user_agent       VARCHAR(512) NULL,
+    occurred_at      DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (id),
+    KEY idx_user_security_history_time (occurred_at),
+    KEY idx_user_security_history_user (user_id, occurred_at),
+    KEY idx_user_security_history_event (event_type, occurred_at),
+    CONSTRAINT fk_user_security_history_user FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE SET NULL,
+    CONSTRAINT fk_user_security_history_actor FOREIGN KEY (actor_user_id) REFERENCES users (id) ON DELETE SET NULL
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci;

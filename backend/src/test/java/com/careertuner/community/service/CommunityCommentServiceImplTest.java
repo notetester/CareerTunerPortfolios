@@ -12,6 +12,7 @@ import static org.mockito.Mockito.when;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 import org.junit.jupiter.api.BeforeEach;
@@ -29,8 +30,10 @@ import com.careertuner.community.dto.CommentResponse;
 import com.careertuner.community.dto.CreateCommentRequest;
 import com.careertuner.community.mapper.CommunityCommentMapper;
 import com.careertuner.community.mapper.CommunityPostMapper;
+import com.careertuner.community.mapper.CommunitySubscriptionMapper;
 import com.careertuner.community.mapper.ReactionMapper;
 import com.careertuner.community.moderation.event.CommentModerationRequiredEvent;
+import com.careertuner.nickname.service.NicknameProfileService;
 import com.careertuner.notification.service.NotificationService;
 import com.careertuner.privacy.service.PrivacyPolicyService;
 import com.careertuner.privacy.service.PrivacySurfaces;
@@ -45,18 +48,29 @@ class CommunityCommentServiceImplTest {
     private final CommunityCommentMapper commentMapper = mock(CommunityCommentMapper.class);
     private final CommunityPostMapper postMapper = mock(CommunityPostMapper.class);
     private final ReactionMapper reactionMapper = mock(ReactionMapper.class);
+    private final CommunitySubscriptionMapper subscriptionMapper = mock(CommunitySubscriptionMapper.class);
     private final ApplicationEventPublisher eventPublisher = mock(ApplicationEventPublisher.class);
     private final NotificationService notificationService = mock(NotificationService.class);
     private final PrivacyPolicyService privacyPolicyService = mock(PrivacyPolicyService.class);
+    private final NicknameProfileService nicknameProfileService = mock(NicknameProfileService.class);
+    private final com.careertuner.community.moderation.service.ModerationSettingService moderationSettingService =
+            mock(com.careertuner.community.moderation.service.ModerationSettingService.class);
+    private final com.careertuner.reward.service.RewardService rewardService =
+            mock(com.careertuner.reward.service.RewardService.class);
 
     private final CommunityCommentServiceImpl service =
-            new CommunityCommentServiceImpl(commentMapper, postMapper, reactionMapper, eventPublisher,
-                    notificationService, privacyPolicyService);
+            new CommunityCommentServiceImpl(commentMapper, postMapper, reactionMapper, subscriptionMapper,
+                    eventPublisher, notificationService, privacyPolicyService, nicknameProfileService,
+                    moderationSettingService, rewardService);
 
-    /** 개인 차단 정책 기본 스텁 — 차단 없음(기존 테스트가 차단 필터의 영향을 받지 않게 명시). */
+    /**
+     * 개인 차단 정책 기본 스텁 — 차단 없음(기존 테스트가 차단 필터의 영향을 받지 않게 명시).
+     * 표시명 해석은 빈 맵으로 스텁 → 각 작성자는 저장된 userName 으로 폴백(기존 단언 유지).
+     */
     @BeforeEach
     void noBlockedAuthorsByDefault() {
         when(privacyPolicyService.blockedAuthorsAmong(any(), any(), any())).thenReturn(Set.of());
+        when(nicknameProfileService.bulkResolveDisplayNames(any())).thenReturn(Map.of());
     }
 
     private static final long POST_ID = 1L;
@@ -115,6 +129,36 @@ class CommunityCommentServiceImplTest {
 
         assertThat(byId(rs, 1).isDeleted()).isTrue();
         assertThat(byId(rs, 2).isDeleted()).isFalse();
+    }
+
+    // ── 신고 누적 블러: 임계 이상 + 비작성자 → blurred, 작성자 본인 → 안 가림 ──
+    @Test
+    void reportedComment_blurredForNonAuthor_notForAuthor() {
+        givenPost();
+        when(moderationSettingService.getReportBlurThreshold()).thenReturn(3);
+        CommunityComment reported = CommunityComment.builder()
+                .id(1L).postId(POST_ID).userId(10L).anonymous(false)
+                .status(CommentStatus.PUBLISHED.name()).content("c1").userName("A")
+                .reportCount(5).createdAt(t0).build();
+        when(commentMapper.findAllByPostId(POST_ID)).thenReturn(List.of(reported));
+
+        assertThat(byId(service.getComments(POST_ID, 99L), 1).blurred()).isTrue();   // 비작성자 → 블러
+        assertThat(byId(service.getComments(POST_ID, 99L), 1).reportCount()).isEqualTo(5);
+        assertThat(byId(service.getComments(POST_ID, 10L), 1).blurred()).isFalse();  // 작성자 본인 → 미블러
+    }
+
+    // ── 신고 누적 블러: 임계 미만이면 안 가림 (값 변경이 의도대로) ──
+    @Test
+    void belowThreshold_notBlurred() {
+        givenPost();
+        when(moderationSettingService.getReportBlurThreshold()).thenReturn(3);
+        CommunityComment c = CommunityComment.builder()
+                .id(1L).postId(POST_ID).userId(10L).anonymous(false)
+                .status(CommentStatus.PUBLISHED.name()).content("c1").userName("A")
+                .reportCount(2).createdAt(t0).build();
+        when(commentMapper.findAllByPostId(POST_ID)).thenReturn(List.of(c));
+
+        assertThat(byId(service.getComments(POST_ID, 99L), 1).blurred()).isFalse();
     }
 
     // ── M1: 살아있는 자손이 없는 삭제 leaf는 렌더에서 제외 ──
@@ -188,17 +232,17 @@ class CommunityCommentServiceImplTest {
         // (A) 루트에 답글 → 멘션 없음
         when(commentMapper.findById(5L)).thenReturn(
                 cmt(5, null, null, 10, true, CommentStatus.PUBLISHED.name(), "A", 0));
-        service.createComment(POST_ID, new CreateCommentRequest("x", 5L, true), 20L);
+        service.createComment(POST_ID, new CreateCommentRequest("x", 5L, true, null), 20L);
 
         // (B) 다른 사람의 대댓글에 답글 → 대상 멘션, parentId는 루트로 평면화
         when(commentMapper.findById(6L)).thenReturn(
                 cmt(6, 5L, null, 10, true, CommentStatus.PUBLISHED.name(), "A", 1));
-        service.createComment(POST_ID, new CreateCommentRequest("y", 6L, true), 20L);
+        service.createComment(POST_ID, new CreateCommentRequest("y", 6L, true, null), 20L);
 
         // (C) 자기 자신의 대댓글에 답글 → 멘션 없음(자기멘션 제외)
         when(commentMapper.findById(7L)).thenReturn(
                 cmt(7, 5L, null, 20, true, CommentStatus.PUBLISHED.name(), "B", 2));
-        service.createComment(POST_ID, new CreateCommentRequest("z", 7L, true), 20L);
+        service.createComment(POST_ID, new CreateCommentRequest("z", 7L, true, null), 20L);
 
         verify(commentMapper, org.mockito.Mockito.times(3)).insert(cap.capture());
         List<CommunityComment> inserted = cap.getAllValues();
@@ -222,7 +266,7 @@ class CommunityCommentServiceImplTest {
         when(commentMapper.findById(5L)).thenReturn(
                 cmt(5, null, null, 10, true, CommentStatus.PUBLISHED.name(), "A", 0));
 
-        service.createComment(POST_ID, new CreateCommentRequest("x", 5L, true), 20L);
+        service.createComment(POST_ID, new CreateCommentRequest("x", 5L, true, null), 20L);
 
         verify(commentMapper).insert(any(CommunityComment.class));
         verify(postMapper).incrementCommentCount(POST_ID);
@@ -236,7 +280,7 @@ class CommunityCommentServiceImplTest {
                 cmt(5, null, null, 10, true, CommentStatus.DELETED.name(), "A", 0));
 
         assertThatThrownBy(() ->
-                service.createComment(POST_ID, new CreateCommentRequest("x", 5L, true), 20L))
+                service.createComment(POST_ID, new CreateCommentRequest("x", 5L, true, null), 20L))
                 .isInstanceOf(BusinessException.class)
                 .extracting("errorCode").isEqualTo(ErrorCode.CONFLICT);
 
@@ -252,7 +296,7 @@ class CommunityCommentServiceImplTest {
                 cmt(5, null, null, 10, true, CommentStatus.HIDDEN.name(), "A", 0));
 
         assertThatThrownBy(() ->
-                service.createComment(POST_ID, new CreateCommentRequest("x", 5L, true), 20L))
+                service.createComment(POST_ID, new CreateCommentRequest("x", 5L, true, null), 20L))
                 .isInstanceOf(BusinessException.class)
                 .extracting("errorCode").isEqualTo(ErrorCode.CONFLICT);
 
@@ -265,7 +309,7 @@ class CommunityCommentServiceImplTest {
     void topLevelComment_isUnaffectedByParentGuard() {
         givenPost();
 
-        service.createComment(POST_ID, new CreateCommentRequest("hello", null, true), 10L);
+        service.createComment(POST_ID, new CreateCommentRequest("hello", null, true, null), 10L);
 
         verify(commentMapper).insert(any(CommunityComment.class));
         verify(postMapper).incrementCommentCount(POST_ID);
@@ -281,7 +325,7 @@ class CommunityCommentServiceImplTest {
         ArgumentCaptor<CommentModerationRequiredEvent> ev =
                 ArgumentCaptor.forClass(CommentModerationRequiredEvent.class);
 
-        service.createComment(POST_ID, new CreateCommentRequest("hello", null, true), 10L);
+        service.createComment(POST_ID, new CreateCommentRequest("hello", null, true, null), 10L);
 
         // 검열은 AFTER_COMMIT 비동기 리스너가 받는다 — 작성 트랜잭션에서 이벤트만 발행.
         verify(eventPublisher).publishEvent(ev.capture());

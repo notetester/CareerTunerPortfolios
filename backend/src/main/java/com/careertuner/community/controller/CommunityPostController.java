@@ -41,8 +41,9 @@ public class CommunityPostController {
     private final PostAiResultMapper aiResultMapper;
 
     @GetMapping("/hot")
-    public ApiResponse<List<HotPostResponse>> getHotPosts() {
-        return ApiResponse.ok(postService.getHotPosts());
+    public ApiResponse<List<HotPostResponse>> getHotPosts(@AuthenticationPrincipal AuthUser authUser) {
+        // 로그인 뷰어만 개인 차단 필터 대상 — 비로그인은 필터 없음
+        return ApiResponse.ok(postService.getHotPosts(authUser != null ? authUser.id() : null));
     }
 
     @GetMapping

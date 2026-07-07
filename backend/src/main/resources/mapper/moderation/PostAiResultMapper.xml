@@ -28,6 +28,15 @@
          WHERE post_id = #{postId} AND task_type = #{taskType}
     </update>
 
+    <!-- 판정 불성립(전 provider 실패 mock 폴백/confidence 누락) — 재시도 대상에 남는다.
+         result_json 은 판정이 아니므로 비운다(관리자 toxic 필터 오염 방지). -->
+    <update id="markUnmoderated">
+        UPDATE post_ai_result
+           SET status = 'UNMODERATED', result_json = NULL, model = #{model},
+               error_message = #{reason}, completed_at = NOW()
+         WHERE post_id = #{postId} AND task_type = #{taskType}
+    </update>
+
     <!-- 단건 조회 -->
     <select id="findByPostIdAndTaskType" resultType="com.careertuner.community.moderation.domain.PostAiResult">
         SELECT id, post_id, task_type, status, result_json, model,

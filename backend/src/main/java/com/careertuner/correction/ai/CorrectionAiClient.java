@@ -9,6 +9,7 @@ import org.springframework.stereotype.Service;
 import com.careertuner.ai.common.budget.AiTotalTimeBudget;
 import com.careertuner.applicationcase.domain.ApplicationCase;
 import com.careertuner.correction.ai.SelfCorrectionOutputParser.InvalidOutputException;
+import com.careertuner.correction.ai.SelfLlmCorrectionProvider.RepairContext;
 import com.careertuner.correction.ai.SelfLlmCorrectionProvider.SelfLlmCallException;
 
 import lombok.RequiredArgsConstructor;
@@ -35,21 +36,12 @@ public class CorrectionAiClient {
         // 총 시간예산 — 0 또는 음수면 무제한(예산 OFF)
         AiTotalTimeBudget budget = AiTotalTimeBudget.start(self.getTotalTimeBudget());
         try {
-            return invokeModel(command, self.getModel(), self.getPrimaryMaxAttempts(), budget);
-        } catch (RuntimeException primaryFailure) {
+            return invokeModel(command, self.getModel(), self.getMaxAttempts(), budget);
+        } catch (RuntimeException selfFailure) {
             if (!properties.isFallbackEnabled()) {
-                throw primaryFailure;
+                throw selfFailure;
             }
-            log.warn("Primary correction model {} failed: {}", self.getModel(), primaryFailure.getMessage());
-        }
-
-        if (hasText(self.getFallbackModel()) && !budget.expired()) {
-            try {
-                return invokeModel(command, self.getFallbackModel(), self.getFallbackMaxAttempts(), budget);
-            } catch (RuntimeException fallbackFailure) {
-                log.warn("Fallback correction model {} failed: {}",
-                        self.getFallbackModel(), fallbackFailure.getMessage());
-            }
+            log.warn("Self correction model {} failed: {}", self.getModel(), selfFailure.getMessage());
         }
 
         if (anthropicProvider.configured()) {
@@ -73,6 +65,7 @@ public class CorrectionAiClient {
             AiTotalTimeBudget budget
     ) {
         RuntimeException last = null;
+        RepairContext repairContext = null;
         int attempts = Math.max(1, maxAttempts);
         for (int attempt = 1; attempt <= attempts; attempt++) {
             if (budget.expired()) {
@@ -82,11 +75,13 @@ public class CorrectionAiClient {
             // positive(): 설정 오류(timeout ≤ 0)를 1ms 로 방어 — 리팩터링 전 동작과 동일.
             Duration timeout = budget.cap(positive(properties.getSelf().getTimeout()));
             try {
-                return selfLlmProvider.correct(command, model, timeout);
+                return selfLlmProvider.correct(command, model, timeout, repairContext);
             } catch (InvalidOutputException ex) {
                 last = ex;
+                repairContext = new RepairContext(ex.getMessage(), ex.previousOutput());
             } catch (SelfLlmCallException ex) {
                 last = ex;
+                repairContext = null;
                 if (!ex.retrySameModel()) {
                     throw ex;
                 }
@@ -112,10 +107,6 @@ public class CorrectionAiClient {
             Thread.currentThread().interrupt();
             throw new IllegalStateException("Correction model retry was interrupted.", ex);
         }
-    }
-
-    private boolean hasText(String value) {
-        return value != null && !value.isBlank();
     }
 
     public record CorrectionCommand(

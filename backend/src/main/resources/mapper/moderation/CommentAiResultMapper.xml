@@ -28,6 +28,14 @@
          WHERE comment_id = #{commentId} AND task_type = #{taskType}
     </update>
 
+    <!-- 판정 불성립 — post_ai_result markUnmoderated 복제. 재시도 대상에 남는다. -->
+    <update id="markUnmoderated">
+        UPDATE comment_ai_result
+           SET status = 'UNMODERATED', result_json = NULL, model = #{model},
+               error_message = #{reason}, completed_at = NOW()
+         WHERE comment_id = #{commentId} AND task_type = #{taskType}
+    </update>
+
     <!-- 단건 조회 -->
     <select id="findByCommentIdAndTaskType" resultType="com.careertuner.community.moderation.domain.CommentAiResult">
         SELECT id, comment_id, task_type, status, result_json, model,

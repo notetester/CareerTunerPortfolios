@@ -14,8 +14,6 @@ public interface UserMapper {
 
     int countByEmail(String email);
 
-    int countByLoginId(@Param("loginId") String loginId, @Param("excludeUserId") Long excludeUserId);
-
     /** id 는 useGeneratedKeys 로 user 객체에 채워진다. */
     void insert(User user);
 
@@ -35,13 +33,8 @@ public interface UserMapper {
 
     void markEmailVerified(Long id);
 
+    /** 전화번호를 저장하고 인증 완료로 표시한다(SMS OTP 검증 성공 시). */
+    void markPhoneVerified(@Param("id") Long id, @Param("phone") String phone);
+
     void updatePassword(@Param("id") Long id, @Param("password") String password);
-
-    void updateAccountBasics(@Param("id") Long id,
-                             @Param("loginId") String loginId,
-                             @Param("phoneNumber") String phoneNumber);
-
-    void updateEnterpriseAccount(@Param("id") Long id,
-                                 @Param("accountType") String accountType,
-                                 @Param("enterpriseTrusted") boolean enterpriseTrusted);
 }

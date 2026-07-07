@@ -69,6 +69,32 @@ function MdResult({ r, th, label, prev }: {
   );
 }
 
+/* ── 숫자 입력(포커스 아웃 시 클램프 후 저장) ── */
+function NumBox({ label, value, min, max, hint, onCommit }: {
+  label: string; value: number; min: number; max: number; hint: string;
+  onCommit: (v: number) => void;
+}) {
+  const [v, setV] = useState(value);
+  useEffect(() => { setV(value); }, [value]);
+  return (
+    <label style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+      <span className="av-flabel">{label}</span>
+      <input
+        type="number" min={min} max={max}
+        className="av-input" style={{ width: 130 }}
+        value={v}
+        onChange={(e) => setV(Number(e.target.value))}
+        onBlur={() => {
+          const c = Math.min(max, Math.max(min, Number(v) || min));
+          if (c !== value) onCommit(c);
+          else setV(value);
+        }}
+      />
+      <span className="av-hint">{hint}</span>
+    </label>
+  );
+}
+
 /* ══════════════════════════════════════════════════════════
    메인 패널
    ══════════════════════════════════════════════════════════ */
@@ -83,6 +109,15 @@ export default function ModerationSettingsPanel({ flash }: { flash: (msg: string
   /* 사용자 제재 설정 (게시글 숨김과 별개 임계) */
   const [sanction, setSanction] = useState(3);
   const [blockDays, setBlockDays] = useState(7);
+
+  /* 작성 rate-limit(도배 방지) + 신고 누적 블러 임계 */
+  const [reportBlur, setReportBlur] = useState(3);
+  const [postWin, setPostWin] = useState(60);
+  const [postMax, setPostMax] = useState(10);
+  const [commentWin, setCommentWin] = useState(60);
+  const [commentMax, setCommentMax] = useState(20);
+  const [inquiryWin, setInquiryWin] = useState(600);
+  const [inquiryMax, setInquiryMax] = useState(5);
 
   /* UI 상태 */
   const [advOpen, setAdvOpen] = useState(false);
@@ -104,6 +139,13 @@ export default function ModerationSettingsPanel({ flash }: { flash: (msg: string
         setTh(s.hideThreshold);
         setSanction(s.sanctionThreshold);
         setBlockDays(s.blockDays);
+        setReportBlur(s.reportBlurThreshold);
+        setPostWin(s.postRateWindowSeconds);
+        setPostMax(s.postRateMax);
+        setCommentWin(s.commentRateWindowSeconds);
+        setCommentMax(s.commentRateMax);
+        setInquiryWin(s.inquiryRateWindowSeconds);
+        setInquiryMax(s.inquiryRateMax);
         setChangedAt(s.updatedAt);
         setCustom(false);
         setServerDown(false);
@@ -163,6 +205,21 @@ export default function ModerationSettingsPanel({ flash }: { flash: (msg: string
       setToast({ ok: true, msg: "사용자 제재 설정이 저장됐어요." });
     } catch {
       setToast({ ok: false, msg: "제재 설정 저장 실패 — 잠시 후 다시 시도해주세요." });
+    }
+  };
+
+  /* 작성 제한 / 신고 블러 저장 */
+  const applyRate = async (next: Parameters<typeof moderationApi.updateModerationSettings>[0], okMsg: string) => {
+    try {
+      const u = await moderationApi.updateModerationSettings(next);
+      setReportBlur(u.reportBlurThreshold);
+      setPostWin(u.postRateWindowSeconds); setPostMax(u.postRateMax);
+      setCommentWin(u.commentRateWindowSeconds); setCommentMax(u.commentRateMax);
+      setInquiryWin(u.inquiryRateWindowSeconds); setInquiryMax(u.inquiryRateMax);
+      setChangedAt(u.updatedAt);
+      setToast({ ok: true, msg: okMsg });
+    } catch {
+      setToast({ ok: false, msg: "저장 실패 — 잠시 후 다시 시도해주세요." });
     }
   };
 
@@ -321,6 +378,61 @@ export default function ModerationSettingsPanel({ flash }: { flash: (msg: string
             />
             <span className="av-hint">자동 차단 시 이 기간 동안 이용 제한</span>
           </label>
+        </div>
+      </section>
+
+      {/* 작성 제한(도배 방지) & 신고 누적 블러 */}
+      <section className="av-panel md-sec" aria-label="작성 제한 및 신고 블러">
+        <div className="md-sec__h">
+          <h2>작성 제한 &amp; 신고 블러</h2>
+          <span className="s">짧은 시간 대량 작성(도배)을 막고, 신고가 쌓인 글을 자동으로 가려요 — 변경은 즉시 적용</span>
+        </div>
+
+        <div className="md-adv__body" style={{ display: "flex", flexDirection: "column", gap: 20 }}>
+          {/* 신고 누적 블러 */}
+          <div style={{ display: "flex", gap: 24, flexWrap: "wrap", alignItems: "flex-end" }}>
+            <NumBox
+              label="신고 누적 블러 임계 (건)"
+              value={reportBlur} min={1} max={1000}
+              hint="이 수 이상 신고되면 비작성자에게 자동 블러(작성자·클릭 시 해제)"
+              onCommit={(v) => applyRate({ reportBlurThreshold: v }, "신고 블러 임계가 저장됐어요.")}
+            />
+          </div>
+
+          {/* 게시글 rate-limit */}
+          <div>
+            <div className="av-flabel" style={{ marginBottom: 8, fontWeight: 600 }}>게시글 작성 제한</div>
+            <div style={{ display: "flex", gap: 24, flexWrap: "wrap", alignItems: "flex-end" }}>
+              <NumBox label="윈도 (초)" value={postWin} min={1} max={86400}
+                hint="이 시간 창 안의 작성 수를 셈" onCommit={(v) => applyRate({ postRateWindowSeconds: v }, "게시글 제한이 저장됐어요.")} />
+              <NumBox label="허용 건수 (0=비활성)" value={postMax} min={0} max={100000}
+                hint="윈도 내 이 수 이상이면 429 차단" onCommit={(v) => applyRate({ postRateMax: v }, "게시글 제한이 저장됐어요.")} />
+            </div>
+          </div>
+
+          {/* 댓글 rate-limit */}
+          <div>
+            <div className="av-flabel" style={{ marginBottom: 8, fontWeight: 600 }}>댓글 작성 제한</div>
+            <div style={{ display: "flex", gap: 24, flexWrap: "wrap", alignItems: "flex-end" }}>
+              <NumBox label="윈도 (초)" value={commentWin} min={1} max={86400}
+                hint="이 시간 창 안의 작성 수를 셈" onCommit={(v) => applyRate({ commentRateWindowSeconds: v }, "댓글 제한이 저장됐어요.")} />
+              <NumBox label="허용 건수 (0=비활성)" value={commentMax} min={0} max={100000}
+                hint="윈도 내 이 수 이상이면 429 차단" onCommit={(v) => applyRate({ commentRateMax: v }, "댓글 제한이 저장됐어요.")} />
+            </div>
+          </div>
+
+          {/* 문의 rate-limit (정책값) */}
+          <div>
+            <div className="av-flabel" style={{ marginBottom: 8, fontWeight: 600 }}>
+              문의 작성 제한 <span className="md-v2">정책값 · 집행 예정</span>
+            </div>
+            <div style={{ display: "flex", gap: 24, flexWrap: "wrap", alignItems: "flex-end" }}>
+              <NumBox label="윈도 (초)" value={inquiryWin} min={1} max={86400}
+                hint="문의 도메인이 이 정책을 참조해 집행" onCommit={(v) => applyRate({ inquiryRateWindowSeconds: v }, "문의 제한 정책이 저장됐어요.")} />
+              <NumBox label="허용 건수 (0=비활성)" value={inquiryMax} min={0} max={100000}
+                hint="현재는 정책 저장까지 — 집행 배선은 문의 담당" onCommit={(v) => applyRate({ inquiryRateMax: v }, "문의 제한 정책이 저장됐어요.")} />
+            </div>
+          </div>
         </div>
       </section>
 

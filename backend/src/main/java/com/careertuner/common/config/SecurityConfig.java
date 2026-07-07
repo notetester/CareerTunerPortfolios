@@ -56,9 +56,11 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.GET,
                                 "/api/community/posts", "/api/community/posts/**",
                                 "/api/community/guidelines/published").permitAll()
-                        .requestMatchers(HttpMethod.GET, "/api/enterprise/jobs/public").permitAll()
+                        // 공개 채용 게시판 조회(목록·상세) — 비로그인 브라우징 허용, /{id}/analyze(POST)는 인증 필요
+                        .requestMatchers(HttpMethod.GET, "/api/job-board", "/api/job-board/**").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/ads").permitAll()
-                        .requestMatchers(HttpMethod.POST, "/api/ads/*/events").permitAll()
+                        // 노출·클릭 집계는 비로그인 광고 수신자도 발사(공개 서빙 대칭). 엔드포인트는 /impression·/click.
+                        .requestMatchers(HttpMethod.POST, "/api/ads/*/impression", "/api/ads/*/click").permitAll()
                         // 법적 문서(약관/개인정보/마케팅) 공개 조회
                         .requestMatchers(HttpMethod.GET, "/api/legal/**").permitAll()
                         // 고객센터 FAQ/공지사항 조회 공개

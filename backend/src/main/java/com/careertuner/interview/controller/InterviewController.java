@@ -130,8 +130,9 @@ public class InterviewController {
 
     @PostMapping("/sessions/{sessionId}/realtime")
     public ApiResponse<RealtimeSessionResponse> createRealtimeSession(@AuthenticationPrincipal AuthUser authUser,
-                                                                      @PathVariable Long sessionId) {
-        return ApiResponse.ok(realtimeService.createSession(authUser.id(), sessionId));
+                                                                      @PathVariable Long sessionId,
+                                                                      @RequestParam(required = false) @Min(1) @Max(6) Integer questionLimit) {
+        return ApiResponse.ok(realtimeService.createSession(authUser.id(), sessionId, questionLimit));
     }
 
     @GetMapping("/sessions/{sessionId}/report")
@@ -150,6 +151,7 @@ public class InterviewController {
     public ApiResponse<Integer> scoreVoiceTranscript(@AuthenticationPrincipal AuthUser authUser,
                                                      @PathVariable Long sessionId,
                                                      @Valid @RequestBody ScoreVoiceTranscriptRequest request) {
-        return ApiResponse.ok(interviewService.scoreVoiceTranscript(authUser.id(), sessionId, request.transcript()));
+        return ApiResponse.ok(interviewService.scoreVoiceTranscript(authUser.id(), sessionId,
+                request.transcript(), request.questionLimit()));
     }
 }
