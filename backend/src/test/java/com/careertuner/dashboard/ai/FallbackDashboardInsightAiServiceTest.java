@@ -8,6 +8,7 @@ import static org.mockito.Mockito.when;
 
 import org.junit.jupiter.api.Test;
 
+import com.careertuner.analysis.ai.provider.CareerAnalysisAiProviderProperties;
 import com.careertuner.analysis.ai.provider.CareerAnalysisAiUsage;
 
 /**
@@ -29,7 +30,8 @@ class FallbackDashboardInsightAiServiceTest {
         when(anthropic.configured()).thenReturn(true);
         when(anthropic.summarize(command)).thenReturn(tagged("claude-haiku"));
 
-        FallbackDashboardInsightAiService service = new FallbackDashboardInsightAiService(anthropic, openAi);
+        FallbackDashboardInsightAiService service = new FallbackDashboardInsightAiService(
+                anthropic, openAi, mock(MockDashboardInsightAiService.class), new CareerAnalysisAiProviderProperties());
         DashboardInsightAiResult result = service.summarize(command);
 
         assertThat(result.usage().model()).isEqualTo("claude-haiku");
@@ -43,7 +45,8 @@ class FallbackDashboardInsightAiServiceTest {
         when(anthropic.configured()).thenReturn(false);
         when(openAi.summarize(command)).thenReturn(tagged("gpt-5"));
 
-        FallbackDashboardInsightAiService service = new FallbackDashboardInsightAiService(anthropic, openAi);
+        FallbackDashboardInsightAiService service = new FallbackDashboardInsightAiService(
+                anthropic, openAi, mock(MockDashboardInsightAiService.class), new CareerAnalysisAiProviderProperties());
         DashboardInsightAiResult result = service.summarize(command);
 
         assertThat(result.usage().model()).isEqualTo("gpt-5");
@@ -58,7 +61,8 @@ class FallbackDashboardInsightAiServiceTest {
         when(anthropic.summarize(command)).thenThrow(new IllegalStateException("claude down"));
         when(openAi.summarize(command)).thenReturn(tagged("gpt-5"));
 
-        FallbackDashboardInsightAiService service = new FallbackDashboardInsightAiService(anthropic, openAi);
+        FallbackDashboardInsightAiService service = new FallbackDashboardInsightAiService(
+                anthropic, openAi, mock(MockDashboardInsightAiService.class), new CareerAnalysisAiProviderProperties());
         DashboardInsightAiResult result = service.summarize(command);
 
         assertThat(result.usage().model()).isEqualTo("gpt-5");
