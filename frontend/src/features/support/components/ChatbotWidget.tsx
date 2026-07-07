@@ -458,7 +458,12 @@ function ChatbotPanel({ chatbot }: ChatbotPanelProps) {
             }}>
             {messages.length === 0 && botStatus === "idle" ? (
               <EmptyState onSelect={sendMessage}
-                onStartGuide={() => { setShowGuide(true); expandToFloating(); }} />
+                onStartGuide={() => {
+                  // 비로그인은 가이드 끝 공고 스텝에서 지원 건 생성(로그인 필요)에 막힌다 →
+                  // 직무입력창을 띄우지 않고 로그인 화면으로 바로 보낸다(챗봇은 닫는다).
+                  if (!getAccessToken()) { close(); navigate("/login"); return; }
+                  setShowGuide(true); expandToFloating();
+                }} />
             ) : (
               <>
                 {/* stage(오케 실행)에선 말풍선을 좁은 중앙 컬럼으로 — 넓은 무대에서 늘어지지 않게. */}
