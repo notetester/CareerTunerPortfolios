@@ -82,7 +82,8 @@ public class FitAnalysisServiceImpl implements FitAnalysisService {
                 source.getDuties(),
                 parseList(source.getProfileSkills()),
                 parseList(source.getProfileCertificates()),
-                source.getDesiredJob());
+                source.getDesiredJob(),
+                composeCompanyContext(source));
 
         FitAnalysisResult previous = fitAnalysisMapper.findLatestByUserIdAndApplicationCaseId(userId, applicationCaseId);
         FitAnalysisAiResult ai = fitAnalysisAiService.generate(command);
@@ -236,6 +237,24 @@ public class FitAnalysisServiceImpl implements FitAnalysisService {
             throw new BusinessException(ErrorCode.NOT_FOUND, "학습 과제를 찾을 수 없습니다.");
         }
         return FitAnalysisLearningTaskResponse.from(fitAnalysisMapper.findLearningTaskById(fitAnalysisId, taskId));
+    }
+
+    /**
+     * B(company_analysis) 기업 맥락을 설명 생성 프롬프트용 텍스트로 조립한다. 세 항목이 모두 비면 {@code null}
+     * (프롬프트에 기업 맥락 섹션이 붙지 않고 공고 기반으로 degrade). 판단값 계산엔 쓰이지 않는다(뉴로-심볼릭 불변식).
+     */
+    private static String composeCompanyContext(FitAnalysisGenerationSource source) {
+        StringBuilder sb = new StringBuilder();
+        appendContextLine(sb, "회사 요약", source.getCompanySummary());
+        appendContextLine(sb, "최근 이슈", source.getRecentIssues());
+        appendContextLine(sb, "면접 포인트", source.getInterviewPoints());
+        return sb.isEmpty() ? null : sb.toString().trim();
+    }
+
+    private static void appendContextLine(StringBuilder sb, String label, String value) {
+        if (value != null && !value.isBlank()) {
+            sb.append("- ").append(label).append(": ").append(value.trim()).append('\n');
+        }
     }
 
     private List<String> parseList(String json) {

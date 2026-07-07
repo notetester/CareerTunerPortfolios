@@ -56,6 +56,28 @@ class MockFitAnalysisAiServiceTest {
     }
 
     @Test
+    void companyContextDoesNotAffectRuleEngineJudgment() {
+        // 뉴로-심볼릭 불변식: 기업 맥락은 설명 생성용일 뿐, 규칙엔진 판단값(fitScore/matched/missing/applyDecision/
+        // conditionMatrix)을 절대 바꾸지 않는다. 기업 맥락 유무로 판단값이 달라지면 이 테스트가 실패한다.
+        FitAnalysisAiCommand withoutCtx = new FitAnalysisAiCommand(
+                "테스트기업", "백엔드 개발자", List.of("Java", "Spring"), List.of("AWS"),
+                "REST API 개발", List.of("Java"), List.of(), "백엔드 개발자");
+        FitAnalysisAiCommand withCtx = new FitAnalysisAiCommand(
+                "테스트기업", "백엔드 개발자", List.of("Java", "Spring"), List.of("AWS"),
+                "REST API 개발", List.of("Java"), List.of(), "백엔드 개발자",
+                "- 회사 요약: 결제 플랫폼 스타트업\n- 최근 이슈: 대규모 트래픽 대응\n- 면접 포인트: 동시성 경험");
+
+        FitAnalysisAiResult a = service.generate(withoutCtx);
+        FitAnalysisAiResult b = service.generate(withCtx);
+
+        assertThat(b.fitScore()).isEqualTo(a.fitScore());
+        assertThat(b.matchedSkills()).isEqualTo(a.matchedSkills());
+        assertThat(b.missingSkills()).isEqualTo(a.missingSkills());
+        assertThat(b.applyDecision().decision()).isEqualTo(a.applyDecision().decision());
+        assertThat(b.conditionMatrix()).isEqualTo(a.conditionMatrix());
+    }
+
+    @Test
     void includesOwnedPreferredSkillsInMatchedSkillsWithoutInflatingRequiredBasis() {
         FitAnalysisAiResult result = service.generate(new FitAnalysisAiCommand(
                 "테스트기업",
