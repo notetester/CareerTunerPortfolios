@@ -135,4 +135,30 @@ class UserAccountServiceImplTest {
         assertThat(verification.getExpiredAt()).isAfter(LocalDateTime.now().plusHours(23));
         verify(emailService).sendVerificationEmail("new@example.com", verification.getToken());
     }
+
+    @Test
+    void unlinkSocial_rejectsWhenNoLoginMethodRemains() {
+        User socialOnly = User.builder().id(1L).email("kakao_1@social.careertuner")
+                .name("소셜").passwordEnabled(false).emailVerified(false).build();
+        when(mapper.findById(1L)).thenReturn(socialOnly);
+        when(mapper.countLinkedProviders(1L)).thenReturn(1);
+        when(mapper.findLinkedProviders(1L)).thenReturn(List.of("KAKAO"));
+
+        assertThatThrownBy(() -> service.unlinkSocial(1L, "kakao"))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode").isEqualTo(ErrorCode.CONFLICT);
+        verify(mapper, never()).deleteSocial(org.mockito.ArgumentMatchers.anyLong(),
+                org.mockito.ArgumentMatchers.any());
+    }
+
+    @Test
+    void unlinkSocial_allowsWhenPasswordLoginRemains() {
+        when(mapper.findById(1L)).thenReturn(user(1L, "gildong", null));
+        when(mapper.countLinkedProviders(1L)).thenReturn(1);
+        when(mapper.findLinkedProviders(1L)).thenReturn(List.of("KAKAO"));
+
+        service.unlinkSocial(1L, "kakao");
+
+        verify(mapper).deleteSocial(1L, "KAKAO");
+    }
 }

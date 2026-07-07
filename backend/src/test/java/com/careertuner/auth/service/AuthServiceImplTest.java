@@ -1,5 +1,6 @@
 package com.careertuner.auth.service;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
@@ -9,15 +10,23 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 import org.springframework.security.crypto.password.PasswordEncoder;
 
+import com.careertuner.auth.domain.EmailVerification;
+import com.careertuner.auth.domain.UserSocial;
 import com.careertuner.activitylog.service.SecurityHistoryService;
 import com.careertuner.auth.dto.LoginRequest;
+import com.careertuner.auth.dto.OAuthCallbackResult;
+import com.careertuner.auth.dto.PasswordResetRequest;
 import com.careertuner.auth.mapper.AuthMapper;
 import com.careertuner.common.config.CareerTunerProperties;
 import com.careertuner.common.exception.BusinessException;
+import com.careertuner.common.exception.ErrorCode;
 import com.careertuner.common.security.JwtTokenProvider;
+import com.careertuner.common.security.JwtTokenProvider.OauthState;
 import com.careertuner.loginrisk.service.LoginRiskPolicyService;
 import com.careertuner.user.domain.User;
 import com.careertuner.user.mapper.UserMapper;
@@ -47,6 +56,11 @@ class AuthServiceImplTest {
             socialOAuthService, props, securityHistoryService, loginRiskPolicyService, rewardService);
 
     private static final String EMAIL = "user@test.com";
+
+    @BeforeEach
+    void defaultPolicy() {
+        when(loginRiskPolicyService.isLockoutEnabled()).thenReturn(false);
+    }
 
     /** ACTIVE 계정에서 틀린 비밀번호로 로그인 시도 → 항상 invalidLogin 예외. failedCount 는 "이번 실패 직전"의 누적. */
     private void attemptWrongPassword(int priorFailedCount) {
@@ -94,5 +108,81 @@ class AuthServiceImplTest {
         when(loginRiskPolicyService.getLockMinutes()).thenReturn(30);
         attemptWrongPassword(2);                                                  // 2 + 1 = 3 → 잠금
         verify(userMapper).lockForFailedLogin(eq(1L), any(), any());
+    }
+
+    @Test
+    void emailLogin_requiresVerifiedEmailAfterPasswordMatches() {
+        when(userMapper.findByLoginIdentifier(EMAIL)).thenReturn(User.builder()
+                .id(1L).email(EMAIL).password("hash").passwordEnabled(true)
+                .emailVerified(false).status("ACTIVE").build());
+        when(passwordEncoder.matches("pw", "hash")).thenReturn(true);
+
+        assertThatThrownBy(() -> service.login(new LoginRequest(EMAIL, "pw"), null))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode").isEqualTo(com.careertuner.common.exception.ErrorCode.FORBIDDEN);
+        verify(userMapper, never()).touchLastLoginAndResetFailures(1L);
+    }
+
+    @Test
+    void requestPasswordReset_unknownIdentifier_isSilent() {
+        when(userMapper.findByLoginIdentifier("missing")).thenReturn(null);
+
+        service.requestPasswordReset(new PasswordResetRequest(null, "missing"), null);
+
+        verify(emailService, never()).sendPasswordResetEmail(any(), any());
+    }
+
+    @Test
+    void requestFindId_verifiedLoginId_issuesMaskedLinkToken() {
+        when(userMapper.findByEmail(EMAIL)).thenReturn(User.builder()
+                .id(1L).email(EMAIL).loginId("career_user").emailVerified(true).status("ACTIVE").build());
+        ArgumentCaptor<EmailVerification> captor = ArgumentCaptor.forClass(EmailVerification.class);
+
+        service.requestFindId(EMAIL, null);
+
+        verify(authMapper).expireUnusedEmailVerifications(EMAIL, "FIND_ID");
+        verify(authMapper).insertEmailVerification(captor.capture());
+        EmailVerification verification = captor.getValue();
+        org.assertj.core.api.Assertions.assertThat(verification.getPurpose()).isEqualTo("FIND_ID");
+        verify(emailService).sendFindIdEmail(eq(EMAIL), eq(verification.getToken()));
+    }
+
+    @Test
+    void handleOAuthCallback_linkState_connectsSocialToCurrentUser() {
+        when(socialOAuthService.isSupported("KAKAO")).thenReturn(true);
+        when(jwtTokenProvider.parseOauthState("state", "KAKAO"))
+                .thenReturn(new OauthState("oauth_link_state", "KAKAO", 1L));
+        when(socialOAuthService.fetchUserInfo("KAKAO", "code", "state"))
+                .thenReturn(new SocialUserInfo("KAKAO", "kakao-user", "user@test.com", "소셜"));
+        when(userMapper.findById(1L)).thenReturn(User.builder().id(1L).email(EMAIL).status("ACTIVE").build());
+        when(authMapper.findSocial("KAKAO", "kakao-user")).thenReturn(null);
+        when(authMapper.findSocialByUserAndProvider(1L, "KAKAO")).thenReturn(null);
+        ArgumentCaptor<UserSocial> captor = ArgumentCaptor.forClass(UserSocial.class);
+
+        OAuthCallbackResult result = service.handleOAuthCallback("kakao", "code", "state", null);
+
+        assertThat(result.linked()).isTrue();
+        assertThat(result.provider()).isEqualTo("KAKAO");
+        verify(authMapper).insertSocial(captor.capture());
+        assertThat(captor.getValue().getUserId()).isEqualTo(1L);
+        assertThat(captor.getValue().getProvider()).isEqualTo("KAKAO");
+        assertThat(captor.getValue().getProviderUserId()).isEqualTo("kakao-user");
+    }
+
+    @Test
+    void handleOAuthCallback_linkState_rejectsSocialAlreadyLinkedToAnotherUser() {
+        when(socialOAuthService.isSupported("KAKAO")).thenReturn(true);
+        when(jwtTokenProvider.parseOauthState("state", "KAKAO"))
+                .thenReturn(new OauthState("oauth_link_state", "KAKAO", 1L));
+        when(socialOAuthService.fetchUserInfo("KAKAO", "code", "state"))
+                .thenReturn(new SocialUserInfo("KAKAO", "kakao-user", "user@test.com", "소셜"));
+        when(userMapper.findById(1L)).thenReturn(User.builder().id(1L).email(EMAIL).status("ACTIVE").build());
+        when(authMapper.findSocial("KAKAO", "kakao-user"))
+                .thenReturn(UserSocial.builder().userId(2L).provider("KAKAO").providerUserId("kakao-user").build());
+
+        assertThatThrownBy(() -> service.handleOAuthCallback("kakao", "code", "state", null))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode").isEqualTo(ErrorCode.CONFLICT);
+        verify(authMapper, never()).insertSocial(any());
     }
 }

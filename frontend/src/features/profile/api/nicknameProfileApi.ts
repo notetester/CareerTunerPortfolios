@@ -71,6 +71,14 @@ export function requestEmailRegistration(email: string): Promise<void> {
   return api<void>("/account/email-registration", { method: "POST", body: JSON.stringify({ email }) });
 }
 
+export function getSocialLinkUrl(provider: string): Promise<{ url: string }> {
+  return api<{ url: string }>(`/account/social/${provider.toLowerCase()}/link-url`, { method: "POST" });
+}
+
+export function unlinkSocial(provider: string): Promise<AccountInfo> {
+  return api<AccountInfo>(`/account/social/${provider.toLowerCase()}`, { method: "DELETE" });
+}
+
 // ── 이력서 상세 스펙 ──
 
 export function getResumeDetail(): Promise<ResumeDetail> {

@@ -23,6 +23,10 @@
         SELECT COUNT(*) FROM users WHERE email = #{email}
     </select>
 
+    <select id="countByLoginId" resultType="int">
+        SELECT COUNT(*) FROM users WHERE login_id = #{loginId}
+    </select>
+
     <select id="countByEmailExcludingId" resultType="int">
         SELECT COUNT(*)
           FROM users
@@ -31,9 +35,9 @@
     </select>
 
     <insert id="insert" useGeneratedKeys="true" keyProperty="id">
-        INSERT INTO users (email, password, password_enabled, name, email_verified,
+        INSERT INTO users (email, login_id, password, password_enabled, name, email_verified,
                            user_type, role, status, plan, credit)
-        VALUES (#{email}, #{password}, #{passwordEnabled}, #{name}, #{emailVerified},
+        VALUES (#{email}, #{loginId}, #{password}, #{passwordEnabled}, #{name}, #{emailVerified},
                 #{userType}, #{role}, #{status}, #{plan}, #{credit})
     </insert>
 
