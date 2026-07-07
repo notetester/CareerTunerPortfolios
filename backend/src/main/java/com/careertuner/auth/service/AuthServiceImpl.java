@@ -443,6 +443,9 @@ public class AuthServiceImpl implements AuthService {
     public String buildAuthorizationUrl(String provider) {
         String normalized = normalizeProvider(provider);
         String state = jwtTokenProvider.createOauthState(normalized);
+        if (!socialOAuthService.isConfigured(normalized)) {
+            return buildMockAuthorizationUrl(normalized, state);
+        }
         return socialOAuthService.getAuthorizationUrl(normalized, state);
     }
 
@@ -453,6 +456,9 @@ public class AuthServiceImpl implements AuthService {
             throw new BusinessException(ErrorCode.NOT_FOUND, "회원 정보를 찾을 수 없습니다.");
         }
         String state = jwtTokenProvider.createOauthLinkState(normalized, userId);
+        if (!socialOAuthService.isConfigured(normalized)) {
+            return buildMockAuthorizationUrl(normalized, state);
+        }
         return socialOAuthService.getAuthorizationUrl(normalized, state);
     }
 
@@ -482,6 +488,46 @@ public class AuthServiceImpl implements AuthService {
         String identifier = info.email() != null ? info.email() : info.providerUserId();
         recordLoginHistory(user.getId(), "LOGIN", info.provider(), "OAUTH", identifier, true, null, context);
         return OAuthCallbackResult.login(issueTokens(user, context));
+    }
+
+    @Override
+    @Transactional
+    public OAuthCallbackResult handleOAuthMockCallback(String provider, String state, LoginRequestContext context) {
+        String normalized = normalizeProvider(provider);
+        if (!socialOAuthService.isMockEnabled()) {
+            throw new BusinessException(ErrorCode.SERVICE_UNAVAILABLE, "OAuth mock 콜백이 비활성화되어 있습니다.");
+        }
+        OauthState oauthState = jwtTokenProvider.parseOauthState(state, normalized);
+        if (oauthState == null) {
+            throw new BusinessException(ErrorCode.UNAUTHORIZED, "잘못된 OAuth state입니다.");
+        }
+        if (oauthState.link()) {
+            if (oauthState.userId() == null) {
+                throw new BusinessException(ErrorCode.UNAUTHORIZED, "잘못된 OAuth 연동 state입니다.");
+            }
+            SocialUserInfo info = socialOAuthService.mockUserInfo(normalized, oauthState.userId());
+            linkSocial(oauthState.userId(), info, context);
+            return OAuthCallbackResult.linked(info.provider());
+        }
+
+        SocialUserInfo info = socialOAuthService.mockUserInfo(normalized, null);
+        User user = findOrCreateSocialUser(info);
+        user = releaseExpiredBlockIfNeeded(user);
+        validateSocialLoginAllowed(user, info, context);
+        userMapper.touchLastLoginAndResetFailures(user.getId());
+        recordLoginHistory(user.getId(), "LOGIN", info.provider(), "OAUTH", info.providerUserId(),
+                true, null, context);
+        recordSecurityEvent(user.getId(), null, "SOCIAL_LOGIN", "MOCK_COMPLETE",
+                info.providerUserId(), user.getEmail(), true, null, info.provider(), context);
+        return OAuthCallbackResult.login(issueTokens(user, context));
+    }
+
+    private String buildMockAuthorizationUrl(String provider, String state) {
+        if (!socialOAuthService.isMockEnabled()) {
+            throw new BusinessException(ErrorCode.SERVICE_UNAVAILABLE,
+                    provider + " OAuth 설정이 없어 현재 소셜 인증을 사용할 수 없습니다.");
+        }
+        return socialOAuthService.getMockAuthorizationUrl(provider, state);
     }
 
     private User findOrCreateSocialUser(SocialUserInfo info) {

@@ -53,4 +53,6 @@ public interface AuthService {
 
     /** 소셜 콜백 처리: state 검증 → 사용자 조회/생성 → 토큰 발급. */
     OAuthCallbackResult handleOAuthCallback(String provider, String code, String state, LoginRequestContext context);
+
+    OAuthCallbackResult handleOAuthMockCallback(String provider, String state, LoginRequestContext context);
 }

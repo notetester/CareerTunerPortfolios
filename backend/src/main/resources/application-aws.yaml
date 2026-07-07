@@ -14,6 +14,8 @@ careertuner:
     # 배포된 프런트/백엔드 공인 주소 — 미확정(CHANGEME). OAuth 콜백·이메일 링크 조립에 사용된다.
     frontend-url: ${APP_FRONTEND_URL:http://CHANGEME-aws-frontend:5173}
     api-base-url: ${APP_API_BASE_URL:http://CHANGEME-aws-api:8080}
+  oauth:
+    mock-enabled: ${OAUTH_MOCK_ENABLED:false}
 
 # Ollama 는 공유 4090(Tailscale) 을 사용한다 — AWS 서버가 tailnet 에 조인되어 있어야 한다.
 # 4090 이 꺼져 있으면 부팅 시 fallback-base-urls(기본 로컬 Ollama)로 자동 폴백한다.

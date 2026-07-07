@@ -177,21 +177,47 @@ public class AuthController {
         try {
             OAuthCallbackResult result = authService.handleOAuthCallback(provider, code, state,
                     LoginRequestContext.from(servletRequest));
-            if (result.linked()) {
-                return redirect(frontend + "/profile/detail?socialLinked=" + enc(result.provider()));
-            }
-            TokenResponse tokens = result.tokens();
-            String fragment = "/auth/callback#accessToken=" + enc(tokens.accessToken())
-                    + "&refreshToken=" + enc(tokens.refreshToken())
-                    + "&expiresIn=" + tokens.expiresIn();
-            return redirect(frontend + fragment);
+            return redirectOAuthResult(frontend, result, false);
         } catch (Exception e) {
             log.warn("[{}] OAuth 콜백 실패: {}", provider, e.getMessage());
             return redirect(frontend + "/auth/callback#error=" + enc("social_login_failed"));
         }
     }
 
+    @GetMapping("/oauth/{provider}/mock-callback")
+    public ResponseEntity<Void> oauthMockCallback(@PathVariable String provider,
+                                                  @RequestParam(required = false) String state,
+                                                  HttpServletRequest servletRequest) {
+        String frontend = props.getApp().getFrontendUrl();
+        try {
+            OAuthCallbackResult result = authService.handleOAuthMockCallback(provider, state,
+                    LoginRequestContext.from(servletRequest));
+            return redirectOAuthResult(frontend, result, true);
+        } catch (Exception e) {
+            log.warn("[{}] OAuth mock 콜백 실패: {}", provider, e.getMessage());
+            return redirect(frontend + "/auth/callback#error=" + enc("social_login_failed"));
+        }
+    }
+
     // ── 내부 ──
+
+    private ResponseEntity<Void> redirectOAuthResult(String frontend, OAuthCallbackResult result, boolean mock) {
+        if (result.linked()) {
+            String query = "/profile/detail?socialLinked=" + enc(result.provider());
+            if (mock) {
+                query += "&socialMock=1";
+            }
+            return redirect(frontend + query);
+        }
+        TokenResponse tokens = result.tokens();
+        String fragment = "/auth/callback#accessToken=" + enc(tokens.accessToken())
+                + "&refreshToken=" + enc(tokens.refreshToken())
+                + "&expiresIn=" + tokens.expiresIn();
+        if (mock) {
+            fragment += "&mockOAuth=1";
+        }
+        return redirect(frontend + fragment);
+    }
 
     private ResponseEntity<Void> redirect(String url) {
         return ResponseEntity.status(HttpStatus.FOUND).location(URI.create(url)).build();

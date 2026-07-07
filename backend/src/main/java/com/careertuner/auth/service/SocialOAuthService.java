@@ -2,6 +2,7 @@ package com.careertuner.auth.service;
 
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
+import java.util.Locale;
 import java.util.Map;
 
 import org.springframework.http.MediaType;
@@ -67,6 +68,37 @@ public class SocialOAuthService {
 
     public boolean isSupported(String provider) {
         return "KAKAO".equals(provider) || "NAVER".equals(provider) || "GOOGLE".equals(provider);
+    }
+
+    public boolean isConfigured(String provider) {
+        return providerConfig(provider).isConfigured();
+    }
+
+    public boolean isMockEnabled() {
+        return props.getOauth().isMockEnabled();
+    }
+
+    /**
+     * 실 OAuth 키가 없는 개발/데모 환경용 콜백 URL.
+     * state 는 실제 OAuth 와 동일한 JWT state 를 사용해 CSRF/사용자 바인딩 검증 흐름을 유지한다.
+     */
+    public String getMockAuthorizationUrl(String provider, String state) {
+        String base = props.getApp().getApiBaseUrl();
+        String normalizedBase = base.endsWith("/") ? base.substring(0, base.length() - 1) : base;
+        return normalizedBase + "/api/auth/oauth/" + provider.toLowerCase(Locale.ROOT)
+                + "/mock-callback?state=" + enc(state);
+    }
+
+    public SocialUserInfo mockUserInfo(String provider, Long userId) {
+        String normalized = provider.toUpperCase(Locale.ROOT);
+        String providerUserId = userId != null ? "mock-link-" + userId : "mock-login";
+        String label = switch (normalized) {
+            case "KAKAO" -> "카카오";
+            case "NAVER" -> "네이버";
+            case "GOOGLE" -> "구글";
+            default -> normalized;
+        };
+        return new SocialUserInfo(normalized, providerUserId, null, label + " mock 사용자");
     }
 
     // ── 내부 ──
