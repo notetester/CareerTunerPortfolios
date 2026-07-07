@@ -1,0 +1,15 @@
+/* FAQ 답변 HTML 렌더 (TipTap 저장 글). 평문 답변은 이 클래스를 쓰지 않는다. */
+.faq-answer-html { font-size: 0.95rem; line-height: 1.7; }
+.faq-answer-html p { margin: 0.5rem 0; }
+.faq-answer-html p:first-child { margin-top: 0; }
+.faq-answer-html p:last-child { margin-bottom: 0; }
+.faq-answer-html strong, .faq-answer-html b { font-weight: 600; color: var(--foreground); }
+.faq-answer-html ul, .faq-answer-html ol { margin: 0.5rem 0; padding-left: 1.4rem; }
+.faq-answer-html ul { list-style: disc; }
+.faq-answer-html ol { list-style: decimal; }
+.faq-answer-html li { margin: 0.2rem 0; }
+.faq-answer-html blockquote { margin: 0.6rem 0; padding: 0.1rem 0 0.1rem 0.7rem;
+  border-left: 3px solid var(--brand-blue, #2563eb); color: var(--muted-foreground); }
+.faq-answer-html code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.88em; background: color-mix(in srgb, currentColor 12%, transparent); padding: 1px 5px; border-radius: 4px; }
+.faq-answer-html a { color: var(--brand-blue, #2563eb); text-decoration: underline; }

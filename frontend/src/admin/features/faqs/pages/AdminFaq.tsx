@@ -14,6 +14,8 @@ import {
 import { FAQ_CATEGORIES, type Faq, type FaqCategory } from "../data/faqData";
 import * as adminFaqApi from "../api/adminFaqApi";
 import { ConfirmDialog } from "@/app/components/ui/confirm-dialog";
+import FaqAnswerEditor from "../components/FaqAnswerEditor";
+import { sanitizePostHtml } from "@/features/community/lib/postContent";
 import "./admin-faq.css";
 import "./faq-compose.css";
 
@@ -41,12 +43,13 @@ const COMPOSE_TO_DB: Record<string, FaqCategory> = {
 function FaqComposeView({ onBack, onCreated }: { onBack: () => void; onCreated: () => void }) {
   const [cat, setCat] = useState<string>("결제·크레딧");
   const [q, setQ] = useState("");
-  const [a, setA] = useState("");
+  const [a, setA] = useState("");        // 답변 HTML (TipTap 출력)
+  const [aLen, setALen] = useState(0);   // 답변 평문 길이(검증용)
   const [visible, setVisible] = useState(true);
   const [saving, setSaving] = useState(false);
   const [toast, setToast] = useState<{ msg: string; tone: string } | null>(null);
 
-  const canSubmit = q.trim().length > 4 && a.trim().length > 9;
+  const canSubmit = q.trim().length > 4 && aLen > 9;
   const showDup = q.trim().length > 1;
 
   const flash = (msg: string, tone: string) => {
@@ -61,7 +64,7 @@ function FaqComposeView({ onBack, onCreated }: { onBack: () => void; onCreated: 
       await adminFaqApi.createFaq({
         cat: COMPOSE_TO_DB[cat] ?? "일반",
         q,
-        a,
+        a: sanitizePostHtml(a),
         on: visible,
       });
       flash("FAQ가 등록되었습니다.", "green");
@@ -108,8 +111,7 @@ function FaqComposeView({ onBack, onCreated }: { onBack: () => void; onCreated: 
 
           <div className="av-field">
             <div className="av-flabel">답변 <span className="opt">— 두괄식으로, 결론 먼저</span></div>
-            <textarea className="av-textarea" style={{ minHeight: 200 }} value={a} onChange={(e) => setA(e.target.value)}
-              placeholder={"답변을 입력하세요.\n\n좋은 답변 = 결론 1문장 + 조건·예외 + 안 될 때 다음 행동(문의 링크)."} />
+            <FaqAnswerEditor onChange={(html, len) => { setA(html); setALen(len); }} />
           </div>
         </section>
 
