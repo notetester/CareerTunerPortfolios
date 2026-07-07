@@ -21,6 +21,7 @@ import org.springframework.stereotype.Service;
 
 import com.careertuner.ai.common.budget.AiTotalTimeBudget;
 import com.careertuner.ai.common.gpu.GpuPermitGate;
+import com.careertuner.ai.common.settings.AiRuntimeSettings;
 import com.careertuner.common.exception.BusinessException;
 import com.careertuner.common.exception.ErrorCode;
 
@@ -53,12 +54,14 @@ public class CareerAnalysisOssClient {
     private final ObjectMapper objectMapper;
     private final HttpClient httpClient;
     private final GpuPermitGate gpuPermitGate;
+    private final AiRuntimeSettings aiRuntimeSettings;
 
     public CareerAnalysisOssClient(CareerAnalysisAiProviderProperties properties, ObjectMapper objectMapper,
-                                   GpuPermitGate gpuPermitGate) {
+                                   GpuPermitGate gpuPermitGate, AiRuntimeSettings aiRuntimeSettings) {
         this.properties = properties;
         this.objectMapper = objectMapper;
         this.gpuPermitGate = gpuPermitGate;
+        this.aiRuntimeSettings = aiRuntimeSettings;
         this.httpClient = HttpClient.newBuilder()
                 .connectTimeout(properties.getOss().getTimeout())
                 .build();
@@ -99,14 +102,16 @@ public class CareerAnalysisOssClient {
         int attempts = Math.max(1, oss.getMaxRetries() + 1);
         long backoffMs = Math.max(0, oss.getRetryBackoff().toMillis());
         // 총 시간예산: 재시도·백오프를 포함한 전체 상한(E totalTimeBudget 패턴). 0/음수면 무제한(OFF).
-        AiTotalTimeBudget budget = AiTotalTimeBudget.start(oss.getTotalTimeBudget());
+        // DB 런타임 설정(ai.analysis.oss-total-time-budget-seconds) 우선, 행이 없으면 정적 oss.totalTimeBudget.
+        Duration ossBudget = aiRuntimeSettings.analysisOssTotalTimeBudget();
+        AiTotalTimeBudget budget = AiTotalTimeBudget.start(ossBudget);
         try {
             return withRetryWithinBudget(attempts, backoffMs, oss.getTimeout(), budget,
                     timeout -> sendOnce(oss, payload, timeout));
         } catch (OssTransientException ex) {
             // 일시적 실패가 재시도/예산까지 모두 소진 → 폴백 유도.
             log.warn("C 자체모델 시도 소진(최대 {}회/예산 {}) → OpenAI/Mock 폴백 유도: {}",
-                    attempts, budget.unlimited() ? "무제한" : oss.getTotalTimeBudget().toSeconds() + "s",
+                    attempts, budget.unlimited() ? "무제한" : ossBudget.toSeconds() + "s",
                     ex.getMessage());
             throw new BusinessException(ErrorCode.INTERNAL_ERROR, ex.getMessage());
         }

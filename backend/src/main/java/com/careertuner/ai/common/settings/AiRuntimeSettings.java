@@ -74,6 +74,11 @@ public class AiRuntimeSettings {
 
     /* ── C 폴백 체인(OSS→Claude→OpenAI) 시간 정책 ── */
 
+    /** OSS(자체 3B) tier 총 시간예산(재시도·백오프 포함). 0/음수면 무제한(예산 OFF). */
+    public Duration analysisOssTotalTimeBudget() {
+        return secs("ai.analysis.oss-total-time-budget-seconds", props.getOss().getTotalTimeBudget());
+    }
+
     /** 체인 총 시간예산(재시도 증폭 억제 보조 상한). */
     public Duration analysisChainTotalTimeBudget() {
         return secs("ai.analysis.chain-total-time-budget-seconds", props.getChainTotalTimeBudget());
