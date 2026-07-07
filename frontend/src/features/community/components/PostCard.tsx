@@ -8,6 +8,7 @@ import { useAuth } from "@/app/auth/AuthContext";
 import { ConfirmDialog } from "@/app/components/ui/confirm-dialog";
 import { useCommunityStore } from "../hooks/useCommunityStore";
 import { relTime } from "@/features/notification/types/notification";
+import { toPlainPreview } from "../lib/postContent";
 import type { CommunityPost } from "../types/community";
 
 interface PostCardProps {
@@ -75,7 +76,7 @@ export function PostCard({ post, onClick }: PostCardProps) {
           >
             <div style={{ filter: "blur(6px)", pointerEvents: "none", userSelect: "none" }}>
               <h3 className="cv-post__t">{post.title}</h3>
-              <div className="cv-post__x">{post.content}</div>
+              <div className="cv-post__x">{toPlainPreview(post.content)}</div>
             </div>
             <div
               style={{
@@ -93,7 +94,7 @@ export function PostCard({ post, onClick }: PostCardProps) {
         ) : (
           <>
             <h3 className="cv-post__t">{post.title}</h3>
-            <div className="cv-post__x">{post.content}</div>
+            <div className="cv-post__x">{toPlainPreview(post.content)}</div>
           </>
         )}
         <div className="cv-post__meta num">

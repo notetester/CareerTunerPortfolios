@@ -12,6 +12,7 @@ import { ReactionButtons } from "./ReactionButtons";
 import { CommentSection } from "./CommentSection";
 import { ReportDialog } from "./ReportDialog";
 import { RxMenu, RxMenuItem } from "./RxMenu";
+import { sanitizePostHtml, isHtmlContent } from "../lib/postContent";
 import { useCommunityStore } from "../hooks/useCommunityStore";
 import { useLoginDialog } from "../hooks/useLoginDialog";
 import { ConfirmDialog } from "@/app/components/ui/confirm-dialog";
@@ -292,8 +293,15 @@ export function PostDetailView({ postId, onBack, onEdit }: PostDetailViewProps) 
           </section>
         )}
 
-        {/* 본문 — 마크다운 렌더 없이 평문(줄바꿈 보존) */}
-        <article className="dv-prose" style={{ whiteSpace: "pre-wrap" }}>{d.content}</article>
+        {/* 본문 — HTML 글(TipTap)이면 sanitize 후 렌더, 기존 평문 글이면 줄바꿈 보존(무회귀) */}
+        {isHtmlContent(d.content) ? (
+          <article
+            className="dv-prose"
+            dangerouslySetInnerHTML={{ __html: sanitizePostHtml(d.content) }}
+          />
+        ) : (
+          <article className="dv-prose" style={{ whiteSpace: "pre-wrap" }}>{d.content}</article>
+        )}
 
         {/* 태그 */}
         {d.tags?.length > 0 && (

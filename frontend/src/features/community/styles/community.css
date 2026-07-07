@@ -71,12 +71,25 @@
 .wv-tool { width: 30px; height: 30px; border: none; background: none; border-radius: 6px; cursor: pointer;
   color: var(--av-ink-2); display: flex; align-items: center; justify-content: center; }
 .wv-tool:hover { background: var(--av-line-soft); color: var(--av-ink); }
+.wv-tool.on { background: var(--av-blue-soft); color: var(--av-blue); }
 .wv-tool svg { width: 15px; height: 15px; stroke-width: 2; }
 .wv-tooldiv { width: 1px; height: 16px; background: var(--av-line); margin: 0 6px; }
-.wv-body { width: 100%; min-height: 320px; border: none; background: none; resize: vertical;
-  font-size: 14.5px; line-height: 1.75; color: var(--av-ink); padding: 14px 0; }
-.wv-body:focus { outline: none; }
-.wv-body::placeholder { color: #cbd5e1; }
+/* TipTap 에디터 (textarea 대체) — 래퍼 + ProseMirror 편집영역 */
+.wv-body { position: relative; padding: 14px 0; }
+.wv-body .ProseMirror { min-height: 320px; outline: none; font-size: 14.5px; line-height: 1.75; color: var(--av-ink); }
+.wv-body__ph { position: absolute; top: 14px; left: 0; right: 0; pointer-events: none;
+  white-space: pre-line; color: #cbd5e1; font-size: 14.5px; line-height: 1.75; }
+.wv-body .ProseMirror p { margin: 12px 0; }
+.wv-body .ProseMirror p:first-child { margin-top: 0; }
+.wv-body .ProseMirror strong, .wv-body .ProseMirror b { font-weight: 650; }
+.wv-body .ProseMirror ul, .wv-body .ProseMirror ol { margin: 12px 0; padding-left: 22px; }
+.wv-body .ProseMirror ul { list-style: disc; }
+.wv-body .ProseMirror ol { list-style: decimal; }
+.wv-body .ProseMirror li { margin: 4px 0; }
+.wv-body .ProseMirror blockquote { margin: 12px 0; padding: 4px 0 4px 12px; border-left: 2px solid var(--av-blue); color: var(--av-ink-2); }
+.wv-body .ProseMirror code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.88em; background: var(--av-line-soft); padding: 1px 5px; border-radius: 5px; }
+.wv-body .ProseMirror a { color: var(--av-blue); text-decoration: underline; }
 .wv-tags { display: flex; align-items: center; gap: 7px; border-top: 1px solid var(--av-line-soft); padding: 12px 0 4px; flex-wrap: wrap; }
 .wv-tags > svg { width: 13px; height: 13px; color: var(--av-ink-3); stroke-width: 2; flex: none; }
 .wv-tags input { flex: 1; min-width: 100px; border: none; background: none; font-size: 13px; color: var(--av-ink); }
@@ -91,8 +104,6 @@
 .wv-foot { position: sticky; bottom: 0; background: color-mix(in srgb, var(--av-bg) 88%, transparent);
   backdrop-filter: blur(8px); border-top: 1px solid var(--av-line); margin-top: 22px; padding: 12px 0; }
 .wv-foot__in { max-width: 760px; margin: 0 auto; display: flex; align-items: center; gap: 8px; }
-.wv-foot__draft { font-size: 11.5px; color: var(--av-ink-3); display: inline-flex; align-items: center; gap: 5px; }
-.wv-foot__draft svg { width: 12px; height: 12px; stroke-width: 2; color: #16a34a; }
 .wv-foot__r { margin-left: auto; display: flex; gap: 8px; }
 .wv-anon { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--av-ink-2); cursor: pointer; user-select: none; }
 .wv-anon input { accent-color: var(--av-ink); width: 14px; height: 14px; cursor: pointer; }
@@ -100,10 +111,6 @@
 .wv-input { display: block; width: 100%; padding: 7px 10px; border: 1px solid var(--av-line); border-radius: 6px;
   background: var(--av-card); color: var(--av-ink); font-size: 13px; }
 .wv-input:focus { outline: none; border-color: var(--av-blue); }
-
-@media (max-width: 768px) {
-  .wv-foot__draft { display: none; }
-}
 
 /* ===== Post detail ===== */
 .ct-detail { max-width: 760px; margin: 0 auto; }
