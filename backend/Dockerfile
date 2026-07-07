@@ -10,10 +10,15 @@ WORKDIR /app
 COPY gradlew settings.gradle build.gradle ./
 COPY gradle ./gradle
 RUN chmod +x gradlew
+RUN --mount=type=cache,target=/root/.gradle/caches \
+    --mount=type=cache,target=/root/.gradle/wrapper \
+    ./gradlew dependencies --no-daemon >/dev/null
 
 COPY src ./src
 # 테스트는 CI 에서 수행. 이미지 빌드는 산출물만 생성.
-RUN ./gradlew bootJar -x test --no-daemon
+RUN --mount=type=cache,target=/root/.gradle/caches \
+    --mount=type=cache,target=/root/.gradle/wrapper \
+    ./gradlew bootJar -x test --no-daemon
 
 # ───── runtime ─────
 FROM eclipse-temurin:21-jre
