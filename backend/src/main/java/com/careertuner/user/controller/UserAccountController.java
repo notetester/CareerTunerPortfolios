@@ -1,7 +1,9 @@
 package com.careertuner.user.controller;
 
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -48,5 +50,11 @@ public class UserAccountController {
                                                       @Valid @RequestBody EmailRegistrationRequest request) {
         service.requestEmailRegistration(authUser.id(), request.email());
         return ApiResponse.ok();
+    }
+
+    @DeleteMapping("/social/{provider}")
+    public ApiResponse<AccountInfoResponse> unlinkSocialProvider(@AuthenticationPrincipal AuthUser authUser,
+                                                                 @PathVariable String provider) {
+        return ApiResponse.ok(service.unlinkSocialProvider(authUser.id(), provider));
     }
 }

@@ -18,6 +18,9 @@ public interface UserAccountService {
     /** 실제 이메일 등록/변경 인증 메일 발송. 링크 인증 완료 전까지는 기존 이메일을 유지한다. */
     void requestEmailRegistration(Long userId, String email);
 
+    /** 소셜 계정 연결 해제. 마지막 로그인 수단이면 해제하지 않는다. */
+    AccountInfoResponse unlinkSocialProvider(Long userId, String provider);
+
     UserResumeDetailResponse getResumeDetail(Long userId);
 
     UserResumeDetailResponse saveResumeDetail(Long userId, UserResumeDetailRequest request);

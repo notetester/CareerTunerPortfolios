@@ -37,15 +37,17 @@ public class JwtTokenProvider {
 
     public String createAccessToken(Long userId, String email, String role) {
         Instant now = Instant.now();
-        return Jwts.builder()
+        var builder = Jwts.builder()
                 .subject(String.valueOf(userId))
-                .claim("email", email)
                 .claim("role", role)
                 .claim("type", "access")
                 .issuedAt(Date.from(now))
                 .expiration(Date.from(now.plusSeconds(accessValiditySeconds)))
-                .signWith(key)
-                .compact();
+                .signWith(key);
+        if (email != null && !email.isBlank()) {
+            builder.claim("email", email);
+        }
+        return builder.compact();
     }
 
     /** 유효하지 않으면 JwtException 을 던진다. */
@@ -59,23 +61,55 @@ public class JwtTokenProvider {
 
     /** OAuth 콜백 검증용 서명 state 토큰(5분). 세션/쿠키 없이 CSRF 를 방지한다. */
     public String createOauthState(String provider) {
+        return createOauthState(provider, "LOGIN", null);
+    }
+
+    public String createOauthLinkState(String provider, Long userId) {
+        return createOauthState(provider, "LINK", userId);
+    }
+
+    private String createOauthState(String provider, String mode, Long userId) {
         Instant now = Instant.now();
-        return Jwts.builder()
+        var builder = Jwts.builder()
                 .subject(provider)
                 .id(UUID.randomUUID().toString())
                 .claim("type", "oauth_state")
+                .claim("mode", mode)
                 .issuedAt(Date.from(now))
                 .expiration(Date.from(now.plusSeconds(300)))
-                .signWith(key)
-                .compact();
+                .signWith(key);
+        if (userId != null) {
+            builder.claim("userId", userId);
+        }
+        return builder.compact();
     }
 
     public boolean validateOauthState(String state, String provider) {
         try {
-            Claims c = Jwts.parser().verifyWith(key).build().parseSignedClaims(state).getPayload();
-            return "oauth_state".equals(c.get("type", String.class)) && provider.equals(c.getSubject());
+            parseOauthState(state, provider);
+            return true;
         } catch (Exception e) {
             return false;
+        }
+    }
+
+    public OauthState parseOauthState(String state, String provider) {
+        Claims c = Jwts.parser().verifyWith(key).build().parseSignedClaims(state).getPayload();
+        if (!"oauth_state".equals(c.get("type", String.class)) || !provider.equals(c.getSubject())) {
+            throw new JwtException("invalid oauth state");
+        }
+        String mode = c.get("mode", String.class);
+        if (mode == null || mode.isBlank()) {
+            mode = "LOGIN";
+        }
+        Object userIdClaim = c.get("userId");
+        Long userId = userIdClaim instanceof Number number ? number.longValue() : null;
+        return new OauthState(provider, mode, userId);
+    }
+
+    public record OauthState(String provider, String mode, Long userId) {
+        public boolean linkMode() {
+            return "LINK".equals(mode);
         }
     }
 }

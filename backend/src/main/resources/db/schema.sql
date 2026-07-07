@@ -12,7 +12,7 @@ SET FOREIGN_KEY_CHECKS = 0;
 -- =====================================================================
 CREATE TABLE IF NOT EXISTS users (
     id               BIGINT       NOT NULL AUTO_INCREMENT,
-    email            VARCHAR(255) NOT NULL COMMENT '로그인 식별자로 사용하는 회원 이메일',
+    email            VARCHAR(255) NULL COMMENT 'Login and recovery email. ID-only signup users can register and verify it later.',
     login_id         VARCHAR(50)  NULL COMMENT '로그인 아이디(문자열, 선택·전역 UNIQUE·설정 후 변경 불가 정책)',
     phone            VARCHAR(40)  NULL COMMENT '전화번호(선택, 전역 UNIQUE)',
     phone_verified   TINYINT(1)   NOT NULL DEFAULT 0 COMMENT '전화번호 인증 여부(선택·스텁)',

@@ -17,7 +17,13 @@ public interface AuthMapper {
     // ── 소셜 연동 ──
     UserSocial findSocial(@Param("provider") String provider, @Param("providerUserId") String providerUserId);
 
+    UserSocial findSocialByUserAndProvider(@Param("userId") Long userId, @Param("provider") String provider);
+
+    int countSocialByUser(@Param("userId") Long userId);
+
     void insertSocial(UserSocial social);
+
+    int deleteSocialByUserAndProvider(@Param("userId") Long userId, @Param("provider") String provider);
 
     // ── 이메일 인증 토큰 ──
     void insertEmailVerification(EmailVerification verification);

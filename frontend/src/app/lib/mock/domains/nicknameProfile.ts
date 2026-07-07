@@ -234,7 +234,7 @@ export const nicknameProfileRoutes: MockRoute[] = [
     pattern: /^\/account\/email-registration$/,
     handler: ({ body }) => {
       const req = body as { email?: string };
-      account.email = (req?.email ?? account.email).trim().toLowerCase();
+      account.email = (req?.email ?? account.email ?? "").trim().toLowerCase();
       account.emailVerified = true;
       account.temporaryEmail = false;
       account.emailRegistrationRequired = false;

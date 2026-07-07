@@ -31,7 +31,7 @@ import type {
 const currentUser: CollaborationUser = {
   id: demoUser.id,
   name: demoUser.name,
-  email: demoUser.email,
+  email: demoUser.email ?? "",
   plan: demoUser.plan,
   relationStatus: "SELF",
 };
@@ -533,7 +533,7 @@ export const collaborationRoutes: MockRoute[] = [
       if (!keyword) return [];
       return users
         .filter((user) => user.id !== currentUser.id)
-        .filter((user) => `${user.name} ${user.email}`.toLowerCase().includes(keyword))
+        .filter((user) => `${user.name} ${user.email ?? ""}`.toLowerCase().includes(keyword))
         .slice(0, limit);
     },
   },

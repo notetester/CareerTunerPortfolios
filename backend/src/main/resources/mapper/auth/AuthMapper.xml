@@ -9,10 +9,25 @@
         WHERE provider = #{provider} AND provider_user_id = #{providerUserId}
     </select>
 
+    <select id="findSocialByUserAndProvider" resultType="com.careertuner.auth.domain.UserSocial">
+        SELECT * FROM user_social
+        WHERE user_id = #{userId} AND provider = #{provider}
+        LIMIT 1
+    </select>
+
+    <select id="countSocialByUser" resultType="int">
+        SELECT COUNT(*) FROM user_social WHERE user_id = #{userId}
+    </select>
+
     <insert id="insertSocial" useGeneratedKeys="true" keyProperty="id">
         INSERT INTO user_social (user_id, provider, provider_user_id)
         VALUES (#{userId}, #{provider}, #{providerUserId})
     </insert>
+
+    <delete id="deleteSocialByUserAndProvider">
+        DELETE FROM user_social
+        WHERE user_id = #{userId} AND provider = #{provider}
+    </delete>
 
     <!-- 이메일 인증 토큰 -->
     <insert id="insertEmailVerification" useGeneratedKeys="true" keyProperty="id">

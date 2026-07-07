@@ -28,6 +28,7 @@ import com.careertuner.auth.dto.TokenResponse;
 import com.careertuner.auth.service.AuthService;
 import com.careertuner.common.config.CareerTunerProperties;
 import com.careertuner.common.security.AuthUser;
+import com.careertuner.common.security.JwtTokenProvider;
 import com.careertuner.common.web.ApiResponse;
 
 import jakarta.validation.Valid;
@@ -49,6 +50,7 @@ public class AuthController {
 
     private final AuthService authService;
     private final CareerTunerProperties props;
+    private final JwtTokenProvider jwtTokenProvider;
 
     // ── 이메일 회원가입/로그인 ──
 
@@ -95,6 +97,11 @@ public class AuthController {
     @GetMapping("/check/email")
     public ApiResponse<Map<String, Boolean>> checkEmail(@RequestParam String value) {
         return ApiResponse.ok(Map.of("duplicate", authService.isEmailTaken(value)));
+    }
+
+    @GetMapping("/check/login-id")
+    public ApiResponse<Map<String, Boolean>> checkLoginId(@RequestParam String value) {
+        return ApiResponse.ok(Map.of("duplicate", authService.isLoginIdTaken(value)));
     }
 
     // ── 이메일 인증 ──
@@ -146,6 +153,13 @@ public class AuthController {
         return redirect(authService.buildAuthorizationUrl(provider));
     }
 
+    @GetMapping("/oauth/{provider}/link")
+    public ApiResponse<Map<String, String>> oauthLink(@PathVariable String provider,
+                                                      @AuthenticationPrincipal AuthUser authUser) {
+        String url = authService.buildSocialLinkAuthorizationUrl(provider, authUser.id());
+        return ApiResponse.ok(Map.of("authorizationUrl", url));
+    }
+
     @GetMapping("/oauth/{provider}/callback")
     public ResponseEntity<Void> oauthCallback(@PathVariable String provider,
                                               @RequestParam String code,
@@ -153,11 +167,13 @@ public class AuthController {
                                               HttpServletRequest servletRequest) {
         String frontend = props.getApp().getFrontendUrl();
         try {
+            boolean linkMode = jwtTokenProvider.parseOauthState(state, provider.toUpperCase()).linkMode();
             TokenResponse tokens = authService.handleOAuthCallback(provider, code, state,
                     LoginRequestContext.from(servletRequest));
             String fragment = "/auth/callback#accessToken=" + enc(tokens.accessToken())
                     + "&refreshToken=" + enc(tokens.refreshToken())
-                    + "&expiresIn=" + tokens.expiresIn();
+                    + "&expiresIn=" + tokens.expiresIn()
+                    + (linkMode ? "&linkedProvider=" + enc(provider.toUpperCase()) : "");
             return redirect(frontend + fragment);
         } catch (Exception e) {
             log.warn("[{}] OAuth 콜백 실패: {}", provider, e.getMessage());

@@ -18,6 +18,8 @@ public interface UserMapper {
 
     int countByEmailExcludingId(@Param("email") String email, @Param("id") Long id);
 
+    int countByLoginId(String loginId);
+
     /** id 는 useGeneratedKeys 로 user 객체에 채워진다. */
     void insert(User user);
 

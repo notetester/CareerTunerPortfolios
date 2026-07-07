@@ -111,6 +111,22 @@ public class UserAccountServiceImpl implements UserAccountService {
     }
 
     @Override
+    @Transactional
+    public AccountInfoResponse unlinkSocialProvider(Long userId, String provider) {
+        User user = requireUser(userId);
+        String normalized = normalizeProvider(provider);
+        if (authMapper.findSocialByUserAndProvider(userId, normalized) == null) {
+            throw new BusinessException(ErrorCode.NOT_FOUND, "연결된 소셜 계정이 없습니다.");
+        }
+        int socialCount = authMapper.countSocialByUser(userId);
+        if (!user.isPasswordEnabled() && socialCount <= 1) {
+            throw new BusinessException(ErrorCode.FORBIDDEN, "마지막 로그인 수단은 해제할 수 없습니다. 먼저 이메일/비밀번호 로그인을 설정해 주세요.");
+        }
+        authMapper.deleteSocialByUserAndProvider(userId, normalized);
+        return toAccountInfo(requireUser(userId));
+    }
+
+    @Override
     @Transactional(readOnly = true)
     public UserResumeDetailResponse getResumeDetail(Long userId) {
         UserResumeDetail detail = mapper.findResumeDetail(userId);
@@ -209,6 +225,14 @@ public class UserAccountServiceImpl implements UserAccountService {
 
     private boolean isTemporaryEmail(String email) {
         return email == null || email.isBlank() || email.toLowerCase(Locale.ROOT).endsWith("@social.careertuner");
+    }
+
+    private String normalizeProvider(String provider) {
+        String normalized = provider == null ? "" : provider.trim().toUpperCase(Locale.ROOT);
+        if (!"KAKAO".equals(normalized) && !"NAVER".equals(normalized) && !"GOOGLE".equals(normalized)) {
+            throw new BusinessException(ErrorCode.INVALID_INPUT, "지원하지 않는 소셜 제공자입니다.");
+        }
+        return normalized;
     }
 
     private Object object(String jsonValue) {

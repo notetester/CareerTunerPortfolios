@@ -36,10 +36,15 @@ public interface AuthService {
 
     boolean isEmailTaken(String email);
 
+    boolean isLoginIdTaken(String loginId);
+
     MeResponse me(Long userId);
 
     /** 소셜 제공자 인가 URL(서명된 state 포함)을 만든다. */
     String buildAuthorizationUrl(String provider);
+
+    /** 로그인된 사용자의 소셜 계정 연결용 인가 URL(서명된 state 포함)을 만든다. */
+    String buildSocialLinkAuthorizationUrl(String provider, Long userId);
 
     /** 소셜 콜백 처리: state 검증 → 사용자 조회/생성 → 토큰 발급. */
     TokenResponse handleOAuthCallback(String provider, String code, String state, LoginRequestContext context);

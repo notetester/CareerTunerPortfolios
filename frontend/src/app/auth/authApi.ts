@@ -42,6 +42,15 @@ export function checkEmailDuplicate(email: string): Promise<{ duplicate: boolean
   );
 }
 
+/** 회원가입 로그인 아이디 중복 확인. duplicate=true 면 이미 사용 중인 아이디. */
+export function checkLoginIdDuplicate(loginId: string): Promise<{ duplicate: boolean }> {
+  return api<{ duplicate: boolean }>(
+    `/auth/check/login-id?value=${encodeURIComponent(loginId)}`,
+    { method: "GET" },
+    { auth: false },
+  );
+}
+
 /** 인증 메일 재발송. */
 export function resendVerificationEmail(email: string): Promise<void> {
   return api<void>(
