@@ -6,7 +6,7 @@ import org.springframework.context.annotation.Primary;
 import org.springframework.stereotype.Service;
 
 import com.careertuner.ai.common.budget.AiTotalTimeBudget;
-import com.careertuner.analysis.ai.provider.CareerAnalysisAiProviderProperties;
+import com.careertuner.ai.common.settings.AiRuntimeSettings;
 
 /**
  * 커리어 트렌드 AI 진입점(@Primary) — Claude(Haiku) → OpenAI 폴백 디스패처.
@@ -29,27 +29,28 @@ public class FallbackCareerTrendAiService implements CareerTrendAiService {
 
     private final AnthropicCareerTrendAiService anthropicService;
     private final OpenAiCareerTrendAiService openAiService;
-    private final CareerAnalysisAiProviderProperties properties;
+    // 시간 정책(체인 예산·per-tier 타임아웃)은 DB-first 런타임 설정에서 읽는다(정적 프로퍼티 fallback).
+    private final AiRuntimeSettings aiRuntimeSettings;
 
     public FallbackCareerTrendAiService(AnthropicCareerTrendAiService anthropicService,
                                         OpenAiCareerTrendAiService openAiService,
-                                        CareerAnalysisAiProviderProperties properties) {
+                                        AiRuntimeSettings aiRuntimeSettings) {
         this.anthropicService = anthropicService;
         this.openAiService = openAiService;
-        this.properties = properties;
+        this.aiRuntimeSettings = aiRuntimeSettings;
     }
 
     @Override
     public CareerTrendAiResult generate(CareerTrendAiCommand command) {
-        long deadline = AiTotalTimeBudget.deadlineNanos(properties.getChainTotalTimeBudget());
+        long deadline = AiTotalTimeBudget.deadlineNanos(aiRuntimeSettings.analysisChainTotalTimeBudget());
         if (anthropicService.configured()) {
             try {
-                return anthropicService.generate(command, properties.getClaudeTimeout(), deadline);
+                return anthropicService.generate(command, aiRuntimeSettings.analysisClaudeTimeout(), deadline);
             } catch (RuntimeException ex) {
                 log.warn("C 커리어트렌드 Claude 실패 → OpenAI 폴백: {}", ex.getMessage());
             }
         }
         // OpenAI tier 는 항상 시도 — 내부 Mock 폴백이 최종 안전망(never-throw)이다.
-        return openAiService.generate(command, properties.getOpenaiTimeout(), deadline);
+        return openAiService.generate(command, aiRuntimeSettings.analysisOpenaiTimeout(), deadline);
     }
 }

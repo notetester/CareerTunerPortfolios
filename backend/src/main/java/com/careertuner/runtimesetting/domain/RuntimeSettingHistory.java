@@ -14,5 +14,7 @@ public record RuntimeSettingHistory(
         String afterValue,
         String beforeFallback,
         String afterFallback,
+        // reason: 관리자가 설정을 변경한 사유(자유 텍스트, nullable)
+        String reason,
         LocalDateTime createdAt) {
 }

@@ -2,6 +2,9 @@ package com.careertuner.analysis.ai.provider;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
 import java.io.IOException;
 import java.io.OutputStream;
@@ -21,7 +24,7 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
 import com.careertuner.ai.common.gpu.GpuPermitGate;
-import com.careertuner.ai.common.gpu.GpuPermitProperties;
+import com.careertuner.ai.common.settings.AiRuntimeSettings;
 import com.careertuner.common.exception.BusinessException;
 import com.sun.net.httpserver.HttpServer;
 
@@ -102,12 +105,14 @@ class CareerAnalysisOssClientGateBudgetIntegrationTest {
         return properties;
     }
 
+    /** 게이트 ON — permits/acquire-timeout 을 돌려주는 mock 런타임 설정으로 게이트를 만든다(도메인 override 없음). */
     private static GpuPermitGate gateOn(int permits) {
-        GpuPermitProperties gateProps = new GpuPermitProperties();
-        gateProps.setEnabled(true);
-        gateProps.setPermits(permits);
-        gateProps.setAcquireTimeout(Duration.ofSeconds(5));
-        return new GpuPermitGate(gateProps);
+        AiRuntimeSettings settings = mock(AiRuntimeSettings.class);
+        when(settings.gpuGateEnabled()).thenReturn(true);
+        when(settings.gpuGatePermits()).thenReturn(permits);
+        when(settings.gpuGateAcquireTimeout()).thenReturn(Duration.ofSeconds(5));
+        when(settings.gpuGateDomainOverride(anyString())).thenReturn(null);
+        return new GpuPermitGate(settings);
     }
 
     @Test

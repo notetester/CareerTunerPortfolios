@@ -9,9 +9,11 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import java.time.Duration;
+
 import org.junit.jupiter.api.Test;
 
-import com.careertuner.analysis.ai.provider.CareerAnalysisAiProviderProperties;
+import com.careertuner.ai.common.settings.AiRuntimeSettings;
 import com.careertuner.analysis.ai.provider.CareerAnalysisAiUsage;
 
 /**
@@ -20,6 +22,15 @@ import com.careertuner.analysis.ai.provider.CareerAnalysisAiUsage;
 class FallbackDashboardInsightAiServiceTest {
 
     private final DashboardInsightAiCommand command = new DashboardInsightAiCommand(null, null, null);
+
+    /** 시간 정책은 DB-first 설정에서 읽으므로 기본값(체인 120s / Claude 30s / OpenAI 30s)을 돌려주는 mock 을 주입한다. */
+    private static AiRuntimeSettings defaultSettings() {
+        AiRuntimeSettings settings = mock(AiRuntimeSettings.class);
+        when(settings.analysisChainTotalTimeBudget()).thenReturn(Duration.ofSeconds(120));
+        when(settings.analysisClaudeTimeout()).thenReturn(Duration.ofSeconds(30));
+        when(settings.analysisOpenaiTimeout()).thenReturn(Duration.ofSeconds(30));
+        return settings;
+    }
 
     private DashboardInsightAiResult tagged(String model) {
         return new DashboardInsightAiResult("요약",
@@ -34,7 +45,7 @@ class FallbackDashboardInsightAiServiceTest {
         when(anthropic.summarize(eq(command), any(), anyLong())).thenReturn(tagged("claude-haiku"));
 
         FallbackDashboardInsightAiService service = new FallbackDashboardInsightAiService(
-                anthropic, openAi, new CareerAnalysisAiProviderProperties());
+                anthropic, openAi, defaultSettings());
         DashboardInsightAiResult result = service.summarize(command);
 
         assertThat(result.usage().model()).isEqualTo("claude-haiku");
@@ -49,7 +60,7 @@ class FallbackDashboardInsightAiServiceTest {
         when(openAi.summarize(eq(command), any(), anyLong())).thenReturn(tagged("gpt-5"));
 
         FallbackDashboardInsightAiService service = new FallbackDashboardInsightAiService(
-                anthropic, openAi, new CareerAnalysisAiProviderProperties());
+                anthropic, openAi, defaultSettings());
         DashboardInsightAiResult result = service.summarize(command);
 
         assertThat(result.usage().model()).isEqualTo("gpt-5");
@@ -65,7 +76,7 @@ class FallbackDashboardInsightAiServiceTest {
         when(openAi.summarize(eq(command), any(), anyLong())).thenReturn(tagged("gpt-5"));
 
         FallbackDashboardInsightAiService service = new FallbackDashboardInsightAiService(
-                anthropic, openAi, new CareerAnalysisAiProviderProperties());
+                anthropic, openAi, defaultSettings());
         DashboardInsightAiResult result = service.summarize(command);
 
         assertThat(result.usage().model()).isEqualTo("gpt-5");

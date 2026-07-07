@@ -119,7 +119,8 @@ public class SettingsExportService {
                         .editable(r.editable())
                         .active(r.active())
                         .description(r.description())
-                        .build(), actorId);
+                        // reason: 가져오기 경로로 인한 변경임을 이력에 남긴다
+                        .build(), actorId, "가져오기(IMPORT)");
                 applied++;
             } catch (Exception e) {
                 skipped++;
