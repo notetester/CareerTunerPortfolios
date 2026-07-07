@@ -162,6 +162,7 @@ careertuner:
   uploads:
     job-posting-dir: ${JOB_POSTING_UPLOAD_DIR:.uploads/application-postings}
     max-file-size-bytes: ${JOB_POSTING_MAX_FILE_SIZE_BYTES:10485760}
+    storage-provider: ${JOB_POSTING_STORAGE_PROVIDER:local}
   extraction:
     ai-worker:
       enabled: ${JOB_POSTING_AI_WORKER_ENABLED:false}
