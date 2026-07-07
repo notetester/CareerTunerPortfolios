@@ -55,6 +55,9 @@ public interface InterviewService {
     /** 지난 세션 복기: 질문 + 저장된 모범답안 + 내 최신 답변/점수. (최근 면접 기록에서 들어가 보기) */
     SessionReviewResponse getSessionReview(Long userId, Long sessionId);
 
-    /** 음성 모의면접 트랜스크립트를 질문별로 채점해 저장하고, 채점한 문항 수를 반환한다. */
-    int scoreVoiceTranscript(Long userId, Long sessionId, JsonNode transcript);
+    /**
+     * 음성 모의면접 트랜스크립트를 질문별로 채점해 저장하고, 채점한 문항 수를 반환한다.
+     * @param questionLimit 채점 대상 질문 수 제한 (1~6, null=전체). 체험판은 1.
+     */
+    int scoreVoiceTranscript(Long userId, Long sessionId, JsonNode transcript, Integer questionLimit);
 }
