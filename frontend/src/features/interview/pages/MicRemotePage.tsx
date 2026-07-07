@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useSearchParams } from "react-router";
 import { useAuth } from "@/app/auth/AuthContext";
-import { Loader2, Mic, MicOff, PhoneOff, Smartphone } from "lucide-react";
+import { Loader2, Mic, MicOff, PhoneOff, Smartphone, Video } from "lucide-react";
 import { Button } from "@/app/components/ui/button";
 import {
   closeMicHandoff,
@@ -15,13 +15,17 @@ import { MicLevelMeter } from "../components/MicLevelMeter";
 type Phase = "idle" | "joining" | "connecting" | "connected" | "ended" | "error";
 
 /**
- * 폰 마이크 송신 페이지 — 데스크탑 음성 모의면접의 원격 마이크가 된다.
- * 데스크탑 화면에 뜬 6자리 코드를 입력하면 이 기기의 마이크 오디오를 WebRTC 로 전송한다.
- * (1차: 같은 와이파이, STUN only. 오디오는 P2P — 서버를 거치지 않는다.)
+ * 폰 마이크/카메라 송신 페이지 — 데스크탑 면접의 원격 마이크(또는 카메라)가 된다.
+ * 데스크탑 화면에 뜬 6자리 코드를 입력하면 이 기기의 오디오(+ ?video=1 이면 카메라 영상)를 WebRTC 로 전송한다.
+ * (오디오/영상은 P2P — TURN 릴레이 폴백이 있어 다른 망에서도 붙는다.)
  */
 export function MicRemotePage() {
   const { isAuthenticated } = useAuth();
   const [searchParams] = useSearchParams();
+  const videoParam = searchParams.get("video") === "1";
+  // 실제 카메라 전송 여부 — URL 힌트로 시작하되, 연결 시 데스크탑 offer SDP(m=video)가 단일 진실 소스.
+  // (로그인 리다이렉트·수동 코드 입력으로 URL 파라미터가 유실돼도 offer 를 보고 카메라를 켠다.)
+  const [wantVideo, setWantVideo] = useState(videoParam);
   const [code, setCode] = useState(searchParams.get("code") ?? "");
   const [phase, setPhase] = useState<Phase>("idle");
   const [error, setError] = useState<string | null>(null);
@@ -31,6 +35,7 @@ export function MicRemotePage() {
 
   const pcRef = useRef<RTCPeerConnection | null>(null);
   const micRef = useRef<MediaStream | null>(null);
+  const localVideoRef = useRef<HTMLVideoElement | null>(null);
   const codeRef = useRef<string>("");
   const wakeLockRef = useRef<{ release: () => Promise<void> } | null>(null);
 
@@ -41,6 +46,13 @@ export function MicRemotePage() {
       micRef.current?.getTracks().forEach((t) => t.stop());
     };
   }, []);
+
+  // 연결 후 셀프뷰 <video> 가 렌더되면 카메라 스트림을 바인딩한다(획득 시점엔 아직 없을 수 있음).
+  useEffect(() => {
+    if (wantVideo && phase === "connected" && localVideoRef.current && micRef.current) {
+      localVideoRef.current.srcObject = micRef.current;
+    }
+  }, [phase, wantVideo]);
 
   const connect = async () => {
     const trimmed = code.trim();
@@ -64,15 +76,20 @@ export function MicRemotePage() {
       }
       if (!offerSdp) throw new Error("데스크탑의 연결 준비를 기다리다 시간이 지났습니다. 다시 시도해 주세요.");
 
-      // ② 마이크 획득 → answer 생성/게시.
+      // ② 마이크(+ 카메라) 획득 → answer 생성/게시.
+      // 카메라 필요 여부는 데스크탑 offer 가 결정한다(m=video 포함 = 화상 면접).
+      const useVideo = /\r?\nm=video\b/.test(offerSdp) || offerSdp.startsWith("m=video");
+      setWantVideo(useVideo);
       setPhase("connecting");
       const [mic, iceServers] = await Promise.all([
         navigator.mediaDevices.getUserMedia({
           audio: { echoCancellation: true, noiseSuppression: true },
+          video: useVideo ? { facingMode: "user", width: { ideal: 1280 }, height: { ideal: 720 } } : false,
         }),
         fetchIceServers(),
       ]);
       micRef.current = mic;
+      if (useVideo && localVideoRef.current) localVideoRef.current.srcObject = mic;
       setMicStream(mic);
 
       const pc = new RTCPeerConnection({ iceServers });
@@ -127,7 +144,11 @@ export function MicRemotePage() {
 
   // QR로 열었는데 이 폰 브라우저에 로그인 세션이 없으면 API(같은계정 검증)가 막힌다 → 로그인 유도.
   if (!isAuthenticated) {
-    const returnTo = `/mic-remote${code ? `?code=${code}` : ""}`;
+    const params = new URLSearchParams();
+    if (code) params.set("code", code);
+    if (videoParam) params.set("video", "1");
+    const qs = params.toString();
+    const returnTo = `/mic-remote${qs ? `?${qs}` : ""}`;
     return (
       <div className="mx-auto flex min-h-[70vh] max-w-md flex-col items-center justify-center px-4 py-10">
         <div className="w-full rounded-2xl border border-slate-200 bg-card p-6 text-center shadow-sm">
@@ -159,12 +180,15 @@ export function MicRemotePage() {
     <div className="mx-auto flex min-h-[70vh] max-w-md flex-col items-center justify-center px-4 py-10">
       <div className="w-full rounded-2xl border border-slate-200 bg-card p-6 text-center shadow-sm">
         <div className="mx-auto flex size-12 items-center justify-center rounded-xl bg-indigo-50 text-indigo-600">
-          <Smartphone className="size-6" />
+          {wantVideo ? <Video className="size-6" /> : <Smartphone className="size-6" />}
         </div>
-        <h1 className="mt-3 text-lg font-black text-slate-900">폰 마이크로 연결</h1>
+        <h1 className="mt-3 text-lg font-black text-slate-900">
+          {wantVideo ? "폰 카메라로 연결" : "폰 마이크로 연결"}
+        </h1>
         <p className="mt-1 text-sm leading-6 text-slate-500">
-          데스크탑에서 진행 중인 음성 모의면접에 이 폰의 마이크를 연결합니다. 다른 네트워크(LTE 등)여도
-          연결됩니다.
+          {wantVideo
+            ? "데스크탑에서 진행 중인 화상 면접에 이 폰의 카메라와 마이크를 연결합니다. 다른 네트워크(LTE 등)여도 연결됩니다."
+            : "데스크탑에서 진행 중인 음성 모의면접에 이 폰의 마이크를 연결합니다. 다른 네트워크(LTE 등)여도 연결됩니다."}
         </p>
 
         {(phase === "idle" || phase === "error") && (
@@ -178,7 +202,8 @@ export function MicRemotePage() {
             />
             {error && <p className="text-xs text-red-500">{error}</p>}
             <Button onClick={connect} className="w-full gap-1.5 bg-indigo-600 hover:bg-indigo-700">
-              <Mic className="size-4" /> 마이크 연결
+              {wantVideo ? <Video className="size-4" /> : <Mic className="size-4" />}
+              {wantVideo ? "카메라 연결" : "마이크 연결"}
             </Button>
           </div>
         )}
@@ -192,16 +217,32 @@ export function MicRemotePage() {
 
         {phase === "connected" && (
           <div className="mt-6 space-y-4">
-            <div className="relative mx-auto flex size-20 items-center justify-center rounded-full bg-rose-50">
-              <span className="absolute size-20 animate-ping rounded-full bg-rose-200/60" />
-              {muted ? (
-                <MicOff className="size-8 text-slate-400" />
-              ) : (
-                <Mic className="size-8 text-rose-600" />
-              )}
-            </div>
+            {wantVideo ? (
+              <div className="mx-auto overflow-hidden rounded-xl bg-slate-900">
+                <video
+                  ref={localVideoRef}
+                  autoPlay
+                  muted
+                  playsInline
+                  className="mx-auto aspect-video w-full max-w-xs -scale-x-100 object-cover"
+                />
+              </div>
+            ) : (
+              <div className="relative mx-auto flex size-20 items-center justify-center rounded-full bg-rose-50">
+                <span className="absolute size-20 animate-ping rounded-full bg-rose-200/60" />
+                {muted ? (
+                  <MicOff className="size-8 text-slate-400" />
+                ) : (
+                  <Mic className="size-8 text-rose-600" />
+                )}
+              </div>
+            )}
             <p className="text-sm font-semibold text-slate-700">
-              {muted ? "음소거됨" : "마이크 전송 중 — 데스크탑에서 면접을 진행하세요"}
+              {muted
+                ? "음소거됨"
+                : wantVideo
+                  ? "카메라 전송 중 — 데스크탑에서 면접을 진행하세요"
+                  : "마이크 전송 중 — 데스크탑에서 면접을 진행하세요"}
             </p>
             {/* 실제 마이크 입력 레벨 — 이 폰이 내 목소리를 받고 있는지 즉시 확인 (음소거면 평평) */}
             <MicLevelMeter

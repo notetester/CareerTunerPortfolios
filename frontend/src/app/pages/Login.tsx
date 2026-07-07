@@ -15,8 +15,8 @@ export function LoginPage() {
   const [showPassword, setShowPassword] = useState(false);
   const [userType, setUserType] = useState<string>("취준생");
   const [name, setName] = useState("");
-  const [loginId, setLoginId] = useState("");
   const [email, setEmail] = useState("");
+  const [loginId, setLoginId] = useState("");
   const [password, setPassword] = useState("");
   const [passwordConfirm, setPasswordConfirm] = useState("");
   const [termsAgreed, setTermsAgreed] = useState(false);
@@ -55,7 +55,11 @@ export function LoginPage() {
 
   const handleLoginIdBlur = async () => {
     const normalized = loginId.trim().toLowerCase();
-    if (mode !== "signup" || !/^[a-z0-9_]{4,50}$/.test(normalized)) {
+    if (mode !== "signup" || !normalized) {
+      setLoginIdDuplicate(false);
+      return;
+    }
+    if (!/^[a-z0-9_]{4,50}$/.test(normalized)) {
       setLoginIdDuplicate(false);
       return;
     }
@@ -119,7 +123,8 @@ export function LoginPage() {
       if (mode === "login") {
         await login(loginIdentifier, password);
       } else {
-        await register(loginId.trim().toLowerCase(), email.trim() || null, password, name.trim(), {
+        const normalizedLoginId = loginId.trim().toLowerCase();
+        await register(normalizedLoginId, email.trim() || null, password, name.trim(), {
           termsAgreed,
           privacyAgreed,
           aiDataAgreed,
@@ -249,29 +254,34 @@ export function LoginPage() {
             {/* Email form */}
             <form className="space-y-3" onSubmit={handleSubmit}>
               {mode === "signup" && (
-                <>
-                  <Input
-                    placeholder="이름"
-                    className="h-11"
-                    value={name}
-                    onChange={(event) => setName(event.target.value)}
-                    autoComplete="name"
-                  />
+                <Input
+                  placeholder="이름"
+                  className="h-11"
+                  value={name}
+                  onChange={(event) => setName(event.target.value)}
+                  autoComplete="name"
+                />
+              )}
+              {mode === "signup" && (
+                <div className="space-y-1">
                   <div className="relative">
                     <UserRound className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-slate-400" />
                     <Input
                       placeholder="로그인 아이디"
                       className="h-11 pl-9"
                       value={loginId}
-                      onChange={(event) => { setLoginId(event.target.value.toLowerCase()); setLoginIdDuplicate(false); }}
+                      onChange={(event) => {
+                        setLoginId(event.target.value.toLowerCase());
+                        setLoginIdDuplicate(false);
+                      }}
                       onBlur={() => void handleLoginIdBlur()}
                       autoComplete="username"
                     />
                   </div>
                   {loginIdDuplicate && (
-                    <p className="-mt-1 text-xs text-red-600">이미 사용 중인 아이디입니다. 다른 아이디를 사용해 주세요.</p>
+                    <p className="text-xs text-red-600">이미 사용 중인 아이디입니다. 다른 아이디를 사용해 주세요.</p>
                   )}
-                </>
+                </div>
               )}
               <div className="relative">
                 <IdentifierIcon className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-slate-400" />
@@ -363,7 +373,10 @@ export function LoginPage() {
                 </>
               )}
               {mode === "login" && (
-                <div className="flex justify-end">
+                <div className="flex justify-end gap-3">
+                  <Link to="/auth/find-id" className="text-xs text-slate-500 hover:text-blue-600">
+                    아이디 찾기
+                  </Link>
                   <Link to="/auth/forgot-password" className="text-xs text-blue-600 hover:text-blue-700">
                     비밀번호를 잊으셨나요?
                   </Link>

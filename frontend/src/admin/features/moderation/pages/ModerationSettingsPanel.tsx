@@ -344,12 +344,12 @@ export default function ModerationSettingsPanel({ flash }: { flash: (msg: string
       </section>
 
       {/* 사용자 제재 (검열 누적 → 자동 차단) */}
-      <section className="av-panel md-sec" aria-label="사용자 제재">
+      <div className="md-sec">
         <div className="md-sec__h">
           <h2>사용자 제재</h2>
           <span className="s">숨김 글이 누적된 사용자를 자동 차단 — 게시글 숨김 임계와 별개</span>
         </div>
-        <div className="md-adv__body" style={{ display: "flex", gap: 24, flexWrap: "wrap" }}>
+        <section className="av-panel md-fields" style={{ display: "flex", gap: 24, flexWrap: "wrap" }} aria-label="사용자 제재">
           <label style={{ display: "flex", flexDirection: "column", gap: 6 }}>
             <span className="av-flabel">제재 임계 (누적 숨김 글 수)</span>
             <input
@@ -378,17 +378,16 @@ export default function ModerationSettingsPanel({ flash }: { flash: (msg: string
             />
             <span className="av-hint">자동 차단 시 이 기간 동안 이용 제한</span>
           </label>
-        </div>
-      </section>
+        </section>
+      </div>
 
       {/* 작성 제한(도배 방지) & 신고 누적 블러 */}
-      <section className="av-panel md-sec" aria-label="작성 제한 및 신고 블러">
+      <div className="md-sec">
         <div className="md-sec__h">
           <h2>작성 제한 &amp; 신고 블러</h2>
           <span className="s">짧은 시간 대량 작성(도배)을 막고, 신고가 쌓인 글을 자동으로 가려요 — 변경은 즉시 적용</span>
         </div>
-
-        <div className="md-adv__body" style={{ display: "flex", flexDirection: "column", gap: 20 }}>
+        <section className="av-panel md-fields" style={{ display: "flex", flexDirection: "column", gap: 20 }} aria-label="작성 제한 및 신고 블러">
           {/* 신고 누적 블러 */}
           <div style={{ display: "flex", gap: 24, flexWrap: "wrap", alignItems: "flex-end" }}>
             <NumBox
@@ -433,8 +432,8 @@ export default function ModerationSettingsPanel({ flash }: { flash: (msg: string
                 hint="현재는 정책 저장까지 — 집행 배선은 문의 담당" onCommit={(v) => applyRate({ inquiryRateMax: v }, "문의 제한 정책이 저장됐어요.")} />
             </div>
           </div>
-        </div>
-      </section>
+        </section>
+      </div>
 
       {/* 테스트 콘솔 */}
       <div className="md-sec">

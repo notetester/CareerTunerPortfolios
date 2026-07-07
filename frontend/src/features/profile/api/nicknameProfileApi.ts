@@ -71,11 +71,11 @@ export function requestEmailRegistration(email: string): Promise<void> {
   return api<void>("/account/email-registration", { method: "POST", body: JSON.stringify({ email }) });
 }
 
-export function startSocialLink(provider: string): Promise<{ authorizationUrl: string }> {
-  return api<{ authorizationUrl: string }>(`/auth/oauth/${provider.toLowerCase()}/link`, { method: "GET" });
+export function getSocialLinkUrl(provider: string): Promise<{ url: string }> {
+  return api<{ url: string }>(`/account/social/${provider.toLowerCase()}/link-url`, { method: "POST" });
 }
 
-export function unlinkSocialProvider(provider: string): Promise<AccountInfo> {
+export function unlinkSocial(provider: string): Promise<AccountInfo> {
   return api<AccountInfo>(`/account/social/${provider.toLowerCase()}`, { method: "DELETE" });
 }
 

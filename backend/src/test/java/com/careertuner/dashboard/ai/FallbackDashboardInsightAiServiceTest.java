@@ -1,13 +1,19 @@
 package com.careertuner.dashboard.ai;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import java.time.Duration;
+
 import org.junit.jupiter.api.Test;
 
+import com.careertuner.ai.common.settings.AiRuntimeSettings;
 import com.careertuner.analysis.ai.provider.CareerAnalysisAiUsage;
 
 /**
@@ -16,6 +22,15 @@ import com.careertuner.analysis.ai.provider.CareerAnalysisAiUsage;
 class FallbackDashboardInsightAiServiceTest {
 
     private final DashboardInsightAiCommand command = new DashboardInsightAiCommand(null, null, null);
+
+    /** 시간 정책은 DB-first 설정에서 읽으므로 기본값(체인 120s / Claude 30s / OpenAI 30s)을 돌려주는 mock 을 주입한다. */
+    private static AiRuntimeSettings defaultSettings() {
+        AiRuntimeSettings settings = mock(AiRuntimeSettings.class);
+        when(settings.analysisChainTotalTimeBudget()).thenReturn(Duration.ofSeconds(120));
+        when(settings.analysisClaudeTimeout()).thenReturn(Duration.ofSeconds(30));
+        when(settings.analysisOpenaiTimeout()).thenReturn(Duration.ofSeconds(30));
+        return settings;
+    }
 
     private DashboardInsightAiResult tagged(String model) {
         return new DashboardInsightAiResult("요약",
@@ -27,13 +42,14 @@ class FallbackDashboardInsightAiServiceTest {
         AnthropicDashboardInsightAiService anthropic = mock(AnthropicDashboardInsightAiService.class);
         OpenAiDashboardInsightAiService openAi = mock(OpenAiDashboardInsightAiService.class);
         when(anthropic.configured()).thenReturn(true);
-        when(anthropic.summarize(command)).thenReturn(tagged("claude-haiku"));
+        when(anthropic.summarize(eq(command), any(), anyLong())).thenReturn(tagged("claude-haiku"));
 
-        FallbackDashboardInsightAiService service = new FallbackDashboardInsightAiService(anthropic, openAi);
+        FallbackDashboardInsightAiService service = new FallbackDashboardInsightAiService(
+                anthropic, openAi, defaultSettings());
         DashboardInsightAiResult result = service.summarize(command);
 
         assertThat(result.usage().model()).isEqualTo("claude-haiku");
-        verify(openAi, never()).summarize(command);
+        verify(openAi, never()).summarize(eq(command), any(), anyLong());
     }
 
     @Test
@@ -41,13 +57,14 @@ class FallbackDashboardInsightAiServiceTest {
         AnthropicDashboardInsightAiService anthropic = mock(AnthropicDashboardInsightAiService.class);
         OpenAiDashboardInsightAiService openAi = mock(OpenAiDashboardInsightAiService.class);
         when(anthropic.configured()).thenReturn(false);
-        when(openAi.summarize(command)).thenReturn(tagged("gpt-5"));
+        when(openAi.summarize(eq(command), any(), anyLong())).thenReturn(tagged("gpt-5"));
 
-        FallbackDashboardInsightAiService service = new FallbackDashboardInsightAiService(anthropic, openAi);
+        FallbackDashboardInsightAiService service = new FallbackDashboardInsightAiService(
+                anthropic, openAi, defaultSettings());
         DashboardInsightAiResult result = service.summarize(command);
 
         assertThat(result.usage().model()).isEqualTo("gpt-5");
-        verify(anthropic, never()).summarize(command);
+        verify(anthropic, never()).summarize(eq(command), any(), anyLong());
     }
 
     @Test
@@ -55,10 +72,11 @@ class FallbackDashboardInsightAiServiceTest {
         AnthropicDashboardInsightAiService anthropic = mock(AnthropicDashboardInsightAiService.class);
         OpenAiDashboardInsightAiService openAi = mock(OpenAiDashboardInsightAiService.class);
         when(anthropic.configured()).thenReturn(true);
-        when(anthropic.summarize(command)).thenThrow(new IllegalStateException("claude down"));
-        when(openAi.summarize(command)).thenReturn(tagged("gpt-5"));
+        when(anthropic.summarize(eq(command), any(), anyLong())).thenThrow(new IllegalStateException("claude down"));
+        when(openAi.summarize(eq(command), any(), anyLong())).thenReturn(tagged("gpt-5"));
 
-        FallbackDashboardInsightAiService service = new FallbackDashboardInsightAiService(anthropic, openAi);
+        FallbackDashboardInsightAiService service = new FallbackDashboardInsightAiService(
+                anthropic, openAi, defaultSettings());
         DashboardInsightAiResult result = service.summarize(command);
 
         assertThat(result.usage().model()).isEqualTo("gpt-5");

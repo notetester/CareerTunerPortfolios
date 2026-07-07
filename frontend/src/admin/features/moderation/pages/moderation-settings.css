@@ -128,6 +128,8 @@
 .md-sec__h { display: flex; align-items: baseline; gap: 8px; margin: 0 0 8px; }
 .md-sec__h h2 { margin: 0; font-size: 13.5px; font-weight: 700; letter-spacing: -0.01em; }
 .md-sec__h .s { font-size: 11.5px; color: var(--av-ink-3); }
+/* 헤더를 박스 밖으로 뺀 섹션의 av-panel 본문 — 테스트 콘솔(md-console__in)과 동일한 균일 패딩 */
+.md-fields { padding: 14px 16px 16px; }
 
 /* 폼 요소 보조 */
 .av-flabel { font-size: 11.5px; font-weight: 600; color: var(--av-ink-2); margin-bottom: 4px; }

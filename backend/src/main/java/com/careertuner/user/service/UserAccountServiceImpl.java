@@ -112,17 +112,21 @@ public class UserAccountServiceImpl implements UserAccountService {
 
     @Override
     @Transactional
-    public AccountInfoResponse unlinkSocialProvider(Long userId, String provider) {
+    public AccountInfoResponse unlinkSocial(Long userId, String provider) {
         User user = requireUser(userId);
-        String normalized = normalizeProvider(provider);
-        if (authMapper.findSocialByUserAndProvider(userId, normalized) == null) {
+        String normalizedProvider = normalizeProvider(provider);
+        int linkedCount = mapper.countLinkedProviders(userId);
+        boolean removingExisting = mapper.findLinkedProviders(userId).stream()
+                .anyMatch(p -> normalizedProvider.equalsIgnoreCase(p));
+        if (!removingExisting) {
             throw new BusinessException(ErrorCode.NOT_FOUND, "연결된 소셜 계정이 없습니다.");
         }
-        int socialCount = authMapper.countSocialByUser(userId);
-        if (!user.isPasswordEnabled() && socialCount <= 1) {
-            throw new BusinessException(ErrorCode.FORBIDDEN, "마지막 로그인 수단은 해제할 수 없습니다. 먼저 이메일/비밀번호 로그인을 설정해 주세요.");
+        boolean remainingSocial = linkedCount > 1;
+        if (!remainingSocial && !hasUsableLocalLogin(user)) {
+            throw new BusinessException(ErrorCode.CONFLICT,
+                    "연동 해제 후 사용할 수 있는 로그인 수단이 남아 있지 않습니다. 먼저 아이디/이메일 로그인 또는 다른 소셜 계정을 추가해 주세요.");
         }
-        authMapper.deleteSocialByUserAndProvider(userId, normalized);
+        mapper.deleteSocial(userId, normalizedProvider);
         return toAccountInfo(requireUser(userId));
     }
 
@@ -223,16 +227,22 @@ public class UserAccountServiceImpl implements UserAccountService {
         return normalized;
     }
 
-    private boolean isTemporaryEmail(String email) {
-        return email == null || email.isBlank() || email.toLowerCase(Locale.ROOT).endsWith("@social.careertuner");
-    }
-
     private String normalizeProvider(String provider) {
         String normalized = provider == null ? "" : provider.trim().toUpperCase(Locale.ROOT);
-        if (!"KAKAO".equals(normalized) && !"NAVER".equals(normalized) && !"GOOGLE".equals(normalized)) {
+        if (!normalized.equals("KAKAO") && !normalized.equals("NAVER") && !normalized.equals("GOOGLE")) {
             throw new BusinessException(ErrorCode.INVALID_INPUT, "지원하지 않는 소셜 제공자입니다.");
         }
         return normalized;
+    }
+
+    private boolean hasUsableLocalLogin(User user) {
+        return user.isPasswordEnabled()
+                && ((user.getLoginId() != null && !user.getLoginId().isBlank())
+                || (!isTemporaryEmail(user.getEmail()) && user.isEmailVerified()));
+    }
+
+    private boolean isTemporaryEmail(String email) {
+        return email == null || email.isBlank() || email.toLowerCase(Locale.ROOT).endsWith("@social.careertuner");
     }
 
     private Object object(String jsonValue) {

@@ -5,7 +5,7 @@ import { Button } from "@/app/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/app/components/ui/card";
 import { Input } from "@/app/components/ui/input";
 import { requestPasswordReset } from "@/app/auth/authApi";
-import { getAccountInfo, requestEmailRegistration, setLoginId, setPhone, startSocialLink, unlinkSocialProvider } from "../api/nicknameProfileApi";
+import { getAccountInfo, getSocialLinkUrl, requestEmailRegistration, setLoginId, setPhone, unlinkSocial } from "../api/nicknameProfileApi";
 import { PROVIDER_LABELS, type AccountInfo } from "../types/nicknameProfile";
 
 /**
@@ -25,8 +25,8 @@ export function AccountInfoCard() {
   const [savingLoginId, setSavingLoginId] = useState(false);
   const [sendingEmail, setSendingEmail] = useState(false);
   const [sendingPassword, setSendingPassword] = useState(false);
-  const [socialBusy, setSocialBusy] = useState<string | null>(null);
   const [savingPhone, setSavingPhone] = useState(false);
+  const [socialBusy, setSocialBusy] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -46,6 +46,16 @@ export function AccountInfoCard() {
   useEffect(() => {
     void load();
   }, [load]);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const linked = params.get("socialLinked");
+    if (linked) {
+      const suffix = params.get("socialMock") ? " mock 계정을 연결했습니다." : " 계정을 연결했습니다.";
+      setMessage(`${PROVIDER_LABELS[linked] ?? linked}${suffix}`);
+      window.history.replaceState(null, "", window.location.pathname);
+    }
+  }, []);
 
   const submitLoginId = async () => {
     const value = loginIdDraft.trim().toLowerCase();
@@ -104,36 +114,6 @@ export function AccountInfoCard() {
     }
   };
 
-  const connectSocial = async (provider: string) => {
-    setSocialBusy(provider);
-    setError(null);
-    setMessage(null);
-    try {
-      const { authorizationUrl } = await startSocialLink(provider);
-      window.location.href = authorizationUrl;
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "소셜 계정 연결을 시작하지 못했습니다.");
-      setSocialBusy(null);
-    }
-  };
-
-  const disconnectSocial = async (provider: string) => {
-    if (!window.confirm(`${PROVIDER_LABELS[provider] ?? provider} 계정 연결을 해제할까요?`)) {
-      return;
-    }
-    setSocialBusy(provider);
-    setError(null);
-    setMessage(null);
-    try {
-      setInfo(await unlinkSocialProvider(provider));
-      setMessage("소셜 계정 연결을 해제했습니다.");
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "소셜 계정 연결 해제에 실패했습니다.");
-    } finally {
-      setSocialBusy(null);
-    }
-  };
-
   const submitPhone = async () => {
     const value = phoneDraft.trim();
     if (!value) {
@@ -150,6 +130,33 @@ export function AccountInfoCard() {
       setError(e instanceof Error ? e.message : "전화번호 저장에 실패했습니다.");
     } finally {
       setSavingPhone(false);
+    }
+  };
+
+  const linkProvider = async (provider: string) => {
+    setSocialBusy(provider);
+    setError(null);
+    setMessage(null);
+    try {
+      const { url } = await getSocialLinkUrl(provider);
+      window.location.href = url;
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "소셜 계정 연결을 시작하지 못했습니다.");
+      setSocialBusy(null);
+    }
+  };
+
+  const unlinkProvider = async (provider: string) => {
+    setSocialBusy(provider);
+    setError(null);
+    setMessage(null);
+    try {
+      setInfo(await unlinkSocial(provider));
+      setMessage(`${PROVIDER_LABELS[provider] ?? provider} 계정 연결을 해제했습니다.`);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "소셜 계정 연결 해제에 실패했습니다.");
+    } finally {
+      setSocialBusy(null);
     }
   };
 
@@ -296,25 +303,34 @@ export function AccountInfoCard() {
         <div className="space-y-2">
           <span className="flex items-center gap-1.5 text-xs font-bold text-slate-500">
             <Link2 className="size-3.5" />
-            소셜 로그인 연결
+            연결된 계정
           </span>
-          <div className="grid gap-2 md:grid-cols-3">
-            {SOCIAL_PROVIDERS.map((provider) => {
+          <div className="flex flex-wrap gap-2">
+            {["GOOGLE", "KAKAO", "NAVER"].map((provider) => {
               const linked = info?.linkedProviders.includes(provider) ?? false;
               return (
-                <div key={provider} className="flex items-center justify-between gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
-                  <div className="min-w-0">
-                    <div className="text-sm font-semibold text-slate-800">{PROVIDER_LABELS[provider] ?? provider}</div>
-                    <Badge className={linked ? "bg-blue-50 text-blue-700" : "bg-slate-100 text-slate-600"}>
-                      {linked ? "연결됨" : "미연결"}
-                    </Badge>
-                  </div>
+                <div key={provider} className="flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-2 py-1">
+                  <Badge className={linked ? "bg-blue-50 text-blue-700" : "bg-slate-100 text-slate-500"}>
+                    {PROVIDER_LABELS[provider] ?? provider}
+                  </Badge>
                   {linked ? (
-                    <Button size="sm" variant="outline" onClick={() => void disconnectSocial(provider)} disabled={socialBusy === provider}>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="h-7 px-2 text-xs"
+                      disabled={socialBusy === provider}
+                      onClick={() => void unlinkProvider(provider)}
+                    >
                       해제
                     </Button>
                   ) : (
-                    <Button size="sm" className="bg-blue-600 text-white hover:bg-blue-700" onClick={() => void connectSocial(provider)} disabled={socialBusy === provider}>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="h-7 px-2 text-xs"
+                      disabled={socialBusy === provider}
+                      onClick={() => void linkProvider(provider)}
+                    >
                       연결
                     </Button>
                   )}
@@ -323,12 +339,10 @@ export function AccountInfoCard() {
             })}
           </div>
           <p className="text-xs text-slate-400">
-            마지막 로그인 수단은 해제할 수 없습니다. 비밀번호 로그인이 꺼져 있다면 먼저 이메일과 비밀번호를 설정해 주세요.
+            남는 로그인 수단이 없으면 해제가 제한됩니다.
           </p>
         </div>
       </CardContent>
     </Card>
   );
 }
-
-const SOCIAL_PROVIDERS = ["KAKAO", "NAVER", "GOOGLE"] as const;

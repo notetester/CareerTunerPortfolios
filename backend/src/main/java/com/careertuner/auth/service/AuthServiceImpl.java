@@ -4,6 +4,7 @@ import java.time.LocalDateTime;
 import java.util.Locale;
 import java.util.UUID;
 
+import org.springframework.dao.DuplicateKeyException;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -16,16 +17,19 @@ import com.careertuner.auth.domain.UserSocial;
 import com.careertuner.auth.dto.LoginRequest;
 import com.careertuner.auth.dto.LoginRequestContext;
 import com.careertuner.auth.dto.MeResponse;
+import com.careertuner.auth.dto.OAuthCallbackResult;
 import com.careertuner.auth.dto.PasswordResetConfirmRequest;
 import com.careertuner.auth.dto.PasswordResetRequest;
 import com.careertuner.auth.dto.RegisterRequest;
 import com.careertuner.auth.dto.TokenRequest;
 import com.careertuner.auth.dto.TokenResponse;
 import com.careertuner.auth.mapper.AuthMapper;
+import com.careertuner.activitylog.domain.UserSecurityHistory;
 import com.careertuner.common.config.CareerTunerProperties;
 import com.careertuner.common.exception.BusinessException;
 import com.careertuner.common.exception.ErrorCode;
 import com.careertuner.common.security.JwtTokenProvider;
+import com.careertuner.common.security.JwtTokenProvider.OauthState;
 import com.careertuner.reward.service.RewardService;
 import com.careertuner.user.domain.User;
 import com.careertuner.user.mapper.UserMapper;
@@ -72,10 +76,10 @@ public class AuthServiceImpl implements AuthService {
     @Transactional
     public TokenResponse register(RegisterRequest request, LoginRequestContext context) {
         String email = normalizeOptionalEmail(request.email());
-        String loginId = normalizeLoginId(request.loginId());
         if (email != null && userMapper.countByEmail(email) > 0) {
             throw new BusinessException(ErrorCode.CONFLICT, "이미 사용 중인 이메일입니다.");
         }
+        String loginId = normalizeLoginId(request.loginId());
         if (userMapper.countByLoginId(loginId) > 0) {
             throw new BusinessException(ErrorCode.CONFLICT, "이미 사용 중인 아이디입니다.");
         }
@@ -145,6 +149,14 @@ public class AuthServiceImpl implements AuthService {
                 }
             }
             throw invalidLogin();
+        }
+
+        if ("EMAIL".equals(loginMethod) && !user.isEmailVerified()) {
+            recordLoginHistory(user.getId(), "LOGIN", "LOCAL", loginMethod, identifier, false,
+                    "EMAIL_NOT_VERIFIED", context);
+            securityHistoryService.record("EMAIL_VERIFY", "LOGIN_REQUIRED", user.getId(), false,
+                    identifier, "EMAIL_NOT_VERIFIED");
+            throw new BusinessException(ErrorCode.FORBIDDEN, "이메일 인증을 완료한 뒤 이메일로 로그인할 수 있습니다.");
         }
 
         userMapper.touchLastLoginAndResetFailures(user.getId());
@@ -250,19 +262,105 @@ public class AuthServiceImpl implements AuthService {
 
     @Override
     @Transactional
-    public void requestPasswordReset(PasswordResetRequest request, LoginRequestContext context) {
-        String email = normalizeEmail(request.email());
-        User user = userMapper.findByEmail(email);
+    public void requestFindId(String email, LoginRequestContext context) {
+        String normalizedEmail = normalizeEmail(email);
+        User user = userMapper.findByEmail(normalizedEmail);
+        recordSecurityEvent(user != null ? user.getId() : null, null, "FIND_ID", "REQUEST",
+                normalizedEmail, normalizedEmail, true, null, null, context);
+
         if (user == null) {
-            recordLoginHistory(user != null ? user.getId() : null, "PASSWORD_RESET", "LOCAL", "EMAIL",
-                    email, false, "USER_NOT_FOUND", context);
-            throw new BusinessException(ErrorCode.NOT_FOUND, "등록되지 않은 이메일입니다.");
+            recordSecurityEvent(null, null, "FIND_ID", "ISSUE", normalizedEmail, normalizedEmail,
+                    false, "EMAIL_NOT_FOUND", null, context);
+            return;
         }
-        validatePasswordResetAllowed(user, email, context);
-        recordLoginHistory(user.getId(), "PASSWORD_RESET", "LOCAL", "EMAIL", email, true, null, context);
+        if (!user.isEmailVerified()) {
+            recordSecurityEvent(user.getId(), null, "FIND_ID", "ISSUE", normalizedEmail, normalizedEmail,
+                    false, "EMAIL_NOT_VERIFIED", null, context);
+            return;
+        }
+        if (user.getLoginId() == null || user.getLoginId().isBlank()) {
+            recordSecurityEvent(user.getId(), null, "FIND_ID", "ISSUE", normalizedEmail, normalizedEmail,
+                    false, "LOGIN_ID_NOT_SET", null, context);
+            return;
+        }
+        if (!isRecoverableAccountStatus(user.getStatus())) {
+            recordSecurityEvent(user.getId(), null, "FIND_ID", "ISSUE", normalizedEmail, normalizedEmail,
+                    false, "ACCOUNT_NOT_RECOVERABLE", null, context);
+            return;
+        }
+
+        authMapper.expireUnusedEmailVerifications(user.getEmail(), "FIND_ID");
+        EmailVerification verification = issueEmailVerification(user, "FIND_ID", LocalDateTime.now().plusMinutes(30));
+        emailService.sendFindIdEmail(user.getEmail(), verification.getToken());
+        recordSecurityEvent(user.getId(), null, "FIND_ID", "ISSUE", normalizedEmail, user.getEmail(),
+                true, null, null, context);
+    }
+
+    @Override
+    @Transactional
+    public String verifyFindId(String token, LoginRequestContext context) {
+        EmailVerification ev = authMapper.findEmailVerificationByToken(token);
+        if (ev == null || ev.isUsed() || !"FIND_ID".equals(ev.getPurpose())
+                || ev.getExpiredAt().isBefore(LocalDateTime.now())) {
+            recordSecurityEvent(null, null, "FIND_ID", "VERIFY", null, null,
+                    false, "TOKEN_INVALID_OR_EXPIRED", null, context);
+            throw new BusinessException(ErrorCode.UNAUTHORIZED, "아이디 확인 링크가 만료되었거나 유효하지 않습니다.");
+        }
+
+        User user = ev.getUserId() != null ? userMapper.findById(ev.getUserId()) : userMapper.findByEmail(ev.getEmail());
+        authMapper.markEmailVerificationUsed(ev.getId());
+        if (user == null || !user.isEmailVerified() || user.getLoginId() == null || user.getLoginId().isBlank()
+                || !isRecoverableAccountStatus(user.getStatus())) {
+            recordSecurityEvent(user != null ? user.getId() : ev.getUserId(), null, "FIND_ID", "VERIFY",
+                    ev.getEmail(), ev.getEmail(), false, "LOGIN_ID_NOT_AVAILABLE", null, context);
+            throw new BusinessException(ErrorCode.NOT_FOUND, "확인 가능한 로그인 아이디가 없습니다.");
+        }
+
+        recordSecurityEvent(user.getId(), null, "FIND_ID", "VERIFY", ev.getEmail(), ev.getEmail(),
+                true, null, null, context);
+        recordSecurityEvent(user.getId(), null, "FIND_ID", "COMPLETE", ev.getEmail(), ev.getEmail(),
+                true, null, null, context);
+        return maskLoginId(user.getLoginId());
+    }
+
+    @Override
+    @Transactional
+    public void requestPasswordReset(PasswordResetRequest request, LoginRequestContext context) {
+        String identifier = normalizeLoginIdentifier(request.loginIdentifier());
+        if (identifier == null || identifier.isBlank()) {
+            throw new BusinessException(ErrorCode.INVALID_INPUT, "아이디 또는 이메일을 입력해 주세요.");
+        }
+        User user = userMapper.findByLoginIdentifier(identifier);
+        String method = loginMethodFor(identifier);
+        recordSecurityEvent(user != null ? user.getId() : null, null, "FIND_PASSWORD", "REQUEST",
+                identifier, user != null ? user.getEmail() : null, true, null, null, context);
+        if (user == null) {
+            recordLoginHistory(null, "PASSWORD_RESET", "LOCAL", method, identifier, false, "USER_NOT_FOUND", context);
+            recordSecurityEvent(null, null, "FIND_PASSWORD", "ISSUE", identifier, null,
+                    false, "USER_NOT_FOUND", null, context);
+            return;
+        }
+        if (!isRecoverableAccountStatus(user.getStatus())) {
+            recordLoginHistory(user.getId(), "PASSWORD_RESET", "LOCAL", method, identifier, false,
+                    "ACCOUNT_NOT_RECOVERABLE", context);
+            recordSecurityEvent(user.getId(), null, "FIND_PASSWORD", "ISSUE", identifier, user.getEmail(),
+                    false, "ACCOUNT_NOT_RECOVERABLE", null, context);
+            return;
+        }
+        if (isTemporaryEmail(user.getEmail()) || !user.isEmailVerified()) {
+            recordLoginHistory(user.getId(), "PASSWORD_RESET", "LOCAL", method, identifier, false,
+                    "EMAIL_NOT_VERIFIED", context);
+            recordSecurityEvent(user.getId(), null, "FIND_PASSWORD", "ISSUE", identifier, user.getEmail(),
+                    false, "EMAIL_NOT_VERIFIED", null, context);
+            return;
+        }
+        recordLoginHistory(user.getId(), "PASSWORD_RESET", "LOCAL", method, identifier, true, null, context);
+        authMapper.expireUnusedEmailVerifications(user.getEmail(), "RESET_PW");
         EmailVerification verification = issueEmailVerification(user, "RESET_PW", 1);
         emailService.sendPasswordResetEmail(user.getEmail(), verification.getToken());
-        securityHistoryService.record("RESET_PASSWORD", "REQUEST", user.getId(), true, email, null);
+        recordSecurityEvent(user.getId(), null, "FIND_PASSWORD", "ISSUE", identifier, user.getEmail(),
+                true, null, null, context);
+        securityHistoryService.record("RESET_PASSWORD", "REQUEST", user.getId(), true, identifier, null);
     }
 
     @Override
@@ -274,7 +372,7 @@ public class AuthServiceImpl implements AuthService {
             throw new BusinessException(ErrorCode.UNAUTHORIZED, "유효하지 않은 비밀번호 재설정 토큰입니다.");
         }
         User user = userMapper.findById(ev.getUserId());
-        if (user == null || STATUS_DELETED.equals(user.getStatus()) || STATUS_BLOCKED.equals(user.getStatus())) {
+        if (user == null || STATUS_DELETED.equals(user.getStatus())) {
             throw new BusinessException(ErrorCode.UNAUTHORIZED, "사용할 수 없는 계정입니다.");
         }
         authMapper.markEmailVerificationUsed(ev.getId());
@@ -287,7 +385,10 @@ public class AuthServiceImpl implements AuthService {
     @Override
     @Transactional
     public void requestDormantRelease(PasswordResetRequest request, LoginRequestContext context) {
-        String email = normalizeEmail(request.email());
+        String email = normalizeEmail(request.loginIdentifier());
+        if (email == null || email.isBlank()) {
+            throw new BusinessException(ErrorCode.INVALID_INPUT, "이메일을 입력해 주세요.");
+        }
         User user = userMapper.findByEmail(email);
         recordLoginHistory(user != null ? user.getId() : null, "DORMANT_RELEASE", "LOCAL", "EMAIL",
                 email, true, null, context);
@@ -327,7 +428,8 @@ public class AuthServiceImpl implements AuthService {
 
     @Override
     public boolean isLoginIdTaken(String loginId) {
-        return userMapper.countByLoginId(normalizeLoginId(loginId)) > 0;
+        String normalized = normalizeOptionalLoginId(loginId);
+        return normalized != null && userMapper.countByLoginId(normalized) > 0;
     }
 
     @Override
@@ -343,70 +445,91 @@ public class AuthServiceImpl implements AuthService {
     public String buildAuthorizationUrl(String provider) {
         String normalized = normalizeProvider(provider);
         String state = jwtTokenProvider.createOauthState(normalized);
+        if (!socialOAuthService.isConfigured(normalized)) {
+            return buildMockAuthorizationUrl(normalized, state);
+        }
         return socialOAuthService.getAuthorizationUrl(normalized, state);
     }
 
     @Override
-    public String buildSocialLinkAuthorizationUrl(String provider, Long userId) {
-        User user = userMapper.findById(userId);
-        if (user == null || STATUS_DELETED.equals(user.getStatus())) {
-            throw new BusinessException(ErrorCode.UNAUTHORIZED, "사용자를 찾을 수 없습니다.");
-        }
+    public String buildSocialLinkUrl(Long userId, String provider) {
         String normalized = normalizeProvider(provider);
-        if (authMapper.findSocialByUserAndProvider(userId, normalized) != null) {
-            throw new BusinessException(ErrorCode.CONFLICT, "이미 연결된 소셜 계정입니다.");
+        if (userMapper.findById(userId) == null) {
+            throw new BusinessException(ErrorCode.NOT_FOUND, "회원 정보를 찾을 수 없습니다.");
         }
         String state = jwtTokenProvider.createOauthLinkState(normalized, userId);
+        if (!socialOAuthService.isConfigured(normalized)) {
+            return buildMockAuthorizationUrl(normalized, state);
+        }
         return socialOAuthService.getAuthorizationUrl(normalized, state);
     }
 
     @Override
     @Transactional
-    public TokenResponse handleOAuthCallback(String provider, String code, String state, LoginRequestContext context) {
+    public OAuthCallbackResult handleOAuthCallback(String provider, String code, String state, LoginRequestContext context) {
         String normalized = normalizeProvider(provider);
-        var oauthState = jwtTokenProvider.parseOauthState(state, normalized);
-        if (oauthState.linkMode() && oauthState.userId() == null) {
+        OauthState oauthState = jwtTokenProvider.parseOauthState(state, normalized);
+        if (oauthState == null) {
             throw new BusinessException(ErrorCode.UNAUTHORIZED, "잘못된 OAuth state입니다.");
         }
 
         SocialUserInfo info = socialOAuthService.fetchUserInfo(normalized, code, state);
-        User user = oauthState.linkMode()
-                ? linkSocialUser(oauthState.userId(), info)
-                : findOrCreateSocialUser(info);
+        if (oauthState.link()) {
+            if (oauthState.userId() == null) {
+                throw new BusinessException(ErrorCode.UNAUTHORIZED, "잘못된 OAuth 연동 state입니다.");
+            }
+            linkSocial(oauthState.userId(), info, context);
+            return OAuthCallbackResult.linked(info.provider());
+        }
+
+        User user = findOrCreateSocialUser(info);
         user = releaseExpiredBlockIfNeeded(user);
         validateSocialLoginAllowed(user, info, context);
 
         userMapper.touchLastLoginAndResetFailures(user.getId());
         String identifier = info.email() != null ? info.email() : info.providerUserId();
-        recordLoginHistory(user.getId(), oauthState.linkMode() ? "SOCIAL_LINK" : "LOGIN",
-                info.provider(), "OAUTH", identifier, true, null, context);
-        return issueTokens(user, context);
+        recordLoginHistory(user.getId(), "LOGIN", info.provider(), "OAUTH", identifier, true, null, context);
+        return OAuthCallbackResult.login(issueTokens(user, context));
     }
 
-    private User linkSocialUser(Long userId, SocialUserInfo info) {
-        User user = userMapper.findById(userId);
-        if (user == null) {
-            throw new BusinessException(ErrorCode.UNAUTHORIZED, "사용자를 찾을 수 없습니다.");
+    @Override
+    @Transactional
+    public OAuthCallbackResult handleOAuthMockCallback(String provider, String state, LoginRequestContext context) {
+        String normalized = normalizeProvider(provider);
+        if (!socialOAuthService.isMockEnabled()) {
+            throw new BusinessException(ErrorCode.SERVICE_UNAVAILABLE, "OAuth mock 콜백이 비활성화되어 있습니다.");
         }
-        if (STATUS_DELETED.equals(user.getStatus())) {
-            throw new BusinessException(ErrorCode.FORBIDDEN, "탈퇴 또는 삭제된 계정입니다.");
+        OauthState oauthState = jwtTokenProvider.parseOauthState(state, normalized);
+        if (oauthState == null) {
+            throw new BusinessException(ErrorCode.UNAUTHORIZED, "잘못된 OAuth state입니다.");
         }
-        UserSocial existingByProviderUser = authMapper.findSocial(info.provider(), info.providerUserId());
-        if (existingByProviderUser != null) {
-            if (existingByProviderUser.getUserId().equals(userId)) {
-                throw new BusinessException(ErrorCode.CONFLICT, "이미 연결된 소셜 계정입니다.");
+        if (oauthState.link()) {
+            if (oauthState.userId() == null) {
+                throw new BusinessException(ErrorCode.UNAUTHORIZED, "잘못된 OAuth 연동 state입니다.");
             }
-            throw new BusinessException(ErrorCode.CONFLICT, "이미 다른 계정에 연결된 소셜 계정입니다.");
+            SocialUserInfo info = socialOAuthService.mockUserInfo(normalized, oauthState.userId());
+            linkSocial(oauthState.userId(), info, context);
+            return OAuthCallbackResult.linked(info.provider());
         }
-        if (authMapper.findSocialByUserAndProvider(userId, info.provider()) != null) {
-            throw new BusinessException(ErrorCode.CONFLICT, "이미 같은 제공자의 소셜 계정이 연결되어 있습니다.");
+
+        SocialUserInfo info = socialOAuthService.mockUserInfo(normalized, null);
+        User user = findOrCreateSocialUser(info);
+        user = releaseExpiredBlockIfNeeded(user);
+        validateSocialLoginAllowed(user, info, context);
+        userMapper.touchLastLoginAndResetFailures(user.getId());
+        recordLoginHistory(user.getId(), "LOGIN", info.provider(), "OAUTH", info.providerUserId(),
+                true, null, context);
+        recordSecurityEvent(user.getId(), null, "SOCIAL_LOGIN", "MOCK_COMPLETE",
+                info.providerUserId(), user.getEmail(), true, null, info.provider(), context);
+        return OAuthCallbackResult.login(issueTokens(user, context));
+    }
+
+    private String buildMockAuthorizationUrl(String provider, String state) {
+        if (!socialOAuthService.isMockEnabled()) {
+            throw new BusinessException(ErrorCode.SERVICE_UNAVAILABLE,
+                    provider + " OAuth 설정이 없어 현재 소셜 인증을 사용할 수 없습니다.");
         }
-        authMapper.insertSocial(UserSocial.builder()
-                .userId(userId)
-                .provider(info.provider())
-                .providerUserId(info.providerUserId())
-                .build());
-        return user;
+        return socialOAuthService.getMockAuthorizationUrl(provider, state);
     }
 
     private User findOrCreateSocialUser(SocialUserInfo info) {
@@ -434,12 +557,13 @@ public class AuthServiceImpl implements AuthService {
                 email = info.provider().toLowerCase(Locale.ROOT) + "_" + info.providerUserId()
                         + "_" + System.currentTimeMillis() + "@social.careertuner";
             }
+            boolean providerEmailPresent = info.email() != null && !info.email().isBlank();
             user = User.builder()
                     .email(email)
                     .password(null)
                     .passwordEnabled(false)
                     .name(info.name() != null && !info.name().isBlank() ? info.name() : info.provider() + " 사용자")
-                    .emailVerified(true)
+                    .emailVerified(providerEmailPresent)
                     .userType("JOB_SEEKER")
                     .role("USER")
                     .status(STATUS_ACTIVE)
@@ -459,6 +583,38 @@ public class AuthServiceImpl implements AuthService {
         return user;
     }
 
+    private void linkSocial(Long userId, SocialUserInfo info, LoginRequestContext context) {
+        User user = userMapper.findById(userId);
+        if (user == null || STATUS_DELETED.equals(user.getStatus())) {
+            throw new BusinessException(ErrorCode.UNAUTHORIZED, "소셜 계정을 연결할 수 없는 회원입니다.");
+        }
+        UserSocial linkedToAnyUser = authMapper.findSocial(info.provider(), info.providerUserId());
+        if (linkedToAnyUser != null && !linkedToAnyUser.getUserId().equals(userId)) {
+            recordSecurityEvent(userId, userId, "SOCIAL_LINK", "COMPLETE",
+                    info.providerUserId(), user.getEmail(), false, "SOCIAL_ALREADY_LINKED", info.provider(), context);
+            throw new BusinessException(ErrorCode.CONFLICT, "이미 다른 계정에 연결된 소셜 계정입니다.");
+        }
+        if (linkedToAnyUser != null) {
+            return;
+        }
+        if (authMapper.findSocialByUserAndProvider(userId, info.provider()) != null) {
+            recordSecurityEvent(userId, userId, "SOCIAL_LINK", "COMPLETE",
+                    info.providerUserId(), user.getEmail(), false, "PROVIDER_ALREADY_LINKED", info.provider(), context);
+            throw new BusinessException(ErrorCode.CONFLICT, "이미 연결된 소셜 제공자입니다.");
+        }
+        try {
+            authMapper.insertSocial(UserSocial.builder()
+                    .userId(userId)
+                    .provider(info.provider())
+                    .providerUserId(info.providerUserId())
+                    .build());
+        } catch (DuplicateKeyException e) {
+            throw new BusinessException(ErrorCode.CONFLICT, "이미 연결된 소셜 계정입니다.");
+        }
+        recordSecurityEvent(userId, userId, "SOCIAL_LINK", "COMPLETE",
+                info.providerUserId(), user.getEmail(), true, null, info.provider(), context);
+    }
+
     private void issueEmailVerification(User user) {
         if (user.getEmail() == null || user.getEmail().isBlank()) {
             throw new BusinessException(ErrorCode.INVALID_INPUT, "이메일이 등록되지 않은 계정입니다.");
@@ -468,12 +624,16 @@ public class AuthServiceImpl implements AuthService {
     }
 
     private EmailVerification issueEmailVerification(User user, String purpose, int validHours) {
+        return issueEmailVerification(user, purpose, LocalDateTime.now().plusHours(validHours));
+    }
+
+    private EmailVerification issueEmailVerification(User user, String purpose, LocalDateTime expiredAt) {
         EmailVerification verification = EmailVerification.builder()
                 .userId(user.getId())
                 .email(user.getEmail())
                 .token(UUID.randomUUID().toString())
                 .purpose(purpose)
-                .expiredAt(LocalDateTime.now().plusHours(validHours))
+                .expiredAt(expiredAt)
                 .build();
         authMapper.insertEmailVerification(verification);
         return verification;
@@ -564,29 +724,6 @@ public class AuthServiceImpl implements AuthService {
         }
     }
 
-    private void validatePasswordResetAllowed(User user, String email, LoginRequestContext context) {
-        if (STATUS_DELETED.equals(user.getStatus())) {
-            recordLoginHistory(user.getId(), "PASSWORD_RESET", "LOCAL", "EMAIL", email, false,
-                    "ACCOUNT_DELETED", context);
-            throw new BusinessException(ErrorCode.FORBIDDEN, "삭제된 계정은 비밀번호를 재설정할 수 없습니다.");
-        }
-        if (STATUS_BLOCKED.equals(user.getStatus())) {
-            recordLoginHistory(user.getId(), "PASSWORD_RESET", "LOCAL", "EMAIL", email, false,
-                    "ACCOUNT_BLOCKED", context);
-            throw new BusinessException(ErrorCode.FORBIDDEN, "차단된 계정은 비밀번호를 재설정할 수 없습니다.");
-        }
-        if (!user.isEmailVerified()) {
-            recordLoginHistory(user.getId(), "PASSWORD_RESET", "LOCAL", "EMAIL", email, false,
-                    "EMAIL_NOT_VERIFIED", context);
-            throw new BusinessException(ErrorCode.FORBIDDEN, "이메일 인증이 완료된 계정만 비밀번호를 재설정할 수 있습니다.");
-        }
-        if (!user.isPasswordEnabled() || user.getPassword() == null) {
-            recordLoginHistory(user.getId(), "PASSWORD_RESET", "LOCAL", "EMAIL", email, false,
-                    "PASSWORD_LOGIN_DISABLED", context);
-            throw new BusinessException(ErrorCode.FORBIDDEN, "비밀번호 로그인이 활성화된 계정만 비밀번호를 재설정할 수 있습니다.");
-        }
-    }
-
     private void recordLoginHistory(Long userId, String eventType, String authProvider, String loginMethod,
                                     String loginIdentifier, boolean success, String failReason,
                                     LoginRequestContext context) {
@@ -602,6 +739,24 @@ public class AuthServiceImpl implements AuthService {
                 .ipAddress(context != null ? truncate(context.ipAddress(), 45) : null)
                 .userAgent(context != null ? truncate(context.userAgent(), 500) : null)
                 .requestUri(context != null ? truncate(context.requestUri(), 255) : null)
+                .build());
+    }
+
+    private void recordSecurityEvent(Long userId, Long actorUserId, String eventType, String eventStage,
+                                     String inputIdentifier, String targetEmail, boolean success,
+                                     String failReason, String detailMessage, LoginRequestContext context) {
+        securityHistoryService.record(UserSecurityHistory.builder()
+                .userId(userId)
+                .actorUserId(actorUserId)
+                .eventType(eventType)
+                .eventStage(eventStage)
+                .inputIdentifier(truncate(inputIdentifier, 255))
+                .targetEmail(truncate(targetEmail, 255))
+                .success(success)
+                .failReason(truncate(failReason, 255))
+                .detailMessage(truncate(detailMessage, 500))
+                .ipAddress(context != null ? truncate(context.ipAddress(), 64) : null)
+                .userAgent(context != null ? truncate(context.userAgent(), 512) : null)
                 .build());
     }
 
@@ -654,6 +809,25 @@ public class AuthServiceImpl implements AuthService {
         return normalized;
     }
 
+    private String normalizeOptionalLoginId(String loginId) {
+        if (loginId == null || loginId.isBlank()) {
+            return null;
+        }
+        String normalized = loginId.trim().toLowerCase(Locale.ROOT);
+        if (!normalized.matches("^[a-z0-9_]{4,50}$")) {
+            throw new BusinessException(ErrorCode.INVALID_INPUT, "아이디는 영문 소문자, 숫자, 밑줄 4~50자로 입력해 주세요.");
+        }
+        return normalized;
+    }
+
+    private String normalizeLoginId(String loginId) {
+        String normalized = normalizeOptionalLoginId(loginId);
+        if (normalized == null) {
+            throw new BusinessException(ErrorCode.INVALID_INPUT, "아이디를 입력해 주세요.");
+        }
+        return normalized;
+    }
+
     private String normalizeEmail(String email) {
         return email == null ? null : email.trim().toLowerCase(Locale.ROOT);
     }
@@ -673,16 +847,33 @@ public class AuthServiceImpl implements AuthService {
         return identifier == null ? null : identifier.trim().toLowerCase(Locale.ROOT);
     }
 
-    private String normalizeLoginId(String loginId) {
-        String normalized = loginId == null ? "" : loginId.trim().toLowerCase(Locale.ROOT);
-        if (!normalized.matches("^[a-z0-9_]{4,50}$")) {
-            throw new BusinessException(ErrorCode.INVALID_INPUT, "아이디는 영문 소문자, 숫자, 밑줄 4~50자로 입력해 주세요.");
-        }
-        return normalized;
-    }
-
     private String loginMethodFor(String identifier) {
         return identifier != null && identifier.contains("@") ? "EMAIL" : "LOGIN_ID";
+    }
+
+    private boolean isRecoverableAccountStatus(String status) {
+        return !STATUS_DELETED.equals(status) && !STATUS_BLOCKED.equals(status);
+    }
+
+    private boolean isTemporaryEmail(String email) {
+        return email == null || email.isBlank() || email.toLowerCase(Locale.ROOT).endsWith("@social.careertuner");
+    }
+
+    private String maskLoginId(String loginId) {
+        if (loginId == null || loginId.isBlank()) {
+            return "";
+        }
+        int length = loginId.length();
+        if (length <= 2) {
+            return "*".repeat(length);
+        }
+        if (length <= 4) {
+            return loginId.substring(0, 1) + "*".repeat(length - 2) + loginId.substring(length - 1);
+        }
+        int front = Math.min(3, Math.max(1, length / 3));
+        int back = length >= 7 ? 2 : 1;
+        int maskLength = Math.max(1, length - front - back);
+        return loginId.substring(0, front) + "*".repeat(maskLength) + loginId.substring(length - back);
     }
 
     private String truncate(String value, int maxLength) {

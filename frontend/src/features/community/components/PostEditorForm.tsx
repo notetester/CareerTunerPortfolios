@@ -1,12 +1,18 @@
 import { useState } from "react";
 import {
-  ArrowLeft, Bold, Italic, Strikethrough, List, ListOrdered, Quote,
-  Link, Image, Code, Plus, Trash2, Star, Hash, Check, X,
+  ArrowLeft, Bold, Italic, List, ListOrdered, Quote,
+  Link as LinkIcon, Code, Plus, Trash2, Star, Hash, X,
   ClipboardList,
 } from "lucide-react";
+import { useEditor, EditorContent, useEditorState } from "@tiptap/react";
+import StarterKit from "@tiptap/starter-kit";
 import { CATEGORIES, type CommunityCategory } from "../types/community";
 import { useCommunityStore } from "../hooks/useCommunityStore";
 import { toast } from "@/features/notification/components/toast";
+import { sanitizePostHtml, isHtmlContent, plainToHtml } from "@/app/lib/postContent";
+
+// 백엔드 CreatePostRequest/UpdatePostRequest 의 @Size(max=20000) 와 정합
+const MAX_HTML = 20000;
 
 export interface PostEditData {
   id: number;
@@ -38,13 +44,6 @@ const RESULT_MAP: Record<string, string> = {
 
 const INTERVIEW_TYPES = ["전화 면접", "화상 면접", "대면 면접", "코딩테스트", "과제 전형"];
 const RESULTS = ["합격", "불합격", "대기중", "비공개"];
-
-const TOOLS: (string | null)[] = ["bold", "italic", "strikethrough", null, "list", "list-ordered", "quote", null, "link", "image", "code"];
-const TOOL_ICONS: Record<string, React.ReactNode> = {
-  bold: <Bold />, italic: <Italic />, strikethrough: <Strikethrough />,
-  list: <List />, "list-ordered": <ListOrdered />, quote: <Quote />,
-  link: <Link />, image: <Image />, code: <Code />,
-};
 
 function StarPicker({ value, onChange }: { value: number; onChange: (v: number) => void }) {
   const [hover, setHover] = useState(0);
@@ -107,7 +106,6 @@ export function PostEditorForm({ onCancel, onSubmit, editData }: PostEditorFormP
   const [cat, setCat] = useState(editData?.category ?? "interview");
   const [submitting, setSubmitting] = useState(false);
   const [title, setTitle] = useState(editData?.title ?? "");
-  const [bodyText, setBodyText] = useState(editData?.content ?? "");
   const [tags, setTags] = useState<string[]>(editData?.tags ?? []);
   const [anon, setAnon] = useState(editData?.anonymous ?? true);
   const [company, setCompany] = useState(editData?.interviewReview?.companyName ?? "");
@@ -126,11 +124,63 @@ export function PostEditorForm({ onCancel, onSubmit, editData }: PostEditorFormP
       : [""],
   );
 
+  // 기존 글 편집: HTML이면 그대로, 평문(기존 118건)이면 안전 HTML로 변환해 로드
+  const initialContent = editData?.content
+    ? sanitizePostHtml(isHtmlContent(editData.content) ? editData.content : plainToHtml(editData.content))
+    : "";
+
+  const editor = useEditor({
+    extensions: [
+      StarterKit.configure({
+        link: {
+          openOnClick: false,
+          HTMLAttributes: { rel: "noopener noreferrer nofollow", target: "_blank" },
+        },
+      }),
+    ],
+    content: initialContent,
+  });
+
+  const es = useEditorState({
+    editor,
+    selector: ({ editor }) => ({
+      bold: !!editor?.isActive("bold"),
+      italic: !!editor?.isActive("italic"),
+      bulletList: !!editor?.isActive("bulletList"),
+      orderedList: !!editor?.isActive("orderedList"),
+      blockquote: !!editor?.isActive("blockquote"),
+      code: !!editor?.isActive("code"),
+      link: !!editor?.isActive("link"),
+      isEmpty: editor?.isEmpty ?? true,
+      textLen: editor?.getText().trim().length ?? 0,
+    }),
+  }) ?? {
+    bold: false, italic: false, bulletList: false, orderedList: false,
+    blockquote: false, code: false, link: false, isEmpty: true, textLen: 0,
+  };
+
+  const setLink = () => {
+    if (!editor) return;
+    const prev = (editor.getAttributes("link").href as string) ?? "";
+    const url = window.prompt("링크 URL을 입력하세요", prev);
+    if (url === null) return;
+    if (url.trim() === "") {
+      editor.chain().focus().extendMarkRange("link").unsetLink().run();
+      return;
+    }
+    editor.chain().focus().extendMarkRange("link").setLink({ href: url.trim() }).run();
+  };
+
   const isInterview = cat === "interview";
-  const canPost = title.trim().length > 1 && bodyText.trim().length > 9 && !submitting;
+  const canPost = title.trim().length > 1 && es.textLen > 9 && !submitting;
 
   const handlePost = async () => {
-    if (!canPost) return;
+    if (!canPost || !editor) return;
+    const html = sanitizePostHtml(editor.getHTML());
+    if (html.length > MAX_HTML) {
+      toast.error("본문이 너무 깁니다. 내용을 조금 줄여주세요.");
+      return;
+    }
     setSubmitting(true);
     const catInfo = cats.find((c) => c.value === cat);
     const interviewPayload = isInterview ? {
@@ -146,7 +196,7 @@ export function PostEditorForm({ onCancel, onSubmit, editData }: PostEditorFormP
       if (isEdit) {
         await updatePost(editData.id, {
           title,
-          content: bodyText,
+          content: html,
           tags,
           anonymous: anon,
           interviewReview: interviewPayload,
@@ -156,7 +206,7 @@ export function PostEditorForm({ onCancel, onSubmit, editData }: PostEditorFormP
         await createPost({
           category: (catInfo?.slug ?? "free") as CommunityCategory,
           title,
-          content: bodyText,
+          content: html,
           tags,
           anonymous: anon,
           interviewReview: interviewPayload,
@@ -267,20 +317,35 @@ export function PostEditorForm({ onCancel, onSubmit, editData }: PostEditorFormP
           </div>
         )}
 
-        {/* Toolbar */}
+        {/* Toolbar (TipTap) */}
         <div className="wv-toolbar">
-          {TOOLS.map((t, i) => t
-            ? <button key={i} className="wv-tool" type="button" aria-label={t}>{TOOL_ICONS[t]}</button>
-            : <span key={i} className="wv-tooldiv" />)}
+          <button type="button" className={"wv-tool" + (es.bold ? " on" : "")} title="굵게" aria-label="굵게"
+            onClick={() => editor?.chain().focus().toggleBold().run()}><Bold /></button>
+          <button type="button" className={"wv-tool" + (es.italic ? " on" : "")} title="기울임" aria-label="기울임"
+            onClick={() => editor?.chain().focus().toggleItalic().run()}><Italic /></button>
+          <span className="wv-tooldiv" />
+          <button type="button" className={"wv-tool" + (es.bulletList ? " on" : "")} title="글머리 목록" aria-label="글머리 목록"
+            onClick={() => editor?.chain().focus().toggleBulletList().run()}><List /></button>
+          <button type="button" className={"wv-tool" + (es.orderedList ? " on" : "")} title="번호 목록" aria-label="번호 목록"
+            onClick={() => editor?.chain().focus().toggleOrderedList().run()}><ListOrdered /></button>
+          <button type="button" className={"wv-tool" + (es.blockquote ? " on" : "")} title="인용" aria-label="인용"
+            onClick={() => editor?.chain().focus().toggleBlockquote().run()}><Quote /></button>
+          <span className="wv-tooldiv" />
+          <button type="button" className={"wv-tool" + (es.link ? " on" : "")} title="링크" aria-label="링크"
+            onClick={setLink}><LinkIcon /></button>
+          <button type="button" className={"wv-tool" + (es.code ? " on" : "")} title="코드" aria-label="코드"
+            onClick={() => editor?.chain().focus().toggleCode().run()}><Code /></button>
         </div>
 
-        {/* Body */}
-        <textarea
-          className="wv-body"
-          value={bodyText}
-          onChange={(e) => setBodyText(e.target.value)}
-          placeholder={"내용을 입력하세요.\n\n면접 후기라면 — 기억나는 질문, 분위기, 준비하면서 도움이 됐던 것들을 적어주시면 다른 분들에게 큰 도움이 됩니다."}
-        />
+        {/* Body (TipTap) */}
+        <div className="wv-body">
+          {es.isEmpty && (
+            <div className="wv-body__ph" aria-hidden="true">
+              {"내용을 입력하세요.\n\n면접 후기라면 — 기억나는 질문, 분위기, 준비하면서 도움이 됐던 것들을 적어주시면 다른 분들에게 큰 도움이 됩니다."}
+            </div>
+          )}
+          <EditorContent editor={editor} />
+        </div>
 
         {/* Tags */}
         <TagInput tags={tags} onChange={setTags} />
@@ -294,7 +359,6 @@ export function PostEditorForm({ onCancel, onSubmit, editData }: PostEditorFormP
       {/* Sticky footer */}
       <div className="wv-foot">
         <div className="wv-foot__in">
-          <span className="wv-foot__draft num"><Check />임시저장됨 · 방금</span>
           <div className="wv-foot__r">
             <label className="wv-anon">
               <input type="checkbox" checked={anon} onChange={(e) => setAnon(e.target.checked)} />

@@ -6,6 +6,7 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
+import java.time.Duration;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -55,6 +56,23 @@ public class CareerAnalysisAnthropicClient {
                                                                  Map<String, Object> schema,
                                                                  String systemPrompt,
                                                                  String userPrompt) {
+        return request(name, schema, systemPrompt, userPrompt, properties.getTimeout(), Long.MAX_VALUE);
+    }
+
+    /**
+     * 폴백 티어별로 시도당 타임아웃({@code perAttemptTimeout})을 보장하고, 체인 데드라인({@code chainDeadlineNanos})으로
+     * 재시도만 유계화하는 오버로드. 첫 시도(attempt==1)는 데드라인과 무관하게 항상 수행하고, 이후 재시도만
+     * {@code System.nanoTime() < chainDeadlineNanos} 를 추가로 요구한다. 데드라인이 지나면 기존 실패 예외로 떨어져
+     * 상위 디스패처가 다음 티어로 캐스케이드한다.
+     *
+     * @param name OpenAI 클라이언트와 시그니처를 맞추기 위한 인자. Anthropic 은 json_schema name 이 없어 사용하지 않는다.
+     */
+    public CareerAnalysisOpenAiClient.StructuredResponse request(String name,
+                                                                 Map<String, Object> schema,
+                                                                 String systemPrompt,
+                                                                 String userPrompt,
+                                                                 Duration perAttemptTimeout,
+                                                                 long chainDeadlineNanos) {
         if (!configured()) {
             throw new BusinessException(ErrorCode.INTERNAL_ERROR, "Anthropic API 키가 설정되어 있지 않습니다.");
         }
@@ -76,17 +94,17 @@ public class CareerAnalysisAnthropicClient {
         body.put("messages", List.of(Map.of("role", "user", "content", userText)));
         body.put("temperature", 0.3);
 
-        JsonNode root = post(body);
+        JsonNode root = post(body, perAttemptTimeout, chainDeadlineNanos);
         return new CareerAnalysisOpenAiClient.StructuredResponse(parsePayload(root), usage(root));
     }
 
-    private JsonNode post(Map<String, Object> requestBody) {
+    private JsonNode post(Map<String, Object> requestBody, Duration perAttemptTimeout, long chainDeadlineNanos) {
         try {
             String body = objectMapper.writeValueAsString(requestBody);
             for (int attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
                 try {
                     HttpRequest request = HttpRequest.newBuilder(URI.create(properties.messagesUrl()))
-                            .timeout(properties.getTimeout())
+                            .timeout(perAttemptTimeout)
                             .header("x-api-key", properties.getApiKey())
                             .header("anthropic-version", properties.getVersion())
                             .header("Content-Type", "application/json")
@@ -100,7 +118,7 @@ public class CareerAnalysisAnthropicClient {
                     }
 
                     String message = errorMessage(response.body());
-                    if (attempt < MAX_ATTEMPTS && retryable(response.statusCode())) {
+                    if (attempt < MAX_ATTEMPTS && System.nanoTime() < chainDeadlineNanos && retryable(response.statusCode())) {
                         sleep(attempt);
                         continue;
                     }
@@ -108,7 +126,7 @@ public class CareerAnalysisAnthropicClient {
                             ErrorCode.INTERNAL_ERROR,
                             "Anthropic 요청에 실패했습니다. " + truncate(message, 300));
                 } catch (IOException ex) {
-                    if (attempt < MAX_ATTEMPTS) {
+                    if (attempt < MAX_ATTEMPTS && System.nanoTime() < chainDeadlineNanos) {
                         sleep(attempt);
                         continue;
                     }

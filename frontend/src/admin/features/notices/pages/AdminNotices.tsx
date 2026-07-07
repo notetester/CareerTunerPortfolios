@@ -1,8 +1,7 @@
 import { useState, useEffect } from "react";
 import {
   Megaphone, Plus, Pin, PinOff,
-  Trash2, ArrowDownCircle, ArrowUpCircle, ArrowLeft, Eye, Check, CalendarClock, Pencil,
-  Bold, Italic, Strikethrough, List, ListOrdered, Quote, Link2, ImageIcon, Table,
+  Trash2, ArrowDownCircle, ArrowUpCircle, ArrowLeft, CalendarClock, Pencil,
 } from "lucide-react";
 import AdminShell from "../../../components/AdminShell";
 import {
@@ -15,6 +14,8 @@ import {
 import { type Notice, type NoticeStatus } from "../data/noticesData";
 import * as adminNoticeApi from "../api/adminNoticeApi";
 import { ConfirmDialog } from "@/app/components/ui/confirm-dialog";
+import NoticeBodyEditor from "../components/NoticeBodyEditor";
+import { sanitizePostHtml } from "@/app/lib/postContent";
 import "./admin-notices.css";
 import "./notice-compose.css";
 
@@ -41,22 +42,14 @@ type DialogState =
   | { type: "status"; notice: Notice; target: NoticeStatus }
   | { type: "pin"; notice: Notice };
 
-/* ═══ 작성 폼 도구 ═══ */
-const CATS = ["일반", "점검", "기능 업데이트", "프로모션", "정책·약관"];
-const TOOLBAR: (string | null)[] = [
-  "bold", "italic", "strikethrough", null, "list", "list-ordered", "quote", null, "link", "image", "table",
-];
-const ICON_MAP: Record<string, React.ElementType> = {
-  bold: Bold, italic: Italic, strikethrough: Strikethrough,
-  list: List, "list-ordered": ListOrdered, quote: Quote,
-  link: Link2, image: ImageIcon, table: Table,
-};
-
 /* ═══ 작성 폼 ═══ */
+const CATS = ["일반", "점검", "기능 업데이트", "프로모션", "정책·약관"];
+
 function NoticeComposeView({ editing, onBack, onSaved }: { editing: Notice | null; onBack: () => void; onSaved: () => void }) {
   const [cat, setCat] = useState(editing?.category ?? "일반");
   const [title, setTitle] = useState(editing?.title ?? "");
-  const [body, setBody] = useState(editing?.body ?? "");
+  const [body, setBody] = useState("");        // 본문 HTML (TipTap 출력)
+  const [bodyLen, setBodyLen] = useState(0);   // 본문 평문 길이(검증용)
   const [pin, setPin] = useState(editing?.pinned ?? false);
   const [push, setPush] = useState(true);
   const [when, setWhen] = useState<"즉시" | "예약">(editing?.status === "scheduled" ? "예약" : "즉시");
@@ -64,7 +57,7 @@ function NoticeComposeView({ editing, onBack, onSaved }: { editing: Notice | nul
   const [saving, setSaving] = useState(false);
   const [toast, setToast] = useState<{ msg: string; tone: string } | null>(null);
 
-  const canSubmit = title.trim().length > 1 && body.trim().length > 4;
+  const canSubmit = title.trim().length > 1 && bodyLen > 4;
 
   const flash = (msg: string, tone: string) => {
     setToast({ msg, tone });
@@ -79,7 +72,7 @@ function NoticeComposeView({ editing, onBack, onSaved }: { editing: Notice | nul
         // 수정: 제목/본문/분류/고정만 갱신. 상태(게시/예약/임시)는 목록 토글이 관리하므로 보존(BE가 null 필드 coalesce).
         await adminNoticeApi.updateNotice(editing.id, {
           title,
-          content: body,
+          content: sanitizePostHtml(body),
           category: cat,
           isPinned: pin,
         });
@@ -87,7 +80,7 @@ function NoticeComposeView({ editing, onBack, onSaved }: { editing: Notice | nul
       } else {
         await adminNoticeApi.createNotice({
           title,
-          content: body,
+          content: sanitizePostHtml(body),
           status: when === "예약" ? "SCHEDULED" : "PUBLISHED",
           isPinned: pin,
           category: cat,
@@ -125,15 +118,10 @@ function NoticeComposeView({ editing, onBack, onSaved }: { editing: Notice | nul
           </div>
           <div className="av-field">
             <div className="av-flabel">본문</div>
-            <div className="nc-toolbar">
-              {TOOLBAR.map((t, i) => {
-                if (!t) return <span key={i} className="nc-tooldiv" />;
-                const Icon = ICON_MAP[t];
-                return <button key={i} className="nc-tool" aria-label={t}>{Icon && <Icon />}</button>;
-              })}
-            </div>
-            <textarea className="av-textarea nc-body" value={body} onChange={(e) => setBody(e.target.value)}
-              placeholder={"공지 내용을 입력하세요.\n\n점검 공지라면 — 일시, 영향 범위(접속 불가/일부 기능), 사유를 순서대로 적어주세요."} />
+            <NoticeBodyEditor
+              initialContent={editing?.body ?? ""}
+              onChange={(html, len) => { setBody(html); setBodyLen(len); }}
+            />
           </div>
         </section>
 
@@ -172,10 +160,7 @@ function NoticeComposeView({ editing, onBack, onSaved }: { editing: Notice | nul
 
       <div className="av-composefoot">
         <div className="av-composefoot__in">
-          <span className="av-composefoot__draft num"><Check /> 임시저장됨 · 방금</span>
           <div className="av-composefoot__r">
-            <button className="av-btn"><Eye /> 미리보기</button>
-            <button className="av-btn">임시저장</button>
             <button className="av-btn av-btn--ink" disabled={!canSubmit || saving}
               style={!canSubmit ? { opacity: 0.45, cursor: "default" } : undefined} onClick={handleSubmit}>
               {!editing && when === "예약" && <CalendarClock />}

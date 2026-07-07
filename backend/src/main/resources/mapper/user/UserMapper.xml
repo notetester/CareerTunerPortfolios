@@ -23,15 +23,15 @@
         SELECT COUNT(*) FROM users WHERE email = #{email}
     </select>
 
+    <select id="countByLoginId" resultType="int">
+        SELECT COUNT(*) FROM users WHERE login_id = #{loginId}
+    </select>
+
     <select id="countByEmailExcludingId" resultType="int">
         SELECT COUNT(*)
           FROM users
          WHERE email = #{email}
            AND id != #{id}
-    </select>
-
-    <select id="countByLoginId" resultType="int">
-        SELECT COUNT(*) FROM users WHERE login_id = #{loginId}
     </select>
 
     <insert id="insert" useGeneratedKeys="true" keyProperty="id">

@@ -66,7 +66,7 @@ CREATE TABLE IF NOT EXISTS email_verification (
     user_id     BIGINT       NULL,
     email       VARCHAR(255) NOT NULL,
     token       VARCHAR(255) NOT NULL,                           -- UUID
-    purpose     VARCHAR(20)  NOT NULL DEFAULT 'VERIFY',          -- VERIFY/RESET_PW
+    purpose     VARCHAR(20)  NOT NULL DEFAULT 'VERIFY',          -- VERIFY/EMAIL_CHANGE/RESET_PW/FIND_ID/DORMANT_RELEASE
     expired_at  DATETIME     NOT NULL,
     used        TINYINT(1)   NOT NULL DEFAULT 0,
     used_at     DATETIME     NULL,
@@ -120,7 +120,7 @@ CREATE TABLE IF NOT EXISTS user_login_history (
     event_type       VARCHAR(20)  NOT NULL COMMENT '인증 이벤트 유형. LOGIN/LOGOUT/REFRESH',
     auth_provider    VARCHAR(20)  NOT NULL DEFAULT 'LOCAL' COMMENT '인증 제공자. LOCAL/KAKAO/NAVER/GOOGLE',
     login_method     VARCHAR(20)  NULL COMMENT '로그인 방식. EMAIL/OAUTH/REFRESH_TOKEN',
-    login_identifier VARCHAR(255) NULL COMMENT '사용자가 입력한 로그인 식별자. 보통 이메일',
+    login_identifier VARCHAR(255) NULL COMMENT '사용자가 입력한 로그인 식별자. 아이디 또는 이메일',
     success          TINYINT(1)   NOT NULL COMMENT '인증 성공 여부',
     fail_reason      VARCHAR(50)  NULL COMMENT '실패 사유. USER_NOT_FOUND/WRONG_PASSWORD/BLOCKED 등',
     ip_address       VARCHAR(45)  NULL COMMENT '요청 IP 주소',
@@ -2225,6 +2225,7 @@ CREATE TABLE IF NOT EXISTS application_runtime_setting_history (
     setting_key         VARCHAR(160) NOT NULL,
     version_no          INT          NOT NULL DEFAULT 1,
     change_type         VARCHAR(30)  NOT NULL COMMENT 'CREATE/UPDATE/IMPORT/RESET',
+    reason              VARCHAR(500) NULL COMMENT '변경 사유(감사)',
     actor_user_id       BIGINT       NULL,
     before_value        TEXT         NULL,
     after_value         TEXT         NULL,

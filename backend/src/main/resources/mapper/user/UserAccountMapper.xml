@@ -13,6 +13,10 @@
         SELECT provider FROM user_social WHERE user_id = #{userId} ORDER BY provider
     </select>
 
+    <select id="countLinkedProviders" resultType="int">
+        SELECT COUNT(*) FROM user_social WHERE user_id = #{userId}
+    </select>
+
     <select id="countByLoginId" resultType="int">
         SELECT COUNT(*) FROM users WHERE login_id = #{loginId}
     </select>
@@ -43,6 +47,11 @@
     <update id="updatePhone">
         UPDATE users SET phone = #{phone} WHERE id = #{userId}
     </update>
+
+    <delete id="deleteSocial">
+        DELETE FROM user_social
+        WHERE user_id = #{userId} AND provider = #{provider}
+    </delete>
 
     <!-- ── 이력서 상세 스펙 ── -->
 

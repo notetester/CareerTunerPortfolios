@@ -24,6 +24,7 @@ import { BrowserSttTracker } from "../hooks/speechToText";
 import { createNegotiatedRecorder, isTtsSupported, mediaUnsupportedReason } from "../hooks/mediaSupport";
 import { useDeviceCapabilities } from "../hooks/deviceCapabilities";
 import { DeviceHandoffCard, type HandoffReason } from "./DeviceHandoffCard";
+import { RemoteMicConnectCard } from "./RemoteMicConnectCard";
 import type {
   InterviewQuestion,
   InterviewSession,
@@ -93,6 +94,8 @@ export function LocalAvatarTab({ session }: { session: InterviewSession | null }
 
   const ttsAvailable = isTtsSupported();
   const deviceCaps = useDeviceCapabilities();
+  // 폰 카메라 핸드오프로 받은 원격 스트림(카메라+마이크). 무카메라/무마이크 기기에서 폰을 카메라로 사용.
+  const [remoteCam, setRemoteCam] = useState<MediaStream | null>(null);
   // 이 기기에서 진행 불가한 원인 — 있으면 "폰으로 이어하기" 안내 카드를 띄운다.
   const handoffReason: HandoffReason | null = !supported
     ? (mediaUnsupportedReason() ?? "unsupported")
@@ -101,6 +104,10 @@ export function LocalAvatarTab({ session }: { session: InterviewSession | null }
       : deviceCaps.hasMicrophone === false
         ? "no-microphone"
         : null;
+  // 폰 카메라가 연결됐으면 무카메라/무마이크여도 진행 가능(영상·음성 모두 폰에서 옴).
+  const canProceed =
+    !handoffReason ||
+    ((handoffReason === "no-camera" || handoffReason === "no-microphone") && !!remoteCam);
 
   // 준비된 질문(게이트) + capabilities 로드.
   useEffect(() => {
@@ -164,8 +171,10 @@ export function LocalAvatarTab({ session }: { session: InterviewSession | null }
       questionsRef.current = mainQuestions;
       setQuestions(mainQuestions);
 
-      // 2) 웹캠 + 온디바이스 분석 준비.
-      const webcam = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+      // 2) 웹캠 + 온디바이스 분석 준비. 폰 카메라 핸드오프가 연결돼 있으면 그 스트림을 clone 해 쓴다.
+      const webcam = remoteCam
+        ? remoteCam.clone()
+        : await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
       webcamRef.current = webcam;
       if (selfVideoRef.current) selfVideoRef.current.srcObject = webcam;
 
@@ -459,7 +468,12 @@ export function LocalAvatarTab({ session }: { session: InterviewSession | null }
             </label>
           )}
 
-          {handoffReason && <DeviceHandoffCard sessionId={session.id} reason={handoffReason} />}
+          {(handoffReason === "no-camera" || handoffReason === "no-microphone") && (
+            <RemoteMicConnectCard sessionId={session.id} onStream={setRemoteCam} withVideo />
+          )}
+          {handoffReason && !remoteCam && (
+            <DeviceHandoffCard sessionId={session.id} reason={handoffReason} />
+          )}
 
           {/* 화면: 면접관 placeholder(메인) + 내 웹캠(서브) */}
           {(status === "connecting" || status === "live" || status === "analyzing") && (
@@ -530,7 +544,7 @@ export function LocalAvatarTab({ session }: { session: InterviewSession | null }
             </div>
           )}
 
-          {supported && !handoffReason && capabilities?.nonverbal && (status === "idle" || status === "scored") && (
+          {supported && canProceed && capabilities?.nonverbal && (status === "idle" || status === "scored") && (
             <label className="flex items-start gap-2 rounded-lg border border-slate-200 bg-slate-50 p-3 text-xs text-slate-600">
               <input
                 type="checkbox"
@@ -546,7 +560,7 @@ export function LocalAvatarTab({ session }: { session: InterviewSession | null }
             </label>
           )}
 
-          {supported && !handoffReason && (
+          {supported && canProceed && (
             <div className="flex flex-wrap items-center gap-2">
               {(status === "idle" || status === "scored" || status === "error") && (
                 <Button

@@ -109,6 +109,12 @@
 .ct-nprose ol li { counter-increment: nol; }
 .ct-nprose ol li::before { content: counter(nol); position: absolute; left: 0; top: 1px; width: 20px; height: 20px; border-radius: 50%;
   background: var(--av-blue-soft); color: var(--av-blue); font-size: 12px; font-weight: 700; display: flex; align-items: center; justify-content: center; }
+/* TipTap HTML 공지 렌더용 보강 (마크다운 렌더는 위 규칙으로 충분) */
+.ct-nprose em, .ct-nprose i { font-style: italic; }
+.ct-nprose a { color: var(--brand-blue, #2563eb); text-decoration: underline; }
+.ct-nprose blockquote { margin: 14px 0; padding: 4px 0 4px 14px; border-left: 3px solid var(--av-blue); color: var(--ink-2); }
+.ct-nprose code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 0.9em;
+  background: var(--av-line-soft); padding: 1px 5px; border-radius: 4px; }
 
 /* ===== Guide ===== */
 .ct-guide__grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }

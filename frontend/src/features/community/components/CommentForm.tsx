@@ -1,10 +1,9 @@
 import { useState } from "react";
 import { Avatar, AvatarFallback } from "@/app/components/ui/avatar";
-import { Send } from "lucide-react";
 
 interface CommentFormProps {
   onSubmit: (text: string, anonymous: boolean) => void;
-  /** 답글용 컴팩트 폼 (모바일 고정 바 없이 인라인 표시) */
+  /** 답글용 컴팩트 폼 (들여쓴 인라인 표시) */
   compact?: boolean;
   placeholder?: string;
   autoFocus?: boolean;
@@ -22,103 +21,40 @@ export function CommentForm({ onSubmit, compact, placeholder, autoFocus, onCance
     setDraft("");
   };
 
-  const anonToggle = (
-    <label className="ct-cform__anon">
-      <input type="checkbox" checked={anon} onChange={(e) => setAnon(e.target.checked)} />
-      익명으로 작성
-    </label>
-  );
-
-  // 답글용 컴팩트 폼: 인라인 textarea + 등록/취소 (모바일 고정 바 미렌더)
-  if (compact) {
-    return (
-      <div className="ct-cform ct-cform--reply">
-        <Avatar className="w-7 h-7 shrink-0">
-          <AvatarFallback className="text-xs bg-muted">나</AvatarFallback>
-        </Avatar>
-        <div className="ct-cform__main">
-          <textarea
-            placeholder={placeholder ?? "답글을 입력하세요. 익명으로 등록돼요."}
-            value={draft}
-            onChange={(e) => setDraft(e.target.value)}
-            rows={2}
-            autoFocus={autoFocus}
-            style={{
-              width: "100%",
-              border: "1px solid var(--border)",
-              borderRadius: 8,
-              padding: "8px 12px",
-              resize: "vertical",
-              background: "var(--card)",
-              color: "var(--foreground)",
-              fontSize: 13.5,
-              lineHeight: 1.6,
-            }}
-          />
-          <div className="ct-cform__row" style={{ gap: 8 }}>
-            {anonToggle}
-            <button className="ct-btn-brand" disabled={!draft.trim()} onClick={submit}>
-              답글 등록 <Send />
-            </button>
-            {onCancel && (
-              <button className="ct-cmt__act" onClick={onCancel}>취소</button>
-            )}
-          </div>
-        </div>
-      </div>
-    );
-  }
-
   return (
-    <>
-      {/* Desktop form */}
-      <div className="ct-cform">
-        <Avatar className="w-8 h-8 shrink-0">
-          <AvatarFallback className="text-xs bg-muted">나</AvatarFallback>
-        </Avatar>
-        <div className="ct-cform__main">
-          <textarea
-            placeholder={placeholder ?? "따뜻한 댓글은 큰 힘이 됩니다."}
-            value={draft}
-            onChange={(e) => setDraft(e.target.value)}
-            rows={3}
-            style={{
-              width: "100%",
-              border: "1px solid var(--border)",
-              borderRadius: 8,
-              padding: "10px 14px",
-              resize: "vertical",
-              background: "var(--card)",
-              color: "var(--foreground)",
-              fontSize: 14,
-              lineHeight: 1.6,
-            }}
-          />
-          <div className="ct-cform__row">
-            {anonToggle}
+    <div className={"dv-cform" + (compact ? " dv-cform--reply" : "")}>
+      <Avatar className={compact ? "w-7 h-7 shrink-0" : "w-8 h-8 shrink-0"}>
+        <AvatarFallback className="text-xs bg-muted">나</AvatarFallback>
+      </Avatar>
+      <div className="dv-cform__main">
+        <textarea
+          className="av-textarea"
+          style={{ minHeight: compact ? 64 : 84 }}
+          placeholder={placeholder ?? (compact ? "답글을 입력하세요. 익명으로 등록돼요." : "면접 준비에 도움이 되는 질문·경험을 남겨주세요.")}
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          autoFocus={autoFocus}
+        />
+        <div className="dv-cform__row">
+          <label className="dv-cform__anon">
+            <input type="checkbox" checked={anon} onChange={(e) => setAnon(e.target.checked)} />
+            익명으로 작성
+          </label>
+          <div className="right">
+            {onCancel && (
+              <button className="av-btn" style={{ height: 32 }} onClick={onCancel}>취소</button>
+            )}
             <button
-              className="ct-btn-brand"
+              className="av-btn av-btn--ink"
+              style={{ height: 32, padding: "0 14px", opacity: draft.trim() ? 1 : 0.45 }}
               disabled={!draft.trim()}
               onClick={submit}
             >
-              댓글 등록 <Send />
+              {compact ? "답글 등록" : "댓글 등록"}
             </button>
           </div>
         </div>
       </div>
-
-      {/* Mobile sticky bar */}
-      <div className="ct-cbar">
-        <input
-          placeholder="댓글을 입력하세요"
-          value={draft}
-          onChange={(e) => setDraft(e.target.value)}
-          onKeyDown={(e) => e.key === "Enter" && submit()}
-        />
-        <button className="ct-cbar__send" onClick={submit}>
-          <Send />
-        </button>
-      </div>
-    </>
+    </div>
   );
 }

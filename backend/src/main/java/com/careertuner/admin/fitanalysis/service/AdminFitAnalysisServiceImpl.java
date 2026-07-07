@@ -10,10 +10,13 @@ import java.util.stream.Collectors;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import com.careertuner.admin.common.grid.PageResult;
 import com.careertuner.admin.fitanalysis.domain.AdminFitAnalysisResult;
 import com.careertuner.admin.fitanalysis.domain.AdminGateStatsRow;
 import com.careertuner.admin.fitanalysis.dto.AdminFitAnalysisDetailResponse;
+import com.careertuner.admin.fitanalysis.dto.AdminFitAnalysisListCriteria;
 import com.careertuner.admin.fitanalysis.dto.AdminFitAnalysisListItemResponse;
+import com.careertuner.admin.fitanalysis.dto.AdminFitAnalysisListQuery;
 import com.careertuner.admin.fitanalysis.dto.AdminFitAnalysisMemoRequest;
 import com.careertuner.admin.fitanalysis.dto.AdminGateReviewRequest;
 import com.careertuner.admin.fitanalysis.dto.AdminFitAnalysisMemoResponse;
@@ -42,6 +45,8 @@ public class AdminFitAnalysisServiceImpl implements AdminFitAnalysisService {
             Map.Entry.<String, Long>comparingByValue(Comparator.reverseOrder())
                     .thenComparing(Map.Entry.comparingByKey());
     private static final int TOP_CLAIM_LIMIT = 10;
+    private static final int DEFAULT_PAGE_SIZE = 20;
+    private static final int MAX_PAGE_SIZE = 100;
 
     private final AdminFitAnalysisMapper adminFitAnalysisMapper;
     private final FitAnalysisMapper fitAnalysisMapper;
@@ -49,13 +54,35 @@ public class AdminFitAnalysisServiceImpl implements AdminFitAnalysisService {
 
     @Override
     @Transactional(readOnly = true)
-    public List<AdminFitAnalysisListItemResponse> list(boolean reviewRequiredOnly) {
-        return adminFitAnalysisMapper.findAll(reviewRequiredOnly).stream()
+    public PageResult<AdminFitAnalysisListItemResponse> list(AdminFitAnalysisListQuery query) {
+        int page = Math.max(1, query.page());
+        int size = query.size() <= 0 ? DEFAULT_PAGE_SIZE : Math.min(query.size(), MAX_PAGE_SIZE);
+        AdminFitAnalysisListCriteria criteria = new AdminFitAnalysisListCriteria(
+                query.reviewRequiredOnly(),
+                query.query() == null ? null : query.query().trim(),
+                normalizeEnum(query.band()),
+                normalizeEnum(query.result()),
+                query.memoOnly(),
+                query.reanalysisOnly(),
+                size,
+                (page - 1) * size);
+
+        long total = adminFitAnalysisMapper.countAll(criteria);
+        List<AdminFitAnalysisListItemResponse> items = adminFitAnalysisMapper.findAll(criteria).stream()
                 .map(result -> AdminFitAnalysisListItemResponse.of(
                         result,
                         parseList(result.getMatchedSkills()),
                         parseList(result.getMissingSkills())))
                 .toList();
+        return PageResult.of(items, total, page, size);
+    }
+
+    /** band/result 필터값 정규화: null/공백/대소문자 무시 후 대문자. 빈 값이면 'ALL'(필터 미적용). */
+    private static String normalizeEnum(String value) {
+        if (value == null || value.isBlank()) {
+            return "ALL";
+        }
+        return value.trim().toUpperCase();
     }
 
     @Override

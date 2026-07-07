@@ -11,6 +11,8 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
+import org.jsoup.Jsoup;
+
 import com.careertuner.support.domain.Faq;
 
 import tools.jackson.core.type.TypeReference;
@@ -57,7 +59,8 @@ public class ChatbotService {
         int success = 0;
         for (Faq faq : targets) {
             try {
-                String text = faq.getQuestion() + " " + faq.getAnswer();
+                // 임베딩(검색용)은 평문으로 — HTML 저장 답변의 태그를 벗겨 RAG 검색 품질 유지
+                String text = faq.getQuestion() + " " + stripHtml(faq.getAnswer());
                 double[] vector = embeddingClient.embed(text);
                 String json = objectMapper.writeValueAsString(vector);
                 faqMapper.updateEmbedding(faq.getId(), json);
@@ -70,6 +73,14 @@ public class ChatbotService {
 
         log.info("FAQ 임베딩 완료: {}/{}", success, targets.size());
         return success;
+    }
+
+    /** 임베딩 텍스트용 HTML 태그 제거(평문화). 기존 평문 답변도 그대로 통과. */
+    private static String stripHtml(String answer) {
+        if (answer == null || answer.isBlank()) {
+            return "";
+        }
+        return Jsoup.parse(answer).text();
     }
 
     // ── 질문 → 검색 → 답변 ──────────────────────────────────────────

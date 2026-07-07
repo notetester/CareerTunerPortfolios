@@ -9,12 +9,14 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+import com.careertuner.auth.service.AuthService;
 import com.careertuner.common.security.AuthUser;
 import com.careertuner.common.web.ApiResponse;
 import com.careertuner.user.dto.AccountInfoResponse;
 import com.careertuner.user.dto.EmailRegistrationRequest;
 import com.careertuner.user.dto.LoginIdRequest;
 import com.careertuner.user.dto.PhoneRequest;
+import com.careertuner.user.dto.SocialLinkUrlResponse;
 import com.careertuner.user.service.UserAccountService;
 
 import jakarta.validation.Valid;
@@ -27,6 +29,7 @@ import lombok.RequiredArgsConstructor;
 public class UserAccountController {
 
     private final UserAccountService service;
+    private final AuthService authService;
 
     @GetMapping
     public ApiResponse<AccountInfoResponse> me(@AuthenticationPrincipal AuthUser authUser) {
@@ -52,9 +55,15 @@ public class UserAccountController {
         return ApiResponse.ok();
     }
 
+    @PostMapping("/social/{provider}/link-url")
+    public ApiResponse<SocialLinkUrlResponse> socialLinkUrl(@AuthenticationPrincipal AuthUser authUser,
+                                                            @PathVariable String provider) {
+        return ApiResponse.ok(new SocialLinkUrlResponse(authService.buildSocialLinkUrl(authUser.id(), provider)));
+    }
+
     @DeleteMapping("/social/{provider}")
-    public ApiResponse<AccountInfoResponse> unlinkSocialProvider(@AuthenticationPrincipal AuthUser authUser,
-                                                                 @PathVariable String provider) {
-        return ApiResponse.ok(service.unlinkSocialProvider(authUser.id(), provider));
+    public ApiResponse<AccountInfoResponse> unlinkSocial(@AuthenticationPrincipal AuthUser authUser,
+                                                         @PathVariable String provider) {
+        return ApiResponse.ok(service.unlinkSocial(authUser.id(), provider));
     }
 }
