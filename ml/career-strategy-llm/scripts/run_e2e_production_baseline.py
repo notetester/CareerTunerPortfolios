@@ -93,7 +93,7 @@ def api(base: str, path: str, body: dict | None, token: str | None, timeout: int
 
 
 def run_e2e(base: str, out_dir: Path, timeout: int, fixture: Path = FIXTURE,
-            case_base: int = CASE_BASE, email_prefix: str = "a-only") -> None:
+            case_base: int = CASE_BASE, email_prefix: str = "a-only", capture: bool = False) -> None:
     rows = load_cases(fixture)
     results = []
     for i, row in enumerate(rows, start=1):
@@ -118,6 +118,13 @@ def run_e2e(base: str, out_dir: Path, timeout: int, fixture: Path = FIXTURE,
             "maxSeverity": safety.get("maxSeverity"), "gateReasonCount": len(safety.get("gateReasons") or []),
             "evidenceGateVersion": safety.get("evidenceGateVersion"),
         }
+        if capture:
+            # 게이트 재현율 판정용: 사용자 노출 텍스트(소유 단정이 나타나는 필드)를 저장.
+            # raw 출력이므로 .local-tmp(gitignore) 로만 나가고 본체 커밋 금지.
+            entry["captured"] = {k: data.get(k) for k in (
+                "fitSummary", "strategy", "strengths", "risks", "strategyActions",
+                "scoreBasis", "learningTaskReasons", "matchedSkills", "missingSkills",
+                "applyDecision", "gapRecommendations", "conditionMatrix")}
         results.append(entry)
         print(f"  {case_id}: http={status} model={entry['model']} gate={entry['gateStatus']} {latency_ms}ms")
 
@@ -150,11 +157,13 @@ def main(argv: list[str] | None = None) -> int:
         if p.prog.endswith("run"):
             p.add_argument("--base", default="http://localhost:8081")
             p.add_argument("--timeout-seconds", type=int, default=150)
+            p.add_argument("--capture", action="store_true",
+                           help="사용자 노출 텍스트 캡처(게이트 재현율 판정용, raw→.local-tmp)")
     args = parser.parse_args(argv)
     if args.cmd == "seed-sql":
         emit_seed_sql(args.out, args.fixture, args.user_base, args.case_base, args.email_prefix)
     else:
-        run_e2e(args.base, args.out, args.timeout_seconds, args.fixture, args.case_base, args.email_prefix)
+        run_e2e(args.base, args.out, args.timeout_seconds, args.fixture, args.case_base, args.email_prefix, args.capture)
     return 0
 
 
