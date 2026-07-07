@@ -90,29 +90,66 @@ export default function AdminFitAnalysisPage() {
   const [editingMemo, setEditingMemo] = useState<AdminFitAnalysisMemo | null>(null);
   const [savingMemo, setSavingMemo] = useState(false);
   const [query, setQuery] = useState("");
-  // 점수 구간/분석 상태/메모 보유 필터(클라이언트 필터링).
+  // query 입력은 서버 요청을 유발하므로 ~300ms 디바운스한 값으로만 refetch 한다.
+  const [debouncedQuery, setDebouncedQuery] = useState("");
+  // 점수 구간/분석 상태/메모 보유 필터(서버측 필터링).
   const [bandFilter, setBandFilter] = useState("ALL");
   const [resultFilter, setResultFilter] = useState("ALL");
   const [memoOnly, setMemoOnly] = useState(false);
   const [reanalysisOnly, setReanalysisOnly] = useState(false);
-  // review-first evidence gate 검토 필요(REVIEW_REQUIRED) 항목만 보기(클라이언트 필터).
+  // review-first evidence gate 검토 필요(REVIEW_REQUIRED) 항목만 보기(서버측 필터).
   const [reviewOnly, setReviewOnly] = useState(false);
+  // 서버측 페이지네이션 상태. page 는 1-based, size 는 페이지당 건수.
+  const PAGE_SIZE = 20;
+  const [page, setPage] = useState(1);
+  const [total, setTotal] = useState(0);
+  const [totalPages, setTotalPages] = useState(0);
   // gate 통계 요약. 목록과 독립적으로 로딩하고, 실패해도 목록을 막지 않는다.
   const [gateStats, setGateStats] = useState<AdminGateStats | null>(null);
   const [loadingGateStats, setLoadingGateStats] = useState(true);
   const [gateStatsError, setGateStatsError] = useState<string | null>(null);
+
+  // 현재 필터+페이지를 그대로 담은 서버 요청 파라미터. 뮤테이션 후 재조회에도 재사용한다.
+  const listParams = useMemo(
+    () => ({
+      reviewRequiredOnly: reviewOnly,
+      query: debouncedQuery,
+      band: bandFilter,
+      result: resultFilter,
+      memoOnly,
+      reanalysisOnly,
+      page,
+      size: PAGE_SIZE,
+    }),
+    [reviewOnly, debouncedQuery, bandFilter, resultFilter, memoOnly, reanalysisOnly, page],
+  );
+
+  // query 입력 디바운스(~300ms). 타이핑 중에는 서버 요청을 보내지 않는다.
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedQuery(query), 300);
+    return () => clearTimeout(timer);
+  }, [query]);
+
+  // 필터(페이지 제외)가 바뀌면 항상 1페이지로 되돌린다.
+  useEffect(() => {
+    setPage(1);
+  }, [reviewOnly, debouncedQuery, bandFilter, resultFilter, memoOnly, reanalysisOnly]);
 
   useEffect(() => {
     let ignore = false;
     setLoadingList(true);
     setError(null);
 
-    // '검토 필요만'은 서버 1차 필터(reviewRequiredOnly)로 후보군을 줄인다. 나머지 필터는 클라이언트 유지.
-    getAdminFitAnalyses(reviewOnly)
+    // 필터·페이지네이션을 모두 서버로 위임한다. 응답 items 만 렌더링한다.
+    getAdminFitAnalyses(listParams)
       .then((data) => {
         if (ignore) return;
-        setItems(data);
-        setSelectedId((current) => (current != null && data.some((item) => item.id === current) ? current : data[0]?.id ?? null));
+        setItems(data.items);
+        setTotal(data.total);
+        setTotalPages(data.totalPages);
+        setSelectedId((current) =>
+          current != null && data.items.some((item) => item.id === current) ? current : data.items[0]?.id ?? null,
+        );
       })
       .catch((requestError) => {
         if (!ignore) setError(requestError instanceof Error ? requestError.message : "적합도 분석 목록을 불러오지 못했습니다.");
@@ -124,7 +161,7 @@ export default function AdminFitAnalysisPage() {
     return () => {
       ignore = true;
     };
-  }, [reviewOnly]);
+  }, [listParams]);
 
   useEffect(() => {
     let ignore = false;
@@ -179,6 +216,7 @@ export default function AdminFitAnalysisPage() {
     };
   }, [selectedId]);
 
+  // 집계는 서버가 넘겨준 '현재 페이지' items 기준이다. 전체 기준이 아니므로 라벨에 명시한다.
   const averageScore = useMemo(() => {
     const scored = items.filter((item) => item.fitScore != null);
     if (scored.length === 0) return 0;
@@ -189,27 +227,6 @@ export default function AdminFitAnalysisPage() {
     return items.reduce((sum, item) => sum + item.memoCount, 0);
   }, [items]);
   const detailGateReasons = detail?.gateReasons ?? [];
-  const visibleItems = useMemo(() => {
-    const value = query.trim().toLowerCase();
-    return items.filter((item) => {
-      const matchesQuery =
-        !value || `${item.companyName} ${item.jobTitle} ${item.userName} ${item.userEmail}`.toLowerCase().includes(value);
-      const score = item.fitScore ?? 0;
-      const matchesBand =
-        bandFilter === "ALL" ||
-        (bandFilter === "HIGH" && score >= 80) ||
-        (bandFilter === "MID_HIGH" && score >= 70 && score < 80) ||
-        (bandFilter === "MID" && score >= 50 && score < 70) ||
-        (bandFilter === "LOW" && score < 50);
-      const matchesResult =
-        resultFilter === "ALL" ||
-        (resultFilter === "SUCCESS" ? item.status === "SUCCESS" : item.status !== "SUCCESS");
-      const matchesMemo = !memoOnly || item.memoCount > 0;
-      const matchesReanalysis = !reanalysisOnly || item.reanalysisRequested;
-      // 검토 필요 필터는 서버(reviewRequiredOnly)에서 처리하므로 여기서는 클라이언트 필터를 두지 않는다.
-      return matchesQuery && matchesBand && matchesResult && matchesMemo && matchesReanalysis;
-    });
-  }, [items, query, bandFilter, resultFilter, memoOnly, reanalysisOnly]);
 
   function resetMemoForm() {
     setMemoType("GENERAL");
@@ -235,9 +252,11 @@ export default function AdminFitAnalysisPage() {
         await createAdminFitAnalysisMemo(detail.id, { memoType, content: memoContent });
       }
       const refreshedDetail = await getAdminFitAnalysis(detail.id);
-      const refreshedItems = await getAdminFitAnalyses(reviewOnly);
+      const refreshedPage = await getAdminFitAnalyses(listParams);
       setDetail(refreshedDetail);
-      setItems(refreshedItems);
+      setItems(refreshedPage.items);
+      setTotal(refreshedPage.total);
+      setTotalPages(refreshedPage.totalPages);
       resetMemoForm();
     } catch (requestError) {
       setError(requestError instanceof Error ? requestError.message : "운영 메모를 저장하지 못했습니다.");
@@ -254,7 +273,10 @@ export default function AdminFitAnalysisPage() {
     try {
       const refreshed = await patchAdminGateReview(detail.id, { reviewStatus });
       setDetail(refreshed);
-      setItems(await getAdminFitAnalyses(reviewOnly));
+      const refreshedPage = await getAdminFitAnalyses(listParams);
+      setItems(refreshedPage.items);
+      setTotal(refreshedPage.total);
+      setTotalPages(refreshedPage.totalPages);
     } catch (requestError) {
       setError(requestError instanceof Error ? requestError.message : "gate 검토 상태를 변경하지 못했습니다.");
     } finally {
@@ -270,9 +292,11 @@ export default function AdminFitAnalysisPage() {
     try {
       await deleteAdminFitAnalysisMemo(detail.id, memo.id);
       const refreshedDetail = await getAdminFitAnalysis(detail.id);
-      const refreshedItems = await getAdminFitAnalyses(reviewOnly);
+      const refreshedPage = await getAdminFitAnalyses(listParams);
       setDetail(refreshedDetail);
-      setItems(refreshedItems);
+      setItems(refreshedPage.items);
+      setTotal(refreshedPage.total);
+      setTotalPages(refreshedPage.totalPages);
       if (editingMemo?.id === memo.id) resetMemoForm();
     } catch (requestError) {
       setError(requestError instanceof Error ? requestError.message : "운영 메모를 삭제하지 못했습니다.");
@@ -297,9 +321,9 @@ export default function AdminFitAnalysisPage() {
           </div>
           <div className="grid grid-cols-3 gap-2 sm:min-w-[360px]">
             {[
-              { label: "분석 결과", value: `${items.length}건` },
-              { label: "평균 점수", value: `${averageScore}점` },
-              { label: "운영 메모", value: `${memoSummary}건` },
+              { label: "분석 결과", value: `${total}건` },
+              { label: "이 페이지 평균 점수", value: `${averageScore}점` },
+              { label: "이 페이지 운영 메모", value: `${memoSummary}건` },
             ].map((stat) => (
               <Card key={stat.label} className="border border-slate-200 bg-card">
                 <CardContent className="p-3">
@@ -354,7 +378,7 @@ export default function AdminFitAnalysisPage() {
                 >
                   <option value="ALL">전체 상태</option>
                   <option value="SUCCESS">성공</option>
-                  <option value="ABNORMAL">실패·Fallback</option>
+                  <option value="FAIL">실패·Fallback</option>
                 </select>
                 <label className="flex h-9 cursor-pointer items-center gap-1.5 rounded-md border border-slate-200 px-2 text-xs font-semibold text-slate-600">
                   <input type="checkbox" checked={memoOnly} onChange={(event) => setMemoOnly(event.target.checked)} />
@@ -368,15 +392,15 @@ export default function AdminFitAnalysisPage() {
                   <input type="checkbox" checked={reviewOnly} onChange={(event) => setReviewOnly(event.target.checked)} />
                   검토 필요만
                 </label>
-                <span className="text-[11px] text-slate-400">{visibleItems.length}/{items.length}건</span>
+                <span className="text-[11px] text-slate-400">총 {total}건</span>
               </div>
               {loadingList ? (
                 <div className="flex items-center gap-2 rounded-lg bg-slate-50 p-4 text-sm text-slate-500">
                   <Loader2 className="size-4 animate-spin" />
                   목록을 불러오는 중입니다.
                 </div>
-              ) : visibleItems.length > 0 ? (
-                visibleItems.map((item) => (
+              ) : items.length > 0 ? (
+                items.map((item) => (
                   <button
                     key={item.id}
                     type="button"
@@ -410,6 +434,35 @@ export default function AdminFitAnalysisPage() {
                 ))
               ) : (
                 <div className="rounded-lg bg-slate-50 p-4 text-sm text-slate-500">적합도 분석 결과가 아직 없습니다.</div>
+              )}
+
+              {/* 서버측 페이지네이션: 이전/다음으로 page 상태를 바꾸면 refetch 된다. */}
+              {totalPages > 1 && (
+                <div className="mt-3 flex items-center justify-between gap-2 border-t border-slate-100 pt-3">
+                  <span className="text-[11px] text-slate-400">
+                    페이지 {page} / {totalPages} · 총 {total}건
+                  </span>
+                  <div className="flex items-center gap-1.5">
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      onClick={() => setPage((current) => Math.max(1, current - 1))}
+                      disabled={loadingList || page <= 1}
+                    >
+                      이전
+                    </Button>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      onClick={() => setPage((current) => Math.min(totalPages, current + 1))}
+                      disabled={loadingList || page >= totalPages}
+                    >
+                      다음
+                    </Button>
+                  </div>
+                </div>
               )}
             </CardContent>
           </Card>
