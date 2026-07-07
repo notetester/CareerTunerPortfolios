@@ -166,6 +166,8 @@ careertuner:
   extraction:
     ai-worker:
       enabled: ${JOB_POSTING_AI_WORKER_ENABLED:false}
+      # 외부 저장소(Cloudinary 등) 사용 시 워커에 파일 bytes(base64) 전송 — 로컬 저장이면 불필요(false).
+      send-bytes: ${JOB_POSTING_AI_WORKER_SEND_BYTES:false}
       base-url: ${JOB_POSTING_AI_WORKER_BASE_URL:http://127.0.0.1:8091}
       # CPU PaddleOCR/PPStructure는 첫 케이스 모델 로딩+추론에 수십 초 걸려 30s로는 타임아웃됨(긴 이미지 27.5s 실측).
       timeout: ${JOB_POSTING_AI_WORKER_TIMEOUT:120s}
