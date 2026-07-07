@@ -51,7 +51,8 @@ export function AccountInfoCard() {
     const params = new URLSearchParams(window.location.search);
     const linked = params.get("socialLinked");
     if (linked) {
-      setMessage(`${PROVIDER_LABELS[linked] ?? linked} 계정을 연결했습니다.`);
+      const suffix = params.get("socialMock") ? " mock 계정을 연결했습니다." : " 계정을 연결했습니다.";
+      setMessage(`${PROVIDER_LABELS[linked] ?? linked}${suffix}`);
       window.history.replaceState(null, "", window.location.pathname);
     }
   }, []);

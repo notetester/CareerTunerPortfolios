@@ -111,6 +111,8 @@ export default defineConfig(({ mode }) => {
             if (id.includes('/src/features/collaboration/')) return 'collaboration'
             return undefined
           }
+          if (id.includes('/@tiptap/') || id.includes('/prosemirror-')) return 'editor-vendor'
+          if (id.includes('/@capacitor/') || id.includes('/@mediapipe/') || id.includes('/@heygen/')) return 'mobile-vendor'
           if (id.includes('/lucide-react/') || id.includes('/@radix-ui/') || id.includes('/sonner/')) return 'ui-vendor'
           if (id.includes('/recharts/') || id.includes('/d3-')) return 'charts-vendor'
           return 'vendor'

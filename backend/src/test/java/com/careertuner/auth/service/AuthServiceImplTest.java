@@ -185,4 +185,53 @@ class AuthServiceImplTest {
                 .extracting("errorCode").isEqualTo(ErrorCode.CONFLICT);
         verify(authMapper, never()).insertSocial(any());
     }
+
+    @Test
+    void buildSocialLinkUrl_whenProviderIsNotConfigured_returnsMockCallbackUrl() {
+        when(socialOAuthService.isSupported("KAKAO")).thenReturn(true);
+        when(socialOAuthService.isConfigured("KAKAO")).thenReturn(false);
+        when(socialOAuthService.isMockEnabled()).thenReturn(true);
+        when(userMapper.findById(1L)).thenReturn(User.builder().id(1L).email(EMAIL).status("ACTIVE").build());
+        when(jwtTokenProvider.createOauthLinkState("KAKAO", 1L)).thenReturn("signed-state");
+        when(socialOAuthService.getMockAuthorizationUrl("KAKAO", "signed-state"))
+                .thenReturn("http://localhost:8080/api/auth/oauth/kakao/mock-callback?state=signed-state");
+
+        String url = service.buildSocialLinkUrl(1L, "kakao");
+
+        assertThat(url).contains("/api/auth/oauth/kakao/mock-callback");
+    }
+
+    @Test
+    void buildSocialLinkUrl_whenProviderIsNotConfiguredAndMockDisabled_failsAsUnavailable() {
+        when(socialOAuthService.isSupported("KAKAO")).thenReturn(true);
+        when(socialOAuthService.isConfigured("KAKAO")).thenReturn(false);
+        when(socialOAuthService.isMockEnabled()).thenReturn(false);
+        when(userMapper.findById(1L)).thenReturn(User.builder().id(1L).email(EMAIL).status("ACTIVE").build());
+        when(jwtTokenProvider.createOauthLinkState("KAKAO", 1L)).thenReturn("signed-state");
+
+        assertThatThrownBy(() -> service.buildSocialLinkUrl(1L, "kakao"))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode").isEqualTo(ErrorCode.SERVICE_UNAVAILABLE);
+    }
+
+    @Test
+    void handleOAuthMockCallback_linkState_connectsMockSocialToCurrentUser() {
+        when(socialOAuthService.isSupported("NAVER")).thenReturn(true);
+        when(socialOAuthService.isMockEnabled()).thenReturn(true);
+        when(jwtTokenProvider.parseOauthState("state", "NAVER"))
+                .thenReturn(new OauthState("oauth_link_state", "NAVER", 1L));
+        when(socialOAuthService.mockUserInfo("NAVER", 1L))
+                .thenReturn(new SocialUserInfo("NAVER", "mock-link-1", null, "네이버 mock 사용자"));
+        when(userMapper.findById(1L)).thenReturn(User.builder().id(1L).email(EMAIL).status("ACTIVE").build());
+        when(authMapper.findSocial("NAVER", "mock-link-1")).thenReturn(null);
+        when(authMapper.findSocialByUserAndProvider(1L, "NAVER")).thenReturn(null);
+        ArgumentCaptor<UserSocial> captor = ArgumentCaptor.forClass(UserSocial.class);
+
+        OAuthCallbackResult result = service.handleOAuthMockCallback("naver", "state", null);
+
+        assertThat(result.linked()).isTrue();
+        verify(authMapper).insertSocial(captor.capture());
+        assertThat(captor.getValue().getProvider()).isEqualTo("NAVER");
+        assertThat(captor.getValue().getProviderUserId()).isEqualTo("mock-link-1");
+    }
 }

@@ -246,7 +246,10 @@ export const nicknameProfileRoutes: MockRoute[] = [
     pattern: /^\/account\/social\/([^/]+)\/link-url$/,
     handler: ({ params }) => {
       const provider = String(params[0] ?? "").toUpperCase();
-      return { url: `/profile/detail?socialLinked=${encodeURIComponent(provider)}` };
+      if (!account.linkedProviders.includes(provider)) {
+        account.linkedProviders = [...account.linkedProviders, provider];
+      }
+      return { url: `/profile/detail?socialLinked=${encodeURIComponent(provider)}&socialMock=1` };
     },
   },
   {
