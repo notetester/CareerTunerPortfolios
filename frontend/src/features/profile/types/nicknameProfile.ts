@@ -37,7 +37,11 @@ export interface AccountInfo {
   loginIdSet: boolean;
   phone: string | null;
   phoneVerified: boolean;
+  emailVerified: boolean;
+  temporaryEmail: boolean;
+  emailRegistrationRequired: boolean;
   passwordEnabled: boolean;
+  passwordSetupRequired: boolean;
   linkedProviders: string[];
 }
 

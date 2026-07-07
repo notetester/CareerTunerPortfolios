@@ -136,18 +136,38 @@ class CorrectionAiClientTest {
     }
 
     @Test
-    @DisplayName("disabled cloud fallback propagates the 3B failure")
-    void correct_throwsWhenFallbackDisabled() {
+    @DisplayName("cloud fallback 을 꺼도 self 실패 시 화면은 Mock 으로 안전하게 유지된다(예외 미전파)")
+    void correct_fallbackDisabledReturnsMockNotThrow() {
         Fixture fixture = fixture(true);
         fixture.properties.setFallbackEnabled(false);
         when(fixture.self.correct(eq(fixture.command), eq("3b"), any(Duration.class), isNull()))
                 .thenThrow(new SelfLlmCallException("boom", false));
 
-        assertThatThrownBy(() -> fixture.client.correct(fixture.command))
-                .isInstanceOf(SelfLlmCallException.class)
-                .hasMessage("boom");
+        CorrectionPayload result = fixture.client.correct(fixture.command);
 
-        verify(fixture.openAi, never()).correct(any());
+        assertThat(result.usage().model()).isEqualTo("mock");
+        verify(fixture.mock).correct(fixture.command);
+        verify(fixture.openAi, never()).correct(any()); // 외부 폴백은 껐으므로 호출 안 함
+        verify(fixture.anthropic, never()).correct(any());
+    }
+
+    @Test
+    @DisplayName("모든 tier(self·Claude·OpenAI)가 실패해도 Mock 안전망이 예외 없이 반환된다(screen-break 방지)")
+    void correct_allTiersFailReturnsMockNeverThrows() {
+        Fixture fixture = fixture(true);
+        when(fixture.self.correct(eq(fixture.command), eq("3b"), any(Duration.class), isNull()))
+                .thenThrow(new SelfLlmCallException("self down", false));
+        when(fixture.anthropic.configured()).thenReturn(true);
+        when(fixture.anthropic.correct(fixture.command)).thenThrow(new IllegalStateException("claude down"));
+        when(fixture.openAi.correct(fixture.command)).thenThrow(new IllegalStateException("openai down"));
+
+        CorrectionPayload result = fixture.client.correct(fixture.command);
+
+        assertThat(result.usage().model()).isEqualTo("mock"); // 예외 대신 결정론 Mock
+        verify(fixture.self).correct(eq(fixture.command), eq("3b"), any(Duration.class), isNull());
+        verify(fixture.anthropic).correct(fixture.command);
+        verify(fixture.openAi).correct(fixture.command);
+        verify(fixture.mock).correct(fixture.command);
     }
 
     @Test
@@ -180,6 +200,8 @@ class CorrectionAiClientTest {
         OpenAiCorrectionProvider openAi = mock(OpenAiCorrectionProvider.class);
         SelfLlmCorrectionProvider self = mock(SelfLlmCorrectionProvider.class);
         AnthropicCorrectionProvider anthropic = mock(AnthropicCorrectionProvider.class);
+        MockCorrectionProvider mockProvider = mock(MockCorrectionProvider.class);
+        when(mockProvider.correct(any())).thenReturn(payload("mock"));
         CorrectionModelWarmupService warmup = mock(CorrectionModelWarmupService.class);
         CorrectionCommand command = command();
         return new Fixture(
@@ -187,8 +209,9 @@ class CorrectionAiClientTest {
                 openAi,
                 self,
                 anthropic,
+                mockProvider,
                 warmup,
-                new CorrectionAiClient(properties, openAi, self, anthropic, warmup),
+                new CorrectionAiClient(properties, openAi, self, anthropic, mockProvider, warmup),
                 command);
     }
 
@@ -206,6 +229,7 @@ class CorrectionAiClientTest {
             OpenAiCorrectionProvider openAi,
             SelfLlmCorrectionProvider self,
             AnthropicCorrectionProvider anthropic,
+            MockCorrectionProvider mock,
             CorrectionModelWarmupService warmup,
             CorrectionAiClient client,
             CorrectionCommand command

@@ -2,6 +2,8 @@ import { useEffect } from "react";
 import { ArrowLeft, Pin, Eye, Calendar, ChevronUp, ChevronDown, List } from "lucide-react";
 import type { Notice } from "../types/support";
 import { useSupportStore } from "../hooks/useSupportStore";
+// 공통 리치텍스트 유틸: HTML 감지 + sanitize (마크다운 공지는 renderMarkdown 폴백)
+import { isHtmlContent, sanitizePostHtml } from "@/app/lib/postContent";
 
 function tagStyle(tag: string) {
   switch (tag) {
@@ -114,7 +116,12 @@ export default function NoticeDetailPage({ noticeId, onBack, onNavigate }: Notic
         </div>
       </div>
 
-      <div className="ct-nprose">{renderMarkdown(notice.content)}</div>
+      {/* HTML 공지(TipTap)면 sanitize 후 렌더, 기존 마크다운 공지면 renderMarkdown 폴백 — 무회귀 공존 */}
+      {isHtmlContent(notice.content) ? (
+        <div className="ct-nprose" dangerouslySetInnerHTML={{ __html: sanitizePostHtml(notice.content) }} />
+      ) : (
+        <div className="ct-nprose">{renderMarkdown(notice.content)}</div>
+      )}
 
       <div className="ct-nnav">
         <div

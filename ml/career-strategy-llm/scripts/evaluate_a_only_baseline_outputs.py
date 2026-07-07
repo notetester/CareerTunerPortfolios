@@ -19,6 +19,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from career_json_repair import is_repairable  # noqa: E402  (backend truncation 수리 미러)
+
 OWNERSHIP = ["보유", "갖춤", "갖추고", "갖추어", "강점", "경험 있", "경험을 보유",
              "활용 가능", "숙련", "기반이 있", "능숙", "능통", "익숙"]
 LACK = ["부족", "없", "미보유", "부재", "않", "못", "결여", "갖추지", "보유하지", "미흡", "전무", "필요",
@@ -89,8 +91,12 @@ def main(argv: list[str] | None = None) -> int:
         cjk = bool(CJK_EXTRA_RE.search(raw_text))
         label = ("EMPTY_OUTPUT" if empty else "PARSE_FAIL" if not json_ok
                  else "CANDIDATE_UNSUPPORTED_POSSESSION" if hits else "PASS_OFFLINE")
+        # 병렬 지표: raw 파싱 실패지만 production 경로(truncation 수리, #229)로 살아나는가.
+        # 엄격 raw PARSE_FAIL 지표는 유지(모델 품질 측정용)하고, 운영 실효만 별도 관측.
+        repairable = label == "PARSE_FAIL" and not empty and is_repairable(raw_text)
         per_case.append({"caseId": case_id, "category": row["category"], "label": label,
                          "candidateCount": len(hits), "jsonParse": json_ok, "cjkLeak": cjk,
+                         "repairableParseFail": repairable,
                          "latencyMs": result.get("latencyMs")})
         counter = by_category.setdefault(row["category"], Counter())
         counter[label] += 1
@@ -103,10 +109,16 @@ def main(argv: list[str] | None = None) -> int:
                                      "CATALOG_FACT_ONLY/UNCLEAR 는 분리"})
 
     labels = Counter(c["label"] for c in per_case)
+    parse_fail_total = labels.get("PARSE_FAIL", 0)
+    repairable_total = sum(1 for c in per_case if c["repairableParseFail"])
     summary = {
         "generatedAt": datetime.now(timezone.utc).isoformat(),
         "run": str(args.run), "cases": len(per_case), "variant": "A_lora_only",
         "labels": dict(labels),
+        # 엄격 raw PARSE_FAIL 중 production truncation 수리(#229)로 살아나는 수(병렬 관측 지표).
+        "parseFailTotal": parse_fail_total,
+        "repairableParseFailTotal": repairable_total,
+        "productionEffectiveParseFail": parse_fail_total - repairable_total,
         "candidateUnsupportedTotal": sum(c["candidateCount"] for c in per_case),
         "byCategory": {k: dict(v) for k, v in sorted(by_category.items())},
         "note": "후보(candidate)는 결정론 관찰값이며 true unsupported 확정은 judge/human rubric v2 절차로만 한다.",
@@ -120,6 +132,8 @@ def main(argv: list[str] | None = None) -> int:
             f.write(json.dumps(item, ensure_ascii=False) + "\n")
 
     print(f"[evaluate_a_only_baseline_outputs] cases={len(per_case)} labels={dict(labels)} "
+          f"parseFail={parse_fail_total} repairable={repairable_total} "
+          f"prodEffectiveParseFail={parse_fail_total - repairable_total} "
           f"candidates={summary['candidateUnsupportedTotal']} packet={len(packet)}")
     return 0
 

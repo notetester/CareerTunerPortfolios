@@ -11,8 +11,23 @@
         SELECT * FROM users WHERE email = #{email}
     </select>
 
+    <select id="findByLoginIdentifier" resultType="com.careertuner.user.domain.User">
+        SELECT * FROM users
+        WHERE email = #{identifier}
+           OR login_id = #{identifier}
+        ORDER BY CASE WHEN email = #{identifier} THEN 0 ELSE 1 END
+        LIMIT 1
+    </select>
+
     <select id="countByEmail" resultType="int">
         SELECT COUNT(*) FROM users WHERE email = #{email}
+    </select>
+
+    <select id="countByEmailExcludingId" resultType="int">
+        SELECT COUNT(*)
+          FROM users
+         WHERE email = #{email}
+           AND id != #{id}
     </select>
 
     <insert id="insert" useGeneratedKeys="true" keyProperty="id">
@@ -76,6 +91,14 @@
 
     <update id="markEmailVerified">
         UPDATE users SET email_verified = 1 WHERE id = #{id}
+    </update>
+
+    <update id="updateEmailAndMarkVerified">
+        UPDATE users
+           SET email = #{email},
+               email_verified = 1,
+               updated_at = NOW()
+         WHERE id = #{id}
     </update>
 
     <update id="updatePassword">

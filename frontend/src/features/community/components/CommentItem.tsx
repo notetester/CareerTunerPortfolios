@@ -26,9 +26,6 @@ interface CommentItemProps {
   onReply: (parentId: number, text: string, anonymous: boolean) => void;
 }
 
-// 시각적 들여쓰기 상한 (디시인사이드식 2단계라 사실상 1단계만 들어감)
-const MAX_INDENT_DEPTH = 5;
-
 export function CommentItem({ comment: c, childrenMap, depth, onReply }: CommentItemProps) {
   const { toggleReaction, toggleCommentSubscription, fetchComments } = useCommunityStore();
   const { showLoginDialog, requireAuth, onLoginConfirm, onLoginCancel } = useLoginDialog();
@@ -43,10 +40,10 @@ export function CommentItem({ comment: c, childrenMap, depth, onReply }: Comment
 
   const replies = childrenMap.get(c.id) ?? [];
   // 서버 tombstone(c.isDeleted) 또는 이번 세션 낙관적 자삭(deleted) 둘 다 삭제 표시.
-  // → 재조회·타 사용자·관리자 숨김에도 placeholder가 유지된다.
   const isDeleted = deleted || !!c.isDeleted;
   // 뷰어가 차단한 작성자의 댓글 — 톰스톤만 렌더하고 답글 트리는 유지(조용한 차단, "한 번 보기" 없음).
   const isBlocked = !!c.blocked;
+  const canNameLink = !c.author.isAnonymous && !!c.author.id;
   // 신고 누적 자동 블러 — 비작성자에게 가리되 클릭하면 해제(게시글 blur 와 동형).
   const [revealed, setRevealed] = useState(false);
   const isBlurred = !!c.blurred && !revealed;
@@ -113,7 +110,6 @@ export function CommentItem({ comment: c, childrenMap, depth, onReply }: Comment
   };
 
   // 작성자 차단 — 조용한 차단. 차단 후 목록을 다시 받아 이 작성자의 댓글이 톰스톤으로 바뀐다.
-  // 익명 댓글은 작성자 id 가 없어 댓글 id 로 차단한다(서버가 작성자를 찾고, 목록에는 익명 라벨만 남는다).
   const handleBlockAuthor = () => {
     requireAuth(async () => {
       try {
@@ -126,58 +122,51 @@ export function CommentItem({ comment: c, childrenMap, depth, onReply }: Comment
         }
         await fetchComments(c.postId);
       } catch (err) {
-        // 본인 콘텐츠/운영자 차단 등 서버 검증 메시지는 그대로 보여준다.
         toast.error(err instanceof Error && err.message ? err.message : "차단 처리에 실패했습니다.");
       }
     });
   };
 
-  // 삭제됐어도 자식 답글은 보존해야 하므로, 본문만 "삭제된 댓글"로 대체하고 트리는 유지
   return (
     <>
-      <div className={`ct-cmt ${c.isAuthor ? "is-op" : ""}`}>
-        <Avatar className="w-8 h-8 shrink-0">
+      <div className={"dv-cmt" + (depth > 0 ? " dv-cmt--reply" : "")}>
+        <Avatar className="w-7 h-7 shrink-0">
           <AvatarFallback className="text-xs bg-muted">
             {isDeleted || isBlocked ? "-" : c.author.name[0]}
           </AvatarFallback>
         </Avatar>
-        <div className="ct-cmt__body">
+        <div className="dv-cmt__b">
           {isDeleted || isBlocked ? (
-            <div className="ct-cmt__text" style={{ color: "var(--muted-foreground)", fontStyle: "italic" }}>
+            <div className="dv-cmt__x muted">
               {isDeleted ? "삭제된 댓글입니다." : "차단한 사용자의 댓글입니다."}
             </div>
           ) : (
             <>
-              <div className="ct-cmt__top">
+              <div className="dv-cmt__top">
                 {/* 비익명 작성자 이름 클릭 → 프로필 활동 탭 */}
                 <span
-                  className={`ct-cmt__name ${!c.author.isAnonymous && c.author.id ? "ct-author-link" : ""}`}
-                  onClick={() => {
-                    if (!c.author.isAnonymous && c.author.id) {
-                      navigate(`/community/users/${c.author.id}/activity`);
-                    }
-                  }}
-                  title={!c.author.isAnonymous && c.author.id ? "작성자의 활동 보기" : undefined}
+                  className={"dv-cmt__n" + (canNameLink ? " link" : "")}
+                  onClick={() => { if (canNameLink) navigate(`/community/users/${c.author.id}/activity`); }}
+                  title={canNameLink ? "작성자의 활동 보기" : undefined}
                 >
                   {c.author.name}
                 </span>
-                {c.isAuthor && <span className="ct-cmt__op">작성자</span>}
-                <span className="ct-cmt__time">{relTime(c.createdAt)}</span>
+                {c.isAuthor && <span className="dv-cmt__op">작성자</span>}
+                <span className="dv-cmt__t">{relTime(c.createdAt)}</span>
               </div>
               {editing ? (
-                <div style={{ marginTop: 4 }}>
+                <div style={{ marginTop: 6 }}>
                   <textarea
-                    className="ct-cmt__editbox"
+                    className="av-textarea"
+                    style={{ minHeight: 70 }}
                     value={editText}
                     onChange={(e) => setEditText(e.target.value)}
                     maxLength={5000}
-                    rows={3}
-                    style={{ width: "100%", resize: "vertical", padding: 8, borderRadius: 8, border: "1px solid var(--border)" }}
                     autoFocus
                   />
-                  <div style={{ display: "flex", gap: 6, justifyContent: "flex-end", marginTop: 6 }}>
-                    <button className="ct-cmt__act" onClick={() => { setEditing(false); setEditText(contentOverride ?? c.content); }}>취소</button>
-                    <button className="ct-cmt__act" disabled={saving || !editText.trim()} onClick={handleEditSave}>저장</button>
+                  <div style={{ display: "flex", gap: 12, justifyContent: "flex-end", marginTop: 6 }}>
+                    <button className="dv-cmt__act" onClick={() => { setEditing(false); setEditText(contentOverride ?? c.content); }}>취소</button>
+                    <button className="dv-cmt__act" disabled={saving || !editText.trim()} onClick={handleEditSave}>저장</button>
                   </div>
                 </div>
               ) : isBlurred ? (
@@ -196,67 +185,47 @@ export function CommentItem({ comment: c, childrenMap, depth, onReply }: Comment
                   </span>
                 </div>
               ) : (
-                <div className="ct-cmt__text">
-                  {c.mentionLabel && <span className="ct-cmt__mention">@{c.mentionLabel}</span>}
+                <div className="dv-cmt__x">
+                  {c.mentionLabel && <span className="dv-cmt__mention">@{c.mentionLabel}</span>}
                   {c.mentionLabel ? " " : ""}{contentOverride ?? c.content}
                 </div>
               )}
-              <div className="ct-cmt__foot">
+              <div className="dv-cmt__foot">
                 {/* 추천 축(트렌드용) */}
-                <button
-                  className={`ct-cmt__act ${c.recommended ? "is-on--blue" : ""}`}
-                  onClick={() => handleReaction("RECOMMEND")}
-                  title="추천"
-                >
+                <button className={"dv-cmt__act" + (c.recommended ? " on" : "")} onClick={() => handleReaction("RECOMMEND")} title="추천">
                   <ThumbsUp /> {c.recommendCount ?? 0}
                 </button>
-                <button
-                  className={`ct-cmt__act ${c.disrecommended ? "is-on--muted" : ""}`}
-                  onClick={() => handleReaction("DISRECOMMEND")}
-                  title="비추천"
-                >
+                <button className={"dv-cmt__act" + (c.disrecommended ? " on-muted" : "")} onClick={() => handleReaction("DISRECOMMEND")} title="비추천">
                   <ThumbsDown /> {c.disrecommendCount ?? 0}
                 </button>
                 {/* 개인화 축 */}
-                <button
-                  className={`ct-cmt__act ${c.liked ? "is-on" : ""}`}
-                  onClick={() => handleReaction("LIKE")}
-                  title="좋아요"
-                >
+                <button className={"dv-cmt__act" + (c.liked ? " on" : "")} onClick={() => handleReaction("LIKE")} title="좋아요 — 맞춤 추천에 반영">
                   <Heart /> {c.likeCount}
                 </button>
-                <button
-                  className={`ct-cmt__act ${c.disliked ? "is-on--muted" : ""}`}
-                  onClick={() => handleReaction("DISLIKE")}
-                  title="싫어요"
-                >
+                <button className={"dv-cmt__act" + (c.disliked ? " on-muted" : "")} onClick={() => handleReaction("DISLIKE")} title="싫어요">
                   <HeartCrack /> {c.dislikeCount ?? 0}
                 </button>
                 {/* 댓글 구독 — 새 답글 알림 */}
-                <button
-                  className={`ct-cmt__act ${c.subscribed ? "is-on--blue" : ""}`}
-                  onClick={handleSubscribe}
-                  title="구독 — 새 답글이 달리면 알림을 받습니다"
-                >
+                <button className={"dv-cmt__act" + (c.subscribed ? " on" : "")} onClick={handleSubscribe} title="구독 — 새 답글이 달리면 알림을 받습니다">
                   {c.subscribed ? <BellRing /> : <Bell />}
                 </button>
-                <button className="ct-cmt__act" onClick={handleReplyClick}>
+                <button className="dv-cmt__act" onClick={handleReplyClick}>
                   <MessageCircle /> 답글
                 </button>
                 {c.mine && !editing && (
-                  <button className="ct-cmt__act" onClick={() => { setEditText(contentOverride ?? c.content); setEditing(true); }}>
+                  <button className="dv-cmt__act" onClick={() => { setEditText(contentOverride ?? c.content); setEditing(true); }}>
                     <Pencil /> 수정
                   </button>
                 )}
                 {c.mine && (
-                  <button className="ct-cmt__act ct-cmt__act--del" onClick={() => setShowDeleteDialog(true)}>
+                  <button className="dv-cmt__act dv-cmt__act--del" onClick={() => setShowDeleteDialog(true)}>
                     <Trash2 /> 삭제
                   </button>
                 )}
                 {/* 작성자 메뉴 — 익명 댓글도 노출: 댓글 id 로 차단(서버가 작성자를 알므로 동작, 익명성 유지) */}
                 {!c.mine && (!!c.author.id || c.author.isAnonymous) && (
                   <button
-                    className="ct-cmt__act ct-cmt__act--del"
+                    className="dv-cmt__act dv-cmt__act--del"
                     onClick={handleBlockAuthor}
                     title={
                       c.author.isAnonymous
@@ -285,12 +254,9 @@ export function CommentItem({ comment: c, childrenMap, depth, onReply }: Comment
         </div>
       </div>
 
-      {/* 자식 답글 — 재귀. 들여쓰기는 상한까지만 적용 */}
+      {/* 자식 답글 — 재귀. dv-cmt--reply(depth>0) 로 한 단계 들여쓰기, 더 깊어도 평평하게 유지 */}
       {replies.length > 0 && (
-        <div
-          className="ct-cmt__replies"
-          style={depth < MAX_INDENT_DEPTH ? undefined : { marginLeft: 0 }}
-        >
+        <div>
           {replies.map((r) => (
             <CommentItem
               key={r.id}
