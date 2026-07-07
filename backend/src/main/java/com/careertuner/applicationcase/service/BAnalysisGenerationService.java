@@ -1038,7 +1038,7 @@ public class BAnalysisGenerationService {
     /**
      * WEB 입력 배선(local/Claude 한정 · 235 §1). usableWeb(URL 보유분)가 있으면 {@code [웹 검색 근거]} 블록을
      * 먼저 만들어 그 길이를 공고 본문 예산에서 차감한 뒤 붙인다(웹 블록이 num_ctx 예산을 초과하지 않도록 — 리뷰 반영).
-     * 빈 목록이면 base 를 그대로 반환한다(=현행 프롬프트 완전 불변). b-v5 프롬프트가 이 블록 형식을 기대한다.
+     * 빈 목록이면 base 를 그대로 반환한다(=현행 프롬프트 완전 불변). b-v6 프롬프트가 이 블록 형식을 기대한다.
      * URL blank/null evidence 는 상위 usableWebEvidence 에서 이미 제외됐다.
      */
     private String companyPrompt(ApplicationCase applicationCase, String postingText, Classification classification,
