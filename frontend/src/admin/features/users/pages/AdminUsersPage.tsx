@@ -102,6 +102,9 @@ export function AdminUsersPage({
   const [success, setSuccess] = useState<string | null>(null);
   const selectedIdRef = useRef<number | null>(null);
   selectedIdRef.current = selectedId;
+  const isSecurityAudit = active === "security-audit";
+  const isEmailAudit = active === "email-audit";
+  const isAuditPage = isSecurityAudit || isEmailAudit;
 
   const selected = useMemo(() => {
     if (selectedId === null) return null;
@@ -320,7 +323,11 @@ export function AdminUsersPage({
                     <Info label="상태 변경자" value={detail.user.statusChangedBy ? `#${detail.user.statusChangedBy}` : "-"} />
                   </div>
 
-                  <div className="rounded-lg border border-slate-200 p-4">
+                  {isSecurityAudit && <SecurityAuditSummary detail={detail} />}
+                  {isEmailAudit && <EmailAuditSummary detail={detail} />}
+
+                  {!isAuditPage && (
+                    <div className="rounded-lg border border-slate-200 p-4">
                     <div className="mb-3 flex items-center gap-2 text-sm font-bold text-slate-900">
                       <ShieldAlert className="size-4 text-red-600" />
                       상태 변경
@@ -337,105 +344,18 @@ export function AdminUsersPage({
                       {saving && <RefreshCw className="size-4 animate-spin" />}
                       상태 저장
                     </Button>
-                  </div>
+                    </div>
+                  )}
                 </CardContent>
               </Card>
 
-              <div className="grid gap-4 xl:grid-cols-2">
-                <HistoryCard title="로그인/보안 이력">
-                  <LoginHistorySection userId={detail.user.id} initial={detail.loginHistory} />
-                </HistoryCard>
-                <HistoryCard title="이메일 인증/비밀번호 재설정 이력">
-                  {detail.emailVerifications.length ? detail.emailVerifications.map((item) => (
-                    <div key={item.id} className="rounded-lg border border-slate-100 p-3 text-sm">
-                      <div className="flex items-center justify-between gap-3">
-                        <span className="font-semibold text-slate-900">{item.purpose}</span>
-                        <Badge className={item.used ? "bg-green-100 text-green-700" : "bg-amber-100 text-amber-700"}>
-                          {item.used ? "사용됨" : "미사용"}
-                        </Badge>
-                      </div>
-                      <div className="mt-1 text-xs text-slate-500">발급 {formatDateTime(item.createdAt)} / 만료 {formatDateTime(item.expiredAt)}</div>
-                      <div className="mt-1 text-xs text-slate-500">대상 이메일 {item.email}</div>
-                    </div>
-                  )) : <EmptyText text="인증 또는 재설정 이력이 없습니다." />}
-                </HistoryCard>
-              </div>
-
-              <div className="grid gap-4 xl:grid-cols-2">
-                <HistoryCard title="프로필 입력 상태">
-                  {detail.profile ? (
-                    <div className="grid gap-2 md:grid-cols-2">
-                      <Info label="희망 직무" value={detail.profile.desiredJob ?? "미입력"} />
-                      <Info label="희망 산업" value={detail.profile.desiredIndustry ?? "미입력"} />
-                      <Info label="학력" value={summarizeJson(detail.profile.education)} />
-                      <Info label="경력" value={summarizeJson(detail.profile.career)} />
-                      <Info label="프로젝트/활동" value={summarizeJson(detail.profile.projects)} />
-                      <Info label="기술/역량" value={summarizeJson(detail.profile.skills)} />
-                      <Info label="자격증" value={summarizeJson(detail.profile.certificates)} />
-                      <Info label="포트폴리오" value={summarizeJson(detail.profile.portfolioLinks)} />
-                      <Info label="이력서 원문" value={detail.profile.resumeText ? "입력됨" : "미입력"} />
-                      <Info label="자기소개" value={detail.profile.selfIntro ? "입력됨" : "미입력"} />
-                    </div>
-                  ) : <EmptyText text="프로필이 아직 생성되지 않았습니다." />}
-                </HistoryCard>
-
-                <HistoryCard title="AI 데이터 동의/사용 이력">
-                  <div className="space-y-2">
-                    {detail.consents.map((item) => (
-                      <div key={item.id} className="rounded-lg border border-slate-100 p-3 text-sm">
-                        <div className="flex items-center justify-between gap-3">
-                          <span className="font-semibold text-slate-900">{item.consentType}</span>
-                          <Badge className={item.agreed ? "bg-green-100 text-green-700" : "bg-slate-200 text-slate-700"}>
-                            {item.agreed ? "동의" : "철회/미동의"}
-                          </Badge>
-                        </div>
-                        <div className="mt-1 text-xs text-slate-500">{formatDateTime(item.createdAt)} / {item.source ?? "-"}</div>
-                      </div>
-                    ))}
-                    {!detail.consents.length && <EmptyText text="동의 이력이 없습니다." />}
-                  </div>
-                  <div className="mt-3 space-y-2">
-                    {detail.aiUsage.map((item) => (
-                      <div key={item.id} className="rounded-lg border border-slate-100 p-3 text-sm">
-                        <div className="flex items-center justify-between gap-3">
-                          <span className="font-semibold text-slate-900">{item.featureType}</span>
-                          <Badge className={item.status === "SUCCESS" ? "bg-green-100 text-green-700" : "bg-amber-100 text-amber-700"}>{item.status}</Badge>
-                        </div>
-                        <div className="mt-1 text-xs text-slate-500">{item.model ?? "모델 미기록"} / 토큰 {item.tokenUsage} / 크레딧 {item.creditUsed}</div>
-                        {item.errorMessage && <div className="mt-1 text-xs text-red-600">{item.errorMessage}</div>}
-                      </div>
-                    ))}
-                    {!detail.aiUsage.length && <EmptyText text="AI 사용 이력이 없습니다." />}
-                  </div>
-                </HistoryCard>
-              </div>
-
-              <div className="grid gap-4 xl:grid-cols-2">
-                <HistoryCard title="상태 변경 이력">
-                  {detail.statusHistory.length ? detail.statusHistory.map((item) => (
-                    <div key={item.id} className="rounded-lg border border-slate-100 p-3 text-sm">
-                      <div className="font-semibold text-slate-900">{item.previousStatus ?? "-"} → {item.newStatus}</div>
-                      <div className="mt-1 text-xs text-slate-500">{formatDateTime(item.createdAt)} / 관리자 #{item.actorUserId ?? "SYSTEM"}</div>
-                      {(item.reason || item.memo) && <div className="mt-1 text-xs text-slate-600">{item.reason ?? item.memo}</div>}
-                    </div>
-                  )) : <EmptyText text="상태 변경 이력이 없습니다." />}
-                </HistoryCard>
-
-                <HistoryCard title="Refresh Token 세션">
-                  {detail.refreshTokens.length ? detail.refreshTokens.map((item) => (
-                    <div key={item.id} className="rounded-lg border border-slate-100 p-3 text-sm">
-                      <div className="flex items-center justify-between gap-3">
-                        <span className="font-semibold text-slate-900">세션 #{item.id}</span>
-                        <Badge className={item.revoked ? "bg-red-100 text-red-700" : "bg-green-100 text-green-700"}>
-                          {item.revoked ? "폐기" : "활성"}
-                        </Badge>
-                      </div>
-                      <div className="mt-1 text-xs text-slate-500">발급 {formatDateTime(item.createdAt)} / 만료 {formatDateTime(item.expiredAt)}</div>
-                      <div className="mt-1 text-xs text-slate-500">IP {item.ipAddress ?? "-"} / User-Agent {item.userAgent ?? "-"}</div>
-                    </div>
-                  )) : <EmptyText text="저장된 세션 이력이 없습니다." />}
-                </HistoryCard>
-              </div>
+              {isSecurityAudit ? (
+                <SecurityAuditDetail detail={detail} />
+              ) : isEmailAudit ? (
+                <EmailAuditDetail detail={detail} />
+              ) : (
+                <MemberOperationDetail detail={detail} />
+              )}
 
               <AlertDialog open={confirmOpen} onOpenChange={setConfirmOpen}>
                 <AlertDialogContent>
@@ -507,6 +427,161 @@ export function AdminEmailAuditPage() {
   );
 }
 
+function SecurityAuditSummary({ detail }: { detail: AdminUserDetail }) {
+  const activeSessions = detail.refreshTokens.filter((item) => !item.revoked).length;
+  const blockedEvents = detail.statusHistory.filter((item) => item.newStatus === "BLOCKED").length;
+  return (
+    <div className="rounded-lg border border-blue-100 bg-blue-50 p-4">
+      <div className="mb-3 flex items-center gap-2 text-sm font-bold text-blue-950">
+        <LockKeyhole className="size-4 text-blue-600" />
+        보안 감사 요약
+      </div>
+      <div className="grid gap-3 md:grid-cols-4">
+        <Info label="로그인 성공" value={`${detail.user.loginSuccessCount}회`} />
+        <Info label="로그인 실패" value={`${detail.user.loginFailCount}회`} />
+        <Info label="활성 세션" value={`${activeSessions}개`} />
+        <Info label="차단 이력" value={`${blockedEvents}건`} />
+      </div>
+      <p className="mt-3 text-xs leading-5 text-blue-700">
+        이 화면은 로그인 성공/실패, 실패 사유, 접속 IP, Refresh Token 세션, 계정 상태 변경을 중심으로 보안 위험을 확인합니다.
+      </p>
+    </div>
+  );
+}
+
+function EmailAuditSummary({ detail }: { detail: AdminUserDetail }) {
+  const resetCount = detail.emailVerifications.filter((item) => item.purpose === "RESET_PW").length;
+  const verifyCount = detail.emailVerifications.filter((item) => item.purpose === "VERIFY").length;
+  const unusedCount = detail.emailVerifications.filter((item) => !item.used).length;
+  return (
+    <div className="rounded-lg border border-indigo-100 bg-indigo-50 p-4">
+      <div className="mb-3 flex items-center gap-2 text-sm font-bold text-indigo-950">
+        <MailCheck className="size-4 text-indigo-600" />
+        이메일 감사 요약
+      </div>
+      <div className="grid gap-3 md:grid-cols-4">
+        <Info label="이메일 인증" value={detail.user.emailVerified ? "완료" : "미완료"} />
+        <Info label="인증 토큰" value={`${verifyCount}건`} />
+        <Info label="재설정 토큰" value={`${resetCount}건`} />
+        <Info label="미사용 토큰" value={`${unusedCount}건`} />
+      </div>
+      <p className="mt-3 text-xs leading-5 text-indigo-700">
+        이 화면은 이메일 인증, 비밀번호 재설정, 휴면 해제처럼 메일 링크와 토큰으로 처리되는 흐름만 따로 추적합니다.
+      </p>
+    </div>
+  );
+}
+
+function SecurityAuditDetail({ detail }: { detail: AdminUserDetail }) {
+  return (
+    <>
+      <div className="grid gap-4 xl:grid-cols-2">
+        <HistoryCard title="로그인 성공/실패 감사">
+          <LoginHistorySection userId={detail.user.id} initial={detail.loginHistory} />
+        </HistoryCard>
+        <HistoryCard title="Refresh Token 세션 감사">
+          <RefreshTokenSection detail={detail} />
+        </HistoryCard>
+      </div>
+      <div className="grid gap-4 xl:grid-cols-2">
+        <HistoryCard title="계정 상태 변경 감사">
+          <StatusHistorySection detail={detail} />
+        </HistoryCard>
+        <HistoryCard title="보안 판단 참고값">
+          <div className="grid gap-2 md:grid-cols-2">
+            <Info label="비밀번호 로그인" value={detail.user.passwordEnabled ? "가능" : "불가"} />
+            <Info label="최근 로그인" value={formatDateTime(detail.user.lastLoginAt)} />
+            <Info label="마지막 실패" value={formatDateTime(detail.user.lastFailedLoginAt)} />
+            <Info label="차단 사유" value={detail.user.blockedReason ?? "-"} />
+          </div>
+        </HistoryCard>
+      </div>
+    </>
+  );
+}
+
+function EmailAuditDetail({ detail }: { detail: AdminUserDetail }) {
+  const emailLoginEvents = detail.loginHistory.filter((item) => item.eventType === "PASSWORD_RESET" || item.eventType === "DORMANT_RELEASE");
+  return (
+    <>
+      <div className="grid gap-4 xl:grid-cols-2">
+        <HistoryCard title="이메일 인증/비밀번호 재설정 토큰">
+          <EmailVerificationSection detail={detail} />
+        </HistoryCard>
+        <HistoryCard title="메일 발송 요청 감사">
+          {emailLoginEvents.length ? emailLoginEvents.map((item) => (
+            <div key={item.id} className="rounded-lg border border-slate-100 p-3 text-sm">
+              <div className="flex items-center justify-between gap-3">
+                <span className="font-semibold text-slate-900">{emailEventLabel(item.eventType)}</span>
+                <Badge className={item.success ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"}>{item.success ? "요청 성공" : "요청 실패"}</Badge>
+              </div>
+              <div className="mt-1 text-xs text-slate-500">요청 {formatDateTime(item.createdAt)} / IP {item.ipAddress ?? "-"}</div>
+              <div className="mt-1 text-xs text-slate-500">식별자 {item.loginIdentifier ?? "-"}</div>
+              {item.failReason && <div className="mt-1 text-xs text-red-600">{item.failReason}</div>}
+            </div>
+          )) : <EmptyText text="비밀번호 재설정 또는 휴면 해제 메일 요청 이력이 없습니다." />}
+        </HistoryCard>
+      </div>
+      <HistoryCard title="이메일 계정 상태">
+        <div className="grid gap-2 md:grid-cols-4">
+          <Info label="회원 이메일" value={detail.user.email} />
+          <Info label="이메일 인증" value={detail.user.emailVerified ? "완료" : "미완료"} />
+          <Info label="비밀번호 로그인" value={detail.user.passwordEnabled ? "가능" : "불가"} />
+          <Info label="가입일" value={formatDateTime(detail.user.createdAt)} />
+        </div>
+      </HistoryCard>
+    </>
+  );
+}
+
+function MemberOperationDetail({ detail }: { detail: AdminUserDetail }) {
+  return (
+    <>
+      <div className="grid gap-4 xl:grid-cols-2">
+        <HistoryCard title="로그인/보안 이력">
+          <LoginHistorySection userId={detail.user.id} initial={detail.loginHistory} />
+        </HistoryCard>
+        <HistoryCard title="이메일 인증/비밀번호 재설정 이력">
+          <EmailVerificationSection detail={detail} />
+        </HistoryCard>
+      </div>
+
+      <div className="grid gap-4 xl:grid-cols-2">
+        <HistoryCard title="프로필 입력 상태">
+          {detail.profile ? (
+            <div className="grid gap-2 md:grid-cols-2">
+              <Info label="희망 직무" value={detail.profile.desiredJob ?? "미입력"} />
+              <Info label="희망 산업" value={detail.profile.desiredIndustry ?? "미입력"} />
+              <Info label="학력" value={summarizeJson(detail.profile.education)} />
+              <Info label="경력" value={summarizeJson(detail.profile.career)} />
+              <Info label="프로젝트/활동" value={summarizeJson(detail.profile.projects)} />
+              <Info label="기술/역량" value={summarizeJson(detail.profile.skills)} />
+              <Info label="자격증" value={summarizeJson(detail.profile.certificates)} />
+              <Info label="포트폴리오" value={summarizeJson(detail.profile.portfolioLinks)} />
+              <Info label="이력서 원문" value={detail.profile.resumeText ? "입력됨" : "미입력"} />
+              <Info label="자기소개" value={detail.profile.selfIntro ? "입력됨" : "미입력"} />
+            </div>
+          ) : <EmptyText text="프로필이 아직 생성되지 않았습니다." />}
+        </HistoryCard>
+
+        <HistoryCard title="AI 데이터 동의/사용 이력">
+          <ConsentAndAiUsageSection detail={detail} />
+        </HistoryCard>
+      </div>
+
+      <div className="grid gap-4 xl:grid-cols-2">
+        <HistoryCard title="상태 변경 이력">
+          <StatusHistorySection detail={detail} />
+        </HistoryCard>
+
+        <HistoryCard title="Refresh Token 세션">
+          <RefreshTokenSection detail={detail} />
+        </HistoryCard>
+      </div>
+    </>
+  );
+}
+
 function Info({ label, value }: { label: string; value: string }) {
   return (
     <div className="rounded-lg bg-slate-50 px-3 py-2">
@@ -529,6 +604,88 @@ function HistoryCard({ title, children }: { title: string; children: ReactNode }
 
 function EmptyText({ text }: { text: string }) {
   return <div className="rounded-lg bg-slate-50 p-4 text-center text-sm text-slate-500">{text}</div>;
+}
+
+function EmailVerificationSection({ detail }: { detail: AdminUserDetail }) {
+  return detail.emailVerifications.length ? detail.emailVerifications.map((item) => (
+    <div key={item.id} className="rounded-lg border border-slate-100 p-3 text-sm">
+      <div className="flex items-center justify-between gap-3">
+        <span className="font-semibold text-slate-900">{emailEventLabel(item.purpose)}</span>
+        <Badge className={item.used ? "bg-green-100 text-green-700" : "bg-amber-100 text-amber-700"}>
+          {item.used ? "사용됨" : "미사용"}
+        </Badge>
+      </div>
+      <div className="mt-1 text-xs text-slate-500">발급 {formatDateTime(item.createdAt)} / 만료 {formatDateTime(item.expiredAt)}</div>
+      <div className="mt-1 text-xs text-slate-500">사용 {formatDateTime(item.usedAt)} / 대상 이메일 {item.email}</div>
+    </div>
+  )) : <EmptyText text="인증 또는 재설정 이력이 없습니다." />;
+}
+
+function StatusHistorySection({ detail }: { detail: AdminUserDetail }) {
+  return detail.statusHistory.length ? detail.statusHistory.map((item) => (
+    <div key={item.id} className="rounded-lg border border-slate-100 p-3 text-sm">
+      <div className="font-semibold text-slate-900">{item.previousStatus ?? "-"} → {item.newStatus}</div>
+      <div className="mt-1 text-xs text-slate-500">{formatDateTime(item.createdAt)} / 관리자 #{item.actorUserId ?? "SYSTEM"}</div>
+      {(item.reason || item.memo) && <div className="mt-1 text-xs text-slate-600">{item.reason ?? item.memo}</div>}
+    </div>
+  )) : <EmptyText text="상태 변경 이력이 없습니다." />;
+}
+
+function RefreshTokenSection({ detail }: { detail: AdminUserDetail }) {
+  return detail.refreshTokens.length ? detail.refreshTokens.map((item) => (
+    <div key={item.id} className="rounded-lg border border-slate-100 p-3 text-sm">
+      <div className="flex items-center justify-between gap-3">
+        <span className="font-semibold text-slate-900">세션 #{item.id}</span>
+        <Badge className={item.revoked ? "bg-red-100 text-red-700" : "bg-green-100 text-green-700"}>
+          {item.revoked ? "폐기" : "활성"}
+        </Badge>
+      </div>
+      <div className="mt-1 text-xs text-slate-500">발급 {formatDateTime(item.createdAt)} / 만료 {formatDateTime(item.expiredAt)}</div>
+      <div className="mt-1 text-xs text-slate-500">폐기 {formatDateTime(item.revokedAt)} / IP {item.ipAddress ?? "-"}</div>
+      <div className="mt-1 break-words text-xs text-slate-500">User-Agent {item.userAgent ?? "-"}</div>
+    </div>
+  )) : <EmptyText text="저장된 세션 이력이 없습니다." />;
+}
+
+function ConsentAndAiUsageSection({ detail }: { detail: AdminUserDetail }) {
+  return (
+    <>
+      <div className="space-y-2">
+        {detail.consents.map((item) => (
+          <div key={item.id} className="rounded-lg border border-slate-100 p-3 text-sm">
+            <div className="flex items-center justify-between gap-3">
+              <span className="font-semibold text-slate-900">{item.consentType}</span>
+              <Badge className={item.agreed ? "bg-green-100 text-green-700" : "bg-slate-200 text-slate-700"}>
+                {item.agreed ? "동의" : "철회/미동의"}
+              </Badge>
+            </div>
+            <div className="mt-1 text-xs text-slate-500">{formatDateTime(item.createdAt)} / {item.source ?? "-"}</div>
+          </div>
+        ))}
+        {!detail.consents.length && <EmptyText text="동의 이력이 없습니다." />}
+      </div>
+      <div className="mt-3 space-y-2">
+        {detail.aiUsage.map((item) => (
+          <div key={item.id} className="rounded-lg border border-slate-100 p-3 text-sm">
+            <div className="flex items-center justify-between gap-3">
+              <span className="font-semibold text-slate-900">{item.featureType}</span>
+              <Badge className={item.status === "SUCCESS" ? "bg-green-100 text-green-700" : "bg-amber-100 text-amber-700"}>{item.status}</Badge>
+            </div>
+            <div className="mt-1 text-xs text-slate-500">{item.model ?? "모델 미기록"} / 토큰 {item.tokenUsage} / 크레딧 {item.creditUsed}</div>
+            {item.errorMessage && <div className="mt-1 text-xs text-red-600">{item.errorMessage}</div>}
+          </div>
+        ))}
+        {!detail.aiUsage.length && <EmptyText text="AI 사용 이력이 없습니다." />}
+      </div>
+    </>
+  );
+}
+
+function emailEventLabel(value: string): string {
+  if (value === "VERIFY") return "이메일 인증";
+  if (value === "RESET_PW" || value === "PASSWORD_RESET") return "비밀번호 재설정";
+  if (value === "DORMANT_RELEASE") return "휴면 해제";
+  return value;
 }
 
 function LoginHistorySection({ userId, initial }: { userId: number; initial: AdminUserLoginHistoryRow[] }) {
