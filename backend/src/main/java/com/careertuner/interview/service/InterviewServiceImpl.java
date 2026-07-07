@@ -129,6 +129,7 @@ public class InterviewServiceImpl implements InterviewService {
                 .targetId(sessionId)
                 .title("데스크탑에서 면접 세션을 보냈어요")
                 .message(modeLabel + " 세션을 폰에서 이어받을 수 있어요.")
+                .link("/interview?session=" + sessionId) // 알림 탭 → 세션 딥링크 직행
                 .build());
     }
 
@@ -182,6 +183,17 @@ public class InterviewServiceImpl implements InterviewService {
             }
         });
 
+        // 예상 질문 생성이 성공하면 사용자에게 완료 알림을 남긴다.
+        notificationService.notify(Notification.builder()
+                .userId(userId)
+                .type("QUESTIONS_GENERATED")
+                .targetType("INTERVIEW_SESSION")
+                .targetId(sessionId)
+                .title("면접 예상 질문이 준비되었습니다")
+                .message("%s 예상 질문 %d개가 생성되었습니다.".formatted(modeLabel, inserted.size()))
+                .link("/interview?session=" + sessionId)
+                .build());
+
         return listQuestions(userId, sessionId);
     }
 
@@ -210,12 +222,15 @@ public class InterviewServiceImpl implements InterviewService {
 
     @Override
     @Transactional
-    public int scoreVoiceTranscript(Long userId, Long sessionId, JsonNode transcript) {
+    public int scoreVoiceTranscript(Long userId, Long sessionId, JsonNode transcript, Integer questionLimit) {
         InterviewSession session = requireSession(userId, sessionId);
         ApplicationCase applicationCase = accessService.requireOwned(userId, session.getApplicationCaseId());
         // 음성 면접은 준비된 본질문으로만 진행하므로 꼬리질문은 제외하고 채점 대상으로 삼는다.
+        // 체험판(questionLimit=1)은 실제 진행한 질문만 넘긴다 — 전체를 넘기면 LLM 이 미진행 질문에도
+        // 트랜스크립트 내용을 억지 매칭해 저장하는 문제가 있다.
         List<InterviewQuestion> questions = interviewMapper.findQuestionsBySessionId(sessionId).stream()
                 .filter(q -> q.getParentQuestionId() == null)
+                .limit(questionLimit == null ? Long.MAX_VALUE : questionLimit)
                 .toList();
         if (questions.isEmpty()) {
             throw new BusinessException(ErrorCode.INVALID_INPUT, "채점할 준비된 질문이 없습니다.");
@@ -474,6 +489,19 @@ public class InterviewServiceImpl implements InterviewService {
                 buildQuestionScores(sessionId));
 
         interviewMapper.updateSessionResult(sessionId, payload.totalScore(), writeReport(response), LocalDateTime.now());
+
+        // 리포트가 새로 생성된 경우에만 완료 알림을 남긴다(캐시 반환 시에는 발행하지 않는다).
+        String modeLabel = MODE_LABELS.getOrDefault(session.getMode(), session.getMode());
+        notificationService.notify(Notification.builder()
+                .userId(userId)
+                .type("INTERVIEW_REPORT_READY")
+                .targetType("INTERVIEW_SESSION")
+                .targetId(sessionId)
+                .title("면접 리포트가 준비되었습니다")
+                .message("%s 리포트 · 종합 %d점".formatted(modeLabel, payload.totalScore()))
+                .link("/interview?session=" + sessionId)
+                .build());
+
         return response;
     }
 

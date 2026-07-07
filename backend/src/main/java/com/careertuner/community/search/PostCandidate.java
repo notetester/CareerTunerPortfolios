@@ -8,6 +8,8 @@ import lombok.Data;
 @Data
 public class PostCandidate {
     private Long id;
+    private Long userId;      // 작성자 — 뷰어 개인 차단 필터 판정용
+    private boolean anonymous; // is_anonymous AS anonymous (표면 키 분기용)
     private String title;
     private String content;
     private String embedding; // JSON 문자열 (bge-m3 1024차원)

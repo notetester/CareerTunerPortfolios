@@ -12,6 +12,7 @@
         <result property="pinned"        column="is_pinned"/>
         <result property="thumbnailUrl"  column="thumbnail_url"/>
         <result property="viewCount"     column="view_count"/>
+        <result property="scheduledAt"   column="scheduled_at"/>
         <result property="publishedAt"   column="published_at"/>
         <result property="createdAt"     column="created_at"/>
         <result property="updatedAt"     column="updated_at"/>
@@ -19,22 +20,23 @@
 
     <select id="findAll" resultMap="noticeResult">
         SELECT id, title, content, category, status, is_pinned, thumbnail_url,
-               view_count, published_at, created_at, updated_at
+               view_count, scheduled_at, published_at, created_at, updated_at
           FROM notice
          ORDER BY is_pinned DESC, created_at DESC
     </select>
 
     <select id="findById" resultMap="noticeResult">
         SELECT id, title, content, category, status, is_pinned, thumbnail_url,
-               view_count, published_at, created_at, updated_at
+               view_count, scheduled_at, published_at, created_at, updated_at
           FROM notice
          WHERE id = #{id}
     </select>
 
     <insert id="insert" useGeneratedKeys="true" keyColumn="id">
         INSERT INTO notice (title, content, category, status, is_pinned, thumbnail_url, admin_id,
-                            published_at)
+                            scheduled_at, published_at)
         VALUES (#{title}, #{content}, #{category}, #{status}, #{pinned}, #{thumbnailUrl}, #{adminId},
+                #{scheduledAt},
                 <choose>
                     <when test="setPublishedAt">CURRENT_TIMESTAMP</when>
                     <otherwise>NULL</otherwise>
@@ -53,6 +55,7 @@
                status       = #{status},
                is_pinned    = #{pinned},
                thumbnail_url= #{thumbnailUrl},
+               scheduled_at = #{scheduledAt},
                updated_at   = CURRENT_TIMESTAMP
                <if test="setPublishedAt">, published_at = CURRENT_TIMESTAMP</if>
          WHERE id = #{id}

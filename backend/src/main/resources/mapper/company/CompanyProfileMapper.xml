@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.careertuner.company.mapper.CompanyProfileMapper">
+
+    <insert id="insert" useGeneratedKeys="true" keyProperty="id"
+            parameterType="com.careertuner.company.domain.CompanyProfile">
+        INSERT INTO company_profile (user_id, company_name, business_number, trust_grade)
+        VALUES (#{userId}, #{companyName}, #{businessNumber}, #{trustGrade})
+    </insert>
+
+    <select id="findByUserId" resultType="com.careertuner.company.domain.CompanyProfile">
+        SELECT id, user_id, company_name, business_number, trust_grade, created_at, updated_at
+          FROM company_profile
+         WHERE user_id = #{userId}
+    </select>
+
+</mapper>

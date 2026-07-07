@@ -26,6 +26,7 @@ import com.careertuner.jobanalysis.dto.JobAnalysisReviewRequest;
 import com.careertuner.jobanalysis.dto.JobAnalysisResponse;
 import com.careertuner.jobanalysis.mapper.JobAnalysisMapper;
 import com.careertuner.jobposting.mapper.JobPostingMapper;
+import com.careertuner.notification.service.NotificationService;
 
 import tools.jackson.databind.ObjectMapper;
 
@@ -138,7 +139,8 @@ class JobAnalysisServiceReviewValidationTest {
                 mock(AiUsageLogService.class),
                 mock(ApplicationCaseAnalysisStatusService.class),
                 mock(TransactionTemplate.class),
-                new BAnalysisJsonValidator(new ObjectMapper()));
+                new BAnalysisJsonValidator(new ObjectMapper()),
+                mock(NotificationService.class));
     }
 
     private static ApplicationCase applicationCase() {

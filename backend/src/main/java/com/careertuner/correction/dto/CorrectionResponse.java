@@ -4,6 +4,7 @@ import java.time.LocalDateTime;
 import java.util.List;
 
 import com.careertuner.correction.domain.CorrectionRequest;
+import com.careertuner.billing.dto.AiChargeResult;
 
 public record CorrectionResponse(
         Long id,
@@ -19,6 +20,10 @@ public record CorrectionResponse(
         List<String> suggestions,
         String status,
         Long aiUsageLogId,
+        String chargeType,
+        int chargedCredit,
+        int totalTokens,
+        int remainingCredit,
         LocalDateTime createdAt
 ) {
 
@@ -39,6 +44,26 @@ public record CorrectionResponse(
                 safePayload.suggestions(),
                 correction.getStatus(),
                 correction.getAiUsageLogId(),
+                null,
+                0,
+                0,
+                0,
                 correction.getCreatedAt());
+    }
+
+    public static CorrectionResponse from(CorrectionRequest correction,
+                                          CorrectionResultPayload payload,
+                                          AiChargeResult chargeResult,
+                                          int totalTokens) {
+        CorrectionResponse base = from(correction, payload);
+        return new CorrectionResponse(
+                base.id(), base.applicationCaseId(), base.correctionType(), base.sourceType(), base.sourceRefId(),
+                base.originalText(), base.improvedText(), base.summary(), base.issues(), base.changeReasons(),
+                base.suggestions(), base.status(), base.aiUsageLogId(),
+                chargeResult == null ? null : chargeResult.chargeType().name(),
+                chargeResult == null ? 0 : chargeResult.chargedCredit(),
+                Math.max(0, totalTokens),
+                chargeResult == null ? 0 : chargeResult.remainingCredit(),
+                base.createdAt());
     }
 }

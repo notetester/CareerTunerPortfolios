@@ -32,6 +32,9 @@ dependencies {
     implementation 'org.apache.pdfbox:pdfbox:3.0.7'
     implementation 'org.jsoup:jsoup:1.22.2'
 
+    // 관리자 그리드 내보내기(Excel .xlsx) — Apache POI (admin/common/grid/GridExporter)
+    implementation 'org.apache.poi:poi-ooxml:5.5.1'
+
     // Email (verification / password reset via SMTP)
     implementation 'org.springframework.boot:spring-boot-starter-mail'
 
@@ -53,6 +56,19 @@ dependencies {
     // langchain4j-bom 은 spring 스타터 버전을 관리하지 않으므로(별도 버전체계) 버전을 직접 명시한다.
     implementation 'dev.langchain4j:langchain4j-spring-boot4-starter:1.17.0-beta27'        // @AiService 스캐닝
     implementation 'dev.langchain4j:langchain4j-ollama-spring-boot4-starter:1.17.0-beta27' // OllamaChatModel 오토컨피그
+    // 챗봇 LLM 폴백 provider (Ollama 다운 시 Haiku→OpenAI). 스타터가 아닌 순수 라이브러리 모듈이라
+    // 버전은 core/ollama 와 동일한 1.17.0(정식). 빈은 ChatModelFallbackConfig 에서 직접 .builder() 로 만든다
+    // (스타터를 쓰면 자동구성 ChatModel 빈이 중복 등록돼 @Primary 해소가 복잡해짐).
+    // anthropic/open-ai(순수 라이브러리 모듈)는 기본 HTTP client 로 langchain4j-http-client-jdk 를 끌어온다.
+    // 위 spring-boot4-starter 가 이미 Spring RestClient factory(http-client-spring-boot4-restclient)를 제공하므로,
+    // JDK client 를 배제하지 않으면 SPI 에 HTTP client 가 2개 잡혀 anthropicChatModel 빈 생성이 실패한다
+    // ("Conflict: multiple HTTP clients ..."). Spring 환경이므로 RestClient 로 통일한다.
+    implementation('dev.langchain4j:langchain4j-anthropic:1.17.0') {
+        exclude group: 'dev.langchain4j', module: 'langchain4j-http-client-jdk'
+    }
+    implementation('dev.langchain4j:langchain4j-open-ai:1.17.0') {
+        exclude group: 'dev.langchain4j', module: 'langchain4j-http-client-jdk'
+    }
 
     // Dev tooling
     compileOnly 'org.projectlombok:lombok'
@@ -66,6 +82,8 @@ dependencies {
     testImplementation 'org.springframework.boot:spring-boot-starter-validation-test'
     testImplementation 'org.springframework.boot:spring-boot-starter-webmvc-test'
     testImplementation 'org.mybatis.spring.boot:mybatis-spring-boot-starter-test:4.0.1'
+    // 관리자 SQL DB-fixture 통합테스트용 임베디드 DB(테스트 한정 — 운영 datasource 무영향)
+    testRuntimeOnly 'com.h2database:h2'
     testCompileOnly 'org.projectlombok:lombok'
     testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
     testAnnotationProcessor 'org.projectlombok:lombok'

@@ -17,6 +17,7 @@ import {
   LayoutDashboard,
   FileText,
   MessageSquare,
+  MessagesSquare,
   TrendingUp,
   Users,
   CreditCard,
@@ -109,6 +110,16 @@ const navItems = [
       { label: "직무별 질문 공유", href: "/community?cat=questions" },
       { label: "합격 전략 게시판", href: "/community?cat=strategy" },
       { label: "자유게시판", href: "/community?cat=free" },
+    ],
+  },
+  {
+    label: "메신저",
+    href: "/messenger",
+    icon: MessagesSquare,
+    children: [
+      { label: "내 채팅방", href: "/messenger" },
+      { label: "공개방 찾기", href: "/messenger?tab=discover" },
+      { label: "친구 관리", href: "/messenger?tab=friends" },
     ],
   },
   {

@@ -1,5 +1,6 @@
 package com.careertuner.community.mapper;
 
+import java.time.LocalDateTime;
 import java.util.List;
 
 import org.apache.ibatis.annotations.Mapper;
@@ -52,4 +53,7 @@ public interface CommunityCommentMapper {
     void incrementLikeCount(Long id);
 
     void decrementLikeCount(Long id);
+
+    /** 작성 rate-limit — since 이후 사용자가 단 댓글 수(삭제 제외). */
+    int countRecentCommentsByUser(@Param("userId") Long userId, @Param("since") LocalDateTime since);
 }

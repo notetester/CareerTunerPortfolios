@@ -26,7 +26,8 @@
                 FROM interview_answer a
                 JOIN interview_question q2 ON q2.id = a.question_id
                 WHERE q2.interview_session_id = s.id
-            ) AS answered_count
+            ) AS answered_count,
+            (s.report IS NOT NULL AND s.report &lt;&gt; '') AS has_report
         FROM interview_session s
         JOIN application_case ac ON ac.id = s.application_case_id
         JOIN users u ON u.id = ac.user_id
@@ -44,6 +45,9 @@
         </if>
         <if test="mode != null">
             AND s.mode = #{mode}
+        </if>
+        <if test="hasReport != null and hasReport">
+            AND s.report IS NOT NULL AND s.report &lt;&gt; ''
         </if>
         ORDER BY s.created_at DESC, s.id DESC
         LIMIT #{size} OFFSET #{offset}
@@ -64,6 +68,9 @@
         </if>
         <if test="mode != null">
             AND s.mode = #{mode}
+        </if>
+        <if test="hasReport != null and hasReport">
+            AND s.report IS NOT NULL AND s.report &lt;&gt; ''
         </if>
     </select>
 

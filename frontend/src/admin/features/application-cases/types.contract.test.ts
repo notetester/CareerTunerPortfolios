@@ -86,6 +86,7 @@ const applicationCaseDetail: AdminApplicationCaseDetail = {
       sources: null,
       verifiedFacts: "Verified facts",
       aiInferences: "AI inferences",
+      unknowns: null,
       sourceType: "WEB",
       checkedAt: "2026-06-02T00:00:00Z",
       refreshRecommendedAt: "2026-06-09T00:00:00Z",

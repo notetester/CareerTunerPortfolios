@@ -59,4 +59,28 @@
          WHERE conversation_id = #{conversationId}
     </select>
 
+    <select id="findApplicationCaseId" resultType="java.lang.Long">
+        SELECT application_case_id
+          FROM chatbot_conversation_memory
+         WHERE conversation_id = #{conversationId}
+    </select>
+
+    <select id="findOnboardingDeclinedAt" resultType="java.time.LocalDateTime">
+        SELECT onboarding_declined_at
+          FROM chatbot_conversation_memory
+         WHERE conversation_id = #{conversationId}
+    </select>
+
+    <update id="markOnboardingDeclined">
+        UPDATE chatbot_conversation_memory
+           SET onboarding_declined_at = NOW()
+         WHERE conversation_id = #{conversationId}
+    </update>
+
+    <update id="clearOnboardingDeclined">
+        UPDATE chatbot_conversation_memory
+           SET onboarding_declined_at = NULL
+         WHERE conversation_id = #{conversationId}
+    </update>
+
 </mapper>

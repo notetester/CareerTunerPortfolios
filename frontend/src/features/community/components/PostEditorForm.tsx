@@ -103,7 +103,7 @@ const REVERSE_RESULT_MAP: Record<string, string> = {
 export function PostEditorForm({ onCancel, onSubmit, editData }: PostEditorFormProps) {
   const { createPost, updatePost } = useCommunityStore();
   const isEdit = !!editData;
-  const cats = CATEGORIES.filter((c) => c.value !== "all");
+  const cats = CATEGORIES.filter((c) => c.value !== "all" && c.value !== "recruit");
   const [cat, setCat] = useState(editData?.category ?? "interview");
   const [submitting, setSubmitting] = useState(false);
   const [title, setTitle] = useState(editData?.title ?? "");

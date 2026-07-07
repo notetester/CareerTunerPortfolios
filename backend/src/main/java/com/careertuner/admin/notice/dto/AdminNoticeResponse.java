@@ -21,6 +21,7 @@ public class AdminNoticeResponse {
     private boolean pinned;
     private String thumbnailUrl;
     private int viewCount;
+    private LocalDateTime scheduledAt;
     private LocalDateTime publishedAt;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;

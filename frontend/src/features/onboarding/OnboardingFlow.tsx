@@ -1,14 +1,17 @@
 import { useMemo, useState } from "react";
 import { useNavigate } from "react-router";
 import { useAuth } from "@/app/auth/AuthContext";
+import { saveMyConsents } from "@/app/auth/consentApi";
 import { subscriptionFallbackPlans, toDisplayPlans } from "@/features/billing/utils/subscriptionDisplay";
-import { Sparkles, FileText, MessageSquare, Mic, Video, UserRound, X, Bell, type LucideIcon } from "lucide-react";
+import { Sparkles, FileText, MessageSquare, Mic, Video, UserRound, X, Bell, Check, ChevronRight, type LucideIcon } from "lucide-react";
 import "./onboarding.css";
 
 /**
- * 앱 온보딩 퍼널 (마누스 레퍼런스): 로그인 → 구독 제안(무료 스킵) → 알림 권한 → 검색창 메인(/home).
+ * 앱 온보딩 퍼널 (마누스 레퍼런스): 로그인(약관 동의) → 구독 제안(무료 스킵) → 알림 권한 → 검색창 메인(/home).
  * 네이티브 앱 + 미완료일 때만 Root 에서 진입한다. mock 모드(VITE_USE_MOCK)에서도 전부 동작한다.
  * docs/AI_ORCHESTRATOR.md 11.5 참조. 포트폴리오/시연용이라 결제는 토스 외부결제 그대로(스토어 정책 무관).
+ * 약관 동의: 스토어 심사 대응 — 필수 3종(이용약관·개인정보·AI 데이터)이 체크돼야 로그인 가능,
+ * 로그인 성공 직후 saveMyConsents 로 서버 기록(실패해도 흐름 진행).
  */
 
 const KEY = "careertuner.onboarding";
@@ -65,6 +68,15 @@ const PROVIDERS = [
   { id: "naver", label: "네이버", icon: NaverIcon, cls: "n" },
 ] as const;
 
+/** 약관 동의 항목 — 필수 3종은 체크돼야 로그인 버튼이 활성화된다. 마케팅(선택)은 링크 없음. */
+type ConsentKey = "terms" | "privacy" | "aiData" | "marketing";
+const CONSENT_ITEMS: { id: ConsentKey; label: string; required: boolean; href?: string }[] = [
+  { id: "terms", label: "이용약관 동의", required: true, href: "/legal/terms" },
+  { id: "privacy", label: "개인정보처리방침 동의", required: true, href: "/legal/privacy" },
+  { id: "aiData", label: "AI 데이터 이용 동의", required: true, href: "/legal/ai-data-consent" },
+  { id: "marketing", label: "마케팅 정보 수신 동의", required: false },
+];
+
 export function OnboardingFlow() {
   const nav = useNavigate();
   const { login } = useAuth();
@@ -75,6 +87,17 @@ export function OnboardingFlow() {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
   const [emailOpen, setEmailOpen] = useState(false);
+  const [consents, setConsents] = useState<Record<ConsentKey, boolean>>({
+    terms: false,
+    privacy: false,
+    aiData: false,
+    marketing: false,
+  });
+
+  const requiredOk = consents.terms && consents.privacy && consents.aiData;
+  const allOk = requiredOk && consents.marketing;
+  const toggleConsent = (k: ConsentKey) => setConsents((c) => ({ ...c, [k]: !c[k] }));
+  const toggleAll = () => setConsents({ terms: !allOk, privacy: !allOk, aiData: !allOk, marketing: !allOk });
 
   const finish = () => {
     markOnboarded();
@@ -84,10 +107,22 @@ export function OnboardingFlow() {
   // mock 모드: 아무 값이나 통과(데모 계정). 소셜 버튼도 동일하게 demo 로그인으로 시연.
   // TODO(실연동): 소셜은 useAuth().socialLogin(provider)로 OAuth 리다이렉트.
   const doLogin = async () => {
+    if (!requiredOk || busy) return;
     setBusy(true);
     setErr("");
     try {
-      if (!PREVIEW) await login(email.trim() || "demo@careertuner.dev", pw || "demo1234");
+      if (!PREVIEW) {
+        await login(email.trim() || "demo@careertuner.dev", pw || "demo1234");
+        // 로그인 성공 직후 동의 서버 기록 — 실패해도 온보딩 흐름은 막지 않는다(스토어 심사 대응).
+        saveMyConsents({
+          termsAgreed: consents.terms,
+          privacyAgreed: consents.privacy,
+          aiDataAgreed: consents.aiData,
+          marketingAgreed: consents.marketing,
+        }).catch(() => {
+          /* 동의 저장 실패는 무시 — 흐름 우선 */
+        });
+      }
       setStep("billing");
     } catch {
       setErr("로그인에 실패했어요. 다시 시도해 주세요.");
@@ -119,9 +154,39 @@ export function OnboardingFlow() {
               <span className="ob-brand">CareerTuner</span>에<br />오신 것을 환영합니다
             </h1>
 
+            <div className="ob-consent">
+              <label className="ob-ck ob-ck-all">
+                <input type="checkbox" checked={allOk} onChange={toggleAll} />
+                <span className="ob-ck-box" aria-hidden>
+                  <Check size={12} strokeWidth={3.2} />
+                </span>
+                <span className="ob-ck-tx">전체 동의</span>
+              </label>
+              <div className="ob-ck-div" aria-hidden />
+              {CONSENT_ITEMS.map((it) => (
+                <div key={it.id} className="ob-ck-row">
+                  <label className="ob-ck">
+                    <input type="checkbox" checked={consents[it.id]} onChange={() => toggleConsent(it.id)} />
+                    <span className="ob-ck-box" aria-hidden>
+                      <Check size={12} strokeWidth={3.2} />
+                    </span>
+                    <span className="ob-ck-tx">
+                      {it.label} <em>{it.required ? "(필수)" : "(선택)"}</em>
+                    </span>
+                  </label>
+                  {it.href && (
+                    <a className="ob-ck-view" href={it.href}>
+                      보기
+                      <ChevronRight size={12} aria-hidden />
+                    </a>
+                  )}
+                </div>
+              ))}
+            </div>
+
             <div className="ob-social">
               {PROVIDERS.map((p) => (
-                <button key={p.id} className={`ob-soc s-${p.cls}`} onClick={doLogin} disabled={busy}>
+                <button key={p.id} className={`ob-soc s-${p.cls}`} onClick={doLogin} disabled={busy || !requiredOk}>
                   <span className="ob-soc-ic">{p.icon}</span>
                   <span className="ob-soc-tx">{p.label}로 계속하기</span>
                 </button>
@@ -155,17 +220,14 @@ export function OnboardingFlow() {
                   onKeyDown={(e) => e.key === "Enter" && doLogin()}
                 />
                 {err && <div className="ob-err">{err}</div>}
-                <button className="ob-primary" onClick={doLogin} disabled={busy}>
+                <button className="ob-primary" onClick={doLogin} disabled={busy || !requiredOk}>
                   {busy ? "잠시만요…" : "계속하기"}
                 </button>
               </div>
             )}
 
             {USE_MOCK && <p className="ob-hint">데모 — 아무 버튼이나 누르면 바로 들어가져요.</p>}
-            <p className="ob-legal">
-              계속 진행하면 <a href="/legal/terms">서비스 약관</a>에 동의하며,{" "}
-              <a href="/legal/privacy">개인정보 처리방침</a>을 읽었음을 확인하는 것입니다.
-            </p>
+            {!requiredOk && <p className="ob-legal">필수 약관에 모두 동의하면 로그인할 수 있어요.</p>}
           </section>
         )}
 

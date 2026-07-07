@@ -8,6 +8,8 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -390,7 +392,504 @@ class BAnalysisGenerationServiceTest {
         assertThat(result.payload().requiredSkills()).isNotEmpty();
     }
 
+    @Test
+    void shortNonSkillTokensFiltered() {
+        // 이슈 D 후속 #3: 연차("경력5년")·OCR 깨짐("|T장비기술지원")·직무명 접미사("전산운영직"/"백업전문가")
+        // 같은 짧은 비스킬 토큰은 제거하고 정상 스킬은 유지한다.
+        assertSkillsFiltered(
+                new String[]{"Java", "경력5년", "전산운영직", "|T장비기술지원", "VMware", "백업전문가"},
+                "Java 와 VMware 기반 서버 운영 채용",
+                new String[]{"Java", "VMware"},
+                new String[]{"경력5년", "전산운영직", "|T장비기술지원", "백업전문가"});
+    }
+
+    @Test
+    void legitSkillsNotDroppedByNonSkillFilter() {
+        // #3 과제거 방지 가드: 한/영 정상 스킬은 비스킬 필터에 걸리지 않아야 한다.
+        assertSkillsFiltered(
+                new String[]{"Java", "Spring Boot", "마케팅기획", "프롬프트 엔지니어링", "TypeScript", "Kubernetes"},
+                "Java Spring Boot 마케팅기획 프롬프트 엔지니어링 TypeScript Kubernetes 경험자 우대",
+                new String[]{"Java", "Spring Boot", "마케팅기획", "프롬프트 엔지니어링", "TypeScript", "Kubernetes"},
+                new String[]{});
+    }
+
+    @Test
+    void preferredSkillsAllNoiseDropsToEmptyArray() {
+        // preferredSkills 는 비어도 유효하므로, 전부 잡음이면 원본을 되살리지 않고 빈 배열로 정리한다.
+        BAnalysisProperties properties = new BAnalysisProperties();
+        properties.getLocalLlm().setEnabled(true);
+        properties.getLocalLlm().setModel("qwen-test");
+        BLocalLlmClient localLlmClient = mock(BLocalLlmClient.class);
+        when(localLlmClient.chat(anyString(), anyString(), any())).thenReturn("""
+                {
+                  "employmentType": "FULL_TIME",
+                  "experienceLevel": "MID",
+                  "requiredSkills": ["Java"],
+                  "preferredSkills": ["경력5년", "|T장비기술지원", "백업전문가"],
+                  "duties": "Java 개발 업무",
+                  "qualifications": "Java 경험 필수",
+                  "difficulty": "NORMAL",
+                  "summary": "백엔드 개발자를 위한 공고 분석 요약입니다. 상세한 내용을 포함합니다.",
+                  "evidence": [{"field":"requiredSkills","quote":"Java"}],
+                  "ambiguousConditions": []
+                }
+                """);
+        BAnalysisGenerationService service = service(properties, localLlmClient);
+
+        BAnalysisGenerationService.GeneratedJobAnalysis result =
+                service.generateJobAnalysis(applicationCase(), "Java 기반 백엔드 개발자 채용");
+
+        assertThat(result.fellBack()).isFalse();
+        assertThat(result.payload().requiredSkills()).contains("Java");
+        assertThat(result.payload().preferredSkills()).isEqualTo("[]");
+    }
+
+    @Test
+    void commaBundleSalvagesRepresentativeSkills() {
+        // 이슈 D 후속 #4(동국제약 패턴): R1이 여러 스킬을 한 문자열로 묶어도 대표 스킬을 복구한다.
+        BAnalysisGenerationService.GeneratedJobAnalysis result = runJob(
+                "FULL_TIME", "MID",
+                "[\"PHP, Java, JSP, MariaDB 웹/서버 개발\", \"관계형 데이터베이스(RDBMS) 구조 이해\"]",
+                "PHP Java JSP MariaDB 웹 서버 개발 관계형 데이터베이스 RDBMS 구조 이해 경험자");
+        assertThat(result.fellBack()).isFalse();
+        assertThat(skillList(result.payload().requiredSkills()))
+                .containsExactlyInAnyOrder("PHP", "Java", "JSP", "MariaDB 웹/서버 개발", "관계형 데이터베이스(RDBMS) 구조 이해");
+    }
+
+    @Test
+    void parenthesizedBundleKeepsLeadTokenOnly() {
+        // #4 과복구 가드: "AWS (CodeDeploy, EC2, ...)" 는 대표 토큰 AWS 만 복구하고 괄호 내부(EC2 등)는 복구하지 않는다.
+        BAnalysisGenerationService.GeneratedJobAnalysis result = runJob(
+                "FULL_TIME", "MID",
+                "[\"AWS (CodeDeploy, EC2, CloudFront, Lambda, CloudWatch)\", \"Security (IAM, Secret Management)\", \"Java\"]",
+                "AWS Security Java CodeDeploy EC2 CloudFront Lambda CloudWatch IAM 경험");
+        assertThat(result.fellBack()).isFalse();
+        assertThat(skillList(result.payload().requiredSkills()))
+                .containsExactlyInAnyOrder("AWS", "Security", "Java")
+                .doesNotContain("EC2", "Lambda", "CodeDeploy", "IAM", "AWS (CodeDeploy");
+    }
+
+    @Test
+    void parenthesizedBusinessPhraseNotSalvaged() {
+        // #4 과복구 방지: "결제 시스템(백엔드 API) 설계 및 개발" 은 업무 문장이므로, 한국어 prefix "결제 시스템" 이
+        // 기술 토큰이 아니어서 살아나면 안 된다(AWS/Security 같은 영문 대표 토큰만 복구).
+        BAnalysisGenerationService.GeneratedJobAnalysis result = runJob(
+                "FULL_TIME", "MID",
+                "[\"결제 시스템(백엔드 API) 설계 및 개발\", \"Java\"]",
+                "결제 시스템 백엔드 API 설계 및 개발 Java 경험자");
+        assertThat(result.fellBack()).isFalse();
+        assertThat(skillList(result.payload().requiredSkills()))
+                .containsExactlyInAnyOrder("Java")
+                .doesNotContain("결제 시스템", "결제 시스템(백엔드 API) 설계 및 개발");
+    }
+
+    @Test
+    void parenthesizedEnglishBusinessPhraseNotSalvaged() {
+        // #4 과복구 방지(영문): "Payment System(Backend API) design and development" 는 업무명이므로,
+        // 공백 있는 영문 구문 prefix "Payment System"(기술 신호 없음)이 살아나면 안 된다.
+        BAnalysisGenerationService.GeneratedJobAnalysis result = runJob(
+                "FULL_TIME", "MID",
+                "[\"Payment System(Backend API) design and development\", \"Java\"]",
+                "Payment System Backend API design and development Java experience");
+        assertThat(result.fellBack()).isFalse();
+        assertThat(skillList(result.payload().requiredSkills()))
+                .containsExactlyInAnyOrder("Java")
+                .doesNotContain("Payment System", "Payment System(Backend API) design and development");
+    }
+
+    // ── 이슈 D 후속 #2: 고용형태 정규화 + 인턴 경력 캡 ──
+
+    @Test
+    void internEmploymentCapsExperienceToJunior() {
+        // R1이 연차 없는 인턴 공고를 SENIOR로 매겨도, employmentType=INTERN이면 JUNIOR로 캡(딥그로브 패턴).
+        BAnalysisGenerationService.GeneratedJobAnalysis result = runJob(
+                "인턴", "SENIOR", "[\"Java\"]",
+                "AI 엔지니어 인턴 모집. Java 학습 경험 우대.");
+        assertThat(result.fellBack()).isFalse();
+        assertThat(result.payload().employmentType()).isEqualTo("INTERN");
+        assertThat(result.payload().experienceLevel()).isEqualTo("JUNIOR");
+    }
+
+    @Test
+    void employmentTypeNormalizedToEnum() {
+        // R1이 "정규직" 같은 한글 고용형태를 반환해도 enum(FULL_TIME)으로 정규화.
+        BAnalysisGenerationService.GeneratedJobAnalysis result = runJob(
+                "정규직", "MID", "[\"Java\"]",
+                "백엔드 개발자 채용. Java 경험 필수.");
+        assertThat(result.fellBack()).isFalse();
+        assertThat(result.payload().employmentType()).isEqualTo("FULL_TIME");
+        assertThat(result.payload().experienceLevel()).isEqualTo("MID");
+    }
+
+    // ── 이슈 D 후속 #1: 긴 공고 컨텍스트 예산 절단 ──
+
+    @Test
+    void longPostingTruncatedToFitContextBudget() {
+        // num_ctx(기본 8192)를 넘기면 R1이 400으로 통째 폴백되므로, 매우 긴 공고는 프롬프트가 예산 내로 절단돼야 한다.
+        BAnalysisProperties properties = new BAnalysisProperties();
+        properties.getLocalLlm().setEnabled(true);
+        properties.getLocalLlm().setModel("qwen-test");
+        BLocalLlmClient localLlmClient = mock(BLocalLlmClient.class);
+        when(localLlmClient.chat(anyString(), anyString(), any())).thenReturn(validJobJson());
+        BAnalysisGenerationService service = service(properties, localLlmClient);
+
+        String hugePosting = "Java Spring Boot Docker 경험 필수. ".repeat(2500); // 수만 자
+
+        service.generateJobAnalysis(applicationCase(), hugePosting);
+
+        ArgumentCaptor<String> userCaptor = ArgumentCaptor.forClass(String.class);
+        verify(localLlmClient).chat(anyString(), userCaptor.capture(), any());
+        int len = userCaptor.getValue().length();
+        assertThat(len)
+                .as("user prompt should be truncated to fit num_ctx budget (was %d chars)", len)
+                .isLessThan(9_000)
+                .isGreaterThan(2_000);
+    }
+
+    // ── 이슈 D 후속 A-1: 필드 오배치 보정 (경력·자격 → duty 오배치 분리·재배치) ──
+
+    @Test
+    void a1RelocatesMisplacedRequirementsFromDutiesToQualifications() {
+        // 가온테크·금융21 패턴: duties 에 "경력5년"·"건축분야기능사"(요건)가 오배치됨. 실제 업무는 유지.
+        BAnalysisGenerationService.GeneratedJobAnalysis result = runJobText(
+                "서버 유지보수 수행\n경력5년\n건축분야기능사",
+                "Window Server, Linux, VMware 운영 경험",
+                "시스템 관리자를 채용하는 공고입니다. 서버 운영과 유지보수를 담당합니다.",
+                List.of("Linux", "VMware"),
+                "서버 유지보수 수행. 경력5년 이상. 건축분야기능사 우대. Window Server, Linux, VMware 운영.");
+
+        assertThat(result.fellBack()).isFalse();
+        assertThat(result.payload().duties())
+                .contains("서버 유지보수 수행")
+                .doesNotContain("경력5년")
+                .doesNotContain("건축분야기능사");
+        assertThat(result.payload().qualifications())
+                .contains("경력5년")
+                .contains("건축분야기능사");
+    }
+
+    @Test
+    void a1KeepsRequirementSignalWhenResponsibilityVerbPresent() {
+        // "5년 이상 서버 운영 경험 보유"는 요건 신호(5년 이상)가 있어도 업무 동사(운영)가 있어 duty 로 유지.
+        BAnalysisGenerationService.GeneratedJobAnalysis result = runJobText(
+                "5년 이상 서버 운영 경험 보유\nKubernetes 클러스터 구축",
+                "클라우드 엔지니어 경력",
+                "클라우드 엔지니어를 채용합니다. 서버 운영과 Kubernetes 를 담당합니다.",
+                List.of("Kubernetes"),
+                "5년 이상 서버 운영 경험 보유. Kubernetes 클러스터 구축. 클라우드 엔지니어 경력.");
+
+        assertThat(result.fellBack()).isFalse();
+        assertThat(result.payload().duties()).contains("5년 이상 서버 운영 경험 보유");
+    }
+
+    @Test
+    void a1DoesNotEmptyDutiesWhenAllSegmentsAreRequirements() {
+        // duties 가 전부 요건이면(재배치 후 남는 duty 없음) 재배치하지 않아 duties 를 비우지 않는다(검증 실패 방지).
+        BAnalysisGenerationService.GeneratedJobAnalysis result = runJobText(
+                "경력5년\n기능사 자격증",
+                "Linux 운영 경험",
+                "시스템 관리자를 채용하는 공고입니다. 서버 운영을 담당합니다.",
+                List.of("Linux"),
+                "경력5년 이상. 기능사 자격증 필수. Linux 운영 경험.");
+
+        assertThat(result.fellBack()).isFalse();
+        assertThat(result.payload().duties())
+                .contains("경력5년")
+                .contains("기능사 자격증");
+    }
+
+    @Test
+    void a1LeavesProseDutiesUntouched() {
+        // 산문 문단(동국제약류)은 세그먼트가 1개(길이>상한)라 오배치 판정에서 제외 → 그대로 유지.
+        String duties = "제약/바이오/헬스케어업계에서 신입 및 경력직원을 채용합니다. "
+                + "주요 업무로는 마케팅 전략 수립과 브랜드 포지셔닝 강화가 포함됩니다.";
+        BAnalysisGenerationService.GeneratedJobAnalysis result = runJobText(
+                duties,
+                "학사 이상 학력. SQL 활용 능력.",
+                "제약/바이오 업계에서 신입 및 경력직원을 채용하는 공고입니다.",
+                List.of("SQL"),
+                "제약/바이오/헬스케어업계 신입 및 경력 채용. 마케팅 전략 수립. 학사 이상. SQL 활용.");
+
+        assertThat(result.fellBack()).isFalse();
+        assertThat(result.payload().duties()).isEqualTo(duties);
+    }
+
+    // ── 이슈 D 후속 A-2: 키워드 나열 문장화 + duties 과소추출 보강 ──
+
+    @Test
+    void a2RendersKeywordListDutiesAsSentence() {
+        // 가온테크·금융21 패턴: 문장이 아닌 키워드 나열 duties 를 문장으로 렌더한다(토큰은 보존).
+        BAnalysisGenerationService.GeneratedJobAnalysis result = runJobText(
+                "IT기술지원\nSE 백업전문가\n서버 유지보수",
+                "Linux 운영 경험",
+                "시스템 관리자를 채용하는 공고입니다. 서버 운영을 담당합니다.",
+                List.of("Linux"),
+                "IT기술지원 SE 백업전문가 서버 유지보수 Linux 운영");
+
+        assertThat(result.fellBack()).isFalse();
+        assertThat(result.payload().duties())
+                .endsWith("등의 업무를 담당합니다.")
+                .contains("IT기술지원")
+                .contains("SE 백업전문가")
+                .contains("서버 유지보수")
+                .doesNotContain("\n");
+    }
+
+    @Test
+    void a2SupplementsUnderExtractedDutiesFromResponsibilities() {
+        // 포스타입 패턴: duties 가 얇으면 분류기의 주요업무 문장으로 보강한다(원문 근거).
+        String posting = """
+                주요 업무
+                - 사용자 문제를 정의하고 해결합니다
+                - 모니터링 시스템을 구축합니다
+                - 개발 자동화를 담당합니다
+                자격요건: React, TypeScript 경험
+                """;
+        BAnalysisGenerationService.GeneratedJobAnalysis result = runJobText(
+                "프론트엔드 개발",
+                "React, TypeScript 경험",
+                "프론트엔드 엔지니어를 채용하는 공고입니다. 플랫폼을 개발합니다.",
+                List.of("React", "TypeScript"),
+                posting);
+
+        assertThat(result.fellBack()).isFalse();
+        assertThat(result.payload().duties())
+                .contains("프론트엔드 개발")
+                .contains("모니터링 시스템을 구축합니다")
+                .contains("개발 자동화를 담당합니다");
+    }
+
+    @Test
+    void a2DoesNotSupplementUnderExtractedDutiesWithBrokenOcr() {
+        // 과소추출이라도 OCR 깨짐(호환 자모) 주요업무 문장은 보강에 쓰지 않는다(백패커 누출 방지).
+        String posting = """
+                주요 업무
+                - 8공Izl 몰르ㄹ 비7럼 응Ho로 룹궁 담당합니다
+                - AWS 인프라를 운영합니다
+                자격요건: AWS 경험
+                """;
+        BAnalysisGenerationService.GeneratedJobAnalysis result = runJobText(
+                "클라우드 개발",
+                "AWS 경험",
+                "클라우드 엔지니어를 채용하는 공고입니다. 인프라를 운영합니다.",
+                List.of("AWS"),
+                posting);
+
+        assertThat(result.fellBack()).isFalse();
+        assertThat(result.payload().duties())
+                .contains("AWS 인프라를 운영합니다")
+                .doesNotContain("몰르")
+                .doesNotContain("룹궁");
+    }
+
+    @Test
+    void a2LeavesWellExtractedProseDutiesUntouched() {
+        // 충분히 추출된 산문 duties(임계 이상)는 과소추출이 아니라 보강·문장화 대상이 아니다(무변경).
+        String duties = "웹과 앱 환경 구분없이 콘텐츠를 생산하고 소비할 수 있는 플랫폼을 구축하고, "
+                + "성능 모니터링 시스템을 만들며 개발 프로세스 자동화를 담당합니다.";
+        BAnalysisGenerationService.GeneratedJobAnalysis result = runJobText(
+                duties,
+                "컴퓨터공학 관련 전공 학사 이상",
+                "프론트엔드 엔지니어를 채용하는 공고입니다. 플랫폼을 개발합니다.",
+                List.of("React"),
+                "웹과 앱 플랫폼을 구축하고 운영. React 경험 필수. 컴퓨터공학 전공.");
+
+        assertThat(result.fellBack()).isFalse();
+        assertThat(result.payload().duties()).isEqualTo(duties);
+    }
+
+    // ── 이슈 D 후속 A-3: duties==summary 중복 제거 ──
+
+    @Test
+    void a3CondensesSummaryWhenIdenticalToDuties() {
+        // 동국제약 패턴: duties 와 summary 가 동일하면 summary 를 첫 문장으로 응축해 구분한다.
+        String text = "제약/바이오/헬스케어업계에서 신입 및 경력직원을 채용합니다. "
+                + "주요 업무로는 마케팅 전략 수립과 브랜드 포지셔닝 강화가 포함됩니다. "
+                + "IT 부문에서는 ERP 시스템 고도화를 수행합니다.";
+        BAnalysisGenerationService.GeneratedJobAnalysis result = runJobText(
+                text, "학사 이상 학력. SQL 활용 능력.", text,
+                List.of("SQL"),
+                "제약/바이오/헬스케어 채용. 마케팅 전략 수립. ERP 고도화. SQL 활용.");
+
+        assertThat(result.fellBack()).isFalse();
+        // duties 는 상세 원본 유지, summary 는 첫 문장으로 응축되어 서로 달라진다.
+        assertThat(result.payload().duties()).isEqualTo(text);
+        assertThat(result.payload().summary()).isNotEqualTo(result.payload().duties());
+        assertThat(result.payload().summary()).isEqualTo("제약/바이오/헬스케어업계에서 신입 및 경력직원을 채용합니다.");
+    }
+
+    @Test
+    void a3LeavesDistinctSummaryUntouched() {
+        // duties 와 summary 가 다르면 응축하지 않는다(무변경).
+        String duties = "웹과 앱 환경 구분없이 콘텐츠를 생산하고 소비할 수 있는 플랫폼을 구축하고, "
+                + "성능 모니터링 시스템을 만들며 개발 프로세스 자동화를 담당하고 운영을 개선합니다.";
+        String summary = "프론트엔드 엔지니어를 채용하는 공고입니다. 플랫폼 개발과 운영을 맡습니다.";
+        BAnalysisGenerationService.GeneratedJobAnalysis result = runJobText(
+                duties, "컴퓨터공학 전공 학사 이상", summary,
+                List.of("React"),
+                "웹과 앱 플랫폼 구축. React 경험. 컴퓨터공학 전공.");
+
+        assertThat(result.fellBack()).isFalse();
+        assertThat(result.payload().summary()).isEqualTo(summary);
+    }
+
+    // ── A-1 보정(하네스 2026-07-03 가온테크): 콤마 단일라인 나열 분해 ──
+
+    @Test
+    void a1CommaSingleLineDutiesRelocatedSentencifiedAndSummaryCondensed() {
+        // 가온테크형: R1 이 키워드 나열을 줄바꿈 대신 top-level 콤마 단일라인으로 출력 + summary==duties.
+        // 기대: 경력5년·3000000원(요건/임금)은 qualifications 로 이동, 남은 나열은 문장화,
+        //       summary 는 duties 전체 복붙이 아닌 앞쪽 세그먼트 응축형(부분집합).
+        String duties = "시스템관리자, 전산운영직, 기술지원/SE/백업전문가, IT기술지원, 장비기술지원, "
+                + "Linux, VMware, Window Server, 유지보수, 경력5년, 3000000원 이상";
+        BAnalysisGenerationService.GeneratedJobAnalysis result = runJobText(
+                duties,
+                "경력 5년 이상 우대",
+                duties,
+                List.of("Linux", "VMware"),
+                "모집직종 IT기술지원 전문가, 시스템관리자, 전산운영직. Linux VMware Window Server 유지보수. "
+                        + "경력조건 경력5년, 임금 3000000원 이상.");
+
+        assertThat(result.fellBack()).isFalse();
+        // duty 오배치 요건/임금 재배치 + 나열 문장화
+        assertThat(result.payload().duties())
+                .doesNotContain("경력5년")
+                .doesNotContain("3000000원")
+                .endsWith("등의 업무를 담당합니다.")
+                .contains("시스템관리자")
+                .contains("Window Server")
+                .contains("유지보수");
+        assertThat(result.payload().qualifications())
+                .contains("경력5년")
+                .contains("3000000원 이상");
+        // summary 는 duties 와 단순 != 가 아니라 짧은 응축형(앞쪽 세그먼트 부분집합)이어야 한다.
+        assertThat(result.payload().summary())
+                .isEqualTo("시스템관리자, 전산운영직, 기술지원/SE/백업전문가 등의 업무를 담당합니다.");
+        assertThat(result.payload().summary().length()).isLessThan(result.payload().duties().length());
+    }
+
+    @Test
+    void a1CommaSplitProtectsBracketedCommas() {
+        // 가드 1: 괄호 안 콤마는 분할하지 않는다 — "구축(설계, 운영)" 이 통째로 보존돼야 한다.
+        BAnalysisGenerationService.GeneratedJobAnalysis result = runJobText(
+                "클라우드 인프라 구축(설계, 운영), Linux 서버 가상화 환경 유지보수, 데이터센터 네트워크 모니터링, 경력5년",
+                "클라우드 관련 경험",
+                "클라우드 엔지니어를 채용하는 공고입니다. 인프라 구축을 담당합니다.",
+                List.of("Linux"),
+                "Linux 가상화 기술 스택\n클라우드 자격증 우대\n경력5년 이상");
+
+        assertThat(result.fellBack()).isFalse();
+        assertThat(result.payload().duties())
+                .contains("구축(설계, 운영)")
+                .contains("Linux 서버 가상화 환경 유지보수")
+                .doesNotContain("경력5년");
+        assertThat(result.payload().qualifications()).contains("경력5년");
+    }
+
+    @Test
+    void a1CommaSplitLeavesProseWithCommasUntouched() {
+        // 가드 2: 활용형 동사·목적격 조사가 있는 산문은 콤마가 있어도 분할·문장화하지 않는다(과분해 방지).
+        String duties = "결제 시스템 백엔드 구조를 설계하고 구현하며, 대규모 트래픽 환경에서 처리 효율을 "
+                + "지속적으로 개선하고 서비스 안정성 확보를 총괄";
+        BAnalysisGenerationService.GeneratedJobAnalysis result = runJobText(
+                duties,
+                "Java 백엔드 경험 필수",
+                "결제 시스템 백엔드 개발자를 채용하는 공고입니다. 안정성을 담당합니다.",
+                List.of("Java"),
+                "결제 시스템 백엔드 개발. Java 경험 필수.");
+
+        assertThat(result.fellBack()).isFalse();
+        assertThat(result.payload().duties()).isEqualTo(duties);
+    }
+
+    // ── 이슈 D 후속 A-4: OCR 깨진 토큰(자모 깨짐) 필터 ──
+
+    @Test
+    void a4DropsBrokenJamoTokensFromSkills() {
+        // 백패커·금융21 패턴: OCR 로 자모가 깨진 스킬 토큰("방ㄹ금논")은 제거하고 정상 스킬은 유지한다.
+        assertSkillsFiltered(
+                new String[]{"Java", "방ㄹ금논", "VMware", "ㄹ금논"},
+                "Java 와 VMware 기반 서버 운영 채용",
+                new String[]{"Java", "VMware"},
+                new String[]{"방ㄹ금논", "ㄹ금논"});
+    }
+
+    @Test
+    void a4StripsBrokenJamoFromDutiesButKeepsGroundedWords() {
+        // 자유서술에 낀 호환 자모 낱자는 인라인 제거하되, 같은 줄의 근거 단어는 보존한다(세그먼트 통째 삭제 아님).
+        String duties = "AWS 클라우드 인프라를 설계하고 구축하며 운영ㄹ 하고 장애 대응 및 신뢰성 관리를 담당합니다.";
+        BAnalysisGenerationService.GeneratedJobAnalysis result = runJobText(
+                duties,
+                "클라우드 엔지니어 경력. AWS 경험.",
+                "클라우드 엔지니어를 채용하는 공고입니다. 인프라를 운영합니다.",
+                List.of("AWS"),
+                "AWS 클라우드 인프라 설계 구축 운영. 장애 대응. 신뢰성 관리. 클라우드 엔지니어 경력.");
+
+        assertThat(result.fellBack()).isFalse();
+        assertThat(result.payload().duties())
+                .doesNotContainPattern("[ㄱ-ㅎㅏ-ㅣ]")
+                .contains("AWS 클라우드 인프라")
+                .contains("신뢰성 관리를 담당합니다");
+    }
+
+    @Test
+    void a4StripsBrokenJamoFromQualifications() {
+        // qualifications 의 자모 깨짐도 제거하되 근거 단어는 보존한다.
+        BAnalysisGenerationService.GeneratedJobAnalysis result = runJobText(
+                "AWS 인프라를 설계하고 구축하며 운영하고 신뢰성을 관리하는 업무를 폭넓게 담당합니다.",
+                "AWS 실무 경험ㄹ 보유. 컴퓨터공학 전공.",
+                "클라우드 엔지니어를 채용하는 공고입니다. 인프라를 운영합니다.",
+                List.of("AWS"),
+                "AWS 인프라 설계 구축 운영 신뢰성 관리. 실무 경험. 컴퓨터공학 전공.");
+
+        assertThat(result.fellBack()).isFalse();
+        assertThat(result.payload().qualifications())
+                .doesNotContainPattern("[ㄱ-ㅎㅏ-ㅣ]")
+                .contains("AWS 실무 경험")
+                .contains("컴퓨터공학 전공");
+    }
+
+    @Test
+    void a4CleanSkillsUnaffectedByJamoFilter() {
+        // 과제거 방지: 정상 한/영 스킬은 자모 필터에 걸리지 않는다.
+        assertSkillsFiltered(
+                new String[]{"Java", "Spring Boot", "마케팅기획", "TypeScript", "Kubernetes"},
+                "Java Spring Boot 마케팅기획 TypeScript Kubernetes 경험자 우대",
+                new String[]{"Java", "Spring Boot", "마케팅기획", "TypeScript", "Kubernetes"},
+                new String[]{});
+    }
+
     // ── 헬퍼 메서드 ──
+
+    /**
+     * duties/qualifications/summary 를 직접 지정해 R1 raw JSON 을 주입한다(자유서술 후처리 검증용).
+     * JSON 이스케이프(따옴표·줄바꿈)는 ObjectMapper 직렬화로 안전하게 처리한다.
+     */
+    private static BAnalysisGenerationService.GeneratedJobAnalysis runJobText(
+            String duties, String qualifications, String summary,
+            List<String> requiredSkills, String postingText) {
+        Map<String, Object> json = new LinkedHashMap<>();
+        json.put("employmentType", "FULL_TIME");
+        json.put("experienceLevel", "MID");
+        json.put("requiredSkills", requiredSkills);
+        json.put("preferredSkills", List.of());
+        json.put("duties", duties);
+        json.put("qualifications", qualifications);
+        json.put("difficulty", "NORMAL");
+        json.put("summary", summary);
+        json.put("evidence", List.of(Map.of(
+                "field", "requiredSkills",
+                "quote", requiredSkills.isEmpty() ? "" : requiredSkills.get(0))));
+        json.put("ambiguousConditions", List.of());
+        String raw = new ObjectMapper().writeValueAsString(json);
+
+        BAnalysisProperties properties = new BAnalysisProperties();
+        properties.getLocalLlm().setEnabled(true);
+        properties.getLocalLlm().setModel("qwen-test");
+        BLocalLlmClient localLlmClient = mock(BLocalLlmClient.class);
+        when(localLlmClient.chat(anyString(), anyString(), any())).thenReturn(raw);
+        return service(properties, localLlmClient).generateJobAnalysis(applicationCase(), postingText);
+    }
 
     private void assertExperienceLevel(String modelReturns, String postingText, String expected) {
         BAnalysisProperties properties = new BAnalysisProperties();
@@ -488,8 +987,129 @@ class BAnalysisGenerationServiceTest {
         verify(localLlmClient).chat(anyString(), anyString(), schemaCaptor.capture());
         Map<String, Object> schema = schemaCaptor.getValue();
         Map<String, Object> schemaProperties = (Map<String, Object>) schema.get("properties");
+        Map<String, Object> employmentType = (Map<String, Object>) schemaProperties.get("employmentType");
         Map<String, Object> experienceLevel = (Map<String, Object>) schemaProperties.get("experienceLevel");
+        assertThat(employmentType.get("enum")).isEqualTo(List.of("FULL_TIME", "CONTRACT", "INTERN", "PART_TIME"));
         assertThat(experienceLevel.get("enum")).isEqualTo(List.of("JUNIOR", "MID", "SENIOR"));
+    }
+
+    // ── 6단계: 폴백 게이트 재설계 + canonical contract ──
+
+    @Test
+    void blankCompanySummaryDoesNotFallBackAndBecomesUnavailableNotice() {
+        // 03/04 패턴: 기업 정보가 부족한 공고에서 summary 를 비운 보수적 R1 출력은 실패가 아니다.
+        // self-rules 폴백 대신 확인불가 고지로 대체하고 부분 성공 필드(industry 등)를 보존한다.
+        BAnalysisProperties properties = new BAnalysisProperties();
+        properties.getLocalLlm().setEnabled(true);
+        properties.getLocalLlm().setModel("qwen-test");
+        BLocalLlmClient localLlmClient = mock(BLocalLlmClient.class);
+        when(localLlmClient.chat(anyString(), anyString(), any())).thenReturn("""
+                {
+                  "companySummary": "",
+                  "recentIssues": "",
+                  "industry": "IT 서비스",
+                  "competitors": [],
+                  "interviewPoints": "공고문 담당 업무 중심으로 준비",
+                  "sources": [{"type":"JOB_POSTING","label":"채용공고"}],
+                  "verifiedFacts": [{"fact":"백엔드 개발자를 채용한다","source":"채용공고","evidence":"Backend Engineer"}],
+                  "aiInferences": [],
+                  "unknowns": [{"topic":"매출 규모","reason":"공고문에 관련 정보가 없다"}]
+                }
+                """);
+        BAnalysisGenerationService service = service(properties, localLlmClient);
+
+        BAnalysisGenerationService.GeneratedCompanyAnalysis result =
+                service.generateCompanyAnalysis(applicationCase(), postingText());
+
+        assertThat(result.fellBack())
+                .as("blank summary must not fall back to self-rules (reason=%s)", result.fallbackReason())
+                .isFalse();
+        assertThat(result.payload().companySummary()).contains("확인되지 않습니다");
+        assertThat(result.payload().recentIssues()).contains("확인");
+        assertThat(result.payload().industry()).isEqualTo("IT 서비스");
+        assertThat(result.payload().unknowns()).contains("매출 규모");
+    }
+
+    @Test
+    void companySelfRulesFallbackDoesNotFillBaselessIndustry() {
+        // self-rules 폴백이 키워드 근거 없는 "TECH" 기본값을 채우지 않는다(6단계 폴백 게이트).
+        BAnalysisProperties properties = new BAnalysisProperties();
+        properties.getLocalLlm().setEnabled(true);
+        properties.getLocalLlm().setModel("qwen-test");
+        BLocalLlmClient localLlmClient = mock(BLocalLlmClient.class);
+        when(localLlmClient.chat(anyString(), anyString(), any())).thenReturn("{}");
+        BAnalysisGenerationService service = service(properties, localLlmClient);
+
+        BAnalysisGenerationService.GeneratedCompanyAnalysis result = service.generateCompanyAnalysis(
+                applicationCase(), "일반 사무직 채용 공고입니다. 문서 작성과 일정 관리를 담당합니다.");
+
+        assertThat(result.fellBack()).isTrue();
+        assertThat(result.payload().industry()).isEmpty();
+    }
+
+    @Test
+    void companyPayloadCarriesUnknownsFromModelOutput() {
+        BAnalysisProperties properties = new BAnalysisProperties();
+        properties.getLocalLlm().setEnabled(true);
+        properties.getLocalLlm().setModel("qwen-test");
+        BLocalLlmClient localLlmClient = mock(BLocalLlmClient.class);
+        when(localLlmClient.chat(anyString(), anyString(), any())).thenReturn("""
+                {
+                  "companySummary": "Acme 백엔드 채용 공고 기준 기업 요약입니다.",
+                  "recentIssues": "확인 불가",
+                  "industry": "",
+                  "competitors": [],
+                  "interviewPoints": "Spring Boot 경험 중심 준비",
+                  "sources": [{"type":"JOB_POSTING","label":"채용공고"}],
+                  "verifiedFacts": [{"fact":"Spring Boot API 를 다룬다","source":"채용공고","evidence":"build Spring Boot APIs"}],
+                  "aiInferences": [{"inference":"백엔드 중심 조직","basis":"요구 기술 구성","basedOn":["F1"],"confidence":"MEDIUM"}],
+                  "unknowns": [{"topic":"사원수","reason":"공고문에 없음","neededSource":"회사 소개서"}]
+                }
+                """);
+        BAnalysisGenerationService service = service(properties, localLlmClient);
+
+        BAnalysisGenerationService.GeneratedCompanyAnalysis result =
+                service.generateCompanyAnalysis(applicationCase(), postingText());
+
+        assertThat(result.fellBack()).isFalse();
+        assertThat(result.payload().unknowns()).contains("사원수").contains("회사 소개서");
+        assertThat(result.payload().verifiedFacts()).contains("evidence");
+        assertThat(result.payload().aiInferences()).contains("basedOn").contains("MEDIUM");
+    }
+
+    @Test
+    void duplicateJobEvidenceIsDeduplicated() {
+        // 02 반복 루프 최소 대응: 동일 field+quote evidence 는 후처리 dedup 된다.
+        BAnalysisProperties properties = new BAnalysisProperties();
+        properties.getLocalLlm().setEnabled(true);
+        properties.getLocalLlm().setModel("qwen-test");
+        BLocalLlmClient localLlmClient = mock(BLocalLlmClient.class);
+        when(localLlmClient.chat(anyString(), anyString(), any())).thenReturn("""
+                {
+                  "employmentType": "FULL_TIME",
+                  "experienceLevel": "MID",
+                  "requiredSkills": ["Java", "Spring Boot"],
+                  "preferredSkills": [],
+                  "duties": "Spring API 개발과 운영",
+                  "qualifications": "Java와 Spring Boot 경험",
+                  "difficulty": "NORMAL",
+                  "summary": "백엔드 개발자를 위한 공고 분석 요약입니다.",
+                  "evidence": [
+                    {"field":"requiredSkills","quote":"Java"},
+                    {"field":"requiredSkills","quote":"Java"},
+                    {"field":"requiredSkills","quote":"Spring Boot"},
+                    {"field":"requiredSkills","quote":"Java"}
+                  ],
+                  "ambiguousConditions": []
+                }
+                """);
+        BAnalysisGenerationService service = service(properties, localLlmClient);
+
+        BAnalysisGenerationService.GeneratedJobAnalysis result =
+                service.generateJobAnalysis(applicationCase(), postingText());
+
+        assertThat(result.fellBack()).isFalse();
+        assertThat(new ObjectMapper().readTree(result.payload().evidence())).hasSize(2);
     }
 
     @Test
@@ -607,6 +1227,36 @@ class BAnalysisGenerationServiceTest {
                   "ambiguousConditions": [{"condition":"salary","assumption":"not specified"}]
                 }
                 """;
+    }
+
+    /** payload 의 스킬 JSON 문자열을 리스트로 파싱한다(containsExactly 검증용 — contains 보다 강함). */
+    private static List<String> skillList(String skillsJson) {
+        List<String> out = new ArrayList<>();
+        new ObjectMapper().readTree(skillsJson).forEach(node -> out.add(node.asText()));
+        return out;
+    }
+
+    private static BAnalysisGenerationService.GeneratedJobAnalysis runJob(
+            String employmentType, String experienceLevel, String requiredSkillsJson, String postingText) {
+        BAnalysisProperties properties = new BAnalysisProperties();
+        properties.getLocalLlm().setEnabled(true);
+        properties.getLocalLlm().setModel("qwen-test");
+        BLocalLlmClient localLlmClient = mock(BLocalLlmClient.class);
+        when(localLlmClient.chat(anyString(), anyString(), any())).thenReturn(String.format("""
+                {
+                  "employmentType": "%s",
+                  "experienceLevel": "%s",
+                  "requiredSkills": %s,
+                  "preferredSkills": [],
+                  "duties": "Java 개발 업무",
+                  "qualifications": "Java 경험 필수",
+                  "difficulty": "NORMAL",
+                  "summary": "백엔드 개발자를 위한 공고 분석 요약입니다. 상세한 내용을 포함합니다.",
+                  "evidence": [{"field":"requiredSkills","quote":"Java"}],
+                  "ambiguousConditions": []
+                }
+                """, employmentType, experienceLevel, requiredSkillsJson));
+        return service(properties, localLlmClient).generateJobAnalysis(applicationCase(), postingText);
     }
 
     private static BAnalysisGenerationService service(BAnalysisProperties properties, BLocalLlmClient localLlmClient) {

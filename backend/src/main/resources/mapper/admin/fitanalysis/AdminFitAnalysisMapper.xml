@@ -41,6 +41,16 @@
         <result property="gateMaxSeverity" column="gate_max_severity"/>
         <result property="evidenceGateVersion" column="evidence_gate_version"/>
         <result property="gateReasonsJson" column="gate_reasons_json"/>
+        <result property="gateReviewStatus" column="gate_review_status"/>
+        <result property="gateReviewedAt" column="gate_reviewed_at"/>
+        <result property="gateReviewerName" column="gate_reviewer_name"/>
+    </resultMap>
+
+    <resultMap id="AdminGateStatsRowResultMap" type="com.careertuner.admin.fitanalysis.domain.AdminGateStatsRow">
+        <result property="gateStatus" column="gate_status"/>
+        <result property="reviewStatus" column="review_status"/>
+        <result property="maxSeverity" column="max_severity"/>
+        <result property="gateReasonsJson" column="gate_reasons_json"/>
     </resultMap>
 
     <resultMap id="AdminFitAnalysisMemoResultMap" type="com.careertuner.admin.fitanalysis.domain.AdminFitAnalysisMemo">
@@ -105,7 +115,10 @@
         gr.reason_count AS gate_reason_count,
         gr.max_severity AS gate_max_severity,
         gr.evidence_gate_version,
-        gr.gate_reasons_json
+        gr.gate_reasons_json,
+        gr.review_status AS gate_review_status,
+        gr.reviewed_at AS gate_reviewed_at,
+        reviewer.name AS gate_reviewer_name
     </sql>
 
     <select id="findAll" resultMap="AdminFitAnalysisResultMap">
@@ -115,6 +128,7 @@
         INNER JOIN application_case ac ON ac.id = fa.application_case_id
         INNER JOIN users ON users.id = ac.user_id
         LEFT JOIN fit_analysis_gate_result gr ON gr.fit_analysis_id = fa.id
+        LEFT JOIN users reviewer ON reviewer.id = gr.reviewed_by
         <where>
             <if test="reviewRequiredOnly">
                 gr.gate_status = 'REVIEW_REQUIRED'
@@ -130,8 +144,28 @@
         INNER JOIN application_case ac ON ac.id = fa.application_case_id
         INNER JOIN users ON users.id = ac.user_id
         LEFT JOIN fit_analysis_gate_result gr ON gr.fit_analysis_id = fa.id
+        LEFT JOIN users reviewer ON reviewer.id = gr.reviewed_by
         WHERE fa.id = #{id}
     </select>
+
+    <!-- gate 통계: 전체 gate 행의 분포 관측용 최소 컬럼 조회(조인 없음, 집계는 서비스에서). -->
+    <select id="findAllGateRows" resultMap="AdminGateStatsRowResultMap">
+        SELECT
+            gr.gate_status,
+            gr.review_status,
+            gr.max_severity,
+            gr.gate_reasons_json
+        FROM fit_analysis_gate_result gr
+    </select>
+
+    <!-- gate review workflow: 운영자 처리 상태 갱신(REVIEW_REQUIRED gate 가 있는 분석만 대상). -->
+    <update id="updateGateReview">
+        UPDATE fit_analysis_gate_result
+        SET review_status = #{reviewStatus},
+            reviewed_by = #{adminUserId},
+            reviewed_at = CURRENT_TIMESTAMP
+        WHERE fit_analysis_id = #{fitAnalysisId}
+    </update>
 
     <select id="findMemosByFitAnalysisId" resultMap="AdminFitAnalysisMemoResultMap">
         SELECT

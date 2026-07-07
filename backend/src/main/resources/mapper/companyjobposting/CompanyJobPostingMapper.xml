@@ -1,0 +1,249 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.careertuner.companyjobposting.mapper.CompanyJobPostingMapper">
+
+    <sql id="postingColumns">
+        p.id, p.company_user_id, p.title, p.job_role, p.employment_type,
+        p.career_level, p.career_years_min, p.career_years_max, p.education_level,
+        p.salary_text, p.salary_negotiable, p.work_location, p.work_hours,
+        p.deadline_date, p.always_open, p.main_tasks, p.requirements, p.preferred,
+        p.benefits, p.hiring_process, p.headcount, p.tags_json, p.status,
+        p.reject_reason, p.view_count, p.published_at, p.closed_at,
+        p.reviewed_by, p.reviewed_at, p.created_at, p.updated_at
+    </sql>
+
+    <insert id="insert" useGeneratedKeys="true" keyProperty="id"
+            parameterType="com.careertuner.companyjobposting.domain.CompanyJobPosting">
+        INSERT INTO company_job_posting
+            (company_user_id, title, job_role, employment_type,
+             career_level, career_years_min, career_years_max, education_level,
+             salary_text, salary_negotiable, work_location, work_hours,
+             deadline_date, always_open, main_tasks, requirements, preferred,
+             benefits, hiring_process, headcount, tags_json, status, published_at)
+        VALUES
+            (#{companyUserId}, #{title}, #{jobRole}, #{employmentType},
+             #{careerLevel}, #{careerYearsMin}, #{careerYearsMax}, #{educationLevel},
+             #{salaryText}, #{salaryNegotiable}, #{workLocation}, #{workHours},
+             #{deadlineDate}, #{alwaysOpen}, #{mainTasks}, #{requirements}, #{preferred},
+             #{benefits}, #{hiringProcess}, #{headcount}, #{tagsJson}, #{status}, #{publishedAt})
+    </insert>
+
+    <select id="findById" resultType="com.careertuner.companyjobposting.domain.CompanyJobPosting">
+        SELECT <include refid="postingColumns"/>,
+               cp.company_name AS company_name,
+               cp.trust_grade  AS trust_grade
+          FROM company_job_posting p
+          LEFT JOIN company_profile cp ON cp.user_id = p.company_user_id
+         WHERE p.id = #{id}
+    </select>
+
+    <!-- 잠금 조회는 JOIN 없이 공고 행만 잠근다 -->
+    <select id="findByIdForUpdate" resultType="com.careertuner.companyjobposting.domain.CompanyJobPosting">
+        SELECT <include refid="postingColumns"/>
+          FROM company_job_posting p
+         WHERE p.id = #{id}
+           FOR UPDATE
+    </select>
+
+    <select id="findMine" resultType="com.careertuner.companyjobposting.domain.CompanyJobPosting">
+        SELECT <include refid="postingColumns"/>,
+               cp.company_name AS company_name,
+               cp.trust_grade  AS trust_grade,
+               EXISTS (SELECT 1
+                         FROM company_job_posting_revision r
+                        WHERE r.job_posting_id = p.id
+                          AND r.status = 'PENDING') AS has_pending_revision
+          FROM company_job_posting p
+          LEFT JOIN company_profile cp ON cp.user_id = p.company_user_id
+         WHERE p.company_user_id = #{companyUserId}
+         ORDER BY p.id DESC
+    </select>
+
+    <update id="updateFields" parameterType="com.careertuner.companyjobposting.domain.CompanyJobPosting">
+        UPDATE company_job_posting
+           SET title            = #{title},
+               job_role         = #{jobRole},
+               employment_type  = #{employmentType},
+               career_level     = #{careerLevel},
+               career_years_min = #{careerYearsMin},
+               career_years_max = #{careerYearsMax},
+               education_level  = #{educationLevel},
+               salary_text      = #{salaryText},
+               salary_negotiable = #{salaryNegotiable},
+               work_location    = #{workLocation},
+               work_hours       = #{workHours},
+               deadline_date    = #{deadlineDate},
+               always_open      = #{alwaysOpen},
+               main_tasks       = #{mainTasks},
+               requirements     = #{requirements},
+               preferred        = #{preferred},
+               benefits         = #{benefits},
+               hiring_process   = #{hiringProcess},
+               headcount        = #{headcount},
+               tags_json        = #{tagsJson}
+         WHERE id = #{id}
+    </update>
+
+    <update id="updateStatus">
+        UPDATE company_job_posting
+           SET status        = #{status},
+               reject_reason = #{rejectReason},
+               reviewed_by   = #{reviewedBy},
+               reviewed_at   = CASE WHEN #{reviewedBy} IS NULL THEN reviewed_at ELSE NOW() END
+         WHERE id = #{id}
+    </update>
+
+    <!-- 게시 확정 — 반려 사유 초기화, published_at 은 최초 1회만 -->
+    <update id="markPublished">
+        UPDATE company_job_posting
+           SET status        = 'PUBLISHED',
+               reject_reason = NULL,
+               published_at  = COALESCE(published_at, NOW()),
+               reviewed_by   = #{reviewedBy},
+               reviewed_at   = CASE WHEN #{reviewedBy} IS NULL THEN reviewed_at ELSE NOW() END
+         WHERE id = #{id}
+    </update>
+
+    <update id="markClosed">
+        UPDATE company_job_posting
+           SET status    = 'CLOSED',
+               closed_at = NOW()
+         WHERE id = #{id}
+    </update>
+
+    <update id="increaseViewCount">
+        UPDATE company_job_posting
+           SET view_count = view_count + 1
+         WHERE id = #{id}
+    </update>
+
+    <!-- ── 공개 게시판 검색 ── -->
+
+    <sql id="publishedSearchBase">
+        FROM company_job_posting p
+        LEFT JOIN company_profile cp ON cp.user_id = p.company_user_id
+        <where>
+            p.status = 'PUBLISHED'
+            <if test="keyword != null">
+                AND (p.title LIKE CONCAT('%', #{keyword}, '%')
+                     OR p.job_role LIKE CONCAT('%', #{keyword}, '%')
+                     OR cp.company_name LIKE CONCAT('%', #{keyword}, '%'))
+            </if>
+            <if test="jobRole != null">
+                AND p.job_role LIKE CONCAT('%', #{jobRole}, '%')
+            </if>
+            <if test="location != null">
+                AND p.work_location LIKE CONCAT('%', #{location}, '%')
+            </if>
+            <if test="employmentType != null">
+                AND p.employment_type = #{employmentType}
+            </if>
+            <if test="careerLevel != null">
+                AND p.career_level = #{careerLevel}
+            </if>
+        </where>
+    </sql>
+
+    <select id="searchPublished"
+            parameterType="com.careertuner.companyjobposting.dto.JobPostingSearchCriteria"
+            resultType="com.careertuner.companyjobposting.domain.CompanyJobPosting">
+        SELECT <include refid="postingColumns"/>,
+               cp.company_name AS company_name,
+               cp.trust_grade  AS trust_grade
+        <include refid="publishedSearchBase"/>
+        <choose>
+            <when test="sort == 'deadline'">
+                <!-- 상시(마감 없음)는 뒤로, 임박한 마감 우선 -->
+                ORDER BY p.always_open ASC, p.deadline_date IS NULL ASC, p.deadline_date ASC, p.id DESC
+            </when>
+            <when test="sort == 'views'">
+                ORDER BY p.view_count DESC, p.id DESC
+            </when>
+            <otherwise>
+                ORDER BY p.published_at DESC, p.id DESC
+            </otherwise>
+        </choose>
+        LIMIT #{size} OFFSET #{offset}
+    </select>
+
+    <select id="countPublished"
+            parameterType="com.careertuner.companyjobposting.dto.JobPostingSearchCriteria"
+            resultType="long">
+        SELECT COUNT(*)
+        <include refid="publishedSearchBase"/>
+    </select>
+
+    <!-- ── 검토 큐 / revision ── -->
+
+    <select id="findReviewQueue" resultType="com.careertuner.companyjobposting.dto.JobPostingReviewRow">
+        SELECT 'CREATE'        AS review_type,
+               p.id            AS posting_id,
+               NULL            AS revision_id,
+               p.title         AS title,
+               p.job_role      AS job_role,
+               cp.company_name AS company_name,
+               cp.trust_grade  AS trust_grade,
+               p.updated_at    AS submitted_at
+          FROM company_job_posting p
+          LEFT JOIN company_profile cp ON cp.user_id = p.company_user_id
+         WHERE p.status = 'PENDING_REVIEW'
+         UNION ALL
+        SELECT 'UPDATE'        AS review_type,
+               p.id            AS posting_id,
+               r.id            AS revision_id,
+               p.title         AS title,
+               p.job_role      AS job_role,
+               cp.company_name AS company_name,
+               cp.trust_grade  AS trust_grade,
+               r.updated_at    AS submitted_at
+          FROM company_job_posting_revision r
+          JOIN company_job_posting p ON p.id = r.job_posting_id
+          LEFT JOIN company_profile cp ON cp.user_id = p.company_user_id
+         WHERE r.status = 'PENDING'
+         ORDER BY submitted_at ASC
+    </select>
+
+    <insert id="insertRevision" useGeneratedKeys="true" keyProperty="id"
+            parameterType="com.careertuner.companyjobposting.domain.CompanyJobPostingRevision">
+        INSERT INTO company_job_posting_revision (job_posting_id, payload_json, status)
+        VALUES (#{jobPostingId}, #{payloadJson}, #{status})
+    </insert>
+
+    <select id="findPendingRevisionByPostingId"
+            resultType="com.careertuner.companyjobposting.domain.CompanyJobPostingRevision">
+        SELECT id, job_posting_id, payload_json, status, reject_reason,
+               reviewed_by, reviewed_at, created_at, updated_at
+          FROM company_job_posting_revision
+         WHERE job_posting_id = #{postingId}
+           AND status = 'PENDING'
+         ORDER BY id DESC
+         LIMIT 1
+    </select>
+
+    <update id="updateRevisionPayload">
+        UPDATE company_job_posting_revision
+           SET payload_json = #{payloadJson}
+         WHERE id = #{id}
+    </update>
+
+    <update id="reviewRevision">
+        UPDATE company_job_posting_revision
+           SET status        = #{status},
+               reject_reason = #{rejectReason},
+               reviewed_by   = #{reviewedBy},
+               reviewed_at   = NOW()
+         WHERE id = #{id}
+           AND status = 'PENDING'
+    </update>
+
+    <!-- ── 검토 정책(읽기 전용) ── -->
+
+    <select id="selectReviewPolicyJson" resultType="string">
+        SELECT config_json
+          FROM admin_system_policy
+         WHERE policy_code = 'JOB_POSTING_REVIEW_POLICY'
+           AND active = 1
+    </select>
+
+</mapper>

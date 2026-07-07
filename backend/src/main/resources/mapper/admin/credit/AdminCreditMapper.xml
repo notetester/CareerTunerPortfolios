@@ -1,0 +1,72 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.careertuner.admin.credit.mapper.AdminCreditMapper">
+
+    <sql id="TransactionWhere">
+        <where>
+            <if test="criteria.keyword != null">
+                AND (
+                    u.email LIKE CONCAT('%', #{criteria.keyword}, '%')
+                    OR u.name LIKE CONCAT('%', #{criteria.keyword}, '%')
+                    OR ct.reason LIKE CONCAT('%', #{criteria.keyword}, '%')
+                    OR ct.feature_type LIKE CONCAT('%', #{criteria.keyword}, '%')
+                )
+            </if>
+            <if test="criteria.userId != null">
+                AND ct.user_id = #{criteria.userId}
+            </if>
+            <if test="criteria.type != null">
+                AND ct.type = #{criteria.type}
+            </if>
+        </where>
+    </sql>
+
+    <select id="findTransactions" resultType="com.careertuner.admin.credit.dto.AdminCreditTransactionRow">
+        SELECT ct.id,
+               ct.user_id,
+               u.email AS user_email,
+               u.name AS user_name,
+               ct.type,
+               ct.amount,
+               ct.balance_after,
+               ct.feature_type,
+               ct.ai_usage_log_id,
+               ct.reason,
+               ct.created_at
+          FROM credit_transaction ct
+          JOIN users u ON u.id = ct.user_id
+        <include refid="TransactionWhere"/>
+         ORDER BY ct.created_at DESC, ct.id DESC
+         LIMIT #{criteria.size} OFFSET #{criteria.offset}
+    </select>
+
+    <select id="countTransactions" resultType="long">
+        SELECT COUNT(*)
+          FROM credit_transaction ct
+          JOIN users u ON u.id = ct.user_id
+        <include refid="TransactionWhere"/>
+    </select>
+
+    <select id="findSummary" resultType="com.careertuner.admin.credit.dto.AdminCreditSummary">
+        SELECT (SELECT COUNT(*) FROM credit_transaction) AS total_transactions,
+               (SELECT COUNT(*) FROM credit_transaction WHERE type = 'ADMIN_ADJUST') AS admin_adjustment_count,
+               (SELECT COALESCE(SUM(amount), 0) FROM credit_transaction WHERE amount &gt; 0) AS total_granted,
+               (SELECT COALESCE(SUM(-amount), 0) FROM credit_transaction WHERE amount &lt; 0) AS total_deducted,
+               (SELECT COALESCE(SUM(credit), 0) FROM users WHERE status != 'DELETED') AS total_user_balance
+    </select>
+
+    <select id="findUserBalanceForUpdate" resultType="com.careertuner.admin.credit.dto.AdminCreditUserBalance">
+        SELECT id, email, name, credit
+          FROM users
+         WHERE id = #{userId}
+         FOR UPDATE
+    </select>
+
+    <update id="addUserCredit">
+        UPDATE users
+           SET credit = credit + #{amount}
+         WHERE id = #{userId}
+           AND credit &lt;= 2147483647 - #{amount}
+    </update>
+</mapper>

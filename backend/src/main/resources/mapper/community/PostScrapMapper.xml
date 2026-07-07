@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.careertuner.community.mapper.PostScrapMapper">
+
+    <!-- 원본 글 기준 활성 스크랩 (토글 판정) -->
+    <select id="findByUserAndPost" resultType="com.careertuner.community.domain.PostScrap">
+        SELECT ps.*, ps.is_anonymous AS anonymous
+          FROM post_scrap ps
+         WHERE ps.user_id = #{userId}
+           AND ps.post_id = #{postId}
+         LIMIT 1
+    </select>
+
+    <!-- 스크랩 단건 (원본 현재 상태 JOIN — "원본이 삭제된 글" 배지 판정) -->
+    <select id="findById" resultType="com.careertuner.community.domain.PostScrap">
+        SELECT ps.*, ps.is_anonymous AS anonymous,
+               cp.status AS originStatus
+          FROM post_scrap ps
+          LEFT JOIN community_post cp ON cp.id = ps.post_id
+         WHERE ps.id = #{id}
+    </select>
+
+    <insert id="insert" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO post_scrap (user_id, post_id, snapshot_title, snapshot_content,
+                                snapshot_author_label, snapshot_category, is_anonymous)
+        VALUES (#{userId}, #{postId}, #{snapshotTitle}, #{snapshotContent},
+                #{snapshotAuthorLabel}, #{snapshotCategory}, #{anonymous})
+    </insert>
+
+    <delete id="deleteById">
+        DELETE FROM post_scrap WHERE id = #{id}
+    </delete>
+
+    <!-- 내 스크랩 목록 (스냅샷 + 원본 상태) -->
+    <select id="findByUser" resultType="com.careertuner.community.domain.PostScrap">
+        SELECT ps.*, ps.is_anonymous AS anonymous,
+               cp.status AS originStatus
+          FROM post_scrap ps
+          LEFT JOIN community_post cp ON cp.id = ps.post_id
+         WHERE ps.user_id = #{userId}
+         ORDER BY ps.scrapped_at DESC, ps.id DESC
+         LIMIT #{limit} OFFSET #{offset}
+    </select>
+
+    <select id="countByUser" resultType="int">
+        SELECT COUNT(*) FROM post_scrap WHERE user_id = #{userId}
+    </select>
+
+    <!-- 스크랩 수 캐시 증감 (음수 방지) -->
+    <update id="adjustScrapCount">
+        UPDATE community_post
+           SET scrap_count = GREATEST(scrap_count + #{delta}, 0)
+         WHERE id = #{postId}
+    </update>
+
+</mapper>

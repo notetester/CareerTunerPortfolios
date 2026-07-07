@@ -1,4 +1,5 @@
 import { api } from "@/app/lib/api";
+import { apiBase } from "@/app/lib/apiBase";
 import { getAccessToken } from "@/app/lib/tokenStore";
 import type { EvalHarnessResult, FineTuneResult, TrainingStats } from "./types";
 
@@ -21,13 +22,12 @@ export function startFineTune(baseModel?: string): Promise<FineTuneResult> {
 }
 
 // export 는 JSONL 바이너리 다운로드라 ApiResponse envelope 가 아니므로 별도 fetch.
-const FILE_BASE =
-  (import.meta.env.VITE_API_BASE_URL as string | undefined)?.replace(/\/+$/, "") || "/api";
+// 베이스 URL 은 apiBase() 단일 소스를 사용한다(런타임 오버라이드 반영).
 
 /** 학습 데이터 JSONL 파일 다운로드. */
 export async function downloadTrainingJsonl(limit = 1000): Promise<void> {
   const token = getAccessToken();
-  const res = await fetch(`${FILE_BASE}/admin/interview/training/export?limit=${limit}`, {
+  const res = await fetch(`${apiBase()}/admin/interview/training/export?limit=${limit}`, {
     headers: token ? { Authorization: `Bearer ${token}` } : {},
   });
   if (!res.ok) {

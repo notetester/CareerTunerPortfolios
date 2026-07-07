@@ -45,6 +45,8 @@ public interface ApplicationCaseMapper {
 
     int restoreDeletedApplicationCase(@Param("id") Long id, @Param("userId") Long userId);
 
+    int hideApplicationCaseFromTrash(@Param("id") Long id, @Param("userId") Long userId);
+
     void insertStatusHistory(@Param("applicationCaseId") Long applicationCaseId,
                              @Param("changedByUserId") Long changedByUserId,
                              @Param("previousStatus") String previousStatus,

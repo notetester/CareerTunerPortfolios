@@ -7,6 +7,7 @@ public record NotificationResponse(
         String type,
         String targetType,
         Long targetId,
+        String senderRelation,
         String title,
         String message,
         String link,

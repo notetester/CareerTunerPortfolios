@@ -1,0 +1,160 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.careertuner.admin.reward.mapper.AdminRewardMapper">
+
+    <!-- ── 적립 규칙 ── -->
+    <select id="findAllRules" resultType="com.careertuner.reward.domain.RewardRule">
+        SELECT id, event_code, name, point_amount, credit_amount, daily_cap,
+               enabled, description, sort_order, updated_by, created_at, updated_at
+          FROM reward_rule
+         ORDER BY sort_order ASC, id ASC
+    </select>
+
+    <select id="findRuleById" resultType="com.careertuner.reward.domain.RewardRule">
+        SELECT id, event_code, name, point_amount, credit_amount, daily_cap,
+               enabled, description, sort_order, updated_by, created_at, updated_at
+          FROM reward_rule
+         WHERE id = #{id}
+    </select>
+
+    <update id="updateRule">
+        UPDATE reward_rule
+           SET name = #{name},
+               point_amount = #{pointAmount},
+               credit_amount = #{creditAmount},
+               daily_cap = #{dailyCap},
+               enabled = #{enabled},
+               description = #{description},
+               sort_order = #{sortOrder},
+               updated_by = #{updatedBy}
+         WHERE id = #{id}
+    </update>
+
+    <update id="updateRuleEnabled">
+        UPDATE reward_rule
+           SET enabled = #{enabled}, updated_by = #{updatedBy}
+         WHERE id = #{id}
+    </update>
+
+    <!-- ── 레벨 정책 ── -->
+    <select id="findAllLevels" resultType="com.careertuner.reward.domain.UserLevelPolicy">
+        SELECT id, level, level_name, min_point, levelup_credit, levelup_coupon_code,
+               benefit_note, active, created_at, updated_at
+          FROM user_level_policy
+         ORDER BY level ASC
+    </select>
+
+    <select id="findLevelById" resultType="com.careertuner.reward.domain.UserLevelPolicy">
+        SELECT id, level, level_name, min_point, levelup_credit, levelup_coupon_code,
+               benefit_note, active, created_at, updated_at
+          FROM user_level_policy
+         WHERE id = #{id}
+    </select>
+
+    <insert id="insertLevel" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO user_level_policy
+            (level, level_name, min_point, levelup_credit, levelup_coupon_code, benefit_note, active)
+        VALUES
+            (#{level}, #{levelName}, #{minPoint}, #{levelupCredit}, #{levelupCouponCode}, #{benefitNote}, #{active})
+    </insert>
+
+    <update id="updateLevel">
+        UPDATE user_level_policy
+           SET level = #{level},
+               level_name = #{levelName},
+               min_point = #{minPoint},
+               levelup_credit = #{levelupCredit},
+               levelup_coupon_code = #{levelupCouponCode},
+               benefit_note = #{benefitNote},
+               active = #{active}
+         WHERE id = #{id}
+    </update>
+
+    <delete id="deleteLevel">
+        DELETE FROM user_level_policy WHERE id = #{id}
+    </delete>
+
+    <!-- ── 쿠폰 ── -->
+    <sql id="CouponWhere">
+        <where>
+            <if test="keyword != null">
+                AND (code LIKE CONCAT('%', #{keyword}, '%') OR name LIKE CONCAT('%', #{keyword}, '%'))
+            </if>
+        </where>
+    </sql>
+
+    <select id="findCoupons" resultType="com.careertuner.reward.domain.Coupon">
+        SELECT id, code, name, discount_type, discount_value, min_purchase,
+               valid_from, valid_until, max_issue, issued_count, enabled, created_at, updated_at
+          FROM coupon
+        <include refid="CouponWhere"/>
+         ORDER BY id DESC
+         LIMIT #{size} OFFSET #{offset}
+    </select>
+
+    <select id="countCoupons" resultType="long">
+        SELECT COUNT(*) FROM coupon
+        <include refid="CouponWhere"/>
+    </select>
+
+    <select id="findCouponById" resultType="com.careertuner.reward.domain.Coupon">
+        SELECT id, code, name, discount_type, discount_value, min_purchase,
+               valid_from, valid_until, max_issue, issued_count, enabled, created_at, updated_at
+          FROM coupon
+         WHERE id = #{id}
+    </select>
+
+    <insert id="insertCoupon" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO coupon
+            (code, name, discount_type, discount_value, min_purchase, valid_from, valid_until,
+             max_issue, enabled)
+        VALUES
+            (#{code}, #{name}, #{discountType}, #{discountValue}, #{minPurchase}, #{validFrom}, #{validUntil},
+             #{maxIssue}, #{enabled})
+    </insert>
+
+    <update id="updateCoupon">
+        UPDATE coupon
+           SET name = #{name},
+               discount_type = #{discountType},
+               discount_value = #{discountValue},
+               min_purchase = #{minPurchase},
+               valid_from = #{validFrom},
+               valid_until = #{validUntil},
+               max_issue = #{maxIssue},
+               enabled = #{enabled}
+         WHERE id = #{id}
+    </update>
+
+    <!-- ── 리워드 이력 ── -->
+    <sql id="HistoryWhere">
+        <where>
+            <if test="userId != null">AND h.user_id = #{userId}</if>
+            <if test="eventCode != null">AND h.event_code = #{eventCode}</if>
+            <if test="keyword != null">
+                AND (u.email LIKE CONCAT('%', #{keyword}, '%')
+                     OR u.name LIKE CONCAT('%', #{keyword}, '%')
+                     OR h.reason LIKE CONCAT('%', #{keyword}, '%'))
+            </if>
+        </where>
+    </sql>
+
+    <select id="findHistory" resultType="com.careertuner.admin.reward.dto.AdminRewardHistoryRow">
+        SELECT h.id, h.user_id, u.email AS user_email, u.name AS user_name,
+               h.event_code, h.point_delta, h.credit_delta, h.level_before, h.level_after,
+               h.ref_type, h.ref_id, h.reason, h.created_at
+          FROM user_reward_history h
+          JOIN users u ON u.id = h.user_id
+        <include refid="HistoryWhere"/>
+         ORDER BY h.created_at DESC, h.id DESC
+         LIMIT #{size} OFFSET #{offset}
+    </select>
+
+    <select id="countHistory" resultType="long">
+        SELECT COUNT(*)
+          FROM user_reward_history h
+          JOIN users u ON u.id = h.user_id
+        <include refid="HistoryWhere"/>
+    </select>
+</mapper>

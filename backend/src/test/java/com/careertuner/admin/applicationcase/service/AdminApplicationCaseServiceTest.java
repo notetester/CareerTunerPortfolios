@@ -147,7 +147,8 @@ class AdminApplicationCaseServiceTest {
                 mock(JobPostingMapper.class),
                 mock(JobAnalysisMapper.class),
                 mock(CompanyAnalysisMapper.class),
-                mock(AdminAiUsageMapper.class));
+                mock(AdminAiUsageMapper.class),
+                mock(com.careertuner.companyanalysis.service.BCompanyAnalysisCanonicalizer.class));
     }
 
     private static AuthUser admin() {

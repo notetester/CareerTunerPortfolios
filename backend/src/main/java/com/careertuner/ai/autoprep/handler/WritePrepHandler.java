@@ -37,9 +37,9 @@ public class WritePrepHandler implements PrepStepHandler {
         long start = System.nanoTime();
         progress.substep("원문 분석", "자소서 문장 구조 파악");
         progress.substep("문장 교정", "AI 첨삭·근거 보강");
-        CorrectionResponse result = correctionService.create(
+        CorrectionResponse result = correctionService.createUnchargedForAutoPrep(
                 context.userId(),
-                new CorrectionCreateRequest("SELF_INTRO", context.applicationCaseId(), original, null, null, null));
+                new CorrectionCreateRequest("SELF_INTRO", context.applicationCaseId(), original, null, null, null, null));
         long ms = (System.nanoTime() - start) / 1_000_000;
         return PrepStepResult.done("WRITE", "자소서 교정 완료", result, ms);
     }

@@ -24,6 +24,8 @@ export interface AdminFitAnalysisListItem {
   needsHumanReview: boolean;
   gateReasonCount: number;
   gateMaxSeverity: string | null;
+  /** gate review workflow 처리 상태(PENDING/RESOLVED/REANALYSIS_REQUESTED). gate 없으면 null. */
+  gateReviewStatus: string | null;
 }
 
 export interface AdminFitAnalysisMemo {
@@ -88,8 +90,17 @@ export interface AdminFitAnalysisDetail {
   evidenceGateVersion: string | null;
   /** 실제 gate reason 목록(축약). 상세에서 왜 검토 필요인지 판단용. */
   gateReasons?: AdminFitAnalysisGateReason[] | null;
+  /** gate review workflow 처리 상태와 이력. */
+  gateReviewStatus: string | null;
+  gateReviewedAt: string | null;
+  gateReviewerName: string | null;
   learningTasks: AdminFitAnalysisLearningTask[];
   memos: AdminFitAnalysisMemo[];
+}
+
+export interface AdminGateReviewRequest {
+  reviewStatus: string;
+  note?: string;
 }
 
 export interface AdminFitAnalysisGateReason {
@@ -102,4 +113,23 @@ export interface AdminFitAnalysisGateReason {
 export interface AdminFitAnalysisMemoRequest {
   memoType: string;
   content: string;
+}
+
+/** gate 통계의 빈출 claim 항목(최대 10건). */
+export interface AdminGateStatsTopClaim {
+  claim: string;
+  count: number;
+}
+
+/** review-first evidence gate(R3) 운영 통계 요약. */
+export interface AdminGateStats {
+  total: number;
+  byGateStatus: Record<string, number>;
+  byReviewStatus: Record<string, number>;
+  byMaxSeverity: Record<string, number>;
+  byReasonType: Record<string, number>;
+  byReasonSeverity: Record<string, number>;
+  /** 파싱 불가 reasons JSON 건수. 0보다 크면 데이터 정합성 확인 필요. */
+  brokenReasonsJsonCount: number;
+  topClaims: AdminGateStatsTopClaim[];
 }

@@ -1,7 +1,14 @@
 import { create } from "zustand";
 import * as notificationApi from "../api/notificationApi";
 import { toast } from "../components/toast";
+import {
+  isNotificationChannelEnabled,
+  isNotificationSenderEnabled,
+  normalizeNotificationRules,
+} from "../types/preferences";
+import { typeMeta } from "../types/notification";
 import type { Notification, NotificationCategory } from "../types/notification";
+import type { NotificationPreference } from "../api/notificationApi";
 
 interface NotificationState {
   notifications: Notification[];
@@ -9,6 +16,8 @@ interface NotificationState {
   loading: boolean;
   error: string | null;
   filter: NotificationCategory;
+  preference: NotificationPreference | null;
+  preferenceFetchedAt: number;
   /** 이미 토스트로 알린 최대 알림 id (이보다 큰 미읽음만 새로 띄운다) */
   lastNotifiedId: number;
 
@@ -29,6 +38,8 @@ export const useNotificationStore = create<NotificationState>((set, get) => ({
   loading: false,
   error: null,
   filter: "all",
+  preference: null,
+  preferenceFetchedAt: 0,
   lastNotifiedId: 0,
 
   fetchNotifications: async () => {
@@ -51,14 +62,29 @@ export const useNotificationStore = create<NotificationState>((set, get) => ({
 
   pollNotifications: async () => {
     try {
+      let preference = get().preference;
+      if (!preference || Date.now() - get().preferenceFetchedAt > 60_000) {
+        try {
+          const loaded = await notificationApi.getNotificationPreferences();
+          preference = { ...loaded, rules: normalizeNotificationRules(loaded.rules) };
+          set({ preference, preferenceFetchedAt: Date.now() });
+        } catch {
+          preference = null;
+        }
+      }
       const notifications = await notificationApi.getNotifications();
       const unreadCount = await notificationApi.getUnreadCount();
       const prevId = get().lastNotifiedId;
-      // 직전 폴링 이후 새로 도착한 미읽음 알림만 토스트로 띄운다.
+      // 직전 폴링 이후 새로 도착한 미읽음 알림 중, 즉시(urgent) 타입만 토스트로 띄운다.
+      // 몰아보기(urgent:false, 예: NEW_TICKET/NEW_USER)는 토스트 없이 뱃지 카운트에만 반영된다.
       const fresh = notifications
         .filter((n) => n.id > prevId && !n.isRead)
         .sort((a, b) => a.id - b.id);
-      fresh.forEach((n) => {
+      fresh
+        .filter((n) => typeMeta(n.type).urgent !== false)
+        .filter((n) => isNotificationChannelEnabled(preference, n.type, "webToast"))
+        .filter((n) => isNotificationSenderEnabled(preference, n.type, n.senderRelation))
+        .forEach((n) => {
         toast.notify({
           type: n.type,
           category: n.category,

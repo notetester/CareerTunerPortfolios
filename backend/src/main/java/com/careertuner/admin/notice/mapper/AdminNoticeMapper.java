@@ -1,5 +1,6 @@
 package com.careertuner.admin.notice.mapper;
 
+import java.time.LocalDateTime;
 import java.util.List;
 
 import org.apache.ibatis.annotations.Mapper;
@@ -21,6 +22,7 @@ public interface AdminNoticeMapper {
                 @Param("pinned") boolean pinned,
                 @Param("thumbnailUrl") String thumbnailUrl,
                 @Param("adminId") Long adminId,
+                @Param("scheduledAt") LocalDateTime scheduledAt,
                 @Param("setPublishedAt") boolean setPublishedAt);
 
     void update(@Param("id") Long id,
@@ -30,6 +32,7 @@ public interface AdminNoticeMapper {
                 @Param("status") String status,
                 @Param("pinned") boolean pinned,
                 @Param("thumbnailUrl") String thumbnailUrl,
+                @Param("scheduledAt") LocalDateTime scheduledAt,
                 @Param("setPublishedAt") boolean setPublishedAt);
 
     void delete(@Param("id") Long id);

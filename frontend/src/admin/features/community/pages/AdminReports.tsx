@@ -2,10 +2,20 @@ import { useState, useEffect, useCallback } from "react";
 import {
   MessageSquareWarning, Search, ChevronLeft, ChevronRight,
   EyeOff, Trash2, X as XIcon, RotateCcw, Eye, ShieldAlert, Flag, Settings2, RefreshCw,
-  MessageCircle,
+  MessageCircle, UserX, ShieldX,
 } from "lucide-react";
 import ModerationSettingsPanel from "../../moderation/pages/ModerationSettingsPanel";
 import AdminShell from "../../../components/AdminShell";
+import {
+  AdminListFooter,
+  AdminListToolbar,
+  AdminSelectionCell,
+  AdminSelectionHeader,
+  AdminSortableHeader,
+  useAdminListTools,
+  type AdminListColumn,
+} from "../../../components/AdminListTools";
+import { useAdminPendingCounts } from "@/admin/hooks/useAdminPendingCounts";
 import { type Report } from "../data/reportsData";
 import * as adminReportApi from "../api/adminReportApi";
 import * as moderationApi from "../../moderation/api/moderationApi";
@@ -15,13 +25,33 @@ import "./admin-reports.css";
 
 /* ── 유저 신고 관련 타입/상수 ── */
 type ReportFilterKey = "대기" | "처리됨" | "전체";
-type ReportActionType = "HIDDEN" | "DELETED" | "DISMISSED";
+type ReportActionType = adminReportApi.AdminReportAction;
 
 const REPORT_ACTION_DIALOG: Record<ReportActionType, { variant: "warning" | "danger"; title: string; desc: string; label: string }> = {
   HIDDEN:    { variant: "warning", title: "이 콘텐츠를 숨길까요?", desc: "숨김 처리하면 사용자에게 더 이상 보이지 않습니다. 관리자는 여전히 확인할 수 있어요.", label: "숨김 처리" },
   DELETED:   { variant: "danger",  title: "이 콘텐츠를 삭제할까요?", desc: "삭제하면 게시글(또는 댓글)과 관련 데이터가 영구 제거되며 되돌릴 수 없어요.", label: "삭제" },
   DISMISSED: { variant: "warning", title: "이 신고를 기각할까요?", desc: "기각하면 신고가 처리 완료로 전환됩니다. 콘텐츠는 그대로 유지돼요.", label: "기각" },
+  BLOCK_AUTHOR: {
+    variant: "danger", title: "작성자를 차단할까요?",
+    desc: "콘텐츠는 그대로 두고 작성자 계정을 일정 기간 차단합니다. 작성자에게 차단 알림이 전송되고 활성 세션이 종료돼요.",
+    label: "작성자 차단",
+  },
+  DELETE_AND_BLOCK: {
+    variant: "danger", title: "콘텐츠 삭제 + 작성자 차단할까요?",
+    desc: "콘텐츠를 삭제하고 작성자 계정도 일정 기간 차단합니다. 두 조치가 한 번에 적용되며 삭제는 되돌릴 수 없어요.",
+    label: "삭제+차단",
+  },
 };
+
+const REPORT_LIST_COLUMNS: AdminListColumn<Report>[] = [
+  { id: "id", label: "ID", getText: (row) => row.id, sortable: true },
+  { id: "target", label: "신고 대상", getText: (row) => `${row.title} ${row.cat} ${row.author}`, sortable: true },
+  { id: "reason", label: "사유", getText: (row) => row.reason, sortable: true },
+  { id: "count", label: "신고", getText: (row) => row.cnt, sortable: true },
+  { id: "status", label: "상태", getText: (row) => (row.status === "pending" ? "대기" : "처리됨"), sortable: true },
+  { id: "time", label: "접수", getText: (row) => row.time, sortable: true },
+  { id: "action", label: "조치", getText: (row) => row.action ?? "", sortable: true },
+];
 
 /* ── AI 검열 관련 상수 ── */
 type ModerationStatusFilter = "" | "HIDDEN" | "PUBLISHED" | "DELETED";
@@ -43,9 +73,26 @@ const CATEGORY_LABELS: Record<string, string> = {
 /* ── 메인 탭 ── */
 type MainTab = "reports" | "moderation" | "comment-moderation" | "settings";
 
+/** 탭 라벨 옆 미처리 건수 배지. 0이면 표시 안 함(숫자만). */
+function TabBadge({ count }: { count?: number }) {
+  if (!count) return null;
+  return (
+    <span
+      style={{
+        marginLeft: 6, fontSize: 11, fontWeight: 700, lineHeight: 1,
+        padding: "2px 6px", borderRadius: 9999,
+        background: "var(--accent-soft)", color: "var(--primary)",
+      }}
+    >
+      {count}
+    </span>
+  );
+}
+
 export default function AdminReports() {
   const [mainTab, setMainTab] = useState<MainTab>("reports");
   const [toast, setToast] = useState<string | null>(null);
+  const pending = useAdminPendingCounts();
 
   useEffect(() => {
     if (!toast) return;
@@ -68,12 +115,15 @@ export default function AdminReports() {
         <div className="av-seg">
           <button className={mainTab === "reports" ? "on" : ""} onClick={() => setMainTab("reports")}>
             <Flag style={{ width: 14, height: 14, marginRight: 4 }} /> 유저 신고
+            <TabBadge count={pending?.reports?.count} />
           </button>
           <button className={mainTab === "moderation" ? "on" : ""} onClick={() => setMainTab("moderation")}>
             <ShieldAlert style={{ width: 14, height: 14, marginRight: 4 }} /> 게시글 검열
+            <TabBadge count={pending?.hiddenPosts?.count} />
           </button>
           <button className={mainTab === "comment-moderation" ? "on" : ""} onClick={() => setMainTab("comment-moderation")}>
             <MessageCircle style={{ width: 14, height: 14, marginRight: 4 }} /> 댓글 검열
+            <TabBadge count={pending?.hiddenComments?.count} />
           </button>
           <button className={mainTab === "settings" ? "on" : ""} onClick={() => setMainTab("settings")}>
             <Settings2 style={{ width: 14, height: 14, marginRight: 4 }} /> AI 검열 설정
@@ -102,8 +152,10 @@ export default function AdminReports() {
 function ReportsPanel({ flash }: { flash: (msg: string) => void }) {
   const [items, setItems] = useState<Report[]>([]);
   const [filter, setFilter] = useState<ReportFilterKey>("대기");
-  const [query, setQuery] = useState("");
   const [dialog, setDialog] = useState<{ report: Report; action: ReportActionType } | null>(null);
+  // 합체: 취소 신고 재활성화(내 것) + 일괄 처리 다이얼로그(dev)
+  const [reactivateTarget, setReactivateTarget] = useState<Report | null>(null);
+  const [bulkDialog, setBulkDialog] = useState<ReportActionType | null>(null);
   const [detail, setDetail] = useState<Report | null>(null);
   const [reclassifying, setReclassifying] = useState(false);
 
@@ -140,21 +192,62 @@ function ReportsPanel({ flash }: { flash: (msg: string) => void }) {
       setItems((prev) => prev.map((r) => (r.id === updated.id ? updated : r)));
       if (detail && detail.id === dialog.report.id) setDetail(updated);
       flash("처리되었습니다.");
-    } catch {
-      flash("처리에 실패했습니다.");
+    } catch (e) {
+      // 차단 가드(본인/관리자/이미 차단 등) 메시지는 그대로 노출한다.
+      flash(e instanceof Error && e.message ? e.message : "처리에 실패했습니다.");
     }
     setDialog(null);
   };
 
-  const filtered = items.filter((r) => {
+  const handleReactivate = async () => {
+    if (!reactivateTarget) return;
+    try {
+      const updated = await adminReportApi.reactivate(reactivateTarget.id);
+      setItems((prev) => prev.map((r) => (r.id === updated.id ? updated : r)));
+      if (detail && detail.id === reactivateTarget.id) setDetail(updated);
+      flash("신고가 다시 대기 상태로 전환되었습니다.");
+    } catch (e) {
+      flash(e instanceof Error && e.message ? e.message : "재활성화에 실패했습니다.");
+    }
+    setReactivateTarget(null);
+  };
+
+  const statusFiltered = items.filter((r) => {
     if (filter === "대기" && r.status !== "pending") return false;
     if (filter === "처리됨" && r.status !== "resolved") return false;
-    if (query) {
-      const q = query.toLowerCase();
-      if (!r.title.toLowerCase().includes(q) && !r.reason.toLowerCase().includes(q)) return false;
-    }
     return true;
   });
+  const list = useAdminListTools(statusFiltered, {
+    columns: REPORT_LIST_COLUMNS,
+    getRowId: (row) => row.id,
+    defaultPageSize: 20,
+    defaultSortId: "id",
+    defaultSortDir: "desc",
+  });
+  const selectedPendingCount = list.selectedRows.filter((row) => row.status === "pending").length;
+
+  const handleBulkAction = async () => {
+    if (!bulkDialog) return;
+    const targets = list.selectedRows.filter((row) => row.status === "pending");
+    if (targets.length === 0) {
+      flash("대기 상태의 신고만 일괄 처리할 수 있습니다.");
+      setBulkDialog(null);
+      return;
+    }
+    try {
+      const updatedRows = await Promise.all(targets.map((row) => adminReportApi.takeAction(row.id, bulkDialog)));
+      setItems((prev) => prev.map((row) => updatedRows.find((updated) => updated.id === row.id) ?? row));
+      if (detail) {
+        const updatedDetail = updatedRows.find((updated) => updated.id === detail.id);
+        if (updatedDetail) setDetail(updatedDetail);
+      }
+      list.clearSelection();
+      flash(`${targets.length}건이 처리되었습니다.`);
+    } catch {
+      flash("일괄 처리에 실패했습니다.");
+    }
+    setBulkDialog(null);
+  };
 
   const maxReason = Math.max(...items.flatMap((r) => r.reasons.map((x) => x.n)), 1);
   const reasonTotals: Record<string, number> = {};
@@ -167,34 +260,50 @@ function ReportsPanel({ flash }: { flash: (msg: string) => void }) {
       <div className="av-grid">
         <section className="av-panel">
           <div className="av-filters">
-            <div className="av-search">
-              <Search />
-              <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="제목·사유 검색" />
-            </div>
             <div className="right">
               <div className="av-seg">
                 {(["대기", "처리됨", "전체"] as ReportFilterKey[]).map((f) => (
-                  <button key={f} className={filter === f ? "on" : ""} onClick={() => setFilter(f)}>{f}</button>
+                  <button key={f} className={filter === f ? "on" : ""} onClick={() => { setFilter(f); list.clearSelection(); }}>{f}</button>
                 ))}
               </div>
             </div>
           </div>
 
+          <AdminListToolbar
+            state={list}
+            fileName="admin_reports"
+            extraActions={(
+              <>
+                <button type="button" disabled={selectedPendingCount === 0} onClick={() => setBulkDialog("HIDDEN")}>
+                  <EyeOff /> 선택 숨김
+                </button>
+                <button type="button" disabled={selectedPendingCount === 0} onClick={() => setBulkDialog("DELETED")}>
+                  <Trash2 /> 선택 삭제
+                </button>
+                <button type="button" disabled={selectedPendingCount === 0} onClick={() => setBulkDialog("DISMISSED")}>
+                  <XIcon /> 선택 기각
+                </button>
+              </>
+            )}
+          />
+
           <table className="av-table">
             <thead>
               <tr>
-                <th>ID</th>
-                <th>신고 대상</th>
-                <th>사유</th>
-                <th className="r">신고</th>
-                <th>상태</th>
-                <th className="r">접수</th>
+                <AdminSelectionHeader state={list} />
+                <AdminSortableHeader state={list} columnId="id">ID</AdminSortableHeader>
+                <AdminSortableHeader state={list} columnId="target">신고 대상</AdminSortableHeader>
+                <AdminSortableHeader state={list} columnId="reason">사유</AdminSortableHeader>
+                <AdminSortableHeader state={list} columnId="count" className="r">신고</AdminSortableHeader>
+                <AdminSortableHeader state={list} columnId="status">상태</AdminSortableHeader>
+                <AdminSortableHeader state={list} columnId="time" className="r">접수</AdminSortableHeader>
                 <th className="r">조치</th>
               </tr>
             </thead>
             <tbody>
-              {filtered.map((r) => (
+              {list.visibleRows.map((r) => (
                 <tr key={r.id} style={{ cursor: "pointer" }} onClick={() => handleRowClick(r)}>
+                  <AdminSelectionCell state={list} row={r} />
                   <td className="av-id num">#{r.id}</td>
                   <td>
                     <div className="av-cell__t">{r.title}</div>
@@ -209,26 +318,31 @@ function ReportsPanel({ flash }: { flash: (msg: string) => void }) {
                   </td>
                   <td className="r av-muted num">{r.time}</td>
                   <td className="r">
-                    {r.status === "pending" && (
+                    {r.status === "pending" ? (
                       <div className="rv-actions" onClick={(e) => e.stopPropagation()}>
                         <button className="av-btn" title="숨김" onClick={() => setDialog({ report: r, action: "HIDDEN" })}><EyeOff /></button>
                         <button className="av-btn" title="삭제" onClick={() => setDialog({ report: r, action: "DELETED" })}><Trash2 /></button>
+                        <button className="av-btn" title="작성자 차단" onClick={() => setDialog({ report: r, action: "BLOCK_AUTHOR" })}><UserX /></button>
+                        <button className="av-btn" title="삭제+차단" onClick={() => setDialog({ report: r, action: "DELETE_AND_BLOCK" })}><ShieldX /></button>
                         <button className="av-btn" title="기각" onClick={() => setDialog({ report: r, action: "DISMISSED" })}><XIcon /></button>
+                      </div>
+                    ) : (
+                      <div className="rv-actions" onClick={(e) => e.stopPropagation()}>
+                        <button className="av-btn" title="재활성화(대기 복원)" onClick={() => setReactivateTarget(r)}><RotateCcw /></button>
                       </div>
                     )}
                   </td>
                 </tr>
               ))}
+              {list.visibleRows.length === 0 && (
+                <tr>
+                  <td colSpan={8} style={{ textAlign: "center", padding: "2rem" }}>현재 조건에 맞는 신고가 없습니다.</td>
+                </tr>
+              )}
             </tbody>
           </table>
 
-          <div className="av-foot">
-            <span className="num">{filtered.length}건 표시</span>
-            <div className="av-pager">
-              <button disabled aria-label="이전"><ChevronLeft /></button>
-              <button aria-label="다음"><ChevronRight /></button>
-            </div>
-          </div>
+          <AdminListFooter state={list} />
         </section>
 
         {!detail && (
@@ -318,6 +432,11 @@ function ReportsPanel({ flash }: { flash: (msg: string) => void }) {
                         분석 실패{detail.aiOpinion.errorMessage ? `: ${detail.aiOpinion.errorMessage}` : ""}
                       </span>
                     )}
+                    {detail.aiOpinion?.status === "UNMODERATED" && (
+                      <span className="av-muted" style={{ fontSize: "12px", wordBreak: "break-word" }}>
+                        판정 불성립 — 재검열 대기{detail.aiOpinion.errorMessage ? ` (${detail.aiOpinion.errorMessage})` : ""}
+                      </span>
+                    )}
                     {detail.aiOpinion?.status === "COMPLETED" && (
                       <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
                         <div className="av-rate">
@@ -360,11 +479,17 @@ function ReportsPanel({ flash }: { flash: (msg: string) => void }) {
               )}
 
               {/* 액션 버튼 */}
-              {detail.status === "pending" && (
-                <div style={{ display: "flex", gap: "6px", padding: "0 16px 14px" }}>
+              {detail.status === "pending" ? (
+                <div style={{ display: "flex", flexWrap: "wrap", gap: "6px", padding: "0 16px 14px" }}>
                   <button className="av-btn" onClick={() => setDialog({ report: detail, action: "HIDDEN" })}><EyeOff /> 숨김</button>
                   <button className="av-btn" onClick={() => setDialog({ report: detail, action: "DELETED" })}><Trash2 /> 삭제</button>
+                  <button className="av-btn" onClick={() => setDialog({ report: detail, action: "BLOCK_AUTHOR" })}><UserX /> 작성자 차단</button>
+                  <button className="av-btn" onClick={() => setDialog({ report: detail, action: "DELETE_AND_BLOCK" })}><ShieldX /> 삭제+차단</button>
                   <button className="av-btn" onClick={() => setDialog({ report: detail, action: "DISMISSED" })}><XIcon /> 기각</button>
+                </div>
+              ) : (
+                <div style={{ display: "flex", gap: "6px", padding: "0 16px 14px" }}>
+                  <button className="av-btn" onClick={() => setReactivateTarget(detail)}><RotateCcw /> 재활성화</button>
                 </div>
               )}
             </section>
@@ -374,14 +499,20 @@ function ReportsPanel({ flash }: { flash: (msg: string) => void }) {
 
       {dialog && (() => {
         const cfg = REPORT_ACTION_DIALOG[dialog.action];
+        const icon = dialog.action === "DELETED" ? <Trash2 />
+          : dialog.action === "HIDDEN" ? <EyeOff />
+          : dialog.action === "BLOCK_AUTHOR" ? <UserX />
+          : dialog.action === "DELETE_AND_BLOCK" ? <ShieldX />
+          : <XIcon />;
         return (
           <ConfirmDialog
             variant={cfg.variant}
-            icon={dialog.action === "DELETED" ? <Trash2 /> : dialog.action === "HIDDEN" ? <EyeOff /> : <XIcon />}
+            icon={icon}
             title={cfg.title}
             description={cfg.desc}
             meta={[
               { label: "대상", value: dialog.report.title },
+              { label: "작성자", value: dialog.report.author },
               { label: "신고 사유", value: dialog.report.reason },
               { label: "누적 신고", value: `${dialog.report.cnt}건` },
             ]}
@@ -389,6 +520,42 @@ function ReportsPanel({ flash }: { flash: (msg: string) => void }) {
             cancelLabel="취소"
             onConfirm={handleAction}
             onCancel={() => setDialog(null)}
+          />
+        );
+      })()}
+
+      {reactivateTarget && (
+        <ConfirmDialog
+          variant="warning"
+          icon={<RotateCcw />}
+          title="이 신고를 다시 대기 상태로 되돌릴까요?"
+          description="기각(또는 신고자 취소)된 신고가 다시 검토 대기 큐로 돌아옵니다. 이미 콘텐츠 조치가 완료된 신고는 되돌릴 수 없어요."
+          meta={[
+            { label: "대상", value: reactivateTarget.title },
+            { label: "누적 신고", value: `${reactivateTarget.cnt}건` },
+          ]}
+          confirmLabel="재활성화"
+          cancelLabel="취소"
+          onConfirm={handleReactivate}
+          onCancel={() => setReactivateTarget(null)}
+        />
+      )}
+      {bulkDialog && (() => {
+        const cfg = REPORT_ACTION_DIALOG[bulkDialog];
+        return (
+          <ConfirmDialog
+            variant={cfg.variant}
+            icon={bulkDialog === "DELETED" ? <Trash2 /> : bulkDialog === "HIDDEN" ? <EyeOff /> : <XIcon />}
+            title={`선택한 신고 ${selectedPendingCount}건을 처리할까요?`}
+            description={cfg.desc}
+            meta={[
+              { label: "처리 대상", value: `${selectedPendingCount}건` },
+              { label: "작업", value: cfg.label },
+            ]}
+            confirmLabel={cfg.label}
+            cancelLabel="취소"
+            onConfirm={handleBulkAction}
+            onCancel={() => setBulkDialog(null)}
           />
         );
       })()}

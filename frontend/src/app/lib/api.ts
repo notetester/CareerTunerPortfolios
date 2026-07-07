@@ -1,3 +1,4 @@
+import { apiBase } from "./apiBase";
 import { clearTokens, getAccessToken, getRefreshToken, setTokens } from "./tokenStore";
 import { MOCK_UNHANDLED, resolveMock } from "./mock";
 
@@ -20,11 +21,9 @@ export class ApiError extends Error {
   }
 }
 
-// API 베이스 경로.
-//  - 기본: 상대경로 "/api" (웹: Vite 프록시 → :8080, 배포: 동일 출처 백엔드)
-//  - VITE_API_BASE_URL 지정 시 그 절대 URL 사용 (예: 모바일 앱이 PC LAN 백엔드를 가리킬 때
-//    VITE_API_BASE_URL=http://192.168.0.10:8080/api — 백엔드 CORS 허용 필요)
-const BASE = ((import.meta.env.VITE_API_BASE_URL as string | undefined)?.replace(/\/+$/, "")) || "/api";
+// API 베이스 경로는 apiBase() 단일 소스를 사용한다(app/lib/apiBase.ts).
+//  - 우선순위: (네이티브 앱/dev 의) 런타임 오버라이드 → VITE_API_BASE_URL → 상대경로 "/api"
+//  - 런타임 오버라이드가 바뀔 수 있어 상수 캐시 없이 매 요청 시 평가한다.
 
 // 데모/목 모드: 백엔드 없이 동작(자체완결 APK·GitHub Pages 데모). 등록된 mock 핸들러로 응답한다.
 const USE_MOCK = import.meta.env.VITE_USE_MOCK === "true";
@@ -52,7 +51,7 @@ function tryRefresh(): Promise<boolean> {
   if (!refreshToken) return Promise.resolve(false);
   refreshPromise = (async () => {
     try {
-      const res = await fetch(`${BASE}/auth/refresh`, {
+      const res = await fetch(`${apiBase()}/auth/refresh`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ refreshToken }),
@@ -91,12 +90,12 @@ export async function api<T = unknown>(
     throw new ApiError("데모 모드에서는 제공되지 않는 데이터입니다.", "DEMO_UNAVAILABLE", 501);
   }
 
-  let res = await fetch(`${BASE}${path}`, { ...options, headers: buildHeaders(options, withAuth) });
+  let res = await fetch(`${apiBase()}${path}`, { ...options, headers: buildHeaders(options, withAuth) });
 
   if (res.status === 401 && withAuth && getRefreshToken()) {
     const refreshed = await tryRefresh();
     if (refreshed) {
-      res = await fetch(`${BASE}${path}`, { ...options, headers: buildHeaders(options, true) });
+      res = await fetch(`${apiBase()}${path}`, { ...options, headers: buildHeaders(options, true) });
     }
   }
 

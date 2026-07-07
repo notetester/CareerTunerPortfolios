@@ -162,24 +162,66 @@
         </if>
     </select>
 
-    <!-- 게시글 신고 상태 일괄 처리 -->
+    <!-- 게시글 신고 상태 일괄 처리 (+처리자 기록) -->
     <update id="updatePostReportStatus">
         UPDATE post_report
            SET status      = #{status},
                action_taken = #{actionTaken},
+               admin_id     = #{adminId},
                resolved_at  = CURRENT_TIMESTAMP
          WHERE post_id = #{postId}
            AND status  = 'PENDING'
     </update>
 
-    <!-- 댓글 신고 상태 일괄 처리 -->
+    <!-- 댓글 신고 상태 일괄 처리 (+처리자 기록) -->
     <update id="updateCommentReportStatus">
         UPDATE comment_report
            SET status       = #{status},
                action_taken = #{actionTaken},
+               admin_id     = #{adminId},
                resolved_at  = CURRENT_TIMESTAMP
          WHERE comment_id = #{commentId}
            AND status     = 'PENDING'
+    </update>
+
+    <!-- 처리 직전 PENDING 신고의 신고자 목록(처리 결과 알림 대상). 익명 신고(NULL)는 제외 -->
+    <select id="findPendingReporterIds" resultType="long">
+        <if test="type == 'post'">
+        SELECT DISTINCT reporter_id
+          FROM post_report
+         WHERE post_id = #{targetId}
+           AND status  = 'PENDING'
+           AND reporter_id IS NOT NULL
+        </if>
+        <if test="type == 'comment'">
+        SELECT DISTINCT reporter_id
+          FROM comment_report
+         WHERE comment_id = #{targetId}
+           AND status     = 'PENDING'
+           AND reporter_id IS NOT NULL
+        </if>
+    </select>
+
+    <!-- 종결 신고 재활성화: DISMISSED(기각)·CANCELLED(신고자 취소) → PENDING 복원.
+         CONFIRMED(콘텐츠 조치 완료)는 재활성화 대상이 아니다 — 콘텐츠 상태와 어긋나기 때문. -->
+    <update id="reactivatePostReports">
+        UPDATE post_report
+           SET status       = 'PENDING',
+               action_taken = NULL,
+               admin_id     = NULL,
+               resolved_at  = NULL
+         WHERE post_id = #{postId}
+           AND status IN ('DISMISSED', 'CANCELLED')
+    </update>
+
+    <update id="reactivateCommentReports">
+        UPDATE comment_report
+           SET status       = 'PENDING',
+               action_taken = NULL,
+               admin_id     = NULL,
+               resolved_at  = NULL
+         WHERE comment_id = #{commentId}
+           AND status IN ('DISMISSED', 'CANCELLED')
     </update>
 
     <!-- 게시글 상태 변경 -->

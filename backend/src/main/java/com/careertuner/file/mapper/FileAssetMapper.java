@@ -15,4 +15,8 @@ public interface FileAssetMapper {
     FileAsset findById(@Param("id") Long id);
 
     List<FileAsset> findByRef(@Param("refType") String refType, @Param("refId") Long refId);
+
+    void updateRef(@Param("id") Long id,
+                   @Param("refType") String refType,
+                   @Param("refId") Long refId);
 }

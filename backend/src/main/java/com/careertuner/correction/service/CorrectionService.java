@@ -9,6 +9,9 @@ import org.springframework.transaction.support.TransactionTemplate;
 
 import com.careertuner.applicationcase.domain.ApplicationCase;
 import com.careertuner.applicationcase.service.ApplicationCaseAccessService;
+import com.careertuner.billing.dto.AiChargeCommand;
+import com.careertuner.billing.dto.AiChargeResult;
+import com.careertuner.billing.service.AiChargeService;
 import com.careertuner.common.exception.BusinessException;
 import com.careertuner.common.exception.ErrorCode;
 import com.careertuner.correction.ai.CorrectionAiClient;
@@ -19,22 +22,34 @@ import com.careertuner.correction.dto.CorrectionCreateRequest;
 import com.careertuner.correction.dto.CorrectionResponse;
 import com.careertuner.correction.dto.CorrectionResultPayload;
 import com.careertuner.correction.mapper.CorrectionMapper;
+import com.careertuner.notification.domain.Notification;
+import com.careertuner.notification.service.NotificationService;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import tools.jackson.core.JacksonException;
 import tools.jackson.databind.ObjectMapper;
 
 @Service
 @RequiredArgsConstructor
+@Slf4j
 public class CorrectionService {
 
     private static final int DEFAULT_LIMIT = 20;
     private static final int MAX_LIMIT = 100;
     private static final int ORIGINAL_TEXT_MAX_LENGTH = 12000;
+    private static final String CHARGE_REF_TYPE = "CORRECTION";
 
     private static final String TYPE_SELF_INTRO = "SELF_INTRO";
     private static final String TYPE_INTERVIEW_ANSWER = "INTERVIEW_ANSWER";
     private static final String TYPE_RESUME = "RESUME";
     private static final String TYPE_PORTFOLIO = "PORTFOLIO";
+
+    /** 첨삭 유형별 알림 문구 라벨. */
+    private static final Map<String, String> CORRECTION_TYPE_LABELS = Map.of(
+            TYPE_SELF_INTRO, "자기소개서",
+            TYPE_INTERVIEW_ANSWER, "면접 답변",
+            TYPE_RESUME, "이력서",
+            TYPE_PORTFOLIO, "포트폴리오");
 
     private final CorrectionMapper correctionMapper;
     private final CorrectionAiClient aiClient;
@@ -42,12 +57,26 @@ public class CorrectionService {
     private final ApplicationCaseAccessService applicationCaseAccessService;
     private final CorrectionContextService contextService;
     private final TransactionTemplate transactionTemplate;
+    private final AiChargeService aiChargeService;
+    private final NotificationService notificationService;
     private final ObjectMapper objectMapper;
 
     public CorrectionResponse create(Long userId, CorrectionCreateRequest request) {
+        return create(userId, request, true);
+    }
+
+    /** AutoPrep은 단계별 결제 고지 계약이 없어 기존 WRITE 동작을 비과금으로 유지한다. */
+    public CorrectionResponse createUnchargedForAutoPrep(Long userId, CorrectionCreateRequest request) {
+        return create(userId, request, false);
+    }
+
+    private CorrectionResponse create(Long userId, CorrectionCreateRequest request, boolean chargeRequired) {
         String correctionType = normalizeCorrectionType(request == null ? null : request.correctionType());
         String originalText = normalizeOriginalText(request == null ? null : request.originalText());
         String sourceType = normalizeSourceType(request == null ? null : request.sourceType());
+        String policyAcknowledgementKey = chargeRequired
+                ? normalizePolicyAcknowledgementKey(request == null ? null : request.policyAcknowledgementKey())
+                : null;
         Long applicationCaseId = request == null ? null : request.applicationCaseId();
         ApplicationCase applicationCase = applicationCaseId == null
                 ? null
@@ -71,12 +100,13 @@ public class CorrectionService {
                     originalText,
                     request == null ? null : request.questionText(),
                     selfInput));
+            validateChargeablePayload(payload);
         } catch (RuntimeException ex) {
-            usageLogService.recordFailure(userId, applicationCaseId, featureType, userFacingFailureMessage(ex));
+            recordFailureBestEffort(userId, applicationCaseId, featureType, ex);
             throw ex;
         }
 
-        return transactionTemplate.execute(status -> {
+        CorrectionResponse response = transactionTemplate.execute(status -> {
             Long aiUsageLogId = usageLogService.recordSuccess(
                     userId, applicationCaseId, featureType, payload.usage());
             CorrectionRequest correction = CorrectionRequest.builder()
@@ -92,8 +122,31 @@ public class CorrectionService {
                     .aiUsageLogId(aiUsageLogId)
                     .build();
             correctionMapper.insert(correction);
-            return CorrectionResponse.from(correction, resultPayload(payload));
+            AiChargeResult chargeResult = null;
+            if (chargeRequired) {
+                chargeResult = aiChargeService.charge(new AiChargeCommand(
+                        userId,
+                        featureType,
+                        CHARGE_REF_TYPE,
+                        correction.getId(),
+                        aiUsageLogId,
+                        null,
+                        payload.usage().totalTokens(),
+                        "AI 첨삭 사용",
+                        policyAcknowledgementKey));
+                requireCompletedCharge(chargeResult);
+            }
+            return CorrectionResponse.from(
+                    correction,
+                    resultPayload(payload),
+                    chargeResult,
+                    payload.usage().totalTokens());
         });
+        if (response == null) {
+            throw new BusinessException(ErrorCode.INTERNAL_ERROR, "Correction transaction did not complete.");
+        }
+        notifyCompletion(userId, correctionType, response.id());
+        return response;
     }
 
     @Transactional(readOnly = true)
@@ -141,6 +194,61 @@ public class CorrectionService {
             throw new BusinessException(ErrorCode.INVALID_INPUT, "originalText is too long.");
         }
         return text;
+    }
+
+    private String normalizePolicyAcknowledgementKey(String value) {
+        String key = value == null ? "" : value.trim();
+        if (key.isBlank() || key.length() > 120 || !key.matches("[A-Za-z0-9:_-]+")) {
+            throw new BusinessException(ErrorCode.INVALID_INPUT, "차감 정책 확인키가 올바르지 않습니다.");
+        }
+        return key;
+    }
+
+    private void validateChargeablePayload(CorrectionPayload payload) {
+        if (payload == null || isBlank(payload.improvedText()) || payload.usage() == null) {
+            throw new BusinessException(ErrorCode.AI_UNAVAILABLE, "첨삭 결과 또는 AI 사용량 정보를 확인할 수 없습니다.");
+        }
+    }
+
+    private void requireCompletedCharge(AiChargeResult result) {
+        if (result == null) {
+            throw new BusinessException(ErrorCode.INTERNAL_ERROR, "첨삭 사용 요금을 처리하지 못했습니다.");
+        }
+        if (result.chargeType() == AiChargeResult.ChargeType.TICKET
+                || result.chargeType() == AiChargeResult.ChargeType.CREDIT) {
+            return;
+        }
+        if ("ALREADY_CHARGED".equals(result.reason()) || "ALREADY_DEDUCTED".equals(result.reason())) {
+            return;
+        }
+        throw new BusinessException(ErrorCode.INTERNAL_ERROR, "첨삭 사용 요금이 확정되지 않았습니다.");
+    }
+
+    private void notifyCompletion(Long userId, String correctionType, Long correctionId) {
+        try {
+            notificationService.notify(Notification.builder()
+                    .userId(userId)
+                    .type("CORRECTION_COMPLETE")
+                    .targetType(CHARGE_REF_TYPE)
+                    .targetId(correctionId)
+                    .title("첨삭이 완료되었습니다")
+                    .message("%s 첨삭 결과가 준비되었습니다.".formatted(
+                            CORRECTION_TYPE_LABELS.getOrDefault(correctionType, "첨삭")))
+                    .link("/correction")
+                    .build());
+        } catch (RuntimeException ex) {
+            log.error("첨삭 완료 알림 발행 실패: userId={}, correctionId={}", userId, correctionId, ex);
+        }
+    }
+
+    private void recordFailureBestEffort(
+            Long userId, Long applicationCaseId, String featureType, RuntimeException failure) {
+        try {
+            usageLogService.recordFailure(
+                    userId, applicationCaseId, featureType, userFacingFailureMessage(failure));
+        } catch (RuntimeException logFailure) {
+            log.error("첨삭 실패 사용량 로그 저장 실패: userId={}, featureType={}", userId, featureType, logFailure);
+        }
     }
 
     private int normalizeLimit(Integer limit) {

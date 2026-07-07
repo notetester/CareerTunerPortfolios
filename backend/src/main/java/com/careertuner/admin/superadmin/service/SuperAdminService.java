@@ -16,6 +16,8 @@ import com.careertuner.admin.superadmin.dto.AdminPermissionAuditRow;
 import com.careertuner.admin.superadmin.dto.AdminPermissionGroupRow;
 import com.careertuner.admin.superadmin.dto.AdminPermissionPolicyRow;
 import com.careertuner.admin.superadmin.dto.AdminPermissionRequest;
+import com.careertuner.admin.superadmin.dto.AdminPermissionRequestRow;
+import com.careertuner.admin.superadmin.mapper.PermissionRequestMapper;
 import com.careertuner.admin.superadmin.mapper.SuperAdminMapper;
 import com.careertuner.common.exception.BusinessException;
 import com.careertuner.common.exception.ErrorCode;
@@ -69,6 +71,7 @@ public class SuperAdminService {
 
     private final SuperAdminMapper mapper;
     private final AdminActionLogService actionLogService;
+    private final PermissionRequestMapper requestMapper;
 
     @Transactional(readOnly = true)
     public List<AdminAccountRow> admins(AuthUser authUser, String keyword, String sortBy, String sortDir, int limit) {
@@ -241,6 +244,118 @@ public class SuperAdminService {
         actionLogService.record(authUser, userId, "GROUP_REVOKED", "ADMIN_USER",
                 "{\"groupCode\":\"%s\"}".formatted(group), null, reason);
         return admin(authUser, userId);
+    }
+
+    /* ── 권한 요청/승인 워크플로우 ── */
+
+    /** 관리자 권한 요청 생성(대상 관리자에게 부여할 권한들). 관리자면 요청 가능, 승인은 슈퍼관리자. */
+    @Transactional
+    public void requestPermissions(AuthUser authUser, Long userId, List<String> permissionCodes, String description) {
+        AdminAccess.requireAdmin(authUser);
+        findUser(userId);
+        if (permissionCodes == null || permissionCodes.isEmpty()) {
+            throw new BusinessException(ErrorCode.INVALID_INPUT, "요청할 권한을 선택해 주세요.");
+        }
+        for (String code : permissionCodes) {
+            String permission = normalizeCode(code);
+            validatePermissionAllowedForUser(userId, permission);
+            requestMapper.insertPermissionRequest(userId, permission, blankToNull(description), authUser.id());
+        }
+        actionLogService.record(authUser, userId, "PERMISSION_REQUESTED", "ADMIN_USER",
+                null, "{\"count\":%d}".formatted(permissionCodes.size()), description);
+    }
+
+    @Transactional(readOnly = true)
+    public List<AdminPermissionRequestRow> permissionRequests(AuthUser authUser, String status, int limit) {
+        AdminAccess.requireSuperAdmin(authUser);
+        int lim = limit <= 0 || limit > 500 ? 200 : limit;
+        String normalizedStatus = status == null || status.isBlank() ? null : status.trim().toUpperCase(Locale.ROOT);
+        return requestMapper.findRequests(normalizedStatus, lim);
+    }
+
+    /** 요청 승인 → 실제 권한 부여 + 요청 상태 APPROVED. */
+    @Transactional
+    public void approvePermissionRequest(AuthUser authUser, Long requestId) {
+        AdminAccess.requireSuperAdmin(authUser);
+        AdminPermissionRequestRow request = requireRequest(requestId);
+        validatePermissionAllowedForUser(request.userId(), request.permissionCode());
+        mapper.grantPermission(request.userId(), request.permissionCode(), authUser.id());
+        int updated = requestMapper.updateRequestStatus(requestId, "APPROVED", authUser.id());
+        if (updated == 0) {
+            throw new BusinessException(ErrorCode.CONFLICT, "이미 처리된 요청입니다.");
+        }
+        mapper.insertAudit(authUser.id(), request.userId(), "PERMISSION_GRANTED", request.permissionCode(), null, "요청 승인");
+        actionLogService.record(authUser, request.userId(), "PERMISSION_REQUEST_APPROVED", "ADMIN_USER",
+                null, "{\"permissionCode\":\"%s\"}".formatted(request.permissionCode()), null);
+    }
+
+    @Transactional
+    public void rejectPermissionRequest(AuthUser authUser, Long requestId, String reason) {
+        AdminAccess.requireSuperAdmin(authUser);
+        AdminPermissionRequestRow request = requireRequest(requestId);
+        int updated = requestMapper.updateRequestStatus(requestId, "REJECTED", authUser.id());
+        if (updated == 0) {
+            throw new BusinessException(ErrorCode.CONFLICT, "이미 처리된 요청입니다.");
+        }
+        actionLogService.record(authUser, request.userId(), "PERMISSION_REQUEST_REJECTED", "ADMIN_USER",
+                "{\"permissionCode\":\"%s\"}".formatted(request.permissionCode()), null, reason);
+    }
+
+    /* ── 일괄 처리 ── */
+
+    /** 다중 관리자에게 권한 일괄 부여. */
+    @Transactional
+    public int bulkGrantPermissions(AuthUser authUser, List<Long> userIds, List<String> permissionCodes, String reason) {
+        AdminAccess.requireSuperAdmin(authUser);
+        if (userIds == null || userIds.isEmpty() || permissionCodes == null || permissionCodes.isEmpty()) {
+            throw new BusinessException(ErrorCode.INVALID_INPUT, "대상 관리자와 권한을 선택해 주세요.");
+        }
+        int granted = 0;
+        for (Long userId : userIds.stream().distinct().toList()) {
+            findUser(userId);
+            for (String code : permissionCodes) {
+                String permission = normalizeCode(code);
+                validatePermissionAllowedForUser(userId, permission);
+                mapper.grantPermission(userId, permission, authUser.id());
+                mapper.insertAudit(authUser.id(), userId, "PERMISSION_GRANTED", permission, null, blankToNull(reason));
+                granted++;
+            }
+        }
+        actionLogService.record(authUser, null, "PERMISSION_BULK_GRANTED", "ADMIN_USER",
+                null, "{\"users\":%d,\"perms\":%d}".formatted(userIds.size(), permissionCodes.size()), reason);
+        return granted;
+    }
+
+    /** 다중 관리자를 일괄 관리자 해제(role=USER + 권한·그룹 전부 회수). 본인 제외. */
+    @Transactional
+    public int bulkRevokeAdmins(AuthUser authUser, List<Long> userIds, String reason) {
+        AdminAccess.requireSuperAdmin(authUser);
+        if (userIds == null || userIds.isEmpty()) {
+            throw new BusinessException(ErrorCode.INVALID_INPUT, "대상 관리자를 선택해 주세요.");
+        }
+        int revoked = 0;
+        for (Long userId : userIds.stream().distinct().toList()) {
+            if (userId.equals(authUser.id())) {
+                continue; // 본인 해제 방지
+            }
+            findUser(userId);
+            mapper.updateRole(userId, "USER");
+            mapper.revokeAllPermissionsForUser(userId);
+            mapper.revokeAllGroupsForUser(userId);
+            mapper.insertAudit(authUser.id(), userId, "ADMIN_REVOKED", null, null, blankToNull(reason));
+            revoked++;
+        }
+        actionLogService.record(authUser, null, "ADMIN_BULK_REVOKED", "ADMIN_USER",
+                null, "{\"users\":%d}".formatted(revoked), reason);
+        return revoked;
+    }
+
+    private AdminPermissionRequestRow requireRequest(Long requestId) {
+        AdminPermissionRequestRow row = requestMapper.findRequestById(requestId);
+        if (row == null) {
+            throw new BusinessException(ErrorCode.NOT_FOUND, "권한 요청을 찾을 수 없습니다.");
+        }
+        return row;
     }
 
     private AdminAccountRow findUser(Long userId) {

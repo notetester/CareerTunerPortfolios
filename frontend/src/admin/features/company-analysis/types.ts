@@ -44,6 +44,8 @@ export interface AdminCompanyAnalysisRow {
   sources: string | null;
   verifiedFacts: string | null;
   aiInferences: string | null;
+  /** virtual 필드 — aiInferences의 kind=UNKNOWN 마커를 백엔드가 응답 직전 펼친 확인 불가 항목. */
+  unknowns: string | null;
   sourceType: string | null;
   checkedAt: string | null;
   refreshRecommendedAt: string | null;

@@ -444,6 +444,7 @@ const fitAnalysisList: AdminFitAnalysisListItem[] = [
     needsHumanReview: false,
     gateReasonCount: 0,
     gateMaxSeverity: null,
+    gateReviewStatus: "PENDING",
   },
   {
     id: 5102,
@@ -469,6 +470,7 @@ const fitAnalysisList: AdminFitAnalysisListItem[] = [
     needsHumanReview: false,
     gateReasonCount: 0,
     gateMaxSeverity: null,
+    gateReviewStatus: "PENDING",
   },
   {
     id: 5103,
@@ -494,6 +496,7 @@ const fitAnalysisList: AdminFitAnalysisListItem[] = [
     needsHumanReview: true,
     gateReasonCount: 1,
     gateMaxSeverity: "warning",
+    gateReviewStatus: "PENDING",
   },
   {
     id: 5104,
@@ -519,6 +522,7 @@ const fitAnalysisList: AdminFitAnalysisListItem[] = [
     needsHumanReview: true,
     gateReasonCount: 1,
     gateMaxSeverity: "critical",
+    gateReviewStatus: "PENDING",
   },
 ];
 
@@ -607,6 +611,9 @@ function buildFitDetail(id: number): AdminFitAnalysisDetail {
     gateReasonCount: item.gateReasonCount,
     gateMaxSeverity: item.gateMaxSeverity,
     evidenceGateVersion: item.gateStatus ? "r3-review-first" : null,
+    gateReviewStatus: item.gateReviewStatus,
+    gateReviewedAt: null,
+    gateReviewerName: null,
     gateReasons:
       item.gateStatus === "REVIEW_REQUIRED"
         ? [
@@ -793,6 +800,7 @@ const companyAnalysisRows: AdminCompanyAnalysisRow[] = [
     sources: '["채용공고","기업 IR 자료"]',
     verifiedFacts: '[{"fact":"임직원 약 4천명","source":"공식 채용 페이지"}]',
     aiInferences: '[{"inference":"AI 직군 채용 확대 예상","basis":"최근 신사업 발표"}]',
+    unknowns: '[{"topic":"매출 규모","reason":"공고문에 관련 정보가 없다","neededSource":"IR 자료"}]',
     sourceType: "OFFICIAL",
     checkedAt: iso(5),
     refreshRecommendedAt: iso(-25),
@@ -819,6 +827,7 @@ const companyAnalysisRows: AdminCompanyAnalysisRow[] = [
     sources: '["채용공고"]',
     verifiedFacts: null,
     aiInferences: '[{"inference":"AI 검색 인력 수요 증가","basis":"클로바X 발표"}]',
+    unknowns: null,
     sourceType: "AI_RESEARCH",
     checkedAt: null,
     refreshRecommendedAt: iso(3),
@@ -845,6 +854,7 @@ const companyAnalysisRows: AdminCompanyAnalysisRow[] = [
     sources: null,
     verifiedFacts: null,
     aiInferences: null,
+    unknowns: null,
     sourceType: null,
     checkedAt: null,
     refreshRecommendedAt: iso(8),
@@ -1138,6 +1148,7 @@ function buildAppCaseDetail(id: number): AdminApplicationCaseDetail {
           sources: company.sources,
           verifiedFacts: company.verifiedFacts,
           aiInferences: company.aiInferences,
+          unknowns: company.unknowns,
           sourceType: company.sourceType,
           checkedAt: company.checkedAt,
           refreshRecommendedAt: company.refreshRecommendedAt,

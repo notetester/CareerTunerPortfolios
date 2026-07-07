@@ -24,6 +24,9 @@ public interface CreditMapper {
     int deductUserCreditIfEnough(@Param("userId") Long userId,
                                  @Param("creditUsed") int creditUsed);
 
+    /** 리워드/보너스 등으로 크레딧을 적립한다. 오버플로 방지 가드 포함. 성공 시 1. */
+    int addUserCredit(@Param("userId") Long userId, @Param("amount") int amount);
+
     /** 차감 전후 잔액 확인용 사용자 크레딧을 조회한다. */
     Integer findUserCredit(@Param("userId") Long userId);
 

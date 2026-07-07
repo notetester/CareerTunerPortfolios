@@ -8,5 +8,5 @@ import com.careertuner.notification.domain.PushSubscription;
  */
 public interface PushSender {
 
-    void send(PushSubscription subscription, String title, String body, String link);
+    void send(PushSubscription subscription, PushMessage message);
 }

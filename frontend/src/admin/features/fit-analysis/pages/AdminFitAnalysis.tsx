@@ -18,15 +18,19 @@ import {
 } from "lucide-react";
 import {
   createAdminFitAnalysisMemo,
+  patchAdminGateReview,
   deleteAdminFitAnalysisMemo,
   getAdminFitAnalyses,
   getAdminFitAnalysis,
+  getAdminGateStats,
   updateAdminFitAnalysisMemo,
 } from "../api/adminFitAnalysisApi";
+import GateStatsPanel from "../components/GateStatsPanel";
 import type {
   AdminFitAnalysisDetail,
   AdminFitAnalysisListItem,
   AdminFitAnalysisMemo,
+  AdminGateStats,
 } from "../types/adminFitAnalysis";
 
 const memoTypeOptions = [
@@ -93,6 +97,10 @@ export default function AdminFitAnalysisPage() {
   const [reanalysisOnly, setReanalysisOnly] = useState(false);
   // review-first evidence gate 검토 필요(REVIEW_REQUIRED) 항목만 보기(클라이언트 필터).
   const [reviewOnly, setReviewOnly] = useState(false);
+  // gate 통계 요약. 목록과 독립적으로 로딩하고, 실패해도 목록을 막지 않는다.
+  const [gateStats, setGateStats] = useState<AdminGateStats | null>(null);
+  const [loadingGateStats, setLoadingGateStats] = useState(true);
+  const [gateStatsError, setGateStatsError] = useState<string | null>(null);
 
   useEffect(() => {
     let ignore = false;
@@ -117,6 +125,27 @@ export default function AdminFitAnalysisPage() {
       ignore = true;
     };
   }, [reviewOnly]);
+
+  useEffect(() => {
+    let ignore = false;
+    setLoadingGateStats(true);
+    setGateStatsError(null);
+
+    getAdminGateStats()
+      .then((data) => {
+        if (!ignore) setGateStats(data);
+      })
+      .catch((requestError) => {
+        if (!ignore) setGateStatsError(requestError instanceof Error ? requestError.message : "gate 통계를 불러오지 못했습니다.");
+      })
+      .finally(() => {
+        if (!ignore) setLoadingGateStats(false);
+      });
+
+    return () => {
+      ignore = true;
+    };
+  }, []);
 
   useEffect(() => {
     if (Number.isFinite(requestedAnalysisId) && items.some((item) => item.id === requestedAnalysisId)) {
@@ -217,6 +246,22 @@ export default function AdminFitAnalysisPage() {
     }
   }
 
+  // gate review workflow: 처리 상태 변경(검토 완료/재분석 요청/대기 되돌리기) 후 상세·목록 갱신.
+  async function submitGateReview(reviewStatus: string) {
+    if (!detail) return;
+    setSavingMemo(true);
+    setError(null);
+    try {
+      const refreshed = await patchAdminGateReview(detail.id, { reviewStatus });
+      setDetail(refreshed);
+      setItems(await getAdminFitAnalyses(reviewOnly));
+    } catch (requestError) {
+      setError(requestError instanceof Error ? requestError.message : "gate 검토 상태를 변경하지 못했습니다.");
+    } finally {
+      setSavingMemo(false);
+    }
+  }
+
   async function removeMemo(memo: AdminFitAnalysisMemo) {
     if (!detail) return;
 
@@ -274,6 +319,8 @@ export default function AdminFitAnalysisPage() {
             </CardContent>
           </Card>
         )}
+
+        <GateStatsPanel stats={gateStats} loading={loadingGateStats} error={gateStatsError} />
 
         <section className="grid gap-6 xl:grid-cols-[420px_minmax(0,1fr)]">
           <Card className="border border-slate-200 bg-card">
@@ -451,6 +498,30 @@ export default function AdminFitAnalysisPage() {
                             ))}
                           </ul>
                         )}
+                        {detail.gateReviewStatus && detail.gateReviewStatus !== "PENDING" && (
+                          <div className="mt-2 text-xs font-semibold">
+                            처리: {detail.gateReviewStatus === "RESOLVED" ? "검토 완료" : "재분석 요청"}
+                            {detail.gateReviewerName ? ` · ${detail.gateReviewerName}` : ""}
+                            {detail.gateReviewedAt ? ` · ${formatDateTime(detail.gateReviewedAt)}` : ""}
+                          </div>
+                        )}
+                        <div className="mt-2 flex flex-wrap gap-2">
+                          {detail.gateReviewStatus === "PENDING" && (
+                            <>
+                              <Button type="button" size="sm" onClick={() => void submitGateReview("RESOLVED")} disabled={savingMemo}>
+                                검토 완료
+                              </Button>
+                              <Button type="button" size="sm" variant="outline" onClick={() => void submitGateReview("REANALYSIS_REQUESTED")} disabled={savingMemo}>
+                                재분석 요청
+                              </Button>
+                            </>
+                          )}
+                          {detail.gateReviewStatus && detail.gateReviewStatus !== "PENDING" && (
+                            <Button type="button" size="sm" variant="outline" onClick={() => void submitGateReview("PENDING")} disabled={savingMemo}>
+                              검토 대기로 되돌리기
+                            </Button>
+                          )}
+                        </div>
                       </div>
                     )}
 

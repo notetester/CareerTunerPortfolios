@@ -30,4 +30,8 @@ public interface NotificationMapper {
                                @Param("targetId") Long targetId);
 
     void insert(Notification notification);
+
+    String findUserRole(@Param("userId") Long userId);
+
+    int countFriendship(@Param("userId") Long userId, @Param("otherUserId") Long otherUserId);
 }

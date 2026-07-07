@@ -2,7 +2,9 @@ import { useState, useCallback, useRef } from "react";
 import { api } from "@/app/lib/api";
 import { getAccessToken } from "@/app/lib/tokenStore";
 import { useAutoPrepRun } from "@/features/autoprep/hooks/useAutoPrepRun";
+import { displayCompany, displayJobTitle } from "@/features/autoprep/lib/caseLabels";
 import type { AutoPrepRequest } from "@/features/autoprep/types/autoPrep";
+import { getInterviewReport, listInterviewSessions } from "@/features/interview/api/interviewApi";
 import type {
   ChatMessage,
   BotStatus,
@@ -11,7 +13,11 @@ import type {
   SiteLink,
   IntakeCaseCandidate,
   IntakeModeOption,
+  InterviewReportCard,
 } from "../types/chatbot";
+
+// 면접 인계 대기 표식(브라우저 저장) — 챗봇에서 면접 페이지로 caseId 를 넘기고, 복귀 시 결과를 재조회한다.
+const LS_AWAIT_INTERVIEW = "tunerbot:awaitInterview";
 
 let msgId = 0;
 const nextId = () => `msg-${++msgId}`;
@@ -43,6 +49,21 @@ interface ChatbotApiResponse {
 interface ChatHistoryResponse {
   conversationId: number;
   messages: { role: "user" | "bot"; text: string }[];
+  /** ④ 온보딩 진행 중 복원 시 현재 스텝 재표시(route 로 가이드 자동 매핑) — 아니면 null/undefined. */
+  resume?: {
+    route: string;
+    message: string;
+    quickReplies: string[];
+    intake: IntakeStepResp | null;
+    /** 서버 확정 수집값(사용자 답 원문) — 가이드 재마운트 하이드레이션용(표시). 미수집 필드 null. */
+    collected?: { job: string | null; skills: string | null } | null;
+  } | null;
+}
+
+/** ④ 재진입 하이드레이션용 수집값(가이드 패널에 내려보냄). */
+export interface OnbCollected {
+  job: string | null;
+  skills: string | null;
 }
 
 /* ── 세션 목록 API 응답 (GET /chatbot/conversations) ── */
@@ -70,11 +91,28 @@ export function useChatbot() {
   const runStartedRef = useRef(false);                       // 클로저 안전용(exit 판정)
   const run = useAutoPrepRun();
 
+  // ── 표면 크기(morph 크기 전환): corner(360×560) ↔ floating(970×606, 중앙+스크림) ──
+  // 코너 모드(FAQ/커뮤니티)는 기본값 corner 유지. 온보딩/오케 진입 때만 floating.
+  const [surface, setSurface] = useState<"corner" | "floating">("corner");
+  const orchRef = useRef(false); // 오케 진입 "전이"에서만 자동 확장(매 턴 강제 확장 방지)
+  const expandToFloating = useCallback(() => setSurface("floating"), []);
+  const collapseToCorner = useCallback(() => setSurface("corner"), []);
+
   const abortRef = useRef<AbortController>();
   // 서버 발급 대화 ID. 새 대화면 null → 첫 응답에서 받아 보관, 이후 턴마다 재사용.
   const conversationIdRef = useRef<number | null>(null);
+  // ③ 인테이크 가이드(스텝 UI)에서 올린 자소서 fileId — ready 시 run 요청에 프론트에서 병합한다.
+  //   (백엔드 인테이크는 attachmentFileIds 를 아직 안 받음(2단계) — run 엔드포인트는 이미 받는 필드라 프로토콜 유지.)
+  const pendingAttachmentIdsRef = useRef<number[]>([]);
+  // 마지막 run 요청(첨부 병합 후 최종본) — 재시도 = 이 요청 전체 재실행. 세션 전환/이탈 시 비운다.
+  const lastRunRequestRef = useRef<AutoPrepRequest | null>(null);
+  const setPendingAttachments = useCallback((ids: number[]) => {
+    pendingAttachmentIdsRef.current = ids;
+  }, []);
   // 복원은 세션당 1회만 시도 (열 때마다 재호출 방지).
   const restoredRef = useRef(false);
+  // ④ 재진입 하이드레이션 — 복원 resume 에 실려 온 확정 수집값(가이드 패널이 소비, 표시용).
+  const [onbCollected, setOnbCollected] = useState<OnbCollected | null>(null);
 
   const restoreRecent = useCallback(() => {
     if (restoredRef.current) return;
@@ -82,23 +120,50 @@ export function useChatbot() {
     restoredRef.current = true;
     api<ChatHistoryResponse | null>("/chatbot/conversations/recent")
       .then((data) => {
-        if (!data || !data.messages?.length) return; // 이전 대화 없음
+        if (!data) return; // 이전 대화 없음
+        if (conversationIdRef.current != null) return; // 복원 응답 전에 유저가 대화를 시작함 — 덮지 않음
+        // ★F-06: 대화 id 는 messages 유무와 무관하게 입양한다 — ④ 온보딩 턴은 설계상 메모리 미기록이라
+        //   진행 중 새로고침이 messages=[] 로 오는데, 여기서 버리면 다음 전송이 새 대화를 발급해
+        //   서버 인메모리 step 이 고아가 된다(입양하면 다음 턴이 ④진행중 게이트로 그대로 이어진다).
         conversationIdRef.current = data.conversationId;
-        setMessages((prev) =>
-          prev.length > 0
-            ? prev
-            : data.messages.map((m) => ({
-                id: nextId(),
-                role: m.role,
-                text: m.text,
-                evidence: [],
-                links: [],
-                quickReplies: [],
-                ttsState: "idle" as const,
-                ttsProgress: 0,
-                timestamp: Date.now(),
-              })),
-        );
+        const restored: ChatMessage[] = (data.messages ?? []).map((m) => ({
+          id: nextId(),
+          role: m.role,
+          text: m.text,
+          evidence: [],
+          links: [],
+          quickReplies: [],
+          ttsState: "idle" as const,
+          ttsProgress: 0,
+          timestamp: Date.now(),
+        }));
+        // ④ 재개 프롬프트 — 현재 스텝 재표시를 봇 메시지로 이어붙인다. route 가 실리므로 위젯의
+        //   가이드 자동 오픈(ONB_ROUTE_PHASE)이 그대로 반응하고, 사용자는 "보이지 않는 질문"에
+        //   답하는 대신 무엇을 이어가면 되는지 본다. ready 실행(run) 경로는 복원에서 절대 안 탄다.
+        if (data.resume) {
+          const r = data.resume;
+          if (r.collected && (r.collected.job || r.collected.skills)) {
+            setOnbCollected({ job: r.collected.job, skills: r.collected.skills });
+          }
+          restored.push({
+            id: nextId(), role: "bot", text: r.message,
+            evidence: [], links: [], quickReplies: r.quickReplies ?? [],
+            ttsState: "idle", ttsProgress: 0, timestamp: Date.now(),
+            route: r.route,
+            intake: r.intake
+              ? {
+                  ready: r.intake.ready,
+                  nextAsk: r.intake.nextAsk,
+                  candidates: r.intake.candidates ?? [],
+                  modes: r.intake.modes ?? [],
+                }
+              : undefined,
+          });
+        }
+        if (restored.length === 0) return; // 보여줄 것도 이어갈 스텝도 없음(id 입양만 하고 끝)
+        setMessages((prev) => (prev.length > 0 ? prev : restored));
+        // 넛지/칩 활성 조건(botStatus) 정합 — 진행 중 상태(thinking 등)는 덮지 않는다.
+        setBotStatus((s) => (s === "idle" ? "answered" : s));
       })
       .catch((err) => {
         console.error("이전 대화 복원 실패:", err);
@@ -131,10 +196,13 @@ export function useChatbot() {
     conversationIdRef.current = conversationId;
     setActiveSessionId(id);
     run.reset();
+    lastRunRequestRef.current = null; // 다른 세션의 요청으로 재시도하지 않게
     runStartedRef.current = false;
     setRunStarted(false);
     setRunCaseId(null);
     setOrchestrator(true); // 인테이크(지원건) 세션 — 모드 배너 유지
+    orchRef.current = true;
+    expandToFloating(); // 세션 열기 = 오케 진입 → 플로팅
     setShowExitSheet(false);
     api<ChatHistoryResponse | null>(`/chatbot/conversations/${conversationId}/messages`)
       .then((data) => {
@@ -149,13 +217,75 @@ export function useChatbot() {
       .catch((err) => console.error("세션 로드 실패:", err));
   }, [run]);
 
+  // ── 면접 인계: caseId 를 표식으로 남긴다(면접 페이지로 navigate 는 ChatbotWidget 에서). ──
+  const markInterviewHandoff = useCallback((caseId: number | null) => {
+    if (caseId == null) return;
+    try {
+      localStorage.setItem(LS_AWAIT_INTERVIEW, JSON.stringify({ caseId, ts: Date.now() }));
+    } catch {
+      /* localStorage 불가 환경 무시 */
+    }
+  }, []);
+
+  // ── 복귀 결과: 면접 완료(리포트 생성)면 챗봇 말풍선에 결과 카드로 표시. ──
+  // Push(브라우저 알림)와 별개 — 챗봇이 열릴 때 caseId 로 최근 완료 세션을 찾아 /report 를 재조회한다.
+  const checkInterviewResult = useCallback(async () => {
+    if (!getAccessToken()) return;
+    let pending: { caseId: number; ts: number } | null = null;
+    try {
+      const raw = localStorage.getItem(LS_AWAIT_INTERVIEW);
+      if (raw) pending = JSON.parse(raw);
+    } catch {
+      pending = null;
+    }
+    if (!pending) return;
+    // 24시간 지나면 대기 해제(무한 재조회 방지).
+    if (Date.now() - pending.ts > 24 * 60 * 60 * 1000) {
+      localStorage.removeItem(LS_AWAIT_INTERVIEW);
+      return;
+    }
+    try {
+      // caseId 로 결과 조회 API 가 없어(sessionId 로만) → 세션 목록에서 해당 케이스의 최근 "완료" 세션을 찾는다.
+      const page = await listInterviewSessions(0, 20);
+      const done = page.sessions
+        .filter((s) => s.applicationCaseId === pending!.caseId && s.totalScore != null)
+        .sort((a, b) => b.id - a.id)[0];
+      if (!done) return; // 아직 완료 전 → 다음 오픈에 재확인(표식 유지)
+      const report = await getInterviewReport(done.id);
+      const card: InterviewReportCard = {
+        sessionId: done.id,
+        caseId: pending.caseId,
+        totalScore: report.totalScore,
+        questionCount: report.questionCount,
+        durationLabel: report.durationLabel,
+        categories: report.categories,
+        summaryFeedback: report.summaryFeedback,
+      };
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: nextId(), role: "bot",
+          text: `면접 잘 마치셨어요. **총점 ${report.totalScore}점**이에요. 영역별 결과를 아래에서 확인하고, 보완점은 자소서 첨삭으로 이어서 다듬어 보세요.`,
+          evidence: [], links: [], quickReplies: [], ttsState: "idle", ttsProgress: 0,
+          timestamp: Date.now(), interviewReport: card,
+        },
+      ]);
+      setBotStatus("answered");
+      localStorage.removeItem(LS_AWAIT_INTERVIEW);
+    } catch (e) {
+      console.error("면접 결과 재조회 실패:", e); // 조용히 — 다음 오픈에 재시도
+    }
+  }, []);
+
   const open = useCallback(() => {
     setIsOpen(true);
     restoreRecent();
     loadSessions();
-  }, [restoreRecent, loadSessions]);
-  const close = useCallback(() => setIsOpen(false), []);
-  const minimize = useCallback(() => setIsOpen(false), []);
+    void checkInterviewResult();
+  }, [restoreRecent, loadSessions, checkInterviewResult]);
+  // 닫기/최소화(버블로) 시 다음 오픈은 코너부터.
+  const close = useCallback(() => { setIsOpen(false); setSurface("corner"); }, []);
+  const minimize = useCallback(() => { setIsOpen(false); setSurface("corner"); }, []);
 
   const sendMessage = useCallback((text: string, opts?: { selectedCaseId?: number; selectedModeCode?: string }) => {
     const userMsg: ChatMessage = {
@@ -188,8 +318,11 @@ export function useChatbot() {
 
         // 모드 신호: ON 이면 유지, OFF 면 (실행 중이 아닐 때만) 일반 모드로 복귀.
         if (data.inOrchestration) {
+          if (!orchRef.current) expandToFloating(); // 진입 전이에서만 확장(사용자가 최소화했으면 유지)
+          orchRef.current = true;
           setOrchestrator(true);
         } else if (!runStartedRef.current) {
+          orchRef.current = false;
           setOrchestrator(false);
         }
 
@@ -204,12 +337,15 @@ export function useChatbot() {
           evidence: [], links: data.links ?? [], quickReplies: data.quickReplies ?? [],
           ttsState: "idle", ttsProgress: 0,
           timestamp: Date.now(),
+          route: data.route,
           intake: intake
             ? {
                 ready: intake.ready,
                 nextAsk: intake.nextAsk,
                 candidates: intake.candidates ?? [],
                 modes: intake.modes ?? [],
+                // ready 턴이면 "면접 보러 가기" 칩 딥링크용 caseId 를 메시지에 함께 보관.
+                caseId: intake.autoPrepRequest?.applicationCaseId ?? null,
               }
             : undefined,
           summaryChip: data.summaryChip ?? undefined,
@@ -234,7 +370,20 @@ export function useChatbot() {
           runStartedRef.current = true;
           setRunStarted(true);
           setRunCaseId(intake.autoPrepRequest.applicationCaseId ?? null);
-          run.start(intake.autoPrepRequest);
+          // 인테이크 가이드에서 받아 둔 자소서 fileId 를 실행 요청에 병합(WRITE 가 소비). 1회성 — 쓰고 비운다.
+          const extraAttachments = pendingAttachmentIdsRef.current;
+          pendingAttachmentIdsRef.current = [];
+          const runRequest = extraAttachments.length
+            ? {
+                ...intake.autoPrepRequest,
+                attachmentFileIds: [
+                  ...(intake.autoPrepRequest.attachmentFileIds ?? []),
+                  ...extraAttachments,
+                ],
+              }
+            : intake.autoPrepRequest;
+          lastRunRequestRef.current = runRequest; // 재시도용 보관(첨부 병합 최종본)
+          run.start(runRequest);
         }
       })
       .catch((err) => {
@@ -284,7 +433,9 @@ export function useChatbot() {
   /* ── 칩 선택 → 자연어 메시지로 변환해 전송(③ 슬롯 접지: chooseCase/chooseMode). ── */
   const selectCase = useCallback((c: IntakeCaseCandidate) => {
     // caseId 를 함께 실어 결정적 바인딩(qwen3 미경유). 텍스트는 대화 맥락·히스토리 자연스러움용으로 유지.
-    sendMessage(`${c.companyName} ${c.jobTitle} 지원 건으로 진행할게요`, { selectedCaseId: c.id });
+    // placeholder 원문은 발화 라벨로도 안 내보낸다(F-02·F-17 재유입 표면) — 바인딩은 caseId 가 권위라 안전.
+    sendMessage(`${displayCompany(c.companyName)} ${displayJobTitle(c.jobTitle)} 지원 건으로 진행할게요`,
+      { selectedCaseId: c.id });
   }, [sendMessage]);
 
   const selectMode = useCallback((m: IntakeModeOption) => {
@@ -292,19 +443,30 @@ export function useChatbot() {
     sendMessage(`${m.label}으로 할게요`, { selectedModeCode: m.code });
   }, [sendMessage]);
 
+  /* ── run 재시도: 마지막 실행 요청 전체 재실행(부분 재실행 API 없음 — 인테이크 슬롯 재질문 없이 즉시). ── */
+  const retryRun = useCallback(() => {
+    const req = lastRunRequestRef.current;
+    if (!req) return; // 실행 이력이 없으면 no-op(재시도 어포던스는 runStarted 이후에만 노출됨)
+    void run.start(req);
+  }, [run]);
+
   /* ── 모드 이탈: 실행 전이면 백엔드 모드 해제("그만"), 실행 중/후면 로컬 정리만. ── */
   const exitOrchestrator = useCallback(() => {
     setShowExitSheet(false);
     const wasRunning = runStartedRef.current;
+    pendingAttachmentIdsRef.current = []; // 이탈 시 가이드 첨부 병합 예약 해제(다른 세션 오염 방지)
+    lastRunRequestRef.current = null; // 이탈 후 재시도는 무의미(세션 문맥 이탈) — 오발사 방지
     run.reset();
     runStartedRef.current = false;
+    orchRef.current = false;
     setRunStarted(false);
     setRunCaseId(null);
     setOrchestrator(false);
+    collapseToCorner(); // 오케 이탈 → 코너로
     if (!wasRunning) {
       sendMessage("그만"); // 인테이크 단계 → 서버 sticky 해제
     }
-  }, [run, sendMessage]);
+  }, [run, sendMessage, collapseToCorner]);
 
   const startVoice = useCallback(() => {
     setVoiceState("requesting");
@@ -349,13 +511,17 @@ export function useChatbot() {
     setMessages([]);
     setBotStatus("idle");
     conversationIdRef.current = null; // 새 대화 → 서버가 새 ID 발급
+    pendingAttachmentIdsRef.current = [];
+    lastRunRequestRef.current = null;
     run.reset();
     runStartedRef.current = false;
+    orchRef.current = false;
     setRunStarted(false);
     setRunCaseId(null);
     setOrchestrator(false);
+    collapseToCorner();
     setShowExitSheet(false);
-  }, [run]);
+  }, [run, collapseToCorner]);
 
   return {
     isOpen, open, close, minimize, restoreRecent,
@@ -375,11 +541,20 @@ export function useChatbot() {
     runPlan: run.plan,
     runError: run.error,
     runCaseId,
+    retryRun,
     selectCase, selectMode,
+    setPendingAttachments,
     summarizePosts,
+    onbCollected,
     showExitSheet,
     openExitSheet: () => setShowExitSheet(true),
     closeExitSheet: () => setShowExitSheet(false),
     exitOrchestrator,
+    // 표면 크기 전환(morph)
+    surface,
+    expandToFloating,
+    collapseToCorner,
+    // 면접 인계/복귀
+    markInterviewHandoff,
   };
 }

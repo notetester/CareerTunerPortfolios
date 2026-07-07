@@ -34,17 +34,60 @@ public record SelfCorrectionInput(
 
     public static SelfCorrectionInput minimal(CorrectionCommand command) {
         String original = command.originalText() == null ? "" : command.originalText();
+        String taskType = taskType(command.correctionType());
         return new SelfCorrectionInput(
                 "runtime-" + UUID.randomUUID(),
-                taskType(command.correctionType()),
+                taskType,
                 original,
                 command.applicationCase() == null ? "" : safe(command.applicationCase().getJobTitle()),
                 Map.of(),
                 List.of(),
-                Map.of(
-                        "tone", "professional",
-                        "max_chars", Math.min(4000, Math.max(650, original.length() + 300)),
-                        "preserve_facts_only", true));
+                defaultConstraints(taskType, original));
+    }
+
+    public static Map<String, Object> defaultConstraints(String taskType, String originalText) {
+        String original = originalText == null ? "" : originalText;
+        int minPercent;
+        int maxPercent;
+        boolean preserveParagraphs;
+        switch (taskType == null ? "" : taskType) {
+            case "SELF_INTRO_CORRECTION" -> {
+                minPercent = 85;
+                maxPercent = 110;
+                preserveParagraphs = true;
+            }
+            case "INTERVIEW_ANSWER_CORRECTION" -> {
+                minPercent = 90;
+                maxPercent = 125;
+                preserveParagraphs = false;
+            }
+            case "RESUME_EXPRESSION_IMPROVEMENT" -> {
+                minPercent = 80;
+                maxPercent = 115;
+                preserveParagraphs = false;
+            }
+            case "PORTFOLIO_DESCRIPTION_IMPROVEMENT" -> {
+                minPercent = 85;
+                maxPercent = 115;
+                preserveParagraphs = true;
+            }
+            default -> throw new IllegalArgumentException("Unsupported correction task type: " + taskType);
+        }
+        int originalLength = original.length();
+        int maxChars = Math.max(650, ceilPercent(originalLength, maxPercent));
+        int minChars = Math.min(maxChars, Math.max(1, ceilPercent(originalLength, minPercent)));
+        int targetChars = Math.min(maxChars, Math.max(minChars, originalLength));
+        return Map.of(
+                "tone", "professional",
+                "min_chars", minChars,
+                "target_chars", targetChars,
+                "max_chars", maxChars,
+                "preserve_paragraphs", preserveParagraphs,
+                "preserve_facts_only", true);
+    }
+
+    private static int ceilPercent(int value, int percent) {
+        return (value * percent + 99) / 100;
     }
 
     public static String taskType(String correctionType) {

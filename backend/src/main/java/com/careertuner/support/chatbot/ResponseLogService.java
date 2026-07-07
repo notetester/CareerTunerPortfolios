@@ -54,4 +54,9 @@ public class ResponseLogService {
     private String truncate(String question) {
         return question.length() > QUESTION_MAX_LEN ? question.substring(0, QUESTION_MAX_LEN) : question;
     }
+
+    /** 오늘(로컬 자정 이후) 해당 사용자가 보낸 질문 수 — 챗봇 일일 쿼터 산정용. */
+    public int countToday(Long userId) {
+        return mapper.countByUserSince(userId, java.time.LocalDate.now().atStartOfDay());
+    }
 }

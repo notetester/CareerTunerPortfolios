@@ -1,4 +1,5 @@
 import { useRef, useState } from "react";
+import { AlertTriangle, FileText, Loader2, Lock, Paperclip, X, Zap } from "lucide-react";
 
 import { uploadAttachment } from "../api/autoPrepApi";
 import type { AutoPrepRequest } from "../types/autoPrep";
@@ -73,7 +74,7 @@ export function AutoPrepLauncher({ onRun, busy }: Props) {
       }}
     >
       <div className="flex items-center gap-2 text-sm font-semibold text-foreground">
-        <span aria-hidden>⚡</span> AI 오케스트레이터
+        <Zap className="size-4 text-primary" aria-hidden /> AI 오케스트레이터
       </div>
       <p className="mb-3 mt-1 text-xs text-muted-foreground">
         회사·직무를 말하거나, 공고 캡처·PDF·자소서를 첨부하면 6개 AI가 알아서 준비해요.
@@ -87,7 +88,7 @@ export function AutoPrepLauncher({ onRun, busy }: Props) {
           title="파일 첨부"
           aria-label="파일 첨부"
         >
-          📎
+          <Paperclip className="size-4" />
         </button>
         <input
           value={query}
@@ -96,7 +97,7 @@ export function AutoPrepLauncher({ onRun, busy }: Props) {
             if (e.key === "Enter") submit();
           }}
           placeholder="네이버 백엔드 신입 통째로 준비해줘"
-          className="flex-1 rounded-lg border border-border bg-background px-3 py-2.5 text-sm text-foreground outline-none placeholder:text-muted-foreground focus:border-primary"
+          className="min-w-0 flex-1 rounded-lg border border-border bg-background px-3 py-2.5 text-sm text-foreground outline-none placeholder:text-muted-foreground focus:border-primary"
         />
         <button
           type="button"
@@ -117,14 +118,14 @@ export function AutoPrepLauncher({ onRun, busy }: Props) {
                 f.error ? "text-destructive" : "text-foreground"
               }`}
             >
-              {f.uploading ? "⏳" : f.error ? "⚠️" : "📄"} {f.file.name}
+              {f.uploading ? <Loader2 className="size-3.5 animate-spin" /> : f.error ? <AlertTriangle className="size-3.5" /> : <FileText className="size-3.5" />} {f.file.name}
               <button
                 type="button"
                 onClick={() => removeFile(f)}
                 className="text-muted-foreground hover:text-foreground"
                 aria-label="첨부 제거"
               >
-                ✕
+                <X className="size-3.5" />
               </button>
             </span>
           ))}
@@ -145,7 +146,7 @@ export function AutoPrepLauncher({ onRun, busy }: Props) {
       </div>
 
       <p className="mt-2.5 text-[11px] text-muted-foreground">
-        🔒 무료는 첨부 1개까지 반영돼요. 프리미엄이면 여러 개·대용량까지.
+        <Lock className="mr-1 inline size-3 align-[-1px]" /> 무료는 첨부 1개까지 반영돼요. 프리미엄이면 여러 개·대용량까지.
       </p>
 
       <input

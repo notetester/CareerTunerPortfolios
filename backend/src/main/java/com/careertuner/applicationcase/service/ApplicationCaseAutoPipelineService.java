@@ -23,6 +23,9 @@ import com.careertuner.applicationcase.service.OpenAiResponsesClient.JobAnalysis
 import com.careertuner.applicationcase.service.OpenAiResponsesClient.Usage;
 import com.careertuner.companyanalysis.domain.CompanyAnalysis;
 import com.careertuner.companyanalysis.mapper.CompanyAnalysisMapper;
+import com.careertuner.companyanalysis.service.BCompanyAnalysisCanonicalizer;
+import com.careertuner.companyanalysis.service.CompanyAnalysisService;
+import com.careertuner.companyanalysis.websearch.CompanyWebEvidence;
 import com.careertuner.fitanalysis.ai.FitAnalysisAiCommand;
 import com.careertuner.fitanalysis.ai.FitAnalysisAiResult;
 import com.careertuner.fitanalysis.ai.FitAnalysisConfidence;
@@ -74,16 +77,30 @@ public class ApplicationCaseAutoPipelineService {
     private final MockFitAnalysisAiService mockFitAnalysisAiService;
     private final ObjectMapper objectMapper;
     private final BAnalysisGenerationService bAnalysisGenerationService;
+    private final BCompanyAnalysisCanonicalizer companyAnalysisCanonicalizer;
+    private final CompanyAnalysisService companyAnalysisService;
+    /** 런타임 설정 오버라이드용(application-case.auto-pipeline.enabled). 미설정 시 @Value 기본값을 쓴다. */
+    private final com.careertuner.runtimesetting.service.RuntimeSettingService runtimeSettingService;
+    /** 활동 리워드 적립(지원 건 분석 완료 시 APPLICATION_CASE_READY). 규칙 off 면 미적립. */
+    private final com.careertuner.reward.service.RewardService rewardService;
 
     @Value("${careertuner.application-case.auto-pipeline.enabled:true}")
     private boolean enabled = true;
+
+    /**
+     * 자동 파이프라인 활성 여부 — 런타임 설정 콘솔의 key {@code application-case.auto-pipeline.enabled} 를
+     * 우선 참조하고, 없으면 @Value 기본값을 쓴다(운영 중 재배포 없이 on/off). runtime_setting 실소비처.
+     */
+    private boolean autoPipelineEnabled() {
+        return runtimeSettingService.getBoolean("application-case.auto-pipeline.enabled", enabled);
+    }
 
     public void runAfterExtractionPass(Long userId,
                                        Long applicationCaseId,
                                        Long jobPostingId,
                                        Integer jobPostingRevision,
                                        String postingText) {
-        if (!enabled || isBlank(postingText)) {
+        if (!autoPipelineEnabled() || isBlank(postingText)) {
             return;
         }
 
@@ -100,12 +117,18 @@ public class ApplicationCaseAutoPipelineService {
         try {
             GeneratedJobAnalysis generatedJob = bAnalysisGenerationService.generateJobAnalysis(applicationCase, postingText);
             JobAnalysis jobAnalysis = createJobAnalysis(applicationCase, jobPostingId, jobPostingRevision, generatedJob);
-            GeneratedCompanyAnalysis generatedCompany = bAnalysisGenerationService.generateCompanyAnalysis(applicationCase, postingText);
-            createCompanyAnalysis(applicationCase, jobPostingId, jobPostingRevision, generatedCompany);
+            // flag ON 이면 사용자 직접 경로(CompanyAnalysisService)와 동일한 웹검색 로직으로 WEB evidence 를 모아
+            // R1 생성(공고+웹)과 저장 gate(2소스)에 넘긴다. flag OFF·키 미설정·검색 실패면 빈 목록 → 공고-only(D-4c).
+            List<CompanyWebEvidence> companyWebEvidence = companyAnalysisService.collectWebEvidence(applicationCase);
+            GeneratedCompanyAnalysis generatedCompany =
+                    bAnalysisGenerationService.generateCompanyAnalysis(applicationCase, postingText, companyWebEvidence);
+            createCompanyAnalysis(applicationCase, jobPostingId, jobPostingRevision, generatedCompany, postingText, companyWebEvidence);
             createFitAnalysis(userId, applicationCaseId);
             createInterviewPrep(applicationCase, jobAnalysis);
             if (statusStarted) {
                 applicationCaseMapper.markReadyAfterAnalysis(applicationCaseId, userId, previousStatus);
+                // 지원 건 분석 완료 리워드(규칙 on 일 때만). 예외를 흡수해 파이프라인 상태에 영향 없게 한다.
+                grantRewardSafely(userId, "APPLICATION_CASE_READY", "APPLICATION_CASE", applicationCaseId);
             }
         } catch (RuntimeException ex) {
             if (statusStarted) {
@@ -113,6 +136,15 @@ public class ApplicationCaseAutoPipelineService {
             }
             recordFailure(userId, applicationCaseId, FEATURE_PIPELINE, safeMessage(ex));
             log.warn("Self AI application-case pipeline failed. applicationCaseId={}", applicationCaseId, ex);
+        }
+    }
+
+    /** 리워드 적립은 본 파이프라인 실패로 이어지지 않도록 예외를 흡수한다. */
+    private void grantRewardSafely(Long userId, String eventCode, String refType, Long refId) {
+        try {
+            rewardService.grant(userId, eventCode, refType, refId);
+        } catch (RuntimeException e) {
+            log.warn("리워드 적립 실패 event={} userId={} : {}", eventCode, userId, e.getMessage());
         }
     }
 
@@ -152,8 +184,20 @@ public class ApplicationCaseAutoPipelineService {
     private void createCompanyAnalysis(ApplicationCase applicationCase,
                                        Long jobPostingId,
                                        Integer jobPostingRevision,
-                                       GeneratedCompanyAnalysis generated) {
-        CompanyAnalysisPayload payload = generated.payload();
+                                       GeneratedCompanyAnalysis generated,
+                                       String postingText,
+                                       List<CompanyWebEvidence> webEvidence) {
+        // 사용자 직접 생성 경로(CompanyAnalysisService)와 동일한 canonicalizer 를 공유한다
+        // (evidence gate 2소스[공고+WEB], ID/sourceKind/sourceRef 보정, unknowns 접기, sources 통일).
+        // webEvidence 가 빈 목록이면 7-param 은 기존 공고-only 6-param 과 동일 결과다(D-2 계약).
+        CompanyAnalysisPayload payload = companyAnalysisCanonicalizer.canonicalizeForStorage(
+                generated.payload(),
+                jobPostingId,
+                jobPostingRevision,
+                postingText,
+                applicationCase.getCompanyName(),
+                applicationCase.getJobTitle(),
+                webEvidence).payload();
         LocalDateTime checkedAt = LocalDateTime.now();
         CompanyAnalysis companyAnalysis = CompanyAnalysis.builder()
                 .applicationCaseId(applicationCase.getId())

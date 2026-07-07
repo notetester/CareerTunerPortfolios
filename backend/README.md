@@ -26,6 +26,20 @@ Spring Boot **4.1.0** / Java **21** / **MyBatis** / **MySQL 8** REST API 서버.
 - 서버 `http://localhost:8080` · 헬스 `GET /api/health` · Swagger `http://localhost:8080/swagger-ui.html`
 - HikariCP `initialization-fail-timeout: -1` 로 **MySQL 없이도 부팅**된다(헬스 체크 가능).
 
+### 환경 프로파일 (local / tailscale / aws / domain)
+
+호스트 기본값 묶음(DB·Ollama·API 주소)을 이름으로 전환한다 — `application-<이름>.yaml` 이 호스트 관련 키만 오버라이드한다.
+
+```bash
+SPRING_PROFILES_ACTIVE=local ./gradlew bootRun                        # 전부 내 PC (DB/Ollama localhost)
+.\gradlew.bat bootRun --args='--spring.profiles.active=tailscale'     # 팀 DB + 공유 4090 Ollama
+```
+
+- 프로파일 없이 실행하면 기존 기본값 그대로다. 환경변수 override(`DB_HOST` 등)는 프로파일보다 항상 우선한다.
+- 공유 4090 Ollama 가 꺼져 있으면 부팅 시 자동으로 폴백 후보(`AI_OLLAMA_FALLBACK_BASE_URLS`,
+  기본 `http://localhost:11434`)로 전환된다. 끄기: `AI_OLLAMA_FALLBACK_ENABLED=false`.
+- 프로파일 정의·컴포넌트별 전환 방법: [`../docs/ENVIRONMENTS.md`](../docs/ENVIRONMENTS.md), [`../config/environments.json`](../config/environments.json)
+
 ## 설정/시크릿 (환경변수 override)
 
 모든 민감값은 `application.yaml` 에 `${ENV:기본값}` 형태다. **지금은 커밋된 기본값으로 즉시 동작**하고,
@@ -44,7 +58,9 @@ DB_PASSWORD=... JWT_SECRET=... OAUTH_KAKAO_CLIENT_SECRET=... java -jar app.jar
 | 앱 | `APP_FRONTEND_URL` `APP_API_BASE_URL` | `http://localhost:5173` / `http://localhost:8080` |
 | 업로드 | `SPRING_SERVLET_MULTIPART_MAX_FILE_SIZE` `SPRING_SERVLET_MULTIPART_MAX_REQUEST_SIZE` `JOB_POSTING_MAX_FILE_SIZE_BYTES` | `10MB` / `12MB` / `10485760` |
 | 로컬 LLM | `AI_OLLAMA_BASE_URL` `AI_OLLAMA_MODEL` `AI_OLLAMA_CONNECT_TIMEOUT` `AI_OLLAMA_READ_TIMEOUT` | `http://localhost:11434` / `gemma4` / `3s` / `30s` |
-| E 첨삭 LLM | `CAREERTUNER_CORRECTION_AI_PROVIDER` `CAREERTUNER_CORRECTION_AI_SELF_BASE_URL` `CAREERTUNER_CORRECTION_AI_SELF_MODEL` `CAREERTUNER_CORRECTION_AI_SELF_FALLBACK_MODEL` | `openai` / 빈값 / `careertuner-e-correction:8b` / `careertuner-e-correction-3b:latest` |
+| 로컬 LLM 폴백 | `AI_OLLAMA_FALLBACK_BASE_URLS`(콤마 구분) `AI_OLLAMA_FALLBACK_ENABLED` | `http://localhost:11434` / `true` — 4090 미응답 시 부팅에서 자동 전환 |
+| E 첨삭 LLM | `CAREERTUNER_CORRECTION_AI_PROVIDER` `CAREERTUNER_CORRECTION_AI_SELF_BASE_URL` `CAREERTUNER_CORRECTION_AI_SELF_MODEL` `CAREERTUNER_CORRECTION_AI_SELF_MAX_TOKENS` | `openai` / 빈값 / `careertuner-e-correction-3b:latest` / `3072` |
+| B 기업 웹검색 | `NAVER_SEARCH_CLIENT_ID` `NAVER_SEARCH_CLIENT_SECRET` `CAREERTUNER_COMPANY_WEBSEARCH_ENABLED` `CAREERTUNER_COMPANY_WEBSEARCH_MAX_SEARCH_CALLS_PER_ANALYSIS` `CAREERTUNER_COMPANY_WEBSEARCH_MAX_RESULTS_PER_ANALYSIS` | 빈값 / 빈값 / `false` / `4` / `12` |
 
 > 메일은 `MAIL_DEV_MODE=true`(또는 SMTP username 미설정)면 **실제 발송 대신 인증 링크를 로그로 출력**한다.
 > OAuth 키는 아직 미발급이라 placeholder다 — 키 수령 후 위 env(또는 yaml 기본값)만 교체하면 동작한다.
@@ -73,6 +89,11 @@ DB_PASSWORD=... JWT_SECRET=... OAUTH_KAKAO_CLIENT_SECRET=... java -jar app.jar
 
 구독 상품과 사용권 정책은 DB 기준으로 내려가며, 다른 파트의 AI 기능은 `AiBenefitUsageService.consumeByFeature(...)`를 호출해
 기능 코드(`feature_type`)에 매핑된 사용권을 성공 후 1장 차감한다.
+
+사용량 기반 크레딧 기능은 `ai_feature_benefit_policy`의 `min_credit_cost`, `max_credit_cost`,
+`credit_unit_tokens`로 실행 전 최소·최대 금액을 고지하고, 성공 후 실제 `token_usage`를 범위 안에서 정산한다.
+기존 DB에는 `db/patches/20260706e_ai_usage_credit_range.sql`과
+`db/patches/20260706f_ai_ticket_credit_fallback.sql`을 순서대로 적용한다.
 
 | Method | Path | 설명 | 인증 |
 | --- | --- | --- | --- |
@@ -146,9 +167,9 @@ PRO 플랜은 영상분석권을 월 1장 제공하고, PREMIUM 플랜은 영상
 | PATCH | `/api/admin/company-analysis/{analysisId}/metadata` | 관리자 기업 분석 출처 메타데이터 수정. 날짜 clear 플래그로 `checked_at`, `refresh_recommended_at` 초기화 가능 | Bearer(ADMIN) |
 | GET | `/api/admin/ai-usage/b` | 관리자 B AI 사용량 로그 조회 | Bearer(ADMIN) |
 
-공고/기업 분석은 기본적으로 자체 파인튜닝 모델 `careertuner-b-jobposting-r1`(Ollama)을 사용한다(`B_ANALYSIS_LOCAL_LLM_ENABLED` 기본 `true`). 스키마·그라운딩 검증을 통과하지 못하거나 모델 호출이 실패하면 1회 재시도 후 `self-rules-v1` 규칙 경로로 폴백한다. Ollama 미서빙 환경에서는 `B_ANALYSIS_LOCAL_LLM_ENABLED=false`로 끄면 곧장 `self-rules-v1`을 사용한다. 모델·주소·타임아웃은 `B_ANALYSIS_OLLAMA_MODEL`, `B_ANALYSIS_OLLAMA_BASE_URL`, `B_ANALYSIS_OLLAMA_READ_TIMEOUT`(기본 480s)로 조정한다.
+공고/기업 분석은 기본적으로 자체 파인튜닝 모델 `careertuner-b-jobposting-r1`(Ollama)을 사용한다(`B_ANALYSIS_LOCAL_LLM_ENABLED` 기본 `true`). 스키마·그라운딩 검증을 통과하지 못하거나 모델 호출이 실패하면 1회 재시도 후 `self-rules-v1` 규칙 경로로 폴백한다. Ollama 미서빙 환경에서는 `B_ANALYSIS_LOCAL_LLM_ENABLED=false`로 끄면 곧장 `self-rules-v1`을 사용한다. 모델·주소·타임아웃은 `B_ANALYSIS_OLLAMA_MODEL`, `B_ANALYSIS_OLLAMA_BASE_URL`, `B_ANALYSIS_OLLAMA_READ_TIMEOUT`(기본 480s)로 조정한다. 컨텍스트와 출력 예산은 `B_ANALYSIS_OLLAMA_NUM_CTX`(기본 8192), `B_ANALYSIS_OLLAMA_NUM_PREDICT`(기본 2048)로 조정하며, 서비스는 이 예산에 맞춰 긴 공고 원문을 보수적으로 절단해 컨텍스트 초과 폴백을 줄인다.
 텍스트 PDF는 PDFBox로 먼저 추출하고, 텍스트가 없는 PDF와 이미지는 자체 문서 추출 워커 또는 명시적으로 allowlist 된 OCR fallback만 사용한다. OpenAI 폴백은 `OPENAI_API_KEY`가 있을 때만 동작하며 모델은 `OPENAI_MODEL`(기본 `gpt-5`)로 바꾼다.
-자체 LLM은 B 공고/기업 분석(`careertuner-b-jobposting-r1`), E 첨삭(`careertuner-e-correction:8b` → `careertuner-e-correction-3b:latest` → OpenAI), F 커뮤니티 검열의 Ollama 연동과 D 면접 파인튜닝 실험을 중심으로 붙어 있으며,
+자체 LLM은 B 공고/기업 분석(`careertuner-b-jobposting-r1`), E 첨삭(`careertuner-e-correction-3b:latest` → Anthropic → OpenAI), F 커뮤니티 검열의 Ollama 연동과 D 면접 파인튜닝 실험을 중심으로 붙어 있으며,
 A~F 담당별 목표 운영 기준은 [`../docs/planning/담당별_자체LLM_운영안.md`](../docs/planning/담당별_자체LLM_운영안.md)를 따른다.
 공통 `ai/common`, 도메인별 `A_AI_*`~`F_AI_*` 설정, 관리자 AI 상태 API는 목표 구조이므로 실제 도입 시 공통 영역 합의 후 구현한다.
 공고문 파일 업로드는 기본 10MB까지 허용하며, 초과 시 `INVALID_INPUT` 응답으로 안내한다.
@@ -168,8 +189,18 @@ revision으로 저장한다. `job_posting`은 `(application_case_id, revision)` 
 | POST | `/api/corrections` | 자기소개서·면접 답변·이력서·포트폴리오 설명 첨삭 생성 | Bearer |
 | GET | `/api/corrections` | 내 첨삭 이력 조회 | Bearer |
 | GET | `/api/corrections/{id}` | 내 첨삭 결과 상세 조회 | Bearer |
+| GET | `/api/admin/corrections` | 관리자 첨삭 성공 이력 검색·페이지 조회 | Bearer(ADMIN) |
+| GET | `/api/admin/corrections/summary` | 관리자 첨삭 성공·실패·메모 현황 집계 | Bearer(ADMIN) |
+| GET | `/api/admin/corrections/ai-failures` | 첨삭 AI 실패 로그 조회 | Bearer(ADMIN) |
+| GET | `/api/admin/corrections/{id}` | 첨삭 원문·결과·AI 사용량 상세 조회 | Bearer(ADMIN) |
+| PUT | `/api/admin/corrections/{id}/memo` | 첨삭 운영 메모 저장·삭제 | Bearer(ADMIN) |
+| GET | `/api/admin/credits` | 크레딧 변동 원장 검색·페이지 조회 | Bearer(ADMIN) |
+| GET | `/api/admin/credits/summary` | 크레딧 지급·차감·잔액 현황 집계 | Bearer(ADMIN) |
+| POST | `/api/admin/credits/adjust` | 관리자 크레딧 증감과 원장·감사 로그 기록 | Bearer(ADMIN) |
 
-E 자체 모델은 strict JSON Schema로 학습 계약의 10개 키를 강제·검증하고, 8B를 최대 2회 호출한 뒤 3B를 1회 호출한다. 첨삭 화면 진입 또는 AutoPrep에서 WRITE 사용이 예견되면 8B만 비동기로 워밍하며, 워밍은 크레딧·사용권·AI 사용 로그를 차감하지 않는다. timeout은 같은 모델을 재시도하지 않으며 자체 모델 실패 또는 시간 예산 소진 시 Haiku를 3차 방어로 호출하고, Haiku도 실패하거나 미설정이면 OpenAI로 전환한다. 운영 연결 시 `CAREERTUNER_CORRECTION_AI_PROVIDER=self`, `CAREERTUNER_CORRECTION_AI_SELF_BASE_URL=http://localhost:11434/v1`을 설정한다. Haiku에는 `ANTHROPIC_API_KEY`, OpenAI 최종 폴백에는 `OPENAI_API_KEY`가 필요하다.
+E 자체 모델은 3B 단일 모델과 strict JSON Schema를 사용한다. 첫 응답이 JSON 키, 원문 분량, 문단 보존, `changes` 3개 이상 계약을 어기면 같은 3B에 실패 사유와 이전 출력을 전달해 한 번 repair한다. 첨삭 화면 진입 또는 AutoPrep에서 WRITE 사용이 예견되면 이 3B 모델만 비동기로 워밍하며, 워밍은 크레딧·사용권·AI 사용 로그를 차감하지 않는다. 자체 모델 실패 또는 시간 예산 소진 시 Anthropic을 호출하고, Anthropic도 실패하거나 미설정이면 OpenAI로 전환한다. 운영 연결 시 `CAREERTUNER_CORRECTION_AI_PROVIDER=self`, `CAREERTUNER_CORRECTION_AI_SELF_BASE_URL=http://localhost:11434/v1`을 설정한다. Anthropic에는 `ANTHROPIC_API_KEY`, OpenAI 최종 폴백에는 `OPENAI_API_KEY`가 필요하다.
+
+기존 DB에는 `db/patches/20260705_e_correction_admin_memo.sql`을 먼저 적용해야 첨삭 운영 메모 API를 사용할 수 있다. 첨삭 실패는 성공 결과 테이블이 아니라 `ai_usage_log`에 기록되므로 관리자 화면도 성공 이력과 실패 로그를 별도 데이터 소스로 조회한다.
 
 ## C 분석·대시보드 API
 

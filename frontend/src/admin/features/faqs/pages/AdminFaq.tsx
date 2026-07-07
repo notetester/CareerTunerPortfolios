@@ -4,6 +4,13 @@ import {
   Trash2, Eye, EyeOff, ArrowLeft, Check, CornerDownRight, RefreshCw,
 } from "lucide-react";
 import AdminShell from "../../../components/AdminShell";
+import {
+  AdminListFooter,
+  AdminListToolbar,
+  AdminSortableHeader,
+  useAdminListTools,
+  type AdminListColumn,
+} from "../../../components/AdminListTools";
 import { FAQ_CATEGORIES, type Faq, type FaqCategory } from "../data/faqData";
 import * as adminFaqApi from "../api/adminFaqApi";
 import { ConfirmDialog } from "@/app/components/ui/confirm-dialog";
@@ -13,6 +20,13 @@ import "./faq-compose.css";
 type DialogState =
   | { type: "delete"; faq: Faq }
   | { type: "toggle"; faq: Faq };
+
+const FAQ_COLUMNS: AdminListColumn<Faq>[] = [
+  { id: "id", label: "ID", getText: (row) => row.id, sortable: true },
+  { id: "q", label: "질문", getText: (row) => row.q, sortable: true },
+  { id: "cat", label: "카테고리", getText: (row) => row.cat, sortable: true },
+  { id: "on", label: "상태", getText: (row) => (row.on ? "노출" : "비노출"), sortable: true },
+];
 
 /* ═══ 작성 폼 ═══ */
 const COMPOSE_CATS = ["AI 분석", "결제·크레딧", "계정", "커뮤니티", "코칭"] as const;
@@ -200,7 +214,11 @@ export default function AdminFaq() {
 
   // ↑↓ 이동: items 에서 인접 스왑 후, 새 위치(index)를 sort_order 로 영속한다.
   // 첫 이동 때 0 베이스라인이 0..n-1 로 정규화되고, 이후엔 바뀐 항목만 PUT 된다(기존값=index면 스킵).
-  const move = async (index: number, dir: -1 | 1) => {
+  // 그리드 정렬/검색/페이징이 걸리면 visible 순서와 items 순서가 어긋나므로, map index 가 아니라
+  // 실제 items 내 위치를 찾아 스왑한다(reorderable 게이트로 이미 전체·무검색일 때만 노출).
+  const move = async (faq: Faq, dir: -1 | 1) => {
+    const index = items.findIndex((f) => f.id === faq.id);
+    if (index < 0) return;
     const target = index + dir;
     if (target < 0 || target >= items.length) return;
     const next = [...items];
@@ -218,15 +236,26 @@ export default function AdminFaq() {
     }
   };
 
-  if (view === "compose") {
-    return <FaqComposeView onBack={() => setView("list")} onCreated={() => { setView("list"); loadItems(); }} />;
-  }
-
   const filtered = items.filter((f) => {
     if (catFilter !== "전체" && f.cat !== catFilter) return false;
     if (query && !f.q.toLowerCase().includes(query.toLowerCase())) return false;
     return true;
   });
+
+  // 훅은 조건부 early-return(작성 뷰) 위에서 호출해 호출 순서를 고정한다.
+  const list = useAdminListTools(filtered, {
+    columns: FAQ_COLUMNS,
+    getRowId: (row) => row.id,
+  });
+
+  if (view === "compose") {
+    return <FaqComposeView onBack={() => setView("list")} onCreated={() => { setView("list"); loadItems(); }} />;
+  }
+
+  // 그리드가 정렬/검색/페이징으로 순서를 바꾸면 items 순서와 visible 순서가 어긋난다.
+  // 순서 변경(↑↓)은 items 원본 순서를 그대로 보여줄 때만 허용한다.
+  const gridInDefaultOrder = !list.sortId && !list.keyword && list.page === 1 && list.filteredRows.length === list.visibleRows.length;
+  const canReorder = reorderable && gridInDefaultOrder;
 
   const catOptions = ["전체", ...FAQ_CATEGORIES];
 
@@ -258,14 +287,21 @@ export default function AdminFaq() {
           </div>
         </div>
 
+        <AdminListToolbar state={list} fileName="admin_faqs" />
+
         <table className="av-table">
           <thead>
             <tr>
-              <th>ID</th><th>질문</th><th>카테고리</th><th>상태</th><th className="r">수정일</th><th className="r">조치</th>
+              <AdminSortableHeader state={list} columnId="id">ID</AdminSortableHeader>
+              <AdminSortableHeader state={list} columnId="q">질문</AdminSortableHeader>
+              <AdminSortableHeader state={list} columnId="cat">카테고리</AdminSortableHeader>
+              <AdminSortableHeader state={list} columnId="on">상태</AdminSortableHeader>
+              <th className="r">수정일</th>
+              <th className="r">조치</th>
             </tr>
           </thead>
           <tbody>
-            {filtered.map((f, i) => (
+            {list.visibleRows.map((f) => (
               <tr key={f.id}>
                 <td className="av-id num">#{f.id}</td>
                 <td><div className="av-cell__t" style={{ maxWidth: 520 }}>{f.q}</div></td>
@@ -278,12 +314,12 @@ export default function AdminFaq() {
                 <td className="r av-muted num">–</td>
                 <td className="r">
                   <div className="faq-actions">
-                    {reorderable && (
+                    {canReorder && (
                       <>
-                        <button className="av-btn" title="위로" disabled={i === 0} onClick={() => move(i, -1)}>
+                        <button className="av-btn" title="위로" disabled={items[0]?.id === f.id} onClick={() => move(f, -1)}>
                           <ChevronUp />
                         </button>
-                        <button className="av-btn" title="아래로" disabled={i === filtered.length - 1} onClick={() => move(i, 1)}>
+                        <button className="av-btn" title="아래로" disabled={items[items.length - 1]?.id === f.id} onClick={() => move(f, 1)}>
                           <ChevronDown />
                         </button>
                       </>
@@ -299,13 +335,13 @@ export default function AdminFaq() {
                 </td>
               </tr>
             ))}
+            {list.visibleRows.length === 0 && (
+              <tr><td colSpan={6} style={{ textAlign: "center", padding: "2rem" }}>현재 조건에 맞는 FAQ가 없습니다.</td></tr>
+            )}
           </tbody>
         </table>
 
-        <div className="av-foot">
-          <span className="num">{filtered.length}건 표시 · 전체 {items.length}건</span>
-          <span />
-        </div>
+        <AdminListFooter state={list} />
       </section>
 
       {dialog && (() => {

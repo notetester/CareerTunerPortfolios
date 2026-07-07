@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Link } from "react-router";
-import { AlertCircle, CheckCircle2, Database, ShieldAlert, ShieldCheck, SlidersHorizontal, Target } from "lucide-react";
+import { AlertCircle, Check, CheckCircle2, Database, ShieldAlert, ShieldCheck, SlidersHorizontal, Target } from "lucide-react";
 import { Badge } from "@/app/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/app/components/ui/card";
 import { Progress } from "@/app/components/ui/progress";
@@ -378,7 +378,7 @@ function FitImpactSimulator({ currentScore, rows }: { currentScore: number; rows
                   : "border-indigo-200 bg-card text-indigo-700 hover:bg-indigo-100"
               }`}
             >
-              {active ? "보완 가정 ✓ " : "+ "}{row.condition}
+              {active ? <>보완 가정 <Check className="inline size-3 align-[-1px]" /> </> : "+ "}{row.condition}
             </button>
           );
         })}

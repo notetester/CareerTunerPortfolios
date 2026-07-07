@@ -333,10 +333,37 @@ public class BillingPolicyService {
         for (JsonNode node : policies) {
             AiFeatureBenefitPolicy policy = read(node.toString(), AiFeatureBenefitPolicy.class);
             if (featureType.equals(policy.getFeatureType()) && policy.isActive()) {
+                hydrateMissingCreditRange(node, policy);
                 return policy;
             }
         }
         return null;
+    }
+
+    /** 신규 과금 컬럼 도입 전에 생성된 구독 스냅샷은 현재 기능 정책의 범위만 보완한다. */
+    private void hydrateMissingCreditRange(JsonNode snapshotNode, AiFeatureBenefitPolicy snapshotPolicy) {
+        if (snapshotNode.has("minCreditCost")
+                && snapshotNode.has("maxCreditCost")
+                && snapshotNode.has("creditUnitTokens")) {
+            return;
+        }
+        AiFeatureBenefitPolicy current = billingMapper.findActiveFeatureBenefitPolicy(snapshotPolicy.getFeatureType());
+        if (current == null) {
+            return;
+        }
+        current = applyEffectiveFeaturePolicyChange(current);
+        if (!current.isActive()) {
+            return;
+        }
+        if (!snapshotNode.has("minCreditCost")) {
+            snapshotPolicy.setMinCreditCost(current.getMinCreditCost());
+        }
+        if (!snapshotNode.has("maxCreditCost")) {
+            snapshotPolicy.setMaxCreditCost(current.getMaxCreditCost());
+        }
+        if (!snapshotNode.has("creditUnitTokens")) {
+            snapshotPolicy.setCreditUnitTokens(current.getCreditUnitTokens());
+        }
     }
 
     private Map<String, Object> snapshot(SubscriptionPlan plan) {
@@ -386,6 +413,9 @@ public class BillingPolicyService {
         data.put("chargeUnit", policy.getChargeUnit());
         data.put("includedInTicket", policy.isIncludedInTicket());
         data.put("defaultCreditCost", policy.getDefaultCreditCost());
+        data.put("minCreditCost", policy.getMinCreditCost());
+        data.put("maxCreditCost", policy.getMaxCreditCost());
+        data.put("creditUnitTokens", policy.getCreditUnitTokens());
         data.put("active", policy.isActive());
         return data;
     }

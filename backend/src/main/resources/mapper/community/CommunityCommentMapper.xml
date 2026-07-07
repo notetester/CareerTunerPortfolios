@@ -40,8 +40,10 @@
 
     <!-- 댓글 작성 -->
     <insert id="insert" useGeneratedKeys="true" keyProperty="id">
-        INSERT INTO community_comment (post_id, user_id, parent_id, mention_user_id, content, is_anonymous, status)
-        VALUES (#{postId}, #{userId}, #{parentId}, #{mentionUserId}, #{content}, #{anonymous}, #{status})
+        INSERT INTO community_comment (post_id, user_id, parent_id, mention_user_id, content, is_anonymous,
+                                       nickname_profile_id, status)
+        VALUES (#{postId}, #{userId}, #{parentId}, #{mentionUserId}, #{content}, #{anonymous},
+                #{nicknameProfileId}, #{status})
     </insert>
 
     <!-- 댓글 상태 변경 (삭제/숨김) -->
@@ -92,5 +94,14 @@
            SET like_count = GREATEST(like_count - 1, 0)
          WHERE id = #{id}
     </update>
+
+    <!-- 작성 rate-limit — since 이후 사용자가 단 댓글 수(삭제 제외) -->
+    <select id="countRecentCommentsByUser" resultType="int">
+        SELECT COUNT(*)
+          FROM community_comment
+         WHERE user_id = #{userId}
+           AND created_at &gt;= #{since}
+           AND status &lt;&gt; 'DELETED'
+    </select>
 
 </mapper>

@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.careertuner.activitylog.mapper.SecurityHistoryMapper">
+
+    <insert id="insertSecurityHistory" parameterType="com.careertuner.activitylog.domain.UserSecurityHistory">
+        INSERT INTO user_security_history
+            (user_id, actor_user_id, event_type, event_stage, input_identifier, target_email, success,
+             fail_reason, detail_message, request_id, flow_trace_id, ip_address, user_agent)
+        VALUES
+            (#{userId}, #{actorUserId}, #{eventType}, #{eventStage}, #{inputIdentifier}, #{targetEmail}, #{success},
+             #{failReason}, #{detailMessage}, #{requestId}, #{flowTraceId}, #{ipAddress}, #{userAgent})
+    </insert>
+
+    <sql id="securityFilter">
+        <where>
+            <if test="eventType != null">AND event_type = #{eventType}</if>
+            <if test="eventStage != null">AND event_stage = #{eventStage}</if>
+            <if test="success != null">AND success = #{success}</if>
+            <if test="userId != null">AND user_id = #{userId}</if>
+            <if test="from != null">AND occurred_at &gt;= #{from}</if>
+            <if test="to != null">AND occurred_at &lt;= #{to}</if>
+            <if test="keyword != null">
+                AND (input_identifier LIKE CONCAT('%', #{keyword}, '%')
+                     OR target_email LIKE CONCAT('%', #{keyword}, '%')
+                     OR fail_reason LIKE CONCAT('%', #{keyword}, '%')
+                     OR ip_address LIKE CONCAT('%', #{keyword}, '%')
+                     OR request_id = #{keyword}
+                     OR flow_trace_id = #{keyword})
+            </if>
+        </where>
+    </sql>
+
+    <select id="findSecurityHistories" resultType="com.careertuner.activitylog.domain.UserSecurityHistory">
+        SELECT id, user_id, actor_user_id, event_type, event_stage, input_identifier, target_email, success,
+               fail_reason, detail_message, request_id, flow_trace_id, ip_address, user_agent, occurred_at
+          FROM user_security_history
+        <include refid="securityFilter"/>
+         ORDER BY id DESC
+         LIMIT #{limit} OFFSET #{offset}
+    </select>
+
+    <select id="countSecurityHistories" resultType="int">
+        SELECT COUNT(*) FROM user_security_history
+        <include refid="securityFilter"/>
+    </select>
+
+</mapper>

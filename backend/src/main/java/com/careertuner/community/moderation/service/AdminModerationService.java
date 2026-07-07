@@ -184,7 +184,7 @@ public class AdminModerationService {
                 view.getPostStatus(),
                 result != null && result.toxic(),
                 result != null ? result.category() : null,
-                result != null ? result.confidence() : 0,
+                result != null && result.confidence() != null ? result.confidence() : 0,
                 view.getAttemptCount(),
                 view.getCreatedAt(),
                 view.getCompletedAt()
@@ -202,7 +202,7 @@ public class AdminModerationService {
                 view.getPostStatus(),
                 result != null && result.toxic(),
                 result != null ? result.category() : null,
-                result != null ? result.confidence() : 0,
+                result != null && result.confidence() != null ? result.confidence() : 0,
                 view.getModel(),
                 view.getAttemptCount(),
                 view.getCreatedAt(),

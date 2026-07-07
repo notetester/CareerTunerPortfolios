@@ -1,0 +1,111 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.careertuner.admin.staffgrade.mapper.AdminStaffGradeMapper">
+
+    <sql id="GradeRowColumns">
+        g.id, g.user_id, u.email AS user_email, u.name AS user_name, u.role AS user_role,
+        g.department, g.seniority, g.job_tier, g.pay_band, g.job_grade, g.pay_step,
+        g.base_salary, g.currency, g.effective_date, g.memo, g.updated_at
+    </sql>
+
+    <sql id="GradeWhere">
+        <where>
+            <if test="keyword != null">
+                AND (u.email LIKE CONCAT('%', #{keyword}, '%') OR u.name LIKE CONCAT('%', #{keyword}, '%'))
+            </if>
+            <if test="department != null">
+                AND g.department = #{department}
+            </if>
+        </where>
+    </sql>
+
+    <select id="findGrades" resultType="com.careertuner.admin.staffgrade.dto.AdminStaffGradeRow">
+        SELECT <include refid="GradeRowColumns"/>
+          FROM admin_staff_grade g
+          JOIN users u ON u.id = g.user_id
+        <include refid="GradeWhere"/>
+         ORDER BY g.updated_at DESC, g.id DESC
+         LIMIT #{size} OFFSET #{offset}
+    </select>
+
+    <select id="countGrades" resultType="long">
+        SELECT COUNT(*)
+          FROM admin_staff_grade g
+          JOIN users u ON u.id = g.user_id
+        <include refid="GradeWhere"/>
+    </select>
+
+    <select id="findAllForExport" resultType="com.careertuner.admin.staffgrade.dto.AdminStaffGradeRow">
+        SELECT <include refid="GradeRowColumns"/>
+          FROM admin_staff_grade g
+          JOIN users u ON u.id = g.user_id
+        <include refid="GradeWhere"/>
+         ORDER BY g.updated_at DESC, g.id DESC
+    </select>
+
+    <!-- users 기준 LEFT JOIN — 사용자 없으면 결과 없음, 등급 미배정이면 g.* 는 NULL -->
+    <select id="findRowByUserId" resultType="com.careertuner.admin.staffgrade.dto.AdminStaffGradeRow">
+        SELECT g.id, u.id AS user_id, u.email AS user_email, u.name AS user_name, u.role AS user_role,
+               g.department, g.seniority, g.job_tier, g.pay_band, g.job_grade, g.pay_step,
+               g.base_salary, g.currency, g.effective_date, g.memo, g.updated_at
+          FROM users u
+          LEFT JOIN admin_staff_grade g ON g.user_id = u.id
+         WHERE u.id = #{userId}
+    </select>
+
+    <select id="findByUserId" resultType="com.careertuner.admin.staffgrade.domain.AdminStaffGrade">
+        SELECT id, user_id, department, seniority, job_tier, pay_band, job_grade, pay_step,
+               base_salary, currency, effective_date, memo, updated_by, created_at, updated_at
+          FROM admin_staff_grade
+         WHERE user_id = #{userId}
+    </select>
+
+    <update id="upsertGrade">
+        INSERT INTO admin_staff_grade
+            (user_id, department, seniority, job_tier, pay_band, job_grade, pay_step,
+             base_salary, currency, effective_date, memo, updated_by)
+        VALUES
+            (#{userId}, #{department}, #{seniority}, #{jobTier}, #{payBand}, #{jobGrade}, #{payStep},
+             #{baseSalary}, #{currency}, #{effectiveDate}, #{memo}, #{updatedBy})
+        ON DUPLICATE KEY UPDATE
+            department = VALUES(department),
+            seniority = VALUES(seniority),
+            job_tier = VALUES(job_tier),
+            pay_band = VALUES(pay_band),
+            job_grade = VALUES(job_grade),
+            pay_step = VALUES(pay_step),
+            base_salary = VALUES(base_salary),
+            currency = VALUES(currency),
+            effective_date = VALUES(effective_date),
+            memo = VALUES(memo),
+            updated_by = VALUES(updated_by)
+    </update>
+
+    <insert id="insertHistory" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO admin_staff_grade_history
+            (user_id, old_values_json, new_values_json, changed_by, source, memo)
+        VALUES
+            (#{userId}, #{oldValuesJson}, #{newValuesJson}, #{changedBy}, #{source}, #{memo})
+    </insert>
+
+    <select id="findHistoryByUser" resultType="com.careertuner.admin.staffgrade.domain.AdminStaffGradeHistory">
+        SELECT id, user_id, old_values_json, new_values_json, changed_by, source, memo, created_at
+          FROM admin_staff_grade_history
+         WHERE user_id = #{userId}
+         ORDER BY created_at DESC, id DESC
+    </select>
+
+    <select id="findUserIdByEmail" resultType="long">
+        SELECT id FROM users WHERE email = #{email}
+    </select>
+
+    <select id="findCandidates" resultType="com.careertuner.admin.staffgrade.dto.AdminStaffCandidate">
+        SELECT u.id AS user_id, u.email, u.name, u.role,
+               (g.id IS NOT NULL) AS has_grade
+          FROM users u
+          LEFT JOIN admin_staff_grade g ON g.user_id = u.id
+         WHERE u.role IN ('ADMIN', 'SUPER_ADMIN')
+         ORDER BY u.email ASC
+    </select>
+</mapper>

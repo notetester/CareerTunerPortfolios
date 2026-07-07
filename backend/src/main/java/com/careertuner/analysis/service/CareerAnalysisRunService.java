@@ -15,6 +15,7 @@ import com.careertuner.analysis.domain.CareerAnalysisRun;
 import com.careertuner.analysis.dto.CareerAnalysisRunResponse;
 import com.careertuner.analysis.mapper.CareerAnalysisRunMapper;
 import com.careertuner.analysis.ai.prompt.CareerTrendPromptCatalog;
+import com.careertuner.applicationcase.service.AiUsageLogService;
 import com.careertuner.dashboard.ai.prompt.DashboardInsightPromptCatalog;
 import lombok.RequiredArgsConstructor;
 import tools.jackson.core.JacksonException;
@@ -34,6 +35,7 @@ public class CareerAnalysisRunService {
 
     private final CareerAnalysisRunMapper mapper;
     private final ObjectMapper objectMapper;
+    private final AiUsageLogService aiUsageLogService;
 
     /**
      * 같은 입력 지문(fingerprint)의 최신 실행을 재사용 후보로 반환한다.
@@ -94,16 +96,20 @@ public class CareerAnalysisRunService {
                     usage.model(),
                     usage.totalTokens());
         }
-        mapper.insertAiUsageLog(
+        if ("SUCCESS".equals(status)) {
+            aiUsageLogService.recordSuccessValues(
                 userId,
+                null,
                 analysisType,
-                status,
                 usage.model(),
                 usage.inputTokens(),
                 usage.outputTokens(),
                 usage.totalTokens(),
-                creditUsed,
-                errorMessage);
+                creditUsed);
+        } else {
+            mapper.insertAiUsageLog(userId, analysisType, status, usage.model(), usage.inputTokens(),
+                    usage.outputTokens(), usage.totalTokens(), 0, errorMessage);
+        }
         return CareerAnalysisRunResponse.from(run);
     }
 

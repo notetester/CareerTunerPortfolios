@@ -1,7 +1,9 @@
 import { useEffect, useRef, useState } from "react";
+import { Sparkles, X } from "lucide-react";
 
 import { intake } from "../api/autoPrepApi";
 import { useAutoPrepRun } from "../hooks/useAutoPrepRun";
+import { displayCompany, displayJobTitle } from "../lib/caseLabels";
 import type { AutoPrepRequest, PrepCaseCandidate, PrepModeOption } from "../types/autoPrep";
 import { AutoPrepWorkView } from "./AutoPrepWorkView";
 import { isAppContext } from "@/platform/capacitor";
@@ -34,6 +36,8 @@ export function AutoPrepChatModal({ open, initialRequest, onClose, onNavigate }:
   const [thinking, setThinking] = useState(false);
   const [answered, setAnswered] = useState(false);
   const started = useRef(false);
+  // 마지막 실행 요청 — 재시도 = 전체 재실행(부분 재실행 API 없음). 모달 닫으면 함께 초기화.
+  const lastRunReqRef = useRef<AutoPrepRequest | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -43,6 +47,7 @@ export function AutoPrepChatModal({ open, initialRequest, onClose, onNavigate }:
     }
     if (!open) {
       started.current = false;
+      lastRunReqRef.current = null;
       setMessages([]);
       setSlots({});
       setPhase("intake");
@@ -73,6 +78,7 @@ export function AutoPrepChatModal({ open, initialRequest, onClose, onNavigate }:
       if (res.ready) {
         setMessages((m) => [...m, { role: "ai", text: res.message }]);
         setPhase("running");
+        lastRunReqRef.current = req;
         void run.start(req);
       } else if (res.nextAsk === "CASE") {
         setMessages((m) => [...m, { role: "ai", text: res.message, chips: { kind: "case", candidates: res.candidates } }]);
@@ -90,7 +96,8 @@ export function AutoPrepChatModal({ open, initialRequest, onClose, onNavigate }:
   function pickCase(c: PrepCaseCandidate) {
     if (answered) return;
     setAnswered(true);
-    setMessages((m) => [...m, { role: "me", text: `${c.companyName} ${c.jobTitle}` }]);
+    // placeholder 원문은 발화 라벨로 안 내보낸다(F-02) — 슬롯 바인딩은 applicationCaseId 가 권위.
+    setMessages((m) => [...m, { role: "me", text: `${displayCompany(c.companyName)} ${displayJobTitle(c.jobTitle)}` }]);
     const next = { ...slots, applicationCaseId: c.id };
     setSlots(next);
     void step(next);
@@ -129,10 +136,10 @@ export function AutoPrepChatModal({ open, initialRequest, onClose, onNavigate }:
       >
         <div className="flex items-center justify-between border-b border-border px-4 py-3">
           <div className="flex items-center gap-2 text-sm font-semibold text-foreground">
-            <span aria-hidden>✦</span> AI 오케스트레이터
+            <Sparkles className="size-4 text-primary" aria-hidden /> AI 오케스트레이터
           </div>
           <button onClick={onClose} className="text-lg text-muted-foreground transition-colors hover:text-foreground" aria-label="닫기">
-            ✕
+            <X className="size-5" />
           </button>
         </div>
 
@@ -140,7 +147,7 @@ export function AutoPrepChatModal({ open, initialRequest, onClose, onNavigate }:
           {messages.map((msg, i) => (
             <div key={i} className={`flex gap-2 ${msg.role === "me" ? "justify-end" : ""}`}>
               {msg.role === "ai" && (
-                <div className="grid h-7 w-7 flex-none place-items-center rounded-full bg-primary/10 text-sm">✦</div>
+                <div className="grid h-7 w-7 flex-none place-items-center rounded-full bg-primary/10 text-primary"><Sparkles className="size-3.5" /></div>
               )}
               <div
                 className={`max-w-[80%] rounded-2xl px-3 py-2 text-[13.5px] leading-relaxed ${
@@ -159,8 +166,8 @@ export function AutoPrepChatModal({ open, initialRequest, onClose, onNavigate }:
                         disabled={answered || i !== lastIdx}
                         className="rounded-lg border border-border bg-card px-2.5 py-1.5 text-left text-xs transition hover:border-primary disabled:opacity-50"
                       >
-                        <div className="font-bold text-foreground">{c.companyName}</div>
-                        <div className="text-muted-foreground">{c.jobTitle}</div>
+                        <div className="font-bold text-foreground">{displayCompany(c.companyName)}</div>
+                        <div className="text-muted-foreground">{displayJobTitle(c.jobTitle)}</div>
                       </button>
                     ))}
                   </div>
@@ -185,7 +192,7 @@ export function AutoPrepChatModal({ open, initialRequest, onClose, onNavigate }:
 
           {thinking && (
             <div className="flex gap-2">
-              <div className="grid h-7 w-7 flex-none place-items-center rounded-full bg-primary/10 text-sm">✦</div>
+              <div className="grid h-7 w-7 flex-none place-items-center rounded-full bg-primary/10 text-primary"><Sparkles className="size-3.5" /></div>
               <div className="rounded-2xl rounded-bl-sm border border-border bg-card px-4 py-3">
                 <Dots />
               </div>
@@ -197,6 +204,7 @@ export function AutoPrepChatModal({ open, initialRequest, onClose, onNavigate }:
               running={run.running}
               parts={run.parts}
               caseId={caseId}
+              onRetry={() => { if (lastRunReqRef.current) void run.start(lastRunReqRef.current); }}
               onNavigate={(p) => {
                 onClose();
                 onNavigate(p);

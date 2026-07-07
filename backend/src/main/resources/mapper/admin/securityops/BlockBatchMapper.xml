@@ -1,0 +1,85 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.careertuner.admin.securityops.batch.BlockBatchMapper">
+
+    <insert id="insertBatch" useGeneratedKeys="true" keyProperty="id"
+            parameterType="com.careertuner.admin.securityops.batch.IpBlockBatch">
+        INSERT INTO admin_ip_block_batch
+            (batch_code, batch_name, source_type, source_name, rule_action, default_priority, active, memo, created_by)
+        VALUES
+            (#{batchCode}, #{batchName}, #{sourceType}, #{sourceName}, #{ruleAction}, #{defaultPriority},
+             #{active}, #{memo}, #{createdBy})
+    </insert>
+
+    <select id="findBatchById" resultType="com.careertuner.admin.securityops.batch.IpBlockBatchRow">
+        SELECT id, batch_code, batch_name, source_type, source_name, rule_action, default_priority,
+               active, total_rule_count, active_rule_count, memo, created_by, updated_by, created_at, updated_at
+          FROM admin_ip_block_batch
+         WHERE id = #{id}
+    </select>
+
+    <select id="findBatches" resultType="com.careertuner.admin.securityops.batch.IpBlockBatchRow">
+        SELECT id, batch_code, batch_name, source_type, source_name, rule_action, default_priority,
+               active, total_rule_count, active_rule_count, memo, created_by, updated_by, created_at, updated_at
+          FROM admin_ip_block_batch
+         <where>
+            <if test="active != null">AND active = #{active}</if>
+            <if test="keyword != null">
+                AND (batch_code LIKE CONCAT('%', #{keyword}, '%')
+                     OR batch_name LIKE CONCAT('%', #{keyword}, '%')
+                     OR source_name LIKE CONCAT('%', #{keyword}, '%'))
+            </if>
+         </where>
+         ORDER BY created_at DESC, id DESC
+         LIMIT #{limit}
+    </select>
+
+    <insert id="insertBatchRule">
+        INSERT INTO admin_security_block_rule
+            (rule_type, rule_value, scope, action_type, category, priority, control_mode, batch_id,
+             reason, active, is_effective_active, waf_sync_enabled, waf_sync_status, created_by)
+        VALUES
+            (#{ruleType}, #{ruleValue}, 'GLOBAL', #{actionType}, #{category}, #{priority}, 'BATCH', #{batchId},
+             #{reason}, 1, 1, 0, 'SKIPPED', #{createdBy})
+    </insert>
+
+    <select id="countRuleByTypeValue" resultType="int">
+        SELECT COUNT(*) FROM admin_security_block_rule WHERE rule_type = #{ruleType} AND rule_value = #{ruleValue}
+    </select>
+
+    <select id="countBatchRules" resultType="int">
+        SELECT COUNT(*) FROM admin_security_block_rule WHERE batch_id = #{batchId}
+    </select>
+
+    <select id="countActiveBatchRules" resultType="int">
+        SELECT COUNT(*) FROM admin_security_block_rule WHERE batch_id = #{batchId} AND active = 1
+    </select>
+
+    <update id="updateBatchCounts">
+        UPDATE admin_ip_block_batch
+           SET total_rule_count = #{total}, active_rule_count = #{active}, updated_by = #{updatedBy}
+         WHERE id = #{batchId}
+    </update>
+
+    <update id="setBatchActive">
+        UPDATE admin_ip_block_batch
+           SET active = #{active}, updated_by = #{updatedBy}
+         WHERE id = #{id}
+    </update>
+
+    <update id="setRulesActiveByBatch">
+        UPDATE admin_security_block_rule
+           SET active = #{active}
+         WHERE batch_id = #{batchId}
+           AND control_mode &lt;&gt; 'MANUAL_OVERRIDE'
+    </update>
+
+    <insert id="insertBatchOperation">
+        INSERT INTO admin_ip_block_batch_operation
+            (batch_id, operation_type, operation_option, requested_rule_count, affected_rule_count, actor_user_id, memo)
+        VALUES
+            (#{batchId}, #{operationType}, #{operationOption}, #{requested}, #{affected}, #{actorUserId}, #{memo})
+    </insert>
+
+</mapper>

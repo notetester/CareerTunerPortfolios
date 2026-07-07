@@ -19,7 +19,12 @@ import com.careertuner.admin.superadmin.dto.AdminPermissionAuditRow;
 import com.careertuner.admin.superadmin.dto.AdminPermissionGroupRow;
 import com.careertuner.admin.superadmin.dto.AdminPermissionPolicyRow;
 import com.careertuner.admin.superadmin.dto.AdminPermissionRequest;
+import com.careertuner.admin.superadmin.dto.AdminPermissionRequestRow;
 import com.careertuner.admin.superadmin.dto.AdminRoleRequest;
+import com.careertuner.admin.superadmin.dto.PermissionGovernanceDtos.BulkGrantRequest;
+import com.careertuner.admin.superadmin.dto.PermissionGovernanceDtos.BulkRevokeRequest;
+import com.careertuner.admin.superadmin.dto.PermissionGovernanceDtos.PermissionRequestCreate;
+import com.careertuner.admin.superadmin.dto.PermissionGovernanceDtos.RejectRequest;
 import com.careertuner.admin.superadmin.service.SuperAdminService;
 import com.careertuner.common.security.AuthUser;
 import com.careertuner.common.web.ApiResponse;
@@ -156,5 +161,50 @@ public class SuperAdminController {
                                                             @RequestParam(required = false) String sortDir,
                                                             @RequestParam(defaultValue = "100") int limit) {
         return ApiResponse.ok(service.audit(authUser, userId, sortBy, sortDir, limit));
+    }
+
+    /* ── 권한 요청/승인 워크플로우 ── */
+
+    @PostMapping("/permission-requests")
+    public ApiResponse<Void> requestPermissions(@AuthenticationPrincipal AuthUser authUser,
+                                                @RequestBody PermissionRequestCreate request) {
+        service.requestPermissions(authUser, request.userId(), request.permissionCodes(), request.description());
+        return ApiResponse.ok(null);
+    }
+
+    @GetMapping("/permission-requests")
+    public ApiResponse<List<AdminPermissionRequestRow>> permissionRequests(
+            @AuthenticationPrincipal AuthUser authUser,
+            @RequestParam(required = false, defaultValue = "PENDING") String status,
+            @RequestParam(defaultValue = "200") int limit) {
+        return ApiResponse.ok(service.permissionRequests(authUser, status, limit));
+    }
+
+    @PostMapping("/permission-requests/{id}/approve")
+    public ApiResponse<Void> approveRequest(@AuthenticationPrincipal AuthUser authUser, @PathVariable Long id) {
+        service.approvePermissionRequest(authUser, id);
+        return ApiResponse.ok(null);
+    }
+
+    @PostMapping("/permission-requests/{id}/reject")
+    public ApiResponse<Void> rejectRequest(@AuthenticationPrincipal AuthUser authUser,
+                                           @PathVariable Long id,
+                                           @RequestBody(required = false) RejectRequest request) {
+        service.rejectPermissionRequest(authUser, id, request == null ? null : request.reason());
+        return ApiResponse.ok(null);
+    }
+
+    /* ── 일괄 처리 ── */
+
+    @PostMapping("/bulk/grant-permissions")
+    public ApiResponse<Integer> bulkGrant(@AuthenticationPrincipal AuthUser authUser,
+                                          @RequestBody BulkGrantRequest request) {
+        return ApiResponse.ok(service.bulkGrantPermissions(authUser, request.userIds(), request.permissionCodes(), request.reason()));
+    }
+
+    @PostMapping("/bulk/revoke-admins")
+    public ApiResponse<Integer> bulkRevoke(@AuthenticationPrincipal AuthUser authUser,
+                                           @RequestBody BulkRevokeRequest request) {
+        return ApiResponse.ok(service.bulkRevokeAdmins(authUser, request.userIds(), request.reason()));
     }
 }

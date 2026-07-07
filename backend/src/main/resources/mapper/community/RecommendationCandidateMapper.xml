@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.careertuner.community.mapper.RecommendationCandidateMapper">
+
+    <!-- 추천 알림 후보: ACTIVE + 희망 직무 입력 사용자 (글 작성자 제외) -->
+    <select id="findActiveCandidates" resultType="com.careertuner.community.domain.RecommendationCandidate">
+        SELECT p.user_id     AS userId,
+               p.desired_job AS desiredJob,
+               p.skills      AS skillsJson
+          FROM user_profile p
+          JOIN users u ON u.id = p.user_id
+         WHERE u.status = 'ACTIVE'
+           AND p.desired_job IS NOT NULL
+           AND p.desired_job != ''
+           AND p.user_id != #{excludeUserId}
+         ORDER BY p.user_id
+         LIMIT #{limit}
+    </select>
+
+</mapper>

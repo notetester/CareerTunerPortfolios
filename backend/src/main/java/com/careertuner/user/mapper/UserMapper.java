@@ -33,5 +33,8 @@ public interface UserMapper {
 
     void markEmailVerified(Long id);
 
+    /** 전화번호를 저장하고 인증 완료로 표시한다(SMS OTP 검증 성공 시). */
+    void markPhoneVerified(@Param("id") Long id, @Param("phone") String phone);
+
     void updatePassword(@Param("id") Long id, @Param("password") String password);
 }

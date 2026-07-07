@@ -44,6 +44,10 @@ public record AdminFitAnalysisDetailResponse(
         String evidenceGateVersion,
         // 실제 gate reason 목록(상세 화면에서 '왜 검토 필요인지' 판단용). 축약(개인정보·원문 제외).
         List<FitSafetyResponse.Reason> gateReasons,
+        // gate review workflow 처리 상태(PENDING/RESOLVED/REANALYSIS_REQUESTED)와 처리 이력.
+        String gateReviewStatus,
+        LocalDateTime gateReviewedAt,
+        String gateReviewerName,
         List<FitAnalysisLearningTaskResponse> learningTasks,
         List<AdminFitAnalysisMemoResponse> memos
 ) {
@@ -93,6 +97,9 @@ public record AdminFitAnalysisDetailResponse(
                 result.getGateMaxSeverity(),
                 result.getEvidenceGateVersion(),
                 gateReasons,
+                result.getGateReviewStatus(),
+                result.getGateReviewedAt(),
+                result.getGateReviewerName(),
                 learningTasks,
                 memos);
     }

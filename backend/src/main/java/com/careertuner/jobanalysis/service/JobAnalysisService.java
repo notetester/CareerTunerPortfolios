@@ -23,6 +23,8 @@ import com.careertuner.jobanalysis.dto.JobAnalysisReviewRequest;
 import com.careertuner.jobanalysis.dto.JobAnalysisResponse;
 import com.careertuner.jobanalysis.mapper.JobAnalysisMapper;
 import com.careertuner.jobposting.domain.JobPosting;
+import com.careertuner.notification.domain.Notification;
+import com.careertuner.notification.service.NotificationService;
 
 import lombok.RequiredArgsConstructor;
 
@@ -39,6 +41,7 @@ public class JobAnalysisService {
     private final ApplicationCaseAnalysisStatusService statusService;
     private final TransactionTemplate transactionTemplate;
     private final BAnalysisJsonValidator analysisJsonValidator;
+    private final NotificationService notificationService;
 
     public JobAnalysisResponse createJobAnalysis(Long userId, Long applicationCaseId) {
         ApplicationCase applicationCase = accessService.requireOwned(userId, applicationCaseId);
@@ -78,6 +81,17 @@ public class JobAnalysisService {
                             generated.fallbackReason());
                 }
                 aiUsageLogService.recordLocalSuccess(userId, applicationCaseId, FEATURE_JOB_ANALYSIS, payload.usage());
+                // 공고 분석이 성공하면 사용자에게 완료 알림을 남긴다.
+                notificationService.notify(Notification.builder()
+                        .userId(userId)
+                        .type("JOB_ANALYSIS_COMPLETE")
+                        .targetType("APPLICATION_CASE")
+                        .targetId(applicationCaseId)
+                        .title("공고 분석이 완료되었습니다")
+                        .message("%s · %s 공고 분석 결과가 준비되었습니다.".formatted(
+                                applicationCase.getCompanyName(), applicationCase.getJobTitle()))
+                        .link("/applications/" + applicationCaseId + "/job-analysis")
+                        .build());
                 return response;
             });
         } catch (RuntimeException ex) {

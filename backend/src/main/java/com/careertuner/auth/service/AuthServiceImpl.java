@@ -26,6 +26,7 @@ import com.careertuner.common.config.CareerTunerProperties;
 import com.careertuner.common.exception.BusinessException;
 import com.careertuner.common.exception.ErrorCode;
 import com.careertuner.common.security.JwtTokenProvider;
+import com.careertuner.reward.service.RewardService;
 import com.careertuner.user.domain.User;
 import com.careertuner.user.mapper.UserMapper;
 
@@ -41,8 +42,6 @@ public class AuthServiceImpl implements AuthService {
     private static final String STATUS_DORMANT = "DORMANT";
     private static final String STATUS_BLOCKED = "BLOCKED";
     private static final String STATUS_DELETED = "DELETED";
-    private static final int MAX_FAILED_LOGIN_COUNT = 5;
-    private static final int FAILED_LOGIN_LOCK_MINUTES = 10;
 
     private final UserMapper userMapper;
     private final AuthMapper authMapper;
@@ -51,6 +50,23 @@ public class AuthServiceImpl implements AuthService {
     private final EmailService emailService;
     private final SocialOAuthService socialOAuthService;
     private final CareerTunerProperties props;
+    private final com.careertuner.activitylog.service.SecurityHistoryService securityHistoryService;
+    /**
+     * 로그인 실패 자동 잠금 정책(관리자 편집). OFF 면 무제약, ON 이면 정책값으로 잠근다.
+     * 기본값은 기존 상수(5회/10분)와 동일 — 도입 시 동작 무변경.
+     */
+    private final com.careertuner.loginrisk.service.LoginRiskPolicyService loginRiskPolicyService;
+    /** 활동 리워드 적립(하루 첫 로그인 시 DAILY_LOGIN, 일일 캡 1회). 규칙 off 면 미적립. */
+    private final RewardService rewardService;
+
+    /** 리워드 적립은 로그인 처리 실패로 이어지지 않도록 예외를 흡수한다. */
+    private void grantDailyLoginRewardSafely(Long userId) {
+        try {
+            rewardService.grant(userId, "DAILY_LOGIN", "LOGIN", null);
+        } catch (RuntimeException e) {
+            log.warn("일일 로그인 리워드 적립 실패 userId={} : {}", userId, e.getMessage());
+        }
+    }
 
     @Override
     @Transactional
@@ -80,6 +96,7 @@ public class AuthServiceImpl implements AuthService {
         // 회원가입 직후 자동 로그인 정책이므로 로그인 성공과 동일하게 접속 정보를 남긴다.
         userMapper.touchLastLoginAndResetFailures(user.getId());
         recordLoginHistory(user.getId(), "LOGIN", "LOCAL", "EMAIL", email, true, null, context);
+        grantDailyLoginRewardSafely(user.getId());
         return issueTokens(user, context);
     }
 
@@ -106,19 +123,26 @@ public class AuthServiceImpl implements AuthService {
         if (!passwordEncoder.matches(request.password(), user.getPassword())) {
             userMapper.increaseFailedLogin(user.getId());
             recordLoginHistory(user.getId(), "LOGIN", "LOCAL", "EMAIL", email, false, "WRONG_PASSWORD", context);
-            if (user.getFailedLoginCount() + 1 >= MAX_FAILED_LOGIN_COUNT) {
-                LocalDateTime blockedUntil = LocalDateTime.now().plusMinutes(FAILED_LOGIN_LOCK_MINUTES);
-                String reason = "로그인 실패 " + MAX_FAILED_LOGIN_COUNT + "회 초과";
-                userMapper.lockForFailedLogin(user.getId(), blockedUntil, reason);
-                authMapper.revokeAllForUser(user.getId());
-                authMapper.insertUserStatusHistory(user.getId(), null, user.getStatus(), STATUS_BLOCKED,
-                        reason, "자동 계정 잠금", blockedUntil);
+            // 자동 잠금 정책 — OFF 면 무제약(집계만), ON 이면 임계 초과 시 잠금.
+            if (loginRiskPolicyService.isLockoutEnabled()) {
+                int maxCount = loginRiskPolicyService.getMaxFailedCount();
+                if (user.getFailedLoginCount() + 1 >= maxCount) {
+                    LocalDateTime blockedUntil = LocalDateTime.now()
+                            .plusMinutes(loginRiskPolicyService.getLockMinutes());
+                    String reason = "로그인 실패 " + maxCount + "회 초과";
+                    userMapper.lockForFailedLogin(user.getId(), blockedUntil, reason);
+                    authMapper.revokeAllForUser(user.getId());
+                    authMapper.insertUserStatusHistory(user.getId(), null, user.getStatus(), STATUS_BLOCKED,
+                            reason, "자동 계정 잠금", blockedUntil);
+                }
             }
             throw invalidLogin();
         }
 
         userMapper.touchLastLoginAndResetFailures(user.getId());
         recordLoginHistory(user.getId(), "LOGIN", "LOCAL", "EMAIL", email, true, null, context);
+        // 하루 첫 로그인 리워드(일일 캡 1회, 규칙 on 일 때만). 실패해도 로그인은 정상 처리.
+        grantDailyLoginRewardSafely(user.getId());
         return issueTokens(user, context);
     }
 
@@ -182,6 +206,7 @@ public class AuthServiceImpl implements AuthService {
         if (ev.getUserId() != null) {
             userMapper.markEmailVerified(ev.getUserId());
         }
+        securityHistoryService.record("EMAIL_VERIFY", "COMPLETE", ev.getUserId(), true, null, null);
         return true;
     }
 
@@ -208,6 +233,7 @@ public class AuthServiceImpl implements AuthService {
         recordLoginHistory(user.getId(), "PASSWORD_RESET", "LOCAL", "EMAIL", email, true, null, context);
         EmailVerification verification = issueEmailVerification(user, "RESET_PW", 1);
         emailService.sendPasswordResetEmail(user.getEmail(), verification.getToken());
+        securityHistoryService.record("RESET_PASSWORD", "REQUEST", user.getId(), true, email, null);
     }
 
     @Override
@@ -226,6 +252,7 @@ public class AuthServiceImpl implements AuthService {
         userMapper.updatePassword(user.getId(), passwordEncoder.encode(request.newPassword()));
         authMapper.revokeAllForUser(user.getId());
         recordLoginHistory(user.getId(), "PASSWORD_RESET", "LOCAL", "EMAIL", user.getEmail(), true, null, context);
+        securityHistoryService.record("RESET_PASSWORD", "COMPLETE", user.getId(), true, user.getEmail(), null);
     }
 
     @Override

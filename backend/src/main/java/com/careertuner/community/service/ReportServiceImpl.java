@@ -16,6 +16,7 @@ import com.careertuner.community.dto.CreateReportRequest;
 import com.careertuner.community.mapper.CommunityCommentMapper;
 import com.careertuner.community.mapper.CommunityPostMapper;
 import com.careertuner.community.mapper.ReportMapper;
+import com.careertuner.community.moderation.event.NewReportEvent;
 import com.careertuner.community.moderation.event.ReportClassifyRequiredEvent;
 
 import lombok.RequiredArgsConstructor;
@@ -59,7 +60,11 @@ public class ReportServiceImpl implements ReportService {
                 .detail(request.detail())
                 .status("PENDING")
                 .build());
+        // 누적 신고 수 +1 — 임계 이상이면 목록에서 비작성자에게 자동 블러된다.
+        reportMapper.incrementPostReportCount(request.targetId());
         eventPublisher.publishEvent(new ReportClassifyRequiredEvent(request.targetId()));
+        // 관리자 알림(NEW_REPORT) — 커밋 후 AFTER_COMMIT 리스너에서 팬아웃(트랜잭션 분리)
+        eventPublisher.publishEvent(new NewReportEvent(request.targetId()));
         log.info("게시글 신고 postId={} reporterId={}", request.targetId(), userId);
     }
 
@@ -81,6 +86,7 @@ public class ReportServiceImpl implements ReportService {
                 .detail(request.detail())
                 .status("PENDING")
                 .build());
+        reportMapper.incrementCommentReportCount(request.targetId());
         log.info("댓글 신고 commentId={} reporterId={}", request.targetId(), userId);
     }
 }
