@@ -10,6 +10,7 @@ import org.springframework.web.bind.annotation.RestController;
 import com.careertuner.common.security.AuthUser;
 import com.careertuner.common.web.ApiResponse;
 import com.careertuner.user.dto.AccountInfoResponse;
+import com.careertuner.user.dto.EmailRegistrationRequest;
 import com.careertuner.user.dto.LoginIdRequest;
 import com.careertuner.user.dto.PhoneRequest;
 import com.careertuner.user.service.UserAccountService;
@@ -40,5 +41,12 @@ public class UserAccountController {
     public ApiResponse<AccountInfoResponse> setPhone(@AuthenticationPrincipal AuthUser authUser,
                                                      @Valid @RequestBody PhoneRequest request) {
         return ApiResponse.ok(service.setPhone(authUser.id(), request.phone()));
+    }
+
+    @PostMapping("/email-registration")
+    public ApiResponse<Void> requestEmailRegistration(@AuthenticationPrincipal AuthUser authUser,
+                                                      @Valid @RequestBody EmailRegistrationRequest request) {
+        service.requestEmailRegistration(authUser.id(), request.email());
+        return ApiResponse.ok();
     }
 }

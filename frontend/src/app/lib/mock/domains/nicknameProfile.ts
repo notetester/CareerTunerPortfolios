@@ -81,7 +81,11 @@ const account: AccountInfo = {
   loginIdSet: false,
   phone: null,
   phoneVerified: false,
+  emailVerified: true,
+  temporaryEmail: false,
+  emailRegistrationRequired: false,
   passwordEnabled: true,
+  passwordSetupRequired: false,
   linkedProviders: ["KAKAO"],
 };
 
@@ -225,6 +229,19 @@ export const nicknameProfileRoutes: MockRoute[] = [
       return account;
     },
   },
+  {
+    method: "POST",
+    pattern: /^\/account\/email-registration$/,
+    handler: ({ body }) => {
+      const req = body as { email?: string };
+      account.email = (req?.email ?? account.email).trim().toLowerCase();
+      account.emailVerified = true;
+      account.temporaryEmail = false;
+      account.emailRegistrationRequired = false;
+      return null;
+    },
+  },
+  { method: "POST", pattern: /^\/auth\/password\/reset-request$/, handler: () => null },
 
   // ── 전화번호 SMS OTP(데모: 실 키 없이 발송→입력→검증 완결) ──
   { method: "GET", pattern: /^\/auth\/phone\/status$/, handler: () => ({ phone: account.phone, phoneVerified: account.phoneVerified }) },

@@ -15,6 +15,9 @@ public interface UserAccountService {
     /** 전화번호 설정/변경(전역 UNIQUE, 인증은 선택적·스텁). */
     AccountInfoResponse setPhone(Long userId, String phone);
 
+    /** 실제 이메일 등록/변경 인증 메일 발송. 링크 인증 완료 전까지는 기존 이메일을 유지한다. */
+    void requestEmailRegistration(Long userId, String email);
+
     UserResumeDetailResponse getResumeDetail(Long userId);
 
     UserResumeDetailResponse saveResumeDetail(Long userId, UserResumeDetailRequest request);
