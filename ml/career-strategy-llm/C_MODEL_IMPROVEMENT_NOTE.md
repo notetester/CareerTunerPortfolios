@@ -32,25 +32,31 @@
 - **단순 수정은 역효과**: 절 분할은 "두 가지 모두" 대용어 참조를 끊어 다시 놓치고, 근접성 완화는
   "Java 는 보유하지만 Kafka 는 필수" 류를 오탐. reports 가 이미 이 어려움으로 review-first(오탐 허용)를 택함.
 
-## 3. 왜 "측정 먼저"인가 (역효과 검증의 전제)
+## 3. 측정 = 유효(confound 없음), R3 두 실패모드 검증
 
-외부 캡처 재현율 측정은 **confound 로 불가**: R3 는 내부 `FitAnalysisAiResult` 를 감사하는데 API 응답은
-조립 후 뷰라 텍스트가 다르다(GATE_ADVERSARIAL_LIVE_RESULT.md §정정). **게이트 FP율을 모른 채 heuristic·
-confidence 를 바꾸면 역효과를 검증할 수 없다.** 그래서 계측·특성화가 선행.
+**confound 없음**: `FitAnalysisServiceImpl` 이 조립 완료 `ai` 를 R3 에 넘기고 응답 `data` 도 같은 `ai` 필드로
+저장한다 → **캡처 data == R3 감사입력**. (앞서 confound 로 과잉정정했으나 코드 확인 후 재정정 — 정직하게 남김.)
+따라서 외부 캡처 + 판정단 대조로 R3 의 FP/FN 을 잰다.
+
+**검증된 R3 실패모드 2종**(EvidenceGateServiceTest 특성화 앵커):
+- **FP — 코칭·미래형 '강점'**: EA-GV2-107 "타입스크립트로 전환... 면접에서 강점으로 활용하라"(학습 행동)를
+  '강점'(POSSESSION)+alias+결핍無 로 보유 단정 오탐. 미래 권고이지 현재 보유 아님.
+- **FN — 같은 문장 LACK 억제**: EA-GV2-109 자유텍스트 자기모순("두 가지 모두 보유"+다른 스킬 "없어")을 놓침.
+- 모델 자체는 최종 텍스트에서 명확한 보유 단정 거의 없음(판정단 both-agree 1/67).
 
 ## 4. 지금 한 것 (안전한 토대, 동작 무변경)
 
-- **R3 계측**: `EvidenceGateService` 에 감사추적 debug 로그(logger `careertuner.evidencegate.audit`) 추가 —
-  결정별로 R3 가 실제 감사한 텍스트·탐지대상·판정을 남긴다. DEBUG 시에만 동작, 판정값 불변.
-- **특성화 테스트 2종**(EvidenceGateServiceTest): 109형 FN(같은 문장 LACK 억제 → PASSED)과 억제 격리
-  (혼합 LACK 제거 시 → REVIEW)를 못박는 **회귀 앵커**. 향후 heuristic 개선의 역효과(FP 증가·FN 잔존) 검증 기준.
+- **R3 계측**: `EvidenceGateService` 감사추적 debug 로그(`careertuner.evidencegate.audit`) — 결정별 감사텍스트·
+  탐지대상·판정. DEBUG 시에만, 판정값 불변.
+- **특성화 테스트 3종**: FP(강점/코칭 오탐) + FN(같은문장 LACK 억제) + FN 격리(혼합 LACK 제거 시 REVIEW).
+  향후 heuristic 개선의 **역효과(FP 증가·FN 잔존) 회귀 앵커**. 게이트 41 테스트 통과.
 
 ## 5. 다음 안전 단계 (순서·검증 포함)
 
-1. **베이스라인 측정**: audit 로그 DEBUG + 적대 픽스처 실행 → R3 가 실제 감사한 텍스트를 판정단(Claude+Codex)이
-   대조 → R3 의 실제 FP/FN 정량화. (외부 캡처가 아닌 R3 감사입력 기준이라 confound 해소.)
-2. **heuristic 개선(측정 후에만)**: 내부 일관성 교차검(자유텍스트 보유단정 vs 구조 결정) 등 후보를 특성화
-   테스트 + 베이스라인으로 before/after 검증, **FP 증가 없을 때만 채택**.
-3. **신뢰도 통합(④)**: R3 gate 신호를 사용자 노출 신뢰도(`FitAnalysisConfidence`, 현재 입력완성도 전용·관리자만
-   게이트 확인)에 반영 — 단 게이트 FP율 측정 후 결정(FP 높으면 불필요한 저신뢰 경고 = 역효과).
-4. **출력 rewrite 자동화는 금지**(reports/58·59 R2g 보류: 문장 통째 치환이 정당 정보 삭제·malformed). review-first 유지.
+1. **heuristic 개선(측정됨 → 착수 가능)**: 두 실패모드를 겨냥한 후보 —
+   (a) FP: POSSESSION 에서 '강점' 분리 또는 코칭·미래 문장(전환하면서/활용하라/준비하세요 등 권고형) 제외,
+   (b) FN: 구조 결정(missingSkills/conditionMatrix UNMET) 대비 자유텍스트 보유단정 **내부 일관성 교차검**.
+   **반드시 3개 앵커 + 기존 41 테스트로 before/after 검증, FP 증가·기존 회귀 없을 때만 채택.**
+2. **신뢰도 통합(④)**: R3 gate 신호를 사용자 노출 신뢰도(`FitAnalysisConfidence`)에 반영 — 단 heuristic 의
+   FP 를 먼저 낮춘 뒤(FP 높은 상태로 사용자 경고 = 역효과).
+3. **출력 rewrite 자동화 금지**(reports/58·59 R2g 보류: 문장 통째 치환이 정당 정보 삭제·malformed). review-first 유지.

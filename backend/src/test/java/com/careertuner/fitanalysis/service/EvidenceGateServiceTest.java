@@ -445,6 +445,25 @@ class EvidenceGateServiceTest {
         assertThat(decision.reasons()).anySatisfy(reason -> assertThat(reason.claim()).isEqualTo("NestJS"));
     }
 
+    // ── 계측/특성화: 코칭·미래형 문장의 '강점'(POSSESSION) 오탐 (EA-GV2-107 실측, 2026-07-07) ──
+    // R3 감사입력 == API 응답(FitAnalysisServiceImpl 이 같은 ai 필드를 저장) 이므로 confound 없음. 107 은
+    // strategyActions 의 "타입스크립트로 전환... 면접에서 강점으로 활용하라"(학습 행동)를 '강점'(POSSESSION) +
+    // 타입스크립트(→TypeScript alias) + 결핍표현 無 로 읽어 보유 단정으로 오탐(FP)한다. FN(109)과 다른 실패모드.
+    @Test
+    void coachingActionWithStrengthWordIsFalsePositive_knownOverflag() {
+        FitAnalysisAiResult ai = aiFull(45, List.of("HTML"), List.of("TypeScript"),
+                "필수 스킬인 TypeScript가 없어 기여가 어렵고 HTML만 매칭됩니다.",
+                List.of(),
+                List.of("기존 JavaScript 코드를 타입스크립트로 전환하면서 면접에서 강점으로 활용할 수 있도록 준비하세요."),
+                DEFAULT_DECISION);
+        EvidenceGateDecision decision = gate.evaluate(
+                command(List.of("TypeScript"), List.of(), List.of("JavaScript", "HTML"), List.of()), ai);
+
+        // 현재 동작: 코칭 문장의 '강점'을 보유 단정으로 오탐 → REVIEW(FP). heuristic 개선 시 이 앵커로 FP 제거를 검증.
+        assertThat(decision.gateStatus()).isEqualTo(EvidenceGateDecision.STATUS_REVIEW_REQUIRED);
+        assertThat(decision.reasons()).anySatisfy(reason -> assertThat(reason.claim()).isEqualTo("TypeScript"));
+    }
+
     private static FitAnalysisAiResult ai(int fitScore, List<String> matched, List<String> missing, String fitSummary) {
         return ai(fitScore, matched, missing, fitSummary, DEFAULT_DECISION);
     }
