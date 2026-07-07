@@ -7,6 +7,7 @@ stable quality-gate metadata contract. The worker does not call OpenAI.
 from __future__ import annotations
 
 import argparse
+import base64
 import importlib.util
 import json
 import sys
@@ -20,7 +21,9 @@ from typing import Any
 SCRIPT_DIR = Path(__file__).resolve().parent
 DOCUMENT_SCRIPT = SCRIPT_DIR / "14_extract_document_text.py"
 SUPPORTED_SOURCE_TYPES = {"TEXT", "MANUAL", "URL", "HTML", "PDF", "IMAGE"}
-MAX_REQUEST_BODY_BYTES = 2 * 1024 * 1024
+# 기본(filePath/text) 요청은 작지만, sendBytes(파일 base64 동봉) 모드는 20MB 파일 → ~27MB base64.
+# 파일경로 공유(co-location) 없는 배포를 위해 상한을 32MB 로 둔다(업로드 실효 한도 ≤20MB + base64 33% + 여유).
+MAX_REQUEST_BODY_BYTES = 32 * 1024 * 1024
 
 
 def load_document_module():
@@ -122,8 +125,42 @@ def extract_from_file(payload: dict[str, Any], source_type: str) -> dict[str, An
         return {"text": DOCUMENT.normalize_text(text), "meta": meta, **meta}
 
 
+def extract_from_bytes(payload: dict[str, Any], source_type: str) -> dict[str, Any]:
+    """fileBase64(백엔드가 동봉한 파일 바이트)를 디코드해 임시파일로 OCR 한다.
+
+    파일경로 공유(co-location)가 없어도 되는 경로. 실패 시 결정론 에러 응답을 돌려준다.
+    """
+    b64 = string_value(payload, "fileBase64")
+    try:
+        data = base64.b64decode(b64, validate=True)
+    except Exception:
+        return quality_response(
+            text="",
+            strategy="IMAGE_PDF_OCR" if source_type == "PDF" else "IMAGE_OCR",
+            text_source="INVALID_BASE64",
+            warnings=["invalid_base64"],
+        )
+    file_name = string_value(payload, "fileName") or "upload"
+    suffix = Path(file_name).suffix or (".pdf" if source_type == "PDF" else ".png")
+    with tempfile.TemporaryDirectory(prefix="ct_job_posting_worker_bytes_") as tmp:
+        input_path = Path(tmp) / f"input{suffix}"
+        input_path.write_bytes(data)
+        output_dir = Path(tmp)
+        meta = DOCUMENT.extract_document(
+            input_path=input_path,
+            output_dir=output_dir,
+            existing_ocr_dir=None,
+        )
+        text_path, _ = DOCUMENT.output_paths(input_path, output_dir)
+        text = text_path.read_text(encoding="utf-8", errors="replace") if text_path.exists() else ""
+        return {"text": DOCUMENT.normalize_text(text), "meta": meta, **meta}
+
+
 def extract_job_posting(payload: dict[str, Any]) -> dict[str, Any]:
     source_type = normalize_source_type(payload.get("sourceType"))
+    # 우선순위: fileBase64(바이트 동봉 · co-location 불요) > filePath(기존) > text/기타.
+    if string_value(payload, "fileBase64"):
+        return extract_from_bytes(payload, source_type)
     file_path = string_value(payload, "filePath", "path")
     if file_path:
         return extract_from_file(payload, source_type)

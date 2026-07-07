@@ -7,7 +7,7 @@ import org.junit.jupiter.api.Test;
 import com.careertuner.admin.prompt.dto.AdminPromptView;
 
 /**
- * b-v5 프롬프트 계약 구조 테스트(235 §10 D-3 · B-1/B-2 흡수, D-6a 누출 보정) — 비R1.
+ * b-v6 프롬프트 계약 구조 테스트(235 §10 D-3 · B-1/B-2 흡수, D-6a 누출 보정, verifiedFacts 최소 강제) — 비R1.
  * WEB 근거 입력·sourceKind=WEB/URL 지시·WEB 미입력 가드·unknowns 유도 few-shot·
  * evidence 원문 인용 GOOD/BAD few-shot·버전 bump·레거시 보존을 고정한다.
  * 실효(unknowns 실생성·SUPPORTED 강등 감소)는 D-6 실R1 재검증에서 확인한다.
@@ -122,11 +122,25 @@ class CompanyAnalysisPromptCatalogTest {
                 .contains("evidence 재서술 — 금지");
     }
 
+    // ── b-v6: verifiedFacts 최소 생성 강제(0개 출력 회귀 대응) ──
+
+    /**
+     * b-v6: 실R1 이 verifiedFacts 를 항상 빈 배열로 내던 회귀 대응 — 최소 1개 생성 강제 +
+     * 공고문 사실(직무·자격 등)·회사명·직무명도 유효 fact 임을 명시한다(source="채용공고").
+     * interviewPoints("절대 비우지 않는다")와 달리 verifiedFacts 는 강제가 약했던 지점을 보정한다.
+     */
+    @Test
+    void systemPromptRequiresAtLeastOneVerifiedFactIncludingPostingFacts() {
+        assertThat(CompanyAnalysisPromptCatalog.SYSTEM_PROMPT)
+                .contains("최소 1개 이상 반드시 채운다")
+                .contains("공고문의 직무·주요업무·자격요건·고용형태와 회사명·직무명 자체도 유효한 검증된 사실");
+    }
+
     // ── 버전·뷰·레거시 ──
 
     @Test
     void versionBumpedForContractChange() {
-        assertThat(CompanyAnalysisPromptCatalog.VERSION).isEqualTo("b-v5");
+        assertThat(CompanyAnalysisPromptCatalog.VERSION).isEqualTo("b-v6");
     }
 
     @Test
@@ -134,7 +148,7 @@ class CompanyAnalysisPromptCatalogTest {
         AdminPromptView view = CompanyAnalysisPromptCatalog.view();
 
         assertThat(view.feature()).isEqualTo("company-analysis");
-        assertThat(view.version()).isEqualTo("b-v5");
+        assertThat(view.version()).isEqualTo("b-v6");
         assertThat(view.systemPrompt()).isEqualTo(CompanyAnalysisPromptCatalog.SYSTEM_PROMPT);
         assertThat(view.schemaSummary()).isEqualTo(CompanyAnalysisPromptCatalog.SCHEMA_SUMMARY);
     }

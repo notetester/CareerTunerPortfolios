@@ -9,6 +9,8 @@ import org.springframework.web.bind.annotation.RestController;
 
 import com.careertuner.admin.settings.dto.AdminJobPostingFallbackSettingRequest;
 import com.careertuner.admin.settings.dto.AdminJobPostingFallbackSettingResponse;
+import com.careertuner.admin.settings.dto.AdminJobPostingUploadLimitSettingRequest;
+import com.careertuner.admin.settings.dto.AdminJobPostingUploadLimitSettingResponse;
 import com.careertuner.admin.settings.service.AdminAiSettingsService;
 import com.careertuner.common.security.AuthUser;
 import com.careertuner.common.web.ApiResponse;
@@ -33,5 +35,18 @@ public class AdminAiSettingsController {
             @AuthenticationPrincipal AuthUser authUser,
             @RequestBody AdminJobPostingFallbackSettingRequest request) {
         return ApiResponse.ok(service.updateJobPostingFallback(authUser, request));
+    }
+
+    @GetMapping("/upload-size")
+    public ApiResponse<AdminJobPostingUploadLimitSettingResponse> jobPostingUploadLimit(
+            @AuthenticationPrincipal AuthUser authUser) {
+        return ApiResponse.ok(service.jobPostingUploadLimit(authUser));
+    }
+
+    @PatchMapping("/upload-size")
+    public ApiResponse<AdminJobPostingUploadLimitSettingResponse> updateJobPostingUploadLimit(
+            @AuthenticationPrincipal AuthUser authUser,
+            @RequestBody AdminJobPostingUploadLimitSettingRequest request) {
+        return ApiResponse.ok(service.updateJobPostingUploadLimit(authUser, request));
     }
 }

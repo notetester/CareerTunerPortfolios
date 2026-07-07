@@ -109,6 +109,6 @@ Last updated: 2026-07-02
 - [x] 완료 — gold label 확정: disagreement13(TRUE 0/13, offline over-count 근원=모델 자기신고 metric 합산 규명) + A-only 11건([AIDocs report 82](../../docs/ai-reports/areas/c-career-strategy/reports/82_gold_labels_and_e1_r3_replay.md)).
 - [x] 완료 — model-card 개정(2026-07-02): post-R3 재벤치마크 결과·해소된 limitation 반영.
 - [ ] 미완료 — model-card 다음 개정: R3 **운영** 데이터(실사용 gate reason 분포·FP/FN 신호) 축적 후 반영.
-- [x] 완료 — GPU 옵션2 §6 서버축 부하 테스트(baseline/np2/np4 × 동시성 2·4, A-only 120요청/조합) + MLM 축 멀티모델 실측: NP=2/MLM=8 확정. 결과 `benchmarks/gpu-concurrency-loadtest/`(README + mlm-multimodel-probe).
-- [ ] 미완료 — 옵션4 백엔드축 부하 측정(gpu-gate ON permits 스윕) 및 permits 확정 — 기능 정합성은 로컬 스텁 통합테스트로 검증됨(#229), 실부하 최적 permits 는 미측정.
+- [x] 완료 — GPU 옵션2 서버축 최종 확정 = **NP=2/MLM=8**. (a) NP 단일모델 부하(np2 채택), (b) MLM 멀티모델 상주 실측(3→8), (c) NP×MLM 그리드(NP{1,2,4,8}×MLM{3,8}, 5모델 동시부하)로 **NP=8 기각**(KV×슬롯이 VRAM 포화→붕괴, cold 0→60/120, NP 역U자). 결과 `benchmarks/gpu-concurrency-loadtest/`(README·mlm-multimodel-probe·np-mlm-grid).
+- [x] 완료 — 옵션4 게이트 permits 확정 = **12**. 게이트=단일 전역 세마포어라 permits=총 동시 GPU 호출 캡 → 동시성 스윕(NP=2/MLM=8 고정, 재시작 없이 클라 동시성만 2~48)으로 처리량 포화 무릎점 12 측정(이후 지연만 선형 증가·하드 절벽 없음). 기본값 2→12 반영(게이트 여전히 OFF). 기능 정합성은 스텁 통합테스트(#229). 결과 `benchmarks/gpu-concurrency-loadtest/permits-concurrency-sweep.md`. 종합 정책 문서 본체 `docs/GPU_CONCURRENCY_POLICY.md`.
 - [ ] 미완료(다도메인 확장 시) — **interview-3b(D) 양자화**: 현재 6.18GB f16 이라 5모델 동시 상주 시 VRAM 아웃라이어(6번째 축출 유발). Q4 로 재빌드(≈2GB)하면 6모델 여지 — 동시 상주 수의 실제 레버는 MLM 이 아닌 모델 크기/VRAM. D interview OSS 실활성 전제.

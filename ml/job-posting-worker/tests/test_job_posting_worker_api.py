@@ -1,3 +1,4 @@
+import base64
 import importlib.util
 import json
 import sys
@@ -81,6 +82,39 @@ class JobPostingWorkerApiTest(unittest.TestCase):
         self.assertIn("modelVersions", result)
         self.assertFalse(result["fallbackEligible"])
         self.assertIn("worker_error:ValueError", result["warnings"])
+
+    def test_file_base64_takes_priority_over_file_path(self):
+        module = load_script()
+        encoded = base64.b64encode(passing_text().encode("utf-8")).decode("ascii")
+
+        # filePath 는 존재하지 않는 경로 → fileBase64 를 우선 사용해 디코드→temp file→추출까지 성공해야 한다.
+        result = module.extract_job_posting(
+            {
+                "sourceType": "TEXT",
+                "fileName": "posting.txt",
+                "fileBase64": encoded,
+                "filePath": "/nonexistent/should-not-be-read.txt",
+            }
+        )
+
+        self.assertEqual(result["strategy"], "TEXT_DIRECT")
+        self.assertEqual(result["qualityStatus"], "PASS")
+        self.assertIn("Responsibilities", result["text"])
+
+    def test_invalid_base64_returns_invalid_base64_source(self):
+        module = load_script()
+
+        result = module.extract_job_posting(
+            {
+                "sourceType": "IMAGE",
+                "fileName": "broken.png",
+                "fileBase64": "@@@ not valid base64 @@@",
+            }
+        )
+
+        # DOCUMENT 호출 전에 결정론 에러로 빠져야 한다(디코드 실패).
+        self.assertEqual(result["text"], "")
+        self.assertIn("invalid_base64", result["warnings"])
 
 
 if __name__ == "__main__":
