@@ -18,6 +18,8 @@ public interface UserAccountService {
     /** 실제 이메일 등록/변경 인증 메일 발송. 링크 인증 완료 전까지는 기존 이메일을 유지한다. */
     void requestEmailRegistration(Long userId, String email);
 
+    AccountInfoResponse unlinkSocial(Long userId, String provider);
+
     UserResumeDetailResponse getResumeDetail(Long userId);
 
     UserResumeDetailResponse saveResumeDetail(Long userId, UserResumeDetailRequest request);

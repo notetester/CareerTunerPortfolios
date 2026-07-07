@@ -37,7 +37,7 @@ interface AuthContextValue {
   loading: boolean;
   isAuthenticated: boolean;
   login(identifier: string, password: string): Promise<void>;
-  register(email: string, password: string, name: string, consents: RegisterConsents): Promise<void>;
+  register(email: string, password: string, name: string, consents: RegisterConsents, loginId?: string): Promise<void>;
   socialLogin(provider: SocialProvider): void;
   logout(): Promise<void>;
   logoutAll(): Promise<void>;
@@ -80,10 +80,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(res.user);
   }, []);
 
-  const register = useCallback(async (email: string, password: string, name: string, consents: RegisterConsents) => {
+  const register = useCallback(async (
+    email: string,
+    password: string,
+    name: string,
+    consents: RegisterConsents,
+    loginId?: string,
+  ) => {
     const res = await api<TokenResponse>(
       "/auth/register",
-      { method: "POST", body: JSON.stringify({ email, password, name, ...consents }) },
+      { method: "POST", body: JSON.stringify({ email, loginId: loginId || null, password, name, ...consents }) },
       { auth: false },
     );
     setTokens({ accessToken: res.accessToken, refreshToken: res.refreshToken });

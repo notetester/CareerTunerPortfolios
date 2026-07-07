@@ -19,6 +19,9 @@ import org.springframework.web.bind.annotation.RestController;
 import com.careertuner.auth.dto.LoginRequest;
 import com.careertuner.auth.dto.LoginRequestContext;
 import com.careertuner.auth.dto.MeResponse;
+import com.careertuner.auth.dto.FindIdRequest;
+import com.careertuner.auth.dto.FindIdVerifyResponse;
+import com.careertuner.auth.dto.OAuthCallbackResult;
 import com.careertuner.auth.dto.PasswordResetConfirmRequest;
 import com.careertuner.auth.dto.PasswordResetRequest;
 import com.careertuner.auth.dto.RefreshRequest;
@@ -97,6 +100,11 @@ public class AuthController {
         return ApiResponse.ok(Map.of("duplicate", authService.isEmailTaken(value)));
     }
 
+    @GetMapping("/check/login-id")
+    public ApiResponse<Map<String, Boolean>> checkLoginId(@RequestParam String value) {
+        return ApiResponse.ok(Map.of("duplicate", authService.isLoginIdTaken(value)));
+    }
+
     // ── 이메일 인증 ──
 
     /** 이메일 링크 클릭 진입점. 검증 후 프런트 결과 페이지로 리다이렉트. */
@@ -110,6 +118,20 @@ public class AuthController {
     public ApiResponse<Void> resendVerification(@RequestParam String email) {
         authService.resendVerification(email);
         return ApiResponse.ok();
+    }
+
+    @PostMapping("/find-id/request")
+    public ApiResponse<Void> requestFindId(@Valid @RequestBody FindIdRequest request,
+                                           HttpServletRequest servletRequest) {
+        authService.requestFindId(request.email(), LoginRequestContext.from(servletRequest));
+        return ApiResponse.ok();
+    }
+
+    @GetMapping("/find-id/verify")
+    public ApiResponse<FindIdVerifyResponse> verifyFindId(@RequestParam String token,
+                                                          HttpServletRequest servletRequest) {
+        return ApiResponse.ok(new FindIdVerifyResponse(
+                authService.verifyFindId(token, LoginRequestContext.from(servletRequest))));
     }
 
     @PostMapping("/password/reset-request")
@@ -153,8 +175,12 @@ public class AuthController {
                                               HttpServletRequest servletRequest) {
         String frontend = props.getApp().getFrontendUrl();
         try {
-            TokenResponse tokens = authService.handleOAuthCallback(provider, code, state,
+            OAuthCallbackResult result = authService.handleOAuthCallback(provider, code, state,
                     LoginRequestContext.from(servletRequest));
+            if (result.linked()) {
+                return redirect(frontend + "/profile/detail?socialLinked=" + enc(result.provider()));
+            }
+            TokenResponse tokens = result.tokens();
             String fragment = "/auth/callback#accessToken=" + enc(tokens.accessToken())
                     + "&refreshToken=" + enc(tokens.refreshToken())
                     + "&expiresIn=" + tokens.expiresIn();

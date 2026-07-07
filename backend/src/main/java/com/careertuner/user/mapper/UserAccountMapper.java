@@ -23,6 +23,8 @@ public interface UserAccountMapper {
     /** 연결된 소셜 provider 목록(user_social). */
     List<String> findLinkedProviders(Long userId);
 
+    int countLinkedProviders(Long userId);
+
     int countByLoginId(String loginId);
 
     int countByEmailExcludingUser(@Param("email") String email, @Param("excludeUserId") Long excludeUserId);
@@ -33,6 +35,8 @@ public interface UserAccountMapper {
     int setLoginIdIfAbsent(@Param("userId") Long userId, @Param("loginId") String loginId);
 
     void updatePhone(@Param("userId") Long userId, @Param("phone") String phone);
+
+    void deleteSocial(@Param("userId") Long userId, @Param("provider") String provider);
 
     // ── 이력서 상세 스펙 ──
 

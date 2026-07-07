@@ -7,7 +7,7 @@ import { Badge } from "../components/ui/badge";
 import { Checkbox } from "../components/ui/checkbox";
 import { Input } from "../components/ui/input";
 import { ApiError } from "../lib/api";
-import { checkEmailDuplicate } from "../auth/authApi";
+import { checkEmailDuplicate, checkLoginIdDuplicate } from "../auth/authApi";
 import { Sparkles, Mail, Lock, Eye, EyeOff, CheckCircle2, ArrowRight, Loader2, UserRound } from "lucide-react";
 
 export function LoginPage() {
@@ -16,6 +16,7 @@ export function LoginPage() {
   const [userType, setUserType] = useState<string>("취준생");
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
+  const [loginId, setLoginId] = useState("");
   const [password, setPassword] = useState("");
   const [passwordConfirm, setPasswordConfirm] = useState("");
   const [termsAgreed, setTermsAgreed] = useState(false);
@@ -26,6 +27,7 @@ export function LoginPage() {
   const [error, setError] = useState<string | null>(null);
   const [dormantEmail, setDormantEmail] = useState<string | null>(null);
   const [emailDuplicate, setEmailDuplicate] = useState(false);
+  const [loginIdDuplicate, setLoginIdDuplicate] = useState(false);
   const navigate = useNavigate();
   const { login, register, socialLogin } = useAuth();
 
@@ -33,6 +35,7 @@ export function LoginPage() {
     setMode(nextMode);
     setError(null);
     setEmailDuplicate(false);
+    setLoginIdDuplicate(false);
   };
 
   // 회원가입 시 이메일 입력을 벗어나면 중복 여부를 미리 확인한다(가입 전 즉시 피드백).
@@ -50,6 +53,24 @@ export function LoginPage() {
     }
   };
 
+  const handleLoginIdBlur = async () => {
+    const normalized = loginId.trim().toLowerCase();
+    if (mode !== "signup" || !normalized) {
+      setLoginIdDuplicate(false);
+      return;
+    }
+    if (!/^[a-z0-9_]{4,50}$/.test(normalized)) {
+      setLoginIdDuplicate(false);
+      return;
+    }
+    try {
+      const { duplicate } = await checkLoginIdDuplicate(normalized);
+      setLoginIdDuplicate(duplicate);
+    } catch {
+      setLoginIdDuplicate(false);
+    }
+  };
+
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setError(null);
@@ -61,8 +82,13 @@ export function LoginPage() {
       return;
     }
     if (mode === "signup") {
+      const normalizedLoginId = loginId.trim().toLowerCase();
       if (!name.trim()) {
         setError("이름을 입력해 주세요.");
+        return;
+      }
+      if (normalizedLoginId && !/^[a-z0-9_]{4,50}$/.test(normalizedLoginId)) {
+        setError("아이디는 영문 소문자, 숫자, 밑줄 4~50자로 입력해 주세요.");
         return;
       }
       if (password !== passwordConfirm) {
@@ -77,6 +103,10 @@ export function LoginPage() {
         setError("이미 사용 중인 이메일입니다. 다른 이메일을 사용해 주세요.");
         return;
       }
+      if (loginIdDuplicate) {
+        setError("이미 사용 중인 아이디입니다. 다른 아이디를 사용해 주세요.");
+        return;
+      }
     }
 
     try {
@@ -84,12 +114,13 @@ export function LoginPage() {
       if (mode === "login") {
         await login(loginIdentifier, password);
       } else {
+        const normalizedLoginId = loginId.trim().toLowerCase();
         await register(loginIdentifier, password, name.trim(), {
           termsAgreed,
           privacyAgreed,
           aiDataAgreed,
           marketingAgreed,
-        });
+        }, normalizedLoginId || undefined);
       }
       // ?returnTo=/... 가 있으면 로그인 후 그 화면으로 복귀(내부 경로만 허용 — open redirect 방지).
       // 폰 마이크 핸드오프(/mic-remote) 등 딥링크 진입에서 로그인 후 원래 화면으로 돌아오게 한다.
@@ -222,6 +253,27 @@ export function LoginPage() {
                   autoComplete="name"
                 />
               )}
+              {mode === "signup" && (
+                <div className="space-y-1">
+                  <div className="relative">
+                    <UserRound className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-slate-400" />
+                    <Input
+                      placeholder="로그인 아이디(선택, 영문/숫자/밑줄)"
+                      className="h-11 pl-9"
+                      value={loginId}
+                      onChange={(event) => {
+                        setLoginId(event.target.value);
+                        setLoginIdDuplicate(false);
+                      }}
+                      onBlur={() => void handleLoginIdBlur()}
+                      autoComplete="username"
+                    />
+                  </div>
+                  {loginIdDuplicate && (
+                    <p className="text-xs text-red-600">이미 사용 중인 아이디입니다. 다른 아이디를 사용해 주세요.</p>
+                  )}
+                </div>
+              )}
               <div className="relative">
                 <IdentifierIcon className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-slate-400" />
                 <Input
@@ -307,7 +359,10 @@ export function LoginPage() {
                 </>
               )}
               {mode === "login" && (
-                <div className="flex justify-end">
+                <div className="flex justify-end gap-3">
+                  <Link to="/auth/find-id" className="text-xs text-slate-500 hover:text-blue-600">
+                    아이디 찾기
+                  </Link>
                   <Link to="/auth/forgot-password" className="text-xs text-blue-600 hover:text-blue-700">
                     비밀번호를 잊으셨나요?
                   </Link>
