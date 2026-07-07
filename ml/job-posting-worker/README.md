@@ -23,7 +23,13 @@ Install the optional self-hosted OCR engine when the worker must process scanned
 python -m pip install -r requirements-ocr.txt
 ```
 
-This installs PaddleOCR/PaddlePaddle plus PyMuPDF for image-based PDF OCR.
+This installs PaddleOCR/PaddlePaddle, the `paddlex[ocr]` layout-OCR extras required by PP-StructureV3, and PyMuPDF for image-based PDF OCR. Without the `paddlex[ocr]` extras, PP-StructureV3 raises `paddlex.utils.deps.DependencyError` and the worker silently falls back to line OCR, which garbles tables/two-column postings.
+
+On the first OCR run PP-StructureV3 downloads its layout models to `~/.paddlex/official_models`. If the paddle model-source connectivity check is slow on the host, skip it once the models are cached so a worker restart does not stall the PP-StructureV3 warmup:
+
+```powershell
+$env:PADDLE_PDX_DISABLE_MODEL_SOURCE_CHECK="True"
+```
 
 Health check:
 

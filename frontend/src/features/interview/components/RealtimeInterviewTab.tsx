@@ -6,6 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/app/components/ui/ca
 import {
   createRealtimeSession,
   getMediaCapabilities,
+  getSessionReview,
   listSessionQuestions,
   saveMediaResult,
   scoreVoiceServer,
@@ -20,14 +21,18 @@ import {
 import { createNegotiatedRecorder, mediaUnsupportedReason } from "../hooks/mediaSupport";
 import { useDeviceCapabilities } from "../hooks/deviceCapabilities";
 import { DeviceHandoffCard, type HandoffReason } from "./DeviceHandoffCard";
+import { RemoteMicConnectCard } from "./RemoteMicConnectCard";
+import { MicLevelMeter } from "./MicLevelMeter";
 import type {
   InterviewQuestion,
   InterviewSession,
   MediaCapabilities,
+  SessionReviewItem,
   TranscriptLine,
   VoiceMetrics,
   VoiceScoreDetail,
 } from "../types/interview";
+import { getScoreColor } from "../types/interview";
 import { VoiceScorePanel } from "./VoiceScorePanel";
 import { useTutorialStore } from "../tutorial/tutorialStore";
 import { TutorialMediaPreview } from "../tutorial/TutorialMediaPreview";
@@ -51,8 +56,17 @@ export function RealtimeInterviewTab({ session }: { session: InterviewSession | 
   const [scoreDetail, setScoreDetail] = useState<VoiceScoreDetail | null>(null);
   const [metrics, setMetrics] = useState<VoiceMetrics | null>(null);
   const [saveNote, setSaveNote] = useState<string | null>(null);
+  // 답변 "내용" 채점 결과 — 종료 후 질문별 점수/피드백을 이 화면에서 바로 보여준다 (AvatarTab 과 동일 패턴).
+  const [contentItems, setContentItems] = useState<SessionReviewItem[]>([]);
+  const [contentScore, setContentScore] = useState<number | null>(null);
   // 원본 음성을 자체 추론 서버로 보내 정밀 분석할지 동의 (ADR-006). 해제 시 브라우저 지표만 사용.
   const [consent, setConsent] = useState(true);
+  // 체험판: 준비 질문 1개만 짧게 진행 (시연·맛보기용). 채점·저장 흐름은 풀버전과 동일.
+  const [trial, setTrial] = useState(false);
+  // 폰 마이크 핸드오프(WebRTC) — 마이크 없는 기기에서 폰의 마이크를 원격 입력으로 쓴다.
+  const [remoteMic, setRemoteMic] = useState<MediaStream | null>(null);
+  // 면접 중 마이크 레벨 시각화용 — micRef 와 같은 스트림 (ref 는 리렌더를 못 일으켜 state 로 별도 보관)
+  const [micStream, setMicStream] = useState<MediaStream | null>(null);
 
   const pcRef = useRef<RTCPeerConnection | null>(null);
   const micRef = useRef<MediaStream | null>(null);
@@ -105,6 +119,7 @@ export function RealtimeInterviewTab({ session }: { session: InterviewSession | 
     pcRef.current = null;
     micRef.current?.getTracks().forEach((t) => t.stop());
     micRef.current = null;
+    setMicStream(null);
   };
 
   const pushLine = useCallback((line: TranscriptLine) => {
@@ -122,9 +137,10 @@ export function RealtimeInterviewTab({ session }: { session: InterviewSession | 
       return;
     }
     const type = ev.type as string;
-    if (type === "response.audio_transcript.delta") {
+    // GA Realtime API는 response.output_audio_transcript.*, 구 beta는 response.audio_transcript.* — 둘 다 처리.
+    if (type === "response.output_audio_transcript.delta" || type === "response.audio_transcript.delta") {
       aiDraftRef.current += (ev.delta as string) ?? "";
-    } else if (type === "response.audio_transcript.done") {
+    } else if (type === "response.output_audio_transcript.done" || type === "response.audio_transcript.done") {
       const text = aiDraftRef.current.trim();
       aiDraftRef.current = "";
       if (text) pushLine({ role: "ai", text });
@@ -142,10 +158,12 @@ export function RealtimeInterviewTab({ session }: { session: InterviewSession | 
     setSaveNote(null);
     setScoreDetail(null);
     setMetrics(null);
+    setContentItems([]);
+    setContentScore(null);
     linesRef.current = [];
     setLines([]);
     try {
-      const rt = await createRealtimeSession(session.id);
+      const rt = await createRealtimeSession(session.id, trial ? 1 : undefined);
 
       const pc = new RTCPeerConnection();
       pcRef.current = pc;
@@ -156,8 +174,10 @@ export function RealtimeInterviewTab({ session }: { session: InterviewSession | 
       };
 
       // 마이크 송신 + 온디바이스 분석(지표 샘플링 · 감정 분석용 녹음).
-      const mic = await navigator.mediaDevices.getUserMedia({ audio: true });
+      // 폰 마이크가 연결돼 있으면 그 원격 스트림을 쓴다 — clone 이라 종료(cleanup)해도 원본 연결은 유지된다.
+      const mic = remoteMic ? remoteMic.clone() : await navigator.mediaDevices.getUserMedia({ audio: true });
       micRef.current = mic;
+      setMicStream(mic);
       mic.getTracks().forEach((t) => pc.addTrack(t, mic));
 
       const tracker = new VoiceMetricsTracker();
@@ -181,18 +201,25 @@ export function RealtimeInterviewTab({ session }: { session: InterviewSession | 
       const dc = pc.createDataChannel("oai-events");
       dc.onmessage = (e) => handleEvent(e.data);
       dc.onopen = () => {
-        // 사용자 음성도 텍스트로 받도록 활성화.
+        // 사용자 음성도 텍스트로 받도록 활성화 (GA 스키마 — 구 input_audio_transcription 형식은 reject됨).
         dc.send(
           JSON.stringify({
             type: "session.update",
-            session: { input_audio_transcription: { model: "whisper-1" } },
+            session: {
+              type: "realtime",
+              audio: { input: { transcription: { model: "whisper-1" } } },
+            },
           }),
         );
-        // 면접관이 먼저 인사하며 면접을 시작하도록 유도.
+        // 면접관이 먼저 인사하며 면접을 시작하도록 유도. 체험판은 자기소개 없이 바로 질문 1개로.
         dc.send(
           JSON.stringify({
             type: "response.create",
-            response: { instructions: "지원자에게 한국어로 짧게 인사하고 자기소개를 요청하며 면접을 시작하라." },
+            response: {
+              instructions: trial
+                ? "지원자에게 한국어로 짧게 인사하고, 자기소개 요청 없이 준비된 질문을 바로 시작하라."
+                : "지원자에게 한국어로 짧게 인사하고 자기소개를 요청하며 면접을 시작하라.",
+            },
           }),
         );
       };
@@ -297,17 +324,26 @@ export function RealtimeInterviewTab({ session }: { session: InterviewSession | 
         err instanceof Error ? `결과 저장 실패: ${err.message}` : "결과 저장에 실패했습니다.",
       );
     }
-    // 답변 "내용" 채점: 트랜스크립트를 질문별로 채점해 저장한다(전달력 점수와 별개, interview_answer 경로 공유).
+    // 답변 "내용" 채점: 트랜스크립트를 질문별로 채점해 저장하고, 결과를 조회해 이 화면에 바로 표시한다.
     if (transcript.some((l) => l.role === "user")) {
       try {
-        const scored = await scoreVoiceTranscript(session.id, transcript);
+        const scored = await scoreVoiceTranscript(session.id, transcript, trial ? 1 : undefined);
         if (scored > 0) {
-          setSaveNote((prev) =>
-            `${prev ?? ""} 답변 ${scored}문항의 내용도 채점했습니다(리포트·복기에서 확인).`.trim(),
-          );
+          const review = await getSessionReview(session.id);
+          const answered = review.items.filter((it) => it.score != null && !!it.answerText?.trim());
+          if (answered.length > 0) {
+            setContentItems(answered);
+            setContentScore(
+              Math.round(answered.reduce((s, it) => s + (it.score ?? 0), 0) / answered.length),
+            );
+          }
+          setSaveNote((prev) => `${prev ?? ""} 답변 ${scored}문항의 내용도 채점했습니다.`.trim());
         }
       } catch {
         // 내용 채점 실패는 음성(전달력) 점수 저장을 막지 않는다.
+        setSaveNote((prev) =>
+          `${prev ?? ""} 답변 내용 채점에 실패했습니다 — 음성 점수만 저장되었습니다.`.trim(),
+        );
       }
     }
     setStatus("scored");
@@ -357,9 +393,25 @@ export function RealtimeInterviewTab({ session }: { session: InterviewSession | 
         </CardHeader>
         <CardContent className="space-y-4">
           <p className="text-sm text-slate-500">
-            AI 면접관이 준비된 질문{questions ? ` ${Math.min(questions.length, 6)}개` : ""}로 음성 면접을
+            AI 면접관이 준비된 질문
+            {questions ? ` ${trial ? 1 : Math.min(questions.length, 6)}개` : ""}로 음성 면접을
             진행합니다. 종료하면 답변 트랜스크립트와 음성 분석 점수(말 속도·군말·톤·자신감)가 저장됩니다.
           </p>
+
+          {(status === "idle" || status === "scored" || status === "error") && (
+            <label className="flex items-start gap-2 rounded-lg border border-slate-200 bg-slate-50 p-3 text-xs text-slate-600">
+              <input
+                type="checkbox"
+                checked={trial}
+                onChange={(e) => setTrial(e.target.checked)}
+                className="mt-0.5"
+              />
+              <span>
+                <b className="text-slate-700">체험판(1문제만)</b> — 자기소개 없이 준비된 첫 질문 하나만
+                짧게 진행합니다. 채점·저장은 동일하게 동작합니다.
+              </span>
+            </label>
+          )}
 
           {capabilities?.nonverbal ? (
             <label className="flex items-start gap-2 rounded-lg bg-slate-50 p-3 text-xs text-slate-600">
@@ -383,9 +435,13 @@ export function RealtimeInterviewTab({ session }: { session: InterviewSession | 
             )
           )}
 
-          {handoffReason && <DeviceHandoffCard sessionId={session.id} reason={handoffReason} />}
+          {/* 마이크 없음: ① 폰을 원격 마이크로 연결(면접은 이 화면에서), ② 세션 자체를 폰으로 이어하기 */}
+          {handoffReason === "no-microphone" && (
+            <RemoteMicConnectCard sessionId={session.id} onStream={setRemoteMic} />
+          )}
+          {handoffReason && !remoteMic && <DeviceHandoffCard sessionId={session.id} reason={handoffReason} />}
 
-          {supported && !handoffReason && (
+          {supported && (!handoffReason || (handoffReason === "no-microphone" && remoteMic)) && (
             <div className="flex flex-wrap items-center gap-2">
               {(status === "idle" || status === "scored" || status === "error") && (
                 <Button
@@ -414,6 +470,19 @@ export function RealtimeInterviewTab({ session }: { session: InterviewSession | 
             </div>
           )}
 
+          {/* 실제 마이크 입력 레벨 — 내 목소리가 들어가고 있는지 즉시 확인 */}
+          {status === "live" && (
+            <div className="flex items-center gap-3 rounded-lg bg-rose-50 px-3 py-2.5">
+              <Mic className="size-4 shrink-0 text-rose-600" />
+              <MicLevelMeter
+                stream={micStream}
+                bars={24}
+                className="h-5 flex-1 justify-center gap-[3px] text-rose-500"
+              />
+              <span className="shrink-0 text-xs font-semibold text-rose-700">내 목소리 인식 중</span>
+            </div>
+          )}
+
           {error && <p className="text-sm text-red-500">{error}</p>}
           {saveNote && <p className="text-xs font-semibold text-slate-500">{saveNote}</p>}
 
@@ -424,6 +493,37 @@ export function RealtimeInterviewTab({ session }: { session: InterviewSession | 
 
       {scoreDetail && metrics && (
         <VoiceScorePanel detail={scoreDetail} metrics={metrics} title="음성 모의면접 점수" />
+      )}
+
+      {/* 질문별 답변 내용 점수 (트랜스크립트 → 질문 매핑 채점) */}
+      {status === "scored" && contentScore != null && (
+        <Card className="border border-slate-200 bg-card">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-base">
+              답변 내용 점수
+              <span className={`ml-auto text-2xl font-black ${getScoreColor(contentScore)}`}>
+                {contentScore}
+                <span className="text-sm font-bold text-slate-400">/100</span>
+              </span>
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {contentItems.map((it) => (
+              <div key={it.questionId} className="rounded-lg border border-slate-100 bg-slate-50 p-3">
+                <div className="mb-1 flex items-baseline justify-between gap-2 text-sm">
+                  <span className="font-semibold text-slate-700">{it.question}</span>
+                  {it.score != null && (
+                    <span className={`shrink-0 font-bold ${getScoreColor(it.score)}`}>{it.score}</span>
+                  )}
+                </div>
+                {it.answerText && (
+                  <p className="mb-1 whitespace-pre-line text-xs text-slate-500">{it.answerText}</p>
+                )}
+                {it.feedback && <p className="text-[11px] text-slate-400">{it.feedback}</p>}
+              </div>
+            ))}
+          </CardContent>
+        </Card>
       )}
 
       {lines.length > 0 && (

@@ -39,10 +39,12 @@ class AuthServiceImplTest {
     private final CareerTunerProperties props = mock(CareerTunerProperties.class);
     private final SecurityHistoryService securityHistoryService = mock(SecurityHistoryService.class);
     private final LoginRiskPolicyService loginRiskPolicyService = mock(LoginRiskPolicyService.class);
+    private final com.careertuner.reward.service.RewardService rewardService =
+            mock(com.careertuner.reward.service.RewardService.class);
 
     private final AuthServiceImpl service = new AuthServiceImpl(
             userMapper, authMapper, passwordEncoder, jwtTokenProvider, emailService,
-            socialOAuthService, props, securityHistoryService, loginRiskPolicyService);
+            socialOAuthService, props, securityHistoryService, loginRiskPolicyService, rewardService);
 
     private static final String EMAIL = "user@test.com";
 

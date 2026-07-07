@@ -40,6 +40,14 @@ public class CareerAnalysisAiProviderProperties {
 
     private Oss oss = new Oss();
 
+    /**
+     * 폴백 체인 전체(OSS→Claude→OpenAI)의 총 시간예산. OSS 의 {@code oss.total-time-budget}(90s)은
+     * GPU tier 만 묶으므로, 이 값은 <b>사용자 대기 상한</b>을 캐스케이드 전체에 건다. 초과하면 아직
+     * 시작하지 않은 외부 tier 를 건너뛰고 즉시 결정론 Mock 안전망을 반환한다(화면 무깨짐 유지).
+     * 각 tier 의 per-timeout 합(최악 ~720s)을 방지한다. <b>0/음수 = 무제한(끔)</b>. 기본 120s.
+     */
+    private Duration chainTotalTimeBudget = Duration.ofSeconds(120);
+
     public boolean isOss() {
         return "oss".equalsIgnoreCase(provider);
     }

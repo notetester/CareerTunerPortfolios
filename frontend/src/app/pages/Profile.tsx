@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { AlertCircle, Brain, CheckCircle2, FileText, Plus, RefreshCw, Save, Sparkles, Trash2, User, X } from "lucide-react";
+import { useSearchParams } from "react-router";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
@@ -70,6 +71,55 @@ interface ProfileForm {
 }
 
 type AiToolType = "summary" | "skills" | "completeness";
+type ProfileTab = "basic" | "resume" | "selfIntro" | "experience" | "skills" | "certificates" | "ai";
+type TabRequirement = "필수" | "권장" | "선택";
+type TabStatusTone = "done" | "warning" | "empty";
+
+const profileTabValues: ProfileTab[] = ["basic", "resume", "selfIntro", "experience", "skills", "certificates", "ai"];
+
+const normalizeProfileTab = (value: string | null): ProfileTab => {
+  if (value === "career") return "experience";
+  if (value === "history") return "experience";
+  return profileTabValues.includes(value as ProfileTab) ? (value as ProfileTab) : "basic";
+};
+
+const profileTabMeta: Record<ProfileTab, { label: string; requirement: TabRequirement; guide: string }> = {
+  basic: {
+    label: "기본 정보",
+    requirement: "필수",
+    guide: "희망 직무와 근무 조건은 AI가 어떤 기준으로 프로필을 평가할지 정하는 기준값입니다.",
+  },
+  resume: {
+    label: "이력서 관리",
+    requirement: "필수",
+    guide: "이력서 원문은 경력 요약, 강점 추출, 직무 적합도 분석의 기본 자료로 사용됩니다.",
+  },
+  selfIntro: {
+    label: "자기소개서 관리",
+    requirement: "권장",
+    guide: "자기소개서는 지원동기, 강점, 성장 가능성을 설명하는 보조 자료입니다.",
+  },
+  experience: {
+    label: "경력/프로젝트 관리",
+    requirement: "필수",
+    guide: "경력과 프로젝트는 AI가 실제 수행 경험, 성과 근거, 직무 관련성을 판단하는 핵심 자료입니다.",
+  },
+  skills: {
+    label: "기술/역량 관리",
+    requirement: "필수",
+    guide: "기술과 역량은 희망 직무에서 요구하는 능력과 현재 보유 역량을 비교할 때 사용됩니다.",
+  },
+  certificates: {
+    label: "자격증/학력 관리",
+    requirement: "선택",
+    guide: "자격증, 어학, 학력은 직무 신뢰도와 추가 증빙을 보강하는 자료입니다.",
+  },
+  ai: {
+    label: "AI 결과",
+    requirement: "권장",
+    guide: "AI 분석 결과를 확인하고 필요한 문장은 자기소개서나 스킬 목록에 반영할 수 있습니다.",
+  },
+};
 
 const aiToolCopy: Record<AiToolType, { title: string; description: string; actionLabel: string }> = {
   summary: {
@@ -124,32 +174,45 @@ const skillHints = [
   "SQL",
 ];
 
-const resumeTemplate = `담당 업무:
-- 
+const resumeTemplate = `이력서 요약:
+- 희망 직무와 연결되는 경력/경험을 3~5줄로 요약합니다.
 
-사용 도구/업무 방식:
-- 
+핵심 역량:
+- 직무에 필요한 역량, 업무 도구, 강점을 한 줄씩 적습니다.
+
+주요 경력/경험:
+- 기관/회사/활동명:
+- 담당 역할:
+- 수행 업무:
+- 사용 도구/업무 방식:
 
 성과 또는 개선 결과:
-- 
+- 수치, 개선 전후, 피드백, 결과물을 함께 적습니다.
 
-배운 점:
-- `;
+자격/교육/기타:
+- 자격증, 교육 수료, 어학, 포트폴리오 링크를 적습니다.`;
 
-const selfIntroTemplate = `지원 직무와 연결되는 강점:
+const selfIntroTemplate = `지원동기:
+- 왜 이 직무에 지원하는지, 어떤 관심과 목표가 있는지 적습니다.
 
-대표 경험:
+직무 관련 경험:
+- 문제 상황, 맡은 역할, 해결 과정, 결과를 순서대로 적습니다.
+
+나의 강점:
+- 직무에 도움이 되는 성격, 태도, 업무 역량을 실제 사례와 연결합니다.
 
 성과와 배운 점:
+- 수치나 피드백이 있다면 함께 적고, 경험을 통해 배운 점을 정리합니다.
 
-앞으로 보완하고 싶은 부분:
-`;
+입사 후 포부:
+- 입사 후 어떤 방식으로 기여하고 성장할지 적습니다.`;
 
 export function ProfilePage() {
+  const [searchParams, setSearchParams] = useSearchParams();
   const [form, setForm] = useState<ProfileForm>(emptyForm);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [activeTab, setActiveTab] = useState("basic");
+  const [activeTab, setActiveTab] = useState<ProfileTab>(() => normalizeProfileTab(searchParams.get("tab")));
   const [activeAiView, setActiveAiView] = useState<AiToolType>("summary");
   const [aiLoading, setAiLoading] = useState<AiToolType | null>(null);
   const [message, setMessage] = useState<string | null>(null);
@@ -163,6 +226,7 @@ export function ProfilePage() {
   const skillItems = useMemo(() => linesToArray(form.skillsText), [form.skillsText]);
   const selectedSkillSet = useMemo(() => new Set(skillItems.map((item) => item.toLowerCase())), [skillItems]);
   const isDirty = useMemo(() => serializeProfileForm(form) !== savedSnapshot, [form, savedSnapshot]);
+  const tabStatuses = useMemo(() => getProfileTabStatuses(form, summaryResult, skillsResult, completeness), [form, summaryResult, skillsResult, completeness]);
   const aiConsentAgreed = consent?.aiDataAgreed === true;
 
   const load = async () => {
@@ -185,6 +249,18 @@ export function ProfilePage() {
   useEffect(() => {
     void load();
   }, []);
+
+  useEffect(() => {
+    setActiveTab(normalizeProfileTab(searchParams.get("tab")));
+  }, [searchParams]);
+
+  const changeProfileTab = (tab: string) => {
+    const nextTab = normalizeProfileTab(tab);
+    setActiveTab(nextTab);
+    const nextParams = new URLSearchParams(searchParams);
+    nextParams.set("tab", nextTab);
+    setSearchParams(nextParams, { replace: true });
+  };
 
   const update = (key: keyof ProfileForm, value: string) => {
     setForm((prev) => ({ ...prev, [key]: value }));
@@ -245,7 +321,7 @@ export function ProfilePage() {
       if (!saved) return;
     }
     setActiveAiView(type);
-    setActiveTab("ai");
+    changeProfileTab("ai");
     setAiLoading(type);
     setError(null);
     setMessage(null);
@@ -275,7 +351,7 @@ export function ProfilePage() {
   const addSkills = (skills: string[]) => {
     const next = mergeUniqueLines(form.skillsText, skills);
     update("skillsText", arrayToLines(next));
-    setActiveTab("skills");
+    changeProfileTab("skills");
     setMessage("선택한 역량 키워드를 내 스킬 목록에 추가했습니다. 저장을 눌러 반영해 주세요.");
   };
 
@@ -288,7 +364,7 @@ export function ProfilePage() {
     if (!cleaned.length) return;
     const block = [`[${title}]`, ...cleaned.map((value) => `- ${value}`)].join("\n");
     update("selfIntro", [form.selfIntro.trim(), block].filter(Boolean).join("\n\n"));
-    setActiveTab("resume");
+    changeProfileTab("selfIntro");
     setMessage("AI 결과를 자기소개/강점 메모에 추가했습니다. 저장을 눌러 반영해 주세요.");
   };
 
@@ -398,16 +474,22 @@ export function ProfilePage() {
           </aside>
 
           <section className="space-y-5">
-            <Tabs value={activeTab} onValueChange={setActiveTab}>
+            <Tabs value={activeTab} onValueChange={changeProfileTab}>
               <TabsList className="h-auto w-full justify-start overflow-x-auto border border-slate-200 bg-card p-1">
-                <TabsTrigger value="basic">기본</TabsTrigger>
-                <TabsTrigger value="resume">이력서</TabsTrigger>
-                <TabsTrigger value="skills">직무 역량</TabsTrigger>
-                <TabsTrigger value="history">학력/경력/활동</TabsTrigger>
-                <TabsTrigger value="ai">AI 결과</TabsTrigger>
+                {profileTabValues.map((tab) => (
+                  <TabsTrigger key={tab} value={tab} className="h-auto min-w-fit flex-col items-start gap-1 px-3 py-2">
+                    <span className="flex items-center gap-1.5">
+                      <span>{profileTabMeta[tab].label}</span>
+                      <RequirementBadge requirement={profileTabMeta[tab].requirement} />
+                    </span>
+                    <TabStatusBadge status={tabStatuses[tab]} />
+                  </TabsTrigger>
+                ))}
               </TabsList>
 
-              <TabsContent value="basic" className="mt-5">
+              {activeTab === "basic" && (
+                <TabsContent value="basic" className="mt-5">
+                <TabGuide tab="basic" status={tabStatuses.basic} />
                 <Card className="border-slate-200 bg-card">
                   <CardHeader>
                     <CardTitle className="text-base">희망 조건</CardTitle>
@@ -431,19 +513,19 @@ export function ProfilePage() {
                     <Field label="희망 연봉">
                       <Input maxLength={80} value={form.preferences.salary} onChange={(event) => updatePreferences("salary", event.target.value)} placeholder="예: 회사 내규, 3,200만원 이상" />
                     </Field>
-                    <Field label="포트폴리오/활동 링크" className="md:col-span-2">
-                      <Textarea value={form.portfolioLinksText} onChange={(event) => update("portfolioLinksText", event.target.value)} placeholder="노션, 블로그, 작업물, 활동 기록 링크를 한 줄에 하나씩 입력" rows={4} />
-                    </Field>
                   </CardContent>
                 </Card>
-              </TabsContent>
+                </TabsContent>
+              )}
 
-              <TabsContent value="resume" className="mt-5">
+              {activeTab === "resume" && (
+                <TabsContent value="resume" className="mt-5">
+                <TabGuide tab="resume" status={tabStatuses.resume} />
                 <Card className="border-slate-200 bg-card">
                   <CardHeader>
                     <CardTitle className="flex items-center gap-2 text-base">
                       <FileText className="size-4 text-blue-600" />
-                      이력서/자기소개
+                      이력서 관리
                     </CardTitle>
                   </CardHeader>
                   <CardContent className="space-y-4">
@@ -451,21 +533,39 @@ export function ProfilePage() {
                       <Button variant="outline" size="sm" onClick={insertResumeTemplate}>
                         이력서 입력 틀 추가
                       </Button>
-                      <Button variant="outline" size="sm" onClick={insertSelfIntroTemplate}>
-                        자기소개 입력 틀 추가
-                      </Button>
                     </div>
                     <Field label="이력서 원문">
                       <Textarea value={form.resumeText} onChange={(event) => update("resumeText", event.target.value)} rows={12} placeholder="PDF 업로드 전까지는 이력서 내용을 직접 붙여넣어 관리합니다." />
                     </Field>
+                  </CardContent>
+                </Card>
+                </TabsContent>
+              )}
+
+              {activeTab === "selfIntro" && (
+                <TabsContent value="selfIntro" className="mt-5">
+                <TabGuide tab="selfIntro" status={tabStatuses.selfIntro} />
+                <Card className="border-slate-200 bg-card">
+                  <CardHeader>
+                    <CardTitle className="text-base">자기소개서 관리</CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    <div className="flex flex-wrap gap-2">
+                      <Button variant="outline" size="sm" onClick={insertSelfIntroTemplate}>
+                        자기소개 입력 틀 추가
+                      </Button>
+                    </div>
                     <Field label="자기소개/강점">
                       <Textarea value={form.selfIntro} onChange={(event) => update("selfIntro", event.target.value)} rows={8} placeholder="지원 직무와 연결되는 경험, 강점, 협업 사례를 정리하세요." />
                     </Field>
                   </CardContent>
                 </Card>
-              </TabsContent>
+                </TabsContent>
+              )}
 
-              <TabsContent value="skills" className="mt-5">
+              {activeTab === "skills" && (
+                <TabsContent value="skills" className="mt-5">
+                <TabGuide tab="skills" status={tabStatuses.skills} />
                 <Card className="border-slate-200 bg-card">
                   <CardHeader>
                     <CardTitle className="text-base">직무 역량/스킬 관리</CardTitle>
@@ -491,55 +591,24 @@ export function ProfilePage() {
                       <Textarea value={form.skillsText} onChange={(event) => update("skillsText", event.target.value)} rows={8} placeholder="직무에 필요한 역량, 도구, 업무 스킬을 한 줄에 하나씩 입력" />
                     </Field>
                     <SkillTagList skills={skillItems} onRemove={removeSkill} />
-                    <div className="grid gap-4 md:grid-cols-2">
-                      <Field label="자격증">
-                        <Textarea value={form.certificatesText} onChange={(event) => update("certificatesText", event.target.value)} rows={6} placeholder="예: 컴퓨터활용능력, 전산회계, 간호사 면허, TOEIC" />
-                      </Field>
-                      <Field label="언어">
-                        <Textarea value={form.languagesText} onChange={(event) => update("languagesText", event.target.value)} rows={6} placeholder="예: TOEIC 850, 일본어 회화 가능" />
-                      </Field>
-                    </div>
                   </CardContent>
                 </Card>
-              </TabsContent>
+                </TabsContent>
+              )}
 
-              <TabsContent value="history" className="mt-5 space-y-5">
-                <EntrySection title="학력" onAdd={() => setForm((prev) => ({ ...prev, education: [...prev.education, createEducation()] }))}>
-                  {form.education.map((item, index) => (
-                    <EntryCard key={index} title={`학력 ${index + 1}`} onRemove={() => setForm((prev) => ({ ...prev, education: removeAt(prev.education, index, createEducation) }))}>
-                      <div className="grid gap-4 md:grid-cols-2">
-                        <Field label="학교/기관명">
-                          <Input maxLength={80} value={item.school} onChange={(event) => updateEducation(index, "school", event.target.value)} placeholder="예: 한국대학교" />
-                        </Field>
-                        <Field label="전공/과정">
-                          <Input maxLength={80} value={item.major} onChange={(event) => updateEducation(index, "major", event.target.value)} placeholder="예: 경영학과, 간호학과, 직업훈련 과정" />
-                        </Field>
-                        <Field label="시작월">
-                          <Input type="month" value={item.startDate} onChange={(event) => updateEducation(index, "startDate", event.target.value)} />
-                        </Field>
-                        <Field label="종료월">
-                          <Input type="month" value={item.endDate} onChange={(event) => updateEducation(index, "endDate", event.target.value)} disabled={isOngoing(item.startDate, item.endDate)} />
-                        </Field>
-                        <CurrentCheckbox
-                          label="현재 재학/진행 중"
-                          checked={isOngoing(item.startDate, item.endDate)}
-                          disabled={!item.startDate}
-                          onChange={(checked) => updateEducation(index, "endDate", checked ? "" : currentMonth())}
-                        />
-                        <Field label="상태" className="md:col-span-2">
-                          <select value={item.status} onChange={(event) => updateEducation(index, "status", event.target.value)} className="h-10 w-full rounded-md border border-slate-200 bg-card px-3 text-sm">
-                            <option value="">선택</option>
-                            <option value="재학">재학</option>
-                            <option value="졸업예정">졸업예정</option>
-                            <option value="졸업">졸업</option>
-                            <option value="수료">수료</option>
-                            <option value="중퇴">중퇴</option>
-                          </select>
-                        </Field>
-                      </div>
-                    </EntryCard>
-                  ))}
-                </EntrySection>
+              {activeTab === "experience" && (
+                <TabsContent value="experience" className="mt-5 space-y-5">
+                <TabGuide tab="experience" status={tabStatuses.experience} />
+                <Card className="border-slate-200 bg-card">
+                  <CardHeader>
+                    <CardTitle className="text-base">포트폴리오/활동 링크</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <Field label="링크 목록">
+                      <Textarea value={form.portfolioLinksText} onChange={(event) => update("portfolioLinksText", event.target.value)} placeholder="노션, 블로그, 작업물, 활동 기록 링크를 한 줄에 하나씩 입력" rows={4} />
+                    </Field>
+                  </CardContent>
+                </Card>
 
                 <EntrySection title="경력" onAdd={() => setForm((prev) => ({ ...prev, career: [...prev.career, createCareer()] }))}>
                   {form.career.map((item, index) => (
@@ -619,9 +688,68 @@ export function ProfilePage() {
                     </EntryCard>
                   ))}
                 </EntrySection>
-              </TabsContent>
+                </TabsContent>
+              )}
 
-              <TabsContent value="ai" className="mt-5">
+              {activeTab === "certificates" && (
+                <TabsContent value="certificates" className="mt-5 space-y-5">
+                <TabGuide tab="certificates" status={tabStatuses.certificates} />
+                <Card className="border-slate-200 bg-card">
+                  <CardHeader>
+                    <CardTitle className="text-base">자격증/어학 관리</CardTitle>
+                  </CardHeader>
+                  <CardContent className="grid gap-4 md:grid-cols-2">
+                    <Field label="자격증">
+                      <Textarea value={form.certificatesText} onChange={(event) => update("certificatesText", event.target.value)} rows={6} placeholder="예: 컴퓨터활용능력, 전산회계, 간호사 면허, TOEIC" />
+                    </Field>
+                    <Field label="언어">
+                      <Textarea value={form.languagesText} onChange={(event) => update("languagesText", event.target.value)} rows={6} placeholder="예: TOEIC 850, 일본어 회화 가능" />
+                    </Field>
+                  </CardContent>
+                </Card>
+
+                <EntrySection title="학력" onAdd={() => setForm((prev) => ({ ...prev, education: [...prev.education, createEducation()] }))}>
+                  {form.education.map((item, index) => (
+                    <EntryCard key={index} title={`학력 ${index + 1}`} onRemove={() => setForm((prev) => ({ ...prev, education: removeAt(prev.education, index, createEducation) }))}>
+                      <div className="grid gap-4 md:grid-cols-2">
+                        <Field label="학교/기관명">
+                          <Input maxLength={80} value={item.school} onChange={(event) => updateEducation(index, "school", event.target.value)} placeholder="예: 한국대학교" />
+                        </Field>
+                        <Field label="전공/과정">
+                          <Input maxLength={80} value={item.major} onChange={(event) => updateEducation(index, "major", event.target.value)} placeholder="예: 경영학과, 간호학과, 직업훈련 과정" />
+                        </Field>
+                        <Field label="시작월">
+                          <Input type="month" value={item.startDate} onChange={(event) => updateEducation(index, "startDate", event.target.value)} />
+                        </Field>
+                        <Field label="종료월">
+                          <Input type="month" value={item.endDate} onChange={(event) => updateEducation(index, "endDate", event.target.value)} disabled={isOngoing(item.startDate, item.endDate)} />
+                        </Field>
+                        <CurrentCheckbox
+                          label="현재 재학/진행 중"
+                          checked={isOngoing(item.startDate, item.endDate)}
+                          disabled={!item.startDate}
+                          onChange={(checked) => updateEducation(index, "endDate", checked ? "" : currentMonth())}
+                        />
+                        <Field label="상태" className="md:col-span-2">
+                          <select value={item.status} onChange={(event) => updateEducation(index, "status", event.target.value)} className="h-10 w-full rounded-md border border-slate-200 bg-card px-3 text-sm">
+                            <option value="">선택</option>
+                            <option value="재학">재학</option>
+                            <option value="졸업예정">졸업예정</option>
+                            <option value="졸업">졸업</option>
+                            <option value="수료">수료</option>
+                            <option value="중퇴">중퇴</option>
+                          </select>
+                        </Field>
+                      </div>
+                    </EntryCard>
+                  ))}
+                </EntrySection>
+                </TabsContent>
+              )}
+
+              {activeTab === "ai" && (
+                <TabsContent value="ai" className="mt-5">
+                <TabGuide tab="ai" status={tabStatuses.ai} />
                 <Card className="border-slate-200 bg-card">
                   <CardHeader>
                     <CardTitle className="text-base">AI 분석 결과</CardTitle>
@@ -660,7 +788,8 @@ export function ProfilePage() {
                     )}
                   </CardContent>
                 </Card>
-              </TabsContent>
+                </TabsContent>
+              )}
             </Tabs>
           </section>
         </div>
@@ -894,6 +1023,41 @@ function AiEmptyState({ title, description }: { title: string; description: stri
     <div className="rounded-lg border border-dashed border-slate-300 bg-slate-50 p-5">
       <div className="font-bold text-slate-900">{title}</div>
       <p className="mt-2 text-sm leading-6 text-slate-600">{description}</p>
+    </div>
+  );
+}
+
+function RequirementBadge({ requirement }: { requirement: TabRequirement }) {
+  const className =
+    requirement === "필수"
+      ? "border-blue-200 bg-blue-50 text-blue-700"
+      : requirement === "권장"
+        ? "border-amber-200 bg-amber-50 text-amber-700"
+        : "border-slate-200 bg-slate-50 text-slate-500";
+  return <span className={`rounded-full border px-1.5 py-0.5 text-[11px] font-bold ${className}`}>{requirement}</span>;
+}
+
+function TabStatusBadge({ status }: { status: ReturnType<typeof getProfileTabStatuses>[ProfileTab] }) {
+  const className =
+    status.tone === "done"
+      ? "bg-green-50 text-green-700"
+      : status.tone === "warning"
+        ? "bg-amber-50 text-amber-700"
+        : "bg-slate-100 text-slate-500";
+  return <span className={`rounded-full px-2 py-0.5 text-[11px] font-bold ${className}`}>{status.label}</span>;
+}
+
+function TabGuide({ tab, status }: { tab: ProfileTab; status: ReturnType<typeof getProfileTabStatuses>[ProfileTab] }) {
+  const meta = profileTabMeta[tab];
+  return (
+    <div className="mb-4 rounded-lg border border-slate-200 bg-white px-4 py-3">
+      <div className="flex flex-wrap items-center gap-2">
+        <div className="text-sm font-black text-slate-900">{meta.label}</div>
+        <RequirementBadge requirement={meta.requirement} />
+        <TabStatusBadge status={status} />
+      </div>
+      <p className="mt-2 text-sm leading-6 text-slate-600">{meta.guide}</p>
+      {status.help && <p className="mt-1 text-xs font-semibold text-blue-600">{status.help}</p>}
     </div>
   );
 }
@@ -1133,6 +1297,56 @@ function describeCompletenessScore(score?: number): string {
   if (score >= 70) return "기본 정보는 충분합니다. 직무와 연결되는 성과와 구체적인 사례를 보강해 주세요.";
   if (score >= 50) return "핵심 정보가 일부 부족합니다. 경력, 활동, 스킬을 더 구체적으로 채우는 것이 좋습니다.";
   return "아직 AI가 판단할 정보가 부족합니다. 희망 직무, 이력서 원문, 주요 경험부터 입력해 주세요.";
+}
+
+function getProfileTabStatuses(
+  form: ProfileForm,
+  summaryResult: ProfileAiResponse | null,
+  skillsResult: ProfileAiResponse | null,
+  completeness: ProfileCompleteness | null,
+): Record<ProfileTab, { label: string; tone: TabStatusTone; help?: string }> {
+  const hasBasicCore = hasText(form.desiredJob) && hasText(form.desiredIndustry);
+  const hasBasicDetail = hasText(form.preferences.region) || hasText(form.preferences.workType) || hasText(form.preferences.employmentType) || hasText(form.preferences.salary);
+  const hasCareer = form.career.some((item) => hasText(item.company) || hasText(item.role) || hasText(item.tasks) || hasText(item.achievements));
+  const hasExperience = form.experiences.some((item) => hasText(item.title) || hasText(item.role) || hasText(item.description) || hasText(item.result));
+  const hasEducation = form.education.some((item) => hasText(item.school) || hasText(item.major));
+  const hasAiResult = Boolean(summaryResult || skillsResult || completeness);
+
+  return {
+    basic: hasBasicCore
+      ? { label: hasBasicDetail ? "완료" : "기본 완료", tone: "done", help: hasBasicDetail ? undefined : "희망 지역이나 근무 조건을 추가하면 매칭 기준이 더 명확해집니다." }
+      : { label: "미작성", tone: "empty", help: "희망 직무와 희망 산업은 먼저 입력하는 것이 좋습니다." },
+    resume: hasText(form.resumeText, 80)
+      ? { label: "완료", tone: "done" }
+      : hasText(form.resumeText)
+        ? { label: "부족", tone: "warning", help: "이력서 원문이 너무 짧습니다. 담당 업무와 성과를 함께 적어 주세요." }
+        : { label: "미작성", tone: "empty", help: "AI 분석 품질을 위해 이력서 원문을 입력해 주세요." },
+    selfIntro: hasText(form.selfIntro, 120)
+      ? { label: "완료", tone: "done" }
+      : hasText(form.selfIntro)
+        ? { label: "보완 권장", tone: "warning", help: "지원동기, 직무 경험, 입사 후 포부를 나눠 적으면 좋습니다." }
+        : { label: "권장 작성", tone: "empty", help: "자기소개서는 필수는 아니지만 지원서 설득력을 높입니다." },
+    experience: hasCareer && hasExperience
+      ? { label: "완료", tone: "done" }
+      : hasCareer || hasExperience || hasText(form.portfolioLinksText)
+        ? { label: "일부 작성", tone: "warning", help: "경력과 프로젝트 중 비어 있는 항목을 보강해 주세요." }
+        : { label: "미작성", tone: "empty", help: "성과와 역할을 판단하려면 경력 또는 프로젝트 정보가 필요합니다." },
+    skills: linesToArray(form.skillsText).length >= 3
+      ? { label: "완료", tone: "done" }
+      : linesToArray(form.skillsText).length > 0
+        ? { label: "부족", tone: "warning", help: "희망 직무와 연결되는 역량을 3개 이상 적어 주세요." }
+        : { label: "미작성", tone: "empty", help: "직무 역량이나 사용 가능한 도구를 한 줄씩 입력해 주세요." },
+    certificates: hasText(form.certificatesText) || hasText(form.languagesText) || hasEducation
+      ? { label: "작성됨", tone: "done" }
+      : { label: "선택", tone: "empty", help: "해당되는 자격, 어학, 학력이 있다면 추가해 주세요." },
+    ai: hasAiResult
+      ? { label: "결과 있음", tone: "done" }
+      : { label: "실행 전", tone: "empty", help: "프로필을 저장한 뒤 AI 요약, 역량 추출, 완성도 진단을 실행할 수 있습니다." },
+  };
+}
+
+function hasText(value: string | null | undefined, minLength = 1): boolean {
+  return (value ?? "").trim().length >= minLength;
 }
 
 function serializeProfileForm(form: ProfileForm): string {

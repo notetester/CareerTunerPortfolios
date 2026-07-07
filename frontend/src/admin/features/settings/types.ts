@@ -11,3 +11,14 @@ export interface AdminJobPostingFallbackSettingRequest {
   enabled: boolean;
   allowedStages: JobPostingFallbackStage[];
 }
+
+export interface AdminJobPostingUploadLimitSetting {
+  maxBytes: number;
+  minBytes: number;
+  maxAllowedBytes: number;
+  source: "PROPERTIES" | "DATABASE" | string;
+}
+
+export interface AdminJobPostingUploadLimitSettingRequest {
+  maxBytes: number;
+}

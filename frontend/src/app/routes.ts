@@ -31,12 +31,14 @@ import NotificationPage from "@/features/notification/pages/NotificationPage";
 import { CommunityActivityPage } from "@/features/community/pages/CommunityActivityPage";
 import { CommunityUserActivityPage } from "@/features/community/pages/CommunityUserActivityPage";
 import { ProfileDetailPage } from "@/features/profile/pages/ProfileDetailPage";
+import { RewardsPage } from "@/features/rewards/pages/RewardsPage";
 // W1: 기업 서비스 허브(신청/내 공고 관리) + 공개 채용공고 게시판
 import { CompanyHubPage } from "@/features/company/pages/CompanyHubPage";
 import { JobBoardPage } from "@/features/jobboard/pages/JobBoardPage";
 import { JobDetailPage } from "@/features/jobboard/pages/JobDetailPage";
 import { MobileSessionsPage } from "@/features/interview/pages/MobileSessionsPage";
 import { MobileSessionThreadPage } from "@/features/interview/pages/MobileSessionThreadPage";
+import { MicRemotePage } from "@/features/interview/pages/MicRemotePage";
 
 const basename = import.meta.env.BASE_URL === "/"
   ? "/"
@@ -60,6 +62,8 @@ export const router = createBrowserRouter([
       // 모바일 세션 스레드(Claude 앱 문법) — 하단 탭 "세션" + 디스패치 딥링크 진입 (interview 소유, D)
       { path: "m/sessions", Component: MobileSessionsPage },
       { path: "m/session/:id", Component: MobileSessionThreadPage },
+      // 폰 마이크 핸드오프 송신 페이지 — 데스크탑 음성면접의 원격 마이크 (interview 소유, D)
+      { path: "mic-remote", Component: MicRemotePage },
       { path: "correction", Component: CorrectionPage },
       { path: "analysis", Component: AnalysisPage },
       { path: "messenger", Component: MessengerPage },
@@ -71,6 +75,7 @@ export const router = createBrowserRouter([
       { path: "community/users/:userId/activity", Component: CommunityUserActivityPage },
       // 내 정보 관리 — 닉네임 프로필·이력서 스펙·계정 확충
       { path: "profile/detail", Component: ProfileDetailPage },
+      { path: "profile/rewards", Component: RewardsPage },
       { path: "billing", Component: BillingPage },
       { path: "billing/success", Component: BillingSuccessPage },
       { path: "billing/fail", Component: BillingFailPage },

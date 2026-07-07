@@ -37,7 +37,6 @@ public class CorrectionService {
     private static final int DEFAULT_LIMIT = 20;
     private static final int MAX_LIMIT = 100;
     private static final int ORIGINAL_TEXT_MAX_LENGTH = 12000;
-    private static final int CORRECTION_CREDIT_COST = 2;
     private static final String CHARGE_REF_TYPE = "CORRECTION";
 
     private static final String TYPE_SELF_INTRO = "SELF_INTRO";
@@ -123,19 +122,25 @@ public class CorrectionService {
                     .aiUsageLogId(aiUsageLogId)
                     .build();
             correctionMapper.insert(correction);
+            AiChargeResult chargeResult = null;
             if (chargeRequired) {
-                AiChargeResult chargeResult = aiChargeService.charge(new AiChargeCommand(
+                chargeResult = aiChargeService.charge(new AiChargeCommand(
                         userId,
                         featureType,
                         CHARGE_REF_TYPE,
                         correction.getId(),
                         aiUsageLogId,
-                        CORRECTION_CREDIT_COST,
+                        null,
+                        payload.usage().totalTokens(),
                         "AI 첨삭 사용",
                         policyAcknowledgementKey));
                 requireCompletedCharge(chargeResult);
             }
-            return CorrectionResponse.from(correction, resultPayload(payload));
+            return CorrectionResponse.from(
+                    correction,
+                    resultPayload(payload),
+                    chargeResult,
+                    payload.usage().totalTokens());
         });
         if (response == null) {
             throw new BusinessException(ErrorCode.INTERNAL_ERROR, "Correction transaction did not complete.");

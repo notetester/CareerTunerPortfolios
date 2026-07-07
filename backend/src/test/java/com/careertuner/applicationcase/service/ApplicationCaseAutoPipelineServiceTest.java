@@ -60,7 +60,9 @@ class ApplicationCaseAutoPipelineServiceTest {
                 objectMapper,
                 bAnalysisGenerationService,
                 new com.careertuner.companyanalysis.service.BCompanyAnalysisCanonicalizer(objectMapper),
-                companyAnalysisService);
+                companyAnalysisService,
+                runtimeSettingServiceReturningFallback(),
+                mock(com.careertuner.reward.service.RewardService.class));
         String postingText = """
                 Acme is hiring a Backend Engineer.
                 Responsibilities: build Spring APIs, operate MySQL services, and improve Docker deployment.
@@ -125,6 +127,13 @@ class ApplicationCaseAutoPipelineServiceTest {
         assertThat(usageCaptor.getAllValues())
                 .allMatch(log -> "self-rules-v1".equals(log.getModel()))
                 .allMatch(log -> Integer.valueOf(0).equals(log.getCreditUsed()));
+    }
+
+    /** runtime_setting 미설정 시 @Value 기본값(2번째 인자)을 그대로 돌려주는 스텁 — 기존 동작 보존. */
+    private static com.careertuner.runtimesetting.service.RuntimeSettingService runtimeSettingServiceReturningFallback() {
+        var svc = mock(com.careertuner.runtimesetting.service.RuntimeSettingService.class);
+        when(svc.getBoolean(any(), org.mockito.ArgumentMatchers.anyBoolean())).thenAnswer(inv -> inv.getArgument(1));
+        return svc;
     }
 
     private static FitAnalysisGenerationSource fitSource() {

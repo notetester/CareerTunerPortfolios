@@ -25,6 +25,8 @@ public interface UserAccountMapper {
 
     int countByLoginId(String loginId);
 
+    int countByEmailExcludingUser(@Param("email") String email, @Param("excludeUserId") Long excludeUserId);
+
     int countByPhone(@Param("phone") String phone, @Param("excludeUserId") Long excludeUserId);
 
     /** 로그인 아이디는 아직 미설정(NULL)일 때만 최초 설정한다. */

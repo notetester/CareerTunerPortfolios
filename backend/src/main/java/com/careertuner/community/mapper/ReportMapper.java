@@ -21,4 +21,7 @@ public interface ReportMapper {
                                     @Param("commentId") Long commentId);
 
     void insertCommentReport(CommentReport report);
+
+    /** 댓글 누적 신고 수 +1(자동 블러 판정용, 게시글과 동형). */
+    void incrementCommentReportCount(@Param("commentId") Long commentId);
 }

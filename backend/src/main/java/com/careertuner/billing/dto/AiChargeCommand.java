@@ -7,6 +7,7 @@ public record AiChargeCommand(
         Long refId,
         Long aiUsageLogId,
         Integer creditCost,
+        Integer tokenUsage,
         String reason,
         String policyAcknowledgementKey
 ) {

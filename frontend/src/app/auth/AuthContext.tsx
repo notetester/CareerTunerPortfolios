@@ -36,7 +36,7 @@ interface AuthContextValue {
   user: MeUser | null;
   loading: boolean;
   isAuthenticated: boolean;
-  login(email: string, password: string): Promise<void>;
+  login(identifier: string, password: string): Promise<void>;
   register(email: string, password: string, name: string, consents: RegisterConsents): Promise<void>;
   socialLogin(provider: SocialProvider): void;
   logout(): Promise<void>;
@@ -69,10 +69,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     refreshMe().finally(() => setLoading(false));
   }, [refreshMe]);
 
-  const login = useCallback(async (email: string, password: string) => {
+  const login = useCallback(async (identifier: string, password: string) => {
     const res = await api<TokenResponse>(
       "/auth/login",
-      { method: "POST", body: JSON.stringify({ email, password }) },
+      // 백엔드 호환성을 위해 필드명은 email을 유지하되, 값은 로그인 아이디 또는 이메일을 허용한다.
+      { method: "POST", body: JSON.stringify({ email: identifier, password }) },
       { auth: false },
     );
     setTokens({ accessToken: res.accessToken, refreshToken: res.refreshToken });

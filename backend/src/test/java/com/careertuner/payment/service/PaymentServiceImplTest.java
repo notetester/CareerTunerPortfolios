@@ -34,13 +34,16 @@ class PaymentServiceImplTest {
     private final PaymentMapper paymentMapper = org.mockito.Mockito.mock(PaymentMapper.class);
     private final TossPaymentClient tossPaymentClient = org.mockito.Mockito.mock(TossPaymentClient.class);
     private final TossPaymentProperties properties = tossProperties();
+    private final com.careertuner.reward.service.RewardService rewardService =
+            org.mockito.Mockito.mock(com.careertuner.reward.service.RewardService.class);
     private final PaymentServiceImpl service = new PaymentServiceImpl(
             billingService,
             billingPolicyService,
             refundPolicyService,
             paymentMapper,
             tossPaymentClient,
-            properties);
+            properties,
+            rewardService);
 
     @Test
     void readyCreatesPendingTossPaymentFromCreditProductSnapshot() {

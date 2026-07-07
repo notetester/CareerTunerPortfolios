@@ -17,6 +17,13 @@
         SELECT COUNT(*) FROM users WHERE login_id = #{loginId}
     </select>
 
+    <select id="countByEmailExcludingUser" resultType="int">
+        SELECT COUNT(*)
+          FROM users
+         WHERE email = #{email}
+           AND id != #{excludeUserId}
+    </select>
+
     <select id="countByPhone" resultType="int">
         SELECT COUNT(*)
           FROM users

@@ -4,8 +4,10 @@ spring:
 
   servlet:
     multipart:
-      max-file-size: ${SPRING_SERVLET_MULTIPART_MAX_FILE_SIZE:10MB}
-      max-request-size: ${SPRING_SERVLET_MULTIPART_MAX_REQUEST_SIZE:12MB}
+      # servlet cap 은 상위 안전 상한(전역). 공고 업로드 실효 한도는 관리자 설정(JobPostingUploadLimitPolicy, 최대 20MB)이 결정한다.
+      # 관리자 상한(20MB)이 실효하려면 request-size 도 그 이상이어야 한다(초과 시 앱 정책 前 servlet 이 먼저 거부).
+      max-file-size: ${SPRING_SERVLET_MULTIPART_MAX_FILE_SIZE:20MB}
+      max-request-size: ${SPRING_SERVLET_MULTIPART_MAX_REQUEST_SIZE:22MB}
 
   # ───────────────────────────────────────────────────────────────────────
   #  시크릿/환경 설정 정책
@@ -122,8 +124,8 @@ careertuner:
         # A파트 프로필 자체 파인튜닝 모델 서버. 기본은 꺼두어 팀원 환경에서 원격 서버 의존성을 만들지 않는다.
         enabled: ${PROFILE_AI_FINETUNED_ENABLED:false}
         base-url: ${PROFILE_AI_FINETUNED_BASE_URL:}
-        model: ${PROFILE_AI_FINETUNED_MODEL:qwen3-profile-lora-v3}
-        timeout: ${PROFILE_AI_FINETUNED_TIMEOUT:60s}
+        model: ${PROFILE_AI_FINETUNED_MODEL:qwen3-profile-lora-v4}
+        timeout: ${PROFILE_AI_FINETUNED_TIMEOUT:240s}
   analysis:
     ai:
       # C 적합도/취업분석 AI provider. openai(기본/폴백) | oss(자체 파인튜닝 careertuner-c-career-strategy-3b)
@@ -159,7 +161,7 @@ careertuner:
     open-ai-model: ${CHAT_LLM_OPENAI_MODEL:gpt-4o-mini}
   uploads:
     job-posting-dir: ${JOB_POSTING_UPLOAD_DIR:.uploads/application-postings}
-    max-file-size-bytes: ${JOB_POSTING_MAX_FILE_SIZE_BYTES:5242880}
+    max-file-size-bytes: ${JOB_POSTING_MAX_FILE_SIZE_BYTES:10485760}
   extraction:
     ai-worker:
       enabled: ${JOB_POSTING_AI_WORKER_ENABLED:false}

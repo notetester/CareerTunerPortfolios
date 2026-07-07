@@ -86,6 +86,7 @@ public class ReportServiceImpl implements ReportService {
                 .detail(request.detail())
                 .status("PENDING")
                 .build());
+        reportMapper.incrementCommentReportCount(request.targetId());
         log.info("댓글 신고 commentId={} reporterId={}", request.targetId(), userId);
     }
 }

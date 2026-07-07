@@ -10,6 +10,7 @@ import java.util.List;
 
 import org.junit.jupiter.api.Test;
 
+import com.careertuner.analysis.ai.provider.CareerAnalysisAiProviderProperties;
 import com.careertuner.analysis.ai.provider.CareerAnalysisAiUsage;
 
 /**
@@ -31,7 +32,8 @@ class FallbackCareerTrendAiServiceTest {
         when(anthropic.configured()).thenReturn(true);
         when(anthropic.generate(command)).thenReturn(tagged("claude-haiku"));
 
-        FallbackCareerTrendAiService service = new FallbackCareerTrendAiService(anthropic, openAi);
+        FallbackCareerTrendAiService service = new FallbackCareerTrendAiService(
+                anthropic, openAi, mock(MockCareerTrendAiService.class), new CareerAnalysisAiProviderProperties());
         CareerTrendAiResult result = service.generate(command);
 
         assertThat(result.usage().model()).isEqualTo("claude-haiku");
@@ -45,7 +47,8 @@ class FallbackCareerTrendAiServiceTest {
         when(anthropic.configured()).thenReturn(false);
         when(openAi.generate(command)).thenReturn(tagged("gpt-5"));
 
-        FallbackCareerTrendAiService service = new FallbackCareerTrendAiService(anthropic, openAi);
+        FallbackCareerTrendAiService service = new FallbackCareerTrendAiService(
+                anthropic, openAi, mock(MockCareerTrendAiService.class), new CareerAnalysisAiProviderProperties());
         CareerTrendAiResult result = service.generate(command);
 
         assertThat(result.usage().model()).isEqualTo("gpt-5");
@@ -60,7 +63,8 @@ class FallbackCareerTrendAiServiceTest {
         when(anthropic.generate(command)).thenThrow(new IllegalStateException("claude down"));
         when(openAi.generate(command)).thenReturn(tagged("gpt-5"));
 
-        FallbackCareerTrendAiService service = new FallbackCareerTrendAiService(anthropic, openAi);
+        FallbackCareerTrendAiService service = new FallbackCareerTrendAiService(
+                anthropic, openAi, mock(MockCareerTrendAiService.class), new CareerAnalysisAiProviderProperties());
         CareerTrendAiResult result = service.generate(command);
 
         assertThat(result.usage().model()).isEqualTo("gpt-5");

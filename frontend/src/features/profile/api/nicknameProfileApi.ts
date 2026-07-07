@@ -67,6 +67,10 @@ export function setPhone(phone: string): Promise<AccountInfo> {
   return api<AccountInfo>("/account/phone", { method: "POST", body: JSON.stringify({ phone }) });
 }
 
+export function requestEmailRegistration(email: string): Promise<void> {
+  return api<void>("/account/email-registration", { method: "POST", body: JSON.stringify({ email }) });
+}
+
 // ── 이력서 상세 스펙 ──
 
 export function getResumeDetail(): Promise<ResumeDetail> {

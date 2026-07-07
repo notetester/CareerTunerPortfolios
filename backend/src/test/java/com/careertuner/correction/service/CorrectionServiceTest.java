@@ -59,7 +59,7 @@ class CorrectionServiceTest {
             new ObjectMapper());
 
     @Test
-    void createChargesTwoCreditsAfterPersistingCorrection() {
+    void createPassesActualTokenUsageToChargeServiceAfterPersistingCorrection() {
         stubSuccessfulCorrection();
         when(aiChargeService.charge(any())).thenReturn(AiChargeResult.credit(2, 8));
 
@@ -74,9 +74,12 @@ class CorrectionServiceTest {
             assertThat(command.refType()).isEqualTo("CORRECTION");
             assertThat(command.refId()).isEqualTo(77L);
             assertThat(command.aiUsageLogId()).isEqualTo(501L);
-            assertThat(command.creditCost()).isEqualTo(2);
+            assertThat(command.creditCost()).isNull();
+            assertThat(command.tokenUsage()).isEqualTo(30);
             assertThat(command.policyAcknowledgementKey()).isEqualTo("AI_USAGE:test-1");
         });
+        assertThat(response.chargedCredit()).isEqualTo(2);
+        assertThat(response.totalTokens()).isEqualTo(30);
         verify(notificationService).notify(any());
     }
 

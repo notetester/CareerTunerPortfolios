@@ -8,7 +8,7 @@ import { Checkbox } from "../components/ui/checkbox";
 import { Input } from "../components/ui/input";
 import { ApiError } from "../lib/api";
 import { checkEmailDuplicate } from "../auth/authApi";
-import { Sparkles, Mail, Lock, Eye, EyeOff, CheckCircle2, ArrowRight, Loader2 } from "lucide-react";
+import { Sparkles, Mail, Lock, Eye, EyeOff, CheckCircle2, ArrowRight, Loader2, UserRound } from "lucide-react";
 
 export function LoginPage() {
   const [mode, setMode] = useState<"login" | "signup">("login");
@@ -55,9 +55,9 @@ export function LoginPage() {
     setError(null);
     setDormantEmail(null);
 
-    const normalizedEmail = email.trim();
-    if (!normalizedEmail || !password) {
-      setError("이메일과 비밀번호를 입력해 주세요.");
+    const loginIdentifier = email.trim();
+    if (!loginIdentifier || !password) {
+      setError(mode === "login" ? "아이디 또는 이메일과 비밀번호를 입력해 주세요." : "이메일과 비밀번호를 입력해 주세요.");
       return;
     }
     if (mode === "signup") {
@@ -82,21 +82,25 @@ export function LoginPage() {
     try {
       setSubmitting(true);
       if (mode === "login") {
-        await login(normalizedEmail, password);
+        await login(loginIdentifier, password);
       } else {
-        await register(normalizedEmail, password, name.trim(), {
+        await register(loginIdentifier, password, name.trim(), {
           termsAgreed,
           privacyAgreed,
           aiDataAgreed,
           marketingAgreed,
         });
       }
-      navigate("/dashboard", { replace: true });
+      // ?returnTo=/... 가 있으면 로그인 후 그 화면으로 복귀(내부 경로만 허용 — open redirect 방지).
+      // 폰 마이크 핸드오프(/mic-remote) 등 딥링크 진입에서 로그인 후 원래 화면으로 돌아오게 한다.
+      const returnTo = new URLSearchParams(window.location.search).get("returnTo");
+      const dest = returnTo && returnTo.startsWith("/") && !returnTo.startsWith("//") ? returnTo : "/dashboard";
+      navigate(dest, { replace: true });
     } catch (err) {
       const message = toAuthErrorMessage(err);
       setError(message);
       if (mode === "login" && err instanceof ApiError && err.status === 403 && message.includes("휴면")) {
-        setDormantEmail(normalizedEmail);
+        setDormantEmail(loginIdentifier);
       }
     } finally {
       setSubmitting(false);
@@ -108,7 +112,7 @@ export function LoginPage() {
       return "인증 요청에 실패했습니다. 잠시 후 다시 시도해 주세요.";
     }
     if (err.status === 401) {
-      return err.message || "이메일 또는 비밀번호가 올바르지 않습니다.";
+      return err.message || "아이디/이메일 또는 비밀번호가 올바르지 않습니다.";
     }
     if (err.status === 403) {
       return err.message || "현재 사용할 수 없는 계정입니다.";
@@ -124,6 +128,8 @@ export function LoginPage() {
     { label: "카카오로 계속하기", provider: "kakao" as const, mark: "K", className: "bg-yellow-400 text-slate-900" },
     { label: "네이버로 계속하기", provider: "naver" as const, mark: "N", className: "bg-green-600" },
   ];
+  const identifierPlaceholder = mode === "login" ? "아이디 또는 이메일" : "이메일";
+  const IdentifierIcon = mode === "login" ? UserRound : Mail;
 
   return (
     <div className="min-h-[calc(100vh-120px)] bg-muted flex items-center justify-center py-12 px-4">
@@ -201,7 +207,7 @@ export function LoginPage() {
 
             <div className="flex items-center gap-3">
               <div className="flex-1 h-px bg-slate-200" />
-              <span className="text-xs text-slate-400">또는 이메일로</span>
+              <span className="text-xs text-slate-400">{mode === "login" ? "또는 아이디/이메일로" : "또는 이메일로"}</span>
               <div className="flex-1 h-px bg-slate-200" />
             </div>
 
@@ -217,15 +223,15 @@ export function LoginPage() {
                 />
               )}
               <div className="relative">
-                <Mail className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-slate-400" />
+                <IdentifierIcon className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-slate-400" />
                 <Input
-                  placeholder="이메일"
+                  placeholder={identifierPlaceholder}
                   className="pl-9 h-11"
-                  type="email"
+                  type={mode === "login" ? "text" : "email"}
                   value={email}
                   onChange={(event) => { setEmail(event.target.value); setEmailDuplicate(false); }}
                   onBlur={() => void handleEmailBlur()}
-                  autoComplete="email"
+                  autoComplete={mode === "login" ? "username" : "email"}
                 />
               </div>
               {mode === "signup" && emailDuplicate && (

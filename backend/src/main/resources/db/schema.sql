@@ -25,6 +25,8 @@ CREATE TABLE IF NOT EXISTS users (
     status           VARCHAR(20)  NOT NULL DEFAULT 'ACTIVE' COMMENT '회원 상태. ACTIVE/DORMANT/BLOCKED/DELETED',
     plan             VARCHAR(20)  NOT NULL DEFAULT 'FREE',       -- FREE/BASIC/PRO/PREMIUM
     credit           INT          NOT NULL DEFAULT 0,
+    activity_point   INT          NOT NULL DEFAULT 0 COMMENT '누적 활동 포인트(리워드 레벨 산정용 XP)',
+    user_level       INT          NOT NULL DEFAULT 1 COMMENT '현재 활동 레벨(user_level_policy 참조)',
     last_login_at    DATETIME     NULL COMMENT '마지막 로그인 성공 시각',
     dormant_at       DATETIME     NULL COMMENT '휴면 계정으로 전환된 시각',
     blocked_reason   VARCHAR(255) NULL COMMENT '관리자가 회원을 차단한 사유',
@@ -1083,6 +1085,9 @@ CREATE TABLE IF NOT EXISTS ai_feature_benefit_policy (
     charge_unit         VARCHAR(30) NOT NULL,
     included_in_ticket  TINYINT(1) NOT NULL DEFAULT 1,
     default_credit_cost INT NOT NULL DEFAULT 0,
+    min_credit_cost     INT NOT NULL DEFAULT 0,
+    max_credit_cost     INT NOT NULL DEFAULT 0,
+    credit_unit_tokens  INT NOT NULL DEFAULT 1000,
     active              TINYINT(1) NOT NULL DEFAULT 1,
     created_at          DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at          DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
@@ -1351,6 +1356,40 @@ UPDATE ai_feature_benefit_policy
    END
  WHERE active = 1;
 
+-- 실제 사용량 표본의 P95를 상한으로 둔 기능별 크레딧 범위.
+-- 증분 DB에는 db/patches/20260706e_ai_usage_credit_range.sql을 적용한다.
+INSERT INTO ai_feature_benefit_policy
+    (feature_type, benefit_code, charge_unit, included_in_ticket, default_credit_cost,
+     min_credit_cost, max_credit_cost, credit_unit_tokens, active)
+VALUES
+    ('JOB_ANALYSIS', 'APPLICATION_ANALYSIS', 'PER_CASE', 1, 1, 1, 5, 1000, 1),
+    ('COMPANY_RESEARCH', 'APPLICATION_ANALYSIS', 'PER_CASE', 1, 1, 1, 6, 1000, 1),
+    ('JOB_POSTING_METADATA', 'APPLICATION_ANALYSIS', 'PER_CASE', 1, 3, 3, 6, 1000, 1),
+    ('JOB_POSTING_OCR', 'APPLICATION_ANALYSIS', 'PER_CASE', 1, 1, 1, 12, 2000, 1),
+    ('FIT_ANALYSIS', 'APPLICATION_ANALYSIS', 'PER_CASE', 1, 1, 1, 7, 1000, 1),
+    ('DASHBOARD_SUMMARY', 'CAREER_STRATEGY', 'PER_REQUEST', 0, 1, 1, 2, 1000, 1),
+    ('CAREER_TREND', 'CAREER_STRATEGY', 'PER_REQUEST', 0, 1, 1, 6, 1000, 1),
+    ('LONG_TERM_ANALYSIS', 'CAREER_STRATEGY', 'PER_REQUEST', 0, 2, 2, 4, 1000, 1),
+    ('INTERVIEW_QUESTION_GEN', 'MOCK_INTERVIEW', 'PER_SESSION', 1, 1, 1, 4, 1000, 1),
+    ('INTERVIEW_FOLLOWUP_GEN', 'MOCK_INTERVIEW', 'PER_SESSION', 1, 1, 1, 2, 1000, 1),
+    ('INTERVIEW_ANSWER_EVAL', 'MOCK_INTERVIEW', 'PER_SESSION', 1, 1, 1, 4, 1000, 1),
+    ('INTERVIEW_CRITIC', 'MOCK_INTERVIEW', 'PER_SESSION', 1, 1, 1, 2, 1000, 1),
+    ('INTERVIEW_MODEL_ANSWER', 'MOCK_INTERVIEW', 'PER_SESSION', 1, 1, 1, 5, 1000, 1),
+    ('INTERVIEW_REPORT', 'MOCK_INTERVIEW', 'PER_SESSION', 1, 1, 1, 3, 1000, 1),
+    ('INTERVIEW_VOICE_SCORING', 'VOICE_INTERVIEW', 'PER_SESSION', 1, 2, 2, 3, 1000, 1),
+    ('CORRECTION_INTERVIEW_ANSWER', 'CORRECTION', 'PER_REQUEST', 0, 2, 2, 5, 1000, 1),
+    ('CORRECTION_SELF_INTRO', 'CORRECTION', 'PER_REQUEST', 0, 2, 2, 5, 1000, 1),
+    ('CORRECTION_RESUME', 'CORRECTION', 'PER_REQUEST', 0, 2, 2, 5, 1000, 1),
+    ('CORRECTION_PORTFOLIO', 'CORRECTION', 'PER_REQUEST', 0, 2, 2, 5, 1000, 1),
+    ('PROFILE_COMPLETENESS', 'PROFILE_AI', 'PER_REQUEST', 0, 0, 0, 6, 1000, 1),
+    ('PROFILE_SUMMARY', 'PROFILE_AI', 'PER_REQUEST', 0, 0, 0, 2, 1000, 1),
+    ('PROFILE_SKILL_EXTRACT', 'PROFILE_AI', 'PER_REQUEST', 0, 0, 0, 0, 1000, 1)
+ON DUPLICATE KEY UPDATE
+    benefit_code = VALUES(benefit_code), charge_unit = VALUES(charge_unit),
+    included_in_ticket = VALUES(included_in_ticket), default_credit_cost = VALUES(default_credit_cost),
+    min_credit_cost = VALUES(min_credit_cost), max_credit_cost = VALUES(max_credit_cost),
+    credit_unit_tokens = VALUES(credit_unit_tokens), active = VALUES(active);
+
 CREATE TABLE IF NOT EXISTS credit_transaction (
     id              BIGINT NOT NULL AUTO_INCREMENT,
     user_id         BIGINT NOT NULL,
@@ -1448,6 +1487,15 @@ CREATE TABLE IF NOT EXISTS ai_moderation_setting (
     id             TINYINT      NOT NULL,
     strictness     VARCHAR(10)  NOT NULL DEFAULT 'NORMAL',
     hide_threshold DECIMAL(3,2) NOT NULL DEFAULT 0.80,
+    sanction_threshold          INT NOT NULL DEFAULT 3  COMMENT '자동 차단 트리거 누적 숨김 글 수(patch 20260619_f)',
+    block_days                  INT NOT NULL DEFAULT 7  COMMENT '자동 차단 유지 일수(patch 20260619_f)',
+    report_blur_threshold       INT NOT NULL DEFAULT 3  COMMENT '신고 누적 자동 블러 임계(patch 20260706b)',
+    post_rate_window_seconds    INT NOT NULL DEFAULT 60 COMMENT '게시글 rate-limit 윈도(초)',
+    post_rate_max               INT NOT NULL DEFAULT 10 COMMENT '윈도 내 허용 게시글 수(0=비활성)',
+    comment_rate_window_seconds INT NOT NULL DEFAULT 60 COMMENT '댓글 rate-limit 윈도(초)',
+    comment_rate_max            INT NOT NULL DEFAULT 20 COMMENT '윈도 내 허용 댓글 수(0=비활성)',
+    inquiry_rate_window_seconds INT NOT NULL DEFAULT 600 COMMENT '문의 rate-limit 윈도(초)',
+    inquiry_rate_max            INT NOT NULL DEFAULT 0  COMMENT '윈도 내 허용 문의 수(0=무제약=기존 동작)',
     updated_at     DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     PRIMARY KEY (id),
     CONSTRAINT chk_hide_threshold CHECK (hide_threshold BETWEEN 0.50 AND 0.95)
@@ -1495,6 +1543,7 @@ CREATE TABLE IF NOT EXISTS community_comment (
     dislike_count      INT    NOT NULL DEFAULT 0 COMMENT '싫어요 수',
     recommend_count    INT    NOT NULL DEFAULT 0 COMMENT '추천 수',
     disrecommend_count INT    NOT NULL DEFAULT 0 COMMENT '비추천 수',
+    report_count       INT    NOT NULL DEFAULT 0 COMMENT '누적 신고 수(임계 이상 시 비작성자 블러, patch 20260706e)',
     created_at   DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at   DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     PRIMARY KEY (id),
@@ -2146,6 +2195,966 @@ CREATE TABLE IF NOT EXISTS advertisement (
     CONSTRAINT fk_advertisement_creator FOREIGN KEY (created_by) REFERENCES users (id) ON DELETE SET NULL
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci COMMENT = '광고(배치·플랫폼·기간·집계)';
 
+-- ── 관리자 파리티 이식 정책 테이블(트립투게더) — patches 20260706_runtime_setting / 20260706c / 20260706d ──
+
+-- key-value 런타임 설정(코드가 DB→fallback→코드기본값 순 참조) + 변경 이력
+CREATE TABLE IF NOT EXISTS application_runtime_setting (
+    id             BIGINT       NOT NULL AUTO_INCREMENT,
+    setting_key    VARCHAR(160) NOT NULL COMMENT '설정 키(예: oauth.kakao.client-id)',
+    setting_group  VARCHAR(60)  NOT NULL DEFAULT 'GENERAL',
+    display_name   VARCHAR(160) NOT NULL,
+    setting_value  TEXT         NULL COMMENT 'DB 우선 설정값',
+    fallback_value TEXT         NULL COMMENT '설정값이 비면 쓸 fallback',
+    value_type     VARCHAR(30)  NOT NULL DEFAULT 'STRING' COMMENT 'STRING/NUMBER/BOOLEAN/URL/SECRET',
+    secret         TINYINT(1)   NOT NULL DEFAULT 0,
+    editable       TINYINT(1)   NOT NULL DEFAULT 1,
+    active         TINYINT(1)   NOT NULL DEFAULT 1,
+    description    VARCHAR(1000) NULL,
+    updated_by     BIGINT       NULL,
+    created_at     DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at     DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    PRIMARY KEY (id),
+    UNIQUE KEY uk_application_runtime_setting_key (setting_key),
+    KEY idx_application_runtime_setting_group (setting_group, active),
+    CONSTRAINT fk_application_runtime_setting_updated_by FOREIGN KEY (updated_by) REFERENCES users (id) ON DELETE SET NULL
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci;
+
+CREATE TABLE IF NOT EXISTS application_runtime_setting_history (
+    id                  BIGINT       NOT NULL AUTO_INCREMENT,
+    setting_id          BIGINT       NULL,
+    setting_key         VARCHAR(160) NOT NULL,
+    version_no          INT          NOT NULL DEFAULT 1,
+    change_type         VARCHAR(30)  NOT NULL COMMENT 'CREATE/UPDATE/IMPORT/RESET',
+    actor_user_id       BIGINT       NULL,
+    before_value        TEXT         NULL,
+    after_value         TEXT         NULL,
+    before_fallback     TEXT         NULL,
+    after_fallback      TEXT         NULL,
+    before_snapshot     JSON         NULL,
+    after_snapshot      JSON         NULL,
+    created_at          DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (id),
+    KEY idx_application_runtime_setting_history_key (setting_key, created_at),
+    CONSTRAINT fk_application_runtime_setting_history_actor FOREIGN KEY (actor_user_id) REFERENCES users (id) ON DELETE SET NULL
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci;
+
+-- 로그인 위험도(브루트포스) 잠금 정책(단일 행). OFF=무제약, ON=연속 실패 N회 시 M분 잠금.
+CREATE TABLE IF NOT EXISTS login_risk_policy (
+    id               TINYINT   NOT NULL,
+    enabled          TINYINT(1) NOT NULL DEFAULT 1 COMMENT '0=무제약, 1=자동 잠금 집행',
+    max_failed_count INT       NOT NULL DEFAULT 5  COMMENT '자동 잠금 트리거 연속 실패 횟수',
+    lock_minutes     INT       NOT NULL DEFAULT 10 COMMENT '자동 잠금 유지 분',
+    updated_by       BIGINT    NULL,
+    created_at       DATETIME  NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at       DATETIME  NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    PRIMARY KEY (id),
+    CONSTRAINT fk_login_risk_policy_updated_by FOREIGN KEY (updated_by) REFERENCES users (id) ON DELETE SET NULL
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci;
+INSERT INTO login_risk_policy (id, enabled, max_failed_count, lock_minutes) VALUES (1, 1, 5, 10)
+ON DUPLICATE KEY UPDATE id = id;
+
+-- AI 챗봇 일일 사용 쿼터 정책(단일 행). 기본 OFF(무제약=현재 동작).
+CREATE TABLE IF NOT EXISTS chatbot_quota_policy (
+    id          TINYINT   NOT NULL,
+    enabled     TINYINT(1) NOT NULL DEFAULT 0  COMMENT '0=무제약, 1=일일 쿼터 집행',
+    daily_limit INT       NOT NULL DEFAULT 100 COMMENT '로그인 사용자 1인 하루 허용 질문 수',
+    updated_by  BIGINT    NULL,
+    created_at  DATETIME  NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at  DATETIME  NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    PRIMARY KEY (id),
+    CONSTRAINT fk_chatbot_quota_policy_updated_by FOREIGN KEY (updated_by) REFERENCES users (id) ON DELETE SET NULL
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci;
+INSERT INTO chatbot_quota_policy (id, enabled, daily_limit) VALUES (1, 0, 100)
+ON DUPLICATE KEY UPDATE id = id;
+
+
+-- ── team1_db 실적용 반영: 패치로만 있던 테이블 38종을 baseline 에 편입(fresh install ↔ team1_db 일치) ──
+-- (team1_db SHOW CREATE TABLE 기준 authoritative DDL. 소유 도메인별 패치와 동일)
+
+CREATE TABLE IF NOT EXISTS `ad_impression_log` (
+  `id` bigint NOT NULL AUTO_INCREMENT,
+  `campaign_id` bigint NOT NULL,
+  `user_id` bigint DEFAULT NULL,
+  `surface` varchar(20) NOT NULL,
+  `event_type` varchar(20) NOT NULL DEFAULT 'IMPRESSION',
+  `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  KEY `idx_ad_impression_campaign` (`campaign_id`,`created_at` DESC),
+  KEY `idx_ad_impression_user` (`user_id`,`created_at` DESC),
+  CONSTRAINT `fk_ad_impression_campaign` FOREIGN KEY (`campaign_id`) REFERENCES `admin_ad_campaign` (`id`) ON DELETE CASCADE,
+  CONSTRAINT `fk_ad_impression_user` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+CREATE TABLE IF NOT EXISTS `admin_action_log` (
+  `id` bigint NOT NULL AUTO_INCREMENT COMMENT '관리자 액션 로그 ID',
+  `actor_user_id` bigint DEFAULT NULL COMMENT '액션을 수행한 관리자 ID',
+  `target_user_id` bigint DEFAULT NULL COMMENT '대상 회원 또는 관리자 ID',
+  `action_type` varchar(80) NOT NULL COMMENT '액션 유형',
+  `target_type` varchar(80) DEFAULT NULL COMMENT '대상 유형',
+  `before_value` json DEFAULT NULL COMMENT '변경 전 값',
+  `after_value` json DEFAULT NULL COMMENT '변경 후 값',
+  `reason` varchar(500) DEFAULT NULL COMMENT '처리 사유',
+  `ip_address` varchar(64) DEFAULT NULL COMMENT '요청 IP',
+  `user_agent` varchar(500) DEFAULT NULL COMMENT '요청 User-Agent',
+  `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '기록 시각',
+  PRIMARY KEY (`id`),
+  KEY `idx_admin_action_actor` (`actor_user_id`,`created_at`),
+  KEY `idx_admin_action_target` (`target_user_id`,`created_at`),
+  KEY `idx_admin_action_type` (`action_type`,`created_at`),
+  CONSTRAINT `fk_admin_action_actor` FOREIGN KEY (`actor_user_id`) REFERENCES `users` (`id`) ON DELETE SET NULL,
+  CONSTRAINT `fk_admin_action_target` FOREIGN KEY (`target_user_id`) REFERENCES `users` (`id`) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='관리자 기능 실행 감사 로그';
+CREATE TABLE IF NOT EXISTS `admin_ad_campaign` (
+  `id` bigint NOT NULL AUTO_INCREMENT,
+  `title` varchar(160) NOT NULL,
+  `body` varchar(500) DEFAULT NULL,
+  `surface` varchar(20) NOT NULL DEFAULT 'WEB',
+  `placement` varchar(80) NOT NULL DEFAULT 'GLOBAL_TOP',
+  `creative_type` varchar(20) NOT NULL DEFAULT 'BANNER',
+  `image_url` varchar(512) DEFAULT NULL,
+  `target_url` varchar(512) DEFAULT NULL,
+  `visible_to_plans_json` json DEFAULT NULL,
+  `starts_at` datetime DEFAULT NULL,
+  `ends_at` datetime DEFAULT NULL,
+  `priority` int NOT NULL DEFAULT '100',
+  `active` tinyint(1) NOT NULL DEFAULT '1',
+  `created_by` bigint DEFAULT NULL,
+  `updated_by` bigint DEFAULT NULL,
+  `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  KEY `idx_admin_ad_surface_active` (`surface`,`active`,`priority`),
+  KEY `idx_admin_ad_schedule` (`starts_at`,`ends_at`),
+  KEY `fk_admin_ad_created_by` (`created_by`),
+  KEY `fk_admin_ad_updated_by` (`updated_by`),
+  CONSTRAINT `fk_admin_ad_created_by` FOREIGN KEY (`created_by`) REFERENCES `users` (`id`) ON DELETE SET NULL,
+  CONSTRAINT `fk_admin_ad_updated_by` FOREIGN KEY (`updated_by`) REFERENCES `users` (`id`) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+CREATE TABLE IF NOT EXISTS `admin_block_access_log` (
+  `id` bigint NOT NULL AUTO_INCREMENT,
+  `request_id` varchar(64) NOT NULL,
+  `user_id` bigint DEFAULT NULL,
+  `request_uri` varchar(512) DEFAULT NULL,
+  `http_method` varchar(10) DEFAULT NULL,
+  `block_kind` varchar(20) NOT NULL COMMENT 'IP/USER',
+  `block_match_type` varchar(20) DEFAULT NULL COMMENT 'SINGLE_IP/CIDR/RANGE/COUNTRY/ASN/ACCOUNT_STATUS',
+  `block_target_key` varchar(160) DEFAULT NULL,
+  `block_rule_id` bigint DEFAULT NULL,
+  `block_reason` varchar(1000) DEFAULT NULL,
+  `client_ip` varchar(64) DEFAULT NULL,
+  `country_code` varchar(8) DEFAULT NULL,
+  `asn` varchar(20) DEFAULT NULL,
+  `cache_source` varchar(20) DEFAULT NULL,
+  `user_agent` varchar(512) DEFAULT NULL,
+  `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  KEY `idx_admin_block_access_log_time` (`created_at`),
+  KEY `idx_admin_block_access_log_ip` (`client_ip`,`created_at`),
+  KEY `idx_admin_block_access_log_user` (`user_id`,`created_at`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+CREATE TABLE IF NOT EXISTS `admin_ip_block_batch` (
+  `id` bigint NOT NULL AUTO_INCREMENT,
+  `batch_code` varchar(80) NOT NULL COMMENT '?? ?? ??(?: MANUAL_FEED_20260706_1)',
+  `batch_name` varchar(160) NOT NULL,
+  `source_type` varchar(40) NOT NULL DEFAULT 'MANUAL' COMMENT 'MANUAL/POLICY_FEED_CSV/POLICY_FEED_JSON/POLICY_FEED_API',
+  `source_name` varchar(200) DEFAULT NULL COMMENT '?? ??(??????? ?)',
+  `rule_action` varchar(30) NOT NULL DEFAULT 'BLOCK' COMMENT '?? ?? ?? ?? BLOCK/ALLOWLIST/REVIEW',
+  `default_priority` int NOT NULL DEFAULT '100',
+  `active` tinyint(1) NOT NULL DEFAULT '1' COMMENT '?? ON/OFF. OFF ? ?? ?? ????? ??',
+  `total_rule_count` int NOT NULL DEFAULT '0',
+  `active_rule_count` int NOT NULL DEFAULT '0',
+  `memo` varchar(2000) DEFAULT NULL,
+  `created_by` bigint DEFAULT NULL,
+  `updated_by` bigint DEFAULT NULL,
+  `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_admin_ip_block_batch_code` (`batch_code`),
+  KEY `idx_admin_ip_block_batch_active` (`active`,`created_at`),
+  KEY `fk_admin_ip_block_batch_created_by` (`created_by`),
+  KEY `fk_admin_ip_block_batch_updated_by` (`updated_by`),
+  CONSTRAINT `fk_admin_ip_block_batch_created_by` FOREIGN KEY (`created_by`) REFERENCES `users` (`id`) ON DELETE SET NULL,
+  CONSTRAINT `fk_admin_ip_block_batch_updated_by` FOREIGN KEY (`updated_by`) REFERENCES `users` (`id`) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+CREATE TABLE IF NOT EXISTS `admin_ip_block_batch_operation` (
+  `id` bigint NOT NULL AUTO_INCREMENT,
+  `batch_id` bigint NOT NULL,
+  `operation_type` varchar(40) NOT NULL COMMENT 'CREATE/IMPORT/TOGGLE_ON/TOGGLE_OFF',
+  `operation_option` varchar(40) DEFAULT NULL COMMENT 'cascade ??: BATCH_ONLY/CASCADE_ACTIVE_RULES/RESTORE_BATCH_CONTROL/FORCE_ENABLE_ALL',
+  `requested_rule_count` int NOT NULL DEFAULT '0',
+  `affected_rule_count` int NOT NULL DEFAULT '0',
+  `actor_user_id` bigint DEFAULT NULL,
+  `memo` varchar(2000) DEFAULT NULL,
+  `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  KEY `idx_admin_ip_block_batch_op_batch` (`batch_id`,`created_at`),
+  KEY `fk_admin_ip_block_batch_op_actor` (`actor_user_id`),
+  CONSTRAINT `fk_admin_ip_block_batch_op_actor` FOREIGN KEY (`actor_user_id`) REFERENCES `users` (`id`) ON DELETE SET NULL,
+  CONSTRAINT `fk_admin_ip_block_batch_op_batch` FOREIGN KEY (`batch_id`) REFERENCES `admin_ip_block_batch` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+CREATE TABLE IF NOT EXISTS `admin_ip_block_batch_operation_rule` (
+  `id` bigint NOT NULL AUTO_INCREMENT,
+  `operation_id` bigint NOT NULL,
+  `rule_id` bigint DEFAULT NULL,
+  `operation_effect` varchar(40) NOT NULL COMMENT 'CREATED/ENABLED/DISABLED/SKIPPED_OVERRIDE',
+  `before_is_active` tinyint(1) DEFAULT NULL,
+  `after_is_active` tinyint(1) DEFAULT NULL,
+  `before_control_mode` varchar(30) DEFAULT NULL,
+  `after_control_mode` varchar(30) DEFAULT NULL,
+  `memo` varchar(500) DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  KEY `idx_admin_ip_block_batch_op_rule_op` (`operation_id`),
+  CONSTRAINT `fk_admin_ip_block_batch_op_rule_op` FOREIGN KEY (`operation_id`) REFERENCES `admin_ip_block_batch_operation` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+CREATE TABLE IF NOT EXISTS `admin_permission_audit` (
+  `id` bigint NOT NULL AUTO_INCREMENT COMMENT '권한 변경 이력 ID',
+  `actor_user_id` bigint DEFAULT NULL COMMENT '처리 관리자 ID',
+  `target_user_id` bigint DEFAULT NULL COMMENT '대상 관리자 ID',
+  `action_type` varchar(80) NOT NULL COMMENT '권한 액션 유형',
+  `permission_code` varchar(80) DEFAULT NULL COMMENT '권한 코드',
+  `group_code` varchar(80) DEFAULT NULL COMMENT '권한 그룹 코드',
+  `reason` varchar(500) DEFAULT NULL COMMENT '처리 사유',
+  `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '기록 시각',
+  PRIMARY KEY (`id`),
+  KEY `idx_admin_perm_audit_target` (`target_user_id`,`created_at`),
+  KEY `idx_admin_perm_audit_actor` (`actor_user_id`,`created_at`),
+  CONSTRAINT `fk_admin_perm_audit_actor` FOREIGN KEY (`actor_user_id`) REFERENCES `users` (`id`) ON DELETE SET NULL,
+  CONSTRAINT `fk_admin_perm_audit_target` FOREIGN KEY (`target_user_id`) REFERENCES `users` (`id`) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='관리자 권한 변경 감사 이력';
+CREATE TABLE IF NOT EXISTS `admin_permission_group` (
+  `group_code` varchar(80) NOT NULL COMMENT '권한 그룹 코드',
+  `display_name` varchar(100) NOT NULL COMMENT '권한 그룹명',
+  `description` varchar(500) DEFAULT NULL COMMENT '권한 그룹 설명',
+  `role_scope` varchar(20) NOT NULL DEFAULT 'ADMIN' COMMENT '권한 그룹을 부여할 수 있는 최소 역할. ADMIN/SUPER_ADMIN',
+  `display_order` int NOT NULL DEFAULT '0' COMMENT '권한 그룹 표시 순서',
+  `active` tinyint(1) NOT NULL DEFAULT '1' COMMENT '활성 여부',
+  `created_by` bigint DEFAULT NULL COMMENT '생성 관리자 ID',
+  `updated_by` bigint DEFAULT NULL COMMENT '수정 관리자 ID',
+  `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '생성일',
+  `updated_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '수정일',
+  PRIMARY KEY (`group_code`),
+  KEY `idx_admin_perm_group_active` (`active`),
+  KEY `fk_admin_perm_group_created_by` (`created_by`),
+  KEY `fk_admin_perm_group_updated_by` (`updated_by`),
+  CONSTRAINT `fk_admin_perm_group_created_by` FOREIGN KEY (`created_by`) REFERENCES `users` (`id`) ON DELETE SET NULL,
+  CONSTRAINT `fk_admin_perm_group_updated_by` FOREIGN KEY (`updated_by`) REFERENCES `users` (`id`) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='관리자 권한 그룹';
+CREATE TABLE IF NOT EXISTS `admin_permission_group_item` (
+  `id` bigint NOT NULL AUTO_INCREMENT COMMENT '권한 그룹 항목 ID',
+  `group_code` varchar(80) NOT NULL COMMENT '권한 그룹 코드',
+  `permission_code` varchar(80) NOT NULL COMMENT '권한 코드',
+  `created_by` bigint DEFAULT NULL COMMENT '추가 관리자 ID',
+  `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '추가일',
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_admin_perm_group_item` (`group_code`,`permission_code`),
+  KEY `fk_admin_perm_group_item_perm` (`permission_code`),
+  KEY `fk_admin_perm_group_item_created_by` (`created_by`),
+  CONSTRAINT `fk_admin_perm_group_item_created_by` FOREIGN KEY (`created_by`) REFERENCES `users` (`id`) ON DELETE SET NULL,
+  CONSTRAINT `fk_admin_perm_group_item_group` FOREIGN KEY (`group_code`) REFERENCES `admin_permission_group` (`group_code`) ON DELETE CASCADE,
+  CONSTRAINT `fk_admin_perm_group_item_perm` FOREIGN KEY (`permission_code`) REFERENCES `admin_permission_policy` (`permission_code`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='권한 그룹에 포함된 개별 권한';
+CREATE TABLE IF NOT EXISTS `admin_permission_menu_group` (
+  `menu_group_code` varchar(80) NOT NULL COMMENT '관리자 메뉴 그룹 코드. MEMBER/AI/BILLING/CONTENT/AUDIT/POLICY 등',
+  `display_name` varchar(100) NOT NULL COMMENT '관리자 화면에 표시할 메뉴 그룹명',
+  `description` varchar(500) DEFAULT NULL COMMENT '해당 메뉴 그룹이 담당하는 운영 범위 설명',
+  `display_order` int NOT NULL DEFAULT '0' COMMENT '관리자 사이드바와 권한 관리 화면 표시 순서',
+  `active` tinyint(1) NOT NULL DEFAULT '1' COMMENT '메뉴 그룹 사용 여부',
+  `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '생성일',
+  `updated_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '수정일',
+  PRIMARY KEY (`menu_group_code`),
+  KEY `idx_admin_perm_menu_group_active` (`active`,`display_order`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='관리자 권한 코드가 속하는 메뉴 그룹 메타데이터';
+CREATE TABLE IF NOT EXISTS `admin_permission_policy` (
+  `permission_code` varchar(80) NOT NULL COMMENT '권한 코드',
+  `display_name` varchar(100) NOT NULL COMMENT '권한명',
+  `description` varchar(500) DEFAULT NULL COMMENT '권한 설명',
+  `menu_group_code` varchar(80) DEFAULT NULL COMMENT '권한이 속한 관리자 메뉴 그룹 코드. admin_permission_menu_group.menu_group_code 참조용',
+  `display_order` int NOT NULL DEFAULT '0' COMMENT '권한 관리 화면 표시 순서',
+  `active` tinyint(1) NOT NULL DEFAULT '1' COMMENT '활성 여부',
+  `created_by` bigint DEFAULT NULL COMMENT '생성 관리자 ID',
+  `updated_by` bigint DEFAULT NULL COMMENT '수정 관리자 ID',
+  `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '생성일',
+  `updated_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '수정일',
+  PRIMARY KEY (`permission_code`),
+  KEY `idx_admin_perm_active` (`active`),
+  KEY `fk_admin_perm_created_by` (`created_by`),
+  KEY `fk_admin_perm_updated_by` (`updated_by`),
+  CONSTRAINT `fk_admin_perm_created_by` FOREIGN KEY (`created_by`) REFERENCES `users` (`id`) ON DELETE SET NULL,
+  CONSTRAINT `fk_admin_perm_updated_by` FOREIGN KEY (`updated_by`) REFERENCES `users` (`id`) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='관리자 개별 권한 정책';
+CREATE TABLE IF NOT EXISTS `admin_permission_request` (
+  `id` bigint NOT NULL AUTO_INCREMENT,
+  `user_id` bigint NOT NULL COMMENT '권한을 받을 대상 관리자',
+  `permission_code` varchar(80) NOT NULL COMMENT '요청 권한 코드',
+  `description` varchar(500) DEFAULT NULL COMMENT '요청 사유',
+  `status` varchar(20) NOT NULL DEFAULT 'PENDING' COMMENT 'PENDING/APPROVED/REJECTED',
+  `requested_by` bigint DEFAULT NULL COMMENT '요청자',
+  `decided_by` bigint DEFAULT NULL COMMENT '승인/거절 처리자',
+  `decided_at` datetime DEFAULT NULL,
+  `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  KEY `idx_admin_permission_request_status` (`status`,`created_at`),
+  KEY `idx_admin_permission_request_user` (`user_id`,`created_at`),
+  KEY `fk_admin_permission_request_code` (`permission_code`),
+  KEY `fk_admin_permission_request_requested_by` (`requested_by`),
+  KEY `fk_admin_permission_request_decided_by` (`decided_by`),
+  CONSTRAINT `fk_admin_permission_request_code` FOREIGN KEY (`permission_code`) REFERENCES `admin_permission_policy` (`permission_code`) ON DELETE CASCADE,
+  CONSTRAINT `fk_admin_permission_request_decided_by` FOREIGN KEY (`decided_by`) REFERENCES `users` (`id`) ON DELETE SET NULL,
+  CONSTRAINT `fk_admin_permission_request_requested_by` FOREIGN KEY (`requested_by`) REFERENCES `users` (`id`) ON DELETE SET NULL,
+  CONSTRAINT `fk_admin_permission_request_user` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+CREATE TABLE IF NOT EXISTS `admin_security_appeal` (
+  `id` bigint NOT NULL AUTO_INCREMENT,
+  `public_request_id` varchar(60) NOT NULL,
+  `subject_type` varchar(40) NOT NULL,
+  `subject_value` varchar(180) NOT NULL,
+  `block_rule_id` bigint DEFAULT NULL,
+  `submitter_email` varchar(255) NOT NULL,
+  `status` varchar(30) NOT NULL DEFAULT 'OPEN',
+  `reason` varchar(2000) DEFAULT NULL,
+  `decision_reason` varchar(2000) DEFAULT NULL,
+  `reviewed_by` bigint DEFAULT NULL,
+  `reviewed_at` datetime DEFAULT NULL,
+  `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_admin_security_appeal_public_id` (`public_request_id`),
+  KEY `idx_admin_security_appeal_status` (`status`,`created_at`),
+  KEY `idx_admin_security_appeal_subject` (`subject_type`,`subject_value`),
+  KEY `fk_admin_security_appeal_rule` (`block_rule_id`),
+  KEY `fk_admin_security_appeal_reviewed_by` (`reviewed_by`),
+  CONSTRAINT `fk_admin_security_appeal_reviewed_by` FOREIGN KEY (`reviewed_by`) REFERENCES `users` (`id`) ON DELETE SET NULL,
+  CONSTRAINT `fk_admin_security_appeal_rule` FOREIGN KEY (`block_rule_id`) REFERENCES `admin_security_block_rule` (`id`) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='?? ?? ???? ?? ?';
+CREATE TABLE IF NOT EXISTS `admin_security_appeal_policy` (
+  `id` bigint NOT NULL AUTO_INCREMENT,
+  `policy_code` varchar(60) NOT NULL DEFAULT 'SECURITY_APPEAL_DEFAULT',
+  `display_name` varchar(120) NOT NULL,
+  `enabled` tinyint(1) NOT NULL DEFAULT '1',
+  `allow_multiple_open` tinyint(1) NOT NULL DEFAULT '0',
+  `max_open_per_subject` int NOT NULL DEFAULT '1',
+  `submitter_daily_limit` int NOT NULL DEFAULT '3',
+  `token_ttl_hours` int NOT NULL DEFAULT '24',
+  `config_json` json NOT NULL,
+  `updated_by` bigint DEFAULT NULL,
+  `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_admin_security_appeal_policy_code` (`policy_code`),
+  KEY `fk_admin_security_appeal_policy_updated_by` (`updated_by`),
+  CONSTRAINT `fk_admin_security_appeal_policy_updated_by` FOREIGN KEY (`updated_by`) REFERENCES `users` (`id`) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='?? ?? ???? ??';
+CREATE TABLE IF NOT EXISTS `admin_security_block_rule` (
+  `id` bigint NOT NULL AUTO_INCREMENT,
+  `rule_type` varchar(30) NOT NULL COMMENT 'USER/EMAIL/EMAIL_DOMAIN/IP/CIDR/IP_RANGE/COUNTRY/ASN',
+  `rule_value` varchar(160) NOT NULL COMMENT '?? ?? ?. IP, CIDR, ????, ??? ??? ?',
+  `scope` varchar(30) NOT NULL DEFAULT 'GLOBAL' COMMENT 'GLOBAL/LOGIN/COMMUNITY/AI/SUPPORT',
+  `action_type` varchar(30) NOT NULL DEFAULT 'BLOCK' COMMENT 'BLOCK/REVIEW/CHALLENGE/ALLOWLIST',
+  `category` varchar(40) NOT NULL DEFAULT 'MANUAL' COMMENT 'SPAM/ABUSE/BRUTE_FORCE/GEO/VPN/SECURITY/MANUAL',
+  `priority` int NOT NULL DEFAULT '100' COMMENT '?? ????(DESC). ???? ?? ??',
+  `control_mode` varchar(30) NOT NULL DEFAULT 'MANUAL' COMMENT 'MANUAL/BATCH/MANUAL_OVERRIDE',
+  `batch_id` bigint DEFAULT NULL COMMENT '? ??? ?? IP ?? ??(admin_ip_block_batch.id)',
+  `reason` varchar(1000) DEFAULT NULL,
+  `memo` varchar(2000) DEFAULT NULL,
+  `active` tinyint(1) NOT NULL DEFAULT '1',
+  `is_effective_active` tinyint(1) NOT NULL DEFAULT '1' COMMENT '?? ???????????? ??? ?? ????(?? ?? ??)',
+  `waf_sync_enabled` tinyint(1) NOT NULL DEFAULT '0',
+  `waf_sync_status` varchar(30) NOT NULL DEFAULT 'SKIPPED',
+  `waf_rule_id` varchar(120) DEFAULT NULL,
+  `last_synced_at` datetime DEFAULT NULL,
+  `expires_at` datetime DEFAULT NULL,
+  `created_by` bigint DEFAULT NULL,
+  `updated_by` bigint DEFAULT NULL,
+  `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  KEY `idx_admin_security_block_rule_active` (`active`,`rule_type`,`rule_value`),
+  KEY `idx_admin_security_block_rule_waf` (`waf_sync_enabled`,`waf_sync_status`),
+  KEY `idx_admin_security_block_rule_expires` (`expires_at`),
+  KEY `fk_admin_security_block_rule_created_by` (`created_by`),
+  KEY `fk_admin_security_block_rule_updated_by` (`updated_by`),
+  KEY `idx_admin_security_block_rule_effective` (`is_effective_active`,`priority`),
+  KEY `idx_admin_security_block_rule_batch` (`batch_id`),
+  CONSTRAINT `fk_admin_security_block_rule_batch` FOREIGN KEY (`batch_id`) REFERENCES `admin_ip_block_batch` (`id`) ON DELETE SET NULL,
+  CONSTRAINT `fk_admin_security_block_rule_created_by` FOREIGN KEY (`created_by`) REFERENCES `users` (`id`) ON DELETE SET NULL,
+  CONSTRAINT `fk_admin_security_block_rule_updated_by` FOREIGN KEY (`updated_by`) REFERENCES `users` (`id`) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='??? ?? ??/?? ??';
+CREATE TABLE IF NOT EXISTS `admin_security_provider_config` (
+  `id` bigint NOT NULL AUTO_INCREMENT,
+  `provider_code` varchar(60) NOT NULL,
+  `display_name` varchar(120) NOT NULL,
+  `provider_type` varchar(30) NOT NULL COMMENT 'WAF/RISK/EMAIL/CAPTCHA',
+  `mode` varchar(30) NOT NULL DEFAULT 'MOCK',
+  `enabled` tinyint(1) NOT NULL DEFAULT '0',
+  `endpoint_url` varchar(500) DEFAULT NULL,
+  `config_json` json NOT NULL,
+  `health_status` varchar(30) NOT NULL DEFAULT 'UNKNOWN',
+  `last_checked_at` datetime DEFAULT NULL,
+  `updated_by` bigint DEFAULT NULL,
+  `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_admin_security_provider_code` (`provider_code`),
+  KEY `idx_admin_security_provider_type` (`provider_type`,`enabled`),
+  KEY `fk_admin_security_provider_updated_by` (`updated_by`),
+  CONSTRAINT `fk_admin_security_provider_updated_by` FOREIGN KEY (`updated_by`) REFERENCES `users` (`id`) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='??/WAF/???? ?? Provider ??';
+CREATE TABLE IF NOT EXISTS `admin_security_provider_health_history` (
+  `id` bigint NOT NULL AUTO_INCREMENT,
+  `provider_config_id` bigint NOT NULL,
+  `provider_code` varchar(60) NOT NULL,
+  `provider_type` varchar(30) NOT NULL,
+  `check_source` varchar(30) NOT NULL DEFAULT 'MANUAL',
+  `status_before` varchar(30) DEFAULT NULL,
+  `status_after` varchar(30) NOT NULL,
+  `detail_message` varchar(1000) DEFAULT NULL,
+  `actor_user_id` bigint DEFAULT NULL,
+  `checked_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  KEY `idx_admin_security_provider_health_provider` (`provider_code`,`checked_at`),
+  KEY `idx_admin_security_provider_health_status` (`status_after`,`checked_at`),
+  KEY `idx_admin_security_provider_health_actor` (`actor_user_id`,`checked_at`),
+  KEY `fk_admin_security_provider_health_provider` (`provider_config_id`),
+  CONSTRAINT `fk_admin_security_provider_health_actor` FOREIGN KEY (`actor_user_id`) REFERENCES `users` (`id`) ON DELETE SET NULL,
+  CONSTRAINT `fk_admin_security_provider_health_provider` FOREIGN KEY (`provider_config_id`) REFERENCES `admin_security_provider_config` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='Provider ??/???? ???? ?? ??';
+CREATE TABLE IF NOT EXISTS `admin_security_review` (
+  `id` bigint NOT NULL AUTO_INCREMENT,
+  `review_type` varchar(40) NOT NULL COMMENT 'LOGIN_RISK/EXTERNAL_RISK/SECURITY_RISK/GENERAL',
+  `subject_type` varchar(40) NOT NULL COMMENT 'USER/IP/EMAIL/POST/COMMENT/SESSION',
+  `subject_value` varchar(180) NOT NULL,
+  `risk_score` int NOT NULL DEFAULT '0',
+  `risk_level` varchar(20) NOT NULL DEFAULT 'LOW',
+  `status` varchar(30) NOT NULL DEFAULT 'OPEN',
+  `decision_action` varchar(30) DEFAULT NULL COMMENT 'ALLOW/BLOCK/CHALLENGE/ESCALATE/DISMISS',
+  `reason` varchar(1000) DEFAULT NULL,
+  `evidence_json` json NOT NULL,
+  `created_by` bigint DEFAULT NULL,
+  `assigned_to` bigint DEFAULT NULL,
+  `decided_by` bigint DEFAULT NULL,
+  `decided_at` datetime DEFAULT NULL,
+  `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  KEY `idx_admin_security_review_status` (`status`,`risk_level`,`created_at`),
+  KEY `idx_admin_security_review_subject` (`subject_type`,`subject_value`),
+  KEY `fk_admin_security_review_created_by` (`created_by`),
+  KEY `fk_admin_security_review_assigned_to` (`assigned_to`),
+  KEY `fk_admin_security_review_decided_by` (`decided_by`),
+  CONSTRAINT `fk_admin_security_review_assigned_to` FOREIGN KEY (`assigned_to`) REFERENCES `users` (`id`) ON DELETE SET NULL,
+  CONSTRAINT `fk_admin_security_review_created_by` FOREIGN KEY (`created_by`) REFERENCES `users` (`id`) ON DELETE SET NULL,
+  CONSTRAINT `fk_admin_security_review_decided_by` FOREIGN KEY (`decided_by`) REFERENCES `users` (`id`) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='???/??/?? ?? ?? ?? ?';
+CREATE TABLE IF NOT EXISTS `admin_security_waf_sync_event` (
+  `id` bigint NOT NULL AUTO_INCREMENT,
+  `block_rule_id` bigint DEFAULT NULL,
+  `provider_code` varchar(60) NOT NULL DEFAULT 'MANUAL_WAF',
+  `operation_type` varchar(30) NOT NULL COMMENT 'UPSERT/DELETE/HEALTH_CHECK',
+  `status` varchar(30) NOT NULL DEFAULT 'QUEUED',
+  `request_payload_json` json DEFAULT NULL,
+  `response_payload_json` json DEFAULT NULL,
+  `error_message` varchar(1000) DEFAULT NULL,
+  `requested_by` bigint DEFAULT NULL,
+  `requested_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `processed_at` datetime DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  KEY `idx_admin_security_waf_event_rule` (`block_rule_id`,`requested_at`),
+  KEY `idx_admin_security_waf_event_status` (`status`,`requested_at`),
+  KEY `fk_admin_security_waf_event_requested_by` (`requested_by`),
+  CONSTRAINT `fk_admin_security_waf_event_requested_by` FOREIGN KEY (`requested_by`) REFERENCES `users` (`id`) ON DELETE SET NULL,
+  CONSTRAINT `fk_admin_security_waf_event_rule` FOREIGN KEY (`block_rule_id`) REFERENCES `admin_security_block_rule` (`id`) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='WAF ??? ?? ? ?? ??';
+CREATE TABLE IF NOT EXISTS `admin_system_policy` (
+  `policy_code` varchar(80) NOT NULL COMMENT '운영 정책 코드',
+  `display_name` varchar(100) NOT NULL COMMENT '정책명',
+  `description` varchar(500) DEFAULT NULL COMMENT '정책 설명',
+  `config_json` json DEFAULT NULL COMMENT '정책 설정 JSON',
+  `schedule_type` varchar(30) NOT NULL DEFAULT 'MANUAL' COMMENT '실행 방식. MANUAL/DAILY/WEEKLY/MONTHLY',
+  `schedule_interval_hours` int DEFAULT NULL COMMENT '반복 실행 간격(시간)',
+  `schedule_day_of_month` int DEFAULT NULL COMMENT '월간 실행일',
+  `schedule_time` varchar(10) DEFAULT NULL COMMENT '실행 시각 HH:mm',
+  `active` tinyint(1) NOT NULL DEFAULT '0' COMMENT '정책 활성 여부',
+  `last_run_at` datetime DEFAULT NULL COMMENT '마지막 실행 시각',
+  `last_run_status` varchar(20) DEFAULT NULL COMMENT '마지막 실행 상태',
+  `last_run_message` varchar(1000) DEFAULT NULL COMMENT '마지막 실행 메시지',
+  `updated_by` bigint DEFAULT NULL COMMENT '마지막 수정 관리자 ID',
+  `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '생성일',
+  `updated_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '수정일',
+  PRIMARY KEY (`policy_code`),
+  KEY `idx_admin_system_policy_active` (`active`),
+  KEY `fk_admin_system_policy_updated_by` (`updated_by`),
+  CONSTRAINT `fk_admin_system_policy_updated_by` FOREIGN KEY (`updated_by`) REFERENCES `users` (`id`) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='관리자 운영 정책';
+CREATE TABLE IF NOT EXISTS `admin_user_group` (
+  `id` bigint NOT NULL AUTO_INCREMENT COMMENT '관리자 그룹 소속 ID',
+  `user_id` bigint NOT NULL COMMENT '관리자 회원 ID',
+  `group_code` varchar(80) NOT NULL COMMENT '권한 그룹 코드',
+  `granted_by` bigint DEFAULT NULL COMMENT '배정 관리자 ID',
+  `granted_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '배정일',
+  `revoked_at` datetime DEFAULT NULL COMMENT '해제일',
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_admin_user_group_active` (`user_id`,`group_code`,`revoked_at`),
+  KEY `idx_admin_user_group_user` (`user_id`,`revoked_at`),
+  KEY `fk_admin_user_group_group` (`group_code`),
+  KEY `fk_admin_user_group_granted_by` (`granted_by`),
+  CONSTRAINT `fk_admin_user_group_granted_by` FOREIGN KEY (`granted_by`) REFERENCES `users` (`id`) ON DELETE SET NULL,
+  CONSTRAINT `fk_admin_user_group_group` FOREIGN KEY (`group_code`) REFERENCES `admin_permission_group` (`group_code`) ON DELETE CASCADE,
+  CONSTRAINT `fk_admin_user_group_user` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='관리자 권한 그룹 소속';
+CREATE TABLE IF NOT EXISTS `admin_user_permission` (
+  `id` bigint NOT NULL AUTO_INCREMENT COMMENT '관리자 직접 권한 ID',
+  `user_id` bigint NOT NULL COMMENT '관리자 회원 ID',
+  `permission_code` varchar(80) NOT NULL COMMENT '권한 코드',
+  `granted_by` bigint DEFAULT NULL COMMENT '부여 관리자 ID',
+  `granted_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '부여일',
+  `revoked_at` datetime DEFAULT NULL COMMENT '회수일',
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_admin_user_perm_active` (`user_id`,`permission_code`,`revoked_at`),
+  KEY `idx_admin_user_perm_user` (`user_id`,`revoked_at`),
+  KEY `fk_admin_user_perm_code` (`permission_code`),
+  KEY `fk_admin_user_perm_granted_by` (`granted_by`),
+  CONSTRAINT `fk_admin_user_perm_code` FOREIGN KEY (`permission_code`) REFERENCES `admin_permission_policy` (`permission_code`) ON DELETE CASCADE,
+  CONSTRAINT `fk_admin_user_perm_granted_by` FOREIGN KEY (`granted_by`) REFERENCES `users` (`id`) ON DELETE SET NULL,
+  CONSTRAINT `fk_admin_user_perm_user` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='관리자에게 직접 부여된 권한';
+CREATE TABLE IF NOT EXISTS `chatbot_conversation_memory` (
+  `conversation_id` bigint NOT NULL AUTO_INCREMENT COMMENT '대화 세션 ID (서버 발급)',
+  `user_id` bigint DEFAULT NULL COMMENT '대화 소유자(로그인 유저 id). NULL=익명 세션(복원 대상 아님)',
+  `application_case_id` bigint DEFAULT NULL COMMENT '연결된 지원 건 id(application_case 논리 참조, FK 없음). NULL=잡담/FAQ 대화',
+  `title` varchar(255) DEFAULT NULL COMMENT '세션 제목(목록 표시용). NULL=미생성, 자동 생성은 다음 Phase',
+  `onboarding_declined_at` datetime DEFAULT NULL COMMENT '깡통계정 온보딩을 "그만"으로 거부한 시각. NULL=거부 안 함 → 이후 이 대화는 온보딩 재권유 안 함',
+  `messages_json` json NOT NULL COMMENT 'LangChain4j 메시지 윈도우 JSON',
+  `updated_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`conversation_id`),
+  KEY `idx_ccm_user_updated` (`user_id`,`updated_at`),
+  KEY `idx_ccm_case` (`application_case_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+CREATE TABLE IF NOT EXISTS `chatbot_intake_slot` (
+  `conversation_id` bigint NOT NULL COMMENT '세션(대화) id — chatbot_conversation_memory 논리 참조(FK 없음), 1:1',
+  `user_id` bigint DEFAULT NULL COMMENT '슬롯 소유자(로그인 유저 id). 비로그인 NULL',
+  `application_case_id` bigint DEFAULT NULL COMMENT '확정 지원 건 id(application_case 논리 참조, FK 없음). 미확정 NULL',
+  `mode` varchar(20) DEFAULT NULL COMMENT '면접 모드: BASIC/JOB/PERSONALITY/PRESSURE/RESUME/COMPANY',
+  `status` varchar(12) NOT NULL DEFAULT 'PENDING' COMMENT '인테이크 세션 단계: PENDING(진행·복원대상)/READY(슬롯충족·라우터정상)/DONE(예약)',
+  `original_query` varchar(1000) DEFAULT NULL COMMENT '사용자 첫 발화(verbatim)',
+  `fetched_cases` json DEFAULT NULL COMMENT '후보 지원건 목록 캐시(JSON). 재조회로 대체 가능한 파생 캐시',
+  `updated_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`conversation_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+CREATE TABLE IF NOT EXISTS `chatbot_response_log` (
+  `id` bigint NOT NULL AUTO_INCREMENT,
+  `conversation_id` bigint DEFAULT NULL COMMENT '발생 대화 id(있으면) — chatbot_conversation_memory 논리 참조(FK 없음)',
+  `user_id` bigint DEFAULT NULL COMMENT '로그인 유저 id, 비로그인 NULL',
+  `question` varchar(1000) NOT NULL COMMENT '사용자 질문(verbatim)',
+  `response_path` varchar(16) NOT NULL COMMENT '응답 경로: NAV_FAST/FAQ_FAST/AGENT',
+  `faq_referenced` tinyint(1) NOT NULL DEFAULT '0' COMMENT 'FAQ 근거로 답함(=자동 해결)',
+  `top_similarity` double DEFAULT NULL COMMENT 'FAQ 최고 유사도(슬라이더 미리보기 소스; 계산 불가 시 NULL)',
+  `matched_faq_id` bigint DEFAULT NULL COMMENT '인용한 최상위 FAQ id(참조 대화 표시; 없으면 NULL)',
+  `handoff` tinyint(1) NOT NULL DEFAULT '0' COMMENT '상담사/문의 전환 여부(전환율 분자)',
+  `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  KEY `idx_crl_created` (`created_at`),
+  KEY `idx_crl_ref_created` (`faq_referenced`,`created_at`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+CREATE TABLE IF NOT EXISTS `chatbot_unanswered_question` (
+  `id` bigint NOT NULL AUTO_INCREMENT,
+  `question` varchar(1000) NOT NULL COMMENT '질문 원문(verbatim)',
+  `question_norm` varchar(255) NOT NULL COMMENT '정규화 키(trim+소문자+공백제거, 255 초과 절단) — 빈도 집계용',
+  `top_similarity` double DEFAULT NULL COMMENT 'FAQ 최고 유사도(임계 미달; 계산 불가 시 NULL)',
+  `embedding` mediumtext COMMENT '질문 임베딩(bge-m3) JSON 배열 — 군집화용. 임베딩 불가 시 NULL',
+  `best_faq_id` bigint DEFAULT NULL COMMENT '미스 당시 가장 가까웠던 FAQ id(있으면) — best 표시·카테고리 근거',
+  `user_id` bigint DEFAULT NULL COMMENT '로그인 유저 id, 비로그인 NULL',
+  `conversation_id` bigint DEFAULT NULL COMMENT '발생 대화 id(있으면)',
+  `source` varchar(20) NOT NULL DEFAULT 'FAQ_FASTPATH' COMMENT '미스 발생 경로',
+  `status` varchar(20) NOT NULL DEFAULT 'NEW' COMMENT 'NEW/REVIEWED/CONVERTED/DISMISSED',
+  `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  KEY `idx_cuq_norm` (`question_norm`),
+  KEY `idx_cuq_status_created` (`status`,`created_at`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+CREATE TABLE IF NOT EXISTS `comment_ai_result` (
+  `id` bigint NOT NULL AUTO_INCREMENT,
+  `comment_id` bigint NOT NULL,
+  `task_type` varchar(30) NOT NULL,
+  `status` varchar(20) NOT NULL DEFAULT 'PENDING',
+  `result_json` json DEFAULT NULL,
+  `model` varchar(80) DEFAULT NULL,
+  `error_message` varchar(1000) DEFAULT NULL,
+  `attempt_count` int NOT NULL DEFAULT '0',
+  `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `completed_at` datetime DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_comment_ai_result_task` (`comment_id`,`task_type`),
+  KEY `idx_comment_ai_result_status` (`task_type`,`status`,`completed_at`),
+  CONSTRAINT `fk_comment_ai_result_comment` FOREIGN KEY (`comment_id`) REFERENCES `community_comment` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+CREATE TABLE IF NOT EXISTS `community_post_embedding` (
+  `post_id` bigint NOT NULL COMMENT 'community_post.id',
+  `embedding` json NOT NULL COMMENT 'bge-m3 임베딩 벡터 (1024차원 float 배열)',
+  `updated_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`post_id`),
+  CONSTRAINT `fk_cpe_post` FOREIGN KEY (`post_id`) REFERENCES `community_post` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+CREATE TABLE IF NOT EXISTS `enterprise_account_application` (
+  `id` bigint NOT NULL AUTO_INCREMENT,
+  `user_id` bigint NOT NULL,
+  `company_name` varchar(160) NOT NULL,
+  `business_number` varchar(80) DEFAULT NULL,
+  `representative_name` varchar(100) DEFAULT NULL,
+  `contact_name` varchar(100) DEFAULT NULL,
+  `contact_email` varchar(255) DEFAULT NULL,
+  `contact_phone` varchar(40) DEFAULT NULL,
+  `website_url` varchar(512) DEFAULT NULL,
+  `industry` varchar(120) DEFAULT NULL,
+  `employee_count` varchar(60) DEFAULT NULL,
+  `evidence_file_url` varchar(512) DEFAULT NULL,
+  `requested_policy_json` json DEFAULT NULL,
+  `status` varchar(20) NOT NULL DEFAULT 'PENDING',
+  `review_memo` varchar(1000) DEFAULT NULL,
+  `reviewed_by` bigint DEFAULT NULL,
+  `reviewed_at` datetime DEFAULT NULL,
+  `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  KEY `idx_enterprise_application_user` (`user_id`,`created_at` DESC),
+  KEY `idx_enterprise_application_status` (`status`,`created_at` DESC),
+  KEY `fk_enterprise_application_reviewer` (`reviewed_by`),
+  CONSTRAINT `fk_enterprise_application_reviewer` FOREIGN KEY (`reviewed_by`) REFERENCES `users` (`id`) ON DELETE SET NULL,
+  CONSTRAINT `fk_enterprise_application_user` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+CREATE TABLE IF NOT EXISTS `enterprise_job_policy` (
+  `user_id` bigint NOT NULL,
+  `trusted` tinyint(1) NOT NULL DEFAULT '0',
+  `create_requires_review` tinyint(1) NOT NULL DEFAULT '1',
+  `edit_requires_review` tinyint(1) NOT NULL DEFAULT '1',
+  `max_active_posts` int NOT NULL DEFAULT '5',
+  `updated_by` bigint DEFAULT NULL,
+  `update_reason` varchar(500) DEFAULT NULL,
+  `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`user_id`),
+  KEY `fk_enterprise_job_policy_admin` (`updated_by`),
+  CONSTRAINT `fk_enterprise_job_policy_admin` FOREIGN KEY (`updated_by`) REFERENCES `users` (`id`) ON DELETE SET NULL,
+  CONSTRAINT `fk_enterprise_job_policy_user` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+CREATE TABLE IF NOT EXISTS `enterprise_job_posting` (
+  `id` bigint NOT NULL AUTO_INCREMENT,
+  `company_user_id` bigint NOT NULL,
+  `company_name` varchar(160) NOT NULL,
+  `title` varchar(180) NOT NULL,
+  `position_title` varchar(160) NOT NULL,
+  `job_category` varchar(120) DEFAULT NULL,
+  `specialties_json` json DEFAULT NULL,
+  `duties` mediumtext NOT NULL,
+  `qualifications` mediumtext,
+  `preferred` mediumtext,
+  `benefits` mediumtext,
+  `employment_type` varchar(80) DEFAULT NULL,
+  `experience_level` varchar(80) DEFAULT NULL,
+  `education_level` varchar(80) DEFAULT NULL,
+  `salary_type` varchar(40) DEFAULT NULL,
+  `salary_min` int DEFAULT NULL,
+  `salary_max` int DEFAULT NULL,
+  `salary_text` varchar(255) DEFAULT NULL,
+  `work_location` varchar(255) DEFAULT NULL,
+  `work_schedule` varchar(160) DEFAULT NULL,
+  `headcount` varchar(80) DEFAULT NULL,
+  `application_start_at` datetime DEFAULT NULL,
+  `application_end_at` datetime DEFAULT NULL,
+  `apply_url` varchar(512) DEFAULT NULL,
+  `contact_email` varchar(255) DEFAULT NULL,
+  `contact_phone` varchar(40) DEFAULT NULL,
+  `visibility` varchar(20) NOT NULL DEFAULT 'PUBLIC',
+  `status` varchar(20) NOT NULL DEFAULT 'PENDING_REVIEW',
+  `review_status` varchar(20) NOT NULL DEFAULT 'PENDING',
+  `review_memo` varchar(1000) DEFAULT NULL,
+  `pending_revision_json` json DEFAULT NULL,
+  `community_post_id` bigint DEFAULT NULL,
+  `approved_by` bigint DEFAULT NULL,
+  `approved_at` datetime DEFAULT NULL,
+  `reviewed_by` bigint DEFAULT NULL,
+  `reviewed_at` datetime DEFAULT NULL,
+  `archived_at` datetime DEFAULT NULL,
+  `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  KEY `idx_enterprise_job_owner` (`company_user_id`,`status`,`created_at` DESC),
+  KEY `idx_enterprise_job_status` (`status`,`review_status`,`created_at` DESC),
+  KEY `idx_enterprise_job_deadline` (`application_end_at`),
+  KEY `idx_enterprise_job_post` (`community_post_id`),
+  KEY `fk_enterprise_job_approved_by` (`approved_by`),
+  KEY `fk_enterprise_job_reviewed_by` (`reviewed_by`),
+  CONSTRAINT `fk_enterprise_job_approved_by` FOREIGN KEY (`approved_by`) REFERENCES `users` (`id`) ON DELETE SET NULL,
+  CONSTRAINT `fk_enterprise_job_owner` FOREIGN KEY (`company_user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE,
+  CONSTRAINT `fk_enterprise_job_post` FOREIGN KEY (`community_post_id`) REFERENCES `community_post` (`id`) ON DELETE SET NULL,
+  CONSTRAINT `fk_enterprise_job_reviewed_by` FOREIGN KEY (`reviewed_by`) REFERENCES `users` (`id`) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+CREATE TABLE IF NOT EXISTS `interview_media_analysis` (
+  `id` bigint NOT NULL AUTO_INCREMENT,
+  `interview_session_id` bigint NOT NULL,
+  `kind` varchar(20) NOT NULL,
+  `transcript` json DEFAULT NULL,
+  `metrics` json DEFAULT NULL,
+  `score` int DEFAULT NULL,
+  `score_detail` json DEFAULT NULL,
+  `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  KEY `idx_media_analysis_session` (`interview_session_id`),
+  CONSTRAINT `fk_media_analysis_session` FOREIGN KEY (`interview_session_id`) REFERENCES `interview_session` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+CREATE TABLE IF NOT EXISTS `legal_clause` (
+  `id` bigint NOT NULL AUTO_INCREMENT,
+  `version_id` bigint NOT NULL COMMENT 'legal_document_version.id',
+  `seq` int NOT NULL COMMENT '조항 순서 (제N조)',
+  `title` varchar(200) NOT NULL COMMENT '조항 제목',
+  `body` text NOT NULL COMMENT '조항 본문 (줄바꿈 = 항 1.2.3. 구분)',
+  `embedding` json DEFAULT NULL COMMENT 'bge-m3 임베딩 (AI B 챗봇 RAG용, 1024차원). 후속 Phase',
+  PRIMARY KEY (`id`),
+  KEY `idx_legal_clause_ver` (`version_id`,`seq`),
+  CONSTRAINT `fk_legal_clause_ver` FOREIGN KEY (`version_id`) REFERENCES `legal_document_version` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='법적 문서 조항 (버전에 종속, 버전 삭제 시 CASCADE)';
+CREATE TABLE IF NOT EXISTS `legal_document_version` (
+  `id` bigint NOT NULL AUTO_INCREMENT,
+  `doc_type` varchar(20) NOT NULL COMMENT 'TERMS | PRIVACY | MARKETING | AI_CONSENT | COPYRIGHT (LegalDocType 와 정렬)',
+  `version_label` varchar(20) NOT NULL COMMENT '표시용 버전 (예: v2.4)',
+  `status` varchar(20) NOT NULL DEFAULT 'DRAFT' COMMENT 'DRAFT | PUBLISHED',
+  `summary` varchar(500) DEFAULT NULL COMMENT '개정 요약 (공지·이메일 고지에 사용 / AI 자동생성 가능)',
+  `is_adverse` tinyint(1) NOT NULL DEFAULT '0' COMMENT '불리한 변경 여부 (1이면 시행 30일 전 공지 의무)',
+  `effective_date` datetime DEFAULT NULL COMMENT '시행일 (DRAFT면 NULL). 공개 노출/배지 계산 기준',
+  `published_at` datetime DEFAULT NULL COMMENT '게시 시각',
+  `admin_id` bigint DEFAULT NULL COMMENT '작성 관리자(users.id)',
+  `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  `draft_doc_type` varchar(20) GENERATED ALWAYS AS ((case when (`status` = _utf8mb4'DRAFT') then `doc_type` end)) VIRTUAL COMMENT 'DRAFT 유일성 제약용 파생 컬럼 (DRAFT면 doc_type, 그 외 NULL)',
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_legal_doctype_version` (`doc_type`,`version_label`),
+  UNIQUE KEY `uk_legal_draft_one` (`draft_doc_type`),
+  KEY `idx_legal_ver_type_status` (`doc_type`,`status`),
+  KEY `idx_legal_ver_type_eff` (`doc_type`,`effective_date`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='법적 문서 버전 (약관/개인정보/마케팅 개정 이력)';
+CREATE TABLE IF NOT EXISTS `user_activity_log` (
+  `id` bigint NOT NULL AUTO_INCREMENT,
+  `request_id` varchar(36) NOT NULL COMMENT '단일 HTTP 요청 식별자(UUID)',
+  `flow_trace_id` varchar(36) DEFAULT NULL COMMENT '여러 요청에 걸친 활동 흐름 식별자',
+  `user_id` bigint DEFAULT NULL COMMENT '로그인 사용자(비회원 NULL)',
+  `session_id` varchar(100) DEFAULT NULL,
+  `request_uri` varchar(512) NOT NULL,
+  `http_method` varchar(10) NOT NULL,
+  `activity_domain` varchar(30) NOT NULL DEFAULT 'GENERAL' COMMENT 'GENERAL/AUTH/ADMIN/COMMUNITY/PROFILE/SUPPORT/INTERVIEW 등',
+  `activity_type` varchar(30) NOT NULL COMMENT 'API/AJAX/PAGE_VIEW/ACTION',
+  `activity_code` varchar(60) DEFAULT NULL COMMENT '구체 활동 코드',
+  `activity_provider` varchar(20) DEFAULT NULL COMMENT 'LOCAL/KAKAO/NAVER/GOOGLE',
+  `auth_event_type` varchar(20) DEFAULT NULL COMMENT 'LOGIN/LOGOUT/LINK/UNLINK',
+  `target_type` varchar(30) DEFAULT NULL,
+  `target_id` varchar(100) DEFAULT NULL,
+  `handler_name` varchar(200) DEFAULT NULL,
+  `query_string` varchar(1000) DEFAULT NULL,
+  `referer` varchar(512) DEFAULT NULL,
+  `ip_address` varchar(64) DEFAULT NULL,
+  `user_agent` varchar(512) DEFAULT NULL,
+  `response_status` int DEFAULT NULL,
+  `response_time_ms` int DEFAULT NULL,
+  `success` tinyint(1) DEFAULT NULL,
+  `detail_summary` varchar(500) DEFAULT NULL,
+  `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  KEY `idx_user_activity_log_time` (`created_at`),
+  KEY `idx_user_activity_log_user` (`user_id`,`created_at`),
+  KEY `idx_user_activity_log_domain` (`activity_domain`,`created_at`),
+  KEY `idx_user_activity_log_request` (`request_id`),
+  KEY `idx_user_activity_log_flow` (`flow_trace_id`),
+  CONSTRAINT `fk_user_activity_log_user` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+CREATE TABLE IF NOT EXISTS `user_chat_profile` (
+  `id` bigint NOT NULL AUTO_INCREMENT,
+  `user_id` bigint NOT NULL,
+  `nickname` varchar(80) NOT NULL,
+  `avatar_url` varchar(512) DEFAULT NULL,
+  `description` varchar(255) DEFAULT NULL,
+  `is_default` tinyint(1) NOT NULL DEFAULT '0',
+  `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  KEY `idx_user_chat_profile_user` (`user_id`,`is_default`),
+  CONSTRAINT `fk_user_chat_profile_user` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+CREATE TABLE IF NOT EXISTS `user_security_history` (
+  `id` bigint NOT NULL AUTO_INCREMENT,
+  `user_id` bigint DEFAULT NULL COMMENT '대상 사용자(식별 가능 시)',
+  `actor_user_id` bigint DEFAULT NULL COMMENT '실행 사용자(본인 변경 등)',
+  `event_type` varchar(50) NOT NULL COMMENT 'FIND_ID/FIND_PASSWORD/RESET_PASSWORD/PASSWORD_CHANGE/EMAIL_VERIFY 등',
+  `event_stage` varchar(20) DEFAULT NULL COMMENT 'REQUEST/ISSUE/VERIFY/COMPLETE',
+  `input_identifier` varchar(255) DEFAULT NULL COMMENT '입력값(이메일/아이디)',
+  `target_email` varchar(255) DEFAULT NULL,
+  `success` tinyint(1) NOT NULL,
+  `fail_reason` varchar(255) DEFAULT NULL,
+  `detail_message` varchar(500) DEFAULT NULL,
+  `request_id` varchar(36) DEFAULT NULL COMMENT 'user_activity_log.request_id 와 상관',
+  `flow_trace_id` varchar(36) DEFAULT NULL,
+  `ip_address` varchar(64) DEFAULT NULL,
+  `user_agent` varchar(512) DEFAULT NULL,
+  `occurred_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  KEY `idx_user_security_history_time` (`occurred_at`),
+  KEY `idx_user_security_history_user` (`user_id`,`occurred_at`),
+  KEY `idx_user_security_history_event` (`event_type`,`occurred_at`),
+  KEY `fk_user_security_history_actor` (`actor_user_id`),
+  CONSTRAINT `fk_user_security_history_actor` FOREIGN KEY (`actor_user_id`) REFERENCES `users` (`id`) ON DELETE SET NULL,
+  CONSTRAINT `fk_user_security_history_user` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+-- =====================================================================
+--  리워드 이코노미 (활동 포인트/레벨/쿠폰) — patch 20260707_e_reward_economy
+-- =====================================================================
+CREATE TABLE IF NOT EXISTS reward_rule (
+    id            BIGINT       NOT NULL AUTO_INCREMENT,
+    event_code    VARCHAR(40)  NOT NULL COMMENT '적립 트리거. COMMUNITY_POST_CREATE/COMMUNITY_COMMENT_CREATE/APPLICATION_CASE_READY/DAILY_LOGIN/CREDIT_PURCHASE',
+    name          VARCHAR(100) NOT NULL COMMENT '규칙 표시명',
+    point_amount  INT          NOT NULL DEFAULT 0 COMMENT '지급 활동 포인트',
+    credit_amount INT          NOT NULL DEFAULT 0 COMMENT '지급 크레딧(AI 토큰)',
+    daily_cap     INT          NULL COMMENT '1일 지급 횟수 상한(NULL=무제한)',
+    enabled       TINYINT(1)   NOT NULL DEFAULT 1 COMMENT '0=미적립, 1=적립',
+    description   VARCHAR(255) NULL,
+    sort_order    INT          NOT NULL DEFAULT 0,
+    updated_by    BIGINT       NULL,
+    created_at    DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at    DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    PRIMARY KEY (id),
+    UNIQUE KEY uk_reward_rule_event (event_code),
+    KEY idx_reward_rule_enabled_sort (enabled, sort_order),
+    KEY idx_reward_rule_updated_by (updated_by),
+    CONSTRAINT fk_reward_rule_updated_by FOREIGN KEY (updated_by) REFERENCES users (id) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='활동 이벤트별 리워드 적립 규칙';
+
+CREATE TABLE IF NOT EXISTS user_level_policy (
+    id                  BIGINT       NOT NULL AUTO_INCREMENT,
+    level               INT          NOT NULL COMMENT '레벨 번호(1부터)',
+    level_name          VARCHAR(50)  NOT NULL COMMENT '레벨 표시명',
+    min_point           INT          NOT NULL COMMENT '이 레벨 도달에 필요한 누적 활동 포인트',
+    levelup_credit      INT          NOT NULL DEFAULT 0 COMMENT '레벨업 시 지급 크레딧',
+    levelup_coupon_code VARCHAR(50)  NULL COMMENT '레벨업 시 발급 쿠폰 코드(NULL=없음)',
+    benefit_note        VARCHAR(255) NULL COMMENT '레벨 혜택 설명',
+    active              TINYINT(1)   NOT NULL DEFAULT 1,
+    created_at          DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at          DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    PRIMARY KEY (id),
+    UNIQUE KEY uk_user_level_policy_level (level),
+    KEY idx_user_level_policy_min_point (min_point)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='활동 레벨 임계 및 레벨업 보상 정책';
+
+CREATE TABLE IF NOT EXISTS user_reward_history (
+    id           BIGINT       NOT NULL AUTO_INCREMENT,
+    user_id      BIGINT       NOT NULL,
+    event_code   VARCHAR(40)  NOT NULL COMMENT '적립 이벤트 또는 LEVEL_UP/COUPON_ISSUE',
+    point_delta  INT          NOT NULL DEFAULT 0,
+    credit_delta INT          NOT NULL DEFAULT 0,
+    level_before INT          NULL,
+    level_after  INT          NULL,
+    ref_type     VARCHAR(40)  NULL COMMENT '연관 엔티티. POST/COMMENT/APPLICATION_CASE/PAYMENT/LEVEL',
+    ref_id       BIGINT       NULL,
+    reason       VARCHAR(255) NULL,
+    created_at   DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (id),
+    KEY idx_user_reward_history_user (user_id, created_at),
+    KEY idx_user_reward_history_event (event_code),
+    CONSTRAINT fk_user_reward_history_user FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='사용자 리워드 적립/레벨업 이력';
+
+CREATE TABLE IF NOT EXISTS coupon (
+    id             BIGINT       NOT NULL AUTO_INCREMENT,
+    code           VARCHAR(50)  NOT NULL COMMENT '쿠폰 코드(대문자)',
+    name           VARCHAR(100) NOT NULL,
+    discount_type  VARCHAR(20)  NOT NULL COMMENT 'CREDIT=크레딧지급 / PERCENT=결제%할인 / AMOUNT=정액할인(원)',
+    discount_value INT          NOT NULL DEFAULT 0 COMMENT 'PERCENT면 %, AMOUNT면 원, CREDIT이면 크레딧 수',
+    min_purchase   INT          NOT NULL DEFAULT 0 COMMENT '최소 결제 금액(원). 할인형에 적용',
+    valid_from     DATETIME     NULL,
+    valid_until    DATETIME     NULL,
+    max_issue      INT          NULL COMMENT '총 발급 상한(NULL=무제한)',
+    issued_count   INT          NOT NULL DEFAULT 0,
+    enabled        TINYINT(1)   NOT NULL DEFAULT 1,
+    created_at     DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at     DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    PRIMARY KEY (id),
+    UNIQUE KEY uk_coupon_code (code),
+    KEY idx_coupon_enabled (enabled)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='쿠폰 정의';
+
+CREATE TABLE IF NOT EXISTS user_coupon (
+    id         BIGINT      NOT NULL AUTO_INCREMENT,
+    coupon_id  BIGINT      NOT NULL,
+    user_id    BIGINT      NOT NULL,
+    code       VARCHAR(50) NOT NULL COMMENT '발급 시점 코드 스냅샷',
+    status     VARCHAR(20) NOT NULL DEFAULT 'ISSUED' COMMENT 'ISSUED/USED/EXPIRED',
+    issued_at  DATETIME    NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    used_at    DATETIME    NULL,
+    order_ref  BIGINT      NULL COMMENT '사용된 결제/충전 참조',
+    created_at DATETIME    NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (id),
+    KEY idx_user_coupon_user_status (user_id, status),
+    KEY idx_user_coupon_coupon (coupon_id),
+    CONSTRAINT fk_user_coupon_coupon FOREIGN KEY (coupon_id) REFERENCES coupon (id) ON DELETE CASCADE,
+    CONSTRAINT fk_user_coupon_user FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='사용자 발급 쿠폰';
+
+-- =====================================================================
+--  관리자/직원 등급·급여 — patch 20260707_a_admin_staff_grade
+-- =====================================================================
+CREATE TABLE IF NOT EXISTS admin_staff_grade (
+    id             BIGINT       NOT NULL AUTO_INCREMENT,
+    user_id        BIGINT       NOT NULL COMMENT '관리자/직원 사용자 ID',
+    department     VARCHAR(60)  NULL COMMENT '부서',
+    seniority      VARCHAR(30)  NULL COMMENT '연차 구분. JUNIOR/MID/SENIOR/LEAD/PRINCIPAL',
+    job_tier       VARCHAR(30)  NULL COMMENT '직군 티어',
+    pay_band       VARCHAR(30)  NULL COMMENT '급여 밴드',
+    job_grade      VARCHAR(30)  NULL COMMENT '직급/등급',
+    pay_step       VARCHAR(30)  NULL COMMENT '호봉/스텝',
+    base_salary    INT          NULL COMMENT '기본 연봉(원). 민감정보',
+    currency       VARCHAR(10)  NOT NULL DEFAULT 'KRW',
+    effective_date DATE         NULL COMMENT '적용 시작일',
+    memo           VARCHAR(255) NULL,
+    updated_by     BIGINT       NULL,
+    created_at     DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at     DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    PRIMARY KEY (id),
+    UNIQUE KEY uk_admin_staff_grade_user (user_id),
+    KEY idx_admin_staff_grade_dept (department),
+    KEY idx_admin_staff_grade_updated_by (updated_by),
+    CONSTRAINT fk_admin_staff_grade_user FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE,
+    CONSTRAINT fk_admin_staff_grade_updated_by FOREIGN KEY (updated_by) REFERENCES users (id) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='관리자/직원 조직 등급 및 급여';
+
+CREATE TABLE IF NOT EXISTS admin_staff_grade_history (
+    id              BIGINT       NOT NULL AUTO_INCREMENT,
+    user_id         BIGINT       NOT NULL,
+    old_values_json JSON         NULL COMMENT '변경 전 스냅샷',
+    new_values_json JSON         NULL COMMENT '변경 후 스냅샷',
+    changed_by      BIGINT       NULL,
+    source          VARCHAR(20)  NOT NULL DEFAULT 'MANUAL' COMMENT 'MANUAL/EXCEL',
+    memo            VARCHAR(255) NULL,
+    created_at      DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (id),
+    KEY idx_admin_staff_grade_history_user (user_id, created_at),
+    KEY idx_admin_staff_grade_history_changed_by (changed_by),
+    CONSTRAINT fk_staff_grade_hist_user FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE,
+    CONSTRAINT fk_staff_grade_hist_changed_by FOREIGN KEY (changed_by) REFERENCES users (id) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='관리자/직원 등급·급여 변경 이력';
+
+-- 리워드 기본 시드(적립 규칙/레벨 정책/대표 쿠폰) — 신규 설치 시 즉시 동작하도록 편입
+INSERT IGNORE INTO reward_rule (event_code, name, point_amount, credit_amount, daily_cap, enabled, description, sort_order) VALUES
+    ('COMMUNITY_POST_CREATE',    '커뮤니티 글 작성',   10, 0,    5, 1, '커뮤니티 게시글 작성 시 활동 포인트 적립(1일 5회)', 1),
+    ('COMMUNITY_COMMENT_CREATE', '커뮤니티 댓글 작성',  3, 0,   10, 1, '댓글 작성 시 활동 포인트 적립(1일 10회)',          2),
+    ('APPLICATION_CASE_READY',   '지원 건 분석 완료',  30, 1, NULL, 1, '지원 건 자동 분석 완료 시 포인트+크레딧 적립',      3),
+    ('DAILY_LOGIN',              '일일 첫 로그인',      5, 0,    1, 1, '하루 첫 로그인 시 활동 포인트 적립(1일 1회)',        4),
+    ('CREDIT_PURCHASE',          '크레딧 구매 페이백', 50, 0, NULL, 1, '크레딧 구매 확정 시 활동 포인트 페이백',            5);
+
+INSERT IGNORE INTO user_level_policy (level, level_name, min_point, levelup_credit, levelup_coupon_code, benefit_note, active) VALUES
+    (1, '새싹',   0,     0, NULL,             '기본 레벨',                   1),
+    (2, '성장',   100,   5, NULL,             '레벨업 크레딧 5 지급',        1),
+    (3, '숙련',   300,  10, NULL,             '레벨업 크레딧 10 지급',       1),
+    (4, '전문가', 700,  20, 'LEVELUP_PRO',    '크레딧 20 + 전문가 쿠폰 지급', 1),
+    (5, '마스터', 1500, 50, 'LEVELUP_MASTER', '크레딧 50 + 마스터 쿠폰 지급', 1);
+
+INSERT IGNORE INTO coupon (code, name, discount_type, discount_value, min_purchase, max_issue, enabled) VALUES
+    ('WELCOME10',      '가입 환영 10% 할인',   'PERCENT', 10, 0, NULL, 1),
+    ('LEVELUP_PRO',    '전문가 달성 크레딧 20', 'CREDIT',  20, 0, NULL, 1),
+    ('LEVELUP_MASTER', '마스터 달성 크레딧 50', 'CREDIT',  50, 0, NULL, 1);
+
 SET FOREIGN_KEY_CHECKS = 1;
-
-

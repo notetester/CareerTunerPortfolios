@@ -26,6 +26,7 @@ import com.careertuner.common.config.CareerTunerProperties;
 import com.careertuner.common.exception.BusinessException;
 import com.careertuner.common.exception.ErrorCode;
 import com.careertuner.common.security.JwtTokenProvider;
+import com.careertuner.reward.service.RewardService;
 import com.careertuner.user.domain.User;
 import com.careertuner.user.mapper.UserMapper;
 
@@ -55,6 +56,17 @@ public class AuthServiceImpl implements AuthService {
      * 기본값은 기존 상수(5회/10분)와 동일 — 도입 시 동작 무변경.
      */
     private final com.careertuner.loginrisk.service.LoginRiskPolicyService loginRiskPolicyService;
+    /** 활동 리워드 적립(하루 첫 로그인 시 DAILY_LOGIN, 일일 캡 1회). 규칙 off 면 미적립. */
+    private final RewardService rewardService;
+
+    /** 리워드 적립은 로그인 처리 실패로 이어지지 않도록 예외를 흡수한다. */
+    private void grantDailyLoginRewardSafely(Long userId) {
+        try {
+            rewardService.grant(userId, "DAILY_LOGIN", "LOGIN", null);
+        } catch (RuntimeException e) {
+            log.warn("일일 로그인 리워드 적립 실패 userId={} : {}", userId, e.getMessage());
+        }
+    }
 
     @Override
     @Transactional
@@ -84,32 +96,34 @@ public class AuthServiceImpl implements AuthService {
         // 회원가입 직후 자동 로그인 정책이므로 로그인 성공과 동일하게 접속 정보를 남긴다.
         userMapper.touchLastLoginAndResetFailures(user.getId());
         recordLoginHistory(user.getId(), "LOGIN", "LOCAL", "EMAIL", email, true, null, context);
+        grantDailyLoginRewardSafely(user.getId());
         return issueTokens(user, context);
     }
 
     @Override
     @Transactional(noRollbackFor = BusinessException.class)
     public TokenResponse login(LoginRequest request, LoginRequestContext context) {
-        String email = normalizeEmail(request.email());
-        User user = userMapper.findByEmail(email);
+        String identifier = normalizeLoginIdentifier(request.email());
+        String loginMethod = loginMethodFor(identifier);
+        User user = userMapper.findByLoginIdentifier(identifier);
         if (user == null) {
-            recordLoginHistory(null, "LOGIN", "LOCAL", "EMAIL", email, false, "USER_NOT_FOUND", context);
+            recordLoginHistory(null, "LOGIN", "LOCAL", loginMethod, identifier, false, "USER_NOT_FOUND", context);
             throw invalidLogin();
         }
 
         user = releaseExpiredBlockIfNeeded(user);
         // 차단/휴면/삭제 계정에는 토큰을 발급하지 않기 위해 비밀번호 검증 전에 상태를 먼저 본다.
-        validateLoginAllowed(user, email, context);
+        validateLoginAllowed(user, loginMethod, identifier, context);
 
         if (!user.isPasswordEnabled() || user.getPassword() == null) {
-            recordLoginHistory(user.getId(), "LOGIN", "LOCAL", "EMAIL", email, false,
+            recordLoginHistory(user.getId(), "LOGIN", "LOCAL", loginMethod, identifier, false,
                     "PASSWORD_LOGIN_DISABLED", context);
             throw invalidLogin();
         }
 
         if (!passwordEncoder.matches(request.password(), user.getPassword())) {
             userMapper.increaseFailedLogin(user.getId());
-            recordLoginHistory(user.getId(), "LOGIN", "LOCAL", "EMAIL", email, false, "WRONG_PASSWORD", context);
+            recordLoginHistory(user.getId(), "LOGIN", "LOCAL", loginMethod, identifier, false, "WRONG_PASSWORD", context);
             // 자동 잠금 정책 — OFF 면 무제약(집계만), ON 이면 임계 초과 시 잠금.
             if (loginRiskPolicyService.isLockoutEnabled()) {
                 int maxCount = loginRiskPolicyService.getMaxFailedCount();
@@ -127,7 +141,9 @@ public class AuthServiceImpl implements AuthService {
         }
 
         userMapper.touchLastLoginAndResetFailures(user.getId());
-        recordLoginHistory(user.getId(), "LOGIN", "LOCAL", "EMAIL", email, true, null, context);
+        recordLoginHistory(user.getId(), "LOGIN", "LOCAL", loginMethod, identifier, true, null, context);
+        // 하루 첫 로그인 리워드(일일 캡 1회, 규칙 on 일 때만). 실패해도 로그인은 정상 처리.
+        grantDailyLoginRewardSafely(user.getId());
         return issueTokens(user, context);
     }
 
@@ -183,16 +199,36 @@ public class AuthServiceImpl implements AuthService {
     @Transactional
     public boolean verifyEmail(String token) {
         EmailVerification ev = authMapper.findEmailVerificationByToken(token);
-        if (ev == null || ev.isUsed() || !"VERIFY".equals(ev.getPurpose())
+        if (ev == null || ev.isUsed()
                 || ev.getExpiredAt().isBefore(LocalDateTime.now())) {
             return false;
         }
-        authMapper.markEmailVerificationUsed(ev.getId());
-        if (ev.getUserId() != null) {
-            userMapper.markEmailVerified(ev.getUserId());
+
+        if ("VERIFY".equals(ev.getPurpose())) {
+            authMapper.markEmailVerificationUsed(ev.getId());
+            if (ev.getUserId() != null) {
+                userMapper.markEmailVerified(ev.getUserId());
+            }
+            securityHistoryService.record("EMAIL_VERIFY", "COMPLETE", ev.getUserId(), true, null, null);
+            return true;
         }
-        securityHistoryService.record("EMAIL_VERIFY", "COMPLETE", ev.getUserId(), true, null, null);
-        return true;
+
+        if ("EMAIL_CHANGE".equals(ev.getPurpose())) {
+            User user = ev.getUserId() != null ? userMapper.findById(ev.getUserId()) : null;
+            if (user == null || STATUS_DELETED.equals(user.getStatus())) {
+                return false;
+            }
+            String email = normalizeEmail(ev.getEmail());
+            if (userMapper.countByEmailExcludingId(email, user.getId()) > 0) {
+                return false;
+            }
+            authMapper.markEmailVerificationUsed(ev.getId());
+            userMapper.updateEmailAndMarkVerified(user.getId(), email);
+            securityHistoryService.record("EMAIL_CHANGE", "COMPLETE", user.getId(), true, email, null);
+            return true;
+        }
+
+        return false;
     }
 
     @Override
@@ -416,17 +452,17 @@ public class AuthServiceImpl implements AuthService {
         return user;
     }
 
-    private void validateLoginAllowed(User user, String identifier, LoginRequestContext context) {
+    private void validateLoginAllowed(User user, String loginMethod, String identifier, LoginRequestContext context) {
         if (STATUS_DELETED.equals(user.getStatus())) {
-            recordLoginHistory(user.getId(), "LOGIN", "LOCAL", "EMAIL", identifier, false, "ACCOUNT_DELETED", context);
+            recordLoginHistory(user.getId(), "LOGIN", "LOCAL", loginMethod, identifier, false, "ACCOUNT_DELETED", context);
             throw new BusinessException(ErrorCode.FORBIDDEN, "탈퇴 또는 삭제된 계정입니다.");
         }
         if (STATUS_BLOCKED.equals(user.getStatus())) {
-            recordLoginHistory(user.getId(), "LOGIN", "LOCAL", "EMAIL", identifier, false, "ACCOUNT_BLOCKED", context);
+            recordLoginHistory(user.getId(), "LOGIN", "LOCAL", loginMethod, identifier, false, "ACCOUNT_BLOCKED", context);
             throw new BusinessException(ErrorCode.FORBIDDEN, blockMessage(user));
         }
         if (STATUS_DORMANT.equals(user.getStatus())) {
-            recordLoginHistory(user.getId(), "LOGIN", "LOCAL", "EMAIL", identifier, false, "ACCOUNT_DORMANT", context);
+            recordLoginHistory(user.getId(), "LOGIN", "LOCAL", loginMethod, identifier, false, "ACCOUNT_DORMANT", context);
             throw new BusinessException(ErrorCode.FORBIDDEN, "휴면 계정입니다. 휴면 해제 후 로그인할 수 있습니다.");
         }
     }
@@ -487,7 +523,7 @@ public class AuthServiceImpl implements AuthService {
     }
 
     private BusinessException invalidLogin() {
-        return new BusinessException(ErrorCode.UNAUTHORIZED, "이메일 또는 비밀번호가 올바르지 않습니다.");
+        return new BusinessException(ErrorCode.UNAUTHORIZED, "아이디/이메일 또는 비밀번호가 올바르지 않습니다.");
     }
 
     private void requireSignupConsents(RegisterRequest request) {
@@ -537,6 +573,14 @@ public class AuthServiceImpl implements AuthService {
 
     private String normalizeEmail(String email) {
         return email == null ? null : email.trim().toLowerCase(Locale.ROOT);
+    }
+
+    private String normalizeLoginIdentifier(String identifier) {
+        return identifier == null ? null : identifier.trim().toLowerCase(Locale.ROOT);
+    }
+
+    private String loginMethodFor(String identifier) {
+        return identifier != null && identifier.contains("@") ? "EMAIL" : "LOGIN_ID";
     }
 
     private String truncate(String value, int maxLength) {

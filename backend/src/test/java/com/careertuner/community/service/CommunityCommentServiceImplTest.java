@@ -55,11 +55,13 @@ class CommunityCommentServiceImplTest {
     private final NicknameProfileService nicknameProfileService = mock(NicknameProfileService.class);
     private final com.careertuner.community.moderation.service.ModerationSettingService moderationSettingService =
             mock(com.careertuner.community.moderation.service.ModerationSettingService.class);
+    private final com.careertuner.reward.service.RewardService rewardService =
+            mock(com.careertuner.reward.service.RewardService.class);
 
     private final CommunityCommentServiceImpl service =
             new CommunityCommentServiceImpl(commentMapper, postMapper, reactionMapper, subscriptionMapper,
                     eventPublisher, notificationService, privacyPolicyService, nicknameProfileService,
-                    moderationSettingService);
+                    moderationSettingService, rewardService);
 
     /**
      * 개인 차단 정책 기본 스텁 — 차단 없음(기존 테스트가 차단 필터의 영향을 받지 않게 명시).
@@ -127,6 +129,36 @@ class CommunityCommentServiceImplTest {
 
         assertThat(byId(rs, 1).isDeleted()).isTrue();
         assertThat(byId(rs, 2).isDeleted()).isFalse();
+    }
+
+    // ── 신고 누적 블러: 임계 이상 + 비작성자 → blurred, 작성자 본인 → 안 가림 ──
+    @Test
+    void reportedComment_blurredForNonAuthor_notForAuthor() {
+        givenPost();
+        when(moderationSettingService.getReportBlurThreshold()).thenReturn(3);
+        CommunityComment reported = CommunityComment.builder()
+                .id(1L).postId(POST_ID).userId(10L).anonymous(false)
+                .status(CommentStatus.PUBLISHED.name()).content("c1").userName("A")
+                .reportCount(5).createdAt(t0).build();
+        when(commentMapper.findAllByPostId(POST_ID)).thenReturn(List.of(reported));
+
+        assertThat(byId(service.getComments(POST_ID, 99L), 1).blurred()).isTrue();   // 비작성자 → 블러
+        assertThat(byId(service.getComments(POST_ID, 99L), 1).reportCount()).isEqualTo(5);
+        assertThat(byId(service.getComments(POST_ID, 10L), 1).blurred()).isFalse();  // 작성자 본인 → 미블러
+    }
+
+    // ── 신고 누적 블러: 임계 미만이면 안 가림 (값 변경이 의도대로) ──
+    @Test
+    void belowThreshold_notBlurred() {
+        givenPost();
+        when(moderationSettingService.getReportBlurThreshold()).thenReturn(3);
+        CommunityComment c = CommunityComment.builder()
+                .id(1L).postId(POST_ID).userId(10L).anonymous(false)
+                .status(CommentStatus.PUBLISHED.name()).content("c1").userName("A")
+                .reportCount(2).createdAt(t0).build();
+        when(commentMapper.findAllByPostId(POST_ID)).thenReturn(List.of(c));
+
+        assertThat(byId(service.getComments(POST_ID, 99L), 1).blurred()).isFalse();
     }
 
     // ── M1: 살아있는 자손이 없는 삭제 leaf는 렌더에서 제외 ──

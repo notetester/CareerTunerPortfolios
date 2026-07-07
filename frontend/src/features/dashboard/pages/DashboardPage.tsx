@@ -191,11 +191,11 @@ export function DashboardPage() {
                     type="button"
                     onClick={handleRefreshSummary}
                     disabled={refreshing}
-                    title="AI를 다시 실행해 최신 데이터로 요약을 재생성합니다. 크레딧 1이 차감됩니다."
+                    title="AI 실행 전 사용권 우선 차감과 최소·최대 크레딧 범위를 안내합니다."
                     className="flex shrink-0 items-center gap-1 rounded-md border border-blue-200 bg-card/70 px-2 py-1 text-xs font-semibold text-blue-700 transition-colors hover:bg-card disabled:opacity-60"
                   >
                     <RefreshCw className={`size-3 ${refreshing ? "animate-spin" : ""}`} />
-                    {refreshing ? "재생성 중" : "재생성 (크레딧 1)"}
+                    {refreshing ? "재생성 중" : "재생성 (실행 전 비용 안내)"}
                   </button>
                 </div>
                 <p className="mt-1 text-xs text-blue-600">

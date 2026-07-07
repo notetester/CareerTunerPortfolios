@@ -15,6 +15,9 @@ public class AiFeatureBenefitPolicy {
     private String chargeUnit;
     private boolean includedInTicket;
     private int defaultCreditCost;
+    private int minCreditCost;
+    private int maxCreditCost;
+    private int creditUnitTokens;
     private boolean active;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;

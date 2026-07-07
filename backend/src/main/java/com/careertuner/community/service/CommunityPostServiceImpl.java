@@ -41,6 +41,7 @@ import com.careertuner.nickname.dto.DisplayNameResponse;
 import com.careertuner.nickname.service.NicknameProfileService;
 import com.careertuner.privacy.service.PrivacyPolicyService;
 import com.careertuner.privacy.service.PrivacySurfaces;
+import com.careertuner.reward.service.RewardService;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -70,9 +71,20 @@ public class CommunityPostServiceImpl implements CommunityPostService {
      * (이전 community.report.blur-threshold / community.post.rate-limit.* @Value 하드코딩을 대체)
      */
     private final com.careertuner.community.moderation.service.ModerationSettingService moderationSettingService;
+    /** 활동 리워드 적립(글 작성 시 COMMUNITY_POST_CREATE). 규칙 off 면 미적립. */
+    private final RewardService rewardService;
 
     /** 개인화 피드 정렬 키 — 이 값이면 PersonalizedFeedService(7:3 혼합)로 위임한다. */
     private static final String SORT_PERSONALIZED = "personalized";
+
+    /** 리워드 적립은 본 작업 실패로 이어지지 않도록 예외를 흡수한다. */
+    private void grantRewardSafely(Long userId, String eventCode, String refType, Long refId) {
+        try {
+            rewardService.grant(userId, eventCode, refType, refId);
+        } catch (RuntimeException e) {
+            log.warn("리워드 적립 실패 event={} userId={} : {}", eventCode, userId, e.getMessage());
+        }
+    }
 
     @Override
     public PostPageResponse getPosts(String category, String keyword, String sort, int page, int size, Long viewerId) {
@@ -266,6 +278,8 @@ public class CommunityPostServiceImpl implements CommunityPostService {
         }
         // 새 글 발행 → 커밋 후 관심 사용자 추천 알림(RECOMMENDED_POST). 수정 시에는 발행하지 않는다.
         eventPublisher.publishEvent(new PostPublishedEvent(post.getId()));
+        // 활동 리워드 적립(규칙 on 일 때만). 실패해도 글 작성은 유지.
+        grantRewardSafely(userId, "COMMUNITY_POST_CREATE", "POST", post.getId());
         return post.getId();
     }
 

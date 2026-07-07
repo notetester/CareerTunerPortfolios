@@ -114,6 +114,9 @@ const fieldConfig: Record<BillingPolicyTargetType, EditableField[]> = {
     { key: "benefitCode", label: "사용권 코드", type: "text" },
     { key: "chargeUnit", label: "차감 단위", type: "select", options: ["REQUEST", "APPLICATION_CASE", "DOCUMENT", "QUESTION", "REPORT"] },
     { key: "defaultCreditCost", label: "기본 크레딧 비용", type: "number" },
+    { key: "minCreditCost", label: "최소 크레딧 비용", type: "number" },
+    { key: "maxCreditCost", label: "최대 크레딧 비용", type: "number" },
+    { key: "creditUnitTokens", label: "크레딧 단위 토큰", type: "number" },
     { key: "includedInTicket", label: "사용권 포함", type: "boolean" },
     { key: "active", label: "정책 활성화", type: "boolean" },
   ],
@@ -128,6 +131,9 @@ const numberKeys = new Set([
   "creditCost",
   "sortOrder",
   "defaultCreditCost",
+  "minCreditCost",
+  "maxCreditCost",
+  "creditUnitTokens",
 ]);
 
 const won = (value: number | null | undefined) => `${(value ?? 0).toLocaleString("ko-KR")}원`;
@@ -491,7 +497,7 @@ function CurrentPolicies({ data, loading }: { data: AdminPlans | null; loading: 
                   <th className="px-4 py-3">기능</th>
                   <th className="px-4 py-3">사용권</th>
                   <th className="px-4 py-3">차감</th>
-                  <th className="px-4 py-3">기본 비용</th>
+                  <th className="px-4 py-3">비용 범위</th>
                   <th className="px-4 py-3">상태</th>
                 </tr>
               </thead>
@@ -501,7 +507,10 @@ function CurrentPolicies({ data, loading }: { data: AdminPlans | null; loading: 
                     <td className="px-4 py-3 font-semibold text-slate-900">{policy.featureType}</td>
                     <td className="px-4 py-3 text-slate-700">{policy.benefitCode}</td>
                     <td className="px-4 py-3 text-slate-700">{policy.includedInTicket ? "사용권 우선" : "크레딧 직접 차감"} · {policy.chargeUnit}</td>
-                    <td className="px-4 py-3 text-slate-700">{numberLabel(policy.defaultCreditCost, "크레딧")}</td>
+                    <td className="px-4 py-3 text-slate-700">
+                      {numberLabel(policy.minCreditCost, "크레딧")}~{numberLabel(policy.maxCreditCost, "크레딧")}
+                      {policy.creditUnitTokens > 0 && <div className="text-xs text-slate-500">{policy.creditUnitTokens.toLocaleString("ko-KR")}토큰당</div>}
+                    </td>
                     <td className="px-4 py-3"><StatusBadge active={policy.active} /></td>
                   </tr>
                 ))}
@@ -823,7 +832,7 @@ function buildTargets(data: AdminPlans | null, targetType: BillingPolicyTargetTy
   return (data.featureBenefitPolicies ?? []).map((policy) => ({
     code: policy.featureType,
     label: `${policy.featureType} → ${policy.benefitCode}`,
-    helper: `${policy.includedInTicket ? "사용권 우선" : "크레딧 직접 차감"} · 기본 ${policy.defaultCreditCost}크레딧`,
+    helper: `${policy.includedInTicket ? "사용권 우선" : "크레딧 직접 차감"} · ${policy.minCreditCost}~${policy.maxCreditCost}크레딧`,
     snapshot: { ...policy },
   }));
 }

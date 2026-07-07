@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useState } from "react";
-import { AtSign, KeyRound, Link2, Phone, ShieldCheck } from "lucide-react";
+import { AtSign, KeyRound, Link2, MailCheck, Phone, ShieldCheck } from "lucide-react";
 import { Badge } from "@/app/components/ui/badge";
 import { Button } from "@/app/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/app/components/ui/card";
 import { Input } from "@/app/components/ui/input";
-import { getAccountInfo, setLoginId, setPhone } from "../api/nicknameProfileApi";
+import { requestPasswordReset } from "@/app/auth/authApi";
+import { getAccountInfo, requestEmailRegistration, setLoginId, setPhone } from "../api/nicknameProfileApi";
 import { PROVIDER_LABELS, type AccountInfo } from "../types/nicknameProfile";
 
 /**
@@ -19,8 +20,11 @@ export function AccountInfoCard() {
   const [message, setMessage] = useState<string | null>(null);
 
   const [loginIdDraft, setLoginIdDraft] = useState("");
+  const [emailDraft, setEmailDraft] = useState("");
   const [phoneDraft, setPhoneDraft] = useState("");
   const [savingLoginId, setSavingLoginId] = useState(false);
+  const [sendingEmail, setSendingEmail] = useState(false);
+  const [sendingPassword, setSendingPassword] = useState(false);
   const [savingPhone, setSavingPhone] = useState(false);
 
   const load = useCallback(async () => {
@@ -29,6 +33,7 @@ export function AccountInfoCard() {
     try {
       const next = await getAccountInfo();
       setInfo(next);
+      setEmailDraft(next.temporaryEmail ? "" : next.email);
       setPhoneDraft(next.phone ?? "");
     } catch (e) {
       setError(e instanceof Error ? e.message : "계정 정보를 불러오지 못했습니다.");
@@ -58,6 +63,43 @@ export function AccountInfoCard() {
       setError(e instanceof Error ? e.message : "아이디 설정에 실패했습니다.");
     } finally {
       setSavingLoginId(false);
+    }
+  };
+
+  const submitEmailRegistration = async () => {
+    const value = emailDraft.trim().toLowerCase();
+    if (!/.+@.+\..+/.test(value)) {
+      setError("인증받을 이메일을 올바르게 입력해 주세요.");
+      return;
+    }
+    setSendingEmail(true);
+    setError(null);
+    setMessage(null);
+    try {
+      await requestEmailRegistration(value);
+      setMessage("인증 메일을 보냈습니다. 메일의 링크를 열면 로그인 이메일로 연결됩니다.");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "이메일 인증 요청에 실패했습니다.");
+    } finally {
+      setSendingEmail(false);
+    }
+  };
+
+  const submitPasswordSetup = async () => {
+    if (!info || info.temporaryEmail || !info.emailVerified) {
+      setError("먼저 실제 이메일 등록과 인증을 완료해 주세요.");
+      return;
+    }
+    setSendingPassword(true);
+    setError(null);
+    setMessage(null);
+    try {
+      await requestPasswordReset(info.email);
+      setMessage("비밀번호 설정 메일을 보냈습니다. 메일의 링크에서 새 비밀번호를 설정해 주세요.");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "비밀번호 설정 메일 발송에 실패했습니다.");
+    } finally {
+      setSendingPassword(false);
     }
   };
 
@@ -105,8 +147,68 @@ export function AccountInfoCard() {
             <AtSign className="size-3.5" />
             이메일
           </span>
-          <span className="text-sm text-slate-800">{info?.email}</span>
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-sm text-slate-800">
+              {info?.temporaryEmail ? "실제 이메일 미등록" : info?.email}
+            </span>
+            {info?.temporaryEmail ? (
+              <Badge className="bg-amber-100 text-amber-700">등록 필요</Badge>
+            ) : (
+              <Badge className={info?.emailVerified ? "bg-green-100 text-green-700" : "bg-amber-100 text-amber-700"}>
+                {info?.emailVerified ? "인증 완료" : "인증 필요"}
+              </Badge>
+            )}
+          </div>
+          {info?.temporaryEmail && (
+            <p className="text-xs text-slate-500">
+              소셜 로그인에서 이메일을 받지 못해 임시 이메일이 저장된 상태입니다. 실제 이메일을 등록해야 이메일 로그인과 비밀번호 설정을 사용할 수 있습니다.
+            </p>
+          )}
         </div>
+
+        {info?.emailRegistrationRequired && (
+          <div className="space-y-2 rounded-xl border border-blue-100 bg-blue-50/60 p-3">
+            <span className="flex items-center gap-1.5 text-xs font-bold text-blue-700">
+              <MailCheck className="size-3.5" />
+              로그인 이메일 등록/인증
+            </span>
+            <div className="flex flex-wrap gap-2">
+              <Input
+                className="max-w-xs bg-white"
+                value={emailDraft}
+                onChange={(e) => setEmailDraft(e.target.value)}
+                placeholder="인증받을 이메일"
+                type="email"
+              />
+              <Button size="sm" className="bg-blue-600 text-white hover:bg-blue-700" onClick={() => void submitEmailRegistration()} disabled={sendingEmail}>
+                {sendingEmail ? "발송 중..." : "인증 메일 발송"}
+              </Button>
+            </div>
+            <p className="text-xs leading-5 text-blue-700">
+              링크 인증이 완료되기 전까지는 현재 계정 이메일이 바뀌지 않습니다.
+            </p>
+          </div>
+        )}
+
+        {info?.passwordSetupRequired && (
+          <div className="space-y-2 rounded-xl border border-amber-100 bg-amber-50/70 p-3">
+            <span className="flex items-center gap-1.5 text-xs font-bold text-amber-700">
+              <KeyRound className="size-3.5" />
+              비밀번호 로그인 설정 필요
+            </span>
+            <p className="text-xs leading-5 text-amber-700">
+              현재 계정은 소셜 로그인 전용 상태입니다. 이메일 인증 후 비밀번호를 설정하면 아이디/이메일 로그인도 사용할 수 있습니다.
+            </p>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => void submitPasswordSetup()}
+              disabled={sendingPassword || info.temporaryEmail || !info.emailVerified}
+            >
+              {sendingPassword ? "발송 중..." : "비밀번호 설정 메일 받기"}
+            </Button>
+          </div>
+        )}
 
         {/* 로그인 아이디 — 최초 1회 설정 */}
         <div className="space-y-2">

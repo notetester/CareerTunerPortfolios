@@ -1,4 +1,5 @@
 import { api } from "@/app/lib/api";
+import { runWithAiCharge } from "@/features/billing/api/aiChargePreviewApi";
 import { apiBase } from "@/app/lib/apiBase";
 import { getAccessToken } from "@/app/lib/tokenStore";
 import { isDataMockActive } from "../tutorial/tutorialStore";
@@ -73,13 +74,23 @@ export function markSessionResumed(sessionId: number): Promise<void> {
   return api<void>(`/interview/sessions/${sessionId}/resume`, { method: "POST" });
 }
 
-/** 음성 모의면접 트랜스크립트 → 질문별 내용 채점(interview_answer 저장). 채점한 문항 수 반환. */
-export function scoreVoiceTranscript(sessionId: number, transcript: TranscriptLine[]): Promise<number> {
+/**
+ * 음성 모의면접 트랜스크립트 → 질문별 내용 채점(interview_answer 저장). 채점한 문항 수 반환.
+ * questionLimit(1~6)을 주면 앞에서 그 수만큼만 채점 대상 — 체험판(1문제)은 1을 넘겨
+ * 미진행 질문에 억지 매칭·저장되는 것을 막는다.
+ */
+export function scoreVoiceTranscript(
+  sessionId: number,
+  transcript: TranscriptLine[],
+  questionLimit?: number,
+): Promise<number> {
   if (isDataMockActive()) return Promise.resolve(transcript.some((l) => l.role === "user") ? 3 : 0);
-  return api<number>(`/interview/sessions/${sessionId}/score-voice`, {
-    method: "POST",
-    body: JSON.stringify({ transcript }),
-  });
+  return runWithAiCharge("INTERVIEW_VOICE_SCORING", (headers) =>
+    api<number>(`/interview/sessions/${sessionId}/score-voice`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ transcript, questionLimit }),
+    }));
 }
 
 
@@ -100,10 +111,12 @@ export function generateExpectedQuestions(
   request: GenerateQuestionsRequest,
 ): Promise<InterviewQuestion[]> {
   if (isDataMockActive()) return mockDelay(dummyQuestions, 900);
-  return api<InterviewQuestion[]>(`/interview/sessions/${sessionId}/generate-questions`, {
-    method: "POST",
-    body: JSON.stringify(request),
-  });
+  return runWithAiCharge("INTERVIEW_QUESTION_GEN", (headers) =>
+    api<InterviewQuestion[]>(`/interview/sessions/${sessionId}/generate-questions`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify(request),
+    }));
 }
 
 /** 세션의 질문 목록 조회. */
@@ -118,10 +131,12 @@ export function submitAnswer(
   request: SubmitAnswerRequest,
 ): Promise<InterviewAnswer> {
   if (isDataMockActive()) return mockDelay(dummyAnswer(questionId), 500);
-  return api<InterviewAnswer>(`/interview/questions/${questionId}/answers`, {
-    method: "POST",
-    body: JSON.stringify(request),
-  });
+  return runWithAiCharge("INTERVIEW_ANSWER_EVAL", (headers) =>
+    api<InterviewAnswer>(`/interview/questions/${questionId}/answers`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify(request),
+    }));
 }
 
 /** 질문에 대한 모범답안 생성(학습용). 답변 제출 전에도 호출 가능. */
@@ -138,10 +153,12 @@ export function generateFollowUps(
   request: GenerateFollowUpsRequest = {},
 ): Promise<InterviewQuestion[]> {
   if (isDataMockActive()) return mockDelay([...dummyQuestions, dummyFollowUp], 800);
-  return api<InterviewQuestion[]>(`/interview/questions/${questionId}/follow-ups`, {
-    method: "POST",
-    body: JSON.stringify(request),
-  });
+  return runWithAiCharge("INTERVIEW_FOLLOWUP_GEN", (headers) =>
+    api<InterviewQuestion[]>(`/interview/questions/${questionId}/follow-ups`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify(request),
+    }));
 }
 
 /** 세션 진행 상태(다음 질문/종료 여부) 조회. */
@@ -164,10 +181,14 @@ export function getAgentSteps(sessionId: number): Promise<InterviewAgentStep[]> 
   return api<InterviewAgentStep[]>(`/interview/sessions/${sessionId}/agent-steps`, { method: "GET" });
 }
 
-/** 실시간 음성 면접관 세션 발급 (ephemeral key). 프런트는 이 키로 OpenAI Realtime 에 직접 WebRTC 연결. */
-export function createRealtimeSession(sessionId: number): Promise<RealtimeSession> {
+/**
+ * 실시간 음성 면접관 세션 발급 (ephemeral key). 프런트는 이 키로 OpenAI Realtime 에 직접 WebRTC 연결.
+ * questionLimit(1~6)을 주면 그 수만큼만 질문한다 — 체험판(시연)은 1.
+ */
+export function createRealtimeSession(sessionId: number, questionLimit?: number): Promise<RealtimeSession> {
   // 튜토리얼: 실제 WebRTC 연결이라 여기서 막지 않고 탭에서 더미 흐름 처리(단계 C).
-  return api<RealtimeSession>(`/interview/sessions/${sessionId}/realtime`, { method: "POST" });
+  const query = questionLimit ? `?questionLimit=${questionLimit}` : "";
+  return api<RealtimeSession>(`/interview/sessions/${sessionId}/realtime${query}`, { method: "POST" });
 }
 
 /** 세션 종료 → AI 종합 리포트 생성/조회. */

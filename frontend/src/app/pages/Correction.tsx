@@ -17,7 +17,6 @@ import { CorrectionResultCard } from "@/features/correction/components/Correctio
 import { useCorrections } from "@/features/correction/hooks/useCorrections";
 import {
   CORRECTION_TABS,
-  CORRECTION_CREDIT_COST,
   CORRECTION_TYPE_BY_TAB,
   type CorrectionTab,
 } from "@/features/correction/types/correction";
@@ -50,7 +49,6 @@ const correctionMeta: Record<CorrectionTab, {
   placeholder: string;
   questionLabel?: string;
   questionPlaceholder?: string;
-  credit: number;
 }> = {
   answer: {
     title: "답변 첨삭",
@@ -58,7 +56,6 @@ const correctionMeta: Record<CorrectionTab, {
     placeholder: "고객 불만을 해결했던 경험이나 협업 갈등을 조정한 답변을 입력하세요.",
     questionLabel: "면접 질문",
     questionPlaceholder: "예: 갈등 상황을 해결한 경험을 설명해 주세요.",
-    credit: CORRECTION_CREDIT_COST,
   },
   cover: {
     title: "자기소개서 첨삭",
@@ -66,19 +63,16 @@ const correctionMeta: Record<CorrectionTab, {
     placeholder: "첨삭할 자기소개서 답변을 입력하세요.",
     questionLabel: "자기소개서 문항",
     questionPlaceholder: "예: 지원 동기와 입사 후 포부를 작성해 주세요.",
-    credit: CORRECTION_CREDIT_COST,
   },
   resume: {
     title: "이력서 첨삭",
     desc: "경험 표현, 직무 역량 정리, 성과 중심 문장을 보강합니다",
     placeholder: "이력서의 경력, 활동, 프로젝트 또는 실습 내용을 입력하세요.",
-    credit: CORRECTION_CREDIT_COST,
   },
   portfolio: {
     title: "포트폴리오 설명 첨삭",
     desc: "작업물의 배경, 역할, 문제 해결, 결과를 채용자가 읽기 좋게 다듬습니다",
     placeholder: "프로젝트나 포트폴리오 작업물 설명을 입력하세요.",
-    credit: CORRECTION_CREDIT_COST,
   },
 };
 
@@ -225,7 +219,7 @@ export function CorrectionPage() {
                   </div>
                   <Badge className="w-fit bg-amber-100 text-amber-700">
                     <Award className="mr-1 size-3" />
-                    기본 {active.credit} 크레딧
+                    실행 전 정책별 비용 안내
                   </Badge>
                 </div>
               </CardHeader>
