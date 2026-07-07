@@ -416,6 +416,35 @@ class EvidenceGateServiceTest {
 
     private static final FitApplyDecision DEFAULT_DECISION = new FitApplyDecision("HOLD", List.of(), List.of());
 
+    // ── 계측/특성화: 같은 문장 LACK 억제로 인한 알려진 false-negative (EA-GV2-109 실측, 2026-07-07) ──
+    // "고칠 버그"를 단정하는 게 아니라 현재 heuristic 동작을 못박는 회귀 앵커다. 같은 문장에 '보유'(미보유
+    // 요구 역량의 자기모순 단정)와 '없'(다른 스킬 결핍)이 섞이면, 문장 단위 'LACK 있으면 위반 아님' 규칙
+    // (FP 방지 목적, POSSESSION/LACK 주석 참조)이 보유 단정을 억제해 PASS 한다. 향후 heuristic 개선 시
+    // 이 두 앵커(억제 O/X)로 역효과(FP 증가·FN 잔존)를 검증한다.
+
+    @Test
+    void mixedSentenceLackSuppressesPossessionClaim_knownFalseNegative() {
+        FitAnalysisAiResult ai = ai(45, List.of("Git"), List.of("NestJS"),
+                "NestJS와 Git가 필수 스킬로 요구되며 프로필에서 두 가지 모두 보유하고 있어 절반을 충족하지만, 우대 스킬이 없어 경쟁력이 낮습니다.");
+        EvidenceGateDecision decision = gate.evaluate(
+                command(List.of("NestJS"), List.of(), List.of("Git", "Express"), List.of()), ai);
+
+        // 현재 동작: 같은 문장 LACK("없어") 억제로 NestJS 보유 단정이 미검출 → PASSED.
+        assertThat(decision.gateStatus()).isEqualTo(EvidenceGateDecision.STATUS_PASSED);
+    }
+
+    @Test
+    void sameClaimWithoutMixedLackIsFlagged_isolatesMechanism() {
+        // 동일한 NestJS 보유 단정이나 같은 문장에 결핍 표현이 없으면 정상 검출(REVIEW). 억제 원인이 LACK 임을 격리.
+        FitAnalysisAiResult ai = ai(45, List.of("Git"), List.of("NestJS"),
+                "NestJS와 Git가 필수 스킬로 요구되며 프로필에서 두 가지 모두 보유하고 있어 요건을 충족합니다.");
+        EvidenceGateDecision decision = gate.evaluate(
+                command(List.of("NestJS"), List.of(), List.of("Git", "Express"), List.of()), ai);
+
+        assertThat(decision.gateStatus()).isEqualTo(EvidenceGateDecision.STATUS_REVIEW_REQUIRED);
+        assertThat(decision.reasons()).anySatisfy(reason -> assertThat(reason.claim()).isEqualTo("NestJS"));
+    }
+
     private static FitAnalysisAiResult ai(int fitScore, List<String> matched, List<String> missing, String fitSummary) {
         return ai(fitScore, matched, missing, fitSummary, DEFAULT_DECISION);
     }
