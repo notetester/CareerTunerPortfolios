@@ -37,6 +37,19 @@ public final class AiTotalTimeBudget {
         return new AiTotalTimeBudget(false, System.nanoTime() + total.toNanos());
     }
 
+    /**
+     * 폴백 체인용 재시도 상한 deadline(System.nanoTime 기준). {@code total} 이 null/0/음수면
+     * {@link Long#MAX_VALUE}(무제한). 각 tier 클라이언트는 <b>재시도 전</b>에만
+     * {@code System.nanoTime() < chainDeadlineNanos} 를 확인한다 — 첫 시도는 절대 이 값에 막히지 않는다
+     * (per-tier 최소 보장 타임아웃이 우선). 즉 total 은 재시도 증폭만 억제하는 보조 상한이다.
+     */
+    public static long deadlineNanos(Duration total) {
+        if (total == null || total.isZero() || total.isNegative()) {
+            return Long.MAX_VALUE;
+        }
+        return System.nanoTime() + total.toNanos();
+    }
+
     /** 무제한(OFF) 여부. */
     public boolean unlimited() {
         return unlimited;

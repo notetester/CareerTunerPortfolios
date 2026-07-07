@@ -1,5 +1,7 @@
 package com.careertuner.fitanalysis.ai;
 
+import java.time.Duration;
+
 import org.springframework.stereotype.Service;
 
 import com.careertuner.analysis.ai.provider.CareerAnalysisAiUsage;
@@ -50,25 +52,61 @@ public class OpenAiFitAnalysisAiService implements FitAnalysisAiService {
             // 3) 검증(fitSummary/grounding) + 병합. 위반 시 예외 → 아래 FALLBACK.
             return assembler.assemble(command, skeleton, response.payload(), response.usage());
         } catch (RuntimeException exception) {
-            // 최종 안전망: skeleton(=규칙엔진 결정론 결과)로 화면 보장. 판단값은 애초에 skeleton 소유라 동일하다.
-            return new FitAnalysisAiResult(
-                    skeleton.fitScore(),
-                    skeleton.matchedSkills(),
-                    skeleton.missingSkills(),
-                    skeleton.recommendedStudy(),
-                    skeleton.recommendedCertificates(),
-                    skeleton.strategy(),
-                    skeleton.scoreBasis(),
-                    skeleton.gapRecommendations(),
-                    skeleton.learningRoadmap(),
-                    skeleton.certificateRecommendations(),
-                    skeleton.strategyActions(),
-                    skeleton.conditionMatrix(),
-                    skeleton.applyDecision(),
-                    new CareerAnalysisAiUsage("mock-fallback", 0, 0, 0, true),
-                    "FALLBACK",
-                    exception.getMessage(),
-                    true);
+            return mockFallback(skeleton, exception);
         }
+    }
+
+    /**
+     * per-attempt 타임아웃(최소 보장) + 체인 데드라인을 클라이언트로 전달하는 오버로드.
+     *
+     * <p>이 tier 는 폴백 체인의 <b>최종 안전망</b>이라 절대 예외를 던지지 않는다: 키가 없거나 호출/검증이
+     * 실패하면 내부 Mock(=규칙엔진 결정론 결과)으로 폴백한다. {@code perAttemptTimeout} 은 이 tier 의 첫
+     * 시도가 절대 못 잘리는 최소 보장이고, {@code chainDeadlineNanos} 는 재시도 증폭만 억제하는 보조 상한이다.
+     */
+    public FitAnalysisAiResult generate(FitAnalysisAiCommand command,
+                                        Duration perAttemptTimeout,
+                                        long chainDeadlineNanos) {
+        if (!openAiClient.configured()) {
+            return ruleEngine.generate(command);
+        }
+
+        // 1) 판단값은 규칙엔진이 결정론으로 계산(서버 권위).
+        FitAnalysisAiResult skeleton = ruleEngine.generate(command);
+        try {
+            // 2) OpenAI 는 skeleton 값을 입력으로 받아 설명만 생성(per-attempt 타임아웃 + 체인 데드라인 전달).
+            StructuredResponse response = openAiClient.request(
+                    FitExplainAssembler.EXPLAIN_SCHEMA_NAME,
+                    assembler.explainSchema(),
+                    FitAnalysisPromptCatalog.FIT_EXPLAIN_SYSTEM_PROMPT,
+                    assembler.explainUserPrompt(command, skeleton),
+                    perAttemptTimeout,
+                    chainDeadlineNanos);
+            // 3) 검증(fitSummary/grounding) + 병합. 위반 시 예외 → 아래 FALLBACK.
+            return assembler.assemble(command, skeleton, response.payload(), response.usage());
+        } catch (RuntimeException exception) {
+            return mockFallback(skeleton, exception);
+        }
+    }
+
+    /** 최종 안전망: skeleton(=규칙엔진 결정론 결과)로 화면 보장. 판단값은 애초에 skeleton 소유라 동일하다. */
+    private FitAnalysisAiResult mockFallback(FitAnalysisAiResult skeleton, RuntimeException exception) {
+        return new FitAnalysisAiResult(
+                skeleton.fitScore(),
+                skeleton.matchedSkills(),
+                skeleton.missingSkills(),
+                skeleton.recommendedStudy(),
+                skeleton.recommendedCertificates(),
+                skeleton.strategy(),
+                skeleton.scoreBasis(),
+                skeleton.gapRecommendations(),
+                skeleton.learningRoadmap(),
+                skeleton.certificateRecommendations(),
+                skeleton.strategyActions(),
+                skeleton.conditionMatrix(),
+                skeleton.applyDecision(),
+                new CareerAnalysisAiUsage("mock-fallback", 0, 0, 0, true),
+                "FALLBACK",
+                exception.getMessage(),
+                true);
     }
 }
