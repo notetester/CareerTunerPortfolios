@@ -10,23 +10,20 @@ from pathlib import Path
 from build_messages import SYSTEM_PROMPT
 from build_p1_curriculum import REPAIR_TEMPLATE
 from dataset_contract import compact_json
+from followup_pipeline_common import build_runtime_repair_messages
 from test_infer import check_output, load_model, read_jsonl
 
 MAX_PREVIOUS_OUTPUT_CHARS = 4_000
 
 
 def repair_messages(sample: dict, previous_output: str, validation_error: str) -> list[dict[str, str]]:
-    payload = {"id": sample["id"], "task_type": sample["task_type"], "input": sample["input"]}
-    previous = (previous_output or "")[:MAX_PREVIOUS_OUTPUT_CHARS]
-    repair = REPAIR_TEMPLATE.format(
+    return build_runtime_repair_messages(
+        SYSTEM_PROMPT,
+        REPAIR_TEMPLATE,
+        sample,
+        previous_output=(previous_output or "")[:MAX_PREVIOUS_OUTPUT_CHARS],
         validation_error=validation_error,
-        previous_output=previous,
     )
-    return [
-        {"role": "system", "content": SYSTEM_PROMPT},
-        {"role": "user", "content": compact_json(payload)},
-        {"role": "user", "content": repair},
-    ]
 
 
 def generate(tokenizer, model, messages: list[dict[str, str]], max_new: int) -> str:
