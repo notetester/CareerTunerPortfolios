@@ -21,7 +21,10 @@ type Phase = "idle" | "joining" | "connecting" | "connected" | "ended" | "error"
 export function MicRemotePage() {
   const { isAuthenticated } = useAuth();
   const [searchParams] = useSearchParams();
-  const wantVideo = searchParams.get("video") === "1";
+  const videoParam = searchParams.get("video") === "1";
+  // 실제 카메라 전송 여부 — URL 힌트로 시작하되, 연결 시 데스크탑 offer SDP(m=video)가 단일 진실 소스.
+  // (로그인 리다이렉트·수동 코드 입력으로 URL 파라미터가 유실돼도 offer 를 보고 카메라를 켠다.)
+  const [wantVideo, setWantVideo] = useState(videoParam);
   const [code, setCode] = useState(searchParams.get("code") ?? "");
   const [phase, setPhase] = useState<Phase>("idle");
   const [error, setError] = useState<string | null>(null);
@@ -71,16 +74,19 @@ export function MicRemotePage() {
       if (!offerSdp) throw new Error("데스크탑의 연결 준비를 기다리다 시간이 지났습니다. 다시 시도해 주세요.");
 
       // ② 마이크(+ 카메라) 획득 → answer 생성/게시.
+      // 카메라 필요 여부는 데스크탑 offer 가 결정한다(m=video 포함 = 화상 면접).
+      const useVideo = /\r?\nm=video\b/.test(offerSdp) || offerSdp.startsWith("m=video");
+      setWantVideo(useVideo);
       setPhase("connecting");
       const [mic, iceServers] = await Promise.all([
         navigator.mediaDevices.getUserMedia({
           audio: { echoCancellation: true, noiseSuppression: true },
-          video: wantVideo ? { facingMode: "user", width: { ideal: 1280 }, height: { ideal: 720 } } : false,
+          video: useVideo ? { facingMode: "user", width: { ideal: 1280 }, height: { ideal: 720 } } : false,
         }),
         fetchIceServers(),
       ]);
       micRef.current = mic;
-      if (wantVideo && localVideoRef.current) localVideoRef.current.srcObject = mic;
+      if (useVideo && localVideoRef.current) localVideoRef.current.srcObject = mic;
 
       const pc = new RTCPeerConnection({ iceServers });
       pcRef.current = pc;
@@ -132,7 +138,11 @@ export function MicRemotePage() {
 
   // QR로 열었는데 이 폰 브라우저에 로그인 세션이 없으면 API(같은계정 검증)가 막힌다 → 로그인 유도.
   if (!isAuthenticated) {
-    const returnTo = `/mic-remote${code ? `?code=${code}` : ""}`;
+    const params = new URLSearchParams();
+    if (code) params.set("code", code);
+    if (videoParam) params.set("video", "1");
+    const qs = params.toString();
+    const returnTo = `/mic-remote${qs ? `?${qs}` : ""}`;
     return (
       <div className="mx-auto flex min-h-[70vh] max-w-md flex-col items-center justify-center px-4 py-10">
         <div className="w-full rounded-2xl border border-slate-200 bg-card p-6 text-center shadow-sm">
