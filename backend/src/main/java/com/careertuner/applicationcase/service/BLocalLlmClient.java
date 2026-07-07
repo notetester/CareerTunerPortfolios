@@ -11,6 +11,7 @@ import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
 
 import com.careertuner.ai.common.gpu.GpuPermitGate;
+import com.careertuner.runtimesetting.service.RuntimeSettingService;
 
 import lombok.extern.slf4j.Slf4j;
 
@@ -18,12 +19,18 @@ import lombok.extern.slf4j.Slf4j;
 @Slf4j
 public class BLocalLlmClient {
 
+    /** B 로컬 LLM per-attempt 총 시간예산 DB 런타임 키. 행이 없으면 정적 localLlm.totalTimeBudget 로 fallback(동작 불변). */
+    private static final String LOCAL_LLM_TOTAL_TIME_BUDGET_KEY = "ai.b-analysis.local-llm-total-time-budget-seconds";
+
     private final BAnalysisProperties properties;
     private final GpuPermitGate gpuPermitGate;
+    private final RuntimeSettingService runtimeSettings;
 
-    public BLocalLlmClient(BAnalysisProperties properties, GpuPermitGate gpuPermitGate) {
+    public BLocalLlmClient(BAnalysisProperties properties, GpuPermitGate gpuPermitGate,
+                           RuntimeSettingService runtimeSettings) {
         this.properties = properties;
         this.gpuPermitGate = gpuPermitGate;
+        this.runtimeSettings = runtimeSettings;
     }
 
     public String chat(String systemPrompt, String userPrompt, Map<String, Object> jsonSchema) {
@@ -32,8 +39,9 @@ public class BLocalLlmClient {
                 .connectTimeout(local.getConnectTimeout())
                 .build();
         var requestFactory = new JdkClientHttpRequestFactory(jdkClient);
-        // 예산 ON 이면 read timeout 을 예산으로 절삭(단일 시도 대비)
-        requestFactory.setReadTimeout(capReadTimeout(local.getReadTimeout(), local.getTotalTimeBudget()));
+        // 예산 ON 이면 read timeout 을 예산으로 절삭(단일 시도 대비). 예산은 매 호출마다 DB 런타임 설정을 우선 조회
+        // (관리자 콘솔에서 재시작 없이 조정 가능), 행이 없으면 정적 localLlm.totalTimeBudget.
+        requestFactory.setReadTimeout(capReadTimeout(local.getReadTimeout(), localLlmTotalTimeBudget(local)));
 
         RestClient restClient = RestClient.builder()
                 .baseUrl(local.getBaseUrl())
@@ -63,6 +71,12 @@ public class BLocalLlmClient {
             throw new IllegalStateException("Ollama response is empty.");
         }
         return response.message().content();
+    }
+
+    /** B 로컬 LLM 총 시간예산: DB 런타임 키 우선(초 단위), 행이 없으면 정적 localLlm.totalTimeBudget 그대로. */
+    private Duration localLlmTotalTimeBudget(BAnalysisProperties.LocalLlm local) {
+        return Duration.ofSeconds(
+                runtimeSettings.getInt(LOCAL_LLM_TOTAL_TIME_BUDGET_KEY, (int) local.getTotalTimeBudget().toSeconds()));
     }
 
     /** 총 시간예산이 양수(ON)면 read timeout 을 예산 이하로 절삭한다. 0/음수/null 은 무제한(OFF, 기존 동작). */

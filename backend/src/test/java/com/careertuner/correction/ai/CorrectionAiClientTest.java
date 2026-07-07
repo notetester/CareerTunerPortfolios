@@ -3,6 +3,8 @@ package com.careertuner.correction.ai;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.mock;
@@ -24,6 +26,7 @@ import com.careertuner.correction.ai.CorrectionAiClient.Usage;
 import com.careertuner.correction.ai.SelfCorrectionOutputParser.InvalidOutputException;
 import com.careertuner.correction.ai.SelfLlmCorrectionProvider.RepairContext;
 import com.careertuner.correction.ai.SelfLlmCorrectionProvider.SelfLlmCallException;
+import com.careertuner.runtimesetting.service.RuntimeSettingService;
 
 class CorrectionAiClientTest {
 
@@ -54,6 +57,22 @@ class CorrectionAiClientTest {
         verify(fixture.self).correct(eq(fixture.command), eq("3b"), any(Duration.class), isNull());
         verify(fixture.anthropic, never()).correct(any());
         verify(fixture.openAi, never()).correct(any());
+    }
+
+    @Test
+    @DisplayName("self tier reads its total-time-budget from the runtime settings DB key (DB-first, admin-controllable)")
+    void correct_selfBudgetIsDbFirst() {
+        Fixture fixture = fixture(true);
+        CorrectionPayload expected = payload("3b");
+        when(fixture.self.correct(eq(fixture.command), eq("3b"), any(Duration.class), isNull()))
+                .thenReturn(expected);
+
+        fixture.client.correct(fixture.command);
+
+        // 관리자 콘솔이 제어하는 DB 키를 매 호출마다 조회하고, fallback 은 정적 self.totalTimeBudget 초.
+        verify(fixture.runtimeSettings).getInt(
+                eq("ai.correction.self-total-time-budget-seconds"),
+                eq((int) fixture.properties.getSelf().getTotalTimeBudget().toSeconds()));
     }
 
     @Test
@@ -203,6 +222,9 @@ class CorrectionAiClientTest {
         MockCorrectionProvider mockProvider = mock(MockCorrectionProvider.class);
         when(mockProvider.correct(any())).thenReturn(payload("mock"));
         CorrectionModelWarmupService warmup = mock(CorrectionModelWarmupService.class);
+        // DB 런타임 설정 미스(행 없음)를 모사: getInt 는 항상 fallback(정적 self.totalTimeBudget)을 돌려준다 → 동작 불변.
+        RuntimeSettingService runtimeSettings = mock(RuntimeSettingService.class);
+        when(runtimeSettings.getInt(anyString(), anyInt())).thenAnswer(invocation -> invocation.getArgument(1));
         CorrectionCommand command = command();
         return new Fixture(
                 properties,
@@ -211,7 +233,8 @@ class CorrectionAiClientTest {
                 anthropic,
                 mockProvider,
                 warmup,
-                new CorrectionAiClient(properties, openAi, self, anthropic, mockProvider, warmup),
+                runtimeSettings,
+                new CorrectionAiClient(properties, openAi, self, anthropic, mockProvider, warmup, runtimeSettings),
                 command);
     }
 
@@ -231,6 +254,7 @@ class CorrectionAiClientTest {
             AnthropicCorrectionProvider anthropic,
             MockCorrectionProvider mock,
             CorrectionModelWarmupService warmup,
+            RuntimeSettingService runtimeSettings,
             CorrectionAiClient client,
             CorrectionCommand command
     ) {

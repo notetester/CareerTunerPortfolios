@@ -3,14 +3,35 @@ import type {
   AdminGateReviewRequest,
   AdminGateStats,
   AdminFitAnalysisDetail,
-  AdminFitAnalysisListItem,
   AdminFitAnalysisMemo,
   AdminFitAnalysisMemoRequest,
+  AdminFitAnalysisPage,
 } from "../types/adminFitAnalysis";
 
-export function getAdminFitAnalyses(reviewRequiredOnly = false) {
-  const query = reviewRequiredOnly ? "?reviewRequiredOnly=true" : "";
-  return api<AdminFitAnalysisListItem[]>(`/admin/fit-analyses${query}`);
+/** 서버측 페이지네이션·필터 파라미터. 빈 값/기본값은 쿼리에서 생략한다. */
+export interface AdminFitAnalysisListParams {
+  reviewRequiredOnly?: boolean;
+  query?: string;
+  band?: string;
+  result?: string;
+  memoOnly?: boolean;
+  reanalysisOnly?: boolean;
+  page?: number;
+  size?: number;
+}
+
+export function getAdminFitAnalyses(params: AdminFitAnalysisListParams = {}) {
+  const search = new URLSearchParams();
+  if (params.reviewRequiredOnly) search.set("reviewRequiredOnly", "true");
+  if (params.query && params.query.trim()) search.set("query", params.query.trim());
+  if (params.band && params.band !== "ALL") search.set("band", params.band);
+  if (params.result && params.result !== "ALL") search.set("result", params.result);
+  if (params.memoOnly) search.set("memoOnly", "true");
+  if (params.reanalysisOnly) search.set("reanalysisOnly", "true");
+  if (params.page && params.page > 1) search.set("page", String(params.page));
+  if (params.size) search.set("size", String(params.size));
+  const qs = search.toString();
+  return api<AdminFitAnalysisPage>(`/admin/fit-analyses${qs ? `?${qs}` : ""}`);
 }
 
 export function getAdminGateStats() {

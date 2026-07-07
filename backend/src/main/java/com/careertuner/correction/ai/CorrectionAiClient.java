@@ -11,6 +11,7 @@ import com.careertuner.applicationcase.domain.ApplicationCase;
 import com.careertuner.correction.ai.SelfCorrectionOutputParser.InvalidOutputException;
 import com.careertuner.correction.ai.SelfLlmCorrectionProvider.RepairContext;
 import com.careertuner.correction.ai.SelfLlmCorrectionProvider.SelfLlmCallException;
+import com.careertuner.runtimesetting.service.RuntimeSettingService;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -20,12 +21,16 @@ import lombok.extern.slf4j.Slf4j;
 @Slf4j
 public class CorrectionAiClient {
 
+    /** E 첨삭 self tier 총 시간예산 DB 런타임 키. 행이 없으면 정적 self.totalTimeBudget 로 fallback(동작 불변). */
+    private static final String SELF_TOTAL_TIME_BUDGET_KEY = "ai.correction.self-total-time-budget-seconds";
+
     private final CorrectionAiProperties properties;
     private final OpenAiCorrectionProvider openAiProvider;
     private final SelfLlmCorrectionProvider selfLlmProvider;
     private final AnthropicCorrectionProvider anthropicProvider;
     private final MockCorrectionProvider mockProvider;
     private final CorrectionModelWarmupService warmupService;
+    private final RuntimeSettingService runtimeSettings;
 
     /**
      * 첨삭 폴백 체인: 자체(Self) → Claude → OpenAI → <b>Mock(결정론 최종 안전망)</b>.
@@ -40,7 +45,8 @@ public class CorrectionAiClient {
             var self = properties.getSelf();
             warmupService.awaitIfInProgress(self.getTimeout());
             // 총 시간예산 — 0 또는 음수면 무제한(예산 OFF). self tier 의 최소 보장은 self.timeout.
-            AiTotalTimeBudget budget = AiTotalTimeBudget.start(self.getTotalTimeBudget());
+            // DB 런타임 설정 우선(관리자 콘솔 제어), 행이 없으면 정적 self.totalTimeBudget.
+            AiTotalTimeBudget budget = AiTotalTimeBudget.start(selfTotalTimeBudget(self));
             try {
                 return invokeModel(command, self.getModel(), self.getMaxAttempts(), budget);
             } catch (RuntimeException selfFailure) {
@@ -108,6 +114,12 @@ public class CorrectionAiClient {
             }
         }
         throw last == null ? new IllegalStateException("Correction model failed.") : last;
+    }
+
+    /** self tier 총 시간예산: DB 런타임 키 우선(초 단위), 행이 없으면 정적 self.totalTimeBudget 그대로. */
+    private Duration selfTotalTimeBudget(CorrectionAiProperties.Self self) {
+        return Duration.ofSeconds(
+                runtimeSettings.getInt(SELF_TOTAL_TIME_BUDGET_KEY, (int) self.getTotalTimeBudget().toSeconds()));
     }
 
     private static Duration positive(Duration value) {
