@@ -1,43 +1,57 @@
-# interview-3b:q4 vs F16 라이브 A/B 결과
+# interview 3B 채점 품질 — 최상위 LLM 2인 판정단 검증 (60케이스)
 
 - 실행일: 2026-07-07
-- 엔드포인트: 공유 4090 Ollama(`http://127.0.0.1:11435/v1`, OpenAI 호환)
-- 골든셋: `eval/interview_golden_cases.jsonl` (20케이스, temp=0, warmup 1)
-- 후보: `interview-3b:q4`(Q4_K_M, 1.93GB) · 기준선: `interview-3b:latest`(F16, 6.18GB, **3.2배 큼**)
-- 하니스: `scripts/eval_interview_model.py` → `scripts/compare_interview_quant.py`
+- 방법: **F16 자기참조 폐기 → Claude Opus 4.8 + Codex GPT‑5.5 독립 판정단**을 골드 기준으로.
+- 골든셋: `eval/interview_golden_cases.jsonl` 60케이스(TECH 30 / PERSONALITY 15 / SITUATION 15,
+  밴드 HIGH 23·MID_HIGH 6·MID 17·LOW 14). 점수는 판정단 합의(`eval/panel_scores.jsonl`).
+- 판정 대상: `interview-3b:latest`(F16, 6.18GB) · `interview-3b:q4`(Q4_K_M, 1.93GB) — 4090 Ollama.
+- 루브릭: `eval/judge_rubric.md`(양 판정자 동일). raw는 본체 `out/`(gitignore)→CareerTunerAI.
 
-## 판정: PASS (제안 임계값 5개 전부 충족)
+## 왜 판정단인가
 
-| 기준 | 값 | 임계 | 판정 |
-| --- | --- | --- | --- |
-| c1 평균\|q4−f16\| | 3.8 | ≤ 5.0 | PASS |
-| c2 agreement@10 | 0.90 | ≥ 0.90 | PASS(경계) |
-| c3 q4 파싱률 ≥ f16 | 1.0 ≥ 1.0 | — | PASS |
-| c4 q4 골든대비 MAE ≤ f16+3 | 9.65 vs 7.65 | slack 3 | PASS |
-| c5 신규 CJK 누출 | 없음 | 0 | PASS |
+F16(3B 원본)을 "정답"으로 두고 Q4를 비교하면 **F16 자신의 오차를 기준으로 삼아 부정확을 증폭**한다.
+그래서 F16이 아니라 **최상위 LLM 2인**이 독립·냉정 채점한 합의를 골드로 쓴다.
 
-- 두 모델 모두 JSON 파싱률 1.0, CJK 누출 0. 평균 점수 F16 55.05 / Q4 55.25.
+### 판정단 신뢰도 (검증됨)
+- **Claude Opus 4.8 ↔ Codex GPT‑5.5**: 60케이스 평균차 **5.07점**, 10점내 일치 **0.967**(58/60), 최대 12.
+- 두 최상위 모델이 독립적으로 이 정도로 일치 → 골드로 신뢰 가능(Codex가 평균 2점 후함).
+- 부수: 이전 손라벨(합성)은 판정단과 MAE 3.55 — 손라벨도 나쁘지 않았음(3B보다 정확).
 
-## 주의 — LOW 밴드 꼬리 2건 (agreement 정확히 0.90)
+## 핵심 결과
 
-18/20 케이스는 |Δ|≤10. 벗어난 2건은 모두 저품질 답변 LOW 밴드:
-
-| caseId | Δ(q4−f16) | 성격 |
+| 비교 | MAE | 10점내 일치 |
 | --- | --- | --- |
-| case-tech-transaction-low-005 | −20 | 약한 답변 채점 분기 |
-| case-tech-empty-low-020 | +25 | 빈/무관 답변 채점 분기 |
+| Q4 vs **F16** (기존 자기참조 지표) | 3.47 | 0.917 → "괜찮아 보임" |
+| **F16 vs 판정단(진짜 기준)** | **8.3** | **0.70** |
+| **Q4 vs 판정단(진짜 기준)** | **9.53** | **0.617** |
 
-저품질 답변에서 Q4가 F16보다 채점 분산이 크다(한쪽은 낮게, 한쪽은 높게). 합격/불합격을 가르는 중상위 밴드는 정합.
+- 기존 "Q4≈F16=3.47"은 **F16 자체가 판정단과 8.3점 벌어진 약한 채점자**임을 숨겼다.
+- 판정단 기준으로 **Q4는 F16보다 확실히 나쁘다**(MAE +1.2, 일치 −8pp). 양자화가 오차를 증폭.
 
-## 권고 (D 오너 비준 대상)
+### 밴드별 MAE (진짜 원인)
 
-- Q4는 **OSS 서빙 후보로 손실 허용 범위**(3.2배 축소, 중상위 밴드 정합). `provider=oss` 서빙 시
-  `INTERVIEW_EVAL_MODEL=interview-3b:q4` 로 전환 가능.
-- 단 **임계값은 제안**이며, LOW 밴드 꼬리 2건과 agreement 경계(0.90)를 D가 확인 후 확정한다.
-  꼬리가 문제되면 F16 유지 또는 골든셋 LOW 밴드 확장 후 재측정.
+| 밴드 | n | F16 | Q4 |
+| --- | --- | --- | --- |
+| HIGH (85+) | 23 | **2.9** | **3.1** |
+| MID_HIGH (70~84) | 6 | 13.3 | **17.0** |
+| MID (40~69) | 17 | 13.0 | 13.8 |
+| LOW (<40) | 14 | 9.2 | **11.8** |
 
-## 산출물 경로
+- **3B 모델(F16·Q4 공통)은 우수 답변(HIGH)은 정확히 잡지만(MAE ~3), 중간 밴드(부분 정답)를 심하게 뭉갠다(MAE 13~17).**
+  대표: 부분 정답(GC·실패경험·우선순위·요구변경)을 F16·Q4 모두 25점으로 바닥에 깔고, 빈 답변("잘 모르겠습니다")을
+  Q4는 25점으로 과하게 준다(F16은 0~20).
+- **Q4는 중간·하위 밴드를 F16보다 더 나쁘게** 만든다(MID_HIGH 17 vs 13.3, LOW 11.8 vs 9.2).
 
-- raw 결과/verdict JSON: 본체 `out/`(gitignore) → 영구 보관은 `CareerTunerAI` submodule.
-  (`live_f16.json`, `live_q4.json`, `live_verdict.json`)
-- 재현: 위 두 스크립트를 동일 인자로 재실행(§상단).
+## 결정 근거 (팀/D 비준용)
+
+1. **Q4로 전환하지 말 것.** 진짜 기준(판정단) 대비 Q4는 F16보다 측정적으로 나쁘고(중·하위 밴드 집중),
+   3.2배 축소 이득이 이미 약한 채점자를 더 떨어뜨리는 걸 정당화하지 못한다.
+2. **더 중요한 발견 — 문제는 Q4가 아니라 3B 모델 자체다.** F16조차 중간 밴드 MAE 13(일치 0.70) —
+   부분 정답을 신뢰성 있게 채점하지 못한다. 사용자 노출 점수로 쓰기엔 중간 밴드가 위험하다.
+   레버는 "Q4냐 F16이냐"가 아니라 **중간 밴드 채점 개선**(재학습 데이터에 40~84점 케이스 보강, 혹은
+   상위 밴드만 자체모델·중간은 상위 LLM 폴백 하이브리드).
+3. **골든셋은 이제 판정단 라벨(신뢰 가능).** 향후 재학습/재평가의 기준으로 재사용.
+
+## 재현
+- `scripts/eval_interview_model.py --cases eval/interview_golden_cases.jsonl --base-url http://127.0.0.1:11435/v1 --model {interview-3b|interview-3b:q4}` → 두 결과를 판정단 점수(`eval/panel_scores.jsonl`)와 대조.
+- 판정단 재생성: `scripts/DUAL_JUDGE_RUNBOOK.md`(Claude + Codex GPT‑5.5 SSH).
