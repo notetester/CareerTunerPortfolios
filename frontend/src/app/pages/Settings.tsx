@@ -1,11 +1,10 @@
 import { useEffect, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router";
-import { Database, Lock, Mail, RefreshCw, Save, Shield, UserCog } from "lucide-react";
+import { Database, Lock, RefreshCw, Save, Shield, UserCog } from "lucide-react";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
 import { Checkbox } from "../components/ui/checkbox";
-import { Input } from "../components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../components/ui/tabs";
 import { findConsentTerm, type ConsentTerm } from "../auth/consentTerms";
 import { getMyConsents, revokeAiConsent, saveMyConsents, type ConsentStatus } from "../auth/consentApi";
@@ -13,6 +12,7 @@ import { useAuth } from "../auth/AuthContext";
 import { NotificationSettings } from "@/features/notification/components/NotificationSettings";
 import { PrivacySettings } from "@/features/privacy/components/PrivacySettings";
 import { ServerAddressSettings } from "@/features/settings/components/ServerAddressSettings";
+import { AccountInfoCard } from "@/features/profile/components/AccountInfoCard";
 import { AppLockSettings } from "../components/AppLockSettings";
 
 const tabs = ["account", "privacy", "ai-consent", "notifications", "blocks"] as const;
@@ -22,7 +22,7 @@ export function SettingsPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const requestedTab = searchParams.get("tab") ?? "account";
   const activeTab: SettingsTab = tabs.includes(requestedTab as SettingsTab) ? (requestedTab as SettingsTab) : "account";
-  const { user, logout, logoutAll } = useAuth();
+  const { logout, logoutAll } = useAuth();
   const navigate = useNavigate();
 
   const [consent, setConsent] = useState<ConsentStatus | null>(null);
@@ -125,20 +125,7 @@ export function SettingsPage() {
           </TabsList>
 
           <TabsContent value="account" className="mt-5 space-y-4">
-            <Card className="border border-slate-200 bg-card">
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2 text-base">
-                  <Mail className="size-4 text-blue-600" />
-                  로그인 정보
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="grid gap-4 md:grid-cols-2">
-                <Input value={user?.email ?? ""} readOnly />
-                <Input value={user?.name ?? ""} readOnly />
-                <Input value={user?.role ?? ""} readOnly />
-                <Input value={user?.plan ?? ""} readOnly />
-              </CardContent>
-            </Card>
+            <AccountInfoCard />
             <Card className="border border-slate-200 bg-card">
               <CardHeader>
                 <CardTitle className="flex items-center gap-2 text-base">

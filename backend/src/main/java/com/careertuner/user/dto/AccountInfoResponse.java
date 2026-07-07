@@ -15,6 +15,10 @@ public record AccountInfoResponse(
         boolean loginIdSet,
         String phone,
         boolean phoneVerified,
+        boolean emailVerified,
+        boolean temporaryEmail,
+        boolean emailRegistrationRequired,
         boolean passwordEnabled,
+        boolean passwordSetupRequired,
         List<String> linkedProviders) {
 }

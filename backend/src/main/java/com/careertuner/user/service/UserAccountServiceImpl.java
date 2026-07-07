@@ -1,9 +1,16 @@
 package com.careertuner.user.service;
 
+import java.time.LocalDateTime;
+import java.util.Locale;
+import java.util.UUID;
+
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import com.careertuner.auth.domain.EmailVerification;
+import com.careertuner.auth.mapper.AuthMapper;
+import com.careertuner.auth.service.EmailService;
 import com.careertuner.common.exception.BusinessException;
 import com.careertuner.common.exception.ErrorCode;
 import com.careertuner.user.domain.User;
@@ -29,6 +36,8 @@ public class UserAccountServiceImpl implements UserAccountService {
 
     private final UserAccountMapper mapper;
     private final ObjectMapper objectMapper;
+    private final AuthMapper authMapper;
+    private final EmailService emailService;
 
     @Override
     @Transactional(readOnly = true)
@@ -78,6 +87,30 @@ public class UserAccountServiceImpl implements UserAccountService {
     }
 
     @Override
+    @Transactional
+    public void requestEmailRegistration(Long userId, String email) {
+        User user = requireUser(userId);
+        String normalized = normalizeEmail(email);
+        if (mapper.countByEmailExcludingUser(normalized, userId) > 0) {
+            throw new BusinessException(ErrorCode.CONFLICT, "이미 다른 계정에서 사용 중인 이메일입니다.");
+        }
+        if (normalized.equalsIgnoreCase(user.getEmail()) && user.isEmailVerified()) {
+            throw new BusinessException(ErrorCode.CONFLICT, "이미 인증된 이메일입니다.");
+        }
+
+        String purpose = normalized.equalsIgnoreCase(user.getEmail()) ? "VERIFY" : "EMAIL_CHANGE";
+        EmailVerification verification = EmailVerification.builder()
+                .userId(userId)
+                .email(normalized)
+                .token(UUID.randomUUID().toString())
+                .purpose(purpose)
+                .expiredAt(LocalDateTime.now().plusHours(24))
+                .build();
+        authMapper.insertEmailVerification(verification);
+        emailService.sendVerificationEmail(normalized, verification.getToken());
+    }
+
+    @Override
     @Transactional(readOnly = true)
     public UserResumeDetailResponse getResumeDetail(Long userId) {
         UserResumeDetail detail = mapper.findResumeDetail(userId);
@@ -106,6 +139,8 @@ public class UserAccountServiceImpl implements UserAccountService {
     // ── 매핑 ──
 
     private AccountInfoResponse toAccountInfo(User user) {
+        var providers = mapper.findLinkedProviders(user.getId());
+        boolean temporaryEmail = isTemporaryEmail(user.getEmail());
         return new AccountInfoResponse(
                 user.getId(),
                 user.getEmail(),
@@ -114,8 +149,12 @@ public class UserAccountServiceImpl implements UserAccountService {
                 user.getLoginId() != null && !user.getLoginId().isBlank(),
                 user.getPhone(),
                 user.isPhoneVerified(),
+                user.isEmailVerified(),
+                temporaryEmail,
+                temporaryEmail || !user.isEmailVerified(),
                 user.isPasswordEnabled(),
-                mapper.findLinkedProviders(user.getId()));
+                !user.isPasswordEnabled(),
+                providers);
     }
 
     private UserResumeDetailResponse toResumeResponse(Long userId, UserResumeDetail detail) {
@@ -158,6 +197,18 @@ public class UserAccountServiceImpl implements UserAccountService {
             return "%s-%s-%s".formatted(digits.substring(0, 3), digits.substring(3, 6), digits.substring(6));
         }
         throw new BusinessException(ErrorCode.INVALID_INPUT, "휴대폰 번호 형식이 올바르지 않습니다.");
+    }
+
+    private String normalizeEmail(String email) {
+        String normalized = email == null ? "" : email.trim().toLowerCase(Locale.ROOT);
+        if (normalized.isBlank()) {
+            throw new BusinessException(ErrorCode.INVALID_INPUT, "이메일을 입력해 주세요.");
+        }
+        return normalized;
+    }
+
+    private boolean isTemporaryEmail(String email) {
+        return email == null || email.isBlank() || email.toLowerCase(Locale.ROOT).endsWith("@social.careertuner");
     }
 
     private Object object(String jsonValue) {
