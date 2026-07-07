@@ -22,18 +22,22 @@ public class JobPostingFileStorage {
     private static final Set<String> IMAGE_TYPES = Set.of("image/png", "image/jpeg", "image/webp", "image/gif");
 
     private final JobPostingUploadProperties properties;
+    private final JobPostingUploadLimitPolicy uploadLimitPolicy;
 
-    public JobPostingFileStorage(JobPostingUploadProperties properties) {
+    public JobPostingFileStorage(JobPostingUploadProperties properties,
+                                 JobPostingUploadLimitPolicy uploadLimitPolicy) {
         this.properties = properties;
+        this.uploadLimitPolicy = uploadLimitPolicy;
     }
 
     public StoredJobPostingFile store(Long applicationCaseId, MultipartFile file, String sourceType) {
         if (file == null || file.isEmpty()) {
             throw new BusinessException(ErrorCode.INVALID_INPUT, "업로드할 파일을 선택해 주세요.");
         }
-        if (file.getSize() > properties.getMaxFileSizeBytes()) {
+        long maxBytes = uploadLimitPolicy.currentMaxBytes();
+        if (file.getSize() > maxBytes) {
             throw new BusinessException(ErrorCode.INVALID_INPUT,
-                    "공고 파일은 " + formatFileSize(properties.getMaxFileSizeBytes()) + " 이하만 업로드할 수 있습니다.");
+                    "공고 파일은 " + formatFileSize(maxBytes) + " 이하만 업로드할 수 있습니다.");
         }
 
         String normalizedSourceType = sourceType == null ? "" : sourceType.trim().toUpperCase(Locale.ROOT);

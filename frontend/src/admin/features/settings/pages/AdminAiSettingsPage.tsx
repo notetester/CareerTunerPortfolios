@@ -4,8 +4,17 @@ import { Badge } from "@/app/components/ui/badge";
 import { Button } from "@/app/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/app/components/ui/card";
 import AdminShell from "../../../components/AdminShell";
-import { getJobPostingFallbackSetting, updateJobPostingFallbackSetting } from "../api";
-import type { AdminJobPostingFallbackSetting, JobPostingFallbackStage } from "../types";
+import {
+  getJobPostingFallbackSetting,
+  getJobPostingUploadLimitSetting,
+  updateJobPostingFallbackSetting,
+  updateJobPostingUploadLimitSetting,
+} from "../api";
+import type {
+  AdminJobPostingFallbackSetting,
+  AdminJobPostingUploadLimitSetting,
+  JobPostingFallbackStage,
+} from "../types";
 
 const STAGE_LABELS: Record<JobPostingFallbackStage, { title: string; description: string }> = {
   JOB_POSTING_PDF_OCR: {
@@ -34,6 +43,9 @@ export function AdminAiSettingsPage() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [savedMessage, setSavedMessage] = useState<string | null>(null);
+  const [uploadSetting, setUploadSetting] = useState<AdminJobPostingUploadLimitSetting | null>(null);
+  const [uploadMb, setUploadMb] = useState("");
+  const [uploadSaving, setUploadSaving] = useState(false);
 
   const dirty = useMemo(() => {
     if (!setting) return false;
@@ -47,10 +59,15 @@ export function AdminAiSettingsPage() {
     setError(null);
     setSavedMessage(null);
     try {
-      const response = await getJobPostingFallbackSetting();
+      const [response, uploadResponse] = await Promise.all([
+        getJobPostingFallbackSetting(),
+        getJobPostingUploadLimitSetting(),
+      ]);
       setSetting(response);
       setEnabled(response.enabled);
       setAllowedStages(response.allowedStages);
+      setUploadSetting(uploadResponse);
+      setUploadMb(String(Math.round(uploadResponse.maxBytes / (1024 * 1024))));
     } catch (err) {
       setError(err instanceof Error ? err.message : "AI 설정을 불러오지 못했습니다.");
     } finally {
@@ -87,6 +104,32 @@ export function AdminAiSettingsPage() {
       setError(err instanceof Error ? err.message : "AI 설정을 저장하지 못했습니다.");
     } finally {
       setSaving(false);
+    }
+  };
+
+  const uploadMinMb = uploadSetting ? Math.round(uploadSetting.minBytes / (1024 * 1024)) : 1;
+  const uploadMaxMb = uploadSetting ? Math.round(uploadSetting.maxAllowedBytes / (1024 * 1024)) : 20;
+  const uploadCurrentMb = uploadSetting ? Math.round(uploadSetting.maxBytes / (1024 * 1024)) : 0;
+  const uploadDirty = uploadSetting != null && uploadMb !== "" && Number(uploadMb) !== uploadCurrentMb;
+
+  const saveUpload = async () => {
+    const mb = Number(uploadMb);
+    if (!Number.isFinite(mb) || mb < uploadMinMb || mb > uploadMaxMb) {
+      setError(`업로드 한도는 ${uploadMinMb}MB ~ ${uploadMaxMb}MB 범위여야 합니다.`);
+      return;
+    }
+    setUploadSaving(true);
+    setError(null);
+    setSavedMessage(null);
+    try {
+      const response = await updateJobPostingUploadLimitSetting({ maxBytes: Math.round(mb * 1024 * 1024) });
+      setUploadSetting(response);
+      setUploadMb(String(Math.round(response.maxBytes / (1024 * 1024))));
+      setSavedMessage("공고 업로드 크기 한도가 저장됐습니다.");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "업로드 한도를 저장하지 못했습니다.");
+    } finally {
+      setUploadSaving(false);
     }
   };
 
@@ -188,6 +231,60 @@ export function AdminAiSettingsPage() {
                     onClick={() => void save()}
                   >
                     {saving ? <RefreshCw className="size-4 animate-spin" /> : <Save className="size-4" />}
+                    저장
+                  </Button>
+                </div>
+              </>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card className="border-slate-200 bg-white">
+          <CardHeader className="gap-2">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+              <div>
+                <CardTitle className="text-lg font-bold text-slate-950">공고 업로드 파일 크기 한도</CardTitle>
+                <p className="mt-1 text-sm leading-6 text-slate-500">
+                  공고(PDF/이미지) 업로드 파일의 최대 크기입니다. 서버 multipart 상한(상위 안전 상한) 안에서 실효 한도가 됩니다.
+                </p>
+              </div>
+              <Badge className="bg-slate-100 text-slate-700">
+                {uploadSetting ? `${uploadCurrentMb}MB` : "-"}
+              </Badge>
+            </div>
+          </CardHeader>
+          <CardContent className="space-y-5">
+            {loading ? (
+              <div className="h-24 animate-pulse rounded-lg bg-slate-100" />
+            ) : (
+              <>
+                <label className="flex flex-col gap-2">
+                  <span className="font-semibold text-slate-900">최대 업로드 크기 (MB)</span>
+                  <input
+                    type="number"
+                    min={uploadMinMb}
+                    max={uploadMaxMb}
+                    step={1}
+                    className="w-40 rounded-lg border border-slate-300 px-3 py-2 text-sm"
+                    value={uploadMb}
+                    onChange={(event) => setUploadMb(event.target.value)}
+                  />
+                  <span className="text-sm text-slate-500">
+                    {uploadMinMb}MB ~ {uploadMaxMb}MB 범위에서 설정할 수 있습니다.
+                  </span>
+                </label>
+
+                <div className="flex flex-col gap-3 rounded-lg border border-slate-200 bg-slate-50 p-4 sm:flex-row sm:items-center sm:justify-between">
+                  <div className="text-sm text-slate-600">
+                    <div className="font-semibold text-slate-900">현재 적용 출처: {sourceLabel(uploadSetting?.source ?? "PROPERTIES")}</div>
+                    <div className="mt-1">저장하면 DB 관리자 설정이 환경변수 기본값보다 우선합니다.</div>
+                  </div>
+                  <Button
+                    className="bg-blue-600 text-white hover:bg-blue-700"
+                    disabled={uploadSaving || loading || !uploadDirty}
+                    onClick={() => void saveUpload()}
+                  >
+                    {uploadSaving ? <RefreshCw className="size-4 animate-spin" /> : <Save className="size-4" />}
                     저장
                   </Button>
                 </div>
