@@ -1,9 +1,5 @@
 import { useState } from "react";
-import {
-  ThumbsUp, ThumbsDown, Heart, HeartCrack, Star, ClipboardList,
-  Bell, BellRing, Flag, Lock, VenetianMask,
-} from "lucide-react";
-import { ReportDialog } from "./ReportDialog";
+import { ThumbsUp, ThumbsDown, Heart, EyeOff, Star, ClipboardList, Lock } from "lucide-react";
 import { useCommunityStore } from "../hooks/useCommunityStore";
 import { useLoginDialog } from "../hooks/useLoginDialog";
 import { ConfirmDialog } from "@/app/components/ui/confirm-dialog";
@@ -15,17 +11,17 @@ interface ReactionButtonsProps {
 }
 
 /**
- * 게시글 리액션 바 — 축 2개(추천/비추천 · 좋아요/싫어요) + 즐겨찾기 + 스크랩 + 구독.
- * 같은 축 반대 클릭 시 교체, 같은 것 재클릭 시 취소(서버 응답 기반으로 store 가 갱신).
- * "익명으로" 드롭다운은 이 페이지의 글/댓글 리액션·스크랩에 공통 적용된다.
+ * 게시글 반응 바 (본문 하단, 댓글 위).
+ * 성격별로 분리 배치:
+ *  - 상단 독립: 익명으로 반응(상태 토글).
+ *  - 좌측(공개 집계, 접근성): 추천/비추천 캡슐 — 라벨·카운트 항상 노출.
+ *  - 개인화 쌍: "이런 글 더 보기"(LIKE, 카운트=작성자 만족) / "이런 글 그만 보기"(DISLIKE).
+ *  - 우측(개인 저장): 즐겨찾기·스크랩 — 아이콘+카운트+툴팁.
+ * 구독(🔔)·신고·공유는 상단 byline(PostDetailView)로 이동했다.
  */
 export function ReactionButtons({ post }: ReactionButtonsProps) {
-  const {
-    toggleReaction, toggleScrap, togglePostSubscription,
-    reactAnonymously, setReactAnonymously,
-  } = useCommunityStore();
+  const { toggleReaction, toggleScrap, reactAnonymously, setReactAnonymously } = useCommunityStore();
   const { showLoginDialog, requireAuth, onLoginConfirm, onLoginCancel } = useLoginDialog();
-  const [showReport, setShowReport] = useState(false);
   const [busy, setBusy] = useState(false);
 
   const stats = post.stats;
@@ -59,106 +55,90 @@ export function ReactionButtons({ post }: ReactionButtonsProps) {
     });
   };
 
-  const handleSubscribe = () => {
-    requireAuth(async () => {
-      if (busy) return;
-      setBusy(true);
-      try {
-        const active = await togglePostSubscription(post.id);
-        toast.success(active ? "이 글을 구독합니다. 새 댓글이 달리면 알려드릴게요." : "글 구독을 해지했습니다.");
-      } catch {
-        toast.error("구독 처리에 실패했습니다.");
-      } finally {
-        setBusy(false);
-      }
-    });
-  };
-
   return (
     <>
-      <div className="ct-actions" style={{ flexWrap: "wrap" }}>
-        <div className="ct-actbtns" style={{ flexWrap: "wrap" }}>
-          {/* 추천 축 — 트렌드·인기글 산정용 */}
-          <button
-            className={`ct-act ct-act--reco ${post.recommended ? "is-on" : ""}`}
-            onClick={() => handleReaction("RECOMMEND")}
-            title="추천 — 인기글·트렌드에 반영됩니다"
-          >
-            <ThumbsUp /> 추천 {stats.recommendCount ?? 0}
-          </button>
-          <button
-            className={`ct-act ct-act--downvote ${post.disrecommended ? "is-on" : ""}`}
-            onClick={() => handleReaction("DISRECOMMEND")}
-            title="비추천"
-          >
-            <ThumbsDown /> {stats.disrecommendCount ?? 0}
-          </button>
-          {/* 개인화 축 */}
-          <button
-            className={`ct-act ct-act--like ${post.liked ? "is-on" : ""}`}
-            onClick={() => handleReaction("LIKE")}
-            title="좋아요 — 내 취향(개인화)에 반영됩니다"
-          >
-            <Heart /> 좋아요 {stats.likeCount}
-          </button>
-          <button
-            className={`ct-act ct-act--dislike ${post.disliked ? "is-on" : ""}`}
-            onClick={() => handleReaction("DISLIKE")}
-            title="싫어요"
-          >
-            <HeartCrack /> {stats.dislikeCount ?? 0}
-          </button>
-          {/* 즐겨찾기(링크형) / 스크랩(스냅샷 보존형) */}
-          <button
-            className={`ct-act ct-act--save ${post.bookmarked ? "is-on" : ""}`}
-            onClick={() => handleReaction("BOOKMARK")}
-            title="즐겨찾기 — 원본이 삭제되면 함께 사라집니다"
-          >
-            <Star /> {post.bookmarked ? "즐겨찾는 글" : "즐겨찾기"} {stats.bookmarkCount}
-          </button>
-          <button
-            className={`ct-act ct-act--scrap ${post.scrapped ? "is-on" : ""}`}
-            onClick={handleScrap}
-            title="스크랩 — 지금 내용을 스냅샷으로 보존합니다"
-          >
-            <ClipboardList /> {post.scrapped ? "스크랩됨" : "스크랩"} {stats.scrapCount ?? 0}
-          </button>
-          {/* 글 구독 — 새 댓글 알림 */}
-          <button
-            className={`ct-act ct-act--watch ${post.subscribed ? "is-on" : ""}`}
-            onClick={handleSubscribe}
-            title="구독 — 새 댓글이 달리면 알림을 받습니다"
-          >
-            {post.subscribed ? <BellRing /> : <Bell />} {post.subscribed ? "구독 중" : "구독"}
-          </button>
-        </div>
+      <div className="rx-area" aria-label="글 반응">
+        {/* 익명으로 반응 — 상태 토글(액션 버튼과 시각 분리) */}
+        <button
+          type="button"
+          className={"rx-anon" + (reactAnonymously ? " on" : "")}
+          onClick={() => setReactAnonymously(!reactAnonymously)}
+          aria-pressed={reactAnonymously}
+          data-tip="반응 시 이름 노출 여부예요 — 집계에는 똑같이 포함돼요"
+        >
+          <span className="av-switch" />
+          익명으로 반응
+        </button>
 
-        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          {/* 익명 반응 모드 — 이 페이지의 글/댓글 리액션·스크랩에 공통 적용 */}
-          <label className="ct-anonsel" title="익명으로 반응하면 작성자 알림·반응자 목록에 이름이 표시되지 않습니다 (집계에는 포함)">
-            <VenetianMask />
-            <select
-              value={reactAnonymously ? "anon" : "public"}
-              onChange={(e) => setReactAnonymously(e.target.value === "anon")}
+        <div className="rx-bar">
+          {/* 추천·비추천 — 공개 집계(인기순). 평소 아이콘+카운트, hover 시 라벨 펼침 */}
+          <div className="rx-vote">
+            <button
+              className={`rx-vote__b ${post.recommended ? "on" : ""}`}
+              onClick={() => handleReaction("RECOMMEND")}
+              disabled={busy}
+              aria-label="추천"
+              data-tip="인기순 정렬에 반영되는 공개 집계예요"
             >
-              <option value="public">공개로 반응</option>
-              <option value="anon">익명으로 반응</option>
-            </select>
-          </label>
-          <button className="ct-act ct-act--report" onClick={() => requireAuth(() => setShowReport(true))}>
-            <Flag /> 신고
-          </button>
+              <ThumbsUp /><span className="rx-vote__lbl">추천</span><b className="num">{stats.recommendCount ?? 0}</b>
+            </button>
+            <span className="rx-vote__div" />
+            <button
+              className={`rx-vote__b down ${post.disrecommended ? "on" : ""}`}
+              onClick={() => handleReaction("DISRECOMMEND")}
+              disabled={busy}
+              aria-label="비추천"
+              data-tip="공개 집계 — 인기순에 반영돼요"
+            >
+              <ThumbsDown /><span className="rx-vote__lbl">비추천</span><b className="num">{stats.disrecommendCount ?? 0}</b>
+            </button>
+          </div>
+
+          <span className="rx-sep" />
+
+          {/* 개인화 캡슐 — 추천/비추천처럼 묶고, 평소엔 아이콘(좋아요는 +카운트)만, hover 시 라벨 펼침. 툴팁 유지 */}
+          <div className="rx-vote">
+            <button
+              className={`rx-vote__b ${post.liked ? "on" : ""}`}
+              onClick={() => handleReaction("LIKE")}
+              aria-label="이런 글 더 보기"
+              data-tip="비슷한 글을 맞춤 탭에서 더 추천해요"
+            >
+              <Heart /><span className="rx-vote__lbl">이런 글 더 보기</span><b className="num">{stats.likeCount}</b>
+            </button>
+            <span className="rx-vote__div" />
+            <button
+              className={`rx-vote__b down ${post.disliked ? "on" : ""}`}
+              onClick={() => handleReaction("DISLIKE")}
+              aria-label="이런 글 그만 보기"
+              data-tip="맞춤 탭에서 비슷한 글을 덜 보여줘요"
+            >
+              <EyeOff /><span className="rx-vote__lbl">이런 글 그만 보기</span>
+            </button>
+          </div>
+
+          {/* 개인 저장 — 우측, 아이콘+카운트+툴팁 */}
+          <div className="right">
+            <button
+              className={`rx-act ${post.bookmarked ? "on" : ""}`}
+              onClick={() => handleReaction("BOOKMARK")}
+              aria-label="즐겨찾기"
+              data-tip="즐겨찾기 — 원본 글 링크를 저장해요"
+            >
+              <Star /> <b className="num">{stats.bookmarkCount}</b>
+            </button>
+            <button
+              className={`rx-act ${post.scrapped ? "on" : ""}`}
+              onClick={handleScrap}
+              disabled={busy}
+              aria-label="스크랩"
+              data-tip="스크랩 — 지금 내용 그대로 보관해요"
+            >
+              <ClipboardList /> <b className="num">{stats.scrapCount ?? 0}</b>
+            </button>
+          </div>
         </div>
       </div>
-
-      {showReport && (
-        <ReportDialog
-          targetType="POST"
-          targetId={post.id}
-          target="게시글"
-          onClose={() => setShowReport(false)}
-        />
-      )}
 
       {showLoginDialog && (
         <ConfirmDialog

@@ -151,7 +151,7 @@ function relativeTime(ts: number): string {
 
 function ChatbotPanel({ chatbot }: ChatbotPanelProps) {
   const {
-    close, messages, sendMessage, botStatus,
+    close, messages, sendMessage, leaveOnboarding, botStatus,
     voiceState, startVoice, cancelVoice, confirmVoice, setVoiceState,
     interimTranscript, retryConnection, toggleTts,
     orchestrator, runStarted, runParts, runRunning, runPlan, runCaseId, runError, retryRun,
@@ -304,7 +304,11 @@ function ChatbotPanel({ chatbot }: ChatbotPanelProps) {
   //    (모드 칩·실행 UI 는 기존 챗 렌더가 담당 — 가이드는 빈 슬롯 수집까지만.)
   useEffect(() => {
     if (!onbGuideOpen) return;
-    if (lastBotMsg?.route?.startsWith("④온보딩") && onbPhase === null) setOnbGuideOpen(false);
+    // ④온보딩 보정 스텝(국면 없음) 또는 이탈("온보딩이탈") 응답이 오면 오버레이 상태를 정리한다.
+    //   이탈은 서버 성공 신호(route="온보딩이탈") 이후에만 닫히므로 서버-먼저·UI-나중이 지켜진다(버그2).
+    if ((lastBotMsg?.route?.startsWith("④온보딩") || lastBotMsg?.route === "온보딩이탈") && onbPhase === null) {
+      setOnbGuideOpen(false);
+    }
   }, [onbGuideOpen, lastBotMsg?.route, onbPhase]);
 
   // 공고 추출 대기(EXTRACTING) 자동 폴링: 백엔드가 "아무 메시지나 보내달라"는 프로토콜이라 넛지를 대신 보낸다.
@@ -454,7 +458,12 @@ function ChatbotPanel({ chatbot }: ChatbotPanelProps) {
             }}>
             {messages.length === 0 && botStatus === "idle" ? (
               <EmptyState onSelect={sendMessage}
-                onStartGuide={() => { setShowGuide(true); expandToFloating(); }} />
+                onStartGuide={() => {
+                  // 비로그인은 가이드 끝 공고 스텝에서 지원 건 생성(로그인 필요)에 막힌다 →
+                  // 직무입력창을 띄우지 않고 로그인 화면으로 바로 보낸다(챗봇은 닫는다).
+                  if (!getAccessToken()) { close(); navigate("/login"); return; }
+                  setShowGuide(true); expandToFloating();
+                }} />
             ) : (
               <>
                 {/* stage(오케 실행)에선 말풍선을 좁은 중앙 컬럼으로 — 넓은 무대에서 늘어지지 않게. */}
@@ -572,10 +581,12 @@ function ChatbotPanel({ chatbot }: ChatbotPanelProps) {
           }}
           onCollapse={collapseToCorner}
           onExpand={expandToFloating}
-          onClose={() => { onbDismissedRef.current = true; setOnbGuideOpen(false); }}
-          // 포기(X)와 달리 dismissedRef 를 안 건드린다 — 국면이 살아있는 채로 다음 봇 응답이
-          // 다시 매핑되면 useEffect 가 새 인스턴스로 자동 재오픈한다(수집 내용은 서버 상태 기준).
-          onAskQuestion={() => { onbAskingRef.current = true; setOnbGuideOpen(false); }}
+          // 버그2 수정: X 닫기·"여기서 물어보기" 둘 다 서버 온보딩을 완전 종료시킨다.
+          //   leaveOnboarding 이 "그만"(silent)을 서버로 보내 markOnboardingDeclined+clearOnboarding 을 태우고,
+          //   응답 route="온보딩이탈"→onbPhase=null 로 가이드가 닫힌다(낙관적 close 없음 → 서버 실패 시
+          //   가이드 유지로 상태 불일치 차단). 수집한 직무/기술은 이탈로 폐기된다(완전 종료).
+          onClose={leaveOnboarding}
+          onAskQuestion={leaveOnboarding}
           onGotoInterview={goInterview}
           onNavigate={navigateFromWork}
         />

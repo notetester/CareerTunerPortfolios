@@ -41,6 +41,11 @@ export function PostFilters({ sort, tag, onSortChange, onTagChange, showPersonal
           </button>
         ))}
       </div>
+      {showPersonalized && sort === "personalized" && (
+        <span className="cv-hint">
+          <Sparkles />좋아요 · 그만 보기 반응이 반영된 순서예요
+        </span>
+      )}
       <div className="right av-search" style={{ width: 200 }}>
         <Search />
         <input

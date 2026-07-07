@@ -131,6 +131,18 @@ export function CommunityHomePage() {
     window.history.back();
   };
 
+  // 헤더에서 뺀 보조 진입(내 활동·가이드라인) — 레일과 모바일 유틸 행에서 공유한다.
+  const goActivity = () => requireAuth(() => navigate("/community/activity"));
+  const goGuidelines = () => {
+    setViewMode("guidelines");
+    window.history.pushState({ view: "guidelines" }, "");
+    window.scrollTo(0, 0);
+  };
+  const goWrite = () => requireAuth(() => {
+    setViewMode("write");
+    window.history.pushState({ view: "write" }, "");
+  });
+
   if (viewMode === "guidelines") {
     return <CommunityGuidelinesPage onBack={handleBack} />;
   }
@@ -193,28 +205,9 @@ export function CommunityHomePage() {
           <h1>커뮤니티</h1>
           <p>익명으로 취업·이직·면접 이야기를 나눠보세요</p>
         </div>
-        <div style={{ display: "flex", gap: 8 }}>
-          <button className="av-btn" style={{ height: 34, padding: "0 14px" }} onClick={() => {
-            requireAuth(() => navigate("/community/activity"));
-          }}>
-            <UserRound /> 내 활동
-          </button>
-          <button className="av-btn" style={{ height: 34, padding: "0 14px" }} onClick={() => {
-            setViewMode("guidelines");
-            window.history.pushState({ view: "guidelines" }, "");
-            window.scrollTo(0, 0);
-          }}>
-            <BookOpen /> 가이드라인
-          </button>
-          <button className="av-btn av-btn--ink" style={{ height: 34, padding: "0 14px" }} onClick={() => {
-            requireAuth(() => {
-              setViewMode("write");
-              window.history.pushState({ view: "write" }, "");
-            });
-          }}>
-            <PenLine /> 글쓰기
-          </button>
-        </div>
+        <button className="av-btn av-btn--ink" style={{ height: 34, padding: "0 14px" }} onClick={goWrite}>
+          <PenLine /> 글쓰기
+        </button>
       </div>
 
       <div className="uv-tabs">
@@ -230,6 +223,16 @@ export function CommunityHomePage() {
             )}
           </button>
         ))}
+      </div>
+
+      {/* 모바일: 우측 레일이 숨겨지므로 내 활동·가이드라인 진입로를 여기서 유지한다. */}
+      <div className="cv-mobutil">
+        <button className="av-btn" style={{ height: 32 }} onClick={goActivity}>
+          <UserRound /> 내 활동
+        </button>
+        <button className="av-btn" style={{ height: 32 }} onClick={goGuidelines}>
+          <BookOpen /> 가이드라인
+        </button>
       </div>
 
       <div className="cv-grid">
@@ -257,7 +260,7 @@ export function CommunityHomePage() {
             </>
           )}
         </div>
-        <HotPostsSidebar />
+        <HotPostsSidebar onActivity={goActivity} onGuidelines={goGuidelines} />
       </div>
 
       {showLoginDialog && (
