@@ -31,7 +31,7 @@ export interface ConversationProfile {
 // ── 계정 정보 ──
 export interface AccountInfo {
   userId: number;
-  email: string;
+  email: string | null;
   name: string;
   loginId: string | null;
   loginIdSet: boolean;

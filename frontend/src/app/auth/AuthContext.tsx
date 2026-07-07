@@ -4,7 +4,7 @@ import { clearTokens, getAccessToken, getRefreshToken, setTokens } from "../lib/
 
 export interface MeUser {
   id: number;
-  email: string;
+  email: string | null;
   name: string;
   role: string;
   userType: string;
@@ -37,7 +37,7 @@ interface AuthContextValue {
   loading: boolean;
   isAuthenticated: boolean;
   login(identifier: string, password: string): Promise<void>;
-  register(email: string, password: string, name: string, consents: RegisterConsents, loginId?: string): Promise<void>;
+  register(loginId: string, email: string | null, password: string, name: string, consents: RegisterConsents): Promise<void>;
   socialLogin(provider: SocialProvider): void;
   logout(): Promise<void>;
   logoutAll(): Promise<void>;
@@ -81,15 +81,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const register = useCallback(async (
-    email: string,
+    loginId: string,
+    email: string | null,
     password: string,
     name: string,
     consents: RegisterConsents,
-    loginId?: string,
   ) => {
     const res = await api<TokenResponse>(
       "/auth/register",
-      { method: "POST", body: JSON.stringify({ email, loginId: loginId || null, password, name, ...consents }) },
+      { method: "POST", body: JSON.stringify({ loginId, email, password, name, ...consents }) },
       { auth: false },
     );
     setTokens({ accessToken: res.accessToken, refreshToken: res.refreshToken });

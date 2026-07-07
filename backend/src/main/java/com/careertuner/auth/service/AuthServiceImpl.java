@@ -75,12 +75,12 @@ public class AuthServiceImpl implements AuthService {
     @Override
     @Transactional
     public TokenResponse register(RegisterRequest request, LoginRequestContext context) {
-        String email = normalizeEmail(request.email());
-        if (userMapper.countByEmail(email) > 0) {
+        String email = normalizeOptionalEmail(request.email());
+        if (email != null && userMapper.countByEmail(email) > 0) {
             throw new BusinessException(ErrorCode.CONFLICT, "이미 사용 중인 이메일입니다.");
         }
-        String loginId = normalizeOptionalLoginId(request.loginId());
-        if (loginId != null && userMapper.countByLoginId(loginId) > 0) {
+        String loginId = normalizeLoginId(request.loginId());
+        if (userMapper.countByLoginId(loginId) > 0) {
             throw new BusinessException(ErrorCode.CONFLICT, "이미 사용 중인 아이디입니다.");
         }
         requireSignupConsents(request);
@@ -101,10 +101,12 @@ public class AuthServiceImpl implements AuthService {
         userMapper.insert(user);
         recordSignupConsents(user.getId(), request);
 
-        issueEmailVerification(user);
+        if (email != null) {
+            issueEmailVerification(user);
+        }
         // 회원가입 직후 자동 로그인 정책이므로 로그인 성공과 동일하게 접속 정보를 남긴다.
         userMapper.touchLastLoginAndResetFailures(user.getId());
-        recordLoginHistory(user.getId(), "LOGIN", "LOCAL", "EMAIL", email, true, null, context);
+        recordLoginHistory(user.getId(), "LOGIN", "LOCAL", "LOGIN_ID", loginId, true, null, context);
         grantDailyLoginRewardSafely(user.getId());
         return issueTokens(user, context);
     }
@@ -614,6 +616,9 @@ public class AuthServiceImpl implements AuthService {
     }
 
     private void issueEmailVerification(User user) {
+        if (user.getEmail() == null || user.getEmail().isBlank()) {
+            throw new BusinessException(ErrorCode.INVALID_INPUT, "이메일이 등록되지 않은 계정입니다.");
+        }
         EmailVerification verification = issueEmailVerification(user, "VERIFY", 24);
         emailService.sendVerificationEmail(user.getEmail(), verification.getToken());
     }
@@ -815,8 +820,27 @@ public class AuthServiceImpl implements AuthService {
         return normalized;
     }
 
+    private String normalizeLoginId(String loginId) {
+        String normalized = normalizeOptionalLoginId(loginId);
+        if (normalized == null) {
+            throw new BusinessException(ErrorCode.INVALID_INPUT, "아이디를 입력해 주세요.");
+        }
+        return normalized;
+    }
+
     private String normalizeEmail(String email) {
         return email == null ? null : email.trim().toLowerCase(Locale.ROOT);
+    }
+
+    private String normalizeOptionalEmail(String email) {
+        String normalized = normalizeEmail(email);
+        if (normalized == null || normalized.isBlank()) {
+            return null;
+        }
+        if (!normalized.matches("^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$")) {
+            throw new BusinessException(ErrorCode.INVALID_INPUT, "이메일 형식이 올바르지 않습니다.");
+        }
+        return normalized;
     }
 
     private String normalizeLoginIdentifier(String identifier) {
