@@ -37,15 +37,17 @@ public class JwtTokenProvider {
 
     public String createAccessToken(Long userId, String email, String role) {
         Instant now = Instant.now();
-        return Jwts.builder()
+        var builder = Jwts.builder()
                 .subject(String.valueOf(userId))
-                .claim("email", email)
                 .claim("role", role)
                 .claim("type", "access")
                 .issuedAt(Date.from(now))
                 .expiration(Date.from(now.plusSeconds(accessValiditySeconds)))
-                .signWith(key)
-                .compact();
+                .signWith(key);
+        if (email != null && !email.isBlank()) {
+            builder.claim("email", email);
+        }
+        return builder.compact();
     }
 
     /** 유효하지 않으면 JwtException 을 던진다. */

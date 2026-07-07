@@ -34,7 +34,7 @@ export function AccountInfoCard() {
     try {
       const next = await getAccountInfo();
       setInfo(next);
-      setEmailDraft(next.temporaryEmail ? "" : next.email);
+      setEmailDraft(next.temporaryEmail ? "" : next.email ?? "");
       setPhoneDraft(next.phone ?? "");
     } catch (e) {
       setError(e instanceof Error ? e.message : "계정 정보를 불러오지 못했습니다.");
@@ -97,7 +97,7 @@ export function AccountInfoCard() {
   };
 
   const submitPasswordSetup = async () => {
-    if (!info || info.temporaryEmail || !info.emailVerified) {
+    if (!info || !info.email || info.temporaryEmail || !info.emailVerified) {
       setError("먼저 실제 이메일 등록과 인증을 완료해 주세요.");
       return;
     }

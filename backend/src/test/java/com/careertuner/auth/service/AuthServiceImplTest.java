@@ -21,6 +21,8 @@ import com.careertuner.activitylog.service.SecurityHistoryService;
 import com.careertuner.auth.dto.LoginRequest;
 import com.careertuner.auth.dto.OAuthCallbackResult;
 import com.careertuner.auth.dto.PasswordResetRequest;
+import com.careertuner.auth.dto.RegisterRequest;
+import com.careertuner.auth.dto.TokenResponse;
 import com.careertuner.auth.mapper.AuthMapper;
 import com.careertuner.common.config.CareerTunerProperties;
 import com.careertuner.common.exception.BusinessException;
@@ -60,6 +62,34 @@ class AuthServiceImplTest {
     @BeforeEach
     void defaultPolicy() {
         when(loginRiskPolicyService.isLockoutEnabled()).thenReturn(false);
+    }
+
+    @Test
+    void register_withLoginIdOnly_skipsEmailVerificationAndLogsLoginIdLogin() {
+        var jwt = new CareerTunerProperties.Jwt();
+        when(props.getJwt()).thenReturn(jwt);
+        when(userMapper.countByLoginId("career_user")).thenReturn(0);
+        when(passwordEncoder.encode("password123")).thenReturn("hash");
+        org.mockito.Mockito.doAnswer(invocation -> {
+            User user = invocation.getArgument(0);
+            user.setId(10L);
+            return null;
+        }).when(userMapper).insert(any(User.class));
+        when(jwtTokenProvider.createAccessToken(10L, null, "USER")).thenReturn("access-token");
+        when(jwtTokenProvider.getAccessValiditySeconds()).thenReturn(1800L);
+
+        TokenResponse response = service.register(new RegisterRequest(
+                null, "career_user", "password123", "테스터", true, true, false, false), null);
+
+        assertThat(response.accessToken()).isEqualTo("access-token");
+        ArgumentCaptor<User> userCaptor = ArgumentCaptor.forClass(User.class);
+        verify(userMapper).insert(userCaptor.capture());
+        assertThat(userCaptor.getValue().getEmail()).isNull();
+        assertThat(userCaptor.getValue().getLoginId()).isEqualTo("career_user");
+        verify(authMapper, never()).insertEmailVerification(any());
+        verify(emailService, never()).sendVerificationEmail(any(), any());
+        verify(authMapper).insertLoginHistory(org.mockito.ArgumentMatchers.argThat(history ->
+                "LOGIN_ID".equals(history.getLoginMethod()) && "career_user".equals(history.getLoginIdentifier())));
     }
 
     /** ACTIVE 계정에서 틀린 비밀번호로 로그인 시도 → 항상 invalidLogin 예외. failedCount 는 "이번 실패 직전"의 누적. */

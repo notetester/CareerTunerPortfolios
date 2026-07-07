@@ -77,17 +77,22 @@ export function LoginPage() {
     setDormantEmail(null);
 
     const loginIdentifier = email.trim();
-    if (!loginIdentifier || !password) {
-      setError(mode === "login" ? "아이디 또는 이메일과 비밀번호를 입력해 주세요." : "이메일과 비밀번호를 입력해 주세요.");
+    if (mode === "login" && (!loginIdentifier || !password)) {
+      setError("아이디 또는 이메일과 비밀번호를 입력해 주세요.");
+      return;
+    }
+    if (mode === "signup" && !password) {
+      setError("비밀번호를 입력해 주세요.");
       return;
     }
     if (mode === "signup") {
       const normalizedLoginId = loginId.trim().toLowerCase();
+      const signupEmail = email.trim();
       if (!name.trim()) {
         setError("이름을 입력해 주세요.");
         return;
       }
-      if (normalizedLoginId && !/^[a-z0-9_]{4,50}$/.test(normalizedLoginId)) {
+      if (!/^[a-z0-9_]{4,50}$/.test(normalizedLoginId)) {
         setError("아이디는 영문 소문자, 숫자, 밑줄 4~50자로 입력해 주세요.");
         return;
       }
@@ -99,7 +104,11 @@ export function LoginPage() {
         setError("필수 약관과 개인정보 처리방침에 동의해 주세요.");
         return;
       }
-      if (emailDuplicate) {
+      if (signupEmail && !/.+@.+\..+/.test(signupEmail)) {
+        setError("이메일을 입력하려면 올바른 이메일 형식으로 입력해 주세요. 이메일은 나중에 등록할 수도 있습니다.");
+        return;
+      }
+      if (signupEmail && emailDuplicate) {
         setError("이미 사용 중인 이메일입니다. 다른 이메일을 사용해 주세요.");
         return;
       }
@@ -115,12 +124,12 @@ export function LoginPage() {
         await login(loginIdentifier, password);
       } else {
         const normalizedLoginId = loginId.trim().toLowerCase();
-        await register(loginIdentifier, password, name.trim(), {
+        await register(normalizedLoginId, email.trim() || null, password, name.trim(), {
           termsAgreed,
           privacyAgreed,
           aiDataAgreed,
           marketingAgreed,
-        }, normalizedLoginId || undefined);
+        });
       }
       // ?returnTo=/... 가 있으면 로그인 후 그 화면으로 복귀(내부 경로만 허용 — open redirect 방지).
       // 폰 마이크 핸드오프(/mic-remote) 등 딥링크 진입에서 로그인 후 원래 화면으로 돌아오게 한다.
@@ -159,7 +168,7 @@ export function LoginPage() {
     { label: "카카오로 계속하기", provider: "kakao" as const, mark: "K", className: "bg-yellow-400 text-slate-900" },
     { label: "네이버로 계속하기", provider: "naver" as const, mark: "N", className: "bg-green-600" },
   ];
-  const identifierPlaceholder = mode === "login" ? "아이디 또는 이메일" : "이메일";
+  const identifierPlaceholder = mode === "login" ? "아이디 또는 이메일" : "이메일 (선택)";
   const IdentifierIcon = mode === "login" ? UserRound : Mail;
 
   return (
@@ -238,7 +247,7 @@ export function LoginPage() {
 
             <div className="flex items-center gap-3">
               <div className="flex-1 h-px bg-slate-200" />
-              <span className="text-xs text-slate-400">{mode === "login" ? "또는 아이디/이메일로" : "또는 이메일로"}</span>
+              <span className="text-xs text-slate-400">{mode === "login" ? "또는 아이디/이메일로" : "또는 아이디로"}</span>
               <div className="flex-1 h-px bg-slate-200" />
             </div>
 
@@ -258,11 +267,11 @@ export function LoginPage() {
                   <div className="relative">
                     <UserRound className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-slate-400" />
                     <Input
-                      placeholder="로그인 아이디(선택, 영문/숫자/밑줄)"
+                      placeholder="로그인 아이디"
                       className="h-11 pl-9"
                       value={loginId}
                       onChange={(event) => {
-                        setLoginId(event.target.value);
+                        setLoginId(event.target.value.toLowerCase());
                         setLoginIdDuplicate(false);
                       }}
                       onBlur={() => void handleLoginIdBlur()}
@@ -288,6 +297,11 @@ export function LoginPage() {
               </div>
               {mode === "signup" && emailDuplicate && (
                 <p className="-mt-1 text-xs text-red-600">이미 사용 중인 이메일입니다. 로그인하거나 다른 이메일을 사용해 주세요.</p>
+              )}
+              {mode === "signup" && (
+                <p className="-mt-1 text-xs text-slate-500">
+                  이메일은 선택입니다. 비밀번호 찾기와 아이디 찾기는 이메일 등록 및 인증 후 사용할 수 있습니다.
+                </p>
               )}
               <div className="relative">
                 <Lock className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-slate-400" />
