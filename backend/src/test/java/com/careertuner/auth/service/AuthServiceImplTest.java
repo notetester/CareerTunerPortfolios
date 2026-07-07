@@ -50,7 +50,7 @@ class AuthServiceImplTest {
 
     /** ACTIVE 계정에서 틀린 비밀번호로 로그인 시도 → 항상 invalidLogin 예외. failedCount 는 "이번 실패 직전"의 누적. */
     private void attemptWrongPassword(int priorFailedCount) {
-        when(userMapper.findByEmail(EMAIL)).thenReturn(User.builder()
+        when(userMapper.findByLoginIdentifier(EMAIL)).thenReturn(User.builder()
                 .id(1L).email(EMAIL).password("hash").passwordEnabled(true)
                 .status("ACTIVE").failedLoginCount(priorFailedCount).build());
         when(passwordEncoder.matches(any(), any())).thenReturn(false);
