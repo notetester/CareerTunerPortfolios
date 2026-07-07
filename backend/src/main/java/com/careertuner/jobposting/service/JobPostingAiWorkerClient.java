@@ -6,6 +6,7 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
+import java.util.Base64;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Optional;
@@ -50,13 +51,25 @@ public class JobPostingAiWorkerClient {
         if (!properties.isEnabled()) {
             return Optional.empty();
         }
+        return Optional.of(post(buildFileRequest(file), file.sourceType(), file.fileReference(), null));
+    }
+
+    /**
+     * 워커에 보낼 파일 추출 요청 바디를 만든다. sendBytes=on 이면 파일 바이트를 base64 로 동봉해
+     * 워커가 파일경로 공유(co-location) 없이 OCR 할 수 있게 한다(off 면 기존 filePath 방식 그대로).
+     * 워커는 fileBase64 가 있으면 filePath 보다 우선 사용한다.
+     */
+    Map<String, Object> buildFileRequest(StoredJobPostingFile file) {
         Map<String, Object> request = new LinkedHashMap<>();
         request.put("sourceType", file.sourceType());
         request.put("uploadedFileUrl", file.fileReference());
         request.put("fileName", file.originalFilename());
         request.put("contentType", file.contentType());
         request.put("filePath", file.path() == null ? null : file.path().toAbsolutePath().toString());
-        return Optional.of(post(request, file.sourceType(), file.fileReference(), null));
+        if (properties.isSendBytes() && file.bytes() != null) {
+            request.put("fileBase64", Base64.getEncoder().encodeToString(file.bytes()));
+        }
+        return request;
     }
 
     public Optional<ExtractedPosting> extractText(String sourceType,
