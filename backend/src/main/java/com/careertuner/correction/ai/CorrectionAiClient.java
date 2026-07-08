@@ -8,6 +8,8 @@ import org.springframework.stereotype.Service;
 
 import com.careertuner.ai.common.budget.AiTotalTimeBudget;
 import com.careertuner.applicationcase.domain.ApplicationCase;
+import com.careertuner.common.exception.BusinessException;
+import com.careertuner.common.exception.ErrorCode;
 import com.careertuner.correction.ai.SelfCorrectionOutputParser.InvalidOutputException;
 import com.careertuner.correction.ai.SelfLlmCorrectionProvider.RepairContext;
 import com.careertuner.correction.ai.SelfLlmCorrectionProvider.SelfLlmCallException;
@@ -28,19 +30,18 @@ public class CorrectionAiClient {
     private final OpenAiCorrectionProvider openAiProvider;
     private final SelfLlmCorrectionProvider selfLlmProvider;
     private final AnthropicCorrectionProvider anthropicProvider;
-    private final MockCorrectionProvider mockProvider;
     private final CorrectionModelWarmupService warmupService;
     private final RuntimeSettingService runtimeSettings;
 
     /**
-     * 첨삭 폴백 체인: 자체(Self) → Claude → OpenAI → <b>Mock(결정론 최종 안전망)</b>.
+     * 첨삭 폴백 체인: 자체(Self) → Claude → OpenAI.
      *
-     * <p>설정된 각 tier 는 최소 한 번 시도되고, 어떤 tier 도 예외를 던지면 로그만 남기고 다음 tier 로
-     * 넘어간다. 마지막 {@link MockCorrectionProvider} 는 절대 예외를 던지지 않으므로, OpenAI 가 죽거나
-     * 키가 없어도 첨삭 화면은 깨지지 않는다(이전에는 OpenAI 실패가 그대로 전파돼 화면이 깨졌다).
+     * <p>설정된 각 tier 는 최소 한 번 시도되고, 어떤 tier 도 예외를 던지면 로그를 남기고 다음 tier 로
+     * 넘어간다. 실제 provider 가 모두 실패하면 무가치한 원문 복제 결과를 성공으로 저장하거나 과금하지
+     * 않도록 {@link ErrorCode#AI_UNAVAILABLE}로 종료한다.
      */
     public CorrectionPayload correct(CorrectionCommand command) {
-        // 1) 자체모델(Self) — 활성 시 항상 시도. 실패해도 예외를 밖으로 내지 않는다.
+        // 1) 자체모델(Self) — 활성 시 항상 시도. 실패하면 허용된 다음 tier로 넘긴다.
         if (properties.selfProviderEnabled()) {
             var self = properties.getSelf();
             warmupService.awaitIfInProgress(self.getTimeout());
@@ -52,9 +53,8 @@ public class CorrectionAiClient {
             } catch (RuntimeException selfFailure) {
                 log.warn("Self correction model {} failed: {}", self.getModel(), selfFailure.getMessage());
                 if (!properties.isFallbackEnabled()) {
-                    // 외부 폴백을 끈 설정 — Claude/OpenAI 는 건너뛰되 화면은 Mock 으로 안전하게 유지.
-                    log.warn("Correction fallback disabled → Mock 결정론 안전망 반환");
-                    return mockProvider.correct(command);
+                    log.warn("Correction fallback disabled after self provider failure");
+                    throw unavailable();
                 }
             }
         }
@@ -70,15 +70,20 @@ public class CorrectionAiClient {
             log.warn("Anthropic correction fallback is not configured. Skipping to OpenAI.");
         }
 
-        // 3) OpenAI tier — 항상 시도. 이전과 달리 예외를 잡아 Mock 으로 폴백(화면 무깨짐).
+        // 3) OpenAI tier — 항상 시도하고, 실패하면 무과금 오류로 종료한다.
         try {
             return openAiProvider.correct(command);
         } catch (RuntimeException openAiFailure) {
-            log.warn("OpenAI correction fallback failed → Mock 결정론 안전망: {}", openAiFailure.getMessage());
+            log.warn("OpenAI correction fallback failed: {}", openAiFailure.getMessage());
         }
 
-        // 4) Mock — 진짜 최후 안전망. 절대 예외를 던지지 않는다.
-        return mockProvider.correct(command);
+        throw unavailable();
+    }
+
+    private BusinessException unavailable() {
+        return new BusinessException(
+                ErrorCode.AI_UNAVAILABLE,
+                "AI 첨삭 서비스를 일시적으로 사용할 수 없습니다. 잠시 후 다시 시도해 주세요.");
     }
 
     private CorrectionPayload invokeModel(
