@@ -15,6 +15,7 @@ public class CorrectionRequest {
 
     private Long id;
     private Long userId;
+    private String requestKey;
     private Long applicationCaseId;
     private String correctionType;
     private String sourceType;
