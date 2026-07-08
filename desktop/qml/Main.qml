@@ -366,6 +366,7 @@ ApplicationWindow {
                         model: [
                             { icon: "message",    key: "collaboration", tip: "친구와 대화" },
                             { icon: "list",       key: "board",    tip: "커뮤니티 게시판" },
+                            { icon: "pin",        key: "plannerOverlay", tip: "플래너 오버레이" },
                             { icon: "monitor",    key: "devices",  tip: "연결된 기기" },
                             { icon: "smartphone", key: "phone",    tip: "폰 연동 패널" },
                             { icon: "gear",       key: "settings", tip: "설정" }
@@ -387,6 +388,7 @@ ApplicationWindow {
                                 cursorShape: Qt.PointingHandCursor
                                 onClicked: {
                                     if (modelData.key === "phone") win.phoneOpen = !win.phoneOpen
+                                    else if (modelData.key === "plannerOverlay") plannerOverlayController.enabled = !plannerOverlayController.enabled
                                     else win.view = modelData.key
                                 }
                             }
@@ -610,6 +612,8 @@ ApplicationWindow {
             onCloseRequested: win.phoneOpen = false
         }
     }
+
+    PlannerOverlay {}
 
     // ── 토스트 ──
     Column {

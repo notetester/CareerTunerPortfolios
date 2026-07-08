@@ -3,6 +3,7 @@ import type { PointerEvent } from "react";
 import { Link } from "react-router";
 import { CalendarClock, GripHorizontal, Layers, Pin, StickyNote, X } from "lucide-react";
 import { haptic } from "@/platform/haptics";
+import { notifyPlannerReminderNative, stopPlannerResident, syncPlannerResident } from "@/platform/plannerNative";
 import { toast } from "@/features/notification/components/toast";
 import { getPlannerDashboard } from "../api/plannerApi";
 import type { PlannerDashboard, PlannerScheduleItem, PlannerScheduleReminder } from "../types/planner";
@@ -23,6 +24,7 @@ export function PlannerFloatingOverlay({ enabled }: { enabled: boolean }) {
   const [collapsed, setCollapsed] = useState(false);
   const [position, setPosition] = useState<OverlayPosition>(() => readPosition());
   const dragRef = useRef<{ dx: number; dy: number } | null>(null);
+  const positionRef = useRef(position);
 
   const overlayItems = useMemo(() => {
     const memos = data?.memos.filter((memo) => memo.overlayVisible) ?? [];
@@ -61,6 +63,20 @@ export function PlannerFloatingOverlay({ enabled }: { enabled: boolean }) {
     fireDueReminders(data.scheduleItems);
   }, [data]);
 
+  useEffect(() => {
+    positionRef.current = position;
+  }, [position]);
+
+  useEffect(() => {
+    void syncPlannerResident(enabled && visible, data);
+  }, [data, enabled, visible]);
+
+  useEffect(() => {
+    return () => {
+      void stopPlannerResident();
+    };
+  }, []);
+
   if (!enabled) return null;
 
   const onPointerDown = (event: PointerEvent<HTMLDivElement>) => {
@@ -74,12 +90,13 @@ export function PlannerFloatingOverlay({ enabled }: { enabled: boolean }) {
       x: Math.max(8, Math.min(window.innerWidth - 280, event.clientX - dragRef.current.dx)),
       y: Math.max(80, Math.min(window.innerHeight - 140, event.clientY - dragRef.current.dy)),
     };
+    positionRef.current = next;
     setPosition(next);
   };
 
   const onPointerUp = () => {
     dragRef.current = null;
-    writePosition(position);
+    writePosition(positionRef.current);
   };
 
   const hide = () => {
@@ -176,6 +193,7 @@ function fireDueReminders(items: PlannerScheduleItem[]) {
           link: "/planner",
         });
         if (reminder.channels.includes("BROWSER")) showBrowserNotification(item, reminder);
+        notifyPlannerReminderNative(item, reminder, timeLabel(item));
         if (reminder.soundEnabled) playBeep();
         if (reminder.vibrationEnabled) haptic("medium");
       });
