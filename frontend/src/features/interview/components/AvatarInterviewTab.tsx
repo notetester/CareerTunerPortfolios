@@ -3,6 +3,7 @@ import { ArrowLeft, Sparkles, UserCircle2 } from "lucide-react";
 import { Badge } from "@/app/components/ui/badge";
 import { Button } from "@/app/components/ui/button";
 import { Card } from "@/app/components/ui/card";
+import { AiChargeCostBadge } from "@/features/billing/components/AiChargeCostBadge";
 import type { InterviewSession } from "../types/interview";
 import { AvatarTab } from "./AvatarTab";
 import { LocalAvatarTab } from "./LocalAvatarTab";
@@ -53,8 +54,9 @@ export function AvatarInterviewTab({ session }: { session: InterviewSession | nu
             <Badge className="bg-purple-100 text-purple-700">프리미엄</Badge>
           </div>
           <p className="text-sm text-slate-500">
-            <b>실제 AI 면접관 아바타</b>가 음성으로 질문합니다(HeyGen). 진짜 화상 면접 경험. 무료 체험은 1문제까지.
+            <b>실제 AI 면접관 아바타</b>가 음성으로 질문합니다(HeyGen). 체험 모드는 1문제까지 진행합니다.
           </p>
+          <AiChargeCostBadge featureType="INTERVIEW_VOICE_SCORING" prefix="종료 후 채점" className="mt-3" />
         </Card>
         <Card
           onClick={() => setMode("basic")}
@@ -63,11 +65,12 @@ export function AvatarInterviewTab({ session }: { session: InterviewSession | nu
           <div className="mb-2 flex items-center gap-2">
             <UserCircle2 className="size-5 text-emerald-600" />
             <span className="font-semibold text-slate-800">자체 AI 화상 면접</span>
-            <Badge className="bg-emerald-100 text-emerald-700">베이직 · 무료</Badge>
+            <Badge className="bg-emerald-100 text-emerald-700">베이직 · 자체 AI</Badge>
           </div>
           <p className="text-sm text-slate-500">
-            면접관이 질문을 <b>읽어주면 웹캠으로 녹화</b>됩니다. 자체 AI가 표정·음성·답변 내용을 채점합니다. 외부 API 없이(무료) 전체 질문 진행.
+            면접관이 질문을 <b>읽어주면 웹캠으로 녹화</b>됩니다. 자체 AI가 표정·음성·답변 내용을 채점합니다.
           </p>
+          <AiChargeCostBadge featureType="INTERVIEW_VOICE_SCORING" prefix="종료 후 채점" className="mt-3" />
         </Card>
       </div>
     </div>

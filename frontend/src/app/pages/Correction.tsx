@@ -2,7 +2,6 @@ import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router";
 import {
   AlertCircle,
-  Award,
   CheckCircle2,
   FileClock,
   LoaderCircle,
@@ -12,6 +11,7 @@ import {
 import { listApplicationCases } from "@/features/applications/api/applicationCasesApi";
 import type { ApplicationCase } from "@/features/applications/types/applicationCase";
 import { warmupCorrectionModel } from "@/features/correction/api/correctionApi";
+import { AiChargeCostBadge } from "@/features/billing/components/AiChargeCostBadge";
 import { CorrectionHistoryList } from "@/features/correction/components/CorrectionHistoryList";
 import { CorrectionResultCard } from "@/features/correction/components/CorrectionResultCard";
 import { useCorrections } from "@/features/correction/hooks/useCorrections";
@@ -21,7 +21,6 @@ import {
   type CorrectionTab,
 } from "@/features/correction/types/correction";
 import { Alert, AlertDescription, AlertTitle } from "../components/ui/alert";
-import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../components/ui/select";
@@ -217,10 +216,7 @@ export function CorrectionPage() {
                     </CardTitle>
                     <p className="mt-1 text-sm text-slate-500">{active.desc}</p>
                   </div>
-                  <Badge className="w-fit bg-amber-100 text-amber-700">
-                    <Award className="mr-1 size-3" />
-                    실행 전 정책별 비용 안내
-                  </Badge>
+                  <AiChargeCostBadge featureType={`CORRECTION_${CORRECTION_TYPE_BY_TAB[activeTab]}`} />
                 </div>
               </CardHeader>
               <CardContent className="space-y-5">
