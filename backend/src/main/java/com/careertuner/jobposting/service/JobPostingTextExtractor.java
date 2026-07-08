@@ -20,6 +20,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.TreeMap;
 
 import javax.net.ssl.SNIHostName;
@@ -91,10 +92,6 @@ public class JobPostingTextExtractor {
     }
 
     public ExtractedPosting extractFile(StoredJobPostingFile file) {
-        return aiWorkerClient.extractFile(file).orElseGet(() -> extractFileLocally(file));
-    }
-
-    private ExtractedPosting extractFileLocally(StoredJobPostingFile file) {
         if ("PDF".equals(file.sourceType())) {
             String text = extractTextPdf(file);
             if (!text.isBlank()) {
@@ -107,30 +104,46 @@ public class JobPostingTextExtractor {
     }
 
     /**
-     * 이미지/스캔 공고문 OCR 폴백: Claude(Haiku) Vision → OpenAI Vision(정책 허용 시) → 추출 실패 안내.
-     * 최종 단계는 목업이 아니다 — 가짜 공고문은 잘못된 분석으로 이어지므로, 실패 시 사용자가 텍스트로 직접 입력하도록 안내한다.
+     * 이미지/스캔 공고문 OCR: Claude(Haiku) Vision(1순위) → OpenAI Vision(정책 허용 시) → OCR 워커(OpenAI 미허용 시 폴백) → 추출 실패 안내.
+     * Claude 를 1순위로, OpenAI 는 fallback policy 가 허용할 때 워커보다 우선한다. 원격 OCR 워커는 최후 폴백으로만 태운다(워커 강화는 후속).
+     * 최종 안내 단계는 목업이 아니다 — 가짜 공고문은 잘못된 분석으로 이어지므로, 실패 시 사용자가 텍스트로 직접 입력하도록 안내한다.
      */
     private ExtractedPosting ocrFallback(StoredJobPostingFile file, boolean pdf) {
-        // 1) Claude(Haiku) Vision — 공통 키라 1차 폴백. 미설정/실패 시 OpenAI 로.
+        // 1) Claude(Haiku) Vision — 1순위. 미설정/예외/빈 결과면 다음 단계로.
+        //    빈 텍스트를 성공으로 반환하면 뒤의 좋은 폴백(OpenAI/워커)에 도달하지 못하므로, blank 는 "추출 실패"로 본다.
         if (anthropicClient != null && anthropicClient.configured()) {
             try {
                 String text = pdf
                         ? anthropicClient.extractPdfText(file.bytes())
                         : anthropicClient.extractImageText(file.contentType(), file.bytes());
-                return new ExtractedPosting(file.sourceType(), file.fileReference(), null, limit(text), null);
+                if (text != null && !text.isBlank()) {
+                    return new ExtractedPosting(file.sourceType(), file.fileReference(), null, limit(text), null);
+                }
+                log.warn("공고 OCR: Claude 빈 결과 → 다음 폴백 ({})", pdf ? "PDF" : "IMAGE");
             } catch (RuntimeException ex) {
-                log.warn("공고 OCR: Claude 실패 → OpenAI 폴백 ({}): {}", pdf ? "PDF" : "IMAGE", ex.getMessage());
+                log.warn("공고 OCR: Claude 실패 → 다음 폴백 ({}): {}", pdf ? "PDF" : "IMAGE", ex.getMessage());
             }
         }
-        // 2) OpenAI Vision — 폴백 정책이 허용할 때만.
+        // 2) OpenAI Vision — 폴백 정책이 허용할 때만. 예외는 상위로 전파하고(시스템 오류를 빈 결과로 삼키지 않음),
+        //    성공했지만 빈 텍스트면 워커로 넘긴다.
         String stage = pdf ? JobPostingFallbackPolicy.STAGE_PDF_OCR : JobPostingFallbackPolicy.STAGE_IMAGE_OCR;
         if (fallbackPolicy.allowed(stage)) {
             OpenAiResponsesClient.TextPayload payload = pdf
                     ? openAiClient.extractPdfText(file.originalFilename(), file.bytes())
                     : openAiClient.extractImageText(file.contentType(), file.bytes());
-            return new ExtractedPosting(file.sourceType(), file.fileReference(), null, limit(payload.text()), payload.usage());
+            String text = payload.text();
+            if (text != null && !text.isBlank()) {
+                return new ExtractedPosting(file.sourceType(), file.fileReference(), null, limit(text), payload.usage());
+            }
+            log.warn("공고 OCR: OpenAI 빈 결과 → 워커 폴백 ({})", pdf ? "PDF" : "IMAGE");
         }
-        // 3) 최종: 추출 실패 안내(목업 아님 — 가짜 공고문은 잘못된 분석을 부른다).
+        // 3) OCR 워커 — Claude/OpenAI 가 텍스트를 못 준 경우의 폴백(설정 시). 미설정이면 Optional.empty → 실패 안내로.
+        //    워커의 응답 오류/타임아웃/malformed 는 기존대로 fail-closed 로 상위 전파된다.
+        Optional<ExtractedPosting> worker = aiWorkerClient.extractFile(file);
+        if (worker.isPresent()) {
+            return worker.get();
+        }
+        // 4) 최종: 추출 실패 안내(목업 아님 — 가짜 공고문은 잘못된 분석을 부른다).
         return new ExtractedPosting(file.sourceType(), file.fileReference(), null, "", null,
                 pdf ? "IMAGE_PDF_OCR" : "IMAGE_OCR",
                 0,
@@ -138,7 +151,7 @@ public class JobPostingTextExtractor {
                 null,
                 null,
                 false,
-                "OCR providers unavailable (Claude/OpenAI). 공고문을 텍스트로 직접 입력해 주세요.");
+                "OCR providers unavailable (Claude/OpenAI/worker). 공고문을 텍스트로 직접 입력해 주세요.");
     }
 
     public ExtractedPosting extractUrl(String url) {
