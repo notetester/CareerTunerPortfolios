@@ -198,7 +198,7 @@ revision으로 저장한다. `job_posting`은 `(application_case_id, revision)` 
 | GET | `/api/admin/credits/summary` | 크레딧 지급·차감·잔액 현황 집계 | Bearer(ADMIN) |
 | POST | `/api/admin/credits/adjust` | 관리자 크레딧 증감과 원장·감사 로그 기록 | Bearer(ADMIN) |
 
-E 자체 모델은 버전이 고정된 3B F16 모델(`careertuner-e-correction-3b:delivery-s-f16-20260708`)과 Ollama의 JSON object 응답 모드를 사용한다. 서버가 JSON 키, 원문 분량, 문단 보존, `changes` 3개 이상 계약을 검증하며, 첫 응답이 계약을 어기면 같은 3B에 실패 사유와 이전 출력을 전달해 한 번 repair한다. 구조화 출력 편차를 줄이기 위해 자체 모델의 기본 temperature는 `0.0`이다. 첨삭 화면 진입 또는 AutoPrep에서 WRITE 사용이 예견되면 이 3B 모델만 비동기로 워밍하며, 워밍은 크레딧·사용권·AI 사용 로그를 차감하지 않는다. 자체 모델 실패 또는 시간 예산 소진 시 Anthropic을 호출하고, Anthropic도 실패하거나 미설정이면 OpenAI로 전환한다. 운영 연결 시 `CAREERTUNER_CORRECTION_AI_PROVIDER=self`, `CAREERTUNER_CORRECTION_AI_SELF_BASE_URL=http://careertuner-dev.example.invalid:11434/v1`을 설정한다. Anthropic에는 `ANTHROPIC_API_KEY`, OpenAI 최종 폴백에는 `OPENAI_API_KEY`가 필요하다.
+E 자체 모델은 버전이 고정된 3B F16 모델(`careertuner-e-correction-3b:delivery-s-f16-20260708`)과 Ollama의 JSON object 응답 모드를 사용한다. 서버가 JSON 키, 원문 분량, 문단 보존, `changes` 3개 이상 계약을 검증하며, 첫 응답이 계약을 어기면 같은 3B에 실패 사유와 이전 출력을 전달해 한 번 repair한다. 구조화 출력 편차를 줄이기 위해 자체 모델의 기본 temperature는 `0.0`이다. 첨삭 화면 진입 또는 AutoPrep에서 WRITE 사용이 예견되면 이 3B 모델만 비동기로 워밍하며, 워밍은 크레딧·사용권·AI 사용 로그를 차감하지 않는다. 자체 모델 실패 또는 시간 예산 소진 시 Anthropic을 호출하고, Anthropic도 실패하거나 미설정이면 OpenAI로 전환한다. 운영 연결 시 `CAREERTUNER_CORRECTION_AI_PROVIDER=self`, `CAREERTUNER_CORRECTION_AI_SELF_BASE_URL=http://localhost:11434/v1`을 설정한다. Anthropic에는 `ANTHROPIC_API_KEY`, OpenAI 최종 폴백에는 `OPENAI_API_KEY`가 필요하다.
 
 기존 DB에는 `db/patches/20260705_e_correction_admin_memo.sql`을 먼저 적용해야 첨삭 운영 메모 API를 사용할 수 있다. 첨삭 실패는 성공 결과 테이블이 아니라 `ai_usage_log`에 기록되므로 관리자 화면도 성공 이력과 실패 로그를 별도 데이터 소스로 조회한다.
 

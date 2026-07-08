@@ -37,7 +37,7 @@ env:
   BACKEND_IMAGE: ghcr.io/notetester/careertuner-backend
   WORKER_IMAGE: ghcr.io/notetester/careertuner-job-posting-worker
   CORRECTION_AI_PROVIDER: self
-  CORRECTION_AI_BASE_URL: http://careertuner-dev.example.invalid:11434/v1
+  CORRECTION_AI_BASE_URL: http://localhost:11434/v1
   CORRECTION_AI_MODEL: careertuner-e-correction-3b:delivery-s-f16-20260708
 
 jobs:
