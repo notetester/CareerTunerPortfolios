@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { ClipboardList, Download, Loader2, Maximize2, PhoneOff, Play, SkipForward, Video } from "lucide-react";
+import { ClipboardList, Download, Loader2, Maximize2, PhoneOff, Play, SkipForward, UserCircle2, Video } from "lucide-react";
 import { AgentEventsEnum, LiveAvatarSession, SessionEvent } from "@heygen/liveavatar-web-sdk";
 import { Badge } from "@/app/components/ui/badge";
 import { Button } from "@/app/components/ui/button";
@@ -49,7 +49,14 @@ type Status = "idle" | "connecting" | "live" | "analyzing" | "scored" | "error";
  * ADR-006/007), 미동의/서버 미기동 시 온디바이스(MediaPipe)로 폴백한다. 어느 경로든 원본 영상은
  * 점수 산출 후 폐기되고 저장은 점수(JSON)만, 원하면 로컬 다운로드.
  */
-export function AvatarTab({ session }: { session: InterviewSession | null }) {
+export function AvatarTab({
+  session,
+  onFallbackToBasic,
+}: {
+  session: InterviewSession | null;
+  /** 프리미엄(HeyGen) 연결이 실패하면 부모가 베이직 화상면접으로 전환하도록 알린다. */
+  onFallbackToBasic?: () => void;
+}) {
   const tutorialActive = useTutorialStore((s) => s.mode !== "off");
   const [status, setStatus] = useState<Status>("idle");
   const [error, setError] = useState<string | null>(null);
@@ -81,6 +88,8 @@ export function AvatarTab({ session }: { session: InterviewSession | null }) {
   const chunksRef = useRef<Blob[]>([]);
   const questionsRef = useRef<string[]>([]);
   const finishingRef = useRef(false);
+  /** 아바타 스트림 준비(SESSION_STREAM_READY) 대기 워치독 — 안 오면 연결 실패로 처리. */
+  const streamTimeoutRef = useRef<number | null>(null);
   /** 녹화 시 협상된 업로드 포맷(webm|mp4) — blob.type 스니핑 대신 이 값을 쓴다. */
   const recordFormatRef = useRef<string>("webm");
 
@@ -126,6 +135,10 @@ export function AvatarTab({ session }: { session: InterviewSession | null }) {
   }, []);
 
   const cleanup = () => {
+    if (streamTimeoutRef.current) {
+      clearTimeout(streamTimeoutRef.current);
+      streamTimeoutRef.current = null;
+    }
     recorderRef.current?.state === "recording" && recorderRef.current.stop();
     recorderRef.current = null;
     voiceTrackerRef.current?.dispose();
@@ -204,6 +217,10 @@ export function AvatarTab({ session }: { session: InterviewSession | null }) {
       const avatar = new LiveAvatarSession(avatarSession.sessionToken, { voiceChat: false });
       avatarRef.current = avatar;
       avatar.on(SessionEvent.SESSION_STREAM_READY, () => {
+        if (streamTimeoutRef.current) {
+          clearTimeout(streamTimeoutRef.current);
+          streamTimeoutRef.current = null;
+        }
         if (avatarVideoRef.current) avatar.attach(avatarVideoRef.current);
         setStatus("live");
       });
@@ -220,6 +237,19 @@ export function AvatarTab({ session }: { session: InterviewSession | null }) {
           void finishInterview();
         }
       });
+
+      // HeyGen LiveAvatar 는 체험 한도 초과·WebRTC(UDP) 차단 시 스트림이 준비되지 않고
+      // "연결 중…"에서 무한 대기한다. 일정 시간 안에 SESSION_STREAM_READY 가 안 오면
+      // 연결 실패로 보고 정리 후 베이직 화상면접 폴백을 안내한다.
+      streamTimeoutRef.current = window.setTimeout(() => {
+        streamTimeoutRef.current = null;
+        cleanup();
+        setError(
+          "아바타 면접관 연결에 실패했습니다. HeyGen 체험 한도이거나 네트워크(WebRTC)가 막혀 있을 수 있습니다. 아래 베이직 화상 면접으로 바로 진행할 수 있습니다.",
+        );
+        setStatus("error");
+      }, 25000);
+
       await avatar.start();
     } catch (err) {
       cleanup();
@@ -439,10 +469,17 @@ export function AvatarTab({ session }: { session: InterviewSession | null }) {
           </p>
 
           {keyMissing && (
-            <p className="rounded-lg bg-amber-50 p-3 text-sm text-amber-700">
-              아바타 면접 키(HEYGEN_API_KEY)가 설정되어 있지 않아 지금은 시작할 수 없습니다. 키를 설정하면
-              바로 이용할 수 있습니다.
-            </p>
+            <div className="space-y-2 rounded-lg bg-amber-50 p-3">
+              <p className="text-sm text-amber-700">
+                아바타 면접 키(HEYGEN_API_KEY)가 설정되어 있지 않아 지금은 시작할 수 없습니다. 키를 설정하면
+                바로 이용할 수 있습니다.
+              </p>
+              {onFallbackToBasic && (
+                <Button variant="outline" size="sm" onClick={onFallbackToBasic} className="gap-1.5">
+                  <UserCircle2 className="size-4" /> 베이직(브라우저 TTS) 화상 면접으로 진행하기
+                </Button>
+              )}
+            </div>
           )}
 
           {(handoffReason === "no-camera" || handoffReason === "no-microphone") && (
@@ -563,7 +600,16 @@ export function AvatarTab({ session }: { session: InterviewSession | null }) {
             </div>
           )}
 
-          {error && <p className="text-sm text-red-500">{error}</p>}
+          {error && (
+            <div className="space-y-2">
+              <p className="text-sm text-red-500">{error}</p>
+              {onFallbackToBasic && (
+                <Button variant="outline" size="sm" onClick={onFallbackToBasic} className="gap-1.5">
+                  <UserCircle2 className="size-4" /> 베이직(브라우저 TTS) 화상 면접으로 이어하기
+                </Button>
+              )}
+            </div>
+          )}
           {note && <p className="text-xs font-semibold text-slate-500">{note}</p>}
         </CardContent>
       </Card>

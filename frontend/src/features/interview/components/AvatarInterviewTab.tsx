@@ -32,7 +32,11 @@ export function AvatarInterviewTab({ session }: { session: InterviewSession | nu
         <Button variant="ghost" size="sm" onClick={() => setMode(null)} className="gap-1.5 text-slate-500">
           <ArrowLeft className="size-4" /> 면접 방식 다시 선택
         </Button>
-        {mode === "premium" ? <AvatarTab session={session} /> : <LocalAvatarTab session={session} />}
+        {mode === "premium" ? (
+          <AvatarTab session={session} onFallbackToBasic={() => setMode("basic")} />
+        ) : (
+          <LocalAvatarTab session={session} />
+        )}
       </div>
     );
   }
