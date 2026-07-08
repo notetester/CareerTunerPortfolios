@@ -260,7 +260,8 @@ public class BAnalysisGenerationService {
                 CompanyAnalysisPayload payload = switch (provider) {
                     case LOCAL -> attemptLocalCompany(applicationCase, postingText, classification, usableWeb, includeWeb);
                     case CLAUDE -> attemptClaudeCompany(applicationCase, postingText, classification, usableWeb, includeWeb);
-                    case OPENAI -> openAiResponsesClient.analyzeCompany(applicationCase, postingText);
+                    case OPENAI -> openAiResponsesClient.analyzeCompany(applicationCase, postingText,
+                            properties.getCompany().getOpenAiModel());
                 };
                 log.info("{} company analysis succeeded", provider.label());
                 return new GeneratedCompanyAnalysis(payload, null, null);

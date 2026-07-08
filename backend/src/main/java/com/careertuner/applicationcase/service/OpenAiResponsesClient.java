@@ -79,6 +79,16 @@ public class OpenAiResponsesClient {
     }
 
     public CompanyAnalysisPayload analyzeCompany(ApplicationCase applicationCase, String postingText) {
+        return analyzeCompany(applicationCase, postingText, null);
+    }
+
+    /**
+     * 기업분석 OpenAI 호출. {@code modelOverride} 가 비어 있지 않으면 이 호출에만 그 모델을 쓰고,
+     * 비어 있으면 공용 {@code careertuner.openai.model} 을 쓴다(다른 OpenAI 호출은 영향받지 않음).
+     */
+    public CompanyAnalysisPayload analyzeCompany(ApplicationCase applicationCase, String postingText,
+                                                 String modelOverride) {
+        String model = resolveModel(modelOverride);
         JsonNode root = post(structuredRequest(
                 "company_analysis",
                 companyAnalysisSchema(),
@@ -89,9 +99,10 @@ public class OpenAiResponsesClient {
 
                 채용공고:
                 %s
-                """.formatted(applicationCase.getCompanyName(), applicationCase.getJobTitle(), postingText)));
+                """.formatted(applicationCase.getCompanyName(), applicationCase.getJobTitle(), postingText),
+                model));
         JsonNode payload = parseOutputJson(root);
-        Usage usage = usage(root);
+        Usage usage = usage(root, model);
         return new CompanyAnalysisPayload(
                 text(payload, "companySummary"),
                 text(payload, "recentIssues"),
@@ -191,7 +202,12 @@ public class OpenAiResponsesClient {
     }
 
     private Map<String, Object> structuredRequest(String name, Map<String, Object> schema, String systemPrompt, String userPrompt) {
-        Map<String, Object> body = baseBody();
+        return structuredRequest(name, schema, systemPrompt, userPrompt, properties.getModel());
+    }
+
+    private Map<String, Object> structuredRequest(String name, Map<String, Object> schema, String systemPrompt,
+                                                  String userPrompt, String model) {
+        Map<String, Object> body = baseBody(model);
         body.put("input", List.of(
                 message("system", List.of(inputText(systemPrompt))),
                 message("user", List.of(inputText(userPrompt)))));
@@ -205,14 +221,21 @@ public class OpenAiResponsesClient {
     }
 
     private Map<String, Object> textRequest(List<Map<String, Object>> content) {
-        Map<String, Object> body = baseBody();
+        Map<String, Object> body = baseBody(properties.getModel());
         body.put("input", List.of(message("user", content)));
         return body;
     }
 
-    private Map<String, Object> baseBody() {
+    /** override 가 비어 있으면 공용 모델을 쓴다(기존 동작). */
+    private String resolveModel(String modelOverride) {
+        return (modelOverride != null && !modelOverride.isBlank())
+                ? modelOverride.trim()
+                : properties.getModel();
+    }
+
+    private Map<String, Object> baseBody(String model) {
         Map<String, Object> body = new LinkedHashMap<>();
-        body.put("model", properties.getModel());
+        body.put("model", model);
         return body;
     }
 
@@ -276,11 +299,15 @@ public class OpenAiResponsesClient {
     }
 
     private Usage usage(JsonNode root) {
+        return usage(root, properties.getModel());
+    }
+
+    private Usage usage(JsonNode root, String model) {
         JsonNode usage = root.path("usage");
         int inputTokens = usage.path("input_tokens").asInt(0);
         int outputTokens = usage.path("output_tokens").asInt(0);
         int totalTokens = usage.path("total_tokens").asInt(inputTokens + outputTokens);
-        return new Usage(properties.getModel(), inputTokens, outputTokens, totalTokens);
+        return new Usage(model, inputTokens, outputTokens, totalTokens);
     }
 
     private String text(JsonNode node, String field) {

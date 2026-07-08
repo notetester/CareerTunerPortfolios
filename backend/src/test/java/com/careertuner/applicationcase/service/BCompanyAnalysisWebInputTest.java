@@ -203,7 +203,7 @@ class BCompanyAnalysisWebInputTest {
 
     /**
      * D-4c 인계 경계: local 비활성 + Claude 미설정 → OpenAI hosted 폴백은 웹 블록 없이
-     * 공고문만(analyzeCompany(ac, text)) 받는다. hosted 웹 입력은 이번 배치 범위가 아니다.
+     * 공고문 텍스트만 받는다(웹 evidence 미전달). hosted 웹 입력은 이번 배치 범위가 아니다.
      */
     @Test
     void openAiHostedFallbackReceivesNoWebInput() {
@@ -214,7 +214,7 @@ class BCompanyAnalysisWebInputTest {
         when(anthropicClient.configured()).thenReturn(false);
         OpenAiResponsesClient openAi = mock(OpenAiResponsesClient.class);
         when(openAi.configured()).thenReturn(true);
-        when(openAi.analyzeCompany(any(ApplicationCase.class), anyString())).thenReturn(hostedPayload());
+        when(openAi.analyzeCompany(any(ApplicationCase.class), anyString(), any())).thenReturn(hostedPayload());
 
         BAnalysisGenerationService service = new BAnalysisGenerationService(
                 properties, localLlmClient, new BJobSentenceClassifier(), mapper, anthropicClient, openAi);
@@ -222,8 +222,8 @@ class BCompanyAnalysisWebInputTest {
         service.generateCompanyAnalysis(applicationCase(), "채용공고 원문",
                 List.of(evidence("https://news.example.com/1", "가온테크", "클라우드")));
 
-        // hosted 는 (ac, text) 2-arg 로만 호출 — 웹 evidence 미전달.
-        verify(openAi, times(1)).analyzeCompany(any(ApplicationCase.class), eq("채용공고 원문"));
+        // hosted OpenAI 는 공고문 텍스트만 받는다 — 웹 evidence 블록 미전달(3번째 인자는 model override).
+        verify(openAi, times(1)).analyzeCompany(any(ApplicationCase.class), eq("채용공고 원문"), any());
     }
 
     private static CompanyAnalysisPayload hostedPayload() {

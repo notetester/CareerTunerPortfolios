@@ -3,6 +3,7 @@ package com.careertuner.applicationcase.service;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -1230,7 +1231,7 @@ class BAnalysisGenerationServiceTest {
         when(anthropicClient.chat(anyString(), anyString(), any())).thenReturn(validCompanyJson());
         OpenAiResponsesClient openAiClient = mock(OpenAiResponsesClient.class);
         when(openAiClient.configured()).thenReturn(true);
-        when(openAiClient.analyzeCompany(any(), anyString())).thenReturn(openAiCompanyPayload("gpt-test"));
+        when(openAiClient.analyzeCompany(any(), anyString(), any())).thenReturn(openAiCompanyPayload("gpt-test"));
         BAnalysisGenerationService service = service(properties, localLlmClient, anthropicClient, openAiClient);
 
         BAnalysisGenerationService.GeneratedCompanyAnalysis result =
@@ -1238,9 +1239,30 @@ class BAnalysisGenerationServiceTest {
 
         assertThat(result.fellBack()).isFalse();
         assertThat(result.payload().usage().model()).isEqualTo("gpt-test");
-        verify(openAiClient).analyzeCompany(any(), anyString());
+        verify(openAiClient).analyzeCompany(any(), anyString(), any());
         verify(anthropicClient, never()).chat(anyString(), anyString(), any());
         verify(localLlmClient, never()).chat(anyString(), anyString(), any());
+    }
+
+    @Test
+    void companyProviderOpenAiPassesModelOverride() {
+        // company.openAiModel 이 설정되면 그 값이 OpenAI 기업분석 호출에 그대로 전달된다(다른 OpenAI 호출은 불변).
+        BAnalysisProperties properties = new BAnalysisProperties();
+        properties.getLocalLlm().setEnabled(false);
+        properties.getCompany().setProvider("openai");
+        properties.getCompany().setOpenAiModel("gpt-5.4-mini");
+        BLocalLlmClient localLlmClient = mock(BLocalLlmClient.class);
+        BAnthropicClient anthropicClient = mock(BAnthropicClient.class);
+        OpenAiResponsesClient openAiClient = mock(OpenAiResponsesClient.class);
+        when(openAiClient.configured()).thenReturn(true);
+        when(openAiClient.analyzeCompany(any(), anyString(), any())).thenReturn(openAiCompanyPayload("gpt-5.4-mini"));
+        BAnalysisGenerationService service = service(properties, localLlmClient, anthropicClient, openAiClient);
+
+        BAnalysisGenerationService.GeneratedCompanyAnalysis result =
+                service.generateCompanyAnalysis(applicationCase(), postingText());
+
+        assertThat(result.fellBack()).isFalse();
+        verify(openAiClient).analyzeCompany(any(), anyString(), eq("gpt-5.4-mini"));
     }
 
     @Test
@@ -1268,7 +1290,7 @@ class BAnalysisGenerationServiceTest {
         ArgumentCaptor<String> systemCaptor = ArgumentCaptor.forClass(String.class);
         verify(anthropicClient).chat(systemCaptor.capture(), anyString(), any());
         assertThat(systemCaptor.getValue()).isEqualTo(CompanyAnalysisPromptCatalog.HOSTED_SYSTEM_PROMPT);
-        verify(openAiClient, never()).analyzeCompany(any(), anyString());
+        verify(openAiClient, never()).analyzeCompany(any(), anyString(), any());
         verify(localLlmClient, never()).chat(anyString(), anyString(), any());
     }
 
@@ -1292,7 +1314,7 @@ class BAnalysisGenerationServiceTest {
         assertThat(result.fellBack()).isFalse();
         assertThat(result.payload().usage().model()).isEqualTo("qwen-test");
         verify(anthropicClient, never()).chat(anyString(), anyString(), any());
-        verify(openAiClient, never()).analyzeCompany(any(), anyString());
+        verify(openAiClient, never()).analyzeCompany(any(), anyString(), any());
     }
 
     @Test
@@ -1308,7 +1330,7 @@ class BAnalysisGenerationServiceTest {
         when(anthropicClient.chat(anyString(), anyString(), any())).thenReturn(validCompanyJson());
         OpenAiResponsesClient openAiClient = mock(OpenAiResponsesClient.class);
         when(openAiClient.configured()).thenReturn(true);
-        when(openAiClient.analyzeCompany(any(), anyString())).thenThrow(new RuntimeException("openai down"));
+        when(openAiClient.analyzeCompany(any(), anyString(), any())).thenThrow(new RuntimeException("openai down"));
         BAnalysisGenerationService service = service(properties, localLlmClient, anthropicClient, openAiClient);
 
         BAnalysisGenerationService.GeneratedCompanyAnalysis result =
@@ -1316,7 +1338,7 @@ class BAnalysisGenerationServiceTest {
 
         assertThat(result.fellBack()).isFalse();
         assertThat(result.payload().usage().model()).isEqualTo("claude-haiku-test");
-        verify(openAiClient).analyzeCompany(any(), anyString());
+        verify(openAiClient).analyzeCompany(any(), anyString(), any());
         verify(anthropicClient).chat(anyString(), anyString(), any());
     }
 
