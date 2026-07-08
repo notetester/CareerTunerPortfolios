@@ -24,8 +24,7 @@ import {
 import { computeVisualScore, VisualMetricsTracker, type VisualScoreDetail } from "../hooks/visualAnalysis";
 import { createNegotiatedRecorder, mediaUnsupportedReason } from "../hooks/mediaSupport";
 import { useDeviceCapabilities } from "../hooks/deviceCapabilities";
-import { DeviceHandoffCard, type HandoffReason } from "./DeviceHandoffCard";
-import { RemoteMicConnectCard } from "./RemoteMicConnectCard";
+import { type HandoffReason } from "./DeviceHandoffCard";
 import type {
   InterviewQuestion,
   InterviewSession,
@@ -51,9 +50,12 @@ type Status = "idle" | "connecting" | "live" | "analyzing" | "scored" | "error";
  */
 export function AvatarTab({
   session,
+  remoteCam = null,
   onFallbackToBasic,
 }: {
   session: InterviewSession | null;
+  /** 폰 카메라 핸드오프 스트림(부모 소유). 무카메라/무마이크 기기에서 폰을 카메라로 사용. */
+  remoteCam?: MediaStream | null;
   /** 프리미엄(HeyGen) 연결이 실패하면 부모가 베이직 화상면접으로 전환하도록 알린다. */
   onFallbackToBasic?: () => void;
 }) {
@@ -100,9 +102,8 @@ export function AvatarTab({
     "MediaRecorder" in window;
 
   const deviceCaps = useDeviceCapabilities();
-  // 폰 카메라 핸드오프로 받은 원격 스트림(카메라+마이크). 무카메라/무마이크 기기에서 폰을 카메라로 사용.
-  const [remoteCam, setRemoteCam] = useState<MediaStream | null>(null);
-  // 이 기기에서 진행 불가한 원인 — 있으면 "폰으로 이어하기" 안내 카드를 띄운다.
+  // 이 기기에서 진행 불가한 원인 — 폰 핸드오프 카드는 부모(AvatarInterviewTab)가 렌더하고,
+  // 여기선 진행 가능 여부(canProceed) 게이팅에만 쓴다. remoteCam 은 부모가 소유·전달.
   const handoffReason: HandoffReason | null = !supported
     ? (mediaUnsupportedReason() ?? "unsupported")
     : deviceCaps.hasCamera === false
@@ -480,13 +481,6 @@ export function AvatarTab({
                 </Button>
               )}
             </div>
-          )}
-
-          {(handoffReason === "no-camera" || handoffReason === "no-microphone") && (
-            <RemoteMicConnectCard sessionId={session.id} onStream={setRemoteCam} withVideo />
-          )}
-          {handoffReason && !remoteCam && (
-            <DeviceHandoffCard sessionId={session.id} reason={handoffReason} />
           )}
 
           {/* 화면: 아바타(메인) + 내 웹캠(서브) */}
