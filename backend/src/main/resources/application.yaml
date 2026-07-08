@@ -143,6 +143,14 @@ careertuner:
         retry-backoff: ${CAREERTUNER_ANALYSIS_AI_OSS_RETRY_BACKOFF:400ms}
         # grounding guard: 설명이 '부족 역량을 보유로 서술'하면 재호출(소진 시 폴백). 점수/판단은 규칙엔진 소유.
         grounding-retries: ${CAREERTUNER_ANALYSIS_AI_OSS_GROUNDING_RETRIES:1}
+  certificate:
+    # C 자격증 근거 조회(공공데이터). 국가자격 목록/시험일정=q-net(간헐 불안정), 민간=odcloud(안정).
+    # service-key 가 비면 라이브 조회를 하지 않고 안전하게 degrade(날짜 미생성). 키는 env 로만 주입(repo 커밋 금지).
+    data-go-kr:
+      service-key: ${CAREERTUNER_CERT_DATA_GO_KR_SERVICE_KEY:}
+      qnet-base-url: ${CAREERTUNER_CERT_QNET_BASE_URL:http://openapi.q-net.or.kr/api/service/rest}
+      odcloud-base-url: ${CAREERTUNER_CERT_ODCLOUD_BASE_URL:https://api.odcloud.kr/api}
+      timeout-seconds: ${CAREERTUNER_CERT_TIMEOUT_SECONDS:15}
   anthropic:
     # 면접 LLM 1차(기본) provider(Claude Haiku). 선생(합성 데이터 증류)·런타임 공통.
     # 키가 비어 있으면 자동으로 OpenAI 로 폴백한다(로드맵 Phase 4).
