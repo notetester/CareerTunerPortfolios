@@ -1,33 +1,58 @@
 package com.careertuner.jobposting.service;
 
 import java.io.IOException;
-import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 
 import com.careertuner.common.exception.BusinessException;
 import com.careertuner.common.exception.ErrorCode;
+import com.careertuner.jobposting.service.JobPostingStorageProvider.Loaded;
+import com.careertuner.jobposting.service.JobPostingStorageProvider.Written;
 
+/**
+ * 공고 업로드 파일의 저장 facade. 검증(size·type)·네이밍·{@link StoredJobPostingFile} 조립은 여기서 공용 처리하고,
+ * 원시 바이트 저장/조회는 {@link JobPostingStorageProvider} 에 위임한다.
+ *
+ * <ul>
+ *   <li>{@code store()} 는 {@code careertuner.uploads.storage-provider}(default {@code local})로 고른 provider 를 쓴다.</li>
+ *   <li>{@code load()} 는 env 무관, <b>reference 의 scheme prefix</b>로 provider 를 라우팅한다(기존 {@code local:} 하위호환).</li>
+ * </ul>
+ */
 @Service
 public class JobPostingFileStorage {
 
-    private static final String LOCAL_REFERENCE_PREFIX = "local:application-postings/";
     private static final long BYTES_PER_KB = 1024L;
     private static final long BYTES_PER_MB = BYTES_PER_KB * 1024L;
     private static final Set<String> IMAGE_TYPES = Set.of("image/png", "image/jpeg", "image/webp", "image/gif");
 
-    private final JobPostingUploadProperties properties;
     private final JobPostingUploadLimitPolicy uploadLimitPolicy;
+    private final Map<String, JobPostingStorageProvider> providersByScheme;
+    private final JobPostingStorageProvider storeProvider;
 
     public JobPostingFileStorage(JobPostingUploadProperties properties,
-                                 JobPostingUploadLimitPolicy uploadLimitPolicy) {
-        this.properties = properties;
+                                 JobPostingUploadLimitPolicy uploadLimitPolicy,
+                                 List<JobPostingStorageProvider> providers) {
         this.uploadLimitPolicy = uploadLimitPolicy;
+        this.providersByScheme = providers.stream()
+                .collect(Collectors.toUnmodifiableMap(JobPostingStorageProvider::scheme, Function.identity()));
+        String configured = properties.getStorageProvider() == null
+                ? LocalJobPostingStorageProvider.SCHEME
+                : properties.getStorageProvider().trim().toLowerCase(Locale.ROOT);
+        JobPostingStorageProvider selected = providersByScheme.get(configured);
+        if (selected == null) {
+            throw new IllegalStateException("Unknown job posting storage provider: '" + configured
+                    + "'. available=" + providersByScheme.keySet());
+        }
+        this.storeProvider = selected;
     }
 
     public StoredJobPostingFile store(Long applicationCaseId, MultipartFile file, String sourceType) {
@@ -52,65 +77,51 @@ public class JobPostingFileStorage {
             throw new BusinessException(ErrorCode.INVALID_INPUT, "PNG, JPG, WEBP, GIF 이미지만 업로드할 수 있습니다.");
         }
 
+        byte[] bytes;
         try {
-            byte[] bytes = file.getBytes();
-            String extension = extension(contentType);
-            String storedName = UUID.randomUUID() + extension;
-            Path targetDir = Path.of(properties.getJobPostingDir(), String.valueOf(applicationCaseId)).normalize();
-            Files.createDirectories(targetDir);
-            Path target = targetDir.resolve(storedName).normalize();
-            Files.write(target, bytes);
-            String reference = "local:application-postings/%d/%s".formatted(applicationCaseId, storedName);
-            return new StoredJobPostingFile(
-                    normalizedSourceType,
-                    reference,
-                    file.getOriginalFilename() == null ? storedName : file.getOriginalFilename(),
-                    contentType,
-                    target,
-                    bytes);
+            bytes = file.getBytes();
         } catch (IOException ex) {
             throw new BusinessException(ErrorCode.INTERNAL_ERROR, "공고문 파일을 저장하지 못했습니다.");
         }
+        String storedName = UUID.randomUUID() + extension(contentType);
+        Written written = storeProvider.write(applicationCaseId, storedName, bytes, contentType);
+        return new StoredJobPostingFile(
+                normalizedSourceType,
+                written.reference(),
+                file.getOriginalFilename() == null ? storedName : file.getOriginalFilename(),
+                contentType,
+                written.path(),
+                bytes);
     }
 
     public StoredJobPostingFile load(Long applicationCaseId, String fileReference, String sourceType) {
         String normalizedSourceType = normalizeUploadSourceType(sourceType);
-        if (fileReference == null || !fileReference.startsWith(LOCAL_REFERENCE_PREFIX)) {
+        JobPostingStorageProvider provider = providerForReference(fileReference);
+        Loaded loaded = provider.read(applicationCaseId, fileReference);
+        return new StoredJobPostingFile(
+                normalizedSourceType,
+                fileReference,
+                loaded.storedName(),
+                contentType(normalizedSourceType, loaded.storedName()),
+                loaded.path(),
+                loaded.bytes());
+    }
+
+    /** reference 의 scheme prefix(콜론 앞)로 provider 를 고른다. 알 수 없는 scheme 은 거부한다. */
+    private JobPostingStorageProvider providerForReference(String fileReference) {
+        if (fileReference == null) {
             throw new BusinessException(ErrorCode.INVALID_INPUT, "저장된 공고 파일 참조가 올바르지 않습니다.");
         }
-
-        String relativeReference = fileReference.substring(LOCAL_REFERENCE_PREFIX.length());
-        String[] parts = relativeReference.split("/", -1);
-        if (parts.length != 2 || parts[0].isBlank() || parts[1].isBlank()) {
+        int colon = fileReference.indexOf(':');
+        if (colon <= 0) {
             throw new BusinessException(ErrorCode.INVALID_INPUT, "저장된 공고 파일 참조가 올바르지 않습니다.");
         }
-        if (!String.valueOf(applicationCaseId).equals(parts[0])) {
-            throw new BusinessException(ErrorCode.INVALID_INPUT, "지원 건과 공고 파일 참조가 일치하지 않습니다.");
-        }
-
-        String storedName = parts[1];
-        if (storedName.contains("..") || storedName.contains("/") || storedName.contains("\\")) {
+        String scheme = fileReference.substring(0, colon).toLowerCase(Locale.ROOT);
+        JobPostingStorageProvider provider = providersByScheme.get(scheme);
+        if (provider == null) {
             throw new BusinessException(ErrorCode.INVALID_INPUT, "저장된 공고 파일 참조가 올바르지 않습니다.");
         }
-
-        Path uploadRoot = Path.of(properties.getJobPostingDir()).toAbsolutePath().normalize();
-        Path target = uploadRoot.resolve(parts[0]).resolve(storedName).normalize();
-        if (!target.startsWith(uploadRoot)) {
-            throw new BusinessException(ErrorCode.INVALID_INPUT, "저장된 공고 파일 참조가 올바르지 않습니다.");
-        }
-
-        try {
-            byte[] bytes = Files.readAllBytes(target);
-            return new StoredJobPostingFile(
-                    normalizedSourceType,
-                    fileReference,
-                    storedName,
-                    contentType(normalizedSourceType, storedName),
-                    target,
-                    bytes);
-        } catch (IOException ex) {
-            throw new BusinessException(ErrorCode.NOT_FOUND, "저장된 공고 파일을 찾을 수 없습니다.");
-        }
+        return provider;
     }
 
     private String extension(String contentType) {
