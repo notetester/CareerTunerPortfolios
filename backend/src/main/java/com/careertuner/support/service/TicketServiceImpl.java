@@ -10,9 +10,11 @@ import org.springframework.transaction.annotation.Transactional;
 import com.careertuner.common.exception.BusinessException;
 import com.careertuner.common.exception.ErrorCode;
 import com.careertuner.community.moderation.service.ModerationSettingService;
+import com.careertuner.file.service.FileService;
 import com.careertuner.support.domain.SupportTicket;
 import com.careertuner.support.domain.TicketMessage;
 import com.careertuner.support.dto.CreateTicketRequest;
+import com.careertuner.support.dto.TicketAttachmentView;
 import com.careertuner.support.dto.TicketMessageView;
 import com.careertuner.support.dto.TicketResponse;
 import com.careertuner.support.dto.TicketThreadResponse;
@@ -32,6 +34,12 @@ public class TicketServiceImpl implements TicketService {
     private final ApplicationEventPublisher eventPublisher;
     /** 문의 작성 rate-limit(도배 방지) 정책값 — 검열/중재 정책 콘솔에서 런타임 편집. */
     private final ModerationSettingService moderationSettingService;
+    private final FileService fileService;
+
+    /** 첨부 파일을 support_ticket_message 에 연결할 때 쓰는 file_asset.ref_type 값. */
+    private static final String ATTACHMENT_REF_TYPE = "SUPPORT_TICKET_MSG";
+    /** 메시지 한 건당 첨부 최대 개수 — 프론트 안내(최대 5개)와 일치. */
+    private static final int MAX_ATTACHMENTS = 5;
 
     @Override
     @Transactional
@@ -64,6 +72,10 @@ public class TicketServiceImpl implements TicketService {
                 .internal(false)
                 .build();
         messageMapper.insert(message);
+
+        // 첨부(있으면) — 업로드된 본인 파일을 이 메시지에 연결한다.
+        fileService.linkOwnedFiles(userId, request.attachmentFileIds(),
+                ATTACHMENT_REF_TYPE, message.getId(), MAX_ATTACHMENTS);
 
         // 관리자 알림(NEW_TICKET) — 커밋 후 AFTER_COMMIT 리스너에서 팬아웃(트랜잭션 분리)
         eventPublisher.publishEvent(new NewTicketEvent(ticket.getId(), ticket.getSubject()));
@@ -115,7 +127,7 @@ public class TicketServiceImpl implements TicketService {
 
     @Override
     @Transactional
-    public TicketThreadResponse addUserMessage(Long ticketId, Long userId, String content) {
+    public TicketThreadResponse addUserMessage(Long ticketId, Long userId, String content, List<Long> attachmentFileIds) {
         SupportTicket ticket = ticketMapper.findByIdAndUserId(ticketId, userId);
         if (ticket == null) {
             throw new BusinessException(ErrorCode.NOT_FOUND, "문의를 찾을 수 없습니다.");
@@ -134,6 +146,10 @@ public class TicketServiceImpl implements TicketService {
                 .build();
         messageMapper.insert(message);
 
+        // 첨부(있으면) — 업로드된 본인 파일을 이 메시지에 연결한다.
+        fileService.linkOwnedFiles(userId, attachmentFileIds,
+                ATTACHMENT_REF_TYPE, message.getId(), MAX_ATTACHMENTS);
+
         // 답변 완료/처리 중 상태에서만 사용자 추가 문의로 다시 접수 상태로 되돌려 관리자가 재확인하게 한다.
         // (CLOSED는 위에서 차단, RECEIVED는 이미 접수 상태라 변경 불필요)
         if ("ANSWERED".equals(ticket.getStatus()) || "IN_PROGRESS".equals(ticket.getStatus())) {
@@ -143,11 +159,11 @@ public class TicketServiceImpl implements TicketService {
         return toThread(ticket);
     }
 
-    /** 내부 메모(is_internal)를 제외한 전체 대화를 시간순으로 묶는다. */
+    /** 내부 메모(is_internal)를 제외한 전체 대화를 시간순으로 묶는다. 메시지별 첨부도 함께 싣는다. */
     private TicketThreadResponse toThread(SupportTicket ticket) {
         List<TicketMessageView> messages = messageMapper.findByTicketId(ticket.getId()).stream()
                 .filter(m -> !m.isInternal())
-                .map(TicketMessageView::from)
+                .map(m -> TicketMessageView.from(m, attachmentsOf(m.getId())))
                 .toList();
         return new TicketThreadResponse(
                 ticket.getId(),
@@ -162,5 +178,12 @@ public class TicketServiceImpl implements TicketService {
         return new TicketResponse(
                 ticket.getId(), ticket.getSubject(), ticket.getCategory(),
                 ticket.getStatus(), ticket.getCreatedAt(), null, null);
+    }
+
+    /** 메시지에 연결된 첨부(file_asset ref)를 뷰로 변환한다. */
+    private List<TicketAttachmentView> attachmentsOf(Long messageId) {
+        return fileService.findLinkedFiles(ATTACHMENT_REF_TYPE, messageId).stream()
+                .map(TicketAttachmentView::from)
+                .toList();
     }
 }

@@ -1,5 +1,6 @@
 package com.careertuner.file.service;
 
+import java.util.List;
 import java.util.Locale;
 import java.util.Set;
 
@@ -45,6 +46,37 @@ public class FileService {
                 .build();
         fileAssetMapper.insert(asset);
         return FileAssetResponse.from(asset);
+    }
+
+    /**
+     * 업로드만 되고 아직 연결 안 된(ref_id=null) 소유자 본인 파일들을 지정 ref 에 연결한다.
+     * 남의 파일·이미 연결된 파일·없는 파일은 조용히 건너뛴다(첨부 하이재킹/재부모 방지). maxCount 까지만.
+     */
+    @Transactional
+    public void linkOwnedFiles(Long userId, List<Long> fileIds, String refType, Long refId, int maxCount) {
+        if (fileIds == null || fileIds.isEmpty()) {
+            return;
+        }
+        int linked = 0;
+        for (Long fileId : fileIds) {
+            if (linked >= maxCount) {
+                break;
+            }
+            if (fileId == null) {
+                continue;
+            }
+            FileAsset asset = fileAssetMapper.findById(fileId);
+            if (asset == null || !asset.getOwnerUserId().equals(userId) || asset.getRefId() != null) {
+                continue;
+            }
+            fileAssetMapper.updateRef(fileId, refType, refId);
+            linked++;
+        }
+    }
+
+    /** 특정 ref(refType/refId)에 연결된 파일 메타 목록. 첨부 렌더용. */
+    public List<FileAsset> findLinkedFiles(String refType, Long refId) {
+        return fileAssetMapper.findByRef(refType, refId);
     }
 
     /** 소유자 확인 후 다운로드용 메타 + 바이트를 함께 반환한다. */

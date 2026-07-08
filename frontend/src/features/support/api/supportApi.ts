@@ -1,5 +1,16 @@
 import { api } from "@/app/lib/api";
-import type { Faq, Notice, SupportTicket, TicketThread } from "../types/support";
+import type { Faq, Notice, SupportTicket, TicketAttachment, TicketThread } from "../types/support";
+
+/** 문의 첨부 업로드 → 파일 메타. /api/file/upload(kind=ATTACHMENT) 재사용(인증 필요). */
+export async function uploadTicketFile(file: File): Promise<TicketAttachment> {
+  const fd = new FormData();
+  fd.append("file", file);
+  fd.append("kind", "ATTACHMENT");
+  const r = await api<{
+    id: number; originalName: string; sizeBytes: number; contentType?: string; contentUrl: string;
+  }>("/file/upload", { method: "POST", body: fd });
+  return { id: r.id, name: r.originalName, size: r.sizeBytes, contentType: r.contentType, contentUrl: r.contentUrl };
+}
 
 /** FAQ 목록 (공개) */
 export async function getFaqs(category?: string): Promise<Faq[]> {
@@ -23,6 +34,7 @@ export async function createTicket(data: {
   category: string;
   subject: string;
   content: string;
+  attachmentFileIds?: number[];
 }): Promise<SupportTicket> {
   const t = await api<SupportTicket>("/support/tickets", {
     method: "POST",
@@ -49,9 +61,9 @@ export function getTicketThread(id: number): Promise<TicketThread> {
 }
 
 /** 내 문의에 추가 메시지(추가 문의)를 남긴다. 갱신된 스레드를 반환. */
-export function addTicketMessage(id: number, content: string): Promise<TicketThread> {
+export function addTicketMessage(id: number, content: string, attachmentFileIds?: number[]): Promise<TicketThread> {
   return api<TicketThread>(`/support/tickets/${id}/messages`, {
     method: "POST",
-    body: JSON.stringify({ content }),
+    body: JSON.stringify({ content, attachmentFileIds }),
   });
 }

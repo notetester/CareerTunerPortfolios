@@ -10,20 +10,63 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/app/components/ui/select";
 import { getAccessToken } from "@/app/lib/tokenStore";
-import { CONTACT_CATEGORIES, type SupportTicket, type TicketStatus, type TicketThread } from "../types/support";
-import { addTicketMessage, getTicketThread } from "../api/supportApi";
+import { apiBase } from "@/app/lib/apiBase";
+import { CONTACT_CATEGORIES, type SupportTicket, type TicketAttachment, type TicketStatus, type TicketThread } from "../types/support";
+import { addTicketMessage, getTicketThread, uploadTicketFile } from "../api/supportApi";
 import { useSupportStore } from "../hooks/useSupportStore";
 import "../styles/support.css";
 
 interface FileInfo {
+  file: File;
   name: string;
   size: number;
 }
+
+const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
+const ALLOWED_FILE = /^(image\/|application\/pdf$)/;
 
 function fmtSize(b: number) {
   return b >= 1048576
     ? (b / 1048576).toFixed(1) + "MB"
     : Math.max(1, Math.round(b / 1024)) + "KB";
+}
+
+/** 파일 API는 Bearer 인증이 필요해 a[href] 로는 못 받는다 → 토큰 실어 blob 으로 받아 다운로드한다. */
+async function downloadTicketFile(fileId: number, name: string) {
+  const token = getAccessToken();
+  const res = await fetch(`${apiBase()}/file/${fileId}/content`, {
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+  });
+  if (!res.ok) throw new Error("다운로드 실패");
+  const url = URL.createObjectURL(await res.blob());
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = name;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 10_000);
+}
+
+/** 메시지 첨부 목록 — 클릭하면 인증 다운로드. */
+function AttachmentList({ items }: { items: TicketAttachment[] }) {
+  return (
+    <div style={{ marginTop: 6, display: "flex", flexDirection: "column", gap: 4 }}>
+      {items.map((a) => (
+        <button
+          key={a.id}
+          type="button"
+          onClick={() => void downloadTicketFile(a.id, a.name).catch(() => {})}
+          style={{
+            display: "inline-flex", alignItems: "center", gap: 6, background: "none", border: "none",
+            padding: 0, cursor: "pointer", fontSize: 12, color: "inherit", textAlign: "left",
+          }}
+        >
+          <Paperclip style={{ width: 13, height: 13, flex: "none" }} />
+          <span style={{ textDecoration: "underline", overflowWrap: "anywhere" }}>{a.name}</span>
+          <span style={{ opacity: 0.7 }}>({fmtSize(a.size)})</span>
+        </button>
+      ))}
+    </div>
+  );
 }
 
 const TICKET_STATUS_LABEL: Record<TicketStatus, string> = {
@@ -45,6 +88,8 @@ export function ContactPage() {
   const [files, setFiles] = useState<FileInfo[]>([]);
   const [dragOver, setDragOver] = useState(false);
   const [submitted, setSubmitted] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const [fileError, setFileError] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const { submitting, lastTicket, createTicket, myTickets, ticketsLoading, fetchMyTickets } = useSupportStore();
   const [submitFailed, setSubmitFailed] = useState(false);
@@ -55,8 +100,14 @@ export function ContactPage() {
   }, [fetchMyTickets]);
 
   const addFiles = (list: FileList) => {
-    const next = Array.from(list).map((f) => ({ name: f.name, size: f.size }));
-    setFiles((prev) => [...prev, ...next].slice(0, 5));
+    setFileError(null);
+    const accepted: FileInfo[] = [];
+    for (const f of Array.from(list)) {
+      if (!ALLOWED_FILE.test(f.type)) { setFileError("이미지 또는 PDF만 첨부할 수 있어요."); continue; }
+      if (f.size > MAX_FILE_SIZE) { setFileError("파일당 최대 10MB까지 첨부할 수 있어요."); continue; }
+      accepted.push({ file: f, name: f.name, size: f.size });
+    }
+    setFiles((prev) => [...prev, ...accepted].slice(0, 5));
   };
 
   const canSubmit = title.trim() && category && body.trim().length >= 10;
@@ -81,7 +132,7 @@ export function ContactPage() {
             </Link>
             <button
               className="av-btn av-btn--ink"
-              onClick={() => { setSubmitted(false); setTitle(""); setCategory(""); setBody(""); setFiles([]); }}
+              onClick={() => { setSubmitted(false); setTitle(""); setCategory(""); setBody(""); setFiles([]); setFileError(null); }}
             >
               새 문의 작성
             </button>
@@ -148,7 +199,7 @@ export function ContactPage() {
 
           <div className="ct-contact__field">
             <div className="ct-contact__label">
-              파일 첨부 <span className="ct-drop__soon">2차 구현 예정</span>
+              파일 첨부 <span className="ct-contact__count">선택 · 이미지·PDF · 최대 5개</span>
             </div>
             <div
               className={`ct-drop ${dragOver ? "is-over" : ""}`}
@@ -176,6 +227,9 @@ export function ContactPage() {
                 ))}
               </div>
             )}
+            {fileError && (
+              <p style={{ color: "var(--destructive)", fontSize: 12, marginTop: 6 }}>{fileError}</p>
+            )}
           </div>
 
           <div className="ct-contact__actions">
@@ -184,19 +238,27 @@ export function ContactPage() {
             </Link>
             <button
               className="av-btn av-btn--ink"
-              disabled={!canSubmit || submitting}
+              disabled={!canSubmit || submitting || uploading}
               onClick={async () => {
                 setSubmitFailed(false);
                 try {
-                  await createTicket({ category, subject: title, content: body });
+                  let attachmentFileIds: number[] | undefined;
+                  if (files.length > 0) {
+                    setUploading(true);
+                    const uploaded = await Promise.all(files.map((f) => uploadTicketFile(f.file)));
+                    attachmentFileIds = uploaded.map((u) => u.id);
+                    setUploading(false);
+                  }
+                  await createTicket({ category, subject: title, content: body, attachmentFileIds });
                   setSubmitted(true);
                   window.scrollTo(0, 0);
                 } catch {
+                  setUploading(false);
                   setSubmitFailed(true);
                 }
               }}
             >
-              {submitting ? "전송 중…" : <>문의 보내기 <Send /></>}
+              {uploading ? "첨부 업로드 중…" : submitting ? "전송 중…" : <>문의 보내기 <Send /></>}
             </button>
             {submitFailed && (
               <p style={{ color: "var(--destructive)", fontSize: 13, marginTop: 8 }}>
@@ -337,6 +399,7 @@ function MyTicketItem({ ticket, onChanged }: { ticket: SupportTicket; onChanged:
                   {m.senderType === "ADMIN" ? "고객센터" : "나"} · {fmtDate(m.createdAt)}
                 </div>
                 <div style={{ fontSize: 14, whiteSpace: "pre-wrap" }}>{m.content}</div>
+                {m.attachments && m.attachments.length > 0 && <AttachmentList items={m.attachments} />}
               </div>
             ))}
           </div>
