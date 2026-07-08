@@ -17,6 +17,8 @@ import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 
 import com.careertuner.applicationcase.domain.ApplicationCase;
+import com.careertuner.applicationcase.service.OpenAiResponsesClient.CompanyAnalysisPayload;
+import com.careertuner.companyanalysis.ai.prompt.CompanyAnalysisPromptCatalog;
 
 import tools.jackson.databind.ObjectMapper;
 
@@ -1210,6 +1212,135 @@ class BAnalysisGenerationServiceTest {
 
         assertThat(result.fellBack()).isFalse();
         assertThat(result.payload().usage().model()).isEqualTo("claude-haiku-test");
+    }
+
+    // ── 기업분석 provider 우선순위 스위치(careertuner.b-analysis.company.provider) ──
+
+    @Test
+    void companyProviderOpenAiCallsOpenAiFirstAndSkipsClaudeAndLocal() {
+        // provider=openai → OpenAI 를 1순위로 호출하고, local(활성)·Claude(설정됨)는 건너뛴다.
+        BAnalysisProperties properties = new BAnalysisProperties();
+        properties.getLocalLlm().setEnabled(true);
+        properties.getLocalLlm().setModel("qwen-test");
+        properties.getCompany().setProvider("openai");
+        BLocalLlmClient localLlmClient = mock(BLocalLlmClient.class);
+        when(localLlmClient.chat(anyString(), anyString(), any())).thenReturn(validCompanyJson());
+        BAnthropicClient anthropicClient = mock(BAnthropicClient.class);
+        when(anthropicClient.configured()).thenReturn(true);
+        when(anthropicClient.chat(anyString(), anyString(), any())).thenReturn(validCompanyJson());
+        OpenAiResponsesClient openAiClient = mock(OpenAiResponsesClient.class);
+        when(openAiClient.configured()).thenReturn(true);
+        when(openAiClient.analyzeCompany(any(), anyString())).thenReturn(openAiCompanyPayload("gpt-test"));
+        BAnalysisGenerationService service = service(properties, localLlmClient, anthropicClient, openAiClient);
+
+        BAnalysisGenerationService.GeneratedCompanyAnalysis result =
+                service.generateCompanyAnalysis(applicationCase(), postingText());
+
+        assertThat(result.fellBack()).isFalse();
+        assertThat(result.payload().usage().model()).isEqualTo("gpt-test");
+        verify(openAiClient).analyzeCompany(any(), anyString());
+        verify(anthropicClient, never()).chat(anyString(), anyString(), any());
+        verify(localLlmClient, never()).chat(anyString(), anyString(), any());
+    }
+
+    @Test
+    void companyProviderClaudeCallsClaudeFirstWithHostedPromptAndSkipsOthers() {
+        // provider=claude → Claude 를 1순위로 호출하고, grounding 완화판(HOSTED_SYSTEM_PROMPT)을 system 으로 넘긴다.
+        BAnalysisProperties properties = new BAnalysisProperties();
+        properties.getLocalLlm().setEnabled(true);
+        properties.getLocalLlm().setModel("qwen-test");
+        properties.getCompany().setProvider("claude");
+        BLocalLlmClient localLlmClient = mock(BLocalLlmClient.class);
+        when(localLlmClient.chat(anyString(), anyString(), any())).thenReturn(validCompanyJson());
+        BAnthropicClient anthropicClient = mock(BAnthropicClient.class);
+        when(anthropicClient.configured()).thenReturn(true);
+        when(anthropicClient.model()).thenReturn("claude-haiku-test");
+        when(anthropicClient.chat(anyString(), anyString(), any())).thenReturn(validCompanyJson());
+        OpenAiResponsesClient openAiClient = mock(OpenAiResponsesClient.class);
+        when(openAiClient.configured()).thenReturn(true);
+        BAnalysisGenerationService service = service(properties, localLlmClient, anthropicClient, openAiClient);
+
+        BAnalysisGenerationService.GeneratedCompanyAnalysis result =
+                service.generateCompanyAnalysis(applicationCase(), postingText());
+
+        assertThat(result.fellBack()).isFalse();
+        assertThat(result.payload().usage().model()).isEqualTo("claude-haiku-test");
+        ArgumentCaptor<String> systemCaptor = ArgumentCaptor.forClass(String.class);
+        verify(anthropicClient).chat(systemCaptor.capture(), anyString(), any());
+        assertThat(systemCaptor.getValue()).isEqualTo(CompanyAnalysisPromptCatalog.HOSTED_SYSTEM_PROMPT);
+        verify(openAiClient, never()).analyzeCompany(any(), anyString());
+        verify(localLlmClient, never()).chat(anyString(), anyString(), any());
+    }
+
+    @Test
+    void companyProviderAutoKeepsLocalFirst() {
+        // provider 미설정(auto 기본) → 현행대로 자체 R1(local) 이 1순위. 성공하면 hosted 는 호출되지 않는다.
+        BAnalysisProperties properties = new BAnalysisProperties();
+        properties.getLocalLlm().setEnabled(true);
+        properties.getLocalLlm().setModel("qwen-test");
+        BLocalLlmClient localLlmClient = mock(BLocalLlmClient.class);
+        when(localLlmClient.chat(anyString(), anyString(), any())).thenReturn(validCompanyJson());
+        BAnthropicClient anthropicClient = mock(BAnthropicClient.class);
+        when(anthropicClient.configured()).thenReturn(true);
+        OpenAiResponsesClient openAiClient = mock(OpenAiResponsesClient.class);
+        when(openAiClient.configured()).thenReturn(true);
+        BAnalysisGenerationService service = service(properties, localLlmClient, anthropicClient, openAiClient);
+
+        BAnalysisGenerationService.GeneratedCompanyAnalysis result =
+                service.generateCompanyAnalysis(applicationCase(), postingText());
+
+        assertThat(result.fellBack()).isFalse();
+        assertThat(result.payload().usage().model()).isEqualTo("qwen-test");
+        verify(anthropicClient, never()).chat(anyString(), anyString(), any());
+        verify(openAiClient, never()).analyzeCompany(any(), anyString());
+    }
+
+    @Test
+    void companyProviderOpenAiFallsThroughToClaudeOnFailure() {
+        // provider=openai 라도 OpenAI 실패 시 다음 순위(Claude)로 폴백한다(순서 리스트 [OPENAI, CLAUDE, LOCAL]).
+        BAnalysisProperties properties = new BAnalysisProperties();
+        properties.getLocalLlm().setEnabled(false);
+        properties.getCompany().setProvider("openai");
+        BLocalLlmClient localLlmClient = mock(BLocalLlmClient.class);
+        BAnthropicClient anthropicClient = mock(BAnthropicClient.class);
+        when(anthropicClient.configured()).thenReturn(true);
+        when(anthropicClient.model()).thenReturn("claude-haiku-test");
+        when(anthropicClient.chat(anyString(), anyString(), any())).thenReturn(validCompanyJson());
+        OpenAiResponsesClient openAiClient = mock(OpenAiResponsesClient.class);
+        when(openAiClient.configured()).thenReturn(true);
+        when(openAiClient.analyzeCompany(any(), anyString())).thenThrow(new RuntimeException("openai down"));
+        BAnalysisGenerationService service = service(properties, localLlmClient, anthropicClient, openAiClient);
+
+        BAnalysisGenerationService.GeneratedCompanyAnalysis result =
+                service.generateCompanyAnalysis(applicationCase(), postingText());
+
+        assertThat(result.fellBack()).isFalse();
+        assertThat(result.payload().usage().model()).isEqualTo("claude-haiku-test");
+        verify(openAiClient).analyzeCompany(any(), anyString());
+        verify(anthropicClient).chat(anyString(), anyString(), any());
+    }
+
+    private static String validCompanyJson() {
+        return """
+                {
+                  "companySummary": "Acme 백엔드 채용 공고 기준 기업 요약입니다.",
+                  "recentIssues": "확인 불가",
+                  "industry": "IT 서비스",
+                  "competitors": [],
+                  "interviewPoints": "Spring Boot 경험 중심 준비",
+                  "sources": [{"type":"JOB_POSTING","label":"채용공고"}],
+                  "verifiedFacts": [{"fact":"백엔드 개발자를 채용한다","source":"채용공고","evidence":"Backend Engineer"}],
+                  "aiInferences": [],
+                  "unknowns": []
+                }
+                """;
+    }
+
+    private static CompanyAnalysisPayload openAiCompanyPayload(String model) {
+        return new CompanyAnalysisPayload(
+                "OpenAI 기업 요약", "확인 불가", "IT 서비스", "[]",
+                "면접 준비 포인트", "[]", "[]", "[]", "[]",
+                new OpenAiResponsesClient.Usage(model, 1, 1, 2));
     }
 
     private static String validJobJson() {

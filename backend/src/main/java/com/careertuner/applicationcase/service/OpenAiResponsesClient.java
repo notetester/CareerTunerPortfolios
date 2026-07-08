@@ -82,7 +82,7 @@ public class OpenAiResponsesClient {
         JsonNode root = post(structuredRequest(
                 "company_analysis",
                 companyAnalysisSchema(),
-                CompanyAnalysisPromptCatalog.SYSTEM_PROMPT,
+                CompanyAnalysisPromptCatalog.HOSTED_SYSTEM_PROMPT,
                 """
                 회사명: %s
                 직무명: %s

@@ -15,6 +15,27 @@ import lombok.Setter;
 public class BAnalysisProperties {
 
     private LocalLlm localLlm = new LocalLlm();
+    private Company company = new Company();
+
+    /**
+     * 기업분석 provider 정책. 공고분석(job)은 항상 현행 폴백 체인을 유지하고, 기업분석(company)만
+     * 이 설정으로 1순위 provider 를 바꾼다(R1 결과 품질 이슈 대응 — hosted 우선 실험용).
+     */
+    @Getter
+    @Setter
+    public static class Company {
+
+        /**
+         * 기업분석 1순위 provider. 값(대소문자 무시):
+         * <ul>
+         * <li>{@code auto}(기본) — 현행과 동일: 자체 R1 → Claude → OpenAI → self-rules.</li>
+         * <li>{@code openai} — OpenAI → Claude → R1 → self-rules.</li>
+         * <li>{@code claude} — Claude → OpenAI → R1 → self-rules.</li>
+         * </ul>
+         * 어느 경우든 활성/미설정 provider 는 건너뛰고, 최종 안전망은 항상 self-rules-v1 이다.
+         */
+        private String provider = "auto";
+    }
 
     @Getter
     @Setter
