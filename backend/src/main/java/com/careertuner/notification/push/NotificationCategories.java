@@ -143,6 +143,10 @@ public final class NotificationCategories {
             Map.entry("POST_REMOVED", "community"),
             Map.entry("POST_RESTORED", "community"),
             Map.entry("POST_SUMMARY_READY", "community"),
+            // 이미지 검열 산출물 — 프런트 TYPE_TO_CATEGORY 와 동일하게 community.
+            // 누락 시 of() 가 기본값 "notice" 를 돌려줘 "공지/문의" 를 끈 사용자의 푸시가 엉뚱하게 막혔다.
+            Map.entry("POST_IMAGE_BLURRED", "community"),
+            Map.entry("COMMUNITY_STRIKE_WARNING", "community"),
             Map.entry("FRIEND_REQUEST", "messenger"),
             Map.entry("FRIEND_ACCEPTED", "messenger"),
             Map.entry("ROOM_INVITE", "messenger"),
