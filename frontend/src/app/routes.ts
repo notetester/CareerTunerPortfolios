@@ -26,6 +26,8 @@ import { VerifyEmailResultPage } from "./pages/VerifyEmailResult";
 import { ForgotPasswordPage } from "./pages/ForgotPassword";
 import { ResetPasswordPage } from "./pages/ResetPassword";
 import { ReleaseDormantPage } from "./pages/ReleaseDormant";
+import { MfaLoginPage } from "./pages/MfaLogin";
+import { MfaApprovalsPage } from "./pages/MfaApprovals";
 import { adminRoutes } from "../admin/routes";
 import NotificationPage from "@/features/notification/pages/NotificationPage";
 import { CommunityActivityPage } from "@/features/community/pages/CommunityActivityPage";
@@ -61,6 +63,7 @@ export const router = createBrowserRouter([
       { path: "interview", Component: AIInterviewPage },
       // 모바일 세션 스레드(Claude 앱 문법) — 하단 탭 "세션" + 디스패치 딥링크 진입 (interview 소유, D)
       { path: "m/sessions", Component: MobileSessionsPage },
+      { path: "m/mfa-approvals", Component: MfaApprovalsPage },
       { path: "m/session/:id", Component: MobileSessionThreadPage },
       // 폰 마이크 핸드오프 송신 페이지 — 데스크탑 음성면접의 원격 마이크 (interview 소유, D)
       { path: "mic-remote", Component: MicRemotePage },
@@ -112,6 +115,7 @@ export const router = createBrowserRouter([
       { path: "auth/forgot-password", Component: ForgotPasswordPage },
       { path: "auth/reset-password", Component: ResetPasswordPage },
       { path: "auth/release-dormant", Component: ReleaseDormantPage },
+      { path: "auth/mfa", Component: MfaLoginPage },
       { path: "notifications", Component: NotificationPage },
       ...adminRoutes,
     ],

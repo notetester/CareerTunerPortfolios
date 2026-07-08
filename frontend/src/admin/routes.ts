@@ -60,6 +60,7 @@ import { AdminChatbotGovernancePage } from "./features/chatbot-governance/pages/
 import { AdminRewardsPage } from "./features/reward/pages/AdminRewardsPage";
 // 관리자/직원 등급·급여 관리(최고 관리자 전용): 조직 등급 + 기본급 + Excel 업로드/내보내기
 import { AdminStaffGradePage } from "./features/staff-grade/pages/AdminStaffGradePage";
+import { AdminMfaPolicyPage } from "./features/mfa/pages/AdminMfaPolicyPage";
 
 export const adminRoutes = [
   { path: "admin", Component: AdminDashboardPage },
@@ -81,6 +82,7 @@ export const adminRoutes = [
   { path: "admin/users/blocked", Component: AdminBlockedUsersPage },
   { path: "admin/security", Component: AdminSecurityOpsPage },
   { path: "admin/security/login-risk", Component: AdminLoginRiskPolicyPage },
+  { path: "admin/security/mfa-policy", Component: AdminMfaPolicyPage },
   { path: "admin/audit/security", Component: AdminSecurityAuditPage },
   { path: "admin/audit/email", Component: AdminEmailAuditPage },
   { path: "admin/audit/activity", Component: AdminActivityLogsPage },
