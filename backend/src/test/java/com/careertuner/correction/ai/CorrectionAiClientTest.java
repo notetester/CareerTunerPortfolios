@@ -20,6 +20,8 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 
+import com.careertuner.common.exception.BusinessException;
+import com.careertuner.common.exception.ErrorCode;
 import com.careertuner.correction.ai.CorrectionAiClient.CorrectionCommand;
 import com.careertuner.correction.ai.CorrectionAiClient.CorrectionPayload;
 import com.careertuner.correction.ai.CorrectionAiClient.Usage;
@@ -155,24 +157,23 @@ class CorrectionAiClientTest {
     }
 
     @Test
-    @DisplayName("cloud fallback 을 꺼도 self 실패 시 화면은 Mock 으로 안전하게 유지된다(예외 미전파)")
-    void correct_fallbackDisabledReturnsMockNotThrow() {
+    @DisplayName("cloud fallback을 끈 상태에서 self가 실패하면 무과금 오류로 종료한다")
+    void correct_fallbackDisabledThrowsAiUnavailable() {
         Fixture fixture = fixture(true);
         fixture.properties.setFallbackEnabled(false);
         when(fixture.self.correct(eq(fixture.command), eq("3b"), any(Duration.class), isNull()))
                 .thenThrow(new SelfLlmCallException("boom", false));
 
-        CorrectionPayload result = fixture.client.correct(fixture.command);
-
-        assertThat(result.usage().model()).isEqualTo("mock");
-        verify(fixture.mock).correct(fixture.command);
+        assertThatThrownBy(() -> fixture.client.correct(fixture.command))
+                .isInstanceOfSatisfying(BusinessException.class, ex ->
+                        assertThat(ex.getErrorCode()).isEqualTo(ErrorCode.AI_UNAVAILABLE));
         verify(fixture.openAi, never()).correct(any()); // 외부 폴백은 껐으므로 호출 안 함
         verify(fixture.anthropic, never()).correct(any());
     }
 
     @Test
-    @DisplayName("모든 tier(self·Claude·OpenAI)가 실패해도 Mock 안전망이 예외 없이 반환된다(screen-break 방지)")
-    void correct_allTiersFailReturnsMockNeverThrows() {
+    @DisplayName("모든 실제 provider가 실패하면 AI_UNAVAILABLE로 종료한다")
+    void correct_allTiersFailThrowsAiUnavailable() {
         Fixture fixture = fixture(true);
         when(fixture.self.correct(eq(fixture.command), eq("3b"), any(Duration.class), isNull()))
                 .thenThrow(new SelfLlmCallException("self down", false));
@@ -180,13 +181,14 @@ class CorrectionAiClientTest {
         when(fixture.anthropic.correct(fixture.command)).thenThrow(new IllegalStateException("claude down"));
         when(fixture.openAi.correct(fixture.command)).thenThrow(new IllegalStateException("openai down"));
 
-        CorrectionPayload result = fixture.client.correct(fixture.command);
-
-        assertThat(result.usage().model()).isEqualTo("mock"); // 예외 대신 결정론 Mock
+        assertThatThrownBy(() -> fixture.client.correct(fixture.command))
+                .isInstanceOfSatisfying(BusinessException.class, ex -> {
+                    assertThat(ex.getErrorCode()).isEqualTo(ErrorCode.AI_UNAVAILABLE);
+                    assertThat(ex.getMessage()).contains("잠시 후 다시 시도");
+                });
         verify(fixture.self).correct(eq(fixture.command), eq("3b"), any(Duration.class), isNull());
         verify(fixture.anthropic).correct(fixture.command);
         verify(fixture.openAi).correct(fixture.command);
-        verify(fixture.mock).correct(fixture.command);
     }
 
     @Test
@@ -219,8 +221,6 @@ class CorrectionAiClientTest {
         OpenAiCorrectionProvider openAi = mock(OpenAiCorrectionProvider.class);
         SelfLlmCorrectionProvider self = mock(SelfLlmCorrectionProvider.class);
         AnthropicCorrectionProvider anthropic = mock(AnthropicCorrectionProvider.class);
-        MockCorrectionProvider mockProvider = mock(MockCorrectionProvider.class);
-        when(mockProvider.correct(any())).thenReturn(payload("mock"));
         CorrectionModelWarmupService warmup = mock(CorrectionModelWarmupService.class);
         // DB 런타임 설정 미스(행 없음)를 모사: getInt 는 항상 fallback(정적 self.totalTimeBudget)을 돌려준다 → 동작 불변.
         RuntimeSettingService runtimeSettings = mock(RuntimeSettingService.class);
@@ -231,10 +231,9 @@ class CorrectionAiClientTest {
                 openAi,
                 self,
                 anthropic,
-                mockProvider,
                 warmup,
                 runtimeSettings,
-                new CorrectionAiClient(properties, openAi, self, anthropic, mockProvider, warmup, runtimeSettings),
+                new CorrectionAiClient(properties, openAi, self, anthropic, warmup, runtimeSettings),
                 command);
     }
 
@@ -252,7 +251,6 @@ class CorrectionAiClientTest {
             OpenAiCorrectionProvider openAi,
             SelfLlmCorrectionProvider self,
             AnthropicCorrectionProvider anthropic,
-            MockCorrectionProvider mock,
             CorrectionModelWarmupService warmup,
             RuntimeSettingService runtimeSettings,
             CorrectionAiClient client,

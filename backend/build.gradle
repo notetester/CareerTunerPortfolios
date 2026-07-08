@@ -35,6 +35,10 @@ dependencies {
     // 관리자 그리드 내보내기(Excel .xlsx) — Apache POI (admin/common/grid/GridExporter)
     implementation 'org.apache.poi:poi-ooxml:5.5.1'
 
+    // 공고 파일 외부 저장 provider(Cloudinary) — #2 step5 (팀장 SDK 승인 완료).
+    // 백엔드 서명 업로드 + authenticated delivery. default=local 이라 키 없으면 미사용(조건부 빈).
+    implementation 'com.cloudinary:cloudinary-http5:2.4.0'
+
     // Email (verification / password reset via SMTP)
     implementation 'org.springframework.boot:spring-boot-starter-mail'
 

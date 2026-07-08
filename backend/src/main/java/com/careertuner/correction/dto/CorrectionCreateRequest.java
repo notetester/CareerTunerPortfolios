@@ -14,6 +14,10 @@ public record CorrectionCreateRequest(
         @NotBlank
         @Size(max = 120)
         @Pattern(regexp = "[A-Za-z0-9:_-]+")
-        String policyAcknowledgementKey
+        String policyAcknowledgementKey,
+        @NotBlank
+        @Size(max = 120)
+        @Pattern(regexp = "[A-Za-z0-9:_-]+")
+        String requestKey
 ) {
 }

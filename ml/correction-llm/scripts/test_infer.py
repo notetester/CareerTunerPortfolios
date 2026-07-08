@@ -42,10 +42,25 @@ def extract_json(text: str) -> str:
 def load_model(model_path: str):
     import torch
     from peft import AutoPeftModelForCausalLM
-    from transformers import AutoTokenizer
+    from transformers import AutoModelForCausalLM, AutoTokenizer
+    from pathlib import Path
 
     tokenizer = AutoTokenizer.from_pretrained(model_path)
-    model = AutoPeftModelForCausalLM.from_pretrained(model_path, torch_dtype=torch.bfloat16, device_map="auto")
+    if tokenizer.pad_token is None:
+        tokenizer.pad_token = tokenizer.eos_token
+    path = Path(model_path)
+    if path.exists() and (path / "adapter_config.json").exists():
+        model = AutoPeftModelForCausalLM.from_pretrained(
+            model_path,
+            torch_dtype=torch.bfloat16,
+            device_map="auto",
+        )
+    else:
+        model = AutoModelForCausalLM.from_pretrained(
+            model_path,
+            torch_dtype=torch.bfloat16,
+            device_map="auto",
+        )
     model.eval()
     return tokenizer, model
 

@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
 
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -27,7 +28,9 @@ class JobPostingFileStorageTest {
     void storeAcceptsPdfLargerThanFiveMegabytesUnderTenMegabyteLimit() {
         JobPostingUploadProperties properties = new JobPostingUploadProperties();
         properties.setJobPostingDir(tempDir.toString());
-        JobPostingFileStorage storage = new JobPostingFileStorage(properties, JobPostingUploadLimitPolicy.fromProperties(properties));
+        JobPostingFileStorage storage = new JobPostingFileStorage(properties,
+                JobPostingUploadLimitPolicy.fromProperties(properties),
+                List.of(new LocalJobPostingStorageProvider(properties)));
         byte[] sevenMb = new byte[7 * 1024 * 1024];
         MockMultipartFile file = new MockMultipartFile(
                 "file", "posting.pdf", "application/pdf", sevenMb);
@@ -43,7 +46,9 @@ class JobPostingFileStorageTest {
     void storeRejectsPdfLargerThanTenMegabytes() {
         JobPostingUploadProperties properties = new JobPostingUploadProperties();
         properties.setJobPostingDir(tempDir.toString());
-        JobPostingFileStorage storage = new JobPostingFileStorage(properties, JobPostingUploadLimitPolicy.fromProperties(properties));
+        JobPostingFileStorage storage = new JobPostingFileStorage(properties,
+                JobPostingUploadLimitPolicy.fromProperties(properties),
+                List.of(new LocalJobPostingStorageProvider(properties)));
         byte[] overLimit = new byte[10 * 1024 * 1024 + 1];
         MockMultipartFile file = new MockMultipartFile(
                 "file", "posting.pdf", "application/pdf", overLimit);
@@ -57,7 +62,9 @@ class JobPostingFileStorageTest {
     void loadStoredJobPostingFileReadsLocalReferenceUnderUploadRoot() throws Exception {
         JobPostingUploadProperties properties = new JobPostingUploadProperties();
         properties.setJobPostingDir(tempDir.toString());
-        JobPostingFileStorage storage = new JobPostingFileStorage(properties, JobPostingUploadLimitPolicy.fromProperties(properties));
+        JobPostingFileStorage storage = new JobPostingFileStorage(properties,
+                JobPostingUploadLimitPolicy.fromProperties(properties),
+                List.of(new LocalJobPostingStorageProvider(properties)));
         Path caseDir = tempDir.resolve("10");
         Files.createDirectories(caseDir);
         Path storedPath = caseDir.resolve("posting.pdf");
@@ -77,7 +84,9 @@ class JobPostingFileStorageTest {
     void loadStoredJobPostingFileRejectsTraversalOutsideUploadRoot() throws Exception {
         JobPostingUploadProperties properties = new JobPostingUploadProperties();
         properties.setJobPostingDir(tempDir.resolve("uploads").toString());
-        JobPostingFileStorage storage = new JobPostingFileStorage(properties, JobPostingUploadLimitPolicy.fromProperties(properties));
+        JobPostingFileStorage storage = new JobPostingFileStorage(properties,
+                JobPostingUploadLimitPolicy.fromProperties(properties),
+                List.of(new LocalJobPostingStorageProvider(properties)));
         Path outside = tempDir.resolve("secret.pdf");
         Files.write(outside, new byte[]{9});
 
@@ -89,9 +98,23 @@ class JobPostingFileStorageTest {
     void loadStoredJobPostingFileRejectsReferenceForDifferentCase() {
         JobPostingUploadProperties properties = new JobPostingUploadProperties();
         properties.setJobPostingDir(tempDir.toString());
-        JobPostingFileStorage storage = new JobPostingFileStorage(properties, JobPostingUploadLimitPolicy.fromProperties(properties));
+        JobPostingFileStorage storage = new JobPostingFileStorage(properties,
+                JobPostingUploadLimitPolicy.fromProperties(properties),
+                List.of(new LocalJobPostingStorageProvider(properties)));
 
         assertThatThrownBy(() -> storage.load(10L, "local:application-postings/11/posting.pdf", "PDF"))
+                .isInstanceOf(BusinessException.class);
+    }
+
+    @Test
+    void loadRejectsReferenceWithUnknownScheme() {
+        JobPostingUploadProperties properties = new JobPostingUploadProperties();
+        properties.setJobPostingDir(tempDir.toString());
+        JobPostingFileStorage storage = new JobPostingFileStorage(properties,
+                JobPostingUploadLimitPolicy.fromProperties(properties),
+                List.of(new LocalJobPostingStorageProvider(properties)));
+
+        assertThatThrownBy(() -> storage.load(10L, "s3:application-postings/10/posting.pdf", "PDF"))
                 .isInstanceOf(BusinessException.class);
     }
 }
