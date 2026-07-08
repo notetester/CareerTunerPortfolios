@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import java.awt.image.BufferedImage;
 import java.io.ByteArrayOutputStream;
+import java.util.Map;
 import java.util.UUID;
 
 import javax.imageio.ImageIO;
@@ -41,6 +42,9 @@ class CloudinaryJobPostingUploadIntegrationTest {
     @Autowired
     private Cloudinary cloudinary;
 
+    @Autowired
+    private CloudinaryProperties properties;
+
     private static byte[] tinyPng() throws Exception {
         BufferedImage img = new BufferedImage(2, 2, BufferedImage.TYPE_INT_RGB);
         img.setRGB(0, 0, 0x3366FF);
@@ -67,6 +71,16 @@ class CloudinaryJobPostingUploadIntegrationTest {
             // 다시 읽어 원본 바이트가 복원되는가(= 실제로 Cloudinary 에 있고 조회 가능).
             StoredJobPostingFile loaded = fileStorage.load(caseId, stored.fileReference(), "IMAGE");
             assertThat(loaded.bytes()).isEqualTo(png);
+
+            // 업로드 asset 이 설정된 폴더(properties.folder) 안에 들어갔는가 — dynamic folder mode 실증.
+            // 폴더명은 CAREERTUNER_UPLOADS_CLOUDINARY_FOLDER 로 바뀔 수 있으므로 리터럴이 아니라 properties 로 비교.
+            CloudinaryJobPostingStorageProvider.Ref ref =
+                    CloudinaryJobPostingStorageProvider.parseReference(stored.fileReference());
+            @SuppressWarnings("rawtypes")
+            Map resource = cloudinary.api().resource(ref.publicId(), ObjectUtils.asMap(
+                    "resource_type", ref.resourceType(), "type", ref.type()));
+            System.out.println("[integration] asset_folder = " + resource.get("asset_folder"));
+            assertThat(resource.get("asset_folder")).isEqualTo(properties.getFolder());
         } finally {
             try {
                 CloudinaryJobPostingStorageProvider.Ref ref =
