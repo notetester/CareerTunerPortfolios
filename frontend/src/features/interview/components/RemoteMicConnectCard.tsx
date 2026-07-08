@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Loader2, Smartphone, Unplug, Wifi } from "lucide-react";
+import { Loader2, Smartphone, Unplug, Video, Wifi } from "lucide-react";
 import { QRCodeSVG } from "qrcode.react";
 import { Button } from "@/app/components/ui/button";
 import {
@@ -14,18 +14,21 @@ import {
 type Phase = "idle" | "pairing" | "waiting" | "connecting" | "connected" | "error";
 
 /**
- * 폰 마이크 연결 카드(데스크탑 수신측) — 마이크 없는 기기에서 음성 모의면접을 진행할 때,
- * 폰의 마이크를 WebRTC 로 받아 이 기기의 입력으로 쓴다 (1차: 같은 와이파이, STUN only).
+ * 폰 마이크/카메라 연결 카드(데스크탑 수신측) — 마이크나 카메라가 없는 기기에서 면접을 진행할 때,
+ * 폰의 마이크(오디오)나 카메라(오디오+영상)를 WebRTC 로 받아 이 기기의 입력으로 쓴다.
  *
- * 연결되면 onStream 으로 원격 오디오 MediaStream 을 올려보낸다. 소비측(RealtimeInterviewTab)은
- * stream.clone() 으로 사용해 면접 종료(cleanup)가 원본 연결을 끊지 않게 한다.
+ * withVideo=true 면 폰 카메라 영상까지 받는다(아바타·화상 면접). false 면 오디오만(음성 면접).
+ * 연결되면 onStream 으로 원격 MediaStream 을 올려보낸다. 소비측은 stream.clone() 으로 사용해
+ * 면접 종료(cleanup)가 원본 연결을 끊지 않게 한다.
  */
 export function RemoteMicConnectCard({
   sessionId,
   onStream,
+  withVideo = false,
 }: {
   sessionId: number;
   onStream: (stream: MediaStream | null) => void;
+  withVideo?: boolean;
 }) {
   const [phase, setPhase] = useState<Phase>("idle");
   const [code, setCode] = useState<string | null>(null);
@@ -69,6 +72,7 @@ export function RemoteMicConnectCard({
       const pc = new RTCPeerConnection({ iceServers });
       pcRef.current = pc;
       pc.addTransceiver("audio", { direction: "recvonly" });
+      if (withVideo) pc.addTransceiver("video", { direction: "recvonly" });
       pc.ontrack = (e) => {
         const stream = e.streams[0] ?? new MediaStream([e.track]);
         onStream(stream);
@@ -118,13 +122,15 @@ export function RemoteMicConnectCard({
     setPhase("idle");
   };
 
-  const remoteUrl = `${window.location.origin}/mic-remote${code ? `?code=${code}` : ""}`;
+  const remoteUrl = `${window.location.origin}/mic-remote${
+    code ? `?code=${code}${withVideo ? "&video=1" : ""}` : ""
+  }`;
 
   return (
     <div className="rounded-xl border border-indigo-200 bg-indigo-50/50 p-4">
       <div className="flex items-center gap-2 text-sm font-semibold text-indigo-800">
-        <Smartphone className="size-4" />
-        폰을 마이크로 사용
+        {withVideo ? <Video className="size-4" /> : <Smartphone className="size-4" />}
+        {withVideo ? "폰을 카메라로 사용" : "폰을 마이크로 사용"}
         {phase === "connected" && (
           <span className="ml-1 inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2 py-0.5 text-[11px] font-bold text-emerald-700">
             <Wifi className="size-3" /> 연결됨
@@ -132,8 +138,9 @@ export function RemoteMicConnectCard({
         )}
       </div>
       <p className="mt-1 text-xs leading-5 text-indigo-700/80">
-        면접은 이 화면에서 진행하고, 답변 음성만 폰 마이크로 받습니다. 폰이 다른 네트워크(LTE 등)여도
-        연결됩니다.
+        {withVideo
+          ? "면접은 이 화면에서 진행하고, 답변 음성과 얼굴 영상을 폰 카메라로 받습니다. 폰이 다른 네트워크(LTE 등)여도 연결됩니다."
+          : "면접은 이 화면에서 진행하고, 답변 음성만 폰 마이크로 받습니다. 폰이 다른 네트워크(LTE 등)여도 연결됩니다."}
       </p>
 
       {phase === "idle" && (
@@ -184,7 +191,7 @@ export function RemoteMicConnectCard({
       {phase === "connected" && (
         <div className="mt-3 flex items-center gap-2">
           <p className="text-xs font-semibold text-emerald-700">
-            폰 마이크가 연결됐습니다 — 아래에서 면접을 시작하세요.
+            {withVideo ? "폰 카메라가 연결됐습니다" : "폰 마이크가 연결됐습니다"} — 아래에서 면접을 시작하세요.
           </p>
           <Button onClick={disconnect} size="sm" variant="outline" className="gap-1">
             <Unplug className="size-3.5" /> 연결 해제

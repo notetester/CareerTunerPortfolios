@@ -346,6 +346,10 @@
     -moz-osx-font-smoothing: grayscale;
     text-rendering: optimizeLegibility;
     overflow-x: hidden;
+    /* 안드로이드 WebView(앱)가 좁은 화면에서 텍스트를 임의 확대(font boosting)해
+       레이아웃이 깨지는 것을 막는다. 시스템 글자 배율은 그대로 존중된다. */
+    -webkit-text-size-adjust: 100%;
+    text-size-adjust: 100%;
   }
 
   /**

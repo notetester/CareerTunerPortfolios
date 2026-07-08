@@ -22,6 +22,7 @@ import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 import org.mockito.Mockito;
 
 import com.careertuner.ai.common.gpu.GpuPermitGate;
+import com.careertuner.runtimesetting.service.RuntimeSettingService;
 import com.careertuner.applicationcase.domain.ApplicationCase;
 import com.careertuner.companyanalysis.service.BCompanyAnalysisCanonicalizer;
 import com.careertuner.companyanalysis.service.BCompanyAnalysisCanonicalizer.CanonicalCompanyAnalysis;
@@ -328,7 +329,8 @@ class BCompanyAnalysisWebRealPostingHarness {
             properties.getLocalLlm().setMaxRetries(0); // 검증은 1회 호출만(폴백 관찰 목적).
             applyOllamaEnv(properties);
 
-            BLocalLlmClient realClient = new BLocalLlmClient(properties, GpuPermitGate.disabled());
+            // RuntimeSettingService(null): 매퍼 미주입 → getInt 이 항상 fallback(정적 예산)을 돌려줌(동작 불변).
+            BLocalLlmClient realClient = new BLocalLlmClient(properties, GpuPermitGate.disabled(), new RuntimeSettingService(null));
             BLocalLlmClient spy = Mockito.spy(realClient);
             final String[] rawHolder = new String[1];
             doAnswer(invocation -> {

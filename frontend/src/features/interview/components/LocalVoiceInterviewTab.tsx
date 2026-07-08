@@ -18,6 +18,7 @@ import { BrowserSttTracker } from "../hooks/speechToText";
 import { createNegotiatedRecorder, isTtsSupported, mediaUnsupportedReason } from "../hooks/mediaSupport";
 import { useDeviceCapabilities } from "../hooks/deviceCapabilities";
 import { DeviceHandoffCard, type HandoffReason } from "./DeviceHandoffCard";
+import { RemoteMicConnectCard } from "./RemoteMicConnectCard";
 import { MicLevelMeter } from "./MicLevelMeter";
 import type {
   InterviewQuestion,
@@ -98,12 +99,16 @@ export function LocalVoiceInterviewTab({ session }: { session: InterviewSession 
   // TTS 미지원(Android WebView 등)이면 질문 읽기를 건너뛰고 텍스트 강조로 진행한다.
   const ttsAvailable = isTtsSupported();
   const deviceCaps = useDeviceCapabilities();
+  // 폰 마이크 핸드오프로 받은 원격 오디오 스트림(마이크 없는 기기에서 폰을 마이크로 사용).
+  const [remoteMic, setRemoteMic] = useState<MediaStream | null>(null);
   // 이 기기에서 진행 불가한 원인 — 있으면 "폰으로 이어하기" 안내 카드를 띄운다.
   const handoffReason: HandoffReason | null = !supported
     ? (mediaUnsupportedReason() ?? "unsupported")
     : deviceCaps.hasMicrophone === false
       ? "no-microphone"
       : null;
+  // 폰 마이크가 연결됐으면 무마이크여도 진행 가능.
+  const canProceed = !handoffReason || (handoffReason === "no-microphone" && !!remoteMic);
 
   useEffect(() => {
     if (!session) return;
@@ -156,7 +161,10 @@ export function LocalVoiceInterviewTab({ session }: { session: InterviewSession 
     window.speechSynthesis?.cancel();
     setSpeaking(false);
     try {
-      const mic = await navigator.mediaDevices.getUserMedia({ audio: true });
+      // 폰 마이크 핸드오프가 연결돼 있으면 그 스트림을 clone 해 쓴다(원본은 카드가 소유·정리).
+      const mic = remoteMic
+        ? remoteMic.clone()
+        : await navigator.mediaDevices.getUserMedia({ audio: true });
       micRef.current = mic;
       setMicStream(mic);
       chunksRef.current = [];
@@ -424,9 +432,14 @@ export function LocalVoiceInterviewTab({ session }: { session: InterviewSession 
             </p>
           )}
 
-          {handoffReason && <DeviceHandoffCard sessionId={session.id} reason={handoffReason} />}
+          {handoffReason === "no-microphone" && (
+            <RemoteMicConnectCard sessionId={session.id} onStream={setRemoteMic} />
+          )}
+          {handoffReason && !remoteMic && (
+            <DeviceHandoffCard sessionId={session.id} reason={handoffReason} />
+          )}
 
-          {!started && !handoffReason && (
+          {!started && canProceed && (
             <label className="flex items-start gap-2 rounded-lg bg-slate-50 p-3 text-xs text-slate-600">
               <input
                 type="checkbox"
@@ -491,7 +504,7 @@ export function LocalVoiceInterviewTab({ session }: { session: InterviewSession 
             </div>
           )}
 
-          {supported && !handoffReason && (
+          {supported && canProceed && (
             <div className="flex flex-wrap items-center gap-2">
               {!started && (
                 <Button

@@ -49,10 +49,12 @@ public class SecurityConfig {
                                 "/api/auth/register", "/api/auth/login",
                                 "/api/auth/mfa/login/verify",
                                 "/api/auth/refresh", "/api/auth/email/resend",
+                                "/api/auth/find-id/request",
                                 "/api/auth/password/reset-request", "/api/auth/password/reset",
                                 "/api/auth/dormant/release-request", "/api/auth/dormant/release").permitAll()
                         .requestMatchers(HttpMethod.GET,
-                                "/api/auth/verify-email", "/api/auth/check/**", "/api/auth/oauth/**",
+                                "/api/auth/verify-email", "/api/auth/find-id/verify",
+                                "/api/auth/check/**", "/api/auth/oauth/**",
                                 "/api/auth/mfa/login/status").permitAll()
                         // 커뮤니티 게시글 조회 공개
                         .requestMatchers(HttpMethod.GET,

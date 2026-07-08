@@ -6,6 +6,7 @@ import com.careertuner.auth.dto.LoginResponse;
 import com.careertuner.auth.dto.MeResponse;
 import com.careertuner.auth.dto.MfaLoginStatusResponse;
 import com.careertuner.auth.dto.MfaLoginVerifyRequest;
+import com.careertuner.auth.dto.OAuthCallbackResult;
 import com.careertuner.auth.dto.PasswordResetConfirmRequest;
 import com.careertuner.auth.dto.PasswordResetRequest;
 import com.careertuner.auth.dto.RegisterRequest;
@@ -33,6 +34,10 @@ public interface AuthService {
 
     void resendVerification(String email);
 
+    void requestFindId(String email, LoginRequestContext context);
+
+    String verifyFindId(String token, LoginRequestContext context);
+
     void requestPasswordReset(PasswordResetRequest request, LoginRequestContext context);
 
     void resetPassword(PasswordResetConfirmRequest request, LoginRequestContext context);
@@ -50,9 +55,11 @@ public interface AuthService {
     /** 소셜 제공자 인가 URL(서명된 state 포함)을 만든다. */
     String buildAuthorizationUrl(String provider);
 
-    /** 로그인된 사용자의 소셜 계정 연결용 인가 URL(서명된 state 포함)을 만든다. */
-    String buildSocialLinkAuthorizationUrl(String provider, Long userId);
+    /** 로그인한 사용자가 소셜 계정을 연결하기 위한 인가 URL을 만든다. */
+    String buildSocialLinkUrl(Long userId, String provider);
 
     /** 소셜 콜백 처리: state 검증 → 사용자 조회/생성 → 토큰 발급. */
-    TokenResponse handleOAuthCallback(String provider, String code, String state, LoginRequestContext context);
+    OAuthCallbackResult handleOAuthCallback(String provider, String code, String state, LoginRequestContext context);
+
+    OAuthCallbackResult handleOAuthMockCallback(String provider, String state, LoginRequestContext context);
 }

@@ -11,6 +11,7 @@ import com.careertuner.applicationcase.domain.ApplicationCase;
 import com.careertuner.correction.ai.SelfCorrectionOutputParser.InvalidOutputException;
 import com.careertuner.correction.ai.SelfLlmCorrectionProvider.RepairContext;
 import com.careertuner.correction.ai.SelfLlmCorrectionProvider.SelfLlmCallException;
+import com.careertuner.runtimesetting.service.RuntimeSettingService;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -20,30 +21,45 @@ import lombok.extern.slf4j.Slf4j;
 @Slf4j
 public class CorrectionAiClient {
 
+    /** E 첨삭 self tier 총 시간예산 DB 런타임 키. 행이 없으면 정적 self.totalTimeBudget 로 fallback(동작 불변). */
+    private static final String SELF_TOTAL_TIME_BUDGET_KEY = "ai.correction.self-total-time-budget-seconds";
+
     private final CorrectionAiProperties properties;
     private final OpenAiCorrectionProvider openAiProvider;
     private final SelfLlmCorrectionProvider selfLlmProvider;
     private final AnthropicCorrectionProvider anthropicProvider;
+    private final MockCorrectionProvider mockProvider;
     private final CorrectionModelWarmupService warmupService;
+    private final RuntimeSettingService runtimeSettings;
 
+    /**
+     * 첨삭 폴백 체인: 자체(Self) → Claude → OpenAI → <b>Mock(결정론 최종 안전망)</b>.
+     *
+     * <p>설정된 각 tier 는 최소 한 번 시도되고, 어떤 tier 도 예외를 던지면 로그만 남기고 다음 tier 로
+     * 넘어간다. 마지막 {@link MockCorrectionProvider} 는 절대 예외를 던지지 않으므로, OpenAI 가 죽거나
+     * 키가 없어도 첨삭 화면은 깨지지 않는다(이전에는 OpenAI 실패가 그대로 전파돼 화면이 깨졌다).
+     */
     public CorrectionPayload correct(CorrectionCommand command) {
-        if (!properties.selfProviderEnabled()) {
-            return openAiProvider.correct(command);
-        }
-
-        var self = properties.getSelf();
-        warmupService.awaitIfInProgress(self.getTimeout());
-        // 총 시간예산 — 0 또는 음수면 무제한(예산 OFF)
-        AiTotalTimeBudget budget = AiTotalTimeBudget.start(self.getTotalTimeBudget());
-        try {
-            return invokeModel(command, self.getModel(), self.getMaxAttempts(), budget);
-        } catch (RuntimeException selfFailure) {
-            if (!properties.isFallbackEnabled()) {
-                throw selfFailure;
+        // 1) 자체모델(Self) — 활성 시 항상 시도. 실패해도 예외를 밖으로 내지 않는다.
+        if (properties.selfProviderEnabled()) {
+            var self = properties.getSelf();
+            warmupService.awaitIfInProgress(self.getTimeout());
+            // 총 시간예산 — 0 또는 음수면 무제한(예산 OFF). self tier 의 최소 보장은 self.timeout.
+            // DB 런타임 설정 우선(관리자 콘솔 제어), 행이 없으면 정적 self.totalTimeBudget.
+            AiTotalTimeBudget budget = AiTotalTimeBudget.start(selfTotalTimeBudget(self));
+            try {
+                return invokeModel(command, self.getModel(), self.getMaxAttempts(), budget);
+            } catch (RuntimeException selfFailure) {
+                log.warn("Self correction model {} failed: {}", self.getModel(), selfFailure.getMessage());
+                if (!properties.isFallbackEnabled()) {
+                    // 외부 폴백을 끈 설정 — Claude/OpenAI 는 건너뛰되 화면은 Mock 으로 안전하게 유지.
+                    log.warn("Correction fallback disabled → Mock 결정론 안전망 반환");
+                    return mockProvider.correct(command);
+                }
             }
-            log.warn("Self correction model {} failed: {}", self.getModel(), selfFailure.getMessage());
         }
 
+        // 2) Claude tier — 설정 시 항상 시도.
         if (anthropicProvider.configured()) {
             try {
                 return anthropicProvider.correct(command);
@@ -54,8 +70,15 @@ public class CorrectionAiClient {
             log.warn("Anthropic correction fallback is not configured. Skipping to OpenAI.");
         }
 
-        log.warn("Self and Anthropic correction chain failed. Falling back to OpenAI.");
-        return openAiProvider.correct(command);
+        // 3) OpenAI tier — 항상 시도. 이전과 달리 예외를 잡아 Mock 으로 폴백(화면 무깨짐).
+        try {
+            return openAiProvider.correct(command);
+        } catch (RuntimeException openAiFailure) {
+            log.warn("OpenAI correction fallback failed → Mock 결정론 안전망: {}", openAiFailure.getMessage());
+        }
+
+        // 4) Mock — 진짜 최후 안전망. 절대 예외를 던지지 않는다.
+        return mockProvider.correct(command);
     }
 
     private CorrectionPayload invokeModel(
@@ -91,6 +114,12 @@ public class CorrectionAiClient {
             }
         }
         throw last == null ? new IllegalStateException("Correction model failed.") : last;
+    }
+
+    /** self tier 총 시간예산: DB 런타임 키 우선(초 단위), 행이 없으면 정적 self.totalTimeBudget 그대로. */
+    private Duration selfTotalTimeBudget(CorrectionAiProperties.Self self) {
+        return Duration.ofSeconds(
+                runtimeSettings.getInt(SELF_TOTAL_TIME_BUDGET_KEY, (int) self.getTotalTimeBudget().toSeconds()));
     }
 
     private static Duration positive(Duration value) {

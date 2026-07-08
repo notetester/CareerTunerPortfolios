@@ -2,6 +2,9 @@ package com.careertuner.analysis.ai.provider;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
 import java.io.IOException;
 import java.io.OutputStream;
@@ -21,7 +24,7 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
 import com.careertuner.ai.common.gpu.GpuPermitGate;
-import com.careertuner.ai.common.gpu.GpuPermitProperties;
+import com.careertuner.ai.common.settings.AiRuntimeSettings;
 import com.careertuner.common.exception.BusinessException;
 import com.sun.net.httpserver.HttpServer;
 
@@ -102,20 +105,34 @@ class CareerAnalysisOssClientGateBudgetIntegrationTest {
         return properties;
     }
 
+    /** 게이트 ON — permits/acquire-timeout 을 돌려주는 mock 런타임 설정으로 게이트를 만든다(도메인 override 없음). */
     private static GpuPermitGate gateOn(int permits) {
-        GpuPermitProperties gateProps = new GpuPermitProperties();
-        gateProps.setEnabled(true);
-        gateProps.setPermits(permits);
-        gateProps.setAcquireTimeout(Duration.ofSeconds(5));
-        return new GpuPermitGate(gateProps);
+        AiRuntimeSettings settings = mock(AiRuntimeSettings.class);
+        when(settings.gpuGateEnabled()).thenReturn(true);
+        when(settings.gpuGatePermits()).thenReturn(permits);
+        when(settings.gpuGateAcquireTimeout()).thenReturn(Duration.ofSeconds(5));
+        when(settings.gpuGateDomainOverride(anyString())).thenReturn(null);
+        return new GpuPermitGate(settings);
+    }
+
+    /**
+     * OSS 총 시간예산을 정적 props 값 그대로 돌려주는 mock 런타임 설정.
+     * (프로덕션은 ai.analysis.oss-total-time-budget-seconds DB 키를 쓰지만, 행이 없으면 정적 fallback 이므로
+     * 예산 테스트가 props 예산을 그대로 쓰도록 정적값을 그대로 미러한다.)
+     */
+    private static AiRuntimeSettings ossBudgetSettings(CareerAnalysisAiProviderProperties props) {
+        AiRuntimeSettings settings = mock(AiRuntimeSettings.class);
+        when(settings.analysisOssTotalTimeBudget()).thenReturn(props.getOss().getTotalTimeBudget());
+        return settings;
     }
 
     @Test
     @DisplayName("게이트 ON(permits=1): 동시 호출 2건이 실제 HTTP 레벨에서 직렬화된다")
     void gateOnSerializesConcurrentHttpCalls() throws Exception {
         String baseUrl = startStub(250, 200, null);
+        CareerAnalysisAiProviderProperties properties = props(baseUrl, 0, Duration.ZERO, Duration.ZERO);
         CareerAnalysisOssClient client = new CareerAnalysisOssClient(
-                props(baseUrl, 0, Duration.ZERO, Duration.ZERO), new ObjectMapper(), gateOn(1));
+                properties, new ObjectMapper(), gateOn(1), ossBudgetSettings(properties));
 
         ExecutorService pool = Executors.newFixedThreadPool(2);
         try {
@@ -135,8 +152,9 @@ class CareerAnalysisOssClientGateBudgetIntegrationTest {
     void gateOffAllowsConcurrentOverlap() throws Exception {
         CountDownLatch rendezvous = new CountDownLatch(2);
         String baseUrl = startStub(0, 200, rendezvous);
+        CareerAnalysisAiProviderProperties properties = props(baseUrl, 0, Duration.ZERO, Duration.ZERO);
         CareerAnalysisOssClient client = new CareerAnalysisOssClient(
-                props(baseUrl, 0, Duration.ZERO, Duration.ZERO), new ObjectMapper(), GpuPermitGate.disabled());
+                properties, new ObjectMapper(), GpuPermitGate.disabled(), ossBudgetSettings(properties));
 
         ExecutorService pool = Executors.newFixedThreadPool(2);
         try {
@@ -155,9 +173,9 @@ class CareerAnalysisOssClientGateBudgetIntegrationTest {
     void budgetBoundsRetriesEndToEnd() throws Exception {
         String baseUrl = startStub(120, 500, null);
         // 예산 400ms, 시도당 서버 지연 120ms, 최대 6시도(maxRetries=5) — 예산이 먼저 소진돼야 한다
+        CareerAnalysisAiProviderProperties properties = props(baseUrl, 5, Duration.ofMillis(400), Duration.ofMillis(50));
         CareerAnalysisOssClient client = new CareerAnalysisOssClient(
-                props(baseUrl, 5, Duration.ofMillis(400), Duration.ofMillis(50)),
-                new ObjectMapper(), GpuPermitGate.disabled());
+                properties, new ObjectMapper(), GpuPermitGate.disabled(), ossBudgetSettings(properties));
 
         long startNanos = System.nanoTime();
         assertThatThrownBy(() -> client.requestFitExplain("s", "u"))

@@ -97,7 +97,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return res;
   }, [completeLogin]);
 
-  const register = useCallback(async (loginId: string, email: string | null, password: string, name: string, consents: RegisterConsents) => {
+  const register = useCallback(async (
+    loginId: string,
+    email: string | null,
+    password: string,
+    name: string,
+    consents: RegisterConsents,
+  ) => {
     const res = await api<TokenResponse>(
       "/auth/register",
       { method: "POST", body: JSON.stringify({ loginId, email, password, name, ...consents }) },

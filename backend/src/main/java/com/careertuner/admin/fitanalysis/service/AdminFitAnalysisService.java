@@ -2,7 +2,9 @@ package com.careertuner.admin.fitanalysis.service;
 
 import java.util.List;
 
+import com.careertuner.admin.common.grid.PageResult;
 import com.careertuner.admin.fitanalysis.dto.AdminFitAnalysisDetailResponse;
+import com.careertuner.admin.fitanalysis.dto.AdminFitAnalysisListQuery;
 import com.careertuner.admin.fitanalysis.dto.AdminGateReviewRequest;
 import com.careertuner.admin.fitanalysis.dto.AdminFitAnalysisListItemResponse;
 import com.careertuner.admin.fitanalysis.dto.AdminFitAnalysisMemoRequest;
@@ -11,7 +13,8 @@ import com.careertuner.admin.fitanalysis.dto.AdminGateStatsResponse;
 
 public interface AdminFitAnalysisService {
 
-    List<AdminFitAnalysisListItemResponse> list(boolean reviewRequiredOnly);
+    /** 서버측 필터 + 페이징 목록. 대량 데이터에서도 페이지 단위로만 조회한다. */
+    PageResult<AdminFitAnalysisListItemResponse> list(AdminFitAnalysisListQuery query);
 
     AdminFitAnalysisDetailResponse get(Long id);
 

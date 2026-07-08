@@ -24,6 +24,7 @@ import { AuthCallbackPage } from "./pages/AuthCallback";
 import { SocialConsentPage } from "./pages/SocialConsent";
 import { VerifyEmailResultPage } from "./pages/VerifyEmailResult";
 import { ForgotPasswordPage } from "./pages/ForgotPassword";
+import { FindIdPage } from "./pages/FindId";
 import { ResetPasswordPage } from "./pages/ResetPassword";
 import { ReleaseDormantPage } from "./pages/ReleaseDormant";
 import { MfaLoginPage } from "./pages/MfaLogin";
@@ -113,6 +114,8 @@ export const router = createBrowserRouter([
       { path: "auth/social-consent", Component: SocialConsentPage },
       { path: "auth/verify-email/result", Component: VerifyEmailResultPage },
       { path: "auth/forgot-password", Component: ForgotPasswordPage },
+      { path: "auth/find-id", Component: FindIdPage },
+      { path: "auth/find-id/result", Component: FindIdPage },
       { path: "auth/reset-password", Component: ResetPasswordPage },
       { path: "auth/release-dormant", Component: ReleaseDormantPage },
       { path: "auth/mfa", Component: MfaLoginPage },

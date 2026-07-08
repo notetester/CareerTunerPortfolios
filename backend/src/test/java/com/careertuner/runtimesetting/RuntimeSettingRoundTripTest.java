@@ -31,7 +31,8 @@ class RuntimeSettingRoundTripTest {
                 .settingValue("hello-42")
                 .valueType("STRING")
                 .secret(false).editable(true).active(true)
-                .build(), null);
+                // reason: 테스트 저장 경로 — 사유 없이 null 전달
+                .build(), null, null);
 
         // DB→fallback 순: 저장한 활성 설정은 DB 값을 돌려준다
         assertThat(service.getValue("test.roundtrip.key", "FALLBACK")).isEqualTo("hello-42");
@@ -49,7 +50,8 @@ class RuntimeSettingRoundTripTest {
                 .settingValue("false")
                 .valueType("BOOLEAN")
                 .secret(false).editable(true).active(true)
-                .build(), null);
+                // reason: 테스트 저장 경로 — 사유 없이 null 전달
+                .build(), null, null);
 
         // 관리자가 콘솔에서 false 로 저장 → 소비처가 읽는 getBoolean 이 DB값(false)을 반영(코드 기본값 true 아님)
         assertThat(service.getBoolean("application-case.auto-pipeline.enabled", true)).isFalse();

@@ -59,17 +59,19 @@
     </select>
 
     <insert id="insertHistory">
+        <!-- reason: 관리자가 설정을 바꾼 사유(자유 텍스트) 기록 -->
         INSERT INTO application_runtime_setting_history
             (setting_id, setting_key, version_no, change_type, actor_user_id, before_value, after_value,
-             before_fallback, after_fallback, before_snapshot, after_snapshot)
+             before_fallback, after_fallback, before_snapshot, after_snapshot, reason)
         VALUES
             (#{settingId}, #{settingKey}, #{versionNo}, #{changeType}, #{actorUserId}, #{beforeValue}, #{afterValue},
-             #{beforeFallback}, #{afterFallback}, #{beforeSnapshot}, #{afterSnapshot})
+             #{beforeFallback}, #{afterFallback}, #{beforeSnapshot}, #{afterSnapshot}, #{reason})
     </insert>
 
     <select id="findHistory" resultType="com.careertuner.runtimesetting.domain.RuntimeSettingHistory">
+        <!-- reason: 이력 조회 시 변경 사유도 함께 노출 -->
         SELECT id, setting_id, setting_key, version_no, change_type, actor_user_id,
-               before_value, after_value, before_fallback, after_fallback, created_at
+               before_value, after_value, before_fallback, after_fallback, reason, created_at
           FROM application_runtime_setting_history
         <where>
             <if test="settingKey != null">AND setting_key = #{settingKey}</if>

@@ -20,6 +20,8 @@ import com.careertuner.auth.dto.LoginRequest;
 import com.careertuner.auth.dto.LoginRequestContext;
 import com.careertuner.auth.dto.LoginResponse;
 import com.careertuner.auth.dto.MeResponse;
+import com.careertuner.auth.dto.FindIdRequest;
+import com.careertuner.auth.dto.FindIdVerifyResponse;
 import com.careertuner.auth.dto.MfaApprovalRequest;
 import com.careertuner.auth.dto.MfaBackupCodesResponse;
 import com.careertuner.auth.dto.MfaChallengeResponse;
@@ -29,6 +31,7 @@ import com.careertuner.auth.dto.MfaLoginVerifyRequest;
 import com.careertuner.auth.dto.MfaSetupStartResponse;
 import com.careertuner.auth.dto.MfaSetupVerifyRequest;
 import com.careertuner.auth.dto.MfaStatusResponse;
+import com.careertuner.auth.dto.OAuthCallbackResult;
 import com.careertuner.auth.dto.PasswordResetConfirmRequest;
 import com.careertuner.auth.dto.PasswordResetRequest;
 import com.careertuner.auth.dto.RefreshRequest;
@@ -39,7 +42,6 @@ import com.careertuner.auth.service.AuthService;
 import com.careertuner.auth.service.MfaService;
 import com.careertuner.common.config.CareerTunerProperties;
 import com.careertuner.common.security.AuthUser;
-import com.careertuner.common.security.JwtTokenProvider;
 import com.careertuner.common.web.ApiResponse;
 
 import jakarta.validation.Valid;
@@ -62,7 +64,6 @@ public class AuthController {
     private final AuthService authService;
     private final MfaService mfaService;
     private final CareerTunerProperties props;
-    private final JwtTokenProvider jwtTokenProvider;
 
     // ── 이메일 회원가입/로그인 ──
 
@@ -184,6 +185,20 @@ public class AuthController {
         return ApiResponse.ok();
     }
 
+    @PostMapping("/find-id/request")
+    public ApiResponse<Void> requestFindId(@Valid @RequestBody FindIdRequest request,
+                                           HttpServletRequest servletRequest) {
+        authService.requestFindId(request.email(), LoginRequestContext.from(servletRequest));
+        return ApiResponse.ok();
+    }
+
+    @GetMapping("/find-id/verify")
+    public ApiResponse<FindIdVerifyResponse> verifyFindId(@RequestParam String token,
+                                                          HttpServletRequest servletRequest) {
+        return ApiResponse.ok(new FindIdVerifyResponse(
+                authService.verifyFindId(token, LoginRequestContext.from(servletRequest))));
+    }
+
     @PostMapping("/password/reset-request")
     public ApiResponse<Void> requestPasswordReset(@Valid @RequestBody PasswordResetRequest request,
                                                   HttpServletRequest servletRequest) {
@@ -218,13 +233,6 @@ public class AuthController {
         return redirect(authService.buildAuthorizationUrl(provider));
     }
 
-    @GetMapping("/oauth/{provider}/link")
-    public ApiResponse<Map<String, String>> oauthLink(@PathVariable String provider,
-                                                      @AuthenticationPrincipal AuthUser authUser) {
-        String url = authService.buildSocialLinkAuthorizationUrl(provider, authUser.id());
-        return ApiResponse.ok(Map.of("authorizationUrl", url));
-    }
-
     @GetMapping("/oauth/{provider}/callback")
     public ResponseEntity<Void> oauthCallback(@PathVariable String provider,
                                               @RequestParam String code,
@@ -232,21 +240,49 @@ public class AuthController {
                                               HttpServletRequest servletRequest) {
         String frontend = props.getApp().getFrontendUrl();
         try {
-            boolean linkMode = jwtTokenProvider.parseOauthState(state, provider.toUpperCase()).linkMode();
-            TokenResponse tokens = authService.handleOAuthCallback(provider, code, state,
+            OAuthCallbackResult result = authService.handleOAuthCallback(provider, code, state,
                     LoginRequestContext.from(servletRequest));
-            String fragment = "/auth/callback#accessToken=" + enc(tokens.accessToken())
-                    + "&refreshToken=" + enc(tokens.refreshToken())
-                    + "&expiresIn=" + tokens.expiresIn()
-                    + (linkMode ? "&linkedProvider=" + enc(provider.toUpperCase()) : "");
-            return redirect(frontend + fragment);
+            return redirectOAuthResult(frontend, result, false);
         } catch (Exception e) {
             log.warn("[{}] OAuth 콜백 실패: {}", provider, e.getMessage());
             return redirect(frontend + "/auth/callback#error=" + enc("social_login_failed"));
         }
     }
 
+    @GetMapping("/oauth/{provider}/mock-callback")
+    public ResponseEntity<Void> oauthMockCallback(@PathVariable String provider,
+                                                  @RequestParam(required = false) String state,
+                                                  HttpServletRequest servletRequest) {
+        String frontend = props.getApp().getFrontendUrl();
+        try {
+            OAuthCallbackResult result = authService.handleOAuthMockCallback(provider, state,
+                    LoginRequestContext.from(servletRequest));
+            return redirectOAuthResult(frontend, result, true);
+        } catch (Exception e) {
+            log.warn("[{}] OAuth mock 콜백 실패: {}", provider, e.getMessage());
+            return redirect(frontend + "/auth/callback#error=" + enc("social_login_failed"));
+        }
+    }
+
     // ── 내부 ──
+
+    private ResponseEntity<Void> redirectOAuthResult(String frontend, OAuthCallbackResult result, boolean mock) {
+        if (result.linked()) {
+            String query = "/profile/detail?socialLinked=" + enc(result.provider());
+            if (mock) {
+                query += "&socialMock=1";
+            }
+            return redirect(frontend + query);
+        }
+        TokenResponse tokens = result.tokens();
+        String fragment = "/auth/callback#accessToken=" + enc(tokens.accessToken())
+                + "&refreshToken=" + enc(tokens.refreshToken())
+                + "&expiresIn=" + tokens.expiresIn();
+        if (mock) {
+            fragment += "&mockOAuth=1";
+        }
+        return redirect(frontend + fragment);
+    }
 
     private ResponseEntity<Void> redirect(String url) {
         return ResponseEntity.status(HttpStatus.FOUND).location(URI.create(url)).build();

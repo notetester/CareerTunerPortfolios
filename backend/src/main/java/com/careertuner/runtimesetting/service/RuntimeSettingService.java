@@ -72,9 +72,9 @@ public class RuntimeSettingService {
         return mapper.findHistory(emptyToNull(settingKey), Math.max(1, Math.min(limit, 200)));
     }
 
-    /** 설정 저장(신규 CREATE 또는 UPDATE) + 변경 이력 기록. */
+    /** 설정 저장(신규 CREATE 또는 UPDATE) + 변경 이력 기록. reason 은 변경 사유(자유 텍스트, nullable). */
     @Transactional
-    public RuntimeSetting saveRuntimeSetting(RuntimeSetting input, Long actorUserId) {
+    public RuntimeSetting saveRuntimeSetting(RuntimeSetting input, Long actorUserId, String reason) {
         RuntimeSetting before = mapper.findByKey(required(input.getSettingKey()));
 
         RuntimeSetting setting = RuntimeSetting.builder()
@@ -109,7 +109,9 @@ public class RuntimeSettingService {
                 before == null ? null : before.getFallbackValue(),
                 setting.getFallbackValue(),
                 snapshot(before),
-                snapshot(after == null ? setting : after));
+                snapshot(after == null ? setting : after),
+                // reason: 변경 사유를 이력에 함께 저장
+                emptyToNull(reason));
         return after;
     }
 

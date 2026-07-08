@@ -387,6 +387,39 @@ public class IntakeAskService {
         slotMapper.markStatus(conversationId, "DONE");
     }
 
+    /**
+     * (버그3 대칭) ③ 인테이크 인터럽트 게이트에서 "아니요, 계속할게요"를 고른 턴 — 오프토픽 발화를 슬롯에
+     * 넣지 않고 현재 단계를 그대로 재질문한다(qwen3 미경유·결정적). 지원 건 미확정이면 CASE 부터,
+     * 확정됐으면 autoPrepIntakeService 로 현재 nextAsk(MODE 등)+칩을 재산출한다.
+     */
+    public IntakeAskResponse reaskCurrentStep(Long userId, Long conversationId) {
+        Long caseId = null;
+        String mode = null;
+        String originalQuery = null;
+        if (conversationId != null) {
+            Map<String, Object> row = slotMapper.findByConversation(conversationId);
+            if (row != null) {
+                caseId = toLong(row.get("applicationCaseId"));
+                mode = (String) row.get("mode");
+                originalQuery = (String) row.get("originalQuery");
+            }
+        }
+        // 지원 건 미확정(케이스 선택 단계)이면 CASE 부터 다시 묻는다(auto-default 금지 — ask() b3 가드와 동일 원칙).
+        if (caseId == null) {
+            return new IntakeAskResponse(conversationId, "어느 지원 건으로 준비할까요?", false, "CASE",
+                    new AutoPrepRequest(originalQuery, null, mode, null, null),
+                    safeListCases(userId), List.of());
+        }
+        // query=null 로 판정한다 — 재질문은 확정 슬롯(caseId+mode) 기준의 현재 단계를 결정적으로 재산출하는
+        //   것이지, 원 질문을 LLM(AutoPrepPlanner.parseIntent)으로 다시 파싱(auto-complete 위험)하는 게
+        //   아니다(④ onboardingModeStep 과 동일 원칙 — 로컬 LLM 0).
+        AutoPrepIntakeResponse check = autoPrepIntakeService.intake(userId,
+                new AutoPrepRequest(null, caseId, mode, null, null));
+        // 반환 autoPrepRequest 에만 originalQuery 를 보존한다(다운스트림 run 문맥용 — 판정에는 미사용).
+        return new IntakeAskResponse(conversationId, check.message(), check.ready(), check.nextAsk(),
+                new AutoPrepRequest(originalQuery, caseId, mode, null, null), check.candidates(), check.modes());
+    }
+
     /** 메모리에 슬롯이 없고 DB 에 있으면 복원(재시작/재방문). entryOffset 은 현재 memory 길이로 재무장. */
     private void restoreSlotIfAbsent(Long conversationId) {
         if (conversationId == null || trace.hasSlot(conversationId)) {

@@ -30,8 +30,13 @@ public class GpuPermitProperties {
     /** 전역 ON/OFF. false 면 어떤 도메인도 게이트를 거치지 않는다(기존 무제약 경로). */
     private boolean enabled = false;
 
-    /** 동시에 GPU 호출을 허용할 요청 수. */
-    private int permits = 2;
+    /**
+     * 동시에 GPU 호출을 허용할 요청 수(전역 세마포어). 게이트 ON 일 때만 적용된다.
+     * 기본 12 = 2026-07-06 동시성 스윕에서 측정한 공유 4090 의 처리량 포화 무릎점
+     * (NP=2/MLM=8 에서 동시성 12 이상은 처리량 정체·지연만 선형 증가). 과부하 시 꼬리지연
+     * 폭주를 막는 안전밸브 값이며, 정상 트래픽(총 동시성 &lt;12)은 통과시킨다.
+     */
+    private int permits = 12;
 
     /** permit 대기 상한. 초과하면 해당 호출은 실패로 처리돼 각 도메인의 기존 실패 경로(폴백 등)를 탄다. */
     private Duration acquireTimeout = Duration.ofSeconds(30);

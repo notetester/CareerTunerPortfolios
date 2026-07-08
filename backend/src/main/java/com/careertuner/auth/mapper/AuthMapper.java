@@ -19,11 +19,9 @@ public interface AuthMapper {
 
     UserSocial findSocialByUserAndProvider(@Param("userId") Long userId, @Param("provider") String provider);
 
-    int countSocialByUser(@Param("userId") Long userId);
-
     void insertSocial(UserSocial social);
 
-    int deleteSocialByUserAndProvider(@Param("userId") Long userId, @Param("provider") String provider);
+    void deleteSocial(@Param("userId") Long userId, @Param("provider") String provider);
 
     // ── 이메일 인증 토큰 ──
     void insertEmailVerification(EmailVerification verification);
@@ -31,6 +29,8 @@ public interface AuthMapper {
     EmailVerification findEmailVerificationByToken(String token);
 
     void markEmailVerificationUsed(Long id);
+
+    void expireUnusedEmailVerifications(@Param("email") String email, @Param("purpose") String purpose);
 
     // ── 리프레시 토큰 ──
     void insertRefreshToken(RefreshToken refreshToken);

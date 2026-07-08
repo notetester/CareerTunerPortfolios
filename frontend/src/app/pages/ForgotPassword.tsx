@@ -7,7 +7,7 @@ import { Card, CardContent } from "../components/ui/card";
 import { Input } from "../components/ui/input";
 
 export function ForgotPasswordPage() {
-  const [email, setEmail] = useState("");
+  const [identifier, setIdentifier] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [sent, setSent] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -15,15 +15,15 @@ export function ForgotPasswordPage() {
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setError(null);
-    const normalizedEmail = email.trim();
-    if (!normalizedEmail) {
-      setError("이메일을 입력해 주세요.");
+    const normalizedIdentifier = identifier.trim();
+    if (!normalizedIdentifier) {
+      setError("아이디 또는 이메일을 입력해 주세요.");
       return;
     }
 
     try {
       setSubmitting(true);
-      await requestPasswordReset(normalizedEmail);
+      await requestPasswordReset(normalizedIdentifier);
       setSent(true);
     } catch (requestError) {
       setError(requestError instanceof Error ? requestError.message : "재설정 메일 요청에 실패했습니다.");
@@ -35,12 +35,12 @@ export function ForgotPasswordPage() {
   return (
     <AuthActionLayout
       title="비밀번호 찾기"
-      description="가입한 이메일로 비밀번호 재설정 링크를 전송합니다."
+      description="아이디 또는 이메일을 입력하면 확인 가능한 계정의 이메일로 재설정 링크를 전송합니다."
     >
       {sent ? (
         <div className="space-y-4 text-center">
           <div className="rounded-lg border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-700">
-            입력한 이메일로 재설정 링크를 보냈습니다. 메일의 링크를 열어 새 비밀번호를 설정해 주세요.
+            입력한 정보와 일치하는 확인 가능한 계정이 있으면 가입된 이메일로 재설정 링크를 보냅니다. 메일의 링크를 열어 새 비밀번호를 설정해 주세요.
           </div>
           <Button asChild className="w-full bg-blue-600 text-white hover:bg-blue-700">
             <Link to="/login">로그인으로 돌아가기</Link>
@@ -52,11 +52,11 @@ export function ForgotPasswordPage() {
             <Mail className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-slate-400" />
             <Input
               className="h-11 pl-9"
-              type="email"
-              placeholder="이메일"
-              value={email}
-              onChange={(event) => setEmail(event.target.value)}
-              autoComplete="email"
+              type="text"
+              placeholder="아이디 또는 이메일"
+              value={identifier}
+              onChange={(event) => setIdentifier(event.target.value)}
+              autoComplete="username"
             />
           </div>
           {error && <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div>}

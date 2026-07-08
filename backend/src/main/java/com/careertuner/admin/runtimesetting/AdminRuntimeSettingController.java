@@ -39,7 +39,9 @@ public class AdminRuntimeSettingController {
             Boolean secret,
             Boolean editable,
             Boolean active,
-            String description) {
+            String description,
+            // reason: 관리자가 이 설정을 바꾼 사유(자유 텍스트, 선택)
+            String reason) {
     }
 
     @GetMapping
@@ -68,7 +70,8 @@ public class AdminRuntimeSettingController {
                 .active(request.active() == null || request.active())
                 .description(request.description())
                 .build();
-        return ApiResponse.ok(service.saveRuntimeSetting(input, authUser.id()));
+        // reason: 요청에 담긴 변경 사유를 이력에 함께 전달
+        return ApiResponse.ok(service.saveRuntimeSetting(input, authUser.id(), request.reason()));
     }
 
     @GetMapping("/history")

@@ -8,10 +8,15 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import java.time.LocalDateTime;
 import java.util.List;
 
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 
+import com.careertuner.auth.domain.EmailVerification;
+import com.careertuner.auth.mapper.AuthMapper;
+import com.careertuner.auth.service.EmailService;
 import com.careertuner.common.exception.BusinessException;
 import com.careertuner.common.exception.ErrorCode;
 import com.careertuner.user.domain.User;
@@ -28,7 +33,13 @@ import tools.jackson.databind.ObjectMapper;
 class UserAccountServiceImplTest {
 
     private final UserAccountMapper mapper = mock(UserAccountMapper.class);
-    private final UserAccountServiceImpl service = new UserAccountServiceImpl(mapper, new ObjectMapper());
+    private final AuthMapper authMapper = mock(AuthMapper.class);
+    private final EmailService emailService = mock(EmailService.class);
+    private final UserAccountServiceImpl service = new UserAccountServiceImpl(
+            mapper,
+            new ObjectMapper(),
+            authMapper,
+            emailService);
 
     private User user(Long id, String loginId, String phone) {
         return User.builder().id(id).email("redacted-826b0cff85484558@example.com").name("홍길동")
@@ -104,5 +115,50 @@ class UserAccountServiceImplTest {
         assertThat(res.loginIdSet()).isTrue();
         assertThat(res.phone()).isEqualTo("010-1111-2222");
         assertThat(res.linkedProviders()).containsExactly("KAKAO", "GOOGLE");
+    }
+
+    // ── 실제 이메일 등록 요청은 인증 토큰을 만들고 인증 메일을 보낸다 ──
+    @Test
+    void requestEmailRegistration_createsVerificationAndSendsMail() {
+        when(mapper.findById(1L)).thenReturn(user(1L, null, null));
+        when(mapper.countByEmailExcludingUser("new@example.com", 1L)).thenReturn(0);
+        ArgumentCaptor<EmailVerification> captor = ArgumentCaptor.forClass(EmailVerification.class);
+
+        service.requestEmailRegistration(1L, " New@Example.COM ");
+
+        verify(authMapper).insertEmailVerification(captor.capture());
+        EmailVerification verification = captor.getValue();
+        assertThat(verification.getUserId()).isEqualTo(1L);
+        assertThat(verification.getEmail()).isEqualTo("new@example.com");
+        assertThat(verification.getPurpose()).isEqualTo("EMAIL_CHANGE");
+        assertThat(verification.getToken()).isNotBlank();
+        assertThat(verification.getExpiredAt()).isAfter(LocalDateTime.now().plusHours(23));
+        verify(emailService).sendVerificationEmail("new@example.com", verification.getToken());
+    }
+
+    @Test
+    void unlinkSocial_rejectsWhenNoLoginMethodRemains() {
+        User socialOnly = User.builder().id(1L).email("kakao_1@social.careertuner")
+                .name("소셜").passwordEnabled(false).emailVerified(false).build();
+        when(mapper.findById(1L)).thenReturn(socialOnly);
+        when(mapper.countLinkedProviders(1L)).thenReturn(1);
+        when(mapper.findLinkedProviders(1L)).thenReturn(List.of("KAKAO"));
+
+        assertThatThrownBy(() -> service.unlinkSocial(1L, "kakao"))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode").isEqualTo(ErrorCode.CONFLICT);
+        verify(mapper, never()).deleteSocial(org.mockito.ArgumentMatchers.anyLong(),
+                org.mockito.ArgumentMatchers.any());
+    }
+
+    @Test
+    void unlinkSocial_allowsWhenPasswordLoginRemains() {
+        when(mapper.findById(1L)).thenReturn(user(1L, "gildong", null));
+        when(mapper.countLinkedProviders(1L)).thenReturn(1);
+        when(mapper.findLinkedProviders(1L)).thenReturn(List.of("KAKAO"));
+
+        service.unlinkSocial(1L, "kakao");
+
+        verify(mapper).deleteSocial(1L, "KAKAO");
     }
 }

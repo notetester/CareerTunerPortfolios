@@ -27,7 +27,6 @@ export function AuthCallbackPage() {
 
       const accessToken = params.get("accessToken");
       const refreshToken = params.get("refreshToken");
-      const linkedProvider = params.get("linkedProvider");
       if (!accessToken || !refreshToken) {
         setError("로그인 정보를 받지 못했습니다.");
         return;
@@ -36,11 +35,6 @@ export function AuthCallbackPage() {
       try {
         setTokens({ accessToken, refreshToken });
         await refreshMe();
-
-        if (linkedProvider) {
-          navigate("/settings?tab=account", { replace: true });
-          return;
-        }
 
         const consent = await getMyConsents();
         navigate(consent.requiredConsentsMissing ? "/auth/social-consent" : "/dashboard", { replace: true });

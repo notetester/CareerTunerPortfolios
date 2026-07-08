@@ -16,8 +16,10 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.careertuner.admin.common.AdminAccess;
+import com.careertuner.admin.common.grid.PageResult;
 import com.careertuner.admin.fitanalysis.dto.AdminFitAnalysisDetailResponse;
 import com.careertuner.admin.fitanalysis.dto.AdminFitAnalysisListItemResponse;
+import com.careertuner.admin.fitanalysis.dto.AdminFitAnalysisListQuery;
 import com.careertuner.admin.fitanalysis.dto.AdminFitAnalysisMemoRequest;
 import com.careertuner.admin.fitanalysis.dto.AdminGateReviewRequest;
 import com.careertuner.admin.fitanalysis.dto.AdminFitAnalysisMemoResponse;
@@ -36,11 +38,20 @@ public class AdminFitAnalysisController {
     private final AdminFitAnalysisService adminFitAnalysisService;
 
     @GetMapping
-    public ApiResponse<List<AdminFitAnalysisListItemResponse>> list(
+    public ApiResponse<PageResult<AdminFitAnalysisListItemResponse>> list(
             @AuthenticationPrincipal AuthUser authUser,
-            @RequestParam(name = "reviewRequiredOnly", required = false, defaultValue = "false") boolean reviewRequiredOnly) {
+            @RequestParam(name = "reviewRequiredOnly", required = false, defaultValue = "false") boolean reviewRequiredOnly,
+            @RequestParam(name = "query", required = false) String query,
+            @RequestParam(name = "band", required = false, defaultValue = "ALL") String band,
+            @RequestParam(name = "result", required = false, defaultValue = "ALL") String result,
+            @RequestParam(name = "memoOnly", required = false, defaultValue = "false") boolean memoOnly,
+            @RequestParam(name = "reanalysisOnly", required = false, defaultValue = "false") boolean reanalysisOnly,
+            @RequestParam(name = "page", required = false, defaultValue = "1") int page,
+            @RequestParam(name = "size", required = false, defaultValue = "20") int size) {
         requireAdmin(authUser);
-        return ApiResponse.ok(adminFitAnalysisService.list(reviewRequiredOnly));
+        AdminFitAnalysisListQuery listQuery = new AdminFitAnalysisListQuery(
+                reviewRequiredOnly, query, band, result, memoOnly, reanalysisOnly, page, size);
+        return ApiResponse.ok(adminFitAnalysisService.list(listQuery));
     }
 
     /** gate 통계: 운영 gate reason 분포 관측. 리터럴 경로라 아래 GET /{id} 와 충돌하지 않는다. */

@@ -12,6 +12,7 @@ import org.springframework.test.context.jdbc.Sql;
 import com.careertuner.admin.dashboard.mapper.AdminDashboardMapper;
 import com.careertuner.admin.fitanalysis.domain.AdminFitAnalysisResult;
 import com.careertuner.admin.fitanalysis.dto.AdminFitAnalysisDetailResponse;
+import com.careertuner.admin.fitanalysis.dto.AdminFitAnalysisListCriteria;
 import com.careertuner.admin.fitanalysis.service.AdminFitAnalysisServiceImpl;
 import com.careertuner.admin.home.mapper.AdminHomeMapper;
 import com.careertuner.fitanalysis.mapper.FitAnalysisMapper;
@@ -45,9 +46,14 @@ class AdminFitAnalysisDbFixtureIntegrationTest {
         return new AdminFitAnalysisServiceImpl(adminFitAnalysisMapper, fitAnalysisMapper, new ObjectMapper());
     }
 
+    /** reviewRequiredOnly 만 지정하고 나머지 필터 없음, 한 페이지에 전건이 들어가는 크기(100). */
+    private static AdminFitAnalysisListCriteria criteria(boolean reviewRequiredOnly) {
+        return new AdminFitAnalysisListCriteria(reviewRequiredOnly, null, "ALL", "ALL", false, false, 100, 0);
+    }
+
     @Test
     void findAllListsMixedGateStatusesIncludingLegacyNullRow() {
-        List<AdminFitAnalysisResult> all = adminFitAnalysisMapper.findAll(false);
+        List<AdminFitAnalysisResult> all = adminFitAnalysisMapper.findAll(criteria(false));
 
         assertThat(all).hasSize(6);
         AdminFitAnalysisResult legacy = byId(all, 1L);
@@ -61,10 +67,74 @@ class AdminFitAnalysisDbFixtureIntegrationTest {
 
     @Test
     void reviewRequiredOnlyServerFilterReturnsOnlyReviewRequiredRows() {
-        List<AdminFitAnalysisResult> filtered = adminFitAnalysisMapper.findAll(true);
+        List<AdminFitAnalysisResult> filtered = adminFitAnalysisMapper.findAll(criteria(true));
 
         assertThat(filtered).extracting(AdminFitAnalysisResult::getId).containsExactlyInAnyOrder(2L, 3L, 4L, 7L);
         assertThat(filtered).allSatisfy(row -> assertThat(row.getGateStatus()).isEqualTo("REVIEW_REQUIRED"));
+        assertThat(adminFitAnalysisMapper.countAll(criteria(true))).isEqualTo(4L);
+    }
+
+    @Test
+    void countAllMatchesFindAllForUnfilteredQuery() {
+        assertThat(adminFitAnalysisMapper.countAll(criteria(false))).isEqualTo(6L);
+    }
+
+    @Test
+    void paginationAppliesLimitOffsetInLatestFirstOrder() {
+        // created_at DESC, id DESC 순: [7, 6, 3, 4, 2, 1]. size=2 로 세 페이지에 걸쳐 확인한다.
+        AdminFitAnalysisListCriteria p1 = new AdminFitAnalysisListCriteria(false, null, "ALL", "ALL", false, false, 2, 0);
+        AdminFitAnalysisListCriteria p2 = new AdminFitAnalysisListCriteria(false, null, "ALL", "ALL", false, false, 2, 2);
+        AdminFitAnalysisListCriteria p3 = new AdminFitAnalysisListCriteria(false, null, "ALL", "ALL", false, false, 2, 4);
+
+        assertThat(adminFitAnalysisMapper.findAll(p1)).extracting(AdminFitAnalysisResult::getId).containsExactly(7L, 6L);
+        assertThat(adminFitAnalysisMapper.findAll(p2)).extracting(AdminFitAnalysisResult::getId).containsExactly(3L, 4L);
+        assertThat(adminFitAnalysisMapper.findAll(p3)).extracting(AdminFitAnalysisResult::getId).containsExactly(2L, 1L);
+        // 필터가 없으므로 페이지가 나뉘어도 total 은 6 으로 동일하다.
+        assertThat(adminFitAnalysisMapper.countAll(p1)).isEqualTo(6L);
+    }
+
+    @Test
+    void bandFilterSelectsScoreRange() {
+        // MID(50~70): f2(55), f3(61), f6(66)
+        AdminFitAnalysisListCriteria mid = new AdminFitAnalysisListCriteria(false, null, "MID", "ALL", false, false, 100, 0);
+        assertThat(adminFitAnalysisMapper.findAll(mid)).extracting(AdminFitAnalysisResult::getId)
+                .containsExactlyInAnyOrder(2L, 3L, 6L);
+        assertThat(adminFitAnalysisMapper.countAll(mid)).isEqualTo(3L);
+        // LOW(<50): f4(40), f7(48)
+        AdminFitAnalysisListCriteria low = new AdminFitAnalysisListCriteria(false, null, "LOW", "ALL", false, false, 100, 0);
+        assertThat(adminFitAnalysisMapper.findAll(low)).extracting(AdminFitAnalysisResult::getId)
+                .containsExactlyInAnyOrder(4L, 7L);
+    }
+
+    @Test
+    void queryFilterMatchesCompanyJobUserNameOrEmail() {
+        // 회사명 부분일치
+        AdminFitAnalysisListCriteria byCompany = new AdminFitAnalysisListCriteria(false, "네이버", "ALL", "ALL", false, false, 100, 0);
+        assertThat(adminFitAnalysisMapper.findAll(byCompany)).extracting(AdminFitAnalysisResult::getId)
+                .containsExactlyInAnyOrder(2L, 3L);
+        // 직무명 부분일치("개발자" 는 카카오/네이버/라인 3개 케이스)
+        AdminFitAnalysisListCriteria byJob = new AdminFitAnalysisListCriteria(false, "개발자", "ALL", "ALL", false, false, 100, 0);
+        assertThat(adminFitAnalysisMapper.findAll(byJob)).extracting(AdminFitAnalysisResult::getId)
+                .containsExactlyInAnyOrder(1L, 2L, 3L, 7L);
+    }
+
+    @Test
+    void memoAndReanalysisFiltersSelectOnlyRowsWithMemos() {
+        // fixture 상 메모/재분석 메모가 있는 유일한 행은 f3.
+        AdminFitAnalysisListCriteria memoOnly = new AdminFitAnalysisListCriteria(false, null, "ALL", "ALL", true, false, 100, 0);
+        assertThat(adminFitAnalysisMapper.findAll(memoOnly)).extracting(AdminFitAnalysisResult::getId).containsExactly(3L);
+
+        AdminFitAnalysisListCriteria reanalysisOnly = new AdminFitAnalysisListCriteria(false, null, "ALL", "ALL", false, true, 100, 0);
+        assertThat(adminFitAnalysisMapper.findAll(reanalysisOnly)).extracting(AdminFitAnalysisResult::getId).containsExactly(3L);
+    }
+
+    @Test
+    void resultFilterSplitsSuccessAndFail() {
+        // fixture 는 전부 status='SUCCESS' → SUCCESS 는 6건, FAIL 은 0건.
+        AdminFitAnalysisListCriteria success = new AdminFitAnalysisListCriteria(false, null, "ALL", "SUCCESS", false, false, 100, 0);
+        assertThat(adminFitAnalysisMapper.countAll(success)).isEqualTo(6L);
+        AdminFitAnalysisListCriteria fail = new AdminFitAnalysisListCriteria(false, null, "ALL", "FAIL", false, false, 100, 0);
+        assertThat(adminFitAnalysisMapper.findAll(fail)).isEmpty();
     }
 
     @Test

@@ -28,6 +28,15 @@ export interface AdminFitAnalysisListItem {
   gateReviewStatus: string | null;
 }
 
+/** 서버측 페이지네이션 결과. data 가 곧 PageResult (ApiResponse.data). */
+export interface AdminFitAnalysisPage {
+  items: AdminFitAnalysisListItem[];
+  total: number;
+  page: number;
+  size: number;
+  totalPages: number;
+}
+
 export interface AdminFitAnalysisMemo {
   id: number;
   fitAnalysisId: number;

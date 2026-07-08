@@ -4,7 +4,7 @@ import type { TokenResponse } from "./AuthContext";
 export function requestPasswordReset(email: string): Promise<void> {
   return api<void>(
     "/auth/password/reset-request",
-    { method: "POST", body: JSON.stringify({ email }) },
+    { method: "POST", body: JSON.stringify({ identifier: email }) },
     { auth: false },
   );
 }
@@ -33,6 +33,22 @@ export function releaseDormant(token: string): Promise<TokenResponse> {
   );
 }
 
+export function requestFindId(email: string): Promise<void> {
+  return api<void>(
+    "/auth/find-id/request",
+    { method: "POST", body: JSON.stringify({ email }) },
+    { auth: false },
+  );
+}
+
+export function verifyFindId(token: string): Promise<{ loginId: string }> {
+  return api<{ loginId: string }>(
+    `/auth/find-id/verify?token=${encodeURIComponent(token)}`,
+    { method: "GET" },
+    { auth: false },
+  );
+}
+
 /** 회원가입 이메일 중복 확인. duplicate=true 면 이미 가입된 이메일. */
 export function checkEmailDuplicate(email: string): Promise<{ duplicate: boolean }> {
   return api<{ duplicate: boolean }>(
@@ -42,7 +58,7 @@ export function checkEmailDuplicate(email: string): Promise<{ duplicate: boolean
   );
 }
 
-/** 회원가입 로그인 아이디 중복 확인. duplicate=true 면 이미 사용 중인 아이디. */
+/** 로그인 아이디 중복 확인. duplicate=true 면 이미 사용 중인 아이디. */
 export function checkLoginIdDuplicate(loginId: string): Promise<{ duplicate: boolean }> {
   return api<{ duplicate: boolean }>(
     `/auth/check/login-id?value=${encodeURIComponent(loginId)}`,

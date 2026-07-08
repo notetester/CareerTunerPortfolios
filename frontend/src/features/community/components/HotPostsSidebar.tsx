@@ -1,8 +1,16 @@
 import { useEffect } from "react";
 import { useNavigate } from "react-router";
+import { UserRound, ChevronRight } from "lucide-react";
 import { useCommunityStore } from "../hooks/useCommunityStore";
 
-export function HotPostsSidebar() {
+interface HotPostsSidebarProps {
+  /** 내 활동 진입 — 로그인 게이트는 부모(requireAuth)가 처리한다. */
+  onActivity: () => void;
+  /** 커뮤니티 가이드라인 열기. */
+  onGuidelines: () => void;
+}
+
+export function HotPostsSidebar({ onActivity, onGuidelines }: HotPostsSidebarProps) {
   const { hotPosts, fetchHotPosts } = useCommunityStore();
   const navigate = useNavigate();
 
@@ -12,6 +20,12 @@ export function HotPostsSidebar() {
 
   return (
     <aside className="av-rail">
+      <section className="av-panel">
+        <button type="button" className="cv-raillink" onClick={onActivity}>
+          <UserRound /> 내 활동
+          <ChevronRight className="cv-raillink__arr" />
+        </button>
+      </section>
       <section className="av-panel cv-rank">
         <div className="av-mod__h">
           <span className="av-mod__t">주간 인기글</span>
@@ -41,6 +55,9 @@ export function HotPostsSidebar() {
         <div className="av-note" style={{ marginTop: 12 }}>
           회사·개인을 특정한 비방, 허위 정보는 숨김 처리될 수 있어요. <b>면접 후기</b>는 기억나는 질문 위주로 적어주시면 모두에게 도움이 됩니다.
         </div>
+        <button type="button" className="cv-guidelink" onClick={onGuidelines}>
+          커뮤니티 가이드라인 전체 보기 <ChevronRight />
+        </button>
       </section>
     </aside>
   );

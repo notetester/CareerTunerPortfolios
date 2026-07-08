@@ -3,6 +3,8 @@ package com.careertuner.correction.ai;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.mock;
@@ -24,6 +26,7 @@ import com.careertuner.correction.ai.CorrectionAiClient.Usage;
 import com.careertuner.correction.ai.SelfCorrectionOutputParser.InvalidOutputException;
 import com.careertuner.correction.ai.SelfLlmCorrectionProvider.RepairContext;
 import com.careertuner.correction.ai.SelfLlmCorrectionProvider.SelfLlmCallException;
+import com.careertuner.runtimesetting.service.RuntimeSettingService;
 
 class CorrectionAiClientTest {
 
@@ -54,6 +57,22 @@ class CorrectionAiClientTest {
         verify(fixture.self).correct(eq(fixture.command), eq("3b"), any(Duration.class), isNull());
         verify(fixture.anthropic, never()).correct(any());
         verify(fixture.openAi, never()).correct(any());
+    }
+
+    @Test
+    @DisplayName("self tier reads its total-time-budget from the runtime settings DB key (DB-first, admin-controllable)")
+    void correct_selfBudgetIsDbFirst() {
+        Fixture fixture = fixture(true);
+        CorrectionPayload expected = payload("3b");
+        when(fixture.self.correct(eq(fixture.command), eq("3b"), any(Duration.class), isNull()))
+                .thenReturn(expected);
+
+        fixture.client.correct(fixture.command);
+
+        // 관리자 콘솔이 제어하는 DB 키를 매 호출마다 조회하고, fallback 은 정적 self.totalTimeBudget 초.
+        verify(fixture.runtimeSettings).getInt(
+                eq("ai.correction.self-total-time-budget-seconds"),
+                eq((int) fixture.properties.getSelf().getTotalTimeBudget().toSeconds()));
     }
 
     @Test
@@ -136,18 +155,38 @@ class CorrectionAiClientTest {
     }
 
     @Test
-    @DisplayName("disabled cloud fallback propagates the 3B failure")
-    void correct_throwsWhenFallbackDisabled() {
+    @DisplayName("cloud fallback 을 꺼도 self 실패 시 화면은 Mock 으로 안전하게 유지된다(예외 미전파)")
+    void correct_fallbackDisabledReturnsMockNotThrow() {
         Fixture fixture = fixture(true);
         fixture.properties.setFallbackEnabled(false);
         when(fixture.self.correct(eq(fixture.command), eq("3b"), any(Duration.class), isNull()))
                 .thenThrow(new SelfLlmCallException("boom", false));
 
-        assertThatThrownBy(() -> fixture.client.correct(fixture.command))
-                .isInstanceOf(SelfLlmCallException.class)
-                .hasMessage("boom");
+        CorrectionPayload result = fixture.client.correct(fixture.command);
 
-        verify(fixture.openAi, never()).correct(any());
+        assertThat(result.usage().model()).isEqualTo("mock");
+        verify(fixture.mock).correct(fixture.command);
+        verify(fixture.openAi, never()).correct(any()); // 외부 폴백은 껐으므로 호출 안 함
+        verify(fixture.anthropic, never()).correct(any());
+    }
+
+    @Test
+    @DisplayName("모든 tier(self·Claude·OpenAI)가 실패해도 Mock 안전망이 예외 없이 반환된다(screen-break 방지)")
+    void correct_allTiersFailReturnsMockNeverThrows() {
+        Fixture fixture = fixture(true);
+        when(fixture.self.correct(eq(fixture.command), eq("3b"), any(Duration.class), isNull()))
+                .thenThrow(new SelfLlmCallException("self down", false));
+        when(fixture.anthropic.configured()).thenReturn(true);
+        when(fixture.anthropic.correct(fixture.command)).thenThrow(new IllegalStateException("claude down"));
+        when(fixture.openAi.correct(fixture.command)).thenThrow(new IllegalStateException("openai down"));
+
+        CorrectionPayload result = fixture.client.correct(fixture.command);
+
+        assertThat(result.usage().model()).isEqualTo("mock"); // 예외 대신 결정론 Mock
+        verify(fixture.self).correct(eq(fixture.command), eq("3b"), any(Duration.class), isNull());
+        verify(fixture.anthropic).correct(fixture.command);
+        verify(fixture.openAi).correct(fixture.command);
+        verify(fixture.mock).correct(fixture.command);
     }
 
     @Test
@@ -180,15 +219,22 @@ class CorrectionAiClientTest {
         OpenAiCorrectionProvider openAi = mock(OpenAiCorrectionProvider.class);
         SelfLlmCorrectionProvider self = mock(SelfLlmCorrectionProvider.class);
         AnthropicCorrectionProvider anthropic = mock(AnthropicCorrectionProvider.class);
+        MockCorrectionProvider mockProvider = mock(MockCorrectionProvider.class);
+        when(mockProvider.correct(any())).thenReturn(payload("mock"));
         CorrectionModelWarmupService warmup = mock(CorrectionModelWarmupService.class);
+        // DB 런타임 설정 미스(행 없음)를 모사: getInt 는 항상 fallback(정적 self.totalTimeBudget)을 돌려준다 → 동작 불변.
+        RuntimeSettingService runtimeSettings = mock(RuntimeSettingService.class);
+        when(runtimeSettings.getInt(anyString(), anyInt())).thenAnswer(invocation -> invocation.getArgument(1));
         CorrectionCommand command = command();
         return new Fixture(
                 properties,
                 openAi,
                 self,
                 anthropic,
+                mockProvider,
                 warmup,
-                new CorrectionAiClient(properties, openAi, self, anthropic, warmup),
+                runtimeSettings,
+                new CorrectionAiClient(properties, openAi, self, anthropic, mockProvider, warmup, runtimeSettings),
                 command);
     }
 
@@ -206,7 +252,9 @@ class CorrectionAiClientTest {
             OpenAiCorrectionProvider openAi,
             SelfLlmCorrectionProvider self,
             AnthropicCorrectionProvider anthropic,
+            MockCorrectionProvider mock,
             CorrectionModelWarmupService warmup,
+            RuntimeSettingService runtimeSettings,
             CorrectionAiClient client,
             CorrectionCommand command
     ) {

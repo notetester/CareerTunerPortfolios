@@ -6,6 +6,7 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
+import java.time.Duration;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
@@ -51,6 +52,21 @@ public class CareerAnalysisOpenAiClient {
                                       Map<String, Object> schema,
                                       String systemPrompt,
                                       String userPrompt) {
+        return request(name, schema, systemPrompt, userPrompt, properties.getTimeout(), Long.MAX_VALUE);
+    }
+
+    /**
+     * 폴백 티어별로 시도당 타임아웃({@code perAttemptTimeout})을 보장하고, 체인 데드라인({@code chainDeadlineNanos})으로
+     * 재시도만 유계화하는 오버로드. 첫 시도(attempt==1)는 데드라인과 무관하게 항상 수행하고, 이후 재시도만
+     * {@code System.nanoTime() < chainDeadlineNanos} 를 추가로 요구한다. 데드라인이 지나면 기존 실패 예외로 떨어져
+     * 상위 디스패처가 다음 티어로 캐스케이드한다.
+     */
+    public StructuredResponse request(String name,
+                                      Map<String, Object> schema,
+                                      String systemPrompt,
+                                      String userPrompt,
+                                      Duration perAttemptTimeout,
+                                      long chainDeadlineNanos) {
         if (!configured()) {
             throw new BusinessException(ErrorCode.INTERNAL_ERROR, "OpenAI API 키가 설정되어 있지 않습니다.");
         }
@@ -67,17 +83,17 @@ public class CareerAnalysisOpenAiClient {
                         "strict", true,
                         "schema", schema)));
 
-        JsonNode root = post(body);
+        JsonNode root = post(body, perAttemptTimeout, chainDeadlineNanos);
         return new StructuredResponse(parseOutputJson(root), usage(root));
     }
 
-    private JsonNode post(Map<String, Object> requestBody) {
+    private JsonNode post(Map<String, Object> requestBody, Duration perAttemptTimeout, long chainDeadlineNanos) {
         try {
             String body = objectMapper.writeValueAsString(requestBody);
             for (int attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
                 try {
                     HttpRequest request = HttpRequest.newBuilder(URI.create(properties.responsesUrl()))
-                            .timeout(properties.getTimeout())
+                            .timeout(perAttemptTimeout)
                             .header("Authorization", "Bearer " + properties.getApiKey())
                             .header("Content-Type", "application/json")
                             .POST(HttpRequest.BodyPublishers.ofString(body, StandardCharsets.UTF_8))
@@ -90,7 +106,7 @@ public class CareerAnalysisOpenAiClient {
                     }
 
                     String message = errorMessage(response.body());
-                    if (attempt < MAX_ATTEMPTS && retryable(response.statusCode(), message)) {
+                    if (attempt < MAX_ATTEMPTS && System.nanoTime() < chainDeadlineNanos && retryable(response.statusCode(), message)) {
                         sleep(attempt);
                         continue;
                     }
@@ -98,7 +114,7 @@ public class CareerAnalysisOpenAiClient {
                             ErrorCode.INTERNAL_ERROR,
                             "OpenAI 요청에 실패했습니다. " + truncate(message, 300));
                 } catch (IOException ex) {
-                    if (attempt < MAX_ATTEMPTS) {
+                    if (attempt < MAX_ATTEMPTS && System.nanoTime() < chainDeadlineNanos) {
                         sleep(attempt);
                         continue;
                     }

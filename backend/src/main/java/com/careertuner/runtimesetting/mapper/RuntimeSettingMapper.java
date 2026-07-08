@@ -38,7 +38,9 @@ public interface RuntimeSettingMapper {
                        @Param("beforeFallback") String beforeFallback,
                        @Param("afterFallback") String afterFallback,
                        @Param("beforeSnapshot") String beforeSnapshot,
-                       @Param("afterSnapshot") String afterSnapshot);
+                       @Param("afterSnapshot") String afterSnapshot,
+                       // reason: 관리자가 설정을 변경한 사유(자유 텍스트, nullable)
+                       @Param("reason") String reason);
 
     List<RuntimeSettingHistory> findHistory(@Param("settingKey") String settingKey, @Param("limit") int limit);
 }

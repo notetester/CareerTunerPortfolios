@@ -24,7 +24,69 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  detect-changes:
+    runs-on: ubuntu-latest
+    outputs:
+      backend: ${{ steps.changes.outputs.backend }}
+      worker: ${{ steps.changes.outputs.worker }}
+      compose: ${{ steps.changes.outputs.compose }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Detect changed service areas
+        id: changes
+        shell: bash
+        env:
+          BEFORE_SHA: ${{ github.event.before }}
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          if [ "${GITHUB_EVENT_NAME}" = "workflow_dispatch" ]; then
+            backend=true
+            worker=true
+            compose=true
+          else
+            if [ "${GITHUB_EVENT_NAME}" = "pull_request" ]; then
+              base="$PR_BASE_SHA"
+              head="$PR_HEAD_SHA"
+            else
+              base="$BEFORE_SHA"
+              head="$GITHUB_SHA"
+            fi
+
+            if [ -z "$base" ] || [ "$base" = "0000000000000000000000000000000000000000" ]; then
+              base="$(git rev-parse "${head}^")"
+            fi
+
+            git diff --name-only "$base" "$head" | tee changed-files.txt
+
+            backend=false
+            worker=false
+            compose=false
+            if grep -Eq '^(backend/|\.github/workflows/service-pipeline-ci\.yml$)' changed-files.txt; then
+              backend=true
+            fi
+            if grep -Eq '^(ml/job-posting-worker/|\.github/workflows/service-pipeline-ci\.yml$)' changed-files.txt; then
+              worker=true
+            fi
+            if grep -Eq '^(docker-compose\.yml|\.github/workflows/service-pipeline-ci\.yml)$' changed-files.txt; then
+              compose=true
+            fi
+          fi
+
+          echo "backend=$backend" >> "$GITHUB_OUTPUT"
+          echo "worker=$worker" >> "$GITHUB_OUTPUT"
+          echo "compose=$compose" >> "$GITHUB_OUTPUT"
+          echo "backend-test: $backend"
+          echo "worker-test: $worker"
+          echo "worker-docker-build: $worker or $compose"
+
   backend-test:
+    needs: detect-changes
+    if: needs.detect-changes.outputs.backend == 'true'
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -47,6 +109,8 @@ jobs:
         run: ./gradlew test
 
   worker-test:
+    needs: detect-changes
+    if: needs.detect-changes.outputs.worker == 'true'
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -78,6 +142,8 @@ jobs:
         run: python scripts/18_check_release_readiness.py
 
   worker-docker-build:
+    needs: detect-changes
+    if: needs.detect-changes.outputs.worker == 'true' || needs.detect-changes.outputs.compose == 'true'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
