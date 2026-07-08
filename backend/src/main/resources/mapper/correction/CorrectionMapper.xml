@@ -5,10 +5,10 @@
 
     <insert id="insert" useGeneratedKeys="true" keyProperty="id">
         INSERT INTO correction_request
-            (user_id, application_case_id, correction_type, source_type, source_ref_id,
+            (user_id, request_key, application_case_id, correction_type, source_type, source_ref_id,
              original_text, improved_text, result_json, status, ai_usage_log_id)
         VALUES
-            (#{userId}, #{applicationCaseId}, #{correctionType}, #{sourceType}, #{sourceRefId},
+            (#{userId}, #{requestKey}, #{applicationCaseId}, #{correctionType}, #{sourceType}, #{sourceRefId},
              #{originalText}, #{improvedText}, #{resultJson}, #{status}, #{aiUsageLogId})
     </insert>
 
@@ -17,6 +17,13 @@
         FROM correction_request
         WHERE id = #{id}
           AND user_id = #{userId}
+    </select>
+
+    <select id="findByUserIdAndRequestKey" resultType="com.careertuner.correction.domain.CorrectionRequest">
+        SELECT *
+        FROM correction_request
+        WHERE user_id = #{userId}
+          AND request_key = #{requestKey}
     </select>
 
     <select id="findByUserId" resultType="com.careertuner.correction.domain.CorrectionRequest">

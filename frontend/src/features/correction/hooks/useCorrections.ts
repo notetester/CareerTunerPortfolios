@@ -12,6 +12,7 @@ import type {
 } from "../types/correction";
 
 const HISTORY_LIMIT = 20;
+const PENDING_REQUEST_PREFIX = "careertuner:correction:pending:";
 
 function errorMessage(error: unknown, fallback: string) {
   if (error instanceof ApiError || error instanceof Error) {
@@ -80,11 +81,16 @@ export function useCorrections(correctionType: CorrectionType, applicationCaseId
       const acknowledged = await notifyAndAcknowledgeAiCharge(
         `CORRECTION_${request.correctionType}`,
       );
+      const requestKey = await pendingRequestKey(requestScope, request);
       const result = await createCorrection({
         ...request,
         policyAcknowledgementKey: acknowledged.policyAcknowledgementKey,
+        requestKey,
       });
-      toastAiChargeCompleted(acknowledged.preview, result);
+      clearPendingRequest(requestScope, requestKey);
+      if (!result.replayed) {
+        toastAiChargeCompleted(acknowledged.preview, result);
+      }
       if (requestId === submitRequestId.current && requestScope === scopeKeyRef.current) {
         setSelected(result);
         setHistory((current) => [result, ...current.filter((item) => item.id !== result.id)].slice(0, HISTORY_LIMIT));
@@ -135,4 +141,71 @@ export function useCorrections(correctionType: CorrectionType, applicationCaseId
     selectHistory,
     submit,
   };
+}
+
+interface PendingCorrectionRequest {
+  fingerprint: string;
+  requestKey: string;
+}
+
+async function pendingRequestKey(scopeKey: string, request: CorrectionSubmitRequest) {
+  const storageKey = `${PENDING_REQUEST_PREFIX}${scopeKey}`;
+  const fingerprint = await requestFingerprint(request);
+  try {
+    const stored = sessionStorage.getItem(storageKey);
+    if (stored) {
+      const pending = JSON.parse(stored) as PendingCorrectionRequest;
+      if (pending.fingerprint === fingerprint && pending.requestKey) {
+        return pending.requestKey;
+      }
+    }
+  } catch {
+    // 저장소가 차단된 환경에서도 현재 요청의 서버 멱등성은 유지한다.
+  }
+
+  const requestKey = createRequestKey();
+  try {
+    sessionStorage.setItem(storageKey, JSON.stringify({ fingerprint, requestKey }));
+  } catch {
+    // 저장소가 차단되면 현재 페이지 수명 동안의 중복 제출 방지만 적용된다.
+  }
+  return requestKey;
+}
+
+function clearPendingRequest(scopeKey: string, requestKey: string) {
+  const storageKey = `${PENDING_REQUEST_PREFIX}${scopeKey}`;
+  try {
+    const stored = sessionStorage.getItem(storageKey);
+    if (!stored) return;
+    const pending = JSON.parse(stored) as PendingCorrectionRequest;
+    if (pending.requestKey === requestKey) sessionStorage.removeItem(storageKey);
+  } catch {
+    try {
+      sessionStorage.removeItem(storageKey);
+    } catch {
+      // 저장소가 차단된 환경에서는 정리할 항목도 유지할 수 없다.
+    }
+  }
+}
+
+function createRequestKey() {
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+    return `correction:${crypto.randomUUID()}`;
+  }
+  return `correction:${Date.now()}:${Math.random().toString(36).slice(2)}`;
+}
+
+async function requestFingerprint(request: CorrectionSubmitRequest) {
+  const value = JSON.stringify(request);
+  if (typeof crypto !== "undefined" && crypto.subtle) {
+    const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(value));
+    return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
+  }
+
+  let hash = 2166136261;
+  for (let index = 0; index < value.length; index += 1) {
+    hash ^= value.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+  return `fallback:${(hash >>> 0).toString(16)}`;
 }

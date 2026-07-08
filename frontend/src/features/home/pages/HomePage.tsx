@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router";
 import { useAuth } from "@/app/auth/AuthContext";
+import { subscribeCreditBalanceChanged } from "@/app/lib/creditBalanceEvents";
 import { Button } from "@/app/components/ui/button";
 import { Badge } from "@/app/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/app/components/ui/card";
@@ -627,6 +628,10 @@ export function HomePage() {
   const [dashboardLoading, setDashboardLoading] = useState(false);
   const [dashboardError, setDashboardError] = useState<string | null>(null);
   const [reloadToken, setReloadToken] = useState(0);
+
+  useEffect(() => subscribeCreditBalanceChanged(() => {
+    setReloadToken((value) => value + 1);
+  }), []);
 
   useEffect(() => {
     if (!isAuthenticated) {

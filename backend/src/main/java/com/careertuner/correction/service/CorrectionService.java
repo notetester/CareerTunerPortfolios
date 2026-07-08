@@ -3,6 +3,7 @@ package com.careertuner.correction.service;
 import java.util.List;
 import java.util.Map;
 
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionTemplate;
@@ -77,11 +78,18 @@ public class CorrectionService {
         String policyAcknowledgementKey = chargeRequired
                 ? normalizePolicyAcknowledgementKey(request == null ? null : request.policyAcknowledgementKey())
                 : null;
+        String requestKey = chargeRequired
+                ? normalizeRequestKey(request == null ? null : request.requestKey())
+                : null;
         Long applicationCaseId = request == null ? null : request.applicationCaseId();
         ApplicationCase applicationCase = applicationCaseId == null
                 ? null
                 : applicationCaseAccessService.requireOwned(userId, applicationCaseId);
         String featureType = featureType(correctionType);
+        CorrectionRequest existing = findExisting(userId, requestKey);
+        if (existing != null) {
+            return replayedResponse(existing);
+        }
         var selfInput = contextService.build(
                 userId,
                 correctionType,
@@ -106,42 +114,52 @@ public class CorrectionService {
             throw ex;
         }
 
-        CorrectionResponse response = transactionTemplate.execute(status -> {
-            Long aiUsageLogId = usageLogService.recordSuccess(
-                    userId, applicationCaseId, featureType, payload.usage());
-            CorrectionRequest correction = CorrectionRequest.builder()
-                    .userId(userId)
-                    .applicationCaseId(applicationCaseId)
-                    .correctionType(correctionType)
-                    .sourceType(sourceType)
-                    .sourceRefId(request == null ? null : request.sourceRefId())
-                    .originalText(originalText)
-                    .improvedText(payload.improvedText())
-                    .resultJson(resultJson(payload))
-                    .status("SUCCESS")
-                    .aiUsageLogId(aiUsageLogId)
-                    .build();
-            correctionMapper.insert(correction);
-            AiChargeResult chargeResult = null;
-            if (chargeRequired) {
-                chargeResult = aiChargeService.charge(new AiChargeCommand(
-                        userId,
-                        featureType,
-                        CHARGE_REF_TYPE,
-                        correction.getId(),
-                        aiUsageLogId,
-                        null,
-                        payload.usage().totalTokens(),
-                        "AI 첨삭 사용",
-                        policyAcknowledgementKey));
-                requireCompletedCharge(chargeResult);
+        CorrectionResponse response;
+        try {
+            response = transactionTemplate.execute(status -> {
+                Long aiUsageLogId = usageLogService.recordSuccess(
+                        userId, applicationCaseId, featureType, payload.usage());
+                CorrectionRequest correction = CorrectionRequest.builder()
+                        .userId(userId)
+                        .requestKey(requestKey)
+                        .applicationCaseId(applicationCaseId)
+                        .correctionType(correctionType)
+                        .sourceType(sourceType)
+                        .sourceRefId(request == null ? null : request.sourceRefId())
+                        .originalText(originalText)
+                        .improvedText(payload.improvedText())
+                        .resultJson(resultJson(payload))
+                        .status("SUCCESS")
+                        .aiUsageLogId(aiUsageLogId)
+                        .build();
+                correctionMapper.insert(correction);
+                AiChargeResult chargeResult = null;
+                if (chargeRequired) {
+                    chargeResult = aiChargeService.charge(new AiChargeCommand(
+                            userId,
+                            featureType,
+                            CHARGE_REF_TYPE,
+                            correction.getId(),
+                            aiUsageLogId,
+                            null,
+                            payload.usage().totalTokens(),
+                            "AI 첨삭 사용",
+                            policyAcknowledgementKey));
+                    requireCompletedCharge(chargeResult);
+                }
+                return CorrectionResponse.from(
+                        correction,
+                        resultPayload(payload),
+                        chargeResult,
+                        payload.usage().totalTokens());
+            });
+        } catch (DataIntegrityViolationException duplicate) {
+            CorrectionRequest raced = findExisting(userId, requestKey);
+            if (raced == null) {
+                throw duplicate;
             }
-            return CorrectionResponse.from(
-                    correction,
-                    resultPayload(payload),
-                    chargeResult,
-                    payload.usage().totalTokens());
-        });
+            return replayedResponse(raced);
+        }
         if (response == null) {
             throw new BusinessException(ErrorCode.INTERNAL_ERROR, "Correction transaction did not complete.");
         }
@@ -202,6 +220,22 @@ public class CorrectionService {
             throw new BusinessException(ErrorCode.INVALID_INPUT, "차감 정책 확인키가 올바르지 않습니다.");
         }
         return key;
+    }
+
+    private String normalizeRequestKey(String value) {
+        String key = value == null ? "" : value.trim();
+        if (key.isBlank() || key.length() > 120 || !key.matches("[A-Za-z0-9:_-]+")) {
+            throw new BusinessException(ErrorCode.INVALID_INPUT, "첨삭 요청키가 올바르지 않습니다.");
+        }
+        return key;
+    }
+
+    private CorrectionRequest findExisting(Long userId, String requestKey) {
+        return requestKey == null ? null : correctionMapper.findByUserIdAndRequestKey(userId, requestKey);
+    }
+
+    private CorrectionResponse replayedResponse(CorrectionRequest correction) {
+        return CorrectionResponse.from(correction, readResultPayload(correction.getResultJson())).asReplayed();
     }
 
     private void validateChargeablePayload(CorrectionPayload payload) {

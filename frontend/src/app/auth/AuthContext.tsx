@@ -1,5 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from "react";
 import { api } from "../lib/api";
+import { subscribeCreditBalanceChanged } from "../lib/creditBalanceEvents";
 import { clearTokens, getAccessToken, getRefreshToken, setTokens } from "../lib/tokenStore";
 
 export interface MeUser {
@@ -68,6 +69,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     refreshMe().finally(() => setLoading(false));
   }, [refreshMe]);
+
+  useEffect(() => subscribeCreditBalanceChanged(({ remainingCredit }) => {
+    if (remainingCredit !== undefined && Number.isSafeInteger(remainingCredit) && remainingCredit >= 0) {
+      setUser((current) => (current ? { ...current, credit: remainingCredit } : current));
+      return;
+    }
+    void refreshMe();
+  }), [refreshMe]);
 
   const login = useCallback(async (identifier: string, password: string) => {
     const res = await api<TokenResponse>(

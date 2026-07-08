@@ -7,6 +7,7 @@ import { Progress } from "../components/ui/progress";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../components/ui/tabs";
 import { Award, BarChart3, CheckCircle2, CreditCard, Loader2, ReceiptText, RotateCcw, Zap } from "lucide-react";
 import { useAuth } from "../auth/AuthContext";
+import { subscribeCreditBalanceChanged } from "../lib/creditBalanceEvents";
 import {
   cancelSubscription, getCreditProducts, getMonthlyUsage, getMyBilling, getMyPayments, getPlans,
   subscribe,
@@ -130,6 +131,10 @@ export function BillingPage() {
     void loadMine().catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isAuthenticated]);
+
+  useEffect(() => subscribeCreditBalanceChanged(() => {
+    void loadMine().catch(() => {});
+  }), [isAuthenticated]);
 
   const doSubscribe = async (planCode: string) => {
     setBusy(`sub-${planCode}`);

@@ -25,9 +25,10 @@ export interface CorrectionCreateRequest {
   sourceRefId?: number;
   questionText?: string;
   policyAcknowledgementKey: string;
+  requestKey: string;
 }
 
-export type CorrectionSubmitRequest = Omit<CorrectionCreateRequest, "policyAcknowledgementKey">;
+export type CorrectionSubmitRequest = Omit<CorrectionCreateRequest, "policyAcknowledgementKey" | "requestKey">;
 
 export interface CorrectionResponse {
   id: number;
@@ -47,6 +48,7 @@ export interface CorrectionResponse {
   chargedCredit?: number;
   totalTokens?: number;
   remainingCredit?: number;
+  replayed?: boolean;
   createdAt: string | null;
 }
 

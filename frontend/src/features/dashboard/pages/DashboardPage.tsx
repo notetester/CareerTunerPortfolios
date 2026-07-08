@@ -17,6 +17,7 @@ import { NotificationsCard } from "@/features/dashboard/components/Notifications
 import { ReadinessGaugeCard } from "@/features/dashboard/components/ReadinessGaugeCard";
 import { AiResultBadge } from "@/features/analysis/components/AiResultBadge";
 import { GuideButton, type TourStep } from "@/features/analysis/components/GuideTour";
+import { subscribeCreditBalanceChanged } from "@/app/lib/creditBalanceEvents";
 
 // 취업분석 대시보드 페이지 안내(가이드 투어) 스텝.
 const DASHBOARD_TOUR_STEPS: TourStep[] = [
@@ -78,6 +79,11 @@ export function DashboardPage() {
   const [error, setError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [refreshError, setRefreshError] = useState<string | null>(null);
+  const [creditReloadToken, setCreditReloadToken] = useState(0);
+
+  useEffect(() => subscribeCreditBalanceChanged(() => {
+    setCreditReloadToken((value) => value + 1);
+  }), []);
 
   useEffect(() => {
     let ignore = false;
@@ -98,7 +104,7 @@ export function DashboardPage() {
     return () => {
       ignore = true;
     };
-  }, []);
+  }, [creditReloadToken]);
 
   const handleRefreshSummary = async () => {
     setRefreshing(true);
