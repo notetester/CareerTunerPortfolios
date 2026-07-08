@@ -17,17 +17,32 @@ careertuner:
   oauth:
     mock-enabled: ${OAUTH_MOCK_ENABLED:false}
 
-# Ollama 는 공유 4090(Tailscale) 을 사용한다 — AWS 서버가 tailnet 에 조인되어 있어야 한다.
-# 4090 이 꺼져 있으면 부팅 시 fallback-base-urls(기본 로컬 Ollama)로 자동 폴백한다.
+# ─── 자체 LLM 엔드포인트 (2대: F 노트북 + 공유 4090) ──────────────────────────
+# careertuner.kro.kr(AWS) 배포용. AWS 서버가 tailnet 에 조인돼 있어야 아래 Tailscale
+# 주소에 닿는다. 자체모델이 꺼졌거나 안 닿으면 각 도메인이 런타임에 외부(Claude→OpenAI
+# →Mock/self-rules)로 자동 강등하므로 시연은 끊기지 않는다(폴백은 앱 코드에 이미 구현됨).
+# raw IP 는 노드 바뀌면 깨지니 MagicDNS 권장: http://<host>.<tailnet>.ts.net:11434
+#
+#  [A] F 노트북 (F 담당) — 검열·FAQ(gemma4) + 커뮤니티/인테이크 챗봇(qwen3:8b).
+#      AI_OLLAMA_BASE_URL 하나가 ai.ollama + langchain4j 를 모두 덮는다(전부 F 노트북).
+#  [B] 공유 4090 (C 취업분석 · D 면접평가 · B 공고분석) — 각 도메인 전용 env:
+#      CAREERTUNER_ANALYSIS_AI_OSS_BASE_URL / INTERVIEW_EVAL_BASE_URL / B_ANALYSIS_OLLAMA_BASE_URL
+#      (+ 켜기: CAREERTUNER_ANALYSIS_AI_PROVIDER=oss, INTERVIEW_EVAL_PROVIDER=oss)
+
+# [A] F 노트북. 미설정 시 localhost(=배포에선 provider 폴백 Claude 가 실질 안전망).
 ai:
   ollama:
     base-url: ${AI_OLLAMA_BASE_URL:http://localhost:11434}
     fallback-base-urls: ${AI_OLLAMA_FALLBACK_BASE_URLS:http://localhost:11434}
+    # 노트북 꺼짐 → 짧게 연결 실패시켜 provider 폴백(Claude)으로 빨리 넘긴다.
+    connect-timeout: ${AI_OLLAMA_CONNECT_TIMEOUT:5s}
 
 langchain4j:
   ollama:
     chat-model:
       base-url: ${AI_OLLAMA_BASE_URL:http://localhost:11434}
+      # (신규) 무제한 방지 — 노트북이 연결은 받고 멈추면 이 시간 후 Claude 로 폴백한다.
+      timeout: ${CHAT_LLM_OLLAMA_TIMEOUT:60s}
 
 # OAuth redirect-uri 도 공인 주소 확정 후 함께 교체한다(위 careertuner 블록에 병합할 예시).
 #   oauth:
