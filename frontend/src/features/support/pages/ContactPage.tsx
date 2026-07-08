@@ -323,6 +323,20 @@ function MyTicketItem({ ticket, onChanged }: { ticket: SupportTicket; onChanged:
   const [reply, setReply] = useState("");
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [replyFiles, setReplyFiles] = useState<FileInfo[]>([]);
+  const [replyUploading, setReplyUploading] = useState(false);
+  const replyInputRef = useRef<HTMLInputElement>(null);
+
+  const addReplyFiles = (list: FileList) => {
+    setError(null);
+    const accepted: FileInfo[] = [];
+    for (const f of Array.from(list)) {
+      if (!ALLOWED_FILE.test(f.type)) { setError("이미지 또는 PDF만 첨부할 수 있어요."); continue; }
+      if (f.size > MAX_FILE_SIZE) { setError("파일당 최대 10MB까지 첨부할 수 있어요."); continue; }
+      accepted.push({ file: f, name: f.name, size: f.size });
+    }
+    setReplyFiles((prev) => [...prev, ...accepted].slice(0, 5));
+  };
 
   const toggle = async () => {
     const next = !open;
@@ -345,10 +359,19 @@ function MyTicketItem({ ticket, onChanged }: { ticket: SupportTicket; onChanged:
     setSending(true);
     setError(null);
     try {
-      setThread(await addTicketMessage(ticket.id, content));
+      let attachmentFileIds: number[] | undefined;
+      if (replyFiles.length > 0) {
+        setReplyUploading(true);
+        const uploaded = await Promise.all(replyFiles.map((f) => uploadTicketFile(f.file)));
+        attachmentFileIds = uploaded.map((u) => u.id);
+        setReplyUploading(false);
+      }
+      setThread(await addTicketMessage(ticket.id, content, attachmentFileIds));
       setReply("");
+      setReplyFiles([]);
       onChanged();
     } catch {
+      setReplyUploading(false);
       setError("추가 문의 전송에 실패했습니다.");
     } finally {
       setSending(false);
@@ -418,16 +441,37 @@ function MyTicketItem({ ticket, onChanged }: { ticket: SupportTicket; onChanged:
                 placeholder="추가로 문의할 내용을 입력하세요"
                 style={{ width: "100%", minHeight: 64, borderRadius: 8, border: "1px solid var(--border)", padding: 8, fontSize: 14, resize: "vertical" }}
               />
+              {replyFiles.length > 0 && (
+                <div className="ct-files" style={{ marginTop: 6 }}>
+                  {replyFiles.map((f, i) => (
+                    <div key={i} className="ct-file">
+                      <Paperclip className="doc" />
+                      <span className="ct-file__name">{f.name}</span>
+                      <span className="ct-file__size">{fmtSize(f.size)}</span>
+                      <button className="ct-file__rm" onClick={() => setReplyFiles((p) => p.filter((_, j) => j !== i))}>
+                        <X />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
               {error && <p style={{ fontSize: 12, color: "var(--destructive)", marginTop: 4 }}>{error}</p>}
-              <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 6 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 6 }}>
+                <button type="button" onClick={() => replyInputRef.current?.click()} className="ct-act" style={{ fontSize: 13 }}>
+                  <Paperclip style={{ width: 14, height: 14 }} /> 파일 첨부
+                </button>
+                <input
+                  ref={replyInputRef} type="file" multiple hidden accept="image/*,application/pdf"
+                  onChange={(e) => { if (e.target.files) addReplyFiles(e.target.files); e.target.value = ""; }}
+                />
                 <button
                   type="button"
                   onClick={() => void send()}
-                  disabled={sending || !reply.trim()}
+                  disabled={sending || replyUploading || !reply.trim()}
                   className="av-btn av-btn--ink"
-                  style={{ opacity: sending || !reply.trim() ? 0.6 : 1 }}
+                  style={{ opacity: sending || replyUploading || !reply.trim() ? 0.6 : 1 }}
                 >
-                  {sending ? "전송 중…" : "추가 문의 보내기"}
+                  {replyUploading ? "첨부 업로드 중…" : sending ? "전송 중…" : "추가 문의 보내기"}
                 </button>
               </div>
             </div>
