@@ -1,14 +1,15 @@
 package com.careertuner.fitanalysis.certificate;
 
 import java.net.URI;
-import java.net.URLEncoder;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+import java.time.Year;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -21,20 +22,25 @@ import com.careertuner.fitanalysis.certificate.CertificateScheduleEvidence.Sched
 
 /**
  * 국가기술자격 종목별 시험일정 provider — 공공데이터 15003029 {@code InquiryTestInformationNTQSVC/getJMList}
- * (종목코드 jmCd 로 현재연도 시행일정 조회). <b>확인된 것만 말하고 불확실하면 날짜를 만들지 않는다</b>는 원칙에 따라,
- * 키 없음·타임아웃·오류·빈 응답은 모두 {@link ScheduleEvidenceStatus#NOT_FOUND}/OFFICIAL_NO_SCHEDULE 로 degrade 한다.
+ * (요청변수 {@code stdt}=조회시작년도; 해당 연도의 <b>전체 종목</b> 시행일정 목록을 반환). 특정 자격의 일정은
+ * 응답을 자격명(jmfldmm)으로 <b>정확 매칭 필터</b>해서 얻는다 — 다른 종목의 날짜를 섞어 조작하지 않는다.
  *
- * <p>이 q-net API 는 upstream 이 간헐적으로 불안정하다(정상 응답 envelope 안에 resultCode 99 =
- * "SocketTimeoutException" 이 담겨 옴). 그런 응답은 절대 성공으로 취급하지 않고 NOT_FOUND 로 내린다.
+ * <p><b>오류≠부재 원칙:</b> data.go.kr/q-net 게이트웨이는 서비스키 미등록/만료/트래픽초과 시에도 HTTP 200 으로
+ * {@code <OpenAPI_ServiceResponse><cmmMsgHeader><returnReasonCode>..} 형태의 오류 envelope 를 준다(resultCode 태그
+ * 없음). 이런 응답, 타임아웃, resultCode≠00, 정상(00) 미확증은 모두 {@link ScheduleEvidenceStatus#UPSTREAM_UNAVAILABLE}
+ * 로 내린다. {@link ScheduleEvidenceStatus#OFFICIAL_NO_SCHEDULE} 는 <b>정상(resultCode 00)을 확증</b>하고도 해당
+ * 자격 회차가 없을 때만 쓴다. C 는 장애 시 "일정이 없습니다"가 아니라 "공식 API 가 일시적으로 응답하지 않아 확인하지
+ * 못했습니다"라고 말해야 한다.
  *
- * <p>파싱은 <b>태그명 기반(중첩 무관)</b>이라 {@code <items><item>} 래핑 여부와 무관하게 필드를 찾는다.
- * getJMList 응답 필드는 소문자(docregstartdt 등)라 대소문자 무시로 매칭한다.
+ * <p>serviceKey 는 재인코딩하지 않는다(포털의 <b>디코딩(raw) 키</b> 사용 전제 — '인코딩' 키를 다시 인코딩하면 이중
+ * 인코딩으로 깨진다). 파싱은 태그명 기반(대소문자 무시)이라 {@code <items><item>} 래핑 여부와 무관하다.
  */
 @Component
 public class NationalTechExamScheduleProvider {
 
     private static final Logger log = LoggerFactory.getLogger(NationalTechExamScheduleProvider.class);
     private static final String SOURCE_NAME = "한국산업인력공단 큐넷(Q-Net) 국가기술자격 시험정보";
+    private static final String SOURCE_URL = "https://www.q-net.or.kr/";
     private static final String OPERATION = "/InquiryTestInformationNTQSVC/getJMList";
 
     private final String serviceKey;
@@ -44,7 +50,7 @@ public class NationalTechExamScheduleProvider {
 
     public NationalTechExamScheduleProvider(
             @Value("${careertuner.certificate.data-go-kr.service-key:}") String serviceKey,
-            @Value("${careertuner.certificate.data-go-kr.qnet-base-url:http://openapi.q-net.or.kr/api/service/rest}")
+            @Value("${careertuner.certificate.data-go-kr.qnet-base-url:https://openapi.q-net.or.kr/api/service/rest}")
             String qnetBaseUrl,
             @Value("${careertuner.certificate.data-go-kr.timeout-seconds:15}") long timeoutSeconds) {
         this(serviceKey, qnetBaseUrl, Duration.ofSeconds(timeoutSeconds <= 0 ? 15 : timeoutSeconds),
@@ -65,83 +71,111 @@ public class NationalTechExamScheduleProvider {
     }
 
     /**
-     * 종목코드로 시험일정을 조회한다. 어떤 실패(키 없음/타임아웃/오류/빈 응답)든 예외를 던지지 않고 degrade 상태를 반환한다.
+     * 자격명으로 현재연도 시험일정을 조회한다. 어떤 실패(키 없음/입력 없음/타임아웃/오류/미확증)든 예외를 던지지 않고
+     * degrade 상태를 반환한다.
      *
-     * @param jmCd        국가기술자격 종목코드(4자리)
-     * @param certNameHint 공식 응답에 종목명이 없을 때 사용할 힌트(없으면 null)
+     * @param certName 국가기술자격 종목명(예: "정보처리기사"). getJMList 응답의 jmfldmm 과 정확 매칭한다.
      */
-    public CertificateScheduleEvidence lookup(String jmCd, String certNameHint) {
-        if (!enabled() || jmCd == null || jmCd.isBlank()) {
-            return degraded(ScheduleEvidenceStatus.NOT_FOUND, jmCd, certNameHint);
+    public CertificateScheduleEvidence lookup(String certName) {
+        if (!enabled() || certName == null || certName.isBlank()) {
+            return degraded(ScheduleEvidenceStatus.UPSTREAM_UNAVAILABLE, certName);
         }
         try {
+            // serviceKey 는 재인코딩하지 않음(디코딩 키 전제). stdt=현재연도.
             String url = qnetBaseUrl + OPERATION
-                    + "?serviceKey=" + enc(serviceKey) + "&jmCd=" + enc(jmCd.trim());
+                    + "?serviceKey=" + serviceKey + "&stdt=" + Year.now().getValue();
             HttpRequest request = HttpRequest.newBuilder(URI.create(url)).timeout(timeout).GET().build();
             HttpResponse<String> response = httpClient.send(request,
                     HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
             if (response.statusCode() != 200) {
-                log.debug("getJMList non-200: jmCd={} status={}", jmCd, response.statusCode());
-                return degraded(ScheduleEvidenceStatus.NOT_FOUND, jmCd, certNameHint);
+                log.debug("getJMList non-200: cert={} status={}", certName, response.statusCode());
+                return degraded(ScheduleEvidenceStatus.UPSTREAM_UNAVAILABLE, certName);
             }
-            return parse(response.body(), jmCd, certNameHint);
+            return parse(response.body(), certName);
         } catch (Exception e) {
-            // 타임아웃/네트워크/파싱 실패 → 날짜를 만들지 않고 조용히 degrade.
-            log.debug("getJMList lookup failed: jmCd={} err={}", jmCd, e.toString());
-            return degraded(ScheduleEvidenceStatus.NOT_FOUND, jmCd, certNameHint);
+            // URL 에 serviceKey 가 들어가므로 예외 메시지(전체 URL 포함 가능)는 로깅하지 않는다 — 타입만.
+            log.debug("getJMList lookup failed: cert={} err={}", certName, e.getClass().getSimpleName());
+            return degraded(ScheduleEvidenceStatus.UPSTREAM_UNAVAILABLE, certName);
         }
     }
 
-    /** 응답 본문 파싱(순수 함수, 테스트 대상). resultCode 가 정상(00)이 아니면 NOT_FOUND. */
-    static CertificateScheduleEvidence parse(String xml, String jmCd, String certNameHint) {
+    /**
+     * 응답 본문 파싱(순수 함수, 테스트 대상). 게이트웨이 오류 envelope·resultCode≠00·정상 미확증은 UPSTREAM_UNAVAILABLE;
+     * 정상(00) 확증 + 해당 자격 회차 없음은 OFFICIAL_NO_SCHEDULE; 자격명 매칭 회차가 있으면 VERIFIED_CURRENT.
+     */
+    static CertificateScheduleEvidence parse(String xml, String certName) {
         if (xml == null || xml.isBlank()) {
-            return degraded(ScheduleEvidenceStatus.NOT_FOUND, jmCd, certNameHint);
+            return degraded(ScheduleEvidenceStatus.UPSTREAM_UNAVAILABLE, certName);
+        }
+        // HTTP 200 이지만 인증/쿼터 오류인 게이트웨이 envelope → 장애(부재 아님).
+        if (isGatewayError(xml)) {
+            return degraded(ScheduleEvidenceStatus.UPSTREAM_UNAVAILABLE, certName);
         }
         String resultCode = tagValue(xml, "resultCode");
         if (resultCode != null && !resultCode.equals("00") && !resultCode.equals("0")) {
-            // 예: 99 = q-net upstream SocketTimeout. 정상 응답 아님 → 날짜 미생성.
-            return degraded(ScheduleEvidenceStatus.NOT_FOUND, jmCd, certNameHint);
+            return degraded(ScheduleEvidenceStatus.UPSTREAM_UNAVAILABLE, certName);
         }
-
-        List<String> itemBlocks = allBlocks(xml, "item");
-        if (itemBlocks.isEmpty() && hasScheduleField(xml)) {
-            itemBlocks = List.of(xml); // <item> 래핑이 아니어도 필드가 있으면 전체를 한 회차로.
-        }
+        boolean normalConfirmed = "00".equals(resultCode) || "0".equals(resultCode);
 
         List<ScheduleRound> rounds = new ArrayList<>();
-        String certName = certNameHint;
-        for (String block : itemBlocks) {
-            if (certName == null || certName.isBlank()) {
-                certName = tagValue(block, "jmfldmm");
+        List<String> itemBlocks = allBlocks(xml, "item");
+        if (!itemBlocks.isEmpty()) {
+            for (String block : itemBlocks) {
+                if (nameMatches(tagValue(block, "jmfldmm"), certName)) {
+                    addIfDated(rounds, block);
+                }
             }
-            ScheduleRound round = new ScheduleRound(
-                    tagValue(block, "implplannm"),
-                    tagValue(block, "docregstartdt"),
-                    tagValue(block, "docregenddt"),
-                    tagValue(block, "docexamstartdt"),
-                    tagValue(block, "docpassdt"),
-                    tagValue(block, "pracexamstartdt"),
-                    tagValue(block, "pracexamenddt"),
-                    tagValue(block, "pracpassstartdt"));
-            if (hasAnyDate(round)) {
-                rounds.add(round);
-            }
+        } else if (hasScheduleField(xml) && nameMatches(tagValue(xml, "jmfldmm"), certName)) {
+            // <item> 래핑이 아니어도 필드가 있고 자격명이 맞으면 한 회차로.
+            addIfDated(rounds, xml);
         }
 
-        if (rounds.isEmpty()) {
+        if (!rounds.isEmpty()) {
+            return new CertificateScheduleEvidence(ScheduleEvidenceStatus.VERIFIED_CURRENT,
+                    null, certName, SOURCE_NAME, SOURCE_URL, List.copyOf(rounds));
+        }
+        if (normalConfirmed) {
+            // 정상 응답을 확증했고 해당 자격 회차가 없음 → 이번 연도 미편성(부재).
             return new CertificateScheduleEvidence(ScheduleEvidenceStatus.OFFICIAL_NO_SCHEDULE,
-                    jmCd, certNameHint, SOURCE_NAME, sourceUrl(jmCd), List.of());
+                    null, certName, SOURCE_NAME, SOURCE_URL, List.of());
         }
-        return new CertificateScheduleEvidence(ScheduleEvidenceStatus.VERIFIED_CURRENT,
-                jmCd, certName, SOURCE_NAME, sourceUrl(jmCd), List.copyOf(rounds));
+        // resultCode 를 확증하지 못했고 매칭도 없음 → 부재로 단정하지 않는다.
+        return degraded(ScheduleEvidenceStatus.UPSTREAM_UNAVAILABLE, certName);
     }
 
-    private static CertificateScheduleEvidence degraded(ScheduleEvidenceStatus status, String jmCd, String certName) {
-        return new CertificateScheduleEvidence(status, jmCd, certName, SOURCE_NAME, sourceUrl(jmCd), List.of());
+    private static void addIfDated(List<ScheduleRound> rounds, String block) {
+        ScheduleRound round = new ScheduleRound(
+                tagValue(block, "implplannm"),
+                tagValue(block, "docregstartdt"),
+                tagValue(block, "docregenddt"),
+                tagValue(block, "docexamstartdt"),
+                tagValue(block, "docpassdt"),
+                tagValue(block, "pracexamstartdt"),
+                tagValue(block, "pracexamenddt"),
+                tagValue(block, "pracpassstartdt"));
+        if (hasAnyDate(round)) {
+            rounds.add(round);
+        }
     }
 
-    private static String sourceUrl(String jmCd) {
-        return "https://www.q-net.or.kr/";
+    private static CertificateScheduleEvidence degraded(ScheduleEvidenceStatus status, String certName) {
+        return new CertificateScheduleEvidence(status, null, certName, SOURCE_NAME, SOURCE_URL, List.of());
+    }
+
+    /** data.go.kr/q-net 공통 오류 envelope(인증·쿼터 등, HTTP 200) 감지. */
+    private static boolean isGatewayError(String xml) {
+        String lower = xml.toLowerCase(Locale.ROOT);
+        return lower.contains("openapi_serviceresponse") || lower.contains("cmmmsgheader")
+                || lower.contains("returnreasoncode") || lower.contains("returnauthmsg");
+    }
+
+    /** 자격명 정확 매칭(공백 제거·소문자). 과매칭으로 다른 종목 일정을 섞지 않기 위함. */
+    private static boolean nameMatches(String responseName, String certName) {
+        return responseName != null && certName != null && norm(responseName).equals(norm(certName));
+    }
+
+    private static String norm(String s) {
+        return s.trim().toLowerCase(Locale.ROOT).replaceAll("\\s+", "");
     }
 
     private static boolean hasAnyDate(ScheduleRound r) {
@@ -150,7 +184,7 @@ public class NationalTechExamScheduleProvider {
     }
 
     private static boolean hasScheduleField(String xml) {
-        String lower = xml.toLowerCase();
+        String lower = xml.toLowerCase(Locale.ROOT);
         return lower.contains("docregstartdt") || lower.contains("implplannm") || lower.contains("docexamstartdt");
     }
 
@@ -176,9 +210,5 @@ public class NationalTechExamScheduleProvider {
 
     private static boolean notBlank(String s) {
         return s != null && !s.isBlank();
-    }
-
-    private static String enc(String value) {
-        return URLEncoder.encode(value, StandardCharsets.UTF_8);
     }
 }

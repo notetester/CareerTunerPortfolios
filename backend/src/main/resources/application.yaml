@@ -148,8 +148,12 @@ careertuner:
     # service-key 가 비면 라이브 조회를 하지 않고 안전하게 degrade(날짜 미생성). 키는 env 로만 주입(repo 커밋 금지).
     data-go-kr:
       service-key: ${CAREERTUNER_CERT_DATA_GO_KR_SERVICE_KEY:}
-      qnet-base-url: ${CAREERTUNER_CERT_QNET_BASE_URL:http://openapi.q-net.or.kr/api/service/rest}
+      # https 기본(키가 평문 전송되지 않도록). data.go.kr 발급 키는 '디코딩(raw)' 형태를 넣는다(재인코딩 안 함).
+      qnet-base-url: ${CAREERTUNER_CERT_QNET_BASE_URL:https://openapi.q-net.or.kr/api/service/rest}
       odcloud-base-url: ${CAREERTUNER_CERT_ODCLOUD_BASE_URL:https://api.odcloud.kr/api}
+      # 민간자격등록정보(15075600) odcloud 데이터셋 uddi + 스냅샷 라벨(비실시간 — 반기 갱신). 신규 스냅샷 나오면 값만 교체.
+      private-cert-uddi: ${CAREERTUNER_CERT_PRIVATE_UDDI:uddi:fadae7c0-8b78-400d-9581-d4003721de76}
+      private-cert-snapshot: ${CAREERTUNER_CERT_PRIVATE_SNAPSHOT:20251231}
       timeout-seconds: ${CAREERTUNER_CERT_TIMEOUT_SECONDS:15}
   anthropic:
     # 면접 LLM 1차(기본) provider(Claude Haiku). 선생(합성 데이터 증류)·런타임 공통.
