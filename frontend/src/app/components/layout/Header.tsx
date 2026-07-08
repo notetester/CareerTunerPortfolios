@@ -30,6 +30,7 @@ import {
   Award,
   LogOut,
   ShieldCheck,
+  CalendarClock,
 } from "lucide-react";
 
 const navItems = [
@@ -98,6 +99,16 @@ const navItems = [
       { label: "직무별 준비도", href: "/analysis?tab=readiness" },
       { label: "면접 점수 변화", href: "/analysis?tab=score" },
       { label: "추천 지원 방향", href: "/analysis?tab=recommendation" },
+    ],
+  },
+  {
+    label: "플래너",
+    href: "/planner",
+    icon: CalendarClock,
+    children: [
+      { label: "일정 관리", href: "/planner" },
+      { label: "메모 관리", href: "/planner?tab=memo" },
+      { label: "오버레이 관리", href: "/planner?tab=overlay" },
     ],
   },
   {

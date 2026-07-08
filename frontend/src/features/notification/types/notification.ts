@@ -70,7 +70,8 @@ export type UserNotificationType =
   | "PAYMENT_SCHEDULED"
   | "SUBSCRIPTION_CANCELED"
   | "CREDIT_RECHARGED"
-  | "REFUND_RESULT";
+  | "REFUND_RESULT"
+  | "SCHEDULE_REMINDER";
 
 /* ── 발신자 관계 (댓글·답글·쪽지·채팅 알림의 세부 필터 차원) ── */
 export type SenderRelation = "stranger" | "friend" | "company" | "operator";
@@ -202,6 +203,7 @@ export const TYPE_META: Record<NotificationType, TypeMeta> = {
   SUBSCRIPTION_CANCELED:     { cat: "billing",     icon: "CalendarX",          variant: "info",    cta: "구독 상태 보기" },
   CREDIT_RECHARGED:          { cat: "billing",     icon: "CreditCard",         variant: "success", cta: "크레딧 보기" },
   REFUND_RESULT:             { cat: "billing",     icon: "CreditCard",         variant: "info",    cta: "환불 결과 보기" },
+  SCHEDULE_REMINDER:         { cat: "notice",      icon: "CalendarClock",      variant: "warning", cta: "일정 보기" },
   /* 공지 */
   NOTICE:                    { cat: "notice",      icon: "Megaphone",          variant: "warning", cta: "공지 보기" },
   TICKET_ANSWERED:           { cat: "notice",      icon: "MessageSquareReply", variant: "info",    cta: "문의 답변 보기", actor: true },
@@ -321,6 +323,7 @@ export const TYPE_TO_CATEGORY: Record<NotificationType, NotificationCategory> = 
   SUBSCRIPTION_CANCELED: "billing",
   CREDIT_RECHARGED: "billing",
   REFUND_RESULT: "billing",
+  SCHEDULE_REMINDER: "notice",
   /* 공지/문의 */
   NOTICE: "notice",
   TICKET_ANSWERED: "notice",

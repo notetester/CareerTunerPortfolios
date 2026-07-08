@@ -2,6 +2,7 @@ import { useNavigate } from "react-router";
 import {
   User, PenTool, Users, CreditCard, Bell, Settings, LifeBuoy, ShieldCheck,
   LogOut, X, Download, Share, Award, LayoutDashboard, Briefcase, TrendingUp, MessagesSquare,
+  CalendarClock,
 } from "lucide-react";
 import { useAuth } from "../../auth/AuthContext";
 import { haptic } from "@/platform/haptics";
@@ -19,6 +20,7 @@ const MORE_ITEMS: MoreItem[] = [
   { label: "대시보드", href: "/dashboard", icon: LayoutDashboard },
   { label: "지원 건", href: "/applications", icon: Briefcase },
   { label: "분석", href: "/analysis", icon: TrendingUp },
+  { label: "플래너", href: "/planner", icon: CalendarClock },
   { label: "메신저", href: "/messenger", icon: MessagesSquare },
   { label: "내 프로필", href: "/profile", icon: User },
   { label: "AI 첨삭", href: "/correction", icon: PenTool },

@@ -7,6 +7,7 @@ import { ApplicationDetailPage } from "./pages/ApplicationDetail";
 import { AIInterviewPage } from "./pages/AIInterview";
 import { CorrectionPage } from "./pages/Correction";
 import { AnalysisPage } from "./pages/Analysis";
+import { PlannerPage } from "./pages/Planner";
 import { CommunityPage } from "./pages/Community";
 import { MessengerPage } from "./pages/Messenger";
 import { BillingPage } from "./pages/Billing";
@@ -70,6 +71,7 @@ export const router = createBrowserRouter([
       { path: "mic-remote", Component: MicRemotePage },
       { path: "correction", Component: CorrectionPage },
       { path: "analysis", Component: AnalysisPage },
+      { path: "planner", Component: PlannerPage },
       { path: "messenger", Component: MessengerPage },
       { path: "community", Component: CommunityPage },
       // 알림/딥링크용 글 상세 경로. 같은 CommunityPage가 :postId를 읽어 상세 뷰를 연다. (팀장 승인 2026-06-19)
