@@ -56,6 +56,29 @@ class MockFitAnalysisAiServiceTest {
     }
 
     @Test
+    void genericJobWithoutCertSignalProducesNoCertificateRecommendations() {
+        // cert-need-gate OFF(신호 없음) → 자격증이 무분별하게 붙지 않는다(완료 기준: 필요 신호 없으면 추천 미생성).
+        FitAnalysisAiResult result = service.generate(new FitAnalysisAiCommand(
+                "테스트기업", "백엔드 개발자",
+                List.of("Java", "Spring"), List.of("AWS"), "REST API 개발",
+                List.of("Java"), List.of(), "백엔드 개발자"));
+
+        assertThat(result.recommendedCertificates()).isEmpty();
+        assertThat(result.certificateRecommendations()).isEmpty();
+    }
+
+    @Test
+    void postingNamingCertificateProducesRecommendations() {
+        // cert-need-gate ON(공고에 자격증 명시) → 자격증 추천 생성.
+        FitAnalysisAiResult result = service.generate(new FitAnalysisAiCommand(
+                "테스트기업", "백엔드 개발자",
+                List.of("Java"), List.of("정보처리기사"), "백엔드 개발",
+                List.of("Java"), List.of(), "백엔드 개발자"));
+
+        assertThat(result.recommendedCertificates()).isNotEmpty();
+    }
+
+    @Test
     void companyContextDoesNotAffectRuleEngineJudgment() {
         // 뉴로-심볼릭 불변식: 기업 맥락은 설명 생성용일 뿐, 규칙엔진 판단값(fitScore/matched/missing/applyDecision/
         // conditionMatrix)을 절대 바꾸지 않는다. 기업 맥락 유무로 판단값이 달라지면 이 테스트가 실패한다.
