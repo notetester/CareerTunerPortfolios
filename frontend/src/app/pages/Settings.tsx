@@ -13,6 +13,7 @@ import { NotificationSettings } from "@/features/notification/components/Notific
 import { PrivacySettings } from "@/features/privacy/components/PrivacySettings";
 import { ServerAddressSettings } from "@/features/settings/components/ServerAddressSettings";
 import { AccountInfoCard } from "@/features/profile/components/AccountInfoCard";
+import { MfaSettingsCard } from "@/features/profile/components/MfaSettingsCard";
 import { AppLockSettings } from "../components/AppLockSettings";
 
 const tabs = ["account", "privacy", "ai-consent", "notifications", "blocks"] as const;
@@ -158,6 +159,7 @@ export function SettingsPage() {
               </CardContent>
             </Card>
             {/* 앱/개발 전용 — 배포 웹에서는 컴포넌트가 스스로 숨는다(null 렌더). */}
+            <MfaSettingsCard />
             <ServerAddressSettings />
           </TabsContent>
 

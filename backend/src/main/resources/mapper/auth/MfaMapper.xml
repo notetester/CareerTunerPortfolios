@@ -1,0 +1,167 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.careertuner.auth.mapper.MfaMapper">
+
+    <select id="findSettingByUserId" resultType="com.careertuner.auth.domain.UserMfaSetting">
+        SELECT *
+        FROM user_mfa_setting
+        WHERE user_id = #{userId}
+        LIMIT 1
+    </select>
+
+    <insert id="upsertSetting" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO user_mfa_setting (
+            user_id, enabled, verified, mfa_type, secret_key_encrypted, device_name, push_enabled, last_verified_at
+        )
+        VALUES (
+            #{userId}, #{enabled}, #{verified}, #{mfaType}, #{secretKeyEncrypted}, #{deviceName}, #{pushEnabled}, #{lastVerifiedAt}
+        )
+        ON DUPLICATE KEY UPDATE
+            enabled = VALUES(enabled),
+            verified = VALUES(verified),
+            mfa_type = VALUES(mfa_type),
+            secret_key_encrypted = VALUES(secret_key_encrypted),
+            device_name = VALUES(device_name),
+            push_enabled = VALUES(push_enabled),
+            last_verified_at = VALUES(last_verified_at),
+            updated_at = NOW()
+    </insert>
+
+    <update id="enableSetting">
+        UPDATE user_mfa_setting
+        SET enabled = 1,
+            verified = 1,
+            last_verified_at = NOW(),
+            updated_at = NOW()
+        WHERE user_id = #{userId}
+    </update>
+
+    <update id="disableSetting">
+        UPDATE user_mfa_setting
+        SET enabled = 0,
+            verified = 0,
+            updated_at = NOW()
+        WHERE user_id = #{userId}
+    </update>
+
+    <update id="touchSettingUsed">
+        UPDATE user_mfa_setting
+        SET last_used_at = NOW(),
+            updated_at = NOW()
+        WHERE user_id = #{userId}
+    </update>
+
+    <insert id="insertChallenge" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO mfa_challenge (
+            user_id, challenge_token, challenge_type, delivery_type, status,
+            expires_at, ip_address, user_agent, device_name
+        )
+        VALUES (
+            #{userId}, #{challengeToken}, #{challengeType}, #{deliveryType}, #{status},
+            #{expiresAt}, #{ipAddress}, #{userAgent}, #{deviceName}
+        )
+    </insert>
+
+    <select id="findChallengeByToken" resultType="com.careertuner.auth.domain.MfaChallenge">
+        SELECT *
+        FROM mfa_challenge
+        WHERE challenge_token = #{challengeToken}
+        LIMIT 1
+    </select>
+
+    <select id="findPendingPushChallenges" resultType="com.careertuner.auth.domain.MfaChallenge">
+        SELECT *
+        FROM mfa_challenge
+        WHERE user_id = #{userId}
+          AND status = 'PENDING'
+          AND expires_at > NOW()
+        ORDER BY created_at DESC
+        LIMIT 20
+    </select>
+
+    <update id="markChallengeVerified">
+        UPDATE mfa_challenge
+        SET status = 'VERIFIED',
+            verified_at = NOW(),
+            updated_at = NOW()
+        WHERE challenge_token = #{challengeToken}
+    </update>
+
+    <update id="markChallengeApproved">
+        UPDATE mfa_challenge
+        SET status = 'APPROVED',
+            approved_at = NOW(),
+            device_name = COALESCE(NULLIF(#{deviceName}, ''), device_name),
+            updated_at = NOW()
+        WHERE challenge_token = #{challengeToken}
+          AND status = 'PENDING'
+          AND expires_at > NOW()
+    </update>
+
+    <update id="markChallengeDenied">
+        UPDATE mfa_challenge
+        SET status = 'DENIED',
+            device_name = COALESCE(NULLIF(#{deviceName}, ''), device_name),
+            updated_at = NOW()
+        WHERE challenge_token = #{challengeToken}
+          AND status = 'PENDING'
+          AND expires_at > NOW()
+    </update>
+
+    <update id="expireOldChallenges">
+        UPDATE mfa_challenge
+        SET status = 'EXPIRED',
+            updated_at = NOW()
+        WHERE status = 'PENDING'
+          AND expires_at &lt;= #{now}
+    </update>
+
+    <delete id="deleteBackupCodes">
+        DELETE FROM mfa_backup_code WHERE user_id = #{userId}
+    </delete>
+
+    <insert id="insertBackupCode" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO mfa_backup_code (user_id, code_hash)
+        VALUES (#{userId}, #{codeHash})
+    </insert>
+
+    <select id="findUnusedBackupCodes" resultType="com.careertuner.auth.domain.MfaBackupCode">
+        SELECT *
+        FROM mfa_backup_code
+        WHERE user_id = #{userId}
+          AND used = 0
+        ORDER BY created_at ASC
+    </select>
+
+    <select id="countUnusedBackupCodes" resultType="int">
+        SELECT COUNT(*)
+        FROM mfa_backup_code
+        WHERE user_id = #{userId}
+          AND used = 0
+    </select>
+
+    <update id="markBackupCodeUsed">
+        UPDATE mfa_backup_code
+        SET used = 1,
+            used_at = NOW()
+        WHERE id = #{id}
+    </update>
+
+    <select id="findPolicy" resultType="com.careertuner.auth.domain.MfaPolicy">
+        SELECT *
+        FROM mfa_policy
+        WHERE id = 1
+    </select>
+
+    <insert id="upsertPolicy">
+        INSERT INTO mfa_policy (id, require_admins, allow_backup_code, allow_push_approval, updated_by)
+        VALUES (1, #{requireAdmins}, #{allowBackupCode}, #{allowPushApproval}, #{updatedBy})
+        ON DUPLICATE KEY UPDATE
+            require_admins = VALUES(require_admins),
+            allow_backup_code = VALUES(allow_backup_code),
+            allow_push_approval = VALUES(allow_push_approval),
+            updated_by = VALUES(updated_by),
+            updated_at = NOW()
+    </insert>
+</mapper>

@@ -24,6 +24,15 @@ export interface TokenResponse {
   user: MeUser;
 }
 
+export interface LoginResponse {
+  mfaRequired: boolean;
+  mfaSetupRecommended: boolean;
+  challengeToken: string | null;
+  challengeMethod: "TOTP" | "TOTP_OR_PUSH" | string | null;
+  expiresIn: number;
+  token: TokenResponse | null;
+}
+
 export type SocialProvider = "google" | "kakao" | "naver";
 
 export interface RegisterConsents {
@@ -37,7 +46,8 @@ interface AuthContextValue {
   user: MeUser | null;
   loading: boolean;
   isAuthenticated: boolean;
-  login(identifier: string, password: string): Promise<void>;
+  login(identifier: string, password: string): Promise<LoginResponse>;
+  completeLogin(token: TokenResponse): void;
   register(loginId: string, email: string | null, password: string, name: string, consents: RegisterConsents): Promise<void>;
   socialLogin(provider: SocialProvider): void;
   logout(): Promise<void>;
@@ -70,6 +80,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     refreshMe().finally(() => setLoading(false));
   }, [refreshMe]);
 
+  const completeLogin = useCallback((token: TokenResponse) => {
+    setTokens({ accessToken: token.accessToken, refreshToken: token.refreshToken });
+    setUser(token.user);
+  }, []);
+
   useEffect(() => subscribeCreditBalanceChanged(({ remainingCredit }) => {
     if (remainingCredit !== undefined && Number.isSafeInteger(remainingCredit) && remainingCredit >= 0) {
       setUser((current) => (current ? { ...current, credit: remainingCredit } : current));
@@ -79,15 +94,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }), [refreshMe]);
 
   const login = useCallback(async (identifier: string, password: string) => {
-    const res = await api<TokenResponse>(
+    const res = await api<LoginResponse>(
       "/auth/login",
       // 백엔드 호환성을 위해 필드명은 email을 유지하되, 값은 로그인 아이디 또는 이메일을 허용한다.
       { method: "POST", body: JSON.stringify({ email: identifier, password }) },
       { auth: false },
     );
-    setTokens({ accessToken: res.accessToken, refreshToken: res.refreshToken });
-    setUser(res.user);
-  }, []);
+    if (res.token) {
+      completeLogin(res.token);
+    }
+    return res;
+  }, [completeLogin]);
 
   const register = useCallback(async (
     loginId: string,
@@ -141,6 +158,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         loading,
         isAuthenticated: !!user,
         login,
+        completeLogin,
         register,
         socialLogin,
         logout,

@@ -121,7 +121,13 @@ export function LoginPage() {
     try {
       setSubmitting(true);
       if (mode === "login") {
-        await login(loginIdentifier, password);
+        const result = await login(loginIdentifier, password);
+        if (result.mfaRequired && result.challengeToken) {
+          const returnTo = new URLSearchParams(window.location.search).get("returnTo");
+          const safeReturnTo = returnTo && returnTo.startsWith("/") && !returnTo.startsWith("//") ? returnTo : "/dashboard";
+          navigate(`/auth/mfa?challengeToken=${encodeURIComponent(result.challengeToken)}&returnTo=${encodeURIComponent(safeReturnTo)}`, { replace: true });
+          return;
+        }
       } else {
         const normalizedLoginId = loginId.trim().toLowerCase();
         await register(normalizedLoginId, email.trim() || null, password, name.trim(), {
