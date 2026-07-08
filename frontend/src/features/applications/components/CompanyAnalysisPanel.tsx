@@ -3,6 +3,7 @@ import { Link } from "react-router";
 import { Building2, Eye, Loader2, Pencil, PlayCircle } from "lucide-react";
 import { Button } from "@/app/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/app/components/ui/card";
+import { AiChargeCostBadge } from "@/features/billing/components/AiChargeCostBadge";
 import { Input } from "@/app/components/ui/input";
 import { Textarea } from "@/app/components/ui/textarea";
 import type {
@@ -256,6 +257,7 @@ export function CompanyAnalysisPanel({
             </p>
           </div>
           <div className="flex flex-wrap gap-2 sm:justify-end">
+            <AiChargeCostBadge featureType="COMPANY_RESEARCH" />
             {analysis && mode === "view" && (
               <Button asChild size="sm" variant="outline">
                 <Link to={editHref}>
