@@ -78,9 +78,11 @@ public class CorrectionService {
         String policyAcknowledgementKey = chargeRequired
                 ? normalizePolicyAcknowledgementKey(request == null ? null : request.policyAcknowledgementKey())
                 : null;
+        // 유료 경로는 멱등키 필수, 무과금 경로(autoprep)는 선택 — 넘겨주면 유료와 동일하게 리플레이된다.
+        // 무과금이라고 키를 버리면 재시도마다 AI 재호출 + correction_request 중복 행이 생긴다.
         String requestKey = chargeRequired
                 ? normalizeRequestKey(request == null ? null : request.requestKey())
-                : null;
+                : optionalRequestKey(request == null ? null : request.requestKey());
         Long applicationCaseId = request == null ? null : request.applicationCaseId();
         ApplicationCase applicationCase = applicationCaseId == null
                 ? null
@@ -228,6 +230,15 @@ public class CorrectionService {
             throw new BusinessException(ErrorCode.INVALID_INPUT, "첨삭 요청키가 올바르지 않습니다.");
         }
         return key;
+    }
+
+    /**
+     * 무과금 경로의 <b>선택적</b> 멱등키. 비어 있으면 멱등성 없이 진행하고(기존 동작),
+     * 값이 있으면 유료 경로와 동일한 형식 규칙으로 검증한다. {@code uk_correction_request_user_key}
+     * 는 NULL 을 다중 허용하므로 키 없는 행끼리는 충돌하지 않는다.
+     */
+    private String optionalRequestKey(String value) {
+        return (value == null || value.isBlank()) ? null : normalizeRequestKey(value);
     }
 
     private CorrectionRequest findExisting(Long userId, String requestKey) {

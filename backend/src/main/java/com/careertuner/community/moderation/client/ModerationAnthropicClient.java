@@ -34,6 +34,15 @@ public class ModerationAnthropicClient {
 
     private static final int MAX_ATTEMPTS = 3;
 
+    /**
+     * Anthropic Messages API 의 이미지당 상한 — <b>base64 인코딩 기준</b> 10MB.
+     *
+     * <p>base64 는 원본 바이트의 약 4/3 배라, {@code PostImageModerationService.MAX_IMAGE_BYTES}(원본 8MB)를
+     * 통과한 이미지도 원본 7.5MB 를 넘으면 여기서 초과한다. 그 구간은 400 이 확정이므로 호출 자체를 건너뛴다
+     * ({@link #visionPayloadWithinLimit}) — 400 을 받고 재시도까지 태우는 낭비를 막고 다음 tier 로 넘긴다.
+     */
+    private static final int MAX_IMAGE_BASE64_BYTES = 10 * 1024 * 1024;
+
     private final AnthropicProperties properties;
     private final ObjectMapper objectMapper;
     private final HttpClient httpClient;
@@ -49,6 +58,23 @@ public class ModerationAnthropicClient {
     /** 키 설정 여부 — 게이트웨이가 Claude 폴백 시도 가능 여부 판단에 쓴다. */
     public boolean available() {
         return properties.configured();
+    }
+
+    /**
+     * vision 요청의 모든 이미지가 Anthropic 이미지당 상한(base64 10MB) 안에 드는지.
+     * 한 장이라도 넘으면 게이트웨이가 이 tier 를 건너뛴다. base64 는 ASCII 라 문자 수 = 바이트 수.
+     */
+    public boolean visionPayloadWithinLimit(List<ModerationImage> images) {
+        if (images == null) {
+            return true;
+        }
+        for (ModerationImage image : images) {
+            String data = image.base64Data();
+            if (data != null && data.length() > MAX_IMAGE_BASE64_BYTES) {
+                return false;
+            }
+        }
+        return true;
     }
 
     public String chat(String systemPrompt, String userText, Map<String, Object> jsonSchema) {

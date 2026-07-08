@@ -91,13 +91,13 @@ public class ModerationLlmGateway {
     }
 
     /**
-     * 이미지(vision) 검열 — 텍스트 {@link #chat}와 동일한 폴백 체인(자체 gemma4 vision → Claude → OpenAI → Mock).
-     * gemma4 는 vision capability 가 있어 로컬 우선이 성립하고, 실패 시 Claude/OpenAI vision 으로 이어간다.
+     * 이미지(vision) 검열 — 텍스트 {@link #chat}와 동일한 폴백 체인(자체 vision 모델 → Claude → OpenAI → Mock).
+     * 로컬은 {@code ai.ollama.vision-model}(qwen2.5vl)을 쓰고, 실패 시 Claude/OpenAI vision 으로 이어간다.
      * 최종 Mock 은 미판정 placeholder(mock=true) 라 호출부가 블러를 걸지 않는다(fail-open).
      */
     public LlmReply chatVision(String systemPrompt, String userText,
                                List<ModerationImage> images, Map<String, Object> jsonSchema) {
-        // 1) 자체 Ollama(gemma4) vision 우선.
+        // 1) 자체 Ollama vision 우선 — 이미지 크기 상한이 없어 원본 8MB 까지 그대로 판정한다.
         try {
             List<String> base64 = images.stream().map(ModerationImage::base64Data).toList();
             return new LlmReply(ollama.chatVision(systemPrompt, userText, base64, jsonSchema),
@@ -105,13 +105,17 @@ public class ModerationLlmGateway {
         } catch (RuntimeException ex) {
             log.warn("이미지 검열 Ollama(vision) 호출 실패 → Claude 폴백: {}", ex.getMessage());
         }
-        // 2) 1차 폴백: Claude vision.
+        // 2) 1차 폴백: Claude vision. 이미지당 base64 10MB 상한을 넘으면 400 이 확정이라 tier 를 건너뛴다.
         if (anthropic.available()) {
-            try {
-                return new LlmReply(anthropic.chatVision(systemPrompt, userText, images, jsonSchema),
-                        anthropicProperties.getModel(), false);
-            } catch (RuntimeException ex) {
-                log.warn("이미지 검열 Claude(vision) 호출 실패 → OpenAI 폴백: {}", ex.getMessage());
+            if (anthropic.visionPayloadWithinLimit(images)) {
+                try {
+                    return new LlmReply(anthropic.chatVision(systemPrompt, userText, images, jsonSchema),
+                            anthropicProperties.getModel(), false);
+                } catch (RuntimeException ex) {
+                    log.warn("이미지 검열 Claude(vision) 호출 실패 → OpenAI 폴백: {}", ex.getMessage());
+                }
+            } else {
+                log.warn("이미지 검열 Claude(vision) 건너뜀 — 이미지가 Anthropic 상한(base64 10MB) 초과 → OpenAI 폴백");
             }
         }
         // 3) 2차 폴백: OpenAI vision.
