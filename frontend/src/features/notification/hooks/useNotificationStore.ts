@@ -26,7 +26,14 @@ interface NotificationState {
   pollNotifications: () => Promise<void>;
   markAsRead: (id: number) => Promise<void>;
   markAllAsRead: () => Promise<void>;
+  deleteNotification: (id: number) => Promise<void>;
+  deleteAll: () => Promise<void>;
   setFilter: (category: NotificationCategory) => void;
+
+  /** 알림 설정 로드(끄기 버튼 상태 표시용) */
+  fetchPreference: () => Promise<void>;
+  /** 푸시 알림 on/off 즉시 토글 */
+  setPushEnabled: (enabled: boolean) => Promise<void>;
 
   /** 현재 필터 기준 목록 */
   filtered: () => Notification[];
@@ -126,6 +133,42 @@ export const useNotificationStore = create<NotificationState>((set, get) => ({
     set({
       notifications: get().notifications.map((n) => ({ ...n, isRead: true })),
       unreadCount: 0,
+    });
+  },
+
+  deleteNotification: async (id) => {
+    const target = get().notifications.find((n) => n.id === id);
+    await notificationApi.deleteNotification(id);
+    set({
+      notifications: get().notifications.filter((n) => n.id !== id),
+      unreadCount: target && !target.isRead
+        ? Math.max(0, get().unreadCount - 1)
+        : get().unreadCount,
+    });
+  },
+
+  deleteAll: async () => {
+    await notificationApi.deleteAllNotifications();
+    set({ notifications: [], unreadCount: 0 });
+  },
+
+  fetchPreference: async () => {
+    try {
+      const loaded = await notificationApi.getNotificationPreferences();
+      set({
+        preference: { ...loaded, rules: normalizeNotificationRules(loaded.rules) },
+        preferenceFetchedAt: Date.now(),
+      });
+    } catch {
+      // 설정 로드 실패는 조용히 무시(끄기 버튼은 기본값 표시)
+    }
+  },
+
+  setPushEnabled: async (enabled) => {
+    const updated = await notificationApi.updateNotificationPreferences({ pushEnabled: enabled });
+    set({
+      preference: { ...updated, rules: normalizeNotificationRules(updated.rules) },
+      preferenceFetchedAt: Date.now(),
     });
   },
 
