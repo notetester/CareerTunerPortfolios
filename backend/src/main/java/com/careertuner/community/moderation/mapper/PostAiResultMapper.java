@@ -1,5 +1,6 @@
 package com.careertuner.community.moderation.mapper;
 
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
 
@@ -36,6 +37,10 @@ public interface PostAiResultMapper {
 
     PostAiResult findByPostIdAndTaskType(@Param("postId") Long postId,
                                          @Param("taskType") AiTaskType taskType);
+
+    /** 사용자별 최근 window(since 이후) 블러 처리된 글 수 — 소프트 스트라이크 누적 제재 판정용. */
+    int countBlurredByUserSince(@Param("userId") Long userId,
+                                @Param("since") LocalDateTime since);
 
     List<ModerationView> findModerationList(@Param("status") String status,
                                             @Param("toxic") Boolean toxic,

@@ -6,6 +6,7 @@ import {
 } from "lucide-react";
 import ModerationSettingsPanel from "../../moderation/pages/ModerationSettingsPanel";
 import AdminShell from "../../../components/AdminShell";
+import { isHtmlContent, sanitizePostHtml } from "@/app/lib/postContent";
 import {
   AdminListFooter,
   AdminListToolbar,
@@ -68,6 +69,17 @@ const CATEGORY_LABELS: Record<string, string> = {
   abuse: "욕설/비하",
   spam: "스팸",
   ad: "광고",
+};
+
+// 이미지 검열 카테고리/액션 라벨 (텍스트와 성격이 달라 별도 매핑)
+const IMG_CATEGORY_LABELS: Record<string, string> = {
+  normal: "정상", abuse: "유해", gross: "혐오/역겨움", ad: "광고", spam: "스팸", pii: "개인정보",
+};
+const IMG_ACTION_LABELS: Record<string, string> = {
+  hide: "숨김", blur: "블러", allow: "통과",
+};
+const IMG_ACTION_COLOR: Record<string, string> = {
+  hide: "#e74c3c", blur: "#e67e22", allow: "#27ae60",
 };
 
 /* ── 메인 탭 ── */
@@ -726,12 +738,25 @@ function ModerationPanel({ flash }: { flash: (msg: string) => void }) {
                 <div className="av-muted" style={{ fontSize: "0.85rem" }}>{detail.authorName} · {detail.category}</div>
               </div>
 
-              <div style={{
-                background: "var(--muted)", padding: "0.75rem", borderRadius: "0.5rem",
-                fontSize: "0.9rem", maxHeight: "12rem", overflow: "auto", margin: "0 16px 1rem", whiteSpace: "pre-wrap",
-              }}>
-                {detail.content}
-              </div>
+              {/* 리치텍스트(TipTap) 글은 sanitize 후 HTML 렌더 — 그래야 관리자도 이미지 포함 실제 본문을 본다.
+                  기존 평문 글은 줄바꿈 보존(무회귀). 댓글(아래)은 평문이라 그대로 둔다. */}
+              {isHtmlContent(detail.content) ? (
+                <div
+                  className="admin-post-content"
+                  style={{
+                    background: "var(--muted)", padding: "0.75rem", borderRadius: "0.5rem",
+                    fontSize: "0.9rem", maxHeight: "12rem", overflow: "auto", margin: "0 16px 1rem",
+                  }}
+                  dangerouslySetInnerHTML={{ __html: sanitizePostHtml(detail.content) }}
+                />
+              ) : (
+                <div style={{
+                  background: "var(--muted)", padding: "0.75rem", borderRadius: "0.5rem",
+                  fontSize: "0.9rem", maxHeight: "12rem", overflow: "auto", margin: "0 16px 1rem", whiteSpace: "pre-wrap",
+                }}>
+                  {detail.content}
+                </div>
+              )}
 
               <div className="av-rates" style={{ marginBottom: "1rem" }}>
                 <div className="av-rate">
@@ -759,6 +784,44 @@ function ModerationPanel({ flash }: { flash: (msg: string) => void }) {
                   <span className="av-rate__v num">{detail.attemptCount}</span>
                 </div>
               </div>
+
+              {/* 이미지 검열 결과(IMAGE_MODERATION) — 텍스트 분석과 별개. 썸네일+카테고리+확신도+액션 */}
+              {detail.images && detail.images.length > 0 && (
+                <div style={{ padding: "0 16px 16px" }}>
+                  <div className="av-rate__l" style={{ marginBottom: 8, fontWeight: 600 }}>
+                    이미지 분석 ({detail.images.length})
+                  </div>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                    {detail.images.map((img, i) => (
+                      <div key={i} style={{
+                        display: "flex", gap: 10, alignItems: "center",
+                        padding: 8, background: "var(--muted)", borderRadius: 8,
+                      }}>
+                        {img.url && (
+                          <img src={img.url} alt="" style={{
+                            width: 56, height: 56, objectFit: "cover", borderRadius: 6, flexShrink: 0,
+                          }} />
+                        )}
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ fontSize: "0.85rem", fontWeight: 600 }}>
+                            {IMG_CATEGORY_LABELS[img.category ?? ""] ?? img.category ?? "-"}
+                            {" · "}
+                            {img.confidence != null ? `${(img.confidence * 100).toFixed(0)}%` : "-"}
+                          </div>
+                          <div style={{
+                            fontSize: "0.72rem", color: "var(--av-ink-3, #94a3b8)",
+                            overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+                          }}>{img.url}</div>
+                        </div>
+                        <span style={{
+                          fontSize: "0.75rem", fontWeight: 700, flexShrink: 0,
+                          color: IMG_ACTION_COLOR[img.action ?? ""] ?? "var(--av-ink-2)",
+                        }}>{IMG_ACTION_LABELS[img.action ?? ""] ?? img.action ?? "-"}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
 
               {detail.status === "HIDDEN" && (
                 <div style={{ display: "flex", gap: "0.5rem", padding: "0 16px 16px" }}>

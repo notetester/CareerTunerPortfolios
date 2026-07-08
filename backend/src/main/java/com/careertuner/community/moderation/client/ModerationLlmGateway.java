@@ -1,5 +1,6 @@
 package com.careertuner.community.moderation.client;
 
+import java.util.List;
 import java.util.Map;
 
 import org.slf4j.Logger;
@@ -8,6 +9,7 @@ import org.springframework.stereotype.Component;
 
 import com.careertuner.applicationcase.service.OpenAiProperties;
 import com.careertuner.community.moderation.config.OllamaProperties;
+import com.careertuner.community.moderation.dto.ModerationImage;
 import com.careertuner.interview.service.AnthropicProperties;
 
 /**
@@ -85,6 +87,44 @@ public class ModerationLlmGateway {
         // 4) 최종 폴백: Mock — 외부 provider 가 모두 미설정/실패해도 파이프라인이 멈추지 않게
         //    미판정 placeholder 반환. 호출부는 mock=true 를 보고 UNMODERATED 로 기록한다.
         log.warn("검열 모든 LLM provider 미설정/실패 → Mock(미판정 placeholder) 응답");
+        return new LlmReply(mock.chat(systemPrompt, userText, jsonSchema), MOCK_MODEL, true);
+    }
+
+    /**
+     * 이미지(vision) 검열 — 텍스트 {@link #chat}와 동일한 폴백 체인(자체 gemma4 vision → Claude → OpenAI → Mock).
+     * gemma4 는 vision capability 가 있어 로컬 우선이 성립하고, 실패 시 Claude/OpenAI vision 으로 이어간다.
+     * 최종 Mock 은 미판정 placeholder(mock=true) 라 호출부가 블러를 걸지 않는다(fail-open).
+     */
+    public LlmReply chatVision(String systemPrompt, String userText,
+                               List<ModerationImage> images, Map<String, Object> jsonSchema) {
+        // 1) 자체 Ollama(gemma4) vision 우선.
+        try {
+            List<String> base64 = images.stream().map(ModerationImage::base64Data).toList();
+            return new LlmReply(ollama.chatVision(systemPrompt, userText, base64, jsonSchema),
+                    ollamaProperties.getVisionModel(), false);
+        } catch (RuntimeException ex) {
+            log.warn("이미지 검열 Ollama(vision) 호출 실패 → Claude 폴백: {}", ex.getMessage());
+        }
+        // 2) 1차 폴백: Claude vision.
+        if (anthropic.available()) {
+            try {
+                return new LlmReply(anthropic.chatVision(systemPrompt, userText, images, jsonSchema),
+                        anthropicProperties.getModel(), false);
+            } catch (RuntimeException ex) {
+                log.warn("이미지 검열 Claude(vision) 호출 실패 → OpenAI 폴백: {}", ex.getMessage());
+            }
+        }
+        // 3) 2차 폴백: OpenAI vision.
+        if (openAi.available()) {
+            try {
+                return new LlmReply(openAi.chatVision(systemPrompt, userText, images, jsonSchema),
+                        openAiProperties.getModel(), false);
+            } catch (RuntimeException ex) {
+                log.warn("이미지 검열 OpenAI(vision) 호출 실패 → Mock 폴백: {}", ex.getMessage());
+            }
+        }
+        // 4) 최종 폴백: Mock(미판정) — 이미지 검열은 fail-open 이라 블러를 걸지 않는다.
+        log.warn("이미지 검열 모든 vision provider 미설정/실패 → Mock(미판정) 응답");
         return new LlmReply(mock.chat(systemPrompt, userText, jsonSchema), MOCK_MODEL, true);
     }
 }

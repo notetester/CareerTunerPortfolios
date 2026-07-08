@@ -1,5 +1,14 @@
 /* ===== AdminReports v2 — 1-column table layout ===== */
 
+/* 검열 상세 — 리치텍스트 글 본문(HTML) 렌더 시 이미지·문단 정리(관리자도 실제 본문/이미지 확인) */
+.admin-post-content img { max-width: 100%; height: auto; margin: 6px 0; border-radius: 6px; display: block; }
+.admin-post-content p { margin: 6px 0; }
+.admin-post-content p:first-child { margin-top: 0; }
+.admin-post-content a { color: var(--brand-blue, #2563eb); text-decoration: underline; }
+.admin-post-content ul, .admin-post-content ol { margin: 6px 0; padding-left: 20px; }
+.admin-post-content ul { list-style: disc; }
+.admin-post-content ol { list-style: decimal; }
+
 .rv-ct { font-size: 12px; font-weight: 650; }
 .rv-ct.hot { color: var(--av-red); }
 

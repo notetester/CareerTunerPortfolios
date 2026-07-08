@@ -6,12 +6,14 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
 import org.springframework.stereotype.Component;
 
+import com.careertuner.community.moderation.dto.ModerationImage;
 import com.careertuner.interview.service.AnthropicProperties;
 
 import tools.jackson.core.JacksonException;
@@ -65,6 +67,39 @@ public class ModerationAnthropicClient {
         body.put("max_tokens", properties.getMaxTokens());
         body.put("system", systemPrompt);
         body.put("messages", List.of(Map.of("role", "user", "content", userWithSchema)));
+        body.put("temperature", 0.0);
+
+        return extractText(post(body));
+    }
+
+    /**
+     * 이미지 검열 vision 폴백 — user 메시지에 image 블록(base64) + text 블록(스키마 지시)을 함께 넣는다.
+     * 공고 OCR({@code BAnthropicClient})의 image source 포맷과 동일하다.
+     */
+    public String chatVision(String systemPrompt, String userText,
+                             List<ModerationImage> images, Map<String, Object> jsonSchema) {
+        String schemaHint;
+        try {
+            schemaHint = objectMapper.writeValueAsString(jsonSchema);
+        } catch (JacksonException ex) {
+            schemaHint = "{}";
+        }
+        String userWithSchema = userText
+                + "\n\n반드시 아래 JSON 스키마를 만족하는 JSON 객체 하나만 출력하라. "
+                + "코드블록·설명·여는말 없이 순수 JSON 만 출력한다.\nJSON 스키마:\n" + schemaHint;
+
+        List<Object> content = new ArrayList<>();
+        for (ModerationImage image : images) {
+            content.add(Map.of("type", "image",
+                    "source", Map.of("type", "base64", "media_type", image.mediaType(), "data", image.base64Data())));
+        }
+        content.add(Map.of("type", "text", "text", userWithSchema));
+
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("model", properties.getModel());
+        body.put("max_tokens", properties.getMaxTokens());
+        body.put("system", systemPrompt);
+        body.put("messages", List.of(Map.of("role", "user", "content", content)));
         body.put("temperature", 0.0);
 
         return extractText(post(body));
