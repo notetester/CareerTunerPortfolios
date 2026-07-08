@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import sys
 from pathlib import Path
 from typing import Any
@@ -35,12 +36,56 @@ def patch_minor_length_shortfall(text: str, sample: dict[str, Any]) -> str:
     return json.dumps(parsed, ensure_ascii=False, separators=(",", ":"))
 
 
+def restore_repair_paragraphs(text: str, sample: dict[str, Any], problems: list[str]) -> str:
+    if not any("paragraph" in problem.lower() for problem in problems):
+        return text
+    constraints = sample.get("input", {}).get("constraints", {})
+    if constraints.get("preserve_paragraphs") is not True:
+        return text
+    try:
+        parsed = json.loads(extract_json(text))
+    except json.JSONDecodeError:
+        return text
+    corrected_text = parsed.get("corrected_text")
+    original_text = sample.get("input", {}).get("original_text", "")
+    if not isinstance(corrected_text, str) or not isinstance(original_text, str):
+        return text
+
+    target_paragraphs = len(re.split(r"\n\s*\n", original_text.strip()))
+    current_paragraphs = len(re.split(r"\n\s*\n", corrected_text.strip()))
+    if target_paragraphs <= 1 or current_paragraphs >= target_paragraphs:
+        return text
+    sentences = re.split(r"(?<=[.!?])\s+", corrected_text.strip())
+    if len(sentences) < target_paragraphs:
+        return text
+
+    base_size, remainder = divmod(len(sentences), target_paragraphs)
+    paragraphs: list[str] = []
+    offset = 0
+    for paragraph in range(target_paragraphs):
+        size = base_size + (1 if paragraph < remainder else 0)
+        paragraphs.append(" ".join(sentences[offset : offset + size]))
+        offset += size
+    restored = "\n\n".join(paragraphs)
+    max_chars = constraints.get("max_chars")
+    if isinstance(max_chars, int) and len(restored) > max_chars:
+        return text
+    parsed["corrected_text"] = restored
+    return json.dumps(parsed, ensure_ascii=False, separators=(",", ":"))
+
+
 def build_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
     parser.add_argument("--model", required=True)
     parser.add_argument("--raw", required=True)
     parser.add_argument("--max-new", type=int, default=3072)
     parser.add_argument("--report-out", required=True)
+    parser.add_argument(
+        "--sample-id",
+        action="append",
+        default=None,
+        help="Run only the selected sample ID. Repeat for multiple samples.",
+    )
     return parser.parse_args()
 
 
@@ -50,6 +95,13 @@ def main() -> None:
     args = build_args()
     tokenizer, model = load_model(args.model)
     samples = read_jsonl(Path(args.raw))
+    if args.sample_id:
+        requested_ids = set(args.sample_id)
+        samples = [sample for sample in samples if sample.get("id") in requested_ids]
+        found_ids = {sample.get("id") for sample in samples}
+        missing_ids = requested_ids - found_ids
+        if missing_ids:
+            raise ValueError(f"sample IDs not found: {', '.join(sorted(missing_ids))}")
     results: list[dict[str, Any]] = []
     passed = 0
 
@@ -90,8 +142,22 @@ def main() -> None:
             final_warnings = list(repair_warnings)
             stage = "repair"
 
-            patched_output = patch_minor_length_shortfall(repair_output, sample)
-            if patched_output != repair_output:
+            restored_output = restore_repair_paragraphs(repair_output, sample, direct_problems)
+            if restored_output != repair_output:
+                restored_problems, restored_warnings = check_output(
+                    restored_output,
+                    sample,
+                    preserved_meaning_mode="strict",
+                    unified_contract=True,
+                )
+                if not restored_problems:
+                    final_output = restored_output
+                    final_problems = []
+                    final_warnings = list(restored_warnings)
+                    stage = "repair_paragraph_restored"
+
+            patched_output = patch_minor_length_shortfall(final_output, sample)
+            if final_problems and patched_output != final_output:
                 patched_problems, patched_warnings = check_output(
                     patched_output,
                     sample,
@@ -102,7 +168,7 @@ def main() -> None:
                     final_output = patched_output
                     final_problems = []
                     final_warnings = list(patched_warnings)
-                    stage = "repair_patched"
+                    stage = "repair_length_restored"
 
         if not final_problems:
             passed += 1
