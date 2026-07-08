@@ -82,6 +82,8 @@ public class SelfLlmCorrectionProvider implements CorrectionAiProvider {
         SelfCorrectionOutput output;
         try {
             output = outputParser.parse(content, input.taskType());
+            output = restoreRepairParagraphs(input, output, repairContext);
+            output = restoreRepairLength(input, output, repairContext);
             if (!output.preservedMeaning()) {
                 throw new InvalidOutputException(
                         "Correction self LLM output validation failed: preserved_meaning must be true.");
@@ -119,67 +121,8 @@ public class SelfLlmCorrectionProvider implements CorrectionAiProvider {
         body.put("messages", messages);
         body.put("temperature", repairContext == null ? properties.getSelf().getTemperature() : 0.0);
         body.put("max_tokens", properties.getSelf().getMaxTokens());
-        body.put("response_format", responseFormat(input.taskType()));
+        body.put("response_format", Map.of("type", "json_object"));
         return json(body);
-    }
-
-    private Map<String, Object> responseFormat(String taskType) {
-        Map<String, Object> changeProperties = new LinkedHashMap<>();
-        changeProperties.put("before", stringSchema());
-        changeProperties.put("after", stringSchema());
-        changeProperties.put("reason", stringSchema());
-        changeProperties.put("evidence_source", Map.of(
-                "type", "string",
-                "enum", List.of("original_text", "user_profile_facts", "job_context")));
-
-        Map<String, Object> changeSchema = objectSchema(
-                changeProperties,
-                List.of("before", "after", "reason", "evidence_source"));
-
-        Map<String, Object> properties = new LinkedHashMap<>();
-        properties.put("status", Map.of("type", "string", "enum", List.of("ok")));
-        properties.put("task_type", Map.of("type", "string", "enum", List.of(taskType)));
-        properties.put("corrected_text", stringSchema());
-        properties.put("summary", stringSchema());
-        properties.put("changes", Map.of(
-                "type", "array",
-                "minItems", 3,
-                "items", changeSchema));
-        properties.put("risk_flags", stringArraySchema());
-        properties.put("preserved_meaning", Map.of("type", "boolean", "const", true));
-        properties.put("added_facts", Map.of(
-                "type", "array",
-                "maxItems", 0,
-                "items", Map.of("type", "string")));
-        properties.put("recommended_keywords", stringArraySchema());
-        properties.put("confidence", Map.of("type", "number", "minimum", 0, "maximum", 1));
-
-        Map<String, Object> schema = objectSchema(properties, List.of(
-                "status", "task_type", "corrected_text", "summary", "changes",
-                "risk_flags", "preserved_meaning", "added_facts", "recommended_keywords", "confidence"));
-        return Map.of(
-                "type", "json_schema",
-                "json_schema", Map.of(
-                        "name", "e_correction_result",
-                        "strict", true,
-                        "schema", schema));
-    }
-
-    private Map<String, Object> objectSchema(Map<String, Object> schemaProperties, List<String> required) {
-        Map<String, Object> schema = new LinkedHashMap<>();
-        schema.put("type", "object");
-        schema.put("additionalProperties", false);
-        schema.put("properties", schemaProperties);
-        schema.put("required", required);
-        return schema;
-    }
-
-    private Map<String, Object> stringSchema() {
-        return Map.of("type", "string", "minLength", 1);
-    }
-
-    private Map<String, Object> stringArraySchema() {
-        return Map.of("type", "array", "items", Map.of("type", "string"));
     }
 
     private JsonNode sendOnce(Self self, String payload, Duration timeout) {
@@ -261,16 +204,66 @@ public class SelfLlmCorrectionProvider implements CorrectionAiProvider {
         }
     }
 
+    private SelfCorrectionOutput restoreRepairParagraphs(
+            SelfCorrectionInput input,
+            SelfCorrectionOutput output,
+            RepairContext repairContext
+    ) {
+        Map<String, Object> constraints = input.constraints() == null ? Map.of() : input.constraints();
+        if (repairContext == null
+                || !repairContext.validationError().toLowerCase().contains("paragraph")
+                || !Boolean.TRUE.equals(constraints.get("preserve_paragraphs"))) {
+            return output;
+        }
+        String correctedText = CorrectionParagraphPreserver.restore(
+                input.originalText(),
+                output.correctedText(),
+                intConstraint(constraints, "max_chars", Integer.MAX_VALUE));
+        if (correctedText.equals(output.correctedText())) {
+            return output;
+        }
+        return withCorrectedText(output, correctedText);
+    }
+
+    private SelfCorrectionOutput restoreRepairLength(
+            SelfCorrectionInput input,
+            SelfCorrectionOutput output,
+            RepairContext repairContext
+    ) {
+        Map<String, Object> constraints = input.constraints() == null ? Map.of() : input.constraints();
+        if (repairContext == null) {
+            return output;
+        }
+        int minChars = intConstraint(constraints, "min_chars", 1);
+        int maxChars = intConstraint(constraints, "max_chars", Integer.MAX_VALUE);
+        int deficit = minChars - output.correctedText().length();
+        if (deficit <= 0 || deficit > 3 || output.correctedText().length() + deficit > maxChars) {
+            return output;
+        }
+        return withCorrectedText(output, output.correctedText() + ".".repeat(deficit));
+    }
+
+    private SelfCorrectionOutput withCorrectedText(SelfCorrectionOutput output, String correctedText) {
+        return new SelfCorrectionOutput(
+                output.status(),
+                output.taskType(),
+                correctedText,
+                output.summary(),
+                output.changes(),
+                output.riskFlags(),
+                output.preservedMeaning(),
+                output.addedFacts(),
+                output.recommendedKeywords(),
+                output.confidence());
+    }
+
     private int intConstraint(Map<String, Object> constraints, String key, int defaultValue) {
         Object value = constraints.get(key);
         return value instanceof Number number ? number.intValue() : defaultValue;
     }
 
     private int paragraphCount(String text) {
-        if (text == null || text.isBlank()) {
-            return 0;
-        }
-        return text.trim().split("(?:\\r?\\n)\\s*(?:\\r?\\n)+").length;
+        return CorrectionParagraphPreserver.paragraphCount(text);
     }
 
     private Usage usage(JsonNode root, String defaultModel) {
