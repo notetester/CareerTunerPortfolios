@@ -1410,6 +1410,7 @@ CREATE TABLE IF NOT EXISTS credit_transaction (
 CREATE TABLE IF NOT EXISTS correction_request (
     id                  BIGINT NOT NULL AUTO_INCREMENT,
     user_id             BIGINT NOT NULL,
+    request_key         VARCHAR(120) NULL,
     application_case_id BIGINT NULL,
     correction_type     VARCHAR(40) NOT NULL,
     source_type         VARCHAR(40) NOT NULL DEFAULT 'DIRECT_INPUT',
@@ -1422,6 +1423,7 @@ CREATE TABLE IF NOT EXISTS correction_request (
     admin_memo          VARCHAR(2000) NULL,
     created_at          DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (id),
+    UNIQUE KEY uk_correction_request_user_key (user_id, request_key),
     KEY idx_correction_request_user (user_id),
     KEY idx_correction_request_case (application_case_id),
     KEY idx_correction_request_type (correction_type),

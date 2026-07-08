@@ -6,6 +6,7 @@ import { chargeMockAiUsage } from "./billing";
 
 let nextId = 304;
 let warmed = false;
+const correctionsByRequestKey = new Map<string, CorrectionResponse>();
 
 const corrections: CorrectionResponse[] = [
   {
@@ -60,6 +61,13 @@ export const correctionRoutes: MockRoute[] = [
       if (!request.policyAcknowledgementKey) {
         throw new Error("차감 정책 확인키가 필요합니다.");
       }
+      if (!request.requestKey) {
+        throw new Error("첨삭 요청키가 필요합니다.");
+      }
+      const existing = correctionsByRequestKey.get(request.requestKey);
+      if (existing) {
+        return { ...existing, replayed: true };
+      }
       const originalText = request.originalText.trim();
       const result: CorrectionResponse = {
         id: nextId++,
@@ -75,10 +83,12 @@ export const correctionRoutes: MockRoute[] = [
         suggestions: ["가능하면 기간, 횟수, 개선율 같은 근거를 추가하세요."],
         status: "SUCCESS",
         aiUsageLogId: 900 + nextId,
+        replayed: false,
         createdAt: new Date().toISOString(),
       };
       chargeMockAiUsage(`CORRECTION_${request.correctionType}`, CORRECTION_MIN_CREDIT_COST);
       corrections.unshift(result);
+      correctionsByRequestKey.set(request.requestKey, result);
       return result;
     },
   },

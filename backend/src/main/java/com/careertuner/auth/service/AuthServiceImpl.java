@@ -10,13 +10,17 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import com.careertuner.auth.domain.EmailVerification;
+import com.careertuner.auth.domain.MfaChallenge;
 import com.careertuner.auth.domain.RefreshToken;
 import com.careertuner.auth.domain.UserConsent;
 import com.careertuner.auth.domain.UserLoginHistory;
 import com.careertuner.auth.domain.UserSocial;
 import com.careertuner.auth.dto.LoginRequest;
 import com.careertuner.auth.dto.LoginRequestContext;
+import com.careertuner.auth.dto.LoginResponse;
 import com.careertuner.auth.dto.MeResponse;
+import com.careertuner.auth.dto.MfaLoginStatusResponse;
+import com.careertuner.auth.dto.MfaLoginVerifyRequest;
 import com.careertuner.auth.dto.OAuthCallbackResult;
 import com.careertuner.auth.dto.PasswordResetConfirmRequest;
 import com.careertuner.auth.dto.PasswordResetRequest;
@@ -53,6 +57,7 @@ public class AuthServiceImpl implements AuthService {
     private final JwtTokenProvider jwtTokenProvider;
     private final EmailService emailService;
     private final SocialOAuthService socialOAuthService;
+    private final MfaService mfaService;
     private final CareerTunerProperties props;
     private final com.careertuner.activitylog.service.SecurityHistoryService securityHistoryService;
     /**
@@ -113,7 +118,7 @@ public class AuthServiceImpl implements AuthService {
 
     @Override
     @Transactional(noRollbackFor = BusinessException.class)
-    public TokenResponse login(LoginRequest request, LoginRequestContext context) {
+    public LoginResponse login(LoginRequest request, LoginRequestContext context) {
         String identifier = normalizeLoginIdentifier(request.email());
         String loginMethod = loginMethodFor(identifier);
         User user = userMapper.findByLoginIdentifier(identifier);
@@ -159,11 +164,49 @@ public class AuthServiceImpl implements AuthService {
             throw new BusinessException(ErrorCode.FORBIDDEN, "이메일 인증을 완료한 뒤 이메일로 로그인할 수 있습니다.");
         }
 
+        LoginResponse mfaChallenge = mfaService.beginLoginIfRequired(user, context);
+        if (mfaChallenge != null) {
+            recordLoginHistory(user.getId(), "LOGIN_MFA_REQUIRED", "LOCAL", loginMethod, identifier, true, null, context);
+            return mfaChallenge;
+        }
+
         userMapper.touchLastLoginAndResetFailures(user.getId());
         recordLoginHistory(user.getId(), "LOGIN", "LOCAL", loginMethod, identifier, true, null, context);
         // 하루 첫 로그인 리워드(일일 캡 1회, 규칙 on 일 때만). 실패해도 로그인은 정상 처리.
         grantDailyLoginRewardSafely(user.getId());
-        return issueTokens(user, context);
+        return LoginResponse.authenticated(issueTokens(user, context));
+    }
+
+    @Override
+    @Transactional(noRollbackFor = BusinessException.class)
+    public LoginResponse verifyMfaLogin(MfaLoginVerifyRequest request, LoginRequestContext context) {
+        User user = mfaService.verifyLoginChallenge(
+                request.challengeToken(),
+                request.code(),
+                request.backupCode(),
+                Boolean.TRUE.equals(request.useApprovedChallenge())
+        );
+        userMapper.touchLastLoginAndResetFailures(user.getId());
+        recordLoginHistory(user.getId(), "LOGIN", "LOCAL", "MFA", user.getEmail(), true, null, context);
+        grantDailyLoginRewardSafely(user.getId());
+        return LoginResponse.authenticated(issueTokens(user, context));
+    }
+
+    @Override
+    @Transactional(noRollbackFor = BusinessException.class)
+    public MfaLoginStatusResponse mfaLoginStatus(String challengeToken, LoginRequestContext context) {
+        MfaChallenge challenge = mfaService.findChallenge(challengeToken);
+        if (challenge == null) {
+            return new MfaLoginStatusResponse("NOT_FOUND", null);
+        }
+        if ("APPROVED".equals(challenge.getStatus())) {
+            LoginResponse completed = verifyMfaLogin(
+                    new MfaLoginVerifyRequest(challengeToken, null, null, true),
+                    context
+            );
+            return new MfaLoginStatusResponse("VERIFIED", completed.token());
+        }
+        return new MfaLoginStatusResponse(challenge.getStatus(), null);
     }
 
     @Override

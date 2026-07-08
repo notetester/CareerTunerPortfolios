@@ -47,6 +47,7 @@ class AuthServiceImplTest {
     private final JwtTokenProvider jwtTokenProvider = mock(JwtTokenProvider.class);
     private final EmailService emailService = mock(EmailService.class);
     private final SocialOAuthService socialOAuthService = mock(SocialOAuthService.class);
+    private final MfaService mfaService = mock(MfaService.class);
     private final CareerTunerProperties props = mock(CareerTunerProperties.class);
     private final SecurityHistoryService securityHistoryService = mock(SecurityHistoryService.class);
     private final LoginRiskPolicyService loginRiskPolicyService = mock(LoginRiskPolicyService.class);
@@ -55,7 +56,7 @@ class AuthServiceImplTest {
 
     private final AuthServiceImpl service = new AuthServiceImpl(
             userMapper, authMapper, passwordEncoder, jwtTokenProvider, emailService,
-            socialOAuthService, props, securityHistoryService, loginRiskPolicyService, rewardService);
+            socialOAuthService, mfaService, props, securityHistoryService, loginRiskPolicyService, rewardService);
 
     private static final String EMAIL = "user@test.com";
 
