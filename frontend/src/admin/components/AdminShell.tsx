@@ -195,6 +195,14 @@ const NAV_GROUPS: NavGroup[] = [
 ];
 
 /** 미처리 큐 숫자 뱃지. count 0이면 렌더하지 않는다. 색은 severity(RED/YELLOW). */
+NAV_GROUPS.find((group) => group.key === "member")?.items.splice(3, 0, {
+  key: "mfa-policy",
+  label: "MFA 정책",
+  icon: ShieldCheck,
+  href: "/admin/security/mfa-policy",
+  permissionGroups: ["AUDIT_ADMIN", "POLICY_ADMIN"],
+});
+
 function PendingBadge({ count, severity }: { count: number; severity: PendingSeverity }) {
   if (count <= 0) return null;
   return <span className={`adm__nav-ct sev-${severity.toLowerCase()}`}>{count}</span>;

@@ -2,7 +2,10 @@ package com.careertuner.auth.service;
 
 import com.careertuner.auth.dto.LoginRequest;
 import com.careertuner.auth.dto.LoginRequestContext;
+import com.careertuner.auth.dto.LoginResponse;
 import com.careertuner.auth.dto.MeResponse;
+import com.careertuner.auth.dto.MfaLoginStatusResponse;
+import com.careertuner.auth.dto.MfaLoginVerifyRequest;
 import com.careertuner.auth.dto.OAuthCallbackResult;
 import com.careertuner.auth.dto.PasswordResetConfirmRequest;
 import com.careertuner.auth.dto.PasswordResetRequest;
@@ -14,7 +17,11 @@ public interface AuthService {
 
     TokenResponse register(RegisterRequest request, LoginRequestContext context);
 
-    TokenResponse login(LoginRequest request, LoginRequestContext context);
+    LoginResponse login(LoginRequest request, LoginRequestContext context);
+
+    LoginResponse verifyMfaLogin(MfaLoginVerifyRequest request, LoginRequestContext context);
+
+    MfaLoginStatusResponse mfaLoginStatus(String challengeToken, LoginRequestContext context);
 
     TokenResponse refresh(String refreshToken, LoginRequestContext context);
 
