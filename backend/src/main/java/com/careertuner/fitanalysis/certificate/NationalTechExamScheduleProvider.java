@@ -10,8 +10,6 @@ import java.time.Year;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -25,15 +23,13 @@ import com.careertuner.fitanalysis.certificate.CertificateScheduleEvidence.Sched
  * (요청변수 {@code stdt}=조회시작년도; 해당 연도의 <b>전체 종목</b> 시행일정 목록을 반환). 특정 자격의 일정은
  * 응답을 자격명(jmfldmm)으로 <b>정확 매칭 필터</b>해서 얻는다 — 다른 종목의 날짜를 섞어 조작하지 않는다.
  *
- * <p><b>오류≠부재 원칙:</b> data.go.kr/q-net 게이트웨이는 서비스키 미등록/만료/트래픽초과 시에도 HTTP 200 으로
- * {@code <OpenAPI_ServiceResponse><cmmMsgHeader><returnReasonCode>..} 형태의 오류 envelope 를 준다(resultCode 태그
- * 없음). 이런 응답, 타임아웃, resultCode≠00, 정상(00) 미확증은 모두 {@link ScheduleEvidenceStatus#UPSTREAM_UNAVAILABLE}
- * 로 내린다. {@link ScheduleEvidenceStatus#OFFICIAL_NO_SCHEDULE} 는 <b>정상(resultCode 00)을 확증</b>하고도 해당
- * 자격 회차가 없을 때만 쓴다. C 는 장애 시 "일정이 없습니다"가 아니라 "공식 API 가 일시적으로 응답하지 않아 확인하지
+ * <p><b>오류≠부재 원칙:</b> 게이트웨이 오류 envelope(HTTP 200 + resultCode 없음)·타임아웃·resultCode≠00·정상(00)
+ * 미확증·목록 잘림은 모두 {@link ScheduleEvidenceStatus#UPSTREAM_UNAVAILABLE} 로 내린다.
+ * {@link ScheduleEvidenceStatus#OFFICIAL_NO_SCHEDULE} 는 정상(00)을 확증하고 목록이 잘리지 않았는데도 해당 자격
+ * 회차가 없을 때만 쓴다. C 는 장애 시 "일정이 없습니다"가 아니라 "공식 API 가 일시적으로 응답하지 않아 확인하지
  * 못했습니다"라고 말해야 한다.
  *
- * <p>serviceKey 는 재인코딩하지 않는다(포털의 <b>디코딩(raw) 키</b> 사용 전제 — '인코딩' 키를 다시 인코딩하면 이중
- * 인코딩으로 깨진다). 파싱은 태그명 기반(대소문자 무시)이라 {@code <items><item>} 래핑 여부와 무관하다.
+ * <p>serviceKey 는 재인코딩하지 않는다(디코딩 raw 키 전제). 공용 파싱 규칙은 {@link QnetXmlSupport}.
  */
 @Component
 public class NationalTechExamScheduleProvider {
@@ -42,6 +38,7 @@ public class NationalTechExamScheduleProvider {
     private static final String SOURCE_NAME = "한국산업인력공단 큐넷(Q-Net) 국가기술자격 시험정보";
     private static final String SOURCE_URL = "https://www.q-net.or.kr/";
     private static final String OPERATION = "/InquiryTestInformationNTQSVC/getJMList";
+    private static final int NUM_OF_ROWS = 2000; // 연도 전체 종목을 한 페이지로(기본값 truncation 방지).
 
     private final String serviceKey;
     private final String qnetBaseUrl;
@@ -81,9 +78,9 @@ public class NationalTechExamScheduleProvider {
             return degraded(ScheduleEvidenceStatus.UPSTREAM_UNAVAILABLE, certName);
         }
         try {
-            // serviceKey 는 재인코딩하지 않음(디코딩 키 전제). stdt=현재연도.
-            String url = qnetBaseUrl + OPERATION
-                    + "?serviceKey=" + serviceKey + "&stdt=" + Year.now().getValue();
+            // serviceKey 는 재인코딩하지 않음(디코딩 키 전제). stdt=현재연도, numOfRows 로 전체.
+            String url = qnetBaseUrl + OPERATION + "?serviceKey=" + serviceKey
+                    + "&stdt=" + Year.now().getValue() + "&numOfRows=" + NUM_OF_ROWS + "&pageNo=1";
             HttpRequest request = HttpRequest.newBuilder(URI.create(url)).timeout(timeout).GET().build();
             HttpResponse<String> response = httpClient.send(request,
                     HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
@@ -100,32 +97,24 @@ public class NationalTechExamScheduleProvider {
     }
 
     /**
-     * 응답 본문 파싱(순수 함수, 테스트 대상). 게이트웨이 오류 envelope·resultCode≠00·정상 미확증은 UPSTREAM_UNAVAILABLE;
-     * 정상(00) 확증 + 해당 자격 회차 없음은 OFFICIAL_NO_SCHEDULE; 자격명 매칭 회차가 있으면 VERIFIED_CURRENT.
+     * 응답 본문 파싱(순수 함수). 게이트웨이 오류·resultCode≠00·정상 미확증·목록 잘림은 UPSTREAM_UNAVAILABLE;
+     * 정상(00) 확증 + 목록 완전 + 해당 자격 회차 없음은 OFFICIAL_NO_SCHEDULE; 자격명 매칭 회차가 있으면 VERIFIED_CURRENT.
      */
     static CertificateScheduleEvidence parse(String xml, String certName) {
-        if (xml == null || xml.isBlank()) {
+        if (xml == null || xml.isBlank() || QnetXmlSupport.isGatewayError(xml)
+                || QnetXmlSupport.explicitErrorCode(xml)) {
             return degraded(ScheduleEvidenceStatus.UPSTREAM_UNAVAILABLE, certName);
         }
-        // HTTP 200 이지만 인증/쿼터 오류인 게이트웨이 envelope → 장애(부재 아님).
-        if (isGatewayError(xml)) {
-            return degraded(ScheduleEvidenceStatus.UPSTREAM_UNAVAILABLE, certName);
-        }
-        String resultCode = tagValue(xml, "resultCode");
-        if (resultCode != null && !resultCode.equals("00") && !resultCode.equals("0")) {
-            return degraded(ScheduleEvidenceStatus.UPSTREAM_UNAVAILABLE, certName);
-        }
-        boolean normalConfirmed = "00".equals(resultCode) || "0".equals(resultCode);
 
         List<ScheduleRound> rounds = new ArrayList<>();
-        List<String> itemBlocks = allBlocks(xml, "item");
+        List<String> itemBlocks = QnetXmlSupport.allBlocks(xml, "item");
         if (!itemBlocks.isEmpty()) {
             for (String block : itemBlocks) {
-                if (nameMatches(tagValue(block, "jmfldmm"), certName)) {
+                if (QnetXmlSupport.nameMatches(QnetXmlSupport.tagValue(block, "jmfldmm"), certName)) {
                     addIfDated(rounds, block);
                 }
             }
-        } else if (hasScheduleField(xml) && nameMatches(tagValue(xml, "jmfldmm"), certName)) {
+        } else if (hasScheduleField(xml) && QnetXmlSupport.nameMatches(QnetXmlSupport.tagValue(xml, "jmfldmm"), certName)) {
             // <item> 래핑이 아니어도 필드가 있고 자격명이 맞으면 한 회차로.
             addIfDated(rounds, xml);
         }
@@ -134,25 +123,24 @@ public class NationalTechExamScheduleProvider {
             return new CertificateScheduleEvidence(ScheduleEvidenceStatus.VERIFIED_CURRENT,
                     null, certName, SOURCE_NAME, SOURCE_URL, List.copyOf(rounds));
         }
-        if (normalConfirmed) {
-            // 정상 응답을 확증했고 해당 자격 회차가 없음 → 이번 연도 미편성(부재).
+        // 정상(00) 확증 + 목록 완전 + 해당 자격 회차 없음 → 이번 연도 미편성(부재). 잘렸으면 부재로 단정하지 않음.
+        if (QnetXmlSupport.normalConfirmed(xml) && !QnetXmlSupport.truncated(xml)) {
             return new CertificateScheduleEvidence(ScheduleEvidenceStatus.OFFICIAL_NO_SCHEDULE,
                     null, certName, SOURCE_NAME, SOURCE_URL, List.of());
         }
-        // resultCode 를 확증하지 못했고 매칭도 없음 → 부재로 단정하지 않는다.
         return degraded(ScheduleEvidenceStatus.UPSTREAM_UNAVAILABLE, certName);
     }
 
     private static void addIfDated(List<ScheduleRound> rounds, String block) {
         ScheduleRound round = new ScheduleRound(
-                tagValue(block, "implplannm"),
-                tagValue(block, "docregstartdt"),
-                tagValue(block, "docregenddt"),
-                tagValue(block, "docexamstartdt"),
-                tagValue(block, "docpassdt"),
-                tagValue(block, "pracexamstartdt"),
-                tagValue(block, "pracexamenddt"),
-                tagValue(block, "pracpassstartdt"));
+                QnetXmlSupport.tagValue(block, "implplannm"),
+                QnetXmlSupport.tagValue(block, "docregstartdt"),
+                QnetXmlSupport.tagValue(block, "docregenddt"),
+                QnetXmlSupport.tagValue(block, "docexamstartdt"),
+                QnetXmlSupport.tagValue(block, "docpassdt"),
+                QnetXmlSupport.tagValue(block, "pracexamstartdt"),
+                QnetXmlSupport.tagValue(block, "pracexamenddt"),
+                QnetXmlSupport.tagValue(block, "pracpassstartdt"));
         if (hasAnyDate(round)) {
             rounds.add(round);
         }
@@ -160,22 +148,6 @@ public class NationalTechExamScheduleProvider {
 
     private static CertificateScheduleEvidence degraded(ScheduleEvidenceStatus status, String certName) {
         return new CertificateScheduleEvidence(status, null, certName, SOURCE_NAME, SOURCE_URL, List.of());
-    }
-
-    /** data.go.kr/q-net 공통 오류 envelope(인증·쿼터 등, HTTP 200) 감지. */
-    private static boolean isGatewayError(String xml) {
-        String lower = xml.toLowerCase(Locale.ROOT);
-        return lower.contains("openapi_serviceresponse") || lower.contains("cmmmsgheader")
-                || lower.contains("returnreasoncode") || lower.contains("returnauthmsg");
-    }
-
-    /** 자격명 정확 매칭(공백 제거·소문자). 과매칭으로 다른 종목 일정을 섞지 않기 위함. */
-    private static boolean nameMatches(String responseName, String certName) {
-        return responseName != null && certName != null && norm(responseName).equals(norm(certName));
-    }
-
-    private static String norm(String s) {
-        return s.trim().toLowerCase(Locale.ROOT).replaceAll("\\s+", "");
     }
 
     private static boolean hasAnyDate(ScheduleRound r) {
@@ -186,26 +158,6 @@ public class NationalTechExamScheduleProvider {
     private static boolean hasScheduleField(String xml) {
         String lower = xml.toLowerCase(Locale.ROOT);
         return lower.contains("docregstartdt") || lower.contains("implplannm") || lower.contains("docexamstartdt");
-    }
-
-    private static String tagValue(String xml, String tag) {
-        Matcher m = Pattern.compile("<" + tag + ">(.*?)</" + tag + ">",
-                Pattern.CASE_INSENSITIVE | Pattern.DOTALL).matcher(xml);
-        if (m.find()) {
-            String v = m.group(1).trim();
-            return v.isEmpty() ? null : v;
-        }
-        return null;
-    }
-
-    private static List<String> allBlocks(String xml, String tag) {
-        List<String> blocks = new ArrayList<>();
-        Matcher m = Pattern.compile("<" + tag + ">(.*?)</" + tag + ">",
-                Pattern.CASE_INSENSITIVE | Pattern.DOTALL).matcher(xml);
-        while (m.find()) {
-            blocks.add(m.group(1));
-        }
-        return blocks;
     }
 
     private static boolean notBlank(String s) {

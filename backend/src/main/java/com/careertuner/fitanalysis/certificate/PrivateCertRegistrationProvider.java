@@ -116,7 +116,12 @@ public class PrivateCertRegistrationProvider {
             return degraded(PrivateCertRegistrationStatus.UPSTREAM_UNAVAILABLE, query);
         }
         JsonNode data = root.path("data");
-        if (!data.isArray() || data.isEmpty()) {
+        if (!data.isArray()) {
+            // data 배열 자체가 없는 200 응답(오류/쿼터 envelope 등 비정상) → 조회 미확증(부재 아님).
+            return degraded(PrivateCertRegistrationStatus.UPSTREAM_UNAVAILABLE, query);
+        }
+        if (data.isEmpty()) {
+            // 정상 조회 후 0건 → 실제 미등록.
             return new PrivateCertRegistrationEvidence(PrivateCertRegistrationStatus.NOT_FOUND,
                     query, 0, snapshot, SOURCE_NAME, SOURCE_URL, List.of());
         }

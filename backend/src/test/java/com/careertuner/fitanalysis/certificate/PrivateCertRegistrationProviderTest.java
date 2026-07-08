@@ -59,6 +59,14 @@ class PrivateCertRegistrationProviderTest {
     }
 
     @Test
+    void abnormal200WithoutDataArrayIsUpstreamNotNotFound() {
+        // HTTP 200 이지만 data 배열이 없는 오류/쿼터 envelope → '미등록'으로 단정하지 않는다(장애≠부재).
+        PrivateCertRegistrationEvidence e = provider("k").parse("{\"code\":\"ERROR\",\"msg\":\"quota exceeded\"}", "빅데이터");
+
+        assertThat(e.status()).isEqualTo(PrivateCertRegistrationStatus.UPSTREAM_UNAVAILABLE);
+    }
+
+    @Test
     void blankKeyDoesNotCallApiAndDegrades() {
         PrivateCertRegistrationProvider p = provider("");
 

@@ -106,6 +106,15 @@ class NationalTechExamScheduleProviderTest {
     }
 
     @Test
+    void truncatedListWithoutMatchIsUpstreamNotAbsence() {
+        // totalCount(5000) > 수신 item(1) → 목록 잘림. 무매칭을 OFFICIAL_NO_SCHEDULE(부재)로 단정하지 않는다.
+        String truncated = "<response><header><resultCode>00</resultCode></header><body><totalCount>5000</totalCount><items>"
+                + item("정보처리기능사", "기능사(2026-1)", "20260126", "20260221", "20260418") + "</items></body></response>";
+        assertThat(NationalTechExamScheduleProvider.parse(truncated, "정보처리기사").status())
+                .isEqualTo(ScheduleEvidenceStatus.UPSTREAM_UNAVAILABLE);
+    }
+
+    @Test
     void blankKeyDoesNotCallApiAndDegrades() {
         NationalTechExamScheduleProvider provider = new NationalTechExamScheduleProvider(
                 "", "http://unused.invalid", Duration.ofSeconds(1), HttpClient.newHttpClient());
