@@ -23,5 +23,7 @@ public enum ScheduleEvidenceStatus {
     /** 확인 불가 — 공식 API 오류·타임아웃·미응답, 키 없음, 조회 입력 없음, 정상(00) 미확증. → "일정 없음"이 아니라 "확인 못함". */
     UPSTREAM_UNAVAILABLE,
     /** 중앙 공공데이터엔 없고 주관기관/관리자/사용자 입력이 필요함(민간자격 일정 등). */
-    MANUAL_REQUIRED
+    MANUAL_REQUIRED,
+    /** 해당 자격 유형에는 적용 가능한 일정 provider 가 없음(예: 국가전문자격 — getJMList 미적용). */
+    NOT_APPLICABLE
 }
