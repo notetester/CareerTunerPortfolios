@@ -19,6 +19,9 @@ import com.careertuner.fitanalysis.domain.FitAnalysisGateResult;
 import com.careertuner.fitanalysis.domain.FitAnalysisGenerationSource;
 import com.careertuner.fitanalysis.domain.FitAnalysisLearningTask;
 import com.careertuner.fitanalysis.domain.FitAnalysisResult;
+import com.careertuner.fitanalysis.certificate.CertificateEvidenceService;
+import com.careertuner.fitanalysis.dto.CertificateEvidenceResponse;
+import com.careertuner.fitanalysis.dto.CertificateEvidenceSnapshot;
 import com.careertuner.fitanalysis.dto.FitAnalysisDetailResponse;
 import com.careertuner.fitanalysis.dto.FitAnalysisHistoryEntryResponse;
 import com.careertuner.fitanalysis.dto.FitAnalysisLearningTaskResponse;
@@ -30,6 +33,7 @@ import com.careertuner.fitanalysis.mapper.FitAnalysisMapper;
 import com.careertuner.notification.domain.Notification;
 import com.careertuner.notification.service.NotificationService;
 import lombok.RequiredArgsConstructor;
+import org.springframework.transaction.support.TransactionTemplate;
 import tools.jackson.core.JacksonException;
 import tools.jackson.core.type.TypeReference;
 import tools.jackson.databind.ObjectMapper;
@@ -47,6 +51,8 @@ public class FitAnalysisServiceImpl implements FitAnalysisService {
     private final NotificationService notificationService;
     private final ObjectMapper objectMapper;
     private final AiUsageLogService aiUsageLogService;
+    private final CertificateEvidenceService certificateEvidenceService;
+    private final TransactionTemplate transactionTemplate;
 
     @Override
     @Transactional(readOnly = true)
@@ -67,8 +73,9 @@ public class FitAnalysisServiceImpl implements FitAnalysisService {
     }
 
     @Override
-    @Transactional
     public FitAnalysisDetailResponse generate(Long userId, Long applicationCaseId) {
+        // 외부 I/O(AI 호출·자격증 근거 조회)는 트랜잭션 밖에서 수행한다 — DB 커넥션을 물지 않아, Q-Net 등 외부 장애가
+        // 커넥션 풀을 고갈시켜 무관한 조회까지 막는 일이 없다. DB 쓰기만 아래 transactionTemplate 로 짧게 감싼다.
         FitAnalysisGenerationSource source = fitAnalysisMapper.findGenerationSource(userId, applicationCaseId);
         if (source == null) {
             throw new BusinessException(ErrorCode.NOT_FOUND, "지원 건을 찾을 수 없습니다.");
@@ -93,6 +100,10 @@ public class FitAnalysisServiceImpl implements FitAnalysisService {
         // 점수/applyDecision/매칭/부족은 읽기만 하고 바꾸지 않는다(노출·검토 상태만 결정).
         EvidenceGateDecision gate = evidenceGateService.evaluate(command, ai);
 
+        // 자격증 근거는 생성 시 1회만 수집·영속한다(읽기 경로에서는 provider 호출 금지 — Q-Net 장애가 조회 성능에 영향
+        // 없게). best-effort: 수집이 실패해도 적합도 분석 생성을 중단하지 않고 판단값도 바꾸지 않는다.
+        String certificateEvidence = collectCertificateEvidenceJson(ai.recommendedCertificates());
+
         FitAnalysisResult row = FitAnalysisResult.builder()
                 .applicationCaseId(applicationCaseId)
                 .fitScore(ai.fitScore())
@@ -109,69 +120,73 @@ public class FitAnalysisServiceImpl implements FitAnalysisService {
                 .conditionMatrix(toJson(ai.conditionMatrix()))
                 .analysisConfidence(toJson(confidence))
                 .applyDecision(toJson(ai.applyDecision()))
+                .certificateEvidence(certificateEvidence)
                 .model(ai.usage().model())
                 .promptVersion(FitAnalysisPromptCatalog.VERSION)
                 .status(ai.status())
                 .errorMessage(ai.errorMessage())
                 .build();
-        fitAnalysisMapper.insertFitAnalysis(row);
-        fitAnalysisMapper.insertHistory(
-                row.getId(),
-                applicationCaseId,
-                previous == null ? null : previous.getFitScore(),
-                row.getFitScore(),
-                toJson(historyDiff(previous, row)));
-        persistGate(row.getId(), gate);
-        int conditionOrder = 1;
-        for (var condition : ai.conditionMatrix()) {
-            String severity = "REQUIRED".equals(condition.conditionType()) && "UNMET".equals(condition.matchStatus())
-                    ? "HIGH"
-                    : "UNMET".equals(condition.matchStatus()) ? "MEDIUM" : "LOW";
-            fitAnalysisMapper.insertConditionMatch(row.getId(), condition, severity, conditionOrder++);
-        }
-        for (var item : ai.learningRoadmap()) {
-            fitAnalysisMapper.insertLearningTask(FitAnalysisLearningTask.builder()
-                    .fitAnalysisId(row.getId())
-                    .skill(item.skill())
-                    .title(item.title())
-                    .practiceTask(item.practiceTask())
-                    .expectedDuration(item.expectedDuration())
-                    .priority(item.priority())
-                    .sortOrder(item.sortOrder())
-                    .build());
-        }
-
-        int tokenUsage = ai.usage().mock() && "SUCCESS".equals(ai.status()) ? estimateTokens(command) : ai.usage().totalTokens();
-        int creditUsed = "SUCCESS".equals(ai.status()) ? MOCK_CREDIT : 0;
-        if ("SUCCESS".equals(ai.status())) {
-            aiUsageLogService.recordSuccessValues(
-                    userId,
+        // DB 쓰기만 짧은 트랜잭션으로 원자 처리(외부 I/O 는 이미 위에서 끝났으므로 커넥션 점유 시간이 최소).
+        transactionTemplate.executeWithoutResult(status -> {
+            fitAnalysisMapper.insertFitAnalysis(row);
+            fitAnalysisMapper.insertHistory(
+                    row.getId(),
                     applicationCaseId,
-                    FEATURE_TYPE,
-                    ai.usage().model(),
-                    ai.usage().inputTokens(),
-                    ai.usage().outputTokens(),
-                    tokenUsage,
-                    creditUsed);
-        } else {
-            fitAnalysisMapper.insertAiUsageLog(userId, applicationCaseId, FEATURE_TYPE, ai.status(),
-                    ai.usage().model(), ai.usage().inputTokens(), ai.usage().outputTokens(),
-                    tokenUsage, 0, ai.errorMessage());
-        }
+                    previous == null ? null : previous.getFitScore(),
+                    row.getFitScore(),
+                    toJson(historyDiff(previous, row)));
+            persistGate(row.getId(), gate);
+            int conditionOrder = 1;
+            for (var condition : ai.conditionMatrix()) {
+                String severity = "REQUIRED".equals(condition.conditionType()) && "UNMET".equals(condition.matchStatus())
+                        ? "HIGH"
+                        : "UNMET".equals(condition.matchStatus()) ? "MEDIUM" : "LOW";
+                fitAnalysisMapper.insertConditionMatch(row.getId(), condition, severity, conditionOrder++);
+            }
+            for (var item : ai.learningRoadmap()) {
+                fitAnalysisMapper.insertLearningTask(FitAnalysisLearningTask.builder()
+                        .fitAnalysisId(row.getId())
+                        .skill(item.skill())
+                        .title(item.title())
+                        .practiceTask(item.practiceTask())
+                        .expectedDuration(item.expectedDuration())
+                        .priority(item.priority())
+                        .sortOrder(item.sortOrder())
+                        .build());
+            }
 
-        // 적합도 분석이 성공하면 사용자에게 완료 알림을 남긴다.
-        if ("SUCCESS".equals(ai.status())) {
-            notificationService.notify(Notification.builder()
-                    .userId(userId)
-                    .type("FIT_ANALYSIS_COMPLETE")
-                    .targetType("APPLICATION_CASE")
-                    .targetId(applicationCaseId)
-                    .title("적합도 분석이 완료되었습니다")
-                    .message("%s · %s 적합도 %d점".formatted(
-                            source.getCompanyName(), source.getJobTitle(), ai.fitScore()))
-                    .link("/applications/" + applicationCaseId + "/fit")
-                    .build());
-        }
+            int tokenUsage = ai.usage().mock() && "SUCCESS".equals(ai.status()) ? estimateTokens(command) : ai.usage().totalTokens();
+            int creditUsed = "SUCCESS".equals(ai.status()) ? MOCK_CREDIT : 0;
+            if ("SUCCESS".equals(ai.status())) {
+                aiUsageLogService.recordSuccessValues(
+                        userId,
+                        applicationCaseId,
+                        FEATURE_TYPE,
+                        ai.usage().model(),
+                        ai.usage().inputTokens(),
+                        ai.usage().outputTokens(),
+                        tokenUsage,
+                        creditUsed);
+            } else {
+                fitAnalysisMapper.insertAiUsageLog(userId, applicationCaseId, FEATURE_TYPE, ai.status(),
+                        ai.usage().model(), ai.usage().inputTokens(), ai.usage().outputTokens(),
+                        tokenUsage, 0, ai.errorMessage());
+            }
+
+            // 적합도 분석이 성공하면 사용자에게 완료 알림을 남긴다.
+            if ("SUCCESS".equals(ai.status())) {
+                notificationService.notify(Notification.builder()
+                        .userId(userId)
+                        .type("FIT_ANALYSIS_COMPLETE")
+                        .targetType("APPLICATION_CASE")
+                        .targetId(applicationCaseId)
+                        .title("적합도 분석이 완료되었습니다")
+                        .message("%s · %s 적합도 %d점".formatted(
+                                source.getCompanyName(), source.getJobTitle(), ai.fitScore()))
+                        .link("/applications/" + applicationCaseId + "/fit")
+                        .build());
+            }
+        });
 
         return getByApplicationCase(userId, applicationCaseId);
     }
@@ -257,6 +272,23 @@ public class FitAnalysisServiceImpl implements FitAnalysisService {
         }
     }
 
+    /**
+     * 추천 자격증 근거를 생성 시 1회 수집해 snapshot JSON 으로 만든다. 근거가 없으면(게이트 OFF/provider 미활성)
+     * null 을 반환해 컬럼을 비운다(기존 응답과 동일 degrade). 수집·직렬화 실패는 분석 전체를 막지 않는다(null 반환).
+     */
+    private String collectCertificateEvidenceJson(List<String> recommendedCertificates) {
+        try {
+            List<CertificateEvidenceResponse> items = certificateEvidenceService.collect(recommendedCertificates);
+            if (items == null || items.isEmpty()) {
+                return null;
+            }
+            return objectMapper.writeValueAsString(
+                    new CertificateEvidenceSnapshot(java.time.LocalDateTime.now().toString(), items));
+        } catch (RuntimeException e) {
+            return null;
+        }
+    }
+
     private List<String> parseList(String json) {
         if (json == null || json.isBlank()) {
             return List.of();
@@ -303,6 +335,11 @@ public class FitAnalysisServiceImpl implements FitAnalysisService {
         List<com.careertuner.fitanalysis.ai.FitGapRecommendation> gaps = parseValue(
                 result.getGapRecommendations(), new TypeReference<List<com.careertuner.fitanalysis.ai.FitGapRecommendation>>() {}, List.of());
         List<String> actions = parseList(result.getStrategyActions());
+        // 읽기 경로: 저장된 snapshot 만 역직렬화(외부 API 호출 없음). null 이면 기존과 동일하게 근거 섹션 없음.
+        CertificateEvidenceSnapshot certSnapshot = parseValue(result.getCertificateEvidence(),
+                new TypeReference<CertificateEvidenceSnapshot>() {}, null);
+        List<CertificateEvidenceResponse> certEvidence =
+                certSnapshot == null || certSnapshot.items() == null ? List.of() : certSnapshot.items();
         return FitAnalysisDetailResponse.of(
                 result,
                 tasks,
@@ -311,7 +348,8 @@ public class FitAnalysisServiceImpl implements FitAnalysisService {
                 adverseStrategies(gaps),
                 next24HourActions(actions, gaps),
                 toneStrategies(result.getFitScore(), gaps),
-                safety(result.getId()));
+                safety(result.getId()),
+                certEvidence);
     }
 
     /** evidence gate 결정과 evidence 버킷 스냅샷을 C-only 테이블에 저장한다(원본·점수 미변경). */

@@ -20,6 +20,7 @@
         <result property="conditionMatrix" column="condition_matrix"/>
         <result property="analysisConfidence" column="analysis_confidence"/>
         <result property="applyDecision" column="apply_decision"/>
+        <result property="certificateEvidence" column="certificate_evidence"/>
         <result property="model" column="model"/>
         <result property="promptVersion" column="prompt_version"/>
         <result property="status" column="status"/>
@@ -50,6 +51,7 @@
         fa.condition_matrix,
         fa.analysis_confidence,
         fa.apply_decision,
+        fa.certificate_evidence,
         fa.model,
         fa.prompt_version,
         fa.status,
@@ -148,13 +150,13 @@
             (application_case_id, fit_score, matched_skills, missing_skills,
              recommended_study, recommended_certificates, strategy,
              source_snapshot, score_basis, gap_recommendations, certificate_recommendations,
-             strategy_actions, condition_matrix, analysis_confidence, apply_decision,
+             strategy_actions, condition_matrix, analysis_confidence, apply_decision, certificate_evidence,
              model, prompt_version, status, error_message)
         VALUES
             (#{applicationCaseId}, #{fitScore}, #{matchedSkills}, #{missingSkills},
              #{recommendedStudy}, #{recommendedCertificates}, #{strategy},
              #{sourceSnapshot}, #{scoreBasis}, #{gapRecommendations}, #{certificateRecommendations},
-             #{strategyActions}, #{conditionMatrix}, #{analysisConfidence}, #{applyDecision},
+             #{strategyActions}, #{conditionMatrix}, #{analysisConfidence}, #{applyDecision}, #{certificateEvidence},
              #{model}, #{promptVersion}, #{status}, #{errorMessage})
     </insert>
 

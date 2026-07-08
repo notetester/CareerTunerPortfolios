@@ -30,6 +30,7 @@ public class FitAnalysisResult {
     private String conditionMatrix;
     private String analysisConfidence;
     private String applyDecision;
+    private String certificateEvidence;   // 자격증 근거 snapshot(JSON 문자열, nullable)
     private String model;
     private String promptVersion;
     private String status;

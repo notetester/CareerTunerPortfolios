@@ -362,6 +362,7 @@ CREATE TABLE IF NOT EXISTS fit_analysis (
     condition_matrix         JSON NULL,                     -- 요구조건-스펙 비교 매트릭스(조건/유형/판정/근거)
     analysis_confidence      JSON NULL,                     -- 분석 신뢰도(level/입력 부족 사유)
     apply_decision           JSON NULL,                     -- 지원 판단 카드(APPLY/COMPLEMENT/HOLD + 이유·행동)
+    certificate_evidence     JSON NULL,                     -- 자격증 근거 snapshot(생성 시 1회 수집, 읽기는 DB만; 공식 출처·상태·메시지)
     model                    VARCHAR(80) NULL,
     prompt_version           VARCHAR(30) NULL,
     status                   VARCHAR(20) NOT NULL DEFAULT 'SUCCESS',

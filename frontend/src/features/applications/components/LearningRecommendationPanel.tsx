@@ -5,6 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/app/components/ui/ca
 import { Progress } from "@/app/components/ui/progress";
 import { updateFitAnalysisLearningTask } from "@/features/analysis/api/fitAnalysisApi";
 import type {
+  CertificateEvidenceItem,
   FitAnalysisDetail,
   FitAnalysisLearningTask,
   FitCertificateRecommendation,
@@ -120,6 +121,7 @@ export function LearningRecommendationPanel({ analyses, loading, error, onReanal
                   </div>
                 )}
                 <CertificateList recommendations={detailedCertificates} fallbackItems={certificates} />
+                <CertificateEvidenceSection items={analysis.certificateEvidence ?? []} />
               </CardContent>
             </Card>
           );
@@ -127,6 +129,74 @@ export function LearningRecommendationPanel({ analyses, loading, error, onReanal
       </div>
     </div>
   );
+}
+
+/** 자격증 근거(공식 출처 조회 snapshot). 확인된 것만 말하고, 확인 못 하면 솔직하게 안내(생성 시 1회 수집, 조회는 DB만). */
+function CertificateEvidenceSection({ items }: { items: CertificateEvidenceItem[] }) {
+  if (items.length === 0) return null;
+  return (
+    <div>
+      <div className="mb-2 flex items-center gap-1.5 text-sm font-semibold text-slate-800">
+        <Award className="size-4 text-blue-600" />
+        자격증 근거 (공식 출처 확인)
+      </div>
+      <ul className="space-y-2">
+        {items.map((item) => (
+          <li key={item.certName} className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-sm font-semibold text-slate-800">{item.certName}</span>
+              <EvidenceBadge status={item.scheduleStatus} registration={item.registrationStatus} />
+            </div>
+            <p className="mt-1 text-xs leading-5 text-slate-600">{item.message}</p>
+            {item.scheduleRounds.length > 0 && (
+              <ul className="mt-1.5 space-y-0.5 text-[11px] text-slate-500">
+                {item.scheduleRounds.slice(0, 2).map((round, index) => (
+                  <li key={index}>
+                    {round.round ? `${round.round} · ` : ""}필기 {fmtCertDate(round.docExam)} · 합격발표 {fmtCertDate(round.docPass)}
+                  </li>
+                ))}
+              </ul>
+            )}
+            {item.sourceName && (
+              <div className="mt-1 text-[11px] text-slate-400">
+                출처: {item.sourceUrl
+                  ? <a href={item.sourceUrl} target="_blank" rel="noreferrer" className="underline">{item.sourceName}</a>
+                  : item.sourceName}
+              </div>
+            )}
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+function EvidenceBadge({ status, registration }: { status: string; registration: string | null }) {
+  if (registration === "ABOLISHED_OR_CANCELLED") return <EvidencePill tone="red">등록 폐지</EvidencePill>;
+  switch (status) {
+    case "VERIFIED_CURRENT": return <EvidencePill tone="green">공식 일정 확인</EvidencePill>;
+    case "OFFICIAL_NO_SCHEDULE": return <EvidencePill tone="slate">올해 미편성</EvidencePill>;
+    case "UPSTREAM_UNAVAILABLE": return <EvidencePill tone="amber">공식 서비스 확인 불가</EvidencePill>;
+    case "MANUAL_REQUIRED": return <EvidencePill tone="blue">주관기관 확인 필요</EvidencePill>;
+    case "NOT_APPLICABLE": return <EvidencePill tone="slate">시행기관 확인</EvidencePill>;
+    default: return <EvidencePill tone="slate">확인 불가</EvidencePill>;
+  }
+}
+
+function EvidencePill({ tone, children }: { tone: "green" | "slate" | "amber" | "blue" | "red"; children: string }) {
+  const cls: Record<string, string> = {
+    green: "border-green-200 bg-green-50 text-green-700",
+    slate: "border-slate-200 bg-slate-100 text-slate-600",
+    amber: "border-amber-200 bg-amber-50 text-amber-700",
+    blue: "border-blue-200 bg-blue-50 text-blue-700",
+    red: "border-red-200 bg-red-50 text-red-700",
+  };
+  return <span className={`shrink-0 rounded-full border px-2 py-0.5 text-[11px] font-semibold ${cls[tone]}`}>{children}</span>;
+}
+
+function fmtCertDate(value: string | null): string {
+  if (!value || value.length !== 8) return "미정";
+  return `${value.slice(0, 4)}.${value.slice(4, 6)}.${value.slice(6, 8)}`;
 }
 
 /** 주간 학습 계획: 미완료 과제를 우선순위(HIGH→LOW)·정렬순으로 골라 이번 주 목표 3개를 제안한다. */
