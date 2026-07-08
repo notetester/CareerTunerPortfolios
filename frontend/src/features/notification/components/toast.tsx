@@ -244,6 +244,8 @@ const NOTI_ICON_MAP: Record<NotificationType, LucideIcon> = {
   COMPANY_APPLY_RESULT: Building2,
   JOB_POSTING_REVIEW_RESULT: Briefcase,
   POST_HIDDEN: EyeOff,
+  POST_IMAGE_BLURRED: EyeOff,
+  COMMUNITY_STRIKE_WARNING: AlertTriangle,
   POST_REMOVED: Trash2,
   POST_RESTORED: RotateCcw,
   POST_SUMMARY_READY: BookOpen,

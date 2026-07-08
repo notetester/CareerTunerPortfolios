@@ -99,6 +99,25 @@ public class NotificationServiceImpl implements NotificationService {
         notificationMapper.markAllAsRead(userId);
     }
 
+    @Override
+    @Transactional
+    public void delete(Long notificationId, Long userId) {
+        Notification notification = notificationMapper.findById(notificationId);
+        if (notification == null) {
+            throw new BusinessException(ErrorCode.NOT_FOUND, "알림을 찾을 수 없습니다.");
+        }
+        if (!notification.getUserId().equals(userId)) {
+            throw new BusinessException(ErrorCode.FORBIDDEN, "본인의 알림만 삭제할 수 있습니다.");
+        }
+        notificationMapper.deleteByIdAndUser(notificationId, userId);
+    }
+
+    @Override
+    @Transactional
+    public void deleteAll(Long userId) {
+        notificationMapper.deleteAllByUser(userId);
+    }
+
     private NotificationResponse toResponse(Notification n) {
         NotificationResponse.ActorDto actor = null;
         // 억제 판정용 actorId(ACTOR_HIDDEN_TYPES)는 응답에 내리지 않는다 — 익명 작성자 신원 보호.

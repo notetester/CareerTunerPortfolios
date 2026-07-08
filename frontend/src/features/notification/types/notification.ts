@@ -47,6 +47,8 @@ export type UserNotificationType =
   | "COMPANY_APPLY_RESULT"
   | "JOB_POSTING_REVIEW_RESULT"
   | "POST_HIDDEN"
+  | "POST_IMAGE_BLURRED"
+  | "COMMUNITY_STRIKE_WARNING"
   | "POST_REMOVED"
   | "POST_RESTORED"
   | "NOTICE"
@@ -175,6 +177,8 @@ export const TYPE_META: Record<NotificationType, TypeMeta> = {
   COMPANY_APPLY_RESULT:      { cat: "notice",      icon: "Building2",          variant: "info",    cta: "신청 결과 보기" },
   JOB_POSTING_REVIEW_RESULT: { cat: "notice",      icon: "Briefcase",          variant: "info",    cta: "공고 검토 결과" },
   POST_HIDDEN:               { cat: "community",   icon: "EyeOff",             variant: "warning", cta: "가이드라인 보기" },
+  POST_IMAGE_BLURRED:        { cat: "community",   icon: "EyeOff",             variant: "warning", cta: "게시글 보기" },
+  COMMUNITY_STRIKE_WARNING:  { cat: "community",   icon: "AlertTriangle",      variant: "warning", cta: "가이드라인 보기" },
   POST_REMOVED:              { cat: "community",   icon: "Trash2",             variant: "danger",  cta: "가이드라인 보기" },
   POST_RESTORED:             { cat: "community",   icon: "RotateCcw",          variant: "success", cta: "게시글 보기" },
   POST_SUMMARY_READY:        { cat: "community",   icon: "Sparkles",           variant: "info",    cta: "요약 보기" },
@@ -295,6 +299,8 @@ export const TYPE_TO_CATEGORY: Record<NotificationType, NotificationCategory> = 
   COMPANY_APPLY_RESULT: "notice",
   JOB_POSTING_REVIEW_RESULT: "notice",
   POST_HIDDEN: "community",
+  POST_IMAGE_BLURRED: "community",
+  COMMUNITY_STRIKE_WARNING: "community",
   POST_REMOVED: "community",
   POST_RESTORED: "community",
   POST_SUMMARY_READY: "community",

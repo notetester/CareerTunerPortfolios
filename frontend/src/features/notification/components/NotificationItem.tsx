@@ -1,4 +1,4 @@
-import { ArrowRight, type LucideIcon } from "lucide-react";
+import { ArrowRight, X, type LucideIcon } from "lucide-react";
 import { useNavigate } from "react-router";
 import { Avatar, AvatarFallback } from "@/app/components/ui/avatar";
 import type { Notification } from "../types/notification";
@@ -9,6 +9,7 @@ interface NotificationItemProps {
   notification: Notification;
   size?: "sm" | "md";
   onRead: (id: number) => void;
+  onDelete?: (id: number) => void;
 }
 
 /** 아이콘 사각형 또는 actor 아바타 + 타입 배지 */
@@ -38,7 +39,7 @@ function NotiIcon({ n, size }: { n: Notification; size: "sm" | "md" }) {
   );
 }
 
-export function NotificationItem({ notification: n, size = "md", onRead }: NotificationItemProps) {
+export function NotificationItem({ notification: n, size = "md", onRead, onDelete }: NotificationItemProps) {
   const meta = typeMeta(n.type);
   const navigate = useNavigate();
 
@@ -65,6 +66,19 @@ export function NotificationItem({ notification: n, size = "md", onRead }: Notif
         )}
       </div>
       <div className="ct-noti__time">{relTime(n.createdAt)}</div>
+      {onDelete && (
+        <button
+          type="button"
+          className="ct-noti__del"
+          aria-label="알림 삭제"
+          onClick={(e) => {
+            e.stopPropagation();
+            onDelete(n.id);
+          }}
+        >
+          <X />
+        </button>
+      )}
     </div>
   );
 }

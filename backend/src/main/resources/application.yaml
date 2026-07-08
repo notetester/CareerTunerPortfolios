@@ -252,6 +252,9 @@ ai:
   ollama:
     base-url: ${AI_OLLAMA_BASE_URL:http://localhost:11434}
     model: ${AI_OLLAMA_MODEL:gemma4}
+    # 이미지(vision) 검열 전용 모델 — 텍스트는 gemma4, 이미지는 텍스트/광고 인식이 강한 VL 모델을 쓴다.
+    # 미설치 환경이면 vision 호출 실패 → Claude/OpenAI vision 폴백.
+    vision-model: "${AI_OLLAMA_VISION_MODEL:qwen2.5vl:7b}"
     connect-timeout: ${AI_OLLAMA_CONNECT_TIMEOUT:10s}
     read-timeout: ${AI_OLLAMA_READ_TIMEOUT:60s}
   tagging:

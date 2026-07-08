@@ -20,6 +20,9 @@ public class OllamaProperties {
 
     private String baseUrl = "http://localhost:11434";
     private String model = "gemma4";
+    /** 이미지(vision) 검열 전용 모델. gemma4 는 이미지 속 광고/텍스트 인식이 약해 전용 VL 모델을 쓴다.
+     *  미설치 환경이면 vision 호출이 실패하고 게이트웨이가 Claude/OpenAI vision 으로 폴백한다. */
+    private String visionModel = "qwen2.5vl:7b";
     private Duration connectTimeout = Duration.ofSeconds(3);
     private Duration readTimeout = Duration.ofSeconds(30);
 

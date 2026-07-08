@@ -105,11 +105,8 @@ const navItems = [
     href: "/community",
     icon: Users,
     children: [
-      { label: "취업 후기", href: "/community?cat=hired" },
-      { label: "면접 후기", href: "/community?cat=interview" },
-      { label: "직무별 질문 공유", href: "/community?cat=questions" },
-      { label: "합격 전략 게시판", href: "/community?cat=strategy" },
-      { label: "자유게시판", href: "/community?cat=free" },
+      { label: "인기글", href: "/community?sort=likes" },
+      { label: "내 활동", href: "/community/activity" },
     ],
   },
   {

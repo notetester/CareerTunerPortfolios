@@ -18,8 +18,12 @@ import com.careertuner.admin.ticket.mapper.AdminTicketMapper;
 import com.careertuner.common.exception.BusinessException;
 import com.careertuner.common.exception.ErrorCode;
 import com.careertuner.common.security.AuthUser;
+import com.careertuner.file.domain.FileAsset;
+import com.careertuner.file.mapper.FileAssetMapper;
+import com.careertuner.file.service.FileService;
 import com.careertuner.notification.domain.Notification;
 import com.careertuner.notification.service.NotificationService;
+import com.careertuner.support.dto.TicketAttachmentView;
 
 import lombok.RequiredArgsConstructor;
 
@@ -31,6 +35,11 @@ public class AdminTicketServiceImpl implements AdminTicketService {
     private final AdminTicketMapper ticketMapper;
     private final NotificationService notificationService;
     private final TicketDraftAiClient draftAiClient;
+    private final FileService fileService;
+    private final FileAssetMapper fileAssetMapper;
+
+    /** 첨부를 support_ticket_message 에 연결한 file_asset.ref_type 값(사용자 측과 동일). */
+    private static final String ATTACHMENT_REF_TYPE = "SUPPORT_TICKET_MSG";
 
     /** support_ticket.status 허용값(DB 저장 기준). */
     private static final Set<String> ALLOWED_STATUS = Set.of("RECEIVED", "IN_PROGRESS", "ANSWERED", "CLOSED");
@@ -72,8 +81,28 @@ public class AdminTicketServiceImpl implements AdminTicketService {
                 .plan(ticket.getPlan())
                 .joinedAt(ticket.getJoinedAt())
                 .memo(memo != null ? memo : "")
-                .msgs(ticketMapper.findMessages(id))
+                .msgs(withAttachments(ticketMapper.findMessages(id)))
                 .build();
+    }
+
+    /** 각 메시지에 연결된 첨부(file_asset ref)를 채워 넣는다. */
+    private List<AdminTicketMessageResponse> withAttachments(List<AdminTicketMessageResponse> msgs) {
+        msgs.forEach(m -> m.setAttachments(
+                fileService.findLinkedFiles(ATTACHMENT_REF_TYPE, m.getId()).stream()
+                        .map(TicketAttachmentView::from)
+                        .toList()));
+        return msgs;
+    }
+
+    @Override
+    public FileService.Download downloadAttachment(AuthUser authUser, Long fileId) {
+        requireAdmin(authUser);
+        FileAsset asset = fileAssetMapper.findById(fileId);
+        // 티켓 첨부(ref_type)인 파일만 상담사에게 허용 — 임의 파일 접근 차단.
+        if (asset == null || !ATTACHMENT_REF_TYPE.equals(asset.getRefType())) {
+            throw new BusinessException(ErrorCode.NOT_FOUND, "첨부를 찾을 수 없습니다.");
+        }
+        return fileService.downloadAfterAccessCheck(fileId);
     }
 
     @Override
