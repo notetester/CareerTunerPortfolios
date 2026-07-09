@@ -14,6 +14,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.function.Supplier;
 
 import org.springframework.stereotype.Service;
 
@@ -32,6 +33,16 @@ import tools.jackson.databind.ObjectMapper;
 public class OpenAiResponsesClient {
 
     private static final int MAX_ATTEMPTS = 3;
+    // OCR 하드닝: gpt-4o 가 이미지/PDF 를 때때로 "추출이 지원되지 않는다"류로 거부(짧은 응답)하는 비결정성 대응.
+    // 결과가 임계치 미만(거부 추정)이면 1회 재시도한다.
+    private static final int OCR_MAX_ATTEMPTS = 2;
+    private static final int OCR_MIN_USEFUL_CHARS = 100;
+    private static final String OCR_SYSTEM_PROMPT = """
+            You are a precise OCR transcription engine for Korean recruitment job postings.
+            Transcribe ALL text visible in the document verbatim, preserving the original language and reading order.
+            Output ONLY the transcribed text. Do NOT add explanations, apologies, disclaimers, notes, or markdown code fences.
+            Never say that you cannot read the file or that text extraction is unsupported — always output whatever text is legible.
+            """;
 
     private final OpenAiProperties properties;
     private final ObjectMapper objectMapper;
@@ -138,18 +149,42 @@ public class OpenAiResponsesClient {
 
     public TextPayload extractImageText(String contentType, byte[] bytes) {
         String dataUrl = "data:%s;base64,%s".formatted(contentType, Base64.getEncoder().encodeToString(bytes));
-        JsonNode root = post(textRequest(List.of(
-                inputText("이미지 안에 있는 채용공고 텍스트만 한국어 원문에 가깝게 추출해줘. 설명이나 요약은 쓰지 마."),
+        return ocrWithRetry(() -> textRequest(OCR_SYSTEM_PROMPT, List.of(
+                inputText("이미지 안에 있는 채용공고 텍스트를 원문 그대로 모두 추출해. 설명·요약·사과·안내 문구는 붙이지 말고 추출된 텍스트만 출력해."),
                 inputImage(dataUrl))));
-        return new TextPayload(cleanOutputText(root), usage(root));
     }
 
     public TextPayload extractPdfText(String filename, byte[] bytes) {
         String fileData = "data:application/pdf;base64,%s".formatted(Base64.getEncoder().encodeToString(bytes));
-        JsonNode root = post(textRequest(List.of(
+        return ocrWithRetry(() -> textRequest(OCR_SYSTEM_PROMPT, List.of(
                 inputFile(filename, fileData),
-                inputText("PDF의 모든 페이지에서 채용공고 텍스트만 추출해줘. 설명이나 요약은 쓰지 말고, 읽힌 텍스트만 반환해."))));
-        return new TextPayload(cleanOutputText(root), usage(root));
+                inputText("이 PDF의 모든 페이지에서 채용공고 텍스트를 원문 그대로 모두 추출해. "
+                        + "'추출이 지원되지 않는다' 같은 안내나 설명·요약은 붙이지 말고, 읽힌 텍스트만 출력해."))));
+    }
+
+    /**
+     * OCR 전용 재시도: gpt-4o 가 같은 파일을 어떤 때는 거부(짧은 응답)하고 어떤 때는 정상 추출하는 비결정성 대응.
+     * 결과가 {@link #OCR_MIN_USEFUL_CHARS} 미만이면(거부 추정) 최대 {@link #OCR_MAX_ATTEMPTS} 회까지 재요청한다.
+     * 최종 시도까지도 임계치 미만이면 <b>빈 문자열</b>을 반환한다 — 상위 {@code ocrFallback} 이 이를 "빈 결과"로 보고
+     * 다음 단계(OCR 워커)로 내려가게 하기 위함이다. 짧은 거부 응답을 non-blank 로 반환하면 워커 폴백을 가로막는다.
+     */
+    private TextPayload ocrWithRetry(Supplier<Map<String, Object>> requestSupplier) {
+        TextPayload last = new TextPayload("", null);
+        for (int attempt = 1; attempt <= OCR_MAX_ATTEMPTS; attempt++) {
+            JsonNode root = post(requestSupplier.get());
+            String text = cleanOcrText(root);
+            last = new TextPayload(text, usage(root));
+            if (text.strip().length() >= OCR_MIN_USEFUL_CHARS) {
+                return last;
+            }
+            if (attempt < OCR_MAX_ATTEMPTS) {
+                log.warn("OpenAI OCR 결과가 너무 짧음({}자, 거부 추정) → 재시도 {}/{}",
+                        text.strip().length(), attempt + 1, OCR_MAX_ATTEMPTS);
+            }
+        }
+        log.warn("OpenAI OCR 최종 결과가 임계치 미만({}자) → 빈 결과로 반환(상위 워커 폴백에 위임)",
+                last.text() == null ? 0 : last.text().strip().length());
+        return new TextPayload("", last.usage());
     }
 
     private JsonNode post(Map<String, Object> requestBody) {
@@ -220,9 +255,11 @@ public class OpenAiResponsesClient {
         return body;
     }
 
-    private Map<String, Object> textRequest(List<Map<String, Object>> content) {
+    private Map<String, Object> textRequest(String systemPrompt, List<Map<String, Object>> content) {
         Map<String, Object> body = baseBody(properties.getModel());
-        body.put("input", List.of(message("user", content)));
+        body.put("input", List.of(
+                message("system", List.of(inputText(systemPrompt))),
+                message("user", content)));
         return body;
     }
 
@@ -271,6 +308,15 @@ public class OpenAiResponsesClient {
         }
         if (text.isBlank()) {
             throw new BusinessException(ErrorCode.INTERNAL_ERROR, "AI 응답 본문이 비어 있습니다.");
+        }
+        return text;
+    }
+
+    /** OCR 전용: 빈 결과에 예외를 던지지 않고 "" 를 반환한다(재시도·상위 폴백이 처리). 코드펜스만 제거. */
+    private String cleanOcrText(JsonNode root) {
+        String text = outputText(root).trim();
+        if (text.startsWith("```")) {
+            text = text.replaceFirst("^```(?:json)?\\s*", "").replaceFirst("\\s*```$", "").trim();
         }
         return text;
     }
